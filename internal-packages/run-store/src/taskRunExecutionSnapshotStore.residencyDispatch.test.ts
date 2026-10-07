@@ -1,5 +1,5 @@
 // Milestone M9: reads dispatch on each run's DURABLE residency (resolved from the MemoryDB birth key),
-// not the constructed dial, so backward-dialing (redis-only -> lower) is lossless; plus HALT semantics.
+// not the constructed dial, so backward-dialing (redis-only -> lower) preserves residency.
 // Proven end-to-end against REAL Postgres + REAL Redis (testcontainers, no mocks).
 import { describe, expect } from "vitest";
 import { containerTest } from "@internal/testcontainers";
@@ -10,7 +10,6 @@ import { RedisSnapshotStore } from "./redisSnapshotStore.js";
 import {
   TaskRunExecutionSnapshotStore,
   SnapshotReadUnavailableError,
-  SnapshotWriteHaltedError,
 } from "./taskRunExecutionSnapshotStore.js";
 import { SnapshotResidencyResolver } from "./snapshotResidencyResolver.js";
 import { residencyKey } from "./snapshotKeys.js";
@@ -78,10 +77,9 @@ async function insertPostgresOnlySnapshot(
   });
 }
 
-function realResolver(store: RedisSnapshotStore, prisma: PrismaClient) {
+function realResolver(store: RedisSnapshotStore) {
   return new SnapshotResidencyResolver({
     store,
-    taskRunExists: async (id) => (await prisma.taskRun.count({ where: { id } })) > 0,
   });
 }
 
@@ -110,15 +108,7 @@ describe("TaskRunExecutionSnapshotStore (M9) residency-keyed reads", () => {
         });
         await writer.createExecutionSnapshot(transitionInput(env, runId, transitionId, birthId));
 
-        // A Postgres row planted for the SAME run: a wrongful fallback would return it.
-        const pgOnlyId = generateInternalId();
-        await insertPostgresOnlySnapshot(
-          prisma,
-          env,
-          runId,
-          pgOnlyId,
-          new Date(Date.now() + 5_000)
-        );
+        expect(await prisma.taskRunExecutionSnapshot.count({ where: { runId } })).toBe(0);
 
         // Dial turned DOWN to redis-read and to dual-write: BOTH still read the redis-primary head.
         for (const mode of ["redis-read", "dual-write"] as const) {
@@ -126,10 +116,10 @@ describe("TaskRunExecutionSnapshotStore (M9) residency-keyed reads", () => {
             store,
             mode,
             logicalRunStoreRoute: ROUTE,
-            residencyResolver: realResolver(store, prisma),
+            residencyResolver: realResolver(store),
           });
           const head = await reader.findLatestExecutionSnapshot(runId);
-          expect(head?.id).toBe(transitionId); // the MemoryDB head, never the newer Postgres row
+          expect(head?.id).toBe(transitionId);
         }
 
         // Drop the redis-primary snapshot state (marker survives): the read fails closed, NOT to Postgres.
@@ -139,7 +129,7 @@ describe("TaskRunExecutionSnapshotStore (M9) residency-keyed reads", () => {
           store,
           mode: "redis-read",
           logicalRunStoreRoute: ROUTE,
-          residencyResolver: realResolver(store, prisma),
+          residencyResolver: realResolver(store),
         });
         await expect(reader.findLatestExecutionSnapshot(runId)).rejects.toBeInstanceOf(
           SnapshotReadUnavailableError
@@ -151,7 +141,7 @@ describe("TaskRunExecutionSnapshotStore (M9) residency-keyed reads", () => {
   );
 
   containerTest(
-    "a mirrored run reads MemoryDB-head at redis-read and Postgres at dual-write",
+    "a mirrored run never serves a Redis head older than committed Postgres",
     async ({ prisma, redisOptions }) => {
       const delegate = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
       const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
@@ -185,15 +175,15 @@ describe("TaskRunExecutionSnapshotStore (M9) residency-keyed reads", () => {
           store,
           mode: "redis-read",
           logicalRunStoreRoute: ROUTE,
-          residencyResolver: realResolver(store, prisma),
+          residencyResolver: realResolver(store),
         });
-        expect((await redisReader.findLatestExecutionSnapshot(runId))?.id).toBe(birthId);
+        expect((await redisReader.findLatestExecutionSnapshot(runId))?.id).toBe(pgOnlyId);
 
         const dualReader = new TaskRunExecutionSnapshotStore(delegate, {
           store,
           mode: "dual-write",
           logicalRunStoreRoute: ROUTE,
-          residencyResolver: realResolver(store, prisma),
+          residencyResolver: realResolver(store),
         });
         expect((await dualReader.findLatestExecutionSnapshot(runId))?.id).toBe(pgOnlyId);
       } finally {
@@ -253,7 +243,7 @@ describe("TaskRunExecutionSnapshotStore (M9) residency-keyed reads", () => {
           store,
           mode: "redis-only",
           logicalRunStoreRoute: ROUTE,
-          residencyResolver: realResolver(store, prisma),
+          residencyResolver: realResolver(store),
         });
         // Immutable residency: the redis-only dial does NOT reclassify it. It reads Postgres.
         expect((await reader.findLatestExecutionSnapshot(runId))?.id).toBe(snapshotId);
@@ -264,173 +254,7 @@ describe("TaskRunExecutionSnapshotStore (M9) residency-keyed reads", () => {
   );
 });
 
-describe("TaskRunExecutionSnapshotStore (M9) halt", () => {
-  containerTest(
-    "a redis-only birth is rejected under halt, nothing half-written, and unhalting restores it",
-    async ({ prisma, redisOptions }) => {
-      const delegate = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
-      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
-
-      try {
-        const env = await seedSnapshotEnvironment(prisma);
-        const runId = generateInternalId();
-        const birthId = generateInternalId();
-
-        let halted = true;
-        const writer = new TaskRunExecutionSnapshotStore(delegate, {
-          store,
-          mode: "redis-only",
-          logicalRunStoreRoute: ROUTE,
-          halted: () => halted,
-        });
-
-        await expect(
-          writer.createRun({
-            data: buildCreateRunData(runId, env),
-            snapshot: birthSnapshot(env, birthId),
-          })
-        ).rejects.toBeInstanceOf(SnapshotWriteHaltedError);
-
-        // No residency change, nothing half-written: no run, no state, no marker, nothing pending.
-        expect(await prisma.taskRun.count({ where: { id: runId } })).toBe(0);
-        expect(await store.getLatest(runId)).toBeNull();
-        expect(await store.readBirthResidency(runId)).toBeUndefined();
-        expect(await store.hasPreparedUnit(runId)).toBe(false);
-
-        // Dial back: the birth now succeeds redis-primary.
-        halted = false;
-        await writer.createRun({
-          data: buildCreateRunData(runId, env),
-          snapshot: birthSnapshot(env, birthId),
-        });
-        expect(await store.readBirthResidency(runId)).toBe("redis-primary");
-        expect((await store.getLatest(runId))?.id).toBe(birthId);
-      } finally {
-        await store.quit();
-      }
-    }
-  );
-
-  containerTest(
-    "an existing redis-primary run's transition is rejected under halt, its state unchanged",
-    async ({ prisma, redisOptions }) => {
-      const delegate = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
-      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
-
-      try {
-        const env = await seedSnapshotEnvironment(prisma);
-        const runId = generateInternalId();
-        const birthId = generateInternalId();
-        const transitionId = generateInternalId();
-
-        let halted = false;
-        const writer = new TaskRunExecutionSnapshotStore(delegate, {
-          store,
-          mode: "redis-only",
-          logicalRunStoreRoute: ROUTE,
-          halted: () => halted,
-        });
-        await writer.createRun({
-          data: buildCreateRunData(runId, env),
-          snapshot: birthSnapshot(env, birthId),
-        });
-
-        halted = true;
-        await expect(
-          writer.createExecutionSnapshot(transitionInput(env, runId, transitionId, birthId))
-        ).rejects.toBeInstanceOf(SnapshotWriteHaltedError);
-
-        // The head is still the birth, nothing pending, residency untouched.
-        expect((await store.getLatest(runId))?.id).toBe(birthId);
-        expect(await store.hasPreparedUnit(runId)).toBe(false);
-        expect(await store.readBirthResidency(runId)).toBe("redis-primary");
-      } finally {
-        await store.quit();
-      }
-    }
-  );
-
-  containerTest(
-    "a halted mirrored read prefers the complete Postgres copy over the MemoryDB head",
-    async ({ prisma, redisOptions }) => {
-      const delegate = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
-      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
-
-      try {
-        const env = await seedSnapshotEnvironment(prisma);
-        const runId = generateInternalId();
-        const birthId = generateInternalId();
-
-        const writer = new TaskRunExecutionSnapshotStore(delegate, {
-          store,
-          mode: "dual-write",
-          logicalRunStoreRoute: ROUTE,
-        });
-        await writer.createRun({
-          data: buildCreateRunData(runId, env),
-          snapshot: birthSnapshot(env, birthId),
-        });
-        const pgOnlyId = generateInternalId();
-        await insertPostgresOnlySnapshot(
-          prisma,
-          env,
-          runId,
-          pgOnlyId,
-          new Date(Date.now() + 5_000)
-        );
-
-        let halted = false;
-        const reader = new TaskRunExecutionSnapshotStore(delegate, {
-          store,
-          mode: "redis-read",
-          logicalRunStoreRoute: ROUTE,
-          residencyResolver: realResolver(store, prisma),
-          halted: () => halted,
-        });
-
-        // Unhalted redis-read serves the MemoryDB birth head.
-        expect((await reader.findLatestExecutionSnapshot(runId))?.id).toBe(birthId);
-
-        // Halted: prefer the complete Postgres copy (the newer row).
-        halted = true;
-        expect((await reader.findLatestExecutionSnapshot(runId))?.id).toBe(pgOnlyId);
-      } finally {
-        await store.quit();
-      }
-    }
-  );
-
-  containerTest(
-    "a mirrored (dual-write) birth still proceeds under halt: halt only stops redis-primary writes",
-    async ({ prisma, redisOptions }) => {
-      const delegate = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
-      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
-
-      try {
-        const env = await seedSnapshotEnvironment(prisma);
-        const runId = generateInternalId();
-        const birthId = generateInternalId();
-
-        const writer = new TaskRunExecutionSnapshotStore(delegate, {
-          store,
-          mode: "dual-write",
-          logicalRunStoreRoute: ROUTE,
-          halted: () => true,
-        });
-        await writer.createRun({
-          data: buildCreateRunData(runId, env),
-          snapshot: birthSnapshot(env, birthId),
-        });
-
-        expect(await prisma.taskRun.count({ where: { id: runId } })).toBe(1);
-        expect(await prisma.taskRunExecutionSnapshot.count({ where: { runId } })).toBe(1);
-        expect(await store.readBirthResidency(runId)).toBe("mirrored");
-      } finally {
-        await store.quit();
-      }
-    }
-  );
-
+describe("TaskRunExecutionSnapshotStore default residency resolver", () => {
   containerTest(
     "the default (uninjected) resolver dispatches on residency too",
     async ({ prisma, redisOptions }) => {

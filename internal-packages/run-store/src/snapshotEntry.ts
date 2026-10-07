@@ -47,6 +47,7 @@ export function entryFromCreateRun(
     environmentType: snapshot.environmentType,
     projectId: snapshot.projectId,
     organizationId: snapshot.organizationId,
+    ...(snapshot.snapshotMetadata !== undefined && { metadata: snapshot.snapshotMetadata }),
     ...(snapshot.workerId !== undefined && { workerId: snapshot.workerId }),
     ...(snapshot.runnerId !== undefined && { runnerId: snapshot.runnerId }),
   };
@@ -70,6 +71,7 @@ export function entryFromCompletion(
     environmentType: snapshot.environmentType,
     projectId: snapshot.projectId,
     organizationId: snapshot.organizationId,
+    ...(snapshot.snapshotMetadata !== undefined && { metadata: snapshot.snapshotMetadata }),
     ...(snapshot.workerId !== undefined && { workerId: snapshot.workerId }),
     ...(snapshot.runnerId !== undefined && { runnerId: snapshot.runnerId }),
   };
@@ -89,6 +91,7 @@ export function entryFromExpire(
     environmentType: snapshot.environmentType,
     projectId: snapshot.projectId,
     organizationId: snapshot.organizationId,
+    ...(snapshot.snapshotMetadata !== undefined && { metadata: snapshot.snapshotMetadata }),
   };
 }
 
@@ -106,6 +109,7 @@ export function entryFromReschedule(
     environmentType: snapshot.environmentType,
     projectId: snapshot.projectId,
     organizationId: snapshot.organizationId,
+    ...(snapshot.snapshotMetadata !== undefined && { metadata: snapshot.snapshotMetadata }),
   };
 }
 
@@ -127,6 +131,7 @@ export function entryFromLock(
     environmentType: snapshot.environmentType,
     projectId: snapshot.projectId,
     organizationId: snapshot.organizationId,
+    ...(snapshot.snapshotMetadata !== undefined && { metadata: snapshot.snapshotMetadata }),
     ...(snapshot.workerId !== undefined && { workerId: snapshot.workerId }),
     ...(snapshot.runnerId !== undefined && { runnerId: snapshot.runnerId }),
   };
@@ -152,8 +157,9 @@ export function entryFromCreateExecutionSnapshot(
     ...(input.checkpointId !== undefined && { checkpointId: input.checkpointId }),
     ...(input.workerId !== undefined && { workerId: input.workerId }),
     ...(input.runnerId !== undefined && { runnerId: input.runnerId }),
-    ...(input.snapshot.metadata !== undefined &&
-      input.snapshot.metadata !== null && { metadata: input.snapshot.metadata }),
+    ...((input.snapshotMetadata ?? input.snapshot.metadata) != null && {
+      metadata: input.snapshotMetadata ?? input.snapshot.metadata,
+    }),
     ...(input.error !== undefined && { error: input.error }),
   };
 }

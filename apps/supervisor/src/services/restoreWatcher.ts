@@ -1,4 +1,3 @@
-import type { SnapshotRouteWire } from "@trigger.dev/core/v3";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import { Counter, Gauge, Histogram, type Registry } from "prom-client";
 import {
@@ -12,14 +11,12 @@ import {
 type RestoreWatchTarget = {
   runFriendlyId: string;
   snapshotFriendlyId: string;
-  snapshotRoute?: SnapshotRouteWire;
 };
 
 /** A failed restore, with what the watch or the Runner knew of its run. */
 export type RestoreFailure = {
   runFriendlyId?: string;
   snapshotFriendlyId?: string;
-  snapshotRoute?: SnapshotRouteWire;
   runnerId: string;
   outcome: RestoreWatchResult & { ok: false };
 };
@@ -93,7 +90,6 @@ export class RestoreWatcher {
     const watched = this.watches.get(runnerId);
     if (watched && (watched.uid === undefined || uid === undefined || watched.uid === uid)) {
       watched.snapshotFriendlyId = target.snapshotFriendlyId;
-      watched.snapshotRoute = target.snapshotRoute;
       return;
     }
     // The redelivery replaced the Runner, so the watch on the old one has nothing left to say.
@@ -140,7 +136,6 @@ export class RestoreWatcher {
     await this.report({
       runFriendlyId,
       snapshotFriendlyId: entry.snapshotFriendlyId,
-      snapshotRoute: entry.snapshotRoute,
       runnerId,
       outcome,
     });

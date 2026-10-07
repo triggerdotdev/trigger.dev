@@ -26,7 +26,7 @@ import type {
 } from "@trigger.dev/database";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import type { Residency, ShardKey } from "@trigger.dev/core/v3/isomorphic";
-import type { SnapshotRoute } from "./snapshotResidency.js";
+import type { SnapshotReadContext, SnapshotRoute } from "./snapshotResidency.js";
 import type {
   ClearIdempotencyKeyInput,
   CompletionSnapshotInput,
@@ -457,23 +457,26 @@ export class DelegatingRunStore implements RunStore {
     client?: ReadClient,
     // When set, scopes the read to this environment (tenant boundary); a run in another env reads as
     // not-found. Omit to read regardless of environment (internal callers).
-    environmentId?: string
+    environmentId?: string,
+    organizationId?: SnapshotReadContext
   ): Promise<LatestExecutionSnapshotRead | null> {
-    return this.delegate.findLatestExecutionSnapshot(runId, client, environmentId);
+    return this.delegate.findLatestExecutionSnapshot(runId, client, environmentId, organizationId);
   }
 
   findExecutionSnapshot<T extends Prisma.TaskRunExecutionSnapshotFindFirstArgs>(
     args: Prisma.SelectSubset<T, Prisma.TaskRunExecutionSnapshotFindFirstArgs>,
-    client?: ReadClient
+    client?: ReadClient,
+    organizationId?: SnapshotReadContext
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<T> | null> {
-    return this.delegate.findExecutionSnapshot(args, client);
+    return this.delegate.findExecutionSnapshot(args, client, organizationId);
   }
 
   findManyExecutionSnapshots<T extends Prisma.TaskRunExecutionSnapshotFindManyArgs>(
     args: Prisma.SelectSubset<T, Prisma.TaskRunExecutionSnapshotFindManyArgs>,
-    client?: ReadClient
+    client?: ReadClient,
+    organizationId?: SnapshotReadContext
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<T>[]> {
-    return this.delegate.findManyExecutionSnapshots(args, client);
+    return this.delegate.findManyExecutionSnapshots(args, client, organizationId);
   }
 
   createExecutionSnapshot(
@@ -483,28 +486,36 @@ export class DelegatingRunStore implements RunStore {
     return this.delegate.createExecutionSnapshot(input, tx);
   }
 
-  readSnapshotRoute(
-    runId: string,
-    organizationId: string,
-    options?: { forceDurable?: boolean; knownToExist?: boolean }
-  ): Promise<SnapshotRoute | undefined> {
-    return this.delegate.readSnapshotRoute(runId, organizationId, options);
+  readSnapshotRoute(runId: string, organizationId: string): Promise<SnapshotRoute | undefined> {
+    return this.delegate.readSnapshotRoute(runId, organizationId);
   }
 
   findSnapshotCompletedWaitpointIds(
     snapshotId: string,
     client?: ReadClient,
-    runId?: string
+    runId?: string,
+    organizationId?: SnapshotReadContext
   ): Promise<string[]> {
-    return this.delegate.findSnapshotCompletedWaitpointIds(snapshotId, client, runId);
+    return this.delegate.findSnapshotCompletedWaitpointIds(
+      snapshotId,
+      client,
+      runId,
+      organizationId
+    );
   }
 
   findSnapshotCompletedWaitpointIdsWithPresence(
     snapshotId: string,
     client?: ReadClient,
-    runId?: string
+    runId?: string,
+    organizationId?: SnapshotReadContext
   ): Promise<{ present: boolean; ids: string[] }> {
-    return this.delegate.findSnapshotCompletedWaitpointIdsWithPresence(snapshotId, client, runId);
+    return this.delegate.findSnapshotCompletedWaitpointIdsWithPresence(
+      snapshotId,
+      client,
+      runId,
+      organizationId
+    );
   }
 
   findWaitpointConnectedRunIds(waitpointId: string, client?: ReadClient): Promise<string[]> {

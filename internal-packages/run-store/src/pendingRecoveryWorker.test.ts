@@ -413,24 +413,6 @@ describe("PendingRecoveryWorker", () => {
     }
   );
 
-  containerTest("halt does NOT stop the recovery loop", async ({ redisOptions, prisma }) => {
-    const h = harness(redisOptions, prisma);
-    try {
-      const runId = "run_rec_halted";
-      const partition = runToPartition(runId);
-      await h.index.ensureGroup(partition);
-      await bornRun(h.store, runId);
-      const xid = await committedXid(prisma);
-      await h.store.prepare(unit(runId, xid));
-
-      const outcomes = await h.worker({ halted: () => true }).processPartition(partition, "w1");
-      expect(outcomes).toEqual([{ kind: "finalized", runId }]);
-      expect((await h.store.getLatest(runId))?.id).toBe("s1");
-    } finally {
-      await h.store.quit();
-    }
-  });
-
   // Item 7.4: an unmapped route is an AVAILABILITY failure, never an aged-out xid. Even a committed
   // mirrored unit must RETRY (typed unavailable surfaced), never abort, and stay pending.
   containerTest(

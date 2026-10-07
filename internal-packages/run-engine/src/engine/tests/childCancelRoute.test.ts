@@ -1,9 +1,6 @@
-// F5: recursive child cancellation must resolve EACH child's OWN residency with forceDurable (a child
-// has its own birth residency) and stamp it on the queued cancelRun payload, so the cancel consumer
-// honors the child's true residency without a lookup of its own. Here a PRODUCER (dial=redis-only)
-// births a parent + a redis-primary child; the CONSUMER (dial=undefined) cancels the parent and its
-// own worker runs the child cancel on the undefined dial. The child's terminal snapshot must stay in
-// MemoryDB with no TRES row. No mocks.
+// Recursive cancellation follows each child's own stored residency. A producer births a parent
+// and Redis-primary child; a lagging consumer cancels both through the real worker. The child's
+// terminal snapshot must remain in MemoryDB without a TRES row.
 import { assertNonNullable, containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { setTimeout } from "node:timers/promises";
@@ -42,7 +39,6 @@ function makeStore(
     resolveDial: dial,
     residencyResolver: new SnapshotResidencyResolver({
       store: snapshotStore,
-      taskRunExists: async (id: string) => (await prisma.taskRun.count({ where: { id } })) > 0,
     }),
     resolveCompletedWaitpoints: createCompletedWaitpointResolver(delegate),
     logicalRunStoreRoute: ROUTE,
@@ -124,7 +120,6 @@ describe("RunEngine recursive child-cancel route (F5)", () => {
         const parentAttempt = await consumer.startRunAttempt({
           runId: parent.id,
           snapshotId: dq.snapshot.id,
-          snapshotRoute: dq.snapshotRoute,
         });
         expect(parentAttempt.snapshot.executionStatus).toBe("EXECUTING");
 
@@ -157,7 +152,6 @@ describe("RunEngine recursive child-cancel route (F5)", () => {
         await consumer.cancelRun({
           runId: parent.id,
           finalizeRun: true,
-          snapshotRoute: dq.snapshotRoute,
         });
 
         let childData;

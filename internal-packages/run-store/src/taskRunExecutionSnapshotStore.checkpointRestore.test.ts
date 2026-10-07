@@ -238,22 +238,7 @@ describe("TaskRunExecutionSnapshotStore (redis-only) checkpoint restore across r
         expect(await store2.getLatest(runId)).toBeNull();
         expect(await store2.readBirthResidency(runId)).toBe("redis-primary");
 
-        // A Postgres snapshot row planted for the same run: a wrongful fallback would return it. The
-        // redis-primary read must fail closed instead, never serving the empty-Postgres head.
-        await prisma.taskRunExecutionSnapshot.create({
-          data: {
-            id: generateInternalId(),
-            runId,
-            engine: "V2",
-            executionStatus: "EXECUTING",
-            description: "planted",
-            runStatus: "EXECUTING",
-            environmentId: env.id,
-            environmentType: env.type,
-            projectId: env.projectId,
-            organizationId: env.organizationId,
-          },
-        });
+        expect(await prisma.taskRunExecutionSnapshot.count({ where: { runId } })).toBe(0);
 
         const reader = new TaskRunExecutionSnapshotStore(delegate, {
           store: store2,

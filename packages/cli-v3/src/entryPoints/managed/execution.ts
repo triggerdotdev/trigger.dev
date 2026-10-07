@@ -8,7 +8,6 @@ import {
   type TaskRunExecutionMetrics,
   type TaskRunExecutionResult,
   type TaskRunFailedExecutionResult,
-  type SnapshotRouteWire,
 } from "@trigger.dev/core/v3";
 import {
   type WorkloadRunAttemptStartResponseBody,
@@ -53,9 +52,6 @@ type RunExecutionRunOptions = {
   dequeuedAt?: Date;
   podScheduledAt?: Date;
   isWarmStart?: boolean;
-  // The run's storage route, carried from the DequeuedMessage so the worker's start/complete requests
-  // echo it back to the engine and residency is honored on a poll-lagging webapp pod.
-  snapshotRoute?: SnapshotRouteWire;
 };
 
 export class RunExecution {
@@ -69,7 +65,6 @@ export class RunExecution {
 
   private dequeuedAt?: Date;
   private podScheduledAt?: Date;
-  private snapshotRoute?: SnapshotRouteWire;
   private readonly workerManifest: WorkerManifest;
   private readonly env: RunnerEnv;
   private readonly httpClient: WorkloadHttpClient;
@@ -419,7 +414,7 @@ export class RunExecution {
     const start = await this.httpClient.startRunAttempt(
       this.runFriendlyId,
       this.snapshotManager.snapshotId,
-      { isWarmStart, snapshotRoute: this.snapshotRoute }
+      { isWarmStart }
     );
 
     if (this.executionAbortController.signal.aborted) {
@@ -484,7 +479,6 @@ export class RunExecution {
 
     this.dequeuedAt = runOpts.dequeuedAt;
     this.podScheduledAt = runOpts.podScheduledAt;
-    this.snapshotRoute = runOpts.snapshotRoute;
 
     // Create and start services
     this.snapshotPoller = new RunExecutionSnapshotPoller({
@@ -691,7 +685,7 @@ export class RunExecution {
     const completionResult = await this.httpClient.completeRunAttempt(
       this.runFriendlyId,
       this.snapshotManager.snapshotId,
-      { completion, snapshotRoute: this.snapshotRoute }
+      { completion }
     );
 
     if (!completionResult.success) {
@@ -878,8 +872,7 @@ export class RunExecution {
 
     const continuationResult = await this.httpClient.continueRunExecution(
       this.runFriendlyId,
-      this.snapshotManager.snapshotId,
-      this.snapshotRoute
+      this.snapshotManager.snapshotId
     );
 
     if (!continuationResult.success) {
@@ -891,8 +884,7 @@ export class RunExecution {
         // Retry the continuation after refreshing metadata
         const retryResult = await this.httpClient.continueRunExecution(
           this.runFriendlyId,
-          this.snapshotManager.snapshotId,
-          this.snapshotRoute
+          this.snapshotManager.snapshotId
         );
 
         if (!retryResult.success) {

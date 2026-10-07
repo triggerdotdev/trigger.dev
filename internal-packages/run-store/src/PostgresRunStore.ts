@@ -39,7 +39,7 @@ import type {
 import { isReadReplicaClient } from "./readReplicaClient.js";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import type { ShardKey } from "@trigger.dev/core/v3/isomorphic";
-import type { SnapshotRoute } from "./snapshotResidency.js";
+import type { SnapshotReadContext, SnapshotRoute } from "./snapshotResidency.js";
 
 // Loose delegate method shape: each generated client types delegate methods as
 // `<T>(args: PackageLocalArgs<T>) => PrismaPromise<…>` against its own nominal
@@ -792,6 +792,7 @@ export class PostgresRunStore implements RunStore {
       environmentType: params.snapshot.environmentType,
       projectId: params.snapshot.projectId,
       organizationId: params.snapshot.organizationId,
+      metadata: params.snapshot.snapshotMetadata,
       workerId: params.snapshot.workerId,
       runnerId: params.snapshot.runnerId,
     };
@@ -882,6 +883,7 @@ export class PostgresRunStore implements RunStore {
       environmentType: params.snapshot.environmentType,
       projectId: params.snapshot.projectId,
       organizationId: params.snapshot.organizationId,
+      metadata: params.snapshot.snapshotMetadata,
       workerId: params.snapshot.workerId,
       runnerId: params.snapshot.runnerId,
     };
@@ -999,6 +1001,7 @@ export class PostgresRunStore implements RunStore {
             environmentType: data.snapshot.environmentType,
             projectId: data.snapshot.projectId,
             organizationId: data.snapshot.organizationId,
+            metadata: data.snapshot.snapshotMetadata,
             workerId: data.snapshot.workerId,
             runnerId: data.snapshot.runnerId,
           },
@@ -1209,6 +1212,7 @@ export class PostgresRunStore implements RunStore {
             environmentType: data.snapshot.environmentType,
             projectId: data.snapshot.projectId,
             organizationId: data.snapshot.organizationId,
+            metadata: data.snapshot.snapshotMetadata,
           },
           this.#writesSnapshot(data.snapshot.writeSnapshotRow)
         ),
@@ -1352,6 +1356,7 @@ export class PostgresRunStore implements RunStore {
             environmentType: data.snapshot.environmentType,
             projectId: data.snapshot.projectId,
             organizationId: data.snapshot.organizationId,
+            metadata: data.snapshot.snapshotMetadata,
             checkpointId: data.snapshot.checkpointId ?? undefined,
             batchId: data.snapshot.batchId ?? undefined,
             // Completed-waitpoint links are inserted FK-free after create (below) for BOTH schemas.
@@ -1460,6 +1465,7 @@ export class PostgresRunStore implements RunStore {
               environmentType: data.snapshot.environmentType,
               projectId: data.snapshot.projectId,
               organizationId: data.snapshot.organizationId,
+              metadata: data.snapshot.snapshotMetadata,
             },
             this.#writesSnapshot(data.snapshot.writeSnapshotRow)
           ),
@@ -1538,6 +1544,7 @@ export class PostgresRunStore implements RunStore {
               environmentType: data.snapshot.environmentType,
               projectId: data.snapshot.projectId,
               organizationId: data.snapshot.organizationId,
+              metadata: data.snapshot.snapshotMetadata,
             },
             this.#writesSnapshot(data.snapshot.writeSnapshotRow)
           )),
@@ -1930,7 +1937,8 @@ export class PostgresRunStore implements RunStore {
   async findLatestExecutionSnapshot(
     runId: string,
     client?: ReadClient,
-    environmentId?: string
+    environmentId?: string,
+    _organizationId?: SnapshotReadContext
   ): Promise<LatestExecutionSnapshotRead | null> {
     const prisma = client ?? this.readOnlyPrisma;
     const where = { runId, isValid: true, ...(environmentId ? { environmentId } : {}) };
@@ -1984,7 +1992,8 @@ export class PostgresRunStore implements RunStore {
 
   async findExecutionSnapshot<T extends Prisma.TaskRunExecutionSnapshotFindFirstArgs>(
     args: Prisma.SelectSubset<T, Prisma.TaskRunExecutionSnapshotFindFirstArgs>,
-    client?: ReadClient
+    client?: ReadClient,
+    _organizationId?: SnapshotReadContext
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<T> | null> {
     const prisma = client ?? this.readOnlyPrisma;
 
@@ -2013,7 +2022,8 @@ export class PostgresRunStore implements RunStore {
 
   async findManyExecutionSnapshots<T extends Prisma.TaskRunExecutionSnapshotFindManyArgs>(
     args: Prisma.SelectSubset<T, Prisma.TaskRunExecutionSnapshotFindManyArgs>,
-    client?: ReadClient
+    client?: ReadClient,
+    _organizationId?: SnapshotReadContext
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<T>[]> {
     const prisma = client ?? this.readOnlyPrisma;
 
@@ -2132,7 +2142,7 @@ export class PostgresRunStore implements RunStore {
         checkpointId: checkpointId ?? null,
         workerId: workerId ?? null,
         runnerId: runnerId ?? null,
-        metadata: snapshot.metadata ?? null,
+        metadata: input.snapshotMetadata ?? snapshot.metadata ?? null,
         completedWaitpointOrder: completedWaitpointOrder ?? [],
         isValid: !error,
         error: error ?? null,
@@ -2166,7 +2176,7 @@ export class PostgresRunStore implements RunStore {
       checkpointId,
       workerId,
       runnerId,
-      metadata: snapshot.metadata ?? undefined,
+      metadata: input.snapshotMetadata ?? snapshot.metadata ?? undefined,
       // Completed-waitpoint links are inserted FK-free after create (below) for BOTH schemas, so a
       // cross-DB (NEW-resident) token can be recorded without a Prisma `connect` existence check.
       completedWaitpointOrder,
@@ -2207,7 +2217,8 @@ export class PostgresRunStore implements RunStore {
     snapshotId: string,
     client?: ReadClient,
     // `runId` selects residency at the router; a single store has one client and ignores it.
-    _runId?: string
+    _runId?: string,
+    _organizationId?: SnapshotReadContext
   ): Promise<string[]> {
     const prisma = client ?? this.readOnlyPrisma;
 
@@ -2236,7 +2247,8 @@ export class PostgresRunStore implements RunStore {
     snapshotId: string,
     client?: ReadClient,
     // `runId` selects residency at the router; a single store has one client and ignores it.
-    _runId?: string
+    _runId?: string,
+    _organizationId?: SnapshotReadContext
   ): Promise<{ present: boolean; ids: string[] }> {
     const prisma = client ?? this.readOnlyPrisma;
 

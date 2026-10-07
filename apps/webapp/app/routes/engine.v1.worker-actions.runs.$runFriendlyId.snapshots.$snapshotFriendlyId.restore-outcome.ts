@@ -33,7 +33,6 @@ export const action = createActionWorkerApiRoute(
         outcome: body.outcome,
         reason: body.reason,
         message: body.message,
-        snapshotRoute: body.snapshotRoute,
         runnerId,
         environmentId,
       });

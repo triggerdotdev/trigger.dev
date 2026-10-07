@@ -2512,7 +2512,6 @@ export class RunQueue {
     resetAttemptCount = false,
     skipDequeueProcessing = false,
     workerQueue,
-    snapshotRoute,
   }: {
     orgId: string;
     messageId: string;
@@ -2527,12 +2526,6 @@ export class RunQueue {
     skipDequeueProcessing?: boolean;
     /** Fresh attempts override the destination; omit for checkpoint redelivery. */
     workerQueue?: string;
-    /**
-     * The run's versioned storage route to stamp onto the requeued message so the next consumer
-     * honors durable residency. Written during the existing nack (no extra Redis round trip).
-     * Omit to preserve the message's current route.
-     */
-    snapshotRoute?: unknown;
   }) {
     return this.#trace(
       "nackMessage",
@@ -2561,10 +2554,6 @@ export class RunQueue {
           [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
           [SemanticAttributes.WORKER_QUEUE]: this.#getWorkerQueueFromMessage(message),
         });
-
-        if (snapshotRoute !== undefined) {
-          message.snapshotRoute = snapshotRoute;
-        }
 
         if (resetAttemptCount) {
           message.attempt = 0;

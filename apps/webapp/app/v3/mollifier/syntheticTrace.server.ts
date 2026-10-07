@@ -86,5 +86,6 @@ export function buildSyntheticTraceForBufferedRun(run: SyntheticRun) {
     linkedRunIdBySpanId: {} as Record<string, string>,
     isTruncated: false,
     missingAnchor: false,
+    progressive: undefined,
   };
 }

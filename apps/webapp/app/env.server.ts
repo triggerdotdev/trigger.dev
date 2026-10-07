@@ -415,6 +415,7 @@ const EnvironmentSchema = z
       .string()
       .refine(isValidRegex, "WHITELISTED_EMAILS must be a valid regex.")
       .optional(),
+    BLOCKED_EMAIL_DOMAINS: z.string().optional(),
     ADMIN_EMAILS: z.string().refine(isValidRegex, "ADMIN_EMAILS must be a valid regex.").optional(),
     // Instance-level kill switch for the admin dashboard and user impersonation.
     ADMIN_DASHBOARD_ENABLED: BoolEnv.default(true),
@@ -1400,6 +1401,9 @@ const EnvironmentSchema = z
     RUN_ENGINE_RUN_QUEUE_REDIS_TLS_DISABLED: z
       .string()
       .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+
+    // Infrastructure endpoint only. Modes and organization overrides are polled feature flags.
+    RUN_ENGINE_SNAPSHOT_STORE_REDIS_URL: z.string().optional(),
 
     RUN_ENGINE_RUN_LOCK_REDIS_HOST: z
       .string()
@@ -2514,6 +2518,8 @@ const EnvironmentSchema = z
     EVENTS_CLICKHOUSE_MAX_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
     EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(5_000),
     EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING: z.coerce.number().int().default(2000),
+    EVENTS_CLICKHOUSE_TRACE_CHUNK_SIZE: z.coerce.number().int().positive().default(1_000),
+    EVENTS_CLICKHOUSE_MAX_TRACE_VIEW_COUNT: z.coerce.number().int().positive().default(250_000),
 
     // OTLP ingest transform worker pool (opt-in). When enabled, decode/convert/enrich run in a
     // worker_threads pool instead of the request event loop; the single consolidated insert path

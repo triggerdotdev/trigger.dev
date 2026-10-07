@@ -15,8 +15,10 @@ import type {
   LatestExecutionSnapshotRead,
   RunStore,
   SnapshotReadWaitpoint,
+  SnapshotReadContext,
   SnapshotRouteWire,
 } from "@internal/run-store";
+import { snapshotRouteFromSnapshot } from "@internal/run-store";
 import { ExecutionSnapshotNotFoundError, ServiceValidationError } from "../errors.js";
 import type { HeartbeatTimeouts } from "../types.js";
 import type { SystemResources } from "./systems.js";
@@ -134,10 +136,11 @@ async function getSnapshotWaitpointIds(
   runStore?: RunStore,
   // The owning run id, so the router can route to the run's store (the completed-waitpoint join
   // co-locates with the snapshot/run) instead of fanning out to both run-ops DBs.
-  runId?: string
+  runId?: string,
+  organizationId?: SnapshotReadContext
 ): Promise<string[]> {
   if (runStore) {
-    return runStore.findSnapshotCompletedWaitpointIds(snapshotId, prisma, runId);
+    return runStore.findSnapshotCompletedWaitpointIds(snapshotId, prisma, runId, organizationId);
   }
 
   const result = await prisma.$queryRaw<{ B: string }[]>`
@@ -154,10 +157,16 @@ async function getSnapshotWaitpointIdsWithPresence(
   snapshotId: string,
   runStore?: RunStore,
   // The owning run id, so the router can route to the run's store instead of fanning out.
-  runId?: string
+  runId?: string,
+  organizationId?: SnapshotReadContext
 ): Promise<{ present: boolean; ids: string[] }> {
   if (runStore) {
-    return runStore.findSnapshotCompletedWaitpointIdsWithPresence(snapshotId, prisma, runId);
+    return runStore.findSnapshotCompletedWaitpointIdsWithPresence(
+      snapshotId,
+      prisma,
+      runId,
+      organizationId
+    );
   }
 
   const rows = await prisma.$queryRaw<{ id: string; B: string | null }[]>`
@@ -213,10 +222,11 @@ export async function getLatestExecutionSnapshot(
   prisma: PrismaClientOrTransaction,
   runId: string,
   runStore?: RunStore,
-  environmentId?: string
+  environmentId?: string,
+  organizationId?: SnapshotReadContext
 ): Promise<EnhancedExecutionSnapshot> {
   const snapshot = runStore
-    ? await runStore.findLatestExecutionSnapshot(runId, prisma, environmentId)
+    ? await runStore.findLatestExecutionSnapshot(runId, prisma, environmentId, organizationId)
     : await prisma.taskRunExecutionSnapshot.findFirst({
         where: { runId, isValid: true, ...(environmentId ? { environmentId } : {}) },
         include: {
@@ -315,7 +325,8 @@ export async function getExecutionSnapshotsSince(
   repairClient?: PrismaClientOrTransaction,
   // When set, scopes both reads to this environment (tenant boundary): a run in another env reads as
   // not-found. Omit to read regardless of environment (internal callers).
-  environmentId?: string
+  environmentId?: string,
+  organizationId?: string
 ): Promise<EnhancedExecutionSnapshot[]> {
   const envScope = environmentId ? { environmentId } : {};
 
@@ -324,18 +335,21 @@ export async function getExecutionSnapshotsSince(
     ? await runStore.findExecutionSnapshot(
         {
           where: { id: sinceSnapshotId, runId, ...envScope },
-          select: { createdAt: true },
+          select: { createdAt: true, organizationId: true, metadata: true },
         },
-        prisma
+        prisma,
+        organizationId
       )
     : await prisma.taskRunExecutionSnapshot.findFirst({
         where: { id: sinceSnapshotId, runId, ...envScope },
-        select: { createdAt: true },
+        select: { createdAt: true, organizationId: true, metadata: true },
       });
 
   if (!sinceSnapshot) {
     throw new ExecutionSnapshotNotFoundError(sinceSnapshotId);
   }
+
+  const snapshotContext = snapshotRouteFromSnapshot(sinceSnapshot);
 
   // Step 2: Fetch snapshots WITHOUT waitpoints to avoid N×M data explosion
   const snapshots = runStore
@@ -354,7 +368,8 @@ export async function getExecutionSnapshotsSince(
           orderBy: { createdAt: "desc" },
           take: 50,
         },
-        prisma
+        prisma,
+        snapshotContext
       )
     : await prisma.taskRunExecutionSnapshot.findMany({
         where: {
@@ -380,7 +395,8 @@ export async function getExecutionSnapshotsSince(
     prisma,
     latestSnapshot.id,
     runStore,
-    runId
+    runId,
+    snapshotRouteFromSnapshot(latestSnapshot)
   );
   let waitpointIds = ids;
 
@@ -389,7 +405,13 @@ export async function getExecutionSnapshotsSince(
   // authoritative - re-read from the primary so the runner is not handed a waitpoint-less continue
   // (which it silently drops, hanging the run). Single-reader replicas never hit this (present stays true).
   if (repairClient && repairClient !== prisma && !present) {
-    waitpointIds = await getSnapshotWaitpointIds(repairClient, latestSnapshot.id, runStore, runId);
+    waitpointIds = await getSnapshotWaitpointIds(
+      repairClient,
+      latestSnapshot.id,
+      runStore,
+      runId,
+      snapshotRouteFromSnapshot(latestSnapshot)
+    );
     readClient = repairClient;
   }
 
@@ -406,7 +428,8 @@ export async function getExecutionSnapshotsSince(
       repairClient,
       latestSnapshot.id,
       runStore,
-      runId
+      runId,
+      snapshotRouteFromSnapshot(latestSnapshot)
     );
     if (repaired.length > waitpointIds.length) {
       waitpointIds = repaired;
@@ -453,6 +476,7 @@ export class ExecutionSnapshotSystem {
       run,
       snapshot,
       previousSnapshotId,
+      snapshotRoute,
       batchId,
       environmentId,
       environmentType,
@@ -464,7 +488,6 @@ export class ExecutionSnapshotSystem {
       completedWaitpoints,
       resolveCompletedWaitpointRecords,
       error,
-      snapshotRoute,
     }: {
       /**
        * Caller-supplied TRANSITION id: minted once per logical transition (e.g. so a publish guard can
@@ -479,6 +502,7 @@ export class ExecutionSnapshotSystem {
         metadata?: Prisma.JsonValue;
       };
       previousSnapshotId?: string;
+      snapshotRoute?: SnapshotRouteWire;
       batchId?: string;
       environmentId: string;
       environmentType: RuntimeEnvironmentType;
@@ -496,9 +520,6 @@ export class ExecutionSnapshotSystem {
       // runs on a postgres-resident resume; supplied at the unblock site, undefined on mirrored/postgres.
       resolveCompletedWaitpointRecords?: () => Promise<CompletedWaitpointRecord[]>;
       error?: string;
-      // The run's versioned storage route, from the dequeued queue message, so a poll-lagging
-      // consumer's transition honors the run's true residency. Undefined on paths with no route.
-      snapshotRoute?: SnapshotRouteWire;
     },
     // When set (inside runStore.runInTransaction), the snapshot write goes through the owning store
     // with `prisma` = that store's own tx, so it shares ONE transaction with the sibling write (e.g.
@@ -519,6 +540,7 @@ export class ExecutionSnapshotSystem {
         run,
         snapshot,
         previousSnapshotId,
+        snapshotRoute,
         batchId,
         environmentId,
         environmentType,
@@ -530,7 +552,6 @@ export class ExecutionSnapshotSystem {
         completedWaitpoints,
         resolveCompletedWaitpointRecords,
         error,
-        snapshotRoute,
       },
       prisma
     );
@@ -569,12 +590,14 @@ export class ExecutionSnapshotSystem {
   public async heartbeatRun({
     runId,
     snapshotId,
+    organizationId,
     workerId,
     runnerId,
     tx,
   }: {
     runId: string;
     snapshotId: string;
+    organizationId?: string;
     workerId?: string;
     runnerId?: string;
     tx?: PrismaClientOrTransaction;
@@ -582,7 +605,13 @@ export class ExecutionSnapshotSystem {
     const prisma = tx ?? this.$.prisma;
 
     //we don't need to acquire a run lock for any of this, it's not critical if it happens on an older version
-    const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
+    const latestSnapshot = await getLatestExecutionSnapshot(
+      prisma,
+      runId,
+      this.$.runStore,
+      undefined,
+      organizationId
+    );
     if (latestSnapshot.id !== snapshotId) {
       this.$.logger.log("heartbeatRun: no longer the latest snapshot, stopping the heartbeat.", {
         runId,
@@ -626,18 +655,26 @@ export class ExecutionSnapshotSystem {
 
   public async restartHeartbeatForRun({
     runId,
+    organizationId,
     delayMs,
     restartAttempt,
     tx,
   }: {
     runId: string;
+    organizationId?: string;
     delayMs: number;
     restartAttempt: number;
     tx?: PrismaClientOrTransaction;
   }): Promise<ExecutionResult> {
     const prisma = tx ?? this.$.prisma;
 
-    const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
+    const latestSnapshot = await getLatestExecutionSnapshot(
+      prisma,
+      runId,
+      this.$.runStore,
+      undefined,
+      organizationId
+    );
 
     this.$.logger.debug("restartHeartbeatForRun: enqueuing heartbeat", {
       runId,

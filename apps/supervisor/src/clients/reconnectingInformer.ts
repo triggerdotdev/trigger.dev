@@ -4,21 +4,40 @@ import type { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structur
 
 const MAX_RECONNECT_BACKOFF_MS = 30_000;
 
+// Past the server closing the watch at its timeout, how long to wait for the
+// client to watch again before taking the watch for stalled.
+const WATCH_STALL_GRACE_MS = 30_000;
+
 type ReconnectingInformerOptions<T extends KubernetesObject> = {
   /** Used in log fields, to tell informers apart. */
   name: string;
   logger: SimpleStructuredLogger;
   reconnectIntervalMs: number;
+  /** The watch path, which gets the timeout as a query parameter. */
+  path: string;
   list: ListPromise<T>;
-  /** Builds the informer around the list it is given, which wraps `list`. */
-  makeInformer: (list: ListPromise<T>) => ListWatch<T>;
+  /** Builds the informer around the path and list it is given, which wraps `list`. */
+  makeInformer: (path: string, list: ListPromise<T>) => ListWatch<T>;
   /** Called for every error the informer raises, before any reconnect. */
   onError?: (err: unknown) => void;
+  /**
+   * How long the server keeps each watch open before closing it. A watch that has
+   * neither connected nor delivered an event for this plus 30 s is taken as
+   * stalled. Without it, a watch has no timeout and is never checked.
+   */
+  watchTimeoutSeconds?: number;
+  /** Called when the stall check takes the watch for stalled, before it reconnects. */
+  onStall?: (quietMs: number) => void;
 };
 
 /**
  * An informer that reconnects with a capped backoff until a start succeeds, for
  * as long as it runs. The client's own error handling gives up after one failure.
+ *
+ * A connection that died without closing (a dropped NAT entry, a blackholed load
+ * balancer) raises nothing. With a watch timeout, the server closes each watch
+ * and the client watches again, so a healthy watch connects at least that often,
+ * and a stall check reconnects one that goes quiet for longer.
  */
 export class ReconnectingInformer<T extends KubernetesObject> {
   readonly informer: ListWatch<T>;
@@ -27,6 +46,10 @@ export class ReconnectingInformer<T extends KubernetesObject> {
   private readonly reconnectIntervalMs: number;
   private readonly listFn: ListPromise<T>;
   private readonly onErrorHook?: (err: unknown) => void;
+  private readonly onStallHook?: (quietMs: number) => void;
+  private readonly watchTimeoutMs?: number;
+  private lastWatchActivityAt = 0;
+  private stallCheck?: NodeJS.Timeout;
   private running = false;
   private reconnecting = false;
   private erroredDuringReconnect = false;
@@ -39,8 +62,19 @@ export class ReconnectingInformer<T extends KubernetesObject> {
     this.reconnectIntervalMs = opts.reconnectIntervalMs;
     this.listFn = opts.list;
     this.onErrorHook = opts.onError;
-    this.informer = opts.makeInformer(() => this.list());
+    this.onStallHook = opts.onStall;
+    this.watchTimeoutMs =
+      opts.watchTimeoutSeconds === undefined ? undefined : opts.watchTimeoutSeconds * 1000;
+    const path =
+      opts.watchTimeoutSeconds === undefined
+        ? opts.path
+        : `${opts.path}?timeoutSeconds=${opts.watchTimeoutSeconds}`;
+    this.informer = opts.makeInformer(path, () => this.list());
     this.informer.on("error", (err?: unknown) => void this.onError(err));
+    this.informer.on("connect", () => this.markWatchActivity());
+    this.informer.on("add", () => this.markWatchActivity());
+    this.informer.on("update", () => this.markWatchActivity());
+    this.informer.on("delete", () => this.markWatchActivity());
   }
 
   get isRunning(): boolean {
@@ -53,7 +87,21 @@ export class ReconnectingInformer<T extends KubernetesObject> {
       return;
     }
     this.running = true;
-    await this.startInformer();
+    if (this.watchTimeoutMs !== undefined) {
+      this.markWatchActivity();
+      // Installed first, so a first watch that never comes up is covered too.
+      this.stallCheck = setInterval(
+        () => void this.checkWatchStalled(),
+        Math.min(WATCH_STALL_GRACE_MS, this.watchTimeoutMs)
+      );
+      this.stallCheck.unref();
+    }
+    try {
+      await this.startInformer();
+    } catch (err: unknown) {
+      clearInterval(this.stallCheck);
+      throw err;
+    }
   }
 
   async stop() {
@@ -61,7 +109,33 @@ export class ReconnectingInformer<T extends KubernetesObject> {
       return;
     }
     this.running = false;
+    clearInterval(this.stallCheck);
     await this.informer.stop();
+  }
+
+  private markWatchActivity() {
+    this.lastWatchActivityAt = Date.now();
+  }
+
+  /**
+   * Skips while a reconnect runs: a reconnect into a blackholed connection ends
+   * once the client's header timeout aborts it, and the next check retries.
+   */
+  private async checkWatchStalled() {
+    const quietMs = Date.now() - this.lastWatchActivityAt;
+    if (
+      !this.running ||
+      this.reconnecting ||
+      this.watchTimeoutMs === undefined ||
+      quietMs <= this.watchTimeoutMs + WATCH_STALL_GRACE_MS
+    ) {
+      return;
+    }
+    this.onStallHook?.(quietMs);
+    this.markWatchActivity();
+    await this.informer.stop();
+    // The stopped request's own error arrives while this reconnect waits, and is skipped.
+    await this.reconnect(new Error("watch stalled"));
   }
 
   /**
@@ -100,15 +174,22 @@ export class ReconnectingInformer<T extends KubernetesObject> {
     }
   }
 
-  /**
-   * Retries until a start ends with no error raised during it. A watch that
-   * fails to connect raises its error inside the start, which still resolves.
-   */
   private async onError(err: unknown) {
     if (!this.running) {
       return;
     }
     this.onErrorHook?.(err);
+    await this.reconnect(err);
+  }
+
+  /**
+   * Retries until a start ends with no error raised during it. A watch that
+   * fails to connect raises its error inside the start, which still resolves.
+   */
+  private async reconnect(err: unknown) {
+    if (!this.running) {
+      return;
+    }
     if (this.reconnecting) {
       this.erroredDuringReconnect = true;
       return;

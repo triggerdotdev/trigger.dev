@@ -1,6 +1,5 @@
-// F6: nackMessage must be able to stamp the run's snapshotRoute onto the requeued message DURING the
-// existing nack (no extra Redis round trip), so the next consumer honors durable residency. When no
-// route is supplied the message keeps whatever route it already had.
+// nackMessage never writes a snapshotRoute: residency is resolved server-side from durable state, so a
+// requeue leaves the message's server-owned route (used by TTL expiry) exactly as it was.
 import { assertNonNullable, redisTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { describe } from "node:test";
@@ -53,69 +52,71 @@ function baseMessage(runId: string, snapshotRoute?: unknown): InputPayload {
 vi.setConfig({ testTimeout: 60_000 });
 
 describe("RunQueue.nackMessage snapshotRoute (F6)", () => {
-  redisTest("stamps a supplied route and preserves an existing one", async ({ redisContainer }) => {
-    const queue = new RunQueue({
-      ...testOptions,
-      queueSelectionStrategy: new FairQueueSelectionStrategy({
+  redisTest(
+    "leaves a route-less message route-less and preserves an existing route",
+    async ({ redisContainer }) => {
+      const queue = new RunQueue({
+        ...testOptions,
+        queueSelectionStrategy: new FairQueueSelectionStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
         redis: {
           keyPrefix: "runqueue:test:",
           host: redisContainer.getHost(),
           port: redisContainer.getPort(),
         },
-        keys: testOptions.keys,
-      }),
-      redis: {
-        keyPrefix: "runqueue:test:",
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-      },
-    });
-
-    const wireRoute = { version: 1, route: "logical:1" };
-
-    try {
-      // Case 1: a route-less message gets the route stamped on during the nack.
-      const routeless = baseMessage("r-routeless");
-      await queue.enqueueMessage({
-        env: authenticatedEnvDev,
-        message: routeless,
-        workerQueue: authenticatedEnvDev.id,
-      });
-      await setTimeout(500);
-      const dq1 = await queue.dequeueMessageFromWorkerQueue("c1", authenticatedEnvDev.id);
-      assertNonNullable(dq1);
-
-      await queue.nackMessage({
-        orgId: routeless.orgId,
-        messageId: routeless.runId,
-        snapshotRoute: wireRoute,
       });
 
-      const afterStamp = await queue.readMessage(routeless.orgId, routeless.runId);
-      assertNonNullable(afterStamp);
-      expect(afterStamp.snapshotRoute).toEqual(wireRoute);
+      const wireRoute = { version: 1, route: "logical:1" };
 
-      // Case 2: an existing route is preserved when no route is supplied to the nack.
-      const withRoute = baseMessage("r-withroute", wireRoute);
-      await queue.enqueueMessage({
-        env: authenticatedEnvDev,
-        message: withRoute,
-        workerQueue: authenticatedEnvDev.id,
-      });
-      await setTimeout(500);
-      const dq2 = await queue.dequeueMessageFromWorkerQueue("c2", authenticatedEnvDev.id);
-      assertNonNullable(dq2);
+      try {
+        // Case 1: a route-less message stays route-less across the nack.
+        const routeless = baseMessage("r-routeless");
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: routeless,
+          workerQueue: authenticatedEnvDev.id,
+        });
+        await setTimeout(500);
+        const dq1 = await queue.dequeueMessageFromWorkerQueue("c1", authenticatedEnvDev.id);
+        assertNonNullable(dq1);
 
-      await queue.nackMessage({
-        orgId: withRoute.orgId,
-        messageId: withRoute.runId,
-      });
+        await queue.nackMessage({
+          orgId: routeless.orgId,
+          messageId: routeless.runId,
+        });
 
-      const afterPreserve = await queue.readMessage(withRoute.orgId, withRoute.runId);
-      assertNonNullable(afterPreserve);
-      expect(afterPreserve.snapshotRoute).toEqual(wireRoute);
-    } finally {
-      await queue.quit();
+        const afterNack = await queue.readMessage(routeless.orgId, routeless.runId);
+        assertNonNullable(afterNack);
+        expect(afterNack.snapshotRoute).toBeUndefined();
+
+        // Case 2: an existing route survives the nack unchanged.
+        const withRoute = baseMessage("r-withroute", wireRoute);
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: withRoute,
+          workerQueue: authenticatedEnvDev.id,
+        });
+        await setTimeout(500);
+        const dq2 = await queue.dequeueMessageFromWorkerQueue("c2", authenticatedEnvDev.id);
+        assertNonNullable(dq2);
+
+        await queue.nackMessage({
+          orgId: withRoute.orgId,
+          messageId: withRoute.runId,
+        });
+
+        const afterPreserve = await queue.readMessage(withRoute.orgId, withRoute.runId);
+        assertNonNullable(afterPreserve);
+        expect(afterPreserve.snapshotRoute).toEqual(wireRoute);
+      } finally {
+        await queue.quit();
+      }
     }
-  });
+  );
 });

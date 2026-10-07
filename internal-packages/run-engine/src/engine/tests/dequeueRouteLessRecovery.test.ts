@@ -1,14 +1,5 @@
-// Mixed-version dequeue compatibility. During a rolling deploy an OLD producer can leave an enrolled
-// redis-primary run queued with no `snapshotRoute` (or a malformed one). On a consumer whose org dial
-// reads undefined, the store's write-residency check treats a missing route as "never enrolled" and
-// diverts the dequeue transition to Postgres — the run's MemoryDB head never advances and the run is
-// stranded.
-//
-// RED before the fix: the dequeue/lock snapshot lands as a Postgres TRES row and the MemoryDB head is
-// unchanged. GREEN after: the dequeue recovers the run's durable route once, threads it through the
-// lock transition and the returned DequeuedMessage, and the MemoryDB head advances with zero TRES rows.
-//
-// Real queue, real Postgres, real Redis (testcontainers, no mocks).
+// Old internal queue payloads may omit a residency hint. The existing snapshot read supplies durable
+// server context without adding a storage field to the worker response. Real queue, Postgres and Redis.
 import { assertNonNullable, containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { setTimeout } from "node:timers/promises";
@@ -51,7 +42,6 @@ describe("RunEngine dequeue route-less recovery (mixed-version)", () => {
           resolveDial: () => dial,
           residencyResolver: new SnapshotResidencyResolver({
             store,
-            taskRunExists: async (id) => (await prisma.taskRun.count({ where: { id } })) > 0,
           }),
           logicalRunStoreRoute: ROUTE,
         });
@@ -136,10 +126,12 @@ describe("RunEngine dequeue route-less recovery (mixed-version)", () => {
             (oldMessage.snapshotRoute as { residency?: string } | undefined)?.residency
           ).not.toBe("redis-primary");
 
-          // The consumer's dial reads undefined: without recovery, the missing route is taken as
-          // "never enrolled" and the write diverts to Postgres.
+          // The consumer's dial cannot override durable birth evidence.
           dial = undefined;
-          expect(await runStore.readSnapshotRoute(run.id, orgId)).toBeUndefined();
+          expect(await runStore.readSnapshotRoute(run.id, orgId)).toMatchObject({
+            runId: run.id,
+            residency: "redis-primary",
+          });
 
           let dequeued: Awaited<ReturnType<typeof engine.dequeueFromWorkerQueue>> = [];
           for (let i = 0; i < 20 && dequeued.length === 0; i++) {
@@ -168,22 +160,18 @@ describe("RunEngine dequeue route-less recovery (mixed-version)", () => {
             locked.snapshot.id
           );
 
-          // And the recovered route reached the returned message.
-          expect(locked.snapshotRoute).toBeDefined();
-          expect(locked.snapshotRoute?.residency).toBe("redis-primary");
+          expect(locked).not.toHaveProperty("snapshotRoute");
 
-          // A subsequent nack re-stamps the recovered route on the queue message, so the next
-          // consumer no longer needs the compatibility lookup.
+          // A route-free nack preserves the original internal payload.
           await engine.runQueue.nackMessage({
             orgId,
             messageId: run.id,
-            snapshotRoute: locked.snapshotRoute,
           });
           const requeued = await engine.runQueue.readMessage(orgId, run.id);
           assertNonNullable(requeued);
-          expect((requeued.snapshotRoute as { residency?: string } | undefined)?.residency).toBe(
-            "redis-primary"
-          );
+          expect(requeued.snapshotRoute).toEqual(oldMessage.snapshotRoute);
+          expect((await store.getLatest(run.id))?.id).toBe(locked.snapshot.id);
+          expect(await prisma.taskRunExecutionSnapshot.count({ where: { runId: run.id } })).toBe(0);
         } finally {
           await engine.quit();
           await store.quit();
@@ -193,7 +181,7 @@ describe("RunEngine dequeue route-less recovery (mixed-version)", () => {
   }
 
   containerTest(
-    "a VALID carried route still performs zero durable route lookups",
+    "dequeue derives write context from its snapshot without an additional route-helper lookup",
     async ({ prisma, redisOptions }) => {
       const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const delegate = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
@@ -207,7 +195,6 @@ describe("RunEngine dequeue route-less recovery (mixed-version)", () => {
         resolveDial: () => dial,
         residencyResolver: new SnapshotResidencyResolver({
           store,
-          taskRunExists: async (id) => (await prisma.taskRun.count({ where: { id } })) > 0,
         }),
         logicalRunStoreRoute: ROUTE,
       });
@@ -216,7 +203,7 @@ describe("RunEngine dequeue route-less recovery (mixed-version)", () => {
       (runStore as unknown as { readSnapshotRoute: unknown }).readSnapshotRoute = (
         ...args: Parameters<typeof original>
       ) => {
-        if (args[2]?.forceDurable) durableLookups++;
+        durableLookups++;
         return original(...args);
       };
 
@@ -281,8 +268,10 @@ describe("RunEngine dequeue route-less recovery (mixed-version)", () => {
           });
         }
         expect(dequeued.length).toBe(1);
-        expect(dequeued[0].snapshotRoute?.residency).toBe("redis-primary");
-        expect(durableLookups, "a carried route must cost zero durable lookups").toBe(0);
+        expect(dequeued[0]).not.toHaveProperty("snapshotRoute");
+        expect(durableLookups, "dequeue must not add a separate route-helper lookup").toBe(0);
+        expect((await store.getLatest(run.id))?.id).toBe(dequeued[0].snapshot.id);
+        expect(await prisma.taskRunExecutionSnapshot.count({ where: { runId: run.id } })).toBe(0);
       } finally {
         await engine.quit();
         await store.quit();

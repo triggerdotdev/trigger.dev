@@ -192,14 +192,17 @@ export type EnsureResult = {
   deferred: string[]; // children we couldn't detach/drop this run; retried next run
 };
 
-/** Create the initial window without running retention. Safe to repeat before enabling ingress. */
+/**
+ * Create today's partition and the lookahead without running retention. Safe to repeat before
+ * enabling ingress. Never creates past days: ingest stamps `createdAt` at insert time, so it never
+ * writes to one. Anything that backfills older rows (the dev delivery seed) creates its own.
+ */
 export async function bootstrapPartitions(
   prisma: WebhookDatabase,
   opts: EnsureOptions
 ): Promise<Pick<EnsureResult, "created" | "existing">> {
-  const today = floorDayUTC(opts.now);
-  const start = addDays(today, -opts.retentionDays);
-  const end = addDays(today, opts.lookaheadDays);
+  const start = floorDayUTC(opts.now);
+  const end = addDays(start, opts.lookaheadDays);
 
   const result: Pick<EnsureResult, "created" | "existing"> = { created: [], existing: [] };
 

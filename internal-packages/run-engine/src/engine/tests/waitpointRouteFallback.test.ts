@@ -43,7 +43,6 @@ function makeEngine(
     resolveDial: dial,
     residencyResolver: new SnapshotResidencyResolver({
       store: snapshotStore,
-      taskRunExists: async (id: string) => (await prisma.taskRun.count({ where: { id } })) > 0,
     }),
     resolveCompletedWaitpoints: createCompletedWaitpointResolver(delegate),
     logicalRunStoreRoute: ROUTE,
@@ -131,11 +130,9 @@ describe("RunEngine waitpoint route fallback (F4)", () => {
         await producer.enqueueSystem.enqueueRun({ run: runRow, env, enableFastPath: true });
 
         const dequeued = await dequeueOnConsumer();
-        const controllerRoute = dequeued.snapshotRoute;
         const attempt = await consumer.startRunAttempt({
           runId,
           snapshotId: dequeued.snapshot.id,
-          snapshotRoute: controllerRoute,
         });
         expect(attempt.snapshot.executionStatus).toBe("EXECUTING");
         await expectResidentHead(attempt.snapshot.id);
@@ -151,7 +148,6 @@ describe("RunEngine waitpoint route fallback (F4)", () => {
           waitpoints: waitpoint.waitpoint.id,
           projectId: env.projectId,
           organizationId: env.organizationId,
-          // no snapshotRoute — forces the durable fallback
         });
         expect(blocked.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
         await expectResidentHead(blocked.id);

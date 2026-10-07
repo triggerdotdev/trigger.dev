@@ -233,6 +233,18 @@ describe("Cross-Tenant Security", () => {
         compile("SELECT * FROM other_database.task_runs");
       }).toThrow();
     });
+
+    it.each([
+      ["direct table", "SELECT * FROM {trigger_dev.task_runs_v2}"],
+      ["joined table", "SELECT * FROM task_runs JOIN {trigger_dev.task_events_v2} ON 1 = 1"],
+      [
+        "subquery",
+        "SELECT id FROM task_runs WHERE id IN (SELECT id FROM {trigger_dev.task_runs_v2})",
+      ],
+      ["CTE", "WITH raw_runs AS (SELECT * FROM {trigger_dev.task_runs_v2}) SELECT * FROM raw_runs"],
+    ])("should reject placeholder table expressions in a %s", (_, query) => {
+      expect(() => compile(query)).toThrowError("Placeholder table expressions are not supported");
+    });
   });
 });
 

@@ -1,14 +1,5 @@
-// Finding 83-1: startRunAttempt must carry the run's versioned snapshot route into its EXECUTING
-// snapshot. Dequeue stamps the route on its PENDING_EXECUTING snapshot (lockRunToWorker), but the
-// SEPARATE start-attempt request is a fresh process boundary. Before the fix, startRunAttempt wrote the
-// EXECUTING snapshot with no route: a poll-lagging consumer whose org dial reads `undefined` then took
-// the inert Postgres shortcut and stranded a redis-primary run's MemoryDB head on Postgres.
-//
-// This drives the ACTUAL queue -> dequeue -> start-attempt chain over REAL Postgres + REAL Redis. A
-// producer store (org dial = redis-only) births the run redis-primary and stamps the route on the
-// re-enqueued message; the engine's store is a poll-lagging consumer (dial = undefined) that dequeues
-// and starts the attempt. Proof: the MemoryDB head advances to the EXECUTING snapshot and NO Postgres
-// TRES row is written for it. No mocks.
+// A separate start-attempt request carries no storage contract. The server recovers birth residency
+// from durable evidence on a poll-lagging pod. Real queue, engine, Postgres and Redis, no mocks.
 import { containerTest } from "@internal/testcontainers";
 import {
   PostgresRunStore,
@@ -85,7 +76,7 @@ function tresCount(prisma: PrismaClient, id: string): Promise<number> {
   return prisma.taskRunExecutionSnapshot.count({ where: { id } });
 }
 
-describe("startRunAttempt carries the snapshot route through the queue->dequeue->start-attempt chain", () => {
+describe("startRunAttempt preserves server-side residency through queue->dequeue->start", () => {
   containerTest(
     "a poll-lagging consumer starting a redis-primary run advances the MemoryDB head and writes no TRES row",
     async ({ prisma, redisOptions }) => {
@@ -95,7 +86,6 @@ describe("startRunAttempt carries the snapshot route through the queue->dequeue-
       const memoryDb = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
       const resolver = new SnapshotResidencyResolver({
         store: memoryDb,
-        taskRunExists: async (id) => (await prisma.taskRun.count({ where: { id } })) > 0,
       });
 
       // The producer pod SEES the org dial (redis-only): it births the run redis-primary and stamps the
@@ -108,8 +98,7 @@ describe("startRunAttempt carries the snapshot route through the queue->dequeue-
         logicalRunStoreRoute: LOGICAL_ROUTE,
       });
 
-      // The consuming pod is poll-lagging: its dial reads undefined. Without the route it would strand
-      // the run on Postgres; the route on the message is what lets it honor the true residency.
+      // The consuming pod is poll-lagging: durable evidence, not its current dial, governs this run.
       const consumer = new TaskRunExecutionSnapshotStore(delegate, {
         store: memoryDb,
         mode: "redis-only",
@@ -154,7 +143,6 @@ describe("startRunAttempt carries the snapshot route through the queue->dequeue-
         await engine.enqueueSystem.publishRun({
           run: runRow,
           env: environment,
-          route: route ?? undefined,
           enableFastPath: true,
         });
 
@@ -167,8 +155,7 @@ describe("startRunAttempt carries the snapshot route through the queue->dequeue-
         expect(dequeued.length).toBe(1);
         const message = dequeued[0]!;
 
-        // The route survived the queue and is carried on the dequeue result (the carrier the fix adds).
-        expect(message.snapshotRoute?.residency).toBe("redis-primary");
+        expect(message).not.toHaveProperty("snapshotRoute");
 
         // Dequeue's own PENDING_EXECUTING snapshot already honored the route: MemoryDB head advanced, no
         // Postgres row.
@@ -176,17 +163,14 @@ describe("startRunAttempt carries the snapshot route through the queue->dequeue-
         expect((await memoryDb.getLatest(runId))?.id).toBe(pendingExecutingId);
         expect(await tresCount(prisma, pendingExecutingId)).toBe(0);
 
-        // The fix under test: start the attempt with the route carried from the dequeue result.
+        // The unchanged worker request contains only run/snapshot identity.
         const result = await engine.startRunAttempt({
           runId,
           snapshotId: pendingExecutingId,
-          snapshotRoute: message.snapshotRoute,
         });
 
         const executingId = result.snapshot.id;
-        // GREEN: the EXECUTING transition honored the redis-primary route, so the MemoryDB head advanced
-        // and no TRES row was written. RED (route not forwarded): the undefined dial takes the Postgres
-        // shortcut, writing a TRES row and stranding the head at PENDING_EXECUTING.
+        // The head advances in its original store without creating a Postgres TRES row.
         expect((await memoryDb.getLatest(runId))?.id).toBe(executingId);
         expect(await tresCount(prisma, executingId)).toBe(0);
       } finally {

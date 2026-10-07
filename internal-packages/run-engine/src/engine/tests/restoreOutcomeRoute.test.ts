@@ -126,13 +126,11 @@ describe("reportRestoreOutcome honors durable residency when the report carries 
 
           const first = await dequeueOnConsumer();
           assertNonNullable(first);
-          const route = first.snapshotRoute;
-          expect(route?.residency).toBe("redis-primary");
+          expect(await snapshotStore.readBirthResidency(runId)).toBe("redis-primary");
 
           const attempt = await consumer.startRunAttempt({
             runId,
             snapshotId: first.snapshot.id,
-            snapshotRoute: route,
           });
 
           const waitpoint = await producer.createManualWaitpoint({
@@ -144,7 +142,6 @@ describe("reportRestoreOutcome honors durable residency when the report carries 
             waitpoints: waitpoint.waitpoint.id,
             projectId: env.projectId,
             organizationId: env.organizationId,
-            snapshotRoute: route,
           });
           expect(blocked.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
           expect(attempt.snapshot.executionStatus).toBe("EXECUTING");
@@ -158,7 +155,6 @@ describe("reportRestoreOutcome honors durable residency when the report carries 
               location: "test-location",
               imageRef: "test-image-ref",
             },
-            snapshotRoute: route,
           });
           expect(checkpoint.ok).toBe(true);
 

@@ -22,8 +22,6 @@ export class RouteUnavailableError extends Error {
 /**
  * Injected dependencies. `checkPostgresCommit` / `commitProbeExists` run raw SQL on the OWNING shard's
  * Postgres PRIMARY (routed by `logicalRunStoreRoute`); this module never builds a client or reads env.
- * `halted` is accepted only to make halt-independence explicit: recovery is NEVER paused by halt, so it
- * is deliberately never consulted here.
  */
 export type RecoveryDeps = {
   store: Pick<RedisSnapshotStore, "finalize" | "abortPrepared" | "readPreparedUnitRaw">;
@@ -34,7 +32,6 @@ export type RecoveryDeps = {
   ) => Promise<PostgresCommitStatus>;
   commitProbeExists: (snapshotId: string, logicalRunStoreRoute: string) => Promise<boolean>;
   quarantine: (unit: PreparedPgUnit, reason: QuarantineReason, raw?: string) => Promise<void>;
-  halted?: () => boolean;
 };
 
 export type RecoveryOutcome =
@@ -100,7 +97,10 @@ export class PendingRecoveryWorker {
   }
 
   /** Resolve one pending entry against its Postgres commit outcome. No ACK; the caller ACKs. */
-  async resolveEntry(entry: PendingEntry): Promise<RecoveryOutcome> {
+  async resolveEntry(
+    entry: PendingEntry,
+    options?: { requireSettledTransaction?: boolean }
+  ): Promise<RecoveryOutcome> {
     const runId = entry.fields.runId ?? "";
     const entryToken = entry.fields.transitionToken ?? "";
     if (!runId) return { kind: "already-resolved", runId };
@@ -118,6 +118,9 @@ export class PendingRecoveryWorker {
     try {
       unit = JSON.parse(raw) as PreparedPgUnit;
     } catch {
+      if (options?.requireSettledTransaction) {
+        return { kind: "retry", runId, reason: "unproven-transaction" };
+      }
       // Malformed data is quarantined immediately, preserving the RAW value for inspection, never
       // deleted-and-retried (which could misclassify a redis-primary birth). This is the ONLY place
       // that parses/validates a pending unit; the synchronous read-path resolver delegates here.
@@ -125,6 +128,9 @@ export class PendingRecoveryWorker {
       return { kind: "quarantined", runId, reason: "structurally-invalid" };
     }
     if (!isStructurallyValid(unit)) {
+      if (options?.requireSettledTransaction) {
+        return { kind: "retry", runId, reason: "unproven-transaction" };
+      }
       await this.deps.quarantine(unit, "structurally-invalid", raw);
       return { kind: "quarantined", runId, reason: "structurally-invalid" };
     }
@@ -148,6 +154,15 @@ export class PendingRecoveryWorker {
     if (status === "aborted") return this.#abort(unit);
     if (status === "in progress") return { kind: "retry", runId, reason: "in-progress" };
 
+    // An aged-out status alone proves nothing. A mirrored unit can still prove commit from its
+    // snapshot on the owning primary; a busy writer must leave every other unknown unit untouched.
+    if (
+      options?.requireSettledTransaction &&
+      (unit.residency !== "mirrored" || !unit.commitProbeSnapshotId)
+    ) {
+      return { kind: "retry", runId, reason: "unproven-transaction" };
+    }
+
     // null: pg_xact_status has aged out. Resolve by residency.
     if (unit.residency === "mirrored") {
       if (!unit.commitProbeSnapshotId) {
@@ -165,6 +180,10 @@ export class PendingRecoveryWorker {
           return { kind: "retry", runId, reason: "route-unavailable" };
         }
         return { kind: "retry", runId, reason: "commit-probe-unavailable" };
+      }
+      // Absence is not positive proof of rollback for a competing writer. Do not discard evidence.
+      if (!present && options?.requireSettledTransaction) {
+        return { kind: "retry", runId, reason: "unproven-transaction" };
       }
       return present ? this.#finalize(unit) : this.#abort(unit);
     }

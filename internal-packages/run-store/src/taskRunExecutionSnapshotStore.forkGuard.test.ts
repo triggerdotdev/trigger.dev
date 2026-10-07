@@ -59,6 +59,7 @@ function writer(delegate: PostgresRunStore, store: RedisSnapshotStore) {
     mode: "dual-write",
     resolveDial: () => "dual-write",
     logicalRunStoreRoute: ROUTE,
+    resolvePrimaryReadClient: () => delegate.primaryReadClient,
   });
 }
 

@@ -3,7 +3,6 @@ import type {
   DequeuedMessage,
   LogLevel,
   RunExecutionData,
-  SnapshotRouteWire,
   TaskRunExecution,
   TaskRunExecutionMetrics,
   TaskRunExecutionResult,
@@ -52,8 +51,6 @@ type Snapshot = {
 
 export class DevRunController {
   private taskRunProcess?: TaskRunProcess;
-  // The current run's storage route, captured from its DequeuedMessage and echoed on start requests.
-  private snapshotRoute?: SnapshotRouteWire;
   private readonly worker: BackgroundWorker;
   private readonly httpClient: CliApiClient;
   private readonly snapshotPoller: IntervalService;
@@ -472,14 +469,11 @@ export class DevRunController {
     snapshotFriendlyId,
     dequeuedAt,
     isWarmStart = false,
-    snapshotRoute,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
     dequeuedAt?: Date;
     isWarmStart?: boolean;
-    // The dev run's storage route from the DequeuedMessage, echoed back on the start request.
-    snapshotRoute?: SnapshotRouteWire;
   }) {
     this.subscribeToRunNotifications({
       run: { friendlyId: runFriendlyId },
@@ -490,7 +484,6 @@ export class DevRunController {
 
     const start = await this.httpClient.dev.startRunAttempt(runFriendlyId, snapshotFriendlyId, {
       isWarmStart,
-      snapshotRoute,
     });
 
     if (!start.success) {
@@ -569,7 +562,7 @@ export class DevRunController {
       const completionResult = await this.httpClient.dev.completeRunAttempt(
         run.friendlyId,
         this.snapshotFriendlyId ?? snapshot.friendlyId,
-        { completion, snapshotRoute: this.snapshotRoute }
+        { completion }
       );
 
       if (!completionResult.success) {
@@ -746,7 +739,6 @@ export class DevRunController {
       this.snapshotFriendlyId,
       {
         completion,
-        snapshotRoute: this.snapshotRoute,
       }
     );
 
@@ -814,7 +806,6 @@ export class DevRunController {
       this.startAndExecuteRunAttempt({
         runFriendlyId: run.friendlyId,
         snapshotFriendlyId: this.snapshotFriendlyId,
-        snapshotRoute: this.snapshotRoute,
       }).finally(() => {});
       return;
     }
@@ -901,13 +892,10 @@ export class DevRunController {
   async start(dequeueMessage: DequeuedMessage) {
     logger.debug("[DevRunController] Starting up");
 
-    this.snapshotRoute = dequeueMessage.snapshotRoute;
-
     await this.startAndExecuteRunAttempt({
       runFriendlyId: dequeueMessage.run.friendlyId,
       snapshotFriendlyId: dequeueMessage.snapshot.friendlyId,
       dequeuedAt: dequeueMessage.dequeuedAt,
-      snapshotRoute: dequeueMessage.snapshotRoute,
     }).finally(async () => {});
   }
 

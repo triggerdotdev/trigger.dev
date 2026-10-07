@@ -1,11 +1,6 @@
-// P3: the snapshot route STAMPED at birth/enqueue must survive the WHOLE execution lifecycle across
-// the REAL worker-request schemas and the engine's queued-job boundaries, so a poll-lagging consumer
-// (org dial reads undefined) honors the run's true redis-primary residency at EVERY transition:
-// dequeue -> start -> suspend(checkpoint) -> resume(continue) -> complete, plus retry through the real
-// nack/requeue boundary and a terminal cancel. Two engines model two pods sharing one Postgres + Redis
-// + MemoryDB: the PRODUCER (control plane, dial=redis-only) triggers/enqueues and drains the background
-// jobs; the CONSUMER (worker-facing, dial=undefined) drives the worker transitions and can only honor
-// residency via the ROUTE carried on the wire. Real infra, no mocks.
+// Durable server-side evidence, not worker protocol fields or a pod's current dial, preserves birth
+// residency through start, checkpoint, waitpoint resume, retry and completion. Two real engines share
+// Postgres and Redis while the consumer's dial lags the producer's. No mocks.
 import { assertNonNullable, containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { setTimeout } from "node:timers/promises";
@@ -30,16 +25,14 @@ vi.setConfig({ testTimeout: 60_000 });
 
 const ROUTE = "logical:1";
 
-// JSON round-trip so a request body genuinely crosses the wire (what a real POST does) before it is
-// re-validated by the zod schema. This is the point of the test: the route survives the schema, it is
-// not handed straight from message.snapshotRoute to engine.startRunAttempt.
+// Exercise the unchanged worker request schemas without any storage-routing fields.
 function overTheWire(value: unknown): unknown {
   return JSON.parse(JSON.stringify(value));
 }
 
 describe("RunEngine execution-lifecycle snapshot route", () => {
   containerTest(
-    "a redis-primary run's route survives the whole worker lifecycle on a dial=undefined consumer: head advances at every transition, no TRES rows",
+    "a redis-primary run completes the route-free worker lifecycle on a dial=undefined consumer: head advances at every transition, no TRES rows",
     async ({ prisma, redisOptions }) => {
       const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
@@ -54,7 +47,6 @@ describe("RunEngine execution-lifecycle snapshot route", () => {
           resolveDial: dial,
           residencyResolver: new SnapshotResidencyResolver({
             store: snapshotStore,
-            taskRunExists: async (id) => (await prisma.taskRun.count({ where: { id } })) > 0,
           }),
           resolveCompletedWaitpoints: createCompletedWaitpointResolver(delegate),
           logicalRunStoreRoute: ROUTE,
@@ -169,26 +161,21 @@ describe("RunEngine execution-lifecycle snapshot route", () => {
         // ---- DEQUEUE (consumer, dial=undefined) ----
         const dequeued = await dequeueOnConsumer();
         expect(dequeued.run.id).toBe(runId);
-        // Only the stamped wire route can carry residency now — a fresh read at this dial is undefined.
-        expect(
-          await consumer.runStore.readSnapshotRoute(runId, env.organizationId)
-        ).toBeUndefined();
-        expect(dequeued.snapshotRoute).toBeDefined();
+        expect(await consumer.runStore.readSnapshotRoute(runId, env.organizationId)).toMatchObject({
+          runId,
+          residency: "redis-primary",
+        });
+        expect(dequeued).not.toHaveProperty("snapshotRoute");
         await expectResidentHead(dequeued.snapshot.id);
-
-        // The controller holds the run's route for its whole lifetime (like the managed execution).
-        const controllerRoute = dequeued.snapshotRoute;
 
         // ---- START (crosses WorkerApiRunAttemptStartRequestBody) ----
         const startBody = WorkerApiRunAttemptStartRequestBody.parse(
-          overTheWire({ isWarmStart: false, snapshotRoute: controllerRoute })
+          overTheWire({ isWarmStart: false })
         );
-        expect(startBody.snapshotRoute).toEqual(controllerRoute);
+        expect(startBody).not.toHaveProperty("snapshotRoute");
         const attempt = await consumer.startRunAttempt({
           runId,
           snapshotId: dequeued.snapshot.id,
-          // exactly what the webapp worker route handler forwards out of the parsed body
-          snapshotRoute: startBody.snapshotRoute,
         });
         await expectResidentHead(attempt.snapshot.id);
 
@@ -202,7 +189,6 @@ describe("RunEngine execution-lifecycle snapshot route", () => {
           waitpoints: waitpoint.waitpoint.id,
           projectId: env.projectId,
           organizationId: env.organizationId,
-          snapshotRoute: controllerRoute,
         });
         await expectResidentHead(blocked.id);
 
@@ -215,14 +201,12 @@ describe("RunEngine execution-lifecycle snapshot route", () => {
               location: "test-location",
               imageRef: "test-image-ref",
             },
-            snapshotRoute: controllerRoute,
           })
         );
         const checkpointResult = await consumer.createCheckpoint({
           runId,
           snapshotId: blocked.id,
           checkpoint: suspendBody.success ? suspendBody.checkpoint : (undefined as never),
-          snapshotRoute: suspendBody.success ? suspendBody.snapshotRoute : undefined,
         });
         expect(checkpointResult.ok).toBe(true);
         const suspendedSnapshot = checkpointResult.ok ? checkpointResult.snapshot : null;
@@ -230,18 +214,16 @@ describe("RunEngine execution-lifecycle snapshot route", () => {
         expect(suspendedSnapshot.executionStatus).toBe("SUSPENDED");
         await expectResidentHead(suspendedSnapshot.id);
 
-        // ---- RESUME: complete the waitpoint on the producer; its background worker re-enqueues the run
-        // (stamping the route, resolved from its LIVE dial) so the consumer's re-dequeue carries it. ----
+        // ---- RESUME: the background worker preserves birth residency on re-enqueue. ----
         await producer.completeWaitpoint({ id: waitpoint.waitpoint.id });
         const restored = await dequeueOnConsumer();
         expect(restored.run.id).toBe(runId);
-        expect(restored.snapshotRoute).toBeDefined();
+        expect(restored).not.toHaveProperty("snapshotRoute");
         await expectResidentHead(restored.snapshot.id);
 
         const continued = await consumer.continueRunExecution({
           runId,
           snapshotId: restored.snapshot.id,
-          snapshotRoute: restored.snapshotRoute,
         });
         expect(continued.snapshot.executionStatus).toBe("EXECUTING");
         await expectResidentHead(continued.snapshot.id);
@@ -255,14 +237,12 @@ describe("RunEngine execution-lifecycle snapshot route", () => {
               output: `{"ok":true}`,
               outputType: "application/json",
             },
-            snapshotRoute: controllerRoute,
           })
         );
         const completed = await consumer.completeRunAttempt({
           runId,
           snapshotId: continued.snapshot.id,
           completion: completeBody.completion,
-          snapshotRoute: completeBody.snapshotRoute,
         });
         expect(completed.attemptStatus).toBe("RUN_FINISHED");
         await expectResidentHead(completed.snapshot.id);
@@ -291,7 +271,6 @@ describe("RunEngine execution-lifecycle snapshot route", () => {
           resolveDial: dial,
           residencyResolver: new SnapshotResidencyResolver({
             store: snapshotStore,
-            taskRunExists: async (id) => (await prisma.taskRun.count({ where: { id } })) > 0,
           }),
           resolveCompletedWaitpoints: createCompletedWaitpointResolver(delegate),
           logicalRunStoreRoute: ROUTE,
@@ -388,16 +367,14 @@ describe("RunEngine execution-lifecycle snapshot route", () => {
         }
 
         const dequeued = await dequeueOnConsumer();
-        const controllerRoute = dequeued.snapshotRoute;
+        expect(dequeued).not.toHaveProperty("snapshotRoute");
         const attempt = await consumer.startRunAttempt({
           runId,
           snapshotId: dequeued.snapshot.id,
-          snapshotRoute: controllerRoute,
         });
 
         // Fail with a retry -> real tryNackAndRequeue path: the message is nacked back onto the queue and
-        // a QUEUED snapshot is written on the CONSUMER whose dial is undefined. The route on the complete
-        // request keeps that QUEUED snapshot resident.
+        // a QUEUED snapshot is written on the CONSUMER whose dial is undefined, without a client route.
         const completeBody = WorkerApiRunAttemptCompleteRequestBody.parse(
           overTheWire({
             completion: {
@@ -406,14 +383,12 @@ describe("RunEngine execution-lifecycle snapshot route", () => {
               error: { type: "BUILT_IN_ERROR", name: "Error", message: "boom", stackTrace: "" },
               retry: { timestamp: Date.now() + 50, delay: 50 },
             },
-            snapshotRoute: controllerRoute,
           })
         );
         const failed = await consumer.completeRunAttempt({
           runId,
           snapshotId: attempt.snapshot.id,
           completion: completeBody.completion,
-          snapshotRoute: completeBody.snapshotRoute,
         });
         expect(failed.attemptStatus).toBe("RETRY_QUEUED");
 
@@ -428,16 +403,15 @@ describe("RunEngine execution-lifecycle snapshot route", () => {
 
         const redequeued = await dequeueOnConsumer();
         expect(redequeued.run.id).toBe(runId);
-        expect(redequeued.snapshotRoute).toBeDefined();
+        expect(redequeued).not.toHaveProperty("snapshotRoute");
         expect(
           await prisma.taskRunExecutionSnapshot.count({ where: { id: redequeued.snapshot.id } })
         ).toBe(0);
 
-        // Terminal cancel carries the route too: the FINISHED transition stays resident.
+        // Route-free terminal cancellation preserves the same residency.
         const canceled = await consumer.cancelRun({
           runId,
           finalizeRun: true,
-          snapshotRoute: redequeued.snapshotRoute,
         });
         expect(
           await prisma.taskRunExecutionSnapshot.count({ where: { id: canceled.snapshot.id } })
@@ -455,14 +429,7 @@ describe("RunEngine execution-lifecycle snapshot route", () => {
   containerTest(
     "a scheduled transition (delayed-run promotion) carries the durable route on a dial=undefined consumer: promoted to QUEUED in MemoryDB, no TRES rows",
     async ({ prisma, redisOptions }) => {
-      // The old-message case that used to live here set dial=redis-only, so the missing-route postgres
-      // shortcut (writeResidency: no route AND dial===undefined) could never fire and the "durable
-      // fallback" claim was never exercised. A worker request with a genuinely absent route on a
-      // poll-lagging pod is the never-enrolled shortcut and is meant to pick Postgres. What must NOT
-      // strand is an ENGINE-INTERNAL scheduled transition for an enrolled run: it carries the route via
-      // the durable readSnapshotRoute fallback (a background-job read, not a never-enrolled hot-path
-      // read). This proves that on a genuinely dial=undefined consumer, the delayed-run promotion keeps
-      // the run redis-primary and writes no TRES row.
+      // A run-ID-only scheduled job resolves durable birth evidence even when its pod's dial lags.
       const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
 
@@ -474,7 +441,6 @@ describe("RunEngine execution-lifecycle snapshot route", () => {
           resolveDial: dial,
           residencyResolver: new SnapshotResidencyResolver({
             store: snapshotStore,
-            taskRunExists: async (id) => (await prisma.taskRun.count({ where: { id } })) > 0,
           }),
           resolveCompletedWaitpoints: createCompletedWaitpointResolver(delegate),
           logicalRunStoreRoute: ROUTE,
@@ -551,8 +517,7 @@ describe("RunEngine execution-lifecycle snapshot route", () => {
         expect(await prisma.taskRunExecutionSnapshot.count({ where: { runId } })).toBe(0);
 
         // Move the delay into the past, then drive the promotion on the dial=undefined consumer. This is
-        // the scheduled transition: it resolves the birth residency durably (readSnapshotRoute) and must
-        // stay redis-primary rather than falling to the never-enrolled Postgres shortcut.
+        // the scheduled transition must stay redis-primary rather than following the consumer's dial.
         await prisma.taskRun.update({
           where: { id: runId },
           data: { delayUntil: new Date(Date.now() - 1_000) },

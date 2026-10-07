@@ -8,10 +8,7 @@ import type { PrismaClient } from "@trigger.dev/database";
 import { generateInternalId } from "@trigger.dev/core/v3/isomorphic";
 import { PostgresRunStore } from "./PostgresRunStore.js";
 import { RedisSnapshotStore } from "./redisSnapshotStore.js";
-import {
-  TaskRunExecutionSnapshotStore,
-  SnapshotWriteUnavailableError,
-} from "./taskRunExecutionSnapshotStore.js";
+import { TaskRunExecutionSnapshotStore } from "./taskRunExecutionSnapshotStore.js";
 import { SnapshotResidencyResolver } from "./snapshotResidencyResolver.js";
 import type { SnapshotRouteWire } from "./snapshotResidency.js";
 import { buildCreateRunData, seedSnapshotEnvironment } from "./testFixtures/snapshotIdFixture.js";
@@ -56,10 +53,9 @@ function transitionInput(
   };
 }
 
-function realResolver(store: RedisSnapshotStore, prisma: PrismaClient) {
+function realResolver(store: RedisSnapshotStore) {
   return new SnapshotResidencyResolver({
     store,
-    taskRunExists: async (id) => (await prisma.taskRun.count({ where: { id } })) > 0,
   });
 }
 
@@ -69,7 +65,7 @@ function tresCount(prisma: PrismaClient, id: string): Promise<number> {
 
 describe("TaskRunExecutionSnapshotStore snapshot-route propagation", () => {
   containerTest(
-    "poll lag (resolveDial -> undefined): a valid mirrored route mirrors the transition; WITHOUT it the same dial diverts to Postgres and strands the head",
+    "poll lag preserves mirrored residency with or without carried server context",
     async ({ prisma, redisOptions }) => {
       const delegate = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
       const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
@@ -95,7 +91,7 @@ describe("TaskRunExecutionSnapshotStore snapshot-route propagation", () => {
           store,
           mode: "dual-write",
           resolveDial: () => undefined,
-          residencyResolver: realResolver(store, prisma),
+          residencyResolver: realResolver(store),
           logicalRunStoreRoute: ROUTE,
         });
 
@@ -114,8 +110,7 @@ describe("TaskRunExecutionSnapshotStore snapshot-route propagation", () => {
         expect(await tresCount(prisma, withTransition)).toBe(1); // mirrored => Postgres row written
         expect((await store.getLatest(withRun))?.id).toBe(withTransition); // head advanced
 
-        // WITHOUT the route: the same undefined dial takes the inert postgres shortcut and strands
-        // the MemoryDB head at birth. This is the divergence the route exists to prevent.
+        // WITHOUT carried context: read the existing mirrored TRES metadata, never the live dial.
         const noRun = generateInternalId();
         const noBirth = generateInternalId();
         const noTransition = generateInternalId();
@@ -124,8 +119,8 @@ describe("TaskRunExecutionSnapshotStore snapshot-route propagation", () => {
           snapshot: birthSnapshot(env, noBirth),
         });
         await lagging.createExecutionSnapshot(transitionInput(env, noRun, noTransition, noBirth));
-        expect(await tresCount(prisma, noTransition)).toBe(1); // straight-through Postgres row
-        expect((await store.getLatest(noRun))?.id).toBe(noBirth); // head STRANDED at birth
+        expect(await tresCount(prisma, noTransition)).toBe(1);
+        expect((await store.getLatest(noRun))?.id).toBe(noTransition);
       } finally {
         await store.quit();
       }
@@ -161,7 +156,7 @@ describe("TaskRunExecutionSnapshotStore snapshot-route propagation", () => {
           store,
           mode: "dual-write",
           resolveDial: () => undefined,
-          residencyResolver: realResolver(store, prisma),
+          residencyResolver: realResolver(store),
           logicalRunStoreRoute: ROUTE,
         });
         const redisRoute: SnapshotRouteWire = {
@@ -173,7 +168,7 @@ describe("TaskRunExecutionSnapshotStore snapshot-route propagation", () => {
           lagging.createExecutionSnapshot(
             transitionInput(env, runId, transitionId, birthId, redisRoute)
           )
-        ).rejects.toBeInstanceOf(SnapshotWriteUnavailableError);
+        ).rejects.toThrow("snapshot prepare rejected");
         expect(await tresCount(prisma, transitionId)).toBe(0);
       } finally {
         await store.quit();
@@ -208,7 +203,7 @@ describe("TaskRunExecutionSnapshotStore snapshot-route propagation", () => {
           store,
           mode: "dual-write",
           resolveDial: () => undefined,
-          residencyResolver: realResolver(store, prisma),
+          residencyResolver: realResolver(store),
           logicalRunStoreRoute: ROUTE,
         });
         // A version this build does not understand: present (so never shortcut) but unparseable.
@@ -259,7 +254,7 @@ describe("TaskRunExecutionSnapshotStore snapshot-route propagation", () => {
           store,
           mode: "dual-write",
           resolveDial: () => undefined,
-          residencyResolver: realResolver(store, prisma),
+          residencyResolver: realResolver(store),
           logicalRunStoreRoute: ROUTE,
         });
         const route: SnapshotRouteWire = {

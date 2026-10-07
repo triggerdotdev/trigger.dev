@@ -2,15 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   authenticate: vi.fn(),
-  resolveContext: vi.fn(),
+  authorizeEnvironment: vi.fn(),
   feedback: vi.fn(),
 }));
 
 vi.mock("~/services/uatRoutePreamble.server", () => ({
   authenticateUatOrApiRequest: mocks.authenticate,
 }));
-vi.mock("~/services/dashboardAgentAlertContext.server", () => ({
-  resolveAgentAlertContext: mocks.resolveContext,
+vi.mock("~/services/dashboardAgentWatches.server", () => ({
+  authorizeWatchEnvironmentById: mocks.authorizeEnvironment,
 }));
 vi.mock("~/services/telemetry.server", () => ({
   telemetry: { dashboardAgent: { feedback: mocks.feedback } },
@@ -38,7 +38,7 @@ function post(body: unknown) {
 
 beforeEach(() => {
   mocks.authenticate.mockReset().mockResolvedValue({ userActor: AGENT_ACTOR });
-  mocks.resolveContext.mockReset().mockResolvedValue({ ok: true, environment: ENVIRONMENT });
+  mocks.authorizeEnvironment.mockReset().mockResolvedValue(ENVIRONMENT);
   mocks.feedback.mockReset().mockReturnValue(true);
 });
 
@@ -53,10 +53,9 @@ describe("POST /api/v1/dashboard-agent/feedback", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(mocks.resolveContext).toHaveBeenCalledWith({
+    expect(mocks.authorizeEnvironment).toHaveBeenCalledWith({
       userId: "user_1",
       environmentId: "env_1",
-      chatId: "chat_1",
     });
     expect(mocks.feedback).toHaveBeenCalledWith({
       userId: "user_1",
@@ -81,14 +80,10 @@ describe("POST /api/v1/dashboard-agent/feedback", () => {
     expect(mocks.feedback).not.toHaveBeenCalled();
   });
 
-  it("records nothing for a chat the user doesn't own", async () => {
-    mocks.resolveContext.mockResolvedValue({
-      ok: false,
-      code: "chat_not_found",
-      error: "Chat not found",
-    });
+  it("records nothing for an environment the user can no longer reach", async () => {
+    mocks.authorizeEnvironment.mockResolvedValue(null);
 
-    const response = await post({ chatId: "chat_other", message: "hi" });
+    const response = await post({ chatId: "chat_1", message: "hi" });
 
     expect(response.status).toBe(404);
     expect(mocks.feedback).not.toHaveBeenCalled();

@@ -18,7 +18,7 @@ export type MinimalAuthenticatedEnvironment = {
   maximumConcurrencyLimit: number;
   concurrencyLimitBurstFactor: number | { toNumber(): number };
   project: { id: string };
-  organization: { id: string };
+  organization: { id: string; featureFlags?: unknown };
 };
 
 const SemanticEnvResources = {

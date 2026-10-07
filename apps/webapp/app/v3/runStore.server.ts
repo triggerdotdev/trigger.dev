@@ -24,8 +24,16 @@ import {
   resilienceForClient,
   type TransactionResilienceConfig,
 } from "./transactionResilience.server";
+import { globalFlagsRegistry } from "./globalFlagsRegistry.server";
+import { createSnapshotRolloutResolver } from "./utils/snapshotStoreRollout.server";
+import { createSnapshotConnection } from "./utils/snapshotStoreConnection.server";
+import { createSnapshotStoreRuntime } from "./utils/snapshotStoreRuntime.server";
+import { createSnapshotStoreMetrics } from "./utils/snapshotStoreMetrics.server";
+import { logger } from "~/services/logger.server";
 
 type BuildRunStoreDeps = {
+  /** Synchronous construction hook; absent returns the original stores without a wrapper. */
+  decorateLeaf?: (leaf: RunStore, logicalRoute: string) => RunStore;
   /** Boot constant: true only when both run-ops DBs are configured and the split flag is on. */
   splitEnabled: boolean;
   /** Split-only handles. Required when splitEnabled is true; omitted entirely when OFF
@@ -68,13 +76,17 @@ type BuildRunStoreDeps = {
  * migration, so a LEGACY-classified id is always LEGACY-resident.
  */
 export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
+  const decorate = (leaf: RunStore, route: string) => deps.decorateLeaf?.(leaf, route) ?? leaf;
   if (!deps.splitEnabled) {
-    return new PostgresRunStore({
-      prisma: deps.singleWriter,
-      readOnlyPrisma: deps.singleReplica,
-      maxWait: deps.singleResilience?.maxWait,
-      transactionStartRetry: deps.singleResilience?.startRetry,
-    });
+    return decorate(
+      new PostgresRunStore({
+        prisma: deps.singleWriter,
+        readOnlyPrisma: deps.singleReplica,
+        maxWait: deps.singleResilience?.maxWait,
+        transactionStartRetry: deps.singleResilience?.startRetry,
+      }),
+      "single"
+    );
   }
 
   if (!deps.newWriter || !deps.newReplica || !deps.legacyWriter || !deps.legacyReplica) {
@@ -83,32 +95,41 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
   // The NEW store is backed by the dedicated RunOpsPrismaClient (subset schema): relation-shaped
   // ops branch onto FK-free scalars + explicit join models. The LEGACY store keeps the default
   // "legacy" variant (full @trigger.dev/database schema with implicit M2M + @relations).
-  const newStore = new PostgresRunStore({
-    prisma: deps.newWriter,
-    readOnlyPrisma: deps.newReplica,
-    schemaVariant: "dedicated",
-    maxWait: deps.newResilience?.maxWait,
-    transactionStartRetry: deps.newResilience?.startRetry,
-  });
-  const legacyStore = new PostgresRunStore({
-    prisma: deps.legacyWriter,
-    readOnlyPrisma: deps.legacyReplica,
-    maxWait: deps.legacyResilience?.maxWait,
-    transactionStartRetry: deps.legacyResilience?.startRetry,
-  });
+  const newStore = decorate(
+    new PostgresRunStore({
+      prisma: deps.newWriter,
+      readOnlyPrisma: deps.newReplica,
+      schemaVariant: "dedicated",
+      maxWait: deps.newResilience?.maxWait,
+      transactionStartRetry: deps.newResilience?.startRetry,
+    }),
+    "new"
+  );
+  const legacyStore = decorate(
+    new PostgresRunStore({
+      prisma: deps.legacyWriter,
+      readOnlyPrisma: deps.legacyReplica,
+      maxWait: deps.legacyResilience?.maxWait,
+      transactionStartRetry: deps.legacyResilience?.startRetry,
+    }),
+    "legacy"
+  );
 
   // Gen-2 shards: one dedicated store per descriptor, handed to the N-way router. An aliased shard
   // builds a store over its target's (shared) client and carries aliasOf, so the router dedups it out
   // of fan-out sums by declaration. No shards -> the two-store compat router (byte-identical).
   const shardStores = (deps.shards ?? []).map((shard) => ({
     key: shard.key,
-    store: new PostgresRunStore({
-      prisma: shard.writer,
-      readOnlyPrisma: shard.replica,
-      schemaVariant: "dedicated" as const,
-      maxWait: shard.resilience?.maxWait,
-      transactionStartRetry: shard.resilience?.startRetry,
-    }),
+    store: decorate(
+      new PostgresRunStore({
+        prisma: shard.writer,
+        readOnlyPrisma: shard.replica,
+        schemaVariant: "dedicated" as const,
+        maxWait: shard.resilience?.maxWait,
+        transactionStartRetry: shard.resilience?.startRetry,
+      }),
+      `shard:${shard.key}`
+    ),
     aliasOf: shard.aliasOf,
   }));
 
@@ -192,11 +213,28 @@ function tryResolveRunOpsHandles() {
   }
 }
 
+const snapshotStoreRuntime = singleton("SnapshotStoreRuntime", () => {
+  const endpoint = env.RUN_ENGINE_SNAPSHOT_STORE_REDIS_URL;
+  if (!endpoint) return undefined;
+  const metrics = createSnapshotStoreMetrics(metricsRegister);
+  const connection = createSnapshotConnection(endpoint, {
+    metrics: metrics.store,
+    onError: (error) => logger.error("Snapshot connection error", { error }),
+  });
+  return createSnapshotStoreRuntime({
+    connection,
+    rollout: createSnapshotRolloutResolver(() => globalFlagsRegistry.current(), prisma),
+    getRunStore: () => runStore,
+    metrics: metrics.decorator,
+  });
+});
+
 export const runStore: RunStore = singleton("RunStore", () => {
   const handles = ROUTING_ENABLED ? tryResolveRunOpsHandles() : null;
   // Single-store passthrough: self-host (one DB), or a context without run-ops handles.
   if (!handles) {
     return buildRunStore({
+      decorateLeaf: snapshotStoreRuntime?.decorate,
       splitEnabled: false,
       singleWriter: prisma,
       singleReplica: $replica,
@@ -205,6 +243,7 @@ export const runStore: RunStore = singleton("RunStore", () => {
   }
   const { shardHandles, ...storeHandles } = handles;
   return buildRunStore({
+    decorateLeaf: snapshotStoreRuntime?.decorate,
     splitEnabled: true,
     ...storeHandles,
     shards: shardHandles.map((shard) => ({

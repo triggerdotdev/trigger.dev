@@ -59,17 +59,19 @@ describe("role models", () => {
     for (const key of ENV_KEYS) delete process.env[key];
   });
 
-  it("defaults the main roles to Sonnet 5 and titles to Haiku 4.5", () => {
+  it("defaults the main roles to Sonnet 5, and titles and the judge to Haiku 4.5", () => {
     expect(dashboardAgentModel()).toBe("claude-sonnet-5");
     expect(dashboardAgentSummaryModel()).toBe("claude-sonnet-5");
-    expect(dashboardAgentJudgeModel()).toBe("claude-sonnet-5");
+    expect(dashboardAgentJudgeModel()).toBe("claude-haiku-4-5");
     expect(dashboardAgentTitleModel()).toBe("claude-haiku-4-5");
   });
 
-  it("follows the main model override for summaries and the judge unless they set their own", () => {
+  it("follows the main model override for summaries, never for the judge", () => {
     process.env.DASHBOARD_AGENT_MODEL = "claude-opus-5";
     expect(dashboardAgentSummaryModel()).toBe("claude-opus-5");
-    expect(dashboardAgentJudgeModel()).toBe("claude-opus-5");
+    expect(dashboardAgentJudgeModel()).toBe("claude-haiku-4-5");
+    process.env.DASHBOARD_AGENT_JUDGE_MODEL = "claude-sonnet-5";
+    expect(dashboardAgentJudgeModel()).toBe("claude-sonnet-5");
     process.env.DASHBOARD_AGENT_SUMMARY_MODEL = "claude-haiku-4-5";
     expect(dashboardAgentSummaryModel()).toBe("claude-haiku-4-5");
     expect(dashboardAgentTitleModel()).toBe("claude-haiku-4-5");

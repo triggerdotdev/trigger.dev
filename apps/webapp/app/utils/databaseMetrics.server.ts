@@ -28,6 +28,8 @@ export type DatabaseMetricsSource = {
   client: MetricsCapableClient;
   pool?: PoolLike;
   poolCounters?: { opened: () => number; closed: () => number };
+  /** False until a lazy client's first query; reading engine metrics would connect it. */
+  isActive?: () => boolean;
 };
 
 type NormalizedPoolMetrics = {
@@ -131,14 +133,16 @@ export function normalizeDatabaseMetrics(
 
 export async function collectDatabaseClientMetrics(): Promise<NormalizedDatabaseMetrics[]> {
   return Promise.all(
-    Array.from(sources.values()).map(async (source) => {
-      let json: PrismaMetricsJson | undefined;
-      try {
-        json = await source.client.$metrics.json();
-      } catch {
-        json = undefined;
-      }
-      return normalizeDatabaseMetrics(source, json);
-    })
+    Array.from(sources.values())
+      .filter((source) => source.isActive?.() ?? true)
+      .map(async (source) => {
+        let json: PrismaMetricsJson | undefined;
+        try {
+          json = await source.client.$metrics.json();
+        } catch {
+          json = undefined;
+        }
+        return normalizeDatabaseMetrics(source, json);
+      })
   );
 }

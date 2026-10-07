@@ -260,6 +260,22 @@ describe("TaskRunExecutionSnapshotStore (redis-only) redis-primary", () => {
         expect(head?.executionStatus).toBe("EXECUTING");
         expect(head?.previousSnapshotId).toBe(birthId);
         expect(head?.completedWaitpointOrder).toEqual([waitpointId]);
+        expect(
+          await reader.findSnapshotCompletedWaitpointIds(
+            transitionId,
+            prisma,
+            runId,
+            env.organizationId
+          )
+        ).toEqual([waitpointId]);
+        expect(
+          await reader.findSnapshotCompletedWaitpointIdsWithPresence(
+            transitionId,
+            prisma,
+            runId,
+            env.organizationId
+          )
+        ).toEqual({ present: true, ids: [waitpointId] });
 
         // The completed waitpoint was reproduced from the cycle records via the resolver. The store
         // returns unenhanced read rows, so no cast is needed and no `index` exists here: the order
@@ -363,21 +379,10 @@ describe("TaskRunExecutionSnapshotStore (redis-only) redis-primary", () => {
         expect(await store.getLatest(runId)).toBeNull();
         expect(await store.readBirthResidency(runId)).toBe("redis-primary");
 
-        // A Postgres row planted for the same run: a wrongful fallback would return it. It must not.
-        await prisma.taskRunExecutionSnapshot.create({
-          data: {
-            id: generateInternalId(),
-            runId,
-            engine: "V2",
-            executionStatus: "EXECUTING",
-            description: "planted",
-            runStatus: "EXECUTING",
-            environmentId: env.id,
-            environmentType: env.type,
-            projectId: env.projectId,
-            organizationId: env.organizationId,
-          },
-        });
+        // A Redis-primary birth has no Postgres TRES. Losing Redis state cannot turn that absence
+        // into an authoritative empty result. Unmarked PG rows are now positive birth evidence,
+        // so planting one here would contradict the run's actual storage contract.
+        expect(await prisma.taskRunExecutionSnapshot.count({ where: { runId } })).toBe(0);
 
         const reader = new TaskRunExecutionSnapshotStore(delegate, {
           store,

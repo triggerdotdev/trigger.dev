@@ -384,6 +384,8 @@ export type RedisSnapshotStoreConnection =
   | { client?: never; redisOptions: RedisOptions };
 
 export type RedisSnapshotStoreOptions = RedisSnapshotStoreConnection & {
+  /** Optional connection/readiness gate for a lazily constructed production client. */
+  beforeCommand?: (operation: string) => Promise<void>;
   completedTtlMs: number;
   sinceLimit?: number;
   highWater?: { entryBytes?: number; cycleKeyBytes?: number; cycleCount?: number };
@@ -415,6 +417,7 @@ export class RedisSnapshotStore {
   private readonly sinceLimit: number;
   private readonly metrics?: SnapshotStoreMetrics;
   private readonly highWater: NonNullable<RedisSnapshotStoreOptions["highWater"]>;
+  private readonly beforeCommand?: RedisSnapshotStoreOptions["beforeCommand"];
   #quit?: Promise<void>;
 
   constructor(options: RedisSnapshotStoreOptions) {
@@ -423,6 +426,7 @@ export class RedisSnapshotStore {
     this.sinceLimit = options.sinceLimit ?? 50;
     this.metrics = options.metrics;
     this.highWater = options.highWater ?? {};
+    this.beforeCommand = options.beforeCommand;
     this.ownsClient = options.client === undefined;
     this.redis =
       options.client ??
@@ -452,6 +456,7 @@ export class RedisSnapshotStore {
   async #timed<T>(op: string, fn: () => Promise<T>): Promise<T> {
     const started = Date.now();
     try {
+      if (this.beforeCommand) await this.beforeCommand(op);
       return await fn();
     } finally {
       this.metrics?.recordLatency(op, Date.now() - started);
@@ -560,8 +565,8 @@ export class RedisSnapshotStore {
    * quarantine record (unit + reason + timestamp, plus the raw malformed value when the unit could not
    * be parsed) AND remove the prepared-unit key — but ONLY when the prep key's token still matches this
    * unit's `transitionToken`. A newer prepare (necessarily a different token, since prepare admits one
-   * pending unit per run) is NEVER clobbered: its live unit survives while the old raw is still recorded
-   * for the operator. The pending STREAM entry is left for the sweeper to clear later. Returns whether
+   * pending unit per run) is NEVER clobbered or quarantined. An already-resolved unit is ignored.
+   * The pending STREAM entry is left for the sweeper to clear later. Returns whether
    * the prepared unit was removed. Runs BEFORE the caller ACKs, so a crash cannot lose the record.
    */
   async quarantinePreparedUnit(
@@ -989,6 +994,27 @@ export class RedisSnapshotStore {
           return { outcome: "prepared", streamId: reply[1] ?? "" };
       }
     });
+  }
+
+  /** Restore only a missing pointer to an existing entry confirmed by the owning Postgres head. */
+  async repairMirroredHead(
+    entry: Pick<SnapshotEntryInput, "runId" | "id">,
+    observedCur: string
+  ): Promise<boolean> {
+    const keys = snapshotKeys(entry.runId);
+    return (
+      (await this.redis.repairMirroredSnapshotHead(
+        keys.e,
+        keys.idx,
+        keys.cur,
+        keys.seq,
+        residencyKey(entry.runId),
+        preparedUnitKey(entry.runId),
+        quarantineKey(entry.runId),
+        observedCur,
+        entry.id
+      )) === 1
+    );
   }
 
   /**
@@ -1491,6 +1517,26 @@ export class RedisSnapshotStore {
       `,
     });
 
+    this.redis.defineCommand("repairMirroredSnapshotHead", {
+      numberOfKeys: 7,
+      lua: `
+        ${PRELUDE}
+        local resKey, prepKey, quarantineKey = KEYS[5], KEYS[6], KEYS[7]
+        local observed, id = ARGV[1], ARGV[2]
+        if not keyspaceAlive() then return 0 end
+        if redis.call('HGET', seqKey, 'sv') ~= '${SNAPSHOT_STATE_VERSION}' then return 0 end
+        if redis.call('GET', resKey) ~= 'mirrored' then return 0 end
+        if redis.call('EXISTS', prepKey) == 1 or redis.call('EXISTS', quarantineKey) == 1 then return 0 end
+        if (redis.call('GET', curKey) or '') ~= observed then return 0 end
+        if redis.call('HGET', seqKey, 't') == '1' then return 0 end
+        -- Never replace a nonempty head or synthesize an entry/history from a Postgres row.
+        if observed ~= '' or redis.call('HEXISTS', eKey, id) == 0 then return 0 end
+        if not redis.call('ZSCORE', idxKey, id) then return 0 end
+        redis.call('SET', curKey, id)
+        return 1
+      `,
+    });
+
     this.redis.defineCommand("appendSnapshotEntry", {
       numberOfKeys: 5,
       lua: `
@@ -1712,6 +1758,11 @@ export class RedisSnapshotStore {
       lua: `
         local quarantineKey = KEYS[1]
         local prepKey = KEYS[2]
+        -- A concurrent finalize/abort already settled this unit. No live key means nothing remains
+        -- to quarantine; never manufacture a permanent fail-closed marker for a healthy run.
+        if redis.call('EXISTS', prepKey) == 0 then
+          return 0
+        end
         -- Check the token BEFORE writing anything. A DIFFERENT token means a NEWER replacement holds the
         -- slot (the old unit was already resolved): writing the run-wide quarantine marker would POISON
         -- that live newer unit, since readPendingState treats any quarantine hash as fail-closed and every
@@ -2079,6 +2130,18 @@ declare module "@internal/redis" {
       limit: string,
       callback?: Callback<string[] | null>
     ): Result<string[] | null, Context>;
+    repairMirroredSnapshotHead(
+      eKey: string,
+      idxKey: string,
+      curKey: string,
+      seqKey: string,
+      resKey: string,
+      prepKey: string,
+      quarantineKey: string,
+      observedCur: string,
+      id: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
     prepareSnapshotUnit(
       curKey: string,
       prepKey: string,

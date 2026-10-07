@@ -26,6 +26,10 @@ import {
   getTraceEventsForExportQueryBuilderV2,
   getTraceSummaryQueryBuilder,
   getTraceSummaryQueryBuilderV2,
+  getTraceChunkQueryBuilder,
+  getTraceChunkQueryBuilderV2,
+  getTraceSpanCountQueryBuilder,
+  getTraceSpanCountQueryBuilderV2,
   insertTaskEvents,
   insertTaskEventsV2,
   getLogDetailQueryBuilderV2,
@@ -84,6 +88,12 @@ import type { Agent as HttpsAgent } from "https";
 
 export type * from "./taskRuns.js";
 export type * from "./taskEvents.js";
+export {
+  buildTraceChunkCursorPredicate,
+  buildTraceChunkKeyPredicate,
+  sliceTraceChunk,
+  TRACE_CHUNK_ORDER_BY,
+} from "./taskEvents.js";
 export * from "./taskEventsSearch.js";
 export * from "./taskEventsSearchProjector.js";
 export type * from "./metrics.js";
@@ -282,6 +292,8 @@ export class ClickHouse {
     return {
       insert: insertTaskEvents(this.writer),
       traceSummaryQueryBuilder: getTraceSummaryQueryBuilder(this.reader),
+      traceChunkQueryBuilder: getTraceChunkQueryBuilder(this.reader),
+      traceSpanCountQueryBuilder: getTraceSpanCountQueryBuilder(this.reader),
       traceDetailedSummaryQueryBuilder: getTraceDetailedSummaryQueryBuilder(this.reader),
       traceEventsForExportQueryBuilder: getTraceEventsForExportQueryBuilder(this.reader),
       spanDetailsQueryBuilder: getSpanDetailsQueryBuilder(this.reader),
@@ -348,6 +360,8 @@ export class ClickHouse {
     return {
       insert: insertTaskEventsV2(this.writer),
       traceSummaryQueryBuilder: getTraceSummaryQueryBuilderV2(this.reader),
+      traceChunkQueryBuilder: getTraceChunkQueryBuilderV2(this.reader),
+      traceSpanCountQueryBuilder: getTraceSpanCountQueryBuilderV2(this.reader),
       traceDetailedSummaryQueryBuilder: getTraceDetailedSummaryQueryBuilderV2(this.reader),
       traceEventsForExportQueryBuilder: getTraceEventsForExportQueryBuilderV2(this.reader),
       spanDetailsQueryBuilder: getSpanDetailsQueryBuilderV2(this.reader),

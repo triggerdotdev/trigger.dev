@@ -1,7 +1,7 @@
 // Vertical slice V2: prove the decorator<->recovery seam end-to-end. A real MIRRORED write that
 // CRASHES after the Postgres commit but before finalize (the `beforeFinalize` seam) leaves the unit
-// PREPARED + PENDING with Postgres committed; the real PendingRecoveryWorker then resolves it via the
-// real `pg_xact_status` on the SAME test Postgres. REAL Postgres + REAL Redis (testcontainers), no
+// PREPARED + PENDING with Postgres committed; a subsequent write invokes the real PendingRecoveryWorker
+// via real `pg_xact_status` on the SAME test Postgres, without a sweep. REAL Postgres + REAL Redis, no
 // mocks: checkPostgresCommit / commitProbeExists run raw SQL on the test primary.
 import { describe, expect } from "vitest";
 import { containerTest } from "@internal/testcontainers";
@@ -22,7 +22,7 @@ import {
   type QuarantineReason,
   type RecoveryDeps,
 } from "./pendingRecoveryWorker.js";
-import { pendingStreamKey, runToPartition } from "./snapshotKeys.js";
+import { pendingStreamKey, preparedUnitKey, runToPartition } from "./snapshotKeys.js";
 import { buildCreateRunData, seedSnapshotEnvironment } from "./testFixtures/snapshotIdFixture.js";
 
 const ROUTE = "logical:1";
@@ -49,23 +49,6 @@ function realProbe(prisma: PrismaClient) {
     )) as unknown[];
     return rows.length > 0;
   };
-}
-
-// A real aborted xid: assign an xid inside a tx, then roll back by throwing out of it.
-async function abortedXid(prisma: PrismaClient): Promise<string> {
-  let xid = "";
-  try {
-    await prisma.$transaction(async (tx) => {
-      const rows = (await tx.$queryRawUnsafe(`SELECT pg_current_xact_id()::text AS xid`)) as Array<{
-        xid: string;
-      }>;
-      xid = rows[0].xid;
-      throw new Error("__rollback__");
-    });
-  } catch (e) {
-    if (!(e instanceof Error && e.message === "__rollback__")) throw e;
-  }
-  return xid;
 }
 
 function birthSnapshot(env: Awaited<ReturnType<typeof seedSnapshotEnvironment>>, id: string) {
@@ -96,6 +79,7 @@ function recoveryDeps(
     commitProbeExists: realProbe(prisma),
     quarantine: async (unit, reason) => {
       quarantined.push({ unit, reason });
+      await store.quarantinePreparedUnit(unit, reason);
     },
   };
 }
@@ -109,9 +93,9 @@ async function pendingCount(raw: ReturnType<typeof createRedisClient>, partition
 }
 
 describe("TaskRunExecutionSnapshotStore (crash after commit, before finalize) -> recovery", () => {
-  containerTest(
-    "beforeFinalize crash leaves the unit PENDING with Postgres committed; recovery finalizes via pg_xact_status",
-    async ({ prisma, redisOptions }) => {
+  containerTest.for([false, true])(
+    "a dual-write transition recovers a committed orphan on busy (aged status: %s)",
+    async (discardCommitStatus, { prisma, redisOptions }) => {
       const delegate = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
       const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
       const raw = createRedisClient(redisOptions, { onError: () => {} });
@@ -171,17 +155,76 @@ describe("TaskRunExecutionSnapshotStore (crash after commit, before finalize) ->
         expect(await prisma.taskRunExecutionSnapshot.count({ where: { runId } })).toBe(2);
         expect((await store.getLatest(runId))?.id).toBe(birthId);
 
-        // Recovery: the worker reads pg_xact_status(xid) on the SAME primary => committed => finalize.
-        const quarantined: Array<{ unit: PreparedPgUnit; reason: QuarantineReason }> = [];
-        const worker = new PendingRecoveryWorker(recoveryDeps(store, index, prisma, quarantined));
-        const outcomes = await worker.processPartition(partition, "w1");
+        // A normal dual-write read does not recover the pending transition.
+        expect((await born.findLatestExecutionSnapshot(runId))?.id).toBe(transitionId);
+        expect(await store.hasPreparedUnit(runId)).toBe(true);
 
-        expect(outcomes).toEqual([{ kind: "finalized", runId }]);
+        // The next write must recover the settled transaction on busy, then prepare once more.
+        const quarantined: Array<{ unit: PreparedPgUnit; reason: QuarantineReason }> = [];
+        const deps = recoveryDeps(store, index, prisma, quarantined);
+        const checkPostgresCommit = deps.checkPostgresCommit;
+        const worker = new PendingRecoveryWorker({
+          ...deps,
+          checkPostgresCommit: async (xid, route) => {
+            const status = await checkPostgresCommit(xid, route);
+            // Fault injection over a real committed transaction: simulate status retention expiring.
+            if (discardCommitStatus) {
+              expect(status).toBe("committed");
+              return null;
+            }
+            return status;
+          },
+        });
+        let recoveries = 0;
+        const next = new TaskRunExecutionSnapshotStore(delegate, {
+          store,
+          mode: "dual-write",
+          logicalRunStoreRoute: ROUTE,
+          resolvePending: async (id, options) => {
+            recoveries++;
+            await worker.resolveEntry({ id: "", fields: { runId: id } }, options);
+          },
+        });
+        const nextId = generateInternalId();
+        const advance = (id: string, previousSnapshotId: string) =>
+          next.createExecutionSnapshot({
+            id,
+            run: { id: runId, status: "EXECUTING", attemptNumber: 1 },
+            snapshot: { executionStatus: "EXECUTING", description: "Next transition" },
+            previousSnapshotId,
+            environmentId: env.id,
+            environmentType: env.type,
+            projectId: env.projectId,
+            organizationId: env.organizationId,
+          });
+        if (discardCommitStatus) {
+          // Missing commit evidence must not abort an aged unit. Keep the real committed row, but
+          // temporarily point the prepared unit at an absent probe, then restore its actual probe.
+          const prepared = (await store.readPreparedUnitRaw(runId))!;
+          const withoutProof = JSON.stringify({
+            ...JSON.parse(prepared),
+            commitProbeSnapshotId: generateInternalId(),
+          });
+          await raw.hset(preparedUnitKey(runId), "unit", withoutProof);
+          await expect(advance(nextId, transitionId)).rejects.toThrow(
+            "snapshot prepare rejected: busy"
+          );
+          expect(await store.readPreparedUnitRaw(runId)).toBe(withoutProof);
+          expect((await store.getLatest(runId))?.id).toBe(birthId);
+          await raw.hset(preparedUnitKey(runId), "unit", prepared);
+        }
+        await advance(nextId, transitionId);
+        expect(recoveries).toBe(discardCommitStatus ? 2 : 1);
         expect(quarantined).toHaveLength(0);
         // Prepared unit cleared, pending-index entry XACKed, and the recovered transition published.
         expect(await store.hasPreparedUnit(runId)).toBe(false);
         expect(await pendingCount(raw, partition)).toBe(0);
-        expect((await store.getLatest(runId))?.id).toBe(transitionId);
+        expect((await store.getLatest(runId))?.id).toBe(nextId);
+        expect((await store.getById(runId, transitionId))?.id).toBe(transitionId);
+        expect(await prisma.taskRunExecutionSnapshot.count({ where: { runId } })).toBe(3);
+        // Ordinary writes add no recovery call once the conflict has cleared.
+        await advance(generateInternalId(), nextId);
+        expect(recoveries).toBe(discardCommitStatus ? 2 : 1);
       } finally {
         await raw.quit();
         await indexRaw.quit();
@@ -191,7 +234,7 @@ describe("TaskRunExecutionSnapshotStore (crash after commit, before finalize) ->
   );
 
   containerTest(
-    "a pending unit whose owning tx rolled back is ABORTED by recovery (no phantom published head)",
+    "busy writes leave live or unprovable units untouched, then recover after a confirmed rollback",
     async ({ prisma, redisOptions }) => {
       const delegate = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
       const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
@@ -219,52 +262,113 @@ describe("TaskRunExecutionSnapshotStore (crash after commit, before finalize) ->
         });
         expect((await store.getLatest(runId))?.id).toBe(birthId);
 
-        // The decorator's inline abort makes a rolled-back tx unreachable as a PENDING unit through
-        // the seam, so (as the plan allows) seed the pending unit for a REAL rolled-back xid directly,
-        // exactly as the M4 test does. commitProbeSnapshotId is absent in Postgres, but pg_xact_status
-        // returns `aborted` outright, so recovery never needs the probe.
-        const xid = await abortedXid(prisma);
-        const stagedEntry: SnapshotEntryInput = {
-          id: transitionId,
-          runId,
-          engine: "V2",
-          executionStatus: "EXECUTING",
-          description: "Run started",
-          runStatus: "EXECUTING",
-          createdAt: new Date().toISOString(),
-          previousSnapshotId: birthId,
-          environmentId: env.id,
-          environmentType: env.type,
-          projectId: env.projectId,
-          organizationId: env.organizationId,
-        };
-        const unit: PreparedPgUnit = {
-          protocolVersion: 1,
-          transitionToken: generateInternalId(),
-          postgresXid: xid,
-          runId,
-          organizationId: env.organizationId,
-          residency: "mirrored",
-          logicalRunStoreRoute: ROUTE,
-          entries: [
-            { entry: stagedEntry, kind: "transition", isTerminal: false, expectedCur: birthId },
-          ],
-          commitProbeSnapshotId: transitionId,
-        };
-        expect((await store.prepare(unit)).outcome).toBe("prepared");
-        expect(await store.hasPreparedUnit(runId)).toBe(true);
+        let reportXid!: (xid: string) => void;
+        const xidReady = new Promise<string>((resolve) => (reportXid = resolve));
+        let release!: () => void;
+        const held = new Promise<void>((resolve) => (release = resolve));
+        const transaction = prisma.$transaction(
+          async (tx) => {
+            const rows = await tx.$queryRaw<
+              Array<{ xid: string }>
+            >`SELECT pg_current_xact_id()::text AS xid`;
+            reportXid(rows[0].xid);
+            await held;
+            throw new Error("deliberate rollback");
+          },
+          { timeout: 30_000 }
+        );
+        const rolledBack = expect(transaction).rejects.toThrow("deliberate rollback");
+        try {
+          const xid = await xidReady;
+          const stagedEntry: SnapshotEntryInput = {
+            id: transitionId,
+            runId,
+            engine: "V2",
+            executionStatus: "EXECUTING",
+            description: "Run started",
+            runStatus: "EXECUTING",
+            createdAt: new Date().toISOString(),
+            previousSnapshotId: birthId,
+            environmentId: env.id,
+            environmentType: env.type,
+            projectId: env.projectId,
+            organizationId: env.organizationId,
+          };
+          const unit: PreparedPgUnit = {
+            protocolVersion: 1,
+            transitionToken: generateInternalId(),
+            postgresXid: xid,
+            runId,
+            organizationId: env.organizationId,
+            residency: "mirrored",
+            logicalRunStoreRoute: ROUTE,
+            entries: [
+              { entry: stagedEntry, kind: "transition", isTerminal: false, expectedCur: birthId },
+            ],
+            commitProbeSnapshotId: transitionId,
+          };
+          expect((await store.prepare(unit)).outcome).toBe("prepared");
+          expect(await store.hasPreparedUnit(runId)).toBe(true);
 
-        // Recovery: pg_xact_status(xid) => aborted => abortPrepared.
-        const quarantined: Array<{ unit: PreparedPgUnit; reason: QuarantineReason }> = [];
-        const worker = new PendingRecoveryWorker(recoveryDeps(store, index, prisma, quarantined));
-        const outcomes = await worker.processPartition(partition, "w1");
+          const quarantined: Array<{ unit: PreparedPgUnit; reason: QuarantineReason }> = [];
+          const worker = new PendingRecoveryWorker(recoveryDeps(store, index, prisma, quarantined));
+          let recoveries = 0;
+          const next = new TaskRunExecutionSnapshotStore(delegate, {
+            store,
+            mode: "dual-write",
+            logicalRunStoreRoute: ROUTE,
+            resolvePending: async (id, options) => {
+              recoveries++;
+              await worker.resolveEntry({ id: "", fields: { runId: id } }, options);
+            },
+          });
+          const nextId = generateInternalId();
+          const advance = () =>
+            next.createExecutionSnapshot({
+              id: nextId,
+              run: { id: runId, status: "EXECUTING", attemptNumber: 1 },
+              snapshot: { executionStatus: "EXECUTING", description: "Next transition" },
+              previousSnapshotId: birthId,
+              environmentId: env.id,
+              environmentType: env.type,
+              projectId: env.projectId,
+              organizationId: env.organizationId,
+            });
 
-        expect(outcomes).toEqual([{ kind: "aborted", runId }]);
-        expect(quarantined).toHaveLength(0);
-        // Pending cleared, staged entry never published: the head is still the committed birth.
-        expect(await store.hasPreparedUnit(runId)).toBe(false);
-        expect(await store.getById(runId, transitionId)).toBeNull();
-        expect((await store.getLatest(runId))?.id).toBe(birthId);
+          // Real transaction still active; future xid errors in real pg_xact_status; malformed data
+          // has no provable owner. None permits deletion, publication, or quarantine, even on retry.
+          for (const raw of [
+            JSON.stringify(unit),
+            JSON.stringify({ ...unit, postgresXid: String(BigInt(xid) + 1_000_000n) }),
+            "invalid json",
+            JSON.stringify({ ...unit, postgresXid: null }),
+          ]) {
+            await indexRaw.hset(preparedUnitKey(runId), "unit", raw);
+            await expect(advance()).rejects.toThrow("snapshot prepare rejected: busy");
+            expect(await store.readPreparedUnitRaw(runId)).toBe(raw);
+            expect(await store.readPendingState(runId)).toEqual({
+              prepared: true,
+              quarantined: false,
+            });
+            expect((await store.getLatest(runId))?.id).toBe(birthId);
+            expect(await prisma.taskRunExecutionSnapshot.count({ where: { runId } })).toBe(1);
+          }
+          expect(recoveries).toBe(4);
+          await indexRaw.hset(preparedUnitKey(runId), "unit", JSON.stringify(unit));
+          release();
+          await rolledBack;
+          await advance();
+          expect(recoveries).toBe(5);
+          expect(quarantined).toHaveLength(0);
+          // Only the replacement transition publishes; the aborted transaction's entry never does.
+          expect(await store.hasPreparedUnit(runId)).toBe(false);
+          expect(await store.getById(runId, transitionId)).toBeNull();
+          expect((await store.getLatest(runId))?.id).toBe(nextId);
+          expect(await prisma.taskRunExecutionSnapshot.count({ where: { runId } })).toBe(2);
+        } finally {
+          release();
+          await rolledBack;
+        }
       } finally {
         await indexRaw.quit();
         await store.quit();

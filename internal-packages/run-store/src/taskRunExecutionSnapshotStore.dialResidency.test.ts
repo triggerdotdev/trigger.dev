@@ -53,10 +53,9 @@ function transitionInput(
   };
 }
 
-function realResolver(store: RedisSnapshotStore, prisma: PrismaClient) {
+function realResolver(store: RedisSnapshotStore) {
   return new SnapshotResidencyResolver({
     store,
-    taskRunExists: async (id) => (await prisma.taskRun.count({ where: { id } })) > 0,
   });
 }
 
@@ -79,13 +78,12 @@ describe("TaskRunExecutionSnapshotStore (W1) per-run write residency", () => {
 
         // A resolver whose store would surface any MemoryDB read; an inert transition must never call it.
         let resolverCalls = 0;
-        const countingResolver = new SnapshotResidencyResolver({
-          store,
-          taskRunExists: async (id) => {
+        const countingResolver = new (class extends SnapshotResidencyResolver {
+          override resolve(runId: string) {
             resolverCalls++;
-            return (await prisma.taskRun.count({ where: { id } })) > 0;
-          },
-        });
+            return super.resolve(runId);
+          }
+        })({ store });
 
         const inert = new TaskRunExecutionSnapshotStore(delegate, {
           store,
@@ -145,7 +143,7 @@ describe("TaskRunExecutionSnapshotStore (W1) per-run write residency", () => {
           store,
           mode: "dual-write",
           resolveDial: () => "dual-write",
-          residencyResolver: realResolver(store, prisma),
+          residencyResolver: realResolver(store),
           logicalRunStoreRoute: ROUTE,
         });
         await loweredWriter.createExecutionSnapshot(
@@ -191,7 +189,7 @@ describe("TaskRunExecutionSnapshotStore (W1) per-run write residency", () => {
           store,
           mode: "dual-write",
           resolveDial: () => "off",
-          residencyResolver: realResolver(store, prisma),
+          residencyResolver: realResolver(store),
           logicalRunStoreRoute: ROUTE,
         });
         await offWriter.createExecutionSnapshot(transitionInput(env, runId, transitionId, birthId));
@@ -260,7 +258,7 @@ describe("TaskRunExecutionSnapshotStore (W1) per-run write residency", () => {
           store,
           mode: "redis-only",
           resolveDial: () => "redis-only",
-          residencyResolver: realResolver(store, prisma),
+          residencyResolver: realResolver(store),
           logicalRunStoreRoute: ROUTE,
         });
         await writer.createRun({

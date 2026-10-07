@@ -1,7 +1,6 @@
 import { timeoutError } from "@trigger.dev/core/v3";
 import type { ShardKey } from "@trigger.dev/core/v3/isomorphic";
 import { boundedIn } from "@trigger.dev/database";
-import { type SnapshotRouteWire, toWireRoute } from "@internal/run-store";
 import type {
   PrismaClientOrTransaction,
   TaskRun,
@@ -20,6 +19,7 @@ import type { EnqueueSystem } from "./enqueueSystem.js";
 import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
 import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
 import type { SystemResources } from "./systems.js";
+import { snapshotRouteFromSnapshot } from "@internal/run-store";
 
 export type WaitpointSystemOptions = {
   resources: SystemResources;
@@ -67,19 +67,6 @@ export class WaitpointSystem {
       prisma: this.$.prisma,
       logger: this.$.logger,
     });
-  }
-
-  // Resolve the run's residency durably (forceDurable) and convert to a wire route. Used as the
-  // fallback when a waitpoint transition arrives without a carried route. Fails closed (throws) if
-  // residency can't be confirmed; undefined only for a genuinely never-enrolled run.
-  async #resolveRouteWire(
-    runId: string,
-    organizationId: string
-  ): Promise<SnapshotRouteWire | undefined> {
-    const route = await this.$.runStore.readSnapshotRoute(runId, organizationId, {
-      forceDurable: true,
-    });
-    return route ? toWireRoute(route) : undefined;
   }
 
   public async clearBlockingWaitpoints({
@@ -354,7 +341,6 @@ export class WaitpointSystem {
     batch,
     workerId,
     runnerId,
-    snapshotRoute,
     tx,
   }: {
     runId: string;
@@ -366,9 +352,6 @@ export class WaitpointSystem {
     batch?: { id: string; index?: number };
     workerId?: string;
     runnerId?: string;
-    // The run's route, so the suspend transition (and the resume it schedules) honor durable
-    // residency on a poll-lagging pod. Undefined for a never-enrolled run.
-    snapshotRoute?: SnapshotRouteWire;
     tx?: PrismaClientOrTransaction;
   }): Promise<TaskRunExecutionSnapshot> {
     const prisma = tx ?? this.$.prisma;
@@ -378,15 +361,12 @@ export class WaitpointSystem {
     let $waitpoints = typeof waitpoints === "string" ? [waitpoints] : waitpoints;
 
     return await this.$.runLock.lock("blockRunWithWaitpoint", [runId], async () => {
-      // Use the carried route, or resolve the run's residency durably ONCE before writing/registering
-      // the block so the suspend transition and the resume it schedules honor durable residency on a
-      // poll-lagging pod. A supplied route means no extra lookup; undefined = genuinely never-enrolled.
-      const routeWire = snapshotRoute ?? (await this.#resolveRouteWire(runId, organizationId));
-
       let snapshot: TaskRunExecutionSnapshot = await getLatestExecutionSnapshot(
         prisma,
         runId,
-        this.$.runStore
+        this.$.runStore,
+        undefined,
+        organizationId
       );
 
       // Insert the blocking + historical connections and re-check the pending count. The
@@ -425,6 +405,7 @@ export class WaitpointSystem {
             description: "Run was blocked by a waitpoint.",
           },
           previousSnapshotId: snapshot.id,
+          snapshotRoute: snapshotRouteFromSnapshot(snapshot),
           environmentId: snapshot.environmentId,
           environmentType: snapshot.environmentType,
           projectId: snapshot.projectId,
@@ -433,7 +414,6 @@ export class WaitpointSystem {
           batchId: batch?.id,
           workerId,
           runnerId,
-          snapshotRoute: routeWire,
         });
 
         // Let the worker know immediately, so it can suspend the run
@@ -461,7 +441,7 @@ export class WaitpointSystem {
           //this will debounce the call
           id: `continueRunIfUnblocked:${runId}`,
           job: "continueRunIfUnblocked",
-          payload: { runId: runId, snapshotRoute: routeWire },
+          payload: { runId: runId },
           //in the near future
           availableAt: new Date(Date.now() + 50),
         });
@@ -566,12 +546,8 @@ export class WaitpointSystem {
 
   public async continueRunIfUnblocked({
     runId,
-    snapshotRoute,
   }: {
     runId: string;
-    // Carried on the `continueRunIfUnblocked` queued payload so the resume transition honors durable
-    // residency on a poll-lagging pod. Undefined when the scheduler had no route (durable fallback).
-    snapshotRoute?: SnapshotRouteWire;
   }): Promise<WaitpointContinuationResult> {
     this.$.logger.debug(`continueRunIfUnblocked: start`, {
       runId,
@@ -625,12 +601,14 @@ export class WaitpointSystem {
       }
 
       //4. Continue the run whether it's executing or not
-      const snapshot = await getLatestExecutionSnapshot(this.$.prisma, runId, this.$.runStore);
+      const snapshot = await getLatestExecutionSnapshot(
+        this.$.prisma,
+        runId,
+        this.$.runStore,
+        undefined,
+        env.organizationId
+      );
 
-      // Residency is resolved INSIDE the two branches that actually write a snapshot
-      // (EXECUTING_WITH_WAITPOINTS, SUSPENDED). Resolving here would make every no-op state depend on
-      // MemoryDB being resolvable, so an unavailable residency would fail and retry these jobs
-      // instead of letting them terminate cleanly. A supplied route still costs no lookup.
       switch (snapshot.executionStatus) {
         case "RUN_CREATED": {
           this.$.logger.info(`continueRunIfUnblocked: run is run created, skipping`, {
@@ -717,10 +695,6 @@ export class WaitpointSystem {
           };
         }
         case "EXECUTING_WITH_WAITPOINTS": {
-          // This branch writes, so resolve residency here (fail-closed) rather than for every no-op.
-          const routeWire =
-            snapshotRoute ?? (await this.#resolveRouteWire(runId, snapshot.organizationId));
-
           const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
             this.$.prisma,
             {
@@ -734,6 +708,7 @@ export class WaitpointSystem {
                 description: "Run was continued, whilst still executing.",
               },
               previousSnapshotId: snapshot.id,
+              snapshotRoute: snapshotRouteFromSnapshot(snapshot),
               environmentId: snapshot.environmentId,
               environmentType: snapshot.environmentType,
               projectId: snapshot.projectId,
@@ -745,7 +720,6 @@ export class WaitpointSystem {
               })),
               resolveCompletedWaitpointRecords: () =>
                 this.#buildCompletedWaitpointRecords(runId, blockingWaitpoints),
-              snapshotRoute: routeWire,
             }
           );
 
@@ -800,16 +774,13 @@ export class WaitpointSystem {
             );
           }
 
-          // Resolved only after the canceled-skip and missing-checkpoint checks above, so neither
-          // no-transition exit depends on residency being resolvable.
-          const routeWire =
-            snapshotRoute ?? (await this.#resolveRouteWire(runId, snapshot.organizationId));
-
           //put it back in the queue, with the original timestamp (w/ priority)
           //this prioritizes dequeuing waiting runs over new runs
           const newSnapshot = await this.enqueueSystem.enqueueRun({
             run,
             env,
+            previousSnapshotId: snapshot.id,
+            snapshotRoute: snapshotRouteFromSnapshot(snapshot),
             snapshot: {
               status: "QUEUED",
               description: "Run was QUEUED, because all waitpoints are completed",
@@ -822,7 +793,6 @@ export class WaitpointSystem {
             resolveCompletedWaitpointRecords: () =>
               this.#buildCompletedWaitpointRecords(runId, blockingWaitpoints),
             checkpoint: snapshot.checkpoint,
-            snapshotRoute: routeWire,
           });
 
           this.$.logger.debug(`continueRunIfUnblocked: run goes to QUEUED`, {
@@ -968,7 +938,13 @@ export class WaitpointSystem {
       }
 
       // Operational decision: use latest execution snapshot, not TaskRun status
-      const snapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
+      const snapshot = await getLatestExecutionSnapshot(
+        prisma,
+        runId,
+        this.$.runStore,
+        undefined,
+        runAfterLock.organizationId ?? undefined
+      );
 
       // Create waitpoint and link to run atomically
       const waitpointData = this.buildRunAssociatedWaitpoint({

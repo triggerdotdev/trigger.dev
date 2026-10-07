@@ -5,7 +5,6 @@
 import { describe, expect } from "vitest";
 import { containerTest } from "@internal/testcontainers";
 import { generateInternalId } from "@trigger.dev/core/v3/isomorphic";
-import type { PrismaClient } from "@trigger.dev/database";
 import { PostgresRunStore } from "./PostgresRunStore.js";
 import { RedisSnapshotStore } from "./redisSnapshotStore.js";
 import {
@@ -26,10 +25,9 @@ function recorder() {
   };
   return { writes, reads, metrics };
 }
-function realResolver(store: RedisSnapshotStore, prisma: PrismaClient) {
+function realResolver(store: RedisSnapshotStore) {
   return new SnapshotResidencyResolver({
     store,
-    taskRunExists: async (id) => (await prisma.taskRun.count({ where: { id } })) > 0,
   });
 }
 function birthSnapshot(env: Awaited<ReturnType<typeof seedSnapshotEnvironment>>, id: string) {
@@ -80,7 +78,7 @@ describe("TaskRunExecutionSnapshotStore decorator metrics (P6a)", () => {
           store,
           mode: "redis-read",
           resolveDial: () => "redis-read",
-          residencyResolver: realResolver(store, prisma),
+          residencyResolver: realResolver(store),
           logicalRunStoreRoute: ROUTE,
           metrics: m.metrics,
         });
@@ -116,7 +114,7 @@ describe("TaskRunExecutionSnapshotStore decorator metrics (P6a)", () => {
           store: failStore,
           mode: "redis-only",
           resolveDial: () => "redis-only",
-          residencyResolver: realResolver(store, prisma),
+          residencyResolver: realResolver(store),
           logicalRunStoreRoute: ROUTE,
           metrics: f.metrics,
         });
@@ -144,7 +142,7 @@ describe("TaskRunExecutionSnapshotStore decorator metrics (P6a)", () => {
             store: nwStore,
             mode: "redis-only",
             resolveDial: () => "redis-only",
-            residencyResolver: realResolver(store, prisma),
+            residencyResolver: realResolver(store),
             logicalRunStoreRoute: ROUTE,
             metrics: nw.metrics,
           });
@@ -165,7 +163,7 @@ describe("TaskRunExecutionSnapshotStore decorator metrics (P6a)", () => {
           store,
           mode: "dual-write",
           resolveDial: () => undefined,
-          residencyResolver: realResolver(store, prisma),
+          residencyResolver: realResolver(store),
           logicalRunStoreRoute: ROUTE,
           metrics: i.metrics,
         });

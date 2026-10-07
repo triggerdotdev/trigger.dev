@@ -120,7 +120,7 @@ async function insertPostgresOnlySnapshot(
 
 describe("TaskRunExecutionSnapshotStore (redis-read) mirrored reads", () => {
   containerTest(
-    "a finalized head reads from MemoryDB, not Postgres (heads differ)",
+    "a finalized but older Redis head cannot outrank committed Postgres",
     async ({ prisma, redisOptions }) => {
       const delegate = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
       const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
@@ -157,8 +157,7 @@ describe("TaskRunExecutionSnapshotStore (redis-read) mirrored reads", () => {
           logicalRunStoreRoute: ROUTE,
         });
         const head = await reader.findLatestExecutionSnapshot(runId);
-        // The MemoryDB committed head, never the newer Postgres row.
-        expect(head?.id).toBe(birthId);
+        expect(head?.id).toBe(pgOnlyId);
       } finally {
         await store.quit();
       }

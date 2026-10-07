@@ -62,13 +62,13 @@ postgresTest("ensurePartitions creates the window and is idempotent", async ({ p
   const now = new Date(Date.UTC(2026, 6, 15));
 
   const first = await ensurePartitions(prisma, { now, lookaheadDays: 7, retentionDays: 3 });
-  // retention(3) back .. lookahead(7) forward, inclusive of both ends = 11 day buckets.
-  expect(first.created).toHaveLength(11);
-  expect(await partitionExists(prisma, partitionName(floorDayUTC(now)))).toBe(true);
+  expect(first.created).toHaveLength(8);
+  expect(first.created[0]).toBe(partitionName(floorDayUTC(now)));
+  expect(await partitionExists(prisma, partitionName(addDays(floorDayUTC(now), -1)))).toBe(false);
 
   const second = await ensurePartitions(prisma, { now, lookaheadDays: 7, retentionDays: 3 });
   expect(second.created).toHaveLength(0);
-  expect(second.existing).toHaveLength(11);
+  expect(second.existing).toHaveLength(8);
 });
 
 postgresTest("createPartition is created-then-exists", async ({ prisma }) => {
@@ -93,13 +93,13 @@ postgresTest(
     ]);
 
     for (const result of results) {
-      expect(result.created.length + result.existing.length).toBe(11);
+      expect(result.created.length + result.existing.length).toBe(8);
     }
     const claimed = results.flatMap((r) => r.created);
-    expect(claimed).toHaveLength(11);
-    expect(new Set(claimed).size).toBe(11);
+    expect(claimed).toHaveLength(8);
+    expect(new Set(claimed).size).toBe(8);
     expect(await partitionExists(prisma, partitionName(floorDayUTC(now)))).toBe(true);
-    expect(await listDatedPartitions(prisma)).toHaveLength(11);
+    expect(await listDatedPartitions(prisma)).toHaveLength(8);
   }
 );
 
@@ -162,7 +162,8 @@ postgresTest(
       const opts = { now, lookaheadDays: 10, retentionDays: 3 };
 
       const first = await bootstrapPartitions(webhookDb, opts);
-      expect(first.created).toHaveLength(14);
+      expect(first.created).toHaveLength(11);
+      expect(first.created[0]).toBe(partitionName(now));
       expect(await partitionExists(webhookDb, old.name)).toBe(true);
       expect(await listDatedPartitions(prisma)).toEqual([]);
 
@@ -303,11 +304,7 @@ containerTestWithIsolatedRedisNoClickhouse(
           { timeout: 15_000 }
         )
         .toEqual({
-          partitions: [
-            partitionName(addDays(now, -1)),
-            partitionName(now),
-            partitionName(addDays(now, 1)),
-          ],
+          partitions: [partitionName(now), partitionName(addDays(now, 1))],
           oldExists: false,
         });
       expect(await app.webhookDelivery.findFirst({ where: { id: delivery.id } })).toMatchObject({

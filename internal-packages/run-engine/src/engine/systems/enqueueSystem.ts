@@ -5,13 +5,8 @@ import type {
   TaskRunCheckpoint,
   TaskRunExecutionStatus,
 } from "@trigger.dev/database";
-import type {
-  CompletedWaitpointRecord,
-  RunStore,
-  SnapshotRoute,
-  SnapshotRouteWire,
-} from "@internal/run-store";
-import { snapshotRouteFromWire, toWireRoute } from "@internal/run-store";
+import type { CompletedWaitpointRecord, RunStore, SnapshotRouteWire } from "@internal/run-store";
+import { snapshotRouteFromSnapshot } from "@internal/run-store";
 import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
 import type { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
 import { QUEUED_SNAPSHOT_DESCRIPTION, QUEUED_SNAPSHOT_STATUS } from "../consts.js";
@@ -47,6 +42,7 @@ export class EnqueueSystem {
     tx,
     snapshot,
     previousSnapshotId,
+    snapshotRoute,
     batchId,
     checkpoint,
     completedWaitpoints,
@@ -57,7 +53,6 @@ export class EnqueueSystem {
     includeTtl = false,
     anchorEligibilityAtQueuePosition = false,
     enableFastPath = false,
-    snapshotRoute,
     store,
   }: {
     run: TaskRun;
@@ -69,6 +64,8 @@ export class EnqueueSystem {
       metadata?: Prisma.JsonValue;
     };
     previousSnapshotId?: string;
+    /** Server-to-store birth evidence. Not published to workers or exposed through an API. */
+    snapshotRoute?: SnapshotRouteWire;
     batchId?: string;
     checkpoint?: Pick<TaskRunCheckpoint, "id" | "type">;
     completedWaitpoints?: {
@@ -101,14 +98,6 @@ export class EnqueueSystem {
     /** When true, allow the queue to push directly to worker queue if concurrency is available. */
     enableFastPath?: boolean;
     /**
-     * The run's fixed route carried from the wire, which takes precedence over the durable read below.
-     * Set at the INITIAL enqueue by a decorated birth (via onBirthResidency) — including a postgres birth,
-     * which carries an explicit `postgres` route — and on a re-enqueue from a dequeued/executing context.
-     * Present so neither a decorated birth nor a re-enqueue from a poll-lagging pod (dial reads undefined)
-     * loses the route. Undefined only for a legacy/mixed-version or pre-cutover run that carried none.
-     */
-    snapshotRoute?: SnapshotRouteWire;
-    /**
      * When set (inside `runStore.runInTransaction`), the snapshot write goes through this tx-bound
      * store so the promote+snapshot pair is atomic on the run's owning DB. The Redis enqueue
      * below is not part of that transaction.
@@ -118,16 +107,6 @@ export class EnqueueSystem {
     const prisma = tx ?? this.$.prisma;
 
     return await this.$.runLock.lockIf(!skipRunLock, "enqueueRun", [run.id], async () => {
-      // Resolve the run's durable storage route BEFORE the snapshot write so the QUEUED snapshot
-      // itself honors durable residency (not just the published message). A wire route passed by the
-      // caller (a decorated birth — postgres included — or a re-enqueue) wins over the durable read; the
-      // durable read is only for a legacy/mixed-version run that carried none, and resolves undefined for
-      // a genuinely never-enrolled / pre-cutover run (no field, no cost).
-      const route: SnapshotRoute | undefined = snapshotRoute
-        ? snapshotRouteFromWire(snapshotRoute, run.id)
-        : await this.$.runStore.readSnapshotRoute(run.id, env.organization.id);
-      const routeWire = route ? toWireRoute(route) : undefined;
-
       const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
         prisma,
         {
@@ -138,6 +117,7 @@ export class EnqueueSystem {
             metadata: snapshot?.metadata ?? undefined,
           },
           previousSnapshotId,
+          snapshotRoute,
           batchId,
           environmentId: env.id,
           environmentType: env.type,
@@ -148,7 +128,6 @@ export class EnqueueSystem {
           resolveCompletedWaitpointRecords,
           workerId,
           runnerId,
-          snapshotRoute: routeWire,
         },
         store
       );
@@ -156,11 +135,11 @@ export class EnqueueSystem {
       await this.publishRun({
         run,
         env,
+        snapshotRoute: snapshotRouteFromSnapshot(newSnapshot),
         checkpoint,
         includeTtl,
         anchorEligibilityAtQueuePosition,
         enableFastPath,
-        route,
       });
 
       return newSnapshot;
@@ -175,14 +154,15 @@ export class EnqueueSystem {
   public async publishRun({
     run,
     env,
+    snapshotRoute,
     checkpoint,
     includeTtl = false,
     anchorEligibilityAtQueuePosition = false,
     enableFastPath = false,
-    route,
   }: {
     run: TaskRun;
     env: MinimalAuthenticatedEnvironment;
+    snapshotRoute?: SnapshotRouteWire;
     checkpoint?: Pick<TaskRunCheckpoint, "id" | "type">;
     /** See `enqueueRun`. */
     includeTtl?: boolean;
@@ -190,10 +170,6 @@ export class EnqueueSystem {
     anchorEligibilityAtQueuePosition?: boolean;
     /** When true, allow the queue to push directly to worker queue if concurrency is available. */
     enableFastPath?: boolean;
-    /** The run's durable storage route, stamped on the message so a poll-lagging consumer honors its
-     *  true residency. The trigger path passes the birth route decided inside createRun; absent only for a
-     *  never-enrolled run. */
-    route?: SnapshotRoute;
   }) {
     const workerQueue = workerQueueForPublish(run, env, checkpoint);
 
@@ -229,7 +205,7 @@ export class EnqueueSystem {
         eligibleAtMs,
         attempt: 0,
         ttlExpiresAt,
-        snapshotRoute: route ? toWireRoute(route) : undefined,
+        snapshotRoute,
       },
     });
   }

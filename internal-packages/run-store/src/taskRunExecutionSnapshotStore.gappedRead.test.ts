@@ -43,8 +43,6 @@ describe("decorator reads over a gapped keyspace (P3 correction, Item 3)", () =>
           resolveDial: () => dial,
           residencyResolver: new SnapshotResidencyResolver({
             store: snapshotStore,
-            taskRunExists: async (id: string) =>
-              (await prisma.taskRun.count({ where: { id } })) > 0,
           }),
           logicalRunStoreRoute: ROUTE,
         });

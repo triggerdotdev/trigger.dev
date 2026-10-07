@@ -8,12 +8,7 @@ import {
   type ObjectCache,
 } from "@kubernetes/client-node";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
-import type {
-  CheckpointType,
-  EnvironmentType,
-  MachinePreset,
-  SnapshotRouteWire,
-} from "@trigger.dev/core/v3";
+import type { CheckpointType, EnvironmentType, MachinePreset } from "@trigger.dev/core/v3";
 import { type K8sApi, createK8sApi } from "../clients/kubernetes.js";
 import { ReconnectingInformer } from "../clients/reconnectingInformer.js";
 import { getRestoreRunnerId, getRunnerId } from "../util.js";
@@ -839,6 +834,8 @@ export class RunnerRestoreInformer {
   constructor(opts: {
     namespace: string;
     reconnectIntervalMs?: number;
+    /** How long the server keeps each watch open before closing it. */
+    watchTimeoutSeconds?: number;
     k8s?: K8sApi;
     /**
      * A restore found already failed with nothing here waiting on it, such as
@@ -859,13 +856,12 @@ export class RunnerRestoreInformer {
       name: "runner-restore",
       logger: this.logger,
       reconnectIntervalMs: opts.reconnectIntervalMs ?? 1_000,
+      path: `/apis/${GROUP}/${VERSION}/namespaces/${this.namespace}/${PLURAL}`,
+      watchTimeoutSeconds: opts.watchTimeoutSeconds ?? 300,
       list: () => this.listRestores(k8s),
-      makeInformer: (list) =>
-        k8s.makeInformer(
-          `/apis/${GROUP}/${VERSION}/namespaces/${this.namespace}/${PLURAL}`,
-          list,
-          RESTORE_SELECTOR
-        ),
+      makeInformer: (path, list) => k8s.makeInformer(path, list, RESTORE_SELECTOR),
+      onStall: (quietMs) =>
+        this.logger.warn("Restore informer watch stalled, reconnecting", { quietMs }),
     });
     this.informer = this.watch.informer;
     this.informer.on("add", (runner) => this.onEvent(runner, "add"));
@@ -1092,7 +1088,6 @@ export type RestoreOutcomeReport = (body: {
   outcome: "requeue" | "fail";
   reason: string;
   message?: string;
-  snapshotRoute?: SnapshotRouteWire;
 }) => Promise<{ success: true } | { success: false; error: string; statusCode?: number }>;
 
 export type RestoreFailureSettlement =
@@ -1117,8 +1112,6 @@ export async function settleRestoreFailure(
   failure: {
     runnerId: string;
     outcome: RestoreWatchResult & { ok: false };
-    /** The dequeued run's route, which spares the platform a read to find it. */
-    snapshotRoute?: SnapshotRouteWire;
   },
   deps: {
     deleteRunner: (runnerId: string, uid: string) => Promise<void>;
@@ -1148,7 +1141,6 @@ export async function settleRestoreFailure(
     outcome: action.outcome,
     reason,
     message: message ?? error,
-    ...(failure.snapshotRoute ? { snapshotRoute: failure.snapshotRoute } : {}),
   });
   const settled: Extract<RestoreFailureSettlement, { action: "reported" }> = result.success
     ? { action: "reported", outcome: action.outcome, result: "ok" }

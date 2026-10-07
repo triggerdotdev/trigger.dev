@@ -90,9 +90,9 @@ import type { SystemResources } from "./systems/systems.js";
 import {
   type RunStore,
   type SnapshotRoute,
-  type SnapshotRouteWire,
-  parseSnapshotRoute,
   PostgresRunStore,
+  snapshotRouteFromSnapshot,
+  toWireRoute,
 } from "@internal/run-store";
 import {
   type ControlPlaneResolver,
@@ -312,8 +312,6 @@ export class RunEngine {
             runId: payload.runId,
             completedAt: payload.completedAt,
             reason: payload.reason,
-            // Validate the carried route leniently; an unrecognized/absent one falls back to durable resolution.
-            snapshotRoute: parseSnapshotRoute(payload.snapshotRoute),
           });
         },
         queueRunsPendingVersion: async ({ payload }) => {
@@ -337,7 +335,6 @@ export class RunEngine {
         continueRunIfUnblocked: async ({ payload }) => {
           await this.waitpointSystem.continueRunIfUnblocked({
             runId: payload.runId,
-            snapshotRoute: parseSnapshotRoute(payload.snapshotRoute),
           });
         },
         ensureRunFinalized: async ({ payload }) => {
@@ -758,6 +755,7 @@ export class RunEngine {
         // Forward the bare caller tx so the routing store picks the owning DB by id.
         const taskRun = await this.runStore.createCancelledRun(
           {
+            organizationFlags: snapshot.environment.organization.featureFlags,
             data: {
               id,
               engine: "V2",
@@ -1054,17 +1052,16 @@ export class RunEngine {
         let taskRun: TaskRun & { associatedWaitpoint: Waitpoint | null };
         const taskRunId = RunId.fromFriendlyId(friendlyId);
         const initialSnapshotId = generateInternalId();
+        let birthRoute: SnapshotRoute | undefined;
 
         // App-level replacement for the dropped TaskRun env/project Cascade FKs.
         await this.controlPlaneResolver.assertEnvExists(environment.id);
-
-        // The birth residency route, decided once inside createRun and stamped on the initial enqueue.
-        let birthRoute: SnapshotRoute | undefined;
 
         try {
           // Forward the bare caller tx so the routing store picks the owning DB by id.
           taskRun = await this.runStore.createRun(
             {
+              organizationFlags: environment.organization.featureFlags,
               data: {
                 id: taskRunId,
                 engine: "V2",
@@ -1176,7 +1173,6 @@ export class RunEngine {
                       anchorRunId: taskRunId,
                     })
                   : undefined,
-              // Capture the birth residency route so the initial enqueue below stamps it (no lookup).
               onBirthResidency: (route) => {
                 birthRoute = route;
               },
@@ -1339,10 +1335,10 @@ export class RunEngine {
             await this.enqueueSystem.publishRun({
               run: taskRun,
               env: environment,
+              snapshotRoute: birthRoute ? toWireRoute(birthRoute) : undefined,
               includeTtl: true,
               anchorEligibilityAtQueuePosition: true,
               enableFastPath,
-              route: birthRoute,
             });
           } catch (enqueueError) {
             this.logger.error("engine.trigger(): failed to enqueue run", {
@@ -1677,7 +1673,6 @@ export class RunEngine {
     runnerId,
     isWarmStart,
     environmentId,
-    snapshotRoute,
     tx,
   }: {
     runId: string;
@@ -1686,8 +1681,6 @@ export class RunEngine {
     runnerId?: string;
     isWarmStart?: boolean;
     environmentId?: string;
-    // Carried from the DequeuedMessage via the worker's start-attempt request; see RunAttemptSystem.
-    snapshotRoute?: SnapshotRouteWire;
     tx?: PrismaClientOrTransaction;
   }): Promise<EngineStartRunAttemptResult> {
     return this.runAttemptSystem.startRunAttempt({
@@ -1697,7 +1690,6 @@ export class RunEngine {
       runnerId,
       isWarmStart,
       environmentId,
-      snapshotRoute,
       tx,
     });
   }
@@ -1710,7 +1702,6 @@ export class RunEngine {
     workerId,
     runnerId,
     environmentId,
-    snapshotRoute,
   }: {
     runId: string;
     snapshotId: string;
@@ -1718,8 +1709,6 @@ export class RunEngine {
     workerId?: string;
     runnerId?: string;
     environmentId?: string;
-    // Carried from the DequeuedMessage via the worker's complete request; see RunAttemptSystem.
-    snapshotRoute?: SnapshotRouteWire;
   }): Promise<CompleteRunAttemptResult> {
     return this.runAttemptSystem.completeRunAttempt({
       runId,
@@ -1728,7 +1717,6 @@ export class RunEngine {
       workerId,
       runnerId,
       environmentId,
-      snapshotRoute,
     });
   }
 
@@ -1740,34 +1728,34 @@ export class RunEngine {
   */
   async cancelRun({
     runId,
+    organizationId,
     workerId,
     runnerId,
     completedAt,
     reason,
     finalizeRun,
     bulkActionId,
-    snapshotRoute,
     tx,
   }: {
     runId: string;
+    organizationId?: string;
     workerId?: string;
     runnerId?: string;
     completedAt?: Date;
     reason?: string;
     finalizeRun?: boolean;
     bulkActionId?: string;
-    snapshotRoute?: SnapshotRouteWire;
     tx?: PrismaClientOrTransaction;
   }): Promise<ExecutionResult & { alreadyFinished: boolean }> {
     return this.runAttemptSystem.cancelRun({
       runId,
+      organizationId,
       workerId,
       runnerId,
       completedAt,
       reason,
       finalizeRun,
       bulkActionId,
-      snapshotRoute,
       tx,
     });
   }
@@ -1781,15 +1769,18 @@ export class RunEngine {
    */
   async rescheduleDelayedRun({
     runId,
+    organizationId,
     delayUntil,
     tx,
   }: {
     runId: string;
+    organizationId?: string;
     delayUntil: Date;
     tx?: PrismaClientOrTransaction;
   }): Promise<TaskRun> {
     return this.delayedRunSystem.rescheduleDelayedRun({
       runId,
+      organizationId,
       delayUntil,
       tx,
     });
@@ -2213,7 +2204,6 @@ export class RunEngine {
     batch,
     workerId,
     runnerId,
-    snapshotRoute,
     tx,
   }: {
     runId: string;
@@ -2225,8 +2215,6 @@ export class RunEngine {
     batch?: { id: string; index?: number };
     workerId?: string;
     runnerId?: string;
-    // Carried from the executing run's route so the suspend transition honors durable residency.
-    snapshotRoute?: SnapshotRouteWire;
     tx?: PrismaClientOrTransaction;
   }): Promise<TaskRunExecutionSnapshot> {
     return this.waitpointSystem.blockRunWithWaitpoint({
@@ -2239,7 +2227,6 @@ export class RunEngine {
       batch,
       workerId,
       runnerId,
-      snapshotRoute,
       tx,
     });
   }
@@ -2309,7 +2296,6 @@ export class RunEngine {
     checkpoint,
     workerId,
     runnerId,
-    snapshotRoute,
     tx,
   }: {
     runId: string;
@@ -2317,8 +2303,6 @@ export class RunEngine {
     checkpoint: CheckpointInput;
     workerId?: string;
     runnerId?: string;
-    // Carried from the DequeuedMessage via the worker's suspend request; see CheckpointSystem.
-    snapshotRoute?: SnapshotRouteWire;
     tx?: PrismaClientOrTransaction;
   }): Promise<CreateCheckpointResult> {
     return this.checkpointSystem.createCheckpoint({
@@ -2327,7 +2311,6 @@ export class RunEngine {
       checkpoint,
       workerId,
       runnerId,
-      snapshotRoute,
       tx,
     });
   }
@@ -2341,7 +2324,6 @@ export class RunEngine {
     workerId,
     runnerId,
     environmentId,
-    snapshotRoute,
     tx,
   }: {
     runId: string;
@@ -2349,8 +2331,6 @@ export class RunEngine {
     workerId?: string;
     runnerId?: string;
     environmentId?: string;
-    // Carried from the restore DequeuedMessage; see CheckpointSystem.
-    snapshotRoute?: SnapshotRouteWire;
     tx?: PrismaClientOrTransaction;
   }): Promise<ExecutionResult> {
     return this.checkpointSystem.continueRunExecution({
@@ -2359,7 +2339,6 @@ export class RunEngine {
       workerId,
       runnerId,
       environmentId,
-      snapshotRoute,
       tx,
     });
   }
@@ -2378,7 +2357,6 @@ export class RunEngine {
     workerId,
     runnerId,
     environmentId,
-    snapshotRoute,
   }: {
     runId: string;
     snapshotId: string;
@@ -2388,8 +2366,6 @@ export class RunEngine {
     workerId?: string;
     runnerId?: string;
     environmentId?: string;
-    // Carried from the restore DequeuedMessage; resolved durably when absent.
-    snapshotRoute?: SnapshotRouteWire;
   }): Promise<RestoreOutcomeResult> {
     return this.runAttemptSystem.reportRestoreOutcome({
       runId,
@@ -2400,7 +2376,6 @@ export class RunEngine {
       workerId,
       runnerId,
       environmentId,
-      snapshotRoute,
     });
   }
 
@@ -2413,12 +2388,14 @@ export class RunEngine {
   async heartbeatRun({
     runId,
     snapshotId,
+    organizationId,
     workerId,
     runnerId,
     tx,
   }: {
     runId: string;
     snapshotId: string;
+    organizationId?: string;
     workerId?: string;
     runnerId?: string;
     tx?: PrismaClientOrTransaction;
@@ -2426,6 +2403,7 @@ export class RunEngine {
     return this.executionSnapshotSystem.heartbeatRun({
       runId,
       snapshotId,
+      organizationId,
       workerId,
       runnerId,
       tx,
@@ -2436,10 +2414,12 @@ export class RunEngine {
   async getRunExecutionData({
     runId,
     environmentId,
+    organizationId,
     tx,
   }: {
     runId: string;
     environmentId?: string;
+    organizationId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<RunExecutionData | null> {
     const prisma = tx ?? this.prisma;
@@ -2448,7 +2428,8 @@ export class RunEngine {
         prisma,
         runId,
         this.runStore,
-        environmentId
+        environmentId,
+        organizationId
       );
       return executionDataFromSnapshot(snapshot);
     } catch (e) {
@@ -2467,11 +2448,13 @@ export class RunEngine {
     runId,
     snapshotId,
     environmentId,
+    organizationId,
     tx,
   }: {
     runId: string;
     snapshotId: string;
     environmentId?: string;
+    organizationId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<RunExecutionData[] | null> {
     const useReplica =
@@ -2490,7 +2473,8 @@ export class RunEngine {
         snapshotId,
         this.runStore,
         repairClient,
-        environmentId
+        environmentId,
+        organizationId
       );
       return snapshots.map(executionDataFromSnapshot);
     };
@@ -2637,7 +2621,7 @@ export class RunEngine {
   async repairEnvironment(environment: AuthenticatedEnvironment, dryRun: boolean) {
     const runIds = await this.runQueue.getCurrentConcurrencyOfEnvironment(environment);
 
-    return this.#repairRuns(runIds, dryRun);
+    return this.#repairRuns(runIds, dryRun, environment.organizationId);
   }
 
   async repairQueue(
@@ -2650,10 +2634,10 @@ export class RunEngine {
 
     const runIdsToRepair = runIds.filter((runId) => !ignoreRunIds.includes(runId));
 
-    return this.#repairRuns(runIdsToRepair, dryRun);
+    return this.#repairRuns(runIdsToRepair, dryRun, environment.organizationId);
   }
 
-  async #repairRuns(runIds: string[], dryRun: boolean) {
+  async #repairRuns(runIds: string[], dryRun: boolean, organizationId: string) {
     if (runIds.length === 0) {
       return {
         runIds,
@@ -2665,7 +2649,7 @@ export class RunEngine {
     const repairs = await pMap(
       runIds,
       async (runId) => {
-        return this.#repairRun(runId, dryRun);
+        return this.#repairRun(runId, dryRun, organizationId);
       },
       { concurrency: 5 }
     );
@@ -2694,8 +2678,14 @@ export class RunEngine {
     });
   }
 
-  async #repairRun(runId: string, dryRun: boolean) {
-    const snapshot = await getLatestExecutionSnapshot(this.prisma, runId, this.runStore);
+  async #repairRun(runId: string, dryRun: boolean, organizationId: string) {
+    const snapshot = await getLatestExecutionSnapshot(
+      this.prisma,
+      runId,
+      this.runStore,
+      undefined,
+      organizationId
+    );
 
     if (
       snapshot.executionStatus === "QUEUED" ||
@@ -2912,16 +2902,10 @@ export class RunEngine {
             throw new Error(`Run ${runId} not found`);
           }
 
-          // The heartbeat payload carries no route, so resolve it durably for the QUEUED snapshot.
-          const snapshotRoute = await this.runAttemptSystem.effectiveRoute(
-            runId,
-            latestSnapshot.organizationId,
-            undefined
-          );
-
           //it will automatically be requeued X times depending on the queue retry settings
           const { wasRequeued } = await this.runAttemptSystem.tryNackAndRequeue({
             run,
+            snapshotRoute: snapshotRouteFromSnapshot(latestSnapshot),
             environment: {
               id: latestSnapshot.environmentId,
               type: latestSnapshot.environmentType,
@@ -2936,7 +2920,6 @@ export class RunEngine {
               code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
               message: `Trying to create an attempt failed multiple times, exceeding how many times we retry.`,
             },
-            snapshotRoute,
             tx: prisma,
           });
 
@@ -3106,6 +3089,7 @@ export class RunEngine {
               // Reschedule the heartbeat
               await this.executionSnapshotSystem.restartHeartbeatForRun({
                 runId,
+                organizationId: latestSnapshot.organizationId,
                 delayMs,
                 restartAttempt: $restartAttempt,
                 tx,
@@ -3125,6 +3109,7 @@ export class RunEngine {
           //we force the run to be cancelled
           await this.cancelRun({
             runId: latestSnapshot.runId,
+            organizationId: latestSnapshot.organizationId,
             finalizeRun: true,
             tx,
           });

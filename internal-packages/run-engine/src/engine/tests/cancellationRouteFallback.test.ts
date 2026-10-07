@@ -43,7 +43,6 @@ function makeEngine(
     resolveDial: dial,
     residencyResolver: new SnapshotResidencyResolver({
       store: snapshotStore,
-      taskRunExists: async (id: string) => (await prisma.taskRun.count({ where: { id } })) > 0,
     }),
     resolveCompletedWaitpoints: createCompletedWaitpointResolver(delegate),
     logicalRunStoreRoute: ROUTE,

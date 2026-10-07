@@ -1,10 +1,5 @@
-// Devin 83 (local completions drop residency): completeRunAttempt must honor a redis-primary run's
-// durable residency even when the caller carries NO route. The dev CLI and dev complete route omit the
-// route, so on a poll-lagging / undefined-dial webapp the terminal FINISHED transition would take the
-// inert Postgres shortcut and strand the run's MemoryDB head. completeRunAttempt now resolves the route
-// once (forceDurable) as a central fallback (attemptSucceeded / attemptFailed). This drives the real
-// queue -> dequeue -> start-attempt chain, then completes ROUTE-LESS on an undefined-dial engine and
-// proves the FINISHED head advances in MemoryDB with no Postgres TRES row. No mocks.
+// Client callbacks carry no storage route. The real queue, dequeue, attempt and completion path
+// must follow stored residency on a lagging engine, advancing MemoryDB without creating TRES.
 import { containerTest } from "@internal/testcontainers";
 import {
   PostgresRunStore,
@@ -90,7 +85,6 @@ describe("completeRunAttempt honors durable residency when the caller carries no
       const memoryDb = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
       const resolver = new SnapshotResidencyResolver({
         store: memoryDb,
-        taskRunExists: async (id) => (await prisma.taskRun.count({ where: { id } })) > 0,
       });
 
       const producer = new TaskRunExecutionSnapshotStore(delegate, {
@@ -157,7 +151,6 @@ describe("completeRunAttempt honors durable residency when the caller carries no
         const started = await engine.startRunAttempt({
           runId,
           snapshotId: message.snapshot.id,
-          snapshotRoute: message.snapshotRoute,
         });
         const executingId = started.snapshot.id;
         expect((await memoryDb.getLatest(runId))?.id).toBe(executingId);

@@ -7,12 +7,10 @@ export default defineConfig({
     globals: true,
     pool: "forks",
     /**
-     * These compare wall-clock timings between two implementations. Single
-     * samples on a shared CI runner swing by more than the ratios being
-     * asserted, so they are kept out of the default suite and run on demand
-     * with `pnpm run test:perf`. Correctness is covered by the ordinary
-     * suites; these exist to show the shape of the win and to catch a
-     * large regression locally.
+     * Heavy suites kept out of CI and run on demand with `pnpm run test:perf`:
+     * wall-clock comparisons (single samples on a shared runner swing by more
+     * than the ratios asserted) and large-trace stress runs. Their key
+     * correctness cases also have a light version in the ordinary suites.
      */
     fileParallelism: false,
     testTimeout: 120_000,

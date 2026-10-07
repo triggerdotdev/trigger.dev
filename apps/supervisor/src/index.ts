@@ -292,6 +292,7 @@ class ManagedSupervisor {
           register,
           namespace: env.KUBERNETES_NAMESPACE,
           reconnectIntervalMs: env.FAILED_POD_HANDLER_RECONNECT_INTERVAL_MS,
+          watchTimeoutSeconds: env.FAILED_POD_HANDLER_WATCH_TIMEOUT_SECONDS,
         });
       } else {
         this.logger.warn("Failed pod handler disabled");
@@ -741,8 +742,6 @@ class ManagedSupervisor {
       nextAttemptNumber: message.run.attemptNumber,
       snapshotId: message.snapshot.id,
       snapshotFriendlyId: message.snapshot.friendlyId,
-      // Carry the run's storage route to the runner pod so its start request echoes it back.
-      snapshotRoute: message.snapshotRoute,
       placementTags: message.placementTags,
       traceContext: message.run.traceContext,
       annotations: message.run.annotations,
@@ -766,7 +765,6 @@ class ManagedSupervisor {
         {
           runFriendlyId: message.run.friendlyId,
           snapshotFriendlyId: message.snapshot.friendlyId,
-          snapshotRoute: message.snapshotRoute,
         },
         restore
       );
@@ -810,7 +808,6 @@ class ManagedSupervisor {
   private async reportRestoreFailure({
     runFriendlyId,
     snapshotFriendlyId,
-    snapshotRoute,
     runnerId,
     outcome,
   }: RestoreFailure) {
@@ -829,7 +826,7 @@ class ManagedSupervisor {
       return;
     }
     const settled = await settleRestoreFailure(
-      { runnerId, outcome, snapshotRoute },
+      { runnerId, outcome },
       {
         deleteRunner: (name, uid) => manager.deleteRestoreRunner(name, uid),
         report: (body) =>

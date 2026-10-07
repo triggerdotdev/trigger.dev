@@ -36,7 +36,7 @@ import type {
   WaitpointColocationOptions,
 } from "./types.js";
 import { Logger } from "@trigger.dev/core/logger";
-import type { SnapshotRoute } from "./snapshotResidency.js";
+import type { SnapshotReadContext, SnapshotRoute } from "./snapshotResidency.js";
 import { isReadReplicaClient } from "./readReplicaClient.js";
 import { CONNECTED_RUNS_LIMIT } from "./PostgresRunStore.js";
 import { noopRoutingStoreMetrics, type RoutingStoreMetrics } from "./routingStoreMetrics.js";
@@ -1243,13 +1243,15 @@ export class RoutingRunStore implements RunStore {
   async findLatestExecutionSnapshot(
     runId: string,
     client?: ReadClient,
-    environmentId?: string
+    environmentId?: string,
+    organizationId?: SnapshotReadContext
   ): Promise<LatestExecutionSnapshotRead | null> {
     const owningStore = this.#routeOrNew(runId);
     const snapshot = await owningStore.findLatestExecutionSnapshot(
       runId,
       RoutingRunStore.#ownPrimary(owningStore, client),
-      environmentId
+      environmentId,
+      organizationId
     );
     if (snapshot) {
       await this.#reresolveCompletedWaitpointsCrossDb(
@@ -1304,30 +1306,44 @@ export class RoutingRunStore implements RunStore {
   // rather than hardcode #new — which strands every cuid run's #legacy snapshots.
   async findExecutionSnapshot<T extends Prisma.TaskRunExecutionSnapshotFindFirstArgs>(
     args: Prisma.SelectSubset<T, Prisma.TaskRunExecutionSnapshotFindFirstArgs>,
-    client?: ReadClient
+    client?: ReadClient,
+    organizationId?: SnapshotReadContext
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<T> | null> {
     const runId = snapshotWhereRunId(args);
     if (runId !== undefined) {
       const store = this.#routeOrNew(runId);
-      return store.findExecutionSnapshot(args, RoutingRunStore.#ownPrimary(store, client));
+      return store.findExecutionSnapshot(
+        args,
+        RoutingRunStore.#ownPrimary(store, client),
+        organizationId
+      );
     }
     return this.#probeFirst((store) =>
-      store.findExecutionSnapshot(args, RoutingRunStore.#ownPrimary(store, client))
+      store.findExecutionSnapshot(args, RoutingRunStore.#ownPrimary(store, client), organizationId)
     );
   }
 
   // Snapshot reads route by OWNING run id; merge both DBs for an open/cross-residency where.
   async findManyExecutionSnapshots<T extends Prisma.TaskRunExecutionSnapshotFindManyArgs>(
     args: Prisma.SelectSubset<T, Prisma.TaskRunExecutionSnapshotFindManyArgs>,
-    client?: ReadClient
+    client?: ReadClient,
+    organizationId?: SnapshotReadContext
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<T>[]> {
     const runId = snapshotWhereRunId(args);
     if (runId !== undefined) {
       const store = this.#routeOrNew(runId);
-      return store.findManyExecutionSnapshots(args, RoutingRunStore.#ownPrimary(store, client));
+      return store.findManyExecutionSnapshots(
+        args,
+        RoutingRunStore.#ownPrimary(store, client),
+        organizationId
+      );
     }
     const legs = await this.#fanOut(this.#probeOrder, (store) =>
-      store.findManyExecutionSnapshots(args, RoutingRunStore.#ownPrimary(store, client))
+      store.findManyExecutionSnapshots(
+        args,
+        RoutingRunStore.#ownPrimary(store, client),
+        organizationId
+      )
     );
     return legs.flat();
   }
@@ -1346,10 +1362,9 @@ export class RoutingRunStore implements RunStore {
   // The route lives on the run's owning store (its decorated leaf), so read it there by run id.
   async readSnapshotRoute(
     runId: string,
-    organizationId: string,
-    options?: { forceDurable?: boolean; knownToExist?: boolean }
+    organizationId: string
   ): Promise<SnapshotRoute | undefined> {
-    return this.#routeOrNew(runId).readSnapshotRoute(runId, organizationId, options);
+    return this.#routeOrNew(runId).readSnapshotRoute(runId, organizationId);
   }
 
   // The CompletedWaitpoint join co-locates with the snapshot, which co-locates with its run. When the
@@ -1359,19 +1374,24 @@ export class RoutingRunStore implements RunStore {
   async findSnapshotCompletedWaitpointIds(
     snapshotId: string,
     client?: ReadClient,
-    runId?: string
+    runId?: string,
+    organizationId?: SnapshotReadContext
   ): Promise<string[]> {
     if (runId !== undefined) {
       const store = this.#routeOrNew(runId);
       return store.findSnapshotCompletedWaitpointIds(
         snapshotId,
-        RoutingRunStore.#ownPrimary(store, client)
+        RoutingRunStore.#ownPrimary(store, client),
+        runId,
+        organizationId
       );
     }
     const legs = await this.#fanOut(this.#probeOrder, (store) =>
       store.findSnapshotCompletedWaitpointIds(
         snapshotId,
-        RoutingRunStore.#ownPrimary(store, client)
+        RoutingRunStore.#ownPrimary(store, client),
+        runId,
+        organizationId
       )
     );
     return uniqueStrings(legs.flat());
@@ -1382,19 +1402,24 @@ export class RoutingRunStore implements RunStore {
   async findSnapshotCompletedWaitpointIdsWithPresence(
     snapshotId: string,
     client?: ReadClient,
-    runId?: string
+    runId?: string,
+    organizationId?: SnapshotReadContext
   ): Promise<{ present: boolean; ids: string[] }> {
     if (runId !== undefined) {
       const store = this.#routeOrNew(runId);
       return store.findSnapshotCompletedWaitpointIdsWithPresence(
         snapshotId,
-        RoutingRunStore.#ownPrimary(store, client)
+        RoutingRunStore.#ownPrimary(store, client),
+        runId,
+        organizationId
       );
     }
     const legs = await this.#fanOut(this.#probeOrder, (store) =>
       store.findSnapshotCompletedWaitpointIdsWithPresence(
         snapshotId,
-        RoutingRunStore.#ownPrimary(store, client)
+        RoutingRunStore.#ownPrimary(store, client),
+        runId,
+        organizationId
       )
     );
     return {

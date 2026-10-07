@@ -2,6 +2,7 @@ import { z } from "zod";
 import { DeployBuildPath } from "@trigger.dev/core/v3";
 
 export const FEATURE_FLAG = {
+  snapshotStoreMode: "snapshotStoreMode",
   allowEmptyEnvironmentVariableValues: "allowEmptyEnvironmentVariableValues",
   defaultWorkerInstanceGroupId: "defaultWorkerInstanceGroupId",
   taskEventRepository: "taskEventRepository",
@@ -55,9 +56,12 @@ export const FEATURE_FLAG = {
   apiRateLimitMetricsEnabled: "apiRateLimitMetricsEnabled",
   queueArchivingEnabled: "queueArchivingEnabled",
   supportAccessSettingsEnabled: "supportAccessSettingsEnabled",
+  progressiveTraceLoadingEnabled: "progressiveTraceLoadingEnabled",
 } as const;
 
 export const FeatureFlagCatalog = {
+  // Organization override, then global default, then off.
+  [FEATURE_FLAG.snapshotStoreMode]: z.enum(["off", "dual-write", "redis-read", "redis-only"]),
   [FEATURE_FLAG.allowEmptyEnvironmentVariableValues]: z.boolean(),
   [FEATURE_FLAG.defaultWorkerInstanceGroupId]: z.string(),
   [FEATURE_FLAG.taskEventRepository]: z.enum(["clickhouse", "clickhouse_v2", "postgres"]),
@@ -190,6 +194,7 @@ export const FeatureFlagCatalog = {
   // Shows the org Support Access settings page. Off until every webapp enforces the setting;
   // the org override wins over the global value.
   [FEATURE_FLAG.supportAccessSettingsEnabled]: z.boolean(),
+  [FEATURE_FLAG.progressiveTraceLoadingEnabled]: z.boolean(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;

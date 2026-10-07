@@ -2,8 +2,10 @@ import {
   ArrowUturnLeftIcon,
   BoltSlashIcon,
   BookOpenIcon,
+  CheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  ExclamationTriangleIcon,
   InformationCircleIcon,
   LockOpenIcon,
   MagnifyingGlassMinusIcon,
@@ -22,7 +24,7 @@ import {
 } from "@trigger.dev/core/v3";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { redirect } from "remix-typedjson";
 import { ChevronExtraSmallDown } from "~/assets/icons/ChevronExtraSmallDown";
@@ -36,7 +38,6 @@ import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { Callout } from "~/components/primitives/Callout";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTimeShort } from "~/components/primitives/DateTime";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
@@ -45,6 +46,7 @@ import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Spinner } from "~/components/primitives/Spinner";
 import { Popover, PopoverArrowTrigger, PopoverContent } from "~/components/primitives/Popover";
 import * as Property from "~/components/primitives/PropertyTable";
 import {
@@ -83,6 +85,8 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useEventSource } from "~/hooks/useEventSource";
 import { useInitialDimensions } from "~/hooks/useInitialDimensions";
 import { useOrganization } from "~/hooks/useOrganizations";
+import { useProgressiveTrace, type ProgressiveTraceInput } from "~/hooks/useProgressiveTrace";
+import { useRunStatusBackstop } from "~/hooks/useRunStatusBackstop";
 import { useProject } from "~/hooks/useProject";
 import { useReplaceSearchParams } from "~/hooks/useReplaceSearchParams";
 import { useSearchParams } from "~/hooks/useSearchParam";
@@ -101,10 +105,9 @@ import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.se
 import { buildSyntheticRunHeader } from "~/v3/mollifier/syntheticRunHeader.server";
 import { buildSyntheticTraceForBufferedRun } from "~/v3/mollifier/syntheticTrace.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
-import { getImpersonationId } from "~/services/impersonation.server";
 import { logger } from "~/services/logger.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
-import { requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import { rbac } from "~/services/rbac.server";
 import { runAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
@@ -119,10 +122,15 @@ import {
   v3RunRedirectPath,
   v3RunSpanPath,
   v3RunStreamingPath,
+  v3RunTraceChunkPath,
+  v3RunStatusPath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
 import type { SpanOverride } from "~/v3/eventRepository/eventRepository.types";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { shouldRevalidateRunPage } from "./shouldRevalidateRunPage";
+import { settleUnloadedRoot } from "./settleUnloadedRoot";
+import { getTraceStatus, type TraceStatus } from "./traceStatus";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
 import { pageMeta } from "~/utils/pageTitle";
 
@@ -273,27 +281,33 @@ async function runWritePermissions(request: Request, userId: string, organizatio
   return { canReplayRun: canWriteRun, canCancelRun: canWriteRun };
 }
 
+export { shouldRevalidateRunPage as shouldRevalidate };
+
 export const handle: Handle = {
   agentPageContext: (data) => runAgentPageContext(data),
 };
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const impersonationId = await getImpersonationId(request);
+  const user = await requireUser(request);
+  const userId = user.id;
   const { projectParam, organizationSlug, envParam, runParam } = v3RunParamsSchema.parse(params);
 
   const url = new URL(request.url);
-  const showDebug = url.searchParams.get("showDebug") === "true";
+  // Same rule as the trace-chunk route, so the first chunk and later chunks agree.
+  const showDebug =
+    url.searchParams.get("showDebug") === "true" && (user.admin || user.isImpersonating);
+  const selectedSpanId = url.searchParams.get("span") ?? undefined;
 
   const presenter = new RunPresenter();
   const [error, result] = await tryCatch(
     presenter.call({
       userId,
-      showDeletedLogs: !!impersonationId,
+      showDeletedLogs: user.isImpersonating,
       projectSlug: projectParam,
       runFriendlyId: runParam,
       environmentSlug: envParam,
       showDebug,
+      selectedSpanId,
     })
   );
 
@@ -469,6 +483,49 @@ export default function Page() {
     useSpan: !!spanParam,
   });
 
+  const runActions = (
+    <>
+      {run.isFinished ? null : (
+        <ControlledCancelRunDialog
+          key={`cancel-${run.friendlyId}`}
+          canCancel={canCancelRun}
+          runFriendlyId={run.friendlyId}
+          redirectPath={v3RunSpanPath(
+            organization,
+            project,
+            environment,
+            { friendlyId: run.friendlyId },
+            { spanId: run.spanId }
+          )}
+        />
+      )}
+      <Dialog key={`replay-${run.friendlyId}`}>
+        <DialogTrigger asChild>
+          <Button
+            variant="secondary/small"
+            LeadingIcon={ArrowUturnLeftIcon}
+            shortcut={{ key: "R" }}
+            className="pr-2"
+            disabled={!canReplayRun}
+            tooltip={canReplayRun ? undefined : "You don't have permission to replay runs"}
+          >
+            Replay run
+          </Button>
+        </DialogTrigger>
+        <ReplayRunDialog
+          runFriendlyId={run.friendlyId}
+          failedRedirect={v3RunSpanPath(
+            organization,
+            project,
+            environment,
+            { friendlyId: run.friendlyId },
+            { spanId: run.spanId }
+          )}
+        />
+      </Dialog>
+    </>
+  );
+
   return (
     <>
       <NavBar>
@@ -528,63 +585,120 @@ export default function Page() {
               Run docs
             </LinkButton>
           </WhenAgentUnavailable>
-          <Dialog key={`replay-${run.friendlyId}`}>
-            <DialogTrigger asChild>
-              <Button
-                variant="secondary/small"
-                LeadingIcon={ArrowUturnLeftIcon}
-                shortcut={{ key: "R" }}
-                className="pr-2"
-                disabled={!canReplayRun}
-                tooltip={canReplayRun ? undefined : "You don't have permission to replay runs"}
-              >
-                Replay run
-              </Button>
-            </DialogTrigger>
-            <ReplayRunDialog
-              runFriendlyId={run.friendlyId}
-              failedRedirect={v3RunSpanPath(
-                organization,
-                project,
-                environment,
-                { friendlyId: run.friendlyId },
-                { spanId: run.spanId }
-              )}
-            />
-          </Dialog>
-          {run.isFinished ? null : (
-            <ControlledCancelRunDialog
-              key={`cancel-${run.friendlyId}`}
-              canCancel={canCancelRun}
-              runFriendlyId={run.friendlyId}
-              redirectPath={v3RunSpanPath(
-                organization,
-                project,
-                environment,
-                { friendlyId: run.friendlyId },
-                { spanId: run.spanId }
-              )}
-            />
-          )}
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
         {trace ? (
           <TraceView
+            key={run.friendlyId}
             run={run}
             trace={trace}
             maximumLiveReloadingSetting={maximumLiveReloadingSetting}
             resizable={resizable}
+            actions={runActions}
           />
         ) : (
-          <NoLogsView run={run} resizable={resizable} />
+          <NoLogsView run={run} resizable={resizable} actions={runActions} />
         )}
       </PageBody>
     </>
   );
 }
 
-function shouldLiveReload({
+function RunToolbar({
+  filters,
+  status,
+  actions,
+}: {
+  filters?: React.ReactNode;
+  status?: React.ReactNode;
+  actions: React.ReactNode;
+}) {
+  return (
+    <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-grid-bright pl-1.5 pr-2">
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto scrollbar-none">
+        {filters}
+      </div>
+      <div className="flex shrink-0 items-center gap-4">
+        {status}
+        <div className="flex items-center gap-2">{actions}</div>
+      </div>
+    </div>
+  );
+}
+
+function TraceFilters({
+  onFilterTextChange,
+  showQueueTime,
+  onShowQueueTimeChange,
+  errorsOnly,
+  onErrorsOnlyChange,
+}: {
+  onFilterTextChange: (text: string) => void;
+  showQueueTime: boolean;
+  onShowQueueTimeChange: (show: boolean) => void;
+  errorsOnly: boolean;
+  onErrorsOnlyChange: (errorsOnly: boolean) => void;
+}) {
+  const isAdmin = useHasAdminAccess();
+  const { value, replace } = useSearchParams();
+  const showDebug = value("showDebug") === "true";
+
+  return (
+    <>
+      <SearchField onChange={onFilterTextChange} />
+      <Switch
+        variant="secondary/small"
+        label="Queue time"
+        checked={showQueueTime}
+        onCheckedChange={(e) => onShowQueueTimeChange(e.valueOf())}
+        shortcut={{ key: "Q" }}
+      />
+      <Switch
+        variant="secondary/small"
+        label="Errors only"
+        checked={errorsOnly}
+        onCheckedChange={(e) => onErrorsOnlyChange(e.valueOf())}
+      />
+      {isAdmin && (
+        <Switch
+          variant="secondary/small"
+          label="Debug"
+          shortcut={{ modifiers: ["shift"], key: "D" }}
+          checked={showDebug}
+          onCheckedChange={(checked) => {
+            replace({
+              showDebug: checked ? "true" : "false",
+            });
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+// Coarse on purpose: the tail normally flips the root to terminal itself.
+const RUN_STATUS_BACKSTOP_POLL_MS = 15_000;
+
+// Tail path: no size cap. Keeps tailing while the root still looks unfinished, so
+// final rows that become visible late still land, but not long after completion.
+const LIVE_TAIL_UNRESOLVED_ROOT_MS = 5 * 60_000;
+
+function msSinceCompleted(run: { completedAt: string | null }): number | null {
+  return run.completedAt ? Date.now() - new Date(run.completedAt).getTime() : null;
+}
+
+function shouldLiveReload(
+  run: { completedAt: string | null },
+  rootSpanStatus: "executing" | "completed" | "failed"
+): boolean {
+  const sinceCompleted = msSinceCompleted(run);
+  if (sinceCompleted === null || sinceCompleted < 30_000) return true;
+  return rootSpanStatus === "executing" && sinceCompleted < LIVE_TAIL_UNRESOLVED_ROOT_MS;
+}
+
+// Legacy path (live tail off): revalidate on ping, with the old size cap.
+function shouldLiveReloadLegacy({
   events,
   maximumLiveReloadingSetting,
   run,
@@ -593,20 +707,23 @@ function shouldLiveReload({
   maximumLiveReloadingSetting: number;
   run: { completedAt: string | null };
 }): boolean {
-  // We don't live reload if there are a ton of spans/logs
   if (events.length > maximumLiveReloadingSetting) return false;
-
-  // If the run was completed a while ago, we don't need to live reload anymore
   if (run.completedAt && new Date(run.completedAt).getTime() < Date.now() - 30_000) return false;
-
   return true;
 }
 
 type TraceViewProps = Pick<LoaderData, "run" | "maximumLiveReloadingSetting" | "resizable"> & {
   trace: NonNullable<LoaderData["trace"]>;
+  actions: React.ReactNode;
 };
 
-function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: TraceViewProps) {
+function TraceView({
+  run,
+  trace,
+  maximumLiveReloadingSetting,
+  resizable,
+  actions,
+}: TraceViewProps) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -615,44 +732,145 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Trace
   const frozenSpanId = useFrozenValue(selectedSpanId);
   const displaySpanId = selectedSpanId ?? frozenSpanId;
 
+  const { queuedDuration, isTruncated = false, missingAnchor = false } = trace;
+
+  const [errorsOnly, setErrorsOnly] = useState(false);
+  const [filterText, setFilterText] = useState("");
+  const [showQueueTime, setShowQueueTime] = useState(false);
+
+  const chunkPath = v3RunTraceChunkPath(organization, project, environment, run);
+  const statusPath = v3RunStatusPath(organization, project, environment, run);
   const {
     events,
     duration,
     rootSpanStatus,
     rootStartedAt,
-    queuedDuration,
     overridesBySpanId,
-    isTruncated = false,
-    missingAnchor = false,
-  } = trace;
+    linkedRunIdBySpanId,
+    isComplete,
+    isTruncated: progressiveIsTruncated,
+    loadFailed,
+    tailLive,
+    liveTailEnabled,
+    retryLoad,
+  } = useProgressiveTrace(trace as unknown as ProgressiveTraceInput, chunkPath, errorsOnly);
+
+  const traceIsTruncated = isTruncated || progressiveIsTruncated;
+
+  // The page data still shows the run unfinished, so a finish reload is useful.
+  const runDataUnfinished = !run.isFinished && run.completedAt === null;
+
+  // Display only: live reload and finish detection keep using the unsettled root.
+  const settled = useMemo(
+    () =>
+      settleUnloadedRoot({
+        events,
+        duration,
+        rootSpanStatus,
+        run: { status: run.status, completedAt: run.completedAt },
+      }),
+    [events, duration, rootSpanStatus, run.status, run.completedAt]
+  );
 
   const changeToSpan = useDebounce((selectedSpan: string) => {
     replaceSearchParam("span", selectedSpan, { replace: true });
   }, 250);
 
-  const isLiveReloading = shouldLiveReload({ events, maximumLiveReloadingSetting, run });
+  // Tail path (flag on): delta-fetch per signal, skipped for truncated or partly
+  // failed trees. Legacy path: revalidate per signal, with the old size cap.
+  const isLiveReloading = liveTailEnabled
+    ? shouldLiveReload(run, rootSpanStatus) && !traceIsTruncated && !loadFailed
+    : shouldLiveReloadLegacy({
+        events: events as unknown as TraceEvent[],
+        maximumLiveReloadingSetting,
+        run,
+      });
 
+  const traceStatus = getTraceStatus({
+    // Same rule as live reload: only an end time means the run is done.
+    runFinished: run.completedAt !== null,
+    rootSpanStatus,
+    isComplete,
+    isTruncated: traceIsTruncated,
+    missingAnchor,
+    loadFailed,
+    isLiveReloading,
+    liveTailEnabled,
+    maximumLiveReloadingSetting,
+  });
+
+  // The revalidator's identity is unstable, so effects read it from a ref.
   const revalidator = useRevalidator();
+  const revalidatorRef = useRef(revalidator);
+  useEffect(() => {
+    revalidatorRef.current = revalidator;
+  });
+
   const streamedEvents = useEventSource(
     v3RunStreamingPath(organization, project, environment, run),
     {
       event: "message",
-      disabled: !isLiveReloading,
+      // The background load owns loading until it completes.
+      disabled: !isLiveReloading || !isComplete,
     }
   );
+  // On each stream message (a trace change or the 5s heartbeat): tail the delta, or
+  // revalidate on the legacy path.
   useEffect(() => {
-    if (streamedEvents !== null) {
-      revalidator.revalidate();
+    if (streamedEvents === null) return;
+    if (liveTailEnabled) {
+      tailLive();
+    } else {
+      revalidatorRef.current.revalidate();
     }
-    // WARNING Don't put the revalidator in the useEffect deps array or bad things will happen
-  }, [streamedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [streamedEvents, liveTailEnabled, tailLive]);
+
+  // Tail path: refresh run-row-fed controls once the root span goes terminal, unless a
+  // reload already brought the finished run (e.g. the backstop's).
+  const prevRootSpanRef = useRef({ runId: run.friendlyId, status: rootSpanStatus });
+  useEffect(() => {
+    const previous = prevRootSpanRef.current;
+    prevRootSpanRef.current = { runId: run.friendlyId, status: rootSpanStatus };
+    if (!liveTailEnabled || previous.runId !== run.friendlyId) return;
+    if (previous.status === "executing" && rootSpanStatus !== "executing" && runDataUnfinished) {
+      revalidatorRef.current.revalidate();
+    }
+  }, [run.friendlyId, rootSpanStatus, liveTailEnabled, runDataUnfinished]);
+
+  // Tail path backstop: reload once the run finishes, even if the tail missed the
+  // root's final row. Polls whatever the stream is doing, and keeps reloading until the
+  // page data shows the run finished (a reload can read a lagging replica).
+  useRunStatusBackstop({
+    enabled: liveTailEnabled && runDataUnfinished,
+    statusPath,
+    shouldSkip: () => document.visibilityState === "hidden",
+    onFinished: () => {
+      // The revalidate alone won't refresh the tree if the span count didn't change.
+      tailLive();
+      revalidatorRef.current.revalidate();
+    },
+    pollMs: RUN_STATUS_BACKSTOP_POLL_MS,
+  });
+
+  // SSE is off during the background load, so pick up rows written meanwhile. Runs
+  // even if live reload already stopped, as long as the run finished recently.
+  const sinceCompleted = msSinceCompleted(run);
+  const recentlyActive = sinceCompleted === null || sinceCompleted < LIVE_TAIL_UNRESOLVED_ROOT_MS;
+  const prevIsCompleteRef = useRef(isComplete);
+  useEffect(() => {
+    const wasComplete = prevIsCompleteRef.current;
+    prevIsCompleteRef.current = isComplete;
+    if (!liveTailEnabled || wasComplete || !isComplete) return;
+    if (recentlyActive && !traceIsTruncated && !loadFailed) {
+      tailLive();
+    }
+  }, [isComplete, recentlyActive, traceIsTruncated, loadFailed, liveTailEnabled, tailLive]);
 
   const spanOverrides = selectedSpanId ? overridesBySpanId?.[selectedSpanId] : undefined;
   const frozenSpanOverrides = useFrozenValue(spanOverrides);
   const displaySpanOverrides = selectedSpanId ? spanOverrides : frozenSpanOverrides;
 
-  // Get the linked run ID for cached spans (map built during RunPresenter walk)
-  const { linkedRunIdBySpanId } = trace;
+  // Get the linked run ID for cached spans (map updated as chunks assemble)
   const selectedSpanLinkedRunId = selectedSpanId
     ? linkedRunIdBySpanId?.[selectedSpanId]
     : undefined;
@@ -661,31 +879,37 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Trace
     (selectedSpanId ? selectedSpanLinkedRunId : frozenLinkedRunId) ?? undefined;
 
   return (
-    <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
+    <div className="grid h-full max-h-full grid-cols-[minmax(0,1fr)] grid-rows-[auto_1fr] overflow-hidden">
+      <RunToolbar
+        filters={
+          <TraceFilters
+            onFilterTextChange={setFilterText}
+            showQueueTime={showQueueTime}
+            onShowQueueTimeChange={setShowQueueTime}
+            errorsOnly={errorsOnly}
+            onErrorsOnlyChange={setErrorsOnly}
+          />
+        }
+        status={
+          <TraceStatusIndicator key={run.friendlyId} status={traceStatus} onRetry={retryLoad} />
+        }
+        actions={actions}
+      />
       <ResizablePanelGroup
         autosaveId={resizableSettings.parent.autosaveId}
         snapshot={resizable.parent as ResizableSnapshot}
-        className="h-full max-h-full"
+        className="h-full max-h-full min-h-0"
       >
         <ResizablePanel
           id={resizableSettings.parent.main.id}
           min={resizableSettings.parent.main.min}
         >
           <div className="flex h-full flex-col overflow-hidden">
-            {isTruncated && (
-              <div className="shrink-0 border-b border-grid-bright px-3 py-2">
-                <Callout variant="warning" className="text-sm">
-                  {missingAnchor
-                    ? "Trace too large to display completely."
-                    : "This run's trace is partially displayed because it exceeds the view limit."}
-                </Callout>
-              </div>
-            )}
             <div className="min-h-0 flex-1">
               <TasksTreeView
                 selectedId={selectedSpanId}
                 key={events[0]?.id ?? "-"}
-                events={events}
+                events={settled.events as unknown as TraceEvent[]}
                 onSelectedIdChanged={(selectedSpan) => {
                   //instantly close the panel if no span is selected
                   if (!selectedSpan) {
@@ -695,17 +919,18 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Trace
 
                   changeToSpan(selectedSpan);
                 }}
-                totalDuration={duration}
-                rootSpanStatus={rootSpanStatus}
+                totalDuration={settled.duration}
+                rootSpanStatus={settled.rootSpanStatus}
                 rootStartedAt={rootStartedAt ? new Date(rootStartedAt) : undefined}
                 queuedDuration={queuedDuration}
                 environmentType={run.environment.type}
-                shouldLiveReload={isLiveReloading}
-                maximumLiveReloadingSetting={maximumLiveReloadingSetting}
                 rootRun={run.rootTaskRun}
                 parentRun={run.parentTaskRun}
                 isCompleted={run.completedAt !== null}
                 treeSnapshot={resizable.tree as ResizableSnapshot}
+                errorsOnly={errorsOnly}
+                filterText={filterText}
+                showQueueTime={showQueueTime}
               />
             </div>
           </div>
@@ -782,7 +1007,11 @@ function ControlledCancelRunDialog({
   );
 }
 
-function NoLogsView({ run, resizable }: Pick<LoaderData, "run" | "resizable">) {
+function NoLogsView({
+  run,
+  resizable,
+  actions,
+}: Pick<LoaderData, "run" | "resizable"> & { actions: React.ReactNode }) {
   const plan = useCurrentPlan();
   const organization = useOrganization();
 
@@ -799,11 +1028,12 @@ function NoLogsView({ run, resizable }: Pick<LoaderData, "run" | "resizable">) {
     daysSinceCompleted !== undefined && daysSinceCompleted <= logRetention;
 
   return (
-    <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
+    <div className="grid h-full max-h-full grid-cols-[minmax(0,1fr)] grid-rows-[auto_1fr] overflow-hidden">
+      <RunToolbar actions={actions} />
       <ResizablePanelGroup
         autosaveId={resizableSettings.parent.autosaveId}
         snapshot={resizable.parent as ResizableSnapshot}
-        className="h-full max-h-full"
+        className="h-full max-h-full min-h-0"
       >
         <ResizablePanel
           id={resizableSettings.parent.main.id}
@@ -887,8 +1117,6 @@ type TasksTreeViewProps = {
   rootStartedAt: Date | undefined;
   queuedDuration: number | undefined;
   environmentType: RuntimeEnvironmentType;
-  shouldLiveReload: boolean;
-  maximumLiveReloadingSetting: number;
   rootRun: {
     friendlyId: string;
     spanId: string;
@@ -899,6 +1127,9 @@ type TasksTreeViewProps = {
   } | null;
   isCompleted: boolean;
   treeSnapshot?: ResizableSnapshot;
+  errorsOnly: boolean;
+  filterText: string;
+  showQueueTime: boolean;
 };
 
 function TasksTreeView({
@@ -910,27 +1141,19 @@ function TasksTreeView({
   rootStartedAt,
   queuedDuration,
   environmentType,
-  shouldLiveReload,
-  maximumLiveReloadingSetting,
   rootRun,
   parentRun,
   isCompleted,
   treeSnapshot,
+  errorsOnly,
+  filterText,
+  showQueueTime,
 }: TasksTreeViewProps) {
-  const isAdmin = useHasAdminAccess();
-  const [filterText, setFilterText] = useState("");
-  const [errorsOnly, setErrorsOnly] = useState(false);
   const [showDurations, setShowDurations] = useState(true);
-  const [showQueueTime, setShowQueueTime] = useState(false);
   const [scale, setScale] = useState(0);
   const parentRef = useRef<HTMLDivElement>(null);
   const treeScrollRef = useRef<HTMLDivElement>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
-  const { value, replace } = useSearchParams();
-
-  const searchValue = value("showDebug");
-  const showDebug = searchValue !== undefined ? searchValue === "true" : false;
-
   const displayEvents = events;
   const queuedTime = showQueueTime ? undefined : queuedDuration;
 
@@ -974,38 +1197,7 @@ function TasksTreeView({
   });
 
   return (
-    <div className="grid h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden">
-      <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed px-1.5">
-        <SearchField onChange={setFilterText} />
-        <div className="flex items-center gap-1.5">
-          {isAdmin && (
-            <Switch
-              variant="secondary/small"
-              label="Debug"
-              shortcut={{ modifiers: ["shift"], key: "D" }}
-              checked={showDebug}
-              onCheckedChange={(checked) => {
-                replace({
-                  showDebug: checked ? "true" : "false",
-                });
-              }}
-            />
-          )}
-          <Switch
-            variant="secondary/small"
-            label="Queue time"
-            checked={showQueueTime}
-            onCheckedChange={(e) => setShowQueueTime(e.valueOf())}
-            shortcut={{ key: "Q" }}
-          />
-          <Switch
-            variant="secondary/small"
-            label="Errors only"
-            checked={errorsOnly}
-            onCheckedChange={(e) => setErrorsOnly(e.valueOf())}
-          />
-        </div>
-      </div>
+    <div className="grid h-full grid-rows-[1fr_3.25rem] overflow-hidden">
       <ResizablePanelGroup autosaveId={resizableSettings.tree.autosaveId} snapshot={treeSnapshot}>
         {/* Tree list */}
         <ResizablePanel
@@ -1039,17 +1231,13 @@ function TasksTreeView({
                   This is the root task
                 </Paragraph>
               )}
-              <LiveReloadingStatus
-                rootSpanCompleted={rootSpanStatus !== "executing"}
-                isLiveReloading={shouldLiveReload}
-                settingValue={maximumLiveReloadingSetting}
-              />
             </div>
             <TreeView
               parentRef={parentRef}
               scrollRef={treeScrollRef}
               virtualizer={virtualizer}
               autoFocus
+              staticRowHeight
               tree={events}
               nodes={nodes}
               getNodeProps={getInteractiveNodeProps}
@@ -1138,9 +1326,9 @@ function TasksTreeView({
                 </div>
               )}
               onScroll={(scrollTop) => {
-                //sync the scroll to the tree
-                if (timelineScrollRef.current) {
-                  timelineScrollRef.current.scrollTop = scrollTop;
+                const el = timelineScrollRef.current;
+                if (el && Math.abs(el.scrollTop - scrollTop) >= 0.5) {
+                  el.scrollTop = scrollTop;
                 }
               }}
             />
@@ -1392,6 +1580,7 @@ function TimelineView({
             <TreeView
               scrollRef={timelineScrollRef}
               virtualizer={virtualizer}
+              staticRowHeight
               tree={events}
               nodes={nodes}
               getNodeProps={getNodeProps}
@@ -1523,9 +1712,9 @@ function TimelineView({
                 );
               }}
               onScroll={(scrollTop) => {
-                //sync the scroll to the tree
-                if (treeScrollRef.current) {
-                  treeScrollRef.current.scrollTop = scrollTop;
+                const el = treeScrollRef.current;
+                if (el && Math.abs(el.scrollTop - scrollTop) >= 0.5) {
+                  el.scrollTop = scrollTop;
                 }
               }}
             />
@@ -1700,36 +1889,141 @@ function ShowParentOrRootLinks({
   );
 }
 
-function LiveReloadingStatus({
-  rootSpanCompleted,
-  isLiveReloading,
-  settingValue,
-}: {
-  rootSpanCompleted: boolean;
-  isLiveReloading: boolean;
-  settingValue: number;
-}) {
-  if (rootSpanCompleted) return null;
+const ALL_LOADED_VISIBLE_MS = 4000;
+const ALL_LOADED_FADE_MS = 500;
 
-  return isLiveReloading ? (
-    <div className="flex items-center gap-1">
-      <PulsingDot />
-      <Paragraph variant="extra-small" className="whitespace-nowrap text-blue-500">
-        Live reloading
-      </Paragraph>
+type AllLoadedPhase = "shown" | "fading" | "gone";
+
+/** States after which "All spans loaded" is worth confirming. */
+const TRANSITION_KINDS = new Set<TraceStatus["kind"]>(["loading", "live", "failed"]);
+
+function TraceStatusIndicator({ status, onRetry }: { status: TraceStatus; onRetry: () => void }) {
+  // Opening an already-loaded finished run shows nothing; only a change earns the confirmation.
+  const [sawTransition, setSawTransition] = useState(false);
+  if (!sawTransition && TRANSITION_KINDS.has(status.kind)) {
+    setSawTransition(true);
+  }
+
+  switch (status.kind) {
+    case "loading":
+      return (
+        <SimpleTooltip
+          disableHoverableContent
+          className="max-w-xs"
+          content={status.reason}
+          button={
+            <StatusLabel className="text-text-dimmed">
+              <Spinner className="size-3" />
+              Loading spans…
+            </StatusLabel>
+          }
+        />
+      );
+    case "live":
+      return (
+        <StatusLabel className="text-blue-500">
+          <PulsingDot />
+          Live
+        </StatusLabel>
+      );
+    case "liveOff":
+      return (
+        <SimpleTooltip
+          disableHoverableContent
+          className="max-w-xs"
+          content={status.reason}
+          button={
+            <StatusLabel className="text-text-dimmed">
+              <BoltSlashIcon className="size-3.5" />
+              Live updates off
+            </StatusLabel>
+          }
+        />
+      );
+    case "partial":
+      return (
+        <SimpleTooltip
+          disableHoverableContent
+          className="max-w-xs"
+          content={status.reason}
+          button={
+            <StatusLabel className="text-warning">
+              <ExclamationTriangleIcon className="size-3.5" />
+              Partial trace
+            </StatusLabel>
+          }
+        />
+      );
+    case "failed":
+      return (
+        <SimpleTooltip
+          content={
+            <div className="max-w-xs p-1">
+              <Paragraph variant="small" className="text-wrap! text-text-dimmed">
+                {status.reason}
+              </Paragraph>
+              <Button variant="secondary/small" onClick={onRetry} className="mt-3">
+                Retry failed load
+              </Button>
+            </div>
+          }
+          button={
+            <StatusLabel className="text-warning">
+              <ExclamationTriangleIcon className="size-3.5" />
+              Couldn't load all spans
+            </StatusLabel>
+          }
+        />
+      );
+    case "allLoaded":
+      return sawTransition ? <AllLoadedStatus /> : null;
+    default:
+      return null;
+  }
+}
+
+/** Mounted only while all spans are loaded, so each mount starts its own fade. */
+function AllLoadedStatus() {
+  const [phase, setPhase] = useState<AllLoadedPhase>("shown");
+
+  useEffect(() => {
+    const fade = setTimeout(() => setPhase("fading"), ALL_LOADED_VISIBLE_MS);
+    const hide = setTimeout(() => setPhase("gone"), ALL_LOADED_VISIBLE_MS + ALL_LOADED_FADE_MS);
+    return () => {
+      clearTimeout(fade);
+      clearTimeout(hide);
+    };
+  }, []);
+
+  if (phase === "gone") return null;
+
+  return (
+    <StatusLabel
+      className={cn("text-text-dimmed transition-opacity", phase === "fading" && "opacity-0")}
+      style={{ transitionDuration: `${ALL_LOADED_FADE_MS}ms` }}
+    >
+      <CheckIcon className="size-3.5 text-success" />
+      All spans loaded
+    </StatusLabel>
+  );
+}
+
+function StatusLabel({
+  className,
+  style,
+  children,
+}: {
+  className?: string;
+  style?: React.CSSProperties;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={cn("flex items-center gap-1.5 whitespace-nowrap text-xs", className)}
+      style={style}
+    >
+      {children}
     </div>
-  ) : (
-    <SimpleTooltip
-      content={`Live reloading is disabled because you've exceeded ${settingValue} logs.`}
-      button={
-        <div className="flex items-center gap-1">
-          <BoltSlashIcon className="size-3.5 text-text-dimmed" />
-          <Paragraph variant="extra-small" className="whitespace-nowrap text-text-dimmed">
-            Live reloading disabled
-          </Paragraph>
-        </div>
-      }
-    />
   );
 }
 

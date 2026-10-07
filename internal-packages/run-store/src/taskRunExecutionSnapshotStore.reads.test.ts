@@ -101,6 +101,94 @@ function readerWithDial(
 
 describe("TaskRunExecutionSnapshotStore reads: per-org dial", () => {
   containerTest(
+    "mirrored waitpoint reads keep their Postgres links across read-mode changes",
+    async ({ prisma, redisOptions }) => {
+      const delegate = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = generateInternalId();
+        const birthId = generateInternalId();
+        const resumeId = generateInternalId();
+        const createdAt = new Date();
+        const writer = readerWithDial(delegate, store, env, "dual-write");
+        await writer.createRun({
+          data: buildCreateRunData(runId, env),
+          snapshot: birthSnapshot(env, birthId, createdAt),
+        });
+        const ids = [generateInternalId(), generateInternalId()];
+        for (const id of ids) {
+          await prisma.waitpoint.create({
+            data: {
+              id,
+              friendlyId: `waitpoint_${id}`,
+              type: "MANUAL",
+              status: "COMPLETED",
+              completedAt: createdAt,
+              idempotencyKey: id,
+              userProvidedIdempotencyKey: false,
+              projectId: env.projectId,
+              environmentId: env.id,
+            },
+          });
+        }
+        await writer.createExecutionSnapshot({
+          ...transitionInput(env, runId, resumeId, birthId, new Date(createdAt.getTime() + 1)),
+          completedWaitpoints: [
+            { id: ids[0], index: 0 },
+            { id: ids[1], index: 1 },
+            { id: ids[0], index: 2 },
+          ],
+        });
+
+        // Mirrored snapshots intentionally keep these links only in Postgres. A visible Redis
+        // entry with no cycle must not turn that into an authoritative empty resume payload.
+        expect(await store.getSnapshotWaitpointIds(runId, resumeId)).toEqual({
+          present: true,
+          distinctIds: [],
+          order: [],
+        });
+        for (const dial of ["off", "dual-write", "redis-read", "redis-only"] as const) {
+          const reader = readerWithDial(delegate, store, env, dial);
+          const actual = await reader.findSnapshotCompletedWaitpointIds(
+            resumeId,
+            prisma,
+            runId,
+            env.organizationId
+          );
+          expect.soft(actual.sort(), dial).toEqual([...ids].sort());
+          const withPresence = await reader.findSnapshotCompletedWaitpointIdsWithPresence(
+            resumeId,
+            prisma,
+            runId,
+            env.organizationId
+          );
+          expect.soft(withPresence.present, dial).toBe(true);
+          expect.soft(withPresence.ids.sort(), dial).toEqual([...ids].sort());
+          expect(
+            await reader.findSnapshotCompletedWaitpointIdsWithPresence(
+              birthId,
+              prisma,
+              runId,
+              env.organizationId
+            )
+          ).toEqual({ present: true, ids: [] });
+          expect(
+            await reader.findSnapshotCompletedWaitpointIdsWithPresence(
+              generateInternalId(),
+              prisma,
+              runId,
+              env.organizationId
+            )
+          ).toEqual({ present: false, ids: [] });
+        }
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  containerTest(
     "a mirrored run's read source follows the run ORG's live dial, not the constructed mode",
     async ({ prisma, redisOptions }) => {
       const delegate = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
@@ -129,9 +217,9 @@ describe("TaskRunExecutionSnapshotStore reads: per-org dial", () => {
           new Date(Date.now() + 5_000)
         );
 
-        // dial redis-read (constructed mode still dual-write) -> MemoryDB head, never the newer PG row.
+        // Redis-read must not serve a known older head over the committed Postgres copy.
         const redisRead = readerWithDial(delegate, store, env, "redis-read");
-        expect((await redisRead.findLatestExecutionSnapshot(runId))?.id).toBe(birthId);
+        expect((await redisRead.findLatestExecutionSnapshot(runId))?.id).toBe(pgOnlyId);
         const byId = await redisRead.findExecutionSnapshot({
           where: { runId, id: birthId },
         });

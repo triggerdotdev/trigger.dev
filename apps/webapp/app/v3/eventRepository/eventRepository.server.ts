@@ -68,7 +68,11 @@ import type {
   SpanSummary,
   StreamedTraceEvent,
   TraceAttributes,
+  TraceChunk,
+  TraceChunkCursor,
+  TraceChunkEvent,
   TraceDetailedSummary,
+  TraceErrorEvents,
   TraceEventOptions,
   TraceSummary,
 } from "./eventRepository.types";
@@ -93,6 +97,10 @@ export class EventRepository implements IEventRepository {
 
   get maximumLiveReloadingSetting() {
     return env.MAXIMUM_LIVE_RELOADING_EVENTS;
+  }
+
+  get maximumTraceViewCount() {
+    return env.EVENTS_CLICKHOUSE_MAX_TRACE_VIEW_COUNT;
   }
 
   constructor(
@@ -472,6 +480,52 @@ export class EventRepository implements IEventRepository {
     return undefined;
   }
 
+  public async getTraceChunk(
+    _storeTable: TaskEventStoreTable,
+    _environmentId: string,
+    _traceId: string,
+    _startCreatedAt: Date,
+    _endCreatedAt: Date | undefined,
+    _cursor: TraceChunkCursor | undefined,
+    _options?: { includeDebugLogs?: boolean; limit?: number }
+  ): Promise<TraceChunk | undefined> {
+    return undefined;
+  }
+
+  public async getTraceSpanCount(
+    _storeTable: TaskEventStoreTable,
+    _environmentId: string,
+    _traceId: string,
+    _startCreatedAt: Date,
+    _endCreatedAt: Date | undefined,
+    _options?: { includeDebugLogs?: boolean }
+  ): Promise<number | undefined> {
+    return undefined;
+  }
+
+  public async getTraceErrorEvents(
+    _storeTable: TaskEventStoreTable,
+    _environmentId: string,
+    _traceId: string,
+    _startCreatedAt: Date,
+    _endCreatedAt: Date | undefined,
+    _options?: { includeDebugLogs?: boolean }
+  ): Promise<TraceErrorEvents | undefined> {
+    return undefined;
+  }
+
+  public async getTraceSpanWithAncestors(
+    _storeTable: TaskEventStoreTable,
+    _environmentId: string,
+    _traceId: string,
+    _startCreatedAt: Date,
+    _endCreatedAt: Date | undefined,
+    _spanId: string,
+    _options?: { includeDebugLogs?: boolean }
+  ): Promise<TraceChunkEvent[] | undefined> {
+    return undefined;
+  }
+
   public async getTraceDetailedSummary(
     storeTable: TaskEventStoreTable,
     environmentId: string,
@@ -500,7 +554,7 @@ export class EventRepository implements IEventRepository {
     anchorSpanId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
-    options?: { includeDebugLogs?: boolean }
+    options?: { includeDebugLogs?: boolean; insertedAtEnd?: Date }
   ): Promise<TraceDetailedSummary | undefined> {
     const events = await this.taskEventStore.findDetailedTraceEvents(
       storeTable,

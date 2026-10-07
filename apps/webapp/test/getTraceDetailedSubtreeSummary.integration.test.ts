@@ -426,3 +426,170 @@ describe("getTraceDetailedSubtreeSummary", () => {
     INTEGRATION_TIMEOUT_MS
   );
 });
+
+describe("getTraceDetailedSubtreeSummary insertedAtEnd bound", () => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+
+  clickhouseTest(
+    "bounds full and descendant fetches by insertedAtEnd but not ancestor fetches",
+    async ({ clickhouseContainer }) => {
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        logLevel: "warn",
+      });
+      const repository = new ClickhouseEventRepository({
+        clickhouse,
+        version: "v2",
+        maximumTraceDetailedSummaryViewCount: TRACE_ROW_LIMIT,
+      });
+
+      const environmentId = "env_trace_bound";
+      const baseMs = Date.now() - 30 * DAY_MS;
+      const expiresAt = convertDateToClickhouseDateTime(new Date(baseMs + 400 * DAY_MS));
+
+      function row(
+        traceId: string,
+        spanId: string,
+        parentSpanId: string,
+        startOffsetMs: number,
+        insertedOffsetMs: number,
+        status: string
+      ): TaskEventV2Input {
+        return {
+          environment_id: environmentId,
+          organization_id: "org_trace_bound",
+          project_id: "proj_trace_bound",
+          task_identifier: "trace-bound-test-task",
+          run_id: `run_${spanId}`,
+          start_time: formatClickhouseStartTime(baseMs, startOffsetMs),
+          inserted_at: convertDateToClickhouseDateTime(new Date(baseMs + insertedOffsetMs)),
+          duration: "1000000000",
+          trace_id: traceId,
+          span_id: spanId,
+          parent_span_id: parentSpanId,
+          message: spanId,
+          kind: "SPAN",
+          status,
+          attributes: {},
+          metadata: "{}",
+          expires_at: expiresAt,
+        };
+      }
+
+      // Full fetch: the requested run is the trace root and completes at +10s.
+      const fullTrace = "c".repeat(32);
+      const fullCompletedMs = 10_000;
+      // Subtree walk: the requested run starts after its parent, so the full fetch can't re-root.
+      const walkTrace = "d".repeat(32);
+      const walkCreatedMs = 100_000;
+      const walkCompletedMs = 110_000;
+      // Ancestor: the parent's cancellation is stored long after the bound.
+      const ancestorTrace = "e".repeat(32);
+
+      const [insertError] = await clickhouse.taskEventsV2.insert(
+        [
+          row(fullTrace, "fullroot", "", 0, 0, "PARTIAL"),
+          row(fullTrace, "fullroot", "", 0, fullCompletedMs, "OK"),
+          row(fullTrace, "fullinside", "fullroot", 1_000, 1_000, "PARTIAL"),
+          row(fullTrace, "fullinside", "fullroot", 1_000, fullCompletedMs + 6 * DAY_MS, "OK"),
+          row(fullTrace, "fulllate", "fullroot", 2_000, 2_000, "PARTIAL"),
+          row(fullTrace, "fulllate", "fullroot", 2_000, fullCompletedMs + 8 * DAY_MS, "OK"),
+
+          row(walkTrace, "walkroot", "", 0, 0, "PARTIAL"),
+          row(walkTrace, "walkanchor", "walkroot", walkCreatedMs, walkCreatedMs, "PARTIAL"),
+          row(walkTrace, "walkanchor", "walkroot", walkCreatedMs, walkCompletedMs, "OK"),
+          row(
+            walkTrace,
+            "walkinside",
+            "walkanchor",
+            walkCreatedMs + 1_000,
+            walkCreatedMs + 1_000,
+            "PARTIAL"
+          ),
+          row(
+            walkTrace,
+            "walkinside",
+            "walkanchor",
+            walkCreatedMs + 1_000,
+            walkCompletedMs + DAY_MS,
+            "OK"
+          ),
+          row(
+            walkTrace,
+            "walklate",
+            "walkanchor",
+            walkCreatedMs + 2_000,
+            walkCreatedMs + 2_000,
+            "PARTIAL"
+          ),
+          row(
+            walkTrace,
+            "walklate",
+            "walkanchor",
+            walkCreatedMs + 2_000,
+            walkCompletedMs + 9 * DAY_MS,
+            "OK"
+          ),
+
+          row(ancestorTrace, "ancroot", "", 0, 0, "PARTIAL"),
+          row(ancestorTrace, "ancroot", "", 0, 20 * DAY_MS, "CANCELLED"),
+          row(ancestorTrace, "ancanchor", "ancroot", walkCreatedMs, walkCreatedMs, "PARTIAL"),
+        ],
+        { clickhouse_settings: { async_insert: 0 } }
+      );
+      expect(insertError).toBeNull();
+
+      const fullCompletedAt = new Date(baseMs + fullCompletedMs);
+      const fullBounded = await repository.getTraceDetailedSubtreeSummary(
+        "taskEvent",
+        environmentId,
+        fullTrace,
+        "fullroot",
+        new Date(baseMs),
+        fullCompletedAt,
+        { insertedAtEnd: new Date(fullCompletedAt.getTime() + 7 * DAY_MS) }
+      );
+      expect(findSpan(fullBounded?.rootSpan, "fullinside")?.data.isPartial).toBe(false);
+      expect(findSpan(fullBounded?.rootSpan, "fulllate")?.data.isPartial).toBe(true);
+
+      const fullUnbounded = await repository.getTraceDetailedSubtreeSummary(
+        "taskEvent",
+        environmentId,
+        fullTrace,
+        "fullroot",
+        new Date(baseMs),
+        fullCompletedAt
+      );
+      expect(findSpan(fullUnbounded?.rootSpan, "fullinside")?.data.isPartial).toBe(false);
+      expect(findSpan(fullUnbounded?.rootSpan, "fulllate")?.data.isPartial).toBe(false);
+
+      const walkCompletedAt = new Date(baseMs + walkCompletedMs);
+      const walk = await repository.getTraceDetailedSubtreeSummary(
+        "taskEvent",
+        environmentId,
+        walkTrace,
+        "walkanchor",
+        new Date(baseMs + walkCreatedMs),
+        walkCompletedAt,
+        { insertedAtEnd: new Date(walkCompletedAt.getTime() + 7 * DAY_MS) }
+      );
+      expect(walk?.rootSpan.id).toBe("walkanchor");
+      expect(walk?.rootSpan.parentId).toBe("walkroot");
+      expect(findSpan(walk?.rootSpan, "walkinside")?.data.isPartial).toBe(false);
+      expect(findSpan(walk?.rootSpan, "walklate")?.data.isPartial).toBe(true);
+
+      const ancestor = await repository.getTraceDetailedSubtreeSummary(
+        "taskEvent",
+        environmentId,
+        ancestorTrace,
+        "ancanchor",
+        new Date(baseMs + walkCreatedMs),
+        undefined,
+        { insertedAtEnd: new Date(baseMs + 7 * DAY_MS) }
+      );
+      expect(ancestor?.rootSpan.id).toBe("ancanchor");
+      expect(ancestor?.rootSpan.data.isCancelled).toBe(true);
+    },
+    INTEGRATION_TIMEOUT_MS
+  );
+});

@@ -24,6 +24,7 @@ export type TreeViewProps<TData> = {
   parentRef?: MutableRefObject<HTMLElement | null>;
   scrollRef?: MutableRefObject<HTMLElement | null>;
   onScroll?: (scrollTop: number) => void;
+  staticRowHeight?: boolean;
 } & Pick<UseTreeStateOutput, "getTreeProps" | "getNodeProps">;
 
 export function TreeView<TData>({
@@ -37,6 +38,7 @@ export function TreeView<TData>({
   virtualizer,
   parentRef,
   scrollRef,
+  staticRowHeight = false,
   onScroll,
 }: TreeViewProps<TData>) {
   useEffect(() => {
@@ -121,7 +123,7 @@ export function TreeView<TData>({
               <div
                 key={node.id}
                 data-index={virtualItem.index}
-                ref={virtualizer.measureElement}
+                ref={staticRowHeight ? undefined : virtualizer.measureElement}
                 className="overflow-clip"
                 {...getNodeProps(node.id)}
               >

@@ -122,7 +122,7 @@ describe("handleStalledSnapshot honors durable residency for a stalled PENDING_E
 
         const first = await dequeueOnConsumer();
         assertNonNullable(first);
-        expect(first.snapshotRoute?.residency).toBe("redis-primary");
+        expect(await snapshotStore.readBirthResidency(runId)).toBe("redis-primary");
         expect(first.snapshot.executionStatus).toBe("PENDING_EXECUTING");
 
         let latest = await consumer.getRunExecutionData({ runId });

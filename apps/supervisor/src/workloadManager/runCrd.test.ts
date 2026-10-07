@@ -401,7 +401,6 @@ describe("run-crd carries every shared create-option or excludes it on purpose",
     "runFriendlyId",
     "snapshotId",
     "snapshotFriendlyId",
-    "snapshotRoute",
     "traceContext",
     "annotations",
     "hasPrivateLink",
@@ -417,8 +416,6 @@ describe("run-crd carries every shared create-option or excludes it on purpose",
    * creation by another route, such as the runner's name or its token Secret.
    */
   const RUN_CRD_EXCLUDED: Partial<Record<ListedKey, string>> = {
-    snapshotRoute:
-      "Superseded transport, not a run-crd gap: snapshot routing is becoming server-owned (a run's residency is decided from its stored state, not a runner-provided field), so the runner-facing route is being removed rather than built into the Runner. This entry, the field, and the pod backends that set it come out together when that lands.",
     nextAttemptNumber:
       "Not a spec field: it selects the runner's name via getRunnerId, so the attempt lives in the object's name rather than in the spec runnerBodyFor builds.",
     deploymentToken:
@@ -459,9 +456,6 @@ describe("run-crd carries every shared create-option or excludes it on purpose",
     runFriendlyId: { runFriendlyId: "run_other" },
     snapshotId: { snapshotId: "snapshot_other_internal" },
     snapshotFriendlyId: { snapshotFriendlyId: "snapshot_other" },
-    snapshotRoute: {
-      snapshotRoute: { version: 1, residency: "redis-primary", organizationId: "org_abc" },
-    },
     traceContext: { traceContext: { traceparent: "00-probe-probe-01" } },
     annotations: {
       annotations: {
@@ -1235,6 +1229,7 @@ describe("RunnerRestoreInformer", () => {
   }
 
   type WatchCall = {
+    path: string;
     query: Record<string, string>;
     callback: (phase: string, obj: unknown) => void;
     done: (err: unknown) => void;
@@ -1246,12 +1241,12 @@ describe("RunnerRestoreInformer", () => {
     const watch = {
       watch: vi.fn(
         async (
-          _path: string,
+          path: string,
           query: Record<string, string>,
           callback: WatchCall["callback"],
           done: WatchCall["done"]
         ) => {
-          calls.push({ query, callback, done });
+          calls.push({ path, query, callback, done });
           // The real Watch calls done with its fetch error before returning.
           if (connects.shift() === "fail") {
             done(new Error("connect ECONNREFUSED"));
@@ -1293,7 +1288,7 @@ describe("RunnerRestoreInformer", () => {
     const { makeInformer } = setup();
 
     expect(makeInformer).toHaveBeenCalledWith(
-      "/apis/compute.trigger.dev/v1alpha1/namespaces/v4-runs/runners",
+      "/apis/compute.trigger.dev/v1alpha1/namespaces/v4-runs/runners?timeoutSeconds=300",
       expect.any(Function),
       `${RESTORE_LABEL}=true`
     );
@@ -1588,6 +1583,31 @@ describe("RunnerRestoreInformer", () => {
     expect(calls[1]!.query.resourceVersion).toBe("7");
     await restoreInformer.stop();
   });
+
+  // A connection that died without closing raises nothing, so restores would go unseen.
+  it("reconnects a watch that goes silent past its timeout, from the last event", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    try {
+      listRunners.mockReset();
+      listRunners.mockResolvedValue({ items: [], metadata: { resourceVersion: "1" } });
+      const { calls, restoreInformer } = listWatchSetup();
+      await restoreInformer.start();
+      calls[0]!.callback("BOOKMARK", { metadata: { resourceVersion: "7" } });
+
+      await vi.advanceTimersByTimeAsync(300_000);
+      expect(calls).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(60_000);
+      await vi.waitFor(() => expect(calls).toHaveLength(2));
+
+      expect(calls[1]!.path).toBe(
+        "/apis/compute.trigger.dev/v1alpha1/namespaces/v4-runs/runners?timeoutSeconds=300"
+      );
+      expect(calls[1]!.query.resourceVersion).toBe("7");
+      await restoreInformer.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("classifyRestoreFailure", () => {
@@ -1657,21 +1677,6 @@ describe("settleRestoreFailure", () => {
       reason: "StartError",
       message: "pulling the image: 401",
     });
-  });
-
-  it("sends the dequeued run's snapshot route with the report", async () => {
-    const d = deps();
-    const snapshotRoute = {
-      version: 1 as const,
-      residency: "mirrored" as const,
-      organizationId: "org_1",
-    };
-
-    await settleRestoreFailure({ ...failure("SnapshotNodeGone"), snapshotRoute }, d);
-
-    expect(d.report).toHaveBeenCalledWith(
-      expect.objectContaining({ outcome: "fail", snapshotRoute })
-    );
   });
 
   // The Runner may be running a guest the watch never saw start.

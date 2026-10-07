@@ -334,6 +334,156 @@ export function getTraceEventsForExportQueryBuilderV2(
   });
 }
 
+export type TaskEventChunkV2Result = TaskEventSummaryV1Result & {
+  cursor_start_time: string;
+  // Write time (ms since epoch); only selected on the v2 table.
+  cursor_inserted_at?: string;
+};
+
+export type TraceChunkCursor = {
+  startTime: string;
+  spanId: string;
+};
+
+export const TRACE_CHUNK_ORDER_BY = "start_time ASC, span_id ASC";
+
+export function buildTraceChunkCursorPredicate(cursor: TraceChunkCursor): {
+  clause: string;
+  params: { cursorStartTime: string; cursorSpanId: string };
+} {
+  return {
+    clause:
+      "(toUnixTimestamp64Nano(start_time) > {cursorStartTime: Int64} OR (toUnixTimestamp64Nano(start_time) = {cursorStartTime: Int64} AND span_id > {cursorSpanId: String}))",
+    params: {
+      cursorStartTime: cursor.startTime,
+      cursorSpanId: cursor.spanId,
+    },
+  };
+}
+
+export function buildTraceChunkKeyPredicate(cursor: TraceChunkCursor): {
+  clause: string;
+  params: { keyStartTime: string; keySpanId: string };
+} {
+  return {
+    clause:
+      "(toUnixTimestamp64Nano(start_time) = {keyStartTime: Int64} AND span_id = {keySpanId: String})",
+    params: {
+      keyStartTime: cursor.startTime,
+      keySpanId: cursor.spanId,
+    },
+  };
+}
+
+const TRACE_CHUNK_COLUMNS = [
+  "span_id",
+  "parent_span_id",
+  "run_id",
+  "start_time",
+  "duration",
+  "status",
+  "kind",
+  "metadata",
+  { name: "message", expression: "LEFT(message, 256)" },
+  { name: "cursor_start_time", expression: "toString(toUnixTimestamp64Nano(start_time))" },
+] as const;
+
+// task_events_v1 has no inserted_at column.
+const TRACE_CHUNK_COLUMNS_V2 = [
+  ...TRACE_CHUNK_COLUMNS,
+  { name: "cursor_inserted_at", expression: "toString(toUnixTimestamp64Milli(inserted_at))" },
+] as const;
+
+export function getTraceChunkQueryBuilder(ch: ClickhouseReader, settings?: ClickHouseSettings) {
+  return ch.queryBuilderFast<TaskEventChunkV2Result>({
+    name: "getTraceChunk",
+    table: "trigger_dev.task_events_v1",
+    columns: [...TRACE_CHUNK_COLUMNS],
+    settings,
+  });
+}
+
+export function getTraceChunkQueryBuilderV2(ch: ClickhouseReader, settings?: ClickHouseSettings) {
+  return ch.queryBuilderFast<TaskEventChunkV2Result>({
+    name: "getTraceChunkV2",
+    table: "trigger_dev.task_events_v2",
+    columns: [...TRACE_CHUNK_COLUMNS_V2],
+    settings,
+  });
+}
+
+export type TraceSpanCountResult = { count: string };
+const TRACE_SPAN_COUNT_COLUMNS = [{ name: "count", expression: "uniqExact(span_id)" }] as const;
+
+export function getTraceSpanCountQueryBuilder(ch: ClickhouseReader, settings?: ClickHouseSettings) {
+  return ch.queryBuilderFast<TraceSpanCountResult>({
+    name: "getTraceSpanCount",
+    table: "trigger_dev.task_events_v1",
+    columns: [...TRACE_SPAN_COUNT_COLUMNS],
+    settings,
+  });
+}
+
+export function getTraceSpanCountQueryBuilderV2(
+  ch: ClickhouseReader,
+  settings?: ClickHouseSettings
+) {
+  return ch.queryBuilderFast<TraceSpanCountResult>({
+    name: "getTraceSpanCountV2",
+    table: "trigger_dev.task_events_v2",
+    columns: [...TRACE_SPAN_COUNT_COLUMNS],
+    settings,
+  });
+}
+
+export type TraceChunkSlice<T> = {
+  events: T[];
+  nextCursor: TraceChunkCursor | null;
+  hasMore: boolean;
+  incompleteKey?: TraceChunkCursor;
+};
+
+export function sliceTraceChunk<T extends { cursor_start_time: string; span_id: string }>(
+  rows: T[],
+  limit: number
+): TraceChunkSlice<T> {
+  const cursorOf = (row: T): TraceChunkCursor => ({
+    startTime: row.cursor_start_time,
+    spanId: row.span_id,
+  });
+  const sameKey = (a: T, b: T) =>
+    a.cursor_start_time === b.cursor_start_time && a.span_id === b.span_id;
+
+  if (rows.length <= limit) {
+    return { events: rows, nextCursor: null, hasMore: false };
+  }
+
+  const window = rows.slice(0, limit);
+  const extra = rows[limit];
+  const lastKept = window[window.length - 1];
+
+  if (sameKey(extra, lastKept)) {
+    let end = window.length;
+    while (end > 0 && sameKey(window[end - 1], lastKept)) {
+      end--;
+    }
+
+    if (end === 0) {
+      return {
+        events: [],
+        nextCursor: cursorOf(lastKept),
+        hasMore: true,
+        incompleteKey: cursorOf(lastKept),
+      };
+    }
+
+    const trimmed = window.slice(0, end);
+    return { events: trimmed, nextCursor: cursorOf(trimmed[trimmed.length - 1]), hasMore: true };
+  }
+
+  return { events: window, nextCursor: cursorOf(lastKept), hasMore: true };
+}
+
 // ============================================================================
 // Search Table Query Builders (for logs page, using task_events_search_v2)
 // ============================================================================
