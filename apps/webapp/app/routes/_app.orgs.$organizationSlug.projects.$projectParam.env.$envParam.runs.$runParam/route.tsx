@@ -85,6 +85,7 @@ import { useEventSource } from "~/hooks/useEventSource";
 import { useInitialDimensions } from "~/hooks/useInitialDimensions";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProgressiveTrace, type ProgressiveTraceInput } from "~/hooks/useProgressiveTrace";
+import { useRunStatusBackstop } from "~/hooks/useRunStatusBackstop";
 import { useProject } from "~/hooks/useProject";
 import { useReplaceSearchParams } from "~/hooks/useReplaceSearchParams";
 import { useSearchParams } from "~/hooks/useSearchParam";
@@ -122,6 +123,7 @@ import {
   v3RunSpanPath,
   v3RunStreamingPath,
   v3RunTraceChunkPath,
+  v3RunStatusPath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
 import type { SpanOverride } from "~/v3/eventRepository/eventRepository.types";
@@ -589,7 +591,51 @@ export default function Page() {
   );
 }
 
-function shouldLiveReload({
+// Coarse on purpose: the tail normally flips the root to terminal itself.
+const RUN_STATUS_BACKSTOP_POLL_MS = 15_000;
+
+function liveReloadDisabledReason({
+  liveTailEnabled,
+  loadFailed,
+  isTruncated,
+  maximumLiveReloadingSetting,
+}: {
+  liveTailEnabled: boolean;
+  loadFailed: boolean;
+  isTruncated: boolean;
+  maximumLiveReloadingSetting: number;
+}): string {
+  if (!liveTailEnabled) {
+    return `Live reloading is disabled because you've exceeded ${maximumLiveReloadingSetting} logs.`;
+  }
+  if (loadFailed) {
+    return "Live reloading is paused because part of this trace couldn't be loaded.";
+  }
+  if (isTruncated) {
+    return "Live reloading is disabled because this trace is too large to keep live.";
+  }
+  return "Live reloading stopped because the run has finished.";
+}
+
+// Tail path: no size cap. Keeps tailing while the root still looks unfinished, so
+// final rows that become visible late still land, but not long after completion.
+const LIVE_TAIL_UNRESOLVED_ROOT_MS = 5 * 60_000;
+
+function msSinceCompleted(run: { completedAt: string | null }): number | null {
+  return run.completedAt ? Date.now() - new Date(run.completedAt).getTime() : null;
+}
+
+function shouldLiveReload(
+  run: { completedAt: string | null },
+  rootSpanStatus: "executing" | "completed" | "failed"
+): boolean {
+  const sinceCompleted = msSinceCompleted(run);
+  if (sinceCompleted === null || sinceCompleted < 30_000) return true;
+  return rootSpanStatus === "executing" && sinceCompleted < LIVE_TAIL_UNRESOLVED_ROOT_MS;
+}
+
+// Legacy path (live tail off): revalidate on ping, with the old size cap.
+function shouldLiveReloadLegacy({
   events,
   maximumLiveReloadingSetting,
   run,
@@ -598,12 +644,8 @@ function shouldLiveReload({
   maximumLiveReloadingSetting: number;
   run: { completedAt: string | null };
 }): boolean {
-  // We don't live reload if there are a ton of spans/logs
   if (events.length > maximumLiveReloadingSetting) return false;
-
-  // If the run was completed a while ago, we don't need to live reload anymore
   if (run.completedAt && new Date(run.completedAt).getTime() < Date.now() - 30_000) return false;
-
   return true;
 }
 
@@ -625,6 +667,7 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Trace
   const [errorsOnly, setErrorsOnly] = useState(false);
 
   const chunkPath = v3RunTraceChunkPath(organization, project, environment, run);
+  const statusPath = v3RunStatusPath(organization, project, environment, run);
   const {
     events,
     duration,
@@ -634,6 +677,10 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Trace
     linkedRunIdBySpanId,
     isComplete,
     isTruncated: progressiveIsTruncated,
+    loadFailed,
+    tailLive,
+    liveTailEnabled,
+    retryLoad,
   } = useProgressiveTrace(trace as unknown as ProgressiveTraceInput, chunkPath, errorsOnly);
 
   const traceIsTruncated = isTruncated || progressiveIsTruncated;
@@ -642,26 +689,80 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Trace
     replaceSearchParam("span", selectedSpan, { replace: true });
   }, 250);
 
-  const isLiveReloading = shouldLiveReload({
-    events: events as unknown as TraceEvent[],
-    maximumLiveReloadingSetting,
-    run,
+  // Tail path (flag on): delta-fetch per signal, skipped for truncated or partly
+  // failed trees. Legacy path: revalidate per signal, with the old size cap.
+  const isLiveReloading = liveTailEnabled
+    ? shouldLiveReload(run, rootSpanStatus) && !traceIsTruncated && !loadFailed
+    : shouldLiveReloadLegacy({
+        events: events as unknown as TraceEvent[],
+        maximumLiveReloadingSetting,
+        run,
+      });
+
+  // The revalidator's identity is unstable, so effects read it from a ref.
+  const revalidator = useRevalidator();
+  const revalidatorRef = useRef(revalidator);
+  useEffect(() => {
+    revalidatorRef.current = revalidator;
   });
 
-  const revalidator = useRevalidator();
   const streamedEvents = useEventSource(
     v3RunStreamingPath(organization, project, environment, run),
     {
       event: "message",
+      // The background load owns loading until it completes.
       disabled: !isLiveReloading || !isComplete,
     }
   );
+  // On each stream message (a trace change or the 5s heartbeat): tail the delta, or
+  // revalidate on the legacy path.
   useEffect(() => {
-    if (streamedEvents !== null) {
-      revalidator.revalidate();
+    if (streamedEvents === null) return;
+    if (liveTailEnabled) {
+      tailLive();
+    } else {
+      revalidatorRef.current.revalidate();
     }
-    // WARNING Don't put the revalidator in the useEffect deps array or bad things will happen
-  }, [streamedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [streamedEvents, liveTailEnabled, tailLive]);
+
+  // Tail path: refresh run-row-fed controls once the root span goes terminal.
+  const prevRootSpanRef = useRef({ runId: run.friendlyId, status: rootSpanStatus });
+  useEffect(() => {
+    const previous = prevRootSpanRef.current;
+    prevRootSpanRef.current = { runId: run.friendlyId, status: rootSpanStatus };
+    if (!liveTailEnabled || previous.runId !== run.friendlyId) return;
+    if (previous.status === "executing" && rootSpanStatus !== "executing") {
+      revalidatorRef.current.revalidate();
+    }
+  }, [run.friendlyId, rootSpanStatus, liveTailEnabled]);
+
+  // Tail path backstop: reconcile once the run finishes, even if the tail missed the
+  // root's final row. Polls whatever the stream is doing.
+  useRunStatusBackstop({
+    enabled: liveTailEnabled && run.completedAt === null,
+    statusPath,
+    shouldSkip: () => document.visibilityState === "hidden",
+    onFinished: () => {
+      // The revalidate alone won't refresh the tree if the span count didn't change.
+      tailLive();
+      revalidatorRef.current.revalidate();
+    },
+    pollMs: RUN_STATUS_BACKSTOP_POLL_MS,
+  });
+
+  // SSE is off during the background load, so pick up rows written meanwhile. Runs
+  // even if live reload already stopped, as long as the run finished recently.
+  const sinceCompleted = msSinceCompleted(run);
+  const recentlyActive = sinceCompleted === null || sinceCompleted < LIVE_TAIL_UNRESOLVED_ROOT_MS;
+  const prevIsCompleteRef = useRef(isComplete);
+  useEffect(() => {
+    const wasComplete = prevIsCompleteRef.current;
+    prevIsCompleteRef.current = isComplete;
+    if (!liveTailEnabled || wasComplete || !isComplete) return;
+    if (recentlyActive && !traceIsTruncated && !loadFailed) {
+      tailLive();
+    }
+  }, [isComplete, recentlyActive, traceIsTruncated, loadFailed, liveTailEnabled, tailLive]);
 
   const spanOverrides = selectedSpanId ? overridesBySpanId?.[selectedSpanId] : undefined;
   const frozenSpanOverrides = useFrozenValue(spanOverrides);
@@ -696,6 +797,21 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Trace
                 </Callout>
               </div>
             )}
+            {loadFailed && !traceIsTruncated && (
+              <div className="shrink-0 border-b border-grid-bright px-3 py-2">
+                <Callout
+                  variant="warning"
+                  className="text-sm"
+                  cta={
+                    <Button variant="secondary/small" onClick={() => retryLoad()}>
+                      Retry
+                    </Button>
+                  }
+                >
+                  Some of this trace couldn't be loaded, so it's shown partially.
+                </Callout>
+              </div>
+            )}
             <div className="min-h-0 flex-1">
               <TasksTreeView
                 selectedId={selectedSpanId}
@@ -716,7 +832,12 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Trace
                 queuedDuration={queuedDuration}
                 environmentType={run.environment.type}
                 shouldLiveReload={isLiveReloading}
-                maximumLiveReloadingSetting={maximumLiveReloadingSetting}
+                liveReloadDisabledReason={liveReloadDisabledReason({
+                  liveTailEnabled,
+                  loadFailed,
+                  isTruncated: traceIsTruncated,
+                  maximumLiveReloadingSetting,
+                })}
                 rootRun={run.rootTaskRun}
                 parentRun={run.parentTaskRun}
                 isCompleted={run.completedAt !== null}
@@ -906,7 +1027,7 @@ type TasksTreeViewProps = {
   queuedDuration: number | undefined;
   environmentType: RuntimeEnvironmentType;
   shouldLiveReload: boolean;
-  maximumLiveReloadingSetting: number;
+  liveReloadDisabledReason: string;
   rootRun: {
     friendlyId: string;
     spanId: string;
@@ -932,7 +1053,7 @@ function TasksTreeView({
   queuedDuration,
   environmentType,
   shouldLiveReload,
-  maximumLiveReloadingSetting,
+  liveReloadDisabledReason,
   rootRun,
   parentRun,
   isCompleted,
@@ -1073,7 +1194,7 @@ function TasksTreeView({
               <LiveReloadingStatus
                 rootSpanCompleted={rootSpanStatus !== "executing"}
                 isLiveReloading={shouldLiveReload}
-                settingValue={maximumLiveReloadingSetting}
+                disabledReason={liveReloadDisabledReason}
               />
             </div>
             <TreeView
@@ -1736,11 +1857,11 @@ function ShowParentOrRootLinks({
 function LiveReloadingStatus({
   rootSpanCompleted,
   isLiveReloading,
-  settingValue,
+  disabledReason,
 }: {
   rootSpanCompleted: boolean;
   isLiveReloading: boolean;
-  settingValue: number;
+  disabledReason: string;
 }) {
   if (rootSpanCompleted) return null;
 
@@ -1753,7 +1874,7 @@ function LiveReloadingStatus({
     </div>
   ) : (
     <SimpleTooltip
-      content={`Live reloading is disabled because you've exceeded ${settingValue} logs.`}
+      content={disabledReason}
       button={
         <div className="flex items-center gap-1">
           <BoltSlashIcon className="size-3.5 text-text-dimmed" />

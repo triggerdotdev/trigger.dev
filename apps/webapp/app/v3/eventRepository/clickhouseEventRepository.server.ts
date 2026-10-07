@@ -1743,7 +1743,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     startCreatedAt: Date,
     endCreatedAt: Date | undefined,
     cursor: TraceChunkCursor | undefined,
-    options?: { includeDebugLogs?: boolean; limit?: number }
+    options?: { includeDebugLogs?: boolean; limit?: number; tailInsertedAtSinceMs?: number }
   ): Promise<TraceChunk | undefined> {
     const limit = options?.limit ?? this.maximumTraceChunkSize;
 
@@ -1813,7 +1813,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     endCreatedAt?: Date;
     cursor?: TraceChunkCursor;
     limit: number;
-    options?: { includeDebugLogs?: boolean };
+    options?: { includeDebugLogs?: boolean; tailInsertedAtSinceMs?: number };
   }): Promise<{
     events: TaskEventChunkV2Result[];
     nextCursor: TraceChunkCursor | null;
@@ -1881,7 +1881,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     traceId: string;
     startCreatedAt: Date;
     endCreatedAt?: Date;
-    options?: { includeDebugLogs?: boolean };
+    options?: { includeDebugLogs?: boolean; tailInsertedAtSinceMs?: number };
   }) {
     const queryBuilder = this.#createTraceChunkQueryBuilder();
     this.#applyTraceScopeWhere(queryBuilder, {
@@ -1913,7 +1913,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       traceId: string;
       startCreatedAt: Date;
       endCreatedAt?: Date;
-      options?: { includeDebugLogs?: boolean };
+      options?: { includeDebugLogs?: boolean; tailInsertedAtSinceMs?: number };
     }
   ) {
     queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
@@ -1938,6 +1938,16 @@ export class ClickhouseEventRepository implements IEventRepository {
       queryBuilder.where("inserted_at >= {insertedAtStart: DateTime64(3)}", {
         insertedAtStart: convertDateToClickhouseDateTime(startCreatedAtWithBuffer),
       });
+
+      // Live tail: rows written since the tail base, incl. late completion rows.
+      if (options?.tailInsertedAtSinceMs !== undefined) {
+        // Raw column compare so the inserted_at minmax index prunes.
+        queryBuilder.where("inserted_at >= {tailInsertedAtSince: DateTime64(3)}", {
+          tailInsertedAtSince: convertDateToClickhouseDateTime(
+            new Date(options.tailInsertedAtSinceMs)
+          ),
+        });
+      }
     }
 
     if (options?.includeDebugLogs === false) {
@@ -1952,6 +1962,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       runId: record.run_id,
       startTime: convertClickhouseDateTime64ToJsDate(record.start_time),
       startTimeNano: record.cursor_start_time,
+      insertedAt: record.cursor_inserted_at,
       duration: typeof record.duration === "number" ? record.duration : Number(record.duration),
       status: record.status,
       kind: record.kind,

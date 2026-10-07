@@ -336,6 +336,8 @@ export function getTraceEventsForExportQueryBuilderV2(
 
 export type TaskEventChunkV2Result = TaskEventSummaryV1Result & {
   cursor_start_time: string;
+  // Write time (ms since epoch); only selected on the v2 table.
+  cursor_inserted_at?: string;
 };
 
 export type TraceChunkCursor = {
@@ -386,6 +388,12 @@ const TRACE_CHUNK_COLUMNS = [
   { name: "cursor_start_time", expression: "toString(toUnixTimestamp64Nano(start_time))" },
 ] as const;
 
+// task_events_v1 has no inserted_at column.
+const TRACE_CHUNK_COLUMNS_V2 = [
+  ...TRACE_CHUNK_COLUMNS,
+  { name: "cursor_inserted_at", expression: "toString(toUnixTimestamp64Milli(inserted_at))" },
+] as const;
+
 export function getTraceChunkQueryBuilder(ch: ClickhouseReader, settings?: ClickHouseSettings) {
   return ch.queryBuilderFast<TaskEventChunkV2Result>({
     name: "getTraceChunk",
@@ -399,7 +407,7 @@ export function getTraceChunkQueryBuilderV2(ch: ClickhouseReader, settings?: Cli
   return ch.queryBuilderFast<TaskEventChunkV2Result>({
     name: "getTraceChunkV2",
     table: "trigger_dev.task_events_v2",
-    columns: [...TRACE_CHUNK_COLUMNS],
+    columns: [...TRACE_CHUNK_COLUMNS_V2],
     settings,
   });
 }

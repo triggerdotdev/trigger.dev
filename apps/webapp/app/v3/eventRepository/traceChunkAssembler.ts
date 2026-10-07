@@ -29,11 +29,16 @@ function isLogEvent(kind: string): boolean {
   return kind.startsWith("LOG_") || kind === "DEBUG_EVENT";
 }
 
-export type TraceChunkSource = "stream" | "errors" | "deeplink";
+export type TraceChunkSource = "stream" | "errors" | "deeplink" | "tail";
+
+// Each read from these sources is a whole re-read, so it replaces its own counts.
+type ReplacingSource = "tail" | "deeplink";
 
 type EventCount = {
   bySource: Map<TraceChunkSource, number>;
   pushed: number;
+  // Read generation when this key's count for each replacing source was last reset.
+  readGen?: Partial<Record<ReplacingSource, number>>;
 };
 
 function parseNano(value: string): bigint | undefined {
@@ -59,18 +64,103 @@ function parseMetadata(metadata: string): Record<string, unknown> | undefined {
   }
 }
 
+// The parts of a span the tree view renders.
+type RenderedSpan = {
+  message: string;
+  isPartial: boolean;
+  isError: boolean;
+  isCancelled: boolean;
+  duration: number;
+  attemptNumber: number | undefined;
+  startTimeMs: number;
+  sortNano: bigint;
+  eventCount: number;
+  style: SpanSummary["data"]["style"];
+};
+
+function hasNodeChanged(before: RenderedSpan, after: RenderedSpan): boolean {
+  if (before.message !== after.message) return true;
+  if (before.isPartial !== after.isPartial) return true;
+  if (before.isError !== after.isError) return true;
+  if (before.isCancelled !== after.isCancelled) return true;
+  if (before.duration !== after.duration) return true;
+  if (before.attemptNumber !== after.attemptNumber) return true;
+  if (before.startTimeMs !== after.startTimeMs) return true;
+  if (before.sortNano !== after.sortNano) return true;
+  if (before.eventCount !== after.eventCount) return true;
+  if (before.style === after.style) return false;
+  if (before.style.icon !== after.style.icon) return true;
+  if (before.style.variant !== after.style.variant) return true;
+  return JSON.stringify(before.style.accessory) !== JSON.stringify(after.style.accessory);
+}
+
 export class TraceChunkAssembler {
   #nodes = new Map<string, SpanSummary>();
+  // Set when a merge changes what the tree renders; cleared by `markRendered`.
+  #changedSinceRender = true;
   #earliest = new Map<string, Date>();
   #earliestNano = new Map<string, bigint>();
   #firstNano = new Map<string, bigint>();
   #eventCounts = new Map<string, Map<string, EventCount>>();
+  #readGeneration: Record<ReplacingSource, number> = { tail: 0, deeplink: 0 };
+  // Greatest write time (ms) from any source; null on the v1 store.
+  #maxInsertedAt: number | null = null;
+  // Point the last completed tail read everything up to; other sources never move it.
+  #tailHighWater: number | null = null;
+  // Write time the next tail must read back to. Pinned to the initial read time and
+  // after a failed tick; released once a tail from that point completes.
+  #tailFloor: number | null = null;
+  #tailFloorHeld = false;
 
   mergeChunk(events: TraceChunkEvent[], options?: { source?: TraceChunkSource }): void {
     const source = options?.source ?? "stream";
-    for (const event of events) {
-      this.#mergeEvent(event, source);
+    if (source === "deeplink") {
+      this.#readGeneration.deeplink++;
     }
+    for (const event of events) {
+      if (event.insertedAt) {
+        const ms = Number(event.insertedAt);
+        if (Number.isFinite(ms)) {
+          this.#maxInsertedAt = Math.max(this.#maxInsertedAt ?? ms, ms);
+        }
+      }
+      if (this.#changedSinceRender) {
+        this.#mergeEvent(event, source);
+        continue;
+      }
+      const before = this.#renderedSpan(event.spanId);
+      this.#mergeEvent(event, source);
+      const after = this.#renderedSpan(event.spanId);
+      if (!before || !after || hasNodeChanged(before, after)) {
+        this.#changedSinceRender = true;
+      }
+    }
+  }
+
+  get changedSinceRender(): boolean {
+    return this.#changedSinceRender;
+  }
+
+  markRendered(): void {
+    this.#changedSinceRender = false;
+  }
+
+  #renderedSpan(spanId: string): RenderedSpan | undefined {
+    const node = this.#nodes.get(spanId);
+    if (!node) return undefined;
+    const d = node.data;
+    return {
+      message: d.message,
+      isPartial: d.isPartial,
+      isError: d.isError,
+      isCancelled: d.isCancelled,
+      duration: d.duration,
+      attemptNumber: d.attemptNumber,
+      startTimeMs: d.startTime.getTime(),
+      sortNano: this.#sortNano(spanId),
+      eventCount: d.events.length,
+      style: d.style,
+    };
   }
 
   #mergeEvent(event: TraceChunkEvent, source: TraceChunkSource): void {
@@ -124,6 +214,10 @@ export class TraceChunkAssembler {
     }
 
     const parsedMetadata = parseMetadata(event.metadata);
+    // An older PARTIAL row of a span that already has its final row must not overwrite
+    // it, so merging gives the same result in any order (rows of one key arrive unordered).
+    const isStalePartial =
+      event.kind === "SPAN" && event.status === "PARTIAL" && !node.data.isPartial;
 
     if (
       parsedMetadata &&
@@ -143,15 +237,24 @@ export class TraceChunkAssembler {
 
     if (parsedMetadata && "style" in parsedMetadata && parsedMetadata.style) {
       const newStyle = parsedMetadata.style as TaskEventStyle;
-      node.data.style = {
-        icon: newStyle.icon ?? node.data.style.icon,
-        variant: newStyle.variant ?? node.data.style.variant,
-        accessory: newStyle.accessory ?? node.data.style.accessory,
-      };
+      const current = node.data.style;
+      node.data.style = isStalePartial
+        ? {
+            icon: current.icon ?? newStyle.icon,
+            variant: current.variant ?? newStyle.variant,
+            accessory: current.accessory ?? newStyle.accessory,
+          }
+        : {
+            icon: newStyle.icon ?? current.icon,
+            variant: newStyle.variant ?? current.variant,
+            accessory: newStyle.accessory ?? current.accessory,
+          };
     }
 
     if (event.kind === "SPAN") {
-      node.data.message = event.message;
+      if (!isStalePartial) {
+        node.data.message = event.message;
+      }
       if (event.status === "ERROR") {
         node.data.isError = true;
         node.data.isPartial = false;
@@ -176,11 +279,13 @@ export class TraceChunkAssembler {
   }
 
   #recordEventRow(event: TraceChunkEvent, source: TraceChunkSource): boolean {
+    // Write time keeps identical events written at different times distinct.
     const key = JSON.stringify([
       event.kind,
       event.startTime.getTime(),
       event.message,
       event.metadata,
+      event.insertedAt ?? "",
     ]);
     let bySpan = this.#eventCounts.get(event.spanId);
     if (!bySpan) {
@@ -191,6 +296,15 @@ export class TraceChunkAssembler {
     if (!count) {
       count = { bySource: new Map(), pushed: 0 };
       bySpan.set(key, count);
+    }
+
+    // Replace this source's count from its previous read; `pushed` only grows.
+    if (source === "tail" || source === "deeplink") {
+      const generation = this.#readGeneration[source];
+      if (count.readGen?.[source] !== generation) {
+        count.readGen = { ...count.readGen, [source]: generation };
+        count.bySource.set(source, 0);
+      }
     }
 
     count.bySource.set(source, (count.bySource.get(source) ?? 0) + 1);
@@ -222,6 +336,11 @@ export class TraceChunkAssembler {
     if (earliest !== undefined) {
       return earliest;
     }
+    // Malformed nanosecond: fall back to the span's own millisecond start.
+    const earliestMs = this.#earliest.get(spanId);
+    if (earliestMs !== undefined) {
+      return BigInt(earliestMs.getTime()) * 1_000_000n;
+    }
     const first = this.#firstNano.get(spanId);
     if (first !== undefined) {
       return first;
@@ -236,6 +355,43 @@ export class TraceChunkAssembler {
 
   get size(): number {
     return this.#nodes.size;
+  }
+
+  // Next tail's starting write time; null when rows have none (v1 or empty).
+  tailBase(): number | null {
+    if (this.#maxInsertedAt === null) {
+      return null;
+    }
+    if (this.#tailFloor === null) {
+      return this.#tailHighWater ?? this.#maxInsertedAt;
+    }
+    return this.#tailHighWater === null
+      ? this.#tailFloor
+      : Math.min(this.#tailFloor, this.#tailHighWater);
+  }
+
+  // Call once per tail tick, before merging its pages.
+  beginTailRead(): void {
+    this.#readGeneration.tail++;
+  }
+
+  // While held (the background load is running), a completed tail keeps the floor.
+  holdTailFloor(held: boolean): void {
+    this.#tailFloorHeld = held;
+  }
+
+  pinTailFloor(ms: number): void {
+    this.#tailFloor = this.#tailFloor === null ? ms : Math.min(this.#tailFloor, ms);
+  }
+
+  // A tail from `base` finished; `readThrough` is when its first page was read. Later
+  // tails start from there, never from a later page's rows.
+  completeTailRead(base: number, readThrough: number | null): void {
+    this.#tailHighWater = Math.max(readThrough ?? this.#tailHighWater ?? base, base);
+    if (this.#tailFloorHeld) return;
+    if (this.#tailFloor !== null && this.#tailFloor >= base) {
+      this.#tailFloor = null;
+    }
   }
 
   flatten(rootSpanId: string): FlatTree<SpanSummary["data"]> {

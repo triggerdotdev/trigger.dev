@@ -10,6 +10,7 @@ import { env } from "~/env.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { makeFlag } from "~/v3/featureFlags.server";
 import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
+import { canLiveTail, hasWriteTimes } from "./liveTailGate";
 import { TraceChunkAssembler } from "~/v3/eventRepository/traceChunkAssembler";
 import { applyAncestorOverrides, buildTraceView } from "~/v3/eventRepository/traceViewBuilder";
 import { runStore } from "~/v3/runStore.server";
@@ -208,12 +209,22 @@ export class RunPresenter {
 
     const isRootRunView = !run.rootTaskRun || run.rootTaskRun.spanId === run.spanId;
 
-    const firstChunkPromise = makeFlag(this.#prismaClient)({
+    const orgFeatureFlags =
+      (authorizedProject.organization?.featureFlags as Record<string, unknown>) ?? {};
+
+    // Read before the first chunk so the first tail covers the background load.
+    const firstChunkReadAt = Date.now();
+
+    const progressivePromise = makeFlag(this.#prismaClient)({
       key: FEATURE_FLAG.progressiveTraceLoadingEnabled,
       defaultValue: false,
-      overrides: (authorizedProject.organization?.featureFlags as Record<string, unknown>) ?? {},
-    }).then((progressiveEnabled) =>
-      isRootRunView && progressiveEnabled
+      overrides: orgFeatureFlags,
+    });
+
+    const firstChunkPromise = progressivePromise.then((progressiveEnabled) =>
+      isRootRunView &&
+      progressiveEnabled &&
+      canLiveTail(env.INCREMENTAL_LIVE_TAIL_ENABLED, run.taskEventStore)
         ? repository.getTraceChunk(
             getTaskEventStoreTableForRun(run),
             environment.id,
@@ -274,7 +285,7 @@ export class RunPresenter {
       }
     }
 
-    if (firstChunk && firstChunk.events.length > 0) {
+    if (firstChunk && hasWriteTimes(firstChunk.events)) {
       const firstEvents = stripAdminOnlyEventRows(firstChunk.events, buildOptions.isAdmin);
 
       const assembler = new TraceChunkAssembler();
@@ -325,6 +336,8 @@ export class RunPresenter {
               showDebug,
               totalSpans,
               maxSpans: repository.maximumTraceViewCount,
+              liveTailEnabled: true,
+              firstChunkReadAt,
             },
           },
           maximumLiveReloadingSetting: repository.maximumLiveReloadingSetting,

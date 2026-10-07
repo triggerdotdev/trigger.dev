@@ -24,6 +24,7 @@ export class TraceChunkPresenter {
     showDeletedLogs,
     limit,
     filter,
+    tailInsertedAtSinceMs,
   }: {
     userId: string;
     projectSlug: string;
@@ -35,6 +36,8 @@ export class TraceChunkPresenter {
     showDeletedLogs: boolean;
     limit?: number;
     filter?: "errors";
+    /** Live tail: only return rows written at/after this write time (ms since epoch). */
+    tailInsertedAtSinceMs?: number;
   }): Promise<TraceChunk | undefined> {
     const run = await runStore.findRun(
       { friendlyId: runFriendlyId },
@@ -120,7 +123,7 @@ export class TraceChunkPresenter {
       startCreatedAt,
       endCreatedAt,
       cursor,
-      { includeDebugLogs: showDebug, limit }
+      { includeDebugLogs: showDebug, limit, tailInsertedAtSinceMs }
     );
 
     if (!chunk) {

@@ -300,6 +300,8 @@ export type TraceChunkEvent = {
   runId: string;
   startTime: Date;
   startTimeNano: string;
+  // Write time (ms since epoch); undefined on the v1 store.
+  insertedAt?: string;
   duration: number;
   status: string;
   kind: string;
@@ -442,7 +444,7 @@ export interface IEventRepository {
     startCreatedAt: Date,
     endCreatedAt: Date | undefined,
     cursor: TraceChunkCursor | undefined,
-    options?: { includeDebugLogs?: boolean; limit?: number }
+    options?: { includeDebugLogs?: boolean; limit?: number; tailInsertedAtSinceMs?: number }
   ): Promise<TraceChunk | undefined>;
 
   getTraceSpanCount(
