@@ -80,8 +80,6 @@ export type ProgressiveTraceState = {
   linkedRunIdBySpanId: Record<string, string>;
   isComplete: boolean;
   isTruncated: boolean;
-  // Errors-only matches were capped; separate from `isTruncated`, which stops live reload.
-  errorsTruncated: boolean;
   loadFailed: boolean;
 };
 
@@ -99,7 +97,6 @@ function initialState(trace: ProgressiveTraceInput): ProgressiveTraceState {
     linkedRunIdBySpanId: trace.linkedRunIdBySpanId ?? {},
     isComplete: !trace.progressive?.hasMore,
     isTruncated: false,
-    errorsTruncated: false,
     loadFailed: false,
   };
 }
@@ -226,7 +223,6 @@ export function useProgressiveTrace(
       linkedRunIdBySpanId: view.linkedRunIdBySpanId,
       isComplete: prev.isComplete,
       isTruncated: prev.isTruncated,
-      errorsTruncated: prev.errorsTruncated,
       loadFailed: prev.loadFailed,
     }));
   }, []);
@@ -385,9 +381,6 @@ export function useProgressiveTrace(
       errorsFetchedRef.current = true;
       assembler.mergeChunk(data.events.map(toChunkEvent), { source: "errors" });
       rebuild(meta, assembler);
-      if (data.isTruncated) {
-        setState((prev) => (prev.errorsTruncated ? prev : { ...prev, errorsTruncated: true }));
-      }
     })();
 
     return () => {
