@@ -3,6 +3,7 @@ import { parseWithZod } from "@conform-to/zod/v4";
 import { EnvelopeIcon, LockClosedIcon } from "@heroicons/react/20/solid";
 import type { LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import { Form, useNavigation } from "@remix-run/react";
+import { useEffect, useRef, useState } from "react";
 import { GitHubLightIcon } from "@trigger.dev/companyicons";
 import { motion, useReducedMotion } from "framer-motion";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -18,6 +19,8 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
+import { TurnstileWidget, type TurnstileStatus } from "~/components/TurnstileWidget";
+import { env } from "~/env.server";
 import { TextLink } from "~/components/primitives/TextLink";
 import { isGithubAuthSupported, isGoogleAuthSupported } from "~/services/auth.server";
 import { getLastAuthMethod } from "~/services/lastAuthMethod.server";
@@ -101,6 +104,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const prefilledEmail = getAuthorizationEmail(redirectTo);
   const lastAuthMethod = await getLastAuthMethod(request);
 
+  const turnstileSiteKey =
+    env.TURNSTILE_SITE_KEY && env.TURNSTILE_SECRET_KEY ? env.TURNSTILE_SITE_KEY : null;
+
   const notice =
     url.searchParams.get("reason") === SSO_SESSION_EXPIRED_REASON
       ? "Your SSO session expired. Please sign in again."
@@ -157,6 +163,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
         authError,
         notice,
         prefilledEmail,
+        turnstileSiteKey,
         isVercelMarketplace: redirectTo.startsWith("/vercel/callback"),
       },
       { headers }
@@ -172,6 +179,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
         authError,
         notice,
         prefilledEmail,
+        turnstileSiteKey,
         isVercelMarketplace: false,
       },
       { headers }
@@ -203,6 +211,19 @@ export default function LoginPage() {
     (navigation.state === "submitting" || navigation.state === "loading") &&
     navigation.formAction === "/login/magic" &&
     navigation.formData?.get("action") === "send";
+
+  const [turnstileStatus, setTurnstileStatus] = useState<TurnstileStatus>("pending");
+  const [turnstileKey, setTurnstileKey] = useState(0);
+  const wasSendingRef = useRef(false);
+  useEffect(() => {
+    if (isEmailLoading) {
+      wasSendingRef.current = true;
+    } else if (wasSendingRef.current) {
+      wasSendingRef.current = false;
+      setTurnstileKey((key) => key + 1);
+    }
+  }, [isEmailLoading]);
+  const waitingForTurnstile = data.turnstileSiteKey !== null && turnstileStatus !== "ready";
 
   const [emailForm, emailFields] = useForm({
     id: "login-email",
@@ -323,12 +344,26 @@ export default function LoginPage() {
                           {emailFields.email.errors}
                         </FormError>
                       </InputGroup>
+                      {data.turnstileSiteKey && (
+                        <TurnstileWidget
+                          key={turnstileKey}
+                          siteKey={data.turnstileSiteKey}
+                          action="magic-link"
+                          onStatusChange={setTurnstileStatus}
+                        />
+                      )}
+                      {data.turnstileSiteKey && turnstileStatus === "error" && (
+                        <FormError>
+                          We couldn't load the verification check. Refresh the page or use another
+                          sign-in option.
+                        </FormError>
+                      )}
                       <div className="relative w-full">
                         {data.lastAuthMethod === "email" && <LastUsedBadge />}
                         <Button
                           type="submit"
                           variant="primary/large"
-                          disabled={isEmailLoading}
+                          disabled={isEmailLoading || waitingForTurnstile}
                           fullWidth
                           data-action="continue with email"
                         >

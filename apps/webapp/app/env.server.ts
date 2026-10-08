@@ -406,6 +406,8 @@ const EnvironmentSchema = z
       .refine(isValidRegex, "WHITELISTED_EMAILS must be a valid regex.")
       .optional(),
     BLOCKED_EMAIL_DOMAINS: z.string().optional(),
+    TURNSTILE_SITE_KEY: z.string().optional(),
+    TURNSTILE_SECRET_KEY: z.string().optional(),
     ADMIN_EMAILS: z.string().refine(isValidRegex, "ADMIN_EMAILS must be a valid regex.").optional(),
     // Instance-level kill switch for the admin dashboard and user impersonation.
     ADMIN_DASHBOARD_ENABLED: BoolEnv.default(true),
