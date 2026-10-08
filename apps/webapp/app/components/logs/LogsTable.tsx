@@ -32,8 +32,11 @@ type LogsTableProps = {
   isLoading?: boolean;
   isLoadingMore?: boolean;
   hasMore?: boolean;
+  isIncomplete?: boolean;
   onLoadMore?: () => void;
-  onCheckForMore?: () => void;
+  showKeepSearching?: boolean;
+  onKeepSearching?: () => void;
+  searchedTo?: string;
   variant?: TableVariant;
   selectedLogId?: string;
   onLogSelect?: (logId: string) => void;
@@ -62,8 +65,11 @@ export function LogsTable({
   isLoading = false,
   isLoadingMore = false,
   hasMore = false,
+  isIncomplete = false,
   onLoadMore,
-  onCheckForMore,
+  showKeepSearching = false,
+  onKeepSearching,
+  searchedTo,
   selectedLogId,
   onLogSelect,
 }: LogsTableProps) {
@@ -88,30 +94,25 @@ export function LogsTable({
     return () => clearTimeout(timer);
   }, [isLoadingMore]);
 
-  // Intersection observer for infinite scroll
   useEffect(() => {
-    if (!hasMore || isLoadingMore || !onLoadMore) return;
+    if (isLoading || !hasMore || isLoadingMore || showKeepSearching || !onLoadMore) return;
 
+    const target = loadMoreRef.current;
+    if (!target) return;
+
+    let active = true;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting) {
-          onLoadMore();
-        }
+        if (active && entries[0]?.isIntersecting) onLoadMore();
       },
       { threshold: 0.1 }
     );
-
-    const currentRef = loadMoreRef.current;
-    if (currentRef) {
-      observer.observe(currentRef);
-    }
-
+    observer.observe(target);
     return () => {
-      if (currentRef) {
-        observer.unobserve(currentRef);
-      }
+      active = false;
+      observer.disconnect();
     };
-  }, [hasMore, isLoadingMore, onLoadMore]);
+  }, [hasMore, isLoading, isLoadingMore, onLoadMore, showKeepSearching]);
 
   return (
     <div className="relative h-full overflow-auto border-t scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
@@ -133,7 +134,11 @@ export function LogsTable({
         </TableHeader>
         <TableBody>
           {logs.length === 0 ? (
-            <BlankState isLoading={isLoading} onRefresh={() => window.location.reload()} />
+            <BlankState
+              isLoading={isLoading}
+              isPartial={hasMore || isIncomplete}
+              onRefresh={() => window.location.reload()}
+            />
           ) : (
             logs.map((log) => {
               const isSelected = selectedLogId === log.id;
@@ -149,7 +154,7 @@ export function LogsTable({
 
               return (
                 <TableRow
-                  key={log.id}
+                  key={log.projectionFingerprint ?? log.id}
                   className={cn(
                     "cursor-pointer transition-colors",
                     isSelected ? "bg-background-hover" : "hover:bg-background-dimmed"
@@ -200,19 +205,25 @@ export function LogsTable({
           )}
         </TableBody>
       </Table>
-      {/* Infinite scroll trigger */}
-      {hasMore && logs.length > 0 && (
+      {(hasMore || logs.length > 0 || isIncomplete) && (
         <div ref={loadMoreRef} className="flex items-center justify-center py-12">
-          <div className={cn("flex items-center gap-2", !showLoadMoreSpinner && "invisible")}>
-            <Spinner /> <span className="text-text-dimmed">Loading more…</span>
-          </div>
-        </div>
-      )}
-      {/* Show all logs message with check for more button */}
-      {!hasMore && logs.length > 0 && (
-        <div className="flex items-center justify-center py-12">
           <div className="flex flex-col items-center gap-3">
-            <span className="text-text-dimmed">Showing all {logs.length} logs</span>
+            {searchedTo && <span className="text-text-dimmed">Searched back to {searchedTo}</span>}
+            {hasMore ? (
+              isLoadingMore ? (
+                <div className={cn("flex items-center gap-2", !showLoadMoreSpinner && "invisible")}>
+                  <Spinner /> <span className="text-text-dimmed">Searching…</span>
+                </div>
+              ) : showKeepSearching ? (
+                <Button variant="tertiary/medium" onClick={onKeepSearching}>
+                  Keep searching
+                </Button>
+              ) : null
+            ) : isIncomplete ? (
+              <span className="text-text-dimmed">Search incomplete</span>
+            ) : (
+              <span className="text-text-dimmed">Showing all {logs.length} logs</span>
+            )}
           </div>
         </div>
       )}
@@ -220,7 +231,15 @@ export function LogsTable({
   );
 }
 
-function BlankState({ isLoading, onRefresh }: { isLoading?: boolean; onRefresh?: () => void }) {
+function BlankState({
+  isLoading,
+  isPartial,
+  onRefresh,
+}: {
+  isLoading?: boolean;
+  isPartial?: boolean;
+  onRefresh?: () => void;
+}) {
   if (isLoading) return <TableBlankRow colSpan={6} />;
 
   const handleRefresh = onRefresh ?? (() => window.location.reload());
@@ -229,13 +248,17 @@ function BlankState({ isLoading, onRefresh }: { isLoading?: boolean; onRefresh?:
     <TableBlankRow colSpan={6}>
       <div className="flex flex-col items-center justify-center gap-6">
         <Paragraph className="w-auto" variant="base/bright">
-          No logs match your filters. Try refreshing or modifying your filters.
+          {isPartial
+            ? "No matching logs found in the searched range yet."
+            : "No logs match your filters. Try refreshing or modifying your filters."}
         </Paragraph>
-        <div className="flex items-center gap-2">
-          <Button LeadingIcon={ArrowPathIcon} variant="tertiary/medium" onClick={handleRefresh}>
-            Refresh
-          </Button>
-        </div>
+        {!isPartial && (
+          <div className="flex items-center gap-2">
+            <Button LeadingIcon={ArrowPathIcon} variant="tertiary/medium" onClick={handleRefresh}>
+              Refresh
+            </Button>
+          </div>
+        )}
       </div>
     </TableBlankRow>
   );

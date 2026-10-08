@@ -504,7 +504,7 @@ export const LogsSearchListResult = z.object({
   status: z.string(),
   duration: z.number().or(z.string()),
   triggered_timestamp: z.string(),
-  projection_fingerprint_string: z.string().optional(),
+  projection_fingerprint_string: z.string(),
 });
 
 export type LogsSearchListResult = z.output<typeof LogsSearchListResult>;

@@ -95,6 +95,29 @@ export class NoopClient implements ClickhouseReader, ClickhouseWriter {
     };
   }
 
+  public queryFastWithStats<
+    TOut extends Record<string, any>,
+    TParams extends Record<string, any>,
+  >(): (params: TParams) => Promise<Result<QueryResultWithStats<TOut>, QueryError>> {
+    return async () => [
+      null,
+      {
+        rows: [],
+        stats: {
+          read_rows: "0",
+          read_bytes: "0",
+          written_rows: "0",
+          written_bytes: "0",
+          total_rows_to_read: "0",
+          result_rows: "0",
+          result_bytes: "0",
+          elapsed_ns: "0",
+          byte_seconds: "0",
+        },
+      },
+    ];
+  }
+
   public queryFastStream<
     TOut extends Record<string, any>,
     TParams extends Record<string, any>,
