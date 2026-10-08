@@ -25,9 +25,9 @@ curl -X POST "https://api.trigger.dev/realtime/v1/sessions/{session}/in/append" 
   --data '{"type":"user-message","text":"hello"}'
 ```
 
-The body is the raw record — any text up to 1MiB (records over the per-record cap return `413`). The response is `{ "ok": true }`.
+The body is the raw record — any text up to 1MiB (records over the per-record cap return `413`). The response is `{ "ok": true, "seq": <number> }`, where `seq` is the sequence number of the appended record. `seq` is omitted when no new record was written, for example when a retry reuses an `X-Part-Id` that was already appended. When the session's run is parked awaiting its deployment, the response also includes `"pendingVersion": true`.
 
-Set the `X-Part-Id` header to a unique value per record to make the append idempotent: replaying the same `X-Part-Id` does not duplicate the record. Appending to a closed or expired session returns `400`.
+Set the `X-Part-Id` header to a unique value per record to make the append idempotent: replaying the same `X-Part-Id` does not duplicate the record. Appending to a closed session returns `409` (`code: "session_closed"`); appending to an expired session returns `400` (`code: "session_expired"`).
 
 <Warning>
   Appending to `.out` requires a **secret key**. A session public token (even one with
@@ -48,18 +48,10 @@ curl -N "https://api.trigger.dev/realtime/v1/sessions/{session}/out" \
 
 | Header | Direction | Description |
 | --- | --- | --- |
-| `Last-Event-ID` | request | Resume after this sequence number. Set it to the last `id:` you received to pick up exactly where you left off after a disconnect. |
+| `Last-Event-ID` | request | Resume after this sequence number. Set it to the `seq_num` of the last record you processed. |
 | `Timeout-Seconds` | request | How long the server holds the stream open with no new records before closing, `1`–`600`. |
 
-Each SSE event carries:
-
-- `id:` — the record's sequence number. Use the most recent one as `Last-Event-ID` to resume.
-- `data:` — a JSON record `{ "data": <record>, "id": <id> }`. For `.out` on a `chat.agent` session, `data` is a UI message chunk (text, reasoning, tool call, or a custom data part).
-
-```text
-id: 42
-data: {"data":{"type":"text","text":"echo: hello"},"id":42}
-```
+The stream is passed through from S2. Events are `batch` (records), `ping` (keepalive) and a final `data: [DONE]`. The `id:` line is an internal S2 cursor (`startSeq,endSeq,byteOffset`); do not parse it. Each `batch` event has `data: {"records":[{"seq_num":42,"timestamp":1712150400000,"body":"{\"data\":<record>,\"id\":\"<partId>\"}","headers":[...]}],"tail":{...}}`, where `body` is a JSON string (empty for control records). See the [stream format](/ai-chat/client-protocol#stream-format-s2) for details.
 
 ### Control records
 
@@ -67,8 +59,10 @@ Some `.out` events are **control records** rather than data. A control record ha
 
 | Subtype | Meaning |
 | --- | --- |
-| `turn-complete` | The current turn finished. Carries sibling headers `public-access-token` (a refreshed session token), `session-in-event-id`, and `last-event-id`. |
+| `turn-complete` | The current turn finished. Can carry sibling headers `public-access-token` (a refreshed session token), `session-in-event-id`, and `session-in-consumed-id`. It also carries a `session-closed` header (and `session-closed-reason`, when a reason was given) when the session was closed during that turn. |
 | `upgrade-required` | The session needs to hand off to a run on a newer deployed version. |
+| `session-closed` | The session was closed. Carries a `session-closed-reason` header when a reason was given. |
+| `pending-version` | The session's run is waiting for its deployment to land. |
 
 Route control records by their subtype instead of treating them as message content. The TypeScript SDK does this for you — `session.out.read` filters control records out of the chunk stream and surfaces them through `onControl`.
 
@@ -86,12 +80,12 @@ Pass `afterEventId` to return only records after that sequence number; omit it t
 ```json
 {
   "records": [
-    { "data": { "type": "text", "text": "echo: hello" }, "id": 43, "seqNum": 43 }
+    { "data": "{\"type\":\"text\",\"text\":\"echo: hello\"}", "id": "a1b2c3d", "seqNum": 43 }
   ]
 }
 ```
 
-Each record carries `data`, `id`, `seqNum`, and an optional `headers` array (present on control records). Page forward by passing the highest `seqNum` you received as the next `afterEventId`.
+Each record carries `data` (the appended record body as a string), `id` (the part ID: the `X-Part-Id` you sent on append, otherwise a generated ID; empty string on control records), `seqNum` (the sequence number), and an optional `headers` array. Page forward by passing the highest `seqNum` you received as the next `afterEventId`.
 
 ## Authorization
 
@@ -127,4 +121,4 @@ for await (const chunk of stream) {
 }
 ```
 
-See [`session.in`](/ai-chat/sessions#session-in-—-clients-→-task) and [`session.out`](/ai-chat/sessions#session-out-—-task-→-clients) for the full handle API.
+See [`session.in`](/ai-chat/sessions) and [`session.out`](/ai-chat/sessions) for the full handle API.

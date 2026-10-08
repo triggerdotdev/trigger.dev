@@ -201,7 +201,7 @@ components:
     Error:
       type: object
       properties:
-        message:
+        error:
           type: string
     EventRequest:
       type: object
@@ -291,7 +291,13 @@ components:
         runCount:
           type: integer
           minimum: 1
-          description: Expected number of items in the batch. Must be a positive integer.
+          description: Expected number of items in the batch. Must be a positive integer, up to the server's maximum batch size (1,000 by default; self-hosted instances can configure it). Requests above the maximum return a 400.
+        taskIdentifiers:
+          type: array
+          minItems: 1
+          items:
+            type: string
+          description: Distinct task identifiers of the items in the batch. Used to authorize tokens scoped to specific tasks. If omitted, only credentials with broad task access are accepted.
         parentRunId:
           type: string
           description: Parent run ID (friendly ID) for batchTriggerAndWait.
