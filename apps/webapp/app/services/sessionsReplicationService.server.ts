@@ -1,5 +1,5 @@
 import type { ClickHouse, SessionInsertArray } from "@internal/clickhouse";
-import { getSessionField } from "@internal/clickhouse";
+import { insertErrorServerText, getSessionField } from "@internal/clickhouse";
 import { type RedisOptions } from "@internal/redis";
 import {
   LogicalReplicationClient,
@@ -716,7 +716,7 @@ export class SessionsReplicationService {
 
   // Retry all errors except known permanent ones
   #isRetryableError(error: Error): boolean {
-    const errorMessage = error.message.toLowerCase();
+    const errorMessage = insertErrorServerText(error).toLowerCase();
 
     // Permanent errors that should NOT be retried
     const permanentErrorPatterns = [

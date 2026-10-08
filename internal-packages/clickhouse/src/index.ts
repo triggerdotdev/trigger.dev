@@ -139,7 +139,12 @@ export {
 export type { ColumnFormatType, OutputColumnMetadata } from "@internal/tsql";
 
 // Errors
-export { QueryError, isClickhouseResourceLimitError } from "./client/errors.js";
+export {
+  QueryError,
+  isClickhouseResourceLimitError,
+  insertErrorServerText,
+  insertErrorType,
+} from "./client/errors.js";
 
 export type ClickhouseCommonConfig = {
   keepAlive?: {

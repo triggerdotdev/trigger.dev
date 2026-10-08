@@ -1361,11 +1361,16 @@ function classifyClickhouseError(
   return "fault";
 }
 
-function toInsertError(error: Error): InsertError {
-  const isClickhouseError = error instanceof ClickHouseError;
-  return new InsertError(error.message, {
-    rawMessage: isClickhouseError ? error.rawMessage : undefined,
-    clickhouseErrorType: isClickhouseError ? error.type : undefined,
+// The server text can quote rejected rows, so it stays off `message` (and the stack).
+export function toInsertError(error: Error): InsertError {
+  if (!(error instanceof ClickHouseError)) return new InsertError(error.message);
+
+  const message = error.type
+    ? `ClickHouse insert failed: ${error.type}`
+    : "ClickHouse insert failed";
+  return new InsertError(message, {
+    rawMessage: error.rawMessage ?? error.message,
+    clickhouseErrorType: error.type,
   });
 }
 
