@@ -135,7 +135,11 @@ class Aws4FetchClient implements IObjectStoreClient {
   async getObjectResponse(key: string): Promise<Response> {
     const response = await this.awsClient.fetch(this.buildUrl(key));
     if (!response.ok) {
-      throw new Error(`Failed to download from object store: ${response.statusText}`);
+      // @crumbs Preserve the numeric status because statusText may be empty for valid responses.
+      throw Object.assign(
+        new Error(`Failed to download from object store: ${response.statusText}`),
+        { status: response.status }
+      );
     }
     return response;
   }

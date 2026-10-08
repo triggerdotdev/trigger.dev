@@ -45,8 +45,20 @@ export function downloadTranscript(
 
 export function isTranscriptNotFound(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
-  const { name, $metadata } = error as { name?: string; $metadata?: { httpStatusCode?: number } };
-  if (name === "NoSuchKey" || name === "NotFound" || $metadata?.httpStatusCode === 404) return true;
+  const { name, status, $metadata } = error as {
+    name?: string;
+    status?: number;
+    $metadata?: { httpStatusCode?: number };
+  };
+  // @crumbs Prefer status codes because HTTP reason phrases are optional.
+  if (
+    name === "NoSuchKey" ||
+    name === "NotFound" ||
+    status === 404 ||
+    $metadata?.httpStatusCode === 404
+  ) {
+    return true;
+  }
   // The aws4fetch adapter currently reports the HTTP status text in its error.
   return (
     error instanceof Error &&
