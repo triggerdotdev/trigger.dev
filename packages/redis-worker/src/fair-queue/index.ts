@@ -263,6 +263,9 @@ export class FairQueue<TPayloadSchema extends AnyZodSchema = z.ZodUnknown> {
       getDLQLength: async (tenantId: string) => {
         return await this.getDeadLetterQueueLength(tenantId);
       },
+      getOldestMessageAge: async (shardId: number) => {
+        return await this.getOldestMessageAge(shardId);
+      },
       shardCount: this.shardCount,
       observedTenants: options?.observedTenants,
     });
@@ -750,6 +753,24 @@ export class FairQueue<TPayloadSchema extends AnyZodSchema = z.ZodUnknown> {
       this.masterQueue.getTotalQueueCount(),
     ]);
     return dispatchCount + legacyCount;
+  }
+
+  /**
+   * Get the age in ms of the oldest due message not yet completed in a shard, or 0 if none.
+   * Claims don't refresh the index scores, so claimed messages count until their queue next completes or empties.
+   */
+  async getOldestMessageAge(shardId: number): Promise<number> {
+    const now = Date.now();
+    const [[oldestTenant], [oldestLegacyQueue]] = await Promise.all([
+      this.tenantDispatch.getTenantsFromShard(shardId, 1, now),
+      this.masterQueue.getQueuesFromShard(shardId, 1, now),
+    ]);
+    const oldestScore = Math.min(
+      oldestTenant?.score ?? Infinity,
+      oldestLegacyQueue?.score ?? Infinity
+    );
+    if (!Number.isFinite(oldestScore)) return 0;
+    return Math.max(0, now - oldestScore);
   }
 
   /**

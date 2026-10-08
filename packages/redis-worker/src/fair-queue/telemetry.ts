@@ -59,6 +59,7 @@ export interface FairQueueMetrics {
   dispatchLength: ObservableGauge;
   inflightCount: ObservableGauge;
   dlqLength: ObservableGauge;
+  oldestMessageAge: ObservableGauge;
 }
 
 /**
@@ -254,6 +255,7 @@ export class FairQueueTelemetry {
     getDispatchLength?: (shardId: number) => Promise<number>;
     getInflightCount?: (shardId: number) => Promise<number>;
     getDLQLength?: (tenantId: string) => Promise<number>;
+    getOldestMessageAge?: (shardId: number) => Promise<number>;
     shardCount?: number;
     observedQueues?: string[];
     observedTenants?: string[];
@@ -314,6 +316,20 @@ export class FairQueueTelemetry {
         for (let shardId = 0; shardId < shardCount; shardId++) {
           const count = await getInflightCount(shardId);
           observableResult.observe(count, {
+            [FairQueueAttributes.SHARD_ID]: shardId.toString(),
+          });
+        }
+      });
+    }
+
+    if (callbacks.getOldestMessageAge && callbacks.shardCount) {
+      const getOldestMessageAge = callbacks.getOldestMessageAge;
+      const shardCount = callbacks.shardCount;
+
+      this.metrics.oldestMessageAge.addCallback(async (observableResult) => {
+        for (let shardId = 0; shardId < shardCount; shardId++) {
+          const age = await getOldestMessageAge(shardId);
+          observableResult.observe(age, {
             [FairQueueAttributes.SHARD_ID]: shardId.toString(),
           });
         }
@@ -445,6 +461,11 @@ export class FairQueueTelemetry {
       dlqLength: this.meter.createObservableGauge(`${this.name}.dlq.length`, {
         description: "Number of messages in dead letter queue",
         unit: "messages",
+      }),
+      oldestMessageAge: this.meter.createObservableGauge(`${this.name}.oldest_message_age`, {
+        description:
+          "Age of the oldest due message not yet completed in a shard, including claimed messages until their queue next completes or empties",
+        unit: "ms",
       }),
     };
   }
