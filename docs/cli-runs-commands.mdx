@@ -7,7 +7,6 @@ description: "Use these commands to list, inspect, replay and cancel runs from y
 import CommonOptions from "/snippets/cli-options-common.mdx";
 import ConfigFileOptions from "/snippets/cli-options-config-file.mdx";
 import ProjectRefOptions from "/snippets/cli-options-project-ref.mdx";
-import BranchOptions from "/snippets/cli-options-branch.mdx";
 
 ## runs list
 
@@ -85,7 +84,9 @@ npx trigger.dev@latest runs cancel run_abc123
 
 <ConfigFileOptions />
 <ProjectRefOptions />
-<BranchOptions />
+<ParamField body="Preview branch" type="--branch | -b">
+  Required when using `--env preview`. Specify the branch, e.g. `--branch my-branch` or `-b my-branch`.
+</ParamField>
 
 ### Common options
 

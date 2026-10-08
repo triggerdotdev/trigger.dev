@@ -51,7 +51,7 @@ Because your application and your tasks deploy separately, a release of your app
 
 ## Retries and reattempts
 
-When a task has an uncaught error it will [retry](/errors-retrying), assuming you have not set `maxAttempts` to 0. Retries are locked to the original version of the run.
+When a task has an uncaught error it will [retry](/errors-retrying), if the task has retries configured (the `retry` option or `retries.default` in your config). Retries are locked to the original version of the run.
 
 ## Replays
 
