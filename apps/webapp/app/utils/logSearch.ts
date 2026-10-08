@@ -58,6 +58,33 @@ export function escapeClickHouseLike(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }
 
+export type LogsSearchPredicate =
+  | { kind: "word"; term: string }
+  | { kind: "id"; pattern: string }
+  | { kind: "phrase"; pattern: string };
+
+const LOGS_SEARCH_WORD_PATTERN = /^[a-z]+$/;
+const LOGS_SEARCH_ID_PATTERN = /^[a-z0-9_\-.:/@+]+$/;
+const LOGS_SEARCH_ID_CONTENT_PATTERN = /[a-z0-9]/;
+const LOGS_SEARCH_ID_MARKER_PATTERN = /[0-9_\-.:/@+]/;
+
+export function logsSearchPredicate(normalizedTerm: string): LogsSearchPredicate {
+  if (LOGS_SEARCH_WORD_PATTERN.test(normalizedTerm)) {
+    return { kind: "word", term: normalizedTerm };
+  }
+
+  const pattern = `%${escapeClickHouseLike(normalizedTerm)}%`;
+  if (
+    LOGS_SEARCH_ID_PATTERN.test(normalizedTerm) &&
+    LOGS_SEARCH_ID_CONTENT_PATTERN.test(normalizedTerm) &&
+    LOGS_SEARCH_ID_MARKER_PATTERN.test(normalizedTerm)
+  ) {
+    return { kind: "id", pattern };
+  }
+
+  return { kind: "phrase", pattern };
+}
+
 export function normalizeLogsSearchTerm(value: string): string {
   return normalizeSearchText(value).trim();
 }

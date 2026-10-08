@@ -21,9 +21,9 @@ import {
 } from "~/v3/eventRepository/clickhouseEventRepository.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import {
-  escapeClickHouseLike,
   hasMinimumLogsSearchLength,
   logsSearchExpansionPeriod,
+  logsSearchPredicate,
   LOGS_SEARCH_RETRY_OVERFETCH_FACTOR,
   MIN_LOGS_SEARCH_LENGTH,
   normalizeLogsSearchTerm,
@@ -255,8 +255,8 @@ export class LogsListPresenter extends BasePresenter {
         `Log searches must be at least ${MIN_LOGS_SEARCH_LENGTH} characters.`
       );
     }
-    const searchTerm =
-      normalizedSearchTerm === "" ? undefined : escapeClickHouseLike(normalizedSearchTerm);
+    const searchPredicate =
+      normalizedSearchTerm === "" ? undefined : logsSearchPredicate(normalizedSearchTerm);
 
     // Run exactly one bounded query. Broadening a search window is an explicit user action;
     // silently rescanning the same recent rows makes absence queries needlessly expensive.
@@ -264,12 +264,17 @@ export class LogsListPresenter extends BasePresenter {
       const queryBuilder = this.clickhouse.taskEventsSearch.logsListQueryBuilder({
         // Scoped to this query rather than the logs client, which other pages share. ClickHouse
         // skips lazy materialization when LIMIT exceeds the max, so pass this query's limit.
-        settings: env.CLICKHOUSE_LOGS_LIST_LAZY_MATERIALIZATION
-          ? {
-              query_plan_optimize_lazy_materialization: 1,
-              query_plan_max_limit_for_lazy_materialization: queryLimit,
-            }
-          : undefined,
+        settings: {
+          ...(env.CLICKHOUSE_LOGS_LIST_LAZY_MATERIALIZATION
+            ? {
+                query_plan_optimize_lazy_materialization: 1,
+                query_plan_max_limit_for_lazy_materialization: queryLimit,
+              }
+            : {}),
+          ...(searchPredicate && searchPredicate.kind !== "word"
+            ? { ignore_data_skipping_indices: "idx_search_text,idx_search_words" }
+            : {}),
+        },
       });
 
       // The projector excludes events without a trace_id.
@@ -308,9 +313,13 @@ export class LogsListPresenter extends BasePresenter {
         queryBuilder.where("run_id = {runId: String}", { runId });
       }
 
-      if (searchTerm !== undefined) {
+      if (searchPredicate?.kind === "word") {
+        queryBuilder.where("hasAllTokens(concat(search_text, ''), {searchTokens: String})", {
+          searchTokens: searchPredicate.term,
+        });
+      } else if (searchPredicate) {
         queryBuilder.where("search_text LIKE {searchPattern: String}", {
-          searchPattern: `%${searchTerm}%`,
+          searchPattern: searchPredicate.pattern,
         });
       }
 
@@ -378,7 +387,7 @@ export class LogsListPresenter extends BasePresenter {
     if (queryError) {
       if (isClickhouseResourceLimitError(queryError)) {
         throw new ServiceValidationError(
-          searchTerm === undefined
+          searchPredicate === undefined
             ? "These logs took too long to load. Try a shorter time range or add a filter."
             : "This search took too long. Try a shorter time range, a more specific search, or add a filter."
         );
@@ -440,7 +449,7 @@ export class LogsListPresenter extends BasePresenter {
     });
 
     const searchExpansion =
-      searchTerm !== undefined && time.isDefault && transformedLogs.length === 0
+      searchPredicate !== undefined && time.isDefault && transformedLogs.length === 0
         ? logsSearchExpansionPeriod(effectiveFrom, clampedTo, retentionLimitDays)
         : undefined;
 
