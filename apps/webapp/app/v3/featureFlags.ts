@@ -34,7 +34,8 @@ export const FEATURE_FLAG = {
   // Grace-linger stamp carried alongside runOpsMintKind on flip. See mintFlipGrace.ts.
   runOpsMintKindPrev: "runOpsMintKindPrev",
   runOpsMintKindFlippedAt: "runOpsMintKindFlippedAt",
-  // Gen-2 mint shard pins, read from the org override blob only. See runOpsMintShard.server.ts.
+  // Gen-2 mint shard pins, read from the org override blob only. A pin is the ONLY way an org or
+  // environment reaches a shard: nothing unpinned is ever placed there. See mintShardAssignment.ts.
   runOpsMintShard: "runOpsMintShard",
   runOpsMintShardEnvPins: "runOpsMintShardEnvPins",
   // The active mint-shard list, global only. Lives here rather than in the environment because a
@@ -132,9 +133,10 @@ export const FeatureFlagCatalog = {
   // by stampMintKindFlip on a genuine flip. Display-only (see ORG_LOCKED_FLAGS).
   [FEATURE_FLAG.runOpsMintKindPrev]: z.enum(["cuid", "runOpsId"]),
   [FEATURE_FLAG.runOpsMintKindFlippedAt]: z.string().datetime(),
-  // Pins one org to a gen-2 mint shard. "new" holds the org on gen-1 run-ops ids, which is how
-  // a canary keeps the fleet's default while one org moves. Only honored while the key is in
-  // the active list; a drained key falls through to the hash.
+  // Pins one org to a gen-2 mint shard. "new" holds the org on gen-1 run-ops ids, which is also
+  // what no pin does. Only honored while the key is in the active list; a drained key mints
+  // gen-1. Not grace-stamped: a pin only decides where the NEXT root mints, and every id minted
+  // either side of a change self-routes by the shard key it carries.
   [FEATURE_FLAG.runOpsMintShard]: z
     .string()
     .refine((v) => v === "new" || /^[a-z0-9]$/.test(v), 'must be a single [a-z0-9] char, or "new"'),

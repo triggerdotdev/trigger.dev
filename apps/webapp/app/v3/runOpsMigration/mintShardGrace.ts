@@ -9,8 +9,9 @@ export const SHARD_KEY_PATTERN = /^[a-z0-9]$/;
 // "legacy" means the cuid store, which minting never selects.
 const RESERVED_SHARD_KEYS: readonly string[] = ["new", "legacy"];
 
-// "new" IS legal as a PIN, holding one org or environment on gen-1 while the rest of the fleet
-// mints gen-2. Without it a non-empty active set moves every environment at once.
+// "new" IS legal as a PIN, holding an org or environment on gen-1. Placement is by pin only, so an
+// unpinned environment is already on gen-1; "new" earns its place as an env pin that keeps one
+// environment on gen-1 while its org is pinned to a shard.
 export const GEN_1_PIN_VALUE = "new";
 
 export type MintShardSetResolution = {
@@ -49,7 +50,8 @@ export function parseShardCsv(raw: string | undefined | null): string[] {
     unique.add(key);
   }
 
-  // Sorted so no placement can depend on the order an operator typed the CSV in.
+  // Sorted so the stored list is canonical: re-typing the same keys in another order is no change
+  // and does not stamp a grace window.
   return [...unique].sort();
 }
 
