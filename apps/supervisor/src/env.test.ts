@@ -86,11 +86,11 @@ describe("worker queue selection", () => {
     {
       config: {
         KUBERNETES_FORCE_ENABLED: "true",
-        KUBERNETES_RUN_CRD_ENABLED: "true",
+        KUBERNETES_RUN_CRD_ENABLED: "false",
         KUBERNETES_RUNNER_RUNTIME: "microvm",
       },
       subscription: { ...restore, compat: "compute" },
-      error: "COMPUTE_GATEWAY_URL",
+      error: "compatibility",
     },
   ])(
     "rejects incompatible or unsupported subscriptions: $error",
@@ -102,6 +102,24 @@ describe("worker queue selection", () => {
           TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS: JSON.stringify([subscription]),
         })
       ).toThrow(error);
+    }
+  );
+
+  it.each(["ondemand", "scheduled"])(
+    "accepts %s compute restores on the native microVM Runner backend without a gateway",
+    (queueClass) => {
+      expect(() =>
+        Env.parse({
+          ...base,
+          KUBERNETES_FORCE_ENABLED: "true",
+          KUBERNETES_RUN_CRD_ENABLED: "true",
+          KUBERNETES_RUNNER_RUNTIME: "microvm",
+          TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS: JSON.stringify([
+            { ...ondemand, class: queueClass, compat: "compute" },
+            { ...restore, class: queueClass, compat: "compute" },
+          ]),
+        })
+      ).not.toThrow();
     }
   );
 

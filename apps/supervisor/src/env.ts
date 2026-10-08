@@ -378,13 +378,11 @@ export const Env = z
         });
       }
 
-      const compatibility =
-        data.COMPUTE_GATEWAY_URL ||
-        (data.KUBERNETES_FORCE_ENABLED &&
-          data.KUBERNETES_RUN_CRD_ENABLED &&
-          data.KUBERNETES_RUNNER_RUNTIME === "microvm")
-          ? "compute"
-          : "container";
+      const nativeMicrovm =
+        data.KUBERNETES_FORCE_ENABLED &&
+        data.KUBERNETES_RUN_CRD_ENABLED &&
+        data.KUBERNETES_RUNNER_RUNTIME === "microvm";
+      const compatibility = data.COMPUTE_GATEWAY_URL || nativeMicrovm ? "compute" : "container";
 
       for (const [index, subscription] of data.TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS.entries()) {
         if (subscription.compat !== "any" && subscription.compat !== compatibility) {
@@ -395,7 +393,9 @@ export const Env = z
           });
         } else if (
           subscription.phase === "restore" &&
-          !(compatibility === "compute" ? data.COMPUTE_GATEWAY_URL : data.TRIGGER_CHECKPOINT_URL)
+          !(compatibility === "compute"
+            ? data.COMPUTE_GATEWAY_URL || nativeMicrovm
+            : data.TRIGGER_CHECKPOINT_URL)
         ) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
