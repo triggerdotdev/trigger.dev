@@ -43,7 +43,6 @@ async function start(snapshotsEnabled: boolean) {
     workerClient: { submitSuspendCompletion: vi.fn(async () => ({ success: true })) } as any,
     checkpointClient: checkpointClient as any,
     runnerSnapshotter,
-    snapshotCallbackSecret: "snapshot-callback-secret",
     wideEventOpts: { service: "supervisor", env: { nodeId: "test" }, enabled: false },
     wideEventsNoisyRoutes: false,
   });

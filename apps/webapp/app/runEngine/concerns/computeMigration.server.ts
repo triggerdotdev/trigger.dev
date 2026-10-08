@@ -15,12 +15,10 @@ type MigrationDecisionInput = {
 };
 
 /**
- * Whether this org should run on the compute backing. Shared by the trigger-time
- * transform and the deploy-time template decision so a migrated org always gets a
- * compute template. Precedence: per-org override (both directions) wins; otherwise
- * global enable + the plan's percentage bucket. Enterprise and unknown plans are
- * never enrolled by percentage (override only). The sole opt-out is the per-org
- * `computeMigrationEnabled: false`.
+ * Whether this org should run on the compute backing. Precedence: per-org override
+ * (both directions) wins; otherwise global enable + the plan's percentage bucket.
+ * Enterprise and unknown plans are never enrolled by percentage (override only).
+ * The sole opt-out is the per-org `computeMigrationEnabled: false`.
  */
 export function isOrgMigrated({
   planType,

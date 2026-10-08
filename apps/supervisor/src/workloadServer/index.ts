@@ -1,4 +1,3 @@
-import { SnapshotCallbackPayloadSchema } from "@internal/compute";
 import { type CheckpointClient, HttpServer } from "@trigger.dev/core/v3/serverOnly";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import {
@@ -34,10 +33,8 @@ import {
 import type { WorkloadDeploymentTokenClaims } from "@trigger.dev/core/v3";
 import {
   ComputeSnapshotService,
-  type RunTraceContext,
   type RunnerSnapshotter,
 } from "../services/computeSnapshotService.js";
-import type { OtlpTraceService } from "../services/otlpTraceService.js";
 import {
   emitOneShot,
   runWideEvent,
@@ -45,7 +42,6 @@ import {
   type State,
   type WideEventOptions,
 } from "../wideEvents/index.js";
-import type { ComputeWorkloadManager } from "../workloadManager/compute.js";
 
 // Use the official export when upgrading to socket.io@4.8.0
 interface DefaultEventsMap {
@@ -112,11 +108,8 @@ type WorkloadServerOptions = {
   host?: string;
   workerClient: SupervisorHttpClient;
   checkpointClient?: CheckpointClient;
-  computeManager?: ComputeWorkloadManager;
   /** The run-crd backend, which asks the operator for a suspend on the Runner. */
   runnerSnapshotter?: RunnerSnapshotter & { snapshotsEnabled: boolean };
-  tracing?: OtlpTraceService;
-  snapshotCallbackSecret: string;
   wideEventOpts: WideEventOptions;
   /** When true, high-frequency HTTP routes also emit wide events. */
   wideEventsNoisyRoutes: boolean;
@@ -161,18 +154,11 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     this.wideEventOpts = opts.wideEventOpts;
     this.wideEventsNoisyRoutes = opts.wideEventsNoisyRoutes;
 
-    const snapshots = opts.computeManager?.snapshotsEnabled
-      ? { computeManager: opts.computeManager }
-      : opts.runnerSnapshotter?.snapshotsEnabled
-        ? { runnerSnapshotter: opts.runnerSnapshotter }
-        : undefined;
-    if (snapshots) {
+    if (opts.runnerSnapshotter?.snapshotsEnabled) {
       this.snapshotService = new ComputeSnapshotService({
-        ...snapshots,
+        runnerSnapshotter: opts.runnerSnapshotter,
         workerClient: opts.workerClient,
-        tracing: opts.tracing,
         wideEventOpts: this.wideEventOpts,
-        snapshotCallbackSecret: opts.snapshotCallbackSecret,
       });
     }
 
@@ -779,28 +765,6 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       });
     }
 
-    // Snapshot callback endpoint (inbound from compute path)
-    httpServer.route("/api/v1/compute/snapshot-complete", "POST", {
-      bodySchema: SnapshotCallbackPayloadSchema,
-      handler: async (ctx) =>
-        this.wideRoute(
-          ctx,
-          "snapshot.callback",
-          "/api/v1/compute/snapshot-complete",
-          "POST",
-          async () => {
-            const { reply, body } = ctx;
-            if (!this.snapshotService) {
-              reply.empty(404);
-              return;
-            }
-
-            const result = await this.snapshotService.handleCallback(body);
-            reply.empty(result.status);
-          }
-        ),
-    });
-
     return httpServer;
   }
 
@@ -1058,9 +1022,6 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
 
         try {
           runDisconnected(message.run.friendlyId, "run_stop_message");
-          // Don't delete trace context here - run:stop fires after each snapshot/shutdown
-          // but the run may be restored on a new VM and snapshot again. Trace context is
-          // re-populated on dequeue, and entries are small (4 strings per run).
         } catch (error) {
           log.error("run:stop error", { error });
         }
@@ -1100,10 +1061,6 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         message: "run:notify error on supervisor",
       });
     }
-  }
-
-  registerRunTraceContext(runFriendlyId: string, ctx: RunTraceContext) {
-    this.snapshotService?.registerTraceContext(runFriendlyId, ctx);
   }
 
   async start() {

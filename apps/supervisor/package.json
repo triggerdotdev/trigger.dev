@@ -16,7 +16,6 @@
   },
   "dependencies": {
     "@aws-sdk/client-ecr": "^3.839.0",
-    "@internal/compute": "workspace:*",
     "@kubernetes/client-node": "^1.0.0",
     "@trigger.dev/core": "workspace:*",
     "dockerode": "^4.0.6",

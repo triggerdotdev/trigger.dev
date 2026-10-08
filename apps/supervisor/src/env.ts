@@ -180,22 +180,9 @@ export const Env = z
     DOCKER_RUNNER_NETWORKS: z.string().default("host"),
 
     // Compute settings
-    COMPUTE_GATEWAY_URL: z.string().url().optional(),
-    COMPUTE_GATEWAY_AUTH_TOKEN: z.string().optional(),
-    COMPUTE_GATEWAY_TIMEOUT_MS: z.coerce.number().int().default(30_000),
     COMPUTE_SNAPSHOTS_ENABLED: BoolEnv.default(false),
-    COMPUTE_TRACE_SPANS_ENABLED: BoolEnv.default(true),
-    COMPUTE_TRACE_OTLP_ENDPOINT: z.string().url().optional(), // Override for span export (derived from TRIGGER_API_URL if unset)
     COMPUTE_SNAPSHOT_DELAY_MS: z.coerce.number().int().min(0).max(60_000).default(5_000),
     COMPUTE_SNAPSHOT_DISPATCH_LIMIT: z.coerce.number().int().min(1).max(100).default(10),
-    // Instance create retries for transient placement failures (1 = no retries)
-    COMPUTE_INSTANCE_CREATE_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
-    COMPUTE_INSTANCE_CREATE_RETRY_BASE_DELAY_MS: z.coerce
-      .number()
-      .int()
-      .min(0)
-      .max(10_000)
-      .default(250),
 
     // Kubernetes settings
     KUBERNETES_FORCE_ENABLED: BoolEnv.default(false),
@@ -382,7 +369,7 @@ export const Env = z
         data.KUBERNETES_FORCE_ENABLED &&
         data.KUBERNETES_RUN_CRD_ENABLED &&
         data.KUBERNETES_RUNNER_RUNTIME === "microvm";
-      const compatibility = data.COMPUTE_GATEWAY_URL || nativeMicrovm ? "compute" : "container";
+      const compatibility = nativeMicrovm ? "compute" : "container";
 
       for (const [index, subscription] of data.TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS.entries()) {
         if (subscription.compat !== "any" && subscription.compat !== compatibility) {
@@ -393,13 +380,12 @@ export const Env = z
           });
         } else if (
           subscription.phase === "restore" &&
-          !(compatibility === "compute"
-            ? data.COMPUTE_GATEWAY_URL || nativeMicrovm
-            : data.TRIGGER_CHECKPOINT_URL)
+          compatibility === "container" &&
+          !data.TRIGGER_CHECKPOINT_URL
         ) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: `Restore subscriptions require ${compatibility === "compute" ? "COMPUTE_GATEWAY_URL" : "TRIGGER_CHECKPOINT_URL"}`,
+            message: "Restore subscriptions require TRIGGER_CHECKPOINT_URL",
             path: ["TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS", index],
           });
         }
@@ -434,26 +420,6 @@ export const Env = z
         }
       }
     }
-    // Only the gateway reads these for a snapshot: it builds its callback URL
-    // from the domain and hands the metadata URL to the instance.
-    if (data.COMPUTE_SNAPSHOTS_ENABLED && data.COMPUTE_GATEWAY_URL && !data.TRIGGER_METADATA_URL) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "TRIGGER_METADATA_URL is required when COMPUTE_SNAPSHOTS_ENABLED is true",
-        path: ["TRIGGER_METADATA_URL"],
-      });
-    }
-    if (
-      data.COMPUTE_SNAPSHOTS_ENABLED &&
-      data.COMPUTE_GATEWAY_URL &&
-      !data.TRIGGER_WORKLOAD_API_DOMAIN
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "TRIGGER_WORKLOAD_API_DOMAIN is required when COMPUTE_SNAPSHOTS_ENABLED is true",
-        path: ["TRIGGER_WORKLOAD_API_DOMAIN"],
-      });
-    }
     if (data.WORKLOAD_TOKEN_ENFORCEMENT !== "disabled" && !data.WORKLOAD_TOKEN_SECRET) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -487,7 +453,6 @@ export const Env = z
     TRIGGER_WORKER_QUEUE_CLASS:
       data.TRIGGER_WORKER_QUEUE_CLASS ??
       (data.TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS === undefined ? "default" : undefined),
-    COMPUTE_TRACE_OTLP_ENDPOINT: data.COMPUTE_TRACE_OTLP_ENDPOINT ?? `${data.TRIGGER_API_URL}/otel`,
   }));
 
 export const env = Env.parse(stdEnv);

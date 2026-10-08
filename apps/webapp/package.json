@@ -58,7 +58,6 @@
     "@headlessui/react": "^1.7.8",
     "@heroicons/react": "^2.0.12",
     "@internal/cache": "workspace:*",
-    "@internal/compute": "workspace:*",
     "@internal/dashboard-agent": "workspace:*",
     "@internal/dashboard-agent-contracts": "workspace:*",
     "@internal/dashboard-agent-db": "workspace:*",
