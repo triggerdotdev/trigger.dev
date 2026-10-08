@@ -156,7 +156,7 @@ describe("WebhookDeliveriesReplicationService", () => {
 
         const deliveries = clickhouse.reader.query({
           name: "read-webhook-deliveries",
-          query: "SELECT delivery_id, status FROM trigger_dev.webhook_deliveries_v1 FINAL",
+          query: "SELECT delivery_id, status FROM trigger_dev.webhook_deliveries_v2 FINAL",
           schema: z.any(),
         });
         let deliveryRows: unknown[] = [];

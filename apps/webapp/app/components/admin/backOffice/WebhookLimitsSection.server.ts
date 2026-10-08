@@ -9,11 +9,23 @@ const OptionalLimit = z.preprocess(
   z.coerce.number().int().min(1).max(2_147_483_647).optional()
 );
 
+const OptionalRetention = z.preprocess(
+  (value) => (value === "" || value === null ? undefined : value),
+  z.coerce.number().int().min(1).max(365).optional()
+);
+
+const OptionalFlag = z.preprocess(
+  (value) => (value === "on" ? true : undefined),
+  z.literal(true).optional()
+);
+
 const SetWebhookLimitsSchema = z.object({
   intent: z.literal(WEBHOOK_LIMITS_INTENT),
   maxWaitersPerEnvironment: OptionalLimit,
   maxWaitersPerEndpoint: OptionalLimit,
   concurrency: OptionalLimit,
+  deliveryRetentionDays: OptionalRetention,
+  deliveryRetentionStrict: OptionalFlag,
 });
 
 export type WebhookLimitsActionResult =

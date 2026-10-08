@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { MachinePresetName } from "@trigger.dev/core/v3";
-import { parseNaturalLanguageDurationInMs } from "@trigger.dev/core/v3/isomorphic";
+import {
+  parseNaturalLanguageDurationInMs,
+  webhookDeliveryRetentionClass,
+} from "@trigger.dev/core/v3/isomorphic";
 import { BoolEnv } from "./utils/boolEnv";
 import { isValidDatabaseUrl } from "./utils/db";
 import { parseRunOpsShards, validateShardListAgainstNewUrl } from "~/v3/runOpsShards.server";
@@ -2036,7 +2039,15 @@ const EnvironmentSchema = z
     WEBHOOK_PARTITION_ENSURE_SCHEDULE: z.string().optional(),
     WEBHOOK_PARTITION_ENSURE_JITTER_MS: z.coerce.number().int().optional(),
     WEBHOOK_PARTITION_LOOKAHEAD_DAYS: z.coerce.number().int().default(10),
-    WEBHOOK_PARTITION_RETENTION_DAYS: z.coerce.number().int().default(60),
+    WEBHOOK_DELIVERY_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
+    WEBHOOK_DELIVERY_STORAGE_DAYS: z.coerce
+      .number()
+      .int()
+      .default(30)
+      .refine(
+        (days) => webhookDeliveryRetentionClass(days) !== undefined,
+        "WEBHOOK_DELIVERY_STORAGE_DAYS must be a delivery retention class (3, 7, 30, 90, 180 or 365)"
+      ),
 
     // Ingest hot-path cache for the endpoint + resolved signing secret (keyed by opaqueId). 0 disables.
     WEBHOOK_ENDPOINT_CACHE_TTL_MS: z.coerce.number().int().default(30_000),
@@ -2238,7 +2249,7 @@ const EnvironmentSchema = z
     SESSION_REPLICATION_INSERT_BASE_DELAY_MS: z.coerce.number().int().default(100),
     SESSION_REPLICATION_INSERT_MAX_DELAY_MS: z.coerce.number().int().default(2000),
 
-    // Webhook deliveries replication (Postgres → ClickHouse webhook_deliveries_v1).
+    // Webhook deliveries replication (Postgres → ClickHouse webhook_deliveries_v2).
     // Shares Redis with the runs replicator for leader locking but has its own
     // slot and publication so the two consume independently. The source table is
     // a partitioned parent, so the publication is created with

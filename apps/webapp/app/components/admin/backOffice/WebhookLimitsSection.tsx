@@ -1,6 +1,7 @@
 import { Form } from "@remix-run/react";
 import { useEffect, useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
+import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { FormError } from "~/components/primitives/FormError";
 import { Header2 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
@@ -15,7 +16,13 @@ export const WEBHOOK_LIMITS_SAVED_VALUE = "webhook-limits";
 
 type FieldErrors = Record<string, string[] | undefined> | null;
 
-const FIELDS: Array<{ key: keyof WebhookLimits; label: string; hint: string }> = [
+type NumericLimit =
+  | "maxWaitersPerEnvironment"
+  | "maxWaitersPerEndpoint"
+  | "concurrency"
+  | "deliveryRetentionDays";
+
+const FIELDS: Array<{ key: NumericLimit; label: string; hint: string }> = [
   {
     key: "maxWaitersPerEnvironment",
     label: "Waiters per environment",
@@ -30,6 +37,11 @@ const FIELDS: Array<{ key: keyof WebhookLimits; label: string; hint: string }> =
     key: "concurrency",
     label: "Processing concurrency",
     hint: "Webhook jobs one environment can have in flight at once.",
+  },
+  {
+    key: "deliveryRetentionDays",
+    label: "Delivery retention (days)",
+    hint: "Days of deliveries the org can see, 1 to 365. Older ones are hidden right away.",
   },
 ];
 
@@ -103,6 +115,17 @@ export function WebhookLimitsSection({
               </Property.Value>
             </Property.Item>
           ))}
+          <Property.Item>
+            <Property.Label>Delivery storage</Property.Label>
+            <Property.Value>
+              {limits.deliveryStorageDays.toLocaleString()} days
+              <span className="text-text-dimmed">
+                {limits.deliveryRetentionStrict
+                  ? " (deleted at retention)"
+                  : " (hidden after retention)"}
+              </span>
+            </Property.Value>
+          </Property.Item>
         </Property.Table>
       ) : (
         <Form method="post" className="flex flex-col gap-3 pt-2">
@@ -121,6 +144,20 @@ export function WebhookLimitsSection({
               <FormError>{fieldError(field.key)}</FormError>
             </div>
           ))}
+          <div className="flex flex-col gap-1">
+            <CheckboxWithLabel
+              name="deliveryRetentionStrict"
+              value="on"
+              variant="simple/small"
+              label="Delete deliveries at the retention"
+              defaultChecked={overrides.deliveryRetentionStrict === true}
+            />
+            <Hint>
+              Off: deliveries are stored for at least 30 days and hidden after the retention, so an
+              upgrade shows older history. On: they are stored only for the retention (rounded up to
+              3, 7, 30, 90, 180 or 365 days). Applies to new deliveries.
+            </Hint>
+          </div>
           <div className="flex items-center gap-2">
             <Button type="submit" variant="primary/medium" disabled={isSubmitting}>
               Save

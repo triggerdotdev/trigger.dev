@@ -1,5 +1,9 @@
 import { customAlphabet } from "nanoid";
 import cuid from "@bugsnag/cuid";
+import {
+  webhookDeliveryRetentionClass,
+  webhookDeliveryRetentionClassByCode,
+} from "./webhookDeliveryRetention.js";
 
 const idGenerator = customAlphabet("123456789abcdefghijkmnopqrstuvwxyz", 21);
 
@@ -465,18 +469,20 @@ export function isWebhookEndpointFriendlyId(id: string): boolean {
 }
 
 /**
- * Webhook delivery id: time-encoded so the partition key (`createdAt`) is recoverable from the id.
- * The body is `base32hex(6-byte big-endian unix ms timestamp + 9 CSPRNG bytes)` (24 chars) plus a
- * version char "1", prefixed `whd_`. `WebhookDelivery` is RANGE-partitioned on `createdAt`, and the
- * engine sets the row's `createdAt` to the mint timestamp, so a point lookup by id can recover the
- * partition from the id alone instead of threading `createdAt` through every caller.
+ * Webhook delivery id: encodes the partition key (`retentionDays`, `createdAt`) so a lookup by id
+ * prunes to one partition. The body is `base32hex(6-byte big-endian unix ms timestamp + 9 CSPRNG
+ * bytes)` (24 chars), the retention class code, and version char "2", prefixed `whd_`. The engine
+ * stamps the row with the mint timestamp and class. Version "1" ids (no class char) only exist for
+ * deliveries minted before classes, so their timestamp still parses.
  */
 const WEBHOOK_DELIVERY_ID_PREFIX = "whd";
 const WEBHOOK_DELIVERY_ID_TIMESTAMP_BYTES = 6;
 const WEBHOOK_DELIVERY_ID_CORE_BYTES = 15;
 const WEBHOOK_DELIVERY_ID_CORE_LENGTH = 24;
-const WEBHOOK_DELIVERY_ID_VERSION = "1";
-const WEBHOOK_DELIVERY_ID_BODY_LENGTH = 25;
+const WEBHOOK_DELIVERY_ID_VERSION = "2";
+const WEBHOOK_DELIVERY_ID_BODY_LENGTH = 26;
+const WEBHOOK_DELIVERY_ID_V1_VERSION = "1";
+const WEBHOOK_DELIVERY_ID_V1_BODY_LENGTH = 25;
 
 function webhookDeliveryIdBody(idOrFriendlyId: string): string {
   return idOrFriendlyId.startsWith(`${WEBHOOK_DELIVERY_ID_PREFIX}_`)
@@ -484,13 +490,43 @@ function webhookDeliveryIdBody(idOrFriendlyId: string): string {
     : idOrFriendlyId;
 }
 
+function isWebhookDeliveryIdV2(body: string): boolean {
+  return (
+    body.length === WEBHOOK_DELIVERY_ID_BODY_LENGTH &&
+    body[WEBHOOK_DELIVERY_ID_BODY_LENGTH - 1] === WEBHOOK_DELIVERY_ID_VERSION
+  );
+}
+
+function isWebhookDeliveryIdV1(body: string): boolean {
+  return (
+    body.length === WEBHOOK_DELIVERY_ID_V1_BODY_LENGTH &&
+    body[WEBHOOK_DELIVERY_ID_CORE_LENGTH] === WEBHOOK_DELIVERY_ID_V1_VERSION
+  );
+}
+
 export const WebhookDeliveryId = {
   /**
-   * Mint a delivery id. The row's `createdAt` MUST be set to the returned `timestamp` so the id's
-   * embedded timestamp equals the partition key that {@link WebhookDeliveryId.parseTimestamp} recovers.
+   * Mint a delivery id for a retention class. The row's `createdAt` and `retentionDays` MUST be set
+   * to the returned `timestamp` and `retentionDays`, which {@link WebhookDeliveryId.parseTimestamp}
+   * and {@link WebhookDeliveryId.parseRetentionDays} recover. `timestamp` defaults to now; pass one
+   * only to backfill or seed rows with a past `createdAt`.
    */
-  generate(): { id: string; friendlyId: string; timestamp: Date } {
-    const timestamp = new Date();
+  generate({
+    retentionDays,
+    timestamp = new Date(),
+  }: {
+    retentionDays: number;
+    timestamp?: Date;
+  }): {
+    id: string;
+    friendlyId: string;
+    timestamp: Date;
+    retentionDays: number;
+  } {
+    const retentionClass = webhookDeliveryRetentionClass(retentionDays);
+    if (!retentionClass) {
+      throw new Error(`no webhook delivery retention class for ${retentionDays} days`);
+    }
     const core = new Uint8Array(WEBHOOK_DELIVERY_ID_CORE_BYTES);
     let ms = timestamp.getTime();
     for (let i = WEBHOOK_DELIVERY_ID_TIMESTAMP_BYTES - 1; i >= 0; i--) {
@@ -498,8 +534,13 @@ export const WebhookDeliveryId = {
       ms = Math.floor(ms / 256);
     }
     getRandomValues(core.subarray(WEBHOOK_DELIVERY_ID_TIMESTAMP_BYTES));
-    const id = `${base32hexEncode(core)}${WEBHOOK_DELIVERY_ID_VERSION}`;
-    return { id, friendlyId: `${WEBHOOK_DELIVERY_ID_PREFIX}_${id}`, timestamp };
+    const id = `${base32hexEncode(core)}${retentionClass.code}${WEBHOOK_DELIVERY_ID_VERSION}`;
+    return {
+      id,
+      friendlyId: `${WEBHOOK_DELIVERY_ID_PREFIX}_${id}`,
+      timestamp,
+      retentionDays: retentionClass.days,
+    };
   },
 
   toFriendlyId(id: string): string {
@@ -518,8 +559,7 @@ export const WebhookDeliveryId = {
    */
   parseTimestamp(idOrFriendlyId: string): Date | undefined {
     const body = webhookDeliveryIdBody(idOrFriendlyId);
-    if (body.length !== WEBHOOK_DELIVERY_ID_BODY_LENGTH) return undefined;
-    if (body[WEBHOOK_DELIVERY_ID_CORE_LENGTH] !== WEBHOOK_DELIVERY_ID_VERSION) return undefined;
+    if (!isWebhookDeliveryIdV2(body) && !isWebhookDeliveryIdV1(body)) return undefined;
     let core: Uint8Array;
     try {
       core = base32hexDecode(body.slice(0, WEBHOOK_DELIVERY_ID_CORE_LENGTH));
@@ -531,6 +571,16 @@ export const WebhookDeliveryId = {
       ms = ms * 256 + (core[i] ?? 0);
     }
     return new Date(ms);
+  },
+
+  /**
+   * Decode the retention class (== the row's `retentionDays` partition key) from an id or
+   * friendlyId. Returns `undefined` for a v1 id, which has no class, or a malformed one.
+   */
+  parseRetentionDays(idOrFriendlyId: string): number | undefined {
+    const body = webhookDeliveryIdBody(idOrFriendlyId);
+    if (!isWebhookDeliveryIdV2(body)) return undefined;
+    return webhookDeliveryRetentionClassByCode(body[WEBHOOK_DELIVERY_ID_CORE_LENGTH]!)?.days;
   },
 };
 

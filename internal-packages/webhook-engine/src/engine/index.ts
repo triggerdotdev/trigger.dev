@@ -17,7 +17,11 @@ import type {
   WebhookEndpointContext,
   WebhookRoutingTarget,
 } from "@trigger.dev/core/v3";
-import { WebhookDeliveryId, isWebhookEndpointFriendlyId } from "@trigger.dev/core/v3/isomorphic";
+import {
+  WebhookDeliveryId,
+  isWebhookEndpointFriendlyId,
+  webhookDeliveryRetentionClassAtLeast,
+} from "@trigger.dev/core/v3/isomorphic";
 import { webhookWorkerCatalog } from "./workerCatalog.js";
 import {
   type CompleteWaitersJobPayload,
@@ -26,7 +30,7 @@ import {
   type WebhookJob,
   WebhookJobQueue,
 } from "./jobQueue.js";
-import { ensurePartitions, listDatedPartitions } from "./partitions.js";
+import { ensurePartitions, listDatedPartitions, partitionsCoveredUntil } from "./partitions.js";
 import { type CachedEndpoint, TtlCache } from "./cache.js";
 import { evaluateFilter, parseFilter } from "./filter/index.js";
 import { verify } from "./verification/index.js";
@@ -114,6 +118,27 @@ function artifactResponseContract(artifact: WebhookVerifierArtifact) {
   return "response" in artifact ? artifact.response : undefined;
 }
 
+/**
+ * A delivery's full partition key, for a unique-key update. Every row carries its class, so this
+ * prunes to one leaf.
+ */
+function primaryKey(delivery: Pick<WebhookDelivery, "id" | "createdAt" | "retentionDays">) {
+  return { id: delivery.id, createdAt: delivery.createdAt, retentionDays: delivery.retentionDays };
+}
+
+/**
+ * Find one delivery by id, pruned by the class and mint time its id encodes. A v1 id (minted before
+ * classes) carries no class, so it prunes only by `createdAt` within each class.
+ */
+function deliveryKey(id: string, createdAt?: Date) {
+  const retentionDays = WebhookDeliveryId.parseRetentionDays(id);
+  return {
+    id,
+    ...(createdAt ? { createdAt } : {}),
+    ...(retentionDays !== undefined ? { retentionDays } : {}),
+  };
+}
+
 function constantTimeEqual(a: string, b: string): boolean {
   const left = Buffer.from(a, "utf8");
   const right = Buffer.from(b, "utf8");
@@ -141,7 +166,7 @@ export class WebhookEngine {
   private waiterClaimSize: Histogram;
   private waitersResolvedCounter: Counter;
   private partitionsAhead: ObservableGauge;
-  /** The end of the newest dated delivery partition, refreshed hourly by every running worker. */
+  /** When the first retention class runs out of leaves, refreshed hourly by every running worker. */
   private partitionsCoveredUntil?: Date;
   private partitionCoverageTimer?: NodeJS.Timeout;
 
@@ -432,7 +457,14 @@ export class WebhookEngine {
         : undefined;
 
     const gateKey = waiterId ? `w:${waiterId}:${idempotencyKey}` : idempotencyKey;
-    const { id, friendlyId, timestamp: createdAt } = WebhookDeliveryId.generate();
+    const {
+      id,
+      friendlyId,
+      timestamp: createdAt,
+      retentionDays,
+    } = WebhookDeliveryId.generate({
+      retentionDays: await this.#retentionDays(endpoint.runtimeEnvironmentId),
+    });
 
     const gate = await this.waiterStore.claimFrontGate(
       endpoint.id,
@@ -467,6 +499,7 @@ export class WebhookEngine {
           id,
           friendlyId,
           createdAt,
+          retentionDays,
           webhookEndpointId: endpoint.id,
           organizationId: endpoint.organizationId,
           projectId: endpoint.projectId,
@@ -518,7 +551,7 @@ export class WebhookEngine {
       if (rowCreated) {
         await this.prisma.webhookDelivery
           .update({
-            where: { id_createdAt: { id, createdAt } },
+            where: { id_createdAt_retentionDays: { id, createdAt, retentionDays } },
             data: { status: "FAILED", errorMessage: String(error), processedAt: new Date() },
           })
           .then(() => this.#recordSettled(createdAt, "FAILED", []))
@@ -670,7 +703,7 @@ export class WebhookEngine {
       span.setAttribute("deliveryId", input.id);
 
       const original = await this.prisma.webhookDelivery.findFirst({
-        where: { id: input.id, createdAt: input.createdAt },
+        where: deliveryKey(input.id, input.createdAt),
       });
       if (!original) return { outcome: "delivery_not_found" };
 
@@ -709,13 +742,21 @@ export class WebhookEngine {
       });
       const filtered = !targetResults.some((result) => result.status === "PENDING");
 
-      const { id, friendlyId, timestamp: createdAt } = WebhookDeliveryId.generate();
+      const {
+        id,
+        friendlyId,
+        timestamp: createdAt,
+        retentionDays,
+      } = WebhookDeliveryId.generate({
+        retentionDays: await this.#retentionDays(original.runtimeEnvironmentId),
+      });
 
       await this.prisma.webhookDelivery.create({
         data: {
           id,
           friendlyId,
           createdAt,
+          retentionDays,
           webhookEndpointId: original.webhookEndpointId,
           organizationId: original.organizationId,
           projectId: original.projectId,
@@ -1270,6 +1311,27 @@ export class WebhookEngine {
   }
 
   /**
+   * The retention class a new delivery in this environment is stamped with. A failed lookup falls
+   * back to the default rather than refusing the delivery.
+   */
+  async #retentionDays(environmentId: string): Promise<number> {
+    const fallback = this.options.retention?.defaultDays ?? 30;
+    const lookup = this.options.retention?.forEnvironment;
+    let days = fallback;
+    if (lookup) {
+      try {
+        days = await lookup(environmentId);
+      } catch (error) {
+        this.logger.warn("Couldn't resolve webhook delivery retention, using the default", {
+          environmentId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return webhookDeliveryRetentionClassAtLeast(days).days;
+  }
+
+  /**
    * webhook.deliver: route a delivery to every target still `PENDING` on it, in parallel, and write
    * each result back into `targets`. A retry skips targets that already finished, so each target's
    * side effect runs until it succeeds or fails terminally. Transient failures with attempts left
@@ -1282,7 +1344,7 @@ export class WebhookEngine {
       const start = performance.now();
 
       const delivery = await this.prisma.webhookDelivery.findFirst({
-        where: { id: payload.deliveryId, createdAt: payload.createdAt },
+        where: deliveryKey(payload.deliveryId, payload.createdAt),
       });
       if (!delivery) {
         this.logger.error("webhook.deliver: delivery not found", {
@@ -1308,7 +1370,7 @@ export class WebhookEngine {
       }
 
       await this.prisma.webhookDelivery.update({
-        where: { id_createdAt: { id: delivery.id, createdAt: delivery.createdAt } },
+        where: { id_createdAt_retentionDays: primaryKey(delivery) },
         data: { status: "PROCESSING" },
       });
 
@@ -1399,7 +1461,7 @@ export class WebhookEngine {
     targetResults: WebhookDeliveryTargetResult[],
     waiters: WaiterStepResult
   ) {
-    const where = { id_createdAt: { id: delivery.id, createdAt: delivery.createdAt } };
+    const where = { id_createdAt_retentionDays: primaryKey(delivery) };
     const results = waiters.summary ? [...targetResults, waiters.summary] : [...targetResults];
     const targets = results as unknown as Prisma.InputJsonValue;
     const runId = results.find((result) => result.status === "SUCCEEDED" && result.runId)?.runId;
@@ -1469,11 +1531,7 @@ export class WebhookEngine {
     data: Prisma.WebhookDeliveryUpdateManyMutationInput & { status: WebhookDeliveryStatus }
   ) {
     const { count } = await this.prisma.webhookDelivery.updateMany({
-      where: {
-        id: delivery.id,
-        createdAt: delivery.createdAt,
-        status: { in: ["PENDING", "PROCESSING"] },
-      },
+      where: { ...primaryKey(delivery), status: { in: ["PENDING", "PROCESSING"] } },
       data: { ...data, processedAt: new Date() },
     });
     if (count > 0) this.#recordSettled(delivery.createdAt, data.status, results);
@@ -1662,7 +1720,7 @@ export class WebhookEngine {
 
       if (!this.options.waiters?.waitpoints) return;
       const delivery = await this.prisma.webhookDelivery.findFirst({
-        where: { id: payload.deliveryId, createdAt: payload.createdAt },
+        where: deliveryKey(payload.deliveryId, payload.createdAt),
       });
       if (!delivery || TERMINAL_DELIVERY_STATUSES.has(delivery.status)) return;
       const endpoint = await this.prisma.webhookEndpoint.findFirst({
@@ -1699,7 +1757,7 @@ export class WebhookEngine {
    */
   async #settleWaiterDelivery(deliveryId: string, createdAt: Date) {
     const delivery = await this.prisma.webhookDelivery.findFirst({
-      where: { id: deliveryId, createdAt },
+      where: deliveryKey(deliveryId, createdAt),
     });
     if (!delivery || TERMINAL_DELIVERY_STATUSES.has(delivery.status)) return;
 
@@ -1925,7 +1983,7 @@ export class WebhookEngine {
     if (job.job === "webhook.completeWaiters") {
       const { deliveryId, createdAt, chunk, chunks } = job.payload;
       const delivery = await this.prisma.webhookDelivery.findFirst({
-        where: { id: deliveryId, createdAt },
+        where: deliveryKey(deliveryId, createdAt),
       });
       if (!delivery || TERMINAL_DELIVERY_STATUSES.has(delivery.status)) return;
       const ids = (
@@ -1948,8 +2006,7 @@ export class WebhookEngine {
 
     const { count } = await this.prisma.webhookDelivery.updateMany({
       where: {
-        id: job.payload.deliveryId,
-        createdAt: job.payload.createdAt,
+        ...deliveryKey(job.payload.deliveryId, job.payload.createdAt),
         status: { in: ["PENDING", "PROCESSING"] },
       },
       data: { status: "FAILED", errorMessage: message, processedAt: new Date() },
@@ -1977,23 +2034,26 @@ export class WebhookEngine {
       this.ensurePartitionsCounter.add(1);
       const result = await ensurePartitions(this.options.partitionPrisma ?? this.prisma, {
         now: new Date(),
-        lookaheadDays: this.options.partitions?.lookaheadDays ?? 10, // 7..14
-        retentionDays: this.options.partitions?.retentionDays ?? 7,
+        lookaheadDays: this.options.partitions?.lookaheadDays ?? 10,
       });
       span.setAttribute("created", result.created.length);
       span.setAttribute("dropped", result.dropped.length);
       span.setAttribute("deferred", result.deferred.length);
+      span.setAttribute("unmanaged", result.unmanaged.length);
+      if (result.unmanaged.length > 0) {
+        this.logger.error("webhook delivery partitions outside every retention class", {
+          unmanaged: result.unmanaged,
+        });
+      }
       await this.#refreshPartitionCoverage();
       this.logger.info("webhook ensurePartitions", result);
     });
   }
 
-  /** Read the end of the newest dated delivery partition, for the partitions-ahead gauge. */
+  /** Read when the first retention class runs out of leaves, for the partitions-ahead gauge. */
   async #refreshPartitionCoverage() {
-    const partitions = await listDatedPartitions(this.options.partitionPrisma ?? this.prisma);
-    this.partitionsCoveredUntil = partitions.reduce<Date | undefined>(
-      (latest, partition) => (!latest || partition.hi > latest ? partition.hi : latest),
-      undefined
+    this.partitionsCoveredUntil = partitionsCoveredUntil(
+      await listDatedPartitions(this.options.partitionPrisma ?? this.prisma)
     );
   }
 
@@ -2007,7 +2067,7 @@ export class WebhookEngine {
   async isDeliveryQueued(deliveryId: string) {
     this.#assertEnabled();
     const delivery = await this.prisma.webhookDelivery.findFirst({
-      where: { id: deliveryId },
+      where: deliveryKey(deliveryId, WebhookDeliveryId.parseTimestamp(deliveryId)),
       select: { runtimeEnvironmentId: true, webhookEndpointId: true },
     });
     if (!delivery) return false;

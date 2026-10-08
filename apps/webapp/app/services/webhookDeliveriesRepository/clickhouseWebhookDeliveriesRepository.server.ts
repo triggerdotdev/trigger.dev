@@ -1,7 +1,12 @@
 import { type ClickhouseQueryBuilder } from "@internal/clickhouse";
 import { WebhookDeliveryId } from "@trigger.dev/core/v3/isomorphic";
 import { boundedIn } from "@trigger.dev/database";
-import { createdAtMsBounds, deliveryIdsCreatedAtBounds } from "./deliveryIdBounds";
+import {
+  createdAtMsBounds,
+  deliveryIdsCreatedAtBounds,
+  deliveryIdsRetentionDays,
+  retentionFloor,
+} from "./deliveryIdBounds";
 import { decodeRunsCursor, encodeRunsCursor } from "../runsRepository/runsCursor.server";
 import {
   type CountDeliveriesByEndpointOptions,
@@ -9,11 +14,11 @@ import {
   type FilterWebhookDeliveriesOptions,
   type GetDeliveriesByFriendlyIdsOptions,
   type GetWebhookDeliveryOptions,
-  type IWebhookDeliveriesRepository,
   type ListedWebhookDelivery,
   type ListWebhookDeliveriesOptions,
   type WebhookDeliveriesRepositoryOptions,
   type WebhookDeliveryIdsPage,
+  type WithRetention,
 } from "./webhookDeliveriesRepository.server";
 
 type DeliveryCursorRow = { deliveryId: string; createdAt: number };
@@ -54,7 +59,7 @@ const DELIVERY_LIST_SELECT = {
   errorMessage: true,
 } as const;
 
-export class ClickHouseWebhookDeliveriesRepository implements IWebhookDeliveriesRepository {
+export class ClickHouseWebhookDeliveriesRepository {
   constructor(private readonly options: WebhookDeliveriesRepositoryOptions) {}
 
   get name() {
@@ -69,7 +74,7 @@ export class ClickHouseWebhookDeliveriesRepository implements IWebhookDeliveries
    * carries the delivery id here.
    */
   private async listDeliveryRows(
-    options: ListWebhookDeliveriesOptions
+    options: WithRetention<ListWebhookDeliveriesOptions>
   ): Promise<DeliveryCursorRow[]> {
     const queryBuilder = this.options.clickhouse.webhookDeliveries.queryBuilder();
     applyDeliveryFiltersToQueryBuilder(queryBuilder, options);
@@ -125,7 +130,7 @@ export class ClickHouseWebhookDeliveriesRepository implements IWebhookDeliveries
    */
   private buildPage(
     rows: DeliveryCursorRow[],
-    options: ListWebhookDeliveriesOptions
+    options: WithRetention<ListWebhookDeliveriesOptions>
   ): {
     pageRows: DeliveryCursorRow[];
     pagination: { nextCursor: string | null; previousCursor: string | null };
@@ -176,14 +181,16 @@ export class ClickHouseWebhookDeliveriesRepository implements IWebhookDeliveries
     return { pageRows, pagination: { nextCursor, previousCursor } };
   }
 
-  async listDeliveryIds(options: ListWebhookDeliveriesOptions): Promise<WebhookDeliveryIdsPage> {
+  async listDeliveryIds(
+    options: WithRetention<ListWebhookDeliveriesOptions>
+  ): Promise<WebhookDeliveryIdsPage> {
     const rows = await this.listDeliveryRows(options);
     const { pageRows, pagination } = this.buildPage(rows, options);
 
     return { deliveryIds: pageRows.map((row) => row.deliveryId), pagination };
   }
 
-  async listDeliveries(options: ListWebhookDeliveriesOptions) {
+  async listDeliveries(options: WithRetention<ListWebhookDeliveriesOptions>) {
     const rows = await this.listDeliveryRows(options);
     const { pageRows, pagination } = this.buildPage(rows, options);
 
@@ -198,12 +205,14 @@ export class ClickHouseWebhookDeliveriesRepository implements IWebhookDeliveries
     // partition, so derive a [min, max] range from the CH page and pass it
     // through. This is the one place webhook hydration diverges from runs.
     const bounds = createdAtMsBounds(pageRows.map((row) => row.createdAt));
+    const classes = deliveryIdsRetentionDays(deliveryIds);
 
     // CH gives the ordered id list; Postgres hydrates the full lean rows by PK id.
     const deliveries = await this.options.prisma.webhookDelivery.findMany({
       where: {
         id: { in: boundedIn(deliveryIds) },
         ...(bounds ? { createdAt: bounds } : {}),
+        ...(classes ? { retentionDays: { in: boundedIn(classes) } } : {}),
       },
       select: DELIVERY_LIST_SELECT,
     });
@@ -222,7 +231,7 @@ export class ClickHouseWebhookDeliveriesRepository implements IWebhookDeliveries
     return { deliveries: result, pagination };
   }
 
-  async countDeliveries(options: FilterWebhookDeliveriesOptions) {
+  async countDeliveries(options: WithRetention<FilterWebhookDeliveriesOptions>) {
     const queryBuilder = this.options.clickhouse.webhookDeliveries.countQueryBuilder();
     applyDeliveryFiltersToQueryBuilder(queryBuilder, options);
 
@@ -240,7 +249,7 @@ export class ClickHouseWebhookDeliveriesRepository implements IWebhookDeliveries
   }
 
   async countDeliveriesByEndpoint(
-    options: CountDeliveriesByEndpointOptions
+    options: WithRetention<CountDeliveriesByEndpointOptions>
   ): Promise<Map<string, number>> {
     if (options.webhookEndpointIds.length === 0) {
       return new Map();
@@ -257,7 +266,10 @@ export class ClickHouseWebhookDeliveriesRepository implements IWebhookDeliveries
         webhookEndpointIds: options.webhookEndpointIds,
       })
       .where("created_at >= fromUnixTimestamp64Milli({period: Int64})", {
-        period: Date.now() - options.period,
+        period: Math.max(
+          Date.now() - options.period,
+          retentionFloor(options.retentionDays).getTime()
+        ),
       })
       .groupBy("webhook_endpoint_id");
 
@@ -279,20 +291,26 @@ export class ClickHouseWebhookDeliveriesRepository implements IWebhookDeliveries
    * strip the prefix and hit the composite-PK index (scoped by environment). ClickHouse is for
    * aggregations and for filtering/ordering a list into ids, never for selecting a row's columns.
    *
-   * `WebhookDelivery` is RANGE-partitioned on `createdAt`, so a bare `id` predicate can't prune and
-   * probes every partition. The delivery id is time-encoded (see `WebhookDeliveryId`) with the same
-   * timestamp the engine stores as `createdAt`, so we recover it from the id and add it as an exact
-   * predicate to prune to the row's partition.
+   * `WebhookDelivery` is partitioned on `(retentionDays, createdAt)`, so a bare `id` predicate can't
+   * prune and probes every partition. The delivery id encodes both (see `WebhookDeliveryId`), so we
+   * recover them and add them as exact predicates to prune to the row's leaf. An id that doesn't
+   * decode can't be a delivery and would probe every leaf, so it is not found without a query. A
+   * delivery older than the org's retention is not found, even before its leaf is dropped.
    */
-  async getDelivery(options: GetWebhookDeliveryOptions): Promise<DetailedWebhookDelivery | null> {
+  async getDelivery(
+    options: WithRetention<GetWebhookDeliveryOptions>
+  ): Promise<DetailedWebhookDelivery | null> {
     const id = WebhookDeliveryId.toId(options.friendlyId);
     const createdAt = WebhookDeliveryId.parseTimestamp(options.friendlyId);
+    const retentionDays = WebhookDeliveryId.parseRetentionDays(options.friendlyId);
+    if (!createdAt || createdAt < retentionFloor(options.retentionDays)) return null;
 
     return this.options.prisma.webhookDelivery.findFirst({
       where: {
         id,
         runtimeEnvironmentId: options.environmentId,
-        ...(createdAt ? { createdAt } : {}),
+        createdAt,
+        ...(retentionDays !== undefined ? { retentionDays } : {}),
       },
       select: DELIVERY_DETAIL_SELECT,
     });
@@ -302,23 +320,32 @@ export class ClickHouseWebhookDeliveriesRepository implements IWebhookDeliveries
    * Hydrate a known set of deliveries by friendlyId. Pure Postgres: the caller (the live poll)
    * already has the ids, so there is nothing for ClickHouse to filter or order.
    *
-   * The ids are time-encoded (see `WebhookDeliveryId`), so we bound the query to the span of their
-   * mint timestamps, which equal the rows' `createdAt`. That prunes the RANGE-partitioned table to
-   * the visible page's few days instead of probing all of retention on every poll.
+   * The ids encode their class and mint time (see `WebhookDeliveryId`), so we bound the query to
+   * those classes and the span of their mint timestamps, which equal the rows' `createdAt`. That
+   * prunes the partitioned table to the visible page's few leaves instead of probing all of
+   * retention on every poll. Ids that don't decode and deliveries older than the org's retention
+   * are left out.
    */
   async getDeliveriesByFriendlyIds(
-    options: GetDeliveriesByFriendlyIdsOptions
+    options: WithRetention<GetDeliveriesByFriendlyIdsOptions>
   ): Promise<ListedWebhookDelivery[]> {
-    const ids = options.friendlyIds.map((friendlyId) => WebhookDeliveryId.toId(friendlyId));
+    const floor = retentionFloor(options.retentionDays);
+    const friendlyIds = options.friendlyIds.filter((friendlyId) => {
+      const createdAt = WebhookDeliveryId.parseTimestamp(friendlyId);
+      return !!createdAt && createdAt >= floor;
+    });
+    const ids = friendlyIds.map((friendlyId) => WebhookDeliveryId.toId(friendlyId));
     if (ids.length === 0) return [];
 
-    const bounds = deliveryIdsCreatedAtBounds(options.friendlyIds);
+    const bounds = deliveryIdsCreatedAtBounds(friendlyIds);
+    const classes = deliveryIdsRetentionDays(friendlyIds);
 
     return this.options.prisma.webhookDelivery.findMany({
       where: {
         id: { in: boundedIn(ids) },
         runtimeEnvironmentId: options.environmentId,
-        ...(bounds ? { createdAt: bounds } : {}),
+        createdAt: { gte: floor, ...(bounds ?? {}) },
+        ...(classes ? { retentionDays: { in: boundedIn(classes) } } : {}),
       },
       select: DELIVERY_LIST_SELECT,
     });
@@ -327,7 +354,7 @@ export class ClickHouseWebhookDeliveriesRepository implements IWebhookDeliveries
 
 function applyDeliveryFiltersToQueryBuilder<T>(
   queryBuilder: ClickhouseQueryBuilder<T>,
-  options: FilterWebhookDeliveriesOptions
+  options: WithRetention<FilterWebhookDeliveriesOptions>
 ) {
   queryBuilder
     .where("organization_id = {organizationId: String}", {
@@ -366,6 +393,10 @@ function applyDeliveryFiltersToQueryBuilder<T>(
   if (options.isTest !== undefined) {
     queryBuilder.where("is_test = {isTest: UInt8}", { isTest: options.isTest ? 1 : 0 });
   }
+
+  queryBuilder.where("created_at >= fromUnixTimestamp64Milli({retentionFloor: Int64})", {
+    retentionFloor: retentionFloor(options.retentionDays).getTime(),
+  });
 
   // PARTITION PRUNING: the list MUST carry a created_at range.
   if (options.period) {

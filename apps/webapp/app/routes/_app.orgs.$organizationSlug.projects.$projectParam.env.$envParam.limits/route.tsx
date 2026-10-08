@@ -550,6 +550,7 @@ function QuotasSection({
   if (quotas.webhookWaitersPerEnvironment) quotaRows.push(quotas.webhookWaitersPerEnvironment);
   if (quotas.webhookWaitersPerEndpoint) quotaRows.push(quotas.webhookWaitersPerEndpoint);
   if (quotas.webhookConcurrency) quotaRows.push(quotas.webhookConcurrency);
+  if (quotas.webhookDeliveryRetentionDays) quotaRows.push(quotas.webhookDeliveryRetentionDays);
 
   const showSelfServe = useShowSelfServe();
 
@@ -602,7 +603,10 @@ function QuotaRow({
 }) {
   // For log retention and query period, we don't show current usage as it's a duration, not a count
   // For widgets per dashboard, the usage varies per dashboard so we don't show a single number
-  const isDurationQuota = quota.name === "Log retention" || quota.name === "Query period";
+  const isDurationQuota =
+    quota.name === "Log retention" ||
+    quota.name === "Query period" ||
+    quota.name === "Webhook delivery retention";
   const isPerItemQuota =
     quota.name === "Charts per dashboard" ||
     quota.name === "Webhook waiters per endpoint" ||
