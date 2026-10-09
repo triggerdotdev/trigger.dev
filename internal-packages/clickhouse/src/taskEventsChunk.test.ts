@@ -12,7 +12,7 @@ describe("buildTraceChunkCursorPredicate", () => {
     const { clause, params } = buildTraceChunkCursorPredicate(cursor);
 
     expect(clause).toBe(
-      "(toUnixTimestamp64Nano(start_time) > {cursorStartTime: Int64} OR (toUnixTimestamp64Nano(start_time) = {cursorStartTime: Int64} AND span_id > {cursorSpanId: String}))"
+      "toUnixTimestamp(start_time) >= intDiv({cursorStartTime: Int64}, 1000000000) AND (toUnixTimestamp64Nano(start_time) > {cursorStartTime: Int64} OR (toUnixTimestamp64Nano(start_time) = {cursorStartTime: Int64} AND span_id > {cursorSpanId: String}))"
     );
     expect(params).toEqual({
       cursorStartTime: "1758629566130262875",

@@ -71,6 +71,7 @@ import type {
   TraceChunk,
   TraceChunkCursor,
   TraceChunkEvent,
+  TraceChunkScopeOptions,
   TraceDetailedSummary,
   TraceErrorEvents,
   TraceEventOptions,
@@ -487,19 +488,8 @@ export class EventRepository implements IEventRepository {
     _startCreatedAt: Date,
     _endCreatedAt: Date | undefined,
     _cursor: TraceChunkCursor | undefined,
-    _options?: { includeDebugLogs?: boolean; limit?: number }
+    _options?: TraceChunkScopeOptions & { limit?: number }
   ): Promise<TraceChunk | undefined> {
-    return undefined;
-  }
-
-  public async getTraceSpanCount(
-    _storeTable: TaskEventStoreTable,
-    _environmentId: string,
-    _traceId: string,
-    _startCreatedAt: Date,
-    _endCreatedAt: Date | undefined,
-    _options?: { includeDebugLogs?: boolean }
-  ): Promise<number | undefined> {
     return undefined;
   }
 

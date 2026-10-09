@@ -2417,6 +2417,43 @@ export const RetrieveRunTraceResponseBody = z.object({
 
 export type RetrieveRunTraceResponseBody = z.infer<typeof RetrieveRunTraceResponseBody>;
 
+export const RetrieveRunTracePageSpan = z.object({
+  id: z.string(),
+  parentId: z.string().optional(),
+  runId: z.string(),
+  message: z.string(),
+  startTime: z.coerce.date(),
+  duration: z.number(),
+  isError: z.boolean(),
+  isPartial: z.boolean(),
+  isCancelled: z.boolean(),
+  level: z.string(),
+  attemptNumber: z.number().optional(),
+});
+
+export type RetrieveRunTracePageSpan = z.infer<typeof RetrieveRunTracePageSpan>;
+
+export const RetrieveRunTraceAttemptFailure = z.object({
+  spanId: z.string(),
+  attemptNumber: z.number(),
+  runId: z.string(),
+});
+
+export type RetrieveRunTraceAttemptFailure = z.infer<typeof RetrieveRunTraceAttemptFailure>;
+
+export const RetrieveRunTracePageResponseBody = z.object({
+  data: z.array(RetrieveRunTracePageSpan),
+  attemptFailures: z.array(RetrieveRunTraceAttemptFailure),
+  pagination: z.object({
+    next: z.string().optional(),
+    // Some spans or records were left out: paging stopped early (e.g. an emergency cap)
+    // or a span had more records than one read allows.
+    truncated: z.boolean().optional(),
+  }),
+});
+
+export type RetrieveRunTracePageResponseBody = z.infer<typeof RetrieveRunTracePageResponseBody>;
+
 export const RetrieveSpanDetailResponseBody = z.object({
   spanId: z.string(),
   parentId: z.string().nullable(),

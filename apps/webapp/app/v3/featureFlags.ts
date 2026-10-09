@@ -58,6 +58,7 @@ export const FEATURE_FLAG = {
   queueArchivingEnabled: "queueArchivingEnabled",
   supportAccessSettingsEnabled: "supportAccessSettingsEnabled",
   progressiveTraceLoadingEnabled: "progressiveTraceLoadingEnabled",
+  publicTracePagingEnabled: "publicTracePagingEnabled",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -197,6 +198,8 @@ export const FeatureFlagCatalog = {
   // the org override wins over the global value.
   [FEATURE_FLAG.supportAccessSettingsEnabled]: z.boolean(),
   [FEATURE_FLAG.progressiveTraceLoadingEnabled]: z.boolean(),
+  // Page parameters on the public trace API. Off: they're ignored and the tree is returned.
+  [FEATURE_FLAG.publicTracePagingEnabled]: z.boolean(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;

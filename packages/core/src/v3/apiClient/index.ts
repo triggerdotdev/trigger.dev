@@ -91,6 +91,7 @@ import {
   RetrieveCurrentDeploymentResponseBody,
   RetrieveRunResponse,
   RetrieveRunTraceResponseBody,
+  RetrieveRunTracePageResponseBody,
   RetrieveSessionResponseBody,
   RetrieveSpanDetailResponseBody,
   ScheduleObject,
@@ -793,6 +794,32 @@ export class ApiClient {
     return zodfetch(
       RetrieveRunTraceResponseBody,
       `${this.baseUrl}/api/v1/runs/${runId}/trace`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  /**
+   * Retrieves one page of a root run's trace as flat spans. Omit `after` for the first
+   * page, then pass back `pagination.next` until it's missing. Use `assembleRunTracePages`
+   * to rebuild the tree. Spans are lean: fetch a span's events and properties with
+   * `retrieveSpan`.
+   */
+  retrieveRunTracePage(
+    runId: string,
+    options?: { limit?: number; after?: string },
+    requestOptions?: ZodFetchOptions
+  ) {
+    const query = new URLSearchParams();
+    query.set("page[size]", String(options?.limit ?? 10_000));
+    if (options?.after !== undefined) query.set("page[after]", options.after);
+
+    return zodfetch(
+      RetrieveRunTracePageResponseBody,
+      `${this.baseUrl}/api/v1/runs/${encodeURIComponent(runId)}/trace?${query.toString()}`,
       {
         method: "GET",
         headers: this.#getHeaders(false),

@@ -311,10 +311,20 @@ export type TraceChunkEvent = {
 
 export type { TraceChunkCursor };
 
+export type TraceChunkScopeOptions = {
+  includeDebugLogs?: boolean;
+  // Live tail: only rows written at or after this time (ms since epoch).
+  tailInsertedAtSinceMs?: number;
+  // Only rows written at or before this time.
+  insertedAtEnd?: Date;
+};
+
 export type TraceChunk = {
   events: Array<TraceChunkEvent>;
   nextCursor: TraceChunkCursor | null;
   hasMore: boolean;
+  // A span had more rows at one timestamp than one read allows; the extra rows were skipped.
+  droppedKeyRows?: boolean;
 };
 
 export type TraceErrorEvents = {
@@ -449,17 +459,8 @@ export interface IEventRepository {
     startCreatedAt: Date,
     endCreatedAt: Date | undefined,
     cursor: TraceChunkCursor | undefined,
-    options?: { includeDebugLogs?: boolean; limit?: number; tailInsertedAtSinceMs?: number }
+    options?: TraceChunkScopeOptions & { limit?: number }
   ): Promise<TraceChunk | undefined>;
-
-  getTraceSpanCount(
-    storeTable: TaskEventStoreTable,
-    environmentId: string,
-    traceId: string,
-    startCreatedAt: Date,
-    endCreatedAt: Date | undefined,
-    options?: { includeDebugLogs?: boolean }
-  ): Promise<number | undefined>;
 
   getTraceErrorEvents(
     storeTable: TaskEventStoreTable,

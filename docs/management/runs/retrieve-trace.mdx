@@ -8,3 +8,31 @@ Returns the OpenTelemetry trace subtree for the run you request. The response `t
 For a child or nested run inside a large trace, this endpoint scopes the tree to that run so you still get a useful subtree even when the full trace has more spans than the platform can return in one response.
 
 For a finished run, spans that finish more than 7 days after the run are returned in their last recorded state.
+
+## Page large traces
+
+The tree response stops at a size limit. To get every span of a large trace, page it: send `page[size]` (1,000–10,000) on the first request, then pass each response's `pagination.next` back as `page[after]` until it's absent.
+
+```ts Your backend code
+const spans = [];
+let after: string | undefined;
+
+do {
+  const query = new URLSearchParams({ "page[size]": "10000" });
+  if (after) query.set("page[after]", after);
+
+  const response = await fetch(`https://api.trigger.dev/api/v1/runs/run_1234/trace?${query}`, {
+    headers: { Authorization: `Bearer ${process.env.TRIGGER_SECRET_KEY}` },
+  });
+  const page = await response.json();
+
+  spans.push(...page.data);
+  after = page.pagination.next;
+} while (after);
+```
+
+- Paging works for runs at the root of their trace. Other runs return `400`; request their trace without page parameters.
+- Pages contain flat spans without events or properties. Rebuild the tree from `parentId`, or use `assembleRunTracePages` from `@trigger.dev/core/v3`, which also marks unfinished spans under a cancelled or failed parent the way the tree response does.
+- A span can appear on two pages, once in progress and once finished. Keep the finished one.
+- `pagination.truncated` means some spans or records were left out: paging stopped early (for example while an emergency span limit is in place), or a span had more records than one read allows.
+- Send `Accept-Encoding: gzip` when you call the endpoint directly.

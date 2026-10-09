@@ -353,7 +353,8 @@ export function buildTraceChunkCursorPredicate(cursor: TraceChunkCursor): {
 } {
   return {
     clause:
-      "(toUnixTimestamp64Nano(start_time) > {cursorStartTime: Int64} OR (toUnixTimestamp64Nano(start_time) = {cursorStartTime: Int64} AND span_id > {cursorSpanId: String}))",
+      // Repeats the cursor on the sort key's toUnixTimestamp(start_time) so earlier granules are skipped.
+      "toUnixTimestamp(start_time) >= intDiv({cursorStartTime: Int64}, 1000000000) AND (toUnixTimestamp64Nano(start_time) > {cursorStartTime: Int64} OR (toUnixTimestamp64Nano(start_time) = {cursorStartTime: Int64} AND span_id > {cursorSpanId: String}))",
     params: {
       cursorStartTime: cursor.startTime,
       cursorSpanId: cursor.spanId,
@@ -408,30 +409,6 @@ export function getTraceChunkQueryBuilderV2(ch: ClickhouseReader, settings?: Cli
     name: "getTraceChunkV2",
     table: "trigger_dev.task_events_v2",
     columns: [...TRACE_CHUNK_COLUMNS_V2],
-    settings,
-  });
-}
-
-export type TraceSpanCountResult = { count: string };
-const TRACE_SPAN_COUNT_COLUMNS = [{ name: "count", expression: "uniqExact(span_id)" }] as const;
-
-export function getTraceSpanCountQueryBuilder(ch: ClickhouseReader, settings?: ClickHouseSettings) {
-  return ch.queryBuilderFast<TraceSpanCountResult>({
-    name: "getTraceSpanCount",
-    table: "trigger_dev.task_events_v1",
-    columns: [...TRACE_SPAN_COUNT_COLUMNS],
-    settings,
-  });
-}
-
-export function getTraceSpanCountQueryBuilderV2(
-  ch: ClickhouseReader,
-  settings?: ClickHouseSettings
-) {
-  return ch.queryBuilderFast<TraceSpanCountResult>({
-    name: "getTraceSpanCountV2",
-    table: "trigger_dev.task_events_v2",
-    columns: [...TRACE_SPAN_COUNT_COLUMNS],
     settings,
   });
 }
