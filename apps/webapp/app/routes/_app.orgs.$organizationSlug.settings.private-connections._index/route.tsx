@@ -195,7 +195,7 @@ export default function Page() {
   });
 
   const hasPrivateNetworking = plan?.v3Subscription?.plan?.limits?.hasPrivateNetworking ?? false;
-  const limit = plan?.v3Subscription?.plan?.limits?.privateLinkConnectionLimit ?? 2;
+  const limit = plan?.v3Subscription?.plan?.limits?.privateLinkConnectionLimit ?? 4;
   const canAdd = connections.filter((c) => c.status !== "DELETING").length < limit;
   const permissionTooltip = "You don't have permission to manage private connections";
 
