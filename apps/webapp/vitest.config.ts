@@ -22,6 +22,7 @@ export default defineConfig({
       "app/services/sessionAuthorizationTelemetry.server.test.ts",
       "app/services/previewAutoArchive.server.test.ts",
       "app/services/provisionBillingCustomer.server.test.ts",
+      "app/services/magicLinkOrigin.server.test.ts",
       "app/services/turnstile.server.test.ts",
       "app/services/clickhouse/**/*.test.ts",
       "app/utils/**/*.test.ts",

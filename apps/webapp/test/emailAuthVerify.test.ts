@@ -7,7 +7,9 @@ const mocks = vi.hoisted(() => ({
   })),
 }));
 
-vi.mock("~/env.server", () => ({ env: { MAGIC_LINK_SECRET: "test-magic-link-secret" } }));
+vi.mock("~/env.server", () => ({
+  env: { MAGIC_LINK_SECRET: "test-magic-link-secret", LOGIN_ORIGIN: "https://cloud.example" },
+}));
 vi.mock("~/models/user.server", () => ({ findOrCreateUser: mocks.findOrCreateUser }));
 vi.mock("~/services/email.server", () => ({ sendMagicLinkEmail: async () => {} }));
 vi.mock("~/services/postAuth.server", () => ({ postAuthentication: async () => {} }));
