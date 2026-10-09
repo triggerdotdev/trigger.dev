@@ -14,6 +14,7 @@ import {
   VercelProjectIntegrationDataSchema,
   buildVercelDeploymentUrl,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
+import { resolveRedeploySource } from "~/v3/redeploy";
 
 const pageSize = 20;
 
@@ -154,7 +155,10 @@ export class DeploymentListPresenter {
         userAvatarUrl: string | null;
         type: WorkerInstanceGroupType;
         externalId: string | null;
+        triggeredVia: string | null;
         git: Prisma.JsonValue | null;
+        buildServerMetadata: Prisma.JsonValue | null;
+        createdAt: Date;
         integrationDeploymentId: string | null;
       }[]
     >`
@@ -175,7 +179,10 @@ export class DeploymentListPresenter {
   wd."deployedAt",
   wd."type",
   wd."externalId",
-  wd."git"
+  wd."triggeredVia",
+  wd."git",
+  wd."buildServerMetadata",
+  wd."createdAt"
   ${vercelSelect}
 FROM
   ${sqlDatabaseSchema}."WorkerDeployment" as wd
@@ -267,7 +274,10 @@ LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
               }
             : undefined,
           externalId: deployment.externalId,
+          triggeredVia: deployment.triggeredVia,
           git: processGitMetadata(deployment.git),
+          createdAt: deployment.createdAt,
+          redeploySource: resolveRedeploySource(deployment)?.kind ?? null,
           vercelDeploymentUrl,
         };
       }),

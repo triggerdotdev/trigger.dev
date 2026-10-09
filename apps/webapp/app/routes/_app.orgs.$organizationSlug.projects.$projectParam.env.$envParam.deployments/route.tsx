@@ -12,10 +12,11 @@ import { Form, Outlet, useLocation, useNavigate, useNavigation, useParams } from
 
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { CogIcon, GitBranchIcon } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { PromoteIcon } from "~/assets/icons/PromoteIcon";
+import { InlineCode } from "~/components/code/InlineCode";
 import { VercelLink } from "~/components/integrations/VercelLink";
 import { DeploymentsNone, DeploymentsNoneDev } from "~/components/BlankStatePanels";
 import { OctoKitty } from "~/components/GitHubLoginButton";
@@ -25,6 +26,7 @@ import { UserAvatar } from "~/components/UserProfilePhoto";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { DateTime } from "~/components/primitives/DateTime";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
 import {
@@ -154,6 +156,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
             canWriteDeployments: { action: "write", resource: { type: "deployments" } },
           }).canWriteDeployments
         : true;
+    const redeployCutoff = new Date(
+      Date.now() - env.DEPLOYMENTS_REDEPLOY_WINDOW_DAYS * 24 * 60 * 60 * 1000
+    );
 
     const onboarding = await resolveDeploymentOnboardingUi({
       request,
@@ -173,6 +178,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       ...result,
       ...onboarding,
       canWriteDeployments,
+      redeployCutoff,
       selectedDeployment,
       autoReloadPollIntervalMs,
     });
@@ -199,6 +205,7 @@ export default function Page() {
     autoReloadPollIntervalMs,
     hasVercelIntegration,
     canWriteDeployments,
+    redeployCutoff,
     canDeployNow,
     deployNowEnabled,
     isPlatformConfigured,
@@ -409,6 +416,7 @@ export default function Page() {
                               isSelected={isSelected}
                               currentDeployment={currentDeployment}
                               canWriteDeployments={canWriteDeployments}
+                              redeployCutoff={redeployCutoff}
                             />
                           </TableRow>
                         );
@@ -531,12 +539,14 @@ function DeploymentActionsCell({
   isSelected,
   currentDeployment,
   canWriteDeployments,
+  redeployCutoff,
 }: {
   deployment: DeploymentListItem;
   path: string;
   isSelected: boolean;
   currentDeployment?: DeploymentListItem;
   canWriteDeployments: boolean;
+  redeployCutoff: Date;
 }) {
   const location = useLocation();
   const project = useProject();
@@ -550,8 +560,15 @@ function DeploymentActionsCell({
 
   const finalStatuses = ["CANCELED", "DEPLOYED", "FAILED", "TIMED_OUT"];
   const canBeCanceled = !finalStatuses.includes(deployment.status);
+  const showRedeploy =
+    deployment.redeploySource !== null &&
+    finalStatuses.includes(deployment.status) &&
+    deployment.createdAt >= redeployCutoff;
+  const redeployDisabledReason = canWriteDeployments
+    ? undefined
+    : "You don't have permission to redeploy";
 
-  if (!canBeRolledBack && !canBePromoted && !canBeCanceled) {
+  if (!canBeRolledBack && !canBePromoted && !canBeCanceled && !showRedeploy) {
     return (
       <TableCell to={path} isSelected={isSelected}>
         {""}
@@ -563,7 +580,8 @@ function DeploymentActionsCell({
     <TableCellMenu
       isSticky
       isSelected={isSelected}
-      popoverContent={
+      // oxlint-disable-next-line react/no-unstable-nested-components -- Render prop: the menu primitive passes its close handler so the redeploy dialog can dismiss the menu.
+      popoverContent={(closeMenu) => (
         <>
           {canBeRolledBack &&
             (canWriteDeployments ? (
@@ -664,9 +682,119 @@ function DeploymentActionsCell({
                 Cancel
               </Button>
             ))}
+          {showRedeploy &&
+            (redeployDisabledReason === undefined ? (
+              <RedeployDeploymentDialog
+                projectId={project.id}
+                deployment={deployment}
+                redirectPath={`${location.pathname}${location.search}`}
+                onSettled={closeMenu}
+              />
+            ) : (
+              <Button
+                variant="small-menu-item"
+                LeadingIcon={ArrowPathIcon}
+                leadingIconClassName="text-blue-500"
+                fullWidth
+                textAlignLeft
+                disabled
+                tooltip={redeployDisabledReason}
+              >
+                Redeploy
+              </Button>
+            ))}
         </>
-      }
+      )}
     />
+  );
+}
+
+function RedeployDeploymentDialog({
+  projectId,
+  deployment,
+  redirectPath,
+  onSettled,
+}: {
+  projectId: string;
+  deployment: DeploymentListItem;
+  redirectPath: string;
+  onSettled: () => void;
+}) {
+  const navigation = useNavigation();
+  const [open, setOpen] = useState(false);
+
+  const formAction = `/resources/${projectId}/deployments/${deployment.shortCode}/redeploy`;
+  const formId = `redeploy-${deployment.shortCode}`;
+  const isLoading = navigation.formAction === formAction;
+
+  // The source row stays eligible after a redeploy, so the dialog never unmounts; close it
+  // once the submission has settled (the toast carries the outcome).
+  const wasLoading = useRef(false);
+  useEffect(() => {
+    if (wasLoading.current && !isLoading) {
+      setOpen(false);
+      onSettled();
+    }
+    wasLoading.current = isLoading;
+  }, [isLoading, onSettled]);
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button
+          variant="small-menu-item"
+          LeadingIcon={ArrowPathIcon}
+          leadingIconClassName="text-blue-500"
+          fullWidth
+          textAlignLeft
+        >
+          Redeploy
+        </Button>
+      </DialogTrigger>
+      <DialogContent key="redeploy">
+        <DialogHeader>Redeploy</DialogHeader>
+        <DialogDescription>
+          {deployment.redeploySource === "github" && deployment.git ? (
+            <>
+              A new deployment will rebuild commit{" "}
+              <InlineCode variant="extra-small">{deployment.git.shortSha}</InlineCode> from branch{" "}
+              <InlineCode variant="extra-small">{deployment.git.branchName}</InlineCode>.
+            </>
+          ) : (
+            <>
+              A new deployment will be created from the source files of deployment{" "}
+              <InlineCode variant="extra-small">{deployment.shortCode}</InlineCode>.
+            </>
+          )}
+        </DialogDescription>
+        <CheckboxWithLabel
+          name="promote"
+          value="on"
+          form={formId}
+          variant="simple/small"
+          defaultChecked
+          label="Promote deployment automatically"
+        />
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="tertiary/medium">Cancel</Button>
+          </DialogClose>
+          <Form id={formId} action={formAction} method="post">
+            <Button
+              type="submit"
+              name="redirectUrl"
+              value={redirectPath}
+              variant="primary/medium"
+              LeadingIcon={isLoading ? SpinnerWhite : ArrowPathIcon}
+              disabled={isLoading}
+              shortcut={{ modifiers: ["mod"], key: "enter" }}
+            >
+              {isLoading ? "Redeploying..." : "Redeploy"}
+            </Button>
+          </Form>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

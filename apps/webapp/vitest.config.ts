@@ -24,6 +24,7 @@ export default defineConfig({
       "app/services/provisionBillingCustomer.server.test.ts",
       "app/services/magicLinkOrigin.server.test.ts",
       "app/services/turnstile.server.test.ts",
+      "app/services/enqueueGithubBuild.server.test.ts",
       "app/services/clickhouse/**/*.test.ts",
       "app/utils/**/*.test.ts",
       "app/hooks/**/*.test.ts",

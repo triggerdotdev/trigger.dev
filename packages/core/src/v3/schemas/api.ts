@@ -739,6 +739,8 @@ export const BuildServerMetadata = z.object({
   configFilePath: z.string().optional(),
   skipEnqueue: z.boolean().optional(),
   fromBundle: z.boolean().optional(),
+  // Short code of the deployment this one was redeployed from.
+  redeployOf: z.string().optional(),
 });
 
 export type BuildServerMetadata = z.infer<typeof BuildServerMetadata>;
