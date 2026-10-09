@@ -5,7 +5,8 @@ import type {
   Session,
 } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
-import { Form, useNavigation } from "@remix-run/react";
+import { Form, useNavigation, useSubmit } from "@remix-run/react";
+import { REGEXP_ONLY_DIGITS } from "input-otp";
 import React, { useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -181,18 +182,27 @@ export default function LoginMfaPage() {
   const data = useTypedLoaderData<typeof loader>();
   const rawMfaError = "mfaError" in data ? data.mfaError : undefined;
   const navigate = useNavigation();
+  const submit = useSubmit();
+  const mfaInputRef = React.useRef<HTMLInputElement>(null);
   const [showRecoveryCode, setShowRecoveryCode] = useState(false);
   const [mfaCode, setMfaCode] = useState("");
   const [hideError, setHideError] = useState(false);
 
-  // Clear the MFA code when form submission completes (success or failure)
+  // Clear and refocus the MFA code once a submission settles. A failed attempt redirects back,
+  // so the navigation goes submitting -> loading -> idle rather than straight to idle.
   const prevNavigationState = React.useRef(navigate.state);
   React.useEffect(() => {
-    if (prevNavigationState.current === "submitting" && navigate.state === "idle") {
+    if (prevNavigationState.current !== "idle" && navigate.state === "idle") {
       setMfaCode("");
+      mfaInputRef.current?.focus();
     }
     prevNavigationState.current = navigate.state;
   }, [navigate.state]);
+
+  const submitMfaCode = (code: string) => {
+    if (navigate.state !== "idle") return;
+    submit({ action: "verify-mfa", mfaCode: code }, { method: "post" });
+  };
 
   // Reset hideError when a new error appears
   React.useEffect(() => {
@@ -274,14 +284,20 @@ export default function LoginMfaPage() {
               </Paragraph>
               <Fieldset className="flex w-full flex-col items-center gap-y-2">
                 <InputOTP
+                  ref={mfaInputRef}
                   maxLength={6}
                   value={mfaCode}
                   onChange={(value) => setMfaCode(value)}
+                  onComplete={submitMfaCode}
+                  pattern={REGEXP_ONLY_DIGITS}
+                  pasteTransformer={(pasted) => pasted.replace(/\D/g, "")}
+                  autoComplete="one-time-code"
+                  autoFocus
                   variant="large"
                   fullWidth
                 >
                   <InputOTPGroup variant="large" fullWidth>
-                    <InputOTPSlot index={0} autoFocus variant="large" fullWidth />
+                    <InputOTPSlot index={0} variant="large" fullWidth />
                     <InputOTPSlot index={1} variant="large" fullWidth />
                     <InputOTPSlot index={2} variant="large" fullWidth />
                     <InputOTPSlot index={3} variant="large" fullWidth />
