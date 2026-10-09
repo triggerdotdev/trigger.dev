@@ -43,7 +43,7 @@ You can request a higher rate limit from us if you're on a paid plan.
 The maximum number of runs that can be queued **per queue** (not across all queues in the environment). Each queue can hold up to its limit independently. When a queue hits its limit, new triggers to that queue are rejected.
 
 <Note>
-  The limits below apply to [Trigger.dev Cloud](https://trigger.dev). If you self-host Trigger.dev, queue size limits are configurable via the `MAXIMUM_DEV_QUEUE_SIZE` and `MAXIMUM_DEPLOYED_QUEUE_SIZE` environment variables — see [Self-hosting environment variables](/self-hosting/env/webapp#run-engine).
+  The limits below apply to [Trigger.dev Cloud](https://trigger.dev). If you self-host Trigger.dev, queue size limits are configurable via the `MAXIMUM_DEV_QUEUE_SIZE` and `MAXIMUM_DEPLOYED_QUEUE_SIZE` environment variables — see [Self-hosting environment variables](/self-hosting/env/webapp).
 </Note>
 
 | Pricing tier | Development (per queue) | Staging / Production (per queue) |
@@ -60,7 +60,7 @@ On Trigger.dev Cloud, all runs have an enforced maximum TTL of 14 days. Runs wit
 
 There is no maximum on `delay`.
 
-If you self-host, you can configure a maximum TTL via the `RUN_ENGINE_DEFAULT_MAX_TTL` environment variable — see [Self-hosting environment variables](/self-hosting/env/webapp#run-engine).
+If you self-host, you can configure a maximum TTL via the `RUN_ENGINE_DEFAULT_MAX_TTL` environment variable — see [Self-hosting environment variables](/self-hosting/env/webapp).
 
 ## Schedules
 

@@ -7,7 +7,6 @@ description: "List, get, set, and pull environment variables for a Trigger.dev p
 import CommonOptions from "/snippets/cli-options-common.mdx";
 import ConfigFileOptions from "/snippets/cli-options-config-file.mdx";
 import ProjectRefOptions from "/snippets/cli-options-project-ref.mdx";
-import BranchOptions from "/snippets/cli-options-branch.mdx";
 
 These commands manage environment variables on a project environment. They default to `prod`. Use `--env staging` or `--env preview` (with `--branch`) for the other environments. There is no `dev` target: local `trigger dev` reads your local `.env`.
 
@@ -82,7 +81,7 @@ npx trigger.dev@latest env set STRIPE_KEY sk_live_abc --secret
 
 ## env pull
 
-Writes the project's environment variables to a local file. Defaults to `.env.local`. Fails if the file already exists unless you pass `--force`.
+Writes the project's environment variables to a local file. Defaults to `.env.local`. Asks you to confirm before overwriting an existing file unless you pass `--force`. `TRIGGER_` system variables are omitted.
 
 ```bash
 npx trigger.dev@latest env pull
@@ -94,7 +93,7 @@ npx trigger.dev@latest env pull --output .env.trigger --force
 </ParamField>
 
 <ParamField body="Force" type="--force">
-  Overwrite the output file if it exists.
+  Overwrite the output file if it exists, without asking.
 </ParamField>
 
 ## Options
@@ -105,7 +104,9 @@ npx trigger.dev@latest env pull --output .env.trigger --force
 
 <ConfigFileOptions />
 <ProjectRefOptions />
-<BranchOptions />
+<ParamField body="Preview branch" type="--branch | -b">
+  Required when using `--env preview`. Specify the branch, e.g. `--branch my-branch` or `-b my-branch`.
+</ParamField>
 
 ### Common options
 

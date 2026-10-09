@@ -1,7 +1,6 @@
 import ProjectPathArg from "/snippets/cli-args-project-path.mdx";
 import CommonOptions from "/snippets/cli-options-common.mdx";
 import ProjectRefOption from "/snippets/cli-options-project-ref.mdx";
-import EnvFileOption from "/snippets/cli-options-env-file.mdx";
 import ConfigFileOption from "/snippets/cli-options-config-file.mdx";
 import SkipUpdateCheckOption from "/snippets/cli-options-skip-update-check.mdx";
 
@@ -35,9 +34,23 @@ It is worth noting that each task runs in a separate Node process. This means th
 
 <ProjectRefOption />
 
-<EnvFileOption />
+<ParamField body="Env file" type="--env-file">
+  Load environment variables from a file instead of the default `.env` files. They are available to your tasks in the local dev session.
+</ParamField>
 
 <SkipUpdateCheckOption />
+
+<ParamField body="Branch" type="--branch | -b">
+  The dev branch to use. Defaults to the `TRIGGER_DEV_BRANCH` environment variable. See [dev branches](/deployment/dev-branches).
+</ParamField>
+
+<ParamField body="Max concurrent runs" type="--max-concurrent-runs">
+  The maximum number of concurrent runs in the dev session. It can only lower your dev environment's concurrency limit, not raise it.
+</ParamField>
+
+<ParamField body="Keep temporary files" type="--keep-tmp-files">
+  Keep temporary files after the dev session ends.
+</ParamField>
 
 <ParamField body="Analyze build output" type="--analyze">
   Analyzes the build output and displays detailed import timings. This is useful for debugging the

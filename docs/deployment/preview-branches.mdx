@@ -18,10 +18,13 @@ The process to use preview branches looks like this:
 3. Create a named **Trigger only** API key in the Preview environment, then trigger runs using the key (`TRIGGER_SECRET_KEY`) and branch name (`TRIGGER_PREVIEW_BRANCH`).
 4. Archive the preview branch when the branch is done.
 
-There are two main ways to do this:
+There are three main ways to do this:
 
-1. Automatically: using GitHub Actions (recommended).
-2. Manually: in the dashboard and/or using the CLI.
+1. Automatically: using the [GitHub integration](/github-integration), which deploys pull requests to preview branches and archives them when the PR is merged or closed, without a GitHub Action.
+2. Automatically: using GitHub Actions, if you deploy from your own CI workflows.
+3. Manually: in the dashboard and/or using the CLI.
+
+Pick one of the automatic options, not both.
 
 ### Limits on active preview branches
 
