@@ -13,8 +13,6 @@ import {
 } from "~/utils/previewAutoArchive";
 import { archiveBranchesMutation } from "./branchArchiveMutation.server";
 import { logger } from "./logger.server";
-import { FEATURE_FLAG } from "~/v3/featureFlags";
-import { makeFlag } from "~/v3/featureFlags.server";
 import { trail } from "agentcrumbs"; // @crumbs
 
 const crumb = trail("webapp"); // @crumbs
@@ -48,22 +46,6 @@ export async function previewBranchActivity(prisma: PrismaClientOrTransaction, i
   return new Map(rows.map((row) => [row.id, row]));
 }
 
-export function isPreviewAutoArchiveEnabled(
-  prisma: PrismaClientOrTransaction,
-  organizationFlags: unknown
-) {
-  return makeFlag(prisma)({
-    key: FEATURE_FLAG.previewAutoArchiveEnabled,
-    defaultValue: false,
-    overrides:
-      organizationFlags &&
-      typeof organizationFlags === "object" &&
-      !Array.isArray(organizationFlags)
-        ? (organizationFlags as Record<string, unknown>)
-        : undefined,
-  });
-}
-
 type DuePolicy = {
   id: string;
   previewAutoArchiveAfterDays: number;
@@ -73,7 +55,6 @@ type DuePolicy = {
   previewAutoArchiveCursorId: string | null;
   projectDeletedAt: Date | null;
   organizationDeletedAt: Date | null;
-  organizationFlags: Prisma.JsonValue;
 };
 
 type ArchiveBranch = Pick<RuntimeEnvironment, "id" | "slug" | "branchName" | "createdAt">;
@@ -82,12 +63,11 @@ type ArchiveBranch = Pick<RuntimeEnvironment, "id" | "slug" | "branchName" | "cr
 function previewArchiveDueQuery(now: Date) {
   // Prisma cannot express FOR UPDATE SKIP LOCKED. Claim and read the next due policy
   // together so concurrent workers take different roots. OF e locks only the environment,
-  // while the joins provide tenant deletion and rollout state without extra lookups.
+  // while the joins provide tenant deletion state without extra lookups.
   return Prisma.sql`
     SELECT e.id, e."previewAutoArchiveAfterDays", e."previewAutoArchiveExcludedBranches",
       e."previewAutoArchiveNextCheckAt", e."previewAutoArchiveCursorCreatedAt", e."previewAutoArchiveCursorId",
-      p."deletedAt" AS "projectDeletedAt", o."deletedAt" AS "organizationDeletedAt",
-      o."featureFlags" AS "organizationFlags"
+      p."deletedAt" AS "projectDeletedAt", o."deletedAt" AS "organizationDeletedAt"
     FROM "RuntimeEnvironment" e
     JOIN "Project" p ON p.id = e."projectId"
     JOIN "Organization" o ON o.id = e."organizationId"
@@ -229,16 +209,6 @@ export async function processPreviewAutoArchivePage(
               previewAutoArchiveCursorCreatedAt: null,
               previewAutoArchiveCursorId: null,
             },
-          });
-          return { parentId: parent.id, scanned: 0, candidates: 0, archived: [], complete: true };
-        }
-        if (!(await isPreviewAutoArchiveEnabled(tx, parent.organizationFlags))) {
-          crumb("preview archive rollout disabled", { parentId: parent.id }); // @crumbs
-          // Keep durable progress and policy for re-enablement, without rescanning a
-          // disabled organization on every tick or starving other due projects.
-          await tx.runtimeEnvironment.update({
-            where: { id: parent.id },
-            data: { previewAutoArchiveNextCheckAt: new Date(now.getTime() + HOUR_MS) },
           });
           return { parentId: parent.id, scanned: 0, candidates: 0, archived: [], complete: true };
         }

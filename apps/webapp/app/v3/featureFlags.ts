@@ -9,7 +9,6 @@ export const FEATURE_FLAG = {
   hasQueryAccess: "hasQueryAccess",
   hasLogsPageAccess: "hasLogsPageAccess",
   hasWebhooksAccess: "hasWebhooksAccess",
-  previewAutoArchiveEnabled: "previewAutoArchiveEnabled",
   hasAiAccess: "hasAiAccess",
   hasDashboardAgentAccess: "hasDashboardAgentAccess",
   dashboardAgentTurnEvalsEnabled: "dashboardAgentTurnEvalsEnabled",
@@ -70,8 +69,6 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.hasQueryAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasLogsPageAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasWebhooksAccess]: z.coerce.boolean(),
-  // Opt-in rollout; organization overrides the global default. Unset means off.
-  [FEATURE_FLAG.previewAutoArchiveEnabled]: z.boolean(),
   /**
    * Opts an organization into API rate limit metrics while the webapp runs with
    * API_RATE_LIMIT_METRICS_ENABLED=allowlist. Read from the organization override only, on the

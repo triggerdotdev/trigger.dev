@@ -71,12 +71,12 @@ export async function createDeploymentWithNextVersion(
     const data = await buildData(version);
 
     try {
-      // Non-preview deployments keep the original query path, including no flag lookup.
+      // Non-preview deployments keep the original query path.
       if (options.archiveGuard?.type !== "PREVIEW") {
         return await prisma.workerDeployment.create({ data: { ...data, environmentId, version } });
       }
-      // All previews lock, even with rollout disabled: flags can change during preparation.
-      // Build data (including registry calls) above, outside the short lock. The archive
+      // Every preview locks, whether or not its parent has an auto-archive policy, because the
+      // policy can change during preparation. Build data (including registry calls) above, outside the short lock. The archive
       // sweep takes this same lock before checking deployment activity.
       const deployment = await $transaction(
         prisma,
