@@ -31,6 +31,7 @@ import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { metricsRegister } from "~/metrics.server";
 import { logger } from "~/services/logger.server";
+import { clampToEmergencySpanCap } from "./emergencySpanCap.server";
 import { singleton } from "~/utils/singleton";
 import { DynamicFlushScheduler } from "../dynamicFlushScheduler.server";
 import { tracePubSub } from "../services/tracePubSub.server";
@@ -452,7 +453,7 @@ export class EventRepository implements IEventRepository {
     traceId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
-    options?: { includeDebugLogs?: boolean }
+    options?: { includeDebugLogs?: boolean; anchorSpanId?: string }
   ): Promise<TraceSummary | undefined> {
     return await startActiveSpan("getTraceSummary", async (span) => {
       const events = await this.taskEventStore.findTraceEvents(
@@ -463,7 +464,17 @@ export class EventRepository implements IEventRepository {
         { includeDebugLogs: options?.includeDebugLogs }
       );
 
-      return buildTraceSummaryFromQueriedEvents(events);
+      const summary = buildTraceSummaryFromQueriedEvents(events, options?.anchorSpanId);
+      const limit = clampToEmergencySpanCap(env.MAXIMUM_TRACE_SUMMARY_VIEW_COUNT);
+      // Every row in the window was read and the anchor isn't among them.
+      if (!summary && options?.anchorSpanId && events.length > 0 && events.length < limit) {
+        logger.warn("Trace summary rows don't include the anchor span", {
+          traceId,
+          spanId: options.anchorSpanId,
+          rowCount: events.length,
+        });
+      }
+      return summary;
     });
   }
 
@@ -474,7 +485,7 @@ export class EventRepository implements IEventRepository {
     _anchorSpanId: string,
     _startCreatedAt: Date,
     _endCreatedAt?: Date,
-    _options?: { includeDebugLogs?: boolean }
+    _options?: { includeDebugLogs?: boolean; includeAncestors?: boolean }
   ): Promise<TraceSummary | undefined> {
     // Subtree traversal is ClickHouse-only. Dashboard falls back to the full
     // summary when this returns undefined.

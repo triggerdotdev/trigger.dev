@@ -1,6 +1,7 @@
 import { ClickHouse, type TaskEventV2Input } from "@internal/clickhouse";
 import { clickhouseTest } from "@internal/testcontainers";
 import { describe, expect, vi } from "vitest";
+import { logger } from "~/services/logger.server";
 import { ClickhouseEventRepository } from "~/v3/eventRepository/clickhouseEventRepository.server";
 import type { TraceChunkCursor } from "~/v3/eventRepository/eventRepository.types";
 
@@ -550,6 +551,183 @@ describe("ClickhouseEventRepository getTraceSpanWithAncestors", () => {
         expect(ids.has("aSibling")).toBe(false);
       } finally {
         await shutdownRepository(repository);
+      }
+    }
+  );
+});
+// A child run created two days after its root, with a sibling branch in between.
+const DAY_MS = 86_400_000;
+const ROOT_AT = BASE;
+const CHILD_AT = new Date(BASE.getTime() + 2 * DAY_MS);
+
+function written(
+  spanId: string,
+  at: Date,
+  parentSpanId: string,
+  overrides: Partial<TaskEventV2Input> = {}
+): TaskEventV2Input {
+  return {
+    ...event(spanId, at.getTime() - BASE.getTime(), spanId, parentSpanId),
+    inserted_at: clickhouseDate(at),
+    ...overrides,
+  };
+}
+
+function offset(at: Date, ms: number): Date {
+  return new Date(at.getTime() + ms);
+}
+
+const CHILD_TRACE: TaskEventV2Input[] = [
+  written("root", ROOT_AT, ""),
+  written("root-err", offset(ROOT_AT, 3_600_000), "root", { status: "ERROR" }),
+  written("sibling", offset(ROOT_AT, DAY_MS), "root"),
+  // Inside the 60s buffer before the child, so still in its window.
+  written("sibling-late", offset(CHILD_AT, -30_000), "root"),
+  written("child", CHILD_AT, "root"),
+  written("child-attempt", offset(CHILD_AT, 1_000), "child"),
+  written("child-err", offset(CHILD_AT, 2_000), "child-attempt", { status: "ERROR" }),
+  written("child-log", offset(CHILD_AT, 3_000), "child-attempt", { kind: "LOG_INFO" }),
+];
+
+describe("ClickhouseEventRepository getTraceSubtreeSummary ancestors", () => {
+  clickhouseTest(
+    "includeAncestors: false reads the child's subtree and no ancestors",
+    async ({ clickhouseContainer }) => {
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        name: "test",
+      });
+      const repository = new ClickhouseEventRepository({
+        clickhouse,
+        version: "v2",
+        insertStrategy: "insert",
+      });
+
+      try {
+        const [insertError] = await clickhouse.taskEventsV2.insert(CHILD_TRACE);
+        expect(insertError).toBeNull();
+
+        const subtree = (includeAncestors?: boolean) =>
+          repository.getTraceSubtreeSummary(
+            "taskEventPartitioned",
+            ENV_ID,
+            TRACE_ID,
+            "child",
+            CHILD_AT,
+            undefined,
+            { includeDebugLogs: true, includeAncestors }
+          );
+
+        const withoutAncestors = await subtree(false);
+        expect(new Set(withoutAncestors?.spans.map((s) => s.id))).toEqual(
+          new Set(["child", "child-attempt", "child-err", "child-log"])
+        );
+
+        const withAncestors = await subtree();
+        expect(withAncestors?.spans.some((s) => s.id === "root")).toBe(true);
+      } finally {
+        await shutdownRepository(repository);
+      }
+    }
+  );
+});
+
+describe("ClickhouseEventRepository getTraceSummary anchor", () => {
+  clickhouseTest(
+    "a child window builds a summary rooted at the anchor",
+    async ({ clickhouseContainer }) => {
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        name: "test",
+      });
+      const repository = new ClickhouseEventRepository({
+        clickhouse,
+        version: "v2",
+        insertStrategy: "insert",
+      });
+
+      try {
+        const [insertError] = await clickhouse.taskEventsV2.insert(CHILD_TRACE);
+        expect(insertError).toBeNull();
+
+        const summary = (anchorSpanId?: string) =>
+          repository.getTraceSummary(
+            "taskEventPartitioned",
+            ENV_ID,
+            TRACE_ID,
+            CHILD_AT,
+            undefined,
+            { includeDebugLogs: true, anchorSpanId }
+          );
+
+        // The trace root is outside the window, so there's no parentless span to root at.
+        expect(await summary()).toBeUndefined();
+
+        const anchored = await summary("child");
+        expect(anchored?.rootSpan.id).toBe("child");
+        expect(anchored?.spans.map((s) => s.id)).toEqual(
+          expect.arrayContaining(["child", "child-attempt", "child-err", "child-log"])
+        );
+        expect(anchored?.spans.some((s) => s.id === "root")).toBe(false);
+
+        // An anchor that isn't in the rows yields no summary, which triggers the subtree read.
+        expect(await summary("not-here")).toBeUndefined();
+      } finally {
+        await shutdownRepository(repository);
+      }
+    }
+  );
+});
+
+describe("ClickhouseEventRepository getTraceSummary missing anchor log", () => {
+  clickhouseTest(
+    "warns only when every row was read and the anchor isn't among them",
+    async ({ clickhouseContainer }) => {
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        name: "test",
+      });
+      const repository = new ClickhouseEventRepository({
+        clickhouse,
+        version: "v2",
+        insertStrategy: "insert",
+      });
+      const capped = new ClickhouseEventRepository({
+        clickhouse,
+        version: "v2",
+        insertStrategy: "insert",
+        maximumTraceSummaryViewCount: 2,
+      });
+      const warn = vi.spyOn(logger, "warn");
+      const missingAnchorWarnings = () =>
+        warn.mock.calls.filter(
+          ([message]) => message === "Trace summary rows don't include the anchor span"
+        );
+
+      try {
+        const [insertError] = await clickhouse.taskEventsV2.insert(CHILD_TRACE);
+        expect(insertError).toBeNull();
+
+        const summary = (repo: ClickhouseEventRepository, traceId: string) =>
+          repo.getTraceSummary("taskEventPartitioned", ENV_ID, traceId, CHILD_AT, undefined, {
+            includeDebugLogs: true,
+            anchorSpanId: "not-here",
+          });
+
+        // An empty trace stays quiet: a just-triggered run has no rows yet.
+        expect(await summary(repository, "trace_with_no_rows")).toBeUndefined();
+        expect(missingAnchorWarnings()).toHaveLength(0);
+
+        // A capped read can't tell; the subtree fallback handles it.
+        expect(await summary(capped, TRACE_ID)).toBeUndefined();
+        expect(missingAnchorWarnings()).toHaveLength(0);
+
+        expect(await summary(repository, TRACE_ID)).toBeUndefined();
+        expect(missingAnchorWarnings()).toHaveLength(1);
+      } finally {
+        warn.mockRestore();
+        await shutdownRepository(repository);
+        await shutdownRepository(capped);
       }
     }
   );

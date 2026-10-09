@@ -70,12 +70,12 @@ export async function getDashboardAgentRunTrace({
     run.traceId,
     run.createdAt,
     endCreatedAt,
-    { includeDebugLogs: false }
+    { includeDebugLogs: false, anchorSpanId: run.spanId }
   );
 
-  // The anchor span can fall past the row cap on large traces, so fall back to
-  // the subtree fetch like the run page does.
-  if (summary && !summary.spans.some((span) => span.id === run.spanId)) {
+  // No summary means the anchor span isn't in the summary rows, e.g. it fell past the
+  // row cap on a large trace, so fall back to the subtree fetch like the run page does.
+  if (!summary) {
     const subtree = await repository.getTraceSubtreeSummary(
       storeTable,
       environmentId,
@@ -83,7 +83,8 @@ export async function getDashboardAgentRunTrace({
       run.spanId,
       run.createdAt,
       endCreatedAt,
-      { includeDebugLogs: false }
+      // The tree is built from the anchor down, so ancestors would be read for nothing.
+      { includeDebugLogs: false, includeAncestors: false }
     );
 
     if (subtree) {

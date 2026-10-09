@@ -1687,7 +1687,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     traceId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
-    options?: { includeDebugLogs?: boolean }
+    options?: { includeDebugLogs?: boolean; anchorSpanId?: string }
   ): Promise<TraceSummary | undefined> {
     const limit = this._config.maximumTraceSummaryViewCount;
     const records = await this.#fetchTraceSummaryRecords({
@@ -1703,14 +1703,25 @@ export class ClickhouseEventRepository implements IEventRepository {
       return;
     }
 
-    const summary = this.#buildTraceSummaryFromRecords(records);
+    const isTruncated = limit !== undefined && records.length >= limit;
+    const summary = this.#buildTraceSummaryFromRecords(records, {
+      rootSpanId: options?.anchorSpanId,
+    });
     if (!summary) {
+      // Every row in the window was read and the anchor isn't among them.
+      if (options?.anchorSpanId && records.length > 0 && !isTruncated) {
+        logger.warn("Trace summary rows don't include the anchor span", {
+          traceId,
+          spanId: options.anchorSpanId,
+          rowCount: records.length,
+        });
+      }
       return;
     }
 
     return {
       ...summary,
-      isTruncated: limit !== undefined && records.length >= limit,
+      isTruncated,
     };
   }
 
@@ -1721,7 +1732,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     anchorSpanId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
-    options?: { includeDebugLogs?: boolean }
+    options?: { includeDebugLogs?: boolean; includeAncestors?: boolean }
   ): Promise<TraceSummary | undefined> {
     const { records, isTruncated, missingAnchor } = await this.#fetchTraceSubtreeRecords({
       environmentId,
@@ -2145,7 +2156,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     anchorSpanId: string;
     startCreatedAt: Date;
     endCreatedAt?: Date;
-    options?: { includeDebugLogs?: boolean };
+    options?: { includeDebugLogs?: boolean; includeAncestors?: boolean };
     limit?: number;
   }): Promise<{
     records: TaskEventSummaryV1Result[];
@@ -2158,14 +2169,18 @@ export class ClickhouseEventRepository implements IEventRepository {
       // Ancestors are fetched by explicit spanIds and start before the anchor
       // run's time window, so applying startCreatedAt would wrongly exclude them
       // (and with it the cancellation/error overrides they propagate downward).
-      fetchAncestor: (batch) =>
-        this.#fetchTraceSummaryRecords({
-          environmentId,
-          traceId,
-          skipTimeWindow: true,
-          options,
-          ...batch,
-        }),
+      // A child run view skips them: its own run span carries those overrides.
+      fetchAncestor:
+        options?.includeAncestors === false
+          ? async () => []
+          : (batch) =>
+              this.#fetchTraceSummaryRecords({
+                environmentId,
+                traceId,
+                skipTimeWindow: true,
+                options,
+                ...batch,
+              }),
       fetchDescendant: (batch) =>
         this.#fetchTraceSummaryRecords({
           environmentId,
