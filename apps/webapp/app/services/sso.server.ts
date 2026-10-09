@@ -1,6 +1,7 @@
 import { $replica, prisma } from "~/db.server";
 import type { PrismaClient } from "@trigger.dev/database";
 import sso from "@trigger.dev/sso";
+import { Logger } from "@trigger.dev/core/logger";
 import { env } from "~/env.server";
 
 // sso.create() is synchronous — returns a lazy controller that resolves
@@ -30,5 +31,6 @@ export const ssoController = sso.create(
       writerConnectionLimit: env.SSO_DATABASE_WRITER_CONNECTION_LIMIT,
       readerConnectionLimit: env.SSO_DATABASE_READER_CONNECTION_LIMIT,
     },
+    reportError: (message, ...args) => Logger.onError?.(message, ...args),
   }
 );

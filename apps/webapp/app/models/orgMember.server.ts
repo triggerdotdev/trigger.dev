@@ -1,5 +1,6 @@
 import { $transaction, Prisma, prisma } from "~/db.server";
 import { deleteOrgMember } from "./deleteOrgMember.server";
+import { findOrCreateDirectoryUser } from "./directoryUser.server";
 import type { MembershipSource } from "~/models/member.server";
 import { logger } from "~/services/logger.server";
 import { enqueueMemberDevelopmentEnvironments } from "~/services/memberDevEnvironments.server";
@@ -174,45 +175,14 @@ export async function ensureOrgMember(
   return { created: true, orgMemberId: member.id, devEnvironmentsQueued: enqueued };
 }
 
-// Find-or-create a User for a directory-provisioned member. Directory Sync
-// can provision a user before they have ever logged in, so the User row may
-// not exist yet. Email is the natural key (lowercased). New rows are marked
-// SSO since the user will authenticate via the org's IdP.
+// Directory Sync can provision a user before they have ever logged in, so
+// the User row may not exist yet.
 export async function ensureUserForDirectory(params: {
   email: string;
   firstName: string | null;
   lastName: string | null;
 }): Promise<{ userId: string }> {
-  const email = params.email.toLowerCase().trim();
-  const existing = await prisma.user.findFirst({ where: { email }, select: { id: true } });
-  if (existing) return { userId: existing.id };
-
-  const name = [params.firstName, params.lastName].filter(Boolean).join(" ").trim() || null;
-  // `User.email` is unique, so two concurrent directory events for the same
-  // email can both miss the lookup above and race on create; the loser gets
-  // P2002. Treat that as the idempotent "already exists" case (same pattern as
-  // `ensureOrgMember`) rather than throwing and burning a webhook retry.
-  try {
-    const created = await prisma.user.create({
-      data: {
-        email,
-        authenticationMethod: "SSO",
-        name,
-        displayName: name,
-      },
-      select: { id: true },
-    });
-    return { userId: created.id };
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      const existingAfterConflict = await prisma.user.findFirst({
-        where: { email },
-        select: { id: true },
-      });
-      if (existingAfterConflict) return { userId: existingAfterConflict.id };
-    }
-    throw error;
-  }
+  return findOrCreateDirectoryUser(prisma, params);
 }
 
 // Whether the user holds the Owner system role in this org. Owner is the one
