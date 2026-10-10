@@ -808,14 +808,14 @@ RUN apt-get update && \\
   apt-get install -y --no-install-recommends ${TOOLCHAIN_PACKAGES} && \\
   apt-get clean && \\
   rm -rf /var/lib/apt/lists/*`
-    : `FROM ${BUILD_IMAGE[options.runtime]} AS build
+    : `FROM ${options.image?.buildBase ?? BUILD_IMAGE[options.runtime]} AS build
 
 ENV DEBIAN_FRONTEND=noninteractive${
         userPackages.length > 0 ? `\n\n${aptInstall(userPackages, { repair: false })}` : ""
       }`;
 
   return {
-    baseImage: BASE_IMAGE[options.runtime],
+    baseImage: options.image?.base ?? BASE_IMAGE[options.runtime],
     buildStage,
     customization,
     buildArgs,

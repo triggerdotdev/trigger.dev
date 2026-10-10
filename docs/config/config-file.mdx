@@ -462,6 +462,41 @@ export default defineConfig({
   from the final bundle.
 </Note>
 
+### Base image
+
+Deploy images are built on the published `triggerdotdev/node` (or `triggerdotdev/bun`) Debian images for your runtime. To use your own base instead, such as a FIPS-validated or hardened Node image, set `build.image`:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "<project ref>",
+  runtime: "node-26",
+  build: {
+    image: {
+      // Base of the runtime stage your tasks run in. Pin by digest.
+      base: "registry.example.com/node-fips:26@sha256:...",
+      // Optional: toolchain image for the build stage (install, build commands, indexing)
+      buildBase: "registry.example.com/node:26-dev@sha256:...",
+    },
+  },
+});
+```
+
+The `TRIGGER_BUILD_BASE_IMAGE` and `TRIGGER_BUILD_BUILD_IMAGE` environment variables override these values, so a platform team can set the base for every project in CI.
+
+You own a custom base image. It must provide:
+
+- `node` (or `bun`) on `PATH` at the runtime's major version
+- `busybox`, `ca-certificates`, `dumb-init`, `git` and `openssl`
+- a `node` user
+- glibc, so native modules built in the build stage load at runtime
+
+<Warning>
+  `image.pkgs` and extensions that run `apt-get` (such as `aptGet` and `playwright`) assume a Debian
+  base. On other distributions, install those packages in your base image instead.
+</Warning>
+
 ### External
 
 All code is bundled by default, but you can exclude some packages from the bundle using the `external` option:

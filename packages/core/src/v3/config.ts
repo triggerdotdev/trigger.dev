@@ -232,6 +232,21 @@ export type TriggerConfig = {
     external?: string[];
 
     /**
+     * Override the base images of the deploy image, e.g. with a FIPS-validated or hardened Node image.
+     * You own these images: they must provide what the published bases do (see the docs).
+     *
+     * The `TRIGGER_BUILD_BASE_IMAGE` and `TRIGGER_BUILD_BUILD_IMAGE` environment variables take precedence.
+     *
+     * @see https://trigger.dev/docs/config/config-file#base-image
+     */
+    image?: {
+      /** Base of the runtime (final) stage. Pin by digest. */
+      base?: string;
+      /** Toolchain image for the build stage. Defaults to the published `-build` image for the runtime. */
+      buildBase?: string;
+    };
+
+    /**
      * This still works but use `autoDetectExternal` instead.
      *
      * @deprecated (use autoDetectExternal instead)
