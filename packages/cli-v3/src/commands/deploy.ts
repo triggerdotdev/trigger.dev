@@ -22,7 +22,7 @@ import { x } from "tinyexec";
 import { z } from "zod";
 import chalk from "chalk";
 import type { CliApiClient } from "../apiClient.js";
-import { buildWorker } from "../build/buildWorker.js";
+import { buildWorker, writeContainerfile } from "../build/buildWorker.js";
 import { resolveAlwaysExternal } from "../build/externals.js";
 import { createContextArchive, getArchiveSize } from "../deploy/archiveContext.js";
 import { createBundleArchive } from "../deploy/bundleArchive.js";
@@ -591,6 +591,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       triggeredVia: getTriggeredVia(),
       externalId: options.externalId,
       force: options.force,
+      supportsInstanceBaseImages: true,
     },
     envVars.TRIGGER_EXISTING_DEPLOYMENT_ID
   );
@@ -637,6 +638,13 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   }
 
   warnAboutCanceledDeployments(deployment.canceledDeployments, options.externalId);
+
+  await applyServerBaseImages({
+    baseImages: deployment.baseImages,
+    outputPath: destination.path,
+    buildManifest,
+    options,
+  });
 
   // When `externalBuildData` is not present the deployment implicitly goes into the local build path
   // which is used in self-hosted setups. There are a few subtle differences between local builds for the cloud
@@ -1200,6 +1208,40 @@ function buildDeploymentLinks({
       env === "prod" ? "prod" : "stg"
     }`,
   };
+}
+
+async function applyServerBaseImages({
+  baseImages,
+  outputPath,
+  buildManifest,
+  options,
+}: {
+  baseImages: InitializeDeploymentResponseBody["baseImages"];
+  outputPath: string;
+  buildManifest: BuildManifest;
+  options: DeployCommandOptions;
+}) {
+  if (!baseImages) {
+    return;
+  }
+
+  const required = [
+    baseImages.base ? `base ${baseImages.base}` : undefined,
+    baseImages.buildBase ? `build ${baseImages.buildBase}` : undefined,
+  ].filter(Boolean);
+
+  const message = `Building on base images required by this instance: ${required.join(", ")}`;
+
+  if (options.plain) {
+    console.log(message);
+  } else {
+    log.info(message);
+  }
+
+  await writeContainerfile(outputPath, {
+    ...buildManifest,
+    image: { ...buildManifest.image, ...baseImages },
+  });
 }
 
 function warnAboutSkippedBuild(externalId: string | undefined, isPromoted: boolean | undefined) {
@@ -2261,9 +2303,21 @@ async function handleFromBundleDeploy({
       isLocalBuild: true,
       isNativeBuild: false,
       triggeredVia: getTriggeredVia(),
+      supportsInstanceBaseImages: true,
     },
     existingDeploymentId
   );
+
+  if (deployment.baseImages) {
+    const message =
+      "This instance requires custom deploy base images, which --from-bundle deploys cannot apply. Deploy without --from-bundle.";
+
+    await projectClient.client.failDeployment(deployment.id, {
+      error: { name: "BuildError", message },
+    });
+
+    throw new Error(message);
+  }
 
   // Fail fast if we know local builds will fail
   const buildxResult = await x("docker", ["buildx", "version"]);

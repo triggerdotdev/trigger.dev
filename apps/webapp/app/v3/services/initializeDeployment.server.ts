@@ -14,6 +14,7 @@ import { generateFriendlyId } from "../friendlyIdentifiers";
 import { createRemoteImageBuild, remoteBuildsEnabled } from "../remoteImageBuilder.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
+import { resolveDeployBaseImages } from "../deployBaseImages.server";
 import { getDeploymentImageRef } from "../getDeploymentImageRef.server";
 import { tryCatch } from "@trigger.dev/core";
 import { getRegistryConfig } from "../registryConfig.server";
@@ -145,6 +146,25 @@ export class InitializeDeploymentService extends BaseService {
 
       if (payload.type === "UNMANAGED") {
         throw new ServiceValidationError("UNMANAGED deployments are not supported");
+      }
+
+      const requiredBaseImages = resolveDeployBaseImages(runtime, {
+        base: env.DEPLOY_BASE_IMAGES,
+        buildBase: env.DEPLOY_BUILD_BASE_IMAGES,
+      });
+
+      if (requiredBaseImages && payload.isNativeBuild) {
+        throw new ServiceValidationError(
+          "This instance requires custom deploy base images, which native builds cannot apply. Deploy without --native-build or --local-bundle.",
+          400
+        );
+      }
+
+      if (requiredBaseImages && payload.supportsInstanceBaseImages !== true) {
+        throw new ServiceValidationError(
+          "This instance requires custom deploy base images, which this version of the CLI cannot apply. Upgrade the trigger.dev CLI and deploy again.",
+          400
+        );
       }
 
       // Upgrade the project to engine "V2" if it's not already. This should cover cases where people deploy to V2 without running dev first.

@@ -9,6 +9,8 @@ import { authenticateApiKeyWithScope } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
+import { env } from "~/env.server";
+import { resolveDeployBaseImages } from "~/v3/deployBaseImages.server";
 import { InitializeDeploymentService } from "~/v3/services/initializeDeployment.server";
 
 export async function action({ request, params }: ActionFunctionArgs) {
@@ -60,6 +62,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
         ? {
             externalBuildData: result.deployment
               .externalBuildData as InitializeDeploymentResponseBody["externalBuildData"],
+            baseImages: resolveDeployBaseImages(result.deployment.runtime, {
+              base: env.DEPLOY_BASE_IMAGES,
+              buildBase: env.DEPLOY_BUILD_BASE_IMAGES,
+            }),
             eventStream: result.eventStream,
             canceledDeployments: result.canceledDeployments,
           }

@@ -5,6 +5,7 @@ import {
 } from "@trigger.dev/core/v3/isomorphic";
 import { BoolEnv } from "./utils/boolEnv";
 import { isValidDatabaseUrl } from "./utils/db";
+import { parseDeployBaseImages } from "~/v3/deployBaseImages.server";
 import { parseRunOpsShards, validateShardListAgainstNewUrl } from "~/v3/runOpsShards.server";
 import { isValidRegex } from "./utils/regex";
 import { isValidDuration } from "./services/realtime/duration.server";
@@ -15,6 +16,18 @@ import { WorkerQueueSubscriptionPolicyEnv } from "./runEngine/concerns/workerQue
 function durationString() {
   return z.string().refine(isValidDuration, "must be a duration like 7d, 30d, 365d, 1h, 1y");
 }
+
+const parseDeployBaseImagesEnv = (
+  value: string | undefined,
+  envVarName: string,
+  ctx: z.RefinementCtx
+) => {
+  const { images, errors } = parseDeployBaseImages(value, envVarName);
+  for (const message of errors) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+  }
+  return errors.length > 0 ? z.NEVER : images;
+};
 
 const GithubAppEnvSchema = z.preprocess(
   (val) => {
@@ -856,6 +869,14 @@ const EnvironmentSchema = z
       .transform((v) => v ?? process.env.DEPLOY_REGISTRY_ECR_DEFAULT_REPOSITORY_POLICY),
 
     DEPLOY_IMAGE_PLATFORM: z.string().default("linux/amd64"),
+    DEPLOY_BASE_IMAGES: z
+      .string()
+      .optional()
+      .transform((v, ctx) => parseDeployBaseImagesEnv(v, "DEPLOY_BASE_IMAGES", ctx)),
+    DEPLOY_BUILD_BASE_IMAGES: z
+      .string()
+      .optional()
+      .transform((v, ctx) => parseDeployBaseImagesEnv(v, "DEPLOY_BUILD_BASE_IMAGES", ctx)),
     DEPLOY_TIMEOUT_MS: z.coerce
       .number()
       .int()
