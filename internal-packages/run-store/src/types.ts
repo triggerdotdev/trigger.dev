@@ -30,6 +30,14 @@ export type IdempotencyKeyRunMatch = {
   friendlyId: string;
   idempotencyKey: string | null;
   idempotencyKeyExpiresAt: Date | null;
+  /**
+   * Terminal run status is needed so callers can honour the same
+   * "clear the idempotency key if the previous run failed" semantics the
+   * single-trigger path already applies via `shouldIdempotencyKeyBeCleared`.
+   * Without it, `batchTrigger` silently returned stale failed runs as
+   * `isCached: true` (issue #4819).
+   */
+  status: TaskRunStatus;
 };
 
 /**

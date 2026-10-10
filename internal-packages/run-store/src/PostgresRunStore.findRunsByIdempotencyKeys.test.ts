@@ -1,5 +1,5 @@
 import { postgresTest } from "@internal/testcontainers";
-import type { PrismaClient } from "@trigger.dev/database";
+import type { PrismaClient, TaskRunStatus } from "@trigger.dev/database";
 import { describe, expect } from "vitest";
 import { PostgresRunStore } from "./PostgresRunStore.js";
 
@@ -38,6 +38,7 @@ async function createRun(
     taskIdentifier: string;
     idempotencyKey: string;
     idempotencyKeyExpiresAt?: Date;
+    status?: TaskRunStatus;
   }
 ) {
   await prisma.taskRun.create({
@@ -46,6 +47,7 @@ async function createRun(
       taskIdentifier: params.taskIdentifier,
       idempotencyKey: params.idempotencyKey,
       idempotencyKeyExpiresAt: params.idempotencyKeyExpiresAt ?? null,
+      status: params.status ?? "PENDING",
       payload: "{}",
       payloadType: "application/json",
       runtimeEnvironmentId: params.runtimeEnvironmentId,
@@ -117,4 +119,62 @@ describe("PostgresRunStore.findRunsByIdempotencyKeys", () => {
 
     expect(rows).toEqual([]);
   });
+
+  // Regression for #4819 — batchTrigger needs the row's status to decide
+  // whether to re-trigger (same semantics as single trigger via
+  // shouldIdempotencyKeyBeCleared). Before this fix the SQL omitted `status`,
+  // so batchTrigger could only inspect time-based expiry and silently handed
+  // callers back dead CRASHED / COMPLETED_WITH_ERRORS runs as `isCached: true`.
+  postgresTest(
+    "returns run status so callers can honour shouldIdempotencyKeyBeCleared",
+    async ({ prisma }) => {
+      const { project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      await createRun(prisma, {
+        runtimeEnvironmentId: environment.id,
+        projectId: project.id,
+        friendlyId: "run_pending",
+        taskIdentifier: "task-x",
+        idempotencyKey: "key-pending",
+        status: "PENDING",
+      });
+      await createRun(prisma, {
+        runtimeEnvironmentId: environment.id,
+        projectId: project.id,
+        friendlyId: "run_crashed",
+        taskIdentifier: "task-x",
+        idempotencyKey: "key-crashed",
+        status: "CRASHED",
+      });
+      await createRun(prisma, {
+        runtimeEnvironmentId: environment.id,
+        projectId: project.id,
+        friendlyId: "run_completed_with_errors",
+        taskIdentifier: "task-x",
+        idempotencyKey: "key-cwe",
+        status: "COMPLETED_WITH_ERRORS",
+      });
+      await createRun(prisma, {
+        runtimeEnvironmentId: environment.id,
+        projectId: project.id,
+        friendlyId: "run_completed",
+        taskIdentifier: "task-x",
+        idempotencyKey: "key-ok",
+        status: "COMPLETED_SUCCESSFULLY",
+      });
+
+      const rows = await store.findRunsByIdempotencyKeys({
+        runtimeEnvironmentId: environment.id,
+        taskIdentifier: "task-x",
+        idempotencyKeys: ["key-pending", "key-crashed", "key-cwe", "key-ok"],
+      });
+
+      const byKey = new Map(rows.map((r) => [r.idempotencyKey, r]));
+      expect(byKey.get("key-pending")?.status).toBe("PENDING");
+      expect(byKey.get("key-crashed")?.status).toBe("CRASHED");
+      expect(byKey.get("key-cwe")?.status).toBe("COMPLETED_WITH_ERRORS");
+      expect(byKey.get("key-ok")?.status).toBe("COMPLETED_SUCCESSFULLY");
+    }
+  );
 });

@@ -27,7 +27,11 @@ import { mintBatchFriendlyId } from "~/v3/runOpsMigration/mintBatchFriendlyId.se
 import { batchTriggerWorker } from "../batchTriggerWorker.server";
 import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
 import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../objectStore.server";
-import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
+import {
+  isFinalAttemptStatus,
+  isFinalRunStatus,
+  shouldIdempotencyKeyBeCleared,
+} from "../taskStatus";
 import { startActiveSpan } from "../tracer.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "./triggerTask.server";
@@ -450,7 +454,24 @@ export class BatchTriggerV3Service extends BaseService {
         );
 
         if (cachedRun) {
-          if (cachedRun.idempotencyKeyExpiresAt && cachedRun.idempotencyKeyExpiresAt < new Date()) {
+          // Clear the idempotency key and mint a fresh run when either:
+          //   (a) the key's time-based expiry has passed, OR
+          //   (b) the previous run ended in a terminal failure state the
+          //       single-trigger path treats as "retry allowed"
+          //       (CRASHED, SYSTEM_FAILURE, INTERRUPTED, COMPLETED_WITH_ERRORS,
+          //       EXPIRED, TIMED_OUT_WITH_ERRORS — see shouldIdempotencyKeyBeCleared).
+          //
+          // Before this fix, batchTrigger only checked (a). A failed run with
+          // the same idempotency key was returned as `isCached: true`, silently
+          // handing the caller back a dead run that would never produce output
+          // (issue #4819). This mirrors the single-trigger behaviour at
+          // IdempotencyKeyConcern.handleExistingRun (idempotencyKeys.server.ts:463).
+          const expired =
+            cachedRun.idempotencyKeyExpiresAt &&
+            cachedRun.idempotencyKeyExpiresAt < new Date();
+          const failed = shouldIdempotencyKeyBeCleared(cachedRun.status);
+
+          if (expired || failed) {
             expiredRunIds.add(cachedRun.friendlyId);
 
             return {
