@@ -77,6 +77,7 @@ import {
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { SCOPE_CAPABILITIES, scopeDetailForPreset } from "~/utils/apiKeyScopeDetail";
 import { cn } from "~/utils/cn";
 import { docsPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBuilder";
 import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
@@ -798,7 +799,12 @@ function NewApiKeyDialog({
                     <PresetGroup
                       title="Environment capabilities"
                       presets={presets}
-                      ids={["ENVIRONMENT_OBSERVER", "ENVIRONMENT_OPERATOR"]}
+                      ids={[
+                        "ENVIRONMENT_OBSERVER",
+                        "ENVIRONMENT_OPERATOR",
+                        "WEBHOOKS_ONLY",
+                        "WAITPOINTS_ONLY",
+                      ]}
                     />
                     <PresetGroup
                       title="Deployment and configuration"
@@ -880,6 +886,8 @@ const KNOWN_PRESET_IDS = new Set([
   "ENVIRONMENT_OPERATOR",
   "DEPLOY_ONLY",
   "ENV_VARS_ONLY",
+  "WEBHOOKS_ONLY",
+  "WAITPOINTS_ONLY",
 ]);
 
 const API_KEY_EXPIRATIONS = [
@@ -889,96 +897,11 @@ const API_KEY_EXPIRATIONS = [
   { value: "never", label: "Never" },
 ];
 
-type CapId =
-  | "tasks"
-  | "runs"
-  | "batches"
-  | "queues"
-  | "sessions"
-  | "tags"
-  | "deployments"
-  | "branches"
-  | "envvars";
-
-// Capability rows shown in the scope pane, in a fixed order so two presets read
-// as a diff of the same list rather than a reshuffled one.
-const SCOPE_CAPABILITIES: [CapId, string][] = [
-  ["tasks", "Tasks"],
-  ["runs", "Runs"],
-  ["batches", "Batches"],
-  ["queues", "Queues"],
-  ["sessions", "Sessions (all tasks)"],
-  ["tags", "Tagged runs"],
-  ["deployments", "Deployments"],
-  ["branches", "Preview branches"],
-  ["envvars", "Environment variables"],
-];
-
 // 0 none · 1 read · 2 read & write · 3 allowed (an action) · 4 full
 const SCOPE_LEVEL_WORDS = ["No access", "Read", "Read & write", "Allowed", "Full access"] as const;
 const SCOPE_LEVEL_TONES = ["none", "read", "write", "write", "write"] as const;
 
 type ScopeTone = (typeof SCOPE_LEVEL_TONES)[number];
-
-// The second entry retains the plugin-provided raw scope strings.
-type PresetCapability = [level: number, rawScopes: string[]];
-
-type PresetScopeDetail = {
-  /** A single `admin` scope grants everything, so every row reads "Full access". */
-  admin?: boolean;
-  /** Task-scopable presets expand task scopes into the selected task identifiers. */
-  scopable?: boolean;
-  /** Shown in the task-access panel for presets that aren't task-scopable. */
-  taskLabel?: string;
-  caps: Partial<Record<CapId, PresetCapability>>;
-};
-
-const SCOPE_CAPABILITY_BY_SCOPE: Record<string, [CapId, number]> = {
-  "trigger:tasks": ["tasks", 3],
-  "batchTrigger:tasks": ["batches", 3],
-  "batchTrigger:batch": ["batches", 3],
-  "read:tasks": ["tasks", 1],
-  "write:tasks": ["tasks", 2],
-  "read:runs": ["runs", 1],
-  "write:runs": ["runs", 2],
-  "read:batch": ["batches", 1],
-  "write:batch": ["batches", 2],
-  "read:queues": ["queues", 1],
-  "write:queues": ["queues", 2],
-  "read:sessions": ["sessions", 1],
-  "write:sessions": ["sessions", 2],
-  "read:tags": ["tags", 1],
-  "read:deployments": ["deployments", 1],
-  "write:deployments": ["deployments", 2],
-  "write:branches": ["branches", 3],
-  "read:envvars": ["envvars", 1],
-  "write:envvars": ["envvars", 2],
-};
-
-function scopeDetailForPreset(preset?: ApiKeyPreset): PresetScopeDetail | undefined {
-  const scopes = preset?.scopes;
-  if (!scopes) return;
-  if (scopes.includes("admin")) {
-    return { admin: true, taskLabel: "All tasks", caps: {} };
-  }
-
-  const caps: PresetScopeDetail["caps"] = {};
-  for (const scope of scopes) {
-    const [action, resource] = scope.split(":");
-    const capability = SCOPE_CAPABILITY_BY_SCOPE[`${action}:${resource}`];
-    if (!capability) continue;
-
-    const [key, level] = capability;
-    const current = caps[key];
-    caps[key] = [Math.max(current?.[0] ?? 0, level), [...(current?.[1] ?? []), scope]];
-  }
-
-  return {
-    scopable: preset.usesTaskSelection,
-    taskLabel: scopes.some((scope) => scope.split(":")[1] === "tasks") ? "All tasks" : "No tasks",
-    caps,
-  };
-}
 
 function expandScopeString(raw: string, scoped: boolean, tasks: string[]): string[] {
   const parts = raw.split(":");
