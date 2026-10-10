@@ -96,7 +96,7 @@ import {
 } from "~/utils/pathBuilder";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
-import { NewBadge } from "../FeatureBadges";
+import { BetaBadge } from "../FeatureBadges";
 import { Button, LinkButton } from "../primitives/Buttons";
 import { Dialog, DialogTrigger } from "../primitives/Dialog";
 import { type RenderIcon } from "../primitives/Icon";
@@ -961,11 +961,13 @@ export function SideMenu({
                 inactiveIconColor="text-text-dimmed"
                 to={v3SessionsPath(organization, project, environment)}
                 data-action="sessions"
-                badge={<NewBadge />}
                 isCollapsed={isCollapsed}
                 yieldActiveToFavorite
               />
-              {(user.admin || user.isImpersonating || featureFlags.hasWebhooksAccess) && (
+              {(isManagedCloud ||
+                user.admin ||
+                user.isImpersonating ||
+                featureFlags.hasWebhooksAccess) && (
                 <SideMenuItem
                   name="Webhooks"
                   icon={WebhookIcon}
@@ -973,7 +975,7 @@ export function SideMenu({
                   inactiveIconColor="text-text-dimmed"
                   to={v3WebhooksPath(organization, project, environment)}
                   data-action="webhooks"
-                  badge={<NewBadge />}
+                  badge={<BetaBadge />}
                   isCollapsed={isCollapsed}
                   yieldActiveToFavorite
                 />
