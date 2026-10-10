@@ -129,7 +129,17 @@ The integration sets this up for you:
 - It passes your commit SHA as the deployment's external id.
 - `VERCEL_GIT_COMMIT_SHA` is available at runtime on Vercel, so the SDK finds the matching id with no work from you.
 
-There is nothing to enable, and it works in production, staging and preview alike. Nothing is gated: your Vercel deployment is never held back.
+There is nothing to enable, and it works in production, staging and preview alike.
+
+### Production waits for your tasks
+
+A production deployment from a push to the branch Trigger.dev builds for production gets a blocking **Trigger.dev Build** check. Vercel holds the deployment until the task build for the same commit finishes, then assigns your production domains as usual. If the task build fails or is canceled, the check fails and the Vercel deployment doesn't go live, so your app never ships against tasks that didn't build.
+
+If no task build for the commit has started within 10 minutes, the check fails too.
+
+To retry after a failed build, re-run the **Trigger.dev deployment** check on the commit in GitHub. Once that build succeeds, redeploy from Vercel or push a new commit.
+
+A production deployment with no task build to wait for is never held: its check is marked skipped. That covers deployments from the Vercel CLI, from a branch that isn't your production branch in Trigger.dev, and from projects without a connected GitHub repository. Preview and staging deployments aren't held either: their check passes straight away, and version skew protection makes their runs wait for the matching task build instead.
 
 <Note>
   Version skew protection requires the `@trigger.dev/sdk` release that introduces external
@@ -146,8 +156,8 @@ To opt out, set `TRIGGER_AUTOMATIC_SKEW_VERSION_PROTECTION` to `0` on your Verce
 <Warning>
   **Automatic atomic deployments are deprecated.** Use [version skew
   protection](/deployment/atomic-deployment) instead — it needs no second Vercel deployment,
-  never gates your app's deploy, doesn't touch `Auto-assign Custom Production Domains`, and covers
-  staging and preview as well as production.
+  doesn't touch `Auto-assign Custom Production Domains`, and covers staging and preview as well as
+  production. Production deployments still wait for your task build through the blocking check.
 
   Nothing is being switched off. The setting stays in your project's Vercel settings, keeps working,
   and remains the way to hold your Vercel deployment back until your tasks have built. New

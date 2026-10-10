@@ -443,6 +443,8 @@ If you use the [Vercel integration](/vercel-integration), version skew protectio
 
 This covers production, staging and preview alike.
 
+In production, the integration also gates the release on the task build. Each production deployment from your production branch carries a blocking **Trigger.dev Build** check, so a commit whose tasks fail to build never goes live and its runs never wait on a deployment that won't arrive. Re-run the **Trigger.dev deployment** check in GitHub to build that commit again. See [Production waits for your tasks](/vercel-integration#production-waits-for-your-tasks).
+
 ### Opting out
 
 Set `TRIGGER_AUTOMATIC_SKEW_VERSION_PROTECTION` to `0` on your Vercel project. A `0` you set today stays `0` through every subsequent build.

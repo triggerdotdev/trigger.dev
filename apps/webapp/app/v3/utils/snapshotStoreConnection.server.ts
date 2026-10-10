@@ -18,11 +18,20 @@ export function snapshotClusterOptions(endpoint: string) {
   return {
     nodes: [{ host: url.hostname, port: Number(url.port || 6379) }],
     failFast: true,
-    clusterOptions: { lazyConnect: true, scaleReads: "master" as const },
+    clusterOptions: {
+      lazyConnect: true,
+      scaleReads: "master" as const,
+      ...(url.protocol === "rediss:" && {
+        // Preserve the seed hostname; AWS TLS certificates do not identify private IPs.
+        dnsLookup: (address: string, callback: (err: Error | null, address: string) => void) =>
+          callback(null, address),
+      }),
+    },
     redisOptions: {
       username: url.username ? decodeURIComponent(url.username) : undefined,
       password: url.password ? decodeURIComponent(url.password) : undefined,
-      tls: url.protocol === "rediss:" ? {} : undefined,
+      // Discovered nodes can be IPs too; verify them against the configured cluster hostname.
+      tls: url.protocol === "rediss:" ? { servername: url.hostname } : undefined,
       commandTimeout: COMMAND_TIMEOUT_MS,
       connectTimeout: CONNECT_TIMEOUT_MS,
     },

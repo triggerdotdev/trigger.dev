@@ -1,7 +1,7 @@
 ---
 title: "CLI projects commands"
 sidebarTitle: "projects"
-description: "Create, inspect, and rename Trigger.dev projects from the terminal."
+description: "List, create, inspect, and rename Trigger.dev projects from the terminal."
 ---
 
 import CommonOptions from "/snippets/cli-options-common.mdx";
@@ -35,6 +35,18 @@ yarn dlx trigger.dev@latest projects create
 
 <ParamField body="Name" type="--name | -n">
   The name of the new project.
+</ParamField>
+
+## projects list
+
+Lists your projects with the runtime and version of their current Production deployment.
+
+```bash
+npx trigger.dev@latest projects list
+```
+
+<ParamField body="Needs update" type="--needs-update">
+  Only show projects using Node.js 21 in Production.
 </ParamField>
 
 ## projects get

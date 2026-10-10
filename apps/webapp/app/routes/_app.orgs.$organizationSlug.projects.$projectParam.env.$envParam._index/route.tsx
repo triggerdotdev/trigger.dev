@@ -310,10 +310,12 @@ export default function Page() {
   } = useTypedLoaderData<typeof loader>();
   const { value, values } = useSearchParams();
 
-  // Live-reload on WORKER_CREATED.
+  // Live-reload on WORKER_CREATED. The stream sends nothing on connect, so reload once
+  // after each reconnect to pick up workers created while it was down.
   const revalidator = useRevalidator();
   const streamedEvents = useEventSource(v3TasksStreamingPath(organization, project, environment), {
     event: "message",
+    onReconnect: () => revalidator.revalidate(),
   });
   useEffect(() => {
     if (streamedEvents !== null) {

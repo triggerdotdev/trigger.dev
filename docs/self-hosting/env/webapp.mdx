@@ -44,6 +44,9 @@ mode: "wide"
 | `WHITELISTED_EMAILS`                             | No       | —                     | Whitelisted emails regex.                                                                                          |
 | `BLOCKED_EMAIL_DOMAINS`                          | No       | —                     | Comma-separated email domains that can't sign in or sign up, including their subdomains.                           |
 | `LOGIN_RATE_LIMITS_ENABLED`                      | No       | true                  | Enable rate limiting on magic-link login.                                                                          |
+| `MAGIC_LINK_SAME_BROWSER_REQUIRED`               | No       | true                  | Only accept a magic link opened in the browser that requested it. Set to false to allow opening it on another device.|
+| `TURNSTILE_SITE_KEY`                             | No       | —                     | Cloudflare Turnstile site key. With `TURNSTILE_SECRET_KEY`, adds a bot check to the magic-link sign-in form.       |
+| `TURNSTILE_SECRET_KEY`                           | No       | —                     | Cloudflare Turnstile secret key, used to verify the check on the server. Turnstile is off unless both keys are set.|
 | `AUTH_GITHUB_CLIENT_ID`                          | No       | —                     | GitHub client ID.                                                                                                  |
 | `AUTH_GITHUB_CLIENT_SECRET`                      | No       | —                     | GitHub client secret.                                                                                              |
 | `CSP_IMG_SRC_ALLOWLIST`                          | No       | —                     | Extra hosts the dashboard may load images from, e.g. an SSO or avatar host serving profile images. A comma-separated list of exact origins (`https://sso.example.com`); a wildcard host such as `https://*.example.com` is refused. |

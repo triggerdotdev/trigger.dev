@@ -1113,6 +1113,62 @@ describe("FairQueue", () => {
 
       await queue.close();
     });
+
+    redisTest(
+      "should report the age of the oldest due message",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const scheduler = new DRRScheduler({
+          redis: redisOptions,
+          keys,
+          quantum: 10,
+          maxDeficit: 100,
+        });
+
+        const queue = new FairQueue({
+          redis: redisOptions,
+          keys,
+          scheduler,
+          shardCount: 1,
+          startConsumers: false,
+          workerQueue: {
+            resolveWorkerQueue: () => TEST_WORKER_QUEUE_ID,
+          },
+        });
+
+        expect(await queue.getOldestMessageAge(0)).toBe(0);
+
+        await queue.enqueue({
+          queueId: "tenant:t1:queue:q1",
+          tenantId: "t1",
+          payload: { value: "scheduled" },
+          timestamp: Date.now() + 60_000,
+        });
+
+        expect(await queue.getOldestMessageAge(0)).toBe(0);
+
+        await queue.enqueue({
+          queueId: "tenant:t2:queue:q1",
+          tenantId: "t2",
+          payload: { value: "recent" },
+          timestamp: Date.now() - 5_000,
+        });
+        await queue.enqueue({
+          queueId: "tenant:t3:queue:q1",
+          tenantId: "t3",
+          payload: { value: "old" },
+          timestamp: Date.now() - 120_000,
+        });
+
+        const age = await queue.getOldestMessageAge(0);
+        expect(age).toBeGreaterThanOrEqual(120_000);
+        expect(age).toBeLessThan(125_000);
+
+        await queue.close();
+      }
+    );
   });
 
   describe("two-stage processing with concurrency limits", () => {

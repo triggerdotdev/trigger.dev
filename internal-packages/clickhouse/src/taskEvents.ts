@@ -353,7 +353,8 @@ export function buildTraceChunkCursorPredicate(cursor: TraceChunkCursor): {
 } {
   return {
     clause:
-      "(toUnixTimestamp64Nano(start_time) > {cursorStartTime: Int64} OR (toUnixTimestamp64Nano(start_time) = {cursorStartTime: Int64} AND span_id > {cursorSpanId: String}))",
+      // Repeats the cursor on the sort key's toUnixTimestamp(start_time) so earlier granules are skipped.
+      "toUnixTimestamp(start_time) >= intDiv({cursorStartTime: Int64}, 1000000000) AND (toUnixTimestamp64Nano(start_time) > {cursorStartTime: Int64} OR (toUnixTimestamp64Nano(start_time) = {cursorStartTime: Int64} AND span_id > {cursorSpanId: String}))",
     params: {
       cursorStartTime: cursor.startTime,
       cursorSpanId: cursor.spanId,
@@ -408,30 +409,6 @@ export function getTraceChunkQueryBuilderV2(ch: ClickhouseReader, settings?: Cli
     name: "getTraceChunkV2",
     table: "trigger_dev.task_events_v2",
     columns: [...TRACE_CHUNK_COLUMNS_V2],
-    settings,
-  });
-}
-
-export type TraceSpanCountResult = { count: string };
-const TRACE_SPAN_COUNT_COLUMNS = [{ name: "count", expression: "uniqExact(span_id)" }] as const;
-
-export function getTraceSpanCountQueryBuilder(ch: ClickhouseReader, settings?: ClickHouseSettings) {
-  return ch.queryBuilderFast<TraceSpanCountResult>({
-    name: "getTraceSpanCount",
-    table: "trigger_dev.task_events_v1",
-    columns: [...TRACE_SPAN_COUNT_COLUMNS],
-    settings,
-  });
-}
-
-export function getTraceSpanCountQueryBuilderV2(
-  ch: ClickhouseReader,
-  settings?: ClickHouseSettings
-) {
-  return ch.queryBuilderFast<TraceSpanCountResult>({
-    name: "getTraceSpanCountV2",
-    table: "trigger_dev.task_events_v2",
-    columns: [...TRACE_SPAN_COUNT_COLUMNS],
     settings,
   });
 }
@@ -504,7 +481,7 @@ export const LogsSearchListResult = z.object({
   status: z.string(),
   duration: z.number().or(z.string()),
   triggered_timestamp: z.string(),
-  projection_fingerprint_string: z.string().optional(),
+  projection_fingerprint_string: z.string(),
 });
 
 export type LogsSearchListResult = z.output<typeof LogsSearchListResult>;
@@ -536,8 +513,6 @@ export function getLogsSearchListQueryBuilder(ch: ClickhouseReader) {
     ],
     settings: {
       use_query_condition_cache: 1,
-      // The ngram text index covers every organization's rows in a part, so reading it costs more
-      // than scanning one environment's time range, often by seconds when it is not cached.
       ignore_data_skipping_indices: "idx_search_text",
       // Hold the response until the query finishes so a limit error arrives as an HTTP error the
       // client turns into a QueryError, not mid-stream. Pages are a few hundred small rows.

@@ -18,6 +18,7 @@ import { env } from "~/env.server";
 import { createRedisClient } from "~/redis.server";
 import { tryCatch } from "@trigger.dev/core";
 import { logger } from "~/services/logger.server";
+import { redeployOfShortCode } from "~/v3/redeploy";
 
 const S2_TOKEN_KEY_PREFIX = "s2-token:project:";
 
@@ -278,6 +279,7 @@ export class DeploymentPresenter {
         externalId: deployment.externalId,
         git: gitMetadata,
         triggeredVia: deployment.triggeredVia,
+        redeployOf: redeployOfShortCode(deployment.buildServerMetadata),
         vercelDeploymentUrl,
       },
     };

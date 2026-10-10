@@ -82,3 +82,43 @@ describe("buildTraceView", () => {
     expect(overridesBySpanId["b"]?.isCancelled).toBe(true);
   });
 });
+
+// A child run view loads no rows above the child; the child's own run span carries
+// the cancellation and attempt-failure state.
+describe("child run view without ancestors", () => {
+  const CHILD_OPTS = { ...OPTS, rootSpanId: "child", runFriendlyId: "run_child" };
+
+  function childPipeline(events: TraceChunkEvent[]) {
+    const assembler = new TraceChunkAssembler();
+    assembler.mergeChunk(events);
+    const { spans, overridesBySpanId } = applyAncestorOverrides(assembler.spans);
+    return { view: buildTraceView(spans, CHILD_OPTS), overridesBySpanId };
+  }
+
+  it("marks a failed attempt from the attempt_failed row on the child's own run span", () => {
+    const exception = { message: "boom", type: "Error" };
+    const events = [
+      ev("child", "parent", 0, { runId: "run_child", status: "ERROR", duration: 5_000_000 }),
+      // Written by createAttemptFailedRunEvent on the failing run's own span.
+      ev("child", "parent", 150, {
+        runId: "run_child",
+        kind: "ANCESTOR_OVERRIDE",
+        message: "attempt_failed",
+        duration: 0,
+        metadata: JSON.stringify({ exception, attemptNumber: 1, runId: "run_child" }),
+      }),
+      ev("attempt", "child", 100, {
+        runId: "run_child",
+        status: "PARTIAL",
+        duration: 0,
+        metadata: JSON.stringify({ attemptNumber: 1 }),
+      }),
+    ];
+
+    const { view, overridesBySpanId } = childPipeline(events);
+    const attempt = view.events.find((e) => e.id === "attempt");
+
+    expect(attempt?.data.isError).toBe(true);
+    expect(overridesBySpanId.attempt?.isError).toBe(true);
+  });
+});

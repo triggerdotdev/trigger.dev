@@ -14,7 +14,16 @@ test("snapshot metrics ignore raw organization IDs; the endpoint creates no eage
 
   const options = snapshotClusterOptions("rediss://snapshot.example:6379");
   expect(options.failFast).toBe(true);
-  expect(options.clusterOptions).toEqual({ lazyConnect: true, scaleReads: "master" });
+  expect(options.clusterOptions).toMatchObject({ lazyConnect: true, scaleReads: "master" });
+  expect(options.redisOptions.tls).toEqual({ servername: "snapshot.example" });
+  expect(options.clusterOptions.dnsLookup).toBeTypeOf("function");
+  options.clusterOptions.dnsLookup!("snapshot.example", (error, address) => {
+    expect(error).toBeNull();
+    expect(address).toBe("snapshot.example");
+  });
+  const plainOptions = snapshotClusterOptions("redis://127.0.0.1:1");
+  expect(plainOptions.clusterOptions).toEqual({ lazyConnect: true, scaleReads: "master" });
+  expect(plainOptions.redisOptions.tls).toBeUndefined();
   expect(options.redisOptions.commandTimeout).toBe(500);
   const connection = createSnapshotConnection("redis://127.0.0.1:1");
   connection.getStore(); // Registers local Lua commands only.

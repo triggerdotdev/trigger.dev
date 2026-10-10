@@ -61,7 +61,7 @@ export class InitializeDeploymentService extends BaseService {
   public async call(
     environment: AuthenticatedEnvironment,
     payload: InitializeDeploymentRequestBody,
-    options?: { cliVersion?: string }
+    options?: { cliVersion?: string; redeployOf?: string }
   ): Promise<InitializeDeploymentResult> {
     return this.traceWithEnv("call", environment, async (span) => {
       let runtime: BuildRuntime;
@@ -336,9 +336,10 @@ export class InitializeDeploymentService extends BaseService {
       }
 
       const buildServerMetadata: BuildServerMetadata | undefined =
-        payload.isNativeBuild || payload.buildId
+        payload.isNativeBuild || payload.buildId || options?.redeployOf
           ? {
               buildId: payload.buildId,
+              ...(options?.redeployOf ? { redeployOf: options.redeployOf } : {}),
               ...(payload.isNativeBuild
                 ? {
                     isNativeBuild: payload.isNativeBuild,

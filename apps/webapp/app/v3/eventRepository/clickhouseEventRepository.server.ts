@@ -75,6 +75,7 @@ import type {
   TraceChunk,
   TraceChunkCursor,
   TraceChunkEvent,
+  TraceChunkScopeOptions,
   TraceDetailedSummary,
   TraceErrorEvents,
   TraceEventOptions,
@@ -1686,7 +1687,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     traceId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
-    options?: { includeDebugLogs?: boolean }
+    options?: { includeDebugLogs?: boolean; anchorSpanId?: string }
   ): Promise<TraceSummary | undefined> {
     const limit = this._config.maximumTraceSummaryViewCount;
     const records = await this.#fetchTraceSummaryRecords({
@@ -1702,14 +1703,25 @@ export class ClickhouseEventRepository implements IEventRepository {
       return;
     }
 
-    const summary = this.#buildTraceSummaryFromRecords(records);
+    const isTruncated = limit !== undefined && records.length >= limit;
+    const summary = this.#buildTraceSummaryFromRecords(records, {
+      rootSpanId: options?.anchorSpanId,
+    });
     if (!summary) {
+      // Every row in the window was read and the anchor isn't among them.
+      if (options?.anchorSpanId && records.length > 0 && !isTruncated) {
+        logger.warn("Trace summary rows don't include the anchor span", {
+          traceId,
+          spanId: options.anchorSpanId,
+          rowCount: records.length,
+        });
+      }
       return;
     }
 
     return {
       ...summary,
-      isTruncated: limit !== undefined && records.length >= limit,
+      isTruncated,
     };
   }
 
@@ -1720,7 +1732,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     anchorSpanId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
-    options?: { includeDebugLogs?: boolean }
+    options?: { includeDebugLogs?: boolean; includeAncestors?: boolean }
   ): Promise<TraceSummary | undefined> {
     const { records, isTruncated, missingAnchor } = await this.#fetchTraceSubtreeRecords({
       environmentId,
@@ -1757,11 +1769,11 @@ export class ClickhouseEventRepository implements IEventRepository {
     startCreatedAt: Date,
     endCreatedAt: Date | undefined,
     cursor: TraceChunkCursor | undefined,
-    options?: { includeDebugLogs?: boolean; limit?: number; tailInsertedAtSinceMs?: number }
+    options?: TraceChunkScopeOptions & { limit?: number }
   ): Promise<TraceChunk | undefined> {
     const limit = options?.limit ?? this.maximumTraceChunkSize;
 
-    const { events, nextCursor, hasMore } = await this.#fetchTraceChunkRecords({
+    const { events, nextCursor, hasMore, droppedKeyRows } = await this.#fetchTraceChunkRecords({
       environmentId,
       traceId,
       startCreatedAt,
@@ -1775,35 +1787,8 @@ export class ClickhouseEventRepository implements IEventRepository {
       events: events.map((record) => this.#toTraceChunkEvent(record)),
       nextCursor,
       hasMore,
+      droppedKeyRows,
     };
-  }
-
-  async getTraceSpanCount(
-    storeTable: TaskEventStoreTable,
-    environmentId: string,
-    traceId: string,
-    startCreatedAt: Date,
-    endCreatedAt: Date | undefined,
-    options?: { includeDebugLogs?: boolean }
-  ): Promise<number | undefined> {
-    const queryBuilder = this.#createTraceSpanCountQueryBuilder();
-    this.#applyTraceScopeWhere(queryBuilder, {
-      environmentId,
-      traceId,
-      startCreatedAt,
-      endCreatedAt,
-      options,
-    });
-
-    const [queryError, records] = await queryBuilder.execute();
-
-    if (queryError) {
-      logger.error("getTraceSpanCount failed", { error: queryError, traceId });
-      return undefined;
-    }
-
-    const count = records?.[0]?.count;
-    return count === undefined ? undefined : Number(count);
   }
 
   #createTraceChunkQueryBuilder() {
@@ -1827,11 +1812,12 @@ export class ClickhouseEventRepository implements IEventRepository {
     endCreatedAt?: Date;
     cursor?: TraceChunkCursor;
     limit: number;
-    options?: { includeDebugLogs?: boolean; tailInsertedAtSinceMs?: number };
+    options?: TraceChunkScopeOptions;
   }): Promise<{
     events: TaskEventChunkV2Result[];
     nextCursor: TraceChunkCursor | null;
     hasMore: boolean;
+    droppedKeyRows: boolean;
   }> {
     const queryBuilder = this.#applyTraceChunkScope({
       environmentId,
@@ -1869,21 +1855,28 @@ export class ClickhouseEventRepository implements IEventRepository {
       groupBuilder.where(clause, params);
       groupBuilder.orderBy(TRACE_CHUNK_ORDER_BY);
       // The next cursor skips past this key, so rows beyond the cap are dropped.
-      groupBuilder.limit(this.maximumKeyRows);
+      groupBuilder.limit(this.maximumKeyRows + 1);
 
       const [groupError, groupRecords] = await groupBuilder.execute();
       if (groupError) {
         throw groupError;
       }
 
+      const rows = groupRecords ?? [];
       return {
-        events: groupRecords ?? [],
+        events: rows.slice(0, this.maximumKeyRows),
         nextCursor: slice.nextCursor,
         hasMore: slice.hasMore,
+        droppedKeyRows: rows.length > this.maximumKeyRows,
       };
     }
 
-    return { events: slice.events, nextCursor: slice.nextCursor, hasMore: slice.hasMore };
+    return {
+      events: slice.events,
+      nextCursor: slice.nextCursor,
+      hasMore: slice.hasMore,
+      droppedKeyRows: false,
+    };
   }
 
   #applyTraceChunkScope({
@@ -1897,7 +1890,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     traceId: string;
     startCreatedAt: Date;
     endCreatedAt?: Date;
-    options?: { includeDebugLogs?: boolean; tailInsertedAtSinceMs?: number };
+    options?: TraceChunkScopeOptions;
   }) {
     const queryBuilder = this.#createTraceChunkQueryBuilder();
     this.#applyTraceScopeWhere(queryBuilder, {
@@ -1908,12 +1901,6 @@ export class ClickhouseEventRepository implements IEventRepository {
       options,
     });
     return queryBuilder;
-  }
-
-  #createTraceSpanCountQueryBuilder() {
-    return this._version === "v2"
-      ? this._clickhouse.taskEventsV2.traceSpanCountQueryBuilder()
-      : this._clickhouse.taskEvents.traceSpanCountQueryBuilder();
   }
 
   #applyTraceScopeWhere(
@@ -1929,7 +1916,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       traceId: string;
       startCreatedAt: Date;
       endCreatedAt?: Date;
-      options?: { includeDebugLogs?: boolean; tailInsertedAtSinceMs?: number };
+      options?: TraceChunkScopeOptions;
     }
   ) {
     queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
@@ -1962,6 +1949,12 @@ export class ClickhouseEventRepository implements IEventRepository {
           tailInsertedAtSince: convertDateToClickhouseDateTime(
             new Date(options.tailInsertedAtSinceMs)
           ),
+        });
+      }
+
+      if (options?.insertedAtEnd) {
+        queryBuilder.where("inserted_at <= {insertedAtEnd: DateTime64(3)}", {
+          insertedAtEnd: convertDateToClickhouseDateTime(options.insertedAtEnd),
         });
       }
     }
@@ -2163,7 +2156,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     anchorSpanId: string;
     startCreatedAt: Date;
     endCreatedAt?: Date;
-    options?: { includeDebugLogs?: boolean };
+    options?: { includeDebugLogs?: boolean; includeAncestors?: boolean };
     limit?: number;
   }): Promise<{
     records: TaskEventSummaryV1Result[];
@@ -2176,14 +2169,18 @@ export class ClickhouseEventRepository implements IEventRepository {
       // Ancestors are fetched by explicit spanIds and start before the anchor
       // run's time window, so applying startCreatedAt would wrongly exclude them
       // (and with it the cancellation/error overrides they propagate downward).
-      fetchAncestor: (batch) =>
-        this.#fetchTraceSummaryRecords({
-          environmentId,
-          traceId,
-          skipTimeWindow: true,
-          options,
-          ...batch,
-        }),
+      // A child run view skips them: its own run span carries those overrides.
+      fetchAncestor:
+        options?.includeAncestors === false
+          ? async () => []
+          : (batch) =>
+              this.#fetchTraceSummaryRecords({
+                environmentId,
+                traceId,
+                skipTimeWindow: true,
+                options,
+                ...batch,
+              }),
       fetchDescendant: (batch) =>
         this.#fetchTraceSummaryRecords({
           environmentId,

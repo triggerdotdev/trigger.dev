@@ -18,7 +18,7 @@ Your task code runs on Trigger.dev's managed infrastructure, so there are no ser
 | Node                                              | A step or library call inside `run()`                                                                              |
 | Execute Sub-workflow node (wait for completion)   | [tasks.triggerAndWait()](/triggering#yourtask-triggerandwait)                                                      |
 | Execute Sub-workflow node (execute in background) | [tasks.trigger()](/triggering)                                                                                     |
-| Loop over N items → Execute Sub-workflow → Merge  | [tasks.batchTriggerAndWait()](/tasks#yourtask-batchtriggerandwait)                                                 |
+| Loop over N items → Execute Sub-workflow → Merge  | [tasks.batchTriggerAndWait()](/triggering#yourtask-batchtriggerandwait)                                                 |
 | Loop Over Items (Split in Batches)                | `for` loop or `.map()`                                                                                             |
 | IF / Switch node                                  | `if` / `switch` statements                                                                                         |
 | Wait node (time interval or specific time)        | [wait.for()](/wait-for) or [wait.until()](/wait-until)                                                             |
@@ -28,7 +28,7 @@ Your task code runs on Trigger.dev's managed infrastructure, so there are no ser
 | Code node                                         | A function or step within `run()`                                                                                  |
 | Credentials                                       | [Environment variable secret](/deploy-environment-variables)                                                       |
 | Execution                                         | Run (visible in the dashboard with full logs)                                                                      |
-| Retry on Fail (per-node setting)                  | [retry.maxAttempts](/tasks/overview#retry) (retries the whole `run()`, not a single step)                          |
+| Retry on Fail (per-node setting)                  | [retry.maxAttempts](/tasks/overview#retry-options) (retries the whole `run()`, not a single step)                          |
 | AI Agent node                                     | Any AI SDK called inside `run()` (Vercel AI SDK, Claude SDK, OpenAI SDK, etc.)                                     |
 | Respond to Webhook node                           | Route handler + [task.triggerAndWait()](/triggering#yourtask-triggerandwait) returning the result as HTTP response |
 

@@ -32,7 +32,7 @@ import { DeliveryHeadersTable } from "~/components/webhookDeliveries/v1/Delivery
 import { DeliveryTargetsTable } from "~/components/webhookDeliveries/v1/DeliveryTargetsTable";
 import { DeliveryTimeline } from "~/components/webhookDeliveries/v1/DeliveryTimeline";
 import { $replica } from "~/db.server";
-import { env } from "~/env.server";
+import { webhookLimitsForEnvironment } from "~/v3/webhookLimits.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useInterval } from "~/hooks/useInterval";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -125,7 +125,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     eventJson,
     eventBytes,
     eventTruncatedForDisplay,
-    retentionDays: env.WEBHOOK_PARTITION_RETENTION_DAYS,
+    retentionDays: (await webhookLimitsForEnvironment(environment.id)).deliveryRetentionDays,
   });
 };
 

@@ -95,7 +95,11 @@ function createWebhookEngine() {
       ensureSchedule: env.WEBHOOK_PARTITION_ENSURE_SCHEDULE,
       ensureJitterInMs: env.WEBHOOK_PARTITION_ENSURE_JITTER_MS,
       lookaheadDays: env.WEBHOOK_PARTITION_LOOKAHEAD_DAYS,
-      retentionDays: env.WEBHOOK_PARTITION_RETENTION_DAYS,
+    },
+    retention: {
+      forEnvironment: async (environmentId) =>
+        (await webhookLimitsForEnvironment(environmentId)).deliveryStorageDays,
+      defaultDays: env.WEBHOOK_DELIVERY_STORAGE_DAYS,
     },
     frontGate: {
       defaultTtlSeconds: env.WEBHOOK_FRONT_GATE_DEFAULT_TTL_SECONDS,

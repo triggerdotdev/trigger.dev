@@ -1,6 +1,8 @@
 import { z } from "zod";
-import { MachinePresetName } from "@trigger.dev/core/v3";
-import { parseNaturalLanguageDurationInMs } from "@trigger.dev/core/v3/isomorphic";
+import {
+  parseNaturalLanguageDurationInMs,
+  webhookDeliveryRetentionClass,
+} from "@trigger.dev/core/v3/isomorphic";
 import { BoolEnv } from "./utils/boolEnv";
 import { isValidDatabaseUrl } from "./utils/db";
 import { parseDeployBaseImages } from "~/v3/deployBaseImages.server";
@@ -25,36 +27,6 @@ const parseDeployBaseImagesEnv = (
     ctx.addIssue({ code: z.ZodIssueCode.custom, message });
   }
   return errors.length > 0 ? z.NEVER : images;
-};
-
-// Parses a CSV of machine preset names (e.g. "small-1x,small-2x") into a
-// non-empty array of MachinePresetName. Used by COMPUTE_TEMPLATE_MACHINE_PRESETS
-// and its _REQUIRED variant. Adds zod issues for empty input or unknown names.
-const parseMachinePresetCsv = (raw: string, ctx: z.RefinementCtx): MachinePresetName[] => {
-  const names = raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (names.length === 0) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "must list at least one machine preset",
-    });
-    return z.NEVER;
-  }
-  const out: MachinePresetName[] = [];
-  for (const name of names) {
-    const parsed = MachinePresetName.safeParse(name);
-    if (!parsed.success) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `unknown machine preset: "${name}"`,
-      });
-      return z.NEVER;
-    }
-    out.push(parsed.data);
-  }
-  return out;
 };
 
 const GithubAppEnvSchema = z.preprocess(
@@ -416,6 +388,8 @@ const EnvironmentSchema = z
       .refine(isValidRegex, "WHITELISTED_EMAILS must be a valid regex.")
       .optional(),
     BLOCKED_EMAIL_DOMAINS: z.string().optional(),
+    TURNSTILE_SITE_KEY: z.string().optional(),
+    TURNSTILE_SECRET_KEY: z.string().optional(),
     ADMIN_EMAILS: z.string().refine(isValidRegex, "ADMIN_EMAILS must be a valid regex.").optional(),
     // Instance-level kill switch for the admin dashboard and user impersonation.
     ADMIN_DASHBOARD_ENABLED: BoolEnv.default(true),
@@ -425,6 +399,7 @@ const EnvironmentSchema = z
     WEBAPP_TELNET_LOGS_PORT: z.coerce.number().optional(),
     LOGIN_ORIGIN: z.string().default("http://localhost:3030"),
     LOGIN_RATE_LIMITS_ENABLED: BoolEnv.default(true),
+    MAGIC_LINK_SAME_BROWSER_REQUIRED: BoolEnv.default(true),
     APP_ORIGIN: z.string().default("http://localhost:3030"),
     PUBLIC_APP_ORIGIN: z.url().optional(),
     // Extra exact origins (comma separated) added to the document `img-src` CSP,
@@ -892,27 +867,6 @@ const EnvironmentSchema = z
       .string()
       .optional()
       .transform((v) => v ?? process.env.DEPLOY_REGISTRY_ECR_DEFAULT_REPOSITORY_POLICY),
-
-    // Compute gateway (template creation during deploy finalize)
-    COMPUTE_GATEWAY_URL: z.string().optional(),
-    COMPUTE_GATEWAY_AUTH_TOKEN: z.string().optional(),
-    COMPUTE_TEMPLATE_SHADOW_ROLLOUT_PCT: z.string().optional(),
-    // Comma-separated machine preset names to build boot snapshots for on
-    // deploy (e.g. "small-1x,small-2x,medium-1x"). Default: "small-1x".
-    COMPUTE_TEMPLATE_MACHINE_PRESETS: z
-      .string()
-      .default("small-1x")
-      .transform(parseMachinePresetCsv),
-    // Subset of COMPUTE_TEMPLATE_MACHINE_PRESETS that must succeed for a
-    // required-mode deploy to be considered successful. Failures of presets
-    // outside this list are logged but don't fail the deploy. Defaults to the
-    // full COMPUTE_TEMPLATE_MACHINE_PRESETS list when unset (everything required).
-    COMPUTE_TEMPLATE_MACHINE_PRESETS_REQUIRED: z
-      .string()
-      .optional()
-      .transform((v, ctx) =>
-        parseMachinePresetCsv(v ?? process.env.COMPUTE_TEMPLATE_MACHINE_PRESETS ?? "small-1x", ctx)
-      ),
 
     DEPLOY_IMAGE_PLATFORM: z.string().default("linux/amd64"),
     DEPLOY_BASE_IMAGES: z
@@ -2056,7 +2010,15 @@ const EnvironmentSchema = z
     WEBHOOK_PARTITION_ENSURE_SCHEDULE: z.string().optional(),
     WEBHOOK_PARTITION_ENSURE_JITTER_MS: z.coerce.number().int().optional(),
     WEBHOOK_PARTITION_LOOKAHEAD_DAYS: z.coerce.number().int().default(10),
-    WEBHOOK_PARTITION_RETENTION_DAYS: z.coerce.number().int().default(60),
+    WEBHOOK_DELIVERY_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
+    WEBHOOK_DELIVERY_STORAGE_DAYS: z.coerce
+      .number()
+      .int()
+      .default(30)
+      .refine(
+        (days) => webhookDeliveryRetentionClass(days) !== undefined,
+        "WEBHOOK_DELIVERY_STORAGE_DAYS must be a delivery retention class (3, 7, 30, 90, 180 or 365)"
+      ),
 
     // Ingest hot-path cache for the endpoint + resolved signing secret (keyed by opaqueId). 0 disables.
     WEBHOOK_ENDPOINT_CACHE_TTL_MS: z.coerce.number().int().default(30_000),
@@ -2085,6 +2047,7 @@ const EnvironmentSchema = z
     TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS: z.coerce.number().int().default(60), // 1 minute
 
     DEPLOYMENTS_AUTORELOAD_POLL_INTERVAL_MS: z.coerce.number().int().default(5_000),
+    DEPLOYMENTS_REDEPLOY_WINDOW_DAYS: z.coerce.number().int().positive().default(7),
     BULK_ACTION_AUTORELOAD_POLL_INTERVAL_MS: z.coerce.number().int().default(1_000),
     QUEUES_AUTORELOAD_POLL_INTERVAL_MS: z.coerce.number().int().default(5_000),
 
@@ -2258,7 +2221,7 @@ const EnvironmentSchema = z
     SESSION_REPLICATION_INSERT_BASE_DELAY_MS: z.coerce.number().int().default(100),
     SESSION_REPLICATION_INSERT_MAX_DELAY_MS: z.coerce.number().int().default(2000),
 
-    // Webhook deliveries replication (Postgres → ClickHouse webhook_deliveries_v1).
+    // Webhook deliveries replication (Postgres → ClickHouse webhook_deliveries_v2).
     // Shares Redis with the runs replicator for leader locking but has its own
     // slot and publication so the two consume independently. The source table is
     // a partitioned parent, so the publication is created with
@@ -2711,16 +2674,6 @@ const EnvironmentSchema = z
   .and(GithubAppEnvSchema)
   .and(S2EnvSchema)
   .superRefine((env, ctx) => {
-    const presets = new Set(env.COMPUTE_TEMPLATE_MACHINE_PRESETS);
-    for (const required of env.COMPUTE_TEMPLATE_MACHINE_PRESETS_REQUIRED) {
-      if (!presets.has(required)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["COMPUTE_TEMPLATE_MACHINE_PRESETS_REQUIRED"],
-          message: `"${required}" is not in COMPUTE_TEMPLATE_MACHINE_PRESETS`,
-        });
-      }
-    }
     if (!validateShardListAgainstNewUrl(env.RUN_OPS_SHARDS, env.RUN_OPS_DATABASE_URL)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

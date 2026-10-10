@@ -1,4 +1,5 @@
 import { randomBytes, createHash } from "node:crypto";
+import { WebhookDeliveryId } from "@trigger.dev/core/v3/isomorphic";
 import { nanoid } from "nanoid";
 import { prisma, webhookPrisma } from "./app/db.server";
 
@@ -24,6 +25,7 @@ import { prisma, webhookPrisma } from "./app/db.server";
 
 const PER_ENDPOINT = Number.parseInt(process.argv[2] ?? "", 10) || 45;
 const SPREAD_DAYS = 14;
+const SEED_RETENTION_DAYS = 30;
 const DAY_MS = 86_400_000;
 
 type Scheme = "hmac" | "shared-secret" | "url-secret" | "asymmetric";
@@ -347,7 +349,7 @@ function dayPartitionName(d: Date): { name: string; lo: string; hi: string } {
   const m = String(floor.getUTCMonth() + 1).padStart(2, "0");
   const day = String(floor.getUTCDate()).padStart(2, "0");
   return {
-    name: `WebhookDelivery_${y}_${m}_${day}`,
+    name: `WebhookDelivery_r${SEED_RETENTION_DAYS}_${y}_${m}_${day}`,
     lo: floor.toISOString(),
     hi: hi.toISOString(),
   };
@@ -468,13 +470,13 @@ async function main() {
         [ep.spec.signatureHeader.toLowerCase()]:
           status === "FAILED" ? "tampered" : `sig_${nanoid()}`,
       };
-      // friendlyId must be the id plus the prefix, matching WebhookDeliveryId. The detail
-      // lookup strips "whd_" and queries Postgres by `id`, so minting the two independently
-      // makes every seeded delivery's detail page 404.
-      const deliveryId = nanoid();
+      const { id: deliveryId, friendlyId } = WebhookDeliveryId.generate({
+        retentionDays: SEED_RETENTION_DAYS,
+        timestamp: createdAt,
+      });
       rows.push({
         id: deliveryId,
-        friendlyId: `whd_${deliveryId}`,
+        friendlyId,
         endpointId: ep.id,
         source: ep.spec.source,
         status,
@@ -503,7 +505,7 @@ async function main() {
   }
   for (const [name, { lo, hi }] of days) {
     await webhookPrisma.$executeRawUnsafe(
-      `CREATE TABLE IF NOT EXISTS "${name}" PARTITION OF "WebhookDelivery" FOR VALUES FROM ('${lo}') TO ('${hi}')`
+      `CREATE TABLE IF NOT EXISTS "${name}" PARTITION OF "WebhookDelivery_r${SEED_RETENTION_DAYS}" FOR VALUES FROM ('${lo}') TO ('${hi}')`
     );
   }
   console.log(`Ensured ${days.size} daily partitions.`);
@@ -527,6 +529,7 @@ async function main() {
         errorMessage: r.errorMessage,
         filterReason: r.filterReason,
         createdAt: r.createdAt,
+        retentionDays: SEED_RETENTION_DAYS,
         updatedAt: r.processedAt ?? r.createdAt,
         processedAt: r.processedAt,
       })),
@@ -564,6 +567,7 @@ async function main() {
         run_id: "",
         status: r.status,
         is_test: r.isTest ? 1 : 0,
+        retention_days: SEED_RETENTION_DAYS,
         created_at: fmt(r.createdAt),
         updated_at: fmt(updated),
         _version: String(updated.getTime()),
@@ -572,7 +576,7 @@ async function main() {
     })
     .join("\n");
 
-  const insertQuery = "INSERT INTO trigger_dev.webhook_deliveries_v1 FORMAT JSONEachRow";
+  const insertQuery = "INSERT INTO trigger_dev.webhook_deliveries_v2 FORMAT JSONEachRow";
   const chResponse = await fetch(`${chEndpoint}?query=${encodeURIComponent(insertQuery)}`, {
     method: "POST",
     headers: { "content-type": "application/x-ndjson", ...(auth ? { authorization: auth } : {}) },

@@ -60,7 +60,7 @@ to complete successfully due to an error in the task code.
 failed because it exceeded its `maxDuration`.
 
 <Icon icon="fire" iconType="solid" color="#E11D48" size={17} /> **Crashed**: The worker process crashed
-during execution (likely due to an Out of Memory error) and won’t be retried.
+during execution (likely due to an Out of Memory error) and won’t be retried, unless `retry.outOfMemory.machine` is set to retry on a larger machine. See [Machines](/machines#retrying-with-a-larger-machine).
 
 <Icon icon="bug" iconType="solid" color="#E11D48" size={17} /> **System failure**: An unrecoverable system
 error has occurred.
@@ -98,7 +98,7 @@ import { runs } from "@trigger.dev/sdk";
 
 const run = await runs.retrieve("run_1234");
 
-if (run.isCompleted) {
+if (run.isSuccess) {
   console.log("Run completed successfully");
 }
 ```
@@ -111,7 +111,7 @@ These helpers are also available when subscribing to Realtime run updates:
 import { runs } from "@trigger.dev/sdk";
 
 for await (const run of runs.subscribeToRun("run_1234")) {
-  if (run.isCompleted) {
+  if (run.isSuccess) {
     console.log("Run completed successfully!");
     break;
   }
@@ -129,7 +129,7 @@ await yourTask.trigger({ foo: "bar" }, { idempotencyKey: "unique-key" });
 ```
 
 - If a run with the same idempotency key is already in progress, the new trigger will be ignored.
-- If the run has already finished, the previous output or error will be returned.
+- If the run completed successfully (or was canceled), the existing run is returned. If it failed or expired, the key is released and triggering again creates a new run.
 
 See our [Idempotency docs](/idempotency) for more information.
 
@@ -327,7 +327,7 @@ If you have just triggered a run, you can pass the entire response object to `re
 import { runs, tasks } from "@trigger.dev/sdk";
 import type { myTask } from "./trigger/myTask";
 
-const response = await tasks.trigger<typeof myTask>({ foo: "bar" });
+const response = await tasks.trigger<typeof myTask>("my-task", { foo: "bar" });
 const run = await runs.retrieve(response);
 
 console.log(run.payload.foo); // string
@@ -392,5 +392,5 @@ For more on real-time updates, see the [Realtime](/realtime) documentation.
 
 ### Triggering runs for undeployed tasks
 
-It's possible to trigger a run for a task that hasn't been deployed yet. The run will enter the "Waiting for deploy" state until the task is deployed. Once deployed, the run will be queued and executed normally.
+It's possible to trigger a run for a task that hasn't been deployed yet. The run will enter the "Pending version" state until the task is deployed. Once deployed, the run will be queued and executed normally.
 This feature is particularly useful in CI/CD pipelines where you want to trigger tasks before the deployment is complete.

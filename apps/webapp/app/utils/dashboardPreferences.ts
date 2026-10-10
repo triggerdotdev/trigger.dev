@@ -73,6 +73,8 @@ const DashboardPreferences = z.object({
   ),
   sideMenu: SideMenuPreferences.optional(),
   chatOpenMode: ChatOpenMode.optional().catch(undefined),
+  /** Org ids this user has requested beta access for, keyed by feature (e.g. "webhooks"). */
+  betaAccessRequests: z.record(z.string(), z.array(z.string())).optional().catch(undefined),
 });
 
 export type DashboardPreferences = z.infer<typeof DashboardPreferences>;

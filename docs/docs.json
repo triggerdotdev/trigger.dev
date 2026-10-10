@@ -231,7 +231,8 @@
                 "pages": [
                   "realtime/backend/overview",
                   "realtime/backend/subscribe",
-                  "realtime/backend/streams"
+                  "realtime/backend/streams",
+                  "realtime/backend/input-streams"
                 ]
               }
             ]
@@ -788,7 +789,11 @@
     },
     {
       "source": "/v3/upgrading-from-v2",
-      "destination": "/guides/use-cases/upgrading-from-v2"
+      "destination": "/migrating-from-v3"
+    },
+    {
+      "source": "/guides/use-cases/upgrading-from-v2",
+      "destination": "/migrating-from-v3"
     },
     {
       "source": "/open-source-self-hosting",
@@ -837,6 +842,26 @@
     {
       "source": "/guides/examples/intro",
       "destination": "/guides/introduction"
+    },
+    {
+      "source": "/examples",
+      "destination": "/guides/introduction"
+    },
+    {
+      "source": "/known-issues",
+      "destination": "/troubleshooting"
+    },
+    {
+      "source": "/notifications",
+      "destination": "/realtime/overview"
+    },
+    {
+      "source": "/tasks-regular",
+      "destination": "/tasks/overview"
+    },
+    {
+      "source": "/migration-defer",
+      "destination": "/quick-start"
     },
     {
       "source": "/examples/:slug*",

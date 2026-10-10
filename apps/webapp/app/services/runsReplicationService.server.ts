@@ -1,5 +1,6 @@
 import type { ClickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
 import {
+  insertErrorServerText,
   type ClickHouse,
   type ClickHouseSettings,
   type PayloadInsertArray,
@@ -1086,7 +1087,7 @@ export class RunsReplicationService {
 
   // Retry all errors except known permanent ones
   #isRetryableError(error: Error): boolean {
-    const errorMessage = error.message.toLowerCase();
+    const errorMessage = insertErrorServerText(error).toLowerCase();
 
     // Permanent errors that should NOT be retried
     const permanentErrorPatterns = [
@@ -1155,7 +1156,8 @@ export class RunsReplicationService {
           },
         });
         if (insertError) {
-          this.logger.error("Error inserting task run inserts attempt", {
+          // Warn: recovery may still land the batch; a real loss logs at error.
+          this.logger.warn("Error inserting task run inserts attempt", {
             error: insertError,
             attempt,
           });
@@ -1168,6 +1170,7 @@ export class RunsReplicationService {
       const outcome = await insertWithLimitedStrip({
         rows: taskRunInserts,
         contextLabel: "task_runs_v2",
+        rowId: (row) => getTaskRunField(row, "run_id"),
         logger: this.logger,
         logContext: { attempt },
         insert: (rows) => rawInsert(rows),
@@ -1208,7 +1211,8 @@ export class RunsReplicationService {
           }
         );
         if (insertError) {
-          this.logger.error("Error inserting payload inserts attempt", {
+          // Warn: recovery may still land the batch; a real loss logs at error.
+          this.logger.warn("Error inserting payload inserts attempt", {
             error: insertError,
             attempt,
           });
@@ -1310,7 +1314,7 @@ export class RunsReplicationService {
     event: "insert" | "update" | "delete",
     _version: bigint
   ): Promise<TaskRunInsertArray> {
-    const output = await this.#prepareJson(run.output, run.outputType);
+    const output = await this.#prepareJson(run.id, run.output, run.outputType);
     const errorData = { data: run.error };
 
     // Calculate error fingerprint for failed runs
@@ -1406,7 +1410,7 @@ export class RunsReplicationService {
   }
 
   async #preparePayloadInsert(run: TaskRun, _version: bigint): Promise<PayloadInsertArray> {
-    const payload = await this.#prepareJson(run.payload, run.payloadType);
+    const payload = await this.#prepareJson(run.id, run.payload, run.payloadType);
 
     // Return array matching PAYLOAD_COLUMNS order
     return [
@@ -1417,6 +1421,7 @@ export class RunsReplicationService {
   }
 
   async #prepareJson(
+    runId: string,
     data: string | undefined | null,
     dataType: string
   ): Promise<{ data: unknown }> {
@@ -1430,23 +1435,22 @@ export class RunsReplicationService {
 
     if (detectBadJsonStrings(data)) {
       this.logger.warn("Detected bad JSON strings", {
-        data,
+        runId,
         dataType,
+        length: data.length,
       });
       return { data: undefined };
     }
 
-    const packet = {
-      data,
-      dataType,
-    };
+    const [parseError, parsedData] = await tryCatch(parsePacketAsJson({ data, dataType }));
 
-    const [parseError, parsedData] = await tryCatch(parsePacketAsJson(packet));
-
+    // Parser messages quote the input, so only the error name is logged.
     if (parseError) {
       this.logger.error("Error parsing packet", {
-        error: parseError,
-        packet,
+        runId,
+        dataType,
+        length: data.length,
+        errorName: parseError instanceof Error ? parseError.name : typeof parseError,
       });
 
       return { data: undefined };

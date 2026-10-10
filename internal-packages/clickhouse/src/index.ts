@@ -28,8 +28,6 @@ import {
   getTraceSummaryQueryBuilderV2,
   getTraceChunkQueryBuilder,
   getTraceChunkQueryBuilderV2,
-  getTraceSpanCountQueryBuilder,
-  getTraceSpanCountQueryBuilderV2,
   insertTaskEvents,
   insertTaskEventsV2,
   getLogDetailQueryBuilderV2,
@@ -139,7 +137,12 @@ export {
 export type { ColumnFormatType, OutputColumnMetadata } from "@internal/tsql";
 
 // Errors
-export { QueryError, isClickhouseResourceLimitError } from "./client/errors.js";
+export {
+  QueryError,
+  isClickhouseResourceLimitError,
+  insertErrorServerText,
+  insertErrorType,
+} from "./client/errors.js";
 
 export type ClickhouseCommonConfig = {
   keepAlive?: {
@@ -293,7 +296,6 @@ export class ClickHouse {
       insert: insertTaskEvents(this.writer),
       traceSummaryQueryBuilder: getTraceSummaryQueryBuilder(this.reader),
       traceChunkQueryBuilder: getTraceChunkQueryBuilder(this.reader),
-      traceSpanCountQueryBuilder: getTraceSpanCountQueryBuilder(this.reader),
       traceDetailedSummaryQueryBuilder: getTraceDetailedSummaryQueryBuilder(this.reader),
       traceEventsForExportQueryBuilder: getTraceEventsForExportQueryBuilder(this.reader),
       spanDetailsQueryBuilder: getSpanDetailsQueryBuilder(this.reader),
@@ -361,7 +363,6 @@ export class ClickHouse {
       insert: insertTaskEventsV2(this.writer),
       traceSummaryQueryBuilder: getTraceSummaryQueryBuilderV2(this.reader),
       traceChunkQueryBuilder: getTraceChunkQueryBuilderV2(this.reader),
-      traceSpanCountQueryBuilder: getTraceSpanCountQueryBuilderV2(this.reader),
       traceDetailedSummaryQueryBuilder: getTraceDetailedSummaryQueryBuilderV2(this.reader),
       traceEventsForExportQueryBuilder: getTraceEventsForExportQueryBuilderV2(this.reader),
       spanDetailsQueryBuilder: getSpanDetailsQueryBuilderV2(this.reader),

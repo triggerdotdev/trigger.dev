@@ -77,6 +77,7 @@ export type LimitsResult = {
     webhookWaitersPerEnvironment: QuotaInfo | null;
     webhookWaitersPerEndpoint: QuotaInfo | null;
     webhookConcurrency: QuotaInfo | null;
+    webhookDeliveryRetentionDays: QuotaInfo | null;
   };
   features: {
     hasStagingEnvironment: FeatureInfo;
@@ -148,7 +149,10 @@ export class LimitsPresenter extends BasePresenter {
       ? await webhookEngine.countLiveWaiters(environmentId).catch(() => 0)
       : 0;
     const webhookQuota = (
-      key: keyof typeof webhookLimits.limits,
+      key: Exclude<
+        keyof typeof webhookLimits.limits,
+        "deliveryRetentionStrict" | "deliveryStorageDays"
+      >,
       name: string,
       description: string,
       currentUsage: number
@@ -410,6 +414,12 @@ export class LimitsPresenter extends BasePresenter {
           "concurrency",
           "Webhook processing concurrency",
           "Maximum webhook deliveries and waiter resumes being processed at once in this environment. More wait their turn.",
+          0
+        ),
+        webhookDeliveryRetentionDays: webhookQuota(
+          "deliveryRetentionDays",
+          "Webhook delivery retention",
+          "Number of days of webhook deliveries you can see, including their bodies and headers.",
           0
         ),
       },

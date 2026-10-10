@@ -1,3 +1,4 @@
+import { errAsync, type ResultAsync } from "neverthrow";
 import { MachinePresetName, tryCatch } from "@trigger.dev/core/v3";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import {
@@ -43,6 +44,11 @@ import { newProjectPath, organizationBillingPath } from "~/utils/pathBuilder";
 import { singleton } from "~/utils/singleton";
 import { RedisCacheStore } from "./unkey/redisCacheStore.server";
 import { $replica } from "~/db.server";
+import {
+  enqueueGithubBuildWithClient,
+  type EnqueueGithubBuildOptions,
+  type EnqueueBuildError,
+} from "./enqueueGithubBuild.server";
 import { metrics } from "@opentelemetry/api";
 
 function initializeClient() {
@@ -1145,6 +1151,19 @@ export async function enqueueBuild(
   }
 
   return result;
+}
+
+export function enqueueGithubBuild(
+  projectId: string,
+  deploymentId: string,
+  github: { commitSha: string; ref: string },
+  options: EnqueueGithubBuildOptions = {}
+): ResultAsync<{ buildId: string }, EnqueueBuildError> {
+  if (!client) return errAsync({ type: "billing_not_configured" as const });
+  // The published client's enqueueBuild request type predates the github source.
+  return enqueueGithubBuildWithClient(client, projectId, deploymentId, github, options, (kind) =>
+    recordPlatformFailure("enqueueGithubBuild", kind)
+  );
 }
 
 export async function getPrivateLinks(

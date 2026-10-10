@@ -157,7 +157,7 @@ build — see the references repo's README for the `pnpm run link` flow.
 
 ### First-time setup
 
-First, make sure you are running the webapp according to the instructions above. The seed step from setup already created a `hello-world` project under the `References` org with the stable ref `proj_rrkpdguyagvsoktglnod` — log in at http://localhost:3030 with any email to access it. Then:
+First, make sure you are running the webapp according to the instructions above. The seed step from setup already created a `hello-world` project under the `References` org with the stable ref `proj_rrkpdguyagvsoktglnod`, owned by the seeded `local@trigger.dev` user — log in at http://localhost:3030 with that email to access it. The seed also creates `batch-limit-org-1` to `batch-limit-org-3`, and the dashboard may open one of those first; use the organization menu at the top of the side menu to switch to `References`. Then:
 
 1. Build the CLI and packages (skip if you already ran the build step in setup)
 
@@ -215,9 +215,9 @@ pnpm exec trigger dev --log-level debug
 
 5. If you make any changes in the CLI/Core/SDK, you'll need to `CTRL+C` to exit the `dev` command and restart it to pickup changes. Any changes to the files inside the reference project's `src/trigger` dir will automatically be rebuilt by the `dev` command.
 
-6. Navigate to the `hello-world` project in your local dashboard at localhost:3030 and you should see the list of tasks.
+6. Navigate to the `hello-world` project in your local dashboard at localhost:3030, in the Development environment, and you should see the list of tasks. The list is paginated, so use the search box to find a task.
 
-7. On the Tasks page, open a task and press the "Test" button to open its test page. Then enter a payload and click "Run test". You can tell what the payloads should be by looking at the relevant task file inside the reference project's `src/trigger` folder. Many of them accept an empty payload.
+7. On the Tasks page, hover over a task's row and press the "Test" button at the end of it (or pick "Test" from the row's menu) to open its test page. Then enter a payload and click "Run test". You can tell what the payloads should be by looking at the relevant task file inside the reference project's `src/trigger` folder. Many of them accept an empty payload.
 
 8. Feel free to add additional files in the reference project's `src/trigger` dir to test out specific aspects of the system, or add in edge cases.
 

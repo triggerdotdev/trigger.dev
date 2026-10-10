@@ -5,11 +5,13 @@ import {
   type WhereCondition,
 } from "@internal/clickhouse";
 import { type PrismaClientOrTransaction } from "@trigger.dev/database";
+import { createHash } from "node:crypto";
+import parseDuration from "parse-duration";
 import { z } from "zod";
 import { EVENT_STORE_TYPES, getConfiguredEventRepository } from "~/v3/eventRepository/index.server";
 
 import { type Direction } from "~/components/ListPagination";
-import { timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
+import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { env } from "~/env.server";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { getTaskIdentifiers } from "~/models/task.server";
@@ -21,14 +23,27 @@ import {
 } from "~/v3/eventRepository/clickhouseEventRepository.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import {
-  escapeClickHouseLike,
   hasMinimumLogsSearchLength,
   logsSearchExpansionPeriod,
+  logsSearchPredicate,
   LOGS_SEARCH_RETRY_OVERFETCH_FACTOR,
   MIN_LOGS_SEARCH_LENGTH,
   normalizeLogsSearchTerm,
   prepareLogsSearchPage,
 } from "~/utils/logSearch";
+import { decodeLogsSearchCursor, encodeLogsSearchCursor } from "~/utils/logSearchCursor.server";
+import {
+  continueLogsSearchSlice,
+  initialLogsSearchSlice,
+  logsSearchRangeFrom,
+  logsSearchRangeTo,
+  rebaseLogsSearchSliceToRange,
+  logsSearchRowsPerHourBucket,
+  nextLogsSearchSlice,
+  retryTimedOutLogsSearchSlice,
+  type LogsSearchSlice,
+  type LogsSearchSliceStats,
+} from "~/utils/logSearchSlices";
 
 export type { LogLevel };
 
@@ -70,50 +85,10 @@ export const LogsListOptionsSchema = z.object({
 });
 
 type LogsList = Awaited<ReturnType<LogsListPresenter["call"]>>;
-export type LogEntry = LogsList["logs"][0];
-
-// Bump when the cursor shape changes so stale cursors are ignored (reset to the first page)
-// rather than misparsed.
-const LOG_CURSOR_VERSION = 4;
-
-// Cursor is a base64 encoded JSON of the pagination keys
-type LogCursor = {
-  v: number;
-  organizationId: string;
-  environmentId: string;
-  triggeredTimestamp: string; // DateTime64(9) string
-  traceId: string;
-  spanId: string;
+type PresentedLogEntry = LogsList["logs"][0];
+export type LogEntry = Omit<PresentedLogEntry, "projectionFingerprint"> & {
   projectionFingerprint?: string;
 };
-
-const LogCursorSchema = z.object({
-  v: z.literal(LOG_CURSOR_VERSION),
-  organizationId: z.string(),
-  environmentId: z.string(),
-  triggeredTimestamp: z.string(),
-  traceId: z.string(),
-  spanId: z.string(),
-  projectionFingerprint: z.string().optional(),
-});
-
-function encodeCursor(cursor: LogCursor): string {
-  return Buffer.from(JSON.stringify(cursor)).toString("base64");
-}
-
-function decodeCursor(cursor: string): LogCursor | null {
-  try {
-    const decoded = Buffer.from(cursor, "base64").toString("utf-8");
-    const parsed = JSON.parse(decoded);
-    const validated = LogCursorSchema.safeParse(parsed);
-    if (!validated.success) {
-      return null;
-    }
-    return validated.data;
-  } catch {
-    return null;
-  }
-}
 
 // Convert display level to ClickHouse kinds and statuses
 function levelToKindsAndStatuses(level: LogLevel): { kinds?: string[]; statuses?: string[] } {
@@ -156,28 +131,23 @@ export class LogsListPresenter extends BasePresenter {
       pageSize = env.LOGS_LIST_DEFAULT_PAGE_SIZE,
       defaultPeriod,
       retentionLimitDays,
-    }: LogsListOptions
+    }: LogsListOptions,
+    abortSignal?: AbortSignal
   ) {
-    const time = timeFilterFromTo({
-      period,
-      from,
-      to,
-      defaultPeriod: defaultPeriod ?? "1h",
-    });
+    const nowMs = Date.now();
+    const effectiveDefaultPeriod = defaultPeriod ?? "1h";
+    const time = timeFilters({ period, from, to, defaultPeriod: effectiveDefaultPeriod });
+    const explicitFrom = time.from?.getTime();
+    const explicitTo = time.to?.getTime();
+    const periodMs =
+      (time.period ? parseDuration(time.period) : undefined) ||
+      parseDuration(effectiveDefaultPeriod) ||
+      24 * 60 * 60 * 1000;
 
-    let effectiveFrom = time.from;
-    let effectiveTo = time.to;
-
-    // Apply retention limit if provided
-    let wasClampedByRetention = false;
-    if (retentionLimitDays !== undefined && effectiveFrom) {
-      const retentionCutoffDate = new Date(Date.now() - retentionLimitDays * 24 * 60 * 60 * 1000);
-
-      if (effectiveFrom < retentionCutoffDate) {
-        effectiveFrom = retentionCutoffDate;
-        wasClampedByRetention = true;
-      }
-    }
+    const retentionFloor =
+      retentionLimitDays === undefined
+        ? undefined
+        : nowMs - retentionLimitDays * 24 * 60 * 60 * 1000;
 
     const hasFilters =
       (tasks !== undefined && tasks.length > 0) ||
@@ -234,92 +204,152 @@ export class LogsListPresenter extends BasePresenter {
     const effectivePageSize = Math.min(pageSize, env.LOGS_LIST_MAX_PAGE_SIZE);
     const queryLimit = (effectivePageSize + 1) * LOGS_SEARCH_RETRY_OVERFETCH_FACTOR;
 
-    // Only honor a cursor scoped to this org+env; one copied from another scope would shift the
-    // pagination anchor instead of resetting to the first page.
-    const parsedCursor = cursor ? decodeCursor(cursor) : null;
-    const decodedCursor =
-      parsedCursor &&
-      parsedCursor.organizationId === organizationId &&
-      parsedCursor.environmentId === environmentId
-        ? parsedCursor
-        : null;
-
-    // Effective upper bound, always clamped to now so a request never runs [floor, +inf).
-    const now = new Date();
-    const clampedTo = effectiveTo !== undefined ? (effectiveTo > now ? now : effectiveTo) : now;
-
     const rawSearchTerm = search?.trim() ?? "";
     const normalizedSearchTerm = normalizeLogsSearchTerm(rawSearchTerm);
+    const filterFingerprint = createHash("sha256")
+      .update(
+        JSON.stringify({
+          projectId,
+          tasks: [...(tasks ?? [])].sort(),
+          runId: runId ?? null,
+          period: time.period ?? null,
+          from: explicitFrom ?? null,
+          to: explicitTo ?? null,
+          levels: [...(levels ?? [])].sort(),
+          search: normalizedSearchTerm,
+          retentionLimitDays: retentionLimitDays ?? null,
+        })
+      )
+      .digest("base64url");
+
+    const parsedCursor = cursor ? decodeLogsSearchCursor(cursor) : null;
+    const deriveRangeFrom = (anchorTime: number, includeRetention: boolean) =>
+      logsSearchRangeFrom(anchorTime, {
+        periodMs,
+        explicitFrom,
+        retentionFloor: includeRetention ? retentionFloor : undefined,
+      });
+    const deriveRangeTo = (anchorTime: number) => logsSearchRangeTo(anchorTime, explicitTo);
+
+    const scopedCursorSlice =
+      parsedCursor &&
+      parsedCursor.organizationId === organizationId &&
+      parsedCursor.environmentId === environmentId &&
+      parsedCursor.filterFingerprint === filterFingerprint
+        ? parsedCursor.slice
+        : undefined;
+    const initialRangeFrom = deriveRangeFrom(nowMs, true);
+    const initialRangeTo = deriveRangeTo(nowMs);
+    const cursorAnchorTime = scopedCursorSlice?.anchorTime;
+    const cursorRangeFrom =
+      cursorAnchorTime === undefined ? undefined : deriveRangeFrom(cursorAnchorTime, true);
+    const cursorRangeTo =
+      cursorAnchorTime === undefined ? undefined : deriveRangeTo(cursorAnchorTime);
+    const rebasedCursorSlice =
+      scopedCursorSlice && cursorRangeFrom !== undefined && cursorRangeTo !== undefined
+        ? rebaseLogsSearchSliceToRange(scopedCursorSlice, cursorRangeFrom, cursorRangeTo, nowMs)
+        : undefined;
+    const cursorExpired = rebasedCursorSlice === "expired";
+    const cursorSlice =
+      rebasedCursorSlice && rebasedCursorSlice !== "expired" ? rebasedCursorSlice : undefined;
+    const useCursorAnchor = cursorSlice !== undefined || cursorExpired;
+    const anchorTime = useCursorAnchor ? cursorAnchorTime! : nowMs;
+    const rangeToMs = useCursorAnchor ? cursorRangeTo! : initialRangeTo;
+    const rangeFromMs = useCursorAnchor ? cursorRangeFrom! : initialRangeFrom;
+    const emptyRange = rangeFromMs > rangeToMs;
+    const slice =
+      cursorSlice ??
+      initialLogsSearchSlice(
+        new Date(emptyRange ? rangeToMs : rangeFromMs),
+        new Date(rangeToMs),
+        anchorTime
+      );
+
+    const rangeFrom = new Date(rangeFromMs);
+    const rangeTo = new Date(rangeToMs);
+    const querySliceFrom = Math.max(
+      slice.sliceFrom,
+      rangeFromMs,
+      retentionFloor ?? 0,
+      explicitFrom ?? 0
+    );
+    const querySliceTo = Math.min(slice.sliceTo, rangeToMs, nowMs);
+    const wasClampedByRetention =
+      retentionFloor !== undefined && rangeFromMs > deriveRangeFrom(anchorTime, false);
     if (rawSearchTerm !== "" && !hasMinimumLogsSearchLength(normalizedSearchTerm)) {
       throw new ServiceValidationError(
         `Log searches must be at least ${MIN_LOGS_SEARCH_LENGTH} characters.`
       );
     }
-    const searchTerm =
-      normalizedSearchTerm === "" ? undefined : escapeClickHouseLike(normalizedSearchTerm);
+    const searchPredicate =
+      normalizedSearchTerm === "" ? undefined : logsSearchPredicate(normalizedSearchTerm);
+    const maxExecutionTime = slice.sliceIndex === 0 ? 8 : 5;
+    const sliceHours = Math.max(0, slice.remainingUpper - querySliceFrom) / 3_600_000;
+    const logComment = [
+      "logs_list",
+      `term=${searchPredicate?.kind ?? "none"}`,
+      `slice=${slice.sliceIndex}`,
+      `hours=${sliceHours.toFixed(2)}`,
+      `rows_per_hour=${logsSearchRowsPerHourBucket(slice.rowsPerHour)}`,
+    ].join(" ");
 
-    // Run exactly one bounded query. Broadening a search window is an explicit user action;
-    // silently rescanning the same recent rows makes absence queries needlessly expensive.
     const runQuery = () => {
       const queryBuilder = this.clickhouse.taskEventsSearch.logsListQueryBuilder({
-        // Scoped to this query rather than the logs client, which other pages share. ClickHouse
-        // skips lazy materialization when LIMIT exceeds the max, so pass this query's limit.
-        settings: env.CLICKHOUSE_LOGS_LIST_LAZY_MATERIALIZATION
-          ? {
-              query_plan_optimize_lazy_materialization: 1,
-              query_plan_max_limit_for_lazy_materialization: queryLimit,
-            }
-          : undefined,
+        settings: {
+          max_execution_time: maxExecutionTime,
+          log_comment: logComment,
+          ...(env.CLICKHOUSE_LOGS_LIST_LAZY_MATERIALIZATION
+            ? {
+                query_plan_optimize_lazy_materialization: 1,
+                query_plan_max_limit_for_lazy_materialization: queryLimit,
+              }
+            : {}),
+          ...(searchPredicate && searchPredicate.kind !== "word"
+            ? { ignore_data_skipping_indices: "idx_search_text,idx_search_words" }
+            : {}),
+        },
       });
 
-      // The projector excludes events without a trace_id.
       queryBuilder.where("trace_id != ''");
       queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
       queryBuilder.where("organization_id = {organizationId: String}", { organizationId });
       queryBuilder.where("project_id = {projectId: String}", { projectId });
+      queryBuilder.where(
+        slice.upperInclusive
+          ? "triggered_timestamp <= {sliceTo: DateTime64(3)}"
+          : "triggered_timestamp < {sliceTo: DateTime64(3)}",
+        { sliceTo: convertDateToClickhouseDateTime(new Date(querySliceTo)) }
+      );
+      queryBuilder.where("triggered_timestamp >= {sliceFrom: DateTime64(3)}", {
+        sliceFrom: convertDateToClickhouseDateTime(new Date(querySliceFrom)),
+      });
+      queryBuilder.where("inserted_at >= {insertedAtStart: DateTime64(3)}", {
+        insertedAtStart: convertDateToClickhouseDateTime(
+          new Date(querySliceFrom - TASK_EVENT_SEARCH_MAX_TRIGGERED_AFTER_INSERT_MS)
+        ),
+      });
 
-      if (clampedTo) {
-        queryBuilder.where("triggered_timestamp <= {triggeredAtEnd: DateTime64(3)}", {
-          triggeredAtEnd: convertDateToClickhouseDateTime(clampedTo),
-        });
-      }
-
-      if (effectiveFrom) {
-        queryBuilder.where("triggered_timestamp >= {triggeredAtStart: DateTime64(3)}", {
-          triggeredAtStart: convertDateToClickhouseDateTime(effectiveFrom),
-        });
-        // The table is partitioned by inserted_at, not event time. Writers clamp
-        // triggered_timestamp to at most inserted_at plus a fixed delay, so this bound only
-        // prunes partitions that cannot hold a matching row.
-        queryBuilder.where("inserted_at >= {insertedAtStart: DateTime64(3)}", {
-          insertedAtStart: convertDateToClickhouseDateTime(
-            new Date(effectiveFrom.getTime() - TASK_EVENT_SEARCH_MAX_TRIGGERED_AFTER_INSERT_MS)
-          ),
-        });
-      }
-
-      // Task filter (applies directly to ClickHouse)
       if (tasks && tasks.length > 0) {
         queryBuilder.where("task_identifier IN {tasks: Array(String)}", { tasks });
       }
-
-      // Run ID filter
       if (runId && runId !== "") {
         queryBuilder.where("run_id = {runId: String}", { runId });
       }
 
-      if (searchTerm !== undefined) {
+      if (searchPredicate?.kind === "word") {
+        queryBuilder.where("hasAllTokens(concat(search_text, ''), {searchTokens: String})", {
+          searchTokens: searchPredicate.term,
+        });
+      } else if (searchPredicate) {
         queryBuilder.where("search_text LIKE {searchPattern: String}", {
-          searchPattern: `%${searchTerm}%`,
+          searchPattern: searchPredicate.pattern,
         });
       }
 
       if (levels && levels.length > 0) {
         const conditions: WhereCondition[] = [];
-
         for (let i = 0; i < levels.length; i++) {
           const filter = levelToKindsAndStatuses(levels[i]);
-
           if (filter.kinds && filter.kinds.length > 0) {
             conditions.push({
               clause: `kind IN {kinds_${i}: Array(String)} AND status NOT IN {excluded_statuses: Array(String)}`,
@@ -329,7 +359,6 @@ export class LogsListPresenter extends BasePresenter {
               },
             });
           }
-
           if (filter.statuses && filter.statuses.length > 0) {
             conditions.push({
               clause: `status IN {statuses_${i}: Array(String)}`,
@@ -337,32 +366,22 @@ export class LogsListPresenter extends BasePresenter {
             });
           }
         }
-
         queryBuilder.whereOr(conditions);
       }
 
-      // Keyset pagination over the sort key. ORDER BY is DESC, so the next page is the rows
-      // that sort after the cursor (strictly less-than). V2 adds the projection identity as the
-      // final tiebreaker so retry copies and distinct rows at a span boundary paginate safely.
-      if (decodedCursor) {
-        const cursorParams = {
-          cursorTriggeredTimestamp: decodedCursor.triggeredTimestamp,
-          cursorTraceId: decodedCursor.traceId,
-          cursorSpanId: decodedCursor.spanId,
-          ...(decodedCursor.projectionFingerprint
-            ? { cursorProjectionFingerprint: decodedCursor.projectionFingerprint }
-            : {}),
-        };
+      if (slice.keyset) {
+        const keyset = slice.keyset;
         queryBuilder.where(
-          decodedCursor.projectionFingerprint
-            ? `(triggered_timestamp < {cursorTriggeredTimestamp: String}
-              OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id < {cursorTraceId: String})
-              OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id = {cursorTraceId: String} AND span_id < {cursorSpanId: String})
-              OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id = {cursorTraceId: String} AND span_id = {cursorSpanId: String} AND projection_fingerprint < {cursorProjectionFingerprint: UInt128}))`
-            : `(triggered_timestamp < {cursorTriggeredTimestamp: String}
-              OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id < {cursorTraceId: String})
-              OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id = {cursorTraceId: String} AND span_id < {cursorSpanId: String}))`,
-          cursorParams
+          `(triggered_timestamp < {cursorTriggeredTimestamp: DateTime64(9)}
+            OR (triggered_timestamp = {cursorTriggeredTimestamp: DateTime64(9)} AND trace_id < {cursorTraceId: String})
+            OR (triggered_timestamp = {cursorTriggeredTimestamp: DateTime64(9)} AND trace_id = {cursorTraceId: String} AND span_id < {cursorSpanId: String})
+            OR (triggered_timestamp = {cursorTriggeredTimestamp: DateTime64(9)} AND trace_id = {cursorTraceId: String} AND span_id = {cursorSpanId: String} AND projection_fingerprint < {cursorProjectionFingerprint: UInt128}))`,
+          {
+            cursorTriggeredTimestamp: keyset.triggeredTimestamp,
+            cursorTraceId: keyset.traceId,
+            cursorSpanId: keyset.spanId,
+            cursorProjectionFingerprint: keyset.projectionFingerprint,
+          }
         );
       }
 
@@ -371,43 +390,68 @@ export class LogsListPresenter extends BasePresenter {
       );
       queryBuilder.limit(queryLimit);
 
-      return queryBuilder.execute();
+      return queryBuilder.executeWithStats({
+        params: abortSignal ? { abort_signal: abortSignal } : undefined,
+      });
     };
 
-    const [queryError, queryResult] = await runQuery();
-    if (queryError) {
-      if (isClickhouseResourceLimitError(queryError)) {
+    const queryStartedAt = performance.now();
+    const queryResponse = emptyRange || cursorExpired ? undefined : await runQuery();
+    const queryElapsedMs = queryResponse ? performance.now() - queryStartedAt : 0;
+    const [queryError, queryResult] = queryResponse ?? [null, null];
+    let logs = queryResult?.rows ?? [];
+    let nextSlice: LogsSearchSlice | undefined;
+    let searchedTo: string | undefined;
+    let timedOut = false;
+    let stopped = false;
+
+    if (cursorExpired) {
+      logs = [];
+    } else if (queryError) {
+      if (!isClickhouseResourceLimitError(queryError)) {
+        throw queryError;
+      }
+      if (!["TIMEOUT_EXCEEDED", "TOO_SLOW"].includes(queryError.clickhouseErrorType ?? "")) {
         throw new ServiceValidationError(
-          searchTerm === undefined
-            ? "These logs took too long to load. Try a shorter time range or add a filter."
-            : "This search took too long. Try a shorter time range, a more specific search, or add a filter."
+          searchPredicate === undefined
+            ? "These logs exceeded a query resource limit. Try a shorter time range or add a filter."
+            : "This search exceeded a query resource limit. Try a shorter time range, a more specific search, or add a filter."
         );
       }
-      throw queryError;
+
+      timedOut = true;
+      logs = [];
+      nextSlice = retryTimedOutLogsSearchSlice(slice);
+      stopped = nextSlice === undefined;
+    } else {
+      const readRows = Number(queryResult?.stats.read_rows ?? 0);
+      const elapsedMs = Number(queryResult?.stats.elapsed_ns ?? 0) / 1_000_000;
+      const stats: LogsSearchSliceStats = {
+        readRows: Number.isFinite(readRows) ? readRows : 0,
+        elapsedMs: Number.isFinite(elapsedMs) ? elapsedMs : 0,
+      };
+      const page = prepareLogsSearchPage(logs, effectivePageSize, queryLimit);
+      logs = page.rows;
+
+      if (page.hasMore && logs.length > 0) {
+        const lastLog = logs[logs.length - 1];
+        nextSlice = continueLogsSearchSlice(slice, {
+          triggeredTimestamp: lastLog.triggered_timestamp,
+          traceId: lastLog.trace_id,
+          spanId: lastLog.span_id,
+          projectionFingerprint: lastLog.projection_fingerprint_string,
+        });
+        searchedTo = convertClickhouseDateTime64ToJsDate(lastLog.triggered_timestamp).toISOString();
+      } else {
+        nextSlice = nextLogsSearchSlice(slice, rangeFromMs, stats);
+        searchedTo = new Date(slice.sliceFrom).toISOString();
+      }
     }
 
-    // ClickHouse's break overflow modes can return a short prefix without a reliable completion
-    // marker. Keep the default throw behavior so the product never presents truncated results as
-    // complete.
-    const results = queryResult ?? [];
-    const page = prepareLogsSearchPage(results, effectivePageSize, queryLimit);
-    const hasMore = page.hasMore;
-    const logs = page.rows;
-
-    // Build next cursor from the last item
-    let nextCursor: string | undefined;
-    if (hasMore && logs.length > 0) {
-      const lastLog = logs[logs.length - 1];
-      nextCursor = encodeCursor({
-        v: LOG_CURSOR_VERSION,
-        organizationId,
-        environmentId,
-        triggeredTimestamp: lastLog.triggered_timestamp,
-        traceId: lastLog.trace_id,
-        spanId: lastLog.span_id,
-        projectionFingerprint: lastLog.projection_fingerprint_string,
-      });
-    }
+    const nextCursor = nextSlice
+      ? encodeLogsSearchCursor(organizationId, environmentId, filterFingerprint, nextSlice)
+      : undefined;
+    const searchComplete = nextCursor === undefined && !stopped && !cursorExpired;
 
     // Transform results
     // Use :: as separator since dash conflicts with date format in start_time
@@ -431,6 +475,7 @@ export class LogsListPresenter extends BasePresenter {
         traceId: log.trace_id,
         spanId: log.span_id,
         parentSpanId: log.parent_span_id || null,
+        projectionFingerprint: log.projection_fingerprint_string,
         message: displayMessage,
         kind: log.kind,
         status: log.status,
@@ -440,8 +485,11 @@ export class LogsListPresenter extends BasePresenter {
     });
 
     const searchExpansion =
-      searchTerm !== undefined && time.isDefault && transformedLogs.length === 0
-        ? logsSearchExpansionPeriod(effectiveFrom, clampedTo, retentionLimitDays)
+      searchComplete &&
+      searchPredicate !== undefined &&
+      time.isDefault &&
+      transformedLogs.length === 0
+        ? logsSearchExpansionPeriod(rangeFrom, rangeTo, retentionLimitDays)
         : undefined;
 
     return {
@@ -449,6 +497,15 @@ export class LogsListPresenter extends BasePresenter {
       pagination: {
         next: nextCursor,
         previous: undefined, // For now, only support forward pagination
+      },
+      pageSize: effectivePageSize,
+      searchProgress: {
+        searchedTo,
+        complete: searchComplete,
+        timedOut,
+        stopped,
+        expired: cursorExpired,
+        queryElapsedMs,
       },
       possibleTasks,
       bulkActions: bulkActions.map((bulkAction) => ({
@@ -460,8 +517,8 @@ export class LogsListPresenter extends BasePresenter {
       filters: {
         tasks: tasks || [],
         levels: levels || [],
-        from: effectiveFrom,
-        to: effectiveTo,
+        from: rangeFrom,
+        to: rangeTo,
       },
       hasFilters,
       hasAnyLogs: transformedLogs.length > 0,

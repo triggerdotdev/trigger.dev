@@ -4,14 +4,8 @@ export const archiveTestNow = new Date("2026-09-16T12:00:00Z");
 export const archiveTestOld = new Date(archiveTestNow.getTime() - 20 * 24 * 60 * 60 * 1000);
 const now = archiveTestNow;
 const old = archiveTestOld;
-export async function seedPreviewArchive(prisma: PrismaClient, rolloutEnabled = true) {
+export async function seedPreviewArchive(prisma: PrismaClient) {
   const { project, organization } = await createTestOrgProjectWithMember(prisma);
-  if (rolloutEnabled) {
-    await prisma.organization.update({
-      where: { id: organization.id },
-      data: { featureFlags: { previewAutoArchiveEnabled: true } },
-    });
-  }
   const base = { projectId: project.id, organizationId: organization.id, type: "PREVIEW" as const };
   const parent = await prisma.runtimeEnvironment.create({
     data: {

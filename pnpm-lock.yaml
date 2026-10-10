@@ -187,9 +187,6 @@ importers:
       '@aws-sdk/client-ecr':
         specifier: ^3.839.0
         version: 3.839.0
-      '@internal/compute':
-        specifier: workspace:*
-        version: link:../../internal-packages/compute
       '@kubernetes/client-node':
         specifier: ^1.0.0
         version: 1.0.0(patch_hash=b3069bac3c39b4578946fcc02a59a6c1b178f82da1c1b6f2e0362efaeed5b0db)(bufferutil@4.0.9)(encoding@0.1.13)
@@ -308,9 +305,6 @@ importers:
       '@internal/cache':
         specifier: workspace:*
         version: link:../../internal-packages/cache
-      '@internal/compute':
-        specifier: workspace:*
-        version: link:../../internal-packages/compute
       '@internal/dashboard-agent':
         specifier: workspace:*
         version: link:../../internal-packages/dashboard-agent
@@ -988,16 +982,6 @@ importers:
       '@internal/testcontainers':
         specifier: workspace:*
         version: link:../testcontainers
-      rimraf:
-        specifier: 6.0.1
-        version: 6.0.1
-
-  internal-packages/compute:
-    dependencies:
-      zod:
-        specifier: 4.5.4
-        version: 4.5.4
-    devDependencies:
       rimraf:
         specifier: 6.0.1
         version: 6.0.1

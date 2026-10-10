@@ -45,7 +45,7 @@ export const firstScheduledTask = schedules.task({
     //this can be undefined if you didn't provide one
     console.log(payload.externalId); //is a string or undefined
 
-    //the next 5 dates this task is scheduled to run
+    //the next 10 dates this task is scheduled to run
     console.log(payload.upcoming); //is an array of Date objects
   },
 });
@@ -58,14 +58,14 @@ You can see from the comments that the payload has several useful properties:
 - `timezone` - the timezone the schedule was registered with, defaults to "UTC". In IANA format, e.g. "America/New_York".
 - `scheduleId` - the id of the schedule that triggered the task
 - `externalId` - the external id you (optionally) provided when creating the schedule
-- `upcoming` - the next 5 times the task is scheduled to run
+- `upcoming` - the next 10 times the task is scheduled to run
 
 <Note>
   This task will NOT get triggered on a schedule until you attach a schedule to it. Read on for how
   to do that.
 </Note>
 
-Like all tasks they don't have timeouts, they should be placed inside a [/trigger folder](/config/config-file), and you [can configure them](/tasks/overview#defining-a-task).
+Like all tasks they have a [maxDuration](/runs/max-duration), they should be placed inside a [/trigger folder](/config/config-file), and you [can configure them](/tasks/overview#defining-a-task).
 
 You can set a [TTL](/runs#time-to-live-ttl) on a scheduled task to automatically expire runs that aren't dequeued in time. This is useful when a schedule fires while the previous run is still executing - rather than queueing up stale runs, they'll expire:
 

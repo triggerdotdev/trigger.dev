@@ -62,7 +62,13 @@ export interface WebhookEngineOptions {
     ensureSchedule?: string;
     ensureJitterInMs?: number;
     lookaheadDays?: number; // 7..14; how many days ahead to pre-create
-    retentionDays?: number; // keep this many days back; drop colder children
+  };
+  /** Which retention class new deliveries are stamped with. */
+  retention?: {
+    /** The org's delivery retention in days, for an environment. Rounded up to a class. */
+    forEnvironment?: (environmentId: string) => Promise<number>;
+    /** Used when there's no lookup or it fails. Default 30. */
+    defaultDays?: number;
   };
   tracer?: Tracer;
   meter?: Meter;

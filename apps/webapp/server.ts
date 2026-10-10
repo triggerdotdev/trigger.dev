@@ -13,6 +13,11 @@ import type { WebSocketServer } from "ws";
 import type { RateLimitMiddleware } from "~/services/apiRateLimit.server";
 import { type RunWithHttpContextFunction } from "~/services/httpAsyncStorage.server";
 import { getRouterPath, pathHasPrefix, sanitizeHttpUrl } from "./app/utils/sanitizeHttpUrl";
+import {
+  createApiOnlyServiceMiddleware,
+  parseApiOnlyServiceMode,
+  servesStaticFiles,
+} from "./app/utils/apiOnlyService";
 import cluster from "node:cluster";
 import os from "node:os";
 
@@ -128,9 +133,19 @@ async function startServer() {
         )
       : undefined;
 
+  const apiOnlyServiceMode = parseApiOnlyServiceMode(process.env.API_ONLY_SERVICE_MODE);
+  if (apiOnlyServiceMode) {
+    app.use(
+      createApiOnlyServiceMiddleware({
+        mode: apiOnlyServiceMode,
+        appOrigin: process.env.APP_ORIGIN,
+      })
+    );
+  }
+
   if (viteDevServer) {
     app.use(viteDevServer.middlewares);
-  } else {
+  } else if (servesStaticFiles(apiOnlyServiceMode)) {
     // Vite fingerprints its assets so we can cache forever.
     app.use("/assets", express.static("build/client/assets", { immutable: true, maxAge: "1y" }));
     // Stale clients can request an old hashed asset; hard-404 instead of falling

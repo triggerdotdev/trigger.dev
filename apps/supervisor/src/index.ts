@@ -25,7 +25,6 @@ import {
 } from "./workloadManager/runCrd.js";
 import { RestoreWatcher, type RestoreFailure } from "./services/restoreWatcher.js";
 import { DockerWorkloadManager } from "./workloadManager/docker.js";
-import { ComputeWorkloadManager } from "./workloadManager/compute.js";
 import {
   HttpServer,
   CheckpointClient,
@@ -41,12 +40,11 @@ import { FailedPodHandler } from "./services/failedPodHandler.js";
 import { DequeueDrain } from "./services/dequeueDrain.js";
 import { getWorkerToken } from "./workerToken.js";
 import { mintDeploymentToken } from "./workloadToken.js";
-import { OtlpTraceService } from "./services/otlpTraceService.js";
 import {
   WarmStartVerificationService,
   type WarmStartTimings,
 } from "./services/warmStartVerificationService.js";
-import { extractTraceparent, getRestoreRunnerId } from "./util.js";
+import { extractTraceparent } from "./util.js";
 import { Redis } from "ioredis";
 import { BackpressureMonitor } from "./backpressure/backpressureMonitor.js";
 import { RedisBackpressureSignalSource } from "./backpressure/redisBackpressureSignalSource.js";
@@ -101,8 +99,7 @@ class ManagedSupervisor {
   private readonly metricsServer?: HttpServer;
   private readonly workloadServer: WorkloadServer;
   private readonly workloadManager: WorkloadManager;
-  private readonly workloadManagerBackend: "compute" | "kubernetes" | "run-crd" | "docker";
-  private readonly computeManager?: ComputeWorkloadManager;
+  private readonly workloadManagerBackend: "kubernetes" | "run-crd" | "docker";
   private readonly runCrdManager?: RunCrdWorkloadManager;
   private readonly restoreInformer?: RunnerRestoreInformer;
   private readonly restoreWatcher?: RestoreWatcher;
@@ -113,7 +110,6 @@ class ManagedSupervisor {
 
   private readonly podCleaner?: PodCleaner;
   private readonly failedPodHandler?: FailedPodHandler;
-  private readonly tracing?: OtlpTraceService;
   private readonly backpressureMonitors: BackpressureMonitor[] = [];
   private readonly backpressureRedis?: Redis;
 
@@ -135,7 +131,6 @@ class ManagedSupervisor {
     const {
       TRIGGER_WORKER_TOKEN,
       MANAGED_WORKER_SECRET,
-      COMPUTE_GATEWAY_AUTH_TOKEN,
       DOCKER_REGISTRY_PASSWORD,
       TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_PASSWORD,
       WORKLOAD_TOKEN_SECRET,
@@ -172,48 +167,7 @@ class ManagedSupervisor {
         : new DockerResourceMonitor(new Docker())
       : new NoopResourceMonitor();
 
-    if (env.COMPUTE_GATEWAY_URL) {
-      if (!env.TRIGGER_WORKLOAD_API_DOMAIN) {
-        throw new Error("TRIGGER_WORKLOAD_API_DOMAIN is not set, cannot create compute manager");
-      }
-
-      const callbackUrl = `${env.TRIGGER_WORKLOAD_API_PROTOCOL}://${env.TRIGGER_WORKLOAD_API_DOMAIN}:${env.TRIGGER_WORKLOAD_API_PORT_EXTERNAL}/api/v1/compute/snapshot-complete`;
-
-      if (env.COMPUTE_TRACE_SPANS_ENABLED) {
-        this.tracing = new OtlpTraceService({
-          endpointUrl: env.COMPUTE_TRACE_OTLP_ENDPOINT,
-        });
-      }
-
-      const computeManager = new ComputeWorkloadManager({
-        ...workloadManagerOptions,
-        gateway: {
-          url: env.COMPUTE_GATEWAY_URL,
-          authToken: env.COMPUTE_GATEWAY_AUTH_TOKEN,
-          timeoutMs: env.COMPUTE_GATEWAY_TIMEOUT_MS,
-        },
-        snapshots: {
-          enabled: env.COMPUTE_SNAPSHOTS_ENABLED,
-          delayMs: env.COMPUTE_SNAPSHOT_DELAY_MS,
-          dispatchLimit: env.COMPUTE_SNAPSHOT_DISPATCH_LIMIT,
-          callbackUrl,
-        },
-        tracing: this.tracing,
-        runner: {
-          instanceName: env.TRIGGER_WORKER_INSTANCE_NAME,
-          otelEndpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT,
-          prettyLogs: env.RUNNER_PRETTY_LOGS,
-          sendRunDebugLogs: env.SEND_RUN_DEBUG_LOGS,
-        },
-        createRetry: {
-          maxAttempts: env.COMPUTE_INSTANCE_CREATE_MAX_ATTEMPTS,
-          baseDelayMs: env.COMPUTE_INSTANCE_CREATE_RETRY_BASE_DELAY_MS,
-        },
-      });
-      this.computeManager = computeManager;
-      this.workloadManager = computeManager;
-      this.workloadManagerBackend = "compute";
-    } else if (this.isKubernetes && env.KUBERNETES_RUN_CRD_ENABLED) {
+    if (this.isKubernetes && env.KUBERNETES_RUN_CRD_ENABLED) {
       // Only a process that dequeues creates resumes, and only the microvm lane restores.
       if (
         env.KUBERNETES_RUNNER_RESTORE_INFORMER_ENABLED &&
@@ -522,65 +476,9 @@ class ManagedSupervisor {
 
             const { checkpoint, ...rest } = message;
 
-            // Register trace context early so snapshot spans work for all paths
-            // (cold create, restore, warm start). Re-registration on restore is safe
-            // since dequeue always provides fresh context.
-            if (this.computeManager?.traceSpansEnabled && traceparent) {
-              this.workloadServer.registerRunTraceContext(message.run.friendlyId, {
-                traceparent,
-                envId: message.environment.id,
-                orgId: message.organization.id,
-                projectId: message.project.id,
-              });
-            }
-
             if (checkpoint) {
               setExtra(fromContext(), "path_taken", "restore");
               this.logger.debug("Restoring run", { runId: message.run.id });
-
-              if (this.computeManager) {
-                const restoreStart = performance.now();
-                try {
-                  const runnerId = getRestoreRunnerId(message.run.friendlyId, checkpoint.id);
-
-                  const didRestore = await this.computeManager.restore({
-                    snapshotId: checkpoint.location,
-                    runnerId,
-                    runFriendlyId: message.run.friendlyId,
-                    snapshotFriendlyId: message.snapshot.friendlyId,
-                    machine: message.run.machine,
-                    traceContext: message.run.traceContext,
-                    envId: message.environment.id,
-                    orgId: message.organization.id,
-                    projectId: message.project.id,
-                    hasPrivateLink: message.organization.hasPrivateLink,
-                    dequeuedAt: message.dequeuedAt,
-                  });
-                  recordPhaseSince("restore", restoreStart, undefined);
-                  setExtra(fromContext(), "did_restore", didRestore);
-
-                  if (didRestore) {
-                    this.logger.debug("Compute restore successful", {
-                      runId: message.run.id,
-                      runnerId,
-                    });
-                  } else {
-                    this.logger.error("Compute restore failed", {
-                      runId: message.run.id,
-                      runnerId,
-                    });
-                  }
-                } catch (error) {
-                  recordPhaseSince(
-                    "restore",
-                    restoreStart,
-                    error instanceof Error ? error : new Error(String(error))
-                  );
-                  this.logger.error("Failed to restore run (compute)", { error });
-                }
-
-                return;
-              }
 
               if (this.runCrdManager?.restores(checkpoint)) {
                 await this.restoreRunner(this.runCrdManager, message, checkpoint);
@@ -673,10 +571,7 @@ class ManagedSupervisor {
       host: env.TRIGGER_WORKLOAD_API_HOST_INTERNAL,
       workerClient: this.workerSession.httpClient,
       checkpointClient: this.checkpointClient,
-      computeManager: this.computeManager,
       runnerSnapshotter: this.runCrdManager,
-      tracing: this.tracing,
-      snapshotCallbackSecret: workerToken,
       wideEventOpts: this.wideEventOpts,
       wideEventsNoisyRoutes: this.wideEventsNoisyRoutes,
     });

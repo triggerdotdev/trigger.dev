@@ -3,11 +3,13 @@ import { WebhookDeliveryId } from "@trigger.dev/core/v3/isomorphic";
 import {
   createdAtMsBounds,
   deliveryIdsCreatedAtBounds,
+  deliveryIdsRetentionDays,
+  retentionFloor,
 } from "../app/services/webhookDeliveriesRepository/deliveryIdBounds";
 
-function idAt(iso: string): string {
+function idAt(iso: string, retentionDays = 30): string {
   vi.setSystemTime(new Date(iso));
-  return WebhookDeliveryId.generate().friendlyId;
+  return WebhookDeliveryId.generate({ retentionDays }).friendlyId;
 }
 
 describe("deliveryIdsCreatedAtBounds", () => {
@@ -69,5 +71,29 @@ describe("createdAtMsBounds", () => {
     const bounds = createdAtMsBounds(values);
     expect(bounds?.gte.getTime()).toBe(0);
     expect(bounds?.lte.getTime()).toBe(299_999);
+  });
+});
+
+describe("deliveryIdsRetentionDays", () => {
+  it("returns each distinct class the ids were minted in", () => {
+    const ids = [
+      WebhookDeliveryId.generate({ retentionDays: 3 }).friendlyId,
+      WebhookDeliveryId.generate({ retentionDays: 90 }).friendlyId,
+      WebhookDeliveryId.generate({ retentionDays: 3 }).friendlyId,
+    ];
+    expect(deliveryIdsRetentionDays(ids)?.sort((a, b) => a - b)).toEqual([3, 90]);
+  });
+
+  it("returns undefined when any id carries no class, so the lookup isn't narrowed", () => {
+    const v2 = WebhookDeliveryId.generate({ retentionDays: 7 }).friendlyId;
+    const v1 = `whd_${WebhookDeliveryId.toId(v2).slice(0, 24)}1`;
+    expect(deliveryIdsRetentionDays([v2, v1])).toBeUndefined();
+  });
+});
+
+describe("retentionFloor", () => {
+  it("is the given number of days before now", () => {
+    const now = Date.parse("2026-10-08T12:00:00.000Z");
+    expect(retentionFloor(7, now).toISOString()).toBe("2026-10-01T12:00:00.000Z");
   });
 });

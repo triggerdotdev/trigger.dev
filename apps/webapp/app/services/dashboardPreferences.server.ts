@@ -306,6 +306,43 @@ export async function updateChatOpenModePreference({
   `;
 }
 
+export function hasRequestedBetaAccess(
+  preferences: DashboardPreferences,
+  feature: string,
+  organizationId: string
+) {
+  return preferences.betaAccessRequests?.[feature]?.includes(organizationId) ?? false;
+}
+
+export async function recordBetaAccessRequest({
+  user,
+  feature,
+  organizationId,
+}: {
+  user: UserFromSession;
+  feature: string;
+  organizationId: string;
+}) {
+  if (user.isImpersonating) {
+    return;
+  }
+
+  return mutateDashboardPreferences(user.id, (prefs) => {
+    if (hasRequestedBetaAccess(prefs, feature, organizationId)) {
+      return undefined;
+    }
+
+    const requests = prefs.betaAccessRequests ?? {};
+    return {
+      ...prefs,
+      betaAccessRequests: {
+        ...requests,
+        [feature]: [...(requests[feature] ?? []), organizationId],
+      },
+    };
+  });
+}
+
 export async function clearCurrentProject({ user }: { user: UserFromSession }) {
   if (user.isImpersonating) {
     return;

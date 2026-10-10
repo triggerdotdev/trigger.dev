@@ -35,12 +35,17 @@ vi.mock("~/services/rbac.server", () => ({
     authenticatePat: async () => ({ ok: true, ability: { can: mocks.can } }),
   },
 }));
-vi.mock("~/services/personalAccessToken.server", () => ({
-  authenticateApiRequestWithPersonalAccessToken: vi.fn(),
-  isPersonalAccessToken: () => false,
-  // Test tokens carry no source PAT, so the liveness recheck always passes.
-  assertSourcePatActive: async () => true,
-}));
+vi.mock("~/services/personalAccessToken.server", async () => {
+  const { verifyUserActorToken } = await import("@trigger.dev/rbac");
+  return {
+    authenticateApiRequestWithPersonalAccessToken: vi.fn(),
+    isPersonalAccessToken: () => false,
+    // Test tokens carry no source PAT, so the liveness recheck always passes.
+    assertSourcePatActive: async () => true,
+    resolveAndRecheckUserActorClaims: async (claims: unknown, bearer: string) =>
+      (await verifyUserActorToken(SESSION_SECRET, bearer)) ?? claims,
+  };
+});
 vi.mock("~/services/organizationAccessToken.server", () => ({
   authenticateApiRequestWithOrganizationAccessToken: vi.fn(),
   isOrganizationAccessToken: () => false,

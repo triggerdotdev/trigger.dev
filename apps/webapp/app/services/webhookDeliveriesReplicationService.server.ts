@@ -3,7 +3,7 @@ import type {
   WebhookDeliveryInsertArray,
   WebhookEndpointInsertArray,
 } from "@internal/clickhouse";
-import { getWebhookDeliveryField } from "@internal/clickhouse";
+import { insertErrorServerText, getWebhookDeliveryField } from "@internal/clickhouse";
 import { type RedisOptions } from "@internal/redis";
 import {
   LogicalReplicationClient,
@@ -212,6 +212,7 @@ export class WebhookDeliveriesReplicationService {
       publicationName: options.publicationName,
       table: "WebhookDelivery",
       additionalTables: ["WebhookEndpoint"],
+      readdMainTable: true,
       publishViaPartitionRoot: options.publishViaPartitionRoot,
       redisOptions: options.redisOptions,
       autoAcknowledge: false,
@@ -758,7 +759,7 @@ export class WebhookDeliveriesReplicationService {
 
   // Retry all errors except known permanent ones
   #isRetryableError(error: Error): boolean {
-    const errorMessage = error.message.toLowerCase();
+    const errorMessage = insertErrorServerText(error).toLowerCase();
 
     // Permanent errors that should NOT be retried
     const permanentErrorPatterns = [
@@ -932,6 +933,7 @@ function toWebhookDeliveryInsertArray(
     delivery.runId ?? "",
     delivery.status,
     delivery.isTest ? 1 : 0,
+    delivery.retentionDays,
     delivery.createdAt.getTime(),
     delivery.updatedAt.getTime(),
     version.toString(),

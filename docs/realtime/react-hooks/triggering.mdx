@@ -84,8 +84,8 @@ export function MyComponent({ publicAccessToken }: { publicAccessToken: string }
     accessToken: publicAccessToken, // 👈 this is the "trigger" token
   });
 
-  //     use the handle object to preserve type-safety 👇
-  const { run, error: realtimeError } = useRealtimeRun(handle, {
+  //     pass the run ID and the task type to preserve type-safety 👇
+  const { run, error: realtimeError } = useRealtimeRun<typeof myTask>(handle?.id, {
     accessToken: handle?.publicAccessToken,
     enabled: !!handle, // Only subscribe to the run if the handle is available
   });

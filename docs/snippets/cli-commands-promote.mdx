@@ -5,15 +5,15 @@ Run the command like this:
 <CodeGroup>
 
 ```bash npm
-npx trigger.dev@latest promote [version]
+npx trigger.dev@latest promote <version>
 ```
 
 ```bash pnpm
-pnpm dlx trigger.dev@latest promote [version]
+pnpm dlx trigger.dev@latest promote <version>
 ```
 
 ```bash yarn
-yarn dlx trigger.dev@latest promote [version]
+yarn dlx trigger.dev@latest promote <version>
 ```
 
 </CodeGroup>
@@ -21,11 +21,29 @@ yarn dlx trigger.dev@latest promote [version]
 ## Arguments
 
 ```
-npx trigger.dev@latest promote [version]
+npx trigger.dev@latest promote <version>
 ```
 
-<ParamField body="Deployment version" type="[version]">
-  The version to promote. This is the version that was previously deployed.
+<ParamField body="Deployment version" type="<version>">
+  The version to promote, e.g. `20250208.1`.
+</ParamField>
+
+## Options
+
+<ParamField body="Config file" type="-c, --config <config file>">
+  The name of the config file.
+</ParamField>
+
+<ParamField body="Environment" type="-e, --env <env>">
+  The environment to promote in: `prod`, `staging` or `preview`. Defaults to `prod`.
+</ParamField>
+
+<ParamField body="Branch" type="-b, --branch <branch>">
+  The preview branch when `--env` is `preview`. If omitted, it's read from `TRIGGER_PREVIEW_BRANCH`, then `VERCEL_GIT_COMMIT_REF`, then your git branch.
+</ParamField>
+
+<ParamField body="Project ref" type="-p, --project-ref <project ref>">
+  The project ref. Required if there is no config file. Overrides the project in the config file.
 </ParamField>
 
 ### Common options

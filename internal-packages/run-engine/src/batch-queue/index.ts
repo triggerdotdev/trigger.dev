@@ -54,6 +54,12 @@ export type { BatchQueueOptions, CompleteBatchResult, InitializeBatchOptions } f
 // Redis key for environment concurrency limits
 const ENV_CONCURRENCY_KEY_PREFIX = "batch:env_concurrency";
 
+// The default histogram buckets stop at 10s, which hides multi-minute backlogs
+const QUEUE_WAIT_BUCKETS_MS = [
+  10, 50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000, 30_000, 60_000, 120_000, 300_000, 600_000,
+  1_800_000,
+];
+
 // Single worker queue ID for all batch items
 // BatchQueue uses a single shared worker queue - FairQueue handles fair scheduling,
 // then all messages are routed to this queue for BatchQueue's own consumer loop.
@@ -601,6 +607,7 @@ export class BatchQueue {
       {
         description: "Duration from batch creation to completion",
         unit: "ms",
+        advice: { explicitBucketBoundaries: QUEUE_WAIT_BUCKETS_MS },
       }
     );
 
@@ -612,6 +619,7 @@ export class BatchQueue {
     this.itemQueueTimeHistogram = meter.createHistogram("batch_queue.item_queue_time", {
       description: "Time from item enqueue to processing start",
       unit: "ms",
+      advice: { explicitBucketBoundaries: QUEUE_WAIT_BUCKETS_MS },
     });
 
     this.rateLimitDeniedCounter = meter.createCounter("batch_queue.rate_limit_denied", {

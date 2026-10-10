@@ -52,7 +52,7 @@ function parseNano(value: string): bigint | undefined {
   }
 }
 
-function parseMetadata(metadata: string): Record<string, unknown> | undefined {
+export function parseMetadata(metadata: string): Record<string, unknown> | undefined {
   if (!metadata) {
     return undefined;
   }

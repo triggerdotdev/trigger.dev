@@ -8,7 +8,11 @@ import { $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
-import { resolveWebhookLimits, type WebhookLimits } from "./webhookLimits";
+import {
+  resolveWebhookLimits,
+  type WebhookLimits,
+  type WebhookLimitsDefaults,
+} from "./webhookLimits";
 
 /**
  * Per-process: fresh for 5 minutes, then served stale for up to another 5 while one background load
@@ -24,11 +28,13 @@ const webhookLimitsCache = singleton("webhookLimitsCache", () =>
   })
 );
 
-function defaults(): WebhookLimits {
+function defaults(): WebhookLimitsDefaults {
   return {
     maxWaitersPerEnvironment: env.WEBHOOK_WAITER_MAX_PER_ENVIRONMENT,
     maxWaitersPerEndpoint: env.WEBHOOK_WAITER_MAX_PER_ENDPOINT,
     concurrency: env.WEBHOOK_WORKER_TENANT_CONCURRENCY,
+    deliveryRetentionDays: env.WEBHOOK_DELIVERY_RETENTION_DAYS,
+    deliveryStorageDays: env.WEBHOOK_DELIVERY_STORAGE_DAYS,
   };
 }
 

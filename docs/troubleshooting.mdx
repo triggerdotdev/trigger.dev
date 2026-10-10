@@ -251,7 +251,7 @@ If runs are staying in the `QUEUED` state for extended periods, check your concu
 **Solutions:**
 
 - **Increase concurrency limits** - If you're on a paid plan, increase your environment concurrency limit via the dashboard
-- **Review queue concurrency limits** - Check if individual queues have restrictive `concurrencyLimit` settings
+- **Review concurrency settings** - Check if your tasks have restrictive `concurrency` settings, or your queues a restrictive legacy `concurrencyLimit`. See [Concurrency](/concurrency)
 - **Check for stuck runs** - See if stalled runs are blocking new executions
 
 ### Runs queued because a billing limit was reached

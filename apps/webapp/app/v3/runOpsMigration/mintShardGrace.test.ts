@@ -21,7 +21,7 @@ describe("parseShardCsv", () => {
     expect(parseShardCsv(",,")).toEqual([]);
   });
 
-  it("trims, dedupes and SORTS, so operator typing order cannot change HRW", () => {
+  it("trims, dedupes and SORTS, so operator typing order is never a change", () => {
     expect(parseShardCsv("b, a ,b")).toEqual(["a", "b"]);
     expect(parseShardCsv("a,b,c")).toEqual(parseShardCsv("c,b,a"));
     expect(parseShardCsv("b,c,a")).toEqual(parseShardCsv("a,c,b"));

@@ -872,7 +872,7 @@ model WebhookDelivery {
   /// Set from the x-trigger-test ingress header; marks console/test-send deliveries so the list can filter them.
   isTest Boolean @default(false)
 
-  parsedEvent  Json? // size-capped snapshot of the verified event (full event lives in ClickHouse)
+  parsedEvent  Json?
   headers      Json? // inbound request headers, surfaced to the webhook task via onEvent({ headers })
   rawBodyHash  String? // sha256 of raw bytes; cheap P2 replay anchor
   errorMessage String?
@@ -884,7 +884,10 @@ model WebhookDelivery {
   updatedAt   DateTime  @updatedAt // Q14: real column; the status transitions update it, maps straight to CH updated_at
   processedAt DateTime?
 
-  @@id([id, createdAt]) // composite PK: the partition key MUST be in every PK/unique on a partitioned table
+  /// Retention class in days: the LIST partition key, stamped at ingest from the org's plan and encoded in the id.
+  retentionDays Int @default(30)
+
+  @@id([id, createdAt, retentionDays])
   @@index([webhookEndpointId, createdAt(sort: Desc)]) // dashboard recent-deliveries; also partition-pruned
 }
 

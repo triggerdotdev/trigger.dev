@@ -14,6 +14,7 @@ export const WebhookDeliveryV1 = z.object({
   run_id: z.string().default(""),
   status: z.string(),
   is_test: z.number().int().default(0),
+  retention_days: z.number().int(),
   created_at: z.number().int(),
   updated_at: z.number().int(),
   _version: z.string(),
@@ -33,6 +34,7 @@ export const WEBHOOK_DELIVERY_COLUMNS = [
   "run_id",
   "status",
   "is_test",
+  "retention_days",
   "created_at",
   "updated_at",
   "_version",
@@ -57,6 +59,7 @@ export type WebhookDeliveryFieldTypes = {
   run_id: string;
   status: string;
   is_test: number;
+  retention_days: number;
   created_at: number;
   updated_at: number;
   _version: string;
@@ -75,6 +78,7 @@ export type WebhookDeliveryInsertArray = [
   run_id: string,
   status: string,
   is_test: number,
+  retention_days: number,
   created_at: number,
   updated_at: number,
   _version: string,
@@ -94,7 +98,7 @@ export function insertWebhookDeliveriesCompactArrays(
 ) {
   return ch.insertCompactRaw({
     name: "insertWebhookDeliveriesCompactArrays",
-    table: "trigger_dev.webhook_deliveries_v1",
+    table: "trigger_dev.webhook_deliveries_v2",
     columns: WEBHOOK_DELIVERY_COLUMNS,
     settings, // no enable_json_type
   });
@@ -113,7 +117,7 @@ export function getWebhookDeliveriesQueryBuilder(
   return ch.queryBuilder({
     name: "getWebhookDeliveries",
     baseQuery:
-      "SELECT delivery_id, toUnixTimestamp64Milli(created_at) AS created_at_ms FROM trigger_dev.webhook_deliveries_v1 FINAL",
+      "SELECT delivery_id, toUnixTimestamp64Milli(created_at) AS created_at_ms FROM trigger_dev.webhook_deliveries_v2 FINAL",
     schema: WebhookDeliveryV1QueryResult,
     settings,
   });
@@ -125,7 +129,7 @@ export function getWebhookDeliveriesCountQueryBuilder(
 ) {
   return ch.queryBuilder({
     name: "getWebhookDeliveriesCount",
-    baseQuery: "SELECT count() as count FROM trigger_dev.webhook_deliveries_v1 FINAL",
+    baseQuery: "SELECT count() as count FROM trigger_dev.webhook_deliveries_v2 FINAL",
     schema: z.object({ count: z.number().int() }),
     settings,
   });
@@ -148,7 +152,7 @@ export function getWebhookDeliveriesGroupedCountQueryBuilder(
   return ch.queryBuilder({
     name: "getWebhookDeliveriesGroupedCount",
     baseQuery:
-      "SELECT webhook_endpoint_id, count(DISTINCT delivery_id) AS count FROM trigger_dev.webhook_deliveries_v1",
+      "SELECT webhook_endpoint_id, count(DISTINCT delivery_id) AS count FROM trigger_dev.webhook_deliveries_v2",
     schema: WebhookDeliveryGroupedCountResult,
     settings,
   });

@@ -3,6 +3,7 @@ import {
   escapeClickHouseLike,
   hasMinimumLogsSearchLength,
   logsSearchExpansionPeriod,
+  logsSearchPredicate,
   normalizeLogsSearchTerm,
   prepareLogsSearchPage,
 } from "./logSearch";
@@ -22,6 +23,53 @@ describe("log search normalization", () => {
 
   it("escapes LIKE wildcards without escaping path separators", () => {
     expect(escapeClickHouseLike("/api/a_b/100%")).toBe("/api/a\\_b/100\\%");
+  });
+
+  it("uses token matching only for ASCII letters", () => {
+    expect(logsSearchPredicate("attempt")).toEqual({ kind: "word", term: "attempt" });
+  });
+
+  it("keeps partial ids and numeric terms on LIKE", () => {
+    expect(logsSearchPredicate("zahlung123")).toEqual({
+      kind: "id",
+      pattern: "%zahlung123%",
+    });
+    expect(logsSearchPredicate("123")).toEqual({ kind: "id", pattern: "%123%" });
+    expect(logsSearchPredicate("run_abc123")).toEqual({
+      kind: "id",
+      pattern: "%run\\_abc123%",
+    });
+    expect(logsSearchPredicate("api/orders:42@example.com+retry")).toEqual({
+      kind: "id",
+      pattern: "%api/orders:42@example.com+retry%",
+    });
+    expect(logsSearchPredicate("/api/orders/42")).toEqual({
+      kind: "id",
+      pattern: "%/api/orders/42%",
+    });
+  });
+
+  it("keeps non-ASCII terms, phrases, and irregular delimiter shapes on LIKE", () => {
+    expect(logsSearchPredicate("你好世界")).toEqual({
+      kind: "phrase",
+      pattern: "%你好世界%",
+    });
+    expect(logsSearchPredicate("café")).toEqual({
+      kind: "phrase",
+      pattern: "%café%",
+    });
+    expect(logsSearchPredicate("attempt failed")).toEqual({
+      kind: "phrase",
+      pattern: "%attempt failed%",
+    });
+    expect(logsSearchPredicate("run_abc123 other")).toEqual({
+      kind: "phrase",
+      pattern: "%run\\_abc123 other%",
+    });
+    expect(logsSearchPredicate("___")).toEqual({
+      kind: "phrase",
+      pattern: "%\\_\\_\\_%",
+    });
   });
 
   it("requires at least three unicode characters after trimming", () => {

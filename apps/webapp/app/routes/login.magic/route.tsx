@@ -32,10 +32,15 @@ import {
   canonicalizeEmailForRateLimit,
 } from "~/services/magicLinkRateLimiter.server";
 import { ssoRedirectForEmail } from "~/services/ssoAutoDiscovery.server";
-import { logger, tryCatch } from "@trigger.dev/core/v3";
+import { tryCatch } from "@trigger.dev/core/v3";
+import { logger } from "~/services/logger.server";
 import { env } from "~/env.server";
 import { extractClientIp } from "~/utils/extractClientIp.server";
 import { magicLinkEmailCookie } from "./magicLinkEmailCookie.server";
+import { TURNSTILE_RESPONSE_FIELD, verifyTurnstileToken } from "~/services/turnstile.server";
+import { keepFlashedErrorOnTimezoneSave } from "~/utils/flashedErrorRevalidation";
+
+export const shouldRevalidate = keepFlashedErrorOnTimezoneSave;
 
 export const meta: MetaFunction = ({ matches }) => {
   const parentMeta = matches
@@ -163,11 +168,53 @@ export async function action({ request }: ActionFunctionArgs) {
   switch (data.action) {
     case "send": {
       const { email } = data;
+      const clientIp = extractClientIp(request.headers.get("x-forwarded-for"));
+
+      if (env.TURNSTILE_SITE_KEY && env.TURNSTILE_SECRET_KEY) {
+        const token = payload[TURNSTILE_RESPONSE_FIELD];
+        const verification = await verifyTurnstileToken({
+          secretKey: env.TURNSTILE_SECRET_KEY,
+          token: typeof token === "string" ? token : undefined,
+          remoteIp: clientIp,
+        });
+
+        if (verification.outcome === "failed") {
+          if (verification.misconfigured) {
+            logger.error(
+              "Login magic link Turnstile secret is misconfigured, refusing the request",
+              {
+                clientIp,
+                errorCodes: verification.errorCodes,
+              }
+            );
+          } else {
+            logger.warn("Login magic link Turnstile check failed", {
+              clientIp,
+              errorCodes: verification.errorCodes,
+            });
+          }
+
+          const session = await getUserSession(request);
+          session.flash("auth:error", {
+            message: "We couldn't verify this request. Please try again.",
+          });
+
+          return redirect("/login", {
+            headers: {
+              "Set-Cookie": await commitSession(session),
+            },
+          });
+        }
+
+        if (verification.outcome === "unavailable") {
+          logger.error("Login magic link Turnstile check unavailable, allowing the request", {
+            clientIp,
+            reason: verification.reason,
+          });
+        }
+      }
 
       if (env.LOGIN_RATE_LIMITS_ENABLED) {
-        const xff = request.headers.get("x-forwarded-for");
-        const clientIp = extractClientIp(xff);
-
         // Key the buckets on the canonical address so `+tag` aliases (and
         // Gmail dot variants) of one inbox share it. Delivery still uses the
         // raw submitted address below.

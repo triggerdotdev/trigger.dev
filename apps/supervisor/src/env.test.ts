@@ -78,7 +78,11 @@ describe("worker queue selection", () => {
   it.each([
     { config: {}, subscription: { ...ondemand, compat: "compute" }, error: "compatibility" },
     {
-      config: { COMPUTE_GATEWAY_URL: "http://localhost:8080" },
+      config: {
+        KUBERNETES_FORCE_ENABLED: "true",
+        KUBERNETES_RUN_CRD_ENABLED: "true",
+        KUBERNETES_RUNNER_RUNTIME: "microvm",
+      },
       subscription: ondemand,
       error: "compatibility",
     },
@@ -86,11 +90,11 @@ describe("worker queue selection", () => {
     {
       config: {
         KUBERNETES_FORCE_ENABLED: "true",
-        KUBERNETES_RUN_CRD_ENABLED: "true",
+        KUBERNETES_RUN_CRD_ENABLED: "false",
         KUBERNETES_RUNNER_RUNTIME: "microvm",
       },
       subscription: { ...restore, compat: "compute" },
-      error: "COMPUTE_GATEWAY_URL",
+      error: "compatibility",
     },
   ])(
     "rejects incompatible or unsupported subscriptions: $error",
@@ -105,11 +109,31 @@ describe("worker queue selection", () => {
     }
   );
 
-  it("accepts shared fresh work and compute restores on the compute backend", () => {
+  it.each(["ondemand", "scheduled"])(
+    "accepts %s compute restores on the native microVM Runner backend",
+    (queueClass) => {
+      expect(() =>
+        Env.parse({
+          ...base,
+          KUBERNETES_FORCE_ENABLED: "true",
+          KUBERNETES_RUN_CRD_ENABLED: "true",
+          KUBERNETES_RUNNER_RUNTIME: "microvm",
+          TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS: JSON.stringify([
+            { ...ondemand, class: queueClass, compat: "compute" },
+            { ...restore, class: queueClass, compat: "compute" },
+          ]),
+        })
+      ).not.toThrow();
+    }
+  );
+
+  it("accepts shared fresh work and compute restores on the native microVM Runner backend", () => {
     expect(() =>
       Env.parse({
         ...base,
-        COMPUTE_GATEWAY_URL: "http://localhost:8080",
+        KUBERNETES_FORCE_ENABLED: "true",
+        KUBERNETES_RUN_CRD_ENABLED: "true",
+        KUBERNETES_RUNNER_RUNTIME: "microvm",
         TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS: JSON.stringify([
           { ...ondemand, compat: "any" },
           { ...restore, compat: "compute" },
@@ -158,18 +182,5 @@ describe("Env superRefine - backpressure source awareness", () => {
         TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_RELEASE: "100",
       })
     ).toThrow();
-  });
-});
-
-describe("Env superRefine - compute snapshots", () => {
-  it("needs the metadata URL and workload API domain only for the gateway", () => {
-    expect(() => Env.parse({ ...base, COMPUTE_SNAPSHOTS_ENABLED: "true" })).not.toThrow();
-    expect(() =>
-      Env.parse({
-        ...base,
-        COMPUTE_SNAPSHOTS_ENABLED: "true",
-        COMPUTE_GATEWAY_URL: "http://gateway:8080",
-      })
-    ).toThrow(/TRIGGER_METADATA_URL[\s\S]*TRIGGER_WORKLOAD_API_DOMAIN/);
   });
 });

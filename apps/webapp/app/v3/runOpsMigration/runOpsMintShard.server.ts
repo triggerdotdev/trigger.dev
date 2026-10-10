@@ -50,7 +50,7 @@ function reportPinRejected(info: {
 }): void {
   if (reportedPins.get(info.environmentId) !== undefined) return;
   reportedPins.set(info.environmentId, true);
-  logger.error("[runOpsMintShard] pinned shard is not in the active set; using the hash", info);
+  logger.error("[runOpsMintShard] pinned shard is not in the active set; minting gen-1", info);
 }
 
 // Keyed by the override value, not by environment: one bad override applies to the whole fleet,

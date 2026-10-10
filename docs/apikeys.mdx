@@ -75,7 +75,7 @@ The default API URL is `https://api.trigger.dev`.
 
 ## Access presets
 
-Access presets define what a key can do. Some presets require a paid plan. The dashboard shows which presets your organization can use — see [pricing](https://trigger.dev/pricing).
+Access presets define what a key can do. On the Free and Hobby plans only the **No restrictions** preset is available. All other presets require the Pro or Enterprise plan.
 
 | Preset | Access |
 | --- | --- |
@@ -87,7 +87,7 @@ Access presets define what a key can do. Some presets require a paid plan. The d
 | **Variables only** | Read and write environment variables in this environment |
 | **No restrictions** | Full access to the environment |
 
-**Trigger only** and **Task operator** can be restricted to selected tasks. Task restrictions use task identifiers, such as `send-email`. A request involving multiple tasks — such as a batch trigger — succeeds only when the key can access every task in the request, so a task-restricted key can batch-trigger only its selected tasks.
+**Trigger only** and **Task operator** can be restricted to selected tasks, up to 10 tasks per key. Task restrictions use task identifiers, such as `send-email`. A request involving multiple tasks — such as a batch trigger — succeeds only when the key can access every task in the request, so a task-restricted key can batch-trigger only its selected tasks.
 
 ## Deploy with an API key
 
@@ -124,7 +124,7 @@ Use `@trigger.dev/sdk` version 4.5.8 or later to create public tokens with envir
 
 - The token must request at least one scope.
 - Its scopes cannot exceed the key's access.
-- Its expiration cannot exceed 30 days.
+- Its expiration cannot exceed 30 days (the default is 15 minutes).
 
 <Note>
 Revoking or expiring an API key does not revoke tokens it already created. Those tokens remain valid until their own expiration.

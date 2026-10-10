@@ -123,7 +123,7 @@ The MCP server also registers a `report` prompt, which hosts that support MCP pr
 
 ### HTTP API: `GET /api/v1/reports/:key`
 
-The endpoint behind every surface. It accepts a `period` and a `format`, and authenticates with a token scoped to read the report's query tables (`read:query`).
+The endpoint behind every surface. It accepts a `period` and a `format`, and authenticates with an environment secret key or a JWT scoped to read the report's query tables (`read:query`).
 
 | Query param | Default | Description |
 | --- | --- | --- |
@@ -134,8 +134,10 @@ The endpoint behind every surface. It accepts a `period` and a `format`, and aut
 
 ```bash
 curl "https://api.trigger.dev/api/v1/reports/health?period=24h&format=json" \
-  -H "Authorization: Bearer $TRIGGER_ACCESS_TOKEN"
+  -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
 ```
+
+The environment comes from the key. Use an environment secret key, or a JWT scoped `read:query` for the report's tables. Personal access tokens are not accepted.
 
 An unknown report key returns `404` with the list of available keys.
 

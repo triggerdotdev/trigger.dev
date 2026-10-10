@@ -586,4 +586,63 @@ describe("the dashboard agent run trace", () => {
     },
     TIMEOUT_MS
   );
+  containerTest(
+    "builds a child run's trace when the trace root is outside the child's window",
+    async ({ prisma, clickhouseContainer }) => {
+      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        logLevel: "error",
+      });
+      const repository = new ClickhouseEventRepository({ clickhouse, version: "v2" });
+
+      // The child run starts two days after the root, so the root span is outside its window.
+      const childAt = Date.now();
+      const rootAt = childAt - 2 * 24 * 60 * 60 * 1000;
+      const expiresAt = convertDateToClickhouseDateTime(new Date(childAt + 24 * 60 * 60 * 1000));
+      const grandchildSpanId = "grandchildspan01";
+      const span = (spanId: string, parentSpanId: string, ms: number): TaskEventV2Input => ({
+        environment_id: environment.id,
+        organization_id: environment.organizationId,
+        project_id: "proj_agent_trace",
+        task_identifier: TASK_IDENTIFIER,
+        run_id: runId,
+        trace_id: traceId,
+        start_time: clickhouseStartTime(ms),
+        inserted_at: convertDateToClickhouseDateTime(new Date(ms)),
+        duration: String(CHILD_DURATION_NS),
+        span_id: spanId,
+        parent_span_id: parentSpanId,
+        message: spanId,
+        kind: "SPAN",
+        status: "OK",
+        attributes: {},
+        metadata: "{}",
+        expires_at: expiresAt,
+      });
+
+      const [insertError] = await clickhouse.taskEventsV2.insert([
+        span(rootSpanId, "", rootAt),
+        span(childSpanId, rootSpanId, childAt),
+        span(grandchildSpanId, childSpanId, childAt + 10),
+      ]);
+      expect(insertError).toBeNull();
+      const subtreeReads = vi.spyOn(repository, "getTraceSubtreeSummary");
+
+      const result = await readTrace({
+        repository,
+        prisma,
+        environmentId: environment.id,
+        organizationId: environment.organizationId,
+        createdAt: new Date(childAt),
+        anchorSpanId: childSpanId,
+      });
+
+      // The summary itself is rooted at the child, without the subtree fallback.
+      expect(subtreeReads).not.toHaveBeenCalled();
+      expect(result?.trace.rootSpan.id).toBe(childSpanId);
+      expect(result?.trace.rootSpan.children.map((child) => child.id)).toEqual([grandchildSpanId]);
+    },
+    TIMEOUT_MS
+  );
 });

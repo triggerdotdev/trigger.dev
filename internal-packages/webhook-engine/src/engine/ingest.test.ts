@@ -13,7 +13,7 @@ import {
   MeterProvider,
   PeriodicExportingMetricReader,
 } from "@opentelemetry/sdk-metrics";
-import { WebhookEndpointId } from "@trigger.dev/core/v3/isomorphic";
+import { WebhookDeliveryId, WebhookEndpointId } from "@trigger.dev/core/v3/isomorphic";
 import { expect } from "vitest";
 import { WebhookEngine } from "./index.js";
 import { parseFilter } from "./filter/index.js";
@@ -167,6 +167,7 @@ function buildEngine(
     resolveVerifyToken?: (endpointId: string) => Promise<string | undefined>;
     deliverToSession?: DeliverWebhookToSessionCallback;
     meter?: Meter;
+    retentionDays?: (environmentId: string) => Promise<number>;
   }
 ) {
   return new WebhookEngine({
@@ -180,6 +181,7 @@ function buildEngine(
       over?.endpointCacheTtlMs !== undefined ? { ttlMs: over.endpointCacheTtlMs } : undefined,
     triggerTask,
     deliverToSession: over?.deliverToSession,
+    retention: over?.retentionDays ? { forEnvironment: over.retentionDays } : undefined,
     resolveSigningSecret:
       over?.resolveSigningSecret ?? (async (key) => (key === SECRET_KEY ? SECRET : undefined)),
     logLevel: "error",
@@ -194,6 +196,50 @@ async function waitFor(fn: () => Promise<boolean>, timeoutMs = 10_000, intervalM
   }
   throw new Error(`waitFor timed out after ${timeoutMs}ms`);
 }
+
+containerTestWithIsolatedRedisNoClickhouse(
+  "a delivery is stamped with its org's retention class, rounded up, in its row and its id",
+  async ({ prisma, redisOptions }) => {
+    const endpoint = await createEndpoint(prisma);
+    const { triggerTask } = makeTriggerTaskStub();
+    const lookups: string[] = [];
+    let days = 7;
+    const engine = buildEngine(prisma, redisOptions, triggerTask, {
+      retentionDays: async (environmentId) => {
+        lookups.push(environmentId);
+        if (days < 0) throw new Error("limits unavailable");
+        return days;
+      },
+    });
+
+    try {
+      const stamped = async (eventId: string) => {
+        const result = await engine.ingest(signedInput(eventId, endpoint.opaqueId));
+        if (result.outcome !== "accepted") throw new Error(result.outcome);
+        const row = await prisma.webhookDelivery.findFirstOrThrow({
+          where: { id: result.deliveryId },
+        });
+        expect(WebhookDeliveryId.parseRetentionDays(result.deliveryFriendlyId)).toBe(
+          row.retentionDays
+        );
+        return row.retentionDays;
+      };
+
+      expect(await stamped("evt_retention_7")).toBe(7);
+      days = 60;
+      expect(await stamped("evt_retention_60")).toBe(90);
+      days = -1;
+      expect(await stamped("evt_retention_failed")).toBe(30);
+      expect(lookups).toEqual([
+        endpoint.runtimeEnvironmentId,
+        endpoint.runtimeEnvironmentId,
+        endpoint.runtimeEnvironmentId,
+      ]);
+    } finally {
+      await engine.quit();
+    }
+  }
+);
 
 containerTestWithIsolatedRedisNoClickhouse(
   "ingest -> deliver routes a verified event to exactly one run",
