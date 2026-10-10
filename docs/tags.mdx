@@ -18,10 +18,12 @@ We don't enforce prefixes but if you use them you'll find it easier to filter an
 
 ## How to add tags
 
-There are two ways to add tags to a run:
+You can add tags to a run in two ways:
 
 1. When triggering the run.
 2. Inside the `run` function, using `tags.add()`.
+
+You can also [remove tags](#removing-tags) from a run while it's running.
 
 ### 1. Adding tags when triggering the run
 
@@ -95,6 +97,36 @@ export const myTask = task({
   },
 });
 ```
+
+## Removing tags
+
+Use the `tags.delete()` function to remove tags from inside the `run` function. It takes a single string or an array of strings, just like `tags.add()`:
+
+```ts
+import { tags, task } from "@trigger.dev/sdk";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: { message: string }) => {
+    await tags.add(["status_processing", "user_123456"]);
+
+    // ...do the work...
+
+    // Remove a single tag, or an array of tags
+    await tags.delete("status_processing");
+    await tags.add("status_done");
+  },
+});
+```
+
+This only affects the run you call it from. Other runs keep the same tag, and the tag stays available to filter by in the dashboard.
+
+<Note>
+  Removing a tag the run doesn't have does nothing and won't throw, so you don't need to
+  check the run's current tags first.
+</Note>
+
+Tags can only be removed from inside the `run` function — there's no equivalent option when triggering.
 
 ## Filtering runs by tags
 
