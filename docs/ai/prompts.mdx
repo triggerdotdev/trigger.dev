@@ -416,11 +416,3 @@ When you use `toAISDKTelemetry()`, AI generation spans in the run trace get a cu
 - **Tools** — tool definitions and tool call details
 - **Prompt** — the linked prompt's metadata, input variables, and template content
 
-## Type utilities
-
-```ts
-import type { PromptHandle, PromptIdentifier, PromptVariables } from "@trigger.dev/sdk";
-
-type Id = PromptIdentifier<typeof supportPrompt>;   // "customer-support"
-type Vars = PromptVariables<typeof supportPrompt>;   // { customerName: string; plan: string; issue: string }
-```
