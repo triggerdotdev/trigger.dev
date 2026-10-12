@@ -93,7 +93,7 @@ export const apifyActorRun = task({
   retry: { maxAttempts: 3 },
   run: async (payload: { actorId: string; input: Record<string, unknown> }) => {
     const run = await apify.actor(payload.actorId).call(payload.input, {
-      timeout: 300, // Apify stops the Actor before waitSecs ends, so a retry never leaves a run behind
+      timeout: 300, // Apify stops the Actor after 5 minutes, so it doesn't keep running after the task gives up
       waitSecs: 360,
       maxItems: 1000, // cap spend on pay-per-result Actors
     });
@@ -207,6 +207,10 @@ Trigger the task from the Trigger.dev dashboard with the same payload as Example
 <Note>
   Cancelling a Trigger.dev run doesn't stop the Actor run it started. Abort the Actor run in
   [Apify Console](https://console.apify.com?utm_source=trigger.dev&utm_medium=integrations) or with `apify.run(runId).abort()`.
+</Note>
+
+<Note>
+  These examples aren't retry-safe: retries always start a new Actor run. In production, store the Actor run ID and resume that run on retry rather than starting over.
 </Note>
 
 ## Learn more
