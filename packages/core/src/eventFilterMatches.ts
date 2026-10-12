@@ -5,16 +5,17 @@ import type { EventFilter } from "./schemas/eventFilter.js";
 // If the values of the array are objects, then we are doing content filtering
 // An example would be [{ $endsWith: ".png" }, { $startsWith: "images/" } ]
 export function eventFilterMatches(payload: any, filter: EventFilter): boolean {
-  if (payload === undefined || payload === null) {
-    if (Object.entries(filter).length === 0) {
-      return true;
-    } else {
-      return false;
-    }
-  }
+  // A missing (undefined/null) payload is matched like an empty object, so that a missing payload and
+  // a missing key are treated the same way. Filters that assert the absence of a value (`$exists:
+  // false`, `$isNull: false`, `$anythingBut`) therefore match when an ancestor key is missing or
+  // null, instead of failing before the filter is evaluated. This is the same result nested paths
+  // give in MongoDB-style filters, and the same result these filters already gave for a missing key
+  // at the top level. Filters that need a value (`$exists: true`, `$startsWith`, `$gt`, ...) still
+  // don't match `undefined`.
+  const payloadObject = payload === undefined || payload === null ? {} : payload;
 
   for (const [patternKey, patternValue] of Object.entries(filter)) {
-    const payloadValue = payload[patternKey];
+    const payloadValue = payloadObject[patternKey];
 
     if (Array.isArray(patternValue)) {
       if (patternValue.length === 0) {
