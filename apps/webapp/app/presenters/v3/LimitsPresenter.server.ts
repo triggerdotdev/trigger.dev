@@ -46,6 +46,8 @@ export type QuotaInfo = {
   source: "default" | "plan" | "override";
   canExceed?: boolean;
   isUpgradable?: boolean;
+  /** Shown after the limit, e.g. "per 10s" for a rate. */
+  unit?: string;
 };
 
 // Types for feature flags
@@ -78,6 +80,7 @@ export type LimitsResult = {
     webhookWaitersPerEndpoint: QuotaInfo | null;
     webhookConcurrency: QuotaInfo | null;
     webhookDeliveryRetentionDays: QuotaInfo | null;
+    webhookEndpointRateLimit: QuotaInfo | null;
   };
   features: {
     hasStagingEnvironment: FeatureInfo;
@@ -422,6 +425,17 @@ export class LimitsPresenter extends BasePresenter {
           "Number of days of webhook deliveries you can see, including their bodies and headers.",
           0
         ),
+        webhookEndpointRateLimit: (() => {
+          const quota = webhookQuota(
+            "endpointRateLimitTokens",
+            "Webhook endpoint rate limit",
+            `Requests one webhook endpoint accepts every ${webhookLimits.limits.endpointRateLimitWindowSeconds.toLocaleString()} seconds. More get a 429 with Retry-After.`,
+            0
+          );
+          return quota
+            ? { ...quota, unit: `per ${webhookLimits.limits.endpointRateLimitWindowSeconds}s` }
+            : null;
+        })(),
       },
       features: {
         hasStagingEnvironment: {

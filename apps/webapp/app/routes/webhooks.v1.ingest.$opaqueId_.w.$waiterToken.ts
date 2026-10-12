@@ -10,7 +10,7 @@ import { toWebhookHttpResponse, webhookHttpResponseFor } from "~/v3/webhookIngre
  * verifier and can only complete that waiter; it never fans out to the endpoint's subscribers.
  */
 export async function action({ request, params }: ActionFunctionArgs) {
-  const admitted = await admitWebhookIngress(params);
+  const admitted = await admitWebhookIngress(params, request);
   if (admitted instanceof Response) return admitted;
   const { opaqueId } = admitted;
 

@@ -207,8 +207,6 @@ async function startServer() {
     const runWithHttpContext: RunWithHttpContextFunction = build.entry.module.runWithHttpContext;
     const tenantContextMiddleware: RequestHandler = build.entry.module.tenantContextMiddleware;
     const dashboardAgentBodyCap: RequestHandler = build.entry.module.dashboardAgentBodyCap;
-    const webhookIngressIpRateLimiter: RequestHandler =
-      build.entry.module.webhookIngressIpRateLimiter;
 
     app.use((req, res, next) => {
       // helpful headers:
@@ -265,7 +263,6 @@ async function startServer() {
       app.use(deploymentRateLimiter);
       app.use(engineRateLimiter);
       app.use(otlpRateLimiter);
-      app.use(webhookIngressIpRateLimiter);
 
       app.use(tenantContextMiddleware);
 

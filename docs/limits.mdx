@@ -152,6 +152,17 @@ When you send a batch trigger, we convert it into individual runs. This limit co
 | Hobby        | 10 concurrent batches |
 | Pro          | 50 concurrent batches |
 
+## Webhook ingest rate limits
+
+Each hosted webhook endpoint accepts a limited number of requests per 10 seconds. Requests over the limit get a `429` response with a `Retry-After` header, and providers that retry deliver them again after the window.
+
+| Pricing tier | Requests per endpoint |
+| :----------- | :-------------------- |
+| Free         | 100 every 10 sec      |
+| Hobby        | 300 every 10 sec      |
+| Pro          | 1,000 every 10 sec    |
+| Enterprise   | Set per organization  |
+
 ## Log retention
 
 | Pricing tier | Limit   |

@@ -10,7 +10,7 @@ import { toWebhookHttpResponse, webhookHttpResponseFor } from "~/v3/webhookIngre
  * declares none. Never records a delivery.
  */
 export async function loader({ request, params }: LoaderFunctionArgs) {
-  const admitted = await admitWebhookIngress(params);
+  const admitted = await admitWebhookIngress(params, request);
   if (admitted instanceof Response) return admitted;
   const { opaqueId } = admitted;
 
@@ -28,7 +28,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 // signature scheme verifies. The engine resolves the endpoint (and its env id +
 // type) from the globally-unique opaqueId, so this route runs no env query.
 export async function action({ request, params }: ActionFunctionArgs) {
-  const admitted = await admitWebhookIngress(params);
+  const admitted = await admitWebhookIngress(params, request);
   if (admitted instanceof Response) return admitted;
   const { opaqueId } = admitted;
 

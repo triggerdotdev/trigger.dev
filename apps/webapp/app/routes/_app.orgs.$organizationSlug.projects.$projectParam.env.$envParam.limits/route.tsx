@@ -551,6 +551,7 @@ function QuotasSection({
   if (quotas.webhookWaitersPerEndpoint) quotaRows.push(quotas.webhookWaitersPerEndpoint);
   if (quotas.webhookConcurrency) quotaRows.push(quotas.webhookConcurrency);
   if (quotas.webhookDeliveryRetentionDays) quotaRows.push(quotas.webhookDeliveryRetentionDays);
+  if (quotas.webhookEndpointRateLimit) quotaRows.push(quotas.webhookEndpointRateLimit);
 
   const showSelfServe = useShowSelfServe();
 
@@ -610,7 +611,8 @@ function QuotaRow({
   const isPerItemQuota =
     quota.name === "Charts per dashboard" ||
     quota.name === "Webhook waiters per endpoint" ||
-    quota.name === "Webhook processing concurrency";
+    quota.name === "Webhook processing concurrency" ||
+    quota.name === "Webhook endpoint rate limit";
   const isRetentionQuota = isDurationQuota || isPerItemQuota;
   const isQueueSizeQuota = quota.name === "Max queued runs";
   const hideCurrentUsage = isRetentionQuota || isQueueSizeQuota;
@@ -712,7 +714,7 @@ function QuotaRow({
         {quota.limit !== null
           ? isDurationQuota
             ? `${formatNumber(quota.limit)} ${quota.limit === 1 ? "day" : "days"}`
-            : formatNumber(quota.limit)
+            : `${formatNumber(quota.limit)}${quota.unit ? ` ${quota.unit}` : ""}`
           : "Unlimited"}
       </TableCell>
       <TableCell

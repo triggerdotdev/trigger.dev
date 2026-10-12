@@ -19,6 +19,9 @@ export const WebhookLimitsConfig = z.object({
    * they are deleted then, instead of keeping them for the default storage period and hiding them.
    */
   deliveryRetentionStrict: z.boolean().optional(),
+  /** Requests one endpoint accepts per window before the ingress answers 429. */
+  endpointRateLimitTokens: z.number().int().positive().optional(),
+  endpointRateLimitWindowSeconds: z.number().int().positive().optional(),
 });
 export type WebhookLimitsConfig = z.infer<typeof WebhookLimitsConfig>;
 
@@ -53,6 +56,10 @@ export function resolveWebhookLimits(
       deliveryStorageDays: webhookDeliveryRetentionClassAtLeast(
         strict ? retentionDays : Math.max(retentionDays, defaults.deliveryStorageDays)
       ).days,
+      endpointRateLimitTokens:
+        overrides.endpointRateLimitTokens ?? defaults.endpointRateLimitTokens,
+      endpointRateLimitWindowSeconds:
+        overrides.endpointRateLimitWindowSeconds ?? defaults.endpointRateLimitWindowSeconds,
     },
     overrides,
   };

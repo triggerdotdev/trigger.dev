@@ -7,6 +7,8 @@ const defaults = {
   concurrency: 100,
   deliveryRetentionDays: 30,
   deliveryStorageDays: 30,
+  endpointRateLimitTokens: 100,
+  endpointRateLimitWindowSeconds: 10,
 };
 
 describe("resolveWebhookLimits", () => {
@@ -28,9 +30,28 @@ describe("resolveWebhookLimits", () => {
         deliveryRetentionDays: 30,
         deliveryRetentionStrict: false,
         deliveryStorageDays: 30,
+        endpointRateLimitTokens: 100,
+        endpointRateLimitWindowSeconds: 10,
       },
       overrides: { maxWaitersPerEnvironment: 500, concurrency: 5 },
     });
+  });
+
+  it("takes the endpoint rate limit from the org's plan or back office", () => {
+    const { limits, overrides } = resolveWebhookLimits(
+      { endpointRateLimitTokens: 1_000, endpointRateLimitWindowSeconds: 60 },
+      defaults
+    );
+    expect(limits.endpointRateLimitTokens).toBe(1_000);
+    expect(limits.endpointRateLimitWindowSeconds).toBe(60);
+    expect(overrides).toEqual({
+      endpointRateLimitTokens: 1_000,
+      endpointRateLimitWindowSeconds: 60,
+    });
+    expect(
+      resolveWebhookLimits({ endpointRateLimitTokens: 300 }, defaults).limits
+        .endpointRateLimitWindowSeconds
+    ).toBe(10);
   });
 
   it("ignores a malformed config rather than applying part of it", () => {

@@ -20,7 +20,9 @@ type NumericLimit =
   | "maxWaitersPerEnvironment"
   | "maxWaitersPerEndpoint"
   | "concurrency"
-  | "deliveryRetentionDays";
+  | "deliveryRetentionDays"
+  | "endpointRateLimitTokens"
+  | "endpointRateLimitWindowSeconds";
 
 const FIELDS: Array<{ key: NumericLimit; label: string; hint: string }> = [
   {
@@ -42,6 +44,16 @@ const FIELDS: Array<{ key: NumericLimit; label: string; hint: string }> = [
     key: "deliveryRetentionDays",
     label: "Delivery retention (days)",
     hint: "Days of deliveries the org can see, 1 to 365. Older ones are hidden right away.",
+  },
+  {
+    key: "endpointRateLimitTokens",
+    label: "Endpoint rate limit (requests)",
+    hint: "Requests one endpoint accepts per window. More get 429 with Retry-After.",
+  },
+  {
+    key: "endpointRateLimitWindowSeconds",
+    label: "Endpoint rate limit window (seconds)",
+    hint: "The window the endpoint rate limit counts over, 1 to 3600 seconds.",
   },
 ];
 
