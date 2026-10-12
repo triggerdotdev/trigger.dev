@@ -119,6 +119,9 @@ export type WorkerApiRunHeartbeatResponseBody = z.infer<typeof WorkerApiRunHeart
 
 export const WorkerApiRunAttemptStartRequestBody = z.object({
   isWarmStart: z.boolean().optional(),
+  // Set by the supervisor, not the runner. A value this webapp cannot accept drops the stamp, never the attempt.
+  workerCell: z.string().max(64).optional().catch(undefined),
+  workerLane: z.string().max(32).optional().catch(undefined),
 });
 export type WorkerApiRunAttemptStartRequestBody = z.infer<
   typeof WorkerApiRunAttemptStartRequestBody

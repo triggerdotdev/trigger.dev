@@ -113,6 +113,8 @@ type WorkloadServerOptions = {
   wideEventOpts: WideEventOptions;
   /** When true, high-frequency HTTP routes also emit wide events. */
   wideEventsNoisyRoutes: boolean;
+  /** Where runs started through this server execute. Overrides anything the runner sends. */
+  workerStamp?: { workerCell?: string; workerLane?: string };
 };
 
 export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
@@ -142,6 +144,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   >();
 
   private readonly workerClient: SupervisorHttpClient;
+  private readonly workerStamp: { workerCell?: string; workerLane?: string };
 
   constructor(opts: WorkloadServerOptions) {
     super();
@@ -150,6 +153,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     const port = opts.port;
 
     this.workerClient = opts.workerClient;
+    this.workerStamp = opts.workerStamp ?? {};
     this.checkpointClient = opts.checkpointClient;
     this.wideEventOpts = opts.wideEventOpts;
     this.wideEventsNoisyRoutes = opts.wideEventsNoisyRoutes;
@@ -402,7 +406,11 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                 const startResponse = await this.workerClient.startRunAttempt(
                   params.runFriendlyId,
                   params.snapshotFriendlyId,
-                  body,
+                  {
+                    ...body,
+                    workerCell: this.workerStamp.workerCell,
+                    workerLane: this.workerStamp.workerLane,
+                  },
                   this.runnerIdFromRequest(req),
                   auth.environmentId
                 );

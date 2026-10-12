@@ -33,6 +33,8 @@ type SupervisorSessionOptions = SupervisorClientCommonOptions & {
   sendRunDebugLogs?: boolean;
   scaling: ScalingOptions;
   metricsRegistry?: Registry;
+  /** Extra worker instance metadata sent on connect. */
+  metadata?: Record<string, unknown>;
 };
 
 export class SupervisorSession extends EventEmitter<WorkerEvents> {
@@ -182,6 +184,7 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
   async start() {
     const connect = await this.httpClient.connect({
       metadata: {
+        ...this.opts.metadata,
         workerVersion: VERSION,
       },
     });

@@ -944,7 +944,12 @@ export class PostgresRunStore implements RunStore {
 
   async startAttempt<S extends Prisma.TaskRunSelect>(
     runId: string,
-    data: { attemptNumber: number; executedAt?: Date; isWarmStart: boolean },
+    data: {
+      attemptNumber: number;
+      executedAt?: Date;
+      isWarmStart: boolean;
+      annotations?: Prisma.InputJsonValue;
+    },
     args: { select: S },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
@@ -958,6 +963,7 @@ export class PostgresRunStore implements RunStore {
         attemptNumber: data.attemptNumber,
         executedAt: data.executedAt,
         isWarmStart: data.isWarmStart,
+        annotations: data.annotations,
       },
       { select: args.select }
     ) as Promise<Prisma.TaskRunGetPayload<{ select: S }>>;

@@ -23,6 +23,7 @@ import {
   RunnerRestoreInformer,
   settleRestoreFailure,
 } from "./workloadManager/runCrd.js";
+import { workerLaneFor, type WorkloadManagerBackend } from "./workerLane.js";
 import { RestoreWatcher, type RestoreFailure } from "./services/restoreWatcher.js";
 import { DockerWorkloadManager } from "./workloadManager/docker.js";
 import {
@@ -99,7 +100,7 @@ class ManagedSupervisor {
   private readonly metricsServer?: HttpServer;
   private readonly workloadServer: WorkloadServer;
   private readonly workloadManager: WorkloadManager;
-  private readonly workloadManagerBackend: "kubernetes" | "run-crd" | "docker";
+  private readonly workloadManagerBackend: WorkloadManagerBackend;
   private readonly runCrdManager?: RunCrdWorkloadManager;
   private readonly restoreInformer?: RunnerRestoreInformer;
   private readonly restoreWatcher?: RestoreWatcher;
@@ -339,7 +340,13 @@ class ManagedSupervisor {
 
     const workerToken = getWorkerToken();
 
+    const workerStamp = {
+      workerCell: env.TRIGGER_WORKER_CELL_NAME,
+      workerLane: workerLaneFor(this.workloadManagerBackend, env.KUBERNETES_RUNNER_RUNTIME),
+    };
+
     this.workerSession = new SupervisorSession({
+      metadata: workerStamp,
       resolveResponseSchema,
       workerToken,
       apiUrl: env.TRIGGER_API_URL,
@@ -567,6 +574,7 @@ class ManagedSupervisor {
 
     // Responds to workload requests only
     this.workloadServer = new WorkloadServer({
+      workerStamp,
       port: env.TRIGGER_WORKLOAD_API_PORT_INTERNAL,
       host: env.TRIGGER_WORKLOAD_API_HOST_INTERNAL,
       workerClient: this.workerSession.httpClient,

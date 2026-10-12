@@ -14,6 +14,14 @@ export const Env = z
   .object({
     // This will come from `spec.nodeName` in k8s
     TRIGGER_WORKER_INSTANCE_NAME: z.string().default(randomUUID()),
+    // Name of the worker cluster (cell) this supervisor serves. Stamped on every run it starts.
+    TRIGGER_WORKER_CELL_NAME: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z
+        .string()
+        .regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/)
+        .optional()
+    ),
     TRIGGER_WORKER_HEARTBEAT_INTERVAL_SECONDS: z.coerce.number().default(30),
 
     // Opt-in, dev-only: stream this process's logs over a local telnet/TCP socket on this port.

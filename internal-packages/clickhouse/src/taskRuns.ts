@@ -57,6 +57,8 @@ export const TaskRunV2 = z.object({
   task_kind: z.string().default(""),
   is_warm_start: z.boolean().nullish(),
   external_deployment_id: z.string().default(""),
+  worker_cell: z.string().default(""),
+  worker_lane: z.string().default(""),
   _version: z.string(),
   _is_deleted: z.number().int().default(0),
 });
@@ -121,6 +123,8 @@ export const TASK_RUN_COLUMNS = [
   "task_kind",
   "is_warm_start",
   "external_deployment_id",
+  "worker_cell",
+  "worker_lane",
 ] as const;
 
 export type TaskRunColumnName = (typeof TASK_RUN_COLUMNS)[number];
@@ -192,6 +196,8 @@ export type TaskRunFieldTypes = {
   task_kind: string;
   is_warm_start: boolean | null;
   external_deployment_id: string;
+  worker_cell: string;
+  worker_lane: string;
 };
 
 /**
@@ -362,6 +368,8 @@ export type TaskRunInsertArray = [
   task_kind: string,
   is_warm_start: boolean | null,
   external_deployment_id: string,
+  worker_cell: string,
+  worker_lane: string,
 ];
 
 /**

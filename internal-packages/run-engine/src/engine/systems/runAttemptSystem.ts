@@ -33,7 +33,11 @@ import {
   getUserProvidedIdempotencyKey,
 } from "@trigger.dev/core/v3/serverOnly";
 import { parsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
-import type { PrismaClientOrTransaction, RuntimeEnvironmentType } from "@trigger.dev/database";
+import type {
+  Prisma,
+  PrismaClientOrTransaction,
+  RuntimeEnvironmentType,
+} from "@trigger.dev/database";
 import { MAX_TASK_RUN_ATTEMPTS } from "../consts.js";
 import { runStatusFromError, ServiceValidationError } from "../errors.js";
 import { sendNotificationToWorker } from "../eventBus.js";
@@ -334,6 +338,8 @@ export class RunAttemptSystem {
     workerId,
     runnerId,
     isWarmStart,
+    workerCell,
+    workerLane,
     environmentId,
     tx,
   }: {
@@ -342,6 +348,8 @@ export class RunAttemptSystem {
     workerId?: string;
     runnerId?: string;
     isWarmStart?: boolean;
+    workerCell?: string;
+    workerLane?: string;
     environmentId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<EngineStartRunAttemptResult> {
@@ -389,6 +397,7 @@ export class RunAttemptSystem {
                 status: true,
                 lockedById: true,
                 ttl: true,
+                annotations: true,
               },
             },
             // read-your-writes on the owning primary (dequeue just wrote lockedById; a replica lags).
@@ -448,6 +457,10 @@ export class RunAttemptSystem {
                   attemptNumber: nextAttemptNumber,
                   executedAt: taskRun.attemptNumber === null ? new Date() : undefined,
                   isWarmStart: isWarmStart ?? false,
+                  annotations: stampWorkerAnnotations(taskRun.annotations, {
+                    workerCell,
+                    workerLane,
+                  }),
                 },
                 {
                   select: {
@@ -2595,4 +2608,35 @@ const METRIC_REASONS = new Set([
 
 function metricReason(reason: string): string {
   return METRIC_REASONS.has(reason) ? reason : "other";
+}
+
+/**
+ * Replaces the worker stamp in a run's existing annotations. The stamp is one unit: a previous
+ * attempt's cell must not survive next to this attempt's lane, and an unstamped attempt clears
+ * the previous stamp rather than keeping it. Returns undefined when the write would change nothing.
+ */
+export function stampWorkerAnnotations(
+  existing: Prisma.JsonValue | null | undefined,
+  stamp: { workerCell?: string; workerLane?: string }
+): Prisma.InputJsonObject | undefined {
+  const current =
+    typeof existing === "object" && existing !== null && !Array.isArray(existing)
+      ? (existing as Prisma.InputJsonObject)
+      : {};
+  const { workerCell: previousCell, workerLane: previousLane, ...base } = current;
+
+  if (
+    stamp.workerCell === undefined &&
+    stamp.workerLane === undefined &&
+    previousCell === undefined &&
+    previousLane === undefined
+  ) {
+    return undefined;
+  }
+
+  return {
+    ...base,
+    ...(stamp.workerCell !== undefined ? { workerCell: stamp.workerCell } : {}),
+    ...(stamp.workerLane !== undefined ? { workerLane: stamp.workerLane } : {}),
+  };
 }

@@ -179,6 +179,13 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            {{- if .Values.supervisor.config.cellName }}
+            {{- if not (regexMatch "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" (toString .Values.supervisor.config.cellName)) }}
+            {{- fail "supervisor.config.cellName must be 1-64 characters of letters, digits, dots, underscores or dashes, starting with a letter or digit. The supervisor refuses anything else at boot." }}
+            {{- end }}
+            - name: TRIGGER_WORKER_CELL_NAME
+              value: {{ toString .Values.supervisor.config.cellName | quote }}
+            {{- end }}
             # Kubernetes configuration
             - name: KUBERNETES_NAMESPACE
               value: {{ default .Release.Namespace .Values.supervisor.config.kubernetes.namespace | quote }}

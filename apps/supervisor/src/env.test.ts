@@ -184,3 +184,21 @@ describe("Env superRefine - backpressure source awareness", () => {
     ).toThrow();
   });
 });
+
+describe("worker cell name", () => {
+  it("treats an empty value as unset", () => {
+    expect(
+      Env.parse({ ...base, TRIGGER_WORKER_CELL_NAME: "" }).TRIGGER_WORKER_CELL_NAME
+    ).toBeUndefined();
+  });
+
+  it("keeps a well-formed name", () => {
+    expect(
+      Env.parse({ ...base, TRIGGER_WORKER_CELL_NAME: "us-west-2.cell_1" }).TRIGGER_WORKER_CELL_NAME
+    ).toBe("us-west-2.cell_1");
+  });
+
+  it("refuses a malformed name at boot", () => {
+    expect(() => Env.parse({ ...base, TRIGGER_WORKER_CELL_NAME: "bad/name" })).toThrow();
+  });
+});

@@ -1672,6 +1672,8 @@ export class RunEngine {
     workerId,
     runnerId,
     isWarmStart,
+    workerCell,
+    workerLane,
     environmentId,
     tx,
   }: {
@@ -1680,6 +1682,8 @@ export class RunEngine {
     workerId?: string;
     runnerId?: string;
     isWarmStart?: boolean;
+    workerCell?: string;
+    workerLane?: string;
     environmentId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<EngineStartRunAttemptResult> {
@@ -1689,6 +1693,8 @@ export class RunEngine {
       workerId,
       runnerId,
       isWarmStart,
+      workerCell,
+      workerLane,
       environmentId,
       tx,
     });

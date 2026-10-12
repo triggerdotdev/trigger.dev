@@ -1,6 +1,14 @@
 import { WorkerInstanceGroupType } from "@trigger.dev/database";
 
 /**
+ * Whether a worker group's attempt-start stamp (cell, lane) describes platform
+ * infrastructure. UNMANAGED groups are customer-run, so their stamps are dropped.
+ */
+export function acceptsWorkerStamp(workerGroupType: WorkerInstanceGroupType): boolean {
+  return workerGroupType === WorkerInstanceGroupType.MANAGED;
+}
+
+/**
  * Whether a worker group may be used by the calling project.
  *
  * MANAGED groups are shared across projects. UNMANAGED groups are per-project

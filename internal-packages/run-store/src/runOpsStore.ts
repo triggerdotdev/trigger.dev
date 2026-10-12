@@ -896,7 +896,12 @@ export class RoutingRunStore implements RunStore {
 
   async startAttempt<S extends Prisma.TaskRunSelect>(
     runId: string,
-    data: { attemptNumber: number; executedAt?: Date; isWarmStart: boolean },
+    data: {
+      attemptNumber: number;
+      executedAt?: Date;
+      isWarmStart: boolean;
+      annotations?: Prisma.InputJsonValue;
+    },
     args: { select: S },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {

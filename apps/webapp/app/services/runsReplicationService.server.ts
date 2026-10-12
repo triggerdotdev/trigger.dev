@@ -35,7 +35,7 @@ import {
   unsafeExtractIdempotencyKeyScope,
   unsafeExtractIdempotencyKeyUser,
 } from "@trigger.dev/core/v3/serverOnly";
-import { RunAnnotations } from "@trigger.dev/core/v3";
+import { RunAnnotations, WorkerStampAnnotations } from "@trigger.dev/core/v3";
 import { type TaskRun } from "@trigger.dev/database";
 import { PARKED_ON_EXTERNAL_DEPLOYMENT_STATUS_REASON } from "@internal/run-engine";
 import { nanoid } from "nanoid";
@@ -1327,6 +1327,7 @@ export class RunsReplicationService {
         : "";
 
     const annotations = this.#parseAnnotations(run.annotations);
+    const workerStamp = WorkerStampAnnotations.safeParse(run.annotations).data;
 
     // Return array matching TASK_RUN_COLUMNS order
     return [
@@ -1386,6 +1387,8 @@ export class RunsReplicationService {
       annotations?.taskKind ?? "", // task_kind
       run.isWarmStart ?? null, // is_warm_start
       this.#readExternalDeploymentId(run),
+      workerStamp?.workerCell ?? "", // worker_cell
+      workerStamp?.workerLane ?? "", // worker_lane
     ];
   }
 
