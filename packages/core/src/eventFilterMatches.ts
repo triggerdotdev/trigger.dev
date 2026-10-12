@@ -5,16 +5,10 @@ import type { EventFilter } from "./schemas/eventFilter.js";
 // If the values of the array are objects, then we are doing content filtering
 // An example would be [{ $endsWith: ".png" }, { $startsWith: "images/" } ]
 export function eventFilterMatches(payload: any, filter: EventFilter): boolean {
-  if (payload === undefined || payload === null) {
-    if (Object.entries(filter).length === 0) {
-      return true;
-    } else {
-      return false;
-    }
-  }
+  const safePayload = payload ?? {};
 
   for (const [patternKey, patternValue] of Object.entries(filter)) {
-    const payloadValue = payload[patternKey];
+    const payloadValue = safePayload[patternKey];
 
     if (Array.isArray(patternValue)) {
       if (patternValue.length === 0) {
