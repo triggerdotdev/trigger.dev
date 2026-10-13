@@ -38,6 +38,7 @@ export const ROUTES_BY_GIVEN_RUN_ID: readonly string[] = [
   "enqueueDelayedRun",
   "rewriteDebouncedRun",
   "pushTags",
+  "removeTags",
   "pushRealtimeStream",
 ];
 
