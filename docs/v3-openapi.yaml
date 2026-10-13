@@ -1776,7 +1776,7 @@ paths:
     get:
       operationId: list_runs_v1
       summary: List runs
-      description: List runs in a specific environment. You can filter the runs by status, created at, task identifier, version, and more.
+      description: List runs in a specific environment. You can filter the runs by status, created at, task identifier, version, and more. Without a `filter[createdAt]` value, only runs created in the last 7 days are returned. This endpoint is for browsing, reporting, and bulk operations, not for coordinating runs, so don't call it before every trigger or poll it in a loop. See [runs.list() best practices](/runs/list-best-practices).
       parameters:
         - $ref: "#/components/parameters/cursorPagination"
         - $ref: "#/components/parameters/runsFilter"
@@ -1805,8 +1805,8 @@ paths:
           source: |-
             import { runs } from "@trigger.dev/sdk";
 
-            // Get the first page of runs
-            let page = await runs.list({ limit: 20 });
+            // Get the first page of runs created in the last day
+            let page = await runs.list({ period: "1d", limit: 20 });
 
             for (const run of page.data) {
               console.log(`Run ID: ${run.id}, Status: ${run.status}`);
@@ -1818,10 +1818,10 @@ paths:
               // Do something with the next page of runs
             }
 
-            // Auto-paginate through all runs
+            // Auto-paginate through all runs created in the last day
             const allRuns = [];
 
-            for await (const run of runs.list({ limit: 20 })) {
+            for await (const run of runs.list({ period: "1d", limit: 20 })) {
               allRuns.push(run);
             }
         - lang: typescript
@@ -1832,7 +1832,7 @@ paths:
             const response = await runs.list({
               status: ["QUEUED", "EXECUTING"],
               taskIdentifier: ["my-task", "my-other-task"],
-              from: new Date("2024-04-01T00:00:00Z"),
+              from: new Date(Date.now() - 24 * 60 * 60 * 1000), // last 24 hours
               to: new Date(),
             });
 
@@ -2087,7 +2087,7 @@ paths:
               env: ["prod", "staging"],
               status: ["QUEUED", "EXECUTING"],
               taskIdentifier: ["my-task", "my-other-task"],
-              from: new Date("2024-04-01T00:00:00Z"),
+              from: new Date(Date.now() - 24 * 60 * 60 * 1000), // last 24 hours
               to: new Date(),
             });
 

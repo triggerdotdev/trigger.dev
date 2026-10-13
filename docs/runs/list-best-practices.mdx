@@ -1,0 +1,234 @@
+---
+title: "Using runs.list() efficiently"
+sidebarTitle: "runs.list() best practices"
+description: "When to use runs.list(), the patterns to avoid, and what to use instead."
+---
+
+`runs.list()` (and `GET /api/v1/runs`) is built for browsing, reporting, and bulk operations. It is not a coordination tool. Each call searches your environment's runs in the requested time window, so its cost depends on how many runs you created in that window much more than on the page size you ask for.
+
+A call with `limit: 4` in a busy environment can still search millions of runs to find those 4. That's fine once in a while. On a hot path, like before every trigger or in a loop every second, it slows your own code down and counts against your [API rate limit](/limits).
+
+## Quick reference
+
+| You want to… | Avoid | Use instead |
+| --- | --- | --- |
+| Avoid piling up runs for the same work | `runs.list()` then `trigger()` | [`debounce`](/triggering#debounce) to merge a burst into one run, a [concurrency limit](/concurrency) so runs queue instead of overlapping, or an [`idempotencyKey`](/idempotency) for one run per item |
+| Collapse a burst of triggers into one run | A fixed `delay` on every trigger | [`debounce`](/triggering#debounce) |
+| Avoid duplicate runs for the same work | A random `idempotencyKey` per trigger | A key derived from the work itself |
+| Wait for a run you triggered | Polling `runs.list()` or `runs.retrieve()` | [`triggerAndWait()`](/triggering#yourtask-triggerandwait) inside a task, or [`runs.subscribeToRun()`](/realtime/backend/subscribe) |
+| Follow a group of runs | Polling `runs.list({ tag })` | [`runs.subscribeToRunsWithTag()`](/realtime/backend/subscribe) |
+| Know how backed up a queue is | Counting `QUEUED` runs with `runs.list()` | [`queues.retrieve()`](/queues#retrieving-a-queue) |
+
+## Anti-patterns
+
+### Checking for active runs before triggering
+
+This pattern tries to make sure only one run handles a piece of work at a time:
+
+```ts Avoid
+import { runs, tasks } from "@trigger.dev/sdk";
+
+// Called every time something changes for this account
+export async function onAccountChanged(accountId: string) {
+  const active = await runs.list({
+    status: ["QUEUED", "EXECUTING"],
+    taskIdentifier: ["sync-account"],
+    tag: [`account:${accountId}`],
+    limit: 1,
+  });
+
+  if (active.data.length > 0) return;
+
+  await tasks.trigger(
+    "sync-account",
+    { accountId },
+    { tags: [`account:${accountId}`] }
+  );
+}
+```
+
+It has three problems:
+
+- **It races.** Two calls can both see "nothing running" and both trigger.
+- **It's expensive.** Every change runs a search, and the search gets slower as you create more runs.
+- **It doesn't collapse bursts.** 100 changes in a second still mean 100 searches.
+
+Let Trigger.dev do the coordination instead.
+
+**To collapse bursts into one run, use `debounce`.** While a debounced run is still waiting for its delay, triggers with the same key push it back instead of creating new runs:
+
+```ts Use debounce
+import { tasks } from "@trigger.dev/sdk";
+
+export async function onAccountChanged(accountId: string) {
+  await tasks.trigger(
+    "sync-account",
+    { accountId },
+    {
+      debounce: {
+        key: `account-${accountId}`,
+        delay: "10s",
+        // The run uses the payload of the last trigger
+        mode: "trailing",
+        // Never push it back past 1m after the first trigger
+        maxDelay: "1m",
+      },
+    }
+  );
+}
+```
+
+<Tip>
+  With debounce, one run handles many changes. Have the task read the pending work from your own
+  database when it starts, instead of relying on a single trigger's payload.
+</Tip>
+
+**To never run two at once for the same key, use a per-key concurrency limit.** Extra runs wait in the queue instead of running in parallel:
+
+```ts Use a concurrency limit
+import { task } from "@trigger.dev/sdk";
+
+export const syncAccount = task({
+  id: "sync-account",
+  concurrency: { perKey: 1 },
+  run: async ({ accountId }: { accountId: string }) => {
+    // ...
+  },
+});
+
+// When triggering
+await syncAccount.trigger({ accountId }, { concurrencyKey: accountId });
+```
+
+The `concurrency` option requires SDK 4.7.0 or later. See [Concurrency](/concurrency) for details.
+
+Debounce only merges triggers into a run that hasn't started yet. Once that run is queued or executing, the next trigger creates a new run. Combine both options so bursts collapse and a new run never overlaps one that's still going.
+
+**For exactly one run per piece of work, use an `idempotencyKey`.** See [Using a random idempotency key](#using-a-random-idempotency-key) below.
+
+### Using a fixed delay to space out triggers
+
+Adding the same `delay` to every trigger doesn't collapse anything. Each trigger still creates its own run. It just starts later:
+
+```ts Avoid
+// 100 changes still create 100 runs, each one 30s after its trigger
+await tasks.trigger("sync-account", { accountId }, { delay: "30s" });
+```
+
+Use [`debounce`](#checking-for-active-runs-before-triggering) with the same key instead, so triggers within the delay join one run.
+
+### Using a random idempotency key
+
+An idempotency key only dedupes triggers that send the same key. A fresh random value on every trigger never matches, so every call creates a new run:
+
+```ts Avoid
+await tasks.trigger("sync-account", payload, {
+  // Never matches another trigger, so it dedupes nothing
+  idempotencyKey: `sync-${crypto.randomUUID()}`,
+});
+```
+
+Build the key from the thing that should only happen once:
+
+```ts Your backend
+import { tasks } from "@trigger.dev/sdk";
+
+// One run per change, even if this code runs again within 30 days
+// (the default key lifetime, set with idempotencyKeyTTL)
+await tasks.trigger("process-change", payload, {
+  idempotencyKey: `change-${change.id}`,
+});
+```
+
+<Note>
+  Inside a task, a raw string key is scoped to the current run. To dedupe across runs, create it
+  with `idempotencyKeys.create(key, { scope: "global" })`. See [Idempotency](/idempotency) for
+  scopes and TTLs.
+</Note>
+
+### Polling for a run's status
+
+```ts Avoid
+const handle = await tasks.trigger("generate-report", payload);
+
+while (true) {
+  const run = await runs.retrieve(handle.id);
+  if (run.isCompleted) break;
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+}
+```
+
+Inside a task, use [`triggerAndWait()`](/triggering#yourtask-triggerandwait). You don't pay for compute during waits longer than 5 seconds.
+
+From your backend, subscribe to the run. The loop ends when the run finishes:
+
+```ts Use realtime
+import { runs, tasks } from "@trigger.dev/sdk";
+
+const handle = await tasks.trigger("generate-report", payload);
+
+for await (const run of runs.subscribeToRun(handle.id)) {
+  console.log(run.status);
+}
+```
+
+### Polling runs by tag to follow progress
+
+Calling `runs.list({ tag })` on a timer to see what a user's or a job's runs are doing repeats the same search every time. Subscribe once instead:
+
+```ts Use realtime
+import { runs } from "@trigger.dev/sdk";
+
+const tag = `user:${userId}`;
+
+for await (const run of runs.subscribeToRunsWithTag(tag)) {
+  console.log(run.id, run.status);
+}
+```
+
+This iterator never completes on its own, so break out of the loop when you're done. In a frontend, use the [React hooks](/realtime/react-hooks/overview).
+
+<Note>
+  Tag subscriptions only include runs created in the last 24 hours. You can narrow that with the
+  `createdAt` option, but not extend it. To follow a specific older run, use
+  `runs.subscribeToRun(runId)`.
+</Note>
+
+### Counting runs to measure a backlog
+
+Listing `QUEUED` runs to count them gets slower as the backlog grows, which is exactly when you need the number. It can also miss runs: queued runs created before the [time window](#when-you-do-need-runs-list) aren't returned. The queue already tracks the count:
+
+```ts Use queues.retrieve()
+import { queues } from "@trigger.dev/sdk";
+
+// A task's default queue is named after the task ID
+const queue = await queues.retrieve({
+  type: "task",
+  name: "sync-account",
+});
+
+console.log(queue.queued, queue.running);
+```
+
+For a queue shared between tasks, use `{ type: "custom", name: "your-queue-name" }`.
+
+## When you do need runs.list()
+
+`runs.list()` is the right tool for dashboards, reports, audits, and finding runs to act on in bulk. To keep it fast:
+
+- **Pass a time window.** Use the narrowest `period` (or `from`/`to`) that covers what you need, like `period: "1h"`.
+- **Filter by `taskIdentifier`** as well as status or tag.
+- **Stop paginating once you have what you need.** Don't page through every result by default.
+- **Keep it off hot paths.** Don't call it per event, per trigger, or in a tight loop inside a task. If several places need the same answer, cache it.
+
+<Warning>
+  If you don't pass `period`, `from`, or `to`, only runs created in the last 7 days are searched.
+  The window applies to every status, so runs created before it aren't returned even if they're
+  still queued or executing. Passing only `to` removes the lower bound, so the search covers every
+  run up to that date.
+</Warning>
+
+<Note>
+  If a query would be too expensive to complete, the API returns a `422` asking you to narrow the
+  time window. The SDK doesn't retry it.
+</Note>

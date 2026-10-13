@@ -253,6 +253,12 @@ Similar to `triggerAndWait()`, the `batchTriggerAndWait()` function lets you bat
 
 #### runs.list()
 
+<Warning>
+  `runs.list()` is for browsing, reporting, and bulk operations, not for coordinating runs. Don't
+  call it before every trigger or poll it in a loop. See [runs.list() best
+  practices](/runs/list-best-practices) for what to use instead.
+</Warning>
+
 List runs in a specific environment. You can filter the runs by status, created at, task identifier, version, and more:
 
 ```ts
@@ -290,7 +296,7 @@ import { runs } from "@trigger.dev/sdk";
 const response = await runs.list({
   status: ["QUEUED", "EXECUTING"], // Filter by status
   taskIdentifier: ["my-task", "my-other-task"], // Filter by task identifier
-  from: new Date("2024-04-01T00:00:00Z"), // Filter by created at
+  from: new Date(Date.now() - 24 * 60 * 60 * 1000), // Filter by created at (last 24 hours)
   to: new Date(),
   version: "20241127.2", // Filter by deployment version,
   tag: ["tag1", "tag2"], // Filter by tags

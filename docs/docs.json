@@ -40,6 +40,12 @@
               },
               "triggering",
               "runs",
+              {
+                "group": "Runs",
+                "hidden": true,
+                "searchable": true,
+                "pages": ["runs/list-best-practices"]
+              },
               "apikeys"
             ]
           },
