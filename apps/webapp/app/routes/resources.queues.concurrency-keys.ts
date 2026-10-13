@@ -38,6 +38,9 @@ export type ConcurrencyKeyRow = {
   key: string;
   queued: number;
   running: number;
+  /** A per-key override of the queue's perKey for this key, and when it lapses; null when none. */
+  override: number | null;
+  overrideExpiresAt: number | null;
   oldestWaitMs: number | null;
   started: number;
   peakBacklog: number;
@@ -163,6 +166,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         key: r.concurrency_key,
         queued: l?.queued ?? 0,
         running: l?.running ?? 0,
+        override: l?.limit ?? null,
+        overrideExpiresAt: l?.limitExpiresAt?.getTime() ?? null,
         oldestWaitMs,
         started: r.started,
         peakBacklog: r.peak_backlog,

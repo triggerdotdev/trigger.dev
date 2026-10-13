@@ -32,7 +32,10 @@ import {
   type ListQueueOptions,
   type ListConcurrencyLimitOptions,
   ConcurrencyLimitItem,
-  type OverrideConcurrencyLimitRequestBody,
+  ConcurrencyLimitKeyItem,
+  type OverrideConcurrencyLimitBoundsBody,
+  type OverrideConcurrencyLimitKeyBody,
+  type ResetConcurrencyLimitRequestBody,
   type ListScheduleOptions,
   type ListSessionsOptions,
   type PromotePromptVersionRequestBody,
@@ -1827,13 +1830,47 @@ export class ApiClient {
     );
   }
 
+  retrieveConcurrencyLimitKey(
+    name: string,
+    concurrencyKey: string,
+    requestOptions?: ZodFetchOptions
+  ) {
+    const query = new URLSearchParams({ concurrencyKey });
+    return zodfetch(
+      ConcurrencyLimitKeyItem,
+      `${this.baseUrl}/api/v1/concurrency-limits/${encodeURIComponent(name)}?${query.toString()}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
   overrideConcurrencyLimit(
     name: string,
-    override: OverrideConcurrencyLimitRequestBody,
+    override: OverrideConcurrencyLimitBoundsBody,
     requestOptions?: ZodFetchOptions
   ) {
     return zodfetch(
       ConcurrencyLimitItem,
+      `${this.baseUrl}/api/v1/concurrency-limits/${encodeURIComponent(name)}/override`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(override),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  overrideConcurrencyLimitKey(
+    name: string,
+    override: OverrideConcurrencyLimitKeyBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      ConcurrencyLimitKeyItem,
       `${this.baseUrl}/api/v1/concurrency-limits/${encodeURIComponent(name)}/override`,
       {
         method: "POST",
@@ -1871,6 +1908,23 @@ export class ApiClient {
         method: "POST",
         headers: this.#getHeaders(false),
         body: JSON.stringify({}),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  resetConcurrencyLimitKey(
+    name: string,
+    body: ResetConcurrencyLimitRequestBody & { concurrencyKey: string },
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      ConcurrencyLimitKeyItem,
+      `${this.baseUrl}/api/v1/concurrency-limits/${encodeURIComponent(name)}/reset`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );

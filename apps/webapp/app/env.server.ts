@@ -1464,6 +1464,7 @@ const EnvironmentSchema = z
       .default("info"),
     RUN_ENGINE_TOTAL_CONCURRENCY_LIMITS_ENABLED: z.string().default("1"),
     RUN_ENGINE_QUEUE_GATES_ENABLED: z.string().default("0"),
+    RUN_ENGINE_CONCURRENCY_KEY_LIMITS_ENABLED: z.string().default("0"),
     RUN_ENGINE_QUEUE_RECONCILE_ENABLED: z.string().default("1"),
     RUN_ENGINE_QUEUE_RECONCILE_SCAN_COUNT: z.coerce.number().int().positive().default(100),
     RUN_ENGINE_QUEUE_RECONCILE_LOCK_TTL_SECONDS: z.coerce.number().int().positive().default(10),

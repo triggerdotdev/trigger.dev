@@ -3303,7 +3303,7 @@ paths:
     get:
       operationId: retrieve_concurrency_limit_v1
       summary: Retrieve concurrency limit
-      description: Retrieve a concurrency limit by name, with its bounds and live running and queued counts.
+      description: Retrieve a concurrency limit by name, with its bounds and live running and queued counts. With the concurrencyKey query parameter, retrieve the limit's view for that one key instead (its per-key bound, any per-key override and when it expires, and the runs executing for the key).
       parameters:
         - name: name
           in: path
@@ -3311,13 +3311,21 @@ paths:
           schema:
             type: string
           description: The limit's name, as declared with `concurrencyLimit()`
+        - name: concurrencyKey
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Return the view for this concurrencyKey instead of the limit itself.
       responses:
         "200":
           description: Concurrency limit retrieved successfully
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/ConcurrencyLimitObject"
+                oneOf:
+                  - "$ref": "#/components/schemas/ConcurrencyLimitObject"
+                  - "$ref": "#/components/schemas/ConcurrencyLimitKeyObject"
         "401":
           description: Unauthorized request
         "404":
@@ -3354,28 +3362,51 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              minProperties: 1
-              additionalProperties: false
-              description: At least one of `perKey` or `total` must be provided.
-              properties:
-                perKey:
-                  type: integer
-                  minimum: 0
-                  maximum: 100000
-                  description: Caps each concurrencyKey pool; runs without a key share one pool. May not exceed the environment concurrency limit.
-                total:
-                  type: integer
-                  minimum: 0
-                  maximum: 100000
-                  description: Caps every run holding this limit, keys or not. May not exceed the environment concurrency limit.
+              oneOf:
+                - type: object
+                  title: Limit bounds
+                  description: Override the limit itself. At least one of `perKey` or `total` must be provided.
+                  minProperties: 1
+                  additionalProperties: false
+                  properties:
+                    perKey:
+                      type: integer
+                      minimum: 0
+                      maximum: 100000
+                      description: Caps each concurrencyKey pool; runs without a key share one pool. May not exceed the environment concurrency limit.
+                    total:
+                      type: integer
+                      minimum: 0
+                      maximum: 100000
+                      description: Caps every run holding this limit, keys or not. May not exceed the environment concurrency limit.
+                - type: object
+                  title: Per-key cap
+                  description: Override the limit's `perKey` for one concurrencyKey only. The override is temporary (see `ttl`), changes no other bound, and applies to every task holding the limit. `total` cannot be given here.
+                  required: [concurrencyKey, perKey]
+                  additionalProperties: false
+                  properties:
+                    concurrencyKey:
+                      type: string
+                      description: The concurrencyKey whose cap is overridden.
+                    perKey:
+                      type: integer
+                      minimum: 0
+                      maximum: 100000
+                      description: The cap for this key; `0` blocks it. May not exceed the environment concurrency limit.
+                    ttl:
+                      oneOf:
+                        - type: string
+                        - type: integer
+                      description: How long the override lasts, as a duration such as "7d" or a number of seconds. Default 7 days, maximum 30 days.
       responses:
         "200":
           description: Concurrency limit overridden successfully
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/ConcurrencyLimitObject"
+                oneOf:
+                  - "$ref": "#/components/schemas/ConcurrencyLimitObject"
+                  - "$ref": "#/components/schemas/ConcurrencyLimitKeyObject"
         "400":
           description: Invalid request parameters, or a bound exceeds the environment concurrency limit
         "401":
@@ -3457,7 +3488,7 @@ paths:
     post:
       operationId: reset_concurrency_limit_v1
       summary: Reset concurrency limit
-      description: Reset a concurrency limit back to the values declared in your code, clearing any override.
+      description: Reset a concurrency limit back to the values declared in your code, clearing any override. With a concurrencyKey in the body, clear that key's per-key override instead and leave the limit itself alone.
       parameters:
         - name: name
           in: path
@@ -3465,13 +3496,25 @@ paths:
           schema:
             type: string
           description: The limit's name
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                concurrencyKey:
+                  type: string
+                  description: Clear the per-key override for this concurrencyKey only.
       responses:
         "200":
           description: Concurrency limit reset successfully
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/ConcurrencyLimitObject"
+                oneOf:
+                  - "$ref": "#/components/schemas/ConcurrencyLimitObject"
+                  - "$ref": "#/components/schemas/ConcurrencyLimitKeyObject"
         "400":
           description: The limit has no override to reset
         "401":
@@ -4726,6 +4769,57 @@ components:
         paused:
           type: boolean
           description: Whether the limit is paused. A paused limit admits no runs until resumed; its configured bounds are kept.
+          example: false
+    ConcurrencyLimitKeyObject:
+      type: object
+      description: A limit's view for one concurrencyKey, returned when a request names a concurrencyKey.
+      required:
+        - name
+        - concurrencyKey
+        - perKey
+        - running
+        - paused
+      properties:
+        name:
+          type: string
+          description: The limit's name, as declared with `concurrencyLimit()`
+          example: "subagents"
+        concurrencyKey:
+          type: string
+          description: The concurrencyKey this view is for
+          example: "session_abc123"
+        perKey:
+          type: object
+          description: The per-key bound for this key
+          properties:
+            current:
+              type: integer
+              nullable: true
+              description: Enforced right now for this key (the override when one is in force, else the limit's perKey), clamped to the environment concurrency limit
+              example: 3
+            base:
+              type: integer
+              nullable: true
+              description: The limit's own perKey as enforced
+              example: 1
+            override:
+              type: integer
+              nullable: true
+              description: The key's temporary override, when one is in force
+              example: 3
+            expiresAt:
+              type: string
+              format: date-time
+              nullable: true
+              description: When the key's override lapses; null when there is none
+              example: "2026-10-16T12:00:00.000Z"
+        running:
+          type: integer
+          description: Runs executing for this key that hold this limit
+          example: 2
+        paused:
+          type: boolean
+          description: Whether the limit is paused. A paused limit admits no runs, override or not.
           example: false
     QueueObject:
       type: object

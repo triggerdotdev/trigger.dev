@@ -233,6 +233,7 @@ export class RunEngine {
       defaultEnvConcurrencyBurstFactor: options.queue?.defaultEnvConcurrencyBurstFactor,
       totalConcurrencyEnabled: options.queue?.totalConcurrencyEnabled,
       gatesEnabled: options.queue?.gatesEnabled,
+      concurrencyKeyLimitsEnabled: options.queue?.concurrencyKeyLimitsEnabled,
       reconcile: options.queue?.reconcile,
       logger: new Logger("RunQueue", options.queue?.logLevel ?? "info"),
       redis: { ...options.queue.redis, keyPrefix: `${options.queue.redis.keyPrefix}runqueue:` },
@@ -1845,6 +1846,38 @@ export class RunEngine {
     queue: string
   ): Promise<number | undefined> {
     return this.runQueue.getQueueConcurrencyLimit(environment, queue);
+  }
+
+  async updateQueueConcurrencyKeyLimit(
+    environment: MinimalAuthenticatedEnvironment,
+    queue: string,
+    concurrencyKey: string,
+    concurrency: number,
+    ttlSeconds: number
+  ) {
+    return this.runQueue.updateQueueConcurrencyKeyLimit(
+      environment,
+      queue,
+      concurrencyKey,
+      concurrency,
+      ttlSeconds
+    );
+  }
+
+  async removeQueueConcurrencyKeyLimit(
+    environment: MinimalAuthenticatedEnvironment,
+    queue: string,
+    concurrencyKey: string
+  ) {
+    return this.runQueue.removeQueueConcurrencyKeyLimit(environment, queue, concurrencyKey);
+  }
+
+  async getQueueConcurrencyKeyLimit(
+    environment: MinimalAuthenticatedEnvironment,
+    queue: string,
+    concurrencyKey: string
+  ) {
+    return this.runQueue.getQueueConcurrencyKeyLimit(environment, queue, concurrencyKey);
   }
 
   async lengthOfQueues(

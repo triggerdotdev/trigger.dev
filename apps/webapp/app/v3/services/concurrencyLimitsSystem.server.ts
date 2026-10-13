@@ -3,8 +3,11 @@ import { errAsync, fromPromise, okAsync, type ResultAsync } from "neverthrow";
 import { Prisma, type PrismaClientOrTransaction } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import {
+  getQueueConcurrencyKeyLimit,
+  removeQueueConcurrencyKeyLimit,
   removeQueueConcurrencyLimits,
   removeQueueTotalConcurrencyLimits,
+  updateQueueConcurrencyKeyLimit,
   updateQueueConcurrencyLimits,
   updateQueueTotalConcurrencyLimits,
 } from "../runQueue.server";
@@ -16,7 +19,13 @@ import { anonymousConcurrencyLimitQueueName } from "./concurrencyLimitNames.serv
 export type ConcurrencyLimitsSystemOptions = {
   db: PrismaClientOrTransaction;
   reader: PrismaClientOrTransaction;
+  /** Whether the engine enforces per-key overrides; off, the override API refuses them. */
+  keyOverridesEnabled?: boolean;
 };
+
+/** Per-key overrides expire: a week unless the caller says otherwise, a month at most. */
+const KEY_OVERRIDE_DEFAULT_TTL_SECONDS = 7 * 24 * 60 * 60;
+const KEY_OVERRIDE_MAX_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 /** Queue rows that back named concurrency limits live under this reserved prefix. */
 const LIMIT_QUEUE_PREFIX = "limit/";
@@ -47,6 +56,33 @@ type ConcurrencyLimitItem = {
 type ConcurrencyLimitOverrideInput = {
   perKey?: number;
   total?: number;
+};
+
+/**
+ * A per-key override: a temporary cap on one concurrencyKey's pool under this limit.
+ * Replaces the limit's perKey for that key only (zero blocks the key) and expires after
+ * `ttl`, a duration string such as "7d" or a number of seconds.
+ */
+type ConcurrencyLimitKeyOverrideInput = {
+  concurrencyKey: string;
+  perKey?: number;
+  total?: number;
+  ttl?: string | number;
+};
+
+type ConcurrencyLimitKeyBoundValue = {
+  current: number | null;
+  base: number | null;
+  override: number | null;
+  expiresAt: Date | null;
+};
+
+type ConcurrencyLimitKeyItem = {
+  name: string;
+  concurrencyKey: string;
+  perKey: ConcurrencyLimitKeyBoundValue;
+  running: number;
+  paused: boolean;
 };
 
 export class ConcurrencyLimitsSystem {
@@ -91,6 +127,100 @@ export class ConcurrencyLimitsSystem {
             cause: error,
           })).map((items) => items[0])
         );
+      },
+      retrieveKey: (
+        environment: AuthenticatedEnvironment,
+        name: string,
+        concurrencyKey: string
+      ) => {
+        return findLimitByName(this.db, environment, name).andThen((row) =>
+          fromPromise(toKeyItem(environment, row, concurrencyKey), (error) => ({
+            type: "other" as const,
+            cause: error,
+          }))
+        );
+      },
+      overrideKey: (
+        environment: AuthenticatedEnvironment,
+        name: string,
+        override: ConcurrencyLimitKeyOverrideInput
+      ) => {
+        if (!this.options.keyOverridesEnabled) {
+          return errAsync({ type: "feature_disabled" as const });
+        }
+        if (override.total !== undefined) {
+          return errAsync({
+            type: "invalid_override" as const,
+            message: "`total` is not per key; omit it when overriding one concurrencyKey",
+          });
+        }
+        const perKey = override.perKey;
+        if (perKey === undefined) {
+          return errAsync({
+            type: "invalid_override" as const,
+            message: "A per-key override needs `perKey`",
+          });
+        }
+        if (!Number.isInteger(perKey) || perKey < 0 || perKey > 100000) {
+          return errAsync({
+            type: "invalid_override" as const,
+            message: "`perKey` must be an integer between 0 and 100000",
+          });
+        }
+        if (perKey > environment.maximumConcurrencyLimit) {
+          return errAsync({
+            type: "invalid_override" as const,
+            message: `\`perKey\` (${perKey}) cannot exceed the environment limit (${environment.maximumConcurrencyLimit})`,
+          });
+        }
+        const ttlSeconds = parseKeyOverrideTtlSeconds(override.ttl);
+        if (ttlSeconds === undefined) {
+          return errAsync({
+            type: "invalid_override" as const,
+            message: '`ttl` must be a duration such as "7d" or a number of seconds, up to 30 days',
+          });
+        }
+
+        return findLimitByName(this.db, environment, name)
+          .andThen((row) => {
+            if (row.concurrencyLimit === null) {
+              return errAsync({
+                type: "invalid_override" as const,
+                message: `Concurrency limit "${name}" has no perKey bound to override for a key`,
+              });
+            }
+            return fromPromise(
+              updateQueueConcurrencyKeyLimit(
+                environment,
+                row.name,
+                override.concurrencyKey,
+                perKey,
+                ttlSeconds
+              ),
+              (error) => ({ type: "sync_limit_to_engine_failed" as const, cause: error })
+            ).map(() => row);
+          })
+          .andThen((row) =>
+            fromPromise(toKeyItem(environment, row, override.concurrencyKey), (error) => ({
+              type: "other" as const,
+              cause: error,
+            }))
+          );
+      },
+      resetKey: (environment: AuthenticatedEnvironment, name: string, concurrencyKey: string) => {
+        return findLimitByName(this.db, environment, name)
+          .andThen((row) =>
+            fromPromise(
+              removeQueueConcurrencyKeyLimit(environment, row.name, concurrencyKey),
+              (error) => ({ type: "sync_limit_to_engine_failed" as const, cause: error })
+            ).map(() => row)
+          )
+          .andThen((row) =>
+            fromPromise(toKeyItem(environment, row, concurrencyKey), (error) => ({
+              type: "other" as const,
+              cause: error,
+            }))
+          );
       },
       override: (
         environment: AuthenticatedEnvironment,
@@ -377,6 +507,74 @@ async function toLimitItems(
     queued: queued[row.name] ?? 0,
     paused: row.paused,
   }));
+}
+
+/**
+ * One key's view of a limit: the limit's own perKey as the base, the key's temporary
+ * override when one is in force, and the runs executing for that key under the limit
+ * (the key's variant of the limit's queue, whether the limit is a gate or a home queue).
+ * A limit with no perKey has no per-key bound, so a stored override is not in force and is
+ * not reported, matching admission.
+ */
+async function toKeyItem(
+  environment: AuthenticatedEnvironment,
+  row: TaskQueue,
+  concurrencyKey: string
+): Promise<ConcurrencyLimitKeyItem> {
+  const [override, running] = await Promise.all([
+    getQueueConcurrencyKeyLimit(environment, row.name, concurrencyKey),
+    engine.currentConcurrencyOfQueue(environment, row.name, concurrencyKey),
+  ]);
+  const base =
+    row.concurrencyLimit === null
+      ? null
+      : Math.min(row.concurrencyLimit, environment.maximumConcurrencyLimit);
+  const inForce = base !== null && override !== undefined;
+  const overrideValue = inForce
+    ? Math.min(override.concurrency, environment.maximumConcurrencyLimit)
+    : null;
+  return {
+    name: concurrencyLimitNameFromRow(row),
+    concurrencyKey,
+    perKey: {
+      current: overrideValue ?? base,
+      base,
+      override: overrideValue,
+      expiresAt: inForce ? override.expiresAt : null,
+    },
+    running: running ?? 0,
+    paused: row.paused,
+  };
+}
+
+const TTL_UNIT_SECONDS: Record<string, number> = {
+  s: 1,
+  m: 60,
+  h: 3600,
+  hr: 3600,
+  d: 86400,
+  w: 604800,
+};
+
+/**
+ * Seconds for a per-key override's life: the default when unset, undefined when unparsable
+ * or over the maximum. A duration string is a run of `<integer><unit>` parts (s, m, h/hr, d,
+ * w) that are all summed, so "1d12h" and "1d2d" both mean what they say.
+ */
+function parseKeyOverrideTtlSeconds(ttl: string | number | undefined): number | undefined {
+  if (ttl === undefined) return KEY_OVERRIDE_DEFAULT_TTL_SECONDS;
+  let seconds: number | undefined;
+  if (typeof ttl === "number") {
+    seconds = Number.isInteger(ttl) && ttl > 0 ? ttl : undefined;
+  } else if (/^(\d+(?:hr|[smhdw]))+$/.test(ttl)) {
+    seconds = 0;
+    for (const [, amount, unit] of ttl.matchAll(/(\d+)(hr|[smhdw])/g)) {
+      seconds += Number(amount) * TTL_UNIT_SECONDS[unit]!;
+    }
+    if (seconds === 0) seconds = undefined;
+  }
+  if (seconds === undefined || seconds > KEY_OVERRIDE_MAX_TTL_SECONDS) return undefined;
+  return seconds;
 }
 
 /**

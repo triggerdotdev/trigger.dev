@@ -64,3 +64,38 @@ export async function removeQueueConcurrencyLimits(
 ) {
   await engine.runQueue.removeQueueConcurrencyLimits(environment, queueName);
 }
+
+/** Sets a temporary per-key override of a queue's perKey for one concurrencyKey, expiring after ttlSeconds */
+export async function updateQueueConcurrencyKeyLimit(
+  environment: AuthenticatedEnvironment,
+  queueName: string,
+  concurrencyKey: string,
+  concurrency: number,
+  ttlSeconds: number
+) {
+  await engine.runQueue.updateQueueConcurrencyKeyLimit(
+    environment,
+    queueName,
+    concurrencyKey,
+    concurrency,
+    ttlSeconds
+  );
+}
+
+/** Removes a per-key override of a queue's perKey */
+export async function removeQueueConcurrencyKeyLimit(
+  environment: AuthenticatedEnvironment,
+  queueName: string,
+  concurrencyKey: string
+) {
+  await engine.runQueue.removeQueueConcurrencyKeyLimit(environment, queueName, concurrencyKey);
+}
+
+/** Reads a per-key override of a queue's perKey, with when it expires */
+export async function getQueueConcurrencyKeyLimit(
+  environment: AuthenticatedEnvironment,
+  queueName: string,
+  concurrencyKey: string
+) {
+  return engine.runQueue.getQueueConcurrencyKeyLimit(environment, queueName, concurrencyKey);
+}
