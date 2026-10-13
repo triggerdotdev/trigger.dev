@@ -358,7 +358,7 @@ export class ClickhouseEventRepository implements IEventRepository {
   }
 
   get maximumTraceViewCount() {
-    return this._config.maximumTraceViewCount ?? 250_000;
+    return this._config.maximumTraceViewCount ?? 150_000;
   }
 
   get maximumErrorMatches() {
