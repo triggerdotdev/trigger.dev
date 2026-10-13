@@ -94,6 +94,12 @@ export const toolsMetadata = {
     description:
       "Cancel a run. The run ID is the ID of the run that was triggered. It starts with run_",
   },
+  replay_run: {
+    name: "replay_run",
+    title: "Replay Run",
+    description:
+      "Replay a run: create a new run of the same task in the same environment, reusing the original run's payload, metadata, tags, queue, concurrency key and machine. Pass any of payload, metadata, tags, queue, concurrencyKey, machine, version, region, delay, ttl, idempotencyKey, maxAttempts, maxDuration or priority to override them for the new run. The run ID starts with run_",
+  },
   list_runs: {
     name: "list_runs",
     title: "List Runs",

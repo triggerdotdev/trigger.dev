@@ -1207,6 +1207,44 @@ export type DevDisconnectResponseBody = z.infer<typeof DevDisconnectResponseBody
 
 export type CreateUploadPayloadUrlResponseBody = z.infer<typeof CreateUploadPayloadUrlResponseBody>;
 
+export const ReplayRunRequestBody = z
+  .strictObject({
+    payload: z.unknown().optional(),
+    /**
+     * How `payload` is encoded. `application/super+json` means `payload` is a SuperJSON
+     * string, which keeps types like `Date` and `BigInt`. Defaults to plain JSON.
+     */
+    payloadType: z.enum(["application/json", "application/super+json"]).optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
+    tags: RunTags.optional(),
+    queue: z.string().optional(),
+    concurrencyKey: ConcurrencyKeySchema.optional(),
+    machine: MachinePresetName.optional(),
+    version: z.string().optional(),
+    region: z.string().optional(),
+    delay: z.string().or(z.coerce.date()).optional(),
+    ttl: z.string().or(z.number().nonnegative().int()).optional(),
+    idempotencyKey: z
+      .string()
+      .max(2048, "idempotencyKey must be 2048 characters or less")
+      .optional(),
+    idempotencyKeyTTL: z.string().optional(),
+    maxAttempts: z.number().int().min(1).optional(),
+    maxDuration: z.number().nonnegative().optional(),
+    priority: z.number().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.payloadType === "application/super+json" && typeof value.payload !== "string") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "payload must be a SuperJSON string when payloadType is application/super+json",
+        path: ["payload"],
+      });
+    }
+  });
+
+export type ReplayRunRequestBody = z.input<typeof ReplayRunRequestBody>;
+
 export const ReplayRunResponse = z.object({
   id: z.string(),
 });

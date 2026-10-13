@@ -303,7 +303,88 @@ paths:
       operationId: replay_run_v1
       summary: Replay a run
       description: Creates a new run with the same payload and options as the original
-        run.
+        run, in the same environment. Send a body to override the payload, metadata, or
+        trigger options for the new run. The body is optional; an empty body replays the
+        run unchanged.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                payload:
+                  description: The payload for the new run. Omit it to reuse the original run's payload.
+                payloadType:
+                  type: string
+                  enum:
+                    - application/json
+                    - application/super+json
+                  description: How `payload` is encoded. Defaults to `application/json`. With `application/super+json`, `payload` must be a SuperJSON string, which keeps types like `Date` and `BigInt`. The SDK sends this automatically.
+                metadata:
+                  type: object
+                  additionalProperties: true
+                  description: Metadata for the new run. Omit it to reuse the original run's metadata.
+                tags:
+                  allOf:
+                    - $ref: "#/components/schemas/RunTags"
+                  description: Tags for the new run. Replaces the original run's tags.
+                queue:
+                  type: string
+                  description: The name of an existing queue in the environment to run on.
+                concurrencyKey:
+                  type: string
+                  description: The concurrency key for the new run.
+                machine:
+                  type: string
+                  enum:
+                    - micro
+                    - small-1x
+                    - small-2x
+                    - medium-1x
+                    - medium-2x
+                    - large-1x
+                    - large-2x
+                  example: "small-2x"
+                  description: The machine preset for the new run.
+                version:
+                  type: string
+                  description: Lock the new run to this deployed version, for example `20250101.1`. Defaults to the current version.
+                region:
+                  type: string
+                  description: The region to run in. Defaults to the original run's region.
+                delay:
+                  type: string
+                  description: Delay the new run, as a duration (`1h30m`) or an ISO 8601 date.
+                ttl:
+                  oneOf:
+                    - type: string
+                    - type: integer
+                  description: How long the new run can stay queued before it expires, as a duration string (`10m`) or a number of seconds.
+                idempotencyKey:
+                  type: string
+                  maxLength: 2048
+                  description: An idempotency key for the new run. A repeated request with the same key returns the same run.
+                idempotencyKeyTTL:
+                  type: string
+                  description: How long the idempotency key is valid, as a duration (`1h`).
+                maxAttempts:
+                  type: integer
+                  minimum: 1
+                  description: The maximum number of attempts for the new run.
+                maxDuration:
+                  type: number
+                  description: The maximum duration of the new run in seconds.
+                priority:
+                  type: number
+                  description: Priority offset in seconds. Higher values are dequeued sooner.
+            example:
+              payload:
+                userId: "user_456"
+              tags:
+                - replayed
+              delay: "10m"
       responses:
         "200":
           description: Successful request
@@ -316,7 +397,7 @@ paths:
                     type: string
                     description: The ID of the new run.
         "400":
-          description: Invalid request
+          description: Invalid request, for example an unknown body field, an unknown queue, or a version that is not deployed to the environment.
           content:
             application/json:
               schema:
@@ -324,9 +405,9 @@ paths:
                 properties:
                   error:
                     type: string
-                    enum:
-                      - Invalid or missing run ID
-                      - Failed to create new run
+                    description: What was wrong with the request.
+        "413":
+          description: The request body is larger than the maximum payload size.
         "401":
           description: Unauthorized request
           content:
@@ -338,6 +419,15 @@ paths:
                     type: string
                     enum:
                       - Invalid or Missing API key
+        "403":
+          description: The credentials can't trigger the run's task. A replay starts a new run, so it needs permission to trigger the task as well as write access to the run.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
         "404":
           description: Resource not found
           content:
@@ -359,6 +449,12 @@ paths:
             import { runs } from "@trigger.dev/sdk";
 
             const handle = await runs.replay("run_1234");
+
+            const withOverrides = await runs.replay("run_1234", {
+              payload: { userId: "user_456" },
+              tags: ["replayed"],
+              delay: "10m",
+            });
 
   "/api/v1/runs/{runId}/tags":
     parameters:

@@ -352,13 +352,17 @@ await runs.cancel(runId);
 
 #### runs.replay()
 
-Replay a run:
+Replay a run, optionally overriding its payload or options for the new run:
 
 ```ts
 import { runs } from "@trigger.dev/sdk";
 
 await runs.replay(runId);
+
+await runs.replay(runId, { payload: { userId: "user_456" }, delay: "10m" });
 ```
+
+See [Replaying](/replaying#replaying-using-the-sdk) for every option.
 
 #### runs.reschedule()
 

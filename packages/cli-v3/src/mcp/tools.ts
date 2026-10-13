@@ -19,6 +19,7 @@ import {
   getRunDetailsTool,
   getSpanDetailsTool,
   listRunsTool,
+  replayRunTool,
   waitForRunToCompleteTool,
 } from "./tools/runs.js";
 import { getCurrentWorker, getTaskSchemaTool, triggerTaskTool } from "./tools/tasks.js";
@@ -51,6 +52,7 @@ const WRITE_TOOLS = new Set([
   deployTool.name,
   triggerTaskTool.name,
   cancelRunTool.name,
+  replayRunTool.name,
   createProjectInOrgTool.name,
   initializeProjectTool.name,
   promotePromptVersionTool.name,
@@ -84,6 +86,7 @@ export function registerTools(context: McpContext) {
     getSpanDetailsTool,
     waitForRunToCompleteTool,
     cancelRunTool,
+    replayRunTool,
     deployTool,
     listDeploysTool,
     listPreviewBranchesTool,

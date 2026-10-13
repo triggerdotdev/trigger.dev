@@ -41,6 +41,7 @@ import {
   type PromotePromptVersionRequestBody,
   type QueueTypeName,
   type ReactivatePromptOverrideRequestBody,
+  ReplayRunRequestBody,
   type RescheduleRunRequestBody,
   type ResolvePromptRequestBody,
   type RetrieveQueueParam,
@@ -113,6 +114,7 @@ import type { AsyncIterableStream } from "../streams/asyncIterableStream.js";
 import { taskContext } from "../task-context-api.js";
 import type { AnyRunTypes, TriggerJwtOptions } from "../types/tasks.js";
 import type { Prettify } from "../types/utils.js";
+import superjson from "../imports/superjson.js";
 import { getEnvVar } from "../utils/getEnv.js";
 import { calculateNextRetryDelay } from "../utils/retries.js";
 import {
@@ -897,15 +899,34 @@ export class ApiClient {
     );
   }
 
-  replayRun(runId: string, requestOptions?: ZodFetchOptions) {
+  replayRun(runId: string, requestOptions?: ZodFetchOptions): ApiPromise<ReplayRunResponse>;
+  replayRun(
+    runId: string,
+    body?: ReplayRunRequestBody,
+    requestOptions?: ZodFetchOptions
+  ): ApiPromise<ReplayRunResponse>;
+  replayRun(
+    runId: string,
+    bodyOrRequestOptions?: ReplayRunRequestBody | ZodFetchOptions,
+    requestOptions?: ZodFetchOptions
+  ): ApiPromise<ReplayRunResponse> {
+    const isBody =
+      bodyOrRequestOptions !== undefined &&
+      Object.keys(bodyOrRequestOptions).every((key) => key in ReplayRunRequestBody.shape);
+    const body = isBody ? (bodyOrRequestOptions as ReplayRunRequestBody) : undefined;
+    const $requestOptions = isBody
+      ? requestOptions
+      : ((bodyOrRequestOptions as ZodFetchOptions | undefined) ?? requestOptions);
+
     return zodfetch(
       ReplayRunResponse,
       `${this.baseUrl}/api/v1/runs/${runId}/replay`,
       {
         method: "POST",
         headers: this.#getHeaders(false),
+        body: body ? JSON.stringify(withSuperJsonPayload(body)) : undefined,
       },
-      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+      mergeRequestOptions(this.defaultRequestOptions, $requestOptions)
     );
   }
 
@@ -2904,6 +2925,27 @@ function shouldRetryStreamBatchItems(
  */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Serializes a replay payload override with SuperJSON, like `trigger()` does, so values such
+ * as `Date` and `BigInt` reach the task intact. Falls back to plain JSON when SuperJSON can't
+ * serialize the value.
+ */
+function withSuperJsonPayload(body: ReplayRunRequestBody): ReplayRunRequestBody {
+  if (body.payload === undefined || body.payloadType !== undefined) {
+    return body;
+  }
+
+  try {
+    return {
+      ...body,
+      payload: superjson.stringify(body.payload),
+      payloadType: "application/super+json",
+    };
+  } catch {
+    return body;
+  }
 }
 
 /**
