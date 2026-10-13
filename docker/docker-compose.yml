@@ -249,6 +249,48 @@ services:
   # The image is distroless (no shell), so a `wget` / `curl` healthcheck
   # always reports unhealthy even when the API is responding. No other
   # service depends on this one, so the healthcheck is omitted.
+  # Six-node Valkey 9 cluster (3 primaries, 3 replicas) for running the webhook engine's Redis in
+  # cluster mode, the topology production uses. Enable it with COMPOSE_PROFILES=valkey-cluster in
+  # .env, then point the webhook engine at any node (ioredis discovers the rest from that seed):
+  #
+  #   WEBHOOK_REDIS_HOST=127.0.0.1
+  #   WEBHOOK_REDIS_PORT=7101
+  #   WEBHOOK_REDIS_TLS_DISABLED=true
+  valkey-cluster:
+    container_name: ${CONTAINER_PREFIX:-}valkey-cluster
+    profiles: ["valkey-cluster"]
+    image: valkey/valkey:9.0.3@sha256:3b55fbaa0cd93cf0d9d961f405e4dfcc70efe325e2d84da207a0a8e6d8fde4f9
+    restart: always
+    volumes:
+      - ./config/valkey-cluster-init.sh:/init.sh:ro
+    command: sh /init.sh
+    environment:
+      VALKEY_CLUSTER_PORTS: >-
+        ${VALKEY_CLUSTER_1_HOST_PORT:-7101}
+        ${VALKEY_CLUSTER_2_HOST_PORT:-7102}
+        ${VALKEY_CLUSTER_3_HOST_PORT:-7103}
+        ${VALKEY_CLUSTER_4_HOST_PORT:-7104}
+        ${VALKEY_CLUSTER_5_HOST_PORT:-7105}
+        ${VALKEY_CLUSTER_6_HOST_PORT:-7106}
+    ports:
+      - "${VALKEY_CLUSTER_1_HOST_PORT:-7101}:${VALKEY_CLUSTER_1_HOST_PORT:-7101}"
+      - "${VALKEY_CLUSTER_2_HOST_PORT:-7102}:${VALKEY_CLUSTER_2_HOST_PORT:-7102}"
+      - "${VALKEY_CLUSTER_3_HOST_PORT:-7103}:${VALKEY_CLUSTER_3_HOST_PORT:-7103}"
+      - "${VALKEY_CLUSTER_4_HOST_PORT:-7104}:${VALKEY_CLUSTER_4_HOST_PORT:-7104}"
+      - "${VALKEY_CLUSTER_5_HOST_PORT:-7105}:${VALKEY_CLUSTER_5_HOST_PORT:-7105}"
+      - "${VALKEY_CLUSTER_6_HOST_PORT:-7106}:${VALKEY_CLUSTER_6_HOST_PORT:-7106}"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "valkey-cli -p ${VALKEY_CLUSTER_1_HOST_PORT:-7101} cluster info | grep -q cluster_state:ok",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - app_network
+
   s2:
     image: ghcr.io/s2-streamstore/s2:latest@sha256:d6ded5ca7dd619fa7c946f06e39a98f9c95c6883c8bb884e5eaa129f232c920c
     command: ["lite", "--init-file", "/s2-spec.json"]

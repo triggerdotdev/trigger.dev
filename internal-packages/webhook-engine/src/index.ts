@@ -1,5 +1,6 @@
 export { bootstrapPartitions } from "./engine/partitions.js";
 export { WebhookEngine } from "./engine/index.js";
+export { isInfrastructureError, WebhookInfrastructureError } from "./engine/errors.js";
 export { parseFilter, FilterParseError } from "./engine/filter/index.js";
 export { signWithVerifierConfig } from "./engine/signing/index.js";
 export type { SignResult, SignArgs } from "./engine/signing/index.js";
@@ -14,4 +15,5 @@ export type {
   IngestResult,
   ReplayResult,
   WebhookWaitpointPorts,
+  WebhookRedisOptions,
 } from "./engine/types.js";

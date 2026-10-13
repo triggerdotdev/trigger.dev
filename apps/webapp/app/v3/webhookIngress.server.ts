@@ -12,11 +12,17 @@ import { extractClientIp } from "~/utils/extractClientIp.server";
 import { readBodyWithCap } from "~/utils/readBodyWithCap.server";
 import { webhookIngressEndpoint } from "~/v3/webhookLimits.server";
 
+/**
+ * Every ingress refusal closes the connection. Most are sent before the body is read, and on a
+ * kept-alive connection the unread body would be taken as the start of the client's next request,
+ * which then hangs.
+ */
+function refuse(error: string, status: number, headers: Record<string, string> = {}) {
+  return json({ error }, { status, headers: { ...headers, Connection: "close" } });
+}
+
 function tooManyRequests(retryAfterSeconds: number) {
-  return json(
-    { error: "Too many requests" },
-    { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } }
-  );
+  return refuse("Too many requests", 429, { "Retry-After": String(retryAfterSeconds) });
 }
 
 /** An admitted ingress request: its opaque id, and its environment's limit when the id resolved. */
@@ -40,10 +46,10 @@ export async function admitWebhookIngress(
   request: Request
 ): Promise<AdmittedWebhookIngress | Response> {
   if (env.WEBHOOK_ENABLED !== "1" || env.WEBHOOK_INGRESS_ENABLED !== "1") {
-    return json({ error: "Not found" }, { status: 404 });
+    return refuse("Not found", 404);
   }
   const opaqueId = params.opaqueId;
-  if (!opaqueId) return json({ error: "Not found" }, { status: 404 });
+  if (!opaqueId) return refuse("Not found", 404);
 
   const ip = extractClientIp(request.headers.get("x-forwarded-for"));
   const blockedFor = webhookIngressIpRateLimiter.blockedFor(ip);
@@ -110,7 +116,7 @@ export async function readWebhookIngressRequest(
   const limitBytes = env.WEBHOOK_INGRESS_BODY_SIZE_LIMIT_MB * 1024 * 1024;
   const contentLength = Number(request.headers.get("content-length") ?? "0");
   if (Number.isFinite(contentLength) && contentLength > limitBytes) {
-    return json({ error: "Payload too large" }, { status: 413 });
+    return refuse("Payload too large", 413);
   }
 
   const rawBytes = await readBodyWithCap(request, limitBytes);
@@ -122,7 +128,7 @@ export async function readWebhookIngressRequest(
         limitBytes + 1
       );
     }
-    return json({ error: "Payload too large" }, { status: 413 });
+    return refuse("Payload too large", 413);
   }
 
   if (admitted.environment) {

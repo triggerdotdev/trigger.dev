@@ -1,8 +1,9 @@
-import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
+import type { RedisClient } from "@internal/redis";
+import { createFairQueueRedisClient, type FairQueueRedisOptions } from "./connection.js";
 import type { FairQueueKeyProducer } from "./types.js";
 
 export interface WorkerQueueManagerOptions {
-  redis: RedisOptions;
+  redis: FairQueueRedisOptions;
   keys: FairQueueKeyProducer;
   logger?: {
     debug: (message: string, context?: Record<string, unknown>) => void;
@@ -24,12 +25,12 @@ export interface WorkerQueueManagerOptions {
  * 3. Worker queue consumer does blocking pop to receive message
  */
 export class WorkerQueueManager {
-  private redis: Redis;
+  private redis: RedisClient;
   private keys: FairQueueKeyProducer;
   private logger: NonNullable<WorkerQueueManagerOptions["logger"]>;
 
   constructor(private options: WorkerQueueManagerOptions) {
-    this.redis = createRedisClient(options.redis);
+    this.redis = createFairQueueRedisClient(options.redis);
     this.keys = options.keys;
     this.logger = options.logger ?? {
       debug: () => {},
@@ -276,7 +277,7 @@ return {messageKey, queueLength}
    * Register custom commands on an external Redis client.
    * Use this when initializing FairQueue with worker queues.
    */
-  registerCommands(redis: Redis): void {
+  registerCommands(redis: RedisClient): void {
     redis.defineCommand("popWithLength", {
       numberOfKeys: 1,
       lua: `

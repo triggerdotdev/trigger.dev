@@ -34,10 +34,10 @@ import type {
 } from "./types.js";
 
 /**
- * With WEBHOOK_WAITERS_REDIS_CLUSTER=1 every test here runs its waiter store on a local three-node
- * Redis Cluster (redis-server and redis-cli on PATH), the topology production uses, so a script
- * whose keys span slots fails with CROSSSLOT here instead of in production. A standalone Redis
- * can't detect that. Jobs and the front gate's job queue stay on the test's own Redis.
+ * With WEBHOOK_WAITERS_REDIS_CLUSTER=1 every test here runs the engine's whole Redis (the job queue,
+ * the front gate and the waiter store) on a local three-node Redis Cluster (redis-server and
+ * redis-cli on PATH), the topology production uses, so a script whose keys span slots fails with
+ * CROSSSLOT here instead of in production. A standalone Redis can't detect that.
  */
 const CLUSTER = process.env.WEBHOOK_WAITERS_REDIS_CLUSTER === "1";
 let clusterPorts: number[] = [];
@@ -157,7 +157,7 @@ function clusterNodes() {
   return clusterPorts.map((port) => ({ host: "127.0.0.1", port }));
 }
 
-/** A client on whichever Redis the engine's waiter store uses in this run. */
+/** A client on whichever Redis the engine uses in this run. */
 function waiterStoreClient(redisOptions: RedisOptions) {
   return CLUSTER
     ? createRedisClusterClient({ nodes: clusterNodes() })
@@ -255,7 +255,10 @@ function makeWaitpoints(options?: {
   completeBehaviour?: (
     ids: string[],
     call: number
-  ) => Array<{ id: string; ok: boolean; error?: string }> | "throw" | undefined;
+  ) =>
+    | Array<{ id: string; ok: boolean; error?: string; infrastructure?: boolean }>
+    | "throw"
+    | undefined;
 }) {
   const byId = new Map<string, FakeWaitpoint>();
   const byKey = new Map<string, string>();
@@ -344,18 +347,18 @@ function buildEngine(
   return new WebhookEngine({
     meter: over?.meter,
     prisma,
-    redis: redisOptions,
+    redis: CLUSTER ? { cluster: { nodes: clusterNodes() } } : redisOptions,
     worker: {
       concurrency: over?.concurrency ?? 1,
       pollIntervalMs: 50,
       disabled: over?.workerDisabled,
       exhaustedRecordDelayMs: over?.exhaustedRecordDelayMs,
+      retryBaseDelayMs: 20,
     },
     endpointCache: { ttlMs: 0 },
     triggerTask: over?.triggerTask ?? makeTaskPort().triggerTask,
     resolveSigningSecret: async (key) => (key === SECRET_KEY ? SECRET : undefined),
     waiters: {
-      ...(CLUSTER ? { cluster: { nodes: clusterNodes() } } : {}),
       waitpoints,
       limits: over?.limits,
       urlSecret: "waiter-url-secret",
@@ -559,9 +562,15 @@ containerTestWithIsolatedRedisNoClickhouse(
     try {
       const none = await engine.ingest(signed(endpoint.opaqueId, orderEvent("ord_x")));
       if (none.outcome !== "accepted") throw new Error(none.outcome);
-      const filtered = await prisma.webhookDelivery.findFirst({ where: { id: none.deliveryId } });
-      expect(filtered?.status).toBe("FILTERED");
-      expect(await engine.isDeliveryQueued(none.deliveryId)).toBeFalsy();
+      const filtered = await waitForDelivery(prisma, none.deliveryId);
+      expect(filtered.status).toBe("FILTERED");
+      expect(
+        await engine.isDeliveryQueued({
+          id: none.deliveryId,
+          environmentId: endpoint.runtimeEnvironmentId,
+          endpointId: endpoint.id,
+        })
+      ).toBeFalsy();
 
       const waiter = await createdWaiter(engine, { match: MATCH("ord_2") });
       const unmatched = await waitForDelivery(
@@ -581,9 +590,7 @@ containerTestWithIsolatedRedisNoClickhouse(
         signed(endpoint.opaqueId, orderEvent("ord_after_cancel"))
       );
       if (afterCancel.outcome !== "accepted") throw new Error(afterCancel.outcome);
-      expect(
-        (await prisma.webhookDelivery.findFirst({ where: { id: afterCancel.deliveryId } }))?.status
-      ).toBe("FILTERED");
+      expect((await waitForDelivery(prisma, afterCancel.deliveryId)).status).toBe("FILTERED");
 
       const live = await createdWaiter(engine, { match: MATCH("ord_2") });
       const wrongType = await waitForDelivery(
@@ -655,6 +662,71 @@ containerTestWithIsolatedRedisNoClickhouse(
       expect(waitpoints.byId.get(waiter.id)?.completions).toBe(1);
     } finally {
       await engine.quit();
+    }
+  }
+);
+
+containerTestWithIsolatedRedisNoClickhouse(
+  "a front-gate promote only applies to the claim it was made for",
+  async ({ redisOptions }) => {
+    const client = waiterStoreClient(redisOptions);
+    const store = new WebhookWaiterStore(client, "", {
+      perEnvironment: 1000,
+      perEndpoint: 100,
+      shapes: 25,
+    });
+
+    try {
+      const first = await store.claimFrontGate("ep_gate", "evt_1", "whd_a", 3600);
+      expect(first.claimed).toBe(true);
+      expect(await store.peekFrontGate("ep_gate", "evt_1")).toEqual({
+        deliveryFriendlyId: "whd_a",
+        promoted: false,
+      });
+
+      await client.set(store.gateKey("ep_gate", "evt_1"), "c:whd_b", "EX", 3600);
+      await store.promoteFrontGate("ep_gate", "evt_1", "whd_a");
+      expect(await store.peekFrontGate("ep_gate", "evt_1")).toEqual({
+        deliveryFriendlyId: "whd_b",
+        promoted: false,
+      });
+
+      await store.promoteFrontGate("ep_gate", "evt_1", "whd_b");
+      expect(await store.peekFrontGate("ep_gate", "evt_1")).toEqual({
+        deliveryFriendlyId: "whd_b",
+        promoted: true,
+      });
+      expect(await client.ttl(store.gateKey("ep_gate", "evt_1"))).toBeGreaterThan(3000);
+      expect(await store.peekFrontGate("ep_gate", "evt_missing")).toBeUndefined();
+    } finally {
+      await client.quit();
+    }
+  }
+);
+
+containerTestWithIsolatedRedisNoClickhouse(
+  "a session append is held while its attempt's lease lives, taken over once it lapses, and skipped once committed",
+  async ({ redisOptions }) => {
+    const client = waiterStoreClient(redisOptions);
+    const store = new WebhookWaiterStore(client, "", {
+      perEnvironment: 1000,
+      perEndpoint: 100,
+      shapes: 25,
+    });
+
+    try {
+      expect(await store.claimSessionPart("ep_part", "whd_1:target", 3600, 300)).toBe("append");
+      expect(await store.claimSessionPart("ep_part", "whd_1:target", 3600, 300)).toBe("busy");
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect(await store.claimSessionPart("ep_part", "whd_1:target", 3600, 300)).toBe("append");
+      await store.commitSessionPart("ep_part", "whd_1:target");
+      expect(await store.claimSessionPart("ep_part", "whd_1:target", 3600, 300)).toBe("done");
+
+      expect(await store.claimSessionPart("ep_part", "whd_2:target", 3600, 300)).toBe("append");
+      await store.releaseSessionPart("ep_part", "whd_2:target");
+      expect(await store.claimSessionPart("ep_part", "whd_2:target", 3600, 300)).toBe("append");
+    } finally {
+      await client.quit();
     }
   }
 );
@@ -755,8 +827,8 @@ containerTestWithIsolatedRedisNoClickhouse(
 
       const result = await engine.ingest(signed(endpoint.opaqueId, orderEvent("ord_6")));
       if (result.outcome !== "accepted") throw new Error(result.outcome);
-      const delivery = await prisma.webhookDelivery.findFirst({ where: { id: result.deliveryId } });
-      expect(delivery?.status).toBe("FILTERED");
+      const delivery = await waitForDelivery(prisma, result.deliveryId);
+      expect(delivery.status).toBe("FILTERED");
 
       await createdWaiter(engine, { match: MATCH("ord_7") });
     } finally {
@@ -964,6 +1036,41 @@ containerTestWithIsolatedRedisNoClickhouse(
     }
   },
   30_000
+);
+
+containerTestWithIsolatedRedisNoClickhouse(
+  "a waiter whose completion fails on our infrastructure keeps retrying past the attempt limit",
+  async ({ prisma, redisOptions }) => {
+    const endpoint = await createEndpoint(prisma);
+    const waitpoints = makeWaitpoints({
+      completeBehaviour: (ids, call) =>
+        call <= 7
+          ? ids.map((id) => ({
+              id,
+              ok: false,
+              error: "Can't reach database server",
+              infrastructure: true,
+            }))
+          : undefined,
+    });
+    const engine = buildEngine(prisma, redisOptions, waitpoints.ports);
+
+    try {
+      const waiter = await createdWaiter(engine, { match: MATCH("ord_infra") });
+      const delivery = await waitForDelivery(
+        prisma,
+        await accepted(engine, signed(endpoint.opaqueId, orderEvent("ord_infra"))),
+        60_000
+      );
+
+      expect(delivery.status).toBe("SUCCEEDED");
+      expect(waitpoints.completeCalls.length).toBe(8);
+      expect(waitpoints.byId.get(waiter.id)?.status).toBe("COMPLETED");
+    } finally {
+      await engine.quit();
+    }
+  },
+  90_000
 );
 
 containerTestWithIsolatedRedisNoClickhouse(

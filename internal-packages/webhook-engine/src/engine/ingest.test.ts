@@ -160,7 +160,6 @@ function buildEngine(
   redisOptions: RedisOptions,
   triggerTask: TriggerWebhookTaskCallback,
   over?: {
-    claimTtlSeconds?: number;
     workerDisabled?: boolean;
     endpointCacheTtlMs?: number;
     resolveSigningSecret?: (key: string) => Promise<string | undefined>;
@@ -175,8 +174,12 @@ function buildEngine(
     resolveVerifyToken: over?.resolveVerifyToken,
     prisma,
     redis: redisOptions,
-    worker: { concurrency: 1, pollIntervalMs: 50, disabled: over?.workerDisabled },
-    frontGate: over?.claimTtlSeconds ? { claimTtlSeconds: over.claimTtlSeconds } : undefined,
+    worker: {
+      concurrency: 1,
+      pollIntervalMs: 50,
+      disabled: over?.workerDisabled,
+      retryBaseDelayMs: 20,
+    },
     endpointCache:
       over?.endpointCacheTtlMs !== undefined ? { ttlMs: over.endpointCacheTtlMs } : undefined,
     triggerTask,
@@ -195,6 +198,16 @@ async function waitFor(fn: () => Promise<boolean>, timeoutMs = 10_000, intervalM
     await new Promise((r) => setTimeout(r, intervalMs));
   }
   throw new Error(`waitFor timed out after ${timeoutMs}ms`);
+}
+
+/** The delivery row, once its deliver job has written it. Ingest only queues the job. */
+async function deliveryRow(prisma: PrismaClient, id: string, timeoutMs = 10_000) {
+  let row: Awaited<ReturnType<PrismaClient["webhookDelivery"]["findFirst"]>> = null;
+  await waitFor(async () => {
+    row = await prisma.webhookDelivery.findFirst({ where: { id } });
+    return row !== null;
+  }, timeoutMs);
+  return row!;
 }
 
 containerTestWithIsolatedRedisNoClickhouse(
@@ -216,9 +229,7 @@ containerTestWithIsolatedRedisNoClickhouse(
       const stamped = async (eventId: string) => {
         const result = await engine.ingest(signedInput(eventId, endpoint.opaqueId));
         if (result.outcome !== "accepted") throw new Error(result.outcome);
-        const row = await prisma.webhookDelivery.findFirstOrThrow({
-          where: { id: result.deliveryId },
-        });
+        const row = await deliveryRow(prisma, result.deliveryId);
         expect(WebhookDeliveryId.parseRetentionDays(result.deliveryFriendlyId)).toBe(
           row.retentionDays
         );
@@ -492,6 +503,7 @@ containerTestWithIsolatedRedisNoClickhouse(
       expect(event.outcome).toBe("accepted");
       if (event.outcome === "accepted") {
         expect(event.response).toEqual({ acceptedStatus: 204, rejectedStatus: 401 });
+        await deliveryRow(prisma, event.deliveryId);
       }
       expect(
         await prisma.webhookDelivery.count({ where: { webhookEndpointId: endpoint.id } })
@@ -709,15 +721,15 @@ containerTestWithIsolatedRedisNoClickhouse(
       >;
       expect(duplicate.deliveryId).toBe(accepted.deliveryFriendlyId);
 
-      const rows = await prisma.webhookDelivery.findMany({
-        where: { webhookEndpointId: endpoint.id },
-      });
-      expect(rows).toHaveLength(1);
-
       await waitFor(async () => {
         const d = await prisma.webhookDelivery.findFirst({ where: { id: accepted.deliveryId } });
         return d?.status === "SUCCEEDED";
       });
+
+      const rows = await prisma.webhookDelivery.findMany({
+        where: { webhookEndpointId: endpoint.id },
+      });
+      expect(rows).toHaveLength(1);
 
       expect(calls).toHaveLength(1);
       expect(runsByKey.size).toBe(1);
@@ -732,7 +744,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   async ({ prisma, redisOptions }) => {
     const endpoint = await createEndpoint(prisma);
     const { triggerTask } = makeTriggerTaskStub();
-    const engine = buildEngine(prisma, redisOptions, triggerTask, { workerDisabled: true });
+    const engine = buildEngine(prisma, redisOptions, triggerTask);
 
     try {
       const input = signedInput("evt_headers_1", endpoint.opaqueId);
@@ -745,8 +757,8 @@ containerTestWithIsolatedRedisNoClickhouse(
       expect(result.outcome).toBe("accepted");
       if (result.outcome !== "accepted") return;
 
-      const delivery = await prisma.webhookDelivery.findFirst({ where: { id: result.deliveryId } });
-      const stored = delivery!.headers as Record<string, string>;
+      const delivery = await deliveryRow(prisma, result.deliveryId);
+      const stored = delivery.headers as Record<string, string>;
 
       expect(stored["authorization"]).toBeUndefined();
       expect(stored["cookie"]).toBeUndefined();
@@ -797,38 +809,82 @@ containerTestWithIsolatedRedisNoClickhouse(
 );
 
 containerTestWithIsolatedRedisNoClickhouse(
-  "a crash between claim and promote releases the short lock so the event is re-processed",
+  "a retry that finds its delivery claimed but never queued queues it under the same id",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createEndpoint(prisma);
-    const { triggerTask } = makeTriggerTaskStub();
-    const engine = buildEngine(prisma, redisOptions, triggerTask, {
-      claimTtlSeconds: 1,
-      workerDisabled: true,
-    });
+    const { triggerTask, calls } = makeTriggerTaskStub();
+    const engine = buildEngine(prisma, redisOptions, triggerTask);
     const gate = createRedisClient(redisOptions);
 
     try {
       const eventId = "evt_crash_1";
       const input = signedInput(eventId, endpoint.opaqueId);
       const gateKey = `webhookdedupe:{${endpoint.id}}:${eventId}`;
+      const claimed = WebhookDeliveryId.generate({ retentionDays: 30 });
 
-      // Post-crash state: claim set (short TTL), but the ingest died before creating the row.
-      await gate.set(gateKey, "whd_orphaned_claim", "EX", 1, "NX");
+      // The first attempt claimed the key and died before queueing its job: no row, no job.
+      await gate.set(gateKey, `c:${claimed.friendlyId}`, "EX", 3600, "NX");
 
-      const blocked = await engine.ingest(input);
-      expect(blocked.outcome).toBe("duplicate");
-      expect(
-        await prisma.webhookDelivery.count({ where: { webhookEndpointId: endpoint.id } })
-      ).toBe(0);
+      const retry = await engine.ingest(input);
+      expect(retry).toMatchObject({ outcome: "duplicate", deliveryId: claimed.friendlyId });
 
-      // Once the short lock expires, a retry re-claims and the event is processed, not dropped.
-      await waitFor(async () => (await gate.get(gateKey)) === null, 5_000);
+      await waitFor(async () => {
+        const d = await prisma.webhookDelivery.findFirst({ where: { id: claimed.id } });
+        return d?.status === "SUCCEEDED";
+      });
+      expect(await gate.get(gateKey)).toBe(`p:${claimed.friendlyId}`);
+      expect(await gate.ttl(gateKey)).toBeGreaterThan(3000);
 
-      const recovered = await engine.ingest(input);
-      expect(recovered.outcome).toBe("accepted");
+      // Once promoted, a further retry is a plain duplicate: no second delivery, no second run.
+      expect(await engine.ingest(input)).toMatchObject({
+        outcome: "duplicate",
+        deliveryId: claimed.friendlyId,
+      });
+      await new Promise((r) => setTimeout(r, 300));
       expect(
         await prisma.webhookDelivery.count({ where: { webhookEndpointId: endpoint.id } })
       ).toBe(1);
+      expect(calls).toHaveLength(1);
+    } finally {
+      await gate.quit();
+      await engine.quit();
+    }
+  }
+);
+
+containerTestWithIsolatedRedisNoClickhouse(
+  "a retry while the first attempt's job is already queued or ran makes no second delivery",
+  async ({ prisma, redisOptions }) => {
+    const endpoint = await createEndpoint(prisma);
+    const { triggerTask, calls } = makeTriggerTaskStub();
+    const engine = buildEngine(prisma, redisOptions, triggerTask);
+    const gate = createRedisClient(redisOptions);
+
+    try {
+      const eventId = "evt_crash_after_enqueue";
+      const input = signedInput(eventId, endpoint.opaqueId);
+      const gateKey = `webhookdedupe:{${endpoint.id}}:${eventId}`;
+
+      const first = await engine.ingest(input);
+      if (first.outcome !== "accepted") throw new Error(first.outcome);
+      await waitFor(async () => {
+        const d = await prisma.webhookDelivery.findFirst({ where: { id: first.deliveryId } });
+        return d?.status === "SUCCEEDED";
+      });
+
+      // As if the first attempt died between queueing its job and promoting the gate.
+      await gate.set(gateKey, `c:${first.deliveryFriendlyId}`, "KEEPTTL", "XX");
+
+      expect(await engine.ingest(input)).toMatchObject({
+        outcome: "duplicate",
+        deliveryId: first.deliveryFriendlyId,
+      });
+      await new Promise((r) => setTimeout(r, 500));
+      const rows = await prisma.webhookDelivery.findMany({
+        where: { webhookEndpointId: endpoint.id },
+      });
+      expect(rows.map((row) => row.status)).toEqual(["SUCCEEDED"]);
+      expect(calls).toHaveLength(1);
     } finally {
       await gate.quit();
       await engine.quit();
@@ -863,10 +919,10 @@ containerTestWithIsolatedRedisNoClickhouse(
       expect(filtered.outcome).toBe("accepted");
       if (filtered.outcome !== "accepted") return;
 
-      const row = await prisma.webhookDelivery.findFirst({ where: { id: filtered.deliveryId } });
-      expect(row?.status).toBe("FILTERED");
-      expect(row?.runId).toBeNull();
-      expect(row?.filterReason).toContain("event.type");
+      const row = await deliveryRow(prisma, filtered.deliveryId);
+      expect(row.status).toBe("FILTERED");
+      expect(row.runId).toBeNull();
+      expect(row.filterReason).toContain("event.type");
 
       // The deliver worker must never pick it up: no new triggerTask call after a beat.
       await new Promise((r) => setTimeout(r, 300));
@@ -1181,29 +1237,32 @@ containerTestWithIsolatedRedisNoClickhouse(
   async ({ prisma, redisOptions }) => {
     const endpoint = await createEndpoint(prisma);
     const { triggerTask, calls } = makeTriggerTaskStub();
+    let armed = false;
     const failing = new Proxy(prisma, {
       get(target, prop) {
         const value = Reflect.get(target, prop);
-        if (prop !== "webhookDelivery")
+        if (prop !== "webhookEndpoint")
           return typeof value === "function" ? value.bind(target) : value;
         return new Proxy(value, {
           get(delegate, method) {
             const fn = Reflect.get(delegate, method);
-            if (method !== "update") return typeof fn === "function" ? fn.bind(delegate) : fn;
-            return async (args: { data?: { status?: string } }) => {
-              if (args.data?.status === "PROCESSING") throw new Error("database unavailable");
+            if (method !== "findFirst") return typeof fn === "function" ? fn.bind(delegate) : fn;
+            return async (args: unknown) => {
+              if (armed) throw new Error("database unavailable");
               return fn.call(delegate, args);
             };
           },
         });
       },
     });
-    const engine = buildEngine(failing, redisOptions, triggerTask);
+    const engine = buildEngine(failing, redisOptions, triggerTask, { workerDisabled: true });
+    const worker = buildEngine(failing, redisOptions, triggerTask);
 
     try {
       const result = await engine.ingest(signedInput("evt_job_throws", endpoint.opaqueId));
       if (result.outcome !== "accepted")
         throw new Error(`expected accepted, got ${result.outcome}`);
+      armed = true;
 
       await waitFor(async () => {
         const d = await prisma.webhookDelivery.findFirst({ where: { id: result.deliveryId } });
@@ -1214,6 +1273,102 @@ containerTestWithIsolatedRedisNoClickhouse(
       expect(d?.errorMessage).toContain("database unavailable");
       expect(d?.processedAt).not.toBeNull();
       expect(calls).toHaveLength(0);
+    } finally {
+      await engine.quit();
+      await worker.quit();
+    }
+  },
+  60_000
+);
+
+containerTestWithIsolatedRedisNoClickhouse(
+  "a delivery whose database is down keeps retrying past the attempt limit and lands once it is back",
+  async ({ prisma, redisOptions }) => {
+    const endpoint = await createEndpoint(prisma);
+    const { triggerTask, calls } = makeTriggerTaskStub();
+    let failures = 0;
+    const down = new Proxy(prisma, {
+      get(target, prop) {
+        const value = Reflect.get(target, prop);
+        if (prop !== "webhookDelivery")
+          return typeof value === "function" ? value.bind(target) : value;
+        return new Proxy(value, {
+          get(delegate, method) {
+            const fn = Reflect.get(delegate, method);
+            if (method !== "create") return typeof fn === "function" ? fn.bind(delegate) : fn;
+            return async (args: unknown) => {
+              if (failures < 8) {
+                failures++;
+                throw Object.assign(new Error("Can't reach database server"), {
+                  name: "PrismaClientKnownRequestError",
+                  code: "P1001",
+                });
+              }
+              return fn.call(delegate, args);
+            };
+          },
+        });
+      },
+    });
+    const engine = buildEngine(down, redisOptions, triggerTask);
+
+    try {
+      const result = await engine.ingest(signedInput("evt_db_down", endpoint.opaqueId));
+      if (result.outcome !== "accepted")
+        throw new Error(`expected accepted, got ${result.outcome}`);
+
+      await waitFor(async () => {
+        const d = await prisma.webhookDelivery.findFirst({ where: { id: result.deliveryId } });
+        return d?.status === "SUCCEEDED";
+      }, 40_000);
+      expect(failures).toBe(8);
+      expect(calls).toHaveLength(1);
+    } finally {
+      await engine.quit();
+    }
+  },
+  60_000
+);
+
+containerTestWithIsolatedRedisNoClickhouse(
+  "a delivery retrying after a failure on our infrastructure shows no error",
+  async ({ prisma, redisOptions }) => {
+    const endpoint = await createEndpoint(prisma);
+    const stub = makeTriggerTaskStub();
+    let failures = 0;
+    let release = false;
+    const triggerTask: TriggerWebhookTaskCallback = async (params) => {
+      if (!release) {
+        failures++;
+        return {
+          success: false,
+          error: "Can't reach database server at internal-db:5432",
+          errorType: "INFRASTRUCTURE",
+        };
+      }
+      return stub.triggerTask(params);
+    };
+    const engine = buildEngine(prisma, redisOptions, triggerTask);
+
+    try {
+      const result = await engine.ingest(signedInput("evt_infra_quiet", endpoint.opaqueId));
+      if (result.outcome !== "accepted")
+        throw new Error(`expected accepted, got ${result.outcome}`);
+
+      await waitFor(async () => failures >= 2, 20_000);
+      const pending = await prisma.webhookDelivery.findFirst({ where: { id: result.deliveryId } });
+      expect(pending?.status).toBe("PENDING");
+      expect(pending?.errorMessage).toBeNull();
+      expect(JSON.stringify(pending?.targets)).not.toContain("error");
+
+      release = true;
+      await waitFor(async () => {
+        const d = await prisma.webhookDelivery.findFirst({ where: { id: result.deliveryId } });
+        return d?.status === "SUCCEEDED";
+      }, 40_000);
+      const d = await prisma.webhookDelivery.findFirst({ where: { id: result.deliveryId } });
+      expect(d?.errorMessage).toBeNull();
+      expect(stub.calls).toHaveLength(1);
     } finally {
       await engine.quit();
     }
@@ -1322,6 +1477,7 @@ containerTestWithIsolatedRedisNoClickhouse(
       const result = await engine.ingest(signedInput("evt_metrics_filtered", endpoint.opaqueId));
       if (result.outcome !== "accepted")
         throw new Error(`expected accepted, got ${result.outcome}`);
+      await deliveryRow(prisma, result.deliveryId);
 
       expect(await metrics.points("webhook_delivery_settle_latency_ms")).toEqual([
         { attributes: { status: "FILTERED" }, value: 1 },
@@ -1402,10 +1558,8 @@ containerTestWithIsolatedRedisNoClickhouse(
       expect(simulated.outcome).toBe("accepted");
       if (simulated.outcome !== "accepted") return;
 
-      const delivery = await prisma.webhookDelivery.findFirst({
-        where: { id: simulated.deliveryId },
-      });
-      expect(delivery?.status).toBe("FILTERED");
+      const delivery = await deliveryRow(prisma, simulated.deliveryId);
+      expect(delivery.status).toBe("FILTERED");
       expect(calls).toHaveLength(0);
     } finally {
       await engine.quit();

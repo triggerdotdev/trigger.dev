@@ -41,13 +41,13 @@ end
 `;
 
 /**
- * The ingest front gate. Claims the dedupe key with a short lock, and on a fresh claim returns the
+ * The ingest front gate. Claims the dedupe key for the dedupe window, and on a fresh claim returns the
  * shard's clock (the delivery's arrival time, compared against waiters' registration times on the
  * same clock) plus the live match shapes and live waiters on the endpoint. A shape's score is the
  * latest expiry among its waiters and outlives a cancel or claim, so liveness also needs a waiter
  * still in the endpoint's live set.
  *
- * KEYS: gate, ws, wwe. ARGV: value, claimTtlSeconds.
+ * KEYS: gate, ws, wwe. ARGV: value, ttlSeconds.
  * Returns {1, arrivedAtMs, liveShapes, liveWaiters} on a claim, {0, existingValue} on a duplicate.
  */
 export const FRONT_GATE = `${HELPERS}
@@ -279,4 +279,35 @@ end
 local remaining = redis.call('SCARD', wwc)
 if redis.call('SISMEMBER', wwc, '__decided__') == 1 then remaining = remaining - 1 end
 return {remaining, tonumber(redis.call('HGET', wwcm, 'claimed') or '0'), tonumber(redis.call('HGET', wwcm, 'failed') or '0'), redis.call('HGET', wwcm, 'error') or ''}
+`;
+
+/**
+ * Promote a front-gate claim to "queued", only while the key still holds this delivery's claim, so a
+ * claim that expired and was replaced by a newer delivery's is never overwritten.
+ *
+ * KEYS: gate. ARGV: claimedValue, promotedValue. Returns 1 when promoted.
+ */
+export const PROMOTE_FRONT_GATE = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  redis.call('SET', KEYS[1], ARGV[2], 'KEEPTTL')
+  return 1
+end
+return 0
+`;
+
+/**
+ * Take a session-append claim. A done claim means the append landed: skip it. A pending claim with a
+ * live lease belongs to an attempt still appending: wait. Otherwise (no claim, or a pending one whose
+ * attempt died before recording its append) take it as pending under a fresh lease and append, so an
+ * interrupted append happens at least once rather than being lost.
+ *
+ * KEYS: part, lease. ARGV: ttlSeconds, leaseMs. Returns 1 to append, 0 to skip, -1 to retry later.
+ */
+export const CLAIM_SESSION_PART = `
+local value = redis.call('GET', KEYS[1])
+if value == 'done' then return 0 end
+if value and redis.call('EXISTS', KEYS[2]) == 1 then return -1 end
+redis.call('SET', KEYS[1], 'pending', 'EX', tonumber(ARGV[1]))
+redis.call('SET', KEYS[2], '1', 'PX', tonumber(ARGV[2]))
+return 1
 `;

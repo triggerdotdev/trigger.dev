@@ -1,4 +1,5 @@
-import type { WebhookWaitpointPorts } from "@internal/webhook-engine";
+import { isInfrastructureError, type WebhookWaitpointPorts } from "@internal/webhook-engine";
+import { webhookPortErrorMessage } from "./webhookPortErrors.server";
 import { stringifyIO } from "@trigger.dev/core/v3";
 import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { tryCatch } from "@trigger.dev/core/utils";
@@ -118,7 +119,12 @@ export const webhookWaitpoints: WebhookWaitpointPorts = {
             })
           );
           return error
-            ? { id, ok: false, error: error instanceof Error ? error.message : String(error) }
+            ? {
+                id,
+                ok: false,
+                error: webhookPortErrorMessage(error, "completeWaitpoint"),
+                infrastructure: isInfrastructureError(error),
+              }
             : { id, ok: true };
         })
       )

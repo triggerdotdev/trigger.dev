@@ -31,6 +31,7 @@ import { BulkActionService } from "./services/bulk/BulkActionV2.server";
 import { prisma } from "~/db.server";
 import { sweepPreviewAutoArchives } from "~/services/previewAutoArchive.server";
 import { controlPlaneResolver } from "./runOpsMigration/controlPlaneResolver.server";
+import { webhookEngine } from "./webhookEngine.server";
 
 function initializeWorker() {
   const redisOptions = {
@@ -54,6 +55,17 @@ function initializeWorker() {
     name: "common-worker",
     redisOptions,
     catalog: {
+      "webhooks.ensurePartitions": {
+        schema: CronSchema,
+        visibilityTimeoutMs: 60_000 * 5,
+        ...(env.WEBHOOK_ENABLED === "1"
+          ? {
+              cron: env.WEBHOOK_PARTITION_ENSURE_SCHEDULE ?? "17 3 * * *",
+              jitterInMs: env.WEBHOOK_PARTITION_ENSURE_JITTER_MS ?? 5 * 60_000,
+            }
+          : {}),
+        retry: { maxAttempts: 1 },
+      },
       "previewBranches.autoArchiveSweep": {
         schema: CronSchema,
         cron: "* * * * *",
@@ -204,6 +216,9 @@ function initializeWorker() {
     shutdownTimeoutMs: env.COMMON_WORKER_SHUTDOWN_TIMEOUT_MS,
     logger: new Logger("CommonWorker", env.COMMON_WORKER_LOG_LEVEL),
     jobs: {
+      "webhooks.ensurePartitions": async () => {
+        await webhookEngine.ensurePartitions();
+      },
       "previewBranches.autoArchiveSweep": async () => {
         await sweepPreviewAutoArchives(prisma, (ids) => {
           for (const id of ids) controlPlaneResolver.invalidateEnvironment(id);

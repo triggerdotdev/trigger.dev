@@ -215,7 +215,10 @@ export async function action({ request, params }: ActionFunctionArgs): Promise<W
   switch (result.outcome) {
     case "accepted": {
       const friendlyId = result.deliveryFriendlyId;
-      if (shouldRedirect) throw redirect(deliveryPathFor(friendlyId));
+      if (shouldRedirect) {
+        await webhookEngine.waitForDeliveryRow(result.deliveryId, 3_000);
+        throw redirect(deliveryPathFor(friendlyId));
+      }
       return {
         success: true,
         httpStatus: answer.status,
@@ -260,6 +263,14 @@ export async function action({ request, params }: ActionFunctionArgs): Promise<W
       return { success: false, error: "This endpoint is not active." };
     case "enqueue_failed":
       return { success: false, error: result.error ?? "Failed to record the delivery." };
+    case "queue_full":
+    case "over_capacity":
+      return {
+        success: false,
+        error: "Too many webhook deliveries are waiting in this environment. Try again shortly.",
+        httpStatus: answer.status,
+        responseBody: answer.body ?? "",
+      };
     default:
       return { success: false, error: "The delivery could not be sent." };
   }

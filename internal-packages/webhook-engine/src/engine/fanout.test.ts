@@ -296,7 +296,7 @@ containerTestWithIsolatedRedisNoClickhouse(
 );
 
 containerTestWithIsolatedRedisNoClickhouse(
-  "a delivery no target passes is FILTERED at ingest with no deliver job, and so is one to an endpoint with no subscribers",
+  "a delivery no target passes is recorded FILTERED and never routed, and so is one to an endpoint with no subscribers",
   async ({ prisma, redisOptions }) => {
     const filtered = await createSharedEndpoint(prisma, [
       { type: "task", id: "paid", taskId: "paid", filter: "event.type == 'invoice.paid'" },
@@ -312,9 +312,7 @@ containerTestWithIsolatedRedisNoClickhouse(
       });
       const second = await ingestAccepted(engine, empty.opaqueId, { id: "evt_empty_1", type: "x" });
 
-      const filteredDelivery = await prisma.webhookDelivery.findFirst({
-        where: { id: first.deliveryId },
-      });
+      const filteredDelivery = await waitForStatus(prisma, first.deliveryId, ["FILTERED"]);
       expect(filteredDelivery?.status).toBe("FILTERED");
       expect(targetsOf(filteredDelivery!)).toEqual([
         {
@@ -324,14 +322,24 @@ containerTestWithIsolatedRedisNoClickhouse(
           reason: expect.stringContaining("invoice.paid"),
         },
       ]);
-      expect(await engine.isDeliveryQueued(first.deliveryId)).toBeFalsy();
+      expect(
+        await engine.isDeliveryQueued({
+          id: first.deliveryId,
+          environmentId: filtered.runtimeEnvironmentId,
+          endpointId: filtered.id,
+        })
+      ).toBeFalsy();
 
-      const emptyDelivery = await prisma.webhookDelivery.findFirst({
-        where: { id: second.deliveryId },
-      });
+      const emptyDelivery = await waitForStatus(prisma, second.deliveryId, ["FILTERED"]);
       expect(emptyDelivery?.status).toBe("FILTERED");
       expect(targetsOf(emptyDelivery!)).toEqual([]);
-      expect(await engine.isDeliveryQueued(second.deliveryId)).toBeFalsy();
+      expect(
+        await engine.isDeliveryQueued({
+          id: second.deliveryId,
+          environmentId: empty.runtimeEnvironmentId,
+          endpointId: empty.id,
+        })
+      ).toBeFalsy();
 
       await new Promise((r) => setTimeout(r, 300));
       expect(task.calls).toHaveLength(0);

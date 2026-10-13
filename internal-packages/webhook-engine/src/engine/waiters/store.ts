@@ -3,9 +3,11 @@ import {
   ACK,
   CANCEL,
   CLAIM,
+  CLAIM_SESSION_PART,
   ENV_CONFIRM,
   ENV_RESERVE,
   FRONT_GATE,
+  PROMOTE_FRONT_GATE,
   REGISTER,
   RESERVE,
 } from "./scripts.js";
@@ -42,6 +44,13 @@ export type WaiterIndex = {
 export type WaiterCandidateGroup = { shape: string; values: string; ids: string[] };
 
 type ScriptClient = RedisClient & {
+  wwPromoteFrontGate(gate: string, claimed: string, promoted: string): Promise<number>;
+  wwClaimSessionPart(
+    part: string,
+    lease: string,
+    ttlSeconds: number,
+    leaseMs: number
+  ): Promise<number>;
   wwFrontGate(
     gate: string,
     ws: string,
@@ -70,6 +79,21 @@ type ScriptClient = RedisClient & {
   ): Promise<unknown[]>;
 };
 
+const GATE_CLAIMED = "c:";
+const GATE_PROMOTED = "p:";
+
+/** A front-gate value: the delivery id it holds, and whether that delivery's job is queued. */
+function parseGateValue(value: string) {
+  if (!value) return undefined;
+  if (value.startsWith(GATE_CLAIMED)) {
+    return { deliveryFriendlyId: value.slice(GATE_CLAIMED.length), promoted: false };
+  }
+  return {
+    deliveryFriendlyId: value.startsWith(GATE_PROMOTED) ? value.slice(GATE_PROMOTED.length) : value,
+    promoted: true,
+  };
+}
+
 /**
  * The webhook waiter store: live waiters per endpoint in sorted sets that die by score (expiry),
  * cancel or claim, with no sweep job. Every key carries the `{endpointId}` hash tag so each script
@@ -86,6 +110,8 @@ export class WebhookWaiterStore {
     private readonly reserveTtlMs = 60_000
   ) {
     client.defineCommand("wwFrontGate", { numberOfKeys: 3, lua: FRONT_GATE });
+    client.defineCommand("wwPromoteFrontGate", { numberOfKeys: 1, lua: PROMOTE_FRONT_GATE });
+    client.defineCommand("wwClaimSessionPart", { numberOfKeys: 2, lua: CLAIM_SESSION_PART });
     client.defineCommand("wwReserve", { numberOfKeys: 5, lua: RESERVE });
     client.defineCommand("wwRegister", { numberOfKeys: 7, lua: REGISTER });
     client.defineCommand("wwCancel", { numberOfKeys: 5, lua: CANCEL });
@@ -144,25 +170,27 @@ export class WebhookWaiterStore {
   }
 
   /**
-   * Claim the ingest dedupe key. On a fresh claim, returns the shard's clock as the delivery's
-   * arrival time and whether the endpoint has live waiters a delivery could match.
+   * Claim the ingest dedupe key for a delivery id, for the whole dedupe window. On a fresh claim,
+   * returns the shard's clock as the delivery's arrival time and whether the endpoint has live
+   * waiters a delivery could match. On a duplicate, returns the delivery id the key holds and
+   * whether that delivery's job is known to be queued (promoted) or only claimed.
    */
   async claimFrontGate(
     endpointId: string,
     idempotencyKey: string,
-    value: string,
-    claimTtlSeconds: number
+    deliveryFriendlyId: string,
+    ttlSeconds: number
   ): Promise<
     | { claimed: true; arrivedAt: number; hasLiveWaiters: boolean }
-    | { claimed: false; existing: string | undefined }
+    | { claimed: false; existing: { deliveryFriendlyId: string; promoted: boolean } | undefined }
   > {
     const e = this.#endpointKeys(endpointId);
     const reply = await this.client.wwFrontGate(
       this.gateKey(endpointId, idempotencyKey),
       e.ws,
       e.wwe,
-      value,
-      claimTtlSeconds
+      `${GATE_CLAIMED}${deliveryFriendlyId}`,
+      ttlSeconds
     );
     if (Number(reply[0]) === 1) {
       return {
@@ -171,21 +199,75 @@ export class WebhookWaiterStore {
         hasLiveWaiters: Number(reply[2]) > 0 && Number(reply[3]) > 0,
       };
     }
-    const existing = String(reply[1] ?? "");
-    return { claimed: false, existing: existing || undefined };
+    return { claimed: false, existing: parseGateValue(String(reply[1] ?? "")) };
   }
 
-  async promoteFrontGate(
+  /** What the front gate holds for an idempotency key, without claiming it. */
+  async peekFrontGate(endpointId: string, idempotencyKey: string) {
+    return parseGateValue((await this.client.get(this.gateKey(endpointId, idempotencyKey))) ?? "");
+  }
+
+  /** Whether the endpoint had live waiters a delivery arriving at `at` could match. */
+  async hasLiveWaiters(endpointId: string, at: number) {
+    const e = this.#endpointKeys(endpointId);
+    const [shapes, waiters] = await Promise.all([
+      this.client.zcount(e.ws, at, "+inf"),
+      this.client.zcount(e.wwe, at, "+inf"),
+    ]);
+    return shapes > 0 && waiters > 0;
+  }
+
+  /**
+   * Mark a claimed delivery's job as queued, keeping the claim's expiry. Only while the key still holds
+   * this delivery's claim: a newer claim for the same event is left alone.
+   */
+  async promoteFrontGate(endpointId: string, idempotencyKey: string, deliveryFriendlyId: string) {
+    await this.client.wwPromoteFrontGate(
+      this.gateKey(endpointId, idempotencyKey),
+      `${GATE_CLAIMED}${deliveryFriendlyId}`,
+      `${GATE_PROMOTED}${deliveryFriendlyId}`
+    );
+  }
+
+  /**
+   * Claim the right to append one delivery's message to a session. `done` once an attempt recorded
+   * the append with `commitSessionPart`; `busy` while another attempt holds the claim's lease;
+   * otherwise `append`, including over a claim whose attempt died before recording its append, so
+   * an interrupted append is retried rather than lost.
+   */
+  async claimSessionPart(
     endpointId: string,
-    idempotencyKey: string,
-    value: string,
-    ttlSeconds: number
-  ) {
-    await this.client.set(this.gateKey(endpointId, idempotencyKey), value, "EX", ttlSeconds);
+    partId: string,
+    ttlSeconds: number,
+    leaseMs: number
+  ): Promise<"append" | "done" | "busy"> {
+    const reply = await this.client.wwClaimSessionPart(
+      this.#sessionPartKey(endpointId, partId),
+      this.#sessionPartLeaseKey(endpointId, partId),
+      ttlSeconds,
+      leaseMs
+    );
+    return reply === 1 ? "append" : reply === 0 ? "done" : "busy";
   }
 
-  async releaseFrontGate(endpointId: string, idempotencyKey: string) {
-    await this.client.del(this.gateKey(endpointId, idempotencyKey));
+  /** Record that a claimed session append landed, so no later attempt appends it again. */
+  async commitSessionPart(endpointId: string, partId: string) {
+    await this.client.set(this.#sessionPartKey(endpointId, partId), "done", "KEEPTTL", "XX");
+    await this.client.del(this.#sessionPartLeaseKey(endpointId, partId));
+  }
+
+  /** Give a session part claim back after its append failed, so a retry appends it. */
+  async releaseSessionPart(endpointId: string, partId: string) {
+    await this.client.del(this.#sessionPartKey(endpointId, partId));
+    await this.client.del(this.#sessionPartLeaseKey(endpointId, partId));
+  }
+
+  #sessionPartKey(endpointId: string, partId: string) {
+    return `${this.prefix}wsessionpart:${this.#tag(endpointId)}:${partId}`;
+  }
+
+  #sessionPartLeaseKey(endpointId: string, partId: string) {
+    return `${this.prefix}wsessionlease:${this.#tag(endpointId)}:${partId}`;
   }
 
   async reserve(

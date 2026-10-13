@@ -342,7 +342,7 @@ postgresTest(
 );
 
 containerTestWithIsolatedRedisNoClickhouse(
-  "bootstrap and scheduled maintenance use the owner connection while app queries use the data role",
+  "bootstrap and partition maintenance use the owner connection while app queries use the data role",
   async ({ prisma, postgresContainer, redisOptions }) => {
     await makePartitioned(prisma);
     const suffix = randomUUID().replace(/-/g, "");
@@ -405,11 +405,7 @@ containerTestWithIsolatedRedisNoClickhouse(
         partitionPrisma: owner,
         redis: redisOptions,
         worker: { concurrency: 1, pollIntervalMs: 10 },
-        partitions: {
-          ensureSchedule: "* * * * * *",
-          ensureJitterInMs: 0,
-          lookaheadDays: 1,
-        },
+        partitions: { lookaheadDays: 1 },
         triggerTask: async () => ({ success: true }),
         resolveSigningSecret: async () => undefined,
         logLevel: "error",
@@ -423,6 +419,7 @@ containerTestWithIsolatedRedisNoClickhouse(
         })
       ).resolves.toEqual({ outcome: "endpoint_not_found" });
 
+      await engine.ensurePartitions();
       await expect
         .poll(
           async () => ({
@@ -458,23 +455,20 @@ containerTestWithIsolatedRedisNoClickhouse(
 );
 
 containerTestWithIsolatedRedisNoClickhouse(
-  "scheduled partition maintenance falls back to the writer when no owner connection is supplied",
+  "partition maintenance falls back to the writer when no owner connection is supplied",
   async ({ prisma, redisOptions }) => {
     await makePartitioned(prisma);
     const engine = new WebhookEngine({
       prisma,
       redis: redisOptions,
       worker: { concurrency: 1, pollIntervalMs: 10 },
-      partitions: {
-        ensureSchedule: "* * * * * *",
-        ensureJitterInMs: 0,
-        lookaheadDays: 0,
-      },
+      partitions: { lookaheadDays: 0 },
       triggerTask: async () => ({ success: true }),
       resolveSigningSecret: async () => undefined,
       logLevel: "error",
     });
     try {
+      await engine.ensurePartitions();
       await expect
         .poll(() => partitionExists(prisma, partitionName(30, floorDayUTC(new Date()))), {
           timeout: 15_000,

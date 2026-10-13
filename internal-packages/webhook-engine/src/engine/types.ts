@@ -2,9 +2,24 @@ import type { Logger } from "@trigger.dev/core/logger";
 import type { WebhookEndpointContext, WebhookResponseConfig } from "@trigger.dev/core/v3";
 import type { Meter, Tracer } from "@internal/tracing";
 import type { WebhookDatabase } from "@trigger.dev/database";
-import type { RedisClusterClientOptions, RedisOptions } from "@internal/redis";
+import type { FairQueueRedisOptions } from "@trigger.dev/redis-worker";
 
-export type WebhookDeliverTaskErrorType = "QUEUE_LIMIT" | "SYSTEM_ERROR" | "NOT_FOUND";
+/**
+ * `INFRASTRUCTURE` is a failure of our own systems (database, Redis, the network to S2 or the run
+ * engine): the delivery retries until it clears, however long that takes.
+ */
+export type WebhookDeliverTaskErrorType =
+  | "QUEUE_LIMIT"
+  | "SYSTEM_ERROR"
+  | "NOT_FOUND"
+  | "INFRASTRUCTURE";
+
+/**
+ * The webhooks Redis: one node, or a cluster. Every structure the engine keeps (the job queue, the
+ * front gate, waiters, session append claims) uses hash tags, so it runs unchanged on either.
+ * A cluster's key prefix goes in `cluster.clusterOptions.keyPrefix`.
+ */
+export type WebhookRedisOptions = FairQueueRedisOptions;
 
 export type TriggerWebhookTaskParams = {
   environmentId: string;
@@ -36,7 +51,7 @@ export interface WebhookEngineOptions {
   prisma: WebhookDatabase;
   /** Direct owner connection for partition DDL. Defaults to prisma when not configured. */
   partitionPrisma?: WebhookDatabase;
-  redis: RedisOptions;
+  redis: WebhookRedisOptions;
   /**
    * When true the feature is fully off: the engine skips opening its Redis clients and building the
    * worker, so a deployment with webhooks disabled holds no connections and does no queue polling.
@@ -53,15 +68,29 @@ export interface WebhookEngineOptions {
      */
     tenantConcurrency?: number | ((environmentId: string) => Promise<number>);
     pollIntervalMs?: number;
-    shutdownTimeoutMs?: number;
     disabled?: boolean;
     /** How long a job's exhausted record waits to retry when the exhausted handler failed. Default 30s. */
     exhaustedRecordDelayMs?: number;
+    /** The first retry's backoff; later ones double from it. Default 1s. */
+    retryBaseDelayMs?: number;
   };
   partitions?: {
-    ensureSchedule?: string;
-    ensureJitterInMs?: number;
     lookaheadDays?: number; // 7..14; how many days ahead to pre-create
+  };
+  /** Bounds on what deliveries waiting in the job queue may hold in Redis. */
+  queue?: {
+    /**
+     * The most job payload bytes one environment may have queued or in flight. Ingest answers
+     * `queue_full` past it. Absent or 0 means no limit.
+     */
+    environmentPayloadBytesLimit?: (environmentId: string) => Promise<number> | number;
+    /**
+     * The share of a primary's `maxmemory` past which ingest answers `over_capacity` for the
+     * environments whose jobs live on it. Default 0.75.
+     */
+    highWater?: number;
+    /** How often each primary's memory is read. Default 5s. */
+    memoryCheckIntervalMs?: number;
   };
   /** Which retention class new deliveries are stamped with. */
   retention?: {
@@ -72,7 +101,7 @@ export interface WebhookEngineOptions {
   };
   tracer?: Tracer;
   meter?: Meter;
-  frontGate?: { defaultTtlSeconds?: number; maxTtlSeconds?: number; claimTtlSeconds?: number };
+  frontGate?: { defaultTtlSeconds?: number; maxTtlSeconds?: number };
   // Hot-path cache for the endpoint + resolved signing secret, keyed by opaqueId. ttlMs <= 0 disables.
   endpointCache?: { ttlMs?: number; maxSize?: number };
   triggerTask: TriggerWebhookTaskCallback;
@@ -92,12 +121,6 @@ export interface WebhookEngineOptions {
 }
 
 type WebhookWaiterOptions = {
-  /**
-   * The waiter store (also the ingest front gate). A cluster when `cluster` is set, otherwise a
-   * standalone node from `redis`, falling back to the engine's `redis`.
-   */
-  redis?: RedisOptions;
-  cluster?: RedisClusterClientOptions;
   limits?: Partial<WebhookWaiterLimits>;
   /** Signs URL-matched waiter paths so waiter ids can't be enumerated through the ingress. */
   urlSecret?: string;
@@ -146,7 +169,7 @@ export type WebhookWaitpointPorts = {
     waitpointIds: string[];
     output: WebhookWaiterOutput;
     deliveryFriendlyId: string;
-  }): Promise<Array<{ id: string; ok: boolean; error?: string }>>;
+  }): Promise<Array<{ id: string; ok: boolean; error?: string; infrastructure?: boolean }>>;
   fail(params: {
     environmentId: string;
     waitpointId: string;
@@ -231,6 +254,17 @@ export type DeliverWebhookToSessionParams = {
   // Evaluated startOn: true (default) allows creating a new session; false means resume-only, so a
   // key with no existing session is ignored rather than started.
   isSessionStart: boolean;
+  /**
+   * Claim the right to append `partId`, durably and for longer than a delivery can be retried.
+   * `done` once an earlier attempt recorded the append with `commitPart`; `busy` while another
+   * attempt holds the claim's lease (the caller should retry later); otherwise `append`, including
+   * over a claim whose attempt died before committing, so the append happens at least once.
+   */
+  claimPart: () => Promise<"append" | "done" | "busy">;
+  /** Record that the append landed, so no later run of the delivery appends it again. */
+  commitPart: () => Promise<void>;
+  /** Give the claim back after an append that landed nothing, so the retry appends it. */
+  releasePart: () => Promise<void>;
 };
 
 export type DeliverWebhookToSessionCallback = (params: DeliverWebhookToSessionParams) => Promise<{
@@ -250,7 +284,8 @@ export type IngestInput = {
 };
 
 export type ReplayResult =
-  | { outcome: "replayed"; deliveryId: string; deliveryFriendlyId: string } // new row + run enqueued
+  | { outcome: "replayed"; deliveryId: string; deliveryFriendlyId: string } // deliver job queued; it writes the row
+  | { outcome: "queue_full" }
   | { outcome: "delivery_not_found" }
   | { outcome: "endpoint_not_found" }
   | { outcome: "target_not_found" }
@@ -295,7 +330,12 @@ export type IngestResult =
   | { outcome: "secret_missing"; response?: IngestResponseContract }
   | { outcome: "verification_failed"; error: string; response?: IngestResponseContract }
   | { outcome: "method_not_allowed"; allowedMethods?: ("GET" | "HEAD" | "POST")[] }
-  | { outcome: "enqueue_failed"; error: string };
+  /** The delivery couldn't be queued (Redis unreachable, say); the provider should retry soon. */
+  | { outcome: "enqueue_failed"; error: string }
+  /** The environment is at its queued payload bytes limit; the provider should retry later. */
+  | { outcome: "queue_full" }
+  /** The environment's queue shard is past the memory high-water mark; retry later. */
+  | { outcome: "over_capacity" };
 
 /** A provider's GET verification request: the endpoint's opaque id and the decoded query string. */
 export type GetHandshakeInput = {

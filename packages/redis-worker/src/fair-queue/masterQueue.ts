@@ -1,9 +1,10 @@
-import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
+import type { RedisClient } from "@internal/redis";
+import { createFairQueueRedisClient, type FairQueueRedisOptions } from "./connection.js";
 import { jumpHash } from "@trigger.dev/core/v3/serverOnly";
 import type { FairQueueKeyProducer, QueueWithScore } from "./types.js";
 
 export interface MasterQueueOptions {
-  redis: RedisOptions;
+  redis: FairQueueRedisOptions;
   keys: FairQueueKeyProducer;
   shardCount: number;
 }
@@ -17,12 +18,12 @@ export interface MasterQueueOptions {
  * - Queues scored by oldest message timestamp
  */
 export class MasterQueue {
-  private redis: Redis;
+  private redis: RedisClient;
   private keys: FairQueueKeyProducer;
   private shardCount: number;
 
   constructor(private options: MasterQueueOptions) {
-    this.redis = createRedisClient(options.redis);
+    this.redis = createFairQueueRedisClient(options.redis);
     this.keys = options.keys;
     this.shardCount = Math.max(1, options.shardCount);
 
@@ -193,6 +194,10 @@ export class MasterQueue {
    * Provides better distribution than djb2 and minimal reshuffling when shard count changes.
    */
   #hashToShard(queueId: string): number {
+    const keys = this.options.keys;
+    if (keys.tenantShard) {
+      return keys.tenantShard(keys.extractTenantId(queueId));
+    }
     return jumpHash(queueId, this.shardCount);
   }
 

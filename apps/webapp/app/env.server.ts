@@ -1940,67 +1940,17 @@ const EnvironmentSchema = z
     WEBHOOK_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().positive().default(20),
     WEBHOOK_WORKER_TENANT_CONCURRENCY: z.coerce.number().int().positive().default(100),
     WEBHOOK_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
-    WEBHOOK_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(30_000),
     WEBHOOK_ENABLED: z.string().default("0"),
 
-    WEBHOOK_WORKER_REDIS_HOST: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_HOST),
-    WEBHOOK_WORKER_REDIS_PORT: z.coerce
-      .number()
-      .optional()
-      .transform(
-        (v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)
-      ),
-    WEBHOOK_WORKER_REDIS_USERNAME: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_USERNAME),
-    WEBHOOK_WORKER_REDIS_PASSWORD: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_PASSWORD),
-    WEBHOOK_WORKER_REDIS_TLS_DISABLED: z
-      .string()
-      .default(process.env.REDIS_TLS_DISABLED ?? "false"),
-
-    // Webhook waiter store (also the ingest front gate). Falls back to the webhook worker Redis.
-    // Cluster mode connects to the host/port as a cluster seed node.
-    WEBHOOK_WAITER_REDIS_HOST: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.WEBHOOK_WORKER_REDIS_HOST ?? process.env.REDIS_HOST),
-    WEBHOOK_WAITER_REDIS_PORT: z.coerce
-      .number()
-      .optional()
-      .transform(
-        (v) =>
-          v ??
-          (process.env.WEBHOOK_WORKER_REDIS_PORT
-            ? parseInt(process.env.WEBHOOK_WORKER_REDIS_PORT)
-            : process.env.REDIS_PORT
-              ? parseInt(process.env.REDIS_PORT)
-              : undefined)
-      ),
-    WEBHOOK_WAITER_REDIS_USERNAME: z
-      .string()
-      .optional()
-      .transform(
-        (v) => v ?? process.env.WEBHOOK_WORKER_REDIS_USERNAME ?? process.env.REDIS_USERNAME
-      ),
-    WEBHOOK_WAITER_REDIS_PASSWORD: z
-      .string()
-      .optional()
-      .transform(
-        (v) => v ?? process.env.WEBHOOK_WORKER_REDIS_PASSWORD ?? process.env.REDIS_PASSWORD
-      ),
-    WEBHOOK_WAITER_REDIS_TLS_DISABLED: z
-      .string()
-      .default(
-        process.env.WEBHOOK_WORKER_REDIS_TLS_DISABLED ?? process.env.REDIS_TLS_DISABLED ?? "false"
-      ),
-    WEBHOOK_WAITER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+    // The webhooks Redis: a cluster (durable in production), reached through any node as a seed.
+    // It holds the job queue, the ingest front gate, waiters and session append claims.
+    WEBHOOK_REDIS_HOST: z.string().optional(),
+    WEBHOOK_REDIS_PORT: z.coerce.number().optional(),
+    WEBHOOK_REDIS_USERNAME: z.string().optional(),
+    WEBHOOK_REDIS_PASSWORD: z.string().optional(),
+    WEBHOOK_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+    // The share of a primary's maxmemory past which ingest refuses deliveries whose jobs live on it.
+    WEBHOOK_QUEUE_HIGH_WATER: z.coerce.number().positive().max(1).default(0.75),
     WEBHOOK_WAITER_MAX_PER_ENVIRONMENT: z.coerce.number().int().positive().default(1_000_000),
     WEBHOOK_WAITER_MAX_PER_ENDPOINT: z.coerce.number().int().positive().default(10_000),
     WEBHOOK_WAITER_MAX_SHAPES: z.coerce.number().int().positive().default(25),

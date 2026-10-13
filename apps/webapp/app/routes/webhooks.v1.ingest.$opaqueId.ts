@@ -61,6 +61,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
     case "enqueue_failed":
       logger.error("webhook ingress enqueue failed", { opaqueId, error: result.error });
       break;
+    case "queue_full":
+    case "over_capacity":
+      logger.warn("webhook ingress refused: queue at capacity", {
+        opaqueId,
+        reason: result.outcome,
+      });
+      break;
     default:
       break;
   }

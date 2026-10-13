@@ -39,6 +39,11 @@ export {
 export { OtelCollectorContainer, StartedOtelCollectorContainer } from "./otelCollector";
 export { laggingReplica, type LaggingModel } from "./laggingReplica";
 export { createDbBlipController, type DbBlipController, type DbBlipHandle } from "./dbBlip";
+export {
+  hasLocalRedisServer,
+  startLocalRedisCluster,
+  type LocalRedisCluster,
+} from "./localRedisCluster";
 export { logCleanup };
 export type { MinIOConnectionConfig };
 

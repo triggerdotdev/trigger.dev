@@ -1,4 +1,10 @@
-import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
+import type { RedisClient } from "@internal/redis";
+import {
+  createFairQueueRedisClient,
+  keyPrefixOf,
+  scanKeys,
+  type FairQueueRedisOptions,
+} from "./connection.js";
 import type {
   ConcurrencyCheckResult,
   ConcurrencyGroupConfig,
@@ -16,7 +22,7 @@ import type {
 const SWEEP_MEMBER_CHUNK_SIZE = 500;
 
 export interface ConcurrencyManagerOptions {
-  redis: RedisOptions;
+  redis: FairQueueRedisOptions;
   keys: FairQueueKeyProducer;
   groups: ConcurrencyGroupConfig[];
   logger?: {
@@ -34,14 +40,14 @@ export interface ConcurrencyManagerOptions {
  * - Efficient batch checking of all groups
  */
 export class ConcurrencyManager {
-  private redis: Redis;
+  private redis: RedisClient;
   private keys: FairQueueKeyProducer;
   private groups: ConcurrencyGroupConfig[];
   private groupsByName: Map<string, ConcurrencyGroupConfig>;
   private logger: NonNullable<ConcurrencyManagerOptions["logger"]>;
 
   constructor(private options: ConcurrencyManagerOptions) {
-    this.redis = createRedisClient(options.redis);
+    this.redis = createFairQueueRedisClient(options.redis);
     this.keys = options.keys;
     this.groups = options.groups;
     this.groupsByName = new Map(options.groups.map((g) => [g.name, g]));
@@ -186,7 +192,10 @@ export class ConcurrencyManager {
    * record can only be a leak; if the message is about to be re-claimed, reserve simply
    * re-adds the member.
    *
-   * @param inflightDataKeys - The in-flight data hash keys for every shard. The sweep
+   * With a tenant-sharded key producer, each shard's sets are checked against that shard's
+   * in-flight data only, so the check stays in one cluster slot.
+   *
+   * @param inflightDataKeys - The in-flight data hash keys for every shard, in shard order. The sweep
    *   refuses to run when this is empty, since with nowhere to look for running messages
    *   every member would look orphaned and all concurrency accounting would be erased.
    * @returns The message ids that were removed, and how many sets were checked
@@ -201,24 +210,12 @@ export class ConcurrencyManager {
       return { scannedSets: 0, removed: [] };
     }
 
-    const keyPrefix = this.options.redis.keyPrefix ?? "";
+    const keyPrefix = keyPrefixOf(this.options.redis);
     let scannedSets = 0;
     const removed: string[] = [];
 
-    for (const group of this.groups) {
-      const pattern = `${keyPrefix}${this.keys.concurrencyKey(group.name, "*")}`;
-      let cursor = "0";
-
-      do {
-        const [nextCursor, foundKeys] = await this.redis.scan(
-          cursor,
-          "MATCH",
-          pattern,
-          "COUNT",
-          1000
-        );
-        cursor = nextCursor;
-
+    for (const scope of this.#sweepScopes(inflightDataKeys)) {
+      for await (const foundKeys of scanKeys(this.redis, `${keyPrefix}${scope.pattern}`)) {
         for (const fullKey of foundKeys) {
           const key =
             keyPrefix && fullKey.startsWith(keyPrefix) ? fullKey.slice(keyPrefix.length) : fullKey;
@@ -244,8 +241,8 @@ export class ConcurrencyManager {
               for (let i = 0; i < page.length; i += SWEEP_MEMBER_CHUNK_SIZE) {
                 const chunk = page.slice(i, i + SWEEP_MEMBER_CHUNK_SIZE);
                 const removedIds = await this.redis.removeOrphanedConcurrencySlots(
-                  1 + inflightDataKeys.length,
-                  [key, ...inflightDataKeys],
+                  1 + scope.inflightDataKeys.length,
+                  [key, ...scope.inflightDataKeys],
                   ...chunk
                 );
                 removed.push(...removedIds);
@@ -262,10 +259,26 @@ export class ConcurrencyManager {
             });
           }
         }
-      } while (cursor !== "0");
+      }
     }
 
     return { scannedSets, removed };
+  }
+
+  #sweepScopes(inflightDataKeys: string[]): Array<{ pattern: string; inflightDataKeys: string[] }> {
+    const keys = this.keys;
+    if (keys.tenantShard && keys.concurrencyKeyPattern) {
+      return this.groups.flatMap((group) =>
+        inflightDataKeys.map((inflightDataKey, shardId) => ({
+          pattern: keys.concurrencyKeyPattern!(group.name, shardId),
+          inflightDataKeys: [inflightDataKey],
+        }))
+      );
+    }
+    return this.groups.map((group) => ({
+      pattern: keys.concurrencyKey(group.name, "*"),
+      inflightDataKeys,
+    }));
   }
 
   /**

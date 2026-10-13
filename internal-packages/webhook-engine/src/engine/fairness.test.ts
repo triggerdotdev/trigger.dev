@@ -134,7 +134,13 @@ containerTestWithIsolatedRedisNoClickhouse(
       const result = await ingress.ingest(signed(endpoint.opaqueId));
       if (result.outcome !== "accepted") throw new Error(`ingest ${result.outcome}`);
       await new Promise((resolve) => setTimeout(resolve, 500));
-      expect(await ingress.isDeliveryQueued(result.deliveryId)).toBe(true);
+      expect(
+        await ingress.isDeliveryQueued({
+          id: result.deliveryId,
+          environmentId: endpoint.runtimeEnvironmentId,
+          endpointId: endpoint.id,
+        })
+      ).toBe(true);
 
       worker = new WebhookEngine({
         ...common,

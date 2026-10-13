@@ -1,9 +1,10 @@
-import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
+import type { RedisClient } from "@internal/redis";
+import { createFairQueueRedisClient, type FairQueueRedisOptions } from "./connection.js";
 import { jumpHash } from "@trigger.dev/core/v3/serverOnly";
 import type { FairQueueKeyProducer, QueueWithScore } from "./types.js";
 
 export interface TenantDispatchOptions {
-  redis: RedisOptions;
+  redis: FairQueueRedisOptions;
   keys: FairQueueKeyProducer;
   shardCount: number;
 }
@@ -29,12 +30,12 @@ export interface TenantWithScore {
  * queue backlog so the scheduler iterates tenants (not queues) at Level 1.
  */
 export class TenantDispatch {
-  private redis: Redis;
+  private redis: RedisClient;
   private keys: FairQueueKeyProducer;
   private shardCount: number;
 
   constructor(private options: TenantDispatchOptions) {
-    this.redis = createRedisClient(options.redis);
+    this.redis = createFairQueueRedisClient(options.redis);
     this.keys = options.keys;
     this.shardCount = Math.max(1, options.shardCount);
   }
@@ -45,6 +46,9 @@ export class TenantDispatch {
    * always maps to exactly one dispatch shard.
    */
   getShardForTenant(tenantId: string): number {
+    if (this.options.keys.tenantShard) {
+      return this.options.keys.tenantShard(tenantId);
+    }
     return jumpHash(tenantId, this.shardCount);
   }
 
