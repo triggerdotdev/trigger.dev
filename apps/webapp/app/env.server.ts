@@ -1144,6 +1144,32 @@ const EnvironmentSchema = z
     BATCH_METADATA_OPERATIONS_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
     BATCH_METADATA_OPERATIONS_FLUSH_ENABLED: z.string().default("1"),
     BATCH_METADATA_OPERATIONS_FLUSH_LOGGING_ENABLED: z.string().default("1"),
+    BATCH_METADATA_OPERATIONS_BUFFER_BACKEND: z.enum(["memory", "redis"]).default("memory"),
+    BATCH_METADATA_OPERATIONS_DRAIN_BATCH_SIZE: z.coerce.number().int().default(10),
+    BATCH_METADATA_OPERATIONS_MAX_PENDING_PER_RUN: z.coerce.number().int().default(1_000),
+    METADATA_BUFFER_REDIS_LOCK_TTL_MS: z.coerce.number().int().default(30_000),
+    METADATA_BUFFER_REDIS_HOST: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_HOST),
+    METADATA_BUFFER_REDIS_PORT: z.coerce
+      .number()
+      .optional()
+      .transform(
+        (v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)
+      ),
+    METADATA_BUFFER_REDIS_USERNAME: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_USERNAME),
+    METADATA_BUFFER_REDIS_PASSWORD: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_PASSWORD),
+    METADATA_BUFFER_REDIS_TLS_DISABLED: z
+      .string()
+      .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+    METADATA_BUFFER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
     // Run Engine 2.0
     RUN_ENGINE_WORKER_COUNT: z.coerce.number().int().default(4),
