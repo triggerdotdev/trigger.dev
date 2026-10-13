@@ -694,4 +694,60 @@ describe("Worker", () => {
       await worker.stop();
     }
   );
+
+  redisTest(
+    "A failed attempt does not overwrite or dead-letter a newer enqueue of the same id",
+    { timeout: 30_000 },
+    async ({ redisContainer }) => {
+      for (const maxAttempts of [1, 3]) {
+        const seen: Array<{ value: number; attempt: number }> = [];
+        let release!: () => void;
+        const released = new Promise<void>((resolve) => (release = resolve));
+        let started!: () => void;
+        const firstStarted = new Promise<void>((resolve) => (started = resolve));
+
+        const worker = new Worker({
+          name: `test-supersede-${maxAttempts}`,
+          redisOptions: {
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+            password: redisContainer.getPassword(),
+          },
+          catalog: {
+            testJob: {
+              schema: z.object({ value: z.number() }),
+              visibilityTimeoutMs: 5000,
+              retry: { maxAttempts, minTimeoutInMs: 10_000, maxTimeoutInMs: 10_000 },
+            },
+          },
+          jobs: {
+            testJob: async ({ payload, attempt }) => {
+              seen.push({ value: payload.value, attempt });
+              if (payload.value !== 1) return;
+              started();
+              await released;
+              throw new Error("first attempt failed");
+            },
+          },
+          concurrency: { workers: 1, tasksPerWorker: 2 },
+          pollIntervalMs: 20,
+          logger: new Logger("test", "error"),
+        }).start();
+
+        await worker.enqueue({ id: "same", job: "testJob", payload: { value: 1 } });
+        await firstStarted;
+        await worker.enqueue({ id: "same", job: "testJob", payload: { value: 2 } });
+        release();
+
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        expect(await worker.queue.sizeOfDeadLetterQueue()).toBe(0);
+        await worker.stop();
+
+        // The newer enqueue ran on its own first attempt, and the failed attempt neither
+        // requeued its stale payload over it nor moved it to the dead letter queue.
+        expect(seen).toContainEqual({ value: 2, attempt: 0 });
+        expect(seen.filter((s) => s.value === 1)).toHaveLength(1);
+      }
+    }
+  );
 });
