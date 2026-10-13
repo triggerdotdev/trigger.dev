@@ -60,11 +60,15 @@ function defaults(): WebhookLimitsDefaults {
     deliveryRetentionDays: env.WEBHOOK_DELIVERY_RETENTION_DAYS,
     deliveryStorageDays: env.WEBHOOK_DELIVERY_STORAGE_DAYS,
     endpointRateLimitTokens: env.WEBHOOK_INGRESS_RATE_LIMIT_TOKENS,
-    endpointRateLimitWindowSeconds: Math.max(
-      1,
-      Math.round((parseDuration(env.WEBHOOK_INGRESS_RATE_LIMIT_WINDOW) ?? 10_000) / 1000)
-    ),
+    endpointRateLimitWindowSeconds: windowSeconds(env.WEBHOOK_INGRESS_RATE_LIMIT_WINDOW),
+    environmentRateLimitTokens: env.WEBHOOK_INGRESS_ENV_RATE_LIMIT_TOKENS,
+    environmentRateLimitWindowSeconds: windowSeconds(env.WEBHOOK_INGRESS_ENV_RATE_LIMIT_WINDOW),
+    queuedPayloadBytes: env.WEBHOOK_QUEUED_PAYLOAD_BYTES_LIMIT,
   };
+}
+
+function windowSeconds(duration: string) {
+  return Math.max(1, Math.round((parseDuration(duration) ?? 10_000) / 1000));
 }
 
 /** The org's webhook limits over the env defaults, and which fields the org sets. */
@@ -131,7 +135,8 @@ async function endpointEnvironment(opaqueId: string): Promise<string | null | un
 
 /**
  * What the ingress knows about an endpoint id before any other work: whether it exists (undefined
- * when that isn't known) and the limits of the org that owns it, or the env defaults. The endpoint is
+ * when that isn't known), its environment, and the limits of the org that owns it, or the env
+ * defaults. The endpoint is
  * read from the webhook database's replica, cached; an id that doesn't resolve is cached as missing
  * for 30 seconds, so a just-created endpoint picks up its org's limits quickly. With `cachedOnly`
  * nothing is read from the database, and an id that isn't cached has an unknown existence.
@@ -139,7 +144,7 @@ async function endpointEnvironment(opaqueId: string): Promise<string | null | un
 export async function webhookIngressEndpoint(
   opaqueId: string,
   options: { cachedOnly?: boolean } = {}
-): Promise<{ exists: boolean | undefined; limits: WebhookLimits }> {
+): Promise<{ exists: boolean | undefined; environmentId?: string; limits: WebhookLimits }> {
   const environmentId = options.cachedOnly
     ? await cachedEndpointEnvironment(opaqueId)
     : await endpointEnvironment(opaqueId);
@@ -149,5 +154,5 @@ export async function webhookIngressEndpoint(
       limits: webhookLimitsFromConfig(null).limits,
     };
   }
-  return { exists: true, limits: await webhookLimitsForEnvironment(environmentId) };
+  return { exists: true, environmentId, limits: await webhookLimitsForEnvironment(environmentId) };
 }

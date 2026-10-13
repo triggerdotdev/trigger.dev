@@ -1,4 +1,5 @@
 import { Form } from "@remix-run/react";
+import { WEBHOOK_LIMITS_INTENT } from "./WebhookLimitsForm";
 import { useEffect, useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
@@ -11,7 +12,6 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
 import type { WebhookLimits, WebhookLimitsConfig } from "~/v3/webhookLimits";
 
-export const WEBHOOK_LIMITS_INTENT = "set-webhook-limits";
 export const WEBHOOK_LIMITS_SAVED_VALUE = "webhook-limits";
 
 type FieldErrors = Record<string, string[] | undefined> | null;
@@ -22,7 +22,10 @@ type NumericLimit =
   | "concurrency"
   | "deliveryRetentionDays"
   | "endpointRateLimitTokens"
-  | "endpointRateLimitWindowSeconds";
+  | "endpointRateLimitWindowSeconds"
+  | "environmentRateLimitTokens"
+  | "environmentRateLimitWindowSeconds"
+  | "queuedPayloadBytes";
 
 const FIELDS: Array<{ key: NumericLimit; label: string; hint: string }> = [
   {
@@ -54,6 +57,21 @@ const FIELDS: Array<{ key: NumericLimit; label: string; hint: string }> = [
     key: "endpointRateLimitWindowSeconds",
     label: "Endpoint rate limit window (seconds)",
     hint: "The window the endpoint rate limit counts over, 1 to 3600 seconds.",
+  },
+  {
+    key: "environmentRateLimitTokens",
+    label: "Environment rate limit (tokens)",
+    hint: "Tokens all of an environment's endpoints accept per window. A request costs one per started 64 KiB of body. More get 429 with Retry-After.",
+  },
+  {
+    key: "environmentRateLimitWindowSeconds",
+    label: "Environment rate limit window (seconds)",
+    hint: "The window the environment rate limit counts over, 1 to 3600 seconds.",
+  },
+  {
+    key: "queuedPayloadBytes",
+    label: "Queued payload limit (bytes)",
+    hint: "Payload bytes one environment may have waiting to be delivered. Past it, ingest answers 503 with Retry-After. 1073741824 is 1 GiB.",
   },
 ];
 

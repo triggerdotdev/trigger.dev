@@ -37,7 +37,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return toWebhookHttpResponse(webhookHttpResponseFor(result));
   }
 
-  const body = await readWebhookIngressRequest(request);
+  const body = await readWebhookIngressRequest(request, admitted);
   if (body instanceof Response) return body;
   const { rawBytes, headers } = body;
 

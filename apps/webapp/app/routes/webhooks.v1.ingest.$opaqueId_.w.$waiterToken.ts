@@ -18,7 +18,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Method not allowed" }, { status: 405, headers: { Allow: "POST" } });
   }
 
-  const body = await readWebhookIngressRequest(request);
+  const body = await readWebhookIngressRequest(request, admitted);
   if (body instanceof Response) return body;
 
   const result = await webhookEngine.ingestWaiter({

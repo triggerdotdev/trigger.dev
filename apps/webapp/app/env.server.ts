@@ -2032,6 +2032,16 @@ const EnvironmentSchema = z
     WEBHOOK_INGRESS_BODY_SIZE_LIMIT_MB: z.coerce.number().int().default(1),
     WEBHOOK_INGRESS_RATE_LIMIT_WINDOW: z.string().default("10s"),
     WEBHOOK_INGRESS_RATE_LIMIT_TOKENS: z.coerce.number().int().default(100),
+    // Per-environment ingress limit across all of its endpoints. A request costs one token per 64 KiB
+    // of body, at least one.
+    WEBHOOK_INGRESS_ENV_RATE_LIMIT_TOKENS: z.coerce.number().int().positive().default(3_000),
+    WEBHOOK_INGRESS_ENV_RATE_LIMIT_WINDOW: z.string().default("10s"),
+    // The most webhook job payload bytes one environment may have queued or in flight.
+    WEBHOOK_QUEUED_PAYLOAD_BYTES_LIMIT: z.coerce
+      .number()
+      .int()
+      .nonnegative()
+      .default(1024 * 1024 * 1024),
     WEBHOOK_INGRESS_IP_RATE_LIMIT_WINDOW: z.string().default("10s"),
     WEBHOOK_INGRESS_IP_RATE_LIMIT_TOKENS: z.coerce.number().int().default(300),
     WEBHOOK_FRONT_GATE_DEFAULT_TTL_SECONDS: z.coerce

@@ -552,6 +552,7 @@ function QuotasSection({
   if (quotas.webhookConcurrency) quotaRows.push(quotas.webhookConcurrency);
   if (quotas.webhookDeliveryRetentionDays) quotaRows.push(quotas.webhookDeliveryRetentionDays);
   if (quotas.webhookEndpointRateLimit) quotaRows.push(quotas.webhookEndpointRateLimit);
+  if (quotas.webhookEnvironmentRateLimit) quotaRows.push(quotas.webhookEnvironmentRateLimit);
 
   const showSelfServe = useShowSelfServe();
 
@@ -612,7 +613,8 @@ function QuotaRow({
     quota.name === "Charts per dashboard" ||
     quota.name === "Webhook waiters per endpoint" ||
     quota.name === "Webhook processing concurrency" ||
-    quota.name === "Webhook endpoint rate limit";
+    quota.name === "Webhook endpoint rate limit" ||
+    quota.name === "Webhook environment rate limit";
   const isRetentionQuota = isDurationQuota || isPerItemQuota;
   const isQueueSizeQuota = quota.name === "Max queued runs";
   const hideCurrentUsage = isRetentionQuota || isQueueSizeQuota;

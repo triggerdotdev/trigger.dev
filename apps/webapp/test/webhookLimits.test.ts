@@ -9,6 +9,9 @@ const defaults = {
   deliveryStorageDays: 30,
   endpointRateLimitTokens: 100,
   endpointRateLimitWindowSeconds: 10,
+  environmentRateLimitTokens: 3_000,
+  environmentRateLimitWindowSeconds: 10,
+  queuedPayloadBytes: 1024 ** 3,
 };
 
 describe("resolveWebhookLimits", () => {
@@ -32,6 +35,9 @@ describe("resolveWebhookLimits", () => {
         deliveryStorageDays: 30,
         endpointRateLimitTokens: 100,
         endpointRateLimitWindowSeconds: 10,
+        environmentRateLimitTokens: 3_000,
+        environmentRateLimitWindowSeconds: 10,
+        queuedPayloadBytes: 1024 ** 3,
       },
       overrides: { maxWaitersPerEnvironment: 500, concurrency: 5 },
     });
@@ -52,6 +58,25 @@ describe("resolveWebhookLimits", () => {
       resolveWebhookLimits({ endpointRateLimitTokens: 300 }, defaults).limits
         .endpointRateLimitWindowSeconds
     ).toBe(10);
+  });
+
+  it("takes the environment rate limit and queued payload limit from the org's plan or back office", () => {
+    const { limits, overrides } = resolveWebhookLimits(
+      {
+        environmentRateLimitTokens: 300,
+        environmentRateLimitWindowSeconds: 60,
+        queuedPayloadBytes: 256 * 1024 ** 2,
+      },
+      defaults
+    );
+    expect(limits.environmentRateLimitTokens).toBe(300);
+    expect(limits.environmentRateLimitWindowSeconds).toBe(60);
+    expect(limits.queuedPayloadBytes).toBe(256 * 1024 ** 2);
+    expect(overrides).toEqual({
+      environmentRateLimitTokens: 300,
+      environmentRateLimitWindowSeconds: 60,
+      queuedPayloadBytes: 256 * 1024 ** 2,
+    });
   });
 
   it("ignores a malformed config rather than applying part of it", () => {

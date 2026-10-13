@@ -22,6 +22,14 @@ export const WebhookLimitsConfig = z.object({
   /** Requests one endpoint accepts per window before the ingress answers 429. */
   endpointRateLimitTokens: z.number().int().positive().optional(),
   endpointRateLimitWindowSeconds: z.number().int().positive().optional(),
+  /**
+   * Tokens one environment's endpoints accept together per window before the ingress answers 429.
+   * A request costs one token per started 64 KiB of body, so this bounds bytes as well as requests.
+   */
+  environmentRateLimitTokens: z.number().int().positive().optional(),
+  environmentRateLimitWindowSeconds: z.number().int().positive().optional(),
+  /** The most webhook job payload bytes one environment may have waiting to be delivered. */
+  queuedPayloadBytes: z.number().int().positive().optional(),
 });
 export type WebhookLimitsConfig = z.infer<typeof WebhookLimitsConfig>;
 
@@ -60,6 +68,11 @@ export function resolveWebhookLimits(
         overrides.endpointRateLimitTokens ?? defaults.endpointRateLimitTokens,
       endpointRateLimitWindowSeconds:
         overrides.endpointRateLimitWindowSeconds ?? defaults.endpointRateLimitWindowSeconds,
+      environmentRateLimitTokens:
+        overrides.environmentRateLimitTokens ?? defaults.environmentRateLimitTokens,
+      environmentRateLimitWindowSeconds:
+        overrides.environmentRateLimitWindowSeconds ?? defaults.environmentRateLimitWindowSeconds,
+      queuedPayloadBytes: overrides.queuedPayloadBytes ?? defaults.queuedPayloadBytes,
     },
     overrides,
   };

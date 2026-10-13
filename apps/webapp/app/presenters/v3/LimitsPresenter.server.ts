@@ -81,6 +81,7 @@ export type LimitsResult = {
     webhookConcurrency: QuotaInfo | null;
     webhookDeliveryRetentionDays: QuotaInfo | null;
     webhookEndpointRateLimit: QuotaInfo | null;
+    webhookEnvironmentRateLimit: QuotaInfo | null;
   };
   features: {
     hasStagingEnvironment: FeatureInfo;
@@ -434,6 +435,17 @@ export class LimitsPresenter extends BasePresenter {
           );
           return quota
             ? { ...quota, unit: `per ${webhookLimits.limits.endpointRateLimitWindowSeconds}s` }
+            : null;
+        })(),
+        webhookEnvironmentRateLimit: (() => {
+          const quota = webhookQuota(
+            "environmentRateLimitTokens",
+            "Webhook environment rate limit",
+            `Tokens all of an environment's webhook endpoints accept every ${webhookLimits.limits.environmentRateLimitWindowSeconds.toLocaleString()} seconds. A request costs one token per started 64 KiB of body. More get a 429 with Retry-After.`,
+            0
+          );
+          return quota
+            ? { ...quota, unit: `per ${webhookLimits.limits.environmentRateLimitWindowSeconds}s` }
             : null;
         })(),
       },
