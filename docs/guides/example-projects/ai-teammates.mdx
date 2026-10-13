@@ -1,0 +1,389 @@
+---
+title: "AI Teammates (Grok Bot clone)"
+sidebarTitle: "AI Teammates (Grok Bot clone)"
+description: "Give AI teammates a job, a memory and a cloud computer of their own, using chat.agent(), a scheduled task that meters usage, Daytona sandboxes and a Next.js frontend. A community example by Code with Antonio."
+---
+
+## Overview
+
+This example is an open-source take on **Grok Bot, OpenAI Dots and Meta Muse**: always-on AI teammates that do the work instead of describing it. Each teammate has a name, a job, a memory that carries across conversations, and a persistent Linux sandbox of its own, with a shell, a filesystem and a graphical desktop it drives with the mouse and keyboard. You can watch the desktop live in the chat, put teammates in a group chat where they hand requests to each other, and meter model spend and sandbox hours per billing period.
+
+It was built by [Code with Antonio](https://github.com/code-with-antonio) and the full build is on YouTube: [How I Build AI Teammates With Claude Code - Grok Bot Clone](https://www.youtube.com/watch?v=mQBuZ6Dp0u0). The repository lives in his GitHub account rather than ours, so the code below links there.
+
+**Tech stack:**
+
+- **[Trigger.dev AI chat](/ai-chat/overview)** for the durable chat agent: the session, turn loop, streaming, transcript storage and resumability
+- **[Scheduled tasks](/tasks/scheduled)** to meter running sandboxes every five minutes
+- **[Daytona](https://daytona.io)** for one cloud sandbox per teammate, with shell, files and a desktop
+- **[AI SDK](https://ai-sdk.dev/)** for tool calling and `useChat` on the frontend, with the model called through the Neon AI Gateway
+- **[Clerk](https://clerk.com)** for authentication, plus Clerk Billing for plans and feature gates
+- **[Neon](https://neon.tech)** serverless Postgres with [Drizzle ORM](https://orm.drizzle.team)
+- **[Sentry](https://sentry.io)** for errors, traces and logs from the app and every task run
+- **Next.js** chat app using [`useTriggerChatTransport`](/ai-chat/frontend), hosted on [Railway](https://railway.com)
+
+**Features:**
+
+- **Teammates with a job**: a name, a job and instructions that each bot keeps in every conversation.
+- **A computer per teammate**: a persistent Linux sandbox with a shell, a filesystem and a graphical desktop, exposed to the model as a set of tools.
+- **Live desktop view**: watch a bot move the mouse and type, streamed into the chat over noVNC.
+- **Group chats with handoffs**: a bot passes a request to the teammate whose job it is, and a request can't bounce back to a bot that already held it.
+- **Memory across chats**: notes a bot saves in one conversation are there in all the others.
+- **Durable turns**: a long desktop task survives refreshes, redeploys and closed tabs.
+- **Plans and usage limits**: subscriptions, with model spend and sandbox hours metered per billing period.
+
+## GitHub repo
+
+<Card
+  title="View the AI Teammates repo"
+  icon="GitHub"
+  href="https://github.com/code-with-antonio/ai-teammates"
+>
+  Click here to view the full code for this project on GitHub. You can fork it and use it as a
+  starting point for your own project.
+</Card>
+
+## How it works
+
+### The chat agent
+
+Every teammate's turn runs through a single [`chat.agent()`](/ai-chat/overview). The agent is built with `withUIMessage()` so the typed tool parts reach the frontend, and `withClientData()` so a group chat can say which bot a message is addressed to. Tools are declared on the agent (not only on `streamText`) because that's what lets the SDK replay earlier turns correctly, which matters here: screenshots in earlier turns need to stay images.
+
+The `tools` callback runs each turn with the `chatId` and the client data. It loads the chat's bots, wires up the sandbox tools for the bot holding the turn, and in a group chat adds a `handoff` tool that moves the turn, and the sandbox, to a teammate:
+
+```ts trigger/chat.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { isStepCount } from "ai";
+
+export const chatAgent = chat
+  .withUIMessage<ChatUIMessage>()
+  .withClientData({ schema: clientDataSchema })
+  .agent({
+    id: "chat",
+    // Declared here so screenshots stay images when earlier turns are replayed
+    tools: async ({ chatId, clientData }) => {
+      const { chat: { kind, userId }, bots, bot } = await getChatBots(chatId, clientData?.botId);
+
+      // Whoever holds the turn; a handoff moves it, and the sandbox tools with it
+      let current = bot;
+      const held = new Set([bot.id]);
+
+      const sandboxTools = createSandboxTools(async () => {
+        // Checked before tool calls, so a usage limit stops the sandbox mid-turn
+        const usage = await getUsage(userId);
+        if (!usage || usage.remaining.sandbox <= 0) {
+          throw new Error("The sandbox hours for this billing period are used up.");
+        }
+        return current.sandboxId;
+      });
+
+      if (kind !== "group") return sandboxTools;
+
+      return {
+        ...sandboxTools,
+        ...createHandoffTool((botId) => {
+          const target = bots.find((bot) => bot.id === botId);
+          if (!target) throw new Error("No teammate in this chat has that id.");
+          // Keeps a request from bouncing between bots
+          if (held.has(target.id)) {
+            throw new Error(`${target.name} already had this request. Answer it yourself.`);
+          }
+          current = target;
+          held.add(target.id);
+          return { botId: target.id, name: target.name };
+        }),
+      };
+    },
+    run: async ({ chatId, clientData, messages, tools, signal, streamText }) => {
+      // Read every turn, so edits to the bots apply to the next message
+      const { chat: row, bots, bot } = await getChatBots(chatId, clientData?.botId);
+      const group = row.kind === "group" ? { chat: row, bots } : undefined;
+
+      // Every turn, as a session outlives the plan it was started on
+      const usage = await getUsage(row.userId);
+      if (!usage || usage.remaining.ai <= 0) throw new Error(USAGE_LIMIT_ERROR);
+
+      // Stamped on the reply and kept in the transcript with it
+      chat.setUIMessageStreamOptions({
+        messageMetadata: () => ({ botId: bot.id }),
+      });
+
+      return streamText({
+        model: chatModel(),
+        system: buildInstructions(bot, group),
+        messages,
+        tools,
+        // After a handoff the rest of the turn is the other bot's to answer
+        prepareStep: ({ steps }) => {
+          const handoff = steps
+            .flatMap((step) => step.toolResults)
+            .findLast((result) => result.toolName === "handoff");
+          const current = handoff && bots.find((bot) => bot.id === handoff.output.botId);
+          return current ? { instructions: buildInstructions(current, group) } : undefined;
+        },
+        stopWhen: [
+          // Desktop work is one small action per step
+          isStepCount(50),
+          // A long turn ends once it has spent what was left
+          ({ steps }) =>
+            steps.reduce((cost, step) => cost + chatModelCost(step.usage), 0) >=
+            usage.remaining.ai,
+        ],
+        abortSignal: signal,
+      });
+    },
+  });
+```
+
+The system prompt is built per turn from the bot's name, job and instructions, plus standing guidance on how to use the sandbox, the memory tools and, in a group chat, the handoff tool. Because the bots are re-read on every turn, editing a teammate applies to its next message without restarting the session.
+
+### A computer per teammate
+
+The sandbox is a [Daytona](https://daytona.io) workspace, one per bot, created when the bot is and labelled with its ID. It's exposed to the model as a tool set: `bash`, `readFile`, `writeFile` and `listFiles` for the shell and filesystem, and `mouseClick`, `mouseMove`, `mouseDrag`, `mouseScroll`, `keyboardType` and `keyboardPress` for the desktop. The sandbox is only looked up and woken when a tool first needs it, and the desktop is only started when a desktop tool is called.
+
+Two screenshot tools return the picture itself to the model, not its base64 as text, by overriding `toModelOutput`. `viewScreen` is for the model's own eyes and `showScreen` puts the screenshot in the chat too:
+
+```ts lib/sandbox-tools.ts
+async function takeScreenshot(sandbox: Sandbox) {
+  const [shot, display] = await Promise.all([
+    sandbox.computerUse.screenshot.takeCompressed({ format: "jpeg", quality: 70, showCursor: true }),
+    sandbox.computerUse.display.getInfo(),
+  ]);
+  const screen = display.displays?.[0];
+  return { base64: shot.screenshot, mediaType: "image/jpeg", width: screen?.width, height: screen?.height };
+}
+
+// The model gets the picture itself rather than its base64 as text
+function screenshotToModelOutput({ output }: { output: Screenshot }) {
+  return {
+    type: "content" as const,
+    value: [
+      { type: "text" as const, text: `Screenshot of the ${output.width}x${output.height} screen.` },
+      { type: "file" as const, mediaType: output.mediaType, data: { type: "data" as const, data: output.base64 } },
+    ],
+  };
+}
+
+viewScreen: tool({
+  description: "Look at your sandbox's desktop yourself. The person you are talking to does not see this screenshot.",
+  inputSchema: z.object({}),
+  execute: async () => takeScreenshot(await getDesktop()),
+  toModelOutput: screenshotToModelOutput,
+}),
+```
+
+The system prompt tells the bot it works blind on the desktop until it looks, so it calls `viewScreen` before clicking and again afterwards to check what happened. A turn is capped at 50 steps because desktop work is one small action per step.
+
+### Memory across chats
+
+Chats don't share transcripts, so a bot's memory is a `MEMORY.md` file in its sandbox's home directory. A `remember` tool appends a note and a `recall` tool reads the file back, and the same notes are there in every conversation the bot is in. The prompt tells the bot to call `recall` before answering anything that could depend on another conversation, and to call `remember` in the same turn it learns something worth keeping:
+
+```ts lib/sandbox-tools.ts
+remember: tool({
+  description: "Save a note to your memory, so that you know it in every conversation with the person, not only this one.",
+  inputSchema: z.object({ note: z.string() }),
+  execute: async ({ note }) => {
+    const sandbox = await getSandbox();
+    const line = Buffer.from(`- ${note.trim()}\n`, "utf8");
+    // Encoded so no note can break out of the command, and appended so
+    // notes saved from two chats at once both survive
+    await sandbox.process.executeCommand(
+      `echo ${line.toString("base64")} | base64 -d >> ${MEMORY_FILE}`
+    );
+    return { remembered: note.trim() };
+  },
+}),
+```
+
+### Metering usage
+
+Usage is an append-only ledger in Postgres with an idempotency key per entry, so a retried turn or run never double-charges. Model spend is written from the agent's [`onTurnComplete`](/ai-chat/lifecycle-hooks) hook, which fires for stopped and failed turns too, since those spent tokens all the same:
+
+```ts trigger/chat.ts
+onTurnComplete: async ({ chatId, runId, turn, usage, error }) => {
+  const [row] = await db
+    .select({ userId: chats.userId })
+    .from(chats)
+    .where(eq(chats.id, chatId));
+
+  if (usage && row) {
+    await recordUsage([
+      {
+        userId: row.userId,
+        kind: "ai",
+        amount: chatModelCost(usage),
+        idempotencyKey: `ai:${runId}:${turn}`,
+      },
+    ]);
+  }
+
+  // The run sleeps between turns, and may be frozen as soon as this returns
+  await Sentry.flush(2000);
+},
+```
+
+Sandbox time is metered by a [scheduled task](/tasks/scheduled). Daytona stops idle sandboxes by itself and reports no running time, so the task fills the ledger by looking: every five minutes it lists the running sandboxes, charges the interval to each one's owner, and stops the sandboxes of owners who have run out. The schedule's `timestamp` goes into the idempotency key so a retried run meters the same moment, not a new one:
+
+```ts trigger/usage.ts
+import { schedules } from "@trigger.dev/sdk";
+
+const INTERVAL_MINUTES = 5;
+
+export const meterSandboxes = schedules.task({
+  id: "meter-sandboxes",
+  cron: `*/${INTERVAL_MINUTES} * * * *`,
+  maxDuration: 240,
+  run: async ({ timestamp }) => {
+    const running = await listRunningSandboxIds();
+    if (running.length === 0) return;
+
+    const owned = await db
+      .select({ sandboxId: bots.sandboxId, userId: bots.userId })
+      .from(bots)
+      .where(inArray(bots.sandboxId, running));
+
+    await recordUsage(
+      owned.map(({ sandboxId, userId }) => ({
+        userId,
+        kind: "sandbox" as const,
+        amount: INTERVAL_MINUTES * 60,
+        // A retried run meters the same moment again
+        idempotencyKey: `sandbox:${sandboxId}:${timestamp.toISOString()}`,
+      }))
+    );
+
+    for (const userId of new Set(owned.map((bot) => bot.userId))) {
+      const usage = await getUsage(userId);
+      if (usage && usage.remaining.sandbox > 0) continue;
+
+      const sandboxIds = owned
+        .filter((bot) => bot.userId === userId)
+        .map((bot) => bot.sandboxId);
+      await Promise.all(sandboxIds.map((id) => stopBotSandbox(id)));
+    }
+  },
+});
+```
+
+### Observability from the tasks
+
+A `trigger/init.ts` file initialises Sentry before any task runs, with the default integrations switched off so they don't fight Trigger.dev's own OpenTelemetry tracing. It uses the [`tasks.onComplete`](/tasks/overview#global-lifecycle-hooks), `tasks.onWait` and `tasks.onFailure` global hooks to flush logs before the process can be frozen or gone, and the `trigger.config.ts` adds the Sentry esbuild plugin as a build extension so source maps are uploaded on deploy:
+
+```ts trigger.config.ts
+import { sentryEsbuildPlugin } from "@sentry/bundler-plugins/esbuild";
+import { esbuildPlugin } from "@trigger.dev/build/extensions";
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: process.env.TRIGGER_PROJECT_REF!,
+  runtime: "node-24",
+  maxDuration: 3600,
+  dirs: ["trigger"],
+  build: {
+    extensions: [
+      // Uploads source maps on deploy, so task errors in Sentry point at the source
+      esbuildPlugin(
+        sentryEsbuildPlugin({
+          org: process.env.SENTRY_ORG,
+          project: process.env.SENTRY_PROJECT,
+          authToken: process.env.SENTRY_AUTH_TOKEN,
+        }),
+        { placement: "last", target: "deploy" }
+      ),
+    ],
+  },
+});
+```
+
+### The Next.js frontend
+
+The browser talks to Trigger.dev directly through [`useTriggerChatTransport`](/ai-chat/frontend), and `useLoadTranscript` restores the stored transcript on mount so a refresh or a closed tab doesn't lose the conversation. Three server actions back it: one starts the session, one mints a session-scoped token, and one loads the transcript. Each checks with Clerk that the user's plan includes the feature and that they own the chat, since the chat ID comes from the browser:
+
+```ts actions/chat.ts
+"use server";
+
+import { auth } from "@trigger.dev/sdk";
+import { chat, defaultStorage, type ChatStartSessionParams } from "@trigger.dev/sdk/ai";
+import type { chatAgent } from "@/trigger/chat";
+
+const startSession = chat.createStartSessionAction<typeof chatAgent>("chat");
+const loadStoredTranscript = chat.createLoadTranscriptAction(defaultStorage);
+
+export async function startChatSession(params: ChatStartSessionParams<typeof chatAgent>) {
+  await assertFeature("bots");
+  await assertChatOwner(params.chatId);
+  return startSession(params);
+}
+
+export async function mintChatAccessToken(chatId: string) {
+  await assertFeature("bots");
+  await assertChatOwner(chatId);
+  return auth.createPublicToken({
+    scopes: { read: { sessions: chatId }, write: { sessions: chatId } },
+    expirationTime: "1h",
+  });
+}
+
+export async function loadTranscript(params: { chatId: string }) {
+  await assertChatOwner(params.chatId);
+  return loadStoredTranscript(params);
+}
+```
+
+```tsx components/chat.tsx
+"use client";
+
+import { useChat } from "@ai-sdk/react";
+import { useLoadTranscript, useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+import { loadTranscript, mintChatAccessToken, startChatSession } from "@/actions/chat";
+
+const transport = useTriggerChatTransport<typeof chatAgent>({
+  task: "chat",
+  accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+  startSession: ({ chatId, clientData }) => startChatSession({ chatId, clientData }),
+});
+const { messages, isLoading } = useLoadTranscript(chatId, loadTranscript, { transport });
+// Then useChat({ transport, messages }) once the transcript has loaded
+```
+
+In a group chat the message is sent with `clientData: { botId }` so the agent knows which teammate it's addressed to, and the `botId` stamped on each reply's metadata lets the UI show who answered. The live desktop view is separate from the chat: a server action asks Daytona for a signed preview URL to the sandbox's noVNC port, and the browser connects to it with the noVNC client.
+
+### Running it
+
+The README in the repository walks through the setup: accounts with Clerk, Neon, Trigger.dev and Daytona (Sentry is optional), a `.env.local` for the Next.js app, a Clerk plan with `bots` and `sandboxes` features, and the task environment variables to add on the [Environment Variables page](/deploy-environment-variables) in the Trigger.dev dashboard. Then run the app and the tasks in two terminals:
+
+```bash
+npm run dev               # terminal 1: Next.js
+npx trigger.dev@latest dev  # terminal 2: Trigger.dev tasks
+```
+
+Open [http://localhost:3000](http://localhost:3000), sign up, pick a plan and create your first teammate.
+
+## Relevant code
+
+- **Chat agent**: [trigger/chat.ts](https://github.com/code-with-antonio/ai-teammates/blob/main/trigger/chat.ts): the `chat.agent()` definition, per-turn tool wiring, handoffs, the system prompt, the step and spend limits, and the `onTurnComplete` metering hook
+- **Sandbox metering**: [trigger/usage.ts](https://github.com/code-with-antonio/ai-teammates/blob/main/trigger/usage.ts): the scheduled task that charges running sandboxes and stops the ones whose owner has run out
+- **Sentry init and global hooks**: [trigger/init.ts](https://github.com/code-with-antonio/ai-teammates/blob/main/trigger/init.ts): `tasks.onComplete`, `tasks.onWait` and `tasks.onFailure`
+- **Sandbox tools**: [lib/sandbox-tools.ts](https://github.com/code-with-antonio/ai-teammates/blob/main/lib/sandbox-tools.ts): shell, file, memory, mouse, keyboard and screenshot tools over a Daytona sandbox
+- **Handoff tool**: [lib/handoff-tool.ts](https://github.com/code-with-antonio/ai-teammates/blob/main/lib/handoff-tool.ts): passing the turn to a teammate in a group chat
+- **Daytona helpers**: [lib/daytona.ts](https://github.com/code-with-antonio/ai-teammates/blob/main/lib/daytona.ts): creating, waking, listing and stopping sandboxes, and the signed desktop URL
+- **Usage ledger**: [lib/usage.ts](https://github.com/code-with-antonio/ai-teammates/blob/main/lib/usage.ts): billing periods from Clerk, limits, and idempotent `recordUsage`
+- **Server actions**: [actions/chat.ts](https://github.com/code-with-antonio/ai-teammates/blob/main/actions/chat.ts): session start, token minting, transcript loading and the desktop URL, all gated on plan and ownership
+- **Chat UI**: [components/chat.tsx](https://github.com/code-with-antonio/ai-teammates/blob/main/components/chat.tsx): the Trigger chat transport, transcript loading and tool-part rendering
+- **Build config**: [trigger.config.ts](https://github.com/code-with-antonio/ai-teammates/blob/main/trigger.config.ts): the Sentry source-map build extension
+
+## Learn more
+
+<CardGroup cols={2}>
+  <Card title="AI chat overview" icon="message-bot" href="/ai-chat/overview">
+    How chat agents, sessions, and the turn loop work.
+  </Card>
+  <Card title="Frontend" icon="browser" href="/ai-chat/frontend">
+    The chat transport, session tokens, and reconnection.
+  </Card>
+  <Card title="Lifecycle hooks" icon="arrows-rotate" href="/ai-chat/lifecycle-hooks">
+    onTurnComplete and the other hooks a chat agent exposes.
+  </Card>
+  <Card title="Scheduled tasks" icon="clock" href="/tasks/scheduled">
+    Run a task on a cron schedule.
+  </Card>
+</CardGroup>
