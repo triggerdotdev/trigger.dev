@@ -97,6 +97,17 @@ export class WorkerQueueManager {
   ): Promise<string | null> {
     const workerQueueKey = this.keys.workerQueueKey(workerQueueId);
 
+    if (signal?.aborted) {
+      return null;
+    }
+
+    // Fast path: under load the queue is rarely empty, so pop on the shared connection
+    // and only pay for a dedicated blocking connection when there is nothing to take
+    const readyMessageKey = await this.redis.lpop(workerQueueKey);
+    if (readyMessageKey) {
+      return readyMessageKey;
+    }
+
     // Create a separate client for blocking operation
     // This is required because BLPOP blocks the connection
     const blockingClient = this.redis.duplicate();
