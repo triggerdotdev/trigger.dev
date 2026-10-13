@@ -141,5 +141,11 @@ export function createRedisClusterClient(
     }
   });
 
+  // A failed slot refresh only surfaces as ClusterAllFailedError; each node's own failure, and
+  // which node it was, arrives here.
+  client.on("node error", (error: Error, node: string) => {
+    logger.warn(`Redis cluster node error:`, { node, error: error.message });
+  });
+
   return client;
 }

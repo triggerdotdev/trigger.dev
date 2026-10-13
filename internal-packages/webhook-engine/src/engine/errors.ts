@@ -36,7 +36,7 @@ const NETWORK_ERROR_CODES = new Set([
  * redirections. Last error: <Name>: <message>`, so that wrapper counts too.
  */
 const REDIS_UNAVAILABLE =
-  /^(?:Too many Cluster redirections\. Last error: \w*Error: )?(?:(?:CLUSTERDOWN|TRYAGAIN|LOADING|READONLY|MASTERDOWN|OOM|MOVED|ASK)\b.*|Connection is closed\.|Stream isn't writeable and enableOfflineQueue options is false|Failed to refresh slots cache\.|None of startup nodes is available)$/s;
+  /^(?:Too many Cluster redirections\. Last error: \w*Error: )?(?:(?:CLUSTERDOWN|TRYAGAIN|LOADING|READONLY|MASTERDOWN|OOM|MOVED|ASK)\b.*|Connection is closed\.|Command timed out|Stream isn't writeable and enableOfflineQueue options is false|Failed to refresh slots cache\.|None of startup nodes is available)$/s;
 
 /**
  * Whether an error, or anything in its cause chain, is an infrastructure failure. Everything else,

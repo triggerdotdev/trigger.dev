@@ -19,6 +19,7 @@ describe("isInfrastructureError", () => {
     expect(isInfrastructureError(Object.assign(new Error("x"), { code: "ECONNRESET" }))).toBe(true);
     expect(isInfrastructureError(new Error("CLUSTERDOWN The cluster is down"))).toBe(true);
     expect(isInfrastructureError(new Error("Connection is closed."))).toBe(true);
+    expect(isInfrastructureError(new Error("Command timed out"))).toBe(true);
     expect(isInfrastructureError(new Error("None of startup nodes is available"))).toBe(true);
     expect(
       isInfrastructureError(

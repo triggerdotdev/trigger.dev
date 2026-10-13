@@ -27,25 +27,33 @@ import { meter, tracer } from "./tracer.server";
 
 export const webhookEngine = singleton("WebhookEngine", createWebhookEngine);
 
-/** The webhooks Redis cluster, seeded from one node; ioredis discovers the rest. */
+/**
+ * The webhooks Redis cluster, seeded from one node; ioredis discovers the rest. A primary that stops
+ * answering without closing its sockets (an ElastiCache failover reboots the old one) never replies
+ * MOVED, so the slot map is refreshed on an interval to find the promoted replica, and a command
+ * waiting on the silent node times out instead of holding an ingest request. Redirects can name a
+ * node by IP, which AWS certificates don't cover, so TLS checks every node against the seed host.
+ */
 function webhookRedisConnection(): WebhookRedisOptions {
+  const host = env.WEBHOOK_REDIS_HOST ?? "localhost";
   const redisOptions = {
     username: env.WEBHOOK_REDIS_USERNAME,
     password: env.WEBHOOK_REDIS_PASSWORD,
     enableAutoPipelining: true,
-    ...(env.WEBHOOK_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+    commandTimeout: 3_000,
+    connectTimeout: 3_000,
+    ...(env.WEBHOOK_REDIS_TLS_DISABLED === "true" ? {} : { tls: { servername: host } }),
   };
   return {
     cluster: {
-      nodes: [
-        { host: env.WEBHOOK_REDIS_HOST ?? "localhost", port: env.WEBHOOK_REDIS_PORT ?? 6379 },
-      ],
+      nodes: [{ host, port: env.WEBHOOK_REDIS_PORT ?? 6379 }],
       redisOptions,
       clusterOptions: {
         keyPrefix: "webhook:",
         dnsLookup: (address: string, callback: (err: Error | null, address: string) => void) =>
           callback(null, address),
-        slotsRefreshTimeout: 10_000,
+        slotsRefreshInterval: 2_000,
+        slotsRefreshTimeout: 2_000,
       },
     },
   };
