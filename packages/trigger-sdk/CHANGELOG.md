@@ -1,5 +1,25 @@
 # @trigger.dev/sdk
 
+## 4.7.4
+
+### Patch Changes
+
+- Override a concurrency limit's `perKey` for a single `concurrencyKey`: `concurrencyLimits.override(name, { concurrencyKey, perKey, ttl })` caps that one key under that one limit for a while (7 days by default, 30 at most), `reset(name, { concurrencyKey })` clears it, and `retrieve(name, { concurrencyKey })` shows the key's bound and when the override expires. ([`c49fd05f4`](https://github.com/triggerdotdev/trigger.dev/commit/c49fd05f44119ec2a036afaabaad8f9e148a3db6))
+- `runs.replay()` now takes options, so you can replay a run with a different payload, metadata, tags, queue, machine, version, delay and other trigger options. Anything you leave out comes from the original run, as before, and the payload is serialized like `trigger()`, so values like `Date` and `BigInt` keep their types. ([`ff2aa236e`](https://github.com/triggerdotdev/trigger.dev/commit/ff2aa236eb986b938e8e04cec3898b24aed4ec3f))
+
+  ```ts
+  import { runs } from "@trigger.dev/sdk";
+
+  await runs.replay("run_1234", {
+    payload: { userId: "user_456" },
+    tags: ["replayed"],
+    delay: "10m",
+  });
+  ```
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.7.4`
+
 ## 4.7.3
 
 ### Patch Changes
