@@ -92,6 +92,12 @@ jobs:
             image_tags=$image_tags,$ref_without_tag:v4,$ref_without_tag:latest
           fi
 
+          # when pushing the mutable main tag, also push an immutable-by-convention
+          # full-commit-sha tag so a commit can be resolved to a specific digest
+          if [[ "${STEPS_GET_TAG_OUTPUTS_TAG}" == "main" ]]; then
+            image_tags=$image_tags,$ref_without_tag:${GITHUB_SHA}
+          fi
+
           echo "image_tags=${image_tags}" >> "$GITHUB_OUTPUT"
           echo "image_repo=${ref_without_tag}" >> "$GITHUB_OUTPUT"
         env:
