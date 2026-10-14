@@ -49,6 +49,7 @@ export default defineConfig({
     ],
     globals: true,
     pool: "forks",
+    maxWorkers: "50%",
     setupFiles: ["./test/setup.ts"], // test fallbacks and isolation
   },
   // @ts-ignore
