@@ -13,7 +13,7 @@ import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js
 
 vi.setConfig({ testTimeout: 60_000 });
 
-const DELAY_MS = 5_000;
+const DELAY_MS = 1_000;
 
 /**
  * A resolver whose `resolveEnv` reports the environment as live even after deletion, while

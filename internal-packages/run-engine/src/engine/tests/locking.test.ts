@@ -135,7 +135,7 @@ describe("RunLocker", () => {
       // Now create a long-running lock
       const lockPromise1 = runLock.lock("test-lock", ["test-1"], async () => {
         // Hold the lock longer than the retry timeout
-        await new Promise((resolve) => setTimeout(resolve, 10000));
+        await new Promise((resolve) => setTimeout(resolve, 4000));
       });
 
       // Try to acquire same lock immediately - should timeout with LockAcquisitionTimeoutError
@@ -297,7 +297,7 @@ describe("RunLocker", () => {
       try {
         // Create a long-running lock that will definitely outlast the retry timeout
         const lockPromise = runLock.lock("test-lock", ["test-error"], async () => {
-          await new Promise((resolve) => setTimeout(resolve, 15000)); // Hold for 15 seconds
+          await new Promise((resolve) => setTimeout(resolve, 2000));
         });
 
         // Wait a bit to ensure the first lock is acquired
@@ -958,7 +958,7 @@ describe("RunLocker", () => {
       try {
         // Create blocking lock with first instance - make it last much longer than retry logic
         const blockingPromise = runLock1.lock("test-lock", ["timing-test"], async () => {
-          await new Promise((resolve) => setTimeout(resolve, 15000));
+          await new Promise((resolve) => setTimeout(resolve, 3000));
         });
 
         await new Promise((resolve) => setTimeout(resolve, 200));

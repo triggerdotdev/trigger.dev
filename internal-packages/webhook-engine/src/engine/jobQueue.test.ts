@@ -173,6 +173,7 @@ containerTestWithIsolatedRedis(
       consumers: 1,
       tenantConcurrency: 1,
       consumerIntervalMs: 20,
+      retryBaseDelayMs: 20,
       exhaustedRecordDelayMs: 200,
       handlers: {
         deliver: async () => {
@@ -230,6 +231,7 @@ containerTestWithIsolatedRedis(
       reclaimIntervalMs: 100,
       ownerTtlMs: 900,
       exhaustedRecordDelayMs: 100,
+      retryBaseDelayMs: 20,
       handlers: {
         deliver: async () => {
           delivers++;

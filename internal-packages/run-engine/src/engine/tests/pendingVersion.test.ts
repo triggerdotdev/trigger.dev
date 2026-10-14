@@ -255,12 +255,14 @@ describe("RunEngine pending version", () => {
 
         //dequeuing should fail
         const dequeued = await engine.dequeueFromWorkerQueue({
+          blockingPopTimeoutSeconds: 1,
           consumerId: "test_12345",
           workerQueue: "main",
         });
         expect(dequeued.length).toBe(0);
 
         const dequeued2 = await engine.dequeueFromWorkerQueue({
+          blockingPopTimeoutSeconds: 1,
           consumerId: "test_12345",
           workerQueue: "main",
         });
@@ -396,6 +398,7 @@ describe("RunEngine pending version", () => {
         // The consumer attempt is what flushes the run to PENDING_VERSION —
         // dequeue finds no matching task version and returns nothing.
         const dequeuedEmpty = await engine.dequeueFromWorkerQueue({
+          blockingPopTimeoutSeconds: 1,
           consumerId: "test_pv",
           workerQueue: "main",
         });
