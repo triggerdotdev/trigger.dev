@@ -160,6 +160,22 @@ Or from the dashboard:
 
 To keep your app and tasks in sync without coordinating promotion at all, see [atomic deployments](/deployment/atomic-deployment).
 
+### Redeploying from the dashboard
+
+You can rebuild a recent deployment as a new deployment from the **Deployments** page. Open the menu on the deployment's row and select **Redeploy**.
+
+The **Redeploy** action is available for deployments that:
+
+- Have finished: deployed, failed, canceled or timed out.
+- Were created in the last 7 days.
+- Were triggered by the [GitHub integration](/github-integration), or deployed from the CLI with `--native-build` and without `--local-bundle`.
+
+A GitHub integration deployment is rebuilt from the same commit and branch. A CLI deployment is rebuilt from the source files uploaded for the original deployment.
+
+The new deployment gets a new version. **Promote deployment automatically** is selected by default, so the new version becomes the current version once it deploys successfully. Clear the checkbox to [skip promotion](#skipping-promotion) and promote it later. The new deployment's page shows the deployment it was redeployed from under **Redeploy of**.
+
+You can't redeploy while another deployment is in progress in the same environment. If your production environment uses [atomic deployments with Vercel](/vercel-integration#atomic-deployments), redeploy it from Vercel instead.
+
 ## Staging deploys
 
 By default, the `deploy` command will deploy to the `prod` environment. If you want to deploy to a different environment, you can use the `--env` flag:
