@@ -1483,7 +1483,7 @@ export class RedisSnapshotStore {
           for i = 1, high do
             redis.call('PEXPIRE', wpKey(i), ttlMs)
           end
-          -- A MIRRORED run's residency marker expires WITH its state: after 14 days the terminal keys are
+          -- A MIRRORED run's residency marker expires WITH its state: once the completed TTL passes the terminal keys are
           -- gone and its complete Postgres copy is authoritative, so a read cleanly misses to Postgres and
           -- no permanent per-run marker accumulates. A REDIS-PRIMARY marker is kept forever (no PEXPIRE):
           -- it is the only record the run was ever redis-primary, so an expired redis-primary run resolves

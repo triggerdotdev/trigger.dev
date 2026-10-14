@@ -41,7 +41,7 @@ export function snapshotKeys(runId: string): SnapshotKeys {
 
 /**
  * The Redis-primary residency marker key. Shares the run's partition tag but is a SEPARATE physical
- * key: it has no TTL ever, so it outlives the run-state keys once they take the terminal 14-day TTL.
+ * key: it has no TTL ever, so it outlives the run-state keys once they take the terminal completed TTL.
  */
 export function residencyKey(runId: string): string {
   return `${SNAPSHOT_NAMESPACE}:res:{${partitionTag(runToPartition(runId))}}:${runId}`;

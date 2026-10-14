@@ -1,5 +1,5 @@
 // Item 8d: a terminal MIRRORED run's residency marker expires WITH its state (its Postgres copy is
-// authoritative after 14 days, so no permanent per-run marker accumulates), while a REDIS-PRIMARY marker
+// authoritative once the completed TTL passes, so no permanent per-run marker accumulates), while a REDIS-PRIMARY marker
 // is kept forever so an expired redis-primary run resolves to expired/fail-closed rather than empty
 // Postgres. Proven against REAL Redis (testcontainers, no mocks).
 import { describe, expect } from "vitest";
