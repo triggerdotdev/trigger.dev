@@ -1395,6 +1395,11 @@ export class VercelIntegrationRepository {
                 }
 
                 const varsToSync = mergedEnvVars.filter((envVar) => {
+                  // Keep the flag-off path unchanged. When enabled, discard blanks
+                  // after merging so a blank project override cannot select a shared fallback.
+                  if (allowEmptyValues && envVar.value.trim() === "") {
+                    return false;
+                  }
                   if (envVar.isSecret) {
                     return false;
                   }
