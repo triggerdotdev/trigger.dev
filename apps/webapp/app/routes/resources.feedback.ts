@@ -2,9 +2,12 @@ import { parseWithZod } from "@conform-to/zod/v4";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { uiComponent } from "@team-plain/ui-components";
 import { z } from "zod";
+import { $replica, prisma } from "~/db.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
+import { logger } from "~/services/logger.server";
 import { requireUser } from "~/services/session.server";
 import { sanitizeRedirectPath } from "~/utils";
+import { feedbackOrganization } from "~/utils/feedbackOrganization.server";
 import { sendToPlain } from "~/utils/plain.server";
 
 export const feedbackTypes = {
@@ -80,12 +83,24 @@ export async function action({ request }: ActionFunctionArgs) {
   const inquiry = feedbackTypes[submission.value.feedbackType as FeedbackType];
   const redirectPath = sanitizeRedirectPath(submission.value.path);
   try {
+    // Best-effort: a failed lookup sends the message without an org rather than losing it.
+    const organization = await feedbackOrganization(
+      user.id,
+      submission.value.path,
+      $replica,
+      prisma
+    ).catch((error) => {
+      logger.error("Failed to resolve feedback organization", { error });
+      return undefined;
+    });
     await sendToPlain({
       userId: user.id,
       email: user.email,
       name: user.name ?? user.displayName ?? user.email,
       title: inquiry.threadTitle,
       labelTypeIds: inquiry.labelTypeId ? [inquiry.labelTypeId] : undefined,
+      organizationId: organization?.id,
+      organizationName: organization?.title,
       components: [
         uiComponent.text({
           text: `New ${inquiry.label} reported by ${user.name} (${user.email})`,
