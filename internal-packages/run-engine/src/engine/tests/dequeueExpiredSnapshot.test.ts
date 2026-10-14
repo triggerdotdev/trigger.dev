@@ -276,9 +276,9 @@ describe("dequeueFromWorkerQueue with expired redis-primary snapshot state", () 
 
         expect(results).toEqual([]);
         // The read found no run state and fell through to the pending-state check (the expired
-        // path), never to a head read of live state.
+        // path) and the resolver classified the run; the route read also issues a head read that misses.
         expect(commands).toContain("readPendingState");
-        expect(commands).not.toContain("getLatest");
+        expect(commands).toContain("readStateVersion");
         // Not acknowledged: the message is still queued, with its attempt moved by the nack.
         assertNonNullable(current);
         expect(current.attempt, "the message must be nacked").toBe(queued.attempt + 1);
@@ -326,6 +326,48 @@ describe("dequeueFromWorkerQueue with expired redis-primary snapshot state", () 
         assertNonNullable(current);
         expect(current.attempt, "the message must be nacked").toBe(queued.attempt + 1);
         expect(injected, "only the lock-body read fails").toBe(1);
+      } finally {
+        await engine.quit();
+        await snapshotStore.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "the recovery re-read of a FINISHED run with expired snapshot state acknowledges the message",
+    async ({ prisma, redisOptions }) => {
+      const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      // The lock-body read fails with a non-expiry error on its first snapshot-store command, so only
+      // the recovery re-read can see the expiry.
+      let failNextCommand = false;
+      const injected: string[] = [];
+      const { engine, snapshotStore } = redisOnlyEngine(prisma, redisOptions, {
+        beforeCommand: async (operation) => {
+          if (failNextCommand) {
+            failNextCommand = false;
+            injected.push(operation);
+            throw new Error("simulated transient read failure");
+          }
+        },
+      });
+      try {
+        const { runId, message } = await finishRunCapturingMessage(engine, env, prisma);
+        await snapshotStore.dropRun(runId);
+        expect(await snapshotStore.getLatest(runId)).toBeNull();
+        expect(await snapshotStore.readBirthResidency(runId)).toBe("redis-primary");
+
+        const stale = await requeueStale(engine, env, message);
+        failNextCommand = true;
+        const { results, current } = await dequeueStale(engine, env, runId, stale.attempt);
+
+        expect(injected, "only the lock-body read fails").toHaveLength(1);
+        expect(results).toEqual([]);
+        expect(current, "the stale message must be acknowledged, not nacked").toBeUndefined();
+        expect(await engine.runQueue.lengthOfEnvQueue(env)).toBe(0);
+        expect(await engine.runQueue.currentConcurrencyOfEnvironment(env)).toBe(0);
+
+        const row = await prisma.taskRun.findFirstOrThrow({ where: { id: runId } });
+        expect(row.status).toBe("COMPLETED_SUCCESSFULLY");
       } finally {
         await engine.quit();
         await snapshotStore.quit();

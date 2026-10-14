@@ -18,7 +18,11 @@ import type {
   SnapshotReadContext,
   SnapshotRouteWire,
 } from "@internal/run-store";
-import { SnapshotStateExpiredError, snapshotRouteFromSnapshot } from "@internal/run-store";
+import {
+  SnapshotReadUnavailableError,
+  SnapshotStateExpiredError,
+  snapshotRouteFromSnapshot,
+} from "@internal/run-store";
 import { ExecutionSnapshotNotFoundError, ServiceValidationError } from "../errors.js";
 import { isFinalRunStatus } from "../statuses.js";
 import type { HeartbeatTimeouts } from "../types.js";
@@ -662,13 +666,42 @@ export class ExecutionSnapshotSystem {
     const prisma = tx ?? this.$.prisma;
 
     //we don't need to acquire a run lock for any of this, it's not critical if it happens on an older version
-    const latestSnapshot = await getLatestExecutionSnapshot(
-      prisma,
-      runId,
-      this.$.runStore,
-      undefined,
-      organizationId
-    );
+    let latestSnapshot: EnhancedExecutionSnapshot;
+    try {
+      latestSnapshot = await getLatestExecutionSnapshot(
+        prisma,
+        runId,
+        this.$.runStore,
+        undefined,
+        organizationId
+      );
+    } catch (error) {
+      // A transient snapshot store outage must not let the heartbeat job lapse, or every live run
+      // is stalled once the store is back. Expired state (a finished run) is not an outage.
+      if (
+        error instanceof SnapshotReadUnavailableError &&
+        !(error instanceof SnapshotStateExpiredError) &&
+        error.retriable === true
+      ) {
+        const intervalMs = this.#getHeartbeatIntervalMs("EXECUTING");
+        if (intervalMs !== null) {
+          await this.$.worker
+            .reschedule(`heartbeatSnapshot.${runId}`, new Date(Date.now() + intervalMs))
+            .catch((rescheduleError) => {
+              this.$.logger.error("heartbeatRun: failed to extend the heartbeat", {
+                runId,
+                snapshotId,
+                error: rescheduleError,
+              });
+            });
+        }
+        this.$.logger.warn(
+          "heartbeatRun: snapshot store unavailable, extending the heartbeat without verifying the snapshot",
+          { runId, snapshotId, workerId, runnerId }
+        );
+      }
+      throw error;
+    }
     if (latestSnapshot.id !== snapshotId) {
       this.$.logger.log("heartbeatRun: no longer the latest snapshot, stopping the heartbeat.", {
         runId,

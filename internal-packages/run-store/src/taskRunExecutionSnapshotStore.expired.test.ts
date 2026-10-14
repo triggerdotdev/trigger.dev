@@ -13,6 +13,8 @@ import {
   SnapshotReadUnavailableError,
   SnapshotStateExpiredError,
 } from "./taskRunExecutionSnapshotStore.js";
+import type { SnapshotResidencyResolver } from "./snapshotResidencyResolver.js";
+import type { SnapshotRouteWire } from "./snapshotResidency.js";
 import {
   buildCreateRunData,
   seedSnapshotEnvironment,
@@ -20,6 +22,36 @@ import {
 } from "./testFixtures/snapshotIdFixture.js";
 
 const ROUTE = "logical:1";
+
+// The route a queue message carries for a redis-primary run: the dequeue passes this, not the org id.
+function redisPrimaryRoute(env: SnapshotFixtureEnv): SnapshotRouteWire {
+  return { version: 1, residency: "redis-primary", organizationId: env.organizationId };
+}
+
+// The three route-carried reads: head, by-id point read, and the read-since window.
+function routeReads(
+  reader: TaskRunExecutionSnapshotStore,
+  runId: string,
+  snapshotId: string,
+  route: SnapshotRouteWire,
+  client: Parameters<TaskRunExecutionSnapshotStore["findExecutionSnapshot"]>[1]
+) {
+  return {
+    latest: () => reader.findLatestExecutionSnapshot(runId, undefined, undefined, route),
+    byId: () => reader.findExecutionSnapshot({ where: { runId, id: snapshotId } }, client, route),
+    window: () =>
+      reader.findManyExecutionSnapshots(
+        {
+          where: { runId, isValid: true, createdAt: { gt: new Date(0) } },
+          include: { checkpoint: true },
+          orderBy: { createdAt: "desc" },
+          take: 50,
+        },
+        client,
+        route
+      ),
+  };
+}
 
 function birthSnapshot(env: SnapshotFixtureEnv, id: string) {
   return {
@@ -221,6 +253,127 @@ describe("TaskRunExecutionSnapshotStore expired redis-primary state", () => {
             reader.findLatestExecutionSnapshot(runId, undefined, undefined, env.organizationId)
           )
         );
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "route-carried reads of an expired run throw SnapshotStateExpiredError, not the retriable miss",
+    async ({ prisma, redisOptions }) => {
+      const delegate = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const writer = new TaskRunExecutionSnapshotStore(delegate, {
+          store,
+          mode: "redis-only",
+          logicalRunStoreRoute: ROUTE,
+        });
+        const { runId, finishedId } = await finishedAndExpired(writer, store, env);
+        const reads = routeReads(writer, runId, finishedId, redisPrimaryRoute(env), prisma);
+
+        expectExpired(await rejection(reads.latest()), runId);
+        expectExpired(await rejection(reads.byId()), runId);
+        expectExpired(await rejection(reads.window()), runId);
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "route-carried reads of a run whose state is present still succeed",
+    async ({ prisma, redisOptions }) => {
+      const delegate = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const writer = new TaskRunExecutionSnapshotStore(delegate, {
+          store,
+          mode: "redis-only",
+          logicalRunStoreRoute: ROUTE,
+        });
+        const runId = generateInternalId();
+        const birthId = generateInternalId();
+        await writer.createRun({
+          data: buildCreateRunData(runId, env),
+          snapshot: birthSnapshot(env, birthId),
+        });
+        const reads = routeReads(writer, runId, birthId, redisPrimaryRoute(env), prisma);
+
+        expect((await reads.latest()).id).toBe(birthId);
+        expect((await reads.byId())?.id).toBe(birthId);
+        expect((await reads.window()).map((s) => s.id)).toEqual([birthId]);
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "route-carried reads with MemoryDB unreachable still throw the plain, retriable error",
+    async ({ prisma, redisOptions }) => {
+      const delegate = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+      const env = await seedSnapshotEnvironment(prisma);
+      const writer = new TaskRunExecutionSnapshotStore(delegate, {
+        store,
+        mode: "redis-only",
+        logicalRunStoreRoute: ROUTE,
+      });
+      const runId = generateInternalId();
+      const birthId = generateInternalId();
+      await writer.createRun({
+        data: buildCreateRunData(runId, env),
+        snapshot: birthSnapshot(env, birthId),
+      });
+      const reads = routeReads(writer, runId, birthId, redisPrimaryRoute(env), prisma);
+
+      await store.quit();
+
+      expectRetriableUnavailable(await rejection(reads.latest()));
+      expectRetriableUnavailable(await rejection(reads.byId()));
+      expectRetriableUnavailable(await rejection(reads.window()));
+    }
+  );
+
+  containerTest(
+    "a route-carried miss whose residency cannot be resolved keeps the retriable miss",
+    async ({ prisma, redisOptions }) => {
+      const delegate = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const writer = new TaskRunExecutionSnapshotStore(delegate, {
+          store,
+          mode: "redis-only",
+          logicalRunStoreRoute: ROUTE,
+        });
+        const { runId, finishedId } = await finishedAndExpired(writer, store, env);
+
+        // The state is gone, but the residency read fails: expiry is not proven, so stay retriable.
+        const unresolved = {
+          resolve: async () => ({ kind: "error" as const }),
+        } as unknown as SnapshotResidencyResolver;
+        const reader = new TaskRunExecutionSnapshotStore(delegate, {
+          store,
+          mode: "redis-only",
+          logicalRunStoreRoute: ROUTE,
+          residencyResolver: unresolved,
+        });
+        const reads = routeReads(reader, runId, finishedId, redisPrimaryRoute(env), prisma);
+
+        const latest = await rejection(reads.latest());
+        expectRetriableUnavailable(latest);
+        expect((latest as Error).message).toMatch(/redis-primary head missing/);
+        const byId = await rejection(reads.byId());
+        expectRetriableUnavailable(byId);
+        expect((byId as Error).message).toMatch(/redis-primary snapshot missing/);
+        const window = await rejection(reads.window());
+        expectRetriableUnavailable(window);
+        expect((window as Error).message).toMatch(/redis-primary window missing/);
       } finally {
         await store.quit();
       }

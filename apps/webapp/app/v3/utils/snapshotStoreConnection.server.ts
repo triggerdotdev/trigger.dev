@@ -1,7 +1,7 @@
 import { createRedisClusterClient, type Cluster } from "@internal/redis";
 import { RedisSnapshotStore, type SnapshotStoreMetrics } from "@internal/run-store";
 
-const COMMAND_TIMEOUT_MS = 500;
+const COMMAND_TIMEOUT_MS = 1_000;
 const CONNECT_TIMEOUT_MS = 500;
 const POLICY_CHECK_INTERVAL_MS = 30_000;
 const COMPLETED_TTL_MS = 4 * 24 * 60 * 60 * 1_000;

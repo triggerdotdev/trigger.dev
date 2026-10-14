@@ -26,8 +26,9 @@ const taskIdentifier = "test-task";
 
 type Env = Awaited<ReturnType<typeof setupAuthenticatedEnvironment>>;
 
-// The worker is disabled so the continueRunIfUnblocked job that completeWaitpoint enqueues never runs
-// in the background; each test invokes waitpointSystem.continueRunIfUnblocked directly instead.
+// The worker is disabled so the continueRunIfUnblocked job that completeWaitpoint enqueues is stored
+// but never consumed in the background; each test invokes waitpointSystem.continueRunIfUnblocked
+// directly instead (the job handler's only call), so no assertion races a poll interval.
 function redisOnlyEngine(prisma: PrismaClient, redisOptions: RedisOptions) {
   const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
   const delegate = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
@@ -162,6 +163,10 @@ describe("continueRunIfUnblocked with expired redis-primary snapshot state", () 
           1
         );
 
+        // The premise: cancelling a SUSPENDED run leaves its blocking edge in place.
+        const edges = await prisma.taskRunWaitpoint.findMany({ where: { taskRunId: run.id } });
+        expect(edges.map((e) => e.waitpointId)).toContain(waitpoint.id);
+
         // What the post-finish TTL does: the run's MemoryDB state is gone, the residency marker
         // survives.
         const head = await snapshotStore.getLatest(run.id);
@@ -171,11 +176,20 @@ describe("continueRunIfUnblocked with expired redis-primary snapshot state", () 
         expect(await snapshotStore.getLatest(run.id)).toBeNull();
         expect(await snapshotStore.readBirthResidency(run.id)).toBe("redis-primary");
 
-        // The wait elapses days later: the waitpoint completes and the continuation runs.
+        // The wait elapses days later: completing the waitpoint walks the surviving edge and
+        // enqueues the continuation for the finished run.
+        const worker = (engine as any).worker;
+        const jobId = `continueRunIfUnblocked:${run.id}`;
+        expect(await worker.getJob(jobId)).toBeNull();
         const completed = await engine.completeWaitpoint({ id: waitpoint.id });
         expect(completed.status).toBe("COMPLETED");
+        const job = await worker.getJob(jobId);
+        assertNonNullable(job);
+        expect(job.job).toBe("continueRunIfUnblocked");
+        expect(job.item).toEqual({ runId: run.id });
 
-        const result = await engine.waitpointSystem.continueRunIfUnblocked({ runId: run.id });
+        // Run the enqueued continuation with its own payload.
+        const result = await engine.waitpointSystem.continueRunIfUnblocked(job.item);
         expect(result).toEqual({ status: "skipped", reason: "run is finished" });
       } finally {
         await engine.quit();

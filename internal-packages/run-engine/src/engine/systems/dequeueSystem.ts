@@ -30,7 +30,12 @@ import {
 } from "./executionSnapshotSystem.js";
 import type { RunAttemptSystem } from "./runAttemptSystem.js";
 import type { SystemResources } from "./systems.js";
-import { snapshotRouteFromSnapshot, type SnapshotRouteWire } from "@internal/run-store";
+import {
+  parseSnapshotRoute,
+  snapshotRouteFromSnapshot,
+  type SnapshotReadContext,
+  type SnapshotRouteWire,
+} from "@internal/run-store";
 
 const NullableRetryOptions = z.compile(RetryOptions.nullable());
 
@@ -161,6 +166,11 @@ export class DequeueSystem {
         const workerQueue = message.workerQueue;
         const orgId = message.message.orgId;
         const runId = message.messageId;
+        // The message's birth route lets the snapshot store read a redis-primary run without a Postgres
+        // residency probe. A missing, malformed or other-org route falls back to the org id.
+        const carriedRoute = parseSnapshotRoute(message.message.snapshotRoute);
+        const snapshotReadContext: SnapshotReadContext =
+          carriedRoute && carriedRoute.organizationId === orgId ? carriedRoute : orgId;
         // The snapshot this dequeue's preparation started from; the recovery path below only requeues a
         // PENDING_EXECUTING snapshot that this preparation wrote.
         let preparedFromSnapshotId: string | undefined;
@@ -203,7 +213,7 @@ export class DequeueSystem {
                 prisma,
                 runId,
                 this.$.runStore,
-                orgId,
+                snapshotReadContext,
                 { id: true }
               );
               if (finishedRun) {
@@ -768,9 +778,13 @@ export class DequeueSystem {
             // A finished run's stale message is removed; any read error (including a failed row
             // read after expiry) falls through to the nack below.
             const [snapshotError, read] = await tryCatch(
-              getLatestExecutionSnapshotOrFinishedRun(prisma, runId, this.$.runStore, undefined, {
-                id: true,
-              })
+              getLatestExecutionSnapshotOrFinishedRun(
+                prisma,
+                runId,
+                this.$.runStore,
+                snapshotReadContext,
+                { id: true }
+              )
             );
             if (snapshotError || !read) {
               // Do not replace execution state we could not read with a checkpoint-less snapshot.
