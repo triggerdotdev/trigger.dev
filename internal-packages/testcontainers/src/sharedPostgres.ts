@@ -13,7 +13,8 @@ import {
 const SHARED_CONTAINER_LABEL = "dev.trigger.testcontainers.shared";
 
 const STALE_CLONE_MS = 2 * 60 * 60 * 1000;
-const CLONE_NAME = /^t([0-9a-z]+)_/;
+// Full clone names only: a template mid-build is not yet datistemplate and must never be reaped.
+const CLONE_NAME = /^t([0-9a-z]+)_.+_[0-9a-f]{8}$/;
 
 const PG17_INITDB_ARGS = "--locale-provider=icu --icu-locale=en-US --encoding=UTF8";
 
