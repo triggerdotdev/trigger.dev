@@ -8,6 +8,7 @@ import { isValidDatabaseUrl } from "./utils/db";
 import { parseDeployBaseImages } from "~/v3/deployBaseImages.server";
 import { parseRunOpsShards, validateShardListAgainstNewUrl } from "~/v3/runOpsShards.server";
 import { isValidRegex } from "./utils/regex";
+import { isValidCronExpression } from "./utils/cron";
 import { isValidDuration } from "./services/realtime/duration.server";
 import { WorkerQueueSubscriptionPolicyEnv } from "./runEngine/concerns/workerQueueSubscriptions.server";
 
@@ -2035,6 +2036,17 @@ const EnvironmentSchema = z
 
     DEPLOYMENTS_AUTORELOAD_POLL_INTERVAL_MS: z.coerce.number().int().default(5_000),
     DEPLOYMENTS_REDEPLOY_WINDOW_DAYS: z.coerce.number().int().positive().default(7),
+    DEPLOYMENTS_BUILD_ENV_VARS_SWEEP_ENABLED: BoolEnv.default(true),
+    DEPLOYMENTS_BUILD_ENV_VARS_SWEEP_SCHEDULE: z
+      .string()
+      .refine(isValidCronExpression, "must be a valid cron expression")
+      .default("0 * * * *"),
+    DEPLOYMENTS_BUILD_ENV_VARS_SWEEP_JITTER_MS: z.coerce
+      .number()
+      .int()
+      .nonnegative()
+      .default(60_000),
+    DEPLOYMENTS_BUILD_ENV_VARS_SWEEP_BATCH_SIZE: z.coerce.number().int().positive().default(500),
     BULK_ACTION_AUTORELOAD_POLL_INTERVAL_MS: z.coerce.number().int().default(1_000),
     QUEUES_AUTORELOAD_POLL_INTERVAL_MS: z.coerce.number().int().default(5_000),
 

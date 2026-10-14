@@ -27,6 +27,7 @@ import { PerformDeploymentAlertsService } from "./services/alerts/performDeploym
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
 import { BatchTriggerV3Service } from "./services/batchTriggerV3.server";
 import { TimeoutDeploymentService } from "./services/timeoutDeployment.server";
+import { sweepExpiredBuildEnvVars } from "./services/sweepDeploymentBuildEnvVars.server";
 import { BulkActionService } from "./services/bulk/BulkActionV2.server";
 import { prisma } from "~/db.server";
 import { sweepPreviewAutoArchives } from "~/services/previewAutoArchive.server";
@@ -71,6 +72,17 @@ function initializeWorker() {
         cron: "* * * * *",
         jitterInMs: 10_000,
         visibilityTimeoutMs: 60_000,
+        retry: { maxAttempts: 3 },
+      },
+      "deployments.buildEnvVarsSweep": {
+        schema: CronSchema,
+        visibilityTimeoutMs: 60_000 * 5,
+        ...(env.DEPLOYMENTS_BUILD_ENV_VARS_SWEEP_ENABLED
+          ? {
+              cron: env.DEPLOYMENTS_BUILD_ENV_VARS_SWEEP_SCHEDULE,
+              jitterInMs: env.DEPLOYMENTS_BUILD_ENV_VARS_SWEEP_JITTER_MS,
+            }
+          : {}),
         retry: { maxAttempts: 3 },
       },
       scheduleEmail: {
@@ -222,6 +234,12 @@ function initializeWorker() {
       "previewBranches.autoArchiveSweep": async () => {
         await sweepPreviewAutoArchives(prisma, (ids) => {
           for (const id of ids) controlPlaneResolver.invalidateEnvironment(id);
+        });
+      },
+      "deployments.buildEnvVarsSweep": async () => {
+        await sweepExpiredBuildEnvVars(prisma, {
+          windowDays: env.DEPLOYMENTS_REDEPLOY_WINDOW_DAYS,
+          batchSize: env.DEPLOYMENTS_BUILD_ENV_VARS_SWEEP_BATCH_SIZE,
         });
       },
       scheduleEmail: async ({ payload }) => {
