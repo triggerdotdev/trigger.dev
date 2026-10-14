@@ -5,6 +5,7 @@ import {
 } from "@internal/webhook-engine";
 import type { WebhookDeliverTaskErrorType, WebhookRedisOptions } from "@internal/webhook-engine";
 import { tryCatch } from "@trigger.dev/core/utils";
+import { resolve4 } from "node:dns/promises";
 import { z } from "zod";
 import { prisma, webhookPartitionPrisma, webhookPrisma } from "~/db.server";
 import { env } from "~/env.server";
@@ -26,6 +27,24 @@ import { webhookWaitpoints } from "./webhookWaitpoints.server";
 import { meter, tracer } from "./tracer.server";
 
 export const webhookEngine = singleton("WebhookEngine", createWebhookEngine);
+
+/**
+ * Resolves the seed host to one of its addresses at random on every connect and reconnect. After a
+ * failover, ElastiCache's configuration endpoint keeps listing the old primary for minutes, and the
+ * system resolver always ranks the address in the client's own subnet first, so a cluster client
+ * that has to reconnect through the seed can keep landing on the dead node. TLS still verifies the
+ * seed host (`servername`). A name that doesn't resolve, such as an IP or localhost, is used as is.
+ */
+function randomSeedAddress(
+  address: string,
+  callback: (err: Error | null, address: string) => void
+) {
+  resolve4(address).then(
+    (addresses) =>
+      callback(null, addresses[Math.floor(Math.random() * addresses.length)] ?? address),
+    () => callback(null, address)
+  );
+}
 
 /**
  * The webhooks Redis cluster, seeded from one node; ioredis discovers the rest. A primary that stops
@@ -50,8 +69,7 @@ function webhookRedisConnection(): WebhookRedisOptions {
       redisOptions,
       clusterOptions: {
         keyPrefix: "webhook:",
-        dnsLookup: (address: string, callback: (err: Error | null, address: string) => void) =>
-          callback(null, address),
+        dnsLookup: randomSeedAddress,
         slotsRefreshInterval: 2_000,
         slotsRefreshTimeout: 2_000,
       },
