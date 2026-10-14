@@ -255,8 +255,8 @@ function emptySkipped(): SkippedRuns {
   return { postgres: 0, redisPrimary: 0, noSnapshots: 0, unknown: 0, expired: 0 };
 }
 
-/** Finished runs keep their MemoryDB keys for this long, then the whole keyspace expires. */
-export const FINISHED_RUN_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
+/** Finished runs keep their MemoryDB keys for this long, then the whole keyspace expires. Matches the webapp's completed TTL. */
+export const FINISHED_RUN_RETENTION_MS = 4 * 24 * 60 * 60 * 1000;
 
 function isExpired(
   rows: PostgresSnapshotRow[],

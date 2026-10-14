@@ -19,7 +19,7 @@ export const workerCatalog = {
   repairSnapshot: {
     schema: z.object({
       runId: z.string(),
-      snapshotId: z.string(),
+      snapshotId: z.string().nullable(),
       executionStatus: z.string(),
     }),
     visibilityTimeoutMs: 30_000,

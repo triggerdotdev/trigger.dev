@@ -18,8 +18,13 @@ import type {
   SnapshotReadContext,
   SnapshotRouteWire,
 } from "@internal/run-store";
-import { snapshotRouteFromSnapshot } from "@internal/run-store";
+import {
+  SnapshotReadUnavailableError,
+  SnapshotStateExpiredError,
+  snapshotRouteFromSnapshot,
+} from "@internal/run-store";
 import { ExecutionSnapshotNotFoundError, ServiceValidationError } from "../errors.js";
+import { isFinalRunStatus } from "../statuses.js";
 import type { HeartbeatTimeouts } from "../types.js";
 import type { SystemResources } from "./systems.js";
 
@@ -211,6 +216,62 @@ async function fetchWaitpointsInChunks(
     allWaitpoints.push(...waitpoints);
   }
   return allWaitpoints;
+}
+
+/**
+ * True when a snapshot read failed because a redis-primary run's state aged out and the run row is
+ * final. Snapshot state only gets a TTL from a FINISHED entry, so a final row means the run finished.
+ * Expired state on a non-final row is lost state and must keep failing closed.
+ */
+export function isExpiredSnapshotOfFinishedRun(error: unknown, runStatus: TaskRunStatus): boolean {
+  return error instanceof SnapshotStateExpiredError && isFinalRunStatus(runStatus);
+}
+
+type FinishedRunRow<S extends Prisma.TaskRunSelect> = Prisma.TaskRunGetPayload<{
+  select: S;
+}> & { status: TaskRunStatus };
+
+export type LatestExecutionSnapshotOrFinishedRun<S extends Prisma.TaskRunSelect> =
+  | { snapshot: EnhancedExecutionSnapshot; finishedRun: null }
+  | { snapshot: null; finishedRun: FinishedRunRow<S> };
+
+/**
+ * Like `getLatestExecutionSnapshot`, but when the run's snapshot state has expired and its run row
+ * is final, returns that row (selected with `runSelect` plus `status`) instead of throwing. Every
+ * other error, and expired state on a non-final row, is rethrown unchanged.
+ */
+export async function getLatestExecutionSnapshotOrFinishedRun<S extends Prisma.TaskRunSelect>(
+  prisma: PrismaClientOrTransaction,
+  runId: string,
+  runStore: RunStore,
+  organizationId: SnapshotReadContext | undefined,
+  runSelect: S
+): Promise<LatestExecutionSnapshotOrFinishedRun<S>> {
+  try {
+    const snapshot = await getLatestExecutionSnapshot(
+      prisma,
+      runId,
+      runStore,
+      undefined,
+      organizationId
+    );
+    return { snapshot, finishedRun: null };
+  } catch (error) {
+    if (!(error instanceof SnapshotStateExpiredError)) {
+      throw error;
+    }
+    // Prisma's select-payload mapping does not compose over an intersection, so the row is read with
+    // `status` added and typed as the caller's selection plus `status`.
+    const run = (await runStore.findRun(
+      { id: runId },
+      { select: { ...runSelect, status: true } },
+      prisma
+    )) as FinishedRunRow<S> | null;
+    if (!run || !isExpiredSnapshotOfFinishedRun(error, run.status)) {
+      throw error;
+    }
+    return { snapshot: null, finishedRun: run };
+  }
 }
 
 /**
@@ -605,13 +666,42 @@ export class ExecutionSnapshotSystem {
     const prisma = tx ?? this.$.prisma;
 
     //we don't need to acquire a run lock for any of this, it's not critical if it happens on an older version
-    const latestSnapshot = await getLatestExecutionSnapshot(
-      prisma,
-      runId,
-      this.$.runStore,
-      undefined,
-      organizationId
-    );
+    let latestSnapshot: EnhancedExecutionSnapshot;
+    try {
+      latestSnapshot = await getLatestExecutionSnapshot(
+        prisma,
+        runId,
+        this.$.runStore,
+        undefined,
+        organizationId
+      );
+    } catch (error) {
+      // A transient snapshot store outage must not let the heartbeat job lapse, or every live run
+      // is stalled once the store is back. Expired state (a finished run) is not an outage.
+      if (
+        error instanceof SnapshotReadUnavailableError &&
+        !(error instanceof SnapshotStateExpiredError) &&
+        error.retriable === true
+      ) {
+        const intervalMs = this.#getHeartbeatIntervalMs("EXECUTING");
+        if (intervalMs !== null) {
+          await this.$.worker
+            .reschedule(`heartbeatSnapshot.${runId}`, new Date(Date.now() + intervalMs))
+            .catch((rescheduleError) => {
+              this.$.logger.error("heartbeatRun: failed to extend the heartbeat", {
+                runId,
+                snapshotId,
+                error: rescheduleError,
+              });
+            });
+        }
+        this.$.logger.warn(
+          "heartbeatRun: snapshot store unavailable, extending the heartbeat without verifying the snapshot",
+          { runId, snapshotId, workerId, runnerId }
+        );
+      }
+      throw error;
+    }
     if (latestSnapshot.id !== snapshotId) {
       this.$.logger.log("heartbeatRun: no longer the latest snapshot, stopping the heartbeat.", {
         runId,

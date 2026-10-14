@@ -1385,6 +1385,8 @@ const EnvironmentSchema = z
 
     // Infrastructure endpoint only. Modes and organization overrides are polled feature flags.
     RUN_ENGINE_SNAPSHOT_STORE_REDIS_URL: z.string().optional(),
+    // How long a fetched org snapshotStoreMode override is reused per process. 0 disables caching.
+    RUN_ENGINE_SNAPSHOT_STORE_DIAL_CACHE_MS: z.coerce.number().int().min(0).default(5000),
 
     RUN_ENGINE_RUN_LOCK_REDIS_HOST: z
       .string()

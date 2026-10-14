@@ -17,7 +17,10 @@ import { LegacyPostgresWaitpointCoordinator } from "../waitpointCoordinator/lega
 import type { WaitpointCoordinator } from "../waitpointCoordinator/types.js";
 import type { EnqueueSystem } from "./enqueueSystem.js";
 import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
-import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
+import {
+  getLatestExecutionSnapshot,
+  isExpiredSnapshotOfFinishedRun,
+} from "./executionSnapshotSystem.js";
 import type { SystemResources } from "./systems.js";
 import { snapshotRouteFromSnapshot } from "@internal/run-store";
 
@@ -601,13 +604,27 @@ export class WaitpointSystem {
       }
 
       //4. Continue the run whether it's executing or not
-      const snapshot = await getLatestExecutionSnapshot(
-        this.$.prisma,
-        runId,
-        this.$.runStore,
-        undefined,
-        env.organizationId
-      );
+      let snapshot: Awaited<ReturnType<typeof getLatestExecutionSnapshot>>;
+      try {
+        snapshot = await getLatestExecutionSnapshot(
+          this.$.prisma,
+          runId,
+          this.$.runStore,
+          undefined,
+          env.organizationId
+        );
+      } catch (error) {
+        if (!isExpiredSnapshotOfFinishedRun(error, run.status)) {
+          throw error;
+        }
+        this.$.logger.warn("continueRunIfUnblocked: snapshot state expired, run already finished", {
+          runId,
+        });
+        return {
+          status: "skipped",
+          reason: "run is finished",
+        };
+      }
 
       switch (snapshot.executionStatus) {
         case "RUN_CREATED": {
@@ -938,13 +955,25 @@ export class WaitpointSystem {
       }
 
       // Operational decision: use latest execution snapshot, not TaskRun status
-      const snapshot = await getLatestExecutionSnapshot(
-        prisma,
-        runId,
-        this.$.runStore,
-        undefined,
-        runAfterLock.organizationId ?? undefined
-      );
+      let runFinished: boolean;
+      try {
+        const snapshot = await getLatestExecutionSnapshot(
+          prisma,
+          runId,
+          this.$.runStore,
+          undefined,
+          runAfterLock.organizationId ?? undefined
+        );
+        runFinished = snapshot.executionStatus === "FINISHED";
+      } catch (error) {
+        if (!isExpiredSnapshotOfFinishedRun(error, runAfterLock.status)) {
+          throw error;
+        }
+        this.$.logger.warn("getOrCreateRunWaitpoint: snapshot state expired, using final run row", {
+          runId,
+        });
+        runFinished = true;
+      }
 
       // Create waitpoint and link to run atomically
       const waitpointData = this.buildRunAssociatedWaitpoint({
@@ -959,7 +988,7 @@ export class WaitpointSystem {
       });
 
       // If run has already finished (per snapshot), complete the waitpoint immediately so the parent can resume
-      if (snapshot.executionStatus === "FINISHED") {
+      if (runFinished) {
         const output = this.buildWaitpointOutputFromRun(runAfterLock);
         const completed = await this.completeWaitpoint({
           id: waitpoint.id,

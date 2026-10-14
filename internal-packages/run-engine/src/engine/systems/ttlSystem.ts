@@ -2,7 +2,7 @@ import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import type { PrismaClientOrTransaction, TaskRunStatus } from "@trigger.dev/database";
 import { isExecuting } from "../statuses.js";
-import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
+import { getLatestExecutionSnapshotOrFinishedRun } from "./executionSnapshotSystem.js";
 import type { SystemResources } from "./systems.js";
 import {
   parseSnapshotRoute,
@@ -60,13 +60,20 @@ export class TtlSystem {
   }) {
     const prisma = tx ?? this.$.prisma;
     await this.$.runLock.lock("expireRun", [runId], async () => {
-      const snapshot = await getLatestExecutionSnapshot(
+      const { snapshot, finishedRun } = await getLatestExecutionSnapshotOrFinishedRun(
         prisma,
         runId,
         this.$.runStore,
-        undefined,
-        route ?? organizationId
+        route ?? organizationId,
+        { id: true }
       );
+      if (finishedRun) {
+        this.$.logger.debug("expireRun: snapshot state expired, run already finished", {
+          runId,
+          status: finishedRun.status,
+        });
+        return;
+      }
 
       //if we're executing then we won't expire the run
       if (isExecuting(snapshot.executionStatus)) {
