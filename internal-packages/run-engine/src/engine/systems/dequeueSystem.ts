@@ -24,8 +24,10 @@ import { getMachinePreset } from "../machinePresets.js";
 import { isDequeueableExecutionStatus, isExecuting } from "../statuses.js";
 import type { WorkerQueueSelection } from "../../run-queue/types.js";
 import type { RunEngineOptions, WorkerQueueDequeueOptions } from "../types.js";
-import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
-import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
+import {
+  getLatestExecutionSnapshotOrFinishedRun,
+  type ExecutionSnapshotSystem,
+} from "./executionSnapshotSystem.js";
 import type { RunAttemptSystem } from "./runAttemptSystem.js";
 import type { SystemResources } from "./systems.js";
 import { snapshotRouteFromSnapshot, type SnapshotRouteWire } from "@internal/run-store";
@@ -197,13 +199,18 @@ export class DequeueSystem {
             "dequeueFromWorkerQueue",
             [runId],
             async () => {
-              const snapshot = await getLatestExecutionSnapshot(
+              const { snapshot, finishedRun } = await getLatestExecutionSnapshotOrFinishedRun(
                 prisma,
                 runId,
                 this.$.runStore,
-                undefined,
-                orgId
+                orgId,
+                { id: true }
               );
+              if (finishedRun) {
+                // A stale message for a finished run: remove it instead of starting the run.
+                await this.#acknowledgeExpiredFinishedRun(orgId, runId);
+                return;
+              }
               preparedFromSnapshotId = snapshot.id;
 
               if (!isDequeueableExecutionStatus(snapshot.executionStatus)) {
@@ -758,11 +765,14 @@ export class DequeueSystem {
           // Reentrant: tryNackAndRequeue's own lock on this run nests inside this one.
           await this.$.runLock.lock("dequeueFromWorkerQueueRecovery", [runId], async () => {
             // Preparation may have committed a transition before throwing, so read current state.
-            const [snapshotError, snapshot] = await tryCatch(
-              getLatestExecutionSnapshot(prisma, runId, this.$.runStore)
+            // A finished run's stale message is removed; any read error (including a failed row
+            // read after expiry) falls through to the nack below.
+            const [snapshotError, read] = await tryCatch(
+              getLatestExecutionSnapshotOrFinishedRun(prisma, runId, this.$.runStore, undefined, {
+                id: true,
+              })
             );
-
-            if (snapshotError) {
+            if (snapshotError || !read) {
               // Do not replace execution state we could not read with a checkpoint-less snapshot.
               const requeued = await this.$.runQueue.nackMessage({ orgId, messageId: runId });
               if (requeued === false) {
@@ -775,6 +785,11 @@ export class DequeueSystem {
               }
               return;
             }
+            if (read.finishedRun) {
+              await this.#acknowledgeExpiredFinishedRun(orgId, runId);
+              return;
+            }
+            const snapshot = read.snapshot;
 
             // A PENDING_EXECUTING snapshot written by this preparation was never handed to a worker,
             // so it is still ours to requeue. Any other non-dequeueable state is owned elsewhere.
@@ -845,6 +860,14 @@ export class DequeueSystem {
         },
       }
     );
+  }
+
+  async #acknowledgeExpiredFinishedRun(orgId: string, runId: string): Promise<void> {
+    this.$.logger.warn(
+      "dequeueFromWorkerQueue: snapshot state expired for a finished run, removing from queue",
+      { runId, orgId }
+    );
+    await this.$.runQueue.acknowledgeMessage(orgId, runId);
   }
 
   async #pendingVersion({

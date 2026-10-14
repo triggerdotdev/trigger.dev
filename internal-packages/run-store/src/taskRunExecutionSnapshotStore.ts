@@ -86,6 +86,9 @@ export type TaskRunExecutionSnapshotStoreMode = "dual-write" | "redis-read" | "r
  */
 export type SnapshotStoreDial = "off" | TaskRunExecutionSnapshotStoreMode;
 
+// Where a read is served from. "unavailable" fails closed retriably; "expired" fails closed for good.
+type SnapshotReadPlan = "postgres" | "mirrored" | "redisPrimary" | "unavailable" | "expired";
+
 /**
  * A read that could not be served authoritatively from MemoryDB right now: a pending unit that is
  * still in progress, or a MemoryDB availability error. It is RETRIABLE — the caller retries rather
@@ -93,7 +96,7 @@ export type SnapshotStoreDial = "off" | TaskRunExecutionSnapshotStoreMode;
  * recovers from Postgres for a mirrored run).
  */
 export class SnapshotReadUnavailableError extends Error {
-  readonly retriable = true;
+  readonly retriable: boolean = true;
   readonly runId: string;
   readonly reason: string;
   readonly cause?: unknown;
@@ -103,6 +106,19 @@ export class SnapshotReadUnavailableError extends Error {
     this.runId = runId;
     this.reason = reason;
     this.cause = options?.cause;
+  }
+}
+
+/**
+ * A read of a redis-primary run whose MemoryDB state has aged out. The TTL is only armed by a FINISHED
+ * entry, so the run's last snapshot was FINISHED and the state will never come back: NOT retriable.
+ * Still a SnapshotReadUnavailableError, so callers that only fail closed keep doing so.
+ */
+export class SnapshotStateExpiredError extends SnapshotReadUnavailableError {
+  override readonly retriable = false;
+  constructor(runId: string) {
+    super(runId, "state expired");
+    this.name = "SnapshotStateExpiredError";
   }
 }
 
@@ -879,7 +895,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       postgresRead !== undefined,
       resolvedDial
     );
-    if (plan === "unavailable") {
+    if (plan === "unavailable" || plan === "expired") {
       // A positive Postgres row is durable evidence, even when the org has since been enabled.
       // No row means no fallback: never manufacture a Postgres home for a Redis-primary run.
       const postgres =
@@ -889,6 +905,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       if (postgres && snapshotResidencyFromMetadata(postgres.metadata) !== "redis-primary") {
         return postgres;
       }
+      if (plan === "expired") throw new SnapshotStateExpiredError(runId);
       throw new SnapshotReadUnavailableError(runId, "residency unresolved or state expired");
     }
     if (plan === "postgres") {
@@ -946,6 +963,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       return super.findSnapshotCompletedWaitpointIds(snapshotId, client, runId);
     }
     const plan = await this.#resolveReadPlan(runId, organizationId);
+    if (plan === "expired") throw new SnapshotStateExpiredError(runId);
     if (plan === "unavailable") {
       throw new SnapshotReadUnavailableError(runId, "residency unresolved or state expired");
     }
@@ -978,6 +996,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       return super.findSnapshotCompletedWaitpointIdsWithPresence(snapshotId, client, runId);
     }
     const plan = await this.#resolveReadPlan(runId, organizationId);
+    if (plan === "expired") throw new SnapshotStateExpiredError(runId);
     if (plan === "unavailable") {
       throw new SnapshotReadUnavailableError(runId, "residency unresolved or state expired");
     }
@@ -1025,6 +1044,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       }
     }
     const plan = await this.#resolveReadPlan(runId, organizationId, postgresFirst, resolvedDial);
+    if (plan === "expired") throw new SnapshotStateExpiredError(runId);
     if (plan === "unavailable") {
       throw new SnapshotReadUnavailableError(runId, "residency unresolved or state expired");
     }
@@ -1073,6 +1093,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     const runId = runIdFromWhere(where);
     if (runId === undefined) return super.findManyExecutionSnapshots(args, client);
     const plan = await this.#resolveReadPlan(runId, organizationId);
+    if (plan === "expired") throw new SnapshotStateExpiredError(runId);
     if (plan === "unavailable") {
       throw new SnapshotReadUnavailableError(runId, "residency unresolved or state expired");
     }
@@ -1099,13 +1120,13 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   // and the MemoryDB head under redis-read/redis-only; a postgres-resident run passes
   // through. Carried server snapshot evidence avoids another residency lookup; no per-run cache.
   // Records where the read dispatched (MemoryDB head for redis-primary/mirrored-redis-read, else
-  // Postgres); "unavailable" served nothing. All read call sites go through this.
+  // Postgres); "unavailable" and "expired" served nothing. All read call sites go through this.
   async #resolveReadPlan(
     runId: string,
     organizationId?: SnapshotReadContext,
     postgresChecked = false,
     resolvedDial?: ResolvedSnapshotDial
-  ): Promise<"postgres" | "mirrored" | "redisPrimary" | "unavailable"> {
+  ): Promise<SnapshotReadPlan> {
     const plan = await this.#computeReadPlan(runId, organizationId, postgresChecked, resolvedDial);
     if (plan === "postgres") this.#metrics?.recordReadSource("postgres");
     else if (plan === "redisPrimary" || plan === "mirrored")
@@ -1118,7 +1139,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     serverOrganizationId?: SnapshotReadContext,
     postgresChecked = false,
     resolvedDial?: ResolvedSnapshotDial
-  ): Promise<"postgres" | "mirrored" | "redisPrimary" | "unavailable"> {
+  ): Promise<SnapshotReadPlan> {
     const context = serverOrganizationId ?? this.#organizationId;
     if (typeof context === "object") {
       if (context.residency === "postgres") return "postgres";
@@ -1180,7 +1201,10 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       }
       case "absent":
         return "postgres";
-      // expired (redis-primary state aged out), an unresolved pendingBirth, and error all fail closed.
+      // Redis-primary state aged out after the run finished: fails closed, but permanently.
+      case "expired":
+        return "expired";
+      // An unresolved pendingBirth and error fail closed, retriably.
       default:
         return "unavailable";
     }

@@ -78,13 +78,14 @@ import {
   ExecutionSnapshotSystem,
   getExecutionSnapshotsSince,
   getLatestExecutionSnapshot,
+  getLatestExecutionSnapshotOrFinishedRun,
 } from "./systems/executionSnapshotSystem.js";
 import {
   PARKED_ON_EXTERNAL_DEPLOYMENT_STATUS_REASON,
   PendingVersionSystem,
 } from "./systems/pendingVersionSystem.js";
 import { RaceSimulationSystem } from "./systems/raceSimulationSystem.js";
-import { RunAttemptSystem } from "./systems/runAttemptSystem.js";
+import { type CancelRunResult, RunAttemptSystem } from "./systems/runAttemptSystem.js";
 import { NoopPendingVersionRunIdLookup } from "./services/pendingVersionLookup.js";
 import type { SystemResources } from "./systems/systems.js";
 import {
@@ -1753,7 +1754,7 @@ export class RunEngine {
     finalizeRun?: boolean;
     bulkActionId?: string;
     tx?: PrismaClientOrTransaction;
-  }): Promise<ExecutionResult & { alreadyFinished: boolean }> {
+  }): Promise<CancelRunResult> {
     return this.runAttemptSystem.cancelRun({
       runId,
       organizationId,
@@ -2718,13 +2719,35 @@ export class RunEngine {
   }
 
   async #repairRun(runId: string, dryRun: boolean, organizationId: string) {
-    const snapshot = await getLatestExecutionSnapshot(
+    const { snapshot, finishedRun } = await getLatestExecutionSnapshotOrFinishedRun(
       this.prisma,
       runId,
       this.runStore,
-      undefined,
-      organizationId
+      organizationId,
+      { id: true }
     );
+    if (finishedRun) {
+      // The run finished and its snapshot state expired, so any concurrency slot it holds has leaked.
+      this.logger.warn("RunEngine.repairRun: snapshot state expired, run already finished", {
+        runId,
+      });
+
+      if (!dryRun) {
+        await this.worker.enqueueOnce({
+          id: `repair-in-progress-run:${runId}`,
+          job: "repairSnapshot",
+          payload: { runId, snapshotId: null, executionStatus: "FINISHED" },
+          availableAt: new Date(Date.now() + this.repairSnapshotTimeoutMs),
+        });
+      }
+
+      return {
+        action: "repairSnapshot",
+        runId,
+        snapshotStatus: "FINISHED",
+        snapshotId: null,
+      };
+    }
 
     if (
       snapshot.executionStatus === "QUEUED" ||
@@ -3173,13 +3196,57 @@ export class RunEngine {
     executionStatus,
   }: {
     runId: string;
-    snapshotId: string;
+    /** null when scheduled for a finished run whose snapshot state had already expired. */
+    snapshotId: string | null;
     executionStatus: string;
   }) {
     return await this.runLock.lock("handleRepairSnapshot", [runId], async () => {
       // No snapshot mirror in off-only mode, so the repair heals only the queue below. The M1+
       // rebuild reintroduces a mirror-repair step here.
-      const latestSnapshot = await getLatestExecutionSnapshot(this.prisma, runId, this.runStore);
+      const { snapshot: latestSnapshot, finishedRun } =
+        await getLatestExecutionSnapshotOrFinishedRun(
+          this.prisma,
+          runId,
+          this.runStore,
+          undefined,
+          {
+            id: true,
+            queue: true,
+            concurrencyKey: true,
+            runtimeEnvironmentId: true,
+          }
+        );
+      if (finishedRun) {
+        // The run is finished whichever snapshot the job was queued from (a live one that has since
+        // finished and expired, or none when queued after expiry), so its slot has leaked either way.
+        this.logger.warn("RunEngine.handleRepairSnapshot: snapshot state expired, run finished", {
+          runId,
+          snapshotId,
+          repairExecutionStatus: executionStatus,
+        });
+
+        const env = await this.controlPlaneResolver.resolveEnv(finishedRun.runtimeEnvironmentId);
+        if (!env) {
+          this.logger.error("RunEngine.handleRepairSnapshot FINISHED environment not found", {
+            runId,
+          });
+          return;
+        }
+
+        await this.#clearRunFromConcurrencySets({
+          runId,
+          orgId: env.organizationId,
+          queue: finishedRun.queue,
+          concurrencyKey: finishedRun.concurrencyKey ?? undefined,
+          env: {
+            id: env.id,
+            type: env.type,
+            project: { id: env.projectId },
+            organization: { id: env.organizationId },
+          },
+        });
+        return;
+      }
 
       if (latestSnapshot.id !== snapshotId) {
         this.logger.log(
@@ -3264,8 +3331,7 @@ export class RunEngine {
             return;
           }
 
-          // We need to clear this run from the current concurrency sets
-          await this.runQueue.clearMessageFromConcurrencySets({
+          await this.#clearRunFromConcurrencySets({
             runId,
             orgId: latestSnapshot.organizationId,
             queue: taskRun.queue,
@@ -3289,6 +3355,13 @@ export class RunEngine {
         }
       }
     });
+  }
+
+  async #clearRunFromConcurrencySets(
+    params: Parameters<RunQueue["clearMessageFromConcurrencySets"]>[0]
+  ) {
+    // We need to clear this run from the current concurrency sets
+    await this.runQueue.clearMessageFromConcurrencySets(params);
   }
 
   /**

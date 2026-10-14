@@ -66,11 +66,17 @@ import type {
 import {
   executionResultFromSnapshot,
   getLatestExecutionSnapshot,
+  getLatestExecutionSnapshotOrFinishedRun,
 } from "./executionSnapshotSystem.js";
 import type { SystemResources } from "./systems.js";
 import { snapshotRouteFromSnapshot, type SnapshotRouteWire } from "@internal/run-store";
 import type { WaitpointSystem } from "./waitpointSystem.js";
 import { BatchId, RunId } from "@trigger.dev/core/v3/isomorphic";
+
+/** A run whose snapshot state has expired has no snapshot to report, only its final run row. */
+export type CancelRunResult =
+  | (ExecutionResult & { alreadyFinished: boolean })
+  | { alreadyFinished: true; run: ExecutionResult["run"]; snapshot: null };
 
 export type RunAttemptSystemOptions = {
   resources: SystemResources;
@@ -1060,6 +1066,12 @@ export class RunAttemptSystem {
                 attemptDurationMs: completion.usage?.durationMs,
                 tx: prisma,
               });
+              if (result.snapshot === null) {
+                // Not reachable for a run with a live attempt.
+                throw new Error(
+                  `cancelRun returned no snapshot for run ${runId} with a live attempt`
+                );
+              }
               return {
                 attemptStatus:
                   result.snapshot.executionStatus === "PENDING_CANCEL"
@@ -1604,18 +1616,26 @@ export class RunAttemptSystem {
     bulkActionId?: string;
     attemptDurationMs?: number;
     tx?: PrismaClientOrTransaction;
-  }): Promise<ExecutionResult & { alreadyFinished: boolean }> {
+  }): Promise<CancelRunResult> {
     const prisma = tx ?? this.$.prisma;
 
     return startSpan(this.$.tracer, "cancelRun", async (span) => {
-      return this.$.runLock.lock("cancelRun", [runId], async () => {
-        const latestSnapshot = await getLatestExecutionSnapshot(
-          prisma,
-          runId,
-          this.$.runStore,
-          undefined,
-          organizationId
-        );
+      return this.$.runLock.lock("cancelRun", [runId], async (): Promise<CancelRunResult> => {
+        const { snapshot: latestSnapshot, finishedRun } =
+          await getLatestExecutionSnapshotOrFinishedRun(
+            prisma,
+            runId,
+            this.$.runStore,
+            organizationId,
+            { id: true, friendlyId: true, attemptNumber: true, taskEventStore: true }
+          );
+        if (finishedRun) {
+          if (bulkActionId) {
+            await this.$.runStore.recordBulkActionMembership(runId, bulkActionId, prisma);
+          }
+          this.$.logger.warn("cancelRun: snapshot state expired, run already finished", { runId });
+          return { alreadyFinished: true, run: finishedRun, snapshot: null };
+        }
 
         //already finished, do nothing
         if (latestSnapshot.executionStatus === "FINISHED") {
