@@ -1,6 +1,6 @@
 import { createHmac, generateKeyPairSync, randomBytes, sign as cryptoSign } from "node:crypto";
 import {
-  containerTestWithIsolatedRedisNoClickhouse,
+  containerTestWithIsolatedRedis,
   createStandalonePostgresContainer,
 } from "@internal/testcontainers";
 import { createRedisClient } from "@internal/redis";
@@ -210,7 +210,7 @@ async function deliveryRow(prisma: PrismaClient, id: string, timeoutMs = 10_000)
   return row!;
 }
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "a delivery is stamped with its org's retention class, rounded up, in its row and its id",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createEndpoint(prisma);
@@ -252,7 +252,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   }
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "ingest -> deliver routes a verified event to exactly one run",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createEndpoint(prisma);
@@ -286,7 +286,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   }
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "ingest -> deliver routes the full event when it exceeds the dashboard snapshot cap",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createEndpoint(prisma);
@@ -332,7 +332,7 @@ containerTestWithIsolatedRedisNoClickhouse(
 // Two-database mode: point the engine at a SEPARATE Postgres (the future data-plane DB) with the
 // fixture's `prisma` as the main DB, and prove webhook writes land only on the injected client (a
 // leaked query onto the main client would show up as a row there). Runtime backstop to the types.
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "two-database mode: webhook writes land on the injected client's DB, never the main DB",
   async ({ prisma, redisOptions }) => {
     const { container: webhookContainer, url: webhookUrl } =
@@ -371,7 +371,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   120_000
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "a provider handshake (url_verification) echoes the challenge and records no delivery",
   async ({ prisma, redisOptions }) => {
     const endpoint = await prisma.webhookEndpoint.create({
@@ -428,7 +428,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   }
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "an Ed25519 PING handshake answers 204 with no body, events carry the declared 204/401 contract",
   async ({ prisma, redisOptions }) => {
     const { publicKey, privateKey } = generateKeyPairSync("ed25519");
@@ -520,7 +520,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   }
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "a GET verification echoes the challenge when the token matches the secret, and records nothing",
   async ({ prisma, redisOptions }) => {
     const endpoint = await prisma.webhookEndpoint.create({
@@ -695,7 +695,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   }
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "concurrent duplicate deliveries collapse to one delivery row and one run",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createEndpoint(prisma);
@@ -739,7 +739,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   }
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "stores curated, size-bounded headers (drops credentials and oversized headers)",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createEndpoint(prisma);
@@ -772,7 +772,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   }
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "caches the endpoint + secret across ingests and re-reads after the TTL",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createEndpoint(prisma);
@@ -808,7 +808,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   }
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "a retry that finds its delivery claimed but never queued queues it under the same id",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createEndpoint(prisma);
@@ -852,7 +852,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   }
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "a retry while the first attempt's job is already queued or ran makes no second delivery",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createEndpoint(prisma);
@@ -892,7 +892,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   }
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "filter gate: a non-matching event is recorded FILTERED and not routed; a match is routed",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createEndpoint(prisma, {
@@ -933,7 +933,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   }
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "session routing resolves the key and delivers to the session port",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createSessionEndpoint(prisma, "{body.id}");
@@ -968,7 +968,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   }
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "a form-encoded body routes as the decoded form to a filtered task and a session keyed on its fields",
   async ({ prisma, redisOptions }) => {
     const filter = "event.command == '/miphy'";
@@ -1071,7 +1071,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   }
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "session delivery with an unresolvable key is FAILED and never calls the port",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createSessionEndpoint(prisma, "{body.customerId}"); // not in the body
@@ -1098,7 +1098,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   }
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "startOn is evaluated and passed to the port as isSessionStart (default true when absent)",
   async ({ prisma, redisOptions }) => {
     const gated = await createSessionEndpoint(prisma, "{body.id}", "event.type == 'session.start'");
@@ -1126,7 +1126,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   }
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "a skipped session result is recorded FILTERED with the reason and no run",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createSessionEndpoint(
@@ -1175,7 +1175,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   }
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "session delivery fails when the deliverToSession port is not configured",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createSessionEndpoint(prisma, "{body.id}");
@@ -1200,7 +1200,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   }
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "a delivery whose port keeps failing transiently is FAILED after max attempts (not stuck PENDING)",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createEndpoint(prisma);
@@ -1232,7 +1232,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   }
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "a delivery whose job throws on every attempt is FAILED, not left PENDING with no job",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createEndpoint(prisma);
@@ -1281,7 +1281,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   60_000
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "a delivery whose database is down keeps retrying past the attempt limit and lands once it is back",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createEndpoint(prisma);
@@ -1330,7 +1330,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   60_000
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "a delivery retrying after a failure on our infrastructure shows no error",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createEndpoint(prisma);
@@ -1401,7 +1401,7 @@ function inMemoryMetrics() {
   };
 }
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "ingest outcomes, settlements and per-target results are recorded once, after the write lands",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createEndpoint(prisma);
@@ -1465,7 +1465,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   60_000
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "a delivery filtered at ingest is recorded as settled",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createEndpoint(prisma, { filter: "event.type == 'never.sent'" });
@@ -1492,7 +1492,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   }
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "simulateInject skips verification: an unsigned body that ingest() rejects is still recorded + routed",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createEndpoint(prisma);
@@ -1538,7 +1538,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   }
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "simulateInject honors the endpoint filter: a non-matching event is recorded FILTERED, not routed",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createEndpoint(prisma, {
@@ -1567,7 +1567,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   }
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "missing signing credentials preserve the endpoint response contract without recording deliveries",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createEndpoint(prisma);

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
-  containerTestWithIsolatedRedisNoClickhouse,
+  containerTestWithIsolatedRedis,
   createStandalonePostgresContainer,
   postgresTest,
 } from "@internal/testcontainers";
@@ -341,7 +341,7 @@ postgresTest(
   }
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "bootstrap and partition maintenance use the owner connection while app queries use the data role",
   async ({ prisma, postgresContainer, redisOptions }) => {
     await makePartitioned(prisma);
@@ -454,7 +454,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   120_000
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "partition maintenance falls back to the writer when no owner connection is supplied",
   async ({ prisma, redisOptions }) => {
     await makePartitioned(prisma);

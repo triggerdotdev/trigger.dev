@@ -17,7 +17,7 @@ vi.mock("~/db.server", () => ({
 import { RunEngine } from "@internal/run-engine";
 import { setupAuthenticatedEnvironment } from "@internal/run-engine/tests";
 import { PostgresRunStore, RoutingRunStore } from "@internal/run-store";
-import { containerTestWithIsolatedRedisNoClickhouse as containerTest } from "@internal/testcontainers";
+import { containerTestWithIsolatedRedis as containerTest } from "@internal/testcontainers";
 import { trace } from "@opentelemetry/api";
 import { BatchId } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClient } from "@trigger.dev/database";

@@ -1,5 +1,5 @@
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
-import { containerTestWithIsolatedRedisNoClickhouse } from "@internal/testcontainers";
+import { containerTestWithIsolatedRedis } from "@internal/testcontainers";
 import type { Prisma, PrismaClient } from "@trigger.dev/database";
 import { WebhookEndpointId } from "@trigger.dev/core/v3/isomorphic";
 import { expect } from "vitest";
@@ -53,7 +53,7 @@ function signed(opaqueId: string) {
   };
 }
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "one environment's flood of deliveries can't hold more than its share of the worker",
   async ({ prisma, redisOptions }) => {
     const noisy = await createEndpoint(prisma, "env_noisy");
@@ -109,7 +109,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   60_000
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "a process with its worker disabled only enqueues, and a separate worker process runs the jobs",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createEndpoint(prisma, "env_split");

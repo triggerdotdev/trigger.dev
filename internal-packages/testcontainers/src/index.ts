@@ -1,5 +1,5 @@
 import { type ClickHouseClient, createClient } from "@clickhouse/client";
-import { type StartedPostgreSqlContainer, PostgreSqlContainer } from "@testcontainers/postgresql";
+import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import type { StartedRedisContainer } from "@testcontainers/redis";
 import { PrismaClient } from "@trigger.dev/database";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -24,12 +24,20 @@ import {
   createPostgresContainer,
   createRedisContainer,
   postgresUriWithDatabase,
-  pushDatabaseSchema,
-  pushRunOpsSchema,
   useContainer,
   withCiResourceLimits,
   withContainerSetup,
 } from "./utils";
+import {
+  cloneDatabase,
+  dropDatabase,
+  getSharedPostgres14,
+  getSharedPostgres17,
+  getPrivatePostgres14,
+  getSharedRunOpsPostgres17,
+  type SharedPostgres,
+  withClonedDatabase,
+} from "./sharedPostgres";
 
 export {
   assertNonNullable,
@@ -45,6 +53,7 @@ export {
   type LocalRedisCluster,
 } from "./localRedisCluster";
 export { logCleanup };
+export { warmSharedPostgres } from "./sharedPostgres";
 export type { MinIOConnectionConfig };
 
 type NetworkContext = { network: StartedNetwork };
@@ -141,48 +150,9 @@ export const prisma = async (
   }
 };
 
-const POSTGRES_TEMPLATE_DB = "template_db";
-let pgCloneCounter = 0;
-
 type PostgresTestContext = {
   postgresContainer: StartedPostgreSqlContainer;
   prisma: PrismaClient;
-};
-
-// --- Worker-scoped + per-test-isolated fixtures (shared by the standalone *Test and containerTest) ---
-// The pattern: boot each container ONCE per worker; isolate per test cheaply (postgres = template
-// clone, redis = FLUSHALL, clickhouse = TRUNCATE) instead of re-booting. Reset fixtures are `auto`
-// so they run for every test even if it doesn't destructure them.
-
-// Boot postgres ONCE per worker (module singleton, reaped by Ryuk on worker exit) and push the
-// schema into a dedicated template db that nothing else connects to (so CREATE DATABASE ... TEMPLATE
-// never trips on an active session).
-let workerPostgresContainer: Promise<StartedPostgreSqlContainer> | undefined;
-const getWorkerPostgresContainer = () => {
-  if (!workerPostgresContainer) {
-    workerPostgresContainer = (async () => {
-      const container = await withCiResourceLimits(new PostgreSqlContainer("docker.io/postgres:14"))
-        .withCommand(["-c", "listen_addresses=*", "-c", "wal_level=logical"])
-        .start();
-      // Create the template db explicitly via an admin connection (the same primitive the per-test
-      // clone uses) instead of relying on `prisma db push` to create a missing database. That
-      // create-if-missing path behaves differently on CI and - because push errors were swallowed -
-      // surfaced only later as a confusing "template database template_db does not exist" at clone
-      // time. Pushing into an already-existing db is the path the pre-worker-scope code always used.
-      const admin = new PrismaClient({
-        datasources: {
-          db: { url: postgresUriWithDatabase(container.getConnectionUri(), "postgres") },
-        },
-      });
-      await admin.$executeRawUnsafe(`CREATE DATABASE "${POSTGRES_TEMPLATE_DB}"`);
-      await admin.$disconnect();
-      await pushDatabaseSchema(
-        postgresUriWithDatabase(container.getConnectionUri(), POSTGRES_TEMPLATE_DB)
-      );
-      return container;
-    })();
-  }
-  return workerPostgresContainer;
 };
 
 // --- Heterogeneous PG14 + PG17 fixture ---
@@ -190,126 +160,39 @@ const getWorkerPostgresContainer = () => {
 // version-symmetric per-column source of truth for cross-version sort equality.
 export const HETERO_PINNED_ICU_COLLATION = "und-x-icu";
 
-// PG17 worker singleton mirroring getWorkerPostgresContainer. PG17 supports the ICU cluster locale
-// provider (PG14 does not - it arrived in PG15), so only this side sets the cluster locale; the real
-// cross-version guarantee is the per-column COLLATE in the proof test.
-async function bootstrapPg17TemplateContainer(
-  pushSchema: (databaseUrl: string) => Promise<unknown>
-): Promise<StartedPostgreSqlContainer> {
-  const container = await withCiResourceLimits(new PostgreSqlContainer("docker.io/postgres:17"))
-    .withCommand(["-c", "listen_addresses=*", "-c", "wal_level=logical"])
-    .withEnvironment({
-      POSTGRES_INITDB_ARGS: "--locale-provider=icu --icu-locale=en-US --encoding=UTF8",
-    })
-    .start();
-  const admin = new PrismaClient({
-    datasources: {
-      db: { url: postgresUriWithDatabase(container.getConnectionUri(), "postgres") },
-    },
+const clonedContainerFrom =
+  (getPostgres: () => Promise<SharedPostgres>) =>
+  async ({}, use: Use<StartedPostgreSqlContainer>) => {
+    const shared = await getPostgres();
+    const cloneDb = await cloneDatabase(shared, "test");
+    const cloneUri = postgresUriWithDatabase(shared.container.getConnectionUri(), cloneDb);
+    const view = new Proxy(shared.container, {
+      get(target, prop, receiver) {
+        if (prop === "getConnectionUri") return () => cloneUri;
+        if (prop === "getDatabase") return () => cloneDb;
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+
+    try {
+      await use(view);
+    } finally {
+      await dropDatabase(shared, cloneDb);
+    }
+  };
+
+const clonedPostgresContainer = clonedContainerFrom(getSharedPostgres14);
+
+const schemaOnlyPrismaFixture = async ({}: {}, use: Use<PrismaClient>) =>
+  withClonedDatabase(getSharedPostgres14(), "schema_only", async (url) => {
+    const prisma = new PrismaClient({ datasources: { db: { url } } });
+    try {
+      await use(prisma);
+    } finally {
+      await logCleanup("schemaOnlyPrisma", prisma.$disconnect());
+    }
   });
-  await admin.$executeRawUnsafe(`CREATE DATABASE "${POSTGRES_TEMPLATE_DB}"`);
-  await admin.$disconnect();
-  await pushSchema(postgresUriWithDatabase(container.getConnectionUri(), POSTGRES_TEMPLATE_DB));
-  return container;
-}
-
-let workerPostgresContainer17: Promise<StartedPostgreSqlContainer> | undefined;
-const getWorkerPostgresContainer17 = () => {
-  if (!workerPostgresContainer17) {
-    workerPostgresContainer17 = bootstrapPg17TemplateContainer(pushDatabaseSchema);
-  }
-  return workerPostgresContainer17;
-};
-
-// PG17 worker singleton for the DEDICATED run-ops fixture. This is a SEPARATE container from
-// getWorkerPostgresContainer17 on purpose: that one's template db has the FULL @trigger.dev/database
-// schema pushed (consumed by heteroPostgresTest), whereas this one pushes the dedicated run-ops
-// SUBSET schema. Keeping them apart avoids a schema collision in the shared template db.
-let runOpsWorkerPostgresContainer17: Promise<StartedPostgreSqlContainer> | undefined;
-const getRunOpsWorkerPostgresContainer17 = () => {
-  if (!runOpsWorkerPostgresContainer17) {
-    runOpsWorkerPostgresContainer17 = bootstrapPg17TemplateContainer(pushRunOpsSchema);
-  }
-  return runOpsWorkerPostgresContainer17;
-};
-
-// Per test: clone a fresh database from the template (fast filesystem copy), then hand back a view
-// of the shared container whose connection points at the clone. This keeps prisma AND any code that
-// reads postgresContainer.getConnectionUri()/getDatabase() (e.g. logical replication) on the SAME
-// isolated database - and it's parallel-ready (each test owns its db).
-const clonedPostgresContainer = async ({}, use: Use<StartedPostgreSqlContainer>) => {
-  const container = await getWorkerPostgresContainer();
-  const baseUri = container.getConnectionUri();
-  const cloneDb = `test_${pgCloneCounter++}`;
-
-  await createDatabaseFromTemplate(baseUri, cloneDb);
-
-  const cloneUri = postgresUriWithDatabase(baseUri, cloneDb);
-  const view = new Proxy(container, {
-    get(target, prop, receiver) {
-      if (prop === "getConnectionUri") return () => cloneUri;
-      if (prop === "getDatabase") return () => cloneDb;
-      const value = Reflect.get(target, prop, receiver);
-      return typeof value === "function" ? value.bind(target) : value;
-    },
-  });
-
-  try {
-    await use(view);
-  } finally {
-    await dropCloneDatabase(baseUri, cloneDb);
-  }
-};
-
-const createDatabaseFromTemplate = async (baseUri: string, cloneDb: string) => {
-  const admin = new PrismaClient({
-    datasources: { db: { url: postgresUriWithDatabase(baseUri, "postgres") } },
-  });
-  try {
-    await admin.$executeRawUnsafe(
-      `CREATE DATABASE "${cloneDb}" TEMPLATE "${POSTGRES_TEMPLATE_DB}"`
-    );
-  } finally {
-    await admin.$disconnect();
-  }
-};
-
-// Best-effort drop so clones don't pile up in the worker's pg over a long suite. WITH (FORCE)
-// terminates any lingering backends (pg 13+). A failed drop is harmless - the whole container is
-// reaped on worker exit - so we never let cleanup fail the test.
-const dropCloneDatabase = async (baseUri: string, cloneDb: string) => {
-  const cleanup = new PrismaClient({
-    datasources: { db: { url: postgresUriWithDatabase(baseUri, "postgres") } },
-  });
-  try {
-    await cleanup.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${cloneDb}" WITH (FORCE)`);
-  } catch {
-    // ignore - reaped with the container anyway
-  } finally {
-    await cleanup.$disconnect();
-  }
-};
-
-// A second migrated-but-empty database on the same worker postgres, cloned from the schema
-// template. For tests that need to simulate a read replica that hasn't caught up: schema
-// present, rows absent. Lazy - only booted when a test destructures it.
-const schemaOnlyPrismaFixture = async ({}: {}, use: Use<PrismaClient>) => {
-  const container = await getWorkerPostgresContainer();
-  const baseUri = container.getConnectionUri();
-  const cloneDb = `schema_only_${pgCloneCounter++}`;
-
-  await createDatabaseFromTemplate(baseUri, cloneDb);
-
-  const prisma = new PrismaClient({
-    datasources: { db: { url: postgresUriWithDatabase(baseUri, cloneDb) } },
-  });
-  try {
-    await use(prisma);
-  } finally {
-    await logCleanup("schemaOnlyPrisma", prisma.$disconnect());
-    await dropCloneDatabase(baseUri, cloneDb);
-  }
-};
 
 const prismaFromContainer = async (
   { postgresContainer }: { postgresContainer: StartedPostgreSqlContainer },
@@ -360,7 +243,7 @@ export const postgresTest = withWarmup(
     prisma: prismaFromContainer,
   }),
   async () => {
-    await getWorkerPostgresContainer();
+    await getSharedPostgres14();
   }
 );
 
@@ -409,7 +292,7 @@ export const postgresBlipTest = withWarmup(
     blip: blipFromContainer,
   }),
   async () => {
-    await getWorkerPostgresContainer();
+    await getSharedPostgres14();
   }
 );
 
@@ -430,30 +313,16 @@ type HeteroPostgresTestContext = {
 // cross-version test files - never wired into a product fixture.
 export const heteroPostgresTest = test.extend<HeteroPostgresTestContext>({
   postgresContainer14: async ({}, use) => {
-    await use(await getWorkerPostgresContainer());
+    await use((await getSharedPostgres14()).container);
   },
   postgresContainer17: async ({}, use) => {
-    await use(await getWorkerPostgresContainer17());
+    await use((await getSharedPostgres17()).container);
   },
-  uri14: async ({ postgresContainer14 }, use) => {
-    const baseUri = postgresContainer14.getConnectionUri();
-    const cloneDb = `hetero14_${pgCloneCounter++}`;
-    await createDatabaseFromTemplate(baseUri, cloneDb);
-    try {
-      await use(postgresUriWithDatabase(baseUri, cloneDb));
-    } finally {
-      await dropCloneDatabase(baseUri, cloneDb);
-    }
+  uri14: async ({}, use) => {
+    await withClonedDatabase(getSharedPostgres14(), "hetero14", use);
   },
-  uri17: async ({ postgresContainer17 }, use) => {
-    const baseUri = postgresContainer17.getConnectionUri();
-    const cloneDb = `hetero17_${pgCloneCounter++}`;
-    await createDatabaseFromTemplate(baseUri, cloneDb);
-    try {
-      await use(postgresUriWithDatabase(baseUri, cloneDb));
-    } finally {
-      await dropCloneDatabase(baseUri, cloneDb);
-    }
+  uri17: async ({}, use) => {
+    await withClonedDatabase(getSharedPostgres17(), "hetero17", use);
   },
   prisma14: async ({ uri14 }, use) => {
     const prisma = new PrismaClient({ datasources: { db: { url: uri14 } } });
@@ -495,36 +364,16 @@ type HeteroRunOpsPostgresTestContext = {
 // so the two cannot drift.
 const heteroRunOpsFixtures = {
   postgresContainer14: async ({}, use: Use<StartedPostgreSqlContainer>) => {
-    await use(await getWorkerPostgresContainer());
+    await use((await getSharedPostgres14()).container);
   },
   postgresContainer17: async ({}, use: Use<StartedPostgreSqlContainer>) => {
-    await use(await getRunOpsWorkerPostgresContainer17());
+    await use((await getSharedRunOpsPostgres17()).container);
   },
-  uri14: async (
-    { postgresContainer14 }: { postgresContainer14: StartedPostgreSqlContainer },
-    use: Use<string>
-  ) => {
-    const baseUri = postgresContainer14.getConnectionUri();
-    const cloneDb = `heteroRunOps14_${pgCloneCounter++}`;
-    await createDatabaseFromTemplate(baseUri, cloneDb);
-    try {
-      await use(postgresUriWithDatabase(baseUri, cloneDb));
-    } finally {
-      await dropCloneDatabase(baseUri, cloneDb);
-    }
+  uri14: async ({}: {}, use: Use<string>) => {
+    await withClonedDatabase(getSharedPostgres14(), "heteroRunOps14", use);
   },
-  uri17: async (
-    { postgresContainer17 }: { postgresContainer17: StartedPostgreSqlContainer },
-    use: Use<string>
-  ) => {
-    const baseUri = postgresContainer17.getConnectionUri();
-    const cloneDb = `heteroRunOps17_${pgCloneCounter++}`;
-    await createDatabaseFromTemplate(baseUri, cloneDb);
-    try {
-      await use(postgresUriWithDatabase(baseUri, cloneDb));
-    } finally {
-      await dropCloneDatabase(baseUri, cloneDb);
-    }
+  uri17: async ({}: {}, use: Use<string>) => {
+    await withClonedDatabase(getSharedRunOpsPostgres17(), "heteroRunOps17", use);
   },
   prisma14: async ({ uri14 }: { uri14: string }, use: Use<PrismaClient>) => {
     const prisma = new PrismaClient({ datasources: { db: { url: uri14 } } });
@@ -610,8 +459,8 @@ export const heteroRunOpsBlipTest = withWarmup(
     },
   }),
   async () => {
-    await getWorkerPostgresContainer();
-    await getRunOpsWorkerPostgresContainer17();
+    await getSharedPostgres14();
+    await getSharedRunOpsPostgres17();
   }
 );
 
@@ -635,37 +484,13 @@ type ThreeDbRunOpsPostgresTestContext = {
 // while control-plane-model access stays on its own DB.
 export const threeDbRunOpsPostgresTest = test.extend<ThreeDbRunOpsPostgresTestContext>({
   controlPlaneUri: async ({}, use) => {
-    const container = await getWorkerPostgresContainer();
-    const baseUri = container.getConnectionUri();
-    const cloneDb = `threeDbCp_${pgCloneCounter++}`;
-    await createDatabaseFromTemplate(baseUri, cloneDb);
-    try {
-      await use(postgresUriWithDatabase(baseUri, cloneDb));
-    } finally {
-      await dropCloneDatabase(baseUri, cloneDb);
-    }
+    await withClonedDatabase(getSharedPostgres14(), "threeDbCp", use);
   },
   legacyUri: async ({}, use) => {
-    const container = await getWorkerPostgresContainer();
-    const baseUri = container.getConnectionUri();
-    const cloneDb = `threeDbLegacy_${pgCloneCounter++}`;
-    await createDatabaseFromTemplate(baseUri, cloneDb);
-    try {
-      await use(postgresUriWithDatabase(baseUri, cloneDb));
-    } finally {
-      await dropCloneDatabase(baseUri, cloneDb);
-    }
+    await withClonedDatabase(getSharedPostgres14(), "threeDbLegacy", use);
   },
   newUri: async ({}, use) => {
-    const container = await getRunOpsWorkerPostgresContainer17();
-    const baseUri = container.getConnectionUri();
-    const cloneDb = `threeDbNew_${pgCloneCounter++}`;
-    await createDatabaseFromTemplate(baseUri, cloneDb);
-    try {
-      await use(postgresUriWithDatabase(baseUri, cloneDb));
-    } finally {
-      await dropCloneDatabase(baseUri, cloneDb);
-    }
+    await withClonedDatabase(getSharedRunOpsPostgres17(), "threeDbNew", use);
   },
   controlPlanePrisma: async ({ controlPlaneUri }, use) => {
     const prisma = new PrismaClient({ datasources: { db: { url: controlPlaneUri } } });
@@ -712,41 +537,24 @@ type NShardRunOpsTestContext = {
 export const makeNShardRunOpsPostgresTest = (gen2ShardCount: number) =>
   test.extend<NShardRunOpsTestContext>({
     legacyUri: async ({}, use) => {
-      const container = await getWorkerPostgresContainer();
-      const baseUri = container.getConnectionUri();
-      const cloneDb = `nShardLegacy_${pgCloneCounter++}`;
-      await createDatabaseFromTemplate(baseUri, cloneDb);
-      try {
-        await use(postgresUriWithDatabase(baseUri, cloneDb));
-      } finally {
-        await dropCloneDatabase(baseUri, cloneDb);
-      }
+      await withClonedDatabase(getSharedPostgres14(), "nShardLegacy", use);
     },
     newUri: async ({}, use) => {
-      const container = await getRunOpsWorkerPostgresContainer17();
-      const baseUri = container.getConnectionUri();
-      const cloneDb = `nShardNew_${pgCloneCounter++}`;
-      await createDatabaseFromTemplate(baseUri, cloneDb);
-      try {
-        await use(postgresUriWithDatabase(baseUri, cloneDb));
-      } finally {
-        await dropCloneDatabase(baseUri, cloneDb);
-      }
+      await withClonedDatabase(getSharedRunOpsPostgres17(), "nShardNew", use);
     },
     shardUris: async ({}, use) => {
-      const container = await getRunOpsWorkerPostgresContainer17();
-      const baseUri = container.getConnectionUri();
+      const shared = await getSharedRunOpsPostgres17();
       const clones: string[] = [];
       try {
         for (let i = 0; i < gen2ShardCount; i++) {
-          const cloneDb = `nShardGen2_${pgCloneCounter++}`;
-          await createDatabaseFromTemplate(baseUri, cloneDb);
-          clones.push(cloneDb);
+          clones.push(await cloneDatabase(shared, "nShardGen2"));
         }
-        await use(clones.map((db) => postgresUriWithDatabase(baseUri, db)));
+        await use(
+          clones.map((db) => postgresUriWithDatabase(shared.container.getConnectionUri(), db))
+        );
       } finally {
         for (const db of clones) {
-          await dropCloneDatabase(baseUri, db);
+          await dropDatabase(shared, db);
         }
       }
     },
@@ -1015,12 +823,13 @@ export const clickhouseTest = withWarmup(
   }
 );
 
-// NOTE: per-test containers (not worker-scoped) - the replication package does logical replication
-// (slots/publications/REPLICA IDENTITY), which doesn't play nicely with a shared container +
-// template-clone. A dedicated container per test is the correct, isolated choice here.
+/**
+ * A cloned database per test on a Postgres private to this file (logical replication slots are
+ * cluster-wide and tests name them), plus a per-test Redis.
+ */
 export const postgresAndRedisTest = test.extend<PostgresAndRedisContext>({
   network,
-  postgresContainer,
+  postgresContainer: clonedContainerFrom(getPrivatePostgres14),
   prisma,
   redisContainer,
   redisOptions,
@@ -1033,16 +842,37 @@ type ContainerTestContext = {
   redisContainer: StartedRedisContainer;
   resetRedis: void;
   redisOptions: RedisOptions;
+};
+
+/**
+ * The workhorse fixture: template-cloned Postgres and FLUSHALL'd Redis, both booted once per worker.
+ * Use containerTestWithIsolatedRedis when background redis work outlives the test body, and
+ * clickhouseTest for ClickHouse.
+ */
+export const containerTest = withWarmup(
+  test.extend<ContainerTestContext>({
+    postgresContainer: clonedPostgresContainer,
+    prisma: prismaFromContainer,
+    schemaOnlyPrisma: schemaOnlyPrismaFixture,
+    redisContainer: [bootWorkerRedis, { scope: "worker" }],
+    resetRedis: [flushRedis, { auto: true }],
+    redisOptions,
+  }),
+  async ({ redisContainer }) => {
+    void redisContainer;
+    await getSharedPostgres14();
+  }
+);
+
+type ContainerWithClickhouseTestContext = ContainerTestContext & {
   clickhouseContainer: StartedClickHouseContainer;
   resetClickhouse: void;
   clickhouseClient: ClickHouseClient;
 };
 
-// The workhorse fixture (~36 files). Postgres (template-clone), Redis (FLUSHALL) and ClickHouse
-// (truncate) all boot once per worker - no per-test container boots. Use containerTestWithIsolatedRedis
-// for tests that run background redis work (BatchQueue, redis-worker Workers) past the test body.
-export const containerTest = withWarmup(
-  test.extend<ContainerTestContext>({
+/** containerTest plus a worker-scoped ClickHouse, truncated before each test. */
+export const containerTestWithClickhouse = withWarmup(
+  test.extend<ContainerWithClickhouseTestContext>({
     postgresContainer: clonedPostgresContainer,
     prisma: prismaFromContainer,
     schemaOnlyPrisma: schemaOnlyPrismaFixture,
@@ -1056,7 +886,7 @@ export const containerTest = withWarmup(
   async ({ redisContainer, clickhouseContainer }) => {
     void redisContainer;
     void clickhouseContainer;
-    await getWorkerPostgresContainer();
+    await getSharedPostgres14();
   }
 );
 
@@ -1080,7 +910,7 @@ export const containerBlipTest = withWarmup(
   }),
   async ({ redisContainer }) => {
     void redisContainer;
-    await getWorkerPostgresContainer();
+    await getSharedPostgres14();
   }
 );
 
@@ -1090,9 +920,6 @@ type ContainerWithIsolatedRedisContext = {
   prisma: PrismaClient;
   redisContainer: StartedRedisContainer;
   redisOptions: RedisOptions;
-  clickhouseContainer: StartedClickHouseContainer;
-  resetClickhouse: void;
-  clickhouseClient: ClickHouseClient;
 };
 
 // Same as containerTest but Redis is PER-TEST - for tests whose background redis work (BatchQueue,
@@ -1104,45 +931,12 @@ export const containerTestWithIsolatedRedis = withWarmup(
     prisma: prismaFromContainer,
     redisContainer,
     redisOptions,
-    clickhouseContainer: [bootWorkerClickhouse, { scope: "worker" }],
-    resetClickhouse: [truncateClickhouseFixture, { auto: true }],
-    clickhouseClient: scopedClickhouseClient,
-  }),
-  async ({ clickhouseContainer }) => {
-    void clickhouseContainer;
-    await getWorkerPostgresContainer();
-  }
-);
-
-type ContainerWithIsolatedRedisNoClickhouseContext = {
-  network: StartedNetwork;
-  postgresContainer: StartedPostgreSqlContainer;
-  prisma: PrismaClient;
-  redisContainer: StartedRedisContainer;
-  redisOptions: RedisOptions;
-};
-
-// Like containerTestWithIsolatedRedis (template-clone Postgres + per-test Redis) but with no
-// ClickHouse - for suites that touch Postgres + Redis but never ClickHouse, avoiding its boot+migrate.
-export const containerTestWithIsolatedRedisNoClickhouse = withWarmup(
-  test.extend<ContainerWithIsolatedRedisNoClickhouseContext>({
-    network,
-    postgresContainer: clonedPostgresContainer,
-    prisma: prismaFromContainer,
-    redisContainer,
-    redisOptions,
   }),
   async () => {
-    await getWorkerPostgresContainer();
+    await getSharedPostgres14();
   }
 );
 
-// For tests that exercise the Postgres -> ClickHouse logical-replication pipeline (WAL slots,
-// publications, REPLICA IDENTITY). These need a dedicated Postgres per test - the worker-scoped +
-// template-clone model used by containerTest doesn't carry logical replication across cloned dbs.
-// Postgres is per-test (the WAL slot/publication lives in the db it writes to); ClickHouse is
-// worker-scoped + truncated (the pipeline writes pg->clickhouse and a shared+truncated clickhouse is
-// fine). Redis is per-test too (background work safety, same as containerTest).
 type ReplicationContainerTestContext = {
   network: StartedNetwork;
   postgresContainer: StartedPostgreSqlContainer;
@@ -1156,7 +950,7 @@ type ReplicationContainerTestContext = {
 
 export const replicationContainerTest = test.extend<ReplicationContainerTestContext>({
   network,
-  postgresContainer,
+  postgresContainer: clonedContainerFrom(getPrivatePostgres14),
   prisma,
   redisContainer,
   redisOptions,
@@ -1243,7 +1037,7 @@ export const postgresAndMinioTest = withWarmup(
   }),
   async ({ minioContainer }) => {
     void minioContainer;
-    await getWorkerPostgresContainer();
+    await getSharedPostgres14();
   }
 );
 

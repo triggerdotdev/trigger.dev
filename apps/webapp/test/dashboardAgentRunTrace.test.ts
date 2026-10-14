@@ -4,7 +4,7 @@
 // real Postgres and ClickHouse behind them.
 import { ClickHouse, type TaskEventV2Input } from "@internal/clickhouse";
 import { setupAuthenticatedEnvironment } from "@internal/run-engine/tests";
-import { containerTest } from "@internal/testcontainers";
+import { containerTestWithClickhouse } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect, vi } from "vitest";
 import {
@@ -413,7 +413,7 @@ function depthOf(rootSpan: DashboardAgentTraceSpan | undefined): number {
 }
 
 describe("the dashboard agent run trace", () => {
-  containerTest(
+  containerTestWithClickhouse(
     "reports the same millisecond durations, task slugs and customer-visible events on both event stores",
     async ({ prisma, clickhouseContainer }) => {
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
@@ -506,7 +506,7 @@ describe("the dashboard agent run trace", () => {
     TIMEOUT_MS
   );
 
-  containerTest(
+  containerTestWithClickhouse(
     "keeps a chain well under the depth guard fully intact and JSON-serializable",
     async ({ prisma }) => {
       const { repository, environmentId, organizationId, startedAt } =
@@ -529,7 +529,7 @@ describe("the dashboard agent run trace", () => {
     TIMEOUT_MS
   );
 
-  containerTest(
+  containerTestWithClickhouse(
     "does not truncate a chain of exactly the depth guard",
     async ({ prisma }) => {
       const { repository, environmentId, organizationId, startedAt } =
@@ -557,7 +557,7 @@ describe("the dashboard agent run trace", () => {
     TIMEOUT_MS
   );
 
-  containerTest(
+  containerTestWithClickhouse(
     "truncates a chain deeper than the depth guard instead of throwing",
     async ({ prisma }) => {
       const { repository, environmentId, organizationId, startedAt } =
@@ -586,7 +586,7 @@ describe("the dashboard agent run trace", () => {
     },
     TIMEOUT_MS
   );
-  containerTest(
+  containerTestWithClickhouse(
     "builds a child run's trace when the trace root is outside the child's window",
     async ({ prisma, clickhouseContainer }) => {
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");

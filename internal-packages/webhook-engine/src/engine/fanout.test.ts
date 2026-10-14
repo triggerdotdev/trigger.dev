@@ -1,5 +1,5 @@
 import { createHmac, randomBytes } from "node:crypto";
-import { containerTestWithIsolatedRedisNoClickhouse } from "@internal/testcontainers";
+import { containerTestWithIsolatedRedis } from "@internal/testcontainers";
 import type { RedisOptions } from "@internal/redis";
 import type { PrismaClient, Prisma } from "@trigger.dev/database";
 import type { StoredWebhookRoutingTarget, WebhookDeliveryTargetResult } from "@trigger.dev/core/v3";
@@ -175,7 +175,7 @@ async function ingestAccepted(
   return result;
 }
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "one endpoint fans a delivery out to a task target and a session target",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createSharedEndpoint(
@@ -250,7 +250,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   }
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "per-target filters route only the targets whose filter passes and record why the others did not",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createSharedEndpoint(prisma, [
@@ -295,7 +295,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   }
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "a delivery no target passes is recorded FILTERED and never routed, and so is one to an endpoint with no subscribers",
   async ({ prisma, redisOptions }) => {
     const filtered = await createSharedEndpoint(prisma, [
@@ -349,7 +349,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   }
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "a retry after a transient target failure skips the targets that already succeeded",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createSharedEndpoint(prisma, [
@@ -392,7 +392,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   30_000
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "a terminal target failure fails the delivery, names the target, and keeps the other target's success",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createSharedEndpoint(prisma, [
@@ -440,7 +440,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   }
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "two same-agent session targets resolving to one session each append their own action",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createSharedEndpoint(prisma, [
@@ -484,7 +484,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   }
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "a replay to a session target appends again, and a replay with targetId runs only that target past its filter",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createSharedEndpoint(prisma, [
@@ -566,7 +566,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   30_000
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "a replay asks authorize about exactly the subscribers it will run, and a refusal creates nothing",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createSharedEndpoint(prisma, [
@@ -624,7 +624,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   30_000
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "a replayed subscriber that now points at another task fails instead of running",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createSharedEndpoint(prisma, [
@@ -667,7 +667,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   30_000
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "a replayed task subscriber redeployed as a session for the same task fails instead of delivering",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createSharedEndpoint(prisma, [
