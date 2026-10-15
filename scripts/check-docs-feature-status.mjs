@@ -28,11 +28,12 @@ export function extractFeatureStatusTags(source, file) {
 }
 
 function parseTag(text, component, file, line) {
-  const end = text.indexOf("/>");
-  if (end === -1) {
-    return { file, line, component, error: "must be a single-line, self-closing tag" };
+  const close = text.indexOf(">");
+  if (close === -1) {
+    return { file, line, component, error: "opening tag must be single-line" };
   }
 
+  const end = text[close - 1] === "/" ? close - 1 : close;
   const body = text.slice(component.length + 1, end);
   if (body.includes("{")) {
     return { file, line, component, error: "attributes must be plain string literals" };

@@ -160,6 +160,22 @@
             ]
           },
           {
+            "group": "Webhooks",
+            "pages": [
+              "webhooks/overview",
+              "webhooks/sources",
+              "webhooks/connect",
+              "webhooks/deliveries",
+              "webhooks/filters",
+              "webhooks/waiters",
+              "webhooks/session-routing",
+              "webhooks/channels",
+              "webhooks/slack",
+              "webhooks/linear",
+              "webhooks/human-in-the-loop"
+            ]
+          },
+          {
             "group": "Configuration",
             "pages": [
               "config/config-file",
@@ -384,6 +400,22 @@
               "management/errors/resolve",
               "management/errors/ignore",
               "management/errors/unresolve"
+            ]
+          },
+          {
+            "group": "Webhooks API",
+            "pages": [
+              "management/webhooks/list-endpoints",
+              "management/webhooks/retrieve-endpoint",
+              "management/webhooks/enable-endpoint",
+              "management/webhooks/disable-endpoint",
+              "management/webhooks/generate-secret",
+              "management/webhooks/set-secret",
+              "management/webhooks/list-deliveries",
+              "management/webhooks/retrieve-delivery",
+              "management/webhooks/replay-delivery",
+              "management/webhooks/create-waiter",
+              "management/webhooks/cancel-waiter"
             ]
           },
           {

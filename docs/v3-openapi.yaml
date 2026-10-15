@@ -4414,9 +4414,545 @@ paths:
           source: |-
             curl -X POST "https://api.trigger.dev/api/v1/errors/error_8f3b2a1c9d4e5f60/unresolve" \
               -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
+  "/api/v1/webhooks/endpoints":
+    get:
+      operationId: list_webhook_endpoints_v1
+      summary: List webhook endpoints
+      description: >-
+        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
+
+        List the hosted webhook endpoints in the environment, ordered by declared id. Each endpoint
+        includes its webhook URL and whether its signing secret is set. The secret itself is never returned.
+      parameters:
+        - in: query
+          name: "filter[webhook]"
+          schema:
+            type: string
+          required: false
+          description: Comma-separated declared endpoint ids to return.
+          example: "stripe,github"
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListWebhookEndpointsResult"
+        "401":
+          description: Unauthorized request
+      tags:
+        - webhooks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: List webhook endpoints
+          source: |-
+            curl "https://api.trigger.dev/api/v1/webhooks/endpoints" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
+  "/api/v1/webhooks/endpoints/{endpointId}":
+    parameters:
+      - $ref: "#/components/parameters/webhookEndpointId"
+    get:
+      operationId: retrieve_webhook_endpoint_v1
+      summary: Retrieve a webhook endpoint
+      description: >-
+        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
+
+        Retrieve one webhook endpoint with its subscribers, the filter each one applies, and its
+        setup prompt: instructions for registering the endpoint and its signing secret with the provider.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookEndpointDetailObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Endpoint not found
+      tags:
+        - webhooks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: Retrieve a webhook endpoint
+          source: |-
+            curl "https://api.trigger.dev/api/v1/webhooks/endpoints/stripe" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
+  "/api/v1/webhooks/endpoints/{endpointId}/enable":
+    parameters:
+      - $ref: "#/components/parameters/webhookEndpointId"
+    post:
+      operationId: enable_webhook_endpoint_v1
+      summary: Enable a webhook endpoint
+      description: >-
+        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
+
+        Resume a disabled endpoint so its URL accepts deliveries again. Returns the updated endpoint.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookEndpointDetailObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Endpoint not found
+      tags:
+        - webhooks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: Enable a webhook endpoint
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/webhooks/endpoints/stripe/enable" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
+  "/api/v1/webhooks/endpoints/{endpointId}/disable":
+    parameters:
+      - $ref: "#/components/parameters/webhookEndpointId"
+    post:
+      operationId: disable_webhook_endpoint_v1
+      summary: Disable a webhook endpoint
+      description: >-
+        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
+
+        Pause an endpoint. Its status becomes `inactive` and its URL responds with `404` until you
+        enable it, so providers see failed deliveries and retry on their own schedule. Returns the updated endpoint.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookEndpointDetailObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Endpoint not found
+      tags:
+        - webhooks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: Disable a webhook endpoint
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/webhooks/endpoints/stripe/disable" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
+  "/api/v1/webhooks/endpoints/{endpointId}/rotate-secret":
+    parameters:
+      - $ref: "#/components/parameters/webhookEndpointId"
+    post:
+      operationId: rotate_webhook_endpoint_secret_v1
+      summary: Generate a webhook signing secret
+      description: >-
+        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
+
+        Generate a new signing secret for the endpoint, store it, and return it once. Use this for providers
+        where you choose the secret, such as GitHub. It replaces any existing secret, so deliveries fail
+        verification until the provider uses the new one. Endpoints whose source verifies with a public key
+        refuse this; set the provider's key with the set secret endpoint instead.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RotateWebhookEndpointSecretResponse"
+        "400":
+          description: The endpoint's source verifies with a public key, so a secret can't be generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Endpoint not found
+      tags:
+        - webhooks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: Generate a signing secret
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/webhooks/endpoints/github/rotate-secret" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
+  "/api/v1/webhooks/endpoints/{endpointId}/secret":
+    parameters:
+      - $ref: "#/components/parameters/webhookEndpointId"
+    put:
+      operationId: set_webhook_endpoint_secret_v1
+      summary: Set a webhook signing secret
+      description: >-
+        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
+
+        Store the signing secret or public key the provider issued for this endpoint, such as the `whsec_`
+        secret Stripe returns when you create a webhook endpoint. It replaces any existing secret.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - secret
+              properties:
+                secret:
+                  type: string
+                  minLength: 1
+                  maxLength: 4096
+                  description: The signing secret or public key. Leading and trailing whitespace is trimmed.
+                  example: whsec_5f2b...
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetWebhookEndpointSecretResponse"
+        "400":
+          description: Invalid request body
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Endpoint not found
+      tags:
+        - webhooks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: Set a signing secret
+          source: |-
+            curl -X PUT "https://api.trigger.dev/api/v1/webhooks/endpoints/stripe/secret" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY" \
+              -H "Content-Type: application/json" \
+              -d '{"secret": "whsec_..."}'
+  "/api/v1/webhooks/endpoints/{endpointId}/waiters":
+    parameters:
+      - $ref: "#/components/parameters/webhookEndpointId"
+    post:
+      operationId: create_webhook_waiter_v1
+      summary: Create a webhook waiter
+      description: >-
+        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
+
+        Create a waiter on an endpoint. A waiter is a waitpoint that completes when a matching delivery
+        arrives on the endpoint, so a run waiting on its id resumes with the verified event. It only matches
+        deliveries that arrive after it was created. Omit `match` to get a waiter with its own `url`, for
+        providers that take a webhook URL per request.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWebhookWaiterRequest"
+      responses:
+        "200":
+          description: Waiter created, or the existing waiter for this idempotency key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateWebhookWaiterResponse"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: No active endpoint with this id in the environment's current deployment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookWaiterErrorResponse"
+        "422":
+          description: >-
+            A limit was reached (`webhook_waiter_limit`), the filter doesn't parse (`webhook_filter_invalid`),
+            or the request is invalid (`invalid_request`), for example an unknown `match` path or a bad `timeout`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookWaiterErrorResponse"
+      tags:
+        - webhooks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { webhooks } from "@trigger.dev/sdk";
+            import { stripe } from "./trigger/stripe";
+
+            const waiter = await webhooks.waiter.create(stripe, {
+              match: { "event.data.object.metadata.orderId": orderId },
+              timeout: "1h",
+            });
+
+            // Wait on it inside a task
+            const { event } = await webhooks.waiter.wait(waiter.id).unwrap();
+        - lang: curl
+          label: Create a webhook waiter
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/webhooks/endpoints/stripe/waiters" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY" \
+              -H "Content-Type: application/json" \
+              -d '{"match": {"event.data.object.metadata.orderId": "order_123"}, "timeout": "1h"}'
+  "/api/v1/webhooks/waiters/{waiterId}/cancel":
+    parameters:
+      - in: path
+        name: waiterId
+        required: true
+        schema:
+          type: string
+        description: The waiter's id, which is also its waitpoint id.
+        example: waitpoint_abc123
+    post:
+      operationId: cancel_webhook_waiter_v1
+      summary: Cancel a webhook waiter
+      description: >-
+        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
+
+        Cancel a waiter. It stops matching deliveries, frees its slot toward the endpoint's limit, and fails
+        the run's wait. If a delivery already claimed the waiter, the cancel is too late: the response has
+        `cancelled: false` with `reason: "too_late"`, and the run resumes with that delivery's event.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CancelWebhookWaiterResponse"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Waiter not found
+      tags:
+        - webhooks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { webhooks } from "@trigger.dev/sdk";
+
+            const result = await webhooks.waiter.cancel(waiterId);
+            if (!result.cancelled) {
+              console.log("Already resumed by", result.deliveryId);
+            }
+        - lang: curl
+          label: Cancel a webhook waiter
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/webhooks/waiters/waitpoint_abc123/cancel" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
+  "/api/v1/webhooks/deliveries":
+    get:
+      operationId: list_webhook_deliveries_v1
+      summary: List webhook deliveries
+      description: >-
+        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
+
+        List the verified events providers sent to the environment's endpoints, newest first. Filter by
+        endpoint, status and time range, and page with `page[after]` and `page[before]`.
+      parameters:
+        - in: query
+          name: "page[size]"
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+          required: false
+          description: Number of deliveries to return per page (1 to 100).
+        - in: query
+          name: "page[after]"
+          schema:
+            type: string
+          required: false
+          description: Return older deliveries, after this cursor (from `pagination.next` in a previous response).
+        - in: query
+          name: "page[before]"
+          schema:
+            type: string
+          required: false
+          description: Return newer deliveries, before this cursor (from `pagination.previous` in a previous response).
+        - in: query
+          name: "filter[endpoint]"
+          schema:
+            type: string
+          required: false
+          description: Comma-separated endpoints, each a declared id or a `wh_` id.
+          example: "stripe,github"
+        - in: query
+          name: "filter[status]"
+          schema:
+            type: string
+          required: false
+          description: >-
+            Comma-separated statuses. Allowed values: `pending`, `processing`, `succeeded`, `failed`,
+            `filtered`, `unmatched`.
+          example: "failed,filtered"
+        - in: query
+          name: "filter[period]"
+          schema:
+            type: string
+          required: false
+          description: A duration back from now, such as `1h` or `7d`.
+          example: "24h"
+        - in: query
+          name: "filter[from]"
+          schema:
+            type: string
+            format: date-time
+          required: false
+          description: Only deliveries created at or after this ISO 8601 timestamp.
+        - in: query
+          name: "filter[to]"
+          schema:
+            type: string
+            format: date-time
+          required: false
+          description: Only deliveries created at or before this ISO 8601 timestamp.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListWebhookDeliveriesResult"
+        "400":
+          description: Invalid query parameters, such as an unknown status
+        "401":
+          description: Unauthorized request
+      tags:
+        - webhooks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: List failed deliveries
+          source: |-
+            curl -G "https://api.trigger.dev/api/v1/webhooks/deliveries" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY" \
+              --data-urlencode "filter[endpoint]=stripe" \
+              --data-urlencode "filter[status]=failed,filtered" \
+              --data-urlencode "filter[period]=24h"
+  "/api/v1/webhooks/deliveries/{deliveryId}":
+    parameters:
+      - $ref: "#/components/parameters/webhookDeliveryId"
+    get:
+      operationId: retrieve_webhook_delivery_v1
+      summary: Retrieve a webhook delivery
+      description: >-
+        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
+
+        Retrieve one delivery: its status and error, the event body and headers it carried, and a `targets`
+        entry per subscriber with the run or session it started or why its filter skipped the event. When
+        the delivery resumed waiting runs, one more entry summarizes them.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookDeliveryObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Delivery not found
+      tags:
+        - webhooks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: Retrieve a webhook delivery
+          source: |-
+            curl "https://api.trigger.dev/api/v1/webhooks/deliveries/whd_1234" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
+  "/api/v1/webhooks/deliveries/{deliveryId}/replay":
+    parameters:
+      - $ref: "#/components/parameters/webhookDeliveryId"
+    post:
+      operationId: replay_webhook_delivery_v1
+      summary: Replay a webhook delivery
+      description: >-
+        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
+
+        Route a delivery's stored event again as a new delivery. Without `targetId` every current subscriber
+        is checked against its filter again. With `targetId` the event goes to that one subscriber, even if
+        its filter skipped it. A replay never resumes waiting runs. Replays start real runs, so the key needs
+        permission to trigger every task the replay runs, and to write sessions if it reaches an agent's subscriber.
+      parameters:
+        - in: query
+          name: targetId
+          schema:
+            type: string
+          required: false
+          description: >-
+            The subscriber to replay to: a `webhook()` task's id, or `agentId:eventId` for an agent's
+            `chat.event` or channel. Listed in the endpoint's `subscribers`.
+      responses:
+        "200":
+          description: Replay created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReplayWebhookDeliveryResponse"
+        "401":
+          description: Unauthorized request
+        "403":
+          description: The key can't trigger a task (or write sessions for an agent) that the replay would run
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: The delivery, its endpoint, or the `targetId` subscriber doesn't exist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      tags:
+        - webhooks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: Replay to every subscriber
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/webhooks/deliveries/whd_1234/replay" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
+        - lang: curl
+          label: Replay to one subscriber
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/webhooks/deliveries/whd_1234/replay?targetId=process-refund" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
 
 components:
   parameters:
+    webhookEndpointId:
+      in: path
+      name: endpointId
+      required: true
+      schema:
+        type: string
+      description: >-
+        The endpoint's declared id (the `id` passed to `webhooks.endpoint.define`) or its `wh_` id.
+        A value starting with `wh_` is always a generated id, since declared ids can't start with `wh_`.
+        A declared id names the endpoint's declared instance in the key's environment.
+      example: stripe
+    webhookDeliveryId:
+      in: path
+      name: deliveryId
+      required: true
+      schema:
+        type: string
+      description: The delivery's id, starts with `whd_`.
+      example: whd_1234
     taskIdentifier:
       in: path
       name: taskIdentifier
@@ -4688,6 +5224,364 @@ components:
         other API operations. For session tokens see the [session scopes](/management/authentication#session-scopes).
 
   schemas:
+    WebhookEndpointObject:
+      type: object
+      required:
+        - id
+        - declaredId
+        - source
+        - status
+        - secretProvisioning
+        - secretSet
+        - tenantId
+        - externalRef
+        - url
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          description: The endpoint's id.
+          example: wh_cm1a2b3c4d5e6f
+        declaredId:
+          type: string
+          description: The `id` the endpoint is declared with in code (`webhooks.endpoint.define({ id })`).
+          example: stripe
+        source:
+          type: string
+          description: The provider source that verifies and types the endpoint's events.
+          example: stripe
+        status:
+          type: string
+          enum: [active, inactive, deleting]
+          description: >-
+            `active` accepts deliveries. `inactive` was disabled, or is no longer in the current
+            deployment, and its URL responds with `404`.
+        secretProvisioning:
+          type: string
+          enum: [provider, integrator, either]
+          description: >-
+            Who supplies the signing secret: `provider` issues it (store it with the set secret endpoint),
+            `integrator` means you choose it (generate one), and `either` accepts both.
+        secretSet:
+          type: boolean
+          description: Whether a signing secret or public key is set. Every delivery is rejected until it is.
+        tenantId:
+          type: ["string", "null"]
+          description: Reserved for dynamic endpoints. `null` for a declared endpoint.
+        externalRef:
+          type: ["string", "null"]
+          description: Reserved for dynamic endpoints. `null` for a declared endpoint.
+        url:
+          type: string
+          description: The webhook URL to register with the provider.
+          example: https://api.trigger.dev/webhooks/v1/ingest/q3Xb7k2LmP9sT4vW1yZ0aQ
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    WebhookEndpointDetailObject:
+      allOf:
+        - $ref: "#/components/schemas/WebhookEndpointObject"
+        - type: object
+          required:
+            - subscribers
+            - setupPrompt
+          properties:
+            subscribers:
+              type: array
+              description: The tasks and agents that receive the endpoint's deliveries.
+              items:
+                type: object
+                required: [id, type, taskId, filter]
+                properties:
+                  id:
+                    type: string
+                    description: >-
+                      The subscriber id, used as `targetId` when replaying: a `webhook()` task's id, or
+                      `agentId:eventId` for an agent's `chat.event` or channel.
+                    example: process-checkout
+                  type:
+                    type: string
+                    enum: [task, session]
+                    description: "`task` triggers a run. `session` routes the event into an agent's session."
+                  taskId:
+                    type: string
+                    description: The subscribing task, or the agent for a `session` subscriber.
+                    example: process-checkout
+                  filter:
+                    type: ["string", "null"]
+                    description: The filter that decides which events the subscriber takes. `null` takes every event.
+                    example: event.type == 'checkout.session.completed'
+            setupPrompt:
+              type: string
+              description: >-
+                Instructions for an AI coding agent to register the endpoint with its provider and set up
+                the signing secret.
+    ListWebhookEndpointsResult:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookEndpointObject"
+    RotateWebhookEndpointSecretResponse:
+      type: object
+      required: [id, secretSet, secret]
+      properties:
+        id:
+          type: string
+          description: The endpoint's `wh_` id.
+          example: wh_cm1a2b3c4d5e6f
+        secretSet:
+          type: boolean
+          const: true
+        secret:
+          type: string
+          description: The new signing secret. It is returned only in this response and can't be read again.
+          example: whsec_5f2b...
+    SetWebhookEndpointSecretResponse:
+      type: object
+      required: [id, secretSet]
+      properties:
+        id:
+          type: string
+          description: The endpoint's `wh_` id.
+          example: wh_cm1a2b3c4d5e6f
+        secretSet:
+          type: boolean
+          const: true
+    WebhookDeliveryStatus:
+      type: string
+      enum: [pending, processing, succeeded, failed, filtered, unmatched]
+      description: >-
+        `pending` is waiting to be routed (including after a retryable error), `processing` is being routed,
+        `succeeded` reached at least one subscriber or waiting run with nothing failed, `failed` means a
+        subscriber failed after its retries, `filtered` means no subscriber's filter took it, and `unmatched`
+        means runs were waiting on the endpoint but none matched and no subscriber took it.
+    WebhookDeliveryListItem:
+      type: object
+      required: [id, endpoint, status, externalDeliveryId, isTest, createdAt, processedAt]
+      properties:
+        id:
+          type: string
+          description: The delivery's id.
+          example: whd_1234
+        endpoint:
+          type: ["object", "null"]
+          description: The endpoint the delivery arrived on, or `null` if it has since been removed.
+          required: [id, declaredId]
+          properties:
+            id:
+              type: string
+              example: wh_cm1a2b3c4d5e6f
+            declaredId:
+              type: string
+              example: stripe
+        status:
+          $ref: "#/components/schemas/WebhookDeliveryStatus"
+        externalDeliveryId:
+          type: string
+          description: The provider's id for the delivery, such as a Stripe event id or GitHub's `X-GitHub-Delivery` header.
+          example: evt_1PqR2s3T4u5V6w
+        isTest:
+          type: boolean
+          description: Whether the request carried an `x-trigger-test` header, as test sends from the dashboard do.
+        createdAt:
+          type: string
+          format: date-time
+        processedAt:
+          type: ["string", "null"]
+          format: date-time
+    ListWebhookDeliveriesResult:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookDeliveryListItem"
+        pagination:
+          type: object
+          properties:
+            next:
+              type: string
+              description: Pass as `page[after]` to get the next, older page.
+            previous:
+              type: string
+              description: Pass as `page[before]` to get the previous, newer page.
+    WebhookDeliveryTarget:
+      type: object
+      required: [id, type, status, reason, error, runId, sessionId, waiters]
+      properties:
+        id:
+          type: string
+          description: The subscriber id, or `waiters` for the waiting-runs summary.
+          example: process-checkout
+        type:
+          type: string
+          enum: [task, session, waiter]
+        status:
+          type: string
+          enum: [pending, succeeded, failed, filtered]
+        reason:
+          type: ["string", "null"]
+          description: For a `filtered` target, the filter clause that failed and the value it saw.
+        error:
+          type: ["string", "null"]
+        runId:
+          type: ["string", "null"]
+          description: The run the subscriber started.
+          example: run_cm1a2b3c4d5e6f
+        sessionId:
+          type: ["string", "null"]
+          description: The session the event was routed into, for a `session` subscriber.
+        waiters:
+          type: ["object", "null"]
+          description: For the `waiter` summary, how many waiting runs matched, were resumed, and failed to resume.
+          required: [matched, resumed, failed]
+          properties:
+            matched:
+              type: integer
+            resumed:
+              type: integer
+            failed:
+              type: integer
+    WebhookDeliveryObject:
+      allOf:
+        - $ref: "#/components/schemas/WebhookDeliveryListItem"
+        - type: object
+          required: [idempotencyKey, event, headers, rawBodyHash, error, filterReason, targets, updatedAt]
+          properties:
+            idempotencyKey:
+              type: string
+              description: The key the delivery was deduplicated on.
+            event:
+              description: The verified event body, capped in size.
+            headers:
+              type: ["object", "null"]
+              additionalProperties:
+                type: string
+              description: The request headers, with credentials such as signatures removed.
+            rawBodyHash:
+              type: ["string", "null"]
+              description: A hash of the raw request body.
+            error:
+              type: ["string", "null"]
+              description: For a `failed` delivery, the error and the subscriber it came from.
+            filterReason:
+              type: ["string", "null"]
+              description: For a `filtered` delivery, why no subscriber took it.
+            targets:
+              type: array
+              description: One entry per subscriber, plus a `waiter` entry when the delivery matched waiting runs.
+              items:
+                $ref: "#/components/schemas/WebhookDeliveryTarget"
+            updatedAt:
+              type: string
+              format: date-time
+    ReplayWebhookDeliveryResponse:
+      type: object
+      required: [deliveryId, replayedFrom]
+      properties:
+        deliveryId:
+          type: string
+          description: The new delivery. Retrieve it once it's processed to see the runs it started.
+          example: whd_5678
+        replayedFrom:
+          type: string
+          description: The delivery that was replayed.
+          example: whd_1234
+    CreateWebhookWaiterRequest:
+      type: object
+      properties:
+        match:
+          type: object
+          description: >-
+            Up to five paths, each mapped to the value it must equal. `event.*` reads the event body,
+            `header.*` a request header (case-insensitive) and `webhook.*` the endpoint (`id`, `source`,
+            `externalRef`, `tenantId` or `deliveryId`). Omit it to create a waiter with its own `url`.
+          additionalProperties:
+            oneOf:
+              - type: string
+              - type: number
+              - type: boolean
+          example:
+            event.type: payment_intent.succeeded
+            event.data.object.metadata.orderId: order_123
+        filter:
+          type: string
+          description: A [filter](/webhooks/filters) the event must also pass, checked after `match`.
+          example: event.data.object.amount > 1000
+        timeout:
+          type: string
+          description: A duration such as `30m` or `1h`, or an ISO 8601 date. Defaults to 24 hours, up to 90 days.
+          example: 1h
+        tags:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+          description: Up to 10 tags, added to the `webhook:<endpoint id>` tag every waiter gets.
+        idempotencyKey:
+          type: string
+          description: >-
+            A create with a key already used in the environment returns the original waiter with
+            `isCached: true`, even if it has completed.
+        idempotencyKeyTTL:
+          type: string
+          description: How long the idempotency key lasts, such as `1h` or `30d`.
+    CreateWebhookWaiterResponse:
+      type: object
+      required: [id, expiresAt, isCached]
+      properties:
+        id:
+          type: string
+          description: The waiter's id, which is also its waitpoint id. Wait on it with `webhooks.waiter.wait()` or `wait.forToken()`.
+          example: waitpoint_abc123
+        url:
+          type: string
+          description: >-
+            Only for a waiter created without `match`: the URL to give the provider as its per-request
+            webhook. A delivery to it is verified with the endpoint's source and resumes only this waiter.
+        expiresAt:
+          type: string
+          format: date-time
+          description: When the waiter times out.
+        isCached:
+          type: boolean
+          description: "`true` if an existing waiter was returned for the same `idempotencyKey`."
+    WebhookWaiterErrorResponse:
+      type: object
+      required: [error, code]
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+          enum: [webhook_waiter_limit, webhook_endpoint_not_found, webhook_filter_invalid, invalid_request]
+        reason:
+          type: string
+          enum: [environment_limit, endpoint_limit, shape_limit, timeout_too_long]
+          description: For `webhook_waiter_limit`, which limit was reached.
+    CancelWebhookWaiterResponse:
+      type: object
+      required: [cancelled]
+      properties:
+        cancelled:
+          type: boolean
+        reason:
+          type: string
+          enum: [too_late]
+          description: Present when `cancelled` is `false`. A delivery already claimed the waiter.
+        deliveryId:
+          type: string
+          description: With `too_late`, the delivery that resumed the run.
+          example: whd_1234
     RunTag:
       type: string
       maxLength: 128

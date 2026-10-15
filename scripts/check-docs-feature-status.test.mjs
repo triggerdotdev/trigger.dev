@@ -53,6 +53,18 @@ test("multi-line tag is reported, not skipped", () => {
   assert.match(problems[0].message, /single-line/);
 });
 
+test("a tag with children passes and its closing tag is ignored", () => {
+  const mdx =
+    '<PrivateBeta flag="queueArchivingEnabled">\n  Request access to try it.\n</PrivateBeta>';
+  assert.equal(extractFeatureStatusTags(mdx, "docs/page.mdx").length, 1);
+  assert.deepEqual(problemsFor(mdx), []);
+});
+
+test("a tag with children still needs a known flag", () => {
+  const mdx = '<PrivateBeta flag="queueArchivingEnabld">\n  text\n</PrivateBeta>';
+  assert.match(problemsFor(mdx)[0].message, /queueArchivingEnabld/);
+});
+
 test("expression attribute is reported", () => {
   assert.match(problemsFor("<RollingOut flag={FLAG} />")[0].message, /string literals/);
 });

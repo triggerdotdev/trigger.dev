@@ -1,0 +1,54 @@
+---
+title: "Webhooks private beta"
+description: "How to install the webhooks beta packages, keep them up to date, and send feedback."
+sidebarTitle: "Private beta"
+hidden: true
+---
+
+Thanks for trying webhooks. Your organization has access, so endpoints you declare sync when you deploy or run `trigger dev`, and they show up on each environment's **Webhooks** page.
+
+## Install the beta packages
+
+Webhooks ship as prerelease packages on the `webhooks` npm tag. Install the SDK and the CLI from that tag:
+
+```bash
+npm i @trigger.dev/sdk@webhooks
+npm i -D trigger.dev@webhooks
+```
+
+Add the connector packages if you're building Slack or Linear agents:
+
+```bash
+npm i @trigger.dev/slack@webhooks @trigger.dev/linear@webhooks
+```
+
+Use the same tag everywhere, including `@trigger.dev/build` if your project has it. The CLI checks that its version matches the SDK, so run the beta CLI too: `npx trigger.dev@webhooks dev` and `npx trigger.dev@webhooks deploy`.
+
+The webhook tools in the Trigger.dev MCP server come with the beta CLI as well. Install the MCP server pinned to the tag:
+
+```bash
+npx trigger.dev@webhooks install-mcp --tag webhooks
+```
+
+## Stay up to date
+
+Beta versions look like `4.8.0-webhooks.20261015065339`, the next release plus a timestamp. Run the install commands again to move to the newest build. To stay on one build, install that exact version instead of the tag.
+
+When webhooks become generally available they ship in a normal release, and you switch back to `@latest`.
+
+## Get started
+
+- [Overview](/webhooks/overview): endpoints, sources, and what can subscribe.
+- [Connect a provider](/webhooks/connect): register the URL and signing secret, then check that events arrive.
+- [Slack agents](/webhooks/slack) and [Linear agents](/webhooks/linear): turn a `chat.agent` into an agent that lives in Slack or Linear.
+- [Deliveries and endpoints](/webhooks/deliveries): inspect payloads, replay deliveries, and see the runs each one started.
+
+## What to expect
+
+- APIs may change before general availability.
+- Access is per organization. A project in an organization without access deploys normally, but its endpoints don't sync.
+- Webhooks are open source, so they work self-hosted too.
+
+## Feedback
+
+Send bugs, questions and ideas to [eric@trigger.dev](mailto:eric@trigger.dev). Delivery ids (`whd_...`) and run ids help us find what happened.
