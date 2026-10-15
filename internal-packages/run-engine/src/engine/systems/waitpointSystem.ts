@@ -14,7 +14,7 @@ import { buildCompletedWaitpointRecords } from "./completedWaitpointResolver.js"
 import { sendNotificationToWorker } from "../eventBus.js";
 import { isFinalRunStatus } from "../statuses.js";
 import { LegacyPostgresWaitpointCoordinator } from "../waitpointCoordinator/legacyPostgresCoordinator.js";
-import type { WaitpointCoordinator } from "../waitpointCoordinator/types.js";
+import type { RunBlockEdge, WaitpointCoordinator } from "../waitpointCoordinator/types.js";
 import type { EnqueueSystem } from "./enqueueSystem.js";
 import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
 import {
@@ -730,7 +730,7 @@ export class WaitpointSystem {
               environmentType: snapshot.environmentType,
               projectId: snapshot.projectId,
               organizationId: snapshot.organizationId,
-              batchId: snapshot.batchId ?? undefined,
+              batchId: this.#resumeBatchId(runId, snapshot.batchId, blockingWaitpoints),
               completedWaitpoints: blockingWaitpoints.map((b) => ({
                 id: b.waitpoint.id,
                 index: b.batchIndex ?? undefined,
@@ -802,7 +802,7 @@ export class WaitpointSystem {
               status: "QUEUED",
               description: "Run was QUEUED, because all waitpoints are completed",
             },
-            batchId: snapshot.batchId ?? undefined,
+            batchId: this.#resumeBatchId(runId, snapshot.batchId, blockingWaitpoints),
             completedWaitpoints: blockingWaitpoints.map((b) => ({
               id: b.waitpoint.id,
               index: b.batchIndex ?? undefined,
@@ -845,6 +845,45 @@ export class WaitpointSystem {
         waitpoints: blockingWaitpoints.map((w) => w.waitpoint),
       };
     }); // end of runlock
+  }
+
+  // A retried batch create can block an already-waiting run, leaving the snapshot on the first batch.
+  // Child results carry their real batch on the edge, and the SDK matches results by it.
+  #resumeBatchId(
+    runId: string,
+    snapshotBatchId: string | null,
+    blockingWaitpoints: RunBlockEdge[]
+  ): string | undefined {
+    const childBatchIds: string[] = [];
+    for (const edge of blockingWaitpoints) {
+      // Only child-result edges carry a batchIndex. A batch's own waitpoint edge doesn't, and
+      // counting it would add the abandoned batch from a retried create.
+      if (edge.batchIndex !== null && edge.batchId && !childBatchIds.includes(edge.batchId)) {
+        childBatchIds.push(edge.batchId);
+      }
+    }
+
+    if (childBatchIds.length === 1) {
+      const childBatchId = childBatchIds[0];
+      if (childBatchId !== snapshotBatchId) {
+        this.$.logger.warn("continueRunIfUnblocked: resuming with the child results' batch", {
+          runId,
+          snapshotBatchId,
+          batchId: childBatchId,
+        });
+      }
+      return childBatchId;
+    }
+
+    if (childBatchIds.length > 1) {
+      this.$.logger.warn("continueRunIfUnblocked: child results belong to more than one batch", {
+        runId,
+        snapshotBatchId,
+        batchIds: childBatchIds,
+      });
+    }
+
+    return snapshotBatchId ?? undefined;
   }
 
   // The blocking edges carry only a 4-field waitpoint pick, but a redis-primary snapshot needs the FULL
