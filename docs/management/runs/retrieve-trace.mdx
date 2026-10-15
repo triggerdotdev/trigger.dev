@@ -3,6 +3,8 @@ title: "Retrieve run trace"
 openapi: "v3-openapi GET /api/v1/runs/{runId}/trace"
 ---
 
+import { RollingOut } from "/snippets/feature-status.jsx";
+
 Returns the OpenTelemetry trace subtree for the run you request. The response `trace.rootSpan` is that run's span — not necessarily the trace-wide root — with its descendant spans nested under `children`.
 
 For a child or nested run inside a large trace, this endpoint scopes the tree to that run so you still get a useful subtree even when the full trace has more spans than the platform can return in one response.
@@ -10,6 +12,8 @@ For a child or nested run inside a large trace, this endpoint scopes the tree to
 For a finished run, spans that finish more than 7 days after the run are returned in their last recorded state.
 
 ## Page large traces
+
+<RollingOut flag="publicTracePagingEnabled" />
 
 The tree response stops at a size limit. To get every span of a large trace, page it: send `page[size]` (1,000–10,000) on the first request, then pass each response's `pagination.next` back as `page[after]` until it's absent.
 

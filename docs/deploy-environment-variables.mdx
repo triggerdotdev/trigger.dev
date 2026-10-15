@@ -3,6 +3,8 @@ title: "Environment Variables"
 description: "Any environment variables used in your tasks need to be added so the deployed code will run successfully."
 ---
 
+import { RollingOut } from "/snippets/feature-status.jsx";
+
 An environment variable in Node.js is accessed in your code using `process.env.MY_ENV_VAR`.
 
 We deploy your tasks and scale them up and down when they are triggered. So any environment variables you use in your tasks need to accessible to us so your code will run successfully.
@@ -42,6 +44,8 @@ When creating an environment variable, you can mark it as a **Secret**. Secret v
 ### Editing environment variables
 
 You can edit an environment variable's values. You cannot edit the key name, you must delete and create a new one.
+
+<RollingOut flag="allowEmptyEnvironmentVariableValues" />
 
 <Note>
   An empty string is a valid value. Saving a variable with an empty value stores it as an empty
