@@ -12,6 +12,12 @@ You can view your current limits, quotas, and rate limit usage in real-time by v
   [Billing limits and alerts](/billing-limits).
 </Note>
 
+## Run duration
+
+Runs have no maximum duration. You set a default `maxDuration` for your project and can override it per task or per run, or set it to `timeout.None` to let a run execute indefinitely.
+
+Trigger is built for long running AI agents and workflows and we have seen Trigger.dev users with runs lasting more than six months.
+
 ## Concurrency limits
 
 Concurrency is allocated **per environment**, not as a single figure for the whole organization. Each plan sets a separate default for production, staging, preview and development:
