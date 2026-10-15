@@ -39,7 +39,9 @@ export const ENV_PAGE_TARGETS: ReadonlyMap<string, DeeplinkTarget> = new Map([
   ["webhooks", page("webhooks")],
 ]);
 
+// Org pages resolve under the org's settings path.
 export const ORG_PAGE_TARGETS: ReadonlyMap<string, DeeplinkTarget> = new Map([
+  ["billing", page("billing")],
   ["projects", page("projects")],
 ]);
 
