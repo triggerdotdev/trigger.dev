@@ -75,12 +75,18 @@ export function zodShapeStream<TShapeSchema extends AnyZodSchema>(
   return {
     stream: stream as AsyncIterableStream<inferZodSchemaOutput<TShapeSchema>>,
     stop: (delay?: number) => {
+      if (abortController.signal.aborted) return;
+
       if (delay) {
-        setTimeout(() => {
+        const timer = setTimeout(() => {
           if (abortController.signal.aborted) return;
 
           abortController.abort();
         }, delay);
+        // Don't keep the process alive for a stop that an abort already did
+        abortController.signal.addEventListener("abort", () => clearTimeout(timer), {
+          once: true,
+        });
       } else {
         abortController.abort();
       }

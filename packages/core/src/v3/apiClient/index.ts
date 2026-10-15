@@ -1958,6 +1958,7 @@ export class ApiClient {
       closeOnComplete?: boolean;
       onFetchError?: (error: Error) => void;
       skipColumns?: string[];
+      fetchClient?: typeof fetch;
     }
   ) {
     const queryParams = new URLSearchParams();
@@ -1976,6 +1977,7 @@ export class ApiClient {
         client: this,
         signal: options?.signal,
         onFetchError: options?.onFetchError,
+        fetchClient: options?.fetchClient,
       }
     );
   }
@@ -1983,7 +1985,11 @@ export class ApiClient {
   subscribeToRunsWithTag<TRunTypes extends AnyRunTypes>(
     tag: string | string[],
     filters?: { createdAt?: string; skipColumns?: string[] },
-    options?: { signal?: AbortSignal; onFetchError?: (error: Error) => void }
+    options?: {
+      signal?: AbortSignal;
+      onFetchError?: (error: Error) => void;
+      fetchClient?: typeof fetch;
+    }
   ) {
     const searchParams = createSearchQueryForSubscribeToRuns({
       tags: tag,
@@ -2000,6 +2006,7 @@ export class ApiClient {
         client: this,
         signal: options?.signal,
         onFetchError: options?.onFetchError,
+        fetchClient: options?.fetchClient,
       }
     );
   }
@@ -2010,6 +2017,7 @@ export class ApiClient {
       signal?: AbortSignal;
       onFetchError?: (error: Error) => void;
       skipColumns?: string[];
+      fetchClient?: typeof fetch;
     }
   ) {
     const queryParams = new URLSearchParams();
@@ -2027,6 +2035,7 @@ export class ApiClient {
         client: this,
         signal: options?.signal,
         onFetchError: options?.onFetchError,
+        fetchClient: options?.fetchClient,
       }
     );
   }
