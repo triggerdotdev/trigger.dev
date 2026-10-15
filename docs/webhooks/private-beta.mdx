@@ -11,30 +11,94 @@ Thanks for trying webhooks. Your organization has access, so endpoints you decla
 
 Webhooks ship as prerelease packages on the `webhooks` npm tag. Install the SDK and the CLI from that tag:
 
-```bash
+<CodeGroup>
+
+```bash pnpm
+pnpm add @trigger.dev/sdk@webhooks
+pnpm add -D trigger.dev@webhooks
+```
+
+```bash npm
 npm i @trigger.dev/sdk@webhooks
 npm i -D trigger.dev@webhooks
 ```
 
+</CodeGroup>
+
 Add the connector packages if you're building Slack or Linear agents:
 
-```bash
+<CodeGroup>
+
+```bash pnpm
+pnpm add @trigger.dev/slack@webhooks @trigger.dev/linear@webhooks
+```
+
+```bash npm
 npm i @trigger.dev/slack@webhooks @trigger.dev/linear@webhooks
 ```
 
-Use the same tag everywhere, including `@trigger.dev/build` if your project has it. The CLI checks that its version matches the SDK, so run the beta CLI too: `npx trigger.dev@webhooks dev` and `npx trigger.dev@webhooks deploy`.
+</CodeGroup>
+
+Use the same tag everywhere, including `@trigger.dev/build` if your project has it. The CLI checks that its version matches the SDK, so run the beta CLI too: `pnpm dlx trigger.dev@webhooks dev` and `pnpm dlx trigger.dev@webhooks deploy` (or `npx trigger.dev@webhooks ...`).
 
 The webhook tools in the Trigger.dev MCP server come with the beta CLI as well. Install the MCP server pinned to the tag:
 
 ```bash
-npx trigger.dev@webhooks install-mcp --tag webhooks
+pnpm dlx trigger.dev@webhooks install-mcp --tag webhooks
 ```
+
+## If your package manager blocks new versions
+
+Every beta build is new, usually hours or minutes old when you install it. A minimum release age policy skips versions that young, so installing from the `webhooks` tag either fails or installs the wrong version:
+
+- **pnpm 11** applies `minimumReleaseAge` (one day) by default. It doesn't fail: it quietly installs an older prerelease that has no webhooks, such as `@trigger.dev/sdk@4.5.0-rc.7`. Check `pnpm ls @trigger.dev/sdk` shows a `-webhooks.` version.
+- **Yarn** applies `npmMinimalAgeGate` by default.
+- **npm** (`min-release-age`) and **Bun** (`install.minimumReleaseAge`) only do this if you've turned it on.
+
+Exempt the Trigger.dev packages instead of turning the policy off. The CLI package is `trigger.dev`, outside the `@trigger.dev` scope, so it needs its own entry.
+
+<CodeGroup>
+
+```yaml pnpm-workspace.yaml
+minimumReleaseAgeExclude:
+  - "@trigger.dev/*"
+  - trigger.dev
+```
+
+```ini .npmrc
+min-release-age-exclude[]=@trigger.dev/*
+min-release-age-exclude[]=trigger.dev
+```
+
+```yaml .yarnrc.yml
+npmPreapprovedPackages:
+  - "@trigger.dev/*"
+  - trigger.dev
+```
+
+```toml bunfig.toml
+[install]
+# Bun matches names exactly, so list each package you install, and the ones they depend on
+minimumReleaseAgeExcludes = [
+  "@trigger.dev/sdk",
+  "@trigger.dev/core",
+  "@trigger.dev/build",
+  "@trigger.dev/schema-to-json",
+  "@trigger.dev/slack",
+  "@trigger.dev/linear",
+  "trigger.dev",
+]
+```
+
+</CodeGroup>
+
+pnpm needs 10.17 or later for the `@trigger.dev/*` pattern; on 10.16, list the packages by name as in the Bun example. Run the install again after adding the exemption.
 
 ## Stay up to date
 
 Beta versions look like `4.8.0-webhooks.20261015065339`, the next release plus a timestamp. Run the install commands again to move to the newest build. To stay on one build, install that exact version instead of the tag.
 
-When webhooks become generally available they ship in a normal release, and you switch back to `@latest`.
+When webhooks become generally available they ship in a normal release, and you switch back to `@latest`. You can remove the release age exemption then.
 
 ## Get started
 
