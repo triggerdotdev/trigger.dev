@@ -170,7 +170,7 @@ The **Redeploy** action is available for deployments that:
 - Were created in the last 7 days.
 - Were triggered by the [GitHub integration](/github-integration), or deployed from the CLI with `--native-build` and without `--local-bundle`.
 
-A GitHub integration deployment is rebuilt from the same commit and branch. A CLI deployment is rebuilt from the source files uploaded for the original deployment.
+A GitHub integration deployment is rebuilt from the same commit and branch. A CLI deployment is rebuilt from the source files uploaded for the original deployment. A `--local-bundle` deployment is rebuilt from the same bundle with the build-time environment variables of the original deployment. Older `--local-bundle` deployments that didn't store their build-time environment variables can't be redeployed.
 
 The new deployment gets a new version. **Promote deployment automatically** is selected by default, so the new version becomes the current version once it deploys successfully. Clear the checkbox to [skip promotion](#skipping-promotion) and promote it later. The new deployment's page shows the deployment it was redeployed from under **Redeploy of**.
 
