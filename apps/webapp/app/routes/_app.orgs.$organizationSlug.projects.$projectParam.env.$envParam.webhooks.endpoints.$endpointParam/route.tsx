@@ -743,7 +743,7 @@ function ProviderSetup({ verifier, source }: { verifier: LoaderData["verifier"];
 function describeTimestampSource(source: WebhookValueSource): string {
   switch (source.from) {
     case "header":
-      return `header ${source.name}`;
+      return [source.name, ...(source.fallback ?? [])].map((name) => `header ${name}`).join(" or ");
     case "signatureField":
       return `field "${source.field}" in signature header`;
     case "body":

@@ -7,7 +7,13 @@ import type {
 } from "@trigger.dev/core/v3";
 import { randomUUID } from "node:crypto";
 import { isFormEncoded, parseEventBody, readPath } from "../verification/derive.js";
-import { buildSigningBytes, deriveHmacKey, hmacDigest } from "../verification/util.js";
+import {
+  buildSigningBytes,
+  deriveHmacKey,
+  formatTimestamp,
+  hmacDigest,
+  readHeader,
+} from "../verification/util.js";
 
 export type SignResult =
   | { ok: true; headers: Record<string, string>; url: string; body: Uint8Array }
@@ -66,7 +72,7 @@ function readStringSource(
 ): string | undefined {
   switch (source.from) {
     case "header":
-      return headersLc[source.name.toLowerCase()];
+      return readHeader(headersLc, source);
     case "url":
       return args.url;
     case "constant":
@@ -87,23 +93,24 @@ function signHmac(cfg: WebhookHmacConfig, signArgs: SignArgs): SignResult {
   const headers: Record<string, string> = { ...(signArgs.headers ?? {}) };
   const headersLc = lowerCaseHeaders(headers);
   const now = signArgs.nowMs ?? Date.now();
-  const nowInUnit = cfg.timestamp?.unit === "milliseconds" ? now : Math.floor(now / 1000);
 
   let args = signArgs;
   let timestampValue = "";
   if (cfg.timestamp) {
     const src = cfg.timestamp.source;
+    const formatted = formatTimestamp(now, cfg.timestamp);
     if (src.from === "header" || src.from === "signatureField") {
-      timestampValue = String(nowInUnit);
+      timestampValue = formatted;
       if (src.from === "header") {
         headers[src.name] = timestampValue;
         headersLc[src.name.toLowerCase()] = timestampValue;
       }
     } else if (src.from === "body" && signArgs.refreshBodyTimestamp) {
-      const refreshed = withBodyTimestamp(signArgs.rawBody, src.path, nowInUnit, headersLc);
+      const bodyValue = (cfg.timestamp.format ?? "unix") === "unix" ? Number(formatted) : formatted;
+      const refreshed = withBodyTimestamp(signArgs.rawBody, src.path, bodyValue, headersLc);
       if (refreshed) {
         args = { ...signArgs, rawBody: refreshed };
-        timestampValue = String(nowInUnit);
+        timestampValue = formatted;
       } else {
         timestampValue = readStringSource(src, args, headersLc) ?? "";
       }
@@ -120,7 +127,7 @@ function signHmac(cfg: WebhookHmacConfig, signArgs: SignArgs): SignResult {
     for (const [name, source] of Object.entries(cfg.signingString.vars ?? {})) {
       let v: string | undefined;
       if (source.from === "header") {
-        v = headersLc[source.name.toLowerCase()] ?? randomUUID();
+        v = readHeader(headersLc, source) ?? randomUUID();
         headers[source.name] = v;
         headersLc[source.name.toLowerCase()] = v;
       } else {
@@ -149,7 +156,7 @@ function signHmac(cfg: WebhookHmacConfig, signArgs: SignArgs): SignResult {
 function withBodyTimestamp(
   rawBody: Uint8Array,
   path: string,
-  value: number,
+  value: number | string,
   headersLc: Record<string, string>
 ): Uint8Array | undefined {
   if (isFormEncoded(headersLc)) {

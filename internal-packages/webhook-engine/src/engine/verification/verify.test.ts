@@ -1,4 +1,5 @@
 import { createHmac, generateKeyPairSync, sign as cryptoSign, type KeyObject } from "node:crypto";
+import { WebhookVerifierConfig } from "@trigger.dev/core/v3";
 import { describe, expect, it } from "vitest";
 import { parseEventBody } from "./derive.js";
 import { verify } from "./index.js";
@@ -468,3 +469,203 @@ function rawEd25519PublicKeyHex(publicKey: KeyObject): string {
   const der = publicKey.export({ type: "spki", format: "der" });
   return Buffer.from(der.subarray(der.length - 32)).toString("hex");
 }
+
+describe("timestamp formats", () => {
+  const SECRET = "whsec_test_secret";
+  const hex = (s: string) => createHmac("sha256", SECRET).update(s).digest("hex");
+
+  const HTTP_DATE_CONFIG = {
+    scheme: "hmac",
+    algorithm: "sha256",
+    encoding: "hex",
+    signatureHeader: "metronome-webhook-signature",
+    signature: {},
+    timestamp: {
+      source: { from: "header", name: "x-metronome-date" },
+      format: "http-date",
+      toleranceSeconds: 300,
+    },
+    signingString: {
+      template: "{date}\n{body}",
+      vars: { date: { from: "header", name: "x-metronome-date" } },
+    },
+  };
+
+  function httpDateInput(date: string) {
+    const body = '{"id":"evt_1","type":"invoice.finalized"}';
+    return input({
+      rawBytes: bytes(body),
+      headers: { "x-metronome-date": date, "metronome-webhook-signature": hex(`${date}\n${body}`) },
+    });
+  }
+
+  it("accepts an HTTP date inside the window and rejects one outside it", () => {
+    const inside = new Date(NOW_MS - 299_000).toUTCString();
+    const outside = new Date(NOW_MS - 301_000).toUTCString();
+    expect(verify(cfg(HTTP_DATE_CONFIG), httpDateInput(inside)).ok).toBe(true);
+    expect(verify(cfg(HTTP_DATE_CONFIG), httpDateInput(outside))).toMatchObject({
+      ok: false,
+      error: "timestamp outside tolerance",
+    });
+  });
+
+  it("compares an HTTP date at whole-second resolution, so the window isn't cut short", () => {
+    const stamped = new Date(NOW_MS).toUTCString();
+    const at = (nowMs: number) =>
+      verify(cfg(HTTP_DATE_CONFIG), { ...httpDateInput(stamped), nowMs }).ok;
+    expect(at(NOW_MS + 300_900)).toBe(true);
+    expect(at(NOW_MS + 301_000)).toBe(false);
+  });
+
+  it("refuses an http-date signature field only when the item separator can split a date", () => {
+    const withSeparator = (itemSeparator: string) =>
+      WebhookVerifierConfig.safeParse({
+        scheme: "hmac",
+        algorithm: "sha256",
+        encoding: "hex",
+        signatureHeader: "x-signature",
+        signature: { itemSeparator, fieldSeparator: "=", field: "v1" },
+        timestamp: { source: { from: "signatureField", field: "t" }, format: "http-date" },
+        signingString: { template: "{timestamp}.{body}" },
+      }).success;
+    expect(withSeparator(",")).toBe(false);
+    expect(withSeparator(" ")).toBe(false);
+    expect(withSeparator(";")).toBe(true);
+    expect(WebhookVerifierConfig.safeParse(HTTP_DATE_CONFIG).success).toBe(true);
+  });
+
+  it("reads an HTTP date from a ';'-separated signature header", () => {
+    const config = {
+      scheme: "hmac",
+      algorithm: "sha256",
+      encoding: "hex",
+      signatureHeader: "x-signature",
+      signature: { itemSeparator: ";", fieldSeparator: "=", field: "v1" },
+      timestamp: {
+        source: { from: "signatureField", field: "t" },
+        format: "http-date",
+        toleranceSeconds: 300,
+      },
+      signingString: { template: "{timestamp}.{body}" },
+    };
+    const date = new Date(NOW_MS).toUTCString();
+    const body = '{"id":"evt_1"}';
+    const result = verify(
+      cfg(config),
+      input({
+        rawBytes: bytes(body),
+        headers: { "x-signature": `t=${date};v1=${hex(`${date}.${body}`)}` },
+      })
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("keeps a fractional window for an HTTP date slightly in the future", () => {
+    const config = {
+      ...HTTP_DATE_CONFIG,
+      timestamp: { ...HTTP_DATE_CONFIG.timestamp, toleranceSeconds: 0.5 },
+    };
+    const stamped = new Date(NOW_MS + 1000).toUTCString();
+    const at = (nowMs: number) => verify(cfg(config), { ...httpDateInput(stamped), nowMs }).ok;
+    expect(at(NOW_MS + 600)).toBe(true);
+    expect(at(NOW_MS + 400)).toBe(false);
+  });
+
+  it("refuses a value that isn't an HTTP date", () => {
+    expect(verify(cfg(HTTP_DATE_CONFIG), httpDateInput("yesterday"))).toMatchObject({
+      ok: false,
+      error: "unparseable timestamp",
+    });
+  });
+
+  const ISO_BODY_CONFIG = {
+    scheme: "hmac",
+    algorithm: "sha256",
+    encoding: "hex",
+    signatureHeader: "plain-request-signature",
+    signature: {},
+    timestamp: {
+      source: { from: "body", path: "webhookMetadata.webhookDeliveryAttemptTimestamp" },
+      format: "iso8601",
+      toleranceSeconds: 300,
+    },
+    signingString: "raw",
+  };
+
+  function isoInput(timestamp: string) {
+    const body = JSON.stringify({
+      id: "pEv_1",
+      type: "thread.thread_created",
+      webhookMetadata: { webhookDeliveryAttemptTimestamp: timestamp },
+    });
+    return input({ rawBytes: bytes(body), headers: { "plain-request-signature": hex(body) } });
+  }
+
+  it("accepts an ISO 8601 body timestamp inside the window and rejects one outside it", () => {
+    expect(
+      verify(cfg(ISO_BODY_CONFIG), isoInput(new Date(NOW_MS + 299_000).toISOString())).ok
+    ).toBe(true);
+    expect(
+      verify(cfg(ISO_BODY_CONFIG), isoInput(new Date(NOW_MS + 301_000).toISOString()))
+    ).toMatchObject({ ok: false, error: "timestamp outside tolerance" });
+  });
+
+  it("refuses an ISO timestamp that doesn't parse, and a unix number is not read as ISO", () => {
+    expect(verify(cfg(ISO_BODY_CONFIG), isoInput("not-a-date"))).toMatchObject({
+      ok: false,
+      error: "unparseable timestamp",
+    });
+    expect(verify(cfg(ISO_BODY_CONFIG), isoInput(String(NOW_S))).ok).toBe(false);
+  });
+});
+
+describe("header fallbacks", () => {
+  const SECRET = "whsec_test_secret";
+  const hex = (s: string) => createHmac("sha256", SECRET).update(s).digest("hex");
+  const BODY = '{"id":"evt_1","type":"invoice.finalized"}';
+  const DATE = new Date(NOW_MS).toUTCString();
+
+  const CONFIG = {
+    scheme: "hmac",
+    algorithm: "sha256",
+    encoding: "hex",
+    signatureHeader: "metronome-webhook-signature",
+    signature: {},
+    timestamp: {
+      source: { from: "header", name: "x-metronome-date", fallback: ["date"] },
+      format: "http-date",
+      toleranceSeconds: 300,
+    },
+    signingString: {
+      template: "{date}\n{body}",
+      vars: { date: { from: "header", name: "x-metronome-date", fallback: ["date"] } },
+    },
+  };
+
+  const run = (headers: Record<string, string>) =>
+    verify(
+      cfg(CONFIG),
+      input({
+        rawBytes: bytes(BODY),
+        headers: { "metronome-webhook-signature": hex(`${DATE}\n${BODY}`), ...headers },
+      })
+    );
+
+  it("reads the primary header when it is set", () => {
+    expect(run({ "x-metronome-date": DATE }).ok).toBe(true);
+  });
+
+  it("falls back to the next header when the primary is missing or empty", () => {
+    expect(run({ date: DATE }).ok).toBe(true);
+    expect(run({ "x-metronome-date": "", date: DATE }).ok).toBe(true);
+  });
+
+  it("prefers the primary header over the fallback", () => {
+    expect(run({ "x-metronome-date": DATE, date: "Mon, 02 Jan 2006 22:04:05 GMT" }).ok).toBe(true);
+    expect(run({ "x-metronome-date": "Mon, 02 Jan 2006 22:04:05 GMT", date: DATE }).ok).toBe(false);
+  });
+
+  it("fails as a missing timestamp when no listed header is set", () => {
+    expect(run({})).toMatchObject({ ok: false, error: "missing timestamp" });
+  });
+});

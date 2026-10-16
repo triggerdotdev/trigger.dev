@@ -49,7 +49,15 @@ const WebhookBodyPath = z
   );
 
 export const WebhookValueSource = discriminatedUnion("from", [
-  z.object({ from: z.literal("header"), name: z.string() }),
+  z.object({
+    from: z.literal("header"),
+    name: z.string(),
+    /**
+     * Headers to read, in order, when `name` is missing or empty, e.g. Metronome's `X-Metronome-Date`
+     * falling back to `Date`. A signer still writes the value under `name`.
+     */
+    fallback: z.array(z.string()).optional(),
+  }),
   z.object({ from: z.literal("signatureField"), field: z.string() }),
   z.object({ from: z.literal("body"), path: WebhookBodyPath }),
   z.object({ from: z.literal("url") }),
@@ -74,6 +82,12 @@ export type WebhookSignatureExtraction = z.infer<typeof WebhookSignatureExtracti
 export const WebhookTimestampConfig = z.object({
   source: WebhookValueSource,
   unit: z.enum(["seconds", "milliseconds"]).optional(),
+  /**
+   * How the value is written. `unix` (the default) is a number in `unit`; `iso8601` is an ISO 8601
+   * date-time (Plain's `webhookDeliveryAttemptTimestamp`); `http-date` is an RFC 1123 date
+   * (Metronome's `X-Metronome-Date`). `unit` only applies to `unix`.
+   */
+  format: z.enum(["unix", "iso8601", "http-date"]).optional(),
   toleranceSeconds: z.number().optional(),
 });
 export type WebhookTimestampConfig = z.infer<typeof WebhookTimestampConfig>;
@@ -108,37 +122,62 @@ export const WebhookFormPayload = z.object({
 });
 export type WebhookFormPayload = z.infer<typeof WebhookFormPayload>;
 
-export const WebhookHmacConfig = z.object({
-  scheme: z.literal("hmac"),
-  algorithm: z.enum(["sha256", "sha1"]),
-  encoding: z.enum(["hex", "base64"]), // explicit, no auto-detect (design decision 3)
-  signatureHeader: z.string(),
-  signature: WebhookSignatureExtraction.optional(), // omit = bare whole-header value
-  timestamp: WebhookTimestampConfig.optional(),
-  signingString: WebhookSigningString,
-  secret: WebhookSecretTransform.optional(), // omit = utf8, no prefix strip
-  idempotencyField: WebhookIdempotencyField.optional(),
-  formPayload: WebhookFormPayload.optional(),
-});
+/**
+ * An HTTP date (`Thu, 15 Oct 2026 12:00:00 GMT`) holds letters, digits, commas, spaces and colons, so
+ * an item separator made only of those characters can split one apart. Refuse that pairing for a
+ * timestamp read from a signature header field; any other separator (`;`) reads the date intact.
+ */
+function httpDateFitsSignatureHeader(config: {
+  signature?: WebhookSignatureExtraction;
+  timestamp?: WebhookTimestampConfig;
+}): boolean {
+  const separator = config.signature?.itemSeparator;
+  if (config.timestamp?.format !== "http-date") return true;
+  if (config.timestamp.source.from !== "signatureField" || !separator) return true;
+  return !/^[A-Za-z0-9, :]+$/.test(separator);
+}
+
+const HTTP_DATE_SEPARATOR_ERROR = {
+  message:
+    "an http-date timestamp in a signature header field needs an item separator that can't appear in a date (for example ';')",
+  path: ["timestamp", "format"],
+};
+
+export const WebhookHmacConfig = z
+  .object({
+    scheme: z.literal("hmac"),
+    algorithm: z.enum(["sha256", "sha1"]),
+    encoding: z.enum(["hex", "base64"]), // explicit, no auto-detect (design decision 3)
+    signatureHeader: z.string(),
+    signature: WebhookSignatureExtraction.optional(), // omit = bare whole-header value
+    timestamp: WebhookTimestampConfig.optional(),
+    signingString: WebhookSigningString,
+    secret: WebhookSecretTransform.optional(), // omit = utf8, no prefix strip
+    idempotencyField: WebhookIdempotencyField.optional(),
+    formPayload: WebhookFormPayload.optional(),
+  })
+  .refine(httpDateFitsSignatureHeader, HTTP_DATE_SEPARATOR_ERROR);
 export type WebhookHmacConfig = z.infer<typeof WebhookHmacConfig>;
 
 // Asymmetric (public-key) signatures: the provider signs with a private key, we verify with
 // their public key. Same parsing/template primitives as HMAC; only the final verify differs.
 // Covers Discord (ed25519), SendGrid (ecdsa-p256), RSA providers. Dynamic key fetch (PayPal
 // cert URL / JWKS) is out of scope → the custom-bundle escape hatch.
-export const WebhookAsymmetricConfig = z.object({
-  scheme: z.literal("asymmetric"),
-  algorithm: z.enum(["ed25519", "ecdsa-p256", "rsa-sha256"]),
-  encoding: z.enum(["hex", "base64"]), // how the signature value is encoded
-  signatureHeader: z.string(),
-  signature: WebhookSignatureExtraction.optional(),
-  timestamp: WebhookTimestampConfig.optional(),
-  signingString: WebhookSigningString,
-  // How the stored public key is encoded: a PEM string, base64 of DER SPKI (SendGrid),
-  // or raw key bytes (ed25519 raw, Discord). Defaults to "pem".
-  publicKeyEncoding: z.enum(["pem", "spki-der-base64", "raw-hex", "raw-base64"]).optional(),
-  idempotencyField: WebhookIdempotencyField.optional(),
-});
+export const WebhookAsymmetricConfig = z
+  .object({
+    scheme: z.literal("asymmetric"),
+    algorithm: z.enum(["ed25519", "ecdsa-p256", "rsa-sha256"]),
+    encoding: z.enum(["hex", "base64"]), // how the signature value is encoded
+    signatureHeader: z.string(),
+    signature: WebhookSignatureExtraction.optional(),
+    timestamp: WebhookTimestampConfig.optional(),
+    signingString: WebhookSigningString,
+    // How the stored public key is encoded: a PEM string, base64 of DER SPKI (SendGrid),
+    // or raw key bytes (ed25519 raw, Discord). Defaults to "pem".
+    publicKeyEncoding: z.enum(["pem", "spki-der-base64", "raw-hex", "raw-base64"]).optional(),
+    idempotencyField: WebhookIdempotencyField.optional(),
+  })
+  .refine(httpDateFitsSignatureHeader, HTTP_DATE_SEPARATOR_ERROR);
 export type WebhookAsymmetricConfig = z.infer<typeof WebhookAsymmetricConfig>;
 
 export const WebhookSharedSecretConfig = z.object({
