@@ -597,12 +597,14 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     runFriendlyId,
     snapshotFriendlyId,
     completion,
+    forceRequeue,
     runnerId,
     environmentId,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
     completion: TaskRunExecutionResult;
+    forceRequeue?: boolean;
     runnerId?: string;
     environmentId?: string;
   }): Promise<CompleteRunAttemptResult> {
@@ -616,6 +618,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       runId: fromFriendlyId(runFriendlyId),
       snapshotId: fromFriendlyId(snapshotFriendlyId),
       completion,
+      forceRequeue,
       workerId: this.workerInstanceId,
       runnerId,
       environmentId,

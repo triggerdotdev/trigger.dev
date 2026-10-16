@@ -1707,6 +1707,7 @@ export class RunEngine {
     runId,
     snapshotId,
     completion,
+    forceRequeue,
     workerId,
     runnerId,
     environmentId,
@@ -1714,6 +1715,8 @@ export class RunEngine {
     runId: string;
     snapshotId: string;
     completion: TaskRunExecutionResult;
+    /** Queue any retry instead of retrying immediately on the same runner. */
+    forceRequeue?: boolean;
     workerId?: string;
     runnerId?: string;
     environmentId?: string;
@@ -1722,6 +1725,7 @@ export class RunEngine {
       runId,
       snapshotId,
       completion,
+      forceRequeue,
       workerId,
       runnerId,
       environmentId,

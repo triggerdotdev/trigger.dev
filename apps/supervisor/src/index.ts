@@ -20,6 +20,7 @@ import {
 import { KubernetesWorkloadManager } from "./workloadManager/kubernetes.js";
 import {
   RunCrdWorkloadManager,
+  RunnerKillInformer,
   RunnerRestoreInformer,
   settleRestoreFailure,
 } from "./workloadManager/runCrd.js";
@@ -38,6 +39,7 @@ import { collectDefaultMetrics, Counter, Gauge, Histogram } from "prom-client";
 import { register } from "./metrics.js";
 import { PodCleaner } from "./services/podCleaner.js";
 import { FailedPodHandler } from "./services/failedPodHandler.js";
+import { RunnerKillReporter } from "./services/runnerKills.js";
 import { DequeueDrain } from "./services/dequeueDrain.js";
 import { getWorkerToken } from "./workerToken.js";
 import { mintDeploymentToken } from "./workloadToken.js";
@@ -104,6 +106,8 @@ class ManagedSupervisor {
   private readonly runCrdManager?: RunCrdWorkloadManager;
   private readonly restoreInformer?: RunnerRestoreInformer;
   private readonly restoreWatcher?: RestoreWatcher;
+  private readonly runnerKillReporter?: RunnerKillReporter;
+  private readonly runnerKillInformer?: RunnerKillInformer;
   private readonly logger = new SimpleStructuredLogger("managed-supervisor");
   private readonly resourceMonitor: ResourceMonitor;
   private readonly checkpointClient?: CheckpointClient;
@@ -167,6 +171,21 @@ class ManagedSupervisor {
         ? new KubernetesResourceMonitor(createK8sApi(), env.TRIGGER_WORKER_INSTANCE_NAME)
         : new DockerResourceMonitor(new Docker())
       : new NoopResourceMonitor();
+
+    if (this.isKubernetes && env.RUNNER_KILL_REPORTS_ENABLED) {
+      const killReporter = new RunnerKillReporter({
+        register,
+        client: () => this.workerSession.httpClient,
+      });
+      this.runnerKillReporter = killReporter;
+      // Separate from the run CRD manager: the process that sees Runners fail need not run them.
+      if (env.KUBERNETES_RUNNER_KILL_INFORMER_ENABLED) {
+        this.runnerKillInformer = new RunnerKillInformer({
+          namespace: env.KUBERNETES_NAMESPACE,
+          onRunnerKilled: (runnerId, kill) => void killReporter.onRunnerKilled(runnerId, kill),
+        });
+      }
+    }
 
     if (this.isKubernetes && env.KUBERNETES_RUN_CRD_ENABLED) {
       // Only a process that dequeues creates resumes, and only the microvm lane restores.
@@ -248,6 +267,9 @@ class ManagedSupervisor {
           namespace: env.KUBERNETES_NAMESPACE,
           reconnectIntervalMs: env.FAILED_POD_HANDLER_RECONNECT_INTERVAL_MS,
           watchTimeoutSeconds: env.FAILED_POD_HANDLER_WATCH_TIMEOUT_SECONDS,
+          onRunnerKilled: this.runnerKillReporter
+            ? (runnerId, kill) => this.runnerKillReporter!.onRunnerKilled(runnerId, kill)
+            : undefined,
         });
       } else {
         this.logger.warn("Failed pod handler disabled");
@@ -895,6 +917,7 @@ class ManagedSupervisor {
     await this.podCleaner?.start();
     await this.failedPodHandler?.start();
     await this.restoreInformer?.start();
+    await this.runnerKillInformer?.start();
     await this.metricsServer?.start();
 
     if (env.TRIGGER_WORKLOAD_API_ENABLED) {
@@ -921,6 +944,7 @@ class ManagedSupervisor {
     // The next process adopts the restores and recovers the suspends left unanswered.
     await this.restoreWatcher?.stop();
     await this.restoreInformer?.stop();
+    await this.runnerKillInformer?.stop();
 
     // Optional services
     this.backpressureMonitors.forEach((m) => m.stop());

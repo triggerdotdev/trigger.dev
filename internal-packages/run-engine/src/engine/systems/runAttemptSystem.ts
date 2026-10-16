@@ -707,6 +707,7 @@ export class RunAttemptSystem {
     runId,
     snapshotId,
     completion,
+    forceRequeue,
     workerId,
     runnerId,
     environmentId,
@@ -714,6 +715,7 @@ export class RunAttemptSystem {
     runId: string;
     snapshotId: string;
     completion: TaskRunExecutionResult;
+    forceRequeue?: boolean;
     workerId?: string;
     runnerId?: string;
     environmentId?: string;
@@ -737,6 +739,7 @@ export class RunAttemptSystem {
           runId,
           snapshotId,
           completion,
+          forceRequeue,
           tx: this.$.prisma,
           workerId,
           runnerId,

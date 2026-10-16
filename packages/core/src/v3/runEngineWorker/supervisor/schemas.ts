@@ -138,6 +138,8 @@ export type WorkerApiRunAttemptStartResponseBody = z.infer<
 
 export const WorkerApiRunAttemptCompleteRequestBody = z.object({
   completion: TaskRunExecutionResult,
+  /** Queue any retry for a new runner instead of retrying on this one, e.g. when it was killed. */
+  forceRequeue: z.boolean().optional(),
 });
 export type WorkerApiRunAttemptCompleteRequestBody = z.infer<
   typeof WorkerApiRunAttemptCompleteRequestBody

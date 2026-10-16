@@ -209,6 +209,9 @@ export const Env = z
     // Follow restores with one informer on labelled Runners instead of a poll per
     // restore. Needs list and watch on runners.
     KUBERNETES_RUNNER_RESTORE_INFORMER_ENABLED: BoolEnv.default(false),
+    // Follow every Runner with one informer to report the ones the runtime killed, so
+    // their runs fail with the runtime's reason. Needs list and watch on runners.
+    KUBERNETES_RUNNER_KILL_INFORMER_ENABLED: BoolEnv.default(false),
     // The operator's 15 minute pod start deadline, after up to 5 minutes waiting
     // out a predecessor pod of the same name, plus a margin, so its failure
     // arrives first and carries the reason.
@@ -346,6 +349,9 @@ export const Env = z
 
     // Failed pod handler
     FAILED_POD_HANDLER_ENABLED: BoolEnv.default(true),
+    // Report a run whose runner the runtime killed, so it fails as out of memory only
+    // when the runtime says so. Without it the run waits out the heartbeat timeout.
+    RUNNER_KILL_REPORTS_ENABLED: BoolEnv.default(true),
     FAILED_POD_HANDLER_RECONNECT_INTERVAL_MS: z.coerce.number().int().default(1000),
     FAILED_POD_HANDLER_WATCH_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(300),
 
