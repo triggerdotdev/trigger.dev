@@ -364,10 +364,11 @@ export function TierFree({
   // Randomised once per mount so list position doesn't bias which reasons get picked.
   const [shuffledReasons] = useState(() => shuffleArray(DOWNGRADE_REASONS));
 
+  // Keyed on the plan, not the object: the billing page revalidates while a change is applying.
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setIsDialogOpen(false);
-  }, [subscription]);
+  }, [subscription?.plan?.code, subscription?.canceledAt]);
 
   return (
     <TierContainer>
@@ -524,10 +525,11 @@ export function TierHobby({
   const isLoading = navigation.formAction === formAction;
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
+  // Keyed on the plan, not the object: the billing page revalidates while a change is applying.
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setIsDialogOpen(false);
-  }, [subscription]);
+  }, [subscription?.plan?.code, subscription?.canceledAt]);
 
   return (
     <TierContainer isHighlighted={isHighlighted}>
@@ -665,10 +667,11 @@ export function TierPro({
   const isLoading = navigation.formAction === formAction;
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
+  // Keyed on the plan, not the object: the billing page revalidates while a change is applying.
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setIsDialogOpen(false);
-  }, [subscription]);
+  }, [subscription?.plan?.code, subscription?.canceledAt]);
 
   return (
     <TierContainer>

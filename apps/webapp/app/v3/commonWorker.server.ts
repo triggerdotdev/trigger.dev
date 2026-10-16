@@ -32,6 +32,11 @@ import { BulkActionService } from "./services/bulk/BulkActionV2.server";
 import { prisma } from "~/db.server";
 import { sweepPreviewAutoArchives } from "~/services/previewAutoArchive.server";
 import { controlPlaneResolver } from "./runOpsMigration/controlPlaneResolver.server";
+import {
+  ORG_PROVISIONING_VISIBILITY_TIMEOUT_MS,
+  OrgProvisioningPayloadSchema,
+  runOrgProvisioningJob,
+} from "./services/orgProvisioningJobs.server";
 import { webhookEngine } from "./webhookEngine.server";
 
 function initializeWorker() {
@@ -217,6 +222,27 @@ function initializeWorker() {
           maxAttempts: 5,
         },
       },
+      "org.convergeRunsEnabled": {
+        schema: OrgProvisioningPayloadSchema,
+        visibilityTimeoutMs: ORG_PROVISIONING_VISIBILITY_TIMEOUT_MS,
+        retry: {
+          maxAttempts: 12,
+        },
+      },
+      "org.pushConcurrencyLimits": {
+        schema: OrgProvisioningPayloadSchema,
+        visibilityTimeoutMs: ORG_PROVISIONING_VISIBILITY_TIMEOUT_MS,
+        retry: {
+          maxAttempts: 12,
+        },
+      },
+      "org.provisionStagingEnvironments": {
+        schema: OrgProvisioningPayloadSchema,
+        visibilityTimeoutMs: ORG_PROVISIONING_VISIBILITY_TIMEOUT_MS,
+        retry: {
+          maxAttempts: 12,
+        },
+      },
     },
     concurrency: {
       workers: env.COMMON_WORKER_CONCURRENCY_WORKERS,
@@ -325,6 +351,15 @@ function initializeWorker() {
             softDeleted: soft,
           });
         }
+      },
+      "org.convergeRunsEnabled": async ({ payload }) => {
+        await runOrgProvisioningJob("org.convergeRunsEnabled", payload.organizationId);
+      },
+      "org.pushConcurrencyLimits": async ({ payload }) => {
+        await runOrgProvisioningJob("org.pushConcurrencyLimits", payload.organizationId);
+      },
+      "org.provisionStagingEnvironments": async ({ payload }) => {
+        await runOrgProvisioningJob("org.provisionStagingEnvironments", payload.organizationId);
       },
     },
   });
