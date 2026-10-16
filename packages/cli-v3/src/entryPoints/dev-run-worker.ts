@@ -245,6 +245,7 @@ async function doBootstrap() {
       metricsUrl: env.TRIGGER_OTEL_METRICS_ENDPOINT,
       instrumentations: config.telemetry?.instrumentations ?? config.instrumentations ?? [],
       exporters: config.telemetry?.exporters ?? [],
+      spanProcessors: config.telemetry?.spanProcessors ?? [],
       logExporters: config.telemetry?.logExporters ?? [],
       metricExporters: config.telemetry?.metricExporters ?? [],
       metricReaders: config.telemetry?.metricReaders ?? [],

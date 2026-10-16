@@ -143,6 +143,7 @@
                   "ai-chat/patterns/oom-resilience",
                   "ai-chat/patterns/recovery-boot",
                   "ai-chat/patterns/trusted-edge-signals",
+                  "ai-chat/patterns/redacting-telemetry",
                   "ai-chat/patterns/native-compaction"
                 ]
               },
