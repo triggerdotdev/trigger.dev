@@ -208,6 +208,16 @@ function initializePlatformCache() {
       fresh: 60_000,
       stale: 120_000,
     }),
+    // Own context: getCachedPlans' loader throws on failure, and the default context would
+    // leave a failed background refresh as an unhandled rejection.
+    plans: new Namespace<PlansResult>(
+      { waitUntil: (p) => void p.catch(() => {}) },
+      {
+        stores: [memory, redisCacheStore],
+        fresh: 60_000,
+        stale: 120_000,
+      }
+    ),
   });
 
   return cache;
@@ -549,6 +559,31 @@ export async function getPlans() {
       return undefined;
     }
     return result;
+  } catch (_e) {
+    recordPlatformFailure("getPlans", "caught");
+    return undefined;
+  }
+}
+
+type PlansResult = NonNullable<Awaited<ReturnType<typeof getPlans>>>;
+
+/**
+ * {@link getPlans} behind a short SWR cache, for pages that poll. The catalog is the same for
+ * every org, so it is cached under one key. The loader throws on failure because `swr` stores
+ * whatever it returns, `undefined` included, which would overwrite a good stale catalog. A
+ * failed background refresh therefore keeps the stale value; a failed cold fetch returns
+ * `undefined`.
+ */
+export async function getCachedPlans(): Promise<PlansResult | undefined> {
+  if (!client) return undefined;
+
+  try {
+    const result = await platformCache.plans.swr("all", async () => {
+      const plans = await getPlans();
+      if (!plans) throw new Error("getPlans failed");
+      return plans;
+    });
+    return result.err ? undefined : result.val;
   } catch (_e) {
     recordPlatformFailure("getPlans", "caught");
     return undefined;

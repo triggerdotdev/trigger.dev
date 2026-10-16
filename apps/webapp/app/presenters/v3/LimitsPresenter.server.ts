@@ -1,7 +1,8 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { env } from "~/env.server";
-import { getCurrentPlan } from "~/services/platform.v3.server";
+import { type SchedulePricing } from "~/components/schedules/PurchaseSchedulesModal";
+import { getCachedPlans, getCurrentPlan } from "~/services/platform.v3.server";
 import {
   RateLimiterConfig,
   createLimiterFromConfig,
@@ -91,6 +92,13 @@ export type LimitsResult = {
   planName: string | null;
   organizationId: string;
   isOnTopPlan: boolean;
+  /** Set when the plan allows self-serve schedule add-on purchases. */
+  schedulePurchase: {
+    schedulePricing: SchedulePricing;
+    extraSchedules: number;
+    maxScheduleQuota: number;
+    planScheduleLimit: number;
+  } | null;
 };
 
 export class LimitsPresenter extends BasePresenter {
@@ -135,6 +143,10 @@ export class LimitsPresenter extends BasePresenter {
     const currentPlan = await getCurrentPlan(organizationId);
     const limits = currentPlan?.v3Subscription?.plan?.limits;
     const isOnTopPlan = currentPlan?.v3Subscription?.plan?.code === "v3_pro_1";
+    // Same gate as the scheduled task page's purchase button (ScheduleListPresenter).
+    // Cached because this page polls. Started now and awaited at the end so it overlaps
+    // with the queries below.
+    const plansPromise = limits?.schedules?.canExceed === true ? getCachedPlans() : undefined;
 
     // Resolve rate limit configs (org override or default)
     const apiRateLimitConfig = resolveApiRateLimitConfig(organization.apiRateLimiterConfig);
@@ -255,8 +267,20 @@ export class LimitsPresenter extends BasePresenter {
     const hasStagingEnvironment = limits?.hasStagingEnvironment ?? false;
     const supportLevel = limits?.support ?? "community";
 
+    const schedulePricing = (await plansPromise)?.addOnPricing.schedules ?? null;
+    const extraSchedules = currentPlan?.v3Subscription?.addOns?.schedules?.purchased ?? 0;
+
     return {
       isOnTopPlan,
+      schedulePurchase:
+        schedulePricing && schedulesLimit !== null
+          ? {
+              schedulePricing,
+              extraSchedules,
+              maxScheduleQuota: currentPlan?.v3Subscription?.addOns?.schedules?.quota ?? 0,
+              planScheduleLimit: schedulesLimit - extraSchedules,
+            }
+          : null,
       rateLimits: {
         api: {
           name: "API rate limit",
