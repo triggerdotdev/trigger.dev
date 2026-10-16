@@ -311,19 +311,28 @@ const TriggerConcurrencyLimitsSchema = z
   .array()
   .max(2);
 
-const ExternalDeploymentId = z.preprocess((value) => {
-  // `null` is the opt-out sentinel callers write; treat it as absent, not a validation error.
-  if (value === null) {
-    return undefined;
-  }
+const ExternalDeploymentId = z.preprocess(
+  (value) => {
+    // `null` is the opt-out sentinel callers write; treat it as absent, not a validation error.
+    if (value === null) {
+      return undefined;
+    }
 
-  if (typeof value !== "string") {
-    return value;
-  }
+    if (typeof value !== "string") {
+      return value;
+    }
 
-  const trimmed = value.trim();
-  return trimmed === "" ? undefined : trimmed;
-}, z.string().max(EXTERNAL_DEPLOYMENT_ID_MAX_LENGTH, `externalId must be at most ${EXTERNAL_DEPLOYMENT_ID_MAX_LENGTH} characters`).optional()) as unknown as z.ZodOptional<z.ZodString>;
+    const trimmed = value.trim();
+    return trimmed === "" ? undefined : trimmed;
+  },
+  z
+    .string()
+    .max(
+      EXTERNAL_DEPLOYMENT_ID_MAX_LENGTH,
+      `externalId must be at most ${EXTERNAL_DEPLOYMENT_ID_MAX_LENGTH} characters`
+    )
+    .optional()
+) as unknown as z.ZodOptional<z.ZodString>;
 
 export const TriggerTaskRequestBody = z
   .object({

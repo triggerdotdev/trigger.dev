@@ -494,11 +494,10 @@ export class WebhookDeliveriesReplicationService {
     const lsnToUInt64DurationMs = Number(process.hrtime.bigint() - lsnToUInt64Start) / 1_000_000;
 
     this._concurrentFlushScheduler.addToBatch(
-      transaction.events.map(
-        (event): WebhookDeliveryInsert =>
-          event.raw.relation.name === "WebhookEndpoint"
-            ? { _version, endpoint: event.data as unknown as WebhookEndpoint, event: event.tag }
-            : { _version, delivery: event.data, event: event.tag }
+      transaction.events.map((event): WebhookDeliveryInsert =>
+        event.raw.relation.name === "WebhookEndpoint"
+          ? { _version, endpoint: event.data as unknown as WebhookEndpoint, event: event.tag }
+          : { _version, delivery: event.data, event: event.tag }
       )
     );
 

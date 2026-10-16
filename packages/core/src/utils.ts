@@ -33,7 +33,7 @@ export function normalizeSearchText(value: string): string {
   let runStart = -1;
   let gap = false;
 
-  for (let i = 0; i < text.length; ) {
+  for (let i = 0; i < text.length;) {
     const code = text.codePointAt(i)!;
     const length = code > 0xffff ? 2 : 1;
 

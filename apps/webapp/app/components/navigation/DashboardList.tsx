@@ -69,14 +69,12 @@ export function DashboardList({
       collapsedIcon: AIMetricsIcon,
       activeColor: "text-aiMetrics",
     },
-    ...customDashboards.map(
-      (d): DashboardChild => ({
-        key: `custom:${d.friendlyId}`,
-        kind: "custom",
-        label: d.title,
-        path: v3CustomDashboardPath(organization, project, environment, d),
-      })
-    ),
+    ...customDashboards.map((d): DashboardChild => ({
+      key: `custom:${d.friendlyId}`,
+      kind: "custom",
+      label: d.title,
+      path: v3CustomDashboardPath(organization, project, environment, d),
+    })),
   ];
 
   const initialOrder =

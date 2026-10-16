@@ -79,12 +79,10 @@ export function answerAllCardKeys<TCard extends { key: string }>(
     ...cards,
     ...cardKeys
       .filter((key) => !answered.has(key))
-      .map(
-        (key): NoDataCard => ({
-          key,
-          components: null,
-          timeToLiveSeconds: NO_DATA_TTL_SECONDS,
-        })
-      ),
+      .map((key): NoDataCard => ({
+        key,
+        components: null,
+        timeToLiveSeconds: NO_DATA_TTL_SECONDS,
+      })),
   ];
 }

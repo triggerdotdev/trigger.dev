@@ -271,15 +271,13 @@ export class VercelIntegrationRepository {
         logger.error("Error exchanging Vercel OAuth code", { error });
         return toVercelApiError(error);
       }
-    ).map(
-      (data): TokenResponse => ({
-        accessToken: data.access_token,
-        tokenType: data.token_type,
-        teamId: data.team_id,
-        userId: data.user_id,
-        raw: data as Record<string, unknown>,
-      })
-    );
+    ).map((data): TokenResponse => ({
+      accessToken: data.access_token,
+      tokenType: data.token_type,
+      teamId: data.team_id,
+      userId: data.user_id,
+      raw: data as Record<string, unknown>,
+    }));
   }
 
   static getVercelClient(
