@@ -8,13 +8,20 @@ export function redeployOfShortCode(buildServerMetadata: unknown): string | null
 
 export type RedeploySource =
   | { kind: "github"; commitSha: string; commitRef: string; git: GitMeta }
-  | { kind: "artifact"; artifactKey: string; configFilePath?: string; git?: GitMeta };
+  | {
+      kind: "artifact";
+      artifactKey: string;
+      configFilePath?: string;
+      git?: GitMeta;
+      fromBundle: boolean;
+    };
 
-/** Which build source a deployment can be rebuilt from. Bundle uploads are not redeployable yet. */
+/** Which build source a deployment can be rebuilt from. A bundle also needs its stored build env vars. */
 export function resolveRedeploySource(deployment: {
   triggeredVia: string | null;
   git: unknown;
   buildServerMetadata: unknown;
+  hasBuildEnvVars: boolean;
 }): RedeploySource | null {
   const git = GitMeta.safeParse(deployment.git);
 
@@ -31,17 +38,18 @@ export function resolveRedeploySource(deployment: {
   }
 
   const metadata = BuildServerMetadata.safeParse(deployment.buildServerMetadata);
-  if (
-    metadata.success &&
-    metadata.data.isNativeBuild &&
-    metadata.data.artifactKey &&
-    !metadata.data.fromBundle
-  ) {
+  if (metadata.success && metadata.data.isNativeBuild && metadata.data.artifactKey) {
+    // The key prefix still marks a bundle when the metadata flag was lost to schema skew
+    const fromBundle =
+      metadata.data.fromBundle === true || metadata.data.artifactKey.startsWith("bundles/");
+    if (fromBundle && !deployment.hasBuildEnvVars) return null;
+
     return {
       kind: "artifact",
       artifactKey: metadata.data.artifactKey,
       configFilePath: metadata.data.configFilePath,
       git: git.success ? git.data : undefined,
+      fromBundle,
     };
   }
 

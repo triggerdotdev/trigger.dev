@@ -8,7 +8,7 @@ import { resolveBuildRuntime } from "@trigger.dev/core/v3/build";
 import { customAlphabet } from "nanoid";
 import { env } from "~/env.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { encryptSecret } from "~/services/secrets/secretStore.server";
+import { type EncryptedSecretValue } from "~/services/secrets/secretStore.server";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { createRemoteImageBuild, remoteBuildsEnabled } from "../remoteImageBuilder.server";
@@ -20,6 +20,7 @@ import { tryCatch } from "@trigger.dev/core";
 import { getRegistryConfig } from "../registryConfig.server";
 import { DeploymentService } from "./deployment.server";
 import { recordDeploymentInitialized } from "./recordDeploymentFinished.server";
+import { buildEnvVarsEnvelope } from "./initializeDeployment/buildEnvVarsEnvelope.server";
 import { createDeploymentWithNextVersion } from "./initializeDeployment/createDeploymentWithNextVersion.server";
 import {
   cancelSupersededDeployments,
@@ -61,7 +62,7 @@ export class InitializeDeploymentService extends BaseService {
   public async call(
     environment: AuthenticatedEnvironment,
     payload: InitializeDeploymentRequestBody,
-    options?: { cliVersion?: string; redeployOf?: string }
+    options?: { cliVersion?: string; redeployOf?: string; buildEnvVars?: EncryptedSecretValue }
   ): Promise<InitializeDeploymentResult> {
     return this.traceWithEnv("call", environment, async (span) => {
       let runtime: BuildRuntime;
@@ -223,6 +224,14 @@ export class InitializeDeploymentService extends BaseService {
 
       span.setAttribute("outcome", "created");
 
+      // Before cancelling superseded deployments, so an invalid payload leaves them running
+      const encryptedBuildEnvVars = await buildEnvVarsEnvelope(payload, {
+        copyFrom: options?.buildEnvVars,
+        encryptionKey: env.ENCRYPTION_KEY,
+        maxKeys: env.DEPLOYMENT_BUILD_ENV_VARS_MAX_KEYS,
+        maxBytes: env.DEPLOYMENT_BUILD_ENV_VARS_SIZE_LIMIT_BYTES,
+      });
+
       const canceledDeployments =
         reuse.action === "cancel-then-build"
           ? await cancelSupersededDeployments({
@@ -302,38 +311,6 @@ export class InitializeDeploymentService extends BaseService {
             },
           }
         : undefined;
-
-      let encryptedBuildEnvVars: Awaited<ReturnType<typeof encryptSecret>> | undefined;
-
-      if (
-        payload.isNativeBuild &&
-        payload.fromBundle &&
-        payload.buildEnvVars &&
-        Object.keys(payload.buildEnvVars).length > 0
-      ) {
-        const buildEnvVars = payload.buildEnvVars;
-
-        const keyCount = Object.keys(buildEnvVars).length;
-        if (keyCount > env.DEPLOYMENT_BUILD_ENV_VARS_MAX_KEYS) {
-          throw new ServiceValidationError(
-            `Build environment variable count (${keyCount}) exceeds the allowed limit of ${env.DEPLOYMENT_BUILD_ENV_VARS_MAX_KEYS}. Reach out to us if you are seeing this error consistently.`
-          );
-        }
-
-        const serialized = JSON.stringify(buildEnvVars);
-        const serializedBytes = Buffer.byteLength(serialized, "utf8");
-        if (serializedBytes > env.DEPLOYMENT_BUILD_ENV_VARS_SIZE_LIMIT_BYTES) {
-          const sizeKB = parseFloat((serializedBytes / 1024).toFixed(1));
-          const limitKB = parseFloat(
-            (env.DEPLOYMENT_BUILD_ENV_VARS_SIZE_LIMIT_BYTES / 1024).toFixed(1)
-          );
-          throw new ServiceValidationError(
-            `Build environment variables size (${sizeKB} KB) exceeds the allowed limit of ${limitKB} KB. Reach out to us if you are seeing this error consistently.`
-          );
-        }
-
-        encryptedBuildEnvVars = await encryptSecret(env.ENCRYPTION_KEY, serialized);
-      }
 
       const buildServerMetadata: BuildServerMetadata | undefined =
         payload.isNativeBuild || payload.buildId || options?.redeployOf

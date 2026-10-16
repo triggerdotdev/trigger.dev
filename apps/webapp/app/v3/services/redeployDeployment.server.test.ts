@@ -87,6 +87,22 @@ function artifactDeployment(overrides: Record<string, unknown> = {}) {
   });
 }
 
+const envelope = { nonce: "n", ciphertext: "c", tag: "t" };
+
+function bundleDeployment(overrides: Record<string, unknown> = {}) {
+  return artifactDeployment({
+    buildServerMetadata: {
+      isNativeBuild: true,
+      artifactKey: "bundles/proj_ref/prod/abc.tar.gz",
+      configFilePath: "trigger.config.ts",
+      fromBundle: true,
+    },
+    runtime: "bun",
+    buildEnvVars: envelope,
+    ...overrides,
+  });
+}
+
 // findFirst resolves the source deployment, then the in-flight probe.
 function mockLookups(source: unknown, inFlight: unknown = null) {
   deps.findFirst.mockReset().mockResolvedValueOnce(source).mockResolvedValueOnce(inFlight);
@@ -136,10 +152,12 @@ describe("RedeployDeploymentService", () => {
     ["a GitHub deployment missing the commit ref", githubDeployment({ git: { commitSha: sha } })],
     ["a CLI deployment without an artifact", githubDeployment({ triggeredVia: "cli:manual" })],
     [
-      "a bundle deployment",
-      artifactDeployment({
-        buildServerMetadata: { isNativeBuild: true, artifactKey: "bundles/x", fromBundle: true },
-      }),
+      "a bundle deployment whose build env vars were cleared",
+      bundleDeployment({ buildEnvVars: null }),
+    ],
+    [
+      "a bundle deployment with an unreadable envelope",
+      bundleDeployment({ buildEnvVars: { ciphertext: "c" } }),
     ],
     [
       "a legacy build deployment",
@@ -268,13 +286,52 @@ describe("RedeployDeploymentService", () => {
     expect(payload.externalId).toBeUndefined();
     expect(payload.force).toBeUndefined();
 
+    expect(deps.initialize.mock.calls[0]![2]).toEqual({ redeployOf: "abcd" });
     expect(deps.enqueueArtifact).toHaveBeenCalledWith(
       "proj_1",
       "deployment_new",
       "deployments/proj_ref/prod/abc.tar.gz",
-      { configFilePath: "trigger.config.ts", skipPromotion: false }
+      { configFilePath: "trigger.config.ts", skipPromotion: false, fromBundle: false }
     );
     expect(deps.enqueueGithub).not.toHaveBeenCalled();
+  });
+
+  it("rebuilds a bundle deployment and carries its build env vars over", async () => {
+    mockLookups(bundleDeployment());
+    expect(await callOk()).toEqual({ version: "20260930.2", shortCode: "efgh" });
+
+    const [, payload, options] = deps.initialize.mock.calls[0]!;
+    expect(payload).toMatchObject({
+      isNativeBuild: true,
+      artifactKey: "bundles/proj_ref/prod/abc.tar.gz",
+      configFilePath: "trigger.config.ts",
+      fromBundle: true,
+      runtime: "bun",
+      skipEnqueue: true,
+      triggeredVia: "dashboard",
+    });
+    expect(payload.buildEnvVars).toBeUndefined();
+    expect(options).toEqual({ redeployOf: "abcd", buildEnvVars: envelope });
+
+    expect(deps.enqueueArtifact).toHaveBeenCalledWith(
+      "proj_1",
+      "deployment_new",
+      "bundles/proj_ref/prod/abc.tar.gz",
+      { configFilePath: "trigger.config.ts", skipPromotion: false, fromBundle: true }
+    );
+  });
+
+  it("treats a bundles/ artifact key as a bundle when the metadata flag is missing", async () => {
+    mockLookups(
+      bundleDeployment({
+        buildServerMetadata: {
+          isNativeBuild: true,
+          artifactKey: "bundles/proj_ref/prod/abc.tar.gz",
+        },
+      })
+    );
+    expect(await callOk()).toMatchObject({ shortCode: "efgh" });
+    expect(deps.enqueueArtifact.mock.calls[0]![3]).toMatchObject({ fromBundle: true });
   });
 
   it("passes skipPromotion through to the deployment and the build", async () => {

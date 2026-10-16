@@ -1,4 +1,5 @@
 import {
+  BuildRuntime,
   InitializeDeploymentRequestBody,
   normalizeExternalDeploymentId,
 } from "@trigger.dev/core/v3";
@@ -11,6 +12,10 @@ import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { type EnqueueBuildError } from "~/services/enqueueGithubBuild.server";
 import { logger } from "~/services/logger.server";
 import { enqueueBuild, enqueueGithubBuild } from "~/services/platform.v3.server";
+import {
+  type EncryptedSecretValue,
+  EncryptedSecretValueSchema,
+} from "~/services/secrets/secretStore.server";
 import { BuildSettingsSchema } from "../buildSettings";
 import { type RedeploySource, resolveRedeploySource } from "../redeploy";
 import { atomicProductionDeploymentUrl } from "./atomicProductionDeployment.server";
@@ -35,8 +40,10 @@ const sourceSelect = {
   triggeredVia: true,
   environmentId: true,
   createdAt: true,
+  runtime: true,
   git: true,
   buildServerMetadata: true,
+  buildEnvVars: true,
   project: { select: { buildSettings: true } },
   environment: { select: { archivedAt: true } },
 } satisfies Prisma.WorkerDeploymentSelect;
@@ -61,14 +68,14 @@ type RedeployDeploymentDeps = {
   initialize: (
     environment: AuthenticatedEnvironment,
     payload: InitializeDeploymentRequestBody,
-    options: { redeployOf: string }
+    options: { redeployOf: string; buildEnvVars?: EncryptedSecretValue }
   ) => Promise<InitializeDeploymentResult>;
   enqueueGithub: typeof enqueueGithubBuild;
   enqueueArtifact: (
     projectId: string,
     deploymentId: string,
     artifactKey: string,
-    options: { configFilePath?: string; skipPromotion?: boolean }
+    options: { configFilePath?: string; skipPromotion?: boolean; fromBundle: boolean }
   ) => ResultAsync<{ buildId: string }, EnqueueBuildError>;
   cancel: (environmentId: string, friendlyId: string, canceledReason: string) => Promise<void>;
 };
@@ -83,10 +90,9 @@ const defaultDeps: RedeployDeploymentDeps = {
     new InitializeDeploymentService().call(environment, payload, options),
   enqueueGithub: enqueueGithubBuild,
   enqueueArtifact: (projectId, deploymentId, artifactKey, options) =>
-    fromPromise(
-      enqueueBuild(projectId, deploymentId, artifactKey, { ...options, fromBundle: false }),
-      () => ({ type: "build_service_unreachable" as const })
-    ).andThen((result) =>
+    fromPromise(enqueueBuild(projectId, deploymentId, artifactKey, options), () => ({
+      type: "build_service_unreachable" as const,
+    })).andThen((result) =>
       result
         ? okAsync({ buildId: result.buildId })
         : errAsync({ type: "billing_not_configured" as const })
@@ -173,12 +179,23 @@ export class RedeployDeploymentService {
         if (source.createdAt.getTime() < now().getTime() - windowDays * 24 * 60 * 60 * 1000) {
           return errAsync({ type: "deployment_expired" as const });
         }
-        const redeploySource = resolveRedeploySource(source);
+        const buildEnvVars = EncryptedSecretValueSchema.safeParse(source.buildEnvVars);
+        const redeploySource = resolveRedeploySource({
+          ...source,
+          hasBuildEnvVars: buildEnvVars.success,
+        });
         // An archived preview branch can no longer take deployments.
         if (!redeploySource || source.environment.archivedAt) {
           return errAsync({ type: "deployment_not_redeployable" as const });
         }
-        return okAsync({ source, redeploySource });
+        return okAsync({
+          source,
+          redeploySource,
+          buildEnvVars:
+            redeploySource.kind === "artifact" && redeploySource.fromBundle
+              ? buildEnvVars.data
+              : undefined,
+        });
       });
 
     const loadEnvironment = <T extends { source: SourceDeployment }>(context: T) =>
@@ -218,12 +235,13 @@ export class RedeployDeploymentService {
       T extends {
         source: SourceDeployment;
         redeploySource: RedeploySource;
+        buildEnvVars?: EncryptedSecretValue;
         environment: AuthenticatedEnvironment;
       },
     >(
       context: T
     ) => {
-      const { source, redeploySource, environment } = context;
+      const { source, redeploySource, buildEnvVars, environment } = context;
       const buildSettings = BuildSettingsSchema.safeParse(source.project.buildSettings);
       const common = {
         contentHash: "NOT_AVAILABLE",
@@ -254,13 +272,19 @@ export class RedeployDeploymentService {
                 isNativeBuild: true,
                 artifactKey: redeploySource.artifactKey,
                 configFilePath: redeploySource.configFilePath,
+                fromBundle: redeploySource.fromBundle,
+                // A bundle build never reports its runtime back, so carry the source's over
+                runtime: BuildRuntime.safeParse(source.runtime).data,
                 triggeredVia: "dashboard",
               }
         );
 
       const initializeOnce = (force?: boolean) =>
         fromPromise(
-          initialize(environment, payload(force), { redeployOf: opts.deploymentShortCode }),
+          initialize(environment, payload(force), {
+            redeployOf: opts.deploymentShortCode,
+            ...(buildEnvVars ? { buildEnvVars } : {}),
+          }),
           (error) =>
             error instanceof ServiceValidationError && error.status === 409
               ? { type: "deployment_in_flight" as const }
@@ -304,6 +328,7 @@ export class RedeployDeploymentService {
           : enqueueArtifact(opts.projectId, deployment.friendlyId, redeploySource.artifactKey, {
               configFilePath: redeploySource.configFilePath,
               skipPromotion,
+              fromBundle: redeploySource.fromBundle,
             });
 
       return enqueued

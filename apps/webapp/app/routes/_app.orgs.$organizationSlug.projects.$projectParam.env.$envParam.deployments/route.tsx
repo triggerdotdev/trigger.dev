@@ -760,6 +760,12 @@ function RedeployDeploymentDialog({
               <InlineCode variant="extra-small">{deployment.git.shortSha}</InlineCode> from branch{" "}
               <InlineCode variant="extra-small">{deployment.git.branchName}</InlineCode>.
             </>
+          ) : deployment.redeploySource === "bundle" ? (
+            <>
+              A new deployment will be created from the bundle uploaded for deployment{" "}
+              <InlineCode variant="extra-small">{deployment.shortCode}</InlineCode>, with the
+              build-time environment variables it was deployed with.
+            </>
           ) : (
             <>
               A new deployment will be created from the source files of deployment{" "}

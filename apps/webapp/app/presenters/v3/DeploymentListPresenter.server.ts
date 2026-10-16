@@ -158,6 +158,7 @@ export class DeploymentListPresenter {
         triggeredVia: string | null;
         git: Prisma.JsonValue | null;
         buildServerMetadata: Prisma.JsonValue | null;
+        hasBuildEnvVars: boolean;
         createdAt: Date;
         integrationDeploymentId: string | null;
       }[]
@@ -182,6 +183,7 @@ export class DeploymentListPresenter {
   wd."triggeredVia",
   wd."git",
   wd."buildServerMetadata",
+  wd."buildEnvVars" IS NOT NULL AS "hasBuildEnvVars",
   wd."createdAt"
   ${vercelSelect}
 FROM
@@ -229,6 +231,7 @@ LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
         const label = labeledDeployments.find(
           (labeledDeployment) => labeledDeployment.deploymentId === deployment.id
         );
+        const redeploySource = resolveRedeploySource(deployment);
 
         let vercelDeploymentUrl: string | null = null;
         if (
@@ -277,7 +280,10 @@ LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
           triggeredVia: deployment.triggeredVia,
           git: processGitMetadata(deployment.git),
           createdAt: deployment.createdAt,
-          redeploySource: resolveRedeploySource(deployment)?.kind ?? null,
+          redeploySource:
+            redeploySource?.kind === "artifact" && redeploySource.fromBundle
+              ? ("bundle" as const)
+              : (redeploySource?.kind ?? null),
           vercelDeploymentUrl,
         };
       }),
