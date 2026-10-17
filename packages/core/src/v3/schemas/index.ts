@@ -21,3 +21,4 @@ export * from "./queues.js";
 export * from "./query.js";
 export * from "./reports.js";
 export * from "./errors.js";
+export type { CompatibleZodDiscriminatedUnion } from "../utils/zod.js";

@@ -140,13 +140,25 @@ export const toolsMetadata = {
     name: "list_dashboards",
     title: "List Dashboards",
     description:
-      "List available built-in dashboards with their widgets. Each dashboard contains pre-built queries for common metrics like run success rates, costs, LLM usage, and more. Use run_dashboard to execute a dashboard's queries.",
+      "List the built-in dashboards and the organization's custom dashboards, with their widgets. Built-in dashboards contain pre-built queries for common metrics like run success rates, costs, LLM usage, and more. Use run_dashboard_query to execute a widget's query.",
   },
   run_dashboard_query: {
     name: "run_dashboard_query",
     title: "Run Dashboard Query",
     description:
-      "Execute a single widget query from a built-in dashboard. Use list_dashboards first to see available dashboards, widget IDs, and their queries. Supports time period and scope options.",
+      "Execute a single widget query from a built-in or custom dashboard. Use list_dashboards first to see available dashboards, widget IDs, and their queries. Supports time period and scope options.",
+  },
+  create_dashboard: {
+    name: "create_dashboard",
+    title: "Create Dashboard",
+    description:
+      "Create a custom metrics dashboard, optionally with widgets. Each widget has a title, a TRQL query (use get_query_schema to see the tables and columns, and the query tool to try a query first), and a display: a table, a chart (bar or line, with x-axis and y-axis columns), a big number, or a title section header. Widgets without a position are stacked full width in order. Returns the dashboard id.",
+  },
+  set_dashboard_widgets: {
+    name: "set_dashboard_widgets",
+    title: "Set Dashboard Widgets",
+    description:
+      "Replace every widget on a custom dashboard with the given list, and optionally rename it. A widget that already exists keeps its position unless you pass a new one; new widgets without a position are stacked full width below the others. Use list_dashboards to find the dashboard id.",
   },
   get_report: {
     name: "get_report",

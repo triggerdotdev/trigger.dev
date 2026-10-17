@@ -498,7 +498,15 @@
             "pages": [
               "management/query/execute",
               "management/query/schema",
-              "management/query/dashboards"
+              "management/query/dashboards",
+              "management/query/create-dashboard",
+              "management/query/retrieve-dashboard",
+              "management/query/update-dashboard",
+              "management/query/replace-dashboard",
+              "management/query/delete-dashboard",
+              "management/query/add-dashboard-widget",
+              "management/query/update-dashboard-widget",
+              "management/query/delete-dashboard-widget"
             ]
           }
         ]

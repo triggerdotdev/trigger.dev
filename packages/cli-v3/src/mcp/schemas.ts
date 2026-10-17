@@ -1,5 +1,6 @@
 import {
   ApiDeploymentListParams,
+  DashboardWidgetInput,
   MachinePresetName,
   ReportPeriodSchema,
   RunStatus,
@@ -339,6 +340,27 @@ export const ListDashboardsInput = CommonProjectsInput.pick({
 });
 
 export type ListDashboardsInput = z.output<typeof ListDashboardsInput>;
+
+export const CreateDashboardInput = ListDashboardsInput.extend({
+  title: z.string().describe("The dashboard title"),
+  description: z.string().optional().describe("An optional description"),
+  widgets: z
+    .array(DashboardWidgetInput)
+    .optional()
+    .describe("The widgets to add, in order. Leave out to create an empty dashboard."),
+});
+
+export type CreateDashboardInput = z.output<typeof CreateDashboardInput>;
+
+export const SetDashboardWidgetsInput = ListDashboardsInput.extend({
+  dashboardId: z.string().describe("The custom dashboard id, as listed by list_dashboards"),
+  title: z.string().optional().describe("A new title for the dashboard"),
+  widgets: z
+    .array(DashboardWidgetInput)
+    .describe("The full list of widgets the dashboard should have"),
+});
+
+export type SetDashboardWidgetsInput = z.output<typeof SetDashboardWidgetsInput>;
 
 // Re-exported from core so the CLI, the API clients and the route share one period grammar. The
 // route stays the authoritative boundary.

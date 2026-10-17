@@ -1594,8 +1594,8 @@ paths:
   "/api/v1/query/dashboards":
     get:
       operationId: list_dashboards_v1
-      summary: List built-in dashboards
-      description: List available built-in dashboards with their widgets. Each dashboard contains pre-built TRQL queries for common metrics like run success rates, costs, and LLM usage.
+      summary: List dashboards
+      description: List the built-in dashboards and your organization's custom dashboards, with their widgets. Built-in dashboards contain pre-built TRQL queries for common metrics like run success rates, costs, and LLM usage.
       responses:
         "200":
           description: Dashboards listed successfully
@@ -1611,10 +1611,17 @@ paths:
                       properties:
                         key:
                           type: string
-                          description: Dashboard identifier (e.g. "overview", "llm")
+                          description: Dashboard identifier. Built-in dashboards use a key like "overview" or "llm"; custom dashboards use their id.
                         title:
                           type: string
                           description: Dashboard display title
+                        type:
+                          type: string
+                          enum: [builtIn, custom]
+                          description: Built-in dashboards are read-only. Custom dashboards can be changed with the endpoints below.
+                        description:
+                          type: string
+                          description: The dashboard description (custom dashboards only)
                         widgets:
                           type: array
                           items:
@@ -1645,6 +1652,376 @@ paths:
           source: |-
             curl "https://api.trigger.dev/api/v1/query/dashboards" \
               -H "Authorization: Bearer tr_dev_sk_1234"
+    post:
+      operationId: create_dashboard_v1
+      summary: Create a dashboard
+      description: Create a custom dashboard, optionally with its widgets. Every widget query is checked against the queryable tables before it is saved. Creating more dashboards than your plan allows returns a 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [title]
+              properties:
+                title:
+                  type: string
+                  maxLength: 200
+                description:
+                  type: string
+                  maxLength: 2000
+                widgets:
+                  type: array
+                  description: Widgets without a position are stacked full width below the positioned ones, in order.
+                  items:
+                    $ref: "#/components/schemas/DashboardWidgetInput"
+      responses:
+        "201":
+          description: Dashboard created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardObject"
+        "400":
+          description: Invalid request, for example an invalid widget query
+        "401":
+          description: Unauthorized - API key is missing or invalid
+        "403":
+          description: The dashboard or widget limit for your plan was reached, or the credentials cannot write dashboards
+      tags:
+        - query
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { query } from "@trigger.dev/sdk";
+
+            const dashboard = await query.dashboards.create({
+              title: "Email tasks",
+              widgets: [
+                {
+                  title: "Total runs",
+                  query: "SELECT count() AS total FROM runs",
+                  display: { type: "bignumber", column: "total", aggregation: "sum" },
+                },
+              ],
+            });
+
+  "/api/v1/query/dashboards/{dashboardId}":
+    parameters:
+      - name: dashboardId
+        in: path
+        required: true
+        description: The custom dashboard id, starting with `dashboard_`
+        schema:
+          type: string
+    get:
+      operationId: retrieve_dashboard_v1
+      summary: Retrieve a dashboard
+      description: Retrieve a custom dashboard with every widget, its query, display and grid position.
+      responses:
+        "200":
+          description: The dashboard
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardObject"
+        "404":
+          description: Dashboard not found
+      tags:
+        - query
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { query } from "@trigger.dev/sdk";
+
+            const dashboard = await query.dashboards.retrieve("dashboard_1234");
+    patch:
+      operationId: update_dashboard_v1
+      summary: Update a dashboard
+      description: Rename a custom dashboard or change its description.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                title:
+                  type: string
+                  maxLength: 200
+                description:
+                  type: string
+                  maxLength: 2000
+                revision:
+                  $ref: "#/components/schemas/DashboardRevision"
+      responses:
+        "200":
+          description: The updated dashboard
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardObject"
+        "404":
+          description: Dashboard not found
+        "409":
+          description: The dashboard changed since `revision` was read
+      tags:
+        - query
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { query } from "@trigger.dev/sdk";
+
+            await query.dashboards.update("dashboard_1234", { title: "Email pipeline" });
+    put:
+      operationId: replace_dashboard_v1
+      summary: Replace a dashboard's widgets
+      description: Replace every widget on a custom dashboard, and optionally its title and description. A widget that already exists keeps its position unless you pass a new one; new widgets without a position are stacked full width below the others, in order.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [widgets]
+              properties:
+                title:
+                  type: string
+                  maxLength: 200
+                description:
+                  type: string
+                  maxLength: 2000
+                widgets:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/DashboardWidgetInput"
+                revision:
+                  $ref: "#/components/schemas/DashboardRevision"
+      responses:
+        "200":
+          description: The updated dashboard
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardObject"
+        "400":
+          description: Invalid request, for example an invalid widget query or a duplicate widget id
+        "403":
+          description: The widget limit for your plan was reached
+        "404":
+          description: Dashboard not found
+        "409":
+          description: The dashboard changed since `revision` was read
+      tags:
+        - query
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { query } from "@trigger.dev/sdk";
+
+            const current = await query.dashboards.retrieve("dashboard_1234");
+
+            await query.dashboards.replace("dashboard_1234", {
+              widgets: [
+                {
+                  title: "Runs by status",
+                  query: "SELECT status, count() AS runs FROM runs GROUP BY status",
+                  display: { type: "table" },
+                },
+              ],
+              revision: current.revision,
+            });
+    delete:
+      operationId: delete_dashboard_v1
+      summary: Delete a dashboard
+      description: Delete a custom dashboard.
+      responses:
+        "200":
+          description: Dashboard deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+        "404":
+          description: Dashboard not found
+      tags:
+        - query
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { query } from "@trigger.dev/sdk";
+
+            await query.dashboards.del("dashboard_1234");
+
+  "/api/v1/query/dashboards/{dashboardId}/widgets":
+    parameters:
+      - name: dashboardId
+        in: path
+        required: true
+        description: The custom dashboard id, starting with `dashboard_`
+        schema:
+          type: string
+    post:
+      operationId: add_dashboard_widget_v1
+      summary: Add a dashboard widget
+      description: Add a widget to a custom dashboard. Without a position it is placed full width at the bottom.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/DashboardWidgetInput"
+                - type: object
+                  properties:
+                    revision:
+                      $ref: "#/components/schemas/DashboardRevision"
+      responses:
+        "201":
+          description: Widget added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  widgetId:
+                    type: string
+                  dashboard:
+                    $ref: "#/components/schemas/DashboardObject"
+        "400":
+          description: Invalid widget, for example an invalid query
+        "403":
+          description: The widget limit for your plan was reached
+        "404":
+          description: Dashboard not found
+        "409":
+          description: A widget with this id already exists, or the dashboard changed since `revision` was read
+      tags:
+        - query
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { query } from "@trigger.dev/sdk";
+
+            const { widgetId } = await query.dashboards.widgets.add("dashboard_1234", {
+              title: "Failed runs",
+              query: "SELECT count() AS failed FROM runs WHERE status = 'Failed'",
+              display: { type: "bignumber", column: "failed", aggregation: "sum" },
+            });
+
+  "/api/v1/query/dashboards/{dashboardId}/widgets/{widgetId}":
+    parameters:
+      - name: dashboardId
+        in: path
+        required: true
+        description: The custom dashboard id, starting with `dashboard_`
+        schema:
+          type: string
+      - name: widgetId
+        in: path
+        required: true
+        description: The widget id
+        schema:
+          type: string
+    patch:
+      operationId: update_dashboard_widget_v1
+      summary: Update a dashboard widget
+      description: Change a widget's title, query, display or position.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                title:
+                  type: string
+                query:
+                  type: string
+                display:
+                  $ref: "#/components/schemas/DashboardWidgetDisplay"
+                fillGaps:
+                  type: boolean
+                position:
+                  $ref: "#/components/schemas/DashboardWidgetPosition"
+                revision:
+                  $ref: "#/components/schemas/DashboardRevision"
+      responses:
+        "200":
+          description: The updated dashboard
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardObject"
+        "400":
+          description: Invalid widget, for example an invalid query
+        "404":
+          description: Dashboard or widget not found
+        "409":
+          description: The dashboard changed since `revision` was read
+      tags:
+        - query
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { query } from "@trigger.dev/sdk";
+
+            await query.dashboards.widgets.update("dashboard_1234", "widget_1", {
+              position: { x: 0, y: 0, w: 6, h: 10 },
+            });
+    delete:
+      operationId: delete_dashboard_widget_v1
+      summary: Delete a dashboard widget
+      description: Remove a widget from a custom dashboard.
+      parameters:
+        - name: revision
+          in: query
+          required: false
+          description: The revision you last read. The delete fails with a 409 if the dashboard changed since.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The updated dashboard
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardObject"
+        "404":
+          description: Dashboard or widget not found
+        "409":
+          description: The dashboard changed since `revision` was read
+      tags:
+        - query
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { query } from "@trigger.dev/sdk";
+
+            await query.dashboards.widgets.del("dashboard_1234", "widget_1");
 
   "/api/v1/runs/{runId}/reschedule":
     parameters:
@@ -5224,6 +5601,170 @@ components:
         other API operations. For session tokens see the [session scopes](/management/authentication#session-scopes).
 
   schemas:
+    DashboardRevision:
+      type: string
+      description: The `revision` from the dashboard you last read. Send it to reject the write with a 409 if someone else changed the dashboard in the meantime.
+    DashboardWidgetPosition:
+      type: object
+      description: A position on the dashboard's 12-column grid.
+      required: [x, y, w, h]
+      properties:
+        x:
+          type: integer
+          minimum: 0
+          maximum: 11
+        y:
+          type: integer
+          minimum: 0
+        w:
+          type: integer
+          minimum: 1
+          maximum: 12
+        h:
+          type: integer
+          minimum: 1
+    DashboardWidgetDisplay:
+      description: How the widget renders its query results.
+      oneOf:
+        - type: object
+          title: Table
+          required: [type]
+          properties:
+            type:
+              type: string
+              enum: [table]
+            prettyFormatting:
+              type: boolean
+              default: true
+            sorting:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  desc:
+                    type: boolean
+        - type: object
+          title: Chart
+          required: [type, chartType, xAxisColumn, yAxisColumns, groupByColumn, stacked, sortByColumn, sortDirection, aggregation]
+          properties:
+            type:
+              type: string
+              enum: [chart]
+            chartType:
+              type: string
+              enum: [bar, line]
+            xAxisColumn:
+              type: string
+              nullable: true
+            yAxisColumns:
+              type: array
+              items:
+                type: string
+            groupByColumn:
+              type: string
+              nullable: true
+            stacked:
+              type: boolean
+            sortByColumn:
+              type: string
+              nullable: true
+            sortDirection:
+              type: string
+              enum: [asc, desc]
+            aggregation:
+              type: string
+              enum: [sum, avg, count, min, max]
+            seriesColors:
+              type: object
+              additionalProperties:
+                type: string
+        - type: object
+          title: Big number
+          required: [type, column, aggregation]
+          properties:
+            type:
+              type: string
+              enum: [bignumber]
+            column:
+              type: string
+            aggregation:
+              type: string
+              enum: [sum, avg, count, min, max, first, last]
+            sortDirection:
+              type: string
+              enum: [asc, desc]
+            abbreviate:
+              type: boolean
+              default: false
+            prefix:
+              type: string
+            suffix:
+              type: string
+        - type: object
+          title: Section title
+          required: [type]
+          properties:
+            type:
+              type: string
+              enum: [title]
+    DashboardWidgetInput:
+      type: object
+      required: [title, display]
+      properties:
+        id:
+          type: string
+          description: Omit to generate one. Letters, numbers, `_` and `-`, unique within the dashboard.
+        title:
+          type: string
+          maxLength: 200
+        query:
+          type: string
+          description: A TRQL query. Required unless the display type is `title`.
+        display:
+          $ref: "#/components/schemas/DashboardWidgetDisplay"
+        fillGaps:
+          type: boolean
+          description: Fill empty time buckets, carrying gauges forward and zero-filling counters.
+        position:
+          $ref: "#/components/schemas/DashboardWidgetPosition"
+    DashboardObject:
+      type: object
+      properties:
+        id:
+          type: string
+          description: The dashboard id, starting with `dashboard_`
+        title:
+          type: string
+        description:
+          type: string
+        revision:
+          $ref: "#/components/schemas/DashboardRevision"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        widgets:
+          type: array
+          description: Widgets in grid order, top to bottom then left to right.
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              title:
+                type: string
+              query:
+                type: string
+              display:
+                $ref: "#/components/schemas/DashboardWidgetDisplay"
+              fillGaps:
+                type: boolean
+              position:
+                $ref: "#/components/schemas/DashboardWidgetPosition"
     WebhookEndpointObject:
       type: object
       required:

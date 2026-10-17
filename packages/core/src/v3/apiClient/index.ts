@@ -75,6 +75,14 @@ import {
   EnvironmentVariableResponseBody,
   EnvironmentVariableWithSecret,
   ListDashboardsResponseBody,
+  AddDashboardWidgetResponseBody,
+  type AddDashboardWidgetRequestBody,
+  type CreateDashboardRequestBody,
+  DashboardObject,
+  DeleteDashboardResponseBody,
+  type ReplaceDashboardRequestBody,
+  type UpdateDashboardRequestBody,
+  type UpdateDashboardWidgetRequestBody,
   ListPromptVersionsResponseBody,
   ListPromptsResponseBody,
   ListRunResponseItem,
@@ -2321,6 +2329,133 @@ export class ApiClient {
       `${this.baseUrl}/api/v1/query/dashboards`,
       {
         method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  retrieveDashboard(dashboardId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      DashboardObject,
+      `${this.baseUrl}/api/v1/query/dashboards/${encodeURIComponent(dashboardId)}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  createDashboard(body: CreateDashboardRequestBody, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      DashboardObject,
+      `${this.baseUrl}/api/v1/query/dashboards`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  updateDashboard(
+    dashboardId: string,
+    body: UpdateDashboardRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      DashboardObject,
+      `${this.baseUrl}/api/v1/query/dashboards/${encodeURIComponent(dashboardId)}`,
+      {
+        method: "PATCH",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  replaceDashboard(
+    dashboardId: string,
+    body: ReplaceDashboardRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      DashboardObject,
+      `${this.baseUrl}/api/v1/query/dashboards/${encodeURIComponent(dashboardId)}`,
+      {
+        method: "PUT",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  deleteDashboard(dashboardId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      DeleteDashboardResponseBody,
+      `${this.baseUrl}/api/v1/query/dashboards/${encodeURIComponent(dashboardId)}`,
+      {
+        method: "DELETE",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  addDashboardWidget(
+    dashboardId: string,
+    body: AddDashboardWidgetRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      AddDashboardWidgetResponseBody,
+      `${this.baseUrl}/api/v1/query/dashboards/${encodeURIComponent(dashboardId)}/widgets`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  updateDashboardWidget(
+    dashboardId: string,
+    widgetId: string,
+    body: UpdateDashboardWidgetRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      DashboardObject,
+      `${this.baseUrl}/api/v1/query/dashboards/${encodeURIComponent(dashboardId)}/widgets/${encodeURIComponent(widgetId)}`,
+      {
+        method: "PATCH",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  deleteDashboardWidget(
+    dashboardId: string,
+    widgetId: string,
+    options?: { revision?: string },
+    requestOptions?: ZodFetchOptions
+  ) {
+    const search = options?.revision
+      ? `?${new URLSearchParams({ revision: options.revision }).toString()}`
+      : "";
+
+    return zodfetch(
+      DashboardObject,
+      `${this.baseUrl}/api/v1/query/dashboards/${encodeURIComponent(dashboardId)}/widgets/${encodeURIComponent(widgetId)}${search}`,
+      {
+        method: "DELETE",
         headers: this.#getHeaders(false),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)

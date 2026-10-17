@@ -8,7 +8,12 @@ import {
   listOrgsTool,
   listProjectsTool,
 } from "./tools/orgs.js";
-import { listDashboardsTool, runDashboardQueryTool } from "./tools/dashboards.js";
+import {
+  createDashboardTool,
+  listDashboardsTool,
+  runDashboardQueryTool,
+  setDashboardWidgetsTool,
+} from "./tools/dashboards.js";
 import { startDevServerTool, stopDevServerTool, devServerStatusTool } from "./tools/devServer.js";
 import { listPreviewBranchesTool } from "./tools/previewBranches.js";
 import { listProfilesTool, switchProfileTool, whoamiTool } from "./tools/profiles.js";
@@ -68,6 +73,8 @@ const WRITE_TOOLS = new Set([
   setWebhookSecretTool.name,
   replayWebhookDeliveryTool.name,
   submitFeedbackTool.name,
+  createDashboardTool.name,
+  setDashboardWidgetsTool.name,
 ]);
 
 export function registerTools(context: McpContext) {
@@ -94,6 +101,8 @@ export function registerTools(context: McpContext) {
     queryTool,
     listDashboardsTool,
     runDashboardQueryTool,
+    createDashboardTool,
+    setDashboardWidgetsTool,
     whoamiTool,
     listProfilesTool,
     switchProfileTool,
