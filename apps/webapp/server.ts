@@ -7,6 +7,7 @@ import express, { type RequestHandler } from "express";
 import morgan from "morgan";
 import { nanoid } from "nanoid";
 import path from "path";
+import { setSourceMapsSupport } from "node:module";
 import { pathToFileURL } from "node:url";
 import type { Server as IoServer } from "socket.io";
 import type { WebSocketServer } from "ws";
@@ -123,6 +124,10 @@ async function startServer() {
 
   const MODE = process.env.NODE_ENV;
 
+  if (MODE === "development") {
+    setSourceMapsSupport(true, { nodeModules: false, generatedCode: true });
+  }
+
   // In development, Vite serves assets (and handles HMR) via middleware.
   // Only NODE_ENV=development boots Vite — scripts that run the built server
   // without NODE_ENV (start:local, dev:worker) must serve the build.
@@ -132,6 +137,10 @@ async function startServer() {
           vite.createServer({ server: { middlewareMode: true } })
         )
       : undefined;
+
+  if (viteDevServer) {
+    Reflect.deleteProperty(Error, "prepareStackTrace");
+  }
 
   const apiOnlyServiceMode = parseApiOnlyServiceMode(process.env.API_ONLY_SERVICE_MODE);
   if (apiOnlyServiceMode) {

@@ -9,7 +9,7 @@
     "build:server": "esbuild --platform=node --format=cjs --outbase=. ./server.ts ./app/utils/sanitizeHttpUrl.ts ./app/utils/apiOnlyService.ts --outdir=build --sourcemap",
     "build:otlpworker": "esbuild --platform=node --format=cjs --bundle ./app/v3/otlpTransformWorker.ts --outfile=build/otlpTransformWorker.cjs --sourcemap",
     "build:sentry": "esbuild --platform=node --format=cjs --outbase=. ./sentry.server.ts ./app/utils/sentryTraceContext.server.ts --outdir=build --sourcemap",
-    "dev": "cross-env NODE_ENV=development PORT=3030 varlock run --inject vars -- tsx ./server.ts",
+    "dev": "cross-env NODE_ENV=development PORT=3030 GOMEMLIMIT=1GiB varlock run --inject vars -- tsx ./server.ts",
     "dev:worker": "cross-env NODE_PATH=../../node_modules/.pnpm/node_modules varlock run --inject vars -- node ./build/server.js",
     "format": "oxfmt .",
     "lint": "oxlint -c ../../.oxlintrc.json",
