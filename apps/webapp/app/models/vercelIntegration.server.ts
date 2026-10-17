@@ -7,7 +7,6 @@ import {
   mergeVercelEnvironmentVariableValues,
 } from "~/v3/vercel/environmentVariableValues";
 import pLimit from "p-limit";
-import { Vercel } from "@vercel/sdk";
 import type {
   ResponseBodyEnvs,
   FilterProjectEnvsResponseBody,
@@ -36,6 +35,7 @@ import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/enviro
 import { isReservedForExternalSync } from "~/v3/environmentVariableRules.server";
 import { boundedIn } from "@trigger.dev/database";
 import { toVercelApiError, type VercelApiError } from "~/v3/vercel/vercelApiError";
+import { createVercelClient, type VercelClient as Vercel } from "~/v3/vercel/vercelClient.server";
 import {
   callVercelWithRecovery,
   wrapVercelCallWithRecovery,
@@ -305,7 +305,7 @@ export class VercelIntegrationRepository {
           throw new Error("Failed to get Vercel access token");
         }
         return {
-          client: new Vercel({ bearerToken: secret.accessToken }),
+          client: createVercelClient({ bearerToken: secret.accessToken }),
           accessToken: secret.accessToken,
         };
       })(),
