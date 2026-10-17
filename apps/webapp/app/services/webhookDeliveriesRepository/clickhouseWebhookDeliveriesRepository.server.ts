@@ -87,21 +87,25 @@ export class ClickHouseWebhookDeliveriesRepository {
       if (forward) {
         if (decoded.kind === "composite") {
           queryBuilder.where(
-            "(created_at, delivery_id) < (fromUnixTimestamp64Milli({cursorCreatedAt: Int64}), {deliveryId: String})",
-            { cursorCreatedAt: decoded.createdAt, deliveryId: decoded.runId }
+            "(created_at, delivery_id) < (fromUnixTimestamp64Milli({cursorCreatedAt: Int64}), {cursorDeliveryId: String})",
+            { cursorCreatedAt: decoded.createdAt, cursorDeliveryId: decoded.runId }
           );
         } else {
-          queryBuilder.where("delivery_id < {deliveryId: String}", { deliveryId: decoded.runId });
+          queryBuilder.where("delivery_id < {cursorDeliveryId: String}", {
+            cursorDeliveryId: decoded.runId,
+          });
         }
         queryBuilder.orderBy("created_at DESC, delivery_id DESC");
       } else {
         if (decoded.kind === "composite") {
           queryBuilder.where(
-            "(created_at, delivery_id) > (fromUnixTimestamp64Milli({cursorCreatedAt: Int64}), {deliveryId: String})",
-            { cursorCreatedAt: decoded.createdAt, deliveryId: decoded.runId }
+            "(created_at, delivery_id) > (fromUnixTimestamp64Milli({cursorCreatedAt: Int64}), {cursorDeliveryId: String})",
+            { cursorCreatedAt: decoded.createdAt, cursorDeliveryId: decoded.runId }
           );
         } else {
-          queryBuilder.where("delivery_id > {deliveryId: String}", { deliveryId: decoded.runId });
+          queryBuilder.where("delivery_id > {cursorDeliveryId: String}", {
+            cursorDeliveryId: decoded.runId,
+          });
         }
         queryBuilder.orderBy("created_at ASC, delivery_id ASC");
       }

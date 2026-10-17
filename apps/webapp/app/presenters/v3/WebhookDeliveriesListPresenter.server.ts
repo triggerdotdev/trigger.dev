@@ -1,6 +1,7 @@
 import { type ClickHouse } from "@internal/clickhouse";
 import { type PrismaClientOrTransaction, type WebhookDeliveryStatus } from "@trigger.dev/database";
 import parseDuration from "parse-duration";
+import { type DeliveryListFilters } from "~/components/webhookDeliveries/v1/deliveryListFilters";
 import { boundedIn, webhookReplica } from "~/db.server";
 import { runStore } from "~/v3/runStore.server";
 import { webhookDeliveriesRepository } from "~/services/webhookDeliveriesRepository/webhookDeliveriesRepository.server";
@@ -123,12 +124,16 @@ export class WebhookDeliveriesListPresenter {
     };
   }
 
-  /** Count one endpoint's deliveries newer than `since`, for the live "N new deliveries" pill. */
+  /**
+   * Count one endpoint's deliveries newer than `since` that match the list's filters, for the live
+   * "N new deliveries" pill.
+   */
   async countNewDeliveries({
     organizationId,
     projectId,
     environmentId,
     webhookEndpointId,
+    filters = {},
     since,
     to,
   }: {
@@ -136,6 +141,7 @@ export class WebhookDeliveriesListPresenter {
     projectId: string;
     environmentId: string;
     webhookEndpointId?: string;
+    filters?: DeliveryListFilters;
     since: number;
     to?: number;
   }): Promise<number> {
@@ -151,6 +157,9 @@ export class WebhookDeliveriesListPresenter {
       projectId,
       environmentId,
       webhookEndpointId,
+      statuses: filters.statuses,
+      isTest: filters.isTest,
+      deliveryId: filters.deliveryId,
       from: since + 1,
       to,
       page: { size: 100 },
