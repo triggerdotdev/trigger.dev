@@ -5,6 +5,7 @@ import { extractClientIp } from "~/utils/extractClientIp.server";
 import { authenticator } from "./auth.server";
 import { getImpersonationId, getImpersonationState } from "./impersonation.server";
 import { logger } from "./logger.server";
+import { throwIfMfaRequired } from "./mfa/mfaRequirement.server";
 import { revalidateSsoSession } from "./ssoSessionRevalidation.server";
 
 /**
@@ -134,6 +135,14 @@ export async function requireUser(request: Request) {
     const searchParams = new URLSearchParams([["redirectTo", finalRedirectTo]]);
     throw redirect(`/login?${searchParams}`);
   }
+
+  // `MFA_REQUIRED`: a signed-in user who has not enrolled a second factor may
+  // only reach the exempt paths (auth flow, logout, the setup page itself).
+  // Enforced here — rather than only in `_app/route.tsx` — because `/account/*`,
+  // `/invites`, `/admin/*` and the resource routes are not nested under `_app`,
+  // so the layout loader alone would leave them reachable. root.tsx applies the
+  // same check for routes that authenticate with `requireUserId` only.
+  throwIfMfaRequired(request, user);
 
   // Shared with the root loader so the client never reads a different answer
   // than the one computed here.

@@ -110,6 +110,10 @@ export function accountSecurityPath() {
   return `/account/security`;
 }
 
+export function mfaSetupPath() {
+  return `/mfa/setup`;
+}
+
 export function invitesPath() {
   return `/invites`;
 }

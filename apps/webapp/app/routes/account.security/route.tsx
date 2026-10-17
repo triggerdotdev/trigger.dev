@@ -8,6 +8,7 @@ import {
 import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { $replica } from "~/db.server";
+import { env } from "~/env.server";
 import { requireUser } from "~/services/session.server";
 import {
   getAllowedSessionOptions,
@@ -49,7 +50,12 @@ export default function Page() {
             <Header2>Security</Header2>
           </div>
           <div className="w-full border-b border-grid-dimmed py-4">
-            <MfaSetup isEnabled={!!user.mfaEnabledAt} />
+            {/*
+              Under MFA_REQUIRED every signed-in user is gated to the setup
+              page until they enroll, so this page is only reachable with MFA
+              already on — the toggle is hidden and there is nothing to disable.
+            */}
+            <MfaSetup isEnabled={!!user.mfaEnabledAt} isRequired={env.MFA_REQUIRED} />
           </div>
           <div className="w-full border-b border-grid-dimmed py-4">
             <SessionDurationSetting

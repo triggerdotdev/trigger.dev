@@ -1,6 +1,7 @@
 import { type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import { z } from "zod";
+import { env } from "~/env.server";
 import {
   redirectWithSuccessMessage,
   redirectWithErrorMessage,
@@ -10,6 +11,8 @@ import { MultiFactorAuthenticationService } from "~/services/mfa/multiFactorAuth
 import { requireUserId } from "~/services/session.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { MfaRateLimitError } from "~/services/mfa/mfaRateLimiterGlobal.server";
+import { sanitizeRedirectPath } from "~/utils";
+import { accountSecurityPath, mfaSetupPath, rootPath } from "~/utils/pathBuilder";
 import { useMfaSetup } from "./useMfaSetup";
 import { MfaToggle } from "./MfaToggle";
 import { MfaSetupDialog } from "./MfaSetupDialog";
@@ -26,6 +29,10 @@ const formSchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("saved-recovery-codes"),
+    // Where to send the user once enrollment is complete. Supplied by the
+    // forced-setup page so a user who was bounced there mid-navigation lands
+    // back where they were headed.
+    redirectTo: z.string().optional(),
   }),
   z.object({
     action: z.literal("cancel-totp"),
@@ -35,6 +42,36 @@ const formSchema = z.discriminatedUnion("action", [
     totpCode: z.string().length(6, "TOTP code must be 6 digits"),
   }),
 ]);
+
+// Where enrollment sends the user when they did not arrive via the forced
+// setup page (i.e. they enabled MFA voluntarily from Account → Security).
+const DEFAULT_ENROLLMENT_REDIRECT = accountSecurityPath();
+
+/**
+ * Resolves the post-enrollment destination.
+ *
+ * `redirectTo` is user-influenced (it round-trips through the browser), so it
+ * goes through the same sanitizer the login flow uses: it must be a relative,
+ * navigable path, otherwise we fall back to the security page.
+ */
+function enrollmentRedirectPath(redirectTo: string | undefined): string {
+  if (env.MFA_REQUIRED) {
+    return sanitizeRedirectPath(redirectTo, rootPath());
+  }
+
+  return sanitizeRedirectPath(redirectTo, DEFAULT_ENROLLMENT_REDIRECT);
+}
+
+/**
+ * Where to send the user when enrollment fails with an error.
+ *
+ * Under `MFA_REQUIRED` they have nowhere else to go — every other dashboard
+ * path bounces them straight back here — so send them to the setup page
+ * directly rather than making them round-trip through the gate.
+ */
+function enrollmentErrorRedirectPath(): string {
+  return env.MFA_REQUIRED ? mfaSetupPath() : DEFAULT_ENROLLMENT_REDIRECT;
+}
 
 function validateForm(formData: FormData) {
   const formEntries = Object.fromEntries(formData.entries());
@@ -82,6 +119,18 @@ export async function action({ request }: ActionFunctionArgs) {
         });
       }
       case "disable-mfa": {
+        // Refused here too (the service refuses it independently) so the
+        // client gets a clean error rather than an unexpected redirect when
+        // the instance requires MFA.
+        if (env.MFA_REQUIRED) {
+          return typedjson({
+            action: "disable-mfa" as const,
+            success: false as const,
+            error:
+              "Multi-factor authentication is required on this instance and cannot be disabled.",
+          });
+        }
+
         const result = await mfaSetupService.disableTotp(userId, {
           totpCode: submission.data.totpCode,
           recoveryCode: submission.data.recoveryCode,
@@ -130,17 +179,21 @@ export async function action({ request }: ActionFunctionArgs) {
         });
       }
       case "saved-recovery-codes": {
-        return redirectWithSuccessMessage("/account/security", request, "Successfully enabled MFA");
+        return redirectWithSuccessMessage(
+          enrollmentRedirectPath(submission.data.redirectTo),
+          request,
+          "Successfully enabled MFA"
+        );
       }
     }
   } catch (error) {
     if (error instanceof ServiceValidationError) {
-      return redirectWithErrorMessage("/account/security", request, error.message);
+      return redirectWithErrorMessage(enrollmentErrorRedirectPath(), request, error.message);
     }
 
     if (error instanceof MfaRateLimitError) {
       return redirectWithErrorMessage(
-        "/account/security",
+        enrollmentErrorRedirectPath(),
         request,
         "Too many attempts. Please try again later."
       );
@@ -151,7 +204,13 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 }
 
-export function MfaSetup({ isEnabled }: { isEnabled: boolean }) {
+export function MfaSetup({
+  isEnabled,
+  isRequired = false,
+}: {
+  isEnabled: boolean;
+  isRequired?: boolean;
+}) {
   const {
     state,
     actions,
@@ -170,7 +229,12 @@ export function MfaSetup({ isEnabled }: { isEnabled: boolean }) {
 
   return (
     <>
-      <MfaToggle isEnabled={state.isEnabled} onToggle={handleToggle} />
+      {/*
+        With MFA_REQUIRED the second factor cannot be turned off, so the toggle
+        and the disable dialog are omitted entirely — there is no state the
+        user is allowed to reach by interacting with them.
+      */}
+      {!isRequired && <MfaToggle isEnabled={state.isEnabled} onToggle={handleToggle} />}
 
       <MfaSetupDialog
         isOpen={isQrDialogOpen}
@@ -183,13 +247,15 @@ export function MfaSetup({ isEnabled }: { isEnabled: boolean }) {
         onSaveRecoveryCodes={actions.saveRecoveryCodes}
       />
 
-      <MfaDisableDialog
-        isOpen={isDisableDialogOpen}
-        isSubmitting={state.isSubmitting}
-        error={state.error}
-        onDisable={actions.disableMfa}
-        onCancel={actions.cancelDisable}
-      />
+      {!isRequired && (
+        <MfaDisableDialog
+          isOpen={isDisableDialogOpen}
+          isSubmitting={state.isSubmitting}
+          error={state.error}
+          onDisable={actions.disableMfa}
+          onCancel={actions.cancelDisable}
+        />
+      )}
     </>
   );
 }

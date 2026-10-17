@@ -168,7 +168,7 @@ function mfaReducer(state: MfaState, action: MfaAction): MfaState {
   }
 }
 
-export function useMfaSetup(initialIsEnabled: boolean) {
+export function useMfaSetup(initialIsEnabled: boolean, enrollmentRedirectTo?: string) {
   const fetcher = useTypedFetcher<typeof action>();
 
   const [state, dispatch] = useReducer(mfaReducer, {
@@ -259,7 +259,11 @@ export function useMfaSetup(initialIsEnabled: boolean) {
     saveRecoveryCodes: () => {
       dispatch({ type: "RECOVERY_CODES_SAVED" });
       fetcher.submit(
-        { action: "saved-recovery-codes" },
+        // Only sent when there's somewhere to go — the server falls back to
+        // the account security page otherwise.
+        enrollmentRedirectTo
+          ? { action: "saved-recovery-codes", redirectTo: enrollmentRedirectTo }
+          : { action: "saved-recovery-codes" },
         { method: "POST", action: "/resources/account/mfa/setup" }
       );
     },

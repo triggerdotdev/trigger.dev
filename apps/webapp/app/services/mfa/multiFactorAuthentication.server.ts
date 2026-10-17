@@ -1,4 +1,5 @@
 import { type SecretReference, type User, type PrismaClient } from "@trigger.dev/database";
+import { env } from "~/env.server";
 import { prisma } from "~/db.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { createRandomStringGenerator } from "@better-auth/utils/random";
@@ -24,6 +25,16 @@ export class MultiFactorAuthenticationService {
   }
 
   public async disableTotp(userId: string, params: { totpCode?: string; recoveryCode?: string }) {
+    // Instance-level requirement: when `MFA_REQUIRED` is on, the second factor
+    // is not optional, so there is no code that can turn it off. Checked here
+    // rather than only in the route action so every caller — including future
+    // admin tooling — inherits the rule.
+    if (env.MFA_REQUIRED) {
+      throw new ServiceValidationError(
+        "Multi-factor authentication is required on this instance and cannot be disabled."
+      );
+    }
+
     const user = await this.#prismaClient.user.findFirst({
       where: { id: userId },
       include: {
@@ -111,10 +122,24 @@ export class MultiFactorAuthenticationService {
   public async enableTotp(userId: string) {
     const user = await this.#prismaClient.user.findFirst({
       where: { id: userId },
+      include: { mfaSecretReference: true },
     });
 
     if (!user) {
       throw new ServiceValidationError("User not found");
+    }
+
+    // A user can leave enrollment half-finished (navigating away, or reloading
+    // the forced-setup page under `MFA_REQUIRED`) and come back to start over.
+    // Drop the pending secret first — otherwise the old row and its stored
+    // secret are orphaned every time they retry.
+    if (user.mfaSecretReference) {
+      const previousStore = getSecretStore(user.mfaSecretReference.provider);
+      await previousStore.deleteSecret(user.mfaSecretReference.key);
+      await this.#prismaClient.user.update({
+        where: { id: userId },
+        data: { mfaSecretReference: { delete: true } },
+      });
     }
 
     const secretStore = getSecretStore("DATABASE");

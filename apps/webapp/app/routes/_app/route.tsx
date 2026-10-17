@@ -9,6 +9,11 @@ import { tenantContext } from "~/services/tenantContext.server";
 import { confirmBasicDetailsPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
+  // `requireUser` also enforces `MFA_REQUIRED`: a signed-in user without a
+  // second factor is redirected to /mfa/setup before this loader gets any
+  // further. That check lives there rather than here so it also covers the
+  // routes not nested under this layout (/account/*, /invites, /admin/*) —
+  // see services/mfa/mfaRequirement.server.ts.
   const user = await requireUser(request);
   tenantContext.enrich({ userId: user.id });
 

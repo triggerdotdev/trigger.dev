@@ -400,6 +400,11 @@ const EnvironmentSchema = z
     WEBAPP_TELNET_LOGS_PORT: z.coerce.number().optional(),
     LOGIN_ORIGIN: z.string().default("http://localhost:3030"),
     LOGIN_RATE_LIMITS_ENABLED: BoolEnv.default(true),
+    // Opt-in for self-hosted instances under a compliance program (FedRAMP,
+    // SOC 2, HIPAA): require every dashboard user to enroll a second factor
+    // (TOTP) before they can use the dashboard, and prevent them from
+    // disabling it afterwards. Off by default.
+    MFA_REQUIRED: BoolEnv.default(false),
     APP_ORIGIN: z.string().default("http://localhost:3030"),
     // Extra exact origins (comma separated) added to the document `img-src` CSP,
     // e.g. an SSO host serving profile images. Wildcards are refused.

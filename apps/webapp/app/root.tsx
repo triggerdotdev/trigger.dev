@@ -23,6 +23,7 @@ import { usePostHog } from "./hooks/usePostHog";
 import { resolveThemePreference, useSystemThemeSync } from "./hooks/useSystemThemeSync";
 import { clearImpersonation } from "./models/admin.server";
 import { getImpersonationState, getRawImpersonationId } from "./services/impersonation.server";
+import { throwIfMfaRequired } from "./services/mfa/mfaRequirement.server";
 import { getUser } from "./services/session.server";
 import {
   normalizeIconContrast,
@@ -81,6 +82,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const timezone = await getTimezonePreference(request);
 
   const user = await getUser(request);
+  // `MFA_REQUIRED`: refuse every non-exempt request from a signed-in user who
+  // has not enrolled a second factor, sending them to the setup page instead.
+  //
+  // `requireUser` applies the same check, but it only guards the routes that
+  // call it — this covers routes that authenticate with `requireUserId`
+  // (which stays cookie-only, with no user row to inspect). Action-only
+  // resource routes skip the root loader entirely, so they are gated only
+  // where they call `requireUser`; the MFA enrollment endpoint is exempt by
+  // design, since it is the only way to enroll.
+  //
+  // Logged-out requests are untouched — they take the normal login flow.
+  throwIfMfaRequired(request, user);
   // Feature-flagged; while off everyone stays on Dark at contrast 0. Admins
   // always get it. Cached: this loader runs on every request and navigation.
   const showThemeSwitcher = user
