@@ -1,6 +1,7 @@
 import { CORE_VERSION } from "@trigger.dev/core/v3";
 import { DEFAULT_RUNTIME, ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { BuildManifest, BuildTarget, TaskFile } from "@trigger.dev/core/v3/schemas";
+import chalk from "chalk";
 import * as esbuild from "esbuild";
 import { createHash } from "node:crypto";
 import { basename, join, relative, resolve } from "node:path";
@@ -348,7 +349,7 @@ export function logBuildWarnings(
 ) {
   const logs = esbuild.formatMessagesSync(warnings, {
     kind: "warning",
-    color: options.color ?? true,
+    color: options.color ?? chalk.level > 0,
   });
   for (const log of logs) {
     console.warn(log);
@@ -360,7 +361,7 @@ export function logBuildWarnings(
  * style esbuild would.
  */
 export function logBuildFailure(errors: esbuild.Message[], warnings: esbuild.Message[]) {
-  const logs = esbuild.formatMessagesSync(errors, { kind: "error", color: true });
+  const logs = esbuild.formatMessagesSync(errors, { kind: "error", color: chalk.level > 0 });
   for (const log of logs) {
     console.error(log);
   }

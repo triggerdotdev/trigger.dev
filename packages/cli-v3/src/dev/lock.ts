@@ -2,6 +2,7 @@ import path from "node:path";
 import { readFile } from "../utilities/fileSystem.js";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { devBranchPathSegment } from "../utilities/devBranch.js";
+import { chalkGrey } from "../utilities/cliOutput.js";
 import { logger } from "../utilities/logger.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { existsSync, unlinkSync } from "node:fs";
@@ -81,6 +82,11 @@ export async function createLockFile(cwd: string, branch?: string) {
           }
         }, 100);
       });
+
+      // The other session may not be ours to stop, e.g. a person's terminal when an agent runs dev
+      logger.log(
+        chalkGrey(`○ Stopped the dev session that was already running here (pid ${existingPid})`)
+      );
     } catch (error) {
       logger.debug("Failed to kill existing process, lets assume it's not running", { error });
     }

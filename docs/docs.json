@@ -279,6 +279,7 @@
                   "cli-promote-commands",
                   "cli-runs-commands",
                   "cli-switch",
+                  "cli-tasks-commands",
                   "cli-update-commands",
                   "cli-whoami-commands"
                 ]

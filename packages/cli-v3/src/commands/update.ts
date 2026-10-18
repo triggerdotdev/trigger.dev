@@ -10,13 +10,14 @@ import {
 } from "pkg-types";
 import type { z } from "zod";
 import { CommonCommandOptions, OutroCommandError, wrapCommandAction } from "../cli/common.js";
+import { isAgent } from "../utilities/agent.js";
 import { chalkError, prettyError, prettyWarning } from "../utilities/cliOutput.js";
 import { removeFile, writeJSONFilePreserveOrder } from "../utilities/fileSystem.js";
 import { printStandloneInitialBanner, updateCheck } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
 import { spinner } from "../utilities/windows.js";
 import { VERSION } from "../version.js";
-import { hasTTY } from "std-env";
+import { hasTTY, isCI } from "std-env";
 import nodeResolve from "resolve";
 import * as semver from "semver";
 
@@ -180,8 +181,24 @@ export async function updateTriggerPackages(
     }
   }
 
-  if (!hasTTY) {
-    // Running in CI with version mismatch detected
+  // Nobody can answer the update prompt in CI, or when a coding agent is running the CLI
+  if (!hasTTY || isAgent) {
+    if (!isCI) {
+      logger.log(
+        `${chalkError(
+          "X Error:"
+        )} Your @trigger.dev packages don't match the CLI version (${cliVersion}).
+
+Packages that don't match:
+${mismatches.map((dep) => `- ${dep.name}@${dep.version}`).join("\n")}
+
+Set them to ${cliVersion} in package.json and reinstall, or run the CLI version they use instead, e.g. \`npx trigger.dev@<version>\`.${
+          embedded ? " To run anyway, pass --skip-update-check." : ""
+        }\n`
+      );
+      process.exit(1);
+    }
+
     if (embedded) {
       outro("Deploy failed");
     }

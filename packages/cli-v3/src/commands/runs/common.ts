@@ -1,7 +1,9 @@
 import type { Command } from "commander";
 import { z } from "zod";
+import { getDevBranch } from "@trigger.dev/core/v3";
 import { CommonCommandOptions } from "../../cli/common.js";
 import { loadConfig } from "../../config.js";
+import { resolveLocalEnvVars } from "../../utilities/localEnvVars.js";
 import { logger } from "../../utilities/logger.js";
 import { getProjectEnvApiClient } from "../../utilities/session.js";
 import { login } from "../login.js";
@@ -23,7 +25,7 @@ export function runsOptions(command: Command) {
       "The project ref. Required if there is no config file"
     )
     .option("-e, --env <env>", "The environment to use (dev, prod, staging, preview)", "prod")
-    .option("-b, --branch <branch>", "The preview branch when using --env preview");
+    .option("-b, --branch <branch>", "The preview or dev branch when using --env preview or dev");
 }
 
 /** Resolves the project + environment and returns a core API client scoped to it. */
@@ -51,7 +53,13 @@ export async function resolveRunsClient(options: RunsCommonOptions) {
   // Coerce production to prod
   const env = options.env === "production" ? "prod" : options.env;
 
-  if (env === "preview" && !options.branch) {
+  // Use the same dev branch as `trigger dev`, so runs go to the dev session that's running
+  const branch =
+    env === "dev"
+      ? getDevBranch({ specified: options.branch ?? resolveLocalEnvVars().TRIGGER_DEV_BRANCH })
+      : options.branch;
+
+  if (env === "preview" && !branch) {
     throw new Error("Missing branch for the preview environment.");
   }
 
@@ -60,7 +68,7 @@ export async function resolveRunsClient(options: RunsCommonOptions) {
     apiUrl: authorization.auth.apiUrl,
     projectRef: resolvedConfig.project,
     env,
-    branch: options.branch,
+    branch,
     profile: options.profile,
   });
 
@@ -68,7 +76,7 @@ export async function resolveRunsClient(options: RunsCommonOptions) {
     throw new Error("Failed to get project client");
   }
 
-  return { apiClient, projectRef: resolvedConfig.project, env, branch: options.branch };
+  return { apiClient, projectRef: resolvedConfig.project, env, branch, login: authorization };
 }
 
 export function formatEnvInfo(env: string, branch: string | undefined) {
