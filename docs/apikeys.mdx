@@ -98,11 +98,11 @@ Set a key in `TRIGGER_ACCESS_TOKEN` to authenticate `trigger deploy` without log
 <CodeGroup>
 
 ```bash npm
-TRIGGER_ACCESS_TOKEN="tr_prod_sk_…" npx trigger.dev@latest deploy
+TRIGGER_ACCESS_TOKEN="tr_prod_sk_…" npx trigger.dev@latest deploy --env prod
 ```
 </CodeGroup>
 
-The key must belong to the target environment. Use a Production key for the default deployment, a Staging key with `--env staging`, or a key from the Preview environment with `--env preview`. A Preview deployment key can create and archive Preview branches and sync their environment variables.
+The key must belong to the target environment. Use a Production key with `--env prod`, a Staging key with `--env staging`, or a key from the Preview environment with `--env preview`. If you leave out `--env`, the CLI deploys to the key's environment, and a `--env` that doesn't match the key is an error. A Preview deployment key can create and archive Preview branches and sync their environment variables.
 
 <Note>
   The deploy CLI reads environment API keys from `TRIGGER_ACCESS_TOKEN`, not

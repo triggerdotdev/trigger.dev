@@ -51,6 +51,7 @@ import {
 import { loadConfig } from "../config.js";
 import { authenticateForDeploy, userIdForDeploy } from "../deploy/auth.js";
 import { buildImage } from "../deploy/buildImage.js";
+import { type DeployEnvironment, resolveDeployEnvironment } from "../deploy/environment.js";
 import {
   checkLogsForErrors,
   checkLogsForWarnings,
@@ -83,7 +84,8 @@ import { updateTriggerPackages } from "./update.js";
 const DeployCommandOptions = CommonCommandOptions.extend({
   dryRun: z.boolean().default(false),
   skipSyncEnvVars: z.boolean().default(false),
-  env: z.enum(["prod", "staging", "preview", "production"]),
+  env: z.enum(["prod", "staging", "preview", "production"]).optional(),
+  prod: z.boolean().default(false),
   branch: z.string().optional(),
   load: z.boolean().optional(),
   config: z.string().optional(),
@@ -116,7 +118,10 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   forceCompression: z.boolean().default(true),
 });
 
-type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
+// `env` is resolved from --env, --prod and TRIGGER_ACCESS_TOKEN before the command runs
+type DeployCommandOptions = Omit<z.infer<typeof DeployCommandOptions>, "env"> & {
+  env: DeployEnvironment;
+};
 
 type Deployment = InitializeDeploymentResponseBody;
 
@@ -129,9 +134,9 @@ export function configureDeployCommand(program: Command) {
         .argument("[path]", "The path to the project", ".")
         .option(
           "-e, --env <env>",
-          "Deploy to a specific environment (currently only prod and staging are supported)",
-          "prod"
+          "The environment to deploy to: prod, staging or preview. Defaults to the environment of the API key in TRIGGER_ACCESS_TOKEN, otherwise prod."
         )
+        .option("--prod", "Deploy to the prod environment. Shorthand for --env prod.")
         .option(
           "-b, --branch <branch>",
           "The preview branch to deploy to when passing --env preview. If not provided, we'll detect your git branch."
@@ -327,7 +332,15 @@ export function configureDeployCommand(program: Command) {
 
 async function deployCommand(dir: string, options: unknown) {
   return await wrapCommandAction("deployCommand", DeployCommandOptions, options, async (opts) => {
-    return await _deployCommand(dir, opts);
+    const environment = resolveDeployEnvironment({
+      env: opts.env,
+      prod: opts.prod,
+      accessToken: process.env.TRIGGER_ACCESS_TOKEN,
+    });
+
+    logger.debug("Resolved deploy environment", environment);
+
+    return await _deployCommand(dir, { ...opts, env: environment.env });
   });
 }
 
@@ -358,7 +371,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   }
 
   if (!options.plain) {
-    intro(`Deploying project${options.skipPromotion ? " (without promotion)" : ""}`);
+    intro(`Deploying to ${options.env}${options.skipPromotion ? " (without promotion)" : ""}`);
   }
 
   if (!options.skipUpdateCheck) {
@@ -388,11 +401,6 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
         `You must login first. Use the \`login\` CLI command.\n\n${authorization.error}`
       );
     }
-  }
-
-  //coerce env from production to prod
-  if (options.env === "production") {
-    options.env = "prod";
   }
 
   const envVars = resolveLocalEnvVars(options.envFile);
@@ -467,11 +475,11 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
     logger.debug("Upserted branch env", branchEnv);
 
-    log.success(`Using preview branch "${branch}"`);
-
     if (!branchEnv) {
       throw new Error(`Failed to create branch "${branch}"`);
     }
+
+    log.success(`Using preview branch "${branch}"`);
   }
 
   const projectClient = await getProjectClient({
@@ -526,6 +534,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       options,
       userId: userIdForDeploy(authorization),
       gitMeta,
+      branch,
     });
     return;
   }
@@ -601,6 +610,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       dashboardUrl: authorization.dashboardUrl,
       projectRef: resolvedConfig.project,
       env: options.env,
+      branch,
       shortCode: deployment.shortCode,
     });
 
@@ -725,6 +735,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     dashboardUrl: authorization.dashboardUrl,
     projectRef: resolvedConfig.project,
     env: options.env,
+    branch,
     shortCode: deployment.shortCode,
   });
 
@@ -1195,18 +1206,24 @@ function buildDeploymentLinks({
   dashboardUrl,
   projectRef,
   env,
+  branch,
   shortCode,
 }: {
   dashboardUrl: string;
   projectRef: string;
   env: DeployCommandOptions["env"];
+  branch: string | undefined;
   shortCode: string;
 }) {
+  const testParams = new URLSearchParams({ environment: env === "staging" ? "stg" : env });
+
+  if (env === "preview" && branch) {
+    testParams.set("branch", branch);
+  }
+
   return {
     rawDeploymentLink: `${dashboardUrl}/projects/v3/${projectRef}/deployments/${shortCode}`,
-    rawTestLink: `${dashboardUrl}/projects/v3/${projectRef}/test?environment=${
-      env === "prod" ? "prod" : "stg"
-    }`,
+    rawTestLink: `${dashboardUrl}/projects/v3/${projectRef}/test?${testParams}`,
   };
 }
 
@@ -1385,6 +1402,7 @@ async function handleNativeBuildServerDeploy({
   dashboardUrl,
   userId,
   gitMeta,
+  branch,
 }: {
   apiClient: CliApiClient;
   config: Awaited<ReturnType<typeof loadConfig>>;
@@ -1392,6 +1410,7 @@ async function handleNativeBuildServerDeploy({
   options: DeployCommandOptions;
   userId?: string;
   gitMeta?: GitMeta;
+  branch?: string;
 }) {
   const tmpDir = join(config.workingDir, ".trigger", "tmp");
   await mkdir(tmpDir, { recursive: true });
@@ -1496,10 +1515,13 @@ async function handleNativeBuildServerDeploy({
 
   const deployment = initializeDeploymentResult.data;
 
-  const rawDeploymentLink = `${dashboardUrl}/projects/v3/${config.project}/deployments/${deployment.shortCode}`;
-  const rawTestLink = `${dashboardUrl}/projects/v3/${config.project}/test?environment=${
-    options.env === "prod" ? "prod" : "stg"
-  }`;
+  const { rawDeploymentLink, rawTestLink } = buildDeploymentLinks({
+    dashboardUrl,
+    projectRef: config.project,
+    env: options.env,
+    branch,
+    shortCode: deployment.shortCode,
+  });
 
   if (deployment.outcome === "existing") {
     $deploymentSpinner.stop(`Version ${deployment.version} was already deployed`);
@@ -1829,10 +1851,13 @@ async function handleLocalBundleDeploy({
 
   const deployment = initializeDeploymentResult.data;
 
-  const rawDeploymentLink = `${dashboardUrl}/projects/v3/${config.project}/deployments/${deployment.shortCode}`;
-  const rawTestLink = `${dashboardUrl}/projects/v3/${config.project}/test?environment=${
-    options.env === "prod" ? "prod" : "stg"
-  }`;
+  const { rawDeploymentLink, rawTestLink } = buildDeploymentLinks({
+    dashboardUrl,
+    projectRef: config.project,
+    env: options.env,
+    branch,
+    shortCode: deployment.shortCode,
+  });
 
   if (deployment.outcome === "existing") {
     $deploymentSpinner.stop(`Version ${deployment.version} was already deployed`);
@@ -1931,6 +1956,7 @@ async function buildAndFinalizeFromBundle({
     dashboardUrl,
     projectRef,
     env: options.env,
+    branch,
     shortCode: deployment.shortCode,
   });
 

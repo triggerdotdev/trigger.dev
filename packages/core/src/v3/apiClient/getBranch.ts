@@ -25,8 +25,8 @@ export function getBranch({
     return vercelPreviewBranch;
   }
 
-  // not specified, so detect from git metadata
-  if (gitMeta?.commitRef) {
+  // not specified, so detect from git metadata. "HEAD" is a detached checkout, not a branch.
+  if (gitMeta?.commitRef && gitMeta.commitRef !== "HEAD") {
     return gitMeta.commitRef;
   }
 

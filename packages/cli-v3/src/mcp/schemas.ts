@@ -265,18 +265,14 @@ export const ListRunsInput = CommonProjectsInput.extend({
 
 export type ListRunsInput = z.output<typeof ListRunsInput>;
 
-const CommonDeployInput = CommonProjectsInput.omit({
+const DeployEnvironment = z.enum(["staging", "prod", "preview"]);
+
+export const DeployInput = CommonProjectsInput.omit({
   environment: true,
 }).extend({
-  environment: z
-    .enum(["staging", "prod", "preview"])
-    .describe("The environment to trigger the task in")
-    .default("prod"),
-});
-
-type CommonDeployInput = z.output<typeof CommonDeployInput>;
-
-export const DeployInput = CommonDeployInput.extend({
+  environment: DeployEnvironment.describe(
+    "The environment to deploy to. There is no default: if the user hasn't said which environment, ask them. Deploying to prod changes the version that live runs use."
+  ),
   skipPromotion: z
     .boolean()
     .describe("Skip promoting the deployment to the current deployment for the environment")
@@ -293,7 +289,13 @@ export const DeployInput = CommonDeployInput.extend({
 
 export type DeployInput = z.output<typeof DeployInput>;
 
-export const ListDeploysInput = CommonDeployInput.extend(ApiDeploymentListParams);
+export const ListDeploysInput = CommonProjectsInput.omit({
+  environment: true,
+})
+  .extend({
+    environment: DeployEnvironment.describe("The environment to list deploys for").default("prod"),
+  })
+  .extend(ApiDeploymentListParams);
 
 export type ListDeploysInput = z.output<typeof ListDeploysInput>;
 

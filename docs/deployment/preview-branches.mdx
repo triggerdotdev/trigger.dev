@@ -147,7 +147,7 @@ Creating and deploying a preview branch manually is easy:
 npx trigger.dev@latest deploy --env preview
 ```
 
-This will create and deploy a preview branch, automatically detecting the git branch. If for some reason the auto-detection doesn't work it will let you know and tell you do this:
+This will create and deploy a preview branch, automatically detecting the git branch. When your CI checks out a detached HEAD, the branch is read from the CI provider's branch variable instead (GitLab, Bitbucket, CircleCI, Buildkite, Travis CI, Jenkins and Azure Pipelines are supported). If for some reason the auto-detection doesn't work it will let you know and tell you do this:
 
 ```bash
 npx trigger.dev@latest deploy --env preview --branch your-branch-name

@@ -235,7 +235,7 @@ export function TriggerDeployStep({
         return " --env preview";
       case "PRODUCTION":
       default:
-        return "";
+        return " --env prod";
     }
   };
 

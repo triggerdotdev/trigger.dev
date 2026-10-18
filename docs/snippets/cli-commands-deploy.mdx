@@ -11,15 +11,15 @@ Run the command like this:
 <CodeGroup>
 
 ```bash npm
-npx trigger.dev@latest deploy
+npx trigger.dev@latest deploy --env prod
 ```
 
 ```bash pnpm
-pnpm dlx trigger.dev@latest deploy
+pnpm dlx trigger.dev@latest deploy --env prod
 ```
 
 ```bash yarn
-yarn dlx trigger.dev@latest deploy
+yarn dlx trigger.dev@latest deploy --env prod
 ```
 
 </CodeGroup>
@@ -34,7 +34,7 @@ It performs a few steps to deploy:
 1. Optionally updates packages when running locally.
 2. Compiles and bundles the code.
 3. Deploys the code to the Trigger.dev instance.
-4. Registers the tasks as a new version in the environment (prod by default).
+4. Registers the tasks as a new version in the environment you pass with `--env`.
 
 ## Deploying from CI
 
@@ -59,8 +59,14 @@ npx trigger.dev@latest deploy [path]
 <SkipUpdateCheckOption />
 
 <ParamField body="Environment" type="--env | -e">
-  Defaults to `prod` but you can specify `staging` or `preview`. If you specify `preview` we will
-  try and automatically detect the branch name from git.
+  The environment to deploy to: `prod`, `staging` or `preview`. If you specify `preview` we will
+  try and automatically detect the branch name from git. When you don't pass `--env`, the deploy
+  goes to the environment of the API key in `TRIGGER_ACCESS_TOKEN`, or to `prod` if you're using a
+  personal access token. We recommend always passing `--env`.
+</ParamField>
+
+<ParamField body="Prod" type="--prod">
+  Deploy to the `prod` environment. Shorthand for `--env prod`.
 </ParamField>
 
 <BranchOption />
