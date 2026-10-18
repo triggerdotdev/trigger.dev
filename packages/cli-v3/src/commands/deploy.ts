@@ -50,7 +50,7 @@ import {
 } from "../cli/common.js";
 import { loadConfig } from "../config.js";
 import { authenticateForDeploy, userIdForDeploy } from "../deploy/auth.js";
-import { buildImage } from "../deploy/buildImage.js";
+import { buildImage, resolveExtraCACertsImagePath } from "../deploy/buildImage.js";
 import {
   checkLogsForErrors,
   checkLogsForWarnings,
@@ -765,6 +765,10 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     externalBuildProjectId: deployment.externalBuildData?.projectId,
     projectId: projectClient.id,
     projectRef: resolvedConfig.project,
+    extraCACerts: resolveExtraCACertsImagePath(
+      resolvedConfig.extraCACerts,
+      resolvedConfig.workingDir
+    ),
     apiUrl: projectClient.client.apiURL,
     apiKey: projectClient.client.accessToken!,
     apiClient: projectClient.client,

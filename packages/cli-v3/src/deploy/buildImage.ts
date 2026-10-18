@@ -3,7 +3,7 @@ import { depot } from "@depot/cli";
 import { x } from "tinyexec";
 import type { BuildManifest, BuildRuntime } from "@trigger.dev/core/v3/schemas";
 import { networkInterfaces } from "os";
-import { join } from "path";
+import { join, relative, resolve, sep } from "path";
 import { safeReadJSONFile } from "../utilities/fileSystem.js";
 import { readFileSync } from "fs";
 
@@ -53,6 +53,23 @@ export interface BuildImageOptions {
 
   // Optional deployment spinner
   deploymentSpinner?: any; // Replace 'any' with the actual type if known
+}
+
+/**
+ * Where the CA file ends up inside the image. The build copies it into /app using the same layout
+ * as additionalFiles (path relative to the project root, with leading `..` segments stripped).
+ */
+export function resolveExtraCACertsImagePath(extraCACerts: string | undefined, workingDir: string) {
+  if (!extraCACerts) {
+    return undefined;
+  }
+
+  const relativePath = relative(workingDir, resolve(workingDir, extraCACerts))
+    .split(sep)
+    .filter((segment) => segment !== "..")
+    .join("/");
+
+  return `/app/${relativePath}`;
 }
 
 export async function buildImage(options: BuildImageOptions): Promise<BuildImageResults> {
