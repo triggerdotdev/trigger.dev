@@ -33,6 +33,7 @@ import { CopyButton } from "~/components/primitives/CopyButton";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
+import { Header2 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
@@ -45,6 +46,7 @@ import SegmentedControl from "~/components/primitives/SegmentedControl";
 import { Switch } from "~/components/primitives/Switch";
 import {
   Table,
+  TableBlankRow,
   TableBody,
   TableCell,
   TableCellMenu,
@@ -327,6 +329,8 @@ export default function Page() {
         .join("\n")
     : null;
 
+  const hasApiKeys = rootApiKey !== null || apiKeys.length > 0;
+
   return (
     <PageContainer>
       <NavBar>
@@ -357,133 +361,154 @@ export default function Page() {
       <PageBody scrollable={false}>
         {canReadApiKeys ? (
           <div className="max-h-full min-h-full overflow-y-auto border-t border-grid-dimmed">
-            <div className="flex h-fit items-center justify-end gap-2 p-2">
-              <div className="flex items-center gap-2">
-                {envBlock ? (
-                  <EnvironmentVariablesDialog
-                    environmentType={environment.type}
-                    envBlock={envBlock}
-                  />
-                ) : null}
-                <RevokedFilter checked={showRevoked} />
-                <NewApiKeyDialog
-                  canWrite={canWriteApiKeys}
-                  availableTasks={availableTasks}
-                  presets={presets}
-                  isRbacPluginAvailable={isRbacPluginAvailable}
-                  environment={apiKeyEnvironmentLabel}
-                />
-              </div>
-            </div>
-
-            <Table>
-              <ApiKeyTableHeader />
-              <TableBody>
-                {rootApiKey ? (
-                  <TableRow className="h-[3.25rem] [&_td]:py-2">
-                    <TableCell>
-                      <div className="flex items-center gap-1.5 text-text-bright">
-                        <KeyIcon className="size-4" />
-                        {rootApiKey.name}
-                        <Badge variant="extra-small">Root</Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex w-64 items-center justify-between gap-2">
-                        <span className="font-mono text-text-dimmed">{rootApiKey.obfuscated}</span>
-                        <CopyButton value={rootApiKey.value} variant="icon" size="small" />
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <ApiKeyStatus now={loadedAt} />
-                    </TableCell>
-                    <TableCell>
-                      <ApiKeyAccess label="No restrictions" />
-                    </TableCell>
-                    <TableCell>–</TableCell>
-                    <TableCell>–</TableCell>
-                    <TableCell>–</TableCell>
-                    <TableCellMenu
-                      isSticky
-                      className="w-32"
-                      hiddenButtons={
-                        <>
-                          {canWriteApiKeys ? (
-                            <RegenerateApiKeyModal
-                              id={environment.keyEnvironmentId}
-                              title={environmentFullTitle(apiKeyEnvironmentLabel)}
-                              hasVercelIntegration={hasVercelIntegration}
-                              isDevelopment={environment.type === "DEVELOPMENT"}
-                            />
-                          ) : null}
-                          <DisableRootApiKeyButton canWrite={canWriteApiKeys} />
-                        </>
-                      }
+            {/* The dialog wraps both triggers so it stays mounted when creating the first key swaps
+                the empty state for the table: the new key is only shown once, in this dialog. */}
+            <NewApiKeyDialog
+              availableTasks={availableTasks}
+              presets={presets}
+              isRbacPluginAvailable={isRbacPluginAvailable}
+              environment={apiKeyEnvironmentLabel}
+            >
+              <div className="flex h-fit items-center justify-end gap-2 p-2">
+                <div className="flex items-center gap-2">
+                  {envBlock ? (
+                    <EnvironmentVariablesDialog
+                      environmentType={environment.type}
+                      envBlock={envBlock}
                     />
-                  </TableRow>
-                ) : null}
+                  ) : null}
+                  <RevokedFilter checked={showRevoked} />
+                  {hasApiKeys ? (
+                    <NewApiKeyButton canWrite={canWriteApiKeys} variant="primary/small" />
+                  ) : null}
+                </div>
+              </div>
 
-                {apiKeys.map((apiKey) => {
-                  const isExpired = apiKey.expiresAt
-                    ? new Date(apiKey.expiresAt).getTime() <= loadedAt
-                    : false;
-                  const cannotAuthenticate = Boolean(apiKey.revokedAt) || isExpired;
-                  const cannotRevoke = Boolean(apiKey.revokedAt) || isExpired;
-                  const creator =
-                    apiKey.createdBy?.displayName ??
-                    apiKey.createdBy?.name ??
-                    apiKey.createdBy?.email ??
-                    "–";
-
-                  return (
-                    <TableRow
-                      key={apiKey.id}
-                      disabled={cannotAuthenticate}
-                      className="h-[3.25rem] [&_td]:py-2"
-                    >
-                      <TableCell>{apiKey.name}</TableCell>
+              <Table>
+                <ApiKeyTableHeader />
+                <TableBody>
+                  {rootApiKey ? (
+                    <TableRow className="h-[3.25rem] [&_td]:py-2">
                       <TableCell>
-                        <span className="font-mono text-text-dimmed">{apiKey.obfuscated}</span>
+                        <div className="flex items-center gap-1.5 text-text-bright">
+                          <KeyIcon className="size-4" />
+                          {rootApiKey.name}
+                          <Badge variant="extra-small">Root</Badge>
+                        </div>
                       </TableCell>
                       <TableCell>
-                        <ApiKeyStatus
-                          revokedAt={apiKey.revokedAt}
-                          expiresAt={apiKey.expiresAt}
-                          now={loadedAt}
-                        />
+                        <div className="flex w-64 items-center justify-between gap-2">
+                          <span className="font-mono text-text-dimmed">
+                            {rootApiKey.obfuscated}
+                          </span>
+                          <CopyButton value={rootApiKey.value} variant="icon" size="small" />
+                        </div>
                       </TableCell>
                       <TableCell>
-                        <ApiKeyAccess
-                          label={apiKey.access.label}
-                          taskIdentifiers={apiKey.access.taskIdentifiers}
-                          usesTaskSelection={apiKey.access.usesTaskSelection}
-                        />
-                      </TableCell>
-                      <TableCell>{creator}</TableCell>
-                      <TableCell>
-                        <DateTime date={apiKey.createdAt} />
+                        <ApiKeyStatus now={loadedAt} />
                       </TableCell>
                       <TableCell>
-                        {apiKey.lastUsedAt ? <DateTime date={apiKey.lastUsedAt} /> : "Never"}
+                        <ApiKeyAccess label="No restrictions" />
                       </TableCell>
+                      <TableCell>–</TableCell>
+                      <TableCell>–</TableCell>
+                      <TableCell>–</TableCell>
                       <TableCellMenu
                         isSticky
                         className="w-32"
                         hiddenButtons={
-                          cannotRevoke ? null : (
-                            <RevokeApiKeyButton
-                              id={apiKey.id}
-                              name={apiKey.name}
-                              canWrite={canWriteApiKeys}
-                            />
-                          )
+                          <>
+                            {canWriteApiKeys ? (
+                              <RegenerateApiKeyModal
+                                id={environment.keyEnvironmentId}
+                                title={environmentFullTitle(apiKeyEnvironmentLabel)}
+                                hasVercelIntegration={hasVercelIntegration}
+                                isDevelopment={environment.type === "DEVELOPMENT"}
+                              />
+                            ) : null}
+                            <DisableRootApiKeyButton canWrite={canWriteApiKeys} />
+                          </>
                         }
                       />
                     </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                  ) : null}
+
+                  {apiKeys.map((apiKey) => {
+                    const isExpired = apiKey.expiresAt
+                      ? new Date(apiKey.expiresAt).getTime() <= loadedAt
+                      : false;
+                    const cannotAuthenticate = Boolean(apiKey.revokedAt) || isExpired;
+                    const cannotRevoke = Boolean(apiKey.revokedAt) || isExpired;
+                    const creator =
+                      apiKey.createdBy?.displayName ??
+                      apiKey.createdBy?.name ??
+                      apiKey.createdBy?.email ??
+                      "–";
+
+                    return (
+                      <TableRow
+                        key={apiKey.id}
+                        disabled={cannotAuthenticate}
+                        className="h-[3.25rem] [&_td]:py-2"
+                      >
+                        <TableCell>{apiKey.name}</TableCell>
+                        <TableCell>
+                          <span className="font-mono text-text-dimmed">{apiKey.obfuscated}</span>
+                        </TableCell>
+                        <TableCell>
+                          <ApiKeyStatus
+                            revokedAt={apiKey.revokedAt}
+                            expiresAt={apiKey.expiresAt}
+                            now={loadedAt}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <ApiKeyAccess
+                            label={apiKey.access.label}
+                            taskIdentifiers={apiKey.access.taskIdentifiers}
+                            usesTaskSelection={apiKey.access.usesTaskSelection}
+                          />
+                        </TableCell>
+                        <TableCell>{creator}</TableCell>
+                        <TableCell>
+                          <DateTime date={apiKey.createdAt} />
+                        </TableCell>
+                        <TableCell>
+                          {apiKey.lastUsedAt ? <DateTime date={apiKey.lastUsedAt} /> : "Never"}
+                        </TableCell>
+                        <TableCellMenu
+                          isSticky
+                          className="w-32"
+                          hiddenButtons={
+                            cannotRevoke ? null : (
+                              <RevokeApiKeyButton
+                                id={apiKey.id}
+                                name={apiKey.name}
+                                canWrite={canWriteApiKeys}
+                              />
+                            )
+                          }
+                        />
+                      </TableRow>
+                    );
+                  })}
+
+                  {hasApiKeys ? null : (
+                    <TableBlankRow colSpan={8}>
+                      <div className="flex flex-col items-center justify-center gap-y-4 py-8">
+                        <div className="flex flex-col items-center gap-y-1">
+                          <Header2>You don't have any API keys.</Header2>
+                          <Paragraph variant="small">
+                            Create one so your backend can authenticate with Trigger.dev.
+                          </Paragraph>
+                        </div>
+                        <NewApiKeyButton canWrite={canWriteApiKeys} variant="primary/medium" />
+                      </div>
+                    </TableBlankRow>
+                  )}
+                </TableBody>
+              </Table>
+            </NewApiKeyDialog>
           </div>
         ) : (
           <MainHorizontallyCenteredContainer className="py-6">
@@ -579,18 +604,40 @@ function RevokedFilter({ checked }: { checked: boolean }) {
   );
 }
 
-function NewApiKeyDialog({
+function NewApiKeyButton({
   canWrite,
+  variant,
+}: {
+  canWrite: boolean;
+  variant: "primary/small" | "primary/medium";
+}) {
+  return (
+    <DialogTrigger asChild>
+      <Button
+        variant={variant}
+        LeadingIcon={PlusIcon}
+        shortcut={{ key: "n" }}
+        disabled={!canWrite}
+        tooltip={canWrite ? undefined : "You don't have permission to create API keys"}
+      >
+        New API key
+      </Button>
+    </DialogTrigger>
+  );
+}
+
+function NewApiKeyDialog({
   availableTasks,
   presets,
   isRbacPluginAvailable,
   environment,
+  children,
 }: {
-  canWrite: boolean;
   availableTasks: string[];
   presets: ApiKeyPreset[] | null;
   isRbacPluginAvailable: boolean;
   environment: React.ComponentProps<typeof EnvironmentCombo>["environment"];
+  children: React.ReactNode;
 }) {
   const fetcher = useTypedFetcher<typeof action>();
   const actionData = fetcher.data as ApiKeyActionData | undefined;
@@ -647,17 +694,7 @@ function NewApiKeyDialog({
         }
       }}
     >
-      <DialogTrigger asChild>
-        <Button
-          variant="primary/small"
-          LeadingIcon={PlusIcon}
-          shortcut={{ key: "n" }}
-          disabled={!canWrite}
-          tooltip={canWrite ? undefined : "You don't have permission to create API keys"}
-        >
-          New API key
-        </Button>
-      </DialogTrigger>
+      {children}
       <DialogContent
         className={cn(
           "max-h-[80vh] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 pt-2.5",
