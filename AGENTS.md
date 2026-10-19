@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file provides guidance to Claude Code when working with this repository. Subdirectory CLAUDE.md files provide deeper context when you navigate into specific areas.
+This file provides guidance to Claude Code when working with this repository. Subdirectory AGENTS.md files provide deeper context when you navigate into specific areas.
 
 ## Build and Development Commands
 
@@ -167,11 +167,11 @@ User API call -> Webapp routes -> Services -> RunEngine -> Redis Queue -> Superv
 
 ### v3 (engine V1) removed
 
-v3 (engine V1: MarQS + Graphile worker) is end-of-life and its execution code has been removed. The `apps/webapp/app/v3/` directory name is historical - everything there now serves V2 (Run Engine 2.0, `@internal/run-engine` + redis-worker). There is no V1 execution path: a `RunEngineVersion` `V1` branch only rejects or finalizes gracefully so v3 clients get a clean 4xx, never a 5xx. Do not reintroduce V1. See `apps/webapp/CLAUDE.md` and `.claude/rules/legacy-v3-code.md`.
+v3 (engine V1: MarQS + Graphile worker) is end-of-life and its execution code has been removed. The `apps/webapp/app/v3/` directory name is historical - everything there now serves V2 (Run Engine 2.0, `@internal/run-engine` + redis-worker). There is no V1 execution path: a `RunEngineVersion` `V1` branch only rejects or finalizes gracefully so v3 clients get a clean 4xx, never a 5xx. Do not reintroduce V1. See `apps/webapp/AGENTS.md` and `.claude/rules/legacy-v3-code.md`.
 
 ### Documentation
 
-Docs live in `docs/` as a Mintlify site (MDX format). See `docs/CLAUDE.md` for conventions.
+Docs live in `docs/` as a Mintlify site (MDX format). See `docs/AGENTS.md` for conventions.
 
 ### Reference Projects
 

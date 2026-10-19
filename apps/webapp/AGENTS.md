@@ -12,7 +12,7 @@ pnpm run typecheck --filter webapp   # ~1-2 minutes
 
 Only run typecheck after major changes (new files, significant refactors, schema changes). For small edits, trust the types and let CI catch issues.
 
-Note: Public packages (`packages/*`) use `build` instead. See the root CLAUDE.md for details.
+Note: Public packages (`packages/*`) use `build` instead. See the root AGENTS.md for details.
 
 ## Testing Dashboard Changes with Chrome DevTools MCP
 

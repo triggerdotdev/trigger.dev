@@ -131,7 +131,7 @@ OBS_MAP_MUTATION_CORPUS=1 pnpm --filter @internal/observability-map exec vitest 
   export, by declaring `authorization` or by filtering on the caller's own id. All nine route
   builders authenticate the request, but their `authorization` option is optional and
   `apiBuilder.server.ts` runs the RBAC gate inside `if (authorization)`, so a route can be
-  authenticated and scoped to nobody. That is the cross-org IDOR class `apps/webapp/CLAUDE.md`
+  authenticated and scoped to nobody. That is the cross-org IDOR class `apps/webapp/AGENTS.md`
   names. It applies to 19 routes and 17 pass; both failures resolve their target organization from
   the URL slug with no membership filter and put nothing but an ability check in front of it
   (`_app.orgs.$organizationSlug.settings.sso/route.tsx` in its loader,

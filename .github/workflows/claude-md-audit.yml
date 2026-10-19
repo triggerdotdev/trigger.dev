@@ -52,14 +52,13 @@ jobs:
 
             In this repo:
             - Root shared agent guidance lives in `AGENTS.md`.
-            - Root `CLAUDE.md` is only a Claude Code adapter that imports `AGENTS.md`.
-            - Subdirectories may still have scoped `CLAUDE.md` files.
+            - Subdirectories may have scoped `AGENTS.md` files.
             - `.claude/rules/` contains additional Claude Code guidance.
 
             ## Your task
 
             1. Run `git diff origin/main...HEAD --name-only` to see which files changed in this PR.
-            2. For each changed directory, check the applicable instruction files: root `AGENTS.md`, any `CLAUDE.md` in that directory or a parent directory, and relevant `.claude/rules/` files.
+            2. For each changed directory, check the applicable instruction files: root `AGENTS.md`, any `AGENTS.md` in that directory or a parent directory, and relevant `.claude/rules/` files.
             3. Determine if any instruction file should be updated based on the changes. Consider:
                - New files/directories that aren't covered by existing documentation
                - Changed architecture or patterns that contradict current agent guidance
@@ -75,9 +74,9 @@ jobs:
             If updates ARE needed, respond with a short list:
             📝 **Agent instruction updates suggested:**
             - `AGENTS.md`: [what should be added/changed]
-            - `path/to/CLAUDE.md`: [what should be added/changed]
+            - `path/to/AGENTS.md`: [what should be added/changed]
             - `.claude/rules/file.md`: [what should be added/changed]
 
             Keep suggestions specific and brief. Only flag things that would actually mislead agents in future sessions.
             Do NOT suggest updates for trivial changes (bug fixes, small refactors within existing patterns).
-            Do NOT suggest creating new CLAUDE.md files - only updates to existing instruction files.
+            Do NOT suggest creating new AGENTS.md files - only updates to existing instruction files.
