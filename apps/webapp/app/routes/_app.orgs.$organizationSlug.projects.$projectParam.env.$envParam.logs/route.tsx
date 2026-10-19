@@ -47,6 +47,11 @@ import type { Handle } from "~/utils/handle";
 import { pageMeta } from "~/utils/pageTitle";
 import { hasLogsPageAccess } from "~/services/logsAccess.server";
 import { MIN_LOGS_SEARCH_LENGTH, normalizeLogsSearchTerm } from "~/utils/logSearch";
+import {
+  logsSearchKey as logsFilterState,
+  type LogsSearchAnalytics,
+} from "~/utils/logsSearchAnalytics";
+import { reportLogsSearchResponse, useLogsSearchAnalytics } from "~/hooks/useLogsSearchAnalytics";
 
 // Valid log levels for filtering
 const validLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"];
@@ -69,13 +74,6 @@ type LogsResourceData = {
 
 function logIdentity(log: LogEntry): string {
   return log.projectionFingerprint ?? log.id;
-}
-
-function logsFilterState(pathname: string, search: string): string {
-  const params = new URLSearchParams(search);
-  params.delete("cursor");
-  params.delete("log");
-  return `${pathname}?${params.toString()}`;
 }
 
 function formatSearchedTo(value: string): string {
@@ -188,6 +186,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 export default function Page() {
   const { data, defaultPeriod, retentionLimitDays, requestFilterState } =
     useTypedLoaderData<typeof loader>();
+  const analytics = useLogsSearchAnalytics(data, requestFilterState);
 
   return (
     <PageContainer>
@@ -248,6 +247,7 @@ export default function Page() {
                   />
                   <LogsList
                     key={requestFilterState}
+                    analytics={analytics}
                     list={result}
                     requestFilterState={requestFilterState}
                     defaultPeriod={defaultPeriod}
@@ -338,7 +338,9 @@ function FiltersBar({
 function LogsList({
   list,
   requestFilterState,
+  analytics,
 }: {
+  analytics: LogsSearchAnalytics;
   list: Exclude<Awaited<UseDataFunctionReturn<typeof loader>["data"]>, { error: string }>; //exclude error, it is handled
   requestFilterState: string;
   defaultPeriod?: string;
@@ -488,6 +490,7 @@ function LogsList({
           return;
         }
 
+        reportLogsSearchResponse(analytics, requestFilterState, data);
         setAccumulatedLogs((current) => {
           const identities = new Set(current.map(logIdentity));
           const newLogs = data.logs.filter((log) => !identities.has(logIdentity(log)));
@@ -506,6 +509,7 @@ function LogsList({
           activeFilterStateRef.current === responseFilterState &&
           activeListRef.current === list
         ) {
+          analytics.result(requestFilterState, "error");
           setContinuationError(
             error instanceof Error
               ? error.message
@@ -523,6 +527,7 @@ function LogsList({
       }
     },
     [
+      analytics,
       filterState,
       isLoading,
       list,
@@ -553,6 +558,7 @@ function LogsList({
       // oxlint-disable-next-line react/set-state-in-effect -- Exhausting the current page budget pauses automatic requests.
       setAutomaticBudgetUsed(elapsed);
       setAutomaticSearchPaused(true);
+      analytics.result(requestFilterState, "budget_exhausted");
       return;
     }
 
@@ -560,6 +566,7 @@ function LogsList({
     void loadMore(targetRowCount - accumulatedLogs.length);
   }, [
     accumulatedLogs.length,
+    analytics,
     automaticBudgetUsed,
     automaticSearchPaused,
     filterState,
@@ -592,12 +599,14 @@ function LogsList({
       if (elapsed >= AUTOMATIC_SEARCH_BUDGET_MS) {
         setAutomaticBudgetUsed(elapsed);
         setAutomaticSearchPaused(true);
+        analytics.result(requestFilterState, "budget_exhausted");
         return;
       }
       void loadMore(targetRowCount - accumulatedLogs.length);
       return;
     }
 
+    analytics.action("load_more", requestFilterState);
     const nextTarget = targetRowCount + list.pageSize;
     automaticBudgetRef.current.startedAt = Date.now();
     setAutomaticBudgetUsed(0);
@@ -605,6 +614,7 @@ function LogsList({
     void loadMore(list.pageSize);
   }, [
     accumulatedLogs.length,
+    analytics,
     automaticSearchPaused,
     filterState,
     isLoading,
@@ -628,6 +638,7 @@ function LogsList({
       return;
     }
 
+    analytics.action(continuationError ? "retry" : "continue_search", requestFilterState);
     const nextTarget =
       accumulatedLogs.length >= targetRowCount ? targetRowCount + list.pageSize : targetRowCount;
     automaticBudgetRef.current.startedAt = Date.now();
@@ -659,12 +670,13 @@ function LogsList({
 
   const handleLogSelect = useCallback(
     (logId: string) => {
+      analytics.action("open_result", requestFilterState);
       startTransition(() => {
         setSelectedLogId(logId);
       });
       updateUrlWithLog(logId);
     },
-    [updateUrlWithLog, startTransition]
+    [analytics, requestFilterState, updateUrlWithLog, startTransition]
   );
 
   const handleClosePanel = useCallback(() => {
@@ -675,6 +687,7 @@ function LogsList({
   }, [updateUrlWithLog, startTransition]);
 
   const expandSearch = () => {
+    analytics.action("expand_range", requestFilterState);
     const url = new URL(window.location.href);
     url.searchParams.set("period", searchExpansion?.nextPeriod ?? "7d");
     url.searchParams.delete("cursor");
