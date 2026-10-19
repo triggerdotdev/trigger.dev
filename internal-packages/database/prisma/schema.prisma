@@ -2364,6 +2364,8 @@ model WorkerDeployment {
 
   imageReference String?
   imagePlatform  String  @default("linux/amd64")
+  /// Key of the microVM template prebuilt from this deployment's image, set when the builder succeeds
+  templateKey    String?
 
   externalBuildData   Json?
   buildServerMetadata Json?

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MachinePresetName } from "@trigger.dev/core/v3";
 import {
   parseNaturalLanguageDurationInMs,
   webhookDeliveryRetentionClass,
@@ -29,6 +30,35 @@ const parseDeployBaseImagesEnv = (
     ctx.addIssue({ code: z.ZodIssueCode.custom, message });
   }
   return errors.length > 0 ? z.NEVER : images;
+};
+
+// Parses a CSV of machine preset names (e.g. "small-1x,small-2x") into a
+// non-empty array of MachinePresetName.
+const parseMachinePresetCsv = (raw: string, ctx: z.RefinementCtx): MachinePresetName[] => {
+  const names = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (names.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "must list at least one machine preset",
+    });
+    return z.NEVER;
+  }
+  const out: MachinePresetName[] = [];
+  for (const name of names) {
+    const parsed = MachinePresetName.safeParse(name);
+    if (!parsed.success) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `unknown machine preset: "${name}"`,
+      });
+      return z.NEVER;
+    }
+    out.push(parsed.data);
+  }
+  return out;
 };
 
 const GithubAppEnvSchema = z.preprocess(
@@ -876,6 +906,20 @@ const EnvironmentSchema = z
       .string()
       .optional()
       .transform((v) => v ?? process.env.DEPLOY_REGISTRY_ECR_DEFAULT_REPOSITORY_POLICY),
+
+    // MicroVM template builder, called at deploy finalisation to prebuild the
+    // deployment image's template. Unset URL skips it.
+    TEMPLATE_BUILDER_URL: z.string().optional(),
+    TEMPLATE_BUILDER_TOKEN: z.string().optional(),
+    // How long wait mode holds finalisation for the builder before carrying on.
+    TEMPLATE_BUILDER_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
+    // Machine presets whose shapes are sent with the template request.
+    TEMPLATE_BUILDER_MACHINE_PRESETS: z
+      .string()
+      .default("small-1x")
+      .transform(parseMachinePresetCsv),
+    // Percentage of deploys from orgs without compute that still prebuild in shadow mode.
+    TEMPLATE_BUILDER_SHADOW_ROLLOUT_PCT: z.coerce.number().min(0).max(100).default(0),
 
     DEPLOY_IMAGE_PLATFORM: z.string().default("linux/amd64"),
     DEPLOY_BASE_IMAGES: z
