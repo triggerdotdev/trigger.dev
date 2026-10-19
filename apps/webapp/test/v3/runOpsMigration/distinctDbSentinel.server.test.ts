@@ -1,6 +1,6 @@
 import { heteroPostgresTest } from "@internal/testcontainers";
 import { PrismaClient } from "@trigger.dev/database";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   probeDistinctDatabases,
   probeDistinctStores,
@@ -13,6 +13,30 @@ function urlWithDatabase(uri: string, database: string): string {
   const url = new URL(uri);
   url.pathname = `/${database}`;
   return url.toString();
+}
+
+/** Creates a database next to the test's own and drops it when the test finishes. */
+async function createScratchDatabase(containerUri: string, prefix: string): Promise<string> {
+  const name = `${prefix}_${Date.now()}`;
+  const admin = new PrismaClient({
+    datasources: { db: { url: urlWithDatabase(containerUri, "postgres") } },
+  });
+  try {
+    await admin.$executeRawUnsafe(`CREATE DATABASE "${name}"`);
+  } finally {
+    await admin.$disconnect();
+  }
+  onTestFinished(async () => {
+    const cleanup = new PrismaClient({
+      datasources: { db: { url: urlWithDatabase(containerUri, "postgres") } },
+    });
+    try {
+      await cleanup.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
+    } finally {
+      await cleanup.$disconnect();
+    }
+  });
+  return name;
 }
 
 describe("probeDistinctDatabases", () => {
@@ -38,17 +62,10 @@ describe("probeDistinctDatabases", () => {
   heteroPostgresTest(
     "reports distinct for two databases in the SAME cluster",
     async ({ postgresContainer14, uri14 }) => {
-      const otherDb = `sentinel_other_${Date.now()}`;
-      const admin = new PrismaClient({
-        datasources: {
-          db: { url: urlWithDatabase(postgresContainer14.getConnectionUri(), "postgres") },
-        },
-      });
-      try {
-        await admin.$executeRawUnsafe(`CREATE DATABASE "${otherDb}"`);
-      } finally {
-        await admin.$disconnect();
-      }
+      const otherDb = await createScratchDatabase(
+        postgresContainer14.getConnectionUri(),
+        "sentinel_other"
+      );
 
       const otherUrl = urlWithDatabase(uri14, otherDb);
       const result = await probeDistinctDatabases(uri14, otherUrl);
@@ -183,17 +200,10 @@ describe("probeDistinctStores (set uniqueness at N)", () => {
   heteroPostgresTest(
     "catches a duplicate between two SHARDS while the gen-1 pair is clean",
     async ({ postgresContainer14, uri14, uri17 }) => {
-      const shardDb = `sentinel_shard_dupe_${Date.now()}`;
-      const admin = new PrismaClient({
-        datasources: {
-          db: { url: urlWithDatabase(postgresContainer14.getConnectionUri(), "postgres") },
-        },
-      });
-      try {
-        await admin.$executeRawUnsafe(`CREATE DATABASE "${shardDb}"`);
-      } finally {
-        await admin.$disconnect();
-      }
+      const shardDb = await createScratchDatabase(
+        postgresContainer14.getConnectionUri(),
+        "sentinel_shard_dupe"
+      );
       const shardUrl = urlWithDatabase(uri14, shardDb);
 
       const result = await probeDistinctStores([
@@ -213,17 +223,10 @@ describe("probeDistinctStores (set uniqueness at N)", () => {
   heteroPostgresTest(
     "reports distinct for two databases in the SAME cluster",
     async ({ postgresContainer14, uri14, uri17 }) => {
-      const otherDb = `sentinel_set_other_${Date.now()}`;
-      const admin = new PrismaClient({
-        datasources: {
-          db: { url: urlWithDatabase(postgresContainer14.getConnectionUri(), "postgres") },
-        },
-      });
-      try {
-        await admin.$executeRawUnsafe(`CREATE DATABASE "${otherDb}"`);
-      } finally {
-        await admin.$disconnect();
-      }
+      const otherDb = await createScratchDatabase(
+        postgresContainer14.getConnectionUri(),
+        "sentinel_set_other"
+      );
 
       const result = await probeDistinctStores([
         { id: "legacy", url: uri14 },

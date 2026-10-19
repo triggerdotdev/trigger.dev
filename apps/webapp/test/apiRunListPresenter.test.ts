@@ -46,7 +46,7 @@ vi.mock("~/db.server", async () => {
 });
 
 import { ClickHouse } from "@internal/clickhouse";
-import { containerTest } from "@internal/testcontainers";
+import { containerTestWithClickhouse } from "@internal/testcontainers";
 import { CURRENT_API_VERSION } from "~/api/versions";
 import { ApiRunListPresenter } from "~/presenters/v3/ApiRunListPresenter.server";
 import {
@@ -71,7 +71,7 @@ function setupClients(prisma: unknown, clickhouseUrl: string): ClickHouse {
 }
 
 describe("ApiRunListPresenter public /runs list", () => {
-  containerTest(
+  containerTestWithClickhouse(
     "genuinely-empty env returns { data: [], pagination } without error",
     async ({ clickhouseContainer, prisma }) => {
       setupClients(prisma, clickhouseContainer.getConnectionUrl());
@@ -97,7 +97,7 @@ describe("ApiRunListPresenter public /runs list", () => {
     }
   );
 
-  containerTest(
+  containerTestWithClickhouse(
     "env scoping resolves via the control-plane _replica handle (filter[env], 4th arg omitted)",
     async ({ clickhouseContainer, prisma }) => {
       const clickhouse = setupClients(prisma, clickhouseContainer.getConnectionUrl());
@@ -128,7 +128,7 @@ describe("ApiRunListPresenter public /runs list", () => {
     }
   );
 
-  containerTest(
+  containerTestWithClickhouse(
     "single-DB passthrough: no readThroughDeps lists the seeded runs unchanged",
     async ({ clickhouseContainer, prisma }) => {
       const clickhouse = setupClients(prisma, clickhouseContainer.getConnectionUrl());

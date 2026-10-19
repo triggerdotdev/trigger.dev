@@ -24,9 +24,11 @@ import type {
   CanceledRunResponse,
   CreateBulkActionResponseBody,
   CursorPagePromise,
+  IdempotencyKey,
   ListRunResponseItem,
   ReplayRunResponse,
   RetrieveRunResponse,
+  TriggerOptions,
 } from "@trigger.dev/core/v3";
 import {
   accessoryAttributes,
@@ -232,11 +234,61 @@ async function resolvePayloadAndOutputUrls(run: AnyRetrieveRunResult) {
   return resolvedRun;
 }
 
+export type ReplayRunOptions = Pick<
+  TriggerOptions,
+  | "metadata"
+  | "tags"
+  | "queue"
+  | "concurrencyKey"
+  | "machine"
+  | "version"
+  | "region"
+  | "delay"
+  | "ttl"
+  | "idempotencyKeyTTL"
+  | "maxAttempts"
+  | "maxDuration"
+  | "priority"
+> & {
+  /**
+   * The payload for the new run. Omit it to reuse the original run's payload.
+   */
+  payload?: unknown;
+  /**
+   * An idempotency key for the new run. A plain string is used as-is: unlike `trigger()`, it is
+   * not scoped to the current run. Use `idempotencyKeys.create()` for a scoped key.
+   */
+  idempotencyKey?: IdempotencyKey | string;
+};
+
+/**
+ * Replays a run: creates a new run of the same task from the original run's payload and options.
+ * Pass `options` to override any of them for the new run.
+ *
+ * @example
+ * ```ts
+ * const { id } = await runs.replay("run_1234", { payload: { userId: "123" }, delay: "1h" });
+ * ```
+ */
+function replayRun(
+  runId: string,
+  options?: ReplayRunOptions,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<ReplayRunResponse>;
 function replayRun(
   runId: string,
   requestOptions?: ApiRequestOptions
+): ApiPromise<ReplayRunResponse>;
+function replayRun(
+  runId: string,
+  optionsOrRequestOptions?: ReplayRunOptions | ApiRequestOptions,
+  requestOptions?: ApiRequestOptions
 ): ApiPromise<ReplayRunResponse> {
   const apiClient = apiClientManager.clientOrThrow();
+
+  const options = isRequestOptions(optionsOrRequestOptions)
+    ? undefined
+    : (optionsOrRequestOptions as ReplayRunOptions | undefined);
 
   const $requestOptions = mergeRequestOptions(
     {
@@ -256,10 +308,10 @@ function replayRun(
         }),
       },
     },
-    requestOptions
+    isRequestOptions(optionsOrRequestOptions) ? optionsOrRequestOptions : requestOptions
   );
 
-  return apiClient.replayRun(runId, $requestOptions);
+  return apiClient.replayRun(runId, options, $requestOptions);
 }
 
 function cancelRun(

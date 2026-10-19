@@ -1,4 +1,5 @@
-import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
+import type { RedisClient } from "@internal/redis";
+import { createFairQueueRedisClient, type FairQueueRedisOptions } from "../connection.js";
 import { BaseScheduler } from "../scheduler.js";
 import type {
   FairQueueKeyProducer,
@@ -8,7 +9,7 @@ import type {
 } from "../types.js";
 
 interface RoundRobinSchedulerConfig {
-  redis: RedisOptions;
+  redis: FairQueueRedisOptions;
   keys: FairQueueKeyProducer;
   /** Maximum queues to fetch from master queue per iteration */
   masterQueueLimit?: number;
@@ -26,13 +27,13 @@ interface RoundRobinSchedulerConfig {
  * - No weighting or bias
  */
 export class RoundRobinScheduler extends BaseScheduler {
-  private redis: Redis;
+  private redis: RedisClient;
   private keys: FairQueueKeyProducer;
   private masterQueueLimit: number;
 
   constructor(private config: RoundRobinSchedulerConfig) {
     super();
-    this.redis = createRedisClient(config.redis);
+    this.redis = createFairQueueRedisClient(config.redis);
     this.keys = config.keys;
     this.masterQueueLimit = config.masterQueueLimit ?? 1000;
   }

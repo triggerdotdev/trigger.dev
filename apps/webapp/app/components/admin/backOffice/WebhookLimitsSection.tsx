@@ -1,6 +1,8 @@
 import { Form } from "@remix-run/react";
+import { WEBHOOK_LIMITS_INTENT } from "./WebhookLimitsForm";
 import { useEffect, useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
+import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { FormError } from "~/components/primitives/FormError";
 import { Header2 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
@@ -10,12 +12,22 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
 import type { WebhookLimits, WebhookLimitsConfig } from "~/v3/webhookLimits";
 
-export const WEBHOOK_LIMITS_INTENT = "set-webhook-limits";
 export const WEBHOOK_LIMITS_SAVED_VALUE = "webhook-limits";
 
 type FieldErrors = Record<string, string[] | undefined> | null;
 
-const FIELDS: Array<{ key: keyof WebhookLimits; label: string; hint: string }> = [
+type NumericLimit =
+  | "maxWaitersPerEnvironment"
+  | "maxWaitersPerEndpoint"
+  | "concurrency"
+  | "deliveryRetentionDays"
+  | "endpointRateLimitTokens"
+  | "endpointRateLimitWindowSeconds"
+  | "environmentRateLimitTokens"
+  | "environmentRateLimitWindowSeconds"
+  | "queuedPayloadBytes";
+
+const FIELDS: Array<{ key: NumericLimit; label: string; hint: string }> = [
   {
     key: "maxWaitersPerEnvironment",
     label: "Waiters per environment",
@@ -30,6 +42,36 @@ const FIELDS: Array<{ key: keyof WebhookLimits; label: string; hint: string }> =
     key: "concurrency",
     label: "Processing concurrency",
     hint: "Webhook jobs one environment can have in flight at once.",
+  },
+  {
+    key: "deliveryRetentionDays",
+    label: "Delivery retention (days)",
+    hint: "Days of deliveries the org can see, 1 to 365. Older ones are hidden right away.",
+  },
+  {
+    key: "endpointRateLimitTokens",
+    label: "Endpoint rate limit (requests)",
+    hint: "Requests one endpoint accepts per window. More get 429 with Retry-After.",
+  },
+  {
+    key: "endpointRateLimitWindowSeconds",
+    label: "Endpoint rate limit window (seconds)",
+    hint: "The window the endpoint rate limit counts over, 1 to 3600 seconds.",
+  },
+  {
+    key: "environmentRateLimitTokens",
+    label: "Environment rate limit (tokens)",
+    hint: "Tokens all of an environment's endpoints accept per window. A request costs one per started 64 KiB of body. More get 429 with Retry-After.",
+  },
+  {
+    key: "environmentRateLimitWindowSeconds",
+    label: "Environment rate limit window (seconds)",
+    hint: "The window the environment rate limit counts over, 1 to 3600 seconds.",
+  },
+  {
+    key: "queuedPayloadBytes",
+    label: "Queued payload limit (bytes)",
+    hint: "Payload bytes one environment may have waiting to be delivered. Past it, ingest answers 503 with Retry-After. 1073741824 is 1 GiB.",
   },
 ];
 
@@ -103,6 +145,17 @@ export function WebhookLimitsSection({
               </Property.Value>
             </Property.Item>
           ))}
+          <Property.Item>
+            <Property.Label>Delivery storage</Property.Label>
+            <Property.Value>
+              {limits.deliveryStorageDays.toLocaleString()} days
+              <span className="text-text-dimmed">
+                {limits.deliveryRetentionStrict
+                  ? " (deleted at retention)"
+                  : " (hidden after retention)"}
+              </span>
+            </Property.Value>
+          </Property.Item>
         </Property.Table>
       ) : (
         <Form method="post" className="flex flex-col gap-3 pt-2">
@@ -121,6 +174,20 @@ export function WebhookLimitsSection({
               <FormError>{fieldError(field.key)}</FormError>
             </div>
           ))}
+          <div className="flex flex-col gap-1">
+            <CheckboxWithLabel
+              name="deliveryRetentionStrict"
+              value="on"
+              variant="simple/small"
+              label="Delete deliveries at the retention"
+              defaultChecked={overrides.deliveryRetentionStrict === true}
+            />
+            <Hint>
+              Off: deliveries are stored for at least 30 days and hidden after the retention, so an
+              upgrade shows older history. On: they are stored only for the retention (rounded up to
+              3, 7, 30, 90, 180 or 365 days). Applies to new deliveries.
+            </Hint>
+          </div>
           <div className="flex items-center gap-2">
             <Button type="submit" variant="primary/medium" disabled={isSubmitting}>
               Save

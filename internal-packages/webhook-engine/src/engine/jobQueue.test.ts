@@ -1,9 +1,9 @@
-import { containerTestWithIsolatedRedisNoClickhouse } from "@internal/testcontainers";
+import { containerTestWithIsolatedRedis } from "@internal/testcontainers";
 import { Logger } from "@trigger.dev/core/logger";
 import { expect } from "vitest";
 import { WebhookJobQueue } from "./jobQueue.js";
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "a job that runs past its lease keeps it, so it is not reclaimed and run twice",
   async ({ redisOptions }) => {
     const calls: number[] = [];
@@ -53,7 +53,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   30_000
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "a consumer whose lease was reclaimed can't settle the attempt that took it over",
   async ({ redisOptions }) => {
     let calls = 0;
@@ -106,7 +106,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   40_000
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "while a run still holds the job, a reclaim of its lapsed lease doesn't start a run alongside it",
   async ({ redisOptions }) => {
     let calls = 0;
@@ -163,7 +163,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   40_000
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "an exhausted handler that fails is retried from a job of its own until it lands",
   async ({ redisOptions }) => {
     const exhausted: Array<{ deliveryId: string; error: string }> = [];
@@ -173,6 +173,7 @@ containerTestWithIsolatedRedisNoClickhouse(
       consumers: 1,
       tenantConcurrency: 1,
       consumerIntervalMs: 20,
+      retryBaseDelayMs: 20,
       exhaustedRecordDelayMs: 200,
       handlers: {
         deliver: async () => {
@@ -215,7 +216,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   90_000
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "a job whose exhausted record can't be queued is kept, and its reclaimed attempt hands it off",
   async ({ redisOptions }) => {
     let delivers = 0;
@@ -230,6 +231,7 @@ containerTestWithIsolatedRedisNoClickhouse(
       reclaimIntervalMs: 100,
       ownerTtlMs: 900,
       exhaustedRecordDelayMs: 100,
+      retryBaseDelayMs: 20,
       handlers: {
         deliver: async () => {
           delivers++;

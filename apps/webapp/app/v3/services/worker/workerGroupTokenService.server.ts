@@ -21,8 +21,13 @@ import {
   type WeightedWorkerQueueSubscription,
   type WorkerQueueClass,
 } from "@trigger.dev/core/v3/workers";
-import type { RuntimeEnvironment, WorkerInstanceGroup } from "@trigger.dev/database";
-import { Prisma, WorkerInstanceGroupType } from "@trigger.dev/database";
+import {
+  Prisma,
+  type RuntimeEnvironment,
+  type WorkerInstanceGroup,
+  type WorkerInstanceGroupType,
+} from "@trigger.dev/database";
+import { acceptsWorkerStamp } from "./workerGroupAccess";
 import { json } from "@remix-run/server-runtime";
 import { createHash, timingSafeEqual } from "crypto";
 import { customAlphabet } from "nanoid";
@@ -261,7 +266,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
         return new AuthenticatedWorkerInstance({
           prisma: this._prisma,
           engine: this._engine,
-          type: WorkerInstanceGroupType.MANAGED,
+          type: workerGroup.type,
           name: workerGroup.name,
           workerGroupId: workerGroup.id,
           workerInstanceId: workerInstance.id,
@@ -515,12 +520,16 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     runFriendlyId,
     snapshotFriendlyId,
     isWarmStart,
+    workerCell,
+    workerLane,
     runnerId,
     environmentId,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
     isWarmStart?: boolean;
+    workerCell?: string;
+    workerLane?: string;
     runnerId?: string;
     environmentId?: string;
   }): Promise<
@@ -534,10 +543,14 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       action: "start",
     });
 
+    const stamped = acceptsWorkerStamp(this.type);
+
     const engineResult = await this._engine.startRunAttempt({
       runId: fromFriendlyId(runFriendlyId),
       snapshotId: fromFriendlyId(snapshotFriendlyId),
       isWarmStart,
+      workerCell: stamped ? workerCell : undefined,
+      workerLane: stamped ? workerLane : undefined,
       workerId: this.workerInstanceId,
       runnerId,
       environmentId,
@@ -584,12 +597,14 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     runFriendlyId,
     snapshotFriendlyId,
     completion,
+    forceRequeue,
     runnerId,
     environmentId,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
     completion: TaskRunExecutionResult;
+    forceRequeue?: boolean;
     runnerId?: string;
     environmentId?: string;
   }): Promise<CompleteRunAttemptResult> {
@@ -603,6 +618,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       runId: fromFriendlyId(runFriendlyId),
       snapshotId: fromFriendlyId(snapshotFriendlyId),
       completion,
+      forceRequeue,
       workerId: this.workerInstanceId,
       runnerId,
       environmentId,
@@ -723,7 +739,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
 
   toJSON(): WorkerGroupTokenAuthenticationResponse {
     return {
-      type: WorkerInstanceGroupType.MANAGED,
+      type: this.type,
       name: this.name,
       workerGroupId: this.workerGroupId,
       workerInstanceId: this.workerInstanceId,
@@ -775,20 +791,10 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
   }
 }
 
-export type WorkerGroupTokenAuthenticationResponse =
-  | {
-      type: typeof WorkerInstanceGroupType.MANAGED;
-      name: string;
-      workerGroupId: string;
-      workerInstanceId: string;
-      masterQueue: string;
-    }
-  | {
-      type: typeof WorkerInstanceGroupType.UNMANAGED;
-      name: string;
-      workerGroupId: string;
-      workerInstanceId: string;
-      masterQueue: string;
-      environmentId: string;
-      deploymentId: string;
-    };
+export type WorkerGroupTokenAuthenticationResponse = {
+  type: WorkerInstanceGroupType;
+  name: string;
+  workerGroupId: string;
+  workerInstanceId: string;
+  masterQueue: string;
+};

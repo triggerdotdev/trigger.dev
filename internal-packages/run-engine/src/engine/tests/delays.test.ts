@@ -415,6 +415,7 @@ describe("RunEngine delays", () => {
       //attempt to dequeue - should get nothing
       await setTimeout(500);
       const dequeued = await engine.dequeueFromWorkerQueue({
+        blockingPopTimeoutSeconds: 1,
         consumerId: "test_12345",
         workerQueue: "main",
       });

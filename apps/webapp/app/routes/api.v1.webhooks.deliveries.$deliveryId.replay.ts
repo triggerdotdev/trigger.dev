@@ -81,6 +81,11 @@ const { action, loader } = createActionApiRoute(
           { error: `The endpoint has no subscriber "${searchParams.targetId}".` },
           { status: 404 }
         );
+      case "queue_full":
+        return json(
+          { error: "This environment has too many webhook deliveries waiting. Try again later." },
+          { status: 503, headers: { "Retry-After": "60" } }
+        );
     }
   }
 );

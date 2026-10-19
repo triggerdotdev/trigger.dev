@@ -205,6 +205,12 @@
       "rules": {
         "react/jsx-no-constructed-context-values": "off"
       }
+    },
+    {
+      "files": ["docs/snippets/**/*.jsx"],
+      "rules": {
+        "react/jsx-no-undef": "off"
+      }
     }
   ]
 }

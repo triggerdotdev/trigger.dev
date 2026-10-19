@@ -24,8 +24,15 @@ type FakeRow = {
 
 const silentLogger = { info: () => {}, warn: () => {}, error: () => {} };
 
+// Same shape as `InsertError`: short message, full server text on a non-enumerable `rawMessage`.
+function insertErrorFromServerText(serverText: string, type = "INCORRECT_DATA") {
+  const error = new Error(`ClickHouse insert failed: ${type}`);
+  Object.defineProperty(error, "rawMessage", { value: serverText, enumerable: false });
+  return Object.assign(error, { clickhouseErrorType: type });
+}
+
 function parseErrorAtRow(oneBasedRow: number) {
-  return new Error(
+  return insertErrorFromServerText(
     `Cannot parse JSON object here: {...}: (at row ${oneBasedRow})\n: While executing ParallelParsingBlockInputFormat.`
   );
 }
@@ -71,6 +78,14 @@ describe("isClickHouseJsonParseError", () => {
     const err = new Error(
       "Cannot parse JSON object here: {...}: (while reading the value of key attributes): (at row 15)\n: While executing ParallelParsingBlockInputFormat. "
     );
+    expect(isClickHouseJsonParseError(err)).toBe(true);
+  });
+
+  it("recognises an insert error whose message only carries the error type", () => {
+    const err = insertErrorFromServerText(
+      'Cannot parse JSON object here: {"secret":"customer-payload"}: (at row 3)'
+    );
+    expect(err.message).not.toContain("customer-payload");
     expect(isClickHouseJsonParseError(err)).toBe(true);
   });
 
@@ -982,5 +997,86 @@ describe("insertWithBadRowSkip", () => {
     });
 
     expect(levels).toEqual(["warn"]);
+  });
+});
+
+describe("recovery logs", () => {
+  type LoggedRow = { runId: string; output: string; poison?: boolean };
+  const SECRET = "customer-secret-output";
+
+  function recordingLogger() {
+    const entries: Array<{ level: string; message: string; meta?: Record<string, unknown> }> = [];
+    const at = (level: string) => (message: string, meta?: Record<string, unknown>) =>
+      entries.push({ level, message, meta });
+    return { entries, logger: { info: at("info"), warn: at("warn"), error: at("error") } };
+  }
+
+  function parseErrorQuoting(row: LoggedRow, oneBasedRow: number) {
+    return insertErrorFromServerText(
+      `Cannot parse JSON object here: {"output":"${row.output}"}: (at row ${oneBasedRow})`
+    );
+  }
+
+  function largeBatch(poisonIndex: number): LoggedRow[] {
+    return Array.from({ length: 200 }, (_, i) => ({
+      runId: `run_${i}`,
+      output: i === poisonIndex ? SECRET : "fine",
+      poison: i === poisonIndex,
+    }));
+  }
+
+  it("logs the exact run IDs of stripped rows, even when the first error's row hint is chunk-relative", async () => {
+    const { entries, logger } = recordingLogger();
+    // Parallel parsing: the first insert reports a row relative to its chunk, not the batch.
+    const insert = async (batch: LoggedRow[]) => {
+      const index = batch.findIndex((r) => r.poison);
+      if (index >= 0) throw parseErrorQuoting(batch[index], (index % 64) + 1);
+    };
+    const insertSync = async (batch: LoggedRow[]) => {
+      const index = batch.findIndex((r) => r.poison);
+      if (index >= 0) throw parseErrorQuoting(batch[index], index + 1);
+    };
+
+    await insertWithLimitedStrip({
+      rows: largeBatch(150),
+      contextLabel: "test",
+      logger,
+      rowId: (row) => row.runId,
+      insert,
+      insertSync,
+      insertAllowingBadRows: async () => ({ summary: { written_rows: "199" } }),
+      stripJsonColumns: (row) => ({ ...row, output: "", poison: false }),
+    });
+
+    const stripped = entries.find((e) => e.message.startsWith("Stripped un-ingestable rows"));
+    expect(stripped?.meta).toMatchObject({
+      clickhouseErrorType: "INCORRECT_DATA",
+      strippedRunIds: ["run_150"],
+    });
+    expect(JSON.stringify(entries)).not.toContain(SECRET);
+  });
+
+  it("logs a dropped batch at error level with only the error type", async () => {
+    const { entries, logger } = recordingLogger();
+    const insert = async (batch: LoggedRow[]) => {
+      const index = batch.findIndex((r) => r.poison);
+      if (index >= 0) throw parseErrorQuoting(batch[index], index + 1);
+    };
+
+    await insertWithBadRowSkip({
+      rows: largeBatch(2),
+      contextLabel: "test",
+      logger,
+      insert,
+      insertAllowingBadRows: insert,
+    });
+
+    const dropped = entries.find((e) => e.level === "error");
+    expect(dropped?.meta).toMatchObject({
+      clickhouseErrorType: "INCORRECT_DATA",
+      skipInsertErrorType: "INCORRECT_DATA",
+    });
+    expect(dropped?.meta).not.toHaveProperty("runId");
+    expect(JSON.stringify(entries)).not.toContain(SECRET);
   });
 });

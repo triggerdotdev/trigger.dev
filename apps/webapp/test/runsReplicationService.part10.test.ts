@@ -1,5 +1,6 @@
 import { ClickHouse } from "@internal/clickhouse";
 import { replicationContainerTest } from "@internal/testcontainers";
+import { Logger } from "@trigger.dev/core/logger";
 import { z } from "zod";
 import { RunsReplicationService } from "~/services/runsReplicationService.server";
 import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickhouseFactory";
@@ -15,11 +16,36 @@ function deeplyNested(depth: number): Record<string, unknown> {
   return node;
 }
 
+type LogEntry = { level: string; message: string; meta: Record<string, any> };
+
+class RecordingLogger extends Logger {
+  readonly entries: LogEntry[] = [];
+
+  constructor() {
+    super("RunsReplicationService", "warn");
+  }
+
+  #record(level: string, message: string, args: Array<Record<string, unknown> | undefined>) {
+    this.entries.push({ level, message, meta: Object.assign({}, ...args) });
+  }
+
+  error(message: string, ...args: Array<Record<string, unknown> | undefined>) {
+    this.#record("error", message, args);
+  }
+  warn(message: string, ...args: Array<Record<string, unknown> | undefined>) {
+    this.#record("warn", message, args);
+  }
+  info(message: string, ...args: Array<Record<string, unknown> | undefined>) {
+    this.#record("info", message, args);
+  }
+}
+
 function createService(
   clickhouse: ClickHouse,
   postgresUrl: string,
   redisOptions: any,
-  flushIntervalMs = 500
+  flushIntervalMs = 500,
+  logger?: Logger
 ) {
   const { tracer } = createInMemoryTracing();
   return new RunsReplicationService({
@@ -37,6 +63,7 @@ function createService(
     ackIntervalSeconds: 5,
     tracer,
     logLevel: "warn",
+    logger,
   });
 }
 
@@ -99,10 +126,13 @@ describe("RunsReplicationService (part 10/10) — JSON parse recovery", () => {
         logLevel: "warn",
       });
 
+      const logger = new RecordingLogger();
       const runsReplicationService = createService(
         clickhouse,
         postgresContainer.getConnectionUri(),
-        redisOptions
+        redisOptions,
+        500,
+        logger
       );
       await runsReplicationService.start();
 
@@ -152,6 +182,77 @@ describe("RunsReplicationService (part 10/10) — JSON parse recovery", () => {
       expect(runsReplicationService.rowIsolationRecoveries).toBeGreaterThanOrEqual(1);
       expect(runsReplicationService.rowsStripped).toBeGreaterThanOrEqual(1);
 
+      const recoveryLogs = logger.entries.filter((e) => e.meta.contextLabel === "task_runs_v2");
+      expect(recoveryLogs.some((e) => e.meta.strippedRunIds?.toString() === poisonRunId)).toBe(
+        true
+      );
+      expect(JSON.stringify(logger.entries)).not.toContain('"k0"');
+      expect(logger.entries.filter((e) => e.level === "error")).toEqual([]);
+
+      await runsReplicationService.stop();
+    }
+  );
+
+  replicationContainerTest(
+    "logs unparseable payloads and outputs by run ID without their content",
+    async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
+      await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
+
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        name: "runs-replication",
+        compression: { request: true },
+        logLevel: "warn",
+      });
+
+      const logger = new RecordingLogger();
+      const runsReplicationService = createService(
+        clickhouse,
+        postgresContainer.getConnectionUri(),
+        redisOptions,
+        500,
+        logger
+      );
+      await runsReplicationService.start();
+
+      const ctx = await setupProject(prisma);
+      const run = await prisma.taskRun.create({
+        data: {
+          friendlyId: "run_badpacket",
+          taskIdentifier: "my-task",
+          payload: '{"secret":"customer-secret-payload \\ud800"}',
+          payloadType: "application/json",
+          output: '{"secret":"customer-secret-output"',
+          outputType: "application/json",
+          traceId: "trace_badpacket",
+          spanId: "span_badpacket",
+          queue: "test",
+          status: "COMPLETED_SUCCESSFULLY",
+          runtimeEnvironmentId: ctx.runtimeEnvironment.id,
+          projectId: ctx.project.id,
+          organizationId: ctx.organization.id,
+          environmentType: "DEVELOPMENT",
+          engine: "V2",
+        },
+      });
+
+      await vi.waitFor(
+        () => {
+          const messages = logger.entries.map((e) => e.message);
+          expect(messages).toContain("Detected bad JSON strings");
+          expect(messages).toContain("Error parsing packet");
+        },
+        { timeout: 30_000, interval: 250 }
+      );
+
+      const badStrings = logger.entries.find((e) => e.message === "Detected bad JSON strings");
+      expect(badStrings?.meta).toMatchObject({ runId: run.id, dataType: "application/json" });
+
+      const parseFailure = logger.entries.find((e) => e.message === "Error parsing packet");
+      expect(parseFailure?.meta).toMatchObject({ runId: run.id, errorName: "SyntaxError" });
+
+      expect(JSON.stringify(logger.entries)).not.toContain("customer-secret");
+
       await runsReplicationService.stop();
     }
   );
@@ -168,11 +269,13 @@ describe("RunsReplicationService (part 10/10) — JSON parse recovery", () => {
         logLevel: "warn",
       });
 
+      const logger = new RecordingLogger();
       const runsReplicationService = createService(
         clickhouse,
         postgresContainer.getConnectionUri(),
         redisOptions,
-        3000
+        3000,
+        logger
       );
       await runsReplicationService.start();
 
@@ -223,6 +326,12 @@ describe("RunsReplicationService (part 10/10) — JSON parse recovery", () => {
       expect(runsReplicationService.rowsStripped).toBeGreaterThanOrEqual(1);
       expect(runsReplicationService.recoveryCapHits).toBeGreaterThanOrEqual(1);
       expect(runsReplicationService.permanentlyDroppedRows).toBeGreaterThanOrEqual(1);
+
+      // The stripped row is the one that landed with its output emptied.
+      const landed = logger.entries.find((e) =>
+        e.message.startsWith("Landed the batch via allow_errors")
+      );
+      expect(landed?.meta.strippedRunIds).toEqual([landedPoison[0]]);
 
       await runsReplicationService.stop();
     }

@@ -32,12 +32,16 @@ import {
   type ListQueueOptions,
   type ListConcurrencyLimitOptions,
   ConcurrencyLimitItem,
-  type OverrideConcurrencyLimitRequestBody,
+  ConcurrencyLimitKeyItem,
+  type OverrideConcurrencyLimitBoundsBody,
+  type OverrideConcurrencyLimitKeyBody,
+  type ResetConcurrencyLimitRequestBody,
   type ListScheduleOptions,
   type ListSessionsOptions,
   type PromotePromptVersionRequestBody,
   type QueueTypeName,
   type ReactivatePromptOverrideRequestBody,
+  ReplayRunRequestBody,
   type RescheduleRunRequestBody,
   type ResolvePromptRequestBody,
   type RetrieveQueueParam,
@@ -71,6 +75,14 @@ import {
   EnvironmentVariableResponseBody,
   EnvironmentVariableWithSecret,
   ListDashboardsResponseBody,
+  AddDashboardWidgetResponseBody,
+  type AddDashboardWidgetRequestBody,
+  type CreateDashboardRequestBody,
+  DashboardObject,
+  DeleteDashboardResponseBody,
+  type ReplaceDashboardRequestBody,
+  type UpdateDashboardRequestBody,
+  type UpdateDashboardWidgetRequestBody,
   ListPromptVersionsResponseBody,
   ListPromptsResponseBody,
   ListRunResponseItem,
@@ -91,6 +103,7 @@ import {
   RetrieveCurrentDeploymentResponseBody,
   RetrieveRunResponse,
   RetrieveRunTraceResponseBody,
+  RetrieveRunTracePageResponseBody,
   RetrieveSessionResponseBody,
   RetrieveSpanDetailResponseBody,
   ScheduleObject,
@@ -109,6 +122,7 @@ import type { AsyncIterableStream } from "../streams/asyncIterableStream.js";
 import { taskContext } from "../task-context-api.js";
 import type { AnyRunTypes, TriggerJwtOptions } from "../types/tasks.js";
 import type { Prettify } from "../types/utils.js";
+import superjson from "../imports/superjson.js";
 import { getEnvVar } from "../utils/getEnv.js";
 import { calculateNextRetryDelay } from "../utils/retries.js";
 import {
@@ -801,6 +815,32 @@ export class ApiClient {
     );
   }
 
+  /**
+   * Retrieves one page of a root run's trace as flat spans. Omit `after` for the first
+   * page, then pass back `pagination.next` until it's missing. Use `assembleRunTracePages`
+   * to rebuild the tree. Spans are lean: fetch a span's events and properties with
+   * `retrieveSpan`.
+   */
+  retrieveRunTracePage(
+    runId: string,
+    options?: { limit?: number; after?: string },
+    requestOptions?: ZodFetchOptions
+  ) {
+    const query = new URLSearchParams();
+    query.set("page[size]", String(options?.limit ?? 10_000));
+    if (options?.after !== undefined) query.set("page[after]", options.after);
+
+    return zodfetch(
+      RetrieveRunTracePageResponseBody,
+      `${this.baseUrl}/api/v1/runs/${encodeURIComponent(runId)}/trace?${query.toString()}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
   retrieveSpan(runId: string, spanId: string, requestOptions?: ZodFetchOptions) {
     return zodfetch(
       RetrieveSpanDetailResponseBody,
@@ -867,15 +907,34 @@ export class ApiClient {
     );
   }
 
-  replayRun(runId: string, requestOptions?: ZodFetchOptions) {
+  replayRun(runId: string, requestOptions?: ZodFetchOptions): ApiPromise<ReplayRunResponse>;
+  replayRun(
+    runId: string,
+    body?: ReplayRunRequestBody,
+    requestOptions?: ZodFetchOptions
+  ): ApiPromise<ReplayRunResponse>;
+  replayRun(
+    runId: string,
+    bodyOrRequestOptions?: ReplayRunRequestBody | ZodFetchOptions,
+    requestOptions?: ZodFetchOptions
+  ): ApiPromise<ReplayRunResponse> {
+    const isBody =
+      bodyOrRequestOptions !== undefined &&
+      Object.keys(bodyOrRequestOptions).every((key) => key in ReplayRunRequestBody.shape);
+    const body = isBody ? (bodyOrRequestOptions as ReplayRunRequestBody) : undefined;
+    const $requestOptions = isBody
+      ? requestOptions
+      : ((bodyOrRequestOptions as ZodFetchOptions | undefined) ?? requestOptions);
+
     return zodfetch(
       ReplayRunResponse,
       `${this.baseUrl}/api/v1/runs/${runId}/replay`,
       {
         method: "POST",
         headers: this.#getHeaders(false),
+        body: body ? JSON.stringify(withSuperJsonPayload(body)) : undefined,
       },
-      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+      mergeRequestOptions(this.defaultRequestOptions, $requestOptions)
     );
   }
 
@@ -1800,13 +1859,47 @@ export class ApiClient {
     );
   }
 
+  retrieveConcurrencyLimitKey(
+    name: string,
+    concurrencyKey: string,
+    requestOptions?: ZodFetchOptions
+  ) {
+    const query = new URLSearchParams({ concurrencyKey });
+    return zodfetch(
+      ConcurrencyLimitKeyItem,
+      `${this.baseUrl}/api/v1/concurrency-limits/${encodeURIComponent(name)}?${query.toString()}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
   overrideConcurrencyLimit(
     name: string,
-    override: OverrideConcurrencyLimitRequestBody,
+    override: OverrideConcurrencyLimitBoundsBody,
     requestOptions?: ZodFetchOptions
   ) {
     return zodfetch(
       ConcurrencyLimitItem,
+      `${this.baseUrl}/api/v1/concurrency-limits/${encodeURIComponent(name)}/override`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(override),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  overrideConcurrencyLimitKey(
+    name: string,
+    override: OverrideConcurrencyLimitKeyBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      ConcurrencyLimitKeyItem,
       `${this.baseUrl}/api/v1/concurrency-limits/${encodeURIComponent(name)}/override`,
       {
         method: "POST",
@@ -1849,6 +1942,23 @@ export class ApiClient {
     );
   }
 
+  resetConcurrencyLimitKey(
+    name: string,
+    body: ResetConcurrencyLimitRequestBody & { concurrencyKey: string },
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      ConcurrencyLimitKeyItem,
+      `${this.baseUrl}/api/v1/concurrency-limits/${encodeURIComponent(name)}/reset`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
   subscribeToRun<TRunTypes extends AnyRunTypes>(
     runId: string,
     options?: {
@@ -1856,6 +1966,7 @@ export class ApiClient {
       closeOnComplete?: boolean;
       onFetchError?: (error: Error) => void;
       skipColumns?: string[];
+      fetchClient?: typeof fetch;
     }
   ) {
     const queryParams = new URLSearchParams();
@@ -1874,6 +1985,7 @@ export class ApiClient {
         client: this,
         signal: options?.signal,
         onFetchError: options?.onFetchError,
+        fetchClient: options?.fetchClient,
       }
     );
   }
@@ -1881,7 +1993,11 @@ export class ApiClient {
   subscribeToRunsWithTag<TRunTypes extends AnyRunTypes>(
     tag: string | string[],
     filters?: { createdAt?: string; skipColumns?: string[] },
-    options?: { signal?: AbortSignal; onFetchError?: (error: Error) => void }
+    options?: {
+      signal?: AbortSignal;
+      onFetchError?: (error: Error) => void;
+      fetchClient?: typeof fetch;
+    }
   ) {
     const searchParams = createSearchQueryForSubscribeToRuns({
       tags: tag,
@@ -1898,6 +2014,7 @@ export class ApiClient {
         client: this,
         signal: options?.signal,
         onFetchError: options?.onFetchError,
+        fetchClient: options?.fetchClient,
       }
     );
   }
@@ -1908,6 +2025,7 @@ export class ApiClient {
       signal?: AbortSignal;
       onFetchError?: (error: Error) => void;
       skipColumns?: string[];
+      fetchClient?: typeof fetch;
     }
   ) {
     const queryParams = new URLSearchParams();
@@ -1925,6 +2043,7 @@ export class ApiClient {
         client: this,
         signal: options?.signal,
         onFetchError: options?.onFetchError,
+        fetchClient: options?.fetchClient,
       }
     );
   }
@@ -2210,6 +2329,133 @@ export class ApiClient {
       `${this.baseUrl}/api/v1/query/dashboards`,
       {
         method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  retrieveDashboard(dashboardId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      DashboardObject,
+      `${this.baseUrl}/api/v1/query/dashboards/${encodeURIComponent(dashboardId)}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  createDashboard(body: CreateDashboardRequestBody, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      DashboardObject,
+      `${this.baseUrl}/api/v1/query/dashboards`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  updateDashboard(
+    dashboardId: string,
+    body: UpdateDashboardRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      DashboardObject,
+      `${this.baseUrl}/api/v1/query/dashboards/${encodeURIComponent(dashboardId)}`,
+      {
+        method: "PATCH",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  replaceDashboard(
+    dashboardId: string,
+    body: ReplaceDashboardRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      DashboardObject,
+      `${this.baseUrl}/api/v1/query/dashboards/${encodeURIComponent(dashboardId)}`,
+      {
+        method: "PUT",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  deleteDashboard(dashboardId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      DeleteDashboardResponseBody,
+      `${this.baseUrl}/api/v1/query/dashboards/${encodeURIComponent(dashboardId)}`,
+      {
+        method: "DELETE",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  addDashboardWidget(
+    dashboardId: string,
+    body: AddDashboardWidgetRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      AddDashboardWidgetResponseBody,
+      `${this.baseUrl}/api/v1/query/dashboards/${encodeURIComponent(dashboardId)}/widgets`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  updateDashboardWidget(
+    dashboardId: string,
+    widgetId: string,
+    body: UpdateDashboardWidgetRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      DashboardObject,
+      `${this.baseUrl}/api/v1/query/dashboards/${encodeURIComponent(dashboardId)}/widgets/${encodeURIComponent(widgetId)}`,
+      {
+        method: "PATCH",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  deleteDashboardWidget(
+    dashboardId: string,
+    widgetId: string,
+    options?: { revision?: string },
+    requestOptions?: ZodFetchOptions
+  ) {
+    const search = options?.revision
+      ? `?${new URLSearchParams({ revision: options.revision }).toString()}`
+      : "";
+
+    return zodfetch(
+      DashboardObject,
+      `${this.baseUrl}/api/v1/query/dashboards/${encodeURIComponent(dashboardId)}/widgets/${encodeURIComponent(widgetId)}${search}`,
+      {
+        method: "DELETE",
         headers: this.#getHeaders(false),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
@@ -2823,6 +3069,27 @@ function shouldRetryStreamBatchItems(
  */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Serializes a replay payload override with SuperJSON, like `trigger()` does, so values such
+ * as `Date` and `BigInt` reach the task intact. Falls back to plain JSON when SuperJSON can't
+ * serialize the value.
+ */
+function withSuperJsonPayload(body: ReplayRunRequestBody): ReplayRunRequestBody {
+  if (body.payload === undefined || body.payloadType !== undefined) {
+    return body;
+  }
+
+  try {
+    return {
+      ...body,
+      payload: superjson.stringify(body.payload),
+      payloadType: "application/super+json",
+    };
+  } catch {
+    return body;
+  }
 }
 
 /**

@@ -12,6 +12,8 @@ export type EventBusEvents = {
   rebuildStarted: [BuildTarget];
   buildStarted: [BuildTarget];
   buildFailed: [BuildTarget, Error];
+  /** A rebuild in watch mode failed. The errors are already logged, and the watcher keeps going. */
+  rebuildFailed: [BuildTarget];
   workerSkipped: [];
   backgroundWorkerInitialized: [BackgroundWorker];
   backgroundWorkerIndexingError: [BuildManifest, Error];

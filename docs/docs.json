@@ -40,6 +40,12 @@
               },
               "triggering",
               "runs",
+              {
+                "group": "Runs",
+                "hidden": true,
+                "searchable": true,
+                "pages": ["runs/list-best-practices"]
+              },
               "apikeys"
             ]
           },
@@ -137,6 +143,7 @@
                   "ai-chat/patterns/oom-resilience",
                   "ai-chat/patterns/recovery-boot",
                   "ai-chat/patterns/trusted-edge-signals",
+                  "ai-chat/patterns/redacting-telemetry",
                   "ai-chat/patterns/native-compaction"
                 ]
               },
@@ -151,6 +158,22 @@
                   "ai-chat/changelog"
                 ]
               }
+            ]
+          },
+          {
+            "group": "Webhooks",
+            "pages": [
+              "webhooks/overview",
+              "webhooks/sources",
+              "webhooks/connect",
+              "webhooks/deliveries",
+              "webhooks/filters",
+              "webhooks/waiters",
+              "webhooks/session-routing",
+              "webhooks/channels",
+              "webhooks/slack",
+              "webhooks/linear",
+              "webhooks/human-in-the-loop"
             ]
           },
           {
@@ -231,7 +254,8 @@
                 "pages": [
                   "realtime/backend/overview",
                   "realtime/backend/subscribe",
-                  "realtime/backend/streams"
+                  "realtime/backend/streams",
+                  "realtime/backend/input-streams"
                 ]
               }
             ]
@@ -255,6 +279,7 @@
                   "cli-promote-commands",
                   "cli-runs-commands",
                   "cli-switch",
+                  "cli-tasks-commands",
                   "cli-update-commands",
                   "cli-whoami-commands"
                 ]
@@ -380,6 +405,22 @@
             ]
           },
           {
+            "group": "Webhooks API",
+            "pages": [
+              "management/webhooks/list-endpoints",
+              "management/webhooks/retrieve-endpoint",
+              "management/webhooks/enable-endpoint",
+              "management/webhooks/disable-endpoint",
+              "management/webhooks/generate-secret",
+              "management/webhooks/set-secret",
+              "management/webhooks/list-deliveries",
+              "management/webhooks/retrieve-delivery",
+              "management/webhooks/replay-delivery",
+              "management/webhooks/create-waiter",
+              "management/webhooks/cancel-waiter"
+            ]
+          },
+          {
             "group": "Queues API",
             "pages": [
               "management/queues/list",
@@ -458,7 +499,15 @@
             "pages": [
               "management/query/execute",
               "management/query/schema",
-              "management/query/dashboards"
+              "management/query/dashboards",
+              "management/query/create-dashboard",
+              "management/query/retrieve-dashboard",
+              "management/query/update-dashboard",
+              "management/query/replace-dashboard",
+              "management/query/delete-dashboard",
+              "management/query/add-dashboard-widget",
+              "management/query/update-dashboard-widget",
+              "management/query/delete-dashboard-widget"
             ]
           }
         ]
@@ -788,7 +837,11 @@
     },
     {
       "source": "/v3/upgrading-from-v2",
-      "destination": "/guides/use-cases/upgrading-from-v2"
+      "destination": "/migrating-from-v3"
+    },
+    {
+      "source": "/guides/use-cases/upgrading-from-v2",
+      "destination": "/migrating-from-v3"
     },
     {
       "source": "/open-source-self-hosting",
@@ -837,6 +890,26 @@
     {
       "source": "/guides/examples/intro",
       "destination": "/guides/introduction"
+    },
+    {
+      "source": "/examples",
+      "destination": "/guides/introduction"
+    },
+    {
+      "source": "/known-issues",
+      "destination": "/troubleshooting"
+    },
+    {
+      "source": "/notifications",
+      "destination": "/realtime/overview"
+    },
+    {
+      "source": "/tasks-regular",
+      "destination": "/tasks/overview"
+    },
+    {
+      "source": "/migration-defer",
+      "destination": "/quick-start"
     },
     {
       "source": "/examples/:slug*",

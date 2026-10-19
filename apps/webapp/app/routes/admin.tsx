@@ -51,6 +51,10 @@ export default function Page() {
               label: "Data Stores",
               to: "/admin/data-stores",
             },
+            {
+              label: "OIDC",
+              to: "/admin/oidc",
+            },
           ]}
           layoutId={"admin"}
         />

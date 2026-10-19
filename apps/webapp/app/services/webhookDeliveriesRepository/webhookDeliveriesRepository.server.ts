@@ -4,11 +4,14 @@ import { type Logger, type LogLevel } from "@trigger.dev/core/logger";
 import { type Prisma, type WebhookDeliveryStatus } from "@trigger.dev/database";
 import { type WebhookReplicaDatabase } from "~/db.server";
 import { startActiveSpan } from "~/v3/tracer.server";
+import { webhookLimitsForEnvironment } from "~/v3/webhookLimits.server";
 import { ClickHouseWebhookDeliveriesRepository } from "./clickhouseWebhookDeliveriesRepository.server";
 
 export type WebhookDeliveriesRepositoryOptions = {
   clickhouse: ClickHouse;
   prisma: WebhookReplicaDatabase;
+  /** The org's delivery retention for an environment. Defaults to its webhook limits. */
+  retentionDays?: (environmentId: string) => Promise<number>;
   logger?: Logger;
   logLevel?: LogLevel;
   tracer?: Tracer;
@@ -102,7 +105,13 @@ export type CountDeliveriesByEndpointOptions = {
   period: number; // lookback window in ms
 };
 
-export interface IWebhookDeliveriesRepository {
+/**
+ * Options plus the org's delivery retention: deliveries older than it are hidden, even before their
+ * partition is dropped.
+ */
+export type WithRetention<T> = T & { retentionDays: number };
+
+interface IWebhookDeliveriesRepository {
   name: string;
   listDeliveryIds(options: ListWebhookDeliveriesOptions): Promise<WebhookDeliveryIdsPage>;
   listDeliveries(options: ListWebhookDeliveriesOptions): Promise<{
@@ -127,6 +136,14 @@ class WebhookDeliveriesRepository implements IWebhookDeliveriesRepository {
     this.clickHouseRepository = new ClickHouseWebhookDeliveriesRepository(options);
   }
 
+  async #withRetention<T extends { environmentId: string }>(options: T): Promise<WithRetention<T>> {
+    const resolve =
+      this.options.retentionDays ??
+      (async (environmentId: string) =>
+        (await webhookLimitsForEnvironment(environmentId)).deliveryRetentionDays);
+    return { ...options, retentionDays: await resolve(options.environmentId) };
+  }
+
   get name() {
     return this.clickHouseRepository.name;
   }
@@ -134,7 +151,7 @@ class WebhookDeliveriesRepository implements IWebhookDeliveriesRepository {
   async listDeliveryIds(options: ListWebhookDeliveriesOptions) {
     return startActiveSpan(
       "webhookDeliveriesRepository.listDeliveryIds",
-      async () => this.clickHouseRepository.listDeliveryIds(options),
+      async () => this.clickHouseRepository.listDeliveryIds(await this.#withRetention(options)),
       {
         attributes: {
           "repository.name": "clickhouse",
@@ -149,7 +166,7 @@ class WebhookDeliveriesRepository implements IWebhookDeliveriesRepository {
   async listDeliveries(options: ListWebhookDeliveriesOptions) {
     return startActiveSpan(
       "webhookDeliveriesRepository.listDeliveries",
-      async () => this.clickHouseRepository.listDeliveries(options),
+      async () => this.clickHouseRepository.listDeliveries(await this.#withRetention(options)),
       {
         attributes: {
           "repository.name": "clickhouse",
@@ -164,7 +181,8 @@ class WebhookDeliveriesRepository implements IWebhookDeliveriesRepository {
   async getDeliveriesByFriendlyIds(options: GetDeliveriesByFriendlyIdsOptions) {
     return startActiveSpan(
       "webhookDeliveriesRepository.getDeliveriesByFriendlyIds",
-      async () => this.clickHouseRepository.getDeliveriesByFriendlyIds(options),
+      async () =>
+        this.clickHouseRepository.getDeliveriesByFriendlyIds(await this.#withRetention(options)),
       {
         attributes: {
           "repository.name": "clickhouse",
@@ -179,7 +197,7 @@ class WebhookDeliveriesRepository implements IWebhookDeliveriesRepository {
   async countDeliveries(options: FilterWebhookDeliveriesOptions) {
     return startActiveSpan(
       "webhookDeliveriesRepository.countDeliveries",
-      async () => this.clickHouseRepository.countDeliveries(options),
+      async () => this.clickHouseRepository.countDeliveries(await this.#withRetention(options)),
       {
         attributes: {
           "repository.name": "clickhouse",
@@ -194,7 +212,8 @@ class WebhookDeliveriesRepository implements IWebhookDeliveriesRepository {
   async countDeliveriesByEndpoint(options: CountDeliveriesByEndpointOptions) {
     return startActiveSpan(
       "webhookDeliveriesRepository.countDeliveriesByEndpoint",
-      async () => this.clickHouseRepository.countDeliveriesByEndpoint(options),
+      async () =>
+        this.clickHouseRepository.countDeliveriesByEndpoint(await this.#withRetention(options)),
       {
         attributes: {
           "repository.name": "clickhouse",
@@ -209,7 +228,7 @@ class WebhookDeliveriesRepository implements IWebhookDeliveriesRepository {
   async getDelivery(options: GetWebhookDeliveryOptions) {
     return startActiveSpan(
       "webhookDeliveriesRepository.getDelivery",
-      async () => this.clickHouseRepository.getDelivery(options),
+      async () => this.clickHouseRepository.getDelivery(await this.#withRetention(options)),
       {
         attributes: {
           "repository.name": "clickhouse",

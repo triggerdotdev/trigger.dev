@@ -1,0 +1,142 @@
+---
+title: "Filtering deliveries"
+description: "Choose which verified webhook events reach each subscriber, by payload fields, request headers, or endpoint metadata."
+sidebarTitle: "Filters"
+---
+
+import WebhooksBetaBanner from "/snippets/webhooks-beta-banner.mdx";
+
+<WebhooksBetaBanner />
+
+**A filter selects which verified deliveries reach a subscriber.** Each subscriber on an [endpoint](/webhooks/overview) has its own filter, so one delivery can start one task and skip another. A delivery no subscriber takes is recorded with status `FILTERED`, so you can inspect it in the dashboard.
+
+## Add a filter
+
+Set `filter` on the subscriber. This example accepts Stripe payment-intent events whose amount is at least 10,000:
+
+```ts /trigger/payment-events.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const stripe = webhooks.endpoint.define({ id: "stripe", source: webhooks.stripe() });
+
+export const largePayments = webhook({
+  id: "large-payments",
+  endpoint: stripe,
+  filter: "event.type == 'payment_intent.succeeded' && event.data.object.amount >= 10000",
+  onEvent: async ({ event }) => {
+    console.log("Matched payment event", event.id);
+  },
+});
+```
+
+The same `filter` works on a [`chat.event`](/webhooks/session-routing#filtering), a channel connector, and a [waiter](/webhooks/waiters), where it is checked after the waiter's `match`.
+
+The filter is checked against the [endpoint's event type](/webhooks/sources#typing-the-event). Concrete types catch missing fields and incompatible literals. Fields typed as `unknown`, including values in Stripe's default `data.object`, allow arbitrary non-empty field paths. Operator literals and path structure are still checked. A filter built at runtime (typed as `string` rather than a string literal) skips the compile-time check, and is validated when the endpoint is deployed.
+
+## Narrow a union event
+
+When the endpoint's event is a union, such as `webhooks.stripe<Stripe.Event>()`, an `event.<field> == '<value>'` clause selects the members whose field can hold that value. The rest of that `&&` chain is checked against those members, and the handler's `event` has their type:
+
+```ts /trigger/checkouts.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+import type Stripe from "stripe";
+
+export const stripe = webhooks.endpoint.define({
+  id: "stripe",
+  source: webhooks.stripe<Stripe.Event>(),
+});
+
+export const checkouts = webhook({
+  id: "checkouts",
+  endpoint: stripe,
+  filter: "event.type == 'checkout.session.completed' && event.data.object.amount_total >= 100",
+  onEvent: async ({ event }) => {
+    const session: Stripe.Checkout.Session = event.data.object; // no cast needed
+    console.log("Checkout completed", session.id);
+  },
+});
+```
+
+- `in [...]` selects the members for any listed value, and `||` gives the union of its branches. Parentheses group branches as usual.
+- `!=`, `not in`, numeric comparisons, string operators, and `any`/`all` don't narrow. Neither do `null`, `'null'`, or `0`, because the server's `==` also matches a null field for those values.
+- Without a type clause, a field that only some members have is accepted: an event without it never matches.
+- The narrowed type also applies to the task's trigger payload, a `chat.event` action's `event` and `key`, channel connector callbacks, and a waiter's event. A filter built at runtime doesn't narrow.
+
+## Check the result
+
+Send an event and open its [delivery](/webhooks/deliveries) in the dashboard. Each subscriber's row shows whether it took the event, and a filtered subscriber shows the failed clause and its value. The provider receives the source's accepted HTTP status (`200` by default) either way.
+
+<Note>
+  If filter evaluation throws an exception, Trigger.dev routes the event. Filters aren't a substitute
+  for signature verification or validation inside your handler.
+</Note>
+
+## The expression language
+
+A filter is one or more `path operator value` clauses combined with `&&` and `||` (use parentheses to group).
+
+### Paths
+
+A path reads from one of three namespaces:
+
+- `event.*`: the verified, parsed request body, for example `event.data.object.amount`.
+- `header.*`: an inbound request header, matched case-insensitively, for example `header.x-github-event`.
+- `webhook.*`: endpoint and delivery metadata: `source`, `id`, `deliveryId`, `externalRef`, and `tenantId`. The last two depend on the endpoint configuration.
+
+Paths must have non-empty segments. `event.data.amount` is valid; `event.`, `event..amount`, and `event.amount.` are rejected.
+
+[Session routing](/webhooks/session-routing) keys use the same namespaces in braces (`{event.data.object.customer}`), and [waiter](/webhooks/waiters) `match` paths use them as keys (`"event.data.object.metadata.orderId"`).
+
+### Operators
+
+| Operator | Meaning |
+| --- | --- |
+| `==` `!=` | equality |
+| `>` `<` `>=` `<=` | numeric comparison |
+| `in` `not in` | membership in a list, for example `event.type in ['a', 'b']` |
+| `startsWith` `endsWith` `contains` | string matching |
+
+Values are strings in single quotes (`'created'`), numbers (`10000`), booleans (`true`), or `null`. Use a list of these values with `in` and `not in`.
+
+### Comparing two fields
+
+Equality and comparison operators also accept a field path on the right-hand side:
+
+```text Filter expression
+event.billing.country == event.shipping.country
+```
+
+### Matching inside a list
+
+`any` matches if at least one array element meets the condition. `all` requires every element to match. The path inside the parentheses is relative to each element:
+
+```text Filter expression
+event.items any ( quantity > 0 )
+```
+
+### Spacing
+
+Separate paths, operators, and values with one space. Parentheses may touch what they enclose, as in `(event.amount > 0)` and `any (quantity > 0)`. Lists and quoted strings may contain spaces (`['opened', 'closed']`, `'Fix the build'`). These forms work with both the TypeScript validator and the deployment parser.
+
+## Filter by event type
+
+Use the field or header your provider supplies for its event type. GitHub uses the `x-github-event` header:
+
+```ts /trigger/github-events.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const github = webhooks.endpoint.define({ id: "github", source: webhooks.github() });
+
+export const onIssuesAndPullRequests = webhook({
+  id: "github-issues-and-prs",
+  endpoint: github,
+  filter: "header.x-github-event in ['issues', 'pull_request']",
+  onEvent: async ({ headers }) => {
+    console.log("Matched GitHub event", headers.get("x-github-event"));
+  },
+});
+```
+
+## Filtering a session route
+
+A `filter` works the same way on [`chat.event`](/webhooks/session-routing): a delivery that doesn't match never reaches the session.

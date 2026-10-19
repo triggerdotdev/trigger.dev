@@ -286,7 +286,7 @@ export class HttpServer {
 
   private optionalSchema<
     TSchema extends AnyZodSchema | undefined,
-    TData extends TSchema extends AnyZodSchema ? inferZodSchemaOutput<TSchema> : TData,
+    TData extends (TSchema extends AnyZodSchema ? inferZodSchemaOutput<TSchema> : TData),
   >(
     schema: TSchema,
     data: TData

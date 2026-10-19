@@ -7,12 +7,18 @@ import express, { type RequestHandler } from "express";
 import morgan from "morgan";
 import { nanoid } from "nanoid";
 import path from "path";
+import { setSourceMapsSupport } from "node:module";
 import { pathToFileURL } from "node:url";
 import type { Server as IoServer } from "socket.io";
 import type { WebSocketServer } from "ws";
 import type { RateLimitMiddleware } from "~/services/apiRateLimit.server";
 import { type RunWithHttpContextFunction } from "~/services/httpAsyncStorage.server";
 import { getRouterPath, pathHasPrefix, sanitizeHttpUrl } from "./app/utils/sanitizeHttpUrl";
+import {
+  createApiOnlyServiceMiddleware,
+  parseApiOnlyServiceMode,
+  servesStaticFiles,
+} from "./app/utils/apiOnlyService";
 import cluster from "node:cluster";
 import os from "node:os";
 
@@ -118,6 +124,10 @@ async function startServer() {
 
   const MODE = process.env.NODE_ENV;
 
+  if (MODE === "development") {
+    setSourceMapsSupport(true, { nodeModules: false, generatedCode: true });
+  }
+
   // In development, Vite serves assets (and handles HMR) via middleware.
   // Only NODE_ENV=development boots Vite — scripts that run the built server
   // without NODE_ENV (start:local, dev:worker) must serve the build.
@@ -129,8 +139,22 @@ async function startServer() {
       : undefined;
 
   if (viteDevServer) {
+    Reflect.deleteProperty(Error, "prepareStackTrace");
+  }
+
+  const apiOnlyServiceMode = parseApiOnlyServiceMode(process.env.API_ONLY_SERVICE_MODE);
+  if (apiOnlyServiceMode) {
+    app.use(
+      createApiOnlyServiceMiddleware({
+        mode: apiOnlyServiceMode,
+        appOrigin: process.env.APP_ORIGIN,
+      })
+    );
+  }
+
+  if (viteDevServer) {
     app.use(viteDevServer.middlewares);
-  } else {
+  } else if (servesStaticFiles(apiOnlyServiceMode)) {
     // Vite fingerprints its assets so we can cache forever.
     app.use("/assets", express.static("build/client/assets", { immutable: true, maxAge: "1y" }));
     // Stale clients can request an old hashed asset; hard-404 instead of falling
@@ -192,8 +216,6 @@ async function startServer() {
     const runWithHttpContext: RunWithHttpContextFunction = build.entry.module.runWithHttpContext;
     const tenantContextMiddleware: RequestHandler = build.entry.module.tenantContextMiddleware;
     const dashboardAgentBodyCap: RequestHandler = build.entry.module.dashboardAgentBodyCap;
-    const webhookIngressIpRateLimiter: RequestHandler =
-      build.entry.module.webhookIngressIpRateLimiter;
 
     app.use((req, res, next) => {
       // helpful headers:
@@ -250,7 +272,6 @@ async function startServer() {
       app.use(deploymentRateLimiter);
       app.use(engineRateLimiter);
       app.use(otlpRateLimiter);
-      app.use(webhookIngressIpRateLimiter);
 
       app.use(tenantContextMiddleware);
 

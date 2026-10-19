@@ -108,7 +108,7 @@ import { type Span, SpanPresenter, type SpanRun } from "~/presenters/v3/SpanPres
 import { findProjectBySlug } from "~/models/project.server";
 import { logger } from "~/services/logger.server";
 import { rbac } from "~/services/rbac.server";
-import { requireUserId } from "~/services/session.server";
+import { hasAdminDisplayAccess, requireUser } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import {
@@ -135,7 +135,9 @@ import { RealtimeStreamViewer } from "../resources.orgs.$organizationSlug.projec
 import { CompleteWaitpointForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
+  const userId = user.id;
+  const showAdminFields = hasAdminDisplayAccess(user);
   const { projectParam, organizationSlug, envParam, runParam, spanParam } =
     v3SpanParamsSchema.parse(params);
 
@@ -191,7 +193,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       });
       return typedjson({
         type: "run" as const,
-        run: result.run,
+        run: showAdminFields
+          ? result.run
+          : { ...result.run, workerCell: undefined, workerLane: undefined },
         queueMetrics,
         canWriteRuns,
         loadedAt: Date.now(),
@@ -237,12 +241,15 @@ export function SpanView({
   spanOverrides,
   closePanel,
   linkedRunId,
+  refreshKey,
 }: {
   runParam: string;
   spanId: string | undefined;
   spanOverrides?: SpanOverride;
   closePanel?: () => void;
   linkedRunId?: string;
+  /** Changing it reloads the span. */
+  refreshKey?: number;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -256,7 +263,16 @@ export function SpanView({
       environment.slug
     }/runs/${runParam}/spans/${spanId}${linkedRunId ? `?linkedRunId=${linkedRunId}` : ""}`;
     load(url);
-  }, [organization.slug, project.slug, environment.slug, runParam, spanId, linkedRunId, load]);
+  }, [
+    organization.slug,
+    project.slug,
+    environment.slug,
+    runParam,
+    spanId,
+    linkedRunId,
+    load,
+    refreshKey,
+  ]);
 
   if (spanId === undefined) {
     return null;
@@ -1179,6 +1195,14 @@ function RunBody({
                     <Property.Item>
                       <Property.Label>Worker queue</Property.Label>
                       <Property.Value>{run.workerQueue}</Property.Value>
+                    </Property.Item>
+                    <Property.Item>
+                      <Property.Label>Worker cell</Property.Label>
+                      <Property.Value>{run.workerCell ?? "–"}</Property.Value>
+                    </Property.Item>
+                    <Property.Item>
+                      <Property.Label>Worker lane</Property.Label>
+                      <Property.Value>{run.workerLane ?? "–"}</Property.Value>
                     </Property.Item>
                     <Property.Item>
                       <Property.Label>Trace ID</Property.Label>

@@ -77,7 +77,7 @@ export async function getPersonalAccessTokenFromAuthorizationCode(authorizationC
       },
     },
   });
-  if (!code) {
+  if (!code || code.personalAccessToken?.revokedAt) {
     throw new Error("Invalid authorization code, or code expired");
   }
 
@@ -379,6 +379,10 @@ export async function createPersonalAccessTokenFromAuthorizationCode(
     where: {
       userId,
       name: "cli",
+      revokedAt: null,
+    },
+    orderBy: {
+      createdAt: "desc",
     },
   });
 
@@ -393,18 +397,6 @@ export async function createPersonalAccessTokenFromAuthorizationCode(
         personalAccessTokenId: existingCliPersonalAccessToken.id,
       },
     });
-
-    if (existingCliPersonalAccessToken.revokedAt) {
-      // re-activate revoked CLI PAT so we can use it again
-      await prisma.personalAccessToken.update({
-        where: {
-          id: existingCliPersonalAccessToken.id,
-        },
-        data: {
-          revokedAt: null,
-        },
-      });
-    }
 
     //we don't return the decrypted token
     return {

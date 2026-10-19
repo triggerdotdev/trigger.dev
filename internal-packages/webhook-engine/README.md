@@ -34,10 +34,22 @@ Before enabling webhooks on a new installation or webhook database:
 3. After the call succeeds, enable `WEBHOOK_ENABLED=1` and the webhook worker. The daily maintenance
    job then creates future partitions and removes expired ones.
 
-Bootstrap creates the configured UTC partition window (defaults: 60 days back, 10 days ahead).
-It is safe to repeat and does not delete data. Repeat before enabling if the lookahead window has
-expired, or after switching webhook databases. A conflicting table or incorrect partition bound
-causes the call to fail so it cannot report an incomplete window as ready.
+Bootstrap creates, for every retention class (3, 7, 30, 90, 180 and 365 days), the class's
+sub-partition and its UTC leaves from today through the lookahead (`WEBHOOK_PARTITION_LOOKAHEAD_DAYS`,
+default 10). Classes up to 30 days use day leaves and longer ones week leaves. It never creates past
+leaves, since ingest only writes the current time. It is safe to repeat and does not delete data.
+Repeat before enabling if the lookahead window has expired, or after switching webhook databases. A
+conflicting table or incorrect partition bound causes the call to fail so it cannot report an
+incomplete window as ready.
 
 Enabling ingress without bootstrap can cause delivery inserts to fail until the first maintenance
-run. Bootstrap prepares dated partitions only; it does not install the webhook schema.
+run. Bootstrap prepares partitions only; it does not install the webhook schema.
+
+## Delivery retention
+
+Each delivery is stored in one retention class, stamped when it is written and encoded in its id.
+The daily maintenance job drops a class's leaf once its whole range is older than the class. An
+org's visible retention (`deliveryRetentionDays` in its webhook limits, default
+`WEBHOOK_DELIVERY_RETENTION_DAYS`) is enforced when reading. Deliveries are stored for at least
+`WEBHOOK_DELIVERY_STORAGE_DAYS` (default 30), or the org's retention rounded up to a class when it
+is longer or when the org sets `deliveryRetentionStrict`.

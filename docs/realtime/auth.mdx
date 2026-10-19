@@ -157,7 +157,7 @@ const { parts } = useRealtimeStream<{ url: string }>(runId, "frames", {
 
 When you [trigger tasks](/triggering) from your backend, the `handle` received includes a `publicAccessToken` field. This token can be used to authenticate real-time requests in your frontend application.
 
-By default, auto-generated tokens expire after 15 minutes and have a read scope for the specific run(s) that were triggered. You can customize the expiration by passing a `publicTokenOptions` object to the trigger function.
+Auto-generated tokens expire after 1 hour and have a read scope for the specific run(s) that were triggered. For a different expiration or scopes, create a token yourself with [`auth.createPublicToken`](#creating-public-access-tokens).
 
 See our [triggering documentation](/triggering) for detailed examples of how to trigger tasks and get auto-generated tokens.
 

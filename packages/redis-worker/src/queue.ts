@@ -140,6 +140,50 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     }
   }
 
+  /**
+   * Re-enqueues an item for a retry, unless since it was dequeued a newer enqueue replaced it (its
+   * stored deduplication key no longer matches) or it was removed by an ack or cancel. Returns
+   * false when it skipped, so a failed attempt never overwrites the newer item or revives a removed
+   * one. A newer enqueue starts its own retry budget: an item a handler re-enqueues before failing
+   * restarts at attempt 0 rather than moving towards the DLQ.
+   */
+  async requeue({
+    id,
+    job,
+    item,
+    attempt,
+    availableAt,
+    visibilityTimeoutMs,
+    deduplicationKey,
+  }: {
+    id: string;
+    job: MessageCatalogKey<TMessageCatalog>;
+    item: MessageCatalogValue<TMessageCatalog, MessageCatalogKey<TMessageCatalog>>;
+    attempt: number;
+    availableAt: Date;
+    visibilityTimeoutMs: number;
+    deduplicationKey?: string;
+  }): Promise<boolean> {
+    const serializedItem = JSON.stringify({
+      job,
+      item,
+      visibilityTimeoutMs,
+      attempt,
+      deduplicationKey: nanoid(),
+    });
+
+    const result = await this.redis.requeueItem(
+      `queue`,
+      `items`,
+      id,
+      availableAt.getTime(),
+      serializedItem,
+      deduplicationKey ?? ""
+    );
+
+    return result === 1;
+  }
+
   async enqueueOnce({
     id,
     job,
@@ -362,7 +406,15 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     };
   }
 
-  async moveToDeadLetterQueue(id: string, errorMessage: string): Promise<void> {
+  /**
+   * Moves an item to the dead letter queue. With a deduplication key, an item a newer enqueue has
+   * replaced is left in the queue and false is returned.
+   */
+  async moveToDeadLetterQueue(
+    id: string,
+    errorMessage: string,
+    deduplicationKey?: string
+  ): Promise<boolean> {
     try {
       this.logger.debug(`SimpleQueue ${this.name}.moveToDeadLetterQueue(): moving item to DLQ`, {
         queue: this.name,
@@ -376,12 +428,15 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
         `dlq`,
         `dlq:items`,
         id,
-        errorMessage
+        errorMessage,
+        deduplicationKey ?? ""
       );
 
+      if (result === 2) return false;
       if (result !== 1) {
         throw new Error("Move to Dead Letter Queue operation failed");
       }
+      return true;
     } catch (e) {
       this.logger.error(
         `SimpleQueue ${this.name}.moveToDeadLetterQueue(): error moving item to DLQ`,
@@ -596,6 +651,36 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
       `,
     });
 
+    this.redis.defineCommand("requeueItem", {
+      numberOfKeys: 2,
+      lua: `
+        local queue = KEYS[1]
+        local items = KEYS[2]
+        local id = ARGV[1]
+        local score = ARGV[2]
+        local serializedItem = ARGV[3]
+        local deduplicationKey = ARGV[4]
+
+        -- Leave the item alone if, while this attempt ran, it was removed (acked or cancelled)
+        -- or a newer enqueue replaced it.
+        if deduplicationKey ~= "" then
+          local current = redis.call('HGET', items, id)
+          if not current then
+            return 2
+          end
+          local success, parsed = pcall(cjson.decode, current)
+          if success and parsed.deduplicationKey and parsed.deduplicationKey ~= deduplicationKey then
+            return 2
+          end
+        end
+
+        redis.call('ZADD', queue, score, id)
+        redis.call('HSET', items, id, serializedItem)
+
+        return 1
+      `,
+    });
+
     this.redis.defineCommand("moveToDeadLetterQueue", {
       numberOfKeys: 4,
       lua: `
@@ -605,6 +690,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
         local dlqItems = KEYS[4]
         local id = ARGV[1]
         local errorMessage = ARGV[2]
+        local deduplicationKey = ARGV[3]
 
         local item = redis.call('HGET', items, id)
         if not item then
@@ -612,6 +698,9 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
         end
 
         local parsedItem = cjson.decode(item)
+        if deduplicationKey ~= "" and parsedItem.deduplicationKey and parsedItem.deduplicationKey ~= deduplicationKey then
+          return 2
+        end
         parsedItem.errorMessage = errorMessage
 
         local time = redis.call('TIME')
@@ -738,6 +827,17 @@ declare module "@internal/redis" {
       dlqItems: string,
       id: string,
       errorMessage: string,
+      deduplicationKey: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
+
+    requeueItem(
+      queue: string,
+      items: string,
+      id: string,
+      score: number,
+      serializedItem: string,
+      deduplicationKey: string,
       callback?: Callback<number>
     ): Result<number, Context>;
 

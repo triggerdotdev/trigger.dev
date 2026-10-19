@@ -33,6 +33,7 @@ import { CopyButton } from "~/components/primitives/CopyButton";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
+import { Header2 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
@@ -45,6 +46,7 @@ import SegmentedControl from "~/components/primitives/SegmentedControl";
 import { Switch } from "~/components/primitives/Switch";
 import {
   Table,
+  TableBlankRow,
   TableBody,
   TableCell,
   TableCellMenu,
@@ -77,6 +79,7 @@ import {
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { SCOPE_CAPABILITIES, scopeDetailForPreset } from "~/utils/apiKeyScopeDetail";
 import { cn } from "~/utils/cn";
 import { docsPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBuilder";
 import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
@@ -326,6 +329,8 @@ export default function Page() {
         .join("\n")
     : null;
 
+  const hasApiKeys = rootApiKey !== null || apiKeys.length > 0;
+
   return (
     <PageContainer>
       <NavBar>
@@ -356,133 +361,154 @@ export default function Page() {
       <PageBody scrollable={false}>
         {canReadApiKeys ? (
           <div className="max-h-full min-h-full overflow-y-auto border-t border-grid-dimmed">
-            <div className="flex h-fit items-center justify-end gap-2 p-2">
-              <div className="flex items-center gap-2">
-                {envBlock ? (
-                  <EnvironmentVariablesDialog
-                    environmentType={environment.type}
-                    envBlock={envBlock}
-                  />
-                ) : null}
-                <RevokedFilter checked={showRevoked} />
-                <NewApiKeyDialog
-                  canWrite={canWriteApiKeys}
-                  availableTasks={availableTasks}
-                  presets={presets}
-                  isRbacPluginAvailable={isRbacPluginAvailable}
-                  environment={apiKeyEnvironmentLabel}
-                />
-              </div>
-            </div>
-
-            <Table>
-              <ApiKeyTableHeader />
-              <TableBody>
-                {rootApiKey ? (
-                  <TableRow className="h-[3.25rem] [&_td]:py-2">
-                    <TableCell>
-                      <div className="flex items-center gap-1.5 text-text-bright">
-                        <KeyIcon className="size-4" />
-                        {rootApiKey.name}
-                        <Badge variant="extra-small">Root</Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex w-64 items-center justify-between gap-2">
-                        <span className="font-mono text-text-dimmed">{rootApiKey.obfuscated}</span>
-                        <CopyButton value={rootApiKey.value} variant="icon" size="small" />
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <ApiKeyStatus now={loadedAt} />
-                    </TableCell>
-                    <TableCell>
-                      <ApiKeyAccess label="No restrictions" />
-                    </TableCell>
-                    <TableCell>–</TableCell>
-                    <TableCell>–</TableCell>
-                    <TableCell>–</TableCell>
-                    <TableCellMenu
-                      isSticky
-                      className="w-32"
-                      hiddenButtons={
-                        <>
-                          {canWriteApiKeys ? (
-                            <RegenerateApiKeyModal
-                              id={environment.keyEnvironmentId}
-                              title={environmentFullTitle(apiKeyEnvironmentLabel)}
-                              hasVercelIntegration={hasVercelIntegration}
-                              isDevelopment={environment.type === "DEVELOPMENT"}
-                            />
-                          ) : null}
-                          <DisableRootApiKeyButton canWrite={canWriteApiKeys} />
-                        </>
-                      }
+            {/* The dialog wraps both triggers so it stays mounted when creating the first key swaps
+                the empty state for the table: the new key is only shown once, in this dialog. */}
+            <NewApiKeyDialog
+              availableTasks={availableTasks}
+              presets={presets}
+              isRbacPluginAvailable={isRbacPluginAvailable}
+              environment={apiKeyEnvironmentLabel}
+            >
+              <div className="flex h-fit items-center justify-end gap-2 p-2">
+                <div className="flex items-center gap-2">
+                  {envBlock ? (
+                    <EnvironmentVariablesDialog
+                      environmentType={environment.type}
+                      envBlock={envBlock}
                     />
-                  </TableRow>
-                ) : null}
+                  ) : null}
+                  <RevokedFilter checked={showRevoked} />
+                  {hasApiKeys ? (
+                    <NewApiKeyButton canWrite={canWriteApiKeys} variant="primary/small" />
+                  ) : null}
+                </div>
+              </div>
 
-                {apiKeys.map((apiKey) => {
-                  const isExpired = apiKey.expiresAt
-                    ? new Date(apiKey.expiresAt).getTime() <= loadedAt
-                    : false;
-                  const cannotAuthenticate = Boolean(apiKey.revokedAt) || isExpired;
-                  const cannotRevoke = Boolean(apiKey.revokedAt) || isExpired;
-                  const creator =
-                    apiKey.createdBy?.displayName ??
-                    apiKey.createdBy?.name ??
-                    apiKey.createdBy?.email ??
-                    "–";
-
-                  return (
-                    <TableRow
-                      key={apiKey.id}
-                      disabled={cannotAuthenticate}
-                      className="h-[3.25rem] [&_td]:py-2"
-                    >
-                      <TableCell>{apiKey.name}</TableCell>
+              <Table>
+                <ApiKeyTableHeader />
+                <TableBody>
+                  {rootApiKey ? (
+                    <TableRow className="h-[3.25rem] [&_td]:py-2">
                       <TableCell>
-                        <span className="font-mono text-text-dimmed">{apiKey.obfuscated}</span>
+                        <div className="flex items-center gap-1.5 text-text-bright">
+                          <KeyIcon className="size-4" />
+                          {rootApiKey.name}
+                          <Badge variant="extra-small">Root</Badge>
+                        </div>
                       </TableCell>
                       <TableCell>
-                        <ApiKeyStatus
-                          revokedAt={apiKey.revokedAt}
-                          expiresAt={apiKey.expiresAt}
-                          now={loadedAt}
-                        />
+                        <div className="flex w-64 items-center justify-between gap-2">
+                          <span className="font-mono text-text-dimmed">
+                            {rootApiKey.obfuscated}
+                          </span>
+                          <CopyButton value={rootApiKey.value} variant="icon" size="small" />
+                        </div>
                       </TableCell>
                       <TableCell>
-                        <ApiKeyAccess
-                          label={apiKey.access.label}
-                          taskIdentifiers={apiKey.access.taskIdentifiers}
-                          usesTaskSelection={apiKey.access.usesTaskSelection}
-                        />
-                      </TableCell>
-                      <TableCell>{creator}</TableCell>
-                      <TableCell>
-                        <DateTime date={apiKey.createdAt} />
+                        <ApiKeyStatus now={loadedAt} />
                       </TableCell>
                       <TableCell>
-                        {apiKey.lastUsedAt ? <DateTime date={apiKey.lastUsedAt} /> : "Never"}
+                        <ApiKeyAccess label="No restrictions" />
                       </TableCell>
+                      <TableCell>–</TableCell>
+                      <TableCell>–</TableCell>
+                      <TableCell>–</TableCell>
                       <TableCellMenu
                         isSticky
                         className="w-32"
                         hiddenButtons={
-                          cannotRevoke ? null : (
-                            <RevokeApiKeyButton
-                              id={apiKey.id}
-                              name={apiKey.name}
-                              canWrite={canWriteApiKeys}
-                            />
-                          )
+                          <>
+                            {canWriteApiKeys ? (
+                              <RegenerateApiKeyModal
+                                id={environment.keyEnvironmentId}
+                                title={environmentFullTitle(apiKeyEnvironmentLabel)}
+                                hasVercelIntegration={hasVercelIntegration}
+                                isDevelopment={environment.type === "DEVELOPMENT"}
+                              />
+                            ) : null}
+                            <DisableRootApiKeyButton canWrite={canWriteApiKeys} />
+                          </>
                         }
                       />
                     </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                  ) : null}
+
+                  {apiKeys.map((apiKey) => {
+                    const isExpired = apiKey.expiresAt
+                      ? new Date(apiKey.expiresAt).getTime() <= loadedAt
+                      : false;
+                    const cannotAuthenticate = Boolean(apiKey.revokedAt) || isExpired;
+                    const cannotRevoke = Boolean(apiKey.revokedAt) || isExpired;
+                    const creator =
+                      apiKey.createdBy?.displayName ??
+                      apiKey.createdBy?.name ??
+                      apiKey.createdBy?.email ??
+                      "–";
+
+                    return (
+                      <TableRow
+                        key={apiKey.id}
+                        disabled={cannotAuthenticate}
+                        className="h-[3.25rem] [&_td]:py-2"
+                      >
+                        <TableCell>{apiKey.name}</TableCell>
+                        <TableCell>
+                          <span className="font-mono text-text-dimmed">{apiKey.obfuscated}</span>
+                        </TableCell>
+                        <TableCell>
+                          <ApiKeyStatus
+                            revokedAt={apiKey.revokedAt}
+                            expiresAt={apiKey.expiresAt}
+                            now={loadedAt}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <ApiKeyAccess
+                            label={apiKey.access.label}
+                            taskIdentifiers={apiKey.access.taskIdentifiers}
+                            usesTaskSelection={apiKey.access.usesTaskSelection}
+                          />
+                        </TableCell>
+                        <TableCell>{creator}</TableCell>
+                        <TableCell>
+                          <DateTime date={apiKey.createdAt} />
+                        </TableCell>
+                        <TableCell>
+                          {apiKey.lastUsedAt ? <DateTime date={apiKey.lastUsedAt} /> : "Never"}
+                        </TableCell>
+                        <TableCellMenu
+                          isSticky
+                          className="w-32"
+                          hiddenButtons={
+                            cannotRevoke ? null : (
+                              <RevokeApiKeyButton
+                                id={apiKey.id}
+                                name={apiKey.name}
+                                canWrite={canWriteApiKeys}
+                              />
+                            )
+                          }
+                        />
+                      </TableRow>
+                    );
+                  })}
+
+                  {hasApiKeys ? null : (
+                    <TableBlankRow colSpan={8}>
+                      <div className="flex flex-col items-center justify-center gap-y-4 py-8">
+                        <div className="flex flex-col items-center gap-y-1">
+                          <Header2>You don't have any API keys.</Header2>
+                          <Paragraph variant="small">
+                            Create one so your backend can authenticate with Trigger.dev.
+                          </Paragraph>
+                        </div>
+                        <NewApiKeyButton canWrite={canWriteApiKeys} variant="primary/medium" />
+                      </div>
+                    </TableBlankRow>
+                  )}
+                </TableBody>
+              </Table>
+            </NewApiKeyDialog>
           </div>
         ) : (
           <MainHorizontallyCenteredContainer className="py-6">
@@ -578,18 +604,40 @@ function RevokedFilter({ checked }: { checked: boolean }) {
   );
 }
 
-function NewApiKeyDialog({
+function NewApiKeyButton({
   canWrite,
+  variant,
+}: {
+  canWrite: boolean;
+  variant: "primary/small" | "primary/medium";
+}) {
+  return (
+    <DialogTrigger asChild>
+      <Button
+        variant={variant}
+        LeadingIcon={PlusIcon}
+        shortcut={{ key: "n" }}
+        disabled={!canWrite}
+        tooltip={canWrite ? undefined : "You don't have permission to create API keys"}
+      >
+        New API key
+      </Button>
+    </DialogTrigger>
+  );
+}
+
+function NewApiKeyDialog({
   availableTasks,
   presets,
   isRbacPluginAvailable,
   environment,
+  children,
 }: {
-  canWrite: boolean;
   availableTasks: string[];
   presets: ApiKeyPreset[] | null;
   isRbacPluginAvailable: boolean;
   environment: React.ComponentProps<typeof EnvironmentCombo>["environment"];
+  children: React.ReactNode;
 }) {
   const fetcher = useTypedFetcher<typeof action>();
   const actionData = fetcher.data as ApiKeyActionData | undefined;
@@ -646,17 +694,7 @@ function NewApiKeyDialog({
         }
       }}
     >
-      <DialogTrigger asChild>
-        <Button
-          variant="primary/small"
-          LeadingIcon={PlusIcon}
-          shortcut={{ key: "n" }}
-          disabled={!canWrite}
-          tooltip={canWrite ? undefined : "You don't have permission to create API keys"}
-        >
-          New API key
-        </Button>
-      </DialogTrigger>
+      {children}
       <DialogContent
         className={cn(
           "max-h-[80vh] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 pt-2.5",
@@ -798,7 +836,12 @@ function NewApiKeyDialog({
                     <PresetGroup
                       title="Environment capabilities"
                       presets={presets}
-                      ids={["ENVIRONMENT_OBSERVER", "ENVIRONMENT_OPERATOR"]}
+                      ids={[
+                        "ENVIRONMENT_OBSERVER",
+                        "ENVIRONMENT_OPERATOR",
+                        "WEBHOOKS_ONLY",
+                        "WAITPOINTS_ONLY",
+                      ]}
                     />
                     <PresetGroup
                       title="Deployment and configuration"
@@ -880,6 +923,8 @@ const KNOWN_PRESET_IDS = new Set([
   "ENVIRONMENT_OPERATOR",
   "DEPLOY_ONLY",
   "ENV_VARS_ONLY",
+  "WEBHOOKS_ONLY",
+  "WAITPOINTS_ONLY",
 ]);
 
 const API_KEY_EXPIRATIONS = [
@@ -889,96 +934,11 @@ const API_KEY_EXPIRATIONS = [
   { value: "never", label: "Never" },
 ];
 
-type CapId =
-  | "tasks"
-  | "runs"
-  | "batches"
-  | "queues"
-  | "sessions"
-  | "tags"
-  | "deployments"
-  | "branches"
-  | "envvars";
-
-// Capability rows shown in the scope pane, in a fixed order so two presets read
-// as a diff of the same list rather than a reshuffled one.
-const SCOPE_CAPABILITIES: [CapId, string][] = [
-  ["tasks", "Tasks"],
-  ["runs", "Runs"],
-  ["batches", "Batches"],
-  ["queues", "Queues"],
-  ["sessions", "Sessions (all tasks)"],
-  ["tags", "Tagged runs"],
-  ["deployments", "Deployments"],
-  ["branches", "Preview branches"],
-  ["envvars", "Environment variables"],
-];
-
 // 0 none · 1 read · 2 read & write · 3 allowed (an action) · 4 full
 const SCOPE_LEVEL_WORDS = ["No access", "Read", "Read & write", "Allowed", "Full access"] as const;
 const SCOPE_LEVEL_TONES = ["none", "read", "write", "write", "write"] as const;
 
 type ScopeTone = (typeof SCOPE_LEVEL_TONES)[number];
-
-// The second entry retains the plugin-provided raw scope strings.
-type PresetCapability = [level: number, rawScopes: string[]];
-
-type PresetScopeDetail = {
-  /** A single `admin` scope grants everything, so every row reads "Full access". */
-  admin?: boolean;
-  /** Task-scopable presets expand task scopes into the selected task identifiers. */
-  scopable?: boolean;
-  /** Shown in the task-access panel for presets that aren't task-scopable. */
-  taskLabel?: string;
-  caps: Partial<Record<CapId, PresetCapability>>;
-};
-
-const SCOPE_CAPABILITY_BY_SCOPE: Record<string, [CapId, number]> = {
-  "trigger:tasks": ["tasks", 3],
-  "batchTrigger:tasks": ["batches", 3],
-  "batchTrigger:batch": ["batches", 3],
-  "read:tasks": ["tasks", 1],
-  "write:tasks": ["tasks", 2],
-  "read:runs": ["runs", 1],
-  "write:runs": ["runs", 2],
-  "read:batch": ["batches", 1],
-  "write:batch": ["batches", 2],
-  "read:queues": ["queues", 1],
-  "write:queues": ["queues", 2],
-  "read:sessions": ["sessions", 1],
-  "write:sessions": ["sessions", 2],
-  "read:tags": ["tags", 1],
-  "read:deployments": ["deployments", 1],
-  "write:deployments": ["deployments", 2],
-  "write:branches": ["branches", 3],
-  "read:envvars": ["envvars", 1],
-  "write:envvars": ["envvars", 2],
-};
-
-function scopeDetailForPreset(preset?: ApiKeyPreset): PresetScopeDetail | undefined {
-  const scopes = preset?.scopes;
-  if (!scopes) return;
-  if (scopes.includes("admin")) {
-    return { admin: true, taskLabel: "All tasks", caps: {} };
-  }
-
-  const caps: PresetScopeDetail["caps"] = {};
-  for (const scope of scopes) {
-    const [action, resource] = scope.split(":");
-    const capability = SCOPE_CAPABILITY_BY_SCOPE[`${action}:${resource}`];
-    if (!capability) continue;
-
-    const [key, level] = capability;
-    const current = caps[key];
-    caps[key] = [Math.max(current?.[0] ?? 0, level), [...(current?.[1] ?? []), scope]];
-  }
-
-  return {
-    scopable: preset.usesTaskSelection,
-    taskLabel: scopes.some((scope) => scope.split(":")[1] === "tasks") ? "All tasks" : "No tasks",
-    caps,
-  };
-}
 
 function expandScopeString(raw: string, scoped: boolean, tasks: string[]): string[] {
   const parts = raw.split(":");

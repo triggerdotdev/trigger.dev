@@ -36,7 +36,6 @@ import { Sheet, SheetContent } from "~/components/primitives/SheetV3";
 import { useToast } from "~/components/primitives/Toast";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { QueryEditor, type QueryEditorSaveData } from "~/components/query/QueryEditor";
-import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { useDashboardEditor } from "~/hooks/useDashboardEditor";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -49,6 +48,9 @@ import { getTaskIdentifiers } from "~/models/task.server";
 import { MetricDashboardPresenter } from "~/presenters/v3/MetricDashboardPresenter.server";
 import { QueryPresenter } from "~/presenters/v3/QueryPresenter.server";
 import { removeFavoritesByUrlSubstring } from "~/services/dashboardPreferences.server";
+import { ServiceValidationError } from "~/v3/services/common.server";
+import { MetricDashboardService } from "~/v3/services/metricDashboard.server";
+import { tryCatch } from "@trigger.dev/core/utils";
 import { hasAdminDisplayAccess, requireUser } from "~/services/session.server";
 import {
   EnvironmentParamSchema,
@@ -132,16 +134,15 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     throw new Response("Project not found", { status: 404 });
   }
 
-  // Load the dashboard
-  const dashboard = await prisma.metricsDashboard.findFirst({
-    where: {
-      friendlyId: dashboardId,
-      organizationId: project.organizationId,
-    },
-  });
+  const service = new MetricDashboardService();
+  const ref = { organizationId: project.organizationId, friendlyId: dashboardId };
 
-  if (!dashboard) {
-    throw new Response("Dashboard not found", { status: 404 });
+  const [lookupError, dashboard] = await tryCatch(service.get(ref));
+  if (lookupError) {
+    if (lookupError instanceof ServiceValidationError) {
+      throw new Response(lookupError.message, { status: lookupError.status ?? 400 });
+    }
+    throw lookupError;
   }
 
   const formData = await request.formData();
@@ -149,9 +150,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   switch (action) {
     case "delete": {
-      await prisma.metricsDashboard.delete({
-        where: { id: dashboard.id },
-      });
+      await service.delete(ref);
 
       // Drop any favorites pointing at this dashboard so the side menu doesn't keep a dead link
       await removeFavoritesByUrlSubstring({
@@ -176,10 +175,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         throw new Response("Title is required", { status: 400 });
       }
 
-      await prisma.metricsDashboard.update({
-        where: { id: dashboard.id },
-        data: { title: newTitle.trim() },
-      });
+      await service.update({ ...ref, title: newTitle.trim() });
 
       return typedjson({ success: true });
     }

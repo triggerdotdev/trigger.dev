@@ -191,6 +191,8 @@ export const action = dashboardAction(
   }
 );
 
+const HIPAA_ADD_ON_PRICE = "$500/month";
+
 const pricingDefinitions = {
   usage: {
     title: "Usage",
@@ -362,10 +364,11 @@ export function TierFree({
   // Randomised once per mount so list position doesn't bias which reasons get picked.
   const [shuffledReasons] = useState(() => shuffleArray(DOWNGRADE_REASONS));
 
+  // Keyed on the plan, not the object: the billing page revalidates while a change is applying.
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setIsDialogOpen(false);
-  }, [subscription]);
+  }, [subscription?.plan?.code, subscription?.canceledAt]);
 
   return (
     <TierContainer>
@@ -522,10 +525,11 @@ export function TierHobby({
   const isLoading = navigation.formAction === formAction;
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
+  // Keyed on the plan, not the object: the billing page revalidates while a change is applying.
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setIsDialogOpen(false);
-  }, [subscription]);
+  }, [subscription?.plan?.code, subscription?.canceledAt]);
 
   return (
     <TierContainer isHighlighted={isHighlighted}>
@@ -633,7 +637,7 @@ export function TierHobby({
         <SupportLevel limits={plan.limits} />
         <Alerts limits={plan.limits} />
         <RealtimeConcurrency limits={plan.limits} />
-        <HIPAAAddOn>
+        <HIPAAAddOn price={HIPAA_ADD_ON_PRICE}>
           <Feedback
             defaultValue="hipaa"
             button={
@@ -663,10 +667,11 @@ export function TierPro({
   const isLoading = navigation.formAction === formAction;
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
+  // Keyed on the plan, not the object: the billing page revalidates while a change is applying.
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setIsDialogOpen(false);
-  }, [subscription]);
+  }, [subscription?.plan?.code, subscription?.canceledAt]);
 
   return (
     <TierContainer>
@@ -786,7 +791,7 @@ export function TierPro({
         <RealtimeConcurrency limits={plan.limits}>
           {pricingDefinitions.additionalRealtimeConnections.content}
         </RealtimeConcurrency>
-        <HIPAAAddOn>
+        <HIPAAAddOn price={HIPAA_ADD_ON_PRICE}>
           <Feedback
             defaultValue="hipaa"
             button={
@@ -1177,9 +1182,11 @@ function QueryPeriod({ limits }: { limits: Limits }) {
 }
 
 function HIPAAAddOn({
+  price,
   children,
   checkedColor = "primary",
 }: {
+  price?: string;
   children?: React.ReactNode;
   checkedColor?: "primary" | "bright";
 }) {
@@ -1195,7 +1202,13 @@ function HIPAAAddOn({
           </DefinitionTip>{" "}
           add-on
         </div>
-        {children && <span className="text-xs text-text-dimmed">{children}</span>}
+        {(price || children) && (
+          <span className="text-xs text-text-dimmed">
+            {price}
+            {price && children && " · "}
+            {children}
+          </span>
+        )}
       </div>
     </FeatureItem>
   );

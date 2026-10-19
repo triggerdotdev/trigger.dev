@@ -1,5 +1,4 @@
 import type { FinalizeDeploymentRequestBody } from "@trigger.dev/core/v3/schemas";
-import { Prisma } from "@trigger.dev/database";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { updateEnvConcurrencyLimits } from "../runQueue.server";
@@ -82,7 +81,6 @@ export class FinalizeDeploymentService extends BaseService {
         deployedAt,
         // Only add the digest, if any
         imageReference: imageDigest ? imageReference : undefined,
-        buildEnvVars: Prisma.DbNull,
       },
     });
 
@@ -98,7 +96,6 @@ export class FinalizeDeploymentService extends BaseService {
       status: "DEPLOYED" as const,
       deployedAt,
       imageReference,
-      buildEnvVars: null,
     };
 
     recordDeploymentFinished({

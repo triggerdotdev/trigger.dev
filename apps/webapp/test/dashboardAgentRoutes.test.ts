@@ -62,6 +62,7 @@ vi.mock("~/services/rbac.server", () => ({
     authenticateUserActor: async () => ({
       ok: true,
       userId: "usr_1",
+      claims: { userId: "usr_1" },
       ability: { can: () => true, canSuper: () => true },
     }),
     authenticatePat: async () => ({

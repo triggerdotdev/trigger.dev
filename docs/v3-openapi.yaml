@@ -303,7 +303,88 @@ paths:
       operationId: replay_run_v1
       summary: Replay a run
       description: Creates a new run with the same payload and options as the original
-        run.
+        run, in the same environment. Send a body to override the payload, metadata, or
+        trigger options for the new run. The body is optional; an empty body replays the
+        run unchanged.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                payload:
+                  description: The payload for the new run. Omit it to reuse the original run's payload.
+                payloadType:
+                  type: string
+                  enum:
+                    - application/json
+                    - application/super+json
+                  description: How `payload` is encoded. Defaults to `application/json`. With `application/super+json`, `payload` must be a SuperJSON string, which keeps types like `Date` and `BigInt`. The SDK sends this automatically.
+                metadata:
+                  type: object
+                  additionalProperties: true
+                  description: Metadata for the new run. Omit it to reuse the original run's metadata.
+                tags:
+                  allOf:
+                    - $ref: "#/components/schemas/RunTags"
+                  description: Tags for the new run. Replaces the original run's tags.
+                queue:
+                  type: string
+                  description: The name of an existing queue in the environment to run on.
+                concurrencyKey:
+                  type: string
+                  description: The concurrency key for the new run.
+                machine:
+                  type: string
+                  enum:
+                    - micro
+                    - small-1x
+                    - small-2x
+                    - medium-1x
+                    - medium-2x
+                    - large-1x
+                    - large-2x
+                  example: "small-2x"
+                  description: The machine preset for the new run.
+                version:
+                  type: string
+                  description: Lock the new run to this deployed version, for example `20250101.1`. Defaults to the current version.
+                region:
+                  type: string
+                  description: The region to run in. Defaults to the original run's region.
+                delay:
+                  type: string
+                  description: Delay the new run, as a duration (`1h30m`) or an ISO 8601 date.
+                ttl:
+                  oneOf:
+                    - type: string
+                    - type: integer
+                  description: How long the new run can stay queued before it expires, as a duration string (`10m`) or a number of seconds.
+                idempotencyKey:
+                  type: string
+                  maxLength: 2048
+                  description: An idempotency key for the new run. A repeated request with the same key returns the same run.
+                idempotencyKeyTTL:
+                  type: string
+                  description: How long the idempotency key is valid, as a duration (`1h`).
+                maxAttempts:
+                  type: integer
+                  minimum: 1
+                  description: The maximum number of attempts for the new run.
+                maxDuration:
+                  type: number
+                  description: The maximum duration of the new run in seconds.
+                priority:
+                  type: number
+                  description: Priority offset in seconds. Higher values are dequeued sooner.
+            example:
+              payload:
+                userId: "user_456"
+              tags:
+                - replayed
+              delay: "10m"
       responses:
         "200":
           description: Successful request
@@ -316,7 +397,7 @@ paths:
                     type: string
                     description: The ID of the new run.
         "400":
-          description: Invalid request
+          description: Invalid request, for example an unknown body field, an unknown queue, or a version that is not deployed to the environment.
           content:
             application/json:
               schema:
@@ -324,9 +405,9 @@ paths:
                 properties:
                   error:
                     type: string
-                    enum:
-                      - Invalid or missing run ID
-                      - Failed to create new run
+                    description: What was wrong with the request.
+        "413":
+          description: The request body is larger than the maximum payload size.
         "401":
           description: Unauthorized request
           content:
@@ -338,6 +419,15 @@ paths:
                     type: string
                     enum:
                       - Invalid or Missing API key
+        "403":
+          description: The credentials can't trigger the run's task. A replay starts a new run, so it needs permission to trigger the task as well as write access to the run.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
         "404":
           description: Resource not found
           content:
@@ -359,6 +449,12 @@ paths:
             import { runs } from "@trigger.dev/sdk";
 
             const handle = await runs.replay("run_1234");
+
+            const withOverrides = await runs.replay("run_1234", {
+              payload: { userId: "user_456" },
+              tags: ["replayed"],
+              delay: "10m",
+            });
 
   "/api/v1/runs/{runId}/tags":
     parameters:
@@ -448,25 +544,106 @@ paths:
     get:
       operationId: get_run_trace_v1
       summary: Retrieve run trace
-      description: Returns the OTel trace subtree for the requested run — the run's span as `rootSpan`, its ancestor chain, and its descendant spans. For child or nested runs in a large trace, this is scoped to that run rather than the trace-wide root.
+      description: Returns the OTel trace subtree for the requested run — the run's span as `rootSpan`, its ancestor chain, and its descendant spans. For child or nested runs in a large trace, this is scoped to that run rather than the trace-wide root. Pass `page[size]` or `page[after]` to page the trace as flat spans instead; paging works for runs at the root of their trace.
+      parameters:
+        - in: query
+          name: page[size]
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+          description: Turns on paging. Spans per page; values are clamped to 1,000–10,000. Defaults to 10,000 when only `page[after]` is sent.
+        - in: query
+          name: page[after]
+          required: false
+          schema:
+            type: string
+          description: Turns on paging. The `pagination.next` cursor from the previous page, passed back unchanged. Omit it for the first page.
       responses:
         "200":
-          description: Successful request
+          description: Successful request. Without page parameters, the nested trace tree. With them, one page of flat spans.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    title: Trace tree
+                    properties:
+                      trace:
+                        type: object
+                        properties:
+                          traceId:
+                            type: string
+                            description: The OTel trace ID.
+                          rootSpan:
+                            allOf:
+                              - $ref: "#/components/schemas/SpanDetailedSummary"
+                            description: The requested run's span, with nested descendant spans as `children`. Not necessarily the trace-wide root span.
+                  - type: object
+                    title: Trace page
+                    properties:
+                      data:
+                        type: array
+                        description: Spans on this page, in start-time order. A span can appear on two pages (in progress, then finished); keep the finished one.
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            parentId:
+                              type: string
+                            runId:
+                              type: string
+                            message:
+                              type: string
+                            startTime:
+                              type: string
+                              format: date-time
+                            duration:
+                              type: number
+                              description: Duration in nanoseconds.
+                            isError:
+                              type: boolean
+                            isPartial:
+                              type: boolean
+                              description: Still in progress.
+                            isCancelled:
+                              type: boolean
+                            level:
+                              type: string
+                              enum: [TRACE, DEBUG, LOG, INFO, WARN, ERROR]
+                            attemptNumber:
+                              type: number
+                      attemptFailures:
+                        type: array
+                        description: Failed-attempt records on this page. A span still in progress under a failed attempt of its run counts as errored.
+                        items:
+                          type: object
+                          properties:
+                            spanId:
+                              type: string
+                            attemptNumber:
+                              type: number
+                            runId:
+                              type: string
+                      pagination:
+                        type: object
+                        properties:
+                          next:
+                            type: string
+                            description: Cursor for the next page. Absent on the last page.
+                          truncated:
+                            type: boolean
+                            description: Some spans or records were left out. Either paging stopped early (for example while an emergency span limit is in place) or a span had more records than one read allows; `next` is still returned in that case.
+        "400":
+          description: Invalid page parameters, or page parameters on a run that isn't at the root of its trace
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  trace:
-                    type: object
-                    properties:
-                      traceId:
-                        type: string
-                        description: The OTel trace ID.
-                      rootSpan:
-                        allOf:
-                          - $ref: "#/components/schemas/SpanDetailedSummary"
-                        description: The requested run's span, with nested descendant spans as `children`. Not necessarily the trace-wide root span.
+                  error:
+                    type: string
         "401":
           description: Unauthorized request
           content:
@@ -490,12 +667,31 @@ paths:
                     enum:
                       - Run not found
                       - Trace not found
+        "501":
+          description: Paging isn't supported by this deployment's trace store
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        "503":
+          description: The trace store is temporarily unavailable, or paging is temporarily limited to the first page. Back off and retry later (see `Retry-After`).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
       tags:
         - runs
       security:
         - secretKey: []
       x-codeSamples:
         - lang: typescript
+          label: Trace tree
           source: |-
             const response = await fetch("https://api.trigger.dev/api/v1/runs/run_1234/trace", {
               headers: {
@@ -504,6 +700,25 @@ paths:
             });
 
             const { trace } = await response.json();
+        - lang: typescript
+          label: Paged
+          source: |-
+            const spans = [];
+            let after;
+
+            do {
+              const query = new URLSearchParams({ "page[size]": "10000" });
+              if (after) query.set("page[after]", after);
+
+              const response = await fetch(
+                `https://api.trigger.dev/api/v1/runs/run_1234/trace?${query}`,
+                { headers: { Authorization: `Bearer ${process.env.TRIGGER_SECRET_KEY}` } }
+              );
+              const page = await response.json();
+
+              spans.push(...page.data);
+              after = page.pagination.next;
+            } while (after);
 
   "/api/v1/runs/{runId}/events":
     parameters:
@@ -1379,8 +1594,8 @@ paths:
   "/api/v1/query/dashboards":
     get:
       operationId: list_dashboards_v1
-      summary: List built-in dashboards
-      description: List available built-in dashboards with their widgets. Each dashboard contains pre-built TRQL queries for common metrics like run success rates, costs, and LLM usage.
+      summary: List dashboards
+      description: List the built-in dashboards and your organization's custom dashboards, with their widgets. Built-in dashboards contain pre-built TRQL queries for common metrics like run success rates, costs, and LLM usage.
       responses:
         "200":
           description: Dashboards listed successfully
@@ -1396,10 +1611,17 @@ paths:
                       properties:
                         key:
                           type: string
-                          description: Dashboard identifier (e.g. "overview", "llm")
+                          description: Dashboard identifier. Built-in dashboards use a key like "overview" or "llm"; custom dashboards use their id.
                         title:
                           type: string
                           description: Dashboard display title
+                        type:
+                          type: string
+                          enum: [builtIn, custom]
+                          description: Built-in dashboards are read-only. Custom dashboards can be changed with the endpoints below.
+                        description:
+                          type: string
+                          description: The dashboard description (custom dashboards only)
                         widgets:
                           type: array
                           items:
@@ -1430,6 +1652,376 @@ paths:
           source: |-
             curl "https://api.trigger.dev/api/v1/query/dashboards" \
               -H "Authorization: Bearer tr_dev_sk_1234"
+    post:
+      operationId: create_dashboard_v1
+      summary: Create a dashboard
+      description: Create a custom dashboard, optionally with its widgets. Every widget query is checked against the queryable tables before it is saved. Creating more dashboards than your plan allows returns a 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [title]
+              properties:
+                title:
+                  type: string
+                  maxLength: 200
+                description:
+                  type: string
+                  maxLength: 2000
+                widgets:
+                  type: array
+                  description: Widgets without a position are stacked full width below the positioned ones, in order.
+                  items:
+                    $ref: "#/components/schemas/DashboardWidgetInput"
+      responses:
+        "201":
+          description: Dashboard created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardObject"
+        "400":
+          description: Invalid request, for example an invalid widget query
+        "401":
+          description: Unauthorized - API key is missing or invalid
+        "403":
+          description: The dashboard or widget limit for your plan was reached, or the credentials cannot write dashboards
+      tags:
+        - query
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { query } from "@trigger.dev/sdk";
+
+            const dashboard = await query.dashboards.create({
+              title: "Email tasks",
+              widgets: [
+                {
+                  title: "Total runs",
+                  query: "SELECT count() AS total FROM runs",
+                  display: { type: "bignumber", column: "total", aggregation: "sum" },
+                },
+              ],
+            });
+
+  "/api/v1/query/dashboards/{dashboardId}":
+    parameters:
+      - name: dashboardId
+        in: path
+        required: true
+        description: The custom dashboard id, starting with `dashboard_`
+        schema:
+          type: string
+    get:
+      operationId: retrieve_dashboard_v1
+      summary: Retrieve a dashboard
+      description: Retrieve a custom dashboard with every widget, its query, display and grid position.
+      responses:
+        "200":
+          description: The dashboard
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardObject"
+        "404":
+          description: Dashboard not found
+      tags:
+        - query
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { query } from "@trigger.dev/sdk";
+
+            const dashboard = await query.dashboards.retrieve("dashboard_1234");
+    patch:
+      operationId: update_dashboard_v1
+      summary: Update a dashboard
+      description: Rename a custom dashboard or change its description.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                title:
+                  type: string
+                  maxLength: 200
+                description:
+                  type: string
+                  maxLength: 2000
+                revision:
+                  $ref: "#/components/schemas/DashboardRevision"
+      responses:
+        "200":
+          description: The updated dashboard
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardObject"
+        "404":
+          description: Dashboard not found
+        "409":
+          description: The dashboard changed since `revision` was read
+      tags:
+        - query
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { query } from "@trigger.dev/sdk";
+
+            await query.dashboards.update("dashboard_1234", { title: "Email pipeline" });
+    put:
+      operationId: replace_dashboard_v1
+      summary: Replace a dashboard's widgets
+      description: Replace every widget on a custom dashboard, and optionally its title and description. A widget that already exists keeps its position unless you pass a new one; new widgets without a position are stacked full width below the others, in order.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [widgets]
+              properties:
+                title:
+                  type: string
+                  maxLength: 200
+                description:
+                  type: string
+                  maxLength: 2000
+                widgets:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/DashboardWidgetInput"
+                revision:
+                  $ref: "#/components/schemas/DashboardRevision"
+      responses:
+        "200":
+          description: The updated dashboard
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardObject"
+        "400":
+          description: Invalid request, for example an invalid widget query or a duplicate widget id
+        "403":
+          description: The widget limit for your plan was reached
+        "404":
+          description: Dashboard not found
+        "409":
+          description: The dashboard changed since `revision` was read
+      tags:
+        - query
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { query } from "@trigger.dev/sdk";
+
+            const current = await query.dashboards.retrieve("dashboard_1234");
+
+            await query.dashboards.replace("dashboard_1234", {
+              widgets: [
+                {
+                  title: "Runs by status",
+                  query: "SELECT status, count() AS runs FROM runs GROUP BY status",
+                  display: { type: "table" },
+                },
+              ],
+              revision: current.revision,
+            });
+    delete:
+      operationId: delete_dashboard_v1
+      summary: Delete a dashboard
+      description: Delete a custom dashboard.
+      responses:
+        "200":
+          description: Dashboard deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+        "404":
+          description: Dashboard not found
+      tags:
+        - query
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { query } from "@trigger.dev/sdk";
+
+            await query.dashboards.del("dashboard_1234");
+
+  "/api/v1/query/dashboards/{dashboardId}/widgets":
+    parameters:
+      - name: dashboardId
+        in: path
+        required: true
+        description: The custom dashboard id, starting with `dashboard_`
+        schema:
+          type: string
+    post:
+      operationId: add_dashboard_widget_v1
+      summary: Add a dashboard widget
+      description: Add a widget to a custom dashboard. Without a position it is placed full width at the bottom.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/DashboardWidgetInput"
+                - type: object
+                  properties:
+                    revision:
+                      $ref: "#/components/schemas/DashboardRevision"
+      responses:
+        "201":
+          description: Widget added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  widgetId:
+                    type: string
+                  dashboard:
+                    $ref: "#/components/schemas/DashboardObject"
+        "400":
+          description: Invalid widget, for example an invalid query
+        "403":
+          description: The widget limit for your plan was reached
+        "404":
+          description: Dashboard not found
+        "409":
+          description: A widget with this id already exists, or the dashboard changed since `revision` was read
+      tags:
+        - query
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { query } from "@trigger.dev/sdk";
+
+            const { widgetId } = await query.dashboards.widgets.add("dashboard_1234", {
+              title: "Failed runs",
+              query: "SELECT count() AS failed FROM runs WHERE status = 'Failed'",
+              display: { type: "bignumber", column: "failed", aggregation: "sum" },
+            });
+
+  "/api/v1/query/dashboards/{dashboardId}/widgets/{widgetId}":
+    parameters:
+      - name: dashboardId
+        in: path
+        required: true
+        description: The custom dashboard id, starting with `dashboard_`
+        schema:
+          type: string
+      - name: widgetId
+        in: path
+        required: true
+        description: The widget id
+        schema:
+          type: string
+    patch:
+      operationId: update_dashboard_widget_v1
+      summary: Update a dashboard widget
+      description: Change a widget's title, query, display or position.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                title:
+                  type: string
+                query:
+                  type: string
+                display:
+                  $ref: "#/components/schemas/DashboardWidgetDisplay"
+                fillGaps:
+                  type: boolean
+                position:
+                  $ref: "#/components/schemas/DashboardWidgetPosition"
+                revision:
+                  $ref: "#/components/schemas/DashboardRevision"
+      responses:
+        "200":
+          description: The updated dashboard
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardObject"
+        "400":
+          description: Invalid widget, for example an invalid query
+        "404":
+          description: Dashboard or widget not found
+        "409":
+          description: The dashboard changed since `revision` was read
+      tags:
+        - query
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { query } from "@trigger.dev/sdk";
+
+            await query.dashboards.widgets.update("dashboard_1234", "widget_1", {
+              position: { x: 0, y: 0, w: 6, h: 10 },
+            });
+    delete:
+      operationId: delete_dashboard_widget_v1
+      summary: Delete a dashboard widget
+      description: Remove a widget from a custom dashboard.
+      parameters:
+        - name: revision
+          in: query
+          required: false
+          description: The revision you last read. The delete fails with a 409 if the dashboard changed since.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The updated dashboard
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardObject"
+        "404":
+          description: Dashboard or widget not found
+        "409":
+          description: The dashboard changed since `revision` was read
+      tags:
+        - query
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { query } from "@trigger.dev/sdk";
+
+            await query.dashboards.widgets.del("dashboard_1234", "widget_1");
 
   "/api/v1/runs/{runId}/reschedule":
     parameters:
@@ -1657,7 +2249,7 @@ paths:
     get:
       operationId: list_runs_v1
       summary: List runs
-      description: List runs in a specific environment. You can filter the runs by status, created at, task identifier, version, and more.
+      description: List runs in a specific environment. You can filter the runs by status, created at, task identifier, version, and more. Without a `filter[createdAt]` value, only runs created in the last 7 days are returned. This endpoint is for browsing, reporting, and bulk operations, not for coordinating runs, so don't call it before every trigger or poll it in a loop. See [runs.list() best practices](/runs/list-best-practices).
       parameters:
         - $ref: "#/components/parameters/cursorPagination"
         - $ref: "#/components/parameters/runsFilter"
@@ -1686,8 +2278,8 @@ paths:
           source: |-
             import { runs } from "@trigger.dev/sdk";
 
-            // Get the first page of runs
-            let page = await runs.list({ limit: 20 });
+            // Get the first page of runs created in the last day
+            let page = await runs.list({ period: "1d", limit: 20 });
 
             for (const run of page.data) {
               console.log(`Run ID: ${run.id}, Status: ${run.status}`);
@@ -1699,10 +2291,10 @@ paths:
               // Do something with the next page of runs
             }
 
-            // Auto-paginate through all runs
+            // Auto-paginate through all runs created in the last day
             const allRuns = [];
 
-            for await (const run of runs.list({ limit: 20 })) {
+            for await (const run of runs.list({ period: "1d", limit: 20 })) {
               allRuns.push(run);
             }
         - lang: typescript
@@ -1713,7 +2305,7 @@ paths:
             const response = await runs.list({
               status: ["QUEUED", "EXECUTING"],
               taskIdentifier: ["my-task", "my-other-task"],
-              from: new Date("2024-04-01T00:00:00Z"),
+              from: new Date(Date.now() - 24 * 60 * 60 * 1000), // last 24 hours
               to: new Date(),
             });
 
@@ -1968,7 +2560,7 @@ paths:
               env: ["prod", "staging"],
               status: ["QUEUED", "EXECUTING"],
               taskIdentifier: ["my-task", "my-other-task"],
-              from: new Date("2024-04-01T00:00:00Z"),
+              from: new Date(Date.now() - 24 * 60 * 60 * 1000), // last 24 hours
               to: new Date(),
             });
 
@@ -3184,7 +3776,7 @@ paths:
     get:
       operationId: retrieve_concurrency_limit_v1
       summary: Retrieve concurrency limit
-      description: Retrieve a concurrency limit by name, with its bounds and live running and queued counts.
+      description: Retrieve a concurrency limit by name, with its bounds and live running and queued counts. With the concurrencyKey query parameter, retrieve the limit's view for that one key instead (its per-key bound, any per-key override and when it expires, and the runs executing for the key).
       parameters:
         - name: name
           in: path
@@ -3192,13 +3784,21 @@ paths:
           schema:
             type: string
           description: The limit's name, as declared with `concurrencyLimit()`
+        - name: concurrencyKey
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Return the view for this concurrencyKey instead of the limit itself.
       responses:
         "200":
           description: Concurrency limit retrieved successfully
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/ConcurrencyLimitObject"
+                oneOf:
+                  - "$ref": "#/components/schemas/ConcurrencyLimitObject"
+                  - "$ref": "#/components/schemas/ConcurrencyLimitKeyObject"
         "401":
           description: Unauthorized request
         "404":
@@ -3235,28 +3835,51 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              minProperties: 1
-              additionalProperties: false
-              description: At least one of `perKey` or `total` must be provided.
-              properties:
-                perKey:
-                  type: integer
-                  minimum: 0
-                  maximum: 100000
-                  description: Caps each concurrencyKey pool; runs without a key share one pool. May not exceed the environment concurrency limit.
-                total:
-                  type: integer
-                  minimum: 0
-                  maximum: 100000
-                  description: Caps every run holding this limit, keys or not. May not exceed the environment concurrency limit.
+              oneOf:
+                - type: object
+                  title: Limit bounds
+                  description: Override the limit itself. At least one of `perKey` or `total` must be provided.
+                  minProperties: 1
+                  additionalProperties: false
+                  properties:
+                    perKey:
+                      type: integer
+                      minimum: 0
+                      maximum: 100000
+                      description: Caps each concurrencyKey pool; runs without a key share one pool. May not exceed the environment concurrency limit.
+                    total:
+                      type: integer
+                      minimum: 0
+                      maximum: 100000
+                      description: Caps every run holding this limit, keys or not. May not exceed the environment concurrency limit.
+                - type: object
+                  title: Per-key cap
+                  description: Override the limit's `perKey` for one concurrencyKey only. The override is temporary (see `ttl`), changes no other bound, and applies to every task holding the limit. `total` cannot be given here.
+                  required: [concurrencyKey, perKey]
+                  additionalProperties: false
+                  properties:
+                    concurrencyKey:
+                      type: string
+                      description: The concurrencyKey whose cap is overridden.
+                    perKey:
+                      type: integer
+                      minimum: 0
+                      maximum: 100000
+                      description: The cap for this key; `0` blocks it. May not exceed the environment concurrency limit.
+                    ttl:
+                      oneOf:
+                        - type: string
+                        - type: integer
+                      description: How long the override lasts, as a duration such as "7d" or a number of seconds. Default 7 days, maximum 30 days.
       responses:
         "200":
           description: Concurrency limit overridden successfully
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/ConcurrencyLimitObject"
+                oneOf:
+                  - "$ref": "#/components/schemas/ConcurrencyLimitObject"
+                  - "$ref": "#/components/schemas/ConcurrencyLimitKeyObject"
         "400":
           description: Invalid request parameters, or a bound exceeds the environment concurrency limit
         "401":
@@ -3338,7 +3961,7 @@ paths:
     post:
       operationId: reset_concurrency_limit_v1
       summary: Reset concurrency limit
-      description: Reset a concurrency limit back to the values declared in your code, clearing any override.
+      description: Reset a concurrency limit back to the values declared in your code, clearing any override. With a concurrencyKey in the body, clear that key's per-key override instead and leave the limit itself alone.
       parameters:
         - name: name
           in: path
@@ -3346,13 +3969,25 @@ paths:
           schema:
             type: string
           description: The limit's name
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                concurrencyKey:
+                  type: string
+                  description: Clear the per-key override for this concurrencyKey only.
       responses:
         "200":
           description: Concurrency limit reset successfully
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/ConcurrencyLimitObject"
+                oneOf:
+                  - "$ref": "#/components/schemas/ConcurrencyLimitObject"
+                  - "$ref": "#/components/schemas/ConcurrencyLimitKeyObject"
         "400":
           description: The limit has no override to reset
         "401":
@@ -4156,9 +4791,545 @@ paths:
           source: |-
             curl -X POST "https://api.trigger.dev/api/v1/errors/error_8f3b2a1c9d4e5f60/unresolve" \
               -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
+  "/api/v1/webhooks/endpoints":
+    get:
+      operationId: list_webhook_endpoints_v1
+      summary: List webhook endpoints
+      description: >-
+        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
+
+        List the hosted webhook endpoints in the environment, ordered by declared id. Each endpoint
+        includes its webhook URL and whether its signing secret is set. The secret itself is never returned.
+      parameters:
+        - in: query
+          name: "filter[webhook]"
+          schema:
+            type: string
+          required: false
+          description: Comma-separated declared endpoint ids to return.
+          example: "stripe,github"
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListWebhookEndpointsResult"
+        "401":
+          description: Unauthorized request
+      tags:
+        - webhooks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: List webhook endpoints
+          source: |-
+            curl "https://api.trigger.dev/api/v1/webhooks/endpoints" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
+  "/api/v1/webhooks/endpoints/{endpointId}":
+    parameters:
+      - $ref: "#/components/parameters/webhookEndpointId"
+    get:
+      operationId: retrieve_webhook_endpoint_v1
+      summary: Retrieve a webhook endpoint
+      description: >-
+        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
+
+        Retrieve one webhook endpoint with its subscribers, the filter each one applies, and its
+        setup prompt: instructions for registering the endpoint and its signing secret with the provider.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookEndpointDetailObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Endpoint not found
+      tags:
+        - webhooks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: Retrieve a webhook endpoint
+          source: |-
+            curl "https://api.trigger.dev/api/v1/webhooks/endpoints/stripe" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
+  "/api/v1/webhooks/endpoints/{endpointId}/enable":
+    parameters:
+      - $ref: "#/components/parameters/webhookEndpointId"
+    post:
+      operationId: enable_webhook_endpoint_v1
+      summary: Enable a webhook endpoint
+      description: >-
+        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
+
+        Resume a disabled endpoint so its URL accepts deliveries again. Returns the updated endpoint.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookEndpointDetailObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Endpoint not found
+      tags:
+        - webhooks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: Enable a webhook endpoint
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/webhooks/endpoints/stripe/enable" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
+  "/api/v1/webhooks/endpoints/{endpointId}/disable":
+    parameters:
+      - $ref: "#/components/parameters/webhookEndpointId"
+    post:
+      operationId: disable_webhook_endpoint_v1
+      summary: Disable a webhook endpoint
+      description: >-
+        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
+
+        Pause an endpoint. Its status becomes `inactive` and its URL responds with `404` until you
+        enable it, so providers see failed deliveries and retry on their own schedule. Returns the updated endpoint.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookEndpointDetailObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Endpoint not found
+      tags:
+        - webhooks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: Disable a webhook endpoint
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/webhooks/endpoints/stripe/disable" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
+  "/api/v1/webhooks/endpoints/{endpointId}/rotate-secret":
+    parameters:
+      - $ref: "#/components/parameters/webhookEndpointId"
+    post:
+      operationId: rotate_webhook_endpoint_secret_v1
+      summary: Generate a webhook signing secret
+      description: >-
+        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
+
+        Generate a new signing secret for the endpoint, store it, and return it once. Use this for providers
+        where you choose the secret, such as GitHub. It replaces any existing secret, so deliveries fail
+        verification until the provider uses the new one. Endpoints whose source verifies with a public key
+        refuse this; set the provider's key with the set secret endpoint instead.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RotateWebhookEndpointSecretResponse"
+        "400":
+          description: The endpoint's source verifies with a public key, so a secret can't be generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Endpoint not found
+      tags:
+        - webhooks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: Generate a signing secret
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/webhooks/endpoints/github/rotate-secret" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
+  "/api/v1/webhooks/endpoints/{endpointId}/secret":
+    parameters:
+      - $ref: "#/components/parameters/webhookEndpointId"
+    put:
+      operationId: set_webhook_endpoint_secret_v1
+      summary: Set a webhook signing secret
+      description: >-
+        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
+
+        Store the signing secret or public key the provider issued for this endpoint, such as the `whsec_`
+        secret Stripe returns when you create a webhook endpoint. It replaces any existing secret.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - secret
+              properties:
+                secret:
+                  type: string
+                  minLength: 1
+                  maxLength: 4096
+                  description: The signing secret or public key. Leading and trailing whitespace is trimmed.
+                  example: whsec_5f2b...
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetWebhookEndpointSecretResponse"
+        "400":
+          description: Invalid request body
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Endpoint not found
+      tags:
+        - webhooks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: Set a signing secret
+          source: |-
+            curl -X PUT "https://api.trigger.dev/api/v1/webhooks/endpoints/stripe/secret" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY" \
+              -H "Content-Type: application/json" \
+              -d '{"secret": "whsec_..."}'
+  "/api/v1/webhooks/endpoints/{endpointId}/waiters":
+    parameters:
+      - $ref: "#/components/parameters/webhookEndpointId"
+    post:
+      operationId: create_webhook_waiter_v1
+      summary: Create a webhook waiter
+      description: >-
+        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
+
+        Create a waiter on an endpoint. A waiter is a waitpoint that completes when a matching delivery
+        arrives on the endpoint, so a run waiting on its id resumes with the verified event. It only matches
+        deliveries that arrive after it was created. Omit `match` to get a waiter with its own `url`, for
+        providers that take a webhook URL per request.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWebhookWaiterRequest"
+      responses:
+        "200":
+          description: Waiter created, or the existing waiter for this idempotency key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateWebhookWaiterResponse"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: No active endpoint with this id in the environment's current deployment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookWaiterErrorResponse"
+        "422":
+          description: >-
+            A limit was reached (`webhook_waiter_limit`), the filter doesn't parse (`webhook_filter_invalid`),
+            or the request is invalid (`invalid_request`), for example an unknown `match` path or a bad `timeout`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookWaiterErrorResponse"
+      tags:
+        - webhooks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { webhooks } from "@trigger.dev/sdk";
+            import { stripe } from "./trigger/stripe";
+
+            const waiter = await webhooks.waiter.create(stripe, {
+              match: { "event.data.object.metadata.orderId": orderId },
+              timeout: "1h",
+            });
+
+            // Wait on it inside a task
+            const { event } = await webhooks.waiter.wait(waiter.id).unwrap();
+        - lang: curl
+          label: Create a webhook waiter
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/webhooks/endpoints/stripe/waiters" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY" \
+              -H "Content-Type: application/json" \
+              -d '{"match": {"event.data.object.metadata.orderId": "order_123"}, "timeout": "1h"}'
+  "/api/v1/webhooks/waiters/{waiterId}/cancel":
+    parameters:
+      - in: path
+        name: waiterId
+        required: true
+        schema:
+          type: string
+        description: The waiter's id, which is also its waitpoint id.
+        example: waitpoint_abc123
+    post:
+      operationId: cancel_webhook_waiter_v1
+      summary: Cancel a webhook waiter
+      description: >-
+        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
+
+        Cancel a waiter. It stops matching deliveries, frees its slot toward the endpoint's limit, and fails
+        the run's wait. If a delivery already claimed the waiter, the cancel is too late: the response has
+        `cancelled: false` with `reason: "too_late"`, and the run resumes with that delivery's event.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CancelWebhookWaiterResponse"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Waiter not found
+      tags:
+        - webhooks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { webhooks } from "@trigger.dev/sdk";
+
+            const result = await webhooks.waiter.cancel(waiterId);
+            if (!result.cancelled) {
+              console.log("Already resumed by", result.deliveryId);
+            }
+        - lang: curl
+          label: Cancel a webhook waiter
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/webhooks/waiters/waitpoint_abc123/cancel" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
+  "/api/v1/webhooks/deliveries":
+    get:
+      operationId: list_webhook_deliveries_v1
+      summary: List webhook deliveries
+      description: >-
+        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
+
+        List the verified events providers sent to the environment's endpoints, newest first. Filter by
+        endpoint, status and time range, and page with `page[after]` and `page[before]`.
+      parameters:
+        - in: query
+          name: "page[size]"
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+          required: false
+          description: Number of deliveries to return per page (1 to 100).
+        - in: query
+          name: "page[after]"
+          schema:
+            type: string
+          required: false
+          description: Return older deliveries, after this cursor (from `pagination.next` in a previous response).
+        - in: query
+          name: "page[before]"
+          schema:
+            type: string
+          required: false
+          description: Return newer deliveries, before this cursor (from `pagination.previous` in a previous response).
+        - in: query
+          name: "filter[endpoint]"
+          schema:
+            type: string
+          required: false
+          description: Comma-separated endpoints, each a declared id or a `wh_` id.
+          example: "stripe,github"
+        - in: query
+          name: "filter[status]"
+          schema:
+            type: string
+          required: false
+          description: >-
+            Comma-separated statuses. Allowed values: `pending`, `processing`, `succeeded`, `failed`,
+            `filtered`, `unmatched`.
+          example: "failed,filtered"
+        - in: query
+          name: "filter[period]"
+          schema:
+            type: string
+          required: false
+          description: A duration back from now, such as `1h` or `7d`.
+          example: "24h"
+        - in: query
+          name: "filter[from]"
+          schema:
+            type: string
+            format: date-time
+          required: false
+          description: Only deliveries created at or after this ISO 8601 timestamp.
+        - in: query
+          name: "filter[to]"
+          schema:
+            type: string
+            format: date-time
+          required: false
+          description: Only deliveries created at or before this ISO 8601 timestamp.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListWebhookDeliveriesResult"
+        "400":
+          description: Invalid query parameters, such as an unknown status
+        "401":
+          description: Unauthorized request
+      tags:
+        - webhooks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: List failed deliveries
+          source: |-
+            curl -G "https://api.trigger.dev/api/v1/webhooks/deliveries" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY" \
+              --data-urlencode "filter[endpoint]=stripe" \
+              --data-urlencode "filter[status]=failed,filtered" \
+              --data-urlencode "filter[period]=24h"
+  "/api/v1/webhooks/deliveries/{deliveryId}":
+    parameters:
+      - $ref: "#/components/parameters/webhookDeliveryId"
+    get:
+      operationId: retrieve_webhook_delivery_v1
+      summary: Retrieve a webhook delivery
+      description: >-
+        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
+
+        Retrieve one delivery: its status and error, the event body and headers it carried, and a `targets`
+        entry per subscriber with the run or session it started or why its filter skipped the event. When
+        the delivery resumed waiting runs, one more entry summarizes them.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookDeliveryObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Delivery not found
+      tags:
+        - webhooks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: Retrieve a webhook delivery
+          source: |-
+            curl "https://api.trigger.dev/api/v1/webhooks/deliveries/whd_1234" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
+  "/api/v1/webhooks/deliveries/{deliveryId}/replay":
+    parameters:
+      - $ref: "#/components/parameters/webhookDeliveryId"
+    post:
+      operationId: replay_webhook_delivery_v1
+      summary: Replay a webhook delivery
+      description: >-
+        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
+
+        Route a delivery's stored event again as a new delivery. Without `targetId` every current subscriber
+        is checked against its filter again. With `targetId` the event goes to that one subscriber, even if
+        its filter skipped it. A replay never resumes waiting runs. Replays start real runs, so the key needs
+        permission to trigger every task the replay runs, and to write sessions if it reaches an agent's subscriber.
+      parameters:
+        - in: query
+          name: targetId
+          schema:
+            type: string
+          required: false
+          description: >-
+            The subscriber to replay to: a `webhook()` task's id, or `agentId:eventId` for an agent's
+            `chat.event` or channel. Listed in the endpoint's `subscribers`.
+      responses:
+        "200":
+          description: Replay created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReplayWebhookDeliveryResponse"
+        "401":
+          description: Unauthorized request
+        "403":
+          description: The key can't trigger a task (or write sessions for an agent) that the replay would run
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: The delivery, its endpoint, or the `targetId` subscriber doesn't exist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      tags:
+        - webhooks
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: Replay to every subscriber
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/webhooks/deliveries/whd_1234/replay" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
+        - lang: curl
+          label: Replay to one subscriber
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/webhooks/deliveries/whd_1234/replay?targetId=process-refund" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
 
 components:
   parameters:
+    webhookEndpointId:
+      in: path
+      name: endpointId
+      required: true
+      schema:
+        type: string
+      description: >-
+        The endpoint's declared id (the `id` passed to `webhooks.endpoint.define`) or its `wh_` id.
+        A value starting with `wh_` is always a generated id, since declared ids can't start with `wh_`.
+        A declared id names the endpoint's declared instance in the key's environment.
+      example: stripe
+    webhookDeliveryId:
+      in: path
+      name: deliveryId
+      required: true
+      schema:
+        type: string
+      description: The delivery's id, starts with `whd_`.
+      example: whd_1234
     taskIdentifier:
       in: path
       name: taskIdentifier
@@ -4430,6 +5601,528 @@ components:
         other API operations. For session tokens see the [session scopes](/management/authentication#session-scopes).
 
   schemas:
+    DashboardRevision:
+      type: string
+      description: The `revision` from the dashboard you last read. Send it to reject the write with a 409 if someone else changed the dashboard in the meantime.
+    DashboardWidgetPosition:
+      type: object
+      description: A position on the dashboard's 12-column grid.
+      required: [x, y, w, h]
+      properties:
+        x:
+          type: integer
+          minimum: 0
+          maximum: 11
+        y:
+          type: integer
+          minimum: 0
+        w:
+          type: integer
+          minimum: 1
+          maximum: 12
+        h:
+          type: integer
+          minimum: 1
+    DashboardWidgetDisplay:
+      description: How the widget renders its query results.
+      oneOf:
+        - type: object
+          title: Table
+          required: [type]
+          properties:
+            type:
+              type: string
+              enum: [table]
+            prettyFormatting:
+              type: boolean
+              default: true
+            sorting:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  desc:
+                    type: boolean
+        - type: object
+          title: Chart
+          required: [type, chartType, xAxisColumn, yAxisColumns, groupByColumn, stacked, sortByColumn, sortDirection, aggregation]
+          properties:
+            type:
+              type: string
+              enum: [chart]
+            chartType:
+              type: string
+              enum: [bar, line]
+            xAxisColumn:
+              type: string
+              nullable: true
+            yAxisColumns:
+              type: array
+              items:
+                type: string
+            groupByColumn:
+              type: string
+              nullable: true
+            stacked:
+              type: boolean
+            sortByColumn:
+              type: string
+              nullable: true
+            sortDirection:
+              type: string
+              enum: [asc, desc]
+            aggregation:
+              type: string
+              enum: [sum, avg, count, min, max]
+            seriesColors:
+              type: object
+              additionalProperties:
+                type: string
+        - type: object
+          title: Big number
+          required: [type, column, aggregation]
+          properties:
+            type:
+              type: string
+              enum: [bignumber]
+            column:
+              type: string
+            aggregation:
+              type: string
+              enum: [sum, avg, count, min, max, first, last]
+            sortDirection:
+              type: string
+              enum: [asc, desc]
+            abbreviate:
+              type: boolean
+              default: false
+            prefix:
+              type: string
+            suffix:
+              type: string
+        - type: object
+          title: Section title
+          required: [type]
+          properties:
+            type:
+              type: string
+              enum: [title]
+    DashboardWidgetInput:
+      type: object
+      required: [title, display]
+      properties:
+        id:
+          type: string
+          description: Omit to generate one. Letters, numbers, `_` and `-`, unique within the dashboard.
+        title:
+          type: string
+          maxLength: 200
+        query:
+          type: string
+          description: A TRQL query. Required unless the display type is `title`.
+        display:
+          $ref: "#/components/schemas/DashboardWidgetDisplay"
+        fillGaps:
+          type: boolean
+          description: Fill empty time buckets, carrying gauges forward and zero-filling counters.
+        position:
+          $ref: "#/components/schemas/DashboardWidgetPosition"
+    DashboardObject:
+      type: object
+      properties:
+        id:
+          type: string
+          description: The dashboard id, starting with `dashboard_`
+        title:
+          type: string
+        description:
+          type: string
+        revision:
+          $ref: "#/components/schemas/DashboardRevision"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        widgets:
+          type: array
+          description: Widgets in grid order, top to bottom then left to right.
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              title:
+                type: string
+              query:
+                type: string
+              display:
+                $ref: "#/components/schemas/DashboardWidgetDisplay"
+              fillGaps:
+                type: boolean
+              position:
+                $ref: "#/components/schemas/DashboardWidgetPosition"
+    WebhookEndpointObject:
+      type: object
+      required:
+        - id
+        - declaredId
+        - source
+        - status
+        - secretProvisioning
+        - secretSet
+        - tenantId
+        - externalRef
+        - url
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          description: The endpoint's id.
+          example: wh_cm1a2b3c4d5e6f
+        declaredId:
+          type: string
+          description: The `id` the endpoint is declared with in code (`webhooks.endpoint.define({ id })`).
+          example: stripe
+        source:
+          type: string
+          description: The provider source that verifies and types the endpoint's events.
+          example: stripe
+        status:
+          type: string
+          enum: [active, inactive, deleting]
+          description: >-
+            `active` accepts deliveries. `inactive` was disabled, or is no longer in the current
+            deployment, and its URL responds with `404`.
+        secretProvisioning:
+          type: string
+          enum: [provider, integrator, either]
+          description: >-
+            Who supplies the signing secret: `provider` issues it (store it with the set secret endpoint),
+            `integrator` means you choose it (generate one), and `either` accepts both.
+        secretSet:
+          type: boolean
+          description: Whether a signing secret or public key is set. Every delivery is rejected until it is.
+        tenantId:
+          type: ["string", "null"]
+          description: Reserved for dynamic endpoints. `null` for a declared endpoint.
+        externalRef:
+          type: ["string", "null"]
+          description: Reserved for dynamic endpoints. `null` for a declared endpoint.
+        url:
+          type: string
+          description: The webhook URL to register with the provider.
+          example: https://api.trigger.dev/webhooks/v1/ingest/q3Xb7k2LmP9sT4vW1yZ0aQ
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    WebhookEndpointDetailObject:
+      allOf:
+        - $ref: "#/components/schemas/WebhookEndpointObject"
+        - type: object
+          required:
+            - subscribers
+            - setupPrompt
+          properties:
+            subscribers:
+              type: array
+              description: The tasks and agents that receive the endpoint's deliveries.
+              items:
+                type: object
+                required: [id, type, taskId, filter]
+                properties:
+                  id:
+                    type: string
+                    description: >-
+                      The subscriber id, used as `targetId` when replaying: a `webhook()` task's id, or
+                      `agentId:eventId` for an agent's `chat.event` or channel.
+                    example: process-checkout
+                  type:
+                    type: string
+                    enum: [task, session]
+                    description: "`task` triggers a run. `session` routes the event into an agent's session."
+                  taskId:
+                    type: string
+                    description: The subscribing task, or the agent for a `session` subscriber.
+                    example: process-checkout
+                  filter:
+                    type: ["string", "null"]
+                    description: The filter that decides which events the subscriber takes. `null` takes every event.
+                    example: event.type == 'checkout.session.completed'
+            setupPrompt:
+              type: string
+              description: >-
+                Instructions for an AI coding agent to register the endpoint with its provider and set up
+                the signing secret.
+    ListWebhookEndpointsResult:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookEndpointObject"
+    RotateWebhookEndpointSecretResponse:
+      type: object
+      required: [id, secretSet, secret]
+      properties:
+        id:
+          type: string
+          description: The endpoint's `wh_` id.
+          example: wh_cm1a2b3c4d5e6f
+        secretSet:
+          type: boolean
+          const: true
+        secret:
+          type: string
+          description: The new signing secret. It is returned only in this response and can't be read again.
+          example: whsec_5f2b...
+    SetWebhookEndpointSecretResponse:
+      type: object
+      required: [id, secretSet]
+      properties:
+        id:
+          type: string
+          description: The endpoint's `wh_` id.
+          example: wh_cm1a2b3c4d5e6f
+        secretSet:
+          type: boolean
+          const: true
+    WebhookDeliveryStatus:
+      type: string
+      enum: [pending, processing, succeeded, failed, filtered, unmatched]
+      description: >-
+        `pending` is waiting to be routed (including after a retryable error), `processing` is being routed,
+        `succeeded` reached at least one subscriber or waiting run with nothing failed, `failed` means a
+        subscriber failed after its retries, `filtered` means no subscriber's filter took it, and `unmatched`
+        means runs were waiting on the endpoint but none matched and no subscriber took it.
+    WebhookDeliveryListItem:
+      type: object
+      required: [id, endpoint, status, externalDeliveryId, isTest, createdAt, processedAt]
+      properties:
+        id:
+          type: string
+          description: The delivery's id.
+          example: whd_1234
+        endpoint:
+          type: ["object", "null"]
+          description: The endpoint the delivery arrived on, or `null` if it has since been removed.
+          required: [id, declaredId]
+          properties:
+            id:
+              type: string
+              example: wh_cm1a2b3c4d5e6f
+            declaredId:
+              type: string
+              example: stripe
+        status:
+          $ref: "#/components/schemas/WebhookDeliveryStatus"
+        externalDeliveryId:
+          type: string
+          description: The provider's id for the delivery, such as a Stripe event id or GitHub's `X-GitHub-Delivery` header.
+          example: evt_1PqR2s3T4u5V6w
+        isTest:
+          type: boolean
+          description: Whether the request carried an `x-trigger-test` header, as test sends from the dashboard do.
+        createdAt:
+          type: string
+          format: date-time
+        processedAt:
+          type: ["string", "null"]
+          format: date-time
+    ListWebhookDeliveriesResult:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookDeliveryListItem"
+        pagination:
+          type: object
+          properties:
+            next:
+              type: string
+              description: Pass as `page[after]` to get the next, older page.
+            previous:
+              type: string
+              description: Pass as `page[before]` to get the previous, newer page.
+    WebhookDeliveryTarget:
+      type: object
+      required: [id, type, status, reason, error, runId, sessionId, waiters]
+      properties:
+        id:
+          type: string
+          description: The subscriber id, or `waiters` for the waiting-runs summary.
+          example: process-checkout
+        type:
+          type: string
+          enum: [task, session, waiter]
+        status:
+          type: string
+          enum: [pending, succeeded, failed, filtered]
+        reason:
+          type: ["string", "null"]
+          description: For a `filtered` target, the filter clause that failed and the value it saw.
+        error:
+          type: ["string", "null"]
+        runId:
+          type: ["string", "null"]
+          description: The run the subscriber started.
+          example: run_cm1a2b3c4d5e6f
+        sessionId:
+          type: ["string", "null"]
+          description: The session the event was routed into, for a `session` subscriber.
+        waiters:
+          type: ["object", "null"]
+          description: For the `waiter` summary, how many waiting runs matched, were resumed, and failed to resume.
+          required: [matched, resumed, failed]
+          properties:
+            matched:
+              type: integer
+            resumed:
+              type: integer
+            failed:
+              type: integer
+    WebhookDeliveryObject:
+      allOf:
+        - $ref: "#/components/schemas/WebhookDeliveryListItem"
+        - type: object
+          required: [idempotencyKey, event, headers, rawBodyHash, error, filterReason, targets, updatedAt]
+          properties:
+            idempotencyKey:
+              type: string
+              description: The key the delivery was deduplicated on.
+            event:
+              description: The verified event body, capped in size.
+            headers:
+              type: ["object", "null"]
+              additionalProperties:
+                type: string
+              description: The request headers, with credentials such as signatures removed.
+            rawBodyHash:
+              type: ["string", "null"]
+              description: A hash of the raw request body.
+            error:
+              type: ["string", "null"]
+              description: For a `failed` delivery, the error and the subscriber it came from.
+            filterReason:
+              type: ["string", "null"]
+              description: For a `filtered` delivery, why no subscriber took it.
+            targets:
+              type: array
+              description: One entry per subscriber, plus a `waiter` entry when the delivery matched waiting runs.
+              items:
+                $ref: "#/components/schemas/WebhookDeliveryTarget"
+            updatedAt:
+              type: string
+              format: date-time
+    ReplayWebhookDeliveryResponse:
+      type: object
+      required: [deliveryId, replayedFrom]
+      properties:
+        deliveryId:
+          type: string
+          description: The new delivery. Retrieve it once it's processed to see the runs it started.
+          example: whd_5678
+        replayedFrom:
+          type: string
+          description: The delivery that was replayed.
+          example: whd_1234
+    CreateWebhookWaiterRequest:
+      type: object
+      properties:
+        match:
+          type: object
+          description: >-
+            Up to five paths, each mapped to the value it must equal. `event.*` reads the event body,
+            `header.*` a request header (case-insensitive) and `webhook.*` the endpoint (`id`, `source`,
+            `externalRef`, `tenantId` or `deliveryId`). Omit it to create a waiter with its own `url`.
+          additionalProperties:
+            oneOf:
+              - type: string
+              - type: number
+              - type: boolean
+          example:
+            event.type: payment_intent.succeeded
+            event.data.object.metadata.orderId: order_123
+        filter:
+          type: string
+          description: A [filter](/webhooks/filters) the event must also pass, checked after `match`.
+          example: event.data.object.amount > 1000
+        timeout:
+          type: string
+          description: A duration such as `30m` or `1h`, or an ISO 8601 date. Defaults to 24 hours, up to 90 days.
+          example: 1h
+        tags:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+          description: Up to 10 tags, added to the `webhook:<endpoint id>` tag every waiter gets.
+        idempotencyKey:
+          type: string
+          description: >-
+            A create with a key already used in the environment returns the original waiter with
+            `isCached: true`, even if it has completed.
+        idempotencyKeyTTL:
+          type: string
+          description: How long the idempotency key lasts, such as `1h` or `30d`.
+    CreateWebhookWaiterResponse:
+      type: object
+      required: [id, expiresAt, isCached]
+      properties:
+        id:
+          type: string
+          description: The waiter's id, which is also its waitpoint id. Wait on it with `webhooks.waiter.wait()` or `wait.forToken()`.
+          example: waitpoint_abc123
+        url:
+          type: string
+          description: >-
+            Only for a waiter created without `match`: the URL to give the provider as its per-request
+            webhook. A delivery to it is verified with the endpoint's source and resumes only this waiter.
+        expiresAt:
+          type: string
+          format: date-time
+          description: When the waiter times out.
+        isCached:
+          type: boolean
+          description: "`true` if an existing waiter was returned for the same `idempotencyKey`."
+    WebhookWaiterErrorResponse:
+      type: object
+      required: [error, code]
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+          enum: [webhook_waiter_limit, webhook_endpoint_not_found, webhook_filter_invalid, invalid_request]
+        reason:
+          type: string
+          enum: [environment_limit, endpoint_limit, shape_limit, timeout_too_long]
+          description: For `webhook_waiter_limit`, which limit was reached.
+    CancelWebhookWaiterResponse:
+      type: object
+      required: [cancelled]
+      properties:
+        cancelled:
+          type: boolean
+        reason:
+          type: string
+          enum: [too_late]
+          description: Present when `cancelled` is `false`. A delivery already claimed the waiter.
+        deliveryId:
+          type: string
+          description: With `too_late`, the delivery that resumed the run.
+          example: whd_1234
     RunTag:
       type: string
       maxLength: 128
@@ -4607,6 +6300,57 @@ components:
         paused:
           type: boolean
           description: Whether the limit is paused. A paused limit admits no runs until resumed; its configured bounds are kept.
+          example: false
+    ConcurrencyLimitKeyObject:
+      type: object
+      description: A limit's view for one concurrencyKey, returned when a request names a concurrencyKey.
+      required:
+        - name
+        - concurrencyKey
+        - perKey
+        - running
+        - paused
+      properties:
+        name:
+          type: string
+          description: The limit's name, as declared with `concurrencyLimit()`
+          example: "subagents"
+        concurrencyKey:
+          type: string
+          description: The concurrencyKey this view is for
+          example: "session_abc123"
+        perKey:
+          type: object
+          description: The per-key bound for this key
+          properties:
+            current:
+              type: integer
+              nullable: true
+              description: Enforced right now for this key (the override when one is in force, else the limit's perKey), clamped to the environment concurrency limit
+              example: 3
+            base:
+              type: integer
+              nullable: true
+              description: The limit's own perKey as enforced
+              example: 1
+            override:
+              type: integer
+              nullable: true
+              description: The key's temporary override, when one is in force
+              example: 3
+            expiresAt:
+              type: string
+              format: date-time
+              nullable: true
+              description: When the key's override lapses; null when there is none
+              example: "2026-10-16T12:00:00.000Z"
+        running:
+          type: integer
+          description: Runs executing for this key that hold this limit
+          example: 2
+        paused:
+          type: boolean
+          description: Whether the limit is paused. A paused limit admits no runs, override or not.
           example: false
     QueueObject:
       type: object

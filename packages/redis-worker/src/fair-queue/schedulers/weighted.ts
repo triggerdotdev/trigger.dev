@@ -1,4 +1,5 @@
-import { createRedisClient, type Redis } from "@internal/redis";
+import type { RedisClient } from "@internal/redis";
+import { createFairQueueRedisClient } from "../connection.js";
 import seedrandom from "seedrandom";
 import { BaseScheduler } from "../scheduler.js";
 import type {
@@ -47,7 +48,7 @@ const defaultBiases: WeightedSchedulerBiases = {
  * - Maximum tenant count to limit iteration
  */
 export class WeightedScheduler extends BaseScheduler {
-  private redis: Redis;
+  private redis: RedisClient;
   private keys: FairQueueKeyProducer;
   private rng: seedrandom.PRNG;
   private biases: WeightedSchedulerBiases;
@@ -61,7 +62,7 @@ export class WeightedScheduler extends BaseScheduler {
 
   constructor(private config: WeightedSchedulerConfig) {
     super();
-    this.redis = createRedisClient(config.redis);
+    this.redis = createFairQueueRedisClient(config.redis);
     this.keys = config.keys;
     this.rng = seedrandom(config.seed);
     this.biases = config.biases ?? defaultBiases;

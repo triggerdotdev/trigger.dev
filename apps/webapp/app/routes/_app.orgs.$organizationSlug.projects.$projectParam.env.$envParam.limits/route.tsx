@@ -25,6 +25,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
+import { PurchaseSchedulesModal } from "~/components/schedules/PurchaseSchedulesModal";
 import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useShowSelfServe } from "~/hooks/useShowSelfServe";
@@ -39,6 +40,7 @@ import {
   type QuotaInfo,
   type RateLimitInfo,
 } from "~/presenters/v3/LimitsPresenter.server";
+import { rbac } from "~/services/rbac.server";
 import { requireUser } from "~/services/session.server";
 import { hasWebhooksAccess } from "~/v3/webhooksAccess.server";
 import { cn } from "~/utils/cn";
@@ -48,6 +50,7 @@ import {
   docsPath,
   EnvironmentParamSchema,
   organizationBillingPath,
+  v3SchedulesAddOnPath,
 } from "~/utils/pathBuilder";
 import { limitsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
@@ -81,6 +84,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     });
   }
 
+  const auth = await rbac.authenticateSession(request, {
+    userId,
+    organizationId: project.organizationId,
+  });
+  const canManageBilling = auth.ok && auth.ability.can("manage", { type: "billing" });
+
   const presenter = new LimitsPresenter();
   const [error, result] = await tryCatch(
     presenter.call({
@@ -103,6 +112,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   return typedjson({
     ...result,
+    canManageBilling,
     autoReloadPollIntervalMs,
   });
 };
@@ -174,6 +184,8 @@ export default function Page() {
               quotas={data.quotas}
               isOnTopPlan={data.isOnTopPlan}
               billingPath={organizationBillingPath(organization)}
+              schedulePurchase={data.schedulePurchase}
+              canManageBilling={data.canManageBilling}
             />
 
             {/* Features Section */}
@@ -517,10 +529,14 @@ function QuotasSection({
   quotas,
   isOnTopPlan,
   billingPath,
+  schedulePurchase,
+  canManageBilling,
 }: {
   quotas: LimitsResult["quotas"];
   isOnTopPlan: boolean;
   billingPath: string;
+  schedulePurchase: LimitsResult["schedulePurchase"];
+  canManageBilling: boolean;
 }) {
   // Collect all quotas that should be shown
   const quotaRows: QuotaInfo[] = [];
@@ -550,6 +566,9 @@ function QuotasSection({
   if (quotas.webhookWaitersPerEnvironment) quotaRows.push(quotas.webhookWaitersPerEnvironment);
   if (quotas.webhookWaitersPerEndpoint) quotaRows.push(quotas.webhookWaitersPerEndpoint);
   if (quotas.webhookConcurrency) quotaRows.push(quotas.webhookConcurrency);
+  if (quotas.webhookDeliveryRetentionDays) quotaRows.push(quotas.webhookDeliveryRetentionDays);
+  if (quotas.webhookEndpointRateLimit) quotaRows.push(quotas.webhookEndpointRateLimit);
+  if (quotas.webhookEnvironmentRateLimit) quotaRows.push(quotas.webhookEnvironmentRateLimit);
 
   const showSelfServe = useShowSelfServe();
 
@@ -581,6 +600,8 @@ function QuotasSection({
               isOnTopPlan={isOnTopPlan}
               billingPath={billingPath}
               showSelfServe={showSelfServe}
+              schedulePurchase={schedulePurchase}
+              canManageBilling={canManageBilling}
             />
           ))}
         </TableBody>
@@ -594,19 +615,30 @@ function QuotaRow({
   isOnTopPlan,
   billingPath,
   showSelfServe,
+  schedulePurchase,
+  canManageBilling,
 }: {
   quota: QuotaInfo;
   isOnTopPlan: boolean;
   billingPath: string;
   showSelfServe: boolean;
+  schedulePurchase: LimitsResult["schedulePurchase"];
+  canManageBilling: boolean;
 }) {
+  const organization = useOrganization();
+
   // For log retention and query period, we don't show current usage as it's a duration, not a count
   // For widgets per dashboard, the usage varies per dashboard so we don't show a single number
-  const isDurationQuota = quota.name === "Log retention" || quota.name === "Query period";
+  const isDurationQuota =
+    quota.name === "Log retention" ||
+    quota.name === "Query period" ||
+    quota.name === "Webhook delivery retention";
   const isPerItemQuota =
     quota.name === "Charts per dashboard" ||
     quota.name === "Webhook waiters per endpoint" ||
-    quota.name === "Webhook processing concurrency";
+    quota.name === "Webhook processing concurrency" ||
+    quota.name === "Webhook endpoint rate limit" ||
+    quota.name === "Webhook environment rate limit";
   const isRetentionQuota = isDurationQuota || isPerItemQuota;
   const isQueueSizeQuota = quota.name === "Max queued runs";
   const hideCurrentUsage = isRetentionQuota || isQueueSizeQuota;
@@ -667,6 +699,24 @@ function QuotaRow({
       );
     }
 
+    // Same purchase flow as the scheduled task page
+    if (quota.name === "Schedules" && schedulePurchase) {
+      return (
+        <div className="flex justify-end">
+          <PurchaseSchedulesModal
+            actionPath={v3SchedulesAddOnPath(organization)}
+            schedulePricing={schedulePurchase.schedulePricing}
+            extraSchedules={schedulePurchase.extraSchedules}
+            usedSchedules={quota.currentUsage}
+            maxQuota={schedulePurchase.maxScheduleQuota}
+            planScheduleLimit={schedulePurchase.planScheduleLimit}
+            canManageBilling={canManageBilling}
+            triggerButton={<Button variant="secondary/small">Manage</Button>}
+          />
+        </div>
+      );
+    }
+
     if (!quota.isUpgradable) {
       return null;
     }
@@ -708,7 +758,7 @@ function QuotaRow({
         {quota.limit !== null
           ? isDurationQuota
             ? `${formatNumber(quota.limit)} ${quota.limit === 1 ? "day" : "days"}`
-            : formatNumber(quota.limit)
+            : `${formatNumber(quota.limit)}${quota.unit ? ` ${quota.unit}` : ""}`
           : "Unlimited"}
       </TableCell>
       <TableCell

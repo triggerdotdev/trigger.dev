@@ -8,8 +8,12 @@ import type {
   WebhookDeliveryStatus,
   WebhookEndpoint,
 } from "@trigger.dev/database";
-import { Worker, type JobHandlerParams } from "@trigger.dev/redis-worker";
-import { createRedisClient, createRedisClusterClient } from "@internal/redis";
+import {
+  createFairQueueRedisClient,
+  isClusterConnection,
+  keyPrefixOf,
+  TenantQueueFullError,
+} from "@trigger.dev/redis-worker";
 import { WebhookVerifierArtifact } from "@trigger.dev/core/v3";
 import type {
   FilterAst,
@@ -17,16 +21,22 @@ import type {
   WebhookEndpointContext,
   WebhookRoutingTarget,
 } from "@trigger.dev/core/v3";
-import { WebhookDeliveryId, isWebhookEndpointFriendlyId } from "@trigger.dev/core/v3/isomorphic";
-import { webhookWorkerCatalog } from "./workerCatalog.js";
+import {
+  WebhookDeliveryId,
+  isWebhookEndpointFriendlyId,
+  webhookDeliveryRetentionClassAtLeast,
+} from "@trigger.dev/core/v3/isomorphic";
 import {
   type CompleteWaitersJobPayload,
   type DeliverJobPayload,
+  type DeliveryRecord,
   WEBHOOK_JOB_MAX_ATTEMPTS,
   type WebhookJob,
   WebhookJobQueue,
 } from "./jobQueue.js";
-import { ensurePartitions, listDatedPartitions } from "./partitions.js";
+import { isInfrastructureError, WebhookInfrastructureError } from "./errors.js";
+import { QueueMemoryGuard } from "./memoryGuard.js";
+import { ensurePartitions, listDatedPartitions, partitionsCoveredUntil } from "./partitions.js";
 import { type CachedEndpoint, TtlCache } from "./cache.js";
 import { evaluateFilter, parseFilter } from "./filter/index.js";
 import { verify } from "./verification/index.js";
@@ -48,6 +58,7 @@ import type {
   TriggerWebhookTaskCallback,
   WebhookDeliverTaskErrorType,
   WebhookEngineOptions,
+  WebhookRedisOptions,
 } from "./types.js";
 import {
   displaySessionKeyTemplate,
@@ -97,13 +108,15 @@ type WaiterStepResult = {
   hadLiveWaiters: boolean;
   /** Completion jobs are still resuming claimed waiters; the last to finish settles the delivery. */
   deferred: boolean;
+  /** The step failed on our infrastructure, so the delivery retries however many attempts it took. */
+  infrastructure?: boolean;
 };
 
 /** What routing one target produced on one deliver attempt. */
 type TargetOutcome =
   | { kind: "succeeded"; runId?: string }
   | { kind: "skipped"; reason: string }
-  | { kind: "transient"; error: string }
+  | { kind: "transient"; error?: string; infrastructure?: boolean }
   | { kind: "failed"; error: string };
 
 type TaskTarget = Extract<WebhookRoutingTarget, { type: "task" }>;
@@ -114,15 +127,71 @@ function artifactResponseContract(artifact: WebhookVerifierArtifact) {
   return "response" in artifact ? artifact.response : undefined;
 }
 
+/** The same Redis connection with its key prefix replaced (or removed, with `undefined`). */
+function withKeyPrefix(
+  redis: WebhookRedisOptions,
+  keyPrefix: string | undefined
+): WebhookRedisOptions {
+  if (isClusterConnection(redis)) {
+    return {
+      cluster: {
+        ...redis.cluster,
+        clusterOptions: { ...redis.cluster.clusterOptions, keyPrefix },
+        redisOptions: { ...redis.cluster.redisOptions, keyPrefix: undefined },
+      },
+    };
+  }
+  return { ...redis, keyPrefix };
+}
+
+/**
+ * A delivery's full partition key, for a unique-key update. Every row carries its class, so this
+ * prunes to one leaf.
+ */
+function primaryKey(delivery: Pick<WebhookDelivery, "id" | "createdAt" | "retentionDays">) {
+  return { id: delivery.id, createdAt: delivery.createdAt, retentionDays: delivery.retentionDays };
+}
+
+/**
+ * Find one delivery by id, pruned by the class and mint time its id encodes. A v1 id (minted before
+ * classes) carries no class, so it prunes only by `createdAt` within each class.
+ */
+function deliveryKey(id: string, createdAt?: Date) {
+  const retentionDays = WebhookDeliveryId.parseRetentionDays(id);
+  return {
+    id,
+    ...(createdAt ? { createdAt } : {}),
+    ...(retentionDays !== undefined ? { retentionDays } : {}),
+  };
+}
+
 function constantTimeEqual(a: string, b: string): boolean {
   const left = Buffer.from(a, "utf8");
   const right = Buffer.from(b, "utf8");
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
+type RecordAndRouteArgs = {
+  endpoint: WebhookEndpoint;
+  artifact: WebhookVerifierArtifact;
+  targets: ParsedRoutingTarget[];
+  parsedEvent: unknown;
+  idempotencyKey: string;
+  errorMessage: string | null;
+  rawBytes: Uint8Array;
+  headers: Record<string, string>;
+  waiterId?: string;
+};
+
+/** How long a session append claim outlives its delivery: longer than any delivery is retried. */
+const SESSION_PART_CLAIM_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+/** How long one attempt holds a session append claim before another may take it over. */
+const SESSION_PART_LEASE_MS = 60_000;
+
 export class WebhookEngine {
-  private worker!: Worker<typeof webhookWorkerCatalog>;
   private jobQueue!: WebhookJobQueue;
+  private memoryGuard?: QueueMemoryGuard;
   private logger: Logger;
   private tracer: Tracer;
   private meter: Meter;
@@ -135,13 +204,15 @@ export class WebhookEngine {
   private ensurePartitionsCounter: Counter;
   private endpointCacheCounter: Counter;
   private ingestCounter: Counter;
+  private ingestRefusedCounter: Counter;
+  private frontGateRequeuedCounter: Counter;
   private deliverySettleLatency: Histogram;
   private targetResultCounter: Counter;
   private waitersCreatedCounter: Counter;
   private waiterClaimSize: Histogram;
   private waitersResolvedCounter: Counter;
   private partitionsAhead: ObservableGauge;
-  /** The end of the newest dated delivery partition, refreshed hourly by every running worker. */
+  /** When the first retention class runs out of leaves, refreshed hourly by every running worker. */
   private partitionsCoveredUntil?: Date;
   private partitionCoverageTimer?: NodeJS.Timeout;
 
@@ -193,6 +264,14 @@ export class WebhookEngine {
       description:
         "Webhook requests received, by path (endpoint or a waiter's own URL) and outcome (accepted, duplicate, verification_failed, ...)",
     });
+    this.ingestRefusedCounter = this.meter.createCounter("webhook_ingest_refused_total", {
+      description:
+        "Webhook deliveries ingest refused with a retryable answer, by reason (queue_full, high_water, enqueue_failed)",
+    });
+    this.frontGateRequeuedCounter = this.meter.createCounter("webhook_front_gate_requeued_total", {
+      description:
+        "Provider retries that found their delivery claimed but not yet queued, and queued it",
+    });
     this.deliverySettleLatency = this.meter.createHistogram("webhook_delivery_settle_latency_ms", {
       description:
         "Time from a delivery arriving to its final status, by status (SUCCEEDED, FAILED, FILTERED, UNMATCHED)",
@@ -231,48 +310,18 @@ export class WebhookEngine {
       return;
     }
 
-    const storeRedis = options.waiters?.cluster
-      ? createRedisClusterClient({
-          ...options.waiters.cluster,
-          redisOptions: { ...options.waiters.cluster.redisOptions, keyPrefix: undefined },
-        })
-      : createRedisClient({ ...(options.waiters?.redis ?? options.redis), keyPrefix: undefined });
-    this.waiterStore = new WebhookWaiterStore(
-      storeRedis,
-      options.waiters?.cluster?.redisOptions?.keyPrefix ??
-        options.waiters?.redis?.keyPrefix ??
-        options.redis.keyPrefix ??
-        "",
-      this.waiterLimits
-    );
-
-    this.worker = new Worker({
-      name: "webhook-engine-worker",
-      redisOptions: {
-        ...options.redis,
-        keyPrefix: `${options.redis.keyPrefix ?? ""}webhook:`,
-      },
-      catalog: {
-        ...webhookWorkerCatalog,
-        ensurePartitions: {
-          ...webhookWorkerCatalog.ensurePartitions,
-          cron: options.partitions?.ensureSchedule ?? webhookWorkerCatalog.ensurePartitions.cron,
-          jitterInMs:
-            options.partitions?.ensureJitterInMs ??
-            webhookWorkerCatalog.ensurePartitions.jitterInMs,
-        },
-      },
-      concurrency: { limit: 1, workers: 1, tasksPerWorker: 1 },
-      pollIntervalMs: options.worker.pollIntervalMs,
-      shutdownTimeoutMs: options.worker.shutdownTimeoutMs,
-      logger: new Logger("WebhookEngineWorker", (options.logLevel ?? "info") as any),
-      jobs: {
-        ensurePartitions: this.#handleEnsurePartitionsJob.bind(this),
-      },
+    const keyPrefix = keyPrefixOf(options.redis);
+    const storeRedis = createFairQueueRedisClient(withKeyPrefix(options.redis, undefined));
+    this.waiterStore = new WebhookWaiterStore(storeRedis, keyPrefix, this.waiterLimits);
+    this.memoryGuard = new QueueMemoryGuard(storeRedis, {
+      highWater: options.queue?.highWater ?? 0.75,
+      intervalMs: options.queue?.memoryCheckIntervalMs ?? 5_000,
+      logger: this.logger,
     });
+    this.memoryGuard.start();
 
     this.jobQueue = new WebhookJobQueue({
-      redis: { ...options.redis, keyPrefix: `${options.redis.keyPrefix ?? ""}webhook:` },
+      redis: withKeyPrefix(options.redis, `${keyPrefix}webhook:`),
       logger: new Logger("WebhookJobQueue", (options.logLevel ?? "info") as any),
       tracer: options.tracer,
       meter: options.meter,
@@ -280,6 +329,8 @@ export class WebhookEngine {
       tenantConcurrency: options.worker.tenantConcurrency ?? 100,
       consumerIntervalMs: Math.min(options.worker.pollIntervalMs ?? 100, 100),
       exhaustedRecordDelayMs: options.worker.exhaustedRecordDelayMs,
+      retryBaseDelayMs: options.worker.retryBaseDelayMs,
+      environmentPayloadBytesLimit: options.queue?.environmentPayloadBytesLimit,
       handlers: {
         deliver: this.#handleDeliverJob.bind(this),
         completeWaiters: this.#handleCompleteWaitersJob.bind(this),
@@ -288,7 +339,6 @@ export class WebhookEngine {
     });
 
     if (!options.worker.disabled) {
-      this.worker.start();
       this.jobQueue.start();
       const refreshCoverage = () =>
         this.#refreshPartitionCoverage().catch((error: unknown) =>
@@ -390,39 +440,115 @@ export class WebhookEngine {
   }
 
   /**
-   * Shared post-verify path for ingest() and simulateInject(): the atomic Redis front gate (dedupe),
-   * the filter gate, the append-only delivery row, and the routing enqueue. The front gate is
-   * two-phase (claim with a short lock via SET NX, then promote to the full dedupe window once the
-   * job is durably enqueued) so it is both atomic and crash-safe: a crash mid-ingest releases the
-   * short lock instead of suppressing the provider's retry, and the Run Engine idempotencyKey gate
-   * is the durable exactly-once guard. The gate also stamps the delivery's arrival time on the
-   * waiter store's clock and reports whether the endpoint has live waiters. A delivery no target
-   * passed, to an endpoint with no live waiters, is still recorded (for visibility) but not routed.
+   * Shared post-verify path for ingest() and simulateInject(): the memory high-water check, the
+   * front gate (dedupe), the filter gate, and one durable enqueue of a deliver job carrying the
+   * whole delivery. Nothing here writes Postgres: the job writes the delivery row before it routes,
+   * so an acknowledged delivery always has a job, and a crash before the enqueue leaves nothing.
+   *
+   * The front gate claims the idempotency key for the whole dedupe window, holding the new
+   * delivery's id, and is promoted once the job is queued. A retry that finds the key only claimed
+   * (the first attempt died before queueing it, or is still queueing it) queues the same delivery
+   * again under the same id: the queue ignores an id it already holds, and a job that already ran
+   * finds its row settled. A provider retry never loses the event and never makes a second delivery.
    * With `waiterId` (a delivery to a URL-matched waiter's own URL) there is no fan-out: the delivery
    * can complete only that waiter.
    */
-  async #recordAndRoute(args: {
-    endpoint: WebhookEndpoint;
-    artifact: WebhookVerifierArtifact;
-    targets: ParsedRoutingTarget[];
-    parsedEvent: unknown;
-    idempotencyKey: string;
-    errorMessage: string | null;
-    rawBytes: Uint8Array;
-    headers: Record<string, string>;
-    waiterId?: string;
-  }): Promise<IngestResult> {
-    const {
-      endpoint,
-      artifact,
-      targets,
-      parsedEvent,
-      idempotencyKey,
-      errorMessage,
-      rawBytes,
-      headers,
-      waiterId,
-    } = args;
+  async #recordAndRoute(args: RecordAndRouteArgs): Promise<IngestResult> {
+    const { endpoint, artifact, idempotencyKey, waiterId } = args;
+    const response = artifactResponseContract(artifact);
+    const environmentId = endpoint.runtimeEnvironmentId;
+
+    const gateKey = waiterId ? `w:${waiterId}:${idempotencyKey}` : idempotencyKey;
+
+    if (this.memoryGuard?.isFull(this.jobQueue.slotForEnvironment(environmentId))) {
+      const existing = await this.waiterStore
+        .peekFrontGate(endpoint.id, gateKey)
+        .catch(() => undefined);
+      if (existing?.promoted) {
+        return { outcome: "duplicate", deliveryId: existing.deliveryFriendlyId, response };
+      }
+      this.#refuse("high_water", environmentId);
+      return { outcome: "over_capacity" };
+    }
+
+    const minted = WebhookDeliveryId.generate({
+      retentionDays: await this.#retentionDays(environmentId),
+    });
+
+    let gate: Awaited<ReturnType<WebhookWaiterStore["claimFrontGate"]>>;
+    try {
+      gate = await this.waiterStore.claimFrontGate(
+        endpoint.id,
+        gateKey,
+        minted.friendlyId,
+        this.#frontGateTtlSeconds(artifact)
+      );
+    } catch (error) {
+      this.#refuse("enqueue_failed", environmentId, error);
+      return { outcome: "enqueue_failed", error: String(error) };
+    }
+
+    if (gate.claimed) {
+      return this.#queueDelivery(args, {
+        delivery: {
+          id: minted.id,
+          friendlyId: minted.friendlyId,
+          createdAt: minted.timestamp,
+          retentionDays: minted.retentionDays,
+        },
+        arrivedAt: gate.arrivedAt,
+        hasLiveWaiters: gate.hasLiveWaiters,
+        gateKey,
+      });
+    }
+
+    const existing = gate.existing;
+    const claimedAt =
+      existing && !existing.promoted
+        ? WebhookDeliveryId.parseTimestamp(existing.deliveryFriendlyId)
+        : undefined;
+    const claimedRetention = existing
+      ? WebhookDeliveryId.parseRetentionDays(existing.deliveryFriendlyId)
+      : undefined;
+    if (!existing || !claimedAt || claimedRetention === undefined) {
+      return { outcome: "duplicate", deliveryId: existing?.deliveryFriendlyId, response };
+    }
+
+    const requeued = await this.#queueDelivery(args, {
+      delivery: {
+        id: WebhookDeliveryId.toId(existing.deliveryFriendlyId),
+        friendlyId: existing.deliveryFriendlyId,
+        createdAt: claimedAt,
+        retentionDays: claimedRetention,
+      },
+      arrivedAt: claimedAt.getTime(),
+      hasLiveWaiters: waiterId
+        ? false
+        : await this.waiterStore.hasLiveWaiters(endpoint.id, claimedAt.getTime()),
+      gateKey,
+    });
+    if (requeued.outcome !== "accepted") return requeued;
+    this.frontGateRequeuedCounter.add(1);
+    return { outcome: "duplicate", deliveryId: existing.deliveryFriendlyId, response };
+  }
+
+  /**
+   * Queue the deliver job for a claimed delivery and promote its front gate. Leaves the claim in
+   * place when the job can't be queued, so the provider's retry queues it.
+   */
+  async #queueDelivery(
+    args: RecordAndRouteArgs,
+    claim: {
+      delivery: { id: string; friendlyId: string; createdAt: Date; retentionDays: number };
+      arrivedAt: number;
+      hasLiveWaiters: boolean;
+      gateKey: string;
+    }
+  ): Promise<IngestResult> {
+    const { endpoint, artifact, targets, parsedEvent, idempotencyKey, errorMessage, headers } =
+      args;
+    const { waiterId } = args;
+    const { delivery, arrivedAt, hasLiveWaiters, gateKey } = claim;
 
     const secretHeader =
       "config" in artifact &&
@@ -431,112 +557,103 @@ export class WebhookEngine {
         ? artifact.config.fieldName
         : undefined;
 
-    const gateKey = waiterId ? `w:${waiterId}:${idempotencyKey}` : idempotencyKey;
-    const { id, friendlyId, timestamp: createdAt } = WebhookDeliveryId.generate();
-
-    const gate = await this.waiterStore.claimFrontGate(
-      endpoint.id,
-      gateKey,
-      friendlyId,
-      this.#frontGateClaimTtlSeconds()
-    );
-    if (!gate.claimed) {
-      return {
-        outcome: "duplicate",
-        deliveryId: gate.existing,
-        response: artifactResponseContract(artifact),
-      };
-    }
-
     const targetResults = waiterId
       ? []
       : this.#evaluateTargets(targets, parsedEvent, headers, endpoint, idempotencyKey);
     const filtered =
-      !waiterId &&
-      !gate.hasLiveWaiters &&
-      !targetResults.some((result) => result.status === "PENDING");
+      !waiterId && !hasLiveWaiters && !targetResults.some((result) => result.status === "PENDING");
 
-    const isTest = Object.entries(headers).some(
-      ([key, value]) => key.toLowerCase() === "x-trigger-test" && Boolean(value)
-    );
+    const record: DeliveryRecord = {
+      friendlyId: delivery.friendlyId,
+      retentionDays: delivery.retentionDays,
+      webhookEndpointId: endpoint.id,
+      organizationId: endpoint.organizationId,
+      projectId: endpoint.projectId,
+      runtimeEnvironmentId: endpoint.runtimeEnvironmentId,
+      environmentType: endpoint.environmentType,
+      externalDeliveryId: idempotencyKey,
+      idempotencyKey,
+      status: filtered ? "FILTERED" : "PENDING",
+      isTest: Object.entries(headers).some(
+        ([key, value]) => key.toLowerCase() === "x-trigger-test" && Boolean(value)
+      ),
+      parsedEvent: toStorableEvent(parsedEvent),
+      headers: capHeaders(
+        headers,
+        secretHeader,
+        hasLiveWaiters && !waiterId
+          ? await this.#waiterHeaderNames(endpoint.id, arrivedAt)
+          : undefined
+      ),
+      rawBodyHash: sha256Hex(args.rawBytes),
+      errorMessage,
+      filterReason: filtered ? summarizeFilterReasons(targetResults) : null,
+      targets: targetResults,
+    };
 
-    let rowCreated = false;
-    try {
-      await this.prisma.webhookDelivery.create({
-        data: {
-          id,
-          friendlyId,
-          createdAt,
-          webhookEndpointId: endpoint.id,
-          organizationId: endpoint.organizationId,
-          projectId: endpoint.projectId,
-          runtimeEnvironmentId: endpoint.runtimeEnvironmentId,
-          environmentType: endpoint.environmentType,
-          externalDeliveryId: idempotencyKey,
-          idempotencyKey,
-          status: filtered ? "FILTERED" : "PENDING",
-          isTest,
-          parsedEvent: toStorableEvent(parsedEvent),
-          headers: capHeaders(
-            headers,
-            secretHeader,
-            gate.hasLiveWaiters && !waiterId
-              ? await this.#waiterHeaderNames(endpoint.id, gate.arrivedAt)
-              : undefined
-          ),
-          rawBodyHash: sha256Hex(rawBytes),
-          errorMessage,
-          filterReason: filtered ? summarizeFilterReasons(targetResults) : null,
-          targets: targetResults as unknown as Prisma.InputJsonValue,
-        },
-      });
-      rowCreated = true;
+    const queued = await this.#enqueueDeliverJob(endpoint.runtimeEnvironmentId, endpoint.id, {
+      deliveryId: delivery.id,
+      createdAt: delivery.createdAt,
+      arrivedAt,
+      liveWaiters: hasLiveWaiters,
+      ...(waiterId ? { waiterId } : {}),
+      record,
+    });
+    if (queued) return queued;
 
-      if (filtered) {
-        this.deliveryFilteredCounter.add(1);
-        this.#recordSettled(createdAt, "FILTERED", targetResults);
-      } else {
-        this.deliveryEnqueueCounter.add(1);
-        await this.jobQueue.enqueue({
-          id: `webhook-delivery:${id}`,
-          environmentId: endpoint.runtimeEnvironmentId,
-          endpointId: endpoint.id,
-          job: {
-            job: "webhook.deliver",
-            payload: {
-              deliveryId: id,
-              createdAt,
-              arrivedAt: gate.arrivedAt,
-              liveWaiters: gate.hasLiveWaiters,
-              ...(waiterId ? { waiterId } : {}),
-            },
-          },
-        });
-      }
-    } catch (error) {
-      await this.waiterStore.releaseFrontGate(endpoint.id, gateKey).catch(() => {});
-      if (rowCreated) {
-        await this.prisma.webhookDelivery
-          .update({
-            where: { id_createdAt: { id, createdAt } },
-            data: { status: "FAILED", errorMessage: String(error), processedAt: new Date() },
-          })
-          .then(() => this.#recordSettled(createdAt, "FAILED", []))
-          .catch(() => {});
-      }
-      return { outcome: "enqueue_failed", error: String(error) };
-    }
+    if (filtered) this.deliveryFilteredCounter.add(1);
+    else this.deliveryEnqueueCounter.add(1);
 
     await this.waiterStore
-      .promoteFrontGate(endpoint.id, gateKey, friendlyId, this.#frontGateTtlSeconds(artifact))
+      .promoteFrontGate(endpoint.id, gateKey, delivery.friendlyId)
       .catch(() => {});
 
     return {
       outcome: "accepted",
-      deliveryId: id,
-      deliveryFriendlyId: friendlyId,
+      deliveryId: delivery.id,
+      deliveryFriendlyId: delivery.friendlyId,
       response: artifactResponseContract(artifact),
     };
+  }
+
+  /** Count a retryable ingest refusal by reason, and log which environment it was for. */
+  #refuse(
+    reason: "high_water" | "queue_full" | "enqueue_failed",
+    environmentId: string,
+    error?: unknown
+  ) {
+    this.ingestRefusedCounter.add(1, { reason });
+    this.logger.warn("webhook ingest refused a delivery for the provider to retry", {
+      reason,
+      environmentId,
+      ...(error !== undefined
+        ? { error: error instanceof Error ? error.message : String(error) }
+        : {}),
+    });
+  }
+
+  /** Queue a deliver job. Returns the refusal to answer with, or undefined once it is queued. */
+  async #enqueueDeliverJob(
+    environmentId: string,
+    endpointId: string,
+    payload: DeliverJobPayload
+  ): Promise<Extract<IngestResult, { outcome: "queue_full" | "enqueue_failed" }> | undefined> {
+    try {
+      await this.jobQueue.enqueue({
+        id: `webhook-delivery:${payload.deliveryId}`,
+        environmentId,
+        endpointId,
+        job: { job: "webhook.deliver", payload },
+      });
+      return undefined;
+    } catch (error) {
+      if (error instanceof TenantQueueFullError) {
+        this.#refuse("queue_full", environmentId);
+        return { outcome: "queue_full" };
+      }
+      this.#refuse("enqueue_failed", environmentId, error);
+      return { outcome: "enqueue_failed", error: String(error) };
+    }
   }
 
   /** Reject unsupported methods without resolving credentials or recording a delivery. */
@@ -670,7 +787,7 @@ export class WebhookEngine {
       span.setAttribute("deliveryId", input.id);
 
       const original = await this.prisma.webhookDelivery.findFirst({
-        where: { id: input.id, createdAt: input.createdAt },
+        where: deliveryKey(input.id, input.createdAt),
       });
       if (!original) return { outcome: "delivery_not_found" };
 
@@ -709,41 +826,47 @@ export class WebhookEngine {
       });
       const filtered = !targetResults.some((result) => result.status === "PENDING");
 
-      const { id, friendlyId, timestamp: createdAt } = WebhookDeliveryId.generate();
-
-      await this.prisma.webhookDelivery.create({
-        data: {
-          id,
-          friendlyId,
-          createdAt,
-          webhookEndpointId: original.webhookEndpointId,
-          organizationId: original.organizationId,
-          projectId: original.projectId,
-          runtimeEnvironmentId: original.runtimeEnvironmentId,
-          environmentType: original.environmentType,
-          externalDeliveryId: original.externalDeliveryId,
-          idempotencyKey: `replay:${id}`,
-          status: filtered ? "FILTERED" : "PENDING",
-          parsedEvent: (original.parsedEvent ?? undefined) as Prisma.InputJsonValue | undefined,
-          headers: (original.headers ?? undefined) as Prisma.InputJsonValue | undefined,
-          rawBodyHash: original.rawBodyHash,
-          filterReason: filtered ? summarizeFilterReasons(targetResults) : null,
-          targets: targetResults as unknown as Prisma.InputJsonValue,
-        },
+      const {
+        id,
+        friendlyId,
+        timestamp: createdAt,
+        retentionDays,
+      } = WebhookDeliveryId.generate({
+        retentionDays: await this.#retentionDays(original.runtimeEnvironmentId),
       });
 
-      if (filtered) {
-        this.deliveryFilteredCounter.add(1);
-        this.#recordSettled(createdAt, "FILTERED", targetResults);
-      } else {
-        this.deliveryEnqueueCounter.add(1);
-        await this.jobQueue.enqueue({
-          id: `webhook-delivery:${id}`,
-          environmentId: original.runtimeEnvironmentId,
-          endpointId: original.webhookEndpointId,
-          job: { job: "webhook.deliver", payload: { deliveryId: id, createdAt } },
-        });
-      }
+      const queued = await this.#enqueueDeliverJob(
+        original.runtimeEnvironmentId,
+        original.webhookEndpointId,
+        {
+          deliveryId: id,
+          createdAt,
+          record: {
+            friendlyId,
+            retentionDays,
+            webhookEndpointId: original.webhookEndpointId,
+            organizationId: original.organizationId,
+            projectId: original.projectId,
+            runtimeEnvironmentId: original.runtimeEnvironmentId,
+            environmentType: original.environmentType,
+            externalDeliveryId: original.externalDeliveryId,
+            idempotencyKey: `replay:${id}`,
+            status: filtered ? "FILTERED" : "PENDING",
+            isTest: false,
+            parsedEvent: original.parsedEvent ?? null,
+            headers: (original.headers as Record<string, string> | null) ?? null,
+            rawBodyHash: original.rawBodyHash,
+            errorMessage: null,
+            filterReason: filtered ? summarizeFilterReasons(targetResults) : null,
+            targets: targetResults,
+          },
+        }
+      );
+      if (queued?.outcome === "queue_full") return queued;
+      if (queued) throw new Error(queued.error);
+
+      if (filtered) this.deliveryFilteredCounter.add(1);
+      else this.deliveryEnqueueCounter.add(1);
 
       return { outcome: "replayed", deliveryId: id, deliveryFriendlyId: friendlyId };
     });
@@ -1262,11 +1385,25 @@ export class WebhookEngine {
     return Math.min(def, max);
   }
 
-  // Short "processing lock" TTL held between the atomic claim and the promote-to-full-window. Keep
-  // it well above the create+enqueue latency (ms) but short enough that a crash mid-ingest releases
-  // the key long before a provider's retry, so events are re-processed rather than dropped.
-  #frontGateClaimTtlSeconds(): number {
-    return this.options.frontGate?.claimTtlSeconds ?? 60;
+  /**
+   * The retention class a new delivery in this environment is stamped with. A failed lookup falls
+   * back to the default rather than refusing the delivery.
+   */
+  async #retentionDays(environmentId: string): Promise<number> {
+    const fallback = this.options.retention?.defaultDays ?? 30;
+    const lookup = this.options.retention?.forEnvironment;
+    let days = fallback;
+    if (lookup) {
+      try {
+        days = await lookup(environmentId);
+      } catch (error) {
+        this.logger.warn("Couldn't resolve webhook delivery retention, using the default", {
+          environmentId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return webhookDeliveryRetentionClassAtLeast(days).days;
   }
 
   /**
@@ -1281,15 +1418,14 @@ export class WebhookEngine {
       this.deliveryExecutionCounter.add(1);
       const start = performance.now();
 
-      const delivery = await this.prisma.webhookDelivery.findFirst({
-        where: { id: payload.deliveryId, createdAt: payload.createdAt },
-      });
-      if (!delivery) {
+      const written = await this.#writeDeliveryRow(payload);
+      if (!written) {
         this.logger.error("webhook.deliver: delivery not found", {
           deliveryId: payload.deliveryId,
         });
         return;
       }
+      const { delivery, inserted } = written;
 
       if (TERMINAL_DELIVERY_STATUSES.has(delivery.status)) {
         this.logger.debug("webhook.deliver: already terminal", {
@@ -1307,10 +1443,12 @@ export class WebhookEngine {
         return;
       }
 
-      await this.prisma.webhookDelivery.update({
-        where: { id_createdAt: { id: delivery.id, createdAt: delivery.createdAt } },
-        data: { status: "PROCESSING" },
-      });
+      if (!inserted || delivery.status !== "PROCESSING") {
+        await this.prisma.webhookDelivery.update({
+          where: { id_createdAt_retentionDays: primaryKey(delivery) },
+          data: { status: "PROCESSING" },
+        });
+      }
 
       const configs = new Map(
         parseRoutingTargets(endpoint, this.logger).map(({ target }) => [target.id, target])
@@ -1370,21 +1508,35 @@ export class WebhookEngine {
       );
       const [settled, waiters] = await Promise.all([settledPromise, waiterStep]);
 
+      let infrastructureFailure = false;
       pendingIndexes.forEach((index, i) => {
         const result = settled[i];
         const outcome: TargetOutcome =
           result.status === "fulfilled"
             ? result.value
-            : {
-                kind: "transient",
-                error:
-                  result.reason instanceof Error ? result.reason.message : String(result.reason),
-              };
-        results[index] = applyTargetOutcome(results[index], outcome, isFinalAttempt);
+            : isInfrastructureError(result.reason)
+              ? { kind: "transient", infrastructure: true }
+              : {
+                  kind: "transient",
+                  error:
+                    result.reason instanceof Error ? result.reason.message : String(result.reason),
+                };
+        const infrastructure = outcome.kind === "transient" && outcome.infrastructure === true;
+        infrastructureFailure ||= infrastructure;
+        results[index] = applyTargetOutcome(
+          results[index],
+          outcome,
+          isFinalAttempt && !infrastructure
+        );
       });
 
       this.deliveryExecutionDuration.record(performance.now() - start);
-      await this.#finishDelivery(delivery, results, waiters);
+      await this.#finishDelivery(
+        delivery,
+        results,
+        waiters,
+        infrastructureFailure || waiters.infrastructure === true
+      );
     });
   }
 
@@ -1397,9 +1549,10 @@ export class WebhookEngine {
   async #finishDelivery(
     delivery: WebhookDelivery,
     targetResults: WebhookDeliveryTargetResult[],
-    waiters: WaiterStepResult
+    waiters: WaiterStepResult,
+    infrastructureFailure = false
   ) {
-    const where = { id_createdAt: { id: delivery.id, createdAt: delivery.createdAt } };
+    const where = { id_createdAt_retentionDays: primaryKey(delivery) };
     const results = waiters.summary ? [...targetResults, waiters.summary] : [...targetResults];
     const targets = results as unknown as Prisma.InputJsonValue;
     const runId = results.find((result) => result.status === "SUCCEEDED" && result.runId)?.runId;
@@ -1409,13 +1562,15 @@ export class WebhookEngine {
     const failed = results.filter((result) => result.status === "FAILED");
 
     if (pending.length > 0) {
-      const message = describeTargetErrors(pending);
+      const message = describeTargetErrors(pending.filter((result) => result.error));
       await this.prisma.webhookDelivery.update({
         where,
-        data: { status: "PENDING", targets, runId: runId ?? null, errorMessage: message },
+        data: { status: "PENDING", targets, runId: runId ?? null, errorMessage: message || null },
       });
       this.deliveryExecutionFailureCounter.add(1);
-      throw new Error(message);
+      throw infrastructureFailure
+        ? new WebhookInfrastructureError(message || "webhook delivery failed on our infrastructure")
+        : new Error(message);
     }
 
     if (waiters.deferred) {
@@ -1469,11 +1624,7 @@ export class WebhookEngine {
     data: Prisma.WebhookDeliveryUpdateManyMutationInput & { status: WebhookDeliveryStatus }
   ) {
     const { count } = await this.prisma.webhookDelivery.updateMany({
-      where: {
-        id: delivery.id,
-        createdAt: delivery.createdAt,
-        status: { in: ["PENDING", "PROCESSING"] },
-      },
+      where: { ...primaryKey(delivery), status: { in: ["PENDING", "PROCESSING"] } },
       data: { ...data, processedAt: new Date() },
     });
     if (count > 0) this.#recordSettled(delivery.createdAt, data.status, results);
@@ -1551,9 +1702,11 @@ export class WebhookEngine {
         summary: waiterSummary(resumed.counts, resumed.error),
         hadLiveWaiters,
         deferred: false,
+        infrastructure: resumed.infrastructure,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      const infrastructure = isInfrastructureError(error);
       this.logger.warn("webhook.deliver: waiter step failed", {
         deliveryId: delivery.id,
         error: message,
@@ -1562,12 +1715,13 @@ export class WebhookEngine {
         summary: {
           id: "waiters",
           type: "waiter",
-          status: isFinalAttempt ? "FAILED" : "PENDING",
-          error: message,
+          status: isFinalAttempt && !infrastructure ? "FAILED" : "PENDING",
+          ...(infrastructure ? {} : { error: message }),
           ...(args.previous?.waiters ? { waiters: args.previous.waiters } : {}),
         },
         hadLiveWaiters: true,
         deferred: false,
+        infrastructure,
       };
     }
   }
@@ -1575,7 +1729,8 @@ export class WebhookEngine {
   /**
    * Resume claimed waiters with the delivery's shared packet and take the resumed ones out of the
    * claim record. A waiter whose completion failed stays claimed for the next attempt, and is given
-   * up on (counted as failed) on the final one.
+   * up on (counted as failed) on the final one, unless it failed on our infrastructure: those stay
+   * claimed and keep retrying for as long as the failure lasts.
    */
   async #resumeWaiters(
     delivery: WebhookDelivery,
@@ -1583,8 +1738,13 @@ export class WebhookEngine {
     context: WebhookEndpointContext,
     ids: string[],
     isFinalAttempt: boolean
-  ): Promise<{ counts: ClaimCounts; unresolved: number; error?: string }> {
-    const completions =
+  ): Promise<{ counts: ClaimCounts; unresolved: number; error?: string; infrastructure: boolean }> {
+    const completions: Array<{
+      id: string;
+      ok: boolean;
+      error?: string;
+      infrastructure?: boolean;
+    }> =
       ids.length === 0
         ? []
         : await this.options
@@ -1600,32 +1760,44 @@ export class WebhookEngine {
               deliveryFriendlyId: delivery.friendlyId,
             })
             .catch((error: unknown) => {
+              const infrastructure = isInfrastructureError(error);
               const message = error instanceof Error ? error.message : String(error);
-              return ids.map((id) => ({ id, ok: false, error: message }));
+              if (infrastructure) {
+                this.logger.warn("webhook waiter completion failed on our infrastructure", {
+                  deliveryId: delivery.id,
+                  error: message,
+                });
+              }
+              return ids.map((id) => ({
+                id,
+                ok: false,
+                ...(infrastructure ? {} : { error: message }),
+                infrastructure,
+              }));
             });
+    const retryable = new Set(
+      completions.filter((c) => !c.ok && c.infrastructure).map((c) => c.id)
+    );
+    const infrastructure = retryable.size > 0;
     const resumed = new Set(completions.filter((c) => c.ok).map((c) => c.id));
     const notResumed = ids.filter((id) => !resumed.has(id));
+    const failedOnDelivery = notResumed.filter((id) => !retryable.has(id));
+    const givingUp = isFinalAttempt ? failedOnDelivery : [];
     const error =
-      completions.find((completion) => !completion.ok)?.error ??
-      (notResumed.length > 0 ? "waiter completion failed" : undefined);
+      completions.find((completion) => !completion.ok && !completion.infrastructure)?.error ??
+      (failedOnDelivery.length > 0 ? "waiter completion failed" : undefined);
 
     // Free the environment slots before acking the claims: a retry only sees unacked claims, so a
     // release that failed after its ack would never be retried.
     await this.waiterStore.releaseEnvironment(delivery.runtimeEnvironmentId, [...resumed]);
     let counts = await this.waiterStore.resolve(endpoint.id, delivery.id, "ok", [...resumed]);
     if (resumed.size > 0) this.waitersResolvedCounter.add(resumed.size, { result: "resumed" });
-    if (isFinalAttempt && notResumed.length > 0) {
-      await this.waiterStore.releaseEnvironment(delivery.runtimeEnvironmentId, notResumed);
-      counts = await this.waiterStore.resolve(
-        endpoint.id,
-        delivery.id,
-        "failed",
-        notResumed,
-        error
-      );
-      this.waitersResolvedCounter.add(notResumed.length, { result: "failed" });
+    if (givingUp.length > 0) {
+      await this.waiterStore.releaseEnvironment(delivery.runtimeEnvironmentId, givingUp);
+      counts = await this.waiterStore.resolve(endpoint.id, delivery.id, "failed", givingUp, error);
+      this.waitersResolvedCounter.add(givingUp.length, { result: "failed" });
     }
-    return { counts, unresolved: isFinalAttempt ? 0 : notResumed.length, error };
+    return { counts, unresolved: notResumed.length - givingUp.length, error, infrastructure };
   }
 
   async #enqueueWaiterChunks(delivery: WebhookDelivery, chunks: number) {
@@ -1662,7 +1834,7 @@ export class WebhookEngine {
 
       if (!this.options.waiters?.waitpoints) return;
       const delivery = await this.prisma.webhookDelivery.findFirst({
-        where: { id: payload.deliveryId, createdAt: payload.createdAt },
+        where: deliveryKey(payload.deliveryId, payload.createdAt),
       });
       if (!delivery || TERMINAL_DELIVERY_STATUSES.has(delivery.status)) return;
       const endpoint = await this.prisma.webhookEndpoint.findFirst({
@@ -1683,9 +1855,12 @@ export class WebhookEngine {
           attempt >= WEBHOOK_JOB_MAX_ATTEMPTS - 1
         );
         if (resumed.unresolved > 0) {
-          throw new Error(
-            `${resumed.unresolved} waiters could not be resumed: ${resumed.error ?? "unknown error"}`
-          );
+          const message = `${resumed.unresolved} waiters could not be resumed: ${
+            resumed.error ?? "unknown error"
+          }`;
+          throw resumed.infrastructure
+            ? new WebhookInfrastructureError(message)
+            : new Error(message);
         }
       }
       await this.#settleWaiterDelivery(delivery.id, delivery.createdAt);
@@ -1699,7 +1874,7 @@ export class WebhookEngine {
    */
   async #settleWaiterDelivery(deliveryId: string, createdAt: Date) {
     const delivery = await this.prisma.webhookDelivery.findFirst({
-      where: { id: deliveryId, createdAt },
+      where: deliveryKey(deliveryId, createdAt),
     });
     if (!delivery || TERMINAL_DELIVERY_STATUSES.has(delivery.status)) return;
 
@@ -1890,11 +2065,12 @@ export class WebhookEngine {
       };
     }
 
+    const partId = `${delivery.id}:${target.id}`;
     const result = await this.options.deliverToSession({
       environmentId: delivery.runtimeEnvironmentId,
       taskIdentifier: target.taskIdentifier,
       targetId: target.id,
-      partId: `${delivery.id}:${target.id}`,
+      partId,
       endpoint: context,
       externalId,
       deliverAs: target.deliverAs,
@@ -1908,6 +2084,15 @@ export class WebhookEngine {
       triggerConfigTemplate: target.triggerConfigTemplate,
       idempotencyKey: delivery.idempotencyKey,
       isSessionStart: this.#evaluateSessionStart(target.startOn, delivery, endpoint),
+      claimPart: () =>
+        this.waiterStore.claimSessionPart(
+          endpoint.id,
+          partId,
+          SESSION_PART_CLAIM_TTL_SECONDS,
+          SESSION_PART_LEASE_MS
+        ),
+      commitPart: () => this.waiterStore.commitSessionPart(endpoint.id, partId),
+      releasePart: () => this.waiterStore.releaseSessionPart(endpoint.id, partId),
     });
 
     return outcomeFromPortResult(result);
@@ -1925,7 +2110,7 @@ export class WebhookEngine {
     if (job.job === "webhook.completeWaiters") {
       const { deliveryId, createdAt, chunk, chunks } = job.payload;
       const delivery = await this.prisma.webhookDelivery.findFirst({
-        where: { id: deliveryId, createdAt },
+        where: deliveryKey(deliveryId, createdAt),
       });
       if (!delivery || TERMINAL_DELIVERY_STATUSES.has(delivery.status)) return;
       const ids = (
@@ -1946,10 +2131,19 @@ export class WebhookEngine {
       return;
     }
 
+    const written = await this.#writeDeliveryRow(job.payload, {
+      status: "FAILED",
+      errorMessage: message,
+      processedAt: new Date(),
+    });
+    if (written?.inserted) {
+      this.deliveryExecutionFailureCounter.add(1);
+      this.#recordSettled(new Date(job.payload.createdAt), "FAILED", []);
+      return;
+    }
     const { count } = await this.prisma.webhookDelivery.updateMany({
       where: {
-        id: job.payload.deliveryId,
-        createdAt: job.payload.createdAt,
+        ...deliveryKey(job.payload.deliveryId, job.payload.createdAt),
         status: { in: ["PENDING", "PROCESSING"] },
       },
       data: { status: "FAILED", errorMessage: message, processedAt: new Date() },
@@ -1957,6 +2151,56 @@ export class WebhookEngine {
     if (count > 0) {
       this.deliveryExecutionFailureCounter.add(1);
       this.#recordSettled(job.payload.createdAt, "FAILED", []);
+    }
+  }
+
+  /**
+   * Write a deliver job's delivery row, once: a re-run of the job (a retry, a reclaimed lease, or a
+   * provider retry that queued it again) finds the row already there and reads it instead. A routed
+   * delivery is written PROCESSING, since this job is about to route it.
+   */
+  async #writeDeliveryRow(
+    payload: DeliverJobPayload,
+    override?: { status: WebhookDeliveryStatus; errorMessage: string; processedAt: Date }
+  ): Promise<{ delivery: WebhookDelivery; inserted: boolean } | undefined> {
+    const createdAt = new Date(payload.createdAt);
+    const { record } = payload;
+    const status = override?.status ?? (record.status === "PENDING" ? "PROCESSING" : record.status);
+    try {
+      const delivery = await this.prisma.webhookDelivery.create({
+        data: {
+          id: payload.deliveryId,
+          createdAt,
+          friendlyId: record.friendlyId,
+          retentionDays: record.retentionDays,
+          webhookEndpointId: record.webhookEndpointId,
+          organizationId: record.organizationId,
+          projectId: record.projectId,
+          runtimeEnvironmentId: record.runtimeEnvironmentId,
+          environmentType: record.environmentType as WebhookDelivery["environmentType"],
+          externalDeliveryId: record.externalDeliveryId,
+          idempotencyKey: record.idempotencyKey,
+          status,
+          isTest: record.isTest,
+          parsedEvent: (record.parsedEvent ?? undefined) as Prisma.InputJsonValue | undefined,
+          headers: (record.headers ?? undefined) as Prisma.InputJsonValue | undefined,
+          rawBodyHash: record.rawBodyHash,
+          errorMessage: override?.errorMessage ?? record.errorMessage,
+          filterReason: record.filterReason,
+          targets: record.targets as Prisma.InputJsonValue,
+          ...(override ? { processedAt: override.processedAt } : {}),
+        },
+      });
+      if (!override && record.status === "FILTERED") {
+        this.#recordSettled(createdAt, "FILTERED", parseDeliveryTargets(record.targets));
+      }
+      return { delivery, inserted: true };
+    } catch (error) {
+      if ((error as { code?: unknown }).code !== "P2002") throw error;
+      const delivery = await this.prisma.webhookDelivery.findFirst({
+        where: deliveryKey(payload.deliveryId, createdAt),
+      });
+      return delivery ? { delivery, inserted: false } : undefined;
     }
   }
 
@@ -1969,31 +2213,35 @@ export class WebhookEngine {
     return new Date(Date.now() + resolveRetryWindowSeconds(endpoint) * 1000);
   }
 
-  // ensurePartitions cron handler. Pre-creates dated partitions ahead + drops cold ones.
-  async #handleEnsurePartitionsJob(
-    _job: JobHandlerParams<typeof webhookWorkerCatalog, "ensurePartitions">
-  ) {
+  /**
+   * Pre-create dated delivery partitions ahead and drop cold ones. The host runs it on a schedule
+   * (it is idempotent, so overlapping runs are harmless).
+   */
+  async ensurePartitions() {
     return startSpan(this.tracer, "ensurePartitions", async (span) => {
       this.ensurePartitionsCounter.add(1);
       const result = await ensurePartitions(this.options.partitionPrisma ?? this.prisma, {
         now: new Date(),
-        lookaheadDays: this.options.partitions?.lookaheadDays ?? 10, // 7..14
-        retentionDays: this.options.partitions?.retentionDays ?? 7,
+        lookaheadDays: this.options.partitions?.lookaheadDays ?? 10,
       });
       span.setAttribute("created", result.created.length);
       span.setAttribute("dropped", result.dropped.length);
       span.setAttribute("deferred", result.deferred.length);
+      span.setAttribute("unmanaged", result.unmanaged.length);
+      if (result.unmanaged.length > 0) {
+        this.logger.error("webhook delivery partitions outside every retention class", {
+          unmanaged: result.unmanaged,
+        });
+      }
       await this.#refreshPartitionCoverage();
       this.logger.info("webhook ensurePartitions", result);
     });
   }
 
-  /** Read the end of the newest dated delivery partition, for the partitions-ahead gauge. */
+  /** Read when the first retention class runs out of leaves, for the partitions-ahead gauge. */
   async #refreshPartitionCoverage() {
-    const partitions = await listDatedPartitions(this.options.partitionPrisma ?? this.prisma);
-    this.partitionsCoveredUntil = partitions.reduce<Date | undefined>(
-      (latest, partition) => (!latest || partition.hi > latest ? partition.hi : latest),
-      undefined
+    this.partitionsCoveredUntil = partitionsCoveredUntil(
+      await listDatedPartitions(this.options.partitionPrisma ?? this.prisma)
     );
   }
 
@@ -2003,18 +2251,29 @@ export class WebhookEngine {
     return this.waiterStore.environmentCount(environmentId);
   }
 
-  /** Whether a delivery has a deliver job waiting on its endpoint's queue. */
-  async isDeliveryQueued(deliveryId: string) {
+  /**
+   * Wait for a just-accepted delivery's row, which its deliver job writes a moment after ingest
+   * answers. Resolves false if it hasn't appeared within `timeoutMs` (a backlog, say).
+   */
+  async waitForDeliveryRow(deliveryId: string, timeoutMs: number): Promise<boolean> {
     this.#assertEnabled();
-    const delivery = await this.prisma.webhookDelivery.findFirst({
-      where: { id: deliveryId },
-      select: { runtimeEnvironmentId: true, webhookEndpointId: true },
-    });
-    if (!delivery) return false;
+    const where = deliveryKey(deliveryId, WebhookDeliveryId.parseTimestamp(deliveryId));
+    const deadline = Date.now() + timeoutMs;
+    while (true) {
+      const row = await this.prisma.webhookDelivery.findFirst({ where, select: { id: true } });
+      if (row) return true;
+      if (Date.now() >= deadline) return false;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+
+  /** Whether a delivery has a deliver job waiting on its endpoint's queue. */
+  async isDeliveryQueued(delivery: { id: string; environmentId: string; endpointId: string }) {
+    this.#assertEnabled();
     return this.jobQueue.isQueued({
-      id: `webhook-delivery:${deliveryId}`,
-      environmentId: delivery.runtimeEnvironmentId,
-      endpointId: delivery.webhookEndpointId,
+      id: `webhook-delivery:${delivery.id}`,
+      environmentId: delivery.environmentId,
+      endpointId: delivery.endpointId,
     });
   }
 
@@ -2024,7 +2283,7 @@ export class WebhookEngine {
     clearInterval(this.partitionCoverageTimer);
 
     try {
-      await this.worker.stop();
+      this.memoryGuard?.stop();
       await this.jobQueue.close();
       await this.waiterStore.quit();
       this.logger.info("Webhook engine worker stopped successfully");
@@ -2066,7 +2325,7 @@ function capHeaders(
   headers: Record<string, string>,
   secretHeader?: string,
   keep?: Set<string>
-): Prisma.InputJsonValue {
+): Record<string, string> {
   const drop = secretHeader ? new Set([...DROP_HEADERS, secretHeader.toLowerCase()]) : DROP_HEADERS;
   const entries = Object.entries(headers)
     .filter(([key]) => !drop.has(key.toLowerCase()))
@@ -2136,6 +2395,7 @@ function outcomeFromPortResult(result: PortResult): TargetOutcome {
     };
   }
   if (result.success) return { kind: "succeeded", runId: result.runId };
+  if (result.errorType === "INFRASTRUCTURE") return { kind: "transient", infrastructure: true };
   if (result.errorType === "QUEUE_LIMIT" || result.errorType === "SYSTEM_ERROR") {
     return { kind: "transient", error: result.error ?? "webhook.deliver transient failure" };
   }
@@ -2161,7 +2421,11 @@ function applyTargetOutcome(
     case "failed":
       return { ...base, status: "FAILED", error: outcome.error };
     case "transient":
-      return { ...base, status: isFinalAttempt ? "FAILED" : "PENDING", error: outcome.error };
+      return {
+        ...base,
+        status: isFinalAttempt ? "FAILED" : "PENDING",
+        ...(outcome.error ? { error: outcome.error } : {}),
+      };
   }
 }
 

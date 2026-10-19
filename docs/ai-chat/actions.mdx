@@ -73,11 +73,16 @@ onAction: async ({ action }) => {
       chat.history.slice(0, -1);
       chat.inject([{ role: "system", content: "Answer formally this time." }]);
       return chat.turn(); // with a one-shot instruction
+
+    case "ask":
+      return chat.turn(action.question); // answer a new user message
   }
 }
 ```
 
-`run()` receives the edited history with no incoming user message, the same shape as a `regenerate-message` turn, and its `trigger` is `"action-turn"`, so a `run()` that returns early on `"action"` (the pre-May behaviour, when actions invoked `run()` directly) still answers. Returning anything other than `chat.turn()` or nothing is an error; a response can no longer be returned from `onAction` directly.
+`chat.turn(message)` appends `message` (a string, or a `UIMessage`) to the history as a user message after the edit, and the turn answers it. That is how a button click becomes a question, such as a follow-up suggestion in [Slack](/webhooks/slack#buttons-that-send-the-agent-an-action).
+
+Without a message, `run()` receives the edited history with no incoming user message, the same shape as a `regenerate-message` turn, and its `trigger` is `"action-turn"`, so a `run()` that returns early on `"action"` (the pre-May behaviour, when actions invoked `run()` directly) still answers. Returning anything other than `chat.turn()` or nothing is an error; a response can no longer be returned from `onAction` directly.
 
 ### Actions and persistence
 

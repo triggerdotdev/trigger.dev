@@ -9,6 +9,7 @@ import {
   type AuthenticationResult,
   type ScopedApiKeyAuthenticationDependencies,
 } from "~/services/apiAuth.server";
+import { resolveAndRecheckUserActorClaims } from "~/services/personalAccessToken.server";
 import { rbac } from "~/services/rbac.server";
 
 type EnvironmentScopedResource = "envvars" | "apiKeys" | "deployments" | "branches";
@@ -127,6 +128,11 @@ const RESOURCE_LABELS: Record<EnvironmentScopedResource, string> = {
  * stops a restricted role deploying via the CLI (deploy needs the
  * environment's secret key).
  *
+ * A user-actor token is stateless and lives for up to seven days, so its source
+ * personal access token is re-checked here on every call: revoking that PAT is
+ * the only way to retire the token, and this helper must not rely on a route
+ * preamble having done the check already.
+ *
  * Returns a `Response` to short-circuit with when access is denied, or
  * `undefined` when the request may proceed.
  */
@@ -156,7 +162,7 @@ export async function authorizePatEnvironmentAccess({
     .get("Authorization")
     ?.replace(/^Bearer /, "")
     .trim();
-  const isUat = !!bearer && isUserActorToken(bearer);
+  const userActorBearer = bearer && isUserActorToken(bearer) ? bearer : undefined;
 
   // Machine API keys are authorized by their controller ability. Root keys and
   // ungranted additional keys are permissive; granted keys are restricted.
@@ -174,15 +180,25 @@ export async function authorizePatEnvironmentAccess({
 
   // Org tokens carry no user role to enforce. A user-actor token carries a
   // user just like a PAT, so it's gated too.
-  if (authType !== "personalAccessToken" && !isUat) {
+  if (authType !== "personalAccessToken" && !userActorBearer) {
     return undefined;
   }
 
-  const userAuth = isUat
+  const userAuth = userActorBearer
     ? await rbac.authenticateUserActor(request, { organizationId, projectId })
     : await rbac.authenticatePat(request, { organizationId, projectId });
   if (!userAuth.ok) {
     return json({ error: userAuth.error }, { status: userAuth.status });
+  }
+
+  if (
+    userActorBearer &&
+    !(await resolveAndRecheckUserActorClaims(
+      "claims" in userAuth ? userAuth.claims : undefined,
+      userActorBearer
+    ))
+  ) {
+    return json({ error: "Invalid user-actor token" }, { status: 401 });
   }
 
   if (!resources.some((candidate) => userAuth.ability.can(action, { type: candidate, envType }))) {

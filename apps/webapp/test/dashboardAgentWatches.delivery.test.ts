@@ -37,15 +37,13 @@ import {
 
 vi.setConfig({ testTimeout: 60_000 });
 
-const ctx = vi.hoisted(
-  (): DashboardAgentWatchesTestContext => ({
-    prisma: undefined as unknown as PrismaClient,
-    agentDb: undefined as unknown as DashboardAgentDb,
-    canAccess: true,
-    actor: undefined,
-    triggered: [],
-  })
-);
+const ctx = vi.hoisted((): DashboardAgentWatchesTestContext => ({
+  prisma: undefined as unknown as PrismaClient,
+  agentDb: undefined as unknown as DashboardAgentDb,
+  canAccess: true,
+  actor: undefined,
+  triggered: [],
+}));
 
 vi.mock("~/db.server", () => {
   const proxy = new Proxy(

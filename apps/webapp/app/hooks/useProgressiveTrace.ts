@@ -16,7 +16,7 @@ import {
 
 const MAX_CHUNK_ATTEMPTS = 3;
 const RETRY_BACKOFF_MS = 400;
-const MAX_PROGRESSIVE_SPANS = 250_000;
+const MAX_PROGRESSIVE_SPANS = 150_000;
 const BACKGROUND_CHUNK_SIZE = 10_000;
 const REBUILD_COALESCE_MS = 100;
 const TAIL_FETCH_TIMEOUT_MS = 15_000;
@@ -80,8 +80,6 @@ export type ProgressiveTraceState = {
   linkedRunIdBySpanId: Record<string, string>;
   isComplete: boolean;
   isTruncated: boolean;
-  // Errors-only matches were capped; separate from `isTruncated`, which stops live reload.
-  errorsTruncated: boolean;
   loadFailed: boolean;
 };
 
@@ -99,7 +97,6 @@ function initialState(trace: ProgressiveTraceInput): ProgressiveTraceState {
     linkedRunIdBySpanId: trace.linkedRunIdBySpanId ?? {},
     isComplete: !trace.progressive?.hasMore,
     isTruncated: false,
-    errorsTruncated: false,
     loadFailed: false,
   };
 }
@@ -226,7 +223,6 @@ export function useProgressiveTrace(
       linkedRunIdBySpanId: view.linkedRunIdBySpanId,
       isComplete: prev.isComplete,
       isTruncated: prev.isTruncated,
-      errorsTruncated: prev.errorsTruncated,
       loadFailed: prev.loadFailed,
     }));
   }, []);
@@ -385,9 +381,6 @@ export function useProgressiveTrace(
       errorsFetchedRef.current = true;
       assembler.mergeChunk(data.events.map(toChunkEvent), { source: "errors" });
       rebuild(meta, assembler);
-      if (data.isTruncated) {
-        setState((prev) => (prev.errorsTruncated ? prev : { ...prev, errorsTruncated: true }));
-      }
     })();
 
     return () => {

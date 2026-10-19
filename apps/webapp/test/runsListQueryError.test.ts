@@ -1,5 +1,5 @@
 import { ClickHouse } from "@internal/clickhouse";
-import { containerTest } from "@internal/testcontainers";
+import { containerTestWithClickhouse } from "@internal/testcontainers";
 import { describe, expect, vi } from "vitest";
 import {
   RunsListQueryError,
@@ -16,7 +16,7 @@ vi.mock("~/db.server", () => ({ prisma: {}, $replica: {} }));
 vi.setConfig({ testTimeout: 90_000 });
 
 describe("runs list query error handling", () => {
-  containerTest(
+  containerTestWithClickhouse(
     "a ClickHouse resource-limit error surfaces as RunsListQueryError",
     async ({ clickhouseContainer, prisma }) => {
       const ctx = await seedParents(prisma, "qerr");

@@ -24,6 +24,12 @@ yarn dlx trigger.dev@latest init
 
 </CodeGroup>
 
+## Arguments
+
+<ParamField body="Project path" type="[path]">
+  The path to the project. Defaults to `.`.
+</ParamField>
+
 ## Options
 
 <ParamField body="Javascript" type="--javascript">
@@ -36,7 +42,7 @@ yarn dlx trigger.dev@latest init
 </ParamField>
 
 <ParamField body="Package tag" type="--tag | -t">
-  The version of the `@trigger.dev/sdk` package to install. Defaults to `latest`.
+  The version of the `@trigger.dev/sdk` package to install. Defaults to the CLI version.
 </ParamField>
 
 <ParamField body="Skip package install" type="--skip-package-install">
@@ -45,6 +51,26 @@ yarn dlx trigger.dev@latest init
 
 <ParamField body="Override config" type="--override-config">
   Override the existing config file if it exists.
+</ParamField>
+
+<ParamField body="Project name" type="--project-name <name>">
+  The name of the project to create when your account has no projects yet.
+</ParamField>
+
+<ParamField body="Organization name" type="--org-name <name>">
+  The organization to create the first project in. Matches an existing organization by name, or creates it if you have none.
+</ParamField>
+
+<ParamField body="Runtime" type="-r, --runtime <runtime>">
+  The runtime to use: `node`, `node-22`, `node-24`, `node-26` or `bun`. Defaults to `node-24`.
+</ParamField>
+
+<ParamField body="Yes" type="-y, --yes">
+  Skip all prompts. Requires `--project-ref`, or `--project-name` with `--org-name` for a new account.
+</ParamField>
+
+<ParamField body="No browser" type="--no-browser">
+  Do not open the browser during login. Print the URL only.
 </ParamField>
 
 <ParamField body="Package arguments" type="--pkg-args">

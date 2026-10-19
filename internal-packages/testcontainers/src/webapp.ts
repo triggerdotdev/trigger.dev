@@ -3,7 +3,8 @@ import { createServer } from "net";
 import { delimiter, resolve } from "path";
 import { Network } from "testcontainers";
 import { PrismaClient } from "@trigger.dev/database";
-import { createPostgresContainer, createRedisContainer, withCiResourceLimits } from "./utils";
+import { cloneDatabase, dropDatabase, getSharedPostgres14 } from "./sharedPostgres";
+import { createRedisContainer, postgresUriWithDatabase, withCiResourceLimits } from "./utils";
 import { createS2Container, type StartedS2Container } from "./s2";
 import { MinIOContainer, type StartedMinIOContainer } from "./minio";
 
@@ -233,12 +234,24 @@ export interface TestServer {
   stop: () => Promise<void>;
 }
 
+type TestDatabase = { url: string; drop: () => Promise<void> };
+
+/** A database cloned from the shared Postgres's schema template, and its drop. */
+async function createTestDatabase(): Promise<TestDatabase> {
+  const shared = await getSharedPostgres14();
+  const name = await cloneDatabase(shared, "e2e");
+  return {
+    url: postgresUriWithDatabase(shared.container.getConnectionUri(), name),
+    drop: () => dropDatabase(shared, name),
+  };
+}
+
 /** Convenience helper: starts a postgres + redis container + webapp and returns both for testing. */
 export async function startTestServer(options: StartWebappOptions = {}): Promise<TestServer> {
   const network = await new Network().start();
 
   // Track each resource as we acquire it so we can tear it down if a later step fails.
-  let pgContainer: Awaited<ReturnType<typeof createPostgresContainer>>["container"] | undefined;
+  let pg: TestDatabase | undefined;
   let pgUrl: string | undefined;
   let redisContainer: Awaited<ReturnType<typeof createRedisContainer>>["container"] | undefined;
   let prisma: PrismaClient | undefined;
@@ -246,8 +259,7 @@ export async function startTestServer(options: StartWebappOptions = {}): Promise
   let webapp: WebappInstance;
 
   try {
-    const pg = await createPostgresContainer(network);
-    pgContainer = pg.container;
+    pg = await createTestDatabase();
     pgUrl = pg.url;
 
     const { container: rc } = await createRedisContainer({ network });
@@ -261,7 +273,7 @@ export async function startTestServer(options: StartWebappOptions = {}): Promise
   } catch (err) {
     await stopWebapp?.().catch(() => {});
     await prisma?.$disconnect().catch(() => {});
-    await pgContainer?.stop().catch(() => {});
+    await pg?.drop();
     await redisContainer?.stop().catch(() => {});
     await network.stop().catch(() => {});
     throw err;
@@ -270,7 +282,7 @@ export async function startTestServer(options: StartWebappOptions = {}): Promise
   const stop = async () => {
     await stopWebapp!().catch((err) => console.error("stopWebapp failed:", err));
     await prisma!.$disconnect().catch((err) => console.error("prisma.$disconnect failed:", err));
-    await pgContainer!.stop().catch((err) => console.error("pgContainer.stop failed:", err));
+    await pg!.drop();
     await redisContainer!.stop().catch((err) => console.error("redisContainer.stop failed:", err));
     await network.stop().catch((err) => console.error("network.stop failed:", err));
   };
@@ -303,7 +315,7 @@ export async function startSessionStreamTestServer(
 ): Promise<SessionStreamTestServer> {
   const network = await new Network().start();
 
-  let pgContainer: Awaited<ReturnType<typeof createPostgresContainer>>["container"] | undefined;
+  let pg: TestDatabase | undefined;
   let pgUrl: string | undefined;
   let redisContainer: Awaited<ReturnType<typeof createRedisContainer>>["container"] | undefined;
   let s2: StartedS2Container | undefined;
@@ -313,8 +325,7 @@ export async function startSessionStreamTestServer(
   let webapp: WebappInstance;
 
   try {
-    const pg = await createPostgresContainer(network);
-    pgContainer = pg.container;
+    pg = await createTestDatabase();
     pgUrl = pg.url;
 
     const { container: rc } = await createRedisContainer({ network });
@@ -353,7 +364,7 @@ export async function startSessionStreamTestServer(
     await prisma?.$disconnect().catch(() => {});
     await minio?.stop().catch(() => {});
     await s2?.container.stop().catch(() => {});
-    await pgContainer?.stop().catch(() => {});
+    await pg?.drop();
     await redisContainer?.stop().catch(() => {});
     await network.stop().catch(() => {});
     throw err;
@@ -364,7 +375,7 @@ export async function startSessionStreamTestServer(
     await prisma!.$disconnect().catch((err) => console.error("prisma.$disconnect failed:", err));
     await minio!.stop().catch((err) => console.error("minio.stop failed:", err));
     await s2!.container.stop().catch((err) => console.error("s2.stop failed:", err));
-    await pgContainer!.stop().catch((err) => console.error("pgContainer.stop failed:", err));
+    await pg!.drop();
     await redisContainer!.stop().catch((err) => console.error("redisContainer.stop failed:", err));
     await network.stop().catch((err) => console.error("network.stop failed:", err));
   };

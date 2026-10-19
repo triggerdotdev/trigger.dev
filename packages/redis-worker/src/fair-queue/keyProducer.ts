@@ -1,3 +1,4 @@
+import { jumpHash } from "@trigger.dev/core/v3/serverOnly";
 import type { FairQueueKeyProducer } from "./types.js";
 
 /**
@@ -171,5 +172,128 @@ export class CallbackFairQueueKeyProducer extends DefaultFairQueueKeyProducer {
 
   override extractGroupId(groupName: string, queueId: string): string {
     return this.groupExtractor(groupName, queueId);
+  }
+}
+
+/**
+ * Key producer for running a fair queue on a Redis cluster. Each tenant belongs to one shard,
+ * `jumpHash(tenantId, shardCount)`, and every key of a shard carries the hash tag
+ * `{prefix:shard}`, so a shard's queues, items, payloads, tenant indexes, dispatch index,
+ * in-flight set and concurrency sets share a slot and every script stays single-slot.
+ *
+ * Concurrency groups must be keyed by tenant id. The shard count can't change without moving keys.
+ *
+ * Key structure (S = the tenant's shard):
+ * - Dispatch index: {prefix:S}:dispatch
+ * - Tenant queue index: {prefix:S}:tenantq:{tenantId}
+ * - Queue: {prefix:S}:queue:{queueId}, items {prefix:S}:queue:{queueId}:items
+ * - Payload: {prefix:S}:payload:{queueId}:{messageId}
+ * - Payload bytes per tenant: {prefix:S}:payloadbytes:{tenantId}
+ * - Concurrency: {prefix:S}:concurrency:{groupName}:{tenantId}
+ * - In-flight: {prefix:S}:inflight, data {prefix:S}:inflight:data
+ * - Dead letter queue: {prefix:S}:dlq:{tenantId}, data {prefix:S}:dlq:{tenantId}:data
+ * - Legacy master queue: {prefix:S}:master
+ * - Worker queue: {prefix}:worker:{consumerId} (its own slot)
+ * - DRR deficits: {prefix}:drr:deficit (its own slot)
+ */
+export class TenantShardedFairQueueKeyProducer implements FairQueueKeyProducer {
+  readonly shardCount: number;
+  private readonly prefix: string;
+  private readonly tenantExtractor: (queueId: string) => string;
+  private readonly groupExtractor: (groupName: string, queueId: string) => string;
+
+  constructor(options: {
+    prefix: string;
+    shardCount: number;
+    extractTenantId: (queueId: string) => string;
+    extractGroupId: (groupName: string, queueId: string) => string;
+  }) {
+    if (!Number.isInteger(options.shardCount) || options.shardCount < 1) {
+      throw new Error(`shardCount must be a positive integer, got ${options.shardCount}`);
+    }
+    this.prefix = options.prefix;
+    this.shardCount = options.shardCount;
+    this.tenantExtractor = options.extractTenantId;
+    this.groupExtractor = options.extractGroupId;
+  }
+
+  tenantShard(tenantId: string): number {
+    return jumpHash(tenantId, this.shardCount);
+  }
+
+  masterQueueKey(shardId: number): string {
+    return `${this.#tag(shardId)}:master`;
+  }
+
+  queueKey(queueId: string): string {
+    return `${this.#queueTag(queueId)}:queue:${queueId}`;
+  }
+
+  queueItemsKey(queueId: string): string {
+    return `${this.#queueTag(queueId)}:queue:${queueId}:items`;
+  }
+
+  payloadKey(queueId: string, messageId: string): string {
+    return `${this.#queueTag(queueId)}:payload:${queueId}:${messageId}`;
+  }
+
+  tenantPayloadBytesKey(tenantId: string): string {
+    return `${this.#tag(this.tenantShard(tenantId))}:payloadbytes:${tenantId}`;
+  }
+
+  concurrencyKey(groupName: string, groupId: string): string {
+    return `${this.#tag(this.tenantShard(groupId))}:concurrency:${groupName}:${groupId}`;
+  }
+
+  concurrencyKeyPattern(groupName: string, shardId: number): string {
+    return `${this.#tag(shardId)}:concurrency:${groupName}:*`;
+  }
+
+  inflightKey(shardId: number): string {
+    return `${this.#tag(shardId)}:inflight`;
+  }
+
+  inflightDataKey(shardId: number): string {
+    return `${this.#tag(shardId)}:inflight:data`;
+  }
+
+  workerQueueKey(consumerId: string): string {
+    return `${this.prefix}:worker:${consumerId}`;
+  }
+
+  deadLetterQueueKey(tenantId: string): string {
+    return `${this.#tag(this.tenantShard(tenantId))}:dlq:${tenantId}`;
+  }
+
+  deadLetterQueueDataKey(tenantId: string): string {
+    return `${this.#tag(this.tenantShard(tenantId))}:dlq:${tenantId}:data`;
+  }
+
+  dispatchKey(shardId: number): string {
+    return `${this.#tag(shardId)}:dispatch`;
+  }
+
+  tenantQueueIndexKey(tenantId: string): string {
+    return `${this.#tag(this.tenantShard(tenantId))}:tenantq:${tenantId}`;
+  }
+
+  drrDeficitKey(): string {
+    return `${this.prefix}:drr:deficit`;
+  }
+
+  extractTenantId(queueId: string): string {
+    return this.tenantExtractor(queueId);
+  }
+
+  extractGroupId(groupName: string, queueId: string): string {
+    return this.groupExtractor(groupName, queueId);
+  }
+
+  #queueTag(queueId: string): string {
+    return this.#tag(this.tenantShard(this.tenantExtractor(queueId)));
+  }
+
+  #tag(shardId: number): string {
+    return `{${this.prefix}:${shardId}}`;
   }
 }

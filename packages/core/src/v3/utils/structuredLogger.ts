@@ -12,12 +12,12 @@ export interface StructuredLogger {
 }
 
 export enum LogLevel {
-  "log",
-  "error",
-  "warn",
-  "info",
-  "debug",
-  "verbose",
+  log,
+  error,
+  warn,
+  info,
+  debug,
+  verbose,
 }
 
 export class SimpleStructuredLogger implements StructuredLogger {

@@ -43,7 +43,12 @@ class CountingRunStore extends PostgresRunStore {
 
   override async startAttempt<S extends Prisma.TaskRunSelect>(
     runId: string,
-    data: { attemptNumber: number; executedAt?: Date; isWarmStart: boolean },
+    data: {
+      attemptNumber: number;
+      executedAt?: Date;
+      isWarmStart: boolean;
+      annotations?: Prisma.InputJsonValue;
+    },
     args: { select: S },
     tx?: any
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {

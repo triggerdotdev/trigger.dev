@@ -4,28 +4,28 @@ import type { RunStatusData } from "~/routes/resources.orgs.$organizationSlug.pr
 
 const DEFAULT_POLL_MS = 15_000;
 
-// Polls the run status and calls `onFinished` on each poll that sees the run finished,
-// until the caller disables it. The reload `onFinished` triggers can read a lagging
-// replica or be interrupted, so polling continues until the page data shows the run
-// finished. Failed polls are ignored and retried on the next interval.
+// Polls the run status and passes each result to `onStatus` until the caller disables
+// it. Reloads the caller triggers can read a lagging replica or be interrupted, so the
+// caller keeps polling until the page data agrees. Failed polls are ignored and retried
+// on the next interval.
 export function useRunStatusBackstop({
   enabled,
   statusPath,
   shouldSkip,
-  onFinished,
+  onStatus,
   pollMs = DEFAULT_POLL_MS,
 }: {
   enabled: boolean;
   statusPath: string;
   shouldSkip: () => boolean;
-  onFinished: () => void;
+  onStatus: (data: RunStatusData) => void;
   pollMs?: number;
 }) {
   const shouldSkipRef = useRef(shouldSkip);
-  const onFinishedRef = useRef(onFinished);
+  const onStatusRef = useRef(onStatus);
   useEffect(() => {
     shouldSkipRef.current = shouldSkip;
-    onFinishedRef.current = onFinished;
+    onStatusRef.current = onStatus;
   });
 
   useEffect(() => {
@@ -38,8 +38,8 @@ export function useRunStatusBackstop({
       );
       if (stopped || fetchError || !response.ok) return;
       const [parseError, data] = await tryCatch(response.json() as Promise<RunStatusData>);
-      if (stopped || parseError || (!data.isFinished && data.completedAt === null)) return;
-      onFinishedRef.current();
+      if (stopped || parseError) return;
+      onStatusRef.current(data);
     };
     const id = window.setInterval(() => void poll(), pollMs);
     return () => {

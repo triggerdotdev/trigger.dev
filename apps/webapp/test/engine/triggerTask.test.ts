@@ -19,6 +19,7 @@ vi.mock("~/services/platform.v3.server", async (importOriginal) => {
   };
 });
 
+import { env } from "~/env.server";
 import { RunEngine } from "@internal/run-engine";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "@internal/run-engine/tests";
 import { assertNonNullable, containerTest } from "@internal/testcontainers";
@@ -199,6 +200,12 @@ describe("RunEngineTriggerTaskService", () => {
   containerTest(
     "routes scheduled-lineage runs to a separate worker queue that dequeues independently",
     async ({ prisma, redisOptions }) => {
+      const previousSplitEnabled = env.TRIGGER_WORKER_QUEUE_SCHEDULED_SPLIT_ENABLED;
+      env.TRIGGER_WORKER_QUEUE_SCHEDULED_SPLIT_ENABLED = "1";
+      onTestFinished(() => {
+        env.TRIGGER_WORKER_QUEUE_SCHEDULED_SPLIT_ENABLED = previousSplitEnabled;
+      });
+
       const engine = new RunEngine({
         prisma,
         worker: {
@@ -232,12 +239,6 @@ describe("RunEngineTriggerTaskService", () => {
 
       try {
         const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-
-        // Turn the per-org split flag on in-memory — the resolver reads this
-        // object directly (no DB round-trip on the trigger hot path).
-        (authenticatedEnvironment.organization as { featureFlags?: unknown }).featureFlags = {
-          workerQueueScheduledSplitEnabled: true,
-        };
 
         const taskIdentifier = "test-task";
         await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);

@@ -129,13 +129,17 @@ export function runShapeStream<TRunTypes extends AnyRunTypes>(
   );
 
   // If the user supplied AbortSignal is aborted, we should abort the internal controller
-  options?.signal?.addEventListener(
+  const onSignalAbort = () => {
+    if (!abortController.signal.aborted) {
+      abortController.abort();
+    }
+  };
+  options?.signal?.addEventListener("abort", onSignalAbort, { once: true });
+
+  // If the subscription ends first, don't leave the listener on a possibly long-lived signal
+  abortController.signal.addEventListener(
     "abort",
-    () => {
-      if (!abortController.signal.aborted) {
-        abortController.abort();
-      }
-    },
+    () => options?.signal?.removeEventListener("abort", onSignalAbort),
     { once: true }
   );
 
@@ -791,7 +795,9 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
           }
         },
       },
-      this.options.abortController.signal
+      this.options.abortController.signal,
+      // A consumer `break` cancels the stream; unsubscribe so the shape stream stops polling
+      () => this.unsubscribe()
     );
   }
 
@@ -845,34 +851,48 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
                   }
                 );
 
+                const signal = this.options.abortController.signal;
+
                 // Start stream processing in the background
-                subscription.subscribe().then((stream) => {
-                  stream
-                    .pipeThrough(
-                      new TransformStream({
-                        transform(chunk, controller) {
-                          controller.enqueue({
-                            type: streamKey,
-                            chunk: chunk.chunk as TStreams[typeof streamKey],
-                            run,
-                          });
-                        },
-                      })
-                    )
-                    .pipeTo(
-                      new WritableStream({
-                        write(chunk) {
-                          controller.enqueue(chunk);
-                        },
-                      })
-                    );
-                });
+                subscription
+                  .subscribe()
+                  .then((stream) =>
+                    stream
+                      .pipeThrough(
+                        new TransformStream({
+                          transform(chunk, controller) {
+                            controller.enqueue({
+                              type: streamKey,
+                              chunk: chunk.chunk as TStreams[typeof streamKey],
+                              run,
+                            });
+                          },
+                        })
+                      )
+                      .pipeTo(
+                        new WritableStream({
+                          write(chunk) {
+                            try {
+                              controller.enqueue(chunk);
+                            } catch {
+                              // The output already closed (consumer broke out or the run ended)
+                            }
+                          },
+                        }),
+                        { signal }
+                      )
+                  )
+                  .catch((error) => {
+                    // Rejections from tearing down the subscription are expected
+                    if (!signal.aborted) throw error;
+                  });
               }
             }
           }
         },
       },
-      this.options.abortController.signal
+      this.options.abortController.signal,
+      () => this.unsubscribe()
     );
   }
 

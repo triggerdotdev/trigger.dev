@@ -30,6 +30,62 @@ export function deriveHmacKey(
   return Buffer.from(s, transform?.encoding === "base64" ? "base64" : "utf8");
 }
 
+/**
+ * The first non-empty value among a header source's `name` and its `fallback` headers, read from a
+ * lower-cased header map.
+ */
+export function readHeader(
+  headersLc: Record<string, string>,
+  source: { name: string; fallback?: string[] }
+): string | undefined {
+  for (const name of [source.name, ...(source.fallback ?? [])]) {
+    const value = headersLc[name.toLowerCase()];
+    if (value) return value;
+  }
+  return undefined;
+}
+
+type TimestampShape = {
+  unit?: "seconds" | "milliseconds";
+  format?: "unix" | "iso8601" | "http-date";
+};
+
+/** Epoch milliseconds for a timestamp value written in the config's format, or undefined. */
+export function timestampToMs(value: string, cfg: TimestampShape): number | undefined {
+  const format = cfg.format ?? "unix";
+  if (format === "unix") {
+    if (value.trim() === "") return undefined;
+    const n = Number(value);
+    if (Number.isNaN(n)) return undefined;
+    return cfg.unit === "milliseconds" ? n : n * 1000;
+  }
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? undefined : ms;
+}
+
+/**
+ * How far `nowMs` is from the instant a timestamp stands for. An HTTP date carries whole seconds, so
+ * `T` stands for some instant in `[T, T + 999ms]`; the distance is to that interval, which keeps the
+ * full window in both directions. Other formats are exact instants.
+ */
+export function timestampDistanceMs(ms: number, nowMs: number, cfg: TimestampShape): number {
+  if (cfg.format !== "http-date") return Math.abs(nowMs - ms);
+  if (nowMs < ms) return ms - nowMs;
+  return Math.max(0, nowMs - (ms + 999));
+}
+
+/** `nowMs` written the way the config's format expects it, for the signer. */
+export function formatTimestamp(nowMs: number, cfg: TimestampShape): string {
+  switch (cfg.format ?? "unix") {
+    case "iso8601":
+      return new Date(nowMs).toISOString();
+    case "http-date":
+      return new Date(nowMs).toUTCString();
+    case "unix":
+      return String(cfg.unit === "milliseconds" ? nowMs : Math.floor(nowMs / 1000));
+  }
+}
+
 export function decodeSignature(value: string, encoding: "hex" | "base64"): Buffer {
   return Buffer.from(value, encoding);
 }

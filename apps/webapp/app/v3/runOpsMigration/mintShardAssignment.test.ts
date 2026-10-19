@@ -11,8 +11,8 @@ import { type MintShardSetResolution } from "./mintShardGrace";
 const GRACE_MS = 90_000;
 const T = 1_000_000;
 
-// Cuid-shaped ids, not sequential integers: a sequential space does not model the real
-// key distribution the hash has to spread.
+// Cuid-shaped ids, so "nobody unpinned moves" is checked over a realistic id space rather than
+// one environment.
 function envIds(count: number): string[] {
   const ids: string[] = [];
   for (let i = 0; i < count; i++) {
@@ -38,14 +38,6 @@ function orgFlags(flags: Record<string, unknown>) {
   return { orgFeatureFlags: flags };
 }
 
-function place(ids: string[], resolution: MintShardSetResolution): Map<string, string> {
-  const out = new Map<string, string>();
-  for (const id of ids) {
-    out.set(id, computeMintShard({ id }, deps(resolution)));
-  }
-  return out;
-}
-
 describe("computeMintShard — the no-shards answer", () => {
   it("returns new when the live list is empty", () => {
     expect(computeMintShard({ id: "env_1" }, deps({ set: [] }))).toBe("new");
@@ -56,35 +48,38 @@ describe("computeMintShard — the no-shards answer", () => {
     expect(computeMintShard({ id: "env_1" }, deps(resolution, { nowMs: T + 1 }))).toBe("new");
   });
 
-  it("returns new when the grace serves an empty list", () => {
-    const resolution: MintShardSetResolution = { set: ["a"], prevSet: [], flippedAtMs: T };
-    expect(computeMintShard({ id: "env_1" }, deps(resolution, { nowMs: T + 1 }))).toBe("new");
-  });
-
   it("returns new when the grace serves an empty prevSet", () => {
     const resolution: MintShardSetResolution = { set: ["a"], prevSet: [], flippedAtMs: T };
     expect(computeMintShard({ id: "env_1" }, deps(resolution, { nowMs: T + 1 }))).toBe("new");
   });
+
+  it("is gated by the active set: an empty set mints gen-1 whatever the pin", () => {
+    expect(
+      computeMintShard({ id: "env_1" }, deps({ set: [] }, orgFlags({ runOpsMintShard: "a" })))
+    ).toBe("new");
+    expect(
+      computeMintShard(
+        { id: "env_1" },
+        deps({ set: [] }, orgFlags({ runOpsMintShardEnvPins: JSON.stringify({ env_1: "a" }) }))
+      )
+    ).toBe("new");
+  });
 });
 
-describe("computeMintShard — determinism", () => {
-  it("returns the same value for the same environment on every call", () => {
-    const resolution: MintShardSetResolution = { set: ["a", "b", "c"] };
-    const first = computeMintShard({ id: "env_stable" }, deps(resolution));
-    for (let i = 0; i < 1000; i++) {
-      expect(computeMintShard({ id: "env_stable" }, deps(resolution))).toBe(first);
+describe("computeMintShard — unpinned environments never move", () => {
+  it("mints gen-1 for an unpinned environment while the active set is live", () => {
+    expect(computeMintShard({ id: "env_1" }, deps({ set: ["a"] }))).toBe("new");
+  });
+
+  it("mints gen-1 for every unpinned environment across two active keys (no spreading)", () => {
+    for (const id of envIds(1_000)) {
+      expect(computeMintShard({ id }, deps({ set: ["a", "b"] }))).toBe("new");
     }
   });
 
-  it("ignores the order the operator listed the keys in", () => {
-    const ids = envIds(200);
-    const canonical = place(ids, { set: ["a", "b", "c"] });
-    for (const permutation of [
-      ["c", "b", "a"],
-      ["b", "a", "c"],
-      ["a", "c", "b"],
-    ]) {
-      expect(place(ids, { set: permutation })).toEqual(canonical);
+  it("keeps unpinned environments on gen-1 when a shard is added to the set", () => {
+    for (const id of envIds(200)) {
+      expect(computeMintShard({ id }, deps({ set: ["a", "b", "c"] }))).toBe("new");
     }
   });
 });
@@ -92,24 +87,26 @@ describe("computeMintShard — determinism", () => {
 describe("computeMintShard — pins", () => {
   const resolution: MintShardSetResolution = { set: ["a", "b"] };
 
-  it("lets a per-env pin override the hash", () => {
-    const ids = envIds(50);
-    for (const id of ids) {
-      const pinned = computeMintShard(
-        { id },
-        deps(resolution, orgFlags({ runOpsMintShardEnvPins: JSON.stringify({ [id]: "b" }) }))
-      );
-      expect(pinned).toBe("b");
-    }
-  });
-
-  it("lets a per-org pin override the hash when no per-env pin is set", () => {
-    const ids = envIds(50);
-    for (const id of ids) {
+  it("mints on the org pin when the key is in the active set", () => {
+    for (const id of envIds(50)) {
       expect(computeMintShard({ id }, deps(resolution, orgFlags({ runOpsMintShard: "a" })))).toBe(
         "a"
       );
     }
+  });
+
+  it("mints on the env pin when the key is in the active set", () => {
+    expect(
+      computeMintShard(
+        { id: "env_1" },
+        deps(resolution, orgFlags({ runOpsMintShardEnvPins: JSON.stringify({ env_1: "b" }) }))
+      )
+    ).toBe("b");
+  });
+
+  it("applies an env pin only to the environment it names", () => {
+    const flags = orgFlags({ runOpsMintShardEnvPins: JSON.stringify({ env_1: "b" }) });
+    expect(computeMintShard({ id: "env_2" }, deps(resolution, flags))).toBe("new");
   });
 
   it("lets a per-env pin beat a per-org pin", () => {
@@ -126,33 +123,54 @@ describe("computeMintShard — pins", () => {
     expect(result).toBe("b");
   });
 
-  it("holds an environment on gen-1 when the pin is new", () => {
+  it("holds an environment on gen-1 when the env pin is new, even under an org pin key", () => {
+    const result = computeMintShard(
+      { id: "env_1" },
+      deps(
+        resolution,
+        orgFlags({
+          runOpsMintShard: "a",
+          runOpsMintShardEnvPins: JSON.stringify({ env_1: "new" }),
+        })
+      )
+    );
+    expect(result).toBe("new");
+  });
+
+  it("holds an environment on gen-1 when the org pin is new", () => {
     expect(
       computeMintShard({ id: "env_1" }, deps(resolution, orgFlags({ runOpsMintShard: "new" })))
     ).toBe("new");
-    expect(
-      computeMintShard(
-        { id: "env_1" },
-        deps(resolution, orgFlags({ runOpsMintShardEnvPins: JSON.stringify({ env_1: "new" }) }))
-      )
-    ).toBe("new");
   });
 
-  it("falls through to the hash and reports when the pin is outside the active set", () => {
+  it("mints gen-1 and reports when the pin is outside the active set", () => {
     // Honouring a drained pin would leak the drain; throwing would fail customer triggers.
-    const rejected: string[] = [];
+    const rejected: Array<{ environmentId: string; pin: string; activeSet: string[] }> = [];
     const result = computeMintShard(
       { id: "env_1" },
       deps(resolution, {
         ...orgFlags({ runOpsMintShard: "z" }),
+        onPinRejected: (info) => rejected.push(info),
+      })
+    );
+    expect(result).toBe("new");
+    expect(rejected).toEqual([{ environmentId: "env_1", pin: "z", activeSet: ["a", "b"] }]);
+  });
+
+  it("reports an env pin outside the active set the same way", () => {
+    const rejected: string[] = [];
+    const result = computeMintShard(
+      { id: "env_1" },
+      deps(resolution, {
+        ...orgFlags({ runOpsMintShardEnvPins: JSON.stringify({ env_1: "z" }) }),
         onPinRejected: (info) => rejected.push(info.pin),
       })
     );
-    expect(result).toBe(computeMintShard({ id: "env_1" }, deps(resolution)));
+    expect(result).toBe("new");
     expect(rejected).toEqual(["z"]);
   });
 
-  it("honours a pin to a drained key for the whole grace window, then falls through", () => {
+  it("honours a pin to a drained key for the whole grace window, then mints gen-1", () => {
     const draining: MintShardSetResolution = { set: ["a"], prevSet: ["a", "b"], flippedAtMs: T };
     const pinnedToB = orgFlags({ runOpsMintShard: "b" });
     expect(computeMintShard({ id: "env_1" }, deps(draining, { ...pinnedToB, nowMs: T + 1 }))).toBe(
@@ -160,7 +178,7 @@ describe("computeMintShard — pins", () => {
     );
     expect(
       computeMintShard({ id: "env_1" }, deps(draining, { ...pinnedToB, nowMs: T + GRACE_MS }))
-    ).not.toBe("b");
+    ).toBe("new");
   });
 
   it("ignores an unparseable pin blob rather than un-pinning silently", () => {
@@ -185,79 +203,22 @@ describe("computeMintShard — pins", () => {
     expect(result).toBe("a");
   });
 
-  it("ignores an invalid org pin value", () => {
+  it("treats an invalid org pin value as no pin", () => {
+    const rejected: string[] = [];
     const result = computeMintShard(
       { id: "env_1" },
-      deps(resolution, orgFlags({ runOpsMintShard: "legacy" }))
+      deps(resolution, {
+        ...orgFlags({ runOpsMintShard: "legacy" }),
+        onPinRejected: (info) => rejected.push(info.pin),
+      })
     );
-    expect(result).toBe(computeMintShard({ id: "env_1" }, deps(resolution)));
-  });
-});
-
-describe("computeMintShard — rendezvous properties", () => {
-  const ids = envIds(10_000);
-
-  it("spreads roughly evenly across the active set", () => {
-    for (const set of [
-      ["a", "b"],
-      ["a", "b", "c"],
-      ["a", "b", "c", "d"],
-    ]) {
-      const counts = new Map<string, number>();
-      for (const shard of place(ids, { set }).values()) {
-        counts.set(shard, (counts.get(shard) ?? 0) + 1);
-      }
-      expect(counts.size).toBe(set.length);
-      const expected = ids.length / set.length;
-      for (const count of counts.values()) {
-        expect(Math.abs(count - expected) / expected).toBeLessThan(0.1);
-      }
-    }
-  });
-
-  it("moves about 1/(N+1) of environments when a shard is added", () => {
-    const cases: Array<{ from: string[]; to: string[]; expected: number }> = [
-      { from: ["a"], to: ["a", "b"], expected: 1 / 2 },
-      { from: ["a", "b"], to: ["a", "b", "c"], expected: 1 / 3 },
-      { from: ["a", "b", "c"], to: ["a", "b", "c", "d"], expected: 1 / 4 },
-    ];
-
-    for (const { from, to, expected } of cases) {
-      const before = place(ids, { set: from });
-      const after = place(ids, { set: to });
-      const added = to.filter((k) => !from.includes(k));
-      let moved = 0;
-      for (const id of ids) {
-        if (before.get(id) === after.get(id)) continue;
-        moved++;
-        // HRW's defining property: a mover lands on the ADDED shard, never on a survivor.
-        expect(added).toContain(after.get(id));
-      }
-      expect(Math.abs(moved / ids.length - expected) / expected).toBeLessThan(0.1);
-    }
-  });
-
-  it("moves only the environments that hashed to a removed shard", () => {
-    const before = place(ids, { set: ["a", "b", "c"] });
-    const after = place(ids, { set: ["a", "b"] });
-    for (const id of ids) {
-      if (before.get(id) === "c") {
-        expect(after.get(id)).not.toBe("c");
-      } else {
-        expect(after.get(id)).toBe(before.get(id));
-      }
-    }
-  });
-
-  it("also moves pinned environments when their shard is removed", () => {
-    // Criterion 6 is a property of the hash only. A pin to a removed key moves too.
-    const pinnedToC = orgFlags({ runOpsMintShard: "c" });
-    expect(computeMintShard({ id: "env_1" }, deps({ set: ["a", "b", "c"] }, pinnedToC))).toBe("c");
-    expect(computeMintShard({ id: "env_1" }, deps({ set: ["a", "b"] }, pinnedToC))).not.toBe("c");
+    expect(result).toBe("new");
+    expect(rejected).toEqual([]);
   });
 });
 
 describe("resolveMintShardWith — cache, read failure and fail-safe", () => {
+  // Pinned to "b" by default, so a successful read is distinguishable from the gen-1 fail-safe.
   function wrapperDeps(
     overrides: Partial<ResolveMintShardDeps> = {}
   ): ResolveMintShardDeps & { reads: number } {
@@ -267,7 +228,7 @@ describe("resolveMintShardWith — cache, read failure and fail-safe", () => {
       nowMs: T,
       ttlMs: 30_000,
       graceMs: GRACE_MS,
-      orgFeatureFlags: undefined as unknown,
+      orgFeatureFlags: { runOpsMintShard: "b" } as unknown,
       reads: 0,
       ...overrides,
     };
@@ -295,6 +256,15 @@ describe("resolveMintShardWith — cache, read failure and fail-safe", () => {
     expect(deps.reads).toBe(2);
   });
 
+  it("mints on the pin, and gen-1 for an unpinned environment, from ONE read", async () => {
+    const pinned = wrapperDeps();
+    expect(await resolveMintShardWith({ id: "env_1" }, pinned)).toBe("b");
+
+    const unpinned = wrapperDeps({ orgFeatureFlags: undefined, cache: pinned.cache });
+    expect(await resolveMintShardWith({ id: "env_2" }, unpinned)).toBe("new");
+    expect(pinned.reads + unpinned.reads).toBe(1);
+  });
+
   it("falls back to gen-1 when the read throws, and does not poison the cache", async () => {
     // A blip must not move every environment's placement, so it returns gen-1 rather than guess.
     let fail = true;
@@ -311,7 +281,7 @@ describe("resolveMintShardWith — cache, read failure and fail-safe", () => {
     expect(failures).toHaveLength(1);
 
     fail = false;
-    expect(["a", "b"]).toContain(await resolveMintShardWith({ id: "env_1" }, deps));
+    expect(await resolveMintShardWith({ id: "env_1" }, deps)).toBe("b");
   });
 
   it("reports an unparseable stored list while still degrading to gen-1", async () => {
@@ -343,7 +313,7 @@ describe("resolveMintShardWith — cache, read failure and fail-safe", () => {
     const parseFailures: unknown[] = [];
     deps.onSetParseFailed = (failure) => parseFailures.push(failure);
 
-    expect(["a", "b"]).toContain(await resolveMintShardWith({ id: "env_1" }, deps));
+    expect(await resolveMintShardWith({ id: "env_1" }, deps)).toBe("b");
     expect(parseFailures).toEqual([]);
   });
 
@@ -408,7 +378,7 @@ describe("resolveMintShardWith — cache, read failure and fail-safe", () => {
 
     expect(await resolveMintShardWith({ id: "env_1" }, deps)).toBe("new");
     fail = false;
-    expect(["a", "b"]).toContain(await resolveMintShardWith({ id: "env_1" }, deps));
+    expect(await resolveMintShardWith({ id: "env_1" }, deps)).toBe("b");
     expect(deps.reads).toBe(2);
   });
 
@@ -421,9 +391,10 @@ describe("resolveMintShardWith — cache, read failure and fail-safe", () => {
         resolution: { set: ["a", "b"] },
         nowMs: T,
         graceMs: GRACE_MS,
-        orgFeatureFlags: undefined,
+        orgFeatureFlags: { runOpsMintShard: "b" },
       }
     );
+    expect(viaWrapper).toBe("b");
     expect(viaWrapper).toBe(viaCore);
   });
 });
@@ -431,7 +402,7 @@ describe("resolveMintShardWith — cache, read failure and fail-safe", () => {
 describe("computeMintShard — the global override wins the complete cutover", () => {
   const resolution: MintShardSetResolution = { set: ["a", "b"] };
 
-  it("beats the hash for every environment", () => {
+  it("sends every unpinned environment to the override key", () => {
     for (const id of envIds(200)) {
       expect(computeMintShard({ id }, deps(resolution, { globalOverride: "b" }))).toBe("b");
     }
@@ -456,12 +427,60 @@ describe("computeMintShard — the global override wins the complete cutover", (
     expect(shard).toBe("b");
   });
 
+  it("beats a pin to new, at org and at env level", () => {
+    expect(
+      computeMintShard(
+        { id: "env_1" },
+        deps(resolution, { globalOverride: "a", orgFeatureFlags: { runOpsMintShard: "new" } })
+      )
+    ).toBe("a");
+    expect(
+      computeMintShard(
+        { id: "env_1" },
+        deps(resolution, {
+          globalOverride: "a",
+          orgFeatureFlags: { runOpsMintShardEnvPins: JSON.stringify({ env_1: "new" }) },
+        })
+      )
+    ).toBe("a");
+  });
+
   it("holds the whole fleet on gen-1 when set to new, whatever any org pinned", () => {
     const shard = computeMintShard(
       { id: "env_1" },
       deps(resolution, { globalOverride: "new", orgFeatureFlags: { runOpsMintShard: "a" } })
     );
     expect(shard).toBe("new");
+    expect(computeMintShard({ id: "env_2" }, deps(resolution, { globalOverride: "new" }))).toBe(
+      "new"
+    );
+  });
+
+  it("hands placement back to the pins when it is cleared: a pinned org stays on its shard, an unpinned org returns to gen-1", () => {
+    // The capacity story: shard a fills, the override sent everyone there, then shard b is added
+    // and the override moves to b. An org pinned to a keeps minting on a, and clearing the
+    // override does not shuffle anybody who was never pinned.
+    const pinnedToA = { runOpsMintShard: "a" };
+    expect(
+      computeMintShard(
+        { id: "env_1" },
+        deps(resolution, { globalOverride: "a", orgFeatureFlags: pinnedToA })
+      )
+    ).toBe("a");
+    expect(computeMintShard({ id: "env_2" }, deps(resolution, { globalOverride: "a" }))).toBe("a");
+
+    expect(
+      computeMintShard(
+        { id: "env_1" },
+        deps(resolution, { globalOverride: "b", orgFeatureFlags: pinnedToA })
+      )
+    ).toBe("b");
+    expect(computeMintShard({ id: "env_2" }, deps(resolution, { globalOverride: "b" }))).toBe("b");
+
+    expect(
+      computeMintShard({ id: "env_1" }, deps(resolution, { orgFeatureFlags: pinnedToA }))
+    ).toBe("a");
+    expect(computeMintShard({ id: "env_2" }, deps(resolution, {}))).toBe("new");
   });
 
   it("is ignored, and reported, when it names a key outside the active set", () => {
@@ -477,6 +496,12 @@ describe("computeMintShard — the global override wins the complete cutover", (
     );
     expect(shard).toBe("a");
     expect(rejected).toEqual(["z"]);
+  });
+
+  it("leaves an unpinned environment on gen-1 when it is ignored", () => {
+    expect(computeMintShard({ id: "env_1" }, deps(resolution, { globalOverride: "z" }))).toBe(
+      "new"
+    );
   });
 
   it("reports a bad override WITHOUT the environment id, so one line covers the fleet", () => {
@@ -495,8 +520,11 @@ describe("computeMintShard — the global override wins the complete cutover", (
 
   it("is ignored when it is not a legal value", () => {
     for (const bad of ["legacy", "AB", "", "a,b"]) {
-      const shard = computeMintShard({ id: "env_1" }, deps(resolution, { globalOverride: bad }));
-      expect(shard).toBe(computeMintShard({ id: "env_1" }, deps(resolution)));
+      const shard = computeMintShard(
+        { id: "env_1" },
+        deps(resolution, { globalOverride: bad, ...orgFlags({ runOpsMintShard: "a" }) })
+      );
+      expect(shard).toBe("a");
     }
   });
 
@@ -508,38 +536,45 @@ describe("computeMintShard — the global override wins the complete cutover", (
 });
 
 describe("routableKeys bound (the shard descriptor keys this deployment can route)", () => {
-  it("drops an active key that is not routable, so the hash never returns it", () => {
-    // "z" is in the active list but not configured as a descriptor -> only "a" is selectable.
-    const ids = envIds(200);
-    for (const id of ids) {
-      const shard = computeMintShard({ id }, deps({ set: ["a", "z"] }, { routableKeys: ["a"] }));
-      expect(shard).toBe("a");
-    }
-  });
-
-  it("returns new when the active list holds only non-routable keys (fail-safe to gen-1)", () => {
-    expect(computeMintShard({ id: "env_1" }, deps({ set: ["z"] }, { routableKeys: ["a"] }))).toBe(
-      "new"
-    );
-  });
-
-  it("rejects a per-org pin to a non-routable key and falls through to the hash", () => {
+  it("honours a pin to an active key that is routable", () => {
     const shard = computeMintShard(
       { id: "env_1" },
-      deps({ set: ["a", "z"] }, { ...orgFlags({ runOpsMintShard: "z" }), routableKeys: ["a"] })
+      deps({ set: ["a", "z"] }, { ...orgFlags({ runOpsMintShard: "a" }), routableKeys: ["a"] })
     );
     expect(shard).toBe("a");
   });
 
-  it("with no routableKeys given, behaviour is unchanged", () => {
-    const ids = envIds(200);
-    for (const id of ids) {
-      const withBound = computeMintShard(
-        { id },
-        deps({ set: ["a", "b"] }, { routableKeys: ["a", "b"] })
-      );
-      const without = computeMintShard({ id }, deps({ set: ["a", "b"] }));
-      expect(withBound).toBe(without);
-    }
+  it("returns new when the active list holds only non-routable keys (fail-safe to gen-1)", () => {
+    expect(
+      computeMintShard(
+        { id: "env_1" },
+        deps({ set: ["z"] }, { ...orgFlags({ runOpsMintShard: "z" }), routableKeys: ["a"] })
+      )
+    ).toBe("new");
+  });
+
+  it("rejects a pin to an active but non-routable key, mints gen-1 and reports it", () => {
+    const rejected: Array<{ pin: string; activeSet: string[] }> = [];
+    const shard = computeMintShard(
+      { id: "env_1" },
+      deps(
+        { set: ["a", "z"] },
+        {
+          ...orgFlags({ runOpsMintShard: "z" }),
+          routableKeys: ["a"],
+          onPinRejected: ({ pin, activeSet }) => rejected.push({ pin, activeSet }),
+        }
+      )
+    );
+    expect(shard).toBe("new");
+    expect(rejected).toEqual([{ pin: "z", activeSet: ["a"] }]);
+  });
+
+  it("ignores an override to a non-routable key", () => {
+    const shard = computeMintShard(
+      { id: "env_1" },
+      deps({ set: ["a", "z"] }, { globalOverride: "z", routableKeys: ["a"] })
+    );
+    expect(shard).toBe("new");
   });
 });

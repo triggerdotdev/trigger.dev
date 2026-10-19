@@ -11,8 +11,9 @@ export type WebhookHttpResponse = {
 };
 
 /**
- * Map an ingest outcome to the HTTP answer the provider sees. Defaults are 200 JSON on success and
- * 400 on missing credentials or a bad signature; an endpoint whose verifier artifact declares a
+ * Map an ingest outcome to the HTTP answer the provider sees. Defaults are 200 JSON on success,
+ * 400 on missing credentials or a bad signature, and 503 with Retry-After when the delivery couldn't
+ * be queued; an endpoint whose verifier artifact declares a
  * response contract (`acceptedStatus`, `acceptedBody`, `rejectedStatus`) or handshake status gets those instead. The dashboard
  * test-send reports the same status and body inside its own result envelope.
  */
@@ -50,12 +51,21 @@ export function webhookHttpResponseFor(result: IngestResult): WebhookHttpRespons
         contentType: "application/json",
       };
     case "enqueue_failed":
-      return {
-        status: 500,
-        body: JSON.stringify({ error: "Internal error" }),
-        contentType: "application/json",
-      };
+      return retryLater(30);
+    case "queue_full":
+    case "over_capacity":
+      return retryLater(60);
   }
+}
+
+/** A retryable refusal: the delivery wasn't taken, and the provider should send it again. */
+function retryLater(seconds: number): WebhookHttpResponse {
+  return {
+    status: 503,
+    body: JSON.stringify({ error: "Temporarily unavailable, retry later" }),
+    headers: { "Retry-After": String(seconds) },
+    contentType: "application/json",
+  };
 }
 
 function acceptedResponse(

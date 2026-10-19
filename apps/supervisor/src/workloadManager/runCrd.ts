@@ -24,6 +24,7 @@ import type {
   WorkloadManagerCreateOptions,
   WorkloadManagerOptions,
 } from "./types.js";
+import { killCode, type RunnerKill } from "../services/runnerKills.js";
 
 const GROUP = "compute.trigger.dev";
 const VERSION = "v1alpha1";
@@ -725,7 +726,13 @@ type RunnerSuspendStatus = {
   status?: {
     phase?: string;
     suspend?: { request?: string; snapshotID?: string; node?: string };
-    conditions?: Array<{ type?: string; status?: string; reason?: string; message?: string }>;
+    conditions?: Array<{
+      type?: string;
+      status?: string;
+      reason?: string;
+      message?: string;
+      lastTransitionTime?: string;
+    }>;
   };
 };
 
@@ -1021,8 +1028,75 @@ export type UnwatchedRestoreFailure = {
 type RunnerBootstrapSpec = {
   spec?: {
     bootstrap?: { runFriendlyID?: string; snapshotFriendlyID?: string; dequeuedAt?: string };
+    owner?: { envID?: string };
   };
 };
+
+/**
+ * Follows every Runner through one list and watch, to hear of the ones the runtime killed. Each
+ * killed Runner is passed on once, however many updates or relists show it failed, as long as
+ * it is among the most recent `maxRemembered` passed on.
+ */
+export class RunnerKillInformer {
+  private readonly logger = new SimpleStructuredLogger("runner-kill-informer");
+  private readonly watch: ReconnectingInformer<KubernetesObject>;
+  private readonly reported = new Set<string>();
+
+  constructor(opts: {
+    namespace: string;
+    onRunnerKilled: (runnerId: string, kill: RunnerKill) => void;
+    reconnectIntervalMs?: number;
+    /** How long the server keeps each watch open before closing it. */
+    watchTimeoutSeconds?: number;
+    maxRemembered?: number;
+    k8s?: K8sApi;
+  }) {
+    const maxRemembered = opts.maxRemembered ?? 10_000;
+    const k8s = opts.k8s ?? createK8sApi();
+    const path = `/apis/${GROUP}/${VERSION}/namespaces/${opts.namespace}/${PLURAL}`;
+    this.watch = new ReconnectingInformer({
+      name: "runner-kill",
+      logger: this.logger,
+      reconnectIntervalMs: opts.reconnectIntervalMs ?? 1_000,
+      path,
+      watchTimeoutSeconds: opts.watchTimeoutSeconds ?? 300,
+      list: async () =>
+        (await k8s.custom.listNamespacedCustomObject({
+          group: GROUP,
+          version: VERSION,
+          namespace: opts.namespace,
+          plural: PLURAL,
+        })) as KubernetesListObject<KubernetesObject>,
+      makeInformer: (informerPath, list) => k8s.makeInformer(informerPath, list),
+      onStall: (quietMs) =>
+        this.logger.warn("Runner kill informer watch stalled, reconnecting", { quietMs }),
+    });
+    const onEvent = (runner: KubernetesObject) => {
+      const name = runner.metadata?.name;
+      const uid = runner.metadata?.uid;
+      const kill = runnerKill(runner);
+      if (!name || !uid || !kill || this.reported.has(uid)) {
+        return;
+      }
+      this.reported.add(uid);
+      if (this.reported.size > maxRemembered) {
+        // A Set iterates in insertion order, so this forgets the oldest.
+        this.reported.delete(this.reported.values().next().value!);
+      }
+      opts.onRunnerKilled(name, kill);
+    };
+    this.watch.informer.on("add", onEvent);
+    this.watch.informer.on("update", onEvent);
+  }
+
+  async start() {
+    await this.watch.start();
+  }
+
+  async stop() {
+    await this.watch.stop();
+  }
+}
 
 /**
  * Heartbeats the dequeued run while the operator brings its resume up, so a
@@ -1217,6 +1291,42 @@ export function restoreOutcome(runner: unknown): RunnerRestoreResult | undefined
     default:
       return undefined;
   }
+}
+
+/**
+ * The kill a failed Runner records, from the Failed condition the operator copies off its
+ * pod. The kubelet reports OOMKilled for a microvm guest too, so the reason means the same on
+ * both lanes. The exit code is only in the message, as "exited with code N".
+ */
+export function runnerKill(runner: unknown): RunnerKill | undefined {
+  const status = (runner as RunnerSuspendStatus | null)?.status;
+  const spec = (runner as RunnerBootstrapSpec | null)?.spec;
+  const annotations = (runner as { metadata?: { annotations?: Record<string, string> } } | null)
+    ?.metadata?.annotations;
+  if (status?.phase !== "Failed") {
+    return undefined;
+  }
+  // The kill time here is only when the failure was observed, and a Runner asked to suspend may
+  // have left a checkpoint that a restore continues elsewhere in the same attempt, so neither the
+  // time nor the attempt can tell that run apart from this one. The stall path handles it.
+  if (annotations?.[SUSPEND_ANNOTATION] || status.suspend) {
+    return undefined;
+  }
+  const condition = status.conditions?.find((c) => c.type === "Failed");
+  const match = condition?.message?.match(/exited with code (-?\d+)/);
+  const code = condition && killCode(condition.reason, match ? Number(match[1]) : undefined);
+  const runFriendlyId = spec?.bootstrap?.runFriendlyID;
+  const environmentId = spec?.owner?.envID;
+  if (!code || !runFriendlyId || !environmentId || !condition.lastTransitionTime) {
+    return undefined;
+  }
+  return {
+    code,
+    runFriendlyId,
+    environmentId,
+    killedAt: new Date(condition.lastTransitionTime),
+    killedAtObserved: true,
+  };
 }
 
 /**

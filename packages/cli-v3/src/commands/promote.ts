@@ -15,17 +15,22 @@ import { login } from "./login.js";
 import { createGitMeta } from "../utilities/gitMeta.js";
 import { getBranch } from "@trigger.dev/core/v3";
 import { authenticateForDeploy } from "../deploy/auth.js";
+import { type DeployEnvironment, resolveDeployEnvironment } from "../deploy/environment.js";
 
 const PromoteCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
   apiUrl: z.string().optional(),
   skipUpdateCheck: z.boolean().default(false),
   config: z.string().optional(),
-  env: z.enum(["prod", "staging", "preview"]),
+  env: z.enum(["prod", "staging", "preview", "production"]).optional(),
+  prod: z.boolean().default(false),
   branch: z.string().optional(),
 });
 
-type PromoteCommandOptions = z.infer<typeof PromoteCommandOptions>;
+// `env` is resolved from --env, --prod and TRIGGER_ACCESS_TOKEN before the command runs
+type PromoteCommandOptions = Omit<z.infer<typeof PromoteCommandOptions>, "env"> & {
+  env: DeployEnvironment;
+};
 
 export function configurePromoteCommand(program: Command) {
   return commonOptions(
@@ -36,9 +41,9 @@ export function configurePromoteCommand(program: Command) {
       .option("-c, --config <config file>", "The name of the config file, found at [path]")
       .option(
         "-e, --env <env>",
-        "Deploy to a specific environment (currently only prod and staging are supported)",
-        "prod"
+        "The environment to promote in: prod, staging or preview. Defaults to the environment of the API key in TRIGGER_ACCESS_TOKEN, otherwise prod."
       )
+      .option("--prod", "Promote in the prod environment. Shorthand for --env prod.")
       .option(
         "-b, --branch <branch>",
         "The preview branch to promote when passing --env preview. If not provided, we'll detect your git branch."
@@ -58,7 +63,15 @@ export function configurePromoteCommand(program: Command) {
 
 async function promoteCommand(version: string, options: unknown) {
   return await wrapCommandAction("promoteCommand", PromoteCommandOptions, options, async (opts) => {
-    return await _promoteCommand(version, opts);
+    const environment = resolveDeployEnvironment({
+      env: opts.env,
+      prod: opts.prod,
+      accessToken: process.env.TRIGGER_ACCESS_TOKEN,
+    });
+
+    logger.debug("Resolved promote environment", environment);
+
+    return await _promoteCommand(version, { ...opts, env: environment.env });
   });
 }
 
@@ -69,7 +82,7 @@ async function _promoteCommand(version: string, options: PromoteCommandOptions) 
     );
   }
 
-  intro(`Promoting version ${version}`);
+  intro(`Promoting version ${version} in ${options.env}`);
 
   const authorization = await authenticateForDeploy({
     accessToken: process.env.TRIGGER_ACCESS_TOKEN,
@@ -128,5 +141,5 @@ async function _promoteCommand(version: string, options: PromoteCommandOptions) 
     throw new Error(promotion.error);
   }
 
-  outro(`Promoted version ${version}`);
+  outro(`Promoted version ${version} in ${options.env}`);
 }

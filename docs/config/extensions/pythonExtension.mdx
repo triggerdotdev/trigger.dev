@@ -103,6 +103,14 @@ export default defineConfig({
 
 This will install the packages specified in the `requirements.txt` file during the build process. You can then use these packages in your Python scripts.
 
+You can also list requirements inline with the `requirements` option instead. You can't use it together with `requirementsFile`:
+
+```ts
+pythonExtension({
+  requirements: ["pandas"],
+});
+```
+
 <Note>
   The `requirementsFile` option is only available in production mode. In development mode, you can
   install the required packages manually using the `pip` command.
@@ -145,7 +153,7 @@ export const myStreamingScript = task({
     const result = python.stream.runScript("./python/my_script.py", ["hello", "world"]);
 
     // result is an async iterable/readable stream
-    for await (const chunk of streamingResult) {
+    for await (const chunk of result) {
       console.log(chunk);
     }
   },

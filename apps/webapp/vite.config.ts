@@ -69,6 +69,7 @@ export default defineConfig({
       // node globals for prebundled CJS deps (client-only by construction)
       define: { global: "globalThis" },
       inject: ["./vite/node-globals-shim.js"],
+      sourcemap: false,
     },
   },
   server: {

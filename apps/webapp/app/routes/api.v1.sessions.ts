@@ -32,10 +32,7 @@ import {
   createLoaderApiRoute,
   everyResource,
 } from "~/services/routeBuilders/apiBuilder.server";
-import {
-  recordSessionCreateAuthorization,
-  sessionCreateAuthorizationOutcome,
-} from "~/services/sessionAuthorizationTelemetry.server";
+import { sessionCreateAuthorizationOutcome } from "~/services/sessionAuthorizationTelemetry.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { runStore } from "~/v3/runStore.server";
 
@@ -163,7 +160,7 @@ const { action } = createActionApiRoute(
     },
     corsStrategy: "all",
   },
-  async ({ authentication, body, ability, request }) => {
+  async ({ authentication, body, ability }) => {
     try {
       if (body.externalId && !isSafeSessionExternalId(body.externalId)) {
         return json(
@@ -229,7 +226,6 @@ const { action } = createActionApiRoute(
         );
       }
 
-      recordSessionCreateAuthorization(ability, session, request, authentication.environment);
       if (
         sessionCreateAuthorizationOutcome(
           ability,

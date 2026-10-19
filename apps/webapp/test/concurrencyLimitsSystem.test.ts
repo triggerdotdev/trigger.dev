@@ -10,11 +10,26 @@ import { ConcurrencyLimitsSystem } from "~/v3/services/concurrencyLimitsSystem.s
  * Postgres. The engine syncs are spies so tests can assert ordering and inject
  * failures; the Redis side itself is covered by the run-engine suites.
  */
-const { perKeySyncMock, perKeyRemoveMock, totalSyncMock, totalRemoveMock } = vi.hoisted(() => ({
+const {
+  perKeySyncMock,
+  perKeyRemoveMock,
+  totalSyncMock,
+  totalRemoveMock,
+  keyLimitSetMock,
+  keyLimitRemoveMock,
+  keyLimitGetMock,
+} = vi.hoisted(() => ({
   perKeySyncMock: vi.fn(async (..._args: unknown[]) => undefined),
   perKeyRemoveMock: vi.fn(async (..._args: unknown[]) => undefined),
   totalSyncMock: vi.fn(async (..._args: unknown[]) => undefined),
   totalRemoveMock: vi.fn(async (..._args: unknown[]) => undefined),
+  keyLimitSetMock: vi.fn(async (..._args: unknown[]) => undefined),
+  keyLimitRemoveMock: vi.fn(async (..._args: unknown[]) => undefined),
+  keyLimitGetMock: vi.fn(
+    async (
+      ..._args: unknown[]
+    ): Promise<{ concurrency: number; expiresAt: Date | null } | undefined> => undefined
+  ),
 }));
 
 vi.mock("~/v3/runQueue.server", () => ({
@@ -22,6 +37,9 @@ vi.mock("~/v3/runQueue.server", () => ({
   removeQueueConcurrencyLimits: perKeyRemoveMock,
   updateQueueTotalConcurrencyLimits: totalSyncMock,
   removeQueueTotalConcurrencyLimits: totalRemoveMock,
+  updateQueueConcurrencyKeyLimit: keyLimitSetMock,
+  removeQueueConcurrencyKeyLimit: keyLimitRemoveMock,
+  getQueueConcurrencyKeyLimit: keyLimitGetMock,
 }));
 
 vi.mock("~/v3/runEngine.server", () => ({
@@ -34,6 +52,7 @@ vi.mock("~/v3/runEngine.server", () => ({
       Object.fromEntries(queues.map((q) => [q, 0])),
     lengthOfQueues: async (_env: unknown, queues: string[]) =>
       Object.fromEntries(queues.map((q) => [q, 0])),
+    currentConcurrencyOfQueue: async () => 2,
   },
 }));
 
@@ -690,6 +709,206 @@ describe("ConcurrencyLimitsSystem", () => {
       expect(result.isOk()).toBe(true);
       if (result.isOk()) {
         expect(result.value.total).toMatchObject({ current: 100, base: 200, override: null });
+      }
+    }
+  );
+});
+
+describe("ConcurrencyLimitsSystem per-key overrides", () => {
+  beforeEach(() => {
+    keyLimitSetMock.mockReset();
+    keyLimitRemoveMock.mockReset();
+    keyLimitGetMock.mockReset();
+  });
+
+  function withKeyOverrides(prisma: PrismaClient) {
+    return new ConcurrencyLimitsSystem({ db: prisma, reader: prisma, keyOverridesEnabled: true });
+  }
+
+  postgresTest("refuses a per-key override when the feature is off", async ({ prisma }) => {
+    const { authEnv, system } = await seedEnvAndLimit(prisma, { perKey: 2 });
+    const result = await system.limits.overrideKey(authEnv, "openai", {
+      concurrencyKey: "s1",
+      perKey: 5,
+    });
+    expect(result.isErr() && result.error.type).toBe("feature_disabled");
+    expect(keyLimitSetMock).not.toHaveBeenCalled();
+  });
+
+  postgresTest(
+    "rejects total, a missing perKey, and a perKey over the environment limit",
+    async ({ prisma }) => {
+      const seeded = await seedEnvAndLimit(prisma, { perKey: 2 });
+      const system = withKeyOverrides(prisma);
+      const { authEnv } = seeded;
+
+      const withTotal = await system.limits.overrideKey(authEnv, "openai", {
+        concurrencyKey: "s1",
+        perKey: 5,
+        total: 10,
+      });
+      expect(withTotal.isErr() && withTotal.error.type).toBe("invalid_override");
+
+      const noPerKey = await system.limits.overrideKey(authEnv, "openai", { concurrencyKey: "s1" });
+      expect(noPerKey.isErr() && noPerKey.error.type).toBe("invalid_override");
+
+      const tooHigh = await system.limits.overrideKey(authEnv, "openai", {
+        concurrencyKey: "s1",
+        perKey: 101,
+      });
+      expect(tooHigh.isErr() && tooHigh.error.type).toBe("invalid_override");
+      expect(keyLimitSetMock).not.toHaveBeenCalled();
+    }
+  );
+
+  postgresTest(
+    "rejects a limit with no perKey bound and a ttl over 30 days",
+    async ({ prisma }) => {
+      const seeded = await seedEnvAndLimit(prisma, { total: 25 });
+      const system = withKeyOverrides(prisma);
+      const { authEnv } = seeded;
+
+      const noBound = await system.limits.overrideKey(authEnv, "openai", {
+        concurrencyKey: "s1",
+        perKey: 5,
+      });
+      expect(noBound.isErr() && noBound.error.type).toBe("invalid_override");
+
+      const longTtl = await system.limits.overrideKey(authEnv, "openai", {
+        concurrencyKey: "s1",
+        perKey: 5,
+        ttl: "31d",
+      });
+      expect(longTtl.isErr() && longTtl.error.type).toBe("invalid_override");
+      expect(keyLimitSetMock).not.toHaveBeenCalled();
+    }
+  );
+
+  postgresTest(
+    "writes the override with the default 7 day ttl and returns the key's view",
+    async ({ prisma }) => {
+      const seeded = await seedEnvAndLimit(prisma, { perKey: 2 });
+      const system = withKeyOverrides(prisma);
+      const { authEnv } = seeded;
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      keyLimitGetMock.mockResolvedValueOnce({ concurrency: 5, expiresAt });
+
+      const result = await system.limits.overrideKey(authEnv, "openai", {
+        concurrencyKey: "s1",
+        perKey: 5,
+      });
+      expect(result.isOk()).toBe(true);
+      expect(keyLimitSetMock).toHaveBeenCalledWith(
+        authEnv,
+        "limit/openai",
+        "s1",
+        5,
+        7 * 24 * 60 * 60
+      );
+      if (result.isOk()) {
+        expect(result.value).toMatchObject({
+          name: "openai",
+          concurrencyKey: "s1",
+          perKey: { current: 5, base: 2, override: 5, expiresAt },
+          running: 2,
+          paused: false,
+        });
+      }
+    }
+  );
+
+  postgresTest("accepts a duration or seconds for ttl", async ({ prisma }) => {
+    const seeded = await seedEnvAndLimit(prisma, { perKey: 2 });
+    const system = withKeyOverrides(prisma);
+    const { authEnv } = seeded;
+
+    await system.limits.overrideKey(authEnv, "openai", {
+      concurrencyKey: "s1",
+      perKey: 1,
+      ttl: "2h",
+    });
+    expect(keyLimitSetMock).toHaveBeenLastCalledWith(authEnv, "limit/openai", "s1", 1, 7200);
+
+    await system.limits.overrideKey(authEnv, "openai", {
+      concurrencyKey: "s1",
+      perKey: 1,
+      ttl: 90,
+    });
+    expect(keyLimitSetMock).toHaveBeenLastCalledWith(authEnv, "limit/openai", "s1", 1, 90);
+
+    await system.limits.overrideKey(authEnv, "openai", {
+      concurrencyKey: "s1",
+      perKey: 1,
+      ttl: "1d2d12hr",
+    });
+    expect(keyLimitSetMock).toHaveBeenLastCalledWith(authEnv, "limit/openai", "s1", 1, 302400);
+
+    const junk = await system.limits.overrideKey(authEnv, "openai", {
+      concurrencyKey: "s1",
+      perKey: 1,
+      ttl: "2 days",
+    });
+    expect(junk.isErr() && junk.error.type).toBe("invalid_override");
+  });
+
+  postgresTest("reset clears the key's override and leaves the limit alone", async ({ prisma }) => {
+    const seeded = await seedEnvAndLimit(prisma, { perKey: 2 });
+    const system = withKeyOverrides(prisma);
+    const { authEnv, row } = seeded;
+
+    const result = await system.limits.resetKey(authEnv, "openai", "s1");
+    expect(result.isOk()).toBe(true);
+    expect(keyLimitRemoveMock).toHaveBeenCalledWith(authEnv, "limit/openai", "s1");
+    if (result.isOk()) {
+      expect(result.value.perKey).toMatchObject({
+        current: 2,
+        base: 2,
+        override: null,
+        expiresAt: null,
+      });
+    }
+    const untouched = await prisma.taskQueue.findFirstOrThrow({ where: { id: row.id } });
+    expect(untouched.concurrencyLimit).toBe(2);
+    expect(untouched.concurrencyLimitOverriddenAt).toBeNull();
+  });
+
+  postgresTest(
+    "retrieve for a key does not report an override once the limit has no perKey",
+    async ({ prisma }) => {
+      const seeded = await seedEnvAndLimit(prisma, { total: 25 });
+      const system = withKeyOverrides(prisma);
+      const { authEnv } = seeded;
+      keyLimitGetMock.mockResolvedValueOnce({ concurrency: 1, expiresAt: new Date() });
+
+      const result = await system.limits.retrieveKey(authEnv, "openai", "s1");
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) {
+        expect(result.value.perKey).toEqual({
+          current: null,
+          base: null,
+          override: null,
+          expiresAt: null,
+        });
+      }
+    }
+  );
+
+  postgresTest(
+    "retrieve for a key reports the limit's perKey as the base when there is no override",
+    async ({ prisma }) => {
+      const seeded = await seedEnvAndLimit(prisma, { perKey: 2 });
+      const system = withKeyOverrides(prisma);
+      const { authEnv } = seeded;
+
+      const result = await system.limits.retrieveKey(authEnv, "openai", "s1");
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) {
+        expect(result.value.perKey).toMatchObject({
+          current: 2,
+          base: 2,
+          override: null,
+          expiresAt: null,
+        });
       }
     }
   );

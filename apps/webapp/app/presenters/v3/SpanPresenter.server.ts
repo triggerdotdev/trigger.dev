@@ -4,6 +4,7 @@ import {
   prettyPrintPacket,
   RunAnnotations,
   SemanticInternalAttributes,
+  WorkerStampAnnotations,
   type TaskRunContext,
   TaskRunError,
   TriggerTraceContext,
@@ -325,6 +326,7 @@ export class SpanPresenter extends BasePresenter {
     const externalTraceId = this.#getExternalTraceId(run.traceContext);
 
     const taskKind = RunAnnotations.safeParse(run.annotations).data?.taskKind;
+    const workerStamp = WorkerStampAnnotations.safeParse(run.annotations).data;
     const isAgentRun = taskKind === "AGENT";
     const isScheduled = taskKind === "SCHEDULED";
     const isWebhook = taskKind === "WEBHOOK";
@@ -467,6 +469,8 @@ export class SpanPresenter extends BasePresenter {
       engine: run.engine,
       region,
       workerQueue: run.workerQueue,
+      workerCell: workerStamp?.workerCell,
+      workerLane: workerStamp?.workerLane,
       traceId: run.traceId,
       spanId: run.spanId,
       isCached: !!linkedRunId,

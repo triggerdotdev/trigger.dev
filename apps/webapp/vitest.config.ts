@@ -19,9 +19,13 @@ export default defineConfig({
       "app/runEngine/concerns/**/*.test.ts",
       "app/runEngine/services/**/*.test.ts",
       "app/services/realtime/**/*.test.ts",
+      "app/services/oidc/**/*.test.ts",
       "app/services/sessionAuthorizationTelemetry.server.test.ts",
       "app/services/previewAutoArchive.server.test.ts",
       "app/services/provisionBillingCustomer.server.test.ts",
+      "app/services/magicLinkOrigin.server.test.ts",
+      "app/services/turnstile.server.test.ts",
+      "app/services/enqueueGithubBuild.server.test.ts",
       "app/services/clickhouse/**/*.test.ts",
       "app/utils/**/*.test.ts",
       "app/hooks/**/*.test.ts",
@@ -46,6 +50,7 @@ export default defineConfig({
     ],
     globals: true,
     pool: "forks",
+    maxWorkers: "50%",
     setupFiles: ["./test/setup.ts"], // test fallbacks and isolation
   },
   // @ts-ignore

@@ -12,7 +12,7 @@ const ParamsSchema = z.object({
   deploymentId: z.string(),
 });
 
-// Secret material, deliberately separate from the main GET deployment endpoint.
+// Secret material: needs write, like the build's own progress and finalize calls.
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const parsedParams = ParamsSchema.safeParse(params);
 
@@ -22,7 +22,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   try {
     const authResult = await authenticateApiKeyWithScope(request, {
-      action: "read",
+      action: "write",
       resource: { type: "deployments" },
     });
 
@@ -59,7 +59,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       hasVars: deployment.buildEnvVars !== null,
     });
 
-    // Never serve secrets for a build that is no longer active, even if a clear is still in flight
+    // Final rows keep their envelope for redeploys; only the new in-flight copy is ever served
     if (FINAL_DEPLOYMENT_STATUSES.includes(deployment.status)) {
       return json({ variables: {} } satisfies GetDeploymentBuildEnvVarsResponseBody, {
         status: 200,

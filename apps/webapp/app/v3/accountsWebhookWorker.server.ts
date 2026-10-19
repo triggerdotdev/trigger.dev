@@ -74,7 +74,9 @@ function initializeWorker() {
           data: payload.data,
         });
         if (result.isErr()) {
-          const error = new Error(`account webhook processing failed: ${result.error}`);
+          const error = new Error(
+            `account webhook processing failed for ${payload.event}: ${result.error}`
+          );
           if (result.error === "not_ready") {
             Object.assign(error, { logLevel: "warn" as const });
           }

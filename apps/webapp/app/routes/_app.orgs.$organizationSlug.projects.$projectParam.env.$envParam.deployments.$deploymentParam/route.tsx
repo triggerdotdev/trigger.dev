@@ -49,7 +49,12 @@ import { useProject } from "~/hooks/useProject";
 import { DeploymentPresenter } from "~/presenters/v3/DeploymentPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { v3DeploymentParams, v3DeploymentsPath, v3RunsPath } from "~/utils/pathBuilder";
+import {
+  v3DeploymentParams,
+  v3DeploymentPath,
+  v3DeploymentsPath,
+  v3RunsPath,
+} from "~/utils/pathBuilder";
 import { capitalizeWord } from "~/utils/string";
 import { UserTag } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.deployments/route";
 import { useDeploymentLogs } from "~/hooks/useDeploymentLogs";
@@ -296,6 +301,24 @@ export default function Page() {
                 <Property.Label>Version</Property.Label>
                 <Property.Value>{deployment.version}</Property.Value>
               </Property.Item>
+              {deployment.redeployOf && (
+                <Property.Item>
+                  <Property.Label>Redeploy of</Property.Label>
+                  <Property.Value>
+                    <TextLink
+                      to={v3DeploymentPath(
+                        organization,
+                        project,
+                        environment,
+                        { shortCode: deployment.redeployOf },
+                        0
+                      )}
+                    >
+                      {deployment.redeployOf}
+                    </TextLink>
+                  </Property.Value>
+                </Property.Item>
+              )}
               <Property.Item>
                 <Property.Label>Status</Property.Label>
                 <Property.Value>

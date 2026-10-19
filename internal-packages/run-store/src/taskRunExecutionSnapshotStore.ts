@@ -43,6 +43,7 @@ import type {
   AppendCyclePayload,
   CompletedWaitpointRecord,
   CompletedWaitpointResolver,
+  FinalizeResult,
   GetSinceResult,
   PreparedEntry,
   PreparedPgUnit,
@@ -86,6 +87,20 @@ export type TaskRunExecutionSnapshotStoreMode = "dual-write" | "redis-read" | "r
  */
 export type SnapshotStoreDial = "off" | TaskRunExecutionSnapshotStoreMode;
 
+// Where a read is served from. "unavailable" fails closed retriably; "expired" fails closed for good.
+type SnapshotReadPlan = "postgres" | "mirrored" | "redisPrimary" | "unavailable" | "expired";
+
+const FINALIZE_OUTCOME_UNKNOWN =
+  "finalize outcome unknown after Postgres commit; the recovery worker owns the pending unit";
+
+// The reason, plus a short summary of its cause when there is one, so a logged message names the
+// underlying failure (e.g. a client timeout) without a stack.
+function reasonWithCause(reason: string, cause: unknown): string {
+  if (cause === undefined) return reason;
+  const summary = cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
+  return `${reason}: ${summary.slice(0, 200)}`;
+}
+
 /**
  * A read that could not be served authoritatively from MemoryDB right now: a pending unit that is
  * still in progress, or a MemoryDB availability error. It is RETRIABLE — the caller retries rather
@@ -93,16 +108,29 @@ export type SnapshotStoreDial = "off" | TaskRunExecutionSnapshotStoreMode;
  * recovers from Postgres for a mirrored run).
  */
 export class SnapshotReadUnavailableError extends Error {
-  readonly retriable = true;
+  readonly retriable: boolean = true;
   readonly runId: string;
   readonly reason: string;
   readonly cause?: unknown;
   constructor(runId: string, reason: string, options?: { cause?: unknown }) {
-    super(`snapshot read unavailable for ${runId}: ${reason}`);
+    super(`snapshot read unavailable for ${runId}: ${reasonWithCause(reason, options?.cause)}`);
     this.name = "SnapshotReadUnavailableError";
     this.runId = runId;
     this.reason = reason;
     this.cause = options?.cause;
+  }
+}
+
+/**
+ * A read of a redis-primary run whose MemoryDB state has aged out. The TTL is only armed by a FINISHED
+ * entry, so the run's last snapshot was FINISHED and the state will never come back: NOT retriable.
+ * Still a SnapshotReadUnavailableError, so callers that only fail closed keep doing so.
+ */
+export class SnapshotStateExpiredError extends SnapshotReadUnavailableError {
+  override readonly retriable = false;
+  constructor(runId: string) {
+    super(runId, "state expired");
+    this.name = "SnapshotStateExpiredError";
   }
 }
 
@@ -114,10 +142,12 @@ export class SnapshotReadUnavailableError extends Error {
 export class SnapshotWriteUnavailableError extends Error {
   readonly retriable = true;
   readonly runId: string;
-  constructor(runId: string, reason: string) {
-    super(`snapshot write unavailable for ${runId}: ${reason}`);
+  readonly cause?: unknown;
+  constructor(runId: string, reason: string, options?: { cause?: unknown }) {
+    super(`snapshot write unavailable for ${runId}: ${reasonWithCause(reason, options?.cause)}`);
     this.name = "SnapshotWriteUnavailableError";
     this.runId = runId;
+    this.cause = options?.cause;
   }
 }
 
@@ -879,7 +909,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       postgresRead !== undefined,
       resolvedDial
     );
-    if (plan === "unavailable") {
+    if (plan === "unavailable" || plan === "expired") {
       // A positive Postgres row is durable evidence, even when the org has since been enabled.
       // No row means no fallback: never manufacture a Postgres home for a Redis-primary run.
       const postgres =
@@ -889,6 +919,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       if (postgres && snapshotResidencyFromMetadata(postgres.metadata) !== "redis-primary") {
         return postgres;
       }
+      if (plan === "expired") throw new SnapshotStateExpiredError(runId);
       throw new SnapshotReadUnavailableError(runId, "residency unresolved or state expired");
     }
     if (plan === "postgres") {
@@ -908,7 +939,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       // success. A mirrored run recovers from its complete Postgres copy. A MemoryDB ERROR is never a
       // miss (it threw above).
       if (plan === "redisPrimary") {
-        throw new SnapshotReadUnavailableError(runId, "redis-primary head missing");
+        throw await this.#redisPrimaryMissingError(runId, "redis-primary head missing");
       }
       return postgresRead !== undefined
         ? postgresRead
@@ -946,6 +977,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       return super.findSnapshotCompletedWaitpointIds(snapshotId, client, runId);
     }
     const plan = await this.#resolveReadPlan(runId, organizationId);
+    if (plan === "expired") throw new SnapshotStateExpiredError(runId);
     if (plan === "unavailable") {
       throw new SnapshotReadUnavailableError(runId, "residency unresolved or state expired");
     }
@@ -978,6 +1010,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       return super.findSnapshotCompletedWaitpointIdsWithPresence(snapshotId, client, runId);
     }
     const plan = await this.#resolveReadPlan(runId, organizationId);
+    if (plan === "expired") throw new SnapshotStateExpiredError(runId);
     if (plan === "unavailable") {
       throw new SnapshotReadUnavailableError(runId, "residency unresolved or state expired");
     }
@@ -1025,6 +1058,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       }
     }
     const plan = await this.#resolveReadPlan(runId, organizationId, postgresFirst, resolvedDial);
+    if (plan === "expired") throw new SnapshotStateExpiredError(runId);
     if (plan === "unavailable") {
       throw new SnapshotReadUnavailableError(runId, "residency unresolved or state expired");
     }
@@ -1052,7 +1086,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       throw new SnapshotReadUnavailableError(runId, "getById failed", { cause: error });
     }
     if (read === null) {
-      throw new SnapshotReadUnavailableError(runId, "redis-primary snapshot missing");
+      throw await this.#redisPrimaryMissingError(runId, "redis-primary snapshot missing");
     }
     return (await this.#reproduceSnapshotFromEntry(
       read,
@@ -1073,6 +1107,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     const runId = runIdFromWhere(where);
     if (runId === undefined) return super.findManyExecutionSnapshots(args, client);
     const plan = await this.#resolveReadPlan(runId, organizationId);
+    if (plan === "expired") throw new SnapshotStateExpiredError(runId);
     if (plan === "unavailable") {
       throw new SnapshotReadUnavailableError(runId, "residency unresolved or state expired");
     }
@@ -1099,13 +1134,13 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   // and the MemoryDB head under redis-read/redis-only; a postgres-resident run passes
   // through. Carried server snapshot evidence avoids another residency lookup; no per-run cache.
   // Records where the read dispatched (MemoryDB head for redis-primary/mirrored-redis-read, else
-  // Postgres); "unavailable" served nothing. All read call sites go through this.
+  // Postgres); "unavailable" and "expired" served nothing. All read call sites go through this.
   async #resolveReadPlan(
     runId: string,
     organizationId?: SnapshotReadContext,
     postgresChecked = false,
     resolvedDial?: ResolvedSnapshotDial
-  ): Promise<"postgres" | "mirrored" | "redisPrimary" | "unavailable"> {
+  ): Promise<SnapshotReadPlan> {
     const plan = await this.#computeReadPlan(runId, organizationId, postgresChecked, resolvedDial);
     if (plan === "postgres") this.#metrics?.recordReadSource("postgres");
     else if (plan === "redisPrimary" || plan === "mirrored")
@@ -1118,7 +1153,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     serverOrganizationId?: SnapshotReadContext,
     postgresChecked = false,
     resolvedDial?: ResolvedSnapshotDial
-  ): Promise<"postgres" | "mirrored" | "redisPrimary" | "unavailable"> {
+  ): Promise<SnapshotReadPlan> {
     const context = serverOrganizationId ?? this.#organizationId;
     if (typeof context === "object") {
       if (context.residency === "postgres") return "postgres";
@@ -1180,10 +1215,32 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       }
       case "absent":
         return "postgres";
-      // expired (redis-primary state aged out), an unresolved pendingBirth, and error all fail closed.
+      // Redis-primary state aged out after the run finished: fails closed, but permanently.
+      case "expired":
+        return "expired";
+      // An unresolved pendingBirth and error fail closed, retriably.
       default:
         return "unavailable";
     }
+  }
+
+  // A read reached with carried route evidence plans redis-primary without consulting the residency
+  // resolver, so a MemoryDB miss is classified here, only on this already-exceptional path: state that
+  // aged out after the run finished is permanently expired regardless of how the caller identified the
+  // run; every other outcome (committed, pendingBirth, absent, error) stays the retriable miss.
+  async #redisPrimaryMissingError(
+    runId: string,
+    reason: string
+  ): Promise<SnapshotReadUnavailableError> {
+    let kind: string;
+    try {
+      kind = (await this.#residencyResolver.resolve(runId)).kind;
+    } catch {
+      kind = "error";
+    }
+    return kind === "expired"
+      ? new SnapshotStateExpiredError(runId)
+      : new SnapshotReadUnavailableError(runId, reason);
   }
 
   // Resolves a PENDING prepared unit before a redis-read trusts the MemoryDB head. A still-pending
@@ -1321,7 +1378,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     }
     // Redis-primary holds nothing in Postgres, so a MemoryDB miss is fail-closed, never an empty window.
     if (result.kind === "miss") {
-      throw new SnapshotReadUnavailableError(runId, "redis-primary window missing");
+      throw await this.#redisPrimaryMissingError(runId, "redis-primary window missing");
     }
     const ascending = result.entries;
     // A dangling cycle means the head's completed-waitpoint order is UNKNOWN (its cycle key aged out),
@@ -1622,19 +1679,50 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     if (this.#hooks?.beforeFinalize) {
       await this.#hooks.beforeFinalize();
     }
-    let finalizeResult;
+    let finalizeResult: FinalizeResult;
     try {
       finalizeResult = await this.#store.finalize(boundRunId, transitionToken);
     } catch (error) {
-      this.#metrics?.recordWrite("failed");
-      throw error;
+      // A thrown finalize (e.g. a client timeout) is AMBIGUOUS: Postgres has committed and the Lua may
+      // well have applied. Never report a definitive failure for a transition that may have applied:
+      // prove it applied, else retry the token-fenced, idempotent finalize ONCE. Only if that is still
+      // unresolved fail closed and retriable, leaving the pending unit for the recovery worker.
+      if (await this.#stagedEntriesAlreadyApplied(boundRunId, collected)) {
+        this.#metrics?.recordWrite("written");
+        return result;
+      }
+      let retried: FinalizeResult;
+      try {
+        retried = await this.#store.finalize(boundRunId, transitionToken);
+      } catch (retryError) {
+        this.#metrics?.recordWrite("failed");
+        throw new SnapshotWriteUnavailableError(boundRunId, FINALIZE_OUTCOME_UNKNOWN, {
+          cause: retryError,
+        });
+      }
+      await this.#settleFinalizeOutcome(boundRunId, collected, retried, { cause: error });
+      return result;
     }
+    await this.#settleFinalizeOutcome(boundRunId, collected, finalizeResult);
+    return result;
+  }
+
+  // The outcome of a finalize that returned. Resolves when the staged entries are (or are proven to be)
+  // the committed state; otherwise records the failure and throws. `afterThrown` marks a retry after a
+  // thrown finalize: an unproven stale is reported as an unknown outcome and an unproven noop as an
+  // applied finalize whose proof failed, both carrying that cause.
+  async #settleFinalizeOutcome(
+    boundRunId: string,
+    collected: CollectedEntry[],
+    finalizeResult: FinalizeResult,
+    afterThrown?: { cause: unknown }
+  ): Promise<void> {
     // A finalized unit is the ONLY unconditional success: its entries were applied now. No read on this
     // hot path. Every other outcome must not report success unless read-back PROVES the unit was already
     // applied — a transaction that published nothing to MemoryDB must not let its caller advance.
     if (finalizeResult.outcome === "finalized") {
       this.#metrics?.recordWrite("written");
-      return result;
+      return;
     }
     // baseMissing: the delayed finalize found the base gone (an aged-out redis-primary base). It applied
     // nothing and must NOT reconstruct the base; fail closed and RETRIABLE, leaving the pending unit for
@@ -1653,9 +1741,20 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     if (finalizeResult.outcome === "stale" || finalizeResult.outcome === "noop") {
       if (await this.#stagedEntriesAlreadyApplied(boundRunId, collected)) {
         this.#metrics?.recordWrite("written");
-        return result;
+        return;
       }
       this.#metrics?.recordWrite("failed");
+      if (afterThrown) {
+        // A noop means the unit was already applied and no pending unit remains: only the proof
+        // failed, so this must not hand the unit to the recovery worker. A stale is still unknown.
+        throw new SnapshotWriteUnavailableError(
+          boundRunId,
+          finalizeResult.outcome === "noop"
+            ? "finalize applied but the read-back proof failed"
+            : FINALIZE_OUTCOME_UNKNOWN,
+          afterThrown
+        );
+      }
       throw new SnapshotWriteUnavailableError(
         boundRunId,
         `finalize ${finalizeResult.outcome} but the staged entries are not applied`
@@ -1664,7 +1763,8 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     this.#metrics?.recordWrite("failed");
     throw new SnapshotWriteUnavailableError(
       boundRunId,
-      `finalize returned an unexpected outcome: ${finalizeResult.outcome}`
+      // Unreachable by the type; kept as a runtime guard against an unknown Lua reply.
+      `finalize returned an unexpected outcome: ${(finalizeResult as { outcome: string }).outcome}`
     );
   }
 
@@ -1686,13 +1786,14 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   // NOT a presence check: the SAME snapshot id carrying DIFFERENT contents (a genuine conflict) must
   // fail closed, so the stored raw is compared to the exact raw we staged, never just `!== null`. A
   // missing entry, a mismatched raw, a gapped/refused keyspace, a MemoryDB read error, or a cycle that
-  // does not reproduce leaves the write unproven. No base is reconstructed; this only reads.
+  // does not reproduce leaves the write unproven. No base is reconstructed; this only reads, and its
+  // reads do not retry: a read error is already "unproven", and the run lock is held meanwhile.
   async #stagedEntriesAlreadyApplied(runId: string, collected: CollectedEntry[]): Promise<boolean> {
     for (const c of collected) {
       const id = c.entry.entry.id;
       let read: SnapshotRead | null;
       try {
-        read = await this.#store.getById(runId, id);
+        read = await this.#store.getById(runId, id, { retry: false });
       } catch {
         return false;
       }
@@ -1719,7 +1820,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   ): Promise<boolean> {
     let cw;
     try {
-      cw = await this.#store.getSnapshotCompletedWaitpoints(runId, snapshotId);
+      cw = await this.#store.getSnapshotCompletedWaitpoints(runId, snapshotId, { retry: false });
     } catch {
       return false;
     }

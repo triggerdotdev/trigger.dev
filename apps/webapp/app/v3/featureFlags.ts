@@ -9,7 +9,6 @@ export const FEATURE_FLAG = {
   hasQueryAccess: "hasQueryAccess",
   hasLogsPageAccess: "hasLogsPageAccess",
   hasWebhooksAccess: "hasWebhooksAccess",
-  previewAutoArchiveEnabled: "previewAutoArchiveEnabled",
   hasAiAccess: "hasAiAccess",
   hasDashboardAgentAccess: "hasDashboardAgentAccess",
   dashboardAgentTurnEvalsEnabled: "dashboardAgentTurnEvalsEnabled",
@@ -20,8 +19,6 @@ export const FEATURE_FLAG = {
   hasSso: "hasSso",
   hasThemeSwitcher: "hasThemeSwitcher",
   mollifierEnabled: "mollifierEnabled",
-  workerQueueScheduledSplitEnabled: "workerQueueScheduledSplitEnabled",
-  workerQueueV2Enabled: "workerQueueV2Enabled",
   workerQueueCompatibility: "workerQueueCompatibility",
   workerQueueChannel: "workerQueueChannel",
   internalApiOriginEnabled: "internalApiOriginEnabled",
@@ -34,7 +31,8 @@ export const FEATURE_FLAG = {
   // Grace-linger stamp carried alongside runOpsMintKind on flip. See mintFlipGrace.ts.
   runOpsMintKindPrev: "runOpsMintKindPrev",
   runOpsMintKindFlippedAt: "runOpsMintKindFlippedAt",
-  // Gen-2 mint shard pins, read from the org override blob only. See runOpsMintShard.server.ts.
+  // Gen-2 mint shard pins, read from the org override blob only. A pin is the ONLY way an org or
+  // environment reaches a shard: nothing unpinned is ever placed there. See mintShardAssignment.ts.
   runOpsMintShard: "runOpsMintShard",
   runOpsMintShardEnvPins: "runOpsMintShardEnvPins",
   // The active mint-shard list, global only. Lives here rather than in the environment because a
@@ -57,6 +55,7 @@ export const FEATURE_FLAG = {
   queueArchivingEnabled: "queueArchivingEnabled",
   supportAccessSettingsEnabled: "supportAccessSettingsEnabled",
   progressiveTraceLoadingEnabled: "progressiveTraceLoadingEnabled",
+  publicTracePagingEnabled: "publicTracePagingEnabled",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -68,8 +67,6 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.hasQueryAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasLogsPageAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasWebhooksAccess]: z.coerce.boolean(),
-  // Opt-in rollout; organization overrides the global default. Unset means off.
-  [FEATURE_FLAG.previewAutoArchiveEnabled]: z.boolean(),
   /**
    * Opts an organization into API rate limit metrics while the webapp runs with
    * API_RATE_LIMIT_METRICS_ENABLED=allowlist. Read from the organization override only, on the
@@ -100,8 +97,6 @@ export const FeatureFlagCatalog = {
   // Gates the Interface theme setting in /account. Off by default.
   [FEATURE_FLAG.hasThemeSwitcher]: z.coerce.boolean(),
   [FEATURE_FLAG.mollifierEnabled]: z.coerce.boolean(),
-  [FEATURE_FLAG.workerQueueScheduledSplitEnabled]: z.coerce.boolean(),
-  [FEATURE_FLAG.workerQueueV2Enabled]: z.boolean(),
   // Mirrors the core worker-queue enums; defined here because this module is imported client-side.
   [FEATURE_FLAG.workerQueueCompatibility]: z.enum(["any", "container", "compute"]),
   [FEATURE_FLAG.workerQueueChannel]: z.enum(["stable", "canary"]),
@@ -132,9 +127,10 @@ export const FeatureFlagCatalog = {
   // by stampMintKindFlip on a genuine flip. Display-only (see ORG_LOCKED_FLAGS).
   [FEATURE_FLAG.runOpsMintKindPrev]: z.enum(["cuid", "runOpsId"]),
   [FEATURE_FLAG.runOpsMintKindFlippedAt]: z.string().datetime(),
-  // Pins one org to a gen-2 mint shard. "new" holds the org on gen-1 run-ops ids, which is how
-  // a canary keeps the fleet's default while one org moves. Only honored while the key is in
-  // the active list; a drained key falls through to the hash.
+  // Pins one org to a gen-2 mint shard. "new" holds the org on gen-1 run-ops ids, which is also
+  // what no pin does. Only honored while the key is in the active list; a drained key mints
+  // gen-1. Not grace-stamped: a pin only decides where the NEXT root mints, and every id minted
+  // either side of a change self-routes by the shard key it carries.
   [FEATURE_FLAG.runOpsMintShard]: z
     .string()
     .refine((v) => v === "new" || /^[a-z0-9]$/.test(v), 'must be a single [a-z0-9] char, or "new"'),
@@ -195,6 +191,8 @@ export const FeatureFlagCatalog = {
   // the org override wins over the global value.
   [FEATURE_FLAG.supportAccessSettingsEnabled]: z.boolean(),
   [FEATURE_FLAG.progressiveTraceLoadingEnabled]: z.boolean(),
+  // Page parameters on the public trace API. Off: they're ignored and the tree is returned.
+  [FEATURE_FLAG.publicTracePagingEnabled]: z.boolean(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;
@@ -209,7 +207,6 @@ export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runOpsMintShard,
   FEATURE_FLAG.runOpsMintShardEnvPins,
   FEATURE_FLAG.apiRateLimitMetricsEnabled,
-  FEATURE_FLAG.workerQueueV2Enabled,
   FEATURE_FLAG.workerQueueCompatibility,
   FEATURE_FLAG.workerQueueChannel,
   // Grace stamps are computed server-side. An editable control here would discard what it saves.

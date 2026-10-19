@@ -1,7 +1,12 @@
-import type { ListDashboardsResponseBody } from "@trigger.dev/core/v3/schemas";
+import type { DashboardObject, ListDashboardsResponseBody } from "@trigger.dev/core/v3/schemas";
 import { toolsMetadata } from "../config.js";
 import { formatQueryResults } from "../formatters.js";
-import { ListDashboardsInput, RunDashboardQueryInput } from "../schemas.js";
+import {
+  CreateDashboardInput,
+  ListDashboardsInput,
+  RunDashboardQueryInput,
+  SetDashboardWidgetsInput,
+} from "../schemas.js";
 import { respondWithError, toolHandler } from "../utils.js";
 
 // Cache dashboard listings keyed by project/environment.
@@ -34,7 +39,7 @@ export const listDashboardsTool = {
       branch: input.branch,
     });
 
-    const cacheKey = `${projectRef}:${input.environment}:${input.branch ?? ""}`;
+    const cacheKey = `${apiClient.baseUrl}:${projectRef}:${input.environment}:${input.branch ?? ""}`;
     const cached = dashboardCache.get(cacheKey);
     let result: ListDashboardsResponseBody;
     if (cached && Date.now() < cached.expiresAt) {
@@ -47,7 +52,8 @@ export const listDashboardsTool = {
     const content: string[] = ["## Available Dashboards", ""];
 
     for (const dashboard of result.dashboards) {
-      content.push(`### ${dashboard.title} (key: \`${dashboard.key}\`)`);
+      const kind = dashboard.type === "custom" ? ", custom" : "";
+      content.push(`### ${dashboard.title} (key: \`${dashboard.key}\`${kind})`);
       content.push("");
       content.push("| Widget ID | Title | Type |");
       content.push("|-----------|-------|------|");
@@ -96,7 +102,7 @@ export const runDashboardQueryTool = {
     });
 
     // Use cached dashboard listing if available, otherwise fetch
-    const cacheKey = `${projectRef}:${input.environment}:${input.branch ?? ""}`;
+    const cacheKey = `${apiClient.baseUrl}:${projectRef}:${input.environment}:${input.branch ?? ""}`;
     const cached = dashboardCache.get(cacheKey);
     let dashboards: ListDashboardsResponseBody;
     if (cached && Date.now() < cached.expiresAt) {
@@ -151,6 +157,111 @@ export const runDashboardQueryTool = {
 
     return {
       content: [{ type: "text" as const, text: result.results }],
+    };
+  }),
+};
+
+function devOnlyError(environment: string) {
+  return respondWithError(
+    `This MCP server is only available for the dev environment. You tried to access the ${environment} environment. Remove the --dev-only flag to access other environments.`
+  );
+}
+
+function describeDashboard(dashboard: DashboardObject, verb: string, url: string) {
+  const lines = [
+    `${verb} dashboard "${dashboard.title}" (id: \`${dashboard.id}\`, revision: \`${dashboard.revision}\`).`,
+    "",
+  ];
+
+  if (dashboard.widgets.length > 0) {
+    lines.push("| Widget ID | Title | Type |", "|-----------|-------|------|");
+    for (const widget of dashboard.widgets) {
+      lines.push(`| \`${widget.id}\` | ${widget.title} | ${widget.display.type} |`);
+    }
+    lines.push("");
+  }
+
+  lines.push(`[View in dashboard](${url})`);
+  return lines.join("\n");
+}
+
+export const createDashboardTool = {
+  name: toolsMetadata.create_dashboard.name,
+  title: toolsMetadata.create_dashboard.title,
+  description: toolsMetadata.create_dashboard.description,
+  inputSchema: CreateDashboardInput.shape,
+  handler: toolHandler(CreateDashboardInput.shape, async (input, { ctx }) => {
+    ctx.logger?.log("calling create_dashboard", { input });
+
+    if (ctx.options.devOnly && input.environment !== "dev") {
+      return devOnlyError(input.environment);
+    }
+
+    const projectRef = await ctx.getProjectRef({
+      projectRef: input.projectRef,
+      cwd: input.configPath,
+    });
+
+    const apiClient = await ctx.getApiClient({
+      projectRef,
+      environment: input.environment,
+      scopes: ["read:query", "write:query"],
+      branch: input.branch,
+    });
+
+    const dashboard = await apiClient.createDashboard({
+      title: input.title,
+      description: input.description,
+      widgets: input.widgets,
+    });
+    dashboardCache.clear();
+
+    const url = await ctx.getDashboardUrl(
+      `/projects/v3/${projectRef}/dashboards/${dashboard.id}?env=${input.environment}`
+    );
+
+    return {
+      content: [{ type: "text" as const, text: describeDashboard(dashboard, "Created", url) }],
+    };
+  }),
+};
+
+export const setDashboardWidgetsTool = {
+  name: toolsMetadata.set_dashboard_widgets.name,
+  title: toolsMetadata.set_dashboard_widgets.title,
+  description: toolsMetadata.set_dashboard_widgets.description,
+  inputSchema: SetDashboardWidgetsInput.shape,
+  handler: toolHandler(SetDashboardWidgetsInput.shape, async (input, { ctx }) => {
+    ctx.logger?.log("calling set_dashboard_widgets", { input });
+
+    if (ctx.options.devOnly && input.environment !== "dev") {
+      return devOnlyError(input.environment);
+    }
+
+    const projectRef = await ctx.getProjectRef({
+      projectRef: input.projectRef,
+      cwd: input.configPath,
+    });
+
+    const apiClient = await ctx.getApiClient({
+      projectRef,
+      environment: input.environment,
+      scopes: ["read:query", "write:query"],
+      branch: input.branch,
+    });
+
+    const dashboard = await apiClient.replaceDashboard(input.dashboardId, {
+      title: input.title,
+      widgets: input.widgets,
+    });
+    dashboardCache.clear();
+
+    const url = await ctx.getDashboardUrl(
+      `/projects/v3/${projectRef}/dashboards/${dashboard.id}?env=${input.environment}`
+    );
+
+    return {
+      content: [{ type: "text" as const, text: describeDashboard(dashboard, "Updated", url) }],
     };
   }),
 };

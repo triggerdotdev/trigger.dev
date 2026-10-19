@@ -831,7 +831,12 @@ class Worker<TCatalog extends WorkerCatalog> {
               );
             }
 
-            await this.queue.moveToDeadLetterQueue(item.id, errorMessage);
+            const moved = await this.queue.moveToDeadLetterQueue(
+              item.id,
+              errorMessage,
+              item.deduplicationKey
+            );
+            if (!moved) this.#logSuperseded("dead-letter", item.id, jobType);
             continue;
           }
 
@@ -845,14 +850,16 @@ class Worker<TCatalog extends WorkerCatalog> {
             attempt: newAttempt,
           });
 
-          await this.queue.enqueue({
+          const requeued = await this.queue.requeue({
             id: item.id,
             job: item.job,
             item: item.item,
             availableAt: retryDate,
             attempt: newAttempt,
             visibilityTimeoutMs: item.visibilityTimeoutMs,
+            deduplicationKey: item.deduplicationKey,
           });
+          if (!requeued) this.#logSuperseded("retry", item.id, jobType);
         } catch (requeueError) {
           this.logger.error(
             `Worker failed to requeue batch item. It will be retried after the visibility timeout.`,
@@ -872,6 +879,16 @@ class Worker<TCatalog extends WorkerCatalog> {
   /**
    * Processes a single item.
    */
+  // The failed attempt's item was replaced by a newer enqueue, or removed (acked or cancelled),
+  // while it ran, so its retry or DLQ move was skipped and the newer item is left to run.
+  #logSuperseded(action: "retry" | "dead-letter", id: string, job: string) {
+    this.logger.info(`Worker skipped ${action} for an item replaced or removed while it ran`, {
+      name: this.options.name,
+      id,
+      job,
+    });
+  }
+
   private async processItem(
     { id, job, item, visibilityTimeoutMs, attempt, timestamp, deduplicationKey }: AnyQueueItem,
     batchSize: number,
@@ -986,7 +1003,8 @@ class Worker<TCatalog extends WorkerCatalog> {
             });
           }
 
-          await this.queue.moveToDeadLetterQueue(id, errorMessage);
+          const moved = await this.queue.moveToDeadLetterQueue(id, errorMessage, deduplicationKey);
+          if (!moved) this.#logSuperseded("dead-letter", id, job);
 
           if (catalogItem.cron) {
             await this.rescheduleCronJob(job, catalogItem, item);
@@ -1005,14 +1023,16 @@ class Worker<TCatalog extends WorkerCatalog> {
           visibilityTimeoutMs,
           attempt: newAttempt,
         });
-        await this.queue.enqueue({
+        const requeued = await this.queue.requeue({
           id,
           job,
           item,
           availableAt: retryDate,
           attempt: newAttempt,
           visibilityTimeoutMs,
+          deduplicationKey,
         });
+        if (!requeued) this.#logSuperseded("retry", id, job);
       } catch (requeueError) {
         this.logger.error(
           `Worker failed to requeue item. It will be retried after the visibility timeout.`,

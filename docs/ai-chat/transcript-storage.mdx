@@ -226,7 +226,7 @@ A few things to get right:
 ## Guarantees and limits
 
 - Crash recovery of a half-written answer is runtime-owned in every configuration. It comes from the durable session stream, which no application database can reconstruct. A storage holds settled turns; the runtime overlays the recovered tail and hands it to `save` like any other change.
-- Bringing your own database does not remove platform custody. Session streams still hold message content for their retention window.
+- Bringing your own database does not remove platform custody. Session streams still hold message content for their retention window. To keep content out of the run trace, see [Redact chat content from traces](/ai-chat/patterns/redacting-telemetry).
 - The default storage rewrites the whole conversation each turn. A row-per-message storage writes only what changed. That is the reason to plug in your own.
 
 ## Migrating from hydrateMessages

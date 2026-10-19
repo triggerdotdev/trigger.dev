@@ -223,7 +223,9 @@ const snapshotStoreRuntime = singleton("SnapshotStoreRuntime", () => {
   });
   return createSnapshotStoreRuntime({
     connection,
-    rollout: createSnapshotRolloutResolver(() => globalFlagsRegistry.current(), prisma),
+    rollout: createSnapshotRolloutResolver(() => globalFlagsRegistry.current(), prisma, {
+      dialCacheMs: env.RUN_ENGINE_SNAPSHOT_STORE_DIAL_CACHE_MS,
+    }),
     getRunStore: () => runStore,
     metrics: metrics.decorator,
   });

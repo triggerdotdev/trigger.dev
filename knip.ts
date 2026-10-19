@@ -96,6 +96,7 @@ export default {
       ignoreDependencies: ["ai-v7", "react"],
     },
     docs: {
+      entry: ["snippets/**/*.jsx"],
       ignoreFiles: ["style.css"],
     },
   },

@@ -14,18 +14,24 @@ Run the command like this:
 <CodeGroup>
 
 ```bash npm
-npx trigger.dev@latest update
+npx trigger.dev@latest update [path]
 ```
 
 ```bash pnpm
-pnpm dlx trigger.dev@latest update
+pnpm dlx trigger.dev@latest update [path]
 ```
 
 ```bash yarn
-yarn dlx trigger.dev@latest update
+yarn dlx trigger.dev@latest update [path]
 ```
 
 </CodeGroup>
+
+## Arguments
+
+<ParamField body="Project path" type="[path]">
+  The directory that contains the `package.json` file. Defaults to `.`.
+</ParamField>
 
 ## Options
 

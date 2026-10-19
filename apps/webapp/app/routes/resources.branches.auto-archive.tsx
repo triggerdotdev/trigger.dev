@@ -10,7 +10,6 @@ import { rbac } from "~/services/rbac.server";
 import {
   previewAutoArchiveCount,
   savePreviewAutoArchivePolicy,
-  isPreviewAutoArchiveEnabled,
 } from "~/services/previewAutoArchive.server";
 import { PreviewAutoArchivePolicy } from "~/utils/previewAutoArchive";
 import { Button } from "~/components/primitives/Buttons";
@@ -81,17 +80,10 @@ export async function action({ request }: ActionFunctionArgs) {
       id: true,
       organizationId: true,
       projectId: true,
-      organization: { select: { featureFlags: true } },
     },
   });
   if (!parent)
     return json({ ok: false, error: "Preview environment not found" } as const, { status: 404 });
-  if (!(await isPreviewAutoArchiveEnabled(prisma, parent.organization.featureFlags))) {
-    return json(
-      { ok: false, error: "Preview auto-archive is not enabled for this organization." } as const,
-      { status: 403 }
-    );
-  }
   const auth = await rbac.authenticateSession(request, {
     userId,
     organizationId: parent.organizationId,

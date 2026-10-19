@@ -201,6 +201,15 @@ describe("redact()", () => {
     expect(result.keep).toBe("this stays");
   });
 
+  it("redacts a packet, which holds run payload or output data", () => {
+    const result = redact({
+      packet: { data: '{"secret":"customer-payload"}', dataType: "application/json" },
+    }) as Record<string, unknown>;
+
+    expect(result.packet).toMatch(/^\[filtered/);
+    expect(JSON.stringify(result)).not.toContain("customer-payload");
+  });
+
   it("merges in caller-supplied filteredKeys", () => {
     const result = redact({ connectionString: "postgres://user:pass@host/db" }, [
       "connectionString",

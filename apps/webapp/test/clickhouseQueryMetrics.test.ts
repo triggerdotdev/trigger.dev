@@ -1,5 +1,5 @@
 import { ClickHouse } from "@internal/clickhouse";
-import { containerTest } from "@internal/testcontainers";
+import { containerTestWithClickhouse } from "@internal/testcontainers";
 import { describe, expect, vi } from "vitest";
 import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
 import {
@@ -15,7 +15,7 @@ vi.mock("~/db.server", () => ({ prisma: {}, $replica: {} }));
 vi.setConfig({ testTimeout: 90_000 });
 
 describe("clickhouse query metrics", () => {
-  containerTest(
+  containerTestWithClickhouse(
     "records duration + read_rows on success and an error metric with the ClickHouse error type",
     async ({ clickhouseContainer, prisma }) => {
       const ctx = await seedParents(prisma, "chm");

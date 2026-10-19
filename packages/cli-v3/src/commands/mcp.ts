@@ -39,7 +39,7 @@ export function configureMcpCommand(program: Command) {
       )
       .option(
         "--readonly",
-        "Run in read-only mode. Write tools (deploy, trigger_task, cancel_run) are hidden from the AI."
+        "Run in read-only mode. Write tools (deploy, trigger_task, cancel_run, replay_run) are hidden from the AI."
       )
       .option("--log-file <log file>", "The file to log to")
       .option(

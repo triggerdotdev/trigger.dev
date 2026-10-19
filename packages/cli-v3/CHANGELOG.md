@@ -1,5 +1,16 @@
 # trigger.dev
 
+## 4.7.4
+
+### Patch Changes
+
+- Self-hosted instances can require custom deploy base images per runtime via the new `DEPLOY_BASE_IMAGES` and `DEPLOY_BUILD_BASE_IMAGES` webapp settings. The CLI builds on the images the instance specifies, and older CLIs are rejected with an upgrade message. ([#5005](https://github.com/triggerdotdev/trigger.dev/pull/5005))
+- Add a `replay_run` tool to the MCP server, so your AI assistant can replay a run, optionally with a new payload, metadata, tags, machine, version, delay or other trigger options. It is hidden in `--readonly` mode. ([`ff2aa236e`](https://github.com/triggerdotdev/trigger.dev/commit/ff2aa236eb986b938e8e04cec3898b24aed4ec3f))
+- Updated dependencies:
+  - `@trigger.dev/core@4.7.4`
+  - `@trigger.dev/build@4.7.4`
+  - `@trigger.dev/schema-to-json@4.7.4`
+
 ## 4.7.3
 
 ### Patch Changes

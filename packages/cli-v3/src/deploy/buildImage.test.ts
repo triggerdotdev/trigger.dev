@@ -233,4 +233,94 @@ describe("generateContainerfile", () => {
       expect(excludeCopy).toBeGreaterThan(codeStage);
     }
   );
+
+  it.each(["node", "bun"] as BuildRuntime[])(
+    "uses the configured base and build images on %s",
+    async (runtime) => {
+      const containerfile = await generateContainerfile({
+        runtime,
+        build: {},
+        image: {
+          base: "acme/node-fips:26@sha256:abc",
+          buildBase: "acme/node:26-dev@sha256:def",
+        },
+        indexScript: "index.js",
+        entrypoint: "entrypoint.js",
+      });
+
+      expect(containerfile).toContain("FROM acme/node-fips:26@sha256:abc AS base");
+      expect(containerfile).toContain("FROM acme/node:26-dev@sha256:def AS build");
+      expect(containerfile).toContain("FROM base AS final");
+      expect(containerfile).not.toContain(BASE_IMAGE[runtime]);
+      expect(containerfile).not.toContain(BUILD_IMAGE[runtime]);
+    }
+  );
+
+  it("keeps the published build image when only the base is overridden", async () => {
+    const containerfile = await generateContainerfile({
+      runtime: "node-26",
+      build: {},
+      image: { base: "acme/node-fips:26@sha256:abc" },
+      indexScript: "index.js",
+      entrypoint: "entrypoint.js",
+    });
+
+    expect(containerfile).toContain("FROM acme/node-fips:26@sha256:abc AS base");
+    expect(containerfile).toContain(`FROM ${BUILD_IMAGE["node-26"]} AS build`);
+  });
+
+  it("builds on the configured build image and replays instructions there", async () => {
+    const containerfile = await generateContainerfile({
+      runtime: "node-26",
+      build: {},
+      image: {
+        base: "acme/node-fips:26@sha256:abc",
+        buildBase: "acme/node:26-dev@sha256:def",
+        pkgs: ["jq"],
+        instructions: ["RUN echo first > /etc/first", "RUN echo second > /etc/second"],
+      },
+      indexScript: "index.js",
+      entrypoint: "entrypoint.js",
+    });
+
+    const buildStage = containerfile.slice(containerfile.indexOf("AS build"));
+
+    expect(containerfile).toContain("FROM acme/node-fips:26@sha256:abc AS base");
+    expect(containerfile).toContain("FROM acme/node:26-dev@sha256:def AS build");
+    expect(containerfile).not.toContain("FROM base AS build");
+    expect(containerfile).not.toContain(TOOLCHAIN_PACKAGES);
+    expect(buildStage).toContain(
+      "apt-get install -y --no-install-recommends --allow-downgrades jq"
+    );
+    expect(containerfile.indexOf("RUN echo first > /etc/first")).toBeLessThan(
+      containerfile.indexOf("AS build")
+    );
+
+    const buildFrom = "FROM acme/node:26-dev@sha256:def AS build";
+    const baseEnv = "ENV DEBIAN_FRONTEND=noninteractive\n\n";
+    const baseStart = containerfile.indexOf(baseEnv) + baseEnv.length;
+    const baseCustomization = containerfile.slice(
+      baseStart,
+      containerfile.indexOf(buildFrom) - "\n\n".length
+    );
+
+    expect(containerfile).toContain(`${buildFrom}\n\n${baseEnv}${baseCustomization}\n\n`);
+  });
+
+  it("builds from the base stage when instructions have no configured build image", async () => {
+    const containerfile = await generateContainerfile({
+      runtime: "node-26",
+      build: {},
+      image: {
+        base: "acme/node-fips:26@sha256:abc",
+        instructions: ["RUN echo custom > /etc/marker"],
+      },
+      indexScript: "index.js",
+      entrypoint: "entrypoint.js",
+    });
+
+    expect(containerfile).toContain("FROM acme/node-fips:26@sha256:abc AS base");
+    expect(containerfile).toContain("FROM base AS build");
+    expect(containerfile).toContain(TOOLCHAIN_PACKAGES);
+  });
 });

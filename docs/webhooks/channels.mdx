@@ -1,0 +1,132 @@
+---
+title: "Channels (chat frontends)"
+description: "Point Slack (or any chat surface) at an agent: messages become turns and replies post back."
+sidebarTitle: "Channels"
+---
+
+import WebhooksBetaBanner from "/snippets/webhooks-beta-banner.mdx";
+
+<WebhooksBetaBanner />
+
+A [session route](/webhooks/session-routing) delivers a verified event to an agent as an [action](/ai-chat/actions): the agent reacts, and the response is a side effect. A **channel** is the other half: the webhook IS the chat surface. Inbound messages become **turns** (the normal `run()` loop), and the agent's reply is posted **back** to the surface. A Slack thread becomes a real conversation with the agent, exactly like the browser chat, just a different frontend.
+
+List channels on a [`chat.agent`](/ai-chat/overview) alongside (or instead of) `events`:
+
+```ts
+import { webhooks } from "@trigger.dev/sdk";
+import { chat } from "@trigger.dev/sdk/ai";
+import { slack, webhookSource } from "@trigger.dev/slack";
+import { anthropic } from "@ai-sdk/anthropic";
+
+const slackEvents = webhooks.endpoint.define({ id: "slack", source: webhookSource() });
+
+export const supportAgent = chat.agent({
+  id: "support-agent",
+  channels: [slack({ id: "support-slack", endpoint: slackEvents, token: process.env.SLACK_BOT_TOKEN! })],
+  run: async ({ messages, streamText }) =>
+    streamText({ model: anthropic("claude-sonnet-4-5"), messages }),
+});
+```
+
+The `run()` loop is unchanged: the agent does not know or care that it is talking to Slack. One verified Slack message in a thread is routed to a durable [session](/ai-chat/sessions) keyed to that thread, run as a turn, and the reply is posted into the thread.
+
+## Slack
+
+`slack()` from `@trigger.dev/slack` makes the agent a native Slack agent: the session shows its status, the reply streams into the thread with tool calls as task cards, approvals are buttons and Slack's stop button stops the turn. Shared images and PDFs reach the model, messages sent mid-reply can be folded into it, and the agent can post its own buttons. See [Slack agents](/webhooks/slack) for setup and options.
+
+## Linear
+
+`linear()` from `@trigger.dev/linear` makes the agent a Linear agent: assign it an issue or @mention it and it works the issue inside Linear's agent session UI, with thoughts, actions, a plan and approvals. See [Linear agents](/webhooks/linear).
+
+## Approvals and interactive controls
+
+An agent on a channel can pause a turn to get a human decision, approving a refund or confirming a deletion, and resume once someone clicks a button in the thread. `slack()` renders Approve and Deny buttons for you and collapses them to the decision once clicked; you can replace them, or give a tool its own UI whose click becomes the tool's result (see [Slack agents](/webhooks/slack#approvals-and-buttons)). See [human-in-the-loop](/webhooks/human-in-the-loop).
+
+## Any surface: `chat.channels.custom`
+
+For a surface without a preset, `chat.channels.custom` is the generic connector. You supply the [endpoint](/webhooks/overview) it subscribes to, the session `key`, the `inbound` map, and the egress `send`:
+
+```ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { webhooks } from "@trigger.dev/sdk";
+
+const surface = webhooks.endpoint.define({
+  id: "my-surface",
+  source: webhooks.custom<MyEvent>({ /* verifier config */ }),
+});
+
+const mySurface = chat.channels.custom({
+  id: "my-surface",
+  endpoint: surface,
+  key: "{event.conversationId}",
+  inbound: (e) => e.text,
+  outbound: (reply) => (reply.text ? { text: reply.text } : null), // null posts nothing
+  send: async (message, ctx) => {
+    const ref = await postToMySurface(ctx.event, message.text, ctx.previousRef);
+    return { ref }; // later sends in the same turn get it back as ctx.previousRef
+  },
+});
+```
+
+`send` is called to post the reply. Within a turn, `ctx.previousRef` is the ref you returned from the turn's earlier `send` (the acknowledgement, or the message being streamed), so later sends edit that message instead of posting a new one. Each turn starts without a ref: the next turn's answer is a new message. Return `null` from `outbound` to stay silent (a tool-only turn, say).
+
+An event that `inbound` maps to an empty message (no text, and no file or data parts) runs no turn. A click or system event your surface sends to the same endpoint is dropped rather than answered with an empty prompt.
+
+List the connector in `chat.agent({ channels: [mySurface] })`, which subscribes the agent to the endpoint with the id `agentId:connectorId`. Other subscribers on the endpoint keep receiving its deliveries.
+
+## Stopping a turn from the channel
+
+A connector can map an event to a control with `onControl`. Returning `{ kind: "stop" }` while a turn is running aborts it through the run's `stopSignal`, exactly like the browser's stop button: the partial reply posts with `stopped: true` and the event is consumed instead of running as a turn. `linear()` and `slack()` map their stop buttons this way; a custom connector might map a `/stop` command:
+
+```ts
+chat.channels.custom({
+  // ...
+  onControl: (e) => (e.text.trim() === "/stop" ? { kind: "stop" } : null),
+});
+```
+
+When nothing is running, the event is handled by `inbound` as an ordinary message. Return `whenIdle: "drop"` to consume it instead: no turn runs, and if the session is waiting on an [approval](/webhooks/human-in-the-loop) the pending tool calls are resolved as stopped and the connector's `cancelInteraction(cancelled, ctx)` takes the controls down (each cancelled call carries the `ref` its controls were posted with). Set `at` to when the user asked (epoch milliseconds), and a stop older than the latest turn is consumed without stopping it or cancelling that turn's approval, so a late or repeated delivery never stops the wrong turn. A stop pressed while the latest turn ran but delivered after it ended is consumed too, rather than handled as a message.
+
+## Status and native streaming
+
+Two more hooks let a connector mirror the session into a surface that has its own notion of an agent, the way `slack()` does:
+
+- `lifecycle(state, ctx)` reports `working` when a turn starts (and every 50 minutes while it runs), `waiting` when it pauses on a human decision, `idle` when it ends for any reason, and `closed` on `chat.close()`. `ctx.firstTurn` and `ctx.prompt` are there to title a new conversation. Calls are serialized, so an older report never lands after a newer one.
+- `stream(ctx)`, with `delivery: "stream"`, returns a per-turn transport `{ text(delta), progress?(event), end(outcome) }`. The runtime feeds it the reply's markdown deltas and tool progress, then calls `end({ stopped, pending, errorText? })` once. Resolve `{ delivered: true }` when the reply reached the surface, and the runtime does not post it again. Call `ctx.opened(ref)` once the surface has created the stream message: the ref is saved with the session while the turn runs, and if the worker dies mid-stream the next one calls the connector's `endInterruptedStream(ref, ctx)` before it answers, so the old stream does not look like it is still being written.
+
+## Bound sessions
+
+The first channel message binds the session to its connector and thread. From then on, any turn on that session posts its answer back through the same connector, including turns no channel delivery started: a [`chat.event`](/webhooks/session-routing#answering-into-a-channel) action that returns `chat.turn()`, or a message from a browser client sharing the session via [`chat.createWatchToken`](/ai-chat/reference). `slack()` binds to the team, channel, thread and the user it is answering; a custom connector opts in with `bind`:
+
+```ts
+chat.channels.custom({
+  id: "my-surface",
+  endpoint: surface,
+  key: "{event.conversationId}",
+  inbound: (e) => ({ message: e.text, externalUserId: e.userId, externalMessageId: e.id }),
+  bind: (e) => ({ conversationId: e.conversationId }),
+  send: async (message, ctx) => {
+    // ctx.event is absent on a bound turn; ctx.handle always carries what bind() returned
+    const target = ctx.handle ?? { conversationId: ctx.event!.conversationId };
+    return { ref: await postToMySurface(target, message.text, ctx.previousRef) };
+  },
+});
+```
+
+`inbound` may return `{ message, externalUserId, externalMessageId }` as well as a plain string or `UIMessage`. The runtime stamps every channel-delivered user message with `metadata: { source: "channel", connectorId, provider, deliveryId, externalDeliveryId?, externalUserId?, externalMessageId? }` (`deliveryId` is the delivery's `whd_` id and `externalDeliveryId` the provider's), and a [transcript storage](/ai-chat/transcript-storage) receives `source: "channel"` and the `connectorId` on its save context, so a store you own can attribute and reconcile channel messages.
+
+## Files, buttons and steering
+
+Three more hooks cover what a chat surface carries besides text:
+
+- `download(url, { handle })` fetches files only the surface's credentials can read. Have `inbound` return file parts on the surface's URLs, and the `streamText` passed to `run()` asks each connector's `download` for every file URL in the prompt (return null for URLs it doesn't own). Downloads are cached for the run and the transcript keeps the URL. A file `download` throws on becomes a short note in that turn's messages, and the turn still runs.
+- `toAction(event)` maps a click on a control the agent posted to an action. It reaches `onAction`, validated against `actionSchema`, with the click itself as `channel.event`. Returning `chat.turn(message)` answers in the bound thread. Return null for anything else, such as a click answering a pending tool call, which `onInteraction` handles.
+- With [`pendingMessages`](/ai-chat/pending-messages) on the agent, a channel message that arrives while a turn is running goes through `inbound` and is offered to `shouldInject` like a browser message (its `metadata.source` is `"channel"`). Stops, clicks and empty messages are never offered.
+- `received(ctx)` acknowledges a channel message that arrives while a turn is running, as soon as it arrives and whether or not `pendingMessages` folds it in, so its wording should be true either way: `slack()` reacts with 👀, `linear()` posts a thought. Stops, clicks and empty messages are not acknowledged.
+
+## Channels vs events
+
+Both are inbound surfaces on a `chat.agent`, and an agent can list both:
+
+- [`events`](/webhooks/session-routing) (`chat.event`): the webhook is a signal. Delivered to `onAction`; the agent acts, no reply is sent back.
+- `channels` (`slack`, `chat.channels.custom`): the webhook is a chat frontend. Delivered as a turn to `run()`; the reply is posted back.

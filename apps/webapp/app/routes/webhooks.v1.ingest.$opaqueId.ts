@@ -10,7 +10,7 @@ import { toWebhookHttpResponse, webhookHttpResponseFor } from "~/v3/webhookIngre
  * declares none. Never records a delivery.
  */
 export async function loader({ request, params }: LoaderFunctionArgs) {
-  const admitted = await admitWebhookIngress(params);
+  const admitted = await admitWebhookIngress(params, request);
   if (admitted instanceof Response) return admitted;
   const { opaqueId } = admitted;
 
@@ -28,7 +28,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 // signature scheme verifies. The engine resolves the endpoint (and its env id +
 // type) from the globally-unique opaqueId, so this route runs no env query.
 export async function action({ request, params }: ActionFunctionArgs) {
-  const admitted = await admitWebhookIngress(params);
+  const admitted = await admitWebhookIngress(params, request);
   if (admitted instanceof Response) return admitted;
   const { opaqueId } = admitted;
 
@@ -37,7 +37,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return toWebhookHttpResponse(webhookHttpResponseFor(result));
   }
 
-  const body = await readWebhookIngressRequest(request);
+  const body = await readWebhookIngressRequest(request, admitted);
   if (body instanceof Response) return body;
   const { rawBytes, headers } = body;
 
@@ -60,6 +60,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
       break;
     case "enqueue_failed":
       logger.error("webhook ingress enqueue failed", { opaqueId, error: result.error });
+      break;
+    case "queue_full":
+    case "over_capacity":
+      logger.warn("webhook ingress refused: queue at capacity", {
+        opaqueId,
+        reason: result.outcome,
+      });
       break;
     default:
       break;

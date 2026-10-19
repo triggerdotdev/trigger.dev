@@ -2,8 +2,11 @@ import type {
   ApiPromise,
   ApiRequestOptions,
   ConcurrencyLimitItem,
+  ConcurrencyLimitKeyItem,
   ListConcurrencyLimitOptions,
   OffsetLimitPagePromise,
+  OverrideConcurrencyLimitBoundsBody,
+  OverrideConcurrencyLimitKeyBody,
   OverrideConcurrencyLimitRequestBody,
 } from "@trigger.dev/core/v3";
 import {
@@ -13,6 +16,37 @@ import {
   mergeRequestOptions,
 } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
+
+/** Options that address one concurrencyKey of a limit. */
+export type ConcurrencyLimitKeyOptions = {
+  /** The concurrencyKey whose view, or whose override, the call is about. */
+  concurrencyKey: string;
+};
+
+/**
+ * `retrieve` and `reset` take an optional key-options object before the request
+ * options. The two are told apart by the `concurrencyKey` property, so existing
+ * callers that pass request options in the second position keep working.
+ */
+function splitKeyOptions<T extends object>(
+  first: T | ApiRequestOptions | undefined,
+  second: ApiRequestOptions | undefined
+): { keyOptions: T | undefined; requestOptions: ApiRequestOptions | undefined } {
+  if (first && typeof first === "object" && "concurrencyKey" in first) {
+    return { keyOptions: first as T, requestOptions: second };
+  }
+  return { keyOptions: undefined, requestOptions: first as ApiRequestOptions | undefined };
+}
+
+function limitAttributes(name: string, extra: Record<string, unknown> = {}) {
+  return {
+    ...flattenAttributes({ name, ...extra }),
+    ...accessoryAttributes({
+      items: [{ text: name, variant: "normal" }],
+      style: "codepath",
+    }),
+  };
+}
 
 /**
  * Lists the environment's named concurrency limits (anonymous inline limits appear
@@ -42,38 +76,58 @@ export function list(
 }
 
 /**
- * Retrieves a concurrency limit by name.
+ * Retrieves a concurrency limit by name, or, with `{ concurrencyKey }`, the limit's
+ * view for one key: its per-key bound (including any override and when it expires)
+ * and the runs executing for that key.
  *
  * @example
  *
  * ```ts
  * const limit = await concurrencyLimits.retrieve("openai");
  * console.log(limit.running, limit.queued, limit.total.current);
+ *
+ * const session = await concurrencyLimits.retrieve("subagents", { concurrencyKey: sessionId });
+ * console.log(session.perKey.override, session.perKey.expiresAt);
  * ```
  * @param name - The limit's name, as declared with `concurrencyLimit()`
- * @returns The concurrency limit
+ * @returns The concurrency limit, or its view for the given key
  */
 export function retrieve(
   name: string,
+  options: ConcurrencyLimitKeyOptions,
   requestOptions?: ApiRequestOptions
-): ApiPromise<ConcurrencyLimitItem> {
+): ApiPromise<ConcurrencyLimitKeyItem>;
+export function retrieve(
+  name: string,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<ConcurrencyLimitItem>;
+export function retrieve(
+  name: string,
+  optionsOrRequestOptions?: ConcurrencyLimitKeyOptions | ApiRequestOptions,
+  maybeRequestOptions?: ApiRequestOptions
+): ApiPromise<ConcurrencyLimitItem> | ApiPromise<ConcurrencyLimitKeyItem> {
   const apiClient = apiClientManager.clientOrThrow();
+  const { keyOptions, requestOptions } = splitKeyOptions<ConcurrencyLimitKeyOptions>(
+    optionsOrRequestOptions,
+    maybeRequestOptions
+  );
 
   const $requestOptions = mergeRequestOptions(
     {
       tracer,
       name: "concurrencyLimits.retrieve()",
       icon: "queue",
-      attributes: {
-        ...flattenAttributes({ name }),
-        ...accessoryAttributes({
-          items: [{ text: name, variant: "normal" }],
-          style: "codepath",
-        }),
-      },
+      attributes: limitAttributes(
+        name,
+        keyOptions ? { concurrencyKey: keyOptions.concurrencyKey } : {}
+      ),
     },
     requestOptions
   );
+
+  if (keyOptions) {
+    return apiClient.retrieveConcurrencyLimitKey(name, keyOptions.concurrencyKey, $requestOptions);
+  }
 
   return apiClient.retrieveConcurrencyLimit(name, $requestOptions);
 }
@@ -84,20 +138,43 @@ export function retrieve(
  * holding a limit, prefer `pause` (it keeps the configured bounds); overriding
  * `total` to `0` also blocks every run holding the limit.
  *
+ * With `concurrencyKey`, the override is a temporary per-key cap for that one key:
+ * it replaces the limit's `perKey` for the key, applies to every task holding the
+ * limit, and expires after `ttl` (default 7 days, at most 30 days). The limit itself
+ * is untouched, and other keys keep the declared `perKey`.
+ *
  * @example
  *
  * ```ts
  * await concurrencyLimits.override("openai", { total: 50 });
+ *
+ * // this session may run 3 sub-agents at once, for the next 7 days
+ * await concurrencyLimits.override("subagents", { concurrencyKey: sessionId, perKey: 3 });
  * ```
  * @param name - The limit's name
- * @param override - The bounds to change (`perKey` and/or `total`)
- * @returns The updated concurrency limit
+ * @param override - The bounds to change (`perKey` and/or `total`), or `concurrencyKey` with the key's `perKey` cap (and optional `ttl`)
+ * @returns The updated concurrency limit, or the key's view when `concurrencyKey` was given
  */
+export function override(
+  name: string,
+  override: OverrideConcurrencyLimitKeyBody,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<ConcurrencyLimitKeyItem>;
+export function override(
+  name: string,
+  override: OverrideConcurrencyLimitBoundsBody,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<ConcurrencyLimitItem>;
 export function override(
   name: string,
   override: OverrideConcurrencyLimitRequestBody,
   requestOptions?: ApiRequestOptions
-): ApiPromise<ConcurrencyLimitItem> {
+): ApiPromise<ConcurrencyLimitItem | ConcurrencyLimitKeyItem>;
+export function override(
+  name: string,
+  override: OverrideConcurrencyLimitRequestBody,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<ConcurrencyLimitItem> | ApiPromise<ConcurrencyLimitKeyItem> {
   const apiClient = apiClientManager.clientOrThrow();
 
   const $requestOptions = mergeRequestOptions(
@@ -105,47 +182,72 @@ export function override(
       tracer,
       name: "concurrencyLimits.override()",
       icon: "queue",
-      attributes: {
-        ...flattenAttributes({ name, override }),
-        ...accessoryAttributes({
-          items: [{ text: name, variant: "normal" }],
-          style: "codepath",
-        }),
-      },
+      attributes: limitAttributes(name, { override }),
     },
     requestOptions
   );
+
+  if (override.concurrencyKey !== undefined) {
+    return apiClient.overrideConcurrencyLimitKey(name, override, $requestOptions);
+  }
 
   return apiClient.overrideConcurrencyLimit(name, override, $requestOptions);
 }
 
 /**
  * Resets a concurrency limit back to its declared values, clearing any override.
+ * With `{ concurrencyKey }`, clears that key's override instead and leaves the
+ * limit itself alone.
  *
+ * @example
+ *
+ * ```ts
+ * await concurrencyLimits.reset("openai");
+ * await concurrencyLimits.reset("subagents", { concurrencyKey: sessionId });
+ * ```
  * @param name - The limit's name
- * @returns The updated concurrency limit
+ * @returns The updated concurrency limit, or the key's view when `concurrencyKey` was given
  */
 export function reset(
   name: string,
+  options: ConcurrencyLimitKeyOptions,
   requestOptions?: ApiRequestOptions
-): ApiPromise<ConcurrencyLimitItem> {
+): ApiPromise<ConcurrencyLimitKeyItem>;
+export function reset(
+  name: string,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<ConcurrencyLimitItem>;
+export function reset(
+  name: string,
+  optionsOrRequestOptions?: ConcurrencyLimitKeyOptions | ApiRequestOptions,
+  maybeRequestOptions?: ApiRequestOptions
+): ApiPromise<ConcurrencyLimitItem> | ApiPromise<ConcurrencyLimitKeyItem> {
   const apiClient = apiClientManager.clientOrThrow();
+  const { keyOptions, requestOptions } = splitKeyOptions<ConcurrencyLimitKeyOptions>(
+    optionsOrRequestOptions,
+    maybeRequestOptions
+  );
 
   const $requestOptions = mergeRequestOptions(
     {
       tracer,
       name: "concurrencyLimits.reset()",
       icon: "queue",
-      attributes: {
-        ...flattenAttributes({ name }),
-        ...accessoryAttributes({
-          items: [{ text: name, variant: "normal" }],
-          style: "codepath",
-        }),
-      },
+      attributes: limitAttributes(
+        name,
+        keyOptions ? { concurrencyKey: keyOptions.concurrencyKey } : {}
+      ),
     },
     requestOptions
   );
+
+  if (keyOptions) {
+    return apiClient.resetConcurrencyLimitKey(
+      name,
+      { concurrencyKey: keyOptions.concurrencyKey },
+      $requestOptions
+    );
+  }
 
   return apiClient.resetConcurrencyLimit(name, $requestOptions);
 }
@@ -173,13 +275,7 @@ export function pause(
       tracer,
       name: "concurrencyLimits.pause()",
       icon: "queue",
-      attributes: {
-        ...flattenAttributes({ name }),
-        ...accessoryAttributes({
-          items: [{ text: name, variant: "normal" }],
-          style: "codepath",
-        }),
-      },
+      attributes: limitAttributes(name),
     },
     requestOptions
   );
@@ -210,13 +306,7 @@ export function resume(
       tracer,
       name: "concurrencyLimits.resume()",
       icon: "queue",
-      attributes: {
-        ...flattenAttributes({ name }),
-        ...accessoryAttributes({
-          items: [{ text: name, variant: "normal" }],
-          style: "codepath",
-        }),
-      },
+      attributes: limitAttributes(name),
     },
     requestOptions
   );

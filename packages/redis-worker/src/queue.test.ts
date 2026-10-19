@@ -603,4 +603,111 @@ describe("SimpleQueue", () => {
       }
     }
   );
+
+  redisTest(
+    "requeue and moveToDeadLetterQueue skip an item a newer enqueue replaced",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const queue = new SimpleQueue({
+        name: "test-supersede",
+        schema: { test: z.object({ value: z.number() }) },
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "error"),
+      });
+
+      try {
+        await queue.enqueue({
+          id: "1",
+          job: "test",
+          item: { value: 1 },
+          visibilityTimeoutMs: 2000,
+        });
+        const [first] = await queue.dequeue(1);
+        await queue.enqueue({
+          id: "1",
+          job: "test",
+          item: { value: 2 },
+          visibilityTimeoutMs: 2000,
+        });
+
+        const retry = {
+          id: "1",
+          job: "test" as const,
+          item: { value: 1 },
+          attempt: 1,
+          availableAt: new Date(),
+          visibilityTimeoutMs: 2000,
+        };
+        expect(await queue.requeue({ ...retry, deduplicationKey: first?.deduplicationKey })).toBe(
+          false
+        );
+        expect(await queue.moveToDeadLetterQueue("1", "failed", first?.deduplicationKey)).toBe(
+          false
+        );
+        expect(await queue.sizeOfDeadLetterQueue()).toBe(0);
+
+        const [newer] = await queue.dequeue(1);
+        expect(newer).toEqual(expect.objectContaining({ id: "1", item: { value: 2 } }));
+
+        expect(await queue.requeue({ ...retry, deduplicationKey: newer?.deduplicationKey })).toBe(
+          true
+        );
+        const [retried] = await queue.dequeue(1);
+        expect(retried).toEqual(expect.objectContaining({ item: { value: 1 }, attempt: 1 }));
+        expect(await queue.moveToDeadLetterQueue("1", "failed", retried?.deduplicationKey)).toBe(
+          true
+        );
+        expect(await queue.sizeOfDeadLetterQueue()).toBe(1);
+      } finally {
+        await queue.close();
+      }
+    }
+  );
+
+  redisTest(
+    "requeue does not revive an item acked while the attempt ran",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const queue = new SimpleQueue({
+        name: "test-requeue-acked",
+        schema: { test: z.object({ value: z.number() }) },
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "error"),
+      });
+
+      try {
+        await queue.enqueue({
+          id: "1",
+          job: "test",
+          item: { value: 1 },
+          visibilityTimeoutMs: 2000,
+        });
+        const [first] = await queue.dequeue(1);
+        await queue.ack("1");
+
+        const requeued = await queue.requeue({
+          id: "1",
+          job: "test",
+          item: { value: 1 },
+          attempt: 1,
+          availableAt: new Date(),
+          visibilityTimeoutMs: 2000,
+          deduplicationKey: first?.deduplicationKey,
+        });
+
+        expect(requeued).toBe(false);
+        expect(await queue.getJob("1")).toBeNull();
+      } finally {
+        await queue.close();
+      }
+    }
+  );
 });

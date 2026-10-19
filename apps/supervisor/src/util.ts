@@ -36,6 +36,21 @@ export function getRunnerId(runId: string, attemptNumber?: number) {
   return parts.join("-");
 }
 
+/**
+ * The attempt a cold start's runner was created for, read back from its id (`getRunnerId`).
+ * Undefined for any other id, e.g. a restore runner's, which carries a checkpoint instead.
+ */
+export function attemptOfRunnerId(runnerId: string, runFriendlyId: string): number | undefined {
+  const base = getRunnerId(runFriendlyId);
+  if (runnerId === base) {
+    return 1;
+  }
+  const match = runnerId.startsWith(base)
+    ? /^-attempt-(\d+)$/.exec(runnerId.slice(base.length))
+    : null;
+  return match ? Number(match[1]) : undefined;
+}
+
 /** Derive a unique runnerId for a restore cycle using the checkpoint suffix */
 export function getRestoreRunnerId(runFriendlyId: string, checkpointId: string) {
   const runIdShort = runFriendlyId.replace("run_", "");

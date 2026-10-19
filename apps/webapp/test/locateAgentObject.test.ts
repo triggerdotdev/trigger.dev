@@ -8,7 +8,7 @@ import type { LocateResult } from "@internal/dashboard-agent-contracts";
 import type { PrismaClient } from "@trigger.dev/database";
 import { ClickHouse } from "@internal/clickhouse";
 import { RunId } from "@trigger.dev/core/v3/isomorphic";
-import { containerTest } from "@internal/testcontainers";
+import { containerTestWithClickhouse } from "@internal/testcontainers";
 import { setTimeout as sleep } from "node:timers/promises";
 import { describe, expect, vi } from "vitest";
 import {
@@ -202,7 +202,7 @@ function locateTest(
   name: string,
   fn: (ctx: { prisma: PrismaClient; w: AgentWorld }) => Promise<void>
 ) {
-  containerTest(name, async ({ prisma }) => {
+  containerTestWithClickhouse(name, async ({ prisma }) => {
     db.client = prisma;
     await fn({ prisma, w: await seedAgentWorld(prisma) });
   });
@@ -217,7 +217,7 @@ type ErrorCtx = {
 
 /** Same, plus a real `ClickHouse` client wired into the mocked factory for the error kind. */
 function errorLocateTest(name: string, fn: (ctx: ErrorCtx) => Promise<void>) {
-  containerTest(name, async ({ prisma, clickhouseContainer, clickhouseClient }) => {
+  containerTestWithClickhouse(name, async ({ prisma, clickhouseContainer, clickhouseClient }) => {
     db.client = prisma;
     const clickhouse = new ClickHouse({ url: clickhouseContainer.getConnectionUrl() });
     chFactory.getClickhouseForOrganization.mockResolvedValue(clickhouse);

@@ -92,7 +92,7 @@ class Logger {
       const [firstLine, ...otherLines] = message.split("\n");
       const notes = otherLines.length > 0 ? otherLines.map((text) => ({ text })) : undefined;
       return formatMessagesSync([{ text: firstLine, notes }], {
-        color: true,
+        color: chalk.level > 0,
         kind,
         terminalWidth: this.columns,
       })[0]!;

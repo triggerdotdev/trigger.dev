@@ -33,7 +33,11 @@ import {
   getUserProvidedIdempotencyKey,
 } from "@trigger.dev/core/v3/serverOnly";
 import { parsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
-import type { PrismaClientOrTransaction, RuntimeEnvironmentType } from "@trigger.dev/database";
+import type {
+  Prisma,
+  PrismaClientOrTransaction,
+  RuntimeEnvironmentType,
+} from "@trigger.dev/database";
 import { MAX_TASK_RUN_ATTEMPTS } from "../consts.js";
 import { runStatusFromError, ServiceValidationError } from "../errors.js";
 import { sendNotificationToWorker } from "../eventBus.js";
@@ -62,11 +66,17 @@ import type {
 import {
   executionResultFromSnapshot,
   getLatestExecutionSnapshot,
+  getLatestExecutionSnapshotOrFinishedRun,
 } from "./executionSnapshotSystem.js";
 import type { SystemResources } from "./systems.js";
 import { snapshotRouteFromSnapshot, type SnapshotRouteWire } from "@internal/run-store";
 import type { WaitpointSystem } from "./waitpointSystem.js";
 import { BatchId, RunId } from "@trigger.dev/core/v3/isomorphic";
+
+/** A run whose snapshot state has expired has no snapshot to report, only its final run row. */
+export type CancelRunResult =
+  | (ExecutionResult & { alreadyFinished: boolean })
+  | { alreadyFinished: true; run: ExecutionResult["run"]; snapshot: null };
 
 export type RunAttemptSystemOptions = {
   resources: SystemResources;
@@ -334,6 +344,8 @@ export class RunAttemptSystem {
     workerId,
     runnerId,
     isWarmStart,
+    workerCell,
+    workerLane,
     environmentId,
     tx,
   }: {
@@ -342,6 +354,8 @@ export class RunAttemptSystem {
     workerId?: string;
     runnerId?: string;
     isWarmStart?: boolean;
+    workerCell?: string;
+    workerLane?: string;
     environmentId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<EngineStartRunAttemptResult> {
@@ -389,6 +403,7 @@ export class RunAttemptSystem {
                 status: true,
                 lockedById: true,
                 ttl: true,
+                annotations: true,
               },
             },
             // read-your-writes on the owning primary (dequeue just wrote lockedById; a replica lags).
@@ -448,6 +463,10 @@ export class RunAttemptSystem {
                   attemptNumber: nextAttemptNumber,
                   executedAt: taskRun.attemptNumber === null ? new Date() : undefined,
                   isWarmStart: isWarmStart ?? false,
+                  annotations: stampWorkerAnnotations(taskRun.annotations, {
+                    workerCell,
+                    workerLane,
+                  }),
                 },
                 {
                   select: {
@@ -688,6 +707,7 @@ export class RunAttemptSystem {
     runId,
     snapshotId,
     completion,
+    forceRequeue,
     workerId,
     runnerId,
     environmentId,
@@ -695,6 +715,7 @@ export class RunAttemptSystem {
     runId: string;
     snapshotId: string;
     completion: TaskRunExecutionResult;
+    forceRequeue?: boolean;
     workerId?: string;
     runnerId?: string;
     environmentId?: string;
@@ -718,6 +739,7 @@ export class RunAttemptSystem {
           runId,
           snapshotId,
           completion,
+          forceRequeue,
           tx: this.$.prisma,
           workerId,
           runnerId,
@@ -1047,6 +1069,12 @@ export class RunAttemptSystem {
                 attemptDurationMs: completion.usage?.durationMs,
                 tx: prisma,
               });
+              if (result.snapshot === null) {
+                // Not reachable for a run with a live attempt.
+                throw new Error(
+                  `cancelRun returned no snapshot for run ${runId} with a live attempt`
+                );
+              }
               return {
                 attemptStatus:
                   result.snapshot.executionStatus === "PENDING_CANCEL"
@@ -1591,18 +1619,26 @@ export class RunAttemptSystem {
     bulkActionId?: string;
     attemptDurationMs?: number;
     tx?: PrismaClientOrTransaction;
-  }): Promise<ExecutionResult & { alreadyFinished: boolean }> {
+  }): Promise<CancelRunResult> {
     const prisma = tx ?? this.$.prisma;
 
     return startSpan(this.$.tracer, "cancelRun", async (span) => {
-      return this.$.runLock.lock("cancelRun", [runId], async () => {
-        const latestSnapshot = await getLatestExecutionSnapshot(
-          prisma,
-          runId,
-          this.$.runStore,
-          undefined,
-          organizationId
-        );
+      return this.$.runLock.lock("cancelRun", [runId], async (): Promise<CancelRunResult> => {
+        const { snapshot: latestSnapshot, finishedRun } =
+          await getLatestExecutionSnapshotOrFinishedRun(
+            prisma,
+            runId,
+            this.$.runStore,
+            organizationId,
+            { id: true, friendlyId: true, attemptNumber: true, taskEventStore: true }
+          );
+        if (finishedRun) {
+          if (bulkActionId) {
+            await this.$.runStore.recordBulkActionMembership(runId, bulkActionId, prisma);
+          }
+          this.$.logger.warn("cancelRun: snapshot state expired, run already finished", { runId });
+          return { alreadyFinished: true, run: finishedRun, snapshot: null };
+        }
 
         //already finished, do nothing
         if (latestSnapshot.executionStatus === "FINISHED") {
@@ -2595,4 +2631,35 @@ const METRIC_REASONS = new Set([
 
 function metricReason(reason: string): string {
   return METRIC_REASONS.has(reason) ? reason : "other";
+}
+
+/**
+ * Replaces the worker stamp in a run's existing annotations. The stamp is one unit: a previous
+ * attempt's cell must not survive next to this attempt's lane, and an unstamped attempt clears
+ * the previous stamp rather than keeping it. Returns undefined when the write would change nothing.
+ */
+export function stampWorkerAnnotations(
+  existing: Prisma.JsonValue | null | undefined,
+  stamp: { workerCell?: string; workerLane?: string }
+): Prisma.InputJsonObject | undefined {
+  const current =
+    typeof existing === "object" && existing !== null && !Array.isArray(existing)
+      ? (existing as Prisma.InputJsonObject)
+      : {};
+  const { workerCell: previousCell, workerLane: previousLane, ...base } = current;
+
+  if (
+    stamp.workerCell === undefined &&
+    stamp.workerLane === undefined &&
+    previousCell === undefined &&
+    previousLane === undefined
+  ) {
+    return undefined;
+  }
+
+  return {
+    ...base,
+    ...(stamp.workerCell !== undefined ? { workerCell: stamp.workerCell } : {}),
+    ...(stamp.workerLane !== undefined ? { workerLane: stamp.workerLane } : {}),
+  };
 }

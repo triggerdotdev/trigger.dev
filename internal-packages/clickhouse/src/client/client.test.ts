@@ -65,6 +65,19 @@ describe("ClickHouse Client", () => {
       ])
     );
 
+    const fastBuilder = client.queryBuilderFast<{ message: string; number: number }>({
+      name: "query-fast-with-stats-smoke-test",
+      table: "trigger_dev.smoke_test",
+      columns: ["message", "number"],
+    })();
+    fastBuilder.where("number = {number: UInt32}", { number: 42 });
+    const [fastError, fastResult] = await fastBuilder.executeWithStats();
+
+    expect(fastError).toBeNull();
+    expect(fastResult?.rows).toEqual([{ message: "hello", number: 42 }]);
+    expect(Number(fastResult?.stats.read_rows)).toBeGreaterThan(0);
+    expect(Number(fastResult?.stats.elapsed_ns)).toBeGreaterThan(0);
+
     const insertSmokeTestAsyncWaiting = client.insert({
       name: "insert-smoke-test-async-waiting",
       table: "trigger_dev.smoke_test",

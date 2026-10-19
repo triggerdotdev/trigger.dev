@@ -1013,6 +1013,7 @@ function KeyStatsTable({
   const { data, isLoading } = useConcurrencyKeys({ ids, timeRange, queueName, search, page });
 
   const rows: ConcurrencyKeyRow[] = data?.success ? data.rows : [];
+  const loadedAt = data?.success ? data.loadedAt : 0;
   const total = data?.success ? data.total : 0;
   const perPage = data?.success ? data.perPage : 25;
   const totalPages = Math.max(1, Math.ceil(total / perPage));
@@ -1046,6 +1047,7 @@ function KeyStatsTable({
             <TableHeaderCell>Key</TableHeaderCell>
             <TableHeaderCell alignment="right">Queued now</TableHeaderCell>
             <TableHeaderCell alignment="right">Running now</TableHeaderCell>
+            <TableHeaderCell alignment="right">Override</TableHeaderCell>
             <TableHeaderCell alignment="right">Oldest wait</TableHeaderCell>
             <TableHeaderCell alignment="right">Started</TableHeaderCell>
             <TableHeaderCell alignment="right">Peak backlog</TableHeaderCell>
@@ -1054,11 +1056,11 @@ function KeyStatsTable({
         </TableHeader>
         <TableBody>
           {showLoading ? (
-            <TableBlankRow colSpan={7} className="text-text-dimmed">
+            <TableBlankRow colSpan={8} className="text-text-dimmed">
               Loading…
             </TableBlankRow>
           ) : rows.length === 0 ? (
-            <TableBlankRow colSpan={7} className="text-text-dimmed">
+            <TableBlankRow colSpan={8} className="text-text-dimmed">
               {search ? `No keys match “${search}”` : "No concurrency keys"}
             </TableBlankRow>
           ) : (
@@ -1072,6 +1074,21 @@ function KeyStatsTable({
                 <TableCell>{row.key}</TableCell>
                 <TableCell alignment="right">{row.queued.toLocaleString()}</TableCell>
                 <TableCell alignment="right">{row.running.toLocaleString()}</TableCell>
+                <TableCell alignment="right">
+                  {row.override === null ? (
+                    <span className="text-text-dimmed">–</span>
+                  ) : (
+                    <span
+                      title={
+                        row.overrideExpiresAt === null
+                          ? "Per-key override"
+                          : `Per-key override, expires in ${formatWaitMs(Math.max(0, row.overrideExpiresAt - loadedAt))}`
+                      }
+                    >
+                      {row.override.toLocaleString()}
+                    </span>
+                  )}
+                </TableCell>
                 <TableCell alignment="right">
                   {row.oldestWaitMs === null ? "–" : formatWaitMs(row.oldestWaitMs)}
                 </TableCell>

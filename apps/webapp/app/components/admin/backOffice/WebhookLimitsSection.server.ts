@@ -1,20 +1,7 @@
 import { Prisma } from "@trigger.dev/database";
-import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
-import { WEBHOOK_LIMITS_INTENT } from "./WebhookLimitsSection";
-
-const OptionalLimit = z.preprocess(
-  (value) => (value === "" || value === null ? undefined : value),
-  z.coerce.number().int().min(1).max(2_147_483_647).optional()
-);
-
-const SetWebhookLimitsSchema = z.object({
-  intent: z.literal(WEBHOOK_LIMITS_INTENT),
-  maxWaitersPerEnvironment: OptionalLimit,
-  maxWaitersPerEndpoint: OptionalLimit,
-  concurrency: OptionalLimit,
-});
+import { parseWebhookLimitsForm } from "./WebhookLimitsForm";
 
 export type WebhookLimitsActionResult =
   | { ok: true }
@@ -25,7 +12,7 @@ export async function handleWebhookLimitsAction(
   orgId: string,
   adminUserId: string
 ): Promise<WebhookLimitsActionResult> {
-  const submission = SetWebhookLimitsSchema.safeParse(Object.fromEntries(formData));
+  const submission = parseWebhookLimitsForm(formData);
   if (!submission.success) {
     return { ok: false, errors: submission.error.flatten().fieldErrors };
   }

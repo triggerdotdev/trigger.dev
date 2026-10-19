@@ -27,10 +27,17 @@ import { PerformDeploymentAlertsService } from "./services/alerts/performDeploym
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
 import { BatchTriggerV3Service } from "./services/batchTriggerV3.server";
 import { TimeoutDeploymentService } from "./services/timeoutDeployment.server";
+import { sweepExpiredBuildEnvVars } from "./services/sweepDeploymentBuildEnvVars.server";
 import { BulkActionService } from "./services/bulk/BulkActionV2.server";
 import { prisma } from "~/db.server";
 import { sweepPreviewAutoArchives } from "~/services/previewAutoArchive.server";
 import { controlPlaneResolver } from "./runOpsMigration/controlPlaneResolver.server";
+import {
+  ORG_PROVISIONING_VISIBILITY_TIMEOUT_MS,
+  OrgProvisioningPayloadSchema,
+  runOrgProvisioningJob,
+} from "./services/orgProvisioningJobs.server";
+import { webhookEngine } from "./webhookEngine.server";
 
 function initializeWorker() {
   const redisOptions = {
@@ -54,11 +61,33 @@ function initializeWorker() {
     name: "common-worker",
     redisOptions,
     catalog: {
+      "webhooks.ensurePartitions": {
+        schema: CronSchema,
+        visibilityTimeoutMs: 60_000 * 5,
+        ...(env.WEBHOOK_ENABLED === "1"
+          ? {
+              cron: env.WEBHOOK_PARTITION_ENSURE_SCHEDULE ?? "17 3 * * *",
+              jitterInMs: env.WEBHOOK_PARTITION_ENSURE_JITTER_MS ?? 5 * 60_000,
+            }
+          : {}),
+        retry: { maxAttempts: 1 },
+      },
       "previewBranches.autoArchiveSweep": {
         schema: CronSchema,
         cron: "* * * * *",
         jitterInMs: 10_000,
         visibilityTimeoutMs: 60_000,
+        retry: { maxAttempts: 3 },
+      },
+      "deployments.buildEnvVarsSweep": {
+        schema: CronSchema,
+        visibilityTimeoutMs: 60_000 * 5,
+        ...(env.DEPLOYMENTS_BUILD_ENV_VARS_SWEEP_ENABLED
+          ? {
+              cron: env.DEPLOYMENTS_BUILD_ENV_VARS_SWEEP_SCHEDULE,
+              jitterInMs: env.DEPLOYMENTS_BUILD_ENV_VARS_SWEEP_JITTER_MS,
+            }
+          : {}),
         retry: { maxAttempts: 3 },
       },
       scheduleEmail: {
@@ -193,6 +222,27 @@ function initializeWorker() {
           maxAttempts: 5,
         },
       },
+      "org.convergeRunsEnabled": {
+        schema: OrgProvisioningPayloadSchema,
+        visibilityTimeoutMs: ORG_PROVISIONING_VISIBILITY_TIMEOUT_MS,
+        retry: {
+          maxAttempts: 12,
+        },
+      },
+      "org.pushConcurrencyLimits": {
+        schema: OrgProvisioningPayloadSchema,
+        visibilityTimeoutMs: ORG_PROVISIONING_VISIBILITY_TIMEOUT_MS,
+        retry: {
+          maxAttempts: 12,
+        },
+      },
+      "org.provisionStagingEnvironments": {
+        schema: OrgProvisioningPayloadSchema,
+        visibilityTimeoutMs: ORG_PROVISIONING_VISIBILITY_TIMEOUT_MS,
+        retry: {
+          maxAttempts: 12,
+        },
+      },
     },
     concurrency: {
       workers: env.COMMON_WORKER_CONCURRENCY_WORKERS,
@@ -204,9 +254,18 @@ function initializeWorker() {
     shutdownTimeoutMs: env.COMMON_WORKER_SHUTDOWN_TIMEOUT_MS,
     logger: new Logger("CommonWorker", env.COMMON_WORKER_LOG_LEVEL),
     jobs: {
+      "webhooks.ensurePartitions": async () => {
+        await webhookEngine.ensurePartitions();
+      },
       "previewBranches.autoArchiveSweep": async () => {
         await sweepPreviewAutoArchives(prisma, (ids) => {
           for (const id of ids) controlPlaneResolver.invalidateEnvironment(id);
+        });
+      },
+      "deployments.buildEnvVarsSweep": async () => {
+        await sweepExpiredBuildEnvVars(prisma, {
+          windowDays: env.DEPLOYMENTS_REDEPLOY_WINDOW_DAYS,
+          batchSize: env.DEPLOYMENTS_BUILD_ENV_VARS_SWEEP_BATCH_SIZE,
         });
       },
       scheduleEmail: async ({ payload }) => {
@@ -292,6 +351,15 @@ function initializeWorker() {
             softDeleted: soft,
           });
         }
+      },
+      "org.convergeRunsEnabled": async ({ payload }) => {
+        await runOrgProvisioningJob("org.convergeRunsEnabled", payload.organizationId);
+      },
+      "org.pushConcurrencyLimits": async ({ payload }) => {
+        await runOrgProvisioningJob("org.pushConcurrencyLimits", payload.organizationId);
+      },
+      "org.provisionStagingEnvironments": async ({ payload }) => {
+        await runOrgProvisioningJob("org.provisionStagingEnvironments", payload.organizationId);
       },
     },
   });

@@ -59,7 +59,7 @@ You can also set the branch with the `TRIGGER_DEV_BRANCH` environment variable i
 
 ## Archive a branch
 
-Archive a branch from the CLI when you no longer need it. The CLI detects your local git branch, or you can name one with `--branch`:
+Archive a branch from the CLI when you no longer need it. Pass the branch with `--branch` (or set `TRIGGER_DEV_BRANCH`); it's required, and the `default` branch can't be archived:
 
 <CodeGroup>
 
@@ -81,12 +81,12 @@ You can also create and archive branches from the **Dev branches** page in the d
 
 ## Limits on active branches
 
-Each branch has its own concurrency, so we limit how many can be active per project. Archive a branch at any time to unlock another slot.
+Each branch has its own concurrency, so we limit how many dev branches each developer can have active per project. The `default` development environment counts toward this limit. If you are at the limit when you run `dev --branch`, the CLI automatically archives up to 3 of your branches that have no connected dev session and have been idle for over an hour, to make room. You can also archive a branch any time to free a slot.
 
 | Plan  | Active dev branches |
 | ----- | ------------------- |
-| Free  | 25                  |
-| Hobby | 25                  |
-| Pro   | 25                  |
+| Free  | 50                  |
+| Hobby | 50                  |
+| Pro   | 50                  |
 
 Need more? [Get in touch](https://trigger.dev/contact) and we'll raise the limit.

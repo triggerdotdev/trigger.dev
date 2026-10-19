@@ -8,8 +8,10 @@ import { ScheduleEngine } from "../src/index.js";
 describe("ScheduleEngine Integration", () => {
   containerTest(
     "should process full schedule lifecycle through worker with multiple executions",
-    { timeout: 240_000 }, // Increase timeout for multiple executions (4 minutes)
+    { timeout: 60_000 },
     async ({ prisma, redisOptions }) => {
+      vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true });
+
       // Real callback function for testing expectations
       const mockDevConnectedHandler = vi.fn().mockResolvedValue(true);
 
@@ -110,33 +112,39 @@ describe("ScheduleEngine Integration", () => {
         // pre-baked "next minute".
         await engine.registerNextTaskScheduleInstance({ instanceId: scheduleInstance.id });
 
-        // Wait for the first execution
-        console.log("Waiting for first execution...");
-        const startTime = Date.now();
-        const maxWaitTime = 70_000; // 70 seconds max wait for first execution
+        const jobId = `scheduled-task-instance:${scheduleInstance.id}`;
+        const advanceToRunAfter = async (after?: Date) => {
+          const deadline = performance.now() + 10_000;
+          while (performance.now() < deadline) {
+            const job = await engine.getJob(jobId);
+            const payload = job?.item as { exactScheduleTime?: string } | undefined;
+            if (
+              job &&
+              payload?.exactScheduleTime &&
+              (!after || new Date(payload.exactScheduleTime) > after)
+            ) {
+              vi.setSystemTime(job.timestamp);
+              return;
+            }
+            await setTimeout(20);
+          }
+          throw new Error(`No scheduled job${after ? ` after ${after.toISOString()}` : ""}`);
+        };
+        const waitForCalls = async (count: number) => {
+          const deadline = performance.now() + 10_000;
+          while (triggerCalls.length < count && performance.now() < deadline) {
+            await setTimeout(20);
+          }
+          expect(triggerCalls.length).toBeGreaterThanOrEqual(count);
+        };
 
-        while (triggerCalls.length === 0 && Date.now() - startTime < maxWaitTime) {
-          await setTimeout(100);
-        }
+        await advanceToRunAfter();
+        await waitForCalls(1);
 
-        expect(triggerCalls.length).toBeGreaterThanOrEqual(1);
-
-        // Verify the first execution
         const firstExecution = triggerCalls[0];
-        console.log("First execution verified, waiting for second execution...");
 
-        // Wait for the second execution (should happen ~1 minute after the first)
-        const secondExecutionStartTime = Date.now();
-        const maxWaitForSecond = 80_000; // 80 seconds max wait for second execution
-
-        while (
-          triggerCalls.length < 2 &&
-          Date.now() - secondExecutionStartTime < maxWaitForSecond
-        ) {
-          await setTimeout(100);
-        }
-
-        expect(triggerCalls.length).toBeGreaterThanOrEqual(2);
+        await advanceToRunAfter(firstExecution.params.exactScheduleTime);
+        await waitForCalls(2);
 
         const secondExecution = triggerCalls[1];
         console.log("Second execution verified!");
@@ -243,6 +251,7 @@ describe("ScheduleEngine Integration", () => {
       } finally {
         // Clean up: stop the worker
         await engine.quit();
+        vi.useRealTimers();
       }
     }
   );

@@ -36,7 +36,11 @@ import type {
   WaitpointColocationOptions,
 } from "./types.js";
 import { Logger } from "@trigger.dev/core/logger";
-import type { SnapshotReadContext, SnapshotRoute } from "./snapshotResidency.js";
+import {
+  snapshotResidencyFromMetadata,
+  type SnapshotReadContext,
+  type SnapshotRoute,
+} from "./snapshotResidency.js";
 import { isReadReplicaClient } from "./readReplicaClient.js";
 import { CONNECTED_RUNS_LIMIT } from "./PostgresRunStore.js";
 import { noopRoutingStoreMetrics, type RoutingStoreMetrics } from "./routingStoreMetrics.js";
@@ -896,7 +900,12 @@ export class RoutingRunStore implements RunStore {
 
   async startAttempt<S extends Prisma.TaskRunSelect>(
     runId: string,
-    data: { attemptNumber: number; executedAt?: Date; isWarmStart: boolean },
+    data: {
+      attemptNumber: number;
+      executedAt?: Date;
+      isWarmStart: boolean;
+      annotations?: Prisma.InputJsonValue;
+    },
     args: { select: S },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
@@ -1239,7 +1248,8 @@ export class RoutingRunStore implements RunStore {
 
   // Snapshot reads route by OWNING run id (a SnapshotId is a cuid, NOT classifiable). The owning
   // store hydrates `completedWaitpoints` from its own client only, so a cross-DB completing token's
-  // OUTPUT is silently missing from the resume payload — re-resolve them across BOTH DBs.
+  // OUTPUT is silently missing from the resume payload — re-resolve them across BOTH DBs. A
+  // redis-primary snapshot has no Postgres join rows, so it skips the re-resolve (and its join query).
   async findLatestExecutionSnapshot(
     runId: string,
     client?: ReadClient,
@@ -1253,7 +1263,7 @@ export class RoutingRunStore implements RunStore {
       environmentId,
       organizationId
     );
-    if (snapshot) {
+    if (snapshot && !RoutingRunStore.#isRedisPrimary(snapshot.metadata)) {
       await this.#reresolveCompletedWaitpointsCrossDb(
         snapshot as Record<string, unknown>,
         owningStore,
@@ -1261,6 +1271,15 @@ export class RoutingRunStore implements RunStore {
       );
     }
     return snapshot;
+  }
+
+  // Unsupported metadata keeps the re-resolve rather than failing the read here.
+  static #isRedisPrimary(metadata: unknown): boolean {
+    try {
+      return snapshotResidencyFromMetadata(metadata) === "redis-primary";
+    } catch {
+      return false;
+    }
   }
 
   // Recover any cross-DB completed waitpoint MISSING from the owning store's hydration. The

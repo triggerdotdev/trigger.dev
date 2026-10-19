@@ -2,7 +2,7 @@ import type { VirtualItem, Virtualizer } from "@tanstack/react-virtual";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { motion } from "framer-motion";
 import type { MutableRefObject, RefObject } from "react";
-import { useEffect, useMemo, useReducer, useRef } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { cn } from "~/utils/cn";
 import type { NodeState, NodesState } from "./reducer";
 import { reducer } from "./reducer";
@@ -213,9 +213,11 @@ export function useTree<TData, TFilterValue>({
 
   const [state, dispatch] = useReducer(
     reducer,
-    concreteStateFromInput({ tree, selectedId, collapsedIds, filter })
+    { tree, selectedId, collapsedIds, filter },
+    concreteStateFromInput
   );
-  const currentSelectedId = selectedIdFromState(state.nodes);
+  // Scans every node, so only redo it when node state changes, not on scroll renders.
+  const currentSelectedId = useMemo(() => selectedIdFromState(state.nodes), [state.nodes]);
 
   // id -> index lookup so getNodeProps resolves in O(1) instead of scanning
   // the whole tree per rendered row.
@@ -278,13 +280,22 @@ export function useTree<TData, TFilterValue>({
     dispatch({ type: "UPDATE_FILTER", payload: { filter: latestFilterRef.current } });
   }, [serializedFilterValue]);
 
+  // A new getItemKey makes the virtualizer re-measure every row, so only
+  // change it when the visible rows change.
+  const getItemKey = useCallback(
+    (index: number) => state.visibleNodeIds[index],
+    [state.visibleNodeIds]
+  );
+
   // oxlint-disable-next-line react/incompatible-library -- TanStack Virtual is not compatible with compiler memoization.
   const virtualizer = useVirtualizer({
     count: state.visibleNodeIds.length,
-    getItemKey: (index) => state.visibleNodeIds[index],
+    getItemKey,
     getScrollElement: () => parentRef.current,
     estimateSize: (index: number) => {
-      const treeItem = tree[index];
+      const id = state.visibleNodeIds[index];
+      const treeIndex = id === undefined ? undefined : treeIndexById.get(id);
+      const treeItem = treeIndex === undefined ? undefined : tree[treeIndex];
       if (!treeItem) return 0;
       return estimatedRowHeight({
         node: treeItem,

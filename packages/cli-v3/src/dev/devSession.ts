@@ -187,6 +187,11 @@ export async function startDevSession({
         const warnings = result.warnings;
         if (errors.length > 0) {
           logBuildFailure(errors, warnings);
+
+          // A failed first build throws from bundleWorker instead, which emits buildFailed
+          if (bundled) {
+            eventBus.emit("rebuildFailed", "dev");
+          }
           return;
         }
 

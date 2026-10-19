@@ -44,12 +44,20 @@ vi.mock("~/services/rbac.server", () => ({
     authenticatePat: async () => ({ ok: true, ability: { can: mocks.can } }),
   },
 }));
-vi.mock("~/services/personalAccessToken.server", () => ({
-  // A `tr_pat_` bearer resolves to the member user, driving the non-UAT branch.
-  authenticateApiRequestWithPersonalAccessToken: async () => ({ userId: USER_ID }),
-  isPersonalAccessToken: (token: string) => token.startsWith("tr_pat_"),
-  assertSourcePatActive: mocks.assertSourcePatActive,
-}));
+vi.mock("~/services/personalAccessToken.server", async () => {
+  const { verifyUserActorToken } = await import("@trigger.dev/rbac");
+  return {
+    // A `tr_pat_` bearer resolves to the member user, driving the non-UAT branch.
+    authenticateApiRequestWithPersonalAccessToken: async () => ({ userId: USER_ID }),
+    isPersonalAccessToken: (token: string) => token.startsWith("tr_pat_"),
+    assertSourcePatActive: mocks.assertSourcePatActive,
+    resolveAndRecheckUserActorClaims: async (claims: unknown, bearer: string) => {
+      const resolved = (await verifyUserActorToken(SESSION_SECRET, bearer)) ?? claims;
+      if (!resolved) return undefined;
+      return (await mocks.assertSourcePatActive(resolved)) ? resolved : undefined;
+    },
+  };
+});
 vi.mock("~/services/organizationAccessToken.server", () => ({
   authenticateApiRequestWithOrganizationAccessToken: vi.fn(),
   isOrganizationAccessToken: () => false,

@@ -114,6 +114,8 @@ export type RunEngineOptions = {
     totalConcurrencyEnabled?: boolean;
     /** Enforce the gates carried in message payloads. See RunQueueOptions.gatesEnabled. */
     gatesEnabled?: boolean;
+    /** Enforce per-key overrides set through the override API. See RunQueueOptions.concurrencyKeyLimitsEnabled. */
+    concurrencyKeyLimitsEnabled?: boolean;
     /** Bounds for the saturated-set reconcile. See RunQueueOptions.reconcile. */
     reconcile?: {
       enabled?: boolean;

@@ -134,6 +134,39 @@ The parent LLM naturally calls this tool multiple times:
 2. `researchAgent({ conversationId: "competitors", message: "Go deeper on pricing" })` — same run, sub-agent has full context
 3. `researchAgent({ conversationId: "new-topic", message: "..." })` — different ID = different sub-agent
 
+## Limiting parallel sub-agents per session
+
+Give every sub-agent task a shared named limit with a `perKey`, pass the parent session's id as each sub-agent's `concurrencyKey`, and raise that key's cap when the user picks a parallelism:
+
+```ts trigger/limits.ts
+import { concurrencyLimit } from "@trigger.dev/sdk";
+
+// one sub-agent at a time per session unless a session is given more
+export const subagentsLimit = concurrencyLimit({ name: "subagents", perKey: 1 });
+```
+
+```ts trigger/research-agent.ts
+export const researchAgent = chat.agent({
+  id: "research-agent",
+  concurrency: subagentsLimit,
+  // ...
+});
+```
+
+```ts
+// in the parent agent, once per session, when the user picks a parallelism of 3
+await concurrencyLimits.override("subagents", { concurrencyKey: sessionId, perKey: 3 });
+
+// every sub-agent for this session carries the session's key
+const agent = new AgentChat({
+  agent: "research-agent",
+  id: conversationId,
+  triggerConfig: { concurrencyKey: sessionId },
+});
+```
+
+Three sub-agent runs for this session execute at once; a fourth waits. Other sessions keep the declared cap of one, and any tenant-level limit the sub-agent task also holds keeps applying. The override expires after 7 days by default (`ttl` sets it, up to 30 days), so a session that outlives that should call `override` again. See [Overriding a limit for one key](/concurrency#overriding-a-limit-for-one-key).
+
 ### Cross-turn persistence
 
 Sub-agent conversations persist across **parent turns** because the `Map` lives in the parent's process heap. When the parent suspends and restores via snapshot, the heap is preserved — the Map still has the conversations, the sessions still have the run IDs.

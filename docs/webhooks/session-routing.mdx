@@ -1,0 +1,138 @@
+---
+title: "Routing to a session"
+description: "Route verified webhook deliveries to a durable per-key session instead of a fresh run."
+sidebarTitle: "Session routing"
+---
+
+import WebhooksBetaBanner from "/snippets/webhooks-beta-banner.mdx";
+
+<WebhooksBetaBanner />
+
+A plain [`webhook()`](/webhooks/overview) runs a fresh, stateless run for every delivery. Sometimes you want the opposite: deliveries that share a key (a customer, an installation, an issue) should land on **one durable [session](/ai-chat/sessions)** and be handled in order, with state carried across them. That is what session routing does.
+
+Instead of a handler, you declare a `chat.event` on an [endpoint](/webhooks/overview) and list it on an agent. The verified delivery is routed to a find-or-created session and arrives as an [action](/ai-chat/actions).
+
+## Declaring a chat event
+
+`chat.event` describes the routing only: the endpoint it subscribes to, a `key` that identifies the session, and a `type` label for the delivered action. It has no handler.
+
+```ts
+import { webhooks } from "@trigger.dev/sdk";
+import { chat } from "@trigger.dev/sdk/ai";
+
+export const stripe = webhooks.endpoint.define({ id: "stripe", source: webhooks.stripe() });
+
+export const orderEvents = chat.event({
+  id: "order-events",
+  endpoint: stripe,
+  // one session per customer
+  key: "{event.data.object.customer}",
+  // invoices always carry a customer; events without one would have no session to go to
+  filter: "event.type startsWith 'invoice.'",
+  type: "order.event",
+});
+```
+
+The endpoint's other subscribers, such as a `webhook()` task, still get the same deliveries.
+
+### The key
+
+The `key` is what makes routing durable: two deliveries that resolve to the same key reach the same session; a different key gets its own. It is a template string, evaluated server-side at ingest, whose `{...}` placeholders read three namespaces:
+
+- `{event.*}`: the parsed event body.
+- `{webhook.*}`: endpoint metadata (`externalRef`, `tenantId`, `id`, `source`, `deliveryId`).
+- `{header.name}`: an inbound header.
+
+These are the same namespaces [filter](/webhooks/filters) expressions use. Every placeholder names one: a bare `{customer}` is an error.
+
+`{a || b}` falls back to `b` when `a` is missing or empty. Compose several placeholders into one key: `"{webhook.externalRef}-{event.issue.id}"`. Each placeholder is checked against the event type at build time, so a bad field is a red squiggle on the `key` line, not a runtime surprise.
+
+### The `type` label
+
+`type` is a name you choose for the delivered action. It flows straight through to `action.type` on the envelope, so your handler can tell webhook actions apart from each other and from browser actions. It is optional and defaults to the descriptor `id`.
+
+## Handling deliveries on an agent
+
+List the descriptor on a [`chat.agent`](/ai-chat/overview) (or a session agent). The delivery arrives at `onAction`, not as a chat message:
+
+```ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { orderEvents } from "./order-events";
+
+export const orderAgent = chat.agent({
+  id: "order-agent",
+  events: [orderEvents],
+  onAction: async ({ action }) => {
+    switch (action.type) {
+      case "order.event":
+        // action.event is the verified Stripe event, fully typed
+        console.log("order for", action.event.data.object.customer);
+        break;
+    }
+  },
+  run: async ({ messages, signal }) => {
+    /* ... */
+  },
+});
+```
+
+`action.type` is a closed union of the `type` labels of the events you listed, and each arm narrows `action.event` to that event's payload type. The full envelope is `{ type, event, source, headers, deliveryId, externalDeliveryId, endpoint }`. `deliveryId` is the delivery's `whd_` id, as in the dashboard and the [deliveries API](/webhooks/deliveries): a [replay](/webhooks/deliveries#replay) gets a new one. `externalDeliveryId` is the provider's id for the delivery (Stripe's `evt_` id, for example), the same across replays. `endpoint` is the endpoint the delivery arrived on.
+
+Because it is an [action](/ai-chat/actions), the handler is not a turn by default: it can read the event, mutate session state with `chat.history`, and return nothing. To have the agent answer, return `chat.turn()`: the edit is saved, then a full turn runs on the session's history exactly as a message turn does. Webhook actions bypass your `actionSchema` (their shape is fixed and already verified by the source), so `action.type` and `action.event` are typed from the descriptor, not the schema.
+
+## Answering into a channel
+
+When the same session is also a [channel](/webhooks/channels) conversation (a Slack thread keyed to the same customer, say), a turn requested from a webhook action posts its answer into that thread. The first channel message **binds** the session to its connector; every later turn on the session, whatever started it, egresses through the binding.
+
+```ts
+export const orderAgent = chat.agent({
+  id: "order-agent",
+  channels: [slack({ id: "support-slack", endpoint: slackEvents, token: process.env.SLACK_BOT_TOKEN! })],
+  events: [orderEvents],
+  onAction: async ({ action }) => {
+    if (action.type === "order.event") {
+      // A user-role note, so the model lane ends on a user message. A system-role
+      // injection becomes instructions and leaves the lane ending on the assistant's
+      // last reply, which most models treat as a prefill and answer with nothing.
+      chat.inject([
+        {
+          role: "user",
+          content: `[payments] Order ${action.event.data.object.id} was paid. Tell the thread in one sentence.`,
+        },
+      ]);
+      return chat.turn(); // the agent tells the thread about the payment
+    }
+  },
+  run: async ({ messages, streamText }) =>
+    streamText({ model: anthropic("claude-sonnet-4-5"), messages }),
+});
+```
+
+A bound turn posts the final answer as a fresh message in the thread (no placeholder, since there is no triggering message to react to). If the session has never had a channel message, there is nothing to post into and the turn's answer stays on the session's stream only.
+
+<Note>
+  The descriptor never names the agent, and the agent references the descriptor, so there is no
+  circular dependency. Whichever agent lists it becomes the routing target.
+</Note>
+
+## Several agents on one endpoint
+
+Listing a descriptor on an agent subscribes that agent to the descriptor's endpoint, with the subscriber id `agentId:eventId`. If two agents list the same descriptor, the endpoint has two subscribers and every delivery goes to both, on the one URL the provider already knows.
+
+A session belongs to the agent that created it. When two agents compute the same key, the second agent's delivery to that session fails with an error naming the owner. Both agents see the same endpoint, so a `{webhook.*}` placeholder resolves the same for each and can't separate them. Give each agent its own descriptor with a constant prefix in the key instead, for example `"billing-{event.data.object.customer}"` and `"support-{event.data.object.customer}"`.
+
+An exported `chat.event` that no agent lists routes nothing. `trigger dev` warns about it (it is not an error, since declaring the descriptor before wiring the agent is a normal step), so wire it onto an agent once you are ready.
+
+## Filtering
+
+A [`filter`](/webhooks/filters) works here exactly as on a `webhook()` task: a delivery that doesn't match never reaches the session, and the delivery records the reason.
+
+```ts
+export const orderEvents = chat.event({
+  id: "order-events",
+  endpoint: stripe,
+  key: "{event.data.object.customer}",
+  type: "order.event",
+  filter: "event.type == 'payment_intent.succeeded'",
+});
+```

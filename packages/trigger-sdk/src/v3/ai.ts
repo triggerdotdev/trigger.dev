@@ -219,6 +219,7 @@ type ChatTurnContext<TClientData = unknown> = {
   turn: number;
   continuation: boolean;
   clientData?: TClientData;
+  recordUserMessage?: boolean;
 };
 const chatTurnContextKey = locals.create<ChatTurnContext>("chat.turnContext");
 
@@ -4313,8 +4314,6 @@ async function drainSteeringQueue(
   // Span attributes describe the offered batch; the chunk and callback below
   // describe what was actually claimed and injected.
   const messageTexts = uiMessages.map(textOfUIMessage);
-  const _previewText =
-    messageTexts.length === 1 ? messageTexts[0]!.slice(0, 80) : `${queue.length} messages`;
 
   return tracer.startActiveSpan(
     "pending message injected",
@@ -4456,7 +4455,7 @@ async function drainSteeringQueue(
         [SemanticInternalAttributes.STYLE_ICON]: "tabler-message-forward",
         "pending.message_count": uiMessages.length,
         "pending.step_number": stepNumber,
-        "pending.messages": messageTexts,
+        ...(ctx?.recordUserMessage === false ? {} : { "pending.messages": messageTexts }),
         ...(ctx?.chatId ? { "pending.chat_id": ctx.chatId } : {}),
         ...(ctx?.turn != null ? { "pending.turn": ctx.turn } : {}),
         ...accessoryAttributes({
@@ -6121,6 +6120,32 @@ export type ChatAgentOptions<
   versionSkew?: ChatVersionSkewPolicy;
 
   /**
+   * Controls which chat content the chat runtime records on its spans in the run trace.
+   *
+   * - `recordUserMessage` (default `true`) records the last user message as `chat.user_message`
+   *   and as the turn span's preview text, and messages sent mid-turn as `pending.messages`.
+   * - `recordClientData` (default `true`) records the raw `clientData` sent by the frontend as
+   *   `chat.client_data`.
+   *
+   * Set either to `false` to keep that content out of telemetry. Content recorded by the AI SDK's
+   * own spans is controlled separately, through `experimental_telemetry` on the model call.
+   *
+   * @example
+   * ```ts
+   * chat.agent({
+   *   id: "my-chat",
+   *   telemetry: { recordUserMessage: false, recordClientData: false },
+   *   run: async ({ messages, signal, streamText }) =>
+   *     streamText({ model, messages, abortSignal: signal }),
+   * });
+   * ```
+   */
+  telemetry?: {
+    recordUserMessage?: boolean;
+    recordClientData?: boolean;
+  };
+
+  /**
    * Schema for validating `clientData` from the frontend.
    * Accepts Zod, ArkType, Valibot, or any supported schema library.
    * When provided, `clientData` is parsed and typed in all hooks and `run`.
@@ -7078,8 +7103,12 @@ function chatAgent<
     cacheControl: agentCacheControl,
     systemProviderOptions: agentSystemProviderOptions,
     versionSkew,
+    telemetry: telemetryOptions,
     ...restOptions
   } = options;
+
+  const recordUserMessage = telemetryOptions?.recordUserMessage ?? true;
+  const recordClientData = telemetryOptions?.recordClientData ?? true;
 
   if (hydrateMessages) {
     if (storage) {
@@ -8429,7 +8458,7 @@ function chatAgent<
               [SemanticInternalAttributes.ENTITY_TYPE]: isAction ? "chat-action" : "chat-turn",
             };
 
-            if (lastUserMessage) {
+            if (lastUserMessage && recordUserMessage) {
               turnAttributes["chat.user_message"] = lastUserMessage;
 
               // Show a truncated preview of the user message as an accessory
@@ -8446,7 +8475,7 @@ function chatAgent<
               );
             }
 
-            if (wireMetadata !== undefined) {
+            if (wireMetadata !== undefined && recordClientData) {
               turnAttributes["chat.client_data"] =
                 typeof wireMetadata === "string" ? wireMetadata : JSON.stringify(wireMetadata);
             }
@@ -8475,6 +8504,7 @@ function chatAgent<
                   turn,
                   continuation,
                   clientData,
+                  recordUserMessage,
                 });
 
                 // Resolve the per-turn `tools` set now that turn context

@@ -10,7 +10,7 @@ import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/ser
 import { randomBytes } from "node:crypto";
 import { WebhookRoutingTarget, WebhookVerifierArtifact } from "@trigger.dev/core/v3";
 import type { WebhookValueSource } from "@trigger.dev/core/v3";
-import { Suspense, useEffect, useState } from "react";
+import { type MutableRefObject, Suspense, useEffect, useRef, useState } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { WebhookIcon } from "~/assets/icons/WebhookIcon";
@@ -43,8 +43,9 @@ import {
   type EndpointWaiters,
   EndpointWaitersTable,
 } from "~/components/webhookEndpoints/v1/EndpointWaitersTable";
-import { TimeFilter } from "~/components/runs/v3/SharedFilters";
 import { DeliveriesTable } from "~/components/webhookDeliveries/v1/DeliveriesTable";
+import { DeliveryFilters } from "~/components/webhookDeliveries/v1/DeliveryFilters";
+import { parseDeliveryListFilters } from "~/components/webhookDeliveries/v1/deliveryListFilters";
 import { useDeliveriesLiveReload } from "~/components/webhookDeliveries/v1/useDeliveriesLiveReload";
 import { PulsingDot } from "~/components/primitives/PulsingDot";
 import { EndpointStatusBadge } from "~/components/webhookEndpoints/v1/EndpointStatus";
@@ -180,6 +181,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       from,
       to,
       hasExplicitWindow,
+      filters: parseDeliveryListFilters(url.searchParams),
       cursor,
       direction,
     })
@@ -317,6 +319,12 @@ export default function Page() {
 
   const endpointsPath = v3WebhooksPath(organization, project, environment);
 
+  // The "N new deliveries" button lives in the filter row, outside the deferred table that detects
+  // them: the count drives its visibility and the ref holds the click action (kept current by
+  // LiveDeliveriesTable).
+  const [newDeliveriesCount, setNewDeliveriesCount] = useState(0);
+  const showNewDeliveriesRef = useRef<() => void>(() => {});
+
   return (
     <>
       <NavBar>
@@ -346,7 +354,7 @@ export default function Page() {
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">
           <ResizablePanel id="endpoint-deliveries" min="300px">
             <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
-              <div className="flex h-10 items-end justify-between gap-2 border-b border-grid-dimmed bg-background-bright pl-3 pr-2">
+              <div className="flex h-10 items-end border-b border-grid-dimmed bg-background-bright pl-3 pr-2">
                 <TabContainer className="-mb-px">
                   {(
                     [
@@ -366,64 +374,81 @@ export default function Page() {
                     </TabButton>
                   ))}
                 </TabContainer>
-                {tab === "deliveries" ? (
-                  <div className="flex items-center gap-2 self-center">
-                    <TimeFilter defaultPeriod="7d" labelName="Deliveries" />
-                    <Suspense fallback={null}>
-                      <TypedAwait resolve={deliveriesList} errorElement={null}>
-                        {(list) => (list ? <ListPagination list={list} /> : null)}
+              </div>
+              {tab === "deliveries" ? (
+                <div className="grid min-h-0 grid-rows-[auto_1fr] overflow-hidden">
+                  <div className="flex items-start justify-between gap-x-2 p-2">
+                    <DeliveryFilters />
+                    <div className="flex items-center justify-end gap-x-1.5">
+                      {newDeliveriesCount > 0 ? (
+                        <NewDeliveriesButton
+                          count={newDeliveriesCount}
+                          onClick={() => showNewDeliveriesRef.current()}
+                        />
+                      ) : null}
+                      <Suspense fallback={null}>
+                        <TypedAwait resolve={deliveriesList} errorElement={null}>
+                          {(list) => (list ? <ListPagination list={list} /> : null)}
+                        </TypedAwait>
+                      </Suspense>
+                    </div>
+                  </div>
+                  <div className="min-h-0 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                    <Suspense fallback={<TableLoading />}>
+                      <TypedAwait resolve={deliveriesList} errorElement={<TableLoading />}>
+                        {(list) =>
+                          list ? (
+                            <LiveDeliveriesTable
+                              list={list}
+                              webhookEndpointId={endpoint.id}
+                              onNewDeliveriesCountChange={setNewDeliveriesCount}
+                              showNewDeliveriesRef={showNewDeliveriesRef}
+                            />
+                          ) : (
+                            <TableLoading />
+                          )
+                        }
                       </TypedAwait>
                     </Suspense>
                   </div>
-                ) : null}
-              </div>
-              <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                {tab === "deliveries" ? (
-                  <Suspense fallback={<TableLoading />}>
-                    <TypedAwait resolve={deliveriesList} errorElement={<TableLoading />}>
-                      {(list) =>
-                        list ? (
-                          <LiveDeliveriesTable list={list} webhookEndpointId={endpoint.id} />
-                        ) : (
-                          <TableLoading />
-                        )
-                      }
-                    </TypedAwait>
-                  </Suspense>
-                ) : tab === "subscribers" ? (
-                  <EndpointSubscribersTable targets={routing} />
-                ) : tab === "waiters" ? (
-                  <Suspense fallback={<TableLoading />}>
-                    <TypedAwait resolve={waiters} errorElement={<TableLoading />}>
-                      {(list) => <EndpointWaitersTable list={list} canCancel={canCancel} />}
-                    </TypedAwait>
-                  </Suspense>
-                ) : (
-                  <Suspense fallback={<TableLoading />}>
-                    <TypedAwait resolve={composerEndpoints} errorElement={<TableLoading />}>
-                      {(endpoints) =>
-                        endpoints.length === 0 ? (
-                          <div className="flex h-full items-center justify-center p-4 text-center text-sm text-text-dimmed">
-                            This endpoint can't be sent to from the dashboard.
-                          </div>
-                        ) : (
-                          <WebhookComposer
-                            endpoints={endpoints}
-                            organizationSlug={organization.slug}
-                            projectSlug={project.slug}
-                            environmentSlug={environment.slug}
-                            isDevEnvironment={environment.type === "DEVELOPMENT"}
-                            environmentLabel={
-                              environment.type.charAt(0) + environment.type.slice(1).toLowerCase()
-                            }
-                            redirectOnSuccess={false}
-                          />
-                        )
-                      }
-                    </TypedAwait>
-                  </Suspense>
-                )}
-              </div>
+                </div>
+              ) : (
+                <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                  {tab === "subscribers" ? (
+                    <EndpointSubscribersTable targets={routing} />
+                  ) : tab === "waiters" ? (
+                    <Suspense fallback={<TableLoading />}>
+                      <TypedAwait resolve={waiters} errorElement={<TableLoading />}>
+                        {(list) => <EndpointWaitersTable list={list} canCancel={canCancel} />}
+                      </TypedAwait>
+                    </Suspense>
+                  ) : (
+                    <Suspense fallback={<TableLoading />}>
+                      <TypedAwait resolve={composerEndpoints} errorElement={<TableLoading />}>
+                        {(endpoints) =>
+                          endpoints.length === 0 ? (
+                            <div className="flex h-full items-center justify-center p-4 text-center text-sm text-text-dimmed">
+                              This endpoint can't be sent to from the dashboard.
+                            </div>
+                          ) : (
+                            <WebhookComposer
+                              endpoints={endpoints}
+                              organizationSlug={organization.slug}
+                              projectSlug={project.slug}
+                              environmentSlug={environment.slug}
+                              isDevEnvironment={environment.type === "DEVELOPMENT"}
+                              environmentLabel={
+                                environment.type.charAt(0) + environment.type.slice(1).toLowerCase()
+                              }
+                              redirectOnSuccess={false}
+                            />
+                          )
+                        }
+                      </TypedAwait>
+                    </Suspense>
+                  )}
+                </div>
+              )}
             </div>
           </ResizablePanel>
 
@@ -743,7 +768,7 @@ function ProviderSetup({ verifier, source }: { verifier: LoaderData["verifier"];
 function describeTimestampSource(source: WebhookValueSource): string {
   switch (source.from) {
     case "header":
-      return `header ${source.name}`;
+      return [source.name, ...(source.fallback ?? [])].map((name) => `header ${name}`).join(" or ");
     case "signatureField":
       return `field "${source.field}" in signature header`;
     case "body":
@@ -1002,13 +1027,39 @@ function TableLoading() {
   );
 }
 
-/** The endpoint's deliveries, with live status updates and a pill for ones that arrived since load. */
+function NewDeliveriesButton({ count, onClick }: { count: number; onClick: () => void }) {
+  return (
+    <span className="flex duration-150 animate-in fade-in-0">
+      <Button
+        variant="secondary/small"
+        className="text-text-bright"
+        onClick={onClick}
+        LeadingIcon={<PulsingDot className="h-2 w-2" />}
+        tooltip="Refresh to see new deliveries"
+        aria-label="New deliveries received. Refresh to see them."
+      >
+        {count >= 100
+          ? "99+ new deliveries"
+          : `${count} new ${count === 1 ? "delivery" : "deliveries"}`}
+      </Button>
+    </span>
+  );
+}
+
+/**
+ * The endpoint's deliveries, with live status updates. Deliveries that arrived since load are
+ * surfaced to the filter row's button via `onNewDeliveriesCountChange` and `showNewDeliveriesRef`.
+ */
 function LiveDeliveriesTable({
   list,
   webhookEndpointId,
+  onNewDeliveriesCountChange,
+  showNewDeliveriesRef,
 }: {
   list: WebhookDeliveriesList;
   webhookEndpointId: string;
+  onNewDeliveriesCountChange: (count: number) => void;
+  showNewDeliveriesRef: MutableRefObject<() => void>;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -1017,57 +1068,37 @@ function LiveDeliveriesTable({
   const revalidator = useRevalidator();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const { visibleDeliveries, showNewDeliveriesBanner, newDeliveriesCount, dismissNewDeliveries } =
-    useDeliveriesLiveReload({
-      deliveries: list.deliveries,
-      isLoading: navigation.state !== "idle",
-      webhookEndpointId,
-      organizationSlug: organization.slug,
-      projectSlug: project.slug,
-      environmentSlug: environment.slug,
-    });
+  const { visibleDeliveries, newDeliveriesCount, dismissNewDeliveries } = useDeliveriesLiveReload({
+    deliveries: list.deliveries,
+    isLoading: navigation.state !== "idle",
+    webhookEndpointId,
+    organizationSlug: organization.slug,
+    projectSlug: project.slug,
+    environmentSlug: environment.slug,
+  });
 
-  const onClickShowNewDeliveries = () => {
-    dismissNewDeliveries();
-    if (searchParams.has("cursor") || searchParams.has("direction")) {
-      setSearchParams((prev) => {
-        prev.delete("cursor");
-        prev.delete("direction");
-        return prev;
-      });
-      return;
-    }
-    revalidator.revalidate();
-  };
+  // Keep the filter row button's action current, mirror the count up, and clear it on unmount (the
+  // table re-suspends on a filter change, or another tab is picked).
+  useEffect(() => {
+    showNewDeliveriesRef.current = () => {
+      dismissNewDeliveries();
+      if (searchParams.has("cursor") || searchParams.has("direction")) {
+        setSearchParams((prev) => {
+          prev.delete("cursor");
+          prev.delete("direction");
+          return prev;
+        });
+        return;
+      }
+      revalidator.revalidate();
+    };
+  }, [dismissNewDeliveries, revalidator, searchParams, setSearchParams, showNewDeliveriesRef]);
+  useEffect(() => {
+    onNewDeliveriesCountChange(newDeliveriesCount);
+  }, [newDeliveriesCount, onNewDeliveriesCountChange]);
+  useEffect(() => () => onNewDeliveriesCountChange(0), [onNewDeliveriesCountChange]);
 
   return (
-    <>
-      {showNewDeliveriesBanner ? (
-        <div className="flex justify-end px-2 py-1.5">
-          <span className="flex duration-150 animate-in fade-in-0">
-            <Button
-              variant="secondary/small"
-              className="text-text-bright"
-              onClick={onClickShowNewDeliveries}
-              LeadingIcon={<PulsingDot className="h-2 w-2" />}
-              tooltip="Refresh to see new deliveries"
-              aria-label="New deliveries received. Refresh to see them."
-            >
-              {newDeliveriesCount >= 100
-                ? "99+ new deliveries"
-                : `${newDeliveriesCount} new ${
-                    newDeliveriesCount === 1 ? "delivery" : "deliveries"
-                  }`}
-            </Button>
-          </span>
-        </div>
-      ) : null}
-      <DeliveriesTable
-        deliveries={visibleDeliveries}
-        hasFilters={list.hasFilters}
-        showTopBorder={false}
-        stickyHeader
-      />
-    </>
+    <DeliveriesTable deliveries={visibleDeliveries} hasFilters={list.hasFilters} stickyHeader />
   );
 }

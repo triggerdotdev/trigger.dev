@@ -547,6 +547,14 @@ export interface RoleBaseAccessController {
   // No plugin installed → fallback returns a permissive ability so PAT
   // routes that don't yet declare an `authorization` block keep working
   // exactly as they did pre-RBAC.
+  /**
+   * Revocation contract. An implementation MUST reject a token whose `revokedAt` is set exactly
+   * as it rejects an unknown one, MUST NOT cache a successful authentication against the token,
+   * its hash or its id, and MUST read the token's state from somewhere that sees a revocation
+   * promptly. Revocation is the only kill switch a personal access token has, so any staleness in
+   * that read is how long a revoked token keeps working. Caching the derived ability is fine; the
+   * liveness of the credential itself is not.
+   */
   authenticatePat(
     request: Request,
     context: { organizationId?: string; projectId?: string }
@@ -560,6 +568,13 @@ export interface RoleBaseAccessController {
   //
   // No plugin installed → the fallback builds the ability from the token's own cap
   // (read-only when it declares none), never the blanket ability it gives a PAT.
+  /**
+   * Revocation contract. These tokens are stateless and long-lived, so the host re-checks on
+   * every request that the source token named in the claims is still live, and that is the only
+   * way to retire one. An implementation MUST NOT cache a successful result in a way that lets a
+   * caller skip that re-check, and MUST return the token's own claims so the host re-checks the
+   * right source token.
+   */
   authenticateUserActor(
     request: Request,
     context: { organizationId?: string; projectId?: string }

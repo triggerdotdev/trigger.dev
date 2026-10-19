@@ -746,6 +746,12 @@ await myTask.batchTrigger([{ payload: { some: "data" }, options: { delay: "1h" }
   manually, convert Dates to ISO strings first (e.g., `date.toISOString()`).
 </Note>
 
+<Tip>
+  A `delay` doesn't merge triggers: each trigger still creates its own run. To collapse a burst of
+  triggers into one run, use [`debounce`](#debounce). See [runs.list() best
+  practices](/runs/list-best-practices#using-a-fixed-delay-to-space-out-triggers).
+</Tip>
+
 ### `ttl`
 
 You can set a TTL (time to live) when triggering a task, which will automatically expire the run if it hasn't started within the specified time. This is useful for ensuring that a run doesn't get stuck in the queue for too long.
@@ -813,6 +819,8 @@ export const myTask = task({
   },
 });
 ```
+
+Build the key from the work being done, like an order or event ID. A random value on every trigger never matches, so it never dedupes. See [runs.list() best practices](/runs/list-best-practices#using-a-random-idempotency-key).
 
 For more information, see our [Idempotency](/idempotency) documentation.
 

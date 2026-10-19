@@ -1,4 +1,5 @@
-import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
+import type { RedisClient } from "@internal/redis";
+import { createFairQueueRedisClient, type FairQueueRedisOptions } from "./connection.js";
 import { jumpHash } from "@trigger.dev/core/v3/serverOnly";
 import type {
   ClaimResult,
@@ -9,7 +10,7 @@ import type {
 } from "./types.js";
 
 export interface VisibilityManagerOptions {
-  redis: RedisOptions;
+  redis: FairQueueRedisOptions;
   keys: FairQueueKeyProducer;
   shardCount: number;
   defaultTimeoutMs: number;
@@ -33,14 +34,14 @@ export interface VisibilityManagerOptions {
  * - In-flight data hash: field = messageId, value = JSON message data
  */
 export class VisibilityManager {
-  private redis: Redis;
+  private redis: RedisClient;
   private keys: FairQueueKeyProducer;
   private shardCount: number;
   private defaultTimeoutMs: number;
   private logger: NonNullable<VisibilityManagerOptions["logger"]>;
 
   constructor(private options: VisibilityManagerOptions) {
-    this.redis = createRedisClient(options.redis);
+    this.redis = createFairQueueRedisClient(options.redis);
     this.keys = options.keys;
     this.shardCount = options.shardCount;
     this.defaultTimeoutMs = options.defaultTimeoutMs;
@@ -582,6 +583,9 @@ export class VisibilityManager {
    * Must use same algorithm as MasterQueue for consistency.
    */
   #getShardForQueue(queueId: string): number {
+    if (this.keys.tenantShard) {
+      return this.keys.tenantShard(this.keys.extractTenantId(queueId));
+    }
     return jumpHash(queueId, this.shardCount);
   }
 

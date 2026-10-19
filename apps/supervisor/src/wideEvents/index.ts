@@ -17,4 +17,3 @@ export {
   type WideEventOptions,
 } from "./middleware.js";
 export type { State } from "./state.js";
-export { encodeBaggage } from "./baggage.js";

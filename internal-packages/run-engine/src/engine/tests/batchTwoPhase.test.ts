@@ -674,7 +674,8 @@ describe("RunEngine 2-Phase Batch API", () => {
       engine: RunEngine,
       prisma: TestPrisma,
       authenticatedEnvironment: TestEnvironment,
-      expectedCount = 2
+      expectedCount = 2,
+      beforeBlock?: (parentRunId: string) => Promise<void>
     ) {
       const parentTask = "parent-task";
       await setupBackgroundWorker(engine, authenticatedEnvironment, [parentTask]);
@@ -729,6 +730,8 @@ describe("RunEngine 2-Phase Batch API", () => {
         runId: parentRun.id,
         snapshotId: initialExecutionData.snapshot.id,
       });
+
+      await beforeBlock?.(parentRun.id);
 
       await engine.blockRunWithCreatedBatch({
         runId: parentRun.id,
@@ -792,6 +795,261 @@ describe("RunEngine 2-Phase Batch API", () => {
             },
             { timeout: 15_000 }
           );
+        } finally {
+          await engine.quit();
+        }
+      }
+    );
+
+    /**
+     * A retried phase 1: the parent is blocked on an orphaned batch (never streamed) and on its
+     * retry, whose children all complete. The orphan's seal timeout is what finally resumes it.
+     * The two blocks can land in either order, since the orphan's request is the slow one.
+     */
+    async function setupParentBlockedByOrphanAndRetry(
+      engine: RunEngine,
+      prisma: TestPrisma,
+      authenticatedEnvironment: TestEnvironment,
+      { retryBlocksFirst = false }: { retryBlocksFirst?: boolean } = {}
+    ) {
+      const retryBatch = BatchId.generate();
+      const blockOnRetry = async (parentRunId: string) => {
+        await prisma.batchTaskRun.create({
+          data: {
+            id: retryBatch.id,
+            friendlyId: retryBatch.friendlyId,
+            runtimeEnvironmentId: authenticatedEnvironment.id,
+          },
+        });
+
+        await engine.blockRunWithCreatedBatch({
+          runId: parentRunId,
+          batchId: retryBatch.id,
+          environmentId: authenticatedEnvironment.id,
+          projectId: authenticatedEnvironment.projectId,
+          organizationId: authenticatedEnvironment.organizationId,
+        });
+      };
+
+      const { batchId: orphanBatchId, parentRun } = await setupUnsealedBatchBlockingParent(
+        engine,
+        prisma,
+        authenticatedEnvironment,
+        2,
+        retryBlocksFirst ? blockOnRetry : undefined
+      );
+
+      if (!retryBlocksFirst) {
+        await blockOnRetry(parentRun.id);
+      }
+
+      const childTask = "child-task";
+      await setupBackgroundWorker(engine, authenticatedEnvironment, [childTask]);
+
+      for (const index of [0, 1]) {
+        await engine.trigger(
+          {
+            friendlyId: generateFriendlyId("run"),
+            environment: authenticatedEnvironment,
+            taskIdentifier: childTask,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: `t_child_${index}`,
+            spanId: `s_child_${index}`,
+            workerQueue: "main",
+            queue: `task/${childTask}`,
+            isTest: false,
+            tags: [],
+            resumeParentOnCompletion: true,
+            parentTaskRunId: parentRun.id,
+            batch: { id: retryBatch.id, index },
+          },
+          prisma
+        );
+      }
+
+      const completedChildren = new Set<string>();
+      await vi.waitFor(
+        async () => {
+          const dequeued = await engine.dequeueFromWorkerQueue({
+            consumerId: "test_12345",
+            workerQueue: "main",
+          });
+          for (const item of dequeued) {
+            const attempt = await engine.startRunAttempt({
+              runId: item.run.id,
+              snapshotId: item.snapshot.id,
+            });
+            await engine.completeRunAttempt({
+              runId: item.run.id,
+              snapshotId: attempt.snapshot.id,
+              completion: {
+                id: item.run.id,
+                ok: true,
+                output: "{}",
+                outputType: "application/json",
+              },
+            });
+            completedChildren.add(item.run.id);
+          }
+          expect(completedChildren.size).toBe(2);
+        },
+        { timeout: 15_000, interval: 100 }
+      );
+
+      await vi.waitFor(
+        async () => {
+          const retryWaitpoint = await prisma.waitpoint.findFirst({
+            where: { completedByBatchId: retryBatch.id },
+          });
+          expect(retryWaitpoint?.status).toBe("COMPLETED");
+        },
+        { timeout: 15_000 }
+      );
+
+      const stillBlocked = await engine.getRunExecutionData({ runId: parentRun.id });
+      assertNonNullable(stillBlocked);
+      expect(stillBlocked.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
+      // Only the first block writes a snapshot, so this is the batch that blocked first.
+      expect(stillBlocked.batch?.id).toBe(retryBlocksFirst ? retryBatch.id : orphanBatchId);
+
+      return { orphanBatchId, retryBatch, parentRun };
+    }
+
+    // The SDK matches each child result to its waiter by `<batch friendlyId>_<index>`.
+    function resultKeys(
+      completedWaitpoints: {
+        type: string;
+        index?: number;
+        completedByTaskRun?: { batch?: { friendlyId: string } };
+      }[]
+    ) {
+      return completedWaitpoints
+        .filter((w) => w.type === "RUN")
+        .map((w) => `${w.completedByTaskRun?.batch?.friendlyId}_${w.index}`)
+        .sort();
+    }
+
+    containerTest(
+      "labels the results with the retried batch when the orphan expires while the parent is executing",
+      async ({ prisma, redisOptions }) => {
+        const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const engine = createEngine(prisma, redisOptions);
+
+        try {
+          const { orphanBatchId, retryBatch, parentRun } = await setupParentBlockedByOrphanAndRetry(
+            engine,
+            prisma,
+            authenticatedEnvironment
+          );
+
+          await engine.expireBatch({ batchId: orphanBatchId });
+
+          const resumed = await vi.waitFor(
+            async () => {
+              const data = await engine.getRunExecutionData({ runId: parentRun.id });
+              assertNonNullable(data);
+              expect(data.snapshot.executionStatus).toBe("EXECUTING");
+              return data;
+            },
+            { timeout: 15_000 }
+          );
+
+          expect(resultKeys(resumed.completedWaitpoints)).toEqual([
+            `${retryBatch.friendlyId}_0`,
+            `${retryBatch.friendlyId}_1`,
+          ]);
+        } finally {
+          await engine.quit();
+        }
+      }
+    );
+
+    containerTest(
+      "labels the results with the retried batch when the orphan expires after the parent was checkpointed",
+      async ({ prisma, redisOptions }) => {
+        const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const engine = createEngine(prisma, redisOptions);
+
+        try {
+          const { orphanBatchId, retryBatch, parentRun } = await setupParentBlockedByOrphanAndRetry(
+            engine,
+            prisma,
+            authenticatedEnvironment
+          );
+
+          const blocked = await engine.getRunExecutionData({ runId: parentRun.id });
+          assertNonNullable(blocked);
+          const checkpoint = await engine.createCheckpoint({
+            runId: parentRun.id,
+            snapshotId: blocked.snapshot.id,
+            checkpoint: {
+              type: "DOCKER",
+              reason: "TEST_CHECKPOINT",
+              location: "test-location",
+              imageRef: "test-image-ref",
+            },
+          });
+          expect(checkpoint.ok).toBe(true);
+
+          await engine.expireBatch({ batchId: orphanBatchId });
+
+          // What the restored runner receives with the dequeued run.
+          const restored = await vi.waitFor(
+            async () => {
+              const dequeued = await engine.dequeueFromWorkerQueue({
+                consumerId: "test_12345",
+                workerQueue: "main",
+              });
+              expect(dequeued.length).toBe(1);
+              return dequeued[0]!;
+            },
+            { timeout: 15_000, interval: 100 }
+          );
+
+          expect(restored.run.id).toBe(parentRun.id);
+          expect(resultKeys(restored.completedWaitpoints)).toEqual([
+            `${retryBatch.friendlyId}_0`,
+            `${retryBatch.friendlyId}_1`,
+          ]);
+        } finally {
+          await engine.quit();
+        }
+      }
+    );
+
+    containerTest(
+      "labels the results with the retried batch when the retry blocked the parent before the orphan",
+      async ({ prisma, redisOptions }) => {
+        const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const engine = createEngine(prisma, redisOptions);
+
+        try {
+          const { orphanBatchId, retryBatch, parentRun } = await setupParentBlockedByOrphanAndRetry(
+            engine,
+            prisma,
+            authenticatedEnvironment,
+            { retryBlocksFirst: true }
+          );
+
+          await engine.expireBatch({ batchId: orphanBatchId });
+
+          const resumed = await vi.waitFor(
+            async () => {
+              const data = await engine.getRunExecutionData({ runId: parentRun.id });
+              assertNonNullable(data);
+              expect(data.snapshot.executionStatus).toBe("EXECUTING");
+              return data;
+            },
+            { timeout: 15_000 }
+          );
+
+          expect(resultKeys(resumed.completedWaitpoints)).toEqual([
+            `${retryBatch.friendlyId}_0`,
+            `${retryBatch.friendlyId}_1`,
+          ]);
         } finally {
           await engine.quit();
         }

@@ -64,6 +64,7 @@ function createRunEngine() {
       defaultEnvConcurrencyBurstFactor: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_BURST_FACTOR,
       totalConcurrencyEnabled: env.RUN_ENGINE_TOTAL_CONCURRENCY_LIMITS_ENABLED === "1",
       gatesEnabled: env.RUN_ENGINE_QUEUE_GATES_ENABLED === "1",
+      concurrencyKeyLimitsEnabled: env.RUN_ENGINE_CONCURRENCY_KEY_LIMITS_ENABLED === "1",
       reconcile: {
         enabled: env.RUN_ENGINE_QUEUE_RECONCILE_ENABLED === "1",
         scanCount: env.RUN_ENGINE_QUEUE_RECONCILE_SCAN_COUNT,

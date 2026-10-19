@@ -48,8 +48,8 @@ export type ClearRunBlockStateParams = {
 /**
  * One block edge, with the fields the unblock decision reads.
  *
- * `batchId` is read by no logic. It rides inside the two `logger.debug` payloads in
- * `continueRunIfUnblocked`, so removing it changes log output.
+ * `batchId` on child-result edges (those with a `batchIndex`) picks the batch that labels a
+ * resumed run's results in `continueRunIfUnblocked`, so every implementation must return it.
  */
 export type RunBlockEdge = {
   id: string;

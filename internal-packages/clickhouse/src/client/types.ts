@@ -170,6 +170,13 @@ export interface ClickhouseReader {
     settings?: ClickHouseSettings;
   }): ClickhouseQueryFunction<TParams, TOut>;
 
+  queryFastWithStats<TOut extends Record<string, any>, TParams extends Record<string, any>>(req: {
+    name: string;
+    query: string;
+    columns: Array<string | ColumnExpression>;
+    settings?: ClickHouseSettings;
+  }): ClickhouseQueryWithStatsFunction<TParams, TOut>;
+
   /**
    * Like {@link queryFast} but streams rows instead of buffering them. Returns an
    * async iterable so the caller can process arbitrarily large result sets with

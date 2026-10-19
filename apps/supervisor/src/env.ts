@@ -14,6 +14,14 @@ export const Env = z
   .object({
     // This will come from `spec.nodeName` in k8s
     TRIGGER_WORKER_INSTANCE_NAME: z.string().default(randomUUID()),
+    // Name of the worker cluster (cell) this supervisor serves. Stamped on every run it starts.
+    TRIGGER_WORKER_CELL_NAME: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z
+        .string()
+        .regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/)
+        .optional()
+    ),
     TRIGGER_WORKER_HEARTBEAT_INTERVAL_SECONDS: z.coerce.number().default(30),
 
     // Opt-in, dev-only: stream this process's logs over a local telnet/TCP socket on this port.
@@ -180,22 +188,9 @@ export const Env = z
     DOCKER_RUNNER_NETWORKS: z.string().default("host"),
 
     // Compute settings
-    COMPUTE_GATEWAY_URL: z.string().url().optional(),
-    COMPUTE_GATEWAY_AUTH_TOKEN: z.string().optional(),
-    COMPUTE_GATEWAY_TIMEOUT_MS: z.coerce.number().int().default(30_000),
     COMPUTE_SNAPSHOTS_ENABLED: BoolEnv.default(false),
-    COMPUTE_TRACE_SPANS_ENABLED: BoolEnv.default(true),
-    COMPUTE_TRACE_OTLP_ENDPOINT: z.string().url().optional(), // Override for span export (derived from TRIGGER_API_URL if unset)
     COMPUTE_SNAPSHOT_DELAY_MS: z.coerce.number().int().min(0).max(60_000).default(5_000),
     COMPUTE_SNAPSHOT_DISPATCH_LIMIT: z.coerce.number().int().min(1).max(100).default(10),
-    // Instance create retries for transient placement failures (1 = no retries)
-    COMPUTE_INSTANCE_CREATE_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
-    COMPUTE_INSTANCE_CREATE_RETRY_BASE_DELAY_MS: z.coerce
-      .number()
-      .int()
-      .min(0)
-      .max(10_000)
-      .default(250),
 
     // Kubernetes settings
     KUBERNETES_FORCE_ENABLED: BoolEnv.default(false),
@@ -214,6 +209,9 @@ export const Env = z
     // Follow restores with one informer on labelled Runners instead of a poll per
     // restore. Needs list and watch on runners.
     KUBERNETES_RUNNER_RESTORE_INFORMER_ENABLED: BoolEnv.default(false),
+    // Follow every Runner with one informer to report the ones the runtime killed, so
+    // their runs fail with the runtime's reason. Needs list and watch on runners.
+    KUBERNETES_RUNNER_KILL_INFORMER_ENABLED: BoolEnv.default(false),
     // The operator's 15 minute pod start deadline, after up to 5 minutes waiting
     // out a predecessor pod of the same name, plus a margin, so its failure
     // arrives first and carries the reason.
@@ -351,6 +349,9 @@ export const Env = z
 
     // Failed pod handler
     FAILED_POD_HANDLER_ENABLED: BoolEnv.default(true),
+    // Report a run whose runner the runtime killed, so it fails as out of memory only
+    // when the runtime says so. Without it the run waits out the heartbeat timeout.
+    RUNNER_KILL_REPORTS_ENABLED: BoolEnv.default(true),
     FAILED_POD_HANDLER_RECONNECT_INTERVAL_MS: z.coerce.number().int().default(1000),
     FAILED_POD_HANDLER_WATCH_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(300),
 
@@ -378,13 +379,11 @@ export const Env = z
         });
       }
 
-      const compatibility =
-        data.COMPUTE_GATEWAY_URL ||
-        (data.KUBERNETES_FORCE_ENABLED &&
-          data.KUBERNETES_RUN_CRD_ENABLED &&
-          data.KUBERNETES_RUNNER_RUNTIME === "microvm")
-          ? "compute"
-          : "container";
+      const nativeMicrovm =
+        data.KUBERNETES_FORCE_ENABLED &&
+        data.KUBERNETES_RUN_CRD_ENABLED &&
+        data.KUBERNETES_RUNNER_RUNTIME === "microvm";
+      const compatibility = nativeMicrovm ? "compute" : "container";
 
       for (const [index, subscription] of data.TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS.entries()) {
         if (subscription.compat !== "any" && subscription.compat !== compatibility) {
@@ -395,11 +394,12 @@ export const Env = z
           });
         } else if (
           subscription.phase === "restore" &&
-          !(compatibility === "compute" ? data.COMPUTE_GATEWAY_URL : data.TRIGGER_CHECKPOINT_URL)
+          compatibility === "container" &&
+          !data.TRIGGER_CHECKPOINT_URL
         ) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: `Restore subscriptions require ${compatibility === "compute" ? "COMPUTE_GATEWAY_URL" : "TRIGGER_CHECKPOINT_URL"}`,
+            message: "Restore subscriptions require TRIGGER_CHECKPOINT_URL",
             path: ["TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS", index],
           });
         }
@@ -434,26 +434,6 @@ export const Env = z
         }
       }
     }
-    // Only the gateway reads these for a snapshot: it builds its callback URL
-    // from the domain and hands the metadata URL to the instance.
-    if (data.COMPUTE_SNAPSHOTS_ENABLED && data.COMPUTE_GATEWAY_URL && !data.TRIGGER_METADATA_URL) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "TRIGGER_METADATA_URL is required when COMPUTE_SNAPSHOTS_ENABLED is true",
-        path: ["TRIGGER_METADATA_URL"],
-      });
-    }
-    if (
-      data.COMPUTE_SNAPSHOTS_ENABLED &&
-      data.COMPUTE_GATEWAY_URL &&
-      !data.TRIGGER_WORKLOAD_API_DOMAIN
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "TRIGGER_WORKLOAD_API_DOMAIN is required when COMPUTE_SNAPSHOTS_ENABLED is true",
-        path: ["TRIGGER_WORKLOAD_API_DOMAIN"],
-      });
-    }
     if (data.WORKLOAD_TOKEN_ENFORCEMENT !== "disabled" && !data.WORKLOAD_TOKEN_SECRET) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -487,7 +467,6 @@ export const Env = z
     TRIGGER_WORKER_QUEUE_CLASS:
       data.TRIGGER_WORKER_QUEUE_CLASS ??
       (data.TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS === undefined ? "default" : undefined),
-    COMPUTE_TRACE_OTLP_ENDPOINT: data.COMPUTE_TRACE_OTLP_ENDPOINT ?? `${data.TRIGGER_API_URL}/otel`,
   }));
 
 export const env = Env.parse(stdEnv);

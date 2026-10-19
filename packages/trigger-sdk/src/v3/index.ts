@@ -56,6 +56,7 @@ export {
   type RetrieveRunResult,
   type AnyRetrieveRunResult,
   type BulkAction,
+  type ReplayRunOptions,
 } from "./runs.js";
 export * as schedules from "./schedules/index.js";
 export {

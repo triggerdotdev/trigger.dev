@@ -252,6 +252,7 @@ export const webhookPrisma: WebhookDatabase = singleton("webhookPrisma", () => {
         url: env.WEBHOOK_DATABASE_URL,
         clientType: "webhook-writer",
         connectionLimit: env.WEBHOOK_DATABASE_CONNECTION_LIMIT ?? env.DATABASE_CONNECTION_LIMIT,
+        eagerConnect: false,
       })
     )
   );
@@ -272,6 +273,7 @@ export const webhookPartitionPrisma: WebhookDatabase = singleton("webhookPartiti
         url: env.WEBHOOK_DATABASE_DIRECT_URL,
         clientType: "webhook-partitions",
         connectionLimit: 1,
+        eagerConnect: false,
       })
     )
   );
@@ -291,6 +293,7 @@ export const webhookReplica: WebhookReplicaDatabase = singleton("webhookReplica"
             url: env.WEBHOOK_DATABASE_READ_REPLICA_URL,
             clientType: "webhook-reader",
             connectionLimit: env.WEBHOOK_DATABASE_CONNECTION_LIMIT ?? env.DATABASE_CONNECTION_LIMIT,
+            eagerConnect: false,
           })
         )
       )
@@ -744,6 +747,7 @@ export function buildWriterClient({
   poolTimeout,
   connectTimeout,
   useDriverAdapter = false,
+  eagerConnect = true,
 }: {
   url: string;
   clientType: string;
@@ -751,6 +755,8 @@ export function buildWriterClient({
   poolTimeout?: number;
   connectTimeout?: number;
   useDriverAdapter?: boolean;
+  /** Open a connection at build time. Off for clients most processes never query. */
+  eagerConnect?: boolean;
 }): PrismaClient {
   const databaseUrl = buildPrismaConnectionUrl(url, {
     connectionLimit: connectionLimit.toString(),
@@ -836,8 +842,9 @@ export function buildWriterClient({
         log: logConfig,
       });
 
-  registerDatabaseMetricsSource(
-    driverPool
+  let used = eagerConnect;
+  registerDatabaseMetricsSource({
+    ...(driverPool
       ? {
           clientType,
           usesDriverAdapter: true,
@@ -845,8 +852,9 @@ export function buildWriterClient({
           pool: driverPool.pool,
           poolCounters: driverPool.poolCounters,
         }
-      : { clientType, usesDriverAdapter: false, client }
-  );
+      : { clientType, usesDriverAdapter: false, client }),
+    isActive: () => used,
+  });
 
   // Only use structured logging if we're not already logging to stdout
   if (process.env.PRISMA_LOG_TO_STDOUT !== "1") {
@@ -889,6 +897,18 @@ export function buildWriterClient({
   client.$on("query", (log) => {
     queryPerformanceMonitor.onQuery("writer", log);
   });
+
+  if (!eagerConnect) {
+    return client.$extends({
+      name: "first-query-marker",
+      query: {
+        $allOperations: ({ query, args }) => {
+          used = true;
+          return query(args);
+        },
+      },
+    }) as unknown as PrismaClient;
+  }
 
   // Connect eagerly; Prisma will connect on use anyway.
   // Swallow the error when testing (DB likely unavailable)
@@ -933,6 +953,7 @@ export function buildReplicaClient({
   poolTimeout,
   connectTimeout,
   useDriverAdapter = false,
+  eagerConnect = true,
 }: {
   url: string;
   clientType: string;
@@ -940,6 +961,8 @@ export function buildReplicaClient({
   poolTimeout?: number;
   connectTimeout?: number;
   useDriverAdapter?: boolean;
+  /** Open a connection at build time. Off for clients most processes never query. */
+  eagerConnect?: boolean;
 }): PrismaClient {
   const replicaUrl = buildPrismaConnectionUrl(url, {
     connectionLimit: connectionLimit.toString(),
@@ -1025,8 +1048,9 @@ export function buildReplicaClient({
         log: logConfig,
       });
 
-  registerDatabaseMetricsSource(
-    driverPool
+  let used = eagerConnect;
+  registerDatabaseMetricsSource({
+    ...(driverPool
       ? {
           clientType,
           usesDriverAdapter: true,
@@ -1034,8 +1058,9 @@ export function buildReplicaClient({
           pool: driverPool.pool,
           poolCounters: driverPool.poolCounters,
         }
-      : { clientType, usesDriverAdapter: false, client: replicaClient }
-  );
+      : { clientType, usesDriverAdapter: false, client: replicaClient }),
+    isActive: () => used,
+  });
 
   // Only use structured logging if we're not already logging to stdout
   if (process.env.PRISMA_LOG_TO_STDOUT !== "1") {
@@ -1077,6 +1102,18 @@ export function buildReplicaClient({
   replicaClient.$on("query", (log) => {
     queryPerformanceMonitor.onQuery("replica", log);
   });
+
+  if (!eagerConnect) {
+    return replicaClient.$extends({
+      name: "first-query-marker",
+      query: {
+        $allOperations: ({ query, args }) => {
+          used = true;
+          return query(args);
+        },
+      },
+    }) as unknown as PrismaClient;
+  }
 
   // Connect eagerly; Prisma will connect on use anyway.
   // Swallow the error when testing (DB likely unavailable)

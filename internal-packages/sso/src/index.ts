@@ -10,6 +10,7 @@ import type {
   SsoFlow,
   SsoMutationError,
   SsoPlugin,
+  SsoPluginConfig,
   SsoPortalError,
   SsoProfile,
   SsoResolutionDecision,
@@ -38,6 +39,8 @@ export type SsoCreateOptions = {
   // follows the host's writer/replica topology. The fallback ignores this —
   // it queries through the Prisma clients passed as `SsoPrismaInput`.
   database?: PluginDatabaseConfig;
+  // Forwarded to the plugin so the errors it logs reach the host's error tracker.
+  reportError?: SsoPluginConfig["reportError"];
 };
 
 // Loads the cloud plugin lazily; falls back to the OSS no-op
@@ -62,7 +65,7 @@ export class LazyController implements SsoController {
       const module = await importer(moduleName);
       const plugin: SsoPlugin = module.default;
       console.log("SSO: using plugin implementation");
-      return plugin.create({ database: options?.database });
+      return plugin.create({ database: options?.database, reportError: options?.reportError });
     } catch (err) {
       // Distinguish the two failure modes the dynamic import can hit:
       //

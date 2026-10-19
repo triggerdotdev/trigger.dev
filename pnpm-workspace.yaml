@@ -10,6 +10,8 @@ catalog:
 
 minimumReleaseAge: 4320
 minimumReleaseAgeExclude:
+  - trigger.dev
+  - "@trigger.dev/*"
   - "@trigger.dev/platform"
   - "next"
   - "@next/*"

@@ -42,7 +42,7 @@ import {
   concurrencyPath,
   v3WaitpointTokensPath,
 } from "~/utils/pathBuilder";
-import { AlphaBadge, NewBadge } from "../FeatureBadges";
+import { AlphaBadge } from "../FeatureBadges";
 import { type RenderIcon } from "../primitives/Icon";
 import { type SideMenuSectionId } from "./sideMenuTypes";
 
@@ -107,7 +107,6 @@ export function buildSideMenuSections({
           activeIconColor: "text-aiPrompts",
           to: v3PromptsPath(organization, project, environment),
           dataAction: "prompts",
-          badge: <NewBadge />,
         },
         {
           id: "models",
@@ -116,7 +115,6 @@ export function buildSideMenuSections({
           activeIconColor: "text-models",
           to: v3ModelsPath(organization, project, environment),
           dataAction: "models",
-          badge: <NewBadge />,
         },
       ],
     });

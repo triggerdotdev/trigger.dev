@@ -1,5 +1,5 @@
 import { type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
-import { useFetcher, useNavigation, useLocation, useNavigate, Form } from "@remix-run/react";
+import { useNavigation, useLocation, useNavigate, Form } from "@remix-run/react";
 import { XMarkIcon } from "@heroicons/react/20/solid";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import {
@@ -8,6 +8,7 @@ import {
   type UseDataFunctionReturn,
   useTypedLoaderData,
 } from "remix-typedjson";
+import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { requireUser } from "~/services/session.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
@@ -49,6 +50,39 @@ import { MIN_LOGS_SEARCH_LENGTH, normalizeLogsSearchTerm } from "~/utils/logSear
 
 // Valid log levels for filtering
 const validLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"];
+const AUTOMATIC_SEARCH_BUDGET_MS = 20_000;
+
+type LogsResourceData = {
+  logs: LogEntry[];
+  pagination: { next?: string };
+  pageSize: number;
+  searchProgress: {
+    searchedTo?: string;
+    complete: boolean;
+    timedOut: boolean;
+    stopped: boolean;
+    expired: boolean;
+    queryElapsedMs: number;
+  };
+  searchExpansion?: { nextPeriod: string };
+};
+
+function logIdentity(log: LogEntry): string {
+  return log.projectionFingerprint ?? log.id;
+}
+
+function logsFilterState(pathname: string, search: string): string {
+  const params = new URLSearchParams(search);
+  params.delete("cursor");
+  params.delete("log");
+  return `${pathname}?${params.toString()}`;
+}
+
+function formatSearchedTo(value: string): string {
+  return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(
+    new Date(value)
+  );
+}
 
 function formatSearchPeriod(period: string): string {
   const days = Number(period.replace("d", ""));
@@ -96,6 +130,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   // Get filters from query params
   const url = new URL(request.url);
+  const requestFilterState = logsFilterState(url.pathname, url.search);
   const tasks = url.searchParams.getAll("tasks").filter((t) => t.length > 0);
   const runId = url.searchParams.get("runId") ?? undefined;
   const search = url.searchParams.get("search") ?? undefined;
@@ -117,19 +152,24 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const presenter = new LogsListPresenter($replica, logsClickhouse);
 
   const listPromise = presenter
-    .call(project.organizationId, environment.id, {
-      userId,
-      projectId: project.id,
-      tasks: tasks.length > 0 ? tasks : undefined,
-      runId,
-      search,
-      levels,
-      period,
-      from,
-      to,
-      defaultPeriod: "1d",
-      retentionLimitDays,
-    })
+    .call(
+      project.organizationId,
+      environment.id,
+      {
+        userId,
+        projectId: project.id,
+        tasks: tasks.length > 0 ? tasks : undefined,
+        runId,
+        search,
+        levels,
+        period,
+        from,
+        to,
+        defaultPeriod: "1d",
+        retentionLimitDays,
+      },
+      getRequestAbortSignal()
+    )
     .catch((error) => {
       if (error instanceof ServiceValidationError) {
         return { error: error.message };
@@ -141,11 +181,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     data: listPromise,
     defaultPeriod: "1d",
     retentionLimitDays,
+    requestFilterState,
   });
 };
 
 export default function Page() {
-  const { data, defaultPeriod, retentionLimitDays } = useTypedLoaderData<typeof loader>();
+  const { data, defaultPeriod, retentionLimitDays, requestFilterState } =
+    useTypedLoaderData<typeof loader>();
 
   return (
     <PageContainer>
@@ -204,7 +246,12 @@ export default function Page() {
                     defaultPeriod={defaultPeriod}
                     retentionLimitDays={retentionLimitDays}
                   />
-                  <LogsList list={result} defaultPeriod={defaultPeriod} />
+                  <LogsList
+                    key={requestFilterState}
+                    list={result}
+                    requestFilterState={requestFilterState}
+                    defaultPeriod={defaultPeriod}
+                  />
                 </div>
               );
             }}
@@ -290,50 +337,98 @@ function FiltersBar({
 
 function LogsList({
   list,
+  requestFilterState,
 }: {
   list: Exclude<Awaited<UseDataFunctionReturn<typeof loader>["data"]>, { error: string }>; //exclude error, it is handled
+  requestFilterState: string;
   defaultPeriod?: string;
 }) {
   const navigation = useNavigation();
   const navigate = useNavigate();
   const location = useLocation();
-  const fetcher = useFetcher<{ logs: LogEntry[]; pagination: { next?: string } }>();
   const [, startTransition] = useTransition();
   const isLoading = navigation.state !== "idle";
+  const filterState = useMemo(
+    () => logsFilterState(location.pathname, location.search),
+    [location.pathname, location.search]
+  );
 
-  // Accumulated logs state
+  const [stateSourceList, setStateSourceList] = useState(list);
   const [accumulatedLogs, setAccumulatedLogs] = useState<LogEntry[]>(list.logs);
   const [nextCursor, setNextCursor] = useState<string | undefined>(list.pagination.next);
-
-  // Selected log state - managed locally to avoid triggering navigation
+  const [searchProgress, setSearchProgress] = useState(list.searchProgress);
+  const [searchExpansion, setSearchExpansion] = useState(list.searchExpansion);
+  const [targetRowCount, setTargetRowCount] = useState(list.pageSize);
+  const [automaticBudgetUsed, setAutomaticBudgetUsed] = useState(
+    list.searchProgress.queryElapsedMs
+  );
+  const [initialBudgetStartedAt] = useState(() => Date.now() - list.searchProgress.queryElapsedMs);
+  const [automaticSearchPaused, setAutomaticSearchPaused] = useState(false);
+  const [continuationError, setContinuationError] = useState<string>();
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [selectedLogId, setSelectedLogId] = useState<string | undefined>(() => {
     const params = new URLSearchParams(location.search);
     return params.get("log") ?? undefined;
   });
+  const abortControllerRef = useRef<AbortController | undefined>(undefined);
+  const inFlightRef = useRef(false);
+  const nextCursorRef = useRef(nextCursor);
+  const activeFilterStateRef = useRef(filterState);
+  const activeListRef = useRef<typeof list | undefined>(list);
+  const automaticBudgetRef = useRef({ startedAt: initialBudgetStartedAt });
 
-  // Track which filter state (search params) the current fetcher request corresponds to
-  const fetcherFilterStateRef = useRef<string>(location.search);
-  // Track whether the current fetch is a "check for new" request vs "load more"
-  const isCheckingForNewRef = useRef<boolean>(false);
-
-  // Clear accumulated logs immediately when filters change (for instant visual feedback)
   useEffect(() => {
-    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
-    setAccumulatedLogs([]);
-    setNextCursor(undefined);
-    // Preserve log selection from URL param, clear if not present
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = undefined;
+    inFlightRef.current = false;
+    activeListRef.current = undefined;
+
+    if (filterState !== requestFilterState) {
+      // oxlint-disable-next-line react/set-state-in-effect -- An origin mismatch cancels the prior loader snapshot immediately.
+      setIsLoadingMore(false);
+      return;
+    }
+
+    activeFilterStateRef.current = requestFilterState;
+    activeListRef.current = list;
+    // oxlint-disable-next-line react/set-state-in-effect -- Route data replaces the prior filter's accumulated search state.
+    setStateSourceList(list);
+    setAccumulatedLogs(list.logs);
+    nextCursorRef.current = list.pagination.next;
+    setNextCursor(list.pagination.next);
+    setSearchProgress(list.searchProgress);
+    setSearchExpansion(list.searchExpansion);
+    setTargetRowCount(list.pageSize);
+    automaticBudgetRef.current.startedAt = Date.now() - list.searchProgress.queryElapsedMs;
+    setAutomaticBudgetUsed(list.searchProgress.queryElapsedMs);
+    setAutomaticSearchPaused(false);
+    setContinuationError(undefined);
+    setIsLoadingMore(false);
     const params = new URLSearchParams(location.search);
     setSelectedLogId(params.get("log") ?? undefined);
-  }, [location.search]);
 
-  // Populate accumulated logs when new data arrives
+    return () => {
+      abortControllerRef.current?.abort();
+      if (activeListRef.current === list) activeListRef.current = undefined;
+    };
+  }, [filterState, list, location.search, requestFilterState]);
+
   useEffect(() => {
-    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
-    setAccumulatedLogs(list.logs);
-    setNextCursor(list.pagination.next);
-  }, [list.logs, list.pagination.next]);
+    if (!isLoading) {
+      if (filterState === requestFilterState && stateSourceList === list) {
+        activeListRef.current = list;
+      }
+      return;
+    }
 
-  // Clear log parameter from URL when selectedLogId is cleared
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = undefined;
+    inFlightRef.current = false;
+    activeListRef.current = undefined;
+    // oxlint-disable-next-line react/set-state-in-effect -- Pending navigation cancels the old filter's request immediately.
+    setIsLoadingMore(false);
+  }, [filterState, isLoading, list, requestFilterState, stateSourceList]);
+
   useEffect(() => {
     if (!selectedLogId) {
       const url = new URL(window.location.href);
@@ -344,51 +439,203 @@ function LogsList({
     }
   }, [selectedLogId]);
 
-  // Append/prepend new logs when fetcher completes (with deduplication)
-  useEffect(() => {
-    if (fetcher.data && fetcher.state === "idle") {
-      // Ignore fetcher data if it was loaded for a different filter state
-      if (fetcherFilterStateRef.current !== location.search) {
+  const loadMore = useCallback(
+    async (requestedRows: number) => {
+      if (
+        !nextCursor ||
+        nextCursor !== nextCursorRef.current ||
+        inFlightRef.current ||
+        isLoading ||
+        filterState !== requestFilterState ||
+        stateSourceList !== list ||
+        activeListRef.current !== list
+      ) {
         return;
       }
 
-      if (isCheckingForNewRef.current) {
-        // "Check for new" - prepend new logs, don't update cursor
-        setAccumulatedLogs((prev) => {
-          const existingIds = new Set(prev.map((log) => log.id));
-          const newLogs = fetcher.data!.logs.filter((log) => !existingIds.has(log.id));
-          return newLogs.length > 0 ? [...newLogs, ...prev] : prev;
+      inFlightRef.current = true;
+      setContinuationError(undefined);
+      setIsLoadingMore(true);
+      const responseFilterState = filterState;
+      const controller = new AbortController();
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = controller;
+
+      const resourcePath = `/resources${location.pathname}`;
+      const params = new URLSearchParams(location.search);
+      params.set("cursor", nextCursor);
+      params.set("pageSize", String(Math.max(1, requestedRows)));
+      params.delete("log");
+
+      try {
+        const response = await fetch(`${resourcePath}?${params.toString()}`, {
+          signal: controller.signal,
         });
-        isCheckingForNewRef.current = false;
-      } else {
-        // "Load more" - append logs and update cursor
-        setAccumulatedLogs((prev) => {
-          const existingIds = new Set(prev.map((log) => log.id));
-          const newLogs = fetcher.data!.logs.filter((log) => !existingIds.has(log.id));
-          return newLogs.length > 0 ? [...prev, ...newLogs] : prev;
+        if (!response.ok) {
+          throw new Error(
+            response.status === 422
+              ? await response.text()
+              : "Unable to continue log search. Please try again."
+          );
+        }
+
+        const data = (await response.json()) as LogsResourceData;
+        if (
+          controller.signal.aborted ||
+          activeFilterStateRef.current !== responseFilterState ||
+          activeListRef.current !== list
+        ) {
+          return;
+        }
+
+        setAccumulatedLogs((current) => {
+          const identities = new Set(current.map(logIdentity));
+          const newLogs = data.logs.filter((log) => !identities.has(logIdentity(log)));
+          return newLogs.length === 0 ? current : [...current, ...newLogs];
         });
-        setNextCursor(fetcher.data.pagination.next);
+        nextCursorRef.current = data.pagination.next;
+        setNextCursor(data.pagination.next);
+        setSearchProgress((current) => ({
+          ...data.searchProgress,
+          searchedTo: data.searchProgress.searchedTo ?? current.searchedTo,
+        }));
+        setSearchExpansion(data.searchExpansion);
+      } catch (error) {
+        if (
+          !controller.signal.aborted &&
+          activeFilterStateRef.current === responseFilterState &&
+          activeListRef.current === list
+        ) {
+          setContinuationError(
+            error instanceof Error
+              ? error.message
+              : "Unable to continue log search. Please try again."
+          );
+          setAutomaticSearchPaused(true);
+        }
+      } finally {
+        if (abortControllerRef.current === controller) {
+          abortControllerRef.current = undefined;
+          inFlightRef.current = false;
+          setAutomaticBudgetUsed(Date.now() - automaticBudgetRef.current.startedAt);
+          setIsLoadingMore(false);
+        }
       }
-    }
-  }, [fetcher.data, fetcher.state, location.search]);
+    },
+    [
+      filterState,
+      isLoading,
+      list,
+      location.pathname,
+      location.search,
+      nextCursor,
+      requestFilterState,
+      stateSourceList,
+    ]
+  );
 
-  // Build resource URL for loading more
-  const loadMoreUrl = useMemo(() => {
-    if (!nextCursor) return null;
-    const resourcePath = `/resources${location.pathname}`;
-    const params = new URLSearchParams(location.search);
-    params.set("cursor", nextCursor);
-    params.delete("log");
-    return `${resourcePath}?${params.toString()}`;
-  }, [location.pathname, location.search, nextCursor]);
-
-  const handleLoadMore = useCallback(() => {
-    if (loadMoreUrl && fetcher.state === "idle") {
-      // Store the current filter state before loading
-      fetcherFilterStateRef.current = location.search;
-      fetcher.load(loadMoreUrl);
+  useEffect(() => {
+    if (
+      !nextCursor ||
+      filterState !== requestFilterState ||
+      stateSourceList !== list ||
+      activeListRef.current !== list ||
+      accumulatedLogs.length >= targetRowCount ||
+      automaticSearchPaused ||
+      isLoading ||
+      isLoadingMore
+    ) {
+      return;
     }
-  }, [loadMoreUrl, fetcher, location.search]);
+
+    const elapsed = Date.now() - automaticBudgetRef.current.startedAt;
+    if (elapsed >= AUTOMATIC_SEARCH_BUDGET_MS) {
+      // oxlint-disable-next-line react/set-state-in-effect -- Exhausting the current page budget pauses automatic requests.
+      setAutomaticBudgetUsed(elapsed);
+      setAutomaticSearchPaused(true);
+      return;
+    }
+
+    // oxlint-disable-next-line react/set-state-in-effect -- The automatic loop intentionally starts the next bounded request.
+    void loadMore(targetRowCount - accumulatedLogs.length);
+  }, [
+    accumulatedLogs.length,
+    automaticBudgetUsed,
+    automaticSearchPaused,
+    filterState,
+    isLoading,
+    isLoadingMore,
+    list,
+    loadMore,
+    nextCursor,
+    requestFilterState,
+    stateSourceList,
+    targetRowCount,
+  ]);
+
+  const handleAutomaticLoadMore = useCallback(() => {
+    if (
+      inFlightRef.current ||
+      automaticSearchPaused ||
+      isLoading ||
+      !nextCursor ||
+      nextCursor !== nextCursorRef.current ||
+      filterState !== requestFilterState ||
+      stateSourceList !== list ||
+      activeListRef.current !== list
+    ) {
+      return;
+    }
+
+    const elapsed = Date.now() - automaticBudgetRef.current.startedAt;
+    if (accumulatedLogs.length < targetRowCount) {
+      if (elapsed >= AUTOMATIC_SEARCH_BUDGET_MS) {
+        setAutomaticBudgetUsed(elapsed);
+        setAutomaticSearchPaused(true);
+        return;
+      }
+      void loadMore(targetRowCount - accumulatedLogs.length);
+      return;
+    }
+
+    const nextTarget = targetRowCount + list.pageSize;
+    automaticBudgetRef.current.startedAt = Date.now();
+    setAutomaticBudgetUsed(0);
+    setTargetRowCount(nextTarget);
+    void loadMore(list.pageSize);
+  }, [
+    accumulatedLogs.length,
+    automaticSearchPaused,
+    filterState,
+    isLoading,
+    list,
+    loadMore,
+    nextCursor,
+    requestFilterState,
+    stateSourceList,
+    targetRowCount,
+  ]);
+
+  const handleKeepSearching = () => {
+    if (
+      isLoading ||
+      !nextCursor ||
+      nextCursor !== nextCursorRef.current ||
+      filterState !== requestFilterState ||
+      stateSourceList !== list ||
+      activeListRef.current !== list
+    ) {
+      return;
+    }
+
+    const nextTarget =
+      accumulatedLogs.length >= targetRowCount ? targetRowCount + list.pageSize : targetRowCount;
+    automaticBudgetRef.current.startedAt = Date.now();
+    setAutomaticBudgetUsed(0);
+    setAutomaticSearchPaused(false);
+    setTargetRowCount(nextTarget);
+    void loadMore(Math.max(1, nextTarget - accumulatedLogs.length));
+  };
 
   const selectedLog = useMemo(() => {
     if (!selectedLogId) return undefined;
@@ -427,52 +674,64 @@ function LogsList({
     updateUrlWithLog(undefined);
   }, [updateUrlWithLog, startTransition]);
 
-  const handleCheckForMore = useCallback(() => {
-    if (fetcher.state !== "idle") return;
-    // Fetch without cursor to check for new logs
-    const resourcePath = `/resources${location.pathname}`;
-    const params = new URLSearchParams(location.search);
-    params.delete("cursor");
-    params.delete("log");
-    fetcherFilterStateRef.current = location.search;
-    isCheckingForNewRef.current = true;
-    fetcher.load(`${resourcePath}?${params.toString()}`);
-  }, [fetcher, location.pathname, location.search]);
-
-  const expandSearch = useCallback(() => {
+  const expandSearch = () => {
     const url = new URL(window.location.href);
-    url.searchParams.set("period", list.searchExpansion?.nextPeriod ?? "7d");
+    url.searchParams.set("period", searchExpansion?.nextPeriod ?? "7d");
     url.searchParams.delete("cursor");
     url.searchParams.delete("log");
     navigate(`${url.pathname}?${url.searchParams.toString()}`);
-  }, [list.searchExpansion?.nextPeriod, navigate]);
+  };
+
+  const visibleSearchExpansion = accumulatedLogs.length === 0 ? searchExpansion : undefined;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {list.searchExpansion && (
+      {visibleSearchExpansion && (
         <Callout
           variant="info"
           className="m-2 mb-0"
           cta={
             <Button variant="tertiary/small" onClick={expandSearch}>
-              Search last {formatSearchPeriod(list.searchExpansion.nextPeriod)}
+              Search last {formatSearchPeriod(visibleSearchExpansion.nextPeriod)}
             </Button>
           }
         >
           No matches in the last day.
         </Callout>
       )}
+      {continuationError && (
+        <Callout variant="warning" className="m-2 mb-0">
+          {continuationError}
+        </Callout>
+      )}
+      {searchProgress.stopped && (
+        <Callout variant="warning" className="m-2 mb-0">
+          Search stopped because this time range repeatedly timed out. Earlier results are still
+          shown. Try a shorter time range or more specific filters.
+        </Callout>
+      )}
+      {searchProgress.expired && (
+        <Callout variant="warning" className="m-2 mb-0">
+          Search stopped because the remaining time range is no longer retained. Earlier results are
+          still shown.
+        </Callout>
+      )}
       <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
         <ResizablePanel id="logs-main" min="200px">
           <LogsTable
-            key={location.search}
+            key={requestFilterState}
             logs={accumulatedLogs}
             searchTerm={list.searchTerm}
-            isLoading={isLoading}
-            isLoadingMore={fetcher.state === "loading"}
+            isLoading={isLoading || (isLoadingMore && accumulatedLogs.length === 0)}
+            isLoadingMore={isLoadingMore}
             hasMore={!!nextCursor}
-            onLoadMore={handleLoadMore}
-            onCheckForMore={handleCheckForMore}
+            isIncomplete={searchProgress.stopped || searchProgress.expired}
+            onLoadMore={handleAutomaticLoadMore}
+            showKeepSearching={automaticSearchPaused}
+            onKeepSearching={handleKeepSearching}
+            searchedTo={
+              searchProgress.searchedTo ? formatSearchedTo(searchProgress.searchedTo) : undefined
+            }
             selectedLogId={selectedLogId}
             onLogSelect={handleLogSelect}
           />

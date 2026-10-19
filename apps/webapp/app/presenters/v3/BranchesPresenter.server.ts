@@ -1,8 +1,5 @@
 import { classifyPreviewBranch } from "~/utils/previewAutoArchive";
-import {
-  previewBranchActivity,
-  isPreviewAutoArchiveEnabled,
-} from "~/services/previewAutoArchive.server";
+import { previewBranchActivity } from "~/services/previewAutoArchive.server";
 import { GitMeta } from "@trigger.dev/core/v3";
 import { DEFAULT_DEV_BRANCH } from "@trigger.dev/core/v3/utils/gitBranch";
 import { type RuntimeEnvironmentType } from "@trigger.dev/database";
@@ -113,7 +110,6 @@ export class BranchesPresenter {
       select: {
         id: true,
         organizationId: true,
-        ...(envType === "PREVIEW" ? { organization: { select: { featureFlags: true } } } : {}),
       },
       where: {
         slug: projectSlug,
@@ -131,12 +127,7 @@ export class BranchesPresenter {
       throw new Error("Project not found");
     }
 
-    const autoArchiveAvailable =
-      envType === "PREVIEW" &&
-      (await isPreviewAutoArchiveEnabled(
-        this.#prismaClient,
-        project.organization?.featureFlags ?? null
-      ));
+    const autoArchiveAvailable = envType === "PREVIEW";
 
     const branchableEnvironment = await this.#prismaClient.runtimeEnvironment.findFirst({
       select: {

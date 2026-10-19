@@ -8,7 +8,12 @@ import {
   listOrgsTool,
   listProjectsTool,
 } from "./tools/orgs.js";
-import { listDashboardsTool, runDashboardQueryTool } from "./tools/dashboards.js";
+import {
+  createDashboardTool,
+  listDashboardsTool,
+  runDashboardQueryTool,
+  setDashboardWidgetsTool,
+} from "./tools/dashboards.js";
 import { startDevServerTool, stopDevServerTool, devServerStatusTool } from "./tools/devServer.js";
 import { listPreviewBranchesTool } from "./tools/previewBranches.js";
 import { listProfilesTool, switchProfileTool, whoamiTool } from "./tools/profiles.js";
@@ -19,6 +24,7 @@ import {
   getRunDetailsTool,
   getSpanDetailsTool,
   listRunsTool,
+  replayRunTool,
   waitForRunToCompleteTool,
 } from "./tools/runs.js";
 import { getCurrentWorker, getTaskSchemaTool, triggerTaskTool } from "./tools/tasks.js";
@@ -51,6 +57,7 @@ const WRITE_TOOLS = new Set([
   deployTool.name,
   triggerTaskTool.name,
   cancelRunTool.name,
+  replayRunTool.name,
   createProjectInOrgTool.name,
   initializeProjectTool.name,
   promotePromptVersionTool.name,
@@ -66,6 +73,8 @@ const WRITE_TOOLS = new Set([
   setWebhookSecretTool.name,
   replayWebhookDeliveryTool.name,
   submitFeedbackTool.name,
+  createDashboardTool.name,
+  setDashboardWidgetsTool.name,
 ]);
 
 export function registerTools(context: McpContext) {
@@ -84,6 +93,7 @@ export function registerTools(context: McpContext) {
     getSpanDetailsTool,
     waitForRunToCompleteTool,
     cancelRunTool,
+    replayRunTool,
     deployTool,
     listDeploysTool,
     listPreviewBranchesTool,
@@ -91,6 +101,8 @@ export function registerTools(context: McpContext) {
     queryTool,
     listDashboardsTool,
     runDashboardQueryTool,
+    createDashboardTool,
+    setDashboardWidgetsTool,
     whoamiTool,
     listProfilesTool,
     switchProfileTool,

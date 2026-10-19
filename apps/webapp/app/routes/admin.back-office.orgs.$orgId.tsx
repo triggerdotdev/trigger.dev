@@ -26,8 +26,8 @@ import {
   MaxProjectsSection,
 } from "~/components/admin/backOffice/MaxProjectsSection";
 import { handleMaxProjectsAction } from "~/components/admin/backOffice/MaxProjectsSection.server";
+import { WEBHOOK_LIMITS_INTENT } from "~/components/admin/backOffice/WebhookLimitsForm";
 import {
-  WEBHOOK_LIMITS_INTENT,
   WEBHOOK_LIMITS_SAVED_VALUE,
   WebhookLimitsSection,
 } from "~/components/admin/backOffice/WebhookLimitsSection";

@@ -1,4 +1,4 @@
-import { useFetcher } from "@remix-run/react";
+import { type ShouldRevalidateFunction, useFetcher } from "@remix-run/react";
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { useEffect, useRef, useState } from "react";
@@ -50,6 +50,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   return json(result);
 };
+
+// Generating a cron changes no data; revalidating remounts the side sheet form and drops it.
+export const skipRevalidationAfterCronGeneration: ShouldRevalidateFunction = ({
+  formAction,
+  defaultShouldRevalidate,
+}) => (formAction?.endsWith("/schedules/new/natural-language") ? false : defaultShouldRevalidate);
 
 type AIGeneratedCronFieldProps = {
   onSuccess: (cron: string) => void;

@@ -18,6 +18,7 @@ import { loadConfig, watchConfig } from "../config.js";
 import type { DevSessionInstance } from "../dev/devSession.js";
 import { startDevSession } from "../dev/devSession.js";
 import { createLockFile } from "../dev/lock.js";
+import { isAgent } from "../utilities/agent.js";
 import { chalkError } from "../utilities/cliOutput.js";
 import {
   readConfigHasSeenMCPInstallPrompt,
@@ -157,8 +158,9 @@ export function configureDevCommand(program: Command) {
 async function devCommand(options: DevCommandOptions) {
   runtimeChecks();
 
-  // Only show these install prompts if the user is in a terminal (not in a Coding Agent)
-  if (process.stdout.isTTY) {
+  // Only show these install prompts to a person. Some coding agents (e.g. Cursor) run commands
+  // in a real terminal, so a TTY alone doesn't mean someone is there to answer them.
+  if (process.stdout.isTTY && !isAgent) {
     const skipMCPInstall = typeof options.skipMCPInstall === "boolean" && options.skipMCPInstall;
 
     if (!skipMCPInstall) {

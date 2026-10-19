@@ -243,11 +243,15 @@ This webhook is sent when a run fails. The payload is available on the `object` 
 </ParamField>
 
 <ParamField path="object.environment.type" type="string">
-  Environment type (STAGING or PRODUCTION)
+  Environment type (`PRODUCTION`, `STAGING`, or `PREVIEW`)
 </ParamField>
 
 <ParamField path="object.environment.slug" type="string">
   Environment slug
+</ParamField>
+
+<ParamField path="object.environment.branchName" type="string">
+  Environment branch name (optional)
 </ParamField>
 
 <ParamField path="object.organization.id" type="string">
@@ -311,7 +315,7 @@ This webhook is sent when a deployment succeeds. The payload is available on the
 </ParamField>
 
 <ParamField path="object.environment.type" type="string">
-  Environment type (STAGING or PRODUCTION)
+  Environment type (`PRODUCTION`, `STAGING`, or `PREVIEW`)
 </ParamField>
 
 <ParamField path="object.environment.slug" type="string">
@@ -344,6 +348,54 @@ This webhook is sent when a deployment succeeds. The payload is available on the
 
 <ParamField path="object.project.name" type="string">
   Project name
+</ParamField>
+
+<ParamField path="object.git" type="object">
+  Git metadata for the deployment (optional). When present, `branch`, `commitSha`, `commitMessage`, `commitUrl` and `branchUrl` are always set.
+</ParamField>
+
+<ParamField path="object.git.branch" type="string">
+  Git branch
+</ParamField>
+
+<ParamField path="object.git.commitSha" type="string">
+  Short commit SHA (first 7 characters)
+</ParamField>
+
+<ParamField path="object.git.commitMessage" type="string">
+  Commit message (empty string if unavailable)
+</ParamField>
+
+<ParamField path="object.git.commitUrl" type="string">
+  URL of the commit
+</ParamField>
+
+<ParamField path="object.git.branchUrl" type="string">
+  URL of the branch
+</ParamField>
+
+<ParamField path="object.git.pullRequestNumber" type="number">
+  Pull request number (optional)
+</ParamField>
+
+<ParamField path="object.git.pullRequestTitle" type="string">
+  Pull request title (optional)
+</ParamField>
+
+<ParamField path="object.git.pullRequestUrl" type="string">
+  Pull request URL (optional)
+</ParamField>
+
+<ParamField path="object.git.provider" type="string">
+  Git provider (optional)
+</ParamField>
+
+<ParamField path="object.vercel" type="object">
+  Vercel metadata for the deployment (optional)
+</ParamField>
+
+<ParamField path="object.vercel.deploymentUrl" type="string">
+  URL of the deployment in the Vercel dashboard
 </ParamField>
 
 ### Deployment Failed Alert
@@ -391,7 +443,7 @@ This webhook is sent when a deployment fails. The payload is available on the `o
 </ParamField>
 
 <ParamField path="object.environment.type" type="string">
-  Environment type (STAGING or PRODUCTION)
+  Environment type (`PRODUCTION`, `STAGING`, or `PREVIEW`)
 </ParamField>
 
 <ParamField path="object.environment.slug" type="string">
@@ -426,6 +478,53 @@ This webhook is sent when a deployment fails. The payload is available on the `o
   Project name
 </ParamField>
 
+<ParamField path="object.git" type="object">
+  Git metadata for the deployment (optional). When present, `branch`, `commitSha`, `commitMessage`, `commitUrl` and `branchUrl` are always set.
+</ParamField>
+
+<ParamField path="object.git.branch" type="string">
+  Git branch
+</ParamField>
+
+<ParamField path="object.git.commitSha" type="string">
+  Short commit SHA (first 7 characters)
+</ParamField>
+
+<ParamField path="object.git.commitMessage" type="string">
+  Commit message (empty string if unavailable)
+</ParamField>
+
+<ParamField path="object.git.commitUrl" type="string">
+  URL of the commit
+</ParamField>
+
+<ParamField path="object.git.branchUrl" type="string">
+  URL of the branch
+</ParamField>
+
+<ParamField path="object.git.pullRequestNumber" type="number">
+  Pull request number (optional)
+</ParamField>
+
+<ParamField path="object.git.pullRequestTitle" type="string">
+  Pull request title (optional)
+</ParamField>
+
+<ParamField path="object.git.pullRequestUrl" type="string">
+  Pull request URL (optional)
+</ParamField>
+
+<ParamField path="object.git.provider" type="string">
+  Git provider (optional)
+</ParamField>
+
+<ParamField path="object.vercel" type="object">
+  Vercel metadata for the deployment (optional)
+</ParamField>
+
+<ParamField path="object.vercel.deploymentUrl" type="string">
+  URL of the deployment in the Vercel dashboard
+</ParamField>
 
 ### Error Group Alert
 

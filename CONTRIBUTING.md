@@ -12,14 +12,18 @@ Thank you for helping us make Trigger.dev even better! 🤩
 
 We use [vouch](https://github.com/mitchellh/vouch) to manage contributor trust. **PRs from unvouched users are automatically closed.**
 
+> **Important:** Because Trigger.dev is production infrastructure, every external change needs a security review and verification by our team. Your vouch request is _extremely_ unlikely to be accepted unless you are already known to the Trigger.dev team in some way, either as a customer or self-hoster or some other reason we'd be familiar with your work.
+
+We really appreciate bug reports or feature requests. A good reproduction always gets fixed faster than a PR would get merged. You can even suggest the architecture of the fix in the bug report under "Suggested fix".
+
 Before you open your first pull request, you need to be vouched by a maintainer. Here's how:
 
-1. Open a [Vouch Request](https://github.com/triggerdotdev/trigger.dev/issues/new?template=vouch-request.yml) issue.
-2. Tell us what you'd like to work on and share any relevant background.
-3. A maintainer will review your request and vouch for you by commenting on the issue.
-4. Once vouched, your PRs will be accepted normally.
+1. Leave a comment in [Vouch please: how to become a contributor](https://github.com/triggerdotdev/trigger.dev/discussions/5010). Please don't open a separate issue or discussion to request a vouch.
+2. Tell us what you'd like to work on, with a link to the issue if there is one. Include a little about your background, with links to relevant projects or previous contributions if available.
+3. A maintainer will review your request and let you know once you've been added to the vouched contributors list.
+4. Once approved, follow the guidelines below and open your PR as a draft first.
 
-If you're unsure whether you're already vouched, go ahead and open a PR — the check will tell you.
+Being vouched lets you submit PRs; it does not guarantee that a particular change will be accepted.
 
 ## Developing
 
@@ -153,7 +157,7 @@ build — see the references repo's README for the `pnpm run link` flow.
 
 ### First-time setup
 
-First, make sure you are running the webapp according to the instructions above. The seed step from setup already created a `hello-world` project under the `References` org with the stable ref `proj_rrkpdguyagvsoktglnod` — log in at http://localhost:3030 with any email to access it. Then:
+First, make sure you are running the webapp according to the instructions above. The seed step from setup already created a `hello-world` project under the `References` org with the stable ref `proj_rrkpdguyagvsoktglnod`, owned by the seeded `local@trigger.dev` user — log in at http://localhost:3030 with that email to access it. The seed also creates `batch-limit-org-1` to `batch-limit-org-3`, and the dashboard may open one of those first; use the organization menu at the top of the side menu to switch to `References`. Then:
 
 1. Build the CLI and packages (skip if you already ran the build step in setup)
 
@@ -211,9 +215,9 @@ pnpm exec trigger dev --log-level debug
 
 5. If you make any changes in the CLI/Core/SDK, you'll need to `CTRL+C` to exit the `dev` command and restart it to pickup changes. Any changes to the files inside the reference project's `src/trigger` dir will automatically be rebuilt by the `dev` command.
 
-6. Navigate to the `hello-world` project in your local dashboard at localhost:3030 and you should see the list of tasks.
+6. Navigate to the `hello-world` project in your local dashboard at localhost:3030, in the Development environment, and you should see the list of tasks. The list is paginated, so use the search box to find a task.
 
-7. On the Tasks page, open a task and press the "Test" button to open its test page. Then enter a payload and click "Run test". You can tell what the payloads should be by looking at the relevant task file inside the reference project's `src/trigger` folder. Many of them accept an empty payload.
+7. On the Tasks page, hover over a task's row and press the "Test" button at the end of it (or pick "Test" from the row's menu) to open its test page. Then enter a payload and click "Run test". You can tell what the payloads should be by looking at the relevant task file inside the reference project's `src/trigger` folder. Many of them accept an empty payload.
 
 8. Feel free to add additional files in the reference project's `src/trigger` dir to test out specific aspects of the system, or add in edge cases.
 

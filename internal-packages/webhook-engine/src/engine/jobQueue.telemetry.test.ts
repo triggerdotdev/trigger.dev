@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { containerTestWithIsolatedRedisNoClickhouse } from "@internal/testcontainers";
+import { containerTestWithIsolatedRedis } from "@internal/testcontainers";
 import { context, propagation, ROOT_CONTEXT, type Context } from "@internal/tracing";
 import {
   AggregationTemporality,
@@ -69,7 +69,7 @@ afterAll(() => {
   propagation.disable();
 });
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "a job runs in the trace context it was enqueued under and records queue time and outcomes",
   async ({ redisOptions }) => {
     const metrics = inMemoryMetrics();
@@ -127,7 +127,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   60_000
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "an exhausted job is counted by what happened to it",
   async ({ redisOptions }) => {
     const metrics = inMemoryMetrics();
@@ -139,6 +139,7 @@ containerTestWithIsolatedRedisNoClickhouse(
       consumers: 1,
       tenantConcurrency: 1,
       consumerIntervalMs: 20,
+      retryBaseDelayMs: 20,
       exhaustedRecordDelayMs: 100,
       handlers: {
         deliver: async () => {

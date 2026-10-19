@@ -1,15 +1,22 @@
+import { EngineServiceValidationError } from "@internal/run-engine";
 import { json } from "@remix-run/server-runtime";
+import { ReplayRunRequestBody } from "@trigger.dev/core/v3";
 import type { TaskRun } from "@trigger.dev/database";
 import { z } from "zod";
+import { fromZodError } from "zod-validation-error";
 import { prisma } from "~/db.server";
+import { env } from "~/env.server";
 import { runStore } from "~/v3/runStore.server";
 import { logger } from "~/services/logger.server";
 import { anyResource, createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { ReplayTaskRunService } from "~/v3/services/replayTaskRun.server";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
 import { resolveRunForMutation } from "~/v3/mollifier/resolveRunForMutation.server";
 import { sanitizeTriggerSource } from "~/utils/triggerSource";
 import { clientSafeErrorMessage } from "~/utils/prismaErrors";
+import { readBoundedBodyText } from "~/utils/boundedRequestBody.server";
+import { safeJsonParse } from "~/utils/json";
 
 const ParamsSchema = z.object({
   /* This is the run friendly ID */
@@ -49,10 +56,54 @@ const BufferedReplayInputSchema = z.object({
   seedMetadataType: z.string().nullable().optional(),
 });
 
+async function parseReplayOverrides(
+  request: Request
+): Promise<
+  { ok: true; overrides: z.infer<typeof ReplayRunRequestBody> } | { ok: false; response: Response }
+> {
+  const body = await readBoundedBodyText(request, env.TASK_PAYLOAD_MAXIMUM_SIZE);
+
+  if (!body.ok) {
+    return {
+      ok: false,
+      response: json(
+        {
+          error: `Request body exceeds the maximum size of ${env.TASK_PAYLOAD_MAXIMUM_SIZE} bytes`,
+        },
+        { status: 413 }
+      ),
+    };
+  }
+
+  const rawBody = body.text;
+
+  if (rawBody.trim().length === 0) {
+    return { ok: true, overrides: {} };
+  }
+
+  const parsedJson = safeJsonParse(rawBody);
+
+  if (parsedJson === null || typeof parsedJson !== "object") {
+    return { ok: false, response: json({ error: "Invalid JSON" }, { status: 400 }) };
+  }
+
+  const parsed = ReplayRunRequestBody.safeParse(parsedJson);
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      response: json({ error: fromZodError(parsed.error).toString() }, { status: 400 }),
+    };
+  }
+
+  return { ok: true, overrides: parsed.data };
+}
+
 const { action } = createActionApiRoute(
   {
     params: ParamsSchema,
     method: "POST",
+    allowJWT: true,
     findResource: (params, authentication) =>
       resolveRunForMutation({
         runParam: params.runParam,
@@ -70,8 +121,16 @@ const { action } = createActionApiRoute(
           : { type: "runs", id: params.runParam },
     },
   },
-  async ({ request, params, authentication }) => {
+  async ({ request, params, authentication, ability }) => {
     const { runParam } = params;
+
+    const body = await parseReplayOverrides(request);
+
+    if (!body.ok) {
+      return body.response;
+    }
+
+    const { overrides } = body;
 
     try {
       const env = authentication.environment;
@@ -130,10 +189,42 @@ const { action } = createActionApiRoute(
         return json({ error: "Run not found" }, { status: 404 });
       }
 
+      if (!ability.can("trigger", { type: "tasks", id: taskRun.taskIdentifier })) {
+        return json(
+          {
+            error: `Replaying this run needs permission to trigger the ${taskRun.taskIdentifier} task`,
+          },
+          { status: 403 }
+        );
+      }
+
       const triggerSource = sanitizeTriggerSource(request.headers.get("x-trigger-source")) ?? "api";
 
       const service = new ReplayTaskRunService();
-      const newRun = await service.call(taskRun, { triggerSource });
+      const newRun = await service.call(taskRun, {
+        triggerSource,
+        payload:
+          overrides.payload === undefined
+            ? undefined
+            : overrides.payloadType === "application/super+json"
+              ? (overrides.payload as string)
+              : JSON.stringify(overrides.payload),
+        payloadType: overrides.payloadType ?? "application/json",
+        metadata: overrides.metadata,
+        tags: typeof overrides.tags === "string" ? [overrides.tags] : overrides.tags,
+        queue: overrides.queue,
+        concurrencyKey: overrides.concurrencyKey,
+        machine: overrides.machine,
+        version: overrides.version,
+        region: overrides.region,
+        delay: overrides.delay,
+        ttl: overrides.ttl,
+        idempotencyKey: overrides.idempotencyKey,
+        idempotencyKeyTTL: overrides.idempotencyKeyTTL,
+        maxAttempts: overrides.maxAttempts,
+        maxDurationSeconds: overrides.maxDuration,
+        prioritySeconds: overrides.priority,
+      });
 
       if (!newRun) {
         return json({ error: "Failed to create new run" }, { status: 400 });
@@ -143,6 +234,13 @@ const { action } = createActionApiRoute(
         id: newRun?.friendlyId,
       });
     } catch (error) {
+      if (
+        error instanceof ServiceValidationError ||
+        error instanceof EngineServiceValidationError
+      ) {
+        return json({ error: error.message }, { status: error.status ?? 400 });
+      }
+
       if (error instanceof Error) {
         logger.error("Failed to replay run", {
           error: {

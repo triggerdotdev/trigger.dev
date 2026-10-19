@@ -8,7 +8,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { $transaction } from "~/db.server";
-import { FeatureFlagCatalog, FEATURE_FLAG } from "~/v3/featureFlags";
 import { createDeploymentWithNextVersion } from "~/v3/services/initializeDeployment/createDeploymentWithNextVersion.server";
 import {
   PreviewAutoArchivePolicy,
@@ -23,81 +22,8 @@ import {
   processPreviewAutoArchivePage,
   previewAutoArchiveCount,
   savePreviewAutoArchivePolicy,
-  isPreviewAutoArchiveEnabled,
   previewBranchActivity,
 } from "./previewAutoArchive.server";
-
-postgresTest(
-  "rollout defaults off with organization overrides over the global flag",
-  async ({ prisma }) => {
-    const key = FEATURE_FLAG.previewAutoArchiveEnabled;
-    expect(FeatureFlagCatalog[key].safeParse("false").success).toBe(false);
-    expect(await isPreviewAutoArchiveEnabled(prisma, null)).toBe(false);
-    expect(await isPreviewAutoArchiveEnabled(prisma, { [key]: true })).toBe(true);
-    await prisma.featureFlag.create({ data: { key, value: true } });
-    expect(await isPreviewAutoArchiveEnabled(prisma, null)).toBe(true);
-    expect(await isPreviewAutoArchiveEnabled(prisma, { [key]: false })).toBe(false);
-    await prisma.featureFlag.update({ where: { key }, data: { value: false } });
-    expect(await isPreviewAutoArchiveEnabled(prisma, null)).toBe(false);
-    expect(await isPreviewAutoArchiveEnabled(prisma, { [key]: true })).toBe(true);
-  }
-);
-
-postgresTest(
-  "disabled rollout preserves configured policies and resumes when globally enabled",
-  async ({ prisma }) => {
-    const { parent, branch } = await seed(prisma, false);
-    const candidate = await branch();
-    const page = await processPreviewAutoArchivePage(prisma, 0, now);
-    expect(page).toMatchObject({ scanned: 0, archived: [] });
-    const paused = await prisma.runtimeEnvironment.findFirstOrThrow({ where: { id: parent.id } });
-    expect(paused.previewAutoArchiveAfterDays).toBe(14);
-    expect(paused.previewAutoArchiveNextCheckAt).toEqual(new Date(now.getTime() + 3_600_000));
-    await prisma.featureFlag.create({
-      data: { key: FEATURE_FLAG.previewAutoArchiveEnabled, value: true },
-    });
-    const resumed = await processPreviewAutoArchivePage(
-      prisma,
-      0,
-      paused.previewAutoArchiveNextCheckAt!
-    );
-    expect(resumed?.archived.map(({ id }) => id)).toEqual([candidate.id]);
-  }
-);
-
-postgresTest(
-  "revoking rollout between pages pauses without losing the cursor",
-  async ({ prisma }) => {
-    const { parent, organization, branch } = await seed(prisma);
-    for (let i = 0; i < 101; i++) await branch();
-    expect((await processPreviewAutoArchivePage(prisma, 0, now))?.archived).toHaveLength(100);
-    const before = await prisma.runtimeEnvironment.findFirstOrThrow({ where: { id: parent.id } });
-    await prisma.organization.update({
-      where: { id: organization.id },
-      data: { featureFlags: { previewAutoArchiveEnabled: false } },
-    });
-    await prisma.featureFlag.create({
-      data: { key: FEATURE_FLAG.previewAutoArchiveEnabled, value: true },
-    });
-    expect(await processPreviewAutoArchivePage(prisma, 0, now)).toMatchObject({
-      scanned: 0,
-      archived: [],
-    });
-    const paused = await prisma.runtimeEnvironment.findFirstOrThrow({ where: { id: parent.id } });
-    expect(paused.previewAutoArchiveCursorId).toBe(before.previewAutoArchiveCursorId);
-    expect(paused.previewAutoArchiveCursorCreatedAt).toEqual(
-      before.previewAutoArchiveCursorCreatedAt
-    );
-    await prisma.organization.update({
-      where: { id: organization.id },
-      data: { featureFlags: {} },
-    });
-    expect(
-      (await processPreviewAutoArchivePage(prisma, 0, paused.previewAutoArchiveNextCheckAt!))
-        ?.archived
-    ).toHaveLength(1);
-  }
-);
 
 const archiveGuard = {
   archiveGuard: {
@@ -367,43 +293,6 @@ postgresTest(
       expect((await processPreviewAutoArchivePage(prisma, 0, now))?.archived).toHaveLength(1);
     } finally {
       prepared.release();
-    }
-    await rejected;
-    expect(await prisma.workerDeployment.count({ where: { environmentId: candidate.id } })).toBe(0);
-  }
-);
-
-postgresTest(
-  "flag enabled during deployment preparation cannot bypass the archive lock",
-  async ({ prisma }) => {
-    const { branch, deployData, project } = await seed(prisma, false);
-    await prisma.organization.update({
-      where: { id: project.organizationId },
-      data: { featureFlags: { previewAutoArchiveEnabled: false } },
-    });
-    const candidate = await branch();
-    const preparing = barrier();
-    const resume = barrier();
-    const deploying = createDeploymentWithNextVersion(
-      prisma,
-      candidate.id,
-      async () => {
-        preparing.release();
-        await resume.promise;
-        return deployData();
-      },
-      archiveGuard
-    );
-    const rejected = expect(deploying).rejects.toMatchObject({ status: 409 });
-    await preparing.promise;
-    try {
-      await prisma.organization.update({
-        where: { id: project.organizationId },
-        data: { featureFlags: { previewAutoArchiveEnabled: true } },
-      });
-      expect((await processPreviewAutoArchivePage(prisma, 0, now))?.archived).toHaveLength(1);
-    } finally {
-      resume.release();
     }
     await rejected;
     expect(await prisma.workerDeployment.count({ where: { environmentId: candidate.id } })).toBe(0);

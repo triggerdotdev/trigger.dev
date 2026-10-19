@@ -36,6 +36,7 @@ const DEFAULT_FILTERED_KEYS = [
   "email",
   "headers",
   "completedwaitpoints",
+  "packet",
 ];
 
 // Belt-and-braces value-shape check: catches secrets anywhere in values that land under a field

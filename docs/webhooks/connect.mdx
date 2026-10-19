@@ -1,0 +1,84 @@
+---
+title: "Connect a webhook provider"
+description: "Register an endpoint's URL and signing secret with the provider, by hand or with an AI coding agent, then check that events arrive."
+sidebarTitle: "Connect a provider"
+---
+
+import WebhooksBetaBanner from "/snippets/webhooks-beta-banner.mdx";
+
+<WebhooksBetaBanner />
+
+Connect a provider to an [endpoint](/webhooks/overview) by registering the endpoint's URL with the provider and giving Trigger.dev the credential that verifies its requests.
+
+Deploy the project or start `trigger dev` first. Once the CLI finds the endpoint, it appears on the environment's **Webhooks** page. The **Signing secret** column shows **Ready** when the endpoint can verify deliveries and **Needs secret** until then. Every delivery is rejected while an endpoint needs its secret.
+
+## Set it up with an AI agent
+
+Each endpoint has a setup prompt: the URL, the events its subscribers filter on, the provider's own setup steps, and how to generate or store the signing secret. Choose **Copy setup prompt** on the Webhooks page or the endpoint's page, and paste it into an AI coding agent such as Claude Code.
+
+The prompt tells the agent to use the Trigger.dev MCP server (`npx trigger.dev@latest install-mcp`), which has these tools:
+
+| Tool | What it does |
+| --- | --- |
+| `list_webhook_endpoints` | Lists the environment's endpoints, with their URL and whether a secret is set. |
+| `get_webhook_endpoint_details` | Reads one endpoint: URL, subscribers and their filters, secret state, and the setup prompt. |
+| `generate_webhook_secret` | Generates a signing secret and returns it once, for providers where you choose the secret. |
+| `set_webhook_secret` | Stores a secret the provider issued. |
+
+Without the MCP server, the same operations are available on the REST API with the environment's secret key:
+
+| Request | What it does |
+| --- | --- |
+| [`GET /api/v1/webhooks/endpoints`](/management/webhooks/list-endpoints) | Lists the environment's endpoints, with their URL and whether a secret is set. |
+| [`GET /api/v1/webhooks/endpoints/{endpointId}`](/management/webhooks/retrieve-endpoint) | Reads the endpoint, including `subscribers` and `setupPrompt`. |
+| [`POST /api/v1/webhooks/endpoints/{endpointId}/rotate-secret`](/management/webhooks/generate-secret) | Generates a secret and returns it once. |
+| [`PUT /api/v1/webhooks/endpoints/{endpointId}/secret`](/management/webhooks/set-secret) | Stores a secret, sent as `{ "secret": "..." }`. |
+
+`endpointId` is the endpoint's declared id (the `id` passed to `webhooks.endpoint.define`) or its `wh_` id, shown on its page and returned by `list_webhook_endpoints`:
+
+```bash
+curl -X PUT "https://api.trigger.dev/api/v1/webhooks/endpoints/stripe/secret" \
+  -H "Authorization: Bearer $TRIGGER_SECRET_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"secret": "whsec_..."}'
+```
+
+## Set it up by hand
+
+<Steps>
+  <Step title="Copy the webhook URL">
+    Open the endpoint from the Webhooks page and copy the **Webhook URL**.
+  </Step>
+  <Step title="Configure the provider">
+    Add the URL as the webhook destination in your provider's dashboard and select the events your subscribers need. The provider's setup determines where the verification credential comes from:
+
+    | Provider setup | Action |
+    | --- | --- |
+    | The provider supplies a signing secret, as Stripe and Svix do | Copy the secret from the provider, then choose **Set signing secret** on the endpoint. |
+    | The provider accepts a secret you choose, as GitHub does | Choose **Generate secret** on the endpoint, then paste the value into the provider's webhook configuration. |
+    | The provider uses an asymmetric signature, as Discord does | Copy the application's public key from the provider and choose **Set public key** on the endpoint. |
+
+    Set the credential before sending a test event or asking the provider to validate the URL.
+  </Step>
+</Steps>
+
+## Verify the connection
+
+Send a test event from your provider, or use the endpoint's **Test** tab. The event appears on the endpoint's **Deliveries** tab. Open it to see which subscribers it reached and follow the links to their runs; see [Deliveries and endpoints](/webhooks/deliveries) for the statuses.
+
+If no delivery appears, check that the provider uses the copied URL and that both sides have the same signing secret or public key.
+
+## Verify a WhatsApp endpoint URL
+
+`webhooks.whatsapp()` also needs a verify token for Meta's URL check. On the endpoint, choose **Generate verify token** and paste the value into Meta's **Verify Token** field. Set Meta's App Secret as the signing secret, then validate the URL in Meta's dashboard.
+
+The verify token answers the URL check. The signing secret verifies event deliveries. See [Sources and verification](/webhooks/sources#endpoint-validation) for the response behavior.
+
+## Rotate a credential
+
+Choose **Rotate signing secret** to replace a provider-supplied secret. For a secret you generate, choose **Regenerate secret**, copy the new value, and update the provider's configuration. Use **Rotate public key** when replacing an asymmetric provider's key.
+
+<Warning>
+  Trigger.dev stores credentials encrypted and doesn't display saved values. Copy a generated secret
+  before closing the dialog. Deliveries signed with the old secret fail verification after rotation.
+</Warning>

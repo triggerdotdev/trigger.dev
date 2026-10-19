@@ -50,13 +50,11 @@ function makeBufferStub(initialPayload: Record<string, unknown> = {}): BufferStu
   };
 
   const buffer: MollifierBuffer = {
-    getEntry: vi.fn(
-      async (): Promise<BufferEntry> => ({
-        ...entryTemplate,
-        metadataVersion: state.version,
-        payload: JSON.stringify({ ...initialPayload, metadata: JSON.stringify(state.metadata) }),
-      })
-    ),
+    getEntry: vi.fn(async (): Promise<BufferEntry> => ({
+      ...entryTemplate,
+      metadataVersion: state.version,
+      payload: JSON.stringify({ ...initialPayload, metadata: JSON.stringify(state.metadata) }),
+    })),
     casSetMetadata: vi.fn(
       async (input: {
         runId: string;

@@ -53,3 +53,23 @@ export function deliveryIdsCreatedAtBounds(
 
   return { gte, lte };
 }
+
+/** The oldest `createdAt` an org with this retention can still see. */
+export function retentionFloor(retentionDays: number, now = Date.now()): Date {
+  return new Date(now - retentionDays * 86_400_000);
+}
+
+/**
+ * The retention classes a set of delivery ids were minted in, for partition-pruning a lookup on the
+ * LIST-partitioned `WebhookDelivery` table. Returns `undefined` if any id carries no class (a v1
+ * id), so the caller adds no `retentionDays` predicate and the lookup stays correct.
+ */
+export function deliveryIdsRetentionDays(friendlyIds: string[]): number[] | undefined {
+  const days = new Set<number>();
+  for (const friendlyId of friendlyIds) {
+    const retentionDays = WebhookDeliveryId.parseRetentionDays(friendlyId);
+    if (retentionDays === undefined) return undefined;
+    days.add(retentionDays);
+  }
+  return [...days];
+}
