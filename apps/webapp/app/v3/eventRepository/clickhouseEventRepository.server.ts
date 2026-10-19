@@ -1959,7 +1959,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       }
     }
 
-    if (options?.includeDebugLogs === false) {
+    if (options?.includeDebugLogs !== true) {
       queryBuilder.where("kind != {kind: String}", { kind: "DEBUG_EVENT" });
     }
   }
@@ -2417,7 +2417,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       }
     }
 
-    if (options?.includeDebugLogs === false) {
+    if (options?.includeDebugLogs !== true) {
       queryBuilder.where("kind != {kind: String}", { kind: "DEBUG_EVENT" });
     }
 
@@ -2537,6 +2537,10 @@ export class ClickhouseEventRepository implements IEventRepository {
       queryBuilder.where("inserted_at >= {insertedAtStart: DateTime64(3)}", {
         insertedAtStart: convertDateToClickhouseDateTime(startCreatedAtWithBuffer),
       });
+    }
+
+    if (options?.includeDebugLogs !== true) {
+      queryBuilder.where("kind != {kind: String}", { kind: "DEBUG_EVENT" });
     }
 
     queryBuilder.orderBy("start_time ASC");
@@ -3029,7 +3033,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       }
     }
 
-    if (options?.includeDebugLogs === false) {
+    if (options?.includeDebugLogs !== true) {
       queryBuilder.where("kind != {kind: String}", { kind: "DEBUG_EVENT" });
     }
 

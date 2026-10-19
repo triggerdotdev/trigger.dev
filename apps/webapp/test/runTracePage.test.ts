@@ -221,7 +221,69 @@ describe("getRunTracePage", () => {
         expect(paged).toEqual(await unpaged(repository, run, "root"));
         expect(paged.grandchild.isCancelled).toBe(true);
         expect(paged.done).toEqual({ isError: false, isPartial: false, isCancelled: false });
-        expect(paged.debug).toBeDefined();
+        expect(paged.debug).toBeUndefined();
+      } finally {
+        await shutdownRepository(repository);
+      }
+    }
+  );
+
+  clickhouseTest(
+    "returns debug events only when the caller asks for them",
+    async ({ clickhouseContainer }) => {
+      const { clickhouse, repository } = createRepository(clickhouseContainer.getConnectionUrl());
+      const traceId = "trace_debug_events";
+
+      try {
+        const [insertError] = await clickhouse.taskEventsV2.insert([
+          row(traceId, "root", { durationMs: 10_000 }),
+          row(traceId, "child", { parentSpanId: "root", offsetMs: 1_000 }),
+          row(traceId, "debug", { parentSpanId: "root", offsetMs: 2_000, kind: "DEBUG_EVENT" }),
+        ]);
+        expect(insertError).toBeNull();
+
+        const run = rootRun(traceId);
+        const pagedIds = (await pageAll(repository, run, 2)).flatMap((page) =>
+          page.data.map((span) => span.id)
+        );
+        expect(pagedIds).toContain("child");
+        expect(pagedIds).not.toContain("debug");
+        expect(Object.keys(await unpaged(repository, run, "root"))).not.toContain("debug");
+
+        const chunk = await repository.getTraceChunk(
+          "taskEventPartitioned",
+          ENV_ID,
+          traceId,
+          run.createdAt,
+          run.completedAt ?? undefined,
+          undefined,
+          { includeDebugLogs: true }
+        );
+        expect(chunk?.events.map((event) => event.spanId)).toContain("debug");
+
+        const summary = await repository.getTraceDetailedSubtreeSummary(
+          "taskEventPartitioned",
+          ENV_ID,
+          traceId,
+          "root",
+          run.createdAt,
+          run.completedAt ?? undefined,
+          { includeDebugLogs: true }
+        );
+        expect(summary && Object.keys(unpagedStates(summary.rootSpan))).toContain("debug");
+
+        const getDebugSpan = (includeDebugLogs?: boolean) =>
+          repository.getSpan(
+            "taskEventPartitioned",
+            ENV_ID,
+            "debug",
+            traceId,
+            run.createdAt,
+            run.completedAt ?? undefined,
+            { includeDebugLogs }
+          );
+        expect(await getDebugSpan()).toBeUndefined();
+        expect(await getDebugSpan(true)).toBeDefined();
       } finally {
         await shutdownRepository(repository);
       }

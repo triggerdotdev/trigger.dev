@@ -164,6 +164,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       runFriendlyId: runParam,
       userId,
       linkedRunId,
+      showDebug: user.admin || user.isImpersonating,
     });
 
     if (!result) {

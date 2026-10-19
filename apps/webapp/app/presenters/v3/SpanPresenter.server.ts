@@ -116,6 +116,7 @@ export class SpanPresenter extends BasePresenter {
     spanId,
     runFriendlyId,
     linkedRunId,
+    showDebug = false,
   }: {
     userId: string;
     projectSlug: string;
@@ -127,6 +128,7 @@ export class SpanPresenter extends BasePresenter {
     spanId: string;
     runFriendlyId: string;
     linkedRunId?: string;
+    showDebug?: boolean;
   }) {
     const project = await this._replica.project.findFirst({
       where: {
@@ -227,6 +229,7 @@ export class SpanPresenter extends BasePresenter {
       createdAt: parentRun.createdAt,
       completedAt: parentRun.completedAt,
       eventRepository: repository,
+      showDebug,
     });
 
     if (!span) {
@@ -691,6 +694,7 @@ export class SpanPresenter extends BasePresenter {
     projectId,
     createdAt,
     completedAt,
+    showDebug,
   }: {
     eventRepository: IEventRepository;
     traceId: string;
@@ -700,6 +704,7 @@ export class SpanPresenter extends BasePresenter {
     eventStore: TaskEventStoreTable;
     createdAt: Date;
     completedAt: Date | null;
+    showDebug: boolean;
   }) {
     const span = await eventRepository.getSpan(
       eventStore,
@@ -708,7 +713,7 @@ export class SpanPresenter extends BasePresenter {
       traceId,
       createdAt,
       completedAt ?? undefined,
-      { includeDebugLogs: true }
+      { includeDebugLogs: showDebug }
     );
 
     if (!span) {
