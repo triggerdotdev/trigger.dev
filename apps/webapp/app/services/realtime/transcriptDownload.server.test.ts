@@ -103,6 +103,22 @@ minioTest(
   }
 );
 
+test("uses a .jsonl filename for transcript media types regardless of case", () => {
+  for (const contentType of [
+    TRANSCRIPT_BLOB_CONTENT_TYPE.toUpperCase(),
+    "Application/Vnd.Trigger.Transcript+Ndjson; charset=utf-8",
+  ]) {
+    const object = new Response('{"version":2}\n', {
+      headers: { "Content-Type": contentType },
+    });
+    const response = downloadTranscript(object, "packets/download/snapshot.json");
+    expect(response.headers.get("Content-Disposition")).toBe(
+      'attachment; filename="snapshot.jsonl"'
+    );
+    expect(response.headers.get("Content-Type")).toBe(contentType);
+  }
+});
+
 test("does not treat permission or service failures as an absent transcript", () => {
   expect(isTranscriptNotFound(new Error("Failed to download from object store: Forbidden"))).toBe(
     false

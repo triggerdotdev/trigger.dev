@@ -9,8 +9,9 @@ export function downloadTranscript(
 ): Response {
   const storedFilename = basename(storagePath).replace(/[^a-zA-Z0-9._-]/g, "_") || "transcript";
   const contentType = object.headers.get("Content-Type") ?? "application/octet-stream";
+  // Media type and subtype are case-insensitive (RFC 9110). Parameters after ";" are ignored.
   const filename =
-    contentType.split(";")[0]?.trim() === TRANSCRIPT_BLOB_CONTENT_TYPE
+    contentType.split(";")[0]?.trim().toLowerCase() === TRANSCRIPT_BLOB_CONTENT_TYPE
       ? `${basename(storedFilename, extname(storedFilename))}.jsonl`
       : storedFilename;
   // Errors after the route returns must still be logged and reach the HTTP adapter,
