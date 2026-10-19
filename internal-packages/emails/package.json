@@ -20,11 +20,11 @@
     "zod": "4.5.4"
   },
   "devDependencies": {
-    "@react-email/ui": "6.5.0",
+    "@react-email/ui": "6.11.3",
     "@types/nodemailer": "^8.0.0",
     "@types/react": "18.2.69",
     "@types/react-dom": "18.2.7",
-    "react-email": "^6.5.0"
+    "react-email": "^6.11.3"
   },
   "engines": {
     "node": ">=18.0.0"
