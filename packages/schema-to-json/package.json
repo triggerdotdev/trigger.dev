@@ -53,7 +53,7 @@
     "superstruct": "^2.0.2",
     "tshy": "^4.1.3",
     "@sinclair/typebox": "^0.34.3",
-    "valibot": "^1.1.0",
+    "valibot": "^1.4.2",
     "yup": "^1.7.0",
     "zod-v3-floor": "npm:zod@3.25.56",
     "rimraf": "6.0.1",

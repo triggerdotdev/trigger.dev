@@ -88,6 +88,7 @@ overrides:
   source-map-js@>=1 <1.2.2: ^1.2.2
   proxy-addr@>=2 <2.0.8: ^2.0.8
   compression@>=1 <1.8.2: ^1.8.2
+  valibot@>=1 <1.4.2: ^1.4.2
 
 patchedDependencies:
   '@ai-sdk/anthropic@3.0.125':
@@ -2130,8 +2131,8 @@ importers:
         specifier: ^4.1.3
         version: 4.1.3
       valibot:
-        specifier: ^1.1.0
-        version: 1.1.0(typescript@7.0.2)
+        specifier: ^1.4.2
+        version: 1.5.0(typescript@7.0.2)
       yup:
         specifier: ^1.7.0
         version: 1.7.0
@@ -15162,16 +15163,8 @@ packages:
     engines: {node: '>=8'}
     hasBin: true
 
-  valibot@1.1.0:
-    resolution: {integrity: sha512-Nk8lX30Qhu+9txPYTwM0cFlWLdPFsFr6LblzqIySfbZph9+BFsAHsNvHOymEviUepeIW6KFHzpX8TKhbptBXXw==}
-    peerDependencies:
-      typescript: '>=5'
-    peerDependenciesMeta:
-      typescript:
-        optional: true
-
-  valibot@1.3.1:
-    resolution: {integrity: sha512-sfdRir/QFM0JaF22hqTroPc5xy4DimuGQVKFrzF1YfGwaS1nJot3Y8VqMdLO2Lg27fMzat2yD3pY5PbAYO39Gg==}
+  valibot@1.5.0:
+    resolution: {integrity: sha512-nil6AkP2TChWL43Z5uJ6GTxX01CUA+g8LWUM+N/rB9NBbkUMaUsi9PUNzlUPgoKASgmx9f7eGOYpJ04/fSa6FQ==}
     peerDependencies:
       typescript: '>=5'
     peerDependenciesMeta:
@@ -21290,7 +21283,7 @@ snapshots:
       set-cookie-parser: 2.6.0
       tar-fs: 2.1.4
       tsconfig-paths: 4.2.0
-      valibot: 1.3.1(typescript@7.0.2)
+      valibot: 1.5.0(typescript@7.0.2)
       vite-node: 3.1.4(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.20.6)(yaml@2.9.0)
       ws: 7.5.11(bufferutil@4.0.9)
     optionalDependencies:
@@ -30933,11 +30926,7 @@ snapshots:
       kleur: 4.1.5
       sade: 1.8.1
 
-  valibot@1.1.0(typescript@7.0.2):
-    optionalDependencies:
-      typescript: 7.0.2
-
-  valibot@1.3.1(typescript@7.0.2):
+  valibot@1.5.0(typescript@7.0.2):
     optionalDependencies:
       typescript: 7.0.2
 
