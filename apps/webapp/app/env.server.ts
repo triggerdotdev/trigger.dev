@@ -4,6 +4,7 @@ import {
   webhookDeliveryRetentionClass,
 } from "@trigger.dev/core/v3/isomorphic";
 import { BoolEnv } from "./utils/boolEnv";
+import { OidcIssuerSchema } from "./utils/oidcIssuer";
 import { isValidDatabaseUrl } from "./utils/db";
 import { parseDeployBaseImages } from "~/v3/deployBaseImages.server";
 import { parseRunOpsShards, validateShardListAgainstNewUrl } from "~/v3/runOpsShards.server";
@@ -384,6 +385,9 @@ const EnvironmentSchema = z
         "ENCRYPTION_KEY must be exactly 32 bytes"
       )
       .refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
+    // Enables the AWS_KMS secret store provider. Callers opt in per secret; everything else
+    // stays encrypted with ENCRYPTION_KEY.
+    SECRET_STORE_AWS_KMS_KEY_ID: z.string().optional(),
     WHITELISTED_EMAILS: z
       .string()
       .refine(isValidRegex, "WHITELISTED_EMAILS must be a valid regex.")
@@ -403,6 +407,10 @@ const EnvironmentSchema = z
     MAGIC_LINK_SAME_BROWSER_REQUIRED: BoolEnv.default(true),
     APP_ORIGIN: z.string().default("http://localhost:3030"),
     PUBLIC_APP_ORIGIN: z.url().optional(),
+    OIDC_ISSUER_URL: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      OidcIssuerSchema.optional()
+    ),
     // Extra exact origins (comma separated) added to the document `img-src` CSP,
     // e.g. an SSO host serving profile images. Wildcards are refused.
     CSP_IMG_SRC_ALLOWLIST: z.string().optional(),

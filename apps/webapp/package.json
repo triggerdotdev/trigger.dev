@@ -37,6 +37,7 @@
     "@ariakit/react": "^0.4.6",
     "@ariakit/react-core": "^0.4.6",
     "@aws-sdk/client-ecr": "^3.931.0",
+    "@aws-sdk/client-kms": "^3.1079.0",
     "@aws-sdk/client-s3": "^3.936.0",
     "@aws-sdk/client-sts": "^3.840.0",
     "@aws-sdk/s3-presigned-post": "^3.936.0",

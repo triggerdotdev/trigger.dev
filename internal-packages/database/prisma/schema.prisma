@@ -584,6 +584,32 @@ model SecretStore {
   @@index([key(ops: raw("text_pattern_ops"))], type: BTree)
 }
 
+enum OidcSigningKeyStatus {
+  STAGED
+  ACTIVE
+  RETIRED
+}
+
+model OidcSigningKey {
+  id     String               @id @default(cuid())
+  kid    String               @unique
+  /// At most one STAGED and one ACTIVE key: enforced by a partial unique index in the migration.
+  status OidcSigningKeyStatus
+
+  publicJwk   Json
+  readyAt     DateTime
+  publicUntil DateTime?
+
+  generatedByUserId String
+  activatedAt       DateTime?
+  activatedByUserId String?
+  retiredAt         DateTime?
+  retiredByUserId   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model DataMigration {
   id   String @id @default(cuid())
   name String @unique
