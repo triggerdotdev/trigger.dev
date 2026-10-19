@@ -171,7 +171,8 @@
       "better-sqlite3@<12.11.1": "^12.11.1",
       "smol-toml@>=1 <1.9.0": "^1.9.0",
       "source-map-js@>=1 <1.2.2": "^1.2.2",
-      "proxy-addr@>=2 <2.0.8": "^2.0.8"
+      "proxy-addr@>=2 <2.0.8": "^2.0.8",
+      "compression@>=1 <1.8.2": "^1.8.2"
     },
     "onlyBuiltDependencies": [
       "@depot/cli",

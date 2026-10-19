@@ -147,7 +147,7 @@
     "aws4fetch": "^1.0.18",
     "class-variance-authority": "^0.5.2",
     "clsx": "^1.2.1",
-    "compression": "^1.7.4",
+    "compression": "^1.8.2",
     "cookie": "^0.6.0",
     "cron-parser": "^4.9.0",
     "cronstrue": "^2.21.0",
