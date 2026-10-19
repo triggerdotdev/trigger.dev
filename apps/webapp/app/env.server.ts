@@ -1570,14 +1570,7 @@ const EnvironmentSchema = z
     COMMON_WORKER_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
     COMMON_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
-    // Global default for the scheduled worker-queue split. When "1", runs in a
-    // scheduled lineage (rootTriggerSource === "schedule") are routed to a
-    // dedicated `<region>:scheduled` worker queue so a separate consumer fleet
-    // can dequeue them independently of standard/agent runs. The per-org
-    // `workerQueueScheduledSplitEnabled` feature flag overrides this default in
-    // BOTH directions (an org set to false stays on the single queue even when
-    // this is "1"; an org set to true splits even when this is "0"). Never
-    // applies to DEVELOPMENT environments.
+    // Requires consumers configured for scheduled queues. Never applies to development.
     TRIGGER_WORKER_QUEUE_SCHEDULED_SPLIT_ENABLED: z.string().default("0"),
     // Controls new assignments only; existing v2 runs retain their routing.
     TRIGGER_WORKER_QUEUE_V2_ENABLED: z.string().default("0"),

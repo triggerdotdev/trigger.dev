@@ -40,7 +40,6 @@ import {
   type IdempotencyKeyConcern,
   type ClaimedIdempotency,
 } from "../concerns/idempotencyKeys.server";
-import { resolveScheduledQueueSplitEnabled } from "../concerns/workerQueueSplit.server";
 import { workerQueueForBirth } from "../concerns/workerQueueAssignment.server";
 import { resolveComputeMigration } from "../concerns/computeMigration.server";
 import { workerRegionRegistry, backingForQueue, regionForQueue } from "~/v3/workerRegions.server";
@@ -541,17 +540,6 @@ export class RunEngineTriggerTaskService {
             webhookEndpointId: options.webhookEndpointId,
           };
 
-          // Preserve scheduled lineage independently of the queue-name version.
-          // Rollout decisions use already-loaded org flags and registry data.
-          const scheduledQueueSplitEnabled =
-            environment.type !== "DEVELOPMENT" &&
-            resolveScheduledQueueSplitEnabled({
-              orgFeatureFlags: environment.organization.featureFlags as Record<
-                string,
-                unknown
-              > | null,
-              globalDefault: env.TRIGGER_WORKER_QUEUE_SCHEDULED_SPLIT_ENABLED === "1",
-            });
           const workerQueue =
             migrated.workerQueue !== undefined
               ? workerQueueForBirth({
@@ -562,10 +550,10 @@ export class RunEngineTriggerTaskService {
                     string,
                     unknown
                   > | null,
-                  globalDefault: env.TRIGGER_WORKER_QUEUE_V2_ENABLED === "1",
+                  v2Enabled: env.TRIGGER_WORKER_QUEUE_V2_ENABLED === "1",
+                  splitEnabled: env.TRIGGER_WORKER_QUEUE_SCHEDULED_SPLIT_ENABLED === "1",
                   workerGroups,
                   rootTriggerSource: annotations.rootTriggerSource,
-                  splitEnabled: scheduledQueueSplitEnabled,
                 })
               : migrated.workerQueue;
 

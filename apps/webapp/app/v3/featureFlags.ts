@@ -19,8 +19,6 @@ export const FEATURE_FLAG = {
   hasSso: "hasSso",
   hasThemeSwitcher: "hasThemeSwitcher",
   mollifierEnabled: "mollifierEnabled",
-  workerQueueScheduledSplitEnabled: "workerQueueScheduledSplitEnabled",
-  workerQueueV2Enabled: "workerQueueV2Enabled",
   workerQueueCompatibility: "workerQueueCompatibility",
   workerQueueChannel: "workerQueueChannel",
   internalApiOriginEnabled: "internalApiOriginEnabled",
@@ -99,8 +97,6 @@ export const FeatureFlagCatalog = {
   // Gates the Interface theme setting in /account. Off by default.
   [FEATURE_FLAG.hasThemeSwitcher]: z.coerce.boolean(),
   [FEATURE_FLAG.mollifierEnabled]: z.coerce.boolean(),
-  [FEATURE_FLAG.workerQueueScheduledSplitEnabled]: z.coerce.boolean(),
-  [FEATURE_FLAG.workerQueueV2Enabled]: z.boolean(),
   // Mirrors the core worker-queue enums; defined here because this module is imported client-side.
   [FEATURE_FLAG.workerQueueCompatibility]: z.enum(["any", "container", "compute"]),
   [FEATURE_FLAG.workerQueueChannel]: z.enum(["stable", "canary"]),
@@ -211,7 +207,6 @@ export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runOpsMintShard,
   FEATURE_FLAG.runOpsMintShardEnvPins,
   FEATURE_FLAG.apiRateLimitMetricsEnabled,
-  FEATURE_FLAG.workerQueueV2Enabled,
   FEATURE_FLAG.workerQueueCompatibility,
   FEATURE_FLAG.workerQueueChannel,
   // Grace stamps are computed server-side. An editable control here would discard what it saves.

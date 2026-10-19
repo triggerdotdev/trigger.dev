@@ -7,25 +7,44 @@ const assignment = {
   region: "us-east-1",
   envType: "PRODUCTION",
   orgFeatureFlags: null,
-  globalDefault: false,
+  v2Enabled: true,
+  splitEnabled: true,
   workerGroups: [{ masterQueue: "us-east-1-next", workloadType: "MICROVM" as const }],
   rootTriggerSource: "api",
-  splitEnabled: true,
 };
 
 describe("workerQueueForBirth", () => {
-  it("keeps legacy assignment and scheduled lineage when v2 is off", () => {
-    expect(workerQueueForBirth(assignment)).toBe("us-east-1-next");
-    expect(workerQueueForBirth({ ...assignment, rootTriggerSource: "schedule" })).toBe(
-      "us-east-1-next:scheduled"
-    );
+  it.each([false, true])(
+    "keeps legacy assignment when v2 is disabled (split=%s)",
+    (splitEnabled) => {
+      expect(
+        workerQueueForBirth({
+          ...assignment,
+          workerQueue: "my workers",
+          region: undefined,
+          workerGroups: [{ masterQueue: "my workers", workloadType: "CONTAINER" }],
+          v2Enabled: false,
+          splitEnabled,
+          rootTriggerSource: "schedule",
+          orgFeatureFlags: {
+            workerQueueV2Enabled: true,
+            workerQueueScheduledSplitEnabled: true,
+          },
+        })
+      ).toBe(splitEnabled ? "my workers:scheduled" : "my workers");
+    }
+  );
+
+  it("keeps scheduled runs on the ondemand v2 queue when the split is disabled", () => {
+    expect(
+      workerQueueForBirth({ ...assignment, splitEnabled: false, rootTriggerSource: "schedule" })
+    ).toBe("us-east-1:v2:ondemand:fresh:compute:stable");
   });
 
   it("keeps legacy routing when the selected queue is absent from a loaded registry", () => {
     const input = {
       ...assignment,
       region: assignment.workerQueue,
-      globalDefault: true,
       workerGroups: [{ masterQueue: "us-west-2", workloadType: "CONTAINER" as const }],
     };
     expect(workerQueueForBirth(input)).toBe("us-east-1-next");
@@ -34,25 +53,21 @@ describe("workerQueueForBirth", () => {
     );
   });
 
-  it("uses the geographic region and selected runtime when v2 is enabled", () => {
-    expect(workerQueueForBirth({ ...assignment, globalDefault: true })).toBe(
-      "us-east-1:v2:ondemand:fresh:compute:stable"
-    );
+  it("uses the geographic region and selected runtime for deployed runs", () => {
+    expect(workerQueueForBirth(assignment)).toBe("us-east-1:v2:ondemand:fresh:compute:stable");
     expect(
       workerQueueForBirth({
         ...assignment,
-        globalDefault: true,
         workerGroups: [{ masterQueue: "us-east-1-next", workloadType: "CONTAINER" }],
       })
     ).toBe("us-east-1:v2:ondemand:fresh:container:stable");
   });
 
-  it("honors org opt-in, channel and explicit shared-runtime assignment", () => {
+  it("honors channel and explicit shared-runtime assignment", () => {
     expect(
       workerQueueForBirth({
         ...assignment,
         orgFeatureFlags: {
-          [FEATURE_FLAG.workerQueueV2Enabled]: true,
           [FEATURE_FLAG.workerQueueCompatibility]: "any",
           [FEATURE_FLAG.workerQueueChannel]: "canary",
         },
@@ -61,25 +76,29 @@ describe("workerQueueForBirth", () => {
     ).toBe("us-east-1:v2:scheduled:fresh:any:canary");
   });
 
-  it("honors org opt-out even when the global default is enabled", () => {
+  it("ignores obsolete opt-outs for v2 and scheduled assignment", () => {
     expect(
       workerQueueForBirth({
         ...assignment,
-        globalDefault: true,
-        orgFeatureFlags: { [FEATURE_FLAG.workerQueueV2Enabled]: false },
+        orgFeatureFlags: {
+          workerQueueV2Enabled: false,
+          workerQueueScheduledSplitEnabled: false,
+        },
+        rootTriggerSource: "schedule",
       })
-    ).toBe("us-east-1-next");
+    ).toBe("us-east-1:v2:scheduled:fresh:compute:stable");
   });
 
-  it("leaves development on the legacy path even with an org opt-in", () => {
-    expect(
-      workerQueueForBirth({
-        ...assignment,
-        envType: "DEVELOPMENT",
-        splitEnabled: false,
-        globalDefault: true,
-        orgFeatureFlags: { [FEATURE_FLAG.workerQueueV2Enabled]: true },
-      })
-    ).toBe("us-east-1-next");
-  });
+  it.each(["api", "schedule"])(
+    "leaves development on the base legacy queue for %s",
+    (rootTriggerSource) => {
+      expect(
+        workerQueueForBirth({
+          ...assignment,
+          envType: "DEVELOPMENT",
+          rootTriggerSource,
+        })
+      ).toBe("us-east-1-next");
+    }
+  );
 });

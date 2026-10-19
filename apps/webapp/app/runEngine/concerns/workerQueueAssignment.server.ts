@@ -8,27 +8,27 @@ export function workerQueueForBirth({
   region,
   envType,
   orgFeatureFlags,
-  globalDefault,
+  v2Enabled,
+  splitEnabled,
   workerGroups,
   rootTriggerSource,
-  splitEnabled,
 }: {
   workerQueue: string;
   region: string | undefined;
   envType: string;
   orgFeatureFlags: Record<string, unknown> | null | undefined;
-  globalDefault: boolean;
+  v2Enabled: boolean;
+  splitEnabled: boolean;
   workerGroups: readonly Pick<WorkerGroupRegionRow, "masterQueue" | "workloadType">[];
   rootTriggerSource: string | undefined;
-  splitEnabled: boolean;
 }): string {
-  const enabled = orgFeatureFlags?.[FEATURE_FLAG.workerQueueV2Enabled];
-  const useV2 =
-    envType !== "DEVELOPMENT" && (typeof enabled === "boolean" ? enabled : globalDefault);
+  if (envType === "DEVELOPMENT") {
+    return workerQueue;
+  }
 
   // An unknown queue (e.g. cold registry) has no trustworthy region or runtime, so stay legacy.
   const group = workerGroups.find((group) => group.masterQueue === workerQueue);
-  if (!useV2 || !group) {
+  if (!v2Enabled || !group) {
     return workerQueueForRun({ workerQueue, rootTriggerSource, splitEnabled });
   }
 
