@@ -168,7 +168,9 @@
       "browserslist@>=4 <4.28.7": "^4.28.7",
       "morgan@>=1 <1.12.1": "^1.12.1",
       "minimatch@>=5 <5.1.8": "^5.1.8",
-      "better-sqlite3@<12.11.1": "^12.11.1"
+      "better-sqlite3@<12.11.1": "^12.11.1",
+      "smol-toml@>=1 <1.9.0": "^1.9.0",
+      "source-map-js@>=1 <1.2.2": "^1.2.2"
     },
     "onlyBuiltDependencies": [
       "@depot/cli",
