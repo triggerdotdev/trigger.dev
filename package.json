@@ -173,7 +173,10 @@
       "source-map-js@>=1 <1.2.2": "^1.2.2",
       "proxy-addr@>=2 <2.0.8": "^2.0.8",
       "compression@>=1 <1.8.2": "^1.8.2",
-      "valibot@>=1 <1.4.2": "^1.4.2"
+      "valibot@>=1 <1.4.2": "^1.4.2",
+      "vite@>=4 <4.5.14": "^4.5.14",
+      "rollup@>=3 <3.30.0": "^3.30.0",
+      "cross-spawn@>=7 <7.0.5": "^7.0.5"
     },
     "onlyBuiltDependencies": [
       "@depot/cli",
