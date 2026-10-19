@@ -450,6 +450,17 @@ export class RunAttemptSystem {
             throw new ServiceValidationError("Max attempts reached", 400);
           }
 
+          // An earlier snapshot unit still pending would make the snapshot's prepare busy and fail the
+          // start after the callback has acked the TTL job, which a rollback does not undo. Settle it
+          // first; only a run with MemoryDB residency can have one.
+          const previousRoute = snapshotRouteFromSnapshot(latestSnapshot);
+          if (
+            previousRoute.residency === "mirrored" ||
+            previousRoute.residency === "redis-primary"
+          ) {
+            await this.$.runStore.settlePendingUnit(taskRun.id);
+          }
+
           // Atomic unit: the attempt bump (startAttempt) and the EXECUTING snapshot must
           // commit together or a crash between them leaves the run EXECUTING with no snapshot. Under
           // the run-ops split these route to the SAME owning DB but, as two router calls, would each
@@ -526,7 +537,7 @@ export class RunAttemptSystem {
                     }`,
                   },
                   previousSnapshotId: latestSnapshot.id,
-                  snapshotRoute: snapshotRouteFromSnapshot(latestSnapshot),
+                  snapshotRoute: previousRoute,
                   environmentId: latestSnapshot.environmentId,
                   environmentType: latestSnapshot.environmentType,
                   projectId: latestSnapshot.projectId,
@@ -1636,7 +1647,10 @@ export class RunAttemptSystem {
           if (bulkActionId) {
             await this.$.runStore.recordBulkActionMembership(runId, bulkActionId, prisma);
           }
-          this.$.logger.warn("cancelRun: snapshot state expired, run already finished", { runId });
+          this.$.logger.warn("cancelRun: snapshot state expired or absent, run already finished", {
+            runId,
+            status: finishedRun.status,
+          });
           return { alreadyFinished: true, run: finishedRun, snapshot: null };
         }
 
@@ -2122,11 +2136,22 @@ export class RunAttemptSystem {
       }
 
       if (run.status === "CANCELED") {
-        const latestSnapshot = await getLatestExecutionSnapshot(
-          this.$.prisma,
-          runId,
-          this.$.runStore
-        );
+        // No snapshot state (expired, or never written) means no worker owns the execution, so this
+        // is the same as a FINISHED snapshot: nothing to wait for, deliver below.
+        const { snapshot: latestSnapshot, finishedRun } =
+          await getLatestExecutionSnapshotOrFinishedRun(
+            this.$.prisma,
+            runId,
+            this.$.runStore,
+            undefined,
+            { id: true }
+          );
+        if (finishedRun) {
+          this.$.logger.warn(
+            "ensureRunFinalized: snapshot state expired or absent, run already finished",
+            { runId, status: finishedRun.status }
+          );
+        }
 
         /**
          * Defer only while a worker still owns the execution: those states carry
@@ -2137,11 +2162,16 @@ export class RunAttemptSystem {
          * so the guard must deliver or the parent is stranded.
          */
         const workerOwnsExecution =
-          isExecuting(latestSnapshot.executionStatus) ||
-          isPendingExecuting(latestSnapshot.executionStatus) ||
-          latestSnapshot.executionStatus === "PENDING_CANCEL";
+          latestSnapshot !== null &&
+          (isExecuting(latestSnapshot.executionStatus) ||
+            isPendingExecuting(latestSnapshot.executionStatus) ||
+            latestSnapshot.executionStatus === "PENDING_CANCEL");
 
-        if (latestSnapshot.executionStatus !== "FINISHED" && workerOwnsExecution) {
+        if (
+          latestSnapshot !== null &&
+          latestSnapshot.executionStatus !== "FINISHED" &&
+          workerOwnsExecution
+        ) {
           const currentDeferCount = deferCount ?? 0;
 
           if (currentDeferCount < MAX_FINALIZATION_GUARD_DEFERRALS) {

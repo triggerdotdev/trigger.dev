@@ -257,6 +257,7 @@ function createRunEngine() {
         maxTimeoutInMs: 30_000,
         factor: 2,
         randomize: true,
+        infrastructureMaxAttempts: env.BATCH_QUEUE_INFRA_RETRY_MAX_ATTEMPTS,
       },
     },
     // Debounce configuration

@@ -21,6 +21,7 @@
   "devDependencies": {
     "@internal/run-ops-database": "workspace:*",
     "@internal/testcontainers": "workspace:*",
+    "prom-client": "^15.1.0",
     "rimraf": "6.0.1"
   },
   "scripts": {

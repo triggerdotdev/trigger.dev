@@ -74,6 +74,7 @@ export class BatchQueue {
   private concurrencyRedis: Redis;
   private defaultConcurrency: number;
   private maxAttempts: number;
+  private infrastructureMaxAttempts: number;
 
   private processItemCallback?: ProcessBatchItemCallback;
   private completionCallback?: BatchCompletionCallback;
@@ -102,6 +103,10 @@ export class BatchQueue {
     this.tracer = options.tracer;
     this.defaultConcurrency = options.defaultConcurrency ?? 10;
     this.maxAttempts = options.retry?.maxAttempts ?? 1;
+    this.infrastructureMaxAttempts = Math.max(
+      this.maxAttempts,
+      options.retry?.infrastructureMaxAttempts ?? this.maxAttempts
+    );
     this.abortController = new AbortController();
     this.workerQueueBlockingTimeoutSeconds = options.workerQueueBlockingTimeoutSeconds ?? 10;
     this.globalRateLimiter = options.globalRateLimiter;
@@ -193,8 +198,11 @@ export class BatchQueue {
       ...(options.retry
         ? {
             retry: {
+              // The ceiling covers infrastructure retries too. Every other failure stops at
+              // maxAttempts, because #handleMessage only fails a message back to FairQueue
+              // below that, and the backoff for an attempt does not depend on this ceiling.
               strategy: new ExponentialBackoffRetry({
-                maxAttempts: options.retry.maxAttempts,
+                maxAttempts: this.infrastructureMaxAttempts,
                 minTimeoutInMs: options.retry.minTimeoutInMs ?? 1_000,
                 maxTimeoutInMs: options.retry.maxTimeoutInMs ?? 30_000,
                 factor: options.retry.factor ?? 2,
@@ -824,6 +832,7 @@ export class BatchQueue {
 
       const attempt = storedMessage.attempt;
       const isFinalAttempt = attempt >= this.maxAttempts;
+      const isFinalInfrastructureAttempt = attempt >= this.infrastructureMaxAttempts;
 
       let processedCount: number;
 
@@ -844,6 +853,7 @@ export class BatchQueue {
               meta,
               attempt,
               isFinalAttempt,
+              isFinalInfrastructureAttempt,
             });
           }
         );
@@ -878,11 +888,17 @@ export class BatchQueue {
             span?.setAttribute("batch.skipRetries", true);
           }
 
+          // An infrastructure failure gets its own, larger attempt ceiling.
+          const infrastructureRetry = result.infrastructureRetry === true;
+          const isFinalForThisFailure = infrastructureRetry
+            ? isFinalInfrastructureAttempt
+            : isFinalAttempt;
+
           // If retries are available AND the callback didn't opt out, use
           // FairQueue retry scheduling. `skipRetries` short-circuits this
           // regardless of attempt number so the batch can finalize quickly
           // when the error is known to be non-recoverable on retry.
-          if (!isFinalAttempt && !skipRetries) {
+          if (!isFinalForThisFailure && !skipRetries) {
             span?.setAttribute("batch.retry", true);
             span?.setAttribute("batch.attempt", attempt);
 
@@ -890,7 +906,7 @@ export class BatchQueue {
               batchId,
               itemIndex,
               attempt,
-              maxAttempts: this.maxAttempts,
+              maxAttempts: infrastructureRetry ? this.infrastructureMaxAttempts : this.maxAttempts,
               error: result.error,
             });
 

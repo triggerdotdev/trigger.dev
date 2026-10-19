@@ -587,13 +587,15 @@ export class RedisSnapshotStore {
    * Whether a prepared-but-unfinalized unit exists for this run. The prep key is removed on
    * finalize/abort/quarantine, so its presence is exactly "a unit is pending". Reads the MemoryDB
    * PRIMARY. Residency resolution uses {@link readPendingState} instead, which folds in the quarantine
-   * check; this remains for callers that only need prepared-presence.
+   * check; this remains for callers that only need prepared-presence. `retry: false` is a single
+   * attempt, for a caller whose own retry covers a transient error.
    */
-  async hasPreparedUnit(runId: string): Promise<boolean> {
+  async hasPreparedUnit(runId: string, opts?: { retry?: boolean }): Promise<boolean> {
     return this.#timed("hasPreparedUnit", async () => {
-      const exists = await this.#retryingRead("hasPreparedUnit", () =>
-        this.redis.exists(preparedUnitKey(runId))
-      );
+      const read = () => this.redis.exists(preparedUnitKey(runId));
+      const exists = await (opts?.retry === false
+        ? read()
+        : this.#retryingRead("hasPreparedUnit", read));
       return exists === 1;
     });
   }
@@ -1138,12 +1140,15 @@ export class RedisSnapshotStore {
     });
   }
 
-  async getLatest(runId: string, opts?: { environmentId?: string }): Promise<SnapshotRead | null> {
+  // `retry: false` as for getById: a fail-fast read for a caller holding an open Postgres transaction.
+  async getLatest(
+    runId: string,
+    opts?: { environmentId?: string; retry?: boolean }
+  ): Promise<SnapshotRead | null> {
     return this.#timed("getLatest", async () => {
       const k = snapshotKeys(runId);
-      const reply = await this.#retryingRead("getLatest", () =>
-        this.redis.readLatestSnapshot(k.e, k.idx, k.cur, k.seq)
-      );
+      const read = () => this.redis.readLatestSnapshot(k.e, k.idx, k.cur, k.seq);
+      const reply = await (opts?.retry === false ? read() : this.#retryingRead("getLatest", read));
       return this.#decode(reply, opts?.environmentId, runId, true);
     });
   }
@@ -1175,7 +1180,8 @@ export class RedisSnapshotStore {
   // The completed-waitpoint cycle with its full record set, so a redis-primary read reproduces a
   // Postgres read (Postgres holds no join rows for such a run). A dangling pointer is reported, never
   // answered empty, so the caller fails closed instead of resuming a batch with every position lost.
-  // `retry: false` as for getById: a fail-fast read for an exceptional path.
+  // `retry: false` as for getById: a fail-fast read for an exceptional path, or for a caller holding
+  // an open Postgres transaction.
   async getSnapshotCompletedWaitpoints(
     runId: string,
     snapshotId: string,

@@ -180,6 +180,7 @@ describe("TaskRunExecutionSnapshotStore finalize after Postgres commit", () => {
         expect(error).toBeInstanceOf(SnapshotWriteUnavailableError);
         expect((error as SnapshotWriteUnavailableError).retriable).toBe(true);
         expect((error as Error).message).toContain("finalize outcome unknown");
+        expect((error as SnapshotWriteUnavailableError).phase).toBe("finalize");
         expect((error as Error).message).toContain(TIMEOUT);
         expect(((error as SnapshotWriteUnavailableError).cause as Error | undefined)?.message).toBe(
           TIMEOUT
@@ -272,6 +273,7 @@ describe("TaskRunExecutionSnapshotStore finalize after Postgres commit", () => {
         expect((error as Error).message).toContain(
           "finalize applied but the read-back proof failed"
         );
+        expect((error as SnapshotWriteUnavailableError).phase).toBe("finalize");
         expect((error as Error).message).not.toContain("recovery worker");
         expect(run.calls.finalize).toBe(2);
         expect(run.writes).toEqual(["failed"]);

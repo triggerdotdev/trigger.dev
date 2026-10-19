@@ -199,6 +199,8 @@ export type RunEngineOptions = {
       factor?: number;
       /** Whether to add jitter to retry delays. Default: true */
       randomize?: boolean;
+      /** Attempt ceiling for infrastructure-class failures. Default: maxAttempts */
+      infrastructureMaxAttempts?: number;
     };
   };
   debounce?: {

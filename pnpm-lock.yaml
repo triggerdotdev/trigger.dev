@@ -1361,6 +1361,9 @@ importers:
       '@internal/testcontainers':
         specifier: workspace:*
         version: link:../testcontainers
+      prom-client:
+        specifier: ^15.1.0
+        version: 15.1.0
       rimraf:
         specifier: 6.0.1
         version: 6.0.1

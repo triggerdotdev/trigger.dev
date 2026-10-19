@@ -142,6 +142,17 @@ export class ExecutionSnapshotNotFoundError extends Error {
   }
 }
 
+/**
+ * A run has no execution snapshot in any store. Thrown by `getLatestExecutionSnapshot` for an
+ * internal (unscoped) read; the environment-scoped read keeps its 404 `ServiceValidationError`.
+ */
+export class LatestExecutionSnapshotNotFoundError extends Error {
+  constructor(public readonly runId: string) {
+    super(`No execution snapshot found for TaskRun ${runId}`);
+    this.name = "LatestExecutionSnapshotNotFoundError";
+  }
+}
+
 export class UnclassifiableWaitpointId extends Error {
   readonly waitpointId: string;
   readonly waitpointIdLength: number;

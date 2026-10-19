@@ -22,7 +22,7 @@ import {
   isExpiredSnapshotOfFinishedRun,
 } from "./executionSnapshotSystem.js";
 import type { SystemResources } from "./systems.js";
-import { snapshotRouteFromSnapshot } from "@internal/run-store";
+import { snapshotRouteFromSnapshot, type CompletedWaitpointRecord } from "@internal/run-store";
 
 export type WaitpointSystemOptions = {
   resources: SystemResources;
@@ -712,6 +712,11 @@ export class WaitpointSystem {
           };
         }
         case "EXECUTING_WITH_WAITPOINTS": {
+          const resolveCompletedWaitpointRecords = await this.#completedWaitpointRecordsResolver(
+            runId,
+            snapshot,
+            blockingWaitpoints
+          );
           const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
             this.$.prisma,
             {
@@ -735,8 +740,7 @@ export class WaitpointSystem {
                 id: b.waitpoint.id,
                 index: b.batchIndex ?? undefined,
               })),
-              resolveCompletedWaitpointRecords: () =>
-                this.#buildCompletedWaitpointRecords(runId, blockingWaitpoints),
+              resolveCompletedWaitpointRecords,
             }
           );
 
@@ -793,6 +797,11 @@ export class WaitpointSystem {
 
           //put it back in the queue, with the original timestamp (w/ priority)
           //this prioritizes dequeuing waiting runs over new runs
+          const resolveCompletedWaitpointRecords = await this.#completedWaitpointRecordsResolver(
+            runId,
+            snapshot,
+            blockingWaitpoints
+          );
           const newSnapshot = await this.enqueueSystem.enqueueRun({
             run,
             env,
@@ -807,8 +816,7 @@ export class WaitpointSystem {
               id: b.waitpoint.id,
               index: b.batchIndex ?? undefined,
             })),
-            resolveCompletedWaitpointRecords: () =>
-              this.#buildCompletedWaitpointRecords(runId, blockingWaitpoints),
+            resolveCompletedWaitpointRecords,
             checkpoint: snapshot.checkpoint,
           });
 
@@ -884,6 +892,28 @@ export class WaitpointSystem {
     }
 
     return snapshotBatchId ?? undefined;
+  }
+
+  // The completed-waitpoint records only feed a redis-primary cycle, which the snapshot store builds
+  // INSIDE its owning Postgres transaction. Fetching them from there would wait for a second pooled
+  // connection while the transaction holds one, so concurrent resumes can exhaust the pool and every
+  // transaction times out. A transition writes with the residency of the snapshot it follows, so a
+  // redis-primary resume fetches the records here, before the transaction opens. Every other residency
+  // never builds a cycle and never calls the thunk (no Postgres read, as before); it stays lazy only as
+  // the fallback for a write whose store resolves residency without this route.
+  async #completedWaitpointRecordsResolver(
+    runId: string,
+    snapshot: { organizationId: string; metadata?: unknown },
+    blockingWaitpoints: { waitpoint: { id: string } }[]
+  ): Promise<() => Promise<CompletedWaitpointRecord[]>> {
+    if (
+      blockingWaitpoints.length > 0 &&
+      snapshotRouteFromSnapshot(snapshot).residency === "redis-primary"
+    ) {
+      const records = await this.#buildCompletedWaitpointRecords(runId, blockingWaitpoints);
+      return async () => records;
+    }
+    return () => this.#buildCompletedWaitpointRecords(runId, blockingWaitpoints);
   }
 
   // The blocking edges carry only a 4-field waitpoint pick, but a redis-primary snapshot needs the FULL

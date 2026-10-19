@@ -495,6 +495,10 @@ export class DelegatingRunStore implements RunStore {
     return this.delegate.readSnapshotRoute(runId, organizationId);
   }
 
+  settlePendingUnit(runId: string): Promise<void> {
+    return this.delegate.settlePendingUnit(runId);
+  }
+
   findSnapshotCompletedWaitpointIds(
     snapshotId: string,
     client?: ReadClient,

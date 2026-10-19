@@ -2086,6 +2086,9 @@ export class PostgresRunStore implements RunStore {
     return undefined;
   }
 
+  // Nor any pending snapshot unit to settle.
+  async settlePendingUnit(): Promise<void> {}
+
   async #createExecutionSnapshot(
     input: CreateExecutionSnapshotInput,
     prisma: PrismaClientOrTransaction

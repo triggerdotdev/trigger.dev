@@ -51,6 +51,12 @@ export const PLACEMENT_SITES: readonly PlacementSite[] = [
     routes: ["#routeOrNew(runId)"],
   },
   {
+    method: "settlePendingUnit",
+    basis: "own-id",
+    missMode: "loud",
+    routes: ["#routeOrNew(runId)"],
+  },
+  {
     method: "createRun",
     basis: "own-id",
     missMode: "silent",

@@ -23,7 +23,11 @@ import {
   SnapshotStateExpiredError,
   snapshotRouteFromSnapshot,
 } from "@internal/run-store";
-import { ExecutionSnapshotNotFoundError, ServiceValidationError } from "../errors.js";
+import {
+  ExecutionSnapshotNotFoundError,
+  LatestExecutionSnapshotNotFoundError,
+  ServiceValidationError,
+} from "../errors.js";
 import { isFinalRunStatus } from "../statuses.js";
 import type { HeartbeatTimeouts } from "../types.js";
 import type { SystemResources } from "./systems.js";
@@ -236,9 +240,10 @@ export type LatestExecutionSnapshotOrFinishedRun<S extends Prisma.TaskRunSelect>
   | { snapshot: null; finishedRun: FinishedRunRow<S> };
 
 /**
- * Like `getLatestExecutionSnapshot`, but when the run's snapshot state has expired and its run row
- * is final, returns that row (selected with `runSelect` plus `status`) instead of throwing. Every
- * other error, and expired state on a non-final row, is rethrown unchanged.
+ * Like `getLatestExecutionSnapshot`, but when the run's snapshot state has expired, or the run has no
+ * snapshot at all, and its run row is final, returns that row (selected with `runSelect` plus
+ * `status`) instead of throwing. A run created already failed never gets a snapshot. Every other
+ * error, and missing state on a non-final row, is rethrown unchanged.
  */
 export async function getLatestExecutionSnapshotOrFinishedRun<S extends Prisma.TaskRunSelect>(
   prisma: PrismaClientOrTransaction,
@@ -257,7 +262,10 @@ export async function getLatestExecutionSnapshotOrFinishedRun<S extends Prisma.T
     );
     return { snapshot, finishedRun: null };
   } catch (error) {
-    if (!(error instanceof SnapshotStateExpiredError)) {
+    if (
+      !(error instanceof SnapshotStateExpiredError) &&
+      !(error instanceof LatestExecutionSnapshotNotFoundError)
+    ) {
       throw error;
     }
     // Prisma's select-payload mapping does not compose over an intersection, so the row is read with
@@ -267,7 +275,7 @@ export async function getLatestExecutionSnapshotOrFinishedRun<S extends Prisma.T
       { select: { ...runSelect, status: true } },
       prisma
     )) as FinishedRunRow<S> | null;
-    if (!run || !isExpiredSnapshotOfFinishedRun(error, run.status)) {
+    if (!run || !isFinalRunStatus(run.status)) {
       throw error;
     }
     return { snapshot: null, finishedRun: run };
@@ -301,7 +309,7 @@ export async function getLatestExecutionSnapshot(
     if (environmentId) {
       throw new ServiceValidationError(`No execution snapshot found for TaskRun ${runId}`, 404);
     }
-    throw new Error(`No execution snapshot found for TaskRun ${runId}`);
+    throw new LatestExecutionSnapshotNotFoundError(runId);
   }
 
   return enhanceExecutionSnapshot(snapshot);

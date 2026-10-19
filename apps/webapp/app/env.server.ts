@@ -1439,6 +1439,17 @@ const EnvironmentSchema = z
     RUN_ENGINE_SNAPSHOT_STORE_REDIS_URL: z.string().optional(),
     // How long a fetched org snapshotStoreMode override is reused per process. 0 disables caching.
     RUN_ENGINE_SNAPSHOT_STORE_DIAL_CACHE_MS: z.coerce.number().int().min(0).default(5000),
+    // Background sweep that resolves snapshot units left pending by an interrupted transition
+    // (see snapshotRecoveryWorker.server.ts). Inert without RUN_ENGINE_SNAPSHOT_STORE_REDIS_URL.
+    // Off unless set to "1": enable it on one background replica. Several replicas with it on are
+    // safe: a single fleet lease in the snapshot cluster lets only one of them scan at a time.
+    RUN_ENGINE_SNAPSHOT_RECOVERY_SWEEP_ENABLED: z.string().default("0"),
+    // How often the sweep scans all pending partitions. The fleet lease TTL is derived from it.
+    RUN_ENGINE_SNAPSHOT_RECOVERY_SWEEP_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(30_000),
 
     RUN_ENGINE_RUN_LOCK_REDIS_HOST: z
       .string()
@@ -1845,6 +1856,9 @@ const EnvironmentSchema = z
     // Max items in the worker queue before claiming pauses (protects visibility timeouts)
     // If not set, no depth limit is applied
     BATCH_QUEUE_WORKER_QUEUE_MAX_DEPTH: z.coerce.number().int().positive().optional(),
+    // Total attempts for a batch item whose trigger keeps hitting a transient snapshot store
+    // outage. Other failures stop at the regular 6 attempts. 16 retries for about 6 minutes.
+    BATCH_QUEUE_INFRA_RETRY_MAX_ATTEMPTS: z.coerce.number().int().positive().default(16),
 
     ADMIN_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
     ADMIN_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),

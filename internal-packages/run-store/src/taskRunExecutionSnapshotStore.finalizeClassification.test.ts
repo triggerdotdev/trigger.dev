@@ -81,7 +81,11 @@ describe("runInTransaction fails closed when the Redis unit is not published (F2
             projectId: env.projectId,
             organizationId: env.organizationId,
           })
-        ).rejects.toThrow(SnapshotWriteUnavailableError);
+        ).rejects.toSatisfy(
+          (e: unknown) =>
+            e instanceof SnapshotWriteUnavailableError &&
+            (e as SnapshotWriteUnavailableError).phase === "finalize"
+        );
 
         // Nothing advanced: the transition entry was never published as the head.
         expect(await store.getById(runId, transitionId)).toBeNull();
@@ -232,7 +236,11 @@ describe("runInTransaction fails closed when the Redis unit is not published (F2
             projectId: env.projectId,
             organizationId: env.organizationId,
           })
-        ).rejects.toThrow(SnapshotWriteUnavailableError);
+        ).rejects.toSatisfy(
+          (e: unknown) =>
+            e instanceof SnapshotWriteUnavailableError &&
+            (e as SnapshotWriteUnavailableError).phase === "finalize"
+        );
       } finally {
         await raw.quit().catch(() => undefined);
         await store.quit();

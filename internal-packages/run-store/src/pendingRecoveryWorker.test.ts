@@ -2,7 +2,7 @@
 // outcome. Real Redis (prepare/finalize) + real Postgres (committed/aborted/in-progress xids from
 // actual transactions). No mocks: checkPostgresCommit / commitProbeExists run real SQL. This is the
 // kill-mid-transition -> recover validation at the primitive level.
-import { describe, expect } from "vitest";
+import { describe, expect, vi } from "vitest";
 import { containerTest } from "@internal/testcontainers";
 import { createRedisClient } from "@internal/redis";
 import type { PrismaClient } from "@trigger.dev/database";
@@ -575,6 +575,132 @@ describe("RecoverySweeper", () => {
         expect(ensureAllGroupsCalls).toBe(1);
         expect((await h.store.getLatest(runId))?.id).toBe("s1");
       } finally {
+        await h.store.quit();
+      }
+    }
+  );
+});
+
+// The background sweep alone, under the fleet lease, resolves a unit no run activity will touch, and
+// shutdown hands the lease to a successor.
+describe("RecoverySweeper under the fleet lease", () => {
+  containerTest(
+    "one tick finalizes a committed pending unit, the next is a no-op, and stop() hands over the lease",
+    async ({ redisOptions, prisma }) => {
+      const h = harness(redisOptions, prisma);
+      try {
+        const runId = "run_sweeper_leased";
+        // No ensureGroup: the sweeper creates the groups from "0", so a unit prepared earlier is read.
+        await bornRun(h.store, runId);
+        const xid = await committedXid(prisma);
+        expect((await h.store.prepare(unit(runId, xid))).outcome).toBe("prepared");
+
+        const leased = (owner: string) =>
+          new RecoverySweeper({
+            worker: h.worker(),
+            pendingIndex: h.index,
+            consumer: owner,
+            acquireTick: () => h.store.acquireOrRenewRecoveryLease(owner, 60_000),
+            releaseTick: () => h.store.releaseRecoveryLease(owner),
+          });
+        const a = leased("sweeper-a");
+        const b = leased("sweeper-b");
+
+        const first = await a.tick();
+        expect(first).toEqual({ skipped: false, outcomes: [{ kind: "finalized", runId }] });
+        expect((await h.store.getLatest(runId))?.id).toBe("s1");
+        expect(await h.store.hasPreparedUnit(runId)).toBe(false);
+
+        expect(await a.tick()).toEqual({ skipped: false, outcomes: [] });
+        // A holds the lease, so B scans nothing.
+        expect(await b.tick()).toEqual({ skipped: true, outcomes: [] });
+
+        a.stop();
+        expect(await a.tick()).toEqual({ skipped: true, outcomes: [] });
+        // stop() releases asynchronously; B takes the lease on a following tick.
+        await vi.waitFor(async () => {
+          expect(await b.tick()).toEqual({ skipped: false, outcomes: [] });
+        });
+        expect(await h.store.acquireOrRenewRecoveryLease("sweeper-a", 60_000)).toBe(false);
+      } finally {
+        await h.store.quit();
+      }
+    }
+  );
+});
+
+// Every recovery replica reads as the same consumer. Sharing the name is safe: the lease gates who
+// reads, a shared name never re-delivers an entry already handed out, and a successor reclaims the
+// PEL by idle time alone.
+describe("RecoverySweeper with a shared consumer name", () => {
+  containerTest(
+    "a second instance reads nothing while the first holds the lease, then reclaims its PEL",
+    async ({ redisOptions, prisma }) => {
+      const h = harness(redisOptions, prisma);
+      const raw = createRedisClient(redisOptions, { onError: () => {} });
+      try {
+        const runId = "run_sweeper_shared_consumer";
+        const partition = runToPartition(runId);
+        await bornRun(h.store, runId);
+        expect((await h.store.prepare(unit(runId, await committedXid(prisma)))).outcome).toBe(
+          "prepared"
+        );
+        const minIdleMs = 100;
+        const leased = (owner: string) => {
+          const worker = h.worker({ checkPostgresCommit: async () => "in progress" });
+          const processPartition = vi.fn(worker.processPartition.bind(worker));
+          const sweeper = new RecoverySweeper({
+            worker: { processPartition },
+            pendingIndex: h.index,
+            consumer: "sweeper",
+            minIdleMs,
+            acquireTick: () => h.store.acquireOrRenewRecoveryLease(owner, 60_000),
+            releaseTick: () => h.store.releaseRecoveryLease(owner),
+          });
+          return { sweeper, processPartition };
+        };
+        const a = leased("owner-a");
+        const b = leased("owner-b");
+        const pel = async () =>
+          (await raw.xpending(
+            pendingStreamKey(partition),
+            RECOVERY_CONSUMER_GROUP,
+            "-",
+            "+",
+            10
+          )) as Array<[string, string, number, number]>;
+
+        // A delivers the unit to "sweeper" and leaves it pending (in progress).
+        expect((await a.sweeper.tick()).outcomes).toEqual([
+          { kind: "retry", runId, reason: "in-progress" },
+        ]);
+        const [[entryId, owner, , deliveries]] = await pel();
+        expect([owner, deliveries]).toEqual(["sweeper", 1]);
+
+        // B shares the name but not the lease: it scans no partition at all.
+        expect(await b.sweeper.tick()).toEqual({ skipped: true, outcomes: [] });
+        expect(b.processPartition).not.toHaveBeenCalled();
+        // Even bypassing the lease, the shared name re-delivers nothing: ">" only hands out new
+        // entries and XAUTOCLAIM only moves entries idle past min-idle.
+        expect(await h.index.readGroup(partition, "sweeper")).toEqual([]);
+        expect((await h.index.autoclaim(partition, "sweeper", 60_000)).entries).toEqual([]);
+        expect((await pel())[0][3]).toBe(1);
+
+        // Handover: A releases on stop, and B reclaims the idle entry from the PEL.
+        await a.sweeper.stop();
+        await new Promise((resolve) => setTimeout(resolve, minIdleMs + 50));
+        expect((await b.sweeper.tick()).outcomes).toEqual([
+          { kind: "retry", runId, reason: "in-progress" },
+        ]);
+        expect(await pel()).toEqual([[entryId, "sweeper", expect.any(Number), 2]]);
+        const consumers = (await raw.xinfo(
+          "CONSUMERS",
+          pendingStreamKey(partition),
+          RECOVERY_CONSUMER_GROUP
+        )) as unknown[][];
+        expect(consumers).toHaveLength(1);
+      } finally {
+        await raw.quit();
         await h.store.quit();
       }
     }

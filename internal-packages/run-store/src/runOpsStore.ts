@@ -1386,6 +1386,11 @@ export class RoutingRunStore implements RunStore {
     return this.#routeOrNew(runId).readSnapshotRoute(runId, organizationId);
   }
 
+  // The pending unit lives with the run's owning store, the one runInTransaction opens on.
+  async settlePendingUnit(runId: string): Promise<void> {
+    return this.#routeOrNew(runId).settlePendingUnit(runId);
+  }
+
   // The CompletedWaitpoint join co-locates with the snapshot, which co-locates with its run. When the
   // caller threads the run id (executionSnapshotSystem has it in scope), route to the run's store — no
   // fan-out. Snapshot ids are cuids (they always classify LEGACY), so absent a run id we can't route

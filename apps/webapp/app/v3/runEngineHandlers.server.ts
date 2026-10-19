@@ -1,4 +1,5 @@
 import type { CompleteBatchResult, EventBusEventArgs } from "@internal/run-engine";
+import { SnapshotReadUnavailableError, SnapshotWriteUnavailableError } from "@internal/run-store";
 import { SpanKind } from "@internal/tracing";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { createJsonErrorObject, sanitizeError, TaskRunErrorCodes } from "@trigger.dev/core/v3";
@@ -802,7 +803,16 @@ export function setupBatchQueueCallbacks() {
 
   // Item processing callback - creates a run for each batch item
   engine.setBatchProcessItemCallback(
-    async ({ batchId, friendlyId, itemIndex, item, meta, attempt, isFinalAttempt }) => {
+    async ({
+      batchId,
+      friendlyId,
+      itemIndex,
+      item,
+      meta,
+      attempt,
+      isFinalAttempt,
+      isFinalInfrastructureAttempt,
+    }) => {
       return tracer.startActiveSpan(
         "batch.processItem",
         {
@@ -1007,6 +1017,42 @@ export function setupBatchQueueCallbacks() {
               };
             }
 
+            // A snapshot store outage says nothing about the item, so it retries on the batch
+            // queue's larger infrastructure attempt budget instead of being failed for good.
+            const snapshotStoreUnavailable = isSnapshotStoreUnavailableError(error);
+            if (snapshotStoreUnavailable) {
+              span.setAttribute("batch.result.error_class", "snapshot_store_unavailable");
+
+              if (!isFinalInfrastructureAttempt) {
+                logger.warn(
+                  "[BatchQueue] Batch item trigger hit a snapshot store outage, retrying",
+                  {
+                    batchId,
+                    friendlyId,
+                    itemIndex,
+                    task: item.task,
+                    environmentId: meta.environmentId,
+                    attempt,
+                    error: errorMessage,
+                  }
+                );
+
+                span.setAttribute("batch.result.error", errorMessage);
+                span.end();
+
+                return {
+                  success: false as const,
+                  error: errorMessage,
+                  errorCode: "TRIGGER_ERROR",
+                  infrastructureRetry: true,
+                };
+              }
+            }
+
+            const failureMessage = snapshotStoreUnavailable
+              ? `Snapshot store unavailable after ${attempt} attempts: ${errorMessage}`
+              : errorMessage;
+
             logger.error("[BatchQueue] Failed to trigger batch item", {
               batchId,
               friendlyId,
@@ -1028,7 +1074,7 @@ export function setupBatchQueueCallbacks() {
                 environment,
                 payload: item.payload,
                 payloadType: item.payloadType as string,
-                errorMessage,
+                errorMessage: failureMessage,
                 parentRunId: meta.parentRunId,
                 resumeParentOnCompletion: meta.resumeParentOnCompletion,
                 batch: { id: batchId, index: itemIndex },
@@ -1050,7 +1096,7 @@ export function setupBatchQueueCallbacks() {
 
             return {
               success: false as const,
-              error: errorMessage,
+              error: failureMessage,
               errorCode: "TRIGGER_ERROR",
             };
           }
@@ -1073,6 +1119,24 @@ export function setupBatchQueueCallbacks() {
   });
 
   logger.info("BatchQueue callbacks configured");
+}
+
+/**
+ * A transient snapshot store (MemoryDB) outage surfaced by the trigger. Errors are rethrown unwrapped
+ * from the engine through TriggerTaskService. Expired state is permanent (`retriable: false`), so it
+ * is not one. Neither is a write that failed in its finalize phase: the Postgres transaction had
+ * already committed, so the child run row may exist even though it was never enqueued, and every
+ * retry triggers it again under a fresh run id. Those keep the regular attempt budget.
+ */
+function isSnapshotStoreUnavailableError(error: unknown): boolean {
+  if (error instanceof SnapshotWriteUnavailableError && error.phase === "finalize") {
+    return false;
+  }
+  return (
+    (error instanceof SnapshotReadUnavailableError ||
+      error instanceof SnapshotWriteUnavailableError) &&
+    error.retriable
+  );
 }
 
 /**

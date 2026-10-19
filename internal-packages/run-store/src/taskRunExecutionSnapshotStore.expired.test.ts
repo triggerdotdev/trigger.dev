@@ -203,10 +203,14 @@ describe("TaskRunExecutionSnapshotStore expired redis-primary state", () => {
       // MemoryDB becomes unreachable: residency resolves to error, never expired.
       await store.quit();
 
-      expectRetriableUnavailable(
-        await rejection(
-          writer.findLatestExecutionSnapshot(runId, undefined, undefined, env.organizationId)
-        )
+      const error = await rejection(
+        writer.findLatestExecutionSnapshot(runId, undefined, undefined, env.organizationId)
+      );
+      expectRetriableUnavailable(error);
+      // The message names the resolver outcome, so a read failure is not mistaken for lost state.
+      expect((error as SnapshotReadUnavailableError).kind).toBe("error");
+      expect((error as Error).message).toBe(
+        `snapshot read unavailable for ${runId}: residency read failed`
       );
     }
   );

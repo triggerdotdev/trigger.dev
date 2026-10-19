@@ -213,7 +213,7 @@ function tryResolveRunOpsHandles() {
   }
 }
 
-const snapshotStoreRuntime = singleton("SnapshotStoreRuntime", () => {
+export const snapshotStoreRuntime = singleton("SnapshotStoreRuntime", () => {
   const endpoint = env.RUN_ENGINE_SNAPSHOT_STORE_REDIS_URL;
   if (!endpoint) return undefined;
   const metrics = createSnapshotStoreMetrics(metricsRegister);
