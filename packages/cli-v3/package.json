@@ -79,7 +79,7 @@
     "@babel/parser": "^7.29.7",
     "@clack/prompts": "0.11.0",
     "@depot/cli": "0.0.1-cli.2.80.0",
-    "@modelcontextprotocol/sdk": "^1.25.2",
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "@opentelemetry/api": "1.9.1",
     "@opentelemetry/api-logs": "0.219.0",
     "@opentelemetry/instrumentation": "0.219.0",

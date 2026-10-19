@@ -176,7 +176,8 @@
       "valibot@>=1 <1.4.2": "^1.4.2",
       "vite@>=4 <4.5.14": "^4.5.14",
       "rollup@>=3 <3.30.0": "^3.30.0",
-      "cross-spawn@>=7 <7.0.5": "^7.0.5"
+      "cross-spawn@>=7 <7.0.5": "^7.0.5",
+      "@modelcontextprotocol/sdk@>=1.26.0 <1.31.0": "^1.31.0"
     },
     "onlyBuiltDependencies": [
       "@depot/cli",
