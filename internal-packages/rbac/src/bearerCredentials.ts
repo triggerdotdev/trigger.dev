@@ -22,6 +22,7 @@ export type BearerCredentialKind =
   | "additional_api_key"
   | "public_jwt"
   | "legacy_public_key"
+  | "run_token"
   | "unknown";
 
 export type BearerLookupPath =
@@ -32,6 +33,7 @@ export type BearerLookupPath =
   | "jwt_current"
   | "jwt_rotated"
   | "legacy_public"
+  | "run_token"
   | "not_found";
 
 // Telemetry-only

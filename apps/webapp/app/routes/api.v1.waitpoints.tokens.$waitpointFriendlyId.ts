@@ -12,6 +12,7 @@ export const loader = createLoaderApiRoute(
       waitpointFriendlyId: z.string(),
     }),
     findResource: async () => 1, // This is a dummy function, we don't need to find a resource
+    allowRunToken: true,
     authorization: {
       action: "read",
       resource: (_, params) => ({ type: "waitpoints", id: params.waitpointFriendlyId }),
