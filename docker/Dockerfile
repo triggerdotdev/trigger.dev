@@ -6,7 +6,7 @@ ARG NODE_IMAGE=node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527
 # local `docker build` or compose build leaves it unset and caches as usual.
 ARG APT_REFRESH=unset
 
-FROM golang:1.26-alpine AS goose_builder
+FROM golang:1.26.10-alpine@sha256:9ce231b28998b32e116927c61aa5c406183061d4f3f2d61b292c88e7f6bdf7ca AS goose_builder
 RUN go install github.com/pressly/goose/v3/cmd/goose@v3.27.1
 
 FROM ${NODE_IMAGE} AS pruner
