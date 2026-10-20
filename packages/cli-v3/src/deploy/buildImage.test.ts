@@ -7,6 +7,7 @@ import {
   BASE_IMAGE,
   BUILD_IMAGE,
   DEFAULT_PACKAGES,
+  EMSIGN_COMPROMISE_DISTRUSTED_ROOTS,
   TOOLCHAIN_PACKAGES,
   formatCommandForDiagnostics,
   generateContainerfile,
@@ -99,6 +100,61 @@ describe("generateContainerfile", () => {
       expect(containerfile).not.toContain("FROM base AS build");
     }
   );
+
+  const distrustSteps = (containerfile: string) =>
+    containerfile.match(
+      /^RUN sed .* \/etc\/ca-certificates\.conf && \\\n {2}update-ca-certificates --fresh$/gm
+    ) ?? [];
+
+  it.each(["node", "bun"] as BuildRuntime[])(
+    "distrusts the compromised emSign roots in the base and prebuilt build stages on %s",
+    async (runtime) => {
+      const containerfile = await generateContainerfile({
+        runtime,
+        build: {},
+        image: undefined,
+        indexScript: "index.js",
+        entrypoint: "entrypoint.js",
+      });
+
+      const steps = distrustSteps(containerfile);
+      expect(steps).toHaveLength(2);
+      for (const root of EMSIGN_COMPROMISE_DISTRUSTED_ROOTS) {
+        expect(steps[0]).toContain(`${root}`);
+      }
+      expect(steps[0]).not.toContain("emSign_Root_CA_-_G1");
+      expect(containerfile.match(/^ENV NODE_OPTIONS=--use-openssl-ca$/gm)).toHaveLength(2);
+    }
+  );
+
+  it("keeps --use-openssl-ca when the indexer overrides NODE_OPTIONS", async () => {
+    const containerfile = await generateContainerfile({
+      runtime: "node",
+      build: {},
+      image: undefined,
+      indexScript: "index.js",
+      entrypoint: "entrypoint.js",
+    });
+
+    const indexerOptions = containerfile.match(/NODE_OPTIONS="[^"]*"/g) ?? [];
+    expect(indexerOptions).toHaveLength(1);
+    expect(indexerOptions[0]).toContain("--use-openssl-ca");
+  });
+
+  it("distrusts the roots once when the build stage derives from base", async () => {
+    const containerfile = await generateContainerfile({
+      runtime: "node",
+      build: {},
+      image: { instructions: ["RUN echo hi"] },
+      indexScript: "index.js",
+      entrypoint: "entrypoint.js",
+    });
+
+    expect(distrustSteps(containerfile)).toHaveLength(1);
+    expect(containerfile.indexOf("RUN echo hi")).toBeLessThan(
+      containerfile.indexOf("update-ca-certificates")
+    );
+  });
 
   it("pairs every runtime image with its -build variant", () => {
     for (const runtime of Object.keys(BASE_IMAGE) as BuildRuntime[]) {

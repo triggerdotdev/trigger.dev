@@ -733,6 +733,19 @@ export const BUILD_IMAGE: Record<BuildRuntime, string> = {
 // Preinstalled in the published base images; must match base-images/images.json
 export const DEFAULT_PACKAGES = ["busybox", "ca-certificates", "dumb-init", "git", "openssl"];
 
+export const EMSIGN_COMPROMISE_DISTRUSTED_ROOTS = [
+  "emSign_ECC_Root_CA_-_G3",
+  "emSign_Root_CA_-_C1",
+  "emSign_ECC_Root_CA_-_C3",
+  "Comodo_AAA_Services_root",
+];
+
+const distrustCompromisedRoots = `RUN sed -i -E 's#^(mozilla/(${EMSIGN_COMPROMISE_DISTRUSTED_ROOTS.join(
+  "|"
+)})\\.crt)$#!\\1#' /etc/ca-certificates.conf && \\
+  update-ca-certificates --fresh
+ENV NODE_OPTIONS=--use-openssl-ca`;
+
 export async function generateContainerfile(options: GenerateContainerfileOptions) {
   switch (options.runtime) {
     case "node":
@@ -811,7 +824,9 @@ RUN apt-get update && \\
   rm -rf /var/lib/apt/lists/*`
       : `FROM ${options.image?.buildBase ?? BUILD_IMAGE[options.runtime]} AS build
 
-ENV DEBIAN_FRONTEND=noninteractive${customization ? `\n\n${customization}` : ""}`;
+ENV DEBIAN_FRONTEND=noninteractive${customization ? `\n\n${customization}` : ""}
+
+${distrustCompromisedRoots}`;
 
   return {
     baseImage: options.image?.base ?? BASE_IMAGE[options.runtime],
@@ -834,6 +849,8 @@ FROM ${baseImage} AS base
 ENV DEBIAN_FRONTEND=noninteractive
 
 ${customization}
+
+${distrustCompromisedRoots}
 
 ${buildStage}
 
@@ -936,6 +953,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 ${customization}
 
+${distrustCompromisedRoots}
+
 ${buildStage}
 
 USER node
@@ -993,7 +1012,7 @@ ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     TRIGGER_LOG_LEVEL=debug \
     NODE_EXTRA_CA_CERTS=\${NODE_EXTRA_CA_CERTS} \
     NODE_ENV=production \
-    NODE_OPTIONS="--max_old_space_size=8192"
+    NODE_OPTIONS="--max_old_space_size=8192 --use-openssl-ca"
 
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
