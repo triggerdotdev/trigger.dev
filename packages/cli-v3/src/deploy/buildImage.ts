@@ -12,6 +12,7 @@ import { z } from "zod";
 import { assertExhaustive } from "../utilities/assertExhaustive.js";
 import { tryCatch } from "@trigger.dev/core";
 import type { CliApiClient } from "../apiClient.js";
+import { EMSIGN_COMPROMISE_REJECTED_INTERMEDIATES } from "./emsignRejectedIntermediates.js";
 
 export interface BuildImageOptions {
   // Common options
@@ -740,7 +741,18 @@ export const EMSIGN_COMPROMISE_DISTRUSTED_ROOTS = [
   "Comodo_AAA_Services_root",
 ];
 
-const distrustCompromisedRoots = `RUN sed -i -E 's#^(mozilla/(${EMSIGN_COMPROMISE_DISTRUSTED_ROOTS.join(
+export const EMSIGN_REJECT_DIR = "/usr/local/share/ca-certificates/emsign-block";
+
+const rejectCompromisedIntermediates = `RUN mkdir -p ${EMSIGN_REJECT_DIR} && \\
+${EMSIGN_COMPROMISE_REJECTED_INTERMEDIATES.map(
+  ({ file, pemLines }) =>
+    `  printf '%s\\n' \\\n${pemLines
+      .map((line) => `    '${line}' \\`)
+      .join("\n")}\n    > ${EMSIGN_REJECT_DIR}/${file}`
+).join(" && \\\n")}`;
+
+const distrustCompromisedRoots = `${rejectCompromisedIntermediates}
+RUN sed -i -E 's#^(mozilla/(${EMSIGN_COMPROMISE_DISTRUSTED_ROOTS.join(
   "|"
 )})\\.crt)$#!\\1#' /etc/ca-certificates.conf && \\
   update-ca-certificates --fresh

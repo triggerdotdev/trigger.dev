@@ -8,10 +8,12 @@ import {
   BUILD_IMAGE,
   DEFAULT_PACKAGES,
   EMSIGN_COMPROMISE_DISTRUSTED_ROOTS,
+  EMSIGN_REJECT_DIR,
   TOOLCHAIN_PACKAGES,
   formatCommandForDiagnostics,
   generateContainerfile,
 } from "./buildImage.js";
+import { EMSIGN_COMPROMISE_REJECTED_INTERMEDIATES } from "./emsignRejectedIntermediates.js";
 
 describe("formatCommandForDiagnostics", () => {
   it("redacts build argument values without changing the executable arguments", () => {
@@ -154,6 +156,73 @@ describe("generateContainerfile", () => {
     expect(containerfile.indexOf("RUN echo hi")).toBeLessThan(
       containerfile.indexOf("update-ca-certificates")
     );
+  });
+
+  const rejectSteps = (containerfile: string) =>
+    Array.from(
+      containerfile.matchAll(
+        /^RUN mkdir -p \/usr\/local\/share\/ca-certificates\/emsign-block && \\$/gm
+      )
+    );
+
+  const pemFromStep = (containerfile: string, file: string) => {
+    const block = containerfile.match(
+      new RegExp(
+        `printf '%s\\\\n' \\\\\\n((?: {4}'[^']*' \\\\\\n)+) {4}> ${EMSIGN_REJECT_DIR}/${file}`
+      )
+    );
+    return block ? block[1]!.match(/'([^']*)'/g)!.map((q) => q.slice(1, -1)) : [];
+  };
+
+  it.each(["node", "bun"] as BuildRuntime[])(
+    "writes the emSign reject entries before refreshing the store in the base and prebuilt build stages on %s",
+    async (runtime) => {
+      const containerfile = await generateContainerfile({
+        runtime,
+        build: {},
+        image: undefined,
+        indexScript: "index.js",
+        entrypoint: "entrypoint.js",
+      });
+
+      const rejects = rejectSteps(containerfile);
+      const refreshes = Array.from(
+        containerfile.matchAll(/^ {2}update-ca-certificates --fresh$/gm)
+      );
+      expect(rejects).toHaveLength(2);
+      expect(refreshes).toHaveLength(2);
+      expect(rejects[0]!.index).toBeLessThan(refreshes[0]!.index!);
+      expect(rejects[1]!.index).toBeGreaterThan(refreshes[0]!.index!);
+      expect(rejects[1]!.index).toBeLessThan(refreshes[1]!.index!);
+
+      for (const { file, pemLines } of EMSIGN_COMPROMISE_REJECTED_INTERMEDIATES) {
+        expect(pemFromStep(containerfile, file)).toEqual(pemLines);
+      }
+    }
+  );
+
+  it("writes the reject entries once when the build stage derives from base", async () => {
+    const containerfile = await generateContainerfile({
+      runtime: "bun",
+      build: {},
+      image: { instructions: ["RUN echo hi"] },
+      indexScript: "index.js",
+      entrypoint: "entrypoint.js",
+    });
+
+    expect(rejectSteps(containerfile)).toHaveLength(1);
+  });
+
+  it("ships reject entries that are safe to embed in a shell command", () => {
+    expect(EMSIGN_COMPROMISE_REJECTED_INTERMEDIATES).toHaveLength(8);
+    for (const { file, pemLines } of EMSIGN_COMPROMISE_REJECTED_INTERMEDIATES) {
+      expect(file).toMatch(/^emsign-block-EM-(DV|OV|EV)-(TLS|CS)-CA-G3[BC]-by-[A-Za-z0-9-]+\.crt$/);
+      expect(pemLines[0]).toBe("-----BEGIN TRUSTED CERTIFICATE-----");
+      expect(pemLines.at(-1)).toBe("-----END TRUSTED CERTIFICATE-----");
+      for (const line of pemLines.slice(1, -1)) {
+        expect(line).toMatch(/^[A-Za-z0-9+/=]+$/);
+      }
+    }
   });
 
   it("pairs every runtime image with its -build variant", () => {
