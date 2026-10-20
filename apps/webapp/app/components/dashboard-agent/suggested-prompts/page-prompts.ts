@@ -70,7 +70,7 @@ export function pageSlotPrompts(page: AgentPage): PageSlotPrompts {
         investigate: def(
           "run-investigate",
           "What happened in this run?",
-          `Investigate ${page.runId} — walk me through what happened.`
+          `Investigate ${page.runId} - walk me through what happened.`
         ),
         explain: def(
           "run-task-health",
@@ -95,7 +95,7 @@ export function pageSlotPrompts(page: AgentPage): PageSlotPrompts {
         investigate: def(
           "error-cause",
           "Why does this keep happening?",
-          "Investigate this error — why does it keep coming back, and which runs are affected?"
+          "Investigate this error - why does it keep coming back, and which runs are affected?"
         ),
         watch: def(
           "error-watch-recurrence",
@@ -168,7 +168,7 @@ export function pageSlotPrompts(page: AgentPage): PageSlotPrompts {
           ? def(
               "deployment-failure",
               "Why did this deploy fail?",
-              `Investigate deployment ${page.version} — why did it fail?`
+              `Investigate deployment ${page.version} - why did it fail?`
             )
           : undefined,
         explain: def(
@@ -195,7 +195,7 @@ export function pageSlotPrompts(page: AgentPage): PageSlotPrompts {
         explain: def(
           "task-health",
           "How is this task doing?",
-          `How has ${page.taskId} been performing — failure rate, duration, and its recent runs?`
+          `How has ${page.taskId} been performing - failure rate, duration, and its recent runs?`
         ),
         docs: page.triggerSource === "SCHEDULED" ? DOCS_SCHEDULES : DOCS_TASKS,
       };
@@ -213,7 +213,7 @@ export function pageSlotPrompts(page: AgentPage): PageSlotPrompts {
         explain: def(
           "schedule-adherence",
           "Is this running on time?",
-          `Is ${page.taskId} running on schedule — have its recent runs fired when expected and finished cleanly?`
+          `Is ${page.taskId} running on schedule - have its recent runs fired when expected and finished cleanly?`
         ),
         docs: DOCS_SCHEDULES,
       };
@@ -255,7 +255,7 @@ export function pageSlotPrompts(page: AgentPage): PageSlotPrompts {
         explain: def(
           "batch-outcome",
           "How did this batch do?",
-          `How did batch ${page.batchId} do — how many of its runs succeeded, and how many failed?`
+          `How did batch ${page.batchId} do - how many of its runs succeeded, and how many failed?`
         ),
         docs: DOCS_BATCHES,
       };
@@ -373,8 +373,8 @@ export function pageSlotPrompts(page: AgentPage): PageSlotPrompts {
           "bulkactions-outcome",
           "How did my last one go?",
           page.bulkActionId
-            ? `How did bulk action ${page.bulkActionId} go — how many runs did it touch, and how many failed?`
-            : "How did my most recent bulk action go — how many runs did it touch, and how many failed?"
+            ? `How did bulk action ${page.bulkActionId} go - how many runs did it touch, and how many failed?`
+            : "How did my most recent bulk action go - how many runs did it touch, and how many failed?"
         ),
         docs: DOCS_BULK_ACTIONS,
       };
@@ -456,8 +456,8 @@ export function pageSlotPrompts(page: AgentPage): PageSlotPrompts {
           "agents-health",
           "How is this agent doing?",
           page.agentId
-            ? `How has the ${page.agentId} agent been running — failures, duration, and token spend?`
-            : "How have my agents been running — failures, duration, and token spend?"
+            ? `How has the ${page.agentId} agent been running - failures, duration, and token spend?`
+            : "How have my agents been running - failures, duration, and token spend?"
         ),
         docs: DOCS_AGENTS,
       };
@@ -523,7 +523,7 @@ export function pageSlotPrompts(page: AgentPage): PageSlotPrompts {
           "sessions-activity",
           "How are my sessions doing?",
           page.sessionId
-            ? `What happened in session ${page.sessionId} — which runs did it trigger, and how did they end?`
+            ? `What happened in session ${page.sessionId} - which runs did it trigger, and how did they end?`
             : "How many sessions ran recently, and how did their runs end?"
         ),
         docs: DOCS_SESSIONS,

@@ -51,11 +51,20 @@ export function Toast() {
 export function useToast() {
   return useMemo(
     () => ({
-      success(message: string, options?: { title?: string; ephemeral?: boolean }) {
+      success(
+        message: string,
+        options?: { title?: string; ephemeral?: boolean; action?: ToastMessageAction }
+      ) {
         const ephemeral = options?.ephemeral ?? true;
         toast.custom(
           (t) => (
-            <ToastUI variant="success" message={message} t={t as string} title={options?.title} />
+            <ToastUI
+              variant="success"
+              message={message}
+              t={t as string}
+              title={options?.title}
+              action={options?.action}
+            />
           ),
           { duration: ephemeral ? defaultToastDuration : permanentToastDuration }
         );

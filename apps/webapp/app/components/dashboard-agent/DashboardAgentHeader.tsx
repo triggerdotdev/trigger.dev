@@ -152,6 +152,7 @@ export function DashboardAgentHeader({
   mode,
   onModeChange,
   onClose,
+  actions,
 }: {
   title: string;
   chats: DashboardAgentChat[];
@@ -162,6 +163,8 @@ export function DashboardAgentHeader({
   mode: DashboardAgentMode;
   onModeChange: (mode: DashboardAgentMode) => void;
   onClose: () => void;
+  /** Additive, contextual action (e.g. DEC-067's "Manual setup"); absent for every other caller. */
+  actions?: React.ReactNode;
 }) {
   const [isHistoryOpen, setHistoryOpen] = useState(false);
   const [historyOpenedAt, setHistoryOpenedAt] = useState<number | null>(null);
@@ -220,6 +223,7 @@ export function DashboardAgentHeader({
       />
 
       <div className="flex shrink-0 items-center gap-1" data-agent-no-drag>
+        {actions}
         <ModeMenu mode={mode} onModeChange={onModeChange} />
         <Button
           variant="minimal/small"

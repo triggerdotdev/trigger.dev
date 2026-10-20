@@ -65,6 +65,13 @@ const FIXTURES: Record<EnvelopedViewBlock["type"], EnvelopedViewBlock> = {
     followUp: [],
     watchId: "watch_1",
   },
+  alert_created: {
+    ...envelope("alert:alert_1"),
+    type: "alert_created",
+    alertId: "alert_1",
+    name: "Queue depth above 100",
+    rows: [{ label: "Notifying", value: "Notifying: this chat." }],
+  },
   investigation: {
     ...envelope("investigation-1"),
     type: "investigation",

@@ -21,9 +21,12 @@ export default {
       ignore: [
         "app/v3/services/alerts/**",
         "app/components/alerts/alertSeriesTypes.ts",
-        "app/utils/pathBuilder.ts",
-        "app/utils/errorGroupScope.ts",
         "app/v3/canUseAlertsList.server.ts",
+        "app/components/alerts/AlertChannelForm.tsx",
+        "app/components/alerts/AlertChannelsBody.tsx",
+        "app/components/alerts/domainIcons.ts",
+        "app/components/alerts/legacyAlertChannels.ts",
+        "app/components/alerts/wizardSteps.ts",
       ],
       entry: [
         "evalite.config.ts",

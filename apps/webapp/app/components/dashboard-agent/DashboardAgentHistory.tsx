@@ -13,6 +13,7 @@ export type DashboardAgentChat = {
   id: string;
   title: string;
   lastMessageAt: string | null;
+  kind?: "alert_creation" | null;
   watches?: WatchChip[];
   hasUnreadWake?: boolean;
   /** The chat answered, settled a card or woke while it was closed. */
@@ -20,6 +21,8 @@ export type DashboardAgentChat = {
   hasActiveWatch?: boolean;
   hasOpenInvestigation?: boolean;
 };
+
+const ALERT_CREATION_TAG = "New alert";
 
 /** A wake is unread work too, so one predicate answers for both. */
 export function chatIsUnread(chat: DashboardAgentChat): boolean {
@@ -73,7 +76,20 @@ export function DashboardAgentHistoryMenu({
             return (
               <AgentListRow
                 key={chat.id}
-                label={chat.title}
+                label={
+                  chat.kind === "alert_creation" ? (
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="shrink-0 rounded border border-grid-bright px-1 text-xxs text-text-dimmed">
+                        {ALERT_CREATION_TAG}
+                      </span>
+                      {chat.title !== ALERT_CREATION_TAG ? (
+                        <span className="truncate">{chat.title}</span>
+                      ) : null}
+                    </span>
+                  ) : (
+                    chat.title
+                  )
+                }
                 unread={chatIsUnread(chat)}
                 meta={age}
                 variant={chat.id === currentChatId ? "selected" : "default"}

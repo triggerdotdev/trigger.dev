@@ -10,7 +10,7 @@ import { InformationCircleIcon, ArrowUpCircleIcon } from "@heroicons/react/20/so
 import { EnvelopeIcon, ShieldCheckIcon } from "@heroicons/react/24/solid";
 import { Form, useActionData, useLocation, useNavigation, useSearchParams } from "@remix-run/react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { type FeedbackType, feedbackTypes, schema } from "~/routes/resources.feedback";
+import { type FeedbackType, feedbackTypes, schema } from "~/utils/feedback";
 import { Button } from "./primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "./primitives/Dialog";
 import { Fieldset } from "./primitives/Fieldset";

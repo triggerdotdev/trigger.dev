@@ -1,6 +1,6 @@
 // Both class helpers apply to always-rendered wrappers, so switching display mode is a
 // class change only and the open chat's transport, session and transcript survive it.
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, type PanInfo } from "framer-motion";
 import {
@@ -16,6 +16,7 @@ import {
   type Rect,
 } from "~/components/primitives/draggableResizableMath";
 import type { ChatOpenMode } from "~/utils/dashboardPreferences";
+import type { AgentOpenSource } from "./manual-setup-action";
 import { cn } from "~/utils/cn";
 import { AgentAiDisclosure } from "./AgentAiDisclosure";
 import { CHAT_MODE_OPTIONS } from "./chat-mode-options";
@@ -42,6 +43,7 @@ export type DashboardAgentMode = ChatOpenMode;
 // gallery's own panel frame.
 export const FLOATING_WIDTH = 380;
 export const FLOATING_HEIGHT = 600;
+export const ALERTS_FLOATING_HEIGHT = 512;
 export const FLOATING_MARGIN = 16;
 export const FLOATING_MIN_SIZE = { w: 320, h: 360 };
 const RESIZE_EDGES: ResizeEdge[] = ["n", "e", "s", "w", "ne", "nw", "se", "sw"];
@@ -101,16 +103,20 @@ export function writeAgentPanelWidth(width: number | undefined) {
   }
 }
 
-export function initialFloatingRect() {
+export function initialFloatingRect(height = FLOATING_HEIGHT) {
   if (typeof window === "undefined") {
-    return { x: 0, y: 0, w: FLOATING_WIDTH, h: FLOATING_HEIGHT };
+    return { x: 0, y: 0, w: FLOATING_WIDTH, h: height };
   }
   return {
     x: window.innerWidth - FLOATING_WIDTH - FLOATING_MARGIN,
-    y: window.innerHeight - FLOATING_HEIGHT - FLOATING_MARGIN,
+    y: window.innerHeight - height - FLOATING_MARGIN,
     w: FLOATING_WIDTH,
-    h: FLOATING_HEIGHT,
+    h: height,
   };
+}
+
+export function initialFloatingRectFor(source: AgentOpenSource | undefined): Rect {
+  return initialFloatingRect(source === "alerts" ? ALERTS_FLOATING_HEIGHT : FLOATING_HEIGHT);
 }
 
 /** The mode a chat starts in, and the mode a transient in-chat switch reverts to: the
@@ -218,16 +224,18 @@ function DockZoneOverlay({ zone }: { zone: DockZone }) {
  */
 export function FloatingAgentWindow({
   mode,
+  initialRect,
   onRequestModeChange,
   children,
 }: {
   mode: DashboardAgentMode;
+  initialRect?: Rect;
   onRequestModeChange?: (mode: DashboardAgentMode) => void;
   children: (drag: FloatingDragProps) => React.ReactNode;
 }) {
   const fullscreen = mode === "fullscreen";
   const docked = mode === "rightPanel";
-  const initial = useMemo(() => initialFloatingRect(), []);
+  const [initial] = useState(() => initialRect ?? initialFloatingRect());
   const { style, dragHandleProps, resizeHandleProps, position, size, setRect } =
     useDraggableResizable({
       initial,

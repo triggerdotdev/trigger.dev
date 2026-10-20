@@ -636,9 +636,30 @@ export const legacyWatchResultBlockSchema =
 export type EnvelopedWatchResultBlock = z.infer<typeof watchResultBlockSchema>;
 export type WatchResultBlock = z.infer<typeof legacyWatchResultBlockSchema>;
 
+export const alertCreatedRowSchema = z.object({
+  label: z.string(),
+  value: z.string(),
+  expiresAt: z.string().optional(),
+});
+export type AlertCreatedRow = z.infer<typeof alertCreatedRowSchema>;
+
+const alertCreatedBlockBodySchema = z.object({
+  type: z.literal("alert_created"),
+  alertId: z.string(),
+  name: z.string(),
+  rows: z.array(alertCreatedRowSchema).default([]),
+});
+
+export const alertCreatedBlockSchema = alertCreatedBlockBodySchema.merge(blockEnvelopeSchema);
+export const legacyAlertCreatedBlockSchema =
+  alertCreatedBlockBodySchema.extend(optionalEnvelopeShape);
+
+export type EnvelopedAlertCreatedBlock = z.infer<typeof alertCreatedBlockSchema>;
+export type AlertCreatedBlock = z.infer<typeof legacyAlertCreatedBlockSchema>;
+
 /**
- * What `render_view` accepts from the model. `report` and `watch_result` are
- * host-emitted and so absent here.
+ * What `render_view` accepts from the model. `report`, `watch_result` and
+ * `alert_created` are host-emitted and so absent here.
  */
 export const viewBlockInputSchema = z.discriminatedUnion("type", [
   diagnosisBlockBodySchema,
@@ -701,6 +722,7 @@ export const viewBlockSchema = z.discriminatedUnion("type", [
   reportBlockSchema,
   investigationBlockSchema,
   watchResultBlockSchema,
+  alertCreatedBlockSchema,
 ]);
 
 export type EnvelopedDiagnosisBlock = z.infer<typeof diagnosisBlockSchema>;
@@ -725,6 +747,7 @@ export const legacyViewBlockSchema = z.discriminatedUnion("type", [
   legacyReportBlockSchema,
   legacyInvestigationBlockSchema,
   legacyWatchResultBlockSchema,
+  legacyAlertCreatedBlockSchema,
 ]);
 
 /**

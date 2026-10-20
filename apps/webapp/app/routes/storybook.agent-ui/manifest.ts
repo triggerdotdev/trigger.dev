@@ -6,7 +6,8 @@ export type GalleryPageId =
   | "view-blocks"
   | "report"
   | "investigation"
-  | "watch";
+  | "watch"
+  | "wizard";
 
 export type GalleryPage = {
   id: GalleryPageId;
@@ -56,6 +57,13 @@ export const GALLERY_PAGES: GalleryPage[] = [
     blurb:
       "The configuration card, what a submitted card leaves in the transcript, and the wake headline.",
   },
+  {
+    id: "wizard",
+    slug: "agent-wizard",
+    title: "Wizard card",
+    blurb:
+      "The question card above the composer: option rows, the entity picker, custom inputs with units, multi-param thresholds, the Until date and errors.",
+  },
 ];
 
 export type GalleryGroup =
@@ -77,7 +85,8 @@ export type GalleryGroup =
   | "prompts"
   | "intents"
   | "messages"
-  | "banner";
+  | "banner"
+  | "wizard";
 
 export type GallerySection = {
   /** DOM id and deep-link anchor. Renaming breaks the link. */
@@ -94,6 +103,7 @@ export const GALLERY_GROUPS: { group: GalleryGroup; page: GalleryPageId; label: 
   { group: "wakes", page: "chat", label: "Wake banners" },
   { group: "watches", page: "chat", label: "Watch chips" },
   { group: "banner", page: "chat", label: "Context banner" },
+  { group: "wizard", page: "wizard", label: "Wizard card" },
   { group: "composer-docked", page: "composer", label: "Docked under a chat" },
   { group: "composer-hero", page: "composer", label: "Blank-state hero" },
   { group: "composer-limits", page: "composer", label: "Limits" },
@@ -185,6 +195,18 @@ export const MANIFEST: GallerySection[] = [
 
   { sectionId: "banner-prod", title: "Production environment", group: "banner" },
   { sectionId: "banner-preview-long", title: "Preview branch with a long name", group: "banner" },
+
+  { sectionId: "wizard-card", title: "Question steps above the composer", group: "wizard" },
+  { sectionId: "wizard-option-info", title: "Option rows with info", group: "wizard" },
+  { sectionId: "wizard-entity", title: "Entity picker row", group: "wizard" },
+  { sectionId: "wizard-custom-unit", title: "Custom input with unit", group: "wizard" },
+  {
+    sectionId: "wizard-multi-param",
+    title: "Multi-param thresholds with Continue",
+    group: "wizard",
+  },
+  { sectionId: "wizard-until", title: "Until date row", group: "wizard" },
+  { sectionId: "wizard-error", title: "Error state", group: "wizard" },
 
   {
     sectionId: "composer-docked-empty",

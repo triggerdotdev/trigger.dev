@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { escapeClosesPanel } from "./panel-escape";
+import { escapeClosesPanel, ownsEscape } from "./panel-escape";
 
 /**
  * Escape has to reach the thing the user meant. Radix dismisses a popover or a dialog from a
@@ -19,6 +19,34 @@ describe("escapeClosesPanel", () => {
     expect(
       escapeClosesPanel({ key: "Escape", defaultPrevented: false, targetInsidePanel: false })
     ).toBe(false);
+  });
+
+  it("leaves the panel open when Escape comes from an in-panel popover", () => {
+    expect(
+      escapeClosesPanel({
+        key: "Escape",
+        defaultPrevented: false,
+        targetInsidePanel: true,
+        targetInDialog: true,
+      })
+    ).toBe(false);
+  });
+
+  it("leaves the panel open when Escape comes from a trigger with its list open", () => {
+    expect(
+      escapeClosesPanel({
+        key: "Escape",
+        defaultPrevented: false,
+        targetInsidePanel: true,
+        targetExpanded: true,
+      })
+    ).toBe(false);
+  });
+
+  it("only an expanded popup trigger owns Escape, not a plain disclosure toggle", () => {
+    const attrs = (a: Record<string, string>) => ({ getAttribute: (k: string) => a[k] ?? null });
+    expect(ownsEscape(attrs({ "aria-expanded": "true", "aria-haspopup": "listbox" }))).toBe(true);
+    expect(ownsEscape(attrs({ "aria-expanded": "true" }))).toBe(false);
   });
 
   it("stays out of the way once something else has handled the key", () => {

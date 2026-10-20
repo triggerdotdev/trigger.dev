@@ -16,6 +16,11 @@ const variants = {
     nowButtonVariant: "tertiary/small" as const,
     clearButtonVariant: "tertiary/small" as const,
   },
+  row: {
+    fieldStyles: "h-5 text-sm rounded-sm px-0.5",
+    nowButtonVariant: "tertiary/small" as const,
+    clearButtonVariant: "tertiary/small" as const,
+  },
   medium: {
     fieldStyles: "h-7 text-sm rounded px-1",
     nowButtonVariant: "tertiary/medium" as const,
@@ -39,7 +44,15 @@ type DateFieldProps = {
   onValueChange?: (value: Date | undefined) => void;
   utc?: boolean;
   variant?: Variant;
+  borderless?: boolean;
+  dayFirst?: boolean;
+  hourCycle?: 12 | 24;
+  autoFocus?: boolean;
+  invalid?: boolean;
+  onInvalidInput?: () => void;
 };
+
+const RANGED_SEGMENTS = new Set(["day", "month", "hour", "minute"]);
 
 const deviceTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -57,6 +70,12 @@ export function DateField({
   showClearButton = false,
   utc = false,
   variant = "small",
+  borderless = false,
+  dayFirst = false,
+  hourCycle,
+  autoFocus = false,
+  invalid = false,
+  onInvalidInput,
 }: DateFieldProps) {
   const [value, setValue] = useState<undefined | CalendarDateTime>(
     utc ? utcDateToCalendarDate(defaultValue) : dateToCalendarDate(defaultValue)
@@ -74,6 +93,7 @@ export function DateField({
     maxValue: utc ? utcDateToCalendarDate(maxValue) : dateToCalendarDate(maxValue),
     shouldForceLeadingZeros: true,
     granularity,
+    hourCycle,
     locale: "en-US",
     createCalendar: (name: string) => {
       return createCalendar(name);
@@ -110,14 +130,59 @@ export function DateField({
     ref
   );
 
+  useEffect(() => {
+    if (autoFocus) ref.current?.querySelector<HTMLElement>('[role="spinbutton"]')?.focus();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- focus once on mount
+
+  const typed = useRef({ type: "", keys: "" });
+  useEffect(() => {
+    const field = ref.current;
+    if (!field || hourCycle !== 24) return;
+    const reset = () => {
+      typed.current = { type: "", keys: "" };
+    };
+    const onBeforeInput = (e: InputEvent) => {
+      const el =
+        e.target instanceof Element ? e.target.closest<HTMLElement>("[data-segment-type]") : null;
+      const type = el?.dataset.segmentType;
+      if (!type || !RANGED_SEGMENTS.has(type) || !e.data || !/^\d$/.test(e.data)) return;
+      const segment = state.segments.find((s) => s.type === type);
+      if (!segment) return;
+      const keys = (typed.current.type === type ? typed.current.keys : "") + e.data;
+      const max = segment.maxValue ?? Infinity;
+      const width = String(max).length;
+      const n = Number(keys);
+      if (n > max || (keys.length >= width && n < (segment.minValue ?? 0))) {
+        e.preventDefault();
+        e.stopPropagation();
+        reset();
+        onInvalidInput?.();
+        return;
+      }
+      typed.current = {
+        type,
+        keys: Number(`${keys}0`) > max || keys.length >= width ? "" : keys,
+      };
+    };
+    field.addEventListener("beforeinput", onBeforeInput, true);
+    field.addEventListener("focusin", reset);
+    return () => {
+      field.removeEventListener("beforeinput", onBeforeInput, true);
+      field.removeEventListener("focusin", reset);
+    };
+  });
+
   //render if reverse date order
   const yearSegment = state.segments.find((s) => s.type === "year")!;
   const monthSegment = state.segments.find((s) => s.type === "month")!;
   const daySegment = state.segments.find((s) => s.type === "day")!;
   const hourSegment = state.segments.find((s) => s.type === "hour")!;
   const minuteSegment = state.segments.find((s) => s.type === "minute")!;
-  const secondSegment = state.segments.find((s) => s.type === "second")!;
-  const dayPeriodSegment = state.segments.find((s) => s.type === "dayPeriod")!;
+  const secondSegment = state.segments.find((s) => s.type === "second");
+  const dayPeriodSegment = state.segments.find((s) => s.type === "dayPeriod");
+  const [firstSegment, lastSegment] = dayFirst
+    ? [daySegment, yearSegment]
+    : [yearSegment, daySegment];
 
   return (
     <div className={`flex flex-col items-start ${className || ""}`}>
@@ -126,23 +191,74 @@ export function DateField({
           {...fieldProps}
           ref={ref}
           className={cn(
-            "flex rounded-sm border bg-background-raised p-0.5 transition focus-within:border-border-bright hover:border-border-bright",
+            "flex rounded-sm transition",
+            !borderless &&
+              "border bg-background-raised p-0.5 focus-within:border-border-bright hover:border-border-bright",
+            invalid && "border-error text-error",
             fieldClassName
           )}
         >
-          <DateSegment segment={yearSegment} state={state} variant={variant} />
-          <DateSegment segment={literalSegment("/")} state={state} variant={variant} />
-          <DateSegment segment={monthSegment} state={state} variant={variant} />
-          <DateSegment segment={literalSegment("/")} state={state} variant={variant} />
-          <DateSegment segment={daySegment} state={state} variant={variant} />
-          <DateSegment segment={literalSegment(", ")} state={state} variant={variant} />
-          <DateSegment segment={hourSegment} state={state} variant={variant} />
-          <DateSegment segment={literalSegment(":")} state={state} variant={variant} />
-          <DateSegment segment={minuteSegment} state={state} variant={variant} />
-          <DateSegment segment={literalSegment(":")} state={state} variant={variant} />
-          <DateSegment segment={secondSegment} state={state} variant={variant} />
-          <DateSegment segment={literalSegment(" ")} state={state} variant={variant} />
-          <DateSegment segment={dayPeriodSegment} state={state} variant={variant} />
+          <DateSegment segment={firstSegment} state={state} variant={variant} invalid={invalid} />
+          <DateSegment
+            segment={literalSegment("/")}
+            state={state}
+            variant={variant}
+            invalid={invalid}
+          />
+          <DateSegment segment={monthSegment} state={state} variant={variant} invalid={invalid} />
+          <DateSegment
+            segment={literalSegment("/")}
+            state={state}
+            variant={variant}
+            invalid={invalid}
+          />
+          <DateSegment segment={lastSegment} state={state} variant={variant} invalid={invalid} />
+          <DateSegment
+            segment={literalSegment(", ")}
+            state={state}
+            variant={variant}
+            invalid={invalid}
+          />
+          <DateSegment segment={hourSegment} state={state} variant={variant} invalid={invalid} />
+          <DateSegment
+            segment={literalSegment(":")}
+            state={state}
+            variant={variant}
+            invalid={invalid}
+          />
+          <DateSegment segment={minuteSegment} state={state} variant={variant} invalid={invalid} />
+          {secondSegment && (
+            <>
+              <DateSegment
+                segment={literalSegment(":")}
+                state={state}
+                variant={variant}
+                invalid={invalid}
+              />
+              <DateSegment
+                segment={secondSegment}
+                state={state}
+                variant={variant}
+                invalid={invalid}
+              />
+            </>
+          )}
+          {dayPeriodSegment && (
+            <>
+              <DateSegment
+                segment={literalSegment(" ")}
+                state={state}
+                variant={variant}
+                invalid={invalid}
+              />
+              <DateSegment
+                segment={dayPeriodSegment}
+                state={state}
+                variant={variant}
+                invalid={invalid}
+              />
+            </>
+          )}
         </div>
         {showNowButton && (
           <Button
@@ -217,9 +333,10 @@ type DateSegmentProps = {
   segment: DateSegment;
   state: DateFieldState;
   variant: Variant;
+  invalid?: boolean;
 };
 
-function DateSegment({ segment, state, variant }: DateSegmentProps) {
+function DateSegment({ segment, state, variant, invalid }: DateSegmentProps) {
   const ref = useRef<null | HTMLDivElement>(null);
   const { segmentProps } = useDateSegment(segment, state, ref);
   const sizeVariant = variants[variant];
@@ -228,6 +345,7 @@ function DateSegment({ segment, state, variant }: DateSegmentProps) {
     <div
       {...segmentProps}
       ref={ref}
+      data-segment-type={segment.type}
       style={{
         ...segmentProps.style,
         minWidth: minWidthForSegment(segment),
@@ -235,7 +353,7 @@ function DateSegment({ segment, state, variant }: DateSegmentProps) {
       className={cn(
         "group box-content text-center tabular-nums outline-hidden focus:bg-surface-control focus:text-text-bright",
         sizeVariant.fieldStyles,
-        !segment.isEditable ? "text-text-faint" : "text-text-bright"
+        !segment.isEditable ? "text-text-faint" : invalid ? "text-error" : "text-text-bright"
       )}
     >
       {/* Always reserve space for the placeholder, to prevent layout shift when editing. */}
@@ -250,7 +368,10 @@ function DateSegment({ segment, state, variant }: DateSegmentProps) {
       >
         {segment.placeholder}
       </span>
-      <span className="flex h-full items-center justify-center">
+      <span
+        className="flex h-full items-center justify-center"
+        style={{ height: segment.isPlaceholder ? 0 : undefined }}
+      >
         {segment.isPlaceholder ? "" : segment.text}
       </span>
     </div>

@@ -15,7 +15,9 @@ import {
   FLOATING_MIN_SIZE,
   FLOATING_WIDTH,
   FloatingAgentWindow,
+  ALERTS_FLOATING_HEIGHT,
   initialFloatingRect,
+  initialFloatingRectFor,
   readAgentPanelWidth,
   writeAgentPanelWidth,
   type DashboardAgentMode,
@@ -103,13 +105,14 @@ describe("initialFloatingRect", () => {
 // `data-agent-no-drag` action (opted out), same as DashboardAgentHeader's button group.
 function renderFloatingAgentWindow(
   onRequestModeChange?: (mode: DashboardAgentMode) => void,
-  mode: DashboardAgentMode = "floating"
+  mode: DashboardAgentMode = "floating",
+  initialRect?: ReturnType<typeof initialFloatingRect>
 ) {
   let latestDrag!: FloatingDragProps;
   function Harness({ current }: { current: DashboardAgentMode }) {
     return createElement(
       FloatingAgentWindow,
-      { mode: current, onRequestModeChange },
+      { mode: current, onRequestModeChange, initialRect },
       (drag: FloatingDragProps) => {
         // oxlint-disable-next-line react/globals -- test harness capturing the render-prop's value.
         latestDrag = drag;
@@ -160,6 +163,14 @@ describe("the floating window's rect, wired with panel-layout's own constants", 
     // Above in-page z-50 chrome (e.g. CodeBlock's copy/expand toolbar); portals still win
     // ties on z-50 since they mount later in the DOM.
     expect(view.outer().className).toContain("z-50");
+  });
+
+  it("applies the initialRect it is given", () => {
+    const view = renderFloatingAgentWindow(undefined, "floating", initialFloatingRectFor("alerts"));
+    expect(view.outer().style.height).toBe(`${ALERTS_FLOATING_HEIGHT}px`);
+    expect(view.outer().style.top).toBe(
+      `${window.innerHeight - ALERTS_FLOATING_HEIGHT - FLOATING_MARGIN}px`
+    );
   });
 
   it("never shrinks below FLOATING_MIN_SIZE when the east edge is dragged inwards", async () => {
@@ -573,5 +584,17 @@ describe("docked width persistence", () => {
     expect(readAgentPanelWidth()).toBe(AGENT_PANEL_DEFAULT_WIDTH);
     writeAgentPanelWidth(0);
     expect(readAgentPanelWidth()).toBe(AGENT_PANEL_DEFAULT_WIDTH);
+  });
+});
+
+describe("initialFloatingRectFor", () => {
+  it("opens the alerts creation window at the prototype height", () => {
+    expect(initialFloatingRectFor("alerts").h).toBe(ALERTS_FLOATING_HEIGHT);
+    expect(ALERTS_FLOATING_HEIGHT).toBe(512);
+  });
+
+  it("keeps the default rect for every other source", () => {
+    expect(initialFloatingRectFor(undefined)).toEqual(initialFloatingRect());
+    expect(initialFloatingRectFor(undefined).h).toBe(600);
   });
 });

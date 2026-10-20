@@ -133,6 +133,7 @@ export function DashboardAgentComposer({
         <div className="relative -mr-2">
           <textarea
             ref={ref}
+            data-agent-composer=""
             rows={isHero ? 3 : 1}
             value={value}
             // Clamped as well as `maxLength`, so a programmatic paste can't exceed the cap.
