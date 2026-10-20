@@ -123,7 +123,7 @@ export const nativePersist = chat.agent({
 Turn 1 sends the user message and accumulates six tool results. Anthropic clears four of them server-side. `onTurnComplete` prunes those four from stored history, so turn 2 re-sends the smaller conversation (one tool result, not six) instead of the full transcript.
 
 <Note>
-  `onTurnComplete` is where persistence happens. Action turns fire `onAction` only, and a `chat.history.set()` inside `run()` is overwritten by the accumulator at turn end. See [Persistence and replay](/ai-chat/patterns/persistence-and-replay#action-turns-no-snapshot-write).
+  `onTurnComplete` is where persistence happens. Action turns fire `onAction` only, and a `chat.history.set()` inside `run()` is overwritten by the accumulator at turn end. See [Persistence and replay](/ai-chat/patterns/persistence-and-replay#action-turns).
 </Note>
 
 ## Persist OpenAI stored responses

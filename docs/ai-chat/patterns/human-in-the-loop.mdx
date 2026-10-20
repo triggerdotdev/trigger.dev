@@ -35,7 +35,7 @@ The assistant message keeps its ID across the pause. After resuming, `onTurnComp
 
 After the turn finishes, the run stays active for `idleTimeoutInSeconds` (30 seconds by default), then suspends and releases compute. Set it to `0` to suspend immediately. The active idle window counts toward compute usage and [`maxDuration`](/runs/max-duration); suspended time doesn't.
 
-[`turnTimeout`](/ai-chat/reference#chatagent) controls how long a run waits for the next message (default `"1h"`). When it expires, the run ends. A later answer starts a continuation run that restores the conversation from [transcript storage](/ai-chat/transcript-storage). Raising `maxDuration` isn't necessary for time spent suspended.
+[`turnTimeout`](/ai-chat/reference#chatagentoptions) controls how long a run waits for the next message (default `"1h"`). When it expires, the run ends. A later answer starts a continuation run that restores the conversation from [transcript storage](/ai-chat/transcript-storage). Raising `maxDuration` isn't necessary for time spent suspended.
 
 ## Backend: define the tool
 

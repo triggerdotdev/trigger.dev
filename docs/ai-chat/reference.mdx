@@ -1032,7 +1032,7 @@ Persistable session state for the frontend `TriggerChatTransport` and the server
 | --- | --- | --- |
 | `publicAccessToken` | `string` | Session-scoped JWT (`read:sessions:{chatId} + write:sessions:{chatId}`). Refreshed automatically on 401/403 via the transport's `accessToken` callback. |
 | `lastEventId` | `string \| undefined` | Last SSE event received on `.out`. Used to resume mid-stream after a disconnect. |
-| `isStreaming` | `boolean \| undefined` | Optional. If persisted, `reconnectToStream` uses it as a fast-path short-circuit. If omitted, the server decides via the session's [`X-Session-Settled`](/ai-chat/client-protocol#x-session-settled-fast-close-on-idle-reconnects) response header. |
+| `isStreaming` | `boolean \| undefined` | Optional. If persisted, `reconnectToStream` uses it as a fast-path short-circuit. If omitted, the server decides via the session's [`X-Session-Settled`](/ai-chat/client-protocol#x-peek-settled--x-session-settled--opt-in-fast-close-on-idle-reconnects) response header. |
 
 ## ChatInputChunk
 
