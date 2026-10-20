@@ -1,6 +1,12 @@
 import { readFileSync } from "node:fs";
 import { vitePlugin as remix } from "@remix-run/dev";
-import { defaultClientConditions, defaultServerConditions, defineConfig, type Plugin } from "vite";
+import {
+  defaultClientConditions,
+  defaultServerConditions,
+  defineConfig,
+  fetchModule,
+  type Plugin,
+} from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
 const packageVersions: Record<string, string> = Object.fromEntries(
@@ -37,6 +43,22 @@ function stampPackageVersions(): Plugin {
   };
 }
 
+function ssrModulesWithoutInlineSourcemaps(): Plugin {
+  return {
+    name: "ssr-modules-without-inline-sourcemaps",
+    apply: "serve",
+    configureServer(server) {
+      const ssr = server.environments.ssr;
+      ssr.fetchModule = async (id, importer, options) => {
+        const result = await fetchModule(ssr, id, importer, { ...options, inlineSourceMap: false });
+        return "code" in result
+          ? { ...result, code: `${result.code}\n//# sourceURL=${result.id}\n` }
+          : result;
+      };
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [
     remix({
@@ -46,6 +68,7 @@ export default defineConfig({
     }),
     tsconfigPaths(),
     stampPackageVersions(),
+    ssrModulesWithoutInlineSourcemaps(),
   ],
   resolve: {
     // Resolve workspace packages to TS source (same condition the CLI uses)
