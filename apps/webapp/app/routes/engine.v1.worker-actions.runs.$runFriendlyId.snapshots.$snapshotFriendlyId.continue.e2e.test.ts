@@ -1,7 +1,6 @@
 import { startTestServer, type TestServer } from "@internal/testcontainers/webapp";
 import { ApiClient } from "@trigger.dev/core/v3";
 import { SupervisorHttpClient, WORKER_HEADERS } from "@trigger.dev/core/v3/runEngineWorker";
-import { setTimeout } from "node:timers/promises";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
@@ -13,11 +12,18 @@ import {
 
 const INSTANCE_NAME = "continue-e2e";
 const RUNNER_ID = "runner-continue-e2e";
+const E2E_RETRY_BUDGET = {
+  budgetMs: 30_000,
+  minDelayMs: 100,
+  maxDelayMs: 500,
+  minAttemptBudgetMs: 1_000,
+};
 
 let server: TestServer;
 let fixtures: EngineFixtures;
 let api: ApiClient;
 let supervisor: SupervisorHttpClient;
+let retryableContinueFailures = 0;
 
 beforeAll(async () => {
   server = await startTestServer({
@@ -32,6 +38,11 @@ beforeAll(async () => {
     workerToken: fixtures.workerGroupToken,
     instanceName: INSTANCE_NAME,
     managedWorkerSecret: MANAGED_WORKER_SECRET,
+    onHttpRequestComplete(metric) {
+      if (metric.name === "continue_run_execution" && metric.status === "503") {
+        retryableContinueFailures++;
+      }
+    },
   });
 }, 180_000);
 
@@ -69,8 +80,12 @@ describe("continue after a restore from a checkpoint", () => {
       );
       expect(duringOutage.status).toBe(503);
 
-      continued = continueRun(runId, snapshotId, { budgetMs: 30_000 });
-      await setTimeout(3_000);
+      const failuresBeforeContinue = retryableContinueFailures;
+      continued = continueRun(runId, snapshotId, E2E_RETRY_BUDGET);
+      await vi.waitFor(
+        () => expect(retryableContinueFailures).toBeGreaterThan(failuresBeforeContinue),
+        { timeout: 5_000, interval: 50 }
+      );
     } finally {
       await outage.end();
     }
@@ -82,7 +97,16 @@ describe("continue after a restore from a checkpoint", () => {
   }, 60_000);
 });
 
-function continueRun(runId: string, snapshotId: string, retryBudget?: { budgetMs: number }) {
+function continueRun(
+  runId: string,
+  snapshotId: string,
+  retryBudget?: {
+    budgetMs: number;
+    minDelayMs?: number;
+    maxDelayMs?: number;
+    minAttemptBudgetMs?: number;
+  }
+) {
   return supervisor.continueRunExecution(runId, snapshotId, RUNNER_ID, fixtures.environmentId, {
     retryBudget,
   });
