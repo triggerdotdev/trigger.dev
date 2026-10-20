@@ -62,8 +62,7 @@ export default defineConfig({
       "./app/entry.client.tsx",
       "./app/root.tsx",
       "./app/routes/**/*.{ts,tsx}",
-      "!./app/routes/**/*.e2e.test.*",
-      "!./app/routes/storybook.agent-ui/*.test.*",
+      "!./app/routes/**/*.test.*",
     ],
     esbuildOptions: {
       // node globals for prebundled CJS deps (client-only by construction)

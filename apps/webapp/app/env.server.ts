@@ -265,6 +265,7 @@ const EnvironmentSchema = z
     // agent dark; flip to "1" to enable it for everyone at GA. Per-org overrides
     // (org featureFlags) win regardless.
     DASHBOARD_AGENT_ENABLED: z.string().default("0"),
+    ALERTS_ENABLED: z.string().default("false"),
     // Gates the create-org management API endpoint (default off).
     ORG_CREATION_API_ENABLED: z.string().default("0"),
     // "1" gives admins/impersonators an everywhere-preview (default off),
@@ -1085,6 +1086,7 @@ const EnvironmentSchema = z
 
     /** These enable the alerts feature in v3 */
     ALERT_EMAIL_TRANSPORT: z.enum(["resend", "smtp", "aws-ses"]).optional(),
+    ALERT_EVALUATION_CADENCE_CAP_SEC: z.coerce.number().int().positive().optional(),
     ALERT_FROM_EMAIL: z.string().optional(),
     ALERT_REPLY_TO_EMAIL: z.string().optional(),
     ALERT_RESEND_API_KEY: z.string().optional(),
@@ -1093,6 +1095,18 @@ const EnvironmentSchema = z
     ALERT_SMTP_SECURE: BoolEnv.optional(),
     ALERT_SMTP_USER: z.string().optional(),
     ALERT_SMTP_PASSWORD: z.string().optional(),
+    /** Per-project concurrency limit for TSQL queries issued by the alert evaluator (§3.6). */
+    ALERT_QUERY_CONCURRENCY: z.coerce.number().int().default(1),
+    /** Min sample size for runs.failure_rate before the rate is trusted (DEC-113, value TBD). */
+    ALERT_FAILURE_RATE_MIN_VOLUME: z.coerce.number().int().default(10),
+    ALERT_CHECKPOINT_LOOKBACK_SEC: z.coerce.number().int().min(0).default(3600),
+    ALERT_SEEN_RETENTION_SEC: z.coerce.number().int().min(7200).default(604800),
+    ALERT_DELIVERY_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(8),
+    ALERT_DELIVERY_MAX_AGE_HOURS: z.coerce.number().positive().default(24),
+    ALERT_SNAPSHOT_RANGE_SEC: z.coerce
+      .number()
+      .int()
+      .default(90 * 86_400),
     ALERT_RATE_LIMITER_EMISSION_INTERVAL: z.coerce.number().int().default(2_500),
     ALERT_RATE_LIMITER_BURST_TOLERANCE: z.coerce.number().int().default(10_000),
     ALERT_RATE_LIMITER_REDIS_HOST: z
@@ -1944,6 +1958,52 @@ const EnvironmentSchema = z
       .transform((v) => v ?? process.env.REDIS_PASSWORD),
     ALERTS_WORKER_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
     ALERTS_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+
+    ALERT_ENGINE_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
+    ALERT_ENGINE_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(1),
+    ALERT_ENGINE_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(10),
+    ALERT_ENGINE_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(10),
+    ALERT_ENGINE_WORKER_POLL_INTERVAL_MS: z.coerce.number().int().default(1000),
+    ALERT_ENGINE_WORKER_IMMEDIATE_POLL_INTERVAL_MS: z.coerce.number().int().default(100),
+    ALERT_ENGINE_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
+    ALERT_ENGINE_WORKER_LOG_LEVEL: z
+      .enum(["log", "error", "warn", "info", "debug"])
+      .default("info"),
+    ALERT_ENGINE_WORKER_DISTRIBUTION_WINDOW_SECONDS: z.coerce.number().int().positive().default(30),
+    ALERT_ENGINE_WORKER_EVAL_VISIBILITY_TIMEOUT_MS: z.coerce.number().int().default(120_000),
+    ALERT_ENGINE_WORKER_REDIS_HOST: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_HOST),
+    ALERT_ENGINE_WORKER_REDIS_READER_HOST: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_READER_HOST),
+    ALERT_ENGINE_WORKER_REDIS_READER_PORT: z.coerce
+      .number()
+      .optional()
+      .transform(
+        (v) =>
+          v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+      ),
+    ALERT_ENGINE_WORKER_REDIS_PORT: z.coerce
+      .number()
+      .optional()
+      .transform(
+        (v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)
+      ),
+    ALERT_ENGINE_WORKER_REDIS_USERNAME: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_USERNAME),
+    ALERT_ENGINE_WORKER_REDIS_PASSWORD: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_PASSWORD),
+    ALERT_ENGINE_WORKER_REDIS_TLS_DISABLED: z
+      .string()
+      .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+    ALERT_ENGINE_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
     BILLING_LIMIT_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
     BILLING_LIMIT_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),

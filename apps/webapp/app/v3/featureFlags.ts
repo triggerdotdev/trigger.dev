@@ -13,6 +13,7 @@ export const FEATURE_FLAG = {
   hasDashboardAgentAccess: "hasDashboardAgentAccess",
   dashboardAgentTurnEvalsEnabled: "dashboardAgentTurnEvalsEnabled",
   dashboardAgentWatchEnabled: "dashboardAgentWatchEnabled",
+  alertsEnabled: "alertsEnabled",
   promotedDashboardAgentPrompt: "promotedDashboardAgentPrompt",
   hasComputeAccess: "hasComputeAccess",
   hasPrivateConnections: "hasPrivateConnections",
@@ -88,6 +89,7 @@ export const FeatureFlagCatalog = {
   // Strict z.boolean(): coercion reads the string "false" as true, which would
   // turn the switch on for an org that never asked for it.
   [FEATURE_FLAG.dashboardAgentWatchEnabled]: z.boolean(),
+  [FEATURE_FLAG.alertsEnabled]: z.boolean(),
   // A JSON string because this catalog is scalar-only. Validated where it's read, in
   // `suggested-prompts/promotedPrompt.server.ts`.
   [FEATURE_FLAG.promotedDashboardAgentPrompt]: z.string(),

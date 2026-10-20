@@ -828,3 +828,136 @@ describe("compileTSQL with enforcedWhereClause", () => {
     });
   });
 });
+
+/**
+ * Coverage for the aggregate functions the health alert templates (queue.stalled-style
+ * scheduling delay/backlog, runs.failure_rate/duration_p95, runs.created liveness) rely on.
+ */
+describe("health alert template functions", () => {
+  const concurrencyMetricsSchema: TableSchema = {
+    name: "concurrency_metrics",
+    clickhouseName: "trigger_dev.queue_metrics_v1",
+    timeConstraint: "bucket_start",
+    columns: {
+      bucket_start: { name: "bucket_start", ...column("DateTime") },
+      queue: { name: "queue", ...column("String") },
+      max_queued: { name: "max_queued", ...column("UInt32") },
+      started_delta: {
+        name: "started_delta",
+        mergeGroupKey: "queue",
+        ...column("String"),
+        groupable: false,
+        sortable: false,
+        filterable: false,
+      },
+      wait_quantiles: {
+        name: "wait_quantiles",
+        ...column("String"),
+        groupable: false,
+        sortable: false,
+        filterable: false,
+      },
+      organization_id: { name: "organization_id", ...column("String") },
+      project_id: { name: "project_id", ...column("String") },
+      environment_id: { name: "environment_id", ...column("String") },
+    },
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
+  };
+
+  const runsSchema: TableSchema = {
+    name: "runs",
+    clickhouseName: "trigger_dev.task_runs_v2",
+    timeConstraint: "triggered_at",
+    columns: {
+      status: { name: "status", ...column("String") },
+      execution_duration: { name: "execution_duration", ...column("UInt64") },
+      is_finished: { name: "is_finished", ...column("UInt8") },
+      triggered_at: { name: "triggered_at", ...column("DateTime64") },
+      organization_id: { name: "organization_id", ...column("String") },
+      project_id: { name: "project_id", ...column("String") },
+      environment_id: { name: "environment_id", ...column("String") },
+    },
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
+  };
+
+  const enforcedWhereClause: Record<string, WhereClauseCondition> = {
+    organization_id: { op: "eq", value: "org_test123" },
+    project_id: { op: "eq", value: "proj_test456" },
+    environment_id: { op: "eq", value: "env_test789" },
+  };
+
+  it("compiles the queue backlog/scheduling-delay state query (quantilesMerge array index, deltaSumTimestampMerge)", () => {
+    // {{scope}} predicate copied from queue.stalled, which pins `queue` to satisfy the
+    // merge-scoped GROUP BY requirement on started_delta.
+    const query =
+      "SELECT quantilesMerge(0.95)(wait_quantiles)[1] > 30000 OR sum(max_queued) > 1000 OR (sum(max_queued) > 0 AND deltaSumTimestampMerge(started_delta) = 0) FROM concurrency_metrics WHERE queue = 'x' GROUP BY queue";
+
+    const ast = parseTSQLSelect(query);
+    expect(ast.expression_type).toBe("select_query");
+
+    const { sql } = compileTSQL(query, {
+      tableSchema: [concurrencyMetricsSchema],
+      enforcedWhereClause,
+    });
+
+    expect(sql).toContain("quantilesMerge(0.95)(wait_quantiles)");
+    expect(sql).toContain("deltaSumTimestampMerge(started_delta)");
+  });
+
+  it("compiles the run failure-rate/duration-p95 threshold query (countIf, greatest, quantile)", () => {
+    const query =
+      "SELECT countIf(status IN ('CRASHED','SYSTEM_FAILURE','TIMED_OUT','COMPLETED_WITH_ERRORS')) * 100 / greatest(count(), 1) > 10 OR quantile(0.95)(execution_duration) > 300000 FROM runs WHERE environment_id = 'x' AND is_finished = 1";
+
+    const ast = parseTSQLSelect(query);
+    expect(ast.expression_type).toBe("select_query");
+
+    const { sql } = compileTSQL(query, {
+      tableSchema: [runsSchema],
+      enforcedWhereClause,
+    });
+
+    expect(sql).toContain("countIf(");
+    expect(sql).toContain("greatest(");
+    expect(sql).toContain("quantile(0.95)(execution_duration)");
+  });
+
+  it("compiles the shipped health.execution failure-rate query (countIf, if(count() = 0, 1, count()), quantile)", () => {
+    const query =
+      "SELECT countIf(status IN ('CRASHED','SYSTEM_FAILURE','TIMED_OUT','COMPLETED_WITH_ERRORS')) * 100 / if(count() = 0, 1, count()) > 10 OR quantile(0.95)(execution_duration) > 300000 FROM runs WHERE environment_id = 'x' AND is_finished = 1";
+
+    const ast = parseTSQLSelect(query);
+    expect(ast.expression_type).toBe("select_query");
+
+    const { sql } = compileTSQL(query, {
+      tableSchema: [runsSchema],
+      enforcedWhereClause,
+    });
+
+    expect(sql).toContain("countIf(");
+    expect(sql).toContain("if(equals(count(), 0)");
+    expect(sql).toContain("quantile(0.95)(execution_duration)");
+  });
+
+  it("compiles the run liveness/absence query (dateDiff, max, now)", () => {
+    const query =
+      "SELECT dateDiff('second', max(triggered_at), now()) > 300 FROM runs WHERE environment_id = 'x'";
+
+    const ast = parseTSQLSelect(query);
+    expect(ast.expression_type).toBe("select_query");
+
+    const { sql } = compileTSQL(query, {
+      tableSchema: [runsSchema],
+      enforcedWhereClause,
+    });
+
+    expect(sql).toContain("dateDiff(second, max(triggered_at), now())");
+  });
+});

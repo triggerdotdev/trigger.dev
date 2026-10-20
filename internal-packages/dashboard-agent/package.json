@@ -16,6 +16,7 @@
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "4.0.186",
     "@ai-sdk/anthropic": "3.0.125",
+    "@internal/alert-contracts": "workspace:*",
     "@internal/dashboard-agent-contracts": "workspace:*",
     "@internal/dashboard-agent-db": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",

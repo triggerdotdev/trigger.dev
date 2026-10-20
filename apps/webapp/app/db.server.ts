@@ -173,7 +173,8 @@ type DatasourceLabel =
   | "run-ops-replica"
   | "webhook-writer"
   | "webhook-partitions"
-  | "webhook-replica";
+  | "webhook-replica"
+  | "alert-partitions";
 
 function tagDatasource<T extends PrismaClient>(datasource: DatasourceLabel, client: T): T {
   return client.$extends({
@@ -278,6 +279,20 @@ export const webhookPartitionPrisma: WebhookDatabase = singleton("webhookPartiti
     )
   );
 });
+
+export function createAlertPartitionPrisma(): PrismaClient {
+  return captureInfrastructureErrors(
+    tagDatasource(
+      "alert-partitions",
+      buildWriterClient({
+        url: env.DATABASE_URL,
+        clientType: "alert-partitions",
+        connectionLimit: 2,
+        eagerConnect: false,
+      })
+    )
+  );
+}
 
 /**
  * Webhook reader chain: an explicit webhook replica, else the webhook writer once split (no

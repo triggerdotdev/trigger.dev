@@ -148,6 +148,7 @@ export class DeliverErrorGroupAlertService {
           where: {
             id: slackProperties.data.integrationId,
             organizationId: channel.project.organizationId,
+            deletedAt: null,
           },
           include: { tokenReference: true },
         })
@@ -155,6 +156,7 @@ export class DeliverErrorGroupAlertService {
           where: {
             service: "SLACK",
             organizationId: channel.project.organizationId,
+            deletedAt: null,
           },
           orderBy: { createdAt: "desc" },
           include: { tokenReference: true },

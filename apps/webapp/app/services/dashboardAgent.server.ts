@@ -1,4 +1,5 @@
 import { signUserActorToken } from "@trigger.dev/rbac";
+import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { TriggerClient } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
 import { Counter } from "prom-client";
@@ -39,6 +40,7 @@ export const DASHBOARD_AGENT_UAT_CAP = [
   // Queue metrics ride on `read:query`, but a queue's own row — paused, depth, limit —
   // is a `queues` read, and without it the agent can only see the metrics window.
   "read:queues",
+  "read:alerts",
 ];
 
 // Minted fresh on every turn (the `in` proxy injects it), so the lifetime only
@@ -65,24 +67,43 @@ export function dashboardAgentUserApiOrigin(): string {
 // than taken from the caller.
 export async function mintDashboardAgentUserActorToken(
   userId: string,
-  opts: { environmentId: string }
+  opts: { environmentId: string; alertWrites?: { request: Request } }
 ): Promise<string> {
   const environment = await $replica.runtimeEnvironment.findFirst({
     where: { id: opts.environmentId },
-    select: { organizationId: true },
+    select: { organizationId: true, projectId: true, type: true },
   });
   if (!environment) {
     throw new Error(`Environment ${opts.environmentId} not found`);
   }
+
+  const canWriteAlerts =
+    opts.alertWrites !== undefined &&
+    (await userCanWriteAlerts(opts.alertWrites.request, userId, environment));
 
   return signUserActorToken(env.SESSION_SECRET, {
     userId,
     client: "dashboard-agent",
     environmentId: opts.environmentId,
     organizationId: environment.organizationId,
-    cap: DASHBOARD_AGENT_UAT_CAP,
+    cap: canWriteAlerts ? [...DASHBOARD_AGENT_UAT_CAP, "write:alerts"] : DASHBOARD_AGENT_UAT_CAP,
     expirationTime: Math.floor(Date.now() / 1000) + DASHBOARD_AGENT_UAT_TTL_SECONDS,
   });
+}
+
+async function userCanWriteAlerts(
+  request: Request,
+  userId: string,
+  environment: { organizationId: string; projectId: string; type: RuntimeEnvironmentType }
+): Promise<boolean> {
+  // Lazy: loading rbac.server at module init drags the RBAC plugin into every importer.
+  const { rbac } = await import("./rbac.server");
+  const auth = await rbac.authenticateSession(request, {
+    userId,
+    organizationId: environment.organizationId,
+    projectId: environment.projectId,
+  });
+  return auth.ok && auth.ability.can("write", { type: "alerts", envType: environment.type });
 }
 
 // The session is created in whatever env DASHBOARD_AGENT_SECRET_KEY belongs to.

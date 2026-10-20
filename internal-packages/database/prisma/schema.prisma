@@ -917,6 +917,95 @@ model WebhookDelivery {
   @@index([webhookEndpointId, createdAt(sort: Desc)]) // dashboard recent-deliveries; also partition-pruned
 }
 
+model Alert {
+  id                         String    @id
+  // plain columns, NO @relation -> no FK
+  organizationId             String
+  projectId                  String
+  environmentId              String
+  capabilityKey              String
+  params                     Json
+  condition                  Json
+  query                      String?
+  expiresAt                  DateTime? @db.Timestamptz(6)
+  lifecycle                  String    @default("active")
+  attention                  String    @default("clear")
+  observedCondition          String    @default("unknown")
+  observedConditionChangedAt DateTime? @db.Timestamptz(6)
+  pendingMetSince            DateTime? @db.Timestamptz(6)
+  evaluatorState             Json?
+  evaluationLeaseId          String?
+  evaluationLeaseUntil       DateTime? @db.Timestamptz(6)
+  lastEvaluatedAt            DateTime? @db.Timestamptz(6)
+  nextEvaluationAt           DateTime? @db.Timestamptz(6) // NULL means due now
+  notifiers                  Json      @default("[]")
+  name                       String?
+  createdBy                  String
+  createdAt                  DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt                  DateTime  @default(now()) @db.Timestamptz(6)
+  resolvedAt                 DateTime? @db.Timestamptz(6)
+  resolvedBy                 String?
+  stoppedAt                  DateTime? @db.Timestamptz(6)
+  stoppedBy                  String?
+  lastOccurrenceAt           DateTime? @db.Timestamptz(6)
+  occurrencesSinceRaise      Int       @default(0)
+  occurrencesTotal           BigInt    @default(0)
+
+  // SQL-only (migration): ("lifecycle", "nextEvaluationAt" NULLS FIRST) and partial active "expiresAt"
+  @@index([environmentId, lifecycle])
+  @@index([lifecycle, evaluationLeaseUntil])
+  @@index([projectId])
+  @@index([organizationId])
+}
+
+/// RANGE-partitioned by month on `at` (see migration).
+model AlertEvent {
+  id            String
+  alertId       String
+  type          String
+  at            DateTime @default(now()) @db.Timestamptz(6)
+  facts         Json     @default("{}")
+  actorId       String?
+  sourceEventId String?
+
+  @@id([id, at])
+  @@index([alertId, at(sort: Desc)])
+}
+
+model AlertOccurrenceSeen {
+  alertId       String
+  sourceEventId String
+  rowTime       DateTime @db.Timestamptz(6)
+  seenAt        DateTime @default(now()) @db.Timestamptz(6)
+  expiresAt     DateTime @db.Timestamptz(6)
+
+  @@id([alertId, sourceEventId])
+  @@index([expiresAt])
+}
+
+/// RANGE-partitioned by month on `eventAt` (see migration).
+model AlertDelivery {
+  id               String
+  alertEventId     String
+  eventAt          DateTime  @db.Timestamptz(6)
+  notifierId       String // stable dedup key from notifierRefKey
+  notifier         Json
+  status           String    @default("pending")
+  claimId          String?
+  claimedAt        DateTime? @db.Timestamptz(6)
+  deliveredAt      DateTime? @db.Timestamptz(6)
+  failureReason    String?
+  providerMetadata Json?
+  attempts         Int       @default(0)
+  firstAttemptAt   DateTime? @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@id([id, eventAt])
+  @@unique([alertEventId, notifierId, eventAt])
+  @@index([status, createdAt])
+  @@index([status, claimedAt])
+}
+
 enum WebhookDeliveryStatus {
   PENDING
   PROCESSING

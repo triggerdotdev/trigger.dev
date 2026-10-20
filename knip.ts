@@ -16,7 +16,15 @@ export default {
       ignoreDependencies: process.env.CI ? ["eslint"] : ["eslint", "lefthook"],
       ignoreBinaries: ["infisical", "prisma"],
     },
+    // Temporary while the alerts stack (#261→#515) merges; remove after.
     "apps/webapp": {
+      ignore: [
+        "app/v3/services/alerts/**",
+        "app/components/alerts/alertSeriesTypes.ts",
+        "app/utils/pathBuilder.ts",
+        "app/utils/errorGroupScope.ts",
+        "app/v3/canUseAlertsList.server.ts",
+      ],
       entry: [
         "evalite.config.ts",
         "vitest.*.config.ts",
@@ -36,6 +44,7 @@ export default {
     },
     "internal-packages/dashboard-agent": {
       entry: ["trigger.config.ts", "src/investigation-sweep.ts", "src/maintenance.ts"],
+      ignoreDependencies: ["@internal/alert-contracts"],
       ignoreBinaries: ["rg"],
     },
     "internal-packages/observability-map": {

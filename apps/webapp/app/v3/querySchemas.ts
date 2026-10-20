@@ -1461,6 +1461,183 @@ const queueMetricsByKeySchema: TableSchema = {
   queryClient: "queueMetrics",
 };
 
+const errorsSchema: TableSchema = {
+  name: "errors",
+  clickhouseName: "trigger_dev.errors_v1",
+  description:
+    "Error groups per task and fingerprint. Rows are partial aggregates: GROUP BY task_identifier, error_fingerprint and read first_seen with min(), last_seen with max(), occurrence_count with sumMerge().",
+  timeConstraint: "last_seen",
+  tenantColumns: {
+    organizationId: "organization_id",
+    projectId: "project_id",
+    environmentId: "environment_id",
+  },
+  columns: {
+    environment: {
+      name: "environment",
+      clickhouseName: "environment_id",
+      ...column("String", { description: "The environment slug", example: "prod" }),
+      fieldMapping: "environment",
+      customRenderType: "environment",
+    },
+    project: {
+      name: "project",
+      clickhouseName: "project_id",
+      ...column("String", {
+        description: "The project reference, they always start with `proj_`.",
+        example: "proj_howcnaxbfxdmwmxazktx",
+      }),
+      fieldMapping: "project",
+      customRenderType: "project",
+    },
+    task_identifier: {
+      name: "task_identifier",
+      ...column("String", {
+        description: "Task identifier/slug",
+        example: "my-background-task",
+        coreColumn: true,
+      }),
+    },
+    error_fingerprint: {
+      name: "error_fingerprint",
+      ...column("String", {
+        description: "Fingerprint identifying the error group",
+        example: "a1b2c3d4e5f6",
+        coreColumn: true,
+      }),
+    },
+    error_type: {
+      name: "error_type",
+      ...column("String", {
+        description: "The error class name or code. Aggregate with any().",
+        example: "TypeError",
+        coreColumn: true,
+      }),
+    },
+    error_message: {
+      name: "error_message",
+      ...column("String", {
+        description: "A sample error message. Aggregate with any().",
+        example: "Cannot read properties of undefined",
+        coreColumn: true,
+      }),
+    },
+    first_seen: {
+      name: "first_seen",
+      ...column("DateTime64", {
+        description:
+          "When the error was first seen, by failure time (completed_at). Aggregate with min().",
+        example: "2024-01-15 09:30:00.000",
+        coreColumn: true,
+      }),
+    },
+    last_seen: {
+      name: "last_seen",
+      ...column("DateTime64", {
+        description:
+          "When the error was last seen, by failure time (completed_at). Aggregate with max().",
+        example: "2024-01-15 09:30:00.000",
+        coreColumn: true,
+      }),
+    },
+    occurrence_count: {
+      name: "occurrence_count",
+      ...column("String", {
+        description: "Occurrence count state. Read with sumMerge(occurrence_count).",
+        example: "sumMerge(occurrence_count)",
+      }),
+      groupable: false,
+      sortable: false,
+      filterable: false,
+    },
+  },
+};
+
+const errorOccurrencesSchema: TableSchema = {
+  name: "error_occurrences",
+  clickhouseName: "trigger_dev.error_occurrences_v1",
+  description:
+    "Per-minute error occurrence counts by task, fingerprint and version. Aggregate count with sum().",
+  timeConstraint: "minute",
+  tenantColumns: {
+    organizationId: "organization_id",
+    projectId: "project_id",
+    environmentId: "environment_id",
+  },
+  columns: {
+    environment: {
+      name: "environment",
+      clickhouseName: "environment_id",
+      ...column("String", { description: "The environment slug", example: "prod" }),
+      fieldMapping: "environment",
+      customRenderType: "environment",
+    },
+    project: {
+      name: "project",
+      clickhouseName: "project_id",
+      ...column("String", {
+        description: "The project reference, they always start with `proj_`.",
+        example: "proj_howcnaxbfxdmwmxazktx",
+      }),
+      fieldMapping: "project",
+      customRenderType: "project",
+    },
+    task_identifier: {
+      name: "task_identifier",
+      ...column("String", {
+        description: "Task identifier/slug",
+        example: "my-background-task",
+        coreColumn: true,
+      }),
+    },
+    error_fingerprint: {
+      name: "error_fingerprint",
+      ...column("String", {
+        description: "Fingerprint identifying the error group",
+        example: "a1b2c3d4e5f6",
+        coreColumn: true,
+      }),
+    },
+    task_version: {
+      name: "task_version",
+      ...column("String", {
+        description: "The task version the error occurred in",
+        example: "20240115.1",
+      }),
+    },
+    minute: {
+      name: "minute",
+      ...column("DateTime", {
+        description: "Aggregation time bucket (per minute), by failure time (completed_at)",
+        example: "2024-01-15 09:30:00",
+        coreColumn: true,
+      }),
+    },
+    error_type: {
+      name: "error_type",
+      ...column("String", {
+        description: "The error class name or code",
+        example: "TypeError",
+      }),
+    },
+    error_message: {
+      name: "error_message",
+      ...column("String", {
+        description: "A sample error message",
+        example: "Cannot read properties of undefined",
+      }),
+    },
+    count: {
+      name: "count",
+      ...column("UInt64", {
+        description: "Occurrences in this minute. Aggregate with sum().",
+        example: "3",
+        coreColumn: true,
+      }),
+    },
+  },
+};
+
 export const querySchemas: TableSchema[] = [
   runsSchema,
   metricsSchema,
@@ -1469,6 +1646,8 @@ export const querySchemas: TableSchema[] = [
   queueMetricsSchema,
   envMetricsSchema,
   queueMetricsByKeySchema,
+  errorsSchema,
+  errorOccurrencesSchema,
 ];
 
 /** Tables whose listing is deferred until queue metrics are rolled out. */

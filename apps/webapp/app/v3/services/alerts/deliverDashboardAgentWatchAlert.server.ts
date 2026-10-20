@@ -1,20 +1,9 @@
-import {
-  type ChatPostMessageArguments,
-  ErrorCode,
-  type WebAPIPlatformError,
-  type WebAPIRateLimitedError,
-} from "@slack/web-api";
+import type { ChatPostMessageArguments } from "@slack/web-api";
 import type { WatchObservedOutcome, WatchResolution } from "@internal/dashboard-agent-contracts";
-import { type ProjectAlertChannel } from "@trigger.dev/database";
+import type { ProjectAlertChannel } from "@trigger.dev/database";
 import assertNever from "assert-never";
-import { subtle } from "crypto";
 import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
-import {
-  isIntegrationForService,
-  type OrganizationIntegrationForService,
-  OrgIntegrationRepository,
-} from "~/models/orgIntegration.server";
 import {
   ProjectAlertEmailProperties,
   ProjectAlertSlackProperties,
@@ -32,10 +21,14 @@ import {
 } from "~/presenters/v3/dashboardAgent";
 import { sendAlertEmail } from "~/services/email.server";
 import { logger } from "~/services/logger.server";
-import { decryptSecret } from "~/services/secrets/secretStore.server";
 import { v3RunsPath } from "~/utils/pathBuilder";
 import { alertsWorker } from "~/v3/alertsWorker.server";
-import { safeWebhookFetch } from "./safeWebhookFetch.server";
+import {
+  SkipRetryError,
+  findSlackIntegration,
+  postSlackMessage,
+  deliverWebhookPayload,
+} from "./alertTransport.server";
 
 /**
  * Deliver a fired dashboard-agent watch to the project's alert channels. No `ProjectAlert` row:
@@ -57,12 +50,10 @@ export type DashboardAgentWatchAlertPayload = {
   observed?: WatchObservedOutcome;
 };
 
-/** One channel's delivery: the fan-out payload plus the channel it targets. */
 export type DashboardAgentWatchChannelAlertPayload = DashboardAgentWatchAlertPayload & {
   channelId: string;
 };
 
-/** Bumped when the webhook body's shape changes. */
 const WEBHOOK_VERSION = "2026-08-02";
 
 /** Wording comes from the shared presenter, so every surface says the same sentence. */
@@ -76,8 +67,6 @@ function presentAlert(payload: DashboardAgentWatchAlertPayload) {
     observed: payload.observed ?? null,
   });
 }
-
-class SkipRetryError extends Error {}
 
 type ResolvedContext = {
   environmentName: string;
@@ -128,7 +117,6 @@ function buildContext(environment: ResolvedEnvironment): ResolvedContext {
   };
 }
 
-/** The fan-out: gate the watch, then enqueue one delivery job per channel. */
 export class DeliverDashboardAgentWatchAlertService {
   async call(payload: DashboardAgentWatchAlertPayload): Promise<void> {
     const environment = await findEnvironment(payload);
@@ -177,7 +165,6 @@ export class DeliverDashboardAgentWatchAlertService {
   }
 }
 
-/** One channel's delivery. A retry here can only re-send this channel. */
 export class DeliverDashboardAgentWatchChannelAlertService {
   async call(payload: DashboardAgentWatchChannelAlertPayload): Promise<void> {
     // Re-read the channel rather than trusting the fan-out's snapshot: an unsubscribe
@@ -266,8 +253,6 @@ export class DeliverDashboardAgentWatchChannelAlertService {
       headline: presentation.headline,
       tone: presentation.tone,
       note: payload.note,
-      // The sentence that quotes the note, rendered by the shared presenter so the
-      // email and the Slack message say it the same way.
       noteLine: watchNoteLine(payload.note) ?? undefined,
       firedAt: payload.firedAt,
       facts: factList(payload.facts),
@@ -292,26 +277,17 @@ export class DeliverDashboardAgentWatchChannelAlertService {
       return;
     }
 
-    const integration = slackProperties.data.integrationId
-      ? await prisma.organizationIntegration.findFirst({
-          where: {
-            id: slackProperties.data.integrationId,
-            organizationId: payload.organizationId,
-          },
-          include: { tokenReference: true },
-        })
-      : await prisma.organizationIntegration.findFirst({
-          where: { service: "SLACK", organizationId: payload.organizationId },
-          orderBy: { createdAt: "desc" },
-          include: { tokenReference: true },
-        });
+    const integration = await findSlackIntegration(prisma, {
+      integrationId: slackProperties.data.integrationId,
+      organizationId: payload.organizationId,
+    });
 
-    if (!integration || !isIntegrationForService(integration, "SLACK")) {
+    if (!integration) {
       logger.error("[DeliverDashboardAgentWatchAlert] Slack integration not found");
       return;
     }
 
-    await this.#postSlackMessage(integration, {
+    await postSlackMessage(integration, {
       channel: slackProperties.data.channelId,
       ...this.#buildSlackMessage(payload, context),
     } as ChatPostMessageArguments);
@@ -367,64 +343,14 @@ export class DeliverDashboardAgentWatchChannelAlertService {
       },
     });
 
-    const secret = await decryptSecret(env.ENCRYPTION_KEY, webhookProperties.data.secret);
-    const key = await subtle.importKey(
-      "raw",
-      Buffer.from(secret, "utf-8"),
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["sign"]
-    );
-    const signature = await subtle.sign("HMAC", key, Buffer.from(rawPayload, "utf-8"));
-
-    // Deliver via the SSRF-safe wrapper (see safeWebhookFetch.server.ts).
-    const response = await safeWebhookFetch(webhookProperties.data.url, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-trigger-signature-hmacsha256": Buffer.from(signature).toString("hex"),
-      },
-      body: rawPayload,
-      signal: AbortSignal.timeout(5000),
+    await deliverWebhookPayload({
+      url: webhookProperties.data.url,
+      secret: webhookProperties.data.secret,
+      encryptionKey: env.ENCRYPTION_KEY,
+      rawPayload,
+      buildErrorMessage: () =>
+        `Failed to send watch alert webhook to ${webhookProperties.data.url}`,
     });
-
-    if (!response.ok) {
-      logger.info("[DeliverDashboardAgentWatchAlert] Failed to send webhook", {
-        status: response.status,
-        url: webhookProperties.data.url,
-      });
-      throw new Error(`Failed to send watch alert webhook to ${webhookProperties.data.url}`);
-    }
-  }
-
-  async #postSlackMessage(
-    integration: OrganizationIntegrationForService<"SLACK">,
-    message: ChatPostMessageArguments
-  ) {
-    const client = await OrgIntegrationRepository.getAuthenticatedClientForIntegration(
-      integration,
-      { forceBotToken: true }
-    );
-
-    try {
-      return await client.chat.postMessage({
-        ...message,
-        unfurl_links: false,
-        unfurl_media: false,
-      });
-    } catch (error) {
-      if (isWebAPIRateLimitedError(error)) {
-        throw new Error("Slack rate limited");
-      }
-      if (isWebAPIPlatformError(error)) {
-        const code = (error as WebAPIPlatformError).data.error;
-        if (code === "invalid_blocks" || code === "account_inactive") {
-          throw new SkipRetryError(`Slack: ${code}`);
-        }
-        throw new Error("Slack platform error");
-      }
-      throw error;
-    }
   }
 
   #buildSlackMessage(
@@ -436,8 +362,6 @@ export class DeliverDashboardAgentWatchChannelAlertService {
     const noteLine = watchNoteLine(payload.note);
 
     return {
-      // The notification text is the plain-text rendering, so what a phone shows
-      // matches what the blocks below say.
       text: [`${headline} [${context.environmentName}]`, noteLine, ...renderFactLines(facts)]
         .filter(Boolean)
         .join("\n"),
@@ -495,12 +419,4 @@ function factList(facts: Record<string, unknown>): Array<{ label: string; value:
 function humanizeFactKey(key: string): string {
   const spaced = key.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ");
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
-}
-
-function isWebAPIPlatformError(error: unknown): error is WebAPIPlatformError {
-  return (error as WebAPIPlatformError).code === ErrorCode.PlatformError;
-}
-
-function isWebAPIRateLimitedError(error: unknown): error is WebAPIRateLimitedError {
-  return (error as WebAPIRateLimitedError).code === ErrorCode.RateLimitedError;
 }

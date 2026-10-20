@@ -10,6 +10,7 @@ export function useFeatures(): TriggerFeatures {
       isManagedCloud: false,
       hasPrivateConnections: false,
       queueMetricsQueryTables: false,
+      queueMetricsEnabled: true,
     }
   );
 }

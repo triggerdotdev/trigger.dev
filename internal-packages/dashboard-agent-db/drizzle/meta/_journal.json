@@ -57,6 +57,13 @@
       "when": 1790954466145,
       "tag": "0007_curious_martin_li",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792411638539,
+      "tag": "0008_chat_kind",
+      "breakpoints": true
     }
   ]
 }

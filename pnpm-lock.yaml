@@ -316,6 +316,9 @@ importers:
       '@heroicons/react':
         specifier: ^2.0.12
         version: 2.0.13(react@18.3.1)
+      '@internal/alert-contracts':
+        specifier: workspace:*
+        version: link:../../internal-packages/alert-contracts
       '@internal/cache':
         specifier: workspace:*
         version: link:../../internal-packages/cache
@@ -938,6 +941,19 @@ importers:
 
   docs: {}
 
+  internal-packages/alert-contracts:
+    dependencies:
+      zod:
+        specifier: 4.5.4
+        version: 4.5.4
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 4.1.11
+        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/coverage-v8@4.1.11)(jsdom@30.0.1)(vite@6.4.3(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.22.4)(yaml@2.9.0))
+
   internal-packages/billing:
     dependencies:
       '@trigger.dev/plugins':
@@ -1008,6 +1024,9 @@ importers:
       '@ai-sdk/anthropic':
         specifier: 3.0.125
         version: 3.0.125(patch_hash=08f1641f732c1729dc6bf8fda854bbcc4cbdb851d54d0b7e82086712fc0d6e4c)(zod@4.5.4)
+      '@internal/alert-contracts':
+        specifier: workspace:*
+        version: link:../alert-contracts
       '@internal/dashboard-agent-contracts':
         specifier: workspace:*
         version: link:../dashboard-agent-contracts
@@ -1068,9 +1087,15 @@ importers:
         specifier: ^3.4.0
         version: 3.4.9
     devDependencies:
+      '@testcontainers/postgresql':
+        specifier: ^11.14.0
+        version: 11.14.0
       drizzle-kit:
         specifier: ^0.31.0
         version: 0.31.10
+      vitest:
+        specifier: 4.1.11
+        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/coverage-v8@4.1.11)(jsdom@30.0.1)(vite@6.4.3(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.22.4)(yaml@2.9.0))
 
   internal-packages/database:
     dependencies:
