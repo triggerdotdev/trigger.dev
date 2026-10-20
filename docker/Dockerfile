@@ -89,8 +89,16 @@ RUN --mount=type=secret,id=sentry_auth_token \
 FROM ${NODE_IMAGE} AS runner
 ARG APT_REFRESH
 RUN echo "apt refresh ${APT_REFRESH}" && apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends openssl netcat-openbsd ca-certificates && rm -rf /var/lib/apt/lists/*
+# Distrust the roots that chain to the compromised eMudhra intermediates (Oct 2026). The system
+# bundle covers OpenSSL, goose and Prisma's engines; distrust-cas.cjs does the same for Node's
+# bundled roots. Both can go once Debian's ca-certificates and Node drop these roots.
+RUN sed -i -E \
+    -e 's#^(mozilla/emSign_(ECC_Root_CA_-_G3|Root_CA_-_C1|ECC_Root_CA_-_C3)\.crt)$#!\1#' \
+    -e 's#^mozilla/Comodo_AAA_Services_root\.crt$#!&#' \
+    /etc/ca-certificates.conf && update-ca-certificates --fresh
 WORKDIR /triggerdotdev
 ENV NODE_ENV=production
+ENV NODE_OPTIONS=--require=/triggerdotdev/scripts/distrust-cas.cjs
 
 COPY --from=base /usr/bin/dumb-init /usr/bin/dumb-init
 COPY --from=pruner --chown=node:node /triggerdotdev/out/full/ .

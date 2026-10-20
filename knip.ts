@@ -8,6 +8,7 @@ export default {
     ".": {
       entry: [
         "scripts/**/*.{js,mjs,cjs,ts,mts,cts}",
+        "docker/scripts/distrust-cas.cjs",
         "vitest.internal.config.ts",
         "vitest.internal-reports.config.mjs",
       ],
