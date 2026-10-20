@@ -191,4 +191,4 @@ jobs:
           merge-multiple: true
 
       - name: Merge reports
-        run: pnpm dlx vitest@4.1.7 run --merge-reports --pass-with-no-tests
+        run: pnpm dlx vitest@"$(jq -r .devDependencies.vitest "$GITHUB_WORKSPACE/package.json")" run --merge-reports --pass-with-no-tests
