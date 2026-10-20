@@ -22,6 +22,7 @@ export const FEATURE_FLAG = {
   mollifierEnabled: "mollifierEnabled",
   workerQueueCompatibility: "workerQueueCompatibility",
   workerQueueChannel: "workerQueueChannel",
+  workerQueueEnvironmentOverrides: "workerQueueEnvironmentOverrides",
   internalApiOriginEnabled: "internalApiOriginEnabled",
   realtimeBackend: "realtimeBackend",
   computeMigrationEnabled: "computeMigrationEnabled",
@@ -59,6 +60,36 @@ export const FEATURE_FLAG = {
   publicTracePagingEnabled: "publicTracePagingEnabled",
   runTokenInjection: "runTokenInjection",
 } as const;
+
+// Mirrors the core worker-queue enums; defined here because this module is imported client-side.
+const WorkerQueueCompatibilityFlag = z.enum(["any", "container", "compute"]);
+const WorkerQueueChannelFlag = z.enum(["stable", "canary"]);
+
+export const WORKER_QUEUE_OVERRIDE_ENVIRONMENT_TYPES = [
+  "PRODUCTION",
+  "STAGING",
+  "PREVIEW",
+] as const;
+
+export const WorkerQueueEnvironmentOverride = z
+  .strictObject({
+    compat: WorkerQueueCompatibilityFlag.optional(),
+    channel: WorkerQueueChannelFlag.optional(),
+  })
+  .refine(
+    (override) => override.compat !== undefined || override.channel !== undefined,
+    "must set compat or channel"
+  );
+export type WorkerQueueEnvironmentOverride = z.infer<typeof WorkerQueueEnvironmentOverride>;
+
+const WorkerQueueEnvironmentOverrideKey = z
+  .string()
+  .refine(
+    (key) =>
+      (WORKER_QUEUE_OVERRIDE_ENVIRONMENT_TYPES as readonly string[]).includes(key) ||
+      /^[a-z0-9]{20,}$/.test(key),
+    "must be PRODUCTION, STAGING, PREVIEW or an environment id"
+  );
 
 export const FeatureFlagCatalog = {
   // Organization override, then global default, then off.
@@ -100,9 +131,13 @@ export const FeatureFlagCatalog = {
   // Gates the Interface theme setting in /account. Off by default.
   [FEATURE_FLAG.hasThemeSwitcher]: z.coerce.boolean(),
   [FEATURE_FLAG.mollifierEnabled]: z.coerce.boolean(),
-  // Mirrors the core worker-queue enums; defined here because this module is imported client-side.
-  [FEATURE_FLAG.workerQueueCompatibility]: z.enum(["any", "container", "compute"]),
-  [FEATURE_FLAG.workerQueueChannel]: z.enum(["stable", "canary"]),
+  [FEATURE_FLAG.workerQueueCompatibility]: WorkerQueueCompatibilityFlag,
+  [FEATURE_FLAG.workerQueueChannel]: WorkerQueueChannelFlag,
+  // Resolved field by field: environment id, then environment type, then the two flags above.
+  [FEATURE_FLAG.workerQueueEnvironmentOverrides]: z.record(
+    WorkerQueueEnvironmentOverrideKey,
+    WorkerQueueEnvironmentOverride
+  ),
   // Routes deployed runs' TRIGGER_API_URL to INTERNAL_API_ORIGIN. Per-org, with
   // INTERNAL_API_ORIGIN_ENABLED as the global default (org wins). No-op unless
   // INTERNAL_API_ORIGIN is set.
@@ -216,6 +251,7 @@ export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.apiRateLimitMetricsEnabled,
   FEATURE_FLAG.workerQueueCompatibility,
   FEATURE_FLAG.workerQueueChannel,
+  FEATURE_FLAG.workerQueueEnvironmentOverrides,
   // Grace stamps are computed server-side. An editable control here would discard what it saves.
   FEATURE_FLAG.runOpsMintKindPrev,
   FEATURE_FLAG.runOpsMintKindFlippedAt,
@@ -350,7 +386,8 @@ export type FlagControlType =
   | { type: "boolean" }
   | { type: "enum"; options: string[] }
   | { type: "number"; min?: number; max?: number }
-  | { type: "string" };
+  | { type: "string" }
+  | { type: "record" };
 
 function getFlagControlType(schema: z.ZodType): FlagControlType {
   // zod v4: schema.def.type is a lowercase tag ("boolean"/"enum"/"number"/...).
@@ -365,6 +402,10 @@ function getFlagControlType(schema: z.ZodType): FlagControlType {
 
   if (def.type === "enum") {
     return { type: "enum", options: (schema as z.ZodEnum).options as string[] };
+  }
+
+  if (def.type === "record") {
+    return { type: "record" };
   }
 
   // z.coerce.number() reports as "number"; pull min/max out of its v4 checks

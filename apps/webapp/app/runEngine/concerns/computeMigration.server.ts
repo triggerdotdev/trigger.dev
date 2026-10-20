@@ -1,4 +1,5 @@
 import { hashBucket } from "~/utils/computeBucket";
+import type { WorkerQueueEnvironmentOverride } from "~/v3/featureFlags";
 
 /** Subset of the global flags snapshot this resolver reads. */
 type ComputeMigrationFlags = {
@@ -18,7 +19,7 @@ type MigrationDecisionInput = {
  * Whether this org should run on the compute backing. Precedence: per-org override
  * (both directions) wins; otherwise global enable + the plan's percentage bucket.
  * Enterprise and unknown plans are never enrolled by percentage (override only).
- * The sole opt-out is the per-org `computeMigrationEnabled: false`.
+ * Within this decision, the sole opt-out is the per-org `computeMigrationEnabled: false`.
  */
 export function isOrgMigrated({
   planType,
@@ -48,6 +49,7 @@ type ResolveInput = MigrationDecisionInput & {
   region: string | undefined; // geo of the base queue (same whether migrated or not)
   backing: { workerQueue: string; enableFastPath: boolean } | undefined;
   envType: string;
+  environmentCompat: WorkerQueueEnvironmentOverride["compat"];
 };
 
 /**
@@ -56,7 +58,8 @@ type ResolveInput = MigrationDecisionInput & {
  * and fast-path setting come from the MICROVM backing group; `region` is the geo
  * either way. Same-geo swap (us-east-1 -> us-east-1-next): any explicit placement
  * is a geography preference, honored by staying in-region. Applied after region
- * resolution, mirroring the scheduled-split.
+ * resolution, mirroring the scheduled-split. An environment compat of compute or container
+ * decides the swap ahead of the org's migration decision.
  */
 export function resolveComputeMigration({
   baseWorkerQueue,
@@ -64,6 +67,7 @@ export function resolveComputeMigration({
   region,
   backing,
   envType,
+  environmentCompat,
   ...decision
 }: ResolveInput): {
   workerQueue: string | undefined;
@@ -73,7 +77,13 @@ export function resolveComputeMigration({
   const passthrough = { workerQueue: baseWorkerQueue, region, enableFastPath: baseEnableFastPath };
   if (baseWorkerQueue === undefined) return passthrough;
   if (envType === "DEVELOPMENT") return passthrough;
-  if (!isOrgMigrated(decision)) return passthrough;
   if (!backing) return passthrough;
+  const migrated =
+    environmentCompat === "compute"
+      ? true
+      : environmentCompat === "container"
+        ? false
+        : isOrgMigrated(decision);
+  if (!migrated) return passthrough;
   return { workerQueue: backing.workerQueue, region, enableFastPath: backing.enableFastPath };
 }
