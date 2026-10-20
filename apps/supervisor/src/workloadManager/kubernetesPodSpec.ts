@@ -122,7 +122,7 @@ export function runnerSecurityContext(
     allowPrivilegeEscalation: false,
     capabilities: { drop: ["ALL"] },
     ...(level === "restricted"
-      ? { runAsNonRoot: true, runAsUser: runtime === "bun" ? BUN_RUN_AS_USER : runAsUser }
+      ? { runAsNonRoot: true, runAsUser: runtime?.startsWith("bun") ? BUN_RUN_AS_USER : runAsUser }
       : {}),
   };
 }

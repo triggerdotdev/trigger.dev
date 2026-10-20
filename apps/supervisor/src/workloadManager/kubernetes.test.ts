@@ -177,7 +177,9 @@ describe("runnerSecurityContext", () => {
   });
 
   it("pins bun's own uid, which differs from node's", () => {
-    expect(runnerSecurityContext("restricted", 1000, "bun")?.runAsUser).toBe(1001);
+    for (const runtime of ["bun", "bun-1.3", "bun-1.4"]) {
+      expect(runnerSecurityContext("restricted", 1000, runtime)?.runAsUser).toBe(1001);
+    }
   });
 
   it("falls back to the configured uid when the runtime is unknown", () => {

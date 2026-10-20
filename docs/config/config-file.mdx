@@ -347,6 +347,31 @@ See our [Bun guide](/guides/frameworks/bun) for more information.
 
 <NodeVersions />
 
+### Bun versions
+
+`runtime: "bun"` deploys on Bun `1.3.3`. To pick a Bun release line yourself, use `bun-1.3` (Bun `1.3.14`) or `bun-1.4` (Bun `1.4.2`):
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk";
+
+export default defineConfig({
+  project: "<project ref>",
+  // Your other config settings...
+  runtime: "bun-1.4",
+});
+```
+
+<Warning>
+  On Bun 1.3.x (`bun` and `bun-1.3`), `fetch` aborts any request that receives no bytes for 300
+  seconds with `TimeoutError: The operation timed out.`, even if you set a longer `timeout` or
+  `AbortSignal`. A long, non-streaming call, such as an LLM request that returns nothing until it
+  finishes, fails at exactly 5 minutes. Bun 1.4 does not have this limit, so use `bun-1.4` for
+  tasks that make such calls.
+</Warning>
+
+The `bun-1.3` and `bun-1.4` images don't include Node.js, so a task that spawns a `node` process
+needs to stay on `runtime: "bun"`, whose image does.
+
 ## Default machine
 
 You can specify the default machine for all tasks in your project:

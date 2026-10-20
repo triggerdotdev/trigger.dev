@@ -31,11 +31,21 @@ export const ConfigRuntime = z.enum([
   "experimental-node-24",
   "experimental-node-26",
   "bun",
+  "bun-1.3",
+  "bun-1.4",
 ]);
 
 export type ConfigRuntime = z.infer<typeof ConfigRuntime>;
 
-export const BuildRuntime = z.enum(["node", "node-22", "node-24", "node-26", "bun"]);
+export const BuildRuntime = z.enum([
+  "node",
+  "node-22",
+  "node-24",
+  "node-26",
+  "bun",
+  "bun-1.3",
+  "bun-1.4",
+]);
 
 export type BuildRuntime = z.infer<typeof BuildRuntime>;
 

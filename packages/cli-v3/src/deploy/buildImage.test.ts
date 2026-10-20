@@ -54,6 +54,16 @@ const images: Array<[BuildRuntime, string, string]> = [
     "triggerdotdev/bun:1.3-node20-bookworm@sha256:25b467196277b9d75a37773ee36d28b65ca81a6f41786f7d7d7f1fad95fb5a31",
     "triggerdotdev/bun:1.3-node20-bookworm-build@sha256:a2d5e6d1ec25946ca1d86abdd9ffb9c589376df64ee1b490c461607953931245",
   ],
+  [
+    "bun-1.3",
+    "triggerdotdev/bun:1.3-bookworm@sha256:991ebbc955a793aaebfa619f9cd000d0c9d370a3b8673b705c8364d23a756717",
+    "triggerdotdev/bun:1.3-bookworm-build@sha256:4d90ab4b25ae3bd2f4eda468d94a475b2b73977c5be1497df17b18384cf5ea2d",
+  ],
+  [
+    "bun-1.4",
+    "triggerdotdev/bun:1.4-bookworm@sha256:8d3fdda4309808b9e12e388a4da20dcac72e67449a277b38d7aacc7c50b8e586",
+    "triggerdotdev/bun:1.4-bookworm-build@sha256:ae31fe34246e8b8b9725a8c5366c842ccce59742a0e3a57b42f43f1b251e84a9",
+  ],
 ];
 
 describe("generateContainerfile", () => {
@@ -268,6 +278,27 @@ describe("generateContainerfile", () => {
       }
     }
   });
+
+  it.each([
+    ["bun", "node"],
+    ["bun-1.3", "bun"],
+    ["bun-1.4", "bun"],
+  ] as [BuildRuntime, string][])(
+    "starts the %s app with %s, since only plain bun ships a node binary",
+    async (runtime, binary) => {
+      const containerfile = await generateContainerfile({
+        runtime,
+        build: {},
+        image: undefined,
+        indexScript: "index.js",
+        entrypoint: "entrypoint.js",
+      });
+
+      expect(containerfile).toContain(`ENTRYPOINT [ "dumb-init", "${binary}", "entrypoint.js" ]`);
+      expect(containerfile).toContain('RUN [ "bun", "run", "index.js" ]');
+      expect(containerfile).toContain("USER bun");
+    }
+  );
 
   it("pairs every runtime image with its -build variant", () => {
     for (const runtime of Object.keys(BASE_IMAGE) as BuildRuntime[]) {

@@ -108,15 +108,15 @@ Deploys build on the published `triggerdotdev/node` and `triggerdotdev/bun` Debi
 DEPLOY_BASE_IMAGES="node-26=registry.example.com/node-fips:26@sha256:<64-character-digest>"
 ```
 
-Entries are comma-separated `runtime=image@sha256:<digest>`. The runtimes are `node-22`, `node-24`, `node-26` and `bun`, and every image must be pinned by digest. An invalid value prevents the webapp from starting. Projects with `runtime: "node"` in their config resolve to the current default Node runtime (`node-24` today), so set that key for them. With the Helm chart, set the variables through `webapp.extraEnvVars`.
+Entries are comma-separated `runtime=image@sha256:<digest>`. The runtimes are `node-22`, `node-24`, `node-26`, `bun`, `bun-1.3` and `bun-1.4`, and every image must be pinned by digest. An invalid value prevents the webapp from starting. Projects with `runtime: "node"` in their config resolve to the current default Node runtime (`node-24` today), so set that key for them. With the Helm chart, set the variables through `webapp.extraEnvVars`.
 
 Runtimes with an entry build on that image; the others keep the published images. Deploys from CLI versions that cannot apply the images are rejected with an error asking to upgrade, and so are `--native-build`, `--local-bundle` and `--from-bundle` deploys. This is a self-hosting setting and does not apply to Trigger.dev Cloud.
 
 You own a custom base image. It must provide:
 
-- `node` on `PATH` at the runtime's major version (for `bun`, both `bun` and `node`, because the final stage starts the app with `dumb-init node`)
+- `node` on `PATH` at the runtime's major version (for `bun`, both `bun` and `node`, because the final stage starts the app with `dumb-init node`; for `bun-1.3` and `bun-1.4`, only `bun`, because the final stage starts the app with `dumb-init bun`)
 - `busybox`, `ca-certificates`, `dumb-init`, `git` and `openssl`
-- a `node` user (a `bun` user for the Bun runtime)
+- a `node` user (a `bun` user for the Bun runtimes)
 - glibc, so native modules built in the build stage load at runtime
 
 A `DEPLOY_BUILD_BASE_IMAGES` image needs everything the base image provides, plus `python3`, `make` and `g++`. Build extensions that add image instructions are replayed on it. Without an entry, the build stage uses the published build image, except for projects whose build extensions add image instructions: those build from your base image and install the toolchain with `apt-get`, so that base must be Debian-based. To avoid the published images entirely, set both variables.

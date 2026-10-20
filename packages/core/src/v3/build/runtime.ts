@@ -58,6 +58,11 @@ export function resolveBuildRuntime(runtime: unknown): BuildRuntime {
   }
 }
 
+/** True for every Bun runtime ("bun", "bun-1.3", "bun-1.4"). */
+export function isBunRuntime(runtime: string | null | undefined): boolean {
+  return runtime?.startsWith("bun") ?? false;
+}
+
 export function binaryForRuntime(runtime: BuildRuntime): string {
   switch (runtime) {
     case "node":
@@ -66,6 +71,8 @@ export function binaryForRuntime(runtime: BuildRuntime): string {
     case "node-26":
       return "node";
     case "bun":
+    case "bun-1.3":
+    case "bun-1.4":
       return "bun";
     default:
       throw new Error(`Unsupported runtime ${runtime}`);
@@ -80,6 +87,8 @@ export function execPathForRuntime(runtime: BuildRuntime): string {
     case "node-26":
       return process.execPath;
     case "bun":
+    case "bun-1.3":
+    case "bun-1.4":
       if (typeof process.env.BUN_INSTALL === "string") {
         return join(process.env.BUN_INSTALL, "bin", "bun");
       }
@@ -129,7 +138,9 @@ export function execOptionsForRuntime(
 
       return dedupFlags(flags);
     }
-    case "bun": {
+    case "bun":
+    case "bun-1.3":
+    case "bun-1.4": {
       return "";
     }
   }

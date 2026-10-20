@@ -15,14 +15,17 @@ import CliViewRunStep from "/snippets/step-view-run.mdx";
 </Warning>
 
 <Note>
-  **Supported Bun version:** Deployed tasks run on Bun 1.3.3. For local development, use Bun 1.3.x
-  for compatibility.
+  **Supported Bun version:** With `runtime: "bun"`, deployed tasks run on Bun 1.3.3. To deploy on a
+  newer release, set `runtime: "bun-1.4"` (Bun 1.4.2) or `runtime: "bun-1.3"` (Bun 1.3.14), see
+  [Bun versions](/config/config-file#bun-versions). For local development, use the same Bun release
+  line as your deployed runtime.
 </Note>
 
 <Prerequisites framework="Bun" />
 
 ## Known issues
 
+- On Bun 1.3.x (`runtime: "bun"` and `"bun-1.3"`), `fetch` aborts any request that receives no bytes for 300 seconds with `TimeoutError: The operation timed out.`, so a long, non-streaming call such as an LLM request fails at exactly 5 minutes. **Workaround:** set `runtime: "bun-1.4"` in `trigger.config.ts`, which does not have this limit.
 - Certain OpenTelemetry instrumentation will not work with Bun, because Bun does not support Node's `register` hook. This means that some libraries that rely on this hook will not work with Bun.
 - If Bun is installed via Homebrew (e.g. `/opt/homebrew/bin/bun`), you may see an `ENOENT: spawn /Users/<you>/.bun/bin/bun` error because the CLI expects Bun at the default install path. **Workaround:** create a symlink:
   ```bash
