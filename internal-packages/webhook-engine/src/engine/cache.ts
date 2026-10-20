@@ -3,11 +3,12 @@ import type { ParsedRoutingTarget } from "./targets.js";
 
 /**
  * What the ingest hot path needs to verify and persist a delivery, resolved once per endpoint and
- * reused within the TTL: the endpoint row, its plaintext signing secret and its parsed routing targets.
+ * reused within the TTL: the endpoint row, its plaintext signing secrets (current first, then any
+ * previous secret still inside its rotation grace window) and its parsed routing targets.
  */
 export type CachedEndpoint = {
   endpoint: WebhookEndpoint;
-  secret: string;
+  secrets: [string, ...string[]];
   targets: ParsedRoutingTarget[];
 };
 

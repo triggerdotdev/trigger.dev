@@ -21,6 +21,7 @@ import { engine as runEngine } from "./runEngine.server";
 import { ServiceValidationError } from "./services/common.server";
 import { TriggerTaskService } from "./services/triggerTask.server";
 import { resolveWebhookSession } from "./webhookSessionTarget.server";
+import { activeSigningSecrets, StoredSigningSecret } from "./webhookSigningSecret";
 import { webhookLimitsForEnvironment } from "./webhookLimits.server";
 import { webhookPortErrorMessage } from "./webhookPortErrors.server";
 import { webhookWaitpoints } from "./webhookWaitpoints.server";
@@ -76,10 +77,6 @@ function webhookRedisConnection(): WebhookRedisOptions {
     },
   };
 }
-
-// The plaintext signing secret is stored under the "DATABASE" SecretStore
-// provider as { secret: string } (same shape as environment variables).
-const SigningSecretSchema = z.object({ secret: z.string() });
 
 /** The GET verification token (Meta hub.verify_token) an endpoint owner generated in the dashboard. */
 const VerifyTokenSchema = z.object({ token: z.string() });
@@ -141,9 +138,10 @@ function createWebhookEngine() {
     tracer,
     meter,
     resolveSigningSecret: async (key) => {
-      const value = await secretStore.getSecret(SigningSecretSchema, key);
+      const value = await secretStore.getSecret(StoredSigningSecret, key);
       // Fail closed: an unset/empty secret returns undefined so ingest rejects.
-      return value?.secret || undefined;
+      const secrets = activeSigningSecrets(value, new Date());
+      return secrets.length > 0 ? secrets : undefined;
     },
     resolveVerifyToken: async (endpointId) => {
       const value = await secretStore.getSecret(

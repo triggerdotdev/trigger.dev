@@ -39,7 +39,7 @@ import { QueueMemoryGuard } from "./memoryGuard.js";
 import { ensurePartitions, listDatedPartitions, partitionsCoveredUntil } from "./partitions.js";
 import { type CachedEndpoint, TtlCache } from "./cache.js";
 import { evaluateFilter, parseFilter } from "./filter/index.js";
-import { verify } from "./verification/index.js";
+import { verifyWithSecrets } from "./verification/index.js";
 import { sha256Hex } from "./verification/util.js";
 import { deriveIdempotencyKey, parseEventBody } from "./verification/derive.js";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
@@ -390,7 +390,7 @@ export class WebhookEngine {
       // non-empty secret.
       const resolved = await this.#resolveEndpoint(input.opaqueId);
       if (!resolved.ok) return resolved.result;
-      const { endpoint, secret } = resolved;
+      const { endpoint, secrets } = resolved;
 
       // 3. Verify inline. safeParse the Json artifact so a corrupt row is a 400, not a 5xx storm.
       const parsedArtifact = WebhookVerifierArtifact.safeParse(endpoint.verifierArtifact);
@@ -398,12 +398,12 @@ export class WebhookEngine {
         return { outcome: "verification_failed", error: "corrupt verifier artifact" };
       }
       const response = artifactResponseContract(parsedArtifact.data);
-      const verdict = verify(parsedArtifact.data, {
-        rawBytes: input.rawBytes,
-        headers: input.headers,
-        url: input.url,
-        secret,
-      });
+      const verdict = verifyWithSecrets(
+        parsedArtifact.data,
+        { rawBytes: input.rawBytes, headers: input.headers, url: input.url },
+        secrets
+      );
+      if (verdict.secretIndex) span.setAttribute("webhook.previous_secret", true);
       if (!verdict.ok) {
         return { outcome: "verification_failed", error: verdict.error ?? "invalid", response };
       }
@@ -1206,18 +1206,17 @@ export class WebhookEngine {
 
       const resolved = await this.#resolveEndpoint(input.opaqueId);
       if (!resolved.ok) return resolved.result;
-      const { endpoint, secret } = resolved;
+      const { endpoint, secrets } = resolved;
 
       const parsedArtifact = WebhookVerifierArtifact.safeParse(endpoint.verifierArtifact);
       if (!parsedArtifact.success) {
         return { outcome: "verification_failed", error: "corrupt verifier artifact" };
       }
-      const verdict = verify(parsedArtifact.data, {
-        rawBytes: input.rawBytes,
-        headers: input.headers,
-        url: input.url,
-        secret,
-      });
+      const verdict = verifyWithSecrets(
+        parsedArtifact.data,
+        { rawBytes: input.rawBytes, headers: input.headers, url: input.url },
+        secrets
+      );
       if (!verdict.ok) {
         return {
           outcome: "verification_failed",
@@ -1244,19 +1243,11 @@ export class WebhookEngine {
   // (ACTIVE + secret present) endpoints are cached; fail-closed outcomes always re-read.
   async #resolveEndpoint(
     opaqueId: string
-  ): Promise<
-    | { ok: true; endpoint: WebhookEndpoint; secret: string; targets: ParsedRoutingTarget[] }
-    | { ok: false; result: IngestResult }
-  > {
+  ): Promise<({ ok: true } & CachedEndpoint) | { ok: false; result: IngestResult }> {
     const cached = this.endpointCache.get(opaqueId);
     if (cached) {
       this.endpointCacheCounter.add(1, { result: "hit" });
-      return {
-        ok: true,
-        endpoint: cached.endpoint,
-        secret: cached.secret,
-        targets: cached.targets,
-      };
+      return { ok: true, ...cached };
     }
     this.endpointCacheCounter.add(1, { result: "miss" });
 
@@ -1267,9 +1258,12 @@ export class WebhookEngine {
       return { ok: false, result: { outcome: "endpoint_inactive" } };
 
     // Injected port keeps the engine SecretStore-free.
-    const secret = endpoint.signingSecretKey
+    const resolvedSecret = endpoint.signingSecretKey
       ? await this.options.resolveSigningSecret(endpoint.signingSecretKey)
       : undefined;
+    const [secret, ...previousSecrets] = (
+      Array.isArray(resolvedSecret) ? resolvedSecret : [resolvedSecret]
+    ).filter((value): value is string => Boolean(value));
     if (!secret) {
       const artifact = WebhookVerifierArtifact.safeParse(endpoint.verifierArtifact);
       return {
@@ -1283,8 +1277,9 @@ export class WebhookEngine {
 
     const targets = parseRoutingTargets(endpoint, this.logger);
 
-    this.endpointCache.set(opaqueId, { endpoint, secret, targets });
-    return { ok: true, endpoint, secret, targets };
+    const secrets: CachedEndpoint["secrets"] = [secret, ...previousSecrets];
+    this.endpointCache.set(opaqueId, { endpoint, secrets, targets });
+    return { ok: true, endpoint, secrets, targets };
   }
 
   // Evaluate a session routing target's `startOn` against the event. Absent => start allowed. A parse or

@@ -4,14 +4,19 @@ import { z } from "zod";
 import { webhookPrisma } from "~/db.server";
 import { webhookEndpointLookup } from "~/v3/webhookEndpointLookup";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { PreviousSecretTtlSeconds } from "~/v3/webhookSigningSecret";
 import { storeWebhookSigningSecret } from "~/v3/webhookSigningSecret.server";
 
 const ParamsSchema = z.object({ endpointId: z.string() });
 
+const SetSecretRequestBody = SetWebhookEndpointSecretRequestBody.extend({
+  previousSecretTtlSeconds: PreviousSecretTtlSeconds.optional(),
+});
+
 const { action, loader } = createActionApiRoute(
   {
     params: ParamsSchema,
-    body: SetWebhookEndpointSecretRequestBody,
+    body: SetSecretRequestBody,
     method: "PUT",
     allowJWT: true,
     corsStrategy: "all",
@@ -24,9 +29,11 @@ const { action, loader } = createActionApiRoute(
     });
     if (!endpoint) return json({ error: "Not found" }, { status: 404 });
 
-    await storeWebhookSigningSecret(endpoint, body.secret);
+    const { previousSecretExpiresAt } = await storeWebhookSigningSecret(endpoint, body.secret, {
+      previousSecretTtlSeconds: body.previousSecretTtlSeconds,
+    });
 
-    return json({ id: endpoint.friendlyId, secretSet: true as const });
+    return json({ id: endpoint.friendlyId, secretSet: true as const, previousSecretExpiresAt });
   }
 );
 

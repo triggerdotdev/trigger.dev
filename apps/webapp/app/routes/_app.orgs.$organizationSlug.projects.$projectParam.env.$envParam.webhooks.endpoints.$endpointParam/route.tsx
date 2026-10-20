@@ -29,6 +29,7 @@ import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
+import { Select, SelectItem } from "~/components/primitives/Select";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -68,6 +69,7 @@ import { docsPath, EnvironmentParamSchema, v3WebhooksPath } from "~/utils/pathBu
 import { throwPermissionDenied } from "~/utils/permissionDenied";
 import { parseFiniteInt } from "~/utils/searchParams";
 import { webhookEngine, webhookVerifyTokenKey } from "~/v3/webhookEngine.server";
+import { PreviousSecretTtlSeconds } from "~/v3/webhookSigningSecret";
 import {
   generateWebhookSigningSecret,
   storeWebhookSigningSecret,
@@ -209,7 +211,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 };
 
-const SetSecretSchema = z.object({
+const PreviousSecretTtlFormField = z.object({
+  previousSecretTtlSeconds: z.coerce.number().pipe(PreviousSecretTtlSeconds).optional(),
+});
+
+const SetSecretSchema = PreviousSecretTtlFormField.extend({
   intent: z.literal("set-secret"),
   secret: z.string().trim().min(1, "A signing secret is required"),
 });
@@ -261,9 +267,17 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   // Generate (integrator-supplied secret): the UI reveals it ONCE for pasting into the provider.
   if (intent === "generate-secret") {
-    const result = await generateWebhookSigningSecret(endpoint);
+    const ttl = PreviousSecretTtlFormField.safeParse(Object.fromEntries(formData));
+    if (!ttl.success) {
+      return { success: false as const, error: ttl.error.issues[0]?.message ?? "Invalid" };
+    }
+    const result = await generateWebhookSigningSecret(endpoint, ttl.data);
     return result.ok
-      ? { success: true as const, generatedSecret: result.secret }
+      ? {
+          success: true as const,
+          generatedSecret: result.secret,
+          previousSecretExpiresAt: result.previousSecretExpiresAt,
+        }
       : { success: false as const, error: result.error };
   }
 
@@ -287,7 +301,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   if (!submission.success) {
     return { success: false as const, error: submission.error.issues[0]?.message ?? "Invalid" };
   }
-  await storeWebhookSigningSecret(endpoint, submission.data.secret);
+  await storeWebhookSigningSecret(endpoint, submission.data.secret, {
+    previousSecretTtlSeconds: submission.data.previousSecretTtlSeconds,
+  });
 
   return { success: true as const };
 };
@@ -683,7 +699,12 @@ function ProviderSetup({ verifier, source }: { verifier: LoaderData["verifier"];
             <Property.Item>
               <Property.Label>Signature header</Property.Label>
               <Property.Value>
-                <span className="font-mono text-sm">{config.signatureHeader}</span>
+                <span className="font-mono text-sm">
+                  {[
+                    config.signatureHeader,
+                    ...(config.scheme === "hmac" ? (config.additionalSignatureHeaders ?? []) : []),
+                  ].join(", ")}
+                </span>
               </Property.Value>
             </Property.Item>
             <Property.Item>
@@ -780,6 +801,39 @@ function describeTimestampSource(source: WebhookValueSource): string {
   }
 }
 
+const PREVIOUS_SECRET_TTL_OPTIONS = [
+  { value: "0", label: "Stop immediately" },
+  { value: "3600", label: "1 hour" },
+  { value: "86400", label: "24 hours" },
+  { value: "604800", label: "7 days" },
+];
+
+function PreviousSecretTtlField({ credentialNoun }: { credentialNoun: string }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <Label>Keep accepting the old {credentialNoun} for</Label>
+      <Select
+        name="previousSecretTtlSeconds"
+        variant="tertiary/medium"
+        dropdownIcon
+        items={PREVIOUS_SECRET_TTL_OPTIONS}
+        defaultValue="86400"
+        text={(value) => PREVIOUS_SECRET_TTL_OPTIONS.find((o) => o.value === value)?.label}
+      >
+        {PREVIOUS_SECRET_TTL_OPTIONS.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </Select>
+      <Hint>
+        Deliveries signed with the old {credentialNoun} still verify until then, so you can update
+        the provider without failing any. Stop immediately if the old one leaked.
+      </Hint>
+    </div>
+  );
+}
+
 function SetSecretDialog({
   hasSigningSecret,
   credentialNoun,
@@ -832,6 +886,7 @@ function SetSecretDialog({
                 : "Stored encrypted and never shown again. Deliveries are verified against this secret."}
             </Hint>
           </div>
+          {hasSigningSecret ? <PreviousSecretTtlField credentialNoun={credentialNoun} /> : null}
           {fetcher.data && !fetcher.data.success ? (
             <Paragraph variant="small" className="text-error">
               {fetcher.data.error}
@@ -864,6 +919,10 @@ function GenerateSecretDialog({ hasSigningSecret }: { hasSigningSecret: boolean 
   const isSubmitting = fetcher.state !== "idle";
   const generated =
     fetcher.data && "generatedSecret" in fetcher.data ? fetcher.data.generatedSecret : undefined;
+  const previousSecretExpiresAt =
+    fetcher.data && "previousSecretExpiresAt" in fetcher.data
+      ? fetcher.data.previousSecretExpiresAt
+      : undefined;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -883,6 +942,12 @@ function GenerateSecretDialog({ hasSigningSecret }: { hasSigningSecret: boolean 
             </Paragraph>
             <ClipboardField value={generated} variant="secondary/medium" />
             <Hint>Paste this into your provider's webhook signing-secret field.</Hint>
+            {previousSecretExpiresAt ? (
+              <Hint>
+                The previous secret keeps verifying deliveries until{" "}
+                <DateTime date={previousSecretExpiresAt} />.
+              </Hint>
+            ) : null}
             <div className="flex justify-end">
               <Button type="button" variant="primary/small" onClick={() => setOpen(false)}>
                 Done
@@ -896,6 +961,12 @@ function GenerateSecretDialog({ hasSigningSecret }: { hasSigningSecret: boolean 
               Trigger.dev generates a strong signing secret, stores it encrypted, and shows it once
               so you can paste it into your provider.
             </Paragraph>
+            {hasSigningSecret ? <PreviousSecretTtlField credentialNoun="signing secret" /> : null}
+            {fetcher.data && !fetcher.data.success ? (
+              <Paragraph variant="small" className="text-error">
+                {fetcher.data.error}
+              </Paragraph>
+            ) : null}
             <div className="flex justify-end gap-2">
               <Button
                 type="button"

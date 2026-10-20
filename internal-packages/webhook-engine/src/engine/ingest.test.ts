@@ -162,7 +162,7 @@ function buildEngine(
   over?: {
     workerDisabled?: boolean;
     endpointCacheTtlMs?: number;
-    resolveSigningSecret?: (key: string) => Promise<string | undefined>;
+    resolveSigningSecret?: (key: string) => Promise<string | readonly string[] | undefined>;
     resolveVerifyToken?: (endpointId: string) => Promise<string | undefined>;
     deliverToSession?: DeliverWebhookToSessionCallback;
     meter?: Meter;
@@ -802,6 +802,38 @@ containerTestWithIsolatedRedis(
         "accepted"
       );
       expect(secretReads).toBe(2);
+    } finally {
+      await engine.quit();
+    }
+  }
+);
+
+containerTestWithIsolatedRedis(
+  "accepts deliveries signed with a previous secret while it is still listed",
+  async ({ prisma, redisOptions }) => {
+    const endpoint = await createEndpoint(prisma);
+    const { triggerTask } = makeTriggerTaskStub();
+    let secrets: string[] = ["whsec_rotated_secret", SECRET];
+    const engine = buildEngine(prisma, redisOptions, triggerTask, {
+      endpointCacheTtlMs: 0,
+      resolveSigningSecret: async (key) => (key === SECRET_KEY ? secrets : undefined),
+    });
+
+    try {
+      expect((await engine.ingest(signedInput("evt_grace_1", endpoint.opaqueId))).outcome).toBe(
+        "accepted"
+      );
+
+      secrets = ["whsec_rotated_secret"];
+      expect(await engine.ingest(signedInput("evt_grace_2", endpoint.opaqueId))).toMatchObject({
+        outcome: "verification_failed",
+        error: "signature mismatch",
+      });
+
+      secrets = [];
+      expect((await engine.ingest(signedInput("evt_grace_3", endpoint.opaqueId))).outcome).toBe(
+        "secret_missing"
+      );
     } finally {
       await engine.quit();
     }

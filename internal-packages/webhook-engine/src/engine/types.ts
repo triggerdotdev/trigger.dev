@@ -107,7 +107,7 @@ export interface WebhookEngineOptions {
   triggerTask: TriggerWebhookTaskCallback;
   // Q4: injected so the engine never imports the webapp SecretStore. Returns the
   // plaintext signing secret, or undefined/empty so ingest fails closed.
-  resolveSigningSecret: (key: string) => Promise<string | undefined>;
+  resolveSigningSecret: (key: string) => Promise<string | readonly string[] | undefined>;
   /**
    * The verify token a provider's GET URL verification must present (Meta's `hub.verify_token`),
    * by endpoint id. Separate from the signing secret and generated in the dashboard; undefined
