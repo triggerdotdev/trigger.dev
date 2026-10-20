@@ -508,7 +508,7 @@ Two `chat.agent()` options wire an agent to verified inbound webhooks. `events` 
 ```ts
 import { webhooks } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
-import { slack, webhookSource } from "@trigger.dev/slack";
+import { appMentions, slack, webhookSource } from "@trigger.dev/slack";
 
 const slackEvents = webhooks.endpoint.define({ id: "slack", source: webhookSource() });
 const stripe = webhooks.endpoint.define({ id: "stripe", source: webhooks.stripe() });
@@ -525,7 +525,14 @@ export const orderEvents = chat.event({
 export const myChat = chat.agent({
   id: "my-chat",
   events: [orderEvents],
-  channels: [slack({ id: "support-slack", endpoint: slackEvents, token: process.env.SLACK_BOT_TOKEN! })],
+  channels: [
+    slack({
+      id: "support-slack",
+      endpoint: slackEvents,
+      token: process.env.SLACK_BOT_TOKEN!,
+      startOn: appMentions(),
+    }),
+  ],
   onAction: async ({ action }) => {
     // A verified order-events delivery arrives here as an action.
   },
