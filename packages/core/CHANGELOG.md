@@ -1,5 +1,11 @@
 # internal-platform
 
+## 4.7.6
+
+### Patch Changes
+
+- Fix `timestamp` and other `Date` fields being logged as `{}` in structured log lines. ([`7a5a1f144`](https://github.com/triggerdotdev/trigger.dev/commit/7a5a1f144c98c808fb423bc0736bac7733ab3029))
+
 ## 4.7.5
 
 ### Patch Changes
