@@ -1,5 +1,44 @@
 # @trigger.dev/sdk
 
+## 4.7.5
+
+### Patch Changes
+
+- Manage custom metric dashboards from code. `query.dashboards` lists, creates, updates and deletes custom dashboards and their widgets, and every widget query is checked when it is saved. The MCP server adds `create_dashboard` and `set_dashboard_widgets`, so your AI assistant can build a dashboard for you. ([`252624c92`](https://github.com/triggerdotdev/trigger.dev/commit/252624c92077a8326e9b68f7b6713beca173d8b1))
+
+  ```ts
+  import { query } from "@trigger.dev/sdk";
+
+  await query.dashboards.create({
+    title: "Email tasks",
+    widgets: [
+      {
+        title: "Total runs",
+        query: "SELECT count() AS total FROM runs",
+        display: { type: "bignumber", column: "total", aggregation: "sum" },
+      },
+    ],
+  });
+  ```
+
+- Redact span content before it leaves the worker. `telemetry.spanProcessors` in `trigger.config.ts` runs your own span processors ahead of every export, to Trigger.dev and to your own exporters, so you can redact or drop span content before it reaches the run trace. `chat.agent` also takes a `telemetry` option to stop recording the user's message and `clientData` on its spans. ([`32b36b143`](https://github.com/triggerdotdev/trigger.dev/commit/32b36b1433dddb4f9d2cbd4c0320b146c7d6c858))
+
+  ```ts
+  export default defineConfig({
+    telemetry: { spanProcessors: [new MyRedactingSpanProcessor()] },
+  });
+
+  chat.agent({
+    id: "my-chat",
+    telemetry: { recordUserMessage: false, recordClientData: false },
+    run: async ({ messages, signal, streamText }) =>
+      streamText({ model, messages, abortSignal: signal }),
+  });
+  ```
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.7.5`
+
 ## 4.7.4
 
 ### Patch Changes

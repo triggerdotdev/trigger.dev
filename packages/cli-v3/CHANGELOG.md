@@ -1,5 +1,60 @@
 # trigger.dev
 
+## 4.7.5
+
+### Patch Changes
+
+- Update the @modelcontextprotocol/sdk dependency to ^1.31.0. ([`b5354d188`](https://github.com/triggerdotdev/trigger.dev/commit/b5354d1886c7f6a13ff15c4e1be3b028b40f59b9))
+- Add `trigger.dev tasks trigger <task id>` to trigger a task from your terminal. It uses the dev environment unless you pass `--env`, and `--wait` waits for the run and prints its output or error, exiting with code 1 if it failed. The `runs` commands now use the same dev branch as `trigger dev` when you pass `--env dev`. ([`d5dc48424`](https://github.com/triggerdotdev/trigger.dev/commit/d5dc4842441a42f231269eb766ab732527642ccd))
+
+  ```bash
+  npx trigger.dev@latest tasks trigger hello-world --payload '{"name":"Ada"}' --wait
+  ```
+
+- Manage custom metric dashboards from code. `query.dashboards` lists, creates, updates and deletes custom dashboards and their widgets, and every widget query is checked when it is saved. The MCP server adds `create_dashboard` and `set_dashboard_widgets`, so your AI assistant can build a dashboard for you. ([`252624c92`](https://github.com/triggerdotdev/trigger.dev/commit/252624c92077a8326e9b68f7b6713beca173d8b1))
+
+  ```ts
+  import { query } from "@trigger.dev/sdk";
+
+  await query.dashboards.create({
+    title: "Email tasks",
+    widgets: [
+      {
+        title: "Total runs",
+        query: "SELECT count() AS total FROM runs",
+        display: { type: "bignumber", column: "total", aggregation: "sum" },
+      },
+    ],
+  });
+  ```
+
+- `trigger deploy` and `trigger promote` now say which environment they're targeting, and accept `--prod` as a shorthand for `--env prod`. When `TRIGGER_ACCESS_TOKEN` holds an environment API key and you don't pass `--env`, they now use that key's environment instead of assuming prod. Passing an `--env` that doesn't match the key is now an error, where before the deploy went to the key's environment. ([`70ea83d38`](https://github.com/triggerdotdev/trigger.dev/commit/70ea83d38fc6a5ddff6c83e8285d2df72f40a9d8))
+
+  Preview deploys now detect the branch on CI providers that check out a detached HEAD, such as GitLab, Bitbucket, CircleCI, Buildkite, Travis CI, Jenkins and Azure Pipelines, instead of creating a branch called `HEAD`. Test links printed after a preview deploy now open the preview branch you deployed instead of staging.
+
+  The MCP `deploy` tool no longer defaults to prod, so your AI assistant has to choose the environment.
+
+- `trigger dev` works better when a coding agent like Claude Code, Cursor or Codex runs it: it skips the install prompts, lists the tasks it registered, and prints each run's dashboard URL and output. For everyone, a failed build now ends with a line saying it will rebuild when you fix the errors, and retried attempts and crashed task processes now show their errors. ([`d5dc48424`](https://github.com/triggerdotdev/trigger.dev/commit/d5dc4842441a42f231269eb766ab732527642ccd))
+- Redact span content before it leaves the worker. `telemetry.spanProcessors` in `trigger.config.ts` runs your own span processors ahead of every export, to Trigger.dev and to your own exporters, so you can redact or drop span content before it reaches the run trace. `chat.agent` also takes a `telemetry` option to stop recording the user's message and `clientData` on its spans. ([`32b36b143`](https://github.com/triggerdotdev/trigger.dev/commit/32b36b1433dddb4f9d2cbd4c0320b146c7d6c858))
+
+  ```ts
+  export default defineConfig({
+    telemetry: { spanProcessors: [new MyRedactingSpanProcessor()] },
+  });
+
+  chat.agent({
+    id: "my-chat",
+    telemetry: { recordUserMessage: false, recordClientData: false },
+    run: async ({ messages, signal, streamText }) =>
+      streamText({ model, messages, abortSignal: signal }),
+  });
+  ```
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.7.5`
+  - `@trigger.dev/build@4.7.5`
+  - `@trigger.dev/schema-to-json@4.7.5`
+
 ## 4.7.4
 
 ### Patch Changes
