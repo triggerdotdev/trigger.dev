@@ -116,6 +116,12 @@ event.billing.country == event.shipping.country
 event.items any ( quantity > 0 )
 ```
 
+When the payload itself is an array, as with providers that batch several events into one request (Tailscale, for example), quantify over `event`:
+
+```text Filter expression
+event any ( type == 'nodeCreated' )
+```
+
 ### Spacing
 
 Separate paths, operators, and values with one space. Parentheses may touch what they enclose, as in `(event.amount > 0)` and `any (quantity > 0)`. Lists and quoted strings may contain spaces (`['opened', 'closed']`, `'Fix the build'`). These forms work with both the TypeScript validator and the deployment parser.

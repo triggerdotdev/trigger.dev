@@ -96,13 +96,16 @@ Each function below returns a source with its provider's verification configurat
 
 | Verification | Source functions |
 | --- | --- |
-| Svix | `clerk()`, `resend()`, `brex()` |
-| Standard Webhooks | `openai()`, `replicate()`, `recallai()`, `composio()` |
+| Svix | `clerk()`, `resend()`, `brex()`, `autumn()` |
+| Standard Webhooks | `openai()`, `replicate()`, `recallai()`, `composio()`, `loops()`, `granola()` |
 | HMAC-SHA256 with `X-Hub-Signature-256` | `whatsapp()` |
 | Shared secret in `X-Gitlab-Token` | `gitlab()` |
-| Provider-specific HMAC | `calendly()`, `calCom()`, `sentry()`, `pagerduty()`, `vercel()`, `linear()`, `notion()`, `typeform()`, `docusign()`, `jira()`, `intercom()`, `zendesk()`, `attio()`, `workos()`, `elevenlabs()`, `vapi()`, `retell()`, `shopify()` |
+| Shared secret as `Authorization: Bearer` | `supabase()` |
+| Provider-specific HMAC | `calendly()`, `calCom()`, `sentry()`, `pagerduty()`, `vercel()`, `linear()`, `notion()`, `typeform()`, `docusign()`, `jira()`, `intercom()`, `zendesk()`, `attio()`, `workos()`, `elevenlabs()`, `vapi()`, `retell()`, `shopify()`, `metronome()`, `mux()`, `tailscale()`, `langfuse()`, `infisical()`, `planetscale()`, `plain()`, `firecrawl()` |
 
 Provider IDs containing a hyphen use a camel case function name: the `cal-com` provider is `webhooks.calCom()`.
+
+Supabase database webhooks aren't signed, so `supabase()` checks a shared secret instead. Generate the endpoint's secret on Trigger.dev, then add an `Authorization` header with the value `Bearer <secret>` under the webhook's HTTP Headers in Supabase.
 
 Slack also ships as a chat channel in `@trigger.dev/slack`.
 
