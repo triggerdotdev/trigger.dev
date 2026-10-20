@@ -1,4 +1,9 @@
-import { type WorkloadType } from "@trigger.dev/database";
+import {
+  formatWorkerQueue,
+  parseWorkerQueue,
+  type WorkerQueue,
+} from "@trigger.dev/core/v3/workers";
+import { type WorkerInstanceGroupType, type WorkloadType } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
@@ -10,6 +15,8 @@ export type WorkerGroupRegionRow = {
   workloadType: WorkloadType;
   hidden: boolean;
   enableFastPath: boolean;
+  type: WorkerInstanceGroupType;
+  projectId: string | null;
 };
 
 /**
@@ -46,6 +53,46 @@ export function backingForQueue(
 }
 
 /**
+ * The container worker queue to use instead of a compute worker queue, for a run whose deployment
+ * has no template. Undefined when `queue` is not a compute queue, or when no container group serves
+ * its region. A v2 queue keeps its region, class and phase, on the stable channel. A legacy queue
+ * keeps its class.
+ */
+export function containerQueueForComputeQueue(
+  queue: string,
+  groups: WorkerGroupRegionRow[]
+): string | undefined {
+  let parsed: WorkerQueue;
+  try {
+    parsed = parseWorkerQueue(queue);
+  } catch {
+    return undefined;
+  }
+
+  // Only shared groups: a project-scoped group's queue belongs to that project's workers.
+  const containers = groups.filter(
+    (g) => g.workloadType === "CONTAINER" && g.type === "MANAGED" && g.projectId === null
+  );
+
+  if (parsed.version !== "legacy") {
+    if (parsed.compat === "container") return undefined;
+    // A group without a region consumes v2 queues under its master queue name.
+    const served = containers.some((g) => (g.region ?? g.masterQueue) === parsed.region);
+    return served
+      ? formatWorkerQueue({ ...parsed, compat: "container", channel: "stable" })
+      : undefined;
+  }
+
+  const self = groups.find((g) => g.masterQueue === parsed.region);
+  if (!self || self.workloadType !== "MICROVM" || !self.region) return undefined;
+  const inRegion = containers.filter((g) => g.region === self.region);
+  const container =
+    inRegion.find((g) => g.masterQueue === self.region) ?? inRegion.find((g) => !g.hidden);
+  if (!container) return undefined;
+  return formatWorkerQueue({ ...parsed, region: container.masterQueue });
+}
+
+/**
  * In-memory snapshot of every worker group's (queue, region, type, hidden),
  * refreshed on an interval. Read synchronously on the hot path; a cold read
  * returns undefined (callers default safely - no backing, so not-migrated).
@@ -65,6 +112,8 @@ export const workerRegionRegistry = singleton("workerRegionRegistry", () =>
           workloadType: true,
           hidden: true,
           enableFastPath: true,
+          type: true,
+          projectId: true,
         },
       }),
   })

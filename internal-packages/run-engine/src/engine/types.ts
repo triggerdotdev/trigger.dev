@@ -41,6 +41,12 @@ export type WorkerQueueDequeueOptions = WorkerQueuePopOptions & {
   runnerId?: string;
   tx?: PrismaClientOrTransaction;
   skipObserving?: boolean;
+  /**
+   * Set when this consumer can only start runs whose deployment has a `templateKey`. A fresh
+   * attempt of a deployment without one moves to the worker queue this returns. Restores keep
+   * their worker queue.
+   */
+  templateFallbackWorkerQueue?: (workerQueue: string) => string | undefined;
 };
 
 /**

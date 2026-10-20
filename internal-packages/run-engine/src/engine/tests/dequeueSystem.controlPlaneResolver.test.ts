@@ -572,6 +572,7 @@ describe("DequeueSystem controlPlaneResolver (worker-task read shape)", () => {
         "id",
         "imagePlatform",
         "imageReference",
+        "templateKey",
       ]);
 
       const queue = version.queues.find((q) => q.id === cp.queue.id);

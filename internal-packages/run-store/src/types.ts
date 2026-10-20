@@ -550,7 +550,8 @@ export interface RunStore {
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
   requeueRun<S extends Prisma.TaskRunSelect>(
     runId: string,
-    args: { select: S },
+    /** `workerQueue` moves the run to that worker queue as it is requeued. */
+    args: { select: S; workerQueue?: string },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
   recordBulkActionMembership(

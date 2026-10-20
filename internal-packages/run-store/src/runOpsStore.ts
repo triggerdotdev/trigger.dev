@@ -948,7 +948,7 @@ export class RoutingRunStore implements RunStore {
 
   async requeueRun<S extends Prisma.TaskRunSelect>(
     runId: string,
-    args: { select: S },
+    args: { select: S; workerQueue?: string },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
     return (await this.#routeForWrite(runId)).requeueRun(runId, args);

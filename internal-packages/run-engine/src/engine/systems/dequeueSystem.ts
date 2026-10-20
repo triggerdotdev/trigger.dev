@@ -39,6 +39,9 @@ import {
 
 const NullableRetryOptions = z.compile(RetryOptions.nullable());
 
+/** How long a run with no template and no fallback worker queue waits before the next try. */
+const TEMPLATE_WAIT_RETRY_MS = 30_000;
+
 export type DequeueSystemOptions = {
   resources: SystemResources;
   machines: RunEngineOptions["machines"];
@@ -142,6 +145,7 @@ export class DequeueSystem {
     tx,
     blockingPop,
     blockingPopTimeoutSeconds,
+    templateFallbackWorkerQueue,
   }: WorkerQueueDequeueOptions & {
     workerQueues: WorkerQueueSelection[];
   }): Promise<DequeuedMessage | undefined> {
@@ -492,6 +496,23 @@ export class DequeueSystem {
 
                   return;
                 }
+              }
+
+              if (
+                templateFallbackWorkerQueue &&
+                result.environmentType !== "DEVELOPMENT" &&
+                !snapshot.checkpointId &&
+                !result.deployment?.templateKey
+              ) {
+                const outcome = await this.#moveToTemplateFallback({
+                  orgId,
+                  runId,
+                  workerQueue,
+                  fallbackWorkerQueue: templateFallbackWorkerQueue(workerQueue),
+                  tx: prisma,
+                });
+                span.setAttribute("result", outcome);
+                return;
               }
 
               const machinePreset = getMachinePreset({
@@ -874,6 +895,69 @@ export class DequeueSystem {
         },
       }
     );
+  }
+
+  /**
+   * Gives back a run whose deployment this consumer cannot start. With a fallback worker queue the
+   * run moves there without using its redelivery budget. Without one it is retried later, and the
+   * budget bounds how long it waits for a template.
+   */
+  async #moveToTemplateFallback({
+    orgId,
+    runId,
+    workerQueue,
+    fallbackWorkerQueue,
+    tx,
+  }: {
+    orgId: string;
+    runId: string;
+    workerQueue: string;
+    fallbackWorkerQueue: string | undefined;
+    tx: PrismaClientOrTransaction;
+  }): Promise<"TEMPLATE_FALLBACK" | "TEMPLATE_WAIT"> {
+    if (fallbackWorkerQueue && fallbackWorkerQueue !== workerQueue) {
+      this.$.logger.info("RunEngine.dequeueFromWorkerQueue(): No template, moving the run", {
+        runId,
+        workerQueue,
+        fallbackWorkerQueue,
+      });
+      await this.$.runStore.requeueRun(
+        runId,
+        { select: { id: true }, workerQueue: fallbackWorkerQueue },
+        tx
+      );
+      await this.$.runQueue.nackMessage({
+        orgId,
+        messageId: runId,
+        workerQueue: fallbackWorkerQueue,
+        retryAt: Date.now(),
+        incrementAttemptCount: false,
+      });
+      return "TEMPLATE_FALLBACK";
+    }
+
+    this.$.logger.warn("RunEngine.dequeueFromWorkerQueue(): No template and no fallback queue", {
+      runId,
+      workerQueue,
+    });
+    const requeued = await this.$.runQueue.nackMessage({
+      orgId,
+      messageId: runId,
+      retryAt: Date.now() + TEMPLATE_WAIT_RETRY_MS,
+    });
+    if (requeued === false) {
+      await this.runAttemptSystem.systemFailure({
+        runId,
+        organizationId: orgId,
+        error: {
+          type: "INTERNAL_ERROR",
+          code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
+          message: "The run's deployment is not ready to start on this worker queue.",
+        },
+        tx,
+      });
+    }
+    return "TEMPLATE_WAIT";
   }
 
   async #acknowledgeExpiredFinishedRun(orgId: string, runId: string): Promise<void> {

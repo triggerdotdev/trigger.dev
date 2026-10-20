@@ -1609,6 +1609,7 @@ export class RunEngine {
     skipObserving,
     blockingPop,
     blockingPopTimeoutSeconds,
+    templateFallbackWorkerQueue,
   }: WorkerQueueDequeueOptions & {
     workerQueues: WorkerQueueSelection[];
   }): Promise<DequeuedMessage[]> {
@@ -1631,6 +1632,7 @@ export class RunEngine {
       tx,
       blockingPop,
       blockingPopTimeoutSeconds,
+      templateFallbackWorkerQueue,
     });
 
     if (!dequeuedMessage) {

@@ -119,7 +119,7 @@ export class DelegatingRunStore implements RunStore {
 
   requeueRun<S extends Prisma.TaskRunSelect>(
     runId: string,
-    args: { select: S },
+    args: { select: S; workerQueue?: string },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
     return this.delegate.requeueRun(runId, args, tx);
