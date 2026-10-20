@@ -5,6 +5,7 @@ import {
   DASHBOARD_AGENT_WATCH_TOOL_NAMES,
   dashboardAgentCodeToolSchemas,
   dashboardAgentToolSchemas,
+  renderViewSchemaWithoutWatch,
 } from "./tool-schemas";
 
 /**
@@ -43,8 +44,10 @@ export function toolSchemasFor(
   const schemas = mode === "code" ? dashboardAgentCodeToolSchemas : dashboardAgentToolSchemas;
   if (options.watchEnabled) return schemas;
   return Object.fromEntries(
-    Object.entries(schemas).filter(
-      ([name]) => !(DASHBOARD_AGENT_WATCH_TOOL_NAMES as readonly string[]).includes(name)
-    )
+    Object.entries(schemas)
+      .filter(([name]) => !(DASHBOARD_AGENT_WATCH_TOOL_NAMES as readonly string[]).includes(name))
+      .map(([name, schema]) =>
+        name === "render_view" ? [name, renderViewSchemaWithoutWatch] : [name, schema]
+      )
   ) as typeof schemas;
 }

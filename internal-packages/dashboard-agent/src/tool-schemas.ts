@@ -5,7 +5,7 @@
 import {
   DASHBOARD_AGENT_FEEDBACK_LIMITS,
   runFiltersSchema,
-  viewBlockInputSchema,
+  viewBlockInputSchemaFor,
   watchSpecSchema,
 } from "@internal/dashboard-agent-contracts";
 import { tool } from "ai";
@@ -342,19 +342,30 @@ export const navigateToSchema = tool({
 // A new block needs a schema in dashboard-agent-contracts (src/blocks.ts) and a
 // renderer entry in components/dashboard-agent/view-catalog.tsx.
 
-export const renderViewSchema = tool({
-  description:
-    "Render a structured view in the dashboard panel: a stack of catalog blocks, instead of plain prose. The catalog has four blocks: `diagnosis` (the 'why did this run fail?' failure card, after gathering evidence with the read/source tools), `chart` (a line/bar chart of run_query results), `actions` (a row of 1-3 buttons offering next steps — a `watch` intent opens the watch configuration card pre-filled with the spec you composed, an `ask` intent sends the labelled question as the user's next message), and `investigation` (a live card for a hypothesis-driven investigation: report the state and the tool assigns and keeps its identity, so re-rendering it updates the same card). The result carries the `investigationId` it assigned — pass that back as `investigationId` when you render the same investigation again, including on a later turn. An investigation is rendered at least TWICE: once as `in_progress` when you open it, then again with the same `investigationId` carrying the final outcome (`concluded` or `inconclusive`), as the last tool call of the turn. A card left at `in_progress` is an unfinished answer whatever your prose says: the user is left watching a spinner. Keep any accompanying message to a one-line lead-in.",
-  inputSchema: z.object({
-    blocks: z.array(viewBlockInputSchema).min(1).describe("The blocks to render, top to bottom."),
-    investigationId: z
-      .string()
-      .optional()
-      .describe(
-        "The investigationId a previous render_view returned, to revise that same investigation instead of opening a new one. Use it on follow-up turns about the same investigation. Omit to start a new one."
-      ),
-  }),
-});
+const RENDER_VIEW_ACTIONS_WATCH_DOC =
+  "a `watch` intent opens the watch configuration card pre-filled with the spec you composed, ";
+
+function renderViewSchemaFor(options: { watchEnabled: boolean }) {
+  const watchDoc = options.watchEnabled ? RENDER_VIEW_ACTIONS_WATCH_DOC : "";
+  return tool({
+    description: `Render a structured view in the dashboard panel: a stack of catalog blocks, instead of plain prose. The catalog has four blocks: \`diagnosis\` (the 'why did this run fail?' failure card, after gathering evidence with the read/source tools), \`chart\` (a line/bar chart of run_query results), \`actions\` (a row of 1-3 buttons offering next steps — ${watchDoc}an \`ask\` intent sends the labelled question as the user's next message), and \`investigation\` (a live card for a hypothesis-driven investigation: report the state and the tool assigns and keeps its identity, so re-rendering it updates the same card). The result carries the \`investigationId\` it assigned — pass that back as \`investigationId\` when you render the same investigation again, including on a later turn. An investigation is rendered at least TWICE: once as \`in_progress\` when you open it, then again with the same \`investigationId\` carrying the final outcome (\`concluded\` or \`inconclusive\`), as the last tool call of the turn. A card left at \`in_progress\` is an unfinished answer whatever your prose says: the user is left staring at a spinner. Keep any accompanying message to a one-line lead-in.`,
+    inputSchema: z.object({
+      blocks: z
+        .array(viewBlockInputSchemaFor(options))
+        .min(1)
+        .describe("The blocks to render, top to bottom."),
+      investigationId: z
+        .string()
+        .optional()
+        .describe(
+          "The investigationId a previous render_view returned, to revise that same investigation instead of opening a new one. Use it on follow-up turns about the same investigation. Omit to start a new one."
+        ),
+    }),
+  });
+}
+
+export const renderViewSchema = renderViewSchemaFor({ watchEnabled: true });
+export const renderViewSchemaWithoutWatch = renderViewSchemaFor({ watchEnabled: false });
 
 // `watchSpecSchema` enforces the cadence floors and 24h ceiling. `since` for error
 // recurrence is server-set on persist, so it is absent here.
@@ -633,7 +644,7 @@ You have read-only tools that act as the user against their own account:
 - get_query_schema: discover the analytics tables and columns you can query with TRQL (runs, metrics, llm_metrics, llm_models, concurrency_metrics, concurrency_metrics_by_key).
 - run_query: run a read-only TRQL query (SQL-style over ClickHouse) against the current environment's analytics data.
 - ask_support: ask the Trigger.dev support assistant about how Trigger.dev works (docs, concepts, features, configuration, how-tos).
-- render_view: render a structured view in the panel from the block catalog. The catalog has the "diagnosis" block (a failure card for a single run), the "chart" block (a line/bar chart of run_query results), the "actions" block (a row of 1-3 buttons offering next steps — a watch intent opens the watch card pre-filled, an ask intent sends the labelled question as the user's next message), and the "investigation" block (a live card for a hypothesis-driven investigation).
+- render_view: render a structured view in the panel from the block catalog. The catalog has the "diagnosis" block (a failure card for a single run), the "chart" block (a line/bar chart of run_query results), the "actions" block (a row of 1-3 buttons offering next steps — an ask intent sends the labelled question as the user's next message), and the "investigation" block (a live card for a hypothesis-driven investigation).
 - get_report: the composed health report for the current environment (flow, execution, liveness), with a severity and the metrics behind each.
 - get_queue: one queue's wait latency, peak depth, throughput, and throttling over a window, plus its live row and the scheduler's own grounding for where concurrency capacity is exhausted. Lead with paused when it is true: a paused queue explains its own emptiness, so say it is paused and only then the numbers. queuedNow is what is waiting right now, which a window of metrics cannot show. A custom queue's name is not a task id, so no task being named after it is not evidence about it — never conclude from list_tasks or a deployment that it is unconsumed, deleted, or renamed. consumerTasks is the answer to "who feeds this queue": empty means nothing deployed writes to it, and absent means you did not ask a custom queue.
 - list_deploys: recent deployments (versions) in the current environment, with status and commit message.
@@ -708,7 +719,7 @@ Investigations:
   2. Pose two hypotheses — three only if the evidence really demands it.
   3. Render. call render_view with an "investigation" block, outcome in_progress, BEFORE you test anything and no later than your third step — even when the answer already looks obvious. The result carries investigationId.
   4. Test — ONE round, one targeted check per hypothesis, issued together, read tools only. That round is all you get: a check that comes back empty, unavailable, or truncated is itself a finding. Never retry a search with different terms and never reach for a second tool to get the same answer.
-  5. Render the verdict, immediately after that round — prose is never a substitute, and a card still reading in_progress when the turn ends leaves the user watching a spinner: render_view again, same investigationId, outcome concluded or inconclusive. This is your VERY NEXT call — before any other tool and before you write a word — and it is always the last tool call of the turn. If you find yourself about to call something that isn't a read of evidence, render the verdict instead. Then close with one short line of prose, and let the outcome decide what it says. concluded: name the cause concretely, in the user's own terms — the limit that's saturated, the file:line that broke. inconclusive: say what is NOT established and what to check first — no "the culprit is", no cause presented as found, and no fix, not even a fast one or a hedged one. "Here's what I found" is not an answer, and don't restate the card. The close is ONE sentence, never a list: if you're writing bullets after the verdict card, you are retyping the card's remediation or checkNext — everything list-shaped belongs on the card and only there.
+  5. Render the verdict, immediately after that round — prose is never a substitute, and a card still reading in_progress when the turn ends leaves the user staring at a spinner: render_view again, same investigationId, outcome concluded or inconclusive. This is your VERY NEXT call — before any other tool and before you write a word — and it is always the last tool call of the turn. If you find yourself about to call something that isn't a read of evidence, render the verdict instead. Then close with one short line of prose, and let the outcome decide what it says. concluded: name the cause concretely, in the user's own terms — the limit that's saturated, the file:line that broke. inconclusive: say what is NOT established and what to check first — no "the culprit is", no cause presented as found, and no fix, not even a fast one or a hedged one. "Here's what I found" is not an answer, and don't restate the card. The close is ONE sentence, never a list: if you're writing bullets after the verdict card, you are retyping the card's remediation or checkNext — everything list-shaped belongs on the card and only there.
 - That is FOUR tool phases and there is no fifth: gather, open the card, one test round, verdict. You cannot count how many steps you have left and the ceiling is hard — a turn that hits it renders nothing and answers nothing — so anything outside those four phases is a step you cannot afford. Never call get_current_page, list_projects, or list_environments inside an investigation: your tools are already scoped and the card needs none of it.
 - You do not need every hypothesis settled to conclude. One hypothesis with a mechanism behind it IS the conclusion: leave the others as testing or invalidated with what you found, and render the verdict. Chasing the last unsettled hypothesis — for call sites, a type definition, a payload you can't see — is how a turn ends with no verdict at all.
 - When you investigate a run that is still executing or has been running for minutes, copy get_run_trace's timeline onto the investigation's own timeline verbatim — the user wants to see where the time has gone and what it is doing right now, not a prose table. Once the card carries a timeline, the reply doesn't restate its phases as a table or list — the card is the timeline, so close with at most one or two sentences of conclusion.
@@ -744,6 +755,7 @@ export const DASHBOARD_AGENT_WATCH_PROMPT = `You have the watch tools too:
 - list_alerts: the project's alert subscriptions for watch fires.
 - create_alert: subscribe the user to an email alert for watch fires in this project.
 - delete_alert: turn one alert subscription off.
+- render_view "actions" takes a watch intent too.
 
 Watches — telling the user later:
 - When the user wants to be told when something happens ("tell me when this run finishes", "let me know when the backlog drains", "tell me when it's back under 100", "tell me if that queue stops moving", "ping me if runs start waiting more than 5 minutes", "ping me if that error comes back", "tell me when prod is healthy again"), call schedule_watch. Never poll: repeating a read tool until the thing happens is not a watch, and you cannot wait inside a turn.
