@@ -313,7 +313,7 @@ function filterKeys(obj: unknown, keys: Set<string>, depth = 0): any {
     return truncateString(obj);
   }
 
-  if (typeof obj !== "object" || obj === null) {
+  if (typeof obj !== "object" || obj === null || obj instanceof Date) {
     return obj;
   }
 
