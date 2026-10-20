@@ -67,8 +67,13 @@ const ChartContainer = React.forwardRef<
 });
 ChartContainer.displayName = "Chart";
 
+const SAFE_CSS_KEY = /^[A-Za-z0-9_-]+$/;
+const UNSAFE_CSS_VALUE = /[<>{};\\]/;
+
 const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
-  const colorConfig = Object.entries(config).filter(([, config]) => config.theme || config.color);
+  const colorConfig = Object.entries(config)
+    .filter(([, config]) => config.theme || config.color)
+    .filter(([key]) => SAFE_CSS_KEY.test(key));
 
   if (!colorConfig.length) {
     return null;
@@ -84,7 +89,7 @@ ${prefix} [data-chart=${id}] {
 ${colorConfig
   .map(([key, itemConfig]) => {
     const color = itemConfig.theme?.[theme as keyof typeof itemConfig.theme] || itemConfig.color;
-    return color ? `  --color-${key}: ${color};` : null;
+    return color && !UNSAFE_CSS_VALUE.test(color) ? `  --color-${key}: ${color};` : null;
   })
   .join("\n")}
 }

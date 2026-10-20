@@ -159,6 +159,7 @@ export class RunPresenter {
       id: run.id,
       number: run.number,
       friendlyId: run.friendlyId,
+      taskIdentifier: run.taskIdentifier,
       traceId: run.traceId,
       spanId: run.spanId,
       status: run.status,

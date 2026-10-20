@@ -93,7 +93,7 @@ import { useSearchParams } from "~/hooks/useSearchParam";
 import { type Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { env } from "~/env.server";
-import { findProjectBySlug } from "~/models/project.server";
+import { findProjectBySlug, findProjectWithOrgFlagsBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
 import {
@@ -110,6 +110,8 @@ import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUser } from "~/services/session.server";
 import { rbac } from "~/services/rbac.server";
 import { runAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { isFinalRunStatus } from "~/v3/taskStatus";
+import { RunCreateAlertButton } from "./RunCreateAlertButton";
 import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import { cn } from "~/utils/cn";
 import type { Handle } from "~/utils/handle";
@@ -126,6 +128,7 @@ import {
   v3RunStatusPath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
+import { canUseAlertsList } from "~/v3/canUseAlertsList.server";
 import type { SpanOverride } from "~/v3/eventRepository/eventRepository.types";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { shouldRevalidateRunPage } from "./shouldRevalidateRunPage";
@@ -282,6 +285,17 @@ async function runWritePermissions(request: Request, userId: string, organizatio
   return { canReplayRun: canWriteRun, canCancelRun: canWriteRun };
 }
 
+async function runAlertsEnabled(userId: string, organizationSlug: string, projectParam: string) {
+  const project = await findProjectWithOrgFlagsBySlug(organizationSlug, projectParam, userId);
+  const alertsEnabled = project
+    ? await canUseAlertsList({
+        orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+        userId,
+      })
+    : false;
+  return { alertsEnabled };
+}
+
 export { shouldRevalidateRunPage as shouldRevalidate };
 
 export const handle: Handle = {
@@ -372,6 +386,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         resizable: { parent, tree },
         runsList: null,
         ...(await runWritePermissions(request, userId, buffered.run.environment.organizationId)),
+        ...(await runAlertsEnabled(userId, organizationSlug, projectParam)),
       });
     }
 
@@ -411,6 +426,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     },
     runsList,
     ...(await runWritePermissions(request, userId, result.run.environment.organizationId)),
+    ...(await runAlertsEnabled(userId, organizationSlug, projectParam)),
   });
 };
 
@@ -458,6 +474,7 @@ export default function Page() {
     resizable,
     canReplayRun,
     canCancelRun,
+    alertsEnabled,
   } = useLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
@@ -586,6 +603,14 @@ export default function Page() {
               Run docs
             </LinkButton>
           </WhenAgentUnavailable>
+          {alertsEnabled && !isFinalRunStatus(run.status) ? (
+            <RunCreateAlertButton
+              taskIdentifier={run.taskIdentifier}
+              organization={organization}
+              project={project}
+              environment={environment}
+            />
+          ) : null}
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>

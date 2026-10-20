@@ -41,8 +41,8 @@ vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
   canAccessDashboardAgent: async () => mocks.hasAgentAccess,
 }));
 
-vi.mock("~/v3/canUseDashboardAgentWatches.server", () => ({
-  canUseDashboardAgentWatches: async () => mocks.watchEnabled,
+vi.mock("~/v3/canUseAlertsList.server", () => ({
+  canUseAlertsList: async () => mocks.watchEnabled,
 }));
 
 vi.mock("~/components/dashboard-agent/suggested-prompts/promotedPrompt.server", () => ({
@@ -193,5 +193,20 @@ describe("env.$envParam loader — the dashboard agent's wake activity", () => {
 
     expect(data.dashboardAgentActivity).toEqual({ unreadWakes: 3, hasActiveWatches: true });
     expect(mocks.wakeActivityReads).toBe(1);
+  });
+
+  it("sets watchEnabled to the alerts flag result", async () => {
+    for (const enabled of [true, false]) {
+      mocks.watchEnabled = enabled;
+      const data = (await callLoader()) as unknown as { dashboardAgentWatchEnabled: boolean };
+      expect(data.dashboardAgentWatchEnabled).toBe(enabled);
+    }
+  });
+
+  it("is off without agent access even when alerts are enabled", async () => {
+    mocks.hasAgentAccess = false;
+    mocks.watchEnabled = true;
+    const data = (await callLoader()) as unknown as { dashboardAgentWatchEnabled: boolean };
+    expect(data.dashboardAgentWatchEnabled).toBe(false);
   });
 });

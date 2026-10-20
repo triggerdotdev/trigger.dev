@@ -71,6 +71,7 @@ export type RunListOptions = {
   bulkId?: string;
   from?: number;
   to?: number;
+  filterByCompletedAt?: boolean;
   isTest?: boolean;
   rootOnly?: boolean;
   batchId?: string;
@@ -169,6 +170,7 @@ export class NextRunListPresenter {
       sources,
       from,
       to,
+      filterByCompletedAt,
       direction = "forward",
       cursor,
       pageSize = DEFAULT_PAGE_SIZE,
@@ -287,6 +289,7 @@ export class NextRunListPresenter {
       period,
       from: time.from ? time.from.getTime() : undefined,
       to: time.to ? clampToNow(time.to).getTime() : undefined,
+      filterByCompletedAt,
       isTest,
       rootOnly,
       batchId,

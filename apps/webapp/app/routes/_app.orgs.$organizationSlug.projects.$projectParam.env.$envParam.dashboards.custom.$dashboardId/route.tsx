@@ -42,12 +42,13 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization, useWidgetLimitPerDashboard } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
-import { findProjectBySlug } from "~/models/project.server";
+import { findProjectBySlug, findProjectWithOrgFlagsBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { getTaskIdentifiers } from "~/models/task.server";
 import { MetricDashboardPresenter } from "~/presenters/v3/MetricDashboardPresenter.server";
 import { QueryPresenter } from "~/presenters/v3/QueryPresenter.server";
 import { removeFavoritesByUrlSubstring } from "~/services/dashboardPreferences.server";
+import { canUseAlertsList } from "~/v3/canUseAlertsList.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { MetricDashboardService } from "~/v3/services/metricDashboard.server";
 import { tryCatch } from "@trigger.dev/core/utils";
@@ -58,7 +59,10 @@ import {
   v3BillingPath,
   v3BuiltInDashboardPath,
 } from "~/utils/pathBuilder";
-import { MetricDashboard } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.dashboards.$dashboardKey/route";
+import {
+  DashboardCreateAlertButton,
+  MetricDashboard,
+} from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.dashboards.$dashboardKey/route";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { dashboardsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
@@ -77,7 +81,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
   const { projectParam, organizationSlug, envParam, dashboardId } = ParamSchema.parse(params);
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
+  const project = await findProjectWithOrgFlagsBySlug(organizationSlug, projectParam, user.id);
   if (!project) {
     throw new Response(undefined, {
       status: 404,
@@ -92,6 +96,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       statusText: "Environment not found",
     });
   }
+
+  const alertsEnabled = await canUseAlertsList({
+    orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+    userId: user.id,
+  });
 
   const dashboardPresenter = new MetricDashboardPresenter();
   const queryPresenter = new QueryPresenter();
@@ -115,6 +124,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   return typedjson({
     ...dashboard,
+    alertsEnabled,
     // Query editor data
     queryDefaultQuery: defaultQuery,
     queryHistory: history,
@@ -193,6 +203,7 @@ export default function Page() {
   const {
     friendlyId,
     title,
+    alertsEnabled,
     layout: dashboardLayout,
     defaultPeriod,
     queryDefaultQuery,
@@ -381,6 +392,7 @@ export default function Page() {
 
   const filterAccessories = (
     <div className="flex items-center gap-x-1.5">
+      {alertsEnabled ? <DashboardCreateAlertButton /> : null}
       {widgetIsAtLimit ? (
         <>
           <Dialog>

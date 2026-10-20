@@ -105,10 +105,11 @@ import {
   type RunQueueWaiting,
 } from "~/presenters/v3/RunQueueMetricsPresenter.server";
 import { type Span, SpanPresenter, type SpanRun } from "~/presenters/v3/SpanPresenter.server";
-import { findProjectBySlug } from "~/models/project.server";
+import { findProjectWithOrgFlagsBySlug } from "~/models/project.server";
 import { logger } from "~/services/logger.server";
 import { rbac } from "~/services/rbac.server";
 import { hasAdminDisplayAccess, requireUser } from "~/services/session.server";
+import { canUseAlertsList } from "~/v3/canUseAlertsList.server";
 import { cn } from "~/utils/cn";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import {
@@ -141,7 +142,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { projectParam, organizationSlug, envParam, runParam, spanParam } =
     v3SpanParamsSchema.parse(params);
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  const project = await findProjectWithOrgFlagsBySlug(organizationSlug, projectParam, userId);
   if (!project) throw new Response("Project not found", { status: 404 });
 
   const auth = await rbac.authenticateSession(request, {
@@ -192,6 +193,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         envParam,
         run: result.run,
       });
+      const alertsEnabled = await canUseAlertsList({
+        orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+        userId,
+      });
       return typedjson({
         type: "run" as const,
         run: showAdminFields
@@ -199,6 +204,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
           : { ...result.run, workerCell: undefined, workerLane: undefined },
         queueMetrics,
         canWriteRuns,
+        alertsEnabled,
         loadedAt: Date.now(),
       });
     }
@@ -308,6 +314,7 @@ export function SpanView({
           queueMetrics={fetcher.data.queueMetrics}
           loadedAt={fetcher.data.loadedAt}
           canWriteRuns={fetcher.data.canWriteRuns}
+          alertsEnabled={fetcher.data.alertsEnabled}
           runParam={runParam}
           spanId={spanId}
           closePanel={closePanel}
@@ -435,6 +442,7 @@ function RunBody({
   queueMetrics,
   loadedAt,
   canWriteRuns,
+  alertsEnabled,
   runParam,
   spanId,
   closePanel,
@@ -443,6 +451,7 @@ function RunBody({
   queueMetrics: RunQueueMetrics | null;
   loadedAt: number;
   canWriteRuns: boolean;
+  alertsEnabled: boolean;
   runParam: string;
   spanId: string;
   closePanel?: () => void;
@@ -1263,7 +1272,11 @@ function RunBody({
                   recommendation: tell me when it finishes. Only while the run can
                   still change — a finished run has nothing left to wait for. */}
               {isFinalRunStatus(run.status) ? null : (
-                <WatchButton spec={runWatchRecommendation(run.friendlyId)} className="self-start" />
+                <WatchButton
+                  spec={runWatchRecommendation(run.friendlyId)}
+                  className="self-start"
+                  alertsEnabled={alertsEnabled}
+                />
               )}
               <RunTimeline run={run} />
 

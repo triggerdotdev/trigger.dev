@@ -42,6 +42,8 @@ export type ChartRootProps = {
   legendScrollable?: boolean;
   /** Additional className for the legend */
   legendClassName?: string;
+  /** Show the total/header row in the legend. Defaults to true. */
+  legendShowTotal?: boolean;
   /** When true, chart fills its parent container height and distributes space between chart and legend */
   fillContainer?: boolean;
   /** Content rendered between the chart and the legend */
@@ -90,6 +92,7 @@ export function ChartRoot({
   onViewAllLegendItems,
   legendScrollable = false,
   legendClassName,
+  legendShowTotal,
   fillContainer = false,
   beforeLegend,
   children,
@@ -118,6 +121,7 @@ export function ChartRoot({
         onViewAllLegendItems={onViewAllLegendItems}
         legendScrollable={legendScrollable}
         legendClassName={legendClassName}
+        legendShowTotal={legendShowTotal}
         fillContainer={fillContainer}
         beforeLegend={beforeLegend}
       >
@@ -138,6 +142,7 @@ type ChartRootInnerProps = {
   onViewAllLegendItems?: () => void;
   legendScrollable?: boolean;
   legendClassName?: string;
+  legendShowTotal?: boolean;
   fillContainer?: boolean;
   beforeLegend?: React.ReactNode;
   children: React.ComponentProps<typeof RechartsPrimitive.ResponsiveContainer>["children"];
@@ -154,6 +159,7 @@ function ChartRootInner({
   onViewAllLegendItems,
   legendScrollable = false,
   legendClassName,
+  legendShowTotal,
   fillContainer = false,
   beforeLegend,
   children,
@@ -194,6 +200,7 @@ function ChartRootInner({
           onViewAllLegendItems={onViewAllLegendItems}
           scrollable={legendScrollable}
           className={legendClassName}
+          showTotal={legendShowTotal}
         />
       )}
     </div>

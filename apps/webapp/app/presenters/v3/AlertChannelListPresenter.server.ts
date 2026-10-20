@@ -15,7 +15,11 @@ export type AlertChannelListPresenterRecord =
   AlertChannelListPresenterData["alertChannels"][number];
 
 export class AlertChannelListPresenter extends BasePresenter {
-  public async call(projectId: string, environmentType?: RuntimeEnvironmentType) {
+  public async call(
+    projectId: string,
+    environmentType?: RuntimeEnvironmentType,
+    includeSecrets: boolean | ((channel: ProjectAlertChannel) => boolean) = false
+  ) {
     logger.debug("AlertChannelListPresenter", { projectId });
 
     const alertChannels = await this._prisma.projectAlertChannel.findMany({
@@ -51,7 +55,10 @@ export class AlertChannelListPresenter extends BasePresenter {
       alertChannels: await Promise.all(
         relevantChannels.map(async (alertChannel) => ({
           ...alertChannel,
-          properties: await this.#presentProperties(alertChannel),
+          properties: await this.#presentProperties(
+            alertChannel,
+            typeof includeSecrets === "function" ? includeSecrets(alertChannel) : includeSecrets
+          ),
         }))
       ),
       limits: {
@@ -61,7 +68,7 @@ export class AlertChannelListPresenter extends BasePresenter {
     };
   }
 
-  async #presentProperties(alertChannel: ProjectAlertChannel) {
+  async #presentProperties(alertChannel: ProjectAlertChannel, includeSecrets: boolean) {
     if (!alertChannel.properties) {
       return;
     }
@@ -70,7 +77,9 @@ export class AlertChannelListPresenter extends BasePresenter {
       case "WEBHOOK":
         const parsedProperties = ProjectAlertWebhookProperties.parse(alertChannel.properties);
 
-        const secret = await decryptSecret(env.ENCRYPTION_KEY, parsedProperties.secret);
+        const secret = includeSecrets
+          ? await decryptSecret(env.ENCRYPTION_KEY, parsedProperties.secret)
+          : undefined;
 
         return {
           type: "WEBHOOK" as const,

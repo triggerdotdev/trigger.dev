@@ -18,16 +18,7 @@ export default {
     },
     // Temporary while the alerts stack (#261→#515) merges; remove after.
     "apps/webapp": {
-      ignore: [
-        "app/v3/services/alerts/**",
-        "app/components/alerts/alertSeriesTypes.ts",
-        "app/v3/canUseAlertsList.server.ts",
-        "app/components/alerts/AlertChannelForm.tsx",
-        "app/components/alerts/AlertChannelsBody.tsx",
-        "app/components/alerts/domainIcons.ts",
-        "app/components/alerts/legacyAlertChannels.ts",
-        "app/components/alerts/wizardSteps.ts",
-      ],
+      ignore: ["app/v3/services/alerts/**"],
       entry: [
         "evalite.config.ts",
         "vitest.*.config.ts",
@@ -36,6 +27,7 @@ export default {
         "prisma/populate.ts",
         "seed*.{ts,mts}",
         "scripts/**/*.{js,mjs,cjs,ts,mts,cts}",
+        "app/components/alerts/AlertMetricSparkline.tsx",
         "test/**/*.producer.ts",
         "test/bench/analyzeProfile.ts",
         "test/types/**/*.types.ts",

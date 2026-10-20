@@ -1139,6 +1139,7 @@ function CustomizableSideMenuSection({
             activeIconColor={item.activeIconColor}
             inactiveIconColor={item.inactiveIconColor ?? "text-text-dimmed"}
             to={item.to}
+            matchPrefix={item.matchPrefix}
             data-action={item.dataAction}
             badge={item.badge}
             isCollapsed={isCollapsed}

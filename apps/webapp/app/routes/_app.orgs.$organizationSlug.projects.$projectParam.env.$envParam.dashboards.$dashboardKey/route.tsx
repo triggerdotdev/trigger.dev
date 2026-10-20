@@ -1,4 +1,4 @@
-import { XMarkIcon } from "@heroicons/react/20/solid";
+import { BellAlertIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { type LoaderFunctionArgs } from "@remix-run/node";
 import { Form } from "@remix-run/react";
 import type { TaskTriggerSource } from "@trigger.dev/database";
@@ -17,14 +17,16 @@ import { QueuesFilter } from "~/components/metrics/QueuesFilter";
 import { ScopeFilter } from "~/components/metrics/ScopeFilter";
 import { TitleWidget } from "~/components/metrics/TitleWidget";
 import { CreateDashboardPageButton } from "~/components/navigation/DashboardDialogs";
-import { Button } from "~/components/primitives/Buttons";
+import { dashboardAlertPrefill } from "~/components/alerts/dashboardAlertPrefill";
+import { useDashboardAgent } from "~/components/dashboard-agent/dashboardAgentLauncher";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { TimeFilter } from "~/components/runs/v3/SharedFilters";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
-import { findProjectBySlug } from "~/models/project.server";
+import { findProjectWithOrgFlagsBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { getTaskIdentifiers } from "~/models/task.server";
 import {
@@ -37,7 +39,12 @@ import { PromptPresenter } from "~/presenters/v3/PromptPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUser } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import {
+  type AlertDraftPrefillParams,
+  EnvironmentParamSchema,
+  v3AlertCreatePath,
+} from "~/utils/pathBuilder";
+import { canUseAlertsList } from "~/v3/canUseAlertsList.server";
 import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
 import { QueryScopeSchema } from "~/v3/querySchemas";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
@@ -68,7 +75,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response(undefined, { status: 404, statusText: "Not found" });
   }
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
+  const project = await findProjectWithOrgFlagsBySlug(organizationSlug, projectParam, user.id);
   if (!project) {
     throw new Response(undefined, {
       status: 404,
@@ -83,6 +90,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       statusText: "Environment not found",
     });
   }
+
+  const alertsEnabled = await canUseAlertsList({
+    orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+    userId: user.id,
+  });
 
   const presenter = new MetricDashboardPresenter();
   const [dashboard, possibleTasks] = await Promise.all([
@@ -138,6 +150,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   return typedjson({
     ...dashboard,
+    alertsEnabled,
     filters,
     possibleTasks,
     possibleModels,
@@ -155,6 +168,7 @@ export default function Page() {
   const {
     key,
     title,
+    alertsEnabled,
     layout: dashboardLayout,
     defaultPeriod,
     filters,
@@ -189,17 +203,51 @@ export default function Page() {
             possibleOperations={possibleOperations}
             possibleProviders={possibleProviders}
             filterAccessories={
-              <CreateDashboardPageButton
-                organization={organization}
-                project={project}
-                environment={environment}
-                shortcut={{ key: "n" }}
-              />
+              <div className="flex items-center gap-x-1.5">
+                {alertsEnabled ? (
+                  <DashboardCreateAlertButton prefill={dashboardAlertPrefill(key)} />
+                ) : null}
+                <CreateDashboardPageButton
+                  organization={organization}
+                  project={project}
+                  environment={environment}
+                  shortcut={{ key: "n" }}
+                />
+              </div>
             }
           />
         </div>
       </PageBody>
     </PageContainer>
+  );
+}
+
+export function DashboardCreateAlertButton({ prefill }: { prefill?: AlertDraftPrefillParams }) {
+  const agent = useDashboardAgent();
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+
+  return agent ? (
+    <Button
+      variant="secondary/small"
+      LeadingIcon={BellAlertIcon}
+      leadingIconClassName="text-alerts"
+      tooltip="Create a new alert"
+      onClick={() => agent.openCreateAlert(prefill ?? {})}
+    >
+      Watch
+    </Button>
+  ) : (
+    <LinkButton
+      to={v3AlertCreatePath(organization, project, environment, prefill)}
+      variant="secondary/small"
+      LeadingIcon={BellAlertIcon}
+      leadingIconClassName="text-alerts"
+      tooltip="Create a new alert"
+    >
+      Watch
+    </LinkButton>
   );
 }
 
