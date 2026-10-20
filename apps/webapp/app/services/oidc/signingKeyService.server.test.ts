@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import {
   $transaction,
+  type OidcSigningKeyPurpose,
   type PrismaClient,
   type PrismaClientOrTransaction,
   type PrismaTransactionClient,
@@ -18,7 +19,7 @@ const audience = "https://service.example.com";
 const actor = "user_admin";
 const migrationPath = fileURLToPath(
   new URL(
-    "../../../../../internal-packages/database/prisma/migrations/20261009120000_oidc_signing_keys/migration.sql",
+    "../../../../../internal-packages/database/prisma/migrations/20261020120001_oidc_signing_key_purpose_live_key_index/migration.sql",
     import.meta.url
   )
 );
@@ -29,7 +30,9 @@ async function applyPartialUniqueIndex(prisma: PrismaClient) {
   const statement = migration
     .split("\n")
     .find((line) =>
-      line.startsWith('CREATE UNIQUE INDEX IF NOT EXISTS "OidcSigningKey_status_live_key"')
+      line.startsWith(
+        'CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS "OidcSigningKey_purpose_status_live_key"'
+      )
     );
   if (!statement) {
     throw new Error("Partial unique index not found in the OIDC migration");
@@ -41,10 +44,16 @@ function privateKeySecretCount(prisma: PrismaClient, kid: string) {
   return prisma.secretStore.count({ where: { key: `oidc-signing-key:${kid}` } });
 }
 
-function createService(prisma: PrismaClient, now: () => Date) {
+function createService(
+  prisma: PrismaClient,
+  now: () => Date,
+  purpose: OidcSigningKeyPurpose = "EXTERNAL_OIDC",
+  serviceIssuer = issuer
+) {
   return new OidcSigningKeyService({
     db: prisma,
-    issuer,
+    purpose,
+    issuer: serviceIssuer,
     now,
     secretStore: (db: PrismaClientOrTransaction) =>
       getSecretStore("DATABASE", { prismaClient: db }),
@@ -214,5 +223,76 @@ postgresTest(
       })
     ).rejects.toMatchObject({ code: "P2002" });
     expect(await prisma.oidcSigningKey.count({ where: { status: "ACTIVE" } })).toBe(1);
+  }
+);
+
+postgresTest(
+  "external and internal key sets are isolated in signing, publication and rotation",
+  async ({ prisma }) => {
+    await applyPartialUniqueIndex(prisma);
+    let currentTime = new Date("2026-01-01T00:00:00.000Z");
+    const internalIssuer = "https://run.example.com";
+    const external = createService(prisma, () => currentTime);
+    const internal = createService(prisma, () => currentTime, "INTERNAL_RUN", internalIssuer);
+
+    // Both sets may each hold one staged and one active key at the same time.
+    const externalStaged = await external.generateStagedKey(actor);
+    const internalStaged = await internal.generateStagedKey(actor);
+    currentTime = new Date(
+      Math.max(externalStaged.readyAt.getTime(), internalStaged.readyAt.getTime())
+    );
+    await expect(external.activateKey(internalStaged.id, actor)).rejects.toMatchObject({
+      code: "KEY_NOT_FOUND",
+    });
+    await external.activateKey(externalStaged.id, actor);
+    await internal.activateKey(internalStaged.id, actor);
+
+    const externalJwks = await external.getPublicJwks();
+    const internalJwks = await internal.getPublicJwks();
+    expect(externalJwks.keys.map(({ kid }) => kid)).toEqual([externalStaged.kid]);
+    expect(internalJwks.keys.map(({ kid }) => kid)).toEqual([internalStaged.kid]);
+
+    // An otherwise valid token signed by one set must not verify against the other set's keys.
+    const claims = { audience, subject: "run_1", expiresInSeconds: 900 };
+    const internalToken = await internal.signJwt({}, claims);
+    const externalToken = await external.signJwt({}, claims);
+    await expect(
+      verifyRs256Jwt({
+        token: internalToken,
+        jwks: internalJwks,
+        issuer: internalIssuer,
+        audience,
+        now: currentTime,
+      })
+    ).resolves.toBeDefined();
+    await expect(
+      verifyRs256Jwt({
+        token: internalToken,
+        jwks: externalJwks,
+        issuer: internalIssuer,
+        audience,
+        now: currentTime,
+      })
+    ).rejects.toThrow();
+    await expect(
+      verifyRs256Jwt({
+        token: externalToken,
+        jwks: internalJwks,
+        issuer,
+        audience,
+        now: currentTime,
+      })
+    ).rejects.toThrow();
+
+    // Rotating one set leaves the other signing with its key.
+    await internal.disableSigning(actor);
+    await expect(internal.signJwt({}, claims)).rejects.toMatchObject({ code: "NO_ACTIVE_KEY" });
+    await expect(external.signJwt({}, claims)).resolves.toEqual(expect.any(String));
+    expect(
+      await prisma.secretStore.count({
+        where: { key: `oidc-internal-run-signing-key:${internalStaged.kid}` },
+      })
+    ).toBe(0);
+    expect(await privateKeySecretCount(prisma, externalStaged.kid)).toBe(1);
   }
 );

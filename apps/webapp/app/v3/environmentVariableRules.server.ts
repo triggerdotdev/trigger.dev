@@ -9,6 +9,8 @@ type VariableRule =
 const blacklistedVariables: VariableRule[] = [
   { type: "exact", key: "TRIGGER_SECRET_KEY" },
   { type: "exact", key: "TRIGGER_API_URL" },
+  // Injected by the platform as the run's API credential; a customer value must never reach the run.
+  { type: "exact", key: "TRIGGER_RUN_TOKEN" },
 ];
 
 const additionalExternalSyncReservedKeys = [

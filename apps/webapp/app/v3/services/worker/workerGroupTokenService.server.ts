@@ -42,6 +42,7 @@ import {
 } from "~/runEngine/concerns/workerQueueSubscriptions.server";
 import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { mintRunToken, runTokenInjectionEnabled } from "~/services/oidc/runToken.server";
 import { defaultMachine } from "~/services/platform.v3.server";
 import { singleton } from "~/utils/singleton";
 import { resolveVariablesForEnvironment } from "~/v3/environmentVariables/environmentVariablesRepository.server";
@@ -567,10 +568,17 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       },
       include: {
         parentEnvironment: true,
-        // Feeds resolveProdApiOrigin; only loaded when internal-origin routing is possible.
-        ...(env.INTERNAL_API_ORIGIN ? { organization: { select: { featureFlags: true } } } : {}),
+        // Feeds resolveProdApiOrigin and the run-token flag; only loaded when either can apply.
+        ...(env.INTERNAL_API_ORIGIN || env.RUN_TOKEN_ISSUER_URL
+          ? { organization: { select: { featureFlags: true } } }
+          : {}),
       },
     });
+
+    const runToken =
+      environment && runTokenInjectionEnabled(environment.organization?.featureFlags)
+        ? await this.mintRunTokenOrSkip(environment, engineResult)
+        : undefined;
 
     const envVars = environment
       ? await this.getEnvVars(
@@ -583,7 +591,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
             workerQueue: engineResult.run.workerQueue,
           }),
           environment.parentEnvironment ?? undefined,
-          engineResult.run.taskEventStore ?? undefined
+          engineResult.run.taskEventStore ?? undefined,
+          runToken
         )
       : {};
 
@@ -591,6 +600,32 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       ...engineResult,
       envVars,
     };
+  }
+
+  // A signing failure must not fail the attempt: the run still has TRIGGER_SECRET_KEY.
+  private async mintRunTokenOrSkip(
+    environment: RuntimeEnvironment,
+    engineResult: StartRunAttemptResult
+  ): Promise<string | undefined> {
+    const { execution } = engineResult;
+    try {
+      return await mintRunToken({
+        organizationId: environment.organizationId,
+        projectId: environment.projectId,
+        environmentId: environment.id,
+        environmentType: environment.type,
+        runFriendlyId: execution.run.id,
+        attemptNumber: execution.attempt.number,
+        taskIdentifier: execution.task.id,
+        deploymentFriendlyId: execution.deployment?.id,
+      });
+    } catch (error) {
+      logger.warn("Failed to mint run token, continuing without it", {
+        runId: execution.run.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
   }
 
   async completeRunAttempt({
@@ -753,7 +788,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     machinePreset: MachinePreset,
     metering: Record<string, string>,
     parentEnvironment?: RuntimeEnvironment,
-    taskEventStore?: string
+    taskEventStore?: string,
+    runToken?: string
   ): Promise<Record<string, string>> {
     const variables = await resolveVariablesForEnvironment(environment, parentEnvironment);
 
@@ -770,6 +806,10 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
         { key: "TRIGGER_MACHINE_PRESET", value: machinePreset.name },
       ]
     );
+
+    if (runToken) {
+      variables.push({ key: "TRIGGER_RUN_TOKEN", value: runToken });
+    }
 
     if (taskEventStore) {
       const resourceAttributes = JSON.stringify({

@@ -57,6 +57,7 @@ export const FEATURE_FLAG = {
   supportAccessSettingsEnabled: "supportAccessSettingsEnabled",
   progressiveTraceLoadingEnabled: "progressiveTraceLoadingEnabled",
   publicTracePagingEnabled: "publicTracePagingEnabled",
+  runTokenInjection: "runTokenInjection",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -196,6 +197,9 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.progressiveTraceLoadingEnabled]: z.boolean(),
   // Page parameters on the public trace API. Off: they're ignored and the tree is returned.
   [FEATURE_FLAG.publicTracePagingEnabled]: z.boolean(),
+  // Injects a signed per-attempt TRIGGER_RUN_TOKEN into deployed runs. Org override wins over
+  // the global value. Requires RUN_TOKEN_ISSUER_URL and an active internal run signing key.
+  [FEATURE_FLAG.runTokenInjection]: z.boolean(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;

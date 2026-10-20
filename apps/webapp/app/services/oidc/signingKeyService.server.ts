@@ -1,5 +1,6 @@
 import {
   isPrismaKnownError,
+  type OidcSigningKeyPurpose,
   type Prisma,
   type PrismaClientOrTransaction,
   type PrismaTransactionClient,
@@ -28,6 +29,7 @@ const PrivateKeySecretSchema = z.object({
 const summarySelect = {
   id: true,
   kid: true,
+  purpose: true,
   status: true,
   readyAt: true,
   publicUntil: true,
@@ -85,6 +87,7 @@ type ActiveSigningKey = { kid: string; privateKey: KeyLike };
 
 export class OidcSigningKeyService {
   readonly #db: PrismaClientOrTransaction;
+  readonly #purpose: OidcSigningKeyPurpose;
   readonly #issuer: string | undefined;
   readonly #secretStore: (db: PrismaClientOrTransaction) => SigningKeySecretStore;
   readonly #runTransaction: RunTransaction;
@@ -97,18 +100,21 @@ export class OidcSigningKeyService {
 
   constructor({
     db,
+    purpose,
     issuer,
     secretStore,
     runTransaction,
     now = () => new Date(),
   }: {
     db: PrismaClientOrTransaction;
+    purpose: OidcSigningKeyPurpose;
     issuer?: string;
     secretStore: (db: PrismaClientOrTransaction) => SigningKeySecretStore;
     runTransaction: RunTransaction;
     now?: () => Date;
   }) {
     this.#db = db;
+    this.#purpose = purpose;
     this.#issuer = issuer;
     this.#secretStore = secretStore;
     this.#runTransaction = runTransaction;
@@ -117,12 +123,26 @@ export class OidcSigningKeyService {
     this.#activeKey = new TtlCache(OIDC_ACTIVE_KEY_CACHE_TTL_SECONDS, now);
   }
 
+  get purpose(): OidcSigningKeyPurpose {
+    return this.#purpose;
+  }
+
+  get issuer(): string | undefined {
+    return this.#issuer;
+  }
+
   async getSigningStatus(): Promise<OidcSigningStatus> {
     const [activeKey, stagedKey, retiredKeys] = await Promise.all([
-      this.#db.oidcSigningKey.findFirst({ where: { status: "ACTIVE" }, select: summarySelect }),
-      this.#db.oidcSigningKey.findFirst({ where: { status: "STAGED" }, select: summarySelect }),
+      this.#db.oidcSigningKey.findFirst({
+        where: { purpose: this.#purpose, status: "ACTIVE" },
+        select: summarySelect,
+      }),
+      this.#db.oidcSigningKey.findFirst({
+        where: { purpose: this.#purpose, status: "STAGED" },
+        select: summarySelect,
+      }),
       this.#db.oidcSigningKey.findMany({
-        where: { status: "RETIRED" },
+        where: { purpose: this.#purpose, status: "RETIRED" },
         orderBy: { createdAt: "desc" },
         take: OIDC_ADMIN_RETIRED_KEY_LIMIT,
         select: summarySelect,
@@ -143,13 +163,14 @@ export class OidcSigningKeyService {
 
     try {
       const key = await this.#runTransaction("generate OIDC signing key", async (tx) => {
-        await this.#secretStore(tx).setSecret(privateKeySecretKey(generated.kid), {
+        await this.#secretStore(tx).setSecret(privateKeySecretKey(this.#purpose, generated.kid), {
           privateKeyPkcs8: generated.privateKeyPkcs8,
         });
 
         return tx.oidcSigningKey.create({
           data: {
             kid: generated.kid,
+            purpose: this.#purpose,
             status: "STAGED",
             publicJwk: generated.publicJwk,
             readyAt: addSeconds(now, OIDC_KEY_PROPAGATION_DELAY_SECONDS),
@@ -161,7 +182,7 @@ export class OidcSigningKeyService {
       this.#jwks.invalidate();
       return key;
     } catch (error) {
-      // The only unique constraints are the random kid and the one-STAGED-key partial index.
+      // The only unique constraints are the random kid and the one-STAGED-key-per-purpose index.
       if (isPrismaKnownError(error) && error.code === "P2002") {
         throw new OidcSigningKeyError(
           "STAGED_KEY_EXISTS",
@@ -178,7 +199,7 @@ export class OidcSigningKeyService {
 
     const activated = await this.#runTransaction("activate OIDC signing key", async (tx) => {
       const candidate = await tx.oidcSigningKey.findFirst({
-        where: { id: keyId },
+        where: { id: keyId, purpose: this.#purpose },
         select: { status: true, readyAt: true },
       });
       if (!candidate) {
@@ -199,7 +220,7 @@ export class OidcSigningKeyService {
 
       try {
         return await tx.oidcSigningKey.update({
-          where: { id: keyId, status: "STAGED" },
+          where: { id: keyId, purpose: this.#purpose, status: "STAGED" },
           data: { status: "ACTIVE", activatedAt: now, activatedByUserId: actorUserId },
           select: summarySelect,
         });
@@ -233,7 +254,13 @@ export class OidcSigningKeyService {
       audience,
       subject,
       expiresInSeconds,
-    }: { audience: string | string[]; subject: string; expiresInSeconds: number }
+      typ,
+    }: {
+      audience: string | string[];
+      subject: string;
+      expiresInSeconds: number;
+      typ?: string;
+    }
   ): Promise<string> {
     if (!this.#issuer) {
       throw new OidcSigningKeyError("OIDC_NOT_CONFIGURED", "OIDC issuer is not configured");
@@ -252,13 +279,14 @@ export class OidcSigningKeyService {
       audience,
       subject,
       expiresInSeconds,
+      typ,
       now: this.#now(),
     });
   }
 
   async #retireActiveKey(tx: PrismaTransactionClient, actorUserId: string, now: Date) {
     const active = await tx.oidcSigningKey.findFirst({
-      where: { status: "ACTIVE" },
+      where: { purpose: this.#purpose, status: "ACTIVE" },
       select: { id: true, kid: true },
     });
     if (!active) {
@@ -276,7 +304,7 @@ export class OidcSigningKeyService {
     });
     // A retired key never signs again; only its public key stays published.
     if (retired.count === 1) {
-      await this.#secretStore(tx).deleteSecret(privateKeySecretKey(active.kid));
+      await this.#secretStore(tx).deleteSecret(privateKeySecretKey(this.#purpose, active.kid));
     }
   }
 
@@ -285,7 +313,7 @@ export class OidcSigningKeyService {
     // active row once before treating a missing secret as an error.
     for (let attempt = 0; ; attempt++) {
       const row = await this.#db.oidcSigningKey.findFirst({
-        where: { status: "ACTIVE" },
+        where: { purpose: this.#purpose, status: "ACTIVE" },
         select: { kid: true },
       });
       if (!row) {
@@ -298,7 +326,7 @@ export class OidcSigningKeyService {
 
       const secret = await this.#secretStore(this.#db).getSecret(
         PrivateKeySecretSchema,
-        privateKeySecretKey(row.kid)
+        privateKeySecretKey(this.#purpose, row.kid)
       );
       if (!secret) {
         if (attempt === 0) {
@@ -321,6 +349,7 @@ export class OidcSigningKeyService {
   async #loadPublicJwks(): Promise<PublicJwks> {
     const rows = await this.#db.oidcSigningKey.findMany({
       where: {
+        purpose: this.#purpose,
         OR: [
           { status: { in: ["STAGED", "ACTIVE"] } },
           { status: "RETIRED", publicUntil: { gt: this.#now() } },
@@ -382,8 +411,14 @@ class TtlCache<T> {
   }
 }
 
-function privateKeySecretKey(kid: string) {
-  return `oidc-signing-key:${kid}`;
+// External keys keep the original prefix so keys created before purposes existed still resolve.
+const PRIVATE_KEY_SECRET_PREFIX: Record<OidcSigningKeyPurpose, string> = {
+  EXTERNAL_OIDC: "oidc-signing-key",
+  INTERNAL_RUN: "oidc-internal-run-signing-key",
+};
+
+function privateKeySecretKey(purpose: OidcSigningKeyPurpose, kid: string) {
+  return `${PRIVATE_KEY_SECRET_PREFIX[purpose]}:${kid}`;
 }
 
 function assertActorUserId(actorUserId: string) {

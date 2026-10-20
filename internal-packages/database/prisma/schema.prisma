@@ -590,11 +590,20 @@ enum OidcSigningKeyStatus {
   RETIRED
 }
 
+/// Each purpose is a separate key set with its own issuer, rotation and publication.
+enum OidcSigningKeyPurpose {
+  /// Tokens for external relying parties; public keys are served at the issuer's JWKS URL.
+  EXTERNAL_OIDC
+  /// Per-attempt run tokens verified only by the platform; public keys are never served.
+  INTERNAL_RUN
+}
+
 model OidcSigningKey {
-  id     String               @id @default(cuid())
-  kid    String               @unique
-  /// At most one STAGED and one ACTIVE key: enforced by a partial unique index in the migration.
-  status OidcSigningKeyStatus
+  id      String                @id @default(cuid())
+  kid     String                @unique
+  purpose OidcSigningKeyPurpose @default(EXTERNAL_OIDC)
+  /// At most one STAGED and one ACTIVE key per purpose: enforced by a partial unique index in the migration.
+  status  OidcSigningKeyStatus
 
   publicJwk   Json
   readyAt     DateTime

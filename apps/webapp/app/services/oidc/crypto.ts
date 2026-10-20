@@ -105,6 +105,7 @@ export async function signRs256Jwt({
   audience,
   subject,
   expiresInSeconds,
+  typ = "JWT",
   now = new Date(),
 }: {
   payload: JWTPayload;
@@ -114,6 +115,7 @@ export async function signRs256Jwt({
   audience: string | string[];
   subject: string;
   expiresInSeconds: number;
+  typ?: string;
   now?: Date;
 }): Promise<string> {
   if (
@@ -129,7 +131,7 @@ export async function signRs256Jwt({
   const issuedAt = Math.floor(now.getTime() / 1000);
 
   return new SignJWT(payload)
-    .setProtectedHeader({ alg: OIDC_SIGNING_ALGORITHM, kid, typ: "JWT" })
+    .setProtectedHeader({ alg: OIDC_SIGNING_ALGORITHM, kid, typ })
     .setIssuer(issuer)
     .setAudience(audience)
     .setSubject(subject)
@@ -143,18 +145,21 @@ export async function verifyRs256Jwt<Payload extends JWTPayload = JWTPayload>({
   jwks,
   issuer,
   audience,
+  typ,
   now = new Date(),
 }: {
   token: string;
   jwks: PublicJwks;
   issuer: string;
   audience: string | string[];
+  typ?: string;
   now?: Date;
 }): Promise<JWTVerifyResult<Payload>> {
   return jwtVerify<Payload>(token, createLocalJWKSet(jwks), {
     algorithms: [OIDC_SIGNING_ALGORITHM],
     issuer,
     audience,
+    typ,
     requiredClaims: ["exp", "iat", "iss", "aud", "sub"],
     maxTokenAge: OIDC_MAX_SUPPORTED_JWT_TTL_SECONDS,
     clockTolerance: OIDC_CLOCK_TOLERANCE_SECONDS,

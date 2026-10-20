@@ -442,6 +442,12 @@ const EnvironmentSchema = z
       (value) => (value === "" ? undefined : value),
       OidcIssuerSchema.optional()
     ),
+    // Issuer for per-attempt run tokens, signed with a separate internal key set. Nothing is served
+    // at this URL; it only has to differ from OIDC_ISSUER_URL.
+    RUN_TOKEN_ISSUER_URL: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      OidcIssuerSchema.optional()
+    ),
     // Extra exact origins (comma separated) added to the document `img-src` CSP,
     // e.g. an SSO host serving profile images. Wildcards are refused.
     CSP_IMG_SRC_ALLOWLIST: z.string().optional(),
@@ -2797,6 +2803,13 @@ const EnvironmentSchema = z
   .and(GithubAppEnvSchema)
   .and(S2EnvSchema)
   .superRefine((env, ctx) => {
+    if (env.RUN_TOKEN_ISSUER_URL && env.RUN_TOKEN_ISSUER_URL === env.OIDC_ISSUER_URL) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["RUN_TOKEN_ISSUER_URL"],
+        message: "RUN_TOKEN_ISSUER_URL must differ from OIDC_ISSUER_URL",
+      });
+    }
     if (!validateShardListAgainstNewUrl(env.RUN_OPS_SHARDS, env.RUN_OPS_DATABASE_URL)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
