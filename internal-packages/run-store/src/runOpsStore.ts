@@ -381,12 +381,21 @@ export class RoutingRunStore implements RunStore {
     // store (runs, waitpoints, attempts, snapshots). Batches are the exception: `batchTriggerV3`
     // writes raw to the control plane while runEngine routes by id, so a batch is legitimately
     // dual-resident. Those callers pass `alarmOnDuplicate: false` so a batch on legacy + a gen-2
-    // shard is not mistaken for a violation.
+    // shard is not mistaken for a violation. A lookup with no id in its where returns a different
+    // row from each store, so only an id seen on two stores counts; a hit with no id can't be
+    // compared.
     if (hits.length > 1 && opts?.alarmOnDuplicate !== false) {
-      this.#reportDuplicateId(
-        String((hits[0]!.value as { id?: unknown })?.id ?? "unknown"),
-        hits.map((h) => h.key)
-      );
+      const keysById = new Map<string, ShardKey[]>();
+      for (const { key, value } of hits) {
+        const id = (value as { id?: unknown }).id;
+        if (typeof id !== "string") continue;
+        const keys = keysById.get(id);
+        if (keys) keys.push(key);
+        else keysById.set(id, [key]);
+      }
+      for (const [id, keys] of keysById) {
+        if (keys.length > 1) this.#reportDuplicateId(id, keys);
+      }
     }
     if (hits.length > 0) {
       // Highest authority wins: #precedence ascends, so take the last hit in that order.
