@@ -17,9 +17,7 @@ export default {
       ignoreDependencies: process.env.CI ? ["eslint"] : ["eslint", "lefthook"],
       ignoreBinaries: ["infisical", "prisma"],
     },
-    // Temporary while the alerts stack (#261→#515) merges; remove after.
     "apps/webapp": {
-      ignore: ["app/v3/services/alerts/evaluators/queryEvaluator.server.ts"],
       entry: [
         "evalite.config.ts",
         "vitest.*.config.ts",
