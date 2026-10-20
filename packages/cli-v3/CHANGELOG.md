@@ -1,5 +1,18 @@
 # trigger.dev
 
+## 4.7.6
+
+### Patch Changes
+
+- Deploy images no longer trust the emSign roots removed after the October 2026 eMudhra CA key compromise, or the Sectigo AAA root that cross-signs the compromised intermediates. Node and Bun tasks now refuse TLS connections through the compromised eMudhra intermediates, including their Sectigo AAA cross-signed copies. ([`dac3b033e`](https://github.com/triggerdotdev/trigger.dev/commit/dac3b033ebf05719cb3a6a68cec27b570c952e12))
+- Added MCP tools for monitoring alerts: `list_alert_capabilities`, `list_alerts`, `create_alert`, and `resolve_alert`, so an MCP client can discover what a project can watch and manage alerts directly. Health capabilities expose customizable threshold params, discoverable via `list_alert_capabilities` and settable via `create_alert`. ([`99ea13007`](https://github.com/triggerdotdev/trigger.dev/commit/99ea13007ebad7b637f1dbec68977b559cf7c183))
+- `NODE_EXTRA_CA_CERTS` set as an environment variable now reaches the task process at startup instead of being overwritten by the image's empty default. ([`fee21c38c`](https://github.com/triggerdotdev/trigger.dev/commit/fee21c38ccb84d438852c5f592b9990c1dea2c77))
+- Python tasks and `pip` in deploy images now verify TLS against the image's trust store instead of a pinned certifi bundle, so they also refuse the compromised eMudhra intermediates. ([`fee21c38c`](https://github.com/triggerdotdev/trigger.dev/commit/fee21c38ccb84d438852c5f592b9990c1dea2c77))
+- Updated dependencies:
+  - `@trigger.dev/core@4.7.6`
+  - `@trigger.dev/build@4.7.6`
+  - `@trigger.dev/schema-to-json@4.7.6`
+
 ## 4.7.5
 
 ### Patch Changes
