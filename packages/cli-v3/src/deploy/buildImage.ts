@@ -743,6 +743,8 @@ export const EMSIGN_COMPROMISE_DISTRUSTED_ROOTS = [
 
 export const EMSIGN_REJECT_DIR = "/usr/local/share/ca-certificates/emsign-block";
 
+const OS_TRUST_STORE = "/etc/ssl/certs/ca-certificates.crt";
+
 const rejectCompromisedIntermediates = `RUN mkdir -p ${EMSIGN_REJECT_DIR} && \\
 ${EMSIGN_COMPROMISE_REJECTED_INTERMEDIATES.map(
   ({ file, pemLines }) =>
@@ -756,7 +758,8 @@ RUN sed -i -E 's#^(mozilla/(${EMSIGN_COMPROMISE_DISTRUSTED_ROOTS.join(
   "|"
 )})\\.crt)$#!\\1#' /etc/ca-certificates.conf && \\
   update-ca-certificates --fresh
-ENV NODE_OPTIONS=--use-openssl-ca`;
+ENV NODE_OPTIONS=--use-openssl-ca
+ENV SSL_CERT_FILE=\${SSL_CERT_FILE:-${OS_TRUST_STORE}} REQUESTS_CA_BUNDLE=\${REQUESTS_CA_BUNDLE:-${OS_TRUST_STORE}} PIP_CERT=\${PIP_CERT:-${OS_TRUST_STORE}}`;
 
 export async function generateContainerfile(options: GenerateContainerfileOptions) {
   switch (options.runtime) {

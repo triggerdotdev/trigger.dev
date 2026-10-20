@@ -158,6 +158,50 @@ describe("generateContainerfile", () => {
     );
   });
 
+  const osTrustStoreEnv =
+    /^ENV SSL_CERT_FILE=\$\{SSL_CERT_FILE:-\/etc\/ssl\/certs\/ca-certificates\.crt\} REQUESTS_CA_BUNDLE=\$\{REQUESTS_CA_BUNDLE:-\/etc\/ssl\/certs\/ca-certificates\.crt\} PIP_CERT=\$\{PIP_CERT:-\/etc\/ssl\/certs\/ca-certificates\.crt\}$/gm;
+
+  it("keeps a trust bundle set by image instructions", async () => {
+    const containerfile = await generateContainerfile({
+      runtime: "node",
+      build: {},
+      image: { instructions: ["ENV REQUESTS_CA_BUNDLE=/app/certs/corp.pem"] },
+      indexScript: "index.js",
+      entrypoint: "entrypoint.js",
+    });
+
+    const instruction = containerfile.indexOf("ENV REQUESTS_CA_BUNDLE=/app/certs/corp.pem");
+    expect(instruction).toBeGreaterThan(-1);
+    expect(instruction).toBeLessThan(containerfile.search(osTrustStoreEnv));
+  });
+
+  it.each(["node", "bun"] as BuildRuntime[])(
+    "points certifi users at the OS trust store in the base and prebuilt build stages on %s",
+    async (runtime) => {
+      const containerfile = await generateContainerfile({
+        runtime,
+        build: {},
+        image: undefined,
+        indexScript: "index.js",
+        entrypoint: "entrypoint.js",
+      });
+
+      expect(containerfile.match(osTrustStoreEnv)).toHaveLength(2);
+    }
+  );
+
+  it("points certifi users at the OS trust store once when the build stage derives from base", async () => {
+    const containerfile = await generateContainerfile({
+      runtime: "node",
+      build: {},
+      image: { instructions: ["RUN echo hi"] },
+      indexScript: "index.js",
+      entrypoint: "entrypoint.js",
+    });
+
+    expect(containerfile.match(osTrustStoreEnv)).toHaveLength(1);
+  });
+
   const rejectSteps = (containerfile: string) =>
     Array.from(
       containerfile.matchAll(
