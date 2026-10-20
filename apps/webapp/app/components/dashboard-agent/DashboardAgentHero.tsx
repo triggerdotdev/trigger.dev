@@ -30,7 +30,7 @@ export function DashboardAgentHero({
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
       <div className="m-auto flex w-full max-w-2xl flex-col items-center gap-5">
-        <div className="flex flex-col items-center gap-1.5 text-center">
+        <div className="flex flex-col items-center gap-2.5 text-center">
           <Header1 className="flex items-center gap-2">
             <AISparkleIcon className="size-[22px]" />
             Ask Trigger

@@ -108,7 +108,7 @@ export function WatchChips({
                     type="button"
                     aria-label={`Cancel the ${label} watch`}
                     onClick={() => onCancel(watch.id)}
-                    className="text-text-faint transition-colors hover:text-error focus-visible:text-error focus-custom"
+                    className="cursor-pointer text-text-faint transition-colors hover:text-error focus-visible:text-error focus-custom"
                   >
                     <XMarkIcon className="size-3.5" />
                   </button>

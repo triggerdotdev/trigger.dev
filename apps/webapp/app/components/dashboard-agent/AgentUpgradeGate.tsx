@@ -8,19 +8,26 @@ import { ASK_AGENT_LABEL } from "./agent-identity";
 import { messageQuotaReachedCopy } from "./message-quota";
 
 // Matches the composer's outer geometry so the replacement lands in the same place.
-const SLOT = "flex shrink-0 flex-col bg-background-bright px-3 pb-3 pt-1";
+const SLOT = "flex shrink-0 flex-col bg-background-bright px-3 pt-1";
 
-export function AgentUpgradeBlock({
-  limit,
-  planResolved,
-  context,
-}: {
+type AgentUpgradeBlockProps = {
   limit: number;
   planResolved: boolean;
   context?: React.ReactNode;
-}) {
-  const organization = useOrganization();
+};
 
+export function AgentUpgradeBlock(props: AgentUpgradeBlockProps) {
+  const organization = useOrganization();
+  return <AgentUpgradeBlockView {...props} upgradePath={v3BillingPath(organization)} />;
+}
+
+/** The block without the organization lookup, so it renders outside an org route. */
+export function AgentUpgradeBlockView({
+  limit,
+  planResolved,
+  context,
+  upgradePath,
+}: AgentUpgradeBlockProps & { upgradePath: string }) {
   return (
     <div className={SLOT}>
       {context}
@@ -32,7 +39,7 @@ export function AgentUpgradeBlock({
           </span>
         </div>
         <p className="text-xs text-text-dimmed">{messageQuotaReachedCopy(limit, planResolved)}</p>
-        <LinkButton variant="primary/small" to={v3BillingPath(organization)} fullWidth>
+        <LinkButton variant="primary/small" to={upgradePath} fullWidth>
           Upgrade
         </LinkButton>
       </div>
@@ -40,16 +47,26 @@ export function AgentUpgradeBlock({
   );
 }
 
-export function AgentQuotaNotice({ remaining, limit }: { remaining: number; limit: number }) {
-  const organization = useOrganization();
+type AgentQuotaNoticeProps = { remaining: number; limit: number };
 
+export function AgentQuotaNotice(props: AgentQuotaNoticeProps) {
+  const organization = useOrganization();
+  return <AgentQuotaNoticeView {...props} upgradePath={v3BillingPath(organization)} />;
+}
+
+/** The notice without the organization lookup, so it renders outside an org route. */
+export function AgentQuotaNoticeView({
+  remaining,
+  limit,
+  upgradePath,
+}: AgentQuotaNoticeProps & { upgradePath: string }) {
   return (
-    <div className="flex shrink-0 items-center gap-1 bg-background-bright px-3 pb-2 text-xs text-text-dimmed">
+    <div className="flex items-center gap-1 text-xs text-text-dimmed">
       <span>
         {remaining} of {limit} free messages left
       </span>
       <span aria-hidden>·</span>
-      <Link to={v3BillingPath(organization)} className={textLinkClassName()}>
+      <Link to={upgradePath} className={textLinkClassName()}>
         Upgrade
       </Link>
     </div>

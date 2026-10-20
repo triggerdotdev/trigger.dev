@@ -1,24 +1,18 @@
 import type { ComponentType, ReactNode } from "react";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { cn } from "~/utils/cn";
 
 // Rows are `<li>`, so the wrapper must stay a list element.
 export function AgentList({ children, className }: { children: ReactNode; className?: string }) {
-  return <ol className={cn("flex w-full flex-col gap-1.5", className)}>{children}</ol>;
+  return <ol className={cn("flex w-full flex-col gap-0.5", className)}>{children}</ol>;
 }
 
-export type AgentListRowVariant = "default" | "promoted" | "selected";
+export type AgentListRowVariant = "default" | "selected";
 
-const ROW_VARIANTS: Record<AgentListRowVariant, string> = {
-  default:
-    "border-grid-bright bg-background-bright/40 text-text-dimmed hover:border-border-bright hover:text-text-bright",
-  promoted: "border-primary/40 bg-primary/5 text-text-bright hover:border-primary/60",
-  selected: "border-border-bright bg-background-bright text-text-bright",
-};
-
+/** A minimal menu row, as in the side menu: no box until hovered, an action inside its right end. */
 export function AgentListRow({
   label,
   meta,
-  status,
   variant = "default",
   unread = false,
   onSelect,
@@ -26,7 +20,6 @@ export function AgentListRow({
 }: {
   label: ReactNode;
   meta?: ReactNode;
-  status?: ReactNode;
   variant?: AgentListRowVariant;
   unread?: boolean;
   onSelect: () => void;
@@ -34,55 +27,77 @@ export function AgentListRow({
   action?: ReactNode;
 }) {
   return (
-    <li className="group flex items-center gap-1">
+    <li className="group/row relative">
       <button
         type="button"
         onClick={onSelect}
         className={cn(
-          "flex min-w-0 flex-1 items-center gap-2 rounded-md border px-3 py-2 text-left text-sm outline-hidden transition focus-custom",
-          ROW_VARIANTS[variant],
-          unread && "text-text-bright"
+          "flex h-8 w-full cursor-pointer items-center gap-2 rounded px-2 text-left text-sm outline-hidden transition focus-custom",
+          // Text alone says unread (bright) or read (dimmed), the selected row included: its fill is
+          // what marks it. Hover is keyed to the whole row, so it holds while on the action.
+          unread ? "text-text-bright" : "text-text-dimmed group-hover/row:text-text-bright",
+          variant === "selected"
+            ? "bg-background-hover group-hover/row:bg-surface-control/50"
+            : "group-hover/row:bg-background-hover"
         )}
       >
-        {status ? (
-          <span className="flex w-4 shrink-0 items-center justify-center">{status}</span>
+        {/* Unread shows as a bright label, sorted to the top; this says it to a screen reader. */}
+        {unread ? <span className="sr-only">Unread.</span> : null}
+        <span className="min-w-0 flex-1 truncate">{label}</span>
+        {meta || action ? (
+          // At least the action's width, so the action covers this slot and never the label.
+          // It takes the slot's place while the row is hovered or focused from the keyboard.
+          <span
+            className={cn(
+              "min-w-6 shrink-0 text-right text-xs text-text-faint",
+              action && "group-has-[:focus-visible]/row:invisible group-hover/row:invisible"
+            )}
+          >
+            {meta}
+          </span>
         ) : null}
-        {unread ? (
-          <>
-            <span aria-hidden className="size-2 shrink-0 rounded-full bg-primary" />
-            <span className="sr-only">Unread.</span>
-          </>
-        ) : null}
-        <span className="line-clamp-1 min-w-0 flex-1">{label}</span>
-        {meta ? <span className="shrink-0 text-xs text-text-faint">{meta}</span> : null}
       </button>
-      {action}
+      {action ? (
+        // `:focus-visible`, not `:focus-within`: a popover focuses its first row as it opens,
+        // and a mouse user who hasn't reached that row shouldn't see its action yet.
+        <div className="pointer-events-none absolute bottom-1 right-1 top-1 flex aspect-square opacity-0 group-has-[:focus-visible]/row:pointer-events-auto group-has-[:focus-visible]/row:opacity-100 group-hover/row:pointer-events-auto group-hover/row:opacity-100">
+          {action}
+        </div>
+      ) : null}
     </li>
   );
 }
 
+/** The side menu's internal button: square, filling the row's inset, a fill only on its own hover. */
 export function AgentListRowAction({
   icon: Icon,
   label,
+  tooltip,
   onClick,
-  danger = false,
 }: {
   icon: ComponentType<{ className?: string }>;
+  /** The accessible name, specific to the row. */
   label: string;
+  tooltip: string;
   onClick: () => void;
-  danger?: boolean;
 }) {
   return (
-    <button
-      type="button"
-      aria-label={label}
-      onClick={onClick}
-      className={cn(
-        "shrink-0 rounded p-1 text-text-faint opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-custom",
-        danger ? "hover:text-error" : "hover:text-text-bright"
-      )}
-    >
-      <Icon className="size-3.5" />
-    </button>
+    <SimpleTooltip
+      asChild
+      tabbable
+      disableHoverableContent
+      delayDuration={500}
+      content={tooltip}
+      button={
+        <button
+          type="button"
+          aria-label={label}
+          onClick={onClick}
+          className="flex size-full cursor-pointer items-center justify-center rounded text-text-dimmed transition focus-custom hover:bg-surface-control hover:text-text-bright"
+        >
+          <Icon className="size-4" />
+        </button>
+      }
+    />
   );
 }

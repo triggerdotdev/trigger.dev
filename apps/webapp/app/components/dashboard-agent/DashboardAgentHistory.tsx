@@ -1,10 +1,10 @@
-import { MagnifyingGlassIcon, TrashIcon } from "@heroicons/react/20/solid";
+import { TrashIcon } from "@heroicons/react/20/solid";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3/utils/durations";
+import { CrossIcon } from "~/assets/icons/CrossIcon";
 import { Button } from "~/components/primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Spinner } from "~/components/primitives/Spinner";
 import { AgentList, AgentListRow, AgentListRowAction } from "./list-row";
 import type { WatchChip } from "./WatchChips";
 
@@ -20,35 +20,6 @@ export type DashboardAgentChat = {
   hasActiveWatch?: boolean;
   hasOpenInvestigation?: boolean;
 };
-
-type ChatProcess = "thinking" | "investigating" | "watching";
-
-const PROCESS_LABELS: Record<ChatProcess, string> = {
-  thinking: "Agent is thinking",
-  investigating: "Investigation in progress",
-  watching: "Watch active",
-};
-
-function chatProcess(chat: DashboardAgentChat, isThinking: boolean): ChatProcess | null {
-  if (isThinking) return "thinking";
-  if (chat.hasOpenInvestigation) return "investigating";
-  if (chat.hasActiveWatch) return "watching";
-  return null;
-}
-
-function ProcessIcon({ process }: { process: ChatProcess }) {
-  const label = PROCESS_LABELS[process];
-  // No tooltip trigger here: the row is a button, and this would nest one inside it.
-  return (
-    <span title={label} aria-label={label} role="img" className="shrink-0 text-text-dimmed">
-      {process === "investigating" ? (
-        <MagnifyingGlassIcon className="size-3.5" />
-      ) : (
-        <Spinner className="size-3.5" />
-      )}
-    </span>
-  );
-}
 
 /** A wake is unread work too, so one predicate answers for both. */
 export function chatIsUnread(chat: DashboardAgentChat): boolean {
@@ -79,44 +50,40 @@ export function chatAge(lastMessageAt: string, now: number = Date.now()): string
 export function DashboardAgentHistoryMenu({
   chats,
   currentChatId,
-  thinkingChatId,
   now,
   onSelect,
   onRequestDelete,
 }: {
   chats: DashboardAgentChat[];
   currentChatId: string;
-  thinkingChatId?: string | null;
   now: number;
   onSelect: (chatId: string) => void;
   onRequestDelete: (chat: DashboardAgentChat) => void;
 }) {
   return (
-    <div className="max-h-80 overflow-y-auto p-1.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+    <div className="max-h-80 overflow-y-auto p-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
       {chats.length === 0 ? (
-        <Paragraph variant="small" className="p-1.5 text-text-dimmed">
+        <Paragraph variant="small" className="p-2 text-text-dimmed">
           No previous chats yet.
         </Paragraph>
       ) : (
         <AgentList>
           {unreadFirst(chats).map((chat) => {
-            const process = chatProcess(chat, chat.id === thinkingChatId);
             const age = chat.lastMessageAt ? chatAge(chat.lastMessageAt, now) : undefined;
             return (
               <AgentListRow
                 key={chat.id}
                 label={chat.title}
                 unread={chatIsUnread(chat)}
-                status={process ? <ProcessIcon process={process} /> : null}
                 meta={age}
                 variant={chat.id === currentChatId ? "selected" : "default"}
                 onSelect={() => onSelect(chat.id)}
                 action={
                   <AgentListRowAction
-                    icon={TrashIcon}
+                    icon={CrossIcon}
                     label={`Delete chat: ${chat.title}`}
+                    tooltip="Delete chat"
                     onClick={() => onRequestDelete(chat)}
-                    danger
                   />
                 }
               />
@@ -163,7 +130,7 @@ export function DashboardAgentDeleteChatDialog({
               </Button>
             }
             cancelButton={
-              <Button variant="tertiary/medium" onClick={() => onOpenChange(false)}>
+              <Button variant="secondary/medium" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
             }

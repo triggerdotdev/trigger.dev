@@ -61,6 +61,16 @@ async function gesture(target: Element, steps: Point[]) {
   await release(target, steps[steps.length - 1]!);
 }
 
+/** The dock hint fades out before it unmounts: waits that out, up to a deadline. */
+async function waitForHintToLeave(label: string) {
+  const deadline = Date.now() + 1000;
+  while (document.body.textContent?.includes(label) && Date.now() < deadline) {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+  }
+}
+
 function panInfo(dx: number, dy: number): PanInfo {
   return {
     delta: { x: dx, y: dy },
@@ -226,6 +236,7 @@ describe("FloatingAgentWindow's drag-to-dock zones", () => {
 
     expect(modes).toEqual(["rightPanel"]);
     expect(view.outerLeft()).toBe(leftBeforeDrag);
+    await waitForHintToLeave("Dock right");
     expect(document.body.textContent).not.toContain("Dock right");
   });
 
@@ -234,7 +245,7 @@ describe("FloatingAgentWindow's drag-to-dock zones", () => {
     const view = renderFloatingAgentWindow((mode) => modes.push(mode));
 
     await pressAndMove(view.titleEl(), [{ x: 500, y: 300 }, topZonePoint()]);
-    expect(document.body.textContent).toContain("Fullscreen");
+    expect(document.body.textContent).toContain("Full page");
 
     await release(view.titleEl(), topZonePoint());
 
@@ -288,9 +299,9 @@ describe("FloatingAgentWindow keeps its child mounted across every mode transiti
     }
   });
 
-  // The dock hint is a conditional sibling rendered before the window. `{cond && …}` keeps
-  // the slot when false, so the window keeps its position among the children and React
-  // never remounts it — a remount here would kill the turn streaming inside the chat.
+  // The dock hint renders before the window, inside an `AnimatePresence` that is always there,
+  // so the window keeps its position among the children and React never remounts it — a
+  // remount here would kill the turn streaming inside the chat, even mid-fade.
   it("never remounts the child while a dock hint appears and disappears", async () => {
     let mounts = 0;
     function Marker() {
@@ -326,8 +337,9 @@ describe("FloatingAgentWindow keeps its child mounted across every mode transiti
     expect(document.body.textContent).toContain("Dock right");
     expect(mounts).toBe(1);
 
-    // Back out of every zone: the hint unmounts again.
+    // Back out of every zone: the hint fades out and unmounts again.
     await dispatchPointer(title(), "pointermove", { x: 400, y: 400 });
+    await waitForHintToLeave("Dock right");
     expect(document.body.textContent).not.toContain("Dock right");
     expect(mounts).toBe(1);
 

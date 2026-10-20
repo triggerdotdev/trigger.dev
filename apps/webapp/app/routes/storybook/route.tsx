@@ -145,7 +145,8 @@ const sections: StorySection[] = [
     title: "Trigger Agent",
     items: [
       { name: "Chat UI", slug: "agent-ui" },
-      { name: "Floating chat window", slug: "dashboard-agent-floating" },
+      { name: "Composer", slug: "agent-composer" },
+      { name: "Floating chat panel", slug: "dashboard-agent-floating" },
       { name: "View blocks", slug: "agent-view-blocks" },
       { name: "Report view", slug: "agent-report" },
       { name: "Investigation card", slug: "agent-investigation" },

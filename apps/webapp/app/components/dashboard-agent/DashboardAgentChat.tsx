@@ -11,15 +11,11 @@ import {
 import { useLocation, useNavigate } from "@remix-run/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
-import { PlusIcon } from "~/assets/icons/PlusIcon";
-import { Button } from "~/components/primitives/Buttons";
-import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { useToast } from "~/components/primitives/Toast";
 import { AgentQuotaNotice, AgentUpgradeBlock } from "./AgentUpgradeGate";
-import { DashboardAgentComposer } from "./DashboardAgentComposer";
+import { DashboardAgentComposer, NewChatButton } from "./DashboardAgentComposer";
 import { DashboardAgentContextBanner } from "./DashboardAgentContextBanner";
 import { DashboardAgentHero } from "./DashboardAgentHero";
-import { NEW_CHAT_SHORTCUT } from "./DashboardAgentHeader";
 import { DashboardAgentMessages, type TurnActivity } from "./DashboardAgentMessages";
 import { MESSAGE_TOO_LARGE_ERROR } from "./message-limits";
 import {
@@ -646,37 +642,21 @@ export function DashboardAgentChat({
           context={contextBanner}
         />
       ) : (
-        <>
-          <DashboardAgentComposer
-            value={input}
-            onChange={setInput}
-            onSubmit={() => submit(input)}
-            onStop={stop}
-            isStreaming={isStreaming}
-            focusKey={sendRequest?.seq}
-            context={contextBanner}
-            trailingAction={
-              showNewChat && (
-                <Button
-                  variant="minimal/small"
-                  className="aspect-square h-6 shrink-0 p-1 mr-[6px]"
-                  aria-label="New chat"
-                  tooltip={
-                    <span className="flex items-center">
-                      New chat
-                      <ShortcutKey shortcut={NEW_CHAT_SHORTCUT} variant="medium" />
-                    </span>
-                  }
-                  onClick={onNewChat}
-                  LeadingIcon={<PlusIcon className="size-4 text-text-dimmed" />}
-                />
-              )
-            }
-          />
-          {quota.kind === "within" && (
-            <AgentQuotaNotice remaining={quota.remaining} limit={quota.limit} />
-          )}
-        </>
+        <DashboardAgentComposer
+          value={input}
+          onChange={setInput}
+          onSubmit={() => submit(input)}
+          onStop={stop}
+          isStreaming={isStreaming}
+          focusKey={sendRequest?.seq}
+          context={contextBanner}
+          trailingAction={showNewChat && <NewChatButton onClick={onNewChat} />}
+          notice={
+            quota.kind === "within" ? (
+              <AgentQuotaNotice remaining={quota.remaining} limit={quota.limit} />
+            ) : undefined
+          }
+        />
       )}
     </>
   );

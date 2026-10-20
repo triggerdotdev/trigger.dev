@@ -61,6 +61,8 @@ const PopoverMenuItem = React.forwardRef<
     isSelected?: boolean;
     variant?: ButtonContentPropsType;
     leadingIconClassName?: string;
+    /** Styles the check a selected item ends with. */
+    trailingIconClassName?: string;
     className?: string;
     onClick?: React.MouseEventHandler;
     disabled?: boolean;
@@ -79,6 +81,7 @@ const PopoverMenuItem = React.forwardRef<
       isSelected,
       variant = { variant: "small-menu-item" },
       leadingIconClassName,
+      trailingIconClassName,
       className,
       onClick,
       disabled,
@@ -99,6 +102,7 @@ const PopoverMenuItem = React.forwardRef<
       fullWidth: true,
       textAlignLeft: true,
       TrailingIcon: isSelected ? CheckIcon : undefined,
+      trailingIconClassName,
       className: cn(
         danger
           ? "transition-colors group-hover/button:bg-error/10 group-hover/button:text-error [&_span]:transition-colors group-hover/button:[&_span]:text-error"
@@ -154,7 +158,7 @@ function PopoverCustomTrigger({
     <PopoverTrigger
       {...props}
       className={cn(
-        "group flex items-center justify-end gap-1 rounded text-text-dimmed transition focus-custom hover:bg-background-dimmed hover:text-text-bright",
+        "group flex cursor-pointer items-center justify-end gap-1 rounded text-text-dimmed transition focus-custom hover:bg-background-dimmed hover:text-text-bright",
         className
       )}
     >
@@ -211,7 +215,8 @@ function PopoverArrowTrigger({
     <PopoverTrigger
       {...props}
       className={cn(
-        "group flex h-6 items-center gap-1 rounded pl-2 pr-1 transition focus-custom",
+        // `cursor-pointer` as on `Button`: a <button> is `cursor: default` out of the box.
+        "group flex h-6 cursor-pointer items-center gap-1 rounded pl-2 pr-1 transition focus-custom",
         variantStyles.trigger,
         fullWidth && "w-full justify-between",
         className
@@ -269,7 +274,7 @@ function PopoverEllipseTrigger({
     <PopoverTrigger
       {...props}
       className={cn(
-        "group flex items-center justify-center transition focus-custom",
+        "group flex cursor-pointer items-center justify-center transition focus-custom",
         styles.trigger,
         className
       )}

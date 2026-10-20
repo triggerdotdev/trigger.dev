@@ -1,13 +1,17 @@
-import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
-import { ChatFloatingPanel } from "~/assets/icons/ChatFloatingPanel";
-import { ChatFullScreen } from "~/assets/icons/ChatFullScreen";
-import { ChatRightPanel } from "~/assets/icons/ChatRightPanel";
 import { CrossIcon } from "~/assets/icons/CrossIcon";
 import { Button } from "~/components/primitives/Buttons";
-import { Popover, PopoverArrowTrigger, PopoverContent } from "~/components/primitives/Popover";
+import {
+  Popover,
+  PopoverArrowTrigger,
+  PopoverContent,
+  PopoverMenuItem,
+  PopoverTrigger,
+} from "~/components/primitives/Popover";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import type { Shortcut } from "~/hooks/useShortcutKeys";
+import { CHAT_MODE_OPTIONS } from "./chat-mode-options";
 import {
   DashboardAgentDeleteChatDialog,
   DashboardAgentHistoryMenu,
@@ -15,13 +19,6 @@ import {
 } from "./DashboardAgentHistory";
 import { chatHistoryTriggerLabel } from "./header-labels";
 import type { DashboardAgentMode } from "./panel-layout";
-
-const MODE_OPTIONS: { mode: DashboardAgentMode; label: string; Icon: typeof ChatFloatingPanel }[] =
-  [
-    { mode: "floating", label: "Floating", Icon: ChatFloatingPanel },
-    { mode: "rightPanel", label: "Right panel", Icon: ChatRightPanel },
-    { mode: "fullscreen", label: "Fullscreen", Icon: ChatFullScreen },
-  ];
 
 // Display only. The key is registered once, in `DashboardAgent`; registering it
 // anywhere else makes the keystroke fire twice.
@@ -31,176 +28,117 @@ export const NEW_CHAT_SHORTCUT: Shortcut = {
   enabledOnInputElements: true,
 };
 
-export function ModeToggle({
+/** Open state for the layout menu, and what keeps its trigger's tooltip out of the way. The menu
+ * closes whenever the layout changes, picked from the menu or not: a route leaving Full page moves
+ * the panel out from under an open menu. */
+export function useModeMenu(mode: DashboardAgentMode) {
+  const [isOpen, setOpen] = useState(false);
+  // Closing the menu from inside hands focus back to the trigger, and focus opens its tooltip,
+  // which would then linger after every choice with the pointer nowhere near it.
+  const skipNextFocusTooltip = useRef(false);
+
+  useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- closes when `mode` changes externally (e.g. route-driven).
+    setOpen(false);
+  }, [mode]);
+
+  return {
+    isOpen,
+    setOpen,
+    /** For a row picked, or Escape. An outside click keeps focus where it lands, so it doesn't. */
+    closeFromInside: () => {
+      skipNextFocusTooltip.current = true;
+      setOpen(false);
+    },
+    /** For the trigger, whose own handlers run before the tooltip's: preventing an event stops the
+     * tooltip asking to open at all. Holding its `open` shut instead leaves Radix out of step with
+     * what's shown, and a tooltip asked for over the open menu then shows once it closes. */
+    tooltipGuards: {
+      onFocus: (event: React.FocusEvent) => {
+        if (!skipNextFocusTooltip.current) return;
+        skipNextFocusTooltip.current = false;
+        event.preventDefault();
+      },
+      // Never over the open menu.
+      onPointerMove: (event: React.PointerEvent) => {
+        if (isOpen) event.preventDefault();
+      },
+    },
+  };
+}
+
+/** The menu's rows: every layout, the current one checked. */
+export function ModeMenuOptions({
+  mode,
+  onModeChange,
+  onDone,
+}: {
+  mode: DashboardAgentMode;
+  /** Only for a different layout: picking the current one just closes the menu. */
+  onModeChange: (mode: DashboardAgentMode) => void;
+  onDone: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1 p-1">
+      {CHAT_MODE_OPTIONS.map(({ mode: option, label, Icon }) => (
+        <PopoverMenuItem
+          key={option}
+          icon={Icon}
+          leadingIconClassName="size-4"
+          // The check matches the layout icons; at the menu's default size it reads larger.
+          trailingIconClassName="size-4"
+          title={label}
+          isSelected={option === mode}
+          onClick={() => {
+            onDone();
+            if (option !== mode) onModeChange(option);
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** The layout picker: the current layout's icon, opening a menu of all of them. */
+export function ModeMenu({
   mode,
   onModeChange,
 }: {
   mode: DashboardAgentMode;
   onModeChange: (mode: DashboardAgentMode) => void;
 }) {
-  const [isExpanded, setExpanded] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const optionRefs = useRef(new Map<DashboardAgentMode, HTMLButtonElement>());
-  const currentOption = MODE_OPTIONS.find((option) => option.mode === mode) ?? MODE_OPTIONS[0];
-  const otherOptions = MODE_OPTIONS.filter((option) => option.mode !== mode);
-
-  useEffect(() => {
-    // oxlint-disable-next-line react/set-state-in-effect -- collapses when `mode` changes externally (e.g. route-driven).
-    setExpanded(false);
-  }, [mode]);
-
-  // Radio semantics only while the options are on screen. Collapsed there is one control
-  // and nothing to choose between, so it stays an ordinary disclosure button — a lone
-  // `radio` carrying `aria-expanded` is neither.
-  useEffect(() => {
-    const el = triggerRef.current;
-    if (!el) return;
-    if (isExpanded) {
-      el.removeAttribute("aria-haspopup");
-      el.removeAttribute("aria-expanded");
-      el.setAttribute("role", "radio");
-      el.setAttribute("aria-checked", "true");
-    } else {
-      el.removeAttribute("role");
-      el.removeAttribute("aria-checked");
-      el.setAttribute("aria-haspopup", "true");
-      el.setAttribute("aria-expanded", "false");
-    }
-    el.tabIndex = 0;
-  }, [isExpanded]);
-
-  // Roving tabindex: the unchecked options are reachable by arrow key, not by Tab.
-  useEffect(() => {
-    if (!isExpanded) return;
-    for (const option of otherOptions) {
-      const el = optionRefs.current.get(option.mode);
-      if (!el) continue;
-      el.setAttribute("role", "radio");
-      el.setAttribute("aria-checked", "false");
-      el.tabIndex = -1;
-    }
-  }, [otherOptions, isExpanded]);
-
-  // Arrow keys move the selection, as in any radio group. Listened for on the radios
-  // themselves: the group is not a tab stop and must not become click-focusable.
-  useEffect(() => {
-    if (!isExpanded) return;
-    const nodes = [triggerRef.current, ...otherOptions.map((o) => optionRefs.current.get(o.mode))];
-
-    // The row is `flex-row-reverse`, so moving right on screen is moving backwards
-    // through `MODE_OPTIONS`.
-    const step = (delta: number) => {
-      const index = MODE_OPTIONS.findIndex((option) => option.mode === mode);
-      const next = MODE_OPTIONS[(index + delta + MODE_OPTIONS.length) % MODE_OPTIONS.length]!;
-      onModeChange(next.mode);
-    };
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "ArrowRight" || event.key === "ArrowDown") {
-        event.preventDefault();
-        step(-1);
-      }
-      if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
-        event.preventDefault();
-        step(1);
-      }
-    };
-
-    for (const node of nodes) node?.addEventListener("keydown", onKeyDown);
-    return () => {
-      for (const node of nodes) node?.removeEventListener("keydown", onKeyDown);
-    };
-  }, [isExpanded, otherOptions, mode, onModeChange]);
-
-  useEffect(() => {
-    if (!isExpanded) return;
-
-    function handlePointerDown(event: PointerEvent) {
-      if (!containerRef.current?.contains(event.target as Node)) {
-        setExpanded(false);
-      }
-    }
-
-    // Capture phase + preventDefault: DashboardAgentPanel's own Escape handler
-    // (bubble phase) checks defaultPrevented before closing the whole panel.
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setExpanded(false);
-      }
-    }
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown, true);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown, true);
-    };
-  }, [isExpanded]);
+  const menu = useModeMenu(mode);
+  const current = CHAT_MODE_OPTIONS.find((option) => option.mode === mode) ?? CHAT_MODE_OPTIONS[0];
 
   return (
-    <div
-      ref={containerRef}
-      role={isExpanded ? "radiogroup" : undefined}
-      aria-label={isExpanded ? "Chat display mode" : undefined}
-      className="flex flex-row-reverse items-center"
-    >
-      <Button
-        ref={triggerRef}
-        variant="minimal/small"
-        className="aspect-square h-6 p-1"
-        // Named for the mode it shows: expanded it is the group's checked radio, and
-        // collapsed the tooltip says the same thing.
-        aria-label={currentOption.label}
-        tooltip={currentOption.label}
-        onClick={() => setExpanded((open) => !open)}
-        LeadingIcon={<currentOption.Icon className="size-4 text-text-dimmed" />}
+    <Popover open={menu.isOpen} onOpenChange={menu.setOpen}>
+      <SimpleTooltip
+        asChild
+        tabbable
+        disableHoverableContent
+        delayDuration={500}
+        content="Change layout"
+        button={
+          // Styled as the minimal icon buttons beside it. `Button` can't be the trigger: it
+          // drops the `aria-expanded` and `aria-haspopup` a popover trigger needs.
+          <PopoverTrigger
+            {...menu.tooltipGuards}
+            aria-label={`Change layout, currently ${current.label}`}
+            className="flex size-6 cursor-pointer items-center justify-center rounded-[3px] text-text-dimmed transition focus-custom hover:bg-tertiary aria-expanded:bg-tertiary"
+          >
+            <current.Icon className="size-4" />
+          </PopoverTrigger>
+        }
       />
-      <AnimatePresence initial={false}>
-        {isExpanded &&
-          otherOptions.map(({ mode: option, label, Icon }) => (
-            <motion.div
-              key={option}
-              initial={{ opacity: 0, width: 0, x: 8 }}
-              animate={{ opacity: 1, width: "auto", x: 0 }}
-              exit={{ opacity: 0, width: 0, x: 8 }}
-              transition={{ duration: 0.15 }}
-              className="overflow-hidden"
-              // Selecting on pointerdown, ahead of the outside-pointerdown listener that
-              // starts the collapse, keeps a fast click from landing after the option
-              // has already begun unmounting.
-              onPointerDown={(event) => {
-                // Left button only: right/middle-click must open a context menu or
-                // paste, not select a mode.
-                if (event.button !== 0) return;
-                onModeChange(option);
-                setExpanded(false);
-              }}
-            >
-              <Button
-                ref={(el) => {
-                  if (el) optionRefs.current.set(option, el);
-                  else optionRefs.current.delete(option);
-                }}
-                variant="minimal/small"
-                className="aspect-square h-6 p-1"
-                aria-label={label}
-                tooltip={label}
-                onClick={(event) => {
-                  // Keyboard activation (Enter/Space) fires `click` with no preceding
-                  // pointerdown, so it still needs to select here.
-                  if (event.detail === 0) {
-                    onModeChange(option);
-                    setExpanded(false);
-                  }
-                }}
-                LeadingIcon={<Icon className="size-4 text-text-dimmed" />}
-              />
-            </motion.div>
-          ))}
-      </AnimatePresence>
-    </div>
+      <PopoverContent
+        align="end"
+        className="p-0"
+        aria-label="Chat layout"
+        onEscapeKeyDown={menu.closeFromInside}
+      >
+        <ModeMenuOptions mode={mode} onModeChange={onModeChange} onDone={menu.closeFromInside} />
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -208,7 +146,6 @@ export function DashboardAgentHeader({
   title,
   chats,
   currentChatId,
-  thinkingChatId,
   onOpenHistory,
   onSelectChat,
   onDeleteChat,
@@ -219,7 +156,6 @@ export function DashboardAgentHeader({
   title: string;
   chats: DashboardAgentChat[];
   currentChatId: string;
-  thinkingChatId?: string | null;
   onOpenHistory: () => void;
   onSelectChat: (chatId: string) => void;
   onDeleteChat: (chatId: string) => void;
@@ -232,7 +168,7 @@ export function DashboardAgentHeader({
   const [pendingDelete, setPendingDelete] = useState<DashboardAgentChat | null>(null);
 
   return (
-    <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-grid-bright pl-1 pr-1.5">
+    <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-grid-bright px-2">
       <Popover
         open={isHistoryOpen}
         onOpenChange={(open) => {
@@ -254,14 +190,15 @@ export function DashboardAgentHeader({
           <span className="truncate text-sm font-medium text-text-bright">{title}</span>
         </PopoverArrowTrigger>
         <PopoverContent
-          className="w-72 max-w-(--radix-popover-content-available-width) p-0"
+          // `min-w-0` over the popover's own `min-w-max`, which would stretch it to the longest
+          // title instead of truncating at this width.
+          className="w-72 min-w-0 max-w-(--radix-popover-content-available-width) p-0"
           align="start"
         >
           {historyOpenedAt === null ? null : (
             <DashboardAgentHistoryMenu
               chats={chats}
               currentChatId={currentChatId}
-              thinkingChatId={thinkingChatId}
               now={historyOpenedAt}
               onSelect={(chatId) => {
                 setHistoryOpen(false);
@@ -282,12 +219,13 @@ export function DashboardAgentHeader({
         onConfirm={onDeleteChat}
       />
 
-      <div className="flex shrink-0 items-center gap-0.5" data-agent-no-drag>
-        <ModeToggle mode={mode} onModeChange={onModeChange} />
+      <div className="flex shrink-0 items-center gap-1" data-agent-no-drag>
+        <ModeMenu mode={mode} onModeChange={onModeChange} />
         <Button
           variant="minimal/small"
           className="aspect-square h-6 p-1"
           aria-label="Close (Esc)"
+          tooltipDelay={500}
           tooltip={
             <span className="flex items-center">
               Close
