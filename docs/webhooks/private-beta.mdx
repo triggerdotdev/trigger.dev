@@ -96,9 +96,48 @@ pnpm needs 10.17 or later for the `@trigger.dev/*` pattern; on 10.16, list the p
 
 ## Stay up to date
 
-Beta versions look like `4.8.0-webhooks.20261015065339`, the next release plus a timestamp. Run the install commands again to move to the newest build. To stay on one build, install that exact version instead of the tag.
+Beta versions look like `4.8.0-webhooks.20261020092920`, the next release plus a timestamp. Run the install commands again to move to the newest build. To stay on one build, install that exact version instead of the tag.
 
 When webhooks become generally available they ship in a normal release, and you switch back to `@latest`. You can remove the release age exemption then.
+
+## Changelog
+
+### 4.8.0-webhooks.20261020092920 (October 20)
+
+**Breaking:** `slack()` now requires `startOn`. Without it, every message in every channel the bot was in started a session. `appMentions()` answers when the bot is @mentioned, and needs no bot user id:
+
+```ts
+import { appMentions, slack } from "@trigger.dev/slack";
+
+slack({
+  id: "slack",
+  endpoint: slackEvents,
+  token: process.env.SLACK_BOT_TOKEN!,
+  startOn: appMentions(),
+});
+```
+
+Add `app_mention` to the app's bot events and the `app_mentions:read` scope, then reinstall the app. See [Slack agents](/webhooks/slack).
+
+New:
+
+- 12 more sources: `webhooks.loops()`, `granola()`, `autumn()`, `metronome()`, `mux()`, `tailscale()`, `langfuse()`, `infisical()`, `planetscale()`, `plain()`, `firecrawl()` and `supabase()`, each with a setup prompt. Supabase database webhooks aren't signed, so `supabase()` checks a bearer token you add as a header.
+- Retries from PagerDuty, Jira, Zendesk, Attio, Shopify, Notion, Vercel, Typeform, Intercom, WorkOS and Firecrawl are deduplicated on the provider's own event or delivery id, so a retried event runs once. See [Deliveries](/webhooks/deliveries).
+- Filters accept `== null` and `!= null` to check whether a field is present, and `event any ( ... )` matches a payload that is an array of events (Tailscale, SendGrid, HubSpot, Auth0) when any of them matches.
+- `webhook()` takes `task()` options such as `queue`, `machine` and `retry`.
+- A failed turn in Slack, Linear or a custom channel posts "Something went wrong answering this. Try again." instead of the raw error. `errorMessage` changes it, as a fixed line or a function of the error, run id and event. See [When a turn fails](/webhooks/channels#when-a-turn-fails).
+- Slack: tool calls show as one plan in the reply, each task titled by the tool's `title` (`progress: "tasks"` gives one card per call). `ownWorkspaceOnly: true` ignores Slack Connect guests, and `SlackRunSurface` types `chat.surface<SlackRunSurface>()`.
+- Dashboard: filter an endpoint's deliveries by status, live or test mode, and delivery id (ours or the provider's).
+
+Fixed:
+
+- Plain and Metronome deliveries verify, with each provider's replay window.
+
+This build also includes what's on `main` since the last one, such as span redaction with `telemetry.spanProcessors`, managing metric dashboards from the API, and `trigger tasks trigger`.
+
+### 4.8.0-webhooks.20261015065339 (October 15)
+
+The first beta build.
 
 ## Get started
 

@@ -98,6 +98,8 @@ Paths must have non-empty segments. `event.data.amount` is valid; `event.`, `eve
 
 Values are strings in single quotes (`'created'`), numbers (`10000`), booleans (`true`), or `null`. Use a list of these values with `in` and `not in`.
 
+A `null` value checks presence. `event.issue.pull_request != null` matches events that have the field, and `== null` matches events where it is missing or `null`. It works on any field, including fields your event type marks as required, because a missing field compares equal to `null`.
+
 ### Comparing two fields
 
 Equality and comparison operators also accept a field path on the right-hand side:

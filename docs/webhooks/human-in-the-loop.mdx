@@ -41,7 +41,7 @@ Out of the box, `slack()` posts Approve and Deny buttons for any pending no-`exe
 ```ts trigger/support-agent.ts
 import { webhooks } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
-import { slack, webhookSource } from "@trigger.dev/slack";
+import { appMentions, slack, webhookSource } from "@trigger.dev/slack";
 import { tool } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
@@ -60,7 +60,14 @@ const requestApproval = tool({
 
 export const supportAgent = chat.agent({
   id: "support-agent",
-  channels: [slack({ id: "support-slack", endpoint: slackEvents, token: process.env.SLACK_BOT_TOKEN! })],
+  channels: [
+    slack({
+      id: "support-slack",
+      endpoint: slackEvents,
+      token: process.env.SLACK_BOT_TOKEN!,
+      startOn: appMentions(),
+    }),
+  ],
   tools: { requestApproval },
   run: async ({ messages, tools, streamText }) =>
     streamText({
