@@ -56,6 +56,13 @@ const checkpointDeleteRequests = new Counter({
   registers: [register],
 });
 
+const continueRetryOutcomes = new Counter({
+  name: "supervisor_continue_retry_outcomes_total",
+  help: "Count of continue calls retried within a budget, by how the retries ended (succeeded, non_retryable, server_errors, budget_exhausted).",
+  labelNames: ["outcome"],
+  registers: [register],
+});
+
 const checkpointCancelRequests = new Counter({
   name: "checkpoint_cancel_requests_total",
   help: "Checkpoint cancel requests attempted when a run continues, by outcome",
@@ -115,6 +122,8 @@ type WorkloadServerOptions = {
   wideEventsNoisyRoutes: boolean;
   /** Where runs started through this server execute. Overrides anything the runner sends. */
   workerStamp?: { workerCell?: string; workerLane?: string };
+  /** How long to keep retrying temporary failures of `continue`. Unset keeps the default retries. */
+  continueRetryBudgetMs?: number;
 };
 
 export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
@@ -145,6 +154,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
 
   private readonly workerClient: SupervisorHttpClient;
   private readonly workerStamp: { workerCell?: string; workerLane?: string };
+  private readonly continueRetryBudget?: { budgetMs: number };
 
   constructor(opts: WorkloadServerOptions) {
     super();
@@ -157,6 +167,14 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     this.checkpointClient = opts.checkpointClient;
     this.wideEventOpts = opts.wideEventOpts;
     this.wideEventsNoisyRoutes = opts.wideEventsNoisyRoutes;
+
+    this.continueRetryBudget =
+      opts.continueRetryBudgetMs === undefined
+        ? undefined
+        : { budgetMs: opts.continueRetryBudgetMs };
+    this.logger.info("Continue retries", {
+      budgetMs: opts.continueRetryBudgetMs ?? "unset, default retries",
+    });
 
     if (opts.runnerSnapshotter?.snapshotsEnabled) {
       this.snapshotService = new ComputeSnapshotService({
@@ -661,11 +679,24 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                   params.runFriendlyId,
                   params.snapshotFriendlyId,
                   this.runnerIdFromRequest(req),
-                  auth.environmentId
+                  auth.environmentId,
+                  { retryBudget: this.continueRetryBudget }
                 );
 
+                if (continuationResult.retry) {
+                  continueRetryOutcomes.inc({ outcome: continuationResult.retry.outcome });
+                }
+
                 if (!continuationResult.success) {
-                  this.logger.error("Failed to continue run execution", { params });
+                  this.logger.error("Failed to continue run execution", {
+                    params,
+                    statusCode: continuationResult.statusCode,
+                    error: continuationResult.error,
+                    attempts: continuationResult.retry?.attempts,
+                    elapsedMs: continuationResult.retry?.elapsedMs,
+                    outcome: continuationResult.retry?.outcome,
+                    budgetMs: this.continueRetryBudget?.budgetMs,
+                  });
                   reply.json(
                     {
                       ok: false,

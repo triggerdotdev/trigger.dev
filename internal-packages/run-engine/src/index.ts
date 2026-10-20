@@ -20,6 +20,7 @@ export {
   WaitpointCompletionGuardArmedError,
   isWaitpointCompletionGuardArmedError,
 } from "./engine/errors.js";
+export { LockAcquisitionTimeoutError } from "./engine/locking.js";
 export type { EventBusEventArgs, EventBusEvents } from "./engine/eventBus.js";
 export { PARKED_ON_EXTERNAL_DEPLOYMENT_STATUS_REASON } from "./engine/systems/pendingVersionSystem.js";
 export type { AuthenticatedEnvironment } from "./shared/index.js";

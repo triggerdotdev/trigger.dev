@@ -604,6 +604,7 @@ class ManagedSupervisor {
       runnerSnapshotter: this.runCrdManager,
       wideEventOpts: this.wideEventOpts,
       wideEventsNoisyRoutes: this.wideEventsNoisyRoutes,
+      continueRetryBudgetMs: env.TRIGGER_CONTINUE_RETRY_BUDGET_MS,
     });
 
     this.workloadServer.on("runConnected", this.onRunConnected.bind(this));

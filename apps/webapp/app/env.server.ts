@@ -1562,6 +1562,9 @@ const EnvironmentSchema = z
     RUN_ENGINE_QUEUE_RECONCILE_LOCK_TTL_SECONDS: z.coerce.number().int().positive().default(10),
     RUN_ENGINE_QUEUE_RECONCILE_MAX_PASSES_PER_DEQUEUE: z.coerce.number().int().min(0).default(2),
     RUN_ENGINE_TREAT_PRODUCTION_EXECUTION_STALLS_AS_OOM: z.string().default("0"),
+    // When on, the worker continue route answers temporary database errors with 503 and a busy run
+    // lock with 409, which the supervisor keeps retrying, instead of a 422 that aborts the run.
+    RUN_ENGINE_CONTINUE_RETRYABLE_ERRORS_ENABLED: BoolEnv.default(false),
     RUN_ENGINE_READ_REPLICA_SNAPSHOTS_SINCE_ENABLED: z.string().default("0"),
     RUN_ENGINE_SNAPSHOTS_SINCE_REPLICA_RETRY_MIN_MS: z.coerce.number().int().default(50),
     RUN_ENGINE_SNAPSHOTS_SINCE_REPLICA_RETRY_MAX_MS: z.coerce.number().int().default(200),
