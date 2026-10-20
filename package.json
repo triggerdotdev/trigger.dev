@@ -61,7 +61,7 @@
     "@playwright/test": "^1.36.2",
     "@trigger.dev/database": "workspace:*",
     "@types/node": "24.13.3",
-    "@vitest/coverage-v8": "4.1.7",
+    "@vitest/coverage-v8": "4.1.11",
     "knip": "6.25.0",
     "lefthook": "^2.1.10",
     "oxfmt": "^0.73.0",
@@ -72,7 +72,7 @@
     "turbo": "^1.13.4",
     "typescript": "catalog:",
     "varlock": "1.18.0",
-    "vitest": "4.1.7"
+    "vitest": "4.1.11"
   },
   "packageManager": "pnpm@10.33.2",
   "dependencies": {

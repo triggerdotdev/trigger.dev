@@ -13,6 +13,6 @@
     "esbuild": "^0.24.0",
     "execa": "^9.3.0",
     "typescript": "catalog:",
-    "vitest": "4.1.7"
+    "vitest": "4.1.11"
   }
 }

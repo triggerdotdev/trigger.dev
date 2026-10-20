@@ -21,7 +21,7 @@
   },
   "devDependencies": {
     "rimraf": "6.0.1",
-    "vitest": "4.1.7"
+    "vitest": "4.1.11"
   },
   "scripts": {
     "clean": "rimraf dist",
