@@ -319,4 +319,28 @@ export const toolsMetadata = {
     description:
       "Append one record to a named side channel's `in` stream on a session. Use this to send control input to a running agent (e.g. a pause/viewport command) without waking or triggering a run. Requires a `channel` name; the reserved transcript and the `out` side are not writable here (`out` is producer-only). Pass `value` as an object for a structured record or a string for a raw one.",
   },
+  list_alert_capabilities: {
+    name: "list_alert_capabilities",
+    title: "List Alert Capabilities",
+    description:
+      "List what a monitoring alert can watch for a project — queues, runs and health signals. Health capabilities expose tunable params (e.g. thresholds) with defaults, surfaced on each capability. Use this before create_alert to find a valid capabilityKey and its allowed condition shape.",
+  },
+  list_alerts: {
+    name: "list_alerts",
+    title: "List Monitoring Alerts",
+    description:
+      "List monitoring alerts for a project and environment, optionally filtered by lifecycle (active/completed/expired/stopped) or attention (clear/needs_attention).",
+  },
+  create_alert: {
+    name: "create_alert",
+    title: "Create Monitoring Alert",
+    description:
+      "Create a monitoring alert for a project. Use list_alert_capabilities first to find a capabilityKey and understand its condition shape.",
+  },
+  resolve_alert: {
+    name: "resolve_alert",
+    title: "Resolve Monitoring Alert",
+    description:
+      "Resolve a monitoring alert that needs attention, acknowledging it. The alert re-arms after resolving.",
+  },
 };

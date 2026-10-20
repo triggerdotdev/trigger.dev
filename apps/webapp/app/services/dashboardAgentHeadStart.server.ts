@@ -1,4 +1,10 @@
-import { systemPromptFor, toolSchemasFor } from "@internal/dashboard-agent/prompt-assembly";
+import type { AlertCreationDraft } from "@internal/dashboard-agent-contracts";
+import {
+  systemPromptFor,
+  toolSchemasFor,
+  withAlertDraftContext,
+  type DashboardAgentScope,
+} from "@internal/dashboard-agent/prompt-assembly";
 import {
   describePromptPrefix,
   promptCacheAttributes,
@@ -92,11 +98,13 @@ export async function startDashboardAgentHeadStart(params: {
   mode: "assistant" | "code";
   metadata: Record<string, unknown>;
   watchEnabled: boolean;
+  scope?: DashboardAgentScope;
+  alertDraft?: AlertCreationDraft;
   tags?: string[];
 }): Promise<void> {
-  // The same assembly the agent run uses, so both sides hand the provider one prefix.
-  const tools = toolSchemasFor(params.mode, { watchEnabled: params.watchEnabled });
-  const system = systemPromptFor(params.mode, { watchEnabled: params.watchEnabled });
+  const opts = { watchEnabled: params.watchEnabled, scope: params.scope };
+  const tools = toolSchemasFor(params.mode, opts);
+  const system = systemPromptFor(params.mode, opts);
 
   const { completion } = await chatServer.startHeadStart({
     agentId: TASK_ID,
@@ -110,9 +118,14 @@ export async function startDashboardAgentHeadStart(params: {
       baseURL: dashboardAgentApiOrigin(),
       accessToken: env.DASHBOARD_AGENT_SECRET_KEY,
     },
-    run: async ({ chat: helper }) =>
-      streamText({
-        ...helper.toStreamTextOptions({ tools }),
+    run: async ({ chat: helper }) => {
+      const options = helper.toStreamTextOptions({ tools });
+      return streamText({
+        ...options,
+        messages: withAlertDraftContext(
+          options.messages,
+          params.scope === "alert_creation" ? params.alertDraft : undefined
+        ),
         model: resolveDashboardAgentModel(dashboardAgentModel(env.DASHBOARD_AGENT_MODEL)),
         // Same ceiling the agent run uses; the pinned provider caps an unknown id at 4096.
         maxOutputTokens: maxOutputTokensFor(dashboardAgentModel(env.DASHBOARD_AGENT_MODEL)),
@@ -139,7 +152,8 @@ export async function startDashboardAgentHeadStart(params: {
             })
           );
         },
-      }),
+      });
+    },
   });
 
   // Step 1's drain and the handover dispatch continue in the background. On failure

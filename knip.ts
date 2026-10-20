@@ -18,7 +18,7 @@ export default {
     },
     // Temporary while the alerts stack (#261→#515) merges; remove after.
     "apps/webapp": {
-      ignore: ["app/v3/services/alerts/**"],
+      ignore: ["app/v3/services/alerts/evaluators/queryEvaluator.server.ts"],
       entry: [
         "evalite.config.ts",
         "vitest.*.config.ts",
@@ -39,7 +39,6 @@ export default {
     },
     "internal-packages/dashboard-agent": {
       entry: ["trigger.config.ts", "src/investigation-sweep.ts", "src/maintenance.ts"],
-      ignoreDependencies: ["@internal/alert-contracts"],
       ignoreBinaries: ["rg"],
     },
     "internal-packages/observability-map": {

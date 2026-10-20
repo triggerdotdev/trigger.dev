@@ -1,5 +1,6 @@
 import { asSchema, type Tool } from "ai";
 import { describe, expect, it } from "vitest";
+import { scopeTurnTools } from "./agent-runtime";
 import { systemPromptFor, toolSchemasFor } from "./prompt-assembly";
 import type { RepoSnapshot } from "./repo-tools";
 import { buildDashboardAgentTools } from "./tools";
@@ -42,5 +43,26 @@ describe("what the model is told about watches", () => {
         }
       });
     }
+  }
+
+  for (const mode of ["assistant", "code"] as const) {
+    it(`never mentions watches in an alert-creation turn in ${mode} mode`, () => {
+      const ctx = {
+        projectRef: "proj_abc",
+        environmentId: "env_abc",
+        watchEnabled: false,
+        toolScope: "alert_creation",
+        ...(mode === "code" ? { repoSnapshot: snapshot } : {}),
+      };
+      const options = { watchEnabled: false, scope: "alert_creation" } as const;
+      const schemas = toolSchemasFor(mode, options);
+      const tools = scopeTurnTools(buildDashboardAgentTools(ctx), ctx);
+      expect(schemas).toHaveProperty("update_alert_draft");
+      expect(tools).toHaveProperty("update_alert_draft");
+      const surfaces = [systemPromptFor(mode, options), serialize(schemas), serialize(tools)];
+      for (const text of surfaces) {
+        expect(text).not.toMatch(/watch/i);
+      }
+    });
   }
 });

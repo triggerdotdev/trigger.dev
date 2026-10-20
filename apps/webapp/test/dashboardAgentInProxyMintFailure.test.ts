@@ -11,6 +11,7 @@ vi.mock("~/services/dashboardAgentDb.server", () => ({ dashboardAgentDb: {} }));
 vi.mock("@internal/dashboard-agent-db", async (importOriginal) => ({
   ...((await importOriginal()) as Record<string, unknown>),
   chatExists: async () => true,
+  getChatScope: async () => ({ kind: null, metadata: {} }),
 }));
 vi.mock("~/services/session.server", () => ({
   requireUser: async () => ({ id: "usr_real", admin: false, isImpersonating: false }),

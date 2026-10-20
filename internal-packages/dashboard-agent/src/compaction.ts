@@ -174,13 +174,13 @@ export function describeDurableState(uiMessages: UIMessage[]): string | undefine
     const revision =
       investigation.revision === undefined ? "" : ` (revision ${investigation.revision})`;
     lines.push(
-      `Investigation ${investigation.id}${revision} — "${investigation.title}", currently ${investigation.outcome}. To revise this card pass investigationId "${investigation.id}" to render_view; never open a second card for it.`
+      `Investigation ${investigation.id}${revision} - "${investigation.title}", currently ${investigation.outcome}. To revise this card pass investigationId "${investigation.id}" to render_view; never open a second card for it.`
     );
   }
 
   if (lines.length === 0) return undefined;
   return [
-    "[Still live in this conversation — these survived the summary and are exact, so prefer them over anything the summary says about them]",
+    "[Still live in this conversation - these survived the summary and are exact, so prefer them over anything the summary says about them]",
     ...lines,
   ].join("\n");
 }

@@ -1,34 +1,43 @@
-import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
+import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { z } from "zod";
+import { prisma } from "~/db.server";
+import { findProjectByRef } from "~/models/project.server";
 import {
   ApiAlertChannelPresenter,
   ApiCreateAlertChannel,
 } from "~/presenters/v3/ApiAlertChannelPresenter.server";
 import { logger } from "~/services/logger.server";
-import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
-import { CreateAlertChannelService } from "~/v3/services/alerts/createAlertChannel.server";
+import {
+  alertsEnvironmentForbidden,
+  alertsInAnyEnvironment,
+  monitoringAlertsRouteContext,
+} from "~/services/monitoringAlertsApi.server";
+import { createActionPATApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import {
+  AlertChannelChangedError,
+  type CreateAlertChannelOptions,
+  CreateAlertChannelService,
+} from "~/v3/services/alerts/createAlertChannel.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
 });
 
-export async function action({ request, params }: ActionFunctionArgs) {
-  try {
-    const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
-
-    if (!authenticationResult) {
+export const action = createActionPATApiRoute(
+  {
+    method: "POST",
+    params: ParamsSchema,
+    context: monitoringAlertsRouteContext,
+    authorization: { action: "write", resource: alertsInAnyEnvironment },
+  },
+  async ({ request, params, authentication, ability }) => {
+    if (authentication.userActor) {
       return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
     }
 
-    const parsedParams = ParamsSchema.safeParse(params);
-
-    if (!parsedParams.success) {
-      return json({ error: "Invalid Params" }, { status: 400 });
-    }
-
-    const { projectRef } = parsedParams.data;
+    const { projectRef } = params;
 
     const rawBody = await request.json();
 
@@ -36,6 +45,25 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
     if (!body.success) {
       return json({ error: "Invalid request body", issues: body.error.issues }, { status: 400 });
+    }
+
+    const environmentTypes: RuntimeEnvironmentType[] =
+      body.data.environmentTypes.length === 0
+        ? ["STAGING", "PRODUCTION"]
+        : [...body.data.environmentTypes];
+    let authorizedChannel: CreateAlertChannelOptions["authorizedChannel"];
+    if (body.data.deduplicationKey) {
+      const project = await findProjectByRef(projectRef, authentication.userId);
+      authorizedChannel = project
+        ? await prisma.projectAlertChannel.findFirst({
+            where: { projectId: project.id, deduplicationKey: body.data.deduplicationKey },
+            select: { id: true, environmentTypes: true },
+          })
+        : undefined;
+      environmentTypes.push(...(authorizedChannel?.environmentTypes ?? []));
+    }
+    if (!environmentTypes.every((envType) => ability.can("write", { type: "alerts", envType }))) {
+      return alertsEnvironmentForbidden("write");
     }
 
     const service = new CreateAlertChannelService();
@@ -46,7 +74,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
           return json({ error: "Email is required" }, { status: 422 });
         }
 
-        const alertChannel = await service.call(projectRef, authenticationResult.userId, {
+        const alertChannel = await service.call(projectRef, authentication.userId, {
           name: body.data.name,
           alertTypes: body.data.alertTypes.map((type) =>
             ApiAlertChannelPresenter.alertTypeFromApi(type)
@@ -56,6 +84,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
             email: body.data.channelData.email,
           },
           deduplicationKey: body.data.deduplicationKey,
+          authorizedChannel,
           environmentTypes: body.data.environmentTypes,
         });
 
@@ -69,7 +98,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
         // The webhook URL is validated in CreateAlertChannelService.call();
         // an unsafe URL surfaces as a ServiceValidationError -> 422 below.
-        const alertChannel = await service.call(projectRef, authenticationResult.userId, {
+        const alertChannel = await service.call(projectRef, authentication.userId, {
           name: body.data.name,
           alertTypes: body.data.alertTypes.map((type) =>
             ApiAlertChannelPresenter.alertTypeFromApi(type)
@@ -80,6 +109,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
             secret: body.data.channelData.secret,
           },
           deduplicationKey: body.data.deduplicationKey,
+          authorizedChannel,
           environmentTypes: body.data.environmentTypes,
         });
 
@@ -88,6 +118,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
       return json({ error: "Invalid channel type" }, { status: 422 });
     } catch (error) {
+      if (error instanceof AlertChannelChangedError) {
+        return json({ error: error.message }, { status: 409 });
+      }
       if (error instanceof ServiceValidationError) {
         return json({ error: error.message }, { status: 422 });
       }
@@ -95,12 +128,5 @@ export async function action({ request, params }: ActionFunctionArgs) {
       logger.error("Failed to create alert channel", { error, projectRef });
       return json({ error: "Something went wrong, please try again." }, { status: 500 });
     }
-  } catch (error) {
-    if (error instanceof Response) throw error;
-    logger.error("Failed to create alert channel (outer)", {
-      error,
-      projectRef: params.projectRef,
-    });
-    return json({ error: "Internal Server Error" }, { status: 500 });
   }
-}
+);

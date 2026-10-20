@@ -1,6 +1,5 @@
 import type { ToolSet } from "ai";
 import { buildRepoTools } from "./repo-tools";
-import { buildAlertTools } from "./tool-alerts";
 import { buildApiTools } from "./tool-api";
 import { createApiClient } from "./tool-api-client";
 import { buildFeedbackTool } from "./tool-feedback";
@@ -8,6 +7,8 @@ import { createInvestigationRenderer } from "./tool-investigations";
 import { buildLocateTool } from "./tool-locate";
 import { buildNavigationTools } from "./tool-navigation";
 import { createSourceReadLedger } from "./tool-source-ledger";
+import { buildMonitoringAlertTools } from "./tool-monitoring-alerts";
+import { buildWatchSubscriptionTools } from "./tool-watch-subscriptions";
 import { buildWatchTools } from "./watch-tools";
 import type { DashboardAgentToolContext } from "./tool-context";
 
@@ -47,9 +48,15 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     ...buildNavigationTools({ ctx, environmentIdFor: client.environmentIdFor }),
     // Alerts exist only to report a watch firing, so they come and go with the watch tool.
     ...(ctx.watchEnabled
-      ? { ...buildWatchTools({ ctx, reads: ledger }), ...buildAlertTools({ ctx, client }) }
+      ? {
+          ...buildWatchTools({ ctx, reads: ledger }),
+          ...buildWatchSubscriptionTools({ ctx, client }),
+        }
       : {}),
     ...buildLocateTool({ ctx, client, reads: ledger }),
+    ...(ctx.watchEnabled || ctx.toolScope === "alert_creation"
+      ? buildMonitoringAlertTools({ ctx, client })
+      : {}),
     ...buildFeedbackTool({ ctx, client }),
   };
 

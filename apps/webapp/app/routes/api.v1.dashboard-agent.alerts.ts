@@ -16,8 +16,10 @@ import {
   watchAlertDeduplicationKey,
 } from "~/services/dashboardAgentWatchAlerts.server";
 import { logger } from "~/services/logger.server";
+import { rbac } from "~/services/rbac.server";
 import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
 import { canUseDashboardAgentWatches } from "~/v3/canUseDashboardAgentWatches.server";
+import { canAcrossEnvironments } from "~/v3/services/dashboardResourceAccess.server";
 
 /**
  * `GET` lists this chat's project's watch alerts; `POST` subscribes the user's email. Only
@@ -168,6 +170,13 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: "Alerts are not available here", code: gate.reason }, { status: 403 });
   }
 
+  const access = await rbac.authenticateUserActor(request, {
+    organizationId: environment.organizationId,
+    projectId: environment.project.id,
+  });
+  if (!access.ok) {
+    return json({ error: access.error }, { status: access.status });
+  }
   // Only the signed-in user's own account email may be subscribed. Read off the
   // primary: this is the identity the subscription is pinned to.
   const user = await prisma.user.findFirst({ where: { id: userId }, select: { email: true } });
@@ -186,16 +195,31 @@ export async function action({ request }: ActionFunctionArgs) {
     );
   }
 
+  const deduplicationKey = watchAlertDeduplicationKey(email);
+  const existing = await prisma.projectAlertChannel.findFirst({
+    where: { projectId: environment.project.id, deduplicationKey },
+    select: { environmentTypes: true },
+  });
+  const environmentTypes = [...(existing?.environmentTypes ?? []), environment.type];
+  if (!canAcrossEnvironments(access.ability, "write", "alerts", environmentTypes)) {
+    return json({ error: "You don't have permission to manage alerts" }, { status: 403 });
+  }
+
   try {
     const channel = await subscribeChannelToWatchAlerts({
       userId,
       email,
       // Stable per (email, project), so asking twice re-enables one channel and asking from
       // a second environment adds that environment to it.
-      deduplicationKey: watchAlertDeduplicationKey(email),
+      deduplicationKey,
       environmentType: environment.type,
       project: environment.project,
+      authorize: (environmentTypes) =>
+        canAcrossEnvironments(access.ability, "write", "alerts", environmentTypes),
     });
+    if ("denied" in channel) {
+      return json({ error: "You don't have permission to manage alerts" }, { status: 403 });
+    }
 
     return json({ id: channel.id, type: channel.type, target: email, enabled: channel.enabled });
   } catch (error) {

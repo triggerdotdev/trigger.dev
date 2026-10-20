@@ -1,4 +1,5 @@
 import { DASHBOARD_AGENT_ENV_JWT_SCOPES } from "@internal/dashboard-agent/tool-schemas";
+import { toolSchemasFor } from "@internal/dashboard-agent/prompt-assembly";
 import { buildJwtAbility } from "@trigger.dev/rbac";
 import { describe, expect, it, vi } from "vitest";
 
@@ -102,5 +103,18 @@ describe("what the agent's delegated token may read", () => {
     }
     expect(ability.can("write", { type: "runs" })).toBe(false);
     expect(ability.canSuper()).toBe(false);
+  });
+});
+
+describe("alert_creation tool scope", () => {
+  it("fails when a chat with clientData.toolScope=alert_creation still exposes create_monitoring_alert", () => {
+    const tools = toolSchemasFor("assistant", { watchEnabled: true, scope: "alert_creation" });
+    expect(tools).not.toHaveProperty("create_monitoring_alert");
+    expect(tools).not.toHaveProperty("resolve_monitoring_alert");
+    expect(tools).not.toHaveProperty("list_monitoring_alerts");
+    expect(tools).toHaveProperty("update_alert_draft");
+    expect(tools).toHaveProperty("describe_alert_capabilities");
+    expect(tools).toHaveProperty("list_runs");
+    expect(tools).toHaveProperty("run_query");
   });
 });

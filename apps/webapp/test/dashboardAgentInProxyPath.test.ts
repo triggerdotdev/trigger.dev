@@ -14,6 +14,7 @@ import { afterEach, expect, describe, vi } from "vitest";
 const ctx = vi.hoisted(() => ({
   agentDb: undefined as unknown as DashboardAgentDb,
   watchEnabled: true,
+  mintOpts: [] as Array<{ environmentId: string; alertWrites?: unknown }>,
 }));
 
 vi.mock("~/services/dashboardAgentDb.server", () => ({
@@ -52,8 +53,11 @@ vi.mock("~/services/dashboardAgent.server", () => ({
   mintDashboardAgentToken: async () => "pat",
   mintDashboardAgentUserActorToken: async (
     _userId: string,
-    { environmentId }: { environmentId: string }
-  ) => `uat_${environmentId}`,
+    opts: { environmentId: string; alertWrites?: unknown }
+  ) => {
+    ctx.mintOpts.push(opts);
+    return `uat_${opts.environmentId}`;
+  },
   resolveDashboardAgentRepoSnapshot: async () => null,
   startDashboardAgentSession: async () => ({ publicAccessToken: "pat" }),
 }));
@@ -201,6 +205,32 @@ describe("the dashboard agent in-proxy path", () => {
         environmentId: "env_proj_web_dev",
         userActorToken: "uat_env_proj_web_dev",
       });
+    },
+    30_000
+  );
+
+  postgresTest(
+    "asks for the alert write cap only when the turn has watch tools",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response("{}", { status: 200 }))
+      );
+      const chatId = await createChatIn("api");
+
+      ctx.mintOpts = [];
+      expect((await postTurn("api", chatId)).status).toBe(200);
+      expect(ctx.mintOpts.at(-1)?.alertWrites).toBeDefined();
+
+      ctx.watchEnabled = false;
+      try {
+        expect((await postTurn("api", chatId)).status).toBe(200);
+        expect(ctx.mintOpts).toHaveLength(2);
+        expect(ctx.mintOpts.at(-1)?.alertWrites).toBeUndefined();
+      } finally {
+        ctx.watchEnabled = true;
+      }
     },
     30_000
   );

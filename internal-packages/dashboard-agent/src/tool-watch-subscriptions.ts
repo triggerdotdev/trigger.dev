@@ -1,13 +1,18 @@
 import { tool, type ToolSet } from "ai";
-import { createAlertSchema, deleteAlertSchema, listAlertsSchema } from "./tool-schemas";
+import {
+  createWatchSubscriptionSchema,
+  deleteWatchSubscriptionSchema,
+  listWatchSubscriptionsSchema,
+} from "./tool-schemas";
 import { NO_AUTH, type DashboardAgentApiClient } from "./tool-api-client";
 import type { DashboardAgentToolContext } from "./tool-context";
 
 /**
- * The alert tools and the request helper they share. Project-level, so these use the
- * delegated token and never the env JWT, and a 403 is a capability refusal to explain.
+ * The watch subscription tools and the request helper they share. Project-level, so
+ * these use the delegated token and never the env JWT, and a 403 is a capability
+ * refusal to explain.
  */
-export function buildAlertTools(args: {
+export function buildWatchSubscriptionTools(args: {
   ctx: DashboardAgentToolContext;
   client: DashboardAgentApiClient;
 }): ToolSet {
@@ -60,8 +65,8 @@ export function buildAlertTools(args: {
   return {
     // Project-level, so these use the delegated token, not the env JWT. Every call
     // carries the chat id, which is what the API scopes its authorization through.
-    list_alerts: tool({
-      ...listAlertsSchema,
+    list_watch_subscriptions: tool({
+      ...listWatchSubscriptionsSchema,
       execute: async () => {
         if (!hasAuth) return NO_AUTH;
         if (!ctx.chatId) return { error: "No chat is available to read alerts from." };
@@ -75,8 +80,8 @@ export function buildAlertTools(args: {
       },
     }),
 
-    create_alert: tool({
-      ...createAlertSchema,
+    create_watch_subscription: tool({
+      ...createWatchSubscriptionSchema,
       execute: async ({ email }) => {
         if (!hasAuth) return NO_AUTH;
         if (!ctx.chatId) return { error: "No chat is available to create an alert from." };
@@ -91,8 +96,8 @@ export function buildAlertTools(args: {
       },
     }),
 
-    delete_alert: tool({
-      ...deleteAlertSchema,
+    delete_watch_subscription: tool({
+      ...deleteWatchSubscriptionSchema,
       execute: async ({ alertId }) => {
         if (!hasAuth) return NO_AUTH;
         if (!ctx.chatId) return { error: "No chat is available to change alerts from." };

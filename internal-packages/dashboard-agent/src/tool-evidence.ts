@@ -133,21 +133,21 @@ function canonicalizeEvidence(
           `source "${path}" wasn't read at commit ${claimed.slice(
             0,
             7
-          )} — read_file it at that commit, or cite the commit you did read it at`
+          )} - read_file it at that commit, or cite the commit you did read it at`
         );
         continue;
       }
       const sha = claimed || reads.shaForReadPath(path);
       if (!sha) {
         errors.push(
-          `source "${path}" wasn't read this turn — read it with read_file first, then cite it`
+          `source "${path}" wasn't read this turn - read it with read_file first, then cite it`
         );
         continue;
       }
       const preferred = preferFromScopes(reads.scopesForSourceRead(path, sha), base);
       if (!preferred.ok) {
         errors.push(
-          `source "${path}" was read from more than one environment this turn — cite the one you mean`
+          `source "${path}" was read from more than one environment this turn - cite the one you mean`
         );
         continue;
       }
@@ -183,7 +183,7 @@ function canonicalizeEvidence(
           : false;
         errors.push(
           `${ref} belongs to a different project or environment` +
-            (ambiguous ? " (it was read from more than one this turn — cite the one you mean)" : "")
+            (ambiguous ? " (it was read from more than one this turn - cite the one you mean)" : "")
         );
         continue;
       }
@@ -220,7 +220,7 @@ function canonicalizeEvidence(
         const preferred = preferFromScopes(reads.scopesForScopedRead(kind, id), base);
         if (!preferred.ok) {
           errors.push(
-            `${kind} ${ref} was read from more than one environment this turn — cite the one you mean`
+            `${kind} ${ref} was read from more than one environment this turn - cite the one you mean`
           );
           continue;
         }

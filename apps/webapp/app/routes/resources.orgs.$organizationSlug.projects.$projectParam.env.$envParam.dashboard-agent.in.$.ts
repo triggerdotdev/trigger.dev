@@ -1,4 +1,5 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { parseAlertCreationDraft } from "@internal/dashboard-agent-contracts";
 import {
   checkMessageParts,
   declaredBodyBytes,
@@ -8,7 +9,7 @@ import {
   MESSAGE_TOO_LARGE_ERROR,
 } from "~/components/dashboard-agent/message-limits";
 import { MESSAGE_QUOTA_REACHED_ERROR } from "~/components/dashboard-agent/message-quota";
-import { chatExists } from "@internal/dashboard-agent-db";
+import { getChatScope } from "@internal/dashboard-agent-db";
 import { findProjectWithOrgFlagsBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
@@ -49,7 +50,7 @@ const FORWARDED_HEADERS = [
 // `repoSnapshot` is the dangerous one to smuggle past this: its `tarballUrl` is fetched and
 // extracted on the agent worker, so a client-supplied one is SSRF from inside the worker
 // network plus an attacker-controlled untar.
-const CLIENT_METADATA_KEYS = ["currentPage", "pageContext"] as const;
+const CLIENT_METADATA_KEYS = ["currentPage", "pageContext", "alertDraft"] as const;
 
 // The one upstream path the SDK sends through this proxy. The id group is the
 // server-minted shape: `chat_<nanoid>` and `chat_<sha256 prefix>`.
@@ -63,7 +64,29 @@ export function pickAgentClientMetadata(
   for (const key of CLIENT_METADATA_KEYS) {
     if (metadata[key] !== undefined) picked[key] = metadata[key];
   }
+  if (picked.alertDraft !== undefined) {
+    const draft = parseAlertCreationDraft(picked.alertDraft);
+    if (draft) picked.alertDraft = draft;
+    else delete picked.alertDraft;
+  }
   return picked;
+}
+
+export function withChatScope(
+  picked: Record<string, unknown>,
+  chat: { kind: string | null; metadata: Record<string, unknown> }
+): Record<string, unknown> {
+  if (chat.kind !== "alert_creation") return picked;
+  const stored = pickAgentClientMetadata(
+    (chat.metadata.context as Record<string, unknown> | undefined) ?? {}
+  );
+  return {
+    ...picked,
+    toolScope: "alert_creation",
+    ...(picked.alertDraft === undefined && stored.alertDraft !== undefined
+      ? { alertDraft: stored.alertDraft }
+      : {}),
+  };
 }
 
 function tooLarge() {
@@ -118,16 +141,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
   if (!runtimeEnv) return json({ error: "Environment not found" }, { status: 404 });
   const environmentAddress = dashboardAgentEnvironmentAddress(runtimeEnv);
 
-  if (
-    !(await chatExists(dashboardAgentDb, {
-      chatId,
-      userId: user.id,
-      actingUserId,
-      organizationId: project.organizationId,
-    }))
-  ) {
-    return json({ error: "Chat not found" }, { status: 404 });
-  }
+  const chat = await getChatScope(dashboardAgentDb, {
+    chatId,
+    userId: user.id,
+    actingUserId,
+    organizationId: project.organizationId,
+  });
+  if (!chat) return json({ error: "Chat not found" }, { status: 404 });
 
   // Null without a connected GitHub repo, and the agent stays in assistant mode.
   const repoSnapshot = await resolveDashboardAgentRepoSnapshot(project.id);
@@ -182,12 +202,22 @@ export async function action({ request, params }: ActionFunctionArgs) {
         }
       }
 
+      const watchEnabled =
+        !actingUserId &&
+        (await canUseDashboardAgentWatches({
+          userId: user.id,
+          organizationSlug,
+          orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+        }));
+
       let userActorToken: string;
       try {
         userActorToken = await mintDashboardAgentUserActorToken(user.id, {
           environmentId: runtimeEnv.id,
+          ...(watchEnabled ? { alertWrites: { request } } : {}),
         });
       } catch (error) {
+        if (error instanceof Response) throw error;
         logger.error("Dashboard agent in-proxy could not mint a token", {
           error,
           upstreamPath,
@@ -197,15 +227,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
       }
 
       parsed.payload.metadata = {
-        ...pickAgentClientMetadata(parsed.payload.metadata),
+        ...withChatScope(pickAgentClientMetadata(parsed.payload.metadata), chat),
         // Resolved per turn, server-side: off means no watch tools and no watch guidance.
-        watchEnabled:
-          !actingUserId &&
-          (await canUseDashboardAgentWatches({
-            userId: user.id,
-            organizationSlug,
-            orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
-          })),
+        watchEnabled,
         userActorToken,
         apiOrigin: userApiOrigin,
         projectRef: project.externalRef,
@@ -244,6 +268,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       headers: { "content-type": upstream.headers.get("content-type") ?? "application/json" },
     });
   } catch (error) {
+    if (error instanceof Response) throw error;
     logger.error("Dashboard agent in-proxy failed", { error, upstreamPath, organizationSlug });
     return json({ error: "The dashboard agent couldn't reach the run." }, { status: 502 });
   }

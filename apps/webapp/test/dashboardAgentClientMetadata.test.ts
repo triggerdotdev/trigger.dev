@@ -54,6 +54,8 @@ vi.mock("~/services/clickhouse/clickhouseFactoryInstance.server", () => ({
 vi.mock("@internal/dashboard-agent-db", async (importOriginal) => ({
   ...((await importOriginal()) as Record<string, unknown>),
   chatExists: mocks.chatExists,
+  getChatScope: async (...args: any[]) =>
+    (await mocks.chatExists(...args)) ? { kind: null, metadata: {} } : null,
 }));
 vi.mock("~/services/logger.server", () => ({
   logger: { debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() },

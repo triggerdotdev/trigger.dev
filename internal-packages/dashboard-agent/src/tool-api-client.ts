@@ -86,6 +86,43 @@ export async function apiGet(
   }
 }
 
+/** Same shape and timeout as `apiGet`, for a delegated-token POST with a JSON body. */
+export async function apiPost(
+  origin: string,
+  path: string,
+  token: string,
+  body?: unknown
+): Promise<FetchResult> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    Accept: "application/json",
+    ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+  };
+  let res: Response;
+  try {
+    res = await fetch(`${origin}${path}`, {
+      method: "POST",
+      headers,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      signal: AbortSignal.timeout(GET_TIMEOUT_MS),
+    });
+  } catch (error) {
+    return { ok: false, transport: (error as Error).message };
+  }
+  if (!res.ok) {
+    try {
+      return { ok: false, status: res.status, data: await res.json() };
+    } catch {
+      return { ok: false, status: res.status };
+    }
+  }
+  try {
+    return { ok: true, data: await res.json() };
+  } catch (error) {
+    return { ok: false, transport: (error as Error).message };
+  }
+}
+
 /** Which environment a read is aimed at. Explicit on every call: one turn may read two. */
 export type EnvTarget = { projectRef: string; environmentName: string; branch?: string };
 

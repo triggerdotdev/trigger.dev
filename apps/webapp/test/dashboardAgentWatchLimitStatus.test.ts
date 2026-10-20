@@ -69,7 +69,11 @@ async function seed(prisma: PrismaClient) {
   });
   const organization = await prisma.organization.create({
     // Watches are flagged off by default, so this suite's org opts in.
-    data: { title: slug, slug, featureFlags: { dashboardAgentWatchEnabled: true } },
+    data: {
+      title: slug,
+      slug,
+      featureFlags: { dashboardAgentWatchEnabled: true, alertsEnabled: true },
+    },
   });
   await prisma.orgMember.create({
     data: { organizationId: organization.id, userId: user.id, role: "ADMIN" },

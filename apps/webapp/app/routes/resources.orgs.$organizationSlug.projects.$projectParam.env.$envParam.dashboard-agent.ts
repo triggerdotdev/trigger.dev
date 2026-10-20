@@ -1,10 +1,13 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import {
+  appendChatMessageOnceByChatId,
   chatExists,
   countUnreadWatchWakes,
   countChatsWithUnreadWork,
+  ALERT_CREATION_CHAT_TITLE,
   createChat,
   getChatMessages,
+  getChatScope,
   getSession,
   getWatch,
   listChatIdsWithOpenInvestigations,
@@ -29,9 +32,12 @@ import {
   MESSAGE_TOO_LARGE_ERROR,
 } from "~/components/dashboard-agent/message-limits";
 import { MESSAGE_QUOTA_REACHED_ERROR } from "~/components/dashboard-agent/message-quota";
+import { alertCreationOpeningMessage } from "~/components/alerts/alertCreatedCard";
 import { MAX_URIS_PER_RESOLVE_REQUEST } from "~/components/dashboard-agent/resolve-uris";
+import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
+import { listAlertRoutedChatIds } from "~/v3/services/alerts/storage/listAlertRoutedChatIds.server";
 import { findProjectWithOrgFlagsBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
@@ -69,14 +75,19 @@ import { getImpersonatorUserId, requireUser } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
 import { canUseDashboardAgentWatches } from "~/v3/canUseDashboardAgentWatches.server";
+import { canAcrossEnvironments } from "~/v3/services/dashboardResourceAccess.server";
 // The client-metadata whitelist lives with the `in` proxy, the other mint site, so the two cannot
 // drift apart.
-import { pickAgentClientMetadata } from "./resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.dashboard-agent.in.$";
+import {
+  pickAgentClientMetadata,
+  withChatScope,
+} from "./resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.dashboard-agent.in.$";
 
 const ActionBody = z.object({
   intent: z.enum([
     "start",
     "create",
+    "create-session",
     "token",
     "rename",
     "pin",
@@ -222,6 +233,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       try {
         browserSession = { ...session, publicAccessToken: await mintDashboardAgentToken(chatId) };
       } catch (error) {
+        if (error instanceof Response) throw error;
         logger.error("Dashboard agent chat read could not mint a browser token", {
           chatId,
           error,
@@ -232,10 +244,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     return json({ messages, session: browserSession });
   }
 
+  const alertRoutedChatIds = await listAlertRoutedChatIds($replica, project.organizationId);
   const chats = await listChats(dashboardAgentDb, {
     organizationId: project.organizationId,
     userId,
     actingUserId,
+    withMessagesOnly: true,
+    alertRoutedChatIds,
   });
 
   const watchEnabled =
@@ -295,6 +310,21 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     unreadWakes,
   });
 };
+
+async function alertWriteAuthorizer(
+  request: Request,
+  userId: string,
+  environment: { organizationId: string; project: { id: string } }
+) {
+  const { rbac } = await import("~/services/rbac.server");
+  const auth = await rbac.authenticateSession(request, {
+    userId,
+    organizationId: environment.organizationId,
+    projectId: environment.project.id,
+  });
+  return (environmentTypes: RuntimeEnvironmentType[]) =>
+    auth.ok && canAcrossEnvironments(auth.ability, "write", "alerts", environmentTypes);
+}
 
 function messageTooLarge() {
   return json({ error: MESSAGE_TOO_LARGE_ERROR, code: MESSAGE_TOO_LARGE_CODE }, { status: 413 });
@@ -415,6 +445,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             watchEnabled,
             userActorToken: await mintDashboardAgentUserActorToken(userId, {
               environmentId: runtimeEnv.id,
+              ...(watchEnabled ? { alertWrites: { request } } : {}),
             }),
             apiOrigin: dashboardAgentUserApiOrigin(),
             projectRef: project.externalRef,
@@ -500,6 +531,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       try {
         publicAccessToken = await mintDashboardAgentToken(chatId);
       } catch (error) {
+        if (error instanceof Response) throw error;
         // The start resolved, so the session is live and a head start is already streaming into
         // it. Deleting the chat here would hide a running agent; the client can ask for a token
         // again through the `token` intent.
@@ -515,11 +547,52 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       }
       return json({ chatId, publicAccessToken, headStarted });
     } catch (error) {
+      if (error instanceof Response) throw error;
       logger.error("Failed to create dashboard agent chat", { chatId, error, organizationSlug });
       return json(
         { error: "The dashboard agent couldn't start. Please try again in a moment." },
         { status: 500 }
       );
+    }
+  }
+
+  if (parsed.data.intent === "create-session") {
+    if (!isDashboardAgentConfigured()) {
+      return json({ error: "The dashboard agent is not configured." }, { status: 501 });
+    }
+
+    const quota = await resolveAgentMessageQuota(dashboardAgentDb, {
+      organizationId: project.organizationId,
+    });
+    if (quota?.reached) {
+      return json({ error: MESSAGE_QUOTA_REACHED_ERROR, limit: quota.limit }, { status: 403 });
+    }
+
+    const chatId = generateFriendlyId("chat");
+    try {
+      await createChat(dashboardAgentDb, {
+        id: chatId,
+        organizationId: project.organizationId,
+        userId,
+        kind: "alert_creation",
+        title: ALERT_CREATION_CHAT_TITLE,
+      });
+      await appendCreationOpening({
+        chatId,
+        userId,
+        actingUserId,
+        organizationId: project.organizationId,
+      });
+
+      return json({ chatId, headStarted: false });
+    } catch (error) {
+      if (error instanceof Response) throw error;
+      logger.error("Failed to create dashboard agent session", {
+        chatId,
+        error,
+        organizationSlug,
+      });
+      return json({ error: "Couldn't create the session. Please try again." }, { status: 500 });
     }
   }
 
@@ -553,7 +626,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         return json({ error: "uris is required" }, { status: 400 });
       }
       uris = [...new Set(list as string[])];
-    } catch {
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
       return json({ error: "uris is required" }, { status: 400 });
     }
 
@@ -603,7 +677,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         return json({ error: "That watch isn't valid.", code: "invalid_request" }, { status: 400 });
       }
       draft = result.data;
-    } catch {
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
       return json({ error: "That watch isn't valid.", code: "invalid_request" }, { status: 400 });
     }
 
@@ -641,6 +716,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       chatId: targetChatId,
       clientRequestId,
       draft,
+      authorizeAlerts: draft.followUp.notifyExternally
+        ? await alertWriteAuthorizer(request, userId, environment)
+        : () => false,
     });
 
     if (!result.ok) {
@@ -671,16 +749,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         return json({ error: "The dashboard agent is not configured." }, { status: 501 });
       }
       // Resume only, so a client-supplied chatId is checked against the caller first.
-      if (
-        !(await chatExists(dashboardAgentDb, {
-          chatId,
-          userId,
-          actingUserId,
-          organizationId: project.organizationId,
-        }))
-      ) {
-        return json({ error: "Chat not found" }, { status: 404 });
-      }
+      const chat = await getChatScope(dashboardAgentDb, {
+        chatId,
+        userId,
+        actingUserId,
+        organizationId: project.organizationId,
+      });
+      if (!chat) return json({ error: "Chat not found" }, { status: 404 });
       let clientData: Record<string, unknown> | undefined;
       try {
         clientData = parsed.data.clientData
@@ -706,7 +781,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             userId,
           }),
           clientData: {
-            ...pickAgentClientMetadata(clientData),
+            ...withChatScope(pickAgentClientMetadata(clientData), chat),
             // Server-resolved, like every other field here: the resumed run's first turn
             // gets no watch tools while the flag is off.
             watchEnabled:
@@ -724,6 +799,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           },
         });
       } catch (error) {
+        if (error instanceof Response) throw error;
         logger.error("Failed to start dashboard agent session", {
           chatId,
           error,
@@ -738,6 +814,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       try {
         return json({ publicAccessToken: await mintDashboardAgentToken(chatId) });
       } catch (error) {
+        if (error instanceof Response) throw error;
         // The session is live and idles out on its own if the client never comes back.
         logger.error("Dashboard agent chat resumed but its token mint failed", {
           chatId,
@@ -859,3 +936,21 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
   }
 };
+
+async function appendCreationOpening(params: {
+  chatId: string;
+  userId: string;
+  actingUserId?: string;
+  organizationId: string;
+}) {
+  const { chatId } = params;
+  try {
+    await appendChatMessageOnceByChatId(dashboardAgentDb, {
+      chatId,
+      message: alertCreationOpeningMessage(chatId),
+    });
+    await markChatRead(dashboardAgentDb, params);
+  } catch (error) {
+    logger.error("Failed to append the alert creation opening message", { chatId, error });
+  }
+}
