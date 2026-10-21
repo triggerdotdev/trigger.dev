@@ -272,6 +272,11 @@ export type TaskRunExecutionSnapshotStoreOptions = {
    * read whose head carries completed waitpoints.
    */
   resolveCompletedWaitpoints?: CompletedWaitpointResolver;
+  /** Optional application hook with the trusted owner from the already-read snapshot entry. */
+  resolveCompletedWaitpointsWithContext?: (
+    args: Parameters<CompletedWaitpointResolver>[0],
+    context: { organizationId: string }
+  ) => ReturnType<CompletedWaitpointResolver>;
   /**
    * The primary-read repair seam. When MemoryDB names the authoritative mirrored head id but hydrating
    * THAT exact row from the caller's read client returns null (a lagging read replica), the row is
@@ -719,6 +724,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   readonly #newToken: () => string;
   readonly #resolvePending: TaskRunExecutionSnapshotStoreOptions["resolvePending"];
   readonly #resolveCompletedWaitpoints?: CompletedWaitpointResolver;
+  readonly #resolveCompletedWaitpointsWithContext: TaskRunExecutionSnapshotStoreOptions["resolveCompletedWaitpointsWithContext"];
   readonly #resolvePrimaryReadClient?: (runId: string) => ReadClient | undefined;
   readonly #redisPrimaryBirthReady: () => boolean;
   readonly #metrics?: SnapshotDecoratorMetrics;
@@ -742,6 +748,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     this.#newToken = options.generateTransitionToken ?? (() => generateInternalId());
     this.#resolvePending = options.resolvePending;
     this.#resolveCompletedWaitpoints = options.resolveCompletedWaitpoints;
+    this.#resolveCompletedWaitpointsWithContext = options.resolveCompletedWaitpointsWithContext;
     this.#resolvePrimaryReadClient = options.resolvePrimaryReadClient;
     this.#redisPrimaryBirthReady = options.redisPrimaryBirthReady ?? (() => true);
     this.#metrics = options.metrics;
@@ -1560,16 +1567,21 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       if (cw.distinctIds.length > 0 && cw.records.length === 0) {
         throw new SnapshotReadUnavailableError(runId, "redis-primary cycle records missing");
       }
-      if (!this.#resolveCompletedWaitpoints) {
+      if (!this.#resolveCompletedWaitpoints && !this.#resolveCompletedWaitpointsWithContext) {
         throw new SnapshotReadUnavailableError(runId, "no completed-waitpoint resolver");
       }
-      completedWaitpoints = await this.#resolveCompletedWaitpoints({
+      const args = {
         runId,
         batchId: entry.batchId,
         pointer: head.cycle,
         order: cw.order,
         records: cw.records,
-      });
+      };
+      completedWaitpoints = this.#resolveCompletedWaitpointsWithContext
+        ? await this.#resolveCompletedWaitpointsWithContext(args, {
+            organizationId: entry.organizationId,
+          })
+        : await this.#resolveCompletedWaitpoints!(args);
       completedWaitpointOrder = cw.order;
     }
 

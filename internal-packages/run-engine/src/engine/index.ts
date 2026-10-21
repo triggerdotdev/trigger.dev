@@ -466,6 +466,7 @@ export class RunEngine {
     });
 
     this.waitpointSystem = new WaitpointSystem({
+      waitpointStoreEnabled: options.waitpointStoreEnabled,
       resources,
       executionSnapshotSystem: this.executionSnapshotSystem,
       enqueueSystem: this.enqueueSystem,
