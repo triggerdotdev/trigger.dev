@@ -1119,6 +1119,27 @@
         "producer": true
       },
       "notes": ""
+    },
+    {
+      "id": "hookdeck",
+      "label": "Hookdeck",
+      "category": "hosting-infra",
+      "tier": "first-class",
+      "preset": null,
+      "signatureScheme": "hmac-sha256",
+      "aiRelevance": "medium",
+      "popularity": "medium",
+      "sampleSource": "handauthored",
+      "docsUrl": "https://hookdeck.com/docs/authentication",
+      "status": "complete",
+      "owner": "hookdeck-provider",
+      "checklist": {
+        "registryEntry": true,
+        "samples": true,
+        "roundTrip": true,
+        "producer": true
+      },
+      "notes": "relay: body is the upstream provider's payload; x-hookdeck-signature-2 carries the previous secret while a rotation is in progress"
     }
   ]
 }
