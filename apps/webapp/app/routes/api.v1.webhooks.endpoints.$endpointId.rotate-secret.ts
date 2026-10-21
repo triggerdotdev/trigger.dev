@@ -1,18 +1,13 @@
 import { json } from "@remix-run/server-runtime";
+import { RotateWebhookEndpointSecretRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { webhookPrisma } from "~/db.server";
 import { webhookEndpointLookup } from "~/v3/webhookEndpointLookup";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { safeJsonParse } from "~/utils/json";
-import { PreviousSecretTtlSeconds } from "~/v3/webhookSigningSecret";
 import { generateWebhookSigningSecret } from "~/v3/webhookSigningSecret.server";
 
 const ParamsSchema = z.object({ endpointId: z.string() });
-
-/** Optional: existing callers POST with no body, which keeps the replace-immediately behavior. */
-const RotateSecretRequestBody = z.object({
-  previousSecretTtlSeconds: PreviousSecretTtlSeconds.optional(),
-});
 
 // POST /api/v1/webhooks/endpoints/:endpointId/rotate-secret — mint a new signing secret and return
 // it ONCE. Only for schemes we generate (hmac / shared-secret); asymmetric endpoints set a public key.
@@ -26,7 +21,9 @@ const { action, loader } = createActionApiRoute(
   },
   async ({ params, authentication, request }) => {
     const rawBody = await request.text();
-    const body = RotateSecretRequestBody.safeParse(rawBody ? safeJsonParse(rawBody) : {});
+    const body = RotateWebhookEndpointSecretRequestBody.safeParse(
+      rawBody ? safeJsonParse(rawBody) : {}
+    );
     if (!body.success) {
       return json({ error: "Invalid request body", issues: body.error.issues }, { status: 400 });
     }

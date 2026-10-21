@@ -146,11 +146,33 @@ export type WebhookDeliveryObject = z.infer<typeof WebhookDeliveryObject>;
 
 // ── Write actions ──
 
+export const MAX_WEBHOOK_PREVIOUS_SECRET_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+/**
+ * How long, in seconds, the secret being replaced keeps verifying deliveries (at most 7 days). Omit it
+ * or pass 0 to replace the secret immediately.
+ */
+export const WebhookPreviousSecretTtlSeconds = z
+  .number()
+  .int()
+  .min(0)
+  .max(MAX_WEBHOOK_PREVIOUS_SECRET_TTL_SECONDS);
+
+/** `POST /api/v1/webhooks/endpoints/:endpointId/rotate-secret`: the body is optional. */
+export const RotateWebhookEndpointSecretRequestBody = z.object({
+  previousSecretTtlSeconds: WebhookPreviousSecretTtlSeconds.optional(),
+});
+export type RotateWebhookEndpointSecretRequestBody = z.infer<
+  typeof RotateWebhookEndpointSecretRequestBody
+>;
+
 /** Rotating/setting a signing secret returns the plaintext ONCE; it is never readable again. */
 export const RotateWebhookEndpointSecretResponse = z.object({
   id: z.string(),
   secretSet: z.literal(true),
   secret: z.string(),
+  /** When the replaced secret stops verifying deliveries; absent when it was replaced immediately. */
+  previousSecretExpiresAt: z.string().optional(),
 });
 export type RotateWebhookEndpointSecretResponse = z.infer<
   typeof RotateWebhookEndpointSecretResponse
@@ -159,6 +181,7 @@ export type RotateWebhookEndpointSecretResponse = z.infer<
 /** `PUT /api/v1/webhooks/endpoints/:endpointId/secret`: store a secret or public key the provider issued. */
 export const SetWebhookEndpointSecretRequestBody = z.object({
   secret: z.string().trim().min(1).max(4096),
+  previousSecretTtlSeconds: WebhookPreviousSecretTtlSeconds.optional(),
 });
 export type SetWebhookEndpointSecretRequestBody = z.infer<
   typeof SetWebhookEndpointSecretRequestBody
@@ -167,6 +190,8 @@ export type SetWebhookEndpointSecretRequestBody = z.infer<
 export const SetWebhookEndpointSecretResponse = z.object({
   id: z.string(),
   secretSet: z.literal(true),
+  /** When the replaced secret stops verifying deliveries; absent when it was replaced immediately. */
+  previousSecretExpiresAt: z.string().optional(),
 });
 export type SetWebhookEndpointSecretResponse = z.infer<typeof SetWebhookEndpointSecretResponse>;
 

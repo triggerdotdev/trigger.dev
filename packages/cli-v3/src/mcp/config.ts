@@ -275,13 +275,13 @@ export const toolsMetadata = {
     name: "generate_webhook_secret",
     title: "Generate Webhook Secret",
     description:
-      "Generate a new signing secret for a hosted webhook endpoint and return it once, for providers where you choose the secret (for example GitHub). This replaces any existing secret, so deliveries fail until the provider uses the new one. Never print, log or commit the returned secret.",
+      "Generate a new signing secret for a hosted webhook endpoint and return it once, for providers where you choose the secret (for example GitHub). It replaces the existing secret; pass previousSecretTtlSeconds to keep accepting the old one while you update the provider, otherwise deliveries signed with it fail. Never print, log or commit the returned secret.",
   },
   set_webhook_secret: {
     name: "set_webhook_secret",
     title: "Set Webhook Secret",
     description:
-      "Store the signing secret (or public key) a provider issued for a hosted webhook endpoint, for example the whsec_ secret Stripe returns when a webhook endpoint is created. This replaces any existing secret.",
+      "Store the signing secret (or public key) a provider issued for a hosted webhook endpoint, for example the whsec_ secret Stripe returns when a webhook endpoint is created. It replaces the existing secret; pass previousSecretTtlSeconds to keep accepting the old one for a while.",
   },
   list_agents: {
     name: "list_agents",

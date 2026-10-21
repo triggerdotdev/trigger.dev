@@ -4922,9 +4922,19 @@ paths:
       summary: Generate a webhook signing secret
       description: >-
         Generate a new signing secret for the endpoint, store it, and return it once. Use this for providers
-        where you choose the secret, such as GitHub. It replaces any existing secret, so deliveries fail
-        verification until the provider uses the new one. Endpoints whose source verifies with a public key
-        refuse this; set the provider's key with the set secret endpoint instead.
+        where you choose the secret, such as GitHub. It replaces the existing secret. Pass
+        `previousSecretTtlSeconds` to keep accepting the old secret while you update the provider; without
+        it, deliveries signed with the old secret fail verification straight away. Endpoints whose source
+        verifies with a public key refuse this; set the provider's key with the set secret endpoint instead.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                previousSecretTtlSeconds:
+                  $ref: "#/components/schemas/WebhookPreviousSecretTtlSeconds"
       responses:
         "200":
           description: Successful request
@@ -4933,7 +4943,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/RotateWebhookEndpointSecretResponse"
         "400":
-          description: The endpoint's source verifies with a public key, so a secret can't be generated
+          description: The endpoint's source verifies with a public key, so a secret can't be generated, or the body is invalid
           content:
             application/json:
               schema:
@@ -4951,7 +4961,9 @@ paths:
           label: Generate a signing secret
           source: |-
             curl -X POST "https://api.trigger.dev/api/v1/webhooks/endpoints/github/rotate-secret" \
-              -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY" \
+              -H "Content-Type: application/json" \
+              -d '{ "previousSecretTtlSeconds": 3600 }'
   "/api/v1/webhooks/endpoints/{endpointId}/secret":
     parameters:
       - $ref: "#/components/parameters/webhookEndpointId"
@@ -4960,7 +4972,9 @@ paths:
       summary: Set a webhook signing secret
       description: >-
         Store the signing secret or public key the provider issued for this endpoint, such as the `whsec_`
-        secret Stripe returns when you create a webhook endpoint. It replaces any existing secret.
+        secret Stripe returns when you create a webhook endpoint. It replaces the existing secret. Pass
+        `previousSecretTtlSeconds` to keep accepting the old secret for a while, for example while the
+        provider rolls its secret.
       requestBody:
         required: true
         content:
@@ -4976,6 +4990,8 @@ paths:
                   maxLength: 4096
                   description: The signing secret or public key. Leading and trailing whitespace is trimmed.
                   example: whsec_5f2b...
+                previousSecretTtlSeconds:
+                  $ref: "#/components/schemas/WebhookPreviousSecretTtlSeconds"
       responses:
         "200":
           description: Successful request
@@ -5862,6 +5878,11 @@ components:
           type: string
           description: The new signing secret. It is returned only in this response and can't be read again.
           example: whsec_5f2b...
+        previousSecretExpiresAt:
+          type: string
+          format: date-time
+          description: When the replaced secret stops verifying deliveries. Absent when it was replaced immediately.
+          example: "2026-10-21T12:00:00.000Z"
     SetWebhookEndpointSecretResponse:
       type: object
       required: [id, secretSet]
@@ -5873,6 +5894,19 @@ components:
         secretSet:
           type: boolean
           const: true
+        previousSecretExpiresAt:
+          type: string
+          format: date-time
+          description: When the replaced secret stops verifying deliveries. Absent when it was replaced immediately.
+          example: "2026-10-21T12:00:00.000Z"
+    WebhookPreviousSecretTtlSeconds:
+      type: integer
+      minimum: 0
+      maximum: 604800
+      description: >-
+        How long, in seconds, the secret being replaced keeps verifying deliveries (at most 7 days). Omit it
+        or pass 0 to replace the secret immediately, for example when it leaked.
+      example: 3600
     WebhookDeliveryStatus:
       type: string
       enum: [pending, processing, succeeded, failed, filtered, unmatched]
