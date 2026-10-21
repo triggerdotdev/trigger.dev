@@ -20,6 +20,9 @@ import {
   type ListWebhookDeliveriesQuery,
   ReplayWebhookDeliveryResponse,
   WebhookDeliveryObject,
+  CancelWebhookWaiterResponseBody,
+  CreateWebhookWaiterResponseBody,
+  type CreateWebhookWaiterRequestBody,
   RotateWebhookEndpointSecretResponse,
   SetWebhookEndpointSecretResponse,
   type SetWebhookEndpointSecretRequestBody,
@@ -2583,6 +2586,28 @@ export class ApiClient {
         headers: this.#getHeaders(false),
         body: JSON.stringify(body),
       },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  createWebhookWaiter(
+    endpointId: string,
+    body: CreateWebhookWaiterRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      CreateWebhookWaiterResponseBody,
+      `${this.baseUrl}/api/v1/webhooks/endpoints/${encodeURIComponent(endpointId)}/waiters`,
+      { method: "POST", headers: this.#getHeaders(false), body: JSON.stringify(body) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  cancelWebhookWaiter(waiterId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      CancelWebhookWaiterResponseBody,
+      `${this.baseUrl}/api/v1/webhooks/waiters/${encodeURIComponent(waiterId)}/cancel`,
+      { method: "POST", headers: this.#getHeaders(false) },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
   }

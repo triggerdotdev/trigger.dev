@@ -1,9 +1,6 @@
 // Type machinery for `chat.event(...)` — the descriptor an agent claims via `chat.agent({ events })`.
-// Type-only. The `key` is a validated string of {body.x}/{webhook.x}/{header.x} placeholders.
-import type {
-  WebhookSecretProvisioning,
-  WebhookVerifierArtifact,
-} from "../schemas/webhookConfig.js";
+// Type-only. The `key` is a validated string of {event.x}/{webhook.x}/{header.x} placeholders.
+import type { WebhookEndpointContext } from "./webhooks.js";
 
 export type WebhookKeyScalar = string | number | boolean | bigint;
 
@@ -38,24 +35,6 @@ type TrimSpace<S extends string> = S extends ` ${infer R}`
     ? TrimSpace<L>
     : S;
 
-// Validate one {…} placeholder by namespace: webhook.→WebhookKeyMeta, header.→any non-empty name,
-// body./bare→event. `true` when a scalar path, else a branded error naming it.
-type CheckKeyPathSingle<TEvent, Path extends string> = Path extends `webhook.${infer Rest}`
-  ? PathValue<WebhookKeyMeta, Rest> extends WebhookKeyScalar
-    ? true
-    : WebhookKeyError<`unknown or non-scalar webhook meta path: ${Rest}`>
-  : Path extends `header.${infer Name}`
-    ? Name extends ""
-      ? WebhookKeyError<`empty header name`>
-      : true
-    : Path extends `body.${infer Rest}`
-      ? PathValue<TEvent, Rest> extends WebhookKeyScalar
-        ? true
-        : WebhookKeyError<`unknown or non-scalar event path: ${Rest}`>
-      : PathValue<TEvent, Path> extends WebhookKeyScalar
-        ? true
-        : WebhookKeyError<`unknown or non-scalar event path: ${Path}`>;
-
 // A placeholder may list first-non-empty fallbacks: `{a || b}`. Validate each side as a path.
 type CheckKeyPath<TEvent, Path extends string> = Path extends `${infer L}||${infer R}`
   ? CheckKeyPathSingle<TEvent, TrimSpace<L>> extends true
@@ -78,16 +57,86 @@ type CheckKeyTemplate<
 export type ValidatedWebhookKey<TEvent, S extends string> =
   CheckKeyTemplate<TEvent, S> extends true ? S : CheckKeyTemplate<TEvent, S>;
 
+// An event path in a key or a waiter's match. It passes through open records (an index signature or
+// an unknown event), since provider payloads are often only partly typed: only a missing field on a
+// closed object, or a known non-scalar, is refused.
+type MatchNext<X> = unknown extends X ? unknown : NonNullable<X>;
+
+type MatchPathValue<T, P extends string> = unknown extends T
+  ? unknown
+  : P extends `${infer Head}.${infer Rest}`
+    ? Head extends keyof T
+      ? MatchPathValue<MatchNext<T[Head]>, Rest>
+      : string extends keyof T
+        ? unknown
+        : Invalid
+    : P extends keyof T
+      ? MatchNext<T[P]>
+      : string extends keyof T
+        ? unknown
+        : Invalid;
+
+type CheckEventPath<TEvent, Path extends string> = Path extends
+  | ""
+  | `.${string}`
+  | `${string}.`
+  | `${string}..${string}`
+  ? WebhookKeyError<`empty path segment: ${Path}`>
+  : MatchPathValue<TEvent, Path> extends Invalid
+    ? WebhookKeyError<`unknown event path: ${Path}`>
+    : unknown extends MatchPathValue<TEvent, Path>
+      ? true
+      : MatchPathValue<TEvent, Path> extends WebhookKeyScalar
+        ? true
+        : WebhookKeyError<`non-scalar event path: ${Path}`>;
+
+type CheckMetaPath<Path extends string> = Path extends `header.${infer Name}`
+  ? Name extends ""
+    ? WebhookKeyError<`empty header name`>
+    : true
+  : Path extends `webhook.${infer Rest}`
+    ? PathValue<WebhookKeyMeta, Rest> extends WebhookKeyScalar
+      ? true
+      : WebhookKeyError<`unknown or non-scalar webhook meta path: ${Rest}`>
+    : false;
+
+// Key placeholders and match paths name their namespace like a filter path: event.*, header.* or
+// webhook.*.
+type CheckNamespacedPath<
+  TEvent,
+  Path extends string,
+  What extends string,
+> = Path extends `event.${infer Rest}`
+  ? CheckEventPath<TEvent, Rest>
+  : CheckMetaPath<Path> extends false
+    ? WebhookKeyError<`${What} paths start with event., header. or webhook.: ${Path}`>
+    : CheckMetaPath<Path>;
+
+type CheckMatchPath<TEvent, Path extends string> = CheckNamespacedPath<TEvent, Path, "match">;
+type CheckKeyPathSingle<TEvent, Path extends string> = CheckNamespacedPath<TEvent, Path, "key">;
+
+/**
+ * A webhook waiter's `match`: each key a path (`event.*` reads the event, `header.*` a header and
+ * `webhook.*` the endpoint), each value the scalar it must equal. A bad path turns that key's value
+ * type into an error naming it.
+ */
+export type ValidatedWebhookMatch<TEvent, M> = {
+  [K in keyof M]: K extends string
+    ? CheckMatchPath<TEvent, K> extends true
+      ? M[K]
+      : CheckMatchPath<TEvent, K>
+    : never;
+};
+
 declare const dEvt: unique symbol;
 
 export interface ChatEvent<TType extends string, TEvent> {
   id: string;
   type: TType; // the action.type discriminant; defaults to `id` when omitted at authoring
   key: string; // compiled canonical template
-  source: string; // provider tag
-  // Registration data carried from the source so the claiming agent can create the endpoint.
-  verifierArtifact: WebhookVerifierArtifact;
-  secretProvisioning?: WebhookSecretProvisioning;
+  /** The endpoint this event subscribes to (`webhooks.endpoint.define` id). */
+  endpointId: string;
+  source: string; // the endpoint source's provider tag
   // Optional server-side gate (same DSL as webhook()); a non-matching delivery is recorded FILTERED
   // and never routed to the session.
   filter?: string;
@@ -104,7 +153,15 @@ export type ChatEventAction<W> =
         event: TEvent;
         source: string;
         headers: Record<string, string>;
+        /** The delivery's id (`whd_...`), as in the dashboard and the deliveries API. A replay gets a new one. */
         deliveryId: string;
+        /**
+         * The provider's id for the delivery (e.g. Stripe's `evt_...`), the same across replays.
+         * Absent on an action delivered by an older server.
+         */
+        externalDeliveryId?: string;
+        /** The endpoint the delivery arrived on. */
+        endpoint?: WebhookEndpointContext;
       }
     : never;
 

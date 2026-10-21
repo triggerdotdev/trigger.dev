@@ -5,6 +5,9 @@ export class ApiError extends Error {
   readonly headers: APIHeaders | undefined;
   readonly error: object | undefined;
 
+  /** The whole parsed response body, including fields beside `error` like `code` and `reason`. */
+  readonly body: object | undefined;
+
   readonly code: string | null | undefined;
   readonly param: string | null | undefined;
   readonly type: string | undefined;
@@ -13,18 +16,22 @@ export class ApiError extends Error {
     status: number | undefined,
     error: object | undefined,
     message: string | undefined,
-    headers: APIHeaders | undefined
+    headers: APIHeaders | undefined,
+    body?: object
   ) {
     super(`${ApiError.makeMessage(status, error, message)}`);
     this.name = "TriggerApiError";
     this.status = status;
     this.headers = headers;
+    this.body = body;
 
     const data = error as Record<string, any>;
+    const fields =
+      typeof data === "object" && data !== null ? data : (body as Record<string, any> | undefined);
     this.error = data;
-    this.code = data?.["code"];
-    this.param = data?.["param"];
-    this.type = data?.["type"];
+    this.code = fields?.["code"];
+    this.param = fields?.["param"];
+    this.type = fields?.["type"];
   }
 
   private static makeMessage(status: number | undefined, error: any, message: string | undefined) {
@@ -70,38 +77,38 @@ export class ApiError extends Error {
     const error = (errorResponse as Record<string, any>)?.["error"];
 
     if (status === 400) {
-      return new BadRequestError(status, error, message, headers);
+      return new BadRequestError(status, error, message, headers, errorResponse);
     }
 
     if (status === 401) {
-      return new AuthenticationError(status, error, message, headers);
+      return new AuthenticationError(status, error, message, headers, errorResponse);
     }
 
     if (status === 403) {
-      return new PermissionDeniedError(status, error, message, headers);
+      return new PermissionDeniedError(status, error, message, headers, errorResponse);
     }
 
     if (status === 404) {
-      return new NotFoundError(status, error, message, headers);
+      return new NotFoundError(status, error, message, headers, errorResponse);
     }
 
     if (status === 409) {
-      return new ConflictError(status, error, message, headers);
+      return new ConflictError(status, error, message, headers, errorResponse);
     }
 
     if (status === 422) {
-      return new UnprocessableEntityError(status, error, message, headers);
+      return new UnprocessableEntityError(status, error, message, headers, errorResponse);
     }
 
     if (status === 429) {
-      return new RateLimitError(status, error, message, headers);
+      return new RateLimitError(status, error, message, headers, errorResponse);
     }
 
     if (status >= 500) {
-      return new InternalServerError(status, error, message, headers);
+      return new InternalServerError(status, error, message, headers, errorResponse);
     }
 
-    return new ApiError(status, error, message, headers);
+    return new ApiError(status, error, message, headers, errorResponse);
   }
 }
 

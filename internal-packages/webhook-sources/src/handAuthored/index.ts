@@ -4,6 +4,7 @@ import { samples as s_anthropic } from "./anthropic.js";
 import { samples as s_assemblyai } from "./assemblyai.js";
 import { samples as s_attio } from "./attio.js";
 import { samples as s_auth0 } from "./auth0.js";
+import { samples as s_autumn } from "./autumn.js";
 import { samples as s_brex } from "./brex.js";
 import { samples as s_cal_com } from "./cal-com.js";
 import { samples as s_calendly } from "./calendly.js";
@@ -13,14 +14,23 @@ import { samples as s_deepgram } from "./deepgram.js";
 import { samples as s_discord } from "./discord.js";
 import { samples as s_docusign } from "./docusign.js";
 import { samples as s_elevenlabs } from "./elevenlabs.js";
+import { samples as s_firecrawl } from "./firecrawl.js";
 import { samples as s_gitlab } from "./gitlab.js";
+import { samples as s_granola } from "./granola.js";
+import { samples as s_infisical } from "./infisical.js";
 import { samples as s_intercom } from "./intercom.js";
 import { samples as s_jira } from "./jira.js";
+import { samples as s_langfuse } from "./langfuse.js";
 import { samples as s_linear } from "./linear.js";
+import { samples as s_loops } from "./loops.js";
+import { samples as s_metronome } from "./metronome.js";
+import { samples as s_mux } from "./mux.js";
 import { samples as s_notion } from "./notion.js";
 import { samples as s_openai } from "./openai.js";
 import { samples as s_pagerduty } from "./pagerduty.js";
 import { samples as s_plaid } from "./plaid.js";
+import { samples as s_plain } from "./plain.js";
+import { samples as s_planetscale } from "./planetscale.js";
 import { samples as s_postmark } from "./postmark.js";
 import { samples as s_recall_ai } from "./recall-ai.js";
 import { samples as s_replicate } from "./replicate.js";
@@ -31,6 +41,7 @@ import { samples as s_sentry } from "./sentry.js";
 import { samples as s_slack } from "./slack.js";
 import { samples as s_square } from "./square.js";
 import { samples as s_supabase } from "./supabase.js";
+import { samples as s_tailscale } from "./tailscale.js";
 import { samples as s_telegram } from "./telegram.js";
 import { samples as s_twilio } from "./twilio.js";
 import { samples as s_typeform } from "./typeform.js";
@@ -46,6 +57,7 @@ export const handAuthoredSamples: SampleRecord[] = [
   ...s_assemblyai,
   ...s_attio,
   ...s_auth0,
+  ...s_autumn,
   ...s_brex,
   ...s_cal_com,
   ...s_calendly,
@@ -55,14 +67,23 @@ export const handAuthoredSamples: SampleRecord[] = [
   ...s_discord,
   ...s_docusign,
   ...s_elevenlabs,
+  ...s_firecrawl,
   ...s_gitlab,
+  ...s_granola,
+  ...s_infisical,
   ...s_intercom,
   ...s_jira,
+  ...s_langfuse,
   ...s_linear,
+  ...s_loops,
+  ...s_metronome,
+  ...s_mux,
   ...s_notion,
   ...s_openai,
   ...s_pagerduty,
   ...s_plaid,
+  ...s_plain,
+  ...s_planetscale,
   ...s_postmark,
   ...s_recall_ai,
   ...s_replicate,
@@ -73,6 +94,7 @@ export const handAuthoredSamples: SampleRecord[] = [
   ...s_slack,
   ...s_square,
   ...s_supabase,
+  ...s_tailscale,
   ...s_telegram,
   ...s_twilio,
   ...s_typeform,

@@ -1,8 +1,8 @@
 import { type SampleRecord } from "../sampleRecord.js";
 
 /**
- * Supabase Database Webhook samples. Supabase has no built-in signing scheme (verification is
- * whatever custom header the integrator wires into the underlying `net.http_post` trigger), so no
+ * Supabase Database Webhook samples. Supabase has no built-in signing scheme; the `supabase` provider
+ * config checks a shared secret in an `Authorization: Bearer` header the integrator adds, so no
  * `presetId` is set on any sample here. `eventType` is the body's top-level `type` field
  * (`INSERT` / `UPDATE` / `DELETE`); `record` holds the new row and `old_record` the previous row,
  * with one or the other `null` depending on the operation.

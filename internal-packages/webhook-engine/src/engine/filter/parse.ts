@@ -21,6 +21,16 @@ const WORD_OPS: Record<string, FilterOp> = {
 };
 const NAMESPACES = new Set(["event", "header", "webhook"]);
 
+function validatePath(path: string, namespaced = true): void {
+  const segments = path.split(".");
+  if (segments.some((segment) => segment.length === 0) || (namespaced && segments.length < 2)) {
+    throw new FilterParseError(`invalid field path "${path}"`);
+  }
+  if (namespaced && !NAMESPACES.has(segments[0])) {
+    throw new FilterParseError(`field must start with event./header./webhook., got "${path}"`);
+  }
+}
+
 type Tok = {
   t:
     | "lparen"
@@ -148,24 +158,24 @@ export function parseFilter(input: string): FilterAst {
     const pathTok = next();
     if (!pathTok || pathTok.t !== "word") throw new FilterParseError("expected a field path");
     const path = pathTok.v;
-    if (!NAMESPACES.has(path.split(".")[0])) {
-      throw new FilterParseError(`field must start with event./header./webhook., got "${path}"`);
-    }
     // Quantifier: `arrPath any|all ( subPath op value )` — sub-clause resolves against each element.
     const q = peek();
-    if (q?.t === "word" && (q.v === "any" || q.v === "all")) {
+    const mode = q?.t === "word" && (q.v === "any" || q.v === "all") ? q.v : undefined;
+    if (!(mode && path === "event")) validatePath(path);
+    if (mode) {
       next();
-      if (next()?.t !== "lparen") throw new FilterParseError(`expected "(" after "${q.v}"`);
+      if (next()?.t !== "lparen") throw new FilterParseError(`expected "(" after "${mode}"`);
       const subPathTok = next();
       if (!subPathTok || subPathTok.t !== "word") {
         throw new FilterParseError("expected a field path inside the quantifier");
       }
+      validatePath(subPathTok.v, false);
       const subOp = parseOp(subPathTok.v);
       const subValue = parseScalar();
       if (next()?.t !== "rparen") throw new FilterParseError('expected ")"');
       return {
         kind: "quantifier",
-        mode: q.v,
+        mode,
         path,
         clause: { path: subPathTok.v, op: subOp, value: subValue },
       };
@@ -175,6 +185,7 @@ export function parseFilter(input: string): FilterAst {
     const operand = peek();
     if (operand?.t === "word" && NAMESPACES.has(operand.v.split(".")[0])) {
       next();
+      validatePath(operand.v);
       return { kind: "clause", path, op, valueRef: operand.v };
     }
     return { kind: "clause", path, op, value: parseValue() };

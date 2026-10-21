@@ -1,6 +1,7 @@
 import { execPathForRuntime } from "@trigger.dev/core/v3/build";
 import {
   DuplicateTaskIdsError,
+  WebhookIndexingError,
   TaskIndexingImportError,
   TaskMetadataParseError,
   UncaughtExceptionError,
@@ -91,6 +92,15 @@ export async function indexWorkerManifest({
           clearTimeout(timeout);
           resolved = true;
           reject(new DuplicateTaskIdsError(message.payload.collisions));
+          child.kill("SIGKILL");
+          break;
+        }
+        case "WEBHOOKS_FAILED_TO_INDEX": {
+          clearTimeout(timeout);
+          resolved = true;
+          reject(
+            new WebhookIndexingError(message.payload.collisions, message.payload.problems ?? [])
+          );
           child.kill("SIGKILL");
           break;
         }

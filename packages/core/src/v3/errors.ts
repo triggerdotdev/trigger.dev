@@ -770,34 +770,81 @@ export class DuplicateTaskIdsError extends Error {
   }
 }
 
-function formatDuplicateWebhookIds(collisions: TaskIdCollision[]): string {
+function formatWebhookIndexingErrors(collisions: TaskIdCollision[], problems: string[]): string {
   const lines = collisions.map(({ id, filePaths }) => {
     const distinct = Array.from(new Set(filePaths));
 
     if (distinct.length === 1) {
-      return `  - "${id}" found more than once in ${distinct[0]}`;
+      return `  - endpoint "${id}" defined more than once in ${distinct[0]}`;
     }
 
     const last = distinct[distinct.length - 1];
     const head = distinct.slice(0, -1).join(", ");
 
-    return `  - "${id}" found in ${head} and ${last}`;
+    return `  - endpoint "${id}" defined in ${head} and ${last}`;
   });
 
   return [
-    "Duplicate webhook ids detected:",
+    "Webhook endpoints could not be indexed:",
     "",
     ...lines,
-    "",
-    "Webhook ids must be unique across your project. Please rename one of them.",
+    ...problems.map((problem) => `  - ${problem}`),
   ].join("\n");
 }
 
-export class DuplicateWebhookIdsError extends Error {
-  constructor(public readonly collisions: TaskIdCollision[]) {
-    super(formatDuplicateWebhookIds(collisions));
+/**
+ * Webhook declarations the indexer refuses: an endpoint id defined twice, a subscriber whose
+ * endpoint isn't defined, or two subscribers with the same id on one endpoint.
+ */
+export class WebhookIndexingError extends Error {
+  constructor(
+    public readonly collisions: TaskIdCollision[],
+    public readonly problems: string[] = []
+  ) {
+    super(formatWebhookIndexingErrors(collisions, problems));
 
-    this.name = "DuplicateWebhookIdsError";
+    this.name = "WebhookIndexingError";
+  }
+}
+
+/** A webhook waiter was cancelled before a delivery matched it. */
+export class WebhookWaiterCancelledError extends Error {
+  constructor(message = "The webhook waiter was cancelled") {
+    super(message);
+    this.name = "WebhookWaiterCancelledError";
+  }
+}
+
+export type WebhookWaiterLimitReason =
+  | "environment_limit"
+  | "endpoint_limit"
+  | "shape_limit"
+  | "timeout_too_long";
+
+/** `webhooks.waiter.create` hit a waiter limit. Nothing was created. */
+export class WebhookWaiterLimitError extends Error {
+  constructor(
+    public readonly reason: WebhookWaiterLimitReason,
+    message: string
+  ) {
+    super(message);
+    this.name = "WebhookWaiterLimitError";
+  }
+}
+
+/** The endpoint isn't in this environment's current deployment. */
+export class WebhookEndpointNotFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "WebhookEndpointNotFoundError";
+  }
+}
+
+/** A waiter's filter didn't compile on the server. */
+export class WebhookFilterError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "WebhookFilterError";
   }
 }
 

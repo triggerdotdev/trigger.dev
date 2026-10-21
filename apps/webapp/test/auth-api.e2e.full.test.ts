@@ -3013,7 +3013,7 @@ describe("API", () => {
         expect(res.status).not.toBe(403);
       });
 
-      it("PUT with write:sessions (was a superScope): auth passes", async () => {
+      it("PUT with write:sessions: authorized, but raw channel credentials need a secret key", async () => {
         const server = getTestServer();
         const seed = await seedTestEnvironment(server.prisma);
         const session = await seedTestApiSession(server.prisma, seed.environment);
@@ -3021,6 +3021,20 @@ describe("API", () => {
         const res = await server.webapp.fetch(ioPath(session.friendlyId, "in"), {
           method: "PUT",
           headers: { Authorization: `Bearer ${jwt}` },
+        });
+        expect(res.status).toBe(403);
+        expect(await res.text()).toBe(
+          "Initializing a session channel requires secret key authentication"
+        );
+      });
+
+      it("PUT with a secret key: passes", async () => {
+        const server = getTestServer();
+        const seed = await seedTestEnvironment(server.prisma);
+        const session = await seedTestApiSession(server.prisma, seed.environment);
+        const res = await server.webapp.fetch(ioPath(session.friendlyId, "in"), {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${seed.apiKey}` },
         });
         expect(res.status).not.toBe(401);
         expect(res.status).not.toBe(403);

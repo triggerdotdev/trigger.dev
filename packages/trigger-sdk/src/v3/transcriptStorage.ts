@@ -64,7 +64,19 @@ export type TranscriptScope<TClientData = unknown> = {
 /** The run context of a write. Supplied by the runtime; always in-run. */
 export type TranscriptStorageContext<TClientData = unknown> = TranscriptScope<TClientData> & {
   turn: number;
-  trigger: "submit-message" | "regenerate-message" | "action";
+  /**
+   * What produced this write. `action-turn` is a turn that `onAction` asked for by returning
+   * `chat.turn()`: the edit itself saves as `action`, the turn that follows as `action-turn`.
+   */
+  trigger: "submit-message" | "regenerate-message" | "action" | "action-turn";
+  /**
+   * Which surface drove the turn or action: a chat client (`client`), a channel connector such
+   * as Slack (`channel`), or a `chat.event` webhook delivery (`webhook`). Always set by the
+   * runtime; optional so a hand-built context (tests, tooling) stays valid.
+   */
+  source?: "client" | "channel" | "webhook";
+  /** The channel connector id when `source` is `channel`, or when a bound session answers into one. */
+  connectorId?: string;
   runId: string;
   ctx: TaskRunContext;
 };
@@ -441,6 +453,20 @@ type ModelLaneInjection = { afterId: string; messages: ModelMessage[] };
  * `injections` are conversational messages `chat.inject` added, anchored
  * after the transcript message they followed.
  */
+/**
+ * The channel a session is bound to: the connector that last delivered a turn and the
+ * connector-owned handle it needs to post without an inbound event (for Slack, the team,
+ * channel and thread). Written by the runtime on a channel turn; read on every later turn so
+ * an action turn or a browser-started turn can answer into the same thread.
+ */
+export type TranscriptChannelBinding<THandle = unknown> = {
+  connectorId: string;
+  handle: THandle;
+  /** ISO timestamp of the delivery that set the binding. */
+  boundAt: string;
+  deliveryId: string;
+};
+
 export type TranscriptRuntimeState = {
   v: 1;
   compaction?: { modelMessages: ModelMessage[]; throughId: string };
@@ -449,6 +475,8 @@ export type TranscriptRuntimeState = {
   steering?: SteeringInjection[];
   /** `chat.inject` messages queued but not yet drained into a turn when the save happened. */
   queued?: ModelMessage[];
+  /** The channel this session answers into. See {@link TranscriptChannelBinding}. */
+  channelBinding?: TranscriptChannelBinding;
 };
 
 /**
@@ -578,6 +606,22 @@ export function parseTranscriptRuntimeState(value: unknown): TranscriptRuntimeSt
     out.compaction = {
       modelMessages: compaction.modelMessages as ModelMessage[],
       throughId: compaction.throughId,
+    };
+  }
+  const binding = record.channelBinding as Record<string, unknown> | undefined;
+  if (
+    binding &&
+    typeof binding === "object" &&
+    typeof binding.connectorId === "string" &&
+    typeof binding.boundAt === "string" &&
+    typeof binding.deliveryId === "string" &&
+    binding.handle !== undefined
+  ) {
+    out.channelBinding = {
+      connectorId: binding.connectorId,
+      handle: binding.handle,
+      boundAt: binding.boundAt,
+      deliveryId: binding.deliveryId,
     };
   }
   if (Array.isArray(record.injections)) {

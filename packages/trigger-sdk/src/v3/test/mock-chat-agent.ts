@@ -10,6 +10,7 @@ import {
 import {
   __resetChatInputRouterForTests,
   __setReadChatSnapshotImplForTests,
+  __waitForChannelEgressForTests,
   __setReplaySessionInTailImplForTests,
   __setReplaySessionOutTailImplForTests,
   __setWriteChatSnapshotImplForTests,
@@ -40,6 +41,24 @@ type ChatWirePayload = {
   messageId?: string;
   metadata?: unknown;
   action?: unknown;
+  /** Origin of an `"action"` trigger; `"webhook"` actions carry a fixed envelope and bypass `actionSchema`. */
+  actionSource?: "client" | "webhook";
+  /**
+   * A channel-delivered turn (Slack or any `chat.channels.*` connector). Carries
+   * the raw verified provider event; the run resolves the connector by
+   * `connectorId` from `chat.agent({ channels })` and applies its `inbound()`
+   * mapper to produce the turn's message. Present instead of `message`.
+   */
+  channelEvent?: {
+    connectorId: string;
+    event: unknown;
+    source: string;
+    headers: Record<string, string>;
+    /** The delivery's id (`whd_...`): new on a replay, the same across retries of one delivery. */
+    deliveryId: string;
+    /** The provider's id for the delivery, the same across replays. */
+    externalDeliveryId?: string;
+  };
   continuation?: boolean;
   previousRunId?: string;
   idleTimeoutInSeconds?: number;
@@ -52,6 +71,20 @@ type ChatAgentHandle = { id: string };
 /**
  * Options for `mockChatAgent`.
  */
+/**
+ * A channel delivery to seed on the `session.in` tail for the next boot's replay, alongside browser
+ * messages, so a test can check that recovery dispatches both kinds in the order they arrived.
+ */
+export type SeededChannelDelivery = {
+  channelEvent: {
+    event: unknown;
+    connectorId?: string;
+    source?: string;
+    headers?: Record<string, string>;
+    deliveryId?: string;
+  };
+};
+
 export type MockChatAgentOptions = {
   /** The chat session id passed into every wire payload. Defaults to `"test-chat"`. */
   chatId?: string;
@@ -192,6 +225,21 @@ export type MockChatAgentHarness = {
   sendAction(action: unknown): Promise<MockChatAgentTurn>;
 
   /**
+   * Deliver a `chat.event` webhook action: the `{ type, event, source, headers, deliveryId, externalDeliveryId }`
+   * envelope the hosted ingress appends to `session.in` with `actionSource: "webhook"`, so it
+   * bypasses `actionSchema` and reaches `onAction` typed by the listed events. Waits for the
+   * turn-complete the action (or the turn it becomes via `chat.turn()`) writes.
+   */
+  sendWebhookAction(args: {
+    type: string;
+    event: unknown;
+    source?: string;
+    headers?: Record<string, string>;
+    deliveryId?: string;
+    externalDeliveryId?: string;
+  }): Promise<MockChatAgentTurn>;
+
+  /**
    * Deliver a message mid-turn without waiting for it, the way the browser's
    * steering path does. With a `pendingMessages` config the agent routes it into
    * the steering queue for injection at the next step boundary; without one it
@@ -201,6 +249,43 @@ export type MockChatAgentHarness = {
    * call this. Awaiting the turn first leaves nothing to steer.
    */
   sendPendingMessage(message: UIMessage): Promise<void>;
+
+  /**
+   * Deliver a verified channel event (Slack or any `chat.channels.*`
+   * connector) and wait for the next turn-complete. Mirrors what the hosted
+   * webhook ingress appends to `session.in`: a `submit-message` wire payload
+   * carrying `channelEvent` instead of `message`. The run resolves the
+   * connector by `connectorId`, maps the event with its `inbound()`, runs the
+   * turn, and posts the reply back through the connector's `send()`.
+   *
+   * `connectorId` defaults to `DEFAULT_TEST_CONNECTOR_ID`, which is also the id
+   * `recordingChannelConnector()` uses when you don't set one, so the common
+   * single-connector case lines up. Pass it explicitly for a connector with a
+   * custom id or for multi-connector agents.
+   */
+  sendChannelEvent(args: {
+    event: unknown;
+    connectorId?: string;
+    source?: string;
+    headers?: Record<string, string>;
+    deliveryId?: string;
+    externalDeliveryId?: string;
+  }): Promise<MockChatAgentTurn>;
+
+  /**
+   * Deliver a channel event without waiting for a turn. Mirrors an event that
+   * the run may not turn into a turn: a filtered or deduped delivery, or a
+   * stale interaction callback that is dropped (matches no pending tool call).
+   * Resolves once the run has had a chance to process and possibly drop it.
+   */
+  deliverChannelEvent(args: {
+    event: unknown;
+    connectorId?: string;
+    source?: string;
+    headers?: Record<string, string>;
+    deliveryId?: string;
+    externalDeliveryId?: string;
+  }): Promise<void>;
 
   /** Fire a stop signal. Does not wait for the turn — the task keeps running. */
   sendStop(message?: string): Promise<void>;
@@ -270,7 +355,7 @@ export type MockChatAgentHarness = {
    *
    * Effective on the next run boot only.
    */
-  seedSessionInTail(messages: UIMessage[]): void;
+  seedSessionInTail(entries: Array<UIMessage | SeededChannelDelivery>): void;
 
   /**
    * Append a `trigger: "close"` record to `session.in` — what the server does
@@ -327,6 +412,38 @@ export type MockChatAgentHarness = {
   /** Every raw chunk (including control chunks) emitted since the harness was created. */
   readonly allRawChunks: unknown[];
 };
+
+/**
+ * Default `connectorId` used by {@link MockChatAgentHarness.sendChannelEvent}
+ * when the caller omits it. Matches the default `id` of
+ * {@link recordingChannelConnector}, so a single-connector agent needs no
+ * explicit id on either side.
+ */
+export const DEFAULT_TEST_CONNECTOR_ID = "test-channel";
+
+/**
+ * Wait for a channel turn's post-completion egress to land. The run loop
+ * writes the `trigger:turn-complete` chunk (which unblocks the harness's
+ * turn-complete latch) BEFORE it awaits the connector's final `send()` and
+ * its done/error reactions, and settles a per-chat latch once those have
+ * finished. Awaiting that latch, rather than draining timers, makes the
+ * connector's recorded sends and reactions deterministic for any connector
+ * latency. A latch that never settles is a runtime bug, so it fails loudly.
+ */
+async function settlePostTurnChannelEgress(chatId: string): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`channel egress for ${chatId} did not settle within 10s`)),
+      10_000
+    );
+  });
+  try {
+    await Promise.race([__waitForChannelEgressForTests(chatId), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 const CONTROL_CHUNK_TYPES = new Set(["trigger:turn-complete", "trigger:upgrade-required"]);
 
@@ -431,6 +548,8 @@ export function mockChatAgent(
   let closeSessionInput: ((sessionId: string) => void) | undefined;
   let runSignal!: AbortController;
 
+  let channelDeliveryCounter = 0;
+
   // A latch that resolves every time `trigger:turn-complete` appears on the chat stream.
   // We use a shared pending promise and replace it after each completion.
   let turnCompleteResolvers: Array<() => void> = [];
@@ -455,7 +574,7 @@ export function mockChatAgent(
   let lastWrittenSnapshot: TranscriptSnapshotV2 | undefined;
   let seededReplayChunks: UIMessageChunk[] = [];
   let seededReplayPartial: UIMessage | undefined;
-  let seededSessionInMessages: UIMessage[] = [];
+  let seededSessionInTail: Array<UIMessage | SeededChannelDelivery> = [];
   const closeCalls: Array<{ sessionId: string; reason?: string }> = [];
   let failCloseCalls = 0;
 
@@ -490,11 +609,26 @@ export function mockChatAgent(
   });
 
   __setReplaySessionInTailImplForTests(async () => {
-    return seededSessionInMessages.map((message, i) => ({
-      message,
-      metadata: clientData,
-      seqNum: i + 1,
-    })) as never;
+    const messages: Array<{ message: UIMessage; metadata: unknown; seqNum: number }> = [];
+    const channelEvents: Array<{ channelEvent: unknown; metadata: unknown; seqNum: number }> = [];
+    seededSessionInTail.forEach((entry, i) => {
+      if ("channelEvent" in entry) {
+        channelEvents.push({
+          channelEvent: {
+            connectorId: entry.channelEvent.connectorId ?? DEFAULT_TEST_CONNECTOR_ID,
+            event: entry.channelEvent.event,
+            source: entry.channelEvent.source ?? "custom",
+            headers: entry.channelEvent.headers ?? {},
+            deliveryId: entry.channelEvent.deliveryId ?? `dlv_seeded_${i + 1}`,
+          },
+          metadata: clientData,
+          seqNum: i + 1,
+        });
+      } else {
+        messages.push({ message: entry, metadata: clientData, seqNum: i + 1 });
+      }
+    });
+    return { messages, channelEvents } as never;
   });
 
   // Install the session open override so `sessions.open(id)` returns a
@@ -713,6 +847,26 @@ export function mockChatAgent(
       });
     },
 
+    async sendWebhookAction(args) {
+      const deliveryId = args.deliveryId ?? `dlv_${++channelDeliveryCounter}`;
+      const turn = await sendPayloadAndWait({
+        chatId,
+        trigger: "action",
+        actionSource: "webhook",
+        action: {
+          type: args.type,
+          event: args.event,
+          source: args.source ?? "custom",
+          headers: args.headers ?? {},
+          deliveryId,
+          ...(args.externalDeliveryId ? { externalDeliveryId: args.externalDeliveryId } : {}),
+        },
+        metadata: clientData,
+      });
+      await settlePostTurnChannelEgress(chatId);
+      return turn;
+    },
+
     async sendPendingMessage(message) {
       await harnessReady;
 
@@ -744,6 +898,43 @@ export function mockChatAgent(
         }
         await new Promise((resolve) => setTimeout(resolve, 5));
       }
+    },
+
+    async sendChannelEvent(args) {
+      const deliveryId = args.deliveryId ?? `dlv_${++channelDeliveryCounter}`;
+      const turn = await sendPayloadAndWait({
+        chatId,
+        trigger: "submit-message",
+        channelEvent: {
+          connectorId: args.connectorId ?? DEFAULT_TEST_CONNECTOR_ID,
+          event: args.event,
+          source: args.source ?? "custom",
+          headers: args.headers ?? {},
+          deliveryId,
+          ...(args.externalDeliveryId ? { externalDeliveryId: args.externalDeliveryId } : {}),
+        },
+        metadata: clientData,
+      });
+      await settlePostTurnChannelEgress(chatId);
+      return turn;
+    },
+
+    async deliverChannelEvent(args) {
+      const deliveryId = args.deliveryId ?? `dlv_${++channelDeliveryCounter}`;
+      await sendPayloadAndWait({
+        chatId,
+        trigger: "submit-message",
+        channelEvent: {
+          connectorId: args.connectorId ?? DEFAULT_TEST_CONNECTOR_ID,
+          event: args.event,
+          source: args.source ?? "custom",
+          headers: args.headers ?? {},
+          deliveryId,
+          ...(args.externalDeliveryId ? { externalDeliveryId: args.externalDeliveryId } : {}),
+        },
+        metadata: clientData,
+      });
+      await settlePostTurnChannelEgress(chatId);
     },
 
     async sendStop(message) {
@@ -825,12 +1016,12 @@ export function mockChatAgent(
       seededReplayPartial = partial;
     },
 
-    seedSessionInTail(messages) {
-      seededSessionInMessages = messages;
+    seedSessionInTail(entries) {
+      seededSessionInTail = entries;
       // The seeded tail occupies seqNums 1..n of the channel, so anything sent
       // live afterwards has to continue above it.
-      if (messages.length > 0) {
-        sessionStreams.setLastSeqNum(sessionId, "in", messages.length);
+      if (entries.length > 0) {
+        sessionStreams.setLastSeqNum(sessionId, "in", entries.length);
       }
     },
 

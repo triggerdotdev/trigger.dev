@@ -95,7 +95,7 @@ export default {
     },
     "packages/trigger-sdk": {
       ignoreFiles: ["src/**/*-cjs.cts", "src/v3/index-browser.mts"],
-      ignoreDependencies: ["ai-v7", "react"],
+      ignoreDependencies: ["ai-v7", "react", "stripe"],
     },
     docs: {
       entry: ["snippets/**/*.jsx"],
