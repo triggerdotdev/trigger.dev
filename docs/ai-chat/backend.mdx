@@ -272,7 +272,7 @@ export const myChat = chat.agent({
 });
 ```
 
-The managed `streamText` carries the stored prompt's `system`, `model` (resolved through the agent's `registry`), sampling config, and `experimental_telemetry`. Options you pass at the call site win, apart from `system`, which throws when the prompt already set one.
+The managed `streamText` carries the stored prompt's `system`, `model` (resolved through the agent's `registry`), sampling config, and `experimental_telemetry`. AI SDK telemetry is on even without a stored prompt, so model steps and tool calls show in the run trace. Options you pass at the call site win, apart from `system`, which throws when the prompt already set one.
 
 `chat.toStreamTextOptions()` remains available for the same job, and is the only option in a [custom agent](#custom-agents), which has no `run` argument to take a bound `streamText` from. A `chat.headStart` route does get one, and there it also owns `messages`, `stopWhen` and `abortSignal`, since the handover depends on them. Pass `{ registry }` when a prompt names a provider-prefixed model, and `{ tools }` when you want HITL tool approvals, so the SDK knows which calls pause on `needsApproval`.
 
