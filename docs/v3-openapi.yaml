@@ -4933,8 +4933,24 @@ paths:
 
         Generate a new signing secret for the endpoint, store it, and return it once. Use this for providers
         where you choose the secret, such as GitHub. It replaces any existing secret, so deliveries fail
-        verification until the provider uses the new one. Endpoints whose source verifies with a public key
-        refuse this; set the provider's key with the set secret endpoint instead.
+        verification until the provider uses the new one, unless you pass `previousSecretTtlSeconds` to keep
+        the old secret valid for a while. Endpoints whose source verifies with a public key refuse this; set the
+        provider's key with the set secret endpoint instead.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                previousSecretTtlSeconds:
+                  type: integer
+                  minimum: 0
+                  maximum: 604800
+                  description: >-
+                    How many seconds the replaced secret keeps verifying deliveries, up to 7 days. Omit or pass
+                    `0` to stop accepting the old secret immediately.
+                  example: 86400
       responses:
         "200":
           description: Successful request
@@ -4972,7 +4988,8 @@ paths:
         **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
 
         Store the signing secret or public key the provider issued for this endpoint, such as the `whsec_`
-        secret Stripe returns when you create a webhook endpoint. It replaces any existing secret.
+        secret Stripe returns when you create a webhook endpoint. It replaces any existing secret. Pass
+        `previousSecretTtlSeconds` to keep the old one valid for a while.
       requestBody:
         required: true
         content:
@@ -4988,6 +5005,14 @@ paths:
                   maxLength: 4096
                   description: The signing secret or public key. Leading and trailing whitespace is trimmed.
                   example: whsec_5f2b...
+                previousSecretTtlSeconds:
+                  type: integer
+                  minimum: 0
+                  maximum: 604800
+                  description: >-
+                    How many seconds the replaced secret keeps verifying deliveries, up to 7 days. Omit or pass
+                    `0` to stop accepting the old secret immediately.
+                  example: 86400
       responses:
         "200":
           description: Successful request
@@ -5884,6 +5909,12 @@ components:
           type: string
           description: The new signing secret. It is returned only in this response and can't be read again.
           example: whsec_5f2b...
+        previousSecretExpiresAt:
+          type: string
+          format: date-time
+          description: >-
+            When the replaced secret stops verifying deliveries. Present only when `previousSecretTtlSeconds`
+            kept the old secret valid.
     SetWebhookEndpointSecretResponse:
       type: object
       required: [id, secretSet]
@@ -5895,6 +5926,12 @@ components:
         secretSet:
           type: boolean
           const: true
+        previousSecretExpiresAt:
+          type: string
+          format: date-time
+          description: >-
+            When the replaced secret stops verifying deliveries. Present only when `previousSecretTtlSeconds`
+            kept the old secret valid.
     WebhookDeliveryStatus:
       type: string
       enum: [pending, processing, succeeded, failed, filtered, unmatched]

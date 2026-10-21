@@ -78,7 +78,11 @@ The verify token answers the URL check. The signing secret verifies event delive
 
 Choose **Rotate signing secret** to replace a provider-supplied secret. For a secret you generate, choose **Regenerate secret**, copy the new value, and update the provider's configuration. Use **Rotate public key** when replacing an asymmetric provider's key.
 
+The rotate and regenerate dialogs include **Keep accepting the old signing secret for** (or the old public key). Trigger.dev keeps verifying deliveries signed with the old credential until that time passes, so you can update the provider without failing deliveries. Choose **1 hour**, **24 hours** (the default) or **7 days**. Choose **Stop immediately** if the old credential leaked.
+
+Over the API, pass `previousSecretTtlSeconds` (up to `604800`, 7 days) to [generate a secret](/management/webhooks/generate-secret) or [set a secret](/management/webhooks/set-secret). The response includes `previousSecretExpiresAt`. Without `previousSecretTtlSeconds`, the old secret stops verifying immediately.
+
 <Warning>
   Trigger.dev stores credentials encrypted and doesn't display saved values. Copy a generated secret
-  before closing the dialog. Deliveries signed with the old secret fail verification after rotation.
+  before closing the dialog.
 </Warning>
