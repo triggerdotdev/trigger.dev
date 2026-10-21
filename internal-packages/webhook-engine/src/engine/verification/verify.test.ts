@@ -1,5 +1,6 @@
 import { createHmac, generateKeyPairSync, sign as cryptoSign, type KeyObject } from "node:crypto";
 import { WebhookVerifierConfig } from "@trigger.dev/core/v3";
+import { webhookProviderConfigs } from "@trigger.dev/core/webhooks";
 import { describe, expect, it } from "vitest";
 import { parseEventBody } from "./derive.js";
 import { verify, verifyWithSecrets } from "./index.js";
@@ -332,6 +333,52 @@ describe("hmac verifier (config-driven)", () => {
     );
     expect(result.ok).toBe(true);
     expect(result.idempotencyKey).toBe("sq_1");
+  });
+});
+
+describe("provider retries", () => {
+  function slackAttempt(body: string, sentAtS: number, retryNum?: number) {
+    const sig = createHmac("sha256", "whsec_test_secret")
+      .update(`v0:${sentAtS}:${body}`)
+      .digest("hex");
+    return input({
+      rawBytes: bytes(body),
+      nowMs: sentAtS * 1000,
+      headers: {
+        "x-slack-signature": `v0=${sig}`,
+        "x-slack-request-timestamp": String(sentAtS),
+        ...(retryNum
+          ? { "x-slack-retry-num": String(retryNum), "x-slack-retry-reason": "http_timeout" }
+          : {}),
+      },
+    });
+  }
+
+  it("gives a Slack event and its retries one key", () => {
+    const body = JSON.stringify({
+      type: "event_callback",
+      team_id: "T1",
+      event_id: "Ev0MDYA7HL",
+      event: { type: "message", channel: "D1", ts: "1700000000.000100", text: "hi" },
+    });
+    const slack = cfg(webhookProviderConfigs.slack.config());
+    const first = verify(slack, slackAttempt(body, NOW_S));
+    const retry = verify(slack, slackAttempt(body, NOW_S + 61, 1));
+    expect(first.ok && retry.ok).toBe(true);
+    expect(first.idempotencyKey).toBe("Ev0MDYA7HL");
+    expect(retry.idempotencyKey).toBe(first.idempotencyKey);
+  });
+
+  it("decodes a Slack click and keys it on the delivery when it has no event_id", () => {
+    const click = { type: "block_actions", actions: [{ action_id: "trigger_tool_1" }] };
+    const body = `payload=${encodeURIComponent(JSON.stringify(click))}`;
+    const slack = cfg(webhookProviderConfigs.slack.config());
+    const first = verify(slack, slackAttempt(body, NOW_S));
+    const second = verify(slack, slackAttempt(body, NOW_S + 1));
+    expect(first.ok).toBe(true);
+    expect(first.parsedEvent).toEqual(click);
+    expect(first.idempotencyKey).toMatch(/^[0-9a-f]{64}$/);
+    expect(second.idempotencyKey).not.toBe(first.idempotencyKey);
   });
 });
 

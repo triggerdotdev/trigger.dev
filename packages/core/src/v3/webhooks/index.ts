@@ -141,6 +141,7 @@ function hmacVerifierConfig(opts: {
   ) & { unit?: "seconds" | "milliseconds"; format?: "unix" | "iso8601" | "http-date" };
   toleranceSeconds?: number;
   idempotencyField?: WebhookHmacConfig["idempotencyField"];
+  formPayload?: WebhookHmacConfig["formPayload"];
 }): WebhookHmacConfig {
   const signature: WebhookHmacConfig["signature"] = {};
   if (opts.itemSeparator) signature.itemSeparator = opts.itemSeparator;
@@ -182,6 +183,7 @@ function hmacVerifierConfig(opts: {
     };
   }
   if (opts.idempotencyField) config.idempotencyField = opts.idempotencyField;
+  if (opts.formPayload) config.formPayload = opts.formPayload;
 
   return config;
 }
@@ -204,6 +206,8 @@ export const webhookProviderConfigs = {
         signingTemplate: "v0:{timestamp}:{body}",
         timestamp: { from: "header", name: "x-slack-request-timestamp" },
         toleranceSeconds: 300,
+        idempotencyField: { from: "body", name: "event_id" },
+        formPayload: { field: "payload" },
       }),
   },
   zoom: {

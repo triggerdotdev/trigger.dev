@@ -39,7 +39,7 @@ export const fulfillOrder = webhook({
 
 const agentExample = `import { webhooks } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
-import { slack, webhookSource } from "@trigger.dev/slack";
+import { appMentions, slack, webhookSource } from "@trigger.dev/slack";
 
 const slackEvents = webhooks.endpoint.define({
   id: "slack",
@@ -53,6 +53,7 @@ export const support = chat.agent({
       id: "slack",
       endpoint: slackEvents,
       token: process.env.SLACK_BOT_TOKEN!,
+      startOn: appMentions(),
     }),
   ],
   run: async ({ messages, signal, streamText }) =>

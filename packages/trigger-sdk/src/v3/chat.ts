@@ -109,9 +109,11 @@ export type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage, TMetadat
   /**
    * Origin of an `"action"` trigger. `"webhook"` actions (delivered by the hosted webhook ingress)
    * carry a fixed envelope typed via `ChatEventActions`, so they bypass `actionSchema` validation;
-   * omitted / `"client"` actions (frontend or server) are validated against `actionSchema`.
+   * omitted / `"client"` actions (frontend or server) are validated against `actionSchema`, and so
+   * are `"channel"` actions (a click on a button the agent posted to a channel, mapped by the
+   * connector's `toAction()`).
    */
-  actionSource?: "client" | "webhook";
+  actionSource?: "client" | "webhook" | "channel";
   /**
    * A channel-delivered turn (hosted webhook ingress -> a chat frontend like Slack). Carries the raw
    * verified provider event; the run resolves the connector by `connectorId` from `chat.agent({ channels })`

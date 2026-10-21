@@ -465,6 +465,22 @@ export type TranscriptChannelBinding<THandle = unknown> = {
   /** ISO timestamp of the delivery that set the binding. */
   boundAt: string;
   deliveryId: string;
+  /**
+   * The message ref of the approval controls posted for each still-pending tool call, by tool call
+   * id, so a stop can update them after the worker that posted them is gone.
+   */
+  controls?: Record<string, string>;
+  /**
+   * The ref of the native reply stream open for the turn in flight. Cleared when the turn ends, so a
+   * continuation that boots with it set knows its predecessor died mid-stream.
+   */
+  stream?: string;
+  /**
+   * True while a turn that reported `working` to the connector's `lifecycle()` is running. Saved with
+   * the turn-start write and cleared when the turn ends, so a worker that boots with it set knows the
+   * surface still shows the agent working.
+   */
+  working?: boolean;
 };
 
 export type TranscriptRuntimeState = {
@@ -623,6 +639,17 @@ export function parseTranscriptRuntimeState(value: unknown): TranscriptRuntimeSt
       boundAt: binding.boundAt,
       deliveryId: binding.deliveryId,
     };
+    const controls = binding.controls as Record<string, unknown> | undefined;
+    if (controls && typeof controls === "object") {
+      const refs = Object.fromEntries(
+        Object.entries(controls).filter(
+          (entry): entry is [string, string] => typeof entry[1] === "string"
+        )
+      );
+      if (Object.keys(refs).length > 0) out.channelBinding.controls = refs;
+    }
+    if (typeof binding.stream === "string") out.channelBinding.stream = binding.stream;
+    if (binding.working === true) out.channelBinding.working = true;
   }
   if (Array.isArray(record.injections)) {
     out.injections = (record.injections as unknown[]).flatMap((entry) => {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { resolveReactionChoice } from "./ai.js";
 
 describe("resolveReactionChoice", () => {
@@ -14,16 +14,19 @@ describe("resolveReactionChoice", () => {
     expect(await resolveReactionChoice(() => null, {})).toBeUndefined();
   });
 
-  it("picks a member of an array (randomly)", async () => {
+  it("picks a member of an array by a uniform random draw", async () => {
     const options = ["eyes", "hourglass", "thinking_face"];
-    const seen = new Set<string>();
-    for (let i = 0; i < 60; i++) {
-      const picked = await resolveReactionChoice(options, {});
-      expect(options).toContain(picked);
-      seen.add(picked!);
+    const random = vi.spyOn(Math, "random");
+    try {
+      random.mockReturnValueOnce(0);
+      expect(await resolveReactionChoice(options, {})).toBe("eyes");
+      random.mockReturnValueOnce(0.5);
+      expect(await resolveReactionChoice(options, {})).toBe("hourglass");
+      random.mockReturnValueOnce(0.999);
+      expect(await resolveReactionChoice(options, {})).toBe("thinking_face");
+    } finally {
+      random.mockRestore();
     }
-    // Over 60 draws from 3 options, seeing only one is astronomically unlikely: proves it varies.
-    expect(seen.size).toBeGreaterThan(1);
   });
 
   it("resolves a function of the event, returning a string or an array", async () => {

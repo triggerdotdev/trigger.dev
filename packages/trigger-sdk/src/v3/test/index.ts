@@ -26,6 +26,10 @@ export {
   type RecordingChannelConnectorOptions,
   type RecordedSend,
   type RecordedReaction,
+  type RecordedFinalize,
+  type RecordedLifecycle,
+  type RecordedReplyStream,
+  type RecordedCancel,
   type TestChannelEvent,
   type TestChannelHandle,
 } from "./mock-channel-connector.js";

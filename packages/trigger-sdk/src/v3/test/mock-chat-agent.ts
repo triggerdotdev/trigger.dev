@@ -42,7 +42,7 @@ type ChatWirePayload = {
   metadata?: unknown;
   action?: unknown;
   /** Origin of an `"action"` trigger; `"webhook"` actions carry a fixed envelope and bypass `actionSchema`. */
-  actionSource?: "client" | "webhook";
+  actionSource?: "client" | "webhook" | "channel";
   /**
    * A channel-delivered turn (Slack or any `chat.channels.*` connector). Carries
    * the raw verified provider event; the run resolves the connector by
@@ -249,6 +249,18 @@ export type MockChatAgentHarness = {
    * call this. Awaiting the turn first leaves nothing to steer.
    */
   sendPendingMessage(message: UIMessage): Promise<void>;
+
+  /**
+   * Deliver a channel event mid-turn without waiting for it, the way a Slack message lands while
+   * the agent is answering. With a `pendingMessages` config it can be steered into the running
+   * turn; otherwise, or when `shouldInject` declines, it runs as the next turn.
+   */
+  sendPendingChannelEvent(args: {
+    event: unknown;
+    connectorId?: string;
+    source?: string;
+    deliveryId?: string;
+  }): Promise<void>;
 
   /**
    * Deliver a verified channel event (Slack or any `chat.channels.*`
@@ -865,6 +877,34 @@ export function mockChatAgent(
       });
       await settlePostTurnChannelEgress(chatId);
       return turn;
+    },
+
+    async sendPendingChannelEvent(args) {
+      await harnessReady;
+      const seqBefore = sessionStreams.lastSeqNum(chatId, "in") ?? -1;
+      const deliveryId = args.deliveryId ?? `dlv_${++channelDeliveryCounter}`;
+      await sendSessionInput(sessionId, {
+        kind: "message",
+        payload: {
+          chatId,
+          trigger: "submit-message",
+          channelEvent: {
+            connectorId: args.connectorId ?? DEFAULT_TEST_CONNECTOR_ID,
+            event: args.event,
+            source: args.source ?? "custom",
+            headers: {},
+            deliveryId,
+          },
+          metadata: clientData,
+        },
+      });
+      const deadline = Date.now() + 5_000;
+      while ((sessionStreams.lastSeqNum(chatId, "in") ?? -1) <= seqBefore) {
+        if (Date.now() > deadline) {
+          throw new Error(`sendPendingChannelEvent: ${deliveryId} never landed on session.in`);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
     },
 
     async sendPendingMessage(message) {
