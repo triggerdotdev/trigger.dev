@@ -4796,8 +4796,6 @@ paths:
       operationId: list_webhook_endpoints_v1
       summary: List webhook endpoints
       description: >-
-        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
-
         List the hosted webhook endpoints in the environment, ordered by declared id. Each endpoint
         includes its webhook URL and whether its signing secret is set. The secret itself is never returned.
       parameters:
@@ -4834,8 +4832,6 @@ paths:
       operationId: retrieve_webhook_endpoint_v1
       summary: Retrieve a webhook endpoint
       description: >-
-        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
-
         Retrieve one webhook endpoint with its subscribers, the filter each one applies, and its
         setup prompt: instructions for registering the endpoint and its signing secret with the provider.
       responses:
@@ -4866,8 +4862,6 @@ paths:
       operationId: enable_webhook_endpoint_v1
       summary: Enable a webhook endpoint
       description: >-
-        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
-
         Resume a disabled endpoint so its URL accepts deliveries again. Returns the updated endpoint.
       responses:
         "200":
@@ -4897,8 +4891,6 @@ paths:
       operationId: disable_webhook_endpoint_v1
       summary: Disable a webhook endpoint
       description: >-
-        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
-
         Pause an endpoint. Its status becomes `inactive` and its URL responds with `404` until you
         enable it, so providers see failed deliveries and retry on their own schedule. Returns the updated endpoint.
       responses:
@@ -4929,8 +4921,6 @@ paths:
       operationId: rotate_webhook_endpoint_secret_v1
       summary: Generate a webhook signing secret
       description: >-
-        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
-
         Generate a new signing secret for the endpoint, store it, and return it once. Use this for providers
         where you choose the secret, such as GitHub. It replaces any existing secret, so deliveries fail
         verification until the provider uses the new one. Endpoints whose source verifies with a public key
@@ -4969,8 +4959,6 @@ paths:
       operationId: set_webhook_endpoint_secret_v1
       summary: Set a webhook signing secret
       description: >-
-        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
-
         Store the signing secret or public key the provider issued for this endpoint, such as the `whsec_`
         secret Stripe returns when you create a webhook endpoint. It replaces any existing secret.
       requestBody:
@@ -5020,8 +5008,6 @@ paths:
       operationId: create_webhook_waiter_v1
       summary: Create a webhook waiter
       description: >-
-        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
-
         Create a waiter on an endpoint. A waiter is a waitpoint that completes when a matching delivery
         arrives on the endpoint, so a run waiting on its id resumes with the verified event. It only matches
         deliveries that arrive after it was created. Omit `match` to get a waiter with its own `url`, for
@@ -5092,8 +5078,6 @@ paths:
       operationId: cancel_webhook_waiter_v1
       summary: Cancel a webhook waiter
       description: >-
-        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
-
         Cancel a waiter. It stops matching deliveries, frees its slot toward the endpoint's limit, and fails
         the run's wait. If a delivery already claimed the waiter, the cancel is too late: the response has
         `cancelled: false` with `reason: "too_late"`, and the run resumes with that delivery's event.
@@ -5131,8 +5115,6 @@ paths:
       operationId: list_webhook_deliveries_v1
       summary: List webhook deliveries
       description: >-
-        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
-
         List the verified events providers sent to the environment's endpoints, newest first. Filter by
         endpoint, status and time range, and page with `page[after]` and `page[before]`.
       parameters:
@@ -5224,8 +5206,6 @@ paths:
       operationId: retrieve_webhook_delivery_v1
       summary: Retrieve a webhook delivery
       description: >-
-        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
-
         Retrieve one delivery: its status and error, the event body and headers it carried, and a `targets`
         entry per subscriber with the run or session it started or why its filter skipped the event. When
         the delivery resumed waiting runs, one more entry summarizes them.
@@ -5257,8 +5237,6 @@ paths:
       operationId: replay_webhook_delivery_v1
       summary: Replay a webhook delivery
       description: >-
-        **Private beta:** [request access](https://trigger.dev/webhooks-beta) to use webhooks.
-
         Route a delivery's stored event again as a new delivery. Without `targetId` every current subscriber
         is checked against its filter again. With `targetId` the event goes to that one subscriber, even if
         its filter skipped it. A replay never resumes waiting runs. Replays start real runs, so the key needs

@@ -4,10 +4,6 @@ description: "Register an endpoint's URL and signing secret with the provider, b
 sidebarTitle: "Connect a provider"
 ---
 
-import WebhooksBetaBanner from "/snippets/webhooks-beta-banner.mdx";
-
-<WebhooksBetaBanner />
-
 Connect a provider to an [endpoint](/webhooks/overview) by registering the endpoint's URL with the provider and giving Trigger.dev the credential that verifies its requests.
 
 Deploy the project or start `trigger dev` first. Once the CLI finds the endpoint, it appears on the environment's **Webhooks** page. The **Signing secret** column shows **Ready** when the endpoint can verify deliveries and **Needs secret** until then. Every delivery is rejected while an endpoint needs its secret.
