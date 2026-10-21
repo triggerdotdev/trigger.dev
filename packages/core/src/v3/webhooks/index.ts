@@ -266,6 +266,7 @@ export const webhookProviderConfigs = {
         header: "linear-signature",
         timestamp: { from: "body", path: "webhookTimestamp", unit: "milliseconds" },
         toleranceSeconds: 60,
+        idempotencyField: { from: "header", name: "linear-delivery" },
       }),
   },
   notion: {

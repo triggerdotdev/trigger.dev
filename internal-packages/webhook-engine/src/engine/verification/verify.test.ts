@@ -380,6 +380,29 @@ describe("provider retries", () => {
     expect(first.idempotencyKey).toMatch(/^[0-9a-f]{64}$/);
     expect(second.idempotencyKey).not.toBe(first.idempotencyKey);
   });
+  it("gives a Linear delivery and its retries one key", () => {
+    const delivery = "9180c0a4-8f16-486a-8472-648394eae869";
+    const attempt = (sentAtMs: number) => {
+      const body = JSON.stringify({
+        type: "AgentSessionEvent",
+        action: "created",
+        agentSession: { id: "session-1" },
+        webhookTimestamp: sentAtMs,
+      });
+      const sig = createHmac("sha256", "whsec_test_secret").update(body).digest("hex");
+      return input({
+        rawBytes: bytes(body),
+        nowMs: sentAtMs,
+        headers: { "linear-signature": sig, "linear-delivery": delivery },
+      });
+    };
+    const linear = cfg(webhookProviderConfigs.linear.config());
+    const first = verify(linear, attempt(NOW_MS));
+    const retry = verify(linear, attempt(NOW_MS + 60_400));
+    expect(first.ok && retry.ok).toBe(true);
+    expect(first.idempotencyKey).toBe(delivery);
+    expect(retry.idempotencyKey).toBe(first.idempotencyKey);
+  });
 });
 
 describe("asymmetric verifier (config-driven)", () => {

@@ -338,42 +338,38 @@ describe("signWithVerifierConfig round-trips through the verifier", () => {
     }
   );
 
-  it("linear: the idempotency key comes from the signed bytes, so a replay with a different delivery header dedupes", () => {
+  it("linear: a retry re-signed with a fresh webhookTimestamp keeps the Linear-Delivery key", () => {
     const linear = webhookProviderConfigs.linear.config();
     const body = new TextEncoder().encode(
       JSON.stringify({ action: "create", type: "Comment", webhookTimestamp: NOW })
     );
     const secret = "lin_wh_secret";
-    const signed = signWithVerifierConfig({
-      config: linear,
-      secret,
-      rawBody: body,
-      url: INGRESS_URL,
-      nowMs: NOW,
-    });
-    if (!signed.ok) throw new Error(signed.error);
-    const first = verify(
-      { kind: "config", config: linear },
-      {
-        rawBytes: signed.body,
-        headers: { ...signed.headers, "linear-delivery": "a" },
-        url: signed.url,
+    const attempt = (nowMs: number) => {
+      const signed = signWithVerifierConfig({
+        config: linear,
         secret,
-        nowMs: NOW,
-      }
-    );
-    const replay = verify(
-      { kind: "config", config: linear },
-      {
-        rawBytes: signed.body,
-        headers: { ...signed.headers, "linear-delivery": "b" },
-        url: signed.url,
-        secret,
-        nowMs: NOW,
-      }
-    );
-    expect(first.ok && replay.ok).toBe(true);
-    if (first.ok && replay.ok) expect(replay.idempotencyKey).toBe(first.idempotencyKey);
+        rawBody: body,
+        url: INGRESS_URL,
+        nowMs,
+        refreshBodyTimestamp: true,
+      });
+      if (!signed.ok) throw new Error(signed.error);
+      return verify(
+        { kind: "config", config: linear },
+        {
+          rawBytes: signed.body,
+          headers: { ...signed.headers, "linear-delivery": "delivery-1" },
+          url: signed.url,
+          secret,
+          nowMs,
+        }
+      );
+    };
+    const first = attempt(NOW);
+    const retry = attempt(NOW + 60_400);
+    expect(first.ok && retry.ok).toBe(true);
+    expect(first.idempotencyKey).toBe("delivery-1");
+    expect(retry.idempotencyKey).toBe("delivery-1");
   });
 
   it("refreshBodyTimestamp never writes through the prototype chain", () => {

@@ -1956,6 +1956,34 @@ importers:
         specifier: npm:zod@3.25.56
         version: zod@3.25.56
 
+  packages/linear:
+    dependencies:
+      '@trigger.dev/core':
+        specifier: workspace:4.7.6
+        version: link:../core
+    devDependencies:
+      '@arethetypeswrong/cli':
+        specifier: ^0.18.5
+        version: 0.18.5
+      '@trigger.dev/sdk':
+        specifier: workspace:4.7.6
+        version: link:../trigger-sdk
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+      ai:
+        specifier: 6.0.116
+        version: 6.0.116(zod@4.5.4)
+      rimraf:
+        specifier: 6.0.1
+        version: 6.0.1
+      tshy:
+        specifier: ^3.0.2
+        version: 3.3.2
+      tsx:
+        specifier: 4.17.0
+        version: 4.17.0
+
   packages/plugins:
     dependencies:
       '@trigger.dev/core':
