@@ -7,7 +7,7 @@ import type { WebhookDeliverTaskErrorType, WebhookRedisOptions } from "@internal
 import { tryCatch } from "@trigger.dev/core/utils";
 import { resolve4 } from "node:dns/promises";
 import { z } from "zod";
-import { prisma, webhookPartitionPrisma, webhookPrisma } from "~/db.server";
+import { $replica, webhookPartitionPrisma, webhookPrisma, webhookReplica } from "~/db.server";
 import { env } from "~/env.server";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
@@ -89,10 +89,11 @@ export function webhookVerifyTokenKey(endpointId: string): string {
 function createWebhookEngine() {
   // The engine owns the webhook tables, so it runs on the webhook DB client. The signing-secret
   // store stays on the main client below (SecretStore is control-plane, not part of the split).
-  const secretStore = getSecretStore("DATABASE", { prismaClient: prisma });
+  const secretStore = getSecretStore("DATABASE", { prismaClient: $replica });
 
   const engine = new WebhookEngine({
     prisma: webhookPrisma,
+    replica: webhookReplica,
     partitionPrisma: webhookPartitionPrisma,
     logLevel: env.WEBHOOK_ENGINE_LOG_LEVEL,
     disabled: env.WEBHOOK_ENABLED !== "1",
@@ -120,10 +121,6 @@ function createWebhookEngine() {
     frontGate: {
       defaultTtlSeconds: env.WEBHOOK_FRONT_GATE_DEFAULT_TTL_SECONDS,
       maxTtlSeconds: env.WEBHOOK_FRONT_GATE_MAX_TTL_SECONDS,
-    },
-    endpointCache: {
-      ttlMs: env.WEBHOOK_ENDPOINT_CACHE_TTL_MS,
-      maxSize: env.WEBHOOK_ENDPOINT_CACHE_MAX_SIZE,
     },
     waiters: {
       limits: {

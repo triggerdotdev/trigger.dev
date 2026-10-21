@@ -2128,10 +2128,6 @@ const EnvironmentSchema = z
         "WEBHOOK_DELIVERY_STORAGE_DAYS must be a delivery retention class (3, 7, 30, 90, 180 or 365)"
       ),
 
-    // Ingest hot-path cache for the endpoint + resolved signing secret (keyed by opaqueId). 0 disables.
-    WEBHOOK_ENDPOINT_CACHE_TTL_MS: z.coerce.number().int().default(30_000),
-    WEBHOOK_ENDPOINT_CACHE_MAX_SIZE: z.coerce.number().int().default(10_000),
-
     WEBHOOK_INGRESS_ENABLED: z.string().default("1"),
 
     // Public origin for the webhook ingress URL shown to users / returned by the API. Defaults to the

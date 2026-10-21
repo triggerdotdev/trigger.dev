@@ -4,7 +4,7 @@ import {
   createStandalonePostgresContainer,
 } from "@internal/testcontainers";
 import { createRedisClient } from "@internal/redis";
-import { type Prisma, PrismaClient } from "@trigger.dev/database";
+import { type Prisma, PrismaClient, type WebhookReplicaDatabase } from "@trigger.dev/database";
 import type { RedisOptions } from "@internal/redis";
 import type { Meter } from "@internal/tracing";
 import {
@@ -161,18 +161,19 @@ function buildEngine(
   triggerTask: TriggerWebhookTaskCallback,
   over?: {
     workerDisabled?: boolean;
-    endpointCacheTtlMs?: number;
     resolveSigningSecret?: (key: string) => Promise<string | readonly string[] | undefined>;
     resolveVerifyToken?: (endpointId: string) => Promise<string | undefined>;
     deliverToSession?: DeliverWebhookToSessionCallback;
     meter?: Meter;
     retentionDays?: (environmentId: string) => Promise<number>;
+    replica?: WebhookReplicaDatabase;
   }
 ) {
   return new WebhookEngine({
     meter: over?.meter,
     resolveVerifyToken: over?.resolveVerifyToken,
     prisma,
+    replica: over?.replica,
     redis: redisOptions,
     worker: {
       concurrency: 1,
@@ -180,8 +181,6 @@ function buildEngine(
       disabled: over?.workerDisabled,
       retryBaseDelayMs: 20,
     },
-    endpointCache:
-      over?.endpointCacheTtlMs !== undefined ? { ttlMs: over.endpointCacheTtlMs } : undefined,
     triggerTask,
     deliverToSession: over?.deliverToSession,
     retention: over?.retentionDays ? { forEnvironment: over.retentionDays } : undefined,
@@ -773,35 +772,73 @@ containerTestWithIsolatedRedis(
 );
 
 containerTestWithIsolatedRedis(
-  "caches the endpoint + secret across ingests and re-reads after the TTL",
+  "resolves the endpoint and secret on every ingest, so a new secret applies to the next delivery",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createEndpoint(prisma);
     const { triggerTask } = makeTriggerTaskStub();
+    let secret = SECRET;
     let secretReads = 0;
     const engine = buildEngine(prisma, redisOptions, triggerTask, {
-      endpointCacheTtlMs: 200,
       resolveSigningSecret: async (key) => {
         secretReads++;
-        return key === SECRET_KEY ? SECRET : undefined;
+        return key === SECRET_KEY ? secret : undefined;
       },
     });
 
     try {
-      expect((await engine.ingest(signedInput("evt_cache_1", endpoint.opaqueId))).outcome).toBe(
+      expect((await engine.ingest(signedInput("evt_fresh_1", endpoint.opaqueId))).outcome).toBe(
         "accepted"
       );
-      expect((await engine.ingest(signedInput("evt_cache_2", endpoint.opaqueId))).outcome).toBe(
-        "accepted"
-      );
-      // Second ingest hit the cache, so the secret was resolved only once.
-      expect(secretReads).toBe(1);
-
-      // After the TTL the entry expires and the next ingest re-resolves.
-      await new Promise((r) => setTimeout(r, 250));
-      expect((await engine.ingest(signedInput("evt_cache_3", endpoint.opaqueId))).outcome).toBe(
+      expect((await engine.ingest(signedInput("evt_fresh_2", endpoint.opaqueId))).outcome).toBe(
         "accepted"
       );
       expect(secretReads).toBe(2);
+
+      secret = "whsec_rotated_secret";
+      expect((await engine.ingest(signedInput("evt_fresh_3", endpoint.opaqueId))).outcome).toBe(
+        "verification_failed"
+      );
+
+      await prisma.webhookEndpoint.update({
+        where: { id: endpoint.id },
+        data: { status: "INACTIVE" },
+      });
+      expect((await engine.ingest(signedInput("evt_fresh_4", endpoint.opaqueId))).outcome).toBe(
+        "endpoint_inactive"
+      );
+    } finally {
+      await engine.quit();
+    }
+  }
+);
+
+containerTestWithIsolatedRedis(
+  "reads the endpoint for public ingress from the replica, not the writer",
+  async ({ prisma, redisOptions }) => {
+    const endpoint = await createEndpoint(prisma);
+    const { triggerTask } = makeTriggerTaskStub();
+    const replicaReads: string[] = [];
+    const laggingReplica = {
+      webhookEndpoint: {
+        findFirst: async (args: { where: { opaqueId: string } }) => {
+          replicaReads.push(args.where.opaqueId);
+          return null;
+        },
+      },
+    } as unknown as WebhookReplicaDatabase;
+    const engine = buildEngine(prisma, redisOptions, triggerTask, { replica: laggingReplica });
+
+    try {
+      expect((await engine.ingest(signedInput("evt_replica_1", endpoint.opaqueId))).outcome).toBe(
+        "endpoint_not_found"
+      );
+      expect((await engine.rejectUnsupportedMethod(endpoint.opaqueId)).outcome).toBe(
+        "endpoint_not_found"
+      );
+      expect(
+        (await engine.verifyGetHandshake({ opaqueId: endpoint.opaqueId, query: {} })).outcome
+      ).toBe("endpoint_not_found");
+      expect(replicaReads).toEqual([endpoint.opaqueId, endpoint.opaqueId, endpoint.opaqueId]);
     } finally {
       await engine.quit();
     }
@@ -815,7 +852,6 @@ containerTestWithIsolatedRedis(
     const { triggerTask } = makeTriggerTaskStub();
     let secrets: string[] = ["whsec_rotated_secret", SECRET];
     const engine = buildEngine(prisma, redisOptions, triggerTask, {
-      endpointCacheTtlMs: 0,
       resolveSigningSecret: async (key) => (key === SECRET_KEY ? secrets : undefined),
     });
 
