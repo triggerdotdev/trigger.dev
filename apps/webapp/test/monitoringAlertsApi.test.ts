@@ -19,6 +19,10 @@ vi.setConfig({ testTimeout: 60_000 });
 
 type Resource = { type: string; envType?: string };
 
+vi.hoisted(() => {
+  process.env.ALERTS_ENABLED = "1";
+});
+
 const ctx = vi.hoisted(() => ({
   prisma: undefined as unknown as PrismaClient,
   agentDb: undefined as unknown as DashboardAgentDb,

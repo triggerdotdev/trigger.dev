@@ -2,9 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.setConfig({ testTimeout: 30_000 });
 
-const STATE = vi.hoisted(() => ({ alerts: false, watch: true, admin: false }));
+const STATE = vi.hoisted(() => ({ alerts: false, watch: true, admin: false, configured: "1" }));
 
-vi.mock("~/env.server", () => ({ env: {} }));
+vi.mock("~/env.server", () => ({
+  env: {
+    get ALERTS_ENABLED() {
+      return STATE.configured;
+    },
+  },
+}));
 vi.mock("~/v3/featureFlags.server", () => ({
   makeFlag: () => async (opts: { key: string }) =>
     opts.key === "alertsEnabled" ? STATE.alerts : STATE.watch,
@@ -59,15 +65,22 @@ describe("api.v1.dashboard-agent.alerts gate", () => {
     STATE.alerts = false;
     STATE.watch = true;
     STATE.admin = false;
+    STATE.configured = "1";
   });
 
   it("404s a non-admin with alertsEnabled off even if the watch flag is on", async () => {
     expect((await call()).status).toBe(404);
   });
 
-  it("passes the gate for an admin with alertsEnabled off", async () => {
+  it("passes the gate for an admin with alertsEnabled off when alerts are configured", async () => {
     STATE.admin = true;
     expect((await call()).status).toBe(403);
+  });
+
+  it("404s an admin with alertsEnabled off when alerts are not configured", async () => {
+    STATE.admin = true;
+    STATE.configured = "";
+    expect((await call()).status).toBe(404);
   });
 
   it("passes the gate when alertsEnabled is on", async () => {

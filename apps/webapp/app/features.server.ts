@@ -1,4 +1,5 @@
 import { env } from "./env.server";
+import { isAlertsConfigured } from "./v3/services/alerts/alertsConfigured.server";
 import { queueMetricsEnabled } from "./v3/services/alerts/offeredCapabilities.server";
 import { requestUrl } from "./utils/requestUrl.server";
 
@@ -7,6 +8,7 @@ export type TriggerFeatures = {
   hasPrivateConnections: boolean;
   queueMetricsQueryTables: boolean;
   queueMetricsEnabled: boolean;
+  alertsConfigured: boolean;
 };
 
 const MANAGED_CLOUD_HOSTS = ["cloud.trigger.dev", "test-cloud.trigger.dev", "internal.trigger.dev"];
@@ -34,6 +36,7 @@ function featuresForHost(host: string): TriggerFeatures {
     hasPrivateConnections: hasPrivateConnections(host),
     queueMetricsQueryTables: env.QUEUE_METRICS_QUERY_TABLES_VISIBLE === "1",
     queueMetricsEnabled: queueMetricsEnabled(),
+    alertsConfigured: isAlertsConfigured({ alertsEnabled: env.ALERTS_ENABLED }),
   };
 }
 

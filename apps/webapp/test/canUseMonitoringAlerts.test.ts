@@ -50,9 +50,14 @@ describe("canUseMonitoringAlerts", () => {
     expect(await canUseMonitoringAlerts(project(null), "u")).toBe(false);
   });
 
-  it("allows an admin with the flag off", async () => {
-    STATE.alertsEnabledEnv = "";
+  it("allows an admin with the org flag off when alerts are configured", async () => {
     STATE.admin = true;
     expect(await canUseMonitoringAlerts(project({ alertsEnabled: false }), "u")).toBe(true);
+  });
+
+  it("denies an admin when alerts are not configured", async () => {
+    STATE.alertsEnabledEnv = "";
+    STATE.admin = true;
+    expect(await canUseMonitoringAlerts(project({ alertsEnabled: false }), "u")).toBe(false);
   });
 });
