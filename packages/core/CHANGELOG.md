@@ -1,5 +1,7 @@
 # internal-platform
 
+## 4.7.7
+
 ## 4.7.6
 
 ### Patch Changes
