@@ -1459,6 +1459,13 @@ const EnvironmentSchema = z
     RUN_ENGINE_SNAPSHOT_STORE_REDIS_URL: z.string().optional(),
     // How long a fetched org snapshotStoreMode override is reused per process. 0 disables caching.
     RUN_ENGINE_SNAPSHOT_STORE_DIAL_CACHE_MS: z.coerce.number().int().min(0).default(5000),
+    // How long a finished run's snapshot state stays in the store. Redis-primary runs fail closed
+    // after it expires.
+    RUN_ENGINE_SNAPSHOT_STORE_COMPLETED_TTL_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(4 * 24 * 60 * 60 * 1_000),
     // Background sweep that resolves snapshot units left pending by an interrupted transition
     // (see snapshotRecoveryWorker.server.ts). Inert without RUN_ENGINE_SNAPSHOT_STORE_REDIS_URL.
     // Off unless set to "1": enable it on one background replica. Several replicas with it on are

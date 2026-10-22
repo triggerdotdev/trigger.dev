@@ -219,6 +219,7 @@ export const snapshotStoreRuntime = singleton("SnapshotStoreRuntime", () => {
   const metrics = createSnapshotStoreMetrics(metricsRegister);
   const connection = createSnapshotConnection(endpoint, {
     metrics: metrics.store,
+    completedTtlMs: env.RUN_ENGINE_SNAPSHOT_STORE_COMPLETED_TTL_MS,
     onError: (error) => logger.error("Snapshot connection error", { error }),
   });
   return createSnapshotStoreRuntime({
