@@ -38,6 +38,9 @@ vi.mock("~/models/runtimeEnvironment.server", () => ({
 }));
 
 vi.mock("~/v3/canUseAlertsList.server", () => ({ canUseAlertsList: async () => true }));
+vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
+  canAccessDashboardAgent: async () => false,
+}));
 
 vi.mock("~/presenters/v3/AlertsListPresenter.server", () => ({
   AlertsListPresenter: class {
