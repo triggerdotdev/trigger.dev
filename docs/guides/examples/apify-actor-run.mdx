@@ -213,6 +213,10 @@ Trigger the task from the Trigger.dev dashboard with the same payload as Example
   These examples aren't retry-safe: retries always start a new Actor run. In production, store the Actor run ID and resume that run on retry rather than starting over.
 </Note>
 
+<Note>
+  [Task outputs](/limits#task-payloads-and-outputs) are limited to 10MB. Both examples return every dataset item, so a large crawl can fail the task even when the Actor succeeds. For big datasets, return only `datasetId` and read the items with `apify.dataset(datasetId).listItems({ offset, limit })` in the next step.
+</Note>
+
 ## Learn more
 
 - [Wait for token](/wait-for-token)
