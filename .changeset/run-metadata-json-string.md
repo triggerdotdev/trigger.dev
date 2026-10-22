@@ -1,3 +1,4 @@
+---
 "@trigger.dev/core": patch
 ---
 
