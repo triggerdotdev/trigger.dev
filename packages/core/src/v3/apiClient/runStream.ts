@@ -511,6 +511,9 @@ export class SSEStreamSubscription implements StreamSubscription {
                   },
                 });
               } else {
+                if (chunk.event === "error") {
+                  throw new Error(`Stream read failed: ${chunk.data}`);
+                }
                 if (chunk.event === "batch") {
                   const data = safeParseJSON(chunk.data) as {
                     records: Array<{

@@ -1,4 +1,4 @@
-import { createServer, type Server, type ServerResponse } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SSEStreamSubscription } from "./runStream.js";
 
@@ -7,15 +7,15 @@ describe("SSE retry exhaustion", () => {
   let url: string;
   let abort: AbortController;
   let attempts: number;
-  let respond: (response: ServerResponse) => void;
+  let respond: (response: ServerResponse, request: IncomingMessage) => void;
   let subscription: SSEStreamSubscription;
 
   beforeEach(async () => {
     attempts = 0;
     abort = new AbortController();
-    server = createServer((_request, response) => {
+    server = createServer((request, response) => {
       attempts++;
-      respond(response);
+      respond(response, request);
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address();
@@ -35,6 +35,7 @@ describe("SSE retry exhaustion", () => {
       stallTimeoutMs?: number;
       maxRetries?: number;
       maxStallRetries?: number;
+      onComplete?: () => void;
     } = {}
   ) {
     subscription = new SSEStreamSubscription(url, {
@@ -184,5 +185,48 @@ describe("SSE retry exhaustion", () => {
 
     await expect(reader.read()).rejects.toThrow("Stream stalled: no records received");
     expect(attempts).toBe(5);
+  });
+
+  describe("S2 error events", () => {
+    const batch = (seq: number) =>
+      `event: batch\ndata: ${JSON.stringify({
+        records: [
+          { seq_num: seq, timestamp: 1, body: JSON.stringify({ data: { n: seq }, id: `r${seq}` }) },
+        ],
+      })}\n\n`;
+    const s2Error = "event: error\ndata: Reconnection required\n\n";
+
+    function writeV2(response: ServerResponse, body: string) {
+      response.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "X-Stream-Version": "v2",
+      });
+      response.end(body);
+    }
+
+    it("reconnects from the last record after an error event", async () => {
+      const lastEventIds: Array<string | undefined> = [];
+      respond = (response, request) => {
+        lastEventIds.push(request.headers["last-event-id"] as string | undefined);
+        if (attempts === 1) writeV2(response, batch(0) + s2Error);
+        else writeV2(response, batch(1) + "data: [DONE]\n\n");
+      };
+      const reader = await open();
+
+      expect(await reader.read()).toMatchObject({ done: false, value: { id: "0" } });
+      expect(await reader.read()).toMatchObject({ done: false, value: { id: "1" } });
+      expect(await reader.read()).toEqual({ done: true, value: undefined });
+      expect(lastEventIds).toEqual([undefined, "0"]);
+    });
+
+    it("fails instead of completing when error events exhaust retries", async () => {
+      let completed = false;
+      respond = (response) => writeV2(response, s2Error);
+      const reader = await open({ onComplete: () => (completed = true) });
+
+      await expect(reader.read()).rejects.toThrow("Reconnection required");
+      expect(attempts).toBe(3);
+      expect(completed).toBe(false);
+    });
   });
 });

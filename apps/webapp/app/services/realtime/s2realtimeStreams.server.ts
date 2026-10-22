@@ -330,7 +330,43 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     return names;
   }
 
+  /**
+   * Non-blocking read of the records after `afterSeqNum`. Retries transient
+   * failures (network errors, 5xx, and reads S2 ends with an `error` event)
+   * because the `.wait()` race check depends on this read to find a record
+   * sent before the waitpoint registered.
+   */
   async #readRecordsByName(s2Stream: string, afterSeqNum?: number): Promise<StreamRecord[]> {
+    const backoffsMs = [100, 300];
+    const maxAttempts = backoffsMs.length + 1;
+
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.#readRecordsOnce(s2Stream, afterSeqNum);
+      } catch (error) {
+        const status = (error as { status?: number }).status;
+        const isClientError = status !== undefined && status >= 400 && status < 500;
+        if (isClientError || attempt + 1 >= maxAttempts) {
+          this.logger.error("S2 readRecords failed", {
+            stream: s2Stream,
+            attempts: attempt + 1,
+            error,
+          });
+          throw error;
+        }
+
+        this.logger.warn("S2 readRecords transient failure, retrying", {
+          stream: s2Stream,
+          attempt: attempt + 1,
+          nextDelayMs: backoffsMs[attempt],
+          error,
+        });
+        await new Promise((resolve) => setTimeout(resolve, backoffsMs[attempt]));
+      }
+    }
+  }
+
+  async #readRecordsOnce(s2Stream: string, afterSeqNum?: number): Promise<StreamRecord[]> {
     const startSeq = afterSeqNum != null ? afterSeqNum + 1 : 0;
 
     const qs = new URLSearchParams();
@@ -357,7 +393,9 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
         return [];
       }
       await cancelResponseBody(res);
-      throw new Error(`S2 readRecords failed: ${res.status} ${res.statusText}`);
+      throw Object.assign(new Error(`S2 readRecords failed: ${res.status} ${res.statusText}`), {
+        status: res.status,
+      });
     }
 
     // Parse the SSE response body to extract records
@@ -382,6 +420,10 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
         } else if (line.startsWith("data:")) {
           data = line.slice(5).trim();
         }
+      }
+
+      if (eventType === "error") {
+        throw new Error(`S2 readRecords failed: ${data ?? "error event"}`);
       }
 
       if (eventType === "batch" && data) {

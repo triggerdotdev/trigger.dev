@@ -134,9 +134,16 @@ const { action, loader } = createActionApiRoute(
             // Clean up the Redis cache since we completed it ourselves
             await deleteInputStreamWaitpoint(run.friendlyId, body.streamId);
           }
-        } catch {
+        } catch (error) {
           // Non-fatal: if the S2 check fails, the waitpoint is still PENDING.
           // The next .send() will complete it via the Redis cache path.
+          logger.warn("input-stream wait race-check failed", {
+            runId: run.friendlyId,
+            streamId: body.streamId,
+            waitpointId: WaitpointId.toFriendlyId(result.waitpoint.id),
+            error,
+            environmentId: authentication.environment.id,
+          });
         }
       }
 
