@@ -26,7 +26,25 @@ export type TemplatePrebuildReason =
   | "rollout"
   | "none";
 
-export type TemplateBuildOutcome = "built" | "already_there" | "failed" | "timeout";
+export type TemplateBuildOutcome =
+  | "built"
+  | "already_there"
+  | "failed"
+  | "timeout"
+  | "rate_limited";
+
+type TemplateBuildRequestSkip = "no_builder" | "has_key" | "no_pinned_image";
+
+export type TemplateBuildRequestResult = {
+  deploymentId: string;
+  friendlyId?: string;
+} & (
+  | { outcome: TemplateBuildOutcome }
+  | { outcome: "skipped"; reason: TemplateBuildRequestSkip }
+  | { outcome: "not_found" }
+);
+
+const BUILD_REQUEST_CONCURRENCY = 10;
 
 export type TemplateBuilderConfig = {
   url?: string;
@@ -258,6 +276,59 @@ export class TemplatePrebuildService {
   }
 
   /**
+   * Requests a shadow build for each deployment, by id or friendly id, whatever its age. A
+   * deployment that has a key is skipped unless `force` is set. The store guard still applies.
+   */
+  async requestBuilds({
+    deploymentIds,
+    force = false,
+  }: {
+    deploymentIds: string[];
+    force?: boolean;
+  }): Promise<TemplateBuildRequestResult[]> {
+    const results: TemplateBuildRequestResult[] = [];
+    for (let i = 0; i < deploymentIds.length; i += BUILD_REQUEST_CONCURRENCY) {
+      const batch = deploymentIds.slice(i, i + BUILD_REQUEST_CONCURRENCY);
+      results.push(
+        ...(await Promise.all(batch.map((deploymentId) => this.requestBuild(deploymentId, force))))
+      );
+    }
+    return results;
+  }
+
+  private async requestBuild(
+    deploymentId: string,
+    force: boolean
+  ): Promise<TemplateBuildRequestResult> {
+    const deployment = await this.prisma.workerDeployment.findFirst({
+      where: { OR: [{ id: deploymentId }, { friendlyId: deploymentId }] },
+      select: { id: true, friendlyId: true, imageReference: true, templateKey: true },
+    });
+    if (!deployment) {
+      return { deploymentId, outcome: "not_found" };
+    }
+    const base = { deploymentId, friendlyId: deployment.friendlyId };
+    if (!this.config.url) {
+      return { ...base, outcome: "skipped", reason: "no_builder" };
+    }
+    if (deployment.templateKey && !force) {
+      return { ...base, outcome: "skipped", reason: "has_key" };
+    }
+    // Finalisation stores the image pinned by digest; without one there is nothing to build.
+    const image = deployment.imageReference
+      ? pinnedImageReference(deployment.imageReference, undefined)
+      : undefined;
+    if (!image) {
+      return { ...base, outcome: "skipped", reason: "no_pinned_image" };
+    }
+    const outcome = await this.build(image, "shadow", {
+      id: deployment.id,
+      friendlyId: deployment.friendlyId,
+    });
+    return { ...base, outcome };
+  }
+
+  /**
    * Call the builder once and store the template key on success. Resolves with
    * the outcome; never rejects.
    */
@@ -303,7 +374,7 @@ export class TemplatePrebuildService {
           this.config.timeoutMs - (performance.now() - startedAt)
         );
       } else {
-        outcome = "failed";
+        outcome = response.status === 429 ? "rate_limited" : "failed";
         logger.error("Template prebuild failed", {
           ...log,
           status: response.status,

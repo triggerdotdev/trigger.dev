@@ -95,7 +95,12 @@ async function createProject(
 async function createDeployment(
   prisma: any,
   project: { id: string; organizationId: string },
-  options: { status?: "DEPLOYING" | "DEPLOYED"; imageReference?: string; templateKey?: string } = {}
+  options: {
+    status?: "DEPLOYING" | "DEPLOYED";
+    imageReference?: string;
+    templateKey?: string;
+    deployedAt?: Date;
+  } = {}
 ) {
   const id = randomUUID();
   const environment = await prisma.runtimeEnvironment.create({
@@ -120,6 +125,7 @@ async function createDeployment(
       status: options.status ?? "DEPLOYING",
       imageReference: options.imageReference ?? IMAGE,
       templateKey: options.templateKey,
+      deployedAt: options.deployedAt,
     },
   });
 }
@@ -665,5 +671,121 @@ describe("prebuild", () => {
     await expect(
       service.prebuild({ ...deployment, projectId: "proj", imageDigest: DIGEST })
     ).resolves.toEqual({ mode: "skip" });
+  });
+});
+
+describe("requestBuilds", () => {
+  const PINNED = `${IMAGE}@${DIGEST}`;
+
+  postgresTest(
+    "builds deployments by id or friendly id and reports each outcome",
+    async ({ prisma }) => {
+      const server = await builder(reply(200, { template_id: TEMPLATE_KEY }));
+      try {
+        const project = await createProject(prisma);
+        const byId = await createDeployment(prisma, project, {
+          status: "DEPLOYED",
+          imageReference: PINNED,
+        });
+        const old = await createDeployment(prisma, project, {
+          status: "DEPLOYED",
+          imageReference: PINNED,
+          deployedAt: new Date("2025-01-01T00:00:00Z"),
+        });
+        const keyed = await createDeployment(prisma, project, {
+          status: "DEPLOYED",
+          imageReference: PINNED,
+          templateKey: "b".repeat(64),
+        });
+        const unpinned = await createDeployment(prisma, project, { status: "DEPLOYED" });
+        const service = new TemplatePrebuildService(prisma, config({ url: server.url }));
+
+        const results = await service.requestBuilds({
+          deploymentIds: [byId.id, old.friendlyId, keyed.id, unpinned.id, "deployment_missing"],
+        });
+
+        expect(results).toEqual([
+          { deploymentId: byId.id, friendlyId: byId.friendlyId, outcome: "built" },
+          { deploymentId: old.friendlyId, friendlyId: old.friendlyId, outcome: "built" },
+          {
+            deploymentId: keyed.id,
+            friendlyId: keyed.friendlyId,
+            outcome: "skipped",
+            reason: "has_key",
+          },
+          {
+            deploymentId: unpinned.id,
+            friendlyId: unpinned.friendlyId,
+            outcome: "skipped",
+            reason: "no_pinned_image",
+          },
+          { deploymentId: "deployment_missing", outcome: "not_found" },
+        ]);
+        expect(server.requests).toHaveLength(2);
+        expect(JSON.parse(server.requests[0].body).image).toBe(PINNED);
+        expect(await storedTemplateKey(prisma, byId.id)).toBe(TEMPLATE_KEY);
+        expect(await storedTemplateKey(prisma, old.id)).toBe(TEMPLATE_KEY);
+        expect(await storedTemplateKey(prisma, keyed.id)).toBe("b".repeat(64));
+      } finally {
+        await server.close();
+      }
+    }
+  );
+
+  postgresTest("force rebuilds a deployment that has a key", async ({ prisma }) => {
+    const server = await builder(reply(200, { template_id: TEMPLATE_KEY }));
+    try {
+      const project = await createProject(prisma);
+      const keyed = await createDeployment(prisma, project, {
+        status: "DEPLOYED",
+        imageReference: PINNED,
+        templateKey: "b".repeat(64),
+      });
+      const service = new TemplatePrebuildService(prisma, config({ url: server.url }));
+
+      const [result] = await service.requestBuilds({ deploymentIds: [keyed.id], force: true });
+
+      expect(result).toMatchObject({ outcome: "built" });
+      expect(await storedTemplateKey(prisma, keyed.id)).toBe(TEMPLATE_KEY);
+    } finally {
+      await server.close();
+    }
+  });
+
+  postgresTest("reports a 429 from the builder as rate_limited", async ({ prisma }) => {
+    const server = await builder(reply(429, { error: "slow down" }));
+    try {
+      const project = await createProject(prisma);
+      const row = await createDeployment(prisma, project, {
+        status: "DEPLOYED",
+        imageReference: PINNED,
+      });
+      const service = new TemplatePrebuildService(prisma, config({ url: server.url }));
+
+      const [result] = await service.requestBuilds({ deploymentIds: [row.id] });
+
+      expect(result).toMatchObject({ outcome: "rate_limited" });
+      expect(await storedTemplateKey(prisma, row.id)).toBeNull();
+    } finally {
+      await server.close();
+    }
+  });
+
+  postgresTest("skips every deployment when no builder is configured", async ({ prisma }) => {
+    const project = await createProject(prisma);
+    const row = await createDeployment(prisma, project, {
+      status: "DEPLOYED",
+      imageReference: PINNED,
+    });
+    const service = new TemplatePrebuildService(prisma, config({ url: undefined }));
+
+    await expect(service.requestBuilds({ deploymentIds: [row.id] })).resolves.toEqual([
+      {
+        deploymentId: row.id,
+        friendlyId: row.friendlyId,
+        outcome: "skipped",
+        reason: "no_builder",
+      },
+    ]);
   });
 });
