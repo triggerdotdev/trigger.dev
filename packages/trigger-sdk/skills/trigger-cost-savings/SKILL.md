@@ -105,6 +105,7 @@ Larger machines cost proportionally more per second of compute:
 ## Key principles
 
 - **Waits > 5 seconds are free** — checkpointed, no compute charge.
+- **Webhook filters skip runs** — a webhook delivery that no subscriber's filter matches starts no run and costs no compute. Receiving webhooks has no separate charge.
 - **Start small, scale up** — the default `small-1x` is right for most tasks.
 - **I/O-bound tasks don't need big machines** — API calls and DB queries wait on the network.
 - **Debounce saves the most on high-frequency tasks** — it consolidates bursts into single runs.

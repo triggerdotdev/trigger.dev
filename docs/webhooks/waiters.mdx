@@ -185,6 +185,6 @@ if (!result.cancelled) {
 | Tags per waiter | 10 |
 | Timeout | 24 hours by default, 90 days at most |
 
-On Trigger.dev Cloud the per-endpoint and per-environment limits depend on your plan. Self-hosted installs can change them with `WEBHOOK_WAITER_MAX_PER_ENDPOINT`, `WEBHOOK_WAITER_MAX_PER_ENVIRONMENT` and `WEBHOOK_WAITER_MAX_SHAPES`.
+On Trigger.dev Cloud the per-endpoint and per-environment limits depend on your plan: see [Limits](/limits#webhook-waiters). Self-hosted installs can change them with `WEBHOOK_WAITER_MAX_PER_ENDPOINT`, `WEBHOOK_WAITER_MAX_PER_ENVIRONMENT` and `WEBHOOK_WAITER_MAX_SHAPES`.
 
 A delivery that resumes waiters shows one **Waiting runs** row on its [delivery page](/webhooks/deliveries#where-a-delivery-went) with how many matched, resumed and failed. A delivery that arrives while runs are waiting but matches none of them, and no subscriber takes, is `UNMATCHED`.
