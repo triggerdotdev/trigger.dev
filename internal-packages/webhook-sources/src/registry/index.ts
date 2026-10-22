@@ -23,7 +23,6 @@ import { entry as e_firecrawl } from "./firecrawl.js";
 import { entry as e_github } from "./github.js";
 import { entry as e_gitlab } from "./gitlab.js";
 import { entry as e_granola } from "./granola.js";
-import { entry as e_hookdeck } from "./hookdeck.js";
 import { entry as e_hubspot } from "./hubspot.js";
 import { entry as e_infisical } from "./infisical.js";
 import { entry as e_intercom } from "./intercom.js";
@@ -92,7 +91,6 @@ export const registryEntries: ProviderRegistryEntry[] = [
   e_github,
   e_gitlab,
   e_granola,
-  e_hookdeck,
   e_hubspot,
   e_infisical,
   e_intercom,

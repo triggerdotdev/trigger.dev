@@ -58,24 +58,9 @@ function createTestShapeStream(
   });
 }
 
-// Never closes, like a live run shape stream; a close here would race the stream chunks
-function createOpenTestShapeStream(
-  shapes: SubscribeRunRawShape[]
-): ReadableStream<SubscribeRunRawShape> {
-  return new ReadableStream({
-    start: (controller) => {
-      for (const shape of shapes) {
-        controller.enqueue(shape);
-      }
-    },
-  });
-}
-
 function createDelayedTestShapeStream(
   shapes: SubscribeRunRawShape[]
 ): ReadableStream<SubscribeRunRawShape> {
-  let interval: ReturnType<typeof setInterval> | undefined;
-
   return new ReadableStream({
     start: async (controller) => {
       // Emit first shape immediately
@@ -86,7 +71,7 @@ function createDelayedTestShapeStream(
       let currentShapeIndex = 1;
 
       // Emit remaining shapes with delay
-      interval = setInterval(() => {
+      const interval = setInterval(() => {
         if (currentShapeIndex >= shapes.length) {
           clearInterval(interval);
           controller.close();
@@ -95,7 +80,6 @@ function createDelayedTestShapeStream(
         controller.enqueue(shapes[currentShapeIndex++]!);
       }, 100);
     },
-    cancel: () => clearInterval(interval),
   });
 }
 
@@ -323,7 +307,7 @@ describe("RunSubscription", () => {
     ];
 
     const subscription = new RunSubscription({
-      runShapeStream: createOpenTestShapeStream(shapes),
+      runShapeStream: createTestShapeStream(shapes),
       stopRunShapeStream: () => {},
       streamFactory,
       abortController: new AbortController(),
@@ -408,7 +392,7 @@ describe("RunSubscription", () => {
     ];
 
     const subscription = new RunSubscription({
-      runShapeStream: createOpenTestShapeStream(shapes),
+      runShapeStream: createTestShapeStream(shapes),
       stopRunShapeStream: () => {},
       streamFactory,
       abortController: new AbortController(),
@@ -471,7 +455,7 @@ describe("RunSubscription", () => {
     ];
 
     const subscription = new RunSubscription({
-      runShapeStream: createOpenTestShapeStream(shapes),
+      runShapeStream: createTestShapeStream(shapes),
       stopRunShapeStream: () => {},
       streamFactory,
       abortController: new AbortController(),

@@ -84,8 +84,7 @@ describe("renderWebhookSetupPrompt", () => {
 
     expect(prompt).toContain("Public key: set");
     expect(prompt).toContain("Copy its public key and store it with `set_webhook_secret`.");
-    expect(prompt).toContain("A public key is already set; only replace it when");
-    expect(prompt).toContain("pass `previousSecretTtlSeconds`");
+    expect(prompt).toContain("A public key is already set; replacing it breaks deliveries");
   });
 
   it("asks which events to send when nothing subscribes yet", () => {

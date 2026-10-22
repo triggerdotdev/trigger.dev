@@ -1,4 +1,3 @@
-import { generateWaitpointId } from "@trigger.dev/core/v3/isomorphic";
 // Two layers. The PURE-LOGIC layer proves buildCompletedWaitpointRecords + the expander agree
 // with the Postgres oracle (enhanceExecutionSnapshotWithWaitpoints) field-for-field across every
 // required case, with the deriveFromRun lookup injected as a closure per the branch rule. The
@@ -8,13 +7,12 @@ import { describe, expect, it } from "vitest";
 import { heteroRunOpsPostgresTest } from "@internal/testcontainers";
 import { PostgresRunStore, RoutingRunStore, type CreateRunInput } from "@internal/run-store";
 import type { CompletedWaitpoint } from "@trigger.dev/core/v3";
-import { PrismaClient, type Waitpoint } from "@trigger.dev/database";
+import type { PrismaClient, Waitpoint } from "@trigger.dev/database";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import { enhanceExecutionSnapshotWithWaitpoints } from "./executionSnapshotSystem.js";
 import {
   buildCompletedWaitpointRecords,
   createCompletedWaitpointResolver,
-  createStoreRunCompletedWaitpointResolver,
   expandCompletedWaitpointRecords,
 } from "./completedWaitpointResolver.js";
 
@@ -395,121 +393,7 @@ async function seedCompletingRun(
   });
 }
 
-it("skips ID classification by default, when disabled, and without trusted organization context", async () => {
-  // Real clients/stores, with inline records so the original resolver needs no database I/O.
-  const prisma = new PrismaClient({ datasourceUrl: "postgresql://unused:unused@localhost/unused" });
-  const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
-  const records = buildCompletedWaitpointRecords([
-    makeWaitpoint({ type: "RUN", output: "inline-result" }),
-  ]);
-  // This sentinel throws in parseWaitpointId; the legacy expander only carries the ID through.
-  records[0]!.id = null as unknown as string;
-  const args = {
-    runId: "parent",
-    pointer: { cycleSeq: 1, count: 1 },
-    order: [],
-    records,
-  };
-  try {
-    const defaultResolver = createStoreRunCompletedWaitpointResolver(store, prisma);
-    expect((await defaultResolver(args, { organizationId: "trusted-org" }))[0]!.output).toBe(
-      "inline-result"
-    );
-    const checkedOrganizations: string[] = [];
-    const disabled = createStoreRunCompletedWaitpointResolver(store, prisma, (organizationId) => {
-      checkedOrganizations.push(organizationId);
-      return false;
-    });
-    expect((await disabled(args, { organizationId: "trusted-org" }))[0]!.id).toBeNull();
-    expect(checkedOrganizations).toEqual(["trusted-org"]);
-    const enabled = createStoreRunCompletedWaitpointResolver(store, prisma, () => true);
-    expect((await enabled(args))[0]!.id).toBeNull();
-    await expect(enabled(args, { organizationId: "trusted-org" })).rejects.toThrow();
-  } finally {
-    await prisma.$disconnect();
-  }
-});
-
 describe("createCompletedWaitpointResolver reads TaskRun.output through the routed store", () => {
-  heteroRunOpsPostgresTest(
-    "MemoryDB RUN outputs use the owning primary under a real frozen reader while legacy records retain their read policy",
-    async ({ prisma14, prisma17 }) => {
-      const writer = makeRouter(prisma14 as unknown as PrismaClient, prisma17);
-      const env = await seedEnv(prisma14 as unknown as PrismaClient, "store-primary-lag");
-      await seedCompletingRun(writer, env, RUN_OPS_A, "stale-output", prisma17 as never);
-      await prisma17.$transaction(
-        async (frozenReader) => {
-          // REPEATABLE READ pins a real database snapshot before the primary commits the new output.
-          expect(
-            (await frozenReader.taskRun.findUniqueOrThrow({ where: { id: RUN_OPS_A } })).output
-          ).toBe("stale-output");
-          await prisma17.taskRun.update({
-            where: { id: RUN_OPS_A },
-            data: { output: "committed-output" },
-          });
-          const router = new RoutingRunStore({
-            new: new PostgresRunStore({
-              prisma: prisma17 as never,
-              readOnlyPrisma: frozenReader as never,
-              schemaVariant: "dedicated",
-            }),
-            legacy: new PostgresRunStore({
-              prisma: prisma14 as never,
-              readOnlyPrisma: prisma14 as never,
-            }),
-          });
-          const storeId = generateWaitpointId("RUN");
-          const records = buildCompletedWaitpointRecords([
-            makeWaitpoint({
-              id: storeId,
-              type: "RUN",
-              completedByTaskRunId: RUN_OPS_A,
-              output: "derive",
-            }),
-            makeWaitpoint({
-              id: "legacy_waitpoint",
-              type: "RUN",
-              completedByTaskRunId: RUN_OPS_A,
-              output: "derive",
-            }),
-          ]);
-          const args = {
-            runId: "parent",
-            pointer: { cycleSeq: 1, count: 2 },
-            order: [storeId, "legacy_waitpoint"],
-            records,
-          };
-          const unchanged = await createCompletedWaitpointResolver(router)(args);
-          expect(unchanged.map((row) => row.output)).toEqual(["stale-output", "stale-output"]);
-          const resolver = createStoreRunCompletedWaitpointResolver(
-            router,
-            prisma14 as never,
-            (organizationId) => organizationId === env.organization.id
-          );
-          const resolved = await resolver(args, { organizationId: env.organization.id });
-          expect(resolved.map((row) => row.id)).toEqual([storeId, "legacy_waitpoint"]);
-          expect(resolved.map((row) => row.output)).toEqual(["committed-output", "stale-output"]);
-          expect(
-            (await frozenReader.taskRun.findUniqueOrThrow({ where: { id: RUN_OPS_A } })).output
-          ).toBe("stale-output");
-          const missing = { ...records[0]!, completedByTaskRunId: RUN_OPS_B };
-          await expect(
-            resolver({ ...args, records: [missing] }, { organizationId: env.organization.id })
-          ).rejects.toThrow("No completing TaskRun");
-          expect(
-            (
-              await resolver(
-                { ...args, records: [{ ...missing, id: "legacy_missing" }] },
-                { organizationId: env.organization.id }
-              )
-            )[0]!.output
-          ).toBeNull();
-        },
-        { isolationLevel: "RepeatableRead", timeout: 15_000 }
-      );
-    }
-  );
-
   heteroRunOpsPostgresTest(
     "resolves a deriveFromRun record from the completing run on the #new shard",
     async ({ prisma14, prisma17 }) => {

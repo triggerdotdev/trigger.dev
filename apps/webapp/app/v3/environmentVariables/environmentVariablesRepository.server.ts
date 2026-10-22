@@ -1030,10 +1030,6 @@ async function resolveOverridableTriggerVariables(
       key: "TRIGGER_REALTIME_STREAM_VERSION",
       value: env.REALTIME_STREAM_VERSION,
     },
-    {
-      key: "TRIGGER_DASHBOARD_URL",
-      value: env.APP_ORIGIN.replace(/\/$/, ""),
-    },
   ];
 
   return result;

@@ -28,7 +28,6 @@ import {
   buildErrorGroupSlackMessage,
   type ErrorAlertPayload,
 } from "./errorGroupSlackMessage.server";
-import { findSlackIntegration } from "./alertTransport.server";
 import { safeWebhookFetch } from "./safeWebhookFetch.server";
 
 class SkipRetryError extends Error {}
@@ -144,14 +143,24 @@ export class DeliverErrorGroupAlertService {
       return;
     }
 
-    const integration = await findSlackIntegration(
-      prisma,
-      {
-        integrationId: slackProperties.data.integrationId,
-        organizationId: channel.project.organizationId,
-      },
-      { includeDeleted: true }
-    );
+    const integration = slackProperties.data.integrationId
+      ? await prisma.organizationIntegration.findFirst({
+          where: {
+            id: slackProperties.data.integrationId,
+            organizationId: channel.project.organizationId,
+            deletedAt: null,
+          },
+          include: { tokenReference: true },
+        })
+      : await prisma.organizationIntegration.findFirst({
+          where: {
+            service: "SLACK",
+            organizationId: channel.project.organizationId,
+            deletedAt: null,
+          },
+          orderBy: { createdAt: "desc" },
+          include: { tokenReference: true },
+        });
 
     if (!integration || !isIntegrationForService(integration, "SLACK")) {
       logger.error("[DeliverErrorGroupAlert] Slack integration not found");

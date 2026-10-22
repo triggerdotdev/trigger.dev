@@ -1,14 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const STATE = vi.hoisted(() => ({ member: true, flag: false, admin: false, configured: "1" }));
+const STATE = vi.hoisted(() => ({ member: true, flag: false, admin: false }));
 
-vi.mock("~/env.server", () => ({
-  env: {
-    get ALERTS_ENABLED() {
-      return STATE.configured;
-    },
-  },
-}));
+vi.mock("~/env.server", () => ({ env: {} }));
 vi.mock("~/v3/featureFlags.server", () => ({ makeFlag: () => async () => STATE.flag }));
 vi.mock("~/db.server", () => ({
   prisma: { user: { findFirst: async () => ({ admin: STATE.admin }) } },
@@ -40,7 +34,6 @@ beforeEach(() => {
   STATE.member = true;
   STATE.flag = false;
   STATE.admin = false;
-  STATE.configured = "1";
 });
 
 describe.each([
@@ -56,15 +49,9 @@ describe.each([
     expect(await thrown(run)).toBeUndefined();
   });
 
-  it("allows an admin member with the flag off when alerts are configured", async () => {
+  it("allows an admin member with the flag off", async () => {
     STATE.admin = true;
     expect(await thrown(run)).toBeUndefined();
-  });
-
-  it("denies an admin member with the flag off when alerts are not configured", async () => {
-    STATE.admin = true;
-    STATE.configured = "";
-    expect((await thrown(run))?.status).toBe(deniedStatus);
   });
 
   it("denies a non-member even with the flag on", async () => {

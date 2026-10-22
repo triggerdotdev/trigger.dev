@@ -1,18 +1,12 @@
-import { useFetcher, useLoaderData, useNavigate, useRevalidator } from "@remix-run/react";
-import { useState } from "react";
+import { useFetcher, useLoaderData } from "@remix-run/react";
 import { json, redirect } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { alertTypeTitle } from "~/components/alerts/AlertChannelsBody";
 import { hasLegacyAlerts } from "~/components/alerts/hasLegacyAlerts.server";
 import { LegacyAlertsSection } from "~/components/alerts/LegacyAlertsSection";
-import { ManualAlertCreationDock } from "~/components/alerts/ManualAlertCreation";
 import { useDashboardAgent } from "~/components/dashboard-agent/dashboardAgentLauncher";
+import { replacePrefill } from "~/components/dashboard-agent/alert-creation/flow-state";
 import {
-  replacePrefill,
-  type DraftPrefillParams,
-} from "~/components/dashboard-agent/alert-creation/flow-state";
-import {
-  afterReplace,
   replacedMessage,
   toLegacyAlertChannelRows,
   type LegacyAlertChannelRow,
@@ -31,7 +25,6 @@ import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import {
   EnvironmentParamSchema,
-  v3AlertPath,
   v3ProjectAlertsPath,
   v3ProjectLegacyAlertsPath,
 } from "~/utils/pathBuilder";
@@ -333,54 +326,35 @@ export default function Page() {
   const environment = useEnvironment();
   const fetcher = useFetcher();
   const agent = useDashboardAgent();
-  const navigate = useNavigate();
-  const revalidator = useRevalidator();
-  const [manualReplace, setManualReplace] = useState<DraftPrefillParams | null>(null);
-  const alertsPath = v3ProjectAlertsPath(organization, project, environment);
 
   return (
-    <ManualAlertCreationDock
-      open={!agent && manualReplace !== null}
-      prefill={manualReplace ?? {}}
-      alertDetailPath={(alertId) => v3AlertPath(organization, project, environment, alertId)}
-      onCreated={() => setManualReplace(null)}
-      onReplaced={({ legacyRemaining }) => {
-        setManualReplace(null);
-        afterReplace(legacyRemaining, alertsPath, navigate, () => revalidator.revalidate());
-      }}
-      onClose={() => setManualReplace(null)}
-    >
-      <PageContainer>
-        <NavBar>
-          <PageTitle
-            title="Legacy alerts"
-            backButton={{
-              to: alertsPath,
-              text: "Alerts",
-            }}
-          />
-        </NavBar>
-        <PageBody scrollable={legacyChannels.length > 0}>
-          <LegacyAlertsSection
-            channels={legacyChannels}
-            canWrite={canWrite}
-            canDelete={canDelete}
-            replacing={fetcher.state !== "idle"}
-            manualReplace={!agent}
-            onDelete={(row) =>
-              fetcher.submit(
-                { intent: "deleteLegacyAlert", channelId: row.channelId, alertType: row.alertType },
-                { method: "post" }
-              )
-            }
-            onReplace={(row) => {
-              const prefill = replacePrefill(row, replaceEnvironments[row.channelId] ?? []);
-              if (agent) agent.openCreateAlert(prefill);
-              else setManualReplace(prefill);
-            }}
-          />
-        </PageBody>
-      </PageContainer>
-    </ManualAlertCreationDock>
+    <PageContainer>
+      <NavBar>
+        <PageTitle
+          title="Legacy alerts"
+          backButton={{
+            to: v3ProjectAlertsPath(organization, project, environment),
+            text: "Alerts",
+          }}
+        />
+      </NavBar>
+      <PageBody scrollable={legacyChannels.length > 0}>
+        <LegacyAlertsSection
+          channels={legacyChannels}
+          canWrite={canWrite}
+          canDelete={canDelete}
+          replacing={!agent || fetcher.state !== "idle"}
+          onDelete={(row) =>
+            fetcher.submit(
+              { intent: "deleteLegacyAlert", channelId: row.channelId, alertType: row.alertType },
+              { method: "post" }
+            )
+          }
+          onReplace={(row) =>
+            agent?.openCreateAlert(replacePrefill(row, replaceEnvironments[row.channelId] ?? []))
+          }
+        />
+      </PageBody>
+    </PageContainer>
   );
 }

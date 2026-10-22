@@ -1,8 +1,7 @@
-import {
-  WebhookPreviousSecretTtlSeconds,
-  type WebhookDeliveryListItem,
-  type WebhookDeliveryObject,
-  type WebhookDeliveryTargetObject,
+import type {
+  WebhookDeliveryListItem,
+  WebhookDeliveryObject,
+  WebhookDeliveryTargetObject,
 } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { toolsMetadata } from "../config.js";
@@ -61,22 +60,9 @@ const ReplayInput = DeliveryInput.extend({
     .optional(),
 });
 
-const PreviousSecretTtlInput = WebhookPreviousSecretTtlSeconds.optional().describe(
-  "Keep accepting the replaced secret for this many seconds (at most 604800, 7 days) so deliveries the provider still signs with it keep verifying. Omit or pass 0 to replace it immediately, for example when it leaked."
-);
-
-const GenerateSecretInput = EndpointInput.extend({
-  previousSecretTtlSeconds: PreviousSecretTtlInput,
-});
-
 const SetSecretInput = EndpointInput.extend({
   secret: z.string().min(1).describe("The signing secret or public key the provider issued"),
-  previousSecretTtlSeconds: PreviousSecretTtlInput,
 });
-
-function previousSecretNote(expiresAt: string | undefined): string {
-  return expiresAt ? ` The previous secret keeps verifying deliveries until ${expiresAt}.` : "";
-}
 
 function devOnlyError(devOnly: boolean | undefined, environment: string) {
   return devOnly && environment !== "dev"
@@ -166,8 +152,8 @@ export const generateWebhookSecretTool = {
   name: toolsMetadata.generate_webhook_secret.name,
   title: toolsMetadata.generate_webhook_secret.title,
   description: toolsMetadata.generate_webhook_secret.description,
-  inputSchema: GenerateSecretInput.shape,
-  handler: toolHandler(GenerateSecretInput.shape, async (input, { ctx }) => {
+  inputSchema: EndpointInput.shape,
+  handler: toolHandler(EndpointInput.shape, async (input, { ctx }) => {
     const blocked = devOnlyError(ctx.options.devOnly, input.environment);
     if (blocked) return blocked;
 
@@ -182,15 +168,13 @@ export const generateWebhookSecretTool = {
       branch: input.branch,
     });
 
-    const result = await apiClient.generateWebhookEndpointSecret(input.endpointId, {
-      previousSecretTtlSeconds: input.previousSecretTtlSeconds,
-    });
+    const result = await apiClient.generateWebhookEndpointSecret(input.endpointId);
 
     return {
       content: [
         {
           type: "text" as const,
-          text: `Generated a new signing secret for ${result.id}. It is shown once; give it to the provider and don't print, log or commit it.${previousSecretNote(result.previousSecretExpiresAt)}\n\n${result.secret}`,
+          text: `Generated a new signing secret for ${result.id}. It is shown once; give it to the provider and don't print, log or commit it.\n\n${result.secret}`,
         },
       ],
     };
@@ -219,16 +203,10 @@ export const setWebhookSecretTool = {
 
     const result = await apiClient.setWebhookEndpointSecret(input.endpointId, {
       secret: input.secret,
-      previousSecretTtlSeconds: input.previousSecretTtlSeconds,
     });
 
     return {
-      content: [
-        {
-          type: "text" as const,
-          text: `Stored the signing secret for ${result.id}.${previousSecretNote(result.previousSecretExpiresAt)}`,
-        },
-      ],
+      content: [{ type: "text" as const, text: `Stored the signing secret for ${result.id}.` }],
     };
   }),
 };

@@ -4,6 +4,10 @@ sidebarTitle: "Human-in-the-loop"
 description: "Pause an agent mid-turn to get a human decision from the channel (Slack approve/deny), then resume with the answer."
 ---
 
+import WebhooksBetaBanner from "/snippets/webhooks-beta-banner.mdx";
+
+<WebhooksBetaBanner />
+
 **An agent on a [channel](/webhooks/channels) can pause a turn to get a human decision, then resume once someone answers in the thread.** It posts controls into the conversation and picks up where it left off once someone clicks, with the decision merged into the turn. This is the channel counterpart of browser [human-in-the-loop](/ai-chat/patterns/human-in-the-loop): the same no-`execute` tool, but the controls live in Slack (or your own surface) instead of a React component. The [`slack()`](/webhooks/slack) connector ships Approve and Deny buttons out of the box.
 
 ## How it works

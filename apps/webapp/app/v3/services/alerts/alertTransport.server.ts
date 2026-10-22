@@ -24,28 +24,23 @@ const PERMANENT_WEBHOOK_STATUSES = [401, 403, 404, 410];
 
 export async function findSlackIntegration(
   prisma: { organizationIntegration: { findFirst: Function } },
-  params: { integrationId?: string | null; organizationId: string },
-  options: { includeDeleted?: boolean } = {}
+  params: { integrationId?: string | null; organizationId: string }
 ): Promise<OrganizationIntegrationForService<"SLACK"> | null> {
-  const findLatest = (where: { deletedAt?: null }) =>
-    prisma.organizationIntegration.findFirst({
-      where: { service: "SLACK", organizationId: params.organizationId, ...where },
-      orderBy: { createdAt: "desc" },
-      include: { tokenReference: true },
-    });
-
   const integration = params.integrationId
     ? await prisma.organizationIntegration.findFirst({
         where: {
           id: params.integrationId,
           service: "SLACK",
           organizationId: params.organizationId,
-          ...(options.includeDeleted ? {} : { deletedAt: null }),
+          deletedAt: null,
         },
         include: { tokenReference: true },
       })
-    : ((await findLatest({ deletedAt: null })) ??
-      (options.includeDeleted ? await findLatest({}) : null));
+    : await prisma.organizationIntegration.findFirst({
+        where: { service: "SLACK", organizationId: params.organizationId, deletedAt: null },
+        orderBy: { createdAt: "desc" },
+        include: { tokenReference: true },
+      });
 
   if (!integration || !isIntegrationForService(integration, "SLACK")) {
     return null;

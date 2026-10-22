@@ -277,14 +277,10 @@ export class DeliverDashboardAgentWatchChannelAlertService {
       return;
     }
 
-    const integration = await findSlackIntegration(
-      prisma,
-      {
-        integrationId: slackProperties.data.integrationId,
-        organizationId: payload.organizationId,
-      },
-      { includeDeleted: true }
-    );
+    const integration = await findSlackIntegration(prisma, {
+      integrationId: slackProperties.data.integrationId,
+      organizationId: payload.organizationId,
+    });
 
     if (!integration) {
       logger.error("[DeliverDashboardAgentWatchAlert] Slack integration not found");

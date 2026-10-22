@@ -4,6 +4,10 @@ description: "Turn a chat.agent into a Linear agent: assign it an issue or @ment
 sidebarTitle: "Linear agents"
 ---
 
+import WebhooksBetaBanner from "/snippets/webhooks-beta-banner.mdx";
+
+<WebhooksBetaBanner />
+
 Linear opens an **agent session** when someone @mentions your app in an issue or delegates (assigns) an issue to it. `linear()` from `@trigger.dev/linear` is a [channel](/webhooks/channels) connector for those sessions: each one becomes a durable Trigger.dev [session](/ai-chat/sessions), the user's prompt runs as a turn, and the agent's work shows up in Linear as thoughts, actions, a plan, an approval card when it needs a decision, and a response when it is done.
 
 ```ts

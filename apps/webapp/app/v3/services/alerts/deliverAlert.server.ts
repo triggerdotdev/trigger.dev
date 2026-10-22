@@ -761,14 +761,10 @@ export class DeliverAlertService extends BaseService {
       return;
     }
 
-    const integration = await findSlackIntegration(
-      this._prisma,
-      {
-        integrationId: slackProperties.data.integrationId,
-        organizationId: alert.project.organizationId,
-      },
-      { includeDeleted: true }
-    );
+    const integration = await findSlackIntegration(this._prisma, {
+      integrationId: slackProperties.data.integrationId,
+      organizationId: alert.project.organizationId,
+    });
 
     if (!integration) {
       logger.error("[DeliverAlert] Slack integration not found", {

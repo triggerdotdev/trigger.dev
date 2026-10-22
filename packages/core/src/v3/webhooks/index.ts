@@ -126,7 +126,6 @@ export type WebhookPresetId = (typeof WEBHOOK_PRESET_IDS)[number];
  */
 function hmacVerifierConfig(opts: {
   header: string;
-  additionalHeaders?: string[];
   algorithm?: "sha256" | "sha1";
   encoding?: "hex" | "base64";
   field?: string;
@@ -157,7 +156,6 @@ function hmacVerifierConfig(opts: {
     algorithm: opts.algorithm ?? "sha256",
     encoding: opts.encoding ?? "hex",
     signatureHeader: opts.header,
-    ...(opts.additionalHeaders ? { additionalSignatureHeaders: opts.additionalHeaders } : {}),
     signature,
     signingString: opts.signingTemplate
       ? {
@@ -188,19 +186,6 @@ function hmacVerifierConfig(opts: {
   if (opts.formPayload) config.formPayload = opts.formPayload;
 
   return config;
-}
-
-export type HookdeckSourceOptions = {
-  /**
-   * The header prefix set in the Hookdeck project's settings, when it was changed from `x-hookdeck`.
-   * Hookdeck renames its event id header with it (`<prefix>-eventid`), which retries dedupe on. The
-   * signature headers keep the `x-hookdeck-` name whatever the prefix.
-   */
-  headerPrefix?: string;
-};
-
-function hookdeckHeaderPrefix(opts?: HookdeckSourceOptions): string {
-  return (opts?.headerPrefix?.trim() || "x-hookdeck").toLowerCase().replace(/-+$/, "");
 }
 
 /**
@@ -492,16 +477,6 @@ export const webhookProviderConfigs = {
         idempotencyField: { from: "body", name: "webhookId" },
       }),
   },
-  hookdeck: {
-    secretProvisioning: "provider",
-    config: (opts?: HookdeckSourceOptions) =>
-      hmacVerifierConfig({
-        header: "x-hookdeck-signature",
-        additionalHeaders: ["x-hookdeck-signature-2"],
-        encoding: "base64",
-        idempotencyField: { from: "header", name: `${hookdeckHeaderPrefix(opts)}-eventid` },
-      }),
-  },
   supabase: {
     secretProvisioning: "integrator",
     config: (): WebhookVerifierConfig => ({ scheme: "shared-secret", placement: "bearer" }),
@@ -623,15 +598,6 @@ export const webhookSetupPrompts: Partial<Record<WebhookPresetId | WebhookProvid
     "Firecrawl signs webhooks with one account-wide secret, shown in the Advanced tab of the account settings.",
     'Firecrawl has no webhook settings page: each crawl, batch scrape, extract or agent request carries its own `webhook` object. Add `webhook: { url: "<webhook URL>", events: [...] }` to the requests the code makes (for a crawl the events are started, page and completed).',
     "Subscribers' filters compare `event.type`, which is prefixed with the operation, for example `crawl.completed`.",
-  ].join("\n"),
-  hookdeck: [
-    "Hookdeck relays deliveries from another provider: the event is the original provider's payload, and Hookdeck signs what it forwards with the project's signing secret.",
-    "These settings are in the Hookdeck dashboard; tell the user each step. The Hookdeck CLI and API can also create connections.",
-    "1. Create a connection whose destination is an HTTP destination with the webhook URL. Keep the destination's authentication on Hookdeck Signature (the default, `auth_type: HOOKDECK_SIGNATURE` in the API); Hookdeck only signs with it set.",
-    "2. Read the signing secret from Settings > Secrets (https://dashboard.hookdeck.com/settings/project/secrets) and store it as the endpoint's signing secret. It is one secret for the whole project.",
-    "The signature headers are always `x-hookdeck-signature` and `x-hookdeck-signature-2`. If the project's header prefix was changed in the project settings, the event id arrives as `<prefix>-eventid` instead of `x-hookdeck-eventid`: pass the prefix as `webhooks.hookdeck({ headerPrefix })` so retries dedupe on it.",
-    "When the secret is rolled in Hookdeck with a delay, deliveries keep verifying through the old secret until the new one is stored here.",
-    "Subscribers' filters compare fields of the original provider's payload, for example `event.type` for a Stripe source.",
   ].join("\n"),
 };
 

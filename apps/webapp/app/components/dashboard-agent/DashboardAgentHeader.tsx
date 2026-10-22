@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { CrossIcon } from "~/assets/icons/CrossIcon";
+import { Button } from "~/components/primitives/Buttons";
 import {
   Popover,
   PopoverArrowTrigger,
@@ -6,6 +8,7 @@ import {
   PopoverMenuItem,
   PopoverTrigger,
 } from "~/components/primitives/Popover";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import type { Shortcut } from "~/hooks/useShortcutKeys";
 import { CHAT_MODE_OPTIONS } from "./chat-mode-options";
@@ -15,7 +18,6 @@ import {
   type DashboardAgentChat,
 } from "./DashboardAgentHistory";
 import { chatHistoryTriggerLabel } from "./header-labels";
-import { DashboardPanelHeader, PANEL_TITLE_CLASS } from "./DashboardPanelChrome";
 import type { DashboardAgentMode } from "./panel-layout";
 
 // Display only. The key is registered once, in `DashboardAgent`; registering it
@@ -169,67 +171,75 @@ export function DashboardAgentHeader({
   const [pendingDelete, setPendingDelete] = useState<DashboardAgentChat | null>(null);
 
   return (
-    <DashboardPanelHeader
-      title={
-        <>
-          <Popover
-            open={isHistoryOpen}
-            onOpenChange={(open) => {
-              setHistoryOpen(open);
-              if (open) {
-                setHistoryOpenedAt(Date.now());
-                onOpenHistory();
-              }
-            }}
-          >
-            <PopoverArrowTrigger
-              variant="minimal"
-              isOpen={isHistoryOpen}
-              overflowHidden
-              className="min-w-0"
-              aria-label={chatHistoryTriggerLabel(title)}
-              title={title}
-            >
-              <span className={PANEL_TITLE_CLASS}>{title}</span>
-            </PopoverArrowTrigger>
-            <PopoverContent
-              // `min-w-0` over the popover's own `min-w-max`, which would stretch it to the longest
-              // title instead of truncating at this width.
-              className="w-72 min-w-0 max-w-(--radix-popover-content-available-width) p-0"
-              align="start"
-            >
-              {historyOpenedAt === null ? null : (
-                <DashboardAgentHistoryMenu
-                  chats={chats}
-                  currentChatId={currentChatId}
-                  now={historyOpenedAt}
-                  onSelect={(chatId) => {
-                    setHistoryOpen(false);
-                    onSelectChat(chatId);
-                  }}
-                  onRequestDelete={(chat) => {
-                    setHistoryOpen(false);
-                    setPendingDelete(chat);
-                  }}
-                />
-              )}
-            </PopoverContent>
-          </Popover>
+    <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-grid-bright px-2">
+      <Popover
+        open={isHistoryOpen}
+        onOpenChange={(open) => {
+          setHistoryOpen(open);
+          if (open) {
+            setHistoryOpenedAt(Date.now());
+            onOpenHistory();
+          }
+        }}
+      >
+        <PopoverArrowTrigger
+          variant="minimal"
+          isOpen={isHistoryOpen}
+          overflowHidden
+          className="min-w-0"
+          aria-label={chatHistoryTriggerLabel(title)}
+          title={title}
+        >
+          <span className="truncate text-sm font-medium text-text-bright">{title}</span>
+        </PopoverArrowTrigger>
+        <PopoverContent
+          // `min-w-0` over the popover's own `min-w-max`, which would stretch it to the longest
+          // title instead of truncating at this width.
+          className="w-72 min-w-0 max-w-(--radix-popover-content-available-width) p-0"
+          align="start"
+        >
+          {historyOpenedAt === null ? null : (
+            <DashboardAgentHistoryMenu
+              chats={chats}
+              currentChatId={currentChatId}
+              now={historyOpenedAt}
+              onSelect={(chatId) => {
+                setHistoryOpen(false);
+                onSelectChat(chatId);
+              }}
+              onRequestDelete={(chat) => {
+                setHistoryOpen(false);
+                setPendingDelete(chat);
+              }}
+            />
+          )}
+        </PopoverContent>
+      </Popover>
 
-          <DashboardAgentDeleteChatDialog
-            chat={pendingDelete}
-            onOpenChange={(open) => !open && setPendingDelete(null)}
-            onConfirm={onDeleteChat}
-          />
-        </>
-      }
-      actions={
-        <>
-          {actions}
-          <ModeMenu mode={mode} onModeChange={onModeChange} />
-        </>
-      }
-      onClose={onClose}
-    />
+      <DashboardAgentDeleteChatDialog
+        chat={pendingDelete}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        onConfirm={onDeleteChat}
+      />
+
+      <div className="flex shrink-0 items-center gap-1" data-agent-no-drag>
+        {actions}
+        <ModeMenu mode={mode} onModeChange={onModeChange} />
+        <Button
+          variant="minimal/small"
+          className="aspect-square h-6 p-1"
+          aria-label="Close (Esc)"
+          tooltipDelay={500}
+          tooltip={
+            <span className="flex items-center">
+              Close
+              <ShortcutKey shortcut={{ key: "esc" }} variant="medium" />
+            </span>
+          }
+          onClick={onClose}
+          LeadingIcon={<CrossIcon className="size-4 text-text-dimmed" />}
+        />
+      </div>
+    </div>
   );
 }

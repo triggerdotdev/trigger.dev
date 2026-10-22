@@ -9,7 +9,6 @@ const build = (isAdmin: boolean) =>
     project: { slug: "proj" },
     environment: { slug: "dev" },
     isAdmin,
-    alertsConfigured: true,
     featureFlags: {},
     isManagedCloud: false,
   });
@@ -41,7 +40,6 @@ describe("buildSideMenuSections alerts placement", () => {
       project: { slug: "proj" },
       environment: { slug: "dev" },
       isAdmin: false,
-      alertsConfigured: false,
       featureFlags: { hasQueryAccess: true },
       isManagedCloud: false,
     });
@@ -62,7 +60,6 @@ describe("buildSideMenuSections alerts placement", () => {
       project: { slug: "proj" },
       environment: { slug: "dev" },
       isAdmin: false,
-      alertsConfigured: false,
       featureFlags: { hasQueryAccess: true, alertsEnabled: true },
       isManagedCloud: false,
     });

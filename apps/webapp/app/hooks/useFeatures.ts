@@ -11,7 +11,6 @@ export function useFeatures(): TriggerFeatures {
       hasPrivateConnections: false,
       queueMetricsQueryTables: false,
       queueMetricsEnabled: true,
-      alertsConfigured: false,
     }
   );
 }

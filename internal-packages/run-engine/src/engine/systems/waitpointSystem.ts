@@ -11,11 +11,9 @@ import type {
 import { assertNever } from "assert-never";
 import { WaitpointCompletionGuardArmedError } from "../errors.js";
 import { buildCompletedWaitpointRecords } from "./completedWaitpointResolver.js";
-import { resolveCompletedWaitpointRecords } from "./completedWaitpointRecordAdapter.js";
 import { sendNotificationToWorker } from "../eventBus.js";
 import { isFinalRunStatus } from "../statuses.js";
 import { LegacyPostgresWaitpointCoordinator } from "../waitpointCoordinator/legacyPostgresCoordinator.js";
-import type { WaitpointStoreCoordinator } from "../waitpointCoordinator/storeCoordinator.js";
 import type { RunBlockEdge, WaitpointCoordinator } from "../waitpointCoordinator/types.js";
 import type { EnqueueSystem } from "./enqueueSystem.js";
 import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
@@ -27,21 +25,11 @@ import type { SystemResources } from "./systems.js";
 import { snapshotRouteFromSnapshot, type CompletedWaitpointRecord } from "@internal/run-store";
 
 export type WaitpointSystemOptions = {
-  waitpointStoreEnabled?: (
-    organizationId: string,
-    organizationFlags?: unknown
-  ) => boolean | Promise<boolean>;
   resources: SystemResources;
   executionSnapshotSystem: ExecutionSnapshotSystem;
   enqueueSystem: EnqueueSystem;
   /** Grace before an unacked completion guard fires. Short in tests. Defaults to 30s. */
   completionGuardDelayMs?: number;
-  /**
-   * The MemoryDB coordinator, for resolving store-format completed-waitpoint records in a
-   * Redis-primary resume cycle. Optional: undefined leaves the resolver Postgres-only, which is the
-   * only reachable state until store-format minting is wired. Only the record read is used here.
-   */
-  waitpointStore?: Pick<WaitpointStoreCoordinator, "readCompletedRecords">;
 };
 
 const DEFAULT_COMPLETION_GUARD_DELAY_MS = 30_000;
@@ -68,13 +56,11 @@ export class WaitpointSystem {
   private readonly enqueueSystem: EnqueueSystem;
   private readonly coordinator: WaitpointCoordinator;
   private readonly completionGuardDelayMs: number;
-  readonly #waitpointStore?: Pick<WaitpointStoreCoordinator, "readCompletedRecords">;
 
   constructor(private readonly options: WaitpointSystemOptions) {
     this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.enqueueSystem = options.enqueueSystem;
-    this.#waitpointStore = options.waitpointStore;
     this.completionGuardDelayMs =
       options.completionGuardDelayMs ?? DEFAULT_COMPLETION_GUARD_DELAY_MS;
     this.coordinator = new LegacyPostgresWaitpointCoordinator({
@@ -924,67 +910,26 @@ export class WaitpointSystem {
       blockingWaitpoints.length > 0 &&
       snapshotRouteFromSnapshot(snapshot).residency === "redis-primary"
     ) {
-      const records = await this.resolveResumeCompletedWaitpointRecords(
-        runId,
-        blockingWaitpoints,
-        snapshot.organizationId
-      );
+      const records = await this.#buildCompletedWaitpointRecords(runId, blockingWaitpoints);
       return async () => records;
     }
-    return () =>
-      this.resolveResumeCompletedWaitpointRecords(
-        runId,
-        blockingWaitpoints,
-        snapshot.organizationId
-      );
+    return () => this.#buildCompletedWaitpointRecords(runId, blockingWaitpoints);
   }
 
   // The blocking edges carry only a 4-field waitpoint pick, but a redis-primary snapshot needs the FULL
-  // records to reproduce the Postgres join. Passed to the snapshot store as a resolver thunk so this
-  // fetch runs ONLY when a redis-primary cycle actually needs it, never on a postgres-resident or
-  // mirrored resume.
-  //
-  // Each blocker id is routed by its SHAPE: a legacy id resolves through Postgres (routed by runId with
-  // per-id shard fallback so a cross-shard token still resolves, and filtered to COMPLETED so a stray
-  // PENDING row can never be described as a completion), a store-format id through MemoryDB. The
-  // adapter combines both into exactly one record per distinct id and fails loud rather than returning
-  // a partial set.
-  //
-  // TS-private rather than #private so a test can drive this exact reader wiring on a real
-  // WaitpointSystem; it is not part of the class's used-by-callers surface.
-  private async resolveResumeCompletedWaitpointRecords(
+  // rows to reproduce the Postgres join. Passed to the snapshot store as a resolver thunk so this fetch
+  // runs ONLY when a redis-primary cycle actually needs it, never on a postgres-resident resume. Routed
+  // by runId with per-id shard fallback so a cross-shard token still resolves.
+  async #buildCompletedWaitpointRecords(
     runId: string,
-    blockingWaitpoints: { waitpoint: { id: string } }[],
-    organizationId?: string
+    blockingWaitpoints: { waitpoint: { id: string } }[]
   ) {
-    // Unwired readers retain the original path without a flag lookup. Disabled organizations
-    // retain it without classifying IDs; only the enabled adapter below interprets store identities.
-    const organizationEnabled =
-      this.#waitpointStore !== undefined &&
-      organizationId !== undefined &&
-      (await this.options.waitpointStoreEnabled?.(organizationId)) === true;
-    if (!organizationEnabled) {
-      const rows = await this.$.runStore.findManyWaitpoints(
-        { where: { id: { in: boundedIn(blockingWaitpoints.map((b) => b.waitpoint.id)) } } },
-        this.$.prisma,
-        runId
-      );
-      return buildCompletedWaitpointRecords(rows);
-    }
-    return resolveCompletedWaitpointRecords({
-      requestedIds: blockingWaitpoints.map((b) => b.waitpoint.id),
-      legacyReader: async (ids) =>
-        buildCompletedWaitpointRecords(
-          await this.$.runStore.findManyWaitpoints(
-            { where: { id: { in: boundedIn(ids) }, status: "COMPLETED" } },
-            this.$.prisma,
-            runId
-          )
-        ),
-      storeReader: this.#waitpointStore
-        ? (ids) => this.#waitpointStore!.readCompletedRecords(ids)
-        : undefined,
-    });
+    const rows = await this.$.runStore.findManyWaitpoints(
+      { where: { id: { in: boundedIn(blockingWaitpoints.map((b) => b.waitpoint.id)) } } },
+      this.$.prisma,
+      runId
+    );
+    return buildCompletedWaitpointRecords(rows);
   }
 
   public buildRunAssociatedWaitpoint({

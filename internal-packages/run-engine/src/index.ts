@@ -114,11 +114,6 @@ export {
   FANOUT_PARTITION_COUNT,
   WaitpointKeyTagError,
 } from "./engine/waitpointCoordinator/keys.js";
-export {
-  createCompletedWaitpointResolver,
-  createStoreRunCompletedWaitpointResolver,
-} from "./engine/systems/completedWaitpointResolver.js";
+export { createCompletedWaitpointResolver } from "./engine/systems/completedWaitpointResolver.js";
 export { enhanceExecutionSnapshotWithWaitpoints } from "./engine/systems/executionSnapshotSystem.js";
 export { parseGates, type ParsedGate } from "./engine/gateParsing.js";
-
-export { createWaitpointResultRunStore } from "./engine/systems/waitpointResultRunStore.js";

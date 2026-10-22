@@ -25,10 +25,6 @@ type RootApiKeyMutationInput = {
   environmentId: string;
 };
 
-type RegenerateApiKeyInput = RootApiKeyMutationInput & {
-  revokeImmediately?: boolean;
-};
-
 export class RootApiKeyNotVisibleError extends Error {
   constructor() {
     super("The root API key is no longer visible");
@@ -114,7 +110,7 @@ async function lockVisibleRootApiKeyEnvironment(
 }
 
 export async function regenerateApiKey(
-  { revokeImmediately = false, ...input }: RegenerateApiKeyInput,
+  input: RootApiKeyMutationInput,
   { prismaClient = prisma }: { prismaClient?: PrismaClient } = {}
 ) {
   const environment = await findRootApiKeyEnvironment(input, prismaClient);
@@ -136,15 +132,13 @@ export async function regenerateApiKey(
         },
       });
 
-      if (!revokeImmediately) {
-        await tx.revokedApiKey.create({
-          data: {
-            apiKey: currentEnvironment.apiKey,
-            runtimeEnvironmentId: environment.id,
-            expiresAt: revokedApiKeyExpiresAt,
-          },
-        });
-      }
+      await tx.revokedApiKey.create({
+        data: {
+          apiKey: currentEnvironment.apiKey,
+          runtimeEnvironmentId: environment.id,
+          expiresAt: revokedApiKeyExpiresAt,
+        },
+      });
 
       return { ...environment, apiKey: newApiKey, pkApiKey: newPkApiKey };
     }

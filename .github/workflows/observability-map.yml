@@ -184,7 +184,7 @@ jobs:
       - name: ⎔ Setup node
         uses: WarpBuilds/setup-node@2867cf8f859d73439e1ad18b542617e5a29f0f10 # v7.0.0
         with:
-          node-version: 24.22.1
+          node-version: 24.18.0
           cache: "pnpm"
 
       - name: 📥 Download deps
@@ -244,7 +244,7 @@ jobs:
       - name: ⎔ Setup node
         uses: WarpBuilds/setup-node@2867cf8f859d73439e1ad18b542617e5a29f0f10 # v7.0.0
         with:
-          node-version: 24.22.1
+          node-version: 24.18.0
           cache: "pnpm"
 
       - name: 📥 Download deps

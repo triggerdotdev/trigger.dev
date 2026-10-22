@@ -152,7 +152,7 @@ export function renderWebhookSetupPrompt(
 function secretStep(endpoint: WebhookSetupPromptEndpoint, asymmetric: boolean): string {
   const source = endpoint.source;
   const replacing = endpoint.hasSigningSecret
-    ? ` ${asymmetric ? "A public key" : "A secret"} is already set; only replace it when you're creating or updating the webhook in ${source}, and pass \`previousSecretTtlSeconds\` (for example 3600) so deliveries signed with the old one keep verifying until ${source} uses the new one.`
+    ? ` ${asymmetric ? "A public key" : "A secret"} is already set; replacing it breaks deliveries until ${source} uses the new one, so only replace it when you're creating or updating the webhook in ${source}.`
     : "";
 
   if (asymmetric) {

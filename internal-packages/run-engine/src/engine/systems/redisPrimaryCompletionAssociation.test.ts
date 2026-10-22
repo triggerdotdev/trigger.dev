@@ -16,19 +16,12 @@ import { describe, expect } from "vitest";
 import { containerTest } from "@internal/testcontainers";
 import {
   PostgresRunStore,
-  RoutingRunStore,
-  markReadReplicaClient,
   RedisSnapshotStore,
   TaskRunExecutionSnapshotStore,
   type CreateRunInput,
 } from "@internal/run-store";
-import {
-  BatchId,
-  generateInternalId,
-  generateWaitpointId,
-  RunId,
-} from "@trigger.dev/core/v3/isomorphic";
-import { PrismaClient, type Waitpoint } from "@trigger.dev/database";
+import { BatchId, generateInternalId, RunId } from "@trigger.dev/core/v3/isomorphic";
+import type { PrismaClient, Waitpoint } from "@trigger.dev/database";
 import {
   enhanceExecutionSnapshotWithWaitpoints,
   getLatestExecutionSnapshot,
@@ -37,9 +30,6 @@ import {
   buildCompletedWaitpointRecords,
   createCompletedWaitpointResolver,
 } from "./completedWaitpointResolver.js";
-
-import { createWaitpointResultRunStore } from "./waitpointResultRunStore.js";
-import { WaitpointStoreCoordinator } from "../waitpointCoordinator/storeCoordinator.js";
 
 const ROUTE = "logical:1";
 
@@ -165,166 +155,6 @@ async function seedResumedRedisPrimaryRun(
 }
 
 describe("redis-primary resume keeps its completion associations (engine boundary)", () => {
-  containerTest(
-    "disabled hydration preserves snapshot reads without interpreting storage metadata",
-    async ({ prisma, redisOptions }) => {
-      const delegate = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
-      const waitpoints = new WaitpointStoreCoordinator({ redisOptions });
-      try {
-        const env = await seedEnv(prisma, "disabled-hydration");
-        const runId = generateInternalId();
-        await delegate.createRun(createRunInput(runId, env));
-        // The base Postgres reader carries metadata through unchanged. Hydration must not
-        // introduce parsing errors for disabled orgs, including future metadata versions.
-        await prisma.taskRunExecutionSnapshot.updateMany({
-          where: { runId },
-          data: { metadata: { snapshotStore: { version: 2, residency: "mirrored" } } },
-        });
-        const baseline = await delegate.findLatestExecutionSnapshot(runId);
-        const checkedOrganizations: string[] = [];
-        let enabledOrganization: string | undefined;
-        const reader = createWaitpointResultRunStore(delegate, {
-          store: waitpoints,
-          isEnabled: (organizationId) => {
-            checkedOrganizations.push(organizationId);
-            return organizationId === enabledOrganization;
-          },
-        });
-        expect(await reader.findLatestExecutionSnapshot(runId)).toEqual(baseline);
-        const args = { where: { runId }, include: { completedWaitpoints: true } } as const;
-        expect(await reader.findExecutionSnapshot(args)).toEqual(
-          await delegate.findExecutionSnapshot(args)
-        );
-        expect(checkedOrganizations).toEqual([env.organization.id, env.organization.id]);
-        enabledOrganization = env.organization.id;
-        await expect(reader.findLatestExecutionSnapshot(runId)).rejects.toThrow(
-          "Unsupported snapshot storage metadata"
-        );
-      } finally {
-        await waitpoints.quit();
-      }
-    }
-  );
-
-  containerTest(
-    "mirrored primary repair discovers shared MemoryDB completion links despite a frozen reader and empty order",
-    async ({ prisma, redisOptions, postgresContainer }) => {
-      await prisma.$executeRawUnsafe(
-        `ALTER TABLE "_completedWaitpoints" DROP CONSTRAINT IF EXISTS "_completedWaitpoints_B_fkey"`
-      );
-      const delegate = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
-      const snapshots = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
-      const waitpoints = new WaitpointStoreCoordinator({ redisOptions });
-      const readClient = new PrismaClient({
-        datasources: { db: { url: postgresContainer.getConnectionUri() } },
-      });
-      try {
-        const env = await seedEnv(prisma, "mirror-shared-repair");
-        const parent = generateInternalId();
-        const child = generateInternalId();
-        const birth = generateInternalId();
-        const resumed = generateInternalId();
-        const sharedId = generateWaitpointId("RUN");
-        await delegate.createRun(createRunInput(child, env));
-        await prisma.taskRun.update({
-          where: { id: child },
-          data: { output: '{"child":"shared"}' },
-        });
-        await waitpoints.createIfAbsent({
-          status: "PENDING",
-          record: {
-            id: sharedId,
-            friendlyId: `waitpoint_${sharedId}`,
-            type: "RUN",
-            completedByTaskRunId: child,
-            environmentId: env.environment.id,
-            projectId: env.project.id,
-            userProvidedIdempotencyKey: false,
-            tags: [],
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-        });
-        await waitpoints.complete({
-          waitpointId: sharedId,
-          completion: {
-            completedAt: new Date().toISOString(),
-            output: null,
-            outputType: "application/json",
-            outputIsError: false,
-          },
-        });
-        const writer = new TaskRunExecutionSnapshotStore(delegate, {
-          store: snapshots,
-          mode: "dual-write",
-          logicalRunStoreRoute: ROUTE,
-        });
-        await writer.createRun({
-          data: createRunInput(parent, env).data,
-          snapshot: { ...createRunInput(parent, env).snapshot, id: birth },
-        });
-        await readClient.$transaction(
-          async (frozenReader) => {
-            expect(
-              await frozenReader.taskRunExecutionSnapshot.findFirst({ where: { id: birth } })
-            ).not.toBeNull();
-            await writer.createExecutionSnapshot({
-              id: resumed,
-              createdAt: new Date(),
-              run: { id: parent, status: "EXECUTING", attemptNumber: 1 },
-              snapshot: { executionStatus: "EXECUTING", description: "Shared child completed" },
-              previousSnapshotId: birth,
-              environmentId: env.environment.id,
-              environmentType: env.environment.type,
-              projectId: env.project.id,
-              organizationId: env.organization.id,
-              completedWaitpoints: [{ id: sharedId }],
-            });
-            // This actual database reader has neither the repaired snapshot nor its completion links.
-            expect(
-              await frozenReader.taskRunExecutionSnapshot.findFirst({ where: { id: resumed } })
-            ).toBeNull();
-            const laggingLeaf = new PostgresRunStore({
-              prisma,
-              readOnlyPrisma: frozenReader as never,
-            });
-            const mirrorReader = new TaskRunExecutionSnapshotStore(laggingLeaf, {
-              store: snapshots,
-              mode: "redis-read",
-              logicalRunStoreRoute: ROUTE,
-              resolvePrimaryReadClient: () => prisma,
-            });
-            const routed = new RoutingRunStore({ new: delegate, legacy: mirrorReader });
-            const reader = createWaitpointResultRunStore(routed, {
-              store: waitpoints,
-              isEnabled: () => true,
-              primaryReadClient: prisma,
-            });
-            const snapshot = await getLatestExecutionSnapshot(
-              markReadReplicaClient(frozenReader),
-              parent,
-              reader
-            );
-            expect(snapshot.id).toBe(resumed);
-            expect(snapshot.completedWaitpointOrder).toEqual([]);
-            expect(snapshot.completedWaitpoints).toMatchObject([
-              { id: sharedId, output: '{"child":"shared"}', completedByTaskRun: { id: child } },
-            ]);
-            expect(
-              await frozenReader.taskRunExecutionSnapshot.findFirst({ where: { id: resumed } })
-            ).toBeNull();
-            expect(await prisma.waitpoint.count({ where: { id: sharedId } })).toBe(0);
-          },
-          { isolationLevel: "RepeatableRead", timeout: 15_000 }
-        );
-      } finally {
-        await readClient.$disconnect();
-        await waitpoints.quit();
-        await snapshots.quit();
-      }
-    }
-  );
-
   containerTest(
     "a RUN waitpoint keeps completedByTaskRun id + friendlyId, with the child's output",
     async ({ prisma, redisOptions }) => {

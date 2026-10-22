@@ -38,9 +38,7 @@ export async function seedTestUserProject(
       isActivated: true,
       members: { create: { userId: user.id, role: "ADMIN" } },
     },
-    include: { members: true },
   });
-  const orgMember = organization.members[0];
 
   const project = await prisma.project.create({
     data: {
@@ -62,7 +60,6 @@ export async function seedTestUserProject(
       shortcode: suffix.slice(0, 4),
       projectId: project.id,
       organizationId: organization.id,
-      orgMemberId: orgMember.id,
     },
   });
 

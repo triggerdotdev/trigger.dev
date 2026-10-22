@@ -14,10 +14,6 @@ const ParamsSchema = z.object({
   env: z.enum(["dev", "staging", "prod", "preview"]),
 });
 
-const BodySchema = z.object({
-  revokeImmediately: z.boolean().default(false),
-});
-
 export async function action({ request, params }: ActionFunctionArgs) {
   if (request.method.toUpperCase() !== "POST") {
     return json({ error: "Method Not Allowed" }, { status: 405 });
@@ -46,24 +42,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ error: "Branch-scoped key rotation is not supported" }, { status: 400 });
     }
 
-    const rawBody = await request.text();
-    let body: unknown = {};
-    if (rawBody.trim().length > 0) {
-      try {
-        body = JSON.parse(rawBody);
-      } catch {
-        return json({ error: "Invalid JSON body" }, { status: 400 });
-      }
-    }
-
-    const parsedBody = BodySchema.safeParse(body);
-
-    if (!parsedBody.success) {
-      return json({ error: "Invalid Body" }, { status: 400 });
-    }
-
-    const { revokeImmediately } = parsedBody.data;
-
     const environment = await authenticatedEnvironmentForAuthentication(
       authenticationResult,
       projectRef,
@@ -87,7 +65,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const updatedEnvironment = await regenerateApiKey({
       userId: authenticationResult.result.userId,
       environmentId: environment.id,
-      revokeImmediately,
     });
 
     return json({ apiKey: updatedEnvironment.apiKey });

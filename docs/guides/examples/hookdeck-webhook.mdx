@@ -1,102 +1,71 @@
 ---
 title: "Trigger tasks from Hookdeck webhooks"
 sidebarTitle: "Hookdeck webhooks"
-description: "Forward webhooks from a Hookdeck connection to a hosted Trigger.dev endpoint, verified with the Hookdeck project's signing secret, and run a task for each event."
+description: "This example demonstrates how to use Hookdeck to receive webhooks and trigger Trigger.dev tasks."
 ---
 
-[Hookdeck](https://hookdeck.com) receives webhooks from external services, then queues, logs and forwards them to a destination. Point a Hookdeck connection at a hosted webhook endpoint and Trigger.dev verifies each forwarded request with the Hookdeck project's signing secret, deduplicates Hookdeck's retries, and runs your task with the original provider's payload.
+## Overview
+
+This example shows how to use [Hookdeck](https://hookdeck.com) as your webhook infrastructure to trigger Trigger.dev tasks. Hookdeck receives webhooks from external services, and forwards them directly to the Trigger.dev API. This gives you the best of both worlds: Hookdeck's webhook management, logging, and replay capabilities, combined with Trigger.dev's reliable task execution.
+
+## Key features
+
+- Use Hookdeck as your webhook endpoint for external services
+- Hookdeck forwards webhooks directly to Trigger.dev tasks via the API
+- All webhooks are logged and replayable in Hookdeck
+
+## Setting up Hookdeck
+
+You'll configure everything in the [Hookdeck dashboard](https://dashboard.hookdeck.com). No code changes needed in your app.
+
+### 1. Create a destination
+
+In Hookdeck, create a new [destination](https://hookdeck.com/docs/destinations) with the following settings:
+
+- **URL**: `https://api.trigger.dev/api/v1/tasks/<task-id>/trigger` (replace `<task-id>` with your task ID)
+- **Method**: POST
+- **Authentication**: Bearer token (create a named **Trigger only** environment API key and use it as `TRIGGER_SECRET_KEY`)
+
+### 2. Add a transformation
+
+Create a [transformation](https://hookdeck.com/docs/transformations) to wrap the webhook body in the `payload` field that Trigger.dev expects:
+
+```javascript
+addHandler("transform", (request, context) => {
+  request.body = { payload: { ...request.body } };
+  return request;
+});
+```
+
+### 3. Create a connection
+
+Create a [connection](https://hookdeck.com/docs/connections) that links your source (where webhooks come from) to the destination and transformation you created above.
 
 ## Task code
 
-Declare the endpoint with `webhooks.hookdeck()` and subscribe a task to it. Hookdeck forwards the original provider's body unchanged, so pass that provider's event type. This example relays Stripe events:
+This task will be triggered when Hookdeck forwards a webhook to the Trigger.dev API.
 
-```ts /trigger/stripe-via-hookdeck.ts
-import type Stripe from "stripe";
-import { webhook, webhooks } from "@trigger.dev/sdk";
-
-export const stripeViaHookdeck = webhooks.endpoint.define({
-  id: "stripe-via-hookdeck",
-  source: webhooks.hookdeck<Stripe.Event>(),
-});
-
-export const paymentSucceeded = webhook({
-  id: "payment-succeeded",
-  endpoint: stripeViaHookdeck,
-  filter: "event.type == 'payment_intent.succeeded'",
-  onEvent: async ({ event }) => {
-    console.log("Payment succeeded", event.id);
-  },
-});
-```
-
-Run `trigger dev` or deploy, then copy the endpoint's URL from the Webhooks page in the dashboard.
-
-## Set up Hookdeck
-
-<Steps>
-  <Step title="Create a connection">
-    In the [Hookdeck dashboard](https://dashboard.hookdeck.com), create a [connection](https://hookdeck.com/docs/connections) from your source (for example a Stripe source) to an HTTP destination whose URL is the endpoint's URL. Keep the destination's authentication on **Hookdeck Signature**, the default for new destinations: Hookdeck only signs forwarded requests with it set.
-  </Step>
-  <Step title="Store the signing secret">
-    Copy the signing secret from **Settings > Secrets** in Hookdeck and set it as the endpoint's signing secret in the Trigger.dev dashboard. It's one secret for the whole Hookdeck project.
-  </Step>
-</Steps>
-
-## Test it
-
-Send a webhook to your Hookdeck source URL, or trigger a real event in the upstream provider. In Hookdeck, the event shows a `200` response from the destination. In Trigger.dev, the endpoint shows a succeeded delivery and the `payment-succeeded` task has a completed run with the Stripe event as its payload.
-
-A request signed with a different secret gets a `400`, which Hookdeck reports as a failed attempt.
-
-## Rotate the signing secret
-
-Roll the signing secret under **Settings > Secrets** in Hookdeck with an expiry instead of expiring it immediately. Until the old secret expires, Hookdeck signs each request with both secrets, sending the previous secret's signature in `X-Hookdeck-Signature-2`. The endpoint accepts either, so deliveries keep verifying while you copy the new secret to Trigger.dev. Set a grace period when you store it to keep accepting the old secret for a while.
-
-## Deduplication
-
-Hookdeck retries and manual replays of the same event carry the same `X-Hookdeck-Eventid`, and the endpoint uses it as the [deduplication](/webhooks/deliveries#deduplication) key, so a retried event runs your task once.
-
-If you changed the header prefix in the Hookdeck project's settings, the event id arrives under the new prefix. Pass the prefix so deduplication keeps working:
-
-```ts /trigger/stripe-via-hookdeck.ts
-import type Stripe from "stripe";
-import { webhooks } from "@trigger.dev/sdk";
-
-export const stripeViaHookdeck = webhooks.endpoint.define({
-  id: "stripe-via-hookdeck",
-  source: webhooks.hookdeck<Stripe.Event>({ headerPrefix: "x-acme" }),
-});
-```
-
-The signature headers keep the `X-Hookdeck-` name whatever the prefix.
-
-## Trigger a task through the API instead
-
-You can also point a Hookdeck destination at the [trigger task API](/management/tasks/trigger) without a hosted endpoint. Hookdeck authenticates with your API key instead of a signature, and a transformation wraps the body in the `payload` field the API expects.
-
-1. Create a destination with the URL `https://api.trigger.dev/api/v1/tasks/<task-id>/trigger`, method `POST`, and **Bearer token** authentication using a **Trigger only** environment API key.
-2. Add a [transformation](https://hookdeck.com/docs/transformations):
-
-   ```javascript
-   addHandler("transform", (request, context) => {
-     request.body = { payload: { ...request.body } };
-     return request;
-   });
-   ```
-
-3. Create a connection from your source to that destination and transformation.
-
-```ts /trigger/webhook-handler.ts
+```ts trigger/webhook-handler.ts
 import { task } from "@trigger.dev/sdk";
 
 export const webhookHandler = task({
   id: "webhook-handler",
   run: async (payload: Record<string, unknown>) => {
+    // The payload contains the original webhook data from the external service
     console.log("Received webhook:", payload);
+
+    // Add your custom logic here
   },
 });
 ```
 
-This path has no deduplication of Hookdeck retries; each forwarded request triggers a run.
+## Testing your setup
 
-For more on Hookdeck, see the [Hookdeck documentation](https://hookdeck.com/docs).
+To test everything is working:
+
+1. Set up your destination, transformation, and connection in [Hookdeck](https://dashboard.hookdeck.com)
+2. Send a test webhook to your Hookdeck source URL (use the Hookdeck Console or cURL)
+3. Check the Hookdeck dashboard to verify the webhook was received and forwarded
+4. Check the [Trigger.dev dashboard](https://cloud.trigger.dev) to see the successful run of your task
+
+For more information on setting up Hookdeck, refer to the [Hookdeck Documentation](https://hookdeck.com/docs).

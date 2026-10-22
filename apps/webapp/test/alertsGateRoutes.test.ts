@@ -1,4 +1,3 @@
-import type * as AlertsGate from "~/v3/canUseAlertsList.server";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.setConfig({ testTimeout: 30_000 });
@@ -36,11 +35,8 @@ vi.mock("~/services/routeBuilders/dashboardBuilder", () => {
 vi.mock("~/services/session.server", () => ({ requireUserId: async () => "user_1" }));
 
 vi.mock("~/db.server", () => ({
-  prisma: {
-    organizationIntegration: { findFirst: async () => ({ id: "int_1" }) },
-    user: { findFirst: async () => ({ admin: true }) },
-  },
-  $replica: { organization: { findFirst: async () => ({ featureFlags: {} }) } },
+  prisma: { organizationIntegration: { findFirst: async () => ({ id: "int_1" }) } },
+  $replica: {},
 }));
 
 vi.mock("~/models/project.server", async (importOriginal) => ({
@@ -136,11 +132,6 @@ vi.mock("~/v3/canUseAlertsList.server", async () => {
   };
 });
 
-vi.mock("~/v3/featureFlags.server", async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  makeFlag: () => async (opts: { defaultValue: unknown }) => opts.defaultValue,
-}));
-
 const P = "_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam";
 const params = { organizationSlug: "o", projectParam: "p", envParam: "dev", channelId: "c" };
 const request = (method = "GET") => new Request("http://localhost/x", { method });
@@ -195,15 +186,6 @@ describe("new alerts surfaces when alertsEnabled is off", () => {
   it("preview-series responds 403", async () => {
     const res = await thrown(() => mods.preview.loader!({ request: request(), params } as never));
     expect(res?.status).toBe(403);
-  });
-});
-
-describe("admin preview when ALERTS_ENABLED is unset", () => {
-  it("the real gate redirects an admin to the old alerts page", async () => {
-    const real = await vi.importActual<typeof AlertsGate>("~/v3/canUseAlertsList.server");
-    const res = await thrown(() => real.requireAlertsEnabledOrRedirect("user_1", params));
-    expect(res?.status).toBe(302);
-    expect(await real.canUseAlertsList({ orgFeatureFlags: {}, user: { admin: true } })).toBe(false);
   });
 });
 

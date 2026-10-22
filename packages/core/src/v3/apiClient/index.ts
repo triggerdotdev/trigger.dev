@@ -23,7 +23,6 @@ import {
   CancelWebhookWaiterResponseBody,
   CreateWebhookWaiterResponseBody,
   type CreateWebhookWaiterRequestBody,
-  type RotateWebhookEndpointSecretRequestBody,
   RotateWebhookEndpointSecretResponse,
   SetWebhookEndpointSecretResponse,
   type SetWebhookEndpointSecretRequestBody,
@@ -2631,15 +2630,11 @@ export class ApiClient {
     );
   }
 
-  generateWebhookEndpointSecret(
-    endpointId: string,
-    body: RotateWebhookEndpointSecretRequestBody = {},
-    requestOptions?: ZodFetchOptions
-  ) {
+  generateWebhookEndpointSecret(endpointId: string, requestOptions?: ZodFetchOptions) {
     return zodfetch(
       RotateWebhookEndpointSecretResponse,
       `${this.baseUrl}/api/v1/webhooks/endpoints/${encodeURIComponent(endpointId)}/rotate-secret`,
-      { method: "POST", headers: this.#getHeaders(false), body: JSON.stringify(body) },
+      { method: "POST", headers: this.#getHeaders(false) },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
   }

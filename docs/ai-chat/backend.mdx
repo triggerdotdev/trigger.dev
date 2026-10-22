@@ -4,6 +4,8 @@ sidebarTitle: "Backend"
 description: "Three approaches to building your chat backend — chat.agent(), session iterator, or raw task primitives."
 ---
 
+import WebhooksBetaNote from "/snippets/webhooks-beta-note.mdx";
+
 There are three abstraction levels for a chat backend. All three speak the same wire protocol, so the [frontend transport](/ai-chat/frontend) works unchanged whichever you pick.
 
 | Capability                            | `chat.agent()` | `chat.createSession()`                                        | Raw primitives |
@@ -272,7 +274,7 @@ export const myChat = chat.agent({
 });
 ```
 
-The managed `streamText` carries the stored prompt's `system`, `model` (resolved through the agent's `registry`), sampling config, and `experimental_telemetry`. AI SDK telemetry is on even without a stored prompt, so model steps and tool calls show in the run trace. Options you pass at the call site win, apart from `system`, which throws when the prompt already set one.
+The managed `streamText` carries the stored prompt's `system`, `model` (resolved through the agent's `registry`), sampling config, and `experimental_telemetry`. Options you pass at the call site win, apart from `system`, which throws when the prompt already set one.
 
 `chat.toStreamTextOptions()` remains available for the same job, and is the only option in a [custom agent](#custom-agents), which has no `run` argument to take a bound `streamText` from. A `chat.headStart` route does get one, and there it also owns `messages`, `stopWhen` and `abortSignal`, since the handover depends on them. Pass `{ registry }` when a prompt names a provider-prefixed model, and `{ tools }` when you want HITL tool approvals, so the SDK knows which calls pause on `needsApproval`.
 
@@ -498,6 +500,8 @@ Custom actions let the frontend send structured commands (undo, rollback, edit, 
 See [Actions](/ai-chat/actions).
 
 ### Webhook events and channels
+
+<WebhooksBetaNote />
 
 Two `chat.agent()` options wire an agent to verified inbound webhooks. `events` claims [`chat.event(...)`](/webhooks/session-routing) descriptors: each verified delivery is routed to this agent's session and arrives at `onAction` as an action (not a turn), so [session routing](/webhooks/session-routing) decides which conversation it lands on. `channels` claims channel connectors that turn an external chat surface into a frontend for the agent: an inbound message runs as a turn through `run()` and the reply is posted back. `slack()` ships in `@trigger.dev/slack`, and `chat.channels.custom(...)` builds a connector for any endpoint without a preset.
 

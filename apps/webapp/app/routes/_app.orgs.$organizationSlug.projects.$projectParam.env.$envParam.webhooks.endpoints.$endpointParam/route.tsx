@@ -8,11 +8,7 @@ import {
 } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { randomBytes } from "node:crypto";
-import {
-  WebhookPreviousSecretTtlSeconds,
-  WebhookRoutingTarget,
-  WebhookVerifierArtifact,
-} from "@trigger.dev/core/v3";
+import { WebhookRoutingTarget, WebhookVerifierArtifact } from "@trigger.dev/core/v3";
 import type { WebhookValueSource } from "@trigger.dev/core/v3";
 import { type MutableRefObject, Suspense, useEffect, useRef, useState } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
@@ -73,6 +69,7 @@ import { docsPath, EnvironmentParamSchema, v3WebhooksPath } from "~/utils/pathBu
 import { throwPermissionDenied } from "~/utils/permissionDenied";
 import { parseFiniteInt } from "~/utils/searchParams";
 import { webhookEngine, webhookVerifyTokenKey } from "~/v3/webhookEngine.server";
+import { PreviousSecretTtlSeconds } from "~/v3/webhookSigningSecret";
 import {
   generateWebhookSigningSecret,
   storeWebhookSigningSecret,
@@ -215,7 +212,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 const PreviousSecretTtlFormField = z.object({
-  previousSecretTtlSeconds: z.coerce.number().pipe(WebhookPreviousSecretTtlSeconds).optional(),
+  previousSecretTtlSeconds: z.coerce.number().pipe(PreviousSecretTtlSeconds).optional(),
 });
 
 const SetSecretSchema = PreviousSecretTtlFormField.extend({

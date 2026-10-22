@@ -1,4 +1,3 @@
-import { BellAlertIcon } from "@heroicons/react/20/solid";
 import { TrashIcon } from "~/assets/icons/TrashIcon";
 import { useState } from "react";
 import { AgentIcon } from "~/components/dashboard-agent/agent-identity";
@@ -49,7 +48,6 @@ export function LegacyAlertsSection({
   canWrite = true,
   canDelete = true,
   replacing = false,
-  manualReplace = false,
 }: {
   channels: LegacyAlertChannelRow[];
   onReplace: (row: LegacySubscriptionRow) => void;
@@ -57,7 +55,6 @@ export function LegacyAlertsSection({
   canWrite?: boolean;
   canDelete?: boolean;
   replacing?: boolean;
-  manualReplace?: boolean;
 }) {
   const [deleting, setDeleting] = useState<LegacySubscriptionRow | undefined>();
   const rows = legacySubscriptions(channels);
@@ -90,9 +87,8 @@ export function LegacyAlertsSection({
               <TableCell actionClassName="py-1.5">
                 {row.migration.kind === "replace" ? (
                   <Button
-                    variant={manualReplace ? "secondary/small" : "ask-trigger/small"}
-                    LeadingIcon={manualReplace ? BellAlertIcon : AgentIcon}
-                    leadingIconClassName={manualReplace ? "text-alerts" : undefined}
+                    variant="ask-trigger/small"
+                    LeadingIcon={AgentIcon}
                     className="whitespace-nowrap"
                     disabled={replacing || !(canWrite && (row.canWrite ?? true))}
                     onClick={() => onReplace(row)}

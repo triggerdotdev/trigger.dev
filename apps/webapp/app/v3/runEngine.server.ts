@@ -1,5 +1,3 @@
-import { createWaitpointStoreEnabledResolver } from "./utils/waitpointStoreEnabled.server";
-import { globalFlagsRegistry } from "./globalFlagsRegistry.server";
 import { RunEngine } from "@internal/run-engine";
 import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
@@ -22,10 +20,6 @@ export type { RunEngine };
 
 function createRunEngine() {
   const engine = new RunEngine({
-    waitpointStoreEnabled: createWaitpointStoreEnabledResolver(
-      () => globalFlagsRegistry.current(),
-      prisma
-    ),
     prisma,
     readOnlyPrisma: $replica,
     crossSeamGuard: pickRunOpsStoreForCompletion,

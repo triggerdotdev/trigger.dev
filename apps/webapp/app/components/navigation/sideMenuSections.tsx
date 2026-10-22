@@ -81,7 +81,6 @@ export function buildSideMenuSections({
   project,
   environment,
   isAdmin,
-  alertsConfigured,
   featureFlags,
   isManagedCloud,
   dashboards,
@@ -90,7 +89,6 @@ export function buildSideMenuSections({
   project: ProjectForPath;
   environment: EnvironmentForPath;
   isAdmin: boolean;
-  alertsConfigured: boolean;
   featureFlags: {
     hasAiAccess?: boolean;
     hasQueryAccess?: boolean;
@@ -140,8 +138,7 @@ export function buildSideMenuSections({
   const showObservability =
     isAdmin || featureFlags.hasQueryAccess || featureFlags.hasLogsPageAccess;
   const alertsInObservability =
-    showObservability &&
-    computeCanUseAlertsList(featureFlags.alertsEnabled === true, isAdmin, alertsConfigured);
+    showObservability && computeCanUseAlertsList(featureFlags.alertsEnabled === true, isAdmin);
 
   if (showObservability) {
     staticSections.push({

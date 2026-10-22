@@ -1,4 +1,4 @@
-ARG NODE_IMAGE=node:24.22.1-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205
+ARG NODE_IMAGE=node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d
 # OS security patches come from apt, not from the node image, and the node image
 # rarely changes. Without a changing input the upgrade layers below stay cached
 # for months and ship known-fixed CVEs. Every workflow that publishes this image

@@ -4,6 +4,10 @@ description: "Turn a chat.agent into a Slack agent: users message it in Slack, i
 sidebarTitle: "Slack agents"
 ---
 
+import WebhooksBetaBanner from "/snippets/webhooks-beta-banner.mdx";
+
+<WebhooksBetaBanner />
+
 **`slack()` from `@trigger.dev/slack` turns a `chat.agent` into a native Slack agent.** Each Slack agent session (a conversation with the agent, or a thread in a channel) becomes a durable Trigger.dev [session](/ai-chat/sessions). A message runs as a turn, the session shows the agent working, the reply streams into the thread as the model writes it, and Slack's stop button stops the turn.
 
 ```ts /trigger/support.ts

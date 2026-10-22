@@ -5282,25 +5282,6 @@ function toStreamTextOptions(
     Object.assign(result, telemetry);
   }
 
-  const telemetry = (result.experimental_telemetry as Record<string, unknown> | undefined) ?? {
-    isEnabled: true,
-    metadata: { ...(options?.telemetry ?? {}) },
-  };
-  if (locals.get(chatTurnContextKey)?.recordUserMessage === false) {
-    const { "prompt.input": _input, ...metadata } = (telemetry.metadata ?? {}) as Record<
-      string,
-      unknown
-    >;
-    result.experimental_telemetry = {
-      ...telemetry,
-      metadata,
-      recordInputs: false,
-      recordOutputs: false,
-    };
-  } else {
-    result.experimental_telemetry = telemetry;
-  }
-
   // Skills: merge auto-injected tools with any user-provided tools.
   // User tools override on name conflict (though we namespace ours).
   if (skills && skills.length > 0) {
@@ -16892,8 +16873,7 @@ export const chat = {
   /**
    * Returns an options object ready to spread into `streamText()`.
    * Reads the stored prompt and returns `{ system, experimental_telemetry, ...config }`.
-   * With no stored prompt it still returns `experimental_telemetry` (on), so the model call is
-   * traced.
+   * Returns `{}` if no prompt has been set.
    */
   toStreamTextOptions,
   /**

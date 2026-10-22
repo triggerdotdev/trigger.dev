@@ -66,7 +66,7 @@ jobs:
       - name: ⎔ Setup node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24.22.1
+          node-version: 24.18.0
           cache: "pnpm"
 
       # ..to avoid rate limits when pulling images
@@ -145,7 +145,7 @@ jobs:
       - name: ⎔ Setup node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24.22.1
+          node-version: 24.18.0
           # no cache enabled, we're not installing deps
 
       - name: Download blob reports from GitHub Actions Artifacts

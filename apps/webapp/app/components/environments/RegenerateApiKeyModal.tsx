@@ -11,7 +11,6 @@ import { Input } from "../primitives/Input";
 import { InputGroup } from "../primitives/InputGroup";
 import { Paragraph } from "../primitives/Paragraph";
 import { CheckboxWithLabel } from "../primitives/Checkbox";
-import { RadioGroup, RadioGroupItem } from "../primitives/RadioButton";
 import { Spinner } from "../primitives/Spinner";
 
 type ModalProps = {
@@ -76,7 +75,9 @@ const RegenerateApiKeyModalContent = ({
   return (
     <div className="flex flex-col items-center gap-y-4 pt-4">
       <Callout variant="warning">
-        {`A new API key will be issued for the ${title} environment. Choose what happens to the previous key.`}
+        {`A new API key will be issued for the ${title} environment. The previous key stays valid
+        for 24 hours so you can roll out the new key in your environment variables without downtime.
+        After 24 hours, the previous key stops working.`}
       </Callout>
       <fetcher.Form
         method="post"
@@ -84,24 +85,6 @@ const RegenerateApiKeyModalContent = ({
         className="mt-2 w-full"
       >
         <Fieldset className="w-full">
-          <InputGroup className="max-w-full">
-            <RadioGroup name="previousKey" defaultValue="grace" className="flex flex-col gap-2">
-              <RadioGroupItem
-                id="previousKey-grace"
-                value="grace"
-                variant="description"
-                label="Keep the previous key working for 24 hours"
-                description="Roll out the new key to your environment variables without downtime. The previous key stops working after 24 hours."
-              />
-              <RadioGroupItem
-                id="previousKey-revoke"
-                value="revoke"
-                variant="description"
-                label="Revoke the previous key immediately"
-                description="Choose this if the key may have leaked. Deployments and services still using the previous key will fail until they are updated with the new key."
-              />
-            </RadioGroup>
-          </InputGroup>
           <InputGroup className="max-w-full">
             <Paragraph variant="small/bright">Enter this text below to confirm:</Paragraph>
             <Paragraph

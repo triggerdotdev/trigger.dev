@@ -4,6 +4,10 @@ description: "Choose an endpoint's source, configure verification, and type the 
 sidebarTitle: "Sources & verification"
 ---
 
+import WebhooksBetaBanner from "/snippets/webhooks-beta-banner.mdx";
+
+<WebhooksBetaBanner />
+
 An endpoint's `source` defines how Trigger.dev verifies requests and types the event every subscriber receives. Choose a named provider source or supply a verification configuration with `webhooks.custom()`.
 
 ## Presets
@@ -97,7 +101,6 @@ Each function below returns a source with its provider's verification configurat
 | HMAC-SHA256 with `X-Hub-Signature-256` | `whatsapp()` |
 | Shared secret in `X-Gitlab-Token` | `gitlab()` |
 | Shared secret as `Authorization: Bearer` | `supabase()` |
-| Hookdeck relay (HMAC-SHA256 with `X-Hookdeck-Signature`) | `hookdeck()` |
 | Provider-specific HMAC | `calendly()`, `calCom()`, `sentry()`, `pagerduty()`, `vercel()`, `linear()`, `notion()`, `typeform()`, `docusign()`, `jira()`, `intercom()`, `zendesk()`, `attio()`, `workos()`, `elevenlabs()`, `vapi()`, `retell()`, `shopify()`, `metronome()`, `mux()`, `tailscale()`, `langfuse()`, `infisical()`, `planetscale()`, `plain()`, `firecrawl()` |
 
 Provider IDs containing a hyphen use a camel case function name: the `cal-com` provider is `webhooks.calCom()`.
@@ -105,35 +108,6 @@ Provider IDs containing a hyphen use a camel case function name: the `cal-com` p
 Supabase database webhooks aren't signed, so `supabase()` checks a shared secret instead. Generate the endpoint's secret on Trigger.dev, then add an `Authorization` header with the value `Bearer <secret>` under the webhook's HTTP Headers in Supabase.
 
 Slack also ships as a chat channel in `@trigger.dev/slack`.
-
-### Hookdeck
-
-`hookdeck()` verifies requests that a [Hookdeck](https://hookdeck.com) connection forwards to the endpoint. Hookdeck forwards the original provider's body unchanged, so pass that provider's event type:
-
-```ts /trigger/stripe-via-hookdeck.ts
-import type Stripe from "stripe";
-import { webhook, webhooks } from "@trigger.dev/sdk";
-
-export const stripeViaHookdeck = webhooks.endpoint.define({
-  id: "stripe-via-hookdeck",
-  source: webhooks.hookdeck<Stripe.Event>(),
-});
-
-export const paymentSucceeded = webhook({
-  id: "payment-succeeded",
-  endpoint: stripeViaHookdeck,
-  filter: "event.type == 'payment_intent.succeeded'",
-  onEvent: async ({ event }) => {
-    console.log(event.id);
-  },
-});
-```
-
-Use the endpoint URL as the connection's HTTP destination, keep the destination's authentication on Hookdeck Signature (the default for new destinations), and store the Hookdeck project's signing secret from **Settings > Secrets** as the endpoint's signing secret.
-
-- **Secret rotation:** when you roll the signing secret in Hookdeck with an expiry, Hookdeck also signs each request with the previous secret in `X-Hookdeck-Signature-2`, so deliveries keep verifying until you store the new secret.
-- **Deduplication:** retries dedupe on `X-Hookdeck-Eventid`, which is the same on every attempt of a Hookdeck event.
-- **Custom header prefix:** if you changed the header prefix in the Hookdeck project's settings, pass it with `webhooks.hookdeck({ headerPrefix: "x-acme" })`. The prefix renames the event id header; the signature headers keep the `X-Hookdeck-` name.
 
 ## Endpoint validation
 
