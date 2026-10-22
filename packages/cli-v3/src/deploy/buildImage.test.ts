@@ -12,6 +12,7 @@ import {
   TOOLCHAIN_PACKAGES,
   formatCommandForDiagnostics,
   generateContainerfile,
+  resolveExtraCACertsImagePath,
 } from "./buildImage.js";
 import { EMSIGN_COMPROMISE_REJECTED_INTERMEDIATES } from "./emsignRejectedIntermediates.js";
 
@@ -55,6 +56,26 @@ const images: Array<[BuildRuntime, string, string]> = [
     "triggerdotdev/bun:1.3-node20-bookworm-build@sha256:a2d5e6d1ec25946ca1d86abdd9ffb9c589376df64ee1b490c461607953931245",
   ],
 ];
+
+describe("resolveExtraCACertsImagePath", () => {
+  it("returns undefined when no CA file is configured", () => {
+    expect(resolveExtraCACertsImagePath(undefined, "/project")).toBeUndefined();
+  });
+
+  it("maps a project-relative path into /app", () => {
+    expect(resolveExtraCACertsImagePath("./certs/ca.crt", "/project")).toBe("/app/certs/ca.crt");
+  });
+
+  it("strips leading parent segments the same way additionalFiles does", () => {
+    expect(resolveExtraCACertsImagePath("../shared/ca.crt", "/project")).toBe("/app/shared/ca.crt");
+  });
+
+  it("maps an absolute path inside the project into /app", () => {
+    expect(resolveExtraCACertsImagePath("/project/certs/ca.crt", "/project")).toBe(
+      "/app/certs/ca.crt"
+    );
+  });
+});
 
 describe("generateContainerfile", () => {
   it.each(images)("uses the pinned published base images for %s", async (runtime, base, build) => {

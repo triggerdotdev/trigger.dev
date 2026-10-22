@@ -301,6 +301,14 @@ async function autoDetectDirs(workingDir: string): Promise<string[]> {
 }
 
 function validateConfig(config: TriggerConfig, warn = true) {
+  if (config.extraCACerts) {
+    // The CA file must be inside the build output so the image can point
+    // NODE_EXTRA_CA_CERTS at it
+    config.build ??= {};
+    config.build.extensions ??= [];
+    config.build.extensions.push(additionalFiles({ files: [config.extraCACerts] }));
+  }
+
   if (config.additionalFiles && config.additionalFiles.length > 0) {
     warn &&
       prettyWarning(

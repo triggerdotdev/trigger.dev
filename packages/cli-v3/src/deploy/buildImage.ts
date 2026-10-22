@@ -3,7 +3,7 @@ import { depot } from "@depot/cli";
 import { x } from "tinyexec";
 import type { BuildManifest, BuildRuntime } from "@trigger.dev/core/v3/schemas";
 import { networkInterfaces } from "os";
-import { join } from "path";
+import { isAbsolute, join, relative } from "path";
 import { safeReadJSONFile } from "../utilities/fileSystem.js";
 import { readFileSync } from "fs";
 
@@ -1304,4 +1304,26 @@ function getOutputOptions({
   }
 
   return outputOptions;
+}
+
+// The extraCACerts config option is project-relative, but NODE_EXTRA_CA_CERTS
+// must point at the file inside the deployed image. additionalFiles copies it
+// into the build output root, which becomes /app in the image.
+export function resolveExtraCACertsImagePath(
+  extraCACerts: string | undefined,
+  workingDir: string
+): string | undefined {
+  if (!extraCACerts) {
+    return undefined;
+  }
+
+  const projectRelativePath = isAbsolute(extraCACerts)
+    ? relative(workingDir, extraCACerts)
+    : extraCACerts;
+
+  const segments = projectRelativePath
+    .split(/[\\/]+/)
+    .filter((segment) => segment && segment !== "." && segment !== "..");
+
+  return `/app/${segments.join("/")}`;
 }
