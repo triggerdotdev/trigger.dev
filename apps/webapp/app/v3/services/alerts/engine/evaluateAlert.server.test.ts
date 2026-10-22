@@ -154,6 +154,22 @@ describe("evaluateAlert", () => {
     expect(deliveries.every((d) => d.status === "pending")).toBe(true);
   });
 
+  it("schedules the next evaluation within a minute for a 600s capability", async () => {
+    await createAlert(db, {
+      ...BASE,
+      capabilityKey: "queue.oldest_age",
+      condition: { kind: "threshold", operator: ">", value: 100, windowSec: 600 },
+    });
+    const now = new Date();
+    const claimed = await claimOne(now);
+
+    await evaluateAlert(claimed, { db, evaluateBinding: bindingFor(notMetResult()) });
+
+    const next = (await getAlert(db, { id: claimed.id }))!.nextEvaluationAt!.getTime();
+    expect(next).toBeGreaterThan(now.getTime());
+    expect(next - now.getTime()).toBeLessThanOrEqual(60_000);
+  });
+
   it("stateful met->met writes nothing (no duplicate raise)", async () => {
     await createAlert(db, { ...BASE, attention: "needs_attention", observedCondition: "met" });
     const now = new Date();
@@ -1057,7 +1073,7 @@ describe("unavailable reason tracking", () => {
 
   it("successful evaluation schedules the next grid slot, not now + cadence", async () => {
     const alert = await createAlert(db, { ...BASE });
-    const cadenceMs = 300_000;
+    const cadenceMs = 60_000;
     const phase = alertPhaseOffsetMs(alert.id);
     const slot = Math.floor((Date.now() - phase) / cadenceMs) * cadenceMs + phase;
     const due = new Date(slot - cadenceMs);
@@ -1089,7 +1105,7 @@ describe("unavailable reason tracking", () => {
 
     const after = (await getAlert(db, { id: alert.id }))!;
     const phase = alertPhaseOffsetMs(alert.id);
-    const expected = (Math.floor((now.getTime() - phase) / 300_000) + 1) * 300_000 + phase;
+    const expected = (Math.floor((now.getTime() - phase) / 60_000) + 1) * 60_000 + phase;
     expect(after.nextEvaluationAt!.getTime()).toBe(expected);
   });
 

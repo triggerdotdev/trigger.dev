@@ -1092,7 +1092,7 @@ const EnvironmentSchema = z
 
     /** These enable the alerts feature in v3 */
     ALERT_EMAIL_TRANSPORT: z.enum(["resend", "smtp", "aws-ses"]).optional(),
-    ALERT_EVALUATION_CADENCE_CAP_SEC: z.coerce.number().int().positive().optional(),
+    ALERT_EVALUATION_CADENCE_CAP_SEC: z.coerce.number().int().positive().default(60),
     ALERT_FROM_EMAIL: z.string().optional(),
     ALERT_REPLY_TO_EMAIL: z.string().optional(),
     ALERT_RESEND_API_KEY: z.string().optional(),
