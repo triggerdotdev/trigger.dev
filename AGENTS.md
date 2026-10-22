@@ -51,7 +51,10 @@ pnpm run test ./src/engine/tests/ttl.test.ts --run     # Single test file
 pnpm run build --filter @internal/run-engine           # May need to build deps first
 ```
 
-Test files go next to source files (e.g., `MyService.ts` -> `MyService.test.ts`).
+Where test files go:
+
+- **Webapp:** put tests in `apps/webapp/test/`, not next to the source. Vitest there only runs files matched by the `include` list in `apps/webapp/vitest.config.ts`.
+- **Packages:** follow the package's existing layout. Next to the source (`MyService.ts` -> `MyService.test.ts`) and a `test/` folder are both fine.
 
 ### Testcontainers for Redis/PostgreSQL
 
