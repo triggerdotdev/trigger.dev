@@ -86,7 +86,6 @@ export const TaskEventDetailedSummaryV1Result = z.object({
   kind: z.string(),
   metadata: z.string(),
   message: z.string(),
-  attributes_text: z.string(),
 });
 
 export type TaskEventDetailedSummaryV1Result = z.output<typeof TaskEventDetailedSummaryV1Result>;
@@ -108,7 +107,6 @@ export function getTraceDetailedSummaryQueryBuilder(
       "kind",
       "metadata",
       { name: "message", expression: "LEFT(message, 256)" },
-      "attributes_text",
     ],
     settings,
   });
@@ -306,7 +304,6 @@ export function getTraceDetailedSummaryQueryBuilderV2(
       "kind",
       "metadata",
       { name: "message", expression: "LEFT(message, 256)" },
-      "attributes_text",
     ],
     settings,
   });
