@@ -192,6 +192,25 @@ The context object provides:
 
 For more information about the context object, see the [Context documentation](/context).
 
+#### Linking to a run in the dashboard
+
+Trigger.dev sets `TRIGGER_DASHBOARD_URL` on every run, in development and deployed environments. Its value is the dashboard's address without a trailing slash, so it also points at your own instance when you self-host. Append `/runs/<runId>` to link to a run:
+
+```ts
+import { task } from "@trigger.dev/sdk";
+
+export const reportTask = task({
+  id: "report-task",
+  run: async (payload, { ctx }) => {
+    const runUrl = `${process.env.TRIGGER_DASHBOARD_URL}/runs/${ctx.run.id}`;
+
+    console.log(`View this run: ${runUrl}`);
+  },
+});
+```
+
+The `/runs/<runId>` link checks that the viewer is a member of the run's organization, then redirects to the full run page. If you set your own `TRIGGER_DASHBOARD_URL` environment variable on the project, your value is used instead.
+
 ### Sync env vars from another service
 
 There are two ways to pull secrets from another service into Trigger.dev: a native **Secret Sync** (currently [Infisical](https://infisical.com)), or the `syncEnvVars` build extension for any other service.
