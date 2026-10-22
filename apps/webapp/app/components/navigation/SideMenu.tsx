@@ -51,6 +51,7 @@ import { SlackIcon } from "~/assets/icons/SlackIcon";
 import { VercelLogo } from "~/components/integrations/VercelLogo";
 import { Avatar } from "~/components/primitives/Avatar";
 import { UserProfilePhoto } from "~/components/UserProfilePhoto";
+import { useCopyPublicUrl } from "~/hooks/useCopyPublicUrl";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
 import { usePageSwitcher } from "~/hooks/useEnvironmentSwitcher";
 import { useFeatureFlags } from "~/hooks/useFeatureFlags";
@@ -1622,7 +1623,11 @@ function OrgSelector({
         {isCollapsed && (
           <div className="border-t border-grid-bright p-1">
             <SideMenuPopoverSubMenu title="Account" icon={<UserProfilePhoto className="size-5" />}>
-              <AccountMenuItems isAdmin={isAdmin} isImpersonating={isImpersonating} />
+              <AccountMenuItems
+                isAdmin={isAdmin}
+                isImpersonating={isImpersonating}
+                onClose={() => setOrgMenuOpen(false)}
+              />
             </SideMenuPopoverSubMenu>
           </div>
         )}
@@ -1638,11 +1643,14 @@ function OrgSelector({
 function AccountMenuItems({
   isAdmin,
   isImpersonating,
+  onClose,
 }: {
   isAdmin: boolean;
   isImpersonating: boolean;
+  onClose: () => void;
 }) {
   const submit = useSubmit();
+  const copyPublicUrl = useCopyPublicUrl();
   const stopImpersonating = () =>
     submit(null, { action: "/resources/impersonation", method: "delete" });
 
@@ -1684,6 +1692,26 @@ function AccountMenuItems({
                 </div>
               }
               icon={HomeIcon}
+              leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+              className={SIDE_MENU_POPOVER_ITEM_LABEL}
+            />
+          )}
+          {copyPublicUrl.enabled && (
+            <PopoverMenuItem
+              title={
+                <div className="flex w-full items-center justify-between">
+                  <span>Copy public URL</span>
+                  <ShortcutKey
+                    shortcut={{ modifiers: ["mod", "alt"], key: "l" }}
+                    variant="medium/bright"
+                  />
+                </div>
+              }
+              icon={ChainLinkIcon}
+              onClick={() => {
+                copyPublicUrl.copy();
+                onClose();
+              }}
               leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
               className={SIDE_MENU_POPOVER_ITEM_LABEL}
             />
@@ -1785,7 +1813,11 @@ function AccountMenu({ isAdmin, isImpersonating }: { isAdmin: boolean; isImperso
         style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
       >
         <PopoverSectionHeader title="Account" />
-        <AccountMenuItems isAdmin={isAdmin} isImpersonating={isImpersonating} />
+        <AccountMenuItems
+          isAdmin={isAdmin}
+          isImpersonating={isImpersonating}
+          onClose={() => setIsOpen(false)}
+        />
       </PopoverContent>
     </Popover>
   );

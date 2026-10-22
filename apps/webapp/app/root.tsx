@@ -137,6 +137,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       features,
       appEnv: env.APP_ENV,
       appOrigin: env.APP_ORIGIN,
+      publicAppOrigin: env.PUBLIC_APP_ORIGIN,
       apiOrigin: env.API_ORIGIN ?? env.APP_ORIGIN,
       dashboardAgentBaseUrl: env.DASHBOARD_AGENT_BASE_URL ?? "https://api.trigger.dev",
       triggerCliTag: env.TRIGGER_CLI_TAG,
