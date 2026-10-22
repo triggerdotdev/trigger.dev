@@ -1,42 +1,21 @@
 import { BasePresenter } from "./basePresenter.server";
 import { getLimit } from "~/services/platform.v3.server";
-import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { builtInDashboard } from "./BuiltInDashboards.server";
-import { QueryWidgetConfig } from "~/components/metrics/QueryWidget";
+import {
+  DashboardDefinition,
+  DashboardLayoutItem,
+  DashboardStoredWidget,
+} from "@trigger.dev/core/v3/schemas";
 
-export const LayoutItem = z.object({
-  i: z.string(),
-  x: z.number(),
-  y: z.number(),
-  w: z.number(),
-  h: z.number(),
-  minH: z.number().optional(),
-  maxH: z.number().optional(),
-});
+export const LayoutItem = DashboardLayoutItem;
+export type LayoutItem = DashboardLayoutItem;
 
-export type LayoutItem = z.infer<typeof LayoutItem>;
+export const Widget = DashboardStoredWidget;
+export type Widget = DashboardStoredWidget;
 
-export const Widget = z.object({
-  title: z.string(),
-  query: z.string().default(""),
-  display: QueryWidgetConfig,
-  // Opt into server-side gap fill (carry-forward for gauges, zero-fill for counters).
-  // Top-level rather than in `display` because display config is client-only and never reaches the query POST.
-  fillGaps: z.boolean().optional(),
-});
-
-export type Widget = z.infer<typeof Widget>;
-
-export const DashboardLayout = z.discriminatedUnion("version", [
-  z.object({
-    version: z.literal("1"),
-    layout: z.array(LayoutItem),
-    widgets: z.record(z.string(), Widget),
-  }),
-]);
-
-export type DashboardLayout = z.infer<typeof DashboardLayout>;
+export const DashboardLayout = DashboardDefinition;
+export type DashboardLayout = DashboardDefinition;
 
 export type CustomDashboard = {
   friendlyId: string;

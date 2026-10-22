@@ -8,7 +8,12 @@ import {
   listOrgsTool,
   listProjectsTool,
 } from "./tools/orgs.js";
-import { listDashboardsTool, runDashboardQueryTool } from "./tools/dashboards.js";
+import {
+  createDashboardTool,
+  listDashboardsTool,
+  runDashboardQueryTool,
+  setDashboardWidgetsTool,
+} from "./tools/dashboards.js";
 import { startDevServerTool, stopDevServerTool, devServerStatusTool } from "./tools/devServer.js";
 import { listPreviewBranchesTool } from "./tools/previewBranches.js";
 import { listProfilesTool, switchProfileTool, whoamiTool } from "./tools/profiles.js";
@@ -19,6 +24,7 @@ import {
   getRunDetailsTool,
   getSpanDetailsTool,
   listRunsTool,
+  replayRunTool,
   waitForRunToCompleteTool,
 } from "./tools/runs.js";
 import { getCurrentWorker, getTaskSchemaTool, triggerTaskTool } from "./tools/tasks.js";
@@ -34,6 +40,12 @@ import {
 import { listAgentsTool } from "./tools/agents.js";
 import { startAgentChatTool, sendAgentMessageTool, closeAgentChatTool } from "./tools/agentChat.js";
 import { readSessionChannelTool, writeSessionChannelTool } from "./tools/sessionChannels.js";
+import {
+  createAlertTool,
+  listAlertCapabilitiesTool,
+  listAlertsTool,
+  resolveAlertTool,
+} from "./tools/alerts.js";
 import {
   generateWebhookSecretTool,
   getWebhookDeliveryTool,
@@ -51,6 +63,7 @@ const WRITE_TOOLS = new Set([
   deployTool.name,
   triggerTaskTool.name,
   cancelRunTool.name,
+  replayRunTool.name,
   createProjectInOrgTool.name,
   initializeProjectTool.name,
   promotePromptVersionTool.name,
@@ -62,10 +75,14 @@ const WRITE_TOOLS = new Set([
   sendAgentMessageTool.name,
   closeAgentChatTool.name,
   writeSessionChannelTool.name,
+  createAlertTool.name,
+  resolveAlertTool.name,
   generateWebhookSecretTool.name,
   setWebhookSecretTool.name,
   replayWebhookDeliveryTool.name,
   submitFeedbackTool.name,
+  createDashboardTool.name,
+  setDashboardWidgetsTool.name,
 ]);
 
 export function registerTools(context: McpContext) {
@@ -84,6 +101,7 @@ export function registerTools(context: McpContext) {
     getSpanDetailsTool,
     waitForRunToCompleteTool,
     cancelRunTool,
+    replayRunTool,
     deployTool,
     listDeploysTool,
     listPreviewBranchesTool,
@@ -91,6 +109,8 @@ export function registerTools(context: McpContext) {
     queryTool,
     listDashboardsTool,
     runDashboardQueryTool,
+    createDashboardTool,
+    setDashboardWidgetsTool,
     whoamiTool,
     listProfilesTool,
     switchProfileTool,
@@ -111,6 +131,10 @@ export function registerTools(context: McpContext) {
     readSessionChannelTool,
     writeSessionChannelTool,
     getReportTool,
+    listAlertCapabilitiesTool,
+    listAlertsTool,
+    createAlertTool,
+    resolveAlertTool,
     listWebhookEndpointsTool,
     getWebhookEndpointDetailsTool,
     listWebhookDeliveriesTool,

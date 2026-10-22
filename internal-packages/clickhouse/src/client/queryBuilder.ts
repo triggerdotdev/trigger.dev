@@ -1,5 +1,10 @@
 import { z } from "zod";
-import type { ClickhouseQueryFunction, ClickhouseReader, ColumnExpression } from "./types.js";
+import type {
+  ClickhouseQueryFunction,
+  ClickhouseQueryWithStatsFunction,
+  ClickhouseReader,
+  ColumnExpression,
+} from "./types.js";
 import type { ClickHouseSettings } from "@clickhouse/client";
 export type QueryParamValue = string | number | boolean | Array<string | number | boolean> | null;
 export type QueryParams = Record<string, QueryParamValue>;
@@ -279,6 +284,21 @@ export class ClickhouseQueryFastBuilder<TOutput extends Record<string, any>> {
     });
 
     return queryFunction(params);
+  }
+
+  executeWithStats(
+    options?: Parameters<ClickhouseQueryWithStatsFunction<void, TOutput>>[1]
+  ): ReturnType<ClickhouseQueryWithStatsFunction<void, TOutput>> {
+    const { query, params } = this.build();
+
+    const queryFunction = this.reader.queryFastWithStats<TOutput, Record<string, any>>({
+      name: this.name,
+      query,
+      columns: this.columns,
+      settings: this.settings,
+    });
+
+    return queryFunction(params, options);
   }
 
   /**

@@ -48,7 +48,7 @@ function promptForSignal(signal: AgentPageSignal, now: number): SuggestedPrompt 
         "fresh-failure",
         "Why did this run fail?",
         ago
-          ? `Investigate ${signal.runId} — it failed ${ago} ago. What went wrong?`
+          ? `Investigate ${signal.runId} - it failed ${ago} ago. What went wrong?`
           : `Investigate why ${signal.runId} failed.`
       );
     }

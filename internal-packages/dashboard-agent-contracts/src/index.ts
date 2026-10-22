@@ -3,6 +3,7 @@
  * database package, or anything from the webapp.
  */
 export * from "./agent-records.js";
+export * from "./alert-context.js";
 export * from "./blocks.js";
 export * from "./evidence.js";
 export * from "./feedback.js";

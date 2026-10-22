@@ -2,6 +2,7 @@ import { useFetcher } from "@remix-run/react";
 import { useEffect, useRef } from "react";
 import { useTypedLoaderData } from "remix-typedjson";
 import type { loader } from "~/root";
+import { TIMEZONE_ACTION_PATH } from "~/utils/flashedErrorRevalidation";
 
 export function TimezoneSetter() {
   const { timezone: storedTimezone } = useTypedLoaderData<typeof loader>();
@@ -19,7 +20,7 @@ export function TimezoneSetter() {
         { timezone: browserTimezone },
         {
           method: "POST",
-          action: "/resources/timezone",
+          action: TIMEZONE_ACTION_PATH,
           encType: "application/json",
         }
       );

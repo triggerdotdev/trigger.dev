@@ -47,7 +47,7 @@ function useLocalTimeZone(): string {
  * Returns the timezone stored in the user's preferences cookie (from root loader),
  * falling back to the browser's local timezone if not set.
  */
-function useUserTimeZone(): string {
+export function useUserTimeZone(): string {
   const rootData = useRouteLoaderData("root") as { timezone?: string } | undefined;
   const localTimeZone = useLocalTimeZone();
   // Use stored timezone from cookie, or fall back to browser's local timezone

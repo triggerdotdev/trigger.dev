@@ -19,6 +19,13 @@ const snapshot: RepoSnapshot = {
   sha: "deadbeefdeadbeef",
 };
 
+describe("the system prompt style", () => {
+  it("forbids em dashes and uses none itself", () => {
+    expect(DASHBOARD_AGENT_SYSTEM_PROMPT).toContain("Never use em dashes");
+    expect(DASHBOARD_AGENT_SYSTEM_PROMPT).not.toContain("\u2014");
+  });
+});
+
 /**
  * The whole point of the frozen tool key order: the webapp's warm first call and the
  * agent task's every-later call must hand Anthropic a byte-identical prefix, or they
@@ -107,6 +114,15 @@ describe("the head-start and agent prefixes are the same prefix", () => {
     );
   });
 
+  it("fails when the alert-creation section is missing from the prompt in creation scope", () => {
+    expect(DASHBOARD_AGENT_SYSTEM_PROMPT).toContain("Building an alert from free text");
+    expect(DASHBOARD_AGENT_SYSTEM_PROMPT).toContain(
+      "exactly one update_alert_draft call carrying the minimal patch"
+    );
+    expect(DASHBOARD_AGENT_SYSTEM_PROMPT).toContain("In alert_creation scope never create");
+    expect(dashboardAgentToolSchemas.update_alert_draft).toBeDefined();
+  });
+
   // get_query_schema may not list the queue tables, so the prompt is where the model
   // learns they exist and how to aggregate them.
   it("carries the queue chart recipe", () => {
@@ -130,8 +146,8 @@ describe("the head-start and agent prefixes are the same prefix", () => {
  * drift. The snapshot below is the itemised diff a reviewer reads.
  */
 const PREFIX_BUDGET = {
-  assistant: { chars: 86_250, estimatedTokens: 21_600, tools: 26, promptChars: 34_100 },
-  code: { chars: 93_450, estimatedTokens: 23_400, tools: 30, promptChars: 36_850 },
+  assistant: { chars: 93_050, estimatedTokens: 23_260, tools: 31, promptChars: 35_550 },
+  code: { chars: 100_000, estimatedTokens: 25_000, tools: 35, promptChars: 38_300 },
 } as const;
 
 // Measured with watches on: the biggest prefix a turn can hand the provider.

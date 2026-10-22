@@ -781,6 +781,17 @@ export class DevRunController {
       return;
     }
 
+    if (attemptStatus === "RETRY_QUEUED" || attemptStatus === "RETRY_IMMEDIATELY") {
+      // Log why this attempt failed. The next attempt logs its own result.
+      eventBus.emit(
+        "runCompleted",
+        this.opts.worker,
+        execution,
+        completion,
+        completion.usage?.durationMs ?? 0
+      );
+    }
+
     if (attemptStatus === "RETRY_QUEUED") {
       logger.debug("Retry queued");
 

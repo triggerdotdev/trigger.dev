@@ -185,10 +185,11 @@ describe("reduceUIMessageChunks", () => {
     const chunks: UIMessageChunk[] = [
       { type: "start", messageId: "long" },
       { type: "text-start", id: "t1" },
-      ...Array.from(
-        { length: deltas },
-        (): UIMessageChunk => ({ type: "text-delta", id: "t1", delta: "some text " })
-      ),
+      ...Array.from({ length: deltas }, (): UIMessageChunk => ({
+        type: "text-delta",
+        id: "t1",
+        delta: "some text ",
+      })),
     ];
     const startedAt = performance.now();
     const { result: message, maxGapMs } = await withTimerGaps(() => reduceUIMessageChunks(chunks));
@@ -204,10 +205,11 @@ describe("reduceUIMessageChunks", () => {
     const chunks: UIMessageChunk[] = [
       { type: "start", messageId: "long" },
       { type: "text-start", id: "t1" },
-      ...Array.from(
-        { length: deltas },
-        (): UIMessageChunk => ({ type: "text-delta", id: "t1", delta: "some text ".repeat(10) })
-      ),
+      ...Array.from({ length: deltas }, (): UIMessageChunk => ({
+        type: "text-delta",
+        id: "t1",
+        delta: "some text ".repeat(10),
+      })),
       { type: "text-delta", id: "missing", delta: "boom" },
     ];
     const { result: message, maxGapMs } = await withTimerGaps(() => reduceUIMessageChunks(chunks));

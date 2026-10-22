@@ -1,5 +1,5 @@
 import type { Instrumentation } from "@opentelemetry/instrumentation";
-import type { SpanExporter } from "@opentelemetry/sdk-trace-base";
+import type { SpanExporter, SpanProcessor } from "@opentelemetry/sdk-trace-base";
 import type { MetricReader, PushMetricExporter } from "@opentelemetry/sdk-metrics";
 import type { BuildExtension } from "./build/extensions.js";
 import type {
@@ -102,6 +102,50 @@ export type TriggerConfig = {
      * @see https://trigger.dev/docs/config/config-file#exporters
      */
     exporters?: Array<SpanExporter>;
+
+    /**
+     * Span processors that run before any span is exported, to Trigger.dev or to your own `exporters`.
+     * Use them to redact or drop span content before it reaches the run trace.
+     *
+     * Redact in `onEnding`, where the span is complete and still writable. `onStart` runs before
+     * Trigger.dev adds run context, and in `onEnd` the span is read-only, so `setAttribute` is a
+     * no-op there. Content can also sit in span events (exceptions, for example), which live on
+     * `span.events`. Attributes Trigger.dev needs to link spans to the run are restored after your
+     * processor runs, and errors it throws are reported instead of failing the run.
+     *
+     * @example
+     * ```ts
+     * const EMAIL = /[\w.+-]+@[\w-]+\.[\w.]+/g;
+     * const redact = (value: AttributeValue | undefined): AttributeValue | undefined => {
+     *   if (typeof value === "string") return value.replace(EMAIL, "[email]");
+     *   if (Array.isArray(value)) {
+     *     return value.map((item) =>
+     *       typeof item === "string" ? item.replace(EMAIL, "[email]") : item
+     *     ) as AttributeValue;
+     *   }
+     *   return value;
+     * };
+     * const scrub = (attributes: Attributes) => {
+     *   for (const key of Object.keys(attributes)) attributes[key] = redact(attributes[key]);
+     * };
+     *
+     * const redactEmails: SpanProcessor = {
+     *   onStart: () => {},
+     *   onEnding: (span) => {
+     *     scrub(span.attributes);
+     *     for (const event of span.events) scrub(event.attributes ?? {});
+     *   },
+     *   onEnd: () => {},
+     *   forceFlush: async () => {},
+     *   shutdown: async () => {},
+     * };
+     *
+     * export default defineConfig({
+     *   telemetry: { spanProcessors: [redactEmails] },
+     * });
+     * ```
+     */
+    spanProcessors?: Array<SpanProcessor>;
 
     /**
      * Log exporters to use for OpenTelemetry. This is useful if you want to add custom log exporters to your tasks.

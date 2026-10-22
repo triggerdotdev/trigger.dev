@@ -25,11 +25,20 @@ export const Card = ({
   );
 };
 
-const CardHeader = ({ children, draggable }: { children: ReactNode; draggable?: boolean }) => {
+const CardHeader = ({
+  children,
+  draggable,
+  paddingClassName = "pl-4 pr-3",
+}: {
+  children: ReactNode;
+  draggable?: boolean;
+  paddingClassName?: string;
+}) => {
   return (
     <Header3
       className={cn(
-        "drag-handle mb-3 flex items-start justify-between gap-2 pl-4 pr-3",
+        "drag-handle mb-3 flex items-start justify-between gap-2",
+        paddingClassName,
         draggable && "cursor-grab active:cursor-grabbing"
       )}
     >

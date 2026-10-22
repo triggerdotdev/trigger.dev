@@ -1,4 +1,4 @@
-ARG NODE_IMAGE=node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d
+ARG NODE_IMAGE=node:24.22.1-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205
 # OS security patches come from apt, not from the node image, and the node image
 # rarely changes. Without a changing input the upgrade layers below stay cached
 # for months and ship known-fixed CVEs. Every workflow that publishes this image
@@ -6,7 +6,7 @@ ARG NODE_IMAGE=node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527
 # local `docker build` or compose build leaves it unset and caches as usual.
 ARG APT_REFRESH=unset
 
-FROM golang:1.26-alpine AS goose_builder
+FROM golang:1.26.10-alpine@sha256:9ce231b28998b32e116927c61aa5c406183061d4f3f2d61b292c88e7f6bdf7ca AS goose_builder
 RUN go install github.com/pressly/goose/v3/cmd/goose@v3.27.1
 
 FROM ${NODE_IMAGE} AS pruner
@@ -61,9 +61,11 @@ RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
 ARG SENTRY_RELEASE
 ARG SENTRY_ORG
 ARG SENTRY_PROJECT
+ARG SKIP_SENTRY_SOURCEMAP_UPLOAD
 ENV SENTRY_RELEASE=${SENTRY_RELEASE} \
     SENTRY_ORG=${SENTRY_ORG} \
-    SENTRY_PROJECT=${SENTRY_PROJECT}
+    SENTRY_PROJECT=${SENTRY_PROJECT} \
+    SKIP_SENTRY_SOURCEMAP_UPLOAD=${SKIP_SENTRY_SOURCEMAP_UPLOAD}
 
 # Goose and schemas
 COPY --from=goose_builder /go/bin/goose /usr/local/bin/goose
@@ -89,8 +91,16 @@ RUN --mount=type=secret,id=sentry_auth_token \
 FROM ${NODE_IMAGE} AS runner
 ARG APT_REFRESH
 RUN echo "apt refresh ${APT_REFRESH}" && apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends openssl netcat-openbsd ca-certificates && rm -rf /var/lib/apt/lists/*
+# Distrust the roots that chain to the compromised eMudhra intermediates (Oct 2026). The system
+# bundle covers OpenSSL, goose and Prisma's engines; distrust-cas.cjs does the same for Node's
+# bundled roots. Both can go once Debian's ca-certificates and Node drop these roots.
+RUN sed -i -E \
+    -e 's#^(mozilla/emSign_(ECC_Root_CA_-_G3|Root_CA_-_C1|ECC_Root_CA_-_C3)\.crt)$#!\1#' \
+    -e 's#^mozilla/Comodo_AAA_Services_root\.crt$#!&#' \
+    /etc/ca-certificates.conf && update-ca-certificates --fresh
 WORKDIR /triggerdotdev
 ENV NODE_ENV=production
+ENV NODE_OPTIONS=--require=/triggerdotdev/scripts/distrust-cas.cjs
 
 COPY --from=base /usr/bin/dumb-init /usr/bin/dumb-init
 COPY --from=pruner --chown=node:node /triggerdotdev/out/full/ .

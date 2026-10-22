@@ -1,4 +1,4 @@
-import { createRedisClient, type Redis } from "@internal/redis";
+import type { RedisClient } from "@internal/redis";
 import { SpanKind, type Span } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import type { AnyZodSchema, inferZodSchemaOutput } from "@trigger.dev/core/v3";
@@ -7,6 +7,7 @@ import { setInterval, setTimeout as delay } from "node:timers/promises";
 import { type z } from "zod/v4";
 import { isAbortError } from "../utils.js";
 import { ConcurrencyManager } from "./concurrency.js";
+import { createFairQueueRedisClient, isClusterConnection } from "./connection.js";
 import { MasterQueue } from "./masterQueue.js";
 import { type RetryStrategy } from "./retry.js";
 import {
@@ -36,6 +37,7 @@ import { WorkerQueueManager } from "./workerQueue.js";
 
 // Re-export all types and components
 export * from "./concurrency.js";
+export * from "./connection.js";
 export * from "./keyProducer.js";
 export * from "./masterQueue.js";
 export * from "./retry.js";
@@ -46,6 +48,17 @@ export * from "./tenantDispatch.js";
 export * from "./types.js";
 export * from "./visibility.js";
 export * from "./workerQueue.js";
+
+/** An enqueue that would take a tenant past `tenantPayloadBytesLimit`. */
+export class TenantQueueFullError extends Error {
+  constructor(
+    readonly tenantId: string,
+    readonly limitBytes: number
+  ) {
+    super(`Tenant ${tenantId} is at its limit of ${limitBytes} queued payload bytes`);
+    this.name = "TenantQueueFullError";
+  }
+}
 
 /**
  * FairQueue is the main orchestrator for fair queue message routing.
@@ -66,7 +79,7 @@ export * from "./workerQueue.js";
  * @typeParam TPayloadSchema - Zod schema for message payload validation
  */
 export class FairQueue<TPayloadSchema extends AnyZodSchema = z.ZodUnknown> {
-  private redis: Redis;
+  private redis: RedisClient;
   private keys: FairQueueKeyProducer;
   private scheduler: FairScheduler;
   private masterQueue: MasterQueue;
@@ -92,6 +105,7 @@ export class FairQueue<TPayloadSchema extends AnyZodSchema = z.ZodUnknown> {
     message: StoredMessage<inferZodSchemaOutput<TPayloadSchema>>
   ) => string;
   private batchClaimSize: number;
+  private separatePayloads: boolean;
 
   // Cooloff state
   private cooloffEnabled: boolean;
@@ -123,8 +137,10 @@ export class FairQueue<TPayloadSchema extends AnyZodSchema = z.ZodUnknown> {
   private tenantDispatch: TenantDispatch;
 
   constructor(private options: FairQueueOptions<TPayloadSchema>) {
-    this.redis = createRedisClient(options.redis);
+    FairQueue.#validateLayout(options);
+    this.redis = createFairQueueRedisClient(options.redis);
     this.keys = options.keys;
+    this.separatePayloads = options.separatePayloads ?? false;
     this.scheduler = options.scheduler;
     this.logger = options.logger ?? new Logger("FairQueue", "info");
     this.abortController = new AbortController();
@@ -138,7 +154,7 @@ export class FairQueue<TPayloadSchema extends AnyZodSchema = z.ZodUnknown> {
     this.deadLetterQueueEnabled = options.retry?.deadLetterQueue ?? true;
 
     // Configuration
-    this.shardCount = options.shardCount ?? 1;
+    this.shardCount = options.keys.shardCount ?? options.shardCount ?? 1;
     this.consumerCount = options.consumerCount ?? 1;
     this.consumerIntervalMs = options.consumerIntervalMs ?? 100;
     this.visibilityTimeoutMs = options.visibilityTimeoutMs ?? 30_000;
@@ -263,6 +279,9 @@ export class FairQueue<TPayloadSchema extends AnyZodSchema = z.ZodUnknown> {
       getDLQLength: async (tenantId: string) => {
         return await this.getDeadLetterQueueLength(tenantId);
       },
+      getOldestMessageAge: async (shardId: number) => {
+        return await this.getOldestMessageAge(shardId);
+      },
       shardCount: this.shardCount,
       observedTenants: options?.observedTenants,
     });
@@ -325,18 +344,46 @@ export class FairQueue<TPayloadSchema extends AnyZodSchema = z.ZodUnknown> {
           metadata: options.metadata,
         };
 
-        // Use atomic Lua script to enqueue and update tenant dispatch indexes
-        await this.redis.enqueueMessageAtomicV2(
-          queueKey,
-          queueItemsKey,
-          tenantQueueIndexKey,
-          dispatchKey,
-          options.queueId,
-          messageId,
-          timestamp.toString(),
-          JSON.stringify(storedMessage),
-          options.tenantId
-        );
+        if (this.separatePayloads) {
+          const { payload, ...envelope } = storedMessage;
+          const limit = options.ignorePayloadBytesLimit
+            ? 0
+            : ((await this.options.tenantPayloadBytesLimit?.(options.tenantId)) ?? 0);
+          const result = await this.redis.enqueueMessageSeparatePayload(
+            queueKey,
+            queueItemsKey,
+            tenantQueueIndexKey,
+            dispatchKey,
+            this.keys.payloadKey!(options.queueId, messageId),
+            this.keys.inflightKey(this.masterQueue.getShardForQueue(options.queueId)),
+            this.keys.tenantPayloadBytesKey!(options.tenantId),
+            options.queueId,
+            messageId,
+            timestamp.toString(),
+            JSON.stringify(envelope),
+            options.tenantId,
+            JSON.stringify(payload),
+            `${messageId}:${options.queueId}`,
+            String(limit)
+          );
+          if (result === -1) {
+            throw new TenantQueueFullError(options.tenantId, limit);
+          }
+          span.setAttribute("enqueued", result === 1);
+        } else {
+          // Use atomic Lua script to enqueue and update tenant dispatch indexes
+          await this.redis.enqueueMessageAtomicV2(
+            queueKey,
+            queueItemsKey,
+            tenantQueueIndexKey,
+            dispatchKey,
+            options.queueId,
+            messageId,
+            timestamp.toString(),
+            JSON.stringify(storedMessage),
+            options.tenantId
+          );
+        }
 
         span.setAttributes({
           [FairQueueAttributes.QUEUE_ID]: options.queueId,
@@ -373,6 +420,9 @@ export class FairQueue<TPayloadSchema extends AnyZodSchema = z.ZodUnknown> {
     return this.telemetry.trace(
       "enqueueBatch",
       async (span) => {
+        if (this.separatePayloads) {
+          throw new Error("enqueueBatch isn't supported with separatePayloads");
+        }
         const queueKey = this.keys.queueKey(options.queueId);
         const queueItemsKey = this.keys.queueItemsKey(options.queueId);
         const dispatchShardId = this.tenantDispatch.getShardForTenant(options.tenantId);
@@ -750,6 +800,24 @@ export class FairQueue<TPayloadSchema extends AnyZodSchema = z.ZodUnknown> {
       this.masterQueue.getTotalQueueCount(),
     ]);
     return dispatchCount + legacyCount;
+  }
+
+  /**
+   * Get the age in ms of the oldest due message not yet completed in a shard, or 0 if none.
+   * Claims don't refresh the index scores, so claimed messages count until their queue next completes or empties.
+   */
+  async getOldestMessageAge(shardId: number): Promise<number> {
+    const now = Date.now();
+    const [[oldestTenant], [oldestLegacyQueue]] = await Promise.all([
+      this.tenantDispatch.getTenantsFromShard(shardId, 1, now),
+      this.masterQueue.getQueuesFromShard(shardId, 1, now),
+    ]);
+    const oldestScore = Math.min(
+      oldestTenant?.score ?? Infinity,
+      oldestLegacyQueue?.score ?? Infinity
+    );
+    if (!Number.isFinite(oldestScore)) return 0;
+    return Math.max(0, now - oldestScore);
   }
 
   /**
@@ -1223,14 +1291,27 @@ export class FairQueue<TPayloadSchema extends AnyZodSchema = z.ZodUnknown> {
   ): Promise<StoredMessage<inferZodSchemaOutput<TPayloadSchema>> | null> {
     const shardId = this.masterQueue.getShardForQueue(queueId);
     const inflightDataKey = this.keys.inflightDataKey(shardId);
-    const dataJson = await this.redis.hget(inflightDataKey, messageId);
+    const [dataJson, payloadJson] = await Promise.all([
+      this.redis.hget(inflightDataKey, messageId),
+      this.separatePayloads
+        ? this.redis.get(this.keys.payloadKey!(queueId, messageId))
+        : Promise.resolve(null),
+    ]);
 
     if (!dataJson) {
       return null;
     }
 
     try {
-      return JSON.parse(dataJson) as StoredMessage<inferZodSchemaOutput<TPayloadSchema>>;
+      const message = JSON.parse(dataJson) as StoredMessage<inferZodSchemaOutput<TPayloadSchema>>;
+      if (!this.separatePayloads) {
+        return message;
+      }
+      if (payloadJson === null) {
+        this.logger.error("In-flight message has no payload", { messageId, queueId });
+        return null;
+      }
+      return { ...message, payload: JSON.parse(payloadJson) };
     } catch {
       this.logger.error("Failed to parse message data", { messageId, queueId });
       return null;
@@ -1279,8 +1360,7 @@ export class FairQueue<TPayloadSchema extends AnyZodSchema = z.ZodUnknown> {
 
     await this.#releaseConcurrencySafely(descriptor, messageId, "completeMessage");
 
-    // Complete in visibility manager
-    await this.visibilityManager.complete(messageId, queueId);
+    await this.#completeInVisibility(messageId, queueId, descriptor.tenantId);
 
     // Update both old and new indexes, clean up caches if queue is empty
     const { queueEmpty } = await this.#updateAllIndexesAfterDequeue(queueId, descriptor.tenantId);
@@ -1523,9 +1603,22 @@ export class FairQueue<TPayloadSchema extends AnyZodSchema = z.ZodUnknown> {
     errorMessage?: string
   ): Promise<void> {
     if (!this.deadLetterQueueEnabled) {
-      // Just complete and discard
-      await this.visibilityManager.complete(storedMessage.id, storedMessage.queueId);
+      await this.#completeInVisibility(
+        storedMessage.id,
+        storedMessage.queueId,
+        storedMessage.tenantId
+      );
       return;
+    }
+
+    if (this.separatePayloads) {
+      const payloadJson = await this.redis.get(
+        this.keys.payloadKey!(storedMessage.queueId, storedMessage.id)
+      );
+      storedMessage = {
+        ...storedMessage,
+        payload: payloadJson === null ? undefined : JSON.parse(payloadJson),
+      };
     }
 
     const dlqKey = this.keys.deadLetterQueueKey(storedMessage.tenantId);
@@ -1543,8 +1636,11 @@ export class FairQueue<TPayloadSchema extends AnyZodSchema = z.ZodUnknown> {
       originalTimestamp: storedMessage.timestamp,
     };
 
-    // Complete in visibility manager
-    await this.visibilityManager.complete(storedMessage.id, storedMessage.queueId);
+    await this.#completeInVisibility(
+      storedMessage.id,
+      storedMessage.queueId,
+      storedMessage.tenantId
+    );
 
     // Add to DLQ
     const pipeline = this.redis.pipeline();
@@ -1777,6 +1873,69 @@ export class FairQueue<TPayloadSchema extends AnyZodSchema = z.ZodUnknown> {
     return { queueEmpty: removedFromMaster === 1 || removedFromDispatch === 1 };
   }
 
+  /**
+   * Remove a settled message from in-flight. With separate payloads this also deletes the payload
+   * and takes its bytes off the tenant's count, in one script, so the count never drifts.
+   */
+  async #completeInVisibility(messageId: string, queueId: string, tenantId: string): Promise<void> {
+    if (!this.separatePayloads) {
+      await this.visibilityManager.complete(messageId, queueId);
+      return;
+    }
+    const shardId = this.masterQueue.getShardForQueue(queueId);
+    await this.redis.completeSeparatePayload(
+      this.keys.inflightKey(shardId),
+      this.keys.inflightDataKey(shardId),
+      this.keys.payloadKey!(queueId, messageId),
+      this.keys.tenantPayloadBytesKey!(tenantId),
+      `${messageId}:${queueId}`,
+      messageId
+    );
+  }
+
+  /** A tenant's queued and in-flight payload bytes, with `separatePayloads`. */
+  async getTenantPayloadBytes(tenantId: string): Promise<number> {
+    if (!this.separatePayloads) return 0;
+    return Number((await this.redis.get(this.keys.tenantPayloadBytesKey!(tenantId))) ?? 0);
+  }
+
+  /**
+   * A cluster needs every script's keys in one slot, which only a tenant-sharded key producer
+   * gives, and the concurrency reservation touches every group's set at once, so it allows one
+   * group, keyed by tenant.
+   */
+  static #validateLayout(
+    options: Pick<
+      FairQueueOptions,
+      "keys" | "separatePayloads" | "shardCount" | "redis" | "concurrencyGroups"
+    >
+  ): void {
+    const keys = options.keys;
+    if (options.separatePayloads && (!keys.payloadKey || !keys.tenantPayloadBytesKey)) {
+      throw new Error(
+        "separatePayloads needs a key producer with payloadKey and tenantPayloadBytesKey"
+      );
+    }
+    if (keys.tenantShard) {
+      if (!keys.shardCount) {
+        throw new Error("A key producer with tenantShard must set shardCount");
+      }
+      if (options.shardCount !== undefined && options.shardCount !== keys.shardCount) {
+        throw new Error(
+          `shardCount ${options.shardCount} doesn't match the key producer's ${keys.shardCount}`
+        );
+      }
+    }
+    if (isClusterConnection(options.redis)) {
+      if (!keys.tenantShard) {
+        throw new Error("A cluster connection needs a tenant-sharded key producer");
+      }
+      if ((options.concurrencyGroups?.length ?? 0) > 1) {
+        throw new Error("A cluster connection supports at most one concurrency group");
+      }
+    }
+  }
+
   #createSchedulerContext(): SchedulerContext {
     return {
       getCurrentConcurrency: async (groupName, groupId) => {
@@ -1958,6 +2117,79 @@ return (#ARGV - 2) / 3
       `,
     });
 
+    this.redis.defineCommand("enqueueMessageSeparatePayload", {
+      numberOfKeys: 7,
+      lua: `#!lua
+local queueKey = KEYS[1]
+local queueItemsKey = KEYS[2]
+local tenantQueueIndexKey = KEYS[3]
+local dispatchKey = KEYS[4]
+local payloadKey = KEYS[5]
+local inflightKey = KEYS[6]
+local bytesKey = KEYS[7]
+
+local queueId = ARGV[1]
+local messageId = ARGV[2]
+local timestamp = tonumber(ARGV[3])
+local envelope = ARGV[4]
+local tenantId = ARGV[5]
+local payload = ARGV[6]
+local inflightMember = ARGV[7]
+local limit = tonumber(ARGV[8])
+
+if redis.call('HEXISTS', queueItemsKey, messageId) == 1 then
+  return 0
+end
+if redis.call('ZSCORE', inflightKey, inflightMember) then
+  return 0
+end
+
+local size = string.len(payload)
+if limit > 0 and tonumber(redis.call('GET', bytesKey) or '0') + size > limit then
+  return -1
+end
+
+redis.call('SET', payloadKey, payload)
+redis.call('INCRBY', bytesKey, size)
+redis.call('ZADD', queueKey, timestamp, messageId)
+redis.call('HSET', queueItemsKey, messageId, envelope)
+
+local oldest = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
+if #oldest >= 2 then
+  redis.call('ZADD', tenantQueueIndexKey, oldest[2], queueId)
+end
+
+local tenantOldest = redis.call('ZRANGE', tenantQueueIndexKey, 0, 0, 'WITHSCORES')
+if #tenantOldest >= 2 then
+  redis.call('ZADD', dispatchKey, tenantOldest[2], tenantId)
+end
+
+return 1
+      `,
+    });
+
+    this.redis.defineCommand("completeSeparatePayload", {
+      numberOfKeys: 4,
+      lua: `
+local inflightKey = KEYS[1]
+local inflightDataKey = KEYS[2]
+local payloadKey = KEYS[3]
+local bytesKey = KEYS[4]
+
+redis.call('ZREM', inflightKey, ARGV[1])
+redis.call('HDEL', inflightDataKey, ARGV[2])
+
+local size = redis.call('STRLEN', payloadKey)
+if size > 0 then
+  redis.call('DEL', payloadKey)
+  if redis.call('DECRBY', bytesKey, size) <= 0 then
+    redis.call('DEL', bytesKey)
+  end
+end
+return size
+      `,
+    });
+
     // Update tenant dispatch indexes after dequeue/complete
     // Handles both queue-empty (remove from indexes) and queue-has-messages (update scores)
     this.redis.defineCommand("updateDispatchIndexes", {
@@ -2066,6 +2298,33 @@ declare module "@internal/redis" {
       dispatchKey: string,
       queueId: string,
       tenantId: string
+    ): Promise<number>;
+
+    enqueueMessageSeparatePayload(
+      queueKey: string,
+      queueItemsKey: string,
+      tenantQueueIndexKey: string,
+      dispatchKey: string,
+      payloadKey: string,
+      inflightKey: string,
+      bytesKey: string,
+      queueId: string,
+      messageId: string,
+      timestamp: string,
+      envelope: string,
+      tenantId: string,
+      payload: string,
+      inflightMember: string,
+      limit: string
+    ): Promise<number>;
+
+    completeSeparatePayload(
+      inflightKey: string,
+      inflightDataKey: string,
+      payloadKey: string,
+      bytesKey: string,
+      inflightMember: string,
+      messageId: string
     ): Promise<number>;
   }
 }

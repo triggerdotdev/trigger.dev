@@ -54,6 +54,12 @@ export type { BatchQueueOptions, CompleteBatchResult, InitializeBatchOptions } f
 // Redis key for environment concurrency limits
 const ENV_CONCURRENCY_KEY_PREFIX = "batch:env_concurrency";
 
+// The default histogram buckets stop at 10s, which hides multi-minute backlogs
+const QUEUE_WAIT_BUCKETS_MS = [
+  10, 50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000, 30_000, 60_000, 120_000, 300_000, 600_000,
+  1_800_000,
+];
+
 // Single worker queue ID for all batch items
 // BatchQueue uses a single shared worker queue - FairQueue handles fair scheduling,
 // then all messages are routed to this queue for BatchQueue's own consumer loop.
@@ -68,6 +74,7 @@ export class BatchQueue {
   private concurrencyRedis: Redis;
   private defaultConcurrency: number;
   private maxAttempts: number;
+  private infrastructureMaxAttempts: number;
 
   private processItemCallback?: ProcessBatchItemCallback;
   private completionCallback?: BatchCompletionCallback;
@@ -96,6 +103,10 @@ export class BatchQueue {
     this.tracer = options.tracer;
     this.defaultConcurrency = options.defaultConcurrency ?? 10;
     this.maxAttempts = options.retry?.maxAttempts ?? 1;
+    this.infrastructureMaxAttempts = Math.max(
+      this.maxAttempts,
+      options.retry?.infrastructureMaxAttempts ?? this.maxAttempts
+    );
     this.abortController = new AbortController();
     this.workerQueueBlockingTimeoutSeconds = options.workerQueueBlockingTimeoutSeconds ?? 10;
     this.globalRateLimiter = options.globalRateLimiter;
@@ -187,8 +198,11 @@ export class BatchQueue {
       ...(options.retry
         ? {
             retry: {
+              // The ceiling covers infrastructure retries too. Every other failure stops at
+              // maxAttempts, because #handleMessage only fails a message back to FairQueue
+              // below that, and the backoff for an attempt does not depend on this ceiling.
               strategy: new ExponentialBackoffRetry({
-                maxAttempts: options.retry.maxAttempts,
+                maxAttempts: this.infrastructureMaxAttempts,
                 minTimeoutInMs: options.retry.minTimeoutInMs ?? 1_000,
                 maxTimeoutInMs: options.retry.maxTimeoutInMs ?? 30_000,
                 factor: options.retry.factor ?? 2,
@@ -601,6 +615,7 @@ export class BatchQueue {
       {
         description: "Duration from batch creation to completion",
         unit: "ms",
+        advice: { explicitBucketBoundaries: QUEUE_WAIT_BUCKETS_MS },
       }
     );
 
@@ -612,6 +627,7 @@ export class BatchQueue {
     this.itemQueueTimeHistogram = meter.createHistogram("batch_queue.item_queue_time", {
       description: "Time from item enqueue to processing start",
       unit: "ms",
+      advice: { explicitBucketBoundaries: QUEUE_WAIT_BUCKETS_MS },
     });
 
     this.rateLimitDeniedCounter = meter.createCounter("batch_queue.rate_limit_denied", {
@@ -816,6 +832,7 @@ export class BatchQueue {
 
       const attempt = storedMessage.attempt;
       const isFinalAttempt = attempt >= this.maxAttempts;
+      const isFinalInfrastructureAttempt = attempt >= this.infrastructureMaxAttempts;
 
       let processedCount: number;
 
@@ -836,6 +853,7 @@ export class BatchQueue {
               meta,
               attempt,
               isFinalAttempt,
+              isFinalInfrastructureAttempt,
             });
           }
         );
@@ -870,11 +888,17 @@ export class BatchQueue {
             span?.setAttribute("batch.skipRetries", true);
           }
 
+          // An infrastructure failure gets its own, larger attempt ceiling.
+          const infrastructureRetry = result.infrastructureRetry === true;
+          const isFinalForThisFailure = infrastructureRetry
+            ? isFinalInfrastructureAttempt
+            : isFinalAttempt;
+
           // If retries are available AND the callback didn't opt out, use
           // FairQueue retry scheduling. `skipRetries` short-circuits this
           // regardless of attempt number so the batch can finalize quickly
           // when the error is known to be non-recoverable on retry.
-          if (!isFinalAttempt && !skipRetries) {
+          if (!isFinalForThisFailure && !skipRetries) {
             span?.setAttribute("batch.retry", true);
             span?.setAttribute("batch.attempt", attempt);
 
@@ -882,7 +906,7 @@ export class BatchQueue {
               batchId,
               itemIndex,
               attempt,
-              maxAttempts: this.maxAttempts,
+              maxAttempts: infrastructureRetry ? this.infrastructureMaxAttempts : this.maxAttempts,
               error: result.error,
             });
 

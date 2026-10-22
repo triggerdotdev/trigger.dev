@@ -22,29 +22,60 @@ export function createAsyncIterableStream<S, T>(
 export function createAsyncIterableReadable<S, T>(
   source: ReadableStream<S>,
   transformer: Transformer<S, T>,
-  signal: AbortSignal
+  signal: AbortSignal,
+  onCancel?: () => void
 ): AsyncIterableStream<T> {
+  // Set once the stream is closed, errored or cancelled; the controller must not be touched after
+  let closed = false;
+  let reader: ReadableStreamDefaultReader<T> | undefined;
+
   return new ReadableStream<T>({
     async start(controller) {
       const transformedStream = source.pipeThrough(new TransformStream(transformer));
-      const reader = transformedStream.getReader();
+      const activeReader = transformedStream.getReader();
+      reader = activeReader;
 
-      signal.addEventListener("abort", () => {
+      const safeClose = () => {
+        if (closed) return;
+        closed = true;
+        try {
+          controller.close();
+        } catch {}
+      };
+
+      const onAbort = () => {
         queueMicrotask(() => {
-          reader.cancel();
-          controller.close();
+          activeReader.cancel().catch(() => {});
+          safeClose();
         });
-      });
+      };
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          controller.close();
-          break;
-        }
-
-        controller.enqueue(value);
+      if (signal.aborted) {
+        onAbort();
+      } else {
+        signal.addEventListener("abort", onAbort, { once: true });
       }
+
+      try {
+        while (!closed) {
+          const { done, value } = await activeReader.read();
+          if (done || closed) break;
+          controller.enqueue(value);
+        }
+        safeClose();
+      } catch (error) {
+        if (!closed) {
+          closed = true;
+          controller.error(error);
+        }
+      } finally {
+        signal.removeEventListener("abort", onAbort);
+      }
+    },
+    cancel(reason) {
+      closed = true;
+      reader?.cancel(reason).catch(() => {});
+      onCancel?.();
     },
   }) as AsyncIterableStream<T>;
 }

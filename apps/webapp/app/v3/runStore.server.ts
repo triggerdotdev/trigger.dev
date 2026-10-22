@@ -213,7 +213,7 @@ function tryResolveRunOpsHandles() {
   }
 }
 
-const snapshotStoreRuntime = singleton("SnapshotStoreRuntime", () => {
+export const snapshotStoreRuntime = singleton("SnapshotStoreRuntime", () => {
   const endpoint = env.RUN_ENGINE_SNAPSHOT_STORE_REDIS_URL;
   if (!endpoint) return undefined;
   const metrics = createSnapshotStoreMetrics(metricsRegister);
@@ -223,7 +223,9 @@ const snapshotStoreRuntime = singleton("SnapshotStoreRuntime", () => {
   });
   return createSnapshotStoreRuntime({
     connection,
-    rollout: createSnapshotRolloutResolver(() => globalFlagsRegistry.current(), prisma),
+    rollout: createSnapshotRolloutResolver(() => globalFlagsRegistry.current(), prisma, {
+      dialCacheMs: env.RUN_ENGINE_SNAPSHOT_STORE_DIAL_CACHE_MS,
+    }),
     getRunStore: () => runStore,
     metrics: metrics.decorator,
   });

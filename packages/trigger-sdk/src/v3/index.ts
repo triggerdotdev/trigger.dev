@@ -12,6 +12,23 @@ export * from "./tags.js";
 export * from "./metadata.js";
 export * from "./timeout.js";
 export * from "./webhooks.js";
+export type {
+  WebhookWaiter,
+  CreateWebhookWaiterOptions,
+  CancelWebhookWaiterResult,
+  WebhookWaiterPromise,
+} from "./webhookWaiters.js";
+export {
+  WebhookWaiterCancelledError,
+  WebhookWaiterLimitError,
+  WebhookEndpointNotFoundError,
+  WebhookFilterError,
+  WebhookIndexingError,
+  type WebhookWaiterLimitReason,
+  type WebhookWaiterOutput,
+  type WebhookEndpoint,
+  type WebhookEndpointContext,
+} from "@trigger.dev/core/v3";
 export * from "./locals.js";
 export * from "./otel.js";
 export * from "./schemas.js";
@@ -56,6 +73,7 @@ export {
   type RetrieveRunResult,
   type AnyRetrieveRunResult,
   type BulkAction,
+  type ReplayRunOptions,
 } from "./runs.js";
 export * as schedules from "./schedules/index.js";
 export {

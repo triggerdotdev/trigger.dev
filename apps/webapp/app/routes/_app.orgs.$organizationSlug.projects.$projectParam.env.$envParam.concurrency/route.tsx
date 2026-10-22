@@ -1,5 +1,6 @@
 import {
   ArrowUpCircleIcon,
+  BellAlertIcon,
   BookOpenIcon,
   ExclamationTriangleIcon,
   PauseIcon,
@@ -90,6 +91,7 @@ import {
   docsPath,
   EnvironmentParamSchema,
   v3BillingPath,
+  v3AlertCreatePath,
   concurrencyQueuePath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
@@ -109,6 +111,7 @@ import { Callout } from "~/components/primitives/Callout";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { BigNumber } from "~/components/metrics/BigNumber";
 import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
+import { canUseAlertsList } from "~/v3/canUseAlertsList.server";
 import { QueueAllocationPresenter } from "~/presenters/v3/QueueAllocationPresenter.server";
 import {
   QUEUE_METRICS_DEFAULT_PERIOD,
@@ -176,6 +179,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       statusText: "Environment not found",
     });
   }
+
+  const alertsEnabled = await canUseAlertsList({
+    orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+    userId,
+  });
 
   const auth = await rbac.authenticateSession(request, {
     userId,
@@ -304,6 +312,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       defaultPeriod,
       maxPeriodDays,
       canWriteTasks,
+      alertsEnabled,
       archivingEnabled,
     });
   } catch (error) {
@@ -455,6 +464,7 @@ function QueuesWithMetricsView() {
     defaultPeriod,
     maxPeriodDays,
     canWriteTasks,
+    alertsEnabled,
     archivingEnabled,
   } = useTypedLoaderData<typeof loader>();
 
@@ -922,6 +932,18 @@ function QueuesWithMetricsView() {
                         environmentConcurrencyLimit={environment.concurrencyLimit}
                         disabled={!canWriteTasks}
                       />
+                      {alertsEnabled ? (
+                        <PopoverMenuItem
+                          icon={BellAlertIcon}
+                          leadingIconClassName="text-alerts size-[1.125rem]"
+                          title="Watch…"
+                          to={v3AlertCreatePath(organization, project, env, {
+                            capability: "queue.depth",
+                            scope: "queue",
+                            scopeValue: queueFilterableName,
+                          })}
+                        />
+                      ) : null}
                       {archivingEnabled || queue.archivedAt ? (
                         <QueueArchiveButton
                           queue={queue}
@@ -1959,6 +1981,7 @@ function ClassicQueuesView() {
     autoReloadPollIntervalMs,
     canWriteTasks,
     archivingEnabled,
+    alertsEnabled,
   } = useTypedLoaderData<typeof loader>();
   const activeArchivedIds = new Set(activeArchivedQueues?.map((q) => q.id));
 
@@ -2257,6 +2280,18 @@ function ClassicQueuesView() {
                             environmentConcurrencyLimit={environment.concurrencyLimit}
                             disabled={!canWriteTasks}
                           />
+                          {alertsEnabled ? (
+                            <PopoverMenuItem
+                              icon={BellAlertIcon}
+                              leadingIconClassName="text-alerts size-[1.125rem]"
+                              title="Watch…"
+                              to={v3AlertCreatePath(organization, project, env, {
+                                capability: "queue.depth",
+                                scope: "queue",
+                                scopeValue: queueFilterableName,
+                              })}
+                            />
+                          ) : null}
                           {archivingEnabled || queue.archivedAt ? (
                             <QueueArchiveButton
                               queue={queue}

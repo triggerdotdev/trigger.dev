@@ -6,6 +6,7 @@ import {
   sameDatabaseTarget,
   selectRunOpsTopology,
 } from "~/db.server";
+import { collectDatabaseClientMetrics } from "~/utils/databaseMetrics.server";
 
 const cp = { writer: {} as any, replica: {} as any };
 
@@ -382,4 +383,54 @@ describe("selectRunOpsTopology (integration, real containers)", () => {
       await ps.stop();
     }
   }, 120_000);
+});
+
+describe("eagerConnect", () => {
+  it("a client built with eagerConnect: false opens no connection until its first query, even when metrics are collected", async () => {
+    const pg = await new PostgreSqlContainer("docker.io/postgres:14").start();
+    const url = pg.getConnectionUri();
+    const observer = buildWriterClient({ url, clientType: "observer", connectionLimit: 1 });
+    const clients = [observer];
+    const backends = async () => {
+      const [row] = await observer.$queryRawUnsafe<{ n: number }[]>(
+        `SELECT count(*)::int AS n FROM pg_stat_activity WHERE backend_type = 'client backend' AND pid <> pg_backend_pid()`
+      );
+      return row.n;
+    };
+    try {
+      const baseline = await backends();
+
+      const lazyWriter = buildWriterClient({
+        url,
+        clientType: "lazy-writer",
+        connectionLimit: 1,
+        eagerConnect: false,
+      });
+      const lazyReplica = buildReplicaClient({
+        url,
+        clientType: "lazy-replica",
+        connectionLimit: 1,
+        eagerConnect: false,
+      });
+      clients.push(lazyWriter, lazyReplica);
+      const collectedTypes = async () =>
+        (await collectDatabaseClientMetrics()).map((metrics) => metrics.clientType);
+      expect(await collectedTypes()).not.toContain("lazy-writer");
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      expect(await backends()).toBe(baseline);
+
+      await lazyWriter.$queryRawUnsafe("SELECT 1");
+      await lazyReplica.$queryRawUnsafe("SELECT 1");
+      expect(await backends()).toBe(baseline + 2);
+      expect(await collectedTypes()).toEqual(
+        expect.arrayContaining(["lazy-writer", "lazy-replica"])
+      );
+
+      clients.push(buildWriterClient({ url, clientType: "eager-writer", connectionLimit: 1 }));
+      await expect.poll(backends, { timeout: 5_000 }).toBe(baseline + 3);
+    } finally {
+      await Promise.all(clients.map((client) => client.$disconnect()));
+      await pg.stop();
+    }
+  }, 60_000);
 });

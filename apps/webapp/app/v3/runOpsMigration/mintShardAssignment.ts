@@ -1,6 +1,9 @@
 // PURE module: no env, no clock, no database. Kept separate from the .server wrapper so a test
 // can drive it without evaluating env.server, whose schema parse demands a full environment.
-import { createHash } from "node:crypto";
+//
+// Shards are capacity-driven, so placement is explicit: an organization or environment moves onto
+// a shard only when an operator pins it there, and stays there. Nothing spreads environments
+// automatically, so adding or removing a shard never moves anyone who was not pinned to it.
 import type { ShardKey } from "@trigger.dev/core/v3/isomorphic";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import {
@@ -35,7 +38,7 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 // Map keys are environment INTERNAL ids (cuids), not friendly ids. An unparseable blob, or a
 // blob whose value for this environment is invalid, yields no per-env pin and lets the
-// per-org scalar decide — never a silent un-pin straight to the hash.
+// per-org scalar decide, never a silent un-pin to gen-1.
 function readEnvPin(raw: unknown, environmentId: string): ShardKey | undefined {
   if (typeof raw !== "string") return undefined;
 
@@ -64,30 +67,6 @@ function readPin(orgFeatureFlags: unknown, environmentId: string): ShardKey | un
   return isValidPinValue(scalar) ? scalar : undefined;
 }
 
-// 64 bits: a 32-bit score collides at this system's environment count, and an undetected tie
-// would resolve by iteration order. The NUL separates the fields so no two input pairs can
-// concatenate alike. This hash input is FROZEN once gen-2 minting is live: changing it
-// re-places every environment, silently.
-function shardScore(environmentId: string, key: string): bigint {
-  return createHash("sha256").update(`${environmentId}\0${key}`).digest().readBigUInt64BE(0);
-}
-
-function hrwSelect(environmentId: string, activeSet: string[]): string {
-  let bestKey = activeSet[0];
-  let bestScore = shardScore(environmentId, bestKey);
-
-  for (let i = 1; i < activeSet.length; i++) {
-    const key = activeSet[i];
-    const score = shardScore(environmentId, key);
-    if (score > bestScore || (score === bestScore && key > bestKey)) {
-      bestKey = key;
-      bestScore = score;
-    }
-  }
-
-  return bestKey;
-}
-
 // PURE CORE — no env, no clock, no I/O; tests drive this directly. Deterministic for fixed
 // deps, which is what lets run minting and token minting agree on one answer.
 //
@@ -95,9 +74,12 @@ function hrwSelect(environmentId: string, activeSet: string[]): string {
 // flag. Bounding the list against the shard keys this deployment can actually route belongs with
 // the shard descriptors, which own that information; nothing here mints, so nothing can misroute.
 //
-// A pin outside the active set falls through to the hash rather than throwing: honouring it
-// would leak the drain the active list performs, and throwing would fail customer triggers
-// whenever a pinned shard drains.
+// Precedence: active set, then the global override, then the env pin, then the org pin. Anything
+// unpinned mints gen-1. The active set gates every pin, so a pinned key must also be listed.
+//
+// A pin outside the active set mints gen-1 rather than throwing: honouring it would leak the drain
+// the active list performs, and throwing would fail customer triggers whenever a pinned shard
+// drains.
 export function computeMintShard(environment: { id: string }, deps: MintShardDeps): ShardKey {
   const rawActiveSet = effectiveMintShardSet(deps.resolution, deps.nowMs, deps.graceMs);
   // Empty check BEFORE the bound, so an unconfigured deployment returns "new" exactly as today.
@@ -139,7 +121,7 @@ export function computeMintShard(environment: { id: string }, deps: MintShardDep
     deps.onPinRejected?.({ environmentId: environment.id, pin, activeSet });
   }
 
-  return hrwSelect(environment.id, activeSet);
+  return "new";
 }
 
 // Read together so the override costs no extra query beyond the list it is bounded by.

@@ -49,6 +49,23 @@ export class InsertError extends BaseError {
     });
   }
 }
+/** Full server error text for in-process checks only; never log it. */
+export function insertErrorServerText(error: unknown): string {
+  if (typeof error !== "object" || error === null) return String(error ?? "");
+
+  const { rawMessage, message } = error as { rawMessage?: unknown; message?: unknown };
+  if (typeof rawMessage === "string" && rawMessage.length > 0) return rawMessage;
+
+  return typeof message === "string" ? message : "";
+}
+
+/** The ClickHouse error type an `InsertError` carries, if any. */
+export function insertErrorType(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null) return undefined;
+  const { clickhouseErrorType } = error as { clickhouseErrorType?: unknown };
+  return typeof clickhouseErrorType === "string" ? clickhouseErrorType : undefined;
+}
+
 export class QueryError extends BaseError<{ query: string }> {
   public readonly retry = true;
   public readonly name = QueryError.name;

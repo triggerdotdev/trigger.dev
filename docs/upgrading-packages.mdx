@@ -39,12 +39,12 @@ You can deploy using [GitHub Actions](/github-actions). We recommend that you lo
 
 <Steps>
   <Step title="Find your workflow file">
-    In your `.githubs/workflows` folder you can find your workflow yml files. You may have a prod
+    In your `.github/workflows` folder you can find your workflow yml files. You may have a prod
     and staging one.
   </Step>
   <Step title="Update the version for the run command">
     In the steps you'll see a `run` command. It will run the trigger.dev deploy CLI command. Make
-    sure to update this version to the latest version (e.g. `npx trigger.dev@3.0.0 deploy`).
+    sure to update this version to the latest version (e.g. `npx trigger.dev@4.7.3 deploy`).
   </Step>
 </Steps>
 
@@ -57,7 +57,7 @@ For example:
 ```json
 {
   "devDependencies": {
-    "trigger.dev": "3.0.0"
+    "trigger.dev": "4.7.3"
   }
 }
 ```

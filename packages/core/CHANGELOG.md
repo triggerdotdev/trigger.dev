@@ -1,5 +1,73 @@
 # internal-platform
 
+## 4.7.6
+
+### Patch Changes
+
+- Fix `timestamp` and other `Date` fields being logged as `{}` in structured log lines. ([`7a5a1f144`](https://github.com/triggerdotdev/trigger.dev/commit/7a5a1f144c98c808fb423bc0736bac7733ab3029))
+
+## 4.7.5
+
+### Patch Changes
+
+- Manage custom metric dashboards from code. `query.dashboards` lists, creates, updates and deletes custom dashboards and their widgets, and every widget query is checked when it is saved. The MCP server adds `create_dashboard` and `set_dashboard_widgets`, so your AI assistant can build a dashboard for you. ([`252624c92`](https://github.com/triggerdotdev/trigger.dev/commit/252624c92077a8326e9b68f7b6713beca173d8b1))
+
+  ```ts
+  import { query } from "@trigger.dev/sdk";
+
+  await query.dashboards.create({
+    title: "Email tasks",
+    widgets: [
+      {
+        title: "Total runs",
+        query: "SELECT count() AS total FROM runs",
+        display: { type: "bignumber", column: "total", aggregation: "sum" },
+      },
+    ],
+  });
+  ```
+
+- `trigger deploy` and `trigger promote` now say which environment they're targeting, and accept `--prod` as a shorthand for `--env prod`. When `TRIGGER_ACCESS_TOKEN` holds an environment API key and you don't pass `--env`, they now use that key's environment instead of assuming prod. Passing an `--env` that doesn't match the key is now an error, where before the deploy went to the key's environment. ([`70ea83d38`](https://github.com/triggerdotdev/trigger.dev/commit/70ea83d38fc6a5ddff6c83e8285d2df72f40a9d8))
+
+  Preview deploys now detect the branch on CI providers that check out a detached HEAD, such as GitLab, Bitbucket, CircleCI, Buildkite, Travis CI, Jenkins and Azure Pipelines, instead of creating a branch called `HEAD`. Test links printed after a preview deploy now open the preview branch you deployed instead of staging.
+
+  The MCP `deploy` tool no longer defaults to prod, so your AI assistant has to choose the environment.
+
+- Redact span content before it leaves the worker. `telemetry.spanProcessors` in `trigger.config.ts` runs your own span processors ahead of every export, to Trigger.dev and to your own exporters, so you can redact or drop span content before it reaches the run trace. `chat.agent` also takes a `telemetry` option to stop recording the user's message and `clientData` on its spans. ([`32b36b143`](https://github.com/triggerdotdev/trigger.dev/commit/32b36b1433dddb4f9d2cbd4c0320b146c7d6c858))
+
+  ```ts
+  export default defineConfig({
+    telemetry: { spanProcessors: [new MyRedactingSpanProcessor()] },
+  });
+
+  chat.agent({
+    id: "my-chat",
+    telemetry: { recordUserMessage: false, recordClientData: false },
+    run: async ({ messages, signal, streamText }) =>
+      streamText({ model, messages, abortSignal: signal }),
+  });
+  ```
+
+- Fix run subscriptions crashing Node with `Controller is already closed` after you `break` out of the loop, and stop polling once you do. `ApiClient` subscribe methods also accept a custom `fetchClient`. ([`9f4295bff`](https://github.com/triggerdotdev/trigger.dev/commit/9f4295bff186f430b0e21e652683aad7970f5307))
+
+## 4.7.4
+
+### Patch Changes
+
+- Override a concurrency limit's `perKey` for a single `concurrencyKey`: `concurrencyLimits.override(name, { concurrencyKey, perKey, ttl })` caps that one key under that one limit for a while (7 days by default, 30 at most), `reset(name, { concurrencyKey })` clears it, and `retrieve(name, { concurrencyKey })` shows the key's bound and when the override expires. ([`c49fd05f4`](https://github.com/triggerdotdev/trigger.dev/commit/c49fd05f44119ec2a036afaabaad8f9e148a3db6))
+- Self-hosted instances can require custom deploy base images per runtime via the new `DEPLOY_BASE_IMAGES` and `DEPLOY_BUILD_BASE_IMAGES` webapp settings. The CLI builds on the images the instance specifies, and older CLIs are rejected with an upgrade message. ([#5005](https://github.com/triggerdotdev/trigger.dev/pull/5005))
+- `runs.replay()` now takes options, so you can replay a run with a different payload, metadata, tags, queue, machine, version, delay and other trigger options. Anything you leave out comes from the original run, as before, and the payload is serialized like `trigger()`, so values like `Date` and `BigInt` keep their types. ([`ff2aa236e`](https://github.com/triggerdotdev/trigger.dev/commit/ff2aa236eb986b938e8e04cec3898b24aed4ec3f))
+
+  ```ts
+  import { runs } from "@trigger.dev/sdk";
+
+  await runs.replay("run_1234", {
+    payload: { userId: "user_456" },
+    tags: ["replayed"],
+    delay: "10m",
+  });
+  ```
+
 ## 4.7.3
 
 ## 4.7.2

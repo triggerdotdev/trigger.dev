@@ -1,0 +1,138 @@
+# Webapp
+
+Remix 2.17.4 app serving as the main API, dashboard, and orchestration engine. Uses an Express server (`server.ts`).
+
+## Verifying Changes
+
+**Never run `pnpm run build --filter webapp` to verify changes.** Building proves almost nothing about correctness. The webapp is an app, not a public package — use typecheck from the repo root:
+
+```bash
+pnpm run typecheck --filter webapp   # ~1-2 minutes
+```
+
+Only run typecheck after major changes (new files, significant refactors, schema changes). For small edits, trust the types and let CI catch issues.
+
+Note: Public packages (`packages/*`) use `build` instead. See the root AGENTS.md for details.
+
+## Testing Dashboard Changes with Chrome DevTools MCP
+
+Use the `chrome-devtools` MCP server to visually verify local dashboard changes. The webapp must be running (`pnpm run dev --filter webapp` from repo root).
+
+### Login
+
+```
+1. mcp__chrome-devtools__new_page(url: "http://localhost:3030")
+   → Redirects to /login
+2. mcp__chrome-devtools__click the "Continue with Email" link
+3. mcp__chrome-devtools__fill the email field with "local@trigger.dev"
+4. mcp__chrome-devtools__click "Send a magic link"
+   → Auto-logs in and redirects to the dashboard (no email verification needed locally)
+```
+
+### Navigating and Verifying
+
+- **take_snapshot**: Get an a11y tree of the page (text content, element UIDs for interaction). Prefer this over screenshots for understanding page structure.
+- **take_screenshot**: Capture what the page looks like visually. Use to verify styling, layout, and visual changes.
+- **navigate_page**: Go to specific URLs, e.g. `http://localhost:3030/orgs/references-bc08/projects/hello-world-SiWs/env/dev/runs`
+- **click / fill**: Interact with elements using UIDs from `take_snapshot`.
+- **evaluate_script**: Run JS in the browser console for debugging.
+- **list_console_messages**: Check for console errors after navigating.
+
+### Tips
+
+- Snapshots can be very large on complex pages (200K+ chars). Use `take_screenshot` first to orient, then `take_snapshot` only when you need element UIDs to interact.
+- The local seeded user email is `local@trigger.dev`.
+- Dashboard URL pattern: `http://localhost:3030/orgs/{orgSlug}/projects/{projectSlug}/env/{envSlug}/{section}`
+
+## Key File Locations
+
+- **Trigger API**: `app/routes/api.v1.tasks.$taskId.trigger.ts`
+- **Batch trigger**: `app/routes/api.v1.tasks.batch.ts`
+- **OTEL endpoints**: `app/routes/otel.v1.logs.ts`, `app/routes/otel.v1.traces.ts`
+- **Prisma setup**: `app/db.server.ts`
+- **Run engine config**: `app/v3/runEngine.server.ts`
+- **Services**: `app/v3/services/**/*.server.ts`
+- **Presenters**: `app/v3/presenters/**/*.server.ts`
+
+## Route Convention
+
+Routes use Remix flat-file convention with dot-separated segments:
+`api.v1.tasks.$taskId.trigger.ts` -> `/api/v1/tasks/:taskId/trigger`
+
+## Abort Signals
+
+**Never use `request.signal`** for detecting client disconnects. It is broken due to a Node.js bug ([nodejs/node#55428](https://github.com/nodejs/node/issues/55428)) where the AbortSignal chain is severed when Remix internally clones the Request object. Instead, use `getRequestAbortSignal()` from `app/services/httpAsyncStorage.server.ts`, which is wired directly to Express `res.on("close")` and fires reliably.
+
+```typescript
+import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
+
+// In route handlers, SSE streams, or any server-side code:
+const signal = getRequestAbortSignal();
+```
+
+## Environment Variables
+
+Access via `env` export from `app/env.server.ts`. **Never use `process.env` directly.**
+
+For testable code, **never import env.server.ts** in test files. Pass configuration as options instead:
+- `realtime/nativeRealtimeClient.server.ts` (testable service, takes config as constructor arg)
+- `realtime/nativeRealtimeClientInstance.server.ts` (creates singleton with env config)
+
+## Run Engine 2.0
+
+The webapp integrates `@internal/run-engine` via `app/v3/runEngine.server.ts`. This is the singleton engine instance. Services in `app/v3/services/` call engine methods for all run lifecycle operations (triggering, completing, cancelling, etc.).
+
+The `engineVersion.server.ts` file determines V1 vs V2 for a given environment. New code should always target V2.
+
+## Background Workers
+
+Background job workers use `@trigger.dev/redis-worker`:
+- `app/v3/commonWorker.server.ts`
+- `app/v3/alertsWorker.server.ts`
+- `app/v3/batchTriggerWorker.server.ts`
+
+## Real-time
+
+- Socket.io: `app/v3/handleSocketIo.server.ts`, `app/v3/handleWebsockets.server.ts`
+- Electric SQL: Powers real-time data sync for the dashboard
+
+## v3 (engine V1) removed
+
+v3 (engine V1: MarQS + Graphile worker) is end-of-life and its execution code is gone. The `app/v3/` directory name is historical; everything under it now serves V2. There is no V1 execution path: a `RunEngineVersion` `V1` branch (e.g. in `triggerTask.server.ts`, `cancelTaskRun.server.ts`) only rejects/finalizes gracefully so v3 clients get a clean 4xx, never a 5xx. Do not reintroduce V1. See `.claude/rules/legacy-v3-code.md` for the deprecation boundary.
+
+## Performance: Trigger Hot Path
+
+The `triggerTask.server.ts` service is the **highest-throughput code path** in the system. Every API trigger call goes through it. Keep it fast:
+
+- **Do NOT add database queries** to `triggerTask.server.ts` or `batchTriggerV3.server.ts`. Task defaults (TTL, etc.) are resolved via `backgroundWorkerTask.findFirst()` in the queue concern (`queues.server.ts`) - one query per request, in mutually exclusive branches depending on locked/non-locked path. Piggyback on the existing query instead of adding new ones.
+- **Two-stage resolution pattern**: Task metadata is resolved in two stages by design:
+  1. **Trigger time** (`triggerTask.server.ts`): Only TTL is resolved from task defaults. Everything else uses whatever the caller provides.
+  2. **Dequeue time** (`dequeueSystem.ts`): Full `BackgroundWorkerTask` is loaded and retry config, machine config, maxDuration, etc. are resolved against task defaults.
+- If you need to add a new task-level default, **add it to the existing `select` clause** in the `backgroundWorkerTask.findFirst()` query — do NOT add a second query. If the default doesn't need to be known at trigger time, resolve it at dequeue time instead.
+- Batch triggers (`batchTriggerV3.server.ts`) follow the same pattern — keep batch paths equally fast.
+
+## Prisma Query Patterns
+
+- **Always use `findFirst` instead of `findUnique`.** Prisma's `findUnique` has an implicit DataLoader that batches concurrent calls into a single `IN` query. This batching cannot be disabled and has active bugs even in Prisma 6.x: uppercase UUIDs returning null (#25484, confirmed 6.4.1), composite key SQL correctness issues (#22202), and 5-10x worse performance than manual DataLoader (#6573, open since 2021). `findFirst` is never batched and avoids this entire class of issues.
+
+## Transactions
+
+- **Always use the `$transaction` helper from `~/db.server`, never `prisma.$transaction` (or `$replica.$transaction`) directly.** The helper wraps the raw call with tracing (an OTEL span + an `isolation_level` attribute) and boundary logging for infrastructure errors (e.g. `PrismaClientInitializationError`) that the raw client swallows. Signature: `$transaction(prisma, name?, async (tx) => { ... }, options?)`.
+- Pass the isolation level via options as a string: `{ isolationLevel: "Serializable" }`. Reach for `Serializable` when a read-then-write must be atomic against concurrent transactions (e.g. a count-then-delete invariant); the loser of a race fails and can retry, which is the right trade for rare, correctness-critical paths.
+- The helper returns `R | undefined` — guard the result (`if (!result) throw ...`) when callers need a definite value.
+
+## Authorization model: tenancy, not roles
+
+- **This repo enforces tenancy. Roles belong to the RBAC plugin.** Organization is a hard boundary on Cloud, which runs this code, so every query must be scoped such that a non-member cannot reach the row (`members: { some: { userId } }`). A self-hosted install is a single trust domain, but the isolation code is shared, so it is load-bearing here regardless. Anything finer — Admin vs Member, per-resource permissions — is the plugin's job, and the plugin is not part of this repo. The fallback enforces membership itself in a scoped context (`deniedByMembership`); it is the *role* it does not enforce.
+- **The permissive fallback is intentional, but it is not universal.** With no plugin loaded a session user or PAT gets a permissive ability (`can: () => true`). Do not "fix" that, and do not add a fallback role floor beside it to compensate. Scoped credentials are the exception: public JWTs and additional API keys get scope-derived abilities from `buildJwtAbility`, and delegated user-actor tokens get cap-derived ones. Those genuinely deny, so never drop an `ability.can(...)` check on a path one of them can reach.
+- **Do not add a role check here to close a permission gap.** "A Member can do X inside their own organization" is out of scope for self-hosted — see `SECURITY.md`. The fix belongs in the plugin's policy. Cross-organization access is the opposite case: always a bug, always fix it here.
+- **`OrgMemberRole` (`ADMIN` / `MEMBER`) is legacy and capped at its current uses.** It predates the plugin. Do not add a new role, a new permission name, or a role/permission table to this repo. If a change appears to need one, that is a product decision — stop and escalate rather than growing the fallback into a second permission system.
+
+## PAT-authenticated API routes
+
+- **A PAT route must resolve its target org/project scoped to the caller's membership** (`members: { some: { userId } }`, or a helper like `findProjectByRef` / `resolveOrganizationForApiUser`). A PAT is user-scoped and can name any org/project by id/slug, and the OSS RBAC fallback ability is permissive — so `ability.can(...)` alone does NOT reject a non-member on self-hosted. The RBAC `authorization` gate enforces the *role*; the membership-scoped query is the *tenant* floor. Skipping it opens cross-org access on OSS.
+
+## React Patterns
+
+- Only use `useCallback`/`useMemo` for context provider values, expensive derived data that is a dependency elsewhere, or stable refs required by a dependency array. Don't wrap ordinary event handlers or trivial computations.
+- Use named constants for sentinel/placeholder values (e.g. `const UNSET_VALUE = "__unset__"`) instead of raw string literals scattered across comparisons.

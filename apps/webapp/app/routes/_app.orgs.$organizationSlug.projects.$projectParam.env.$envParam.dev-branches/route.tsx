@@ -41,7 +41,7 @@ import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { cn } from "~/utils/cn";
 import { branchesDevPath, docsPath, ProjectParamSchema } from "~/utils/pathBuilder";
 import { ArchiveButton } from "../resources.branches.archive";
-import { NewBranchPanel } from "~/routes/resources.branches.create";
+import { NewBranchPanel } from "~/components/branches/NewBranchPanel";
 import { BranchesOptions } from "~/utils/branches";
 import { IconArrowBearRight2 } from "@tabler/icons-react";
 import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";

@@ -1,10 +1,16 @@
 import { z } from "zod";
 import { MachinePresetName } from "@trigger.dev/core/v3";
-import { parseNaturalLanguageDurationInMs } from "@trigger.dev/core/v3/isomorphic";
+import {
+  parseNaturalLanguageDurationInMs,
+  webhookDeliveryRetentionClass,
+} from "@trigger.dev/core/v3/isomorphic";
 import { BoolEnv } from "./utils/boolEnv";
+import { OidcIssuerSchema } from "./utils/oidcIssuer";
 import { isValidDatabaseUrl } from "./utils/db";
+import { parseDeployBaseImages } from "~/v3/deployBaseImages.server";
 import { parseRunOpsShards, validateShardListAgainstNewUrl } from "~/v3/runOpsShards.server";
 import { isValidRegex } from "./utils/regex";
+import { isValidCronExpression } from "./utils/cron";
 import { isValidDuration } from "./services/realtime/duration.server";
 import { WorkerQueueSubscriptionPolicyEnv } from "./runEngine/concerns/workerQueueSubscriptions.server";
 
@@ -14,9 +20,20 @@ function durationString() {
   return z.string().refine(isValidDuration, "must be a duration like 7d, 30d, 365d, 1h, 1y");
 }
 
+const parseDeployBaseImagesEnv = (
+  value: string | undefined,
+  envVarName: string,
+  ctx: z.RefinementCtx
+) => {
+  const { images, errors } = parseDeployBaseImages(value, envVarName);
+  for (const message of errors) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+  }
+  return errors.length > 0 ? z.NEVER : images;
+};
+
 // Parses a CSV of machine preset names (e.g. "small-1x,small-2x") into a
-// non-empty array of MachinePresetName. Used by COMPUTE_TEMPLATE_MACHINE_PRESETS
-// and its _REQUIRED variant. Adds zod issues for empty input or unknown names.
+// non-empty array of MachinePresetName.
 const parseMachinePresetCsv = (raw: string, ctx: z.RefinementCtx): MachinePresetName[] => {
   const names = raw
     .split(",")
@@ -248,6 +265,7 @@ const EnvironmentSchema = z
     // agent dark; flip to "1" to enable it for everyone at GA. Per-org overrides
     // (org featureFlags) win regardless.
     DASHBOARD_AGENT_ENABLED: z.string().default("0"),
+    ALERTS_ENABLED: z.string().default("false"),
     // Gates the create-org management API endpoint (default off).
     ORG_CREATION_API_ENABLED: z.string().default("0"),
     // "1" gives admins/impersonators an everywhere-preview (default off),
@@ -398,11 +416,16 @@ const EnvironmentSchema = z
         "ENCRYPTION_KEY must be exactly 32 bytes"
       )
       .refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
+    // Enables the AWS_KMS secret store provider. Callers opt in per secret; everything else
+    // stays encrypted with ENCRYPTION_KEY.
+    SECRET_STORE_AWS_KMS_KEY_ID: z.string().optional(),
     WHITELISTED_EMAILS: z
       .string()
       .refine(isValidRegex, "WHITELISTED_EMAILS must be a valid regex.")
       .optional(),
     BLOCKED_EMAIL_DOMAINS: z.string().optional(),
+    TURNSTILE_SITE_KEY: z.string().optional(),
+    TURNSTILE_SECRET_KEY: z.string().optional(),
     ADMIN_EMAILS: z.string().refine(isValidRegex, "ADMIN_EMAILS must be a valid regex.").optional(),
     // Instance-level kill switch for the admin dashboard and user impersonation.
     ADMIN_DASHBOARD_ENABLED: BoolEnv.default(true),
@@ -412,8 +435,19 @@ const EnvironmentSchema = z
     WEBAPP_TELNET_LOGS_PORT: z.coerce.number().optional(),
     LOGIN_ORIGIN: z.string().default("http://localhost:3030"),
     LOGIN_RATE_LIMITS_ENABLED: BoolEnv.default(true),
+    MAGIC_LINK_SAME_BROWSER_REQUIRED: BoolEnv.default(true),
     APP_ORIGIN: z.string().default("http://localhost:3030"),
     PUBLIC_APP_ORIGIN: z.url().optional(),
+    OIDC_ISSUER_URL: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      OidcIssuerSchema.optional()
+    ),
+    // Issuer for per-attempt run tokens, signed with a separate internal key set. Nothing is served
+    // at this URL; it only has to differ from OIDC_ISSUER_URL.
+    RUN_TOKEN_ISSUER_URL: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      OidcIssuerSchema.optional()
+    ),
     // Extra exact origins (comma separated) added to the document `img-src` CSP,
     // e.g. an SSO host serving profile images. Wildcards are refused.
     CSP_IMG_SRC_ALLOWLIST: z.string().optional(),
@@ -880,28 +914,29 @@ const EnvironmentSchema = z
       .optional()
       .transform((v) => v ?? process.env.DEPLOY_REGISTRY_ECR_DEFAULT_REPOSITORY_POLICY),
 
-    // Compute gateway (template creation during deploy finalize)
-    COMPUTE_GATEWAY_URL: z.string().optional(),
-    COMPUTE_GATEWAY_AUTH_TOKEN: z.string().optional(),
-    COMPUTE_TEMPLATE_SHADOW_ROLLOUT_PCT: z.string().optional(),
-    // Comma-separated machine preset names to build boot snapshots for on
-    // deploy (e.g. "small-1x,small-2x,medium-1x"). Default: "small-1x".
-    COMPUTE_TEMPLATE_MACHINE_PRESETS: z
+    // MicroVM template builder, called at deploy finalisation to prebuild the
+    // deployment image's template. Unset URL skips it.
+    TEMPLATE_BUILDER_URL: z.string().optional(),
+    TEMPLATE_BUILDER_TOKEN: z.string().optional(),
+    // How long wait mode holds finalisation for the builder before carrying on.
+    TEMPLATE_BUILDER_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
+    // Machine presets whose shapes are sent with the template request.
+    TEMPLATE_BUILDER_MACHINE_PRESETS: z
       .string()
       .default("small-1x")
       .transform(parseMachinePresetCsv),
-    // Subset of COMPUTE_TEMPLATE_MACHINE_PRESETS that must succeed for a
-    // required-mode deploy to be considered successful. Failures of presets
-    // outside this list are logged but don't fail the deploy. Defaults to the
-    // full COMPUTE_TEMPLATE_MACHINE_PRESETS list when unset (everything required).
-    COMPUTE_TEMPLATE_MACHINE_PRESETS_REQUIRED: z
-      .string()
-      .optional()
-      .transform((v, ctx) =>
-        parseMachinePresetCsv(v ?? process.env.COMPUTE_TEMPLATE_MACHINE_PRESETS ?? "small-1x", ctx)
-      ),
+    // Percentage of deploys from orgs without compute that still prebuild in shadow mode.
+    TEMPLATE_BUILDER_SHADOW_ROLLOUT_PCT: z.coerce.number().min(0).max(100).default(0),
 
     DEPLOY_IMAGE_PLATFORM: z.string().default("linux/amd64"),
+    DEPLOY_BASE_IMAGES: z
+      .string()
+      .optional()
+      .transform((v, ctx) => parseDeployBaseImagesEnv(v, "DEPLOY_BASE_IMAGES", ctx)),
+    DEPLOY_BUILD_BASE_IMAGES: z
+      .string()
+      .optional()
+      .transform((v, ctx) => parseDeployBaseImagesEnv(v, "DEPLOY_BUILD_BASE_IMAGES", ctx)),
     DEPLOY_TIMEOUT_MS: z.coerce
       .number()
       .int()
@@ -1057,6 +1092,7 @@ const EnvironmentSchema = z
 
     /** These enable the alerts feature in v3 */
     ALERT_EMAIL_TRANSPORT: z.enum(["resend", "smtp", "aws-ses"]).optional(),
+    ALERT_EVALUATION_CADENCE_CAP_SEC: z.coerce.number().int().positive().optional(),
     ALERT_FROM_EMAIL: z.string().optional(),
     ALERT_REPLY_TO_EMAIL: z.string().optional(),
     ALERT_RESEND_API_KEY: z.string().optional(),
@@ -1065,6 +1101,18 @@ const EnvironmentSchema = z
     ALERT_SMTP_SECURE: BoolEnv.optional(),
     ALERT_SMTP_USER: z.string().optional(),
     ALERT_SMTP_PASSWORD: z.string().optional(),
+    /** Per-project concurrency limit for TSQL queries issued by the alert evaluator (§3.6). */
+    ALERT_QUERY_CONCURRENCY: z.coerce.number().int().default(1),
+    /** Min sample size for runs.failure_rate before the rate is trusted (DEC-113, value TBD). */
+    ALERT_FAILURE_RATE_MIN_VOLUME: z.coerce.number().int().default(10),
+    ALERT_CHECKPOINT_LOOKBACK_SEC: z.coerce.number().int().min(0).default(3600),
+    ALERT_SEEN_RETENTION_SEC: z.coerce.number().int().min(7200).default(604800),
+    ALERT_DELIVERY_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(8),
+    ALERT_DELIVERY_MAX_AGE_HOURS: z.coerce.number().positive().default(24),
+    ALERT_SNAPSHOT_RANGE_SEC: z.coerce
+      .number()
+      .int()
+      .default(90 * 86_400),
     ALERT_RATE_LIMITER_EMISSION_INTERVAL: z.coerce.number().int().default(2_500),
     ALERT_RATE_LIMITER_BURST_TOLERANCE: z.coerce.number().int().default(10_000),
     ALERT_RATE_LIMITER_REDIS_HOST: z
@@ -1169,6 +1217,32 @@ const EnvironmentSchema = z
     BATCH_METADATA_OPERATIONS_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
     BATCH_METADATA_OPERATIONS_FLUSH_ENABLED: z.string().default("1"),
     BATCH_METADATA_OPERATIONS_FLUSH_LOGGING_ENABLED: z.string().default("1"),
+    BATCH_METADATA_OPERATIONS_BUFFER_BACKEND: z.enum(["memory", "redis"]).default("memory"),
+    BATCH_METADATA_OPERATIONS_DRAIN_BATCH_SIZE: z.coerce.number().int().default(10),
+    BATCH_METADATA_OPERATIONS_MAX_PENDING_PER_RUN: z.coerce.number().int().default(1_000),
+    METADATA_BUFFER_REDIS_LOCK_TTL_MS: z.coerce.number().int().default(30_000),
+    METADATA_BUFFER_REDIS_HOST: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_HOST),
+    METADATA_BUFFER_REDIS_PORT: z.coerce
+      .number()
+      .optional()
+      .transform(
+        (v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)
+      ),
+    METADATA_BUFFER_REDIS_USERNAME: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_USERNAME),
+    METADATA_BUFFER_REDIS_PASSWORD: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_PASSWORD),
+    METADATA_BUFFER_REDIS_TLS_DISABLED: z
+      .string()
+      .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+    METADATA_BUFFER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
     // Run Engine 2.0
     RUN_ENGINE_WORKER_COUNT: z.coerce.number().int().default(4),
@@ -1383,6 +1457,19 @@ const EnvironmentSchema = z
 
     // Infrastructure endpoint only. Modes and organization overrides are polled feature flags.
     RUN_ENGINE_SNAPSHOT_STORE_REDIS_URL: z.string().optional(),
+    // How long a fetched org snapshotStoreMode override is reused per process. 0 disables caching.
+    RUN_ENGINE_SNAPSHOT_STORE_DIAL_CACHE_MS: z.coerce.number().int().min(0).default(5000),
+    // Background sweep that resolves snapshot units left pending by an interrupted transition
+    // (see snapshotRecoveryWorker.server.ts). Inert without RUN_ENGINE_SNAPSHOT_STORE_REDIS_URL.
+    // Off unless set to "1": enable it on one background replica. Several replicas with it on are
+    // safe: a single fleet lease in the snapshot cluster lets only one of them scan at a time.
+    RUN_ENGINE_SNAPSHOT_RECOVERY_SWEEP_ENABLED: z.string().default("0"),
+    // How often the sweep scans all pending partitions. The fleet lease TTL is derived from it.
+    RUN_ENGINE_SNAPSHOT_RECOVERY_SWEEP_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(30_000),
 
     RUN_ENGINE_RUN_LOCK_REDIS_HOST: z
       .string()
@@ -1489,11 +1576,15 @@ const EnvironmentSchema = z
       .default("info"),
     RUN_ENGINE_TOTAL_CONCURRENCY_LIMITS_ENABLED: z.string().default("1"),
     RUN_ENGINE_QUEUE_GATES_ENABLED: z.string().default("0"),
+    RUN_ENGINE_CONCURRENCY_KEY_LIMITS_ENABLED: z.string().default("0"),
     RUN_ENGINE_QUEUE_RECONCILE_ENABLED: z.string().default("1"),
     RUN_ENGINE_QUEUE_RECONCILE_SCAN_COUNT: z.coerce.number().int().positive().default(100),
     RUN_ENGINE_QUEUE_RECONCILE_LOCK_TTL_SECONDS: z.coerce.number().int().positive().default(10),
     RUN_ENGINE_QUEUE_RECONCILE_MAX_PASSES_PER_DEQUEUE: z.coerce.number().int().min(0).default(2),
     RUN_ENGINE_TREAT_PRODUCTION_EXECUTION_STALLS_AS_OOM: z.string().default("0"),
+    // When on, the worker continue route answers temporary database errors with 503 and a busy run
+    // lock with 409, which the supervisor keeps retrying, instead of a 422 that aborts the run.
+    RUN_ENGINE_CONTINUE_RETRYABLE_ERRORS_ENABLED: BoolEnv.default(false),
     RUN_ENGINE_READ_REPLICA_SNAPSHOTS_SINCE_ENABLED: z.string().default("0"),
     RUN_ENGINE_SNAPSHOTS_SINCE_REPLICA_RETRY_MIN_MS: z.coerce.number().int().default(50),
     RUN_ENGINE_SNAPSHOTS_SINCE_REPLICA_RETRY_MAX_MS: z.coerce.number().int().default(200),
@@ -1557,14 +1648,7 @@ const EnvironmentSchema = z
     COMMON_WORKER_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
     COMMON_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
-    // Global default for the scheduled worker-queue split. When "1", runs in a
-    // scheduled lineage (rootTriggerSource === "schedule") are routed to a
-    // dedicated `<region>:scheduled` worker queue so a separate consumer fleet
-    // can dequeue them independently of standard/agent runs. The per-org
-    // `workerQueueScheduledSplitEnabled` feature flag overrides this default in
-    // BOTH directions (an org set to false stays on the single queue even when
-    // this is "1"; an org set to true splits even when this is "0"). Never
-    // applies to DEVELOPMENT environments.
+    // Requires consumers configured for scheduled queues. Never applies to development.
     TRIGGER_WORKER_QUEUE_SCHEDULED_SPLIT_ENABLED: z.string().default("0"),
     // Controls new assignments only; existing v2 runs retain their routing.
     TRIGGER_WORKER_QUEUE_V2_ENABLED: z.string().default("0"),
@@ -1795,6 +1879,9 @@ const EnvironmentSchema = z
     // Max items in the worker queue before claiming pauses (protects visibility timeouts)
     // If not set, no depth limit is applied
     BATCH_QUEUE_WORKER_QUEUE_MAX_DEPTH: z.coerce.number().int().positive().optional(),
+    // Total attempts for a batch item whose trigger keeps hitting a transient snapshot store
+    // outage. Other failures stop at the regular 6 attempts. 16 retries for about 6 minutes.
+    BATCH_QUEUE_INFRA_RETRY_MAX_ATTEMPTS: z.coerce.number().int().positive().default(16),
 
     ADMIN_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
     ADMIN_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
@@ -1877,6 +1964,52 @@ const EnvironmentSchema = z
       .transform((v) => v ?? process.env.REDIS_PASSWORD),
     ALERTS_WORKER_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
     ALERTS_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+
+    ALERT_ENGINE_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
+    ALERT_ENGINE_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(1),
+    ALERT_ENGINE_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(10),
+    ALERT_ENGINE_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(10),
+    ALERT_ENGINE_WORKER_POLL_INTERVAL_MS: z.coerce.number().int().default(1000),
+    ALERT_ENGINE_WORKER_IMMEDIATE_POLL_INTERVAL_MS: z.coerce.number().int().default(100),
+    ALERT_ENGINE_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
+    ALERT_ENGINE_WORKER_LOG_LEVEL: z
+      .enum(["log", "error", "warn", "info", "debug"])
+      .default("info"),
+    ALERT_ENGINE_WORKER_DISTRIBUTION_WINDOW_SECONDS: z.coerce.number().int().positive().default(30),
+    ALERT_ENGINE_WORKER_EVAL_VISIBILITY_TIMEOUT_MS: z.coerce.number().int().default(120_000),
+    ALERT_ENGINE_WORKER_REDIS_HOST: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_HOST),
+    ALERT_ENGINE_WORKER_REDIS_READER_HOST: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_READER_HOST),
+    ALERT_ENGINE_WORKER_REDIS_READER_PORT: z.coerce
+      .number()
+      .optional()
+      .transform(
+        (v) =>
+          v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
+      ),
+    ALERT_ENGINE_WORKER_REDIS_PORT: z.coerce
+      .number()
+      .optional()
+      .transform(
+        (v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)
+      ),
+    ALERT_ENGINE_WORKER_REDIS_USERNAME: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_USERNAME),
+    ALERT_ENGINE_WORKER_REDIS_PASSWORD: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_PASSWORD),
+    ALERT_ENGINE_WORKER_REDIS_TLS_DISABLED: z
+      .string()
+      .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+    ALERT_ENGINE_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
     BILLING_LIMIT_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
     BILLING_LIMIT_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
@@ -1965,67 +2098,17 @@ const EnvironmentSchema = z
     WEBHOOK_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().positive().default(20),
     WEBHOOK_WORKER_TENANT_CONCURRENCY: z.coerce.number().int().positive().default(100),
     WEBHOOK_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
-    WEBHOOK_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(30_000),
     WEBHOOK_ENABLED: z.string().default("0"),
 
-    WEBHOOK_WORKER_REDIS_HOST: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_HOST),
-    WEBHOOK_WORKER_REDIS_PORT: z.coerce
-      .number()
-      .optional()
-      .transform(
-        (v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)
-      ),
-    WEBHOOK_WORKER_REDIS_USERNAME: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_USERNAME),
-    WEBHOOK_WORKER_REDIS_PASSWORD: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_PASSWORD),
-    WEBHOOK_WORKER_REDIS_TLS_DISABLED: z
-      .string()
-      .default(process.env.REDIS_TLS_DISABLED ?? "false"),
-
-    // Webhook waiter store (also the ingest front gate). Falls back to the webhook worker Redis.
-    // Cluster mode connects to the host/port as a cluster seed node.
-    WEBHOOK_WAITER_REDIS_HOST: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.WEBHOOK_WORKER_REDIS_HOST ?? process.env.REDIS_HOST),
-    WEBHOOK_WAITER_REDIS_PORT: z.coerce
-      .number()
-      .optional()
-      .transform(
-        (v) =>
-          v ??
-          (process.env.WEBHOOK_WORKER_REDIS_PORT
-            ? parseInt(process.env.WEBHOOK_WORKER_REDIS_PORT)
-            : process.env.REDIS_PORT
-              ? parseInt(process.env.REDIS_PORT)
-              : undefined)
-      ),
-    WEBHOOK_WAITER_REDIS_USERNAME: z
-      .string()
-      .optional()
-      .transform(
-        (v) => v ?? process.env.WEBHOOK_WORKER_REDIS_USERNAME ?? process.env.REDIS_USERNAME
-      ),
-    WEBHOOK_WAITER_REDIS_PASSWORD: z
-      .string()
-      .optional()
-      .transform(
-        (v) => v ?? process.env.WEBHOOK_WORKER_REDIS_PASSWORD ?? process.env.REDIS_PASSWORD
-      ),
-    WEBHOOK_WAITER_REDIS_TLS_DISABLED: z
-      .string()
-      .default(
-        process.env.WEBHOOK_WORKER_REDIS_TLS_DISABLED ?? process.env.REDIS_TLS_DISABLED ?? "false"
-      ),
-    WEBHOOK_WAITER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+    // The webhooks Redis: a cluster (durable in production), reached through any node as a seed.
+    // It holds the job queue, the ingest front gate, waiters and session append claims.
+    WEBHOOK_REDIS_HOST: z.string().optional(),
+    WEBHOOK_REDIS_PORT: z.coerce.number().optional(),
+    WEBHOOK_REDIS_USERNAME: z.string().optional(),
+    WEBHOOK_REDIS_PASSWORD: z.string().optional(),
+    WEBHOOK_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+    // The share of a primary's maxmemory past which ingest refuses deliveries whose jobs live on it.
+    WEBHOOK_QUEUE_HIGH_WATER: z.coerce.number().positive().max(1).default(0.75),
     WEBHOOK_WAITER_MAX_PER_ENVIRONMENT: z.coerce.number().int().positive().default(1_000_000),
     WEBHOOK_WAITER_MAX_PER_ENDPOINT: z.coerce.number().int().positive().default(10_000),
     WEBHOOK_WAITER_MAX_SHAPES: z.coerce.number().int().positive().default(25),
@@ -2035,11 +2118,15 @@ const EnvironmentSchema = z
     WEBHOOK_PARTITION_ENSURE_SCHEDULE: z.string().optional(),
     WEBHOOK_PARTITION_ENSURE_JITTER_MS: z.coerce.number().int().optional(),
     WEBHOOK_PARTITION_LOOKAHEAD_DAYS: z.coerce.number().int().default(10),
-    WEBHOOK_PARTITION_RETENTION_DAYS: z.coerce.number().int().default(60),
-
-    // Ingest hot-path cache for the endpoint + resolved signing secret (keyed by opaqueId). 0 disables.
-    WEBHOOK_ENDPOINT_CACHE_TTL_MS: z.coerce.number().int().default(30_000),
-    WEBHOOK_ENDPOINT_CACHE_MAX_SIZE: z.coerce.number().int().default(10_000),
+    WEBHOOK_DELIVERY_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
+    WEBHOOK_DELIVERY_STORAGE_DAYS: z.coerce
+      .number()
+      .int()
+      .default(30)
+      .refine(
+        (days) => webhookDeliveryRetentionClass(days) !== undefined,
+        "WEBHOOK_DELIVERY_STORAGE_DAYS must be a delivery retention class (3, 7, 30, 90, 180 or 365)"
+      ),
 
     WEBHOOK_INGRESS_ENABLED: z.string().default("1"),
 
@@ -2049,6 +2136,16 @@ const EnvironmentSchema = z
     WEBHOOK_INGRESS_BODY_SIZE_LIMIT_MB: z.coerce.number().int().default(1),
     WEBHOOK_INGRESS_RATE_LIMIT_WINDOW: z.string().default("10s"),
     WEBHOOK_INGRESS_RATE_LIMIT_TOKENS: z.coerce.number().int().default(100),
+    // Per-environment ingress limit across all of its endpoints. A request costs one token per 64 KiB
+    // of body, at least one.
+    WEBHOOK_INGRESS_ENV_RATE_LIMIT_TOKENS: z.coerce.number().int().positive().default(3_000),
+    WEBHOOK_INGRESS_ENV_RATE_LIMIT_WINDOW: z.string().default("10s"),
+    // The most webhook job payload bytes one environment may have queued or in flight.
+    WEBHOOK_QUEUED_PAYLOAD_BYTES_LIMIT: z.coerce
+      .number()
+      .int()
+      .nonnegative()
+      .default(1024 * 1024 * 1024),
     WEBHOOK_INGRESS_IP_RATE_LIMIT_WINDOW: z.string().default("10s"),
     WEBHOOK_INGRESS_IP_RATE_LIMIT_TOKENS: z.coerce.number().int().default(300),
     WEBHOOK_FRONT_GATE_DEFAULT_TTL_SECONDS: z.coerce
@@ -2064,6 +2161,18 @@ const EnvironmentSchema = z
     TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS: z.coerce.number().int().default(60), // 1 minute
 
     DEPLOYMENTS_AUTORELOAD_POLL_INTERVAL_MS: z.coerce.number().int().default(5_000),
+    DEPLOYMENTS_REDEPLOY_WINDOW_DAYS: z.coerce.number().int().positive().default(7),
+    DEPLOYMENTS_BUILD_ENV_VARS_SWEEP_ENABLED: BoolEnv.default(true),
+    DEPLOYMENTS_BUILD_ENV_VARS_SWEEP_SCHEDULE: z
+      .string()
+      .refine(isValidCronExpression, "must be a valid cron expression")
+      .default("0 * * * *"),
+    DEPLOYMENTS_BUILD_ENV_VARS_SWEEP_JITTER_MS: z.coerce
+      .number()
+      .int()
+      .nonnegative()
+      .default(60_000),
+    DEPLOYMENTS_BUILD_ENV_VARS_SWEEP_BATCH_SIZE: z.coerce.number().int().positive().default(500),
     BULK_ACTION_AUTORELOAD_POLL_INTERVAL_MS: z.coerce.number().int().default(1_000),
     QUEUES_AUTORELOAD_POLL_INTERVAL_MS: z.coerce.number().int().default(5_000),
 
@@ -2237,7 +2346,7 @@ const EnvironmentSchema = z
     SESSION_REPLICATION_INSERT_BASE_DELAY_MS: z.coerce.number().int().default(100),
     SESSION_REPLICATION_INSERT_MAX_DELAY_MS: z.coerce.number().int().default(2000),
 
-    // Webhook deliveries replication (Postgres → ClickHouse webhook_deliveries_v1).
+    // Webhook deliveries replication (Postgres → ClickHouse webhook_deliveries_v2).
     // Shares Redis with the runs replicator for leader locking but has its own
     // slot and publication so the two consume independently. The source table is
     // a partitioned parent, so the publication is created with
@@ -2498,7 +2607,7 @@ const EnvironmentSchema = z
     EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(5_000),
     EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING: z.coerce.number().int().default(2000),
     EVENTS_CLICKHOUSE_TRACE_CHUNK_SIZE: z.coerce.number().int().positive().default(1_000),
-    EVENTS_CLICKHOUSE_MAX_TRACE_VIEW_COUNT: z.coerce.number().int().positive().default(250_000),
+    EVENTS_CLICKHOUSE_MAX_TRACE_VIEW_COUNT: z.coerce.number().int().positive().default(150_000),
 
     // OTLP ingest transform worker pool (opt-in). When enabled, decode/convert/enrich run in a
     // worker_threads pool instead of the request event loop; the single consolidated insert path
@@ -2690,15 +2799,12 @@ const EnvironmentSchema = z
   .and(GithubAppEnvSchema)
   .and(S2EnvSchema)
   .superRefine((env, ctx) => {
-    const presets = new Set(env.COMPUTE_TEMPLATE_MACHINE_PRESETS);
-    for (const required of env.COMPUTE_TEMPLATE_MACHINE_PRESETS_REQUIRED) {
-      if (!presets.has(required)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["COMPUTE_TEMPLATE_MACHINE_PRESETS_REQUIRED"],
-          message: `"${required}" is not in COMPUTE_TEMPLATE_MACHINE_PRESETS`,
-        });
-      }
+    if (env.RUN_TOKEN_ISSUER_URL && env.RUN_TOKEN_ISSUER_URL === env.OIDC_ISSUER_URL) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["RUN_TOKEN_ISSUER_URL"],
+        message: "RUN_TOKEN_ISSUER_URL must differ from OIDC_ISSUER_URL",
+      });
     }
     if (!validateShardListAgainstNewUrl(env.RUN_OPS_SHARDS, env.RUN_OPS_DATABASE_URL)) {
       ctx.addIssue({

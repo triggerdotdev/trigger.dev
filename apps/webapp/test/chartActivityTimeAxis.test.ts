@@ -42,6 +42,24 @@ describe("buildActivityTimeAxis", () => {
     expect(tickFormatter(data[0].bucket)).toBe("13:30");
   });
 
+  it("fails when alert charts label sub-day buckets in UTC instead of the user's zone", () => {
+    const data = series("2026-10-01T10:30:00.000Z", 4, 30 * MINUTE);
+    const { tickFormatter, tooltipLabelFormatter } = buildActivityTimeAxis(
+      data,
+      undefined,
+      undefined,
+      "Europe/Berlin"
+    );
+    expect(tickFormatter(data[0].bucket)).toBe("12:30");
+    expect(tooltipLabelFormatter("", [{ payload: { bucket: data[0].bucket } }])).toContain("12:30");
+  });
+
+  it("keeps day buckets in UTC with a zone", () => {
+    const data = series("2026-06-20T00:00:00.000Z", 4, DAY);
+    const { tickFormatter } = buildActivityTimeAxis(data, undefined, undefined, "America/New_York");
+    expect(tickFormatter(data[0].bucket)).toBe("Jun 20");
+  });
+
   it("tooltip formatter reads the bucket from payload and includes date + time for sub-day buckets", () => {
     const data = series("2026-06-22T00:00:00.000Z", 12, 30 * MINUTE);
     const { tooltipLabelFormatter } = buildActivityTimeAxis(data);

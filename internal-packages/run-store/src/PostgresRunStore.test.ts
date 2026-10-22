@@ -41,10 +41,12 @@ function buildCreateRunInput(params: {
   organizationId: string;
   projectId: string;
   runtimeEnvironmentId: string;
+  annotations?: Prisma.InputJsonValue;
 }): CreateRunInput {
   return {
     data: {
       id: params.runId,
+      annotations: params.annotations,
       engine: "V2",
       status: "PENDING",
       friendlyId: "run_friendly_1",
@@ -274,6 +276,55 @@ describe("PostgresRunStore", () => {
       expect(run.attemptNumber).toBe(1);
       expect(run.executedAt).toEqual(executedAt);
       expect(run.isWarmStart).toBe(true);
+    }
+  );
+
+  postgresTest(
+    "startAttempt writes the merged annotations it is given and leaves them alone otherwise",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const runId = "run_start_attempt_annotations";
+      const triggerAnnotations = {
+        triggerSource: "sdk",
+        triggerAction: "trigger",
+        rootTriggerSource: "sdk",
+        taskKind: "STANDARD",
+      };
+
+      await store.createRun(
+        buildCreateRunInput({
+          runId,
+          organizationId: organization.id,
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+          annotations: triggerAnnotations,
+        })
+      );
+
+      const untouched = await store.startAttempt(
+        runId,
+        { attemptNumber: 1, executedAt: new Date(), isWarmStart: false },
+        { select: { annotations: true } }
+      );
+      expect(untouched.annotations).toEqual(triggerAnnotations);
+
+      const stamped = await store.startAttempt(
+        runId,
+        {
+          attemptNumber: 2,
+          isWarmStart: true,
+          annotations: { ...triggerAnnotations, workerCell: "cell-a", workerLane: "microvm" },
+        },
+        { select: { annotations: true, attemptNumber: true } }
+      );
+      expect(stamped.attemptNumber).toBe(2);
+      expect(stamped.annotations).toEqual({
+        ...triggerAnnotations,
+        workerCell: "cell-a",
+        workerLane: "microvm",
+      });
     }
   );
 

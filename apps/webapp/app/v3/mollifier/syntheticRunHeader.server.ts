@@ -41,6 +41,7 @@ export function buildSyntheticRunHeader(args: {
     id: run.id,
     number: 1,
     friendlyId: run.friendlyId,
+    taskIdentifier: run.taskIdentifier ?? "",
     traceId: run.traceId ?? "",
     spanId: run.spanId ?? "",
     status: isCancelled

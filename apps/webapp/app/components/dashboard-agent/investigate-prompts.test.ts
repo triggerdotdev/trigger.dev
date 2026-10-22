@@ -1,80 +1,50 @@
 import { describe, expect, it } from "vitest";
 import {
-  errorGroupPrompt,
-  failedRunPrompt,
-  isFailedRunStatus,
-  isInProgressRunStatus,
-  queueBacklogPrompt,
-  waitingRunPrompt,
+  alertInvestigatePrompt,
+  createAlertPrompt,
+  type AlertInvestigateContext,
 } from "./investigate-prompts";
 
-describe("isFailedRunStatus", () => {
-  it("is true for failure statuses", () => {
-    for (const status of [
-      "COMPLETED_WITH_ERRORS",
-      "CRASHED",
-      "SYSTEM_FAILURE",
-      "TIMED_OUT",
-      "EXPIRED",
-    ]) {
-      expect(isFailedRunStatus(status)).toBe(true);
-    }
+const BASE_CONTEXT: AlertInvestigateContext = {
+  alertId: "alert_123",
+  capabilityKey: "queue.depth",
+  environmentId: "env_456",
+  scope: { type: "queue", queue: "worker-1" },
+  name: "Queue depth high",
+  capabilityTitle: "Queue depth",
+  conditionSummary: "> 100 over 5m",
+  windowSec: 300,
+  latestRaisedEventFacts: { value: 150, threshold: 100 },
+};
+
+describe("alertInvestigatePrompt", () => {
+  it("includes the alertId and capabilityKey in the prompt", () => {
+    const prompt = alertInvestigatePrompt(BASE_CONTEXT);
+
+    expect(prompt).toContain(BASE_CONTEXT.alertId);
+    expect(prompt).toContain(BASE_CONTEXT.capabilityKey);
   });
 
-  it("is false for everything else", () => {
-    for (const status of ["PENDING", "EXECUTING", "COMPLETED_SUCCESSFULLY", "CANCELED", "PAUSED"]) {
-      expect(isFailedRunStatus(status)).toBe(false);
-    }
-  });
-});
+  it("includes the environmentId, scope and frozen facts", () => {
+    const prompt = alertInvestigatePrompt(BASE_CONTEXT);
 
-describe("isInProgressRunStatus", () => {
-  it("is true for statuses actively executing or between attempts", () => {
-    for (const status of ["EXECUTING", "DEQUEUED", "RETRYING_AFTER_FAILURE", "WAITING_TO_RESUME"]) {
-      expect(isInProgressRunStatus(status)).toBe(true);
-    }
+    expect(prompt).toContain(BASE_CONTEXT.environmentId);
+    expect(prompt).toContain("worker-1");
+    expect(prompt).toContain("150");
   });
 
-  it("is false for queued/pending, failed, and final statuses", () => {
-    for (const status of [
-      "PENDING",
-      "DELAYED",
-      "PENDING_VERSION",
-      "WAITING_FOR_DEPLOY",
-      "PAUSED",
-      "CRASHED",
-      "COMPLETED_SUCCESSFULLY",
-      "CANCELED",
-    ]) {
-      expect(isInProgressRunStatus(status)).toBe(false);
-    }
+  it("states the issue-not-run interpretation rule", () => {
+    const prompt = alertInvestigatePrompt(BASE_CONTEXT);
+
+    expect(prompt).toMatch(/never a single run/i);
   });
 });
 
-describe("investigate prompts", () => {
-  it("names the run that failed", () => {
-    expect(failedRunPrompt("run_abc")).toBe("Investigate run run_abc — why did it fail?");
-  });
+describe("createAlertPrompt", () => {
+  it("names the environment and instructs the agent to use its tools", () => {
+    const prompt = createAlertPrompt("staging");
 
-  it("names the queue a waiting run is stuck in, when known", () => {
-    expect(waitingRunPrompt("run_abc", "emails")).toBe(
-      "Why is run run_abc waiting to start in the emails queue?"
-    );
-    expect(waitingRunPrompt("run_abc")).toBe("Why is run run_abc waiting to start?");
-  });
-
-  it("names the error and its task, when known", () => {
-    expect(errorGroupPrompt("error_abc", "send-email")).toBe(
-      "Investigate error error_abc in send-email — what's causing it and is it still happening?"
-    );
-    expect(errorGroupPrompt("error_abc")).toBe(
-      "Investigate error error_abc — what's causing it and is it still happening?"
-    );
-  });
-
-  it("names the backed-up queue", () => {
-    expect(queueBacklogPrompt("emails")).toBe(
-      "Investigate the emails queue — why is it backed up?"
-    );
+    expect(prompt).toContain("staging");
+    expect(prompt).toMatch(/monitoring\/alert tools/i);
   });
 });

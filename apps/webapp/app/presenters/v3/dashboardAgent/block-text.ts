@@ -31,6 +31,9 @@ export function renderBlockAsText(block: ViewBlock): string {
     case "watch_result":
       return lines(block.headline, block.lifetime, block.detail, ...block.followUp);
 
+    case "alert_created":
+      return lines(`${block.name} is active.`, ...block.rows.map((row) => row.value));
+
     case "diagnosis":
       return lines(
         block.summary,

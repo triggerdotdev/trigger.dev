@@ -83,7 +83,10 @@ export function EndpointFilters({
   );
 }
 
-function MultiSelectFilter({
+export type MultiSelectFilterOption = { value: string; title: string; icon?: ReactNode };
+
+/** A URL-param backed multi-select filter pill; selecting resets pagination. */
+export function MultiSelectFilter({
   param,
   label,
   placeholderLabel,
@@ -96,7 +99,7 @@ function MultiSelectFilter({
   label: string;
   placeholderLabel?: string;
   icon: ReactNode;
-  options: Array<{ value: string; title: string }>;
+  options: MultiSelectFilterOption[];
   shortcut: ShortcutDefinition;
   searchable?: boolean;
 }) {
@@ -181,6 +184,7 @@ function MultiSelectFilter({
                     <SelectItem
                       key={option.value}
                       value={option.value}
+                      icon={option.icon}
                       className="text-text-bright"
                     >
                       {option.title}

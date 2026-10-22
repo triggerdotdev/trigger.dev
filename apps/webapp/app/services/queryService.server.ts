@@ -108,6 +108,8 @@ export type ExecuteQueryOptions<TOut extends z.ZodSchema> = Omit<
    * generate, where the same rejection is a bug worth alerting on.
    */
   userAuthoredQuery?: boolean;
+  /** Internal only: drop the plan time bound on the table's time column. Never set from input. */
+  skipTimeConstraint?: boolean;
 };
 
 /**
@@ -214,6 +216,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     providers,
     history,
     customOrgConcurrencyLimit,
+    skipTimeConstraint,
     ...baseOptions
   } = options;
 
@@ -246,7 +249,11 @@ export async function executeQuery<TOut extends z.ZodSchema>(
   const matchedSchema = querySchemas.find((s) =>
     new RegExp(`\\bFROM\\s+${s.name}\\b`, "i").test(options.query)
   );
-  const timeColumn = matchedSchema?.timeConstraint ?? "triggered_at";
+  const timeColumn = skipTimeConstraint
+    ? undefined
+    : matchedSchema
+      ? matchedSchema.timeConstraint
+      : "triggered_at";
 
   // Build time filter fallback for the table's time column
   const defaultPeriod = await getDefaultPeriod(organizationId);
@@ -314,7 +321,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
               : undefined,
           environment_id: scope === "environment" ? { op: "eq", value: environmentId } : undefined,
         }),
-    [timeColumn]: { op: "gte", value: maxQueryPeriodDate },
+    ...(timeColumn ? { [timeColumn]: { op: "gte", value: maxQueryPeriodDate } } : {}),
     // Optional filters for tasks and queues
     task_identifier:
       taskIdentifiers && taskIdentifiers.length > 0
@@ -387,9 +394,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
       transformValues: true,
       enforcedWhereClause,
       fieldMappings,
-      whereClauseFallback: {
-        [timeColumn]: timeFallback,
-      },
+      whereClauseFallback: timeColumn ? { [timeColumn]: timeFallback } : {},
       timeRange,
       clickhouseSettings: {
         ...getDefaultClickhouseSettings(),

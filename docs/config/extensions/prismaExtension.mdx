@@ -189,7 +189,7 @@ prismaExtension({
   "scripts": {
     "prebuild": "prisma generate",
     "dev": "trigger dev",
-    "deploy": "trigger deploy"
+    "deploy": "trigger deploy --env prod"
   }
 }
 ```
@@ -331,7 +331,7 @@ steps:
   - name: Generate Prisma client
     run: npx prisma@6.19.0 generate
   - name: Deploy Trigger.dev
-    run: npx trigger.dev@4.1.1 deploy
+    run: npx trigger.dev@4.1.1 deploy --env prod
     env:
       TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
 ```
@@ -641,7 +641,7 @@ prismaExtension({
 ```prisma
 generator client {
   provider      = "prisma-client-js"
-  binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 ```
 
@@ -885,7 +885,7 @@ export const db = new PrismaClient({
 generator client {
   provider      = "prisma-client-js"
   output        = "../src/generated/prisma"
-  binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -902,7 +902,7 @@ datasource db {
   "scripts": {
     "generate": "prisma generate",
     "dev": "pnpm generate && trigger dev",
-    "deploy": "trigger deploy"
+    "deploy": "trigger deploy --env prod"
   }
 }
 ```
@@ -913,7 +913,6 @@ datasource db {
 prismaExtension({
   mode: "engine-only",
   version: "6.19.0",
-  binaryTarget: "linux-arm64-openssl-3.0.x",
 });
 ```
 
@@ -976,7 +975,7 @@ export default defineConfig({
   "scripts": {
     "generate": "prisma generate",
     "dev": "pnpm generate && trigger dev",
-    "deploy": "trigger deploy"
+    "deploy": "trigger deploy --env prod"
   }
 }
 ```

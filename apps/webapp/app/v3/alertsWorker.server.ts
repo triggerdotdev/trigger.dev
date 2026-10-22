@@ -4,6 +4,7 @@ import { z } from "zod";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
+import { isAlertsConfigured } from "./services/alerts/alertsConfigured.server";
 import { DeliverAlertService } from "./services/alerts/deliverAlert.server";
 import {
   DeliverDashboardAgentWatchAlertService,
@@ -15,6 +16,10 @@ import {
   watchObservedOutcomeSchema,
   watchResolutionSchema,
 } from "@internal/dashboard-agent-contracts";
+import { prisma } from "~/db.server";
+import { DeliverAlertEventPayload } from "./services/alerts/delivery/deliverAlertEventPayload";
+import { deliverAlertEvent } from "./services/alerts/delivery/deliverAlertEvent.server";
+import { gateAlertJob } from "./services/alerts/engine/gateAlertJob";
 import { PerformDeploymentAlertsService } from "./services/alerts/performDeploymentAlerts.server";
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
 
@@ -46,6 +51,10 @@ function initializeWorker() {
     enableAutoPipelining: true,
     ...(env.ALERTS_WORKER_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
   };
+
+  const alertsConfigured = isAlertsConfigured({
+    alertsEnabled: env.ALERTS_ENABLED,
+  });
 
   logger.debug(`👨‍🏭 Initializing alerts worker at host ${env.ALERTS_WORKER_REDIS_HOST}`);
 
@@ -137,6 +146,14 @@ function initializeWorker() {
         },
         logErrors: true,
       },
+      "v3.deliverAlertEvent": {
+        schema: DeliverAlertEventPayload,
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 3,
+        },
+        logErrors: true,
+      },
     },
     concurrency: {
       workers: env.ALERTS_WORKER_CONCURRENCY_WORKERS,
@@ -178,6 +195,9 @@ function initializeWorker() {
         const service = new DeliverDashboardAgentWatchChannelAlertService();
         await service.call(payload);
       },
+      "v3.deliverAlertEvent": gateAlertJob(alertsConfigured, async ({ payload }) => {
+        await deliverAlertEvent(payload.eventId, payload.eventAt, { db: prisma });
+      }),
     },
   });
 

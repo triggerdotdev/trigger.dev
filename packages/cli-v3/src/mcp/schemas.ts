@@ -1,5 +1,6 @@
 import {
   ApiDeploymentListParams,
+  DashboardWidgetInput,
   MachinePresetName,
   ReportPeriodSchema,
   RunStatus,
@@ -132,6 +133,68 @@ export const CommonRunsInput = CommonProjectsInput.extend({
 
 export type CommonRunsInput = z.output<typeof CommonRunsInput>;
 
+export const ReplayRunInput = CommonRunsInput.extend({
+  payload: z
+    .any()
+    .describe(
+      "A new payload for the replayed run, as the actual payload object (not a JSON string). Omit it to reuse the original run's payload."
+    )
+    .optional(),
+  metadata: z
+    .record(z.string(), z.any())
+    .describe("New metadata for the replayed run. Omit it to reuse the original run's metadata.")
+    .optional(),
+  tags: z
+    .array(z.string())
+    .describe("Tags for the replayed run, replacing the original run's tags. Up to 10.")
+    .optional(),
+  queue: z
+    .string()
+    .describe("The name of an existing queue to run on. Omit it to use the original run's queue.")
+    .optional(),
+  concurrencyKey: z.string().describe("The concurrency key for the replayed run").optional(),
+  machine: MachinePresetName.describe("The machine preset for the replayed run").optional(),
+  version: z
+    .string()
+    .describe(
+      "Lock the replayed run to this deployed version, e.g. 20250101.1. Defaults to the current version."
+    )
+    .optional(),
+  region: z
+    .string()
+    .describe("The region to run in. Defaults to the original run's region.")
+    .optional(),
+  delay: z
+    .string()
+    .or(z.iso.datetime())
+    .describe("Delay the replayed run, as a duration like 1h30m or an ISO 8601 date")
+    .optional(),
+  ttl: z
+    .string()
+    .or(z.number().nonnegative().int())
+    .describe(
+      "How long the replayed run can stay queued before it expires, as a duration like 10m or a number of seconds"
+    )
+    .optional(),
+  idempotencyKey: z.string().describe("An idempotency key for the replayed run").optional(),
+  maxAttempts: z
+    .number()
+    .int()
+    .min(1)
+    .describe("The maximum number of attempts for the replayed run")
+    .optional(),
+  maxDuration: z
+    .number()
+    .describe("The maximum duration in seconds of the replayed run")
+    .optional(),
+  priority: z
+    .number()
+    .describe("Priority offset in seconds. Higher values are dequeued sooner.")
+    .optional(),
+});
+
+export type ReplayRunInput = z.output<typeof ReplayRunInput>;
+
 export const WaitForRunInput = CommonRunsInput.extend({
   timeoutInSeconds: z
     .number()
@@ -202,18 +265,14 @@ export const ListRunsInput = CommonProjectsInput.extend({
 
 export type ListRunsInput = z.output<typeof ListRunsInput>;
 
-const CommonDeployInput = CommonProjectsInput.omit({
+const DeployEnvironment = z.enum(["staging", "prod", "preview"]);
+
+export const DeployInput = CommonProjectsInput.omit({
   environment: true,
 }).extend({
-  environment: z
-    .enum(["staging", "prod", "preview"])
-    .describe("The environment to trigger the task in")
-    .default("prod"),
-});
-
-type CommonDeployInput = z.output<typeof CommonDeployInput>;
-
-export const DeployInput = CommonDeployInput.extend({
+  environment: DeployEnvironment.describe(
+    "The environment to deploy to. There is no default: if the user hasn't said which environment, ask them. Deploying to prod changes the version that live runs use."
+  ),
   skipPromotion: z
     .boolean()
     .describe("Skip promoting the deployment to the current deployment for the environment")
@@ -230,7 +289,13 @@ export const DeployInput = CommonDeployInput.extend({
 
 export type DeployInput = z.output<typeof DeployInput>;
 
-export const ListDeploysInput = CommonDeployInput.extend(ApiDeploymentListParams);
+export const ListDeploysInput = CommonProjectsInput.omit({
+  environment: true,
+})
+  .extend({
+    environment: DeployEnvironment.describe("The environment to list deploys for").default("prod"),
+  })
+  .extend(ApiDeploymentListParams);
 
 export type ListDeploysInput = z.output<typeof ListDeploysInput>;
 
@@ -277,6 +342,27 @@ export const ListDashboardsInput = CommonProjectsInput.pick({
 });
 
 export type ListDashboardsInput = z.output<typeof ListDashboardsInput>;
+
+export const CreateDashboardInput = ListDashboardsInput.extend({
+  title: z.string().describe("The dashboard title"),
+  description: z.string().optional().describe("An optional description"),
+  widgets: z
+    .array(DashboardWidgetInput)
+    .optional()
+    .describe("The widgets to add, in order. Leave out to create an empty dashboard."),
+});
+
+export type CreateDashboardInput = z.output<typeof CreateDashboardInput>;
+
+export const SetDashboardWidgetsInput = ListDashboardsInput.extend({
+  dashboardId: z.string().describe("The custom dashboard id, as listed by list_dashboards"),
+  title: z.string().optional().describe("A new title for the dashboard"),
+  widgets: z
+    .array(DashboardWidgetInput)
+    .describe("The full list of widgets the dashboard should have"),
+});
+
+export type SetDashboardWidgetsInput = z.output<typeof SetDashboardWidgetsInput>;
 
 // Re-exported from core so the CLI, the API clients and the route share one period grammar. The
 // route stays the authoritative boundary.
@@ -345,3 +431,104 @@ export const ListPreviewBranchesInput = z.object({
 });
 
 export type ListPreviewBranchesInput = z.output<typeof ListPreviewBranchesInput>;
+
+export const ListAlertCapabilitiesInput = CommonProjectsInput.omit({
+  environment: true,
+  branch: true,
+}).extend({
+  area: z
+    .string()
+    .describe("Filter capabilities to a specific area, e.g. 'queues', 'runs', 'health'.")
+    .optional(),
+});
+
+export type ListAlertCapabilitiesInput = z.output<typeof ListAlertCapabilitiesInput>;
+
+export const ListAlertsInput = CommonProjectsInput.extend({
+  lifecycle: z
+    .enum(["active", "completed", "expired", "stopped"])
+    .describe("Filter by alert lifecycle state.")
+    .optional(),
+  attention: z
+    .enum(["clear", "needs_attention"])
+    .describe("Filter by whether the alert currently needs attention.")
+    .optional(),
+});
+
+export type ListAlertsInput = z.output<typeof ListAlertsInput>;
+
+const AlertScope = z.object({
+  type: z.enum(["queue", "queuePattern", "task", "all", "errorGroup"]),
+  queue: z.string().optional(),
+  pattern: z.string().optional(),
+  taskIdentifier: z.string().optional(),
+  fingerprint: z.string().optional(),
+});
+
+const AlertCondition = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("threshold"),
+    operator: z.enum([">", "<"]),
+    value: z.number().finite(),
+    windowSec: z.number().int().positive(),
+    holdSec: z.number().int().positive().optional(),
+  }),
+  z.object({
+    kind: z.literal("state"),
+    stateKey: z.string(),
+    holdSec: z.number().int().positive().optional(),
+    params: z
+      .record(z.string(), z.number())
+      .optional()
+      .describe("Overrides for the capability's param defaults, e.g. thresholds."),
+  }),
+  z.object({ kind: z.literal("occurrence") }),
+  z.object({ kind: z.literal("absence"), quietWindowSec: z.number().int().min(1800) }),
+]);
+
+const AlertNotifier = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("channel"), channelId: z.string() }),
+  z.object({
+    type: z.literal("chat"),
+    // No "current chat" to fall back to outside a dashboard-agent turn.
+    chatId: z.string(),
+    userId: z.string().optional(),
+  }),
+]);
+
+export const CreateAlertInput = CommonProjectsInput.extend({
+  capabilityKey: z
+    .string()
+    .describe(
+      "The capability key to monitor. Use list_alert_capabilities to discover available keys."
+    ),
+  params: z
+    .object({
+      scope: AlertScope.optional().describe("Defaults to all."),
+      windowSec: z.number().optional(),
+    })
+    .describe(
+      "The scope for this capability, e.g. { scope: { type: 'queue', queue: 'my-queue' } } or { scope: { type: 'errorGroup', taskIdentifier, fingerprint } }."
+    ),
+  condition: AlertCondition.describe(
+    "The condition that raises the alert, matching the kind returned by list_alert_capabilities for this capability."
+  ),
+  behavior: z
+    .object({
+      expiresAt: z.string().describe("ISO 8601 timestamp after which the alert stops.").optional(),
+    })
+    .describe("Optional expiry. Alerts keep firing until they expire or are stopped."),
+  notifiers: z
+    .array(AlertNotifier)
+    .min(1)
+    .describe("Who to notify when the alert raises, e.g. [{ type: 'chat', chatId: '<id>' }]."),
+  name: z.string().describe("An optional display name for the alert.").optional(),
+});
+
+export type CreateAlertInput = z.output<typeof CreateAlertInput>;
+
+export const ResolveAlertInput = CommonProjectsInput.extend({
+  alertId: z.string().describe("The id of the alert to resolve. Use list_alerts to find it."),
+});
+
+export type ResolveAlertInput = z.output<typeof ResolveAlertInput>;

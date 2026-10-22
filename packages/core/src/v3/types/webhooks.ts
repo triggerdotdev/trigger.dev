@@ -23,6 +23,39 @@ export type WebhookSource<TEvent = unknown> = {
 
 export type AnyWebhookSource = WebhookSource<any>;
 
+declare const __endpointEvent: unique symbol;
+
+/**
+ * A declared webhook endpoint (`webhooks.endpoint.define`): one provider URL that subscribers
+ * (`webhook()`, `chat.event`, channel connectors) and waiters attach to. The event type comes from
+ * the endpoint's source.
+ */
+export type WebhookEndpoint<TEvent = unknown> = {
+  /** The declared endpoint id. */
+  id: string;
+  /** The source's provider tag, e.g. "stripe". */
+  source: string;
+  /** phantom, type-level only; never present at runtime */
+  [__endpointEvent]?: TEvent;
+};
+
+export type AnyWebhookEndpoint = WebhookEndpoint<any>;
+
+/** What a webhook waiter resumes its run with. */
+export type WebhookWaiterOutput<TEvent = unknown> = {
+  /** The verified event body. */
+  event: TEvent;
+  /** The inbound headers, curated as for `webhook()` (credentials dropped). */
+  headers: Record<string, string>;
+  /** The delivery's id (`whd_...`). */
+  deliveryId: string;
+  /** The endpoint the delivery arrived on. */
+  endpoint: WebhookEndpointContext;
+};
+
+export type InferWebhookEndpointEvent<E> =
+  E extends WebhookEndpoint<infer TEvent> ? TEvent : unknown;
+
 export type InferWebhookEvent<S> = S extends WebhookSource<infer TEvent> ? TEvent : unknown;
 
 /**

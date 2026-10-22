@@ -6,6 +6,7 @@ import type { K8sApi } from "../clients/kubernetes.js";
 import { createK8sApi } from "../clients/kubernetes.js";
 import { ReconnectingInformer } from "../clients/reconnectingInformer.js";
 import { register } from "../metrics.js";
+import { podKill, type RunnerKill } from "./runnerKills.js";
 
 // Operator-owned pods carry app=task-run too, since the network policy selects
 // on it, so they have to be excluded by their own label instead. Unconditional:
@@ -22,6 +23,8 @@ export type FailedPodHandlerOptions = {
   watchTimeoutSeconds?: number;
   k8s?: K8sApi;
   register?: Registry;
+  /** Called with the pod's name, its runner id, when the runtime killed its run-controller. */
+  onRunnerKilled?: (runnerId: string, kill: RunnerKill) => Promise<unknown>;
 };
 
 export class FailedPodHandler {
@@ -29,6 +32,7 @@ export class FailedPodHandler {
   private readonly logger: SimpleStructuredLogger;
   private readonly k8s: K8sApi;
   private readonly namespace: string;
+  private readonly onRunnerKilled?: FailedPodHandlerOptions["onRunnerKilled"];
 
   private isRunning = false;
 
@@ -53,6 +57,7 @@ export class FailedPodHandler {
     this.k8s = opts.k8s ?? createK8sApi();
 
     this.namespace = opts.namespace;
+    this.onRunnerKilled = opts.onRunnerKilled;
 
     this.watch = new ReconnectingInformer({
       name: "failed-pod-informer",
@@ -242,6 +247,11 @@ export class FailedPodHandler {
       namespace: this.namespace,
       status: this.podStatus(pod),
     });
+
+    const kill = podKill(pod);
+    if (kill && this.onRunnerKilled) {
+      await this.onRunnerKilled(pod.metadata!.name!, kill);
+    }
   }
 
   private async deletePod(pod: V1Pod) {

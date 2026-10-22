@@ -120,6 +120,85 @@ const RenameProjectResponseBody = z.object({
   name: z.string(),
 });
 
+const AlertCapabilityParamSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  unit: z.string().optional(),
+  default: z.number(),
+  min: z.number().optional(),
+  max: z.number().optional(),
+});
+
+const AlertCapabilitySchema = z
+  .object({
+    key: z.string(),
+    area: z.string(),
+    signal: z.string(),
+    title: z.string(),
+    unit: z.string().optional(),
+    allowedKinds: z.array(z.string()),
+    allowedScopes: z.array(z.string()),
+    curated: z.boolean(),
+    binding: z.object({ params: z.array(AlertCapabilityParamSchema).optional() }).optional(),
+  })
+  .transform(({ binding, ...capability }) => ({ ...capability, params: binding?.params }));
+
+export const ListAlertCapabilitiesResponseBody = z.object({
+  capabilities: z.array(AlertCapabilitySchema),
+});
+
+export const AlertSchema = z.object({
+  id: z.string(),
+  environmentId: z.string(),
+  capabilityKey: z.string(),
+  params: z.record(z.string(), z.unknown()),
+  condition: z.record(z.string(), z.unknown()),
+  lifecycle: z.enum(["active", "completed", "expired", "stopped"]),
+  attention: z.enum(["clear", "needs_attention"]),
+  name: z.string().nullable(),
+  notifiers: z.array(z.record(z.string(), z.unknown())),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+});
+
+const AlertEventSchema = z.object({
+  id: z.string(),
+  alertId: z.string(),
+  type: z.string(),
+  at: z.coerce.date(),
+  facts: z.record(z.string(), z.unknown()),
+});
+
+const ListAlertsResponseBody = z.object({
+  alerts: z.array(AlertSchema),
+});
+
+const CreateAlertResponseBody = z.object({
+  alert: AlertSchema,
+});
+
+const GetAlertResponseBody = z.object({
+  alert: AlertSchema,
+  environmentType: z.string().optional(),
+  events: z.array(AlertEventSchema),
+});
+
+const AlertActionResponseBody = z.object({
+  alert: AlertSchema,
+  event: AlertEventSchema,
+});
+
+export type CreateMonitoringAlertRequestBody = {
+  capabilityKey: string;
+  environment: "dev" | "staging" | "prod" | "preview";
+  branch?: string;
+  params: Record<string, unknown>;
+  condition: Record<string, unknown>;
+  behavior: { expiresAt?: string };
+  notifiers: Array<Record<string, unknown>>;
+  name?: string;
+};
+
 export class CliApiClient {
   private engineURL: string;
   private source: "cli" | "mcp";
@@ -1087,6 +1166,94 @@ export class CliApiClient {
           ...this.getBranchHeader(),
         },
         body: JSON.stringify(body),
+      }
+    );
+  }
+
+  async listAlertCapabilities(projectRef: string, area?: string) {
+    if (!this.accessToken) {
+      throw new Error("listAlertCapabilities: No access token");
+    }
+
+    const url = new URL(
+      `/api/v1/projects/${projectRef}/monitoring-alert-capabilities`,
+      this.apiURL
+    );
+    if (area) {
+      url.searchParams.set("area", area);
+    }
+
+    return wrapZodFetch(ListAlertCapabilitiesResponseBody, url.href, {
+      headers: this.getHeaders(),
+    });
+  }
+
+  async listAlerts(
+    projectRef: string,
+    params: {
+      environment: "dev" | "staging" | "prod" | "preview";
+      branch?: string;
+      lifecycle?: string;
+      attention?: string;
+    }
+  ) {
+    if (!this.accessToken) {
+      throw new Error("listAlerts: No access token");
+    }
+
+    const url = new URL(`/api/v1/projects/${projectRef}/monitoring-alerts`, this.apiURL);
+    url.searchParams.set("environment", params.environment);
+    if (params.branch) url.searchParams.set("branch", params.branch);
+    if (params.lifecycle) url.searchParams.set("lifecycle", params.lifecycle);
+    if (params.attention) url.searchParams.set("attention", params.attention);
+
+    return wrapZodFetch(ListAlertsResponseBody, url.href, {
+      headers: this.getHeaders(),
+    });
+  }
+
+  async createAlert(projectRef: string, body: CreateMonitoringAlertRequestBody) {
+    if (!this.accessToken) {
+      throw new Error("createAlert: No access token");
+    }
+
+    return wrapZodFetch(
+      CreateAlertResponseBody,
+      `${this.apiURL}/api/v1/projects/${projectRef}/monitoring-alerts`,
+      {
+        method: "POST",
+        headers: this.getHeaders(),
+        body: JSON.stringify(body),
+      }
+    );
+  }
+
+  async getAlert(projectRef: string, alertId: string) {
+    if (!this.accessToken) {
+      throw new Error("getAlert: No access token");
+    }
+
+    return wrapZodFetch(
+      GetAlertResponseBody,
+      `${this.apiURL}/api/v1/projects/${projectRef}/monitoring-alerts/${alertId}`,
+      {
+        headers: this.getHeaders(),
+      }
+    );
+  }
+
+  async resolveAlert(projectRef: string, alertId: string) {
+    if (!this.accessToken) {
+      throw new Error("resolveAlert: No access token");
+    }
+
+    return wrapZodFetch(
+      AlertActionResponseBody,
+      `${this.apiURL}/api/v1/projects/${projectRef}/monitoring-alerts/${alertId}`,
+      {
+        method: "POST",
+        headers: this.getHeaders(),
+        body: JSON.stringify({ action: "resolve" }),
       }
     );
   }

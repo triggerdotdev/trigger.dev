@@ -46,6 +46,13 @@ import {
   type SessionStreamRecord,
   type AnySessionChannel,
   type SessionChannelName,
+  type AnyChatEvent,
+  type ChatEventActions,
+  type ValidatedWebhookKey,
+  type ValidateWebhookFilter,
+  type NarrowWebhookEvent,
+  type AnyWebhookEndpoint,
+  type InferWebhookEndpointEvent,
 } from "@trigger.dev/core/v3";
 import type {
   streamText as aiStreamTextSignature,
@@ -62,6 +69,8 @@ import type {
   JSONSchema7,
   Schema,
 } from "ai";
+import { chatEvent, normalizeKeyString } from "./webhooks.js";
+import { fetchPublicFile } from "./modelFileDownload.js";
 // Runtime VALUES go through the ESM/CJS shim so the CJS build can `require`
 // ESM-only `ai@7` (see ../imports/ai-runtime.ts).
 import { type Attributes, trace } from "@opentelemetry/api";
@@ -89,6 +98,7 @@ import {
   type TranscriptChangeReason,
   type TranscriptLoadResult,
   type TranscriptRuntimeState,
+  type TranscriptChannelBinding,
   type TranscriptShadow,
   type TranscriptStorage,
   type TranscriptStorageContext,
@@ -219,6 +229,7 @@ type ChatTurnContext<TClientData = unknown> = {
   turn: number;
   continuation: boolean;
   clientData?: TClientData;
+  recordUserMessage?: boolean;
 };
 const chatTurnContextKey = locals.create<ChatTurnContext>("chat.turnContext");
 
@@ -235,6 +246,17 @@ const chatSessionHandleKey = locals.create<SessionHandle>("chat.sessionHandle");
 // is documented to carry. Custom-agent loops never set per-turn context, so subtask tool
 // metadata reads this directly rather than the Session handle id.
 const chatExternalIdKey = locals.create<string>("chat.externalId");
+
+/**
+ * Set at boot when a continuation run inherited an interrupted turn (a
+ * partial assistant reply on `session.out`). Consumed by the first channel
+ * turn's ack so the re-emitted placeholder reads as a recovery resume rather
+ * than a silent duplicate. Boxed so the ack site can flip it to false.
+ * @internal
+ */
+const chatChannelRecoveryPendingKey = locals.create<{ value: boolean }>(
+  "chat.channelRecoveryPending"
+);
 
 /**
  * S2 seq_num of the most recent `turn-complete` control record written by
@@ -583,7 +605,13 @@ export async function __replaySessionOutTailProductionPathForTests<TUIMessage ex
 type ReplaySessionInTailImpl = <TUIMessage extends UIMessage>(
   sessionId: string,
   options?: { lastEventId?: string }
-) => Promise<{ message: TUIMessage; metadata: unknown; seqNum: number }[]>;
+) => Promise<
+  | { message: TUIMessage; metadata: unknown; seqNum: number }[]
+  | {
+      messages: { message: TUIMessage; metadata: unknown; seqNum: number }[];
+      channelEvents: ReplayedChannelEvent[];
+    }
+>;
 
 let replaySessionInTailImpl: ReplaySessionInTailImpl | undefined;
 
@@ -621,14 +649,33 @@ async function replaySessionInTail<TUIMessage extends UIMessage>(
   sessionId: string,
   options?: { lastEventId?: string }
 ): Promise<{ message: TUIMessage; metadata: unknown; seqNum: number }[]> {
+  return (await replaySessionInTailWithChannels<TUIMessage>(sessionId, options)).messages;
+}
+
+/** A channel delivery recorded on `session.in` that the dead predecessor never turned into a turn. */
+type ReplayedChannelEvent = { channelEvent: unknown; metadata: unknown; seqNum: number };
+
+/**
+ * The full unprocessed `session.in` tail: browser messages and channel deliveries, each with its
+ * seq_num, so recovery can dispatch them in the order they arrived rather than messages first.
+ */
+async function replaySessionInTailWithChannels<TUIMessage extends UIMessage>(
+  sessionId: string,
+  options?: { lastEventId?: string }
+): Promise<{
+  messages: { message: TUIMessage; metadata: unknown; seqNum: number }[];
+  channelEvents: ReplayedChannelEvent[];
+}> {
   if (replaySessionInTailImpl) {
-    return await replaySessionInTailImpl<TUIMessage>(sessionId, options);
+    const replayed = await replaySessionInTailImpl<TUIMessage>(sessionId, options);
+    return Array.isArray(replayed) ? { messages: replayed, channelEvents: [] } : replayed;
   }
   const apiClient = apiClientManager.clientOrThrow();
   const response = await apiClient.readSessionStreamRecords(sessionId, "in", {
     afterEventId: options?.lastEventId,
   });
   const out: { message: TUIMessage; metadata: unknown; seqNum: number }[] = [];
+  const channelEvents: ReplayedChannelEvent[] = [];
   for (const record of response.records) {
     // session.in writers POST `JSON.stringify(chunk)` directly; the
     // webapp wraps that in `{ data: <string>, id }` and stores it on
@@ -650,19 +697,33 @@ async function replaySessionInTail<TUIMessage extends UIMessage>(
     if (kind !== "message") continue;
     const payload = (
       chunk as {
-        payload?: { trigger?: unknown; message?: unknown; metadata?: unknown };
+        payload?: {
+          trigger?: unknown;
+          message?: unknown;
+          metadata?: unknown;
+          channelEvent?: unknown;
+        };
       }
     ).payload;
     if (!payload || payload.trigger !== "submit-message") continue;
     const message = payload.message;
-    if (!message || typeof message !== "object") continue;
+    if (!message || typeof message !== "object") {
+      if (payload.channelEvent && typeof payload.channelEvent === "object") {
+        channelEvents.push({
+          channelEvent: payload.channelEvent,
+          metadata: payload.metadata,
+          seqNum: record.seqNum,
+        });
+      }
+      continue;
+    }
     out.push({
       message: message as TUIMessage,
       metadata: payload.metadata,
       seqNum: record.seqNum,
     });
   }
-  return out;
+  return { messages: out, channelEvents };
 }
 
 /**
@@ -1074,6 +1135,41 @@ function createChatAccessToken<TTask extends AnyTask>(
   taskId: TaskIdentifier<TTask>
 ): Promise<string> {
   return auth.createTriggerPublicToken(taskId as string, { expirationTime: "24h" });
+}
+
+/**
+ * Mint a read-only, session-scoped token for WATCHING a chat session by its `externalId`.
+ *
+ * A session is addressed by `externalId`, so the same session is reachable from any surface that
+ * knows it: a web `useChat` client and a Slack thread converge on one session when they share an
+ * `externalId` (for a channel, the connector's `key` template produces it). This token carries
+ * `read:sessions:{externalId}` only (no write): the holder can subscribe to the session's `.out`
+ * stream (observe the conversation, hydrating history from the snapshot) but cannot append to `.in`.
+ *
+ * Use it for a dashboard viewer or a cross-surface watcher of a Slack-thread session. Run server-side
+ * (needs the secret key). To CONTINUE a session from another surface (drive it, not just watch), mint
+ * a read+write token instead ({@link createChatStartSessionAction}).
+ *
+ * @example
+ * ```ts
+ * // actions.ts
+ * "use server";
+ * import { chat } from "@trigger.dev/sdk/ai";
+ *
+ * export const watchChat = (externalId: string) => chat.createWatchToken(externalId);
+ * ```
+ */
+function createChatWatchToken(
+  externalId: string,
+  options?: { tokenTTL?: string }
+): Promise<string> {
+  if (!externalId) {
+    throw new Error("chat.createWatchToken: externalId is required (the session addressing key).");
+  }
+  return auth.createPublicToken({
+    scopes: { read: { sessions: externalId } },
+    expirationTime: options?.tokenTTL ?? "1h",
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1689,6 +1785,12 @@ export type ChatTaskRunPayload<
      * `tools` option on `chat.agent`). Empty object when no `tools` were declared.
      */
     tools: TTools;
+    /**
+     * Present for a channel turn whose connector supports reactions or defines a `surface()`. Lets the
+     * agent react to the triggering message (e.g. `channel.react("white_check_mark")`) and use the
+     * connector's helpers (cast to the connector's exported surface type).
+     */
+    channel?: ChannelRunSurface;
   };
 
 // Input streams for bidirectional chat communication
@@ -2768,7 +2870,24 @@ const chatInstructionsConsumedKey = locals.create<{
  * @internal
  */
 const chatPipeCountKey = locals.create<number>("chat.pipeCount");
+/**
+ * The current turn's channel observer tap, set before run() when the turn has channel observers
+ * (ack stream edits, tool progress) and cleared at the turn boundary. `pipeChat` applies it so a
+ * manual `chat.pipe()` inside run() feeds the same observers as the automatic pipe.
+ * @internal
+ */
+const chatTurnChannelTapKey = locals.create<
+  ((stream: ReadableStream<unknown>) => ReadableStream<unknown>) | undefined
+>("chat.turnChannelTap");
 const chatStopControllerKey = locals.create<AbortController>("chat.stopController");
+const chatChannelSurfaceKey = locals.create<ChannelRunSurface | undefined>("chat.channelSurface");
+
+/** Fetches a file URL through the run's channel connectors, cached for the run. */
+type ChannelFileDownloader = (url: URL) => Promise<ChannelDownloadedFile | null>;
+
+const chatChannelDownloadKey = locals.create<ChannelFileDownloader | undefined>(
+  "chat.channelDownload"
+);
 /** Static (task-level) UIMessageStream options, set once during chatAgent setup. @internal */
 const chatUIStreamStaticKey = locals.create<ChatUIMessageStreamOptions<UIMessage>>(
   "chat.uiMessageStreamOptions.static"
@@ -4313,8 +4432,6 @@ async function drainSteeringQueue(
   // Span attributes describe the offered batch; the chunk and callback below
   // describe what was actually claimed and injected.
   const messageTexts = uiMessages.map(textOfUIMessage);
-  const _previewText =
-    messageTexts.length === 1 ? messageTexts[0]!.slice(0, 80) : `${queue.length} messages`;
 
   return tracer.startActiveSpan(
     "pending message injected",
@@ -4456,7 +4573,7 @@ async function drainSteeringQueue(
         [SemanticInternalAttributes.STYLE_ICON]: "tabler-message-forward",
         "pending.message_count": uiMessages.length,
         "pending.step_number": stepNumber,
-        "pending.messages": messageTexts,
+        ...(ctx?.recordUserMessage === false ? {} : { "pending.messages": messageTexts }),
         ...(ctx?.chatId ? { "pending.chat_id": ctx.chatId } : {}),
         ...(ctx?.turn != null ? { "pending.turn": ctx.turn } : {}),
         ...accessoryAttributes({
@@ -4908,6 +5025,7 @@ function buildManagedStreamTextOptions(
     tools,
     system: callerSystem,
     prepareStep: callerPrepareStep,
+    experimental_download: callerDownload,
     ...rest
   } = options as Record<string, any>;
 
@@ -4964,6 +5082,13 @@ function buildManagedStreamTextOptions(
 
   if (typeof managed.prepareStep === "function") {
     managed.prepareStep = retainStepMessages(managed.prepareStep as any);
+  }
+
+  if (typeof callerDownload === "function") {
+    const channelDownload = locals.get(chatChannelDownloadKey);
+    managed.experimental_download = channelDownload
+      ? channelAwareDownload(channelDownload, callerDownload)
+      : callerDownload;
   }
   return { ...managed, ...rest };
 }
@@ -5157,6 +5282,25 @@ function toStreamTextOptions(
     Object.assign(result, telemetry);
   }
 
+  const telemetry = (result.experimental_telemetry as Record<string, unknown> | undefined) ?? {
+    isEnabled: true,
+    metadata: { ...(options?.telemetry ?? {}) },
+  };
+  if (locals.get(chatTurnContextKey)?.recordUserMessage === false) {
+    const { "prompt.input": _input, ...metadata } = (telemetry.metadata ?? {}) as Record<
+      string,
+      unknown
+    >;
+    result.experimental_telemetry = {
+      ...telemetry,
+      metadata,
+      recordInputs: false,
+      recordOutputs: false,
+    };
+  } else {
+    result.experimental_telemetry = telemetry;
+  }
+
   // Skills: merge auto-injected tools with any user-provided tools.
   // User tools override on name conflict (though we namespace ours).
   if (skills && skills.length > 0) {
@@ -5241,6 +5385,11 @@ function toStreamTextOptions(
   if (retain && typeof result.prepareStep === "function") {
     result.prepareStep = retainStepMessages(result.prepareStep as any);
   }
+
+  const channelDownload = locals.get(chatChannelDownloadKey);
+  if (channelDownload) {
+    result.experimental_download = channelAwareDownload(channelDownload);
+  }
   return result;
 }
 
@@ -5303,7 +5452,11 @@ const actionTurnBrand = Symbol.for("trigger.dev/chat/actionTurn");
  * The marker `onAction` returns to have a turn run on the history it just
  * edited. Produce it with {@link chat.turn}.
  */
-export type ActionTurn = { readonly [actionTurnBrand]: true };
+export type ActionTurn = {
+  readonly [actionTurnBrand]: true;
+  /** A user message the turn answers, appended to the history after the action's edit. */
+  readonly message?: string | UIMessage;
+};
 
 /**
  * Turn the current action into a turn.
@@ -5316,6 +5469,9 @@ export type ActionTurn = { readonly [actionTurnBrand]: true };
  * tools, steering, compaction, injected instructions and persistence, with no
  * action-specific handling.
  *
+ * Pass `message` to have the turn answer a new user message, appended after the edit: a click on a
+ * "Explain more" button becomes `chat.turn("Explain that in more detail.")`.
+ *
  * @example
  * ```ts
  * onAction: async ({ action }) => {
@@ -5323,12 +5479,15 @@ export type ActionTurn = { readonly [actionTurnBrand]: true };
  *     chat.history.slice(0, -1);
  *     return chat.turn();
  *   }
+ *   if (action.type === "ask") return chat.turn(action.question);
  *   if (action.type === "undo") chat.history.slice(0, -2); // no turn
  * },
  * ```
  */
-function chatTurn(): ActionTurn {
-  return { [actionTurnBrand]: true } as ActionTurn;
+function chatTurn(message?: string | UIMessage): ActionTurn {
+  return (
+    message === undefined ? { [actionTurnBrand]: true } : { [actionTurnBrand]: true, message }
+  ) as ActionTurn;
 }
 
 function isActionTurn(value: unknown): value is ActionTurn {
@@ -5408,6 +5567,20 @@ function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
   return typeof value === "object" && value !== null && Symbol.asyncIterator in value;
 }
 
+function readableStreamFromAsyncIterable(source: AsyncIterable<unknown>): ReadableStream<unknown> {
+  const iterator = source[Symbol.asyncIterator]();
+  return new ReadableStream<unknown>({
+    async pull(controller) {
+      const next = await iterator.next();
+      if (next.done) controller.close();
+      else controller.enqueue(next.value);
+    },
+    async cancel(reason) {
+      await iterator.return?.(reason);
+    },
+  });
+}
+
 function isReadableStream(value: unknown): value is ReadableStream<unknown> {
   return (
     typeof value === "object" && value !== null && typeof (value as any).getReader === "function"
@@ -5470,6 +5643,13 @@ async function pipeChat(
     throw new Error(
       "pipeChat: source must be a StreamTextResult (with .toUIMessageStream()), " +
         "an AsyncIterable, or a ReadableStream"
+    );
+  }
+
+  const channelTap = locals.get(chatTurnChannelTapKey);
+  if (channelTap) {
+    stream = channelTap(
+      isReadableStream(stream) ? stream : readableStreamFromAsyncIterable(stream)
     );
   }
 
@@ -5821,6 +6001,19 @@ export type ActionEvent<
   uiMessages: TUIM[];
   /** The accumulated model messages (after hydration, if set). */
   messages: ModelMessage[];
+  /**
+   * The click that sent a channel action (a `slackButton()` in Slack): the verified provider event,
+   * with who clicked and the message the button was on. Absent for client and webhook actions.
+   */
+  channel?: ChannelActionSource;
+};
+
+/** Where a channel action came from: the connector and the verified event of the click. */
+export type ChannelActionSource = {
+  connectorId: string;
+  provider: string;
+  event: unknown;
+  deliveryId: string;
 };
 
 /**
@@ -6060,12 +6253,1635 @@ export type ChatResumeEvent<TClientData = unknown, TUIM extends UIMessage = UIMe
       clientData?: TClientData;
     };
 
+// ── Channels: a webhook that IS the chat frontend (Slack, etc.), delivered as a TURN not an action ──
+// A connector registers an agent-scoped endpoint that delivers each verified event as a channel
+// message; the run applies inbound() to the raw event to get the turn's message. The loop guard is the
+// server-side `filter` (an ignored event never becomes a delivery), so inbound is a pure mapper.
+// The reply round-trips (egress) in-run: outbound() maps the turn's reply to a channel message, send()
+// posts/edits it. delivery "final" posts an ack at turn start then edits it to the answer at turn end.
+export type ChannelMessageInput = string | UIMessage;
+
+/**
+ * What a connector's `inbound()` returns: the turn's message, optionally with who sent it on
+ * the provider and the provider's own message id. Both land on the user message's `metadata`
+ * (with `source: "channel"`, the connector id, the provider and the delivery id), so a
+ * transcript storage can attribute and reconcile channel messages.
+ */
+export type ChannelInbound =
+  | ChannelMessageInput
+  | { message: ChannelMessageInput; externalUserId?: string; externalMessageId?: string };
+
+/** The `metadata` the runtime stamps on a channel-delivered user message. */
+export type ChannelMessageMetadata = {
+  source: "channel";
+  connectorId: string;
+  provider: string;
+  /** The delivery that carried the message (`whd_...`). */
+  deliveryId: string;
+  /** The provider's id for that delivery, the same across replays. */
+  externalDeliveryId?: string;
+  externalUserId?: string;
+  externalMessageId?: string;
+  /** True on a message the connector supplied from the surface's existing conversation via `seed()`. */
+  seeded?: boolean;
+};
+
+/**
+ * A prior message from the surface, returned by a connector's `seed()` when a session starts on a
+ * conversation that already has history (a Slack thread the bot was summoned into). Becomes a
+ * transcript message ahead of the triggering one, so the agent can answer with the context a human
+ * reading the thread would have.
+ */
+export type ChannelSeedMessage = {
+  role: "user" | "assistant";
+  text: string;
+  /** The provider's id for the message; used as the transcript message id suffix and kept in metadata. */
+  externalMessageId?: string;
+  externalUserId?: string;
+};
+
+export type ChannelSeedCtx<TEvent = unknown> = { event: TEvent; deliveryId: string };
+
+/** A file a connector fetched for the model: its bytes, and the media type when the surface reports one. */
+export type ChannelDownloadedFile = { data: Uint8Array; mediaType?: string };
+
+/**
+ * The channel a session answers into, once a channel turn has bound it. The connector's
+ * `bind()` derives the handle from a verified event; later turns that did not start from a
+ * channel delivery (a `chat.event` action that returns `chat.turn()`, a browser message on the
+ * same session) egress through it.
+ */
+export type ChannelBinding<THandle = unknown> = TranscriptChannelBinding<THandle>;
+
+// The channel message a provider posts. Framework requires `text`; providers extend (Slack adds blocks).
+export type ChannelMessage = { text: string; [key: string]: unknown };
+
+// What outbound() receives: enough to decide what (or whether, null) to post. For "stream", `text` is
+// the accumulated text so far.
+export type ChannelReply = {
+  text: string;
+  message: UIMessage;
+  final: boolean;
+  stopped: boolean;
+  error?: unknown;
+  /**
+   * True when the turn paused on a human decision: this text is what the agent wrote before calling
+   * the tool, and the controls follow as their own message. A surface with a notion of "done" (Linear
+   * sessions) should post it as progress rather than as the answer.
+   */
+  pending?: boolean;
+};
+
+export type ChannelSendCtx<TEvent = unknown, THandle = unknown> = {
+  /** The verified event that started this turn. Absent on a bound turn that no channel delivery started. */
+  event?: TEvent;
+  /** The connector's posting handle from `bind()`, when the connector defines one. */
+  handle?: THandle;
+  /** The delivery that started this turn. Absent on a bound turn. */
+  deliveryId?: string;
+  previousRef?: string;
+  mode: "final" | "stream";
+  final: boolean;
+  /** True when this turn was not started by a channel delivery and egresses through the session's binding. */
+  bound: boolean;
+};
+
+export type ChannelAckCtx = {
+  /**
+   * True when this ack is being re-posted because the run is recovering an
+   * interrupted turn after a crash/continuation. The prior run's message ref
+   * is gone, so egress re-emits into the thread as a fresh message; a
+   * connector can vary the placeholder text to read as a deliberate resume
+   * ("picking this back up...") rather than a silent duplicate.
+   */
+  recovered: boolean;
+};
+
+/**
+ * A tool call the turn paused on, awaiting a human decision (HITL). `renderInteraction` maps these to
+ * the controls posted in the thread; the callback resolves one by `toolCallId`.
+ */
+export type ChannelPendingToolCall = { toolCallId: string; toolName: string; input?: unknown };
+
+/**
+ * A verified interaction callback resolved to a tool output. `onInteraction` returns this to resume the
+ * paused run: the framework stitches `output` onto the pending tool part and continues. Name the call
+ * by `toolCallId` when the surface can carry it (a Slack button value), or by `toolName` when it cannot
+ * (a Linear option whose value the user sees); the most recent pending call of that tool is resolved.
+ */
+export type ChannelInteractionResolution =
+  | { toolCallId: string; toolName?: string; output: unknown }
+  | { toolName: string; toolCallId?: string; output: unknown };
+
+/**
+ * Context for `renderInteraction`: the event and delivery that started the turn, both absent on a
+ * bound turn (a `chat.turn()` action or a browser message answering into the bound thread).
+ */
+export type ChannelInteractionCtx<TEvent = unknown> = { event?: TEvent; deliveryId?: string };
+
+// A reaction to add (or remove) on the triggering message. `name` is a provider emoji id (e.g. "eyes").
+export type ChannelReaction = { name: string; remove?: boolean };
+export type ChannelReactCtx<TEvent = unknown> = { event: TEvent; deliveryId: string };
+
+// A lifecycle reaction choice: one emoji name, an array (one picked at random per turn), or a resolver
+// of the event returning either (null/undefined to skip). Names are provider emoji ids without colons.
+export type ChannelReactionChoice<TEvent = unknown> =
+  | string
+  | string[]
+  | ((
+      event: TEvent
+    ) => string | string[] | null | undefined | Promise<string | string[] | null | undefined>);
+
+// Lifecycle reactions the run loop applies to the user's message around a turn (add working at start,
+// swap to done at complete, error on failure). Any subset; requires the connector's `react`.
+export type ChannelReactions<TEvent = unknown> = {
+  working?: ChannelReactionChoice<TEvent>;
+  done?: ChannelReactionChoice<TEvent>;
+  error?: ChannelReactionChoice<TEvent>;
+};
+
+// Handed to run() for a channel-delivered turn (when the connector supports reactions), so the agent can
+// react to the triggering message to signal meaning. Best-effort: a failed reaction never throws.
+// A connector's `surface()` extends it with provider helpers (a Linear plan, a Slack status); cast to
+// the connector's exported surface type to use them.
+export type ChannelRunSurface<TExtra extends Record<string, unknown> = Record<string, unknown>> = {
+  react: (name: string) => Promise<void>;
+  unreact: (name: string) => Promise<void>;
+} & TExtra;
+
+/**
+ * The turn a connector hook is running in: the verified event and delivery that started it (absent on
+ * a bound turn), and the session's posting handle from `bind()` when the connector defines one.
+ */
+export type ChannelTurnCtx<TEvent = unknown, THandle = unknown> = {
+  event?: TEvent;
+  handle?: THandle;
+  deliveryId?: string;
+  /** True when no channel delivery started this turn and it egresses through the session's binding. */
+  bound: boolean;
+};
+
+/**
+ * What a connector's `onControl()` maps a verified event to. `stop` aborts the turn in flight through
+ * the same per-turn stop signal the browser's stop button uses: the run's `stopSignal` fires,
+ * `streamText` aborts, the partial reply posts with `stopped: true`, and the event itself is consumed
+ * (it does not run as a turn).
+ *
+ * `whenIdle` decides what a stop does when no turn is in flight. `"message"` (the default) handles
+ * the event as a normal inbound message, so the connector's `inbound()` should give it a sensible
+ * reading. `"drop"` consumes it without a turn; if the session is paused on a human decision, the
+ * pending tool calls are resolved as stopped (a later approval click finds nothing to resume) and
+ * the connector's `cancelInteraction()` updates the controls.
+ *
+ * `at` is when the user asked to stop (epoch milliseconds). A stop older than the running turn's
+ * start belongs to an earlier turn: it is consumed without aborting this one.
+ */
+export type ChannelControl = {
+  kind: "stop";
+  message?: string;
+  whenIdle?: "message" | "drop";
+  at?: number;
+};
+
+/**
+ * What a connector's `progress()` hook observes while a turn streams: each tool call as its input is
+ * complete, and each result or error as it lands. Text deltas are not reported (use `delivery: "stream"`).
+ * `title` is the tool's display title (`tool({ title })`), when it declares one.
+ */
+export type ChannelProgressEvent =
+  | { type: "tool-call"; toolCallId: string; toolName: string; title?: string; input: unknown }
+  | { type: "tool-result"; toolCallId: string; toolName: string; title?: string; output: unknown }
+  | {
+      type: "tool-error";
+      toolCallId: string;
+      toolName: string;
+      title?: string;
+      errorText: string;
+    };
+
+/**
+ * Where a channel session stands, reported to a connector's `lifecycle()` hook: `working` when a turn
+ * starts (and again every 50 minutes while it runs), `waiting` when it pauses on a human decision,
+ * `idle` when it ends for any reason (answered, empty, stopped or failed), and `closed` when the
+ * conversation is closed with `chat.close()`. A worker suspending between messages reports nothing.
+ */
+export type ChannelLifecycleState = "working" | "waiting" | "idle" | "closed";
+
+export type ChannelLifecycleCtx<TEvent = unknown, THandle = unknown> = ChannelTurnCtx<
+  TEvent,
+  THandle
+> & {
+  /** True on the session's first turn, when the surface creates its conversation. */
+  firstTurn: boolean;
+  /** The turn's user message text, when it has one (a title for the conversation). */
+  prompt?: string;
+  /** True on the periodic `working` re-send during a long turn. */
+  refresh?: boolean;
+};
+
+/** How a turn's reply stream ended, handed to {@link ChannelReplyStream.end}. */
+export type ChannelReplyStreamEnd = {
+  /** The turn was stopped (the partial reply is all there is). */
+  stopped: boolean;
+  /** The turn paused on a human decision; the controls follow as their own message. */
+  pending: boolean;
+  /** The connector's error line (`errorMessage`) when the turn ended on a model or stream error. */
+  errorText?: string;
+};
+
+/**
+ * A connector's native streaming transport for one turn, from its `stream()` hook, used when the
+ * connector's `delivery` is `"stream"`. The runtime feeds it the reply's text deltas as the model
+ * writes them (in the model's markdown) and the turn's tool progress, then ends it exactly once.
+ * `end()` resolves `delivered: true` when the reply reached the surface through the stream, so the
+ * runtime does not post it again; `false` (nothing was streamed) falls back to `send()`.
+ */
+export type ChannelReplyStream = {
+  text(delta: string): void;
+  progress?(event: ChannelProgressEvent): void;
+  end(outcome: ChannelReplyStreamEnd): Promise<{ delivered: boolean }>;
+};
+
+/**
+ * What a connector's `stream()` hook receives: the turn, and `opened(ref)` to call once the surface
+ * has created the stream message. The ref is saved with the session while the turn runs, so if the
+ * worker dies mid-stream the next worker can end that stream with `endInterruptedStream()`.
+ */
+export type ChannelStreamCtx<TEvent = unknown, THandle = unknown> = ChannelTurnCtx<
+  TEvent,
+  THandle
+> & {
+  opened(ref: string): void;
+};
+
+/** A pending tool call a stop cancelled, with the `ref` of the controls message that showed it. */
+export type ChannelCancelledToolCall = ChannelPendingToolCall & { ref?: string };
+
+// Reserved for 2c: resolve a provider credential keyed by the incoming event's installation (team_id),
+// not the connector (one connector serves many Slack workspaces). The in-run send() calls it at post time.
+export type ResolveChannelToken<TEvent = unknown> = (event: TEvent) => Promise<string>;
+
+declare const channelEventPhantom: unique symbol;
+
+export interface ChannelConnector<TEvent = unknown, THandle = unknown> {
+  id: string;
+  /** The endpoint this connector subscribes to (`webhooks.endpoint.define` id). */
+  endpointId: string;
+  source: string; // the endpoint source's provider tag
+  key: string; // compiled canonical key template
+  filter?: string;
+  // Gate session creation: a resolved key with no session is only started when the event matches this
+  // filter (existing sessions always resume). Absent => every routed event can start one.
+  startOn?: string;
+  inbound: (event: TEvent) => ChannelInbound;
+  /**
+   * Derive the durable posting handle from a verified event (for Slack: team, channel, thread). When
+   * set, a channel turn binds the session to this connector, and later turns on the session that no
+   * channel delivery started (an action turn, a browser message) post their answer through `send`
+   * with `ctx.handle` and no `ctx.event`. Return null to leave the binding unchanged.
+   */
+  bind?: (event: TEvent) => THandle | null;
+  /**
+   * Supply the surface's existing conversation when a session starts on it (the bot was summoned
+   * into a thread that already has messages). Called once, on the first channel turn of a session
+   * with no history, before the triggering message is added. Return the prior messages in order,
+   * excluding the triggering one. Best effort: a throw is logged and the session starts empty.
+   */
+  seed?: (
+    event: TEvent,
+    ctx: ChannelSeedCtx<TEvent>
+  ) => Promise<ChannelSeedMessage[]> | ChannelSeedMessage[];
+  // Egress (optional; a channel can be inbound-only). Fires only when `send` is set.
+  outbound?: (reply: ChannelReply) => ChannelMessage | null;
+  ack?: (event: TEvent, ctx: ChannelAckCtx) => ChannelMessage | null; // placeholder posted at turn start ("final" mode)
+  send?: (
+    message: ChannelMessage,
+    ctx: ChannelSendCtx<TEvent, THandle>
+  ) => Promise<{ ref?: string }>;
+  /** HITL: controls posted when a turn pauses on a human-decision tool (a tool with no `execute`). */
+  renderInteraction?: (
+    pending: ChannelPendingToolCall[],
+    ctx: ChannelInteractionCtx<TEvent>
+  ) => ChannelMessage | null;
+  /**
+   * HITL: map a verified callback event to a tool resolution. Non-null resumes the paused run; null
+   * means treat the event as a normal inbound message (a new turn).
+   */
+  onInteraction?: (event: TEvent) => ChannelInteractionResolution | null;
+  /**
+   * HITL: finalize the posted controls once a decision is made (edit them away, show the outcome), so
+   * the buttons can't be clicked again. Called with the same verified callback event when
+   * `onInteraction` resolves, before the run resumes. Best-effort: a throw is logged and the run continues.
+   */
+  finalizeInteraction?: (
+    event: TEvent,
+    resolution: ChannelInteractionResolution
+  ) => Promise<void> | void;
+  /**
+   * "final": the ack, then one post (or edit of the ack) when the turn ends. "stream": the connector's
+   * `stream()` transport when it has one, otherwise debounced edits of the ack.
+   */
+  delivery: "final" | "stream";
+  /**
+   * Native streaming for `delivery: "stream"`: open a {@link ChannelReplyStream} for this turn. Called
+   * once per turn that runs the model; return null to fall back to `send()` for this turn.
+   */
+  stream?: (ctx: ChannelStreamCtx<TEvent, THandle>) => ChannelReplyStream | null;
+  /**
+   * A worker booted on a session whose previous worker died with a reply stream open (the `ref` it
+   * passed to `opened()`). End that stream so it does not look like the agent is still writing; the
+   * recovered turn answers in a new one. Best effort: a throw is logged.
+   */
+  endInterruptedStream?: (
+    ref: string,
+    ctx: ChannelTurnCtx<TEvent, THandle>
+  ) => Promise<void> | void;
+  /**
+   * Fetch a file URL from the surface for the model, for files only the surface's credentials can
+   * read (a Slack `url_private`). The `streamText` given to `run()` calls it for every file URL in
+   * the prompt; return null for a URL this connector does not own. Throw when an owned file cannot
+   * be read: the turn replaces it with a short note and still runs. `handle` is the session's
+   * binding to this connector, when it has one.
+   */
+  download?: (url: URL, ctx: { handle?: THandle }) => Promise<ChannelDownloadedFile | null>;
+  /**
+   * Acknowledge a message that arrives while a turn is running, as soon as it arrives: it is either
+   * folded into the running turn (`pendingMessages`) or answered right after it, so the wording
+   * should be true either way (`slack()` reacts with 👀, `linear()` posts a thought). Not called for
+   * stops, interaction clicks or empty messages. Called without waiting; a throw is ignored.
+   * `ctx.event` is the message's event.
+   */
+  received?: (ctx: ChannelTurnCtx<TEvent, THandle>) => Promise<void> | void;
+  /**
+   * Map a click on a control the agent posted (not a pending tool's control) to an action for the
+   * agent's `onAction`, validated against `actionSchema` like a client action. Return null for
+   * anything else. Returning `chat.turn()` from `onAction` answers into the session's thread.
+   */
+  toAction?: (event: TEvent) => unknown | null;
+  /**
+   * Mirror the session's state into the surface (a Slack agent session's status). See
+   * {@link ChannelLifecycleState}. Calls are serialized in order; a throw is logged and never
+   * affects the turn.
+   */
+  lifecycle?: (
+    state: ChannelLifecycleState,
+    ctx: ChannelLifecycleCtx<TEvent, THandle>
+  ) => Promise<void> | void;
+  /**
+   * HITL: a stop (`whenIdle: "drop"`) arrived while the session was paused on these tool calls. They
+   * are already resolved as stopped; update the controls so they no longer offer a decision.
+   * Best effort: a throw is logged.
+   */
+  cancelInteraction?: (
+    cancelled: ChannelCancelledToolCall[],
+    ctx: ChannelTurnCtx<TEvent, THandle>
+  ) => Promise<void> | void;
+  // Add/remove a reaction on the triggering message. Powers lifecycle reactions + run()'s channel surface.
+  react?: (reaction: ChannelReaction, ctx: ChannelReactCtx<TEvent>) => Promise<void>;
+  reactions?: ChannelReactions<TEvent>;
+  /**
+   * What the channel shows when a turn fails, in place of the error text: a fixed line, or a
+   * function of the failure that returns one. Defaults to {@link CHANNEL_TURN_ERROR_MESSAGE}. The
+   * error itself is logged on the run, and `outbound()` still receives it as `reply.error`.
+   */
+  errorMessage?: ChannelErrorMessage<TEvent>;
+  /**
+   * Observe tool calls and results as the turn streams, to post progress into the surface (a Linear
+   * `action` activity, a Slack status). Called in order, awaited one at a time, independent of
+   * `delivery`. Best effort: a throw is logged and the turn continues.
+   */
+  progress?: (
+    event: ChannelProgressEvent,
+    ctx: ChannelTurnCtx<TEvent, THandle>
+  ) => Promise<void> | void;
+  /**
+   * Provider helpers merged into the `channel` object handed to `run()` (alongside `react`/`unreact`),
+   * such as a plan or a status setter. Built once per turn.
+   */
+  surface?: (ctx: ChannelTurnCtx<TEvent, THandle>) => Record<string, unknown>;
+  /**
+   * Map a verified event to a control instruction while a turn is running (a Stop in Linear, a
+   * "stop" slash command in Slack). See {@link ChannelControl}. Return null for an ordinary message.
+   */
+  onControl?: (event: TEvent) => ChannelControl | null;
+  readonly [channelEventPhantom]?: TEvent;
+}
+export type AnyChannelConnector = ChannelConnector<any, any>;
+
+/** The AI SDK's default `toUIMessageStream` `onError`: the error's message, as the client sees it. */
+function uiStreamErrorText(error: unknown): string {
+  if (error == null) return "unknown error";
+  if (typeof error === "string") return error;
+  if (error instanceof Error) return error.message;
+  return JSON.stringify(error);
+}
+
+/** The line a channel shows when a turn fails, unless the connector sets its own `errorMessage`. */
+export const CHANNEL_TURN_ERROR_MESSAGE = "Something went wrong answering this. Try again.";
+
+/** What an `errorMessage` function receives when a channel turn fails. */
+export type ChannelErrorContext<TEvent = unknown> = {
+  /** The failure: the model or stream error, or what the turn threw. */
+  error: Error;
+  /** The text the turn streamed before it failed; empty when it failed before answering. */
+  partialText: string;
+  /** The event that started the turn; undefined on a turn the channel did not start (an action turn, a browser message). */
+  event: TEvent | undefined;
+  /** The run the turn failed in, for a support reference. */
+  runId: string | undefined;
+  /** The session's chat id. */
+  chatId: string;
+  /** {@link CHANNEL_TURN_ERROR_MESSAGE}, to extend rather than replace. */
+  defaultMessage: string;
+};
+
+/**
+ * A channel's error line: a fixed string, or a function of the failure. A function that returns
+ * nothing, or throws, falls back to {@link CHANNEL_TURN_ERROR_MESSAGE}.
+ *
+ * @example
+ * ```ts
+ * errorMessage: ({ error, runId }) =>
+ *   error.name === "RateLimitError" ? "I'm a bit busy, try again in a minute." : `That failed (ref ${runId}).`,
+ * ```
+ */
+export type ChannelErrorMessage<TEvent = unknown> =
+  | string
+  | ((
+      ctx: ChannelErrorContext<TEvent>
+    ) => string | null | undefined | Promise<string | null | undefined>);
+
+async function channelTurnErrorMessage(
+  connector: { errorMessage?: ChannelErrorMessage<any> } | undefined,
+  ctx: Omit<ChannelErrorContext, "defaultMessage">
+): Promise<string> {
+  const option = connector?.errorMessage;
+  if (typeof option !== "function") return option || CHANNEL_TURN_ERROR_MESSAGE;
+  try {
+    const line = await option({ ...ctx, defaultMessage: CHANNEL_TURN_ERROR_MESSAGE });
+    if (line) return line;
+  } catch (error) {
+    logger.warn("chat.agent: channel errorMessage threw; posting the default line", { error });
+  }
+  return CHANNEL_TURN_ERROR_MESSAGE;
+}
+
+/**
+ * A generic chat-frontend channel over any verified source. Unlike `slack()`, you supply the egress
+ * `send` yourself (post/edit the reply back to your surface), so the whole round-trip is under your
+ * control. Use for providers without a preset, or to test the channel round-trip end to end.
+ */
+export function chatChannelCustom<
+  TEndpoint extends AnyWebhookEndpoint,
+  const TKey extends string = string,
+  const TFilter extends string = string,
+  const TStartOn extends string = string,
+  THandle = unknown,
+>(options: {
+  id: string;
+  /** The endpoint this connector subscribes to. */
+  endpoint: TEndpoint;
+  /**
+   * The session each delivery goes to, as a template: `{event.x}` reads the event, `{header.x}` a
+   * header and `{webhook.x}` the endpoint, and `{a || b}` falls back to `b` when `a` is empty. e.g.
+   * `"{webhook.externalRef}:{event.data.object.customer}"`.
+   */
+  key: ValidatedWebhookKey<NarrowWebhookEvent<InferWebhookEndpointEvent<TEndpoint>, TFilter>, TKey>;
+  inbound: (
+    event: NarrowWebhookEvent<InferWebhookEndpointEvent<TEndpoint>, TFilter>
+  ) => ChannelInbound;
+  bind?: (
+    event: NarrowWebhookEvent<InferWebhookEndpointEvent<TEndpoint>, TFilter>
+  ) => THandle | null;
+  seed?: (
+    event: NarrowWebhookEvent<InferWebhookEndpointEvent<TEndpoint>, TFilter>,
+    ctx: ChannelSeedCtx<NarrowWebhookEvent<InferWebhookEndpointEvent<TEndpoint>, TFilter>>
+  ) => Promise<ChannelSeedMessage[]> | ChannelSeedMessage[];
+  outbound?: (reply: ChannelReply) => ChannelMessage | null;
+  ack?: (
+    event: NarrowWebhookEvent<InferWebhookEndpointEvent<TEndpoint>, TFilter>,
+    ctx: ChannelAckCtx
+  ) => ChannelMessage | null;
+  send?: (
+    message: ChannelMessage,
+    ctx: ChannelSendCtx<NarrowWebhookEvent<InferWebhookEndpointEvent<TEndpoint>, TFilter>, THandle>
+  ) => Promise<{ ref?: string }>;
+  renderInteraction?: (
+    pending: ChannelPendingToolCall[],
+    ctx: ChannelInteractionCtx<NarrowWebhookEvent<InferWebhookEndpointEvent<TEndpoint>, TFilter>>
+  ) => ChannelMessage | null;
+  onInteraction?: (
+    event: NarrowWebhookEvent<InferWebhookEndpointEvent<TEndpoint>, TFilter>
+  ) => ChannelInteractionResolution | null;
+  finalizeInteraction?: (
+    event: NarrowWebhookEvent<InferWebhookEndpointEvent<TEndpoint>, TFilter>,
+    resolution: ChannelInteractionResolution
+  ) => Promise<void> | void;
+  react?: (
+    reaction: ChannelReaction,
+    ctx: ChannelReactCtx<NarrowWebhookEvent<InferWebhookEndpointEvent<TEndpoint>, TFilter>>
+  ) => Promise<void>;
+  reactions?: ChannelReactions<NarrowWebhookEvent<InferWebhookEndpointEvent<TEndpoint>, TFilter>>;
+  progress?: (
+    event: ChannelProgressEvent,
+    ctx: ChannelTurnCtx<NarrowWebhookEvent<InferWebhookEndpointEvent<TEndpoint>, TFilter>, THandle>
+  ) => Promise<void> | void;
+  surface?: (
+    ctx: ChannelTurnCtx<NarrowWebhookEvent<InferWebhookEndpointEvent<TEndpoint>, TFilter>, THandle>
+  ) => Record<string, unknown>;
+  onControl?: (
+    event: NarrowWebhookEvent<InferWebhookEndpointEvent<TEndpoint>, TFilter>
+  ) => ChannelControl | null;
+  stream?: (
+    ctx: ChannelStreamCtx<
+      NarrowWebhookEvent<InferWebhookEndpointEvent<TEndpoint>, TFilter>,
+      THandle
+    >
+  ) => ChannelReplyStream | null;
+  endInterruptedStream?: (
+    ref: string,
+    ctx: ChannelTurnCtx<NarrowWebhookEvent<InferWebhookEndpointEvent<TEndpoint>, TFilter>, THandle>
+  ) => Promise<void> | void;
+  download?: (url: URL, ctx: { handle?: THandle }) => Promise<ChannelDownloadedFile | null>;
+  received?: (
+    ctx: ChannelTurnCtx<InferWebhookEndpointEvent<TEndpoint>, THandle>
+  ) => Promise<void> | void;
+  toAction?: (event: InferWebhookEndpointEvent<TEndpoint>) => unknown | null;
+  lifecycle?: (
+    state: ChannelLifecycleState,
+    ctx: ChannelLifecycleCtx<
+      NarrowWebhookEvent<InferWebhookEndpointEvent<TEndpoint>, TFilter>,
+      THandle
+    >
+  ) => Promise<void> | void;
+  cancelInteraction?: (
+    cancelled: ChannelCancelledToolCall[],
+    ctx: ChannelTurnCtx<NarrowWebhookEvent<InferWebhookEndpointEvent<TEndpoint>, TFilter>, THandle>
+  ) => Promise<void> | void;
+  filter?: ValidateWebhookFilter<InferWebhookEndpointEvent<TEndpoint>, TFilter>;
+  // Only start a new session when the event matches this filter (existing sessions always resume).
+  startOn?: ValidateWebhookFilter<InferWebhookEndpointEvent<TEndpoint>, TStartOn>;
+  delivery?: "final" | "stream";
+  /** What the channel shows when a turn fails: a line, or a function of the failure. Defaults to {@link CHANNEL_TURN_ERROR_MESSAGE}. */
+  errorMessage?: ChannelErrorMessage<
+    NarrowWebhookEvent<InferWebhookEndpointEvent<TEndpoint>, TFilter>
+  >;
+}): ChannelConnector<NarrowWebhookEvent<InferWebhookEndpointEvent<TEndpoint>, TFilter>, THandle> {
+  const {
+    id,
+    endpoint,
+    key,
+    inbound,
+    bind,
+    seed,
+    outbound,
+    ack,
+    send,
+    renderInteraction,
+    onInteraction,
+    finalizeInteraction,
+    react,
+    reactions,
+    progress,
+    surface,
+    onControl,
+    stream,
+    endInterruptedStream,
+    download,
+    received,
+    toAction,
+    lifecycle,
+    cancelInteraction,
+    filter,
+    startOn,
+    delivery,
+    errorMessage,
+  } = options;
+  if (!endpoint?.id) {
+    throw new Error(
+      `chat.channels.custom("${id}"): an endpoint is required. Declare one with webhooks.endpoint.define() and pass it as { endpoint }.`
+    );
+  }
+  resourceCatalog.registerDeclaredSessionWebhook(id);
+  return {
+    id,
+    endpointId: endpoint.id,
+    source: endpoint.source,
+    key: normalizeKeyString(key as string),
+    filter,
+    startOn,
+    inbound,
+    bind,
+    seed,
+    outbound,
+    ack,
+    send,
+    renderInteraction,
+    onInteraction,
+    finalizeInteraction,
+    react,
+    reactions,
+    progress,
+    surface,
+    onControl,
+    stream,
+    endInterruptedStream,
+    download,
+    received,
+    toAction,
+    lifecycle,
+    cancelInteraction,
+    delivery: delivery ?? "final",
+    errorMessage,
+  } as ChannelConnector<NarrowWebhookEvent<InferWebhookEndpointEvent<TEndpoint>, TFilter>, THandle>;
+}
+
+const chatChannels = {
+  /** A generic chat-frontend channel over any source, with your own egress. See {@link chatChannelCustom}. */
+  custom: chatChannelCustom,
+};
+
+// Prior surface messages from a connector's seed(), as transcript messages stamped with provenance.
+function channelSeedMessages(
+  seed: ChannelSeedMessage[],
+  provenance: Omit<ChannelMessageMetadata, "externalUserId" | "externalMessageId" | "seeded">
+): UIMessage[] {
+  return seed
+    .filter((m) => m && typeof m.text === "string" && m.text.length > 0)
+    .map((m, index) => {
+      const meta: ChannelMessageMetadata = {
+        ...provenance,
+        seeded: true,
+        ...(m.externalUserId ? { externalUserId: m.externalUserId } : {}),
+        ...(m.externalMessageId ? { externalMessageId: m.externalMessageId } : {}),
+      };
+      return {
+        id: `seed-${m.externalMessageId ?? `${provenance.deliveryId}-${index}`}`,
+        role: m.role === "assistant" ? "assistant" : "user",
+        parts: [{ type: "text", text: m.text }],
+        metadata: meta,
+      } as UIMessage;
+    });
+}
+
+// Turn a channel connector's inbound() result into the turn's user UIMessage, stamped with where
+// it came from so a transcript storage can attribute it (see ChannelMessageMetadata).
+/**
+ * True when a connector's `inbound()` result carries nothing to answer: blank text and no file or
+ * data parts. A button click from another app on a shared endpoint maps to one.
+ */
+function isEmptyChannelInbound(input: ChannelInbound): boolean {
+  const message =
+    input !== null && typeof input === "object" && "message" in input && !("role" in input)
+      ? input.message
+      : (input as ChannelMessageInput);
+  if (typeof message === "string") return message.trim() === "";
+  return (message.parts ?? []).every(
+    (part) => part.type === "text" && (part as { text?: string }).text?.trim() === ""
+  );
+}
+
+/** Bytes held for a run's channel file downloads before the oldest are dropped and fetched again. */
+const CHANNEL_DOWNLOAD_CACHE_BYTES = 64 * 1024 * 1024;
+
+/**
+ * One downloader for a run's connectors that define `download`: asks each in turn (the ones bound to
+ * the session first, the next one after a failure) and caches what they return by URL, so a file in
+ * the history is fetched once per run rather than per step.
+ */
+function makeChannelDownloader(
+  connectors: readonly ChannelConnector<any, any>[],
+  handleFor: (connectorId: string) => unknown
+): ChannelFileDownloader | undefined {
+  const downloaders = connectors.filter((c) => typeof c.download === "function");
+  if (downloaders.length === 0) return undefined;
+  const cache = new Map<string, Promise<ChannelDownloadedFile | null>>();
+  const sizes = new Map<string, number>();
+  let cachedBytes = 0;
+  const evict = () => {
+    for (const key of cache.keys()) {
+      if (cachedBytes <= CHANNEL_DOWNLOAD_CACHE_BYTES) return;
+      cachedBytes -= sizes.get(key) ?? 0;
+      sizes.delete(key);
+      cache.delete(key);
+    }
+  };
+  const fetchOwned = async (url: URL) => {
+    const candidates = downloaders.map((connector) => ({
+      connector,
+      handle: handleFor(connector.id),
+    }));
+    const ordered = [
+      ...candidates.filter((c) => c.handle !== undefined),
+      ...candidates.filter((c) => c.handle === undefined),
+    ];
+    let failure: { error: unknown } | undefined;
+    for (const { connector, handle } of ordered) {
+      try {
+        const file = await connector.download!(url, { handle });
+        if (file) return file;
+      } catch (error) {
+        failure ??= { error };
+      }
+    }
+    if (failure) throw failure.error;
+    return null;
+  };
+  return (url) => {
+    const key = url.href;
+    const cached = cache.get(key);
+    if (cached) return cached;
+    const pending = fetchOwned(url).then(
+      (file) => {
+        if (file && cache.get(key) === pending) {
+          sizes.set(key, file.data.byteLength);
+          cachedBytes += file.data.byteLength;
+          evict();
+        }
+        return file;
+      },
+      (error) => {
+        if (cache.get(key) === pending) cache.delete(key);
+        throw error;
+      }
+    );
+    cache.set(key, pending);
+    return pending;
+  };
+}
+
+function fileUrlOf(part: unknown): URL | undefined {
+  const p = part as { type?: string; data?: unknown; image?: unknown };
+  const raw = p?.type === "file" ? p.data : p?.type === "image" ? p.image : undefined;
+  if (raw instanceof URL) return raw;
+  if (typeof raw !== "string" || !/^https?:\/\//i.test(raw)) return undefined;
+  try {
+    return new URL(raw);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Fetch the channel-owned files in the messages a turn hands to `run()`, so the model call reads
+ * them from the cache. A file a connector owns but cannot read becomes a text note in this turn's
+ * copy of the messages, and the turn still runs. The transcript keeps the URL.
+ */
+async function resolveChannelFiles(
+  messages: ModelMessage[],
+  download: ChannelFileDownloader
+): Promise<ModelMessage[]> {
+  const failed = new Set<string>();
+  const mediaTypes = new Map<string, string>();
+  const urls = new Map<string, URL>();
+  for (const message of messages) {
+    if (!Array.isArray(message.content)) continue;
+    for (const part of message.content) {
+      const url = fileUrlOf(part);
+      if (url) urls.set(url.href, url);
+    }
+  }
+  await Promise.all(
+    [...urls.values()].map(async (url) => {
+      try {
+        const file = await download(url);
+        if (file?.mediaType) mediaTypes.set(url.href, file.mediaType);
+      } catch (error) {
+        failed.add(url.href);
+        logger.warn("chat.agent: a channel file could not be downloaded; the model gets a note", {
+          url: url.origin + url.pathname,
+          error,
+        });
+      }
+    })
+  );
+  const isWildcard = (part: unknown) => {
+    const mediaType = (part as { type?: string; mediaType?: string }).mediaType;
+    return (part as { type?: string }).type === "file" && !!mediaType && mediaType.endsWith("/*");
+  };
+  return messages.map((message) => {
+    if (!Array.isArray(message.content)) return message;
+    let changed = false;
+    const content = message.content.map((part) => {
+      const url = fileUrlOf(part);
+      if (!url) return part;
+      if (failed.has(url.href)) {
+        changed = true;
+        const name = (part as { filename?: string }).filename;
+        return {
+          type: "text" as const,
+          text: `[Attached file${name ? ` "${name}"` : ""} could not be loaded]`,
+        };
+      }
+      const downloaded = mediaTypes.get(url.href);
+      if (downloaded && isWildcard(part)) {
+        changed = true;
+        return { ...part, mediaType: downloaded };
+      }
+      return part;
+    });
+    return changed ? ({ ...message, content } as ModelMessage) : message;
+  });
+}
+
+type ModelDownloadRequest = { url: URL; isUrlSupportedByModel: boolean };
+type ModelDownloadResult = { data: Uint8Array; mediaType: string | undefined } | null;
+type ModelDownloadFunction = (
+  requests: ModelDownloadRequest[]
+) => PromiseLike<ModelDownloadResult[]>;
+
+/**
+ * The AI SDK `experimental_download` for a turn: channel-owned URLs come from the connectors, and
+ * every other URL goes to `fallback`, or to the AI SDK's default behaviour (left for a model that
+ * reads the URL itself, fetched from a public host otherwise).
+ */
+function channelAwareDownload(
+  download: ChannelFileDownloader,
+  fallback?: ModelDownloadFunction
+): ModelDownloadFunction {
+  return async (requests) => {
+    const results: ModelDownloadResult[] = await Promise.all(
+      requests.map(async (request) => {
+        const file = await download(request.url);
+        return file ? { data: file.data, mediaType: file.mediaType } : null;
+      })
+    );
+    const misses = requests.flatMap((_, i) => (results[i] ? [] : [i]));
+    if (misses.length === 0) return results;
+    const rest = fallback
+      ? await fallback(misses.map((i) => requests[i]!))
+      : await Promise.all(
+          misses.map((i) =>
+            requests[i]!.isUrlSupportedByModel ? null : fetchPublicFile(requests[i]!.url)
+          )
+        );
+    misses.forEach((i, n) => {
+      results[i] = rest[n] ?? null;
+    });
+    return results;
+  };
+}
+
+/** The action a channel click maps to through its connector's `toAction()`, if it maps to one. */
+function channelClickAction(
+  connectors: readonly ChannelConnector<any, any>[] | undefined,
+  wire: unknown
+): unknown {
+  const channelEvent = wire as { connectorId?: string; event?: unknown } | undefined;
+  if (!channelEvent?.connectorId) return undefined;
+  const connector = connectors?.find((c) => c.id === channelEvent.connectorId);
+  if (!connector?.toAction) return undefined;
+  try {
+    return connector.toAction(channelEvent.event) ?? undefined;
+  } catch (error) {
+    logger.warn("chat.agent: channel toAction() threw; handling the delivery as a message", {
+      error,
+    });
+    return undefined;
+  }
+}
+
+type SteerableChannelEvent = {
+  connectorId: string;
+  event: unknown;
+  deliveryId: string;
+  externalDeliveryId?: string;
+};
+
+/**
+ * A channel delivery that arrived during a turn, as a message `pendingMessages` can steer into it:
+ * the connector's `inbound()` with channel provenance. Undefined for what must not be steered (a
+ * stop or other control, an interaction such as an approval click, an empty message, a connector
+ * this agent does not list), which stays queued as its own turn.
+ */
+function channelSteeringMessage(
+  connectors: readonly ChannelConnector<any, any>[] | undefined,
+  wire: SteerableChannelEvent,
+  messageId: string | undefined
+): { message: UIMessage } | undefined {
+  const connector = connectors?.find((c) => c.id === wire.connectorId);
+  if (!connector) return undefined;
+  try {
+    if (connector.onControl?.(wire.event)) return undefined;
+    if (connector.onInteraction?.(wire.event)) return undefined;
+    if (connector.toAction?.(wire.event) != null) return undefined;
+    const inbound = connector.inbound(wire.event);
+    if (isEmptyChannelInbound(inbound)) return undefined;
+    const message = channelUserMessage(inbound, messageId ?? wire.deliveryId, {
+      source: "channel",
+      connectorId: connector.id,
+      provider: connector.source,
+      deliveryId: wire.deliveryId,
+      ...(wire.externalDeliveryId ? { externalDeliveryId: wire.externalDeliveryId } : {}),
+    });
+    return { message };
+  } catch (error) {
+    logger.warn(
+      "chat.agent: a channel message could not be offered for steering; it runs as its own turn",
+      {
+        error,
+      }
+    );
+    return undefined;
+  }
+}
+
+/**
+ * Call the connector's `received` for a message that arrived mid-turn, unless it is not a message
+ * to answer (an interaction click, an action click, an empty message). Fire and forget.
+ */
+function acknowledgeChannelMessage(
+  connector: ChannelConnector<any, any>,
+  wire: SteerableChannelEvent,
+  handle: unknown
+): void {
+  if (!connector.received) return;
+  try {
+    if (connector.onInteraction?.(wire.event)) return;
+    if (connector.toAction?.(wire.event) != null) return;
+    if (isEmptyChannelInbound(connector.inbound(wire.event))) return;
+    void Promise.resolve(
+      connector.received({
+        event: wire.event,
+        deliveryId: wire.deliveryId,
+        handle,
+        bound: false,
+      })
+    ).catch(() => {});
+  } catch {
+    return;
+  }
+}
+
+function channelUserMessage(
+  input: ChannelInbound,
+  messageId: string,
+  provenance: Omit<ChannelMessageMetadata, "externalUserId" | "externalMessageId">
+): UIMessage {
+  const wrapped =
+    input !== null && typeof input === "object" && "message" in input && !("role" in input);
+  const message = (
+    wrapped ? (input as { message: ChannelMessageInput }).message : input
+  ) as ChannelMessageInput;
+  const extra = wrapped
+    ? (input as { externalUserId?: string; externalMessageId?: string })
+    : ({} as { externalUserId?: string; externalMessageId?: string });
+  const meta: ChannelMessageMetadata = {
+    ...provenance,
+    ...(extra.externalUserId ? { externalUserId: extra.externalUserId } : {}),
+    ...(extra.externalMessageId ? { externalMessageId: extra.externalMessageId } : {}),
+  };
+  const base: UIMessage =
+    typeof message === "string"
+      ? ({ id: messageId, role: "user", parts: [{ type: "text", text: message }] } as UIMessage)
+      : message.id
+        ? message
+        : { ...message, id: messageId };
+  const existing = (base as { metadata?: unknown }).metadata;
+  return {
+    ...base,
+    metadata: { ...(existing && typeof existing === "object" ? existing : {}), ...meta },
+  } as UIMessage;
+}
+
+/**
+ * The assistant's closing text for a channel reply: the text after the last tool part in the message,
+ * so a pre-tool preamble (e.g. the HITL "I'll need approval first" line, or a "let me look that up")
+ * is dropped and only the answer is posted. Falls back to all text when there's no trailing text or no
+ * tool parts (an ordinary turn), so a plain reply is unchanged.
+ */
+function channelReplyText(message: UIMessage): string {
+  const parts = (message.parts ?? []) as any[];
+  const isTool = (p: any) => {
+    const t = p?.type;
+    return typeof t === "string" && (t.startsWith("tool-") || t === "dynamic-tool");
+  };
+  let lastToolIdx = -1;
+  parts.forEach((p, i) => {
+    if (isTool(p)) lastToolIdx = i;
+  });
+  const textFrom = (from: number) =>
+    parts
+      .slice(from)
+      .map((p) =>
+        p && typeof p === "object" && (p as { type?: unknown }).type === "text"
+          ? String((p as { text: unknown }).text)
+          : ""
+      )
+      .join("");
+  const trailing = textFrom(lastToolIdx + 1);
+  return trailing.trim().length > 0 ? trailing : textFrom(0);
+}
+
+/**
+ * Tries at a turn's final channel reply before it is given up on and the turn shows the error
+ * reaction. Only an edit of the ack placeholder is retried: a failed post may still have landed, so
+ * a post is tried once.
+ */
+const CHANNEL_FINAL_SEND_ATTEMPTS = 3;
+
+/** Tool parts of a UIMessage awaiting a human answer (`input-available`), for `renderInteraction`. */
+function pendingToolCallsInMessage(message: UIMessage): ChannelPendingToolCall[] {
+  const out: ChannelPendingToolCall[] = [];
+  for (const part of (message.parts ?? []) as any[]) {
+    if (!part || typeof part !== "object") continue;
+    const type = part.type;
+    const isTool =
+      typeof type === "string" && (type.startsWith("tool-") || type === "dynamic-tool");
+    if (!isTool || part.state !== "input-available") continue;
+    const toolName =
+      type === "dynamic-tool" ? String(part.toolName ?? "") : String(type).slice("tool-".length);
+    if (typeof part.toolCallId === "string")
+      out.push({ toolCallId: part.toolCallId, toolName, input: part.input });
+  }
+  return out;
+}
+
+/**
+ * Fill in `toolCallId` on a resolution that names the tool instead: the most recent assistant part of
+ * that tool still awaiting input. Returns the resolution unchanged when it already has an id, and
+ * undefined when no pending call of that tool exists.
+ */
+function resolveInteractionToolCallId(
+  resolution: ChannelInteractionResolution,
+  messages: UIMessage[]
+): (ChannelInteractionResolution & { toolCallId: string }) | undefined {
+  if (resolution.toolCallId) {
+    return resolution as ChannelInteractionResolution & { toolCallId: string };
+  }
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i]!;
+    if (message.role !== "assistant") continue;
+    for (const call of pendingToolCallsInMessage(message).reverse()) {
+      if (call.toolName === resolution.toolName) {
+        return { ...resolution, toolCallId: call.toolCallId };
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Build the slim assistant message the HITL resume path expects (mirrors `slimSubmitMessageForWire`):
+ * the pending tool part matched by `toolCallId` across `messages`, advanced to `output-available` with
+ * the interaction's output. Returns undefined when no pending part matches (a stale/duplicate callback).
+ */
+function buildInteractionResolutionMessage(
+  resolution: ChannelInteractionResolution & { toolCallId: string },
+  messages: UIMessage[],
+  provenance?: ChannelMessageMetadata
+): UIMessage | undefined {
+  // Resolved anywhere means resolved: a resumed turn can carry the same tool call in more than
+  // one assistant message, and a second click on a decided call must not resolve a stale copy.
+  for (const message of messages) {
+    if (message.role !== "assistant") continue;
+    for (const part of (message.parts ?? []) as any[]) {
+      if (part && typeof part === "object" && part.toolCallId === resolution.toolCallId) {
+        if (isResolvedToolState(part.state)) return undefined;
+      }
+    }
+  }
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i]!;
+    if (message.role !== "assistant") continue;
+    for (const part of (message.parts ?? []) as any[]) {
+      if (!part || typeof part !== "object" || part.toolCallId !== resolution.toolCallId) continue;
+      const type = part.type;
+      const isTool =
+        typeof type === "string" && (type.startsWith("tool-") || type === "dynamic-tool");
+      if (!isTool) continue;
+      if (part.state !== "input-available") return undefined;
+      const slimPart: Record<string, unknown> = {
+        type,
+        toolCallId: resolution.toolCallId,
+        state: "output-available",
+        output: resolution.output,
+      };
+      if (type === "dynamic-tool" && typeof part.toolName === "string")
+        slimPart.toolName = part.toolName;
+      return {
+        id: message.id,
+        role: "assistant",
+        parts: [slimPart],
+        ...(provenance ? { metadata: provenance } : {}),
+      } as unknown as UIMessage;
+    }
+  }
+  return undefined;
+}
+
+// Default outbound: post the reply text, or nothing when empty (a tool-only / empty turn).
+function defaultChannelOutbound(reply: ChannelReply): ChannelMessage | null {
+  return reply.text ? { text: reply.text } : null;
+}
+
+// Resolve a lifecycle reaction choice to one emoji name for this turn: call a resolver if given, then
+// pick one at random from an array. Returns undefined to skip (no choice / empty).
+export async function resolveReactionChoice(
+  choice: ChannelReactionChoice | undefined,
+  event: unknown
+): Promise<string | undefined> {
+  if (choice == null) return undefined;
+  let value: string | string[] | null | undefined =
+    typeof choice === "function" ? await choice(event) : choice;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return undefined;
+    value = value[Math.floor(Math.random() * value.length)];
+  }
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+// Best-effort reaction on the triggering message; a failure never breaks the turn.
+async function applyChannelReaction(
+  connector: AnyChannelConnector | undefined,
+  wireEvent: { event: unknown; deliveryId: string } | undefined,
+  reaction: ChannelReaction
+): Promise<void> {
+  if (!connector?.react || !wireEvent || !reaction.name) return;
+  try {
+    await connector.react(reaction, { event: wireEvent.event, deliveryId: wireEvent.deliveryId });
+  } catch (error) {
+    logger.warn("chat.agent: channel reaction failed", { error, name: reaction.name });
+  }
+}
+
+// The run()-facing reaction surface for a channel turn (flavor 2). Undefined when the connector has no
+// `react`, so `payload.channel` is only present when reacting is actually possible.
+function buildChannelRunSurface(
+  connector: AnyChannelConnector | undefined,
+  wireEvent: { event: unknown; deliveryId: string } | undefined,
+  handle?: unknown
+): ChannelRunSurface | undefined {
+  if (!connector) return undefined;
+  const canReact = !!connector.react && !!wireEvent;
+  if (!canReact && !connector.surface) return undefined;
+  const turnCtx = channelTurnCtx(wireEvent, handle);
+  let extra: Record<string, unknown> = {};
+  if (connector.surface) {
+    try {
+      extra = connector.surface(turnCtx) ?? {};
+    } catch (error) {
+      logger.warn("chat.agent: channel surface() threw; continuing without it", { error });
+    }
+  }
+  const noop = async () => {};
+  return {
+    ...extra,
+    react: canReact ? (name) => applyChannelReaction(connector, wireEvent!, { name }) : noop,
+    unreact: canReact
+      ? (name) => applyChannelReaction(connector, wireEvent!, { name, remove: true })
+      : noop,
+  };
+}
+
+function channelTurnCtx(
+  wireEvent: { event: unknown; deliveryId: string } | undefined,
+  handle: unknown
+): ChannelTurnCtx {
+  return {
+    ...(wireEvent ? { event: wireEvent.event, deliveryId: wireEvent.deliveryId } : {}),
+    ...(handle !== undefined ? { handle } : {}),
+    bound: !wireEvent,
+  };
+}
+
+/**
+ * Feed a connector's `progress()` from the UI message stream: a tool call once its input is available,
+ * then its result or error. Calls are serialized so the surface sees them in order; a throw is logged.
+ * `stop()` refuses further chunks and drains what is already queued, so a slow first post does not
+ * lose the results behind it, and nothing new lands after the turn ended.
+ */
+function makeChannelProgressObserver(
+  connector: AnyChannelConnector,
+  wireEvent: { event: unknown; deliveryId: string } | undefined,
+  handle: unknown
+): ChannelStreamEditor {
+  const progress = connector.progress!;
+  const turnCtx = channelTurnCtx(wireEvent, handle);
+  const toolNames = new Map<string, string>();
+  const toolTitles = new Map<string, string>();
+  let chain: Promise<void> = Promise.resolve();
+  let stopped = false;
+
+  const emit = (event: ChannelProgressEvent) => {
+    chain = chain.then(async () => {
+      try {
+        await progress(event, turnCtx);
+      } catch (error) {
+        logger.warn("chat.agent: channel progress() failed; continuing", {
+          error,
+          type: event.type,
+        });
+      }
+    });
+  };
+
+  return {
+    observe(chunk: unknown) {
+      if (stopped) return;
+      const c = chunk as {
+        type?: string;
+        toolCallId?: string;
+        toolName?: string;
+        input?: unknown;
+        output?: unknown;
+        errorText?: string;
+        preliminary?: boolean;
+        title?: string;
+      };
+      if (!c?.type || !c.toolCallId) return;
+      if (c.title) toolTitles.set(c.toolCallId, c.title);
+      const title = toolTitles.get(c.toolCallId);
+      const titled = title ? { title } : {};
+      if (c.type === "tool-input-start" && c.toolName) {
+        toolNames.set(c.toolCallId, c.toolName);
+        return;
+      }
+      if (c.type === "tool-input-available") {
+        const toolName = c.toolName ?? toolNames.get(c.toolCallId) ?? "tool";
+        toolNames.set(c.toolCallId, toolName);
+        emit({ type: "tool-call", toolCallId: c.toolCallId, toolName, ...titled, input: c.input });
+        return;
+      }
+      if (c.type === "tool-output-available" && !c.preliminary) {
+        emit({
+          type: "tool-result",
+          toolCallId: c.toolCallId,
+          toolName: toolNames.get(c.toolCallId) ?? "tool",
+          ...titled,
+          output: c.output,
+        });
+        return;
+      }
+      if (c.type === "tool-output-error") {
+        emit({
+          type: "tool-error",
+          toolCallId: c.toolCallId,
+          toolName: toolNames.get(c.toolCallId) ?? "tool",
+          ...titled,
+          errorText: c.errorText ?? "tool failed",
+        });
+      }
+    },
+    async stop() {
+      stopped = true;
+      await chain;
+    },
+  };
+}
+
+/** Re-send `working` this often during a long turn: Slack drops a processing status after an hour. */
+const CHANNEL_WORKING_REFRESH_MS = 50 * 60 * 1000;
+
+/**
+ * Report a session's lifecycle to its connector in order, one call at a time, and re-send `working`
+ * while a long turn runs. Every report bumps a sequence number and a refresh only fires while its
+ * `working` is still the latest report, so a refresh can never land after the turn went idle.
+ */
+function makeChannelLifecycleReporter() {
+  let chain: Promise<void> = Promise.resolve();
+  let seq = 0;
+  let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+  let closed = false;
+
+  const clearRefresh = () => {
+    if (refreshTimer) clearTimeout(refreshTimer);
+    refreshTimer = undefined;
+  };
+
+  const enqueue = (
+    connector: AnyChannelConnector,
+    state: ChannelLifecycleState,
+    ctx: ChannelLifecycleCtx,
+    reportSeq: number
+  ) => {
+    chain = chain.then(async () => {
+      if (ctx.refresh && reportSeq !== seq) return;
+      try {
+        await connector.lifecycle!(state, ctx);
+      } catch (error) {
+        logger.warn("chat.agent: channel lifecycle() failed; continuing", { error, state });
+      }
+    });
+    return chain;
+  };
+
+  return {
+    report(
+      connector: AnyChannelConnector | undefined,
+      state: ChannelLifecycleState,
+      ctx: ChannelLifecycleCtx
+    ): Promise<void> {
+      if (!connector?.lifecycle || closed) return Promise.resolve();
+      if (state === "closed") closed = true;
+      const reportSeq = ++seq;
+      clearRefresh();
+      const done = enqueue(connector, state, ctx, reportSeq);
+      if (state === "working") {
+        const arm = () => {
+          refreshTimer = setTimeout(() => {
+            if (reportSeq !== seq) return;
+            void enqueue(
+              connector,
+              "working",
+              { ...ctx, firstTurn: false, refresh: true },
+              reportSeq
+            );
+            arm();
+          }, CHANNEL_WORKING_REFRESH_MS);
+          (refreshTimer as { unref?: () => void }).unref?.();
+        };
+        arm();
+      }
+      return done;
+    },
+    dispose: clearRefresh,
+  };
+}
+
+/**
+ * The assistant message with the given pending tool calls resolved as stopped (`output-error`), for
+ * a stop that arrives while the session waits on a human decision. Undefined when none matched.
+ */
+function stopPendingToolCalls(
+  message: UIMessage,
+  toolCallIds: Set<string>,
+  errorText: string
+): UIMessage | undefined {
+  let changed = false;
+  const parts = ((message.parts ?? []) as any[]).map((part) => {
+    if (
+      part &&
+      typeof part === "object" &&
+      toolCallIds.has(part.toolCallId) &&
+      part.state === "input-available"
+    ) {
+      changed = true;
+      return { ...part, state: "output-error", errorText };
+    }
+    return part;
+  });
+  return changed ? ({ ...message, parts } as UIMessage) : undefined;
+}
+
+/**
+ * Feed a connector's native reply stream from the UI message stream: text deltas as they arrive, and
+ * tool progress when the stream accepts it. `stop()` only refuses further chunks; the turn boundary
+ * ends the stream itself with the turn's outcome.
+ */
+function makeChannelReplyStreamObserver(stream: ChannelReplyStream): ChannelStreamEditor {
+  const toolNames = new Map<string, string>();
+  const toolTitles = new Map<string, string>();
+  let stopped = false;
+  const safe = (fn: () => void) => {
+    try {
+      fn();
+    } catch (error) {
+      logger.warn("chat.agent: channel reply stream threw; continuing", { error });
+    }
+  };
+  return {
+    observe(chunk: unknown) {
+      if (stopped) return;
+      const c = chunk as {
+        type?: string;
+        delta?: unknown;
+        toolCallId?: string;
+        toolName?: string;
+        input?: unknown;
+        output?: unknown;
+        errorText?: string;
+        preliminary?: boolean;
+        title?: string;
+      };
+      if (c?.type === "text-delta" && typeof c.delta === "string") {
+        const delta = c.delta;
+        safe(() => stream.text(delta));
+        return;
+      }
+      if (!stream.progress || !c?.type || !c.toolCallId) return;
+      const toolCallId = c.toolCallId;
+      if (c.title) toolTitles.set(toolCallId, c.title);
+      const title = toolTitles.get(toolCallId);
+      const titled = title ? { title } : {};
+      if (c.type === "tool-input-start" && c.toolName) {
+        toolNames.set(toolCallId, c.toolName);
+      } else if (c.type === "tool-input-available") {
+        const toolName = c.toolName ?? toolNames.get(toolCallId) ?? "tool";
+        toolNames.set(toolCallId, toolName);
+        safe(() =>
+          stream.progress!({ type: "tool-call", toolCallId, toolName, ...titled, input: c.input })
+        );
+      } else if (c.type === "tool-output-available" && !c.preliminary) {
+        const toolName = toolNames.get(toolCallId) ?? "tool";
+        safe(() =>
+          stream.progress!({
+            type: "tool-result",
+            toolCallId,
+            toolName,
+            ...titled,
+            output: c.output,
+          })
+        );
+      } else if (c.type === "tool-output-error") {
+        const toolName = toolNames.get(toolCallId) ?? "tool";
+        const errorText = c.errorText ?? "tool failed";
+        safe(() =>
+          stream.progress!({ type: "tool-error", toolCallId, toolName, ...titled, errorText })
+        );
+      }
+    },
+    stop() {
+      stopped = true;
+    },
+  };
+}
+
+function composeChannelObservers(observers: ChannelStreamEditor[]): ChannelStreamEditor {
+  return {
+    observe(chunk) {
+      for (const o of observers) o.observe(chunk);
+    },
+    async stop() {
+      await Promise.all(observers.map((o) => o.stop()));
+    },
+  };
+}
+
+// "stream" egress: as the reply streams, debounce-edit the ack message (previousRef) with the growing
+// text. Trailing-edge, one edit per interval (Slack chat.update ~1/s); the turn-complete final edit is
+// the authoritative last write. Best-effort: an edit failure is logged, never fatal.
+const CHANNEL_STREAM_EDIT_INTERVAL_MS = 1000;
+function makeChannelStreamEditor<TEvent>(
+  connector: ChannelConnector<TEvent>,
+  channelEvent: { event: unknown; deliveryId: string },
+  ackRef: string,
+  handle?: unknown
+) {
+  const outbound = connector.outbound ?? defaultChannelOutbound;
+  let latest = "";
+  let lastSent = "";
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let inFlightPromise: Promise<void> | undefined;
+  let stopped = false;
+
+  const arm = () => {
+    if (stopped || timer) return;
+    timer = setTimeout(() => {
+      timer = undefined;
+      void edit();
+    }, CHANNEL_STREAM_EDIT_INTERVAL_MS);
+  };
+
+  const edit = async () => {
+    if (stopped || inFlightPromise) return;
+    const text = latest;
+    if (text === lastSent) return;
+    const message = outbound({
+      text,
+      message: { id: ackRef, role: "assistant", parts: [{ type: "text", text }] } as UIMessage,
+      final: false,
+      stopped: false,
+    });
+    if (!message) return;
+    inFlightPromise = (async () => {
+      try {
+        await connector.send!(message, {
+          event: channelEvent.event as TEvent,
+          handle,
+          deliveryId: channelEvent.deliveryId,
+          previousRef: ackRef,
+          mode: "stream",
+          final: false,
+          bound: false,
+        });
+        lastSent = text;
+      } catch (error) {
+        logger.warn("chat.agent: channel stream edit failed", { error });
+      } finally {
+        inFlightPromise = undefined;
+        if (!stopped && latest !== lastSent) arm();
+      }
+    })();
+    await inFlightPromise;
+  };
+
+  return {
+    observe(chunk: unknown) {
+      if (stopped) return;
+      const c = chunk as { type?: string; delta?: unknown };
+      if (c?.type === "text-delta" && typeof c.delta === "string") {
+        latest += c.delta;
+        arm();
+      }
+    },
+    async stop() {
+      stopped = true;
+      if (timer) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+      if (inFlightPromise) {
+        try {
+          await inFlightPromise;
+        } catch {}
+      }
+    },
+  };
+}
+
+type ChannelStreamEditor = { observe(chunk: unknown): void; stop(): void | Promise<void> };
+
+/**
+ * Wrap the reply stream so it debounce-edits the channel message as it streams.
+ * Both `flush` (the stream completed) and `cancel` (the stream was aborted or
+ * cancelled downstream) stop the editor, so a pending debounce timer can never
+ * fire an edit after the turn ended, onto a message the next turn already owns.
+ */
+/**
+ * Feed every chunk of a stream to `editor`. By default the editor is stopped when the stream ends or
+ * is cancelled (one stream per turn, the automatic pipe). With `stopOnEnd: false` the editor outlives
+ * the stream, for a turn whose run() pipes several streams through `chat.pipe()`; the turn boundary
+ * stops it.
+ */
+function makeChannelStreamTap(
+  editor: ChannelStreamEditor,
+  options: { stopOnEnd?: boolean } = {}
+): TransformStream<unknown, unknown> {
+  const stopOnEnd = options.stopOnEnd ?? true;
+  const transformer: {
+    transform(chunk: unknown, controller: TransformStreamDefaultController<unknown>): void;
+    flush(): Promise<void>;
+    cancel?: (reason?: unknown) => Promise<void>;
+  } = {
+    transform(chunk, controller) {
+      editor.observe(chunk);
+      controller.enqueue(chunk);
+    },
+    async flush() {
+      if (stopOnEnd) await editor.stop();
+    },
+    async cancel() {
+      if (stopOnEnd) await editor.stop();
+    },
+  };
+  return new TransformStream<unknown, unknown>(transformer);
+}
+
+export {
+  makeChannelStreamEditor as __makeChannelStreamEditorForTests,
+  makeChannelStreamTap as __makeChannelStreamTapForTests,
+  makeChannelProgressObserver as __makeChannelProgressObserverForTests,
+  makeChannelLifecycleReporter as __makeChannelLifecycleReporterForTests,
+};
+
+/**
+ * Per-chat latch for the channel egress that runs AFTER `trigger:turn-complete` is written (the
+ * final `send()` and the done/error reactions). The run loop opens it before writing the chunk and
+ * settles it once that egress has finished, so a caller that saw the chunk can wait for the
+ * connector to be quiet instead of guessing with timers. One latch per chat at a time; a chat with
+ * no open latch is quiet.
+ */
+const channelEgressLatches = new Map<string, { promise: Promise<void>; settle: () => void }>();
+
+function openChannelEgressLatch(chatId: string): void {
+  let settle!: () => void;
+  const promise = new Promise<void>((resolve) => (settle = resolve));
+  channelEgressLatches.set(chatId, { promise, settle });
+}
+
+function settleChannelEgressLatch(chatId: string): void {
+  const latch = channelEgressLatches.get(chatId);
+  if (!latch) return;
+  channelEgressLatches.delete(chatId);
+  latch.settle();
+}
+
+/** Resolves once the post-turn channel egress for `chatId` has finished (immediately when none is running). */
+export async function __waitForChannelEgressForTests(chatId: string): Promise<void> {
+  await channelEgressLatches.get(chatId)?.promise;
+}
+
+// The `action` type onAction receives: the actionSchema output (when set) unioned with the action
+// envelopes of any listed chat.event descriptors. ChatEventActions<[]> is `never`, so it collapses
+// cleanly when no events are listed; `unknown` is kept only when neither source is present.
+type ChatActionType<
+  TActionSchema extends TaskSchema | undefined,
+  TW extends readonly AnyChatEvent[],
+> = [TActionSchema] extends [TaskSchema]
+  ? inferSchemaOut<TActionSchema> | ChatEventActions<TW>
+  : [TW] extends [readonly []]
+    ? unknown
+    : ChatEventActions<TW>;
+
 export type ChatAgentOptions<
   TIdentifier extends string,
   TClientDataSchema extends TaskSchema | undefined = undefined,
   TUIMessage extends UIMessage = UIMessage,
   TActionSchema extends TaskSchema | undefined = undefined,
   TTools extends ToolSet = ToolSet,
+  TW extends readonly AnyChatEvent[] = [],
+  TChannels extends readonly AnyChannelConnector[] = [],
 > = Omit<
   TaskOptions<
     TIdentifier,
@@ -6119,6 +7935,32 @@ export type ChatAgentOptions<
    * Ignored for sessions with no pin, and for sessions using `lockToVersion`.
    */
   versionSkew?: ChatVersionSkewPolicy;
+
+  /**
+   * Controls which chat content the chat runtime records on its spans in the run trace.
+   *
+   * - `recordUserMessage` (default `true`) records the last user message as `chat.user_message`
+   *   and as the turn span's preview text, and messages sent mid-turn as `pending.messages`.
+   * - `recordClientData` (default `true`) records the raw `clientData` sent by the frontend as
+   *   `chat.client_data`.
+   *
+   * Set either to `false` to keep that content out of telemetry. Content recorded by the AI SDK's
+   * own spans is controlled separately, through `experimental_telemetry` on the model call.
+   *
+   * @example
+   * ```ts
+   * chat.agent({
+   *   id: "my-chat",
+   *   telemetry: { recordUserMessage: false, recordClientData: false },
+   *   run: async ({ messages, signal, streamText }) =>
+   *     streamText({ model, messages, abortSignal: signal }),
+   * });
+   * ```
+   */
+  telemetry?: {
+    recordUserMessage?: boolean;
+    recordClientData?: boolean;
+  };
 
   /**
    * Schema for validating `clientData` from the frontend.
@@ -6181,9 +8023,26 @@ export type ChatAgentOptions<
    * action that returns nothing is a state edit only. Returning anything else
    * is an error; a response can no longer be returned directly.
    */
+  /**
+   * Inbound `chat.event(...)` descriptors this agent handles. Listing one subscribes this agent to the
+   * descriptor's endpoint: each verified delivery goes to the session its `key` names and arrives at
+   * `onAction` as a `{ type, event, source, headers, deliveryId, externalDeliveryId, endpoint }` envelope whose `type` is
+   * the descriptor's `type`. The same descriptor listed on another agent is a second subscriber on the
+   * same endpoint.
+   */
+  events?: TW;
+
+  /**
+   * Inbound chat frontends (Slack, etc.) via `chat.channels.*`. Listing one subscribes this agent to
+   * the connector's endpoint, routing verified events to a durable per-key session as turns: the
+   * connector's `inbound()` maps the raw event to the turn's message, `run()` fires as normal, and the
+   * reply streams back to the channel. Use the connector's `filter` to ignore events.
+   */
+  channels?: TChannels;
+
   onAction?: (
     event: ActionEvent<
-      [TActionSchema] extends [TaskSchema] ? inferSchemaOut<TActionSchema> : unknown,
+      ChatActionType<TActionSchema, TW>,
       inferSchemaOut<TClientDataSchema>,
       TUIMessage
     >
@@ -6417,6 +8276,13 @@ export type ChatAgentOptions<
    *   },
    * });
    * ```
+   *
+   * Note: on a channel HITL resume turn (a button click that lands on a fresh
+   * run whose accumulator doesn't yet hold the pending tool call), this hook is
+   * called twice for the one delivery: once with `incomingMessages: []` to load
+   * the chain and locate the pending tool call, then again with the synthesized
+   * resolution message so it can be persisted. Keep the hook's read path
+   * idempotent.
    */
   hydrateMessages?: (
     event: HydrateMessagesEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
@@ -7039,8 +8905,18 @@ function chatAgent<
   TUIMessage extends UIMessage = UIMessage,
   TActionSchema extends TaskSchema | undefined = undefined,
   TTools extends ToolSet = ToolSet,
+  const TW extends readonly AnyChatEvent[] = [],
+  const TChannels extends readonly AnyChannelConnector[] = [],
 >(
-  options: ChatAgentOptions<TIdentifier, TClientDataSchema, TUIMessage, TActionSchema, TTools>
+  options: ChatAgentOptions<
+    TIdentifier,
+    TClientDataSchema,
+    TUIMessage,
+    TActionSchema,
+    TTools,
+    TW,
+    TChannels
+  >
 ): Task<TIdentifier, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown> {
   const {
     run: userRun,
@@ -7053,6 +8929,8 @@ function chatAgent<
     hydrateMessages,
     storage,
     actionSchema,
+    events,
+    channels,
     onAction,
     onTurnStart,
     onBeforeTurnComplete,
@@ -7078,8 +8956,12 @@ function chatAgent<
     cacheControl: agentCacheControl,
     systemProviderOptions: agentSystemProviderOptions,
     versionSkew,
+    telemetry: telemetryOptions,
     ...restOptions
   } = options;
+
+  const recordUserMessage = telemetryOptions?.recordUserMessage ?? true;
+  const recordClientData = telemetryOptions?.recordClientData ?? true;
 
   if (hydrateMessages) {
     if (storage) {
@@ -7292,6 +9174,68 @@ function chatAgent<
       let transcriptShadow: TranscriptShadow = createTranscriptShadow([]);
       let bootTranscriptState: unknown = null;
       /**
+       * The channel this session answers into (see TranscriptChannelBinding). Set by a channel turn
+       * whose connector defines `bind`, restored from runtime state at boot, saved on every changeset.
+       */
+      let sessionChannelBinding: TranscriptChannelBinding | undefined;
+      const channelDownloader = channels
+        ? makeChannelDownloader(channels, (connectorId) =>
+            sessionChannelBinding?.connectorId === connectorId
+              ? sessionChannelBinding.handle
+              : undefined
+          )
+        : undefined;
+      locals.set(chatChannelDownloadKey, channelDownloader);
+      /**
+       * Tool calls that already have channel controls posted. A turn that resumes with one of
+       * several pending calls resolved still carries the others as pending; without this the
+       * controls would be posted again, and the model's final text would lose to them. A
+       * continuation worker seeds it at boot from the calls still pending in the restored
+       * transcript of a channel-bound session, since the worker before it posted their controls.
+       */
+      const channelRenderedToolCallIds = new Set<string>();
+      /** Serializes `lifecycle()` reports for the session's channel across turns. */
+      const channelLifecycle = makeChannelLifecycleReporter();
+      /**
+       * Pending calls a channel stop resolved as stopped on this worker. A click on their old controls
+       * is dropped even when the transcript was hydrated again from a store that never saw the stop.
+       */
+      const channelStoppedToolCallIds = new Set<string>();
+      /** When the latest channel turn started, so a stop pressed before it is recognized as stale. */
+      let lastChannelTurnStartedAt: number | undefined;
+      /** When the latest channel turn ended, so a stop pressed while it ran is not run as a new turn. */
+      let lastChannelTurnEndedAt: number | undefined;
+      /** The turn reported its end state: the binding no longer marks the surface as working. */
+      const clearChannelWorking = () => {
+        if (!sessionChannelBinding?.working) return;
+        const { working: _working, ...rest } = sessionChannelBinding;
+        void _working;
+        sessionChannelBinding = rest;
+      };
+      /** The turn's reply stream ended: the binding no longer names it for recovery. */
+      const clearOpenReplyStream = () => {
+        if (!sessionChannelBinding?.stream) return;
+        const { stream: _stream, ...rest } = sessionChannelBinding;
+        void _stream;
+        sessionChannelBinding = rest;
+      };
+      /** Tell the bound channel the conversation is over (`chat.close()` or a close signal). */
+      const reportChannelClosed = async () => {
+        const binding = sessionChannelBinding;
+        if (!binding) return;
+        const connector = channels?.find((c) => c.id === binding.connectorId);
+        await channelLifecycle.report(connector, "closed", {
+          handle: binding.handle,
+          bound: true,
+          firstTurn: false,
+        });
+      };
+      /** Provenance of the turn or action being processed, for the storage context. */
+      let currentTurnSource: TranscriptStorageContext["source"] = "client";
+      let currentTurnConnectorId: string | undefined;
+      /** True once `onAction` returned `chat.turn()` for the action being processed. */
+      let turnIsActionTurn = false;
+      /**
        * True while the model lane holds a compaction summary, so it cannot be
        * rebuilt from the transcript and has to be persisted as state. Reset
        * wherever the lane is reconverted from the UI lane.
@@ -7372,9 +9316,14 @@ function chatAgent<
           (entry) => markerIds.has(entry.id) || entry.messageIds.some((id) => transcriptIds.has(id))
         );
         const runtimeState: TranscriptRuntimeState | null =
-          laneCompacted || laneInjections.length > 0 || queued.length > 0 || steering.length > 0
+          laneCompacted ||
+          laneInjections.length > 0 ||
+          queued.length > 0 ||
+          steering.length > 0 ||
+          sessionChannelBinding
             ? {
                 v: 1,
+                ...(sessionChannelBinding ? { channelBinding: sessionChannelBinding } : {}),
                 ...(laneCompacted
                   ? {
                       compaction: {
@@ -7404,7 +9353,9 @@ function chatAgent<
             chatId: payload.chatId,
             clientData: opts.clientData,
             turn: opts.turn,
-            trigger: opts.trigger,
+            trigger: opts.trigger === "action" && turnIsActionTurn ? "action-turn" : opts.trigger,
+            source: currentTurnSource,
+            ...(currentTurnConnectorId ? { connectorId: currentTurnConnectorId } : {}),
             runId: ctx.run.id,
             ctx,
           },
@@ -7502,6 +9453,9 @@ function chatAgent<
       let replayedPartial: TUIMessage | undefined;
       let replayedPartialRaw: TUIMessage | undefined;
       let replayedInTail: { message: TUIMessage; metadata: unknown; seqNum: number }[] = [];
+      // Channel deliveries on the same tail. They are not "messages" for the recovery hooks, but
+      // they are turns the predecessor owed, and they have to dispatch in seq order with the rest.
+      let replayedChannelInTail: ReplayedChannelEvent[] = [];
       // Wire payloads to dispatch as turns before the regular session.in
       // pump kicks in. Populated by `onRecoveryBoot.recoveredTurns` (or its
       // default, `inFlightUsers`). The turn-loop checks this queue ahead of
@@ -7659,9 +9613,11 @@ function chatAgent<
                 snapshotInCursor !== undefined
               );
               try {
-                replayedInTail = await replaySessionInTail<TUIMessage>(payload.chatId, {
+                const tail = await replaySessionInTailWithChannels<TUIMessage>(payload.chatId, {
                   lastEventId: bootInCursor !== undefined ? String(bootInCursor) : undefined,
                 });
+                replayedInTail = tail.messages;
+                replayedChannelInTail = tail.channelEvents;
               } catch (error) {
                 logger.warn(
                   "chat.agent: session.in replay failed; in-flight users may not be recovered",
@@ -7688,7 +9644,10 @@ function chatAgent<
 
       // ── session.in router ──────────────────────────────────────────
       //
-      const recoveredSeqNums = replayedInTail.map((r) => r.seqNum);
+      const recoveredSeqNums = [
+        ...replayedInTail.map((r) => r.seqNum),
+        ...replayedChannelInTail.map((r) => r.seqNum),
+      ];
 
       await installChatInputRouter(payload.chatId, {
         fallbackResumeFrom: bootInCursorResolved ? bootInCursor : undefined,
@@ -7710,6 +9669,10 @@ function chatAgent<
         // predecessor chose to end before processing the message;
         // those route through the normal continuation-wait path.
         const hasRecoveredState = partialAssistant !== undefined;
+
+        if (couldHavePriorState && hasRecoveredState) {
+          locals.set(chatChannelRecoveryPendingKey, { value: true });
+        }
 
         let hookChain: TUIMessage[] | undefined;
         let hookRecoveredTurns: TUIMessage[] | undefined;
@@ -7783,9 +9746,21 @@ function chatAgent<
         // user is re-dispatched as a fresh turn instead.
         let seedChain: TUIMessage[];
         let recoveredEntries: { message: TUIMessage; seqNum: number | undefined }[];
+        // The orphan-partial splice pairs the partial assistant with the oldest unprocessed record,
+        // which only makes sense when that record is the browser message it was answering. When a
+        // channel delivery is older than every browser message, the partial belongs to it instead, and
+        // splicing the first browser message ahead of it would reorder the conversation.
+        const oldestTailSeq = Math.min(
+          ...replayedInTail.map((r) => r.seqNum),
+          ...replayedChannelInTail.map((r) => r.seqNum)
+        );
+        const partialFollowsBrowserMessage =
+          partialAssistant !== undefined &&
+          inFlightUsers.length > 1 &&
+          (replayedChannelInTail.length === 0 || replayedInTail[0]?.seqNum === oldestTailSeq);
         if (hookChain !== undefined) {
           seedChain = hookChain;
-        } else if (partialAssistant !== undefined && inFlightUsers.length > 1) {
+        } else if (partialFollowsBrowserMessage) {
           seedChain = [...settledMessages, inFlightUsers[0]!, partialAssistant];
         } else {
           seedChain = settledMessages;
@@ -7801,7 +9776,7 @@ function chatAgent<
             message,
             seqNum: seqNumsByRecoveredId.get(message.id)?.shift(),
           }));
-        } else if (partialAssistant !== undefined && inFlightUsers.length > 1) {
+        } else if (partialFollowsBrowserMessage) {
           recoveredEntries = replayedInTail
             .slice(1)
             .map((r) => ({ message: r.message, seqNum: r.seqNum }));
@@ -7838,6 +9813,10 @@ function chatAgent<
           metadataById.set(entry.message.id, entry.metadata);
         }
         const dispatchedRecoveredSeqs = new Set<number>();
+        const toInject: Array<{
+          injectedPayload: ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>;
+          seqNum: number | undefined;
+        }> = [];
         for (const { message: msg, seqNum } of recoveredEntries) {
           if (wireMessageId && msg.id === wireMessageId) continue;
           const recoveredMetadata = metadataById.has(msg.id)
@@ -7853,13 +9832,36 @@ function chatAgent<
             continuation: payload.continuation,
             previousRunId: payload.previousRunId,
           } as ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>;
+          toInject.push({ injectedPayload, seqNum });
+        }
+        // Channel deliveries the predecessor never processed dispatch too, interleaved with the
+        // browser messages by seq_num so a Slack message that arrived before a browser message
+        // still runs before it. A delivery the boot payload itself carries is not queued twice.
+        const wireDeliveryId = (payload as { channelEvent?: { deliveryId?: string } }).channelEvent
+          ?.deliveryId;
+        for (const entry of replayedChannelInTail) {
+          const entryDeliveryId = (entry.channelEvent as { deliveryId?: string }).deliveryId;
+          if (wireDeliveryId && entryDeliveryId === wireDeliveryId) continue;
+          const injectedPayload = {
+            chatId: payload.chatId,
+            sessionId: payload.sessionId,
+            metadata: entry.metadata ?? payload.metadata,
+            trigger: "submit-message",
+            channelEvent: entry.channelEvent,
+            continuation: payload.continuation,
+            previousRunId: payload.previousRunId,
+          } as ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>;
+          toInject.push({ injectedPayload, seqNum: entry.seqNum });
+        }
+        toInject.sort((a, b) => (a.seqNum ?? Infinity) - (b.seqNum ?? Infinity));
+        for (const { injectedPayload, seqNum } of toInject) {
           bootInjectedQueue.push(injectedPayload);
           if (seqNum !== undefined) {
             recoveredSeqByPayload.set(injectedPayload, seqNum);
             dispatchedRecoveredSeqs.add(seqNum);
           }
         }
-        for (const entry of replayedInTail) {
+        for (const entry of [...replayedInTail, ...replayedChannelInTail]) {
           if (!dispatchedRecoveredSeqs.has(entry.seqNum)) {
             chatInputRouter().settleRecovered(entry.seqNum);
           }
@@ -7925,6 +9927,40 @@ function chatAgent<
             accumulatedMessages = restored.messages;
             laneCompacted = restored.compacted;
             laneInjections = restored.injections;
+            sessionChannelBinding = bootRuntimeState?.channelBinding;
+            const interruptedStream = sessionChannelBinding?.stream;
+            if (interruptedStream && sessionChannelBinding) {
+              const binding = sessionChannelBinding;
+              const connector = channels?.find((c) => c.id === binding.connectorId);
+              clearOpenReplyStream();
+              if (connector?.endInterruptedStream) {
+                try {
+                  await connector.endInterruptedStream(interruptedStream, {
+                    handle: binding.handle,
+                    bound: true,
+                  });
+                } catch (error) {
+                  logger.warn("chat.agent: ending the interrupted reply stream failed", { error });
+                }
+              }
+            }
+            if (sessionChannelBinding?.working) {
+              const binding = sessionChannelBinding;
+              clearChannelWorking();
+              await channelLifecycle.report(
+                channels?.find((c) => c.id === binding.connectorId),
+                "idle",
+                { handle: binding.handle, bound: true, firstTurn: false }
+              );
+            }
+            if (sessionChannelBinding) {
+              for (const message of accumulatedUIMessages) {
+                if (message.role !== "assistant") continue;
+                for (const call of pendingToolCallsInMessage(message)) {
+                  channelRenderedToolCallIds.add(call.toolCallId);
+                }
+              }
+            }
             if (bootRuntimeState?.queued && bootRuntimeState.queued.length > 0) {
               locals.set(chatBackgroundQueueKey, [
                 ...(locals.get(chatBackgroundQueueKey) ?? []),
@@ -8383,23 +10419,469 @@ function chatAgent<
           // Declared here so the finally can detach it — a handler leaked past
           // its turn duplicates every mid-stream message into the shared buffer.
           let turnMsgSub: { off: () => void } | undefined;
+          let turnControlSub: { off: () => void } | undefined;
           let capturedPartialResponse: TUIMessage | undefined;
           let responseCommitted = false;
           const turnBufferedChunks: UIMessageChunk[] = [];
+          let channelConn: AnyChannelConnector | undefined;
+          let channelWorkingReaction: string | undefined;
+          let channelWireEvent: { event: unknown; deliveryId: string } | undefined;
+          /** The connector's posting handle for this turn: from `bind(event)` on a channel turn, else the session binding. */
+          let channelHandle: unknown;
+          /** True when no channel delivery started this turn and egress goes through the session binding. */
+          let boundTurn = false;
+          let channelAckRef: string | undefined;
+          let channelStreamEditor: ChannelStreamEditor | undefined;
+          let droppedStaleInteraction = false;
+          /** True when the connector mapped this delivery to an empty message: no turn runs. */
+          let droppedEmptyMessage = false;
+          let droppedUnknownConnector = false;
+          /** True when this delivery was a stop the connector drops while idle: no turn runs. */
+          let droppedIdleControl = false;
+          /** This turn's native reply stream (`delivery: "stream"` with a `stream()` hook). */
+          let channelReplyStream: ChannelReplyStream | undefined;
+          /** True once this turn reported `working`, so its end reports the outcome. */
+          let channelLifecycleStarted = false;
+          /** When this turn started, to tell a stop meant for an earlier turn from one for this turn. */
+          const channelTurnStartedAt = Date.now();
+          /** True when this turn is a channel or bound turn that runs (not a dropped delivery). */
+          let channelTurnRan = false;
+          /** True when this turn resolves a pending tool call from a channel interaction callback. */
+          let channelInteractionResolved = false;
+          let channelFinalAnswerPosted = false;
+          let channelFinalSendFailed = false;
+          /** The stream-level error (an `error` chunk) this turn ended on, if any; posted to the channel in place of an empty reply. */
+          let channelStreamErrorText: string | undefined;
+          /** The original error behind that chunk, captured from `toUIMessageStream`'s `onError` when auto-piping. */
+          let channelStreamError: unknown;
+          /** The text this turn streamed, so the channel reply is this turn's answer and not the whole message. */
+          let channelTurnText: string | undefined;
           try {
             // Extract turn-level context before entering the span. Slim
             // wire: at most one delta message per record. `headStartMessages`
             // is consumed at boot only (via `payload.headStartMessages`)
             // and intentionally discarded here.
+            const clickedAction = channelClickAction(channels, currentWirePayload.channelEvent);
+            let actionChannel: ChannelActionSource | undefined;
+            if (clickedAction !== undefined) {
+              const { channelEvent: clicked, ...withoutChannelEvent } = currentWirePayload;
+              const click = clicked as { connectorId: string; event: unknown; deliveryId: string };
+              actionChannel = {
+                connectorId: click.connectorId,
+                provider: channels?.find((c) => c.id === click.connectorId)?.source ?? "custom",
+                event: click.event,
+                deliveryId: click.deliveryId,
+              };
+              currentWirePayload = {
+                ...withoutChannelEvent,
+                trigger: "action",
+                action: clickedAction,
+                actionSource: "channel",
+              } as typeof currentWirePayload;
+            }
             const {
               metadata: wireMetadata,
               message: incomingMessage,
               headStartMessages: _hsm,
+              channelEvent: wireChannelEvent,
               ...restWire
             } = currentWirePayload;
             void _hsm;
-            const incomingMessages: TUIMessage[] = incomingMessage
-              ? [incomingMessage as TUIMessage]
+            channelWireEvent = wireChannelEvent;
+            let effectiveIncomingMessage = incomingMessage;
+            const clientData = (
+              parseClientData ? await parseClientData(wireMetadata) : wireMetadata
+            ) as inferSchemaOut<TClientDataSchema>;
+            turnClientData = clientData;
+            turnIsActionTurn = false;
+            currentTurnSource = wireChannelEvent
+              ? "channel"
+              : currentWirePayload.actionSource === "webhook"
+                ? "webhook"
+                : "client";
+            currentTurnConnectorId = undefined;
+            if (wireChannelEvent) {
+              channelConn = channels?.find((c) => c.id === wireChannelEvent.connectorId);
+              if (channelConn) {
+                currentTurnConnectorId = channelConn.id;
+                let idleControl: ChannelControl | null = null;
+                if (channelConn.onControl) {
+                  try {
+                    idleControl = channelConn.onControl(wireChannelEvent.event);
+                  } catch (controlError) {
+                    logger.warn("chat.agent: channel onControl threw; treating as a message", {
+                      error: controlError,
+                    });
+                  }
+                }
+                const stopForEndedTurn =
+                  idleControl?.at !== undefined &&
+                  lastChannelTurnEndedAt !== undefined &&
+                  idleControl.at < lastChannelTurnEndedAt;
+                droppedIdleControl =
+                  idleControl?.kind === "stop" &&
+                  (idleControl.whenIdle === "drop" || stopForEndedTurn);
+                // Bind the session to this connector so a later turn that no channel delivery
+                // started (an action turn, a browser message) can still answer into the thread.
+                if (channelConn.bind && !droppedIdleControl) {
+                  try {
+                    const handle = channelConn.bind(wireChannelEvent.event);
+                    if (handle !== null && handle !== undefined) {
+                      const controls =
+                        sessionChannelBinding?.connectorId === channelConn.id
+                          ? sessionChannelBinding.controls
+                          : undefined;
+                      sessionChannelBinding = {
+                        connectorId: channelConn.id,
+                        handle,
+                        boundAt: new Date().toISOString(),
+                        deliveryId: wireChannelEvent.deliveryId,
+                        ...(controls ? { controls } : {}),
+                      };
+                    }
+                  } catch (bindError) {
+                    logger.warn("chat.agent: channel bind() failed; session binding unchanged", {
+                      error: bindError,
+                    });
+                  }
+                }
+                channelHandle =
+                  sessionChannelBinding?.connectorId === channelConn.id
+                    ? sessionChannelBinding.handle
+                    : undefined;
+                const rawInteraction = droppedIdleControl
+                  ? null
+                  : (channelConn.onInteraction?.(wireChannelEvent.event) ?? null);
+                let interaction = rawInteraction
+                  ? (resolveInteractionToolCallId(
+                      rawInteraction,
+                      accumulatedUIMessages as UIMessage[]
+                    ) ?? null)
+                  : null;
+                const accumulatorHasInteractionToolCall =
+                  interaction != null &&
+                  accumulatedUIMessages.some((m) =>
+                    ((m.parts ?? []) as { toolCallId?: unknown }[]).some(
+                      (p) => p?.toolCallId === interaction!.toolCallId
+                    )
+                  );
+                if (rawInteraction && loadContextHook && !accumulatorHasInteractionToolCall) {
+                  try {
+                    const hydratedForInteraction = (await loadContextHook({
+                      chatId: currentWirePayload.chatId,
+                      turn,
+                      trigger: "submit-message",
+                      incomingMessages: [],
+                      previousMessages: [...accumulatedUIMessages],
+                      clientData,
+                      continuation,
+                      previousRunId,
+                    })) as TUIMessage[];
+                    accumulatedUIMessages = hydratedForInteraction;
+                    accumulatedMessages = await toModelMessages(hydratedForInteraction);
+                    laneCompacted = false;
+                    laneInjections = [];
+                    locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                    if (!interaction) {
+                      interaction =
+                        resolveInteractionToolCallId(
+                          rawInteraction,
+                          accumulatedUIMessages as UIMessage[]
+                        ) ?? null;
+                    }
+                  } catch (hydrateError) {
+                    logger.warn(
+                      "chat.agent: hydrateMessages for channel interaction resolution failed",
+                      { error: hydrateError }
+                    );
+                  }
+                }
+                const resolutionMessage =
+                  interaction && !channelStoppedToolCallIds.has(interaction.toolCallId)
+                    ? buildInteractionResolutionMessage(
+                        interaction,
+                        accumulatedUIMessages as UIMessage[],
+                        {
+                          source: "channel",
+                          connectorId: channelConn.id,
+                          provider: channelConn.source,
+                          deliveryId: wireChannelEvent.deliveryId,
+                        }
+                      )
+                    : undefined;
+                const channelInbound =
+                  droppedIdleControl || resolutionMessage || rawInteraction
+                    ? undefined
+                    : channelConn.inbound(wireChannelEvent.event);
+                if (droppedIdleControl) {
+                  const staleStop =
+                    idleControl?.at !== undefined &&
+                    lastChannelTurnStartedAt !== undefined &&
+                    idleControl.at < lastChannelTurnStartedAt;
+                  if (!staleStop && loadContextHook && accumulatedUIMessages.length === 0) {
+                    try {
+                      const hydratedForStop = (await loadContextHook({
+                        chatId: currentWirePayload.chatId,
+                        turn,
+                        trigger: "submit-message",
+                        incomingMessages: [],
+                        previousMessages: [],
+                        clientData,
+                        continuation,
+                        previousRunId,
+                      })) as TUIMessage[];
+                      accumulatedUIMessages = hydratedForStop;
+                      accumulatedMessages = await toModelMessages(hydratedForStop);
+                      laneCompacted = false;
+                      laneInjections = [];
+                      locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                    } catch (hydrateError) {
+                      logger.warn("chat.agent: hydrateMessages for a channel stop failed", {
+                        error: hydrateError,
+                      });
+                    }
+                  }
+                  let lastAssistantIndex = -1;
+                  for (let i = accumulatedUIMessages.length - 1; i >= 0; i--) {
+                    if (accumulatedUIMessages[i]!.role === "assistant") {
+                      lastAssistantIndex = i;
+                      break;
+                    }
+                  }
+                  const lastAssistant =
+                    lastAssistantIndex === -1
+                      ? undefined
+                      : (accumulatedUIMessages[lastAssistantIndex] as UIMessage);
+                  const stoppedCalls =
+                    lastAssistant && !staleStop && idleControl?.whenIdle === "drop"
+                      ? pendingToolCallsInMessage(lastAssistant)
+                      : [];
+                  if (lastAssistant && stoppedCalls.length > 0) {
+                    const errorText = idleControl?.message || "stopped";
+                    const stoppedMessage = stopPendingToolCalls(
+                      lastAssistant,
+                      new Set(stoppedCalls.map((call) => call.toolCallId)),
+                      errorText
+                    );
+                    if (stoppedMessage) {
+                      accumulatedUIMessages = accumulatedUIMessages.map((m, i) =>
+                        i === lastAssistantIndex ? (stoppedMessage as TUIMessage) : m
+                      );
+                      const pausedRun = await toModelMessages([
+                        stripProviderMetadata(lastAssistant) as TUIMessage,
+                      ]);
+                      if (pausedRun.length === 0) {
+                        accumulatedMessages = [
+                          ...accumulatedMessages,
+                          ...(await toModelMessages([stoppedMessage as TUIMessage])),
+                        ];
+                      } else if (
+                        !(await replaceModelRun(
+                          accumulatedMessages,
+                          lastAssistant,
+                          stoppedMessage,
+                          0,
+                          pausedRun
+                        ))
+                      ) {
+                        logger.warn(
+                          "chat.agent: paused message not found at the model lane tail; reconverting the lane"
+                        );
+                        accumulatedMessages = await toModelMessages(
+                          accumulatedUIMessages,
+                          accumulatedUIMessages
+                        );
+                        laneCompacted = false;
+                        laneInjections = [];
+                      }
+                      for (const call of stoppedCalls)
+                        channelStoppedToolCallIds.add(call.toolCallId);
+                      locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                    }
+                    const refs =
+                      sessionChannelBinding?.connectorId === channelConn.id
+                        ? sessionChannelBinding.controls
+                        : undefined;
+                    const cancelled: ChannelCancelledToolCall[] = stoppedCalls.map((call) =>
+                      refs?.[call.toolCallId] ? { ...call, ref: refs[call.toolCallId] } : call
+                    );
+                    for (const call of stoppedCalls) {
+                      channelRenderedToolCallIds.delete(call.toolCallId);
+                    }
+                    if (refs && sessionChannelBinding) {
+                      const remaining = Object.fromEntries(
+                        Object.entries(refs).filter(
+                          ([id]) => !stoppedCalls.some((call) => call.toolCallId === id)
+                        )
+                      );
+                      const { controls: _controls, ...rest } = sessionChannelBinding;
+                      void _controls;
+                      sessionChannelBinding =
+                        Object.keys(remaining).length > 0 ? { ...rest, controls: remaining } : rest;
+                    }
+                    await writeSnapshotOutsideTurn("channel-stop", { turn, clientData });
+                    if (channelConn.cancelInteraction) {
+                      try {
+                        await channelConn.cancelInteraction(
+                          cancelled,
+                          channelTurnCtx(wireChannelEvent, channelHandle)
+                        );
+                      } catch (cancelError) {
+                        logger.warn("chat.agent: channel cancelInteraction failed; continuing", {
+                          error: cancelError,
+                        });
+                      }
+                    }
+                    await channelLifecycle.report(channelConn, "idle", {
+                      ...channelTurnCtx(wireChannelEvent, channelHandle),
+                      firstTurn: false,
+                    });
+                  }
+                } else if (resolutionMessage) {
+                  effectiveIncomingMessage = resolutionMessage as typeof incomingMessage;
+                  channelInteractionResolved = true;
+                  const resolvedCallId = interaction?.toolCallId;
+                  const controlRefs = sessionChannelBinding?.controls;
+                  if (resolvedCallId && controlRefs?.[resolvedCallId] && sessionChannelBinding) {
+                    const { [resolvedCallId]: _resolved, ...remaining } = controlRefs;
+                    void _resolved;
+                    const { controls: _controls, ...rest } = sessionChannelBinding;
+                    void _controls;
+                    sessionChannelBinding =
+                      Object.keys(remaining).length > 0 ? { ...rest, controls: remaining } : rest;
+                  }
+                  if (interaction && channelConn.finalizeInteraction) {
+                    try {
+                      await channelConn.finalizeInteraction(wireChannelEvent.event, interaction);
+                    } catch (finalizeError) {
+                      logger.warn("chat.agent: channel finalizeInteraction failed; continuing", {
+                        error: finalizeError,
+                      });
+                    }
+                  }
+                } else if (rawInteraction) {
+                  droppedStaleInteraction = true;
+                  logger.debug(
+                    "chat.agent: dropping stale channel interaction that matched no pending tool call",
+                    {
+                      deliveryId: wireChannelEvent.deliveryId,
+                    }
+                  );
+                } else if (channelInbound === undefined || isEmptyChannelInbound(channelInbound)) {
+                  droppedEmptyMessage = true;
+                  logger.debug("chat.agent: dropping a channel delivery with an empty message", {
+                    deliveryId: wireChannelEvent.deliveryId,
+                  });
+                } else {
+                  // A session that starts on a conversation with history: let the connector supply
+                  // it, so the agent answers with the context a reader of the thread has.
+                  if (channelConn.seed && accumulatedUIMessages.length === 0) {
+                    try {
+                      const seeded = channelSeedMessages(
+                        await channelConn.seed(wireChannelEvent.event, {
+                          event: wireChannelEvent.event,
+                          deliveryId: wireChannelEvent.deliveryId,
+                        }),
+                        {
+                          source: "channel",
+                          connectorId: channelConn.id,
+                          provider: channelConn.source,
+                          deliveryId: wireChannelEvent.deliveryId,
+                        }
+                      ) as TUIMessage[];
+                      if (seeded.length > 0) {
+                        accumulatedUIMessages = seeded;
+                        accumulatedMessages = await toModelMessages(seeded);
+                        locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                      }
+                    } catch (seedError) {
+                      logger.warn("chat.agent: channel seed() failed; starting the session empty", {
+                        error: seedError,
+                      });
+                    }
+                  }
+                  effectiveIncomingMessage = channelUserMessage(
+                    channelInbound,
+                    currentWirePayload.messageId ?? wireChannelEvent.deliveryId,
+                    {
+                      source: "channel",
+                      connectorId: channelConn.id,
+                      provider: channelConn.source,
+                      deliveryId: wireChannelEvent.deliveryId,
+                      ...(wireChannelEvent.externalDeliveryId
+                        ? { externalDeliveryId: wireChannelEvent.externalDeliveryId }
+                        : {}),
+                    }
+                  ) as typeof incomingMessage;
+                  if (channelConn.send && channelConn.ack) {
+                    const recoveryPending = locals.get(chatChannelRecoveryPendingKey);
+                    const recovered = recoveryPending?.value === true;
+                    if (recovered) recoveryPending!.value = false;
+                    const ackMessage = channelConn.ack(wireChannelEvent.event, { recovered });
+                    if (ackMessage) {
+                      try {
+                        const ackResult = await channelConn.send(ackMessage, {
+                          event: wireChannelEvent.event,
+                          handle: channelHandle,
+                          deliveryId: wireChannelEvent.deliveryId,
+                          mode: channelConn.delivery,
+                          final: false,
+                          bound: false,
+                        });
+                        channelAckRef = ackResult?.ref;
+                      } catch (ackError) {
+                        logger.warn("chat.agent: channel ack post failed; continuing", {
+                          error: ackError,
+                        });
+                      }
+                    }
+                  }
+                  try {
+                    channelWorkingReaction = await resolveReactionChoice(
+                      channelConn.reactions?.working,
+                      wireChannelEvent.event
+                    );
+                    if (channelWorkingReaction) {
+                      await applyChannelReaction(channelConn, wireChannelEvent, {
+                        name: channelWorkingReaction,
+                      });
+                    }
+                  } catch (reactionError) {
+                    logger.warn("chat.agent: channel working reaction failed", {
+                      error: reactionError,
+                    });
+                  }
+                }
+              } else {
+                droppedUnknownConnector = true;
+                logger.warn(
+                  "chat.agent: no channel connector matches this delivery; skipping turn",
+                  {
+                    connectorId: wireChannelEvent.connectorId,
+                    deliveryId: wireChannelEvent.deliveryId,
+                  }
+                );
+              }
+            }
+            if (
+              !wireChannelEvent &&
+              sessionChannelBinding &&
+              currentWirePayload.trigger !== "close" &&
+              currentWirePayload.trigger !== "preload"
+            ) {
+              // No channel delivery started this turn, but the session is bound to a channel: answer
+              // into it. Reactions need the triggering message, so a bound turn adds none; its reply,
+              // any error and any approval controls go to the bound thread.
+              const bound = channels?.find((c) => c.id === sessionChannelBinding!.connectorId);
+              if (bound?.send) {
+                channelConn = bound;
+                channelHandle = sessionChannelBinding.handle;
+                boundTurn = true;
+                currentTurnConnectorId = bound.id;
+              }
+            }
+            const incomingMessages: TUIMessage[] = effectiveIncomingMessage
+              ? [effectiveIncomingMessage as TUIMessage]
               : [];
             // Cleaning happens once here so `extractLastUserMessageText` and
             // every downstream consumer see the same message shape — and
@@ -8407,11 +10889,31 @@ function chatAgent<
             const cleanedIncomingMessages: TUIMessage[] = incomingMessages.map((msg) =>
               msg.role === "assistant" ? cleanupAbortedParts(msg) : msg
             );
-            const clientData = (
-              parseClientData ? await parseClientData(wireMetadata) : wireMetadata
-            ) as inferSchemaOut<TClientDataSchema>;
-            turnClientData = clientData;
             const lastUserMessage = extractLastUserMessageText(cleanedIncomingMessages);
+
+            channelTurnRan =
+              !!channelConn &&
+              !!(wireChannelEvent || boundTurn) &&
+              currentWirePayload.trigger !== "action" &&
+              !droppedIdleControl &&
+              !droppedStaleInteraction &&
+              !droppedEmptyMessage;
+            const startChannelLifecycle = async () => {
+              lastChannelTurnStartedAt = channelTurnStartedAt;
+              if (!channelConn?.lifecycle) return;
+              channelLifecycleStarted = true;
+              if (sessionChannelBinding?.connectorId === channelConn.id) {
+                sessionChannelBinding = { ...sessionChannelBinding, working: true };
+              }
+              await channelLifecycle.report(channelConn, "working", {
+                ...channelTurnCtx(wireChannelEvent, channelHandle),
+                firstTurn: accumulatedUIMessages.every(
+                  (m) => (m.metadata as ChannelMessageMetadata | undefined)?.seeded === true
+                ),
+                ...(lastUserMessage ? { prompt: lastUserMessage } : {}),
+              });
+            };
+            if (channelTurnRan) await startChannelLifecycle();
 
             // Actions are not turns. They use a different span name
             // and don't carry a turn.number. Branched on at `isAction`.
@@ -8429,7 +10931,7 @@ function chatAgent<
               [SemanticInternalAttributes.ENTITY_TYPE]: isAction ? "chat-action" : "chat-turn",
             };
 
-            if (lastUserMessage) {
+            if (lastUserMessage && recordUserMessage) {
               turnAttributes["chat.user_message"] = lastUserMessage;
 
               // Show a truncated preview of the user message as an accessory
@@ -8446,7 +10948,7 @@ function chatAgent<
               );
             }
 
-            if (wireMetadata !== undefined) {
+            if (wireMetadata !== undefined && recordClientData) {
               turnAttributes["chat.client_data"] =
                 typeof wireMetadata === "string" ? wireMetadata : JSON.stringify(wireMetadata);
             }
@@ -8475,12 +10977,22 @@ function chatAgent<
                   turn,
                   continuation,
                   clientData,
+                  recordUserMessage,
                 });
 
                 // Resolve the per-turn `tools` set now that turn context
                 // (incl. parsed clientData) exists, so every toModelMessages
                 // call this turn can re-apply tool `toModelOutput`.
                 await resolveTurnTools();
+
+                // The channel surface for this turn, handed to run() and reachable from a tool's
+                // execute through chat.surface(), so a connector can ship tools the model drives.
+                const channelSurface = buildChannelRunSurface(
+                  channelConn,
+                  wireChannelEvent,
+                  channelHandle
+                );
+                locals.set(chatChannelSurfaceKey, channelSurface);
 
                 // Per-turn stop controller (reset each turn)
                 const stopController = new AbortController();
@@ -8505,12 +11017,25 @@ function chatAgent<
                   ? chatInputRouter().observe(CHAT_ROUTE_MESSAGES, async (record) => {
                       const msg = (record.data as Extract<ChatInputChunk, { kind: "message" }>)
                         .payload;
+                      const wireChannel = (msg as { channelEvent?: SteerableChannelEvent })
+                        .channelEvent;
+                      const steeredChannel =
+                        wireChannel != null
+                          ? channelSteeringMessage(
+                              channels,
+                              wireChannel,
+                              (msg as { messageId?: string }).messageId
+                            )
+                          : undefined;
+                      if (wireChannel != null && !steeredChannel) return;
                       // Slim wire: at most one delta message per record. The
                       // pendingMessages handler reads `msg.message` directly
                       // instead of slicing an array — a wire record arrives
                       // with the new user message in `.message`, or no message
                       // at all (regenerate / preload / close / handover-prepare).
-                      const lastUIMessage = msg.message as TUIMessage | undefined;
+                      const lastUIMessage = (steeredChannel?.message ?? msg.message) as
+                        | TUIMessage
+                        | undefined;
                       if (lastUIMessage) {
                         if (pmConfig.onReceived) {
                           try {
@@ -8533,7 +11058,11 @@ function chatAgent<
                           ) {
                             return;
                           }
-                          const modelMsgs = await toModelMessages([lastUIMessage]);
+                          const converted = await toModelMessages([lastUIMessage]);
+                          const modelMsgs =
+                            steeredChannel && channelDownloader
+                              ? await resolveChannelFiles(converted, channelDownloader)
+                              : converted;
                           queue.push({
                             uiMessage: lastUIMessage as UIMessage,
                             modelMessages: modelMsgs,
@@ -8547,6 +11076,56 @@ function chatAgent<
                     })
                   : undefined;
                 turnMsgSub = msgSub;
+
+                /**
+                 * Channel deliveries while this turn runs. A delivery the connector maps to `stop`
+                 * aborts this turn through the same controller the stop input uses, and is taken
+                 * off the route so it does not also run as a turn. Any other message is
+                 * acknowledged through the connector's `received` as soon as it arrives, and left
+                 * queued for steering or the next turn.
+                 */
+                const controlSub = channels?.some((c) => c.onControl || c.received)
+                  ? chatInputRouter().observe(CHAT_ROUTE_MESSAGES, (record) => {
+                      const msg = (record.data as Extract<ChatInputChunk, { kind: "message" }>)
+                        .payload as { channelEvent?: SteerableChannelEvent };
+                      const ce = msg.channelEvent;
+                      if (!ce) return;
+                      const conn = channels?.find((c) => c.id === ce.connectorId);
+                      if (!conn) return;
+                      let control: ChannelControl | null = null;
+                      try {
+                        control = conn.onControl?.(ce.event) ?? null;
+                      } catch (controlError) {
+                        logger.warn("chat.agent: channel onControl threw; treating as a message", {
+                          error: controlError,
+                        });
+                      }
+                      if (!control) {
+                        acknowledgeChannelMessage(
+                          conn,
+                          ce,
+                          sessionChannelBinding?.connectorId === conn.id
+                            ? sessionChannelBinding.handle
+                            : undefined
+                        );
+                        return;
+                      }
+                      if (control.kind !== "stop") return;
+                      const earlierTurnStop =
+                        control.at !== undefined && control.at < channelTurnStartedAt;
+                      if (!earlierTurnStop && !stopController.signal.aborted) {
+                        stopController.abort(
+                          new DOMException(control.message || "stopped", "AbortError")
+                        );
+                      }
+                      // Observers are offered a record before it is queued, so the take has to
+                      // wait a tick or it finds nothing and the stop runs again as a turn.
+                      void Promise.resolve().then(() => {
+                        chatInputRouter().take(CHAT_ROUTE_MESSAGES, record.seqNum);
+                      });
+                    })
+                  : undefined;
+                turnControlSub = controlSub;
 
                 // Track new messages for this turn (user input + assistant response).
                 const turnNewModelMessages: ModelMessage[] = [];
@@ -8578,9 +11157,11 @@ function chatAgent<
                 let actionChangedHistory = false;
                 if (isAction) {
                   // Parse and validate the action payload
-                  const parsedAction = parseAction
-                    ? await parseAction(currentWirePayload.action)
-                    : currentWirePayload.action;
+                  const isWebhookAction = currentWirePayload.actionSource === "webhook";
+                  const parsedAction =
+                    parseAction && !isWebhookAction
+                      ? await parseAction(currentWirePayload.action)
+                      : currentWirePayload.action;
 
                   // Hydrate messages from backend if configured
                   if (loadContextHook) {
@@ -8627,6 +11208,7 @@ function chatAgent<
                           clientData,
                           uiMessages: accumulatedUIMessages,
                           messages: accumulatedMessages,
+                          ...(actionChannel ? { channel: actionChannel } : {}),
                         });
                       },
                       {
@@ -8666,7 +11248,13 @@ function chatAgent<
                 // snapshot + `session.out` replay (or `hydrateMessages`,
                 // which also fires per-turn below). Per-turn handling is
                 // therefore a delta merge, not a full-history reset.
-                if (currentWirePayload.trigger !== "action") {
+                if (
+                  currentWirePayload.trigger !== "action" &&
+                  !droppedStaleInteraction &&
+                  !droppedEmptyMessage &&
+                  !droppedUnknownConnector &&
+                  !droppedIdleControl
+                ) {
                   let cleanedUIMessages: TUIMessage[] = cleanedIncomingMessages;
 
                   // Turn-0 head-start with hydrateMessages: the boot seeding from
@@ -8958,19 +11546,43 @@ function chatAgent<
                 // calling the model would prefill its own last reply. Keyed on
                 // the model tail, so a `tool`-terminated chain (a merged tool
                 // approval) still runs.
+                // A channel delivery the run decided not to turn into a turn: a stale
+                // interaction callback (no pending tool call matched) or an event for
+                // a connector this agent does not list. Nothing to answer either way.
+                const isDroppedChannelDelivery =
+                  droppedStaleInteraction ||
+                  droppedEmptyMessage ||
+                  droppedUnknownConnector ||
+                  droppedIdleControl;
+                // A resolved interaction is never a no-op: the assistant may already have text after
+                // the pending call, so the lane ends on an assistant message, but the model has not
+                // seen the decision yet.
                 const isNoOpTurn =
-                  !isAction &&
-                  !splicedHandoverPartial &&
-                  currentWirePayload.trigger === "submit-message" &&
-                  turnNewUIMessages.length === 0 &&
-                  accumulatedMessages[accumulatedMessages.length - 1]?.role === "assistant";
+                  isDroppedChannelDelivery ||
+                  (!isAction &&
+                    !splicedHandoverPartial &&
+                    !channelInteractionResolved &&
+                    currentWirePayload.trigger === "submit-message" &&
+                    turnNewUIMessages.length === 0 &&
+                    accumulatedMessages[accumulatedMessages.length - 1]?.role === "assistant");
 
                 if (isNoOpTurn) {
                   msgSub?.off();
-                  logger.warn("chat.agent: turn added no new user message; skipping the model", {
-                    chatId: currentWirePayload.chatId,
-                    messageId: currentWirePayload.messageId,
-                  });
+                  turnControlSub?.off();
+                  if (channelTurnRan) lastChannelTurnEndedAt = Date.now();
+                  clearChannelWorking();
+                  if (channelLifecycleStarted) {
+                    await channelLifecycle.report(channelConn, "idle", {
+                      ...channelTurnCtx(wireChannelEvent, channelHandle),
+                      firstTurn: false,
+                    });
+                  }
+                  if (!isDroppedChannelDelivery) {
+                    logger.warn("chat.agent: turn added no new user message; skipping the model", {
+                      chatId: currentWirePayload.chatId,
+                      messageId: currentWirePayload.messageId,
+                    });
+                  }
                   settleRecoveredTurn(currentWirePayload);
                   await writeTurnCompleteChunk(currentWirePayload.chatId);
                   // Not a turn — don't consume an iteration.
@@ -8987,6 +11599,26 @@ function chatAgent<
                 // sees the same `turn` value — actions don't count.
                 if (isAction) {
                   if (isActionTurn(actionResult)) {
+                    if (actionResult.message !== undefined) {
+                      const asked: TUIMessage = (
+                        typeof actionResult.message === "string"
+                          ? {
+                              id: generateMessageId(),
+                              role: "user",
+                              parts: [{ type: "text", text: actionResult.message }],
+                            }
+                          : actionResult.message.id
+                            ? actionResult.message
+                            : { ...actionResult.message, id: generateMessageId() }
+                      ) as TUIMessage;
+                      accumulatedUIMessages = [...accumulatedUIMessages, asked];
+                      accumulatedMessages = [
+                        ...accumulatedMessages,
+                        ...(await toModelMessages([asked])),
+                      ];
+                      locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                      actionChangedHistory = true;
+                    }
                     // Persist the edit before the turn starts, so a turn that is
                     // cancelled or runs out of memory continues from the edited
                     // history rather than from the snapshot the edit replaced.
@@ -8995,6 +11627,11 @@ function chatAgent<
                       await writeSnapshotOutsideTurn("action", { turn, clientData });
                     }
                     actionTurn = true;
+                    turnIsActionTurn = true;
+                    if (boundTurn && channelConn) {
+                      channelTurnRan = true;
+                      await startChannelLifecycle();
+                    }
                   } else if (actionResult !== undefined) {
                     throw new Error(
                       "chat.agent: onAction returned a value. An action is a state edit; to answer " +
@@ -9003,6 +11640,7 @@ function chatAgent<
                     );
                   } else {
                     msgSub?.off();
+                    turnControlSub?.off();
                     if (actionChangedHistory) {
                       await writeSnapshotOutsideTurn("action", { turn, clientData });
                     }
@@ -9233,12 +11871,102 @@ function chatAgent<
                         accumulatedMessages,
                         "run"
                       );
+                      const runMessages = channelDownloader
+                        ? await resolveChannelFiles(preparedMessages, channelDownloader)
+                        : preparedMessages;
+                      // Channel observers for this turn are built before run(). The progress
+                      // observer and the native reply stream are shared with a manual chat.pipe()
+                      // inside run() through the turn tap and stay open across several pipes; the
+                      // ack stream editor only rides the automatic pipe, because a manual pipe
+                      // captures no response and posts no final reply that would supersede a
+                      // partial edit. The finally of this turn stops all of them and clears the tap;
+                      // the turn boundary ends the native stream.
+                      if (channelConn) {
+                        const observers: ChannelStreamEditor[] = [];
+                        const tapObservers: ChannelStreamEditor[] = [];
+                        if (
+                          channelConn.delivery === "stream" &&
+                          channelConn.stream &&
+                          (wireChannelEvent || channelHandle)
+                        ) {
+                          const streamConnectorId = channelConn.id;
+                          const opened = (ref: string) => {
+                            if (sessionChannelBinding?.connectorId !== streamConnectorId) return;
+                            sessionChannelBinding = { ...sessionChannelBinding, stream: ref };
+                            if (hydrateMessages) return;
+                            void saveTranscript({
+                              reason: "turn-start",
+                              messages: accumulatedUIMessages,
+                              turn,
+                              trigger: storageTrigger(currentWirePayload.trigger),
+                              clientData,
+                              lastOutEventId: lastSnapshotOutEventId,
+                              skipIfUnchanged: true,
+                              carryInCursor: true,
+                            }).catch((error) => {
+                              logger.warn("chat.agent: saving the open reply stream failed", {
+                                error: error instanceof Error ? error.message : String(error),
+                              });
+                            });
+                          };
+                          try {
+                            channelReplyStream =
+                              channelConn.stream({
+                                ...channelTurnCtx(wireChannelEvent, channelHandle),
+                                opened,
+                              }) ?? undefined;
+                          } catch (streamError) {
+                            logger.warn("chat.agent: channel stream() threw; posting the reply", {
+                              error: streamError,
+                            });
+                          }
+                        }
+                        if (channelReplyStream) {
+                          const replyObserver = makeChannelReplyStreamObserver(channelReplyStream);
+                          observers.push(replyObserver);
+                          tapObservers.push(replyObserver);
+                        } else if (
+                          wireChannelEvent &&
+                          channelConn.send &&
+                          channelConn.delivery === "stream" &&
+                          channelAckRef
+                        ) {
+                          observers.push(
+                            makeChannelStreamEditor(
+                              channelConn,
+                              wireChannelEvent,
+                              channelAckRef,
+                              channelHandle
+                            )
+                          );
+                        }
+                        if (channelConn.progress && (wireChannelEvent || channelHandle)) {
+                          const progressObserver = makeChannelProgressObserver(
+                            channelConn,
+                            wireChannelEvent,
+                            channelHandle
+                          );
+                          observers.push(progressObserver);
+                          tapObservers.push(progressObserver);
+                        }
+                        if (tapObservers.length > 0) {
+                          const tapObserver = composeChannelObservers(tapObservers);
+                          locals.set(chatTurnChannelTapKey, (stream) =>
+                            stream.pipeThrough(
+                              makeChannelStreamTap(tapObserver, { stopOnEnd: false })
+                            )
+                          );
+                        }
+                        if (observers.length > 0) {
+                          channelStreamEditor = composeChannelObservers(observers);
+                        }
+                      }
                       runResult = await userRun({
                         ...restWire,
                         // A turn requested by chat.turn() is not the action itself:
                         // a run() that short-circuits on "action" must still answer.
                         ...(actionTurn ? { trigger: "action-turn" as const } : {}),
-                        messages: preparedMessages,
+                        messages: runMessages,
                         clientData,
                         continuation,
                         previousRunId,
@@ -9256,6 +11984,7 @@ function chatAgent<
                           agentCacheControl,
                           agentSystemProviderOptions
                         ),
+                        channel: channelSurface,
                       } as any);
                     }
 
@@ -9285,6 +12014,12 @@ function chatAgent<
                         // messageId. Without this, the frontend and backend generate IDs
                         // independently and they won't match for ID-based dedup.
                         generateMessageId: resolvedOptions.generateMessageId ?? generateMessageId,
+                        onError: (error: unknown) => {
+                          channelStreamError ??= error;
+                          return resolvedOptions.onError
+                            ? resolvedOptions.onError(error)
+                            : uiStreamErrorText(error);
+                        },
                         onFinish: ({
                           responseMessage,
                           finishReason,
@@ -9298,8 +12033,15 @@ function chatAgent<
                           resolveOnFinish!();
                         },
                       });
+                      // The automatic pipe feeds every observer (progress and the ack stream editor)
+                      // itself; the manual tap is cleared so pipeChat does not feed progress twice.
+                      locals.set(chatTurnChannelTapKey, undefined);
+                      const streamForPipe: typeof uiStream =
+                        channelStreamEditor && uiStream instanceof ReadableStream
+                          ? uiStream.pipeThrough(makeChannelStreamTap(channelStreamEditor))
+                          : uiStream;
                       await pipeChat(
-                        tapUIMessageChunks(uiStream, turnBufferedChunks),
+                        tapUIMessageChunks(streamForPipe, turnBufferedChunks),
                         {
                           signal: combinedSignal,
                           spanName: "stream response",
@@ -9324,6 +12066,9 @@ function chatAgent<
                     }
                   } finally {
                     msgSub?.off();
+                    turnControlSub?.off();
+                    locals.set(chatTurnChannelTapKey, undefined);
+                    await channelStreamEditor?.stop();
                   }
 
                   // Wait for onFinish to fire — on abort this may resolve slightly
@@ -9620,6 +12365,18 @@ function chatAgent<
                   if (capturedResponseMessage) {
                     responseCommitted = true;
                     capturedPartialResponse = capturedResponseMessage;
+                    const errorChunk = turnBufferedChunks.find(
+                      (chunk) => (chunk as { type?: string }).type === "error"
+                    ) as { errorText?: string } | undefined;
+                    channelStreamErrorText = errorChunk?.errorText;
+                    channelTurnText = turnBufferedChunks
+                      .map((chunk) => {
+                        const c = chunk as { type?: string; delta?: unknown };
+                        return c.type === "text-delta" && typeof c.delta === "string"
+                          ? c.delta
+                          : "";
+                      })
+                      .join("");
                     turnBufferedChunks.length = 0;
                   }
 
@@ -9877,11 +12634,239 @@ function chatAgent<
 
                   settleRecoveredTurn(currentWirePayload);
 
+                  openChannelEgressLatch(currentWirePayload.chatId);
                   // Write turn-complete control chunk — closes the frontend stream.
                   const turnCompleteResult = await writeTurnCompleteChunk(
                     currentWirePayload.chatId,
                     turnAccessToken
                   );
+
+                  // Tool calls that have not had controls posted yet; a resume with the rest still
+                  // pending must not repost them or hide the answer text behind them.
+                  const pendingToolCalls =
+                    (wireChannelEvent || boundTurn) &&
+                    channelConn?.send &&
+                    turnCompleteEvent.responseMessage
+                      ? pendingToolCallsInMessage(turnCompleteEvent.responseMessage).filter(
+                          (call) => !channelRenderedToolCallIds.has(call.toolCallId)
+                        )
+                      : [];
+                  const renderControls = !!(
+                    (wireChannelEvent || boundTurn) &&
+                    pendingToolCalls.length > 0 &&
+                    channelConn?.renderInteraction
+                  );
+
+                  let channelErrorLine: string | undefined;
+                  if (channelStreamErrorText && (wireChannelEvent || boundTurn)) {
+                    logger.warn("chat.agent: channel turn ended on a model or stream error", {
+                      errorText: channelStreamErrorText,
+                    });
+                    channelErrorLine = await channelTurnErrorMessage(channelConn, {
+                      error:
+                        channelStreamError instanceof Error
+                          ? channelStreamError
+                          : new Error(channelStreamErrorText),
+                      partialText: channelTurnText?.trim() ?? "",
+                      event: channelWireEvent?.event,
+                      runId: ctx.run.id,
+                      chatId: currentWirePayload.chatId,
+                    });
+                  }
+
+                  let channelReplyDelivered = false;
+                  if (channelReplyStream) {
+                    const replyStream = channelReplyStream;
+                    channelReplyStream = undefined;
+                    try {
+                      const ended = await replyStream.end({
+                        stopped: turnCompleteEvent.stopped,
+                        pending: renderControls,
+                        ...(channelStreamErrorText
+                          ? { errorText: channelErrorLine ?? CHANNEL_TURN_ERROR_MESSAGE }
+                          : {}),
+                      });
+                      channelReplyDelivered = ended.delivered;
+                    } catch (streamError) {
+                      logger.warn("chat.agent: channel reply stream end failed", {
+                        error: streamError,
+                      });
+                    } finally {
+                      clearOpenReplyStream();
+                    }
+                  }
+
+                  // Channel egress: map the turn's reply via outbound() and send it, editing the ack
+                  // placeholder posted at turn start (previousRef). A failed send is retried; one that
+                  // never lands is logged and the turn gets the error reaction. A manual-pipe turn has
+                  // no responseMessage, so it opts out.
+                  const finalChannelConn = channelConn;
+                  if (
+                    (wireChannelEvent || boundTurn) &&
+                    finalChannelConn?.send &&
+                    turnCompleteEvent.responseMessage
+                  ) {
+                    if (renderControls) {
+                      for (const call of pendingToolCalls) {
+                        channelRenderedToolCallIds.add(call.toolCallId);
+                      }
+                    }
+                    const replyText =
+                      channelTurnText && channelTurnText.trim().length > 0
+                        ? channelTurnText
+                        : channelReplyText(turnCompleteEvent.responseMessage);
+                    // A model or stream error surfaces as an `error` chunk and an empty reply, not as a
+                    // thrown turn. The mapper gets it on this one call, with the connector's error line
+                    // standing in for an empty reply, so the placeholder never sits there as if the agent
+                    // were still working. The error text itself stays on the run, not in the channel.
+                    const finalReply: ChannelReply = {
+                      // Prefer what this turn streamed; a resumed message carries earlier turns' text too.
+                      // A failed turn always ends on the connector's error line, after any partial text.
+                      text: channelErrorLine
+                        ? replyText.trim().length > 0
+                          ? `${replyText.trimEnd()}\n\n${channelErrorLine}`
+                          : channelErrorLine
+                        : replyText,
+                      message: turnCompleteEvent.responseMessage,
+                      final: true,
+                      stopped: turnCompleteEvent.stopped,
+                      ...(renderControls ? { pending: true } : {}),
+                      ...(channelStreamErrorText
+                        ? { error: new Error(channelStreamErrorText) }
+                        : {}),
+                    };
+                    let outboundMessage: ChannelMessage | null = null;
+                    if (!channelReplyDelivered) {
+                      try {
+                        outboundMessage = (finalChannelConn.outbound ?? defaultChannelOutbound)(
+                          finalReply
+                        );
+                      } catch (outboundError) {
+                        logger.warn(
+                          "chat.agent: channel outbound failed; posting the plain reply",
+                          {
+                            error: outboundError,
+                          }
+                        );
+                        outboundMessage = defaultChannelOutbound(finalReply) ?? {
+                          text: "An unexpected error occurred",
+                        };
+                      }
+                    }
+                    const sendFinal = async (
+                      message: ChannelMessage
+                    ): Promise<{ ref?: string } | undefined> => {
+                      for (let attempt = 1; ; attempt++) {
+                        try {
+                          const sent = await finalChannelConn.send!(message, {
+                            event: wireChannelEvent?.event,
+                            handle: channelHandle,
+                            deliveryId: wireChannelEvent?.deliveryId,
+                            previousRef: channelAckRef,
+                            mode: finalChannelConn.delivery,
+                            final: true,
+                            bound: boundTurn,
+                          });
+                          channelFinalAnswerPosted = true;
+                          return sent ?? {};
+                        } catch (egressError) {
+                          if (attempt >= CHANNEL_FINAL_SEND_ATTEMPTS || !channelAckRef) {
+                            channelFinalSendFailed = true;
+                            logger.error("chat.agent: channel egress send failed", {
+                              error: egressError,
+                              attempts: attempt,
+                            });
+                            return undefined;
+                          }
+                          logger.warn("chat.agent: channel egress send failed; retrying", {
+                            error: egressError,
+                            attempt,
+                          });
+                          await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+                        }
+                      }
+                    };
+                    // A turn that pauses on a human decision often explains itself first (a summary,
+                    // the steps so far) and then calls the tool. That text is the answer so far: post it
+                    // as the placeholder edit, and post the controls as their own message after it.
+                    if (renderControls && outboundMessage && (await sendFinal(outboundMessage))) {
+                      channelAckRef = undefined;
+                    }
+                    const channelMessage = renderControls
+                      ? finalChannelConn.renderInteraction!(
+                          pendingToolCalls,
+                          wireChannelEvent
+                            ? {
+                                event: wireChannelEvent.event,
+                                deliveryId: wireChannelEvent.deliveryId,
+                              }
+                            : {}
+                        )
+                      : outboundMessage;
+                    if (channelMessage) {
+                      const controlsRef = (await sendFinal(channelMessage))?.ref;
+                      if (
+                        renderControls &&
+                        controlsRef &&
+                        sessionChannelBinding?.connectorId === finalChannelConn.id
+                      ) {
+                        sessionChannelBinding = {
+                          ...sessionChannelBinding,
+                          controls: {
+                            ...sessionChannelBinding.controls,
+                            ...Object.fromEntries(
+                              pendingToolCalls.map((call) => [call.toolCallId, controlsRef])
+                            ),
+                          },
+                        };
+                      }
+                    }
+                  }
+
+                  if (channelTurnRan) lastChannelTurnEndedAt = Date.now();
+                  clearChannelWorking();
+                  if (channelLifecycleStarted) {
+                    const stillPending = turnCompleteEvent.responseMessage
+                      ? pendingToolCallsInMessage(turnCompleteEvent.responseMessage).length > 0
+                      : false;
+                    await channelLifecycle.report(
+                      channelConn,
+                      locals.get(chatCloseRequestedKey)
+                        ? "closed"
+                        : stillPending
+                          ? "waiting"
+                          : "idle",
+                      { ...channelTurnCtx(wireChannelEvent, channelHandle), firstTurn: false }
+                    );
+                  }
+
+                  // Lifecycle reaction: turn done. Remove "working", mark "done".
+                  if (wireChannelEvent && channelConn?.react) {
+                    try {
+                      if (channelWorkingReaction) {
+                        await applyChannelReaction(channelConn, wireChannelEvent, {
+                          name: channelWorkingReaction,
+                          remove: true,
+                        });
+                      }
+                      const outcomeReaction = await resolveReactionChoice(
+                        channelStreamErrorText || channelFinalSendFailed
+                          ? channelConn.reactions?.error
+                          : channelConn.reactions?.done,
+                        wireChannelEvent.event
+                      );
+                      if (outcomeReaction) {
+                        await applyChannelReaction(channelConn, wireChannelEvent, {
+                          name: outcomeReaction,
+                        });
+                      }
+                    } catch (reactionError) {
+                      logger.warn("chat.agent: channel done reaction failed", {
+                        error: reactionError,
+                      });
+                    }
+                  }
+                  settleChannelEgressLatch(currentWirePayload.chatId);
 
                   // Fire onTurnComplete — stream is closed, use for persistence.
                   if (onTurnComplete) {
@@ -10019,6 +13004,7 @@ function chatAgent<
                 // chat.endRun() — same exit, no upgrade semantics.
                 if (locals.get(chatCloseRequestedKey)) {
                   await performChatClose();
+                  await reportChannelClosed();
                   return "exit";
                 }
 
@@ -10109,6 +13095,7 @@ function chatAgent<
 
                 // Close signal — exit the loop gracefully
                 if (currentWirePayload.trigger === "close") {
+                  await reportChannelClosed();
                   return "exit";
                 }
 
@@ -10128,14 +13115,18 @@ function chatAgent<
             // Detach the turn's message handler first — left attached it would
             // eat the very message the wait below is waiting for.
             turnMsgSub?.off();
+            turnControlSub?.off();
             if (
               turnError instanceof Error &&
               turnError.name === "AbortError" &&
               runSignal.aborted
             ) {
+              settleChannelEgressLatch(currentWirePayload.chatId);
+              channelLifecycle.dispose();
               // Full run cancellation — exit immediately
               throw turnError;
             }
+            settleChannelEgressLatch(currentWirePayload.chatId);
 
             // OOM errors must escape the turn loop so the task runtime can
             // honor `retry.outOfMemory.machine` (set on chat.agent via
@@ -10146,6 +13137,114 @@ function chatAgent<
             // (same chatId / Session, accumulator rehydrates).
             if (turnError instanceof OutOfMemoryError) {
               throw turnError;
+            }
+
+            if (channelWireEvent && channelConn?.react) {
+              try {
+                if (channelWorkingReaction) {
+                  await applyChannelReaction(channelConn, channelWireEvent, {
+                    name: channelWorkingReaction,
+                    remove: true,
+                  });
+                }
+                const errorReaction = await resolveReactionChoice(
+                  channelConn.reactions?.error,
+                  channelWireEvent.event
+                );
+                if (errorReaction) {
+                  await applyChannelReaction(channelConn, channelWireEvent, {
+                    name: errorReaction,
+                  });
+                }
+              } catch (reactionError) {
+                logger.warn("chat.agent: channel error reaction failed", { error: reactionError });
+              }
+            }
+
+            // The channel gets the connector's error line, never the error itself: the run keeps that.
+            const channelErrorText =
+              channelReplyStream || ((channelWireEvent || boundTurn) && channelConn?.send)
+                ? await channelTurnErrorMessage(channelConn, {
+                    error: turnError instanceof Error ? turnError : new Error(String(turnError)),
+                    partialText: channelTurnText?.trim() ?? "",
+                    event: channelWireEvent?.event,
+                    runId: ctx.run.id,
+                    chatId: currentWirePayload.chatId,
+                  })
+                : CHANNEL_TURN_ERROR_MESSAGE;
+            let errorStreamDelivered = false;
+            if (channelReplyStream) {
+              const replyStream = channelReplyStream;
+              channelReplyStream = undefined;
+              try {
+                const ended = await replyStream.end({
+                  stopped: false,
+                  pending: false,
+                  errorText: channelErrorText,
+                });
+                errorStreamDelivered = ended.delivered;
+              } catch (streamError) {
+                logger.warn("chat.agent: channel reply stream end failed", {
+                  error: streamError,
+                });
+              } finally {
+                clearOpenReplyStream();
+              }
+            }
+
+            if ((channelWireEvent || boundTurn) && channelConn?.send) {
+              const errorPreviousRef = channelFinalAnswerPosted ? undefined : channelAckRef;
+              const channelErrorMessageId =
+                errorPreviousRef ?? channelWireEvent?.deliveryId ?? `channel-error-${turn}`;
+              let errorMessage: ChannelMessage | null = null;
+              try {
+                errorMessage = (channelConn.outbound ?? defaultChannelOutbound)({
+                  text: channelErrorText,
+                  message: {
+                    id: channelErrorMessageId,
+                    role: "assistant",
+                    parts: [{ type: "text", text: channelErrorText }],
+                  } as UIMessage,
+                  final: true,
+                  stopped: false,
+                  error: turnError,
+                });
+              } catch (outboundError) {
+                logger.warn("chat.agent: channel error outbound failed; posting the plain error", {
+                  error: outboundError,
+                });
+                errorMessage = { text: channelErrorText };
+              }
+              if (errorMessage && !errorStreamDelivered) {
+                try {
+                  await channelConn.send(errorMessage, {
+                    event: channelWireEvent?.event,
+                    handle: channelHandle,
+                    deliveryId: channelWireEvent?.deliveryId,
+                    previousRef: errorPreviousRef,
+                    mode: channelConn.delivery,
+                    final: true,
+                    bound: boundTurn,
+                  });
+                } catch (egressError) {
+                  logger.warn("chat.agent: channel error egress send failed", {
+                    error: egressError,
+                  });
+                }
+              }
+            }
+
+            if (channelTurnRan) lastChannelTurnEndedAt = Date.now();
+            clearChannelWorking();
+            if (channelLifecycleStarted) {
+              await channelLifecycle.report(
+                channelConn,
+                locals.get(chatCloseRequestedKey) ? "closed" : "idle",
+                {
+                  ...channelTurnCtx(channelWireEvent, channelHandle),
+                  firstTurn: false,
+                }
+              );
             }
 
             let errorTurnCompleteResult:
@@ -10458,6 +13557,7 @@ function chatAgent<
               .get(chatManagedResponseKey)
               ?.close()
               .catch(() => {});
+            turnControlSub?.off();
           }
         }
       } finally {
@@ -10480,6 +13580,47 @@ function chatAgent<
     resourceCatalog.updateTaskMetadata(options.id, {
       schema: clientDataSchema as any,
     });
+  }
+
+  // Claim each listed chat.event descriptor: subscribe THIS agent's session to the event's endpoint.
+  // The subscriber id is scoped by agent, so the same descriptor on two agents is two subscribers.
+  if (events) {
+    for (const wh of events) {
+      resourceCatalog.markSessionWebhookClaimed(wh.id);
+      resourceCatalog.registerWebhookSubscriber({
+        endpointId: wh.endpointId,
+        target: {
+          type: "session",
+          id: `${options.id}:${wh.id}`,
+          taskIdentifier: options.id,
+          keyTemplate: wh.key,
+          actionType: wh.type,
+          deliverAs: "action",
+          ...(wh.filter ? { filter: wh.filter } : {}),
+        },
+      });
+    }
+  }
+
+  // Claim each listed channel connector: the same kind of subscriber, but deliverAs "message" so a
+  // verified event becomes a turn (the run maps it via the connector's inbound(), resolved by connectorId).
+  if (channels) {
+    for (const ch of channels) {
+      resourceCatalog.markSessionWebhookClaimed(ch.id);
+      resourceCatalog.registerWebhookSubscriber({
+        endpointId: ch.endpointId,
+        target: {
+          type: "session",
+          id: `${options.id}:${ch.id}`,
+          taskIdentifier: options.id,
+          keyTemplate: ch.key,
+          connectorId: ch.id,
+          deliverAs: "message",
+          ...(ch.filter ? { filter: ch.filter } : {}),
+          ...(ch.startOn ? { startOn: ch.startOn } : {}),
+        },
+      });
+    }
   }
 
   return task;
@@ -11031,6 +14172,23 @@ function resolveUIMessageStreamOptions(): ChatUIMessageStreamOptions<UIMessage> 
 // ---------------------------------------------------------------------------
 // Stop detection
 // ---------------------------------------------------------------------------
+
+/**
+ * The channel surface of the current turn, from anywhere inside a `chat.agent` run, including a
+ * tool's `execute`. Undefined on a browser turn or when the connector defines no reactions and no
+ * `surface()`. Pass the connector's surface type to get its helpers typed:
+ *
+ * @example
+ * ```ts
+ * execute: async ({ steps }) => {
+ *   const linear = chat.surface<LinearRunSurface>();
+ *   if (linear) await linear.plan(steps);
+ * }
+ * ```
+ */
+function getChannelSurface<T extends ChannelRunSurface = ChannelRunSurface>(): T | undefined {
+  return locals.get(chatChannelSurfaceKey) as T | undefined;
+}
 
 /**
  * Check whether the user stopped generation during the current turn.
@@ -13624,6 +16782,10 @@ function createChatLoadTranscriptAction<TClientData = unknown>(
 export const chat = {
   /** Create a chat agent. See {@link chatAgent}. */
   agent: chatAgent,
+  /** Declare an inbound webhook event an agent claims via `chat.agent({ events })`. See {@link chatEvent}. */
+  event: chatEvent,
+  /** Chat frontend connectors (Slack, etc.) an agent claims via `chat.agent({ channels })`. */
+  channels: chatChannels,
   /** Create a custom agent with manual lifecycle control. See {@link chatCustomAgent}. */
   customAgent: chatCustomAgent,
   /** Create a chat task with a fixed {@link UIMessage} subtype and optional default stream options. See {@link withUIMessage}. */
@@ -13642,6 +16804,8 @@ export const chat = {
   local: chatLocal,
   /** Create a public access token for a chat task. See {@link createChatAccessToken}. */
   createAccessToken: createChatAccessToken,
+  /** Mint a read-only token to WATCH a session by externalId (cross-surface). See {@link createChatWatchToken}. */
+  createWatchToken: createChatWatchToken,
   /** Override the turn timeout at runtime (duration string). See {@link setTurnTimeout}. */
   setTurnTimeout,
   /** Override the turn timeout at runtime (seconds). See {@link setTurnTimeoutInSeconds}. */
@@ -13652,6 +16816,8 @@ export const chat = {
   setUIMessageStreamOptions,
   /** Check if the current turn was stopped by the user. See {@link isStopped}. */
   isStopped,
+  /** The current turn's channel surface (reactions plus connector helpers), also from inside a tool. See {@link getChannelSurface}. */
+  surface: getChannelSurface,
   /** Request that the run exits after the current turn so the next message starts on the latest version. See {@link requestUpgrade}. */
   requestUpgrade,
   /** Hand off a custom agent Session to a fresh run. See {@link endAndContinue}. */
@@ -13726,7 +16892,8 @@ export const chat = {
   /**
    * Returns an options object ready to spread into `streamText()`.
    * Reads the stored prompt and returns `{ system, experimental_telemetry, ...config }`.
-   * Returns `{}` if no prompt has been set.
+   * With no stored prompt it still returns `experimental_telemetry` (on), so the model call is
+   * traced.
    */
   toStreamTextOptions,
   /**

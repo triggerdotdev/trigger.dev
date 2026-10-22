@@ -141,6 +141,7 @@ export class TaskRunProcess {
 
     const fullEnv = {
       ...$env,
+      ...trustStoreEnv(process.env, $env),
       OTEL_IMPORT_HOOK_INCLUDES: workerManifest.otelImportHook?.include?.join(","),
       // TODO: this will probably need to use something different for bun (maybe --preload?)
       NODE_OPTIONS: execOptionsForRuntime(workerManifest.runtime, workerManifest, maxOldSpaceSize),
@@ -604,6 +605,27 @@ export class TaskRunProcess {
       message: String(error),
     };
   }
+}
+
+const TRUST_STORE_ENV_KEYS = [
+  "NODE_EXTRA_CA_CERTS",
+  "SSL_CERT_FILE",
+  "REQUESTS_CA_BUNDLE",
+  "PIP_CERT",
+] as const;
+
+export function trustStoreEnv(
+  controllerEnv: NodeJS.ProcessEnv,
+  runEnv: Record<string, string | undefined>
+): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const key of TRUST_STORE_ENV_KEYS) {
+    const value = runEnv[key] ?? controllerEnv[key];
+    if (value) {
+      env[key] = value;
+    }
+  }
+  return env;
 }
 
 function executorArgs(workerManifest: WorkerManifest): string[] {

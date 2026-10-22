@@ -15,6 +15,7 @@ import {
   GetRunDetailsInput,
   GetSpanDetailsInput,
   ListRunsInput,
+  ReplayRunInput,
   WaitForRunInput,
 } from "../schemas.js";
 import { respondWithError, toolHandler } from "../utils.js";
@@ -333,6 +334,75 @@ export const cancelRunTool = {
       `Run ${retrieveResult.id} canceled.`,
       `Status: ${retrieveResult.status}`,
       `Task: ${retrieveResult.taskIdentifier}`,
+      `[View in dashboard](${runUrl})`,
+    ];
+
+    return {
+      content: [{ type: "text", text: content.join("\n") }],
+    };
+  }),
+};
+
+export const replayRunTool = {
+  name: toolsMetadata.replay_run.name,
+  title: toolsMetadata.replay_run.title,
+  description: toolsMetadata.replay_run.description,
+  inputSchema: ReplayRunInput.shape,
+  handler: toolHandler(ReplayRunInput.shape, async (input, { ctx }) => {
+    ctx.logger?.log("calling replay_run", { input });
+
+    if (ctx.options.devOnly && input.environment !== "dev") {
+      return respondWithError(
+        `This MCP server is only available for the dev environment. You tried to access the ${input.environment} environment. Remove the --dev-only flag to access other environments.`
+      );
+    }
+
+    const projectRef = await ctx.getProjectRef({
+      projectRef: input.projectRef,
+      cwd: input.configPath,
+    });
+
+    const readClient = await ctx.getApiClient({
+      projectRef,
+      environment: input.environment,
+      scopes: [`read:runs:${input.runId}`],
+      branch: input.branch,
+    });
+
+    const run = await readClient.retrieveRun(input.runId);
+
+    const apiClient = await ctx.getApiClient({
+      projectRef,
+      environment: input.environment,
+      scopes: [
+        `read:runs:${input.runId}`,
+        `write:runs:${input.runId}`,
+        `trigger:tasks:${run.taskIdentifier}`,
+      ],
+      branch: input.branch,
+    });
+
+    const replayed = await apiClient.replayRun(input.runId, {
+      payload: input.payload,
+      metadata: input.metadata,
+      tags: input.tags,
+      queue: input.queue,
+      concurrencyKey: input.concurrencyKey,
+      machine: input.machine,
+      version: input.version,
+      region: input.region,
+      delay: input.delay,
+      ttl: input.ttl,
+      idempotencyKey: input.idempotencyKey,
+      maxAttempts: input.maxAttempts,
+      maxDuration: input.maxDuration,
+      priority: input.priority,
+    });
+
+    const runUrl = await ctx.getDashboardUrl(`/projects/v3/${projectRef}/runs/${replayed.id}`);
+
+    const content = [
+      `Run ${input.runId} replayed as ${replayed.id}.`,
       `[View in dashboard](${runUrl})`,
     ];
 

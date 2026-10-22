@@ -104,6 +104,9 @@ export type DashboardWidgetSummary = z.infer<typeof DashboardWidgetSummary>;
 export const DashboardSummary = z.object({
   key: z.string(),
   title: z.string(),
+  /** `builtIn` dashboards are read-only; `custom` dashboards can be edited through the API */
+  type: z.enum(["builtIn", "custom"]).optional(),
+  description: z.string().optional(),
   widgets: z.array(DashboardWidgetSummary),
 });
 
@@ -117,6 +120,202 @@ export const ListDashboardsResponseBody = z.object({
 });
 
 export type ListDashboardsResponseBody = z.infer<typeof ListDashboardsResponseBody>;
+
+export const DashboardChartType = z.enum(["bar", "line"]);
+export type DashboardChartType = z.infer<typeof DashboardChartType>;
+
+export const DashboardSortDirection = z.enum(["asc", "desc"]);
+export type DashboardSortDirection = z.infer<typeof DashboardSortDirection>;
+
+export const DashboardChartAggregation = z.enum(["sum", "avg", "count", "min", "max"]);
+export type DashboardChartAggregation = z.infer<typeof DashboardChartAggregation>;
+
+export const DashboardBigNumberAggregation = z.enum([
+  "sum",
+  "avg",
+  "count",
+  "min",
+  "max",
+  "first",
+  "last",
+]);
+export type DashboardBigNumberAggregation = z.infer<typeof DashboardBigNumberAggregation>;
+
+export const DashboardChartConfig = z.object({
+  chartType: DashboardChartType,
+  xAxisColumn: z.string().nullable(),
+  yAxisColumns: z.string().array(),
+  groupByColumn: z.string().nullable(),
+  stacked: z.boolean(),
+  sortByColumn: z.string().nullable(),
+  sortDirection: DashboardSortDirection,
+  aggregation: DashboardChartAggregation,
+  seriesColors: z.record(z.string(), z.string()).optional(),
+});
+export type DashboardChartConfig = z.infer<typeof DashboardChartConfig>;
+
+export const DashboardBigNumberConfig = z.object({
+  column: z.string(),
+  aggregation: DashboardBigNumberAggregation,
+  sortDirection: DashboardSortDirection.optional(),
+  abbreviate: z.boolean().default(false),
+  prefix: z.string().optional(),
+  suffix: z.string().optional(),
+});
+export type DashboardBigNumberConfig = z.infer<typeof DashboardBigNumberConfig>;
+
+/**
+ * How a dashboard widget renders its query results.
+ */
+export const DashboardWidgetDisplay = discriminatedUnion("type", [
+  z.object({
+    type: z.literal("table"),
+    prettyFormatting: z.boolean().default(true),
+    sorting: z.array(z.object({ desc: z.boolean(), id: z.string() })).default([]),
+  }),
+  DashboardChartConfig.extend({ type: z.literal("chart") }),
+  DashboardBigNumberConfig.extend({ type: z.literal("bignumber") }),
+  z.object({ type: z.literal("title") }),
+]);
+export type DashboardWidgetDisplay = z.infer<typeof DashboardWidgetDisplay>;
+
+/**
+ * A widget's position on the dashboard's 12-column grid.
+ */
+export const DashboardLayoutItem = z.object({
+  i: z.string(),
+  x: z.number(),
+  y: z.number(),
+  w: z.number(),
+  h: z.number(),
+  minH: z.number().optional(),
+  maxH: z.number().optional(),
+});
+export type DashboardLayoutItem = z.infer<typeof DashboardLayoutItem>;
+
+export const DashboardStoredWidget = z.object({
+  title: z.string(),
+  query: z.string().default(""),
+  display: DashboardWidgetDisplay,
+  /** Server-side gap fill: carry-forward for gauges, zero-fill for counters. */
+  fillGaps: z.boolean().optional(),
+});
+export type DashboardStoredWidget = z.infer<typeof DashboardStoredWidget>;
+
+/**
+ * The stored definition of a dashboard: every widget and its grid position.
+ */
+export const DashboardDefinition = discriminatedUnion("version", [
+  z.object({
+    version: z.literal("1"),
+    layout: z.array(DashboardLayoutItem),
+    widgets: z.record(z.string(), DashboardStoredWidget),
+  }),
+]);
+export type DashboardDefinition = z.infer<typeof DashboardDefinition>;
+
+export const DashboardWidgetPosition = z.object({
+  x: z.number().int().min(0).max(11),
+  y: z.number().int().min(0),
+  w: z.number().int().min(1).max(12),
+  h: z.number().int().min(1),
+});
+export type DashboardWidgetPosition = z.infer<typeof DashboardWidgetPosition>;
+
+/**
+ * A widget as the dashboards API reads and writes it.
+ */
+export const DashboardWidget = z.object({
+  id: z.string(),
+  title: z.string(),
+  query: z.string(),
+  display: DashboardWidgetDisplay,
+  fillGaps: z.boolean().optional(),
+  position: DashboardWidgetPosition,
+});
+export type DashboardWidget = z.infer<typeof DashboardWidget>;
+
+/**
+ * A custom dashboard as the dashboards API returns it.
+ */
+export const DashboardObject = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string(),
+  /** Changes on every write. Send it back as `revision` to reject a write that would overwrite someone else's change. */
+  revision: z.string(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+  widgets: z.array(DashboardWidget),
+});
+export type DashboardObject = z.infer<typeof DashboardObject>;
+
+const DashboardWidgetTitle = z.string().trim().min(1).max(200);
+
+export const DashboardWidgetInput = z.strictObject({
+  /** Omit to generate one. Must be unique within the dashboard. */
+  id: z
+    .string()
+    .regex(/^[A-Za-z0-9_-]{1,64}$/, "id may only contain letters, numbers, _ and -")
+    .optional(),
+  title: DashboardWidgetTitle,
+  /** A TRQL query. Required unless `display.type` is `title`. */
+  query: z.string().default(""),
+  display: DashboardWidgetDisplay,
+  fillGaps: z.boolean().optional(),
+  /** Omit to place the widget full width below the existing widgets. */
+  position: DashboardWidgetPosition.optional(),
+});
+export type DashboardWidgetInput = z.input<typeof DashboardWidgetInput>;
+
+const DashboardTitle = z.string().trim().min(1).max(200);
+const DashboardDescription = z.string().max(2000);
+
+export const CreateDashboardRequestBody = z.strictObject({
+  title: DashboardTitle,
+  description: DashboardDescription.optional(),
+  widgets: z.array(DashboardWidgetInput).optional(),
+});
+export type CreateDashboardRequestBody = z.input<typeof CreateDashboardRequestBody>;
+
+export const UpdateDashboardRequestBody = z.strictObject({
+  title: DashboardTitle.optional(),
+  description: DashboardDescription.optional(),
+  revision: z.string().optional(),
+});
+export type UpdateDashboardRequestBody = z.input<typeof UpdateDashboardRequestBody>;
+
+export const ReplaceDashboardRequestBody = z.strictObject({
+  title: DashboardTitle.optional(),
+  description: DashboardDescription.optional(),
+  widgets: z.array(DashboardWidgetInput),
+  revision: z.string().optional(),
+});
+export type ReplaceDashboardRequestBody = z.input<typeof ReplaceDashboardRequestBody>;
+
+export const AddDashboardWidgetRequestBody = DashboardWidgetInput.extend({
+  revision: z.string().optional(),
+});
+export type AddDashboardWidgetRequestBody = z.input<typeof AddDashboardWidgetRequestBody>;
+
+export const UpdateDashboardWidgetRequestBody = z.strictObject({
+  title: DashboardWidgetTitle.optional(),
+  query: z.string().optional(),
+  display: DashboardWidgetDisplay.optional(),
+  fillGaps: z.boolean().optional(),
+  position: DashboardWidgetPosition.optional(),
+  revision: z.string().optional(),
+});
+export type UpdateDashboardWidgetRequestBody = z.input<typeof UpdateDashboardWidgetRequestBody>;
+
+export const AddDashboardWidgetResponseBody = z.object({
+  widgetId: z.string(),
+  dashboard: DashboardObject,
+});
+export type AddDashboardWidgetResponseBody = z.infer<typeof AddDashboardWidgetResponseBody>;
+
+export const DeleteDashboardResponseBody = z.object({ id: z.string() });
+export type DeleteDashboardResponseBody = z.infer<typeof DeleteDashboardResponseBody>;
 
 // ---------------------------------------------------------------------------
 // Query table row types

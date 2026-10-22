@@ -11,7 +11,7 @@ Reserve 🔴 for things that would page someone or block a rollback. In this cod
   - A Redis data shape used by both versions changes in place. New shapes need a new key namespace.
   - A migration is not backward-compatible with the prior image.
 - **Schema / migration safety.** Prisma migrations must be backward-compatible with the prior deploy. Adding NOT NULL without a default, dropping a column an old image still reads, renaming a column — all 🔴.
-- **ClickHouse migration ordering + idempotency.** Goose runs in strict mode in the deploy pipeline and refuses to apply a missing version below the current version — slotting a new file in below the latest already-applied version blocks the deploy. New ClickHouse migration files MUST use the next available number (`max(files in internal-packages/clickhouse/schema/) + 1`); if main has added migrations while you've been on a branch, renumber yours. DDL must also be idempotent (`ADD COLUMN IF NOT EXISTS`, `DROP COLUMN IF EXISTS`, `CREATE TABLE IF NOT EXISTS`, `ADD INDEX IF NOT EXISTS`) so a partial / `--allow-missing` apply elsewhere doesn't fail on retry. Either fault is 🔴 — both break test/prod deploys. Rules live in `internal-packages/clickhouse/CLAUDE.md`.
+- **ClickHouse migration ordering + idempotency.** Goose runs in strict mode in the deploy pipeline and refuses to apply a missing version below the current version — slotting a new file in below the latest already-applied version blocks the deploy. New ClickHouse migration files MUST use the next available number (`max(files in internal-packages/clickhouse/schema/) + 1`); if main has added migrations while you've been on a branch, renumber yours. DDL must also be idempotent (`ADD COLUMN IF NOT EXISTS`, `DROP COLUMN IF EXISTS`, `CREATE TABLE IF NOT EXISTS`, `ADD INDEX IF NOT EXISTS`) so a partial / `--allow-missing` apply elsewhere doesn't fail on retry. Either fault is 🔴 — both break test/prod deploys. Rules live in `internal-packages/clickhouse/AGENTS.md`.
 - **Queue / concurrency correctness.** RunQueue, MarQS (V1, legacy), redis-worker — any change to enqueue / dequeue / locking semantics. Re-derive the invariant on paper before flagging or accepting.
 - **Missing index on a hot table.** New Prisma queries against `TaskRun`, `TaskRunExecutionSnapshot`, `JobRun`, `Project`, etc. must use an existing index. Check `internal-packages/database/prisma/schema.prisma` for the relevant `@@index` lines — don't guess and don't propose `EXPLAIN`.
 - **Recovery-path queries.** Any `TaskRun.findFirst` / `findMany` added to a schedule, run-recovery, or restart loop. Recovery fan-outs (Redis crash, restart storms) turn "rare indexed query" into a DB incident. 🔴 even if indexed.
@@ -32,7 +32,7 @@ Every PR gets a performance pass — not just the ones that look perf-sensitive.
 
 **Hot paths — extra scrutiny on any added query or work:**
 
-- **Trigger + batch trigger** (`triggerTask.server.ts`, `batchTriggerV3.server.ts`) — see `apps/webapp/CLAUDE.md`; do not add DB queries to these.
+- **Trigger + batch trigger** (`triggerTask.server.ts`, `batchTriggerV3.server.ts`) — see `apps/webapp/AGENTS.md`; do not add DB queries to these.
 - **Dequeue / RunQueue** (`dequeueSystem.ts`, run-queue read/lock paths) — runs on every execution.
 - **Execution-snapshot creation in the run engine** — any engine function that writes a `TaskRunExecutionSnapshot` runs per state transition; a new query there multiplies by run volume.
 - **OTEL ingestion** (`otel.v1.traces.ts`, `otel.v1.logs.ts`) — write volume scales with customer span counts.
@@ -75,7 +75,7 @@ Every PR gets a performance pass — not just the ones that look perf-sensitive.
 
 ## Things V1/legacy that should NOT block a PR
 
-The `apps/webapp/app/v3/` directory name is misleading — most code there is V2. Only specific files are V1-only legacy: `MarQS` queue, `triggerTaskV1`, `cancelTaskRunV1`, and a handful of others (see `apps/webapp/CLAUDE.md` for the exact list). Don't flag "you should refactor this to use V2" on those — they're frozen.
+The `apps/webapp/app/v3/` directory name is misleading — most code there is V2. Only specific files are V1-only legacy: `MarQS` queue, `triggerTaskV1`, `cancelTaskRunV1`, and a handful of others (see `apps/webapp/AGENTS.md` for the exact list). Don't flag "you should refactor this to use V2" on those — they're frozen.
 
 ## Confidence calibration for this repo
 

@@ -3,6 +3,11 @@ import type {
   WeightedWorkerQueueSubscription,
   WorkerQueueClass,
 } from "@trigger.dev/core/v3/workers";
+import {
+  containerQueueForComputeQueue,
+  workerRegionRegistry,
+  type WorkerGroupRegionRow,
+} from "~/v3/workerRegions.server";
 import { isWorkerQueueDequeueDisabled, recordBlockedDequeue } from "./dequeueGate.server";
 import { workerQueueForClass } from "./workerQueueSplit.server";
 import {
@@ -16,12 +21,15 @@ export function dequeueWorkerQueues({
   runnerId,
   queueClass,
   subscriptions,
+  workerGroups = () => workerRegionRegistry.current() ?? [],
 }: {
   engine: RunEngine;
   worker: WorkerQueueConsumer;
   runnerId?: string;
   queueClass?: WorkerQueueClass;
   subscriptions?: WeightedWorkerQueueSubscription[];
+  /** Defaults to the worker region registry. */
+  workerGroups?: () => WorkerGroupRegionRow[];
 }) {
   const workerQueues = subscriptions
     ? resolveWorkerQueueSubscriptions(worker, subscriptions)
@@ -43,5 +51,10 @@ export function dequeueWorkerQueues({
     workerQueues: enabledQueues,
     workerId: worker.workerInstanceId,
     runnerId,
+    // A compute worker starts only deployments with a template; the rest move to containers.
+    templateFallbackWorkerQueue:
+      worker.workloadType === "MICROVM"
+        ? (queue) => containerQueueForComputeQueue(queue, workerGroups())
+        : undefined,
   });
 }

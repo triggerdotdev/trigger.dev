@@ -111,7 +111,7 @@ function Choice({
       disabled={disabled}
       onClick={onSelect}
       className={cn(
-        "rounded-full border px-2 py-0.5 text-xs transition focus-custom",
+        "cursor-pointer rounded-full border px-2 py-0.5 text-xs transition focus-custom",
         selected
           ? "border-border-brightest bg-background-bright text-text-bright"
           : "border-border-bright text-text-dimmed hover:text-text-bright",

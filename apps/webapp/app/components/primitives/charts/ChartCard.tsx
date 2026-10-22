@@ -35,6 +35,8 @@ type ChartCardProps = {
   contentClassName?: string;
   /** Classes for the fullscreen content wrapper. Defaults to `"min-h-0 w-full flex-1 overflow-hidden pt-4"`. */
   fullscreenContentClassName?: string;
+  /** Replaces the card header's default `pl-4 pr-3` padding. */
+  headerPaddingClassName?: string;
   /** Whether the card keeps its default padding (`pb-2` + top padding). Defaults to true. */
   padded?: boolean;
   /**
@@ -44,7 +46,7 @@ type ChartCardProps = {
    */
   headerVariant?: "default" | "tabs";
   /**
-   * Keeps the titleless toolbar's accessory + Maximize always visible instead of hover-revealed.
+   * Keeps Maximize (and the titleless toolbar's accessory) always visible instead of hover-revealed.
    * Used when the card has no room for a hover affordance to be discoverable (e.g. it's the
    * whole visible surface, like the agent table). Charts/queue cards default to hover-reveal.
    */
@@ -79,6 +81,7 @@ export function ChartCard({
   className,
   contentClassName,
   fullscreenContentClassName,
+  headerPaddingClassName,
   padded = true,
   headerVariant = "default",
   accessory,
@@ -172,12 +175,12 @@ export function ChartCard({
             )}
           </div>
         ) : hasTitle ? (
-          <Card.Header>
+          <Card.Header paddingClassName={headerPaddingClassName}>
             <div className="flex items-center gap-1.5">{title}</div>
             {(accessory || maximizable) && (
               <Card.Accessory>
                 {accessory}
-                {maximizable && maximizeButton}
+                {maximizable && (alwaysShowControls ? alwaysVisibleMaximizeButton : maximizeButton)}
               </Card.Accessory>
             )}
           </Card.Header>

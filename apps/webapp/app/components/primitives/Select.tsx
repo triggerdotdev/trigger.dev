@@ -91,6 +91,7 @@ export interface SelectProps<TValue extends string | string[], TItem> extends Om
   showHeading?: boolean;
   items?: TItem[] | Section<TItem>[];
   empty?: React.ReactNode;
+  onSearchChange?: (value: string) => void;
   filter?:
     | boolean
     | MatchSorterOptions<TItem>
@@ -117,6 +118,7 @@ export interface SelectProps<TValue extends string | string[], TItem> extends Om
   clearSearchOnSelection?: boolean;
   dropdownIcon?: boolean | React.ReactNode;
   popoverClassName?: string;
+  portal?: boolean;
   placement?: Ariakit.SelectProviderProps<TValue>["placement"];
 }
 
@@ -144,7 +146,9 @@ export function Select<TValue extends string | string[], TItem>({
   clearSearchOnSelection = true,
   dropdownIcon,
   popoverClassName,
+  portal,
   placement,
+  onSearchChange,
   ...props
 }: SelectProps<TValue, TItem>) {
   const [searchValue, setSearchValue] = useState("");
@@ -226,7 +230,7 @@ export function Select<TValue extends string | string[], TItem>({
         dropdownIcon={dropdownIcon}
         {...props}
       />
-      <SelectPopover className={popoverClassName}>
+      <SelectPopover className={popoverClassName} portal={portal}>
         {!searchable && showHeading && heading && <SelectHeading render={<span>{heading}</span>} />}
         {searchable && <ComboBox placeholder={heading} shortcut={shortcut} value={searchValue} />}
 
@@ -261,6 +265,7 @@ export function Select<TValue extends string | string[], TItem>({
           React.startTransition(() => {
             setSearchValue(value);
           });
+          onSearchChange?.(value);
         }}
       >
         {select}

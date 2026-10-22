@@ -31,9 +31,20 @@ export const RunAnnotations = z.object({
   webhookDeliveryId: z.string().optional(),
   /** The endpoint (friendly id) that delivery arrived on. */
   webhookEndpointId: z.string().optional(),
+  /** Where the most recently stamped attempt executed. Set by the supervisor at attempt start. */
+  workerCell: z.string().optional().catch(undefined),
+  workerLane: z.string().optional().catch(undefined),
 });
 
 export type RunAnnotations = z.infer<typeof RunAnnotations>;
+
+/** Lenient read of the worker stamp: works on blobs that predate or fail RunAnnotations. */
+export const WorkerStampAnnotations = z.object({
+  workerCell: z.string().optional().catch(undefined),
+  workerLane: z.string().optional().catch(undefined),
+});
+
+export type WorkerStampAnnotations = z.infer<typeof WorkerStampAnnotations>;
 
 export const TaskRunExecutionStatus = {
   RUN_CREATED: "RUN_CREATED",

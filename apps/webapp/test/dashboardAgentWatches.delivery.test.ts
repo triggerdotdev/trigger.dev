@@ -29,6 +29,7 @@ import { afterEach, beforeEach, describe, expect, vi } from "vitest";
 import type { WatchCheckDeps } from "~/services/dashboardAgentWatchChecks";
 import {
   DashboardAgentWatchesTestHarness,
+  BACKLOG,
   RUN_START,
   draftFor,
   type DashboardAgentWatchesTestContext,
@@ -37,15 +38,13 @@ import {
 
 vi.setConfig({ testTimeout: 60_000 });
 
-const ctx = vi.hoisted(
-  (): DashboardAgentWatchesTestContext => ({
-    prisma: undefined as unknown as PrismaClient,
-    agentDb: undefined as unknown as DashboardAgentDb,
-    canAccess: true,
-    actor: undefined,
-    triggered: [],
-  })
-);
+const ctx = vi.hoisted((): DashboardAgentWatchesTestContext => ({
+  prisma: undefined as unknown as PrismaClient,
+  agentDb: undefined as unknown as DashboardAgentDb,
+  canAccess: true,
+  actor: undefined,
+  triggered: [],
+}));
 
 vi.mock("~/db.server", () => {
   const proxy = new Proxy(
@@ -54,6 +53,10 @@ vi.mock("~/db.server", () => {
   );
   return { prisma: proxy, $replica: proxy, sqlDatabaseSchema: undefined };
 });
+
+vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
+  canAccessDashboardAgent: async () => ctx.canAccess,
+}));
 
 const session = vi.hoisted(() => ({ userId: "" }));
 
@@ -837,6 +840,7 @@ function submit(args: {
   onSchedule?: () => void;
   /** Wraps the creation step, so a test can die at the exact point after it. */
   create?: typeof createDashboardAgentWatch;
+  authorizeAlerts?: (environmentTypes: string[]) => boolean;
 }) {
   return submitDashboardAgentWatch({
     environment: authenticated(args.seeded),
@@ -845,6 +849,7 @@ function submit(args: {
     chatId: args.chatId,
     clientRequestId: args.clientRequestId ?? "wreq_1",
     draft: args.draft ?? draftFor(RUN_START),
+    authorizeAlerts: args.authorizeAlerts ?? (() => true),
     deps: {
       configured: () => true,
       checkDeps: () => fakeCheckDeps(args.checkDeps),
@@ -1289,6 +1294,49 @@ describe("the watch card submit", () => {
   );
 
   postgresTest(
+    "the card's email subscription needs alert write in the environment",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "submit-external-rbac");
+      await seedChat(seeded);
+      const draft = draftFor(RUN_START, { notifyExternally: true });
+      const outcomes: unknown[] = [];
+      const subscribe: typeof subscribeUserToWatchAlerts = async (subscribeParams) => {
+        const outcome = await subscribeUserToWatchAlerts(subscribeParams);
+        outcomes.push(outcome);
+        return outcome;
+      };
+
+      const denied = await submit({
+        seeded,
+        chatId: "chat_1",
+        draft,
+        subscribe,
+        authorizeAlerts: (environmentTypes) => !environmentTypes.includes("PRODUCTION"),
+      });
+      expect(denied.ok).toBe(true);
+      expect(outcomes).toEqual([{ ok: false, reason: "forbidden" }]);
+      expect(
+        await prisma.projectAlertChannel.count({ where: { projectId: seeded.project.id } })
+      ).toBe(0);
+
+      const allowed = await submit({
+        seeded,
+        chatId: "chat_1",
+        clientRequestId: "wreq_2",
+        draft: draftFor(BACKLOG, { notifyExternally: true }),
+        subscribe,
+        authorizeAlerts: () => true,
+      });
+      expect(allowed.ok).toBe(true);
+      expect(outcomes[1]).toMatchObject({ ok: true });
+      expect(
+        await prisma.projectAlertChannel.count({ where: { projectId: seeded.project.id } })
+      ).toBe(1);
+    }
+  );
+
+  postgresTest(
     "a replay repeats the recorded email outcome and subscribes nobody",
     async ({ prisma, postgresContainer }) => {
       await boot(prisma, postgresContainer.getConnectionUri());
@@ -1416,7 +1464,13 @@ describe("the wake poll", () => {
       const seeded = await seed(prisma, "pollon");
       await prisma.organization.update({
         where: { id: seeded.organization.id },
-        data: { featureFlags: { hasDashboardAgentAccess: true, dashboardAgentWatchEnabled: true } },
+        data: {
+          featureFlags: {
+            hasDashboardAgentAccess: true,
+            dashboardAgentWatchEnabled: true,
+            alertsEnabled: true,
+          },
+        },
       });
       const watchId = await deliveredWake(seeded);
 

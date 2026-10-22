@@ -1,5 +1,5 @@
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
-import { containerTestWithIsolatedRedisNoClickhouse } from "@internal/testcontainers";
+import { containerTestWithIsolatedRedis } from "@internal/testcontainers";
 import type { Prisma, PrismaClient } from "@trigger.dev/database";
 import { WebhookEndpointId } from "@trigger.dev/core/v3/isomorphic";
 import { expect } from "vitest";
@@ -53,7 +53,7 @@ function signed(opaqueId: string) {
   };
 }
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "one environment's flood of deliveries can't hold more than its share of the worker",
   async ({ prisma, redisOptions }) => {
     const noisy = await createEndpoint(prisma, "env_noisy");
@@ -80,7 +80,6 @@ containerTestWithIsolatedRedisNoClickhouse(
         tenantConcurrency: async (environmentId) => (environmentId === "env_noisy" ? 2 : 4),
         pollIntervalMs: 20,
       },
-      endpointCache: { ttlMs: 0 },
       triggerTask,
       resolveSigningSecret: async (key) => (key === SECRET_KEY ? SECRET : undefined),
       logLevel: "error",
@@ -109,7 +108,7 @@ containerTestWithIsolatedRedisNoClickhouse(
   60_000
 );
 
-containerTestWithIsolatedRedisNoClickhouse(
+containerTestWithIsolatedRedis(
   "a process with its worker disabled only enqueues, and a separate worker process runs the jobs",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createEndpoint(prisma, "env_split");
@@ -117,7 +116,6 @@ containerTestWithIsolatedRedisNoClickhouse(
     const common = {
       prisma,
       redis: redisOptions,
-      endpointCache: { ttlMs: 0 },
       resolveSigningSecret: async (key: string) => (key === SECRET_KEY ? SECRET : undefined),
       logLevel: "error" as const,
     };
@@ -134,7 +132,13 @@ containerTestWithIsolatedRedisNoClickhouse(
       const result = await ingress.ingest(signed(endpoint.opaqueId));
       if (result.outcome !== "accepted") throw new Error(`ingest ${result.outcome}`);
       await new Promise((resolve) => setTimeout(resolve, 500));
-      expect(await ingress.isDeliveryQueued(result.deliveryId)).toBe(true);
+      expect(
+        await ingress.isDeliveryQueued({
+          id: result.deliveryId,
+          environmentId: endpoint.runtimeEnvironmentId,
+          endpointId: endpoint.id,
+        })
+      ).toBe(true);
 
       worker = new WebhookEngine({
         ...common,

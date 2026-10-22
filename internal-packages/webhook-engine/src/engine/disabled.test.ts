@@ -30,7 +30,9 @@ describe("WebhookEngine (disabled)", () => {
       })
     ).rejects.toThrow(/disabled/i);
 
-    await expect(engine.isDeliveryQueued("delivery")).rejects.toThrow(/disabled/i);
+    await expect(
+      engine.isDeliveryQueued({ id: "delivery", environmentId: "env", endpointId: "ep" })
+    ).rejects.toThrow(/disabled/i);
 
     await expect(engine.quit()).resolves.toBeUndefined();
   });

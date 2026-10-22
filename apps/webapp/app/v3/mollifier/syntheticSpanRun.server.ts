@@ -197,6 +197,8 @@ export async function buildSyntheticSpanRun(args: {
     engine: "V2",
     region: null,
     workerQueue: run.workerQueue ?? "",
+    workerCell: undefined,
+    workerLane: undefined,
     traceId: run.traceId ?? "",
     spanId: run.spanId ?? "",
     isCached: false,

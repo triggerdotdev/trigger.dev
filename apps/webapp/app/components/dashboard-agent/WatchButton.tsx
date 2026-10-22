@@ -11,6 +11,7 @@ export function WatchButton({
   fullWidth,
   className,
   tooltip,
+  alertsEnabled,
 }: {
   spec: WatchSpec;
   label?: string;
@@ -18,9 +19,10 @@ export function WatchButton({
   fullWidth?: boolean;
   className?: string;
   tooltip?: string;
+  alertsEnabled?: boolean;
 }) {
   const agent = useDashboardAgent();
-  if (!agent || !agent.watchEnabled) {
+  if (!agent || !agent.watchEnabled || alertsEnabled) {
     return null;
   }
 

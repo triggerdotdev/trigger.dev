@@ -21,8 +21,13 @@ import {
   type WeightedWorkerQueueSubscription,
   type WorkerQueueClass,
 } from "@trigger.dev/core/v3/workers";
-import type { RuntimeEnvironment, WorkerInstanceGroup } from "@trigger.dev/database";
-import { Prisma, WorkerInstanceGroupType } from "@trigger.dev/database";
+import {
+  Prisma,
+  type RuntimeEnvironment,
+  type WorkerInstanceGroup,
+  type WorkerInstanceGroupType,
+} from "@trigger.dev/database";
+import { acceptsWorkerStamp } from "./workerGroupAccess";
 import { json } from "@remix-run/server-runtime";
 import { createHash, timingSafeEqual } from "crypto";
 import { customAlphabet } from "nanoid";
@@ -37,6 +42,7 @@ import {
 } from "~/runEngine/concerns/workerQueueSubscriptions.server";
 import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { mintRunToken, runTokenInjectionEnabled } from "~/services/oidc/runToken.server";
 import { defaultMachine } from "~/services/platform.v3.server";
 import { singleton } from "~/utils/singleton";
 import { resolveVariablesForEnvironment } from "~/v3/environmentVariables/environmentVariablesRepository.server";
@@ -261,7 +267,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
         return new AuthenticatedWorkerInstance({
           prisma: this._prisma,
           engine: this._engine,
-          type: WorkerInstanceGroupType.MANAGED,
+          type: workerGroup.type,
           name: workerGroup.name,
           workerGroupId: workerGroup.id,
           workerInstanceId: workerInstance.id,
@@ -515,12 +521,16 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     runFriendlyId,
     snapshotFriendlyId,
     isWarmStart,
+    workerCell,
+    workerLane,
     runnerId,
     environmentId,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
     isWarmStart?: boolean;
+    workerCell?: string;
+    workerLane?: string;
     runnerId?: string;
     environmentId?: string;
   }): Promise<
@@ -534,10 +544,14 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       action: "start",
     });
 
+    const stamped = acceptsWorkerStamp(this.type);
+
     const engineResult = await this._engine.startRunAttempt({
       runId: fromFriendlyId(runFriendlyId),
       snapshotId: fromFriendlyId(snapshotFriendlyId),
       isWarmStart,
+      workerCell: stamped ? workerCell : undefined,
+      workerLane: stamped ? workerLane : undefined,
       workerId: this.workerInstanceId,
       runnerId,
       environmentId,
@@ -554,10 +568,17 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       },
       include: {
         parentEnvironment: true,
-        // Feeds resolveProdApiOrigin; only loaded when internal-origin routing is possible.
-        ...(env.INTERNAL_API_ORIGIN ? { organization: { select: { featureFlags: true } } } : {}),
+        // Feeds resolveProdApiOrigin and the run-token flag; only loaded when either can apply.
+        ...(env.INTERNAL_API_ORIGIN || env.RUN_TOKEN_ISSUER_URL
+          ? { organization: { select: { featureFlags: true } } }
+          : {}),
       },
     });
+
+    const runToken =
+      environment && runTokenInjectionEnabled(environment.organization?.featureFlags)
+        ? await this.mintRunTokenOrSkip(environment, engineResult)
+        : undefined;
 
     const envVars = environment
       ? await this.getEnvVars(
@@ -570,7 +591,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
             workerQueue: engineResult.run.workerQueue,
           }),
           environment.parentEnvironment ?? undefined,
-          engineResult.run.taskEventStore ?? undefined
+          engineResult.run.taskEventStore ?? undefined,
+          runToken
         )
       : {};
 
@@ -580,16 +602,44 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     };
   }
 
+  // A signing failure must not fail the attempt: the run still has TRIGGER_SECRET_KEY.
+  private async mintRunTokenOrSkip(
+    environment: RuntimeEnvironment,
+    engineResult: StartRunAttemptResult
+  ): Promise<string | undefined> {
+    const { execution } = engineResult;
+    try {
+      return await mintRunToken({
+        organizationId: environment.organizationId,
+        projectId: environment.projectId,
+        environmentId: environment.id,
+        environmentType: environment.type,
+        runFriendlyId: execution.run.id,
+        attemptNumber: execution.attempt.number,
+        taskIdentifier: execution.task.id,
+        deploymentFriendlyId: execution.deployment?.id,
+      });
+    } catch (error) {
+      logger.warn("Failed to mint run token, continuing without it", {
+        runId: execution.run.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
+  }
+
   async completeRunAttempt({
     runFriendlyId,
     snapshotFriendlyId,
     completion,
+    forceRequeue,
     runnerId,
     environmentId,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
     completion: TaskRunExecutionResult;
+    forceRequeue?: boolean;
     runnerId?: string;
     environmentId?: string;
   }): Promise<CompleteRunAttemptResult> {
@@ -603,6 +653,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       runId: fromFriendlyId(runFriendlyId),
       snapshotId: fromFriendlyId(snapshotFriendlyId),
       completion,
+      forceRequeue,
       workerId: this.workerInstanceId,
       runnerId,
       environmentId,
@@ -723,7 +774,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
 
   toJSON(): WorkerGroupTokenAuthenticationResponse {
     return {
-      type: WorkerInstanceGroupType.MANAGED,
+      type: this.type,
       name: this.name,
       workerGroupId: this.workerGroupId,
       workerInstanceId: this.workerInstanceId,
@@ -737,7 +788,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     machinePreset: MachinePreset,
     metering: Record<string, string>,
     parentEnvironment?: RuntimeEnvironment,
-    taskEventStore?: string
+    taskEventStore?: string,
+    runToken?: string
   ): Promise<Record<string, string>> {
     const variables = await resolveVariablesForEnvironment(environment, parentEnvironment);
 
@@ -754,6 +806,10 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
         { key: "TRIGGER_MACHINE_PRESET", value: machinePreset.name },
       ]
     );
+
+    if (runToken) {
+      variables.push({ key: "TRIGGER_RUN_TOKEN", value: runToken });
+    }
 
     if (taskEventStore) {
       const resourceAttributes = JSON.stringify({
@@ -775,20 +831,10 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
   }
 }
 
-export type WorkerGroupTokenAuthenticationResponse =
-  | {
-      type: typeof WorkerInstanceGroupType.MANAGED;
-      name: string;
-      workerGroupId: string;
-      workerInstanceId: string;
-      masterQueue: string;
-    }
-  | {
-      type: typeof WorkerInstanceGroupType.UNMANAGED;
-      name: string;
-      workerGroupId: string;
-      workerInstanceId: string;
-      masterQueue: string;
-      environmentId: string;
-      deploymentId: string;
-    };
+export type WorkerGroupTokenAuthenticationResponse = {
+  type: WorkerInstanceGroupType;
+  name: string;
+  workerGroupId: string;
+  workerInstanceId: string;
+  masterQueue: string;
+};

@@ -80,7 +80,12 @@ export class DelegatingRunStore implements RunStore {
 
   startAttempt<S extends Prisma.TaskRunSelect>(
     runId: string,
-    data: { attemptNumber: number; executedAt?: Date; isWarmStart: boolean },
+    data: {
+      attemptNumber: number;
+      executedAt?: Date;
+      isWarmStart: boolean;
+      annotations?: Prisma.InputJsonValue;
+    },
     args: { select: S },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
@@ -114,7 +119,7 @@ export class DelegatingRunStore implements RunStore {
 
   requeueRun<S extends Prisma.TaskRunSelect>(
     runId: string,
-    args: { select: S },
+    args: { select: S; workerQueue?: string },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
     return this.delegate.requeueRun(runId, args, tx);
@@ -488,6 +493,10 @@ export class DelegatingRunStore implements RunStore {
 
   readSnapshotRoute(runId: string, organizationId: string): Promise<SnapshotRoute | undefined> {
     return this.delegate.readSnapshotRoute(runId, organizationId);
+  }
+
+  settlePendingUnit(runId: string): Promise<void> {
+    return this.delegate.settlePendingUnit(runId);
   }
 
   findSnapshotCompletedWaitpointIds(

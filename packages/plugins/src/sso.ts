@@ -362,6 +362,8 @@ export type SsoPluginConfig = {
   // Database connections for a plugin that owns its own client. Omitted →
   // the plugin falls back to its own defaults.
   database?: PluginDatabaseConfig;
+  // Receives every error the plugin logs, so it reaches the host's error tracker.
+  reportError?: (message: string, ...args: Array<Record<string, unknown> | undefined>) => void;
 };
 
 export interface SsoPlugin {

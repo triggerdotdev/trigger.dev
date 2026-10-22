@@ -31,7 +31,7 @@ function notFoundResponse(kind: LocateKind, id: string, data: unknown) {
   const parsed = locateResultSchema.safeParse(data);
   const notFound = parsed.success && !parsed.data.found ? parsed.data : undefined;
   if (notFound?.unavailable) {
-    return { error: `Couldn't check ${kind} ${id} right now — try again.` };
+    return { error: `Couldn't check ${kind} ${id} right now - try again.` };
   }
   return { found: false as const, ...(notFound?.truncated ? { truncated: true as const } : {}) };
 }
@@ -94,7 +94,7 @@ export function buildLocateTool(args: {
         if (!result.ok) {
           if ("status" in result) {
             if (result.status === 503) {
-              return { error: `Couldn't check ${kind} ${id} right now — try again.` };
+              return { error: `Couldn't check ${kind} ${id} right now - try again.` };
             }
             if (result.status === 404) return notFoundResponse(kind, id, result.data);
           }

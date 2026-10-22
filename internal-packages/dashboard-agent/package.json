@@ -16,6 +16,7 @@
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "4.0.186",
     "@ai-sdk/anthropic": "3.0.125",
+    "@internal/alert-contracts": "workspace:*",
     "@internal/dashboard-agent-contracts": "workspace:*",
     "@internal/dashboard-agent-db": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
@@ -28,7 +29,7 @@
     "@internal/testcontainers": "workspace:*",
     "@trigger.dev/build": "workspace:*",
     "trigger.dev": "workspace:*",
-    "vitest": "4.1.7"
+    "vitest": "4.1.11"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

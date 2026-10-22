@@ -39,19 +39,17 @@ export class QueryPresenter extends BasePresenter {
 
     return {
       defaultQuery,
-      history: history.map(
-        (q): QueryHistoryItem => ({
-          id: q.id,
-          query: q.query,
-          scope: q.scope.toLowerCase() as QueryScope,
-          createdAt: q.createdAt,
-          userName: q.user?.displayName ?? q.user?.name ?? null,
-          title: q.title,
-          filterPeriod: q.filterPeriod,
-          filterFrom: q.filterFrom,
-          filterTo: q.filterTo,
-        })
-      ),
+      history: history.map((q): QueryHistoryItem => ({
+        id: q.id,
+        query: q.query,
+        scope: q.scope.toLowerCase() as QueryScope,
+        createdAt: q.createdAt,
+        userName: q.user?.displayName ?? q.user?.name ?? null,
+        title: q.title,
+        filterPeriod: q.filterPeriod,
+        filterFrom: q.filterFrom,
+        filterTo: q.filterTo,
+      })),
     };
   }
 }

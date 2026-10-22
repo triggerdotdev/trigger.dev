@@ -105,10 +105,11 @@ import {
   type RunQueueWaiting,
 } from "~/presenters/v3/RunQueueMetricsPresenter.server";
 import { type Span, SpanPresenter, type SpanRun } from "~/presenters/v3/SpanPresenter.server";
-import { findProjectBySlug } from "~/models/project.server";
+import { findProjectWithOrgFlagsBySlug } from "~/models/project.server";
 import { logger } from "~/services/logger.server";
 import { rbac } from "~/services/rbac.server";
-import { requireUserId } from "~/services/session.server";
+import { hasAdminDisplayAccess, requireUser } from "~/services/session.server";
+import { canUseAlertsList } from "~/v3/canUseAlertsList.server";
 import { cn } from "~/utils/cn";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import {
@@ -135,11 +136,13 @@ import { RealtimeStreamViewer } from "../resources.orgs.$organizationSlug.projec
 import { CompleteWaitpointForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
+  const userId = user.id;
+  const showAdminFields = hasAdminDisplayAccess(user);
   const { projectParam, organizationSlug, envParam, runParam, spanParam } =
     v3SpanParamsSchema.parse(params);
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  const project = await findProjectWithOrgFlagsBySlug(organizationSlug, projectParam, userId);
   if (!project) throw new Response("Project not found", { status: 404 });
 
   const auth = await rbac.authenticateSession(request, {
@@ -162,6 +165,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       runFriendlyId: runParam,
       userId,
       linkedRunId,
+      showDebug: user.admin || user.isImpersonating,
     });
 
     if (!result) {
@@ -189,11 +193,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         envParam,
         run: result.run,
       });
+      const alertsEnabled = await canUseAlertsList({
+        orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+        userId,
+      });
       return typedjson({
         type: "run" as const,
-        run: result.run,
+        run: showAdminFields
+          ? result.run
+          : { ...result.run, workerCell: undefined, workerLane: undefined },
         queueMetrics,
         canWriteRuns,
+        alertsEnabled,
         loadedAt: Date.now(),
       });
     }
@@ -237,12 +248,15 @@ export function SpanView({
   spanOverrides,
   closePanel,
   linkedRunId,
+  refreshKey,
 }: {
   runParam: string;
   spanId: string | undefined;
   spanOverrides?: SpanOverride;
   closePanel?: () => void;
   linkedRunId?: string;
+  /** Changing it reloads the span. */
+  refreshKey?: number;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -256,7 +270,16 @@ export function SpanView({
       environment.slug
     }/runs/${runParam}/spans/${spanId}${linkedRunId ? `?linkedRunId=${linkedRunId}` : ""}`;
     load(url);
-  }, [organization.slug, project.slug, environment.slug, runParam, spanId, linkedRunId, load]);
+  }, [
+    organization.slug,
+    project.slug,
+    environment.slug,
+    runParam,
+    spanId,
+    linkedRunId,
+    load,
+    refreshKey,
+  ]);
 
   if (spanId === undefined) {
     return null;
@@ -291,6 +314,7 @@ export function SpanView({
           queueMetrics={fetcher.data.queueMetrics}
           loadedAt={fetcher.data.loadedAt}
           canWriteRuns={fetcher.data.canWriteRuns}
+          alertsEnabled={fetcher.data.alertsEnabled}
           runParam={runParam}
           spanId={spanId}
           closePanel={closePanel}
@@ -418,6 +442,7 @@ function RunBody({
   queueMetrics,
   loadedAt,
   canWriteRuns,
+  alertsEnabled,
   runParam,
   spanId,
   closePanel,
@@ -426,6 +451,7 @@ function RunBody({
   queueMetrics: RunQueueMetrics | null;
   loadedAt: number;
   canWriteRuns: boolean;
+  alertsEnabled: boolean;
   runParam: string;
   spanId: string;
   closePanel?: () => void;
@@ -1181,6 +1207,14 @@ function RunBody({
                       <Property.Value>{run.workerQueue}</Property.Value>
                     </Property.Item>
                     <Property.Item>
+                      <Property.Label>Worker cell</Property.Label>
+                      <Property.Value>{run.workerCell ?? "–"}</Property.Value>
+                    </Property.Item>
+                    <Property.Item>
+                      <Property.Label>Worker lane</Property.Label>
+                      <Property.Value>{run.workerLane ?? "–"}</Property.Value>
+                    </Property.Item>
+                    <Property.Item>
                       <Property.Label>Trace ID</Property.Label>
                       <Property.Value>{run.traceId}</Property.Value>
                     </Property.Item>
@@ -1238,7 +1272,11 @@ function RunBody({
                   recommendation: tell me when it finishes. Only while the run can
                   still change — a finished run has nothing left to wait for. */}
               {isFinalRunStatus(run.status) ? null : (
-                <WatchButton spec={runWatchRecommendation(run.friendlyId)} className="self-start" />
+                <WatchButton
+                  spec={runWatchRecommendation(run.friendlyId)}
+                  className="self-start"
+                  alertsEnabled={alertsEnabled}
+                />
               )}
               <RunTimeline run={run} />
 

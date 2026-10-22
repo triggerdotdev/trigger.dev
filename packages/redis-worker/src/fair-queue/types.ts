@@ -1,4 +1,4 @@
-import type { RedisOptions } from "@internal/redis";
+import type { FairQueueRedisOptions } from "./connection.js";
 import type { Logger } from "@trigger.dev/core/logger";
 import type { AnyZodSchema, inferZodSchemaOutput } from "@trigger.dev/core/v3";
 import type { Tracer, Meter } from "@internal/tracing";
@@ -324,6 +324,23 @@ export interface FairQueueKeyProducer {
   extractTenantId(queueId: string): string;
   /** Extract a specific group ID from a queue ID */
   extractGroupId(groupName: string, queueId: string): string;
+
+  // Optional: tenant-sharded layouts
+  /**
+   * The shard a tenant's dispatch entry, queues and in-flight messages live on. When set, every
+   * component shards by tenant instead of by queue, so one shard holds all of a tenant's keys.
+   */
+  tenantShard?(tenantId: string): number;
+  /** The number of shards `tenantShard` spreads tenants over. Required with `tenantShard`. */
+  readonly shardCount?: number;
+  /** The key holding one message's payload, for `separatePayloads`. */
+  payloadKey?(queueId: string, messageId: string): string;
+  /** The counter of a tenant's queued and in-flight payload bytes, for `separatePayloads`. */
+  tenantPayloadBytesKey?(tenantId: string): string;
+  /** The SCAN pattern matching one shard's concurrency sets for a group. */
+  concurrencyKeyPattern?(groupName: string, shardId: number): string;
+  /** The DRR scheduler's deficit hash. */
+  drrDeficitKey?(): string;
 }
 
 // ============================================================================
@@ -374,13 +391,28 @@ export interface CooloffOptions {
  */
 export interface FairQueueOptions<TPayloadSchema extends AnyZodSchema = z.ZodUnknown> {
   /** Redis connection options */
-  redis: RedisOptions;
+  redis: FairQueueRedisOptions;
 
   /** Key producer for Redis keys */
   keys: FairQueueKeyProducer;
 
   /** Scheduler for fair queue selection */
   scheduler: FairScheduler;
+
+  /**
+   * Keep each payload in its own key (`keys.payloadKey`), written once at enqueue and deleted at
+   * completion. Queue items and in-flight entries then hold only the message envelope, so claiming,
+   * releasing and retrying a message never rewrite its payload. `resolveWorkerQueue` receives the
+   * envelope without its payload. Enqueueing an id that is already queued or in flight is a no-op
+   * rather than a replace. Each tenant's payload bytes are counted while queued or in flight.
+   * Requires a key producer with `payloadKey` and `tenantPayloadBytesKey`.
+   */
+  separatePayloads?: boolean;
+  /**
+   * The most payload bytes a tenant may have queued or in flight, with `separatePayloads`. An
+   * enqueue past it throws `TenantQueueFullError`. Absent, or a result of 0, means no limit.
+   */
+  tenantPayloadBytesLimit?: (tenantId: string) => Promise<number> | number;
 
   // Payload validation
   /** Zod schema for message payload validation */
@@ -556,6 +588,11 @@ export interface EnqueueOptions<TPayload = unknown> {
   timestamp?: number;
   /** Optional metadata for concurrency group extraction */
   metadata?: Record<string, string>;
+  /**
+   * Enqueue past `tenantPayloadBytesLimit`. For a system's own follow-up work, which must not be
+   * refused because its tenant's incoming work filled the budget. Its bytes are still counted.
+   */
+  ignorePayloadBytesLimit?: boolean;
 }
 
 /**
@@ -591,7 +628,7 @@ export interface DRRSchedulerConfig {
   /** Maximum queues to fetch from master queue (default: 1000) */
   masterQueueLimit?: number;
   /** Redis options for state storage */
-  redis: RedisOptions;
+  redis: FairQueueRedisOptions;
   /** Key producer */
   keys: FairQueueKeyProducer;
   /** Optional logger */
@@ -635,7 +672,7 @@ export interface WeightedSchedulerBiases {
  */
 export interface WeightedSchedulerConfig {
   /** Redis options */
-  redis: RedisOptions;
+  redis: FairQueueRedisOptions;
   /** Key producer */
   keys: FairQueueKeyProducer;
   /** Default tenant concurrency limit */

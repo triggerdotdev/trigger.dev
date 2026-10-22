@@ -8,17 +8,19 @@ import { resolveBuildRuntime } from "@trigger.dev/core/v3/build";
 import { customAlphabet } from "nanoid";
 import { env } from "~/env.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { encryptSecret } from "~/services/secrets/secretStore.server";
+import { type EncryptedSecretValue } from "~/services/secrets/secretStore.server";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { createRemoteImageBuild, remoteBuildsEnabled } from "../remoteImageBuilder.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
+import { resolveDeployBaseImages } from "../deployBaseImages.server";
 import { getDeploymentImageRef } from "../getDeploymentImageRef.server";
 import { tryCatch } from "@trigger.dev/core";
 import { getRegistryConfig } from "../registryConfig.server";
 import { DeploymentService } from "./deployment.server";
 import { recordDeploymentInitialized } from "./recordDeploymentFinished.server";
+import { buildEnvVarsEnvelope } from "./initializeDeployment/buildEnvVarsEnvelope.server";
 import { createDeploymentWithNextVersion } from "./initializeDeployment/createDeploymentWithNextVersion.server";
 import {
   cancelSupersededDeployments,
@@ -60,7 +62,7 @@ export class InitializeDeploymentService extends BaseService {
   public async call(
     environment: AuthenticatedEnvironment,
     payload: InitializeDeploymentRequestBody,
-    options?: { cliVersion?: string }
+    options?: { cliVersion?: string; redeployOf?: string; buildEnvVars?: EncryptedSecretValue }
   ): Promise<InitializeDeploymentResult> {
     return this.traceWithEnv("call", environment, async (span) => {
       let runtime: BuildRuntime;
@@ -147,6 +149,25 @@ export class InitializeDeploymentService extends BaseService {
         throw new ServiceValidationError("UNMANAGED deployments are not supported");
       }
 
+      const requiredBaseImages = resolveDeployBaseImages(runtime, {
+        base: env.DEPLOY_BASE_IMAGES,
+        buildBase: env.DEPLOY_BUILD_BASE_IMAGES,
+      });
+
+      if (requiredBaseImages && payload.isNativeBuild) {
+        throw new ServiceValidationError(
+          "This instance requires custom deploy base images, which native builds cannot apply. Deploy without --native-build or --local-bundle.",
+          400
+        );
+      }
+
+      if (requiredBaseImages && payload.supportsInstanceBaseImages !== true) {
+        throw new ServiceValidationError(
+          "This instance requires custom deploy base images, which this version of the CLI cannot apply. Upgrade the trigger.dev CLI and deploy again.",
+          400
+        );
+      }
+
       // Upgrade the project to engine "V2" if it's not already. This should cover cases where people deploy to V2 without running dev first.
       if (payload.type === "MANAGED" && environment.project.engine === "V1") {
         await this._prisma.project.update({
@@ -202,6 +223,14 @@ export class InitializeDeploymentService extends BaseService {
       }
 
       span.setAttribute("outcome", "created");
+
+      // Before cancelling superseded deployments, so an invalid payload leaves them running
+      const encryptedBuildEnvVars = await buildEnvVarsEnvelope(payload, {
+        copyFrom: options?.buildEnvVars,
+        encryptionKey: env.ENCRYPTION_KEY,
+        maxKeys: env.DEPLOYMENT_BUILD_ENV_VARS_MAX_KEYS,
+        maxBytes: env.DEPLOYMENT_BUILD_ENV_VARS_SIZE_LIMIT_BYTES,
+      });
 
       const canceledDeployments =
         reuse.action === "cancel-then-build"
@@ -283,42 +312,11 @@ export class InitializeDeploymentService extends BaseService {
           }
         : undefined;
 
-      let encryptedBuildEnvVars: Awaited<ReturnType<typeof encryptSecret>> | undefined;
-
-      if (
-        payload.isNativeBuild &&
-        payload.fromBundle &&
-        payload.buildEnvVars &&
-        Object.keys(payload.buildEnvVars).length > 0
-      ) {
-        const buildEnvVars = payload.buildEnvVars;
-
-        const keyCount = Object.keys(buildEnvVars).length;
-        if (keyCount > env.DEPLOYMENT_BUILD_ENV_VARS_MAX_KEYS) {
-          throw new ServiceValidationError(
-            `Build environment variable count (${keyCount}) exceeds the allowed limit of ${env.DEPLOYMENT_BUILD_ENV_VARS_MAX_KEYS}. Reach out to us if you are seeing this error consistently.`
-          );
-        }
-
-        const serialized = JSON.stringify(buildEnvVars);
-        const serializedBytes = Buffer.byteLength(serialized, "utf8");
-        if (serializedBytes > env.DEPLOYMENT_BUILD_ENV_VARS_SIZE_LIMIT_BYTES) {
-          const sizeKB = parseFloat((serializedBytes / 1024).toFixed(1));
-          const limitKB = parseFloat(
-            (env.DEPLOYMENT_BUILD_ENV_VARS_SIZE_LIMIT_BYTES / 1024).toFixed(1)
-          );
-          throw new ServiceValidationError(
-            `Build environment variables size (${sizeKB} KB) exceeds the allowed limit of ${limitKB} KB. Reach out to us if you are seeing this error consistently.`
-          );
-        }
-
-        encryptedBuildEnvVars = await encryptSecret(env.ENCRYPTION_KEY, serialized);
-      }
-
       const buildServerMetadata: BuildServerMetadata | undefined =
-        payload.isNativeBuild || payload.buildId
+        payload.isNativeBuild || payload.buildId || options?.redeployOf
           ? {
               buildId: payload.buildId,
+              ...(options?.redeployOf ? { redeployOf: options.redeployOf } : {}),
               ...(payload.isNativeBuild
                 ? {
                     isNativeBuild: payload.isNativeBuild,

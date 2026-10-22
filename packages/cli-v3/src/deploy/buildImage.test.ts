@@ -7,10 +7,13 @@ import {
   BASE_IMAGE,
   BUILD_IMAGE,
   DEFAULT_PACKAGES,
+  EMSIGN_COMPROMISE_DISTRUSTED_ROOTS,
+  EMSIGN_REJECT_DIR,
   TOOLCHAIN_PACKAGES,
   formatCommandForDiagnostics,
   generateContainerfile,
 } from "./buildImage.js";
+import { EMSIGN_COMPROMISE_REJECTED_INTERMEDIATES } from "./emsignRejectedIntermediates.js";
 
 describe("formatCommandForDiagnostics", () => {
   it("redacts build argument values without changing the executable arguments", () => {
@@ -99,6 +102,172 @@ describe("generateContainerfile", () => {
       expect(containerfile).not.toContain("FROM base AS build");
     }
   );
+
+  const distrustSteps = (containerfile: string) =>
+    containerfile.match(
+      /^RUN sed .* \/etc\/ca-certificates\.conf && \\\n {2}update-ca-certificates --fresh$/gm
+    ) ?? [];
+
+  it.each(["node", "bun"] as BuildRuntime[])(
+    "distrusts the compromised emSign roots in the base and prebuilt build stages on %s",
+    async (runtime) => {
+      const containerfile = await generateContainerfile({
+        runtime,
+        build: {},
+        image: undefined,
+        indexScript: "index.js",
+        entrypoint: "entrypoint.js",
+      });
+
+      const steps = distrustSteps(containerfile);
+      expect(steps).toHaveLength(2);
+      for (const root of EMSIGN_COMPROMISE_DISTRUSTED_ROOTS) {
+        expect(steps[0]).toContain(`${root}`);
+      }
+      expect(steps[0]).not.toContain("emSign_Root_CA_-_G1");
+      expect(containerfile.match(/^ENV NODE_OPTIONS=--use-openssl-ca$/gm)).toHaveLength(2);
+    }
+  );
+
+  it("keeps --use-openssl-ca when the indexer overrides NODE_OPTIONS", async () => {
+    const containerfile = await generateContainerfile({
+      runtime: "node",
+      build: {},
+      image: undefined,
+      indexScript: "index.js",
+      entrypoint: "entrypoint.js",
+    });
+
+    const indexerOptions = containerfile.match(/NODE_OPTIONS="[^"]*"/g) ?? [];
+    expect(indexerOptions).toHaveLength(1);
+    expect(indexerOptions[0]).toContain("--use-openssl-ca");
+  });
+
+  it("distrusts the roots once when the build stage derives from base", async () => {
+    const containerfile = await generateContainerfile({
+      runtime: "node",
+      build: {},
+      image: { instructions: ["RUN echo hi"] },
+      indexScript: "index.js",
+      entrypoint: "entrypoint.js",
+    });
+
+    expect(distrustSteps(containerfile)).toHaveLength(1);
+    expect(containerfile.indexOf("RUN echo hi")).toBeLessThan(
+      containerfile.indexOf("update-ca-certificates")
+    );
+  });
+
+  const osTrustStoreEnv =
+    /^ENV SSL_CERT_FILE=\$\{SSL_CERT_FILE:-\/etc\/ssl\/certs\/ca-certificates\.crt\} REQUESTS_CA_BUNDLE=\$\{REQUESTS_CA_BUNDLE:-\/etc\/ssl\/certs\/ca-certificates\.crt\} PIP_CERT=\$\{PIP_CERT:-\/etc\/ssl\/certs\/ca-certificates\.crt\}$/gm;
+
+  it("keeps a trust bundle set by image instructions", async () => {
+    const containerfile = await generateContainerfile({
+      runtime: "node",
+      build: {},
+      image: { instructions: ["ENV REQUESTS_CA_BUNDLE=/app/certs/corp.pem"] },
+      indexScript: "index.js",
+      entrypoint: "entrypoint.js",
+    });
+
+    const instruction = containerfile.indexOf("ENV REQUESTS_CA_BUNDLE=/app/certs/corp.pem");
+    expect(instruction).toBeGreaterThan(-1);
+    expect(instruction).toBeLessThan(containerfile.search(osTrustStoreEnv));
+  });
+
+  it.each(["node", "bun"] as BuildRuntime[])(
+    "points certifi users at the OS trust store in the base and prebuilt build stages on %s",
+    async (runtime) => {
+      const containerfile = await generateContainerfile({
+        runtime,
+        build: {},
+        image: undefined,
+        indexScript: "index.js",
+        entrypoint: "entrypoint.js",
+      });
+
+      expect(containerfile.match(osTrustStoreEnv)).toHaveLength(2);
+    }
+  );
+
+  it("points certifi users at the OS trust store once when the build stage derives from base", async () => {
+    const containerfile = await generateContainerfile({
+      runtime: "node",
+      build: {},
+      image: { instructions: ["RUN echo hi"] },
+      indexScript: "index.js",
+      entrypoint: "entrypoint.js",
+    });
+
+    expect(containerfile.match(osTrustStoreEnv)).toHaveLength(1);
+  });
+
+  const rejectSteps = (containerfile: string) =>
+    Array.from(
+      containerfile.matchAll(
+        /^RUN mkdir -p \/usr\/local\/share\/ca-certificates\/emsign-block && \\$/gm
+      )
+    );
+
+  const pemFromStep = (containerfile: string, file: string) => {
+    const block = containerfile.match(
+      new RegExp(
+        `printf '%s\\\\n' \\\\\\n((?: {4}'[^']*' \\\\\\n)+) {4}> ${EMSIGN_REJECT_DIR}/${file}`
+      )
+    );
+    return block ? block[1]!.match(/'([^']*)'/g)!.map((q) => q.slice(1, -1)) : [];
+  };
+
+  it.each(["node", "bun"] as BuildRuntime[])(
+    "writes the emSign reject entries before refreshing the store in the base and prebuilt build stages on %s",
+    async (runtime) => {
+      const containerfile = await generateContainerfile({
+        runtime,
+        build: {},
+        image: undefined,
+        indexScript: "index.js",
+        entrypoint: "entrypoint.js",
+      });
+
+      const rejects = rejectSteps(containerfile);
+      const refreshes = Array.from(
+        containerfile.matchAll(/^ {2}update-ca-certificates --fresh$/gm)
+      );
+      expect(rejects).toHaveLength(2);
+      expect(refreshes).toHaveLength(2);
+      expect(rejects[0]!.index).toBeLessThan(refreshes[0]!.index!);
+      expect(rejects[1]!.index).toBeGreaterThan(refreshes[0]!.index!);
+      expect(rejects[1]!.index).toBeLessThan(refreshes[1]!.index!);
+
+      for (const { file, pemLines } of EMSIGN_COMPROMISE_REJECTED_INTERMEDIATES) {
+        expect(pemFromStep(containerfile, file)).toEqual(pemLines);
+      }
+    }
+  );
+
+  it("writes the reject entries once when the build stage derives from base", async () => {
+    const containerfile = await generateContainerfile({
+      runtime: "bun",
+      build: {},
+      image: { instructions: ["RUN echo hi"] },
+      indexScript: "index.js",
+      entrypoint: "entrypoint.js",
+    });
+
+    expect(rejectSteps(containerfile)).toHaveLength(1);
+  });
+
+  it("ships reject entries that are safe to embed in a shell command", () => {
+    expect(EMSIGN_COMPROMISE_REJECTED_INTERMEDIATES).toHaveLength(8);
+    for (const { file, pemLines } of EMSIGN_COMPROMISE_REJECTED_INTERMEDIATES) {
+      expect(file).toMatch(/^emsign-block-EM-(DV|OV|EV)-(TLS|CS)-CA-G3[BC]-by-[A-Za-z0-9-]+\.crt$/);
+      expect(pemLines[0]).toBe("-----BEGIN TRUSTED CERTIFICATE-----");
+      expect(pemLines.at(-1)).toBe("-----END TRUSTED CERTIFICATE-----");
+      for (const line of pemLines.slice(1, -1)) {
+        expect(line).toMatch(/^[A-Za-z0-9+/=]+$/);
+      }
+    }
+  });
 
   it("pairs every runtime image with its -build variant", () => {
     for (const runtime of Object.keys(BASE_IMAGE) as BuildRuntime[]) {
@@ -233,4 +402,94 @@ describe("generateContainerfile", () => {
       expect(excludeCopy).toBeGreaterThan(codeStage);
     }
   );
+
+  it.each(["node", "bun"] as BuildRuntime[])(
+    "uses the configured base and build images on %s",
+    async (runtime) => {
+      const containerfile = await generateContainerfile({
+        runtime,
+        build: {},
+        image: {
+          base: "acme/node-fips:26@sha256:abc",
+          buildBase: "acme/node:26-dev@sha256:def",
+        },
+        indexScript: "index.js",
+        entrypoint: "entrypoint.js",
+      });
+
+      expect(containerfile).toContain("FROM acme/node-fips:26@sha256:abc AS base");
+      expect(containerfile).toContain("FROM acme/node:26-dev@sha256:def AS build");
+      expect(containerfile).toContain("FROM base AS final");
+      expect(containerfile).not.toContain(BASE_IMAGE[runtime]);
+      expect(containerfile).not.toContain(BUILD_IMAGE[runtime]);
+    }
+  );
+
+  it("keeps the published build image when only the base is overridden", async () => {
+    const containerfile = await generateContainerfile({
+      runtime: "node-26",
+      build: {},
+      image: { base: "acme/node-fips:26@sha256:abc" },
+      indexScript: "index.js",
+      entrypoint: "entrypoint.js",
+    });
+
+    expect(containerfile).toContain("FROM acme/node-fips:26@sha256:abc AS base");
+    expect(containerfile).toContain(`FROM ${BUILD_IMAGE["node-26"]} AS build`);
+  });
+
+  it("builds on the configured build image and replays instructions there", async () => {
+    const containerfile = await generateContainerfile({
+      runtime: "node-26",
+      build: {},
+      image: {
+        base: "acme/node-fips:26@sha256:abc",
+        buildBase: "acme/node:26-dev@sha256:def",
+        pkgs: ["jq"],
+        instructions: ["RUN echo first > /etc/first", "RUN echo second > /etc/second"],
+      },
+      indexScript: "index.js",
+      entrypoint: "entrypoint.js",
+    });
+
+    const buildStage = containerfile.slice(containerfile.indexOf("AS build"));
+
+    expect(containerfile).toContain("FROM acme/node-fips:26@sha256:abc AS base");
+    expect(containerfile).toContain("FROM acme/node:26-dev@sha256:def AS build");
+    expect(containerfile).not.toContain("FROM base AS build");
+    expect(containerfile).not.toContain(TOOLCHAIN_PACKAGES);
+    expect(buildStage).toContain(
+      "apt-get install -y --no-install-recommends --allow-downgrades jq"
+    );
+    expect(containerfile.indexOf("RUN echo first > /etc/first")).toBeLessThan(
+      containerfile.indexOf("AS build")
+    );
+
+    const buildFrom = "FROM acme/node:26-dev@sha256:def AS build";
+    const baseEnv = "ENV DEBIAN_FRONTEND=noninteractive\n\n";
+    const baseStart = containerfile.indexOf(baseEnv) + baseEnv.length;
+    const baseCustomization = containerfile.slice(
+      baseStart,
+      containerfile.indexOf(buildFrom) - "\n\n".length
+    );
+
+    expect(containerfile).toContain(`${buildFrom}\n\n${baseEnv}${baseCustomization}\n\n`);
+  });
+
+  it("builds from the base stage when instructions have no configured build image", async () => {
+    const containerfile = await generateContainerfile({
+      runtime: "node-26",
+      build: {},
+      image: {
+        base: "acme/node-fips:26@sha256:abc",
+        instructions: ["RUN echo custom > /etc/marker"],
+      },
+      indexScript: "index.js",
+      entrypoint: "entrypoint.js",
+    });
+
+    expect(containerfile).toContain("FROM acme/node-fips:26@sha256:abc AS base");
+    expect(containerfile).toContain("FROM base AS build");
+    expect(containerfile).toContain(TOOLCHAIN_PACKAGES);
+  });
 });

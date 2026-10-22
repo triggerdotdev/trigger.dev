@@ -333,10 +333,15 @@ describe("useProgressiveTrace live tail", () => {
     expect(backgroundRequests()).toHaveLength(1);
   });
 
-  it("flags capped errors-only results without marking the trace truncated", async () => {
+  it("doesn't mark the trace truncated when errors-only results are capped", async () => {
     handler = (request) =>
       request.params.get("filter") === "errors"
-        ? { events: [], nextCursor: null, hasMore: false, isTruncated: true }
+        ? {
+            events: [wireEvent("err", "root", T0 + 1_000)],
+            nextCursor: null,
+            hasMore: false,
+            isTruncated: true,
+          }
         : new Promise(() => {});
     const view = render(
       payload("root", [wireEvent("root", "", T0)], {
@@ -346,7 +351,7 @@ describe("useProgressiveTrace live tail", () => {
       `${baseUrl}/a/chunk`,
       true
     );
-    await waitFor(() => view.result().errorsTruncated);
+    await waitFor(() => view.result().events.some((event) => event.id === "err"));
     expect(view.result().isTruncated).toBe(false);
     expect(view.result().isComplete).toBe(false);
   });

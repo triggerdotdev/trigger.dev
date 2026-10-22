@@ -584,6 +584,41 @@ model SecretStore {
   @@index([key(ops: raw("text_pattern_ops"))], type: BTree)
 }
 
+enum OidcSigningKeyStatus {
+  STAGED
+  ACTIVE
+  RETIRED
+}
+
+/// Each purpose is a separate key set with its own issuer, rotation and publication.
+enum OidcSigningKeyPurpose {
+  /// Tokens for external relying parties; public keys are served at the issuer's JWKS URL.
+  EXTERNAL_OIDC
+  /// Per-attempt run tokens verified only by the platform; public keys are never served.
+  INTERNAL_RUN
+}
+
+model OidcSigningKey {
+  id      String                @id @default(cuid())
+  kid     String                @unique
+  purpose OidcSigningKeyPurpose @default(EXTERNAL_OIDC)
+  /// At most one STAGED and one ACTIVE key per purpose: enforced by a partial unique index in the migration.
+  status  OidcSigningKeyStatus
+
+  publicJwk   Json
+  readyAt     DateTime
+  publicUntil DateTime?
+
+  generatedByUserId String
+  activatedAt       DateTime?
+  activatedByUserId String?
+  retiredAt         DateTime?
+  retiredByUserId   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model DataMigration {
   id   String @id @default(cuid())
   name String @unique
@@ -872,7 +907,7 @@ model WebhookDelivery {
   /// Set from the x-trigger-test ingress header; marks console/test-send deliveries so the list can filter them.
   isTest Boolean @default(false)
 
-  parsedEvent  Json? // size-capped snapshot of the verified event (full event lives in ClickHouse)
+  parsedEvent  Json?
   headers      Json? // inbound request headers, surfaced to the webhook task via onEvent({ headers })
   rawBodyHash  String? // sha256 of raw bytes; cheap P2 replay anchor
   errorMessage String?
@@ -884,8 +919,100 @@ model WebhookDelivery {
   updatedAt   DateTime  @updatedAt // Q14: real column; the status transitions update it, maps straight to CH updated_at
   processedAt DateTime?
 
-  @@id([id, createdAt]) // composite PK: the partition key MUST be in every PK/unique on a partitioned table
+  /// Retention class in days: the LIST partition key, stamped at ingest from the org's plan and encoded in the id.
+  retentionDays Int @default(30)
+
+  @@id([id, createdAt, retentionDays])
   @@index([webhookEndpointId, createdAt(sort: Desc)]) // dashboard recent-deliveries; also partition-pruned
+}
+
+model Alert {
+  id                         String    @id
+  // plain columns, NO @relation -> no FK
+  organizationId             String
+  projectId                  String
+  environmentId              String
+  capabilityKey              String
+  params                     Json
+  condition                  Json
+  query                      String?
+  expiresAt                  DateTime? @db.Timestamptz(6)
+  lifecycle                  String    @default("active")
+  attention                  String    @default("clear")
+  observedCondition          String    @default("unknown")
+  observedConditionChangedAt DateTime? @db.Timestamptz(6)
+  pendingMetSince            DateTime? @db.Timestamptz(6)
+  evaluatorState             Json?
+  evaluationLeaseId          String?
+  evaluationLeaseUntil       DateTime? @db.Timestamptz(6)
+  lastEvaluatedAt            DateTime? @db.Timestamptz(6)
+  nextEvaluationAt           DateTime? @db.Timestamptz(6) // NULL means due now
+  notifiers                  Json      @default("[]")
+  name                       String?
+  createdBy                  String
+  createdAt                  DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt                  DateTime  @default(now()) @db.Timestamptz(6)
+  resolvedAt                 DateTime? @db.Timestamptz(6)
+  resolvedBy                 String?
+  stoppedAt                  DateTime? @db.Timestamptz(6)
+  stoppedBy                  String?
+  lastOccurrenceAt           DateTime? @db.Timestamptz(6)
+  occurrencesSinceRaise      Int       @default(0)
+  occurrencesTotal           BigInt    @default(0)
+
+  // SQL-only (migration): ("lifecycle", "nextEvaluationAt" NULLS FIRST) and partial active "expiresAt"
+  @@index([environmentId, lifecycle])
+  @@index([lifecycle, evaluationLeaseUntil])
+  @@index([projectId])
+  @@index([organizationId])
+}
+
+/// RANGE-partitioned by month on `at` (see migration).
+model AlertEvent {
+  id            String
+  alertId       String
+  type          String
+  at            DateTime @default(now()) @db.Timestamptz(6)
+  facts         Json     @default("{}")
+  actorId       String?
+  sourceEventId String?
+
+  @@id([id, at])
+  @@index([alertId, at(sort: Desc)])
+}
+
+model AlertOccurrenceSeen {
+  alertId       String
+  sourceEventId String
+  rowTime       DateTime @db.Timestamptz(6)
+  seenAt        DateTime @default(now()) @db.Timestamptz(6)
+  expiresAt     DateTime @db.Timestamptz(6)
+
+  @@id([alertId, sourceEventId])
+  @@index([expiresAt])
+}
+
+/// RANGE-partitioned by month on `eventAt` (see migration).
+model AlertDelivery {
+  id               String
+  alertEventId     String
+  eventAt          DateTime  @db.Timestamptz(6)
+  notifierId       String // stable dedup key from notifierRefKey
+  notifier         Json
+  status           String    @default("pending")
+  claimId          String?
+  claimedAt        DateTime? @db.Timestamptz(6)
+  deliveredAt      DateTime? @db.Timestamptz(6)
+  failureReason    String?
+  providerMetadata Json?
+  attempts         Int       @default(0)
+  firstAttemptAt   DateTime? @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@id([id, eventAt])
+  @@unique([alertEventId, notifierId, eventAt])
+  @@index([status, createdAt])
+  @@index([status, claimedAt])
 }
 
 enum WebhookDeliveryStatus {
@@ -2335,11 +2462,13 @@ model WorkerDeployment {
 
   imageReference String?
   imagePlatform  String  @default("linux/amd64")
+  /// Key of the microVM template prebuilt from this deployment's image, set when the builder succeeds
+  templateKey    String?
 
   externalBuildData   Json?
   buildServerMetadata Json?
   /// Encrypted build-time env vars for pre-bundled (fromBundle) deploys, as an
-  /// EncryptedSecretValue envelope. Cleared when the deployment reaches a terminal status.
+  /// EncryptedSecretValue envelope. Kept for the redeploy window, then cleared by a sweep.
   buildEnvVars        Json?
 
   status WorkerDeploymentStatus @default(PENDING)

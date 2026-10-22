@@ -10,6 +10,7 @@ import {
 } from "~/presenters/v3/LogsListPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
+import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { requireUser } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { hasLogsPageAccess } from "~/services/logsAccess.server";
@@ -53,6 +54,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const runId = url.searchParams.get("runId") ?? undefined;
   const search = url.searchParams.get("search") ?? undefined;
   const cursor = url.searchParams.get("cursor") ?? undefined;
+  const pageSizeStr = url.searchParams.get("pageSize");
+  const pageSize = pageSizeStr ? parseInt(pageSizeStr, 10) : undefined;
   const levels = parseLevelsFromUrl(url);
   const period = url.searchParams.get("period") ?? undefined;
   const fromStr = url.searchParams.get("from");
@@ -76,7 +79,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     levels,
     defaultPeriod: "1d",
     retentionLimitDays,
-  }) as any; // Validated by LogsListOptionsSchema at runtime
+    pageSize: Number.isNaN(pageSize) ? undefined : pageSize,
+  });
 
   const logsClickhouse = await clickhouseFactory.getClickhouseForOrganization(
     project.organizationId,
@@ -86,7 +90,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   let result;
   try {
-    result = await presenter.call(project.organizationId, environment.id, options);
+    result = await presenter.call(
+      project.organizationId,
+      environment.id,
+      options,
+      getRequestAbortSignal()
+    );
   } catch (error) {
     if (error instanceof ServiceValidationError) {
       throw new Response(error.message, { status: error.status ?? 422 });
@@ -97,5 +106,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return json({
     logs: result.logs,
     pagination: result.pagination,
+    pageSize: result.pageSize,
+    searchProgress: result.searchProgress,
+    searchExpansion: result.searchExpansion,
   });
 };

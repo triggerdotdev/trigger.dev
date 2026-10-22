@@ -36,6 +36,7 @@ const DEFAULT_FILTERED_KEYS = [
   "email",
   "headers",
   "completedwaitpoints",
+  "packet",
 ];
 
 // Belt-and-braces value-shape check: catches secrets anywhere in values that land under a field
@@ -312,7 +313,7 @@ function filterKeys(obj: unknown, keys: Set<string>, depth = 0): any {
     return truncateString(obj);
   }
 
-  if (typeof obj !== "object" || obj === null) {
+  if (typeof obj !== "object" || obj === null || obj instanceof Date) {
     return obj;
   }
 

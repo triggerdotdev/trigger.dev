@@ -1,5 +1,5 @@
 import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
-import { containerTestWithIsolatedRedisNoClickhouse } from "@internal/testcontainers";
+import { containerTestWithIsolatedRedis } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { expect } from "vitest";
@@ -58,7 +58,7 @@ function engineOptions(redisOptions: RedisOptions) {
 }
 
 describe("RunEngine.quit", () => {
-  containerTestWithIsolatedRedisNoClickhouse(
+  containerTestWithIsolatedRedis(
     "is concurrency-safe, repeatable, and returns Redis connections to baseline",
     { timeout: 60_000 },
     async ({ prisma, redisOptions }) => {

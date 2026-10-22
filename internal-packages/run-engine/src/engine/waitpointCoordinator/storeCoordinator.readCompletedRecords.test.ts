@@ -1,0 +1,136 @@
+// readCompletedRecords is the store half of the completed-waitpoint resolver. Proven against a REAL
+// Redis (redisTest FLUSHALLs per test): a completed record comes back with its frozen record blob and
+// completion envelope, an absent id is simply missing from the map (never an error), and a PENDING
+// record reports PENDING so the resolver can reject it.
+import { redisTest } from "@internal/testcontainers";
+import { type RedisOptions } from "@internal/redis";
+import { generateWaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import { describe, expect } from "vitest";
+import {
+  WaitpointStoreCoordinator,
+  type WaitpointCompletion,
+  type WaitpointRecordInput,
+} from "./storeCoordinator.js";
+
+const ENV_ID = "env_1";
+const PROJECT_ID = "proj_1";
+const NOW = "2026-08-21T12:00:00.000Z";
+
+function coordinator(redisOptions: RedisOptions) {
+  return new WaitpointStoreCoordinator({ redisOptions });
+}
+
+function record(id: string, overrides: Partial<WaitpointRecordInput> = {}): WaitpointRecordInput {
+  return {
+    id,
+    friendlyId: `waitpoint_${id}`,
+    type: "MANUAL",
+    environmentId: ENV_ID,
+    projectId: PROJECT_ID,
+    createdAt: NOW,
+    updatedAt: NOW,
+    userProvidedIdempotencyKey: false,
+    tags: [],
+    ...overrides,
+  };
+}
+
+function completion(overrides: Partial<WaitpointCompletion> = {}): WaitpointCompletion {
+  return {
+    completedAt: "2026-08-21T12:34:56.000Z",
+    outputType: "application/json",
+    outputIsError: false,
+    output: { inline: '{"value":42}' },
+    ...overrides,
+  };
+}
+
+describe("WaitpointStoreCoordinator.readCompletedRecords", () => {
+  redisTest(
+    "returns the frozen record and completion for a completed waitpoint",
+    async ({ redisOptions }) => {
+      const store = coordinator(redisOptions);
+      try {
+        const id = generateWaitpointId("RUN");
+        const rec = record(id, { type: "RUN", completedByTaskRunId: "run_child" });
+        await store.createIfAbsent({ record: rec, status: "PENDING" });
+        await store.complete({ waitpointId: id, completion: completion() });
+
+        const out = await store.readCompletedRecords([id]);
+
+        expect(out.size).toBe(1);
+        const entry = out.get(id)!;
+        expect(entry.status).toBe("COMPLETED");
+        expect(entry.record).toEqual(rec);
+        expect(entry.completion).toEqual(completion());
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest("omits an absent id rather than erroring", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      const present = generateWaitpointId("MANUAL");
+      const absent = generateWaitpointId("MANUAL");
+      await store.createIfAbsent({ record: record(present), status: "PENDING" });
+      await store.complete({ waitpointId: present, completion: completion() });
+
+      const out = await store.readCompletedRecords([present, absent]);
+
+      // Absence is reported as omission, not a throw: the resolver decides it is an integrity error.
+      expect(out.has(present)).toBe(true);
+      expect(out.has(absent)).toBe(false);
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("reports a still-PENDING record as PENDING", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      const id = generateWaitpointId("MANUAL");
+      await store.createIfAbsent({ record: record(id), status: "PENDING" });
+
+      const out = await store.readCompletedRecords([id]);
+
+      const entry = out.get(id)!;
+      expect(entry.status).toBe("PENDING");
+      expect(entry.completion).toBeUndefined();
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("reads each distinct id once for a repeated id list", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      const id = generateWaitpointId("BATCH");
+      await store.createIfAbsent({ record: record(id, { type: "BATCH" }), status: "PENDING" });
+      await store.complete({ waitpointId: id, completion: completion() });
+
+      const out = await store.readCompletedRecords([id, id, id]);
+
+      expect(out.size).toBe(1);
+      expect(out.get(id)!.status).toBe("COMPLETED");
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest(
+    "surfaces a Redis failure as a throw, never as an absent record",
+    async ({ redisOptions }) => {
+      // A quit()ted client makes the HMGET reject: the failure must PROPAGATE, so the resolver can retry,
+      // and never be seen as the record simply being absent.
+      const store = coordinator(redisOptions);
+      const id = generateWaitpointId("MANUAL");
+      await store.createIfAbsent({ record: record(id), status: "PENDING" });
+      await store.complete({ waitpointId: id, completion: completion() });
+      await store.quit();
+
+      await expect(store.readCompletedRecords([id])).rejects.toBeInstanceOf(Error);
+    }
+  );
+});

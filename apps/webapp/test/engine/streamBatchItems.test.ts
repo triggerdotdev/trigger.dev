@@ -19,7 +19,7 @@ import { PostgresRunStore } from "@internal/run-store";
 import { setupAuthenticatedEnvironment } from "@internal/run-engine/tests";
 // Per-test redis isolation: each test runs its own RunEngine whose background work outlives the test
 // body. NoClickhouse because this suite never touches ClickHouse - skips the worker-scoped boot+migrate.
-import { containerTestWithIsolatedRedisNoClickhouse as containerTest } from "@internal/testcontainers";
+import { containerTestWithIsolatedRedis as containerTest } from "@internal/testcontainers";
 import { trace } from "@opentelemetry/api";
 import type { PrismaClient } from "@trigger.dev/database";
 import { BatchId } from "@trigger.dev/core/v3/isomorphic";

@@ -4,6 +4,10 @@ sidebarTitle: "Max duration"
 description: "Set a maximum duration for a task to run."
 ---
 
+Runs have no maximum duration. You set a default `maxDuration` for your project and can override it per task or per run, or set it to `timeout.None` to let a run execute indefinitely.
+
+Trigger is built for long running AI agents and workflows and we have seen Trigger.dev users with runs lasting more than six months.
+
 The `maxDuration` parameter sets a maximum compute time limit for tasks. When a task exceeds this duration, it will be automatically stopped. This helps prevent runaway tasks and manage compute resources effectively.
 
 You must set a default maxDuration in your `trigger.config.ts` file, which will apply to all tasks unless overridden:

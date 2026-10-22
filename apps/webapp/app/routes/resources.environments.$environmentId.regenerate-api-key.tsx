@@ -52,9 +52,14 @@ export const action = dashboardAction(
 
     const formData = await request.formData();
     const syncToVercel = formData.get("syncToVercel") === "on";
+    const revokeImmediately = formData.get("previousKey") === "revoke";
 
     try {
-      const updatedEnvironment = await regenerateApiKey({ userId: user.id, environmentId });
+      const updatedEnvironment = await regenerateApiKey({
+        userId: user.id,
+        environmentId,
+        revokeImmediately,
+      });
 
       // Sync the regenerated API key to Vercel only when requested and not for DEVELOPMENT
       if (syncToVercel && updatedEnvironment.type !== "DEVELOPMENT") {

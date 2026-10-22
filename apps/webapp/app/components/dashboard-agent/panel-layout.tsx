@@ -1,8 +1,8 @@
 // Both class helpers apply to always-rendered wrappers, so switching display mode is a
 // class change only and the open chat's transport, session and transcript survive it.
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { motion, type PanInfo } from "framer-motion";
+import { AnimatePresence, motion, type PanInfo } from "framer-motion";
 import {
   draggableResizeHandleClassName,
   useDraggableResizable,
@@ -16,7 +16,10 @@ import {
   type Rect,
 } from "~/components/primitives/draggableResizableMath";
 import type { ChatOpenMode } from "~/utils/dashboardPreferences";
+import type { AgentOpenSource } from "./manual-setup-action";
 import { cn } from "~/utils/cn";
+import { AgentAiDisclosure } from "./AgentAiDisclosure";
+import { CHAT_MODE_OPTIONS } from "./chat-mode-options";
 
 // Mark an element (e.g. a header button, or just its icon) with `data-agent-no-drag` so a
 // pan starting on it never drags the window.
@@ -40,9 +43,20 @@ export type DashboardAgentMode = ChatOpenMode;
 // gallery's own panel frame.
 export const FLOATING_WIDTH = 380;
 export const FLOATING_HEIGHT = 600;
+export const ALERTS_FLOATING_HEIGHT = 512;
 export const FLOATING_MARGIN = 16;
 export const FLOATING_MIN_SIZE = { w: 320, h: 360 };
 const RESIZE_EDGES: ResizeEdge[] = ["n", "e", "s", "w", "ne", "nw", "se", "sw"];
+
+// Hovering a resize handle brightens the sides it moves: one for an edge, both for a corner.
+// Handles are named by compass point, so each side matches every handle holding its letter.
+const FLOATING_RESIZE_HIGHLIGHT = cn(
+  "transition-[border-color] duration-200",
+  "has-[[data-resize-edge*=n]:hover]:border-t-border-brighter",
+  "has-[[data-resize-edge*=e]:hover]:border-r-border-brighter",
+  "has-[[data-resize-edge*=s]:hover]:border-b-border-brighter",
+  "has-[[data-resize-edge*=w]:hover]:border-l-border-brighter"
+);
 
 // A dropped key (not just `undefined`) doesn't reliably clear on every style-application
 // layer, so docked/fullscreen explicitly resets every key the floating rect ever sets.
@@ -89,16 +103,20 @@ export function writeAgentPanelWidth(width: number | undefined) {
   }
 }
 
-export function initialFloatingRect() {
+export function initialFloatingRect(height = FLOATING_HEIGHT) {
   if (typeof window === "undefined") {
-    return { x: 0, y: 0, w: FLOATING_WIDTH, h: FLOATING_HEIGHT };
+    return { x: 0, y: 0, w: FLOATING_WIDTH, h: height };
   }
   return {
     x: window.innerWidth - FLOATING_WIDTH - FLOATING_MARGIN,
-    y: window.innerHeight - FLOATING_HEIGHT - FLOATING_MARGIN,
+    y: window.innerHeight - height - FLOATING_MARGIN,
     w: FLOATING_WIDTH,
-    h: FLOATING_HEIGHT,
+    h: height,
   };
+}
+
+export function initialFloatingRectFor(source: AgentOpenSource | undefined): Rect {
+  return initialFloatingRect(source === "alerts" ? ALERTS_FLOATING_HEIGHT : FLOATING_HEIGHT);
 }
 
 /** The mode a chat starts in, and the mode a transient in-chat switch reverts to: the
@@ -169,21 +187,31 @@ export function agentHiddenContentClassName(fullscreen: boolean): string {
 
 const DOCK_ZONE_LABEL: Record<DockZone, string> = {
   rightPanel: "Dock right",
-  fullscreen: "Fullscreen",
+  fullscreen: "Full page",
 };
 
 /** Transparent hint over the drop target, portaled so panel overflow can't clip it. */
 function DockZoneOverlay({ zone }: { zone: DockZone }) {
   if (typeof document === "undefined") return null;
+  // The layout menu's icon for the mode this zone docks into.
+  const Icon = CHAT_MODE_OPTIONS.find((option) => option.mode === zone)?.Icon;
   return createPortal(
-    <div
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.12 }}
+      // The zone itself, padded so the hint sits inset from the viewport's edges.
       className={cn(
-        "pointer-events-none fixed z-[60] flex items-center justify-center border-2 border-dashed border-text-link bg-background-dimmed/70 text-sm text-text-bright backdrop-blur-xs",
+        "pointer-events-none fixed z-[60] p-2",
         zone === "rightPanel" ? "inset-y-0 right-0 w-[380px]" : "inset-0"
       )}
     >
-      {DOCK_ZONE_LABEL[zone]}
-    </div>,
+      <div className="flex size-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-text-link bg-background-dimmed/70 text-lg text-text-bright backdrop-blur-xs">
+        {Icon ? <Icon className="size-6" /> : null}
+        {DOCK_ZONE_LABEL[zone]}
+      </div>
+    </motion.div>,
     document.body
   );
 }
@@ -196,16 +224,18 @@ function DockZoneOverlay({ zone }: { zone: DockZone }) {
  */
 export function FloatingAgentWindow({
   mode,
+  initialRect,
   onRequestModeChange,
   children,
 }: {
   mode: DashboardAgentMode;
+  initialRect?: Rect;
   onRequestModeChange?: (mode: DashboardAgentMode) => void;
   children: (drag: FloatingDragProps) => React.ReactNode;
 }) {
   const fullscreen = mode === "fullscreen";
   const docked = mode === "rightPanel";
-  const initial = useMemo(() => initialFloatingRect(), []);
+  const [initial] = useState(() => initialRect ?? initialFloatingRect());
   const { style, dragHandleProps, resizeHandleProps, position, size, setRect } =
     useDraggableResizable({
       initial,
@@ -300,7 +330,11 @@ export function FloatingAgentWindow({
   // never unmounts `children`; only className/style differ.
   return (
     <>
-      {dragging && dockZone && <DockZoneOverlay zone={dockZone} />}
+      {/* Always rendered, so the window below keeps its place among the children and never
+          remounts; the hint inside fades in and out, cross-fading when the zone changes. */}
+      <AnimatePresence>
+        {dragging && dockZone && <DockZoneOverlay key={dockZone} zone={dockZone} />}
+      </AnimatePresence>
       <div
         style={fullscreen || docked ? CLEARED_FLOATING_STYLE : style}
         className={
@@ -308,7 +342,12 @@ export function FloatingAgentWindow({
             ? agentTakeoverClassName(true)
             : docked
               ? "flex h-full flex-col"
-              : "z-50 flex flex-col rounded-lg border border-border-bright bg-background-bright shadow-2xl"
+              : cn(
+                  // Light themes need far less shadow to lift the panel off the page, and an even one:
+                  // any offset reads as a heavier bottom edge.
+                  "z-50 flex flex-col rounded-lg border border-border-bright bg-background-bright shadow-2xl light:shadow-[0_0_20px_rgb(0_0_0/0.08),0_0_6px_rgb(0_0_0/0.04)]",
+                  FLOATING_RESIZE_HIGHLIGHT
+                )
         }
       >
         {/* Clips content to the rounded corners without clipping the resize handles below,
@@ -334,6 +373,7 @@ export function FloatingAgentWindow({
             <motion.div
               key={edge}
               {...resizeHandleProps(edge)}
+              data-resize-edge={edge}
               className={draggableResizeHandleClassName(edge)}
             />
           ))}
@@ -357,6 +397,9 @@ export function AgentPanelColumn({
       )}
     >
       {children}
+      {/* Last in every state, so it holds its place when a first message turns the new-chat
+          view into a chat. The composer, or the upgrade block, sits just above it. */}
+      <AgentAiDisclosure className="shrink-0 px-3 pb-3 pt-1.5" />
     </div>
   );
 }

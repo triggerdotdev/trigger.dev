@@ -21,8 +21,14 @@ import {
   NumberControl,
   StringControl,
   WorkerGroupControl,
+  WorkerQueueEnvironmentOverridesControl,
   type WorkerGroup,
 } from "./FlagControls";
+import {
+  incompleteOverrideScopes,
+  type OverrideEnvironment,
+  type WorkerQueueEnvironmentOverrides,
+} from "./workerQueueEnvironmentOverrides";
 
 type LoaderData = {
   org: { id: string; title: string; slug: string };
@@ -31,6 +37,7 @@ type LoaderData = {
   controlTypes: Record<string, FlagControlType>;
   workerGroupName?: string;
   workerGroups?: WorkerGroup[];
+  environments?: OverrideEnvironment[];
   isManagedCloud?: boolean;
 };
 
@@ -95,6 +102,9 @@ export function FeatureFlagsDialog({
   }, [saveFetcher.data]);
 
   const isDirty = stableStringify(overrides) !== stableStringify(initialOverrides);
+  const environmentOverrides = (overrides[FEATURE_FLAG.workerQueueEnvironmentOverrides] ??
+    {}) as WorkerQueueEnvironmentOverrides;
+  const hasIncompleteOverrides = incompleteOverrideScopes(environmentOverrides).length > 0;
 
   const setFlagValue = (key: string, value: unknown) => {
     setOverrides((prev) => ({ ...prev, [key]: value }));
@@ -186,6 +196,61 @@ export function FeatureFlagsDialog({
                 }
 
                 const isOverridden = key in overrides;
+
+                if (key === FEATURE_FLAG.workerQueueEnvironmentOverrides) {
+                  const enumOptions = (flag: string) => {
+                    const flagControl = data.controlTypes[flag];
+                    return flagControl?.type === "enum" ? flagControl.options : [];
+                  };
+                  return (
+                    <div
+                      key={key}
+                      className={cn(
+                        "flex flex-col gap-2 rounded-md border px-3 py-2.5",
+                        isOverridden
+                          ? "border-indigo-500/20 bg-indigo-500/5"
+                          : "border-transparent bg-background-hover"
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div
+                            className={cn(
+                              "truncate text-sm",
+                              isOverridden ? "text-text-bright" : "text-text-dimmed"
+                            )}
+                          >
+                            {key}
+                          </div>
+                          <div className="text-xs text-text-dimmed">
+                            Per field: environment id, then type, then the org flags above. A compat
+                            of compute or container here also decides the compute backing swap.
+                          </div>
+                        </div>
+                        <Button
+                          variant="minimal/small"
+                          onClick={() => unsetFlag(key)}
+                          className={cn(!isOverridden && "invisible")}
+                        >
+                          unset
+                        </Button>
+                      </div>
+                      <WorkerQueueEnvironmentOverridesControl
+                        value={environmentOverrides}
+                        environments={data.environments ?? []}
+                        compatOptions={enumOptions(FEATURE_FLAG.workerQueueCompatibility)}
+                        channelOptions={enumOptions(FEATURE_FLAG.workerQueueChannel)}
+                        onChange={(val) => {
+                          if (val === undefined) {
+                            unsetFlag(key);
+                          } else {
+                            setFlagValue(key, val);
+                          }
+                        }}
+                      />
+                    </div>
+                  );
+                }
 
                 return (
                   <div
@@ -296,13 +361,21 @@ export function FeatureFlagsDialog({
           </details>
         )}
 
+        {hasIncompleteOverrides && (
+          <Callout variant="error">Each environment override needs a compat or a channel.</Callout>
+        )}
+
         {saveError && <Callout variant="error">{saveError}</Callout>}
 
         <DialogFooter>
           <Button variant="tertiary/small" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button variant="primary/small" onClick={handleSave} disabled={!isDirty || isSaving}>
+          <Button
+            variant="primary/small"
+            onClick={handleSave}
+            disabled={!isDirty || isSaving || hasIncompleteOverrides}
+          >
             {isSaving ? "Saving..." : "Save changes"}
           </Button>
         </DialogFooter>

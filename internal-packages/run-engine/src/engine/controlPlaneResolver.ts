@@ -131,7 +131,7 @@ const resolvedTaskQueueSelect = {
 
 /**
  * The WorkerDeployment columns the dequeue resolve path reads: `id`, `friendlyId`,
- * `imageReference`, `imagePlatform`. Drops the unread heavy JSON columns (`externalBuildData`,
+ * `imageReference`, `imagePlatform`, `templateKey`. Drops the unread heavy JSON columns (`externalBuildData`,
  * `buildServerMetadata`, `errorData`, `git`) that this single-row read otherwise ships.
  */
 export type ResolvedWorkerDeployment = {
@@ -139,6 +139,7 @@ export type ResolvedWorkerDeployment = {
   friendlyId: string;
   imageReference: string | null;
   imagePlatform: string;
+  templateKey: string | null;
 };
 
 /** The `select` that yields a `ResolvedWorkerDeployment`. */
@@ -147,6 +148,7 @@ const resolvedWorkerDeploymentSelect = {
   friendlyId: true,
   imageReference: true,
   imagePlatform: true,
+  templateKey: true,
 } satisfies Prisma.WorkerDeploymentSelect;
 
 /** Identical to dequeue's `WorkerDeploymentWithWorkerTasks`. */
@@ -486,6 +488,7 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
           friendlyId: promotion.deployment.friendlyId,
           imageReference: promotion.deployment.imageReference,
           imagePlatform: promotion.deployment.imagePlatform,
+          templateKey: promotion.deployment.templateKey,
         },
       };
     }
@@ -521,6 +524,7 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
         friendlyId: latestV2Deployment.friendlyId,
         imageReference: latestV2Deployment.imageReference,
         imagePlatform: latestV2Deployment.imagePlatform,
+        templateKey: latestV2Deployment.templateKey,
       },
     };
   }

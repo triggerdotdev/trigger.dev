@@ -1,6 +1,7 @@
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import { z } from "zod";
+import { parseDeliveryListFilters } from "~/components/webhookDeliveries/v1/deliveryListFilters";
 import { $replica, webhookReplica } from "~/db.server";
 import { WebhookDeliveriesListPresenter } from "~/presenters/v3/WebhookDeliveriesListPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
@@ -56,6 +57,8 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const { webhookEndpointId, deliveryIds, includeNewDeliveries, since, to } =
     SearchParamsSchema.parse(Object.fromEntries(url.searchParams));
+  // The list's own filters, forwarded by the page, so the count matches what a refresh shows.
+  const filters = parseDeliveryListFilters(url.searchParams);
 
   const newDeliveriesSince = includeNewDeliveries && since !== undefined ? since : undefined;
 
@@ -106,6 +109,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
             projectId: project.id,
             environmentId: environment.id,
             webhookEndpointId,
+            filters,
             since: newDeliveriesSince,
             to,
           });

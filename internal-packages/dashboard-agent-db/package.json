@@ -15,9 +15,13 @@
     "postgres": "^3.4.0"
   },
   "devDependencies": {
-    "drizzle-kit": "^0.31.0"
+    "@testcontainers/postgresql": "^11.14.0",
+    "drizzle-kit": "^0.31.0",
+    "vitest": "4.1.11"
   },
   "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "env": "varlock run --inject vars --filter DATABASE_URL,DIRECT_URL,DASHBOARD_AGENT_DATABASE_URL,DASHBOARD_AGENT_DIRECT_URL --",

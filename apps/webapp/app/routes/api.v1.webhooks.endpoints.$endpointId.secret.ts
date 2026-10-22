@@ -24,9 +24,11 @@ const { action, loader } = createActionApiRoute(
     });
     if (!endpoint) return json({ error: "Not found" }, { status: 404 });
 
-    await storeWebhookSigningSecret(endpoint, body.secret);
+    const { previousSecretExpiresAt } = await storeWebhookSigningSecret(endpoint, body.secret, {
+      previousSecretTtlSeconds: body.previousSecretTtlSeconds,
+    });
 
-    return json({ id: endpoint.friendlyId, secretSet: true as const });
+    return json({ id: endpoint.friendlyId, secretSet: true as const, previousSecretExpiresAt });
   }
 );
 

@@ -29,6 +29,7 @@ const constants = {
   RUNNING_COUNTER_PART: "runningCounter",
   GROUP_CONCURRENCY_PART: "groupConcurrency",
   TOTAL_CONCURRENCY_LIMIT_PART: "totalConcurrency",
+  CK_LIMIT_PART: "ckLimit",
   GATE_QUEUED_COUNTER_PART: "gateQueuedCounter",
 } as const;
 
@@ -390,6 +391,29 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
 
   queueTotalConcurrencyLimitKeyFromQueue(queue: string): string {
     return `${this.baseQueueKeyFromQueue(queue)}:${constants.TOTAL_CONCURRENCY_LIMIT_PART}`;
+  }
+
+  /**
+   * String key holding a per-key override of a limit's perKey for one concurrency-key
+   * value: `<base queue>:ckLimit:<key>`. The key sits after its own part rather than being a
+   * suffix of the variant, so no concurrency-key value (which may contain colons) can make
+   * a run's queue coincide with another key's override. Queue names never contain a colon,
+   * so the layout is unambiguous. Written only by the override API, with the override's TTL.
+   */
+  queueConcurrencyKeyLimitKey(
+    env: RunQueueKeyProducerEnvironment,
+    queue: string,
+    concurrencyKey: string
+  ): string {
+    return `${this.queueKey(env, queue)}:${constants.CK_LIMIT_PART}:${concurrencyKey}`;
+  }
+
+  queueConcurrencyKeyLimitKeyFromQueue(queue: string): string {
+    const idx = queue.indexOf(":ck:");
+    if (idx === -1) {
+      throw new Error("queueConcurrencyKeyLimitKeyFromQueue needs a concurrency-key variant");
+    }
+    return `${queue.slice(0, idx)}:${constants.CK_LIMIT_PART}:${queue.slice(idx + 4)}`;
   }
 
   isCkWildcard(queue: string): boolean {

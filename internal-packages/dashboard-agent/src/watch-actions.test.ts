@@ -109,7 +109,7 @@ describe("watch wake narration", () => {
     // A drained queue is a fact the check already established, so the sentence is the
     // dashboard's own wording and no model is called for it.
     expect(collectText(first.chunks)).toBe(
-      "task/send-receipt queue drained\n\nNothing to do — I've stopped watching it."
+      "task/send-receipt queue drained\n\nNothing to do - I've stopped watching it."
     );
 
     // The streamed message must carry the same id the read-model copy is persisted

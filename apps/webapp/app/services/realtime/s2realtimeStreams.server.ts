@@ -644,7 +644,10 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
           lastError = new Error(`S2 append failed: 409 ${res.statusText} ${text}`.trim());
         } else {
           await cancelResponseBody(res);
-          const httpError = new Error(`S2 append failed: ${res.status} ${res.statusText}`);
+          const httpError = Object.assign(
+            new Error(`S2 append failed: ${res.status} ${res.statusText}`),
+            { status: res.status }
+          );
           if (res.status >= 400 && res.status < 500) {
             throw httpError;
           }

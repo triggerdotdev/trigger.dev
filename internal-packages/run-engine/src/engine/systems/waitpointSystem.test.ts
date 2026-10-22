@@ -1,13 +1,21 @@
-import { assertNonNullable, containerTest, heteroPostgresTest } from "@internal/testcontainers";
+import {
+  assertNonNullable,
+  containerTest,
+  containerTestWithIsolatedRedis,
+  heteroPostgresTest,
+} from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { PostgresRunStore, RoutingRunStore } from "@internal/run-store";
-import { BatchId } from "@trigger.dev/core/v3/isomorphic";
+import { BatchId, generateWaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import type { Prisma, PrismaClient } from "@trigger.dev/database";
 import { describe, expect } from "vitest";
 import { setTimeout } from "node:timers/promises";
 import { RunEngine } from "../index.js";
 import { UnclassifiableWaitpointId } from "../errors.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "../tests/setup.js";
+import { WaitpointSystem } from "./waitpointSystem.js";
+import { WaitpointStoreCoordinator } from "../waitpointCoordinator/storeCoordinator.js";
+import { buildCompletedWaitpointRecords } from "./completedWaitpointResolver.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -176,6 +184,67 @@ async function triggerExecutingRun(
 }
 
 describe("WaitpointSystem create/block write routing", () => {
+  containerTestWithIsolatedRedis(
+    "resume classifies store IDs only for an enabled organization with a wired reader",
+    async ({ prisma, redisOptions }) => {
+      const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const engine = buildEngine(prisma, redisOptions);
+      const waitpointStore = new WaitpointStoreCoordinator({ redisOptions });
+      try {
+        // A store-shaped row in Postgres makes the legacy path observable. It is intentionally
+        // pending: disabled reads must retain both the original query and its result mapping.
+        const id = generateWaitpointId("DATETIME");
+        const row = await prisma.waitpoint.create({
+          data: {
+            id,
+            friendlyId: `waitpoint_${id}`,
+            type: "DATETIME",
+            status: "PENDING",
+            completedAt: new Date("2026-01-01T00:00:00.000Z"),
+            idempotencyKey: id,
+            userProvidedIdempotencyKey: false,
+            projectId: env.projectId,
+            environmentId: env.id,
+          },
+        });
+        const blockers = [{ waitpoint: { id } }];
+        const checkedOrganizations: string[] = [];
+        const isEnabled = (organizationId: string) => {
+          checkedOrganizations.push(organizationId);
+          return organizationId === env.organizationId;
+        };
+        const unwired = new WaitpointSystem({
+          ...engine.waitpointSystem["options"],
+          waitpointStoreEnabled: isEnabled,
+        });
+        const wired = new WaitpointSystem({
+          ...engine.waitpointSystem["options"],
+          waitpointStore,
+          waitpointStoreEnabled: isEnabled,
+        });
+        const legacy = buildCompletedWaitpointRecords([row]);
+        expect(
+          await unwired["resolveResumeCompletedWaitpointRecords"](
+            "parent",
+            blockers,
+            env.organizationId
+          )
+        ).toEqual(legacy);
+        expect(checkedOrganizations).toEqual([]);
+        expect(
+          await wired["resolveResumeCompletedWaitpointRecords"]("parent", blockers, "disabled-org")
+        ).toEqual(legacy);
+        await expect(
+          wired["resolveResumeCompletedWaitpointRecords"]("parent", blockers, env.organizationId)
+        ).rejects.toThrow(`No store waitpoint record for ${id}`);
+        expect(checkedOrganizations).toEqual(["disabled-org", env.organizationId]);
+      } finally {
+        await waitpointStore.quit();
+        await engine.quit();
+      }
+    }
+  );
+
   // DATETIME create routes the (env, idempotencyKey) upsert through the store.
   containerTest("DATETIME create routes through the store", async ({ prisma, redisOptions }) => {
     const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");

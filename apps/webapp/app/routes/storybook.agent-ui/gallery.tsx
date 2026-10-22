@@ -35,7 +35,14 @@ export function fixtureResolveUri(uri: string): { label: string; url: string } |
   return { label: uri.split("/").slice(-1)[0]!, url: "#resolved-by-the-host" };
 }
 
-const WIDE_SECTIONS = new Set(["diagnosis-badge-matrix", "hero-fullscreen"]);
+const WIDE_SECTIONS = new Set([
+  "diagnosis-badge-matrix",
+  "hero-fullscreen",
+  "composer-hero-fullscreen",
+  "composer-mode-right-panel-wide",
+  "composer-mode-fullscreen",
+  "composer-themes",
+]);
 
 function Section({
   section,

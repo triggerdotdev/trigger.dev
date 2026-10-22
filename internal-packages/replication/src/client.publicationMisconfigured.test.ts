@@ -42,3 +42,34 @@ describe("publication with no tables", () => {
     }
   );
 });
+
+describe("publication missing a recreated main table", () => {
+  postgresAndRedisTest(
+    "re-adds the main table instead of reporting it misconfigured when readdMainTable is set",
+    async ({ postgresContainer, prisma, redisOptions }) => {
+      await prisma.$executeRawUnsafe(`CREATE PUBLICATION readd_pub;`);
+
+      const client = new LogicalReplicationClient({
+        name: "readd",
+        slotName: "readd_slot",
+        publicationName: "readd_pub",
+        redisOptions,
+        table: "TaskRun",
+        readdMainTable: true,
+        pgConfig: { connectionString: postgresContainer.getConnectionUri() },
+      });
+
+      const errors: unknown[] = [];
+      client.events.on("error", (error) => errors.push(error));
+
+      await client.subscribe();
+      await client.shutdown();
+
+      expect(errors.filter((e) => e instanceof PublicationMisconfiguredError)).toHaveLength(0);
+      const published = await prisma.$queryRawUnsafe<{ tablename: string }[]>(
+        `SELECT tablename FROM pg_publication_tables WHERE pubname = 'readd_pub'`
+      );
+      expect(published.map((row) => row.tablename)).toEqual(["TaskRun"]);
+    }
+  );
+});

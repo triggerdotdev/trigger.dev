@@ -10,6 +10,7 @@ import {
   validatePartialFeatureFlags,
 } from "~/v3/featureFlags";
 import { env } from "~/env.server";
+import { isAlertsEnabledEnv } from "~/v3/canUseAlertsList";
 import { stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
 import { stampMintShardSetFlip } from "~/v3/runOpsMigration/mintShardGrace";
 import { $transaction, boundedIn, prisma, type PrismaClientOrTransaction } from "~/db.server";
@@ -389,6 +390,7 @@ export async function globalFeatureFlags() {
       hasAiAccess: env.AI_FEATURES_ENABLED === "1",
       hasDashboardAgentAccess: env.DASHBOARD_AGENT_ENABLED === "1",
       hasPrivateConnections: env.PRIVATE_CONNECTIONS_ENABLED === "1",
+      alertsEnabled: isAlertsEnabledEnv(env.ALERTS_ENABLED),
     },
   });
 }

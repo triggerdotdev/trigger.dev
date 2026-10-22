@@ -1,3 +1,4 @@
+import { insertErrorServerText, insertErrorType } from "@internal/clickhouse";
 import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
 
 /**
@@ -58,17 +59,12 @@ export type SanitizeResult = {
 
 /**
  * Recognises ClickHouse's "Cannot parse JSON object" rejection — the
- * deterministic-failure class our sanitizer is designed for. Bubbles up
- * from `@clickhouse/client` as an `InsertError` whose `.message` retains
- * the original ClickHouse error text.
+ * deterministic-failure class our sanitizer is designed for. Reads the full
+ * server text, since `InsertError.message` only carries the error type.
  */
 export function isClickHouseJsonParseError(err: unknown): boolean {
   if (!err) return false;
-  const message =
-    typeof err === "object" && err !== null && "message" in err
-      ? String((err as { message?: unknown }).message ?? "")
-      : String(err);
-  return message.includes("Cannot parse JSON object");
+  return insertErrorServerText(err).includes("Cannot parse JSON object");
 }
 
 /**
@@ -183,19 +179,7 @@ export function sanitizeRows<T extends object>(rows: T[]): SanitizeResult {
   return result;
 }
 
-function errorMessage(err: unknown): string {
-  return typeof err === "object" && err !== null && "message" in err
-    ? String((err as { message?: unknown }).message ?? "")
-    : String(err);
-}
-
-function rawErrorMessage(err: unknown): string {
-  if (typeof err === "object" && err !== null) {
-    const raw = (err as { rawMessage?: unknown }).rawMessage;
-    if (typeof raw === "string" && raw.length > 0) return raw;
-  }
-  return errorMessage(err);
-}
+type RowIdAccessor<T> = (row: T) => string | undefined;
 
 /**
  * `error` is part of the contract because losing a whole batch is a genuine
@@ -297,6 +281,7 @@ export async function insertWithLimitedStrip<T extends object>(params: {
   stripJsonColumns: (row: T) => T;
   maxPoisonStrips?: number;
   hasMaterializedViews?: boolean;
+  rowId?: RowIdAccessor<T>;
 }): Promise<JsonParseRecoveryOutcome> {
   const { rows, contextLabel, logger, logContext, insert, insertSync, insertAllowingBadRows } =
     params;
@@ -309,7 +294,7 @@ export async function insertWithLimitedStrip<T extends object>(params: {
   } catch (firstError) {
     if (!isClickHouseJsonParseError(firstError)) throw firstError;
 
-    const firstMessage = errorMessage(firstError);
+    const clickhouseErrorType = insertErrorType(firstError);
     const { rowsTouched, fieldsSanitized } = sanitizeRows(rows);
 
     if (fieldsSanitized > 0) {
@@ -319,7 +304,7 @@ export async function insertWithLimitedStrip<T extends object>(params: {
         batchSize: rows.length,
         rowsTouched,
         fieldsSanitized,
-        clickhouseError: firstMessage.split("\n")[0],
+        clickhouseErrorType,
       });
 
       try {
@@ -331,6 +316,8 @@ export async function insertWithLimitedStrip<T extends object>(params: {
 
     const working = rows.slice();
     const stripped = new Array(working.length).fill(false);
+    // Row hints come from insertSync (no parallel parsing), so these IDs are exact.
+    const strippedRunIds: string[] = [];
     let rowsStripped = 0;
     let bailReason: RecoveryBailReason = "strip_attempts_exhausted";
 
@@ -347,7 +334,8 @@ export async function insertWithLimitedStrip<T extends object>(params: {
               contextLabel,
               batchSize: rows.length,
               rowsStripped,
-              clickhouseError: firstMessage.split("\n")[0],
+              strippedRunIds,
+              clickhouseErrorType,
             }
           );
         }
@@ -368,7 +356,7 @@ export async function insertWithLimitedStrip<T extends object>(params: {
         break;
       }
 
-      const hint = parseStrippableRowNumber(rawErrorMessage(parseError));
+      const hint = parseStrippableRowNumber(insertErrorServerText(parseError));
       const index = hint === null ? -1 : hint - 1;
 
       if (index < 0 || index >= working.length || stripped[index]) {
@@ -376,6 +364,8 @@ export async function insertWithLimitedStrip<T extends object>(params: {
         break;
       }
 
+      const runId = params.rowId?.(working[index]);
+      if (runId) strippedRunIds.push(runId);
       working[index] = stripJsonColumns(working[index]);
       stripped[index] = true;
       rowsStripped += 1;
@@ -395,7 +385,8 @@ export async function insertWithLimitedStrip<T extends object>(params: {
         rowsStripped,
         capped: true,
         bailReason,
-        firstMessage,
+        clickhouseErrorType,
+        strippedRunIds,
         skipError,
       });
     }
@@ -411,7 +402,8 @@ export async function insertWithLimitedStrip<T extends object>(params: {
       rowsDropped: dropped.rows,
       rowsDroppedExact: dropped.exact,
       landedRows: writtenRowCount(insertResult),
-      clickhouseError: firstMessage.split("\n")[0],
+      strippedRunIds,
+      clickhouseErrorType,
     });
 
     return {
@@ -464,7 +456,8 @@ function wholeBatchDropped<T extends object>(params: {
   rowsStripped: number;
   capped: boolean;
   bailReason?: RecoveryBailReason;
-  firstMessage: string;
+  clickhouseErrorType?: string;
+  strippedRunIds?: string[];
   skipError: unknown;
 }): JsonParseRecoveryOutcome {
   const { rows, contextLabel, logger, logContext, rowsStripped, capped, bailReason } = params;
@@ -476,8 +469,9 @@ function wholeBatchDropped<T extends object>(params: {
     batchSize: rows.length,
     rowsStripped,
     rowsDropped: rows.length,
-    clickhouseError: params.firstMessage.split("\n")[0],
-    skipInsertError: errorMessage(params.skipError).split("\n")[0],
+    strippedRunIds: params.strippedRunIds,
+    clickhouseErrorType: params.clickhouseErrorType,
+    skipInsertErrorType: insertErrorType(params.skipError),
   });
 
   return {
@@ -577,7 +571,7 @@ export async function insertWithBadRowSkip<T extends object>(params: {
   } catch (firstError) {
     if (!isParseError(firstError)) throw firstError;
 
-    const firstMessage = errorMessage(firstError);
+    const clickhouseErrorType = insertErrorType(firstError);
     const { rowsTouched, fieldsSanitized } = sanitizeRows(rows);
 
     if (fieldsSanitized > 0) {
@@ -587,7 +581,7 @@ export async function insertWithBadRowSkip<T extends object>(params: {
         batchSize: rows.length,
         rowsTouched,
         fieldsSanitized,
-        clickhouseError: firstMessage.split("\n")[0],
+        clickhouseErrorType,
       });
 
       try {
@@ -611,7 +605,7 @@ export async function insertWithBadRowSkip<T extends object>(params: {
         logContext,
         rowsStripped: 0,
         capped: false,
-        firstMessage,
+        clickhouseErrorType,
         skipError,
       });
     }
@@ -627,7 +621,7 @@ export async function insertWithBadRowSkip<T extends object>(params: {
         rowsDropped: dropped.rows,
         rowsDroppedExact: dropped.exact,
         landedRows: writtenRowCount(insertResult),
-        clickhouseError: firstMessage.split("\n")[0],
+        clickhouseErrorType,
       }
     );
 

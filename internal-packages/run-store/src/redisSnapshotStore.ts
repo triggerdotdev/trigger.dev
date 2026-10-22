@@ -32,6 +32,28 @@ function quarantineKeyPrefix(partition: number): string {
   return `${SNAPSHOT_NAMESPACE}:quarantine:{${partitionTag(partition)}}:`;
 }
 
+/**
+ * Backoff before each retry of a read that failed on a transient client error: two retries and
+ * 200 ms of added wait in all, so the backoff stays shorter than a single client command timeout.
+ */
+const READ_RETRY_DELAYS_MS = [50, 150] as const;
+
+/**
+ * Whether an error came from the client side of a Redis round trip rather than from the server's
+ * answer: a command timeout (the timer can fire while the event loop is stalled even though the
+ * reply has already arrived), an exhausted per-request reconnect budget, or a reset/closed socket.
+ * A server reply error (WRONGTYPE, NOSCRIPT, ...) is not transient: retrying it returns the same
+ * answer.
+ */
+export function isTransientRedisClientError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (error.name === "MaxRetriesPerRequestError") return true;
+  if (error.message.includes("Command timed out")) return true;
+  if (error.message.includes("Connection is closed")) return true;
+  const code = (error as { code?: unknown }).code;
+  return code === "ECONNRESET" || code === "EPIPE";
+}
+
 export type QuarantinedRecord = {
   unit: PreparedPgUnit;
   reason: string;
@@ -464,6 +486,30 @@ export class RedisSnapshotStore {
   }
 
   /**
+   * Runs a side-effect-free read, retrying it on a transient client error after each delay in
+   * {@link READ_RETRY_DELAYS_MS}. Any other error, or the last transient one once the delays are
+   * spent, is rethrown unchanged. Reads only: a timed-out write may still have been applied, so
+   * replaying it is not safe.
+   */
+  async #retryingRead<T>(op: string, fn: () => Promise<T>): Promise<T> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        const delayMs = READ_RETRY_DELAYS_MS[attempt];
+        if (delayMs === undefined || !isTransientRedisClientError(error)) throw error;
+        this.logger.debug("RedisSnapshotStore retrying read after a transient client error", {
+          op,
+          attempt: attempt + 1,
+          delayMs,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+
+  /**
    * Records that this run's Redis history has a hole, so window reads must not serve it. Separate
    * from the append path because a repair can conclude the head is already current and still know
    * that entries were lost.
@@ -502,7 +548,9 @@ export class RedisSnapshotStore {
    * Postgres-resident one.
    */
   async readBirthResidency(runId: string): Promise<string | undefined> {
-    const mode = await this.#timed("readBirthResidency", () => this.redis.get(residencyKey(runId)));
+    const mode = await this.#timed("readBirthResidency", () =>
+      this.#retryingRead("readBirthResidency", () => this.redis.get(residencyKey(runId)))
+    );
     return mode ?? undefined;
   }
 
@@ -528,9 +576,8 @@ export class RedisSnapshotStore {
    */
   async readPendingState(runId: string): Promise<{ prepared: boolean; quarantined: boolean }> {
     return this.#timed("readPendingState", async () => {
-      const reply = (await this.redis.readPendingState(
-        preparedUnitKey(runId),
-        quarantineKey(runId)
+      const reply = (await this.#retryingRead("readPendingState", () =>
+        this.redis.readPendingState(preparedUnitKey(runId), quarantineKey(runId))
       )) as [number, number];
       return { prepared: reply[0] === 1, quarantined: reply[1] === 1 };
     });
@@ -540,11 +587,16 @@ export class RedisSnapshotStore {
    * Whether a prepared-but-unfinalized unit exists for this run. The prep key is removed on
    * finalize/abort/quarantine, so its presence is exactly "a unit is pending". Reads the MemoryDB
    * PRIMARY. Residency resolution uses {@link readPendingState} instead, which folds in the quarantine
-   * check; this remains for callers that only need prepared-presence.
+   * check; this remains for callers that only need prepared-presence. `retry: false` is a single
+   * attempt, for a caller whose own retry covers a transient error.
    */
-  async hasPreparedUnit(runId: string): Promise<boolean> {
+  async hasPreparedUnit(runId: string, opts?: { retry?: boolean }): Promise<boolean> {
     return this.#timed("hasPreparedUnit", async () => {
-      return (await this.redis.exists(preparedUnitKey(runId))) === 1;
+      const read = () => this.redis.exists(preparedUnitKey(runId));
+      const exists = await (opts?.retry === false
+        ? read()
+        : this.#retryingRead("hasPreparedUnit", read));
+      return exists === 1;
     });
   }
 
@@ -702,10 +754,9 @@ export class RedisSnapshotStore {
   async readStateVersion(runId: string): Promise<StateVersionRead> {
     return this.#timed("readStateVersion", async () => {
       const k = snapshotKeys(runId);
-      const [exists, sv] = (await this.redis.multi().exists(k.seq).hget(k.seq, "sv").exec()) as [
-        [Error | null, number],
-        [Error | null, string | null],
-      ];
+      const [exists, sv] = (await this.#retryingRead("readStateVersion", () =>
+        this.redis.multi().exists(k.seq).hget(k.seq, "sv").exec()
+      )) as [[Error | null, number], [Error | null, string | null]];
       if ((exists[1] ?? 0) === 0) return { kind: "absent" };
       const version = sv[1] ?? null;
       if (version === SNAPSHOT_STATE_VERSION) return { kind: "known" };
@@ -1074,22 +1125,30 @@ export class RedisSnapshotStore {
     });
   }
 
+  // `retry: false` is for an exceptional path that already treats a read error as "unproven" and
+  // must fail fast rather than multiply the client timeout while it holds the run lock.
   async getById(
     runId: string,
     snapshotId: string,
-    opts?: { environmentId?: string }
+    opts?: { environmentId?: string; retry?: boolean }
   ): Promise<SnapshotRead | null> {
     return this.#timed("getById", async () => {
       const k = snapshotKeys(runId);
-      const reply = await this.redis.readSnapshotById(k.e, k.idx, k.cur, k.seq, snapshotId);
+      const read = () => this.redis.readSnapshotById(k.e, k.idx, k.cur, k.seq, snapshotId);
+      const reply = await (opts?.retry === false ? read() : this.#retryingRead("getById", read));
       return this.#decode(reply, opts?.environmentId, runId, true);
     });
   }
 
-  async getLatest(runId: string, opts?: { environmentId?: string }): Promise<SnapshotRead | null> {
+  // `retry: false` as for getById: a fail-fast read for a caller holding an open Postgres transaction.
+  async getLatest(
+    runId: string,
+    opts?: { environmentId?: string; retry?: boolean }
+  ): Promise<SnapshotRead | null> {
     return this.#timed("getLatest", async () => {
       const k = snapshotKeys(runId);
-      const reply = await this.redis.readLatestSnapshot(k.e, k.idx, k.cur, k.seq);
+      const read = () => this.redis.readLatestSnapshot(k.e, k.idx, k.cur, k.seq);
+      const reply = await (opts?.retry === false ? read() : this.#retryingRead("getLatest", read));
       return this.#decode(reply, opts?.environmentId, runId, true);
     });
   }
@@ -1101,7 +1160,9 @@ export class RedisSnapshotStore {
   async getSnapshotWaitpointIds(runId: string, snapshotId: string): Promise<WaitpointIds> {
     return this.#timed("getSnapshotWaitpointIds", async () => {
       const k = snapshotKeys(runId);
-      const reply = await this.redis.readSnapshotWaitpointIds(k.e, k.idx, k.cur, k.seq, snapshotId);
+      const reply = await this.#retryingRead("getSnapshotWaitpointIds", () =>
+        this.redis.readSnapshotWaitpointIds(k.e, k.idx, k.cur, k.seq, snapshotId)
+      );
       // A dangling pointer means this entry's waitpoints are unreachable, not absent. Reporting
       // `present: false` is what sends the caller to Postgres, which still holds the join rows.
       if (reply[3] === "1") {
@@ -1119,19 +1180,20 @@ export class RedisSnapshotStore {
   // The completed-waitpoint cycle with its full record set, so a redis-primary read reproduces a
   // Postgres read (Postgres holds no join rows for such a run). A dangling pointer is reported, never
   // answered empty, so the caller fails closed instead of resuming a batch with every position lost.
+  // `retry: false` as for getById: a fail-fast read for an exceptional path, or for a caller holding
+  // an open Postgres transaction.
   async getSnapshotCompletedWaitpoints(
     runId: string,
-    snapshotId: string
+    snapshotId: string,
+    opts?: { retry?: boolean }
   ): Promise<CompletedWaitpointsRead> {
     return this.#timed("getSnapshotCompletedWaitpoints", async () => {
       const k = snapshotKeys(runId);
-      const reply = await this.redis.readSnapshotCompletedWaitpoints(
-        k.e,
-        k.idx,
-        k.cur,
-        k.seq,
-        snapshotId
-      );
+      const read = () =>
+        this.redis.readSnapshotCompletedWaitpoints(k.e, k.idx, k.cur, k.seq, snapshotId);
+      const reply = await (opts?.retry === false
+        ? read()
+        : this.#retryingRead("getSnapshotCompletedWaitpoints", read));
       const present = reply[0] === "1";
       const dangling = reply[3] === "1";
       if (!present || dangling) {
@@ -1253,13 +1315,8 @@ export class RedisSnapshotStore {
       const limit = opts?.limit ?? this.sinceLimit;
       const cursor = typeof createdAt === "string" ? createdAt : createdAt.toISOString();
 
-      const reply = await this.redis.readSnapshotsSinceCreatedAt(
-        k.e,
-        k.idx,
-        k.cur,
-        k.seq,
-        cursor,
-        String(limit)
+      const reply = await this.#retryingRead("getSinceCreatedAt", () =>
+        this.redis.readSnapshotsSinceCreatedAt(k.e, k.idx, k.cur, k.seq, cursor, String(limit))
       );
       if (reply === null) return { kind: "miss" };
 
@@ -1483,7 +1540,7 @@ export class RedisSnapshotStore {
           for i = 1, high do
             redis.call('PEXPIRE', wpKey(i), ttlMs)
           end
-          -- A MIRRORED run's residency marker expires WITH its state: after 14 days the terminal keys are
+          -- A MIRRORED run's residency marker expires WITH its state: once the completed TTL passes the terminal keys are
           -- gone and its complete Postgres copy is authoritative, so a read cleanly misses to Postgres and
           -- no permanent per-run marker accumulates. A REDIS-PRIMARY marker is kept forever (no PEXPIRE):
           -- it is the only record the run was ever redis-primary, so an expired redis-primary run resolves

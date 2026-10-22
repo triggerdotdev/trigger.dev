@@ -1,5 +1,8 @@
 blank_issues_enabled: true
 contact_links:
+  - name: Request a vouch
+    url: https://github.com/triggerdotdev/trigger.dev/discussions/5010
+    about: Request a vouch by leaving a comment in this discussion before opening your first PR
   - name: Ask a Question
     url: https://trigger.dev/discord
     about: Ask questions and discuss with other community members

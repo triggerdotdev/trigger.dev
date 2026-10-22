@@ -520,7 +520,12 @@ export interface RunStore {
   // Attempt lifecycle
   startAttempt<S extends Prisma.TaskRunSelect>(
     runId: string,
-    data: { attemptNumber: number; executedAt?: Date; isWarmStart: boolean },
+    data: {
+      attemptNumber: number;
+      executedAt?: Date;
+      isWarmStart: boolean;
+      annotations?: Prisma.InputJsonValue;
+    },
     args: { select: S },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
@@ -545,7 +550,8 @@ export interface RunStore {
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
   requeueRun<S extends Prisma.TaskRunSelect>(
     runId: string,
-    args: { select: S },
+    /** `workerQueue` moves the run to that worker queue as it is requeued. */
+    args: { select: S; workerQueue?: string },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
   recordBulkActionMembership(
@@ -856,6 +862,10 @@ export interface RunStore {
   // Server-only fallback for jobs without preceding snapshot context. The decorator resolves actual
   // birth storage or throws; an undecorated Postgres store returns undefined without extra work.
   readSnapshotRoute(runId: string, organizationId: string): Promise<SnapshotRoute | undefined>;
+  // Resolves an earlier snapshot unit still pending for the run, so an engine transaction about to
+  // publish to the run queue does not meet it as a busy prepare. Call it outside any transaction. A
+  // store without MemoryDB residency does nothing.
+  settlePendingUnit(runId: string): Promise<void>;
 
   // Implicit-join group
   /** `runId` (when known) routes to the run's store — the snapshot + its join co-locate with the run;

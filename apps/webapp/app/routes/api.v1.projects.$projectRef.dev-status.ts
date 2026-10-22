@@ -4,6 +4,7 @@ import { devPresence } from "~/presenters/v3/DevPresence.server";
 import {
   authenticatedEnvironmentForAuthentication,
   authenticateRequest,
+  branchNameFromRequest,
 } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 
@@ -31,10 +32,12 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
     const { projectRef } = parsedParams.data;
 
+    // Dev branches each have their own dev session
     const runtimeEnv = await authenticatedEnvironmentForAuthentication(
       authenticationResult,
       projectRef,
-      "dev"
+      "dev",
+      branchNameFromRequest(request)
     );
 
     const isConnected = await devPresence.isConnected(runtimeEnv.id);

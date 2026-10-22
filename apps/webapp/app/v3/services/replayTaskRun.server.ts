@@ -4,11 +4,12 @@ import {
   parsePacket,
   stringifyIO,
 } from "@trigger.dev/core/v3";
+import { EngineServiceValidationError } from "@internal/run-engine";
 import { type TaskRun } from "@trigger.dev/database";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { baseWorkerQueue } from "~/runEngine/concerns/workerQueueSplit.server";
 import { logger } from "~/services/logger.server";
-import { BaseService } from "./baseService.server";
+import { BaseService, ServiceValidationError } from "./baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "./triggerTask.server";
 import { type RunOptionsData } from "../testTask";
 import { replaceSuperJsonPayload } from "@trigger.dev/core/v3/utils/ioSerialization";
@@ -17,9 +18,18 @@ import { determineRealtimeStreamsVersion } from "~/services/realtime/v1StreamsGl
 type OverrideOptions = {
   environmentId?: string;
   payload?: string;
+  /**
+   * The encoding of `payload`, used as-is for the new run. Without it, an override of a
+   * SuperJSON payload is plain JSON that keeps the original payload's type annotations,
+   * which is what the dashboard's payload editor relies on.
+   */
+  payloadType?: "application/json" | "application/super+json";
   metadata?: unknown;
   bulkActionId?: string;
   triggerSource?: string;
+  delay?: string | Date;
+  ttl?: string | number;
+  idempotencyKeyTTL?: string;
   // zod v4 types `.optional().transform()` fields as required-with-undefined in the
   // output; Partial keeps them omittable for callers passing a subset of overrides.
 } & Partial<RunOptionsData>;
@@ -90,7 +100,8 @@ export class ReplayTaskRunService extends BaseService {
 
     const payloadPacket = await this.overrideExistingPayloadPacket(
       existingTaskRun,
-      overrideOptions.payload
+      overrideOptions.payload,
+      overrideOptions.payloadType
     );
     const parsedPayload =
       payloadPacket.dataType === "application/json"
@@ -118,6 +129,12 @@ export class ReplayTaskRunService extends BaseService {
         },
       });
 
+      if (overrideOptions.queue && !taskQueue) {
+        throw new ServiceValidationError(
+          `Queue "${overrideOptions.queue}" was not found in this environment`
+        );
+      }
+
       const triggerTaskService = new TriggerTaskService();
       const result = await triggerTaskService.call(
         existingTaskRun.taskIdentifier,
@@ -134,14 +151,18 @@ export class ReplayTaskRunService extends BaseService {
             test: existingTaskRun.isTest,
             tags,
             metadata: metadata,
-            delay: overrideOptions.delaySeconds
-              ? new Date(Date.now() + overrideOptions.delaySeconds * 1000)
-              : undefined,
-            ttl: overrideOptions.ttlSeconds,
+            delay:
+              overrideOptions.delay ??
+              (overrideOptions.delaySeconds
+                ? new Date(Date.now() + overrideOptions.delaySeconds * 1000)
+                : undefined),
+            ttl: overrideOptions.ttl ?? overrideOptions.ttlSeconds,
             idempotencyKey: overrideOptions.idempotencyKey,
-            idempotencyKeyTTL: overrideOptions.idempotencyKeyTTLSeconds
-              ? `${overrideOptions.idempotencyKeyTTLSeconds}s`
-              : undefined,
+            idempotencyKeyTTL:
+              overrideOptions.idempotencyKeyTTL ??
+              (overrideOptions.idempotencyKeyTTLSeconds
+                ? `${overrideOptions.idempotencyKeyTTLSeconds}s`
+                : undefined),
             concurrencyKey:
               overrideOptions.concurrencyKey ?? existingTaskRun.concurrencyKey ?? undefined,
             /**
@@ -188,6 +209,13 @@ export class ReplayTaskRunService extends BaseService {
         return;
       }
 
+      if (
+        error instanceof ServiceValidationError ||
+        error instanceof EngineServiceValidationError
+      ) {
+        throw error;
+      }
+
       logger.error("Failed to replay a run", {
         error: error instanceof Error ? error.message : error,
       });
@@ -198,16 +226,21 @@ export class ReplayTaskRunService extends BaseService {
 
   private async overrideExistingPayloadPacket(
     existingTaskRun: TaskRun,
-    stringifiedPayloadOverride: string | undefined
+    stringifiedPayloadOverride: string | undefined,
+    payloadType: "application/json" | "application/super+json" | undefined
   ) {
-    if (existingTaskRun.payloadType === "application/store") {
+    if (stringifiedPayloadOverride === undefined) {
       return conditionallyImportPacket({
         data: existingTaskRun.payload,
         dataType: existingTaskRun.payloadType,
       });
     }
 
-    if (stringifiedPayloadOverride && existingTaskRun.payloadType === "application/super+json") {
+    if (payloadType) {
+      return { data: stringifiedPayloadOverride, dataType: payloadType };
+    }
+
+    if (existingTaskRun.payloadType === "application/super+json") {
       const newPayload = await replaceSuperJsonPayload(
         existingTaskRun.payload,
         stringifiedPayloadOverride
@@ -216,10 +249,7 @@ export class ReplayTaskRunService extends BaseService {
       return stringifyIO(newPayload);
     }
 
-    return conditionallyImportPacket({
-      data: stringifiedPayloadOverride ?? existingTaskRun.payload,
-      dataType: existingTaskRun.payloadType,
-    });
+    return { data: stringifiedPayloadOverride, dataType: "application/json" };
   }
 
   private async getExistingMetadata(existingTaskRun: TaskRun) {

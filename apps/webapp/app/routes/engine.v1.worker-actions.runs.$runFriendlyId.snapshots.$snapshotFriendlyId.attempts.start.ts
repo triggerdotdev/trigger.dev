@@ -26,6 +26,8 @@ export const action = createActionWorkerApiRoute(
       runFriendlyId,
       snapshotFriendlyId,
       isWarmStart: body.isWarmStart,
+      workerCell: body.workerCell,
+      workerLane: body.workerLane,
       runnerId,
       environmentId,
     });

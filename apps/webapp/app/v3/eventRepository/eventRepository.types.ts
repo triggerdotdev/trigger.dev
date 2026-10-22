@@ -311,10 +311,20 @@ export type TraceChunkEvent = {
 
 export type { TraceChunkCursor };
 
+export type TraceChunkScopeOptions = {
+  includeDebugLogs?: boolean;
+  // Live tail: only rows written at or after this time (ms since epoch).
+  tailInsertedAtSinceMs?: number;
+  // Only rows written at or before this time.
+  insertedAtEnd?: Date;
+};
+
 export type TraceChunk = {
   events: Array<TraceChunkEvent>;
   nextCursor: TraceChunkCursor | null;
   hasMore: boolean;
+  // A span had more rows at one timestamp than one read allows; the extra rows were skipped.
+  droppedKeyRows?: boolean;
 };
 
 export type TraceErrorEvents = {
@@ -422,16 +432,23 @@ export interface IEventRepository {
   }): Promise<void>;
 
   // Query methods
+  /**
+   * `anchorSpanId` roots the summary at that span (the viewed run), so a window that
+   * starts after the trace root still builds. Returns undefined if it isn't in the rows.
+   */
   getTraceSummary(
     storeTable: TaskEventStoreTable,
     environmentId: string,
     traceId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
-    options?: { includeDebugLogs?: boolean }
+    options?: { includeDebugLogs?: boolean; anchorSpanId?: string }
   ): Promise<TraceSummary | undefined>;
 
-  /** Fetch the anchor span, its ancestors (for override propagation), and all descendants. */
+  /**
+   * Fetch the anchor span, its ancestors (for override propagation), and all descendants.
+   * `includeAncestors: false` skips the ancestor walk, which has no time bounds.
+   */
   getTraceSubtreeSummary(
     storeTable: TaskEventStoreTable,
     environmentId: string,
@@ -439,7 +456,7 @@ export interface IEventRepository {
     anchorSpanId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
-    options?: { includeDebugLogs?: boolean }
+    options?: { includeDebugLogs?: boolean; includeAncestors?: boolean }
   ): Promise<TraceSummary | undefined>;
 
   getTraceChunk(
@@ -449,17 +466,8 @@ export interface IEventRepository {
     startCreatedAt: Date,
     endCreatedAt: Date | undefined,
     cursor: TraceChunkCursor | undefined,
-    options?: { includeDebugLogs?: boolean; limit?: number; tailInsertedAtSinceMs?: number }
+    options?: TraceChunkScopeOptions & { limit?: number }
   ): Promise<TraceChunk | undefined>;
-
-  getTraceSpanCount(
-    storeTable: TaskEventStoreTable,
-    environmentId: string,
-    traceId: string,
-    startCreatedAt: Date,
-    endCreatedAt: Date | undefined,
-    options?: { includeDebugLogs?: boolean }
-  ): Promise<number | undefined>;
 
   getTraceErrorEvents(
     storeTable: TaskEventStoreTable,

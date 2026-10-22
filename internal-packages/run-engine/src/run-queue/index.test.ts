@@ -15,6 +15,7 @@ const testOptions = {
   tracer: trace.getTracer("rq"),
   workers: 1,
   defaultEnvConcurrency: 25,
+  dequeueBlockingTimeoutSeconds: 1,
   enableRebalancing: false,
   logger: new Logger("RunQueue", "debug"),
   retryOptions: {

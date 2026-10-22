@@ -127,14 +127,18 @@ async function fixture(prisma: PrismaClient) {
 describe("empty env rollout through production boundaries", () => {
   for (const emptyValue of ["", " \t "]) {
     postgresTest(
-      `Vercel pull respects off/on/isolation/rollback for ${JSON.stringify(emptyValue)}`,
+      `Vercel pull skips blanks regardless of the direct-write flag for ${JSON.stringify(emptyValue)}`,
       async ({ prisma }) => {
         const operations: string[] = [];
+        let rejectGlobalFlagRead = false;
         const observed = prisma.$extends({
           query: {
             $allModels: {
               $allOperations: async ({ model, operation, args, query }) => {
                 operations.push(`${model}.${operation}`);
+                if (rejectGlobalFlagRead && model === "FeatureFlag" && operation === "findFirst") {
+                  throw new Error("flag lookup unavailable");
+                }
                 return query(args);
               },
             },
@@ -168,37 +172,51 @@ describe("empty env rollout through production boundaries", () => {
         await f.repository.create(f.project.id, {
           override: true,
           environmentIds: [f.environment.id],
-          variables: [{ key: "PLAIN", value: "original" }],
+          variables: [
+            { key: "PLAIN", value: "original" },
+            { key: "SENSITIVE", value: "original-secret" },
+          ],
           lastUpdatedBy: { type: "user", userId: f.user.id },
         });
+        // The existing global flag lookup must still fail before provider reads.
+        rejectGlobalFlagRead = true;
+        expect((await pull()).isErr()).toBe(true);
+        expect(external.calls).toEqual([]);
+        rejectGlobalFlagRead = false;
         operations.length = 0;
         const off = await pull();
         expect(off.isOk()).toBe(true);
         if (off.isOk()) expect(off.value.errors).toEqual([]);
         expect(await f.read()).toEqual({
           PLAIN: "original",
+          SENSITIVE: "original-secret",
           ENCRYPTED: "encrypted-shared-fallback",
           COLLISION: "shared-fallback",
           ORDINARY: "updated",
         });
         expect(operations.filter((op) => op === "FeatureFlag.findFirst")).toHaveLength(1);
+        // Set a value distinct from the provider fallback. An enabled blank project
+        // override must be skipped after merging, not replaced with a shared value.
+        await f.repository.create(f.project.id, {
+          override: true,
+          environmentIds: [f.environment.id],
+          variables: [{ key: "COLLISION", value: "keep-collision" }],
+        });
         await f.setFlag(true);
         external.calls.length = 0;
         const on = await pull();
         expect(on.isOk()).toBe(true);
         if (on.isOk()) expect(on.value.errors).toEqual([]);
         expect(await f.read()).toEqual({
-          PLAIN: emptyValue,
-          ENCRYPTED: emptyValue,
-          COLLISION: emptyValue,
-          SHARED: emptyValue,
+          PLAIN: "original",
+          SENSITIVE: "original-secret",
+          ENCRYPTED: "encrypted-shared-fallback",
+          COLLISION: "keep-collision",
           ORDINARY: "updated",
         });
         expect(external.calls.filter((p) => p === "/v1/env")).toHaveLength(1);
         expect(external.calls.filter((p) => p.endsWith("/encrypted"))).toHaveLength(1);
-        expect(external.calls.some((p) => p.endsWith("/shared") || p.endsWith("/sensitive"))).toBe(
-          false
-        );
+        expect(external.calls.some((p) => p.endsWith("/sensitive"))).toBe(false);
         operations.length = 0;
         const repeat = await pull();
         expect(repeat.isOk() && repeat.value.syncedCount).toBe(0);
@@ -214,29 +232,28 @@ describe("empty env rollout through production boundaries", () => {
           ENCRYPTED: "encrypted-shared-fallback",
           ORDINARY: "updated",
         });
+        // An explicit false override keeps the original off-path fallback policy
+        // and bypasses the global flag lookup, even when that lookup would fail.
+        await f.setFlag(false);
+        rejectGlobalFlagRead = true;
+        operations.length = 0;
+        expect((await pull()).isOk()).toBe(true);
+        expect((await f.read()).COLLISION).toBe("shared-fallback");
+        expect(operations.filter((op) => op === "FeatureFlag.findFirst")).toHaveLength(0);
+        rejectGlobalFlagRead = false;
         external.deny();
         const failed = await pull();
         expect(failed.isOk() && failed.value.errors.length).toBeGreaterThan(0);
-        expect((await f.read()).PLAIN).toBe(emptyValue);
+        expect((await f.read()).PLAIN).toBe("original");
         await f.setFlag(false);
         const stored = await f.read();
-        expect(stored.PLAIN).toBe(emptyValue);
-        const child = spawnSync(
-          process.execPath,
-          [
-            "-e",
-            'process.stdout.write(JSON.stringify({present:Object.hasOwn(process.env,"PLAIN"),empty:process.env.PLAIN===""}))',
-          ],
-          { env: { ...process.env, ...stored }, encoding: "utf8" }
-        );
-        expect(child.status).toBe(0);
-        expect(JSON.parse(child.stdout)).toEqual({ present: true, empty: emptyValue === "" });
+        expect(stored.PLAIN).toBe("original");
       }
     );
   }
 
   postgresTest(
-    "REST update and billing-shaped import enforce the current organization flag",
+    "direct REST writes allow empty values when enabled while Vercel imports preserve existing values",
     async ({ prisma }) => {
       const f = await fixture(prisma);
       const params = { projectRef: f.project.externalRef, slug: "prod", name: "REST_EMPTY" };
@@ -252,7 +269,12 @@ describe("empty env rollout through production boundaries", () => {
       await f.repository.create(f.project.id, {
         override: true,
         environmentIds: [f.environment.id],
-        variables: [{ key: "REST_EMPTY", value: "original" }],
+        variables: [
+          { key: "REST_EMPTY", value: "original" },
+          { key: "BILLING_EMPTY", value: "original" },
+          { key: "BILLING_WHITESPACE", value: "original" },
+          { key: "SENSITIVE", value: "original-secret" },
+        ],
       });
       const capability = async () => {
         const response = await readCapability({ params, context: {}, request: request("GET") });
@@ -265,24 +287,94 @@ describe("empty env rollout through production boundaries", () => {
       const off = await update();
       expect(off?.status).toBe(400);
       expect((await f.read()).REST_EMPTY).toBe("original");
+      const protectedKeys = ["BILLING_EMPTY", "BILLING_WHITESPACE", "SENSITIVE"];
+      const snapshotProtectedValues = async () => {
+        const rows = await prisma.environmentVariableValue.findMany({
+          where: {
+            environmentId: f.environment.id,
+            variable: { OR: protectedKeys.map((key) => ({ key })) },
+          },
+          include: { valueReference: true },
+          orderBy: { id: "asc" },
+        });
+        const secrets = await prisma.secretStore.findMany({
+          where: { OR: rows.map((row) => ({ key: row.valueReference!.key })) },
+          orderBy: { key: "asc" },
+        });
+        return { rows, secrets };
+      };
+      const beforeSync = await snapshotProtectedValues();
       const billingBody = {
-        variables: { BILLING_EMPTY: "", BILLING_NORMAL: "updated" },
+        variables: {
+          BILLING_EMPTY: "",
+          BILLING_WHITESPACE: " \t ",
+          SENSITIVE: "",
+          NEW_EMPTY: "",
+          BILLING_NORMAL: "updated",
+        },
         override: true,
         source: { type: "integration", integration: "vercel" },
       };
       const sync = () =>
         importVariables({ params, context: {}, request: request("POST", billingBody) });
       expect((await sync()).status).toBe(200);
-      expect((await f.read()).BILLING_EMPTY).toBeUndefined();
+      expect((await f.read()).BILLING_EMPTY).toBe("original");
       await f.setFlag(true);
       expect((await capability()).allowEmptyEnvironmentVariableValues).toBe(true);
       expect((await update())?.status).toBe(200);
-      expect((await sync()).status).toBe(200);
+      // Old billing may still send blanks; retries/concurrent requests must not
+      // alter stored ciphertext, versions, row IDs, timestamps or provenance.
+      for (const result of await Promise.all([sync(), sync(), sync()])) {
+        expect(result.status).toBe(200);
+      }
+      expect(await snapshotProtectedValues()).toEqual(beforeSync);
       const response = await readVariable({ params, context: {}, request: request("GET") });
       expect(response.status).toBe(200);
       expect(await response.json()).toMatchObject({ name: "REST_EMPTY", value: "" });
-      expect((await f.read()).BILLING_EMPTY).toBe("");
+      expect(await f.read()).toMatchObject({
+        REST_EMPTY: "",
+        BILLING_EMPTY: "original",
+        BILLING_WHITESPACE: "original",
+        SENSITIVE: "original-secret",
+        BILLING_NORMAL: "updated",
+      });
+      expect((await f.read()).NEW_EMPTY).toBeUndefined();
+      const blankOnly = await importVariables({
+        params,
+        context: {},
+        request: request("POST", {
+          ...billingBody,
+          variables: { BILLING_EMPTY: "", NEW_EMPTY: "" },
+        }),
+      });
+      expect(blankOnly.status).toBe(200);
+      expect(await snapshotProtectedValues()).toEqual(beforeSync);
+      expect((await f.read()).BILLING_EMPTY).toBe("original");
+      expect((await f.read()).NEW_EMPTY).toBeUndefined();
+      const directImport = await importVariables({
+        params,
+        context: {},
+        request: request("POST", {
+          variables: { DIRECT_IMPORT_EMPTY: "" },
+          override: true,
+        }),
+      });
+      expect(directImport.status).toBe(200);
+      expect((await f.read()).DIRECT_IMPORT_EMPTY).toBe("");
+      const stored = await f.read();
+      const child = spawnSync(
+        process.execPath,
+        [
+          "-e",
+          'process.stdout.write(JSON.stringify({present:Object.hasOwn(process.env,"REST_EMPTY"),empty:process.env.REST_EMPTY===""}))',
+        ],
+        { env: { ...process.env, ...stored }, encoding: "utf8" }
+      );
+      expect(child.status).toBe(0);
+      expect(JSON.parse(child.stdout)).toEqual({ present: true, empty: true });
       await f.setFlag(false);
+      expect((await sync()).status).toBe(200);
+      expect(await snapshotProtectedValues()).toEqual(beforeSync);
       expect((await update())?.status).toBe(400);
       const rolledBack = await capability();
       expect(rolledBack.allowEmptyEnvironmentVariableValues).toBe(false);
@@ -291,3 +383,36 @@ describe("empty env rollout through production boundaries", () => {
     }
   );
 });
+
+postgresTest(
+  "Vercel blank imports preserve the existing flag-read failure boundary",
+  async ({ prisma }) => {
+    let fail = false;
+    const observed = prisma.$extends({
+      query: {
+        featureFlag: {
+          findFirst: async ({ args, query }) => {
+            if (fail) throw new Error("flag lookup unavailable");
+            return query(args);
+          },
+        },
+      },
+    }) as unknown as PrismaClient;
+    const f = await fixture(observed);
+    await f.repository.create(f.project.id, {
+      override: true,
+      environmentIds: [f.environment.id],
+      variables: [{ key: "PRESERVE", value: "original" }],
+    });
+    fail = true;
+    await expect(
+      f.repository.create(f.project.id, {
+        override: true,
+        environmentIds: [f.environment.id],
+        variables: [{ key: "PRESERVE", value: "" }],
+        lastUpdatedBy: { type: "integration", integration: "vercel" },
+      })
+    ).rejects.toThrow("flag lookup unavailable");
+    expect((await f.read()).PRESERVE).toBe("original");
+  }
+);

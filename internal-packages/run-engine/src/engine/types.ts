@@ -41,6 +41,12 @@ export type WorkerQueueDequeueOptions = WorkerQueuePopOptions & {
   runnerId?: string;
   tx?: PrismaClientOrTransaction;
   skipObserving?: boolean;
+  /**
+   * Set when this consumer can only start runs whose deployment has a `templateKey`. A fresh
+   * attempt of a deployment without one moves to the worker queue this returns. Restores keep
+   * their worker queue.
+   */
+  templateFallbackWorkerQueue?: (workerQueue: string) => string | undefined;
 };
 
 /**
@@ -70,6 +76,11 @@ export type CrossSeamGuardHook = (input: {
 }) => Promise<CrossSeamGuardDecision>;
 
 export type RunEngineOptions = {
+  /** Independent of snapshot residency. Omitted means the existing Postgres waitpoint behavior. */
+  waitpointStoreEnabled?: (
+    organizationId: string,
+    organizationFlags?: unknown
+  ) => boolean | Promise<boolean>;
   prisma: PrismaClient;
   readOnlyPrisma?: PrismaReplicaClient;
   /** Optional RunStore implementation to inject. Defaults to a PostgresRunStore
@@ -114,6 +125,8 @@ export type RunEngineOptions = {
     totalConcurrencyEnabled?: boolean;
     /** Enforce the gates carried in message payloads. See RunQueueOptions.gatesEnabled. */
     gatesEnabled?: boolean;
+    /** Enforce per-key overrides set through the override API. See RunQueueOptions.concurrencyKeyLimitsEnabled. */
+    concurrencyKeyLimitsEnabled?: boolean;
     /** Bounds for the saturated-set reconcile. See RunQueueOptions.reconcile. */
     reconcile?: {
       enabled?: boolean;
@@ -197,6 +210,8 @@ export type RunEngineOptions = {
       factor?: number;
       /** Whether to add jitter to retry delays. Default: true */
       randomize?: boolean;
+      /** Attempt ceiling for infrastructure-class failures. Default: maxAttempts */
+      infrastructureMaxAttempts?: number;
     };
   };
   debounce?: {

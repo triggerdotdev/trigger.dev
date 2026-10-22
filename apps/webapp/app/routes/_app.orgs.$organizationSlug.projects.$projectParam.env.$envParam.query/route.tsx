@@ -7,7 +7,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { QueryEditor } from "~/components/query/QueryEditor";
 import { env } from "~/env.server";
-import { findProjectBySlug } from "~/models/project.server";
+import { findProjectBySlug, findProjectWithOrgFlagsBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { QueryPresenter } from "~/presenters/v3/QueryPresenter.server";
 import { executeQuery, getDefaultPeriod } from "~/services/queryService.server";
@@ -46,7 +46,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw redirect("/");
   }
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
+  const project = await findProjectWithOrgFlagsBySlug(organizationSlug, projectParam, user.id);
   if (!project) {
     throw new Response(undefined, {
       status: 404,

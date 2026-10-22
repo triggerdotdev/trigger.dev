@@ -6,6 +6,7 @@ import AlertDashboardAgentWatchEmail, {
   AlertDashboardAgentWatchEmailSchema,
 } from "../emails/alert-dashboard-agent-watch";
 import AlertErrorGroupEmail, { AlertErrorGroupEmailSchema } from "../emails/alert-error-group";
+import AlertRaisedEmail, { AlertRaisedEmailSchema } from "../emails/alert-raised";
 import AlertRunFailureEmail, { AlertRunEmailSchema } from "../emails/alert-run-failure";
 import { setGlobalBasePath } from "../emails/components/BasePath";
 import ConfirmEmailChangeEmail, {
@@ -43,6 +44,7 @@ export const DeliverEmailSchema = z
     AlertRunEmailSchema,
     AlertAttemptEmailSchema,
     AlertErrorGroupEmailSchema,
+    AlertRaisedEmailSchema,
     AlertDashboardAgentWatchEmailSchema,
     AlertDeploymentFailureEmailSchema,
     AlertDeploymentSuccessEmailSchema,
@@ -147,6 +149,12 @@ export class EmailClient {
         return {
           subject: `[${data.organization}] ${classLabel}: ${data.error.type ?? "Error"} in ${data.taskIdentifier} [${data.environment}]`,
           component: <AlertErrorGroupEmail {...data} />,
+        };
+      }
+      case "alert-raised": {
+        return {
+          subject: `[${data.organization}] ${data.headline}`,
+          component: <AlertRaisedEmail {...data} />,
         };
       }
       case "alert-dashboard-agent-watch": {

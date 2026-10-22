@@ -13,6 +13,7 @@ const testOptions = {
   tracer: trace.getTracer("rq"),
   workers: 1,
   defaultEnvConcurrency: 25,
+  dequeueBlockingTimeoutSeconds: 1,
   retryOptions: {
     maxAttempts: 5,
     factor: 1.1,

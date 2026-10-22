@@ -5,7 +5,15 @@ import {
 } from "@internal/dashboard-agent-contracts";
 import { chat } from "@trigger.dev/sdk/ai";
 import { locals, logger, tasks } from "@trigger.dev/sdk";
-import { generateText, stepCountIs, streamText, type ModelMessage, type UIMessage } from "ai";
+import {
+  generateText,
+  InvalidToolInputError,
+  NoSuchToolError,
+  stepCountIs,
+  streamText,
+  type ModelMessage,
+  type UIMessage,
+} from "ai";
 import {
   orgAllowsTurnEvals,
   redactEvalToolValue,
@@ -44,6 +52,7 @@ import {
 import { recordPromptCacheUsage, stepCachePrepareStep } from "./step-cache";
 import { dashboardAgentActionSchema, handleWatchAction } from "./watch-actions";
 import { dashboardAgentCompaction, withDurableState } from "./compaction";
+import { withAlertDraftContext } from "./prompt-assembly";
 
 // The runtime and the watch lanes live in their own modules; re-exported here so
 // every existing import path still resolves.
@@ -78,10 +87,12 @@ export {
   withStepCacheBreakpoint,
 } from "./step-cache";
 export {
+  alertInvestigateActionSchema,
   dashboardAgentActionSchema,
   wakeStartsInvestigation,
   watchInvestigateActionSchema,
   watchWakeActionSchema,
+  type AlertInvestigateAction,
   type DashboardAgentAction,
   type WatchInvestigateAction,
   type WatchWakeAction,
@@ -103,6 +114,58 @@ export {
 export const TURN_FAILED_MESSAGE =
   "Something went wrong on my side, so that turn didn't finish. Ask again and I'll pick it up.";
 
+export const TOOL_UNAVAILABLE_MESSAGE =
+  "I reached for a tool this chat doesn't have, so that turn didn't finish. Ask again and I'll answer without it.";
+
+export const TOOL_INPUT_INVALID_MESSAGE =
+  "I called a tool with input it didn't accept, so I'm retrying that step.";
+
+function validationIssues(error: unknown): unknown {
+  for (let cause = error; cause instanceof Error; cause = cause.cause) {
+    if ("issues" in cause) return cause.issues;
+  }
+  return undefined;
+}
+
+/** What a failed turn tells the user and what it logs; the provider's words reach only the log. */
+export function turnErrorReport(error: unknown): {
+  text: string;
+  message: string;
+  fields: Record<string, unknown>;
+  failsTurn: boolean;
+} {
+  if (InvalidToolInputError.isInstance(error)) {
+    return {
+      text: TOOL_INPUT_INVALID_MESSAGE,
+      message: "dashboard-agent tool call had invalid input",
+      fields: {
+        error: error.message,
+        toolName: error.toolName,
+        issues: validationIssues(error),
+      },
+      failsTurn: false,
+    };
+  }
+  if (NoSuchToolError.isInstance(error)) {
+    return {
+      text: TOOL_UNAVAILABLE_MESSAGE,
+      message: "dashboard-agent turn called a tool it does not have",
+      fields: {
+        error: error.message,
+        toolName: error.toolName,
+        availableTools: error.availableTools,
+      },
+      failsTurn: true,
+    };
+  }
+  return {
+    text: TURN_FAILED_MESSAGE,
+    message: "dashboard-agent turn failed",
+    fields: { error: error instanceof Error ? error.message : String(error) },
+    failsTurn: true,
+  };
+}
+
 /** Stable per turn, so a re-run of the error path can't stack two records. */
 export function turnFailureMessageId(turn: number): string {
   return `turn-error:${turn}`;
@@ -115,6 +178,8 @@ export function turnFailureMessageId(turn: number): string {
  * Reset every turn in `onTurnStart`.
  */
 const turnErroredKey = locals.create<boolean>("dashboard-agent.turnErrored");
+const toolInputErrorsKey = locals.create<Set<string>>("dashboard-agent.toolInputErrors");
+const turnErrorTextKey = locals.create<string>("dashboard-agent.turnErrorText");
 
 /**
  * Append-only by message id. Both the terminal settlement cards and the failure
@@ -128,11 +193,11 @@ export function mergeMessagesById(current: UIMessage[], incoming: UIMessage[]): 
   return missing.length === 0 ? current : [...current, ...missing];
 }
 
-function turnFailureMessage(turn: number): UIMessage {
+function turnFailureMessage(turn: number, text: string): UIMessage {
   return {
     id: turnFailureMessageId(turn),
     role: "assistant",
-    parts: [{ type: "text", text: TURN_FAILED_MESSAGE }],
+    parts: [{ type: "text", text }],
   };
 }
 
@@ -404,11 +469,27 @@ export const dashboardAgent = chat.agent({
     // and the stored record never disagree. The provider's own message is logged
     // here and goes no further.
     onError: (error) => {
+      const report = turnErrorReport(error);
+      const toolInputErrors = locals.get(toolInputErrorsKey) ?? new Set<string>();
+      locals.set(toolInputErrorsKey, toolInputErrors);
+      if (!report.failsTurn) {
+        toolInputErrors.add(String(report.fields.error));
+        logger.warn(report.message, report.fields);
+        return report.text;
+      }
+      // The tool's error result repeats invalid input as a bare string.
+      if (typeof error === "string" && toolInputErrors.has(error)) {
+        return TOOL_INPUT_INVALID_MESSAGE;
+      }
       locals.set(turnErroredKey, true);
-      logger.error("dashboard-agent turn failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return TURN_FAILED_MESSAGE;
+      // The SDK reports a missing tool twice, the second time as a bare string.
+      const text =
+        report.text === TURN_FAILED_MESSAGE
+          ? (locals.get(turnErrorTextKey) ?? TURN_FAILED_MESSAGE)
+          : report.text;
+      locals.set(turnErrorTextKey, text);
+      logger.error(report.message, report.fields);
+      return text;
     },
   },
 
@@ -448,6 +529,8 @@ export const dashboardAgent = chat.agent({
 
   onTurnStart: async ({ chatId, uiMessages, clientData }) => {
     locals.set(turnErroredKey, false);
+    locals.set(turnErrorTextKey, TURN_FAILED_MESSAGE);
+    locals.set(toolInputErrorsKey, new Set());
 
     // An action turn answers the request `onAction` just filed, so that request is the
     // last message. Any other turn is the user's: a marker still set here belongs to an
@@ -517,7 +600,9 @@ export const dashboardAgent = chat.agent({
     // reloading showed a turn that just stops.
     const errored =
       error !== undefined || finishReason === "error" || locals.get(turnErroredKey) === true;
-    const failure = errored ? turnFailureMessage(turn) : undefined;
+    const failure = errored
+      ? turnFailureMessage(turn, locals.get(turnErrorTextKey) ?? TURN_FAILED_MESSAGE)
+      : undefined;
 
     // The rows and closing cards of whatever was left running, in one operation. The
     // row and its card have to commit together: a settled row whose card never arrived
@@ -615,7 +700,7 @@ export const dashboardAgent = chat.agent({
   // they are dashboard-editable. toStreamTextOptions() supplies the system text
   // with its cache breakpoint, config, telemetry and prepareStep wiring; the model
   // string is resolved through the registry here so streamText keeps a typed model.
-  run: async ({ messages, signal, tools: turnTools }) => {
+  run: async ({ messages, signal, tools: turnTools, clientData }) => {
     const resolved = chat.prompt();
     // A wake turn calls no tools: it reports what the check already established and
     // carries no delegated token to read with. The tools stay declared and
@@ -649,7 +734,10 @@ export const dashboardAgent = chat.agent({
       ...(boundedWake
         ? { maxOutputTokens: WAKE_MAX_OUTPUT_TOKENS, providerOptions: withoutThinking(modelId) }
         : { providerOptions: turnProviderOptions(modelId) }),
-      messages,
+      messages: withAlertDraftContext(
+        messages,
+        clientData?.toolScope === "alert_creation" ? clientData.alertDraft : undefined
+      ),
       abortSignal: signal,
       prepareStep: stepCachePrepareStep(options) as never,
       // Per model call, so the head-start prefix and this one can be compared.

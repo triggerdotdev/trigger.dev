@@ -1,6 +1,6 @@
 import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { type MetaFunction } from "@remix-run/react";
-import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { WebhookIcon } from "~/assets/icons/WebhookIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
@@ -12,6 +12,10 @@ import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/Page
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { EndpointFilters } from "~/components/webhookEndpoints/v1/EndpointFilters";
 import { EndpointsListTable } from "~/components/webhookEndpoints/v1/EndpointsListTable";
+import { WebhooksBetaAccess } from "~/components/webhookEndpoints/WebhooksBetaAccess";
+import { $replica } from "~/db.server";
+import { featuresForRequest } from "~/features.server";
+import { jsonWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
@@ -19,11 +23,17 @@ import {
   type EndpointStatusFilter,
   WebhookEndpointsListPresenter,
 } from "~/presenters/v3/WebhookEndpointsListPresenter.server";
+import { webhooksBetaPreview } from "~/presenters/v3/webhooksBetaPreview.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
+import {
+  hasRequestedBetaAccess,
+  recordBetaAccessRequest,
+} from "~/services/dashboardPreferences.server";
 import { requireUser } from "~/services/session.server";
+import { telemetry } from "~/services/telemetry.server";
 import { docsPath, EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { webhookIngressUrl } from "~/utils/webhookIngressUrl.server";
-import { requireWebhooksAccess } from "~/v3/webhooksAccess.server";
+import { hasWebhooksAccess } from "~/v3/webhooksAccess.server";
 
 export const meta: MetaFunction = () => [{ title: "Endpoints | Webhooks | Trigger.dev" }];
 
@@ -45,7 +55,23 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const environment = await findEnvironmentBySlug(project.id, envParam, user.id);
   if (!environment) throw new Response("Environment not found", { status: 404 });
 
-  await requireWebhooksAccess(user, project.organizationId);
+  if (!(await hasWebhooksAccess(user, project.organizationId))) {
+    if (!featuresForRequest(request).isManagedCloud) {
+      throw new Response("Not found", { status: 404 });
+    }
+    const preview = webhooksBetaPreview();
+    return typeddefer({
+      betaAccess: true as const,
+      organizationId: project.organizationId,
+      requested: hasRequestedBetaAccess(
+        user.dashboardPreferences,
+        "webhooks",
+        project.organizationId
+      ),
+      previewEndpoints: preview.endpoints,
+      previewActivity: Promise.resolve(preview.activity),
+    });
+  }
 
   const url = new URL(request.url);
   const statuses = repeated(url.searchParams, "statuses")?.filter(
@@ -79,9 +105,59 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 };
 
+export const action = async ({ request, params }: ActionFunctionArgs) => {
+  const user = await requireUser(request);
+  const { organizationSlug, projectParam } = EnvironmentParamSchema.parse(params);
+
+  if (!featuresForRequest(request).isManagedCloud) {
+    throw new Response("Not found", { status: 404 });
+  }
+
+  if (user.isImpersonating) {
+    throw new Response("Beta access can't be requested while impersonating", { status: 403 });
+  }
+
+  const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
+  if (!project) throw new Response("Project not found", { status: 404 });
+
+  const organization = await $replica.organization.findFirst({
+    where: { id: project.organizationId },
+    select: { id: true, slug: true, title: true },
+  });
+  if (!organization) throw new Response("Organization not found", { status: 404 });
+
+  if (!hasRequestedBetaAccess(user.dashboardPreferences, "webhooks", organization.id)) {
+    await recordBetaAccessRequest({ user, feature: "webhooks", organizationId: organization.id });
+    telemetry.webhooks.betaRequested({ user, organization });
+  }
+
+  return jsonWithSuccessMessage({ requested: true }, request, "We've added you to the wait list");
+};
+
 export default function Page() {
-  const { endpoints, activity, pagination, filterOptions, hasFilters, hasAnyEndpoints } =
-    useTypedLoaderData<typeof loader>();
+  const data = useTypedLoaderData<typeof loader>();
+
+  if ("betaAccess" in data) {
+    return (
+      <WebhooksBetaAccess
+        key={data.organizationId}
+        requested={data.requested}
+        previewEndpoints={data.previewEndpoints}
+        previewActivity={data.previewActivity}
+      />
+    );
+  }
+
+  return <Endpoints data={data} />;
+}
+
+type EndpointsData = Exclude<
+  ReturnType<typeof useTypedLoaderData<typeof loader>>,
+  { betaAccess: true }
+>;
+
+function Endpoints({ data }: { data: EndpointsData }) {
+  const { endpoints, activity, pagination, filterOptions, hasFilters, hasAnyEndpoints } = data;
 
   return (
     <>

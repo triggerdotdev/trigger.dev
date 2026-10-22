@@ -1,25 +1,36 @@
 # Test containers
 
 Vitest utilities for writing tests against real Postgres, Prisma, Redis and ClickHouse - we don't mock
-(see the root `CLAUDE.md`), we boot containers. Also exposes a duration-weighted shard sequencer for
+(see the root `AGENTS.md`), we boot containers. Also exposes a duration-weighted shard sequencer for
 splitting slow suites across CI shards.
 
 ## Choosing a fixture
 
-Most tests share one set of containers per vitest worker (booted once, reset between tests) - this is
-much faster than a container per test. Reach for an isolated variant only when a test needs it.
+Postgres is shared much more widely than the other containers: one container per image is reused by
+every test file and every test process on the machine (testcontainers reuse), and each test gets its
+own database cloned from a schema template. Redis and ClickHouse are booted once per test file and
+reset between tests. Reach for an isolated variant only when a test needs it.
 
-| Fixture                          | Postgres       | Redis    | ClickHouse | Use for                                 |
-| -------------------------------- | -------------- | -------- | ---------- | --------------------------------------- |
-| `redisTest`                      | -              | shared   | -          | redis-only tests                        |
-| `postgresTest`                   | shared (clone) | -        | -          | db-only tests                           |
-| `containerTest`                  | shared (clone) | shared   | shared     | the default - needs all three           |
-| `isolatedRedisTest`              | -              | per-test | -          | background redis work (see below)       |
-| `containerTestWithIsolatedRedis` | shared (clone) | per-test | shared     | background redis work + db/clickhouse   |
-| `replicationContainerTest`       | per-test       | per-test | shared     | Postgres→ClickHouse logical replication |
+| Fixture                          | Postgres           | Redis    | ClickHouse | Use for                                 |
+| -------------------------------- | ------------------ | -------- | ---------- | --------------------------------------- |
+| `redisTest`                      | -                  | shared   | -          | redis-only tests                        |
+| `postgresTest`                   | shared (clone)     | -        | -          | db-only tests                           |
+| `containerTest`                  | shared (clone)     | shared   | -          | the default: Postgres + Redis           |
+| `containerTestWithClickhouse`    | shared (clone)     | shared   | shared     | tests that also read or write ClickHouse |
+| `clickhouseTest`                 | -                  | -        | shared     | ClickHouse-only tests                   |
+| `isolatedRedisTest`              | -                  | per-test | -          | background redis work (see below)       |
+| `containerTestWithIsolatedRedis` | shared (clone)     | per-test | -          | background redis work + db              |
+| `postgresAndRedisTest`           | per-file (clone)   | per-test | -          | logical replication slots               |
+| `replicationContainerTest`       | per-file (clone)   | per-test | shared     | Postgres→ClickHouse logical replication |
 
-"shared (clone)" = one Postgres per worker with a template database; each test gets a fast `CREATE
-DATABASE ... TEMPLATE` clone, so schema isn't re-pushed per test.
+"shared (clone)" = a Postgres reused across files and processes. Its schema lives in a template
+database named by the schema's hash; each test gets a fast `CREATE DATABASE ... TEMPLATE` clone that is
+dropped afterwards. "per-file (clone)" is the same, on a Postgres private to the test file, for tests
+that create cluster-wide state under fixed names (replication slots).
+
+Shared Postgres containers are not reaped when the run ends, so later runs skip the boot. Remove them
+with `docker rm -f $(docker ps -aq --filter label=dev.trigger.testcontainers.shared)`, or set
+`TESTCONTAINERS_REUSE_ENABLE=false` to get private containers.
 
 ### The background-work gotcha
 

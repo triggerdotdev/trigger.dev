@@ -292,6 +292,9 @@ supervisor:
       metrics: 9088
   resources: {}
   config:
+    # Name of the worker cluster this supervisor serves. Stamped on every run it
+    # starts so runs can be attributed to the cluster that executed them.
+    cellName: ""
     kubernetes:
       forceEnabled: true
       namespace: "" # Default: uses release namespace

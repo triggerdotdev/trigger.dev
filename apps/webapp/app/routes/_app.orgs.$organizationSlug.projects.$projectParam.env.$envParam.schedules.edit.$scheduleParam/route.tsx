@@ -5,9 +5,12 @@ import { requireUserId } from "~/services/session.server";
 import { v3EnvironmentPath, v3ScheduleParams } from "~/utils/pathBuilder";
 import { humanToCronSupported } from "~/v3/humanToCron.server";
 import { UpsertScheduleForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.new/route";
+import { skipRevalidationAfterCronGeneration } from "../resources.orgs.$organizationSlug.projects.$projectParam.schedules.new.natural-language";
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Edit schedule");
+
+export const shouldRevalidate = skipRevalidationAfterCronGeneration;
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

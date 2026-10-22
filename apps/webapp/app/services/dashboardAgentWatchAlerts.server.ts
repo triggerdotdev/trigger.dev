@@ -208,8 +208,11 @@ export async function subscribeChannelToWatchAlerts(params: {
   deduplicationKey: string;
   environmentType: RuntimeEnvironmentType;
   project: { id: string; externalRef: string };
-}): Promise<Pick<ProjectAlertChannel, "id" | "type" | "enabled" | "environmentTypes">> {
-  const { userId, email, deduplicationKey, environmentType, project } = params;
+  authorize: (environmentTypes: RuntimeEnvironmentType[]) => boolean;
+}): Promise<
+  Pick<ProjectAlertChannel, "id" | "type" | "enabled" | "environmentTypes"> | { denied: true }
+> {
+  const { userId, email, deduplicationKey, environmentType, project, authorize } = params;
   const name = `Watch alerts for ${email}`;
 
   for (let attempt = 0; attempt < SUBSCRIBE_ATTEMPTS; attempt++) {
@@ -219,9 +222,11 @@ export async function subscribeChannelToWatchAlerts(params: {
     });
 
     if (!existing) {
+      if (!authorize([environmentType])) return { denied: true };
       try {
         // The service also checks this user's membership of the project.
         return await new CreateAlertChannelService().call(project.externalRef, userId, {
+          createOnly: true,
           name,
           alertTypes: [DASHBOARD_AGENT_WATCH_ALERT_TYPE],
           environmentTypes: [environmentType],
@@ -236,6 +241,7 @@ export async function subscribeChannelToWatchAlerts(params: {
     }
 
     const environmentTypes = withoutDuplicates(existing.environmentTypes, environmentType);
+    if (!authorize(environmentTypes)) return { denied: true };
     const alertTypes = withoutDuplicates(existing.alertTypes, DASHBOARD_AGENT_WATCH_ALERT_TYPE);
 
     const { count } = await prisma.projectAlertChannel.updateMany({
@@ -267,7 +273,7 @@ export async function subscribeChannelToWatchAlerts(params: {
 
 export type SubscribeToWatchAlertsResult =
   | { ok: true; email: string }
-  | { ok: false; reason: DashboardAgentAlertDenyReason | "user_not_found" };
+  | { ok: false; reason: DashboardAgentAlertDenyReason | "user_not_found" | "forbidden" };
 
 /**
  * Subscribe the signed-in user's own account email to this project's watch alerts. The
@@ -281,8 +287,9 @@ export async function subscribeUserToWatchAlerts(params: {
     organization: { slug: string };
     project: { id: string; externalRef: string };
   };
+  authorize: (environmentTypes: RuntimeEnvironmentType[]) => boolean;
 }): Promise<SubscribeToWatchAlertsResult> {
-  const { userId, environment } = params;
+  const { userId, environment, authorize } = params;
 
   const gate = await canUseDashboardAgentEmailAlerts({
     userId,
@@ -295,20 +302,22 @@ export async function subscribeUserToWatchAlerts(params: {
   const owner = await resolveWatchAlertOwnership(userId);
   if (!owner) return { ok: false, reason: "user_not_found" };
 
-  await subscribeChannelToWatchAlerts({
+  const channel = await subscribeChannelToWatchAlerts({
     userId,
     email: owner.email,
     deduplicationKey: owner.deduplicationKey,
     environmentType: environment.type as RuntimeEnvironmentType,
     project: environment.project,
+    authorize,
   });
+  if ("denied" in channel) return { ok: false, reason: "forbidden" };
 
   return { ok: true, email: owner.email };
 }
 
 export type UnsubscribeResult =
   | { ok: true; channelName: string; disabledChannel: boolean }
-  | { ok: false; reason: "not_found" | "conflict" };
+  | { ok: false; reason: "not_found" | "conflict" | "forbidden" };
 
 /** How many times a lost race is retried before the caller is told to try again. */
 const UNSUBSCRIBE_ATTEMPTS = 3;
@@ -322,7 +331,12 @@ const UNSUBSCRIBE_ATTEMPTS = 3;
  */
 export async function unsubscribeChannelFromWatchAlerts(
   channelId: string,
-  options: { projectId?: string; organizationId?: string; ownerUserId?: string } = {},
+  options: {
+    projectId?: string;
+    organizationId?: string;
+    ownerUserId?: string;
+    authorize?: (environmentTypes: RuntimeEnvironmentType[]) => boolean;
+  } = {},
   db: PrismaClientOrTransaction = prisma
 ): Promise<UnsubscribeResult> {
   let ownerKey: string | undefined;
@@ -342,12 +356,21 @@ export async function unsubscribeChannelFromWatchAlerts(
   for (let attempt = 0; attempt < UNSUBSCRIBE_ATTEMPTS; attempt++) {
     const channel = await db.projectAlertChannel.findFirst({
       where: scope,
-      select: { name: true, alertTypes: true, projectId: true, deduplicationKey: true },
+      select: {
+        name: true,
+        alertTypes: true,
+        environmentTypes: true,
+        projectId: true,
+        deduplicationKey: true,
+      },
     });
     // A channel this alert type was never on is out of scope: stripping nothing off it
     // would still report success, and an empty list would disable it.
     if (!channel || !channel.alertTypes.includes(DASHBOARD_AGENT_WATCH_ALERT_TYPE)) {
       return { ok: false, reason: "not_found" };
+    }
+    if (options.authorize && !options.authorize(channel.environmentTypes)) {
+      return { ok: false, reason: "forbidden" };
     }
 
     const remaining = channel.alertTypes.filter(
@@ -362,6 +385,7 @@ export async function unsubscribeChannelFromWatchAlerts(
         projectId: channel.projectId,
         deduplicationKey: channel.deduplicationKey,
         alertTypes: { equals: channel.alertTypes },
+        environmentTypes: { equals: channel.environmentTypes },
       },
       data: {
         alertTypes: remaining,

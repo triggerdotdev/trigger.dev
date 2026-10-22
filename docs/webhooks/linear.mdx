@@ -1,0 +1,186 @@
+---
+title: "Linear agents"
+description: "Turn a chat.agent into a Linear agent: assign it an issue or @mention it, and it works the issue inside Linear's agent session UI."
+sidebarTitle: "Linear agents"
+---
+
+Linear opens an **agent session** when someone @mentions your app in an issue or delegates (assigns) an issue to it. `linear()` from `@trigger.dev/linear` is a [channel](/webhooks/channels) connector for those sessions: each one becomes a durable Trigger.dev [session](/ai-chat/sessions), the user's prompt runs as a turn, and the agent's work shows up in Linear as thoughts, actions, a plan, an approval card when it needs a decision, and a response when it is done.
+
+```ts
+import { webhooks } from "@trigger.dev/sdk";
+import { chat } from "@trigger.dev/sdk/ai";
+import { linear, webhookSource } from "@trigger.dev/linear";
+import { anthropic } from "@ai-sdk/anthropic";
+
+const linearEvents = webhooks.endpoint.define({ id: "linear", source: webhookSource() });
+
+export const triage = chat.agent({
+  id: "triage",
+  channels: [linear({ id: "linear", endpoint: linearEvents, token: process.env.LINEAR_ACCESS_TOKEN! })],
+  tools: { searchDocs, createSubIssues },
+  run: async ({ messages, tools, signal, streamText }) =>
+    streamText({ model: anthropic("claude-sonnet-4-5"), messages, tools, abortSignal: signal }),
+});
+```
+
+The `run()` loop is the same one a browser chat or a Slack thread uses. Verification, the five second webhook acknowledgment, the first activity Linear expects within ten seconds, per-session state, dedup of Linear's retries, replay and the transcript are handled for you.
+
+## Setup
+
+<Steps>
+  <Step title="Create the OAuth app">
+    In Linear, create an OAuth application under **Settings, API**. Enable **Webhooks** on it and turn on the **Agent session events** category (Inbox notifications and Permission changes are useful too). Copy the webhook **signing secret**.
+  </Step>
+  <Step title="Install it as an agent">
+    Authorize the app with `actor=app` in the authorization URL and request the `app:assignable` and `app:mentionable` scopes, so members can assign issues to it and @mention it. Installation needs a workspace admin. Keep the resulting access token; pass it as `token`.
+  </Step>
+  <Step title="Deploy and connect the endpoint">
+    Declare the endpoint with `webhookSource()` from `@trigger.dev/linear` and pass it to `linear({ endpoint })`. Deploying registers the hosted [endpoint](/webhooks/connect). Paste the app's webhook signing secret as the endpoint's signing secret, and set the app's webhook URL to the endpoint's URL. The endpoint's setup prompt walks an AI coding agent through these settings.
+  </Step>
+  <Step title="Try it">
+    Open an issue and assign it to the app, or write a comment that @mentions it. Linear shows the agent's first thought within a few seconds and then its work.
+  </Step>
+</Steps>
+
+## What the agent sees
+
+On the first turn of a session the connector frames Linear's payload for the model: who summoned it and on which issue, the workspace **guidance** rules for agents, Linear's formatted **issue context** (title, description, labels, project, comments), and the comment that mentioned it. An assignment with no comment reads as "assigned ENG-412 to you". Prior comments on the issue are seeded as transcript messages, so the agent can answer with the context a reader of the issue has.
+
+A follow-up prompt on the session is just the message. If the user hits **Stop** in Linear, see [Stopping](#stopping).
+
+Images and PDFs uploaded to Linear reach the model as files: screenshots in the prompt, in the comment that mentioned the agent, or in the issue description. The transcript keeps the upload link, and the `streamText` passed to `run()` downloads the file with the app's token when the model reads it, at most ten per message. A file that can't be downloaded reaches the model as a short note. A custom `inbound` keeps this by adding `linearFileParts(markdown)` to its message parts.
+
+Turn any of that off with `context`:
+
+```ts
+linear({ id: "linear", endpoint: linearEvents, token, context: { guidance: false, promptContext: true, previousComments: true } })
+```
+
+## What Linear shows
+
+| Moment | Activity in Linear |
+| --- | --- |
+| Turn starts | An ephemeral `thought` ("Looking into this...") |
+| A tool is called | An ephemeral `action` with the tool name and input, then the same action with its `result` |
+| The reply is ready | A `response` with the reply as markdown |
+| The turn fails | An `error` saying "Something went wrong answering this. Try again." (`errorMessage` changes it) |
+| A tool needs a human decision | An `elicitation` with Approve and Deny options, or the tool's own options from `interactions` (see [Approvals and choices](#approvals-and-choices)) |
+| The user picks an option | A `thought` recording the decision ("Approved by Jane.", "Jane chose "High".") |
+| A prompt arrives while the agent works | A `thought` ("Got it, I'll take that into account.") as soon as it arrives (see [Prompts sent while the agent is working](#prompts-sent-while-the-agent-is-working)) |
+
+Tool mirroring is on by default; pass `progress: "off"` to post only the response. Bare Linear URLs in a reply become mentions, so link issues and documents by URL.
+
+## The plan
+
+Linear shows an agent's plan as a checklist under the conversation. The model owns it: add `linearPlanTool()` to the agent's tools and ask for a plan in the system prompt, and the model sets it when it starts and updates it as steps finish. The whole list is replaced on each call. On a turn that is not a Linear session the tool reports that nothing was updated, so `run()` needs no Linear-specific code.
+
+```ts
+import { linear, linearPlanTool } from "@trigger.dev/linear";
+
+export const triage = chat.agent({
+  id: "triage",
+  channels: [linear({ id: "linear", endpoint: linearEvents, token })],
+  tools: { searchDocs, createSubIssues, updatePlan: linearPlanTool() },
+  run: async ({ messages, tools, signal, streamText }) =>
+    streamText({
+      model,
+      messages,
+      tools,
+      abortSignal: signal,
+      system: "Start by setting a short plan with updatePlan and keep it current as you work.",
+    }),
+});
+```
+
+## Helpers
+
+For manual control, `chat.surface<LinearRunSurface>()` returns the current turn's helpers from anywhere inside the run, including a tool's `execute`. The same object is handed to `run()` as `channel`.
+
+| Helper | Effect |
+| --- | --- |
+| `plan(steps)` | Replace the session's plan. Each step is `{ content, status }` with status `pending`, `inProgress`, `completed` or `canceled`. What `linearPlanTool()` calls. |
+| `thought(text, { ephemeral })` | Post a thought. |
+| `action(action, parameter, result?)` | Post an action, optionally with its result. |
+| `link(label, url)` | Add an external link to the session header (a pull request, a dashboard). |
+| `summary(text)` | Set the one-line session summary. |
+| `session` | The bound agent session and issue ids. |
+
+## Approvals and choices
+
+A tool with no `execute` pauses the turn for a human decision, exactly as on [any channel](/webhooks/human-in-the-loop). On Linear the connector posts an elicitation card with Approve and Deny options. The card lays the tool input out as markdown: a list of proposed items becomes a numbered list with a bold title per item, a flat object becomes key and value bullets, and only shapes it cannot lay out fall back to JSON. For a card written for the tool, pass a renderer per tool name:
+
+```ts
+linear({
+  id: "linear",
+  endpoint: linearEvents,
+  token,
+  approvals: {
+    createSubIssues: (input) => ({
+      title: "Create these sub-issues?",
+      body: (input as { issues: { title: string }[] }).issues.map((i) => `- ${i.title}`).join("\n"),
+    }),
+  },
+})
+```
+
+The user picks one and presses Continue; the choice shows in the session as "Approve createSubIssues [call_a]" (the tool and the call it applies to, so the decision always lands on the call whose input the card shows) and resumes the run with `{ approved: true | false }`, and the decision is recorded as a thought. Typing a free-text reply instead dismisses the options and runs as a normal turn, so the model can take the reply into account (and ask again) with the approval still pending.
+
+`interactions` gives a tool its own choices instead of Approve and Deny. The card is a select of `options`, and the chosen option resolves the tool to `{ selected }`:
+
+```ts
+linear({
+  id: "linear",
+  endpoint: linearEvents,
+  token,
+  interactions: {
+    pickPriority: (call) => ({
+      title: "What priority should this be?",
+      body: (call.input as { reason: string }).reason,
+      options: ["Urgent", "High", "Medium", "Low"],
+    }),
+  },
+})
+```
+
+The choice shows in the session as "High [choice:call_a]", resumes the run with `{ selected: "High" }`, and is recorded as a thought.
+
+## Stopping
+
+Pressing Stop in Linear sends the session a prompt with the `stop` signal. While a turn is running, the connector aborts it through the agent's stop signal (the same one the browser's stop button uses): generation halts, the text written so far posts as the response with `stopped: true`, and the stop prompt itself is consumed. Pressed while the agent is idle, the prompt runs as a turn that tells the model to stop taking actions and summarize. A Stop pressed while a turn was running that arrives after the turn finished is consumed, so pressing Stop twice never adds a wind-down turn.
+
+## Prompts sent while the agent is working
+
+A prompt sent while the agent is still working gets a thought as soon as it arrives ("Got it, I'll take that into account."), so the user knows it was picked up. It then waits and runs as the next turn. With [`pendingMessages`](/ai-chat/pending-messages) on the agent, `shouldInject` can fold it into the work in progress at the next step instead; a prompt it declines still runs as its own turn. `receivedThought` changes the text, takes a function of the event for wording per prompt, and `null` posts nothing; since the prompt may be answered either way, keep the wording true for both. Stop and the approval card's options are never acknowledged or folded in.
+
+## Answering into the session from elsewhere
+
+The first Linear turn binds the session to the agent session ([bound sessions](/webhooks/channels#bound-sessions)). A [`chat.event`](/webhooks/session-routing) routed to the same session key, a Sentry alert keyed on the issue identifier for example, can return `chat.turn()` from `onAction` and its answer posts into the Linear session as a response, with no Linear event involved. Linear reopens a completed session when new activity arrives.
+
+## Options
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `id` | `string` | Connector id, unique per agent. |
+| `endpoint` | endpoint | The Linear endpoint, declared with `webhooks.endpoint.define({ id, source: webhookSource() })`. Other `webhook()` tasks can subscribe to the same endpoint. |
+| `token` | `string` or resolver | The app's OAuth access token, or a function of the event (keyed on `organizationId`) for multi-workspace installs. |
+| `key` | `string` | Session [key](/webhooks/session-routing) template over `{event.*}`, `{header.*}` and `{webhook.*}`. Defaults to one session per Linear agent session. |
+| `filter` | filter string | Extra [filter](/webhooks/filters), composed with the built-in agent-session guard. Checked against the endpoint's event type, like `webhook()`'s `filter`. |
+| `startOn` | filter string | Only start a session when the event matches. Existing sessions always resume. Checked against the endpoint's event type. |
+| `context` | `{ guidance?, promptContext?, previousComments? }` | What from Linear's payload is put in front of the model on the first turn. All on by default. |
+| `progress` | `"actions"` or `"off"` | Mirror tool calls as action activities (default) or post only the response. |
+| `summarize` | `boolean` | Set the session title from each response's first line. Off by default; Linear titles the session itself. |
+| `approvals` | `{ [toolName]: (input, call) => { title?, body } }` | Custom approval card body per tool. Default lays the tool input out as markdown. |
+| `interactions` | `{ [toolName]: (call) => { title?, body, options } }` | A tool's own select card; the chosen option resolves the tool to `{ selected }`. |
+| `receivedThought` | `string`, function or `null` | Thought posted as soon as a prompt arrives while the agent is working. Default "Got it, I'll take that into account.", null for none. |
+| `errorMessage` | `string \| (ctx) => string` | The error activity's text when a turn fails, fixed or built from the failure ([details](/webhooks/channels#when-a-turn-fails)). Default "Something went wrong answering this. Try again." |
+| `ack` | message, `null`, or function | The first thought. Pass `null` to post nothing before the response. |
+| `inbound` / `outbound` | functions | Map the event to the turn, and the reply to an activity. |
+| `delivery` | `"final"` or `"stream"` | `"final"` (default) posts the response when the turn ends. `"stream"` also posts ephemeral thoughts as the reply streams. |
+| `apiUrl` | `string` | Override the Linear GraphQL URL, for testing against a mock. Files on its origin are treated as Linear uploads. |
+
+<Note>
+  Linear expects the first activity within ten seconds of opening a session. The connector posts it at
+  the top of the run, so on a cold start close to that limit the session can show as unresponsive for a
+  moment; it recovers as soon as the thought lands. Linear retries a failed delivery after one minute,
+  one hour and six hours, and the endpoint deduplicates those retries.
+</Note>

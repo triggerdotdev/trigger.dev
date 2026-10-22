@@ -1,5 +1,71 @@
 # @trigger.dev/sdk
 
+## 4.7.6
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.7.6`
+
+## 4.7.5
+
+### Patch Changes
+
+- Manage custom metric dashboards from code. `query.dashboards` lists, creates, updates and deletes custom dashboards and their widgets, and every widget query is checked when it is saved. The MCP server adds `create_dashboard` and `set_dashboard_widgets`, so your AI assistant can build a dashboard for you. ([`252624c92`](https://github.com/triggerdotdev/trigger.dev/commit/252624c92077a8326e9b68f7b6713beca173d8b1))
+
+  ```ts
+  import { query } from "@trigger.dev/sdk";
+
+  await query.dashboards.create({
+    title: "Email tasks",
+    widgets: [
+      {
+        title: "Total runs",
+        query: "SELECT count() AS total FROM runs",
+        display: { type: "bignumber", column: "total", aggregation: "sum" },
+      },
+    ],
+  });
+  ```
+
+- Redact span content before it leaves the worker. `telemetry.spanProcessors` in `trigger.config.ts` runs your own span processors ahead of every export, to Trigger.dev and to your own exporters, so you can redact or drop span content before it reaches the run trace. `chat.agent` also takes a `telemetry` option to stop recording the user's message and `clientData` on its spans. ([`32b36b143`](https://github.com/triggerdotdev/trigger.dev/commit/32b36b1433dddb4f9d2cbd4c0320b146c7d6c858))
+
+  ```ts
+  export default defineConfig({
+    telemetry: { spanProcessors: [new MyRedactingSpanProcessor()] },
+  });
+
+  chat.agent({
+    id: "my-chat",
+    telemetry: { recordUserMessage: false, recordClientData: false },
+    run: async ({ messages, signal, streamText }) =>
+      streamText({ model, messages, abortSignal: signal }),
+  });
+  ```
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.7.5`
+
+## 4.7.4
+
+### Patch Changes
+
+- Override a concurrency limit's `perKey` for a single `concurrencyKey`: `concurrencyLimits.override(name, { concurrencyKey, perKey, ttl })` caps that one key under that one limit for a while (7 days by default, 30 at most), `reset(name, { concurrencyKey })` clears it, and `retrieve(name, { concurrencyKey })` shows the key's bound and when the override expires. ([`c49fd05f4`](https://github.com/triggerdotdev/trigger.dev/commit/c49fd05f44119ec2a036afaabaad8f9e148a3db6))
+- `runs.replay()` now takes options, so you can replay a run with a different payload, metadata, tags, queue, machine, version, delay and other trigger options. Anything you leave out comes from the original run, as before, and the payload is serialized like `trigger()`, so values like `Date` and `BigInt` keep their types. ([`ff2aa236e`](https://github.com/triggerdotdev/trigger.dev/commit/ff2aa236eb986b938e8e04cec3898b24aed4ec3f))
+
+  ```ts
+  import { runs } from "@trigger.dev/sdk";
+
+  await runs.replay("run_1234", {
+    payload: { userId: "user_456" },
+    tags: ["replayed"],
+    delay: "10m",
+  });
+  ```
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.7.4`
+
 ## 4.7.3
 
 ### Patch Changes

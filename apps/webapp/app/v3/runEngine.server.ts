@@ -1,3 +1,5 @@
+import { createWaitpointStoreEnabledResolver } from "./utils/waitpointStoreEnabled.server";
+import { globalFlagsRegistry } from "./globalFlagsRegistry.server";
 import { RunEngine } from "@internal/run-engine";
 import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
@@ -20,6 +22,10 @@ export type { RunEngine };
 
 function createRunEngine() {
   const engine = new RunEngine({
+    waitpointStoreEnabled: createWaitpointStoreEnabledResolver(
+      () => globalFlagsRegistry.current(),
+      prisma
+    ),
     prisma,
     readOnlyPrisma: $replica,
     crossSeamGuard: pickRunOpsStoreForCompletion,
@@ -64,6 +70,7 @@ function createRunEngine() {
       defaultEnvConcurrencyBurstFactor: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_BURST_FACTOR,
       totalConcurrencyEnabled: env.RUN_ENGINE_TOTAL_CONCURRENCY_LIMITS_ENABLED === "1",
       gatesEnabled: env.RUN_ENGINE_QUEUE_GATES_ENABLED === "1",
+      concurrencyKeyLimitsEnabled: env.RUN_ENGINE_CONCURRENCY_KEY_LIMITS_ENABLED === "1",
       reconcile: {
         enabled: env.RUN_ENGINE_QUEUE_RECONCILE_ENABLED === "1",
         scanCount: env.RUN_ENGINE_QUEUE_RECONCILE_SCAN_COUNT,
@@ -256,6 +263,7 @@ function createRunEngine() {
         maxTimeoutInMs: 30_000,
         factor: 2,
         randomize: true,
+        infrastructureMaxAttempts: env.BATCH_QUEUE_INFRA_RETRY_MAX_ATTEMPTS,
       },
     },
     // Debounce configuration

@@ -200,26 +200,33 @@ export const chartBlockBodySchema = z.object({
  * Same lenient navigate `target` as `chartActionIntentSchema`. `propose_fix` is
  * absent on purpose: it is reserved, so a button can never carry it.
  */
+const askActionIntentSchema = z.object({
+  kind: z.literal("ask"),
+  prompt: z.string().min(1),
+});
+
+const navigateActionIntentSchema = z.object({
+  kind: z.literal("navigate"),
+  target: z.string().min(1),
+  filters: runFiltersSchema.optional(),
+});
+
 const actionIntentSchema = z.union([
-  z.object({
-    kind: z.literal("ask"),
-    prompt: z.string().min(1),
-  }),
-  z.object({
-    kind: z.literal("navigate"),
-    target: z.string().min(1),
-    filters: runFiltersSchema.optional(),
-  }),
+  askActionIntentSchema,
+  navigateActionIntentSchema,
   z.object({
     kind: z.literal("watch"),
     spec: watchSpecSchema,
   }),
 ]);
 
+const ASK_NAVIGATE_INTENT_DOC =
+  "`ask` sends the prompt as the user's next message, in their voice. `navigate` takes them to a page — ONLY with a canonical `trigger://` URI you already hold; an invalid target is silently dropped.";
+
 export const actionsBlockActionSchema = z.object({
   label: z.string().min(1).describe("The button text, e.g. 'Set up a watch'."),
   intent: actionIntentSchema.describe(
-    "What the button does. `watch` opens the watch configuration card pre-filled with your spec — the user confirming it is what starts the watch. `ask` sends the prompt as the user's next message, in their voice. `navigate` takes them to a page — ONLY with a canonical `trigger://` URI you already hold; an invalid target is silently dropped."
+    `What the button does. \`watch\` opens the watch configuration card pre-filled with your spec — the user confirming it is what starts the watch. ${ASK_NAVIGATE_INTENT_DOC}`
   ),
 });
 
@@ -233,6 +240,24 @@ const actionsBlockBodySchema = z.object({
     .max(3)
     .describe(
       "1-3 buttons, the one to take first. Keep labels short and imperative ('Set up a watch', 'See its failed runs')."
+    ),
+});
+
+const actionsBlockBodyInputSchemaWithoutWatch = z.object({
+  type: z.literal("actions"),
+  actions: z
+    .array(
+      z.object({
+        label: z.string().min(1).describe("The button text, e.g. 'See its failed runs'."),
+        intent: z
+          .union([askActionIntentSchema, navigateActionIntentSchema])
+          .describe(`What the button does. ${ASK_NAVIGATE_INTENT_DOC}`),
+      })
+    )
+    .min(1)
+    .max(3)
+    .describe(
+      "1-3 buttons, the one to take first. Keep labels short and imperative ('See its failed runs')."
     ),
 });
 
@@ -611,9 +636,30 @@ export const legacyWatchResultBlockSchema =
 export type EnvelopedWatchResultBlock = z.infer<typeof watchResultBlockSchema>;
 export type WatchResultBlock = z.infer<typeof legacyWatchResultBlockSchema>;
 
+export const alertCreatedRowSchema = z.object({
+  label: z.string(),
+  value: z.string(),
+  expiresAt: z.string().optional(),
+});
+export type AlertCreatedRow = z.infer<typeof alertCreatedRowSchema>;
+
+const alertCreatedBlockBodySchema = z.object({
+  type: z.literal("alert_created"),
+  alertId: z.string(),
+  name: z.string(),
+  rows: z.array(alertCreatedRowSchema).default([]),
+});
+
+export const alertCreatedBlockSchema = alertCreatedBlockBodySchema.merge(blockEnvelopeSchema);
+export const legacyAlertCreatedBlockSchema =
+  alertCreatedBlockBodySchema.extend(optionalEnvelopeShape);
+
+export type EnvelopedAlertCreatedBlock = z.infer<typeof alertCreatedBlockSchema>;
+export type AlertCreatedBlock = z.infer<typeof legacyAlertCreatedBlockSchema>;
+
 /**
- * What `render_view` accepts from the model. `report` and `watch_result` are
- * host-emitted and so absent here.
+ * What `render_view` accepts from the model. `report`, `watch_result` and
+ * `alert_created` are host-emitted and so absent here.
  */
 export const viewBlockInputSchema = z.discriminatedUnion("type", [
   diagnosisBlockBodySchema,
@@ -621,6 +667,18 @@ export const viewBlockInputSchema = z.discriminatedUnion("type", [
   actionsBlockBodySchema,
   investigationBlockBodyInputSchema,
 ]);
+
+const viewBlockInputSchemaWithoutWatch = z.discriminatedUnion("type", [
+  diagnosisBlockBodySchema,
+  chartBlockBodySchema,
+  actionsBlockBodyInputSchemaWithoutWatch,
+  investigationBlockBodyInputSchema,
+]);
+
+/** The model-facing input schema: with watches off it has no `watch` intent. */
+export function viewBlockInputSchemaFor(options: { watchEnabled?: boolean }) {
+  return options.watchEnabled ? viewBlockInputSchema : viewBlockInputSchemaWithoutWatch;
+}
 
 export type DiagnosisBlockBody = z.infer<typeof diagnosisBlockBodySchema>;
 export type ChartBlockBody = z.infer<typeof chartBlockBodySchema>;
@@ -664,6 +722,7 @@ export const viewBlockSchema = z.discriminatedUnion("type", [
   reportBlockSchema,
   investigationBlockSchema,
   watchResultBlockSchema,
+  alertCreatedBlockSchema,
 ]);
 
 export type EnvelopedDiagnosisBlock = z.infer<typeof diagnosisBlockSchema>;
@@ -688,6 +747,7 @@ export const legacyViewBlockSchema = z.discriminatedUnion("type", [
   legacyReportBlockSchema,
   legacyInvestigationBlockSchema,
   legacyWatchResultBlockSchema,
+  legacyAlertCreatedBlockSchema,
 ]);
 
 /**

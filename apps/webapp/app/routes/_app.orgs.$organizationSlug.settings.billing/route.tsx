@@ -11,6 +11,7 @@ import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/Page
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
+import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { getCurrentPlan, getPlans } from "~/services/platform.v3.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
@@ -22,6 +23,8 @@ import {
 import { PricingPlans } from "../resources.orgs.$organizationSlug.select-plan";
 import { billingMessageFromKey } from "~/utils/billingMessages";
 import { pageMeta } from "~/utils/pageTitle";
+import { type PlanProvisioningStatus } from "~/v3/services/planProvisioningStatus.server";
+import { getPlanProvisioningStatus } from "~/v3/services/planProvisioningStatusInstance.server";
 
 export const meta = pageMeta("Billing");
 
@@ -87,7 +90,10 @@ export const loader = dashboardLoader(
       });
     }
 
-    const plans = await getPlans();
+    const [plans, planProvisioning] = await Promise.all([
+      getPlans(),
+      getPlanProvisioningStatus(organization.id),
+    ]);
     if (!plans) {
       throw new Response(null, { status: 404, statusText: "Plans not found" });
     }
@@ -101,6 +107,7 @@ export const loader = dashboardLoader(
       periodEnd,
       daysRemaining,
       message,
+      planProvisioning,
     });
   }
 );
@@ -144,6 +151,7 @@ export default function ChoosePlanPage() {
       <PageBody scrollable={showSelfServe}>
         {showSelfServe ? (
           <div className="flex flex-col gap-3">
+            <PlanProvisioningCallout status={loaderData.planProvisioning} />
             {message && (
               <Callout variant="idea" className="mb-2">
                 {message}
@@ -208,6 +216,41 @@ export default function ChoosePlanPage() {
       </PageBody>
     </PageContainer>
   );
+}
+
+function PlanProvisioningCallout({ status }: { status?: PlanProvisioningStatus }) {
+  useAutoRevalidate({ interval: 3000, disabled: status !== "pending" });
+
+  switch (status) {
+    case "pending":
+      return (
+        <Callout variant="pending">
+          We're applying your new plan. This usually takes a few seconds.
+        </Callout>
+      );
+    case "succeeded":
+      return (
+        <Callout variant="success">
+          Your new plan is active. Your new limits can take a minute to apply everywhere.
+        </Callout>
+      );
+    case "failed":
+      return (
+        <Callout
+          variant="error"
+          cta={
+            <Feedback
+              defaultValue="help"
+              button={<Button variant="secondary/small">Contact support</Button>}
+            />
+          }
+        >
+          We couldn't finish applying your new plan. Please contact support and we'll sort it out.
+        </Callout>
+      );
+    default:
+      return null;
+  }
 }
 
 function planLabel(plan: PlanDefinition | undefined, canceled: boolean, periodEnd: Date) {

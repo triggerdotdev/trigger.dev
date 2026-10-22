@@ -172,6 +172,25 @@ describe("resolveDeeplinkPage", () => {
     expect(resolveDeeplinkPage("projects")).toBeUndefined();
   });
 
+  it("resolves billing as an organization page, not an environment page", () => {
+    expect(resolveOrganizationDeeplinkPage("billing")).toBe("billing");
+    expect(resolveOrganizationDeeplinkPage("Billing")).toBe("billing");
+    expect(resolveDeeplinkPage("billing")).toBeUndefined();
+  });
+
+  it("lands every organization page on a real org settings route", () => {
+    const broken = [...ORG_PAGE_TARGETS.values()]
+      .map(({ landing }) => landing)
+      .filter(
+        (landing) =>
+          !compiledRoutes[`routes/_app.orgs.$organizationSlug.settings.${landing}`] ||
+          compiledUrl(`routes/_app.orgs.$organizationSlug.settings.${landing}`) !==
+            `/orgs/:organizationSlug/settings/${landing}`
+      );
+
+    expect(broken).toEqual([]);
+  });
+
   it("does not carry a runtime-updates alias", () => {
     expect(ORG_PAGE_TARGETS.has("runtime-updates")).toBe(false);
     expect(resolveOrganizationDeeplinkPage("runtime-updates")).toBeUndefined();

@@ -1,4 +1,4 @@
-import type { AgentPageContext } from "@internal/dashboard-agent-contracts";
+import type { AgentPageContext, AlertCreationDraft } from "@internal/dashboard-agent-contracts";
 import type { RepoSnapshot } from "./repo-tools";
 import type { InvestigationsCapability } from "./tool-investigations";
 
@@ -32,6 +32,9 @@ export type DashboardAgentToolContext = {
   // Set by the host when watches are enabled for this turn. Off by default: without it
   // the watch tools are never registered.
   watchEnabled?: boolean;
+  // "alert_creation" while the user builds an alert: the draft tools are on regardless of watches.
+  toolScope?: string;
+  alertDraft?: AlertCreationDraft;
   // Present only when the project has a connected GitHub repo. Adds the source tools.
   repoSnapshot?: RepoSnapshot;
   investigations?: InvestigationsCapability;

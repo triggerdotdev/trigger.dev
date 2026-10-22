@@ -178,6 +178,118 @@ describe("signWithVerifierConfig round-trips through the verifier", () => {
     expect(freshVerdict.ok).toBe(true);
   });
 
+  it("http-date: writes an HTTP date to the timestamp header and signs that same value", () => {
+    const metronome: WebhookHmacConfig = {
+      scheme: "hmac",
+      algorithm: "sha256",
+      encoding: "hex",
+      signatureHeader: "metronome-webhook-signature",
+      signature: {},
+      timestamp: {
+        source: { from: "header", name: "x-metronome-date" },
+        format: "http-date",
+        toleranceSeconds: 300,
+      },
+      signingString: {
+        template: "{date}\n{body}",
+        vars: { date: { from: "header", name: "x-metronome-date" } },
+      },
+    };
+    const secret = "metronome_secret";
+    const signed = signWithVerifierConfig({
+      config: metronome,
+      secret,
+      rawBody: BODY,
+      url: INGRESS_URL,
+      nowMs: NOW,
+    });
+    if (!signed.ok) throw new Error(signed.error);
+    expect(signed.headers["x-metronome-date"]).toBe(new Date(NOW).toUTCString());
+    const verdict = (nowMs: number) =>
+      verify(
+        { kind: "config", config: metronome },
+        { rawBytes: signed.body, headers: signed.headers, url: signed.url, secret, nowMs }
+      ).ok;
+    expect(verdict(NOW)).toBe(true);
+    expect(verdict(NOW + 301_000)).toBe(false);
+  });
+
+  it("signs a header var from its fallback header and writes it under the primary name", () => {
+    const config: WebhookHmacConfig = {
+      scheme: "hmac",
+      algorithm: "sha256",
+      encoding: "hex",
+      signatureHeader: "x-signature",
+      signature: {},
+      signingString: {
+        template: "{date}\n{body}",
+        vars: { date: { from: "header", name: "x-provider-date", fallback: ["date"] } },
+      },
+    };
+    const date = "Thu, 15 Oct 2026 12:00:00 GMT";
+    const signed = signWithVerifierConfig({
+      config,
+      secret: "s",
+      rawBody: BODY,
+      url: INGRESS_URL,
+      headers: { date },
+      nowMs: NOW,
+    });
+    if (!signed.ok) throw new Error(signed.error);
+    expect(signed.headers["x-provider-date"]).toBe(date);
+    const verdict = verify(
+      { kind: "config", config },
+      {
+        rawBytes: signed.body,
+        headers: { date, "x-signature": signed.headers["x-signature"]! },
+        url: signed.url,
+        secret: "s",
+        nowMs: NOW,
+      }
+    );
+    expect(verdict.ok).toBe(true);
+  });
+
+  it("iso8601: refreshBodyTimestamp writes an ISO 8601 delivery time, so a recorded sample verifies now", () => {
+    const plain: WebhookHmacConfig = {
+      scheme: "hmac",
+      algorithm: "sha256",
+      encoding: "hex",
+      signatureHeader: "plain-request-signature",
+      signature: {},
+      timestamp: {
+        source: { from: "body", path: "webhookMetadata.webhookDeliveryAttemptTimestamp" },
+        format: "iso8601",
+        toleranceSeconds: 300,
+      },
+      signingString: "raw",
+    };
+    const secret = "plain_secret";
+    const recorded = new TextEncoder().encode(
+      JSON.stringify({
+        id: "pEv_1",
+        type: "thread.thread_created",
+        webhookMetadata: { webhookDeliveryAttemptTimestamp: "2026-01-01T00:00:00.000Z" },
+      })
+    );
+    const signed = signWithVerifierConfig({
+      config: plain,
+      secret,
+      rawBody: recorded,
+      url: INGRESS_URL,
+      nowMs: NOW,
+      refreshBodyTimestamp: true,
+    });
+    if (!signed.ok) throw new Error(signed.error);
+    const body = JSON.parse(new TextDecoder().decode(signed.body));
+    expect(body.webhookMetadata.webhookDeliveryAttemptTimestamp).toBe(new Date(NOW).toISOString());
+    const verdict = verify(
+      { kind: "config", config: plain },
+      { rawBytes: signed.body, headers: signed.headers, url: signed.url, secret, nowMs: NOW }
+    );
+    expect(verdict.ok).toBe(true);
+  });
+
   it.each(["1751380338084", 1751380338084])(
     "refreshBodyTimestamp preserves the existing scalar type: %j",
     (timestamp) => {
@@ -226,42 +338,38 @@ describe("signWithVerifierConfig round-trips through the verifier", () => {
     }
   );
 
-  it("linear: the idempotency key comes from the signed bytes, so a replay with a different delivery header dedupes", () => {
+  it("linear: a retry re-signed with a fresh webhookTimestamp keeps the Linear-Delivery key", () => {
     const linear = webhookProviderConfigs.linear.config();
     const body = new TextEncoder().encode(
       JSON.stringify({ action: "create", type: "Comment", webhookTimestamp: NOW })
     );
     const secret = "lin_wh_secret";
-    const signed = signWithVerifierConfig({
-      config: linear,
-      secret,
-      rawBody: body,
-      url: INGRESS_URL,
-      nowMs: NOW,
-    });
-    if (!signed.ok) throw new Error(signed.error);
-    const first = verify(
-      { kind: "config", config: linear },
-      {
-        rawBytes: signed.body,
-        headers: { ...signed.headers, "linear-delivery": "a" },
-        url: signed.url,
+    const attempt = (nowMs: number) => {
+      const signed = signWithVerifierConfig({
+        config: linear,
         secret,
-        nowMs: NOW,
-      }
-    );
-    const replay = verify(
-      { kind: "config", config: linear },
-      {
-        rawBytes: signed.body,
-        headers: { ...signed.headers, "linear-delivery": "b" },
-        url: signed.url,
-        secret,
-        nowMs: NOW,
-      }
-    );
-    expect(first.ok && replay.ok).toBe(true);
-    if (first.ok && replay.ok) expect(replay.idempotencyKey).toBe(first.idempotencyKey);
+        rawBody: body,
+        url: INGRESS_URL,
+        nowMs,
+        refreshBodyTimestamp: true,
+      });
+      if (!signed.ok) throw new Error(signed.error);
+      return verify(
+        { kind: "config", config: linear },
+        {
+          rawBytes: signed.body,
+          headers: { ...signed.headers, "linear-delivery": "delivery-1" },
+          url: signed.url,
+          secret,
+          nowMs,
+        }
+      );
+    };
+    const first = attempt(NOW);
+    const retry = attempt(NOW + 60_400);
+    expect(first.ok && retry.ok).toBe(true);
+    expect(first.idempotencyKey).toBe("delivery-1");
+    expect(retry.idempotencyKey).toBe("delivery-1");
   });
 
   it("refreshBodyTimestamp never writes through the prototype chain", () => {

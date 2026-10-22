@@ -247,6 +247,8 @@ export type ButtonContentPropsType = {
   variant: ButtonVariant;
   shortcutPosition?: "before-trailing-icon" | "after-trailing-icon";
   tooltip?: ReactNode;
+  /** Milliseconds before `tooltip` opens. Opens at once when unset. */
+  tooltipDelay?: number;
   iconSpacing?: string;
   hideShortcutKey?: boolean;
   isLoading?: boolean;
@@ -264,6 +266,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
     textAlignLeft,
     className,
     tooltip,
+    tooltipDelay,
     iconSpacing,
     hideShortcutKey,
     isLoading,
@@ -371,7 +374,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
   if (tooltip) {
     return (
       <TooltipProvider>
-        <Tooltip>
+        <Tooltip delayDuration={tooltipDelay}>
           <TooltipTrigger asChild>{buttonContent}</TooltipTrigger>
           <TooltipContent className="flex items-center gap-1.5 py-1.5 pl-2.5 pr-2 text-xs text-text-bright">
             {tooltip} {shortcut && renderShortcutKey()}
@@ -434,7 +437,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
     if (props.tooltip) {
       return (
         <TooltipProvider>
-          <Tooltip>
+          <Tooltip delayDuration={props.tooltipDelay}>
             <TooltipTrigger asChild>
               <span className={cn("flex", isDisabled && "cursor-default")}>{buttonElement}</span>
             </TooltipTrigger>

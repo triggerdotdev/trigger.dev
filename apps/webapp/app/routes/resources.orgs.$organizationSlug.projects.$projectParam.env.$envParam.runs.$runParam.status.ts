@@ -7,8 +7,12 @@ import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.
 import { runStore } from "~/v3/runStore.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
 
-// Run terminal-state probe polled by the trace viewer's live tail backstop.
-export type RunStatusData = { isFinished: boolean; completedAt: string | null };
+// Run start/finish probe polled by the trace viewer's live tail backstop.
+export type RunStatusData = {
+  isFinished: boolean;
+  startedAt: string | null;
+  completedAt: string | null;
+};
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -17,7 +21,13 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const run = await runStore.findRun(
     { friendlyId: runParam },
     {
-      select: { status: true, completedAt: true, projectId: true, runtimeEnvironmentId: true },
+      select: {
+        status: true,
+        startedAt: true,
+        completedAt: true,
+        projectId: true,
+        runtimeEnvironmentId: true,
+      },
     }
   );
 
@@ -47,6 +57,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   return json<RunStatusData>({
     isFinished: isFinalRunStatus(run.status),
+    startedAt: run.startedAt ? run.startedAt.toISOString() : null,
     completedAt: run.completedAt ? run.completedAt.toISOString() : null,
   });
 }

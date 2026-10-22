@@ -20,6 +20,7 @@ export {
   WaitpointCompletionGuardArmedError,
   isWaitpointCompletionGuardArmedError,
 } from "./engine/errors.js";
+export { LockAcquisitionTimeoutError } from "./engine/locking.js";
 export type { EventBusEventArgs, EventBusEvents } from "./engine/eventBus.js";
 export { PARKED_ON_EXTERNAL_DEPLOYMENT_STATUS_REASON } from "./engine/systems/pendingVersionSystem.js";
 export type { AuthenticatedEnvironment } from "./shared/index.js";
@@ -113,6 +114,11 @@ export {
   FANOUT_PARTITION_COUNT,
   WaitpointKeyTagError,
 } from "./engine/waitpointCoordinator/keys.js";
-export { createCompletedWaitpointResolver } from "./engine/systems/completedWaitpointResolver.js";
+export {
+  createCompletedWaitpointResolver,
+  createStoreRunCompletedWaitpointResolver,
+} from "./engine/systems/completedWaitpointResolver.js";
 export { enhanceExecutionSnapshotWithWaitpoints } from "./engine/systems/executionSnapshotSystem.js";
 export { parseGates, type ParsedGate } from "./engine/gateParsing.js";
+
+export { createWaitpointResultRunStore } from "./engine/systems/waitpointResultRunStore.js";

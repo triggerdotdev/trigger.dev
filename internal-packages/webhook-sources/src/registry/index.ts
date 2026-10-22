@@ -5,6 +5,7 @@ import { entry as e_anthropic } from "./anthropic.js";
 import { entry as e_assemblyai } from "./assemblyai.js";
 import { entry as e_attio } from "./attio.js";
 import { entry as e_auth0 } from "./auth0.js";
+import { entry as e_autumn } from "./autumn.js";
 import { entry as e_bigcommerce } from "./bigcommerce.js";
 import { entry as e_bitbucket } from "./bitbucket.js";
 import { entry as e_brex } from "./brex.js";
@@ -18,13 +19,21 @@ import { entry as e_deepgram } from "./deepgram.js";
 import { entry as e_discord } from "./discord.js";
 import { entry as e_docusign } from "./docusign.js";
 import { entry as e_elevenlabs } from "./elevenlabs.js";
+import { entry as e_firecrawl } from "./firecrawl.js";
 import { entry as e_github } from "./github.js";
 import { entry as e_gitlab } from "./gitlab.js";
+import { entry as e_granola } from "./granola.js";
+import { entry as e_hookdeck } from "./hookdeck.js";
 import { entry as e_hubspot } from "./hubspot.js";
+import { entry as e_infisical } from "./infisical.js";
 import { entry as e_intercom } from "./intercom.js";
 import { entry as e_jira } from "./jira.js";
+import { entry as e_langfuse } from "./langfuse.js";
 import { entry as e_linear } from "./linear.js";
+import { entry as e_loops } from "./loops.js";
+import { entry as e_metronome } from "./metronome.js";
 import { entry as e_monday } from "./monday.js";
+import { entry as e_mux } from "./mux.js";
 import { entry as e_notion } from "./notion.js";
 import { entry as e_openai } from "./openai.js";
 import { entry as e_paddlebilling } from "./paddlebilling.js";
@@ -33,6 +42,8 @@ import { entry as e_pagerduty } from "./pagerduty.js";
 import { entry as e_paypal } from "./paypal.js";
 import { entry as e_pipedrive } from "./pipedrive.js";
 import { entry as e_plaid } from "./plaid.js";
+import { entry as e_plain } from "./plain.js";
+import { entry as e_planetscale } from "./planetscale.js";
 import { entry as e_postmark } from "./postmark.js";
 import { entry as e_recall_ai } from "./recall-ai.js";
 import { entry as e_replicate } from "./replicate.js";
@@ -45,6 +56,7 @@ import { entry as e_slack } from "./slack.js";
 import { entry as e_square } from "./square.js";
 import { entry as e_stripe } from "./stripe.js";
 import { entry as e_supabase } from "./supabase.js";
+import { entry as e_tailscale } from "./tailscale.js";
 import { entry as e_telegram } from "./telegram.js";
 import { entry as e_twilio } from "./twilio.js";
 import { entry as e_typeform } from "./typeform.js";
@@ -62,6 +74,7 @@ export const registryEntries: ProviderRegistryEntry[] = [
   e_assemblyai,
   e_attio,
   e_auth0,
+  e_autumn,
   e_bigcommerce,
   e_bitbucket,
   e_brex,
@@ -75,13 +88,21 @@ export const registryEntries: ProviderRegistryEntry[] = [
   e_discord,
   e_docusign,
   e_elevenlabs,
+  e_firecrawl,
   e_github,
   e_gitlab,
+  e_granola,
+  e_hookdeck,
   e_hubspot,
+  e_infisical,
   e_intercom,
   e_jira,
+  e_langfuse,
   e_linear,
+  e_loops,
+  e_metronome,
   e_monday,
+  e_mux,
   e_notion,
   e_openai,
   e_paddlebilling,
@@ -90,6 +111,8 @@ export const registryEntries: ProviderRegistryEntry[] = [
   e_paypal,
   e_pipedrive,
   e_plaid,
+  e_plain,
+  e_planetscale,
   e_postmark,
   e_recall_ai,
   e_replicate,
@@ -102,6 +125,7 @@ export const registryEntries: ProviderRegistryEntry[] = [
   e_square,
   e_stripe,
   e_supabase,
+  e_tailscale,
   e_telegram,
   e_twilio,
   e_typeform,

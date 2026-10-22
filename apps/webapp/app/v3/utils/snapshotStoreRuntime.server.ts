@@ -21,6 +21,7 @@ export function createSnapshotStoreRuntime(options: {
 }) {
   const leaves = new Map<string, RunStore>();
   let recovery: PendingRecoveryWorker | undefined;
+  let pendingIndex: PendingIndex | undefined;
   let completedWaitpoints: CompletedWaitpointResolver | undefined;
 
   function primary(route: string) {
@@ -29,10 +30,14 @@ export function createSnapshotStoreRuntime(options: {
     return leaf.primaryReadClient;
   }
 
+  function getPendingIndex() {
+    return (pendingIndex ??= new PendingIndex(options.connection.getClient()));
+  }
+
   function recoveryWorker() {
     return (recovery ??= new PendingRecoveryWorker({
       store: options.connection.getStore(),
-      pendingIndex: new PendingIndex(options.connection.getClient()),
+      pendingIndex: getPendingIndex(),
       checkPostgresCommit: async (xid, route) => {
         const rows = await primary(route).$queryRawUnsafe<Array<{ status: PostgresCommitStatus }>>(
           "SELECT pg_xact_status($1::xid8) AS status",
@@ -54,6 +59,15 @@ export function createSnapshotStoreRuntime(options: {
   }
 
   return {
+    /** The background sweep's handles: the same worker, index and client as `resolvePending`. */
+    recovery() {
+      return {
+        worker: recoveryWorker(),
+        pendingIndex: getPendingIndex(),
+        store: options.connection.getStore(),
+        ready: options.connection.ready,
+      };
+    },
     decorate(leaf: RunStore, route: string): RunStore {
       if (leaves.has(route)) throw new Error(`Duplicate snapshot primary route: ${route}`);
       leaves.set(route, leaf);

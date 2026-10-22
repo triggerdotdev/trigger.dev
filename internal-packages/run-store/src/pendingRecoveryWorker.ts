@@ -266,7 +266,11 @@ export interface RecoveryMetrics {
 export type RecoverySweeperOptions = {
   worker: Pick<PendingRecoveryWorker, "processPartition">;
   pendingIndex: Pick<PendingIndex, "ensureAllGroups" | "summary">;
-  /** This process's distinct consumer name, so multiple recovery pods share the load and reclaim each other. */
+  /**
+   * The consumer-group consumer name. Only the lease holder reads, and delivery is per group (XREADGROUP
+   * ">" hands an entry out once; XAUTOCLAIM moves it only past `minIdleMs`), so the name does not
+   * deduplicate anything: a stable per-role name is safe and stops every restart adding 256 consumers.
+   */
   consumer: string;
   partitionCount?: number;
   minIdleMs?: number;
@@ -281,7 +285,20 @@ export type RecoverySweeperOptions = {
   acquireTick?: () => Promise<boolean>;
   /** Release the lease on shutdown (compare-owner), so a successor can take over promptly. */
   releaseTick?: () => Promise<void>;
+  /**
+   * The TTL `acquireTick` grants. Sets the default {@link leaseRenewIntervalMs} to a quarter of it, so a
+   * holder always renews well before its lease can lapse. Pass it whenever the TTL is under a minute.
+   */
+  leaseTtlMs?: number;
+  /**
+   * Renew mid-tick only once this much time has passed since the last successful renewal (default
+   * `leaseTtlMs / 4`, else 15 s). Must stay below the lease TTL: a partition only starts while the
+   * last renewal is younger than this, so the lease is still held.
+   */
+  leaseRenewIntervalMs?: number;
 };
+
+const DEFAULT_LEASE_RENEW_INTERVAL_MS = 15_000;
 
 /**
  * The dedicated recovery role's sweep loop, extracted from the boot layer so its two safety properties
@@ -296,9 +313,13 @@ export class RecoverySweeper {
 
   constructor(private readonly opts: RecoverySweeperOptions) {}
 
-  stop(): void {
+  /**
+   * Stop ticking and release the lease. The returned promise settles once the release has, and never
+   * rejects, so callers may await it on shutdown or ignore it.
+   */
+  stop(): Promise<void> {
     this.#stopped = true;
-    void this.opts.releaseTick?.().catch(() => {});
+    return this.opts.releaseTick?.().catch(() => {}) ?? Promise.resolve();
   }
 
   async tick(): Promise<{ skipped: boolean; outcomes: RecoveryOutcome[] }> {
@@ -312,12 +333,32 @@ export class RecoverySweeper {
       let pendingCount = 0;
       let owned = false;
       const now = Date.now();
+      const renewIntervalMs =
+        this.opts.leaseRenewIntervalMs ??
+        (this.opts.leaseTtlMs !== undefined
+          ? this.opts.leaseTtlMs / 4
+          : DEFAULT_LEASE_RENEW_INTERVAL_MS);
+      let lastRenewedAt = 0;
       for (let partition = 0; partition < partitionCount && !this.#stopped; partition++) {
-        // Renew/verify the lease BEFORE each partition, not once for the whole scan: this HOLDS the lease
-        // across a long sweep, and the instant renewal or ownership fails it stops before processing any
-        // further partition. So a successor takeover can never leave two workers advancing the partitions.
-        if (this.opts.acquireTick && !(await this.opts.acquireTick())) {
-          return { skipped: partition === 0, outcomes };
+        // Take the lease at the start of the tick, then renew it whenever the last renewal is older than
+        // the renew interval, checked BEFORE each partition. This HOLDS the lease across a long sweep, and
+        // the instant renewal or ownership fails it stops before processing any further partition. A
+        // partition only starts while the last successful renewal is younger than the interval (below the
+        // TTL), so a successor takeover can never leave two workers advancing the partitions.
+        if (
+          this.opts.acquireTick &&
+          (partition === 0 || Date.now() - lastRenewedAt > renewIntervalMs)
+        ) {
+          // Stamp before the call: the lease's TTL starts no earlier than this, so the check is conservative.
+          const renewStartedAt = Date.now();
+          if (!(await this.opts.acquireTick())) {
+            // Not the holder, at the start or after a failed renewal mid-sweep: report no pending work
+            // rather than keep exporting the count and age from the last sweep this replica owned. The
+            // holder reports the real values.
+            this.opts.metrics?.recordPending(0, 0);
+            return { skipped: partition === 0, outcomes };
+          }
+          lastRenewedAt = renewStartedAt;
         }
         owned = true;
         // Only a holder ever ensures the consumer groups, and only once.
@@ -338,10 +379,14 @@ export class RecoverySweeper {
             }
             outcomes.push(outcome);
           }
-          const summary = await this.opts.pendingIndex.summary(partition);
-          pendingCount += summary.count;
-          if (summary.oldestMs !== undefined) {
-            oldestAgeMs = Math.max(oldestAgeMs, now - summary.oldestMs);
+          // The depth/age summary (XLEN + XRANGE per partition) only feeds the pending gauges, so skip it
+          // when nothing consumes them: it is two of the five commands an idle partition costs.
+          if (this.opts.metrics) {
+            const summary = await this.opts.pendingIndex.summary(partition);
+            pendingCount += summary.count;
+            if (summary.oldestMs !== undefined) {
+              oldestAgeMs = Math.max(oldestAgeMs, now - summary.oldestMs);
+            }
           }
         } catch (error) {
           this.opts.onPartitionError?.(partition, error);

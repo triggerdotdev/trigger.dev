@@ -53,6 +53,15 @@ vi.mock("~/services/dashboardAgentDb.server", () => ({
   },
 }));
 
+vi.mock("~/services/rbac.server", () => ({
+  rbac: {
+    authenticateUserActor: async () => ({
+      ok: true,
+      ability: { can: () => true, canSuper: () => false },
+    }),
+  },
+}));
+
 vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
   canAccessDashboardAgent: async () => true,
 }));
@@ -207,6 +216,7 @@ function submit(args: {
     chatId: args.chatId,
     clientRequestId: args.clientRequestId ?? "wreq_1",
     draft: args.draft ?? draftFor(),
+    authorizeAlerts: () => true,
     deps: {
       configured: () => true,
       checkDeps: () => fakeCheckDeps(),

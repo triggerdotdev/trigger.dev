@@ -34,5 +34,11 @@ body:
       required: true
   - type: textarea
     attributes:
+      label: Suggested fix
+      description: If you have an idea for a fix, describe the approach or architecture here.
+    validations:
+      required: false
+  - type: textarea
+    attributes:
       label: Additional information
       description: Add any other information related to the bug here, screenshots if applicable.

@@ -4,6 +4,8 @@ sidebarTitle: "puppeteer"
 description: "Use the puppeteer build extension to enable support for Puppeteer in your project"
 ---
 
+import ScrapingWarning from "/snippets/web-scraping-warning.mdx";
+
 <ScrapingWarning />
 
 To use Puppeteer in your project, add these build settings to your `trigger.config.ts` file:
@@ -21,10 +23,6 @@ export default defineConfig({
 });
 ```
 
-And add the following environment variable in your Trigger.dev dashboard on the Environment Variables page:
-
-```bash
-PUPPETEER_EXECUTABLE_PATH: "/usr/bin/google-chrome-stable",
-```
+The extension installs Chrome and sets `PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable` for deployed builds automatically, so you do not need to set it. Don't set it in your Dev environment: the extension does nothing in Dev, and locally Puppeteer uses the browser it downloads on install.
 
 Follow [this example](/guides/examples/puppeteer) to get setup with Trigger.dev and Puppeteer in your project.

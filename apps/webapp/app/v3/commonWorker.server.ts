@@ -27,10 +27,23 @@ import { PerformDeploymentAlertsService } from "./services/alerts/performDeploym
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
 import { BatchTriggerV3Service } from "./services/batchTriggerV3.server";
 import { TimeoutDeploymentService } from "./services/timeoutDeployment.server";
+import { sweepExpiredBuildEnvVars } from "./services/sweepDeploymentBuildEnvVars.server";
 import { BulkActionService } from "./services/bulk/BulkActionV2.server";
 import { prisma } from "~/db.server";
 import { sweepPreviewAutoArchives } from "~/services/previewAutoArchive.server";
 import { controlPlaneResolver } from "./runOpsMigration/controlPlaneResolver.server";
+import { alertDeliveryRetryCap } from "./services/alerts/delivery/deliverAlertEvent.server";
+import { runAlertsHousekeeping } from "./services/alerts/engine/alertsTick.server";
+import { isAlertsConfigured } from "./services/alerts/alertsConfigured.server";
+import { runAlertPartitionMaintenance } from "./services/alerts/engine/alertPartitionMaintenance.server";
+import { alertPartitionDdlClient } from "./services/alerts/storage/alertPartitionClient.server";
+import { tracer } from "./tracer.server";
+import {
+  ORG_PROVISIONING_VISIBILITY_TIMEOUT_MS,
+  OrgProvisioningPayloadSchema,
+  runOrgProvisioningJob,
+} from "./services/orgProvisioningJobs.server";
+import { webhookEngine } from "./webhookEngine.server";
 
 function initializeWorker() {
   const redisOptions = {
@@ -50,15 +63,43 @@ function initializeWorker() {
   const dashboardAgentConfigured =
     env.DASHBOARD_AGENT_ENABLED === "1" || Boolean(env.DASHBOARD_AGENT_DATABASE_URL);
 
+  // Alerts live in the dashboard-agent-db schema but are their own feature, unrelated
+  // to whether the dashboard agent itself is enabled.
+  const alertsConfigured = isAlertsConfigured({
+    alertsEnabled: env.ALERTS_ENABLED,
+  });
+
   const worker = new RedisWorker({
     name: "common-worker",
     redisOptions,
     catalog: {
+      "webhooks.ensurePartitions": {
+        schema: CronSchema,
+        visibilityTimeoutMs: 60_000 * 5,
+        ...(env.WEBHOOK_ENABLED === "1"
+          ? {
+              cron: env.WEBHOOK_PARTITION_ENSURE_SCHEDULE ?? "17 3 * * *",
+              jitterInMs: env.WEBHOOK_PARTITION_ENSURE_JITTER_MS ?? 5 * 60_000,
+            }
+          : {}),
+        retry: { maxAttempts: 1 },
+      },
       "previewBranches.autoArchiveSweep": {
         schema: CronSchema,
         cron: "* * * * *",
         jitterInMs: 10_000,
         visibilityTimeoutMs: 60_000,
+        retry: { maxAttempts: 3 },
+      },
+      "deployments.buildEnvVarsSweep": {
+        schema: CronSchema,
+        visibilityTimeoutMs: 60_000 * 5,
+        ...(env.DEPLOYMENTS_BUILD_ENV_VARS_SWEEP_ENABLED
+          ? {
+              cron: env.DEPLOYMENTS_BUILD_ENV_VARS_SWEEP_SCHEDULE,
+              jitterInMs: env.DEPLOYMENTS_BUILD_ENV_VARS_SWEEP_JITTER_MS,
+            }
+          : {}),
         retry: { maxAttempts: 3 },
       },
       scheduleEmail: {
@@ -183,6 +224,29 @@ function initializeWorker() {
           maxAttempts: 1,
         },
       },
+      "alerts.evaluateTick": {
+        schema: CronSchema,
+        visibilityTimeoutMs: 60_000 * 2,
+        retry: {
+          maxAttempts: 1,
+        },
+      },
+      "alerts.housekeeping": {
+        schema: CronSchema,
+        visibilityTimeoutMs: 60_000 * 2,
+        ...(alertsConfigured ? { cron: "*/5 * * * *", jitterInMs: 30_000 } : {}),
+        retry: {
+          maxAttempts: 1,
+        },
+      },
+      "alerts.partitionMaintenance": {
+        schema: CronSchema,
+        visibilityTimeoutMs: 300_000,
+        ...(alertsConfigured ? { cron: "17 * * * *" } : {}),
+        retry: {
+          maxAttempts: 1,
+        },
+      },
       // Soft-deletes a deleted organization's chats; retention hard-deletes them later.
       "dashboardAgent.purgeOrganization": {
         schema: z.object({
@@ -191,6 +255,27 @@ function initializeWorker() {
         visibilityTimeoutMs: 60_000,
         retry: {
           maxAttempts: 5,
+        },
+      },
+      "org.convergeRunsEnabled": {
+        schema: OrgProvisioningPayloadSchema,
+        visibilityTimeoutMs: ORG_PROVISIONING_VISIBILITY_TIMEOUT_MS,
+        retry: {
+          maxAttempts: 12,
+        },
+      },
+      "org.pushConcurrencyLimits": {
+        schema: OrgProvisioningPayloadSchema,
+        visibilityTimeoutMs: ORG_PROVISIONING_VISIBILITY_TIMEOUT_MS,
+        retry: {
+          maxAttempts: 12,
+        },
+      },
+      "org.provisionStagingEnvironments": {
+        schema: OrgProvisioningPayloadSchema,
+        visibilityTimeoutMs: ORG_PROVISIONING_VISIBILITY_TIMEOUT_MS,
+        retry: {
+          maxAttempts: 12,
         },
       },
     },
@@ -204,9 +289,18 @@ function initializeWorker() {
     shutdownTimeoutMs: env.COMMON_WORKER_SHUTDOWN_TIMEOUT_MS,
     logger: new Logger("CommonWorker", env.COMMON_WORKER_LOG_LEVEL),
     jobs: {
+      "webhooks.ensurePartitions": async () => {
+        await webhookEngine.ensurePartitions();
+      },
       "previewBranches.autoArchiveSweep": async () => {
         await sweepPreviewAutoArchives(prisma, (ids) => {
           for (const id of ids) controlPlaneResolver.invalidateEnvironment(id);
+        });
+      },
+      "deployments.buildEnvVarsSweep": async () => {
+        await sweepExpiredBuildEnvVars(prisma, {
+          windowDays: env.DEPLOYMENTS_REDEPLOY_WINDOW_DAYS,
+          batchSize: env.DEPLOYMENTS_BUILD_ENV_VARS_SWEEP_BATCH_SIZE,
         });
       },
       scheduleEmail: async ({ payload }) => {
@@ -282,6 +376,28 @@ function initializeWorker() {
 
         if (failure) throw failure;
       },
+      "alerts.evaluateTick": async () => {},
+      "alerts.housekeeping": async () => {
+        await runAlertsHousekeeping(
+          { now: new Date() },
+          {
+            db: prisma,
+            retryCap: alertDeliveryRetryCap(),
+            startSpan: (name, fn) => tracer.startActiveSpan(name, fn),
+            logger,
+          }
+        );
+      },
+      "alerts.partitionMaintenance": async () => {
+        await runAlertPartitionMaintenance(
+          { now: new Date() },
+          {
+            prisma,
+            ddlClient: alertPartitionDdlClient,
+            logger,
+          }
+        );
+      },
       "dashboardAgent.purgeOrganization": async ({ payload }) => {
         const soft = await purgeDashboardAgentChatsForOrganization({
           organizationId: payload.organizationId,
@@ -292,6 +408,15 @@ function initializeWorker() {
             softDeleted: soft,
           });
         }
+      },
+      "org.convergeRunsEnabled": async ({ payload }) => {
+        await runOrgProvisioningJob("org.convergeRunsEnabled", payload.organizationId);
+      },
+      "org.pushConcurrencyLimits": async ({ payload }) => {
+        await runOrgProvisioningJob("org.pushConcurrencyLimits", payload.organizationId);
+      },
+      "org.provisionStagingEnvironments": async ({ payload }) => {
+        await runOrgProvisioningJob("org.provisionStagingEnvironments", payload.organizationId);
       },
     },
   });

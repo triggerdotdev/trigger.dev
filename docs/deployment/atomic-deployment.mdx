@@ -60,7 +60,7 @@ The id is free-form and opaque to Trigger.dev — a commit SHA, a release tag, a
 <Step title="Deploy your tasks with an external id">
 
 ```bash
-npx trigger.dev@latest deploy --external-id "$(git rev-parse HEAD)"
+npx trigger.dev@latest deploy --env prod --external-id "$(git rev-parse HEAD)"
 ```
 
 </Step>
@@ -240,7 +240,7 @@ Read the commit in the place where it *is* available, and write it into both hal
 
 ```bash
 # 1. Deploy side — name the deployment after the commit.
-npx trigger.dev@latest deploy --external-id "$(git rev-parse HEAD)"
+npx trigger.dev@latest deploy --env prod --external-id "$(git rev-parse HEAD)"
 
 # 2. Application side — give the running app the same value.
 TRIGGER_EXTERNAL_DEPLOYMENT_ID=<the-same-commit-sha>
@@ -385,7 +385,7 @@ If you filter deploys by path, derive the id from the same filter on both sides 
 
 ```bash
 TASK_ID=$(git log -1 --format=%H -- trigger/)
-npx trigger.dev@latest deploy --external-id "$TASK_ID"
+npx trigger.dev@latest deploy --env prod --external-id "$TASK_ID"
 ```
 
 Compute the same value where you set your app's variable. In GitHub Actions this needs `fetch-depth: 0` on `actions/checkout` — the default shallow clone can't see far enough back.
@@ -442,6 +442,8 @@ If you use the [Vercel integration](/vercel-integration), version skew protectio
 - `VERCEL_GIT_COMMIT_SHA` is available at runtime on Vercel, so the SDK discovers the matching id with no work from you.
 
 This covers production, staging and preview alike.
+
+In production, the integration also gates the release on the task build. Each production deployment from your production branch carries a blocking **Trigger.dev Build** check, so a commit whose tasks fail to build never goes live and its runs never wait on a deployment that won't arrive. Re-run the **Trigger.dev deployment** check in GitHub to build that commit again. See [Production waits for your tasks](/vercel-integration#production-waits-for-your-tasks).
 
 ### Opting out
 

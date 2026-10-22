@@ -453,4 +453,29 @@ describe("KeyProducer", () => {
       keyProducer.ckVtimeIdleKeyFromQueue(q)
     );
   });
+
+  it("queueConcurrencyKeyLimitKey puts the key after its own part, so no key value can collide", () => {
+    const keyProducer = new RunQueueFullKeyProducer();
+    const env = {
+      id: "e1234",
+      type: "DEVELOPMENT" as const,
+      project: { id: "p1234" },
+      organization: { id: "o1234" },
+    };
+    const base = keyProducer.queueKey(env, "task/my-task");
+    const variant = keyProducer.queueKey(env, "task/my-task", "tenant-a");
+    expect(keyProducer.queueConcurrencyKeyLimitKey(env, "task/my-task", "tenant-a")).toBe(
+      `${base}:ckLimit:tenant-a`
+    );
+    expect(keyProducer.queueConcurrencyKeyLimitKeyFromQueue(variant)).toBe(
+      `${base}:ckLimit:tenant-a`
+    );
+    const colonKey = keyProducer.queueKey(env, "task/my-task", "a:ck:b");
+    expect(keyProducer.queueConcurrencyKeyLimitKeyFromQueue(colonKey)).toBe(
+      `${base}:ckLimit:a:ck:b`
+    );
+    expect(keyProducer.queueConcurrencyKeyLimitKey(env, "task/my-task", "a")).not.toBe(
+      keyProducer.queueKey(env, "task/my-task", "a:ckLimit")
+    );
+  });
 });

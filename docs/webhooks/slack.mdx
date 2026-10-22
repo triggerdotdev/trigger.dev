@@ -1,0 +1,393 @@
+---
+title: "Slack agents"
+description: "Turn a chat.agent into a Slack agent: users message it in Slack, it shows its status while it works, streams its reply with its tool calls as a plan, asks for approvals, and stops on Slack's stop button."
+sidebarTitle: "Slack agents"
+---
+
+**`slack()` from `@trigger.dev/slack` turns a `chat.agent` into a native Slack agent.** Each Slack agent session (a conversation with the agent, or a thread in a channel) becomes a durable Trigger.dev [session](/ai-chat/sessions). A message runs as a turn, the session shows the agent working, the reply streams into the thread as the model writes it, and Slack's stop button stops the turn.
+
+```ts /trigger/support.ts
+import { webhooks } from "@trigger.dev/sdk";
+import { chat } from "@trigger.dev/sdk/ai";
+import { appMentions, slack, webhookSource } from "@trigger.dev/slack";
+import { anthropic } from "@ai-sdk/anthropic";
+
+const slackEvents = webhooks.endpoint.define({ id: "slack", source: webhookSource() });
+
+export const support = chat.agent({
+  id: "support",
+  channels: [
+    slack({
+      id: "slack",
+      endpoint: slackEvents,
+      token: process.env.SLACK_BOT_TOKEN!,
+      startOn: appMentions(),
+    }),
+  ],
+  tools: { searchDocs, refundOrder },
+  run: async ({ messages, tools, signal, streamText }) =>
+    streamText({ model: anthropic("claude-sonnet-4-5"), messages, tools, abortSignal: signal }),
+});
+```
+
+`run()` is the same function that answers a browser chat or a [Linear session](/webhooks/linear). Signature verification, Slack's `url_verification` handshake, retry dedup, per-thread state, status updates and streaming are handled by the connector.
+
+## Setup
+
+<Steps>
+  <Step title="Deploy the agent">
+    Declare the endpoint with `webhookSource()` from `@trigger.dev/slack` and pass it to `slack({ endpoint })`. Deploying registers the hosted [endpoint](/webhooks/connect) and gives you its URL.
+  </Step>
+  <Step title="Create the Slack app from a manifest">
+    At [api.slack.com/apps](https://api.slack.com/apps), create an app **From a manifest** and paste this, with the endpoint's URL in both request URLs:
+
+    ```yaml manifest.yaml
+    display_information:
+      name: Support Agent
+    features:
+      bot_user:
+        display_name: Support Agent
+        always_online: true
+      app_home:
+        messages_tab_enabled: true
+        messages_tab_read_only_enabled: false
+      agent_view:
+        agent_description: Answers support questions and handles refunds.
+    oauth_config:
+      scopes:
+        bot:
+          - assistant:write
+          - chat:write
+          - files:read
+          - reactions:write
+          - im:history
+          - app_mentions:read
+          - channels:history
+          - groups:history
+    settings:
+      event_subscriptions:
+        request_url: https://your-endpoint-url
+        bot_events:
+          - message.im
+          - app_mention
+          - message.channels
+          - message.groups
+          - agent_session_stopped
+      interactivity:
+        is_enabled: true
+        request_url: https://your-endpoint-url
+    ```
+
+    `agent_view` makes the app an agent, `agent_session_stopped` turns on the stop button, interactivity delivers clicks on the agent's buttons, `files:read` lets the agent read the images and PDFs users share with it, `reactions:write` lets it mark a message it picked up mid-reply, and `app_mention` with `app_mentions:read` lets an @mention start a session in a channel (see [Channel threads](#channel-threads)). Drop `app_mention`, `message.channels`, `message.groups` and their scopes if the agent should only answer in its own conversations.
+  </Step>
+  <Step title="Connect the endpoint">
+    Paste the app's **Signing Secret** (Basic Information, App Credentials) as the endpoint's signing secret. Until it is set the endpoint rejects Slack's signed requests, so Slack shows the request URL as not verified: once the secret is in, click **Verify** on the app's Event Subscriptions page (or **Click here to verify** on the App Manifest page). Install the app to your workspace and pass the bot token (`xoxb-...`) as `token`. The endpoint's setup prompt walks an AI coding agent through these settings.
+  </Step>
+  <Step title="Try it">
+    Open the agent in Slack and send it a message. The session shows it working within a second, and the reply streams in. In a channel, invite the bot (`/invite @Support Agent`) and message it in a thread.
+  </Step>
+</Steps>
+
+## What Slack shows
+
+| Moment | In Slack |
+| --- | --- |
+| A turn starts | The session's status is **processing**. On the first turn the session is titled with the prompt. |
+| The model writes | The reply streams into the thread with `chat.startStream`, `chat.appendStream` and `chat.stopStream`, as markdown. |
+| A tool is called | A task in the reply's plan, titled by the tool's `title` (or its name made readable), marked complete when the tool returns and failed if it throws. The plan reads "Working on it", then "Done", "Stopped" or "Waiting for approval" when the turn ends. |
+| A tool needs a decision | Approve and Deny buttons, and the status is **suspended** (see [Approvals and buttons](#approvals-and-buttons)). |
+| The turn fails | The reply ends with "Something went wrong answering this. Try again." (`errorMessage` changes it). The error is logged on the run. |
+| The turn ends | The status goes back to **active**, whether it answered, stopped, failed or had nothing to say. |
+| `chat.close()` | The status is **closed**. |
+
+Set `title` to name the session yourself; return null to keep Slack's own. A title the user sets in Slack is never overwritten. Slack drops a processing status after an hour, so a longer turn re-sends it every 50 minutes. Give a tool a readable task title with the AI SDK's `tool({ title: "Search the archive", ... })`; without one the task shows the tool's name made readable (`searchArchive` shows "Search archive"). `progress: "tasks"` shows one task card per call between the reply's text instead of a plan, `progress: "off"` streams the reply without them, and `delivery: "final"` posts the whole reply once the turn ends instead of streaming it.
+
+```ts
+slack({
+  id: "slack",
+  endpoint: slackEvents,
+  token,
+  startOn: appMentions(),
+  title: (prompt) => `Support: ${prompt.slice(0, 80)}`,
+});
+```
+
+If a streaming request fails in a way that leaves its outcome unknown (a timeout or a dropped connection), the connector does not retry it, since Slack may already have shown that text. It closes the stream and posts the rest of the reply as its own message, so nothing is lost, at the cost of possibly repeating one batch. If that post fails too, the whole reply is posted again as a normal message. Rate limits wait out `Retry-After` and resend the same batch. If the worker running a turn dies mid-stream, the next worker closes that stream with a short "Interrupted" note before it picks the conversation back up.
+
+## Approvals and buttons
+
+A tool with no `execute` pauses the turn until the user answers it in Slack. By default `slack()` posts Approve and Deny buttons, and a click resolves the tool to `{ approved: boolean }`, collapses the buttons to the decision and resumes the turn. See [human-in-the-loop](/webhooks/human-in-the-loop) for the tool definition.
+
+`approval` replaces those buttons for every such tool. Build buttons with `button()`, whose `output` is what the click resolves the tool to:
+
+```ts
+slack({
+  id: "slack",
+  endpoint: slackEvents,
+  token,
+  startOn: appMentions(),
+  approval: (call, { button }) => ({
+    text: `Run ${call.toolName}?`,
+    blocks: [
+      { type: "section", text: { type: "mrkdwn", text: `Run \`${call.toolName}\`?` } },
+      {
+        type: "actions",
+        elements: [
+          button({ text: "Ship it", style: "primary", output: { approved: true } }),
+          button({ text: "Not now", output: { approved: false } }),
+        ],
+      },
+    ],
+  }),
+});
+```
+
+`interactions` gives a single tool its own UI, keyed by tool name, so a tool can ask the user to pick, rate or choose and continue with the answer:
+
+```ts
+export const moji = chat.agent({
+  id: "moji",
+  channels: [
+    slack({
+      id: "slack",
+      endpoint: slackEvents,
+      token,
+      startOn: appMentions(),
+      interactions: {
+        pickEmoji: (call, { button }) => {
+          const { options } = call.input as { options: { name: string }[] };
+          return {
+            text: "Pick one",
+            blocks: [
+              { type: "section", text: { type: "mrkdwn", text: "Which one should I add?" } },
+              {
+                type: "actions",
+                elements: options.map((o) => button({ text: `:${o.name}:`, output: { picked: o.name } })),
+              },
+            ],
+          };
+        },
+      },
+    }),
+  ],
+  tools: {
+    pickEmoji: tool({
+      description: "Ask the user to pick one of the generated emoji",
+      inputSchema: z.object({ options: z.array(z.object({ name: z.string() })) }),
+      outputSchema: z.object({ picked: z.string() }),
+    }),
+    addEmoji,
+  },
+  run: async ({ messages, tools, signal, streamText }) =>
+    streamText({ model, messages, tools, abortSignal: signal, stopWhen: stepCountIs(10) }),
+});
+```
+
+The click resolves `pickEmoji` to `{ picked: "wizard" }`, the buttons collapse to the choice, and the turn continues.
+
+### Buttons that send the agent an action
+
+Buttons that aren't answering a tool, such as follow-up questions, are built with `slackButton()` and posted with the surface's `post()`. A click reaches `onAction`, validated against `actionSchema` like a browser action, and returning `chat.turn(message)` answers it in the thread:
+
+```ts
+import { slackButton, type SlackRunSurface } from "@trigger.dev/slack";
+
+export const support = chat.agent({
+  id: "support",
+  channels: [slack({ id: "slack", endpoint: slackEvents, token, startOn: appMentions() })],
+  actionSchema: z.object({ type: z.literal("ask"), question: z.string() }),
+  tools: {
+    offerFollowUps: tool({
+      description: "Offer the user up to three follow-up questions as buttons",
+      inputSchema: z.object({ questions: z.array(z.string()).max(3) }),
+      execute: async ({ questions }) => {
+        await chat.surface<SlackRunSurface>()?.post({
+          text: "Follow-up questions",
+          blocks: [
+            {
+              type: "actions",
+              elements: questions.map((question) =>
+                slackButton({ text: question, action: { type: "ask", question } })
+              ),
+            },
+          ],
+        });
+        return "offered";
+      },
+    }),
+  },
+  onAction: async ({ action }) => chat.turn(action.question),
+  run: async ({ messages, tools, signal, streamText }) =>
+    streamText({ model, messages, tools, abortSignal: signal, stopWhen: stepCountIs(10) }),
+});
+```
+
+`onAction` also gets the click itself as `channel.event`, typed with `SlackBlockActions`: who clicked, and the message the button was on. An action doesn't have to answer; return nothing to only do work. Here `actionSchema` accepts a `pick` action alongside `ask`:
+
+```ts
+import type { SlackBlockActions } from "@trigger.dev/slack";
+
+actionSchema: z.discriminatedUnion("type", [
+  z.object({ type: z.literal("ask"), question: z.string() }),
+  z.object({ type: z.literal("pick"), name: z.string() }),
+]),
+onAction: async ({ action, channel }) => {
+  const click = channel?.event as SlackBlockActions | undefined;
+  if (action.type === "pick") {
+    await addEmoji.trigger({ name: action.name, pickedBy: click?.user?.id });
+    return; // no turn
+  }
+  return chat.turn(action.question);
+},
+```
+
+Only buttons built with `button()` or `slackButton()` reach the agent. Buttons your own code builds by hand go to a [`webhook()`](/webhooks/overview) subscribed to the same endpoint, and never start a turn.
+
+## Stopping
+
+Slack shows a stop button while the agent is working. It aborts the running turn through the run's `signal`, exactly like a browser chat's stop: the model call and any tool that honours the signal stop, the partial reply stays in the thread, and the status goes back to active. The next message continues the conversation.
+
+- A stop pressed while nothing is running does nothing, and a repeated or delayed stop never stops a later turn.
+- A stop that reaches a session waiting on an approval cancels it: the buttons are replaced with "Stopped", the pending tool call is recorded as stopped so the model sees that on the next turn, and a later click resumes nothing.
+- Stopping cannot undo what already happened. A tool that finished before the stop has had its effect.
+
+## Channel threads
+
+`startOn` is required: it decides which channel messages start a session. Pass `appMentions()` to have the agent answer only when it is @mentioned. A mention in a channel starts a session and the agent answers in a thread under it, then follows the rest of that thread without being mentioned again. `startOn` only applies to channels: a message in the agent's own conversation always starts a session.
+
+```ts
+import { slack, appMentions } from "@trigger.dev/slack";
+
+slack({ id: "slack", endpoint: slackEvents, token, startOn: appMentions() });
+```
+
+`appMentions()` uses Slack's `app_mention` event, so the app needs the `app_mention` bot event and the `app_mentions:read` scope (both in the manifest above), and no bot user id. Slack also delivers each mention as an ordinary channel message; the connector ignores that copy, so one mention runs one turn.
+
+What each value does:
+
+| `startOn` | The agent starts a session in a channel |
+| --- | --- |
+| `appMentions()` | When it is @mentioned (recommended). |
+| `mentions("U012BOT")` | When a message mentions that bot user id, from message events, without the `app_mention` subscription. |
+| `"event.event.type == 'message'"` | On every message it can see. |
+| `"event.event.channel_type == 'im'"` | Never: it answers only in its own conversation. |
+
+In a channel shared with another organization through Slack Connect, pass `ownWorkspaceOnly: true` to answer only people from your own workspace. Messages, mentions and button clicks from the other organization's users are dropped before they reach the agent. In Enterprise Grid this also drops users whose home workspace is another workspace in the org.
+
+When someone mentions the agent partway through a thread, `seedFromThread: true` loads the thread's earlier replies into the new session first, so the agent answers with the context a reader of the thread has. It loads the history once, on the session's first turn, paging through `conversations.replies` and keeping the newest 50 replies (`{ limit }` changes that). Slack limits new commercially distributed apps outside the Marketplace to 15 replies per call and one call a minute, so such an app may only get the thread's first page; internal apps keep the normal limits. A rate limit keeps what was fetched rather than failing the turn.
+
+## Messages sent while the agent is working
+
+A message sent while the agent is still answering gets 👀 as soon as it arrives, so the user knows it was seen (`receivedReaction` changes the emoji, null turns it off). It then waits and runs as the next turn, in the order messages arrived. With [`pendingMessages`](/ai-chat/pending-messages) on the agent, it can be folded into the reply the agent is already writing instead: `shouldInject` decides at each step, and the message reaches the model before its next step. A message `shouldInject` declines still runs as its own turn.
+
+```ts
+export const support = chat.agent({
+  id: "support",
+  channels: [slack({ id: "slack", endpoint: slackEvents, token, startOn: appMentions() })],
+  pendingMessages: { shouldInject: () => true },
+  run: async ({ messages, signal, streamText }) =>
+    streamText({ model, messages, abortSignal: signal, stopWhen: stepCountIs(10) }),
+});
+```
+
+A message is only folded in at a step boundary, so a reply that is one long model step with no tool calls finishes first and the message runs next. The stop button and button clicks are never folded in.
+
+## Files
+
+Images (PNG, JPEG, GIF, WebP) and PDFs that a user shares in the conversation reach the model with their message, including a file sent with no text. The transcript keeps each file's Slack URL, and the `streamText` given to `run()` downloads it with the bot token when the model reads it, once per run. An image over 5 MB is sent as its largest Slack thumbnail.
+
+Other file types, files over 20 MB, and files the app can't read (deleted, or shared from another workspace) reach the model as a one-line note naming the file, so it can say it can't open them. A file that is deleted after it was shared becomes the same note on later turns, and the conversation carries on.
+
+A custom `inbound` keeps file support by adding `slackFileParts()` to its message:
+
+```ts
+import { slackFileParts } from "@trigger.dev/slack";
+
+inbound: (event) => ({
+  message: {
+    id: event.event?.ts ?? "",
+    role: "user",
+    parts: [{ type: "text", text: event.event?.text ?? "" }, ...slackFileParts(event.event?.files)],
+  },
+}),
+```
+
+The download happens in the `streamText` passed to `run()`. A `streamText` imported from `ai` sends the Slack URL to the model as is, which the model can't open.
+
+## Answering into the session from elsewhere
+
+The first Slack message binds the session to its thread and to the user it is answering. A [`chat.event`](/webhooks/session-routing#answering-into-a-channel) action that returns `chat.turn()`, or a browser client on the same session, answers into that Slack thread with the same status, streaming and approval buttons.
+
+## Slash commands
+
+Slack posts a slash command as a form, which reaches subscribers as an object of its fields, and the endpoint acknowledges it with an empty `200` so Slack shows the user nothing until you reply. Give slash commands their own endpoint, typed with `SlackSlashCommand`, and set its URL as the command's Request URL under Slash Commands in the Slack app's settings. Use the same Signing Secret as the agent's endpoint. Reply through the command's `response_url`:
+
+```ts /trigger/commands.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+import { webhookSource, type SlackSlashCommand } from "@trigger.dev/slack";
+
+const slackCommands = webhooks.endpoint.define({
+  id: "slack-commands",
+  source: webhookSource<SlackSlashCommand>(),
+});
+
+export const deployCommand = webhook({
+  id: "deploy-command",
+  endpoint: slackCommands,
+  filter: "event.command == '/deploy'",
+  onEvent: async ({ event }) => {
+    await fetch(event.response_url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ response_type: "ephemeral", text: `Deploying ${event.text}` }),
+    });
+  },
+});
+```
+
+Any subscriber works here: a [`chat.event`](/webhooks/session-routing) keyed on `{event.channel_id}:{event.user_id}` routes a user's commands to one session, and a [waiter](/webhooks/waiters) can match on `event.command`.
+
+## Block Kit replies
+
+Replies are sent as markdown. For a reply that is posted rather than streamed (`delivery: "final"`), return `blocks` from `outbound` to post Block Kit. `toSlackBlocks()` splits markdown into `section` blocks under Slack's 3000-character limit, never inside a code fence:
+
+```ts
+import { slack, toSlackBlocks } from "@trigger.dev/slack";
+
+slack({
+  id: "slack",
+  endpoint: slackEvents,
+  token,
+  startOn: appMentions(),
+  delivery: "final",
+  outbound: (reply) =>
+    reply.text
+      ? {
+          text: reply.text.slice(0, 3000), // notification fallback
+          blocks: [{ type: "header", text: { type: "plain_text", text: "Support" } }, ...toSlackBlocks(reply.text)],
+        }
+      : null,
+});
+```
+
+## Options
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `id` | `string` | Connector id, unique per agent. |
+| `endpoint` | endpoint | The Slack endpoint, declared with `webhooks.endpoint.define({ id, source: webhookSource() })`. `webhook()` tasks can subscribe to the same endpoint. |
+| `token` | `string` or resolver | Bot token (`xoxb-...`), or a function of the event (its `team_id`) for multi-workspace apps. |
+| `delivery` | `"stream"` or `"final"` | `"stream"` (default) streams the reply natively. `"final"` posts it once when the turn ends. |
+| `title` | `(prompt, event) => string \| null` | The session title, set on its first turn. Defaults to the first line of the prompt. |
+| `progress` | `"plan"`, `"tasks"` or `"off"` | How tool calls show in the streamed reply: one plan block (default), a task card per call, or none. Task titles come from each tool's `title`. |
+| `startOn` | filter string | Required. Which channel messages start a session, usually `appMentions()` (see [Channel threads](#channel-threads)). Existing sessions always resume, and the agent's own conversation always starts one. Checked against the endpoint's event type. |
+| `filter` | filter string | Extra [filter](/webhooks/filters) for message events, composed with the built-in guard that drops the bot's own messages. Checked against the endpoint's event type, like `webhook()`'s `filter`. |
+| `key` | `string` | Session [key](/webhooks/session-routing) template. Defaults to one session per thread. |
+| `seedFromThread` | `boolean` or `{ limit }` | Load a thread's earlier replies into a new session. Off by default. |
+| `approval` | `(call, { button }) => message` | The UI for a tool with no `execute`. Defaults to Approve and Deny resolving to `{ approved }`. |
+| `interactions` | `{ [toolName]: (call, { button }) => message }` | A tool's own UI; a click resolves the tool with the button's `output`. |
+| `receivedReaction` | `string \| null` | Emoji added, on arrival, to a message sent while the agent is answering. Default `"eyes"`, null for none. |
+| `errorMessage` | `string \| (ctx) => string` | What the reply shows when a turn fails, fixed or built from the failure ([details](/webhooks/channels#when-a-turn-fails)). Default "Something went wrong answering this. Try again." |
+| `ownWorkspaceOnly` | `boolean` | Drop messages, mentions and button clicks from people outside the app's workspace, such as Slack Connect guests. Off by default. |
+| `inbound` / `outbound` | functions | Map a Slack event to the turn, and a posted reply to a Slack message. |
+| `apiBaseUrl` | `string` | Override the Slack Web API base, for testing against a mock. |

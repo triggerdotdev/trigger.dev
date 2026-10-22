@@ -761,6 +761,8 @@ export type ApiResult<TSuccessResult> =
        */
       statusCode?: number;
       errorCode?: string | null;
+      /** The server's `x-should-retry` header, when it sent one. Overrides any status-based decision. */
+      shouldRetry?: boolean;
     };
 
 export async function wrapZodFetch<T extends AnyZodSchema>(
@@ -787,11 +789,15 @@ export async function wrapZodFetch<T extends AnyZodSchema>(
     };
   } catch (error) {
     if (error instanceof ApiError) {
+      const shouldRetryHeader = error.headers?.["x-should-retry"];
+
       return {
         success: false,
         error: error.message,
         statusCode: error.status,
         errorCode: error.code,
+        shouldRetry:
+          shouldRetryHeader === "true" ? true : shouldRetryHeader === "false" ? false : undefined,
       };
     } else if (error instanceof Error) {
       return {

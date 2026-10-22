@@ -10,6 +10,7 @@ type Row = [
   popularity: string,
   sampleSource: string,
   docsUrl: string,
+  tier?: "first-class" | "sample-only",
 ];
 
 const PRESETS = new Set(["stripe", "github", "svix", "standard-webhooks", "square", "discord"]);
@@ -94,11 +95,12 @@ const rows: Row[] = [
     "gitlab",
     "GitLab",
     "source-control",
-    "standard-webhooks",
-    "standard-webhooks",
+    null,
+    "shared-secret",
     "high",
     "hookdeck",
     "https://docs.gitlab.com/user/project/integrations/webhooks/",
+    "first-class",
   ],
   [
     "github",
@@ -129,6 +131,7 @@ const rows: Row[] = [
     "high",
     "handauthored",
     "https://developer.atlassian.com/cloud/jira/platform/webhooks/",
+    "first-class",
   ],
   [
     "stripe",
@@ -170,6 +173,7 @@ const rows: Row[] = [
     "high",
     "handauthored",
     "https://elevenlabs.io/docs/eleven-agents/workflows/post-call-webhooks",
+    "first-class",
   ],
   [
     "vapi",
@@ -180,6 +184,7 @@ const rows: Row[] = [
     "medium",
     "handauthored",
     "https://docs.vapi.ai/server-url/server-authentication",
+    "first-class",
   ],
   [
     "retell",
@@ -190,6 +195,7 @@ const rows: Row[] = [
     "medium",
     "handauthored",
     "https://docs.retellai.com/features/secure-webhook",
+    "first-class",
   ],
   [
     "assemblyai",
@@ -220,6 +226,7 @@ const rows: Row[] = [
     "high",
     "handauthored",
     "https://docs.slack.dev/authentication/verifying-requests-from-slack/",
+    "first-class",
   ],
   [
     "telegram",
@@ -240,16 +247,6 @@ const rows: Row[] = [
     "high",
     "handauthored",
     "https://www.twilio.com/docs/usage/webhooks/webhooks-security",
-  ],
-  [
-    "zoom",
-    "Zoom",
-    "communication",
-    null,
-    "hmac-sha256",
-    "high",
-    "handauthored",
-    "https://developers.zoom.us/docs/api/webhooks/",
   ],
   [
     "sendgrid",
@@ -280,6 +277,7 @@ const rows: Row[] = [
     "high",
     "handauthored",
     "https://developer.zendesk.com/documentation/webhooks/verifying/",
+    "first-class",
   ],
   [
     "intercom",
@@ -290,6 +288,7 @@ const rows: Row[] = [
     "high",
     "handauthored",
     "https://developers.intercom.com/docs/references/webhooks/webhook-models",
+    "first-class",
   ],
   [
     "cal-com",
@@ -300,6 +299,7 @@ const rows: Row[] = [
     "medium",
     "handauthored",
     "https://cal.com/docs/developing/guides/automation/webhooks",
+    "first-class",
   ],
   [
     "calendly",
@@ -310,6 +310,7 @@ const rows: Row[] = [
     "high",
     "handauthored",
     "https://developer.calendly.com/api-docs/4c305798a61d3-webhook-signatures",
+    "first-class",
   ],
   [
     "linear",
@@ -320,6 +321,7 @@ const rows: Row[] = [
     "medium",
     "handauthored",
     "https://linear.app/developers/webhooks",
+    "first-class",
   ],
   [
     "sentry",
@@ -330,6 +332,7 @@ const rows: Row[] = [
     "high",
     "handauthored",
     "https://docs.sentry.io/product/integrations/integration-platform/webhooks/",
+    "first-class",
   ],
   [
     "vercel",
@@ -340,6 +343,7 @@ const rows: Row[] = [
     "high",
     "handauthored",
     "https://vercel.com/docs/webhooks",
+    "first-class",
   ],
   [
     "pagerduty",
@@ -350,6 +354,7 @@ const rows: Row[] = [
     "high",
     "handauthored",
     "https://developer.pagerduty.com/docs/webhooks/webhook-signatures/",
+    "first-class",
   ],
   [
     "auth0",
@@ -370,6 +375,7 @@ const rows: Row[] = [
     "medium",
     "handauthored",
     "https://workos.com/docs/events/data-syncing/webhooks",
+    "first-class",
   ],
   [
     "supabase",
@@ -390,6 +396,7 @@ const rows: Row[] = [
     "high",
     "handauthored",
     "https://developers.notion.com/reference/webhooks",
+    "first-class",
   ],
   [
     "attio",
@@ -400,6 +407,7 @@ const rows: Row[] = [
     "medium",
     "handauthored",
     "https://docs.attio.com/rest-api/guides/webhooks",
+    "first-class",
   ],
   [
     "close-crm",
@@ -430,6 +438,7 @@ const rows: Row[] = [
     "high",
     "handauthored",
     "https://www.typeform.com/developers/webhooks/secure-your-webhooks/",
+    "first-class",
   ],
   [
     "docusign",
@@ -440,6 +449,7 @@ const rows: Row[] = [
     "high",
     "handauthored",
     "https://developers.docusign.com/platform/webhooks/connect/",
+    "first-class",
   ],
   [
     "shopify",
@@ -450,6 +460,7 @@ const rows: Row[] = [
     "high",
     "hookdeck",
     "https://shopify.dev/docs/apps/build/webhooks/verify-deliveries",
+    "first-class",
   ],
   [
     "plaid",
@@ -466,8 +477,8 @@ const rows: Row[] = [
 const popRank: Record<string, number> = { high: 0, "medium-high": 1, medium: 2, low: 3 };
 
 const providers = rows.map(
-  ([id, label, category, preset, scheme, popularity, sampleSource, docsUrl]) => {
-    const tier = preset ? "first-class" : "sample-only";
+  ([id, label, category, preset, scheme, popularity, sampleSource, docsUrl, declaredTier]) => {
+    const tier = declaredTier ?? (preset ? "first-class" : "sample-only");
     const checklist = Object.fromEntries(DOD[tier].map((k) => [k, false]));
     return {
       id,

@@ -93,7 +93,8 @@ export const startDevServerTool = {
           const clean = stripAnsi(line);
           pushLog(clean);
 
-          if (clean.includes("Local worker ready")) {
+          // A rebuild with no changes keeps the last worker that was ready
+          if (clean.includes("Local worker ready") || clean.includes("No changes detected")) {
             devState = "ready";
           }
 

@@ -36,12 +36,13 @@ const { action } = createActionApiRoute(
     },
   },
   async ({ params, authentication }) => {
-    // `.out` is the agent→client channel. Only PRIVATE (secret key) auth —
-    // i.e. the agent run itself — may initialize it. Session-scoped JWTs carry
-    // `write:sessions:<key>` for `.in`; without this gate they could obtain
-    // credentials to forge assistant chunks on their own session's `.out`.
-    if (params.io === "out" && authentication.type !== "PRIVATE") {
-      return new Response("Initializing the out channel requires secret key authentication", {
+    // Only PRIVATE (secret key) auth may initialize a channel: the S2 credentials
+    // this returns write raw records. Session-scoped JWTs carry
+    // `write:sessions:<key>`; with them they could forge assistant chunks on
+    // `.out`, or skip the `.in` append route's removal of ingress-only fields.
+    // Clients write `.in` through that append route.
+    if (authentication.type !== "PRIVATE") {
+      return new Response("Initializing a session channel requires secret key authentication", {
         status: 403,
       });
     }

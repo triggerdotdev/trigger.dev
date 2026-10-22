@@ -50,6 +50,7 @@ export const RUN_STORE_METHOD_NAMES = [
   "findManyExecutionSnapshots",
   "createExecutionSnapshot",
   "readSnapshotRoute",
+  "settlePendingUnit",
   "findSnapshotCompletedWaitpointIds",
   "findSnapshotCompletedWaitpointIdsWithPresence",
   "findWaitpointConnectedRunIds",

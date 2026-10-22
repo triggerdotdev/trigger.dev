@@ -80,11 +80,12 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 const { action } = createActionApiRoute(
   {
     params: ParamsSchema,
+    headers: z.object({ "x-trigger-request-idempotency-key": z.string().nullish() }),
     body: UpdateMetadataRequestBody,
     maxContentLength: 1024 * 1024 * 2, // 2MB
     method: "PUT",
   },
-  async ({ authentication, body, params }) => {
+  async ({ authentication, body, params, headers }) => {
     const env = authentication.environment;
     const runId = params.runId;
 
@@ -92,7 +93,11 @@ const { action } = createActionApiRoute(
     // owns the full request shape including parent/root operations,
     // metadataVersion CAS, batching, validation — none of which the
     // buffer side needs to reimplement.
-    const [pgError, pgResult] = await tryCatch(updateMetadataService.call(runId, body, env));
+    const [pgError, pgResult] = await tryCatch(
+      updateMetadataService.call(runId, body, env, {
+        requestIdempotencyKey: headers["x-trigger-request-idempotency-key"] ?? undefined,
+      })
+    );
     if (pgError) {
       if (pgError instanceof ServiceValidationError) {
         return json({ error: pgError.message }, { status: pgError.status ?? 422 });

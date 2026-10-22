@@ -2,9 +2,10 @@ import type { TypedResponse } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import type { WorkerApiContinueRunExecutionRequestBody } from "@trigger.dev/core/v3/workers";
 import { z } from "zod";
+import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { createLoaderWorkerApiRoute } from "~/services/routeBuilders/apiBuilder.server";
-import { clientSafeErrorMessage, isInfrastructureError } from "~/utils/prismaErrors";
+import { continueRunErrorResponse } from "~/utils/continueRunErrors.server";
 
 export const loader = createLoaderWorkerApiRoute(
   {
@@ -46,20 +47,18 @@ export const loader = createLoaderWorkerApiRoute(
         environmentId,
       });
 
-      // A Prisma infrastructure error (e.g. P1001 "Can't reach database
-      // server") means the DB was transiently unreachable while resuming. A 422
-      // is non-retryable, so the worker would permanently abort a run over a
-      // blip. Let it propagate to the generic 500 handler, which scrubs the
-      // message and is retried by the worker's HTTP client.
-      if (isInfrastructureError(error)) {
+      // A 422 is non-retryable, so the worker would permanently abort a run over a
+      // database blip. Temporary errors get a status the worker retries instead.
+      const response = continueRunErrorResponse(error, {
+        retryableErrors: env.RUN_ENGINE_CONTINUE_RETRYABLE_ERRORS_ENABLED,
+      });
+
+      // No response: the generic 500 handler takes it and scrubs the message.
+      if (!response) {
         throw error;
       }
 
-      if (error instanceof Error) {
-        throw json({ error: clientSafeErrorMessage(error) }, { status: 422 });
-      }
-
-      throw json({ error: "Failed to continue run execution" }, { status: 422 });
+      throw response;
     }
   }
 );

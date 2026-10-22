@@ -21,15 +21,13 @@ import {
 
 vi.setConfig({ testTimeout: 60_000 });
 
-const ctx = vi.hoisted(
-  (): DashboardAgentWatchesTestContext => ({
-    prisma: undefined as unknown as PrismaClient,
-    agentDb: undefined as unknown as DashboardAgentDb,
-    canAccess: true,
-    actor: undefined,
-    triggered: [],
-  })
-);
+const ctx = vi.hoisted((): DashboardAgentWatchesTestContext => ({
+  prisma: undefined as unknown as PrismaClient,
+  agentDb: undefined as unknown as DashboardAgentDb,
+  canAccess: true,
+  actor: undefined,
+  triggered: [],
+}));
 
 vi.mock("~/services/uatRoutePreamble.server", () => ({
   authenticateUatOrApiRequest: async () =>
@@ -60,6 +58,21 @@ vi.mock("~/services/dashboardAgentDb.server", () => ({
 
 vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
   canAccessDashboardAgent: async () => ctx.canAccess,
+}));
+
+const rbacState = vi.hoisted(() => ({ deniedWriteEnvType: undefined as string | undefined }));
+
+vi.mock("~/services/rbac.server", () => ({
+  rbac: {
+    authenticateUserActor: async () => ({
+      ok: true,
+      ability: {
+        can: (action: string, resource: { envType?: string }) =>
+          !(action === "write" && resource.envType === rbacState.deniedWriteEnvType),
+        canSuper: () => false,
+      },
+    }),
+  },
 }));
 
 vi.mock("@trigger.dev/sdk", async (importOriginal) => {
@@ -104,7 +117,10 @@ const seedChat = harness.seedChat.bind(harness);
 const runRow = harness.runRow.bind(harness);
 const create = harness.create.bind(harness);
 
-beforeEach(() => harness.reset());
+beforeEach(() => {
+  harness.reset();
+  rbacState.deniedWriteEnvType = undefined;
+});
 afterEach(() => harness.close());
 
 describe("createDashboardAgentWatch", () => {
@@ -1352,6 +1368,327 @@ describe("the agent's alert boundary", () => {
         deleteRequest(watchChannel.id, { chatId: "chat_member" })
       )) as Response;
       expect(refused.status).toBe(404);
+    }
+  );
+  postgresTest(
+    "creating a watch alert needs alert write on the chat's environment",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "alert-create-rbac");
+      const member = await seedMember(prisma, seeded);
+      await createChat(ctx.agentDb, {
+        id: "chat_member",
+        organizationId: seeded.organization.id,
+        userId: member.id,
+      });
+      ctx.actor = {
+        userId: member.id,
+        client: "dashboard-agent",
+        environmentId: seeded.environment.id,
+      };
+
+      rbacState.deniedWriteEnvType = seeded.environment.type;
+      const denied = (await alertsAction(
+        createRequest({ chatId: "chat_member", channel: "email" })
+      )) as Response;
+      expect(denied.status).toBe(403);
+      expect(
+        await prisma.projectAlertChannel.count({ where: { projectId: seeded.project.id } })
+      ).toBe(0);
+
+      rbacState.deniedWriteEnvType = undefined;
+      const allowed = (await alertsAction(
+        createRequest({ chatId: "chat_member", channel: "email" })
+      )) as Response;
+      expect(allowed.status).toBe(200);
+    }
+  );
+
+  postgresTest(
+    "disabling a watch alert needs alert write on every environment it covers",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "alert-delete-rbac");
+      const member = await seedMember(prisma, seeded);
+      await createChat(ctx.agentDb, {
+        id: "chat_member",
+        organizationId: seeded.organization.id,
+        userId: member.id,
+      });
+      const watchChannel = await seedWatchChannel(prisma, seeded, member.email);
+      await prisma.projectAlertChannel.update({
+        where: { id: watchChannel.id },
+        data: { environmentTypes: ["PRODUCTION", "STAGING"] },
+      });
+      ctx.actor = {
+        userId: member.id,
+        client: "dashboard-agent",
+        environmentId: seeded.environment.id,
+      };
+
+      rbacState.deniedWriteEnvType = "STAGING";
+      const denied = (await alertChannelAction(
+        deleteRequest(watchChannel.id, { chatId: "chat_member" })
+      )) as Response;
+      expect(denied.status).toBe(403);
+      expect(
+        await prisma.projectAlertChannel.findFirst({ where: { id: watchChannel.id } })
+      ).toMatchObject({ enabled: true, alertTypes: [DASHBOARD_AGENT_WATCH_ALERT_TYPE] });
+
+      rbacState.deniedWriteEnvType = undefined;
+      const allowed = (await alertChannelAction(
+        deleteRequest(watchChannel.id, { chatId: "chat_member" })
+      )) as Response;
+      expect(allowed.status).toBe(200);
+      expect(await allowed.json()).toMatchObject({ ok: true, disabledChannel: true });
+    }
+  );
+  postgresTest(
+    "disabling a watch alert with no environment types needs alert write on all of them",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "alert-delete-rbac-all");
+      const member = await seedMember(prisma, seeded);
+      await createChat(ctx.agentDb, {
+        id: "chat_member",
+        organizationId: seeded.organization.id,
+        userId: member.id,
+      });
+      const watchChannel = await seedWatchChannel(prisma, seeded, member.email);
+      await prisma.projectAlertChannel.update({
+        where: { id: watchChannel.id },
+        data: { environmentTypes: [] },
+      });
+      ctx.actor = {
+        userId: member.id,
+        client: "dashboard-agent",
+        environmentId: seeded.environment.id,
+      };
+
+      rbacState.deniedWriteEnvType = "STAGING";
+      const denied = (await alertChannelAction(
+        deleteRequest(watchChannel.id, { chatId: "chat_member" })
+      )) as Response;
+      expect(denied.status).toBe(403);
+      expect(
+        await prisma.projectAlertChannel.findFirst({ where: { id: watchChannel.id } })
+      ).toMatchObject({ enabled: true, alertTypes: [DASHBOARD_AGENT_WATCH_ALERT_TYPE] });
+    }
+  );
+  async function seedDevChat(prisma: PrismaClient, seeded: Seeded, slug: string) {
+    const member = await seedMember(prisma, seeded);
+    const orgMember = await prisma.orgMember.findFirstOrThrow({
+      where: { organizationId: seeded.organization.id, userId: member.id },
+    });
+    const dev = await prisma.runtimeEnvironment.create({
+      data: {
+        slug: "dev",
+        type: "DEVELOPMENT",
+        projectId: seeded.project.id,
+        organizationId: seeded.organization.id,
+        orgMemberId: orgMember.id,
+        apiKey: `tr_dev_${slug}`,
+        pkApiKey: `pk_dev_${slug}`,
+        shortcode: `d${slug}`,
+      },
+    });
+    await createChat(ctx.agentDb, {
+      id: "chat_member",
+      organizationId: seeded.organization.id,
+      userId: member.id,
+    });
+    ctx.actor = { userId: member.id, client: "dashboard-agent", environmentId: dev.id };
+    return member;
+  }
+
+  postgresTest(
+    "re-enabling a saved watch alert needs alert write on the environments it already covers",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "alert-reenable-rbac");
+      const member = await seedDevChat(prisma, seeded, "reen");
+      const saved = await seedWatchChannel(prisma, seeded, member.email);
+      await prisma.projectAlertChannel.update({
+        where: { id: saved.id },
+        data: { enabled: false },
+      });
+
+      rbacState.deniedWriteEnvType = "PRODUCTION";
+      const denied = (await alertsAction(
+        createRequest({ chatId: "chat_member", channel: "email" })
+      )) as Response;
+      expect(denied.status).toBe(403);
+      expect(await prisma.projectAlertChannel.findFirst({ where: { id: saved.id } })).toMatchObject(
+        { enabled: false, environmentTypes: ["PRODUCTION"] }
+      );
+    }
+  );
+
+  postgresTest(
+    "a first watch alert from a dev chat needs no production write",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "alert-first-dev-rbac");
+      await seedDevChat(prisma, seeded, "first");
+
+      rbacState.deniedWriteEnvType = "PRODUCTION";
+      const allowed = (await alertsAction(
+        createRequest({ chatId: "chat_member", channel: "email" })
+      )) as Response;
+      expect(allowed.status).toBe(200);
+      expect(
+        await prisma.projectAlertChannel.findFirst({ where: { projectId: seeded.project.id } })
+      ).toMatchObject({ enabled: true, environmentTypes: ["DEVELOPMENT"] });
+    }
+  );
+  postgresTest(
+    "a watch alert widened to a denied environment mid-request is not re-enabled",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "alert-reenable-race");
+      const member = await seedDevChat(prisma, seeded, "race");
+      const saved = await seedWatchChannel(prisma, seeded, member.email);
+      await prisma.projectAlertChannel.update({
+        where: { id: saved.id },
+        data: { enabled: false, environmentTypes: ["DEVELOPMENT"] },
+      });
+
+      let reads = 0;
+      const channels = new Proxy(prisma.projectAlertChannel, {
+        get: (target, prop) =>
+          prop === "findFirst"
+            ? async (args: Parameters<typeof target.findFirst>[0]) => {
+                const result = await target.findFirst(args);
+                if (reads++ === 0) {
+                  await prisma.projectAlertChannel.update({
+                    where: { id: saved.id },
+                    data: { environmentTypes: ["DEVELOPMENT", "PRODUCTION"] },
+                  });
+                }
+                return result;
+              }
+            : Reflect.get(target, prop),
+      });
+      ctx.prisma = new Proxy(prisma, {
+        get: (target, prop) =>
+          prop === "projectAlertChannel" ? channels : Reflect.get(target, prop),
+      });
+
+      rbacState.deniedWriteEnvType = "PRODUCTION";
+      const denied = (await alertsAction(
+        createRequest({ chatId: "chat_member", channel: "email" })
+      )) as Response;
+      expect(denied.status).toBe(403);
+      expect(reads).toBeGreaterThan(1);
+      expect(await prisma.projectAlertChannel.findFirst({ where: { id: saved.id } })).toMatchObject(
+        { enabled: false, environmentTypes: ["DEVELOPMENT", "PRODUCTION"] }
+      );
+    }
+  );
+  function interceptChannelReads(
+    prisma: PrismaClient,
+    afterRead: (args: { where?: Record<string, unknown> }, result: unknown) => Promise<void>
+  ) {
+    const channels = new Proxy(prisma.projectAlertChannel, {
+      get: (target, prop) =>
+        prop === "findFirst"
+          ? async (args: Parameters<typeof target.findFirst>[0]) => {
+              const result = await target.findFirst(args);
+              await afterRead(args as { where?: Record<string, unknown> }, result);
+              return result;
+            }
+          : Reflect.get(target, prop),
+    });
+    ctx.prisma = new Proxy(prisma, {
+      get: (target, prop) =>
+        prop === "projectAlertChannel" ? channels : Reflect.get(target, prop),
+    });
+  }
+
+  postgresTest(
+    "a watch alert widened to a denied environment mid-disable is left alone",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "alert-disable-race");
+      const member = await seedMember(prisma, seeded);
+      await createChat(ctx.agentDb, {
+        id: "chat_member",
+        organizationId: seeded.organization.id,
+        userId: member.id,
+      });
+      const watchChannel = await seedWatchChannel(prisma, seeded, member.email);
+      await prisma.projectAlertChannel.update({
+        where: { id: watchChannel.id },
+        data: { environmentTypes: ["STAGING"] },
+      });
+      ctx.actor = {
+        userId: member.id,
+        client: "dashboard-agent",
+        environmentId: seeded.environment.id,
+      };
+
+      let widened = false;
+      interceptChannelReads(prisma, async (args) => {
+        if (widened || args.where?.id !== watchChannel.id) return;
+        widened = true;
+        await prisma.projectAlertChannel.update({
+          where: { id: watchChannel.id },
+          data: { environmentTypes: ["STAGING", "PRODUCTION"] },
+        });
+      });
+
+      rbacState.deniedWriteEnvType = "PRODUCTION";
+      const denied = (await alertChannelAction(
+        deleteRequest(watchChannel.id, { chatId: "chat_member" })
+      )) as Response;
+      expect(widened).toBe(true);
+      expect(denied.status).toBe(403);
+      expect(
+        await prisma.projectAlertChannel.findFirst({ where: { id: watchChannel.id } })
+      ).toMatchObject({
+        enabled: true,
+        alertTypes: [DASHBOARD_AGENT_WATCH_ALERT_TYPE],
+        environmentTypes: ["STAGING", "PRODUCTION"],
+      });
+    }
+  );
+
+  postgresTest(
+    "a same-key channel created mid-subscribe is not overwritten",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "alert-create-race");
+      const member = await seedDevChat(prisma, seeded, "crace");
+
+      let missingReads = 0;
+      let racer: { id: string } | undefined;
+      interceptChannelReads(prisma, async (args, result) => {
+        if (racer || result || args.where?.deduplicationKey === undefined) return;
+        if (++missingReads < 2) return;
+        racer = await prisma.projectAlertChannel.create({
+          data: {
+            friendlyId: `alert_${Math.random().toString(36).slice(2, 10)}`,
+            name: `Watch alerts for ${member.email}`,
+            projectId: seeded.project.id,
+            alertTypes: [DASHBOARD_AGENT_WATCH_ALERT_TYPE as never],
+            environmentTypes: ["PRODUCTION"],
+            type: "EMAIL",
+            properties: { email: member.email },
+            deduplicationKey: `dashboard-agent-watch:${member.email}`,
+            enabled: false,
+          },
+        });
+      });
+
+      rbacState.deniedWriteEnvType = "PRODUCTION";
+      const denied = (await alertsAction(
+        createRequest({ chatId: "chat_member", channel: "email" })
+      )) as Response;
+      expect(racer).toBeDefined();
+      expect(denied.status).toBe(403);
+      expect(
+        await prisma.projectAlertChannel.findFirst({ where: { id: racer!.id } })
+      ).toMatchObject({ enabled: false, environmentTypes: ["PRODUCTION"] });
     }
   );
 });

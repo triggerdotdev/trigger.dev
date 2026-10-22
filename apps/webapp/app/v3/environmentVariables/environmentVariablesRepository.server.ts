@@ -119,10 +119,13 @@ export class EnvironmentVariablesRepository implements Repository {
     values = values.filter((v) => v.key.trim() !== "");
     if (
       values.some((v) => v.value.trim() === "") &&
-      !(await emptyEnvironmentVariableValuesEnabled(
+      // Resolve the existing flag first, preserving its reads and failure behavior.
+      (!(await emptyEnvironmentVariableValuesEnabled(
         project.organization.featureFlags,
         this.prismaClient
-      ))
+      )) ||
+        (options.lastUpdatedBy?.type === "integration" &&
+          options.lastUpdatedBy.integration === "vercel"))
     ) {
       values = values.filter((v) => v.value.trim() !== "");
       // Automated sync must remain a no-op when every supplied value is disabled.
@@ -1026,6 +1029,10 @@ async function resolveOverridableTriggerVariables(
     {
       key: "TRIGGER_REALTIME_STREAM_VERSION",
       value: env.REALTIME_STREAM_VERSION,
+    },
+    {
+      key: "TRIGGER_DASHBOARD_URL",
+      value: env.APP_ORIGIN.replace(/\/$/, ""),
     },
   ];
 

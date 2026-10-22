@@ -33,7 +33,7 @@ import { configure, runs } from "@trigger.dev/sdk";
 
 configure({
   // this is the default and if the `TRIGGER_SECRET_KEY` environment variable is set, can omit calling configure
-  secretKey: process.env["TRIGGER_SECRET_KEY"],
+  accessToken: process.env["TRIGGER_SECRET_KEY"],
 });
 
 async function main() {

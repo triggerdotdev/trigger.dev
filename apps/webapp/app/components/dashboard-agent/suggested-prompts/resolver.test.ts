@@ -279,7 +279,7 @@ describe("pageSlotPrompts", () => {
     for (const health of ["warn", "crit"] as const) {
       const slots = pageSlotPrompts({ kind: "queue", name: "emails", health });
       expect(slots.investigate?.prompt, health).toBe(
-        "Investigate the emails queue — why is it backed up?"
+        "Investigate the emails queue - why is it backed up?"
       );
     }
   });

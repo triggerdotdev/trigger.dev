@@ -10,6 +10,10 @@ import {
 import parseDuration from "parse-duration";
 import { z } from "zod";
 import { type Direction } from "~/components/ListPagination";
+import {
+  type DeliveryListFilters,
+  hasDeliveryListFilters,
+} from "~/components/webhookDeliveries/v1/deliveryListFilters";
 import { boundedIn, webhookReplica } from "~/db.server";
 import { runStore } from "~/v3/runStore.server";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
@@ -416,6 +420,7 @@ export class WebhookDetailPresenter {
     from,
     to,
     hasExplicitWindow,
+    filters = {},
     cursor,
     direction,
   }: {
@@ -427,6 +432,7 @@ export class WebhookDetailPresenter {
     from?: number;
     to?: number;
     hasExplicitWindow?: boolean;
+    filters?: DeliveryListFilters;
     cursor?: string;
     direction?: Direction;
   }): Promise<WebhookDeliveriesList> {
@@ -443,6 +449,9 @@ export class WebhookDetailPresenter {
       projectId,
       environmentId,
       webhookEndpointId,
+      statuses: filters.statuses,
+      isTest: filters.isTest,
+      deliveryId: filters.deliveryId,
       period: periodMs,
       from,
       to,
@@ -467,7 +476,7 @@ export class WebhookDetailPresenter {
         previous: pagination.previousCursor ?? undefined,
       },
       filters: { from, to },
-      hasFilters: hasExplicitWindow ?? Boolean(from || to),
+      hasFilters: (hasExplicitWindow ?? Boolean(from || to)) || hasDeliveryListFilters(filters),
     };
   }
 }

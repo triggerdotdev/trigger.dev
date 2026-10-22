@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   authenticateAuthorizationHeader: vi.fn<(...args: any[]) => Promise<any>>(),
   resolvePrivateApiKeyRateLimitScope: vi.fn<(...args: any[]) => Promise<any>>(),
+  resolveRunToken: vi.fn<(...args: any[]) => Promise<any>>(),
 }));
 
 // Importing the module constructs the real middleware at load; stub the constructor and env
@@ -24,6 +25,9 @@ vi.mock("~/models/runtimeEnvironment.server", () => ({
 }));
 vi.mock("~/runEngine/concerns/batchStreamGrantsInstance.server", () => ({
   batchStreamGrants: { spend: vi.fn() },
+}));
+vi.mock("~/services/oidc/runTokenAuth.server", () => ({
+  resolveRunToken: mocks.resolveRunToken,
 }));
 vi.mock("~/services/apiAuth.server", () => ({
   authenticateAuthorizationHeader: mocks.authenticateAuthorizationHeader,
@@ -190,5 +194,42 @@ describe("readApiRateLimitMetricsFlag", () => {
     expect(readApiRateLimitMetricsFlag(undefined)).toBe(false);
     expect(readApiRateLimitMetricsFlag("garbage")).toBe(false);
     expect(readApiRateLimitMetricsFlag([])).toBe(false);
+  });
+});
+
+describe("resolveApiRateLimitOverride — run tokens", () => {
+  // Only the header is read to classify the token; verification is mocked.
+  const runToken = `${Buffer.from(JSON.stringify({ alg: "RS256", typ: "run+jwt" })).toString(
+    "base64url"
+  )}.payload.signature`;
+  const environment = {
+    id: "env_1",
+    organizationId: "org_1",
+    projectId: "proj_1",
+    organization: { apiRateLimiterConfig: null, featureFlags: null },
+  };
+
+  beforeEach(() => {
+    mocks.authenticateAuthorizationHeader.mockReset();
+    mocks.resolveRunToken.mockReset();
+  });
+
+  it.each([`Bearer ${runToken}`, `Bearer  ${runToken}`, `Bearer ${runToken} `])(
+    "shares the environment bucket for %j",
+    async (header) => {
+      mocks.resolveRunToken.mockResolvedValue({ environment, claims: {} });
+
+      const override = await resolveApiRateLimitOverride(header);
+
+      expect(mocks.resolveRunToken).toHaveBeenCalledWith(runToken);
+      expect(override?.identifier).toBe("env_1");
+      expect(mocks.authenticateAuthorizationHeader).not.toHaveBeenCalled();
+    }
+  );
+
+  it("returns no override for an invalid run token", async () => {
+    mocks.resolveRunToken.mockResolvedValue(undefined);
+
+    await expect(resolveApiRateLimitOverride(`Bearer ${runToken}`)).resolves.toBeUndefined();
   });
 });

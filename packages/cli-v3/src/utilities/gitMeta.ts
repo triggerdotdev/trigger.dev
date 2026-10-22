@@ -38,10 +38,59 @@ export async function createGitMeta(directory: string): Promise<GitMeta | undefi
     remoteUrl: sanitizeGitRemoteUrl(remoteUrl ?? undefined),
     commitAuthorName: commit.author.name,
     commitMessage: commit.subject,
-    commitRef: commit.branch,
+    // Most CI providers other than GitHub Actions check out a detached HEAD
+    commitRef: commit.branch === "HEAD" ? (getCiBranch() ?? commit.branch) : commit.branch,
     commitSha: commit.hash,
     dirty,
   };
+}
+
+// Branch variables for each CI provider, pull and merge request source branches first.
+// Only the detected provider's variables are read, so a generic name like BRANCH_NAME set
+// for another purpose isn't mistaken for the branch.
+const CI_PROVIDER_BRANCH_VARS: Array<{
+  detect: (env: NodeJS.ProcessEnv) => boolean;
+  vars: string[];
+}> = [
+  {
+    detect: (env) => env.GITLAB_CI === "true",
+    vars: ["CI_MERGE_REQUEST_SOURCE_BRANCH_NAME", "CI_COMMIT_BRANCH"],
+  },
+  { detect: (env) => !!env.BITBUCKET_BUILD_NUMBER, vars: ["BITBUCKET_BRANCH"] },
+  { detect: (env) => env.CIRCLECI === "true", vars: ["CIRCLE_BRANCH"] },
+  { detect: (env) => env.BUILDKITE === "true", vars: ["BUILDKITE_BRANCH"] },
+  // TRAVIS_PULL_REQUEST_BRANCH is empty on push builds
+  { detect: (env) => env.TRAVIS === "true", vars: ["TRAVIS_PULL_REQUEST_BRANCH", "TRAVIS_BRANCH"] },
+  { detect: (env) => !!env.JENKINS_URL, vars: ["CHANGE_BRANCH", "BRANCH_NAME"] },
+  {
+    detect: (env) => env.TF_BUILD === "True",
+    vars: ["SYSTEM_PULLREQUEST_SOURCEBRANCH", "BUILD_SOURCEBRANCH"],
+  },
+];
+
+export function getCiBranch(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const provider = CI_PROVIDER_BRANCH_VARS.find(({ detect }) => detect(env));
+
+  for (const name of provider?.vars ?? []) {
+    const value = env[name]?.trim();
+
+    if (!value) {
+      continue;
+    }
+
+    // Azure uses full refs. Only branch refs name a branch, not tags or pull request merges.
+    if (value.startsWith("refs/")) {
+      if (value.startsWith("refs/heads/")) {
+        return value.slice("refs/heads/".length);
+      }
+
+      continue;
+    }
+
+    return value;
+  }
+
+  return undefined;
 }
 
 function getLastCommit(directory: string): Promise<git.Commit> {

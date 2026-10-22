@@ -94,6 +94,8 @@ describe("Task Runs V2", () => {
       "", // task_kind
       null, // is_warm_start
       "", // external_deployment_id
+      "", // worker_cell
+      "", // worker_lane
     ];
 
     const [insertError, insertResult] = await insert([taskRunData]);
@@ -238,6 +240,8 @@ describe("Task Runs V2", () => {
         "", // task_kind
         null, // is_warm_start
         "", // external_deployment_id
+        "", // worker_cell
+        "", // worker_lane
       ];
 
       const [insertError, insertResult] = await insert([taskRunData]);
@@ -339,6 +343,8 @@ describe("Task Runs V2", () => {
       "", // task_kind
       null, // is_warm_start
       "", // external_deployment_id
+      "", // worker_cell
+      "", // worker_lane
     ];
 
     const run2: TaskRunInsertArray = [
@@ -398,6 +404,8 @@ describe("Task Runs V2", () => {
       "", // task_kind
       null, // is_warm_start
       "", // external_deployment_id
+      "", // worker_cell
+      "", // worker_lane
     ];
 
     const [insertError, insertResult] = await insert([run1, run2]);
@@ -504,6 +512,8 @@ describe("Task Runs V2", () => {
         "", // task_kind
         null, // is_warm_start
         "", // external_deployment_id
+        "", // worker_cell
+        "", // worker_lane
       ];
 
       const [_insertError, _insertResult] = await insert([taskRun]);
@@ -618,6 +628,8 @@ describe("Task Runs V2", () => {
         "", // task_kind
         null, // is_warm_start
         "", // external_deployment_id
+        "", // worker_cell
+        "", // worker_lane
       ];
 
       const childA_v1: TaskRunInsertArray = [
@@ -677,6 +689,8 @@ describe("Task Runs V2", () => {
         "",
         null,
         "", // external_deployment_id
+        "", // worker_cell
+        "", // worker_lane
       ];
 
       const childA_v2: TaskRunInsertArray = [...childA_v1];
@@ -740,6 +754,8 @@ describe("Task Runs V2", () => {
         "",
         null,
         "", // external_deployment_id
+        "", // worker_cell
+        "", // worker_lane
       ];
 
       const childDeleted_v1: TaskRunInsertArray = [
@@ -799,6 +815,8 @@ describe("Task Runs V2", () => {
         "",
         null,
         "", // external_deployment_id
+        "", // worker_cell
+        "", // worker_lane
       ];
 
       const childDeleted_v2: TaskRunInsertArray = [...childDeleted_v1];
@@ -978,6 +996,8 @@ describe("Task Runs V2", () => {
         "",
         null,
         "", // external_deployment_id
+        "", // worker_cell
+        "", // worker_lane
       ];
 
       const rdsSnapshot: TaskRunInsertArray = [...base];
@@ -1083,6 +1103,8 @@ describe("Task Runs V2", () => {
         "",
         null,
         "", // external_deployment_id
+        "", // worker_cell
+        "", // worker_lane
       ];
 
       const earlier: TaskRunInsertArray = [...base];
@@ -1188,6 +1210,8 @@ describe("Task Runs V2", () => {
         "",
         null,
         "", // external_deployment_id
+        "", // worker_cell
+        "", // worker_lane
       ];
 
       const rdsSnapshot: TaskRunInsertArray = [...base];

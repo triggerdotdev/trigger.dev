@@ -1,6 +1,7 @@
 export * from "./apiClient/index.js";
 export * from "./apiClient/types.js";
 export * from "./apiClient/pagination.js";
+export * from "./apiClient/runTracePages.js";
 export type { ApiPromise, OffsetLimitPagePromise, CursorPagePromise } from "./apiClient/core.js";
 export * from "./apiClient/errors.js";
 export * from "./apiClient/refreshAccessToken.js";

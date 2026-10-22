@@ -1,4 +1,5 @@
-import { createRedisClient, type Redis } from "@internal/redis";
+import type { RedisClient } from "@internal/redis";
+import { createFairQueueRedisClient } from "../connection.js";
 import { BaseScheduler } from "../scheduler.js";
 import type {
   DRRSchedulerConfig,
@@ -24,7 +25,7 @@ import type {
  * - Automatic deficit cleanup for inactive tenants
  */
 export class DRRScheduler extends BaseScheduler {
-  private redis: Redis;
+  private redis: RedisClient;
   private keys: FairQueueKeyProducer;
   private quantum: number;
   private maxDeficit: number;
@@ -33,7 +34,7 @@ export class DRRScheduler extends BaseScheduler {
 
   constructor(private config: DRRSchedulerConfig) {
     super();
-    this.redis = createRedisClient(config.redis);
+    this.redis = createFairQueueRedisClient(config.redis);
     this.keys = config.keys;
     this.quantum = config.quantum;
     this.maxDeficit = config.maxDeficit;
@@ -259,6 +260,9 @@ export class DRRScheduler extends BaseScheduler {
   // ============================================================================
 
   #deficitKey(): string {
+    if (this.keys.drrDeficitKey) {
+      return this.keys.drrDeficitKey();
+    }
     // Use a fixed key for DRR deficit tracking
     return `${this.keys.masterQueueKey(0).split(":")[0]}:drr:deficit`;
   }

@@ -856,6 +856,7 @@ describe("RunEngine ttl", () => {
         // The run should have been removed from the queue by the TTL Lua script
         // So dequeue should return nothing
         const dequeued = await engine.dequeueFromWorkerQueue({
+          blockingPopTimeoutSeconds: 1,
           consumerId: "test-consumer",
           workerQueue: "main",
           backgroundWorkerId: (await prisma.backgroundWorker.findFirst({

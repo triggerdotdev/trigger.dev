@@ -25,7 +25,7 @@ const DOT_HEADROOM = 3;
 
 type MiniLineChartDatum = {
   date: Date;
-  count: number;
+  count: number | null;
   /** Raw per-bucket throttled count (tooltip). */
   throttledCount: number;
   /** The queued value again, present only around throttled buckets, so the warning overlay
@@ -35,7 +35,7 @@ type MiniLineChartDatum = {
 
 export type MiniLineChartProps = {
   /** Equal-width time buckets, oldest first. */
-  data?: number[];
+  data?: (number | null)[];
   /**
    * Per-bucket throttled counts aligned 1:1 with `data`. Where throttling occurred, the queued
    * line itself is retraced in the warning colour — one line that changes colour, with the
@@ -58,6 +58,7 @@ export type MiniLineChartProps = {
   peakTooltip?: ReactNode;
   /** Unit shown in the per-bucket tooltip (e.g. queued, runs). */
   unitLabel?: UnitLabel;
+  formatValue?: (value: number) => string;
   /** Chart width in px. Defaults to the shared ACTIVITY_CHART_WIDTH. Ignored when `fillWidth`. */
   width?: number;
   /** Plot height in px. Defaults to the shared ACTIVITY_CHART_HEIGHT. */
@@ -66,6 +67,8 @@ export type MiniLineChartProps = {
   fillWidth?: boolean;
   /** Show the trailing peak label to the right of the chart. Defaults to true. */
   showPeak?: boolean;
+  lineType?: "monotone" | "stepAfter";
+  yDomain?: [number, number];
 };
 
 /**
@@ -86,17 +89,20 @@ export function MiniLineChart({
   formatPeak,
   peakTooltip,
   unitLabel = { singular: "value", plural: "values" },
+  formatValue,
   width = ACTIVITY_CHART_WIDTH,
   height = ACTIVITY_CHART_HEIGHT,
   fillWidth = false,
   showPeak = true,
+  lineType = "monotone",
+  yDomain,
 }: MiniLineChartProps) {
   const hasPeakOverride = peakOverride !== undefined;
   if (
     !data ||
     data.length === 0 ||
     bucketStartMs === undefined ||
-    (data.every((v) => v === 0) && !hasPeakOverride)
+    (data.every((v) => v === 0) && !hasPeakOverride && !yDomain)
   ) {
     return <span className="text-text-dimmed">–</span>;
   }
@@ -105,7 +111,7 @@ export function MiniLineChart({
   // a wholly-zero throttled series never paints over the queued line.
   const hasThrottled = throttled?.some((v) => v > 0) ?? false;
 
-  const max = Math.max(...data);
+  const max = Math.max(...data.map((v) => v ?? 0));
   const peak = peakOverride ?? max;
 
   // Map each bucket to a dated point so the tooltip can show the window it represents.
@@ -131,17 +137,23 @@ export function MiniLineChart({
       height={height + DOT_HEADROOM}
       margin={{ top: DOT_HEADROOM, right: 0, left: 0, bottom: 0 }}
     >
-      <YAxis domain={[0, max || 1]} hide />
+      <YAxis domain={yDomain ?? [0, max || 1]} hide />
       <Tooltip
         cursor={{ stroke: "rgba(255, 255, 255, 0.2)", strokeWidth: 1 }}
-        content={<MiniLineChartTooltip unitLabel={unitLabel} overlayLabel={overlayLabel} />}
+        content={
+          <MiniLineChartTooltip
+            unitLabel={unitLabel}
+            overlayLabel={overlayLabel}
+            formatValue={formatValue}
+          />
+        }
         allowEscapeViewBox={{ x: true, y: true }}
         wrapperStyle={{ zIndex: 1000 }}
         animationDuration={0}
       />
       <ReferenceLine y={0} stroke="var(--color-border-bright)" strokeWidth={1} />
       <Line
-        type="monotone"
+        type={lineType}
         dataKey="count"
         stroke={color}
         strokeWidth={1}
@@ -151,7 +163,7 @@ export function MiniLineChart({
       />
       {hasThrottled && (
         <Line
-          type="monotone"
+          type={lineType}
           dataKey="throttledOverlay"
           stroke="var(--color-warning)"
           strokeWidth={1}
@@ -202,9 +214,15 @@ function MiniLineChartTooltip({
   payload,
   unitLabel,
   overlayLabel = "throttled",
-}: TooltipProps<number, string> & { unitLabel: UnitLabel; overlayLabel?: string | null }) {
+  formatValue,
+}: TooltipProps<number, string> & {
+  unitLabel: UnitLabel;
+  overlayLabel?: string | null;
+  formatValue?: (value: number) => string;
+}) {
   if (!active || !payload || payload.length === 0) return null;
   const entry = payload[0].payload as MiniLineChartDatum;
+  if (entry.count === null) return null;
   const date = entry.date instanceof Date ? entry.date : new Date(entry.date);
   const formattedDate = formatDateTime(date, "UTC", [], false, true);
   const throttled = entry.throttledCount;
@@ -213,10 +231,16 @@ function MiniLineChartTooltip({
       <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
         <Header3 className="border-b border-b-border-bright pb-2">{formattedDate}</Header3>
         <div className="mt-2 text-xs text-text-bright">
-          <span className="tabular-nums">{entry.count.toLocaleString()}</span>{" "}
-          <span className="text-text-dimmed">
-            {entry.count === 1 ? unitLabel.singular : unitLabel.plural}
-          </span>
+          {formatValue ? (
+            formatValue(entry.count)
+          ) : (
+            <>
+              <span className="tabular-nums">{entry.count.toLocaleString()}</span>{" "}
+              <span className="text-text-dimmed">
+                {entry.count === 1 ? unitLabel.singular : unitLabel.plural}
+              </span>
+            </>
+          )}
         </div>
         {throttled > 0 && overlayLabel !== null && (
           <div className="mt-1 text-xs text-warning">

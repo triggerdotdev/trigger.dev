@@ -23,7 +23,7 @@ vi.mock("~/services/clickhouse/clickhouseFactoryInstance.server", () => ({
 import { ClickHouse } from "@internal/clickhouse";
 import { RunEngine } from "@internal/run-engine";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "@internal/run-engine/tests";
-import { containerTest } from "@internal/testcontainers";
+import { containerTestWithClickhouse } from "@internal/testcontainers";
 import { trace } from "@opentelemetry/api";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClient } from "@trigger.dev/database";
@@ -112,7 +112,7 @@ async function triggerOnQueue(
 }
 
 describe("QueueListPresenter archived filter", () => {
-  containerTest(
+  containerTestWithClickhouse(
     "exclude hides archived queues across list, search and counts; include keeps them",
     async ({ prisma, redisOptions }) => {
       const engine = buildEngine(prisma, redisOptions);
@@ -159,7 +159,7 @@ describe("QueueListPresenter archived filter", () => {
     }
   );
 
-  containerTest(
+  containerTestWithClickhouse(
     "returns archived queues with queued runs as active, and skips idle archived queues",
     async ({ prisma, redisOptions }) => {
       const engine = buildEngine(prisma, redisOptions);
@@ -209,7 +209,7 @@ describe("QueueListPresenter archived filter", () => {
 });
 
 describe("public queue shape", () => {
-  containerTest(
+  containerTestWithClickhouse(
     "the public API item never exposes archive state",
     async ({ prisma, redisOptions }) => {
       const engine = buildEngine(prisma, redisOptions);
@@ -229,32 +229,35 @@ describe("public queue shape", () => {
 });
 
 describe("QueueAllocationPresenter", () => {
-  containerTest("excludes archived queues from the allocated sum", async ({ prisma }) => {
-    const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-    await createQueue(prisma, environment, "emails", { concurrencyLimit: 20 });
-    await createQueue(prisma, environment, "images", { concurrencyLimit: 30 });
-    await createQueue(prisma, environment, "old", {
-      concurrencyLimit: 25,
-      archivedAt: new Date(),
-    });
+  containerTestWithClickhouse(
+    "excludes archived queues from the allocated sum",
+    async ({ prisma }) => {
+      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      await createQueue(prisma, environment, "emails", { concurrencyLimit: 20 });
+      await createQueue(prisma, environment, "images", { concurrencyLimit: 30 });
+      await createQueue(prisma, environment, "old", {
+        concurrencyLimit: 25,
+        archivedAt: new Date(),
+      });
 
-    const allocation = await new QueueAllocationPresenter(prisma, prisma).call({
-      environment: { ...environment, maximumConcurrencyLimit: 100 },
-    });
+      const allocation = await new QueueAllocationPresenter(prisma, prisma).call({
+        environment: { ...environment, maximumConcurrencyLimit: 100 },
+      });
 
-    expect(allocation).toEqual({ totalQueues: 2, allocated: 50, unlimitedCount: 0 });
+      expect(allocation).toEqual({ totalQueues: 2, allocated: 50, unlimitedCount: 0 });
 
-    // With archiving disabled for the org, the tile counts every queue, like the list.
-    const unfiltered = await new QueueAllocationPresenter(prisma, prisma).call({
-      environment: { ...environment, maximumConcurrencyLimit: 100 },
-      excludeArchived: false,
-    });
-    expect(unfiltered).toEqual({ totalQueues: 3, allocated: 75, unlimitedCount: 0 });
-  });
+      // With archiving disabled for the org, the tile counts every queue, like the list.
+      const unfiltered = await new QueueAllocationPresenter(prisma, prisma).call({
+        environment: { ...environment, maximumConcurrencyLimit: 100 },
+        excludeArchived: false,
+      });
+      expect(unfiltered).toEqual({ totalQueues: 3, allocated: 75, unlimitedCount: 0 });
+    }
+  );
 });
 
 describe("ArchiveQueueService", () => {
-  containerTest(
+  containerTestWithClickhouse(
     "archives an idle queue without touching limits, overrides, paused state or worker links",
     async ({ prisma, redisOptions }) => {
       const engine = buildEngine(prisma, redisOptions);
@@ -296,28 +299,31 @@ describe("ArchiveQueueService", () => {
     }
   );
 
-  containerTest("refuses to archive a queue with queued runs", async ({ prisma, redisOptions }) => {
-    const engine = buildEngine(prisma, redisOptions);
-    onTestFinished(() => engine.quit());
-    const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-    await setupBackgroundWorker(engine, environment, "busy-task");
-    await deployWithout(engine, environment);
-    const queue = await prisma.taskQueue.findFirstOrThrow({
-      where: { runtimeEnvironmentId: environment.id, name: "task/busy-task" },
-    });
-    await triggerOnQueue(engine, prisma, environment, "busy-task", queue.name);
+  containerTestWithClickhouse(
+    "refuses to archive a queue with queued runs",
+    async ({ prisma, redisOptions }) => {
+      const engine = buildEngine(prisma, redisOptions);
+      onTestFinished(() => engine.quit());
+      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      await setupBackgroundWorker(engine, environment, "busy-task");
+      await deployWithout(engine, environment);
+      const queue = await prisma.taskQueue.findFirstOrThrow({
+        where: { runtimeEnvironmentId: environment.id, name: "task/busy-task" },
+      });
+      await triggerOnQueue(engine, prisma, environment, "busy-task", queue.name);
 
-    const result = await new ArchiveQueueService(prisma, engine).archive(
-      environment,
-      queue.friendlyId
-    );
-    expect(result.isErr() && result.error.type).toBe("queue_has_active_runs");
+      const result = await new ArchiveQueueService(prisma, engine).archive(
+        environment,
+        queue.friendlyId
+      );
+      expect(result.isErr() && result.error.type).toBe("queue_has_active_runs");
 
-    const after = await prisma.taskQueue.findFirstOrThrow({ where: { id: queue.id } });
-    expect(after.archivedAt).toBeNull();
-  });
+      const after = await prisma.taskQueue.findFirstOrThrow({ where: { id: queue.id } });
+      expect(after.archivedAt).toBeNull();
+    }
+  );
 
-  containerTest(
+  containerTestWithClickhouse(
     "counts runs handed to a worker queue but not yet picked up as active",
     async ({ prisma, redisOptions }) => {
       const engine = buildEngine(prisma, redisOptions);
@@ -364,7 +370,7 @@ describe("ArchiveQueueService", () => {
     }
   );
 
-  containerTest(
+  containerTestWithClickhouse(
     "refuses to archive paused queues, limit-0 or combined-limit-0 queues and named concurrency limits",
     async ({ prisma, redisOptions }) => {
       const engine = buildEngine(prisma, redisOptions);
@@ -404,7 +410,7 @@ describe("ArchiveQueueService", () => {
     }
   );
 
-  containerTest(
+  containerTestWithClickhouse(
     "check reports the reason and run count without archiving",
     async ({ prisma, redisOptions }) => {
       const engine = buildEngine(prisma, redisOptions);
@@ -430,7 +436,7 @@ describe("ArchiveQueueService", () => {
     }
   );
 
-  containerTest(
+  containerTestWithClickhouse(
     "refuses to archive a queue the current or an unpromoted deploy declares",
     async ({ prisma, redisOptions }) => {
       const engine = buildEngine(prisma, redisOptions);
@@ -470,7 +476,7 @@ describe("ArchiveQueueService", () => {
     }
   );
 
-  containerTest(
+  containerTestWithClickhouse(
     "a deploy created in the same millisecond as the current one still blocks archiving",
     async ({ prisma, redisOptions }) => {
       const engine = buildEngine(prisma, redisOptions);
@@ -506,7 +512,7 @@ describe("ArchiveQueueService", () => {
     }
   );
 
-  containerTest(
+  containerTestWithClickhouse(
     "a queue update landing between the check and the write aborts the archive",
     async ({ prisma, redisOptions }) => {
       const engine = buildEngine(prisma, redisOptions);
@@ -538,7 +544,7 @@ describe("ArchiveQueueService", () => {
     }
   );
 
-  containerTest(
+  containerTestWithClickhouse(
     "unarchive brings the queue back to the default list",
     async ({ prisma, redisOptions }) => {
       const engine = buildEngine(prisma, redisOptions);
@@ -565,7 +571,7 @@ describe("ArchiveQueueService", () => {
 });
 
 describe("QueueListPresenter ranked sort", () => {
-  containerTest(
+  containerTestWithClickhouse(
     "a busy archived queue doesn't take a slot or push queues off the last page",
     async ({ prisma, redisOptions, clickhouseContainer }) => {
       const engine = buildEngine(prisma, redisOptions);

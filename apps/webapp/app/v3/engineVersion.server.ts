@@ -4,6 +4,7 @@ import {
   findCurrentWorkerFromEnvironment,
   getCurrentWorkerDeploymentEngineVersion,
 } from "./models/workerDeployment.server";
+import { ServiceValidationError } from "./services/common.server";
 
 // Co-locate the per-env run-ops residency/mint decision next to the
 // engine-version decision. determineEngineVersion is intentionally left untouched so its
@@ -57,7 +58,9 @@ export async function determineEngineVersion({
     });
 
     if (!worker) {
-      throw new Error(`Worker not found: environment: ${environment.id} version: ${workerVersion}`);
+      throw new ServiceValidationError(
+        `Version ${workerVersion} was not found in this environment`
+      );
     }
 
     return worker.engine;

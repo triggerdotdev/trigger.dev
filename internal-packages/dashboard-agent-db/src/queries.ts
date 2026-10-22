@@ -1,4 +1,5 @@
 import {
+  ALERT_CREATION_OPENING_MESSAGE_ID_PREFIX,
   INVESTIGATE_REQUEST_MESSAGE_ID_PREFIX,
   investigationBlockSchema,
   toWellFormedDeep,
@@ -6,7 +7,7 @@ import {
   WAKE_REQUEST_MESSAGE_ID_PREFIX,
   WATCH_REQUEST_MESSAGE_ID_PREFIX,
 } from "@internal/dashboard-agent-contracts";
-import { and, desc, eq, inArray, ne, notLike, or, sql, isNull, type SQL } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, ne, notLike, or, sql, isNull, type SQL } from "drizzle-orm";
 import type { DashboardAgentDb } from "./client.js";
 import { generateInvestigationId } from "./ids.js";
 import { lockChatForWatches, type DashboardAgentDbOrTx } from "./internal.js";
@@ -19,6 +20,7 @@ import {
   investigations,
   watches,
   watchSubmissions,
+  type ChatKind,
   type Investigation,
   type NewChatTurnEval,
   type Watch,
@@ -37,6 +39,7 @@ export * from "./watch-queries.js";
 // `userId`. This file is where tenant isolation lives.
 
 export const DEFAULT_CHAT_TITLE = "New chat";
+export const ALERT_CREATION_CHAT_TITLE = "New alert";
 
 /**
  * Which chats a viewer sees. A chat someone else created for the owner is hidden from the
@@ -62,13 +65,19 @@ export interface ChatListItem {
   createdAt: Date;
   updatedAt: Date;
   metadata: Record<string, unknown>;
+  kind: ChatKind | null;
 }
 
 /** Never joins the messages or selects the session token. Covered by `chats_org_user_last_msg_idx`. */
 export async function listChats(
   db: DashboardAgentDb,
-  params: ChatViewer & { limit?: number }
+  params: ChatViewer & {
+    limit?: number;
+    withMessagesOnly?: boolean;
+    alertRoutedChatIds?: string[];
+  }
 ): Promise<ChatListItem[]> {
+  const alertRoutedChatIds = params.alertRoutedChatIds ?? [];
   return db
     .select({
       id: chats.id,
@@ -79,6 +88,7 @@ export async function listChats(
       createdAt: chats.createdAt,
       updatedAt: chats.updatedAt,
       metadata: chats.metadata,
+      kind: chats.kind,
     })
     .from(chats)
     .where(
@@ -86,7 +96,14 @@ export async function listChats(
         eq(chats.organizationId, params.organizationId),
         eq(chats.userId, params.userId),
         visibleTo(params.actingUserId),
-        isNull(chats.deletedAt)
+        isNull(chats.deletedAt),
+        params.withMessagesOnly
+          ? or(
+              gt(chats.nextMessagePosition, 1),
+              eq(chats.kind, "alert_creation"),
+              alertRoutedChatIds.length > 0 ? inArray(chats.id, alertRoutedChatIds) : undefined
+            )
+          : undefined
       )
     )
     .orderBy(sql`${chats.pinnedAt} desc nulls last`, desc(chats.lastMessageAt))
@@ -144,6 +161,7 @@ export async function countUserMessages(
         notLike(chatMessages.messageId, `${WATCH_REQUEST_MESSAGE_ID_PREFIX}%`),
         notLike(chatMessages.messageId, `${WAKE_REQUEST_MESSAGE_ID_PREFIX}%`),
         notLike(chatMessages.messageId, `${INVESTIGATE_REQUEST_MESSAGE_ID_PREFIX}%`),
+        notLike(chatMessages.messageId, `${ALERT_CREATION_OPENING_MESSAGE_ID_PREFIX}%`),
         params.excludeChatId ? ne(chatMessages.chatId, params.excludeChatId) : undefined
       )
     );
@@ -294,6 +312,29 @@ export async function chatExists(
   return rows.length > 0;
 }
 
+/** `chatExists` plus what a turn needs to keep the chat's scope; null when not visible. */
+export async function getChatScope(
+  db: DashboardAgentDb,
+  params: ChatViewer & { chatId: string }
+): Promise<{ kind: ChatKind | null; metadata: Record<string, unknown> } | null> {
+  const rows = await db
+    .select({ kind: chats.kind, metadata: chats.metadata })
+    .from(chats)
+    .where(
+      and(
+        eq(chats.id, params.chatId),
+        eq(chats.organizationId, params.organizationId),
+        eq(chats.userId, params.userId),
+        visibleTo(params.actingUserId),
+        isNull(chats.deletedAt)
+      )
+    )
+    .limit(1);
+  const row = rows[0];
+  if (!row) return null;
+  return { kind: row.kind ?? null, metadata: (row.metadata as Record<string, unknown>) ?? {} };
+}
+
 /** Idempotent: the webapp's insert and the agent's ensure-exists race. */
 export async function createChat(
   db: DashboardAgentDb,
@@ -305,6 +346,7 @@ export async function createChat(
     metadata?: Record<string, unknown>;
     /** Who is starting this chat when it isn't `userId`; hides it from `userId`'s own view. */
     createdByUserId?: string;
+    kind?: ChatKind;
   }
 ): Promise<void> {
   await db
@@ -314,6 +356,7 @@ export async function createChat(
       organizationId: params.organizationId,
       userId: params.userId,
       ...(params.createdByUserId ? { createdByUserId: params.createdByUserId } : {}),
+      ...(params.kind ? { kind: params.kind } : {}),
       title: params.title ?? DEFAULT_CHAT_TITLE,
       metadata: toWellFormedDeep(params.metadata ?? {}),
     })
@@ -692,7 +735,7 @@ export async function appendChatMessageOnce(
  */
 export async function appendChatMessageOnceByChatId(
   db: DashboardAgentDbOrTx,
-  params: { chatId: string; message: { id: string; role: string } }
+  params: { chatId: string; message: { id: string; role: string; parts?: unknown[] } }
 ): Promise<boolean> {
   return appendOneMessage(db, { chatId: params.chatId, message: params.message, scope: [] });
 }

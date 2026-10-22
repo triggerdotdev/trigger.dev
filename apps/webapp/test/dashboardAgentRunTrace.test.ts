@@ -4,7 +4,7 @@
 // real Postgres and ClickHouse behind them.
 import { ClickHouse, type TaskEventV2Input } from "@internal/clickhouse";
 import { setupAuthenticatedEnvironment } from "@internal/run-engine/tests";
-import { containerTest } from "@internal/testcontainers";
+import { containerTestWithClickhouse } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect, vi } from "vitest";
 import {
@@ -413,7 +413,7 @@ function depthOf(rootSpan: DashboardAgentTraceSpan | undefined): number {
 }
 
 describe("the dashboard agent run trace", () => {
-  containerTest(
+  containerTestWithClickhouse(
     "reports the same millisecond durations, task slugs and customer-visible events on both event stores",
     async ({ prisma, clickhouseContainer }) => {
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
@@ -506,7 +506,7 @@ describe("the dashboard agent run trace", () => {
     TIMEOUT_MS
   );
 
-  containerTest(
+  containerTestWithClickhouse(
     "keeps a chain well under the depth guard fully intact and JSON-serializable",
     async ({ prisma }) => {
       const { repository, environmentId, organizationId, startedAt } =
@@ -529,7 +529,7 @@ describe("the dashboard agent run trace", () => {
     TIMEOUT_MS
   );
 
-  containerTest(
+  containerTestWithClickhouse(
     "does not truncate a chain of exactly the depth guard",
     async ({ prisma }) => {
       const { repository, environmentId, organizationId, startedAt } =
@@ -557,7 +557,7 @@ describe("the dashboard agent run trace", () => {
     TIMEOUT_MS
   );
 
-  containerTest(
+  containerTestWithClickhouse(
     "truncates a chain deeper than the depth guard instead of throwing",
     async ({ prisma }) => {
       const { repository, environmentId, organizationId, startedAt } =
@@ -583,6 +583,65 @@ describe("the dashboard agent run trace", () => {
       // The root itself isn't a descendant, so a depth of 1,500 means 1,501 nodes total.
       expect(depthOf(result?.trace.rootSpan)).toBe(1_500);
       expect(() => JSON.stringify(result)).not.toThrow();
+    },
+    TIMEOUT_MS
+  );
+  containerTestWithClickhouse(
+    "builds a child run's trace when the trace root is outside the child's window",
+    async ({ prisma, clickhouseContainer }) => {
+      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        logLevel: "error",
+      });
+      const repository = new ClickhouseEventRepository({ clickhouse, version: "v2" });
+
+      // The child run starts two days after the root, so the root span is outside its window.
+      const childAt = Date.now();
+      const rootAt = childAt - 2 * 24 * 60 * 60 * 1000;
+      const expiresAt = convertDateToClickhouseDateTime(new Date(childAt + 24 * 60 * 60 * 1000));
+      const grandchildSpanId = "grandchildspan01";
+      const span = (spanId: string, parentSpanId: string, ms: number): TaskEventV2Input => ({
+        environment_id: environment.id,
+        organization_id: environment.organizationId,
+        project_id: "proj_agent_trace",
+        task_identifier: TASK_IDENTIFIER,
+        run_id: runId,
+        trace_id: traceId,
+        start_time: clickhouseStartTime(ms),
+        inserted_at: convertDateToClickhouseDateTime(new Date(ms)),
+        duration: String(CHILD_DURATION_NS),
+        span_id: spanId,
+        parent_span_id: parentSpanId,
+        message: spanId,
+        kind: "SPAN",
+        status: "OK",
+        attributes: {},
+        metadata: "{}",
+        expires_at: expiresAt,
+      });
+
+      const [insertError] = await clickhouse.taskEventsV2.insert([
+        span(rootSpanId, "", rootAt),
+        span(childSpanId, rootSpanId, childAt),
+        span(grandchildSpanId, childSpanId, childAt + 10),
+      ]);
+      expect(insertError).toBeNull();
+      const subtreeReads = vi.spyOn(repository, "getTraceSubtreeSummary");
+
+      const result = await readTrace({
+        repository,
+        prisma,
+        environmentId: environment.id,
+        organizationId: environment.organizationId,
+        createdAt: new Date(childAt),
+        anchorSpanId: childSpanId,
+      });
+
+      // The summary itself is rooted at the child, without the subtree fallback.
+      expect(subtreeReads).not.toHaveBeenCalled();
+      expect(result?.trace.rootSpan.id).toBe(childSpanId);
+      expect(result?.trace.rootSpan.children.map((child) => child.id)).toEqual([grandchildSpanId]);
     },
     TIMEOUT_MS
   );

@@ -2,6 +2,8 @@ import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { type GetDeploymentResponseBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { prisma } from "~/db.server";
+import { env } from "~/env.server";
+import { resolveDeployBaseImages } from "~/v3/deployBaseImages.server";
 import { authenticateApiKeyWithScope } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 
@@ -65,6 +67,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       externalId: deployment.externalId ?? undefined,
       externalBuildData:
         deployment.externalBuildData as GetDeploymentResponseBody["externalBuildData"],
+      baseImages: resolveDeployBaseImages(deployment.runtime, {
+        base: env.DEPLOY_BASE_IMAGES,
+        buildBase: env.DEPLOY_BUILD_BASE_IMAGES,
+      }),
       errorData: deployment.errorData as GetDeploymentResponseBody["errorData"],
       canceledReason: deployment.canceledReason,
       worker: deployment.worker

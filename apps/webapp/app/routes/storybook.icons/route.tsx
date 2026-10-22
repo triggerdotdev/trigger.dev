@@ -34,6 +34,7 @@ import { BulbIcon } from "~/assets/icons/BulbIcon";
 import { BunLogoIcon } from "~/assets/icons/BunLogoIcon";
 import { ChartArrowIcon } from "~/assets/icons/ChartArrowIcon";
 import { ChartBarIcon } from "~/assets/icons/ChartBarIcon";
+import { CheckMarkIcon } from "~/assets/icons/CheckMarkIcon";
 import { ChevronExtraSmallDown } from "~/assets/icons/ChevronExtraSmallDown";
 import { ChevronExtraSmallUp } from "~/assets/icons/ChevronExtraSmallUp";
 import { ClockIcon } from "~/assets/icons/ClockIcon";
@@ -134,6 +135,7 @@ import { TextWrapIcon } from "~/assets/icons/TextWrapIcon";
 import { TimedOutIcon } from "~/assets/icons/TimedOutIcon";
 import { ToggleArrowIcon } from "~/assets/icons/ToggleArrowIcon";
 import { TraceIcon } from "~/assets/icons/TraceIcon";
+import { TrashIcon } from "~/assets/icons/TrashIcon";
 import { TriggerIcon } from "~/assets/icons/TriggerIcon";
 import { TwoTreesIcon } from "~/assets/icons/TwoTreesIcon";
 import { UserCrossIcon } from "~/assets/icons/UserCrossIcon";
@@ -179,6 +181,7 @@ const icons: IconEntry[] = [
   { name: "CerebrasIcon", render: simple(CerebrasIcon) },
   { name: "ChartArrowIcon", render: simple(ChartArrowIcon) },
   { name: "ChartBarIcon", render: simple(ChartBarIcon) },
+  { name: "CheckMarkIcon", render: simple(CheckMarkIcon) },
   { name: "CheckingConnectionIcon", render: simple(CheckingConnectionIcon) },
   { name: "ChevronExtraSmallDown", render: simple(ChevronExtraSmallDown) },
   { name: "ChevronExtraSmallUp", render: simple(ChevronExtraSmallUp) },
@@ -286,6 +289,7 @@ const icons: IconEntry[] = [
   { name: "TimedOutIcon", render: simple(TimedOutIcon) },
   { name: "ToggleArrowIcon", render: simple(ToggleArrowIcon) },
   { name: "TraceIcon", render: simple(TraceIcon) },
+  { name: "TrashIcon", render: simple(TrashIcon) },
   { name: "TriggerIcon", render: simple(TriggerIcon) },
   { name: "TwoTreesIcon", render: simple(TwoTreesIcon) },
   { name: "UnarchiveIcon", render: simple(UnarchiveIcon) },

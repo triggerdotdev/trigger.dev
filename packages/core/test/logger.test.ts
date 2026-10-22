@@ -186,6 +186,16 @@ describe("SimpleStructuredLogger redaction", () => {
     expect(line.harmless).toBe("keep me");
     expect(JSON.stringify(line)).not.toContain("should-not-appear");
   });
+
+  it("serialises Date values as ISO strings instead of walking them as objects", () => {
+    const logger = new SimpleStructuredLogger("test");
+    const startedAt = new Date("2026-10-20T12:00:00.000Z");
+
+    const line = captureLogLine(() => logger.info("run started", { startedAt }));
+
+    expect(line.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(line.startedAt).toBe("2026-10-20T12:00:00.000Z");
+  });
 });
 
 describe("redact()", () => {
@@ -199,6 +209,15 @@ describe("redact()", () => {
     expect(result.apiKey).toMatch(/^\[filtered/);
     expect(result.email).toMatch(/^\[filtered/);
     expect(result.keep).toBe("this stays");
+  });
+
+  it("redacts a packet, which holds run payload or output data", () => {
+    const result = redact({
+      packet: { data: '{"secret":"customer-payload"}', dataType: "application/json" },
+    }) as Record<string, unknown>;
+
+    expect(result.packet).toMatch(/^\[filtered/);
+    expect(JSON.stringify(result)).not.toContain("customer-payload");
   });
 
   it("merges in caller-supplied filteredKeys", () => {

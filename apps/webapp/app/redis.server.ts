@@ -13,6 +13,8 @@ export type RedisWithClusterOptions = {
   keyPrefix?: string;
   /** Cap retries for a command before it rejects; `null` means unlimited (default: ioredis's default of 20). */
   maxRetriesPerRequest?: number | null;
+  /** Reject a command that gets no reply within this many ms (default: no timeout). */
+  commandTimeout?: number;
 };
 
 export type RedisClient = Redis | Cluster;
@@ -49,6 +51,7 @@ export function createRedisClient(
         ...(options.maxRetriesPerRequest !== undefined
           ? { maxRetriesPerRequest: options.maxRetriesPerRequest }
           : {}),
+        ...(options.commandTimeout !== undefined ? { commandTimeout: options.commandTimeout } : {}),
         ...(options.tlsDisabled
           ? {
               checkServerIdentity: () => {
@@ -80,6 +83,7 @@ export function createRedisClient(
       ...(options.maxRetriesPerRequest !== undefined
         ? { maxRetriesPerRequest: options.maxRetriesPerRequest }
         : {}),
+      ...(options.commandTimeout !== undefined ? { commandTimeout: options.commandTimeout } : {}),
       ...(options.tlsDisabled ? {} : { tls: {} }),
     });
   }

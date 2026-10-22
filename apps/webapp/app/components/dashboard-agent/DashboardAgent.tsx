@@ -17,6 +17,9 @@ import { createDockedWidthController, type DockedWidthAction } from "./docked-wi
 import { DashboardAgentPanel } from "./DashboardAgentPanel";
 import { DashboardAgentProvider, TOGGLE_PANEL_SHORTCUT } from "./dashboardAgentLauncher";
 import { useDashboardAgentOpenRequests } from "./dashboardAgentOpenRequest";
+import type { AgentOpenSource } from "./manual-setup-action";
+import type { DraftPrefillParams } from "./alert-creation/flow-state";
+import type { EditAlertPrefill } from "~/components/alerts/EditAlertTranscript";
 import type { PanelHandle } from "@window-splitter/react";
 import {
   AGENT_PANEL_DEFAULT_WIDTH,
@@ -24,6 +27,7 @@ import {
   AGENT_PANEL_MIN_WIDTH,
   agentHiddenContentClassName,
   FloatingAgentWindow,
+  initialFloatingRectFor,
   readAgentPanelWidth,
   useAgentPanelMode,
   writeAgentPanelWidth,
@@ -202,6 +206,15 @@ export function DashboardAgent({
   const [watchRequest, setWatchRequest] = useState<{ spec: WatchSpec; seq: number } | undefined>(
     undefined
   );
+  // The contextual entry point a chat was opened from (e.g. the alerts page), read by the
+  // header's "Manual setup" action. Cleared on close so it never leaks into the next chat.
+  const [openSource, setOpenSource] = useState<AgentOpenSource | undefined>(undefined);
+  const [createAlertPrefill, setCreateAlertPrefill] = useState<DraftPrefillParams | undefined>(
+    undefined
+  );
+  const [editAlertRequest, setEditAlertRequest] = useState<
+    { prefill: EditAlertPrefill; seq: number } | undefined
+  >(undefined);
 
   // The single entry point for opening the panel — every open route must go through it.
   // Opening acknowledges the wakes counted so far, and the visible summary goes with the
@@ -227,6 +240,9 @@ export function DashboardAgent({
       setRequestedMessage(undefined);
       setOpenChatRequest(undefined);
       setWatchRequest(undefined);
+      setOpenSource(undefined);
+      setCreateAlertPrefill(undefined);
+      setEditAlertRequest(undefined);
     },
     [openPanel, resetToPreference]
   );
@@ -234,16 +250,19 @@ export function DashboardAgent({
   const openChat = useCallback(
     (chatId: string) => {
       openPanel();
+      setEditAlertRequest(undefined);
       setOpenChatRequest((current) => ({ chatId, seq: (current?.seq ?? 0) + 1 }));
     },
     [openPanel]
   );
 
   const openWith = useCallback(
-    (text: string) => {
+    (text: string, options?: { source?: AgentOpenSource }) => {
       const trimmed = text.trim();
       if (!trimmed) return;
       openPanel();
+      setEditAlertRequest(undefined);
+      setOpenSource(options?.source);
       setRequestedMessage((current) => ({ text: trimmed, seq: (current?.seq ?? 0) + 1 }));
     },
     [openPanel]
@@ -252,7 +271,26 @@ export function DashboardAgent({
   const openWithWatch = useCallback(
     (spec: WatchSpec) => {
       openPanel();
+      setEditAlertRequest(undefined);
       setWatchRequest((current) => ({ spec, seq: (current?.seq ?? 0) + 1 }));
+    },
+    [openPanel]
+  );
+
+  const openCreateAlert = useCallback(
+    (prefill: DraftPrefillParams) => {
+      openPanel();
+      setEditAlertRequest(undefined);
+      setOpenSource("alerts");
+      setCreateAlertPrefill(prefill);
+    },
+    [openPanel]
+  );
+
+  const openEditAlert = useCallback(
+    (prefill: EditAlertPrefill) => {
+      openPanel();
+      setEditAlertRequest((current) => ({ prefill, seq: (current?.seq ?? 0) + 1 }));
     },
     [openPanel]
   );
@@ -371,6 +409,7 @@ export function DashboardAgent({
       if (!open) {
         setPanelOpen(true);
       } else {
+        setEditAlertRequest(undefined);
         setNewChatSeq((seq) => seq + 1);
       }
     },
@@ -391,11 +430,23 @@ export function DashboardAgent({
       setOpen: setPanelOpen,
       openWith,
       openWithWatch,
+      openCreateAlert,
+      openEditAlert,
       unreadWakes,
       unreadWork,
       watchEnabled,
     }),
-    [open, setPanelOpen, openWith, openWithWatch, unreadWakes, unreadWork, watchEnabled]
+    [
+      open,
+      setPanelOpen,
+      openWith,
+      openWithWatch,
+      openCreateAlert,
+      openEditAlert,
+      unreadWakes,
+      unreadWork,
+      watchEnabled,
+    ]
   );
 
   if (!hasAccess) {
@@ -438,11 +489,18 @@ export function DashboardAgent({
               // Tailwind v4's important modifier is a trailing `!`, not a leading one.
               className={docked ? undefined : "overflow-visible!"}
             >
-              <FloatingAgentWindow mode={mode} onRequestModeChange={changeMode}>
+              <FloatingAgentWindow
+                mode={mode}
+                initialRect={initialFloatingRectFor(openSource)}
+                onRequestModeChange={changeMode}
+              >
                 {({ dragHandleProps, dragHandleClassName }) => (
                   <DashboardAgentPanel
                     onClose={() => setPanelOpen(false)}
                     requestedMessage={requestedMessage}
+                    openSource={openSource}
+                    createAlertPrefill={createAlertPrefill}
+                    editAlertRequest={editAlertRequest}
                     openChatRequest={openChatRequest}
                     watchRequest={watchRequest}
                     newChatSeq={newChatSeq}

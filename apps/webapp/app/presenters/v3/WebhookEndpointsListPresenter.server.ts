@@ -263,7 +263,7 @@ export class WebhookEndpointsListPresenter {
           toUnixTimestamp64Milli(max(delivery_created_at)) AS last_delivery_ms
         FROM (
           SELECT webhook_endpoint_id, delivery_id, argMax(status, _version) AS current_status, max(created_at) AS delivery_created_at
-          FROM trigger_dev.webhook_deliveries_v1
+          FROM trigger_dev.webhook_deliveries_v2
           WHERE organization_id = {organizationId: String}
             AND project_id = {projectId: String}
             AND environment_id = {environmentId: String}

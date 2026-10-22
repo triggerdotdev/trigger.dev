@@ -944,7 +944,12 @@ export class PostgresRunStore implements RunStore {
 
   async startAttempt<S extends Prisma.TaskRunSelect>(
     runId: string,
-    data: { attemptNumber: number; executedAt?: Date; isWarmStart: boolean },
+    data: {
+      attemptNumber: number;
+      executedAt?: Date;
+      isWarmStart: boolean;
+      annotations?: Prisma.InputJsonValue;
+    },
     args: { select: S },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
@@ -958,6 +963,7 @@ export class PostgresRunStore implements RunStore {
         attemptNumber: data.attemptNumber,
         executedAt: data.executedAt,
         isWarmStart: data.isWarmStart,
+        annotations: data.annotations,
       },
       { select: args.select }
     ) as Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
@@ -1034,7 +1040,7 @@ export class PostgresRunStore implements RunStore {
 
   async requeueRun<S extends Prisma.TaskRunSelect>(
     runId: string,
-    args: { select: S },
+    args: { select: S; workerQueue?: string },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
     const prisma = tx ?? this.prisma;
@@ -1042,7 +1048,7 @@ export class PostgresRunStore implements RunStore {
     return this.#updateTaskRunWithSelect(
       prisma,
       { id: runId },
-      { status: "PENDING" },
+      { status: "PENDING", ...(args.workerQueue ? { workerQueue: args.workerQueue } : {}) },
       { select: args.select }
     ) as Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
   }
@@ -2079,6 +2085,9 @@ export class PostgresRunStore implements RunStore {
   async readSnapshotRoute(): Promise<SnapshotRoute | undefined> {
     return undefined;
   }
+
+  // Nor any pending snapshot unit to settle.
+  async settlePendingUnit(): Promise<void> {}
 
   async #createExecutionSnapshot(
     input: CreateExecutionSnapshotInput,

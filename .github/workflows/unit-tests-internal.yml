@@ -191,7 +191,7 @@ jobs:
 
       - name: 📊 Merge reports
         run: >-
-          pnpm dlx vitest@4.1.7 run --config vitest.internal-reports.config.mjs --merge-reports
+          pnpm dlx vitest@"$(jq -r .devDependencies.vitest "$GITHUB_WORKSPACE/package.json")" run --config vitest.internal-reports.config.mjs --merge-reports
           --reporter=default --reporter=json --outputFile.json=internal-test-results.json
 
       - name: Validate merged test timings

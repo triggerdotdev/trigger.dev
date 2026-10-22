@@ -20,6 +20,87 @@ import {
   type SnapshotRolloutFlags,
 } from "./snapshotStoreRollout.server";
 
+function countOrganizationReads<T extends { $extends: (...args: any[]) => any }>(prisma: T) {
+  const counter = { reads: 0 };
+  const observed = prisma.$extends({
+    query: {
+      organization: {
+        async findFirst({ args, query }: { args: unknown; query: (args: unknown) => unknown }) {
+          counter.reads++;
+          return query(args);
+        },
+      },
+    },
+  });
+  return { counter, observed };
+}
+
+postgresTest(
+  "snapshotStoreMode org lookups are cached per organization for the TTL",
+  async ({ prisma }) => {
+    const org = await prisma.organization.create({
+      data: {
+        title: "Snapshot dial cache",
+        slug: "snapshot-dial-cache",
+        featureFlags: { snapshotStoreMode: "redis-only" },
+      },
+    });
+    const { counter, observed } = countOrganizationReads(prisma);
+
+    // Two hits within the TTL make one DB call, even after the org row changes.
+    const cached = createSnapshotRolloutResolver(() => undefined, observed, { dialCacheMs: 200 });
+    expect(await cached.resolveDial(org.id)).toBe("redis-only");
+    await prisma.organization.update({
+      where: { id: org.id },
+      data: { featureFlags: { snapshotStoreMode: "dual-write" } },
+    });
+    expect(await cached.resolveDial(org.id)).toBe("redis-only");
+    expect(counter.reads).toBe(1);
+
+    // After the TTL the lookup runs again and sees the new value.
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(await cached.resolveDial(org.id)).toBe("dual-write");
+    expect(counter.reads).toBe(2);
+
+    // An absent override is cached too.
+    await prisma.organization.update({
+      where: { id: org.id },
+      data: { featureFlags: Prisma.DbNull },
+    });
+    const absent = createSnapshotRolloutResolver(
+      () => ({ snapshotStoreMode: "redis-read" }),
+      observed,
+      { dialCacheMs: 200 }
+    );
+    counter.reads = 0;
+    expect(await absent.resolveDial(org.id)).toBe("redis-read");
+    expect(await absent.resolveDial(org.id)).toBe("redis-read");
+    expect(counter.reads).toBe(1);
+
+    // Supplied organization flags bypass the cache and are never stored in it.
+    const supplied = createSnapshotRolloutResolver(() => undefined, observed, { dialCacheMs: 200 });
+    counter.reads = 0;
+    expect(await supplied.resolveDial(org.id, { snapshotStoreMode: "redis-only" })).toBe(
+      "redis-only"
+    );
+    expect(counter.reads).toBe(0);
+    expect(await supplied.resolveDial(org.id)).toBe("off");
+    expect(counter.reads).toBe(1);
+    expect(await supplied.resolveDial(org.id, { snapshotStoreMode: "dual-write" })).toBe(
+      "dual-write"
+    );
+    expect(await supplied.resolveDial(org.id)).toBe("off");
+    expect(counter.reads).toBe(1);
+
+    // TTL 0 disables caching: every read makes a DB call.
+    const uncached = createSnapshotRolloutResolver(() => undefined, observed, { dialCacheMs: 0 });
+    counter.reads = 0;
+    await uncached.resolveDial(org.id);
+    await uncached.resolveDial(org.id);
+    expect(counter.reads).toBe(2);
+  }
+);
+
 postgresTest(
   "snapshotStoreMode uses loaded org flags or one lookup, then the global default",
   async ({ prisma }) => {

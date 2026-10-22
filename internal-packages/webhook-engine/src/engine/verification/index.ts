@@ -45,4 +45,24 @@ export function verify(artifact: VerifierArtifact, input: VerifyInput): Verifier
   }
 }
 
+/**
+ * Verifies against each signing secret in order (the current one first, then a previous secret
+ * still inside its rotation grace window) and returns the first passing verdict, or the current
+ * secret's failure. `secretIndex` is the position of the secret that matched.
+ */
+export function verifyWithSecrets(
+  artifact: VerifierArtifact,
+  input: Omit<VerifyInput, "secret">,
+  secrets: readonly [string, ...string[]]
+): VerifierResult & { secretIndex?: number } {
+  const [current, ...previous] = secrets;
+  const first = verify(artifact, { ...input, secret: current });
+  if (first.ok) return { ...first, secretIndex: 0 };
+  for (const [index, secret] of previous.entries()) {
+    const result = verify(artifact, { ...input, secret });
+    if (result.ok) return { ...result, secretIndex: index + 1 };
+  }
+  return first;
+}
+
 export { type VerifyInput, type VerifierResult } from "./types.js";

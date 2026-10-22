@@ -2,6 +2,7 @@ import { z } from "zod";
 import { DeployBuildPath } from "@trigger.dev/core/v3";
 
 export const FEATURE_FLAG = {
+  waitpointStoreEnabled: "waitpointStoreEnabled",
   snapshotStoreMode: "snapshotStoreMode",
   allowEmptyEnvironmentVariableValues: "allowEmptyEnvironmentVariableValues",
   defaultWorkerInstanceGroupId: "defaultWorkerInstanceGroupId",
@@ -9,32 +10,32 @@ export const FEATURE_FLAG = {
   hasQueryAccess: "hasQueryAccess",
   hasLogsPageAccess: "hasLogsPageAccess",
   hasWebhooksAccess: "hasWebhooksAccess",
-  previewAutoArchiveEnabled: "previewAutoArchiveEnabled",
   hasAiAccess: "hasAiAccess",
   hasDashboardAgentAccess: "hasDashboardAgentAccess",
   dashboardAgentTurnEvalsEnabled: "dashboardAgentTurnEvalsEnabled",
   dashboardAgentWatchEnabled: "dashboardAgentWatchEnabled",
+  alertsEnabled: "alertsEnabled",
   promotedDashboardAgentPrompt: "promotedDashboardAgentPrompt",
   hasComputeAccess: "hasComputeAccess",
   hasPrivateConnections: "hasPrivateConnections",
   hasSso: "hasSso",
   hasThemeSwitcher: "hasThemeSwitcher",
   mollifierEnabled: "mollifierEnabled",
-  workerQueueScheduledSplitEnabled: "workerQueueScheduledSplitEnabled",
-  workerQueueV2Enabled: "workerQueueV2Enabled",
   workerQueueCompatibility: "workerQueueCompatibility",
   workerQueueChannel: "workerQueueChannel",
+  workerQueueEnvironmentOverrides: "workerQueueEnvironmentOverrides",
   internalApiOriginEnabled: "internalApiOriginEnabled",
   realtimeBackend: "realtimeBackend",
   computeMigrationEnabled: "computeMigrationEnabled",
   computeMigrationFreePercentage: "computeMigrationFreePercentage",
   computeMigrationPaidPercentage: "computeMigrationPaidPercentage",
-  computeMigrationRequireTemplate: "computeMigrationRequireTemplate",
+  computeTemplatePrebuildWait: "computeTemplatePrebuildWait",
   runOpsMintKind: "runOpsMintKind",
   // Grace-linger stamp carried alongside runOpsMintKind on flip. See mintFlipGrace.ts.
   runOpsMintKindPrev: "runOpsMintKindPrev",
   runOpsMintKindFlippedAt: "runOpsMintKindFlippedAt",
-  // Gen-2 mint shard pins, read from the org override blob only. See runOpsMintShard.server.ts.
+  // Gen-2 mint shard pins, read from the org override blob only. A pin is the ONLY way an org or
+  // environment reaches a shard: nothing unpinned is ever placed there. See mintShardAssignment.ts.
   runOpsMintShard: "runOpsMintShard",
   runOpsMintShardEnvPins: "runOpsMintShardEnvPins",
   // The active mint-shard list, global only. Lives here rather than in the environment because a
@@ -57,9 +58,42 @@ export const FEATURE_FLAG = {
   queueArchivingEnabled: "queueArchivingEnabled",
   supportAccessSettingsEnabled: "supportAccessSettingsEnabled",
   progressiveTraceLoadingEnabled: "progressiveTraceLoadingEnabled",
+  publicTracePagingEnabled: "publicTracePagingEnabled",
+  runTokenInjection: "runTokenInjection",
 } as const;
 
+// Mirrors the core worker-queue enums; defined here because this module is imported client-side.
+const WorkerQueueCompatibilityFlag = z.enum(["any", "container", "compute"]);
+const WorkerQueueChannelFlag = z.enum(["stable", "canary"]);
+
+export const WORKER_QUEUE_OVERRIDE_ENVIRONMENT_TYPES = [
+  "PRODUCTION",
+  "STAGING",
+  "PREVIEW",
+] as const;
+
+export const WorkerQueueEnvironmentOverride = z
+  .strictObject({
+    compat: WorkerQueueCompatibilityFlag.optional(),
+    channel: WorkerQueueChannelFlag.optional(),
+  })
+  .refine(
+    (override) => override.compat !== undefined || override.channel !== undefined,
+    "must set compat or channel"
+  );
+export type WorkerQueueEnvironmentOverride = z.infer<typeof WorkerQueueEnvironmentOverride>;
+
+const WorkerQueueEnvironmentOverrideKey = z
+  .string()
+  .refine(
+    (key) =>
+      (WORKER_QUEUE_OVERRIDE_ENVIRONMENT_TYPES as readonly string[]).includes(key) ||
+      /^[a-z0-9]{20,}$/.test(key),
+    "must be PRODUCTION, STAGING, PREVIEW or an environment id"
+  );
+
 export const FeatureFlagCatalog = {
+  [FEATURE_FLAG.waitpointStoreEnabled]: z.boolean(),
   // Organization override, then global default, then off.
   [FEATURE_FLAG.snapshotStoreMode]: z.enum(["off", "dual-write", "redis-read", "redis-only"]),
   [FEATURE_FLAG.allowEmptyEnvironmentVariableValues]: z.boolean(),
@@ -68,8 +102,6 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.hasQueryAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasLogsPageAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasWebhooksAccess]: z.coerce.boolean(),
-  // Opt-in rollout; organization overrides the global default. Unset means off.
-  [FEATURE_FLAG.previewAutoArchiveEnabled]: z.boolean(),
   /**
    * Opts an organization into API rate limit metrics while the webapp runs with
    * API_RATE_LIMIT_METRICS_ENABLED=allowlist. Read from the organization override only, on the
@@ -91,6 +123,7 @@ export const FeatureFlagCatalog = {
   // Strict z.boolean(): coercion reads the string "false" as true, which would
   // turn the switch on for an org that never asked for it.
   [FEATURE_FLAG.dashboardAgentWatchEnabled]: z.boolean(),
+  [FEATURE_FLAG.alertsEnabled]: z.boolean(),
   // A JSON string because this catalog is scalar-only. Validated where it's read, in
   // `suggested-prompts/promotedPrompt.server.ts`.
   [FEATURE_FLAG.promotedDashboardAgentPrompt]: z.string(),
@@ -100,11 +133,13 @@ export const FeatureFlagCatalog = {
   // Gates the Interface theme setting in /account. Off by default.
   [FEATURE_FLAG.hasThemeSwitcher]: z.coerce.boolean(),
   [FEATURE_FLAG.mollifierEnabled]: z.coerce.boolean(),
-  [FEATURE_FLAG.workerQueueScheduledSplitEnabled]: z.coerce.boolean(),
-  [FEATURE_FLAG.workerQueueV2Enabled]: z.boolean(),
-  // Mirrors the core worker-queue enums; defined here because this module is imported client-side.
-  [FEATURE_FLAG.workerQueueCompatibility]: z.enum(["any", "container", "compute"]),
-  [FEATURE_FLAG.workerQueueChannel]: z.enum(["stable", "canary"]),
+  [FEATURE_FLAG.workerQueueCompatibility]: WorkerQueueCompatibilityFlag,
+  [FEATURE_FLAG.workerQueueChannel]: WorkerQueueChannelFlag,
+  // Resolved field by field: environment id, then environment type, then the two flags above.
+  [FEATURE_FLAG.workerQueueEnvironmentOverrides]: z.record(
+    WorkerQueueEnvironmentOverrideKey,
+    WorkerQueueEnvironmentOverride
+  ),
   // Routes deployed runs' TRIGGER_API_URL to INTERNAL_API_ORIGIN. Per-org, with
   // INTERNAL_API_ORIGIN_ENABLED as the global default (org wins). No-op unless
   // INTERNAL_API_ORIGIN is set.
@@ -122,9 +157,10 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.computeMigrationEnabled]: z.boolean(),
   [FEATURE_FLAG.computeMigrationFreePercentage]: z.coerce.number().int().min(0).max(100),
   [FEATURE_FLAG.computeMigrationPaidPercentage]: z.coerce.number().int().min(0).max(100),
-  // When on, migrated orgs build their compute template in required mode at deploy
-  // (fails the deploy on error) instead of shadow. Strict boolean (see above).
-  [FEATURE_FLAG.computeMigrationRequireTemplate]: z.boolean(),
+  // When on, deploy finalisation waits (up to a timeout) for the compute template
+  // prebuild instead of firing it in the background. Never fails the deploy.
+  // Global or per org. Strict boolean (see above).
+  [FEATURE_FLAG.computeTemplatePrebuildWait]: z.boolean(),
   // Per-org run-ops-id mint cutover. Defaults to "cuid"; only honored when
   // RUN_OPS_MINT_ENABLED is on AND isSplitEnabled() is true.
   [FEATURE_FLAG.runOpsMintKind]: z.enum(["cuid", "runOpsId"]),
@@ -132,9 +168,10 @@ export const FeatureFlagCatalog = {
   // by stampMintKindFlip on a genuine flip. Display-only (see ORG_LOCKED_FLAGS).
   [FEATURE_FLAG.runOpsMintKindPrev]: z.enum(["cuid", "runOpsId"]),
   [FEATURE_FLAG.runOpsMintKindFlippedAt]: z.string().datetime(),
-  // Pins one org to a gen-2 mint shard. "new" holds the org on gen-1 run-ops ids, which is how
-  // a canary keeps the fleet's default while one org moves. Only honored while the key is in
-  // the active list; a drained key falls through to the hash.
+  // Pins one org to a gen-2 mint shard. "new" holds the org on gen-1 run-ops ids, which is also
+  // what no pin does. Only honored while the key is in the active list; a drained key mints
+  // gen-1. Not grace-stamped: a pin only decides where the NEXT root mints, and every id minted
+  // either side of a change self-routes by the shard key it carries.
   [FEATURE_FLAG.runOpsMintShard]: z
     .string()
     .refine((v) => v === "new" || /^[a-z0-9]$/.test(v), 'must be a single [a-z0-9] char, or "new"'),
@@ -195,6 +232,11 @@ export const FeatureFlagCatalog = {
   // the org override wins over the global value.
   [FEATURE_FLAG.supportAccessSettingsEnabled]: z.boolean(),
   [FEATURE_FLAG.progressiveTraceLoadingEnabled]: z.boolean(),
+  // Page parameters on the public trace API. Off: they're ignored and the tree is returned.
+  [FEATURE_FLAG.publicTracePagingEnabled]: z.boolean(),
+  // Injects a signed per-attempt TRIGGER_RUN_TOKEN into deployed runs. Org override wins over
+  // the global value. Requires RUN_TOKEN_ISSUER_URL and an active internal run signing key.
+  [FEATURE_FLAG.runTokenInjection]: z.boolean(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;
@@ -209,9 +251,9 @@ export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runOpsMintShard,
   FEATURE_FLAG.runOpsMintShardEnvPins,
   FEATURE_FLAG.apiRateLimitMetricsEnabled,
-  FEATURE_FLAG.workerQueueV2Enabled,
   FEATURE_FLAG.workerQueueCompatibility,
   FEATURE_FLAG.workerQueueChannel,
+  FEATURE_FLAG.workerQueueEnvironmentOverrides,
   // Grace stamps are computed server-side. An editable control here would discard what it saves.
   FEATURE_FLAG.runOpsMintKindPrev,
   FEATURE_FLAG.runOpsMintKindFlippedAt,
@@ -346,7 +388,8 @@ export type FlagControlType =
   | { type: "boolean" }
   | { type: "enum"; options: string[] }
   | { type: "number"; min?: number; max?: number }
-  | { type: "string" };
+  | { type: "string" }
+  | { type: "record" };
 
 function getFlagControlType(schema: z.ZodType): FlagControlType {
   // zod v4: schema.def.type is a lowercase tag ("boolean"/"enum"/"number"/...).
@@ -361,6 +404,10 @@ function getFlagControlType(schema: z.ZodType): FlagControlType {
 
   if (def.type === "enum") {
     return { type: "enum", options: (schema as z.ZodEnum).options as string[] };
+  }
+
+  if (def.type === "record") {
+    return { type: "record" };
   }
 
   // z.coerce.number() reports as "number"; pull min/max out of its v4 checks

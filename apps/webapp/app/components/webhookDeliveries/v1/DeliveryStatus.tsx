@@ -12,7 +12,7 @@ export const DELIVERY_STATUS_COLOR: Record<WebhookDeliveryStatus, string> = {
   UNMATCHED: "#64748B",
 };
 
-const DELIVERY_STATUS_LABEL: Record<WebhookDeliveryStatus, string> = {
+export const DELIVERY_STATUS_LABEL: Record<WebhookDeliveryStatus, string> = {
   SUCCEEDED: "Succeeded",
   FAILED: "Failed",
   PROCESSING: "Processing",

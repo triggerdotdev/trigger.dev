@@ -13,7 +13,7 @@
     "rimraf": "6.0.1",
     "tsx": "^4.19.2",
     "typescript": "catalog:",
-    "vitest": "4.1.7"
+    "vitest": "4.1.11"
   },
   "scripts": {
     "clean": "rimraf dist",

@@ -32,7 +32,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const { organizationId } = ParamsSchema.parse(params);
 
-  const [organization, globalFlags, workerGroups] = await Promise.all([
+  const [organization, globalFlags, workerGroups, environments] = await Promise.all([
     prisma.organization.findFirst({
       where: { id: organizationId },
       select: {
@@ -46,6 +46,22 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     prisma.workerInstanceGroup.findMany({
       select: { id: true, name: true },
       orderBy: { name: "asc" },
+    }),
+    prisma.runtimeEnvironment.findMany({
+      where: {
+        organizationId,
+        type: { not: "DEVELOPMENT" },
+        archivedAt: null,
+        isBranchableEnvironment: false,
+        project: { deletedAt: null },
+      },
+      select: {
+        id: true,
+        type: true,
+        branchName: true,
+        project: { select: { name: true } },
+      },
+      orderBy: [{ project: { name: "asc" } }, { type: "asc" }, { branchName: "asc" }],
     }),
   ]);
 
@@ -86,6 +102,12 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     controlTypes,
     workerGroupName,
     workerGroups,
+    environments: environments.map((environment) => ({
+      id: environment.id,
+      type: environment.type,
+      branchName: environment.branchName,
+      projectName: environment.project.name,
+    })),
     isManagedCloud,
   });
 }

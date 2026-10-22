@@ -2,12 +2,19 @@ import { DocumentDuplicateIcon, PencilSquareIcon, TrashIcon } from "@heroicons/r
 import { ClipboardIcon } from "@heroicons/react/24/outline";
 import { ChartBarIcon } from "@heroicons/react/24/solid";
 import { type OutputColumnMetadata } from "@internal/tsql";
+import {
+  DashboardWidgetDisplay,
+  type DashboardBigNumberAggregation,
+  type DashboardBigNumberConfig,
+  type DashboardChartAggregation,
+  type DashboardChartConfig,
+  type DashboardSortDirection,
+} from "@trigger.dev/core/v3/schemas";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { IconBraces, IconChartHistogram, IconFileTypeCsv } from "@tabler/icons-react";
 import { assertNever } from "assert-never";
 import { Maximize2 } from "lucide-react";
 import { useCallback, useRef, useState, type ReactNode } from "react";
-import { z } from "zod";
 import { Card } from "~/components/primitives/charts/Card";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
@@ -31,88 +38,13 @@ import {
   PopoverVerticalEllipseTrigger,
 } from "../primitives/Popover";
 
-const ChartType = z.union([z.literal("bar"), z.literal("line")]);
-type ChartType = z.infer<typeof ChartType>;
-
-const SortDirection = z.union([z.literal("asc"), z.literal("desc")]);
-export type SortDirection = z.infer<typeof SortDirection>;
-
-const AggregationType = z.union([
-  z.literal("sum"),
-  z.literal("avg"),
-  z.literal("count"),
-  z.literal("min"),
-  z.literal("max"),
-]);
-export type AggregationType = z.infer<typeof AggregationType>;
-
-const chartConfigOptions = {
-  chartType: ChartType,
-  xAxisColumn: z.string().nullable(),
-  yAxisColumns: z.string().array(),
-  groupByColumn: z.string().nullable(),
-  stacked: z.boolean(),
-  sortByColumn: z.string().nullable(),
-  sortDirection: SortDirection,
-  aggregation: AggregationType,
-  seriesColors: z.record(z.string(), z.string()).optional(),
-};
-
-const ChartConfiguration = z.object({ ...chartConfigOptions });
-export type ChartConfiguration = z.infer<typeof ChartConfiguration>;
-
-const BigNumberAggregationType = z.union([
-  z.literal("sum"),
-  z.literal("avg"),
-  z.literal("count"),
-  z.literal("min"),
-  z.literal("max"),
-  z.literal("first"),
-  z.literal("last"),
-]);
-export type BigNumberAggregationType = z.infer<typeof BigNumberAggregationType>;
-
-const BigNumberSortDirection = z.union([z.literal("asc"), z.literal("desc")]);
-
-const bigNumberConfigOptions = {
-  column: z.string(),
-  aggregation: BigNumberAggregationType,
-  sortDirection: BigNumberSortDirection.optional(),
-  abbreviate: z.boolean().default(false),
-  prefix: z.string().optional(),
-  suffix: z.string().optional(),
-};
-
-const BigNumberConfiguration = z.object({ ...bigNumberConfigOptions });
-export type BigNumberConfiguration = z.infer<typeof BigNumberConfiguration>;
-
-export const QueryWidgetConfig = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("table"),
-    prettyFormatting: z.boolean().default(true),
-    sorting: z
-      .array(
-        z.object({
-          desc: z.boolean(),
-          id: z.string(),
-        })
-      )
-      .default([]),
-  }),
-  z.object({
-    type: z.literal("chart"),
-    ...chartConfigOptions,
-  }),
-  z.object({
-    type: z.literal("bignumber"),
-    ...bigNumberConfigOptions,
-  }),
-  z.object({
-    type: z.literal("title"),
-  }),
-]);
-
-export type QueryWidgetConfig = z.infer<typeof QueryWidgetConfig>;
+export const QueryWidgetConfig = DashboardWidgetDisplay;
+export type QueryWidgetConfig = DashboardWidgetDisplay;
+export type SortDirection = DashboardSortDirection;
+export type AggregationType = DashboardChartAggregation;
+export type ChartConfiguration = DashboardChartConfig;
+export type BigNumberAggregationType = DashboardBigNumberAggregation;
+export type BigNumberConfiguration = DashboardBigNumberConfig;
 
 /** Result data containing rows and column metadata */
 export type QueryWidgetData = {

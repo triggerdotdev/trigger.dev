@@ -1,60 +1,82 @@
-import { WebhookEngine } from "@internal/webhook-engine";
-import type { WebhookDeliverTaskErrorType } from "@internal/webhook-engine";
+import {
+  isInfrastructureError,
+  WebhookEngine,
+  WebhookInfrastructureError,
+} from "@internal/webhook-engine";
+import type { WebhookDeliverTaskErrorType, WebhookRedisOptions } from "@internal/webhook-engine";
 import { tryCatch } from "@trigger.dev/core/utils";
+import { resolve4 } from "node:dns/promises";
 import { z } from "zod";
-import { prisma, webhookPartitionPrisma, webhookPrisma } from "~/db.server";
+import { $replica, webhookPartitionPrisma, webhookPrisma, webhookReplica } from "~/db.server";
 import { env } from "~/env.server";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
 import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
 import { ensureRunForSession } from "~/services/realtime/sessionRunManager.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
-import {
-  claimSessionStreamPart,
-  drainSessionStreamWaitpoints,
-  releaseSessionStreamPart,
-} from "~/services/sessionStreamWaitpointCache.server";
+import { drainSessionStreamWaitpoints } from "~/services/sessionStreamWaitpointCache.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { singleton } from "~/utils/singleton";
 import { engine as runEngine } from "./runEngine.server";
 import { ServiceValidationError } from "./services/common.server";
 import { TriggerTaskService } from "./services/triggerTask.server";
 import { resolveWebhookSession } from "./webhookSessionTarget.server";
+import { activeSigningSecrets, StoredSigningSecret } from "./webhookSigningSecret";
 import { webhookLimitsForEnvironment } from "./webhookLimits.server";
+import { webhookPortErrorMessage } from "./webhookPortErrors.server";
 import { webhookWaitpoints } from "./webhookWaitpoints.server";
 import { meter, tracer } from "./tracer.server";
 
 export const webhookEngine = singleton("WebhookEngine", createWebhookEngine);
 
-function waiterStoreConnection() {
-  const redisOptions = {
-    host: env.WEBHOOK_WAITER_REDIS_HOST ?? "localhost",
-    port: env.WEBHOOK_WAITER_REDIS_PORT ?? 6379,
-    username: env.WEBHOOK_WAITER_REDIS_USERNAME,
-    password: env.WEBHOOK_WAITER_REDIS_PASSWORD,
-    keyPrefix: "webhook:",
-    enableAutoPipelining: true,
-    ...(env.WEBHOOK_WAITER_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
-  };
-  if (env.WEBHOOK_WAITER_REDIS_CLUSTER_MODE_ENABLED === "1") {
-    return {
-      cluster: {
-        nodes: [{ host: redisOptions.host, port: redisOptions.port }],
-        redisOptions,
-        clusterOptions: {
-          dnsLookup: (address: string, callback: (err: Error | null, address: string) => void) =>
-            callback(null, address),
-          slotsRefreshTimeout: 10_000,
-        },
-      },
-    };
-  }
-  return { redis: redisOptions };
+/**
+ * Resolves the seed host to one of its addresses at random on every connect and reconnect. After a
+ * failover, ElastiCache's configuration endpoint keeps listing the old primary for minutes, and the
+ * system resolver always ranks the address in the client's own subnet first, so a cluster client
+ * that has to reconnect through the seed can keep landing on the dead node. TLS still verifies the
+ * seed host (`servername`). A name that doesn't resolve, such as an IP or localhost, is used as is.
+ */
+function randomSeedAddress(
+  address: string,
+  callback: (err: Error | null, address: string) => void
+) {
+  resolve4(address).then(
+    (addresses) =>
+      callback(null, addresses[Math.floor(Math.random() * addresses.length)] ?? address),
+    () => callback(null, address)
+  );
 }
 
-// The plaintext signing secret is stored under the "DATABASE" SecretStore
-// provider as { secret: string } (same shape as environment variables).
-const SigningSecretSchema = z.object({ secret: z.string() });
+/**
+ * The webhooks Redis cluster, seeded from one node; ioredis discovers the rest. A primary that stops
+ * answering without closing its sockets (an ElastiCache failover reboots the old one) never replies
+ * MOVED, so the slot map is refreshed on an interval to find the promoted replica, and a command
+ * waiting on the silent node times out instead of holding an ingest request. Redirects can name a
+ * node by IP, which AWS certificates don't cover, so TLS checks every node against the seed host.
+ */
+function webhookRedisConnection(): WebhookRedisOptions {
+  const host = env.WEBHOOK_REDIS_HOST ?? "localhost";
+  const redisOptions = {
+    username: env.WEBHOOK_REDIS_USERNAME,
+    password: env.WEBHOOK_REDIS_PASSWORD,
+    enableAutoPipelining: true,
+    commandTimeout: 3_000,
+    connectTimeout: 3_000,
+    ...(env.WEBHOOK_REDIS_TLS_DISABLED === "true" ? {} : { tls: { servername: host } }),
+  };
+  return {
+    cluster: {
+      nodes: [{ host, port: env.WEBHOOK_REDIS_PORT ?? 6379 }],
+      redisOptions,
+      clusterOptions: {
+        keyPrefix: "webhook:",
+        dnsLookup: randomSeedAddress,
+        slotsRefreshInterval: 2_000,
+        slotsRefreshTimeout: 2_000,
+      },
+    },
+  };
+}
 
 /** The GET verification token (Meta hub.verify_token) an endpoint owner generated in the dashboard. */
 const VerifyTokenSchema = z.object({ token: z.string() });
@@ -67,46 +89,40 @@ export function webhookVerifyTokenKey(endpointId: string): string {
 function createWebhookEngine() {
   // The engine owns the webhook tables, so it runs on the webhook DB client. The signing-secret
   // store stays on the main client below (SecretStore is control-plane, not part of the split).
-  const secretStore = getSecretStore("DATABASE", { prismaClient: prisma });
+  const secretStore = getSecretStore("DATABASE", { prismaClient: $replica });
 
   const engine = new WebhookEngine({
     prisma: webhookPrisma,
+    replica: webhookReplica,
     partitionPrisma: webhookPartitionPrisma,
     logLevel: env.WEBHOOK_ENGINE_LOG_LEVEL,
     disabled: env.WEBHOOK_ENABLED !== "1",
-    redis: {
-      host: env.WEBHOOK_WORKER_REDIS_HOST ?? "localhost",
-      port: env.WEBHOOK_WORKER_REDIS_PORT ?? 6379,
-      username: env.WEBHOOK_WORKER_REDIS_USERNAME,
-      password: env.WEBHOOK_WORKER_REDIS_PASSWORD,
-      keyPrefix: "webhook:",
-      enableAutoPipelining: true,
-      ...(env.WEBHOOK_WORKER_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
-    },
+    redis: webhookRedisConnection(),
     worker: {
       concurrency: env.WEBHOOK_WORKER_CONCURRENCY_LIMIT,
       tenantConcurrency: async (environmentId) =>
         (await webhookLimitsForEnvironment(environmentId)).concurrency,
       pollIntervalMs: env.WEBHOOK_WORKER_POLL_INTERVAL,
-      shutdownTimeoutMs: env.WEBHOOK_WORKER_SHUTDOWN_TIMEOUT_MS,
       disabled: env.WEBHOOK_ENABLED !== "1" || env.WEBHOOK_WORKER_ENABLED !== "true",
     },
     partitions: {
-      ensureSchedule: env.WEBHOOK_PARTITION_ENSURE_SCHEDULE,
-      ensureJitterInMs: env.WEBHOOK_PARTITION_ENSURE_JITTER_MS,
       lookaheadDays: env.WEBHOOK_PARTITION_LOOKAHEAD_DAYS,
-      retentionDays: env.WEBHOOK_PARTITION_RETENTION_DAYS,
+    },
+    queue: {
+      environmentPayloadBytesLimit: async (environmentId) =>
+        (await webhookLimitsForEnvironment(environmentId)).queuedPayloadBytes,
+      highWater: env.WEBHOOK_QUEUE_HIGH_WATER,
+    },
+    retention: {
+      forEnvironment: async (environmentId) =>
+        (await webhookLimitsForEnvironment(environmentId)).deliveryStorageDays,
+      defaultDays: env.WEBHOOK_DELIVERY_STORAGE_DAYS,
     },
     frontGate: {
       defaultTtlSeconds: env.WEBHOOK_FRONT_GATE_DEFAULT_TTL_SECONDS,
       maxTtlSeconds: env.WEBHOOK_FRONT_GATE_MAX_TTL_SECONDS,
     },
-    endpointCache: {
-      ttlMs: env.WEBHOOK_ENDPOINT_CACHE_TTL_MS,
-      maxSize: env.WEBHOOK_ENDPOINT_CACHE_MAX_SIZE,
-    },
     waiters: {
-      ...waiterStoreConnection(),
       limits: {
         perEnvironment: env.WEBHOOK_WAITER_MAX_PER_ENVIRONMENT,
         perEndpoint: env.WEBHOOK_WAITER_MAX_PER_ENDPOINT,
@@ -119,9 +135,10 @@ function createWebhookEngine() {
     tracer,
     meter,
     resolveSigningSecret: async (key) => {
-      const value = await secretStore.getSecret(SigningSecretSchema, key);
+      const value = await secretStore.getSecret(StoredSigningSecret, key);
       // Fail closed: an unset/empty secret returns undefined so ingest rejects.
-      return value?.secret || undefined;
+      const secrets = activeSigningSecrets(value, new Date());
+      return secrets.length > 0 ? secrets : undefined;
     },
     resolveVerifyToken: async (endpointId) => {
       const value = await secretStore.getSecret(
@@ -173,17 +190,11 @@ function createWebhookEngine() {
 
         return { success: !!result, runId: result?.run.id };
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        let errorType: WebhookDeliverTaskErrorType = "SYSTEM_ERROR";
-
-        if (
-          error instanceof ServiceValidationError &&
-          errorMessage.includes("queue size limit for this environment has been reached")
-        ) {
-          errorType = "QUEUE_LIMIT";
-        }
-
-        return { success: false, error: errorMessage, errorType };
+        return {
+          success: false,
+          error: webhookPortErrorMessage(error, "triggerTask"),
+          errorType: portErrorType(error),
+        };
       }
     },
     deliverToSession: async ({
@@ -202,6 +213,9 @@ function createWebhookEngine() {
       endpoint,
       triggerConfigTemplate,
       isSessionStart,
+      claimPart,
+      commitPart,
+      releasePart,
     }) => {
       try {
         const environment = await findEnvironmentById(environmentId);
@@ -270,20 +284,26 @@ function createWebhookEngine() {
               };
         const part = JSON.stringify({ kind: "message", payload });
 
-        const wonClaim = await claimSessionStreamPart(environment.id, addressingKey, "in", partId);
-        if (wonClaim) {
+        const claim = await claimPart();
+        if (claim === "busy") {
+          throw new WebhookInfrastructureError(
+            "Another attempt is appending this delivery to the session"
+          );
+        }
+        if (claim === "append") {
           const [appendError] = await tryCatch(
             realtimeStream.appendPartToSessionStream(part, partId, addressingKey, "in")
           );
           if (appendError) {
             // Nothing landed — release the claim so a retry re-appends the same id.
-            await releaseSessionStreamPart(environment.id, addressingKey, "in", partId);
+            await releasePart();
             // A ServiceValidationError (e.g. record too large) is terminal; anything else is transient.
             if (appendError instanceof ServiceValidationError) {
               return { success: false, error: appendError.message };
             }
             throw appendError;
           }
+          await commitPart();
         }
 
         // Wake any `.in` waitpoints the run registered (best-effort; the record is durable in S2).
@@ -310,18 +330,26 @@ function createWebhookEngine() {
 
         return { success: true, runId: ensureResult.runId };
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        let errorType: WebhookDeliverTaskErrorType = "SYSTEM_ERROR";
-        if (
-          error instanceof ServiceValidationError &&
-          errorMessage.includes("queue size limit for this environment has been reached")
-        ) {
-          errorType = "QUEUE_LIMIT";
-        }
-        return { success: false, error: errorMessage, errorType };
+        return {
+          success: false,
+          error: webhookPortErrorMessage(error, "deliverToSession"),
+          errorType: portErrorType(error),
+        };
       }
     },
   });
 
   return engine;
+}
+
+/** How a port failure retries: forever for our infrastructure, a few times for anything else. */
+function portErrorType(error: unknown): WebhookDeliverTaskErrorType {
+  if (
+    error instanceof ServiceValidationError &&
+    error.message.includes("queue size limit for this environment has been reached")
+  ) {
+    return "QUEUE_LIMIT";
+  }
+  if (isInfrastructureError(error)) return "INFRASTRUCTURE";
+  return "SYSTEM_ERROR";
 }

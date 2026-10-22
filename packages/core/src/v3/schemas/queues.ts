@@ -170,17 +170,135 @@ export const ListConcurrencyLimitOptions = z.object({
 
 export type ListConcurrencyLimitOptions = z.infer<typeof ListConcurrencyLimitOptions>;
 
-/** Changes only the given bounds. Zero blocks every run holding the limit, which
- * is how a limit is paused; `reset` restores the declared values. */
-export const OverrideConcurrencyLimitRequestBody = z
+/** A concurrency-key value as callers write it: numbers are accepted and stored as strings,
+ * matching how a trigger's `concurrencyKey` is coerced. */
+const OverrideConcurrencyKeySchema = z
+  .union([z.string(), z.number()])
+  .transform((value) => String(value))
+  .pipe(z.string().min(1).max(128));
+
+const ConcurrencyBoundSchema = z.number().int().min(0).max(100000);
+
+const OverrideTtlSchema = z.string().or(z.number().int().positive());
+
+/** Changes only the given bounds of the limit itself. Zero blocks every run holding
+ * the limit, which is how a limit is paused; `reset` restores the declared values. */
+export const OverrideConcurrencyLimitBoundsBody = z
   .object({
-    perKey: z.number().int().min(0).max(100000).optional(),
-    total: z.number().int().min(0).max(100000).optional(),
+    perKey: ConcurrencyBoundSchema.optional(),
+    total: ConcurrencyBoundSchema.optional(),
+    concurrencyKey: z.never().optional(),
+    ttl: z.never().optional(),
   })
   .refine((body) => body.perKey !== undefined || body.total !== undefined, {
     message: "Provide at least one of `perKey` or `total`",
   });
 
+export type OverrideConcurrencyLimitBoundsBody = z.infer<typeof OverrideConcurrencyLimitBoundsBody>;
+
+/** A temporary per-key cap on this limit's `perKey` for one concurrencyKey: `0`
+ * blocks the key, and the override expires after `ttl` (a duration such as `"7d"`
+ * or a number of seconds; default 7 days, at most 30 days). `total` is not per key,
+ * so it cannot be given here. `reset` with the same `concurrencyKey` clears it. */
+export const OverrideConcurrencyLimitKeyBody = z.object({
+  concurrencyKey: OverrideConcurrencyKeySchema,
+  perKey: ConcurrencyBoundSchema,
+  ttl: OverrideTtlSchema.optional(),
+  total: z.never().optional(),
+});
+
+export type OverrideConcurrencyLimitKeyBody = z.infer<typeof OverrideConcurrencyLimitKeyBody>;
+
+/** Either the limit's own bounds or a per-key cap, told apart by `concurrencyKey`.
+ * The output type is the union of the two shapes above, so `total` with a key, a key
+ * without `perKey`, and `ttl` without a key are type errors for SDK callers. Parsing
+ * goes through one flat object with cross-field checks rather than a `z.union`, so an
+ * HTTP caller gets a single message naming the field at fault instead of the failures
+ * of both branches. */
+export const OverrideConcurrencyLimitRequestBody = z
+  .object({
+    perKey: ConcurrencyBoundSchema.optional(),
+    total: ConcurrencyBoundSchema.optional(),
+    concurrencyKey: OverrideConcurrencyKeySchema.optional(),
+    ttl: OverrideTtlSchema.optional(),
+  })
+  .superRefine((body, ctx) => {
+    if (body.concurrencyKey !== undefined) {
+      if (body.perKey === undefined) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["perKey"],
+          message: "A per-key override needs `perKey`",
+        });
+      }
+      if (body.total !== undefined) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["total"],
+          message: "`total` is not per key; omit it when overriding one concurrencyKey",
+        });
+      }
+      return;
+    }
+    if (body.ttl !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["ttl"],
+        message: "`ttl` only applies to a per-key override; pass `concurrencyKey` with it",
+      });
+    }
+    if (body.perKey === undefined && body.total === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Provide at least one of `perKey` or `total`",
+      });
+    }
+  })
+  .transform(
+    (body) => body as OverrideConcurrencyLimitKeyBody | OverrideConcurrencyLimitBoundsBody
+  );
+
 export type OverrideConcurrencyLimitRequestBody = z.infer<
   typeof OverrideConcurrencyLimitRequestBody
 >;
+
+/** `reset` with a `concurrencyKey` clears that key's override and leaves the limit
+ * itself alone; without one it resets the limit's own override. */
+export const ResetConcurrencyLimitRequestBody = z.object({
+  concurrencyKey: OverrideConcurrencyKeySchema.optional(),
+});
+
+export type ResetConcurrencyLimitRequestBody = z.infer<typeof ResetConcurrencyLimitRequestBody>;
+
+export const RetrieveConcurrencyLimitOptions = z.object({
+  /** Return the view of this limit for one concurrencyKey instead of the limit itself. */
+  concurrencyKey: OverrideConcurrencyKeySchema.optional(),
+});
+
+export type RetrieveConcurrencyLimitOptions = z.infer<typeof RetrieveConcurrencyLimitOptions>;
+
+/** The per-key bound of a limit for one concurrencyKey: `base` is the limit's own
+ * `perKey` as enforced, `override` the key's temporary cap, `current` whichever
+ * applies right now (env-clamped). A paused limit still reports its bounds. */
+export const ConcurrencyLimitKeyBound = z.object({
+  current: z.number().nullable(),
+  base: z.number().nullable(),
+  override: z.number().nullable(),
+  /** When the key's override lapses; null when there is none. */
+  expiresAt: z.coerce.date().nullable(),
+});
+
+export type ConcurrencyLimitKeyBound = z.infer<typeof ConcurrencyLimitKeyBound>;
+
+export const ConcurrencyLimitKeyItem = z.object({
+  /** The limit's name. */
+  name: z.string(),
+  concurrencyKey: z.string(),
+  perKey: ConcurrencyLimitKeyBound,
+  /** Runs executing for this key that hold this limit. */
+  running: z.number(),
+  /** Whether the limit is paused. A paused limit admits no runs, override or not. */
+  paused: z.boolean(),
+});
+
+export type ConcurrencyLimitKeyItem = z.infer<typeof ConcurrencyLimitKeyItem>;

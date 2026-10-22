@@ -118,6 +118,12 @@ export function getSeriesColor(index: number): string {
   return CHART_COLORS[index % CHART_COLORS.length];
 }
 
+export function getChartColorByName(name: string): string {
+  const def = CHART_COLOR_DEFS.find((d) => d.name === name);
+  if (!def) throw new Error(`Unknown chart color: ${name}`);
+  return hslToHex(def.hsl);
+}
+
 // ---------------------------------------------------------------------------
 // Hue-sorted palette (rainbow order for color pickers)
 // ---------------------------------------------------------------------------

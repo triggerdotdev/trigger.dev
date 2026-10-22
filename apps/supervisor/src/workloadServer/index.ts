@@ -1,4 +1,3 @@
-import { SnapshotCallbackPayloadSchema } from "@internal/compute";
 import { type CheckpointClient, HttpServer } from "@trigger.dev/core/v3/serverOnly";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import {
@@ -34,10 +33,8 @@ import {
 import type { WorkloadDeploymentTokenClaims } from "@trigger.dev/core/v3";
 import {
   ComputeSnapshotService,
-  type RunTraceContext,
   type RunnerSnapshotter,
 } from "../services/computeSnapshotService.js";
-import type { OtlpTraceService } from "../services/otlpTraceService.js";
 import {
   emitOneShot,
   runWideEvent,
@@ -45,7 +42,6 @@ import {
   type State,
   type WideEventOptions,
 } from "../wideEvents/index.js";
-import type { ComputeWorkloadManager } from "../workloadManager/compute.js";
 
 // Use the official export when upgrading to socket.io@4.8.0
 interface DefaultEventsMap {
@@ -57,6 +53,13 @@ const checkpointDeleteRequests = new Counter({
   name: "checkpoint_delete_requests_total",
   help: "Checkpoint delete requests attempted at run completion, by outcome",
   labelNames: ["result"],
+  registers: [register],
+});
+
+const continueRetryOutcomes = new Counter({
+  name: "supervisor_continue_retry_outcomes_total",
+  help: "Count of continue calls retried within a budget, by how the retries ended (succeeded, non_retryable, server_errors, budget_exhausted).",
+  labelNames: ["outcome"],
   registers: [register],
 });
 
@@ -112,14 +115,15 @@ type WorkloadServerOptions = {
   host?: string;
   workerClient: SupervisorHttpClient;
   checkpointClient?: CheckpointClient;
-  computeManager?: ComputeWorkloadManager;
   /** The run-crd backend, which asks the operator for a suspend on the Runner. */
   runnerSnapshotter?: RunnerSnapshotter & { snapshotsEnabled: boolean };
-  tracing?: OtlpTraceService;
-  snapshotCallbackSecret: string;
   wideEventOpts: WideEventOptions;
   /** When true, high-frequency HTTP routes also emit wide events. */
   wideEventsNoisyRoutes: boolean;
+  /** Where runs started through this server execute. Overrides anything the runner sends. */
+  workerStamp?: { workerCell?: string; workerLane?: string };
+  /** How long to keep retrying temporary failures of `continue`. Unset keeps the default retries. */
+  continueRetryBudgetMs?: number;
 };
 
 export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
@@ -149,6 +153,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   >();
 
   private readonly workerClient: SupervisorHttpClient;
+  private readonly workerStamp: { workerCell?: string; workerLane?: string };
+  private readonly continueRetryBudget?: { budgetMs: number };
 
   constructor(opts: WorkloadServerOptions) {
     super();
@@ -157,22 +163,24 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     const port = opts.port;
 
     this.workerClient = opts.workerClient;
+    this.workerStamp = opts.workerStamp ?? {};
     this.checkpointClient = opts.checkpointClient;
     this.wideEventOpts = opts.wideEventOpts;
     this.wideEventsNoisyRoutes = opts.wideEventsNoisyRoutes;
 
-    const snapshots = opts.computeManager?.snapshotsEnabled
-      ? { computeManager: opts.computeManager }
-      : opts.runnerSnapshotter?.snapshotsEnabled
-        ? { runnerSnapshotter: opts.runnerSnapshotter }
-        : undefined;
-    if (snapshots) {
+    this.continueRetryBudget =
+      opts.continueRetryBudgetMs === undefined
+        ? undefined
+        : { budgetMs: opts.continueRetryBudgetMs };
+    this.logger.info("Continue retries", {
+      budgetMs: opts.continueRetryBudgetMs ?? "unset, default retries",
+    });
+
+    if (opts.runnerSnapshotter?.snapshotsEnabled) {
       this.snapshotService = new ComputeSnapshotService({
-        ...snapshots,
+        runnerSnapshotter: opts.runnerSnapshotter,
         workerClient: opts.workerClient,
-        tracing: opts.tracing,
         wideEventOpts: this.wideEventOpts,
-        snapshotCallbackSecret: opts.snapshotCallbackSecret,
       });
     }
 
@@ -416,7 +424,11 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                 const startResponse = await this.workerClient.startRunAttempt(
                   params.runFriendlyId,
                   params.snapshotFriendlyId,
-                  body,
+                  {
+                    ...body,
+                    workerCell: this.workerStamp.workerCell,
+                    workerLane: this.workerStamp.workerLane,
+                  },
                   this.runnerIdFromRequest(req),
                   auth.environmentId
                 );
@@ -667,11 +679,24 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                   params.runFriendlyId,
                   params.snapshotFriendlyId,
                   this.runnerIdFromRequest(req),
-                  auth.environmentId
+                  auth.environmentId,
+                  { retryBudget: this.continueRetryBudget }
                 );
 
+                if (continuationResult.retry) {
+                  continueRetryOutcomes.inc({ outcome: continuationResult.retry.outcome });
+                }
+
                 if (!continuationResult.success) {
-                  this.logger.error("Failed to continue run execution", { params });
+                  this.logger.error("Failed to continue run execution", {
+                    params,
+                    statusCode: continuationResult.statusCode,
+                    error: continuationResult.error,
+                    attempts: continuationResult.retry?.attempts,
+                    elapsedMs: continuationResult.retry?.elapsedMs,
+                    outcome: continuationResult.retry?.outcome,
+                    budgetMs: this.continueRetryBudget?.budgetMs,
+                  });
                   reply.json(
                     {
                       ok: false,
@@ -778,28 +803,6 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         },
       });
     }
-
-    // Snapshot callback endpoint (inbound from compute path)
-    httpServer.route("/api/v1/compute/snapshot-complete", "POST", {
-      bodySchema: SnapshotCallbackPayloadSchema,
-      handler: async (ctx) =>
-        this.wideRoute(
-          ctx,
-          "snapshot.callback",
-          "/api/v1/compute/snapshot-complete",
-          "POST",
-          async () => {
-            const { reply, body } = ctx;
-            if (!this.snapshotService) {
-              reply.empty(404);
-              return;
-            }
-
-            const result = await this.snapshotService.handleCallback(body);
-            reply.empty(result.status);
-          }
-        ),
-    });
 
     return httpServer;
   }
@@ -1058,9 +1061,6 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
 
         try {
           runDisconnected(message.run.friendlyId, "run_stop_message");
-          // Don't delete trace context here - run:stop fires after each snapshot/shutdown
-          // but the run may be restored on a new VM and snapshot again. Trace context is
-          // re-populated on dequeue, and entries are small (4 strings per run).
         } catch (error) {
           log.error("run:stop error", { error });
         }
@@ -1100,10 +1100,6 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         message: "run:notify error on supervisor",
       });
     }
-  }
-
-  registerRunTraceContext(runFriendlyId: string, ctx: RunTraceContext) {
-    this.snapshotService?.registerTraceContext(runFriendlyId, ctx);
   }
 
   async start() {

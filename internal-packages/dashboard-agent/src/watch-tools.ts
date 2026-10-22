@@ -62,14 +62,14 @@ export function buildWatchTools(args: {
             if (neverRead) {
               // Never read this turn: binding it to the current scope would be a guess.
               return {
-                error: `${watchSubjectLabel(watch as WatchSpec)} hasn't been read this turn — look it up first (e.g. get_run, get_queue, get_error) before scheduling a watch for it.`,
+                error: `${watchSubjectLabel(watch as WatchSpec)} hasn't been read this turn - look it up first (e.g. get_run, get_queue, get_error) before scheduling a watch for it.`,
               };
             }
             const resolved = resolvedScopeFor(identity.kind, identity.id, reads, base);
             if (!resolved.ok) {
               // Read from two or more scopes this turn, none of them this one: ambiguous.
               return {
-                error: `${watchSubjectLabel(watch as WatchSpec)} was read from more than one project/environment this turn — I can only watch objects in ${here}.`,
+                error: `${watchSubjectLabel(watch as WatchSpec)} was read from more than one project/environment this turn - I can only watch objects in ${here}.`,
               };
             }
             const elsewhere =

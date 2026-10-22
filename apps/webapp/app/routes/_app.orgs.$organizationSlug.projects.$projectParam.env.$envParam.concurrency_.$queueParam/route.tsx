@@ -35,7 +35,7 @@ import {
   useQueueMetric,
 } from "~/components/queues/QueueMetricCards";
 import { useIsMetricResponseFresh } from "~/hooks/useMetricResourceQuery";
-import { findProjectBySlug } from "~/models/project.server";
+import { findProjectBySlug, findProjectWithOrgFlagsBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { QueueRetrievePresenter } from "~/presenters/v3/QueueRetrievePresenter.server";
 import {
@@ -60,11 +60,20 @@ import type {
   ConcurrencyKeysResponse,
 } from "~/routes/resources.queues.concurrency-keys";
 import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
+import { canUseAlertsList } from "~/v3/canUseAlertsList.server";
 import { rbac } from "~/services/rbac.server";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { requireUserId } from "~/services/session.server";
-import { docsPath, EnvironmentParamSchema, v3RunsPath } from "~/utils/pathBuilder";
+import {
+  docsPath,
+  EnvironmentParamSchema,
+  v3AlertCreatePath,
+  v3RunsPath,
+} from "~/utils/pathBuilder";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { formatNumberCompact } from "~/utils/numberFormatter";
 import { cn } from "~/utils/cn";
 import { redirectWithErrorMessage } from "~/models/message.server";
@@ -82,8 +91,9 @@ import {
   useRememberQueueMetricsPeriod,
 } from "~/components/queues/queueMetricsPeriod";
 import { queueMetricsMaxPeriodDays } from "~/components/queues/queueMetricsPeriod.server";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { InvestigateButton } from "~/components/dashboard-agent/InvestigateButton";
+import { useDashboardAgent } from "~/components/dashboard-agent/dashboardAgentLauncher";
 import { queueBacklogPrompt } from "~/components/dashboard-agent/investigate-prompts";
 import { queueAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
@@ -92,7 +102,7 @@ import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { InlineCode } from "~/components/code/InlineCode";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
-import { BookOpenIcon } from "@heroicons/react/20/solid";
+import { BellAlertIcon, BookOpenIcon } from "@heroicons/react/20/solid";
 import { pageMeta } from "~/utils/pageTitle";
 
 export const handle: Handle = {
@@ -118,12 +128,17 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const url = new URL(request.url);
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  const project = await findProjectWithOrgFlagsBySlug(organizationSlug, projectParam, userId);
   if (!project) throw new Response(undefined, { status: 404, statusText: "Project not found" });
 
   const environment = await findEnvironmentBySlug(project.id, envParam, userId);
   if (!environment)
     throw new Response(undefined, { status: 404, statusText: "Environment not found" });
+
+  const alertsEnabled = await canUseAlertsList({
+    orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+    userId,
+  });
 
   const auth = await rbac.authenticateSession(request, {
     userId,
@@ -177,6 +192,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     defaultPeriod: clampQueueMetricsPeriod(queueMetricsPeriodFromRequest(request), maxPeriodDays),
     maxPeriodDays,
     canWriteTasks,
+    alertsEnabled,
     archivingEnabled,
     ids: {
       organizationId: environment.organizationId,
@@ -278,8 +294,14 @@ export default function Page() {
     defaultPeriod,
     maxPeriodDays,
     canWriteTasks,
+    alertsEnabled,
     archivingEnabled,
   } = useTypedLoaderData<typeof loader>();
+
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+  const agent = useDashboardAgent();
 
   const { value, replace } = useSearchParams();
   const timeRange: TimeRangeParams = {
@@ -383,8 +405,44 @@ export default function Page() {
             {/* A paused queue can't drain or grow, so every watch it could offer is a
                 promise nothing will keep until someone resumes it. */}
             {queue.paused ? null : (
-              <WatchButton spec={queueWatchRecommendation(fullName, { oldestWaitMs })} />
+              <WatchButton
+                spec={queueWatchRecommendation(fullName, { oldestWaitMs })}
+                alertsEnabled={alertsEnabled}
+              />
             )}
+            {alertsEnabled ? (
+              agent ? (
+                <Button
+                  variant="secondary/small"
+                  LeadingIcon={BellAlertIcon}
+                  leadingIconClassName="text-alerts"
+                  tooltip="Create a new alert"
+                  onClick={() =>
+                    agent.openCreateAlert({
+                      area: "queues",
+                      scope: "queue",
+                      scopeValue: fullName,
+                    })
+                  }
+                >
+                  Watch
+                </Button>
+              ) : (
+                <LinkButton
+                  to={v3AlertCreatePath(organization, project, environment, {
+                    area: "queues",
+                    scope: "queue",
+                    scopeValue: fullName,
+                  })}
+                  variant="secondary/small"
+                  LeadingIcon={BellAlertIcon}
+                  leadingIconClassName="text-alerts"
+                  tooltip="Create a new alert"
+                >
+                  Watch
+                </LinkButton>
+              )
+            ) : null}
             <QueueOverrideConcurrencyButton
               queue={queue}
               environmentConcurrencyLimit={environmentConcurrencyLimit}
@@ -1013,6 +1071,7 @@ function KeyStatsTable({
   const { data, isLoading } = useConcurrencyKeys({ ids, timeRange, queueName, search, page });
 
   const rows: ConcurrencyKeyRow[] = data?.success ? data.rows : [];
+  const loadedAt = data?.success ? data.loadedAt : 0;
   const total = data?.success ? data.total : 0;
   const perPage = data?.success ? data.perPage : 25;
   const totalPages = Math.max(1, Math.ceil(total / perPage));
@@ -1046,6 +1105,7 @@ function KeyStatsTable({
             <TableHeaderCell>Key</TableHeaderCell>
             <TableHeaderCell alignment="right">Queued now</TableHeaderCell>
             <TableHeaderCell alignment="right">Running now</TableHeaderCell>
+            <TableHeaderCell alignment="right">Override</TableHeaderCell>
             <TableHeaderCell alignment="right">Oldest wait</TableHeaderCell>
             <TableHeaderCell alignment="right">Started</TableHeaderCell>
             <TableHeaderCell alignment="right">Peak backlog</TableHeaderCell>
@@ -1054,11 +1114,11 @@ function KeyStatsTable({
         </TableHeader>
         <TableBody>
           {showLoading ? (
-            <TableBlankRow colSpan={7} className="text-text-dimmed">
+            <TableBlankRow colSpan={8} className="text-text-dimmed">
               Loading…
             </TableBlankRow>
           ) : rows.length === 0 ? (
-            <TableBlankRow colSpan={7} className="text-text-dimmed">
+            <TableBlankRow colSpan={8} className="text-text-dimmed">
               {search ? `No keys match “${search}”` : "No concurrency keys"}
             </TableBlankRow>
           ) : (
@@ -1072,6 +1132,21 @@ function KeyStatsTable({
                 <TableCell>{row.key}</TableCell>
                 <TableCell alignment="right">{row.queued.toLocaleString()}</TableCell>
                 <TableCell alignment="right">{row.running.toLocaleString()}</TableCell>
+                <TableCell alignment="right">
+                  {row.override === null ? (
+                    <span className="text-text-dimmed">–</span>
+                  ) : (
+                    <span
+                      title={
+                        row.overrideExpiresAt === null
+                          ? "Per-key override"
+                          : `Per-key override, expires in ${formatWaitMs(Math.max(0, row.overrideExpiresAt - loadedAt))}`
+                      }
+                    >
+                      {row.override.toLocaleString()}
+                    </span>
+                  )}
+                </TableCell>
                 <TableCell alignment="right">
                   {row.oldestWaitMs === null ? "–" : formatWaitMs(row.oldestWaitMs)}
                 </TableCell>

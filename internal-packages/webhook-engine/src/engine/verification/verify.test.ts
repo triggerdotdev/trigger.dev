@@ -1,7 +1,9 @@
 import { createHmac, generateKeyPairSync, sign as cryptoSign, type KeyObject } from "node:crypto";
+import { WebhookVerifierConfig } from "@trigger.dev/core/v3";
+import { webhookProviderConfigs } from "@trigger.dev/core/webhooks";
 import { describe, expect, it } from "vitest";
 import { parseEventBody } from "./derive.js";
-import { verify } from "./index.js";
+import { verify, verifyWithSecrets } from "./index.js";
 import type { VerifyInput } from "./types.js";
 
 // Real signatures computed with node:crypto, exercised through the config-driven verifier.
@@ -334,6 +336,75 @@ describe("hmac verifier (config-driven)", () => {
   });
 });
 
+describe("provider retries", () => {
+  function slackAttempt(body: string, sentAtS: number, retryNum?: number) {
+    const sig = createHmac("sha256", "whsec_test_secret")
+      .update(`v0:${sentAtS}:${body}`)
+      .digest("hex");
+    return input({
+      rawBytes: bytes(body),
+      nowMs: sentAtS * 1000,
+      headers: {
+        "x-slack-signature": `v0=${sig}`,
+        "x-slack-request-timestamp": String(sentAtS),
+        ...(retryNum
+          ? { "x-slack-retry-num": String(retryNum), "x-slack-retry-reason": "http_timeout" }
+          : {}),
+      },
+    });
+  }
+
+  it("gives a Slack event and its retries one key", () => {
+    const body = JSON.stringify({
+      type: "event_callback",
+      team_id: "T1",
+      event_id: "Ev0MDYA7HL",
+      event: { type: "message", channel: "D1", ts: "1700000000.000100", text: "hi" },
+    });
+    const slack = cfg(webhookProviderConfigs.slack.config());
+    const first = verify(slack, slackAttempt(body, NOW_S));
+    const retry = verify(slack, slackAttempt(body, NOW_S + 61, 1));
+    expect(first.ok && retry.ok).toBe(true);
+    expect(first.idempotencyKey).toBe("Ev0MDYA7HL");
+    expect(retry.idempotencyKey).toBe(first.idempotencyKey);
+  });
+
+  it("decodes a Slack click and keys it on the delivery when it has no event_id", () => {
+    const click = { type: "block_actions", actions: [{ action_id: "trigger_tool_1" }] };
+    const body = `payload=${encodeURIComponent(JSON.stringify(click))}`;
+    const slack = cfg(webhookProviderConfigs.slack.config());
+    const first = verify(slack, slackAttempt(body, NOW_S));
+    const second = verify(slack, slackAttempt(body, NOW_S + 1));
+    expect(first.ok).toBe(true);
+    expect(first.parsedEvent).toEqual(click);
+    expect(first.idempotencyKey).toMatch(/^[0-9a-f]{64}$/);
+    expect(second.idempotencyKey).not.toBe(first.idempotencyKey);
+  });
+  it("gives a Linear delivery and its retries one key", () => {
+    const delivery = "9180c0a4-8f16-486a-8472-648394eae869";
+    const attempt = (sentAtMs: number) => {
+      const body = JSON.stringify({
+        type: "AgentSessionEvent",
+        action: "created",
+        agentSession: { id: "session-1" },
+        webhookTimestamp: sentAtMs,
+      });
+      const sig = createHmac("sha256", "whsec_test_secret").update(body).digest("hex");
+      return input({
+        rawBytes: bytes(body),
+        nowMs: sentAtMs,
+        headers: { "linear-signature": sig, "linear-delivery": delivery },
+      });
+    };
+    const linear = cfg(webhookProviderConfigs.linear.config());
+    const first = verify(linear, attempt(NOW_MS));
+    const retry = verify(linear, attempt(NOW_MS + 60_400));
+    expect(first.ok && retry.ok).toBe(true);
+    expect(first.idempotencyKey).toBe(delivery);
+    expect(retry.idempotencyKey).toBe(first.idempotencyKey);
+  });
+});
+
 describe("asymmetric verifier (config-driven)", () => {
   it("verifies a Discord-style Ed25519 signature with a raw-hex public key", () => {
     const { publicKey, privateKey } = generateKeyPairSync("ed25519");
@@ -468,3 +539,306 @@ function rawEd25519PublicKeyHex(publicKey: KeyObject): string {
   const der = publicKey.export({ type: "spki", format: "der" });
   return Buffer.from(der.subarray(der.length - 32)).toString("hex");
 }
+
+describe("timestamp formats", () => {
+  const SECRET = "whsec_test_secret";
+  const hex = (s: string) => createHmac("sha256", SECRET).update(s).digest("hex");
+
+  const HTTP_DATE_CONFIG = {
+    scheme: "hmac",
+    algorithm: "sha256",
+    encoding: "hex",
+    signatureHeader: "metronome-webhook-signature",
+    signature: {},
+    timestamp: {
+      source: { from: "header", name: "x-metronome-date" },
+      format: "http-date",
+      toleranceSeconds: 300,
+    },
+    signingString: {
+      template: "{date}\n{body}",
+      vars: { date: { from: "header", name: "x-metronome-date" } },
+    },
+  };
+
+  function httpDateInput(date: string) {
+    const body = '{"id":"evt_1","type":"invoice.finalized"}';
+    return input({
+      rawBytes: bytes(body),
+      headers: { "x-metronome-date": date, "metronome-webhook-signature": hex(`${date}\n${body}`) },
+    });
+  }
+
+  it("accepts an HTTP date inside the window and rejects one outside it", () => {
+    const inside = new Date(NOW_MS - 299_000).toUTCString();
+    const outside = new Date(NOW_MS - 301_000).toUTCString();
+    expect(verify(cfg(HTTP_DATE_CONFIG), httpDateInput(inside)).ok).toBe(true);
+    expect(verify(cfg(HTTP_DATE_CONFIG), httpDateInput(outside))).toMatchObject({
+      ok: false,
+      error: "timestamp outside tolerance",
+    });
+  });
+
+  it("compares an HTTP date at whole-second resolution, so the window isn't cut short", () => {
+    const stamped = new Date(NOW_MS).toUTCString();
+    const at = (nowMs: number) =>
+      verify(cfg(HTTP_DATE_CONFIG), { ...httpDateInput(stamped), nowMs }).ok;
+    expect(at(NOW_MS + 300_900)).toBe(true);
+    expect(at(NOW_MS + 301_000)).toBe(false);
+  });
+
+  it("refuses an http-date signature field only when the item separator can split a date", () => {
+    const withSeparator = (itemSeparator: string) =>
+      WebhookVerifierConfig.safeParse({
+        scheme: "hmac",
+        algorithm: "sha256",
+        encoding: "hex",
+        signatureHeader: "x-signature",
+        signature: { itemSeparator, fieldSeparator: "=", field: "v1" },
+        timestamp: { source: { from: "signatureField", field: "t" }, format: "http-date" },
+        signingString: { template: "{timestamp}.{body}" },
+      }).success;
+    expect(withSeparator(",")).toBe(false);
+    expect(withSeparator(" ")).toBe(false);
+    expect(withSeparator(";")).toBe(true);
+    expect(WebhookVerifierConfig.safeParse(HTTP_DATE_CONFIG).success).toBe(true);
+  });
+
+  it("reads an HTTP date from a ';'-separated signature header", () => {
+    const config = {
+      scheme: "hmac",
+      algorithm: "sha256",
+      encoding: "hex",
+      signatureHeader: "x-signature",
+      signature: { itemSeparator: ";", fieldSeparator: "=", field: "v1" },
+      timestamp: {
+        source: { from: "signatureField", field: "t" },
+        format: "http-date",
+        toleranceSeconds: 300,
+      },
+      signingString: { template: "{timestamp}.{body}" },
+    };
+    const date = new Date(NOW_MS).toUTCString();
+    const body = '{"id":"evt_1"}';
+    const result = verify(
+      cfg(config),
+      input({
+        rawBytes: bytes(body),
+        headers: { "x-signature": `t=${date};v1=${hex(`${date}.${body}`)}` },
+      })
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("keeps a fractional window for an HTTP date slightly in the future", () => {
+    const config = {
+      ...HTTP_DATE_CONFIG,
+      timestamp: { ...HTTP_DATE_CONFIG.timestamp, toleranceSeconds: 0.5 },
+    };
+    const stamped = new Date(NOW_MS + 1000).toUTCString();
+    const at = (nowMs: number) => verify(cfg(config), { ...httpDateInput(stamped), nowMs }).ok;
+    expect(at(NOW_MS + 600)).toBe(true);
+    expect(at(NOW_MS + 400)).toBe(false);
+  });
+
+  it("refuses a value that isn't an HTTP date", () => {
+    expect(verify(cfg(HTTP_DATE_CONFIG), httpDateInput("yesterday"))).toMatchObject({
+      ok: false,
+      error: "unparseable timestamp",
+    });
+  });
+
+  const ISO_BODY_CONFIG = {
+    scheme: "hmac",
+    algorithm: "sha256",
+    encoding: "hex",
+    signatureHeader: "plain-request-signature",
+    signature: {},
+    timestamp: {
+      source: { from: "body", path: "webhookMetadata.webhookDeliveryAttemptTimestamp" },
+      format: "iso8601",
+      toleranceSeconds: 300,
+    },
+    signingString: "raw",
+  };
+
+  function isoInput(timestamp: string) {
+    const body = JSON.stringify({
+      id: "pEv_1",
+      type: "thread.thread_created",
+      webhookMetadata: { webhookDeliveryAttemptTimestamp: timestamp },
+    });
+    return input({ rawBytes: bytes(body), headers: { "plain-request-signature": hex(body) } });
+  }
+
+  it("accepts an ISO 8601 body timestamp inside the window and rejects one outside it", () => {
+    expect(
+      verify(cfg(ISO_BODY_CONFIG), isoInput(new Date(NOW_MS + 299_000).toISOString())).ok
+    ).toBe(true);
+    expect(
+      verify(cfg(ISO_BODY_CONFIG), isoInput(new Date(NOW_MS + 301_000).toISOString()))
+    ).toMatchObject({ ok: false, error: "timestamp outside tolerance" });
+  });
+
+  it("refuses an ISO timestamp that doesn't parse, and a unix number is not read as ISO", () => {
+    expect(verify(cfg(ISO_BODY_CONFIG), isoInput("not-a-date"))).toMatchObject({
+      ok: false,
+      error: "unparseable timestamp",
+    });
+    expect(verify(cfg(ISO_BODY_CONFIG), isoInput(String(NOW_S))).ok).toBe(false);
+  });
+});
+
+describe("header fallbacks", () => {
+  const SECRET = "whsec_test_secret";
+  const hex = (s: string) => createHmac("sha256", SECRET).update(s).digest("hex");
+  const BODY = '{"id":"evt_1","type":"invoice.finalized"}';
+  const DATE = new Date(NOW_MS).toUTCString();
+
+  const CONFIG = {
+    scheme: "hmac",
+    algorithm: "sha256",
+    encoding: "hex",
+    signatureHeader: "metronome-webhook-signature",
+    signature: {},
+    timestamp: {
+      source: { from: "header", name: "x-metronome-date", fallback: ["date"] },
+      format: "http-date",
+      toleranceSeconds: 300,
+    },
+    signingString: {
+      template: "{date}\n{body}",
+      vars: { date: { from: "header", name: "x-metronome-date", fallback: ["date"] } },
+    },
+  };
+
+  const run = (headers: Record<string, string>) =>
+    verify(
+      cfg(CONFIG),
+      input({
+        rawBytes: bytes(BODY),
+        headers: { "metronome-webhook-signature": hex(`${DATE}\n${BODY}`), ...headers },
+      })
+    );
+
+  it("reads the primary header when it is set", () => {
+    expect(run({ "x-metronome-date": DATE }).ok).toBe(true);
+  });
+
+  it("falls back to the next header when the primary is missing or empty", () => {
+    expect(run({ date: DATE }).ok).toBe(true);
+    expect(run({ "x-metronome-date": "", date: DATE }).ok).toBe(true);
+  });
+
+  it("prefers the primary header over the fallback", () => {
+    expect(run({ "x-metronome-date": DATE, date: "Mon, 02 Jan 2006 22:04:05 GMT" }).ok).toBe(true);
+    expect(run({ "x-metronome-date": "Mon, 02 Jan 2006 22:04:05 GMT", date: DATE }).ok).toBe(false);
+  });
+
+  it("fails as a missing timestamp when no listed header is set", () => {
+    expect(run({})).toMatchObject({ ok: false, error: "missing timestamp" });
+  });
+});
+
+describe("verifyWithSecrets", () => {
+  const githubConfig = cfg({
+    scheme: "hmac",
+    algorithm: "sha256",
+    encoding: "hex",
+    signatureHeader: "x-hub-signature-256",
+    signature: { fieldSeparator: "=", field: "sha256" },
+    signingString: "raw",
+    idempotencyField: { from: "header", name: "x-github-delivery" },
+  });
+  const body = JSON.stringify({ action: "opened" });
+
+  function signedWith(secret: string) {
+    const sig = createHmac("sha256", secret).update(body).digest("hex");
+    return {
+      url: "https://api.example.com/webhooks/v1/ingest/abc",
+      nowMs: NOW_MS,
+      rawBytes: bytes(body),
+      headers: { "x-hub-signature-256": `sha256=${sig}`, "x-github-delivery": "d-1" },
+    };
+  }
+
+  it("accepts the current secret at index 0", () => {
+    const result = verifyWithSecrets(githubConfig, signedWith("new"), ["new", "old"]);
+    expect(result).toMatchObject({ ok: true, secretIndex: 0, idempotencyKey: "d-1" });
+  });
+
+  it("accepts a previous secret and reports its index", () => {
+    const result = verifyWithSecrets(githubConfig, signedWith("old"), ["new", "old"]);
+    expect(result).toMatchObject({ ok: true, secretIndex: 1, idempotencyKey: "d-1" });
+  });
+
+  it("returns the current secret's failure when none match", () => {
+    const result = verifyWithSecrets(githubConfig, signedWith("other"), ["new", "old"]);
+    expect(result).toMatchObject({ ok: false, error: "signature mismatch" });
+    expect(result.secretIndex).toBeUndefined();
+  });
+
+  it("rejects the old secret once only the current one is listed", () => {
+    expect(verifyWithSecrets(githubConfig, signedWith("old"), ["new"]).ok).toBe(false);
+  });
+});
+
+describe("additionalSignatureHeaders", () => {
+  const hookdeckConfig = cfg({
+    scheme: "hmac",
+    algorithm: "sha256",
+    encoding: "base64",
+    signatureHeader: "x-hookdeck-signature",
+    additionalSignatureHeaders: ["x-hookdeck-signature-2"],
+    signature: {},
+    signingString: "raw",
+    idempotencyField: { from: "header", name: "x-hookdeck-eventid" },
+  });
+  const body = JSON.stringify({ type: "order.created" });
+  const sign = (secret: string) => createHmac("sha256", secret).update(body).digest("base64");
+
+  function delivery(headers: Record<string, string>) {
+    return {
+      url: "https://api.example.com/webhooks/v1/ingest/abc",
+      nowMs: NOW_MS,
+      rawBytes: bytes(body),
+      headers: { "x-hookdeck-eventid": "evt_1", ...headers },
+    };
+  }
+
+  const rotating = delivery({
+    "x-hookdeck-signature": sign("new"),
+    "x-hookdeck-signature-2": sign("old"),
+  });
+
+  it("matches the old secret through the additional header during a rotation", () => {
+    expect(verifyWithSecrets(hookdeckConfig, rotating, ["old"])).toMatchObject({
+      ok: true,
+      idempotencyKey: "evt_1",
+    });
+  });
+
+  it("matches the new secret through the main header during a rotation", () => {
+    expect(verifyWithSecrets(hookdeckConfig, rotating, ["new"]).ok).toBe(true);
+  });
+
+  it("rejects a secret that signed neither header", () => {
+    expect(verifyWithSecrets(hookdeckConfig, rotating, ["other"])).toMatchObject({
+      ok: false,
+      error: "signature mismatch",
+    });
+  });
+
+  it("verifies with only the main header present", () => {
+    const single = delivery({ "x-hookdeck-signature": sign("new") });
+    expect(verifyWithSecrets(hookdeckConfig, single, ["new"]).ok).toBe(true);
+  });
+
+  it("still requires the main header", () => {
+    const onlyAdditional = delivery({ "x-hookdeck-signature-2": sign("old") });
+    expect(verifyWithSecrets(hookdeckConfig, onlyAdditional, ["old"])).toMatchObject({
+      ok: false,
+      error: "missing signature header",
+    });
+  });
+});

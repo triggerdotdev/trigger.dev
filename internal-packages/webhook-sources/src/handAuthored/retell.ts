@@ -2,8 +2,8 @@ import { type SampleRecord } from "../sampleRecord.js";
 
 /**
  * Retell AI samples. Retell signs with `x-retell-signature: v={timestamp_ms},d={hex_digest}`
- * (HMAC-SHA256 over `rawBody + timestamp`), which does not match any of our verifier presets, so
- * these ship sample-only (no `presetId`). Every event is a thin envelope (`event`, `call`) where
+ * (HMAC-SHA256 over `rawBody + timestamp`). Samples use `webhookProviderConfigs.retell` for
+ * signing and verification, without a named `presetId`. Every event is an envelope (`event`, `call`) where
  * `call` grows richer across the lifecycle: `call_started` carries basic call info, `call_ended`
  * adds timing/transcript/disconnection details, and `call_analyzed` adds the `call_analysis` object.
  */

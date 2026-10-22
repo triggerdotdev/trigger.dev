@@ -4,7 +4,6 @@ import {
   WORKER_QUEUE_VERSION,
   type WorkerQueueClass,
 } from "@trigger.dev/core/v3/workers";
-import { FEATURE_FLAG, FeatureFlagCatalog } from "~/v3/featureFlags";
 
 export { SCHEDULED_WORKER_QUEUE_SUFFIX } from "@trigger.dev/core/v3/workers";
 
@@ -44,35 +43,6 @@ export function regionForDisplay(
 
 /** `TriggerSource` value used for runs originating from a schedule. */
 const SCHEDULE_TRIGGER_SOURCE = "schedule";
-
-/**
- * Resolve whether the scheduled worker-queue split is enabled for a run, reading
- * only the in-memory org feature-flags JSON (already loaded on the authenticated
- * environment) — never a DB query, so it is safe on the trigger hot path.
- *
- * Precedence: a per-org override wins in BOTH directions; the global default is
- * used only when the org has not set the flag.
- */
-export function resolveScheduledQueueSplitEnabled({
-  orgFeatureFlags,
-  globalDefault,
-}: {
-  orgFeatureFlags: Record<string, unknown> | null | undefined;
-  globalDefault: boolean;
-}): boolean {
-  const override = orgFeatureFlags?.[FEATURE_FLAG.workerQueueScheduledSplitEnabled];
-
-  if (override !== undefined) {
-    const parsed =
-      FeatureFlagCatalog[FEATURE_FLAG.workerQueueScheduledSplitEnabled].safeParse(override);
-
-    if (parsed.success) {
-      return parsed.data;
-    }
-  }
-
-  return globalDefault;
-}
 
 /**
  * Pick the worker queue a run should be enqueued onto. Runs in a scheduled

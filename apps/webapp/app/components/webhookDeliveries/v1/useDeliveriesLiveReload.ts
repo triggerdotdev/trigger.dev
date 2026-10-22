@@ -7,6 +7,7 @@ import {
   type LiveDeliveryFields,
   type loader as liveDeliveriesLoader,
 } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.webhooks.deliveries.live";
+import { DELIVERY_FILTER_PARAMS } from "./deliveryListFilters";
 
 const DELIVERIES_POLL_INTERVAL_MS = 3000;
 const NEW_DELIVERIES_EVERY_N_POLL_TICKS = 2;
@@ -88,14 +89,11 @@ function useNewDeliveriesDetection({
     return shouldPollForNewDeliveries && isNewDeliveriesCheckTick(pollTickRef.current);
   }, [shouldPollForNewDeliveries]);
 
-  const showNewDeliveriesBanner = newDeliveriesCount > 0;
-
   return {
     knownNewestDeliveryMs,
     newDeliveriesCount,
     setNewDeliveriesCount,
     shouldPollForNewDeliveries,
-    showNewDeliveriesBanner,
     dismissNewDeliveries,
     checkNewDeliveriesOnTick,
     resetNewDeliveriesTracking,
@@ -131,7 +129,6 @@ export function useDeliveriesLiveReload({
     newDeliveriesCount,
     setNewDeliveriesCount,
     shouldPollForNewDeliveries,
-    showNewDeliveriesBanner,
     dismissNewDeliveries,
     checkNewDeliveriesOnTick,
     resetNewDeliveriesTracking,
@@ -198,6 +195,10 @@ export function useDeliveriesLiveReload({
         const current = new URLSearchParams(location.search);
         const to = current.get("to");
         if (to) searchParams.set("to", to);
+        // Count only deliveries the filtered list would show after a refresh.
+        for (const param of DELIVERY_FILTER_PARAMS) {
+          for (const value of current.getAll(param)) searchParams.append(param, value);
+        }
       }
 
       deliveriesPollFetcher.load(`${deliveriesResourcesBasePath}/live?${searchParams.toString()}`);
@@ -226,7 +227,6 @@ export function useDeliveriesLiveReload({
 
   return {
     visibleDeliveries,
-    showNewDeliveriesBanner,
     newDeliveriesCount,
     dismissNewDeliveries,
   };

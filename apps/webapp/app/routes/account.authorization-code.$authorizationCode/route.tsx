@@ -15,7 +15,7 @@ import {
   createPersonalAccessTokenFromAuthorizationCode,
   isAuthorizationCodeMintable,
 } from "~/services/personalAccessToken.server";
-import { requireUser, requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Authorize login");
@@ -89,7 +89,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
-  const userId = await requireUserId(request);
+  const { id: userId } = await requireUser(request);
 
   const { authorizationCode } = parseParams(params);
   const { source, clientName } = parseSearch(request);

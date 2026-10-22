@@ -86,6 +86,7 @@ describe("resolveComputeMigration", () => {
     envType: "PRODUCTION",
     baseEnableFastPath: false,
     region: "us-east-1",
+    environmentCompat: undefined,
   };
   const backing = { workerQueue: "us-east-1-next", enableFastPath: true };
 
@@ -142,5 +143,84 @@ describe("resolveComputeMigration", () => {
         backing,
       })
     ).toEqual({ workerQueue: undefined, region: undefined, enableFastPath: false });
+  });
+
+  describe("environment compat override", () => {
+    const swapped = { workerQueue: "us-east-1-next", region: "us-east-1", enableFastPath: true };
+    const base = { workerQueue: "us-east-1", region: "us-east-1", enableFastPath: false };
+    const notEnrolled = { flags: { computeMigrationEnabled: false } };
+
+    it("compute swaps an org the migration has not enrolled", () => {
+      expect(
+        resolveComputeMigration({
+          ...enrolled,
+          ...notEnrolled,
+          baseWorkerQueue: "us-east-1",
+          orgId: "org_x",
+          backing,
+          environmentCompat: "compute",
+        })
+      ).toEqual(swapped);
+    });
+    it("compute wins over the per-org opt-out for that environment", () => {
+      expect(
+        resolveComputeMigration({
+          ...enrolled,
+          baseWorkerQueue: "us-east-1",
+          orgId: "org_x",
+          orgFeatureFlags: { computeMigrationEnabled: false },
+          backing,
+          environmentCompat: "compute",
+        })
+      ).toEqual(swapped);
+    });
+    it("container keeps an enrolled org's environment on the base queue", () => {
+      expect(
+        resolveComputeMigration({
+          ...enrolled,
+          baseWorkerQueue: "us-east-1",
+          orgId: "org_x",
+          orgFeatureFlags: { computeMigrationEnabled: true },
+          backing,
+          environmentCompat: "container",
+        })
+      ).toEqual(base);
+    });
+    it("any follows the org's migration decision", () => {
+      const input = {
+        ...enrolled,
+        baseWorkerQueue: "us-east-1",
+        orgId: "org_x",
+        backing,
+        environmentCompat: "any" as const,
+      };
+      expect(resolveComputeMigration(input)).toEqual(swapped);
+      expect(resolveComputeMigration({ ...input, ...notEnrolled })).toEqual(base);
+    });
+    it("compute without a backing group leaves the queue unchanged", () => {
+      expect(
+        resolveComputeMigration({
+          ...enrolled,
+          ...notEnrolled,
+          baseWorkerQueue: "eu-central-1",
+          region: "eu-central-1",
+          orgId: "org_x",
+          backing: undefined,
+          environmentCompat: "compute",
+        })
+      ).toEqual({ workerQueue: "eu-central-1", region: "eu-central-1", enableFastPath: false });
+    });
+    it("does not swap DEVELOPMENT", () => {
+      expect(
+        resolveComputeMigration({
+          ...enrolled,
+          baseWorkerQueue: "us-east-1",
+          orgId: "org_x",
+          backing,
+          envType: "DEVELOPMENT",
+          environmentCompat: "compute",
+        })
+      ).toEqual(base);
+    });
   });
 });

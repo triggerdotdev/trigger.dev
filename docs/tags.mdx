@@ -118,3 +118,9 @@ for await (const run of runs.list({ tag: "user_123456", status: ["COMPLETED"] })
   console.log(run.id, run.taskIdentifier, run.finishedAt, run.tags);
 }
 ```
+
+<Tip>
+  To follow runs with a tag as they change, use
+  [`runs.subscribeToRunsWithTag()`](/realtime/backend/subscribe) instead of polling `runs.list()`.
+  See [runs.list() best practices](/runs/list-best-practices).
+</Tip>

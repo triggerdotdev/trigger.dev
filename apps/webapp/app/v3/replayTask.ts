@@ -9,7 +9,7 @@ export const ReplayRunData = z
       .optional()
       .transform((val, ctx) => {
         if (!val) {
-          return "{}";
+          return undefined;
         }
 
         try {

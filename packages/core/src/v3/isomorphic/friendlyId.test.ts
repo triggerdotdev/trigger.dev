@@ -27,6 +27,10 @@ import {
   parseWaitpointId,
   type WaitpointIdType,
 } from "./friendlyId.js";
+import {
+  WEBHOOK_DELIVERY_RETENTION_CLASSES,
+  webhookDeliveryRetentionClassAtLeast,
+} from "./webhookDeliveryRetention.js";
 
 /** Every legal gen-2 shard char: the full DNS-safe lowercase range. */
 const SHARD_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789".split("");
@@ -220,17 +224,43 @@ describe("firekeeper pod-name round-trip (runner-<id>[-attempt-N] → run_<id>)"
   });
 });
 
-describe("WebhookDeliveryId (time-encoded)", () => {
-  it("generate() round-trips and parseTimestamp recovers the exact mint timestamp", () => {
-    const { id, friendlyId, timestamp } = WebhookDeliveryId.generate();
+describe("WebhookDeliveryId (time and retention encoded)", () => {
+  it("generate() round-trips and parse recovers the exact mint timestamp and class", () => {
+    const { id, friendlyId, timestamp, retentionDays } = WebhookDeliveryId.generate({
+      retentionDays: 7,
+    });
 
     expect(friendlyId).toBe(`whd_${id}`);
-    expect(id.length).toBe(25);
+    expect(id.length).toBe(26);
+    expect(retentionDays).toBe(7);
     expect(WebhookDeliveryId.toId(friendlyId)).toBe(id);
     expect(WebhookDeliveryId.toId(id)).toBe(id);
     expect(WebhookDeliveryId.toFriendlyId(id)).toBe(friendlyId);
     expect(WebhookDeliveryId.parseTimestamp(friendlyId)?.getTime()).toBe(timestamp.getTime());
     expect(WebhookDeliveryId.parseTimestamp(id)?.getTime()).toBe(timestamp.getTime());
+    expect(WebhookDeliveryId.parseRetentionDays(friendlyId)).toBe(7);
+  });
+
+  it("round-trips every retention class", () => {
+    for (const { days } of WEBHOOK_DELIVERY_RETENTION_CLASSES) {
+      const { friendlyId } = WebhookDeliveryId.generate({ retentionDays: days });
+      expect(WebhookDeliveryId.parseRetentionDays(friendlyId)).toBe(days);
+    }
+  });
+
+  it("mints for a given past timestamp, for backfills and seeds", () => {
+    const at = new Date("2026-09-01T08:00:00.123Z");
+    const { friendlyId, timestamp } = WebhookDeliveryId.generate({
+      retentionDays: 90,
+      timestamp: at,
+    });
+    expect(timestamp).toBe(at);
+    expect(WebhookDeliveryId.parseTimestamp(friendlyId)?.toISOString()).toBe(at.toISOString());
+    expect(WebhookDeliveryId.parseRetentionDays(friendlyId)).toBe(90);
+  });
+
+  it("refuses to mint for a retention that isn't a class", () => {
+    expect(() => WebhookDeliveryId.generate({ retentionDays: 60 })).toThrow();
   });
 
   it("encodes the wall-clock mint time so the partition key is recoverable", () => {
@@ -238,7 +268,7 @@ describe("WebhookDeliveryId (time-encoded)", () => {
     try {
       const minted = new Date("2026-08-09T12:34:56.789Z");
       vi.setSystemTime(minted);
-      const { friendlyId, timestamp } = WebhookDeliveryId.generate();
+      const { friendlyId, timestamp } = WebhookDeliveryId.generate({ retentionDays: 30 });
       expect(timestamp.getTime()).toBe(minted.getTime());
       expect(WebhookDeliveryId.parseTimestamp(friendlyId)?.toISOString()).toBe(
         "2026-08-09T12:34:56.789Z"
@@ -248,23 +278,46 @@ describe("WebhookDeliveryId (time-encoded)", () => {
     }
   });
 
-  it("sorts lexicographically in mint order at millisecond resolution", () => {
+  it("sorts lexicographically in mint order at millisecond resolution, across classes", () => {
     vi.useFakeTimers();
     try {
       vi.setSystemTime(new Date("2026-08-09T00:00:00.000Z"));
-      const first = WebhookDeliveryId.generate().id;
+      const first = WebhookDeliveryId.generate({ retentionDays: 365 }).id;
       vi.setSystemTime(new Date("2026-08-09T00:00:00.001Z"));
-      const second = WebhookDeliveryId.generate().id;
+      const second = WebhookDeliveryId.generate({ retentionDays: 3 }).id;
       expect(first < second).toBe(true);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("returns undefined for legacy or malformed ids so callers skip pruning", () => {
+  it("parses a v1 id's timestamp but not a class", () => {
+    const v1 = `whd_${WebhookDeliveryId.generate({ retentionDays: 3 }).id.slice(0, 24)}1`;
+    expect(WebhookDeliveryId.parseTimestamp(v1)).toBeInstanceOf(Date);
+    expect(WebhookDeliveryId.parseRetentionDays(v1)).toBeUndefined();
+  });
+
+  it("returns undefined for malformed ids so callers skip pruning", () => {
     expect(WebhookDeliveryId.parseTimestamp("whd_tooShort")).toBeUndefined();
-    expect(WebhookDeliveryId.parseTimestamp(`whd_${"z".repeat(24)}1`)).toBeUndefined();
+    expect(WebhookDeliveryId.parseTimestamp(`whd_${"z".repeat(24)}12`)).toBeUndefined();
     expect(WebhookDeliveryId.parseTimestamp(`whd_${"0".repeat(24)}9`)).toBeUndefined();
+    expect(WebhookDeliveryId.parseRetentionDays(`whd_${"0".repeat(24)}v2`)).toBeUndefined();
+  });
+});
+
+describe("webhook delivery retention classes", () => {
+  it("rounds up to the smallest class that keeps deliveries long enough", () => {
+    expect(webhookDeliveryRetentionClassAtLeast(1).days).toBe(3);
+    expect(webhookDeliveryRetentionClassAtLeast(7).days).toBe(7);
+    expect(webhookDeliveryRetentionClassAtLeast(60).days).toBe(90);
+    expect(webhookDeliveryRetentionClassAtLeast(1000).days).toBe(365);
+  });
+
+  it("has unique codes and days", () => {
+    const codes = WEBHOOK_DELIVERY_RETENTION_CLASSES.map((c) => c.code);
+    const days = WEBHOOK_DELIVERY_RETENTION_CLASSES.map((c) => c.days);
+    expect(new Set(codes).size).toBe(codes.length);
+    expect(new Set(days).size).toBe(days.length);
   });
 });
 

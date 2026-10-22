@@ -24,13 +24,23 @@ import { getMachinePreset } from "../machinePresets.js";
 import { isDequeueableExecutionStatus, isExecuting } from "../statuses.js";
 import type { WorkerQueueSelection } from "../../run-queue/types.js";
 import type { RunEngineOptions, WorkerQueueDequeueOptions } from "../types.js";
-import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
-import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
+import {
+  getLatestExecutionSnapshotOrFinishedRun,
+  type ExecutionSnapshotSystem,
+} from "./executionSnapshotSystem.js";
 import type { RunAttemptSystem } from "./runAttemptSystem.js";
 import type { SystemResources } from "./systems.js";
-import { snapshotRouteFromSnapshot, type SnapshotRouteWire } from "@internal/run-store";
+import {
+  parseSnapshotRoute,
+  snapshotRouteFromSnapshot,
+  type SnapshotReadContext,
+  type SnapshotRouteWire,
+} from "@internal/run-store";
 
 const NullableRetryOptions = z.compile(RetryOptions.nullable());
+
+/** How long a run with no template and no fallback worker queue waits before the next try. */
+const TEMPLATE_WAIT_RETRY_MS = 30_000;
 
 export type DequeueSystemOptions = {
   resources: SystemResources;
@@ -135,6 +145,7 @@ export class DequeueSystem {
     tx,
     blockingPop,
     blockingPopTimeoutSeconds,
+    templateFallbackWorkerQueue,
   }: WorkerQueueDequeueOptions & {
     workerQueues: WorkerQueueSelection[];
   }): Promise<DequeuedMessage | undefined> {
@@ -159,6 +170,11 @@ export class DequeueSystem {
         const workerQueue = message.workerQueue;
         const orgId = message.message.orgId;
         const runId = message.messageId;
+        // The message's birth route lets the snapshot store read a redis-primary run without a Postgres
+        // residency probe. A missing, malformed or other-org route falls back to the org id.
+        const carriedRoute = parseSnapshotRoute(message.message.snapshotRoute);
+        const snapshotReadContext: SnapshotReadContext =
+          carriedRoute && carriedRoute.organizationId === orgId ? carriedRoute : orgId;
         // The snapshot this dequeue's preparation started from; the recovery path below only requeues a
         // PENDING_EXECUTING snapshot that this preparation wrote.
         let preparedFromSnapshotId: string | undefined;
@@ -197,13 +213,18 @@ export class DequeueSystem {
             "dequeueFromWorkerQueue",
             [runId],
             async () => {
-              const snapshot = await getLatestExecutionSnapshot(
+              const { snapshot, finishedRun } = await getLatestExecutionSnapshotOrFinishedRun(
                 prisma,
                 runId,
                 this.$.runStore,
-                undefined,
-                orgId
+                snapshotReadContext,
+                { id: true }
               );
+              if (finishedRun) {
+                // A stale message for a finished run: remove it instead of starting the run.
+                await this.#acknowledgeExpiredFinishedRun(orgId, runId);
+                return;
+              }
               preparedFromSnapshotId = snapshot.id;
 
               if (!isDequeueableExecutionStatus(snapshot.executionStatus)) {
@@ -475,6 +496,23 @@ export class DequeueSystem {
 
                   return;
                 }
+              }
+
+              if (
+                templateFallbackWorkerQueue &&
+                result.environmentType !== "DEVELOPMENT" &&
+                !snapshot.checkpointId &&
+                !result.deployment?.templateKey
+              ) {
+                const outcome = await this.#moveToTemplateFallback({
+                  orgId,
+                  runId,
+                  workerQueue,
+                  fallbackWorkerQueue: templateFallbackWorkerQueue(workerQueue),
+                  tx: prisma,
+                });
+                span.setAttribute("result", outcome);
+                return;
               }
 
               const machinePreset = getMachinePreset({
@@ -758,11 +796,18 @@ export class DequeueSystem {
           // Reentrant: tryNackAndRequeue's own lock on this run nests inside this one.
           await this.$.runLock.lock("dequeueFromWorkerQueueRecovery", [runId], async () => {
             // Preparation may have committed a transition before throwing, so read current state.
-            const [snapshotError, snapshot] = await tryCatch(
-              getLatestExecutionSnapshot(prisma, runId, this.$.runStore)
+            // A finished run's stale message is removed; any read error (including a failed row
+            // read after expiry) falls through to the nack below.
+            const [snapshotError, read] = await tryCatch(
+              getLatestExecutionSnapshotOrFinishedRun(
+                prisma,
+                runId,
+                this.$.runStore,
+                snapshotReadContext,
+                { id: true }
+              )
             );
-
-            if (snapshotError) {
+            if (snapshotError || !read) {
               // Do not replace execution state we could not read with a checkpoint-less snapshot.
               const requeued = await this.$.runQueue.nackMessage({ orgId, messageId: runId });
               if (requeued === false) {
@@ -775,6 +820,11 @@ export class DequeueSystem {
               }
               return;
             }
+            if (read.finishedRun) {
+              await this.#acknowledgeExpiredFinishedRun(orgId, runId);
+              return;
+            }
+            const snapshot = read.snapshot;
 
             // A PENDING_EXECUTING snapshot written by this preparation was never handed to a worker,
             // so it is still ours to requeue. Any other non-dequeueable state is owned elsewhere.
@@ -845,6 +895,77 @@ export class DequeueSystem {
         },
       }
     );
+  }
+
+  /**
+   * Gives back a run whose deployment this consumer cannot start. With a fallback worker queue the
+   * run moves there without using its redelivery budget. Without one it is retried later, and the
+   * budget bounds how long it waits for a template.
+   */
+  async #moveToTemplateFallback({
+    orgId,
+    runId,
+    workerQueue,
+    fallbackWorkerQueue,
+    tx,
+  }: {
+    orgId: string;
+    runId: string;
+    workerQueue: string;
+    fallbackWorkerQueue: string | undefined;
+    tx: PrismaClientOrTransaction;
+  }): Promise<"TEMPLATE_FALLBACK" | "TEMPLATE_WAIT"> {
+    if (fallbackWorkerQueue && fallbackWorkerQueue !== workerQueue) {
+      this.$.logger.info("RunEngine.dequeueFromWorkerQueue(): No template, moving the run", {
+        runId,
+        workerQueue,
+        fallbackWorkerQueue,
+      });
+      await this.$.runStore.requeueRun(
+        runId,
+        { select: { id: true }, workerQueue: fallbackWorkerQueue },
+        tx
+      );
+      await this.$.runQueue.nackMessage({
+        orgId,
+        messageId: runId,
+        workerQueue: fallbackWorkerQueue,
+        retryAt: Date.now(),
+        incrementAttemptCount: false,
+      });
+      return "TEMPLATE_FALLBACK";
+    }
+
+    this.$.logger.warn("RunEngine.dequeueFromWorkerQueue(): No template and no fallback queue", {
+      runId,
+      workerQueue,
+    });
+    const requeued = await this.$.runQueue.nackMessage({
+      orgId,
+      messageId: runId,
+      retryAt: Date.now() + TEMPLATE_WAIT_RETRY_MS,
+    });
+    if (requeued === false) {
+      await this.runAttemptSystem.systemFailure({
+        runId,
+        organizationId: orgId,
+        error: {
+          type: "INTERNAL_ERROR",
+          code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
+          message: "The run's deployment is not ready to start on this worker queue.",
+        },
+        tx,
+      });
+    }
+    return "TEMPLATE_WAIT";
+  }
+
+  async #acknowledgeExpiredFinishedRun(orgId: string, runId: string): Promise<void> {
+    this.$.logger.warn(
+      "dequeueFromWorkerQueue: snapshot state expired for a finished run, removing from queue",
+      { runId, orgId }
+    );
+    await this.$.runQueue.acknowledgeMessage(orgId, runId);
   }
 
   async #pendingVersion({

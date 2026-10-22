@@ -47,7 +47,6 @@ beforeAll(async () => {
   server = new WorkloadServer({
     port: PORT,
     workerClient,
-    snapshotCallbackSecret: "snapshot-callback-secret",
     wideEventOpts: { service: "supervisor", env: { nodeId: "test" }, enabled: false },
     wideEventsNoisyRoutes: false,
   });

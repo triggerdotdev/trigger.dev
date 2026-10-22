@@ -367,6 +367,38 @@ await concurrencyLimits.reset("openai");
 
 Overrides survive deploys: redeploying your code keeps an active override until you reset it.
 
+### Overriding a limit for one key
+
+Pass `concurrencyKey` to override a limit's `perKey` for a single key, for example to let one session run more (or fewer) runs at once than the limit allows every other key:
+
+```ts
+import { concurrencyLimits } from "@trigger.dev/sdk";
+
+// this session may run 3 at once under "subagents", for the next 7 days
+await concurrencyLimits.override("subagents", {
+  concurrencyKey: sessionId,
+  perKey: 3,
+  ttl: "7d",
+});
+
+// read it back: the key's bound, the override, and when it expires
+const view = await concurrencyLimits.retrieve("subagents", { concurrencyKey: sessionId });
+console.log(view.perKey.override, view.perKey.expiresAt, view.running);
+
+// clear it early
+await concurrencyLimits.reset("subagents", { concurrencyKey: sessionId });
+```
+
+A per-key override behaves differently from a limit override:
+
+- **It is temporary.** It expires after `ttl` (a duration such as `"7d"` or a number of seconds). The default is 7 days and the maximum is 30 days. Call `override` again to extend it. Nothing warns you when it lapses, so check `expiresAt` if a key must keep its cap for longer than a week.
+- **It changes one limit only.** The limit's own bounds and every other limit the run holds are untouched. A tenant-wide limit keeps applying on top of a per-session override.
+- **It applies to every task holding the limit**, because the key's pool under a shared named limit is one pool.
+- **It needs a `perKey` to override.** A limit declared with only a `total` has no per-key bound, so the call is rejected, and if a later deploy removes a limit's `perKey` its per-key overrides stop applying. A task's inline limit is addressed as `task/<task-id>`. `total` is not per key, so `concurrencyKey` goes with `perKey` (and optionally `ttl`) and never with `total`; the SDK's types enforce this.
+- **`perKey: 0` blocks the key.** A paused limit stays paused whatever the override says.
+- **It does not stop runs.** Lowering a key's cap takes effect at the next run to start; runs already executing continue.
+- **`reset(name)` without a key leaves per-key overrides alone**; clear them with `reset(name, { concurrencyKey })` or let them expire.
+
 ### Pausing a limit
 
 Pause a limit to stop every run holding it from being dequeued; runs that are already executing continue to completion. The configured bounds are kept, and resuming restores them:

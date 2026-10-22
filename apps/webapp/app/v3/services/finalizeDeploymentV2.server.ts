@@ -15,8 +15,8 @@ import { remoteBuildsEnabled } from "../remoteImageBuilder.server";
 import { getEcrAuthToken, isEcrRegistry } from "../getDeploymentImageRef.server";
 import { tryCatch } from "@trigger.dev/core";
 import { getRegistryConfig, type RegistryConfig } from "../registryConfig.server";
-import { ComputeTemplateCreationService } from "./computeTemplateCreation.server";
 import { ecrImageExists } from "./verifyDeploymentImage.server";
+import { TemplatePrebuildService } from "./templatePrebuild.server";
 
 export class FinalizeDeploymentV2Service extends BaseService {
   public async call(
@@ -82,7 +82,7 @@ export class FinalizeDeploymentV2Service extends BaseService {
 
     const finalizeService = new FinalizeDeploymentService();
 
-    // If remote builds are not enabled, skip image push and go straight to template + finalize
+    // If remote builds are not enabled, skip image push and go straight to finalize
     if (!remoteBuildsEnabled() || body.skipPushToRegistry) {
       if (body.skipPushToRegistry) {
         logger.debug("Skipping push to registry during deployment finalization", {
@@ -95,8 +95,8 @@ export class FinalizeDeploymentV2Service extends BaseService {
       // self-hosted setup). Verify before promoting so we never mark a
       // deployment DEPLOYED when nothing was actually pushed.
       await this.#assertImagePullable(deployment, body);
+      await this.#prebuildTemplate(deployment, id, body, writer);
 
-      await this.#createTemplateIfNeeded(deployment, id, authenticatedEnv, writer);
       return finalizeService.call(authenticatedEnv, id, body);
     }
 
@@ -167,9 +167,34 @@ export class FinalizeDeploymentV2Service extends BaseService {
 
     // Belt and suspenders: confirm the push actually landed before promoting.
     await this.#assertImagePullable(deployment, body);
+    await this.#prebuildTemplate(deployment, id, body, writer);
 
-    await this.#createTemplateIfNeeded(deployment, id, authenticatedEnv, writer);
     return finalizeService.call(authenticatedEnv, id, body);
+  }
+
+  // Never throws, so a template problem cannot fail the deploy.
+  async #prebuildTemplate(
+    deployment: {
+      id: string;
+      imageReference: string | null;
+      worker: { project: { id: string } } | null;
+    },
+    deploymentFriendlyId: string,
+    body: FinalizeDeploymentRequestBody,
+    writer?: WritableStreamDefaultWriter
+  ): Promise<void> {
+    if (!deployment.imageReference || !deployment.worker) {
+      return;
+    }
+
+    await new TemplatePrebuildService(this._prisma).prebuild({
+      projectId: deployment.worker.project.id,
+      deploymentId: deployment.id,
+      deploymentFriendlyId,
+      imageReference: deployment.imageReference,
+      imageDigest: body.imageDigest,
+      writer,
+    });
   }
 
   async #assertImagePullable(
@@ -216,27 +241,6 @@ export class FinalizeDeploymentV2Service extends BaseService {
         "Could not verify the deployment image exists in the registry. Aborting the deploy."
       );
     }
-  }
-
-  async #createTemplateIfNeeded(
-    deployment: { imageReference: string | null; worker: { project: { id: string } } | null },
-    deploymentFriendlyId: string,
-    authenticatedEnv: AuthenticatedEnvironment,
-    writer?: WritableStreamDefaultWriter
-  ): Promise<void> {
-    if (!deployment.imageReference || !deployment.worker) {
-      return;
-    }
-
-    const templateService = new ComputeTemplateCreationService();
-    await templateService.handleDeployTemplate({
-      projectId: deployment.worker.project.id,
-      imageReference: deployment.imageReference,
-      deploymentFriendlyId,
-      authenticatedEnv,
-      prisma: this._prisma,
-      writer,
-    });
   }
 }
 

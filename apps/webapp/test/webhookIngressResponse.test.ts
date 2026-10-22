@@ -138,7 +138,19 @@ describe("webhook ingress HTTP contract", () => {
     expect(webhookHttpResponseFor({ outcome: "endpoint_not_found" }).status).toBe(404);
     expect(webhookHttpResponseFor({ outcome: "endpoint_inactive" }).status).toBe(404);
     expect(webhookHttpResponseFor({ outcome: "secret_missing" }).status).toBe(400);
-    expect(webhookHttpResponseFor({ outcome: "enqueue_failed", error: "x" }).status).toBe(500);
+  });
+
+  it("asks the provider to retry later when the delivery couldn't be queued", () => {
+    expect(webhookHttpResponseFor({ outcome: "enqueue_failed", error: "x" })).toMatchObject({
+      status: 503,
+      headers: { "Retry-After": "30" },
+    });
+    for (const outcome of ["queue_full", "over_capacity"] as const) {
+      expect(webhookHttpResponseFor({ outcome })).toMatchObject({
+        status: 503,
+        headers: { "Retry-After": "60" },
+      });
+    }
   });
 
   it("gives the dashboard test-send the same answer as the public ingress", () => {

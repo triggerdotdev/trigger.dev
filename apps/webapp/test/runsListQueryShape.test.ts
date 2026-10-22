@@ -1,5 +1,5 @@
 import { ClickHouse } from "@internal/clickhouse";
-import { containerTest } from "@internal/testcontainers";
+import { containerTestWithClickhouse } from "@internal/testcontainers";
 import { describe, expect, vi } from "vitest";
 import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
 import {
@@ -15,7 +15,7 @@ vi.setConfig({ testTimeout: 90_000 });
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 describe("runs list query shape (PREWHERE routing under FINAL)", () => {
-  containerTest(
+  containerTestWithClickhouse(
     "keeps status post-FINAL and returns old pending runs (no date clamp)",
     async ({ clickhouseContainer, prisma }) => {
       const clickhouse = new ClickHouse({
@@ -75,7 +75,7 @@ describe("runs list query shape (PREWHERE routing under FINAL)", () => {
     }
   );
 
-  containerTest(
+  containerTestWithClickhouse(
     "region filter matches a dequeued run by its region; a still-queued run is not matched",
     async ({ clickhouseContainer, prisma }) => {
       const clickhouse = new ClickHouse({

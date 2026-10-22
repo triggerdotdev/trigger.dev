@@ -23,6 +23,10 @@ describe("DashboardAgent.tsx keeps one tree shape across display modes", () => {
     expect(source).toContain("FloatingAgentWindow");
   });
 
+  it("sizes the first open by its source", () => {
+    expect(source).toContain("initialRect={initialFloatingRectFor(openSource)}");
+  });
+
   it("saves the docked width on drag end, never on a size report", () => {
     expect(source).toContain("onDragEnd={onAgentHandleDragEnd}");
     expect(source).toContain("createDockedWidthController");

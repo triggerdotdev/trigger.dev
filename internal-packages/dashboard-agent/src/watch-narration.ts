@@ -49,7 +49,7 @@ function nextStep(presentation: WatchPresentation, subjectLink?: string): string
   const subject = subjectLink ?? "it";
   switch (presentation.category) {
     case "positive":
-      return `Nothing to do — I've stopped watching ${subject}.`;
+      return `Nothing to do - I've stopped watching ${subject}.`;
     // A neutral outcome is an answer without a problem in it: the watched thing is
     // gone, cancelled, or was never readable.
     case "neutral":

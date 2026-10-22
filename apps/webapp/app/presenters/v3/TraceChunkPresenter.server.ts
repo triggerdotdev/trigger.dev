@@ -50,11 +50,6 @@ export class TraceChunkPresenter {
           completedAt: true,
           logsDeletedAt: true,
           runtimeEnvironmentId: true,
-          rootTaskRun: {
-            select: {
-              createdAt: true,
-            },
-          },
         },
       }
     );
@@ -94,7 +89,8 @@ export class TraceChunkPresenter {
     );
 
     const storeTable = getTaskEventStoreTableForRun(run);
-    const startCreatedAt = run.rootTaskRun?.createdAt ?? run.createdAt;
+    // A child view only reads its own lifetime, not the root's.
+    const startCreatedAt = run.createdAt;
     const endCreatedAt = run.completedAt ?? undefined;
 
     if (filter === "errors") {

@@ -1,0 +1,117 @@
+---
+title: "Redact chat content from traces"
+sidebarTitle: "Redact chat content"
+description: "Stop a chat agent recording user messages and clientData on its spans, turn off AI SDK prompt and response recording, or redact span content with a span processor before it leaves the worker."
+---
+
+A chat agent's run trace records conversation content by default: the user's message, the `clientData` your frontend sends, and, through AI SDK telemetry, the prompts and responses of each model call. This page covers the three controls that change that, and what they don't cover.
+
+## What the run trace records
+
+| Span | Content | Control |
+| --- | --- | --- |
+| `chat turn N` | The last user message (`chat.user_message`) and its first 80 characters as the span preview | `telemetry.recordUserMessage` |
+| `chat turn N` | The raw `clientData` (`chat.client_data`) | `telemetry.recordClientData` |
+| `pending message injected` | Messages sent mid-turn (`pending.messages`) | `telemetry.recordUserMessage` |
+| AI SDK model call spans (on by default with the `streamText` from `run`) | Prompt messages, response text, tool calls | `telemetry.recordUserMessage` for the default config, or `experimental_telemetry` on the model call |
+| Any span | Everything above, plus your own attributes and span events | A span processor |
+
+## Stop recording chat content
+
+Set `telemetry` on the agent to stop the chat runtime recording the user's message and `clientData` on its spans. Both default to `true`.
+
+```ts /trigger/support-agent.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { anthropic } from "@ai-sdk/anthropic";
+
+export const supportAgent = chat.agent({
+  id: "support-agent",
+  telemetry: { recordUserMessage: false, recordClientData: false },
+  run: async ({ messages, signal, streamText }) =>
+    streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal }),
+});
+```
+
+The spans still appear in the trace with their timings and token usage. The turn spans have no preview text. `recordUserMessage: false` also keeps prompts and responses out of the AI SDK spans that the `streamText` passed to `run()` turns on, with or without a prompt stored by `chat.prompt.set()`, and leaves a stored prompt's variables out of the span metadata, unless the call passes its own `experimental_telemetry`.
+
+## Stop the AI SDK recording prompts and responses
+
+The `streamText` passed to `run()` turns AI SDK telemetry on, so each model call and tool call is a span in the run trace (pass `experimental_telemetry: { isEnabled: false }` to turn the spans off). If you call `streamText` from `ai` yourself, pass `experimental_telemetry` to get them. Those spans include prompts and responses unless you turn that off with `recordInputs` and `recordOutputs`:
+
+```ts /trigger/support-agent.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { anthropic } from "@ai-sdk/anthropic";
+
+export const supportAgent = chat.agent({
+  id: "support-agent",
+  telemetry: { recordUserMessage: false, recordClientData: false },
+  run: async ({ messages, signal, streamText }) =>
+    streamText({
+      model: anthropic("claude-sonnet-4-5"),
+      messages,
+      abortSignal: signal,
+      // Replaces the default telemetry config (and chat.prompt.set()'s), so keep isEnabled on
+      experimental_telemetry: { isEnabled: true, recordInputs: false, recordOutputs: false },
+    }),
+});
+```
+
+If you use `chat.prompt.set()`, your `experimental_telemetry` replaces the one it adds, including the metadata that links each generation to its prompt version. To keep that link, redact with a span processor instead.
+
+## Redact instead of dropping
+
+To keep the content but strip sensitive values from it, add a span processor in `trigger.config.ts`. It runs on every span before export, so one processor covers the chat runtime's spans, the AI SDK spans and your own.
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk";
+import type { AttributeValue, Attributes } from "@opentelemetry/api";
+import type { SpanProcessor } from "@opentelemetry/sdk-trace-base";
+
+const EMAIL = /[\w.+-]+@[\w-]+\.[\w.]+/g;
+
+function redact(value: AttributeValue | undefined): AttributeValue | undefined {
+  if (typeof value === "string") return value.replace(EMAIL, "[email]");
+  // Some attributes are string arrays, like the messages sent mid-turn
+  if (Array.isArray(value)) {
+    return value.map((item) =>
+      typeof item === "string" ? item.replace(EMAIL, "[email]") : item
+    ) as AttributeValue;
+  }
+  return value;
+}
+
+function scrub(attributes: Attributes) {
+  for (const key of Object.keys(attributes)) attributes[key] = redact(attributes[key]);
+}
+
+const redactEmails: SpanProcessor = {
+  onStart: () => {},
+  onEnding: (span) => {
+    scrub(span.attributes);
+    for (const event of span.events) scrub(event.attributes ?? {});
+  },
+  onEnd: () => {},
+  forceFlush: async () => {},
+  shutdown: async () => {},
+};
+
+export default defineConfig({
+  project: "<project ref>",
+  telemetry: { spanProcessors: [redactEmails] },
+});
+```
+
+Scrubbing every string value, rather than matching attribute names, also catches the turn preview text. See [Span processors](/config/config-file#span-processors) for when each hook runs and which attributes are kept.
+
+## What spans don't cover
+
+These controls change the run trace only. Conversation content also reaches the platform in two other places:
+
+- **Session streams.** Each message your frontend sends is written to the session's `session.in` stream, and the agent's output to `session.out`. They hold message content for their retention window, and the session view in the dashboard reads from them. See [transcript storage limits](/ai-chat/transcript-storage#guarantees-and-limits).
+- **The run payload.** A chat agent run's payload includes `clientData` as `metadata`, and every `session.in` record carries it too. Send an id in `clientData` and look up the rest in `onPreload` or `run` instead of sending the values themselves.
+
+To keep a value off the platform entirely, redact or tokenize it in your frontend or backend before it's sent. The model then sees the redacted value too, unless your tools resolve the tokens.
+
+## Verify it
+
+Send a message containing a marker value (an email address, for example), then open the run in the dashboard. Select the `chat turn 1` span and check its properties: the marker is gone, or shows as `[email]` with the span processor above. The span list shows the same redacted preview.

@@ -94,6 +94,12 @@ export const toolsMetadata = {
     description:
       "Cancel a run. The run ID is the ID of the run that was triggered. It starts with run_",
   },
+  replay_run: {
+    name: "replay_run",
+    title: "Replay Run",
+    description:
+      "Replay a run: create a new run of the same task in the same environment, reusing the original run's payload, metadata, tags, queue, concurrency key and machine. Pass any of payload, metadata, tags, queue, concurrencyKey, machine, version, region, delay, ttl, idempotencyKey, maxAttempts, maxDuration or priority to override them for the new run. The run ID starts with run_",
+  },
   list_runs: {
     name: "list_runs",
     title: "List Runs",
@@ -134,13 +140,25 @@ export const toolsMetadata = {
     name: "list_dashboards",
     title: "List Dashboards",
     description:
-      "List available built-in dashboards with their widgets. Each dashboard contains pre-built queries for common metrics like run success rates, costs, LLM usage, and more. Use run_dashboard to execute a dashboard's queries.",
+      "List the built-in dashboards and the organization's custom dashboards, with their widgets. Built-in dashboards contain pre-built queries for common metrics like run success rates, costs, LLM usage, and more. Use run_dashboard_query to execute a widget's query.",
   },
   run_dashboard_query: {
     name: "run_dashboard_query",
     title: "Run Dashboard Query",
     description:
-      "Execute a single widget query from a built-in dashboard. Use list_dashboards first to see available dashboards, widget IDs, and their queries. Supports time period and scope options.",
+      "Execute a single widget query from a built-in or custom dashboard. Use list_dashboards first to see available dashboards, widget IDs, and their queries. Supports time period and scope options.",
+  },
+  create_dashboard: {
+    name: "create_dashboard",
+    title: "Create Dashboard",
+    description:
+      "Create a custom metrics dashboard, optionally with widgets. Each widget has a title, a TRQL query (use get_query_schema to see the tables and columns, and the query tool to try a query first), and a display: a table, a chart (bar or line, with x-axis and y-axis columns), a big number, or a title section header. Widgets without a position are stacked full width in order. Returns the dashboard id.",
+  },
+  set_dashboard_widgets: {
+    name: "set_dashboard_widgets",
+    title: "Set Dashboard Widgets",
+    description:
+      "Replace every widget on a custom dashboard with the given list, and optionally rename it. A widget that already exists keeps its position unless you pass a new one; new widgets without a position are stacked full width below the others. Use list_dashboards to find the dashboard id.",
   },
   get_report: {
     name: "get_report",
@@ -257,13 +275,13 @@ export const toolsMetadata = {
     name: "generate_webhook_secret",
     title: "Generate Webhook Secret",
     description:
-      "Generate a new signing secret for a hosted webhook endpoint and return it once, for providers where you choose the secret (for example GitHub). This replaces any existing secret, so deliveries fail until the provider uses the new one. Never print, log or commit the returned secret.",
+      "Generate a new signing secret for a hosted webhook endpoint and return it once, for providers where you choose the secret (for example GitHub). It replaces the existing secret; pass previousSecretTtlSeconds to keep accepting the old one while you update the provider, otherwise deliveries signed with it fail. Never print, log or commit the returned secret.",
   },
   set_webhook_secret: {
     name: "set_webhook_secret",
     title: "Set Webhook Secret",
     description:
-      "Store the signing secret (or public key) a provider issued for a hosted webhook endpoint, for example the whsec_ secret Stripe returns when a webhook endpoint is created. This replaces any existing secret.",
+      "Store the signing secret (or public key) a provider issued for a hosted webhook endpoint, for example the whsec_ secret Stripe returns when a webhook endpoint is created. It replaces the existing secret; pass previousSecretTtlSeconds to keep accepting the old one for a while.",
   },
   list_agents: {
     name: "list_agents",
@@ -300,5 +318,29 @@ export const toolsMetadata = {
     title: "Write Session Channel",
     description:
       "Append one record to a named side channel's `in` stream on a session. Use this to send control input to a running agent (e.g. a pause/viewport command) without waking or triggering a run. Requires a `channel` name; the reserved transcript and the `out` side are not writable here (`out` is producer-only). Pass `value` as an object for a structured record or a string for a raw one.",
+  },
+  list_alert_capabilities: {
+    name: "list_alert_capabilities",
+    title: "List Alert Capabilities",
+    description:
+      "List what a monitoring alert can watch for a project — queues, runs and health signals. Health capabilities expose tunable params (e.g. thresholds) with defaults, surfaced on each capability. Use this before create_alert to find a valid capabilityKey and its allowed condition shape.",
+  },
+  list_alerts: {
+    name: "list_alerts",
+    title: "List Monitoring Alerts",
+    description:
+      "List monitoring alerts for a project and environment, optionally filtered by lifecycle (active/completed/expired/stopped) or attention (clear/needs_attention).",
+  },
+  create_alert: {
+    name: "create_alert",
+    title: "Create Monitoring Alert",
+    description:
+      "Create a monitoring alert for a project. Use list_alert_capabilities first to find a capabilityKey and understand its condition shape.",
+  },
+  resolve_alert: {
+    name: "resolve_alert",
+    title: "Resolve Monitoring Alert",
+    description:
+      "Resolve a monitoring alert that needs attention, acknowledging it. The alert re-arms after resolving.",
   },
 };

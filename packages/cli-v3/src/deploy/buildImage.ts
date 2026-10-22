@@ -12,6 +12,7 @@ import { z } from "zod";
 import { assertExhaustive } from "../utilities/assertExhaustive.js";
 import { tryCatch } from "@trigger.dev/core";
 import type { CliApiClient } from "../apiClient.js";
+import { EMSIGN_COMPROMISE_REJECTED_INTERMEDIATES } from "./emsignRejectedIntermediates.js";
 
 export interface BuildImageOptions {
   // Common options
@@ -733,6 +734,33 @@ export const BUILD_IMAGE: Record<BuildRuntime, string> = {
 // Preinstalled in the published base images; must match base-images/images.json
 export const DEFAULT_PACKAGES = ["busybox", "ca-certificates", "dumb-init", "git", "openssl"];
 
+export const EMSIGN_COMPROMISE_DISTRUSTED_ROOTS = [
+  "emSign_ECC_Root_CA_-_G3",
+  "emSign_Root_CA_-_C1",
+  "emSign_ECC_Root_CA_-_C3",
+  "Comodo_AAA_Services_root",
+];
+
+export const EMSIGN_REJECT_DIR = "/usr/local/share/ca-certificates/emsign-block";
+
+const OS_TRUST_STORE = "/etc/ssl/certs/ca-certificates.crt";
+
+const rejectCompromisedIntermediates = `RUN mkdir -p ${EMSIGN_REJECT_DIR} && \\
+${EMSIGN_COMPROMISE_REJECTED_INTERMEDIATES.map(
+  ({ file, pemLines }) =>
+    `  printf '%s\\n' \\\n${pemLines
+      .map((line) => `    '${line}' \\`)
+      .join("\n")}\n    > ${EMSIGN_REJECT_DIR}/${file}`
+).join(" && \\\n")}`;
+
+const distrustCompromisedRoots = `${rejectCompromisedIntermediates}
+RUN sed -i -E 's#^(mozilla/(${EMSIGN_COMPROMISE_DISTRUSTED_ROOTS.join(
+  "|"
+)})\\.crt)$#!\\1#' /etc/ca-certificates.conf && \\
+  update-ca-certificates --fresh
+ENV NODE_OPTIONS=--use-openssl-ca
+ENV SSL_CERT_FILE=\${SSL_CERT_FILE:-${OS_TRUST_STORE}} REQUESTS_CA_BUNDLE=\${REQUESTS_CA_BUNDLE:-${OS_TRUST_STORE}} PIP_CERT=\${PIP_CERT:-${OS_TRUST_STORE}}`;
+
 export async function generateContainerfile(options: GenerateContainerfileOptions) {
   switch (options.runtime) {
     case "node":
@@ -801,21 +829,22 @@ const parseGenerateOptions = (options: GenerateContainerfileOptions) => {
 
   // Instructions run once (FROM base) since their downloads are unbounded;
   // package-only projects keep the prebuilt toolchain and repeat the small install
-  const buildStage = baseInstructions
-    ? `FROM base AS build
+  const buildStage =
+    baseInstructions && !options.image?.buildBase
+      ? `FROM base AS build
 
 RUN apt-get update && \\
   apt-get install -y --no-install-recommends ${TOOLCHAIN_PACKAGES} && \\
   apt-get clean && \\
   rm -rf /var/lib/apt/lists/*`
-    : `FROM ${BUILD_IMAGE[options.runtime]} AS build
+      : `FROM ${options.image?.buildBase ?? BUILD_IMAGE[options.runtime]} AS build
 
-ENV DEBIAN_FRONTEND=noninteractive${
-        userPackages.length > 0 ? `\n\n${aptInstall(userPackages, { repair: false })}` : ""
-      }`;
+ENV DEBIAN_FRONTEND=noninteractive${customization ? `\n\n${customization}` : ""}
+
+${distrustCompromisedRoots}`;
 
   return {
-    baseImage: BASE_IMAGE[options.runtime],
+    baseImage: options.image?.base ?? BASE_IMAGE[options.runtime],
     buildStage,
     customization,
     buildArgs,
@@ -835,6 +864,8 @@ FROM ${baseImage} AS base
 ENV DEBIAN_FRONTEND=noninteractive
 
 ${customization}
+
+${distrustCompromisedRoots}
 
 ${buildStage}
 
@@ -937,6 +968,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 ${customization}
 
+${distrustCompromisedRoots}
+
 ${buildStage}
 
 USER node
@@ -994,7 +1027,7 @@ ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     TRIGGER_LOG_LEVEL=debug \
     NODE_EXTRA_CA_CERTS=\${NODE_EXTRA_CA_CERTS} \
     NODE_ENV=production \
-    NODE_OPTIONS="--max_old_space_size=8192"
+    NODE_OPTIONS="--max_old_space_size=8192 --use-openssl-ca"
 
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM

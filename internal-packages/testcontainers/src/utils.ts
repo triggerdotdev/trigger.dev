@@ -3,9 +3,18 @@ import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import type { StartedRedisContainer } from "@testcontainers/redis";
 import { RedisContainer } from "@testcontainers/redis";
-import { PrismaClient } from "@trigger.dev/database";
 import Redis from "ioredis";
+import { createHash } from "node:crypto";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
 import path from "path";
+import { Client } from "pg";
 import { isDebug } from "std-env";
 import type { StartedNetwork, StartedTestContainer } from "testcontainers";
 import { GenericContainer, Wait } from "testcontainers";
@@ -29,92 +38,111 @@ export function postgresUriWithDatabase(uri: string, database: string): string {
   return url.toString();
 }
 
-/** Pushes the Prisma schema into the database at `databaseUrl` (which must already exist). */
-export async function pushDatabaseSchema(databaseUrl: string) {
-  const databasePath = path.resolve(__dirname, "../../database");
+/** Applies the Prisma schema to the database at `databaseUrl` (which must already exist). */
+async function pushDatabaseSchema(databaseUrl: string) {
+  await runSql(databaseUrl, await getDatabaseSchemaSql());
+}
 
-  return pushPrismaSchema({
-    prismaBin: `${databasePath}/node_modules/.bin/prisma`,
-    schemaPath: `${databasePath}/prisma/schema.prisma`,
-    // The full @trigger.dev/database datasource reads DATABASE_URL/DIRECT_URL.
-    env: { DATABASE_URL: databaseUrl, DIRECT_URL: databaseUrl },
-  });
+/** The full @trigger.dev/database schema as one SQL script. */
+export function getDatabaseSchemaSql(): Promise<string> {
+  const databasePath = path.resolve(__dirname, "../../database");
+  return getSchemaSql(
+    `${databasePath}/node_modules/.bin/prisma`,
+    `${databasePath}/prisma/schema.prisma`
+  );
 }
 
 /**
- * Pushes the DEDICATED run-ops subset schema (@internal/run-ops-database) into the database at
- * `databaseUrl`. The run-ops datasource reads RUN_OPS_DATABASE_URL, and its schema is a subset of
- * the control-plane schema (run-ops tables, no Organization/Project/etc).
+ * The run-ops subset schema as one SQL script, plus the SQL-only partial unique index Prisma can't
+ * express (the NULL-batchIndex dedup), so the test DB matches what `migrate deploy` builds.
  */
-export async function pushRunOpsSchema(databaseUrl: string) {
+export async function getRunOpsSchemaSql(): Promise<string> {
   // Resolve the schema (and the package's own prisma binary) through the @internal/run-ops-database
   // package so this keeps working regardless of where pnpm hoists it.
   const schemaPath = require.resolve("@internal/run-ops-database/prisma/schema.prisma");
   const runOpsPackagePath = path.resolve(schemaPath, "../..");
 
-  const result = await pushPrismaSchema({
-    prismaBin: `${runOpsPackagePath}/node_modules/.bin/prisma`,
-    schemaPath,
-    env: { RUN_OPS_DATABASE_URL: databaseUrl },
-  });
+  const schemaSql = await getSchemaSql(`${runOpsPackagePath}/node_modules/.bin/prisma`, schemaPath);
 
-  // `db push` derives DDL from the schema datamodel and so cannot create the SQL-only partial unique
-  // index Prisma can't express (the NULL-batchIndex dedup). Apply it here so the test DB matches what
-  // `migrate deploy` builds in production; otherwise ON CONFLICT DO NOTHING can't dedupe a re-blocked
-  // NULL-batchIndex edge and the idempotency contract goes untested.
-  await applyRunOpsSqlOnlyIndexes(databaseUrl);
-
-  return result;
+  return `${schemaSql}\nCREATE UNIQUE INDEX IF NOT EXISTS "TaskRunWaitpoint_taskRunId_waitpointId_batchIndex_null_key" ON "public"."TaskRunWaitpoint"("taskRunId", "waitpointId") WHERE "batchIndex" IS NULL;\n`;
 }
 
-async function applyRunOpsSqlOnlyIndexes(databaseUrl: string) {
-  // Reuse @trigger.dev/database's PrismaClient purely as a raw-SQL connection (the established
-  // primitive in this package — see createDatabaseFromTemplate). No model access, so the subset
-  // schema mismatch is irrelevant.
-  const client = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+/** Runs `sql` (one or more statements) on a short-lived raw pg connection. */
+export async function runSql(databaseUrl: string, sql: string) {
+  const client = new Client({ connectionString: databaseUrl });
+  await client.connect();
   try {
-    await client.$executeRawUnsafe(
-      `CREATE UNIQUE INDEX IF NOT EXISTS "TaskRunWaitpoint_taskRunId_waitpointId_batchIndex_null_key" ON "public"."TaskRunWaitpoint"("taskRunId", "waitpointId") WHERE "batchIndex" IS NULL`
-    );
+    await client.query(sql);
   } finally {
-    await client.$disconnect();
+    await client.end();
   }
 }
 
-async function pushPrismaSchema({
-  prismaBin,
-  schemaPath,
-  env,
-}: {
-  prismaBin: string;
-  schemaPath: string;
-  env: Record<string, string>;
-}) {
-  // throwOnError is essential: without it tinyexec swallows a non-zero `prisma db push`, so a failed
-  // push looks like success and only surfaces much later as a confusing downstream error.
+const schemaSqlCache = new Map<string, Promise<string>>();
+
+/**
+ * The datamodel as one SQL script from `prisma migrate diff --from-empty`, cached on disk by schema
+ * and prisma version. Applying it is about 5x faster than `prisma db push`, which spawns the schema
+ * engine to introspect and diff on every call.
+ */
+function getSchemaSql(prismaBin: string, schemaPath: string): Promise<string> {
+  const key = createHash("sha256")
+    .update(realpathSync(prismaBin))
+    .update(readFileSync(schemaPath))
+    .digest("hex")
+    .slice(0, 16);
+
+  let sql = schemaSqlCache.get(key);
+  if (!sql) {
+    sql = readOrGenerateSchemaSql(key, prismaBin, schemaPath);
+    schemaSqlCache.set(key, sql);
+  }
+  return sql;
+}
+
+async function readOrGenerateSchemaSql(key: string, prismaBin: string, schemaPath: string) {
+  const cacheDir = path.resolve(__dirname, "../node_modules/.cache/schema-sql");
+  const cachePath = path.join(cacheDir, `${key}.sql`);
+  if (existsSync(cachePath)) {
+    return readFileSync(cachePath, "utf8");
+  }
+
   const result = await x(
     prismaBin,
-    [
-      "db",
-      "push",
-      "--force-reset",
-      "--accept-data-loss",
-      "--skip-generate",
-      "--schema",
-      schemaPath,
-    ],
-    {
-      throwOnError: true,
-      nodeOptions: {
-        env: {
-          ...process.env,
-          ...env,
-        },
-      },
-    }
+    ["migrate", "diff", "--from-empty", "--to-schema-datamodel", schemaPath, "--script"],
+    { throwOnError: true }
   );
 
-  return result;
+  mkdirSync(cacheDir, { recursive: true });
+  const tmpPath = `${cachePath}.${process.pid}.tmp`;
+  writeFileSync(tmpPath, result.stdout);
+  renameSync(tmpPath, cachePath);
+  return result.stdout;
+}
+
+/**
+ * Durability off (no fsync, no full-page writes, data on tmpfs). Commits stay synchronous so
+ * logical replication sees them without the async-commit flush delay. On PG14 every
+ * `CREATE DATABASE ... TEMPLATE` forces a checkpoint, so with fsync on each per-test clone costs
+ * seconds instead of ~100ms.
+ */
+const POSTGRES_TEST_COMMAND = [
+  "-c",
+  "listen_addresses=*",
+  "-c",
+  "wal_level=logical",
+  "-c",
+  "fsync=off",
+  "-c",
+  "full_page_writes=off",
+  "-c",
+  "max_connections=1000",
+];
+
+export function withTestPostgresSettings(container: PostgreSqlContainer): PostgreSqlContainer {
+  return withCiResourceLimits(container)
+    .withCommand(POSTGRES_TEST_COMMAND)
+    .withTmpFs({ "/var/lib/postgresql/data": "rw" });
 }
 
 /**
@@ -151,10 +179,9 @@ export async function createPostgresContainer(
   opts?: { imageTag?: string; initdbArgs?: string }
 ) {
   const imageTag = opts?.imageTag ?? "docker.io/postgres:14";
-  let builder = withCiResourceLimits(new PostgreSqlContainer(imageTag))
+  let builder = withTestPostgresSettings(new PostgreSqlContainer(imageTag))
     .withNetwork(network)
-    .withNetworkAliases("database")
-    .withCommand(["-c", "listen_addresses=*", "-c", "wal_level=logical"]);
+    .withNetworkAliases("database");
   if (opts?.initdbArgs) {
     // POSTGRES_INITDB_ARGS is the official postgres image hook for initdb flags
     // (locale/collation provider). No dedicated PostgreSqlContainer method exists.
@@ -172,9 +199,9 @@ export async function createPostgresContainer(
  * exercise a split across two databases. The caller owns stopping the returned container.
  */
 export async function createStandalonePostgresContainer() {
-  const container = await withCiResourceLimits(new PostgreSqlContainer("docker.io/postgres:14"))
-    .withCommand(["-c", "listen_addresses=*", "-c", "wal_level=logical"])
-    .start();
+  const container = await withTestPostgresSettings(
+    new PostgreSqlContainer("docker.io/postgres:14")
+  ).start();
 
   await pushDatabaseSchema(container.getConnectionUri());
 

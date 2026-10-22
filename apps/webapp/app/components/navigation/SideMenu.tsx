@@ -96,7 +96,7 @@ import {
 } from "~/utils/pathBuilder";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
-import { NewBadge } from "../FeatureBadges";
+import { BetaBadge } from "../FeatureBadges";
 import { Button, LinkButton } from "../primitives/Buttons";
 import { Dialog, DialogTrigger } from "../primitives/Dialog";
 import { type RenderIcon } from "../primitives/Icon";
@@ -346,7 +346,7 @@ export function SideMenu({
   const isFreeUser = currentPlan?.v3Subscription?.isPaying === false;
   const isAdmin = useHasAdminAccess();
   const isViewingAsUser = useIsViewingAsUser();
-  const { isManagedCloud } = useFeatures();
+  const { isManagedCloud, alertsConfigured } = useFeatures();
   const featureFlags = useFeatureFlags();
   const incidentStatus = useIncidentStatus();
   const isV3Project = project.engine === "V1";
@@ -749,6 +749,7 @@ export function SideMenu({
     project,
     environment,
     isAdmin,
+    alertsConfigured,
     featureFlags,
     isManagedCloud,
     dashboards: {
@@ -961,11 +962,13 @@ export function SideMenu({
                 inactiveIconColor="text-text-dimmed"
                 to={v3SessionsPath(organization, project, environment)}
                 data-action="sessions"
-                badge={<NewBadge />}
                 isCollapsed={isCollapsed}
                 yieldActiveToFavorite
               />
-              {(user.admin || user.isImpersonating || featureFlags.hasWebhooksAccess) && (
+              {(isManagedCloud ||
+                user.admin ||
+                user.isImpersonating ||
+                featureFlags.hasWebhooksAccess) && (
                 <SideMenuItem
                   name="Webhooks"
                   icon={WebhookIcon}
@@ -973,7 +976,7 @@ export function SideMenu({
                   inactiveIconColor="text-text-dimmed"
                   to={v3WebhooksPath(organization, project, environment)}
                   data-action="webhooks"
-                  badge={<NewBadge />}
+                  badge={<BetaBadge />}
                   isCollapsed={isCollapsed}
                   yieldActiveToFavorite
                 />
@@ -1137,6 +1140,7 @@ function CustomizableSideMenuSection({
             activeIconColor={item.activeIconColor}
             inactiveIconColor={item.inactiveIconColor ?? "text-text-dimmed"}
             to={item.to}
+            matchPrefix={item.matchPrefix}
             data-action={item.dataAction}
             badge={item.badge}
             isCollapsed={isCollapsed}

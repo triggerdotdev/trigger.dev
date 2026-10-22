@@ -33,6 +33,11 @@ export const loader = createLoaderApiRoute(
   {
     searchParams: ApiWaitpointListSearchParams,
     findResource: async () => 1, // This is a dummy function, we don't need to find a resource
+    allowRunToken: true,
+    authorization: {
+      action: "read",
+      resource: () => ({ type: "waitpoints" }),
+    },
   },
   async ({ searchParams, authentication }) => {
     const presenter = new ApiWaitpointListPresenter(undefined, undefined, {
@@ -51,6 +56,11 @@ const { action } = createActionApiRoute(
     body: CreateWaitpointTokenRequestBody,
     maxContentLength: 1024 * 10, // 10KB
     method: "POST",
+    allowRunToken: true,
+    authorization: {
+      action: "write",
+      resource: () => ({ type: "waitpoints" }),
+    },
   },
   async ({ authentication, body }) => {
     try {

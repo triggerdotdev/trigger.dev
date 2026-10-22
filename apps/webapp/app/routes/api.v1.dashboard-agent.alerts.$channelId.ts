@@ -3,7 +3,9 @@ import { z } from "zod";
 import { resolveAgentAlertContext } from "~/services/dashboardAgentAlertContext.server";
 import { unsubscribeChannelFromWatchAlerts } from "~/services/dashboardAgentWatchAlerts.server";
 import { logger } from "~/services/logger.server";
+import { rbac } from "~/services/rbac.server";
 import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
+import { canAcrossEnvironments } from "~/v3/services/dashboardResourceAccess.server";
 
 /**
  * `DELETE /api/v1/dashboard-agent/alerts/:channelId` — stop alerting this channel
@@ -71,13 +73,26 @@ export async function action({ request, params }: ActionFunctionArgs) {
       );
     }
 
+    const access = await rbac.authenticateUserActor(request, {
+      organizationId: context.environment.organizationId,
+      projectId: context.environment.project.id,
+    });
+    if (!access.ok) {
+      return json({ error: access.error }, { status: access.status });
+    }
+
     const result = await unsubscribeChannelFromWatchAlerts(parsedParams.data.channelId, {
       projectId: context.environment.project.id,
       // A project is shared by every member, so the caller's own address is part of the scope.
       organizationId: context.environment.organizationId,
       ownerUserId: userId,
+      authorize: (environmentTypes) =>
+        canAcrossEnvironments(access.ability, "write", "alerts", environmentTypes),
     });
     if (!result.ok) {
+      if (result.reason === "forbidden") {
+        return json({ error: "You don't have permission to manage alerts" }, { status: 403 });
+      }
       if (result.reason === "conflict") {
         return json(
           { error: "That alert was being changed elsewhere. Try again.", code: "conflict" },

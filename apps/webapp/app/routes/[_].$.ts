@@ -12,7 +12,7 @@ import {
   invitesPath,
   newOrganizationPath,
   newProjectPath,
-  organizationProjectsPath,
+  organizationSettingsPath,
   v3EnvironmentPath,
 } from "~/utils/pathBuilder";
 
@@ -33,8 +33,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const presenter = new SelectBestEnvironmentPresenter();
   try {
     const { project, organization, environment } = await presenter.call({ user });
-    if (organizationPage === "projects") {
-      return redirect(`${organizationProjectsPath(organization)}${search}`);
+    if (organizationPage) {
+      return redirect(`${organizationSettingsPath(organization)}/${organizationPage}${search}`);
     }
 
     const environmentPath = v3EnvironmentPath(organization, project, environment);
@@ -57,8 +57,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     });
 
     if (organization) {
-      if (organizationPage === "projects") {
-        return redirect(`${organizationProjectsPath(organization)}${search}`);
+      if (organizationPage) {
+        return redirect(`${organizationSettingsPath(organization)}/${organizationPage}${search}`);
       }
 
       return redirect(newProjectPath(organization));

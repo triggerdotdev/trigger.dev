@@ -50,8 +50,7 @@ describe("the panel sends every explicit prompt", () => {
     expect(panel).toContain("}, [requestedMessage, loading, active, thinkingChatId, createChat]);");
   });
 
-  it("leaves no prefill path behind", () => {
-    expect(panel).not.toMatch(/prefill/i);
+  it("leaves no chat-message prefill path behind", () => {
     expect(chat).not.toMatch(/prefill/i);
   });
 

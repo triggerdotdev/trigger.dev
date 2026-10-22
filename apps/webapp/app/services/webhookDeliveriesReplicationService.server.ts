@@ -3,7 +3,7 @@ import type {
   WebhookDeliveryInsertArray,
   WebhookEndpointInsertArray,
 } from "@internal/clickhouse";
-import { getWebhookDeliveryField } from "@internal/clickhouse";
+import { insertErrorServerText, getWebhookDeliveryField } from "@internal/clickhouse";
 import { type RedisOptions } from "@internal/redis";
 import {
   LogicalReplicationClient,
@@ -212,6 +212,7 @@ export class WebhookDeliveriesReplicationService {
       publicationName: options.publicationName,
       table: "WebhookDelivery",
       additionalTables: ["WebhookEndpoint"],
+      readdMainTable: true,
       publishViaPartitionRoot: options.publishViaPartitionRoot,
       redisOptions: options.redisOptions,
       autoAcknowledge: false,
@@ -493,11 +494,10 @@ export class WebhookDeliveriesReplicationService {
     const lsnToUInt64DurationMs = Number(process.hrtime.bigint() - lsnToUInt64Start) / 1_000_000;
 
     this._concurrentFlushScheduler.addToBatch(
-      transaction.events.map(
-        (event): WebhookDeliveryInsert =>
-          event.raw.relation.name === "WebhookEndpoint"
-            ? { _version, endpoint: event.data as unknown as WebhookEndpoint, event: event.tag }
-            : { _version, delivery: event.data, event: event.tag }
+      transaction.events.map((event): WebhookDeliveryInsert =>
+        event.raw.relation.name === "WebhookEndpoint"
+          ? { _version, endpoint: event.data as unknown as WebhookEndpoint, event: event.tag }
+          : { _version, delivery: event.data, event: event.tag }
       )
     );
 
@@ -758,7 +758,7 @@ export class WebhookDeliveriesReplicationService {
 
   // Retry all errors except known permanent ones
   #isRetryableError(error: Error): boolean {
-    const errorMessage = error.message.toLowerCase();
+    const errorMessage = insertErrorServerText(error).toLowerCase();
 
     // Permanent errors that should NOT be retried
     const permanentErrorPatterns = [
@@ -932,6 +932,7 @@ function toWebhookDeliveryInsertArray(
     delivery.runId ?? "",
     delivery.status,
     delivery.isTest ? 1 : 0,
+    delivery.retentionDays,
     delivery.createdAt.getTime(),
     delivery.updatedAt.getTime(),
     version.toString(),

@@ -1,8 +1,24 @@
-import type { ApiRequestOptions, Prettify } from "@trigger.dev/core/v3";
+import type {
+  AddDashboardWidgetRequestBody,
+  ApiRequestOptions,
+  CreateDashboardRequestBody,
+  Prettify,
+  ReplaceDashboardRequestBody,
+  UpdateDashboardRequestBody,
+  UpdateDashboardWidgetRequestBody,
+} from "@trigger.dev/core/v3";
 import { apiClientManager, mergeRequestOptions } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
 
 export type { QueryTable, RunsTableRow, RunFriendlyStatus } from "@trigger.dev/core/v3";
+export type {
+  DashboardObject,
+  DashboardSummary,
+  DashboardWidget,
+  DashboardWidgetDisplay,
+  DashboardWidgetInput,
+  DashboardWidgetPosition,
+} from "@trigger.dev/core/v3";
 
 export type QueryScope = "environment" | "project" | "organization";
 export type QueryFormat = "json" | "csv";
@@ -174,6 +190,196 @@ function dateToISOString(date: Date | number | undefined): string | undefined {
   return new Date(date).toISOString();
 }
 
+function dashboardRequestOptions(
+  name: string,
+  attributes: Record<string, string | undefined>,
+  requestOptions?: ApiRequestOptions
+) {
+  return mergeRequestOptions({ tracer, name, icon: "query", attributes }, requestOptions);
+}
+
+/**
+ * Lists the built-in dashboards and your organization's custom dashboards, with their widgets.
+ */
+function listDashboards(requestOptions?: ApiRequestOptions) {
+  return apiClientManager
+    .clientOrThrow()
+    .listDashboards(dashboardRequestOptions("query.dashboards.list()", {}, requestOptions));
+}
+
+/**
+ * Retrieves a custom dashboard, including every widget, its query and its grid position.
+ */
+function retrieveDashboard(dashboardId: string, requestOptions?: ApiRequestOptions) {
+  return apiClientManager
+    .clientOrThrow()
+    .retrieveDashboard(
+      dashboardId,
+      dashboardRequestOptions("query.dashboards.retrieve()", { dashboardId }, requestOptions)
+    );
+}
+
+/**
+ * Creates a custom dashboard, optionally with its widgets.
+ *
+ * @example
+ * ```ts
+ * const dashboard = await query.dashboards.create({
+ *   title: "Email tasks",
+ *   widgets: [
+ *     {
+ *       title: "Runs per day",
+ *       query: "SELECT timeBucket(), count() AS runs FROM runs GROUP BY timeBucket ORDER BY timeBucket",
+ *       display: {
+ *         type: "chart",
+ *         chartType: "bar",
+ *         xAxisColumn: "timebucket",
+ *         yAxisColumns: ["runs"],
+ *         groupByColumn: null,
+ *         stacked: false,
+ *         sortByColumn: null,
+ *         sortDirection: "asc",
+ *         aggregation: "sum",
+ *       },
+ *     },
+ *   ],
+ * });
+ * ```
+ */
+function createDashboard(body: CreateDashboardRequestBody, requestOptions?: ApiRequestOptions) {
+  return apiClientManager
+    .clientOrThrow()
+    .createDashboard(
+      body,
+      dashboardRequestOptions("query.dashboards.create()", { title: body.title }, requestOptions)
+    );
+}
+
+/**
+ * Renames a custom dashboard or changes its description.
+ */
+function updateDashboard(
+  dashboardId: string,
+  body: UpdateDashboardRequestBody,
+  requestOptions?: ApiRequestOptions
+) {
+  return apiClientManager
+    .clientOrThrow()
+    .updateDashboard(
+      dashboardId,
+      body,
+      dashboardRequestOptions("query.dashboards.update()", { dashboardId }, requestOptions)
+    );
+}
+
+/**
+ * Replaces every widget on a custom dashboard. A widget that already exists keeps its position
+ * unless you pass a new one; new widgets without a `position` are placed full width below the others,
+ * in order. Pass the `revision` you last read to reject the write if someone else changed the
+ * dashboard in the meantime.
+ */
+function replaceDashboard(
+  dashboardId: string,
+  body: ReplaceDashboardRequestBody,
+  requestOptions?: ApiRequestOptions
+) {
+  return apiClientManager
+    .clientOrThrow()
+    .replaceDashboard(
+      dashboardId,
+      body,
+      dashboardRequestOptions("query.dashboards.replace()", { dashboardId }, requestOptions)
+    );
+}
+
+/**
+ * Deletes a custom dashboard.
+ */
+function deleteDashboard(dashboardId: string, requestOptions?: ApiRequestOptions) {
+  return apiClientManager
+    .clientOrThrow()
+    .deleteDashboard(
+      dashboardId,
+      dashboardRequestOptions("query.dashboards.del()", { dashboardId }, requestOptions)
+    );
+}
+
+/**
+ * Adds a widget to a custom dashboard. Without a `position` it is placed full width at the bottom.
+ */
+function addDashboardWidget(
+  dashboardId: string,
+  body: AddDashboardWidgetRequestBody,
+  requestOptions?: ApiRequestOptions
+) {
+  return apiClientManager
+    .clientOrThrow()
+    .addDashboardWidget(
+      dashboardId,
+      body,
+      dashboardRequestOptions("query.dashboards.widgets.add()", { dashboardId }, requestOptions)
+    );
+}
+
+/**
+ * Changes a widget's title, query, display, or position.
+ */
+function updateDashboardWidget(
+  dashboardId: string,
+  widgetId: string,
+  body: UpdateDashboardWidgetRequestBody,
+  requestOptions?: ApiRequestOptions
+) {
+  return apiClientManager
+    .clientOrThrow()
+    .updateDashboardWidget(
+      dashboardId,
+      widgetId,
+      body,
+      dashboardRequestOptions(
+        "query.dashboards.widgets.update()",
+        { dashboardId, widgetId },
+        requestOptions
+      )
+    );
+}
+
+/**
+ * Removes a widget from a custom dashboard.
+ */
+function deleteDashboardWidget(
+  dashboardId: string,
+  widgetId: string,
+  options?: { revision?: string },
+  requestOptions?: ApiRequestOptions
+) {
+  return apiClientManager
+    .clientOrThrow()
+    .deleteDashboardWidget(
+      dashboardId,
+      widgetId,
+      options,
+      dashboardRequestOptions(
+        "query.dashboards.widgets.del()",
+        { dashboardId, widgetId },
+        requestOptions
+      )
+    );
+}
+
 export const query = {
   execute,
+  dashboards: {
+    list: listDashboards,
+    retrieve: retrieveDashboard,
+    create: createDashboard,
+    update: updateDashboard,
+    replace: replaceDashboard,
+    del: deleteDashboard,
+    widgets: {
+      add: addDashboardWidget,
+      update: updateDashboardWidget,
+      del: deleteDashboardWidget,
+    },
+  },
 };

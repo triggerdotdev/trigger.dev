@@ -8,9 +8,13 @@ import {
 } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { randomBytes } from "node:crypto";
-import { WebhookRoutingTarget, WebhookVerifierArtifact } from "@trigger.dev/core/v3";
+import {
+  WebhookPreviousSecretTtlSeconds,
+  WebhookRoutingTarget,
+  WebhookVerifierArtifact,
+} from "@trigger.dev/core/v3";
 import type { WebhookValueSource } from "@trigger.dev/core/v3";
-import { Suspense, useEffect, useState } from "react";
+import { type MutableRefObject, Suspense, useEffect, useRef, useState } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { WebhookIcon } from "~/assets/icons/WebhookIcon";
@@ -29,6 +33,7 @@ import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
+import { Select, SelectItem } from "~/components/primitives/Select";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -43,8 +48,9 @@ import {
   type EndpointWaiters,
   EndpointWaitersTable,
 } from "~/components/webhookEndpoints/v1/EndpointWaitersTable";
-import { TimeFilter } from "~/components/runs/v3/SharedFilters";
 import { DeliveriesTable } from "~/components/webhookDeliveries/v1/DeliveriesTable";
+import { DeliveryFilters } from "~/components/webhookDeliveries/v1/DeliveryFilters";
+import { parseDeliveryListFilters } from "~/components/webhookDeliveries/v1/deliveryListFilters";
 import { useDeliveriesLiveReload } from "~/components/webhookDeliveries/v1/useDeliveriesLiveReload";
 import { PulsingDot } from "~/components/primitives/PulsingDot";
 import { EndpointStatusBadge } from "~/components/webhookEndpoints/v1/EndpointStatus";
@@ -180,6 +186,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       from,
       to,
       hasExplicitWindow,
+      filters: parseDeliveryListFilters(url.searchParams),
       cursor,
       direction,
     })
@@ -207,7 +214,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 };
 
-const SetSecretSchema = z.object({
+const PreviousSecretTtlFormField = z.object({
+  previousSecretTtlSeconds: z.coerce.number().pipe(WebhookPreviousSecretTtlSeconds).optional(),
+});
+
+const SetSecretSchema = PreviousSecretTtlFormField.extend({
   intent: z.literal("set-secret"),
   secret: z.string().trim().min(1, "A signing secret is required"),
 });
@@ -259,9 +270,17 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   // Generate (integrator-supplied secret): the UI reveals it ONCE for pasting into the provider.
   if (intent === "generate-secret") {
-    const result = await generateWebhookSigningSecret(endpoint);
+    const ttl = PreviousSecretTtlFormField.safeParse(Object.fromEntries(formData));
+    if (!ttl.success) {
+      return { success: false as const, error: ttl.error.issues[0]?.message ?? "Invalid" };
+    }
+    const result = await generateWebhookSigningSecret(endpoint, ttl.data);
     return result.ok
-      ? { success: true as const, generatedSecret: result.secret }
+      ? {
+          success: true as const,
+          generatedSecret: result.secret,
+          previousSecretExpiresAt: result.previousSecretExpiresAt,
+        }
       : { success: false as const, error: result.error };
   }
 
@@ -285,7 +304,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   if (!submission.success) {
     return { success: false as const, error: submission.error.issues[0]?.message ?? "Invalid" };
   }
-  await storeWebhookSigningSecret(endpoint, submission.data.secret);
+  await storeWebhookSigningSecret(endpoint, submission.data.secret, {
+    previousSecretTtlSeconds: submission.data.previousSecretTtlSeconds,
+  });
 
   return { success: true as const };
 };
@@ -317,6 +338,12 @@ export default function Page() {
 
   const endpointsPath = v3WebhooksPath(organization, project, environment);
 
+  // The "N new deliveries" button lives in the filter row, outside the deferred table that detects
+  // them: the count drives its visibility and the ref holds the click action (kept current by
+  // LiveDeliveriesTable).
+  const [newDeliveriesCount, setNewDeliveriesCount] = useState(0);
+  const showNewDeliveriesRef = useRef<() => void>(() => {});
+
   return (
     <>
       <NavBar>
@@ -346,7 +373,7 @@ export default function Page() {
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">
           <ResizablePanel id="endpoint-deliveries" min="300px">
             <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
-              <div className="flex h-10 items-end justify-between gap-2 border-b border-grid-dimmed bg-background-bright pl-3 pr-2">
+              <div className="flex h-10 items-end border-b border-grid-dimmed bg-background-bright pl-3 pr-2">
                 <TabContainer className="-mb-px">
                   {(
                     [
@@ -366,64 +393,81 @@ export default function Page() {
                     </TabButton>
                   ))}
                 </TabContainer>
-                {tab === "deliveries" ? (
-                  <div className="flex items-center gap-2 self-center">
-                    <TimeFilter defaultPeriod="7d" labelName="Deliveries" />
-                    <Suspense fallback={null}>
-                      <TypedAwait resolve={deliveriesList} errorElement={null}>
-                        {(list) => (list ? <ListPagination list={list} /> : null)}
+              </div>
+              {tab === "deliveries" ? (
+                <div className="grid min-h-0 grid-rows-[auto_1fr] overflow-hidden">
+                  <div className="flex items-start justify-between gap-x-2 p-2">
+                    <DeliveryFilters />
+                    <div className="flex items-center justify-end gap-x-1.5">
+                      {newDeliveriesCount > 0 ? (
+                        <NewDeliveriesButton
+                          count={newDeliveriesCount}
+                          onClick={() => showNewDeliveriesRef.current()}
+                        />
+                      ) : null}
+                      <Suspense fallback={null}>
+                        <TypedAwait resolve={deliveriesList} errorElement={null}>
+                          {(list) => (list ? <ListPagination list={list} /> : null)}
+                        </TypedAwait>
+                      </Suspense>
+                    </div>
+                  </div>
+                  <div className="min-h-0 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                    <Suspense fallback={<TableLoading />}>
+                      <TypedAwait resolve={deliveriesList} errorElement={<TableLoading />}>
+                        {(list) =>
+                          list ? (
+                            <LiveDeliveriesTable
+                              list={list}
+                              webhookEndpointId={endpoint.id}
+                              onNewDeliveriesCountChange={setNewDeliveriesCount}
+                              showNewDeliveriesRef={showNewDeliveriesRef}
+                            />
+                          ) : (
+                            <TableLoading />
+                          )
+                        }
                       </TypedAwait>
                     </Suspense>
                   </div>
-                ) : null}
-              </div>
-              <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                {tab === "deliveries" ? (
-                  <Suspense fallback={<TableLoading />}>
-                    <TypedAwait resolve={deliveriesList} errorElement={<TableLoading />}>
-                      {(list) =>
-                        list ? (
-                          <LiveDeliveriesTable list={list} webhookEndpointId={endpoint.id} />
-                        ) : (
-                          <TableLoading />
-                        )
-                      }
-                    </TypedAwait>
-                  </Suspense>
-                ) : tab === "subscribers" ? (
-                  <EndpointSubscribersTable targets={routing} />
-                ) : tab === "waiters" ? (
-                  <Suspense fallback={<TableLoading />}>
-                    <TypedAwait resolve={waiters} errorElement={<TableLoading />}>
-                      {(list) => <EndpointWaitersTable list={list} canCancel={canCancel} />}
-                    </TypedAwait>
-                  </Suspense>
-                ) : (
-                  <Suspense fallback={<TableLoading />}>
-                    <TypedAwait resolve={composerEndpoints} errorElement={<TableLoading />}>
-                      {(endpoints) =>
-                        endpoints.length === 0 ? (
-                          <div className="flex h-full items-center justify-center p-4 text-center text-sm text-text-dimmed">
-                            This endpoint can't be sent to from the dashboard.
-                          </div>
-                        ) : (
-                          <WebhookComposer
-                            endpoints={endpoints}
-                            organizationSlug={organization.slug}
-                            projectSlug={project.slug}
-                            environmentSlug={environment.slug}
-                            isDevEnvironment={environment.type === "DEVELOPMENT"}
-                            environmentLabel={
-                              environment.type.charAt(0) + environment.type.slice(1).toLowerCase()
-                            }
-                            redirectOnSuccess={false}
-                          />
-                        )
-                      }
-                    </TypedAwait>
-                  </Suspense>
-                )}
-              </div>
+                </div>
+              ) : (
+                <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                  {tab === "subscribers" ? (
+                    <EndpointSubscribersTable targets={routing} />
+                  ) : tab === "waiters" ? (
+                    <Suspense fallback={<TableLoading />}>
+                      <TypedAwait resolve={waiters} errorElement={<TableLoading />}>
+                        {(list) => <EndpointWaitersTable list={list} canCancel={canCancel} />}
+                      </TypedAwait>
+                    </Suspense>
+                  ) : (
+                    <Suspense fallback={<TableLoading />}>
+                      <TypedAwait resolve={composerEndpoints} errorElement={<TableLoading />}>
+                        {(endpoints) =>
+                          endpoints.length === 0 ? (
+                            <div className="flex h-full items-center justify-center p-4 text-center text-sm text-text-dimmed">
+                              This endpoint can't be sent to from the dashboard.
+                            </div>
+                          ) : (
+                            <WebhookComposer
+                              endpoints={endpoints}
+                              organizationSlug={organization.slug}
+                              projectSlug={project.slug}
+                              environmentSlug={environment.slug}
+                              isDevEnvironment={environment.type === "DEVELOPMENT"}
+                              environmentLabel={
+                                environment.type.charAt(0) + environment.type.slice(1).toLowerCase()
+                              }
+                              redirectOnSuccess={false}
+                            />
+                          )
+                        }
+                      </TypedAwait>
+                    </Suspense>
+                  )}
+                </div>
+              )}
             </div>
           </ResizablePanel>
 
@@ -658,7 +702,12 @@ function ProviderSetup({ verifier, source }: { verifier: LoaderData["verifier"];
             <Property.Item>
               <Property.Label>Signature header</Property.Label>
               <Property.Value>
-                <span className="font-mono text-sm">{config.signatureHeader}</span>
+                <span className="font-mono text-sm">
+                  {[
+                    config.signatureHeader,
+                    ...(config.scheme === "hmac" ? (config.additionalSignatureHeaders ?? []) : []),
+                  ].join(", ")}
+                </span>
               </Property.Value>
             </Property.Item>
             <Property.Item>
@@ -743,7 +792,7 @@ function ProviderSetup({ verifier, source }: { verifier: LoaderData["verifier"];
 function describeTimestampSource(source: WebhookValueSource): string {
   switch (source.from) {
     case "header":
-      return `header ${source.name}`;
+      return [source.name, ...(source.fallback ?? [])].map((name) => `header ${name}`).join(" or ");
     case "signatureField":
       return `field "${source.field}" in signature header`;
     case "body":
@@ -753,6 +802,39 @@ function describeTimestampSource(source: WebhookValueSource): string {
     case "constant":
       return "constant";
   }
+}
+
+const PREVIOUS_SECRET_TTL_OPTIONS = [
+  { value: "0", label: "Stop immediately" },
+  { value: "3600", label: "1 hour" },
+  { value: "86400", label: "24 hours" },
+  { value: "604800", label: "7 days" },
+];
+
+function PreviousSecretTtlField({ credentialNoun }: { credentialNoun: string }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <Label>Keep accepting the old {credentialNoun} for</Label>
+      <Select
+        name="previousSecretTtlSeconds"
+        variant="tertiary/medium"
+        dropdownIcon
+        items={PREVIOUS_SECRET_TTL_OPTIONS}
+        defaultValue="86400"
+        text={(value) => PREVIOUS_SECRET_TTL_OPTIONS.find((o) => o.value === value)?.label}
+      >
+        {PREVIOUS_SECRET_TTL_OPTIONS.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </Select>
+      <Hint>
+        Deliveries signed with the old {credentialNoun} still verify until then, so you can update
+        the provider without failing any. Stop immediately if the old one leaked.
+      </Hint>
+    </div>
+  );
 }
 
 function SetSecretDialog({
@@ -807,6 +889,7 @@ function SetSecretDialog({
                 : "Stored encrypted and never shown again. Deliveries are verified against this secret."}
             </Hint>
           </div>
+          {hasSigningSecret ? <PreviousSecretTtlField credentialNoun={credentialNoun} /> : null}
           {fetcher.data && !fetcher.data.success ? (
             <Paragraph variant="small" className="text-error">
               {fetcher.data.error}
@@ -839,6 +922,10 @@ function GenerateSecretDialog({ hasSigningSecret }: { hasSigningSecret: boolean 
   const isSubmitting = fetcher.state !== "idle";
   const generated =
     fetcher.data && "generatedSecret" in fetcher.data ? fetcher.data.generatedSecret : undefined;
+  const previousSecretExpiresAt =
+    fetcher.data && "previousSecretExpiresAt" in fetcher.data
+      ? fetcher.data.previousSecretExpiresAt
+      : undefined;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -858,6 +945,12 @@ function GenerateSecretDialog({ hasSigningSecret }: { hasSigningSecret: boolean 
             </Paragraph>
             <ClipboardField value={generated} variant="secondary/medium" />
             <Hint>Paste this into your provider's webhook signing-secret field.</Hint>
+            {previousSecretExpiresAt ? (
+              <Hint>
+                The previous secret keeps verifying deliveries until{" "}
+                <DateTime date={previousSecretExpiresAt} />.
+              </Hint>
+            ) : null}
             <div className="flex justify-end">
               <Button type="button" variant="primary/small" onClick={() => setOpen(false)}>
                 Done
@@ -871,6 +964,12 @@ function GenerateSecretDialog({ hasSigningSecret }: { hasSigningSecret: boolean 
               Trigger.dev generates a strong signing secret, stores it encrypted, and shows it once
               so you can paste it into your provider.
             </Paragraph>
+            {hasSigningSecret ? <PreviousSecretTtlField credentialNoun="signing secret" /> : null}
+            {fetcher.data && !fetcher.data.success ? (
+              <Paragraph variant="small" className="text-error">
+                {fetcher.data.error}
+              </Paragraph>
+            ) : null}
             <div className="flex justify-end gap-2">
               <Button
                 type="button"
@@ -1002,13 +1101,39 @@ function TableLoading() {
   );
 }
 
-/** The endpoint's deliveries, with live status updates and a pill for ones that arrived since load. */
+function NewDeliveriesButton({ count, onClick }: { count: number; onClick: () => void }) {
+  return (
+    <span className="flex duration-150 animate-in fade-in-0">
+      <Button
+        variant="secondary/small"
+        className="text-text-bright"
+        onClick={onClick}
+        LeadingIcon={<PulsingDot className="h-2 w-2" />}
+        tooltip="Refresh to see new deliveries"
+        aria-label="New deliveries received. Refresh to see them."
+      >
+        {count >= 100
+          ? "99+ new deliveries"
+          : `${count} new ${count === 1 ? "delivery" : "deliveries"}`}
+      </Button>
+    </span>
+  );
+}
+
+/**
+ * The endpoint's deliveries, with live status updates. Deliveries that arrived since load are
+ * surfaced to the filter row's button via `onNewDeliveriesCountChange` and `showNewDeliveriesRef`.
+ */
 function LiveDeliveriesTable({
   list,
   webhookEndpointId,
+  onNewDeliveriesCountChange,
+  showNewDeliveriesRef,
 }: {
   list: WebhookDeliveriesList;
   webhookEndpointId: string;
+  onNewDeliveriesCountChange: (count: number) => void;
+  showNewDeliveriesRef: MutableRefObject<() => void>;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -1017,57 +1142,37 @@ function LiveDeliveriesTable({
   const revalidator = useRevalidator();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const { visibleDeliveries, showNewDeliveriesBanner, newDeliveriesCount, dismissNewDeliveries } =
-    useDeliveriesLiveReload({
-      deliveries: list.deliveries,
-      isLoading: navigation.state !== "idle",
-      webhookEndpointId,
-      organizationSlug: organization.slug,
-      projectSlug: project.slug,
-      environmentSlug: environment.slug,
-    });
+  const { visibleDeliveries, newDeliveriesCount, dismissNewDeliveries } = useDeliveriesLiveReload({
+    deliveries: list.deliveries,
+    isLoading: navigation.state !== "idle",
+    webhookEndpointId,
+    organizationSlug: organization.slug,
+    projectSlug: project.slug,
+    environmentSlug: environment.slug,
+  });
 
-  const onClickShowNewDeliveries = () => {
-    dismissNewDeliveries();
-    if (searchParams.has("cursor") || searchParams.has("direction")) {
-      setSearchParams((prev) => {
-        prev.delete("cursor");
-        prev.delete("direction");
-        return prev;
-      });
-      return;
-    }
-    revalidator.revalidate();
-  };
+  // Keep the filter row button's action current, mirror the count up, and clear it on unmount (the
+  // table re-suspends on a filter change, or another tab is picked).
+  useEffect(() => {
+    showNewDeliveriesRef.current = () => {
+      dismissNewDeliveries();
+      if (searchParams.has("cursor") || searchParams.has("direction")) {
+        setSearchParams((prev) => {
+          prev.delete("cursor");
+          prev.delete("direction");
+          return prev;
+        });
+        return;
+      }
+      revalidator.revalidate();
+    };
+  }, [dismissNewDeliveries, revalidator, searchParams, setSearchParams, showNewDeliveriesRef]);
+  useEffect(() => {
+    onNewDeliveriesCountChange(newDeliveriesCount);
+  }, [newDeliveriesCount, onNewDeliveriesCountChange]);
+  useEffect(() => () => onNewDeliveriesCountChange(0), [onNewDeliveriesCountChange]);
 
   return (
-    <>
-      {showNewDeliveriesBanner ? (
-        <div className="flex justify-end px-2 py-1.5">
-          <span className="flex duration-150 animate-in fade-in-0">
-            <Button
-              variant="secondary/small"
-              className="text-text-bright"
-              onClick={onClickShowNewDeliveries}
-              LeadingIcon={<PulsingDot className="h-2 w-2" />}
-              tooltip="Refresh to see new deliveries"
-              aria-label="New deliveries received. Refresh to see them."
-            >
-              {newDeliveriesCount >= 100
-                ? "99+ new deliveries"
-                : `${newDeliveriesCount} new ${
-                    newDeliveriesCount === 1 ? "delivery" : "deliveries"
-                  }`}
-            </Button>
-          </span>
-        </div>
-      ) : null}
-      <DeliveriesTable
-        deliveries={visibleDeliveries}
-        hasFilters={list.hasFilters}
-        showTopBorder={false}
-        stickyHeader
-      />
-    </>
+    <DeliveriesTable deliveries={visibleDeliveries} hasFilters={list.hasFilters} stickyHeader />
   );
 }

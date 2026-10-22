@@ -1,9 +1,14 @@
 import { useLocation } from "@remix-run/react";
 import posthog from "posthog-js";
 import { useCallback, useEffect, useRef } from "react";
-import { useOrganizationChanged } from "./useOrganizations";
+import { useOptionalOrganization, useOrganizationChanged } from "./useOrganizations";
 import { useOptionalUser, useUserChanged } from "./useUser";
-import { useProjectChanged } from "./useProject";
+import { useOptionalProject, useProjectChanged } from "./useProject";
+import { PostHogCaptureQueue } from "~/utils/postHogCaptureQueue";
+
+const captureQueue = new PostHogCaptureQueue((event, properties) =>
+  posthog.capture(event, properties)
+);
 
 export const usePostHog = (
   apiKey?: string,
@@ -14,10 +19,15 @@ export const usePostHog = (
   const postHogInitialized = useRef(false);
   const location = useLocation();
   const user = useOptionalUser();
+  const organization = useOptionalOrganization();
+  const project = useOptionalProject();
 
   //start PostHog once
   useEffect(() => {
-    if (apiKey === undefined || apiKey === "") return;
+    if (apiKey === undefined || apiKey === "") {
+      captureQueue.disable();
+      return;
+    }
     if (postHogInitialized.current === true) return;
     if (logging) console.log("Initializing PostHog");
     posthog.init(apiKey, {
@@ -42,10 +52,13 @@ export const usePostHog = (
           if (logging) console.log("Loaded: Identifying user", user);
           posthog.identify(user.id, { email: user.email });
         }
+        if (organization) posthog.group("organization", organization.id);
+        if (project) posthog.group("project", project.id);
+        captureQueue.ready();
       },
     });
     postHogInitialized.current = true;
-  }, [apiKey, uiHost, logging, debug, user]);
+  }, [apiKey, uiHost, logging, debug, user, organization, project]);
 
   useUserChanged((user) => {
     if (postHogInitialized.current === false) return;
@@ -88,7 +101,7 @@ export const usePostHog = (
 
 export function usePostHogTracking() {
   const capture = useCallback((eventName: string, properties?: Record<string, unknown>) => {
-    posthog.capture(eventName, properties);
+    captureQueue.capture(eventName, properties);
   }, []);
 
   const startSessionRecording = useCallback(() => {

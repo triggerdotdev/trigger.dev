@@ -28,7 +28,6 @@ async function startServer() {
   const server = new WorkloadServer({
     port: PORT,
     workerClient: {} as any,
-    snapshotCallbackSecret: "snapshot-callback-secret",
     wideEventOpts: { service: "supervisor", env: { nodeId: "test" }, enabled: false },
     wideEventsNoisyRoutes: false,
   });

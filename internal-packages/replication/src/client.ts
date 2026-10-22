@@ -34,6 +34,12 @@ export interface LogicalReplicationClientOptions {
    */
   additionalTables?: string[];
   /**
+   * Re-add `table` on start when an existing publication is missing it, instead of reporting the
+   * publication as misconfigured. Dropping and recreating a table (e.g. to change its partition key)
+   * removes it from every publication.
+   */
+  readdMainTable?: boolean;
+  /**
    * The name of the replication slot to use.
    */
   slotName: string;
@@ -668,7 +674,7 @@ export class LogicalReplicationClient {
     const publicationExists = await this.#doesPublicationExist();
 
     if (publicationExists) {
-      const addError = await this.#addMissingAdditionalTables();
+      const addError = await this.#addMissingTables();
       if (addError) {
         this.events.emit("error", addError);
         return false;
@@ -743,15 +749,19 @@ export class LogicalReplicationClient {
     return [this.options.table, ...(this.options.additionalTables ?? [])];
   }
 
-  async #addMissingAdditionalTables(): Promise<Error | null> {
-    if (!this.client || !this.options.additionalTables?.length) return null;
+  async #addMissingTables(): Promise<Error | null> {
+    const tables = [
+      ...(this.options.readdMainTable ? [this.options.table] : []),
+      ...(this.options.additionalTables ?? []),
+    ];
+    if (!this.client || tables.length === 0) return null;
 
     const res = await this.client.query(
       `SELECT tablename FROM pg_publication_tables WHERE pubname = '${this.options.publicationName}' AND schemaname = 'public';`
     );
     const published = new Set(res.rows.map((row) => row.tablename as string));
 
-    for (const table of this.options.additionalTables) {
+    for (const table of tables) {
       if (published.has(table)) continue;
       const [alterError] = await tryCatch(
         this.client.query(

@@ -49,6 +49,7 @@ import {
 } from "@internal/dashboard-agent-contracts";
 import { createHash } from "node:crypto";
 import { TriggerClient } from "@trigger.dev/sdk";
+import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
@@ -619,6 +620,7 @@ export async function submitDashboardAgentWatch(params: {
   /** Stable per card submission: both transcript records are keyed off it. */
   clientRequestId: string;
   draft: WatchDraft;
+  authorizeAlerts: (environmentTypes: RuntimeEnvironmentType[]) => boolean;
   now?: Date;
   deps?: {
     create?: typeof createDashboardAgentWatch;
@@ -891,7 +893,11 @@ export async function submitDashboardAgentWatch(params: {
     // said out loud in the confirmation instead, and recorded so a replay repeats it.
     let external: WatchExternalNotification = { status: "not_requested" };
     if (draft.followUp.notifyExternally) {
-      const subscribed = await subscribe({ userId, environment });
+      const subscribed = await subscribe({
+        userId,
+        environment,
+        authorize: params.authorizeAlerts,
+      });
       external = subscribed.ok
         ? { status: "enabled" }
         : { status: "unavailable", reason: subscribed.reason };

@@ -1,11 +1,11 @@
 import { redirect, type ActionFunctionArgs } from "@remix-run/node";
 import { z } from "zod";
-import { prisma } from "~/db.server";
 import { findProjectBySlug } from "~/models/project.server";
-import { getCurrentPlan } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema, v3CustomDashboardPath } from "~/utils/pathBuilder";
-import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
+import { ServiceValidationError } from "~/v3/services/common.server";
+import { MetricDashboardService } from "~/v3/services/metricDashboard.server";
+import { tryCatch } from "@trigger.dev/core/utils";
 
 const CreateDashboardSchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -21,24 +21,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     throw new Response("Project not found", { status: 404 });
   }
 
-  // Check dashboard limit
-  const [plan, existingCount] = await Promise.all([
-    getCurrentPlan(project.organizationId),
-    prisma.metricsDashboard.count({
-      where: { organizationId: project.organizationId },
-    }),
-  ]);
-
-  const metricDashboardsLimitValue = (plan?.v3Subscription?.plan?.limits as any)?.metricDashboards;
-  const dashboardLimit =
-    typeof metricDashboardsLimitValue === "number"
-      ? metricDashboardsLimitValue
-      : (metricDashboardsLimitValue?.number ?? 3);
-
-  if (existingCount >= dashboardLimit) {
-    throw new Response("Dashboard limit reached", { status: 403 });
-  }
-
   const formData = await request.formData();
   const rawData = {
     title: formData.get("title"),
@@ -52,24 +34,22 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   const { title, description } = result.data;
 
-  // Create empty default layout
-  const defaultLayout = JSON.stringify({
-    version: "1",
-    layout: [],
-    widgets: {},
-  });
-
-  const dashboard = await prisma.metricsDashboard.create({
-    data: {
-      friendlyId: generateFriendlyId("dashboard"),
-      title,
-      description,
+  const [error, dashboard] = await tryCatch(
+    new MetricDashboardService().create({
       organizationId: project.organizationId,
       projectId: project.id,
       ownerId: userId,
-      layout: defaultLayout,
-    },
-  });
+      title,
+      description,
+    })
+  );
+
+  if (error) {
+    if (error instanceof ServiceValidationError) {
+      throw new Response(error.message, { status: error.status ?? 400 });
+    }
+    throw error;
+  }
 
   // Redirect to the new dashboard
   return redirect(

@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import type { Server, IncomingMessage, ServerResponse } from "node:http";
+import { describe, it, expect } from "vitest";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { StreamsWriterV1 } from "../src/v3/realtimeStreams/streamsWriterV1.js";
@@ -7,28 +7,32 @@ import { ensureReadableStream } from "../src/v3/streams/asyncIterableStream.js";
 
 type RequestHandler = (req: IncomingMessage, res: ServerResponse) => void;
 
-describe("StreamsWriterV1", () => {
-  let server: Server;
-  let baseUrl: string;
-  let requestHandler: RequestHandler | null = null;
-  let receivedRequests: Array<{
+type TestServer = {
+  baseUrl: string;
+  requestHandler: RequestHandler | null;
+  receivedRequests: Array<{
     method: string;
     url: string;
     headers: IncomingMessage["headers"];
     body: string;
-  }> = [];
+  }>;
+};
 
-  beforeEach(async () => {
-    receivedRequests = [];
-    requestHandler = null;
+const test = it.extend<{ server: TestServer }>({
+  server: async ({}, use) => {
+    const fixture: TestServer = {
+      baseUrl: "",
+      requestHandler: null,
+      receivedRequests: [],
+    };
 
     // Create test server
-    server = createServer((req, res) => {
+    const server = createServer((req, res) => {
       // Collect request data
       const chunks: Buffer[] = [];
       req.on("data", (chunk) => chunks.push(chunk));
       req.on("end", () => {
-        receivedRequests.push({
+        fixture.receivedRequests.push({
           method: req.method!,
           url: req.url!,
           headers: req.headers,
@@ -36,8 +40,8 @@ describe("StreamsWriterV1", () => {
         });
 
         // Call custom handler if set
-        if (requestHandler) {
-          requestHandler(req, res);
+        if (fixture.requestHandler) {
+          fixture.requestHandler(req, res);
         } else {
           // Default: return 200
           res.writeHead(200);
@@ -50,19 +54,22 @@ describe("StreamsWriterV1", () => {
     await new Promise<void>((resolve) => {
       server.listen(0, "127.0.0.1", () => {
         const addr = server.address() as AddressInfo;
-        baseUrl = `http://127.0.0.1:${addr.port}`;
+        fixture.baseUrl = `http://127.0.0.1:${addr.port}`;
         resolve();
       });
     });
-  });
-
-  afterEach(async () => {
-    if (server) {
+    try {
+      await use(fixture);
+    } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
-  });
+  },
+});
 
-  it("should successfully stream all chunks to server", async () => {
+// Isolated servers allow real backoff waits to overlap.
+describe.concurrent("StreamsWriterV1", () => {
+  test("should successfully stream all chunks to server", async ({ server }) => {
+    const { baseUrl, receivedRequests } = server;
     async function* generateChunks() {
       yield { chunk: 0, data: "chunk 0" };
       yield { chunk: 1, data: "chunk 1" };
@@ -92,7 +99,8 @@ describe("StreamsWriterV1", () => {
     expect(JSON.parse(lines[2]!)).toEqual({ chunk: 2, data: "chunk 2" });
   });
 
-  it("should use provided clientId instead of generating one", async () => {
+  test("should use provided clientId instead of generating one", async ({ server }) => {
+    const { baseUrl, receivedRequests } = server;
     async function* generateChunks() {
       yield { chunk: 0 };
     }
@@ -110,10 +118,11 @@ describe("StreamsWriterV1", () => {
     expect(receivedRequests[0]!.headers["x-client-id"]).toBe("custom-client-123");
   });
 
-  it("should retry on connection reset and query server for resume point", async () => {
+  test("should retry on connection reset and query server for resume point", async ({ server }) => {
+    const { baseUrl, receivedRequests } = server;
     let requestCount = 0;
 
-    requestHandler = (req, res) => {
+    server.requestHandler = (req, res) => {
       requestCount++;
 
       if (req.method === "HEAD") {
@@ -160,10 +169,11 @@ describe("StreamsWriterV1", () => {
     expect(posts[1]!.headers["x-resume-from-chunk"]).toBe("1");
   });
 
-  it("should retry on 503 Service Unavailable", async () => {
+  test("should retry on 503 Service Unavailable", async ({ server }) => {
+    const { baseUrl, receivedRequests } = server;
     let requestCount = 0;
 
-    requestHandler = (req, res) => {
+    server.requestHandler = (req, res) => {
       requestCount++;
 
       if (req.method === "HEAD") {
@@ -202,10 +212,11 @@ describe("StreamsWriterV1", () => {
     expect(posts.length).toBe(2); // Original + retry
   });
 
-  it("should retry on request timeout", async () => {
+  test("should retry on request timeout", async ({ server }) => {
+    const { baseUrl, receivedRequests } = server;
     let requestCount = 0;
 
-    requestHandler = (req, res) => {
+    server.requestHandler = (req, res) => {
       requestCount++;
 
       if (req.method === "HEAD") {
@@ -246,10 +257,11 @@ describe("StreamsWriterV1", () => {
     expect(receivedRequests.length).toBeGreaterThan(0);
   });
 
-  it("should handle ring buffer correctly on retry", async () => {
+  test("should handle ring buffer correctly on retry", async ({ server }) => {
+    const { baseUrl, receivedRequests } = server;
     let requestCount = 0;
 
-    requestHandler = (req, res) => {
+    server.requestHandler = (req, res) => {
       requestCount++;
 
       if (req.method === "HEAD") {
@@ -304,8 +316,9 @@ describe("StreamsWriterV1", () => {
     expect(JSON.parse(secondLines[2]!).chunk).toBe(4);
   });
 
-  it("should fail after max retries exceeded", { timeout: 30000 }, async () => {
-    requestHandler = (req, res) => {
+  test("should fail after max retries exceeded", { timeout: 30000 }, async ({ server }) => {
+    const { baseUrl, receivedRequests } = server;
+    server.requestHandler = (req, res) => {
       if (req.method === "HEAD") {
         res.writeHead(200, { "X-Last-Chunk-Index": "-1" });
         res.end();
@@ -336,13 +349,14 @@ describe("StreamsWriterV1", () => {
     expect(posts.length).toBe(4);
   });
 
-  it(
+  test(
     "should handle HEAD request failures gracefully and resume from 0",
     { timeout: 10000 },
-    async () => {
+    async ({ server }) => {
+      const { baseUrl, receivedRequests } = server;
       let postCount = 0;
 
-      requestHandler = (req, res) => {
+      server.requestHandler = (req, res) => {
         if (req.method === "HEAD") {
           // Fail HEAD with 503 (will retry but eventually return -1)
           res.writeHead(503);
@@ -388,10 +402,11 @@ describe("StreamsWriterV1", () => {
     }
   );
 
-  it("should handle 429 rate limit with retry", async () => {
+  test("should handle 429 rate limit with retry", async ({ server }) => {
+    const { baseUrl, receivedRequests } = server;
     let requestCount = 0;
 
-    requestHandler = (req, res) => {
+    server.requestHandler = (req, res) => {
       requestCount++;
 
       if (req.method === "HEAD") {
@@ -429,49 +444,55 @@ describe("StreamsWriterV1", () => {
     expect(posts.length).toBe(2); // Original + retry
   });
 
-  it("should reset retry count after successful response", { timeout: 10000 }, async () => {
-    let postCount = 0;
+  test(
+    "should reset retry count after successful response",
+    { timeout: 10000 },
+    async ({ server }) => {
+      const { baseUrl, receivedRequests } = server;
+      let postCount = 0;
 
-    requestHandler = (req, res) => {
-      if (req.method === "HEAD") {
-        res.writeHead(200, { "X-Last-Chunk-Index": "-1" });
+      server.requestHandler = (req, res) => {
+        if (req.method === "HEAD") {
+          res.writeHead(200, { "X-Last-Chunk-Index": "-1" });
+          res.end();
+          return;
+        }
+
+        postCount++;
+
+        if (postCount === 1) {
+          // First POST - fail
+          res.writeHead(503);
+          res.end();
+          return;
+        }
+
+        // Second POST - succeed (retry count should be reset after this)
+        res.writeHead(200);
         res.end();
-        return;
+      };
+
+      async function* generateChunks() {
+        yield { chunk: 0 };
       }
 
-      postCount++;
+      const metadataStream = new StreamsWriterV1({
+        baseUrl,
+        runId: "run_123",
+        key: "test-stream",
+        source: ensureReadableStream(generateChunks()),
+      });
 
-      if (postCount === 1) {
-        // First POST - fail
-        res.writeHead(503);
-        res.end();
-        return;
-      }
+      await metadataStream.wait();
 
-      // Second POST - succeed (retry count should be reset after this)
-      res.writeHead(200);
-      res.end();
-    };
-
-    async function* generateChunks() {
-      yield { chunk: 0 };
+      // Should have: 1 initial + 1 retry = 2 POST requests
+      const posts = receivedRequests.filter((r) => r.method === "POST");
+      expect(posts.length).toBe(2);
     }
+  );
 
-    const metadataStream = new StreamsWriterV1({
-      baseUrl,
-      runId: "run_123",
-      key: "test-stream",
-      source: ensureReadableStream(generateChunks()),
-    });
-
-    await metadataStream.wait();
-
-    // Should have: 1 initial + 1 retry = 2 POST requests
-    const posts = receivedRequests.filter((r) => r.method === "POST");
-    expect(posts.length).toBe(2);
-  });
-
-  it("should handle large stream with multiple chunks", async () => {
+  test("should handle large stream with multiple chunks", async ({ server }) => {
+    const { baseUrl, receivedRequests } = server;
     const chunkCount = 100;
 
     async function* generateChunks() {
@@ -494,11 +515,12 @@ describe("StreamsWriterV1", () => {
     expect(lines.length).toBe(chunkCount);
   });
 
-  it("should handle retry mid-stream and resume from correct chunk", async () => {
+  test("should handle retry mid-stream and resume from correct chunk", async ({ server }) => {
+    const { baseUrl, receivedRequests } = server;
     let postCount = 0;
     const totalChunks = 50;
 
-    requestHandler = (req, res) => {
+    server.requestHandler = (req, res) => {
       if (req.method === "HEAD") {
         // Simulate server received first 20 chunks before connection dropped
         res.writeHead(200, { "X-Last-Chunk-Index": "19" });
@@ -560,58 +582,64 @@ describe("StreamsWriterV1", () => {
     expect(lastChunkInRetry.chunk).toBe(49);
   });
 
-  it("should handle multiple retries with exponential backoff", { timeout: 30000 }, async () => {
-    let postCount = 0;
-    const startTime = Date.now();
+  test(
+    "should handle multiple retries with exponential backoff",
+    { timeout: 30000 },
+    async ({ server }) => {
+      const { baseUrl, receivedRequests } = server;
+      let postCount = 0;
+      const startTime = Date.now();
 
-    requestHandler = (req, res) => {
-      if (req.method === "HEAD") {
-        res.writeHead(200, { "X-Last-Chunk-Index": "-1" });
+      server.requestHandler = (req, res) => {
+        if (req.method === "HEAD") {
+          res.writeHead(200, { "X-Last-Chunk-Index": "-1" });
+          res.end();
+          return;
+        }
+
+        postCount++;
+
+        if (postCount <= 3) {
+          // Fail first 3 attempts
+          res.writeHead(503);
+          res.end();
+          return;
+        }
+
+        // Fourth attempt succeeds
+        res.writeHead(200);
         res.end();
-        return;
+      };
+
+      async function* generateChunks() {
+        yield { chunk: 0 };
       }
 
-      postCount++;
+      const metadataStream = new StreamsWriterV1({
+        baseUrl,
+        runId: "run_123",
+        key: "test-stream",
+        source: ensureReadableStream(generateChunks()),
+      });
 
-      if (postCount <= 3) {
-        // Fail first 3 attempts
-        res.writeHead(503);
-        res.end();
-        return;
-      }
+      await metadataStream.wait();
 
-      // Fourth attempt succeeds
-      res.writeHead(200);
-      res.end();
-    };
+      const elapsed = Date.now() - startTime;
+      const posts = receivedRequests.filter((r) => r.method === "POST");
 
-    async function* generateChunks() {
-      yield { chunk: 0 };
+      expect(posts.length).toBe(4); // 1 initial + 3 retries
+
+      // With exponential backoff (1s, 2s, 4s), should take at least 6 seconds
+      // But jitter and processing means we give it some range
+      expect(elapsed).toBeGreaterThan(5000);
     }
+  );
 
-    const metadataStream = new StreamsWriterV1({
-      baseUrl,
-      runId: "run_123",
-      key: "test-stream",
-      source: ensureReadableStream(generateChunks()),
-    });
-
-    await metadataStream.wait();
-
-    const elapsed = Date.now() - startTime;
-    const posts = receivedRequests.filter((r) => r.method === "POST");
-
-    expect(posts.length).toBe(4); // 1 initial + 3 retries
-
-    // With exponential backoff (1s, 2s, 4s), should take at least 6 seconds
-    // But jitter and processing means we give it some range
-    expect(elapsed).toBeGreaterThan(5000);
-  });
-
-  it("should handle ring buffer overflow gracefully", async () => {
+  test("should handle ring buffer overflow gracefully", async ({ server }) => {
+    const { baseUrl, receivedRequests } = server;
     let postCount = 0;
 
-    requestHandler = (req, res) => {
+    server.requestHandler = (req, res) => {
       if (req.method === "HEAD") {
         // Server received nothing
         res.writeHead(200, { "X-Last-Chunk-Index": "-1" });
@@ -654,7 +682,8 @@ describe("StreamsWriterV1", () => {
     expect(posts.length).toBe(2);
   });
 
-  it("should handle consumer reading from stream", async () => {
+  test("should handle consumer reading from stream", async ({ server }) => {
+    const { baseUrl, receivedRequests } = server;
     async function* generateChunks() {
       yield { chunk: 0, data: "data 0" };
       yield { chunk: 1, data: "data 1" };
@@ -686,8 +715,9 @@ describe("StreamsWriterV1", () => {
     expect(posts.length).toBe(1);
   });
 
-  it("should handle non-retryable 4xx errors immediately", async () => {
-    requestHandler = (req, res) => {
+  test("should handle non-retryable 4xx errors immediately", async ({ server }) => {
+    const { baseUrl, receivedRequests } = server;
+    server.requestHandler = (req, res) => {
       if (req.method === "POST") {
         // 400 Bad Request - not retryable
         res.writeHead(400);
@@ -713,52 +743,58 @@ describe("StreamsWriterV1", () => {
     expect(posts.length).toBe(1); // Only initial request, no retries
   });
 
-  it("should handle 429 rate limit with proper backoff", { timeout: 15000 }, async () => {
-    let postCount = 0;
+  test(
+    "should handle 429 rate limit with proper backoff",
+    { timeout: 15000 },
+    async ({ server }) => {
+      const { baseUrl, receivedRequests } = server;
+      let postCount = 0;
 
-    requestHandler = (req, res) => {
-      if (req.method === "HEAD") {
-        res.writeHead(200, { "X-Last-Chunk-Index": "-1" });
+      server.requestHandler = (req, res) => {
+        if (req.method === "HEAD") {
+          res.writeHead(200, { "X-Last-Chunk-Index": "-1" });
+          res.end();
+          return;
+        }
+
+        postCount++;
+
+        if (postCount <= 2) {
+          // Rate limited twice
+          res.writeHead(429);
+          res.end();
+          return;
+        }
+
+        // Third attempt succeeds
+        res.writeHead(200);
         res.end();
-        return;
+      };
+
+      async function* generateChunks() {
+        yield { chunk: 0 };
       }
 
-      postCount++;
+      const metadataStream = new StreamsWriterV1({
+        baseUrl,
+        runId: "run_123",
+        key: "test-stream",
+        source: ensureReadableStream(generateChunks()),
+      });
 
-      if (postCount <= 2) {
-        // Rate limited twice
-        res.writeHead(429);
-        res.end();
-        return;
-      }
+      await metadataStream.wait();
 
-      // Third attempt succeeds
-      res.writeHead(200);
-      res.end();
-    };
-
-    async function* generateChunks() {
-      yield { chunk: 0 };
+      const posts = receivedRequests.filter((r) => r.method === "POST");
+      expect(posts.length).toBe(3); // 1 initial + 2 retries
     }
+  );
 
-    const metadataStream = new StreamsWriterV1({
-      baseUrl,
-      runId: "run_123",
-      key: "test-stream",
-      source: ensureReadableStream(generateChunks()),
-    });
-
-    await metadataStream.wait();
-
-    const posts = receivedRequests.filter((r) => r.method === "POST");
-    expect(posts.length).toBe(3); // 1 initial + 2 retries
-  });
-
-  it("should handle abort signal during streaming", async () => {
+  test("should handle abort signal during streaming", async ({ server }) => {
+    const { baseUrl } = server;
     const abortController = new AbortController();
     let requestReceived = false;
 
-    requestHandler = (req, res) => {
+    server.requestHandler = (req, res) => {
       requestReceived = true;
       // Don't respond immediately, let abort happen
       setTimeout(() => {
@@ -790,7 +826,8 @@ describe("StreamsWriterV1", () => {
     expect(requestReceived).toBe(true);
   });
 
-  it("should handle empty stream (no chunks)", async () => {
+  test("should handle empty stream (no chunks)", async ({ server }) => {
+    const { baseUrl, receivedRequests } = server;
     // eslint-disable-next-line require-yield
     async function* generateChunks() {
       // Yields nothing
@@ -812,7 +849,8 @@ describe("StreamsWriterV1", () => {
     expect(posts[0]!.body.trim()).toBe("");
   });
 
-  it("should handle error thrown by source generator", async () => {
+  test("should handle error thrown by source generator", async ({ server }) => {
+    const { baseUrl, receivedRequests } = server;
     // Skip this test - source generator errors are properly handled by the stream
     // but cause unhandled rejection warnings in test environment
     // In production, these errors would be caught by the task execution layer
@@ -837,10 +875,11 @@ describe("StreamsWriterV1", () => {
     expect(posts.length).toBe(1);
   });
 
-  it("should handle missing X-Last-Chunk-Index header in HEAD response", async () => {
+  test("should handle missing X-Last-Chunk-Index header in HEAD response", async ({ server }) => {
+    const { baseUrl, receivedRequests } = server;
     let postCount = 0;
 
-    requestHandler = (req, res) => {
+    server.requestHandler = (req, res) => {
       if (req.method === "HEAD") {
         // Return success but no chunk index header
         res.writeHead(200);
@@ -880,13 +919,14 @@ describe("StreamsWriterV1", () => {
     expect(posts[1]!.headers["x-resume-from-chunk"]).toBe("0");
   });
 
-  it(
+  test(
     "should handle rapid successive failures with different error types",
     { timeout: 20000 },
-    async () => {
+    async ({ server }) => {
+      const { baseUrl, receivedRequests } = server;
       let postCount = 0;
 
-      requestHandler = (req, res) => {
+      server.requestHandler = (req, res) => {
         if (req.method === "HEAD") {
           res.writeHead(200, { "X-Last-Chunk-Index": "-1" });
           res.end();
@@ -929,53 +969,58 @@ describe("StreamsWriterV1", () => {
     }
   );
 
-  it("should handle resume point outside ring buffer window", { timeout: 10000 }, async () => {
-    let postCount = 0;
+  test(
+    "should handle resume point outside ring buffer window",
+    { timeout: 10000 },
+    async ({ server }) => {
+      const { baseUrl, receivedRequests } = server;
+      let postCount = 0;
 
-    requestHandler = (req, res) => {
-      if (req.method === "HEAD") {
-        // Server claims to have chunk 80 (but ring buffer only has last 50)
-        res.writeHead(200, { "X-Last-Chunk-Index": "80" });
+      server.requestHandler = (req, res) => {
+        if (req.method === "HEAD") {
+          // Server claims to have chunk 80 (but ring buffer only has last 50)
+          res.writeHead(200, { "X-Last-Chunk-Index": "80" });
+          res.end();
+          return;
+        }
+
+        postCount++;
+
+        if (postCount === 1) {
+          // First POST fails early
+          setTimeout(() => req.socket.destroy(), 50);
+          return;
+        }
+
+        // Second POST succeeds
+        res.writeHead(200);
         res.end();
-        return;
+      };
+
+      async function* generateChunks() {
+        for (let i = 0; i < 150; i++) {
+          yield { chunk: i, data: `chunk ${i}` };
+          await new Promise((resolve) => setTimeout(resolve, 1));
+        }
       }
 
-      postCount++;
+      const metadataStream = new StreamsWriterV1({
+        baseUrl,
+        runId: "run_123",
+        key: "test-stream",
+        source: ensureReadableStream(generateChunks()),
+        maxBufferSize: 50, // Small buffer
+      });
 
-      if (postCount === 1) {
-        // First POST fails early
-        setTimeout(() => req.socket.destroy(), 50);
-        return;
-      }
+      // Should complete even though resume point (81) is outside buffer window
+      await metadataStream.wait();
 
-      // Second POST succeeds
-      res.writeHead(200);
-      res.end();
-    };
+      const posts = receivedRequests.filter((r) => r.method === "POST");
+      expect(posts.length).toBe(2);
 
-    async function* generateChunks() {
-      for (let i = 0; i < 150; i++) {
-        yield { chunk: i, data: `chunk ${i}` };
-        await new Promise((resolve) => setTimeout(resolve, 1));
-      }
+      // Should try to resume from chunk 81
+      expect(posts[1]!.headers["x-resume-from-chunk"]).toBe("81");
+      // Will log warnings about missing chunks but should continue with available chunks
     }
-
-    const metadataStream = new StreamsWriterV1({
-      baseUrl,
-      runId: "run_123",
-      key: "test-stream",
-      source: ensureReadableStream(generateChunks()),
-      maxBufferSize: 50, // Small buffer
-    });
-
-    // Should complete even though resume point (81) is outside buffer window
-    await metadataStream.wait();
-
-    const posts = receivedRequests.filter((r) => r.method === "POST");
-    expect(posts.length).toBe(2);
-
-    // Should try to resume from chunk 81
-    expect(posts[1]!.headers["x-resume-from-chunk"]).toBe("81");
-    // Will log warnings about missing chunks but should continue with available chunks
-  });
+  );
 });

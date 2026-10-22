@@ -1,0 +1,190 @@
+---
+title: "Waiting for a webhook"
+description: "Pause a run until a matching webhook arrives on an endpoint, then resume it with the verified event."
+sidebarTitle: "Waiters"
+---
+
+**A waiter pauses a run until a matching delivery arrives on an [endpoint](/webhooks/overview).** Use it when your task starts something in another system and needs to know when that system reports back: a payment that settles, a build that finishes, a document that gets signed.
+
+```ts /trigger/checkout.ts
+import { task, webhooks } from "@trigger.dev/sdk";
+import { stripe } from "./stripe"; // webhooks.endpoint.define({ id: "stripe", source: webhooks.stripe() })
+
+export const checkout = task({
+  id: "checkout",
+  run: async ({
+    orderId,
+    customerId,
+    paymentMethodId,
+  }: {
+    orderId: string;
+    customerId: string;
+    paymentMethodId: string;
+  }) => {
+    const waiter = await webhooks.waiter.create(stripe, {
+      match: {
+        "event.type": "payment_intent.succeeded",
+        "event.data.object.metadata.orderId": orderId,
+      },
+      timeout: "1h",
+      // the same waiter (and its event) if this run is retried
+      idempotencyKey: `payment-${orderId}`,
+    });
+
+    // confirm: true charges the customer's saved payment method now, so Stripe sends payment_intent.succeeded.
+    // Stripe's own idempotency key stops a retry from creating a second intent for the order.
+    await stripeClient.paymentIntents.create(
+      {
+        amount: 4200,
+        currency: "usd",
+        customer: customerId,
+        payment_method: paymentMethodId,
+        confirm: true,
+        metadata: { orderId },
+      },
+      { idempotencyKey: `payment-intent-${orderId}` }
+    );
+
+    const { event, deliveryId } = await webhooks.waiter.wait(waiter).unwrap();
+    return { paymentIntent: event.data.object.id, deliveryId };
+  },
+});
+```
+
+While the run waits it is suspended, so it uses no compute. The endpoint's other subscribers still receive the delivery.
+
+## Create before you act
+
+A waiter only matches deliveries that arrive after it was created. Create it before the call that makes the provider send the webhook, as above, or a fast provider can deliver the event before anything is waiting for it.
+
+Match on values you control, such as your own order id in the provider object's metadata. Two runs waiting for the same values are both resumed by the delivery.
+
+## Matching
+
+`match` maps paths to the scalar each must equal. Paths use the same namespaces as a [filter](/webhooks/filters):
+
+| Path | Reads |
+| --- | --- |
+| `event.*` | The verified event body, for example `event.data.object.id`. |
+| `header.*` | A request header, matched case-insensitively, for example `header.x-shop-domain`. |
+| `webhook.*` | The endpoint: `id`, `source`, `externalRef`, `tenantId`, or `deliveryId`. |
+
+A waiter can match up to five paths, and each value is a string, number or boolean. Paths are checked against the endpoint's event type at build time: an unknown field on a typed event, a path to an object, or a path without a namespace is a type error. The API refuses the same paths at create time.
+
+For conditions that aren't equality, add a `filter`. It is checked after `match`:
+
+```ts
+await webhooks.waiter.create(stripe, {
+  match: { "event.data.object.metadata.orderId": orderId },
+  filter: "event.type in ['payment_intent.succeeded', 'payment_intent.payment_failed']",
+});
+```
+
+## The result
+
+`webhooks.waiter.wait(waiter)` returns a result you can check, and `.unwrap()` returns the output or throws:
+
+```ts
+const result = await webhooks.waiter.wait(waiter);
+if (result.ok) {
+  console.log(result.output.event, result.output.headers, result.output.endpoint);
+} else {
+  console.log(result.error.name); // "WaitpointTimeoutError" or "WebhookWaiterCancelledError"
+}
+```
+
+| Output field | Value |
+| --- | --- |
+| `event` | The verified event body, typed by the endpoint's source. |
+| `headers` | The request headers, with credentials such as signatures removed. |
+| `deliveryId` | The delivery that resumed the run (`whd_...`). |
+| `endpoint` | The endpoint the delivery arrived on. |
+
+`timeout` accepts a duration such as `"30m"` or a `Date`. It defaults to 24 hours and can be up to 90 days. A waiter that times out fails the wait with `WaitpointTimeoutError`.
+
+A waiter is a [waitpoint](/wait-for-token): its id starts with `waitpoint_` and it is tagged `webhook:<endpoint id>` plus any `tags` you pass (up to 10).
+
+## Providers that take a callback URL
+
+Some providers accept a webhook URL per request instead of one account-wide URL, such as Replicate's `webhook` parameter. Omit `match` and the waiter gets its own URL:
+
+```ts
+const waiter = await webhooks.waiter.create(replicateEndpoint, { timeout: "2h" });
+
+await replicate.predictions.create({ version, input, webhook: waiter.url });
+
+const { event } = await webhooks.waiter.wait(waiter).unwrap();
+```
+
+A delivery to `waiter.url` is verified with the endpoint's source, resumes only that waiter, and is not sent to the endpoint's subscribers.
+
+## Creating from your backend
+
+`webhooks.waiter.create` also works outside a run, for example in the API route that starts a checkout. Pass the waiter, or its id, to a task that waits on it:
+
+```ts
+const waiter = await webhooks.waiter.create(stripe, { match: { "event.data.object.metadata.orderId": orderId } });
+await fulfillWhenPaid.trigger({ waiterId: waiter.id });
+```
+
+```ts
+export const fulfillWhenPaid = task({
+  id: "fulfill-when-paid",
+  run: async ({ waiterId }: { waiterId: string }) => {
+    const { event } = await webhooks.waiter.wait(waiterId).unwrap();
+  },
+});
+```
+
+The same operations are on the REST API: [`POST /api/v1/webhooks/endpoints/{endpointId}/waiters`](/management/webhooks/create-waiter) with `match`, `filter`, `timeout`, `tags` and `idempotencyKey`, and [`POST /api/v1/webhooks/waiters/{waiterId}/cancel`](/management/webhooks/cancel-waiter). `endpointId` is the endpoint's declared id or its `wh_` id.
+
+## Retries and idempotency
+
+Pass an `idempotencyKey` so a task can be retried without losing its webhook. A create with a key it has seen returns the original waiter, with `isCached: true`, even if it has already completed, and waiting on a completed waiter returns its event straight away. Inside a task a string key is scoped to the run, as it is for [`trigger()`](/idempotency), so a retried attempt gets the waiter (and the event) the attempt before it created:
+
+```ts
+const waiter = await webhooks.waiter.create(stripe, {
+  match: { "event.data.object.metadata.orderId": orderId },
+  idempotencyKey: `payment-${orderId}`,
+});
+```
+
+Use [`idempotencyKeys.create(key, { scope })`](/idempotency) for a key scoped to one attempt or shared across runs, and `idempotencyKeyTTL` to set how long the key lasts.
+
+Without a key every call creates a new waiter, and a waiter only matches deliveries that arrive after it. If an attempt fails after its webhook arrived, the retry's new waiter waits for an event the provider already sent.
+
+## Cancelling
+
+`webhooks.waiter.cancel(waiter)` frees the waiter's slot and fails its wait with `WebhookWaiterCancelledError`. If a delivery has already claimed the waiter, the cancel is too late and the run resumes with that delivery:
+
+```ts
+const result = await webhooks.waiter.cancel(waiter);
+if (!result.cancelled) {
+  console.log("Already resumed by", result.deliveryId); // result.reason is "too_late"
+}
+```
+
+## Errors
+
+`webhooks.waiter.create` throws a typed error when nothing was created:
+
+| Error | Cause |
+| --- | --- |
+| `WebhookWaiterLimitError` | A limit was reached. `reason` is `endpoint_limit`, `environment_limit`, `shape_limit` or `timeout_too_long`. |
+| `WebhookEndpointNotFoundError` | The endpoint isn't in the environment's current deployment. |
+| `WebhookFilterError` | The `filter` doesn't parse. |
+
+## Limits
+
+| Limit | Default |
+| --- | --- |
+| Live waiters per endpoint | 10,000. This is also the most one delivery can resume. |
+| Live waiters per environment | 1,000,000 on self-hosted installs. |
+| Distinct sets of `match` paths per endpoint | 25 |
+| Paths per `match` | 5 |
+| Tags per waiter | 10 |
+| Timeout | 24 hours by default, 90 days at most |
+
+On Trigger.dev Cloud the per-endpoint and per-environment limits depend on your plan. Self-hosted installs can change them with `WEBHOOK_WAITER_MAX_PER_ENDPOINT`, `WEBHOOK_WAITER_MAX_PER_ENVIRONMENT` and `WEBHOOK_WAITER_MAX_SHAPES`.
+
+A delivery that resumes waiters shows one **Waiting runs** row on its [delivery page](/webhooks/deliveries#where-a-delivery-went) with how many matched, resumed and failed. A delivery that arrives while runs are waiting but matches none of them, and no subscriber takes, is `UNMATCHED`.

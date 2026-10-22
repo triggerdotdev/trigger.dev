@@ -18,6 +18,7 @@ import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { engine } from "~/v3/runEngine.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
+import { stripClientIngressFields } from "~/services/realtime/sanitizeSessionInput.server";
 
 const ParamsSchema = z.object({
   session: z.string(),
@@ -106,7 +107,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const addressingKey = canonicalSessionAddressingKey(session, sessionParam);
 
-  const part = await request.text();
+  const body = await request.text();
+  const part = io === "in" ? stripClientIngressFields(body) : body;
   const partId = request.headers.get("X-Part-Id") ?? nanoid(7);
 
   const [appendError, appendSeq] = await tryCatch(

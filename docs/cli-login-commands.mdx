@@ -26,6 +26,26 @@ yarn dlx trigger.dev@latest login
 
 ## Options
 
+<ParamField body="No browser" type="--no-browser">
+  Do not open the browser. Print the URL only.
+</ParamField>
+
+<ParamField body="Email" type="--email <email>">
+  Prefill the email on the login page.
+</ParamField>
+
+<ParamField body="Name" type="--name <name>">
+  Set your name after authorization. Only applies to a new account that has not set its details yet.
+</ParamField>
+
+<ParamField body="Cancel pending" type="--cancel-pending">
+  Cancel a pending login and keep the current account.
+</ParamField>
+
+<ParamField body="No wait" type="--no-wait">
+  Save the authorization and exit so login can be resumed later.
+</ParamField>
+
 ### Common options
 
 These options are available on most commands.

@@ -6,11 +6,12 @@ import type {
 } from "@trigger.dev/core/v3";
 import { parseEventBody, readPath } from "./derive.js";
 import type { VerifyInput } from "./types.js";
-import { buildSigningBytes } from "./util.js";
+import { buildSigningBytes, readHeader, timestampDistanceMs, timestampToMs } from "./util.js";
 
 // The subset of a verifier config shared by every signed scheme (hmac, asymmetric).
 export type SignedConfig = {
   signatureHeader: string;
+  additionalSignatureHeaders?: string[];
   signature?: WebhookSignatureExtraction;
   timestamp?: WebhookTimestampConfig;
   signingString: WebhookSigningString;
@@ -68,7 +69,7 @@ type ResolveContext = {
 function resolveValueSource(source: WebhookValueSource, ctx: ResolveContext): string | undefined {
   switch (source.from) {
     case "header":
-      return ctx.headers[source.name.toLowerCase()];
+      return readHeader(ctx.headers, source);
     case "signatureField":
       return ctx.fields.get(source.field)?.[0];
     case "body": {
@@ -97,6 +98,10 @@ export function prepareSignedVerification(
 
   const { signatures, fields } = parseSignatureHeader(rawHeader, config.signature);
   if (signatures.length === 0) return { ok: false, error: "no signature found in header" };
+  for (const name of config.additionalSignatureHeaders ?? []) {
+    const value = input.headers[name.toLowerCase()];
+    if (value) signatures.push(...parseSignatureHeader(value, config.signature).signatures);
+  }
 
   const ctx: ResolveContext = {
     headers: input.headers,
@@ -109,13 +114,15 @@ export function prepareSignedVerification(
   if (config.timestamp) {
     const v = resolveValueSource(config.timestamp.source, ctx);
     if (!v) return { ok: false, error: "missing timestamp" };
-    const n = Number(v);
-    if (Number.isNaN(n)) return { ok: false, error: "unparseable timestamp" };
+    const ms = timestampToMs(v, config.timestamp);
+    if (ms === undefined) return { ok: false, error: "unparseable timestamp" };
     timestampValue = v;
     if (config.timestamp.toleranceSeconds !== undefined) {
-      const tsSeconds = config.timestamp.unit === "milliseconds" ? n / 1000 : n;
-      const nowS = (input.nowMs ?? Date.now()) / 1000;
-      if (Math.abs(nowS - tsSeconds) > config.timestamp.toleranceSeconds) {
+      const nowMs = input.nowMs ?? Date.now();
+      if (
+        timestampDistanceMs(ms, nowMs, config.timestamp) >
+        config.timestamp.toleranceSeconds * 1000
+      ) {
         return { ok: false, error: "timestamp outside tolerance" };
       }
     }
