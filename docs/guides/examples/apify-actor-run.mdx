@@ -214,7 +214,7 @@ Trigger the task from the Trigger.dev dashboard with the same payload as Example
 </Note>
 
 <Note>
-  [Task outputs](/limits#task-payloads-and-outputs) are limited to 10MB. Both examples return every dataset item, so a large crawl can fail the task even when the Actor succeeds. For big datasets, return only `datasetId` and read the items with `apify.dataset(datasetId).listItems({ offset, limit })` in the next step.
+  [Task outputs](/limits#task-payloads-and-outputs) have a size limit. Both examples return every dataset item, so a large crawl can fail the task even when the Actor succeeds. For big datasets, return only `datasetId` and read the items with `apify.dataset(datasetId).listItems({ offset, limit })` in the next step.
 </Note>
 
 ## Learn more
