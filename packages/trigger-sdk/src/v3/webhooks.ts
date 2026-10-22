@@ -35,6 +35,7 @@ import {
   svixVerifierConfig,
   webhookProviderConfigs,
   webhookSetupPrompts,
+  type HookdeckSourceOptions,
   type WebhookProviderId,
 } from "@trigger.dev/core/webhooks";
 
@@ -289,6 +290,22 @@ export const webhookSources = {
       secretProvisioning: "provider",
     };
   },
+
+  /**
+   * Hookdeck relays deliveries from another provider, so `T` is the original provider's event. It
+   * verifies `x-hookdeck-signature` (and `x-hookdeck-signature-2` while a secret is being rolled)
+   * with the Hookdeck project's signing secret, and dedupes retries on `x-hookdeck-eventid`. Pass
+   * `headerPrefix` when the project's header prefix was changed from `x-hookdeck`.
+   */
+  hookdeck<T = unknown>(options?: HookdeckSourceOptions): WebhookSource<T> {
+    const setupPrompt = webhookSetupPrompts.hookdeck;
+    return {
+      provider: "hookdeck",
+      verifier: { kind: "config", config: webhookProviderConfigs.hookdeck.config(options) },
+      secretProvisioning: webhookProviderConfigs.hookdeck.secretProvisioning,
+      ...(setupPrompt ? { setupPrompt } : {}),
+    };
+  },
 } as const;
 
 type CamelCase<S extends string> = S extends `${infer Head}-${infer Tail}`
@@ -314,7 +331,7 @@ function producerName(provider: string): string {
 export const providerProducers = Object.fromEntries(
   Object.entries(webhookProviderConfigs)
     // Zoom needs a computed URL-validation response that the hosted ingress does not support yet.
-    .filter(([provider]) => provider !== "slack" && provider !== "zoom")
+    .filter(([provider]) => provider !== "slack" && provider !== "zoom" && provider !== "hookdeck")
     .map(([provider, entry]) => [
       producerName(provider),
       () => {
@@ -327,7 +344,7 @@ export const providerProducers = Object.fromEntries(
         };
       },
     ])
-) as Omit<ProviderProducers, "slack">;
+) as Omit<ProviderProducers, "slack" | "hookdeck">;
 
 // ── webhooks.endpoint.define(): one provider URL that subscribers and waiters attach to ──
 export type WebhookEndpointOptions<TIdentifier extends string, TSource extends AnyWebhookSource> = {
@@ -600,6 +617,7 @@ interface Webhooks {
   composio: typeof webhookSources.composio;
   gitlab: typeof webhookSources.gitlab;
   whatsapp: typeof webhookSources.whatsapp;
+  hookdeck: typeof webhookSources.hookdeck;
   /** Declare the URLs providers deliver to. */
   endpoint: { define: typeof defineWebhookEndpoint };
   /** Suspend a run until a matching webhook arrives. */
@@ -613,7 +631,7 @@ interface Webhooks {
 /**
  * Webhook utilities for handling incoming webhook requests
  */
-export const webhooks: Webhooks & Omit<ProviderProducers, "slack"> = {
+export const webhooks: Webhooks & Omit<ProviderProducers, "slack" | "hookdeck"> = {
   ...providerProducers,
   constructEvent,
   SIGNATURE_HEADER_NAME,
@@ -633,6 +651,7 @@ export const webhooks: Webhooks & Omit<ProviderProducers, "slack"> = {
   composio: webhookSources.composio,
   gitlab: webhookSources.gitlab,
   whatsapp: webhookSources.whatsapp,
+  hookdeck: webhookSources.hookdeck,
   endpoint: { define: defineWebhookEndpoint },
   waiter: { create: createWebhookWaiter, wait: waitForWebhookWaiter, cancel: cancelWebhookWaiter },
 };

@@ -30,6 +30,7 @@ import { tracer } from "~/v3/tracer.server";
 import { createExceptionPropertiesFromError } from "./eventRepository/common.server";
 import { getEventRepositoryForStore, recordRunDebugLog } from "./eventRepository/index.server";
 import { roomFromFriendlyRunId, socketIo } from "./handleSocketIo.server";
+import { shouldReportAttemptInvocation } from "./invocationUsage.server";
 import { engine } from "./runEngine.server";
 import { runStore } from "./runStore.server";
 import { mintAnchoredRunFriendlyId } from "~/v3/runOpsMigration/mintAnchoredRunFriendlyId.server";
@@ -587,7 +588,7 @@ export function registerRunEngineEventBusHandlers() {
   engine.eventBus.on("runAttemptStarted", async (event) => {
     const { run, organization } = event;
 
-    if (run.attemptNumber !== 1 || run.baseCostInCents <= 0) {
+    if (!shouldReportAttemptInvocation(run)) {
       return;
     }
 

@@ -2,7 +2,7 @@ import { containerTest, redisTest } from "@internal/testcontainers";
 import { createRedisClient } from "@internal/redis";
 import { setTimeout as sleep } from "node:timers/promises";
 import { Registry } from "prom-client";
-import { describe, expect } from "vitest";
+import { describe, expect, vi } from "vitest";
 import { PendingIndex } from "./pendingIndex.js";
 import {
   PendingRecoveryWorker,
@@ -10,6 +10,7 @@ import {
   type PostgresCommitStatus,
 } from "./pendingRecoveryWorker.js";
 import { RedisSnapshotStore, type SnapshotEntryInput } from "./redisSnapshotStore.js";
+import { runToPartition } from "./snapshotKeys.js";
 import { recoveryMetrics } from "./testFixtures/promMetrics.js";
 
 // The single-fleet recovery lease, proven on real Redis: exactly one owner holds it, takeover happens
@@ -187,6 +188,11 @@ describe("RecoverySweeper pending gauges and the recovery lease", () => {
         });
         expect(prepared.outcome).toBe("prepared");
 
+        const { oldestMs } = await index.summary(runToPartition(runId));
+        expect(oldestMs).toBeTypeOf("number");
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(oldestMs! + 1_000);
+
         const worker = new PendingRecoveryWorker({
           store,
           pendingIndex: index,
@@ -259,6 +265,7 @@ describe("RecoverySweeper pending gauges and the recovery lease", () => {
         // The unit itself is still pending: only A's view of it was withdrawn.
         expect(await store.hasPreparedUnit(runId)).toBe(true);
       } finally {
+        vi.useRealTimers();
         releaseTx();
         await held;
         await raw.quit();

@@ -197,6 +197,30 @@ const fixtures: Fixture[] = [
     toleranceSeconds: 300,
   },
   {
+    provider: "hookdeck",
+    source: "https://hookdeck.com/docs/authentication",
+    body: '{"id":"evt_hookdeck_fixture","type":"payment_intent.succeeded","note":"Zoë"}',
+    secret: "hookdeck_fixture_secret",
+    headers: {
+      "x-hookdeck-signature": "3gqjNEFqbs5p4dNxA9fIzpEkE+YKzHRHZpA1gc9Z6QM=",
+      "x-hookdeck-eventid": "evt_hookdeck_fixture_delivery",
+    },
+    nowMs: NOW_MS,
+  },
+  {
+    provider: "hookdeck",
+    label: "hookdeck (secret rolled with a delay: old secret in x-hookdeck-signature-2)",
+    source: "https://hookdeck.com/docs/authentication",
+    body: '{"id":"evt_hookdeck_fixture","type":"payment_intent.succeeded","note":"Zoë"}',
+    secret: "hookdeck_fixture_secret",
+    headers: {
+      "x-hookdeck-signature": "MRtBJRv3K6j8+CUcDsJuwYudgKi52qz9yfISiM3FKCw=",
+      "x-hookdeck-signature-2": "3gqjNEFqbs5p4dNxA9fIzpEkE+YKzHRHZpA1gc9Z6QM=",
+      "x-hookdeck-eventid": "evt_hookdeck_fixture_delivery",
+    },
+    nowMs: NOW_MS,
+  },
+  {
     provider: "supabase",
     source: "https://supabase.com/docs/guides/database/webhooks",
     body: '{"type":"INSERT","table":"orders","schema":"public","record":{"id":1},"old_record":null}',
@@ -249,4 +273,38 @@ describe("provider signature compatibility", () => {
       }
     });
   }
+});
+
+describe("hookdeck headerPrefix", () => {
+  const body = '{"id":"evt_hookdeck_fixture","type":"payment_intent.succeeded","note":"Zoë"}';
+  const run = (headerPrefix: string | undefined, headers: Record<string, string>) =>
+    verify(
+      { kind: "config", config: webhookProviderConfigs.hookdeck.config({ headerPrefix }) },
+      {
+        rawBytes: new TextEncoder().encode(body),
+        secret: "hookdeck_fixture_secret",
+        nowMs: NOW_MS,
+        headers,
+        url: "https://example.com/webhooks/v1/ingest/hookdeck_fixture",
+      }
+    );
+  const prefixed = {
+    "x-hookdeck-signature": "MRtBJRv3K6j8+CUcDsJuwYudgKi52qz9yfISiM3FKCw=",
+    "x-hookdeck-signature-2": "3gqjNEFqbs5p4dNxA9fIzpEkE+YKzHRHZpA1gc9Z6QM=",
+    "x-acme-eventid": "evt_acme_delivery",
+    "x-acme-requestid": "req_acme",
+  };
+
+  it("keeps verifying the x-hookdeck signature headers and dedupes on <prefix>-eventid", () => {
+    expect(run("X-Acme-", prefixed)).toMatchObject({
+      ok: true,
+      idempotencyKey: "evt_acme_delivery",
+    });
+  });
+
+  it("without the option, still verifies but cannot read the renamed event id", () => {
+    const verdict = run(undefined, prefixed);
+    expect(verdict.ok).toBe(true);
+    expect(verdict.idempotencyKey).not.toBe("evt_acme_delivery");
+  });
 });

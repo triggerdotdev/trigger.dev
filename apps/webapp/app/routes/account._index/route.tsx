@@ -725,7 +725,7 @@ function CustomizeSidebarButton({
 }) {
   const user = useUser();
   const isAdmin = useHasAdminAccess();
-  const { isManagedCloud } = useFeatures();
+  const { isManagedCloud, alertsConfigured } = useFeatures();
   const favorites = useFavorites();
   const [isOpen, setIsOpen] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
@@ -767,16 +767,18 @@ function CustomizeSidebarButton({
           },
         ]
       : []),
-    ...buildSideMenuSections({ ...context, isAdmin, isManagedCloud }).map((section) => ({
-      id: section.id,
-      title: section.title,
-      items: section.items.map((item) => ({
-        id: item.id,
-        name: item.name,
-        icon: item.icon,
-        defaultHidden: item.defaultHidden,
-      })),
-    })),
+    ...buildSideMenuSections({ ...context, isAdmin, alertsConfigured, isManagedCloud }).map(
+      (section) => ({
+        id: section.id,
+        title: section.title,
+        items: section.items.map((item) => ({
+          id: item.id,
+          name: item.name,
+          icon: item.icon,
+          defaultHidden: item.defaultHidden,
+        })),
+      })
+    ),
   ];
 
   return (

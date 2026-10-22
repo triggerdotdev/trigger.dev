@@ -5,6 +5,7 @@ import { v3ProjectAlertsPath } from "~/utils/pathBuilder";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { makeFlag } from "~/v3/featureFlags.server";
 import { computeCanUseAlertsList, isAlertsEnabledEnv } from "./canUseAlertsList";
+import { isAlertsConfigured } from "./services/alerts/alertsConfigured.server";
 
 async function isAlertsFlagEnabled(
   orgFeatureFlags: Record<string, unknown> | null | undefined
@@ -53,7 +54,11 @@ export async function canUseAlertsList(options: {
     isAdmin = user?.admin ?? false;
   }
 
-  return computeCanUseAlertsList(Boolean(flagResult), isAdmin);
+  return computeCanUseAlertsList(
+    Boolean(flagResult),
+    isAdmin,
+    isAlertsConfigured({ alertsEnabled: env.ALERTS_ENABLED })
+  );
 }
 
 type AlertsGateParams = {

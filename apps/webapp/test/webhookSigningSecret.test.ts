@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  activeSigningSecrets,
-  MAX_PREVIOUS_SECRET_TTL_SECONDS,
-  PreviousSecretTtlSeconds,
-  replaceStoredSigningSecret,
-} from "~/v3/webhookSigningSecret";
+  MAX_WEBHOOK_PREVIOUS_SECRET_TTL_SECONDS as MAX_PREVIOUS_SECRET_TTL_SECONDS,
+  WebhookPreviousSecretTtlSeconds as PreviousSecretTtlSeconds,
+} from "@trigger.dev/core/v3";
+import { activeSigningSecrets, replaceStoredSigningSecret } from "~/v3/webhookSigningSecret";
 
 const now = new Date("2026-10-20T12:00:00.000Z");
 const later = (seconds: number) => new Date(now.getTime() + seconds * 1000);

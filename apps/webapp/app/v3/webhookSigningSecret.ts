@@ -1,14 +1,5 @@
 import { z } from "zod";
 
-export const MAX_PREVIOUS_SECRET_TTL_SECONDS = 7 * 24 * 60 * 60;
-
-/** How long the replaced secret keeps verifying deliveries; 0 replaces it immediately. */
-export const PreviousSecretTtlSeconds = z
-  .number()
-  .int()
-  .min(0)
-  .max(MAX_PREVIOUS_SECRET_TTL_SECONDS);
-
 /**
  * An endpoint's signing secret as stored in the SecretStore. `previous` is the secret it replaced,
  * still accepted until `expiresAt` so a rotation doesn't fail deliveries the provider signs with it.

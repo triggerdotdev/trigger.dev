@@ -2,6 +2,7 @@ import { z } from "zod";
 import { DeployBuildPath } from "@trigger.dev/core/v3";
 
 export const FEATURE_FLAG = {
+  waitpointStoreEnabled: "waitpointStoreEnabled",
   snapshotStoreMode: "snapshotStoreMode",
   allowEmptyEnvironmentVariableValues: "allowEmptyEnvironmentVariableValues",
   defaultWorkerInstanceGroupId: "defaultWorkerInstanceGroupId",
@@ -92,6 +93,7 @@ const WorkerQueueEnvironmentOverrideKey = z
   );
 
 export const FeatureFlagCatalog = {
+  [FEATURE_FLAG.waitpointStoreEnabled]: z.boolean(),
   // Organization override, then global default, then off.
   [FEATURE_FLAG.snapshotStoreMode]: z.enum(["off", "dual-write", "redis-read", "redis-only"]),
   [FEATURE_FLAG.allowEmptyEnvironmentVariableValues]: z.boolean(),

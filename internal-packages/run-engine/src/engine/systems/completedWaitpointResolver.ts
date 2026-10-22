@@ -1,3 +1,4 @@
+import { parseWaitpointId } from "@trigger.dev/core/v3/isomorphic";
 // The production completed-waitpoint record builder + resolver. The reference implementation
 // this mirrors, and the shape contract, live in completedWaitpointFreeze.test.ts.
 import type { Waitpoint } from "@trigger.dev/database";
@@ -7,6 +8,7 @@ import type {
   CompletedWaitpointResolver,
   ResolveCompletedWaitpointsArgs,
   RunStore,
+  ReadClient,
   SnapshotReadWaitpoint,
 } from "@internal/run-store";
 
@@ -118,7 +120,9 @@ export function expandCompletedWaitpointRecords(
  * run on another shard is resolved correctly), then expands synchronously.
  */
 export function createCompletedWaitpointResolver(
-  runStore: Pick<RunStore, "findRunsByIds">
+  runStore: Pick<RunStore, "findRunsByIds">,
+  client?: ReadClient,
+  requireRunRows = false
 ): CompletedWaitpointResolver {
   return async (args) => {
     const runIds = new Set<string>();
@@ -130,12 +134,57 @@ export function createCompletedWaitpointResolver(
 
     const outputs = new Map<string, string | undefined>();
     if (runIds.size > 0) {
-      const runs = await runStore.findRunsByIds([...runIds], { select: { output: true } });
+      const runs = await runStore.findRunsByIds([...runIds], { select: { output: true } }, client);
       for (const id of runIds) {
+        if (requireRunRows && !runs.has(id))
+          throw new Error(`No completing TaskRun ${id} for shared waitpoint result`);
         outputs.set(id, runs.get(id)?.output ?? undefined);
       }
     }
 
     return expandCompletedWaitpointRecords(args, (id) => outputs.get(id));
+  };
+}
+
+/**
+ * Redis-primary cycles can mix old Postgres tokens with MemoryDB tokens. Only a MemoryDB RUN
+ * completion proves that its child output has committed independently of the snapshot replica.
+ * Resolve those children on their owning primary and fail closed on missing rows; retain the
+ * established read policy for every legacy record, including deployments using TRES alone.
+ */
+export function createStoreRunCompletedWaitpointResolver(
+  runStore: Pick<RunStore, "findRunsByIds">,
+  primaryReadClient: ReadClient,
+  isEnabled?: (organizationId: string) => boolean | Promise<boolean>
+): (
+  args: ResolveCompletedWaitpointsArgs,
+  context?: { organizationId: string }
+) => ReturnType<CompletedWaitpointResolver> {
+  const legacy = createCompletedWaitpointResolver(runStore);
+  const store = createCompletedWaitpointResolver(runStore, primaryReadClient, true);
+  return async (args, context) => {
+    // TRES alone retains the original resolver without partitioning or parsing completion IDs.
+    if (!context?.organizationId || (await isEnabled?.(context.organizationId)) !== true) {
+      return legacy(args);
+    }
+    const storeRecords: CompletedWaitpointRecord[] = [];
+    const legacyRecords: CompletedWaitpointRecord[] = [];
+    for (const record of args.records) {
+      (record.type === "RUN" &&
+      parseWaitpointId(record.id).format !== "legacy" &&
+      record.output &&
+      "deriveFromRun" in record.output
+        ? storeRecords
+        : legacyRecords
+      ).push(record);
+    }
+    if (storeRecords.length === 0) return legacy(args);
+    if (legacyRecords.length === 0) return store(args);
+    const [legacyRows, storeRows] = await Promise.all([
+      legacy({ ...args, records: legacyRecords }),
+      store({ ...args, records: storeRecords }),
+    ]);
+    const rows = new Map([...legacyRows, ...storeRows].map((row) => [row.id, row]));
+    return args.records.map((record) => rows.get(record.id)!);
   };
 }

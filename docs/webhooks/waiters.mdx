@@ -4,10 +4,6 @@ description: "Pause a run until a matching webhook arrives on an endpoint, then 
 sidebarTitle: "Waiters"
 ---
 
-import WebhooksBetaBanner from "/snippets/webhooks-beta-banner.mdx";
-
-<WebhooksBetaBanner />
-
 **A waiter pauses a run until a matching delivery arrives on an [endpoint](/webhooks/overview).** Use it when your task starts something in another system and needs to know when that system reports back: a payment that settles, a build that finishes, a document that gets signed.
 
 ```ts /trigger/checkout.ts

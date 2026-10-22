@@ -4,10 +4,6 @@ description: "Register an endpoint's URL and signing secret with the provider, b
 sidebarTitle: "Connect a provider"
 ---
 
-import WebhooksBetaBanner from "/snippets/webhooks-beta-banner.mdx";
-
-<WebhooksBetaBanner />
-
 Connect a provider to an [endpoint](/webhooks/overview) by registering the endpoint's URL with the provider and giving Trigger.dev the credential that verifies its requests.
 
 Deploy the project or start `trigger dev` first. Once the CLI finds the endpoint, it appears on the environment's **Webhooks** page. The **Signing secret** column shows **Ready** when the endpoint can verify deliveries and **Needs secret** until then. Every delivery is rejected while an endpoint needs its secret.
@@ -22,8 +18,8 @@ The prompt tells the agent to use the Trigger.dev MCP server (`npx trigger.dev@l
 | --- | --- |
 | `list_webhook_endpoints` | Lists the environment's endpoints, with their URL and whether a secret is set. |
 | `get_webhook_endpoint_details` | Reads one endpoint: URL, subscribers and their filters, secret state, and the setup prompt. |
-| `generate_webhook_secret` | Generates a signing secret and returns it once, for providers where you choose the secret. |
-| `set_webhook_secret` | Stores a secret the provider issued. |
+| `generate_webhook_secret` | Generates a signing secret and returns it once, for providers where you choose the secret. Optionally keeps accepting the old secret (`previousSecretTtlSeconds`). |
+| `set_webhook_secret` | Stores a secret the provider issued. Optionally keeps accepting the old secret (`previousSecretTtlSeconds`). |
 
 Without the MCP server, the same operations are available on the REST API with the environment's secret key:
 
@@ -78,9 +74,16 @@ The verify token answers the URL check. The signing secret verifies event delive
 
 Choose **Rotate signing secret** to replace a provider-supplied secret. For a secret you generate, choose **Regenerate secret**, copy the new value, and update the provider's configuration. Use **Rotate public key** when replacing an asymmetric provider's key.
 
-The rotate and regenerate dialogs include **Keep accepting the old signing secret for** (or the old public key). Trigger.dev keeps verifying deliveries signed with the old credential until that time passes, so you can update the provider without failing deliveries. Choose **1 hour**, **24 hours** (the default) or **7 days**. Choose **Stop immediately** if the old credential leaked.
+Both dialogs ask how long to keep accepting the old secret: **Stop immediately**, 1 hour, 24 hours (the default) or 7 days. Until then, deliveries signed with either secret verify, so you can update the provider without failing any. Choose **Stop immediately** if the old secret leaked.
 
-Over the API, pass `previousSecretTtlSeconds` (up to `604800`, 7 days) to [generate a secret](/management/webhooks/generate-secret) or [set a secret](/management/webhooks/set-secret). The response includes `previousSecretExpiresAt`. Without `previousSecretTtlSeconds`, the old secret stops verifying immediately.
+Through the MCP tools or the REST API, pass `previousSecretTtlSeconds` (at most 604800, 7 days). The response's `previousSecretExpiresAt` says when the old secret stops working. Without it, the old secret stops working straight away:
+
+```bash
+curl -X POST "https://api.trigger.dev/api/v1/webhooks/endpoints/github/rotate-secret" \
+  -H "Authorization: Bearer $TRIGGER_SECRET_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"previousSecretTtlSeconds": 3600}'
+```
 
 <Warning>
   Trigger.dev stores credentials encrypted and doesn't display saved values. Copy a generated secret

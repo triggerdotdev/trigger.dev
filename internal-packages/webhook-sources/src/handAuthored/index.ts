@@ -17,6 +17,7 @@ import { samples as s_elevenlabs } from "./elevenlabs.js";
 import { samples as s_firecrawl } from "./firecrawl.js";
 import { samples as s_gitlab } from "./gitlab.js";
 import { samples as s_granola } from "./granola.js";
+import { samples as s_hookdeck } from "./hookdeck.js";
 import { samples as s_infisical } from "./infisical.js";
 import { samples as s_intercom } from "./intercom.js";
 import { samples as s_jira } from "./jira.js";
@@ -70,6 +71,7 @@ export const handAuthoredSamples: SampleRecord[] = [
   ...s_firecrawl,
   ...s_gitlab,
   ...s_granola,
+  ...s_hookdeck,
   ...s_infisical,
   ...s_intercom,
   ...s_jira,

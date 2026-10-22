@@ -346,7 +346,7 @@ export function SideMenu({
   const isFreeUser = currentPlan?.v3Subscription?.isPaying === false;
   const isAdmin = useHasAdminAccess();
   const isViewingAsUser = useIsViewingAsUser();
-  const { isManagedCloud } = useFeatures();
+  const { isManagedCloud, alertsConfigured } = useFeatures();
   const featureFlags = useFeatureFlags();
   const incidentStatus = useIncidentStatus();
   const isV3Project = project.engine === "V1";
@@ -749,6 +749,7 @@ export function SideMenu({
     project,
     environment,
     isAdmin,
+    alertsConfigured,
     featureFlags,
     isManagedCloud,
     dashboards: {

@@ -76,6 +76,11 @@ export type CrossSeamGuardHook = (input: {
 }) => Promise<CrossSeamGuardDecision>;
 
 export type RunEngineOptions = {
+  /** Independent of snapshot residency. Omitted means the existing Postgres waitpoint behavior. */
+  waitpointStoreEnabled?: (
+    organizationId: string,
+    organizationFlags?: unknown
+  ) => boolean | Promise<boolean>;
   prisma: PrismaClient;
   readOnlyPrisma?: PrismaReplicaClient;
   /** Optional RunStore implementation to inject. Defaults to a PostgresRunStore

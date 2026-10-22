@@ -34,6 +34,7 @@ const ctx = vi.hoisted(() => ({
 vi.hoisted(() => {
   process.env.QUEUE_METRICS_EMIT_ENABLED = "1";
   process.env.QUEUE_METRICS_CONSUMER_ENABLED = "1";
+  process.env.ALERTS_ENABLED = "1";
 });
 
 vi.mock("~/db.server", () => {
