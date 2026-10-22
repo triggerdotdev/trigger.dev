@@ -97,6 +97,30 @@ export function withRunnerSeccompProfile(
   };
 }
 
+const RESERVED_PORTS_SYSCTL = "net.ipv4.ip_local_reserved_ports";
+
+export function withReservedSourcePorts(
+  podSpec: Omit<k8s.V1PodSpec, "containers">,
+  ports: string | undefined
+): Omit<k8s.V1PodSpec, "containers"> {
+  if (!ports) {
+    return podSpec;
+  }
+
+  return {
+    ...podSpec,
+    securityContext: {
+      ...podSpec.securityContext,
+      sysctls: [
+        ...(podSpec.securityContext?.sysctls ?? []).filter(
+          (sysctl) => sysctl.name !== RESERVED_PORTS_SYSCTL
+        ),
+        { name: RESERVED_PORTS_SYSCTL, value: ports },
+      ],
+    },
+  };
+}
+
 const BUN_RUN_AS_USER = 1001;
 
 /**
