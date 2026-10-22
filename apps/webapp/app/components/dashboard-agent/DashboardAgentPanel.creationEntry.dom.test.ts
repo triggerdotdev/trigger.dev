@@ -23,6 +23,9 @@ const seen = vi.hoisted(() => ({
   onFreeText: undefined as ((text: string) => void) | undefined,
   systemLines: [] as Array<{ text: string; variant: string }>,
   answers: undefined as Record<string, unknown> | undefined,
+  step: undefined as string | undefined,
+  manual: undefined as boolean | undefined,
+  addChannel: undefined as Record<string, unknown> | undefined,
   setPrefill: undefined as ((prefill: unknown) => void) | undefined,
   flow: undefined as
     | { patchAnswers: (answers: Record<string, unknown>) => void; create: () => void }
@@ -39,8 +42,16 @@ vi.mock("~/components/alerts/CreationTranscript", () => ({
   CreationTranscript: (props: {
     onFreeText: (text: string) => void;
     systemLines: Array<{ text: string; variant: string }>;
-    flow: NonNullable<typeof seen.flow> & { answers: Record<string, unknown> };
+    flow: NonNullable<typeof seen.flow> & {
+      answers: Record<string, unknown>;
+      currentStep?: string;
+    };
+    addChannel: Record<string, unknown>;
+    manual: boolean;
   }) => {
+    seen.manual = props.manual;
+    seen.step = props.flow.currentStep;
+    seen.addChannel = props.addChannel;
     seen.flow = props.flow;
     seen.onFreeText = props.onFreeText;
     seen.systemLines = props.systemLines;
@@ -133,18 +144,21 @@ async function flush() {
   });
 }
 
-async function render() {
-  router = createMemoryRouter([
-    {
-      path: "/",
-      element: createElement(
-        OperatingSystemContextProvider,
-        { platform: "mac" } as ComponentProps<typeof OperatingSystemContextProvider>,
-        createElement(ShortcutsProvider, null, createElement(Host))
-      ),
-    },
-    { path: "/resources/alerts/channels", loader: () => ({ channels: [] }) },
-  ]);
+async function render(entry = "/") {
+  router = createMemoryRouter(
+    [
+      {
+        path: "/",
+        element: createElement(
+          OperatingSystemContextProvider,
+          { platform: "mac" } as ComponentProps<typeof OperatingSystemContextProvider>,
+          createElement(ShortcutsProvider, null, createElement(Host))
+        ),
+      },
+      { path: "/resources/alerts/channels", loader: () => ({ channels: [] }) },
+    ],
+    { initialEntries: [entry] }
+  );
   await act(async () => root.render(createElement(RouterProvider, { router })));
   await flush();
 }
@@ -408,5 +422,49 @@ describe("DashboardAgentPanel creation entries", () => {
     await changePrefill();
 
     expect(posted("delete")).not.toContainEqual(expect.objectContaining({ chatId: "chat_1" }));
+  });
+
+  // Mutation: dropping the Slack resume restore fails this.
+  it("resumes on the notifiers step with the answers kept after connecting Slack", async () => {
+    const answers = { ...ANSWERS_A, notifiers: ["ch_1"], expiry: "none" };
+    sessionStorage.setItem("alerts.slackConnectResume.proj_1.env_1", JSON.stringify(answers));
+    stubFetch();
+    await render("/?create=1&add=slack&page=2");
+
+    expect(seen.answers).toMatchObject(answers);
+    expect(seen.step).toBe("notifiers");
+    expect(seen.addChannel).toMatchObject({
+      resumed: true,
+      connectReturnTo: "/orgs/org/projects/proj/env/prod/alerts?create=1&add=slack",
+    });
+    expect(sessionStorage.getItem("alerts.slackConnectResume.proj_1.env_1")).toBeNull();
+    expect(router.state.location.search).toBe("?page=2");
+  });
+
+  // Mutation: ignoring the manual flag on restore fails this.
+  it("resumes in the manual form when the Slack connect started there", async () => {
+    const answers = { ...ANSWERS_A, notifiers: ["ch_1"], expiry: "none" };
+    sessionStorage.setItem(
+      "alerts.slackConnectResume.proj_1.env_1",
+      JSON.stringify({ ...answers, manual: true })
+    );
+    stubFetch();
+    await render("/?create=1&add=slack&page=2");
+
+    expect(seen.manual).toBe(true);
+    expect(seen.answers).toMatchObject(answers);
+    expect(seen.answers).not.toHaveProperty("manual");
+  });
+
+  // Mutation: dropping the panel-level consume fails this.
+  it("stops resuming the Slack dialog once it has been dismissed", async () => {
+    sessionStorage.setItem("alerts.slackConnectResume.proj_1.env_1", JSON.stringify(ANSWERS_A));
+    stubFetch();
+    await render("/?create=1&add=slack");
+    expect(seen.addChannel).toMatchObject({ resumed: true });
+
+    await act(async () => (seen.addChannel!.onResumeConsumed as () => void)());
+
+    expect(seen.addChannel).toMatchObject({ resumed: false });
   });
 });

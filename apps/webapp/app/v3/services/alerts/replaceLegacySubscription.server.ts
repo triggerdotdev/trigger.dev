@@ -136,6 +136,7 @@ export class ReplaceLegacySubscriptionService {
       throw new ServiceValidationError("Unknown environment");
     }
     const scope = params.scope ?? { type: "all" };
+    const scopeLabel = scope.type === "task" ? scope.taskIdentifier : "all runs";
     const environments: ReplaceEnvironment[] = [];
     for (const environment of picked) {
       if (await this.scopeExists(scope, environment.id)) environments.push(environment);
@@ -193,7 +194,7 @@ export class ReplaceLegacySubscriptionService {
               expiresAt: params.expiresAt,
               notifiers,
               createdBy: params.userId,
-              name: `${capability.title} · ${channel.name}`,
+              name: `${capability.title} above ${params.value ?? 0} on ${scopeLabel}`,
             },
             this.lifecycleDeps
           )

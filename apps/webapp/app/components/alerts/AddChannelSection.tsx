@@ -11,10 +11,14 @@ export function AddChannelSection({
   form,
   onCreated,
   defaultType = "EMAIL",
+  connectReturnTo,
+  onConnect,
 }: {
   form: Pick<React.ComponentProps<typeof AlertChannelForm>, "slack" | "emailAlertsEnabled">;
   onCreated: (channel: { id: string }) => void;
   defaultType?: "EMAIL" | "SLACK";
+  connectReturnTo?: string;
+  onConnect?: () => void;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -34,7 +38,11 @@ export function AddChannelSection({
         slack={form.slack}
         emailAlertsEnabled={form.emailAlertsEnabled}
         defaultType={defaultType}
-        connectReturnTo={`${v3ProjectAlertChannelsPath(organization, project, environment)}?add=slack`}
+        connectReturnTo={
+          connectReturnTo ??
+          `${v3ProjectAlertChannelsPath(organization, project, environment)}?add=slack`
+        }
+        onConnect={onConnect}
         fetcher={fetcher}
         action={alertChannelsResourcePath(project.id)}
       />

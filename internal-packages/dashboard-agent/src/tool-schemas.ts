@@ -518,7 +518,7 @@ export const createMonitoringAlertInputSchema = z.object({
     .enum(["dev", "staging", "prod", "preview"])
     .optional()
     .describe("Defaults to current."),
-  name: z.string().optional().describe("Short name."),
+  name: z.string().optional().describe("Name, no channel."),
   scope: z
     .object({
       type: z.enum(["queue", "queuePattern", "task", "all", "errorGroup"]),

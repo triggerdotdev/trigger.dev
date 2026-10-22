@@ -144,6 +144,7 @@ export function AlertChannelForm({
   extraFields,
   submitDisabled = false,
   connectReturnTo,
+  onConnect,
 }: {
   mode: "create" | "edit";
   slack: SlackState;
@@ -158,6 +159,7 @@ export function AlertChannelForm({
   extraFields?: ReactNode;
   submitDisabled?: boolean;
   connectReturnTo?: string;
+  onConnect?: () => void;
 }) {
   const actionData = useActionData();
   const fetcherData = fetcher?.data as { status?: string } | undefined;
@@ -294,6 +296,7 @@ export function AlertChannelForm({
               <LinkButton
                 variant="tertiary/large"
                 to={returnToParam ? `${connectToSlackPath}?${returnToParam}` : connectToSlackPath}
+                onClick={onConnect}
                 fullWidth
               >
                 <span className="flex items-center gap-2 text-text-bright">
@@ -312,6 +315,7 @@ export function AlertChannelForm({
                     pathname: connectToSlackPath,
                     search: `?reinstall=true${returnToParam ? `&${returnToParam}` : ""}`,
                   }}
+                  onClick={onConnect}
                   fullWidth
                 >
                   <span className="flex items-center gap-2 text-text-bright">

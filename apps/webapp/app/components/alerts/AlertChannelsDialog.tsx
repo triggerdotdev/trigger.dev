@@ -27,11 +27,17 @@ export function AlertChannelsDialog({
   data: initialData,
   onClose,
   onCreated,
+  connectReturnTo,
+  onConnect,
+  addSlack,
 }: {
   open: boolean;
   data?: AlertChannelsData;
   onClose: () => void;
   onCreated?: (channel: { id: string }) => void;
+  connectReturnTo?: string;
+  onConnect?: () => void;
+  addSlack?: boolean;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -68,6 +74,9 @@ export function AlertChannelsDialog({
                 fetcher: actionFetcher,
                 reload: () => load(channelsPath),
                 onCreated,
+                connectReturnTo,
+                onConnect,
+                addSlack,
               }}
             />
           ) : (

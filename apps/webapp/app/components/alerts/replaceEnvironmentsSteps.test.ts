@@ -65,7 +65,7 @@ describe("replace prefill", () => {
       environments: ["prod", "stg", "dev"],
     });
     expect(answers.expiry).toBeUndefined();
-    expect(alertName(answers)).toBe("Failed runs · Ops email");
+    expect(alertName(answers)).toBe("Failed runs above 0 on all runs");
     expect(draftMissing(answers)).toEqual(["environments"]);
   });
 });
@@ -99,7 +99,7 @@ describe("environments step", () => {
         { id: "ch_2", name: "Slack", type: "SLACK" },
       ],
       "chat_1",
-      { projectId: "p", canWrite: true, atLimit: false }
+      { projectId: "p", environmentId: "e", canWrite: true, atLimit: false }
     ).find((s) => s.id === "notifiers")!;
     expect(notifiers.options.map((o) => o.id)).toEqual(["chat", "ch_1", "ch_2", "__add_channel__"]);
     expect(notifiers.selected).toEqual(["ch_1"]);

@@ -364,6 +364,17 @@ describe("AlertDetailSidebar", () => {
     expect(current).toContain("No current reading.");
     expect(current).not.toContain("—");
   });
+
+  it("fails when a bare current reading is pushed right in an empty row", () => {
+    const current = between(
+      sidebar(makeAlert({ reading: { value: 0 }, objectLink: null } as Partial<AlertDetail>)),
+      "Current",
+      "Raised"
+    );
+    expect(current).toMatch(/<span class="tabular-nums text-text-bright">0<\/span>/);
+    expect(current).not.toContain("justify-between");
+    expect(current).not.toContain("<span></span>");
+  });
 });
 
 describe("PreviewChartCard", () => {

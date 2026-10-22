@@ -56,6 +56,7 @@ import { AgentPanelColumn, type DashboardAgentMode, type DragHandleProps } from 
 import { markerAfterActiveChat, markerAfterActivity } from "./thinking-marker";
 import {
   concurrencyLimitsPath,
+  v3AlertCreatePath,
   v3AlertPath,
   v3EnvironmentPath,
   v3ProjectAlertsPath,
@@ -98,6 +99,10 @@ import {
   type DraftPrefillParams,
 } from "./alert-creation/flow-state";
 import { useErrorGroupSource } from "~/components/alerts/useErrorGroupLookup";
+import {
+  clearSlackConnectResume,
+  readSlackConnectResume,
+} from "~/components/alerts/slackConnectResume";
 // "This chat" stays pickable before the chat exists; it is created when the alert is.
 const CHAT_CREATED_ON_USE = "chat_on_use";
 
@@ -541,17 +546,24 @@ export function DashboardAgentPanel({
   const creationModeRef = useRef(creationMode);
   creationModeRef.current = creationMode;
 
-  const [creationDraft, setCreationDraft] = useState(() =>
-    openSource === "alerts"
-      ? createAlertPrefill
-        ? prefillToAnswers(createAlertPrefill)
-        : draftFromSearch(location.search, true)
+  const [slackResume, setSlackResume] = useState(() =>
+    openSource === "alerts" && new URLSearchParams(location.search).get("add") === "slack"
+      ? readSlackConnectResume(project.id, environment.id)
       : undefined
+  );
+  const [creationDraft, setCreationDraft] = useState(() =>
+    slackResume
+      ? (({ manual: _manual, ...answers }) => ({ ...answers, expiry: undefined }))(slackResume)
+      : openSource === "alerts"
+        ? createAlertPrefill
+          ? prefillToAnswers(createAlertPrefill)
+          : draftFromSearch(location.search, true)
+        : undefined
   );
   const [creationEntrySeq, setCreationEntrySeq] = useState(0);
   const [creationGeneration, setCreationGeneration] = useState(0);
   const creationAgentChat = useRef<CreationAgentChat>({ seq: -1 });
-  const [manualMode, setManualMode] = useState(false);
+  const [manualMode, setManualMode] = useState(Boolean(slackResume?.manual));
 
   const createParamKey = inCreationMode ? createSearchKey(location.search) : "";
   const prevCreateParamKeyRef = useRef(createParamKey);
@@ -1030,6 +1042,17 @@ export function DashboardAgentPanel({
     creationEntrySeq
   );
 
+  const { setExpiry } = creationFlow;
+  useEffect(() => {
+    if (!slackResume) return;
+    clearSlackConnectResume(project.id, environment.id);
+    if (slackResume.expiry) setExpiry(slackResume.expiry);
+    const params = new URLSearchParams(location.search);
+    params.delete("add");
+    params.delete("create");
+    navigate({ search: params.toString() }, { replace: true });
+  }, [slackResume, project.id, environment.id, setExpiry]); // eslint-disable-line react-hooks/exhaustive-deps -- once per resume
+
   const creationTitle = creationFlow.created ? "Alert created" : "New alert";
   const headerTitle = inEditMode
     ? "Edit alert"
@@ -1127,10 +1150,12 @@ export function DashboardAgentPanel({
   const channelLimits = channelsFetcher.data?.limits;
   const addChannelAccess = {
     projectId: project.id,
+    environmentId: environment.id,
     canWrite: channelsFetcher.data?.canWrite ?? false,
     atLimit: channelLimits ? channelLimits.used >= channelLimits.limit : false,
     onCreated: () =>
       channelsFetcher.load(alertChannelsResourcePath(project.id, false, environment.id)),
+    connectReturnTo: `${v3AlertCreatePath(organization, project, environment)}&add=slack`,
   };
 
   /* oxlint-disable jsx-a11y/no-static-element-interactions -- Escape handling intentionally bubbles from focused controls inside the panel. */
@@ -1205,7 +1230,11 @@ export function DashboardAgentPanel({
               onManualChange={setManualMode}
               onNewChat={restartCreation}
               density="compact"
-              addChannel={addChannelAccess}
+              addChannel={{
+                ...addChannelAccess,
+                resumed: Boolean(slackResume) && creationEntrySeq === 0,
+                onResumeConsumed: () => setSlackResume(undefined),
+              }}
               errorGroupSource={errorGroupSource}
               environmentTitle={environmentFullTitle(environment)}
             />

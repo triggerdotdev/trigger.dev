@@ -135,6 +135,7 @@ function ManualAlertCreation({
       channels={channelsFetcher.data?.channels ?? []}
       addChannel={{
         projectId: project.id,
+        environmentId: environment.id,
         canWrite: channelsFetcher.data?.canWrite ?? false,
         atLimit: limits ? limits.used >= limits.limit : false,
         onCreated: () => channelsFetcher.load(channelsPath),

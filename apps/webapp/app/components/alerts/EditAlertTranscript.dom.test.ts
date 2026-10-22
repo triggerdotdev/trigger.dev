@@ -109,6 +109,9 @@ describe("edit an alert in the chat", () => {
     expect(document.body.textContent).toContain(`Edit ${PREFILL.name}`);
     expect(card()?.textContent).toContain("1 of 2");
     expect(card()?.textContent).toContain("How long should it stay active?");
+    expect(
+      Array.from(card()!.querySelectorAll("button")).some((b) => b.textContent === "Skip")
+    ).toBe(false);
     expect(row("No expiry").querySelector("[aria-label=Selected]")).not.toBeNull();
     next();
     expect(card()?.textContent).toContain("2 of 2");

@@ -41,11 +41,26 @@ vi.mock("~/hooks/useEnvironment", () => ({
   useEnvironment: () => ({ slug: fetcherState.env }),
 }));
 vi.mock("~/components/alerts/AlertChannelsBody", () => ({
-  AlertChannelsBody: ({ alertChannels }: { alertChannels: { name: string }[] }) =>
+  AlertChannelsBody: ({
+    alertChannels,
+    modal,
+  }: {
+    alertChannels: { name: string }[];
+    modal?: { onConnect?: () => void; connectReturnTo?: string };
+  }) =>
     createElement(
-      "ul",
+      "div",
       null,
-      alertChannels.map((c) => createElement("li", { key: c.name }, c.name))
+      createElement(
+        "ul",
+        null,
+        alertChannels.map((c) => createElement("li", { key: c.name }, c.name))
+      ),
+      createElement(
+        "a",
+        { href: modal?.connectReturnTo, onClick: modal?.onConnect },
+        "Connect to Slack"
+      )
     ),
 }));
 
@@ -678,6 +693,20 @@ describe("manual mode regressions", () => {
     keepReview = false;
   });
 
+  it("shows only the created card once the alert is created", async () => {
+    mount(true, { ...BASE, expiry: "none", notifiers: ["chat"] });
+    click(button("Done")!);
+    await act(async () => {
+      button("Create alert")!.click();
+    });
+    expect(latest!.created).toBe(true);
+    const form = document.querySelector('[data-testid="manual-form"]')!;
+    expect(form.querySelector('[data-testid="alert-created"]')).not.toBeNull();
+    expect(form.querySelector("fieldset")).toBeNull();
+    expect(form.querySelector("button[role=combobox]")).toBeNull();
+    expect(button("Done")).toBeUndefined();
+  });
+
   // Mutation: dropping onClear from the expiry input keeps the stale expiry.
   it("editing a committed expiry to a past date clears it and blocks Create", async () => {
     vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-07T10:00:00Z") });
@@ -848,6 +877,39 @@ describe("manual mode dropdowns", () => {
       )!
     );
     expect(latest!.answers.notifiers).toEqual(["chat"]);
+  });
+
+  it("saves the answers with the manual flag and the marker returnTo when connecting Slack", () => {
+    const returnTo = "/orgs/org/projects/proj/env/prod/alerts?create=1&add=slack";
+    fetcherState.data = { alertChannels: [], limits: { used: 0, limit: 5 }, canWrite: true };
+    mount(
+      true,
+      { ...BASE, expiry: "none", notifiers: ["chat", "ch_1"] },
+      {
+        projectId: "p1",
+        environmentId: "e1",
+        canWrite: true,
+        atLimit: false,
+        connectReturnTo: returnTo,
+      }
+    );
+    click(
+      Array.from(fieldset("notifiers").querySelectorAll("button")).find(
+        (b) => b.textContent === "Add channel"
+      )!
+    );
+    const connect = Array.from(document.querySelectorAll("a")).find(
+      (a) => a.textContent === "Connect to Slack"
+    )!;
+    expect(connect.getAttribute("href")).toBe(returnTo);
+    click(connect);
+    expect(JSON.parse(sessionStorage.getItem("alerts.slackConnectResume.p1.e1")!)).toMatchObject({
+      what: BASE.what,
+      expiry: "none",
+      notifiers: ["chat", "ch_1"],
+      manual: true,
+    });
+    fetcherState.data = undefined;
   });
 
   it("Add channel sits below the list with a plus icon and no ellipsis", () => {
@@ -1122,6 +1184,7 @@ describe("manual mode dropdowns", () => {
 describe("areas with nothing to watch", () => {
   const groups = ENTITIES["error-groups"];
   const queues = ENTITIES.queues;
+  const tasks = ENTITIES.tasks;
   beforeEach(() => {
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -1135,6 +1198,7 @@ describe("areas with nothing to watch", () => {
     fetcherState.routed = false;
     ENTITIES["error-groups"] = groups;
     ENTITIES.queues = queues;
+    ENTITIES.tasks = tasks;
   });
 
   const cardAreas = () => rowLabels(document.querySelector("[role=dialog]")!);
@@ -1152,12 +1216,26 @@ describe("areas with nothing to watch", () => {
     );
     const what = rowLabels(document.querySelector("[role=dialog]")!);
     expect(what).toContain("A new error appearing");
-    expect(what).not.toContain("This error occurring again");
+    expect(what).toContain("This error occurring again");
+    expect(
+      Array.from(document.querySelectorAll<HTMLButtonElement>("[role=dialog] li button")).find(
+        (b) => b.textContent === "This error occurring again"
+      )!.disabled
+    ).toBe(true);
     remount();
     mount(true);
     await settle();
     pick("area", "Errors");
-    expect(combobox("what")).toBeNull();
+    const select = combobox("what")!;
+    expect(select).not.toBeNull();
+    open(select);
+    const isDisabled = (o: HTMLElement) =>
+      o.hasAttribute("disabled") || o.getAttribute("aria-disabled") === "true";
+    const again = options(select).find((o) => o.textContent === "This error occurring again")!;
+    const fresh = options(select).find((o) => o.textContent === "A new error appearing")!;
+    expect(isDisabled(again)).toBe(true);
+    expect(isDisabled(fresh)).toBe(false);
+    act(() => select.click());
     expect(latest!.answers.what).toBe("errors.new");
   });
 
@@ -1167,17 +1245,42 @@ describe("areas with nothing to watch", () => {
     mount(true);
     await settle();
     pick("area", "Errors");
-    expect(combobox("what")).toBeNull();
-    expect(fieldset("what").textContent).toContain("What about errors?");
+    expect(combobox("what")).not.toBeNull();
+    expect(optionLabels("what")).toContain("This error occurring again");
     expect(latest!.answers.what).toBe("errors.new");
   });
 
-  // Mutation: dropping the emptyAreas filter in allSteps fails this.
-  it("hides Queues when the environment has no queues", async () => {
+  it("keeps Queues listed when the environment has no queues", async () => {
     ENTITIES.queues = { queues: [], hasMore: false };
     mount(true);
     await settle();
-    expect(optionLabels("area")).toEqual(["Runs", "Health", "Errors"]);
+    expect(optionLabels("area")).toEqual(["Queues", "Runs", "Health", "Errors"]);
+    const select = combobox("area")!;
+    open(select);
+    const queues = options(select).find((o) => o.textContent === "Queues")!;
+    expect(queues.hasAttribute("disabled") || queues.getAttribute("aria-disabled") === "true").toBe(
+      true
+    );
+  });
+
+  // Mutation: dropping the dim class or the tooltip wrapper from disabled manual options fails this.
+  it("dims a disabled area and exposes its reason as a tooltip", async () => {
+    ENTITIES.tasks = { tasks: [] };
+    mount(true);
+    await settle();
+    const select = combobox("area")!;
+    open(select);
+    const runs = options(select).find((o) => o.textContent === "Runs")!;
+    const fresh = options(select).find((o) => o.textContent === "Health")!;
+    expect(runs.hasAttribute("disabled") || runs.getAttribute("aria-disabled") === "true").toBe(
+      true
+    );
+    expect(runs.className).toContain("opacity-50");
+    expect(fresh.className).not.toContain("opacity-50");
+    expect(runs.parentElement!.hasAttribute("data-state")).toBe(true);
+    expect(fresh.parentElement!.hasAttribute("data-state")).toBe(false);
+    act(() => runs.parentElement!.focus());
+    expect(document.body.textContent).toContain("No tasks in this environment yet");
   });
 
   it("shows all four areas when every list has entries", async () => {

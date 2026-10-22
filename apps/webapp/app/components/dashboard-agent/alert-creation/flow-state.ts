@@ -440,7 +440,6 @@ export function alertName(answers: FlowAnswers): string {
 function buildAlertName(answers: FlowAnswers): string {
   const cap = resolveCapability(answers.what);
   if (!cap) return "New alert";
-  if (answers.replace) return `${cap.title} · ${answers.replace.channelName}`;
   const phrase = capabilityPhrase(cap.key);
   const kind = conditionKindFor(answers.what);
   const scopeLabel =

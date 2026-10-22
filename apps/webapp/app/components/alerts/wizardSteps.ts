@@ -201,7 +201,20 @@ function paramInput(
   };
 }
 
-export function scenarioStep(hiddenAreas: string[] = []): ChatWizardStep {
+const EMPTY_AREA_HINT: Record<string, string> = {
+  runs: "No tasks in this environment yet",
+  queues: "No queues in this environment yet",
+  errors: "No errors in this environment yet",
+};
+
+function emptyHint(area: string | undefined) {
+  return (area && EMPTY_AREA_HINT[area]) || "Nothing to watch in this environment yet";
+}
+
+export function scenarioStep(
+  hiddenAreas: string[] = [],
+  emptyAreas: string[] = []
+): ChatWizardStep {
   return {
     id: "scenarios",
     question: "What can I watch?",
@@ -214,6 +227,9 @@ export function scenarioStep(hiddenAreas: string[] = []): ChatWizardStep {
           label: `${area.label} · ${chip.label}`,
           icon: area.icon,
           description: chip.description,
+          disabledReason: usableCapability(area.value, chip.value, emptyAreas)
+            ? undefined
+            : emptyHint(area.value),
         }))
       ),
   };
@@ -241,9 +257,13 @@ function toOptions(chips: FlowChipType[]) {
 
 export type AddChannelAccess = {
   projectId: string;
+  environmentId: string;
   canWrite: boolean;
   atLimit: boolean;
   onCreated?: () => void;
+  connectReturnTo?: string;
+  resumed?: boolean;
+  onResumeConsumed?: () => void;
 };
 
 export const ADD_CHANNEL_OPTION = "__add_channel__";
@@ -335,7 +355,8 @@ export function allSteps(
   errorGroups?: ErrorGroupChoices,
   scopeEntities?: string[],
   emptyAreas: string[] = [],
-  onScopeSearch?: (text: string) => void
+  onScopeSearch?: (text: string) => void,
+  hiddenAreas: string[] = []
 ): ChatWizardStep[] {
   const { answers } = flow;
   const base = { allowSkip: false };
@@ -364,15 +385,18 @@ export function allSteps(
             id,
             question: proseForStep("area", answers),
             options: [
-              ...toOptions(
-                areaChips().filter(
-                  (chip) =>
+              ...areaChips()
+                .filter((chip) => chip.value === answers.area || !hiddenAreas.includes(chip.value))
+                .map((chip) => ({
+                  ...toOptions([chip])[0],
+                  disabledReason:
                     chip.value === answers.area ||
                     capabilityChips(chip.value).some((cap) =>
                       usableCapability(chip.value, cap.value, emptyAreas)
                     )
-                )
-              ),
+                      ? undefined
+                      : emptyHint(chip.value),
+                })),
               { id: SHOW_ALL_CHIP.value, label: SHOW_ALL_CHIP.label },
             ],
             selected: answers.area ? [answers.area] : [],
@@ -383,14 +407,21 @@ export function allSteps(
             id,
             question: answers.area ? promptForStep("what", answers) : "What should it watch?",
             selectedDescription: resolveCapability(answers.what)?.description,
-            options: toOptions([
-              ...capabilityChips(answers.area).filter(
-                (chip) =>
-                  chip.value === answers.what ||
-                  usableCapability(answers.area, chip.value, emptyAreas)
-              ),
-              SHOW_ALL_CHIP,
-            ]),
+            options: [
+              ...capabilityChips(answers.area)
+                .filter(
+                  (chip) => chip.value === answers.what || !hiddenAreas.includes(answers.area ?? "")
+                )
+                .map((chip) => ({
+                  ...toOptions([chip])[0],
+                  disabledReason:
+                    chip.value === answers.what ||
+                    usableCapability(answers.area, chip.value, emptyAreas)
+                      ? undefined
+                      : emptyHint(answers.area),
+                })),
+              ...toOptions([SHOW_ALL_CHIP]),
+            ],
             selected: answers.what ? [answers.what] : [],
           });
         case "scope": {

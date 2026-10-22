@@ -2,6 +2,7 @@ import { ChevronDownIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { useFetcher } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 import { AlertChannelsDialog } from "~/components/alerts/AlertChannelsDialog";
+import { saveSlackConnectResume } from "~/components/alerts/slackConnectResume";
 import { errorGroupResolver, type ErrorGroupOption } from "~/components/alerts/errorGroupOptions";
 import { useErrorGroupLookup } from "~/components/alerts/useErrorGroupLookup";
 import { ScopeEntitiesLoader, type ScopeEntities } from "~/components/alerts/ScopeEntitiesLoader";
@@ -30,6 +31,7 @@ import { Button, ButtonContent } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Icon } from "~/components/primitives/Icon";
 import { Select, SelectItem } from "~/components/primitives/Select";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useOptionalEnvironment } from "~/hooks/useEnvironment";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useOptionalProject } from "~/hooks/useProject";
@@ -43,6 +45,20 @@ const CUSTOM_VALUE = "__custom__";
 const REPLACE_EDITABLE = ["environments", "expiry", "notifiers"];
 
 const SINGLE_FIELD = "w-full max-w-[372px]";
+
+function ItemHint({ reason, children }: { reason?: string; children: React.ReactElement }) {
+  if (!reason) return children;
+  return (
+    <SimpleTooltip
+      asChild
+      disableHoverableContent
+      delayDuration={500}
+      className="max-w-[300px]"
+      button={<span className="block">{children}</span>}
+      content={reason}
+    />
+  );
+}
 
 function UnitInput({
   input,
@@ -217,13 +233,13 @@ function ManualStep({
   const report = (key: string) => (valid: boolean) =>
     setInvalid((prev) => (prev[key] === !valid ? prev : { ...prev, [key]: !valid }));
 
-  const sole =
-    step.options.length === 1 && !step.custom && !step.entity && !step.multiSelect
-      ? step.options[0]
-      : undefined;
+  const enabledOptions = step.options.filter((o) => !o.disabledReason);
+  const single = !step.custom && !step.entity && !step.multiSelect;
+  const sole = single && step.options.length === 1 ? step.options[0] : undefined;
+  const preselect = single && enabledOptions.length === 1 ? enabledOptions[0] : undefined;
   const autoPick =
-    sole && sole.id !== CONTINUE_OPTION && !sole.disabledReason && !step.selected?.includes(sole.id)
-      ? sole.id
+    preselect && preselect.id !== CONTINUE_OPTION && !step.selected?.includes(preselect.id)
+      ? preselect.id
       : entity &&
           !entityCustom &&
           !step.custom &&
@@ -319,34 +335,37 @@ function ManualStep({
                   >
                     {(list) =>
                       list.map((item) => (
-                        <SelectItem
-                          key={item.id}
-                          value={item.id}
-                          checkPosition={step.multiSelect ? "left" : "right"}
-                          disabled={Boolean(item.disabledReason)}
-                          title={item.disabledReason}
-                          className="text-text-bright"
-                          {...(item.id === customId && !step.multiSelect
-                            ? { setValueOnClick: false, hideOnClick: true, onClick: revealCustom }
-                            : {})}
-                          {...(step.multiSelect
-                            ? {
-                                setValueOnClick: false,
-                                hideOnClick: item.id === ADD_CHANNEL_OPTION,
-                                onClick: () => onSelect(step.id, item.id),
-                              }
-                            : {})}
-                          icon={
-                            item.icon ? (
-                              <Icon
-                                icon={item.icon}
-                                className="mr-1 size-4 shrink-0 text-text-dimmed"
-                              />
-                            ) : undefined
-                          }
-                        >
-                          {item.label}
-                        </SelectItem>
+                        <ItemHint key={item.id} reason={item.disabledReason}>
+                          <SelectItem
+                            value={item.id}
+                            checkPosition={step.multiSelect ? "left" : "right"}
+                            disabled={Boolean(item.disabledReason)}
+                            className={cn(
+                              "text-text-bright",
+                              item.disabledReason && "cursor-not-allowed opacity-50"
+                            )}
+                            {...(item.id === customId && !step.multiSelect
+                              ? { setValueOnClick: false, hideOnClick: true, onClick: revealCustom }
+                              : {})}
+                            {...(step.multiSelect
+                              ? {
+                                  setValueOnClick: false,
+                                  hideOnClick: item.id === ADD_CHANNEL_OPTION,
+                                  onClick: () => onSelect(step.id, item.id),
+                                }
+                              : {})}
+                            icon={
+                              item.icon ? (
+                                <Icon
+                                  icon={item.icon}
+                                  className="mr-1 size-4 shrink-0 text-text-dimmed"
+                                />
+                              ) : undefined
+                            }
+                          >
+                            {item.label}
+                          </SelectItem>
+                        </ItemHint>
                       ))
                     }
                   </Select>
@@ -452,6 +471,7 @@ export function ManualCreationForm({
   chatId,
   addChannel,
   emptyAreas,
+  hiddenAreas,
   onStartOver,
   alertDetailPath,
   environmentTitle,
@@ -461,12 +481,14 @@ export function ManualCreationForm({
   chatId?: string;
   addChannel?: AddChannelAccess;
   emptyAreas?: string[];
+  hiddenAreas?: string[];
   onStartOver?: () => void;
   alertDetailPath?: string;
   environmentTitle?: string;
 }) {
   const formRef = useRef<HTMLDivElement>(null);
   const [addingChannel, setAddingChannel] = useState(false);
+  const resumed = addChannel?.resumed ?? false;
   const [customizing, setCustomizing] = useState(false);
   const allChannels = channels;
   const [groupsUrl, setGroupsUrl] = useState<string>();
@@ -488,7 +510,8 @@ export function ManualCreationForm({
     { groups: errorGroups, lookup, lookupError },
     entities?.kind === entityKind ? entities?.names : undefined,
     emptyAreas,
-    setEntitySearch
+    setEntitySearch,
+    hiddenAreas
   ).map((step) => ({
     ...step,
     options: step.options.filter(
@@ -583,23 +606,24 @@ export function ManualCreationForm({
           onLoad={setEntities}
         />
       )}
-      {(replacing ? steps : steps.slice(0, reached + 1)).map((step) => (
-        <ManualStep
-          key={step.id}
-          step={step}
-          locked={reviewShown && !(replacing && REPLACE_EDITABLE.includes(step.id))}
-          revealed={!initialStepIds.has(step.id)}
-          onSelect={select}
-          onConfirm={
-            step.multiSelect && !reviewShown && !(replacing && step.id === "environments")
-              ? () => {
-                  setCustomizing(false);
-                  confirmStep(flow, step.id);
-                }
-              : undefined
-          }
-        />
-      ))}
+      {!flow.created &&
+        (replacing ? steps : steps.slice(0, reached + 1)).map((step) => (
+          <ManualStep
+            key={step.id}
+            step={step}
+            locked={reviewShown && !(replacing && REPLACE_EDITABLE.includes(step.id))}
+            revealed={!initialStepIds.has(step.id)}
+            onSelect={select}
+            onConfirm={
+              step.multiSelect && !reviewShown && !(replacing && step.id === "environments")
+                ? () => {
+                    setCustomizing(false);
+                    confirmStep(flow, step.id);
+                  }
+                : undefined
+            }
+          />
+        ))}
       {flow.created && createdBlock ? (
         <AlertCreatedCard block={createdBlock} alertDetailPath={alertDetailPath} />
       ) : reviewShown && reviewFields ? (
@@ -620,14 +644,25 @@ export function ManualCreationForm({
       {flow.submitError && (
         <Callout variant="error">Failed to create the alert. Try again.</Callout>
       )}
-      {addChannel && addingChannel && (
+      {addChannel && (addingChannel || resumed) && (
         <AlertChannelsDialog
           open
+          connectReturnTo={addChannel.connectReturnTo}
+          addSlack={resumed}
+          onConnect={() =>
+            saveSlackConnectResume(
+              addChannel.projectId,
+              addChannel.environmentId,
+              flow.answers,
+              true
+            )
+          }
           onCreated={(channel) => {
             if (!flow.answers.notifiers?.includes(channel.id)) flow.toggleNotifier(channel.id);
           }}
           onClose={() => {
             setAddingChannel(false);
+            addChannel.onResumeConsumed?.();
             addChannel.onCreated?.();
           }}
         />
