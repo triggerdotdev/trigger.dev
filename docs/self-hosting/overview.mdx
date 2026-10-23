@@ -121,6 +121,8 @@ You own a custom base image. It must provide:
 
 A `DEPLOY_BUILD_BASE_IMAGES` image needs everything the base image provides, plus `python3`, `make` and `g++`. Build extensions that add image instructions are replayed on it. Without an entry, the build stage uses the published build image, except for projects whose build extensions add image instructions: those build from your base image and install the toolchain with `apt-get`, so that base must be Debian-based. To avoid the published images entirely, set both variables.
 
+A custom image is yours to harden. Deploys on the published images remove trust in publicly compromised certificate authorities and point Node.js and Python at the OS trust store. Stages built on a custom image get neither, and run with the certificate settings the image ships with. Keeping a custom image patched, trust store included, is your responsibility.
+
 <Warning>
   `image.pkgs` and build extensions that run `apt-get` (such as `aptGet` and `playwright`) assume a
   Debian base. On other distributions, install those packages in your base image instead.

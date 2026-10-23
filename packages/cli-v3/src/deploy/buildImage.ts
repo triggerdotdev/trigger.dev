@@ -761,6 +761,10 @@ RUN sed -i -E 's#^(mozilla/(${EMSIGN_COMPROMISE_DISTRUSTED_ROOTS.join(
 ENV NODE_OPTIONS=--use-openssl-ca
 ENV SSL_CERT_FILE=\${SSL_CERT_FILE:-${OS_TRUST_STORE}} REQUESTS_CA_BUNDLE=\${REQUESTS_CA_BUNDLE:-${OS_TRUST_STORE}} PIP_CERT=\${PIP_CERT:-${OS_TRUST_STORE}}`;
 
+// A custom base image owns its own hardening, trust store included
+const trustStoreHardening = (customImage: string | undefined) =>
+  customImage ? "" : distrustCompromisedRoots;
+
 export async function generateContainerfile(options: GenerateContainerfileOptions) {
   switch (options.runtime) {
     case "node":
@@ -829,23 +833,28 @@ const parseGenerateOptions = (options: GenerateContainerfileOptions) => {
 
   // Instructions run once (FROM base) since their downloads are unbounded;
   // package-only projects keep the prebuilt toolchain and repeat the small install
-  const buildStage =
-    baseInstructions && !options.image?.buildBase
-      ? `FROM base AS build
+  const buildFromBase = Boolean(baseInstructions) && !options.image?.buildBase;
+  const buildStageCustomImage = buildFromBase ? options.image?.base : options.image?.buildBase;
+
+  const buildStage = buildFromBase
+    ? `FROM base AS build
 
 RUN apt-get update && \\
   apt-get install -y --no-install-recommends ${TOOLCHAIN_PACKAGES} && \\
   apt-get clean && \\
   rm -rf /var/lib/apt/lists/*`
-      : `FROM ${options.image?.buildBase ?? BUILD_IMAGE[options.runtime]} AS build
+    : `FROM ${options.image?.buildBase ?? BUILD_IMAGE[options.runtime]} AS build
 
 ENV DEBIAN_FRONTEND=noninteractive${customization ? `\n\n${customization}` : ""}
 
-${distrustCompromisedRoots}`;
+${trustStoreHardening(options.image?.buildBase)}`;
 
   return {
     baseImage: options.image?.base ?? BASE_IMAGE[options.runtime],
     buildStage,
+    indexerNodeOptions: buildStageCustomImage
+      ? "--max_old_space_size=8192"
+      : "--max_old_space_size=8192 --use-openssl-ca",
     customization,
     buildArgs,
     buildEnvVars,
@@ -865,7 +874,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 ${customization}
 
-${distrustCompromisedRoots}
+${trustStoreHardening(options.image?.base)}
 
 ${buildStage}
 
@@ -957,8 +966,15 @@ CMD []
 }
 
 async function generateNodeContainerfile(options: GenerateContainerfileOptions) {
-  const { baseImage, buildStage, buildArgs, buildEnvVars, postInstallCommands, customization } =
-    parseGenerateOptions(options);
+  const {
+    baseImage,
+    buildStage,
+    indexerNodeOptions,
+    buildArgs,
+    buildEnvVars,
+    postInstallCommands,
+    customization,
+  } = parseGenerateOptions(options);
 
   return `# syntax=docker/dockerfile:1
 # check=skip=SecretsUsedInArgOrEnv
@@ -968,7 +984,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 ${customization}
 
-${distrustCompromisedRoots}
+${trustStoreHardening(options.image?.base)}
 
 ${buildStage}
 
@@ -1027,7 +1043,7 @@ ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     TRIGGER_LOG_LEVEL=debug \
     NODE_EXTRA_CA_CERTS=\${NODE_EXTRA_CA_CERTS} \
     NODE_ENV=production \
-    NODE_OPTIONS="--max_old_space_size=8192 --use-openssl-ca"
+    NODE_OPTIONS="${indexerNodeOptions}"
 
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM

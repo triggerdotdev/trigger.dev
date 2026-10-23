@@ -492,4 +492,78 @@ describe("generateContainerfile", () => {
     expect(containerfile).toContain("FROM base AS build");
     expect(containerfile).toContain(TOOLCHAIN_PACKAGES);
   });
+
+  it.each(["node", "bun"] as BuildRuntime[])(
+    "leaves the trust store of configured base and build images alone on %s",
+    async (runtime) => {
+      const containerfile = await generateContainerfile({
+        runtime,
+        build: {},
+        image: {
+          base: "acme/node-fips:26@sha256:abc",
+          buildBase: "acme/node:26-dev@sha256:def",
+        },
+        indexScript: "index.js",
+        entrypoint: "entrypoint.js",
+      });
+
+      expect(distrustSteps(containerfile)).toHaveLength(0);
+      expect(rejectSteps(containerfile)).toHaveLength(0);
+      expect(containerfile).not.toContain(EMSIGN_REJECT_DIR);
+      expect(containerfile).not.toContain("--use-openssl-ca");
+      expect(containerfile).not.toMatch(osTrustStoreEnv);
+    }
+  );
+
+  it("hardens only the published build image when just the base is configured", async () => {
+    const containerfile = await generateContainerfile({
+      runtime: "node-26",
+      build: {},
+      image: { base: "acme/node-fips:26@sha256:abc" },
+      indexScript: "index.js",
+      entrypoint: "entrypoint.js",
+    });
+
+    const buildStart = containerfile.indexOf(`FROM ${BUILD_IMAGE["node-26"]} AS build`);
+    const steps = Array.from(containerfile.matchAll(/^ {2}update-ca-certificates --fresh$/gm));
+
+    expect(steps).toHaveLength(1);
+    expect(steps[0]!.index).toBeGreaterThan(buildStart);
+    expect(containerfile).toContain('NODE_OPTIONS="--max_old_space_size=8192 --use-openssl-ca"');
+  });
+
+  it("hardens only the published base image when just the build image is configured", async () => {
+    const containerfile = await generateContainerfile({
+      runtime: "node-26",
+      build: {},
+      image: { buildBase: "acme/node:26-dev@sha256:def" },
+      indexScript: "index.js",
+      entrypoint: "entrypoint.js",
+    });
+
+    const buildStart = containerfile.indexOf("FROM acme/node:26-dev@sha256:def AS build");
+    const steps = Array.from(containerfile.matchAll(/^ {2}update-ca-certificates --fresh$/gm));
+
+    expect(steps).toHaveLength(1);
+    expect(steps[0]!.index).toBeLessThan(buildStart);
+    expect(containerfile).toContain('NODE_OPTIONS="--max_old_space_size=8192"');
+  });
+
+  it("leaves the trust store alone when the build stage derives from a configured base", async () => {
+    const containerfile = await generateContainerfile({
+      runtime: "node-26",
+      build: {},
+      image: {
+        base: "acme/node-fips:26@sha256:abc",
+        instructions: ["RUN echo custom > /etc/marker"],
+      },
+      indexScript: "index.js",
+      entrypoint: "entrypoint.js",
+    });
+
+    expect(containerfile).toContain("FROM base AS build");
+    expect(distrustSteps(containerfile)).toHaveLength(0);
+    expect(rejectSteps(containerfile)).toHaveLength(0);
+    expect(containerfile).not.toContain("--use-openssl-ca");
+  });
 });
