@@ -25,7 +25,7 @@ const SessionTriggerConfigSchema = SessionTriggerConfigZod;
 
 export type SessionTriggerConfig = z.infer<typeof SessionTriggerConfigSchema>;
 
-type EnsureRunReason = "initial" | "continuation" | "upgrade" | "manual";
+export type EnsureRunReason = "initial" | "continuation" | "upgrade" | "manual";
 
 /**
  * Hard cap on how many times `ensureRunForSession` will recurse on the
@@ -264,7 +264,7 @@ export async function ensureRunForSession(
     // The claim lost to a close, not to another writer. Recursing would
     // trigger and cancel a run per attempt and then throw; there is nothing to
     // ensure for a conversation that is over.
-    throw new SessionRunManagerError(`Session ${session.id} is closed`);
+    throw new SessionClosedError(`Session ${session.id} is closed`);
   }
 
   if (fresh.currentRunId) {
@@ -538,7 +538,7 @@ export async function swapSessionRun(params: SwapSessionRunParams): Promise<Swap
     // The claim lost to a close, not to another swap. The run triggered above
     // is already being cancelled; reporting a winner here would tell the caller
     // a closed session has a live run.
-    throw new SessionRunManagerError(`Session ${session.id} is closed`);
+    throw new SessionClosedError(`Session ${session.id} is closed`);
   }
 
   // Mirror `ensureRunForSession`'s "session vanished" branch: if we
@@ -613,5 +613,10 @@ async function cancelLostRaceRun(
 }
 
 class SessionRunManagerError extends Error {
-  readonly name = "SessionRunManagerError";
+  readonly name: string = "SessionRunManagerError";
+}
+
+/** The run claim lost to a close: there is no run to ensure for this session. */
+export class SessionClosedError extends SessionRunManagerError {
+  readonly name: string = "SessionClosedError";
 }
