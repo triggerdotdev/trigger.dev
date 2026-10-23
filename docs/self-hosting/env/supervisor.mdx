@@ -52,6 +52,7 @@ mode: "wide"
 | `KUBERNETES_IMAGE_PULL_SECRETS`             | No       | —           | Image pull secrets (CSV).                                   |
 | `KUBERNETES_EPHEMERAL_STORAGE_SIZE_LIMIT`   | No       | 10Gi        | Ephemeral storage size limit. Applies to all runs.          |
 | `KUBERNETES_EPHEMERAL_STORAGE_SIZE_REQUEST` | No       | 2Gi         | Ephemeral storage size request. Applies to all runs.        |
+| `KUBERNETES_POD_RESERVED_SOURCE_PORTS`      | No       | —           | Ports runs never use as outbound source ports. CSV of ports or `low-high` ranges, e.g. `50080,50081`. Sets the `net.ipv4.ip_local_reserved_ports` sysctl on run pods. |
 | **Metrics**                                 |          |             |                                                             |
 | `METRICS_ENABLED`                           | No       | true        | Enable metrics.                                             |
 | `METRICS_COLLECT_DEFAULTS`                  | No       | true        | Collect default metrics.                                    |
