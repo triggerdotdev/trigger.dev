@@ -23,7 +23,7 @@ vi.mock("~/db.server", () => {
 });
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
+import { type AddressInfo, createServer as createTcpServer, type Socket } from "node:net";
 import { setTimeout } from "node:timers/promises";
 import { setupAuthenticatedEnvironment } from "@internal/run-engine/tests";
 import { containerTest } from "@internal/testcontainers";
@@ -268,7 +268,9 @@ describe("template key in the task metadata cache", () => {
 
       await withBuilder(KEY, async (url) => {
         const service = new TemplatePrebuildService(prisma, builderConfig(url), cache);
-        expect(await service.build(IMAGE, "shadow", older.deployment)).toBe("built");
+        expect(await service.build(IMAGE, "shadow", older.deployment)).toEqual({
+          outcome: "built",
+        });
       });
 
       const stored = await prisma.workerDeployment.findFirst({
@@ -280,6 +282,46 @@ describe("template key in the task metadata cache", () => {
       expect((await cache.getCurrent(environment.id, SLUG))?.templateKey).toBe(NEWER_KEY);
     }
   );
+
+  containerTest("a slow cache does not turn a stored key into a timeout", async ({ prisma }) => {
+    db.client = prisma;
+    const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+    const { deployment } = await createDeployment(prisma, environment, {
+      version: "20260101.1",
+    });
+    // A Redis peer that accepts connections and never answers.
+    const sockets: Socket[] = [];
+    const silent = createTcpServer((socket) => sockets.push(socket));
+    await new Promise<void>((resolve) => silent.listen(0, "127.0.0.1", resolve));
+    const redis = new Redis({
+      host: "127.0.0.1",
+      port: (silent.address() as AddressInfo).port,
+      maxRetriesPerRequest: null,
+    });
+    onTestFinished(async () => {
+      redis.disconnect();
+      sockets.forEach((socket) => socket.destroy());
+      await new Promise<void>((resolve) => silent.close(() => resolve()));
+    });
+    const cache = new RedisTaskMetadataCache({ redis });
+
+    await withBuilder(KEY, async (url) => {
+      const service = new TemplatePrebuildService(
+        prisma,
+        { ...builderConfig(url), timeoutMs: 1_000 },
+        cache
+      );
+      const startedAt = performance.now();
+      expect(await service.build(IMAGE, "shadow", deployment)).toEqual({ outcome: "built" });
+      expect(performance.now() - startedAt).toBeLessThan(5_000);
+    });
+
+    const stored = await prisma.workerDeployment.findFirst({
+      where: { id: deployment.id },
+      select: { templateKey: true },
+    });
+    expect(stored?.templateKey).toBe(KEY);
+  });
 
   containerTest(
     "a promotion keeps a key that a build stored after the promotion read the row",
@@ -321,7 +363,7 @@ describe("template key in the task metadata cache", () => {
 
       await withBuilder(KEY, async (url) => {
         const service = new TemplatePrebuildService(prisma, builderConfig(url), cache);
-        expect(await service.build(IMAGE, "shadow", deployment)).toBe("built");
+        expect(await service.build(IMAGE, "shadow", deployment)).toEqual({ outcome: "built" });
       });
 
       expect((await cache.getCurrent(environment.id, SLUG))?.templateKey).toBe(KEY);

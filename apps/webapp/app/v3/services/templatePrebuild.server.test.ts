@@ -277,10 +277,13 @@ describe("prebuild", () => {
         workloadType: "MICROVM",
         orgFlags: { [FEATURE_FLAG.computeTemplatePrebuildWait]: true },
       });
+      const row = await createDeployment(prisma, project);
       const service = new TemplatePrebuildService(prisma, config({ url: server.url }));
       const result = await service.prebuild({
-        ...deployment,
         projectId: project.id,
+        deploymentId: row.id,
+        deploymentFriendlyId: row.friendlyId,
+        imageReference: IMAGE,
         imageDigest: DIGEST,
       });
 
@@ -291,7 +294,7 @@ describe("prebuild", () => {
         image: `${IMAGE}@${DIGEST}`,
         machine_configs: [{ cpus: 0.5, memory_mb: 512 }],
         no_snap: true,
-        deployment_id: "deployment_abc",
+        deployment_id: row.friendlyId,
       });
     } finally {
       await server.close();
@@ -385,20 +388,23 @@ describe("prebuild", () => {
   });
 
   postgresTest("does not wait on a CLI that stops reading logs", async ({ prisma }) => {
-    const server = await builder(reply(201, { template_source: "built" }));
+    const server = await builder(reply(201, { template_id: TEMPLATE_KEY }));
     try {
       const project = await createProject(prisma, {
         workloadType: "MICROVM",
         orgFlags: { [FEATURE_FLAG.computeTemplatePrebuildWait]: true },
       });
+      const row = await createDeployment(prisma, project);
       // A sink that never accepts a chunk, so each write stays pending.
       const writer = new WritableStream<string>({
         write: () => new Promise<void>(() => {}),
       }).getWriter();
       const service = new TemplatePrebuildService(prisma, config({ url: server.url }));
       const result = await service.prebuild({
-        ...deployment,
         projectId: project.id,
+        deploymentId: row.id,
+        deploymentFriendlyId: row.friendlyId,
+        imageReference: IMAGE,
         imageDigest: DIGEST,
         writer,
       });
@@ -454,13 +460,17 @@ describe("prebuild", () => {
         workloadType: "MICROVM",
         orgFlags: { [FEATURE_FLAG.computeTemplatePrebuildWait]: true },
       });
+      const row = await createDeployment(prisma, project);
       const service = new TemplatePrebuildService(prisma, config({ url: server.url }));
       const result = await service.prebuild({
-        ...deployment,
         projectId: project.id,
+        deploymentId: row.id,
+        deploymentFriendlyId: row.friendlyId,
+        imageReference: IMAGE,
         imageDigest: DIGEST,
       });
       expect(result.outcome).toBe("already_there");
+      expect(await storedTemplateKey(prisma, row.id)).toBe("a".repeat(64));
     } finally {
       await server.close();
     }
@@ -542,10 +552,11 @@ describe("prebuild", () => {
           imageReference: `${IMAGE}@sha256:${"b".repeat(64)}`,
         });
         const service = new TemplatePrebuildService(prisma, config({ url: server.url }));
-        await service.build(`${IMAGE}@${DIGEST}`, "shadow", {
+        const result = await service.build(`${IMAGE}@${DIGEST}`, "shadow", {
           id: row.id,
           friendlyId: row.friendlyId,
         });
+        expect(result).toEqual({ outcome: "failed", reason: "not_stored" });
         expect(await storedTemplateKey(prisma, row.id)).toBeNull();
       } finally {
         await server.close();
@@ -591,7 +602,8 @@ describe("prebuild", () => {
         imageReference: IMAGE,
         imageDigest: DIGEST,
       });
-      expect(result.outcome).toBe("built");
+      // The key is not known to be stored yet, so the caller sees a timeout.
+      expect(result.outcome).toBe("timeout");
       expect(Date.now() - startedAt).toBeLessThan(5_000);
 
       release!();
@@ -628,7 +640,7 @@ describe("prebuild", () => {
             imageReference: IMAGE,
             imageDigest: DIGEST,
           });
-          expect(result.outcome).toBe("built");
+          expect(result.outcome).toBe("failed");
         }
         expect(await storedTemplateKey(prisma, fresh.id)).toBeNull();
         expect(await storedTemplateKey(prisma, existing.id)).toBe(TEMPLATE_KEY);
@@ -765,6 +777,123 @@ describe("requestBuilds", () => {
       const [result] = await service.requestBuilds({ deploymentIds: [row.id] });
 
       expect(result).toMatchObject({ outcome: "rate_limited" });
+      expect(await storedTemplateKey(prisma, row.id)).toBeNull();
+    } finally {
+      await server.close();
+    }
+  });
+
+  postgresTest(
+    "reports a stored key the mirror already had as already_there",
+    async ({ prisma }) => {
+      const server = await builder(
+        reply(200, { template_id: TEMPLATE_KEY, template_source: "mirror" })
+      );
+      try {
+        const project = await createProject(prisma);
+        const row = await createDeployment(prisma, project, {
+          status: "DEPLOYED",
+          imageReference: PINNED,
+        });
+        const service = new TemplatePrebuildService(prisma, config({ url: server.url }));
+
+        const [result] = await service.requestBuilds({ deploymentIds: [row.id] });
+
+        expect(result).toEqual({
+          deploymentId: row.id,
+          friendlyId: row.friendlyId,
+          outcome: "already_there",
+        });
+        expect(await storedTemplateKey(prisma, row.id)).toBe(TEMPLATE_KEY);
+      } finally {
+        await server.close();
+      }
+    }
+  );
+
+  postgresTest("reports an invalid template id as failed", async ({ prisma }) => {
+    const server = await builder(reply(200, { template_id: "not-a-key" }));
+    try {
+      const project = await createProject(prisma);
+      const row = await createDeployment(prisma, project, {
+        status: "DEPLOYED",
+        imageReference: PINNED,
+      });
+      const service = new TemplatePrebuildService(prisma, config({ url: server.url }));
+
+      const [result] = await service.requestBuilds({ deploymentIds: [row.id] });
+
+      expect(result).toEqual({
+        deploymentId: row.id,
+        friendlyId: row.friendlyId,
+        outcome: "failed",
+        reason: "invalid_template_id",
+      });
+      expect(await storedTemplateKey(prisma, row.id)).toBeNull();
+    } finally {
+      await server.close();
+    }
+  });
+
+  postgresTest("reports failed when the store guard matches no row", async ({ prisma }) => {
+    const project = await createProject(prisma);
+    const row = await createDeployment(prisma, project, {
+      status: "DEPLOYED",
+      imageReference: PINNED,
+    });
+    // The deployment's image changes while the builder works, so the guard rejects the write.
+    const server = await builder((req, body, res) => {
+      prisma.workerDeployment
+        .update({
+          where: { id: row.id },
+          data: { imageReference: `${IMAGE}@sha256:${"b".repeat(64)}` },
+        })
+        .then(() => reply(200, { template_id: TEMPLATE_KEY })(req, body, res));
+    });
+    try {
+      const service = new TemplatePrebuildService(prisma, config({ url: server.url }));
+
+      const [result] = await service.requestBuilds({ deploymentIds: [row.id] });
+
+      expect(result).toEqual({
+        deploymentId: row.id,
+        friendlyId: row.friendlyId,
+        outcome: "failed",
+        reason: "not_stored",
+      });
+      expect(await storedTemplateKey(prisma, row.id)).toBeNull();
+    } finally {
+      await server.close();
+    }
+  });
+
+  postgresTest("reports failed when the key write errors", async ({ prisma }) => {
+    const server = await builder(reply(200, { template_id: TEMPLATE_KEY }));
+    try {
+      const project = await createProject(prisma);
+      const row = await createDeployment(prisma, project, {
+        status: "DEPLOYED",
+        imageReference: PINNED,
+      });
+
+      // A read-only transaction lets the lookup through but makes the update fail.
+      const results = await $transaction(
+        prisma,
+        "readOnlyTemplateStore",
+        async (tx) => {
+          await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+          const service = new TemplatePrebuildService(tx, config({ url: server.url }));
+          return service.requestBuilds({ deploymentIds: [row.id] });
+        },
+        { timeout: 30_000 }
+      );
+
+      expect(results?.[0]).toEqual({
+        deploymentId: row.id,
+        friendlyId: row.friendlyId,
+        outcome: "failed",
+        reason: "store_error",
+      });
       expect(await storedTemplateKey(prisma, row.id)).toBeNull();
     } finally {
       await server.close();

@@ -37,11 +37,18 @@ export type TemplateBuildOutcome =
 
 type TemplateBuildRequestSkip = "no_builder" | "has_key" | "no_pinned_image";
 
+/** Why a 2xx from the builder still ended as `failed`: the key was not written. */
+export type TemplateKeyStoreFailure = "invalid_template_id" | "not_stored" | "store_error";
+
+export type TemplateBuildResult =
+  | { outcome: Exclude<TemplateBuildOutcome, "failed"> }
+  | { outcome: "failed"; reason?: TemplateKeyStoreFailure };
+
 export type TemplateBuildRequestResult = {
   deploymentId: string;
   friendlyId?: string;
 } & (
-  | { outcome: TemplateBuildOutcome }
+  | TemplateBuildResult
   | { outcome: "skipped"; reason: TemplateBuildRequestSkip }
   | { outcome: "not_found" }
 );
@@ -183,7 +190,7 @@ export class TemplatePrebuildService {
           `event: log\ndata: ${JSON.stringify({ message: "Building compute template..." })}\n\n`
         )
         .catch(() => {});
-      return { mode, reason, outcome: await build };
+      return { mode, reason, outcome: (await build).outcome };
     } catch (error) {
       logger.error("Template prebuild failed before calling the builder", {
         deploymentId: options.deploymentFriendlyId,
@@ -324,27 +331,28 @@ export class TemplatePrebuildService {
     if (!image) {
       return { ...base, outcome: "skipped", reason: "no_pinned_image" };
     }
-    const outcome = await this.build(image, "shadow", {
+    const result = await this.build(image, "shadow", {
       id: deployment.id,
       friendlyId: deployment.friendlyId,
     });
-    return { ...base, outcome };
+    return { ...base, ...result };
   }
 
   /**
    * Call the builder once and store the template key on success. Resolves with
-   * the outcome; never rejects.
+   * the outcome, which is `failed` when the key was not written; never rejects.
    */
   async build(
     image: string,
     mode: Exclude<TemplatePrebuildMode, "skip">,
     deployment: { id: string; friendlyId: string }
-  ): Promise<TemplateBuildOutcome> {
+  ): Promise<TemplateBuildResult> {
     const startedAt = performance.now();
     const body = templateCreateRequest(image, this.config.presets, deployment.friendlyId);
     const log = { deploymentId: deployment.friendlyId, image, mode };
 
     let outcome: TemplateBuildOutcome;
+    let reason: TemplateKeyStoreFailure | undefined;
     try {
       const response = await fetch(new URL("/templates", this.config.url).toString(), {
         method: "POST",
@@ -372,10 +380,22 @@ export class TemplatePrebuildService {
           squashfsMs: parsed?.squashfs_ms,
         });
         // The write keeps going if it outlasts the timeout, but wait mode stops waiting.
-        await withinBudget(
-          this.storeTemplateKey(deployment.id, image, parsed?.template_id, log),
-          this.config.timeoutMs - (performance.now() - startedAt)
+        const remaining = () => this.config.timeoutMs - (performance.now() - startedAt);
+        const write = this.storeTemplateKey(deployment.id, image, parsed?.template_id, log);
+        const cached = write.then((result) =>
+          result === "stored"
+            ? this.cacheTemplateKey(deployment.id, parsed?.template_id as string, log)
+            : undefined
         );
+        const stored = await withinBudget(write, remaining());
+        // The cache is best effort, so a slow cache never changes the outcome.
+        await withinBudget(cached, remaining());
+        if (stored === undefined) {
+          outcome = "timeout";
+        } else if (stored !== "stored") {
+          outcome = "failed";
+          reason = stored;
+        }
       } else {
         outcome = response.status === 429 ? "rate_limited" : "failed";
         logger.error("Template prebuild failed", {
@@ -398,7 +418,7 @@ export class TemplatePrebuildService {
     const attributes = { outcome, mode };
     telemetry.calls.add(1, attributes);
     telemetry.duration.record(performance.now() - startedAt, attributes);
-    return outcome;
+    return outcome === "failed" ? { outcome, reason } : { outcome };
   }
 
   // In shadow mode the deployment may already be DEPLOYED; then only store the key
@@ -408,14 +428,14 @@ export class TemplatePrebuildService {
     image: string,
     templateId: unknown,
     log: Record<string, unknown>
-  ): Promise<void> {
+  ): Promise<"stored" | TemplateKeyStoreFailure> {
     const templateKey = validTemplateKey(templateId);
     if (!templateKey) {
       logger.warn("Template prebuild returned no valid template id", {
         ...log,
         templateId: typeof templateId === "string" ? templateId.slice(0, 100) : templateId,
       });
-      return;
+      return "invalid_template_id";
     }
     try {
       const { count } = await this.prisma.workerDeployment.updateMany({
@@ -424,8 +444,25 @@ export class TemplatePrebuildService {
       });
       if (count === 0) {
         logger.warn("Template prebuild did not store the template key", { ...log, templateKey });
-        return;
+        return "not_stored";
       }
+    } catch (error) {
+      logger.error("Template prebuild could not store the template key", {
+        ...log,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return "store_error";
+    }
+    return "stored";
+  }
+
+  // The database is the source of truth; the cache refills from it.
+  private async cacheTemplateKey(
+    deploymentId: string,
+    templateKey: string,
+    log: Record<string, unknown>
+  ): Promise<void> {
+    try {
       const deployment = await this.prisma.workerDeployment.findFirst({
         where: { id: deploymentId },
         select: { workerId: true, environmentId: true },
@@ -438,7 +475,7 @@ export class TemplatePrebuildService {
         );
       }
     } catch (error) {
-      logger.error("Template prebuild could not store the template key", {
+      logger.error("Template prebuild could not cache the template key", {
         ...log,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -446,15 +483,17 @@ export class TemplatePrebuildService {
   }
 }
 
-async function withinBudget(work: Promise<void>, ms: number): Promise<void> {
+/** The work's result, or undefined when the budget runs out first. */
+async function withinBudget<T>(work: Promise<T>, ms: number): Promise<T | undefined> {
   let timer: NodeJS.Timeout | undefined;
-  await Promise.race([
+  const result = await Promise.race([
     work,
-    new Promise<void>((resolve) => {
-      timer = setTimeout(resolve, Math.max(0, ms));
+    new Promise<undefined>((resolve) => {
+      timer = setTimeout(() => resolve(undefined), Math.max(0, ms));
     }),
   ]);
   clearTimeout(timer);
+  return result;
 }
 
 function parseResponse(text: string): TemplateCreateResponse | undefined {
