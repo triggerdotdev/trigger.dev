@@ -229,11 +229,13 @@ describe("per-environment worker queue overrides", () => {
       environmentType = "STAGING",
       v2Enabled = true,
       migrationEnabled = false,
+      templateKey = "a".repeat(64),
     }: {
       orgFeatureFlags: Record<string, unknown>;
       environmentType?: string;
       v2Enabled?: boolean;
       migrationEnabled?: boolean;
+      templateKey?: string | null;
     }) {
       const environmentOverride = environmentWorkerQueueOverride({
         orgFeatureFlags,
@@ -251,7 +253,7 @@ describe("per-environment worker queue overrides", () => {
         flags: { computeMigrationEnabled: migrationEnabled, computeMigrationFreePercentage: 100 },
         envType: environmentType,
         environmentCompat: environmentOverride.compat,
-        templateKey: "a".repeat(64),
+        templateKey,
       });
       const workerQueue = workerQueueForBirth({
         workerQueue: migrated.workerQueue!,
@@ -263,6 +265,7 @@ describe("per-environment worker queue overrides", () => {
         splitEnabled: true,
         workerGroups,
         rootTriggerSource: "api",
+        templateFallback: migrated.templateFallback,
       });
       return { workerQueue, enableFastPath: migrated.enableFastPath };
     }
@@ -384,6 +387,40 @@ describe("per-environment worker queue overrides", () => {
       expect(trigger({ orgFeatureFlags: canaryStaging, migrationEnabled: true })).toEqual({
         workerQueue: "us-east-1:v2:ondemand:fresh:compute:canary",
         enableFastPath: true,
+      });
+    });
+
+    it("puts a migrated org's keyless run on the stable container channel", () => {
+      const canaryStaging = {
+        [FEATURE_FLAG.workerQueueEnvironmentOverrides]: { STAGING: { channel: "canary" } },
+      };
+      const canaryOrg = { [FEATURE_FLAG.workerQueueChannel]: "canary" };
+      for (const orgFeatureFlags of [canaryStaging, canaryOrg]) {
+        expect(trigger({ orgFeatureFlags, migrationEnabled: true, templateKey: null })).toEqual({
+          workerQueue: "us-east-1:v2:ondemand:fresh:container:stable",
+          enableFastPath: false,
+        });
+        // A run that is not migrated keeps its channel, keyless or not.
+        expect(trigger({ orgFeatureFlags, templateKey: null })).toEqual({
+          workerQueue: "us-east-1:v2:ondemand:fresh:container:canary",
+          enableFastPath: false,
+        });
+      }
+    });
+
+    it("keeps an explicit compute compatibility for a keyless run, for the dequeue check", () => {
+      expect(
+        trigger({
+          orgFeatureFlags: {
+            [FEATURE_FLAG.workerQueueCompatibility]: "compute",
+            [FEATURE_FLAG.workerQueueChannel]: "canary",
+          },
+          migrationEnabled: true,
+          templateKey: null,
+        })
+      ).toEqual({
+        workerQueue: "us-east-1:v2:ondemand:fresh:compute:canary",
+        enableFastPath: false,
       });
     });
   });

@@ -30,6 +30,7 @@ import { containerTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
 import { Redis } from "ioredis";
 import { resolveComputeMigration } from "~/runEngine/concerns/computeMigration.server";
+import { workerQueueForBirth } from "~/runEngine/concerns/workerQueueAssignment.server";
 import { DefaultQueueManager } from "~/runEngine/concerns/queues.server";
 import type { RunEngine } from "~/v3/runEngine.server";
 import { RedisTaskMetadataCache } from "~/services/taskMetadataCache.server";
@@ -208,6 +209,45 @@ describe("template key in the task metadata cache", () => {
       expect(resolveComputeMigration({ ...migratedOrg, templateKey }).workerQueue).toBe(
         "us-east-1"
       );
+    }
+  );
+
+  containerTest(
+    "a keyless promotion births a canary-channel migrated run on the stable container queue",
+    async ({ prisma, redisOptions }) => {
+      db.client = prisma;
+      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const { deployment } = await createDeployment(prisma, environment, {
+        version: "20260101.1",
+      });
+      const cache = newCache(redisOptions);
+      await new ChangeCurrentDeploymentService(prisma, prisma, cache).call(deployment, "promote");
+
+      const queues = new DefaultQueueManager(prisma, noEngine, undefined, cache);
+      const { templateKey } = await queues.resolveQueueProperties({
+        taskId: SLUG,
+        environment,
+        body: { payload: {} },
+      } as any);
+      const orgFeatureFlags = { ...migratedOrg.orgFeatureFlags, workerQueueChannel: "canary" };
+      const migrated = resolveComputeMigration({ ...migratedOrg, orgFeatureFlags, templateKey });
+      const birth = workerQueueForBirth({
+        workerQueue: migrated.workerQueue!,
+        region: migrated.region,
+        envType: "PRODUCTION",
+        orgFeatureFlags,
+        environmentOverride: {},
+        v2Enabled: true,
+        splitEnabled: false,
+        workerGroups: [
+          { masterQueue: "us-east-1", workloadType: "CONTAINER" },
+          { masterQueue: "us-east-1-next", workloadType: "MICROVM" },
+        ],
+        rootTriggerSource: "api",
+        templateFallback: migrated.templateFallback,
+      });
+      // Container consumers take only stable, so a canary container queue would strand the run.
+      expect(birth).toBe("us-east-1:v2:ondemand:fresh:container:stable");
     }
   );
 

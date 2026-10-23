@@ -563,6 +563,7 @@ export class RunEngineTriggerTaskService {
                   splitEnabled: env.TRIGGER_WORKER_QUEUE_SCHEDULED_SPLIT_ENABLED === "1",
                   workerGroups,
                   rootTriggerSource: annotations.rootTriggerSource,
+                  templateFallback: migrated.templateFallback,
                 })
               : migrated.workerQueue;
 

@@ -79,6 +79,8 @@ export function resolveComputeMigration({
   workerQueue: string | undefined;
   region: string | undefined;
   enableFastPath: boolean;
+  /** Set when the missing template key kept a migrated run on the base queue. */
+  templateFallback?: true;
 } {
   const passthrough = { workerQueue: baseWorkerQueue, region, enableFastPath: baseEnableFastPath };
   if (baseWorkerQueue === undefined) return passthrough;
@@ -91,6 +93,6 @@ export function resolveComputeMigration({
         ? false
         : isOrgMigrated(decision);
   if (!migrated) return passthrough;
-  if (!templateKey) return passthrough;
+  if (!templateKey) return { ...passthrough, templateFallback: true };
   return { workerQueue: backing.workerQueue, region, enableFastPath: backing.enableFastPath };
 }

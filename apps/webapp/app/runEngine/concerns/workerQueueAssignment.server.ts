@@ -49,6 +49,7 @@ export function workerQueueForBirth({
   splitEnabled,
   workerGroups,
   rootTriggerSource,
+  templateFallback,
 }: {
   workerQueue: string;
   region: string | undefined;
@@ -59,6 +60,8 @@ export function workerQueueForBirth({
   splitEnabled: boolean;
   workerGroups: readonly Pick<WorkerGroupRegionRow, "masterQueue" | "workloadType">[];
   rootTriggerSource: string | undefined;
+  /** The run stays off compute because its deployment has no template key. */
+  templateFallback?: boolean;
 }): string {
   if (envType === "DEVELOPMENT") {
     return workerQueue;
@@ -79,13 +82,16 @@ export function workerQueueForBirth({
   const channel = FeatureFlagCatalog[FEATURE_FLAG.workerQueueChannel].safeParse(
     environmentOverride.channel ?? orgFeatureFlags?.[FEATURE_FLAG.workerQueueChannel] ?? "stable"
   );
+  const compat = compatibility.success ? compatibility.data : defaultCompatibility;
+  // Match the dequeue fallback: container consumers take only the stable channel.
+  const keylessOnContainers = templateFallback && compat === "container";
   const assignment = formatWorkerQueue({
     region: region ?? workerQueue,
     version: WORKER_QUEUE_VERSION,
     class: "ondemand",
     phase: "fresh",
-    compat: compatibility.success ? compatibility.data : defaultCompatibility,
-    channel: channel.success ? channel.data : "stable",
+    compat,
+    channel: !keylessOnContainers && channel.success ? channel.data : "stable",
   });
 
   return workerQueueForRun({

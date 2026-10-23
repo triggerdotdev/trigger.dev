@@ -312,7 +312,7 @@ describe("resolveComputeMigration template key", () => {
       for (const templateKey of [null, undefined, ""]) {
         expect(
           resolveComputeMigration({ ...input, ...migrated, environmentCompat, templateKey })
-        ).toEqual(base);
+        ).toEqual({ ...base, templateFallback: true });
       }
     });
     it(`swaps a migrated org's keyed deployment to compute (compat=${environmentCompat})`, () => {
