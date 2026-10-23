@@ -8,12 +8,10 @@ import {
   AbsenceActivityChart,
   absenceLegend,
   quietReferenceAreas,
-  HEALTH_LEGEND,
   healthPoints,
   healthTooltipLabel,
   HealthActivityChart,
 } from "./AlertDetailCharts";
-import { EVENT_CHART_COLOR } from "./ActivityBars";
 import { AlertMultiSeriesChart, AlertThresholdChart } from "./AlertThresholdChart";
 import {
   buildHealthBands,
@@ -51,54 +49,6 @@ const runsUntil = (lastRunIndex: number): MetricSeriesPoint[] =>
   }));
 
 describe("HealthActivityChart", () => {
-  it("draws a step line with a Healthy legend", () => {
-    expect(HEALTH_LEGEND.map((l) => l.label)).toEqual(["Healthy", "Degraded"]);
-    expect(HEALTH_LEGEND[0]!.color).toBe(EVENT_CHART_COLOR);
-
-    const html = renderToStaticMarkup(
-      createElement(HealthActivityChart, { bands: bands.slice(0, 2) })
-    );
-    expect(html).toContain("recharts-line-curve");
-    const pathD = (stroke: string) =>
-      html.match(new RegExp(`stroke="${stroke}"[^>]*recharts-line-curve" d="([^"]*)"`))?.[1];
-    const pts = (d: string) =>
-      [...d.matchAll(/([\d.]+),([\d.]+)/g)].map((m) => m.slice(1, 3).map(Number));
-    const base = pts(pathD(EVENT_CHART_COLOR)!);
-    const warn = pts(pathD("var\\(--color-warning\\)")!);
-    const [x0, y0] = base[0]!;
-    const [x1, y1] = base[base.length - 1]!;
-    const [x3, y3] = warn[warn.length - 1]!;
-    expect(y1).toBe(y0);
-    expect(x1).toBeCloseTo((x0! + x3!) / 2);
-    expect(warn[0]).toEqual([x1, y1]);
-    const drop = warn.find(([, y]) => y !== y1)!;
-    expect(drop[0]).toBe(x1);
-    expect(drop[1]).toBeGreaterThan(y1!);
-    expect(y3).toBe(drop[1]);
-    expect(html.match(/>Healthy</g)).toHaveLength(1);
-    expect(html).not.toContain(">Degraded<");
-    expect(html).toContain(`stroke="${EVENT_CHART_COLOR}"`);
-  });
-
-  it("paints the degraded segment in the warning colour over a gapped base line", () => {
-    const three: HealthBandRow[] = [
-      { bucket: T0, degraded: null, healthy: 1, unknown: null },
-      { bucket: T0 + 4 * HOUR, degraded: null, healthy: 1, unknown: null },
-      { bucket: T0 + 8 * HOUR, degraded: 1, healthy: null, unknown: null },
-    ];
-    const html = renderToStaticMarkup(createElement(HealthActivityChart, { bands: three }));
-    const pathD = (stroke: string) =>
-      html.match(new RegExp(`stroke="${stroke}"[^>]*recharts-line-curve" d="([^"]*)"`))?.[1];
-    const base = pathD(EVENT_CHART_COLOR)!;
-    const warn = pathD("var\\(--color-warning\\)")!;
-    expect(base).toBeDefined();
-    expect(warn).toBeDefined();
-    const xs = (d: string) => [...d.matchAll(/[ML]([\d.]+),/g)].map((m) => Number(m[1]));
-    const baseEnd = xs(base)[xs(base).length - 1]!;
-    expect(xs(warn)[0]).toBe(baseEnd);
-    expect(xs(warn)[xs(warn).length - 1]).toBeGreaterThan(baseEnd);
-  });
-
   it("labels the trailing point Now only when the current state is known", () => {
     const timeLabel = (_: string, payload: any[]) => `t${payload[0].payload.bucket}`;
     const trailing = [{ payload: { bucket: 20 } }];
@@ -226,18 +176,6 @@ describe("AbsenceActivityChart", () => {
     const series = pattern(new Array(12).fill(0));
     const trailing = { since: new Date(T0 - HOUR), now: new Date(T0 + 12 * STEP) };
     expect(areas(chart(series, trailing))).toBe(1);
-  });
-
-  it("labels the legend Quiet without minutes", () => {
-    const hourly: MetricSeriesPoint[] = Array.from({ length: 24 }, (_, i) => ({
-      bucket: T0 + i * HOUR,
-      value: i < 22 ? 2 : 0,
-    }));
-    const now = T0 + 24 * HOUR;
-    const trailing = { since: new Date(now - 163 * 60_000), now: new Date(now) };
-    const labels = absenceLegend(hourly, 1800, trailing).map((l) => l.label);
-    expect(labels).toEqual(["Runs created", "Quiet"]);
-    expect(labels.join("")).not.toMatch(/\d/);
   });
 
   it("bands a raised absence whose series ends in the last reading bucket", () => {

@@ -16,13 +16,13 @@ export const HEALTH_LEGEND: ChartLegendItem[] = [
   warningLegendItem("Degraded"),
 ];
 
-export const HEALTH_WARNING_OVERLAY = {
+const HEALTH_WARNING_OVERLAY = {
   threshold: 0.5,
   direction: "below" as const,
   color: WARNING_COLOR,
 };
 
-export const HEALTH_CONFIG: ChartConfig = {
+const HEALTH_CONFIG: ChartConfig = {
   health: { label: "Health", color: EVENT_CHART_COLOR },
 };
 
@@ -142,7 +142,7 @@ export function HealthActivityChart({
   );
 }
 
-export const ABSENCE_SERIES: ActivitySeries[] = [
+const ABSENCE_SERIES: ActivitySeries[] = [
   { key: "value", label: "Runs created", color: EVENT_CHART_COLOR },
 ];
 

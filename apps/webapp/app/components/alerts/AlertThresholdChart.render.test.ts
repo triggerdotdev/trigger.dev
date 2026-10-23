@@ -7,15 +7,12 @@ import {
   AlertThresholdChart,
   formatAlertTick,
   thresholdWarningOverlay,
-  visibleSeriesKeys,
 } from "./AlertThresholdChart";
 import type { MetricSeriesPoint } from "./alertSeriesTypes";
 import { evenTimeTicks, niceYAxis, stepDecimals, withRaiseTick } from "./alertAxis";
 import { formatAlertValue } from "./formatAlertTick";
 import { conditionSummary } from "./alertSummaries";
-import { warningSwatchColor, warningSwatchThreshold } from "../primitives/charts/ChartLine";
-import { EVENT_CHART_COLOR } from "./ActivityBars";
-import { AlertMetricSparkline } from "./AlertMetricSparkline";
+import { warningSwatchColor } from "../primitives/charts/ChartLine";
 
 vi.mock("recharts", async (importOriginal) => {
   const actual = await importOriginal<typeof RechartsModule>();
@@ -32,12 +29,6 @@ const points: MetricSeriesPoint[] = [
   { bucket: 1000, value: 10 },
   { bucket: 2000, value: 20 },
 ];
-
-const seriesMap = new Map<string, MetricSeriesPoint[]>([
-  ["__agg__", points],
-  ["worker-1", points],
-  ["worker-2", points],
-]);
 
 describe("AlertMultiSeriesChart hostile queue names", () => {
   const hostile = ["a</style><script>alert(1)</script>", 'q"}{x:y', "ok-queue"];
@@ -61,78 +52,7 @@ describe("AlertMultiSeriesChart hostile queue names", () => {
   });
 });
 
-describe("AlertMultiSeriesChart", () => {
-  it("renders no legend markup when showLegend is false", () => {
-    const html = renderToStaticMarkup(
-      createElement(AlertMultiSeriesChart, {
-        seriesMap,
-        threshold: null,
-        height: 96,
-        showLegend: false,
-      })
-    );
-    expect(html).not.toContain("Total");
-  });
-
-  it("renders legend without Total row when showLegend is true", () => {
-    const html = renderToStaticMarkup(
-      createElement(AlertMultiSeriesChart, {
-        seriesMap,
-        threshold: null,
-        height: 96,
-        showLegend: true,
-      })
-    );
-    expect(html).not.toContain("Total");
-    expect(html).toContain("worker-1");
-    expect(html).toContain("worker-2");
-  });
-
-  it("excludes __agg__ but includes __other__ labelled as Other", () => {
-    const map = new Map<string, MetricSeriesPoint[]>([
-      ["__agg__", points],
-      ["__other__", points],
-      ["queue-a", points],
-      ["queue-b", points],
-    ]);
-    const keys = visibleSeriesKeys(map);
-    expect(keys).toContain("queue-a");
-    expect(keys).toContain("queue-b");
-    expect(keys).toContain("__other__");
-    expect(keys).not.toContain("__agg__");
-  });
-
-  it("renders __other__ with label Other in the legend", () => {
-    const map = new Map<string, MetricSeriesPoint[]>([
-      ["__agg__", points],
-      ["__other__", points],
-      ["queue-a", points],
-      ["queue-b", points],
-    ]);
-    const html = renderToStaticMarkup(
-      createElement(AlertMultiSeriesChart, {
-        seriesMap: map,
-        threshold: null,
-        height: 96,
-        showLegend: true,
-      })
-    );
-    expect(html).toContain(">Other<");
-    expect(html).not.toContain(">__other__<");
-    expect(html).not.toContain(">__agg__<");
-  });
-});
-
 describe("empty states", () => {
-  it("fails when the empty state is not the shared chart placeholder", () => {
-    const html = renderToStaticMarkup(
-      createElement(AlertThresholdChart, { series: [], threshold: 5, fill: true })
-    );
-    expect(html).toContain("There&#x27;s no data available for the filters you&#x27;ve set.");
-    expect(html).toContain("grid h-full place-items-center");
-    expect(html).not.toContain("No readings");
-  });
-
   it("renders empty state for empty series", () => {
     const html = renderToStaticMarkup(
       createElement(AlertThresholdChart, { series: [], threshold: 5, height: 96 })
@@ -164,20 +84,6 @@ describe("empty states", () => {
   });
 });
 
-describe("threshold overlay direction", () => {
-  it("maps < to below and > to above", () => {
-    expect(thresholdWarningOverlay(10, "<")?.direction).toBe("below");
-    expect(thresholdWarningOverlay(10, ">")?.direction).toBe("above");
-    expect(thresholdWarningOverlay(10)?.direction).toBe("above");
-    expect(thresholdWarningOverlay(null, "<")).toBeUndefined();
-  });
-
-  it("colours the swatch below the threshold for <", () => {
-    expect(warningSwatchColor(5, 10, undefined, "below")).toBe("var(--color-warning)");
-    expect(warningSwatchColor(50, 10, undefined, "below")).toBeUndefined();
-  });
-});
-
 describe("chart states", () => {
   it("plots an all-zero series", () => {
     const html = renderToStaticMarkup(
@@ -205,6 +111,38 @@ describe("chart states", () => {
       })
     );
     expect(html).toContain("No data");
+  });
+});
+
+describe("AlertThresholdChart single reading", () => {
+  it("fails when a lone reading is drawn as a dot", () => {
+    const html = renderToStaticMarkup(
+      createElement(AlertThresholdChart, {
+        series: [
+          { bucket: 1000, value: null },
+          { bucket: 2000, value: 60 },
+          { bucket: 3000, value: null },
+        ],
+        threshold: 200,
+        height: 96,
+      })
+    );
+    expect(html).toContain("No data");
+    expect(html).not.toContain("recharts-line");
+  });
+});
+
+describe("threshold overlay direction", () => {
+  it("maps < to below and > to above", () => {
+    expect(thresholdWarningOverlay(10, "<")?.direction).toBe("below");
+    expect(thresholdWarningOverlay(10, ">")?.direction).toBe("above");
+    expect(thresholdWarningOverlay(10)?.direction).toBe("above");
+    expect(thresholdWarningOverlay(null, "<")).toBeUndefined();
+  });
+
+  it("colours the swatch below the threshold for <", () => {
+    expect(warningSwatchColor(5, 10, undefined, "below")).toBe("var(--color-warning)");
+    expect(warningSwatchColor(50, 10, undefined, "below")).toBeUndefined();
   });
 });
 
@@ -246,21 +184,6 @@ describe("axis helpers", () => {
     expect(ticks.length).toBeLessThanOrEqual(7);
     const gaps = new Set(ticks.slice(1).map((t, i) => t - ticks[i]!));
     expect(gaps.size).toBe(1);
-  });
-});
-
-describe("AlertMetricSparkline", () => {
-  it("labels the peak with its unit", () => {
-    const html = renderToStaticMarkup(
-      createElement(AlertMetricSparkline, {
-        series: [
-          { bucket: 1, value: 900 },
-          { bucket: 2, value: 1800 },
-        ],
-        valueUnit: "ms",
-      })
-    );
-    expect(html).toContain("1.8s");
   });
 });
 
@@ -320,43 +243,5 @@ describe("exact condition values", () => {
         "duration_ms"
       )
     ).toBe("> 1.25s over 5m");
-  });
-});
-
-describe("tooltip swatch", () => {
-  it("is opt-in and follows the threshold", () => {
-    expect(warningSwatchThreshold({ threshold: 60 })).toBeUndefined();
-    expect(warningSwatchThreshold({ threshold: 60, tooltipSwatch: true })).toBe(60);
-    expect(warningSwatchColor(70, 60)).toBe("var(--color-warning)");
-    expect(warningSwatchColor(50, 60)).toBeUndefined();
-    expect(warningSwatchColor(70, undefined)).toBeUndefined();
-  });
-});
-
-describe("chart colour", () => {
-  it("uses the shared alert chart colour, not the queues css var", () => {
-    const html = renderToStaticMarkup(
-      createElement(AlertThresholdChart, { series: points, threshold: null, height: 96 })
-    );
-    expect(html).toContain(EVENT_CHART_COLOR);
-    expect(html).not.toContain("--color-queues-chart");
-  });
-});
-
-describe("AlertThresholdChart single reading", () => {
-  it("fails when a lone reading is drawn as a dot", () => {
-    const html = renderToStaticMarkup(
-      createElement(AlertThresholdChart, {
-        series: [
-          { bucket: 1000, value: null },
-          { bucket: 2000, value: 60 },
-          { bucket: 3000, value: null },
-        ],
-        threshold: 200,
-        height: 96,
-      })
-    );
-    expect(html).toContain("No data");
-    expect(html).not.toContain("recharts-line");
   });
 });

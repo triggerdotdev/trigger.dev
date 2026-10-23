@@ -110,7 +110,7 @@ const CAPABILITY_PHRASE: Record<string, string> = {
   "errors.occurred_again": "This error occurring again",
 };
 
-export function capabilityPhrase(key: string): string {
+function capabilityPhrase(key: string): string {
   return CAPABILITY_PHRASE[key] ?? resolveCapability(key)?.title ?? key;
 }
 

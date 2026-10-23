@@ -62,7 +62,7 @@ function multiSeriesConfig(keys: string[]): Record<string, { label: string; colo
   );
 }
 
-export function thresholdChartParts({
+function thresholdChartParts({
   seriesMap,
   label,
   threshold,

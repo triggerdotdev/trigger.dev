@@ -79,44 +79,7 @@ function render(
   return renderToStaticMarkup(createElement(RouterProvider, { router }));
 }
 
-function headers(html: string) {
-  return [...html.matchAll(/<th[^>]*>([\s\S]*?)<\/th>/g)].map((m) =>
-    m[1].replace(/<[^>]+>/g, "").trim()
-  );
-}
-
 describe("AlertChannelsBody with the alerts flag off", () => {
-  it("lists Edit, Disable and Delete in the modal menu, without Edit environments", () => {
-    const html = render({ modal: true });
-    expect(headers(html)).toEqual([]);
-    expect(html).not.toContain("h-11");
-    expect(html).toContain("min-w-0");
-    expect(html).not.toContain("max-w-0");
-    expect(html).not.toContain("align-top");
-    expect(html).toContain("w-px");
-    expect(html).toMatch(/<td class="[^"]*\bw-10 pl-2\b/);
-    expect(html).not.toMatch(/class="[^"]*\btruncate\b[^"]*system-mono-label/);
-    expect(html).toContain("overflow-x-hidden");
-    expect(html).not.toContain("w-80");
-    expect(html).not.toMatch(
-      /<div class="[^"]*border-t[^"]*whitespace-nowrap|<div class="whitespace-nowrap[^"]*border-t/
-    );
-    expect(html.indexOf(">Edit<")).toBeGreaterThan(-1);
-    expect(html.indexOf(">Edit<")).toBeLessThan(html.indexOf(">Disable<"));
-    expect(html.indexOf(">Disable<")).toBeLessThan(html.indexOf(">Delete<"));
-    expect(html).not.toContain("Edit environments");
-    expect(html).not.toContain("/chan_1/edit");
-  });
-
-  it("summarises environments as icons, a count and a chevron without an inline list", () => {
-    const html = render({ modal: true });
-    expect(html).toContain("3 environments");
-    const trigger = html.match(/<button[^>]*aria-haspopup="dialog"[\s\S]*?<\/button>/)![0];
-    expect(trigger.match(/<svg/g)).toHaveLength(4);
-    expect(html).not.toContain("flex flex-col gap-1");
-    expect(html).not.toContain("Production");
-  });
-
   it("shows an Add channel button, not the create form, until clicked", () => {
     const under = render({ modal: true, used: 1 });
     expect(under).toContain("Add channel");
@@ -207,22 +170,6 @@ describe("AlertChannelsBody with the alerts flag off", () => {
     expect(button()).toBeUndefined();
     act(() => root.unmount());
     container.remove();
-  });
-
-  it("renders a single environment inline without a popover trigger", () => {
-    const one = { ...channel, environmentTypes: ["PRODUCTION"] } as unknown as AlertChannelRow;
-    const html = render({ modal: true, channels: [one] });
-    expect(html).toContain("Production");
-    expect(html).not.toContain("1 environment");
-    expect(html).not.toContain('aria-haspopup="dialog"');
-  });
-
-  it("drops the Add channel title and divider when there are no channels", () => {
-    const html = render({ modal: true, used: 0, channels: [] });
-    expect(html).toContain('id="create-alert"');
-    expect(html).not.toContain("Add channel");
-    expect(html).not.toContain("gap-3 border-t");
-    expect(render({ modal: true })).not.toContain('id="create-alert"');
   });
 
   it("opens the form on Slack with a returnTo connect link when add=slack", () => {

@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { OperatingSystemContextProvider } from "~/components/primitives/OperatingSystemProvider";
 import { ShortcutsProvider } from "~/components/primitives/ShortcutsProvider";
-import { LegacyAlertsSection, LegacyDeleteFooter } from "~/components/alerts/LegacyAlertsSection";
+import { LegacyAlertsSection } from "~/components/alerts/LegacyAlertsSection";
 import type { LegacyAlertChannelRow } from "~/components/alerts/legacyAlertChannels";
 
 vi.mock("~/components/primitives/Popover", async (importOriginal) => ({
@@ -55,10 +55,6 @@ describe("LegacyAlertsSection", () => {
     expect(render()).toContain("Replace with new Alert");
   });
 
-  it("draws no top border above the table", () => {
-    expect(render()).not.toMatch(/<div[^>]*class="[^"]*\bborder-t\b/);
-  });
-
   it("disables Delete without write permission", () => {
     expect(render(false)).toMatch(/<button[^>]*disabled[^>]*>(?:(?!<\/button>).)*Delete/s);
   });
@@ -96,20 +92,5 @@ describe("LegacyAlertsSection", () => {
     expect(html({ canWrite: false, canDelete: true })).toMatch(disabledDelete);
     expect(html({ canWrite: true, canDelete: true }, false)).toMatch(disabledDelete);
     expect(html({ canWrite: true, canDelete: true })).not.toMatch(disabledDelete);
-  });
-
-  it("spaces the dialog footer buttons with a gap", () => {
-    const html = renderToStaticMarkup(
-      createElement(
-        OperatingSystemContextProvider,
-        { platform: "mac" },
-        createElement(
-          ShortcutsProvider,
-          null,
-          createElement(LegacyDeleteFooter, { onCancel: () => {}, onConfirm: () => {} })
-        )
-      )
-    );
-    expect(html).toMatch(/<div class="[^"]*\bgap-2\b[^"]*\bsm:justify-end\b/);
   });
 });

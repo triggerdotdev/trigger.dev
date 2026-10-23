@@ -2,7 +2,6 @@ import { cn } from "~/utils/cn";
 
 export const THRESHOLD_LINE_COLOR = "var(--color-border-brighter)";
 export const WARNING_COLOR = "var(--color-warning)";
-export const RAISED_MARKER_COLOR = "var(--color-text-dimmed)";
 
 export type ChartLegendItem = {
   swatch: "line" | "dashed" | "area" | "marker";

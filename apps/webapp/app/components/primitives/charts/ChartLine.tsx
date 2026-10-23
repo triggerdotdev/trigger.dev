@@ -64,7 +64,7 @@ function ZoomRangeTooltip({ active, from, to }: { active?: boolean; from: string
 // hovered bucket shows one value (base), not base + overlay. Defined at module scope (not inline in
 // the renderer) so recharts reconciles it in place across hover re-renders instead of remounting
 // the portaled tooltip — the latter caused a flicker while moving along the line.
-export function warningSwatchThreshold(
+function warningSwatchThreshold(
   warningOverlay: ChartLineRendererProps["warningOverlay"]
 ): number | undefined {
   return warningOverlay && "tooltipSwatch" in warningOverlay && warningOverlay.tooltipSwatch

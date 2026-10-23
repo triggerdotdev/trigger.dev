@@ -376,7 +376,7 @@ function QuietFor({ date }: { date: Date | string }) {
   return <span suppressHydrationWarning>quiet for {text}</span>;
 }
 
-export function LastActivityCell({ alert }: { alert: AlertListRow }) {
+function LastActivityCell({ alert }: { alert: AlertListRow }) {
   if (!alert.lastEventAt) return <span className="text-text-dimmed">–</span>;
   if (alert.status === "active" && alert.lastEventAt) {
     return <QuietFor date={alert.lastEventAt} />;

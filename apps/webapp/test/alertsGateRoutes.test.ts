@@ -8,6 +8,7 @@ const STATE = vi.hoisted(() => ({
   denyAlertsRead: false,
   denyAlertsWrite: false,
   denyProduction: false,
+  denyProductionWrites: false,
   created: undefined as unknown,
   envType: "DEVELOPMENT",
   passedGate: false,
@@ -21,7 +22,8 @@ vi.mock("~/services/routeBuilders/dashboardBuilder", () => {
           resource.type === "alerts" &&
           ((STATE.denyAlertsRead && action === "read") ||
             (STATE.denyAlertsWrite && action === "write") ||
-            (STATE.denyProduction && resource.envType === "PRODUCTION"))
+            (STATE.denyProduction && resource.envType === "PRODUCTION") ||
+            (STATE.denyProductionWrites && action !== "read" && resource.envType === "PRODUCTION"))
         ),
     };
     const auth = options?.authorization;
@@ -33,7 +35,10 @@ vi.mock("~/services/routeBuilders/dashboardBuilder", () => {
   return { dashboardLoader: wrap, dashboardAction: wrap };
 });
 
-vi.mock("~/services/session.server", () => ({ requireUserId: async () => "user_1" }));
+vi.mock("~/services/session.server", () => ({
+  requireUserId: async () => "user_1",
+  hasAdminDisplayAccess: () => false,
+}));
 
 vi.mock("~/db.server", () => ({
   prisma: {
@@ -69,6 +74,14 @@ vi.mock("~/v3/alertsWorker.server", () => ({ alertsWorker: { enqueue: async () =
 
 vi.mock("~/components/alerts/hasLegacyAlerts.server", () => ({
   hasLegacyAlerts: async () => ({ hasLegacyAlerts: true, hasMigratableLegacyAlerts: false }),
+}));
+
+vi.mock("~/presenters/v3/AlertsListPresenter.server", () => ({
+  AlertsListPresenter: class {
+    async call() {
+      return { rows: [], page: 1, totalPages: 1, truncated: false };
+    }
+  },
 }));
 
 vi.mock("~/presenters/v3/AlertChannelListPresenter.server", async (importOriginal) => ({
@@ -171,6 +184,7 @@ beforeEach(() => {
   STATE.denyAlertsRead = false;
   STATE.denyAlertsWrite = false;
   STATE.denyProduction = false;
+  STATE.denyProductionWrites = false;
   STATE.created = undefined;
   STATE.envType = "DEVELOPMENT";
   STATE.passedGate = false;
@@ -253,6 +267,29 @@ describe("loaders for an environment the role is denied", () => {
       } as never)
     );
     expect(STATE.passedGate).toBe(true);
+  });
+});
+
+describe("alerts list write and delete gate", () => {
+  beforeAll(async () => {
+    mods.list ??= await import(`~/routes/${P}.alerts/route`);
+  }, 240_000);
+
+  const listData = async (envType: string) => {
+    STATE.enabled = true;
+    STATE.denyProductionWrites = true;
+    STATE.envType = envType;
+    const res = (await mods.list.loader!({
+      request: new Request("http://localhost/x"),
+      params,
+      context: {},
+    } as never)) as { data?: unknown };
+    return (res.data ?? res) as { canWrite: boolean; canDelete: boolean };
+  };
+
+  it("checks write and delete for the environment type", async () => {
+    expect(await listData("PRODUCTION")).toMatchObject({ canWrite: false, canDelete: false });
+    expect(await listData("DEVELOPMENT")).toMatchObject({ canWrite: true, canDelete: true });
   });
 });
 

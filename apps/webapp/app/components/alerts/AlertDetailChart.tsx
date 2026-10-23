@@ -58,7 +58,7 @@ const FLUSH_CARD = "rounded-none border-0 bg-transparent";
 
 const OCCURRENCE_SERIES = [{ key: "count", label: "Occurrences", color: EVENT_CHART_COLOR }];
 
-export function healthLegend(
+function healthLegend(
   separate: boolean,
   componentSeries: Parameters<typeof healthQueriesLegend>[0]
 ) {

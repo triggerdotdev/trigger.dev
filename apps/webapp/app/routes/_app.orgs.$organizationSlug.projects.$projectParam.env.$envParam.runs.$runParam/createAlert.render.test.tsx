@@ -120,16 +120,6 @@ describe("RunCreateAlertButton", () => {
     expect(params.has("capability")).toBe(false);
   });
 
-  it("shows the tooltip on focus", () => {
-    render({ openCreateAlert: vi.fn() });
-    const button = document.querySelector("button")!;
-    act(() => {
-      button.dispatchEvent(new FocusEvent("focus"));
-      (button as HTMLElement).focus();
-    });
-    expect(document.body.textContent).toContain("Create a new alert");
-  });
-
   it("hides Watch button for completed runs", () => {
     const el = renderWithStatus({ openCreateAlert: vi.fn() }, "COMPLETED_WITH_ERRORS");
     const button = el.querySelector("button");

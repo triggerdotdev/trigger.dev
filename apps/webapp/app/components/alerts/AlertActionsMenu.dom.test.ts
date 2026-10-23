@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
+import { renderToStaticMarkup } from "react-dom/server";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { DashboardAgentProvider } from "~/components/dashboard-agent/dashboardAgentLauncher";
@@ -289,5 +290,72 @@ describe("row status actions for rows with a channel issue", () => {
     const active = titles({ ...ROW, status: "active" });
     expect(active).toContain("Mark as Inactive");
     expect(active).not.toContain("Mark as Resolved");
+  });
+});
+
+describe("AlertActionsPopoverContent permissions", () => {
+  function buttons(
+    status: AlertListRow["status"],
+    canWrite = true,
+    canDelete = true,
+    expiresAt: string | null = null
+  ) {
+    const noop = () => {};
+    const agent = { open: false, openWith: noop } as unknown as React.ComponentProps<
+      typeof DashboardAgentProvider
+    >["value"];
+    const html = renderToStaticMarkup(
+      createElement(
+        OperatingSystemContextProvider,
+        { platform: "mac" },
+        createElement(
+          ShortcutsProvider,
+          null,
+          createElement(
+            DashboardAgentProvider,
+            { value: agent },
+            createElement(AlertActionsPopoverContent, {
+              alert: {
+                id: "a1",
+                name: "Depth",
+                conditionSummary: "> 100",
+                status,
+                expiresAt,
+              } as AlertListRow,
+              canWrite,
+              canDelete,
+              onClose: noop,
+              onResolve: noop,
+              onStop: noop,
+              onActivate: noop,
+              onEdit: noop,
+              onDelete: noop,
+            })
+          )
+        )
+      )
+    );
+    return [...html.matchAll(/<button([^>]*)>([\s\S]*?)<\/button>|<hr/g)].map((m) =>
+      m[0] === "<hr"
+        ? { title: "---", disabled: false }
+        : {
+            title: m[2]!.replace(/<[^>]+>/g, "").trim(),
+            disabled: m[1]!.includes('disabled=""'),
+          }
+    );
+  }
+
+  it("disables every write action without write:alerts, leaving Investigate", () => {
+    for (const status of ["needs_attention", "active", "inactive"] as const) {
+      for (const item of buttons(status, false).filter((b) => b.title !== "---")) {
+        expect(item.disabled).toBe(item.title !== "Investigate");
+      }
+    }
+    expect(buttons("inactive").every((item) => !item.disabled)).toBe(true);
+  });
+
+  it("disables Delete without delete:alerts", () => {
+    const disabled = buttons("inactive", true, false).filter((item) => item.disabled);
+    expect(disabled.map((item) => item.title)).toEqual(["Delete"]);
   });
 });

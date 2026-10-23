@@ -39,13 +39,13 @@ const EVENT_LABEL: Record<AlertDetailEvent["type"], string> = {
   stopped: "Stopped",
 };
 
-export const LEVEL_DESCRIPTIONS: Record<AlertLevel, string> = {
+const LEVEL_DESCRIPTIONS: Record<AlertLevel, string> = {
   ERROR: "The condition was met and the alert was raised.",
   WARN: "The alert expired or was stopped.",
   INFO: "The condition recovered or you resolved the alert.",
 };
 
-export function LevelBreakdown() {
+function LevelBreakdown() {
   return (
     <div className="flex flex-col gap-2.5">
       {(Object.keys(LEVEL_DESCRIPTIONS) as AlertLevel[]).map((level) => (
