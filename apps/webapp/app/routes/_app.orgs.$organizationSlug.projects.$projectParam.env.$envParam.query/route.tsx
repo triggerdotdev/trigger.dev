@@ -12,8 +12,10 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { QueryPresenter } from "~/presenters/v3/QueryPresenter.server";
 import { executeQuery, getDefaultPeriod } from "~/services/queryService.server";
 import { hasAdminDisplayAccess, requireUser } from "~/services/session.server";
-import { EnvironmentParamSchema, queryPath } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, queryPath, v3ProjectAlertsPath } from "~/utils/pathBuilder";
 import { canAccessQuery } from "~/v3/canAccessQuery.server";
+import { canUseAlertsList, canUseAlertsListForSlug } from "~/v3/canUseAlertsList.server";
+import { tryAnalyzeDashboardQuery } from "~/v3/services/alerts/queryAlerts/queryAlertPrefill.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -76,6 +78,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     history,
     isAdmin,
     maxRows: env.QUERY_CLICKHOUSE_MAX_RETURNED_ROWS,
+    canWatch: await canUseAlertsList({
+      orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+      user,
+    }),
   });
 };
 
@@ -184,6 +190,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   // `hasAdminDisplayAccess`: this decides what the request may run, and "view as user" only changes
   // what is shown — the loader is what hides the EXPLAIN control.
   const explain = explainParam === "true" && (user.admin || user.isImpersonating);
+  const alertAnalysis = (await canUseAlertsListForSlug(user.id, organizationSlug))
+    ? { query, analysis: tryAnalyzeDashboardQuery(query) }
+    : null;
 
   try {
     const queryResult = await executeQuery({
@@ -218,6 +227,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           generatedSql: null,
           queryId: null,
           periodClipped: null,
+          alertAnalysis,
         },
         { status: 400 }
       );
@@ -235,6 +245,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       queryId: queryResult.queryId,
       periodClipped: queryResult.periodClipped,
       maxQueryPeriod: queryResult.maxQueryPeriod,
+      alertAnalysis,
     });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error executing query";
@@ -261,7 +272,7 @@ export const handle: Handle = {
 };
 
 export default function Page() {
-  const { defaultPeriod, defaultQuery, history, isAdmin, maxRows } =
+  const { defaultPeriod, defaultQuery, history, isAdmin, maxRows, canWatch } =
     useTypedLoaderData<typeof loader>();
 
   const organization = useOrganization();
@@ -301,6 +312,9 @@ export default function Page() {
       queryActionUrl={queryActionUrl}
       mode={{ type: "standalone" }}
       maxPeriodDays={maxPeriodDays}
+      watchAlertsPath={
+        canWatch ? v3ProjectAlertsPath(organization, project, environment) : undefined
+      }
     />
   );
 }

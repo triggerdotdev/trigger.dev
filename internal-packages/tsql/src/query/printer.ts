@@ -98,6 +98,8 @@ interface JoinExprResponse {
 export class ClickHousePrinter {
   /** Stack of AST nodes being visited (for context) */
   private stack: AST[] = [];
+  /** Index of the top-level UNION branch being printed */
+  private unionBranch = 0;
   /** Indent level for pretty printing */
   private indentLevel = -1;
   /** Tab size for pretty printing */
@@ -298,12 +300,15 @@ export class ClickHousePrinter {
 
   private visitSelectSetQuery(node: SelectSetQuery): string {
     this.indentLevel--;
+    const topLevel = this.stack.length === 1;
+    if (topLevel) this.unionBranch = 0;
     let ret = this.visit(node.initial_select_query);
     if (this.pretty) {
       ret = ret.trim();
     }
 
     for (const expr of node.subsequent_select_queries) {
+      if (topLevel) this.unionBranch++;
       let query = this.visit(expr.select_query);
       if (this.pretty) {
         query = query.trim();
@@ -1821,8 +1826,8 @@ export class ClickHousePrinter {
       }
     }
 
-    // Add alias
-    if (node.alias) {
+    // Add alias (direct table references already printed theirs)
+    if (node.alias && (node.table as Field | undefined)?.expression_type !== "field") {
       joinStrings.push(`AS ${this.printIdentifier(node.alias)}`);
     }
 
@@ -2176,6 +2181,19 @@ export class ClickHousePrinter {
       if (validColumns.has(column)) {
         guards.push(this.createConditionExpression(column, condition, tableAlias));
       }
+    }
+
+    for (const window of this.context.windowConditions) {
+      if (window.table !== tableSchema.name) continue;
+      if (window.branch !== undefined && window.branch !== this.unionBranch) continue;
+      guards.push(
+        this.createConditionExpression(
+          window.column,
+          { op: "gte", value: window.from },
+          tableAlias
+        ),
+        this.createConditionExpression(window.column, { op: "lt", value: window.to }, tableAlias)
+      );
     }
 
     // Add required filters from the table schema (e.g., engine = 'V2')

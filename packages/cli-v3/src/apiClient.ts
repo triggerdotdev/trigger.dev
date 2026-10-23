@@ -197,6 +197,8 @@ export type CreateMonitoringAlertRequestBody = {
   behavior: { expiresAt?: string };
   notifiers: Array<Record<string, unknown>>;
   name?: string;
+  query?: string;
+  signal?: { mode: "threshold" | "absence" | "match"; measure?: string };
 };
 
 export class CliApiClient {
@@ -1224,6 +1226,22 @@ export class CliApiClient {
         method: "POST",
         headers: this.getHeaders(),
         body: JSON.stringify(body),
+      }
+    );
+  }
+
+  async analyzeAlertQuery(projectRef: string, query: string) {
+    if (!this.accessToken) {
+      throw new Error("analyzeAlertQuery: No access token");
+    }
+
+    return wrapZodFetch(
+      z.object({ analysis: z.record(z.string(), z.unknown()) }),
+      `${this.apiURL}/api/v1/projects/${projectRef}/monitoring-alerts/analyze-query`,
+      {
+        method: "POST",
+        headers: this.getHeaders(),
+        body: JSON.stringify({ query }),
       }
     );
   }

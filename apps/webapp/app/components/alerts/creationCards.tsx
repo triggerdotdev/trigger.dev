@@ -1,4 +1,5 @@
 import { EyeIcon } from "@heroicons/react/20/solid";
+import type { ReactNode } from "react";
 import { ChatActionsRow, ChatSystemBlock } from "~/components/dashboard-agent/chat-layout";
 import type { AlertCreatedBlock } from "@internal/dashboard-agent-contracts";
 import { WatchResultBlock } from "~/components/dashboard-agent/WatchResultBlock";
@@ -20,14 +21,19 @@ export type ReviewCardActions = {
   onStartOver: () => void;
   submitting?: boolean;
   blockedReason?: string;
+  createDisabled?: boolean;
+  onPreview?: () => void;
+  previewDisabled?: boolean;
 };
 
 export function WatchStyleReviewCard({
   fields,
   actions,
+  detail,
 }: {
   fields: ReviewCardFields;
   actions: ReviewCardActions;
+  detail?: ReactNode;
 }) {
   const scopeVal = fields.scopeValue ? ` · ${fields.scopeValue}` : "";
 
@@ -39,11 +45,22 @@ export function WatchStyleReviewCard({
         <ChatActionsRow>
           <Button
             variant="primary/small"
-            disabled={actions.submitting || Boolean(actions.blockedReason)}
+            disabled={
+              actions.submitting || actions.createDisabled || Boolean(actions.blockedReason)
+            }
             onClick={actions.onCreate}
           >
             {actions.submitting ? "Creating…" : "Create alert"}
           </Button>
+          {actions.onPreview ? (
+            <Button
+              variant="secondary/small"
+              disabled={actions.previewDisabled}
+              onClick={actions.onPreview}
+            >
+              Preview
+            </Button>
+          ) : null}
           <Button variant="minimal/small" onClick={actions.onCustomize}>
             Customize
           </Button>
@@ -54,6 +71,7 @@ export function WatchStyleReviewCard({
       }
     >
       <p className="truncate text-sm font-medium text-text-bright">{fields.name}</p>
+      {detail}
       <p className="text-xs tabular-nums text-text-dimmed">{fields.conditionSummary}</p>
       <p className="text-xs text-text-dimmed">
         {fields.environmentTitle ? `${fields.environmentTitle} · ` : null}

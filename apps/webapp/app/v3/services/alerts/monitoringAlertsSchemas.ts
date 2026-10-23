@@ -49,5 +49,17 @@ export const MonitoringAlertsCreateBodySchema = z
         message: "A chat notifier must include chatId",
       }),
     name: z.string().optional(),
+    query: z.string().max(8192).optional(),
+    signal: z
+      .object({ mode: z.enum(["threshold", "absence", "match"]), measure: z.string().optional() })
+      .optional(),
   })
-  .refine(branchOnlyForPreview.check, branchOnlyForPreview.issue);
+  .refine(branchOnlyForPreview.check, branchOnlyForPreview.issue)
+  .refine(
+    (v) => v.capabilityKey === "custom.query" || (v.query === undefined && v.signal === undefined),
+    { message: "query and signal are only valid for the custom.query capability", path: ["query"] }
+  );
+
+export const MonitoringAlertsAnalyzeBodySchema = z.object({
+  query: z.string().min(1).max(8192),
+});

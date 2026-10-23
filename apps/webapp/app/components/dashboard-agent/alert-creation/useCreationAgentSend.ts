@@ -4,9 +4,11 @@ import {
   alertDraftPatchSchema,
   applyDraftPatch,
   errorGroupToResolve,
+  queryWatchFromPatch,
   type ToolResultPayload,
 } from "./draftPatch";
 import type { SystemLine } from "~/components/alerts/CreationTranscript";
+import type { QueryWatchPrefill } from "~/components/alerts/QueryAlertTranscript";
 import type { ResolveErrorGroup } from "~/components/alerts/errorGroupOptions";
 import { encodeErrorGroupScope } from "~/utils/errorGroupScope";
 
@@ -38,6 +40,7 @@ export type CreationAgentSendDeps = {
   onPatchApplied: (next: FlowAnswers) => void;
   resetKey?: number;
   resolveErrorGroup?: ResolveErrorGroup;
+  onQueryWatch?: (watch: QueryWatchPrefill) => void;
 };
 
 export type CreationAgentSend = {
@@ -58,6 +61,7 @@ export function useCreationAgentSend({
   onPatchApplied,
   resetKey,
   resolveErrorGroup,
+  onQueryWatch,
 }: CreationAgentSendDeps): CreationAgentSend {
   const [systemLines, setSystemLines] = useState<SystemLine[]>([]);
   useEffect(() => {
@@ -80,16 +84,21 @@ export function useCreationAgentSend({
   });
   const onPatchAppliedRef = useRef(onPatchApplied);
   const resolveErrorGroupRef = useRef(resolveErrorGroup);
+  const onQueryWatchRef = useRef(onQueryWatch);
   useEffect(() => {
     onPatchAppliedRef.current = onPatchApplied;
     resolveErrorGroupRef.current = resolveErrorGroup;
+    onQueryWatchRef.current = onQueryWatch;
   });
 
   const handleDraftPatches = useCallback((results: ToolResultPayload[]) => {
     for (const result of results) {
       const parsed =
         result.ok && result.patch ? alertDraftPatchSchema.safeParse(result.patch) : undefined;
-      if (parsed?.success) {
+      const queryWatch = parsed?.success ? queryWatchFromPatch(parsed.data) : undefined;
+      if (queryWatch) {
+        onQueryWatchRef.current?.(queryWatch);
+      } else if (parsed?.success) {
         const patched = applyDraftPatch(answersRef.current, parsed.data);
         onPatchAppliedRef.current(patched);
         answersRef.current = patched;

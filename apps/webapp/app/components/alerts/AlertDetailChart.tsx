@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useUserTimeZone } from "~/components/primitives/DateTime";
 import { DetailChartBlock } from "~/components/primitives/DetailChartBlock";
 import { TimeFilter } from "~/components/runs/v3/SharedFilters";
 import type { AlertDetail } from "~/presenters/v3/AlertDetailPresenter.server";
 import { HealthViewToggle, type HealthView } from "./HealthViewToggle";
+import { GroupsDropdown } from "./GroupsDropdown";
 import { PreviewChartCard } from "./PreviewChartCard";
 import { alertChartInfo } from "./alertSummaries";
 import { ActivityBars, EVENT_CHART_COLOR } from "./ActivityBars";
@@ -38,8 +39,10 @@ import {
 import {
   AlertMultiSeriesChart,
   AlertThresholdChart,
+  assignGroupColors,
   thresholdChartLegend,
 } from "./AlertThresholdChart";
+import { defaultGroupSelection, MAX_VISIBLE_GROUPS } from "./queryGroupSelection";
 
 const METRIC_LABEL: Record<string, string> = {
   "queue.depth": "Depth",
@@ -90,12 +93,47 @@ type AlertDetailChartProps = {
   window: DetailWindow & { isLifetime?: boolean; explicitTo?: boolean };
   now: Date;
   createdAt?: Date;
+  queryGroups?: string[];
+  querySeriesMode?: "threshold" | "absence" | "match";
 };
 
 export function AlertDetailChart(props: AlertDetailChartProps) {
   const [healthView, setHealthView] = useState<HealthView>("together");
-  const { alert, window } = props;
+  const [picked, setPicked] = useState<string[] | null>(null);
+  const { alert, window, metricSeriesMap, queryGroups = [] } = props;
   const showToggle = alert.kind === "state" && (props.componentSeries?.length ?? 0) > 1;
+  const grouped =
+    alert.kind === "threshold" && props.querySeriesMode !== "match" && queryGroups.length > 0;
+  const defaults = useMemo(
+    () =>
+      grouped
+        ? defaultGroupSelection({
+            groups: queryGroups,
+            seriesMap: metricSeriesMap,
+            operator: alert.operator,
+            range: { since: window.since.getTime(), until: window.until.getTime() },
+          })
+        : [],
+    [grouped, queryGroups, metricSeriesMap, alert.operator, window.since, window.until]
+  );
+  const showPicker = grouped && queryGroups.length > 1;
+  const selected = showPicker ? (picked ?? defaults) : defaults;
+  // Colours carry over from the previous selection, so a toggle doesn't repaint other groups.
+  const [colorState, setColorState] = useState({ key: "", colors: new Map<string, string>() });
+  const selectedKey = JSON.stringify(selected);
+  let groupColors = colorState.colors;
+  if (colorState.key !== selectedKey) {
+    groupColors = assignGroupColors(colorState.colors, selected);
+    setColorState({ key: selectedKey, colors: groupColors });
+  }
+  const toggleGroup = (group: string) =>
+    setPicked(
+      selected.includes(group)
+        ? selected.filter((g) => g !== group)
+        : selected.length >= MAX_VISIBLE_GROUPS
+          ? selected
+          : [...selected, group]
+    );
 
   return (
     <DetailChartBlock
@@ -105,9 +143,18 @@ export function AlertDetailChart(props: AlertDetailChartProps) {
         <AlertDetailChartBody
           {...props}
           healthView={healthView}
+          selectedGroups={grouped ? selected : undefined}
+          groupColors={groupColors}
           accessory={
             showToggle ? (
               <HealthViewToggle value={healthView} onChange={setHealthView} />
+            ) : showPicker ? (
+              <GroupsDropdown
+                groups={queryGroups}
+                selected={selected}
+                onToggle={toggleGroup}
+                colors={groupColors}
+              />
             ) : undefined
           }
         />
@@ -125,15 +172,50 @@ function AlertDetailChartBody({
   now,
   createdAt,
   healthView,
+  selectedGroups,
+  groupColors,
+  querySeriesMode,
   accessory,
-}: AlertDetailChartProps & { healthView: HealthView; accessory?: React.ReactNode }) {
+}: AlertDetailChartProps & {
+  healthView: HealthView;
+  selectedGroups?: string[];
+  groupColors?: Map<string, string>;
+  accessory?: React.ReactNode;
+}) {
   const title = alertChartTitle(alert);
   const info = alertChartInfo(alert);
   const raisedAt = alert.episode.raisedAt;
   const timeZone = useUserTimeZone();
 
+  if (querySeriesMode === "match") {
+    const occurrences = (metricSeriesMap.get("__agg__") ?? []).map((p) => ({
+      bucket: p.bucket,
+      count: p.value ?? 0,
+    }));
+    return (
+      <OccurrenceBarsCard
+        alert={alert}
+        occurrences={occurrences}
+        window={window}
+        createdAt={createdAt}
+        timeZone={timeZone}
+        accessory={accessory}
+      />
+    );
+  }
+
   if (alert.kind === "threshold") {
-    const raw = pickThresholdSeries(metricSeriesMap, alert.scope.type);
+    const raw = selectedGroups
+      ? {
+          multi: true as const,
+          seriesMap: new Map(
+            selectedGroups.flatMap((g) => {
+              const points = metricSeriesMap.get(g);
+              return points ? [[g, points] as const] : [];
+            })
+          ),
+        }
+      : pickThresholdSeries(metricSeriesMap, alert.scope.type);
     const start = firstDataAt(window, createdAt, {
       series: raw.multi ? [...raw.seriesMap.values()] : [raw.series],
       events: alert.events,
@@ -162,6 +244,7 @@ function AlertDetailChartBody({
         operator={alert.operator}
         raisedAt={raisedAt}
         timeZone={timeZone}
+        colors={groupColors}
         fill
       />
     ) : (
@@ -186,6 +269,7 @@ function AlertDetailChartBody({
           label,
           threshold,
           operator: alert.operator,
+          colors: groupColors,
         })}
         alwaysShowControls
         accessory={accessory}
@@ -199,6 +283,7 @@ function AlertDetailChartBody({
               operator={alert.operator}
               raisedAt={raisedAt}
               timeZone={timeZone}
+              colors={groupColors}
               fill
               showLegend
             />
@@ -296,10 +381,39 @@ function AlertDetailChartBody({
     );
   }
 
-  const occurrences = (metricSeriesMap.get("__agg__") ?? []).map((p) => ({
-    bucket: p.bucket,
-    count: p.value ?? 0,
-  }));
+  return (
+    <OccurrenceBarsCard
+      alert={alert}
+      occurrences={(metricSeriesMap.get("__agg__") ?? []).map((p) => ({
+        bucket: p.bucket,
+        count: p.value ?? 0,
+      }))}
+      window={window}
+      createdAt={createdAt}
+      timeZone={timeZone}
+      accessory={accessory}
+    />
+  );
+}
+
+function OccurrenceBarsCard({
+  alert,
+  occurrences,
+  window,
+  createdAt,
+  timeZone,
+  accessory,
+}: {
+  alert: AlertDetail;
+  occurrences: { bucket: number; count: number }[];
+  window: DetailWindow;
+  createdAt?: Date;
+  timeZone: string;
+  accessory?: React.ReactNode;
+}) {
+  const raisedAt = alert.episode.raisedAt;
+  const title = alertChartTitle(alert);
+  const info = alertChartInfo(alert);
   const start = firstDataAt(window, createdAt, {
     series: [occurrences.map((p) => ({ bucket: p.bucket, value: p.count }))],
     events: alert.events,

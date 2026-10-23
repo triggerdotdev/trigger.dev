@@ -84,6 +84,7 @@ import {
   type AlertCreatedMessage,
 } from "~/components/alerts/alertCreatedCard";
 import { CreationTranscript } from "~/components/alerts/CreationTranscript";
+import { QueryAlertTranscript, queryWatchPrefill } from "~/components/alerts/QueryAlertTranscript";
 import {
   EditAlertTranscript,
   type EditAlertPrefill,
@@ -560,7 +561,17 @@ export function DashboardAgentPanel({
           : draftFromSearch(location.search, true)
         : undefined
   );
+  const [queryWatch, setQueryWatch] = useState(() =>
+    openSource === "alerts" ? queryWatchPrefill(createAlertPrefill) : undefined
+  );
   const [creationEntrySeq, setCreationEntrySeq] = useState(0);
+  const [queryWatchSeq, setQueryWatchSeq] = useState(0);
+  const queryWatchKey = `${creationEntrySeq}:${queryWatchSeq}`;
+  const [queryCreatedKey, setQueryCreatedKey] = useState<string>();
+  const queryCreatedSig = useRef<string>();
+  const setQueryCreatedSig = (sig: string) => {
+    queryCreatedSig.current = sig;
+  };
   const [creationGeneration, setCreationGeneration] = useState(0);
   const creationAgentChat = useRef<CreationAgentChat>({ seq: -1 });
   const [manualMode, setManualMode] = useState(Boolean(slackResume?.manual));
@@ -571,22 +582,33 @@ export function DashboardAgentPanel({
 
   const prevOpenSourceRef = useRef(openSource);
   if (prevOpenSourceRef.current !== openSource || prevPrefillRef.current !== createAlertPrefill) {
+    const sameCreatedQuery =
+      openSource === "alerts" &&
+      prevOpenSourceRef.current === openSource &&
+      queryCreatedSig.current !== undefined &&
+      queryCreatedSig.current === JSON.stringify(queryWatchPrefill(createAlertPrefill));
     prevOpenSourceRef.current = openSource;
     prevPrefillRef.current = createAlertPrefill;
-    if (openSource === "alerts") {
+    if (sameCreatedQuery) {
+      // The created card stays; don't offer the same alert again.
+    } else if (openSource === "alerts") {
+      queryCreatedSig.current = undefined;
       setCreationMode(true);
       setManualMode(false);
       const draft = createAlertPrefill
         ? prefillToAnswers(createAlertPrefill)
         : draftFromSearch(location.search, true);
       setCreationDraft(draft);
+      setQueryWatch(queryWatchPrefill(createAlertPrefill));
       prevCreateParamKeyRef.current = createSearchKey(location.search);
       setCreationEntrySeq((s) => s + 1);
       setCreationGeneration((g) => g + 1);
       creationAgentChat.current = { seq: -1 };
     } else {
+      queryCreatedSig.current = undefined;
       setCreationMode(false);
       setCreationDraft(undefined);
+      setQueryWatch(undefined);
       prevCreateParamKeyRef.current = "";
     }
   } else if (
@@ -597,6 +619,7 @@ export function DashboardAgentPanel({
     prevCreateParamKeyRef.current = createParamKey;
     setManualMode(false);
     setCreationDraft(draftFromSearch(location.search, true));
+    setQueryWatch(undefined);
     setCreationEntrySeq((s) => s + 1);
     setCreationGeneration((g) => g + 1);
     creationAgentChat.current = { seq: -1 };
@@ -774,6 +797,7 @@ export function DashboardAgentPanel({
     newChat();
     setCreationMode(true);
     setCreationDraft(draftFromSearch(location.search, true));
+    setQueryWatch(undefined);
     setCreationEntrySeq((s) => s + 1);
     setCreationGeneration((g) => g + 1);
   }, [newChat, location.search]);
@@ -1022,6 +1046,16 @@ export function DashboardAgentPanel({
     ]
   );
 
+  const ensureQueryChat = useCallback(async () => {
+    const seq = creationEntrySeqRef.current;
+    const reused = creationChatToReuse(creationAgentChat.current, creationEntrySeq, active?.chatId);
+    const chatId = reused ?? (await creationSession.ensure());
+    if (!chatId) return undefined;
+    const release =
+      !reused && seq === creationEntrySeqRef.current ? creationSession.keep() : undefined;
+    return { chatId, release };
+  }, [active?.chatId, creationEntrySeq, creationSession]);
+
   const creationFlow = useCreationFlowState(
     async (answers: FlowAnswers) => {
       const { ok, chatId, release } = await handleAlertCreated(answers);
@@ -1053,7 +1087,9 @@ export function DashboardAgentPanel({
     navigate({ search: params.toString() }, { replace: true });
   }, [slackResume, project.id, environment.id, setExpiry]); // eslint-disable-line react-hooks/exhaustive-deps -- once per resume
 
-  const creationTitle = creationFlow.created ? "Alert created" : "New alert";
+  const queryCreated = queryCreatedKey === queryWatchKey;
+  const curatedTitle = creationFlow.created ? "Alert created" : "New alert";
+  const creationTitle = queryWatch ? (queryCreated ? "Alert created" : "New alert") : curatedTitle;
   const headerTitle = inEditMode
     ? "Edit alert"
     : inCreationMode
@@ -1071,6 +1107,10 @@ export function DashboardAgentPanel({
     onPatchApplied: creationFlow.patchAnswers,
     resetKey: creationEntrySeq,
     resolveErrorGroup: errorGroupSource.resolve,
+    onQueryWatch: (watch) => {
+      setQueryWatch(watch);
+      setQueryWatchSeq((s) => s + 1);
+    },
   });
 
   const { handleDraftPatches, handleTextReply, handleError } = creationAgentSend;
@@ -1216,28 +1256,54 @@ export function DashboardAgentPanel({
         ) : null}
         {inCreationMode ? (
           <CreationChatShell placement="docked" title={creationTitle}>
-            <CreationTranscript
-              key={creationEntrySeq}
-              queueMetricsEnabled={queueMetricsEnabled}
-              flow={creationFlow}
-              channels={alertChannels}
-              chatId={creationChatId ?? active?.chatId ?? CHAT_CREATED_ON_USE}
-              alertDetailPath={(id) => v3AlertPath(organization, project, environment, id)}
-              onFreeText={sendCreationText}
-              systemLines={creationAgentSend.systemLines}
-              agentStreaming={thinkingChatId !== null && thinkingChatId === active?.chatId}
-              manual={manualMode}
-              onManualChange={setManualMode}
-              onNewChat={restartCreation}
-              density="compact"
-              addChannel={{
-                ...addChannelAccess,
-                resumed: Boolean(slackResume) && creationEntrySeq === 0,
-                onResumeConsumed: () => setSlackResume(undefined),
-              }}
-              errorGroupSource={errorGroupSource}
-              environmentTitle={environmentFullTitle(environment)}
-            />
+            {queryWatch ? (
+              <QueryAlertTranscript
+                key={queryWatchKey}
+                prefill={queryWatch}
+                chat={{
+                  chatId: creationChatId ?? active?.chatId ?? CHAT_CREATED_ON_USE,
+                  ensure: ensureQueryChat,
+                }}
+                onCreated={({ chatId, name }) => {
+                  setQueryCreatedKey(queryWatchKey);
+                  setQueryCreatedSig(JSON.stringify(queryWatch));
+                  revalidator.revalidate();
+                  if (chatId) {
+                    const body = new FormData();
+                    body.set("intent", "rename");
+                    body.set("chatId", chatId);
+                    body.set("title", name);
+                    void fetch(actionPath, { method: "POST", body }).catch(() => {});
+                  }
+                }}
+                environmentTitle={environmentFullTitle(environment)}
+                alertDetailPath={(id) => v3AlertPath(organization, project, environment, id)}
+                onNewChat={restartCreation}
+              />
+            ) : (
+              <CreationTranscript
+                key={creationEntrySeq}
+                queueMetricsEnabled={queueMetricsEnabled}
+                flow={creationFlow}
+                channels={alertChannels}
+                chatId={creationChatId ?? active?.chatId ?? CHAT_CREATED_ON_USE}
+                alertDetailPath={(id) => v3AlertPath(organization, project, environment, id)}
+                onFreeText={sendCreationText}
+                systemLines={creationAgentSend.systemLines}
+                agentStreaming={thinkingChatId !== null && thinkingChatId === active?.chatId}
+                manual={manualMode}
+                onManualChange={setManualMode}
+                onNewChat={restartCreation}
+                density="compact"
+                addChannel={{
+                  ...addChannelAccess,
+                  resumed: Boolean(slackResume) && creationEntrySeq === 0,
+                  onResumeConsumed: () => setSlackResume(undefined),
+                }}
+                errorGroupSource={errorGroupSource}
+                environmentTitle={environmentFullTitle(environment)}
+              />
+            )}
           </CreationChatShell>
         ) : null}
         {loading ? (

@@ -21,13 +21,16 @@ import {
   type QueryEvaluatorConfig,
   type RowCursor,
 } from "../evaluators/queryEvaluator.server";
-import { executeQuery } from "~/services/queryService.server";
+import { executeQuery, type QueryConcurrencyLane } from "~/services/queryService.server";
 import { getLimit } from "~/services/platform.v3.server";
 import { logger } from "~/services/logger.server";
 import { env } from "~/env.server";
 import { z } from "zod";
 
-export function createQueryRowRunner(concurrencyLimit: number): QueryRowRunner {
+export function createQueryRowRunner(
+  concurrencyLimit?: number,
+  options: { userAuthoredQuery?: boolean; lane?: QueryConcurrencyLane } = {}
+): QueryRowRunner {
   return async (query, context, range, opts) => {
     const rowSchema = z.record(z.string(), z.unknown());
     const result = await executeQuery<typeof rowSchema>({
@@ -40,7 +43,13 @@ export function createQueryRowRunner(concurrencyLimit: number): QueryRowRunner {
       from: range.from,
       to: range.to,
       customOrgConcurrencyLimit: concurrencyLimit,
+      concurrency: options.lane ? { lane: options.lane } : undefined,
+      userAuthoredQuery: options.userAuthoredQuery,
       skipTimeConstraint: opts?.fullRetention,
+      windowConditions: opts?.windowConditions,
+      querySettings: opts?.maxRows ? { maxRows: opts.maxRows } : undefined,
+      // Zone-less DateTime output is read as UTC.
+      clickhouseSettings: { session_timezone: "UTC" },
       history: { source: "API", skip: true },
     });
 
@@ -60,6 +69,7 @@ type BindingLogger = {
 export interface ProductionBindingDeps {
   queryRowRunner?: QueryRowRunner;
   queryConcurrency?: number;
+  queryLane?: QueryConcurrencyLane;
   queryEvaluatorConfig?: QueryEvaluatorConfig;
   checkpointLookbackSec?: number;
   seenRetentionSec?: number;
@@ -79,7 +89,8 @@ interface ResolvedDeps {
 export function createProductionEvaluateBinding(
   deps: ProductionBindingDeps
 ): (alert: Alert, capability: AlertCapability) => Promise<BindingResult> {
-  const runner = deps.queryRowRunner ?? createQueryRowRunner(deps.queryConcurrency ?? 1);
+  const runner =
+    deps.queryRowRunner ?? createQueryRowRunner(deps.queryConcurrency, { lane: deps.queryLane });
   const resolved: ResolvedDeps = {
     runner,
     queryEvaluatorConfig: deps.queryEvaluatorConfig,
@@ -151,8 +162,16 @@ function filterParamsForCapability(
 
 const ROW_TIME_COLUMNS = ["group_first_seen", "minute"];
 
-function rowTime(row: Record<string, unknown> | undefined): Date | undefined {
-  const value = ROW_TIME_COLUMNS.map((col) => row?.[col]).find((v) => typeof v === "string");
+function rowTimeColumns(capability: AlertCapability): string[] {
+  const column = capability.binding.rowTimeColumn;
+  return column ? [column] : ROW_TIME_COLUMNS;
+}
+
+function rowTime(
+  row: Record<string, unknown> | undefined,
+  timeColumns: string[]
+): Date | undefined {
+  const value = timeColumns.map((col) => row?.[col]).find((v) => typeof v === "string");
   if (typeof value !== "string") return undefined;
   const parsed = new Date(`${value.replace(" ", "T")}Z`);
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
@@ -160,9 +179,10 @@ function rowTime(row: Record<string, unknown> | undefined): Date | undefined {
 
 function rowCursor(
   row: Record<string, unknown> | undefined,
-  rowKey: string[]
+  rowKey: string[],
+  timeColumns: string[]
 ): RowCursor | undefined {
-  const timeColumn = ROW_TIME_COLUMNS.find((col) => typeof row?.[col] === "string");
+  const timeColumn = timeColumns.find((col) => typeof row?.[col] === "string");
   if (!row || !timeColumn) return undefined;
   const columns = [timeColumn, ...rowKey.filter((col) => col !== timeColumn)];
   return columns.map((col) => [col, String(row[col])]);
@@ -171,10 +191,11 @@ function rowCursor(
 function storedCursor(
   alert: Alert,
   field: "cursor" | "lateCursor",
-  rowKey: string[]
+  rowKey: string[],
+  timeColumns: string[]
 ): RowCursor | undefined {
   const stored = (alert.evaluatorState as Record<string, unknown> | null)?.[field];
-  const allowed = new Set([...ROW_TIME_COLUMNS, ...rowKey]);
+  const allowed = new Set([...timeColumns, ...rowKey]);
   const valid =
     Array.isArray(stored) &&
     stored.length > 0 &&
@@ -234,11 +255,12 @@ async function evaluateQueryBinding(
         now.getTime() - (await getLimit(alert.organizationId, "queryPeriodDays", 30)) * 86_400_000
       )
     : undefined;
+  const observingSince = activatedFloor
+    ? new Date(Math.max(alert.createdAt.getTime(), Date.parse(activatedFloor)))
+    : alert.createdAt;
   const lateSince = checkpointSince(
     checkpoint ? new Date(checkpoint) : undefined,
-    activatedFloor
-      ? new Date(Math.max(alert.createdAt.getTime(), Date.parse(activatedFloor)))
-      : alert.createdAt,
+    observingSince,
     deps.checkpointLookbackSec,
     { now, seenRetentionSec: deps.seenRetentionSec, floor }
   );
@@ -247,7 +269,8 @@ async function evaluateQueryBinding(
     : lateSince;
   const forwardEnd = forwardUntil(now);
   const rowKey = capability.binding.rowKey ?? [];
-  const savedWindow = storedCursor(alert, "lateCursor", rowKey)
+  const timeColumns = rowTimeColumns(capability);
+  const savedWindow = storedCursor(alert, "lateCursor", rowKey, timeColumns)
     ? storedLateWindow(alert)
     : undefined;
   const lateMinSince = Math.max(
@@ -266,6 +289,10 @@ async function evaluateQueryBinding(
           : lateSince,
         until: forwardSince,
       };
+  const matchWindow = {
+    from: new Date(Math.min(lateRange.since.getTime(), forwardSince.getTime())),
+    to: forwardEnd,
+  };
 
   const evaluateRange = (since: Date, until: Date, after: RowCursor | undefined) =>
     evaluateQueryCapability(
@@ -276,6 +303,9 @@ async function evaluateQueryBinding(
         organizationId: alert.organizationId,
         projectId: alert.projectId,
         now,
+        capability,
+        matchWindow,
+        observingSince,
         ctx: usesCheckpoint
           ? {
               checkpoint: clickhouseDateTimeLiteral(since),
@@ -291,7 +321,7 @@ async function evaluateQueryBinding(
   const forward = await evaluateRange(
     forwardSince,
     forwardEnd,
-    storedCursor(alert, "cursor", rowKey)
+    storedCursor(alert, "cursor", rowKey, timeColumns)
   );
   const forwardRows = forward.kind === "occurrence" ? forward.occurrences : [];
   let result = forward;
@@ -305,10 +335,10 @@ async function evaluateQueryBinding(
     const late = await evaluateRange(
       lateRange.since,
       lateRange.until,
-      storedCursor(alert, "lateCursor", rowKey)
+      storedCursor(alert, "lateCursor", rowKey, timeColumns)
     );
     if (late.kind === "occurrence" && late.facts.capped) {
-      lateCursor = rowCursor(late.occurrences.at(-1)?.facts, rowKey);
+      lateCursor = rowCursor(late.occurrences.at(-1)?.facts, rowKey, timeColumns);
     }
     lateDrained = late.kind === "occurrence" && !late.facts.capped;
     if (late.kind === "occurrence" && late.occurrences.length > 0) {
@@ -355,7 +385,7 @@ async function evaluateQueryBinding(
         });
         continue;
       }
-      const time = rowTime(raw.facts);
+      const time = rowTime(raw.facts, timeColumns);
       if (!time) {
         deps.logger.error("alerts.occurrence_row_time_missing", {
           alertId: alert.id,
@@ -378,8 +408,8 @@ async function evaluateQueryBinding(
         capabilityKey: alert.capabilityKey,
       });
       const lastForward = forwardRows.at(-1)?.facts;
-      const newest = rowTime(lastForward);
-      const cursor = rowCursor(lastForward, rowKey);
+      const newest = rowTime(lastForward, timeColumns);
+      const cursor = rowCursor(lastForward, rowKey, timeColumns);
       if (newest && cursor) {
         return {
           result: emitted,
@@ -402,10 +432,10 @@ async function evaluateQueryBinding(
     };
   }
 
-  return queryResultToBindingResult({
-    status: result.outcome,
-    facts: result.facts,
-  });
+  return {
+    ...queryResultToBindingResult({ status: result.outcome, facts: result.facts }),
+    evaluatorStatePatch: activatedFloor ? { activatedFloor } : undefined,
+  };
 }
 
 async function evaluateCompositeBinding(

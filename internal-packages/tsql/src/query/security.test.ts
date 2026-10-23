@@ -699,6 +699,80 @@ describe("Multi-join Tenant Guard Qualification", () => {
     expect(whereClause).toMatch(/\be2\b[^,]*organization_id/);
   });
 
+  it("prints each table alias once in JOIN queries", () => {
+    const { sql } = compile(
+      "SELECT count() FROM task_runs r JOIN task_events e ON r.id = e.run_id"
+    );
+    expect(sql).toContain("trigger_dev.task_runs_v2 AS r JOIN trigger_dev.task_events_v2 AS e ON");
+    expect(sql).not.toMatch(/AS r AS r|AS e AS e/);
+  });
+
+  it("keeps the alias on subqueries", () => {
+    const { sql } = compile("SELECT s.id FROM (SELECT id FROM task_runs) AS s");
+    expect(sql).toMatch(/\) AS s\b/);
+  });
+
+  describe("window conditions", () => {
+    const from = new Date("2026-10-22T10:00:00.000Z");
+    const to = new Date("2026-10-22T11:00:00.000Z");
+    const windowConditions = [
+      { table: "task_runs", column: "created_at", from, to },
+      { table: "task_events", column: "timestamp", from, to },
+    ];
+
+    it("bounds every joined table on its own column", () => {
+      const { sql } = compile(
+        "SELECT count() FROM task_runs r JOIN task_events e ON r.id = e.run_id",
+        { windowConditions }
+      );
+      expect(sql).toContain("greaterOrEquals(r.created_at,");
+      expect(sql).toContain("less(r.created_at,");
+      expect(sql).toContain("greaterOrEquals(e.timestamp,");
+      expect(sql).toContain("less(e.timestamp,");
+    });
+
+    it("bounds subqueries and UNION branches", () => {
+      const { sql } = compile(
+        "SELECT id FROM (SELECT id FROM task_runs) UNION ALL SELECT run_id FROM task_events",
+        { windowConditions }
+      );
+      expect(sql).toContain("less(task_runs.created_at,");
+      expect(sql).toContain("less(task_events.timestamp,");
+    });
+
+    it("scopes a branch window to its top-level UNION branch", () => {
+      const later = new Date("2026-10-22T12:00:00.000Z");
+      const { sql, params } = compile(
+        "SELECT count() FROM (SELECT id FROM task_runs UNION ALL SELECT id FROM task_runs) UNION ALL SELECT count() FROM task_runs",
+        {
+          windowConditions: [
+            { table: "task_runs", column: "created_at", from, to, branch: 0 },
+            { table: "task_runs", column: "created_at", from: to, to: later, branch: 1 },
+          ],
+        }
+      );
+      const bounds = (part: string) =>
+        [
+          ...part.matchAll(
+            /(greaterOrEquals|less)\(task_runs\.created_at, toDateTime64\(\{(\w+):/g
+          ),
+        ].map((m) => params[m[2]!]);
+      // The first two parts are branch 0's inner UNION, the third is branch 1.
+      const parts = sql.split("UNION ALL");
+      expect(parts).toHaveLength(3);
+      expect(bounds(parts[0]!)).toEqual(["2026-10-22 10:00:00.000", "2026-10-22 11:00:00.000"]);
+      expect(bounds(parts[1]!)).toEqual(["2026-10-22 10:00:00.000", "2026-10-22 11:00:00.000"]);
+      expect(bounds(parts[2]!)).toEqual(["2026-10-22 11:00:00.000", "2026-10-22 12:00:00.000"]);
+    });
+
+    it("leaves tables without a window condition alone", () => {
+      const { sql } = compile("SELECT count() FROM task_events", {
+        windowConditions: [windowConditions[0]!],
+      });
+      expect(sql).not.toContain("timestamp");
+    });
+  });
+
   it("should ensure guards cannot bind to wrong table by verifying separate qualifications", () => {
     const { sql, params } = compile(`
       SELECT r.id, e.event_type 

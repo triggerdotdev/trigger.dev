@@ -1101,8 +1101,8 @@ const EnvironmentSchema = z
     ALERT_SMTP_SECURE: BoolEnv.optional(),
     ALERT_SMTP_USER: z.string().optional(),
     ALERT_SMTP_PASSWORD: z.string().optional(),
-    /** Per-project concurrency limit for TSQL queries issued by the alert evaluator (§3.6). */
-    ALERT_QUERY_CONCURRENCY: z.coerce.number().int().default(1),
+    /** Per-project query concurrency for alert evaluations, separate from the user lane. */
+    ALERTS_QUERY_CONCURRENCY_LIMIT: z.coerce.number().int().min(1).default(2),
     /** Min sample size for runs.failure_rate before the rate is trusted (DEC-113, value TBD). */
     ALERT_FAILURE_RATE_MIN_VOLUME: z.coerce.number().int().default(10),
     ALERT_CHECKPOINT_LOOKBACK_SEC: z.coerce.number().int().min(0).default(3600),

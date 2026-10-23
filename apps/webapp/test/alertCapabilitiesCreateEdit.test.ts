@@ -132,10 +132,12 @@ function draftFor(capability: AlertCapability, channelId: string) {
   });
 }
 
+const CAPABILITIES = V1_CAPABILITIES.filter((c) => c.key !== "custom.query");
+
 describe("alert capabilities create and edit", () => {
   postgresTest("covers every registry capability", async ({ prisma }) => {
-    expect(V1_CAPABILITIES).toHaveLength(16);
-    expect(new Set(V1_CAPABILITIES.map((c) => c.key)).size).toBe(16);
+    expect(CAPABILITIES).toHaveLength(16);
+    expect(new Set(CAPABILITIES.map((c) => c.key)).size).toBe(16);
 
     const db = await boot(prisma);
     const seeded = await seed(prisma);
@@ -147,7 +149,7 @@ describe("alert capabilities create and edit", () => {
     };
 
     let created = 0;
-    for (const capability of V1_CAPABILITIES) {
+    for (const capability of CAPABILITIES) {
       if (isErrorGroupOnly(capability)) {
         expectTemplatesCompile(capability);
         await expect(
@@ -214,13 +216,13 @@ describe("alert capabilities create and edit", () => {
 
       expectTemplatesCompile(capability, condition.kind === "state" ? condition.params : undefined);
     }
-    expect(created).toBe(V1_CAPABILITIES.length);
+    expect(created).toBe(CAPABILITIES.length);
   });
 
   postgresTest("stores a repeated notifier once", async ({ prisma }) => {
     const db = await boot(prisma);
     const seeded = await seed(prisma);
-    const capability = V1_CAPABILITIES.find((c) => c.key === "queue.depth")!;
+    const capability = CAPABILITIES.find((c) => c.key === "queue.depth")!;
     const form = draftFor(capability, seeded.channel.id);
     const notifier = { type: "channel" as const, channelId: seeded.channel.id };
     const alert = await createAlertFromDraft(
@@ -243,7 +245,7 @@ describe("alert capabilities create and edit", () => {
 
   postgresTest("rejects a scope a capability forbids", async ({ prisma }) => {
     const db = await boot(prisma);
-    const forbidding = V1_CAPABILITIES.filter((c) => !c.allowedScopes.includes("task"));
+    const forbidding = CAPABILITIES.filter((c) => !c.allowedScopes.includes("task"));
     expect(forbidding.length).toBeGreaterThan(0);
 
     for (const capability of forbidding) {

@@ -10,8 +10,18 @@ import {
 } from "@internal/alert-contracts";
 import { parseErrorGroupScope } from "~/utils/errorGroupScope";
 import type { PrismaClientOrTransaction } from "~/db.server";
+import { env } from "~/env.server";
+import { querySchemas } from "~/v3/querySchemas";
+import {
+  analyzeQueryForAlert,
+  queryWindowIssue,
+  suggestQueryAlertName,
+  toQuerySignal,
+  type QueryAlertChoice,
+} from "./queryAlerts/analyzeQueryForAlert.server";
 import { createAlertAndSchedule, type AlertLifecycleDeps } from "./alertLifecycle.server";
 import { type AlertDraftScope } from "./alertDraft";
+import { absenceWindowFloor, absenceWindowMessage } from "./validateAlertDraft.server";
 import type { Alert } from "./storage/alertStore.server";
 
 export type { AlertDraftScope };
@@ -27,7 +37,12 @@ export type CreateAlertFromDraftParams = {
   notifiers: NotifierRef[];
   createdBy: string;
   name?: string;
+  query?: string;
+  querySignalChoice?: QueryAlertChoice;
 };
+
+const QUERY_CAPABILITY_KEY = "custom.query";
+const KIND_FOR_MODE = { threshold: "threshold", absence: "absence", match: "occurrence" } as const;
 
 export class UnknownCapabilityError extends Error {
   constructor(capabilityKey: string) {
@@ -43,7 +58,7 @@ export class IncompatibleAlertKindError extends Error {
 
 export class AbsenceWindowTooShortError extends Error {
   constructor(public readonly minWindowSec: number) {
-    super(`Quiet window must be at least ${minWindowSec} seconds`);
+    super(absenceWindowMessage(minWindowSec));
   }
 }
 
@@ -71,13 +86,28 @@ export class IncompleteChatNotifierError extends Error {
   }
 }
 
+export class InvalidQueryAlertError extends Error {
+  constructor(message: string) {
+    super(message);
+  }
+}
+
 export class InvalidConditionParamsError extends Error {
   constructor(message: string) {
     super(message);
   }
 }
 
-const DEFAULT_MIN_ABSENCE_WINDOW_SEC = 1800;
+export const QUERY_DOMAIN_ERRORS = [
+  UnknownCapabilityError,
+  IncompatibleAlertKindError,
+  AbsenceWindowTooShortError,
+  InvalidConditionParamsError,
+  InvalidScopeForCapabilityError,
+  NoNotifiersError,
+  IncompleteChatNotifierError,
+  InvalidNotifierError,
+];
 
 /** Checks a draft against the capability registry and returns the parsed condition. */
 export function assertAlertDraftValid(
@@ -98,8 +128,8 @@ export function assertAlertDraftValid(
     throw new InvalidScopeForCapabilityError(params.scope.type, params.capabilityKey);
   }
 
-  if (params.condition.kind === "absence") {
-    const minWindowSec = capability.minWindowSec ?? DEFAULT_MIN_ABSENCE_WINDOW_SEC;
+  const minWindowSec = absenceWindowFloor(capability);
+  if (params.condition.kind === "absence" && minWindowSec !== undefined) {
     if (params.condition.quietWindowSec < minWindowSec) {
       throw new AbsenceWindowTooShortError(minWindowSec);
     }
@@ -133,6 +163,46 @@ export function assertAlertDraftValid(
   return conditionSchema.parse(params.condition);
 }
 
+function deriveQueryAlert(params: CreateAlertFromDraftParams, condition: Condition) {
+  const query = params.query?.trim();
+  if (!query) throw new InvalidQueryAlertError("A query is required");
+  const choice = params.querySignalChoice;
+  if (!choice) throw new InvalidQueryAlertError("Choose how the query should alert");
+
+  const analysis = analyzeQueryForAlert(query, {
+    tableSchemas: querySchemas,
+    flags: { QUEUE_METRICS: env.QUEUE_METRICS_QUERY_TABLES_VISIBLE === "1" },
+  });
+  const result = toQuerySignal(analysis, choice);
+  if (!result.ok) {
+    const reason = analysis.ok
+      ? analysis.unsupported.find((u) => u.mode === choice.mode)?.message
+      : (analysis.errors[0]?.message ?? analysis.unsupported[0]?.message);
+    throw new InvalidQueryAlertError(reason ?? result.message);
+  }
+
+  if (condition.kind !== KIND_FOR_MODE[choice.mode]) {
+    throw new InvalidQueryAlertError(
+      `"${condition.kind}" condition doesn't match the "${choice.mode}" mode`
+    );
+  }
+
+  const windowSec =
+    condition.kind === "threshold"
+      ? condition.windowSec
+      : condition.kind === "absence"
+        ? condition.quietWindowSec
+        : undefined;
+  const windowIssue = windowSec === undefined ? undefined : queryWindowIssue(analysis, windowSec);
+  if (windowIssue) throw new InvalidQueryAlertError(windowIssue);
+
+  return {
+    query,
+    querySignal: result.signal,
+    name: params.name ?? suggestQueryAlertName(analysis, choice),
+  };
+}
+
 export function uniqueNotifiers(notifiers: NotifierRef[]): NotifierRef[] {
   const seen = new Set<string>();
   return notifiers.filter((notifier) => {
@@ -154,6 +224,8 @@ export async function createAlertFromDraft(
   deps?: AlertLifecycleDeps
 ): Promise<Alert> {
   const condition = assertAlertDraftValid(params);
+  const derived =
+    params.capabilityKey === QUERY_CAPABILITY_KEY ? deriveQueryAlert(params, condition) : undefined;
 
   return createAlertAndSchedule(
     db,
@@ -162,12 +234,17 @@ export async function createAlertFromDraft(
       projectId: params.projectId,
       environmentId: params.environmentId,
       capabilityKey: params.capabilityKey,
-      params: { environmentId: params.environmentId, scope: params.scope },
+      params: {
+        environmentId: params.environmentId,
+        scope: params.scope,
+        ...(derived && { querySignal: derived.querySignal }),
+      },
       condition,
       expiresAt: params.expiresAt,
       notifiers: uniqueNotifiers(params.notifiers),
       createdBy: params.createdBy,
-      name: params.name,
+      name: derived?.name ?? params.name,
+      ...(derived && { query: derived.query }),
     },
     deps
   );

@@ -1,6 +1,7 @@
 import { tool, type ToolSet } from "ai";
 import { bareFingerprint } from "./tool-read-scope";
 import {
+  analyzeQueryAlertSchema,
   createMonitoringAlertSchema,
   describeAlertCapabilitiesSchema,
   listMonitoringAlertsSchema,
@@ -38,6 +39,13 @@ function toResult(result: FetchResult): { data: unknown } | { error: string } {
 
 function validateDraftPatch(patch: AlertDraftPatch): string[] {
   const errors: string[] = [];
+  if (patch.area === "query") {
+    if (!patch.query?.trim()) errors.push("a query alert needs query");
+    return errors;
+  }
+  if (patch.condition?.operator === "<") {
+    errors.push("Below-threshold alerts aren't supported yet");
+  }
   const areas = new Set(listCapabilities({ surface: "agent" }).map((c) => c.area));
 
   if (patch.area && !areas.has(patch.area)) {
@@ -149,6 +157,8 @@ export function buildMonitoringAlertTools(args: {
         condition,
         behavior,
         notifiers,
+        query,
+        signal,
       }) => {
         if (!hasAuth) return NO_AUTH;
         if (!ctx.chatId) return { error: "No chat is available to create an alert from." };
@@ -174,6 +184,8 @@ export function buildMonitoringAlertTools(args: {
             condition,
             ...(behavior ? { behavior } : {}),
             ...(notifiers ? { notifiers } : {}),
+            ...(query ? { query } : {}),
+            ...(signal ? { signal } : {}),
           })
         );
         if ("error" in result) return result;
@@ -221,6 +233,34 @@ export function buildMonitoringAlertTools(args: {
             chatId: ctx.chatId,
             alertId,
           })
+        );
+        if ("error" in result) return result;
+        return result.data;
+      },
+    }),
+  };
+}
+
+/** Attached after submit_feedback: the tool key order is the cached prompt prefix. */
+export function buildAnalyzeQueryAlertTool(args: {
+  ctx: DashboardAgentToolContext;
+  client: DashboardAgentApiClient;
+}): ToolSet {
+  const { userActorToken } = args.ctx;
+  const { origin, hasAuth } = args.client;
+
+  return {
+    analyze_query_alert: tool({
+      ...analyzeQueryAlertSchema,
+      execute: async ({ query }) => {
+        if (!hasAuth) return NO_AUTH;
+        const result = toResult(
+          await apiPost(
+            origin,
+            "/api/v1/dashboard-agent/monitoring-alerts/analyze-query",
+            userActorToken!,
+            { query }
+          )
         );
         if ("error" in result) return result;
         return result.data;

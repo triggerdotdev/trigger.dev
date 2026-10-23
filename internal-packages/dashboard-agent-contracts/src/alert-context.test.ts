@@ -37,3 +37,31 @@ describe("parseAlertCreationDraft", () => {
     expect(parseAlertCreationDraft({ answers: { area: "billing" } })).toBeUndefined();
   });
 });
+
+describe("query alert drafts", () => {
+  const query = "SELECT count() AS runs FROM runs";
+  const querySignalChoice = { mode: "threshold", measure: "runs" } as const;
+
+  // Mutation: dropping "query" from the patch area enum or the query fields fails this.
+  it("accepts a query patch", () => {
+    const patch = {
+      area: "query",
+      query,
+      querySignalChoice,
+      condition: { operator: "<" },
+    } as const;
+    expect(alertDraftPatchSchema.parse(patch)).toEqual(patch);
+    expect(alertDraftPatchSchema.safeParse({ query: "x".repeat(8193) }).success).toBe(false);
+    expect(
+      alertDraftPatchSchema.safeParse({ querySignalChoice: { mode: "average" } }).success
+    ).toBe(false);
+  });
+
+  it("keeps the query in a creation draft and strips unknown choice keys", () => {
+    const draft = parseAlertCreationDraft({
+      answers: { area: "query", query, querySignalChoice: { ...querySignalChoice, x: 1 } },
+    });
+    expect(draft).toEqual({ answers: { area: "query", query, querySignalChoice } });
+    expect(parseAlertCreationDraft({ answers: { query: "x".repeat(8193) } })).toBeUndefined();
+  });
+});

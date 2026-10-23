@@ -1,6 +1,7 @@
 import type { AlertArea, AlertCapability, CapabilityParam } from "@internal/alert-contracts";
 import { listCapabilities } from "@internal/alert-contracts";
 import { AREA_ICON, AREA_LABEL } from "~/components/alerts/domainIcons";
+import type { QueryAlertMode } from "~/components/alerts/queryAlertLink";
 import type { RenderIcon } from "~/components/primitives/Icon";
 import { formatNumber } from "~/utils/numberFormatter";
 import {
@@ -492,6 +493,11 @@ export type DraftPrefillParams = {
   scope?: string | ErrorGroupScope;
   scopeValue?: string;
   replace?: ReplaceTarget;
+  source?: "query";
+  query?: string;
+  period?: string;
+  mode?: QueryAlertMode;
+  measure?: string;
 };
 
 export function asArea(value: string | undefined): DraftPrefillParams["area"] {

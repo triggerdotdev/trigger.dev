@@ -173,6 +173,7 @@ export const AREA_OPTIONS: { value: AreaFilterValue; label: string }[] = [
   { value: "errors", label: "Errors" },
   { value: "runs", label: "Runs" },
   { value: "health", label: "Health" },
+  { value: "query", label: "Custom" },
   { value: "unknown", label: "Unknown" },
 ];
 

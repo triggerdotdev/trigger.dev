@@ -1,10 +1,12 @@
 import {
   getCapability,
+  getQuerySource,
   compileTemplate as compileTemplateWithParams,
   type AlertCapability,
   type AlertParams,
   type Condition,
   type EvaluationResult,
+  type QuerySignal,
 } from "@internal/alert-contracts";
 
 type ScalarCapability = AlertCapability & {
@@ -40,13 +42,24 @@ export interface QueryEvaluatorInput {
   projectId: string;
   now: Date;
   ctx?: Record<string, string>;
+  capability?: AlertCapability;
+  matchWindow?: { from: Date; to: Date };
+  observingSince?: Date;
 }
+
+export type WindowCondition = {
+  table: string;
+  column: string;
+  from: Date;
+  to: Date;
+  branch?: number;
+};
 
 export type QueryRowRunner = (
   query: string,
   context: { organizationId: string; projectId: string; environmentId: string },
   range: { from: string; to: string },
-  opts?: { fullRetention?: boolean }
+  opts?: { fullRetention?: boolean; windowConditions?: WindowCondition[]; maxRows?: number }
 ) => Promise<Record<string, unknown>[]>;
 
 export function compileTemplate(
@@ -454,15 +467,20 @@ export function clickhouseDateTimeLiteral(date: Date): string {
 
 export type RowCursor = Array<[column: string, value: string]>;
 
+export function identifier(name: string): string {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) ? name : `\`${name.replace(/`/g, "``")}\``;
+}
+
 export function keysetAfter(cursor: RowCursor): string {
-  const [[column, value], ...rest] = cursor as [RowCursor[number], ...RowCursor];
+  const [[name, value], ...rest] = cursor as [RowCursor[number], ...RowCursor];
+  const column = identifier(name);
   const literal = `'${escapeTsqlString(value)}'`;
   return rest.length === 0
     ? `${column} > ${literal}`
     : `(${column} > ${literal} OR (${column} = ${literal} AND ${keysetAfter(rest)}))`;
 }
 
-function rowKeyPart(value: unknown): string {
+export function rowKeyPart(value: unknown): string {
   return value instanceof Date ? value.toISOString() : String(value);
 }
 
@@ -493,7 +511,10 @@ async function evaluateRows(
       environmentId: input.params.environmentId,
     },
     windowRange(input.now, config.snapshotRangeSec),
-    { fullRetention: binding.fullRetention }
+    {
+      fullRetention: binding.fullRetention,
+      windowConditions: binding.source === "custom" ? matchWindows(input) : undefined,
+    }
   );
 
   const capped = rows.length > cap;
@@ -604,6 +625,20 @@ async function evaluateState(
   };
 }
 
+// An absence alert observes one full window from creation or reactivation before it can raise.
+function absenceOutcome(count: number, windowSec: number, input: QueryEvaluatorInput) {
+  const graceUntil = input.observingSince
+    ? input.observingSince.getTime() + windowSec * 1000
+    : undefined;
+  if (graceUntil !== undefined && input.now.getTime() < graceUntil) {
+    return {
+      outcome: "not_met" as const,
+      extra: { graceUntil: new Date(graceUntil).toISOString() },
+    };
+  }
+  return { outcome: count === 0 ? ("met" as const) : ("not_met" as const), extra: undefined };
+}
+
 async function evaluateAbsence(
   capability: ScalarCapability,
   input: QueryEvaluatorInput,
@@ -637,10 +672,142 @@ async function evaluateAbsence(
   );
 
   const count = values[0] ?? 0;
+  const { outcome, extra } = absenceOutcome(count, quietWindowSec, input);
   return {
     kind: "stateful",
-    outcome: count === 0 ? "met" : "not_met",
-    facts: buildFacts(count, quietWindowSec, bucketSec, input.now, capability.unit),
+    outcome,
+    facts: buildFacts(
+      count,
+      quietWindowSec,
+      bucketSec,
+      input.now,
+      capability.unit,
+      undefined,
+      extra
+    ),
+  };
+}
+
+export const MAX_QUERY_GROUPS = 500;
+export const OFFENDER_DETAIL_ROWS = 10;
+export const CONTEXT_HORIZON_SEC = 86_400;
+
+function querySignal(input: QueryEvaluatorInput): QuerySignal {
+  const signal = input.params.querySignal;
+  if (!signal) throw new Error(`${input.capabilityKey} has no query signal`);
+  return signal;
+}
+
+export function sourceWindows(
+  signal: QuerySignal,
+  windowFor: (source: QuerySignal["sources"][number]) => { from: Date; to: Date }
+): WindowCondition[] {
+  return signal.sources.map((source) => ({
+    table: getQuerySource(source.sourceId)?.table ?? source.sourceId,
+    column: source.windowColumn,
+    ...windowFor(source),
+  }));
+}
+
+function matchWindows(input: QueryEvaluatorInput): WindowCondition[] {
+  const signal = querySignal(input);
+  const window = input.matchWindow;
+  if (!window) throw new Error(`${input.capabilityKey} has no match window`);
+  const context = {
+    from: new Date(window.to.getTime() - CONTEXT_HORIZON_SEC * 1000),
+    to: window.to,
+  };
+  return sourceWindows(signal, (source) =>
+    source.sourceId === signal.rowId?.sourceId ? window : context
+  );
+}
+
+function measureValue(row: Record<string, unknown> | undefined, measure: string): number | null {
+  const raw = row?.[measure];
+  if (raw === null || raw === undefined) return null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
+}
+
+async function evaluateCustomThreshold(
+  capability: AlertCapability,
+  input: QueryEvaluatorInput,
+  runner: QueryRowRunner
+): Promise<EvaluationResult> {
+  const condition = input.condition;
+  const { template, measure, groupBy = [] } = capability.binding;
+  if (!template || !measure) throw new Error(`${capability.key} has no template or measure`);
+  if (condition.kind !== "threshold" && condition.kind !== "absence") {
+    throw new Error(`${capability.key} requires a threshold or absence condition`);
+  }
+
+  const windowSec = condition.kind === "absence" ? condition.quietWindowSec : condition.windowSec;
+  const from = new Date(input.now.getTime() - windowSec * 1000);
+  const rows = await runner(
+    template,
+    {
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      environmentId: input.params.environmentId,
+    },
+    windowRange(input.now, windowSec),
+    { windowConditions: sourceWindows(querySignal(input), () => ({ from, to: input.now })) }
+  );
+  const bucketSec = capability.minCadenceSec;
+  const facts = (value: number | null, threshold?: number, extra?: Record<string, unknown>) =>
+    buildFacts(value, windowSec, bucketSec, input.now, capability.unit, threshold, {
+      measure,
+      ...extra,
+    });
+
+  if (condition.kind === "absence") {
+    const count = measureValue(rows[0], measure) ?? 0;
+    const { outcome, extra } = absenceOutcome(count, windowSec, input);
+    return { kind: "stateful", outcome, facts: facts(count, undefined, extra) };
+  }
+
+  if (!groupBy.length) {
+    const value = measureValue(rows[0], measure);
+    return {
+      kind: "stateful",
+      outcome: value !== null && compareThreshold(value, condition) ? "met" : "not_met",
+      facts: facts(value, condition.value),
+    };
+  }
+
+  if (rows.length > MAX_QUERY_GROUPS) {
+    return {
+      kind: "stateful",
+      outcome: "unavailable",
+      facts: facts(null, condition.value, {
+        groupColumns: groupBy,
+        groupCount: rows.length,
+        unavailableReason: `The query returned more than ${MAX_QUERY_GROUPS} groups. Narrow it so fewer groups match.`,
+        unavailableCode: "too_many_groups",
+      }),
+    };
+  }
+
+  const groups = rows.flatMap((row) => {
+    const value = measureValue(row, measure);
+    if (value === null) return [];
+    const group = Object.fromEntries(groupBy.map((col) => [col, row[col] ?? null]));
+    return [{ key: groupBy.map((col) => rowKeyPart(row[col])).join(", "), group, value }];
+  });
+  const offenders = groups
+    .filter((g) => compareThreshold(g.value, condition))
+    .sort((a, b) => (condition.operator === ">" ? b.value - a.value : a.value - b.value));
+  const worst = groups.length ? worstOffender(groups, condition.operator) : undefined;
+
+  return {
+    kind: "stateful",
+    outcome: offenders.length > 0 ? "met" : "not_met",
+    facts: facts(worst?.value ?? null, condition.value, {
+      groupColumns: groupBy,
+      groupCount: groups.length,
+      offenders: offenders.slice(0, OFFENDER_DETAIL_ROWS),
+      offenderCount: offenders.length,
+    }),
   };
 }
 
@@ -650,7 +817,7 @@ export async function evaluateQueryCapability(
   config: QueryEvaluatorConfig = DEFAULT_QUERY_EVALUATOR_CONFIG
 ): Promise<QueryEvaluationResult> {
   const resolvedRunner = runner;
-  const capability = getCapability(input.capabilityKey);
+  const capability = input.capability ?? getCapability(input.capabilityKey);
   if (!capability) {
     throw new Error(`unknown alert capability: ${input.capabilityKey}`);
   }
@@ -660,6 +827,10 @@ export async function evaluateQueryCapability(
 
   if (capability.binding.emit === "rows") {
     return evaluateRows(capability, input, resolvedRunner, config);
+  }
+
+  if (capability.binding.source === "custom") {
+    return evaluateCustomThreshold(capability, input, resolvedRunner);
   }
 
   if (input.condition.kind === "state") {

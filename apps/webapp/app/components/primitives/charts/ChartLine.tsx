@@ -86,7 +86,7 @@ export function warningSwatchColor(
     : undefined;
 }
 
-function OverlayFilteredTooltip({
+export function OverlayFilteredTooltip({
   overlayThreshold,
   overlayColor,
   overlayDirection,
@@ -101,12 +101,9 @@ function OverlayFilteredTooltip({
     <ChartTooltipContent
       {...props}
       payload={payload}
-      color={warningSwatchColor(
-        payload?.[0]?.value,
-        overlayThreshold,
-        overlayColor,
-        overlayDirection
-      )}
+      itemColor={(item) =>
+        warningSwatchColor(item.value, overlayThreshold, overlayColor, overlayDirection)
+      }
     />
   );
 }
@@ -737,7 +734,8 @@ export function ChartLineRenderer({
             (props: ActiveDotProps) =>
               props.cx != null &&
               props.cy != null &&
-              overlayDotVisible(props.payload, key, over) ? (
+              overlayDotVisible(props.payload, key, over) &&
+              isOver(props.payload as (typeof data)[number], key) ? (
                 <circle
                   cx={props.cx}
                   cy={props.cy}

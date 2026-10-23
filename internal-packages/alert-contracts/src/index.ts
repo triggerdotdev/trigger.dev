@@ -21,6 +21,7 @@ export {
   alertDeliveryStatusSchema,
   behaviorSchema,
   alertParamsSchema,
+  querySignalSchema,
   notifierRefSchema,
   notifierRefKey,
   alertScopeTypeSchema,
@@ -51,6 +52,7 @@ export type {
   AlertDeliveryStatus,
   Behavior,
   AlertParams,
+  QuerySignal,
   NotifierRef,
   AlertScopeType,
 } from "./schemas.js";
@@ -70,3 +72,12 @@ export {
   getCapability,
   listCapabilities,
 } from "./registry.js";
+
+export {
+  QUERY_SOURCES,
+  getQuerySource,
+  querySourcesFor,
+  minCadenceForTables,
+  modesForTables,
+} from "./querySources.js";
+export type { QueryMode, QuerySource } from "./querySources.js";

@@ -175,7 +175,7 @@ function ChannelCheckboxes({
   );
 }
 
-function ManualStep({
+export function ManualStep({
   step,
   onSelect,
   onConfirm,

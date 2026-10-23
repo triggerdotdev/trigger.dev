@@ -9,6 +9,7 @@ import { hasLegacyAlerts } from "~/components/alerts/hasLegacyAlerts.server";
 import { LegacyAlertChannelsPage } from "~/components/alerts/LegacyAlertChannelsPage";
 import { LegacyAlertsBanner } from "~/components/alerts/LegacyAlertsBanner";
 import { ManualAlertCreationDock } from "~/components/alerts/ManualAlertCreation";
+import type { QueryAlertPrefill } from "~/components/alerts/queryAlertLink";
 import { createAlertPrompt } from "~/components/dashboard-agent/investigate-prompts";
 import { useDashboardAgent } from "~/components/dashboard-agent/dashboardAgentLauncher";
 import {
@@ -73,6 +74,7 @@ import { alertsAgentPageContext } from "~/components/dashboard-agent/suggested-p
 import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
 import { isV2AlertId, isNewAlertAction } from "~/v3/services/alerts/alertIdRouting";
+import { queryAlertPrefill } from "~/v3/services/alerts/queryAlerts/queryAlertPrefill.server";
 
 export const handle: Handle = {
   agentPageContext: (data) => alertsAgentPageContext(data),
@@ -184,6 +186,7 @@ export const loader = dashboardLoader(
       canWrite: ability.can("write", { type: "alerts", envType: environment.type }),
       canDelete: ability.can("delete", { type: "alerts", envType: environment.type }),
       agentAvailable,
+      queryAlert: searchParams.get("source") === "query" ? queryAlertPrefill(searchParams) : null,
     }) as unknown as Response;
   }
 );
@@ -373,7 +376,16 @@ type NewLoaderData = {
   canWrite: boolean;
   canDelete: boolean;
   agentAvailable: boolean;
+  queryAlert: QueryAlertPrefill | null;
 };
+
+const QUERY_CREATE_PARAMS = ["source", "q", "qperiod", "mode", "measure"];
+
+function stripCreateParams(params: URLSearchParams): URLSearchParams {
+  const next = stripCreateSearchParams(params);
+  if (params.get("source") === "query") for (const key of QUERY_CREATE_PARAMS) next.delete(key);
+  return next;
+}
 
 type LegacyLoaderData = {
   mode: "legacy";
@@ -399,6 +411,7 @@ export default function Page() {
         canWrite={data.canWrite}
         canDelete={data.canDelete}
         agentAvailable={data.agentAvailable}
+        queryAlert={data.queryAlert}
       />
     );
   }
@@ -416,6 +429,7 @@ function NewAlertsPage({
   canWrite,
   canDelete,
   agentAvailable,
+  queryAlert,
 }: {
   alerts: NewLoaderData["alerts"];
   hasMigratableLegacyAlerts: boolean;
@@ -426,6 +440,7 @@ function NewAlertsPage({
   canWrite: boolean;
   canDelete: boolean;
   agentAvailable: boolean;
+  queryAlert: QueryAlertPrefill | null;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -433,7 +448,8 @@ function NewAlertsPage({
   const agent = useDashboardAgent();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const wantCreate = searchParams.get("create") === "1";
+  const queryCreate = searchParams.get("create") === "1" && searchParams.get("source") === "query";
+  const wantCreate = searchParams.get("create") === "1" && !queryCreate;
   const listQuery = searchParams.toString();
   const pendingCreateRef = useRef<{
     area?: DraftPrefillParams["area"];
@@ -469,12 +485,13 @@ function NewAlertsPage({
     setSearchParams((prev) => stripCreateSearchParams(prev), { replace: true });
   }, [agent, setSearchParams]);
 
-  const manualCreate = wantCreate && !agentAvailable && !agent;
+  const manualCreate = (wantCreate && !agentAvailable && !agent) || queryCreate;
   const alertPath = (alertId: string) => v3AlertPath(organization, project, environment, alertId);
 
   return (
     <ManualAlertCreationDock
       open={manualCreate}
+      queryPrefill={queryCreate ? (queryAlert ?? undefined) : undefined}
       prefill={{
         area: asArea(searchParams.get("area") ?? undefined),
         capability: searchParams.get("capability") ?? undefined,
@@ -485,9 +502,9 @@ function NewAlertsPage({
       onCreated={(alertId) =>
         alertId
           ? navigate(alertPath(alertId))
-          : setSearchParams((prev) => stripCreateSearchParams(prev), { replace: true })
+          : setSearchParams((prev) => stripCreateParams(prev), { replace: true })
       }
-      onClose={() => setSearchParams((prev) => stripCreateSearchParams(prev), { replace: true })}
+      onClose={() => setSearchParams((prev) => stripCreateParams(prev), { replace: true })}
     >
       <PageContainer>
         <NavBar>

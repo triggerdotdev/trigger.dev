@@ -6,11 +6,28 @@ import {
   type AlertSurface,
 } from "@internal/alert-contracts";
 
-type AlertDraftErrorReason = "unknown_capability" | "surface" | "condition_kind" | "scope";
+type AlertDraftErrorReason =
+  | "unknown_capability"
+  | "surface"
+  | "condition_kind"
+  | "scope"
+  | "absence_window";
 
 export interface AlertDraftError {
   reason: AlertDraftErrorReason;
   message: string;
+}
+
+const DEFAULT_MIN_ABSENCE_WINDOW_SEC = 1800;
+
+/** Undefined for query alerts: their floor is the source cadence, checked when the query is analyzed. */
+export function absenceWindowFloor(capability: AlertCapability): number | undefined {
+  if (capability.key === "custom.query") return undefined;
+  return capability.minWindowSec ?? DEFAULT_MIN_ABSENCE_WINDOW_SEC;
+}
+
+export function absenceWindowMessage(minWindowSec: number): string {
+  return `Quiet window must be at least ${minWindowSec} seconds`;
 }
 
 function validateScope(
@@ -29,6 +46,7 @@ export function validateAlertDraft(params: {
   capabilityKey: string;
   surface: AlertSurface;
   conditionKind: string;
+  quietWindowSec?: number;
   scope: { type?: string } | undefined;
 }): AlertDraftError | null {
   const { capability } = params;
@@ -37,7 +55,10 @@ export function validateAlertDraft(params: {
     return { reason: "unknown_capability", message: `Unknown capability: ${params.capabilityKey}` };
   }
 
-  if (!capability.surfaces.includes(params.surface)) {
+  const isQueryAlert =
+    capability.key === "custom.query" &&
+    (params.surface === "alerts_page" || params.surface === "mcp" || params.surface === "agent");
+  if (!isQueryAlert && !capability.surfaces.includes(params.surface)) {
     return {
       reason: "surface",
       message: `capability ${capability.key} is not available on this surface`,
@@ -54,6 +75,16 @@ export function validateAlertDraft(params: {
   const scopeError = validateScope(capability, params.scope);
   if (scopeError) {
     return { reason: "scope", message: scopeError };
+  }
+
+  const minWindowSec = absenceWindowFloor(capability);
+  if (
+    params.conditionKind === "absence" &&
+    minWindowSec !== undefined &&
+    params.quietWindowSec !== undefined &&
+    params.quietWindowSec < minWindowSec
+  ) {
+    return { reason: "absence_window", message: absenceWindowMessage(minWindowSec) };
   }
 
   return null;

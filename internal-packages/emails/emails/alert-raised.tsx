@@ -93,9 +93,13 @@ export default function Email(props: AlertRaisedEmailProps) {
               <Text className="text-[#D7D9DD] text-[16px] leading-[24px]">
                 {alertRaisedSentence({ alertName, project, environment, raisedAt })}
               </Text>
-              {detail ? (
-                <Text className="text-[#D7D9DD] text-[16px] leading-[24px]">{detail}</Text>
-              ) : null}
+              {detail
+                ? detail.split("\n").map((line, i) => (
+                    <Text key={i} className="text-[#D7D9DD] text-[16px] leading-[24px] my-0">
+                      {line}
+                    </Text>
+                  ))
+                : null}
             </Section>
             <Section className="mt-[32px] mb-[32px]">
               <Button
