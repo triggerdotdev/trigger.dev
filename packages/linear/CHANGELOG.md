@@ -1,5 +1,13 @@
 # @trigger.dev/linear
 
+## 4.8.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.8.1`
+  - `@trigger.dev/sdk@4.8.1`
+
 ## 4.8.0
 
 ### Minor Changes
