@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { resolveComputeMigration } from "~/runEngine/concerns/computeMigration.server";
+import {
+  allowsAnyCompat,
+  resolveComputeMigration,
+} from "~/runEngine/concerns/computeMigration.server";
 import {
   environmentWorkerQueueOverride,
   workerQueueForBirth,
@@ -16,6 +19,7 @@ const assignment = {
   splitEnabled: true,
   workerGroups: [{ masterQueue: "us-east-1-next", workloadType: "MICROVM" as const }],
   rootTriggerSource: "api",
+  anyCompatAllowed: true,
 };
 
 describe("workerQueueForBirth", () => {
@@ -242,18 +246,21 @@ describe("per-environment worker queue overrides", () => {
         environmentId,
         environmentType,
       });
-      const migrated = resolveComputeMigration({
-        baseWorkerQueue: "us-east-1",
-        baseEnableFastPath: false,
-        region: "us-east-1",
-        backing,
+      const decision = {
         planType: "free",
         orgId: "org_x",
         orgFeatureFlags,
         flags: { computeMigrationEnabled: migrationEnabled, computeMigrationFreePercentage: 100 },
+        templateKey,
+      };
+      const migrated = resolveComputeMigration({
+        ...decision,
+        baseWorkerQueue: "us-east-1",
+        baseEnableFastPath: false,
+        region: "us-east-1",
+        backing,
         envType: environmentType,
         environmentCompat: environmentOverride.compat,
-        templateKey,
       });
       const workerQueue = workerQueueForBirth({
         workerQueue: migrated.workerQueue!,
@@ -266,6 +273,7 @@ describe("per-environment worker queue overrides", () => {
         workerGroups,
         rootTriggerSource: "api",
         templateFallback: migrated.templateFallback,
+        anyCompatAllowed: allowsAnyCompat(decision),
       });
       return { workerQueue, enableFastPath: migrated.enableFastPath };
     }
@@ -341,6 +349,7 @@ describe("per-environment worker queue overrides", () => {
           splitEnabled: false,
           workerGroups,
           rootTriggerSource: "api",
+          anyCompatAllowed: true,
         });
       expect(birth(true)).toBe("us-east-1:v2:ondemand:fresh:container:stable");
       expect(birth(false)).toBe("us-east-1-next");
@@ -372,8 +381,52 @@ describe("per-environment worker queue overrides", () => {
           splitEnabled: false,
           workerGroups: [{ masterQueue: "eu-central-1", workloadType: "CONTAINER" }],
           rootTriggerSource: "api",
+          anyCompatAllowed: true,
         })
       ).toBe("eu-central-1:v2:ondemand:fresh:compute:stable");
+    });
+
+    const anyOrg = { [FEATURE_FLAG.workerQueueCompatibility]: "any" };
+    const anyStaging = {
+      [FEATURE_FLAG.workerQueueEnvironmentOverrides]: { STAGING: { compat: "any" } },
+    };
+    it.each([
+      { migrationEnabled: false, templateKey: "a".repeat(64), compat: "container" },
+      { migrationEnabled: false, templateKey: null, compat: "container" },
+      { migrationEnabled: true, templateKey: null, compat: "container" },
+      { migrationEnabled: true, templateKey: "a".repeat(64), compat: "any" },
+    ])(
+      "gives the any lane only to a migrated org's keyed deployment (migrated=$migrationEnabled, key=$templateKey)",
+      ({ migrationEnabled, templateKey, compat }) => {
+        for (const orgFeatureFlags of [anyOrg, anyStaging]) {
+          expect(trigger({ orgFeatureFlags, migrationEnabled, templateKey }).workerQueue).toBe(
+            `us-east-1:v2:ondemand:fresh:${compat}:stable`
+          );
+        }
+      }
+    );
+
+    it("puts a migrated org's keyless any-compat canary run on the stable container channel", () => {
+      const canaryOrg = { [FEATURE_FLAG.workerQueueChannel]: "canary" };
+      const canaryStaging = {
+        [FEATURE_FLAG.workerQueueEnvironmentOverrides]: { STAGING: { channel: "canary" } },
+      };
+      const anyCanaryStaging = {
+        [FEATURE_FLAG.workerQueueEnvironmentOverrides]: {
+          STAGING: { compat: "any", channel: "canary" },
+        },
+      };
+      for (const orgFeatureFlags of [
+        { ...anyOrg, ...canaryOrg },
+        { ...anyStaging, ...canaryOrg },
+        { ...anyOrg, ...canaryStaging },
+        anyCanaryStaging,
+      ]) {
+        expect(trigger({ orgFeatureFlags, migrationEnabled: true, templateKey: null })).toEqual({
+          workerQueue: "us-east-1:v2:ondemand:fresh:container:stable",
+          enableFastPath: false,
+        });
+      }
     });
 
     it("leaves a channel-only override to the org's migration decision", () => {

@@ -13,7 +13,11 @@ import { makeFlag } from "~/v3/featureFlags.server";
 import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
 import { resolveComputeAccess } from "~/v3/regionAccess.server";
-import { backingForQueue, workerRegionRegistry } from "~/v3/workerRegions.server";
+import {
+  backingForQueue,
+  selfBackingWorkerGroups,
+  workerRegionRegistry,
+} from "~/v3/workerRegions.server";
 
 // wait: hold finalisation until the builder replies or times out. shadow: fire and
 // forget. Neither ever fails the deploy.
@@ -72,6 +76,8 @@ export type TemplateBuilderConfig = {
   timeoutMs: number;
   presets: MachinePresetName[];
   shadowRolloutPct: number;
+  /** Worker groups that are their own compute backing (see selfBackingWorkerGroups). */
+  mixedRuntimeWorkerGroups: readonly string[];
 };
 
 export type TemplateCreateRequest = {
@@ -161,6 +167,10 @@ export class TemplatePrebuildService {
       timeoutMs: env.TEMPLATE_BUILDER_TIMEOUT_MS,
       presets: env.TEMPLATE_BUILDER_MACHINE_PRESETS,
       shadowRolloutPct: env.TEMPLATE_BUILDER_SHADOW_ROLLOUT_PCT,
+      mixedRuntimeWorkerGroups: selfBackingWorkerGroups(
+        env.RUN_ENGINE_MIXED_RUNTIME_WORKER_GROUPS,
+        env.TRIGGER_WORKER_QUEUE_V2_ENABLED === "1"
+      ),
     },
     private readonly taskMetaCache: TaskMetadataCache = taskMetadataCacheInstance,
     private readonly telemetry: TemplatePrebuildTelemetry = defaultTelemetry
@@ -291,7 +301,9 @@ export class TemplatePrebuildService {
   ): Promise<TemplatePrebuildReason> {
     const groups = workerRegionRegistry.current();
     const defaultQueue = project.defaultWorkerGroup?.masterQueue;
-    const backing = defaultQueue ? backingForQueue(defaultQueue, groups ?? []) : undefined;
+    const backing = defaultQueue
+      ? backingForQueue(defaultQueue, groups ?? [], this.config.mixedRuntimeWorkerGroups)
+      : undefined;
     diagnostics.registryRows = groups ? groups.length : "cold";
     diagnostics.hasBacking = backing !== undefined;
 

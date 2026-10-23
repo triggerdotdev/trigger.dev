@@ -29,13 +29,22 @@ import { setupAuthenticatedEnvironment } from "@internal/run-engine/tests";
 import { containerTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
 import { Redis } from "ioredis";
-import { resolveComputeMigration } from "~/runEngine/concerns/computeMigration.server";
+import {
+  allowsAnyCompat,
+  resolveComputeMigration,
+} from "~/runEngine/concerns/computeMigration.server";
 import { workerQueueForBirth } from "~/runEngine/concerns/workerQueueAssignment.server";
 import { DefaultQueueManager } from "~/runEngine/concerns/queues.server";
 import type { RunEngine } from "~/v3/runEngine.server";
 import { RedisTaskMetadataCache } from "~/services/taskMetadataCache.server";
 import { ChangeCurrentDeploymentService } from "~/v3/services/changeCurrentDeployment.server";
 import { TemplatePrebuildService } from "~/v3/services/templatePrebuild.server";
+import {
+  backingForQueue,
+  regionForQueue,
+  selfBackingWorkerGroups,
+  workerRegionRegistry,
+} from "~/v3/workerRegions.server";
 
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
@@ -154,7 +163,13 @@ async function withBuilder(templateId: string, run: (url: string) => Promise<voi
 }
 
 function builderConfig(url: string) {
-  return { url, timeoutMs: 5_000, presets: ["small-1x" as const], shadowRolloutPct: 0 };
+  return {
+    url,
+    timeoutMs: 5_000,
+    presets: ["small-1x" as const],
+    shadowRolloutPct: 0,
+    mixedRuntimeWorkerGroups: [],
+  };
 }
 
 describe("template key in the task metadata cache", () => {
@@ -245,6 +260,7 @@ describe("template key in the task metadata cache", () => {
         ],
         rootTriggerSource: "api",
         templateFallback: migrated.templateFallback,
+        anyCompatAllowed: allowsAnyCompat({ ...migratedOrg, orgFeatureFlags, templateKey }),
       });
       // Container consumers take only stable, so a canary container queue would strand the run.
       expect(birth).toBe("us-east-1:v2:ondemand:fresh:container:stable");
@@ -436,6 +452,207 @@ describe("template key in the task metadata cache", () => {
       const warm = await queues.resolveQueueProperties(request, locked.worker);
       expect(warm.templateKey).toBe(NEWER_KEY);
       expect((await queues.resolveQueueProperties(request)).templateKey ?? null).toBeNull();
+    }
+  );
+});
+
+describe("a mixed-runtime group as its region's compute backing", () => {
+  const COMPUTE = "us-east-1:v2:ondemand:fresh:compute:stable";
+  const CONTAINER = "us-east-1:v2:ondemand:fresh:container:stable";
+
+  // One CONTAINER group carries both runtimes; the old MICROVM group is hidden unless asked.
+  async function setupRegion(
+    prisma: PrismaClient,
+    options: { migrated: boolean; visibleMicrovm?: boolean }
+  ) {
+    const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+    const group = (masterQueue: string, workloadType: "CONTAINER" | "MICROVM", hidden: boolean) =>
+      prisma.workerInstanceGroup.create({
+        data: {
+          name: masterQueue,
+          masterQueue,
+          region: "us-east-1",
+          type: "MANAGED",
+          workloadType,
+          hidden,
+          token: { create: { tokenHash: `token_${masterQueue}` } },
+        },
+      });
+    const mixed = await group("cme-mixed", "CONTAINER", false);
+    await group("us-east-1-mvm", "MICROVM", !options.visibleMicrovm);
+    await prisma.project.update({
+      where: { id: environment.project.id },
+      data: { defaultWorkerGroupId: mixed.id },
+    });
+    await prisma.organization.update({
+      where: { id: environment.organization.id },
+      data: { featureFlags: { computeMigrationEnabled: options.migrated } },
+    });
+    await workerRegionRegistry.reload();
+    return { environment, mixed };
+  }
+
+  // The trigger path from the default worker group to the queue a run is born on.
+  async function birthQueue(
+    prisma: PrismaClient,
+    redisOptions: ConstructorParameters<typeof Redis>[0],
+    environment: Environment,
+    mixedRuntimeWorkerGroups: string[],
+    templateKey: string | undefined,
+    v2Enabled = true
+  ) {
+    const { deployment } = await createDeployment(prisma, environment, {
+      templateKey,
+      version: "20260101.1",
+    });
+    const cache = newCache(redisOptions);
+    await new ChangeCurrentDeploymentService(prisma, prisma, cache).call(deployment, "promote");
+    const queues = new DefaultQueueManager(prisma, noEngine, undefined, cache);
+    const properties = await queues.resolveQueueProperties({
+      taskId: SLUG,
+      environment,
+      body: { payload: {} },
+    } as any);
+    const base = await queues.getWorkerQueue(environment as any);
+    const organization = await prisma.organization.findFirstOrThrow({
+      where: { id: environment.organization.id },
+    });
+    const orgFeatureFlags = organization.featureFlags as Record<string, unknown>;
+    const workerGroups = workerRegionRegistry.current() ?? [];
+    const decision = {
+      planType: "free",
+      orgId: organization.id,
+      orgFeatureFlags,
+      flags: undefined,
+      templateKey: properties.templateKey,
+    };
+    const migrated = resolveComputeMigration({
+      ...decision,
+      baseWorkerQueue: base!.masterQueue,
+      baseEnableFastPath: base!.enableFastPath,
+      region: regionForQueue(base!.masterQueue, workerGroups),
+      backing: backingForQueue(
+        base!.masterQueue,
+        workerGroups,
+        selfBackingWorkerGroups(mixedRuntimeWorkerGroups, v2Enabled)
+      ),
+      envType: "PRODUCTION",
+      environmentCompat: undefined,
+    });
+    if (!v2Enabled) return migrated.workerQueue;
+    return workerQueueForBirth({
+      workerQueue: migrated.workerQueue!,
+      region: migrated.region,
+      envType: "PRODUCTION",
+      orgFeatureFlags,
+      environmentOverride: {},
+      v2Enabled,
+      splitEnabled: false,
+      workerGroups,
+      rootTriggerSource: "api",
+      templateFallback: migrated.templateFallback,
+      compute: migrated.compute,
+      anyCompatAllowed: allowsAnyCompat(decision),
+    });
+  }
+
+  function prebuildMode(prisma: PrismaClient, projectId: string, mixed: string[]) {
+    const config = { ...builderConfig("http://127.0.0.1:1"), mixedRuntimeWorkerGroups: mixed };
+    return new TemplatePrebuildService(prisma, config).resolveMode(projectId);
+  }
+
+  containerTest(
+    "a migrated org on a listed group is eligible and routes keyed runs to compute",
+    async ({ prisma, redisOptions }) => {
+      db.client = prisma;
+      const { environment, mixed } = await setupRegion(prisma, { migrated: true });
+
+      expect(await prebuildMode(prisma, environment.project.id, [mixed.id])).toEqual({
+        mode: "shadow",
+        reason: "migrated",
+      });
+      expect(await birthQueue(prisma, redisOptions, environment, [mixed.id], KEY)).toBe(COMPUTE);
+    }
+  );
+
+  containerTest(
+    "a migrated org's keyless run on a listed group stays on containers",
+    async ({ prisma, redisOptions }) => {
+      db.client = prisma;
+      const { environment, mixed } = await setupRegion(prisma, { migrated: true });
+
+      expect(await birthQueue(prisma, redisOptions, environment, [mixed.id], undefined)).toBe(
+        CONTAINER
+      );
+    }
+  );
+
+  containerTest(
+    "a non-migrated org on a listed group is unchanged",
+    async ({ prisma, redisOptions }) => {
+      db.client = prisma;
+      const { environment, mixed } = await setupRegion(prisma, { migrated: false });
+
+      expect(await prebuildMode(prisma, environment.project.id, [mixed.id])).toEqual({
+        mode: "skip",
+        reason: "none",
+      });
+      expect(await birthQueue(prisma, redisOptions, environment, [mixed.id], KEY)).toBe(CONTAINER);
+    }
+  );
+
+  containerTest(
+    "a group not on the list is not its own backing",
+    async ({ prisma, redisOptions }) => {
+      db.client = prisma;
+      const { environment } = await setupRegion(prisma, { migrated: true });
+
+      expect(await prebuildMode(prisma, environment.project.id, [])).toEqual({
+        mode: "skip",
+        reason: "none",
+      });
+      expect(await birthQueue(prisma, redisOptions, environment, [], KEY)).toBe(CONTAINER);
+    }
+  );
+
+  containerTest(
+    "with v2 queues off, a listed group is not its own backing",
+    async ({ prisma, redisOptions }) => {
+      db.client = prisma;
+      const { environment, mixed } = await setupRegion(prisma, { migrated: true });
+
+      expect(
+        await prebuildMode(prisma, environment.project.id, [
+          ...selfBackingWorkerGroups([mixed.id], false),
+        ])
+      ).toEqual({ mode: "skip", reason: "none" });
+      expect(await birthQueue(prisma, redisOptions, environment, [mixed.id], KEY, false)).toBe(
+        "cme-mixed"
+      );
+    }
+  );
+
+  containerTest(
+    "a visible MICROVM group in the region stays the backing",
+    async ({ prisma, redisOptions }) => {
+      db.client = prisma;
+      const { environment, mixed } = await setupRegion(prisma, {
+        migrated: true,
+        visibleMicrovm: true,
+      });
+      const workerGroups = workerRegionRegistry.current() ?? [];
+
+      for (const listed of [[], [mixed.id]]) {
+        expect(backingForQueue("cme-mixed", workerGroups, listed)).toEqual({
+          workerQueue: "us-east-1-mvm",
+          enableFastPath: false,
+        });
+        expect(await prebuildMode(prisma, environment.project.id, listed)).toEqual({
+          mode: "shadow",
+          reason: "migrated",
+        });
+      }
+      expect(await birthQueue(prisma, redisOptions, environment, [], KEY)).toBe(COMPUTE);
     }
   );
 });

@@ -101,7 +101,12 @@ describe("resolveComputeMigration", () => {
         orgId: "org_x",
         backing,
       })
-    ).toEqual({ workerQueue: "us-east-1-next", region: "us-east-1", enableFastPath: true });
+    ).toEqual({
+      workerQueue: "us-east-1-next",
+      region: "us-east-1",
+      enableFastPath: true,
+      compute: true,
+    });
   });
   it("leaves the queue unchanged when there is no backing for the region (EU)", () => {
     expect(
@@ -149,7 +154,12 @@ describe("resolveComputeMigration", () => {
   });
 
   describe("environment compat override", () => {
-    const swapped = { workerQueue: "us-east-1-next", region: "us-east-1", enableFastPath: true };
+    const swapped = {
+      workerQueue: "us-east-1-next",
+      region: "us-east-1",
+      enableFastPath: true,
+      compute: true,
+    };
     const base = { workerQueue: "us-east-1", region: "us-east-1", enableFastPath: false };
     const notEnrolled = { flags: { computeMigrationEnabled: false } };
 
@@ -231,7 +241,12 @@ describe("resolveComputeMigration", () => {
 describe("resolveComputeMigration template key", () => {
   const backing = { workerQueue: "us-east-1-next", enableFastPath: true };
   const base = { workerQueue: "us-east-1", region: "us-east-1", enableFastPath: false };
-  const swapped = { workerQueue: "us-east-1-next", region: "us-east-1", enableFastPath: true };
+  const swapped = {
+    workerQueue: "us-east-1-next",
+    region: "us-east-1",
+    enableFastPath: true,
+    compute: true,
+  };
   const input = {
     baseWorkerQueue: "us-east-1",
     baseEnableFastPath: false,

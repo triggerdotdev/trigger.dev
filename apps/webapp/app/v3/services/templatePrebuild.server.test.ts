@@ -60,6 +60,7 @@ function config(overrides: Partial<TemplateBuilderConfig> = {}): TemplateBuilder
     timeoutMs: 5_000,
     presets: ["small-1x"],
     shadowRolloutPct: 0,
+    mixedRuntimeWorkerGroups: [],
     ...overrides,
   };
 }

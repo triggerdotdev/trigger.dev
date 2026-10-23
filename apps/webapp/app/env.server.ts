@@ -1304,6 +1304,17 @@ const EnvironmentSchema = z
     RUN_ENGINE_DEQUEUE_DISABLED_WORKER_QUEUES: z.string().optional(),
     // JSON map of worker-group IDs to allowed v2 subscriptions. Unlisted groups are denied.
     RUN_ENGINE_WORKER_QUEUE_SUBSCRIPTIONS: WorkerQueueSubscriptionPolicyEnv,
+    // Comma-separated worker-group IDs that carry container and compute consumers side by side. A
+    // MICROVM group must be listed here to consume the container lanes its allowlist names.
+    RUN_ENGINE_MIXED_RUNTIME_WORKER_GROUPS: z
+      .string()
+      .default("")
+      .transform((raw) =>
+        raw
+          .split(",")
+          .map((id) => id.trim())
+          .filter(Boolean)
+      ),
     RUN_ENGINE_MASTER_QUEUE_CONSUMERS_INTERVAL_MS: z.coerce.number().int().default(1000),
     // Off by default. Enable on a single service (e.g. the engine worker) so only one
     // instance reports worker queue length, rather than every replica.

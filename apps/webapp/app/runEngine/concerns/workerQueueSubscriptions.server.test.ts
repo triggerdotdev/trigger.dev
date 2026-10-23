@@ -2,6 +2,7 @@ import type { WorkerQueueSubscription } from "@trigger.dev/core/v3/workers";
 import { describe, expect, it } from "vitest";
 import {
   createWorkerQueueConsumer,
+  refusedSubscriptions,
   resolveWorkerQueueSubscriptions,
   WorkerQueueSubscriptionPolicyEnv,
   type WorkerQueueConsumerOptions,
@@ -62,19 +63,51 @@ describe("worker queue subscription authorization", () => {
     }
   });
 
-  it("rejects a runtime mismatch even when the allowlist contains it", () => {
+  it("lets a group's allowlist mix runtimes whatever the group's workloadType", () => {
     const compute: WorkerQueueSubscription = { ...restore, compat: "compute" };
-    const allowedWorker = { ...worker, allowedSubscriptions: [compute] };
-    const consumer = createWorkerQueueConsumer(allowedWorker);
-    expect(() => resolveWorkerQueueSubscriptions(consumer, [compute])).toThrow("not authorized");
+    const mixed = { ...worker, allowedSubscriptions: [stable, compute], mixedRuntime: true };
+    for (const workloadType of ["CONTAINER", "MICROVM"] as const) {
+      const consumer = createWorkerQueueConsumer({ ...mixed, workloadType });
+      expect(resolveWorkerQueueSubscriptions(consumer, [compute])).toEqual([
+        { queue: "us-east-1:v2:ondemand:restore:compute:stable", weight: 1 },
+      ]);
+      expect(resolveWorkerQueueSubscriptions(consumer, [stable])).toEqual([
+        { queue: "us-east-1:v2:ondemand:fresh:container:stable", weight: 1 },
+      ]);
+    }
+  });
 
-    const computeConsumer = createWorkerQueueConsumer({
-      ...allowedWorker,
-      workloadType: "MICROVM",
-    });
-    expect(resolveWorkerQueueSubscriptions(computeConsumer, [compute])).toEqual([
+  it("refuses container lanes to a MICROVM group that is not marked mixed", () => {
+    const compute: WorkerQueueSubscription = { ...restore, compat: "compute" };
+    const options = {
+      ...worker,
+      workloadType: "MICROVM" as const,
+      allowedSubscriptions: [stable, compute],
+    };
+    expect(refusedSubscriptions(options)).toEqual([stable]);
+    expect(refusedSubscriptions({ ...options, mixedRuntime: true })).toEqual([]);
+    expect(refusedSubscriptions({ ...options, workloadType: "CONTAINER" })).toEqual([]);
+
+    const consumer = createWorkerQueueConsumer(options);
+    expect(resolveWorkerQueueSubscriptions(consumer, [compute])).toEqual([
       { queue: "us-east-1:v2:ondemand:restore:compute:stable", weight: 1 },
     ]);
+    try {
+      resolveWorkerQueueSubscriptions(consumer, [stable]);
+      expect.fail("A MICROVM group that is not mixed must not take container lanes");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ServiceValidationError);
+      expect((error as ServiceValidationError).status).toBe(403);
+    }
+  });
+
+  it("keeps a container-only group off compute lanes its allowlist doesn't name", () => {
+    const compute: WorkerQueueSubscription = { ...stable, compat: "compute" };
+    const consumer = createWorkerQueueConsumer({ ...worker, allowedSubscriptions: [stable] });
+    expect(() => resolveWorkerQueueSubscriptions(consumer, [compute])).toThrow("not authorized");
+    expect(() => resolveWorkerQueueSubscriptions(consumer, [stable, compute])).toThrow(
+      "not authorized"
+    );
   });
 
   it("treats any as a literal cold-start lane, not permission for concrete lanes", () => {

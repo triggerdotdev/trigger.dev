@@ -43,6 +43,17 @@ export function isOrgMigrated({
   return hashBucket(orgId) < pct;
 }
 
+/**
+ * Whether a run may go on an `any` lane. Either runtime takes an `any` item, so only a run that
+ * compute can start qualifies: a compute-enabled org and a deployment with a template.
+ */
+export function allowsAnyCompat({
+  templateKey,
+  ...decision
+}: MigrationDecisionInput & { templateKey: string | null | undefined }): boolean {
+  return !!templateKey && isOrgMigrated(decision);
+}
+
 type ResolveInput = MigrationDecisionInput & {
   baseWorkerQueue: string | undefined;
   baseEnableFastPath: boolean;
@@ -57,7 +68,7 @@ type ResolveInput = MigrationDecisionInput & {
 /**
  * Produce the target descriptor `{ workerQueue, region, enableFastPath }` for a
  * run. When the org is migrated and the region has a compute backing, the queue
- * and fast-path setting come from the MICROVM backing group; `region` is the geo
+ * and fast-path setting come from the compute backing group; `region` is the geo
  * either way. Same-geo swap (us-east-1 -> us-east-1-next): any explicit placement
  * is a geography preference, honored by staying in-region. Applied after region
  * resolution, mirroring the scheduled-split. An environment compat of compute or container
@@ -81,6 +92,8 @@ export function resolveComputeMigration({
   enableFastPath: boolean;
   /** Set when the missing template key kept a migrated run on the base queue. */
   templateFallback?: true;
+  /** Set when the run moved to the backing, which may be the base queue's own mixed group. */
+  compute?: true;
 } {
   const passthrough = { workerQueue: baseWorkerQueue, region, enableFastPath: baseEnableFastPath };
   if (baseWorkerQueue === undefined) return passthrough;
@@ -94,5 +107,10 @@ export function resolveComputeMigration({
         : isOrgMigrated(decision);
   if (!migrated) return passthrough;
   if (!templateKey) return { ...passthrough, templateFallback: true };
-  return { workerQueue: backing.workerQueue, region, enableFastPath: backing.enableFastPath };
+  return {
+    workerQueue: backing.workerQueue,
+    region,
+    enableFastPath: backing.enableFastPath,
+    compute: true,
+  };
 }
