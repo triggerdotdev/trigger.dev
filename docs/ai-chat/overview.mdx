@@ -12,12 +12,12 @@ A `chat.agent` task takes `messages`, calls `streamText`, and returns the result
 
 ```ts trigger/chat.ts
 import { chat } from "@trigger.dev/sdk/ai";
-import { streamText, stepCountIs } from "ai";
+import { stepCountIs } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 
 export const myChat = chat.agent({
   id: "my-chat",
-  run: async ({ messages, signal }) =>
+  run: async ({ messages, signal, streamText }) =>
     streamText({
       model: anthropic("claude-sonnet-4-5"),
       messages,

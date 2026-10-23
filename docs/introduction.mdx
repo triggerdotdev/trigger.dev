@@ -1,7 +1,7 @@
 ---
 title: "Trigger.dev docs"
 sidebarTitle: "Introduction"
-description: "Build and run durable AI agents and workflows in TypeScript. Long-running tasks with retries, queues, observability, and elastic scaling. Open source and self-hostable."
+description: "Build and run durable AI agents and workflows in TypeScript. Long-running tasks with retries, queues, webhooks, observability, and elastic scaling. Open source and self-hostable."
 mode: "center"
 ---
 
@@ -11,8 +11,8 @@ import AgentSetupPrompt from "/snippets/agent-setup-prompt.mdx";
   <Card title="Quick start" icon="rocket" href="/quick-start" color="#A8FF53">
     Go from zero to your first task in 3 minutes.
   </Card>
-  <Card title="Build AI agents" icon="robot" href="/guides/ai-agents/overview" color="#a855f7">
-    Agent patterns, worked examples, and the tools to run them in production.
+  <Card title="Build AI agents" icon="robot" href="/ai-chat/overview" color="#a855f7">
+    Durable, multi-turn agents with `chat.agent`, from your frontend to Slack and Linear.
   </Card>
   <Card title="AI coding assistants" icon="wand-magic-sparkles" href="/building-with-ai" color="#3B82F6">
     Let Claude Code, Cursor and Windsurf write correct Trigger.dev code with the MCP server, Skills and rules.
@@ -28,48 +28,124 @@ import AgentSetupPrompt from "/snippets/agent-setup-prompt.mdx";
 
 ## What is Trigger.dev?
 
-Trigger.dev is the open source platform for building and running durable AI agents and workflows in TypeScript. Run them for hours, configure automatic retries, control concurrency, and manage queues. There's no execution timeout, and no queue or worker infrastructure for you to build.
+Trigger.dev is the open source platform for building and running durable AI agents and workflows in TypeScript. You write tasks and agents in your existing codebase, and they run on Trigger.dev with retries, queues, waits, full tracing, and elastic scaling. There's no execution timeout, and no queue or worker infrastructure for you to build.
 
-You write agents and tasks in your existing codebase using our CLI and SDK, and get durable execution, queues, waits, full tracing, and elastic scaling without building any of it yourself.
+Trigger.dev's core is Apache-2.0 licensed. [Self-host it](/self-hosting/overview) on your own infrastructure, or let [Trigger.dev Cloud](https://cloud.trigger.dev) run it for you.
 
-Trigger.dev's core is Apache-2.0 licensed, a genuine OSI license. [Self-host it](/self-hosting/overview) on your own infrastructure, or let [Trigger.dev Cloud](https://cloud.trigger.dev) run it for you.
+## Build agents with `chat.agent`
 
-## Core concepts
+A `chat.agent` runs each conversation as one durable task. It wakes when a message arrives and idles between turns, and its state survives page refreshes, deploys, and crashes. Turn lifecycle, resuming a stream mid-reply, and approvals are handled for you, and your frontend connects with the AI SDK's `useChat`, with no API routes to write.
 
-<CardGroup cols={2}>
-  <Card title="Writing tasks" icon="pen-to-square" href="/tasks/overview" color="#A8FF53">
-    The durable functions at the core of Trigger.dev. Write them in your existing codebase, with retries and no timeouts.
+```ts trigger/chat.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { anthropic } from "@ai-sdk/anthropic";
+
+export const supportAgent = chat.agent({
+  id: "support-agent",
+  run: async ({ messages, signal, streamText }) =>
+    streamText({
+      model: anthropic("claude-sonnet-4-5"),
+      messages,
+      abortSignal: signal,
+    }),
+});
+```
+
+<CardGroup cols={3}>
+  <Card title="Agent quick start" icon="rocket" href="/ai-chat/quick-start">
+    Build a chat agent and its frontend end to end.
   </Card>
-  <Card title="Triggering tasks" icon="bullseye-pointer" href="/triggering" color="#3b82f6">
-    Trigger a task from your backend, your frontend, a schedule, or another task.
+  <Card title="Sessions" icon="layer-group" href="/ai-chat/sessions">
+    Each conversation's durable state and two-way stream, across all its runs.
   </Card>
-  <Card title="Runs" icon="play" href="/runs" color="#28bf5c">
-    Every execution of a task is a run, with its status, retries, and logs recorded.
+  <Card title="Tools" icon="screwdriver-wrench" href="/ai-chat/tools">
+    Declare tools on your agent and get them back typed in `run()`.
   </Card>
-  <Card title="Idempotency" icon="fingerprint" href="/idempotency" color="#F43F5E">
-    Use an idempotency key so a retried or duplicated trigger runs once, not twice.
+  <Card title="Human in the loop" icon="hand" href="/ai-chat/patterns/human-in-the-loop">
+    Pause a tool call for approval and resume when a person decides.
+  </Card>
+  <Card title="Slack agents" icon="slack" href="/webhooks/slack">
+    Turn an agent into a native Slack agent with `@trigger.dev/slack`.
+  </Card>
+  <Card title="Linear agents" icon="list-check" href="/webhooks/linear">
+    Assign Linear issues to an agent with `@trigger.dev/linear`.
   </Card>
 </CardGroup>
 
-## Build with agents
+Version your [prompts](/ai/prompts) in code and change them from the dashboard, and see every model step and tool call, with tokens, cost and latency, in [AI observability](/ai/observability).
 
-Build durable, multi-turn agents with the [chat agent](/ai-chat/overview): one long-running task per conversation, with the tools it can call, streaming, and resumability handled for you. Add human-in-the-loop approval by pausing a run on a [waitpoint](/wait-for-token) until a person signs off, and a waiting run doesn't consume compute. Stream run status and LLM output straight to your frontend with the [Realtime API](/realtime/overview) and React hooks, and record your Vercel AI SDK calls as spans with the model, token counts, cost and latency using [AI observability](/ai/observability). Version your [prompts](/ai/prompts) in code, then edit the text or swap the model from the dashboard without redeploying.
+## Run work
 
-## Scale and scheduling
+<CardGroup cols={2}>
+  <Card title="Writing tasks" icon="pen-to-square" href="/tasks/overview" color="#A8FF53">
+    The durable functions at the core of Trigger.dev, written in your existing codebase.
+  </Card>
+  <Card title="Triggering tasks" icon="bullseye-pointer" href="/triggering" color="#3b82f6">
+    Trigger a task from your backend, your frontend, or another task.
+  </Card>
+  <Card title="Runs" icon="play" href="/runs" color="#28bf5c">
+    Every execution of a task is a run, with its status, retries, logs and trace.
+  </Card>
+  <Card title="Realtime" icon="bolt" href="/realtime/overview" color="#F43F5E">
+    Stream run status and LLM output to your frontend with React hooks.
+  </Card>
+</CardGroup>
 
-Set how many runs of a task execute at once, globally or per tenant, with [concurrency](/concurrency) and [queues](/queues). Run a task on a [cron schedule](/tasks/scheduled) with timezone support, choose the CPU and memory each task runs on with [machines](/machines), and control what happens when a task throws with [errors and retries](/errors-retrying).
+## React to events
 
-## Self-hosting
+<CardGroup cols={2}>
+  <Card title="Webhooks" icon="webhook" href="/webhooks/overview" color="#a855f7">
+    Hosted, verified endpoints for Stripe, GitHub and more, delivered to your tasks and agents.
+  </Card>
+  <Card title="Scheduled tasks" icon="clock" href="/tasks/scheduled" color="#f6cd46">
+    Run a task on a cron schedule, with timezone support.
+  </Card>
+  <Card title="Webhook waiters" icon="bell" href="/webhooks/waiters" color="#3b82f6">
+    Pause a run until a matching webhook arrives, like a payment confirmation.
+  </Card>
+  <Card title="Waits" icon="hourglass" href="/wait" color="#28bf5c">
+    Pause a run for a duration, until a date, or until a token is completed. A waiting run doesn't use compute.
+  </Card>
+</CardGroup>
 
-Trigger.dev is open source and you can self-host. Read the [overview guide](/self-hosting/overview), or how to do it with [Docker](/self-hosting/docker) or [Kubernetes](/self-hosting/kubernetes).
+## Run in production
+
+<CardGroup cols={2}>
+  <Card title="Queues & concurrency" icon="layer-group" href="/queues" color="#3b82f6">
+    Control how many runs execute at once, globally or per tenant.
+  </Card>
+  <Card title="Machines" icon="microchip" href="/machines" color="#a855f7">
+    Choose the CPU and memory each task runs on.
+  </Card>
+  <Card title="Deployment" icon="cloud-arrow-up" href="/deployment/overview" color="#28bf5c">
+    Atomic, versioned deploys, with preview branches and environments.
+  </Card>
+  <Card title="Errors & retries" icon="arrows-rotate" href="/errors-retrying" color="#F43F5E">
+    Retry failed attempts automatically, and decide what happens when a task throws.
+  </Card>
+  <Card title="Logs, traces & metrics" icon="chart-line" href="/logging" color="#f6cd46">
+    A full trace of every run, with your logs and spans.
+  </Card>
+  <Card title="Query & dashboards" icon="table" href="/observability/query" color="#A8FF53">
+    Query your runs with TRQL, and build dashboards from the results.
+  </Card>
+</CardGroup>
 
 ## Frequently asked questions
 
-**How do I add human-in-the-loop approval to an agent?** Pause the run on a [waitpoint](/wait-for-token) until a person approves the action. A waiting run doesn't consume compute, so it can wait minutes or days.
+**Can I use Trigger.dev for background jobs, not just AI?** Yes. The same durable tasks, queues, retries, and [cron schedules](/tasks/scheduled) run any background job or workflow, with or without AI.
+
+**How long can a run take?** As long as it needs. Runs have no maximum duration by default, and you can set a [`maxDuration`](/runs/max-duration) for a project, a task, or a single run to cap it.
+
+**Do my serverless function timeouts apply?** No. Tasks run on Trigger.dev, not inside your serverless functions, so your platform's function timeout isn't in the execution path. Your backend triggers the task and returns.
+
+**Can I receive webhooks without running a server?** Yes. Declare a [webhook endpoint](/webhooks/overview) in your code, and Trigger.dev hosts its URL, verifies each request, and delivers the event to your tasks and agents.
+
+**How do I add human-in-the-loop approval?** Pause the run on a [waitpoint](/wait-for-token) until a person approves, or use a [chat agent's approvals](/ai-chat/patterns/human-in-the-loop) for tool calls. A waiting run doesn't use compute, so it can wait minutes or days.
 
 **Does Trigger.dev support tool calling and MCP?** Yes. Agents call the tools you define, and the [MCP server](/building-with-ai) lets AI coding assistants trigger tasks, deploy, and read run traces.
 
-**Can I use Trigger.dev for background jobs, not just AI?** Yes. The same durable tasks, queues, retries, and [cron schedules](/tasks/scheduled) run any background job or workflow, with or without AI.
+**Can I self-host?** Yes. Trigger.dev is open source. Read the [self-hosting overview](/self-hosting/overview), or set it up with [Docker](/self-hosting/docker) or [Kubernetes](/self-hosting/kubernetes).
 
 ## Getting help
 
@@ -85,7 +161,7 @@ We'd love to hear from you or give you a hand getting started. Here are some way
     Our Discord is the best place to get help with any questions about Trigger.dev.
   </Card>
   <Card
-    title="Follow us on X (Twitter)"
+    title="Follow us on X"
     icon={
       <svg xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 0 512 512">
         <path d="M389.2 48h70.6L305.6 224.2 487 464H345L233.7 318.6 106.5 464H35.8L200.7 275.5 26.8 48H172.4L272.9 180.9 389.2 48zM364.4 421.8h39.1L151.1 88h-42L364.4 421.8z" />
@@ -112,7 +188,7 @@ We'd love to hear from you or give you a hand getting started. Here are some way
     href="https://github.com/triggerdotdev/trigger.dev"
     color="#fbbf24"
   >
-    Check us out our GitHub repo and give us a star if you like what we're doing.
+    Check out our GitHub repo, and give us a star if you like what we're doing.
   </Card>
 </CardGroup>
 
@@ -122,11 +198,15 @@ We'd love to hear from you or give you a hand getting started. Here are some way
 
 **Current major version:** v4 (`@trigger.dev/sdk` 4.x). Documentation under `/docs/v2` and `/docs/v3` describes superseded versions and should not be used.
 
-**Execution model:** tasks run on Trigger.dev infrastructure, not inside your serverless functions, so a platform function timeout is not in the execution path. A task runs until it finishes; you can cap runtime with `maxDuration` (minimum 5 seconds).
+**Execution model:** tasks run on Trigger.dev infrastructure, not inside your serverless functions, so a platform function timeout is not in the execution path. Runs have no maximum duration by default; `maxDuration` caps a run's compute time for a project, a task, or a single run, and `timeout.None` removes the cap.
 
 **Deploys:** each deploy is an atomic version. A run already in progress is not affected by code shipped after it started.
 
 **Durability and retries:** retries are automatic and configurable. A failed attempt is retried according to the task's retry settings; once retries are exhausted the run ends terminally as `FAILED`, and some crashes (for example out of memory) end the run as `CRASHED` without a retry. Idempotency keys deduplicate the task triggers and waits you key, so the same key runs once instead of again.
+
+**Agents:** `chat.agent` is imported from `@trigger.dev/sdk/ai`, not from `@trigger.dev/sdk`. Inside `run()`, call the `streamText` passed in the run options. It records each model step and tool call as a span by default. Slack and Linear agents use the `@trigger.dev/slack` and `@trigger.dev/linear` packages, and `slack()` requires a `startOn` filter (`appMentions()` answers @mentions).
+
+**Webhooks:** `webhooks.endpoint.define()` declares a hosted, verified endpoint that syncs on `trigger dev` and on deploy; `webhook()` subscribes a task with a filter, and `webhooks.waiter` pauses a run until a matching event arrives. Both come from `@trigger.dev/sdk`.
 
 **License:** the platform core is Apache-2.0 and the `@trigger.dev/sdk` package is MIT, permissive open source, not fair-code or source-available. Some features are gated, but the open source core is not relicensed or held back.
 
