@@ -13,7 +13,15 @@ import { Callout } from "~/components/primitives/Callout";
 import { LockClosedIcon } from "@heroicons/react/20/solid";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { cn } from "~/utils/cn";
-import { FEATURE_FLAG, ORG_LOCKED_FLAGS, type FlagControlType } from "~/v3/featureFlags";
+import {
+  FEATURE_FLAG,
+  ORG_LOCKED_FLAG_EFFECT,
+  ORG_LOCKED_FLAGS,
+  isUnchangedInvalidFlag,
+  type FeatureFlagKey,
+  type FlagControlType,
+  type OrgLockedFlagEffect,
+} from "~/v3/featureFlags";
 import {
   UNSET_VALUE,
   BooleanControl,
@@ -33,6 +41,7 @@ import {
 type LoaderData = {
   org: { id: string; title: string; slug: string };
   orgFlags: Record<string, unknown>;
+  invalidOrgFlags?: Record<string, unknown>;
   globalFlags: Record<string, unknown>;
   controlTypes: Record<string, FlagControlType>;
   workerGroupName?: string;
@@ -40,6 +49,22 @@ type LoaderData = {
   environments?: OverrideEnvironment[];
   isManagedCloud?: boolean;
 };
+
+const LOCKED_EFFECT_LABEL: Record<OrgLockedFlagEffect, string> = {
+  live: "overrides global",
+  ignored: "stored, ignored",
+  derived: "grace stamp",
+};
+
+// Most flags fall back to global when the org value fails its schema, but not all of them.
+const INVALID_VALUE_LABEL: Partial<Record<string, string>> = {
+  [FEATURE_FLAG.dashboardAgentTurnEvalsEnabled]: "invalid, treated as off",
+  [FEATURE_FLAG.workerQueueEnvironmentOverrides]: "invalid, valid entries still apply",
+};
+
+function formatStoredValue(value: unknown): string {
+  return typeof value === "string" ? value : JSON.stringify(value);
+}
 
 type ActionData = {
   success?: boolean;
@@ -85,7 +110,8 @@ export function FeatureFlagsDialog({
 
   useEffect(() => {
     if (loadFetcher.data) {
-      const loaded = loadFetcher.data.orgFlags ?? {};
+      // Invalid stored values ride along unchanged, so a save keeps them unless unset.
+      const loaded = { ...loadFetcher.data.orgFlags, ...loadFetcher.data.invalidOrgFlags };
       // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setOverrides({ ...loaded });
       setInitialOverrides({ ...loaded });
@@ -102,8 +128,16 @@ export function FeatureFlagsDialog({
   }, [saveFetcher.data]);
 
   const isDirty = stableStringify(overrides) !== stableStringify(initialOverrides);
-  const environmentOverrides = (overrides[FEATURE_FLAG.workerQueueEnvironmentOverrides] ??
-    {}) as WorkerQueueEnvironmentOverrides;
+  // An untouched invalid stored value isn't a draft: it renders as an invalid row, not the editor.
+  const environmentOverrides = (
+    isUnchangedInvalidFlag(
+      FEATURE_FLAG.workerQueueEnvironmentOverrides,
+      overrides,
+      loadFetcher.data?.invalidOrgFlags
+    )
+      ? {}
+      : (overrides[FEATURE_FLAG.workerQueueEnvironmentOverrides] ?? {})
+  ) as WorkerQueueEnvironmentOverrides;
   const hasIncompleteOverrides = incompleteOverrideScopes(environmentOverrides).length > 0;
 
   const setFlagValue = (key: string, value: unknown) => {
@@ -179,18 +213,86 @@ export function FeatureFlagsDialog({
                       ? String(globalValue)
                       : "unset";
 
-                if (locked) {
+                const effect = ORG_LOCKED_FLAG_EFFECT[key as FeatureFlagKey];
+                const invalidStored = data.invalidOrgFlags?.[key];
+                const isInvalidStored = isUnchangedInvalidFlag(
+                  key,
+                  overrides,
+                  data.invalidOrgFlags
+                );
+
+                if (isInvalidStored) {
                   return (
                     <div
                       key={key}
-                      className="flex items-center justify-between rounded-md border border-transparent bg-background-hover px-3 py-2.5"
+                      className="flex items-center justify-between rounded-md border border-error/30 bg-error/5 px-3 py-2.5"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm text-text-bright">{key}</div>
+                        <div className="truncate text-xs text-text-dimmed">
+                          org: {formatStoredValue(invalidStored)} (
+                          {INVALID_VALUE_LABEL[key] ?? "invalid"}) · global: {globalDisplay}
+                        </div>
+                      </div>
+                      {locked && effect === "derived" ? (
+                        <LockClosedIcon className="size-4 text-text-faint" />
+                      ) : (
+                        <Button variant="minimal/small" onClick={() => unsetFlag(key)}>
+                          unset
+                        </Button>
+                      )}
+                    </div>
+                  );
+                }
+
+                if (locked) {
+                  const hasOrgValue = key in overrides;
+                  const orgValue = overrides[key];
+                  const orgWorkerGroup =
+                    isWorkerGroup && hasOrgValue
+                      ? data.workerGroups?.find((group) => group.id === orgValue)
+                      : undefined;
+                  const orgDisplay = orgWorkerGroup
+                    ? `${orgWorkerGroup.name} (${String(orgValue).slice(0, 8)}...)`
+                    : formatStoredValue(orgValue);
+                  const canUnset = hasOrgValue && effect !== "derived";
+
+                  return (
+                    <div
+                      key={key}
+                      className={cn(
+                        "flex items-center justify-between rounded-md border px-3 py-2.5",
+                        hasOrgValue
+                          ? "border-indigo-500/20 bg-indigo-500/5"
+                          : "border-transparent bg-background-hover"
+                      )}
                       title="Global-level setting - not editable per org"
                     >
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm text-text-dimmed">{key}</div>
-                        <div className="text-xs text-text-dimmed">global: {globalDisplay}</div>
+                        <div
+                          className={cn(
+                            "truncate text-sm",
+                            hasOrgValue ? "text-text-bright" : "text-text-dimmed"
+                          )}
+                        >
+                          {key}
+                        </div>
+                        {hasOrgValue ? (
+                          <div className="truncate text-xs text-text-dimmed">
+                            org: {orgDisplay} ({effect ? LOCKED_EFFECT_LABEL[effect] : "stored"}) ·
+                            global: {globalDisplay}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-text-dimmed">global: {globalDisplay}</div>
+                        )}
                       </div>
-                      <LockClosedIcon className="size-4 text-text-faint" />
+                      {canUnset ? (
+                        <Button variant="minimal/small" onClick={() => unsetFlag(key)}>
+                          unset
+                        </Button>
+                      ) : (
+                        <LockClosedIcon className="size-4 text-text-faint" />
+                      )}
                     </div>
                   );
                 }

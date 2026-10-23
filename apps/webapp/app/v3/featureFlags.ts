@@ -1,3 +1,4 @@
+import stableStringify from "json-stable-stringify";
 import { z } from "zod";
 import { DeployBuildPath } from "@trigger.dev/core/v3";
 
@@ -275,6 +276,25 @@ export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runOpsMintShardOverride,
 ];
 
+export type OrgLockedFlagEffect = "live" | "ignored" | "derived";
+
+/**
+ * What the runtime does with an org's stored value for each locked flag, so the dialog can label
+ * it. "live": flag() reads the org override (eventRepository). "ignored": every reader goes to
+ * the global row (workerGroupService, RegionsPresenter, runOpsMintShard). "derived": a grace stamp
+ * the server writes (mintFlipGrace). Re-check those readers when adding a key here.
+ */
+export const ORG_LOCKED_FLAG_EFFECT: Partial<Record<FeatureFlagKey, OrgLockedFlagEffect>> = {
+  [FEATURE_FLAG.taskEventRepository]: "live",
+  [FEATURE_FLAG.defaultWorkerInstanceGroupId]: "ignored",
+  [FEATURE_FLAG.runOpsMintShardSet]: "ignored",
+  [FEATURE_FLAG.runOpsMintShardSetPrev]: "ignored",
+  [FEATURE_FLAG.runOpsMintShardSetFlippedAt]: "ignored",
+  [FEATURE_FLAG.runOpsMintShardOverride]: "ignored",
+  [FEATURE_FLAG.runOpsMintKindPrev]: "derived",
+  [FEATURE_FLAG.runOpsMintKindFlippedAt]: "derived",
+};
+
 /**
  * Flag groups where the operator sets a `primary` and the server computes the rest. The topology
  * lives here, not in the server module, because the admin page needs it too: unsetting a primary
@@ -332,6 +352,94 @@ export function validateFeatureFlagValue<T extends FeatureFlagKey>(
 // Utility function to validate partial feature flags (all keys optional)
 export function validatePartialFeatureFlags(values: Record<string, unknown>) {
   return FeatureFlagCatalogSchema.partial().safeParse(values);
+}
+
+export type StoredOrgFlags = {
+  valid: Partial<FeatureFlagCatalog>;
+  invalid: Record<string, unknown>;
+  unknownKeys: Record<string, unknown>;
+};
+
+export function isPlainFlagObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * Splits an org's stored flags key by key. Unlike validatePartialFeatureFlags, one invalid value
+ * doesn't hide the rest, and unknown keys are returned instead of dropped, so saves can keep them.
+ */
+export function parseStoredOrgFlags(raw: unknown): StoredOrgFlags {
+  const result: StoredOrgFlags = { valid: {}, invalid: {}, unknownKeys: {} };
+  if (!isPlainFlagObject(raw)) return result;
+
+  for (const [key, value] of Object.entries(raw)) {
+    if (!Object.hasOwn(FeatureFlagCatalog, key)) {
+      result.unknownKeys[key] = value;
+      continue;
+    }
+
+    const parsed = FeatureFlagCatalog[key as FeatureFlagKey].safeParse(value);
+    if (parsed.success) {
+      (result.valid as Record<string, unknown>)[key] = parsed.data;
+    } else {
+      result.invalid[key] = value;
+    }
+  }
+
+  return result;
+}
+
+/** Whether `key` still holds the invalid value the org has stored, i.e. the admin hasn't touched it. */
+export function isUnchangedInvalidFlag(
+  key: string,
+  current: Record<string, unknown>,
+  invalidStored: Record<string, unknown> | undefined
+): boolean {
+  if (!invalidStored || !Object.hasOwn(invalidStored, key) || !Object.hasOwn(current, key)) {
+    return false;
+  }
+  return stableStringify(current[key]) === stableStringify(invalidStored[key]);
+}
+
+/**
+ * The org flag set a replace-semantics save should write. A value must validate unless it equals
+ * the stored one, so a save can send back an invalid stored value without having to fix it.
+ * Stored keys outside the catalog are kept: a newer release may own them.
+ */
+export function mergeReplacedOrgFlags(
+  requested: Record<string, unknown>,
+  storedRaw: unknown
+): { success: true; flags: Record<string, unknown> } | { success: false; rejectedKeys: string[] } {
+  const stored = isPlainFlagObject(storedRaw) ? storedRaw : {};
+  const flags: Record<string, unknown> = {};
+  const rejectedKeys: string[] = [];
+
+  for (const [key, value] of Object.entries(requested)) {
+    if (Object.hasOwn(FeatureFlagCatalog, key)) {
+      const parsed = FeatureFlagCatalog[key as FeatureFlagKey].safeParse(value);
+      if (parsed.success) {
+        flags[key] = parsed.data;
+        continue;
+      }
+    }
+
+    if (Object.hasOwn(stored, key) && stableStringify(value) === stableStringify(stored[key])) {
+      flags[key] = stored[key];
+      continue;
+    }
+
+    rejectedKeys.push(key);
+  }
+
+  if (rejectedKeys.length > 0) return { success: false, rejectedKeys };
+
+  for (const [key, value] of Object.entries(stored)) {
+    if (!Object.hasOwn(FeatureFlagCatalog, key) && !Object.hasOwn(flags, key)) {
+      flags[key] = value;
+    }
+  }
+
+  return { success: true, flags };
 }
 
 // Utility types for catalog-driven UI rendering
