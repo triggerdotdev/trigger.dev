@@ -166,7 +166,8 @@ export class ChangeCurrentDeploymentService extends BaseService {
       await this._taskMetaCache.populateByCurrentWorker(
         deployment.environmentId,
         deployment.workerId!,
-        metadataEntries
+        metadataEntries,
+        deployment.templateKey
       );
     }
 

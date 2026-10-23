@@ -50,6 +50,8 @@ type ResolveInput = MigrationDecisionInput & {
   backing: { workerQueue: string; enableFastPath: boolean } | undefined;
   envType: string;
   environmentCompat: WorkerQueueEnvironmentOverride["compat"];
+  /** Template key of the deployment from the task metadata. Missing means no key. */
+  templateKey: string | null | undefined;
 };
 
 /**
@@ -59,7 +61,10 @@ type ResolveInput = MigrationDecisionInput & {
  * either way. Same-geo swap (us-east-1 -> us-east-1-next): any explicit placement
  * is a geography preference, honored by staying in-region. Applied after region
  * resolution, mirroring the scheduled-split. An environment compat of compute or container
- * decides the swap ahead of the org's migration decision.
+ * decides the swap ahead of the org's migration decision. A deployment without a template key
+ * stays on the base queue. The key can only keep a migrated run off compute: templates can exist
+ * for orgs that are not migrated, and the dequeue check still covers keyless runs that reach
+ * compute.
  */
 export function resolveComputeMigration({
   baseWorkerQueue,
@@ -68,6 +73,7 @@ export function resolveComputeMigration({
   backing,
   envType,
   environmentCompat,
+  templateKey,
   ...decision
 }: ResolveInput): {
   workerQueue: string | undefined;
@@ -85,5 +91,6 @@ export function resolveComputeMigration({
         ? false
         : isOrgMigrated(decision);
   if (!migrated) return passthrough;
+  if (!templateKey) return passthrough;
   return { workerQueue: backing.workerQueue, region, enableFastPath: backing.enableFastPath };
 }

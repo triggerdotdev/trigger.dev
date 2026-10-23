@@ -251,6 +251,7 @@ describe("per-environment worker queue overrides", () => {
         flags: { computeMigrationEnabled: migrationEnabled, computeMigrationFreePercentage: 100 },
         envType: environmentType,
         environmentCompat: environmentOverride.compat,
+        templateKey: "a".repeat(64),
       });
       const workerQueue = workerQueueForBirth({
         workerQueue: migrated.workerQueue!,
@@ -323,6 +324,7 @@ describe("per-environment worker queue overrides", () => {
         flags: undefined,
         envType: "STAGING",
         environmentCompat: environmentOverride.compat,
+        templateKey: "a".repeat(64),
       });
       expect(migrated.workerQueue).toBe("us-east-1-next");
       const birth = (v2Enabled: boolean) =>
@@ -354,6 +356,7 @@ describe("per-environment worker queue overrides", () => {
         flags: undefined,
         envType: "STAGING",
         environmentCompat: environmentOverride.compat,
+        templateKey: "a".repeat(64),
       });
       expect(
         workerQueueForBirth({

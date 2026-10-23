@@ -4,6 +4,8 @@ import { prisma as defaultPrisma, type PrismaClientOrTransaction } from "~/db.se
 import { env } from "~/env.server";
 import { isOrgMigrated } from "~/runEngine/concerns/computeMigration.server";
 import { logger } from "~/services/logger.server";
+import type { TaskMetadataCache } from "~/services/taskMetadataCache.server";
+import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.server";
 import { getEntitlement } from "~/services/platform.v3.server";
 import { singleton } from "~/utils/singleton";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
@@ -133,7 +135,8 @@ export class TemplatePrebuildService {
       timeoutMs: env.TEMPLATE_BUILDER_TIMEOUT_MS,
       presets: env.TEMPLATE_BUILDER_MACHINE_PRESETS,
       shadowRolloutPct: env.TEMPLATE_BUILDER_SHADOW_ROLLOUT_PCT,
-    }
+    },
+    private readonly taskMetaCache: TaskMetadataCache = taskMetadataCacheInstance
   ) {}
 
   /**
@@ -421,6 +424,18 @@ export class TemplatePrebuildService {
       });
       if (count === 0) {
         logger.warn("Template prebuild did not store the template key", { ...log, templateKey });
+        return;
+      }
+      const deployment = await this.prisma.workerDeployment.findFirst({
+        where: { id: deploymentId },
+        select: { workerId: true, environmentId: true },
+      });
+      if (deployment?.workerId) {
+        await this.taskMetaCache.setTemplateKey(
+          deployment.environmentId,
+          deployment.workerId,
+          templateKey
+        );
       }
     } catch (error) {
       logger.error("Template prebuild could not store the template key", {

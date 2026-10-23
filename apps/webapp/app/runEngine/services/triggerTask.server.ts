@@ -445,7 +445,7 @@ export class RunEngineTriggerTaskService {
           const parkedOnExternalDeploymentId =
             externalDeploymentResolution?.outcome === "park" ? externalDeploymentId : undefined;
 
-          const { queueName, lockedQueueId, taskTtl, taskKind, gates } =
+          const { queueName, lockedQueueId, taskTtl, taskKind, gates, templateKey } =
             await this.queueConcern.resolveQueueProperties(
               triggerRequest,
               lockedToBackgroundWorker ?? undefined
@@ -534,6 +534,7 @@ export class RunEngineTriggerTaskService {
             flags: globalFlagsRegistry.current(),
             envType: environment.type,
             environmentCompat: environmentOverride.compat,
+            templateKey,
           });
 
           const triggerSource = options.triggerSource ?? "api";

@@ -13,6 +13,11 @@ export type TaskMetadataEntry = {
   queueName: string;
   /** Task-declared gates, applied to every trigger that does not override them. */
   gates: TaskMetadataGate[] | null;
+  /**
+   * The template key of the worker's deployment, set on reads only. It is stored once per hash,
+   * not per slug, and writers pass it separately.
+   */
+  templateKey?: string | null;
 };
 
 export interface TaskMetadataCache {
@@ -28,7 +33,8 @@ export interface TaskMetadataCache {
   populateByCurrentWorker(
     envId: string,
     workerId: string,
-    entries: TaskMetadataEntry[]
+    entries: TaskMetadataEntry[],
+    templateKey?: string | null
   ): Promise<void>;
   /**
    * Replace `task-meta:by-worker:{workerId}` only. Used at deploy build sites
@@ -41,12 +47,26 @@ export interface TaskMetadataCache {
    * present (preserves the promotion boundary); the by-worker TTL is
    * refreshed on every call (sliding expiry).
    */
-  setByCurrentWorker(envId: string, workerId: string, entry: TaskMetadataEntry): Promise<void>;
+  setByCurrentWorker(
+    envId: string,
+    workerId: string,
+    entry: TaskMetadataEntry,
+    templateKey?: string | null
+  ): Promise<void>;
   /**
    * Upsert one slug in `task-meta:by-worker:{workerId}` only. Used by the
    * locked-version read-path back-fill; refreshes the by-worker TTL.
    */
-  setByWorker(workerId: string, entry: TaskMetadataEntry): Promise<void>;
+  setByWorker(
+    workerId: string,
+    entry: TaskMetadataEntry,
+    templateKey?: string | null
+  ): Promise<void>;
+  /**
+   * Store a deployment's template key after its build, in the by-worker hash, and in the env hash
+   * only while `workerId` still owns it, so a late build cannot stamp a newer promotion.
+   */
+  setTemplateKey(envId: string, workerId: string, templateKey: string): Promise<void>;
 }
 
 export type RedisTaskMetadataCacheOptions = {
@@ -111,13 +131,23 @@ function byWorkerKey(workerId: string): string {
 }
 
 /**
+ * Reserved hash field for the template key of the worker's deployment. A missing field means no
+ * key. Back-fills only ever add it, so a back-fill that read the row before the key was stored
+ * cannot remove it.
+ */
+const TEMPLATE_KEY_FIELD = "__template_key";
+
+/**
  * Atomically replace a single HASH's contents and reset its TTL.
  *
  * KEYS[1] = hash key
  * ARGV[1] = ttl seconds (0 = no TTL)
  * ARGV[2..N] = alternating field, value pairs
+ *
+ * Used only for by-worker hashes, so it keeps the hash's template key.
  */
 const REPLACE_HASH_LUA = `
+local templateKey = redis.call("HGET", KEYS[1], "${TEMPLATE_KEY_FIELD}")
 redis.call("DEL", KEYS[1])
 if #ARGV > 1 then
   local fv = {}
@@ -125,6 +155,9 @@ if #ARGV > 1 then
     fv[#fv + 1] = ARGV[i]
   end
   redis.call("HSET", KEYS[1], unpack(fv))
+end
+if templateKey then
+  redis.call("HSET", KEYS[1], "${TEMPLATE_KEY_FIELD}", templateKey)
 end
 local ttl = tonumber(ARGV[1])
 if ttl and ttl > 0 then
@@ -156,18 +189,30 @@ const OWNER_FIELD = "__owner_worker_id";
  * ARGV[1] = env ttl seconds (0 = no TTL)
  * ARGV[2] = by-worker ttl seconds (0 = no TTL)
  * ARGV[3] = workerId (env-hash owner marker)
- * ARGV[4..N] = alternating field, value pairs (same for both hashes)
+ * ARGV[4] = template key ("" = none)
+ * ARGV[5..N] = alternating field, value pairs (same for both hashes)
+ *
+ * With no key in ARGV[4], the by-worker hash's key is kept: a build can store it after the
+ * caller read the deployment row.
  */
 const REPLACE_TWO_HASHES_LUA = `
+local templateKey = ARGV[4]
+if templateKey == "" then
+  templateKey = redis.call("HGET", KEYS[2], "${TEMPLATE_KEY_FIELD}") or ""
+end
 redis.call("DEL", KEYS[1])
 redis.call("DEL", KEYS[2])
-if #ARGV > 3 then
+if #ARGV > 4 then
   local fv = {}
-  for i = 4, #ARGV do
+  for i = 5, #ARGV do
     fv[#fv + 1] = ARGV[i]
   end
   redis.call("HSET", KEYS[1], unpack(fv))
   redis.call("HSET", KEYS[2], unpack(fv))
+end
+if templateKey ~= "" then
+  redis.call("HSET", KEYS[1], "${TEMPLATE_KEY_FIELD}", templateKey)
+  redis.call("HSET", KEYS[2], "${TEMPLATE_KEY_FIELD}", templateKey)
 end
 redis.call("HSET", KEYS[1], "${OWNER_FIELD}", ARGV[3])
 local envTtl = tonumber(ARGV[1])
@@ -189,9 +234,13 @@ return 1
  * ARGV[1] = ttl seconds (0 = no TTL refresh)
  * ARGV[2] = field
  * ARGV[3] = value
+ * ARGV[4] = template key ("" = none)
  */
 const SET_FIELD_REFRESH_TTL_LUA = `
 redis.call("HSET", KEYS[1], ARGV[2], ARGV[3])
+if ARGV[4] ~= "" then
+  redis.call("HSET", KEYS[1], "${TEMPLATE_KEY_FIELD}", ARGV[4])
+end
 local ttl = tonumber(ARGV[1])
 if ttl and ttl > 0 then
   redis.call("EXPIRE", KEYS[1], ttl)
@@ -220,9 +269,13 @@ return 1
  * ARGV[3] = writer's expected env-hash owner workerId
  * ARGV[4] = field
  * ARGV[5] = value
+ * ARGV[6] = template key ("" = none)
  */
 const SET_TWO_FIELDS_LUA = `
 redis.call("HSET", KEYS[2], ARGV[4], ARGV[5])
+if ARGV[6] ~= "" then
+  redis.call("HSET", KEYS[2], "${TEMPLATE_KEY_FIELD}", ARGV[6])
+end
 local workerTtl = tonumber(ARGV[2])
 if workerTtl and workerTtl > 0 then
   redis.call("EXPIRE", KEYS[2], workerTtl)
@@ -231,6 +284,9 @@ end
 local owner = redis.call("HGET", KEYS[1], "${OWNER_FIELD}")
 if owner == false or owner == ARGV[3] then
   redis.call("HSET", KEYS[1], ARGV[4], ARGV[5])
+  if ARGV[6] ~= "" then
+    redis.call("HSET", KEYS[1], "${TEMPLATE_KEY_FIELD}", ARGV[6])
+  end
   if owner == false then
     redis.call("HSET", KEYS[1], "${OWNER_FIELD}", ARGV[3])
   end
@@ -238,6 +294,30 @@ if owner == false or owner == ARGV[3] then
   if envTtl and envTtl > 0 and redis.call("TTL", KEYS[1]) == -1 then
     redis.call("EXPIRE", KEYS[1], envTtl)
   end
+end
+return 1
+`;
+
+/**
+ * Store a template key after its build. The by-worker hash is keyed by the worker, so it always
+ * gets the key (a promotion that read the row before the build copies it from there). The env
+ * hash is CAS-guarded by `${OWNER_FIELD}`: a promotion of a newer worker owns it and must keep
+ * its own key. A missing env hash is left to the read-path back-fill.
+ *
+ * KEYS[1] = env hash key
+ * KEYS[2] = by-worker hash key
+ * ARGV[1] = workerId whose deployment got the key
+ * ARGV[2] = template key
+ * ARGV[3] = by-worker ttl seconds (0 = no TTL), set only when the hash has none
+ */
+const SET_TEMPLATE_KEY_LUA = `
+redis.call("HSET", KEYS[2], "${TEMPLATE_KEY_FIELD}", ARGV[2])
+local workerTtl = tonumber(ARGV[3])
+if workerTtl and workerTtl > 0 and redis.call("TTL", KEYS[2]) == -1 then
+  redis.call("EXPIRE", KEYS[2], workerTtl)
+end
+if redis.call("HGET", KEYS[1], "${OWNER_FIELD}") == ARGV[1] then
+  redis.call("HSET", KEYS[1], "${TEMPLATE_KEY_FIELD}", ARGV[2])
 end
 return 1
 `;
@@ -255,6 +335,7 @@ declare module "ioredis" {
       envTtlSeconds: string,
       workerTtlSeconds: string,
       workerId: string,
+      templateKey: string,
       ...fieldValues: string[]
     ): Result<number, Context>;
     taskMetaSetFieldRefreshTtl(
@@ -262,6 +343,7 @@ declare module "ioredis" {
       ttlSeconds: string,
       field: string,
       value: string,
+      templateKey: string,
       callback?: Callback<number>
     ): Result<number, Context>;
     taskMetaSetTwoFields(
@@ -272,6 +354,15 @@ declare module "ioredis" {
       workerId: string,
       field: string,
       value: string,
+      templateKey: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
+    taskMetaSetTemplateKey(
+      envKey: string,
+      workerKey: string,
+      workerId: string,
+      templateKey: string,
+      workerTtlSeconds: string,
       callback?: Callback<number>
     ): Result<number, Context>;
   }
@@ -303,6 +394,10 @@ export class RedisTaskMetadataCache implements TaskMetadataCache {
       numberOfKeys: 2,
       lua: SET_TWO_FIELDS_LUA,
     });
+    this.redis.defineCommand("taskMetaSetTemplateKey", {
+      numberOfKeys: 2,
+      lua: SET_TEMPLATE_KEY_LUA,
+    });
   }
 
   async getCurrent(envId: string, slug: string): Promise<TaskMetadataEntry | null> {
@@ -316,7 +411,8 @@ export class RedisTaskMetadataCache implements TaskMetadataCache {
   async populateByCurrentWorker(
     envId: string,
     workerId: string,
-    entries: TaskMetadataEntry[]
+    entries: TaskMetadataEntry[],
+    templateKey?: string | null
   ): Promise<void> {
     try {
       // Always invoke the script — empty `entries` is valid and causes both
@@ -332,6 +428,7 @@ export class RedisTaskMetadataCache implements TaskMetadataCache {
         String(this.currentEnvTtlSeconds),
         String(this.byWorkerTtlSeconds),
         workerId,
+        templateKey ?? "",
         ...fieldValues
       );
     } catch (error) {
@@ -366,7 +463,8 @@ export class RedisTaskMetadataCache implements TaskMetadataCache {
   async setByCurrentWorker(
     envId: string,
     workerId: string,
-    entry: TaskMetadataEntry
+    entry: TaskMetadataEntry,
+    templateKey?: string | null
   ): Promise<void> {
     try {
       await this.redis.taskMetaSetTwoFields(
@@ -376,7 +474,8 @@ export class RedisTaskMetadataCache implements TaskMetadataCache {
         String(this.byWorkerTtlSeconds),
         workerId,
         entry.slug,
-        encode(entry)
+        encode(entry),
+        templateKey ?? ""
       );
     } catch (error) {
       logger.error("Failed to set task metadata cache field (current worker)", {
@@ -388,13 +487,18 @@ export class RedisTaskMetadataCache implements TaskMetadataCache {
     }
   }
 
-  async setByWorker(workerId: string, entry: TaskMetadataEntry): Promise<void> {
+  async setByWorker(
+    workerId: string,
+    entry: TaskMetadataEntry,
+    templateKey?: string | null
+  ): Promise<void> {
     try {
       await this.redis.taskMetaSetFieldRefreshTtl(
         byWorkerKey(workerId),
         String(this.byWorkerTtlSeconds),
         entry.slug,
-        encode(entry)
+        encode(entry),
+        templateKey ?? ""
       );
     } catch (error) {
       logger.error("Failed to set task metadata cache field (by worker)", {
@@ -405,11 +509,26 @@ export class RedisTaskMetadataCache implements TaskMetadataCache {
     }
   }
 
+  async setTemplateKey(envId: string, workerId: string, templateKey: string): Promise<void> {
+    try {
+      await this.redis.taskMetaSetTemplateKey(
+        currentEnvKey(envId),
+        byWorkerKey(workerId),
+        workerId,
+        templateKey,
+        String(this.byWorkerTtlSeconds)
+      );
+    } catch (error) {
+      logger.error("Failed to set task metadata template key", { envId, workerId, error });
+    }
+  }
+
   async #get(key: string, slug: string): Promise<TaskMetadataEntry | null> {
     try {
-      const raw = await this.redis.hget(key, slug);
+      const [raw, templateKey] = await this.redis.hmget(key, slug, TEMPLATE_KEY_FIELD);
       if (!raw) return null;
-      return decode(slug, raw);
+      const entry = decode(slug, raw);
+      return entry ? { ...entry, templateKey: templateKey ?? null } : null;
     } catch (error) {
       logger.error("Failed to read task metadata from cache", { key, slug, error });
       return null;
@@ -439,6 +558,10 @@ export class NoopTaskMetadataCache implements TaskMetadataCache {
   }
 
   async setByWorker(): Promise<void> {
+    // intentionally empty
+  }
+
+  async setTemplateKey(): Promise<void> {
     // intentionally empty
   }
 }
