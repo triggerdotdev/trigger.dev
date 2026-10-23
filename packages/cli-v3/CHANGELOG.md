@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 4.8.1
+
+### Patch Changes
+
+- Fix `trigger deploy` failing on self-hosted instances with custom base images. Stages built on a custom image now keep the trust store that image ships with. ([`b5ed66b74`](https://github.com/triggerdotdev/trigger.dev/commit/b5ed66b746fd8c4d073c91c67c33c6dde4564498))
+- Updated dependencies:
+  - `@trigger.dev/build@4.8.1`
+  - `@trigger.dev/core@4.8.1`
+  - `@trigger.dev/schema-to-json@4.8.1`
+
 ## 4.8.0
 
 ### Minor Changes
