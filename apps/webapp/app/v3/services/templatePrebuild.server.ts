@@ -1,4 +1,4 @@
-import { getMeter } from "@internal/tracing";
+import { getMeter, type Meter } from "@internal/tracing";
 import type { MachinePresetName } from "@trigger.dev/core/v3";
 import { prisma as defaultPrisma, type PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
@@ -34,6 +34,17 @@ export type TemplateBuildOutcome =
   | "failed"
   | "timeout"
   | "rate_limited";
+
+/** Why a deploy was or was not eligible, logged when the prebuild is skipped. */
+type EligibilityDiagnostics = {
+  organizationId?: string;
+  workloadType?: string;
+  masterQueue?: string;
+  hasBacking?: boolean;
+  registryRows?: number | "cold";
+  migrated?: boolean;
+  eligible?: boolean;
+};
 
 type TemplateBuildRequestSkip = "no_builder" | "has_key" | "no_pinned_image";
 
@@ -78,18 +89,26 @@ type TemplateCreateResponse = {
   error?: string;
 };
 
-const telemetry = singleton("templatePrebuildTelemetry", () => {
-  const meter = getMeter("template-prebuild");
+export function templatePrebuildTelemetry(meter: Meter) {
   return {
     calls: meter.createCounter("deploy.template_prebuild.calls", {
       description: "Template builder calls made at deploy finalisation",
+    }),
+    skips: meter.createCounter("deploy.template_prebuild.skips", {
+      description: "Deploy finalisations that did not call the template builder",
     }),
     duration: meter.createHistogram("deploy.template_prebuild.duration_ms", {
       description: "Template builder call duration",
       unit: "ms",
     }),
   };
-});
+}
+
+type TemplatePrebuildTelemetry = ReturnType<typeof templatePrebuildTelemetry>;
+
+const defaultTelemetry = singleton("templatePrebuildTelemetry", () =>
+  templatePrebuildTelemetry(getMeter("template-prebuild"))
+);
 
 /** The image pinned by digest, or undefined when no valid digest is known. */
 export function pinnedImageReference(
@@ -143,7 +162,8 @@ export class TemplatePrebuildService {
       presets: env.TEMPLATE_BUILDER_MACHINE_PRESETS,
       shadowRolloutPct: env.TEMPLATE_BUILDER_SHADOW_ROLLOUT_PCT,
     },
-    private readonly taskMetaCache: TaskMetadataCache = taskMetadataCacheInstance
+    private readonly taskMetaCache: TaskMetadataCache = taskMetadataCacheInstance,
+    private readonly telemetry: TemplatePrebuildTelemetry = defaultTelemetry
   ) {}
 
   /**
@@ -163,8 +183,16 @@ export class TemplatePrebuildService {
     outcome?: TemplateBuildOutcome;
   }> {
     try {
-      const { mode, reason } = await this.resolveMode(options.projectId);
+      const { mode, reason, diagnostics } = await this.resolve(options.projectId);
       if (mode === "skip") {
+        logger.info("Template prebuild skipped", {
+          deploymentId: options.deploymentFriendlyId,
+          projectId: options.projectId,
+          mode,
+          reason,
+          ...diagnostics,
+        });
+        this.telemetry.skips.add(1, { reason, eligible: diagnostics.eligible ?? false });
         return { mode, reason };
       }
 
@@ -174,6 +202,7 @@ export class TemplatePrebuildService {
           deploymentId: options.deploymentFriendlyId,
           imageReference: options.imageReference,
         });
+        this.telemetry.skips.add(1, { reason: "no-digest", eligible: true });
         return { mode: "skip", reason };
       }
 
@@ -196,6 +225,7 @@ export class TemplatePrebuildService {
         deploymentId: options.deploymentFriendlyId,
         error: error instanceof Error ? error.message : String(error),
       });
+      this.telemetry.skips.add(1, { reason: "error" });
       return { mode: "skip" };
     }
   }
@@ -203,10 +233,16 @@ export class TemplatePrebuildService {
   async resolveMode(
     projectId: string
   ): Promise<{ mode: TemplatePrebuildMode; reason: TemplatePrebuildReason }> {
-    if (!this.config.url) {
-      return { mode: "skip", reason: "no-builder" };
-    }
+    const { mode, reason } = await this.resolve(projectId);
+    return { mode, reason };
+  }
 
+  // Resolves eligibility even without a builder, so a skip shows whether the deploy would build.
+  private async resolve(projectId: string): Promise<{
+    mode: TemplatePrebuildMode;
+    reason: TemplatePrebuildReason;
+    diagnostics: EligibilityDiagnostics;
+  }> {
     const project = await this.prisma.project.findFirst({
       where: { id: projectId },
       select: {
@@ -216,16 +252,25 @@ export class TemplatePrebuildService {
     });
 
     if (!project) {
-      return { mode: "skip", reason: "no-project" };
+      return { mode: "skip", reason: "no-project", diagnostics: {} };
     }
 
-    const reason = await this.eligibility(project);
+    const diagnostics: EligibilityDiagnostics = {
+      organizationId: project.organization.id,
+      workloadType: project.defaultWorkerGroup?.workloadType,
+      masterQueue: project.defaultWorkerGroup?.masterQueue,
+    };
+    const reason = await this.eligibility(project, diagnostics);
+    diagnostics.eligible = reason !== "none";
+    if (!this.config.url) {
+      return { mode: "skip", reason: "no-builder", diagnostics };
+    }
     if (reason === "none") {
-      return { mode: "skip", reason };
+      return { mode: "skip", reason, diagnostics };
     }
     // The rollout only samples orgs without compute, so it never holds their deploys.
     if (reason === "rollout") {
-      return { mode: "shadow", reason };
+      return { mode: "shadow", reason, diagnostics };
     }
 
     const wait = await makeFlag(this.prisma)({
@@ -234,21 +279,29 @@ export class TemplatePrebuildService {
       overrides: (project.organization.featureFlags as Record<string, unknown>) ?? {},
     });
 
-    return { mode: wait ? "wait" : "shadow", reason };
+    return { mode: wait ? "wait" : "shadow", reason, diagnostics };
   }
 
-  private async eligibility(project: {
-    defaultWorkerGroup: { workloadType: string; masterQueue: string } | null;
-    organization: { id: string; featureFlags: unknown };
-  }): Promise<TemplatePrebuildReason> {
+  private async eligibility(
+    project: {
+      defaultWorkerGroup: { workloadType: string; masterQueue: string } | null;
+      organization: { id: string; featureFlags: unknown };
+    },
+    diagnostics: EligibilityDiagnostics
+  ): Promise<TemplatePrebuildReason> {
+    const groups = workerRegionRegistry.current();
+    const defaultQueue = project.defaultWorkerGroup?.masterQueue;
+    const backing = defaultQueue ? backingForQueue(defaultQueue, groups ?? []) : undefined;
+    diagnostics.registryRows = groups ? groups.length : "cold";
+    diagnostics.hasBacking = backing !== undefined;
+
     if (project.defaultWorkerGroup?.workloadType === "MICROVM") {
       return "microvm-native";
     }
 
     // Migrated orgs run on the compute backing although their stored default is
     // still the container region. A cold registry read finds no backing, so skips.
-    const defaultQueue = project.defaultWorkerGroup?.masterQueue;
-    if (defaultQueue && backingForQueue(defaultQueue, workerRegionRegistry.current() ?? [])) {
+    if (backing) {
       const decision = {
         orgId: project.organization.id,
         orgFeatureFlags: project.organization.featureFlags as Record<string, unknown> | null,
@@ -268,6 +321,7 @@ export class TemplatePrebuildService {
         }
         migrated = isOrgMigrated({ ...decision, planType });
       }
+      diagnostics.migrated = migrated;
       if (migrated) {
         return "migrated";
       }
@@ -416,8 +470,8 @@ export class TemplatePrebuildService {
     }
 
     const attributes = { outcome, mode };
-    telemetry.calls.add(1, attributes);
-    telemetry.duration.record(performance.now() - startedAt, attributes);
+    this.telemetry.calls.add(1, attributes);
+    this.telemetry.duration.record(performance.now() - startedAt, attributes);
     return outcome === "failed" ? { outcome, reason } : { outcome };
   }
 

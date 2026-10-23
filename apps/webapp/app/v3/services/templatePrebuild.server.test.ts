@@ -10,8 +10,10 @@ import {
   type TemplateBuilderConfig,
   TemplatePrebuildService,
   templateCreateRequest,
+  templatePrebuildTelemetry,
   validTemplateKey,
 } from "./templatePrebuild.server";
+import { createInMemoryMetrics } from "../../../test/utils/tracing";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -315,6 +317,36 @@ describe("prebuild", () => {
       expect(server.requests).toHaveLength(0);
     } finally {
       await server.close();
+    }
+  });
+
+  postgresTest("counts a skip by its reason", async ({ prisma }) => {
+    const metrics = createInMemoryMetrics();
+    try {
+      const project = await createProject(prisma, { workloadType: "MICROVM" });
+      const service = new TemplatePrebuildService(
+        prisma,
+        config({ url: undefined }),
+        undefined,
+        templatePrebuildTelemetry(metrics.meter)
+      );
+      const result = await service.prebuild({
+        ...deployment,
+        projectId: project.id,
+        imageDigest: DIGEST,
+      });
+
+      expect(result).toEqual({ mode: "skip", reason: "no-builder" });
+      const exported = await metrics.getMetrics();
+      const skips = exported
+        .at(-1)
+        ?.scopeMetrics.flatMap((scope) => scope.metrics)
+        .find((metric) => metric.descriptor.name === "deploy.template_prebuild.skips");
+      expect(skips?.dataPoints.map(({ attributes, value }) => ({ attributes, value }))).toEqual([
+        { attributes: { reason: "no-builder", eligible: true }, value: 1 },
+      ]);
+    } finally {
+      await metrics.shutdown();
     }
   });
 
