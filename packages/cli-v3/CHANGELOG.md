@@ -1,5 +1,44 @@
 # trigger.dev
 
+## 4.8.0
+
+### Minor Changes
+
+- Route verified webhooks into agent sessions with `chat.event({ endpoint, key })`, and connect external chat surfaces with `chat.channels.custom({ endpoint })`. Both subscribe to a shared webhook endpoint, so an agent and your other webhook tasks can use the same provider URL. Channels support reply delivery, session binding, conversation seeding, and lifecycle reactions, and a failed turn posts a short line instead of the error (`errorMessage` sets it, as a string or a function of the failure). Use `chat.createWatchToken()` to watch a session from another surface. ([`d6955ee9f`](https://github.com/triggerdotdev/trigger.dev/commit/d6955ee9f31b0b1a3af55bb8fbbc77ba68bcb3f7))
+
+  A connector can also stream replies natively (`stream()`), mirror the session's state into the surface (`lifecycle()`), show tool calls as they run (`progress()`), stop a running turn from the surface (`onControl()`), post approvals and tool controls and resume the run from a verified click, download files only the surface can read (`download()`), and acknowledge or fold in messages that arrive mid-turn (`received()`, `pendingMessages`).
+
+- Add hosted webhooks: declare an endpoint once with `webhooks.endpoint.define({ id, source })` and Trigger.dev hosts its URL, verifies every request, and routes each event to the endpoint's subscribers. Subscribe tasks with `webhook({ endpoint, filter, onEvent })`, each with its own type-safe filter, and pause a run until a matching webhook arrives with `webhooks.waiter.create()` and `webhooks.waiter.wait()`. ([`d6955ee9f`](https://github.com/triggerdotdev/trigger.dev/commit/d6955ee9f31b0b1a3af55bb8fbbc77ba68bcb3f7))
+
+  ```ts
+  export const stripe = webhooks.endpoint.define({
+    id: "stripe",
+    source: webhooks.stripe(),
+  });
+
+  export const fulfill = webhook({
+    id: "fulfill",
+    endpoint: stripe,
+    filter: "event.type == 'checkout.session.completed'",
+    onEvent: async ({ event }) => {},
+  });
+
+  const waiter = await webhooks.waiter.create(stripe, {
+    match: { "event.data.object.metadata.orderId": order.id },
+  });
+  const { event } = await webhooks.waiter.wait(waiter).unwrap();
+  ```
+
+  Sources cover presets (`webhooks.stripe()`, `webhooks.github()`, `webhooks.svix()`, `webhooks.discord()`, and others), named providers (`webhooks.clerk()`, `webhooks.shopify()`, and more) and `webhooks.custom<T>(config)`, and most carry a setup prompt an AI coding agent can follow to register the endpoint. Retries are deduplicated on the provider's own event or delivery id where it sends one. Filters, keys and waiter `match` paths share the `event.`, `header.` and `webhook.` namespaces, and filters accept `== null` / `!= null` presence checks and `event any (...)` over a payload that is an array of events. `webhook()` takes `task()` options such as `queue`, `machine` and `retry`. The HTTP API lists endpoints and deliveries, replays deliveries, and creates and cancels waiters, and both it and the MCP server can read an endpoint's setup prompt and generate or store its signing secret.
+
+### Patch Changes
+
+- The `generate_webhook_secret` and `set_webhook_secret` MCP tools take an optional `previousSecretTtlSeconds` to keep accepting a webhook endpoint's old signing secret while the provider switches to the new one (up to 7 days), and report when the old secret stops working. ([`98adb6662`](https://github.com/triggerdotdev/trigger.dev/commit/98adb6662562dbfa99f7c026ddb544c4486e03f6))
+- Updated dependencies:
+  - `@trigger.dev/core@4.8.0`
+  - `@trigger.dev/build@4.8.0`
+  - `@trigger.dev/schema-to-json@4.8.0`
+
 ## 4.7.6
 
 ### Patch Changes
