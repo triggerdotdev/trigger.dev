@@ -275,7 +275,7 @@ const tools = { research: researchTool };
 export const myAgent = chat.agent({
   id: "orchestrator",
   tools, // declare here so toModelOutput survives across turns
-  run: async ({ messages, tools, stopSignal }) => {
+  run: async ({ messages, tools, stopSignal, streamText }) => {
     return streamText({
       model: anthropic("claude-sonnet-4-6"),
       messages,

@@ -52,7 +52,7 @@ The agent is a single [`chat.agent()`](/ai-chat/overview) task. Trigger.dev runs
 
 ```ts trigger/chat.ts
 import { chat } from "@trigger.dev/sdk/ai";
-import { stepCountIs, streamText } from "ai";
+import { stepCountIs } from "ai";
 import { HISTORY_TURNS, MAX_REPLY_TOKENS, SYSTEM_PROMPT } from "../lib/voice-config";
 import { chatModel } from "../lib/model";
 
@@ -72,10 +72,8 @@ export const voiceChat = chat.agent({
     return firstUser > 0 ? windowed.slice(firstUser) : windowed;
   },
 
-  run: async ({ messages, signal }) => {
+  run: async ({ messages, signal, streamText }) => {
     return streamText({
-      // Spread first: wires up compaction, steering and telemetry.
-      ...chat.toStreamTextOptions(),
       model: chatModel,
       system: SYSTEM_PROMPT,
       maxOutputTokens: MAX_REPLY_TOKENS,

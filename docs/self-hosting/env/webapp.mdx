@@ -192,6 +192,18 @@ mode: "wide"
 | `RUN_ENGINE_DEFAULT_MAX_TTL`                     | No       | —                     | Maximum TTL for all runs (e.g. "14d"). Runs without a TTL use this as default; runs with a larger TTL are clamped. |
 | `MAXIMUM_DEV_QUEUE_SIZE`                         | No       | —                     | Maximum queued runs per queue in development environments.                                                         |
 | `MAXIMUM_DEPLOYED_QUEUE_SIZE`                    | No       | —                     | Maximum queued runs per queue in deployed (staging/prod) environments.                                             |
+| **Webhooks**                                     |          |                       |                                                                                                                    |
+| `WEBHOOK_ENABLED`                                | No       | 0                     | Set to `1` to run hosted webhooks: ingest, delivery and waiters. See [Webhooks](#webhooks). |
+| `WEBHOOK_REDIS_HOST`                             | No       | localhost             | A node of the Redis cluster webhooks use for their queue and waiters. It must run in cluster mode. |
+| `WEBHOOK_REDIS_PORT`                             | No       | 6379                  | Port of that node. |
+| `WEBHOOK_REDIS_USERNAME`                         | No       | —                     | Webhooks Redis username. |
+| `WEBHOOK_REDIS_PASSWORD`                         | No       | —                     | Webhooks Redis password. |
+| `WEBHOOK_REDIS_TLS_DISABLED`                     | No       | `REDIS_TLS_DISABLED`  | Set to `true` to connect to the webhooks Redis without TLS. |
+| `WEBHOOK_INGRESS_ORIGIN`                         | No       | `API_ORIGIN`          | Public origin of the webhook URLs, for when you serve them from their own host. |
+| `WEBHOOK_INGRESS_BODY_SIZE_LIMIT_MB`             | No       | 1                     | Largest webhook request body accepted, in MB. |
+| `WEBHOOK_DATABASE_URL`                           | No       | `DATABASE_URL`        | A separate PostgreSQL database for webhook endpoints and deliveries. |
+| `WEBHOOK_DELIVERY_RETENTION_DAYS`                | No       | 30                    | How many days of deliveries the dashboard and API show. It doesn't delete anything: deliveries are kept for `WEBHOOK_DELIVERY_STORAGE_DAYS`, or longer when this is higher. |
+| `WEBHOOK_DELIVERY_STORAGE_DAYS`                  | No       | 30                    | How long deliveries are stored before they're deleted. Must be one of `3`, `7`, `30`, `90`, `180` or `365`; any other value stops the webapp from starting. |
 | **Misc**                                         |          |                       |                                                                                                                    |
 | `TRIGGER_TELEMETRY_DISABLED`                     | No       | —                     | Disable telemetry.                                                                                                 |
 | `NODE_MAX_OLD_SPACE_SIZE`                        | No       | 8192                  | Maximum memory allocation for Node.js heap in MiB (e.g. "4096" for 4GB).                                           |
@@ -201,6 +213,18 @@ mode: "wide"
 | `ADMIN_EMAILS`                                   | No       | —                     | Regex of user emails to automatically promote to admin on signup. Does not apply to existing users.                |
 | `ADMIN_DASHBOARD_ENABLED`                        | No       | 1                     | Set to anything other than `1` or `true` to disable the admin dashboard and user impersonation on this instance.   |
 | `EVENT_LOOP_MONITOR_ENABLED`                     | No       | 1                     | Node.js event loop lag monitor.                                                                                    |
+
+## Webhooks
+
+Hosted webhooks are off on a self-hosted instance until you turn them on:
+
+1. Run a Redis (or Valkey) cluster for webhooks and point `WEBHOOK_REDIS_HOST` and `WEBHOOK_REDIS_PORT` at one of its nodes. The webhook engine connects in cluster mode, so a standalone Redis won't work.
+2. Set `WEBHOOK_ENABLED=1` on the webapp.
+3. Give organizations access with the `hasWebhooksAccess` feature flag: turn it on for everyone on the admin dashboard's **Global Feature Flags** page, or for one organization from its feature flags on the **Organizations** page. An organization without it doesn't see Webhooks in the dashboard, and its deploys don't sync endpoints.
+
+Webhook URLs are served from `WEBHOOK_INGRESS_ORIGIN`, which defaults to `API_ORIGIN`, so providers need to reach that origin from the internet.
+
+The Docker Compose setup only passes the variables listed under the webapp service's `environment` in `hosting/docker/webapp/docker-compose.yml`, so add the webhook variables there. With the Helm chart, set them in `webapp.extraEnvVars`.
 
 ## Multi-Provider Object Storage
 
