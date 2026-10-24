@@ -1769,7 +1769,20 @@ export const UpdateMetadataRequestBody = FlushedRunMetadata;
 export type UpdateMetadataRequestBody = z.infer<typeof UpdateMetadataRequestBody>;
 
 export const UpdateMetadataResponseBody = z.object({
-  metadata: z.record(z.string(), DeserializedJsonSchema),
+  metadata: z.preprocess(
+    (value) => {
+      if (typeof value !== "string") {
+        return value;
+      }
+
+      try {
+        return JSON.parse(value);
+      } catch {
+        return value;
+      }
+    },
+    z.record(z.string(), DeserializedJsonSchema)
+  ),
 });
 
 export type UpdateMetadataResponseBody = z.infer<typeof UpdateMetadataResponseBody>;
