@@ -7,6 +7,7 @@ import {
   parseStoredOrgFlags,
   validatePartialFeatureFlags,
 } from "~/v3/featureFlags";
+import { mergeOrgFeatureFlags } from "~/v3/featureFlags.server";
 
 describe("parseStoredOrgFlags", () => {
   it("matches validatePartialFeatureFlags for an all-valid blob", () => {
@@ -61,6 +62,33 @@ describe("parseStoredOrgFlags", () => {
 
   it.each([null, undefined, [], ["a"], "flags", 1])("returns nothing for %j", (raw) => {
     expect(parseStoredOrgFlags(raw)).toEqual({ valid: {}, invalid: {}, unknownKeys: {} });
+  });
+});
+
+describe("mergeOrgFeatureFlags", () => {
+  it("applies valid org overrides while falling back to global for invalid and unknown keys", () => {
+    const globalFlags = {
+      [FEATURE_FLAG.hasLogsPageAccess]: false,
+      [FEATURE_FLAG.realtimeBackend]: "electric" as const,
+      [FEATURE_FLAG.hasQueryAccess]: false,
+    };
+
+    const merged = mergeOrgFeatureFlags(globalFlags, {
+      [FEATURE_FLAG.hasLogsPageAccess]: true,
+      [FEATURE_FLAG.realtimeBackend]: "not-a-backend",
+      someNewerFlag: true,
+    });
+
+    expect(merged).toEqual({
+      [FEATURE_FLAG.hasLogsPageAccess]: true,
+      [FEATURE_FLAG.realtimeBackend]: "electric",
+      [FEATURE_FLAG.hasQueryAccess]: false,
+    });
+  });
+
+  it.each([null, undefined, [], "invalid"])("returns global flags when org flags are %j", (raw) => {
+    const globalFlags = { [FEATURE_FLAG.hasLogsPageAccess]: true };
+    expect(mergeOrgFeatureFlags(globalFlags, raw)).toEqual(globalFlags);
   });
 });
 

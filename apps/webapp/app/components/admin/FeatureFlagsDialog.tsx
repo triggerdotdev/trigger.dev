@@ -17,6 +17,7 @@ import {
   FEATURE_FLAG,
   ORG_LOCKED_FLAG_EFFECT,
   ORG_LOCKED_FLAGS,
+  derivedFlagsClearedWith,
   isUnchangedInvalidFlag,
   type FeatureFlagKey,
   type FlagControlType,
@@ -96,12 +97,15 @@ export function FeatureFlagsDialog({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [unlocked, setUnlocked] = useState(false);
 
-  const isLocked = (key: string) => !unlocked && ORG_LOCKED_FLAGS.includes(key);
+  const isLocked = (key: string) =>
+    ORG_LOCKED_FLAG_EFFECT[key as FeatureFlagKey] === "derived" ||
+    (!unlocked && ORG_LOCKED_FLAGS.includes(key as FeatureFlagKey));
 
   useEffect(() => {
     if (open && orgId) {
       // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setSaveError(null);
+      setUnlocked(false);
       setOverrides({});
       setInitialOverrides({});
       loadFeatureFlags(`/admin/api/v2/orgs/${orgId}/feature-flags`);
@@ -148,6 +152,9 @@ export function FeatureFlagsDialog({
     setOverrides((prev) => {
       const next = { ...prev };
       delete next[key];
+      for (const derived of derivedFlagsClearedWith(key)) {
+        delete next[derived];
+      }
       return next;
     });
   };
