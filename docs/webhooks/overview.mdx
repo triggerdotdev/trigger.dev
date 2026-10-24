@@ -83,6 +83,14 @@ The CLI finds your endpoints and subscribers during `trigger dev` and deployment
 
 A request must pass verification before anything else happens. Provider handshakes are answered directly and create no delivery. A verified request is checked for duplicates, recorded, and then routed: each subscriber's filter is checked, matching subscribers run, and waiting runs whose match fits the event are resumed. The delivery records a result per subscriber.
 
+## Pricing and limits
+
+Webhooks have no separate charge on Trigger.dev Cloud. Receiving, verifying, filtering and recording deliveries is included in every plan. The runs a delivery starts or resumes are billed like any other run, by compute time. See [pricing](https://trigger.dev/pricing).
+
+A delivery that no subscriber's filter matches starts no run, so it uses no compute. A run [waiting](/webhooks/waiters) for a webhook is suspended, so it uses no compute until the webhook arrives.
+
+Each plan sets limits on the ingest rate, waiting runs, processing concurrency and how long deliveries are kept. See [Limits](/limits#webhook-ingest-rate-limits).
+
 ## Connect it
 
 Every endpoint can produce a setup prompt for an AI coding agent. It holds the URL, the events your subscribers filter on, and the steps for registering the endpoint and its signing secret with the provider. Copy it from the endpoints list or the endpoint's page, or read it with the MCP server's `get_webhook_endpoint_details` tool. See [Connect a provider](/webhooks/connect).

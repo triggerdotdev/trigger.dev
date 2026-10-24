@@ -70,6 +70,10 @@ The [MCP server](/mcp-introduction) has `list_webhook_deliveries` (filter by end
 | [`GET /api/v1/webhooks/deliveries/{deliveryId}`](/management/webhooks/retrieve-delivery) | Reads a delivery, with a `targets` entry per subscriber and one for waiting runs. |
 | [`POST /api/v1/webhooks/deliveries/{deliveryId}/replay`](/management/webhooks/replay-delivery) | Replays it, as above. The key needs permission to trigger every task the replay starts, and to write sessions if it reaches an agent's subscriber. |
 
+## Retention
+
+Deliveries stay visible for 3 days on Free, 7 days on Hobby and 30 days on Pro. See [Limits](/limits#webhook-delivery-retention).
+
 ## Deduplication
 
 Trigger.dev uses the endpoint and idempotency key to deduplicate incoming events. Delivery records and task runs have separate deduplication windows:
