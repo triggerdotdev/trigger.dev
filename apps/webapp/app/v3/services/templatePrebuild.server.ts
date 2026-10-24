@@ -13,6 +13,7 @@ import { makeFlag } from "~/v3/featureFlags.server";
 import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
 import { resolveComputeAccess } from "~/v3/regionAccess.server";
+import { WorkerGroupService } from "~/v3/services/worker/workerGroupService.server";
 import {
   backingForQueue,
   selfBackingWorkerGroups,
@@ -255,22 +256,27 @@ export class TemplatePrebuildService {
   }> {
     const project = await this.prisma.project.findFirst({
       where: { id: projectId },
-      select: {
-        defaultWorkerGroup: { select: { workloadType: true, masterQueue: true } },
-        organization: { select: { id: true, featureFlags: true } },
-      },
+      select: { organization: { select: { id: true, featureFlags: true } } },
     });
 
     if (!project) {
       return { mode: "skip", reason: "no-project", diagnostics: {} };
     }
 
+    // As on the trigger path, a project without its own default group uses the global one.
+    const defaultWorkerGroup = await new WorkerGroupService({
+      prisma: this.prisma,
+    }).getDefaultWorkerGroupForProject({ projectId });
+
     const diagnostics: EligibilityDiagnostics = {
       organizationId: project.organization.id,
-      workloadType: project.defaultWorkerGroup?.workloadType,
-      masterQueue: project.defaultWorkerGroup?.masterQueue,
+      workloadType: defaultWorkerGroup?.workloadType,
+      masterQueue: defaultWorkerGroup?.masterQueue,
     };
-    const reason = await this.eligibility(project, diagnostics);
+    const reason = await this.eligibility(
+      { ...project, defaultWorkerGroup: defaultWorkerGroup ?? null },
+      diagnostics
+    );
     diagnostics.eligible = reason !== "none";
     if (!this.config.url) {
       return { mode: "skip", reason: "no-builder", diagnostics };

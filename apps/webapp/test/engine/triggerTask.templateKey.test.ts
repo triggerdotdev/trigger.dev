@@ -37,6 +37,8 @@ import { workerQueueForBirth } from "~/runEngine/concerns/workerQueueAssignment.
 import { DefaultQueueManager } from "~/runEngine/concerns/queues.server";
 import type { RunEngine } from "~/v3/runEngine.server";
 import { RedisTaskMetadataCache } from "~/services/taskMetadataCache.server";
+import { FEATURE_FLAG } from "~/v3/featureFlags";
+import { makeSetFlag } from "~/v3/featureFlags.server";
 import { ChangeCurrentDeploymentService } from "~/v3/services/changeCurrentDeployment.server";
 import { TemplatePrebuildService } from "~/v3/services/templatePrebuild.server";
 import {
@@ -463,7 +465,7 @@ describe("a mixed-runtime group as its region's compute backing", () => {
   // One CONTAINER group carries both runtimes; the old MICROVM group is hidden unless asked.
   async function setupRegion(
     prisma: PrismaClient,
-    options: { migrated: boolean; visibleMicrovm?: boolean }
+    options: { migrated: boolean; visibleMicrovm?: boolean; globalDefault?: boolean }
   ) {
     const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
     const group = (masterQueue: string, workloadType: "CONTAINER" | "MICROVM", hidden: boolean) =>
@@ -480,10 +482,17 @@ describe("a mixed-runtime group as its region's compute backing", () => {
       });
     const mixed = await group("cme-mixed", "CONTAINER", false);
     await group("us-east-1-mvm", "MICROVM", !options.visibleMicrovm);
+    // With globalDefault, the project has no default group and falls back to the global one.
     await prisma.project.update({
       where: { id: environment.project.id },
-      data: { defaultWorkerGroupId: mixed.id },
+      data: { defaultWorkerGroupId: options.globalDefault ? null : mixed.id },
     });
+    if (options.globalDefault) {
+      await makeSetFlag(prisma)({
+        key: FEATURE_FLAG.defaultWorkerInstanceGroupId,
+        value: mixed.id,
+      });
+    }
     await prisma.organization.update({
       where: { id: environment.organization.id },
       data: { featureFlags: { computeMigrationEnabled: options.migrated } },
@@ -566,6 +575,23 @@ describe("a mixed-runtime group as its region's compute backing", () => {
     async ({ prisma, redisOptions }) => {
       db.client = prisma;
       const { environment, mixed } = await setupRegion(prisma, { migrated: true });
+
+      expect(await prebuildMode(prisma, environment.project.id, [mixed.id])).toEqual({
+        mode: "shadow",
+        reason: "migrated",
+      });
+      expect(await birthQueue(prisma, redisOptions, environment, [mixed.id], KEY)).toBe(COMPUTE);
+    }
+  );
+
+  containerTest(
+    "a migrated org without a project default group is eligible through the global default",
+    async ({ prisma, redisOptions }) => {
+      db.client = prisma;
+      const { environment, mixed } = await setupRegion(prisma, {
+        migrated: true,
+        globalDefault: true,
+      });
 
       expect(await prebuildMode(prisma, environment.project.id, [mixed.id])).toEqual({
         mode: "shadow",
