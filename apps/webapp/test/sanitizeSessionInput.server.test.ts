@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { stripClientIngressFields } from "~/services/realtime/sanitizeSessionInput.server";
+import {
+  stripClientIngressFields,
+  stripClientIngressFieldsFromBasePayload,
+} from "~/services/realtime/sanitizeSessionInput.server";
 
 const record = (payload: Record<string, unknown>) => JSON.stringify({ kind: "message", payload });
 
@@ -62,5 +65,32 @@ describe("stripClientIngressFields", () => {
   it("leaves a malformed part untouched", () => {
     const part = '{"kind":"message","payload":{"actionSource":"webhook"';
     expect(stripClientIngressFields(part)).toBe(part);
+  });
+});
+
+describe("stripClientIngressFieldsFromBasePayload", () => {
+  it("removes channelEvent and a webhook actionSource and keeps everything else", () => {
+    const basePayload = {
+      chatId: "c1",
+      trigger: "action",
+      actionSource: "webhook",
+      action: { type: "refund" },
+      channelEvent: { connectorId: "slack", event: { team_id: "T1" } },
+      metadata: { userId: "u1" },
+    };
+
+    expect(stripClientIngressFieldsFromBasePayload(basePayload)).toEqual({
+      chatId: "c1",
+      trigger: "action",
+      action: { type: "refund" },
+      metadata: { userId: "u1" },
+    });
+    expect(basePayload.channelEvent).toBeDefined();
+    expect(basePayload.actionSource).toBe("webhook");
+  });
+
+  it("keeps a client actionSource", () => {
+    const basePayload = { trigger: "action", actionSource: "client", action: { type: "ping" } };
+    expect(stripClientIngressFieldsFromBasePayload(basePayload)).toEqual(basePayload);
   });
 });

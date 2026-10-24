@@ -6,6 +6,7 @@ import {
   resolveSessionWithWriterFallback,
 } from "~/services/realtime/sessions.server";
 import { stripClientIngressFields } from "~/services/realtime/sanitizeSessionInput.server";
+import { isSafeSessionExternalId } from "~/services/realtime/sessionChannels.server";
 import { ensureRunThenAppend } from "~/services/realtime/sessionChannelAppend.server";
 import { anyResource, createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
@@ -57,7 +58,9 @@ const { action, loader } = createActionApiRoute(
           ids.add(session.friendlyId);
           if (session.externalId) ids.add(session.externalId);
         }
-        return anyResource([...ids].map((id) => ({ type: "sessions", id })));
+        return anyResource(
+          [...ids].filter(isSafeSessionExternalId).map((id) => ({ type: "sessions", id }))
+        );
       },
     },
   },
