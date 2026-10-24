@@ -5,6 +5,7 @@ import type { LogLevel } from "@trigger.dev/core/logger";
 import { Logger } from "@trigger.dev/core/logger";
 import { headerValue } from "@trigger.dev/core/v3";
 import { randomUUID } from "node:crypto";
+import { setTimeout as sleep } from "node:timers/promises";
 import { ServiceValidationError } from "~/v3/services/common.server";
 
 // S2's per-record metered-size limit. Verified empirically against
@@ -332,7 +333,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
 
   /**
    * Non-blocking read of the records after `afterSeqNum`. Retries transient
-   * failures (network errors, 5xx, and reads S2 ends with an `error` event)
+   * failures (network errors, creation conflicts, 5xx, and reads S2 ends with an `error` event)
    * because the `.wait()` race check depends on this read to find a record
    * sent before the waitpoint registered.
    */
@@ -345,7 +346,8 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
         return await this.#readRecordsOnce(s2Stream, afterSeqNum);
       } catch (error) {
         const status = (error as { status?: number }).status;
-        const isClientError = status !== undefined && status >= 400 && status < 500;
+        const isClientError =
+          status !== undefined && status >= 400 && status < 500 && status !== 409;
         if (isClientError || attempt + 1 >= maxAttempts) {
           this.logger.error("S2 readRecords failed", {
             stream: s2Stream,
@@ -794,31 +796,44 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     if (opts.clamp != null) qs.set("clamp", String(opts.clamp));
     if (opts.wait != null) qs.set("wait", String(opts.wait));
 
-    const res = await fetch(`${this.baseUrl}/streams/${encodeURIComponent(stream)}/records?${qs}`, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${this.token}`,
-        Accept: "text/event-stream",
-        "S2-Format": "raw",
-        "S2-Basin": this.basin,
-      },
-      signal: opts.signal,
-    });
+    // Concurrent first readers/writers can race S2's automatic stream creation.
+    // Retry only the conflict, before exposing any SSE bytes to the caller.
+    const backoffsMs = [100, 200, 400];
+    for (let attempt = 0; ; attempt++) {
+      const res = await fetch(
+        `${this.baseUrl}/streams/${encodeURIComponent(stream)}/records?${qs}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${this.token}`,
+            Accept: "text/event-stream",
+            "S2-Format": "raw",
+            "S2-Basin": this.basin,
+          },
+          signal: opts.signal,
+        }
+      );
 
-    if (!res.ok) {
-      await cancelResponseBody(res);
-      throw new Error(`S2 stream failed: ${res.status} ${res.statusText}`);
+      if (!res.ok) {
+        await cancelResponseBody(res);
+        const delay = backoffsMs[attempt];
+        if (res.status === 409 && delay !== undefined) {
+          await sleep(delay, undefined, { signal: opts.signal });
+          continue;
+        }
+        throw new Error(`S2 stream failed: ${res.status} ${res.statusText}`);
+      }
+
+      const headers = new Headers(res.headers);
+      headers.set("X-Stream-Version", "v2");
+      headers.set("Access-Control-Expose-Headers", "*");
+
+      return new Response(res.body, {
+        headers,
+        status: res.status,
+        statusText: res.statusText,
+      });
     }
-
-    const headers = new Headers(res.headers);
-    headers.set("X-Stream-Version", "v2");
-    headers.set("Access-Control-Expose-Headers", "*");
-
-    return new Response(res.body, {
-      headers,
-      status: res.status,
-      statusText: res.statusText,
-    });
   }
 
   private parseLastEventId(lastEventId?: string): number | undefined {

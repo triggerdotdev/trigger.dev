@@ -12,7 +12,13 @@ const HOP_BY_HOP = new Set([
   "content-encoding",
 ]);
 
-type Fault = { match: string; afterBatches: number; message: string; remaining: number };
+type Fault = {
+  match: string;
+  afterBatches: number;
+  message: string;
+  remaining: number;
+  status?: number;
+};
 
 /**
  * An HTTP proxy that sits between the webapp and s2-lite and can make one SSE
@@ -70,6 +76,11 @@ export class S2FaultProxy {
     await new Promise<void>((resolve) => this.server!.close(() => resolve()));
   }
 
+  /** Reject before SSE headers, as when concurrent first reads race to create a stream. */
+  rejectNextRead(match: string, status: number, times = 1) {
+    this.faults.push({ match, status, remaining: times, afterBatches: 0, message: "" });
+  }
+
   private takeFault(req: IncomingMessage): Fault | undefined {
     const accept = String(req.headers.accept ?? "");
     if (req.method !== "GET" || !accept.includes("text/event-stream")) return undefined;
@@ -100,6 +111,10 @@ export class S2FaultProxy {
     res.on("close", () => abort.abort());
 
     const fault = this.takeFault(req);
+    if (fault?.status) {
+      res.writeHead(fault.status).end();
+      return;
+    }
     const upstream = await fetch(`${target}${req.url}`, {
       method: req.method,
       headers,
