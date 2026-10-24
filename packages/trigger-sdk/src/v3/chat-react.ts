@@ -32,6 +32,11 @@ import {
   type InferChatUIMessage,
 } from "./ai-shared.js";
 import type { UIMessage, ChatRequestOptions } from "ai";
+import {
+  createSubAgentMessages,
+  type SubAgentMessages,
+  type SubAgentMessagesOptions,
+} from "./subAgentStream.js";
 
 /**
  * Options for `useTriggerChatTransport`, with a type-safe `task` field.
@@ -659,4 +664,49 @@ export function useChatActions(options: {
     await sendMessageRef.current(undefined, { body: { action } });
   }, []);
   return { sendAction };
+}
+
+/**
+ * Render sub-agents streamed with `chat.forwardSubAgent` while they run.
+ *
+ * Pass `onData` to `useChat`, then read a sub-agent's message by the parent
+ * tool call's id. While the sub-agent runs the parent tool part has no output
+ * yet, so fall back to `part.output` for finished calls and reloaded history.
+ *
+ * Each message is rebuilt from the chunks received so far at most once per
+ * `throttleMs`, so a long reply costs a bounded number of rebuilds.
+ *
+ * @example
+ * ```tsx
+ * const subAgents = useSubAgentMessages();
+ * const { messages } = useChat({ transport, onData: subAgents.onData });
+ *
+ * // inside the parent's tool card
+ * const message = subAgents.get(part.toolCallId) ?? part.output;
+ * ```
+ */
+export function useSubAgentMessages<TUIMessage extends UIMessage = UIMessage>(
+  options?: Pick<SubAgentMessagesOptions, "throttleMs">
+): Pick<SubAgentMessages<TUIMessage>, "onData" | "get"> {
+  const [, setVersion] = useState(0);
+  const mountedRef = useRef(false);
+  const storeRef = useRef<SubAgentMessages<TUIMessage> | null>(null);
+  if (storeRef.current === null) {
+    storeRef.current = createSubAgentMessages<TUIMessage>({
+      throttleMs: options?.throttleMs,
+      onChange: () => {
+        if (mountedRef.current) setVersion((current) => current + 1);
+      },
+    });
+  }
+  const store = storeRef.current;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  return { onData: store.onData, get: store.get };
 }

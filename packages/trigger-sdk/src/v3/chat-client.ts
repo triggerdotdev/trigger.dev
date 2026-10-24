@@ -163,7 +163,10 @@ export type ChatStreamResult = {
  * - `for await (const chunk of stream)` — typed UIMessageChunk iteration
  * - `await stream.result()` — accumulated `{ text, toolCalls, toolResults }`
  * - `await stream.text()` — just the text
- * - `yield* stream.messages()` — sub-agent pattern (yields UIMessage snapshots)
+ * - `yield* stream.messages()` — UIMessage snapshots (short replies only)
+ *
+ * To stream a sub-agent through a parent tool call, pass the stream to
+ * `chat.forwardSubAgent` from `@trigger.dev/sdk/ai`.
  */
 export class ChatStream {
   private readonly _consumerStream: ReadableStream<UIMessageChunk>;
@@ -216,7 +219,13 @@ export class ChatStream {
   }
 
   /**
-   * Yields accumulated UIMessage snapshots for the sub-agent tool pattern.
+   * Yields the accumulated UIMessage after almost every chunk.
+   *
+   * Every snapshot repeats the whole message so far, so yielding them as
+   * preliminary tool results writes bytes in proportion to the square of the
+   * reply length: a sub-agent reply with a few large tool results can write
+   * hundreds of MB. Use `chat.forwardSubAgent(stream, { toolCallId })` from
+   * `@trigger.dev/sdk/ai` to stream a sub-agent through a parent tool call.
    *
    * @example
    * ```ts

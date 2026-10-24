@@ -107,6 +107,8 @@ import { responseAfterCompaction } from "./compactionResponse.js";
 import { withToolResultsInCallOrder } from "./toolResultOrder.js";
 import { ManagedChatResponse, createOrderedChatWriter } from "./managedChatResponse.js";
 import { reduceUIMessageChunks } from "./uiMessageChunks.js";
+import { forwardSubAgentChunks } from "./subAgentStream.js";
+import type { ChatStream } from "./chat-client.js";
 import {
   convertSteeredMessages,
   retainStepMessages,
@@ -1433,6 +1435,78 @@ const chatResponse = {
     managedResponse().writeData(part);
   },
 };
+
+/** Options for {@link forwardSubAgent}. */
+export type ForwardSubAgentOptions = {
+  /** The parent tool call the sub-agent runs inside: `toolCallId` from the tool's `execute` options. */
+  toolCallId: string;
+  /**
+   * How long chunks are held so they are written together. `0` writes each
+   * chunk on its own.
+   * @default 50
+   */
+  flushIntervalMs?: number;
+};
+
+/**
+ * Stream a sub-agent's reply to the frontend from inside a parent tool call,
+ * and resolve with the sub-agent's final message once it finishes.
+ *
+ * Each chunk the sub-agent streams is written once to the parent chat as a
+ * transient `data-subagent` part, so the bytes written grow with the length of
+ * the reply. Render it while it runs with `useSubAgentMessages` from
+ * `@trigger.dev/sdk/chat/react`. The tool's output is the final message, which
+ * persists with the parent's history the way a tool result always does.
+ *
+ * Prefer this over yielding `stream.messages()` snapshots as preliminary tool
+ * results: every snapshot repeats the whole message so far, so that pattern
+ * writes bytes in proportion to the square of the reply length.
+ *
+ * Call it inside a `chat.agent` (or `chat.customAgent`) run.
+ *
+ * @example
+ * ```ts
+ * const research = tool({
+ *   description: "Delegate research to the research agent.",
+ *   inputSchema: z.object({ topic: z.string() }),
+ *   execute: async ({ topic }, { toolCallId, abortSignal }) => {
+ *     const agent = new AgentChat<typeof researchAgent>({ agent: "research-agent" });
+ *     const stream = await agent.sendMessage(topic, { abortSignal });
+ *     return await chat.forwardSubAgent(stream, { toolCallId });
+ *   },
+ *   toModelOutput: ({ output }) => ({ type: "text", value: lastText(output) }),
+ * });
+ * ```
+ */
+async function forwardSubAgent<TUIMessage extends UIMessage = UIMessage>(
+  stream: ChatStream | ReadableStream<UIMessageChunk>,
+  options: ForwardSubAgentOptions
+): Promise<TUIMessage | undefined> {
+  const source = isReadableStream(stream)
+    ? (stream as ReadableStream<UIMessageChunk>)
+    : stream.stream;
+  let outcome: { message: UIMessage | undefined } | { error: unknown } = { message: undefined };
+  const { waitUntilComplete } = chatStream.writer({
+    spanName: "forward sub-agent",
+    collapsed: true,
+    execute: async ({ write }) => {
+      try {
+        outcome = {
+          message: await forwardSubAgentChunks(source, {
+            toolCallId: options.toolCallId,
+            flushIntervalMs: options.flushIntervalMs ?? 50,
+            write,
+          }),
+        };
+      } catch (error) {
+        outcome = { error };
+      }
+    },
+  });
+  await waitUntilComplete();
+  if ("error" in outcome) throw outcome.error;
+  return outcome.message as TUIMessage | undefined;
+}
 
 // ---------------------------------------------------------------------------
 // ChatWriter — stream writer for callbacks
@@ -16837,6 +16911,8 @@ export const chat = {
   stream: chatStream,
   /** Write data parts that persist to the response message. See {@link chatResponse}. */
   response: chatResponse,
+  /** Stream a sub-agent's reply through a parent tool call. See {@link forwardSubAgent}. */
+  forwardSubAgent,
   /** Pre-built input stream for receiving messages from the transport. */
   messages: messagesInput,
   /** The current chat.agent run's Session handle. See {@link SessionHandle}. */
