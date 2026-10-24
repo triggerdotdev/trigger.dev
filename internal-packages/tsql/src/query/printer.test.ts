@@ -1506,6 +1506,21 @@ describe("ClickHousePrinter", () => {
     });
   });
 
+  describe("WITH clauses", () => {
+    it("should print a column CTE as an expression alias", () => {
+      const { sql } = printQuery("WITH 1 AS x SELECT x");
+
+      expect(sql).toBe("WITH 1 AS x SELECT x LIMIT 10000");
+    });
+
+    it("should let a column CTE be selected alongside a table", () => {
+      const { sql } = printQuery("WITH 1 AS x SELECT id, x FROM task_runs WHERE x = 1");
+
+      expect(sql).toMatch(/^WITH 1 AS x SELECT id, x FROM /);
+      expect(sql).toContain("equals(x, 1)");
+    });
+  });
+
   describe("UNION queries", () => {
     it("should print UNION ALL", () => {
       const { sql } = printQuery(`
@@ -3000,6 +3015,25 @@ describe("Unknown column blocking", () => {
       }).toThrow(QueryError);
     });
 
+    it("should resolve WITH expression aliases against the table schema", () => {
+      const schema = createSchemaRegistry([runsSchema]);
+      const ctx = createPrinterContext({
+        schema,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_test" },
+          project_id: { op: "eq", value: "proj_test" },
+          environment_id: { op: "eq", value: "env_test" },
+        },
+      });
+
+      expect(() => {
+        printQuery("WITH created_at AS x SELECT x FROM runs", ctx);
+      }).toThrow(QueryError);
+      expect(printQuery("WITH created AS x SELECT x FROM runs", ctx).sql).toMatch(
+        /^WITH created_at AS x SELECT x FROM /
+      );
+    });
+
     it("should suggest TSQL column name when user types ClickHouse column name", () => {
       // The schema exposes 'created' but the internal ClickHouse column is 'created_at'
       // When user types 'created_at', we should suggest 'created'
@@ -3302,6 +3336,13 @@ describe("Internal-only column blocking", () => {
       }).toThrow(QueryError);
       expect(() => {
         printQuery("SELECT id, organization_id FROM hidden_tenant_runs", ctx);
+      }).toThrow(/not available for querying/i);
+    });
+
+    it("should throw error when a WITH alias reads a hidden tenant column", () => {
+      const ctx = createHiddenTenantContext();
+      expect(() => {
+        printQuery("WITH organization_id AS x SELECT id, x FROM hidden_tenant_runs", ctx);
       }).toThrow(/not available for querying/i);
     });
 

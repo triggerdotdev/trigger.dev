@@ -156,6 +156,7 @@ export class ClickHousePrinter {
   print(node: SelectQuery | SelectSetQuery): PrintResult {
     this.outputColumns = [];
     this.hiddenColumns = [];
+    this.validateColumnCtesDoNotShadowTables(node);
     const sql = this.visit(node);
     const result: PrintResult = {
       sql,
@@ -359,11 +360,16 @@ export class ClickHousePrinter {
     // Build WHERE clause starting with any existing where
     let where: Expression | undefined = node.where;
 
-    // Process CTEs
-    const cteStrings: string[] = [];
+    // Process subquery CTEs; column CTEs are printed after the joins below
+    const printedCtes = new Map<string, string>();
     if (node.ctes) {
       for (const [name, cte] of Object.entries(node.ctes)) {
-        cteStrings.push(`${this.printIdentifier(name)} AS (${this.visit(cte.expr)})`);
+        printedCtes.set(
+          name,
+          cte.cte_type === "column"
+            ? ""
+            : `${this.printIdentifier(name)} AS (${this.visit(cte.expr)})`
+        );
       }
     }
 
@@ -402,6 +408,21 @@ export class ClickHousePrinter {
         this.extractSelectAlias(col);
       }
     }
+
+    // Process column CTEs after the joins so they resolve fields against this scope's tables,
+    // with the same internal-only column rules as SELECT
+    if (node.ctes) {
+      for (const cte of Object.values(node.ctes)) {
+        if (cte.cte_type === "column") this.selectAliases.set(cte.name.toLowerCase(), cte.name);
+      }
+      for (const [name, cte] of Object.entries(node.ctes)) {
+        if (cte.cte_type !== "column") continue;
+        this.inProjectionContext = true;
+        printedCtes.set(name, `${this.visit(cte.expr)} AS ${this.printIdentifier(name)}`);
+        this.inProjectionContext = false;
+      }
+    }
+    const cteStrings = [...printedCtes.values()];
 
     // Track if query has GROUP BY for JSON subfield type hint decisions
     // (ClickHouse requires .:String for Dynamic types in GROUP BY, and SELECT must match)
@@ -1951,6 +1972,52 @@ export class ClickHousePrinter {
     for (const [property, value] of Object.entries(node)) {
       if (property === "type" || property === "parent") continue;
       this.findShadowingAlias(value, tableAliases);
+    }
+  }
+
+  /**
+   * Reject a column CTE (`WITH expr AS name`) whose name, or dotted prefix, matches a table
+   * alias anywhere in the query. ClickHouse carries a WITH alias into every branch of a UNION,
+   * where it would replace that branch's tenant guards, so a per-scope check is not enough.
+   */
+  private validateColumnCtesDoNotShadowTables(root: SelectQuery | SelectSetQuery): void {
+    const tableAliases = new Map<string, string>();
+    const cteNames: string[] = [];
+    const seen = new WeakSet<object>();
+    const walk = (expr: unknown): void => {
+      if (expr === null || typeof expr !== "object" || seen.has(expr)) return;
+      seen.add(expr);
+      if (Array.isArray(expr)) {
+        for (const item of expr) walk(item);
+        return;
+      }
+      const candidate = expr as Partial<JoinExpr> & Partial<CTE> & { expression_type?: string };
+      if (candidate.expression_type === "join_expr") {
+        const table = candidate.table as Field | undefined;
+        if (table?.expression_type === "field" && typeof table.chain[0] === "string") {
+          const alias = candidate.alias || table.chain[0];
+          tableAliases.set(alias.toLowerCase(), alias);
+        }
+      } else if (candidate.expression_type === "cte" && candidate.cte_type === "column") {
+        if (typeof candidate.name === "string") cteNames.push(candidate.name);
+      }
+      for (const [property, value] of Object.entries(expr)) {
+        if (property === "type" || property === "parent") continue;
+        walk(value);
+      }
+    };
+    walk(root);
+
+    for (const name of cteNames) {
+      const lowerName = name.toLowerCase();
+      for (const [lowerTableAlias, original] of tableAliases) {
+        if (lowerName === lowerTableAlias || lowerName.startsWith(`${lowerTableAlias}.`)) {
+          throw new QueryError(
+            `Alias '${name}' conflicts with the table alias '${original}'. ` +
+              `Choose a different alias.`
+          );
+        }
+      }
     }
   }
 

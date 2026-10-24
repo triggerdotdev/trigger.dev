@@ -233,6 +233,22 @@ describe("Cross-Tenant Security", () => {
         "a joined table's alias",
         `SELECT r.id, ${ownTenant} AS e FROM task_runs AS r JOIN task_events AS e ON r.id = e.run_id`,
       ],
+      [
+        "a WITH alias carried into a UNION branch",
+        `WITH ${ownTenant} AS r SELECT id FROM task_runs AS q UNION ALL SELECT id FROM task_runs AS r`,
+      ],
+      [
+        "a WITH alias carried into a UNION branch's implicit table alias",
+        `WITH ${ownTenant} AS task_runs SELECT 'x' AS id UNION ALL SELECT id FROM task_runs`,
+      ],
+      [
+        "a WITH alias around a FROM subquery",
+        `WITH ${ownTenant} AS r SELECT id FROM (SELECT id FROM task_runs AS r)`,
+      ],
+      [
+        "a dotted WITH alias around an IN subquery",
+        "WITH 'org_tenant1' AS `task_runs.organization_id` SELECT 1 AS x WHERE 1 IN (SELECT 1 FROM task_runs)",
+      ],
     ])("should reject %s", (_, query) => {
       expect(() => compile(query)).toThrow(/conflicts with the table alias/);
     });
