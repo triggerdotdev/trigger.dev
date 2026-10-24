@@ -11,12 +11,14 @@ import {
 type RestoreWatchTarget = {
   runFriendlyId: string;
   snapshotFriendlyId: string;
+  environmentId?: string;
 };
 
 /** A failed restore, with what the watch or the Runner knew of its run. */
 export type RestoreFailure = {
   runFriendlyId?: string;
   snapshotFriendlyId?: string;
+  environmentId?: string;
   runnerId: string;
   outcome: RestoreWatchResult & { ok: false };
 };
@@ -136,6 +138,7 @@ export class RestoreWatcher {
     await this.report({
       runFriendlyId,
       snapshotFriendlyId: entry.snapshotFriendlyId,
+      environmentId: entry.environmentId,
       runnerId,
       outcome,
     });

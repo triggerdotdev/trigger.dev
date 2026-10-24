@@ -17,6 +17,18 @@ describe("WorkerApiRunRestoreOutcomeRequestBody", () => {
     ).toBe(false);
   });
 
+  // The platform alone picks where a fallback goes.
+  it("strips a worker queue the worker sends", () => {
+    const parsed = WorkerApiRunRestoreOutcomeRequestBody.parse({
+      outcome: "fallback",
+      reason: "TemplateNotFound",
+      workerQueue: "someone-elses-queue",
+      fallbackWorkerQueue: "someone-elses-queue",
+    });
+
+    expect(parsed).toEqual({ outcome: "fallback", reason: "TemplateNotFound" });
+  });
+
   // An older supervisor still attaches the retired client route; it is stripped, not rejected.
   it("strips a legacy snapshotRoute", () => {
     const parsed = WorkerApiRunRestoreOutcomeRequestBody.parse({

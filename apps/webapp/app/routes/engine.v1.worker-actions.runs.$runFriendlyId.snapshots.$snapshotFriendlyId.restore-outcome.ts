@@ -5,6 +5,7 @@ import { WorkerApiRunRestoreOutcomeRequestBody } from "@trigger.dev/core/v3/work
 import { z } from "zod";
 import { logger } from "~/services/logger.server";
 import { createActionWorkerApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { containerQueueForComputeQueue, workerRegionRegistry } from "~/v3/workerRegions.server";
 
 export const action = createActionWorkerApiRoute(
   {
@@ -35,6 +36,8 @@ export const action = createActionWorkerApiRoute(
         message: body.message,
         runnerId,
         environmentId,
+        fallbackWorkerQueue: (workerQueue) =>
+          containerQueueForComputeQueue(workerQueue, workerRegionRegistry.current() ?? []),
       });
     } catch (error) {
       if (error instanceof Response) {

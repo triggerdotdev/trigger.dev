@@ -56,12 +56,18 @@ function createEngine(
   });
 }
 
-async function dequeue(engine: RunEngine, environmentId: string) {
+async function dequeue(
+  engine: RunEngine,
+  environmentId: string,
+  workerQueue = "main",
+  workerId?: string
+) {
   await setTimeout(500);
   await engine.runQueue.processMasterQueueForEnvironment(environmentId);
   return engine.dequeueFromWorkerQueue({
     consumerId: "test_12345",
-    workerQueue: "main",
+    workerQueue,
+    workerId,
   });
 }
 
@@ -70,7 +76,16 @@ async function dequeue(engine: RunEngine, environmentId: string) {
 async function dequeueForRestore(
   engine: RunEngine,
   prisma: PrismaClient,
-  retryOptions?: RetryOptions
+  retryOptions?: RetryOptions,
+  lanes: {
+    workerQueue: string;
+    restoreWorkerQueue: string;
+    checkpointType: "DOCKER" | "COMPUTE";
+  } = {
+    workerQueue: "main",
+    restoreWorkerQueue: "main",
+    checkpointType: "DOCKER",
+  }
 ) {
   const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
   const taskIdentifier = "test-task";
@@ -95,7 +110,7 @@ async function dequeueForRestore(
       traceContext: {},
       traceId: "t12345",
       spanId: "s12345",
-      workerQueue: "main",
+      workerQueue: lanes.workerQueue,
       queue: "task/test-task",
       isTest: false,
       tags: [],
@@ -103,7 +118,7 @@ async function dequeueForRestore(
     prisma
   );
 
-  const firstDequeue = await dequeue(engine, authenticatedEnvironment.id);
+  const firstDequeue = await dequeue(engine, authenticatedEnvironment.id, lanes.workerQueue);
   expect(firstDequeue.length).toBe(1);
   assertNonNullable(firstDequeue[0]);
 
@@ -128,7 +143,7 @@ async function dequeueForRestore(
     runId: run.id,
     snapshotId: blockedResult.id,
     checkpoint: {
-      type: "DOCKER",
+      type: lanes.checkpointType,
       reason: "TEST_CHECKPOINT",
       location: "test-location",
       imageRef: "test-image-ref",
@@ -138,7 +153,11 @@ async function dequeueForRestore(
 
   await engine.completeWaitpoint({ id: waitpointResult.waitpoint.id });
 
-  const restoreDequeue = await dequeue(engine, authenticatedEnvironment.id);
+  const restoreDequeue = await dequeue(
+    engine,
+    authenticatedEnvironment.id,
+    lanes.restoreWorkerQueue
+  );
   expect(restoreDequeue.length).toBe(1);
   assertNonNullable(restoreDequeue[0]);
   expect(restoreDequeue[0].snapshot.executionStatus).toBe("PENDING_EXECUTING");
@@ -250,6 +269,57 @@ describe("RunEngine reportRestoreOutcome", () => {
           snapshotId: retried[0].snapshot.id,
         });
         expect(attempt.run.attemptNumber).toBe(2);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  // The operator's message names the snapshot's recorded owner, which must not reach the run.
+  containerTest(
+    "fail for a refused snapshot keeps the operator's message out of the run's error",
+    async ({ prisma, redisOptions }) => {
+      const { meter, getCounterValue } = createTestMetricsMeter();
+      const engine = createEngine(prisma, redisOptions, undefined, meter);
+      const ownerMessage = "snapshot is owned by env_someone_else, not env_this_one";
+
+      try {
+        const { run, restore } = await dequeueForRestore(engine, prisma, {
+          maxAttempts: 3,
+          factor: 1,
+          minTimeoutInMs: 1_000,
+          maxTimeoutInMs: 1_000,
+          randomize: false,
+        });
+
+        const retries: unknown[] = [];
+        engine.eventBus.on("runRetryScheduled", (event) => retries.push(event.run.error));
+
+        const result = await engine.reportRestoreOutcome({
+          runId: run.id,
+          snapshotId: restore.snapshot.id,
+          outcome: "fail",
+          reason: "SnapshotRefused",
+          message: ownerMessage,
+        });
+        expect(result).toEqual({ ok: true, outcome: "fail" });
+
+        expect(retries).toEqual([
+          {
+            type: "INTERNAL_ERROR",
+            code: "TASK_RUN_CRASHED",
+            message: "The run could not be restored: SnapshotRefused",
+          },
+        ]);
+        const stored = await prisma.taskRun.findFirstOrThrow({ where: { id: run.id } });
+        expect(JSON.stringify(stored.error ?? null)).not.toContain("env_someone_else");
+        expect(
+          await getCounterValue("run_engine.restore_outcomes", {
+            outcome: "fail",
+            reason: "SnapshotRefused",
+            result: "applied",
+          })
+        ).toBe(1);
       } finally {
         await engine.quit();
       }
@@ -412,6 +482,71 @@ describe("RunEngine reportRestoreOutcome", () => {
     }
   );
 
+  containerTest(
+    "fail from a worker of another group gets a conflict and leaves the run",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const { run, restore } = await dequeueForRestore(engine, prisma);
+
+        const result = await engine.reportRestoreOutcome({
+          runId: run.id,
+          snapshotId: restore.snapshot.id,
+          outcome: "fail",
+          reason: "SnapshotNotFound",
+          servesWorkerQueue: (queue) => queue === "other-group",
+        });
+        expect(result).toEqual({
+          ok: false,
+          code: "SNAPSHOT_CONFLICT",
+          latestSnapshotId: restore.snapshot.id,
+          latestExecutionStatus: "PENDING_EXECUTING",
+        });
+
+        const kept = await prisma.taskRun.findUniqueOrThrow({ where: { id: run.id } });
+        expect(kept.workerQueue).toBe("main");
+        expect(kept.status).not.toBe("SYSTEM_FAILURE");
+        const executionData = await engine.getRunExecutionData({ runId: run.id });
+        assertNonNullable(executionData);
+        expect(executionData.snapshot.id).toBe(restore.snapshot.id);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "fail from a worker serving only the run's restore lane is applied",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+      const freshLane = "us-east-1:v2:ondemand:fresh:compute:stable";
+      const restoreLane = "us-east-1:v2:ondemand:restore:compute:stable";
+
+      try {
+        const { run, restore } = await dequeueForRestore(engine, prisma, undefined, {
+          workerQueue: freshLane,
+          restoreWorkerQueue: restoreLane,
+          checkpointType: "COMPUTE",
+        });
+
+        const result = await engine.reportRestoreOutcome({
+          runId: run.id,
+          snapshotId: restore.snapshot.id,
+          outcome: "fail",
+          reason: "TemplateNotFound",
+          servesWorkerQueue: (queue) => queue === restoreLane,
+        });
+        expect(result).toEqual({ ok: true, outcome: "fail" });
+
+        const kept = await prisma.taskRun.findUniqueOrThrow({ where: { id: run.id } });
+        expect(kept.workerQueue).toBe(freshLane);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
   containerTest("a duplicate report gets a conflict", async ({ prisma, redisOptions }) => {
     const engine = createEngine(prisma, redisOptions);
 
@@ -450,4 +585,329 @@ describe("RunEngine reportRestoreOutcome", () => {
       await engine.quit();
     }
   });
+});
+
+// Dequeues a fresh run, leaving the PENDING_EXECUTING snapshot of a cold start with no checkpoint.
+async function dequeueColdStart(engine: RunEngine, prisma: PrismaClient, workerId?: string) {
+  const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+  const taskIdentifier = "test-task";
+  await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+  const run = await engine.trigger(
+    {
+      number: 1,
+      friendlyId: "run_1234",
+      environment: authenticatedEnvironment,
+      taskIdentifier,
+      payload: "{}",
+      payloadType: "application/json",
+      context: {},
+      traceContext: {},
+      traceId: "t12345",
+      spanId: "s12345",
+      workerQueue: "main",
+      queue: "task/test-task",
+      isTest: false,
+      tags: [],
+    },
+    prisma
+  );
+
+  const dequeued = await dequeue(engine, authenticatedEnvironment.id, "main", workerId);
+  expect(dequeued.length).toBe(1);
+  assertNonNullable(dequeued[0]);
+  expect(dequeued[0].snapshot.executionStatus).toBe("PENDING_EXECUTING");
+  expect(dequeued[0].checkpoint).toBeUndefined();
+
+  return { authenticatedEnvironment, run, start: dequeued[0] };
+}
+
+describe("RunEngine reportRestoreOutcome for a cold start", () => {
+  containerTest(
+    "requeue gives the run back without using up an attempt",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const { authenticatedEnvironment, run, start } = await dequeueColdStart(engine, prisma);
+
+        const result = await engine.reportRestoreOutcome({
+          runId: run.id,
+          snapshotId: start.snapshot.id,
+          outcome: "requeue",
+          reason: "TemplateNotFound",
+        });
+        expect(result).toEqual({ ok: true, outcome: "requeue" });
+
+        const executionData = await engine.getRunExecutionData({ runId: run.id });
+        assertNonNullable(executionData);
+        expect(executionData.snapshot.executionStatus).toBe("QUEUED");
+        expect(executionData.checkpoint).toBeUndefined();
+
+        const redelivered = await dequeue(engine, authenticatedEnvironment.id);
+        expect(redelivered.length).toBe(1);
+        assertNonNullable(redelivered[0]);
+        expect(redelivered[0].snapshot.executionStatus).toBe("PENDING_EXECUTING");
+        expect(redelivered[0].checkpoint).toBeUndefined();
+        expect(redelivered[0].run.attemptNumber).toBe(start.run.attemptNumber);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "fail gets a conflict, since there is no checkpoint to lose",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const { run, start } = await dequeueColdStart(engine, prisma);
+
+        const result = await engine.reportRestoreOutcome({
+          runId: run.id,
+          snapshotId: start.snapshot.id,
+          outcome: "fail",
+          reason: "TemplateNotFound",
+        });
+        expect(result).toEqual({
+          ok: false,
+          code: "SNAPSHOT_CONFLICT",
+          latestSnapshotId: start.snapshot.id,
+          latestExecutionStatus: "PENDING_EXECUTING",
+        });
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "fallback moves the run to the fallback worker queue without a failure",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const { authenticatedEnvironment, run, start } = await dequeueColdStart(engine, prisma);
+
+        const fallbackQueues: string[] = [];
+        const fallbackWorkerQueue = (queue: string) => {
+          fallbackQueues.push(queue);
+          return queue === "main" ? "containers" : undefined;
+        };
+        const result = await engine.reportRestoreOutcome({
+          runId: run.id,
+          snapshotId: start.snapshot.id,
+          outcome: "fallback",
+          reason: "TemplateNotFound",
+          fallbackWorkerQueue,
+        });
+        expect(result).toEqual({ ok: true, outcome: "fallback" });
+        expect(fallbackQueues).toEqual(["main"]);
+
+        const moved = await prisma.taskRun.findUniqueOrThrow({ where: { id: run.id } });
+        expect(moved.workerQueue).toBe("containers");
+        expect(moved.status).toBe("PENDING");
+
+        const executionData = await engine.getRunExecutionData({ runId: run.id });
+        assertNonNullable(executionData);
+        expect(executionData.snapshot.executionStatus).toBe("QUEUED");
+        expect(executionData.checkpoint).toBeUndefined();
+
+        const redelivered = await dequeue(engine, authenticatedEnvironment.id, "containers");
+        expect(redelivered.length).toBe(1);
+        assertNonNullable(redelivered[0]);
+        expect(redelivered[0].run.id).toBe(run.id);
+        expect(redelivered[0].checkpoint).toBeUndefined();
+        expect(redelivered[0].run.attemptNumber).toBe(start.run.attemptNumber);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "fallback without a worker queue to move to requeues the run where it is",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const { authenticatedEnvironment, run, start } = await dequeueColdStart(engine, prisma);
+
+        const result = await engine.reportRestoreOutcome({
+          runId: run.id,
+          snapshotId: start.snapshot.id,
+          outcome: "fallback",
+          reason: "TemplateNotFound",
+          fallbackWorkerQueue: () => undefined,
+        });
+        expect(result).toEqual({ ok: true, outcome: "fallback" });
+
+        const kept = await prisma.taskRun.findUniqueOrThrow({ where: { id: run.id } });
+        expect(kept.workerQueue).toBe("main");
+
+        const redelivered = await dequeue(engine, authenticatedEnvironment.id);
+        expect(redelivered.length).toBe(1);
+        assertNonNullable(redelivered[0]);
+        expect(redelivered[0].run.attemptNumber).toBe(start.run.attemptNumber);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "fallback on a stale snapshot gets a conflict and leaves the run's worker queue",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const { run, start } = await dequeueColdStart(engine, prisma);
+
+        const requeued = await engine.reportRestoreOutcome({
+          runId: run.id,
+          snapshotId: start.snapshot.id,
+          outcome: "requeue",
+          reason: "TemplateNotFound",
+        });
+        expect(requeued.ok).toBe(true);
+        const afterRequeue = await engine.getRunExecutionData({ runId: run.id });
+        assertNonNullable(afterRequeue);
+
+        const fallbackQueues: string[] = [];
+        const fallbackWorkerQueue = (queue: string) => {
+          fallbackQueues.push(queue);
+          return "containers";
+        };
+        const result = await engine.reportRestoreOutcome({
+          runId: run.id,
+          snapshotId: start.snapshot.id,
+          outcome: "fallback",
+          reason: "TemplateNotFound",
+          fallbackWorkerQueue,
+        });
+        expect(result).toEqual({
+          ok: false,
+          code: "SNAPSHOT_CONFLICT",
+          latestSnapshotId: afterRequeue.snapshot.id,
+          latestExecutionStatus: "QUEUED",
+        });
+        expect(fallbackQueues).toEqual([]);
+
+        const kept = await prisma.taskRun.findUniqueOrThrow({ where: { id: run.id } });
+        expect(kept.workerQueue).toBe("main");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "a worker of another group cannot give the run back, and one of the same group can",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const { run, start } = await dequeueColdStart(engine, prisma, "worker_a");
+
+        for (const outcome of ["fallback", "requeue"] as const) {
+          const refused = await engine.reportRestoreOutcome({
+            runId: run.id,
+            snapshotId: start.snapshot.id,
+            outcome,
+            reason: "TemplateNotFound",
+            workerId: "worker_other_group",
+            fallbackWorkerQueue: () => "containers",
+            servesWorkerQueue: (queue) => queue === "other-group",
+          });
+          expect(refused).toEqual({
+            ok: false,
+            code: "SNAPSHOT_CONFLICT",
+            latestSnapshotId: start.snapshot.id,
+            latestExecutionStatus: "PENDING_EXECUTING",
+          });
+        }
+
+        const kept = await prisma.taskRun.findUniqueOrThrow({ where: { id: run.id } });
+        expect(kept.workerQueue).toBe("main");
+
+        // Another instance of the dequeuing group, as after a restart.
+        const applied = await engine.reportRestoreOutcome({
+          runId: run.id,
+          snapshotId: start.snapshot.id,
+          outcome: "fallback",
+          reason: "TemplateNotFound",
+          workerId: "worker_a_restarted",
+          fallbackWorkerQueue: () => "containers",
+          servesWorkerQueue: (queue) => queue === "main",
+        });
+        expect(applied).toEqual({ ok: true, outcome: "fallback" });
+
+        const moved = await prisma.taskRun.findUniqueOrThrow({ where: { id: run.id } });
+        expect(moved.workerQueue).toBe("containers");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  // The checkpoint can only be restored on the lane that took it.
+  containerTest("fallback for a restore gets a conflict", async ({ prisma, redisOptions }) => {
+    const engine = createEngine(prisma, redisOptions);
+
+    try {
+      const { run, restore } = await dequeueForRestore(engine, prisma);
+
+      const result = await engine.reportRestoreOutcome({
+        runId: run.id,
+        snapshotId: restore.snapshot.id,
+        outcome: "fallback",
+        reason: "TemplateNotFound",
+        fallbackWorkerQueue: () => "containers",
+      });
+      expect(result).toMatchObject({ ok: false, code: "SNAPSHOT_CONFLICT" });
+
+      const kept = await prisma.taskRun.findUniqueOrThrow({ where: { id: run.id } });
+      expect(kept.workerQueue).toBe("main");
+    } finally {
+      await engine.quit();
+    }
+  });
+
+  containerTest(
+    "repeated requeues stop at the queue's attempts and fail the run",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions, 3);
+
+      try {
+        const { authenticatedEnvironment, run, start } = await dequeueColdStart(engine, prisma);
+
+        let snapshotId = start.snapshot.id;
+        for (let i = 0; i < 10; i++) {
+          const result = await engine.reportRestoreOutcome({
+            runId: run.id,
+            snapshotId,
+            outcome: "requeue",
+            reason: "TemplateNotFound",
+          });
+          expect(result.ok).toBe(true);
+
+          const redelivered = await dequeue(engine, authenticatedEnvironment.id);
+          if (redelivered.length === 0) {
+            break;
+          }
+          snapshotId = redelivered[0]!.snapshot.id;
+        }
+
+        const finished = await prisma.taskRun.findFirstOrThrow({ where: { id: run.id } });
+        expect(finished.status).toBe("SYSTEM_FAILURE");
+        expect(finished.error).toMatchObject({
+          code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
+          message: "Starting the run failed more times than we retry.",
+        });
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
 });

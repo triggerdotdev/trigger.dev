@@ -1357,6 +1357,7 @@ export class RunAttemptSystem {
     batchId,
     resetQueueAttempts = false,
     workerQueue,
+    moveToWorkerQueue,
     tx,
   }: {
     run: { id: string };
@@ -1385,6 +1386,8 @@ export class RunAttemptSystem {
      */
     resetQueueAttempts?: boolean;
     workerQueue?: string;
+    /** Also moves the run to this worker queue, so later deliveries and retries use it. */
+    moveToWorkerQueue?: string;
   }): Promise<{ wasRequeued: boolean } & ExecutionResult> {
     const prisma = tx ?? this.$.prisma;
 
@@ -1395,7 +1398,7 @@ export class RunAttemptSystem {
         messageId: run.id,
         retryAt: timestamp,
         resetAttemptCount: resetQueueAttempts,
-        workerQueue,
+        workerQueue: moveToWorkerQueue ?? workerQueue,
       });
 
       if (!gotRequeued) {
@@ -1416,6 +1419,7 @@ export class RunAttemptSystem {
             status: true,
             attemptNumber: true,
           },
+          workerQueue: moveToWorkerQueue,
         },
         prisma
       );
@@ -1466,6 +1470,8 @@ export class RunAttemptSystem {
     workerId,
     runnerId,
     environmentId,
+    fallbackWorkerQueue,
+    servesWorkerQueue,
   }: {
     runId: string;
     snapshotId: string;
@@ -1475,6 +1481,8 @@ export class RunAttemptSystem {
     workerId?: string;
     runnerId?: string;
     environmentId?: string;
+    fallbackWorkerQueue?: (workerQueue: string) => string | undefined;
+    servesWorkerQueue?: (workerQueue: string) => boolean;
   }): Promise<RestoreOutcomeResult> {
     const prisma = this.$.prisma;
 
@@ -1485,11 +1493,33 @@ export class RunAttemptSystem {
         this.$.runStore,
         environmentId
       );
+      // read-your-writes: the attempt's lock-time retry config may not be on a replica yet
+      const run = await this.$.runStore.findRunOnPrimary(
+        { id: runId },
+        { select: { workerQueue: true, lockedRetryConfig: true } }
+      );
+      const restoreWorkerQueue =
+        run && latestSnapshot.checkpoint
+          ? workerQueueForPublish(
+              run,
+              { id: latestSnapshot.environmentId, type: latestSnapshot.environmentType },
+              latestSnapshot.checkpoint
+            )
+          : undefined;
 
+      // A cold start has no checkpoint to lose, so it cannot fail; a restore cannot change lanes.
       if (
         latestSnapshot.id !== snapshotId ||
         latestSnapshot.executionStatus !== "PENDING_EXECUTING" ||
-        !latestSnapshot.checkpointId
+        (outcome === "fail" && !latestSnapshot.checkpointId) ||
+        (outcome === "fallback" && latestSnapshot.checkpointId) ||
+        // Only a worker whose group serves the run's worker queue, or its restore's, may report on it.
+        (servesWorkerQueue &&
+          !(
+            run &&
+            (servesWorkerQueue(run.workerQueue) ||
+              (restoreWorkerQueue !== undefined && servesWorkerQueue(restoreWorkerQueue)))
+          ))
       ) {
         this.restoreOutcomesCounter.add(1, {
           outcome,
@@ -1506,6 +1536,9 @@ export class RunAttemptSystem {
             latestSnapshotId: latestSnapshot.id,
             latestExecutionStatus: latestSnapshot.executionStatus,
             latestCheckpointId: latestSnapshot.checkpointId,
+            workerQueue: run?.workerQueue,
+            restoreWorkerQueue,
+            workerId,
           }
         );
 
@@ -1521,7 +1554,19 @@ export class RunAttemptSystem {
       let willRetry: boolean;
 
       switch (outcome) {
-        case "requeue": {
+        case "requeue":
+        case "fallback": {
+          let moveToWorkerQueue: string | undefined;
+          if (outcome === "fallback") {
+            const target = run ? fallbackWorkerQueue?.(run.workerQueue) : undefined;
+            // Without a worker queue to move to, it is requeued where it is.
+            moveToWorkerQueue = target !== run?.workerQueue ? target : undefined;
+            this.$.logger.info("reportRestoreOutcome: moving a cold start", {
+              runId,
+              workerQueue: run?.workerQueue,
+              moveToWorkerQueue,
+            });
+          }
           const requeued = await this.tryNackAndRequeue({
             run: { id: runId },
             environment: {
@@ -1530,7 +1575,7 @@ export class RunAttemptSystem {
             },
             orgId: latestSnapshot.organizationId,
             projectId: latestSnapshot.projectId,
-            checkpointId: latestSnapshot.checkpointId,
+            checkpointId: latestSnapshot.checkpointId ?? undefined,
             completedWaitpoints: latestSnapshot.completedWaitpoints,
             batchId: latestSnapshot.batchId ?? undefined,
             workerId,
@@ -1538,20 +1583,18 @@ export class RunAttemptSystem {
             error: {
               type: "INTERNAL_ERROR",
               code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
-              message: "Restoring the run failed more times than we retry.",
+              message: latestSnapshot.checkpointId
+                ? "Restoring the run failed more times than we retry."
+                : "Starting the run failed more times than we retry.",
             },
             snapshotRoute: snapshotRouteFromSnapshot(latestSnapshot),
+            moveToWorkerQueue,
             tx: prisma,
           });
           willRetry = requeued.wasRequeued;
           break;
         }
         case "fail": {
-          // read-your-writes: the attempt's lock-time retry config may not be on a replica yet
-          const run = await this.$.runStore.findRunOnPrimary(
-            { id: runId },
-            { select: { lockedRetryConfig: true } }
-          );
           const failed = await this.attemptFailed({
             runId,
             snapshotId: latestSnapshot.id,
@@ -2654,7 +2697,11 @@ const METRIC_REASONS = new Set([
   "SnapshotNodeGone",
   "SnapshotNodeUnschedulable",
   "SnapshotNotFound",
+  "SnapshotRefused",
   "StartError",
+  "TemplateKeyMalformed",
+  "TemplateKeyMissing",
+  "TemplateNotFound",
   "Timeout",
   "Unknown",
 ]);

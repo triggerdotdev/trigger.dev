@@ -5,6 +5,7 @@ import {
   refusedSubscriptions,
   resolveWorkerQueueSubscriptions,
   WorkerQueueSubscriptionPolicyEnv,
+  workerServesQueue,
   type WorkerQueueConsumerOptions,
 } from "~/runEngine/concerns/workerQueueSubscriptions.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
@@ -171,5 +172,44 @@ describe("worker queue subscription authorization", () => {
     ]) {
       expect(WorkerQueueSubscriptionPolicyEnv.safeParse(raw).success).toBe(false);
     }
+  });
+});
+
+describe("workerServesQueue", () => {
+  const consumer = () => createWorkerQueueConsumer({ ...worker, allowedSubscriptions: [stable] });
+
+  it("serves its group's legacy queue of either class, from any instance", () => {
+    const restarted = { ...consumer(), workerInstanceId: "instance-container-2" };
+    expect(workerServesQueue(restarted, "legacy-container-group")).toBe(true);
+    expect(workerServesQueue(restarted, "legacy-container-group:scheduled")).toBe(true);
+  });
+
+  it("serves a v2 queue in its region that its subscriptions cover", () => {
+    expect(workerServesQueue(consumer(), "us-east-1:v2:ondemand:fresh:container:stable")).toBe(
+      true
+    );
+  });
+
+  it("does not serve another group's queue", () => {
+    for (const queue of [
+      "legacy-other-group",
+      "legacy-other-group:scheduled",
+      "us-east-1:v2:ondemand:fresh:container:canary",
+      "eu-west-1:v2:ondemand:fresh:container:stable",
+      "not a queue",
+    ]) {
+      expect(workerServesQueue(consumer(), queue), queue).toBe(false);
+    }
+  });
+
+  it("takes its region from the master queue when it has none", () => {
+    const regionless = createWorkerQueueConsumer({
+      ...worker,
+      region: null,
+      allowedSubscriptions: [stable],
+    });
+    expect(
+      workerServesQueue(regionless, "legacy-container-group:v2:ondemand:fresh:container:stable")
+    ).toBe(true);
   });
 });

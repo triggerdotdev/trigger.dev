@@ -1,5 +1,7 @@
 import {
   formatWorkerQueue,
+  legacyScheduledWorkerQueue,
+  parseWorkerQueue,
   WORKER_QUEUE_VERSION,
   WorkerQueueSubscriptions,
   type WeightedWorkerQueueSubscription,
@@ -117,4 +119,28 @@ export function resolveWorkerQueueSubscriptions(
   }
 
   return [...workerQueues.values()];
+}
+
+/**
+ * Whether the worker's group serves `workerQueue`: the group's own legacy queue of either class,
+ * or a v2 queue in its region that its allowed subscriptions cover.
+ */
+export function workerServesQueue(worker: WorkerQueueConsumer, workerQueue: string): boolean {
+  if (
+    workerQueue === worker.masterQueue ||
+    workerQueue === legacyScheduledWorkerQueue(worker.masterQueue)
+  ) {
+    return true;
+  }
+  let parsed;
+  try {
+    parsed = parseWorkerQueue(workerQueue);
+  } catch {
+    return false;
+  }
+  return (
+    parsed.version === WORKER_QUEUE_VERSION &&
+    parsed.region === (worker.region ?? baseWorkerQueue(worker.masterQueue)) &&
+    worker.allowedQueues.has(subscriptionKey(parsed))
+  );
 }

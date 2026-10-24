@@ -50,6 +50,28 @@ describe("RestoreWatcher", () => {
     });
   });
 
+  it("reports a failed restore with the environment it was dequeued for", async () => {
+    const reported: RestoreFailure[] = [];
+    const { watcher, outcomes } = setup({ reportFailure: async (f) => void reported.push(f) });
+
+    const watched = watcher.watch(
+      { ...target, environmentId: "env_a" },
+      { runnerId: "runner-a", uid: "uid-a" }
+    );
+    outcomes[0]!.resolve(failed);
+    await watched;
+
+    expect(reported).toEqual([
+      {
+        runFriendlyId: "run_a",
+        snapshotFriendlyId: "snapshot_1",
+        environmentId: "env_a",
+        runnerId: "runner-a",
+        outcome: failed,
+      },
+    ]);
+  });
+
   it("names the snapshot dequeued last when the restore is redelivered", async () => {
     const { watcher, outcomes, awaitRestore, reportFailure } = setup();
 

@@ -2394,6 +2394,11 @@ export class RunEngine {
    * Called by the worker that dequeued a run for a restore when the restore did not start.
    * `requeue` gives the run back with the same checkpoint; `fail` fails the attempt as a lost
    * checkpoint. A conflict is returned if `snapshotId` is no longer the restore's snapshot.
+   * A cold start that did not start can be requeued the same way, but not failed. `fallback`
+   * requeues a cold start onto the worker queue `fallbackWorkerQueue` returns for the run's
+   * current one, or where it is when that returns none. With `servesWorkerQueue`, a report gets
+   * a conflict when it rejects both the run's worker queue and, for a restore, the queue the
+   * restore was published on.
    */
   async reportRestoreOutcome({
     runId,
@@ -2404,6 +2409,8 @@ export class RunEngine {
     workerId,
     runnerId,
     environmentId,
+    fallbackWorkerQueue,
+    servesWorkerQueue,
   }: {
     runId: string;
     snapshotId: string;
@@ -2413,6 +2420,8 @@ export class RunEngine {
     workerId?: string;
     runnerId?: string;
     environmentId?: string;
+    fallbackWorkerQueue?: (workerQueue: string) => string | undefined;
+    servesWorkerQueue?: (workerQueue: string) => boolean;
   }): Promise<RestoreOutcomeResult> {
     return this.runAttemptSystem.reportRestoreOutcome({
       runId,
@@ -2423,6 +2432,8 @@ export class RunEngine {
       workerId,
       runnerId,
       environmentId,
+      fallbackWorkerQueue,
+      servesWorkerQueue,
     });
   }
 

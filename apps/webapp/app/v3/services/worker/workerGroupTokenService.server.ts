@@ -38,6 +38,7 @@ import { dequeueWorkerQueues } from "~/runEngine/concerns/workerQueueDequeue.ser
 import {
   createWorkerQueueConsumer,
   refusedSubscriptions,
+  workerServesQueue,
   type WorkerQueueConsumer,
   type WorkerQueueConsumerOptions,
 } from "~/runEngine/concerns/workerQueueSubscriptions.server";
@@ -72,7 +73,7 @@ if (workloadCreatedAtGateEnabled && !workloadTokenCutoff) {
   );
 }
 
-type WorkloadGateAction = "start" | "complete" | "continue" | "snapshots_since";
+type WorkloadGateAction = "start" | "complete" | "continue" | "snapshots_since" | "restore_outcome";
 
 const meter = getMeter("workload-auth-gate");
 
@@ -742,15 +743,23 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     message,
     runnerId,
     environmentId,
+    fallbackWorkerQueue,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
-    outcome: "requeue" | "fail";
+    outcome: "requeue" | "fail" | "fallback";
     reason: string;
     message?: string;
     runnerId?: string;
     environmentId?: string;
+    fallbackWorkerQueue?: (workerQueue: string) => string | undefined;
   }) {
+    await this.assertCreatedAtGate({
+      runId: fromFriendlyId(runFriendlyId),
+      environmentId,
+      action: "restore_outcome",
+    });
+
     return await this._engine.reportRestoreOutcome({
       runId: fromFriendlyId(runFriendlyId),
       snapshotId: fromFriendlyId(snapshotFriendlyId),
@@ -760,6 +769,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       workerId: this.workerInstanceId,
       runnerId,
       environmentId,
+      fallbackWorkerQueue,
+      servesWorkerQueue: (workerQueue) => workerServesQueue(this.queueConsumer, workerQueue),
     });
   }
 

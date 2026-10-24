@@ -340,6 +340,11 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
     await this.deleteRunner(runnerId, uid);
   }
 
+  /** Takes a failed cold start out of the way of its redelivery. */
+  async deleteFailedRunner(runnerId: string, uid: string): Promise<void> {
+    await this.deleteRunner(runnerId, uid);
+  }
+
   /**
    * Preconditioned on uid, so a Runner that already replaced this one is left
    * alone; one already gone is fine.
@@ -376,7 +381,7 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
    * took. Any other checkpoint's location means nothing to it.
    */
   restores(checkpoint: { type: CheckpointType }): boolean {
-    return this.runtime === "microvm" && checkpoint.type === "COMPUTE";
+    return restoresOnRunner(this.runtime, checkpoint);
   }
 
   /**
@@ -516,6 +521,11 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
     restore?: RunnerRestore,
     replacing = false
   ): Promise<{ uid?: string } | false> {
+    const refused = templateKeyRefusal(this.runtime, opts.templateKey, !!restore);
+    if (refused) {
+      throw new Error(`Runner ${runnerId} not created: ${refused.reason}`);
+    }
+
     const token = await this.ensureRunnerToken(opts, runnerId, !!restore || replacing);
 
     const body = runnerBodyFor(opts, {
@@ -980,7 +990,9 @@ export class RunnerRestoreInformer {
     if (verb !== "add") {
       return;
     }
-    const bootstrap = (runner as RunnerBootstrapSpec).spec?.bootstrap;
+    const spec = (runner as RunnerBootstrapSpec).spec;
+    const bootstrap = spec?.bootstrap;
+    const environmentId = spec?.owner?.envID;
     const outcome = restoreOutcome(runner);
     // A Runner first seen already failed comes from a list, not from a create
     // here, so nothing has handled its outcome.
@@ -989,6 +1001,7 @@ export class RunnerRestoreInformer {
         runnerId: name,
         runFriendlyId: bootstrap?.runFriendlyID,
         snapshotFriendlyId: bootstrap?.snapshotFriendlyID,
+        ...(environmentId ? { environmentId } : {}),
         outcome: { ...outcome, createdAt: createdAtOf(runner), uid },
       });
       return;
@@ -1000,6 +1013,7 @@ export class RunnerRestoreInformer {
         uid,
         runFriendlyId: bootstrap?.runFriendlyID,
         snapshotFriendlyId: bootstrap?.snapshotFriendlyID,
+        ...(environmentId ? { environmentId } : {}),
       });
     }
   }
@@ -1016,12 +1030,14 @@ export type UnwatchedRestore = {
   uid?: string;
   runFriendlyId?: string;
   snapshotFriendlyId?: string;
+  environmentId?: string;
 };
 
 export type UnwatchedRestoreFailure = {
   runnerId: string;
   runFriendlyId?: string;
   snapshotFriendlyId?: string;
+  environmentId?: string;
   outcome: RestoreWatchResult & { ok: false };
 };
 
@@ -1045,6 +1061,8 @@ export class RunnerKillInformer {
   constructor(opts: {
     namespace: string;
     onRunnerKilled: (runnerId: string, kill: RunnerKill) => void;
+    /** A cold start the operator failed before it began, which a requeue may place elsewhere. */
+    onRunnerStartFailed?: (failure: RunnerStartFailure) => void;
     reconnectIntervalMs?: number;
     /** How long the server keeps each watch open before closing it. */
     watchTimeoutSeconds?: number;
@@ -1075,7 +1093,8 @@ export class RunnerKillInformer {
       const name = runner.metadata?.name;
       const uid = runner.metadata?.uid;
       const kill = runnerKill(runner);
-      if (!name || !uid || !kill || this.reported.has(uid)) {
+      const startFailure = opts.onRunnerStartFailed && runnerStartFailure(runner);
+      if (!name || !uid || (!kill && !startFailure) || this.reported.has(uid)) {
         return;
       }
       this.reported.add(uid);
@@ -1083,7 +1102,11 @@ export class RunnerKillInformer {
         // A Set iterates in insertion order, so this forgets the oldest.
         this.reported.delete(this.reported.values().next().value!);
       }
-      opts.onRunnerKilled(name, kill);
+      if (kill) {
+        opts.onRunnerKilled(name, kill);
+      } else if (startFailure) {
+        opts.onRunnerStartFailed!(startFailure);
+      }
     };
     this.watch.informer.on("add", onEvent);
     this.watch.informer.on("update", onEvent);
@@ -1128,11 +1151,12 @@ const PERMANENT_RESTORE_REASONS = new Set([
   "SnapshotNodeUnschedulable",
   "RestoreNotSupported",
   "SnapshotNotFound",
+  "SnapshotRefused",
 ]);
 
 export type RestoreFailureAction =
   | { outcome: "fail" }
-  | { outcome: "requeue"; deleteRunner: boolean };
+  | { outcome: "requeue" | "fallback"; deleteRunner: boolean };
 
 /**
  * What to tell the platform about a failed resume, from the operator's reason
@@ -1159,7 +1183,7 @@ export function classifyRestoreFailure(reason: string): RestoreFailureAction | u
 }
 
 export type RestoreOutcomeReport = (body: {
-  outcome: "requeue" | "fail";
+  outcome: "requeue" | "fail" | "fallback";
   reason: string;
   message?: string;
 }) => Promise<{ success: true } | { success: false; error: string; statusCode?: number }>;
@@ -1169,14 +1193,14 @@ export type RestoreFailureSettlement =
   | { action: "kept"; error: string; forbidden?: boolean }
   | {
       action: "reported";
-      outcome: "requeue" | "fail";
+      outcome: "requeue" | "fail" | "fallback";
       result: "ok" | "conflict" | "error";
       error?: string;
       cleanupError?: string;
     };
 
 /**
- * Reports a failed resume to the platform. A requeue first deletes the Runner,
+ * Reports a failed resume to the platform. A requeue or fallback first deletes the Runner,
  * since its redelivery would otherwise find it held for the operator's TTL and
  * fail again; when that delete fails nothing is reported. A fail deletes it
  * once the platform has the report (or has moved on, a conflict), so a
@@ -1186,6 +1210,8 @@ export async function settleRestoreFailure(
   failure: {
     runnerId: string;
     outcome: RestoreWatchResult & { ok: false };
+    /** Overrides what the reason alone would report. */
+    action?: RestoreFailureAction;
   },
   deps: {
     deleteRunner: (runnerId: string, uid: string) => Promise<void>;
@@ -1193,11 +1219,11 @@ export async function settleRestoreFailure(
   }
 ): Promise<RestoreFailureSettlement> {
   const { reason, error, message, uid } = failure.outcome;
-  const action = classifyRestoreFailure(reason);
+  const action = failure.action ?? classifyRestoreFailure(reason);
   if (!action) {
     return { action: "none" };
   }
-  if (action.outcome === "requeue" && action.deleteRunner) {
+  if (action.outcome !== "fail" && action.deleteRunner) {
     if (!uid) {
       return { action: "kept", error: "no uid to guard the Runner's delete" };
     }
@@ -1291,6 +1317,49 @@ export function restoreOutcome(runner: unknown): RunnerRestoreResult | undefined
     default:
       return undefined;
   }
+}
+
+/** Reasons a cold start fails for that another lane may not, so it is moved there. */
+const FALLBACK_START_REASONS = new Set(["TemplateNotFound"]);
+
+/** A cold start that failed before its attempt began, with the dequeue it was created for. */
+export type RunnerStartFailure = {
+  runnerId: string;
+  runFriendlyId: string;
+  snapshotFriendlyId: string;
+  environmentId?: string;
+  outcome: RunnerRestoreResult & { ok: false; uid: string };
+};
+
+/**
+ * A cold-start Runner the operator failed for a reason another lane can get past. A resume is
+ * left out: the restore watch settles it.
+ */
+export function runnerStartFailure(runner: unknown): RunnerStartFailure | undefined {
+  const meta = (
+    runner as {
+      metadata?: { name?: string; uid?: string; labels?: Record<string, string> };
+    } | null
+  )?.metadata;
+  const spec = (runner as RunnerBootstrapSpec | null)?.spec;
+  const bootstrap = spec?.bootstrap;
+  if (!meta?.name || !meta.uid || meta.labels?.[RESTORE_LABEL] === "true") {
+    return undefined;
+  }
+  const outcome = restoreOutcome(runner);
+  if (!outcome || outcome.ok || !FALLBACK_START_REASONS.has(outcome.reason)) {
+    return undefined;
+  }
+  if (!bootstrap?.runFriendlyID || !bootstrap.snapshotFriendlyID) {
+    return undefined;
+  }
+  return {
+    runnerId: meta.name,
+    runFriendlyId: bootstrap.runFriendlyID,
+    snapshotFriendlyId: bootstrap.snapshotFriendlyID,
+    ...(spec?.owner?.envID ? { environmentId: spec.owner.envID } : {}),
+    outcome: { ...outcome, uid: meta.uid },
+  };
 }
 
 /**
@@ -1388,6 +1457,67 @@ function uidOf(created: unknown): string | undefined {
   return typeof meta?.uid === "string" ? meta.uid : undefined;
 }
 
+const TEMPLATE_KEY = /^[a-f0-9]{64}$/;
+
+/** The pattern the CRD enforces on `spec.templateKey`. */
+function isTemplateKey(key: string | undefined): boolean {
+  return key !== undefined && TEMPLATE_KEY.test(key);
+}
+
+/** Only a COMPUTE checkpoint on the microvm lane resumes as a Runner. */
+function restoresOnRunner(runtime: RunnerRuntime, checkpoint: { type: CheckpointType }): boolean {
+  return runtime === "microvm" && checkpoint.type === "COMPUTE";
+}
+
+export type TemplateKeyRefusal = { outcome: "fallback" | "fail"; reason: string };
+
+/**
+ * A microvm Runner starts only from a template, so a run without a valid key is reported
+ * instead: a cold start falls back to another lane, and a resume, which cannot change lanes,
+ * fails. Undefined when the Runner can be created.
+ */
+function templateKeyRefusal(
+  runtime: RunnerRuntime,
+  templateKey: string | undefined,
+  restore: boolean
+): TemplateKeyRefusal | undefined {
+  if (runtime !== "microvm" || isTemplateKey(templateKey)) {
+    return undefined;
+  }
+  return {
+    outcome: restore ? "fail" : "fallback",
+    reason: templateKey === undefined ? "TemplateKeyMissing" : "TemplateKeyMalformed",
+  };
+}
+
+/**
+ * Reports a run its lane will not create a Runner for, in place of creating one. Undefined when
+ * the Runner can be created, or when the checkpoint client restores the run instead.
+ */
+export async function reportTemplateKeyRefusal(
+  run: { runtime: RunnerRuntime; templateKey?: string; checkpoint?: { type: CheckpointType } },
+  report: RestoreOutcomeReport
+): Promise<
+  (TemplateKeyRefusal & { result: "ok" | "conflict" | "error"; error?: string }) | undefined
+> {
+  if (run.checkpoint && !restoresOnRunner(run.runtime, run.checkpoint)) {
+    return undefined;
+  }
+  const refused = templateKeyRefusal(run.runtime, run.templateKey, !!run.checkpoint);
+  if (!refused) {
+    return undefined;
+  }
+  const result = await report(refused);
+  if (result.success) {
+    return { ...refused, result: "ok" };
+  }
+  return {
+    ...refused,
+    result: result.statusCode === 409 ? "conflict" : "error",
+    error: result.error,
+  };
+}
+
 /**
  * The whole translation from what the platform dequeued into what the API server
  * stores, kept apart from the client because a wrong field here is a pod that
@@ -1417,6 +1547,10 @@ export function runnerBodyFor(
       // As built, digest and all: the operator owns stripping and rewriting, so
       // they cannot both apply.
       image: opts.image,
+      // Only the microvm lane starts from a template; create refuses one without a valid key.
+      ...(meta.runtime === "microvm" && isTemplateKey(opts.templateKey)
+        ? { templateKey: opts.templateKey }
+        : {}),
       machine: machineOf(opts.machine),
       ...(opts.runtime ? { taskRuntime: opts.runtime } : {}),
       deployment: {
