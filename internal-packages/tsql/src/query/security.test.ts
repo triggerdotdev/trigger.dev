@@ -191,6 +191,64 @@ describe("Cross-Tenant Security", () => {
     });
   });
 
+  describe("Aliases cannot shadow a table alias", () => {
+    const ownTenant = `JSONExtract('{"organization_id":"org_tenant1","project_id":"proj_tenant1","environment_id":"env_tenant1"}', 'Tuple(organization_id String, project_id String, environment_id String)')`;
+
+    it.each([
+      ["a WHERE alias", `SELECT id FROM task_runs AS r WHERE ${ownTenant} AS r IS NOT NULL`],
+      ["a SELECT alias", `SELECT id, ${ownTenant} AS r FROM task_runs AS r`],
+      ["the implicit table alias", `SELECT id, ${ownTenant} AS task_runs FROM task_runs`],
+      ["a different case", `SELECT id, ${ownTenant} AS R FROM task_runs AS r`],
+      ["an ARRAY JOIN alias", `SELECT id FROM task_runs AS r ARRAY JOIN [${ownTenant}] AS r`],
+      [
+        "a dotted ARRAY JOIN alias",
+        "SELECT id FROM task_runs ARRAY JOIN ['org_tenant1'] AS `task_runs.organization_id`",
+      ],
+      [
+        "a dotted SELECT alias",
+        "SELECT id, 'org_tenant1' AS `r.organization_id` FROM task_runs AS r",
+      ],
+      ["a WITH alias", `WITH ${ownTenant} AS r SELECT id FROM task_runs AS r`],
+      [
+        "an ORDER BY alias",
+        `SELECT id FROM task_runs AS r ORDER BY (${ownTenant} AS r) IS NOT NULL`,
+      ],
+      ["a GROUP BY alias", `SELECT id FROM task_runs AS r GROUP BY id, (${ownTenant} AS r)`],
+      ["a backticked alias", "SELECT id, " + ownTenant + " AS `r` FROM task_runs AS `r`"],
+      [
+        "an alias inside a function",
+        `SELECT id, length(toString(${ownTenant} AS r)) AS n FROM task_runs AS r`,
+      ],
+      ["a scalar subquery alias", `SELECT id, (SELECT ${ownTenant}) AS r FROM task_runs AS r`],
+      ["a FROM subquery", `SELECT id FROM (SELECT id, ${ownTenant} AS r FROM task_runs AS r)`],
+      [
+        "the second branch of a UNION",
+        `SELECT id FROM task_runs AS q UNION ALL SELECT id FROM task_runs AS r WHERE ${ownTenant} AS r IS NOT NULL`,
+      ],
+      [
+        "an aggregate hidden in a lambda",
+        `SELECT id, if(length(arrayMap(x -> count(), [1])) > 0, ${ownTenant}, ${ownTenant}) AS r FROM task_runs AS r`,
+      ],
+      [
+        "a joined table's alias",
+        `SELECT r.id, ${ownTenant} AS e FROM task_runs AS r JOIN task_events AS e ON r.id = e.run_id`,
+      ],
+    ])("should reject %s", (_, query) => {
+      expect(() => compile(query)).toThrow(/conflicts with the table alias/);
+    });
+
+    it("should allow aggregate aliases that reuse the table name", () => {
+      const { sql } = compile("SELECT status, count() AS task_runs FROM task_runs GROUP BY status");
+      expect(sql).toContain("count() AS task_runs");
+    });
+
+    it("should allow an alias that only matches a table in another scope", () => {
+      expect(() =>
+        compile(`SELECT s.id FROM (SELECT id, ${ownTenant} AS r FROM task_runs) AS s`)
+      ).not.toThrow();
+    });
+  });
+
   describe("PREWHERE", () => {
     it.each([
       ["top-level query", "SELECT count(*) FROM task_runs PREWHERE toUInt8(task_identifier) = 1"],

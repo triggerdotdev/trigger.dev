@@ -391,6 +391,7 @@ export class ClickHousePrinter {
     }
 
     this.validateMergeScopedColumns(node);
+    this.validateAliasesDoNotShadowTables(node);
 
     // Extract SELECT column aliases BEFORE visiting columns
     // This allows ORDER BY/HAVING to reference aliased columns
@@ -1927,6 +1928,110 @@ export class ClickHousePrinter {
         }
       }
     }
+  }
+
+  /**
+   * Reject an expression alias that reuses a table alias of this scope. ClickHouse resolves
+   * `r.organization_id` to an expression alias named `r` before the table column, so a Tuple
+   * or JSON alias would replace every tenant guard. A dotted alias such as
+   * `runs.organization_id` is rejected too: as an ARRAY JOIN alias it replaces the column the
+   * same way. Aliases that contain an aggregate or
+   * window function stay allowed (e.g. `count() AS runs FROM runs`): ClickHouse refuses to
+   * substitute those into WHERE, so they can never satisfy a guard. Runs per SELECT scope;
+   * subqueries validate themselves.
+   */
+  private validateAliasesDoNotShadowTables(node: SelectQuery): void {
+    if (this.tableContexts.size === 0) return;
+
+    const tableAliases = new Map<string, string>();
+    for (const alias of this.tableContexts.keys()) {
+      tableAliases.set(alias.toLowerCase(), alias);
+    }
+
+    for (const [property, value] of Object.entries(node)) {
+      if (property === "type" || property === "parent") continue;
+      this.findShadowingAlias(value, tableAliases);
+    }
+  }
+
+  private findShadowingAlias(
+    expr: unknown,
+    tableAliases: Map<string, string>,
+    seen = new WeakSet<object>()
+  ): void {
+    if (expr === null || typeof expr !== "object") return;
+    if (seen.has(expr)) return;
+    seen.add(expr);
+    if (Array.isArray(expr)) {
+      for (const item of expr) this.findShadowingAlias(item, tableAliases, seen);
+      return;
+    }
+
+    const candidate = expr as Partial<Alias> &
+      Partial<CTE> & { expression_type?: string; name?: unknown };
+    if (
+      candidate.expression_type === "select_query" ||
+      candidate.expression_type === "select_set_query"
+    ) {
+      return;
+    }
+
+    let aliasName: string | undefined;
+    if (candidate.expression_type === "alias" && !candidate.hidden) {
+      aliasName = candidate.alias;
+    } else if (candidate.expression_type === "cte" && candidate.cte_type === "column") {
+      aliasName = typeof candidate.name === "string" ? candidate.name : undefined;
+    }
+    if (aliasName !== undefined) {
+      const lowerAlias = aliasName.toLowerCase();
+      let tableAlias: string | undefined;
+      for (const [lowerTableAlias, original] of tableAliases) {
+        if (lowerAlias === lowerTableAlias || lowerAlias.startsWith(`${lowerTableAlias}.`)) {
+          tableAlias = original;
+          break;
+        }
+      }
+      if (tableAlias !== undefined && !this.containsAggregateOrWindow(candidate.expr)) {
+        throw new QueryError(
+          `Alias '${aliasName}' conflicts with the table alias '${tableAlias}'. ` +
+            `Choose a different alias.`
+        );
+      }
+    }
+
+    for (const [property, value] of Object.entries(expr)) {
+      if (property === "type" || property === "parent") continue;
+      this.findShadowingAlias(value, tableAliases, seen);
+    }
+  }
+
+  private containsAggregateOrWindow(expr: unknown, seen = new WeakSet<object>()): boolean {
+    if (expr === null || typeof expr !== "object") return false;
+    if (seen.has(expr)) return false;
+    seen.add(expr);
+    if (Array.isArray(expr)) {
+      return expr.some((item) => this.containsAggregateOrWindow(item, seen));
+    }
+    const candidate = expr as { expression_type?: string; name?: unknown };
+    if (
+      candidate.expression_type === "select_query" ||
+      candidate.expression_type === "select_set_query" ||
+      candidate.expression_type === "lambda"
+    ) {
+      return false;
+    }
+    if (candidate.expression_type === "window_function") return true;
+    if (
+      candidate.expression_type === "call" &&
+      typeof candidate.name === "string" &&
+      findTSQLAggregation(candidate.name) !== undefined
+    ) {
+      return true;
+    }
+    return Object.entries(expr).some(
+      ([property, value]) =>
+        property !== "type" && property !== "parent" && this.containsAggregateOrWindow(value, seen)
+    );
   }
 
   private scopeReferencesColumn(node: SelectQuery, name: string): boolean {

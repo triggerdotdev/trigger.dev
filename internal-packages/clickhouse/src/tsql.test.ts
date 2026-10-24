@@ -233,6 +233,69 @@ describe("TSQL Integration Tests", () => {
   });
 
   clickhouseTest(
+    "should not let an alias that reuses the table alias replace the tenant guard",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const insert = insertTaskRuns(client, { async_insert: 0 });
+
+      await insert([
+        createTaskRun({
+          run_id: "run_tenant1_a",
+          organization_id: "org_tenant1",
+          project_id: "proj_tenant1",
+          environment_id: "env_tenant1",
+        }),
+        createTaskRun({
+          run_id: "run_tenant2_a",
+          organization_id: "org_tenant2",
+          project_id: "proj_tenant2",
+          environment_id: "env_tenant2",
+        }),
+      ]);
+
+      const enforcedWhereClause = {
+        organization_id: { op: "eq" as const, value: "org_tenant1" },
+        project_id: { op: "eq" as const, value: "proj_tenant1" },
+        environment_id: { op: "eq" as const, value: "env_tenant1" },
+      };
+      const ownTenant = `JSONExtract('{"organization_id":"org_tenant1","project_id":"proj_tenant1","environment_id":"env_tenant1"}', 'Tuple(organization_id String, project_id String, environment_id String)')`;
+
+      for (const query of [
+        `SELECT run_id FROM task_runs AS r WHERE ${ownTenant} AS r IS NOT NULL`,
+        `SELECT run_id, ${ownTenant} AS task_runs FROM task_runs`,
+        `SELECT run_id FROM task_runs AS r ARRAY JOIN [${ownTenant}] AS r`,
+        "SELECT run_id FROM task_runs ARRAY JOIN ['org_tenant1'] AS `task_runs.organization_id`",
+      ]) {
+        const [error, result] = await executeTSQL(client, {
+          name: "test-alias-shadowing",
+          query,
+          schema: z.object({ run_id: z.string() }),
+          enforcedWhereClause,
+          tableSchema: [taskRunsSchema],
+        });
+
+        expect(error?.message).toMatch(/conflicts with the table alias/);
+        expect(result).toBeNull();
+      }
+
+      const [countError, countResult] = await executeTSQL(client, {
+        name: "test-alias-shadowing-count",
+        query: "SELECT count() AS task_runs FROM task_runs",
+        schema: z.object({ task_runs: z.coerce.number() }),
+        enforcedWhereClause,
+        tableSchema: [taskRunsSchema],
+      });
+
+      expect(countError).toBeNull();
+      expect(countResult?.rows).toEqual([{ task_runs: 1 }]);
+    }
+  );
+
+  clickhouseTest(
     "should not allow cross-tenant access even with malicious WHERE",
     async ({ clickhouseContainer }) => {
       const client = new ClickhouseClient({
