@@ -44,6 +44,7 @@ describe("Vercel SDK recovery diagnostics", () => {
 
     expect(result.error).toEqual({
       message: VERCEL_API_ERROR_MESSAGE,
+      reason: "revoked",
       authInvalid: true,
       errorType: "ResponseValidationError",
       status: 403,
@@ -78,6 +79,7 @@ describe("Vercel SDK recovery diagnostics", () => {
 
     expect(result.error).toEqual({
       message: "Failed to fetch Vercel team",
+      reason: "other",
       authInvalid: false,
     });
     expect(logger.error).toHaveBeenCalledWith("Failed to fetch Vercel team", {

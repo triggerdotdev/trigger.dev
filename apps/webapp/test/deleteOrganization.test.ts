@@ -18,6 +18,16 @@ vi.mock("~/services/platform.v3.server", async (importOriginal) => {
   };
 });
 
+const { uninstallVercelIntegrationMock } = vi.hoisted(() => ({
+  uninstallVercelIntegrationMock: vi.fn(async (_integration: { id: string }): Promise<unknown> => {
+    return { isErr: () => false };
+  }),
+}));
+
+vi.mock("~/models/vercelIntegration.server", () => ({
+  VercelIntegrationRepository: { uninstallVercelIntegration: uninstallVercelIntegrationMock },
+}));
+
 vi.mock("~/v3/commonWorker.server", () => ({
   commonWorker: { enqueue: async () => undefined },
 }));
@@ -141,5 +151,128 @@ describe("DeleteOrganizationService billing", () => {
     expect(cancelSubscriptionMock).toHaveBeenCalledWith(organization.id);
     const org = await prisma.organization.findUniqueOrThrow({ where: { id: organization.id } });
     expect(org.deletedAt).toBeInstanceOf(Date);
+  });
+});
+
+async function seedVercelIntegration(
+  prisma: PrismaClient,
+  organizationId: string,
+  options: { deletedAt?: Date } = {}
+) {
+  const tokenReference = await prisma.secretReference.create({
+    data: { key: uniqueId("secret") },
+  });
+  const integration = await prisma.organizationIntegration.create({
+    data: {
+      friendlyId: uniqueId("oi"),
+      service: "VERCEL",
+      integrationData: {},
+      tokenReferenceId: tokenReference.id,
+      organizationId,
+      deletedAt: options.deletedAt,
+    },
+  });
+  const project = await prisma.project.create({
+    data: {
+      name: "Vercel Project",
+      slug: uniqueId("proj"),
+      externalRef: uniqueId("ext"),
+      organizationId,
+    },
+  });
+  const projectIntegration = await prisma.organizationProjectIntegration.create({
+    data: {
+      organizationIntegrationId: integration.id,
+      projectId: project.id,
+      externalEntityId: uniqueId("vercel-project"),
+      integrationData: {},
+    },
+  });
+  return { integration, projectIntegration };
+}
+
+describe("DeleteOrganizationService Vercel integration", () => {
+  beforeEach(() => {
+    getCurrentPlanOrThrowMock.mockReset();
+    cancelSubscriptionMock.mockReset();
+    uninstallVercelIntegrationMock.mockReset();
+    uninstallVercelIntegrationMock.mockResolvedValue({ isErr: () => false });
+  });
+
+  postgresTest("uninstalls and soft-deletes the integration", async ({ prisma }) => {
+    const { user, organization } = await createOrg(prisma);
+    const { integration, projectIntegration } = await seedVercelIntegration(
+      prisma,
+      organization.id
+    );
+
+    await deleteOrg(prisma, organization.slug, user.id);
+
+    expect(uninstallVercelIntegrationMock).toHaveBeenCalledTimes(1);
+    expect(uninstallVercelIntegrationMock.mock.calls[0][0].id).toBe(integration.id);
+    const oi = await prisma.organizationIntegration.findUniqueOrThrow({
+      where: { id: integration.id },
+    });
+    const opi = await prisma.organizationProjectIntegration.findUniqueOrThrow({
+      where: { id: projectIntegration.id },
+    });
+    expect(oi.deletedAt).toBeInstanceOf(Date);
+    expect(opi.deletedAt).toBeInstanceOf(Date);
+  });
+
+  postgresTest("still deletes the org when the uninstall fails", async ({ prisma }) => {
+    const { user, organization } = await createOrg(prisma);
+    const { integration, projectIntegration } = await seedVercelIntegration(
+      prisma,
+      organization.id
+    );
+    uninstallVercelIntegrationMock.mockRejectedValue(new Error("vercel down"));
+
+    await deleteOrg(prisma, organization.slug, user.id);
+
+    const org = await prisma.organization.findUniqueOrThrow({ where: { id: organization.id } });
+    const oi = await prisma.organizationIntegration.findUniqueOrThrow({
+      where: { id: integration.id },
+    });
+    const opi = await prisma.organizationProjectIntegration.findUniqueOrThrow({
+      where: { id: projectIntegration.id },
+    });
+    expect(org.deletedAt).toBeInstanceOf(Date);
+    expect(oi.deletedAt).toBeInstanceOf(Date);
+    expect(opi.deletedAt).toBeInstanceOf(Date);
+  });
+
+  postgresTest("skips an already soft-deleted integration", async ({ prisma }) => {
+    const { user, organization } = await createOrg(prisma);
+    await seedVercelIntegration(prisma, organization.id, { deletedAt: new Date() });
+
+    await deleteOrg(prisma, organization.slug, user.id);
+
+    expect(uninstallVercelIntegrationMock).not.toHaveBeenCalled();
+  });
+
+  postgresTest("isolates each integration", async ({ prisma }) => {
+    const { user, organization } = await createOrg(prisma);
+    const first = await seedVercelIntegration(prisma, organization.id);
+    await seedVercelIntegration(prisma, organization.id);
+    uninstallVercelIntegrationMock.mockImplementation(async (integration) =>
+      integration.id === first.integration.id
+        ? {
+            isErr: () => true,
+            isOk: () => false,
+            error: { message: "disabled", authInvalid: false },
+          }
+        : { isErr: () => false, isOk: () => true }
+    );
+    const spy = vi.spyOn(prisma, "$transaction").mockRejectedValueOnce(new Error("db down"));
+
+    await deleteOrg(prisma, organization.slug, user.id);
+    spy.mockRestore();
+
+    expect(uninstallVercelIntegrationMock).toHaveBeenCalledTimes(2);
+    const rows = await prisma.organizationIntegration.findMany({
+      where: { organizationId: organization.id },
+    });
+    expect(rows.filter((r) => r.deletedAt instanceof Date)).toHaveLength(1);
   });
 });

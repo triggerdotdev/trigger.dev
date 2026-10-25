@@ -1,6 +1,7 @@
 import { tryCatch } from "@trigger.dev/core/v3";
 import type { PrismaClient } from "@trigger.dev/database";
-import { prisma } from "~/db.server";
+import { $transaction, prisma } from "~/db.server";
+import { VercelIntegrationRepository } from "~/models/vercelIntegration.server";
 import { DeleteProjectService } from "./deleteProject.server";
 import { cancelSubscription, getCurrentPlanOrThrow } from "./platform.v3.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
@@ -44,7 +45,7 @@ export class DeleteOrganizationService {
     await this.#cancelSubscription(organization.id);
 
     // loop through the projects and delete them
-    const projectDeleteService = new DeleteProjectService();
+    const projectDeleteService = new DeleteProjectService(this.#prismaClient);
     for (const project of organization.projects) {
       await projectDeleteService.call({ projectId: project.id, userId });
     }
@@ -75,6 +76,57 @@ export class DeleteOrganizationService {
     } catch (error) {
       logger.warn("Failed to enqueue dashboard agent purge for deleted organization", {
         organizationId: organization.id,
+        error,
+      });
+    }
+
+    await this.#uninstallVercelIntegrations(organization.id);
+  }
+
+  async #uninstallVercelIntegrations(organizationId: string) {
+    try {
+      const integrations = await this.#prismaClient.organizationIntegration.findMany({
+        where: { organizationId, service: "VERCEL", deletedAt: null },
+        include: { tokenReference: true },
+      });
+
+      for (const integration of integrations) {
+        const [error, result] = await tryCatch(
+          Promise.resolve(VercelIntegrationRepository.uninstallVercelIntegration(integration))
+        );
+        const failure = error ?? (result?.isErr() ? result.error : undefined);
+        if (failure) {
+          logger.warn("Failed to uninstall Vercel integration for deleted organization", {
+            organizationId,
+            integrationId: integration.id,
+            error: failure,
+          });
+        }
+
+        const [txError] = await tryCatch(
+          $transaction(this.#prismaClient, async (tx) => {
+            await tx.organizationProjectIntegration.updateMany({
+              where: { organizationIntegrationId: integration.id, deletedAt: null },
+              data: { deletedAt: new Date() },
+            });
+
+            await tx.organizationIntegration.update({
+              where: { id: integration.id },
+              data: { deletedAt: new Date() },
+            });
+          })
+        );
+        if (txError) {
+          logger.warn("Failed to soft-delete Vercel integration for deleted organization", {
+            organizationId,
+            integrationId: integration.id,
+            error: txError,
+          });
+        }
+      }
+    } catch (error) {
+      logger.warn("Failed to uninstall Vercel integrations for deleted organization", {
+        organizationId,
         error,
       });
     }

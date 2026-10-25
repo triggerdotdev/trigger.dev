@@ -136,7 +136,7 @@ export function VercelOnboardingModal({
   const hasCustomEnvs = customEnvironments.length > 0 && hasStagingEnvironment;
 
   const computeInitialState = useCallback((): OnboardingState => {
-    if (!hasOrgIntegration || onboardingData?.authInvalid) {
+    if (!hasOrgIntegration || onboardingData?.authInvalid || onboardingData?.disabled) {
       return "idle";
     }
     const projectSelected = onboardingData?.hasProjectSelected ?? false;
@@ -331,13 +331,18 @@ export function VercelOnboardingModal({
   const loadingStateRef = useRef<OnboardingState | null>(null);
 
   useEffect(() => {
-    if (!isOpen || state === "idle") {
+    if (!isOpen) {
       loadingStateRef.current = null;
       return;
     }
 
-    if (onboardingData?.authInvalid) {
+    if (onboardingData?.authInvalid || onboardingData?.disabled) {
       onClose();
+      return;
+    }
+
+    if (state === "idle") {
+      loadingStateRef.current = null;
       return;
     }
 
@@ -376,29 +381,49 @@ export function VercelOnboardingModal({
         loadingStateRef.current = null;
         break;
     }
-  }, [isOpen, state, onboardingData?.authInvalid, vercelStagingEnvironment, onDataReload, onClose]);
+  }, [
+    isOpen,
+    state,
+    onboardingData?.authInvalid,
+    onboardingData?.disabled,
+    vercelStagingEnvironment,
+    onDataReload,
+    onClose,
+  ]);
 
   useEffect(() => {
     if (
       !onboardingData?.authInvalid &&
+      !onboardingData?.disabled &&
       state === "loading-projects" &&
       onboardingData?.availableProjects !== undefined
     ) {
       // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setState("project-selection");
     }
-  }, [state, onboardingData?.availableProjects, onboardingData?.authInvalid]);
+  }, [
+    state,
+    onboardingData?.availableProjects,
+    onboardingData?.authInvalid,
+    onboardingData?.disabled,
+  ]);
 
   useEffect(() => {
     if (
       !onboardingData?.authInvalid &&
+      !onboardingData?.disabled &&
       state === "loading-env-vars" &&
       onboardingData?.environmentVariables
     ) {
       // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setState("env-var-sync");
     }
-  }, [state, onboardingData?.environmentVariables, onboardingData?.authInvalid]);
+  }, [
+    state,
+    onboardingData?.environmentVariables,
+    onboardingData?.authInvalid,
+    onboardingData?.disabled,
+  ]);
 
   useEffect(() => {
     if (
@@ -710,7 +735,7 @@ export function VercelOnboardingModal({
     }
   }, [state, availableProjects, selectedVercelProject]);
 
-  if (!isOpen || onboardingData?.authInvalid) {
+  if (!isOpen || onboardingData?.authInvalid || onboardingData?.disabled) {
     return null;
   }
 
