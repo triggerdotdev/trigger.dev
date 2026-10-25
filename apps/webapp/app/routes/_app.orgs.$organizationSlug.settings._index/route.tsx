@@ -44,6 +44,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives
 import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { prisma } from "~/db.server";
 import { useFaviconUrl } from "~/hooks/useFaviconUrl";
+import { useFeatures } from "~/hooks/useFeatures";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { clearCurrentProject } from "~/services/dashboardPreferences.server";
@@ -336,6 +337,7 @@ export const action = dashboardAction(
 
 export default function Page() {
   const { organization, canManageOrganization } = useTypedLoaderData<typeof loader>();
+  const { isManagedCloud } = useFeatures();
   const lastSubmission = useActionData();
   const navigation = useNavigation();
 
@@ -453,6 +455,8 @@ export default function Page() {
                       This change is irreversible, so please be certain. Type in the Organization
                       slug <InlineCode variant="extra-small">{organization.slug}</InlineCode> and
                       then press Delete.
+                      {isManagedCloud &&
+                        " Your subscription will be cancelled immediately and any outstanding usage will be billed."}
                     </Hint>
                   </InputGroup>
                   <FormButtons

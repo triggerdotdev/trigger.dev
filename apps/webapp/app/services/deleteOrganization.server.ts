@@ -1,9 +1,8 @@
-import { DateFormatter } from "@internationalized/date";
+import { tryCatch } from "@trigger.dev/core/v3";
 import type { PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
-import { featuresForRequest } from "~/features.server";
 import { DeleteProjectService } from "./deleteProject.server";
-import { getCurrentPlan } from "./platform.v3.server";
+import { cancelSubscription, getCurrentPlanOrThrow } from "./platform.v3.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { commonWorker } from "~/v3/commonWorker.server";
 import { logger } from "./logger.server";
@@ -18,7 +17,6 @@ export class DeleteOrganizationService {
   public async call({
     organizationSlug,
     userId,
-    request,
   }: {
     organizationSlug: string;
     userId: string;
@@ -43,31 +41,7 @@ export class DeleteOrganizationService {
       throw new Error("Organization already deleted");
     }
 
-    //Check if they have an active subscription
-    const { isManagedCloud } = featuresForRequest(request);
-    const currentPlan = isManagedCloud ? await getCurrentPlan(organization.id) : undefined;
-
-    if (currentPlan && currentPlan.v3Subscription && currentPlan.v3Subscription.isPaying) {
-      //they've cancelled and that date hasn't passed yet
-      if (
-        currentPlan.v3Subscription.canceledAt &&
-        new Date(currentPlan.v3Subscription.canceledAt) > new Date()
-      ) {
-        //a dateformatter that produces results like "Jan 1 2024"
-        const dateFormatter = new DateFormatter("en-us", {
-          year: "numeric",
-          month: "short",
-          day: "numeric",
-        });
-        throw new Error(
-          `This Organization has a canceled subscription. You can delete it when the cancelation date (${dateFormatter.format(
-            new Date(currentPlan.v3Subscription.canceledAt)
-          )}) is in the past.`
-        );
-      }
-
-      throw new Error("You can't delete an Organization that has an active subscription");
-    }
+    await this.#cancelSubscription(organization.id);
 
     // loop through the projects and delete them
     const projectDeleteService = new DeleteProjectService();
@@ -103,6 +77,28 @@ export class DeleteOrganizationService {
         organizationId: organization.id,
         error,
       });
+    }
+  }
+
+  async #cancelSubscription(organizationId: string) {
+    let plan: Awaited<ReturnType<typeof getCurrentPlanOrThrow>>;
+    try {
+      plan = await getCurrentPlanOrThrow(organizationId);
+    } catch (error) {
+      logger.error("Failed to load plan before deleting organization", { organizationId, error });
+      throw new Error("Couldn't verify billing state, try again");
+    }
+
+    if (!plan) return;
+
+    const [error, result] = await tryCatch(cancelSubscription(organizationId));
+    if (error || !result?.success) {
+      logger.error("Failed to cancel subscription before deleting organization", {
+        organizationId,
+        error,
+        result,
+      });
+      throw new Error("Couldn't cancel the subscription, try again");
     }
   }
 }

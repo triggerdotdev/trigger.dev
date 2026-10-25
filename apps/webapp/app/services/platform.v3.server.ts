@@ -395,6 +395,18 @@ export async function getCurrentPlan(orgId: string) {
   }
 }
 
+export async function getCurrentPlanOrThrow(orgId: string) {
+  if (!client) return undefined;
+
+  const result = await client.currentPlan(orgId);
+  if (!result.success) {
+    recordPlatformFailure("getCurrentPlanOrThrow", "no_success");
+    throw new Error(result.error);
+  }
+
+  return result;
+}
+
 export type SelfServePurchaseBlockReason = "plan_unavailable" | "managed_billing";
 
 /**
@@ -618,6 +630,24 @@ export async function activateFreePlan(
   opts?.invalidateBillingCache?.(organizationId);
   invalidatePlanDerivedCaches(organizationId);
   return { success: true };
+}
+
+export async function cancelSubscription(orgId: string) {
+  if (!client) return undefined;
+
+  const [error, result] = await tryCatch(client.cancelSubscription(orgId));
+  if (error) {
+    recordPlatformFailure("cancelSubscription", "caught");
+    throw error;
+  }
+
+  if (result.success) {
+    invalidatePlanDerivedCaches(orgId);
+  } else {
+    recordPlatformFailure("cancelSubscription", "no_success");
+  }
+
+  return result;
 }
 
 export async function setPlan(
