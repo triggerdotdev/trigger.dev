@@ -40,6 +40,44 @@ import { apiClientManager } from "@trigger.dev/core/v3";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
+function sseBatch(
+  records: Array<{ seq: number; chunk?: unknown; turnComplete?: boolean; control?: string }>
+): string {
+  const encoded = records.map((record) =>
+    record.turnComplete || record.control
+      ? {
+          body: "",
+          seq_num: record.seq,
+          timestamp: 1700000000000 + record.seq,
+          headers: [["trigger-control", record.control ?? "turn-complete"]],
+        }
+      : {
+          body: JSON.stringify({ data: record.chunk, id: `p-${record.seq}` }),
+          seq_num: record.seq,
+          timestamp: 1700000000000 + record.seq,
+          headers: [],
+        }
+  );
+  return `event: batch\ndata: ${JSON.stringify({ records: encoded })}\n\n`;
+}
+
+function sseResponse(sseText: string, extraHeaders: Record<string, string> = {}): Response {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      if (sseText) controller.enqueue(new TextEncoder().encode(sseText));
+      controller.close();
+    },
+  });
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "content-type": "text/event-stream",
+      "X-Stream-Version": "v2",
+      ...extraHeaders,
+    },
+  });
+}
+
 function textStream(text: string): ReadableStream<LanguageModelV3StreamPart> {
   return simulateReadableStream({
     chunks: [
@@ -271,14 +309,7 @@ describe("chat.headStart (route handler)", () => {
       }
       // Stitched response subscribes to `.out` after handover.
       if (/\/realtime\/v1\/sessions\/[^/]+\/out$/.test(urlStr)) {
-        return new Response(
-          new ReadableStream({
-            start(c) {
-              c.close();
-            },
-          }),
-          { status: 200, headers: { "content-type": "text/event-stream" } }
-        );
+        return sseResponse(sseBatch([{ seq: 1, turnComplete: true }]));
       }
       throw new Error(`Unexpected URL: ${urlStr}`);
     });
@@ -381,17 +412,7 @@ describe("chat.headStart (route handler)", () => {
         return appendOkResponse();
       }
       if (/\/realtime\/v1\/sessions\/[^/]+\/out$/.test(urlStr)) {
-        return new Response(
-          new ReadableStream({
-            start(c) {
-              c.close();
-            },
-          }),
-          {
-            status: 200,
-            headers: { "content-type": "text/event-stream" },
-          }
-        );
+        return sseResponse(sseBatch([{ seq: 1, turnComplete: true }]));
       }
       throw new Error(`Unexpected URL: ${urlStr}`);
     });
@@ -446,17 +467,7 @@ describe("chat.headStart (route handler)", () => {
       }
       // Stitched response subscribes to `.out` after handover.
       if (/\/realtime\/v1\/sessions\/[^/]+\/out$/.test(urlStr)) {
-        return new Response(
-          new ReadableStream({
-            start(c) {
-              c.close();
-            },
-          }),
-          {
-            status: 200,
-            headers: { "content-type": "text/event-stream" },
-          }
-        );
+        return sseResponse(sseBatch([{ seq: 1, turnComplete: true }]));
       }
       throw new Error(`Unexpected URL: ${urlStr}`);
     });
@@ -528,17 +539,7 @@ describe("chat.headStart (route handler)", () => {
       // closes immediately — this test validates dispatch only, not
       // the agent-side resume.
       if (/\/realtime\/v1\/sessions\/[^/]+\/out$/.test(urlStr)) {
-        return new Response(
-          new ReadableStream({
-            start(c) {
-              c.close();
-            },
-          }),
-          {
-            status: 200,
-            headers: { "content-type": "text/event-stream" },
-          }
-        );
+        return sseResponse(sseBatch([{ seq: 1, turnComplete: true }]));
       }
       throw new Error(`Unexpected URL: ${urlStr}`);
     });
@@ -614,6 +615,127 @@ describe("chat.headStart (route handler)", () => {
     expect(approvalResponsePart).toBeDefined();
     expect(approvalResponsePart.approvalId).toBe(approvalRequestPart.approvalId);
     expect(approvalResponsePart.approved).toBe(true);
+  });
+
+  it("resubscribes to session.out when an empty long-poll window closes mid-turn (#5056)", async () => {
+    let outCalls = 0;
+    const requestedLastEventIds: Array<string | undefined> = [];
+
+    global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+      const urlStr = typeof url === "string" ? url : url.toString();
+      if (urlStr.endsWith("/api/v1/sessions") || urlStr.endsWith("/api/v1/sessions/")) {
+        return createSessionResponse("chat-empty-poll");
+      }
+      if (urlStr.includes("/realtime/v1/sessions/") && urlStr.endsWith("/in/append")) {
+        return appendOkResponse();
+      }
+      if (/\/realtime\/v1\/sessions\/[^/]+\/out$/.test(urlStr)) {
+        outCalls++;
+        const headers = new Headers(init?.headers);
+        requestedLastEventIds.push(headers.get("last-event-id") ?? undefined);
+
+        if (outCalls === 1) {
+          // Window 1: long-poll closes empty (~60s elapsed without chunks)
+          return sseResponse("");
+        }
+        // Window 2: agent completes tool execution and finishes turn
+        return sseResponse(
+          sseBatch([
+            { seq: 10, chunk: { type: "text-delta", id: "t1", delta: "from agent" } },
+            { seq: 11, turnComplete: true },
+          ])
+        );
+      }
+      throw new Error(`Unexpected URL: ${urlStr}`);
+    });
+
+    const handler = chat.headStart({
+      agentId: "test-agent",
+      run: async ({ chat: chatHelper }) => {
+        return streamText({
+          ...chatHelper.toStreamTextOptions(),
+          model: new MockLanguageModelV3({
+            doStream: async () => ({ stream: textStream("step 1") }),
+          }),
+        });
+      },
+    });
+
+    const res = await withApiContext(() =>
+      handler(
+        makeRequest({
+          chatId: "chat-empty-poll",
+          trigger: "submit-message",
+          headStartMessages: [{ id: "m1", role: "user", parts: [{ type: "text", text: "hi" }] }],
+        })
+      )
+    );
+
+    const chunks = await readSSEBodyToChunks(res);
+
+    expect(outCalls).toBe(2);
+    expect(requestedLastEventIds[1]).toBeUndefined();
+
+    // Verify turn-complete and session-state chunks were enqueued
+    const turnCompleteChunk = chunks.find((c: any) => c.type === "trigger:turn-complete");
+    expect(turnCompleteChunk).toBeDefined();
+
+    const sessionStateChunk = chunks.find((c: any) => c.type === "trigger:session-state") as any;
+    expect(sessionStateChunk).toBeDefined();
+    expect(sessionStateChunk.lastEventId).toBe("11");
+
+    // Verify agent delta was received
+    const agentDelta = chunks.find(
+      (c: any) => c.type === "text-delta" && (c as any).delta === "from agent"
+    );
+    expect(agentDelta).toBeDefined();
+  });
+
+  it("errors the stream once reconnect budget is exhausted on consecutive empty windows", async () => {
+    let outCalls = 0;
+
+    global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+      const urlStr = typeof url === "string" ? url : url.toString();
+      if (urlStr.endsWith("/api/v1/sessions") || urlStr.endsWith("/api/v1/sessions/")) {
+        return createSessionResponse("chat-reconnect-budget");
+      }
+      if (urlStr.includes("/realtime/v1/sessions/") && urlStr.endsWith("/in/append")) {
+        return appendOkResponse();
+      }
+      if (/\/realtime\/v1\/sessions\/[^/]+\/out$/.test(urlStr)) {
+        outCalls++;
+        // Always close empty without turn-complete
+        return sseResponse("");
+      }
+      throw new Error(`Unexpected URL: ${urlStr}`);
+    });
+
+    const handler = chat.headStart({
+      agentId: "test-agent",
+      run: async ({ chat: chatHelper }) => {
+        return streamText({
+          ...chatHelper.toStreamTextOptions(),
+          model: new MockLanguageModelV3({
+            doStream: async () => ({ stream: textStream("step 1") }),
+          }),
+        });
+      },
+    });
+
+    const res = await withApiContext(() =>
+      handler(
+        makeRequest({
+          chatId: "chat-reconnect-budget",
+          trigger: "submit-message",
+          headStartMessages: [{ id: "m1", role: "user", parts: [{ type: "text", text: "hi" }] }],
+        })
+      )
+    );
+
+    await expect(readSSEBodyToChunks(res)).rejects.toThrow(
+      "Chat stream ended before the turn completed (reconnect budget exhausted)."
+    );
+    expect(outCalls).toBe(5);
   });
 
   it("rejects requests missing chatId", async () => {
