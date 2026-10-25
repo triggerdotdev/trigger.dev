@@ -1178,7 +1178,7 @@ export async function enqueueBuild(
     fromBundle?: boolean;
   }
 ) {
-  if (!client) return undefined;
+  if (!client) throw new Error("Platform client not configured");
   const result = await client.enqueueBuild(projectId, { deploymentId, artifactKey, options });
   if (!result.success) {
     recordPlatformFailure("enqueueBuild", "no_success");

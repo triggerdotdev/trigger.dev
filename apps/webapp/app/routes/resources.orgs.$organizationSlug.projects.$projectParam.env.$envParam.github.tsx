@@ -71,7 +71,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { env } from "~/env.server";
 import { GitHubSettingsPresenter } from "~/presenters/v3/GitHubSettingsPresenter.server";
 import { logger } from "~/services/logger.server";
-import { triggerInitialDeployment } from "~/services/platform.v3.server";
+import { isBillingConfigured, triggerInitialDeployment } from "~/services/platform.v3.server";
 import { marketplaceInitialDeploymentOptions } from "~/v3/services/marketplaceInitialDeploymentOptions.server";
 import { ProjectSettingsService } from "~/services/projectSettings.server";
 import { rbac } from "~/services/rbac.server";
@@ -239,6 +239,13 @@ export const action = dashboardAction(
     const environment = await findEnvironmentBySlug(project.id, envParam, userId);
     if (!environment) {
       throw new Response("Not Found", { status: 404 });
+    }
+
+    if (env.GITHUB_APP_ENABLED !== "1" || !isBillingConfigured()) {
+      return json(
+        { ok: false, error: "Native GitHub deployments are not available on self-hosted instances." },
+        { status: 403 }
+      );
     }
 
     const formData = await request.formData();

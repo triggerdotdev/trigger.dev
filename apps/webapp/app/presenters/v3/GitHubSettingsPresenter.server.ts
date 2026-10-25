@@ -1,6 +1,7 @@
 import { type PrismaClient } from "@trigger.dev/database";
 import { fromPromise, ok, ResultAsync } from "neverthrow";
 import { env } from "~/env.server";
+import { isBillingConfigured } from "~/services/platform.v3.server";
 import { BranchTrackingConfigSchema } from "~/v3/github";
 import { BasePresenter } from "./basePresenter.server";
 
@@ -11,7 +12,7 @@ type GitHubSettingsOptions = {
 
 export class GitHubSettingsPresenter extends BasePresenter {
   public call({ projectId, organizationId }: GitHubSettingsOptions) {
-    const githubAppEnabled = env.GITHUB_APP_ENABLED === "1";
+    const githubAppEnabled = env.GITHUB_APP_ENABLED === "1" && isBillingConfigured();
 
     if (!githubAppEnabled) {
       return ok({

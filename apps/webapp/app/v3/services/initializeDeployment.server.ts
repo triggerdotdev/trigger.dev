@@ -18,6 +18,7 @@ import { resolveDeployBaseImages } from "../deployBaseImages.server";
 import { getDeploymentImageRef } from "../getDeploymentImageRef.server";
 import { tryCatch } from "@trigger.dev/core";
 import { getRegistryConfig } from "../registryConfig.server";
+import { isBillingConfigured } from "~/services/platform.v3.server";
 import { DeploymentService } from "./deployment.server";
 import { recordDeploymentInitialized } from "./recordDeploymentFinished.server";
 import { buildEnvVarsEnvelope } from "./initializeDeployment/buildEnvVarsEnvelope.server";
@@ -147,6 +148,13 @@ export class InitializeDeploymentService extends BaseService {
 
       if (payload.type === "UNMANAGED") {
         throw new ServiceValidationError("UNMANAGED deployments are not supported");
+      }
+
+      if (payload.isNativeBuild && !isBillingConfigured()) {
+        throw new ServiceValidationError(
+          "Native builds are not supported on self-hosted instances. Deploy with the CLI or GitHub Actions instead.",
+          400
+        );
       }
 
       const requiredBaseImages = resolveDeployBaseImages(runtime, {

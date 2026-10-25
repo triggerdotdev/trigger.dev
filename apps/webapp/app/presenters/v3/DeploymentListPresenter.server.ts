@@ -14,6 +14,7 @@ import {
   VercelProjectIntegrationDataSchema,
   buildVercelDeploymentUrl,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
+import { isBillingConfigured } from "~/services/platform.v3.server";
 import { resolveRedeploySource } from "~/v3/redeploy";
 
 const pageSize = 20;
@@ -225,13 +226,15 @@ LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
       currentPage: page,
       totalPages: Math.ceil(totalCount / pageSize),
       hasVercelIntegration,
-      connectedGithubRepository: project.connectedGithubRepository ?? undefined,
-      environmentGitHubBranch,
+      connectedGithubRepository: isBillingConfigured()
+        ? (project.connectedGithubRepository ?? undefined)
+        : undefined,
+      environmentGitHubBranch: isBillingConfigured() ? environmentGitHubBranch : undefined,
       deployments: deployments.map((deployment, index) => {
         const label = labeledDeployments.find(
           (labeledDeployment) => labeledDeployment.deploymentId === deployment.id
         );
-        const redeploySource = resolveRedeploySource(deployment);
+        const redeploySource = isBillingConfigured() ? resolveRedeploySource(deployment) : null;
 
         let vercelDeploymentUrl: string | null = null;
         if (
