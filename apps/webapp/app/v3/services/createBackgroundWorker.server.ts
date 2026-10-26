@@ -1588,7 +1588,7 @@ export async function syncDeclarativeSchedules(
         environment.projectId,
         {
           cron: task.schedule.cron,
-          timezone: task.schedule.timezone,
+          timezone: task.schedule.timezone ?? "UTC",
           taskIdentifier: task.id,
           friendlyId: existingSchedule?.friendlyId,
           window: task.schedule.window,
@@ -1623,15 +1623,18 @@ export async function syncDeclarativeSchedules(
           windowPercentage: normalizedWindow.windowPercentage,
           defaultWindowDurationSeconds: existingSchedule.defaultWindowDurationSeconds,
         }).window;
+        const taskTimezone = task.schedule.timezone ?? "UTC";
+        const existingTimezone = existingSchedule.timezone ?? "UTC";
+        const timezoneChanged = existingTimezone !== taskTimezone;
         const timingChanged =
           existingSchedule.generatorExpression !== task.schedule.cron ||
-          existingSchedule.timezone !== task.schedule.timezone ||
+          timezoneChanged ||
           !scheduleWindowsEqual(previousWindow, nextWindow) ||
           // Clearing the minimum changes the effective range.
           existingSchedule.minimumWindowDurationSeconds !== minimumWindowDurationSeconds;
         const persistedValuesChanged =
           existingSchedule.generatorExpression !== task.schedule.cron ||
-          existingSchedule.timezone !== task.schedule.timezone ||
+          timezoneChanged ||
           existingSchedule.windowDurationSeconds !== normalizedWindow.windowDurationSeconds ||
           existingSchedule.windowPercentage !== normalizedWindow.windowPercentage ||
           existingSchedule.minimumWindowDurationSeconds !== minimumWindowDurationSeconds;
@@ -1643,7 +1646,7 @@ export async function syncDeclarativeSchedules(
               data: {
                 generatorExpression: task.schedule.cron,
                 generatorDescription: cronstrue.toString(task.schedule.cron),
-                timezone: task.schedule.timezone,
+                timezone: taskTimezone,
                 minimumWindowDurationSeconds,
                 ...normalizedWindow,
               },
@@ -1675,7 +1678,7 @@ export async function syncDeclarativeSchedules(
             taskIdentifier: task.id,
             generatorExpression: task.schedule.cron,
             generatorDescription: cronstrue.toString(task.schedule.cron),
-            timezone: task.schedule.timezone,
+            timezone: task.schedule.timezone ?? "UTC",
             type: "DECLARATIVE",
             minimumWindowDurationSeconds,
             ...normalizedWindow,

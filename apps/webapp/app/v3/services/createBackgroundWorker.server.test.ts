@@ -489,6 +489,43 @@ describe("syncDeclarativeSchedules registration", () => {
   );
 
   containerTest(
+    "preserves an existing Redis job when task schedule omits explicit UTC timezone",
+    async ({ prisma, redisOptions }) => {
+      const { project, prodEnv } = await seedProjectWithEnvs(prisma);
+      const schedule = await makeDeclarativeSchedule(prisma, project.id, [prodEnv.id]);
+      const updatedAt = schedule.updatedAt;
+      await seedScheduledTask(prisma, project.id, prodEnv.id);
+      const engine = createTestScheduleEngine(prisma, redisOptions);
+
+      try {
+        const jobId = scheduleJobId(schedule.instances[0].id);
+        await engine.registerNextTaskScheduleInstance({ instanceId: schedule.instances[0].id });
+        const before = await engine.getJob(jobId);
+
+        // Omit explicit timezone to verify default UTC normalization does not trigger false timing change
+        await syncDeclarativeSchedules(
+          declarativeTasks({ cron: "0 * * * *" }),
+          noWorker,
+          asEnv(prodEnv),
+          prisma,
+          engine
+        );
+
+        expect(before).toBeDefined();
+        expect(await engine.getJob(jobId)).toEqual(before);
+        expect(
+          await prisma.taskSchedule.findUniqueOrThrow({
+            where: { id: schedule.id },
+            select: { updatedAt: true },
+          })
+        ).toEqual({ updatedAt });
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
     "replaces the Redis job when declarative timing changes",
     async ({ prisma, redisOptions }) => {
       const { project, prodEnv } = await seedProjectWithEnvs(prisma);
