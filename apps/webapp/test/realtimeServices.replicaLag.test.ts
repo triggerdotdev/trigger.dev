@@ -28,6 +28,7 @@
 // injection, so they drive the real caller with NO module mocking.
 
 import { heteroPostgresTest, laggingReplica } from "@internal/testcontainers";
+import { $transaction as realTransaction } from "@trigger.dev/database";
 import type { PrismaClient, Session } from "@trigger.dev/database";
 import { describe, expect, vi } from "vitest";
 
@@ -73,6 +74,15 @@ vi.mock("~/db.server", () => {
   return {
     prisma: lazyProxy(primaryHolder, "primaryHolder.client"),
     $replica: lazyProxy(replicaHolder, "replicaHolder.client"),
+    // The real shared transaction helper on the per-test writer; only the webapp wrapper's span
+    // and logging are absent.
+    $transaction: (_client: unknown, nameOrFn: unknown, fnOrOptions?: unknown, options?: unknown) =>
+      realTransaction(
+        primaryHolder.client,
+        (typeof nameOrFn === "function" ? nameOrFn : fnOrOptions) as any,
+        () => {},
+        (typeof nameOrFn === "function" ? fnOrOptions : options) as any
+      ),
   };
 });
 
@@ -440,11 +450,7 @@ describe("realtime-svc — replica-lag guards", () => {
       expect(onPrimary?.friendlyId).toBe(callingFriendlyId);
       expect(callingFriendlyId).not.toBe(callingRunId);
 
-      // Wait for the fire-and-forget SessionRun audit write (keyed by the new runId) to land before
-      // teardown, so it can't race a closing pool. Poll for the row rather than sleep a fixed interval.
-      await vi.waitFor(async () => {
-        expect(await prisma.sessionRun.findFirst({ where: { runId: newRunId } })).not.toBeNull();
-      });
+      expect(await prisma.sessionRun.findFirst({ where: { runId: newRunId } })).not.toBeNull();
     }
   );
 

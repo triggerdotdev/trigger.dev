@@ -6,6 +6,7 @@ import {
   DASHBOARD_TRANSCRIPT_PAGE,
   readSessionTranscriptSeed,
 } from "~/services/realtime/transcriptSeed.server";
+import { findSessionRunsPage } from "~/services/realtime/sessionRunPage.server";
 import { resolveSessionByIdOrExternalId } from "~/services/realtime/sessions.server";
 import { LEGACY_PLAYGROUND_TAG } from "~/services/sessionsRepository/sessionsRepository.server";
 import { runStore } from "~/v3/runStore.server";
@@ -68,17 +69,7 @@ export class SessionPresenter {
     // 50 covers the vast majority of sessions; longer histories link out
     // to the runs page via tag filter.
     const sessionRuns = await startActiveSpan("SessionPresenter.findSessionRuns", async (span) => {
-      const rows = await this.replica.sessionRun.findMany({
-        where: { sessionId: session.id },
-        orderBy: { triggeredAt: "desc" },
-        take: 50,
-        select: {
-          id: true,
-          runId: true,
-          reason: true,
-          triggeredAt: true,
-        },
-      });
+      const rows = await findSessionRunsPage(this.replica, { sessionId: session.id, take: 50 });
       span.setAttribute("sessionRuns.count", rows.length);
       return rows;
     });

@@ -3,6 +3,7 @@
 // schedules, and `reason: "upgrade"` drops it (or replaces it) AND persists that on the row.
 
 import { postgresTest } from "@internal/testcontainers";
+import { $transaction as realTransaction } from "@trigger.dev/database";
 import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect, vi } from "vitest";
 
@@ -40,6 +41,15 @@ vi.mock("~/db.server", () => {
   return {
     prisma: lazyProxy(primaryHolder, "primaryHolder.client"),
     $replica: lazyProxy(primaryHolder, "primaryHolder.client"),
+    // The real shared transaction helper on the per-test writer; only the webapp wrapper's span
+    // and logging are absent.
+    $transaction: (_client: unknown, nameOrFn: unknown, fnOrOptions?: unknown, options?: unknown) =>
+      realTransaction(
+        primaryHolder.client,
+        (typeof nameOrFn === "function" ? nameOrFn : fnOrOptions) as any,
+        () => {},
+        (typeof nameOrFn === "function" ? fnOrOptions : options) as any
+      ),
   };
 });
 

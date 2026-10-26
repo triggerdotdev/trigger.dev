@@ -1,7 +1,7 @@
 import type { Prisma, Session, TaskRunStatus } from "@trigger.dev/database";
-import { SessionTriggerConfig as SessionTriggerConfigZod } from "@trigger.dev/core/v3";
+import { SessionTriggerConfig as SessionTriggerConfigZod, tryCatch } from "@trigger.dev/core/v3";
 import type { z } from "zod";
-import { prisma, $replica } from "~/db.server";
+import { prisma, $replica, $transaction } from "~/db.server";
 import { runStore } from "~/v3/runStore.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -87,7 +87,7 @@ export type EnsureRunResult = {
  *   1. If `currentRunId` is set, probe its status. Alive → return as-is.
  *   2. Trigger a new run upfront (cheap to cancel if we lose the race).
  *   3. Atomic claim via `updateMany` keyed on `currentRunVersion`.
- *      - Won: return new runId, record SessionRun audit row.
+ *      - Won (the SessionRun row is written in the same transaction): return new runId.
  *      - Lost: cancel our triggered run, re-read session, reuse winner's
  *        run if alive. If pathological (winner's run already terminal),
  *        recurse.
@@ -188,8 +188,8 @@ export async function ensureRunForSession(
     payloadOverrides: mergedPayloadOverrides,
   });
 
-  // 3. Try to claim the slot atomically.
-  const claim = await prisma.session.updateMany({
+  // 3. Try to claim the slot atomically, recording the SessionRun row with it.
+  const won = await claimSessionRun({
     where: {
       id: session.id,
       currentRunVersion: session.currentRunVersion,
@@ -203,24 +203,13 @@ export async function ensureRunForSession(
       currentRunId: triggered.id,
       currentRunVersion: { increment: 1 },
     },
+    sessionId: session.id,
+    triggered,
+    reason,
+    environment,
   });
 
-  if (claim.count === 1) {
-    // Won. Audit the SessionRun. Best-effort — failure here doesn't
-    // invalidate the live run, just leaves a missing audit row.
-    prisma.sessionRun
-      .create({
-        data: { sessionId: session.id, runId: triggered.id, reason },
-      })
-      .catch((error) => {
-        logger.warn("Failed to record SessionRun audit row", {
-          sessionId: session.id,
-          runId: triggered.id,
-          reason,
-          error,
-        });
-      });
-
+  if (won) {
     return {
       runId: triggered.id,
       triggered: true,
@@ -229,12 +218,11 @@ export async function ensureRunForSession(
   }
 
   // 4. Lost the race. Cancel our triggered run; reuse the winner's.
-  cancelLostRaceRun(triggered.id, environment).catch((error) => {
-    logger.warn("Failed to cancel lost-race session run", {
-      sessionId: session.id,
-      runId: triggered.id,
-      error,
-    });
+  cancelUnclaimedRun({
+    runId: triggered.id,
+    sessionId: session.id,
+    environment,
+    failureMessage: "Failed to cancel lost-race session run",
   });
 
   // Read-after-write: the winner just wrote `currentRunId` /
@@ -336,7 +324,7 @@ async function triggerSessionRun(params: {
   config: SessionTriggerConfig;
   environment: AuthenticatedEnvironment;
   payloadOverrides?: Record<string, unknown>;
-}): Promise<{ id: string; friendlyId: string; status: TaskRunStatus }> {
+}): Promise<{ id: string; friendlyId: string; status: TaskRunStatus; createdAt?: Date }> {
   const { session, config, environment, payloadOverrides } = params;
 
   const payload = {
@@ -373,6 +361,8 @@ async function triggerSessionRun(params: {
     id: result.run.id,
     friendlyId: result.run.friendlyId,
     status: result.run.status,
+    // A mollified trigger returns a synthetic run: no row yet, so no createdAt.
+    createdAt: result.isMollified ? undefined : result.run.createdAt,
   };
 }
 
@@ -477,7 +467,7 @@ export async function swapSessionRun(params: SwapSessionRunParams): Promise<Swap
     payloadOverrides: mergedPayloadOverrides,
   });
 
-  const claim = await prisma.session.updateMany({
+  const won = await claimSessionRun({
     where: {
       id: session.id,
       currentRunId: callingRunId,
@@ -492,21 +482,13 @@ export async function swapSessionRun(params: SwapSessionRunParams): Promise<Swap
       currentRunVersion: { increment: 1 },
       ...(reason === "upgrade" ? { triggerConfig: config as Prisma.InputJsonValue } : {}),
     },
+    sessionId: session.id,
+    triggered,
+    reason,
+    environment,
   });
 
-  if (claim.count === 1) {
-    prisma.sessionRun
-      .create({
-        data: { sessionId: session.id, runId: triggered.id, reason },
-      })
-      .catch((error) => {
-        logger.warn("Failed to record SessionRun audit row", {
-          sessionId: session.id,
-          runId: triggered.id,
-          reason,
-          error,
-        });
-      });
+  if (won) {
     return {
       runId: triggered.id,
       swapped: true,
@@ -516,12 +498,11 @@ export async function swapSessionRun(params: SwapSessionRunParams): Promise<Swap
 
   // Lost the race — someone else already swapped to a new run. Cancel
   // ours, surface the existing winner.
-  cancelLostRaceRun(triggered.id, environment).catch((error) => {
-    logger.warn("Failed to cancel preempted swap run", {
-      sessionId: session.id,
-      runId: triggered.id,
-      error,
-    });
+  cancelUnclaimedRun({
+    runId: triggered.id,
+    sessionId: session.id,
+    environment,
+    failureMessage: "Failed to cancel preempted swap run",
   });
 
   // Read-after-write: the winner's swap was just committed on the
@@ -565,6 +546,69 @@ export async function swapSessionRun(params: SwapSessionRunParams): Promise<Swap
   };
 }
 
+type TriggeredSessionRun = Awaited<ReturnType<typeof triggerSessionRun>>;
+
+/**
+ * Claims the session for `triggered` and records its SessionRun row in one transaction, so a
+ * claimed run is always linked to its session. Returns false when the claim was lost. If the
+ * transaction fails and the run's row isn't on the writer, the triggered run is cancelled and
+ * the error is rethrown.
+ */
+async function claimSessionRun(params: {
+  where: Prisma.SessionWhereInput;
+  data: Prisma.SessionUpdateManyMutationInput;
+  sessionId: string;
+  triggered: TriggeredSessionRun;
+  reason: EnsureRunReason;
+  environment: AuthenticatedEnvironment;
+}): Promise<boolean> {
+  const { where, data, sessionId, triggered, reason, environment } = params;
+
+  const [error, won] = await tryCatch(
+    $transaction(prisma, "sessionRunManager.claimSessionRun", async (tx) => {
+      const claim = await tx.session.updateMany({ where, data });
+      if (claim.count !== 1) return false;
+
+      // Mollified runs have no createdAt yet; the column default (insert time) stands in.
+      await tx.sessionRun.create({
+        data: { sessionId, runId: triggered.id, reason, triggeredAt: triggered.createdAt },
+      });
+      return true;
+    })
+  );
+
+  if (!error) return won === true;
+
+  // The commit may have landed with its reply lost. This session's row for the run only exists if
+  // this transaction committed. If that can't be read either, cancel: a cancelled claimed run
+  // is replaced by the next append, while a leaked run competes for the session's input.
+  const [readError, row] = await tryCatch(
+    prisma.sessionRun.findFirst({ where: { runId: triggered.id, sessionId }, select: { id: true } })
+  );
+  if (readError) {
+    logger.warn("Could not check whether a failed session run claim committed", {
+      sessionId,
+      runId: triggered.id,
+      error: readError,
+    });
+  } else if (row) {
+    logger.warn("Session run claim committed despite a transaction error", {
+      sessionId,
+      runId: triggered.id,
+      error,
+    });
+    return true;
+  }
+
+  cancelUnclaimedRun({
+    runId: triggered.id,
+    sessionId,
+    environment,
+    failureMessage: "Failed to cancel unclaimed session run",
+  });
+  throw error;
+}
+
 async function getRunStatusAndFriendlyId(
   runId: string
 ): Promise<{ status: TaskRunStatus; friendlyId: string } | null> {
@@ -597,6 +641,19 @@ async function getRunStatusAndFriendlyId(
 async function resolveRunFriendlyId(runId: string): Promise<string> {
   const row = await runStore.findRun({ id: runId }, { select: { friendlyId: true } }, $replica);
   return row?.friendlyId ?? runId;
+}
+
+/** Fire-and-forget cancel of a run that never became the session's current run. */
+function cancelUnclaimedRun(params: {
+  runId: string;
+  sessionId: string;
+  environment: AuthenticatedEnvironment;
+  failureMessage: string;
+}): void {
+  const { runId, sessionId, environment, failureMessage } = params;
+  cancelLostRaceRun(runId, environment).catch((error) => {
+    logger.warn(failureMessage, { sessionId, runId, error });
+  });
 }
 
 async function cancelLostRaceRun(

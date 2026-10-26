@@ -1165,6 +1165,8 @@ model SessionRun {
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId])
+  /// Pages a session's runs by `(triggeredAt, id)` and counts rows at or before a cursor.
+  @@index([sessionId, triggeredAt, id])
 }
 
 model TaskRun {
