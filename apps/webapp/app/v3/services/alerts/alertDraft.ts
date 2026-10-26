@@ -2,6 +2,11 @@ import { z } from "zod";
 import { parseErrorGroupScope } from "~/utils/errorGroupScope";
 import { alertKindSchema, type Condition } from "@internal/alert-contracts";
 
+const QuerySignalChoiceSchema = z.object({
+  mode: z.enum(["threshold", "absence", "match"]),
+  measure: z.string().optional(),
+});
+
 export type AlertDraftScope =
   | { type: "queue"; queue: string }
   | { type: "queuePattern"; pattern: string }
@@ -37,6 +42,8 @@ export const FormSchema = z
     holdMinutes: z.coerce.number().optional(),
     quietWindowMinutes: z.coerce.number().optional(),
     conditionParams: z.record(z.string(), z.number().finite()).optional(),
+    query: z.string().max(8192).optional(),
+    querySignalChoice: QuerySignalChoiceSchema.optional(),
     expiresAt: z.string().optional(),
     notifierChannelIds: z.preprocess((i) => {
       if (typeof i === "string") return i === "" ? [] : [i];
@@ -83,6 +90,8 @@ const ChatFormSchema = z
     holdMinutes: z.coerce.number().optional(),
     quietWindowMinutes: z.coerce.number().optional(),
     conditionParams: z.record(z.string(), z.number().finite()).optional(),
+    query: z.string().max(8192).optional(),
+    querySignalChoice: QuerySignalChoiceSchema.optional(),
     expiresAt: z.string().optional(),
     notifierChannelIds: z.preprocess((i) => {
       if (typeof i === "string") return i === "" ? [] : [i];

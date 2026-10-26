@@ -110,6 +110,7 @@ export function EditAlertTranscript({
     options: EXPIRY_CHIPS.map((chip) => ({ id: chip.value, label: chip.label })),
     selected: expiry ? [presetExpiry ? expiry : CUSTOM_EXPIRY] : [],
     customOption: CUSTOM_EXPIRY,
+    allowSkip: false,
     onReveal: () => setExpiry(undefined),
     custom: {
       id: "expiry",

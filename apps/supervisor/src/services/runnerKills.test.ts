@@ -11,7 +11,13 @@ import type { AddressInfo } from "node:net";
 import { Registry } from "prom-client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { K8sApi } from "../clients/kubernetes.js";
-import { RunnerKillInformer, runnerKill, SUSPEND_ANNOTATION } from "../workloadManager/runCrd.js";
+import {
+  RESTORE_LABEL,
+  RunnerKillInformer,
+  runnerKill,
+  SUSPEND_ANNOTATION,
+  type RunnerStartFailure,
+} from "../workloadManager/runCrd.js";
 import { FailedPodHandler } from "./failedPodHandler.js";
 import { podKill, RunnerKillReporter, type RunnerKill } from "./runnerKills.js";
 
@@ -495,5 +501,68 @@ describe("RunnerKillInformer", () => {
       ["runner-oom", "TASK_PROCESS_OOM_KILLED", "run_a"],
       ["runner-kill", "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE", "run_b"],
     ]);
+  });
+});
+
+describe("RunnerKillInformer start failures", () => {
+  function templateMissing(name: string, labels?: Record<string, string>) {
+    const runner = failedRunner(
+      name,
+      "TemplateNotFound",
+      "template abc is not available on node node-a: not in the store",
+      "run_a"
+    );
+    return {
+      ...runner,
+      metadata: { ...runner.metadata, ...(labels ? { labels } : {}) },
+      spec: { ...runner.spec, bootstrap: { runFriendlyID: "run_a", snapshotFriendlyID: "snap_a" } },
+    } as KubernetesObject;
+  }
+
+  it("passes on a cold start whose template is missing once, and not as a kill", async () => {
+    const cold = templateMissing("runner-cold");
+    const { k8s, watchCallbacks } = fakeK8s([
+      cold,
+      templateMissing("runner-resume", { [RESTORE_LABEL]: "true" }),
+    ]);
+    const killed: string[] = [];
+    const failed: RunnerStartFailure[] = [];
+    const informer = new RunnerKillInformer({
+      namespace: "runs",
+      k8s,
+      onRunnerKilled: (runnerId) => killed.push(runnerId),
+      onRunnerStartFailed: (failure) => failed.push(failure),
+    });
+
+    await informer.start();
+    await vi.waitFor(() => expect(failed).toHaveLength(1));
+    await vi.waitFor(() => expect(watchCallbacks).toHaveLength(1));
+    watchCallbacks[0]!("MODIFIED", {
+      ...cold,
+      metadata: { ...cold.metadata, resourceVersion: "2" },
+    });
+    await informer.stop();
+
+    expect(killed).toEqual([]);
+    expect(
+      failed.map((f) => [f.runnerId, f.runFriendlyId, f.snapshotFriendlyId, f.outcome.uid])
+    ).toEqual([["runner-cold", "run_a", "snap_a", "runner-cold-uid"]]);
+  });
+
+  it("passes on nothing for it without a start failure handler", async () => {
+    const { k8s, watchCallbacks } = fakeK8s([templateMissing("runner-cold")]);
+    const killed: string[] = [];
+    const informer = new RunnerKillInformer({
+      namespace: "runs",
+      k8s,
+      onRunnerKilled: (runnerId) => killed.push(runnerId),
+    });
+
+    await informer.start();
+    // The watch starts once the list is handled.
+    await vi.waitFor(() => expect(watchCallbacks).toHaveLength(1));
+    await informer.stop();
+
+    expect(killed).toEqual([]);
   });
 });

@@ -138,14 +138,13 @@ export class RunEngine {
   private batchQueue: BatchQueue;
   private batchQueueConsumersEnabled: boolean;
   private workerQueueObserverAbortController?: AbortController;
-  // The ONE shutdown execution, shared by every `quit()` caller, default or strict.
+  // One shutdown, shared by every `quit()` caller.
   private quitGate?: (options?: { rejectOnFailure?: boolean }) => Promise<void>;
 
   prisma: PrismaClient;
   readOnlyPrisma: PrismaReplicaClient;
   runStore: RunStore;
-  // The shared resources object every system reads `runStore` from LIVE. Retained so a caller can swap
-  // the run store into the engine once after boot (setRunStore) without reconstructing the engine.
+  // Every system reads `runStore` from this object live, so `setRunStore` reaches all of them.
   #resources!: SystemResources;
   controlPlaneResolver: ControlPlaneResolver;
   runQueue: RunQueue;
@@ -383,7 +382,7 @@ export class RunEngine {
       }
     );
 
-    // Normalize the bounds, but keep maxMs <= 0 meaning "skip the replica retry".
+    // maxMs <= 0 means "skip the replica retry".
     const retryDelay = options.readReplicaSnapshotsSinceRetryDelay ?? { minMs: 50, maxMs: 200 };
     const retryMinMs = Math.max(0, retryDelay.minMs);
     this.snapshotsSinceReplicaRetryDelay = {
@@ -506,8 +505,7 @@ export class RunEngine {
       },
     });
 
-    // Start TTL worker whenever TTL system is enabled, so expired runs enqueued by the
-    // Lua script get processed even when the main engine worker is disabled (e.g. in tests).
+    // Independent of the main worker, so TTL expiries still run when that worker is disabled.
     if (
       options.queue?.ttlSystem &&
       !options.queue.ttlSystem.disabled &&
@@ -521,8 +519,7 @@ export class RunEngine {
       waitpointSystem: this.waitpointSystem,
     });
 
-    // Initialize BatchQueue for DRR-based batch processing. Consumers start lazily when the
-    // process-item callback is registered; before that they cannot perform useful work.
+    // Consumers start when the process-item callback is registered, not here.
     this.batchQueueConsumersEnabled = options.batchQueue?.consumerEnabled ?? true;
     const batchQueueRedis = options.batchQueue?.redis ?? options.queue.redis;
 
@@ -584,11 +581,8 @@ export class RunEngine {
   }
 
   /**
-   * Swap the run store used by the engine and all its systems, ONCE, after boot. The engine and its
-   * systems are constructed at module load before the deployment's snapshot-store machinery decision can
-   * be made from a loaded flag snapshot; this points them at the decorated store afterwards. Systems read
-   * `runStore` from the shared resources object live, so mutating it here reaches every system in place,
-   * with no engine reconstruction. Not for use on a request path.
+   * Swaps the run store of the engine and every system in place. A test seam: production passes the
+   * already-decorated store at construction. Not for use on a request path.
    */
   setRunStore(store: RunStore): void {
     this.runStore = store;
@@ -596,16 +590,9 @@ export class RunEngine {
   }
 
   /**
-   * Refreshes the set of worker queues observed by the `runqueue.workerQueue.length`
-   * gauge from the WorkerInstanceGroup records, so the gauge reports each worker queue's
-   * length even when nothing is dequeuing from it. Includes hidden groups; excludes
-   * groups whose cloud provider is configured to be excluded (groups with no cloud
-   * provider are always included).
-   *
-   * Only MANAGED groups are observed. UNMANAGED groups are created per project
-   * (masterQueue `<projectId>-<name>`), so observing them would grow the set, and the
-   * per-tick Redis fanout, with the number of self-hosted-worker projects rather than
-   * with the managed regions this gauge is meant to track.
+   * Refreshes the worker queues the `runqueue.workerQueue.length` gauge observes, so it reports a
+   * queue even when nothing dequeues from it. Only MANAGED groups count: UNMANAGED groups exist per
+   * project, so they would grow the set and the per-tick Redis fanout with project count.
    */
   async refreshWorkerQueueObservation() {
     const suffixes = this.options.workerQueueObserver?.additionalQueueSuffixes ?? [];
@@ -614,8 +601,7 @@ export class RunEngine {
       (this.options.workerQueueObserver?.excludedCloudProviders ?? []).map((p) => p.toLowerCase())
     );
 
-    // Read from the replica: this is a periodic metrics-only read and worker groups change
-    // rarely, so a little replication lag is fine and keeps it off the primary.
+    // Replica: a metrics-only read of rarely-changed rows can tolerate lag.
     const workerGroups = await this.readOnlyPrisma.workerInstanceGroup.findMany({
       where: { type: "MANAGED" },
       select: { id: true, masterQueue: true, region: true, cloudProvider: true },
@@ -675,8 +661,7 @@ export class RunEngine {
       }
     };
 
-    // Refresh once immediately so a freshly started instance reports queue lengths
-    // without waiting for the first interval, then keep it fresh on an interval.
+    // Refresh at once so a new instance does not wait one interval to report.
     await refresh();
 
     try {
@@ -695,24 +680,12 @@ export class RunEngine {
   //MARK: - Run functions
 
   /**
-   * Writes a TaskRun row in CANCELED state directly, bypassing the trigger
-   * pipeline. Used by the mollifier drainer when a cancel API call lands on
-   * a buffered run before it materialises.
+   * Writes a CANCELED TaskRun row directly, for a mollifier-buffered run cancelled before it
+   * materialises. No queue entry, waitpoint or concurrency: the mollifier never buffers
+   * triggerAndWait children, so there is no waiting parent.
    *
-   * Skips: queue insertion (no execution), waitpoint creation (the
-   * mollifier gate refuses to buffer triggerAndWait children, so a
-   * cancelled buffered run never has a waiting parent to unblock),
-   * concurrency reservation. Emits `runCancelled` by default — callers
-   * working on buffered-only runs (no primary trace event exists) can
-   * opt out via `emitRunCancelledEvent: false` to avoid the systematic
-   * "Failed to cancel run event" noise the handler would log when its
-   * `cancelRunEvent` call can't find a span.
-   *
-   * Idempotent: if a row with the same friendlyId already exists (double
-   * drainer pop after requeue), Prisma's P2002 unique-constraint violation
-   * is caught and the existing row is returned. The duplicate runCancelled
-   * emission is skipped — the original drain's emit already wrote the
-   * TaskEvent (when applicable).
+   * Idempotent: a repeated drain returns the existing CANCELED row without a second
+   * `runCancelled`. An existing row in any other status throws a conflict.
    */
   async createCancelledRun(
     {
@@ -725,20 +698,8 @@ export class RunEngine {
       cancelledAt: Date;
       cancelReason: string;
       /**
-       * Whether to emit the `runCancelled` engine-bus event. Defaults to
-       * true.
-       *
-       * Set to `false` for buffered-only runs that never had a primary
-       * trace event written (the mollifier gate never called
-       * `repository.traceEvent` for them). The `runCancelled` handler in
-       * `runEngineHandlers.server.ts` calls `cancelRunEvent`, which
-       * looks up the run's primary span in the event store — for
-       * buffered-only runs that span doesn't exist, so the lookup fails,
-       * the handler's `tryCatch` swallows it, and a "[runCancelled]
-       * Failed to cancel run event" error is logged for every cancelled
-       * buffered run. Suppressing the emit avoids that systematic noise.
-       * The CANCELED PG row is still written; only the trace-event
-       * mirror is skipped.
+       * Set `false` for a buffered-only run with no primary trace event: the `runCancelled`
+       * handler cannot find its span and logs an error. The row is still written.
        */
       emitRunCancelledEvent?: boolean;
     },
@@ -751,7 +712,7 @@ export class RunEngine {
       const id = RunId.fromFriendlyId(snapshot.friendlyId);
       const error: TaskRunError = { type: "STRING_ERROR", raw: cancelReason };
 
-      // App-level replacement for the dropped TaskRun env/project Cascade FKs.
+      // Stands in for the dropped TaskRun env/project FKs.
       await this.controlPlaneResolver.assertEnvExists(snapshot.environment.id);
 
       try {
@@ -789,12 +750,7 @@ export class RunEngine {
               workerQueue: snapshot.workerQueue,
               isTest: snapshot.isTest,
               taskEventStore: snapshot.taskEventStore,
-              // Defensive: the snapshot comes from a cjson-encoded buffer
-              // payload, where empty Lua tables encode as `{}` not `[]`. If
-              // the drainer pops a buffered run with no tags, snapshot.tags
-              // will be an empty object, which Prisma misreads as a relation
-              // update op. Normalise to a real array (or undefined for the
-              // empty case).
+              // cjson encodes an empty Lua table as `{}`, which Prisma misreads as a relation op.
               runTags:
                 Array.isArray(snapshot.tags) && snapshot.tags.length > 0
                   ? snapshot.tags
@@ -861,9 +817,7 @@ export class RunEngine {
 
         return taskRun;
       } catch (err) {
-        // P2002 = unique constraint violation. Double-pop after a drainer
-        // requeue can reach this. Idempotent: return the existing row
-        // without re-emitting.
+        // P2002: a drainer double-pop after a requeue.
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
           this.logger.info(
             "createCancelledRun: row already exists, returning existing (idempotent)",
@@ -871,13 +825,8 @@ export class RunEngine {
           );
           const existing = await this.runStore.findRun({ id }, prisma);
           if (existing) {
-            // Only treat the conflict as idempotent when the existing
-            // row is ALREADY canceled. If a non-canceled row landed
-            // first (e.g. the drainer's normal `engine.trigger` replay
-            // path raced ahead of the cancel) we surface a conflict
-            // rather than silently reporting "cancelled" — the run is
-            // genuinely live and the caller must decide between
-            // engine.cancelRun() and skipping.
+            // A non-canceled row means the trigger replay won the race. The run is live, so the
+            // caller must choose between engine.cancelRun() and skipping.
             if (existing.status === "CANCELED") {
               return existing;
             }
@@ -891,7 +840,6 @@ export class RunEngine {
     });
   }
 
-  /** "Triggers" one run. */
   async trigger(
     {
       friendlyId,
@@ -962,7 +910,6 @@ export class RunEngine {
       this.tracer,
       "trigger",
       async (span) => {
-        // Handle debounce before creating a new run
         let debounceClaimId: string | undefined;
 
         if (debounce) {
@@ -992,9 +939,8 @@ export class RunEngine {
             span.setAttribute("debounced", true);
             span.setAttribute("existingRunId", debounceResult.run.id);
 
-            // For triggerAndWait, block the parent run with the existing run's waitpoint
             if (resumeParentOnCompletion && parentTaskRunId) {
-              // Get or create waitpoint lazily (existing run may not have one if it was standalone)
+              // A standalone existing run has no waitpoint yet.
               let waitpoint = debounceResult.waitpoint;
               if (!waitpoint) {
                 waitpoint = await this.waitpointSystem.getOrCreateRunWaitpoint({
@@ -1004,7 +950,6 @@ export class RunEngine {
                 });
               }
 
-              // Call the onDebounced callback to create a span and get spanIdToComplete
               let spanIdToComplete: string | undefined;
               if (onDebounced) {
                 spanIdToComplete = await onDebounced({
@@ -1023,20 +968,17 @@ export class RunEngine {
                 batch,
                 workerId,
                 runnerId,
-                // No tx: the block edge is a routed, run-co-resident write, not part of the
-                // control-plane trigger tx. Threading it pinned the edge write to the wrong DB.
+                // No tx: the block edge routes to the run's owning DB, not the control-plane tx.
               });
             }
 
             return debounceResult.run;
           }
 
-          // If max_duration_exceeded, we continue to create a new run without debouncing
           if (debounceResult.status === "max_duration_exceeded") {
             span.setAttribute("debounceMaxDurationExceeded", true);
           }
 
-          // Store the claimId for later registration
           if (debounceResult.status === "new" && debounceResult.claimId) {
             debounceClaimId = debounceResult.claimId;
             span.setAttribute("debounceClaimId", debounceClaimId);
@@ -1049,7 +991,6 @@ export class RunEngine {
             ? "DELAYED"
             : "PENDING";
 
-        // Apply defaultMaxTtl: use as default when no TTL is provided, clamp when larger
         const resolvedTtl = this.#resolveMaxTtl(ttl);
 
         let taskRun: TaskRun & { associatedWaitpoint: Waitpoint | null };
@@ -1057,7 +998,7 @@ export class RunEngine {
         const initialSnapshotId = generateInternalId();
         let birthRoute: SnapshotRoute | undefined;
 
-        // App-level replacement for the dropped TaskRun env/project Cascade FKs.
+        // Stands in for the dropped TaskRun env/project FKs.
         await this.controlPlaneResolver.assertEnvExists(environment.id);
 
         try {
@@ -1106,15 +1047,7 @@ export class RunEngine {
                 priorityMs,
                 queueTimestamp: queueTimestamp ?? delayUntil ?? new Date(),
                 ttl: resolvedTtl,
-                // Defensive: when the mollifier drainer replays a buffered
-                // snapshot whose payload was rewritten by a buffer-side Lua
-                // mutate (e.g. append_tags clears an empty list), cjson
-                // encodes an empty Lua table as `{}` rather than `[]`. JS
-                // parses that back as an empty object, and `{}.length` is
-                // undefined — the original `tags.length === 0` check would
-                // pass `{}` straight to Prisma's `String[]` column. Mirror
-                // the same Array.isArray guard that `createCancelledRun`
-                // uses for symmetry with the trigger replay path.
+                // A mollifier replay can carry tags as `{}`. See createCancelledRun.
                 runTags: Array.isArray(tags) && tags.length > 0 ? tags : undefined,
                 oneTimeUseToken,
                 parentTaskRunId,
@@ -1166,8 +1099,7 @@ export class RunEngine {
                 workerId,
                 runnerId,
               },
-              // Only create waitpoint if parent is waiting for this run to complete
-              // For standalone triggers (no waiting parent), waitpoint is created lazily if needed later
+              // A standalone trigger gets its waitpoint lazily, if ever.
               associatedWaitpoint:
                 resumeParentOnCompletion && parentTaskRunId
                   ? this.waitpointSystem.buildRunAssociatedWaitpoint({
@@ -1209,7 +1141,6 @@ export class RunEngine {
                 throw new RunOneTimeUseTokenError(`One-time use token has already been used`);
               }
 
-              // Only idempotency key collisions should be retried
               throw new RunDuplicateIdempotencyKeyError(
                 `Run with idempotency key ${idempotencyKey} already exists`
               );
@@ -1221,13 +1152,10 @@ export class RunEngine {
 
         span.setAttribute("runId", taskRun.id);
 
-        //triggerAndWait or batchTriggerAndWait
         if (resumeParentOnCompletion && parentTaskRunId && taskRun.associatedWaitpoint) {
           if (batch) {
-            // Batch path: lockless insert. The parent is already EXECUTING_WITH_WAITPOINTS
-            // from blockRunWithCreatedBatch, so we only need to insert the TaskRunWaitpoint
-            // row without acquiring the parent run lock. This avoids lock contention when
-            // processing large batches with high concurrency.
+            // No parent lock: blockRunWithCreatedBatch already moved the parent to
+            // EXECUTING_WITH_WAITPOINTS, and a lock per item contends on large batches.
             await this.waitpointSystem.blockRunWithWaitpointLockless({
               runId: parentTaskRunId,
               waitpoints: taskRun.associatedWaitpoint.id,
@@ -1235,8 +1163,6 @@ export class RunEngine {
               batch,
             });
           } else {
-            // Single triggerAndWait: acquire the parent run lock to safely transition
-            // the snapshot and insert the waitpoint
             await this.waitpointSystem.blockRunWithWaitpoint({
               runId: parentTaskRunId,
               waitpoints: taskRun.associatedWaitpoint.id,
@@ -1287,13 +1213,11 @@ export class RunEngine {
             });
           }
         } else if (taskRun.delayUntil) {
-          // Schedule the run to be enqueued at the delayUntil time
           await this.delayedRunSystem.scheduleDelayedRunEnqueuing({
             runId: taskRun.id,
             delayUntil: taskRun.delayUntil,
           });
 
-          // Register debounced run in Redis for future lookups
           if (debounce) {
             await this.#registerDebouncedRun({
               taskRun,
@@ -1305,12 +1229,8 @@ export class RunEngine {
           }
         } else {
           try {
-            // The new batch TTL path only expires runs still in the queue
-            // sorted set (waiting on a concurrency slot). For DEV
-            // environments where the dev CLI may not be running, fast-pathed
-            // runs can sit on the worker queue indefinitely and never get
-            // claimed for expiration. Keep the legacy per-run expireRun job
-            // armed for DEV so those runs still expire.
+            // The batch TTL path expires only runs still in the queue sorted set. A DEV run can sit
+            // on the worker queue while the CLI is down, so DEV also keeps a per-run expireRun job.
             if (taskRun.ttl && environment.type === "DEVELOPMENT") {
               await this.ttlSystem.scheduleExpireRun({ runId: taskRun.id, ttl: taskRun.ttl });
             }
@@ -1383,11 +1303,8 @@ export class RunEngine {
   }
 
   /**
-   * Creates a pre-failed TaskRun in SYSTEM_FAILURE status.
-   *
-   * Used when a batch item fails to trigger (e.g., queue limits, environment not found).
-   * Creates the run record so batch completion can track it, and if the batch has a
-   * waiting parent, creates and immediately completes a RUN waitpoint with the error.
+   * Creates a SYSTEM_FAILURE run for an item that failed to trigger, so batch completion can count
+   * it. A waiting parent gets a RUN waitpoint that is completed with the error at once.
    */
   async createFailedTaskRun({
     friendlyId,
@@ -1421,9 +1338,7 @@ export class RunEngine {
     payloadType?: string;
     error: TaskRunError;
     parentTaskRunId?: string;
-    /** The root run of the task tree. If the parent is already a child, this is the parent's root. */
     rootTaskRunId?: string;
-    /** Depth in the task tree (0 for root, parentDepth+1 for children). */
     depth?: number;
     resumeParentOnCompletion?: boolean;
     batch?: { id: string; index: number };
@@ -1431,21 +1346,13 @@ export class RunEngine {
     spanId?: string;
     traceContext?: Record<string, unknown>;
     taskEventStore?: string;
-    /** Resolved queue name (e.g. custom queue). When provided, used instead of task/${taskIdentifier}. */
+    /** Overrides `task/${taskIdentifier}`. */
     queue?: string;
-    /** Resolved TaskQueue.id when the task is locked to a specific queue. */
     lockedQueueId?: string;
     /**
-     * Whether to emit the `runFailed` engine-bus event. Defaults to true.
-     *
-     * Set to `false` when the caller is ALREADY managing the trace-event
-     * lifecycle for this run via `repository.traceEvent({ incomplete: false,
-     * isError: true, ... })`. In that path the outer trace event handles
-     * span completion itself; emitting `runFailed` from here causes the
-     * `runFailed` → `completeFailedRunEvent` handler to write a second
-     * completion row for the same (traceId, spanId), racing with the
-     * outer trace event's own write. The alert side of `runFailed` is
-     * preserved by emitting from the caller after `traceEvent` returns.
+     * Set `false` when the caller already completes the span through `repository.traceEvent`:
+     * the `runFailed` handler would write a second, racing completion row. That caller must
+     * then trigger the alerts itself.
      */
     emitRunFailedEvent?: boolean;
   }): Promise<TaskRun> {
@@ -1455,10 +1362,9 @@ export class RunEngine {
       async (span) => {
         const taskRunId = RunId.fromFriendlyId(friendlyId);
 
-        // App-level replacement for the dropped TaskRun env/project Cascade FKs.
+        // Stands in for the dropped TaskRun env/project FKs.
         await this.controlPlaneResolver.assertEnvExists(environment.id);
 
-        // Build associated waitpoint data if parent is waiting for this run
         const waitpointData =
           resumeParentOnCompletion && parentTaskRunId
             ? this.waitpointSystem.buildRunAssociatedWaitpoint({
@@ -1468,8 +1374,7 @@ export class RunEngine {
               })
             : undefined;
 
-        // No execution snapshot is needed: this run never gets dequeued, executed,
-        // or heartbeated, so nothing will call getLatestExecutionSnapshot on it.
+        // No execution snapshot: this run is never dequeued, executed or heartbeated.
         const taskRun = await this.runStore.createFailedRun(
           {
             data: {
@@ -1507,8 +1412,6 @@ export class RunEngine {
 
         span.setAttribute("runId", taskRun.id);
 
-        // If parent is waiting, block it with the waitpoint then immediately
-        // complete it with the error output so the parent can resume.
         if (resumeParentOnCompletion && parentTaskRunId && taskRun.associatedWaitpoint) {
           await this.waitpointSystem.blockRunAndCompleteWaitpoint({
             runId: parentTaskRunId,
@@ -1520,23 +1423,7 @@ export class RunEngine {
           });
         }
 
-        // Emit `runFailed` so the alert pipeline picks up the
-        // SYSTEM_FAILURE row and the event-store handler writes the
-        // completion event into the trace. Without this the mollifier
-        // drainer's terminal failures (and batch-trigger's
-        // exceed-limit failures) land in PG silently — visible in the
-        // dashboard list but never reaching customers' configured
-        // ERROR alert channels.
-        //
-        // Gated by `emitRunFailedEvent` so call sites that already wrap
-        // this inside `repository.traceEvent({ incomplete: false,
-        // isError: true })` can opt out — the outer trace event writes
-        // the completion row itself, and a second write via
-        // `completeFailedRunEvent` would race against it. Callers that
-        // disable the emit are responsible for triggering the alerts
-        // side themselves (e.g. by calling
-        // `PerformTaskRunAlertsService.enqueue` directly after the
-        // trace event closes).
+        // Without `runFailed`, these failures never reach the customer's ERROR alert channels.
         if (!emitRunFailedEvent) {
           return taskRun;
         }
@@ -1551,11 +1438,7 @@ export class RunEngine {
             createdAt: taskRun.createdAt,
             completedAt: taskRun.completedAt,
             updatedAt: taskRun.updatedAt,
-            // This row never attempted execution — it's a synthesised
-            // terminal failure. The alert payload's `attemptNumber=0`
-            // is the signal downstream consumers can use to
-            // distinguish a never-ran failure from a run that
-            // exhausted its retries.
+            // 0 tells consumers the run never ran, as opposed to exhausting its retries.
             attemptNumber: 0,
             usageDurationMs: 0,
             costInCents: 0,
@@ -1584,12 +1467,7 @@ export class RunEngine {
     );
   }
 
-  /**
-   * Gets a fairly selected run from the specified master queue, returning the information required to run it.
-   * @param consumerId: The consumer that is pulling, allows multiple consumers to pull from the same queue
-   * @param workerQueue: The worker queue to pull from, can be an individual environment (for dev)
-   * @returns
-   */
+  /** Dequeues a fairly selected run from one worker queue (an environment id for dev). */
   async dequeueFromWorkerQueue({
     workerQueue,
     ...options
@@ -1614,10 +1492,8 @@ export class RunEngine {
   }: WorkerQueueDequeueOptions & {
     workerQueues: WorkerQueueSelection[];
   }): Promise<DequeuedMessage[]> {
-    // We only do this with "prod" worker queues because we don't want to observe dev (e.g.
-    // environment) worker queues. When the worker queue observer is enabled it is the source
-    // of truth for the observed set (and applies the cloud-provider exclusions), so the
-    // per-dequeue registration is skipped.
+    // Dev (environment) worker queues are not observed. When enabled, the worker queue observer
+    // owns the observed set, so per-dequeue registration is skipped.
     if (!skipObserving && !this.options.workerQueueObserver?.enabled) {
       for (const { queue } of workerQueues) {
         this.runQueue.registerObservableWorkerQueue(queue);
@@ -1705,7 +1581,6 @@ export class RunEngine {
     });
   }
 
-  /** How a run is completed */
   async completeRunAttempt({
     runId,
     snapshotId,
@@ -1736,10 +1611,8 @@ export class RunEngine {
   }
 
   /**
-  Call this to cancel a run.
-  If the run is in-progress it will change it's state to PENDING_CANCEL and notify the worker.
-  If the run is not in-progress it will finish it.
-  You can pass `finalizeRun` in if you know it's no longer running, e.g. the worker has messaged to say it's done.
+  Cancels a run. An executing run moves to PENDING_CANCEL and the worker is told; any other run
+  finishes. Pass `finalizeRun` when you know the run no longer executes.
   */
   async cancelRun({
     runId,
@@ -1779,9 +1652,7 @@ export class RunEngine {
     return this.pendingVersionSystem.scheduleResolvePendingVersionRuns(backgroundWorkerId);
   }
 
-  /**
-   * Reschedules a delayed run where the run hasn't been queued yet
-   */
+  /** Reschedules a delayed run that is not queued yet. */
   async rescheduleDelayedRun({
     runId,
     organizationId,
@@ -1962,10 +1833,7 @@ export class RunEngine {
     );
   }
 
-  /**
-   * This creates a DATETIME waitpoint, that will be completed automatically when the specified date is reached.
-   * If you pass an `idempotencyKey`, the waitpoint will be created only if it doesn't already exist.
-   */
+  /** Creates a DATETIME waitpoint that completes at `completedAfter`. Idempotent on the key. */
   async createDateTimeWaitpoint({
     runId,
     projectId,
@@ -1974,7 +1842,7 @@ export class RunEngine {
     idempotencyKey,
     idempotencyKeyExpiresAt,
   }: {
-    /** The run that will block on this waitpoint. Co-locates the waitpoint with the run's DB. */
+    /** The run that blocks on this waitpoint. The waitpoint goes on that run's database. */
     runId?: string;
     projectId: string;
     environmentId: string;
@@ -1992,9 +1860,7 @@ export class RunEngine {
     });
   }
 
-  /** This creates a MANUAL waitpoint, that can be explicitly completed (or failed).
-   * If you pass an `idempotencyKey` and it already exists, it will return the existing waitpoint.
-   */
+  /** Creates a MANUAL waitpoint, or returns the existing one for `idempotencyKey`. */
   async createManualWaitpoint({
     runId,
     environmentId,
@@ -2006,7 +1872,7 @@ export class RunEngine {
     standaloneResidency,
     standaloneShardKey,
   }: {
-    /** The run that will block on this waitpoint. Co-locates the waitpoint with the run's DB. */
+    /** The run that blocks on this waitpoint. The waitpoint goes on that run's database. */
     runId?: string;
     environmentId: string;
     projectId: string;
@@ -2014,7 +1880,7 @@ export class RunEngine {
     idempotencyKeyExpiresAt?: Date;
     timeout?: Date;
     tags?: string[];
-    /** Standalone-token residency (no owning run) from the env mint kind; ignored when `runId` is set. */
+    /** Database for a token with no owning run. Ignored when `runId` is set. */
     standaloneResidency?: "NEW" | "LEGACY";
     standaloneShardKey?: ShardKey;
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
@@ -2031,9 +1897,7 @@ export class RunEngine {
     });
   }
 
-  /** This block a run with a BATCH waitpoint.
-   * The waitpoint will be created, and it will block the parent run.
-   */
+  /** Creates a BATCH waitpoint and blocks the parent on it. Returns null if it already exists. */
   async blockRunWithCreatedBatch({
     runId,
     batchId,
@@ -2053,8 +1917,7 @@ export class RunEngine {
       const waitpoint = await this.runStore.createWaitpoint(
         {
           data: {
-            // From the batch, not the blocked run: the create passes only completedByBatchId,
-            // which is the owner the router validates against.
+            // From the batch, not the run: the router validates against completedByBatchId.
             ...mintWaitpointIdFor(batchId),
             type: "BATCH",
             idempotencyKey: batchId,
@@ -2079,7 +1942,6 @@ export class RunEngine {
       return waitpoint;
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        // duplicate idempotency key
         if (error.code === "P2002") {
           return null;
         } else {
@@ -2094,18 +1956,12 @@ export class RunEngine {
     return this.batchSystem.scheduleCompleteBatch({ batchId });
   }
 
-  /**
-   * Terminally fail a batch whose phase 2 item stream never sealed it, completing the
-   * parent's batchTriggerAndWait waitpoint with an error so the parent resumes.
-   */
+  /** Fails a batch that phase 2 never sealed, and resumes its waiting parent with an error. */
   async expireBatch({ batchId }: { batchId: string }): Promise<void> {
     return this.batchSystem.expireBatch({ batchId });
   }
 
-  /**
-   * Schedule the seal-timeout reaper. Only worth scheduling for a batch that blocks a
-   * parent, since a fire-and-forget batch has nothing to strand.
-   */
+  /** Schedules the seal-timeout reaper. Only a batch that blocks a parent needs it. */
   async scheduleExpireBatch({
     batchId,
     availableAt,
@@ -2116,14 +1972,8 @@ export class RunEngine {
     return this.batchSystem.scheduleExpireBatch({ batchId, availableAt });
   }
 
-  // ============================================================================
-  // BatchQueue methods (DRR-based batch processing)
-  // ============================================================================
+  //MARK: - BatchQueue
 
-  /**
-   * Set the callback for processing batch items.
-   * This is called for each item dequeued from the batch queue.
-   */
   setBatchProcessItemCallback(callback: ProcessBatchItemCallback): void {
     this.batchQueue.onProcessItem(callback);
     if (this.batchQueueConsumersEnabled) {
@@ -2131,27 +1981,15 @@ export class RunEngine {
     }
   }
 
-  /**
-   * Set the callback for batch completion.
-   * This is called when all items in a batch have been processed.
-   */
   setBatchCompletionCallback(callback: BatchCompletionCallback): void {
     this.batchQueue.onBatchComplete(callback);
   }
 
-  /**
-   * Get the remaining count of items in a batch.
-   */
   async getBatchQueueRemainingCount(batchId: string): Promise<number> {
     return this.batchQueue.getBatchRemainingCount(batchId);
   }
 
-  /**
-   * Get the live progress for a batch from Redis.
-   * Returns success count, failure count, and processed count.
-   * This is useful for displaying real-time progress in the UI without
-   * hitting the database.
-   */
+  /** Live batch progress from Redis, so the UI does not query the database. */
   async getBatchQueueProgress(batchId: string): Promise<{
     successCount: number;
     failureCount: number;
@@ -2160,34 +1998,14 @@ export class RunEngine {
     return this.batchQueue.getBatchProgress(batchId);
   }
 
-  // ============================================================================
-  // Batch Queue - 2-Phase API (v3)
-  // ============================================================================
+  //MARK: - Two-phase batch API
 
-  /**
-   * Initialize a batch for 2-phase processing (Phase 1).
-   *
-   * This stores batch metadata in Redis WITHOUT enqueueing any items.
-   * Items are streamed separately via enqueueBatchItem().
-   *
-   * Use this for the v3 streaming batch API where items are sent via NDJSON stream.
-   */
+  /** Phase 1: stores batch metadata with no items. Items follow through `enqueueBatchItem`. */
   async initializeBatch(options: InitializeBatchOptions): Promise<void> {
     return this.batchQueue.initializeBatch(options);
   }
 
-  /**
-   * Enqueue a single item to an existing batch (Phase 2).
-   *
-   * This is used for streaming batch item ingestion in the v3 API.
-   * Returns whether the item was enqueued (true) or deduplicated (false).
-   *
-   * @param batchId - The batch ID (internal format)
-   * @param envId - The environment ID (needed for queue routing)
-   * @param itemIndex - Zero-based index of this item
-   * @param item - The batch item to enqueue
-   * @returns Object with enqueued status
-   */
+  /** Phase 2: adds one item. `enqueued` is false when the item was a duplicate. */
   async enqueueBatchItem(
     batchId: string,
     envId: string,
@@ -2197,10 +2015,6 @@ export class RunEngine {
     return this.batchQueue.enqueueBatchItem(batchId, envId, itemIndex, item);
   }
 
-  /**
-   * Get the count of items that have been enqueued for a batch.
-   * Useful for progress tracking during streaming ingestion.
-   */
   async getBatchEnqueuedCount(batchId: string): Promise<number> {
     return this.batchQueue.getEnqueuedCount(batchId);
   }
@@ -2238,9 +2052,6 @@ export class RunEngine {
     return waitpoint;
   }
 
-  /**
-   * Prevents a run from continuing until the waitpoint is completed.
-   */
   async blockRunWithWaitpoint({
     runId,
     waitpoints,
@@ -2278,8 +2089,7 @@ export class RunEngine {
     });
   }
 
-  /** This completes a waitpoint and updates all entries so the run isn't blocked,
-   * if they're no longer blocked. This doesn't suffer from race conditions. */
+  /** Completes a waitpoint and unblocks every run it no longer blocks. Safe against races. */
   async completeWaitpoint({
     id,
     output,
@@ -2292,17 +2102,13 @@ export class RunEngine {
       isError: boolean;
     };
     /**
-     * Arm the durable write-ahead completion guard for this call. The engine does NOT arm implicitly:
-     * left undefined it defaults to false, so a caller must opt in explicitly. The runtime-flag gate
-     * lives at the guarded boundary (completeWaitpointWithGuard in the webapp), which passes armGuard
-     * only when runStoreInfraRetryEnabled is on. Internal/system callers leave it unset (unarmed).
+     * Arms the durable write-ahead completion guard. Defaults to false. The webapp's
+     * completeWaitpointWithGuard sets it only when runStoreInfraRetryEnabled is on.
      */
     armGuard?: boolean;
   }): Promise<Waitpoint> {
-    // Consult the cross-seam guard FIRST so an unclassifiable id fails loudly
-    // here (never a silent local apply). Do NOT branch on decision.store: store routing is
-    // installed below, as the first statement of waitpointSystem.completeWaitpoint;
-    // we delegate unconditionally and inherit it. No-op when unset.
+    // Guard first, so an unclassifiable id fails here instead of applying locally. Do not branch
+    // on decision.store: waitpointSystem.completeWaitpoint does the store routing.
     const guard = this.options.crossSeamGuard;
     if (guard) {
       await guard({ waitpointId: id, routeKind: "RESUME_TOKEN" });
@@ -2311,11 +2117,8 @@ export class RunEngine {
   }
 
   /**
-   * Gets an existing run waitpoint or creates one lazily.
-   * Used for debounce/idempotency when a late-arriving triggerAndWait caller
-   * needs to block on an existing run that was created without a waitpoint.
-   * When the run has already completed, creates the waitpoint and immediately
-   * completes it with the run's output/error so the parent can resume.
+   * Gets or creates the run's waitpoint, for a late triggerAndWait caller on a debounced or
+   * idempotent run. For a completed run, the new waitpoint completes at once with its output.
    */
   async getOrCreateRunWaitpoint({
     runId,
@@ -2333,10 +2136,7 @@ export class RunEngine {
     });
   }
 
-  /**
-   * This gets called AFTER the checkpoint has been created
-   * The CPU/Memory checkpoint at this point exists in our snapshot storage
-   */
+  /** Called after the CPU/memory checkpoint already exists in checkpoint storage. */
   async createCheckpoint({
     runId,
     snapshotId,
@@ -2362,9 +2162,7 @@ export class RunEngine {
     });
   }
 
-  /**
-   * This is called when a run has been restored from a checkpoint and is ready to start executing again
-   */
+  /** Called when a run restored from a checkpoint is ready to execute again. */
   async continueRunExecution({
     runId,
     snapshotId,
@@ -2391,9 +2189,13 @@ export class RunEngine {
   }
 
   /**
-   * Called by the worker that dequeued a run for a restore when the restore did not start.
-   * `requeue` gives the run back with the same checkpoint; `fail` fails the attempt as a lost
-   * checkpoint. A conflict is returned if `snapshotId` is no longer the restore's snapshot.
+   * Called by the dequeuing worker when a restore or cold start did not start.
+   * - `requeue`: gives the run back, with the same checkpoint for a restore.
+   * - `fail`: fails the attempt as a lost checkpoint. Restores only.
+   * - `fallback`: requeues a cold start onto `fallbackWorkerQueue(current)`, or in place if that
+   *   returns none.
+   * Returns a conflict if `snapshotId` is no longer the current one, or if `servesWorkerQueue`
+   * rejects both the run's worker queue and, for a restore, the queue it was published on.
    */
   async reportRestoreOutcome({
     runId,
@@ -2404,6 +2206,8 @@ export class RunEngine {
     workerId,
     runnerId,
     environmentId,
+    fallbackWorkerQueue,
+    servesWorkerQueue,
   }: {
     runId: string;
     snapshotId: string;
@@ -2413,6 +2217,8 @@ export class RunEngine {
     workerId?: string;
     runnerId?: string;
     environmentId?: string;
+    fallbackWorkerQueue?: (workerQueue: string) => string | undefined;
+    servesWorkerQueue?: (workerQueue: string) => boolean;
   }): Promise<RestoreOutcomeResult> {
     return this.runAttemptSystem.reportRestoreOutcome({
       runId,
@@ -2423,14 +2229,14 @@ export class RunEngine {
       workerId,
       runnerId,
       environmentId,
+      fallbackWorkerQueue,
+      servesWorkerQueue,
     });
   }
 
   /**
-  Send a heartbeat to signal the the run is still executing.
-  If a heartbeat isn't received, after a while the run is considered "stalled"
-  and some logic will be run to try recover it.
-  @returns The ExecutionResult, which could be a different snapshot.
+  Signals that the run still executes. Without heartbeats the run stalls and recovery starts.
+  @returns The ExecutionResult, which can name a different snapshot.
   */
   async heartbeatRun({
     runId,
@@ -2457,7 +2263,6 @@ export class RunEngine {
     });
   }
 
-  /** Get required data to execute the run */
   async getRunExecutionData({
     runId,
     environmentId,
@@ -2527,16 +2332,12 @@ export class RunEngine {
     };
 
     try {
-      // When reading the replica, pass the primary so a snapshot whose completed-waitpoint join rows
-      // have not replicated yet is repaired from the primary instead of resuming the run waitpoint-less.
+      // The primary repairs join rows the replica lacks, so a resume keeps its waitpoints.
       return await query(prisma, useReplica ? this.prisma : undefined);
     } catch (e) {
       if (useReplica && e instanceof ExecutionSnapshotNotFoundError) {
-        // Replica lag: the runner learned this snapshot id from the writer before the
-        // replica caught up. Give the replica one jittered retry; if it's still missing,
-        // serve from the writer. Only not-found errors get this treatment - any other
-        // replica failure stays an error rather than shifting read load to the writer.
-        // A miss on the writer too is a real error, not lag.
+        // Replica lag: retry the replica once with jitter, then the writer. Only not-found gets
+        // this, so other replica failures do not shift load to the writer.
         const { minMs, maxMs } = this.snapshotsSinceReplicaRetryDelay;
         if (maxMs > 0) {
           await setTimeout(minMs + Math.random() * Math.max(0, maxMs - minMs));
@@ -2557,7 +2358,6 @@ export class RunEngine {
               });
               return null;
             }
-            // still not on the replica - fall through to the primary
           }
         }
 
@@ -2627,12 +2427,9 @@ export class RunEngine {
   }
 
   /**
-   * Shuts the engine down once. Every operation is attempted regardless of the others' outcomes.
-   *
-   * By default this resolves after all attempts even if some failed (the long-standing best-effort
-   * contract). With `rejectOnFailure`, it rejects with an `AggregateError` naming every failed
-   * operation, so a caller that owns a resource the engine writes to (a snapshot store client, say)
-   * can refuse to tear that resource down while a component may still be using it.
+   * Shuts the engine down once and attempts every operation. Resolves even if some fail, unless
+   * `rejectOnFailure` is set: then it rejects with an `AggregateError`, so a caller that owns a
+   * resource the engine writes to can keep it open while a component may still use it.
    */
   quit(options?: { rejectOnFailure?: boolean }): Promise<void> {
     this.quitGate ??= createShutdownGate(() => this.#quit());
@@ -2650,8 +2447,7 @@ export class RunEngine {
         batchQueueClose: () => this.batchQueue.close(),
         runLockQuit: () => this.runLock.quit(),
         debounceSystemQuit: () => this.debounceSystem.quit(),
-        // RunLocker/Redlock owns this client and normally closes it. Do not send a second QUIT, but
-        // force-disconnect if Redlock failed to leave the connection in its terminal state.
+        // Redlock owns and closes this client. Do not QUIT twice. Disconnect only if still open.
         runLockRedisDisconnect: async () => {
           if (this.runLockRedis.status === "end") return;
           this.runLockRedis.disconnect();
@@ -2709,8 +2505,8 @@ export class RunEngine {
   }
 
   /**
-   * The append-failure compensator. Shares the stall watchdog's job id AND its availableAt, so the
-   * two cannot enqueue two repairs for one run and neither can win a race that changes the delay.
+   * Enqueues the `repairSnapshot` job. It shares the job id and availableAt of `#repairRun`, so
+   * one run never gets two repairs and neither enqueue changes the delay.
    */
   async enqueueSnapshotRepair(payload: {
     runId: string;
@@ -2734,7 +2530,7 @@ export class RunEngine {
       { id: true }
     );
     if (finishedRun) {
-      // The run finished and its snapshot state expired, so any concurrency slot it holds has leaked.
+      // Finished with expired snapshot state: any concurrency slot it holds has leaked.
       this.logger.warn("RunEngine.repairRun: snapshot state expired, run already finished", {
         runId,
       });
@@ -2762,7 +2558,6 @@ export class RunEngine {
       snapshot.executionStatus === "FINISHED"
     ) {
       if (!dryRun) {
-        // Schedule the repair job
         await this.worker.enqueueOnce({
           id: `repair-in-progress-run:${runId}`,
           job: "repairSnapshot",
@@ -2793,15 +2588,15 @@ export class RunEngine {
     verbose: boolean
   ) {
     const [
-      concurrencyLimit, // env limit (no burst)
-      concurrencyLimitWithBurstFactor, // env limit * burst
+      concurrencyLimit,
+      concurrencyLimitWithBurstFactor,
       currentDequeued,
       currentConcurrency,
       burstFactor,
     ] = await Promise.all([
       this.runQueue.getEnvConcurrencyLimit(environment),
       this.runQueue.getEnvConcurrencyLimitWithBurstFactor(environment),
-      this.runQueue.currentConcurrencyOfEnvironment(environment), // "currentDequeued" in your label terminology
+      this.runQueue.currentConcurrencyOfEnvironment(environment),
       this.runQueue.operationalCurrentConcurrencyOfEnvironment(environment),
       this.runQueue.getEnvConcurrencyBurstFactor(environment),
     ]);
@@ -2955,7 +2750,6 @@ export class RunEngine {
           throw new NotImplementedError("There shouldn't be a heartbeat for QUEUED_EXECUTING");
         }
         case "PENDING_EXECUTING": {
-          //the run didn't start executing, we need to requeue it
           const run = await this.runStore.findRun({ id: runId }, prisma);
 
           if (!run) {
@@ -2971,7 +2765,6 @@ export class RunEngine {
             throw new Error(`Run ${runId} not found`);
           }
 
-          //it will automatically be requeued X times depending on the queue retry settings
           const { wasRequeued } = await this.runAttemptSystem.tryNackAndRequeue({
             run,
             snapshotRoute: snapshotRouteFromSnapshot(latestSnapshot),
@@ -2992,7 +2785,7 @@ export class RunEngine {
             tx: prisma,
           });
 
-          // run.planType rather than billingCache: the cache reports paid when billing is unreachable
+          // Not billingCache: it reports paid when billing is unreachable.
           this.pendingExecutingStallsCounter.add(1, {
             outcome: wasRequeued ? "requeued" : "dropped",
             environment_type: latestSnapshot.environmentType,
@@ -3002,11 +2795,7 @@ export class RunEngine {
         }
         case "EXECUTING":
         case "EXECUTING_WITH_WAITPOINTS": {
-          // Stalls for production runs should start being treated as an OOM error.
-          // We should calculate the retry delay using the retry settings on the run/task instead of hardcoding it.
-          // Stalls for dev runs should keep being treated as a timeout error because the vast majority of the time these snapshots stall because
-          // they have quit the CLI
-
+          // TODO: derive the retry delay from the run's retry settings.
           const retryDelay = 250;
 
           const timeoutDuration =
@@ -3014,8 +2803,7 @@ export class RunEngine {
               ? formatDurationMilliseconds(this.heartbeatTimeouts.EXECUTING)
               : formatDurationMilliseconds(this.heartbeatTimeouts.EXECUTING_WITH_WAITPOINTS);
 
-          // Dev runs don't retry, because the vast majority of the time these snapshots stall because
-          // they have quit the CLI
+          // Dev runs do not retry: a dev stall almost always means the CLI quit.
           const shouldRetry = latestSnapshot.environmentType !== "DEVELOPMENT";
           const errorMessage =
             latestSnapshot.environmentType === "DEVELOPMENT"
@@ -3055,7 +2843,6 @@ export class RunEngine {
               error,
               retry: shouldRetry
                 ? {
-                    //250ms in the future
                     timestamp: Date.now() + retryDelay,
                     delay: retryDelay,
                   }
@@ -3090,7 +2877,6 @@ export class RunEngine {
                   waitpointCount: result.waitpoints.length,
                   snapshotId: latestSnapshot.id,
                 });
-                // If the run is blocked but there are no waitpoints, we don't restart the heartbeat
                 break;
               }
 
@@ -3108,15 +2894,14 @@ export class RunEngine {
                     snapshotId: latestSnapshot.id,
                   }
                 );
-                // If the run is blocked by waitpoints that are not RUN or BATCH, we don't restart the heartbeat
                 break;
               }
 
               const initialDelayMs =
                 this.options.suspendedHeartbeatRetriesConfig.initialDelayMs ?? 60_000;
-              const $restartAttempt = (restartAttempt ?? 0) + 1; // Start at 1
+              const $restartAttempt = (restartAttempt ?? 0) + 1;
               const maxDelayMs =
-                this.options.suspendedHeartbeatRetriesConfig.maxDelayMs ?? 60_000 * 60 * 6; // 6 hours
+                this.options.suspendedHeartbeatRetriesConfig.maxDelayMs ?? 60_000 * 60 * 6;
               const factor = this.options.suspendedHeartbeatRetriesConfig.factor ?? 2;
               const maxCount = this.options.suspendedHeartbeatRetriesConfig.maxCount ?? 12;
 
@@ -3137,7 +2922,6 @@ export class RunEngine {
                 break;
               }
 
-              // Calculate the delay based on the retry attempt
               const delayMs = Math.min(
                 initialDelayMs * Math.pow(factor, $restartAttempt - 1),
                 maxDelayMs
@@ -3155,7 +2939,6 @@ export class RunEngine {
                 }
               );
 
-              // Reschedule the heartbeat
               await this.executionSnapshotSystem.restartHeartbeatForRun({
                 runId,
                 organizationId: latestSnapshot.organizationId,
@@ -3174,8 +2957,7 @@ export class RunEngine {
           break;
         }
         case "PENDING_CANCEL": {
-          //if the run is waiting to cancel but the worker hasn't confirmed that,
-          //we force the run to be cancelled
+          // The worker never confirmed the cancel, so force it.
           await this.cancelRun({
             runId: latestSnapshot.runId,
             organizationId: latestSnapshot.organizationId,
@@ -3203,13 +2985,13 @@ export class RunEngine {
     executionStatus,
   }: {
     runId: string;
-    /** null when scheduled for a finished run whose snapshot state had already expired. */
+    /** null for a finished run whose snapshot state had already expired. */
     snapshotId: string | null;
     executionStatus: string;
   }) {
     return await this.runLock.lock("handleRepairSnapshot", [runId], async () => {
-      // No snapshot mirror in off-only mode, so the repair heals only the queue below. The M1+
-      // rebuild reintroduces a mirror-repair step here.
+      // This job repairs only the queue. The snapshot store and its pending recovery worker
+      // repair snapshot state.
       const { snapshot: latestSnapshot, finishedRun } =
         await getLatestExecutionSnapshotOrFinishedRun(
           this.prisma,
@@ -3224,8 +3006,7 @@ export class RunEngine {
           }
         );
       if (finishedRun) {
-        // The run is finished whichever snapshot the job was queued from (a live one that has since
-        // finished and expired, or none when queued after expiry), so its slot has leaked either way.
+        // Finished, whichever snapshot the job was queued from, so its slot has leaked.
         this.logger.warn("RunEngine.handleRepairSnapshot: snapshot state expired, run finished", {
           runId,
           snapshotId,
@@ -3277,8 +3058,7 @@ export class RunEngine {
         case "QUEUED_EXECUTING":
         case "RUN_CREATED":
         case "DELAYED": {
-          // The mirror repair above is the whole repair for these: the run is live and the queue
-          // needs no correction.
+          // The run is live, so the queue needs no repair.
           return;
         }
         case "QUEUED": {
@@ -3287,7 +3067,6 @@ export class RunEngine {
             snapshotId,
           });
 
-          //it will automatically be requeued X times depending on the queue retry settings
           const gotRequeued = await this.runQueue.nackMessage({
             orgId: latestSnapshot.organizationId,
             messageId: runId,
@@ -3367,16 +3146,9 @@ export class RunEngine {
   async #clearRunFromConcurrencySets(
     params: Parameters<RunQueue["clearMessageFromConcurrencySets"]>[0]
   ) {
-    // We need to clear this run from the current concurrency sets
     await this.runQueue.clearMessageFromConcurrencySets(params);
   }
 
-  /**
-   * Applies `defaultMaxTtl` to a run's TTL:
-   * - No max configured → pass through as-is.
-   * - No TTL on the run → use the max as the default.
-   * - Both exist → clamp to the smaller value.
-   */
   async #registerDebouncedRun({
     taskRun,
     environmentId,
@@ -3445,7 +3217,7 @@ export class RunEngine {
       where: {
         id: { in: boundedIn(runIds) },
         completedAt: {
-          lte: new Date(Date.now() - completedAtOffsetMs), // This only finds runs that were completed more than 10 minutes ago
+          lte: new Date(Date.now() - completedAtOffsetMs),
         },
         organizationId: {
           not: null,
@@ -3477,10 +3249,7 @@ export class RunEngine {
       }));
   }
 
-  /**
-   * Invalidates the billing cache for an organization when their plan changes
-   * Runs in background and handles all errors internally
-   */
+  /** Call when an org's plan changes. Never throws. */
   invalidateBillingCache(orgId: string): void {
     this.billingCache.invalidate(orgId);
   }
@@ -3519,10 +3288,10 @@ type QueueInputs = {
   paused?: boolean;
   envLimit: number;
   envLimitWithBurst: number;
-  queueLimit?: number; // undefined => no explicit queue limit (Lua uses a huge default)
+  queueLimit?: number;
   queueCurrent: number;
   envCurrent: number;
-  dueCount?: number; // optional (if you implement countDueMessages)
+  dueCount?: number;
 };
 
 function analyzeQueue(inputs: QueueInputs) {
@@ -3531,18 +3300,15 @@ function analyzeQueue(inputs: QueueInputs) {
 
   const reasons: string[] = [];
 
-  // Effective queue limit mirrors the Lua: min(queueLimit || 1_000_000, envLimit)
+  // Mirrors the dequeue Lua: min(queueLimit || 1_000_000, envLimit).
   const queueLimitCapped = typeof queueLimit === "number" ? queueLimit : 1_000_000;
   const effectiveQueueLimit = Math.min(queueLimitCapped, envLimit);
 
   const envAvailable = Math.max(0, envLimitWithBurst - envCurrent);
   const queueAvailable = Math.max(0, effectiveQueueLimit - queueCurrent);
 
-  // Mirror Lua's actualMaxCount = min(maxCount, envAvailable, queueAvailable).
-  // Here we only need to know if capacity exists at all (maxCount >= 1 assumed).
   const hasCapacity = envAvailable > 0 && queueAvailable > 0;
 
-  // High-signal reasons (ordered)
   if (paused) {
     reasons.push("Queue is paused.");
   }
@@ -3559,15 +3325,10 @@ function analyzeQueue(inputs: QueueInputs) {
     );
   }
 
-  // Optional visibility: no due messages (score > now or empty queue)
   if (typeof dueCount === "number" && dueCount <= 0) {
     reasons.push("No due messages in the queue (nothing scored ≤ now).");
   }
 
-  // Final decision:
-  // - Not paused
-  // - Has capacity (both env and queue)
-  // - And (optionally) has work due
   const canDequeue = !paused && hasCapacity && (typeof dueCount === "number" ? dueCount > 0 : true);
 
   return {

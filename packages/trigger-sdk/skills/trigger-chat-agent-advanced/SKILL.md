@@ -95,22 +95,27 @@ mutate with `sessions.update`, end with `sessions.close` (terminal, idempotent).
 
 ### 2. Durable sub-agent as a streaming tool
 
-`AgentChat` inside an AI SDK `tool()` delegates to a durable sub-agent; its response streams as
-preliminary tool results. Give the tool a `toModelOutput` so the model sees a compact summary.
+`AgentChat` inside an AI SDK `tool()` delegates to a durable sub-agent; `chat.forwardSubAgent`
+streams its reply to the frontend and returns the final message as the tool output. Give the tool a
+`toModelOutput` so the model sees a compact summary.
 
 ```ts
 import { tool } from "ai";
+import { chat } from "@trigger.dev/sdk/ai";
 import { AgentChat } from "@trigger.dev/sdk/chat";
 import { z } from "zod";
 
 const researchTool = tool({
   description: "Delegate research to a specialist agent.",
   inputSchema: z.object({ topic: z.string() }),
-  execute: async function* ({ topic }, { abortSignal }) {
-    const chat = new AgentChat({ agent: "research-agent" });
-    const stream = await chat.sendMessage(topic, { abortSignal });
-    yield* stream.messages(); // UIMessage snapshots become preliminary tool results
-    await chat.close();
+  execute: async ({ topic }, { toolCallId, abortSignal }) => {
+    const researcher = new AgentChat({ agent: "research-agent" });
+    try {
+      const stream = await researcher.sendMessage(topic, { abortSignal });
+      return await chat.forwardSubAgent(stream, { toolCallId }); // chunks out once, final UIMessage back
+    } finally {
+      await researcher.close();
+    }
   },
   toModelOutput: ({ output: message }) => {
     const lastText = message?.parts?.findLast((p: { type: string }) => p.type === "text") as
@@ -120,6 +125,11 @@ const researchTool = tool({
   },
 });
 ```
+
+On the frontend, `useSubAgentMessages()` from `@trigger.dev/sdk/chat/react` rebuilds each sub-agent
+while it runs: pass its `onData` to `useChat` and render `subAgents.get(part.toolCallId) ?? part.output`.
+Do not `yield* stream.messages()` from a tool: every snapshot repeats the whole message, so the bytes
+written grow with the square of the reply length.
 
 For a subtask exposed via `execute: ai.toolExecute(task)`, stream progress to the agent's run with
 `chat.stream.writer({ target: "root" })`. `target` accepts `"self" | "parent" | "root" | <runId>`.

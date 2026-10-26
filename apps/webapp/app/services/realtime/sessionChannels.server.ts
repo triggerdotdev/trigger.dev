@@ -27,17 +27,26 @@ export const SESSION_CHANNEL_SCOPE_INFIX = ":channels:";
  */
 const SESSION_IO_SCOPE_SUFFIX_REGEX = /:(?:out|in)$/;
 
+const SESSION_CHANNEL_SCOPE_SUFFIX_REGEX = /:channels$/;
+
+const SESSION_CHANNEL_STREAM_SEGMENT_REGEX = /\/channels(?:\/|$)/;
+
+export const SESSION_EXTERNAL_ID_FOLD_ERROR = `externalId cannot contain "${SESSION_CHANNEL_SCOPE_INFIX}" or a "/channels" path segment, or end in ":channels", ":out" or ":in"`;
+
 /**
- * Session creation rejects externalIds that look like a folded id, but rows created before a
- * fold existed may still carry one. The resource builders below skip such a key entirely: a
- * bare id equal to some other session's folded id must never be authorized by that other
- * session's narrowed token. The row stays reachable through its friendlyId (always in the key
- * set) and through type-level or wildcard scopes.
+ * Session creation rejects externalIds that look like a folded id or contain a `/channels`
+ * stream path segment, but rows created before either rule existed may still carry one. The
+ * resource builders below skip such a key entirely: a bare id equal to some other session's
+ * folded id or channel stream must never be authorized by that other session's narrowed token.
+ * The row stays reachable through its friendlyId (always in the key set) and through type-level
+ * or wildcard scopes.
  */
 export function isSafeSessionExternalId(externalId: string): boolean {
   return (
     !externalId.includes(SESSION_CHANNEL_SCOPE_INFIX) &&
-    !SESSION_IO_SCOPE_SUFFIX_REGEX.test(externalId)
+    !SESSION_IO_SCOPE_SUFFIX_REGEX.test(externalId) &&
+    !SESSION_CHANNEL_SCOPE_SUFFIX_REGEX.test(externalId) &&
+    !SESSION_CHANNEL_STREAM_SEGMENT_REGEX.test(externalId)
   );
 }
 

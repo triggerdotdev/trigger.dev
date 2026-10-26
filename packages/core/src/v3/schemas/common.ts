@@ -9,15 +9,16 @@ const DANGEROUS_METADATA_KEY_SEGMENTS = new Set(["__proto__", "constructor", "pr
 
 /**
  * Prototype-pollution guard for run metadata operation keys. JSON paths are applied via
- * JSONHeroPath, so dangerous path segments must be rejected. Literal keys are assigned directly,
- * where only __proto__ can change the target object's prototype.
+ * JSONHeroPath, so dangerous path segments must be rejected. JSONHeroPath unescapes `\.` when it
+ * parses a path and re-splits on it when it writes, so backslashes are segment boundaries too.
+ * Literal keys are assigned directly, where only __proto__ can change the target object's prototype.
  */
 export function isSafeMetadataKey(key: string): boolean {
   if (!key.startsWith("$.")) {
     return key !== "__proto__";
   }
 
-  return !key.split(/[.[\]'"]+/).some((segment) => DANGEROUS_METADATA_KEY_SEGMENTS.has(segment));
+  return !key.split(/[.[\]'"\\]+/).some((segment) => DANGEROUS_METADATA_KEY_SEGMENTS.has(segment));
 }
 
 const MetadataOperationKey = z.string().refine(isSafeMetadataKey, {

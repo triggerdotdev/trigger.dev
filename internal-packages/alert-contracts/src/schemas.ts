@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const alertAreaSchema = z.enum(["queues", "runs", "health", "errors"]);
+export const alertAreaSchema = z.enum(["queues", "runs", "health", "errors", "query"]);
 export type AlertArea = z.infer<typeof alertAreaSchema>;
 
 export const alertSignalSchema = z.enum(["metric", "state", "event"]);
@@ -58,6 +58,10 @@ export const queryBindingSchema = z
     seriesTemplate: z.string().optional(),
     rowKey: z.array(z.string()).optional(),
     fullRetention: z.boolean().optional(),
+    source: z.literal("custom").optional(),
+    measure: z.string().optional(),
+    groupBy: z.array(z.string()).optional(),
+    rowTimeColumn: z.string().optional(),
   })
   .superRefine((binding, ctx) => {
     const declared = new Set(binding.ctx ?? []);
@@ -108,7 +112,7 @@ export const conditionSchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     kind: z.literal("absence"),
-    quietWindowSec: z.number().int().min(1800),
+    quietWindowSec: z.number().int().positive(),
   }),
 ]);
 export type Condition = z.infer<typeof conditionSchema>;
@@ -199,6 +203,21 @@ export function notifierRefKey(ref: NotifierRef): string {
   }
 }
 
+export const querySignalSchema = z
+  .object({
+    v: z.literal(1),
+    sources: z.array(z.object({ sourceId: z.string(), windowColumn: z.string() }).strict()),
+    mode: z.enum(["threshold", "absence", "match"]),
+    measure: z.string().optional(),
+    groupColumns: z.array(z.string()).optional(),
+    rowId: z
+      .object({ sourceId: z.string(), column: z.string(), eventColumn: z.string() })
+      .strict()
+      .optional(),
+  })
+  .strict();
+export type QuerySignal = z.infer<typeof querySignalSchema>;
+
 export const alertParamsSchema = z.object({
   environmentId: z.string(),
   scope: z.discriminatedUnion("type", [
@@ -214,6 +233,7 @@ export const alertParamsSchema = z.object({
     }),
   ]),
   windowSec: z.number().optional(),
+  querySignal: querySignalSchema.optional(),
 });
 export type AlertParams = z.infer<typeof alertParamsSchema>;
 

@@ -1,6 +1,6 @@
 import { parseWithZod } from "@conform-to/zod/v4";
 import { BookOpenIcon } from "@heroicons/react/20/solid";
-import { Outlet, useLoaderData, useSearchParams } from "@remix-run/react";
+import { Outlet, useLoaderData, useNavigate, useSearchParams } from "@remix-run/react";
 import { type ActionFunctionArgs, defer, json, redirect } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { useEffect, useRef } from "react";
@@ -8,6 +8,8 @@ import { AlertsList } from "~/components/alerts/AlertsList";
 import { hasLegacyAlerts } from "~/components/alerts/hasLegacyAlerts.server";
 import { LegacyAlertChannelsPage } from "~/components/alerts/LegacyAlertChannelsPage";
 import { LegacyAlertsBanner } from "~/components/alerts/LegacyAlertsBanner";
+import { ManualAlertCreationDock } from "~/components/alerts/ManualAlertCreation";
+import type { QueryAlertPrefill } from "~/components/alerts/queryAlertLink";
 import { createAlertPrompt } from "~/components/dashboard-agent/investigate-prompts";
 import { useDashboardAgent } from "~/components/dashboard-agent/dashboardAgentLauncher";
 import {
@@ -39,7 +41,9 @@ import {
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { rbac } from "~/services/rbac.server";
-import { requireUserId } from "~/services/session.server";
+import { getImpersonationState } from "~/services/impersonation.server";
+import { hasAdminDisplayAccess, requireUserId } from "~/services/session.server";
+import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
 import { canUseAlertsList } from "~/v3/canUseAlertsList.server";
 import {
   canAcrossEnvironments,
@@ -70,6 +74,7 @@ import { alertsAgentPageContext } from "~/components/dashboard-agent/suggested-p
 import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
 import { isV2AlertId, isNewAlertAction } from "~/v3/services/alerts/alertIdRouting";
+import { queryAlertPrefill } from "~/v3/services/alerts/queryAlerts/queryAlertPrefill.server";
 
 export const handle: Handle = {
   agentPageContext: (data) => alertsAgentPageContext(data),
@@ -145,6 +150,16 @@ export const loader = dashboardLoader(
       return defer({ mode: "legacy" as const, canWrite, ...data }) as unknown as Response;
     }
 
+    const { isViewingAsUser } = await getImpersonationState(request, user.id);
+    const showAdminUi = hasAdminDisplayAccess({ ...user, isViewingAsUser });
+    const agentAvailable = await canAccessDashboardAgent({
+      userId: user.id,
+      isAdmin: showAdminUi && user.admin,
+      isImpersonating: showAdminUi && user.isImpersonating,
+      organizationSlug,
+      orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+    });
+
     const searchParams = new URL(request.url).searchParams;
     const listPresenter = new AlertsListPresenter();
     const {
@@ -170,6 +185,8 @@ export const loader = dashboardLoader(
       truncated,
       canWrite: ability.can("write", { type: "alerts", envType: environment.type }),
       canDelete: ability.can("delete", { type: "alerts", envType: environment.type }),
+      agentAvailable,
+      queryAlert: searchParams.get("source") === "query" ? queryAlertPrefill(searchParams) : null,
     }) as unknown as Response;
   }
 );
@@ -358,7 +375,17 @@ type NewLoaderData = {
   hasMigratableLegacyAlerts: boolean;
   canWrite: boolean;
   canDelete: boolean;
+  agentAvailable: boolean;
+  queryAlert: QueryAlertPrefill | null;
 };
+
+const QUERY_CREATE_PARAMS = ["source", "q", "qperiod", "mode", "measure"];
+
+function stripCreateParams(params: URLSearchParams): URLSearchParams {
+  const next = stripCreateSearchParams(params);
+  if (params.get("source") === "query") for (const key of QUERY_CREATE_PARAMS) next.delete(key);
+  return next;
+}
 
 type LegacyLoaderData = {
   mode: "legacy";
@@ -383,6 +410,8 @@ export default function Page() {
         hasLegacyAlerts={data.hasLegacyAlerts}
         canWrite={data.canWrite}
         canDelete={data.canDelete}
+        agentAvailable={data.agentAvailable}
+        queryAlert={data.queryAlert}
       />
     );
   }
@@ -399,6 +428,8 @@ function NewAlertsPage({
   hasLegacyAlerts,
   canWrite,
   canDelete,
+  agentAvailable,
+  queryAlert,
 }: {
   alerts: NewLoaderData["alerts"];
   hasMigratableLegacyAlerts: boolean;
@@ -408,13 +439,17 @@ function NewAlertsPage({
   hasLegacyAlerts: boolean;
   canWrite: boolean;
   canDelete: boolean;
+  agentAvailable: boolean;
+  queryAlert: QueryAlertPrefill | null;
 }) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
   const agent = useDashboardAgent();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const wantCreate = searchParams.get("create") === "1";
+  const queryCreate = searchParams.get("create") === "1" && searchParams.get("source") === "query";
+  const wantCreate = searchParams.get("create") === "1" && !queryCreate;
   const listQuery = searchParams.toString();
   const pendingCreateRef = useRef<{
     area?: DraftPrefillParams["area"];
@@ -450,44 +485,65 @@ function NewAlertsPage({
     setSearchParams((prev) => stripCreateSearchParams(prev), { replace: true });
   }, [agent, setSearchParams]);
 
+  const manualCreate = (wantCreate && !agentAvailable && !agent) || queryCreate;
+  const alertPath = (alertId: string) => v3AlertPath(organization, project, environment, alertId);
+
   return (
-    <PageContainer>
-      <NavBar>
-        <PageTitle title="Alerts" />
-        <PageAccessories>
-          <WhenAgentUnavailable>
-            <LinkButton
-              LeadingIcon={BookOpenIcon}
-              to={docsPath("v3/troubleshooting-alerts")}
-              variant="docs/small"
-            >
-              Alerts docs
-            </LinkButton>
-          </WhenAgentUnavailable>
-        </PageAccessories>
-      </NavBar>
-      <div className="grid grid-rows-[auto_1fr] overflow-hidden">
-        <LegacyAlertsBanner show={hasMigratableLegacyAlerts} />
-        <PageBody scrollable={false}>
-          <AlertsList
-            alerts={alerts}
-            newAlertPath={v3AlertCreatePath(organization, project, environment)}
-            newAlertPrompt={createAlertPrompt(environmentFullTitle(environment))}
-            alertPath={(alertId) => v3AlertPath(organization, project, environment, alertId)}
-            canWrite={canWrite}
-            canDelete={canDelete}
-            hasLegacyAlerts={hasLegacyAlerts}
-            channelsTo={`${v3ProjectAlertChannelsPath(organization, project, environment)}${
-              listQuery ? `?${listQuery}` : ""
-            }`}
-            legacyTo={v3ProjectLegacyAlertsPath(organization, project, environment)}
-            page={page}
-            totalPages={totalPages}
-            truncated={truncated}
-          />
-          <Outlet />
-        </PageBody>
-      </div>
-    </PageContainer>
+    <ManualAlertCreationDock
+      open={manualCreate}
+      queryPrefill={queryCreate ? (queryAlert ?? undefined) : undefined}
+      prefill={{
+        area: asArea(searchParams.get("area") ?? undefined),
+        capability: searchParams.get("capability") ?? undefined,
+        scope: searchParams.get("scope") ?? undefined,
+        scopeValue: searchParams.get("scopeValue") ?? undefined,
+      }}
+      alertDetailPath={alertPath}
+      onCreated={(alertId) =>
+        alertId
+          ? navigate(alertPath(alertId))
+          : setSearchParams((prev) => stripCreateParams(prev), { replace: true })
+      }
+      onClose={() => setSearchParams((prev) => stripCreateParams(prev), { replace: true })}
+    >
+      <PageContainer>
+        <NavBar>
+          <PageTitle title="Alerts" />
+          <PageAccessories>
+            <WhenAgentUnavailable>
+              <LinkButton
+                LeadingIcon={BookOpenIcon}
+                to={docsPath("v3/troubleshooting-alerts")}
+                variant="docs/small"
+              >
+                Alerts docs
+              </LinkButton>
+            </WhenAgentUnavailable>
+          </PageAccessories>
+        </NavBar>
+        <div className="grid grid-rows-[auto_1fr] overflow-hidden">
+          <LegacyAlertsBanner show={hasMigratableLegacyAlerts} />
+          <PageBody scrollable={false}>
+            <AlertsList
+              alerts={alerts}
+              newAlertPath={v3AlertCreatePath(organization, project, environment)}
+              newAlertPrompt={createAlertPrompt(environmentFullTitle(environment))}
+              alertPath={alertPath}
+              canWrite={canWrite}
+              canDelete={canDelete}
+              hasLegacyAlerts={hasLegacyAlerts}
+              channelsTo={`${v3ProjectAlertChannelsPath(organization, project, environment)}${
+                listQuery ? `?${listQuery}` : ""
+              }`}
+              legacyTo={v3ProjectLegacyAlertsPath(organization, project, environment)}
+              page={page}
+              totalPages={totalPages}
+              truncated={truncated}
+            />
+            <Outlet />
+          </PageBody>
+        </div>
+      </PageContainer>
+    </ManualAlertCreationDock>
   );
 }

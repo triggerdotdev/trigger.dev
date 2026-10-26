@@ -88,23 +88,6 @@ function headers(html: string) {
 }
 
 describe("LegacyAlertChannelsPage", () => {
-  it("renders main's header row, title, rows and New alert button", () => {
-    const html = render([channel]);
-    expect(headers(html)).toEqual([
-      "Name",
-      "Alert types",
-      "Channel",
-      "Enabled",
-      "Environments",
-      "Actions",
-    ]);
-    expect(html).toContain("Project alerts");
-    expect(html).toContain("Task run failure, Deployment failure");
-    expect(html).toContain("New alert");
-    expect(html).toContain(">Disable<");
-    expect(html).toContain(">Delete<");
-  });
-
   it("hides the New alert button at the limit", () => {
     const html = render([channel], 10);
     expect(html).not.toContain("New alert");

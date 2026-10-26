@@ -117,20 +117,29 @@ function CurrentPropertyValue({
 
   if (rows.length === 0) return <span>No current reading.</span>;
 
+  const valueClass = (value: number) =>
+    over(value) ? "tabular-nums text-error" : "tabular-nums text-text-bright";
+  const thresholdSuffix = threshold !== undefined && (
+    <span className="text-text-faint"> / {format(threshold)}</span>
+  );
+
+  if (rows.length === 1 && !rows[0].label) {
+    return (
+      <span className={valueClass(rows[0].value)}>
+        {format(rows[0].value)}
+        {thresholdSuffix}
+      </span>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-1">
       {rows.map((row) => (
         <div key={row.key} className="flex items-center justify-between text-sm">
           <span>{row.label}</span>
-          <span
-            className={
-              over(row.value) ? "tabular-nums text-error" : "tabular-nums text-text-bright"
-            }
-          >
+          <span className={valueClass(row.value)}>
             {format(row.value)}
-            {threshold !== undefined && (
-              <span className="text-text-faint"> / {format(threshold)}</span>
-            )}
+            {thresholdSuffix}
           </span>
         </div>
       ))}

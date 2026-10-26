@@ -255,11 +255,15 @@ describe("scope value on scope type change", () => {
 });
 
 describe("below-threshold operator", () => {
-  it("rejects operator < and surfaces an error line", () => {
+  it("rejects operator < outside a query patch and surfaces an error line", () => {
     const patch = { condition: { operator: "<", value: 10 } };
     expect(alertDraftPatchSchema.safeParse(patch).success).toBe(false);
-    expect(contractPatchSchema.safeParse(patch).success).toBe(false);
     expect(draftResultLines({ ok: true, patch: patch as never })[0]?.variant).toBe("error");
+  });
+
+  it("accepts operator < on a query patch", () => {
+    const patch = { area: "query", query: "SELECT 1", condition: { operator: "<" } };
+    expect(alertDraftPatchSchema.safeParse(patch).success).toBe(true);
   });
 });
 

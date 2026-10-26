@@ -212,7 +212,7 @@ const objectStoreClients = singleton(
   () => new Map<string, ObjectStoreClient>()
 );
 
-function getObjectStoreClient(protocol?: string): ObjectStoreClient | undefined {
+export function getObjectStoreClient(protocol?: string): ObjectStoreClient | undefined {
   const config = getObjectStoreConfig(protocol);
   if (!config) return undefined;
 

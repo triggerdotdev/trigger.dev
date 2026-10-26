@@ -9,6 +9,7 @@ import { createGzip } from "zlib";
 import { Readable } from "stream";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
+import { getTraceStartTimeEnd } from "~/v3/eventRepository/traceInsertedAtBound";
 import {
   getTraceExportFormat,
   streamTraceExport,
@@ -42,8 +43,10 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
             traceId: true,
             organizationId: true,
             runtimeEnvironmentId: true,
+            status: true,
             createdAt: true,
             completedAt: true,
+            updatedAt: true,
             taskEventStore: true,
             taskIdentifier: true,
           },
@@ -106,7 +109,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     run.runtimeEnvironmentId,
     run.traceId,
     run.createdAt,
-    run.completedAt ?? undefined,
+    getTraceStartTimeEnd(run),
     { includeDebugLogs: showDebug }
   );
 

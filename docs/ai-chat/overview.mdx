@@ -12,12 +12,12 @@ A `chat.agent` task takes `messages`, calls `streamText`, and returns the result
 
 ```ts trigger/chat.ts
 import { chat } from "@trigger.dev/sdk/ai";
-import { streamText, stepCountIs } from "ai";
+import { stepCountIs } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 
 export const myChat = chat.agent({
   id: "my-chat",
-  run: async ({ messages, signal }) =>
+  run: async ({ messages, signal, streamText }) =>
     streamText({
       model: anthropic("claude-sonnet-4-5"),
       messages,
@@ -56,11 +56,12 @@ See [Quick Start](/ai-chat/quick-start) for the matching server actions and a ru
 
 ## How it fits together
 
-Three primitives, related but distinct:
+Four primitives, related but distinct:
 
 - **Chat agents** — the SDK surface you define with [`chat.agent()`](/ai-chat/backend#chat-agent). Owns the turn loop, lifecycle hooks, and the response stream.
 - **Sessions** — the durable, bi-directional channel keyed on `chatId` that holds the conversation across run boundaries. A chat agent runs *on top of* a [Session](/ai-chat/sessions).
-- **Sub-agents** — Delegate work from one agent to another via [`AgentChat`](/ai-chat/patterns/sub-agents). The sub-agent runs as its own durable agent on its own session; its response streams back through the parent as preliminary tool results, so the frontend sees the sub-agent working inside the parent's tool card.
+- **Sub-agents**: delegate work from one agent to another via [`AgentChat`](/ai-chat/patterns/sub-agents). The sub-agent runs as its own durable agent on its own session; [`chat.forwardSubAgent`](/ai-chat/patterns/sub-agents) streams its reply through the parent's tool call, so the frontend sees the sub-agent working inside the parent's tool card.
+- **Channels** connect an agent to a surface other than your frontend. [`slack()`](/webhooks/slack) and [`linear()`](/webhooks/linear) turn an agent into a Slack or Linear agent, and [`chat.channels.custom()`](/webhooks/channels) connects any chat surface that sends webhooks. Each conversation there is still a durable session, and the reply posts back to the surface.
 
 ## Next steps
 

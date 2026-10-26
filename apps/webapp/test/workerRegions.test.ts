@@ -8,6 +8,7 @@ import {
 
 const groups: WorkerGroupRegionRow[] = [
   {
+    id: "wg_us-east-1",
     masterQueue: "us-east-1",
     region: "us-east-1",
     workloadType: "CONTAINER",
@@ -17,6 +18,7 @@ const groups: WorkerGroupRegionRow[] = [
     projectId: null,
   },
   {
+    id: "wg_us-east-1-next",
     masterQueue: "us-east-1-next",
     region: "us-east-1",
     workloadType: "MICROVM",
@@ -26,6 +28,7 @@ const groups: WorkerGroupRegionRow[] = [
     projectId: null,
   },
   {
+    id: "wg_eu-central-1",
     masterQueue: "eu-central-1",
     region: "eu-central-1",
     workloadType: "CONTAINER",
@@ -50,6 +53,7 @@ describe("regionForQueue", () => {
     expect(
       regionForQueue("x", [
         {
+          id: "wg_x",
           masterQueue: "x",
           region: null,
           workloadType: "CONTAINER",
@@ -65,32 +69,38 @@ describe("regionForQueue", () => {
 
 describe("backingForQueue", () => {
   it("finds the MICROVM backing for a region with one", () => {
-    expect(backingForQueue("us-east-1", groups)).toEqual({
+    expect(backingForQueue("us-east-1", groups, [])).toEqual({
       workerQueue: "us-east-1-next",
       enableFastPath: true,
     });
   });
   it("returns undefined for a region with no compute backing (EU)", () => {
-    expect(backingForQueue("eu-central-1", groups)).toBeUndefined();
+    expect(backingForQueue("eu-central-1", groups, [])).toBeUndefined();
   });
   it("returns undefined when the queue's group has no region", () => {
     expect(
-      backingForQueue("x", [
-        {
-          masterQueue: "x",
-          region: null,
-          workloadType: "CONTAINER",
-          hidden: false,
-          enableFastPath: false,
-          type: "MANAGED",
-          projectId: null,
-        },
-      ])
+      backingForQueue(
+        "x",
+        [
+          {
+            id: "wg_x",
+            masterQueue: "x",
+            region: null,
+            workloadType: "CONTAINER",
+            hidden: false,
+            enableFastPath: false,
+            type: "MANAGED",
+            projectId: null,
+          },
+        ],
+        ["wg_x"]
+      )
     ).toBeUndefined();
   });
   it("ignores hidden MICROVM groups", () => {
     const g: WorkerGroupRegionRow[] = [
       {
+        id: "wg_us-east-1",
         masterQueue: "us-east-1",
         region: "us-east-1",
         workloadType: "CONTAINER",
@@ -100,6 +110,7 @@ describe("backingForQueue", () => {
         projectId: null,
       },
       {
+        id: "wg_us-east-1-next",
         masterQueue: "us-east-1-next",
         region: "us-east-1",
         workloadType: "MICROVM",
@@ -109,7 +120,54 @@ describe("backingForQueue", () => {
         projectId: null,
       },
     ];
-    expect(backingForQueue("us-east-1", g)).toBeUndefined();
+    expect(backingForQueue("us-east-1", g, [])).toBeUndefined();
+  });
+});
+
+describe("backingForQueue with a mixed-runtime group", () => {
+  const mixed: WorkerGroupRegionRow = {
+    id: "wg_mixed",
+    masterQueue: "cme-mixed",
+    region: "us-east-1",
+    workloadType: "CONTAINER",
+    hidden: false,
+    enableFastPath: false,
+    type: "MANAGED",
+    projectId: null,
+  };
+  const hiddenMvm: WorkerGroupRegionRow = {
+    ...mixed,
+    id: "wg_mvm",
+    masterQueue: "us-east-1-mvm",
+    workloadType: "MICROVM",
+    hidden: true,
+    enableFastPath: true,
+  };
+
+  it("makes a listed group its own backing when the region has no visible MICROVM group", () => {
+    expect(backingForQueue("cme-mixed", [mixed, hiddenMvm], ["wg_mixed"])).toEqual({
+      workerQueue: "cme-mixed",
+      enableFastPath: false,
+    });
+  });
+  it("gives an unlisted group no backing", () => {
+    expect(backingForQueue("cme-mixed", [mixed, hiddenMvm], ["wg_other"])).toBeUndefined();
+  });
+  it("prefers a visible MICROVM group in the region over self", () => {
+    const g = [mixed, { ...hiddenMvm, hidden: false }];
+    expect(backingForQueue("cme-mixed", g, ["wg_mixed"])).toEqual({
+      workerQueue: "us-east-1-mvm",
+      enableFastPath: true,
+    });
+  });
+  it("leaves the reverse map and the template fallback on the group's region", () => {
+    expect(regionForQueue("cme-mixed", [mixed, hiddenMvm])).toBe("us-east-1");
+    expect(
+      containerQueueForComputeQueue("us-east-1:v2:ondemand:fresh:compute:stable", [
+        mixed,
+        hiddenMvm,
+      ])
+    ).toBe("us-east-1:v2:ondemand:fresh:container:stable");
   });
 });
 
@@ -132,6 +190,7 @@ describe("containerQueueForComputeQueue", () => {
     expect(
       containerQueueForComputeQueue("ap-1-next", [
         {
+          id: "wg_ap-1-next",
           masterQueue: "ap-1-next",
           region: "ap-1",
           workloadType: "MICROVM",
@@ -146,6 +205,7 @@ describe("containerQueueForComputeQueue", () => {
   it("prefers the container group named after the region", () => {
     const g: WorkerGroupRegionRow[] = [
       {
+        id: "wg_private-us-east-1",
         masterQueue: "private-us-east-1",
         region: "us-east-1",
         workloadType: "CONTAINER",
@@ -167,6 +227,7 @@ describe("containerQueueForComputeQueue", () => {
     expect(
       containerQueueForComputeQueue("eu-west-1:v2:ondemand:fresh:compute:stable", [
         {
+          id: "wg_eu-west-1",
           masterQueue: "eu-west-1",
           region: null,
           workloadType: "CONTAINER",
@@ -200,6 +261,7 @@ describe("containerQueueForComputeQueue with project-scoped groups", () => {
     type: "MANAGED" | "UNMANAGED",
     projectId: string | null
   ): WorkerGroupRegionRow => ({
+    id: "wg_proj_1-us-east-1",
     masterQueue: "proj_1-us-east-1",
     region: "us-east-1",
     workloadType: "CONTAINER",
@@ -209,6 +271,7 @@ describe("containerQueueForComputeQueue with project-scoped groups", () => {
     projectId,
   });
   const microvm: WorkerGroupRegionRow = {
+    id: "wg_us-east-1-next",
     masterQueue: "us-east-1-next",
     region: "us-east-1",
     workloadType: "MICROVM",

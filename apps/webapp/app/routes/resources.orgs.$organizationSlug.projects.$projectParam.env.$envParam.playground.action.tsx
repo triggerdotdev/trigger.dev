@@ -9,6 +9,11 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { mintSessionToken } from "~/services/realtime/mintSessionToken.server";
+import {
+  isSafeSessionExternalId,
+  SESSION_EXTERNAL_ID_FOLD_ERROR,
+} from "~/services/realtime/sessionChannels.server";
+import { stripClientIngressFieldsFromBasePayload } from "~/services/realtime/sanitizeSessionInput.server";
 import { ensureRunForSession } from "~/services/realtime/sessionRunManager.server";
 import { runStore } from "~/v3/runStore.server";
 
@@ -95,6 +100,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       if (!chatId) {
         return json({ error: "chatId is required" }, { status: 400 });
       }
+      if (!isSafeSessionExternalId(chatId)) {
+        return json({ error: SESSION_EXTERNAL_ID_FOLD_ERROR }, { status: 400 });
+      }
 
       // Parse the optional initial payload — used as the basePayload
       // for the first run trigger. After session create, the agent
@@ -126,7 +134,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       ].slice(0, 10);
 
       const triggerConfig = {
-        basePayload: {
+        basePayload: stripClientIngressFieldsFromBasePayload({
           // The first run boots before the user's first message lands on
           // `.in/append`, so it sees `messages: []` and `trigger: "preload"`.
           // Mirrors the defaults in `chat.createStartSessionAction` —
@@ -137,7 +145,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           ...payload,
           chatId,
           ...(parsedClientData ? { metadata: parsedClientData } : {}),
-        },
+        }),
         ...(machine ? { machine } : {}),
         tags,
         ...(maxAttempts ? { maxAttempts: parseInt(maxAttempts, 10) } : {}),

@@ -518,7 +518,7 @@ export const createMonitoringAlertInputSchema = z.object({
     .enum(["dev", "staging", "prod", "preview"])
     .optional()
     .describe("Defaults to current."),
-  name: z.string().optional().describe("Short name."),
+  name: z.string().optional().describe("Name, no channel."),
   scope: z
     .object({
       type: z.enum(["queue", "queuePattern", "task", "all", "errorGroup"]),
@@ -563,6 +563,11 @@ export const createMonitoringAlertInputSchema = z.object({
     )
     .optional()
     .describe("Omit to notify this chat."),
+  query: z.string().max(8192).optional().describe("custom.query: TRQL."),
+  signal: z
+    .object({ mode: z.enum(["threshold", "absence", "match"]), measure: z.string().optional() })
+    .optional()
+    .describe("custom.query: from analyze_query_alert."),
 });
 
 export const createMonitoringAlertSchema = tool({
@@ -616,12 +621,18 @@ export const updateAlertDraftSchema = tool({
   inputSchema: updateAlertDraftInputSchema,
 });
 
+export const analyzeQueryAlertSchema = tool({
+  description: "Check whether a TRQL query can back an alert.",
+  inputSchema: z.object({ query: z.string().min(1).max(8192) }),
+});
+
 export const DASHBOARD_AGENT_MONITORING_ALERT_TOOL_NAMES = [
   "describe_alert_capabilities",
   "create_monitoring_alert",
   "update_alert_draft",
   "list_monitoring_alerts",
   "resolve_monitoring_alert",
+  "analyze_query_alert",
 ] as const;
 
 export const DASHBOARD_AGENT_ALERT_CREATION_EXCLUDED_TOOLS = [
@@ -675,6 +686,7 @@ export const dashboardAgentToolSchemas = {
   list_monitoring_alerts: listMonitoringAlertsSchema,
   resolve_monitoring_alert: resolveMonitoringAlertSchema,
   submit_feedback: submitFeedbackSchema,
+  analyze_query_alert: analyzeQueryAlertSchema,
 };
 
 // Code mode adds the source tools. Same key order `buildDashboardAgentTools`
@@ -891,11 +903,14 @@ Building an alert from free text:
 - Turn the user's intent into exactly one update_alert_draft call carrying the minimal patch - never create_monitoring_alert for this.
 - In alert_creation scope never create; after update_alert_draft succeeds, tell the user to press Continue.
 - Ask at most one clarifying question if ambiguous; else draft your best guess.
-- Thresholds are above-only; refuse below/under without calling update_alert_draft.
+- Non-query thresholds: above-only; refuse below/under, no update_alert_draft.
 - In alert_creation scope the user's message ends with the current draft; patch only values the user settles. Expiry is none, <n>h, <n>d or an ISO time with no maximum.
 - In alert_creation scope never say a value is set or updated unless you called update_alert_draft for it in this turn.
 - In alert_creation scope, once a specific error is identified, patch area "errors", what "errors.occurred_again", scope {type:"errorGroup", errorId, taskIdentifier, fingerprint} from list_errors/get_error. Never offer check cadence or defaults.
 - In alert_creation scope, asked for recommended values, answer briefly and in the same turn patch what and condition.params with describe_alert_capabilities defaults; never ask whether to apply them.
+- For a query alert, call analyze_query_alert first; never silently rewrite the user's query.
+- Take mode and measure from its modes; quote its errors and unsupported reasons verbatim.
+- In alert_creation scope patch area "query", query, querySignalChoice; else create custom.query with query and signal once the user confirms.
 - Keep the reply to one short sentence with the tool call; in alert_creation scope it always ends, even after a clarifying question, by asking whether to continue the setup ("…or shall we continue the setup?").`;
 
 // Appended to the system prompt only for turns where watches are enabled: without the

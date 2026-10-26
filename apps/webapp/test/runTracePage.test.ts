@@ -13,6 +13,7 @@ import {
 import type { SpanDetailedSummary } from "~/v3/eventRepository/eventRepository.types";
 import { decodeTraceCursor } from "~/v3/eventRepository/traceCursor";
 import { getRunTracePage, type RunTracePageRun } from "~/v3/eventRepository/runTracePage.server";
+import { getTraceStartTimeEnd } from "~/v3/eventRepository/traceInsertedAtBound";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -157,7 +158,7 @@ async function unpaged(
     run.traceId,
     rootSpanId,
     run.createdAt,
-    run.completedAt ?? undefined
+    getTraceStartTimeEnd(run)
   );
   if (!summary) throw new Error("no unpaged summary");
   return unpagedStates(summary.rootSpan);
@@ -255,7 +256,7 @@ describe("getRunTracePage", () => {
           ENV_ID,
           traceId,
           run.createdAt,
-          run.completedAt ?? undefined,
+          getTraceStartTimeEnd(run),
           undefined,
           { includeDebugLogs: true }
         );
@@ -267,7 +268,7 @@ describe("getRunTracePage", () => {
           traceId,
           "root",
           run.createdAt,
-          run.completedAt ?? undefined,
+          getTraceStartTimeEnd(run),
           { includeDebugLogs: true }
         );
         expect(summary && Object.keys(unpagedStates(summary.rootSpan))).toContain("debug");
@@ -279,7 +280,7 @@ describe("getRunTracePage", () => {
             "debug",
             traceId,
             run.createdAt,
-            run.completedAt ?? undefined,
+            getTraceStartTimeEnd(run),
             { includeDebugLogs }
           );
         expect(await getDebugSpan()).toBeUndefined();
@@ -421,6 +422,101 @@ describe("getRunTracePage", () => {
         pageRequest: { limit: 50, after: undefined },
       });
       expect(page.isErr() && page.error).toBe("store_unavailable");
+    } finally {
+      await shutdownRepository(repository);
+    }
+  });
+});
+
+describe("start_time end for final runs without completedAt", () => {
+  const UPDATED_AT_OFFSET_MS = 10_000;
+  const MINUTE_MS = 60_000;
+
+  async function insertLateSpans(clickhouse: ClickHouse, traceId: string) {
+    const [insertError] = await clickhouse.taskEventsV2.insert([
+      row(traceId, "root", { durationMs: UPDATED_AT_OFFSET_MS }),
+      row(traceId, "late9m", {
+        parentSpanId: "root",
+        offsetMs: UPDATED_AT_OFFSET_MS + 9 * MINUTE_MS,
+      }),
+      row(traceId, "late2h", {
+        parentSpanId: "root",
+        offsetMs: UPDATED_AT_OFFSET_MS + 120 * MINUTE_MS,
+      }),
+    ]);
+    expect(insertError).toBeNull();
+  }
+
+  async function readIds(repository: ClickhouseEventRepository, run: RunTracePageRun) {
+    const paged = (await pageAll(repository, run, 10)).flatMap((page) =>
+      page.data.map((span) => span.id)
+    );
+    return { paged, unpaged: Object.keys(await unpaged(repository, run, "root")) };
+  }
+
+  clickhouseTest(
+    "bounds a CANCELED run with no completedAt at updatedAt plus the slack",
+    async ({ clickhouseContainer }) => {
+      const { clickhouse, repository } = createRepository(clickhouseContainer.getConnectionUrl());
+      const traceId = "trace_cancelled_no_completed_at";
+
+      try {
+        await insertLateSpans(clickhouse, traceId);
+        const run = rootRun(traceId, {
+          status: "CANCELED",
+          completedAt: null,
+          updatedAt: new Date(BASE.getTime() + UPDATED_AT_OFFSET_MS),
+        });
+
+        const { paged, unpaged: unpagedIds } = await readIds(repository, run);
+        for (const ids of [paged, unpagedIds]) {
+          expect(ids).toContain("late9m");
+          expect(ids).not.toContain("late2h");
+        }
+      } finally {
+        await shutdownRepository(repository);
+      }
+    }
+  );
+
+  clickhouseTest("does not bound a non-final run", async ({ clickhouseContainer }) => {
+    const { clickhouse, repository } = createRepository(clickhouseContainer.getConnectionUrl());
+    const traceId = "trace_executing_no_completed_at";
+
+    try {
+      await insertLateSpans(clickhouse, traceId);
+      const run = rootRun(traceId, {
+        status: "EXECUTING",
+        completedAt: null,
+        updatedAt: new Date(BASE.getTime() + UPDATED_AT_OFFSET_MS),
+      });
+
+      const { paged, unpaged: unpagedIds } = await readIds(repository, run);
+      for (const ids of [paged, unpagedIds]) {
+        expect(ids).toEqual(expect.arrayContaining(["late9m", "late2h"]));
+      }
+    } finally {
+      await shutdownRepository(repository);
+    }
+  });
+
+  clickhouseTest("keeps ending a completed run at completedAt", async ({ clickhouseContainer }) => {
+    const { clickhouse, repository } = createRepository(clickhouseContainer.getConnectionUrl());
+    const traceId = "trace_completed_end_unchanged";
+
+    try {
+      await insertLateSpans(clickhouse, traceId);
+      const run = rootRun(traceId, {
+        completedAt: new Date(BASE.getTime() + UPDATED_AT_OFFSET_MS),
+        updatedAt: new Date(BASE.getTime() + UPDATED_AT_OFFSET_MS + 120 * MINUTE_MS),
+      });
+
+      const { paged, unpaged: unpagedIds } = await readIds(repository, run);
+      for (const ids of [paged, unpagedIds]) {
+        expect(ids).toContain("root");
+        expect(ids).not.toContain("late9m");
+        expect(ids).not.toContain("late2h");
+      }
     } finally {
       await shutdownRepository(repository);
     }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertChannelsDialog } from "~/components/alerts/AlertChannelsDialog";
 import type { ErrorGroupOption, ResolveErrorGroup } from "~/components/alerts/errorGroupOptions";
+import { saveSlackConnectResume } from "~/components/alerts/slackConnectResume";
 import { useErrorGroupLookup } from "~/components/alerts/useErrorGroupLookup";
 import {
   AreaAvailabilityLoader,
@@ -121,6 +122,7 @@ export function CreationTranscript({
   const transcriptRef = useRef<HTMLDivElement>(null);
   const [roomHeight, setRoomHeight] = useState(0);
   const [addingChannel, setAddingChannel] = useState(false);
+  const resumed = addChannel?.resumed ?? false;
   const allChannels = channels;
   const reviewFields = buildReviewFields(flow, allChannels, environmentTitle);
   const createdBlock = shownCreatedBlock(
@@ -136,7 +138,7 @@ export function CreationTranscript({
   const scopeEntities = entities?.kind === entityKind ? entities?.names : undefined;
   const [availability, setAvailability] = useState<AreaAvailability>();
   const hiddenAreas = queueMetricsEnabled ? [] : ["queues"];
-  const emptyAreas = [...(availability?.empty ?? []), ...hiddenAreas];
+  const emptyAreas = availability?.empty ?? [];
   const availabilityLoader = !flow.answers.area && (
     <AreaAvailabilityLoader loaded={availability} onLoad={setAvailability} />
   );
@@ -150,7 +152,8 @@ export function CreationTranscript({
         errorGroups,
         scopeEntities,
         emptyAreas,
-        setEntitySearch
+        setEntitySearch,
+        hiddenAreas
       )
     : [];
   const flowIndex = Math.max(
@@ -174,7 +177,8 @@ export function CreationTranscript({
         errorGroups,
         scopeEntities,
         emptyAreas,
-        setEntitySearch
+        setEntitySearch,
+        hiddenAreas
       )
     : [];
   const cardOpen = editing || (Boolean(position) && !cardClosed);
@@ -295,6 +299,7 @@ export function CreationTranscript({
               chatId={chatId}
               addChannel={addChannel}
               emptyAreas={emptyAreas}
+              hiddenAreas={hiddenAreas}
               onStartOver={startOver}
               environmentTitle={environmentTitle}
               alertDetailPath={
@@ -402,14 +407,20 @@ export function CreationTranscript({
         </div>
       </ChatTranscript>
 
-      {addChannel && addingChannel && (
+      {addChannel && (addingChannel || resumed) && (
         <AlertChannelsDialog
           open
+          connectReturnTo={addChannel.connectReturnTo}
+          addSlack={resumed}
+          onConnect={() =>
+            saveSlackConnectResume(addChannel.projectId, addChannel.environmentId, flow.answers)
+          }
           onCreated={(channel) => {
             if (!flow.answers.notifiers?.includes(channel.id)) flow.toggleNotifier(channel.id);
           }}
           onClose={() => {
             setAddingChannel(false);
+            addChannel.onResumeConsumed?.();
             addChannel.onCreated?.();
           }}
         />
@@ -419,7 +430,13 @@ export function CreationTranscript({
           <div ref={cardRef} className="absolute inset-x-3 bottom-full z-10 mb-1">
             <ChatWizardCard
               key={scenarioOpen ? "scenarios" : editing ? "customize" : "flow"}
-              steps={scenarioOpen ? [scenarioStep(hiddenAreas)] : editing ? customSteps : cardSteps}
+              steps={
+                scenarioOpen
+                  ? [scenarioStep(hiddenAreas, emptyAreas)]
+                  : editing
+                    ? customSteps
+                    : cardSteps
+              }
               stepIndex={
                 scenarioOpen
                   ? 0

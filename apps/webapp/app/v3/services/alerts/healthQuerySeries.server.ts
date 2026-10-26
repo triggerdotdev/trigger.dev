@@ -1,3 +1,4 @@
+import { parseClickhouseDateTime } from "./clickhouseDateTime";
 import {
   alertParamsSchema,
   conditionSchema,
@@ -257,7 +258,10 @@ async function worstGroupSeries(
   );
   const points = rows
     .filter((r) => r.value !== null && r.value !== undefined)
-    .map((r) => ({ bucket: new Date(r.bucket as string).getTime(), value: Number(r.value) || 0 }));
+    .map((r) => ({
+      bucket: parseClickhouseDateTime(r.bucket as string).getTime(),
+      value: Number(r.value) || 0,
+    }));
   return points.length === 0
     ? []
     : fillMetricBuckets(points, sinceMs, untilMs, bucketSeconds, null, undefined, maxBuckets);

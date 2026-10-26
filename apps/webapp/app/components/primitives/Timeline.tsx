@@ -96,6 +96,19 @@ export function Root({
   );
 }
 
+export type ScaleProps = {
+  startMs?: number;
+  durationMs: number;
+  children?: ReactNode;
+};
+
+/** Gives the elements inside it their own time range, keeping the Root's width */
+export function Scale({ startMs = 0, durationMs, children }: ScaleProps) {
+  return (
+    <TimelineContext.Provider value={{ startMs, durationMs }}>{children}</TimelineContext.Provider>
+  );
+}
+
 export type RowProps = ComponentPropsWithoutRef<"div">;
 
 /** This simply acts as a container, with position relative.

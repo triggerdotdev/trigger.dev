@@ -1,12 +1,5 @@
-// The Waitpoint-side adapter TRES consumes when it builds a fresh Redis-primary completed-waitpoint
-// cycle. It turns the run's ordered blocker ids into exactly one frozen CompletedWaitpointRecord per
-// DISTINCT id, resolving each id through the coordinator its SHAPE names — legacy ids through Postgres,
-// store-format ids through MemoryDB — and combines the two residencies into one complete record set.
-//
-// The frozen record shape and the write-side rules live in completedWaitpointResolver.ts and
-// completedWaitpointFreeze.test.ts; this file only routes ids to the right source and maps a
-// store-resident completion into that same shape. It never touches Redis or Postgres directly: the
-// readers are injected, so the partition/coverage logic is a pure function of them.
+// Resolves completed waitpoint ids to CompletedWaitpointRecords, one per distinct id. Legacy ids
+// resolve through Postgres, and store-format ids through the waitpoint store.
 import { parseWaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import type { CompletedWaitpointRecord } from "@internal/run-store";
 import type {
@@ -16,10 +9,8 @@ import type {
 } from "../waitpointCoordinator/storeCoordinator.js";
 
 /**
- * The whole resolution failed loudly. Every path that leaves a distinct id without exactly one
- * complete record throws this: a missing legacy or store record, a store record that is not
- * COMPLETED, a store id with no store reader, or a coverage mismatch. TRES turns a throw here into a
- * rolled-back transition, so a partial cycle is never published.
+ * Thrown when a distinct id does not resolve to exactly one complete record. On a resume, the throw
+ * aborts the transition before it commits, so a partial cycle is never published.
  */
 export class UnresolvableCompletedWaitpointRecordsError extends Error {
   constructor(
@@ -31,29 +22,15 @@ export class UnresolvableCompletedWaitpointRecordsError extends Error {
   }
 }
 
-/** Resolves the legacy (Postgres) half: one record per DISTINCT id, missing ids simply absent. */
+/** Postgres half: one record per distinct id. A missing id is left out. */
 export type LegacyCompletedWaitpointReader = (ids: string[]) => Promise<CompletedWaitpointRecord[]>;
 
-/** Resolves the store (MemoryDB) half: a map of the ids PRESENT in the store. Absence != failure. */
+/** Store half: a map of the ids present. A missing id is not a reader failure. */
 export type StoreCompletedWaitpointReader = (
   ids: string[]
 ) => Promise<Map<string, WaitpointStoredRecord>>;
 
-/**
- * Map a store-resident record + completion to the frozen CompletedWaitpointRecord shape, as of
- * `nowMs` (the resolver's single effective time).
- *
- * Output selection mirrors the Postgres write side (`recordOutputFor`): a RUN success re-derives its
- * output byte-identically from TaskRun.output, so it carries `deriveFromRun` and NOT a copy — even an
- * offloaded one — which keeps a potentially large inline value out of the cycle payload. Everything
- * else passes the store's own inline/ref discrimination straight through.
- *
- * The idempotency key is the already-resolved user-visible value, gated on its expiry (see
- * `idempotencyKeyIsActive`): the store keeps the original key on the immutable record even after its
- * separate reservation has expired via `PEXPIREAT`, so exposing it unconditionally would let an old
- * waitpoint present a key a replacement waitpoint has since taken over — the exact state the Postgres
- * path drops through `inactiveIdempotencyKey`.
- */
+/** Maps a store record to a CompletedWaitpointRecord as of `nowMs`. Throws with no completion. */
 export function storeRecordToCompletedWaitpointRecord(
   entry: WaitpointStoredRecord,
   nowMs: number
@@ -82,13 +59,10 @@ export function storeRecordToCompletedWaitpointRecord(
 }
 
 /**
- * Whether a store record's idempotency key is user-visible at `nowMs`.
- *
- * A system-generated or absent key is never exposed, and its expiry is not even consulted. A
- * user-provided key with no expiry is always active. One with an expiry is active only STRICTLY before
- * that instant: at the exact expiry ms the key is already gone, matching the `PEXPIREAT` that retires
- * its reservation. A stored expiry that will not parse is corrupted durable state, so it fails loud
- * rather than exposing the key or silently reinterpreting it.
+ * True when a user-provided idempotency key is active at `nowMs`: strictly before its expiry, to
+ * match the `PEXPIREAT` on its reservation. The store keeps the key on the record after the
+ * reservation expires, and a newer waitpoint can own it then (as with `inactiveIdempotencyKey` in
+ * Postgres). Throws on an expiry that does not parse.
  */
 function idempotencyKeyIsActive(record: WaitpointRecordInput, nowMs: number): boolean {
   if (!record.userProvidedIdempotencyKey || !record.idempotencyKey) {
@@ -112,11 +86,8 @@ function storeRecordOutput(
   record: WaitpointRecordInput,
   completion: WaitpointCompletion
 ): CompletedWaitpointRecord["output"] {
-  // FIRST, before the null and inline/ref branches: a RUN success re-derives its output
-  // byte-identically from TaskRun.output, so it carries deriveFromRun and never a copy. This
-  // precedes the null check deliberately — unlike the Postgres write side, where a null output means
-  // "none". The store may store a RUN success's output as null precisely BECAUSE it is re-derivable
-  // and was never copied, so a null here must still resolve to deriveFromRun, not to no output.
+  // Before the null check: the store can hold a RUN success's output as null because it is derived
+  // from TaskRun.output. Null must still give deriveFromRun here, unlike the Postgres write side.
   if (record.type === "RUN" && !completion.outputIsError && record.completedByTaskRunId) {
     return { deriveFromRun: true };
   }
@@ -131,31 +102,22 @@ function storeRecordOutput(
 }
 
 /**
- * Resolve the complete frozen record set for one Redis-primary resume.
- *
- * `requestedIds` is the caller's ordered, duplicate-preserving blocker list. The returned records are
- * one per DISTINCT id, in first-seen order — the ordered/duplicate reference list and its indexes stay
- * with the caller's separate `completedWaitpoints` array, which is what the read-time enhancement step
- * expands. Every distinct id is resolved exactly once even when referenced repeatedly.
- *
- * Partitioning is by id SHAPE and is total and exclusive: `parseWaitpointId` classes every id as
- * either legacy or store-format, never both and never neither. A store id therefore never reaches
- * Postgres, and a missing store record never falls back to it.
+ * Returns one record per distinct id in `requestedIds`, in first-seen order. The caller keeps the
+ * ordered list with its duplicates. `parseWaitpointId` puts each id in exactly one half, so a store
+ * id never falls back to Postgres. Throws UnresolvableCompletedWaitpointRecordsError on any gap.
  */
 export async function resolveCompletedWaitpointRecords(args: {
   requestedIds: string[];
   legacyReader: LegacyCompletedWaitpointReader;
   storeReader?: StoreCompletedWaitpointReader;
-  /** Effective-time clock, called exactly ONCE. Injectable for tests; defaults to `Date.now`. */
+  /** Called once. Defaults to `Date.now`. */
   now?: () => number;
 }): Promise<CompletedWaitpointRecord[]> {
   const { requestedIds, legacyReader, storeReader } = args;
 
-  // Captured ONCE for the whole invocation, so a cycle whose records straddle an idempotency-key
-  // expiry boundary judges every record against the same instant instead of a per-record clock.
+  // One instant for every record, so records that straddle a key expiry are judged consistently.
   const nowMs = (args.now ?? Date.now)();
 
-  // First-seen order, duplicates collapsed: the distinct set we must cover exactly once each.
   const distinctIds: string[] = [];
   const seen = new Set<string>();
   const legacyIds: string[] = [];
@@ -185,8 +147,6 @@ export async function resolveCompletedWaitpointRecords(args: {
     const legacyRecords = await legacyReader(legacyIds);
     for (const rec of legacyRecords) {
       if (!legacySet.has(rec.id)) {
-        // The reader returned a record for an id we never asked for (or a store id): an integrity
-        // failure, not something to silently keep.
         throw new UnresolvableCompletedWaitpointRecordsError(
           `Legacy reader returned an unrequested record ${rec.id}`,
           rec.id
@@ -211,8 +171,6 @@ export async function resolveCompletedWaitpointRecords(args: {
   }
 
   if (storeIds.length > 0) {
-    // storeReader is defined here (guarded above). A Redis failure throws out of it; a genuinely
-    // absent id comes back simply missing from the map — the two are never conflated.
     const storeMap = await storeReader!(storeIds);
     for (const id of storeIds) {
       const entry = storeMap.get(id);
@@ -223,8 +181,7 @@ export async function resolveCompletedWaitpointRecords(args: {
         );
       }
       if (entry.record.id !== id) {
-        // The store returned a record whose own id is not the one we asked for: a wrong or corrupted
-        // blob. Trusting it would file the mismatched record under `id` and lose the real one.
+        // A corrupt blob. Keeping it would file the wrong record under `id`.
         throw new UnresolvableCompletedWaitpointRecordsError(
           `Store returned record ${entry.record.id} for requested id ${id}`,
           id
@@ -240,7 +197,6 @@ export async function resolveCompletedWaitpointRecords(args: {
     }
   }
 
-  // Belt and braces over the per-half checks: exactly one record per distinct id, nothing extra.
   if (byId.size !== distinctIds.length) {
     throw new UnresolvableCompletedWaitpointRecordsError(
       `Resolved ${byId.size} record(s) for ${distinctIds.length} distinct waitpoint id(s)`

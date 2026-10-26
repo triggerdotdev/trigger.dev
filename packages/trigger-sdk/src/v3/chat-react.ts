@@ -32,6 +32,11 @@ import {
   type InferChatUIMessage,
 } from "./ai-shared.js";
 import type { UIMessage, ChatRequestOptions } from "ai";
+import {
+  createSubAgentMessages,
+  type SubAgentMessages,
+  type SubAgentMessagesOptions,
+} from "./subAgentStream.js";
 
 /**
  * Options for `useTriggerChatTransport`, with a type-safe `task` field.
@@ -403,6 +408,41 @@ export type UsePendingMessagesReturn = {
   getInjectedMessages: (part: unknown) => InjectedMessage[];
 };
 
+/** @internal */
+export function isInjectionPart(part: unknown): boolean {
+  return (
+    typeof part === "object" &&
+    part !== null &&
+    (part as any).type === PENDING_MESSAGE_INJECTED_TYPE
+  );
+}
+
+/** @internal */
+export function injectedMessageIdsOf(part: unknown): string[] {
+  if (!isInjectionPart(part)) return [];
+  const ids = (part as any).data?.messageIds;
+  return Array.isArray(ids) ? ids : [];
+}
+
+/** @internal */
+export function injectedMessagesOf(part: unknown): InjectedMessage[] {
+  if (!isInjectionPart(part)) return [];
+  const msgs = (part as any).data?.messages;
+  return Array.isArray(msgs) ? msgs : [];
+}
+
+/** @internal */
+export function collectInjectedMessageIds(messages: ReadonlyArray<UIMessage>): string[] {
+  const ids: string[] = [];
+  for (const msg of messages) {
+    if (msg.role !== "assistant") continue;
+    for (const part of msg.parts ?? []) {
+      ids.push(...injectedMessageIdsOf(part));
+    }
+  }
+  return ids;
+}
+
 /**
  * React hook for managing pending messages (steering) during streaming.
  *
@@ -464,20 +504,10 @@ export function usePendingMessages<TUIMessage extends UIMessage = UIMessage>(
   useEffect(() => {
     if (status !== "streaming") return;
     let newlyInjected = false;
-    for (const msg of messages) {
-      if (msg.role !== "assistant") continue;
-      for (const part of msg.parts ?? []) {
-        if ((part as any).type === PENDING_MESSAGE_INJECTED_TYPE) {
-          const messageIds = (part as any).data?.messageIds;
-          if (Array.isArray(messageIds)) {
-            for (const id of messageIds) {
-              if (!injectedIdsRef.current.has(id)) {
-                injectedIdsRef.current.add(id);
-                newlyInjected = true;
-              }
-            }
-          }
-        }
+    for (const id of collectInjectedMessageIds(messages)) {
+      if (!injectedIdsRef.current.has(id)) {
+        injectedIdsRef.current.add(id);
+        newlyInjected = true;
       }
     }
     // Remove injected steering messages from the pending overlay immediately
@@ -574,31 +604,9 @@ export function usePendingMessages<TUIMessage extends UIMessage = UIMessage>(
     [transport, chatId, metadata]
   );
 
-  const isInjectionPoint = useCallback(
-    (part: unknown): boolean =>
-      typeof part === "object" &&
-      part !== null &&
-      (part as any).type === PENDING_MESSAGE_INJECTED_TYPE,
-    []
-  );
-
-  const getInjectedMessageIds = useCallback(
-    (part: unknown): string[] => {
-      if (!isInjectionPoint(part)) return [];
-      const ids = (part as any).data?.messageIds;
-      return Array.isArray(ids) ? ids : [];
-    },
-    [isInjectionPoint]
-  );
-
-  const getInjectedMessages = useCallback(
-    (part: unknown): InjectedMessage[] => {
-      if (!isInjectionPoint(part)) return [];
-      const msgs = (part as any).data?.messages;
-      return Array.isArray(msgs) ? msgs : [];
-    },
-    [isInjectionPoint]
-  );
+  const isInjectionPoint = isInjectionPart;
+  const getInjectedMessageIds = injectedMessageIdsOf;
+  const getInjectedMessages = injectedMessagesOf;
 
   const pending: PendingMessage[] = pendingMsgs.map((m) => ({
     id: m.id,
@@ -659,4 +667,49 @@ export function useChatActions(options: {
     await sendMessageRef.current(undefined, { body: { action } });
   }, []);
   return { sendAction };
+}
+
+/**
+ * Render sub-agents streamed with `chat.forwardSubAgent` while they run.
+ *
+ * Pass `onData` to `useChat`, then read a sub-agent's message by the parent
+ * tool call's id. While the sub-agent runs the parent tool part has no output
+ * yet, so fall back to `part.output` for finished calls and reloaded history.
+ *
+ * Each message is rebuilt from the chunks received so far at most once per
+ * `throttleMs`, so a long reply costs a bounded number of rebuilds.
+ *
+ * @example
+ * ```tsx
+ * const subAgents = useSubAgentMessages();
+ * const { messages } = useChat({ transport, onData: subAgents.onData });
+ *
+ * // inside the parent's tool card
+ * const message = subAgents.get(part.toolCallId) ?? part.output;
+ * ```
+ */
+export function useSubAgentMessages<TUIMessage extends UIMessage = UIMessage>(
+  options?: Pick<SubAgentMessagesOptions, "throttleMs">
+): Pick<SubAgentMessages<TUIMessage>, "onData" | "get"> {
+  const [, setVersion] = useState(0);
+  const mountedRef = useRef(false);
+  const storeRef = useRef<SubAgentMessages<TUIMessage> | null>(null);
+  if (storeRef.current === null) {
+    storeRef.current = createSubAgentMessages<TUIMessage>({
+      throttleMs: options?.throttleMs,
+      onChange: () => {
+        if (mountedRef.current) setVersion((current) => current + 1);
+      },
+    });
+  }
+  const store = storeRef.current;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  return { onData: store.onData, get: store.get };
 }

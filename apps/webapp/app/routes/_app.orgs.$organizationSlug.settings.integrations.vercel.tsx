@@ -177,6 +177,23 @@ export const action = dashboardAction(
       await VercelIntegrationRepository.uninstallVercelIntegration(vercelIntegration);
 
     if (uninstallResult.isErr()) {
+      if (uninstallResult.error.reason === "disabled") {
+        logger.warn("Vercel installation is disabled, not removing", {
+          organizationId: organization.id,
+          organizationSlug,
+          userId,
+          integrationId: vercelIntegration.id,
+        });
+
+        return json(
+          {
+            error:
+              "This Vercel installation is disabled. A Vercel team owner must restore it or remove it from Vercel → Integrations.",
+          },
+          { status: 409 }
+        );
+      }
+
       logger.error("Failed to uninstall Vercel integration", {
         organizationId: organization.id,
         organizationSlug,

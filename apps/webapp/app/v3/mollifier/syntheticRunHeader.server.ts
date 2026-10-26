@@ -30,6 +30,7 @@ export function buildSyntheticRunHeader(args: {
   const { run, environment } = args;
   const isCancelled = run.status === "CANCELED";
   const isFailed = run.status === "FAILED";
+  const completedAt = run.cancelledAt ?? (isFailed ? run.createdAt : null);
 
   return {
     // `id` mirrors RunPresenter.getRun's runData (the PG path), which
@@ -53,14 +54,14 @@ export function buildSyntheticRunHeader(args: {
     startedAt: null,
     // Symmetric with `buildSyntheticSpanRun` and the
     // `ApiRetrieveRunPresenter` synth path. The run-detail route
-    // derives `isCompleted` from `completedAt !== null` and gates SSE
-    // live-reloading on it (`route.tsx:459`, `:551`); leaving
-    // `completedAt` null for FAILED would keep a terminal buffered run
-    // live-reloading forever. PG-resident SYSTEM_FAILURE rows always
-    // have completedAt set, so fall back to createdAt (the buffer
-    // entry has no separate failedAt — closest proxy for when the
-    // terminal state landed).
-    completedAt: run.cancelledAt ?? (isFailed ? run.createdAt : null),
+    // derives `isCompleted` from `finishedAt !== null` and gates SSE
+    // live-reloading on it; leaving it null for FAILED would keep a
+    // terminal buffered run live-reloading forever. PG-resident
+    // SYSTEM_FAILURE rows always have completedAt set, so fall back to
+    // createdAt (the buffer entry has no separate failedAt — closest
+    // proxy for when the terminal state landed).
+    completedAt,
+    finishedAt: completedAt,
     logsDeletedAt: null,
     rootTaskRun: null,
     parentTaskRun: null,

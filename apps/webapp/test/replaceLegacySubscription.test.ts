@@ -128,7 +128,7 @@ describe("ReplaceLegacySubscriptionService", () => {
       );
       for (const alert of alerts) {
         expect(alert.capabilityKey).toBe("runs.failed");
-        expect(alert.name).toBe("Failed runs · Email to ops@example.com");
+        expect(alert.name).toBe("Failed runs above 0 on all runs");
         expect(alert.notifiers).toEqual([{ type: "channel", channelId: seeded.channel.id }]);
         expect(alert.condition).toMatchObject({ kind: "threshold", operator: ">", value: 0 });
       }
@@ -332,7 +332,7 @@ describe("ReplaceLegacySubscriptionService", () => {
       expect(result).toMatchObject({ replaced: true, skipped: 0 });
       const alerts = await listAlerts(db, { projectId: seeded.project.id });
       expect(alerts.map((alert) => [alert.environmentId, alert.name])).toEqual([
-        [seeded.production.id, "Failed runs · Email to ops@example.com"],
+        [seeded.production.id, "Failed runs above 0 on all runs"],
       ]);
       await worker.stop();
     }
@@ -370,6 +370,49 @@ describe("ReplaceLegacySubscriptionService", () => {
         where: { id: seeded.channel.id },
       });
       expect(channel.alertTypes).toEqual(["TASK_RUN"]);
+    }
+  );
+
+  postgresAndRedisTest(
+    "names a task-scoped replacement after its task",
+    async ({ prisma, redisOptions }) => {
+      const worker = createWorker(redisOptions);
+      const deps = depsFor(worker);
+      const db = await boot(prisma);
+      const seeded = await seed(prisma, ["TASK_RUN"], ["PRODUCTION"]);
+      const backgroundWorker = await prisma.backgroundWorker.create({
+        data: {
+          friendlyId: `worker_${suffix()}`,
+          contentHash: `hash_${suffix()}`,
+          version: "20260101.1",
+          metadata: {},
+          projectId: seeded.project.id,
+          runtimeEnvironmentId: seeded.production.id,
+        },
+      });
+      await prisma.backgroundWorkerTask.create({
+        data: {
+          friendlyId: `task_${suffix()}`,
+          slug: "send-email",
+          filePath: "src/trigger/send-email.ts",
+          workerId: backgroundWorker.id,
+          projectId: seeded.project.id,
+          runtimeEnvironmentId: seeded.production.id,
+        },
+      });
+
+      await new ReplaceLegacySubscriptionService(prisma, db, undefined, deps).call({
+        projectId: seeded.project.id,
+        channelId: seeded.channel.id,
+        alertType: "TASK_RUN",
+        userId: seeded.user.id,
+        environmentIds: [seeded.production.id],
+        scope: { type: "task", taskIdentifier: "send-email" },
+      });
+
+      const alerts = await listAlerts(db, { projectId: seeded.project.id });
+      expect(alerts.map((alert) => alert.name)).toEqual(["Failed runs above 0 on send-email"]);
+      await worker.stop();
     }
   );
 

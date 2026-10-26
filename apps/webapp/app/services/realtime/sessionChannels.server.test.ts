@@ -16,10 +16,35 @@ describe("isSafeSessionExternalId", () => {
     expect(isSafeSessionExternalId("a:channels:b:channels:c")).toBe(false);
   });
 
+  it("rejects an externalId whose direction fold equals another session's channel fold", () => {
+    expect(isSafeSessionExternalId("chat_abc:channels")).toBe(false);
+    expect(sessionStreamResources("out", ["chat_abc:channels"])).toEqual([]);
+    const channelOut = buildJwtAbility(["read:sessions:chat_abc:channels:out"]);
+    expect(channelOut.can("read", sessionChannelResources("out", ["chat_abc"], "out"))).toBe(true);
+    expect(
+      channelOut.can("read", sessionStreamResources("out", ["chat_abc:channels", "session_x"]))
+    ).toBe(false);
+  });
+
   it("rejects an externalId that collides with the direction fold", () => {
     expect(isSafeSessionExternalId("session_abc:out")).toBe(false);
     expect(isSafeSessionExternalId("session_abc:in")).toBe(false);
     expect(isSafeSessionExternalId(":out")).toBe(false);
+  });
+
+  it("rejects an externalId whose stream name would equal another session's channel stream", () => {
+    expect(isSafeSessionExternalId("chat_abc/channels/tools")).toBe(false);
+    expect(isSafeSessionExternalId("chat_abc/channels/tools/extra")).toBe(false);
+    expect(isSafeSessionExternalId("chat_abc/channels")).toBe(false);
+    expect(isSafeSessionExternalId("/channels/tools")).toBe(false);
+  });
+
+  it("allows externalIds with slashes that never form a /channels segment", () => {
+    expect(isSafeSessionExternalId("org/team-1/chat-9")).toBe(true);
+    expect(isSafeSessionExternalId("channels/general")).toBe(true);
+    expect(isSafeSessionExternalId("chat_abc/channelsx/tools")).toBe(true);
+    expect(isSafeSessionExternalId("chat_abc/my-channels/tools")).toBe(true);
+    expect(isSafeSessionExternalId("chat_abc/Channels/tools")).toBe(true);
   });
 
   it("allows normal externalIds, including single colons that are not the fold infix", () => {
@@ -27,6 +52,7 @@ describe("isSafeSessionExternalId", () => {
     expect(isSafeSessionExternalId("user:123")).toBe(true);
     expect(isSafeSessionExternalId("org:abc:chat:1")).toBe(true);
     expect(isSafeSessionExternalId("channels")).toBe(true);
+    expect(isSafeSessionExternalId("chat:channels-1")).toBe(true);
     expect(isSafeSessionExternalId("plain")).toBe(true);
     // Only the exact `:out` / `:in` suffix folds; these merely contain or end with the word.
     expect(isSafeSessionExternalId("checkout")).toBe(true);
@@ -90,6 +116,22 @@ describe("sessionStreamResources", () => {
     ).toBe(true);
     // An unsafe key contributes no resource at all.
     expect(sessionStreamResources("out", ["chat_abc:out"])).toEqual([]);
+  });
+
+  it("never authorizes an externalId that names another session's channel stream", () => {
+    const aliasKey = "chat_abc/channels/tools";
+    const aliasToken = buildJwtAbility([`read:sessions:${aliasKey}`]);
+    expect(sessionStreamResources("out", [aliasKey])).toEqual([]);
+    expect(sessionChannelResources("notes", [aliasKey], "out")).toEqual([]);
+    expect(aliasToken.can("read", sessionStreamResources("out", [aliasKey, "session_alias"]))).toBe(
+      false
+    );
+    expect(
+      buildJwtAbility(["read:sessions:session_alias"]).can(
+        "read",
+        sessionStreamResources("out", [aliasKey, "session_alias"])
+      )
+    ).toBe(true);
   });
 
   it("does not let a direction-scoped token match the bare session", () => {

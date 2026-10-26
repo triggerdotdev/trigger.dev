@@ -54,6 +54,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { MAX_API_KEY_TASK_IDENTIFIERS } from "~/consts";
 import {
   createEnvironmentApiKey,
@@ -329,7 +330,14 @@ export default function Page() {
         .join("\n")
     : null;
 
-  const hasApiKeys = rootApiKey !== null || apiKeys.length > 0;
+  const hasUsableApiKey = apiKeys.some(
+    (apiKey) =>
+      !apiKey.revokedAt && !(apiKey.expiresAt && new Date(apiKey.expiresAt).getTime() <= loadedAt)
+  );
+  const showCreateApiKeyPrompt = rootApiKey?.isHidden === true && !hasUsableApiKey;
+  const canManageRootApiKey = canWriteApiKeys || rootApiKey?.isHidden === false;
+  const chooseAccessHint =
+    isRbacPluginAvailable && presets !== null ? ", and choose what it can access" : "";
 
   return (
     <PageContainer>
@@ -378,9 +386,9 @@ export default function Page() {
                     />
                   ) : null}
                   <RevokedFilter checked={showRevoked} />
-                  {hasApiKeys ? (
+                  {showCreateApiKeyPrompt ? null : (
                     <NewApiKeyButton canWrite={canWriteApiKeys} variant="primary/small" />
-                  ) : null}
+                  )}
                 </div>
               </div>
 
@@ -401,7 +409,14 @@ export default function Page() {
                           <span className="font-mono text-text-dimmed">
                             {rootApiKey.obfuscated}
                           </span>
-                          <CopyButton value={rootApiKey.value} variant="icon" size="small" />
+                          {rootApiKey.value ? (
+                            <CopyButton value={rootApiKey.value} variant="icon" size="small" />
+                          ) : (
+                            <InfoIconTooltip
+                              content={`Root keys are being phased out. Create a new API key instead${chooseAccessHint}.`}
+                              contentClassName="max-w-xs"
+                            />
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -417,17 +432,22 @@ export default function Page() {
                         isSticky
                         className="w-32"
                         hiddenButtons={
-                          <>
-                            {canWriteApiKeys ? (
-                              <RegenerateApiKeyModal
-                                id={environment.keyEnvironmentId}
-                                title={environmentFullTitle(apiKeyEnvironmentLabel)}
-                                hasVercelIntegration={hasVercelIntegration}
-                                isDevelopment={environment.type === "DEVELOPMENT"}
-                              />
-                            ) : null}
-                            <DisableRootApiKeyButton canWrite={canWriteApiKeys} />
-                          </>
+                          canManageRootApiKey ? (
+                            <>
+                              {canWriteApiKeys ? (
+                                <RegenerateApiKeyModal
+                                  id={environment.keyEnvironmentId}
+                                  title={environmentFullTitle(apiKeyEnvironmentLabel)}
+                                  hasVercelIntegration={hasVercelIntegration}
+                                  isDevelopment={environment.type === "DEVELOPMENT"}
+                                  isRootApiKeyHidden={rootApiKey.isHidden}
+                                />
+                              ) : null}
+                              {rootApiKey.isHidden ? null : (
+                                <DisableRootApiKeyButton canWrite={canWriteApiKeys} />
+                              )}
+                            </>
+                          ) : null
                         }
                       />
                     </TableRow>
@@ -493,19 +513,19 @@ export default function Page() {
                     );
                   })}
 
-                  {hasApiKeys ? null : (
+                  {showCreateApiKeyPrompt ? (
                     <TableBlankRow colSpan={8}>
                       <div className="flex flex-col items-center justify-center gap-y-4 py-8">
                         <div className="flex flex-col items-center gap-y-1">
-                          <Header2>You don't have any API keys.</Header2>
+                          <Header2>Create an API key for your backend</Header2>
                           <Paragraph variant="small">
-                            Create one so your backend can authenticate with Trigger.dev.
+                            {`Root keys are being phased out. Create an API key so your backend can authenticate with Trigger.dev${chooseAccessHint}.`}
                           </Paragraph>
                         </div>
                         <NewApiKeyButton canWrite={canWriteApiKeys} variant="primary/medium" />
                       </div>
                     </TableBlankRow>
-                  )}
+                  ) : null}
                 </TableBody>
               </Table>
             </NewApiKeyDialog>
@@ -1265,8 +1285,8 @@ function DisableRootApiKeyButton({ canWrite }: { canWrite: boolean }) {
         <Form method="post" className="flex flex-col gap-4 pt-3">
           <input type="hidden" name="action" value="disable-root" />
           <Callout variant="warning">
-            The root API key will no longer be displayed for this environment. A new hidden root key
-            will be generated, and this can't be reversed.
+            The full root API key will no longer be displayed for this environment, only its last 4
+            characters. A new hidden root key will be generated, and this can't be reversed.
           </Callout>
           <Paragraph>
             The current root key will remain valid for 24 hours. Create and deploy an additional API

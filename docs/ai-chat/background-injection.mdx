@@ -70,6 +70,8 @@ export const myChat = chat.agent({
 
 If the background work finishes *during* a tool-call loop (not between turns), the messages are picked up at the next `prepareStep` boundary instead.
 
+An injection made from a tool mid-turn is recorded in the conversation history at the step where it happened, after the tool result. The next turn's prompt prefix is unchanged.
+
 ## Example: self-review
 
 A cheap model reviews the agent's response after each turn and injects coaching for the next one. Uses [Prompts](/ai/prompts) for the review prompt and `generateObject` for structured output.

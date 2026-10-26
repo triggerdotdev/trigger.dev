@@ -1,11 +1,11 @@
 import { redirect, type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { env } from "~/env.server";
 import { commitImpersonationSession, setViewingAsUser } from "~/services/impersonation.server";
 import { logger } from "~/services/logger.server";
 import { requireUser } from "~/services/session.server";
 import { sanitizeRedirectPath } from "~/utils";
 import { isSameOriginNavigation } from "~/utils/sameOriginNavigation";
+import { loginOriginForRequest } from "~/services/adminOrigin.server";
 
 const FormSchema = z.object({
   viewAsUser: z.enum(["true", "false"]),
@@ -22,7 +22,7 @@ export async function action({ request }: ActionFunctionArgs) {
   // The toggle is submitted from our own side menu, so this holds. Applied here
   // for the same reason as the other impersonation routes: no other site gets to
   // drive this state change.
-  if (!isSameOriginNavigation(request, env.LOGIN_ORIGIN)) {
+  if (!isSameOriginNavigation(request, loginOriginForRequest(request))) {
     logger.warn("Refusing cross-site view-as-user submission", {
       userId: user.id,
       secFetchSite: request.headers.get("sec-fetch-site"),

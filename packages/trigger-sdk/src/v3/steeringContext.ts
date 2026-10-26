@@ -1,11 +1,13 @@
 import type { ModelMessage, UIMessage } from "ai";
-import { PENDING_MESSAGE_INJECTED_TYPE } from "./ai-shared.js";
+import { BACKGROUND_INJECTION_TYPE, PENDING_MESSAGE_INJECTED_TYPE } from "./ai-shared.js";
 
 /** Private model forms, keyed by the durable UI injection marker. */
 export type SteeringInjection = {
   id: string;
   messageIds: string[];
   messages: ModelMessage[];
+  /** `background` for `chat.inject` drained mid-turn; absent means steering. */
+  kind?: "steering" | "background";
   /** Inputs removed by snapshot retention, not an explicit history edit. */
   trimmedMessageIds?: string[];
 };
@@ -42,16 +44,38 @@ export function retainStepMessages<T extends StepInput, R extends { messages?: M
   };
 }
 
+const isInjectionMarker = (part: { type: string }) =>
+  part.type === PENDING_MESSAGE_INJECTED_TYPE || part.type === BACKGROUND_INJECTION_TYPE;
+
+/** Drop injection marker parts; only the agent's own assistant messages carry them. */
+export function withoutInjectionMarkers<T extends UIMessage>(message: T): T {
+  return message.parts.some(isInjectionMarker)
+    ? { ...message, parts: message.parts.filter((part) => !isInjectionMarker(part)) }
+    : message;
+}
+
+/** Injection markers, read from assistant messages only. */
 export function steeringMarkers(messages: readonly UIMessage[]) {
   return messages.flatMap((message) =>
-    message.parts.flatMap((part) => {
-      if (part.type !== PENDING_MESSAGE_INJECTED_TYPE) return [];
+    (message.role === "assistant" ? message.parts : []).flatMap((part) => {
+      if (part.type !== PENDING_MESSAGE_INJECTED_TYPE && part.type !== BACKGROUND_INJECTION_TYPE)
+        return [];
       const p = part as {
         id?: string;
         data?: { messageIds?: string[]; messages?: Array<{ id: string; text: string }> };
       };
       return typeof p.id === "string" && Array.isArray(p.data?.messageIds)
-        ? [{ id: p.id, messageIds: p.data.messageIds, messages: p.data.messages ?? [] }]
+        ? [
+            {
+              id: p.id,
+              messageIds: p.data.messageIds,
+              messages: p.data.messages ?? [],
+              kind:
+                part.type === BACKGROUND_INJECTION_TYPE
+                  ? ("background" as const)
+                  : ("steering" as const),
+            },
+          ]
         : [];
     })
   );

@@ -35,12 +35,6 @@ describe("alertName length", () => {
       scopeValue: long,
       condition: "60",
     },
-    replace: {
-      area: "queues",
-      what: "queue.depth",
-      scope: "all",
-      replace: { channelId: "c", channelName: long, alertType: "x", environments: [] },
-    },
     errorGroup: {
       area: "errors",
       what: "errors.occurred_again",

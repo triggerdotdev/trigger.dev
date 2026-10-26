@@ -86,7 +86,6 @@ export const TaskEventDetailedSummaryV1Result = z.object({
   kind: z.string(),
   metadata: z.string(),
   message: z.string(),
-  attributes_text: z.string(),
 });
 
 export type TaskEventDetailedSummaryV1Result = z.output<typeof TaskEventDetailedSummaryV1Result>;
@@ -108,7 +107,6 @@ export function getTraceDetailedSummaryQueryBuilder(
       "kind",
       "metadata",
       { name: "message", expression: "LEFT(message, 256)" },
-      "attributes_text",
     ],
     settings,
   });
@@ -306,7 +304,6 @@ export function getTraceDetailedSummaryQueryBuilderV2(
       "kind",
       "metadata",
       { name: "message", expression: "LEFT(message, 256)" },
-      "attributes_text",
     ],
     settings,
   });
@@ -359,6 +356,28 @@ export function buildTraceChunkCursorPredicate(cursor: TraceChunkCursor): {
       cursorStartTime: cursor.startTime,
       cursorSpanId: cursor.spanId,
     },
+  };
+}
+
+// The sort key's form of the exact start_time bounds, so granules outside them are skipped.
+// Implied by the exact bounds; ClickHouse doesn't always derive it from a string literal.
+export function buildTraceStartTimeSortKeyPredicate({
+  startNs,
+  endNs,
+}: {
+  startNs: string;
+  endNs?: string;
+}): {
+  clause: string;
+  params: { windowStartNs: string; windowEndNs?: string };
+} {
+  const lower = "toUnixTimestamp(start_time) >= intDiv({windowStartNs: Int64}, 1000000000)";
+  if (!endNs) {
+    return { clause: lower, params: { windowStartNs: startNs } };
+  }
+  return {
+    clause: `${lower} AND toUnixTimestamp(start_time) <= intDiv({windowEndNs: Int64}, 1000000000)`,
+    params: { windowStartNs: startNs, windowEndNs: endNs },
   };
 }
 

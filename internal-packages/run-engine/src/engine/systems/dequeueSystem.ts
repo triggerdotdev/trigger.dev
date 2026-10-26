@@ -723,6 +723,7 @@ export class DequeueSystem {
                   createdAt: snapshotCreatedAt,
                 },
                 image: result.deployment?.imageReference ?? undefined,
+                templateKey: result.deployment?.templateKey ?? undefined,
                 checkpoint: snapshot.checkpoint ?? undefined,
                 completedWaitpoints: snapshot.completedWaitpoints,
                 backgroundWorker: {

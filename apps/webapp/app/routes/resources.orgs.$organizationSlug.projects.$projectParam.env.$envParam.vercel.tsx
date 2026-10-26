@@ -209,6 +209,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   }
 
   const authInvalid = onboardingData?.authInvalid || result.authInvalid || false;
+  const disabled = onboardingData?.disabled || result.disabled || false;
   const authError = onboardingData?.authError || result.authError;
 
   // Display flag for the connect/disconnect/configure controls — the action
@@ -224,6 +225,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   return typedjson({
     ...result,
     authInvalid,
+    disabled,
     authError,
     onboardingData,
     organizationSlug,
@@ -680,6 +682,24 @@ function VercelAuthInvalidBanner({
         >
           Reconnect Vercel
         </PermissionLink>
+      }
+    />
+  );
+}
+
+function VercelDisabledBanner() {
+  return (
+    <SettingsAlertRow
+      variant="warning"
+      title="Vercel installation disabled"
+      description={
+        <>
+          A Vercel team owner must restore access or remove the integration in{" "}
+          <TextLink href="https://vercel.com/dashboard/integrations" target="_blank">
+            Vercel
+          </TextLink>
+          .
+        </>
       }
     />
   );
@@ -1214,6 +1234,10 @@ function VercelSettingsPanel({
 
   if (!data || !data.enabled) {
     return null;
+  }
+
+  if (data.disabled) {
+    return <VercelDisabledBanner />;
   }
 
   const showGitHubWarning = data.connectedProject && !data.isGitHubConnected;

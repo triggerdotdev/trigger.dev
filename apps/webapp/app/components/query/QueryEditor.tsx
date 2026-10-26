@@ -19,6 +19,7 @@ import { flushSync } from "react-dom";
 import { useTypedFetcher } from "remix-typedjson";
 import simplur from "simplur";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
+import { WatchQueryButton, type WatchQueryAnalysis } from "~/components/alerts/WatchQueryButton";
 import { ChartConfigPanel, defaultChartConfig } from "~/components/code/ChartConfigPanel";
 import { autoFormatSQL, TSQLEditor } from "~/components/code/TSQLEditor";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -97,6 +98,7 @@ type QueryActionResponse = {
   queryId?: string | null;
   periodClipped: number | null;
   maxQueryPeriod?: number;
+  alertAnalysis?: WatchQueryAnalysis | null;
 };
 
 type QueryEditorMode =
@@ -143,6 +145,8 @@ export type QueryEditorProps = {
   // Max period days (from plan)
   maxPeriodDays?: number;
 
+  watchAlertsPath?: string;
+
   // Render prop for save functionality - receives current data, returns ReactNode
   save?: (data: QueryEditorSaveData) => ReactNode;
   onClose?: () => void;
@@ -169,6 +173,7 @@ const QueryEditorForm = forwardRef<
     isAdmin: boolean;
     queryActionUrl: string;
     maxPeriodDays?: number;
+    watchAlertsPath?: string;
     onQuerySubmit?: () => void;
     onHistorySelected?: (item: QueryHistoryItem) => void;
   }
@@ -183,6 +188,7 @@ const QueryEditorForm = forwardRef<
     isAdmin,
     queryActionUrl,
     maxPeriodDays,
+    watchAlertsPath,
     onQuerySubmit,
     onHistorySelected,
   },
@@ -327,6 +333,13 @@ const QueryEditorForm = forwardRef<
               maxPeriodDays={maxPeriodDays}
             />
           )}
+          {watchAlertsPath ? (
+            <WatchQueryButton
+              alertsPath={watchAlertsPath}
+              period={period ?? defaultPeriod}
+              watch={fetcher.data?.alertAnalysis}
+            />
+          ) : null}
           <Button
             type="submit"
             variant="primary/small"
@@ -370,6 +383,7 @@ export function QueryEditor({
   queryActionUrl,
   mode,
   maxPeriodDays,
+  watchAlertsPath,
   save,
   onClose,
 }: QueryEditorProps) {
@@ -650,6 +664,7 @@ export function QueryEditor({
                   isAdmin={isAdmin}
                   queryActionUrl={queryActionUrl}
                   maxPeriodDays={maxPeriodDays}
+                  watchAlertsPath={watchAlertsPath}
                   onQuerySubmit={handleQuerySubmit}
                   onHistorySelected={handleHistorySelected}
                 />

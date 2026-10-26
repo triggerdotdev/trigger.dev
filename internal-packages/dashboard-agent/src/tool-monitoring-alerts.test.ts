@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildMonitoringAlertTools, _validateDraftPatch } from "./tool-monitoring-alerts";
+import {
+  buildAnalyzeQueryAlertTool,
+  buildMonitoringAlertTools,
+  _validateDraftPatch,
+} from "./tool-monitoring-alerts";
 import { createApiClient } from "./tool-api-client";
 import {
   createMonitoringAlertInputSchema,
@@ -501,12 +505,107 @@ describe("describe_alert_capabilities prefill action", () => {
 });
 
 describe("update_alert_draft operator", () => {
-  it("rejects a below-threshold operator with a readable message", () => {
-    const schema = updateAlertDraftSchema.inputSchema as unknown as {
-      safeParse: (input: unknown) => { success: boolean; error?: { message: string } };
+  const schema = updateAlertDraftSchema.inputSchema as unknown as {
+    safeParse: (input: unknown) => { success: boolean; data?: any };
+  };
+
+  it("rejects a below-threshold operator on a curated patch with a readable message", async () => {
+    const parsed = schema.safeParse({
+      patch: { area: "queues", condition: { operator: "<", value: 10 } },
+    });
+    expect(parsed.success).toBe(true);
+    const result = await run("update_alert_draft", parsed.data);
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContain("Below-threshold alerts aren't supported yet");
+  });
+
+  it("accepts a below-threshold operator on a query patch", async () => {
+    const parsed = schema.safeParse({
+      patch: {
+        area: "query",
+        query: "SELECT count() AS failures FROM runs",
+        querySignalChoice: { mode: "threshold", measure: "failures" },
+        condition: { operator: "<" },
+      },
+    });
+    expect(parsed.success).toBe(true);
+    const result = await run("update_alert_draft", parsed.data);
+    expect(result.ok).toBe(true);
+    expect(result.patch.condition).toEqual({ operator: "<" });
+  });
+});
+
+describe("query alerts", () => {
+  const query = "SELECT count() AS failures FROM runs WHERE status = 'Failed'";
+
+  it("analyze_query_alert posts the query and returns the analysis", async () => {
+    let call: { url: string; body: any } | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: { body?: string }) => {
+        call = { url, body: JSON.parse(init?.body ?? "{}") };
+        return new Response(JSON.stringify({ analysis: { ok: true, modes: [] } }), {
+          status: 200,
+        });
+      })
+    );
+    const tool = buildAnalyzeQueryAlertTool({
+      ctx: CTX as any,
+      client: createApiClient(CTX as any),
+    }).analyze_query_alert as any;
+
+    const result = await tool.execute({ query }, {} as any);
+
+    expect(call?.url).toBe(`${ORIGIN}/api/v1/dashboard-agent/monitoring-alerts/analyze-query`);
+    expect(call?.body).toEqual({ query });
+    expect(result).toEqual({ analysis: { ok: true, modes: [] } });
+  });
+
+  it("is registered for alert turns, after submit_feedback", () => {
+    const keys = Object.keys(dashboardAgentToolSchemas);
+    expect(keys.at(-1)).toBe("analyze_query_alert");
+    expect(DASHBOARD_AGENT_MONITORING_ALERT_TOOL_NAMES).toContain("analyze_query_alert");
+    expect(toolSchemasFor("assistant", { scope: "alert_creation" })).toHaveProperty(
+      "analyze_query_alert"
+    );
+  });
+
+  it("create_monitoring_alert forwards query and signal", async () => {
+    let body: any;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: { body?: string }) => {
+        body = JSON.parse(init?.body ?? "{}");
+        return new Response(JSON.stringify({ alert: { id: "alert_1" } }), { status: 200 });
+      })
+    );
+
+    await run("create_monitoring_alert", {
+      capabilityKey: "custom.query",
+      condition: { kind: "threshold", operator: ">", value: 5, windowSec: 3600 },
+      query,
+      signal: { mode: "threshold", measure: "failures" },
+    });
+
+    expect(body.query).toBe(query);
+    expect(body.signal).toEqual({ mode: "threshold", measure: "failures" });
+  });
+
+  // Mutation: dropping "query" from the patch area enum fails the first call.
+  it("update_alert_draft accepts a query patch and requires the query", async () => {
+    const patch = {
+      area: "query",
+      query,
+      querySignalChoice: { mode: "threshold", measure: "failures" },
     };
-    const result = schema.safeParse({ patch: { condition: { operator: "<", value: 10 } } });
-    expect(result.success).toBe(false);
-    expect(result.error?.message).toContain("Below-threshold alerts aren't supported yet");
+    const parsed = (tools().update_alert_draft as any).inputSchema.safeParse({ patch });
+    expect(parsed.success).toBe(true);
+    const result = await run("update_alert_draft", parsed.data);
+    expect(result.ok).toBe(true);
+    expect(result.patch).toEqual(patch);
+
+    const missing = await run("update_alert_draft", { patch: { area: "query" } });
+    expect(missing.ok).toBe(false);
+    expect(missing.errors).toContainEqual(expect.stringContaining("needs query"));
   });
 });

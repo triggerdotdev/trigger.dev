@@ -7,7 +7,11 @@ import { prisma } from "~/db.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { selectMintBaselineSource, stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
-import { validatePartialFeatureFlags } from "~/v3/featureFlags";
+import {
+  isPlainFlagObject,
+  parseStoredOrgFlags,
+  validatePartialFeatureFlags,
+} from "~/v3/featureFlags";
 import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
 
 const ParamsSchema = z.object({
@@ -34,11 +38,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return json({ error: "Organization not found" }, { status: 404 });
   }
 
-  const flagsResult = organization.featureFlags
-    ? validatePartialFeatureFlags(organization.featureFlags as Record<string, unknown>)
-    : { success: false as const };
-
-  const featureFlags = flagsResult.success ? flagsResult.data : {};
+  const featureFlags = parseStoredOrgFlags(organization.featureFlags).valid;
 
   return json({
     organizationId: organization.id,
@@ -89,10 +89,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
       }
 
       const existingRaw = rows[0].featureFlags as Record<string, unknown> | null;
-      const existingResult = existingRaw
-        ? validatePartialFeatureFlags(existingRaw)
-        : ({ success: false } as const);
-      const existingData = existingResult.success ? existingResult.data : {};
+      // Merge onto the raw object: keys this release doesn't know, or values that no longer
+      // validate, belong to the org and must survive an unrelated write.
+      const existingData = isPlainFlagObject(existingRaw) ? existingRaw : {};
 
       // Stamp the flip from the control-plane DB clock so the grace-window cutover is anchored to
       // one authoritative time source, not whichever webapp process handled this request.
@@ -130,15 +129,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
     // Org feature flags are embedded in every env of the org; drop all its cached env rows.
     controlPlaneResolver.invalidateOrganization(organizationId);
 
-    const updatedFlagsResult = updatedOrganization.featureFlags
-      ? validatePartialFeatureFlags(updatedOrganization.featureFlags as Record<string, unknown>)
-      : { success: false as const };
-
     return json({
       success: true,
       organizationId: updatedOrganization.id,
       organizationSlug: updatedOrganization.slug,
-      featureFlags: updatedFlagsResult.success ? updatedFlagsResult.data : {},
+      featureFlags: parseStoredOrgFlags(updatedOrganization.featureFlags).valid,
     });
   } catch (error) {
     return json(

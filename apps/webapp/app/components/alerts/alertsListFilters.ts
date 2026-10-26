@@ -29,7 +29,7 @@ export const MAX_LIST_ALERTS = 500;
 export const DEFAULT_PERIOD = "7d";
 const ALL_PERIODS = "all";
 const STATUS_VALUES = ["needs_attention", "active", "inactive"];
-const AREA_VALUES = ["queues", "errors", "runs", "health", "unknown"];
+const AREA_VALUES = ["queues", "errors", "runs", "health", "query", "unknown"];
 
 function splitList(value: string | null, allowed: string[]): string[] {
   if (!value) return [];

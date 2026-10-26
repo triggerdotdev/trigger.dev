@@ -69,6 +69,9 @@ export type ChannelsModal = {
   fetcher: FetcherWithComponents<unknown>;
   reload: () => void;
   onCreated?: (channel: { id: string }) => void;
+  connectReturnTo?: string;
+  onConnect?: () => void;
+  addSlack?: boolean;
 };
 
 export type ChannelFormState = Pick<
@@ -107,7 +110,7 @@ export function AlertChannelsBody({
   const showSelfServe = useShowSelfServe();
   const [editingId, setEditingId] = useState<string | undefined>();
   const [searchParams] = useSearchParams();
-  const addSlack = searchParams.get("add") === "slack";
+  const addSlack = modal?.addSlack ?? searchParams.get("add") === "slack";
   const [adding, setAdding] = useState(addSlack);
   const editing = alertChannels.find((channel) => channel.id === editingId);
 
@@ -229,6 +232,8 @@ export function AlertChannelsBody({
           <AddChannelSection
             form={form}
             defaultType={addSlack ? "SLACK" : "EMAIL"}
+            connectReturnTo={modal.connectReturnTo}
+            onConnect={modal.onConnect}
             onCreated={(channel) => {
               setAdding(false);
               modal.reload();

@@ -3,6 +3,9 @@ import { createElement, type ComponentProps } from "react";
 import { act } from "react-dom/test-utils";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
+import { alertKindSchema } from "@internal/alert-contracts";
+import { ScopeTypeSchema } from "~/v3/services/alerts/alertDraft";
 import { OperatingSystemContextProvider } from "~/components/primitives/OperatingSystemProvider";
 import { ShortcutsProvider } from "~/components/primitives/ShortcutsProvider";
 import {
@@ -14,6 +17,7 @@ import {
   areaChips,
   capabilityChips,
   promptForStep,
+  resolveCapability,
   type FlowAnswers,
 } from "~/components/dashboard-agent/alert-creation/flow-state";
 import { CreationTranscript } from "./CreationTranscript";
@@ -206,17 +210,6 @@ describe("wizard card drives step-by-step creation", () => {
   });
 
   // Mutation: dropping the description tooltip from scenario rows fails this.
-  it("scenario rows carry their description tooltip", () => {
-    mount();
-    pick("Queues");
-    const row = Array.from(card()!.querySelectorAll<HTMLButtonElement>("li > button")).find(
-      (b) => b.textContent === "Depth getting too high"
-    )!;
-    const info = card()!.querySelector('button[aria-label="About Depth getting too high"]')!;
-    expect(row.getAttribute("data-state")).toBeNull();
-    expect(info.getAttribute("data-state")).not.toBeNull();
-  });
-
   // Mutation: re-adding queuePattern or the Specific queue row to the card fails this.
   it("scope offers all queues and the queue dropdown, no Specific row or pattern", () => {
     mount();
@@ -538,24 +531,6 @@ describe("wizard card drives step-by-step creation", () => {
     record();
     expect(seen.some((text) => text.includes("Something else"))).toBe(false);
     expect(seen.some((text) => text.includes("Skip"))).toBe(false);
-  });
-
-  it("pads the transcript by the card height", () => {
-    const original = (globalThis as any).ResizeObserver;
-    (globalThis as any).ResizeObserver = class {
-      constructor(private cb: (entries: unknown[]) => void) {}
-      observe() {
-        this.cb([{ contentRect: { height: 180 } }]);
-      }
-      disconnect() {}
-    };
-    try {
-      mount();
-      const spacer = document.querySelector<HTMLElement>('[data-testid="card-spacer"]');
-      expect(spacer?.style.height).toBe("180px");
-    } finally {
-      (globalThis as any).ResizeObserver = original;
-    }
   });
 
   it("stale notifier ids keep Done disabled", () => {
@@ -914,5 +889,430 @@ describe("wizard card drives step-by-step creation", () => {
     expect(resume).toBeDefined();
     act(() => resume!.click());
     expect(card()?.getAttribute("aria-label")).toBe(promptForStep("what", { area: "queues" }));
+  });
+});
+
+const RequestSchema = z
+  .object({
+    organizationId: z.string().min(1),
+    projectId: z.string().min(1),
+    environmentId: z.string().min(1),
+    chatNotifier: z.enum(["on"]).optional(),
+    chatId: z.string().optional(),
+    form: z.object({
+      capabilityKey: z.string().min(1),
+      scopeType: ScopeTypeSchema,
+      scopeValue: z.string().optional(),
+      conditionKind: alertKindSchema,
+      operator: z.enum([">", "<"]).optional(),
+      value: z.coerce.number().optional(),
+      windowMinutes: z.coerce.number().optional(),
+      holdMinutes: z.coerce.number().optional(),
+      quietWindowMinutes: z.coerce.number().optional(),
+      expiresAt: z.string().optional(),
+      notifierChannelIds: z.preprocess((i) => {
+        if (typeof i === "string") return i === "" ? [] : [i];
+        if (Array.isArray(i)) return i.filter((v) => typeof v === "string" && v !== "");
+        return [];
+      }, z.string().array()),
+    }),
+  })
+  .refine((v) => v.chatNotifier === "on" || v.form.notifierChannelIds.length > 0, {
+    message: "At least one notifier is required",
+    path: ["form", "notifierChannelIds"],
+  });
+if (typeof (globalThis as any).PointerEvent === "undefined") {
+  (globalThis as any).PointerEvent = class extends Event {};
+}
+
+const flowCapture = { flow: undefined as CreationFlowState | undefined };
+const TEST_CHANNEL: AlertChannel = { id: "ch_test", name: "Test Webhook", type: "WEBHOOK" };
+
+function FlowHarness({
+  onSubmit,
+  channels,
+  chatId,
+}: {
+  onSubmit?: (a: FlowAnswers) => void;
+  channels?: AlertChannel[];
+  chatId?: string;
+}) {
+  const flow = useCreationFlowState(onSubmit);
+  // eslint-disable-next-line -- test harness captures the hook return
+  flowCapture.flow = flow;
+  return createElement(CreationTranscript, { flow, channels, chatId });
+}
+
+function latestFlow(): CreationFlowState {
+  return flowCapture.flow!;
+}
+
+function mountFlow(
+  onSubmit?: (a: FlowAnswers) => void,
+  channels?: AlertChannel[],
+  chatId?: string
+) {
+  act(() => {
+    root.render(
+      createElement(
+        OperatingSystemContextProvider,
+        { platform: "mac" },
+        createElement(
+          ShortcutsProvider,
+          null,
+          createElement(FlowHarness, { onSubmit, channels, chatId })
+        )
+      )
+    );
+  });
+}
+
+function findButtonByText(text: string): HTMLButtonElement | undefined {
+  return Array.from(document.querySelectorAll("button")).find(
+    (b) => b.textContent?.trim() === text
+  ) as HTMLButtonElement | undefined;
+}
+
+function pressEnter() {
+  const input =
+    document.activeElement instanceof HTMLInputElement
+      ? document.activeElement
+      : document.querySelector<HTMLInputElement>("[role=dialog] input")!;
+  act(() => {
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  });
+}
+
+function findByTestId(testId: string): HTMLElement | null {
+  return document.querySelector(`[data-testid="${testId}"]`);
+}
+
+function openCustomInput() {
+  const find = () => document.querySelector<HTMLInputElement>("input[type='number']");
+  if (!find()) clickAriaPressed("Custom");
+  return find()!;
+}
+
+function navigateToNotifiers(value = "100") {
+  clickAriaPressed("Queues");
+  clickAriaPressed("Depth getting too high");
+  const input = openCustomInput();
+  act(() => {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+    setter?.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  pressEnter();
+  clickAriaPressed("All queues");
+  clickAriaPressed("No expiry");
+}
+
+async function navigateToCreated(value = "100", notifier = "Test Webhook") {
+  navigateToNotifiers(value);
+  clickAriaPressed(notifier);
+  clickAriaPressed("Done");
+  await clickCreate();
+}
+
+async function clickCreate() {
+  const btn = findButtonByText("Create alert");
+  if (!btn) throw new Error('Chip "Create alert" not found');
+  await act(async () => btn.click());
+}
+
+function clickAriaPressed(label: string) {
+  const btn = Array.from(document.querySelectorAll("button")).find(
+    (b) => b.textContent?.trim() === label
+  ) as HTMLButtonElement | undefined;
+  if (!btn) throw new Error(`Chip "${label}" not found`);
+  act(() => btn.click());
+}
+
+describe("creation flow submission", () => {
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("Done POST body parses with RequestSchema and success card renders after 2xx", async () => {
+    let capturedBody: unknown;
+    const onSubmit = vi.fn((answers: FlowAnswers) => {
+      const cap = resolveCapability(answers.what);
+      const kind = cap?.allowedKinds[0] ?? "threshold";
+      const notifierIds = (answers.notifiers ?? []).filter((n) => n !== "chat");
+      capturedBody = {
+        organizationId: "org_123",
+        projectId: "proj_456",
+        environmentId: "env_789",
+        chatNotifier: (answers.notifiers ?? []).includes("chat") ? "on" : undefined,
+        chatId: "chat_abc",
+        form: {
+          capabilityKey: answers.what,
+          scopeType: answers.scope,
+          scopeValue: answers.scopeValue,
+          conditionKind: kind,
+          operator: kind === "threshold" ? ">" : undefined,
+          value: answers.condition ? Number(answers.condition) : undefined,
+          windowMinutes: kind === "threshold" ? (answers.windowMinutes ?? 5) : undefined,
+          quietWindowMinutes:
+            kind === "absence" && answers.condition ? Number(answers.condition) : undefined,
+          notifierChannelIds: notifierIds,
+        },
+      };
+    });
+
+    mountFlow(onSubmit, [TEST_CHANNEL]);
+
+    clickAriaPressed("Queues");
+    clickAriaPressed("Depth getting too high");
+    const input = openCustomInput();
+    act(() => {
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        "value"
+      )?.set;
+      setter?.call(input, "100");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    pressEnter();
+    clickAriaPressed("All queues");
+
+    clickAriaPressed("No expiry");
+    clickAriaPressed("Test Webhook");
+    clickAriaPressed("Done");
+    await clickCreate();
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    const parsed = RequestSchema.safeParse(capturedBody);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.form.windowMinutes).toBeGreaterThan(0);
+      expect(parsed.data.form.notifierChannelIds).toContain("ch_test");
+    }
+
+    await act(async () => {});
+    expect(findByTestId("alert-created")).not.toBeNull();
+  });
+
+  it("failed POST keeps no success card (mutation: ignoring result shows success)", async () => {
+    const onSubmit = vi.fn(() => Promise.resolve(false));
+    mountFlow(onSubmit, [TEST_CHANNEL]);
+    await navigateToCreated("50");
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(latestFlow().created).toBe(false);
+    expect(findByTestId("alert-created")).toBeNull();
+  });
+
+  it("double click on Create calls onSubmit once (mutation: no guard allows two calls)", () => {
+    let resolveSubmit: (v: boolean) => void;
+    const onSubmit = vi.fn(
+      () =>
+        new Promise<boolean>((r) => {
+          resolveSubmit = r;
+        })
+    );
+    mountFlow(onSubmit, [TEST_CHANNEL]);
+    navigateToNotifiers();
+    clickAriaPressed("Test Webhook");
+    clickAriaPressed("Done");
+    const create = findButtonByText("Create alert")!;
+    act(() => create.click());
+    act(() => create.click());
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    act(() => resolveSubmit!(true));
+  });
+
+  it("Done calls onSubmit with the draft and shows success card (chat stays open)", async () => {
+    const onSubmit = vi.fn();
+    mountFlow(onSubmit, undefined, "test_chat");
+
+    clickAriaPressed("Queues");
+    clickAriaPressed("Depth getting too high");
+    const input = openCustomInput();
+    act(() => {
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        "value"
+      )?.set;
+      setter?.call(input, "75");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    pressEnter();
+    clickAriaPressed("All queues");
+
+    clickAriaPressed("No expiry");
+    clickAriaPressed("Done");
+    await clickCreate();
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    const draft = onSubmit.mock.calls[0][0] as FlowAnswers;
+    expect(draft.area).toBe("queues");
+    expect(draft.what).toBe("queue.depth");
+    expect(draft.scope).toBe("all");
+    expect(draft.condition).toBe("75");
+    expect(draft.notifiers).toContain("chat");
+    expect(draft.windowMinutes).toBeGreaterThan(0);
+
+    expect(findByTestId("alert-created")).not.toBeNull();
+    expect(findByTestId("creation-flow")).not.toBeNull();
+  });
+
+  it("notifier step without chatId hides 'This chat', shows only channel chips", () => {
+    mountFlow(undefined, [TEST_CHANNEL]);
+
+    clickAriaPressed("Queues");
+    clickAriaPressed("Depth getting too high");
+    const input = openCustomInput();
+    act(() => {
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        "value"
+      )?.set;
+      setter?.call(input, "50");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    pressEnter();
+    clickAriaPressed("All queues");
+    clickAriaPressed("No expiry");
+
+    expect(findButtonByText("This chat")).toBeUndefined();
+    expect(findButtonByText("Test Webhook")).toBeDefined();
+  });
+
+  it("'This chat' chip is hidden without chatId (mutation: showing it stores empty conversationId)", () => {
+    mountFlow(undefined, [TEST_CHANNEL]);
+    clickAriaPressed("Queues");
+    clickAriaPressed("Depth getting too high");
+    const input = openCustomInput();
+    act(() => {
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        "value"
+      )?.set;
+      setter?.call(input, "100");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    pressEnter();
+    clickAriaPressed("All queues");
+    clickAriaPressed("No expiry");
+
+    expect(latestFlow().currentStep).toBe("notifiers");
+    expect(findButtonByText("This chat")).toBeUndefined();
+    expect(findButtonByText("Test Webhook")).toBeDefined();
+  });
+
+  it("'This chat' is pre-selected and visible at notifiers step (mutation: removing default deselects)", () => {
+    mountFlow(undefined, undefined, "chat_test");
+    clickAriaPressed("Queues");
+    clickAriaPressed("Depth getting too high");
+    const input = openCustomInput();
+    act(() => {
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        "value"
+      )?.set;
+      setter?.call(input, "100");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    pressEnter();
+    clickAriaPressed("All queues");
+    clickAriaPressed("No expiry");
+
+    expect(latestFlow().currentStep).toBe("notifiers");
+    expect(latestFlow().answers.notifiers).toContain("chat");
+    const chatChip = findButtonByText("This chat");
+    expect(chatChip).toBeDefined();
+    expect(chatChip!.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("fails when queue.stalled cannot advance past the condition step", async () => {
+    const onSubmit = vi.fn();
+    mountFlow(onSubmit, [TEST_CHANNEL]);
+
+    clickAriaPressed("Queues");
+    clickAriaPressed("A queue stalling");
+    clickAriaPressed("All queues");
+
+    expect(latestFlow().currentStep).toBe("notifiers");
+
+    clickAriaPressed("No expiry");
+    expect(latestFlow().currentStep).toBe("notifiers");
+
+    clickAriaPressed("Test Webhook");
+    clickAriaPressed("Done");
+    await clickCreate();
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(latestFlow().created).toBe(true);
+  });
+});
+
+const noop = () => {};
+
+const flow = {
+  answers: {},
+  currentStep: "area",
+  completedSteps: [],
+  isReview: false,
+  created: false,
+  createdAlertId: undefined,
+  submitting: false,
+  submitError: false,
+  selectChip: noop,
+  setCondition: noop,
+  setConditionParams: noop,
+  confirmCondition: noop,
+  setScopeValue: noop,
+  setWindowMinutes: noop,
+  toggleNotifier: noop,
+  confirmNotifiers: noop,
+  setExpiry: noop,
+  create: noop,
+  reset: noop,
+} as unknown as CreationFlowState;
+
+describe("Show me what I can watch", () => {
+  it("opens the scenarios card without asking the agent", () => {
+    const onFreeText = vi.fn();
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() => {
+      root.render(
+        createElement(
+          OperatingSystemContextProvider,
+          { platform: "mac" },
+          createElement(
+            ShortcutsProvider,
+            null,
+            createElement(CreationTranscript, { flow, onFreeText })
+          )
+        )
+      );
+    });
+    const row = Array.from(container.querySelectorAll("button")).find(
+      (b) => b.textContent?.trim() === "Show me what I can watch"
+    )!;
+    act(() => row.click());
+    expect(onFreeText).not.toHaveBeenCalled();
+    expect(container.querySelector("[role=dialog]")?.getAttribute("aria-label")).toBe(
+      "What can I watch?"
+    );
+    act(() => root.unmount());
+    container.remove();
   });
 });

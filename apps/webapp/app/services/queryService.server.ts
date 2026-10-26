@@ -101,6 +101,8 @@ export type ExecuteQueryOptions<TOut extends z.ZodSchema> = Omit<
   };
   /** Custom per-org concurrency limit (overrides default) */
   customOrgConcurrencyLimit?: number;
+  /** Alert evaluations run on their own per-project lane so they never block user queries. */
+  concurrency?: { lane: QueryConcurrencyLane };
   /**
    * Set when the caller wrote `query` themselves, as on the public query API and
    * the query editor. ClickHouse rejecting their SQL is then their mistake, so it
@@ -111,6 +113,8 @@ export type ExecuteQueryOptions<TOut extends z.ZodSchema> = Omit<
   /** Internal only: drop the plan time bound on the table's time column. Never set from input. */
   skipTimeConstraint?: boolean;
 };
+
+export type QueryConcurrencyLane = "user" | "alerts";
 
 /**
  * Extended result type that includes the optional queryId when saved to history
@@ -216,17 +220,27 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     providers,
     history,
     customOrgConcurrencyLimit,
+    concurrency,
     skipTimeConstraint,
+    windowConditions,
     ...baseOptions
   } = options;
 
+  // Resolved before acquiring so a failure here cannot leak a concurrency slot.
+  const defaultPeriod = await getDefaultPeriod(organizationId);
+  const maxQueryPeriod = await getLimit(organizationId, "queryPeriodDays", 30);
+
   // Generate unique request ID for concurrency tracking
   const requestId = crypto.randomUUID();
-  const orgLimit = customOrgConcurrencyLimit ?? DEFAULT_ORG_CONCURRENCY_LIMIT;
+  const alertsLane = concurrency?.lane === "alerts";
+  const concurrencyKey = alertsLane ? `alerts:${projectId}` : projectId;
+  const orgLimit = alertsLane
+    ? env.ALERTS_QUERY_CONCURRENCY_LIMIT
+    : (customOrgConcurrencyLimit ?? DEFAULT_ORG_CONCURRENCY_LIMIT);
 
   // Acquire concurrency slot
   const acquireResult = await queryConcurrencyLimiter.acquire({
-    key: projectId,
+    key: concurrencyKey,
     requestId,
     keyLimit: orgLimit,
     globalLimit: GLOBAL_CONCURRENCY_LIMIT,
@@ -256,7 +270,6 @@ export async function executeQuery<TOut extends z.ZodSchema>(
       : "triggered_at";
 
   // Build time filter fallback for the table's time column
-  const defaultPeriod = await getDefaultPeriod(organizationId);
   const timeFilter = timeFilters({
     period: period ?? undefined,
     from: from ?? undefined,
@@ -298,7 +311,6 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     timeFallback = { op: "gte", value: requestedFromDate! };
   }
 
-  const maxQueryPeriod = await getLimit(organizationId, "queryPeriodDays", 30);
   let maxQueryPeriodDate = new Date(Date.now() - maxQueryPeriod * 24 * 60 * 60 * 1000);
   if (alignSeconds) {
     maxQueryPeriodDate = floorToSeconds(maxQueryPeriodDate, alignSeconds);
@@ -394,7 +406,12 @@ export async function executeQuery<TOut extends z.ZodSchema>(
       transformValues: true,
       enforcedWhereClause,
       fieldMappings,
-      whereClauseFallback: timeColumn ? { [timeColumn]: timeFallback } : {},
+      whereClauseFallback: timeColumn && !windowConditions ? { [timeColumn]: timeFallback } : {},
+      windowConditions: windowConditions?.map((window) =>
+        !skipTimeConstraint && window.from < maxQueryPeriodDate
+          ? { ...window, from: maxQueryPeriodDate }
+          : window
+      ),
       timeRange,
       clickhouseSettings: {
         ...getDefaultClickhouseSettings(),
@@ -485,7 +502,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
   } finally {
     // Always release the concurrency slot
     await queryConcurrencyLimiter.release({
-      key: projectId,
+      key: concurrencyKey,
       requestId,
     });
   }

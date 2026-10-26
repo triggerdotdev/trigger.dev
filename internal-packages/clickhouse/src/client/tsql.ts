@@ -17,6 +17,7 @@ import {
   type TableSchema,
   type TimeRange,
   type WhereClauseCondition,
+  type WindowCondition,
 } from "@internal/tsql";
 import { Logger } from "@trigger.dev/core/logger";
 import { z } from "zod";
@@ -119,6 +120,8 @@ export interface ExecuteTSQLOptions<TOut extends z.ZodSchema> {
    * would pick, for series whose samples are too sparse to read at that width.
    */
   minBucketSeconds?: number;
+  /** Per-table [from, to) windows enforced at every reference to the table. */
+  windowConditions?: WindowCondition[];
   /**
    * Set when `query` was written by whoever made the request rather than by us.
    * A rejection of their SQL is then their mistake, not a bug on our side.
@@ -209,6 +212,7 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
       timeRange: options.timeRange,
       fillGaps: options.fillGaps,
       minBucketSeconds: options.minBucketSeconds,
+      windowConditions: options.windowConditions,
     });
 
     generatedSql = sql;

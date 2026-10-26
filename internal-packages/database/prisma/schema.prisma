@@ -1165,6 +1165,8 @@ model SessionRun {
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId])
+  /// Pages a session's runs by `(triggeredAt, id)` and counts rows at or before a cursor.
+  @@index([sessionId, triggeredAt, id])
 }
 
 model TaskRun {
@@ -2464,6 +2466,12 @@ model WorkerDeployment {
   imagePlatform  String  @default("linux/amd64")
   /// Key of the microVM template prebuilt from this deployment's image, set when the builder succeeds
   templateKey    String?
+
+  /// Object key of the full index snapshot in the deployment index store. Set only after the upload succeeds.
+  indexObjectKey     String?
+  /// sha256 hex of the snapshot's uncompressed JSON
+  indexSha256        String?
+  indexFormatVersion Int?
 
   externalBuildData   Json?
   buildServerMetadata Json?

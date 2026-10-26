@@ -143,7 +143,7 @@ export async function loadPreviewSeries(
   const windowHours = windowMinutes / 60;
 
   const params: AlertParams = { environmentId: environment.id, scope };
-  const runner = deps.runner ?? createQueryRowRunner(1);
+  const runner = deps.runner ?? createQueryRowRunner();
   const cacheKeyPrefix = `preview:${environment.id}:${input.scopeType}:${input.scopeValue ?? ""}:${windowMinutes}`;
 
   const subKeys = capability.binding.compositeOf;

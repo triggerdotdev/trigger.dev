@@ -120,19 +120,19 @@ export class ApiKeysPresenter {
     ]);
     const presetsById = new Map(presets?.map((preset) => [preset.id, preset]));
     const { taskIdentifiers, organizationId: _organizationId, ...environmentData } = environment;
-    const rootApiKey = keyEnvironment.rootApiKeyHiddenAt
-      ? null
-      : {
-          id: keyEnvironment.id,
-          name: "Root API key",
-          value: keyEnvironment.apiKey,
-          obfuscated: obfuscateApiKey(keyEnvironment.type, keyEnvironment.apiKey.slice(-4)),
-        };
+    const isRootApiKeyHidden = keyEnvironment.rootApiKeyHiddenAt !== null;
+    const rootApiKey = {
+      id: keyEnvironment.id,
+      name: "Root API key",
+      value: isRootApiKeyHidden ? null : keyEnvironment.apiKey,
+      obfuscated: obfuscateApiKey(keyEnvironment.type, keyEnvironment.apiKey.slice(-4)),
+      isHidden: isRootApiKeyHidden,
+    };
 
     return {
       environment: {
         ...environmentData,
-        apiKey: rootApiKey?.value ?? null,
+        apiKey: rootApiKey.value,
         keyEnvironmentId,
       },
       availableTasks: taskIdentifiers.map((task) => task.slug),

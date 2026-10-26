@@ -357,7 +357,7 @@ export type EngineStartRunAttemptResult = StartRunAttemptResult & {
   run: { region: string | null; workerQueue: string };
 };
 
-export type RestoreOutcome = "requeue" | "fail";
+export type RestoreOutcome = "requeue" | "fail" | "fallback";
 
 export type RestoreOutcomeResult =
   | { ok: true; outcome: RestoreOutcome }

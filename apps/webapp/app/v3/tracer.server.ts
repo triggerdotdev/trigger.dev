@@ -2,7 +2,6 @@ import {
   type Attributes,
   type Context,
   context as otelContext,
-  createContextKey,
   DiagConsoleLogger,
   DiagLogLevel,
   type Link,
@@ -70,26 +69,9 @@ import { logger } from "~/services/logger.server";
 import { metricsRegister } from "~/metrics.server";
 import { collectDatabaseClientMetrics } from "~/utils/databaseMetrics.server";
 import { performance } from "node:perf_hooks";
+import { DatasourceAttributeSpanProcessor } from "~/utils/datasourceTagging.server";
 
 export const SEMINTATTRS_FORCE_RECORDING = "forceRecording";
-
-export const DATASOURCE_CONTEXT_KEY = createContextKey("trigger.db.datasource");
-
-class DatasourceAttributeSpanProcessor implements SpanProcessor {
-  onStart(span: Span, parentContext: Context): void {
-    const ds = parentContext.getValue(DATASOURCE_CONTEXT_KEY);
-    if (typeof ds === "string") {
-      span.setAttribute("db.datasource", ds);
-    }
-  }
-  onEnd(): void {}
-  shutdown(): Promise<void> {
-    return Promise.resolve();
-  }
-  forceFlush(): Promise<void> {
-    return Promise.resolve();
-  }
-}
 
 // Mirrors name-prefixed spans into a second exporter; they still flow to the main one
 class SpanNamePrefixMirrorProcessor implements SpanProcessor {

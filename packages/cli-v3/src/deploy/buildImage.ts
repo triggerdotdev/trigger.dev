@@ -2,6 +2,7 @@ import { logger } from "../utilities/logger.js";
 import { depot } from "@depot/cli";
 import { x } from "tinyexec";
 import type { BuildManifest, BuildRuntime } from "@trigger.dev/core/v3/schemas";
+import { isNodelessBunRuntime } from "@trigger.dev/core/v3/build";
 import { networkInterfaces } from "os";
 import { join } from "path";
 import { safeReadJSONFile } from "../utilities/fileSystem.js";
@@ -708,27 +709,39 @@ export type GenerateContainerfileOptions = {
   entrypoint: string;
 };
 
+// "bun" and "bun-legacy" are the same node + bun image
+const BUN_LEGACY_BASE_IMAGE =
+  "triggerdotdev/bun:1.3-node20-bookworm@sha256:445d326788a0ba252e93c3923546fc06c44a5c303a0f476821f3f677864e160f";
+const BUN_LEGACY_BUILD_IMAGE =
+  "triggerdotdev/bun:1.3-node20-bookworm-build@sha256:3fbcebfc0eb098f70d7b3d29e81b26f59ef1c21887703b85621e9cfe50ab7bce";
+
 // Prebuilt in base-images/; both maps must be bumped together, from one publish run
 export const BASE_IMAGE: Record<BuildRuntime, string> = {
-  bun: "triggerdotdev/bun:1.3-node20-bookworm@sha256:25b467196277b9d75a37773ee36d28b65ca81a6f41786f7d7d7f1fad95fb5a31",
-  node: "triggerdotdev/node:24-bookworm@sha256:d2d0c01822409f6d2de1cc69a9e718424048fa12fc64b223dfa84f6db44d0ffd",
+  bun: BUN_LEGACY_BASE_IMAGE,
+  "bun-legacy": BUN_LEGACY_BASE_IMAGE,
+  "bun-1.4":
+    "triggerdotdev/bun:1.4-bookworm@sha256:91c471435cbf097e2301f17ec456cc398dc9ce9161d2317f4bbbd9cdae73a86e",
+  node: "triggerdotdev/node:24-bookworm@sha256:3cdc82425d824f1059fddd64b881947bf8edf4f0a5a9176145dba4889f8731ff",
   "node-22":
-    "triggerdotdev/node:22-bookworm@sha256:3d1b59a1d50c3df713078a7b18386441cf7fdbaeea6da799247df5a2e180bdd5",
+    "triggerdotdev/node:22-bookworm@sha256:40c519460ee37b51a8f3c6286e9aeb910231dec01e4d655fa8164cc28fbad5f2",
   "node-24":
-    "triggerdotdev/node:24-bookworm@sha256:d2d0c01822409f6d2de1cc69a9e718424048fa12fc64b223dfa84f6db44d0ffd",
+    "triggerdotdev/node:24-bookworm@sha256:3cdc82425d824f1059fddd64b881947bf8edf4f0a5a9176145dba4889f8731ff",
   "node-26":
-    "triggerdotdev/node:26-bookworm@sha256:0e9b19f814f32d3766a8cf167835a499349df5bd34702611577b1f75bc2d2026",
+    "triggerdotdev/node:26-bookworm@sha256:e319f1134f8d4228be3adda596d1b97568f8eb09a3fbdac736594d0cbbd7e5cb",
 };
 
 export const BUILD_IMAGE: Record<BuildRuntime, string> = {
-  bun: "triggerdotdev/bun:1.3-node20-bookworm-build@sha256:a2d5e6d1ec25946ca1d86abdd9ffb9c589376df64ee1b490c461607953931245",
-  node: "triggerdotdev/node:24-bookworm-build@sha256:19322289508ae9b4be0b769acac179637e4b57d363844682f4b116feb951267d",
+  bun: BUN_LEGACY_BUILD_IMAGE,
+  "bun-legacy": BUN_LEGACY_BUILD_IMAGE,
+  "bun-1.4":
+    "triggerdotdev/bun:1.4-bookworm-build@sha256:9b16175d5bd65d036beae9f04518c0b6c8327aa5d7855002188899fb6f9a7376",
+  node: "triggerdotdev/node:24-bookworm-build@sha256:34a3f4554d1684e078b104bd2b7ba6743776ad9002ebceef707dee91fa629c41",
   "node-22":
-    "triggerdotdev/node:22-bookworm-build@sha256:acc6f0143021f532b601bf9fa2cd7745b07612358f94acb8e1cd864468320a81",
+    "triggerdotdev/node:22-bookworm-build@sha256:7a4395f00b0939040f17a988a5fa49c5386992f88bc1ba1dd2e35bec610cf735",
   "node-24":
-    "triggerdotdev/node:24-bookworm-build@sha256:19322289508ae9b4be0b769acac179637e4b57d363844682f4b116feb951267d",
+    "triggerdotdev/node:24-bookworm-build@sha256:34a3f4554d1684e078b104bd2b7ba6743776ad9002ebceef707dee91fa629c41",
   "node-26":
-    "triggerdotdev/node:26-bookworm-build@sha256:de5cdfd683dabad582182c79779135d59faac0e6893b6cf04520d5a0dc826dd7",
+    "triggerdotdev/node:26-bookworm-build@sha256:86d5a599fc69a81e15c1276440702144cd3d857258fdaf78f8c9b864768c1ab9",
 };
 
 // Preinstalled in the published base images; must match base-images/images.json
@@ -761,6 +774,10 @@ RUN sed -i -E 's#^(mozilla/(${EMSIGN_COMPROMISE_DISTRUSTED_ROOTS.join(
 ENV NODE_OPTIONS=--use-openssl-ca
 ENV SSL_CERT_FILE=\${SSL_CERT_FILE:-${OS_TRUST_STORE}} REQUESTS_CA_BUNDLE=\${REQUESTS_CA_BUNDLE:-${OS_TRUST_STORE}} PIP_CERT=\${PIP_CERT:-${OS_TRUST_STORE}}`;
 
+// A custom base image owns its own hardening, trust store included
+const trustStoreHardening = (customImage: string | undefined) =>
+  customImage ? "" : distrustCompromisedRoots;
+
 export async function generateContainerfile(options: GenerateContainerfileOptions) {
   switch (options.runtime) {
     case "node":
@@ -769,7 +786,9 @@ export async function generateContainerfile(options: GenerateContainerfileOption
     case "node-26": {
       return await generateNodeContainerfile(options);
     }
-    case "bun": {
+    case "bun":
+    case "bun-legacy":
+    case "bun-1.4": {
       return await generateBunContainerfile(options);
     }
   }
@@ -829,23 +848,28 @@ const parseGenerateOptions = (options: GenerateContainerfileOptions) => {
 
   // Instructions run once (FROM base) since their downloads are unbounded;
   // package-only projects keep the prebuilt toolchain and repeat the small install
-  const buildStage =
-    baseInstructions && !options.image?.buildBase
-      ? `FROM base AS build
+  const buildFromBase = Boolean(baseInstructions) && !options.image?.buildBase;
+  const buildStageCustomImage = buildFromBase ? options.image?.base : options.image?.buildBase;
+
+  const buildStage = buildFromBase
+    ? `FROM base AS build
 
 RUN apt-get update && \\
   apt-get install -y --no-install-recommends ${TOOLCHAIN_PACKAGES} && \\
   apt-get clean && \\
   rm -rf /var/lib/apt/lists/*`
-      : `FROM ${options.image?.buildBase ?? BUILD_IMAGE[options.runtime]} AS build
+    : `FROM ${options.image?.buildBase ?? BUILD_IMAGE[options.runtime]} AS build
 
 ENV DEBIAN_FRONTEND=noninteractive${customization ? `\n\n${customization}` : ""}
 
-${distrustCompromisedRoots}`;
+${trustStoreHardening(options.image?.buildBase)}`;
 
   return {
     baseImage: options.image?.base ?? BASE_IMAGE[options.runtime],
     buildStage,
+    indexerNodeOptions: buildStageCustomImage
+      ? "--max_old_space_size=8192"
+      : "--max_old_space_size=8192 --use-openssl-ca",
     customization,
     buildArgs,
     buildEnvVars,
@@ -857,6 +881,10 @@ async function generateBunContainerfile(options: GenerateContainerfileOptions) {
   const { baseImage, buildStage, buildArgs, buildEnvVars, postInstallCommands, customization } =
     parseGenerateOptions(options);
 
+  // The node-less images have no node binary, so the run controller itself runs under bun.
+  // The legacy node + bun image keeps the controller on node.
+  const controllerBinary = isNodelessBunRuntime(options.runtime) ? "bun" : "node";
+
   return `# syntax=docker/dockerfile:1
 # check=skip=SecretsUsedInArgOrEnv
 FROM ${baseImage} AS base
@@ -865,7 +893,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 ${customization}
 
-${distrustCompromisedRoots}
+${trustStoreHardening(options.image?.base)}
 
 ${buildStage}
 
@@ -951,14 +979,21 @@ COPY --from=code --chown=bun:bun /app ./
 # Copy the index.json file from the indexer stage
 COPY --from=indexer --chown=bun:bun /app/index.json ./
 
-ENTRYPOINT [ "dumb-init", "node", "${options.entrypoint}" ]
+ENTRYPOINT [ "dumb-init", "${controllerBinary}", "${options.entrypoint}" ]
 CMD []
   `;
 }
 
 async function generateNodeContainerfile(options: GenerateContainerfileOptions) {
-  const { baseImage, buildStage, buildArgs, buildEnvVars, postInstallCommands, customization } =
-    parseGenerateOptions(options);
+  const {
+    baseImage,
+    buildStage,
+    indexerNodeOptions,
+    buildArgs,
+    buildEnvVars,
+    postInstallCommands,
+    customization,
+  } = parseGenerateOptions(options);
 
   return `# syntax=docker/dockerfile:1
 # check=skip=SecretsUsedInArgOrEnv
@@ -968,7 +1003,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 ${customization}
 
-${distrustCompromisedRoots}
+${trustStoreHardening(options.image?.base)}
 
 ${buildStage}
 
@@ -1027,7 +1062,7 @@ ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
     TRIGGER_LOG_LEVEL=debug \
     NODE_EXTRA_CA_CERTS=\${NODE_EXTRA_CA_CERTS} \
     NODE_ENV=production \
-    NODE_OPTIONS="--max_old_space_size=8192 --use-openssl-ca"
+    NODE_OPTIONS="${indexerNodeOptions}"
 
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM

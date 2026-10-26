@@ -1,6 +1,7 @@
 import type { AlertArea, AlertCapability, CapabilityParam } from "@internal/alert-contracts";
 import { listCapabilities } from "@internal/alert-contracts";
 import { AREA_ICON, AREA_LABEL } from "~/components/alerts/domainIcons";
+import type { QueryAlertMode } from "~/components/alerts/queryAlertLink";
 import type { RenderIcon } from "~/components/primitives/Icon";
 import { formatNumber } from "~/utils/numberFormatter";
 import {
@@ -110,7 +111,7 @@ const CAPABILITY_PHRASE: Record<string, string> = {
   "errors.occurred_again": "This error occurring again",
 };
 
-export function capabilityPhrase(key: string): string {
+function capabilityPhrase(key: string): string {
   return CAPABILITY_PHRASE[key] ?? resolveCapability(key)?.title ?? key;
 }
 
@@ -440,7 +441,6 @@ export function alertName(answers: FlowAnswers): string {
 function buildAlertName(answers: FlowAnswers): string {
   const cap = resolveCapability(answers.what);
   if (!cap) return "New alert";
-  if (answers.replace) return `${cap.title} · ${answers.replace.channelName}`;
   const phrase = capabilityPhrase(cap.key);
   const kind = conditionKindFor(answers.what);
   const scopeLabel =
@@ -493,6 +493,11 @@ export type DraftPrefillParams = {
   scope?: string | ErrorGroupScope;
   scopeValue?: string;
   replace?: ReplaceTarget;
+  source?: "query";
+  query?: string;
+  period?: string;
+  mode?: QueryAlertMode;
+  measure?: string;
 };
 
 export function asArea(value: string | undefined): DraftPrefillParams["area"] {

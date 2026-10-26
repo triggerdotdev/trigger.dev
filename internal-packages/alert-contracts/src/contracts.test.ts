@@ -23,6 +23,7 @@ import {
   listCapabilities,
   CURRENTLY_QUEUED_PREDICATE_PENDING,
 } from "./registry.js";
+import { QUERY_SOURCES, minCadenceForTables, modesForTables } from "./querySources.js";
 import {
   displayStatus,
   transition,
@@ -256,9 +257,10 @@ describe("schemas", () => {
     ).toBeDefined();
   });
 
-  it("absence quietWindowSec must be >= 1800", () => {
-    expect(() => conditionSchema.parse({ kind: "absence", quietWindowSec: 1799 })).toThrow();
-    expect(conditionSchema.parse({ kind: "absence", quietWindowSec: 1800 })).toBeDefined();
+  it("absence quietWindowSec must be a positive whole number", () => {
+    expect(() => conditionSchema.parse({ kind: "absence", quietWindowSec: 0 })).toThrow();
+    expect(() => conditionSchema.parse({ kind: "absence", quietWindowSec: 1.5 })).toThrow();
+    expect(conditionSchema.parse({ kind: "absence", quietWindowSec: 600 })).toBeDefined();
   });
 
   it("state condition accepts params", () => {
@@ -370,7 +372,7 @@ describe("validateConditionParams", () => {
 
 describe("registry", () => {
   it("has 16 capabilities", () => {
-    expect(V1_CAPABILITIES).toHaveLength(16);
+    expect(V1_CAPABILITIES).toHaveLength(17);
   });
 
   it("has unique keys", () => {
@@ -429,6 +431,13 @@ describe("registry", () => {
     }
     expect(bindings).toMatchInlineSnapshot(`
       {
+        "custom.query": {
+          "scopes": [
+            "all",
+          ],
+          "table": undefined,
+          "template": "",
+        },
         "health.all": {
           "scopes": [
             "all",
@@ -789,6 +798,7 @@ describe("registry", () => {
     "health.execution": ["all"],
     "health.liveness": ["all"],
     "health.all": ["all"],
+    "custom.query": ["all"],
     "errors.new": ["task", "all"],
     "errors.occurred_again": ["errorGroup"],
   };
@@ -1294,5 +1304,90 @@ describe("notifierRefSchema / notifierRefKey", () => {
     const keyA = notifierRefKey({ type: "chat", userId: "user_a" });
     const keyB = notifierRefKey({ type: "chat", userId: "user_b" });
     expect(keyA).not.toBe(keyB);
+  });
+});
+
+describe("query alerts contracts", () => {
+  const base = { environmentId: "env_1", scope: { type: "all" as const } };
+  const signal = {
+    v: 1,
+    sources: [{ sourceId: "runs", windowColumn: "triggered_at" }],
+    mode: "threshold",
+  };
+
+  it("keeps a valid querySignal and rejects an invalid one", () => {
+    expect(alertParamsSchema.parse({ ...base, querySignal: signal }).querySignal).toEqual(signal);
+    expect(() => alertParamsSchema.parse({ ...base, querySignal: { ...signal, v: 2 } })).toThrow();
+    expect(() =>
+      alertParamsSchema.parse({ ...base, querySignal: { ...signal, cadenceSec: 60 } })
+    ).toThrow();
+  });
+
+  it("never lists custom.query on any surface", () => {
+    const cap = getCapability("custom.query")!;
+    expect(cap.area).toBe("query");
+    expect(cap.curated).toBe(false);
+    for (const surface of ["agent", "mcp", "alerts_page", "contextual"]) {
+      expect(listCapabilities({ surface }).map((c) => c.key)).not.toContain("custom.query");
+    }
+    expect(listCapabilities({ curatedOnly: true }).map((c) => c.key)).not.toContain("custom.query");
+  });
+
+  it("has a well-formed catalog", () => {
+    for (const source of Object.values(QUERY_SOURCES)) {
+      expect(source.timeColumns.threshold, source.table).toBeTruthy();
+      if (source.modes.includes("match")) {
+        expect(source.stableId, source.table).toBeTruthy();
+        expect(source.timeColumns.match, source.table).toBeTruthy();
+      }
+    }
+  });
+
+  it("derives modes and cadence across sources", () => {
+    expect(modesForTables(["runs", "llm_metrics"])).toEqual(["threshold", "match"]);
+    expect(modesForTables(["runs", "errors"])).toEqual(["threshold", "match"]);
+    expect(modesForTables(["errors"])).toEqual(["threshold"]);
+    expect(modesForTables(["runs"])).toContain("match");
+    expect(minCadenceForTables(["runs", "errors"])).toBe(600);
+  });
+
+  it("gives a shared window column name the same semantics in every source", () => {
+    const seen = new Map<string, boolean>();
+    for (const source of Object.values(QUERY_SOURCES)) {
+      const entries: [string, boolean][] = [
+        [source.timeColumns.threshold, source.eventTime.threshold],
+      ];
+      if (source.timeColumns.match)
+        entries.push([source.timeColumns.match, source.eventTime.match!]);
+      for (const [column, eventTime] of entries) {
+        if (seen.has(column)) expect(eventTime, `${source.table}.${column}`).toBe(seen.get(column));
+        seen.set(column, eventTime);
+      }
+    }
+  });
+
+  it("pins every catalog time column to the approved event-time table", () => {
+    const actual = Object.values(QUERY_SOURCES).flatMap((s) => [
+      `${s.table}.${s.timeColumns.threshold}=${s.eventTime.threshold}`,
+      ...(s.timeColumns.match ? [`${s.table}.${s.timeColumns.match}=${s.eventTime.match}`] : []),
+    ]);
+    expect(actual.sort()).toEqual(
+      [
+        "runs.triggered_at=false",
+        "runs.completed_at=true",
+        "error_occurrences.minute=true",
+        "errors.last_seen=false",
+        "llm_metrics.start_time=true",
+        "llm_metrics.start_time=true",
+        "metrics.bucket_start=false",
+        "concurrency_metrics.bucket_start=false",
+        "env_metrics.bucket_start=false",
+      ].sort()
+    );
+  });
+
+  it("supports nothing when any table is unknown", () => {
+    expect(modesForTables(["runs", "llm_models"])).toEqual([]);
+    expect(minCadenceForTables(["runs", "llm_models"])).toBeUndefined();
   });
 });

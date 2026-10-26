@@ -23,7 +23,8 @@ export function createAsyncIterableReadable<S, T>(
   source: ReadableStream<S>,
   transformer: Transformer<S, T>,
   signal: AbortSignal,
-  onCancel?: () => void
+  onCancel?: () => void,
+  onClose?: () => void
 ): AsyncIterableStream<T> {
   // Set once the stream is closed, errored or cancelled; the controller must not be touched after
   let closed = false;
@@ -70,6 +71,7 @@ export function createAsyncIterableReadable<S, T>(
         }
       } finally {
         signal.removeEventListener("abort", onAbort);
+        onClose?.();
       }
     },
     cancel(reason) {

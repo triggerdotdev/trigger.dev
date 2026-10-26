@@ -41,7 +41,17 @@ export function thresholdWarningOverlay(threshold: number | null, operator?: ">"
       };
 }
 
-const SERIES_COLORS = [EVENT_CHART_COLOR, "#6366F1", "#EC4899", "#F59E0B", "#10B981"];
+// Yellow/amber is reserved for the over-threshold highlight (WARNING_COLOR).
+export const SERIES_COLORS = [
+  EVENT_CHART_COLOR,
+  "#6366F1",
+  "#EC4899",
+  "#10B981",
+  "#06B6D4",
+  "#3B82F6",
+  "#D946EF",
+  "#14B8A6",
+];
 const OTHER_COLOR = "var(--color-text-dimmed)";
 
 function orderedSeriesKeys(seriesMap: Map<string, unknown>): string[] {
@@ -50,34 +60,62 @@ function orderedSeriesKeys(seriesMap: Map<string, unknown>): string[] {
   return keys;
 }
 
-function multiSeriesConfig(keys: string[]): Record<string, { label: string; color: string }> {
+export function assignGroupColors(
+  prev: Map<string, string>,
+  selected: string[]
+): Map<string, string> {
+  const next = new Map<string, string>();
+  for (const key of selected) {
+    const color = prev.get(key);
+    if (color) next.set(key, color);
+  }
+  const used = new Set(next.values());
+  const free = SERIES_COLORS.filter((c) => !used.has(c));
+  for (const key of selected) {
+    if (!next.has(key))
+      next.set(key, free.shift() ?? SERIES_COLORS[next.size % SERIES_COLORS.length]!);
+  }
+  return next;
+}
+
+function multiSeriesConfig(
+  keys: string[],
+  colors?: Map<string, string>
+): Record<string, { label: string; color: string }> {
   return Object.fromEntries(
     keys.map((key, i) => [
       key,
       {
         label: key === "__other__" ? "Other" : key,
-        color: key === "__other__" ? OTHER_COLOR : SERIES_COLORS[i % SERIES_COLORS.length]!,
+        color:
+          key === "__other__"
+            ? OTHER_COLOR
+            : (colors?.get(key) ?? SERIES_COLORS[i % SERIES_COLORS.length]!),
       },
     ])
   );
 }
 
-export function thresholdChartParts({
+function thresholdChartParts({
   seriesMap,
   label,
   threshold,
   operator,
+  colors,
 }: {
   seriesMap?: Map<string, unknown>;
   label: string;
   threshold: number | null;
   operator?: ">" | "<";
+  colors?: Map<string, string>;
 }) {
   const keys = seriesMap ? orderedSeriesKeys(seriesMap) : [];
   const multi = keys.length > 1;
   return {
-    config: multi ? multiSeriesConfig(keys) : { value: { label, color: EVENT_CHART_COLOR } },
-    overlay: multi ? undefined : thresholdWarningOverlay(threshold, operator),
+    config: multi
+      ? multiSeriesConfig(keys, colors)
+      : { value: { label, color: colors?.get(keys[0] ?? "") ?? EVENT_CHART_COLOR } },
+    overlay: thresholdWarningOverlay(threshold, operator),
     referenceLineColor: threshold === null ? undefined : THRESHOLD_LINE_COLOR,
   };
 }
@@ -87,6 +125,7 @@ export function thresholdChartLegend(input: {
   label: string;
   threshold: number | null;
   operator?: ">" | "<";
+  colors?: Map<string, string>;
 }): ChartLegendItem[] {
   const { config, overlay } = thresholdChartParts(input);
   return [
@@ -120,6 +159,7 @@ export function AlertThresholdChart({
   operator,
   raisedAt,
   timeZone,
+  color,
 }: {
   series: MetricSeriesPoint[];
   threshold: number | null;
@@ -130,6 +170,7 @@ export function AlertThresholdChart({
   operator?: ">" | "<";
   raisedAt?: Date | null;
   timeZone?: string;
+  color?: string;
 }) {
   if (!hasReadings(series)) {
     return <AlertChartEmptyState height={height} fill={fill} />;
@@ -137,7 +178,7 @@ export function AlertThresholdChart({
 
   const data = series.map((p) => ({ bucket: p.bucket, value: p.value }));
 
-  const config: ChartConfig = thresholdChartParts({ label, threshold, operator }).config;
+  const config: ChartConfig = { value: { label, color: color ?? EVENT_CHART_COLOR } };
 
   const { tickFormatter, tooltipLabelFormatter } = buildActivityTimeAxis(
     data,
@@ -205,6 +246,7 @@ export function AlertMultiSeriesChart({
   operator,
   raisedAt,
   timeZone,
+  colors,
 }: {
   seriesMap: Map<string, MetricSeriesPoint[]>;
   threshold: number | null;
@@ -216,6 +258,7 @@ export function AlertMultiSeriesChart({
   operator?: ">" | "<";
   raisedAt?: Date | null;
   timeZone?: string;
+  colors?: Map<string, string>;
 }) {
   const keys = orderedSeriesKeys(seriesMap);
   if (keys.length === 0 || keys.every((k) => !hasReadings(seriesMap.get(k) ?? []))) {
@@ -235,6 +278,7 @@ export function AlertMultiSeriesChart({
         operator={operator}
         raisedAt={raisedAt}
         timeZone={timeZone}
+        color={colors?.get(keys[0]!)}
       />
     );
   }
@@ -249,7 +293,7 @@ export function AlertMultiSeriesChart({
     merged.push(point);
   }
 
-  const configEntries = multiSeriesConfig(keys);
+  const configEntries = multiSeriesConfig(keys, colors);
 
   const { tickFormatter, tooltipLabelFormatter } = buildActivityTimeAxis(
     merged,
@@ -294,6 +338,7 @@ export function AlertMultiSeriesChart({
                   },
                 ]
           }
+          warningOverlay={thresholdWarningOverlay(threshold, operator)}
           xAxisProps={{
             tickFormatter: (value: number) =>
               value === raiseTick ? `▲ raised ${tickFormatter(value)}` : tickFormatter(value),

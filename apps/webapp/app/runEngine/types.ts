@@ -48,6 +48,8 @@ export type QueueProperties = {
   taskKind?: string;
   /** Other queues the run must also hold a concurrency slot in while executing. */
   gates?: Array<{ queue: string; concurrencyKey?: string }>;
+  /** Template key of the deployment the task metadata came from, if it has one. */
+  templateKey?: string | null;
 };
 
 export type LockedBackgroundWorker = Pick<

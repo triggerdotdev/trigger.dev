@@ -434,6 +434,8 @@ const EnvironmentSchema = z
     // Read directly from process.env in server.ts (before this schema loads); declared here for discoverability.
     WEBAPP_TELNET_LOGS_PORT: z.coerce.number().optional(),
     LOGIN_ORIGIN: z.string().default("http://localhost:3030"),
+    // Temporary single admin origin; retain the name used by the cloud sidecars.
+    ADDITIONAL_LOGIN_ORIGINS: z.string().optional(),
     LOGIN_RATE_LIMITS_ENABLED: BoolEnv.default(true),
     MAGIC_LINK_SAME_BROWSER_REQUIRED: BoolEnv.default(true),
     APP_ORIGIN: z.string().default("http://localhost:3030"),
@@ -995,6 +997,17 @@ const EnvironmentSchema = z
     ARTIFACTS_OBJECT_STORE_ACCESS_KEY_ID: z.string().optional(),
     ARTIFACTS_OBJECT_STORE_SECRET_ACCESS_KEY: z.string().optional(),
     ARTIFACTS_OBJECT_STORE_REGION: z.string().optional(),
+
+    // Dedicated store for full deployment index snapshots. Unset falls back to the OBJECT_STORE_* provider.
+    DEPLOYMENT_INDEX_OBJECT_STORE_BASE_URL: z.string().optional(),
+    DEPLOYMENT_INDEX_OBJECT_STORE_BUCKET: z.string().optional(),
+    DEPLOYMENT_INDEX_OBJECT_STORE_ACCESS_KEY_ID: z.string().optional(),
+    DEPLOYMENT_INDEX_OBJECT_STORE_SECRET_ACCESS_KEY: z.string().optional(),
+    DEPLOYMENT_INDEX_OBJECT_STORE_REGION: z.string().optional(),
+    DEPLOYMENT_INDEX_OBJECT_STORE_SERVICE: z.string().default("s3"),
+    DEPLOYMENT_INDEX_UPLOAD_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(4),
+    // Default for the deploymentIndexCaptureEnabled flag; a global flag row overrides it.
+    DEPLOYMENT_INDEX_CAPTURE_ENABLED: BoolEnv.default(false),
     EVENTS_BATCH_SIZE: z.coerce.number().int().default(100),
     EVENTS_BATCH_INTERVAL: z.coerce.number().int().default(1000),
     EVENTS_DEFAULT_LOG_RETENTION: z.coerce.number().int().default(7),
@@ -1092,7 +1105,7 @@ const EnvironmentSchema = z
 
     /** These enable the alerts feature in v3 */
     ALERT_EMAIL_TRANSPORT: z.enum(["resend", "smtp", "aws-ses"]).optional(),
-    ALERT_EVALUATION_CADENCE_CAP_SEC: z.coerce.number().int().positive().optional(),
+    ALERT_EVALUATION_CADENCE_CAP_SEC: z.coerce.number().int().positive().default(60),
     ALERT_FROM_EMAIL: z.string().optional(),
     ALERT_REPLY_TO_EMAIL: z.string().optional(),
     ALERT_RESEND_API_KEY: z.string().optional(),
@@ -1101,8 +1114,8 @@ const EnvironmentSchema = z
     ALERT_SMTP_SECURE: BoolEnv.optional(),
     ALERT_SMTP_USER: z.string().optional(),
     ALERT_SMTP_PASSWORD: z.string().optional(),
-    /** Per-project concurrency limit for TSQL queries issued by the alert evaluator (§3.6). */
-    ALERT_QUERY_CONCURRENCY: z.coerce.number().int().default(1),
+    /** Per-project query concurrency for alert evaluations, separate from the user lane. */
+    ALERTS_QUERY_CONCURRENCY_LIMIT: z.coerce.number().int().min(1).default(2),
     /** Min sample size for runs.failure_rate before the rate is trusted (DEC-113, value TBD). */
     ALERT_FAILURE_RATE_MIN_VOLUME: z.coerce.number().int().default(10),
     ALERT_CHECKPOINT_LOOKBACK_SEC: z.coerce.number().int().min(0).default(3600),
@@ -1304,6 +1317,17 @@ const EnvironmentSchema = z
     RUN_ENGINE_DEQUEUE_DISABLED_WORKER_QUEUES: z.string().optional(),
     // JSON map of worker-group IDs to allowed v2 subscriptions. Unlisted groups are denied.
     RUN_ENGINE_WORKER_QUEUE_SUBSCRIPTIONS: WorkerQueueSubscriptionPolicyEnv,
+    // Comma-separated worker-group IDs that carry container and compute consumers side by side. A
+    // MICROVM group must be listed here to consume the container lanes its allowlist names.
+    RUN_ENGINE_MIXED_RUNTIME_WORKER_GROUPS: z
+      .string()
+      .default("")
+      .transform((raw) =>
+        raw
+          .split(",")
+          .map((id) => id.trim())
+          .filter(Boolean)
+      ),
     RUN_ENGINE_MASTER_QUEUE_CONSUMERS_INTERVAL_MS: z.coerce.number().int().default(1000),
     // Off by default. Enable on a single service (e.g. the engine worker) so only one
     // instance reports worker queue length, rather than every replica.
@@ -1459,6 +1483,13 @@ const EnvironmentSchema = z
     RUN_ENGINE_SNAPSHOT_STORE_REDIS_URL: z.string().optional(),
     // How long a fetched org snapshotStoreMode override is reused per process. 0 disables caching.
     RUN_ENGINE_SNAPSHOT_STORE_DIAL_CACHE_MS: z.coerce.number().int().min(0).default(5000),
+    // How long a finished run's snapshot state stays in the store. Redis-primary runs fail closed
+    // after it expires.
+    RUN_ENGINE_SNAPSHOT_STORE_COMPLETED_TTL_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(4 * 24 * 60 * 60 * 1_000),
     // Background sweep that resolves snapshot units left pending by an interrupted transition
     // (see snapshotRecoveryWorker.server.ts). Inert without RUN_ENGINE_SNAPSHOT_STORE_REDIS_URL.
     // Off unless set to "1": enable it on one background replica. Several replicas with it on are

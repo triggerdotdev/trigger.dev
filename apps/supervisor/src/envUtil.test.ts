@@ -4,6 +4,7 @@ import {
   AdditionalEnvVars,
   NodeLabelValue,
   OrgPlacementOverrides,
+  ReservedPorts,
   Tolerations,
 } from "./envUtil.js";
 
@@ -111,6 +112,27 @@ describe("NodeLabelValue", () => {
       expect(NodeLabelValue.safeParse(invalid).success).toBe(false);
     }
   });
+});
+
+describe("ReservedPorts", () => {
+  it("is unset when empty", () => {
+    for (const value of [undefined, "", "  "]) {
+      expect(ReservedPorts.parse(value)).toBeUndefined();
+    }
+  });
+
+  it("accepts ports and ranges, stripping whitespace the kernel would reject", () => {
+    expect(ReservedPorts.parse("50080,50081")).toBe("50080,50081");
+    expect(ReservedPorts.parse(" 50080 , 50000-50100 ")).toBe("50080,50000-50100");
+    expect(ReservedPorts.parse("0,65535,8080-8080")).toBe("0,65535,8080-8080");
+  });
+
+  it.each(["50080,", ",50080", "50080 50081", "65536", "50100-50000", "08080", "0x50", "-1", "a"])(
+    "refuses %j, so a bad value stops the supervisor from starting",
+    (value) => {
+      expect(ReservedPorts.safeParse(value).success).toBe(false);
+    }
+  );
 });
 
 describe("Tolerations", () => {

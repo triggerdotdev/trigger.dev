@@ -18,10 +18,14 @@ import {
  * Returns `null` when the query can't be parsed; callers MUST treat `null` as
  * deny-by-default.
  */
-export function detectQueryTables(query: string, allowedTableNames: Set<string>): string[] | null {
+export function detectQueryTables(
+  query: string,
+  allowedTableNames: Set<string>,
+  select?: SelectQuery | SelectSetQuery
+): string[] | null {
   let ast: SelectQuery | SelectSetQuery;
   try {
-    ast = parseTSQLSelect(query);
+    ast = select ?? parseTSQLSelect(query);
   } catch (err) {
     if (err instanceof TSQLSyntaxError) return null;
     throw err;

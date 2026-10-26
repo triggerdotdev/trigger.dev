@@ -47,9 +47,9 @@ import {
   runOpsTransactionResilience,
 } from "./v3/transactionResilience.server";
 import { assertControlPlaneCoresidencyAdvisory } from "./v3/runOpsMigration/controlPlaneCoresidencySentinel.server";
-import { DATASOURCE_CONTEXT_KEY, startActiveSpan } from "./v3/tracer.server";
+import { startActiveSpan } from "./v3/tracer.server";
+import { tagDatasource, tagDatasourceRunOps } from "./utils/datasourceTagging.server";
 import type { Span } from "@opentelemetry/api";
-import { context, trace } from "@opentelemetry/api";
 import { queryPerformanceMonitor } from "./utils/queryPerformanceMonitor.server";
 
 export type {
@@ -164,53 +164,6 @@ async function $transactionInner<R>(
 
 export { Prisma, boundedIn };
 
-type DatasourceLabel =
-  | "control-plane-writer"
-  | "control-plane-replica"
-  | "legacy-run-ops-writer"
-  | "legacy-run-ops-replica"
-  | "run-ops-writer"
-  | "run-ops-replica"
-  | "webhook-writer"
-  | "webhook-partitions"
-  | "webhook-replica"
-  | "alert-partitions";
-
-function tagDatasource<T extends PrismaClient>(datasource: DatasourceLabel, client: T): T {
-  return client.$extends({
-    name: "datasource-tagger",
-    query: {
-      $allOperations: ({ query, args }) => {
-        trace.getActiveSpan()?.setAttribute("db.datasource", datasource);
-        return context.with(
-          context.active().setValue(DATASOURCE_CONTEXT_KEY, datasource),
-          async () => await query(args)
-        );
-      },
-    },
-  }) as unknown as T;
-}
-
-// Same extension as tagDatasource but typed for RunOpsPrismaClient (different
-// generated package — does not extend @trigger.dev/database.PrismaClient).
-function tagDatasourceRunOps(
-  datasource: DatasourceLabel,
-  client: RunOpsPrismaClient
-): RunOpsPrismaClient {
-  return client.$extends({
-    name: "datasource-tagger",
-    query: {
-      $allOperations: ({ query, args }) => {
-        trace.getActiveSpan()?.setAttribute("db.datasource", datasource);
-        return context.with(
-          context.active().setValue(DATASOURCE_CONTEXT_KEY, datasource),
-          async () => await query(args)
-        );
-      },
-    },
-  }) as unknown as RunOpsPrismaClient;
-}
-
 // Same wrapper as captureInfrastructureErrors, bridged via double cast because
 // that helper is constrained to T extends @trigger.dev/database.PrismaClient.
 function captureInfraErrorsRunOps(client: RunOpsPrismaClient): RunOpsPrismaClient {
@@ -221,7 +174,9 @@ function captureInfraErrorsRunOps(client: RunOpsPrismaClient): RunOpsPrismaClien
 
 export const prisma = singleton("prisma", () =>
   registerTransactionResilience(
-    captureInfrastructureErrors(tagDatasource("control-plane-writer", getClient())),
+    captureInfrastructureErrors(
+      tagDatasource("control-plane-writer", "control-plane-writer", getClient())
+    ),
     controlPlaneTransactionResilience
   )
 );
@@ -232,7 +187,9 @@ export const $replica: PrismaReplicaClient = singleton("replica", () => {
   // No replica configured → fall back to the writer `prisma`, which must stay UNBRANDED.
   return replica
     ? markReadReplicaClient(
-        captureInfrastructureErrors(tagDatasource("control-plane-replica", replica))
+        captureInfrastructureErrors(
+          tagDatasource("control-plane-replica", "control-plane-replica", replica)
+        )
       )
     : prisma;
 });
@@ -248,6 +205,7 @@ export const webhookPrisma: WebhookDatabase = singleton("webhookPrisma", () => {
   }
   return captureInfrastructureErrors(
     tagDatasource(
+      "webhook-writer",
       "webhook-writer",
       buildWriterClient({
         url: env.WEBHOOK_DATABASE_URL,
@@ -270,6 +228,7 @@ export const webhookPartitionPrisma: WebhookDatabase = singleton("webhookPartiti
   return captureInfrastructureErrors(
     tagDatasource(
       "webhook-partitions",
+      "webhook-partitions",
       buildWriterClient({
         url: env.WEBHOOK_DATABASE_DIRECT_URL,
         clientType: "webhook-partitions",
@@ -283,6 +242,7 @@ export const webhookPartitionPrisma: WebhookDatabase = singleton("webhookPartiti
 export function createAlertPartitionPrisma(): PrismaClient {
   return captureInfrastructureErrors(
     tagDatasource(
+      "alert-partitions",
       "alert-partitions",
       buildWriterClient({
         url: env.DATABASE_URL,
@@ -304,6 +264,7 @@ export const webhookReplica: WebhookReplicaDatabase = singleton("webhookReplica"
       captureInfrastructureErrors(
         tagDatasource(
           "webhook-replica",
+          "webhook-reader",
           buildReplicaClient({
             url: env.WEBHOOK_DATABASE_READ_REPLICA_URL,
             clientType: "webhook-reader",
@@ -429,7 +390,7 @@ export function selectRunOpsTopology(
 // assertRunOpsSplitSentinel(). Because the builder callbacks only run when
 // splitEnabled is true, single-DB reuses prisma/$replica by reference and opens
 // nothing new. The builders apply the SAME wrapper pair the control-plane
-// singletons use (captureInfrastructureErrors(tagDatasource(role, raw))).
+// singletons use (captureInfrastructureErrors(tagDatasource(datasource, clientType, raw))).
 const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
   const newUrl = env.RUN_OPS_DATABASE_URL;
   // Gate on the opt-in flag too: the distinct-DB sentinel only runs when the flag is on.
@@ -486,6 +447,7 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
           captureInfraErrorsRunOps(
             tagDatasourceRunOps(
               "run-ops-writer",
+              clientType,
               buildRunOpsClient({
                 url,
                 clientType,
@@ -507,6 +469,7 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
           captureInfraErrorsRunOps(
             tagDatasourceRunOps(
               "run-ops-replica",
+              clientType,
               buildRunOpsClient({
                 url,
                 clientType,
@@ -526,6 +489,7 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
           captureInfrastructureErrors(
             tagDatasource(
               "legacy-run-ops-writer",
+              clientType,
               buildWriterClient({
                 url,
                 clientType,
@@ -542,6 +506,7 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
           captureInfrastructureErrors(
             tagDatasource(
               "legacy-run-ops-replica",
+              clientType,
               buildReplicaClient({
                 url,
                 clientType,
@@ -554,7 +519,8 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
         ),
       // A gen-2 shard is a dedicated run-ops DB, so it mirrors buildNewWriter/buildNewReplica: same
       // client class, same wrapper stack, its OWN resilience budget, and the "new"-role pool knobs
-      // merged with the descriptor's per-shard overrides. Shards share the run-ops datasource tag.
+      // merged with the descriptor's per-shard overrides. Shards share the run-ops datasource tag;
+      // the db.client_type span attribute (the clientType) tells them apart.
       buildShardWriter: (shard) => {
         const descriptor = shardDescriptorsByKey.get(shard.key);
         const knobs = resolveRunOpsPoolKnobs("new", descriptor?.knobs);
@@ -562,6 +528,7 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
           captureInfraErrorsRunOps(
             tagDatasourceRunOps(
               "run-ops-writer",
+              `run-ops-shard-${shard.key}-writer`,
               buildRunOpsClient({
                 url: shard.url!,
                 clientType: `run-ops-shard-${shard.key}-writer`,
@@ -583,6 +550,7 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
           captureInfraErrorsRunOps(
             tagDatasourceRunOps(
               "run-ops-replica",
+              `run-ops-shard-${shard.key}-replica`,
               buildRunOpsClient({
                 url: shard.replicaUrl!,
                 clientType: `run-ops-shard-${shard.key}-replica`,

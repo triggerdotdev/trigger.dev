@@ -421,6 +421,21 @@ export const V1_CAPABILITIES: AlertCapability[] = [
     freshness: "counter",
     allowedScopes: ERROR_GROUP_SCOPES,
   },
+  {
+    key: "custom.query",
+    area: "query",
+    signal: "metric",
+    allowedKinds: ["threshold", "absence", "occurrence"],
+    binding: { type: "query", template: "", minCadenceSec: 300 },
+    minCadenceSec: 300,
+    title: "Query",
+    description: "A user-authored TRQL query alert. The query is built per alert at evaluation.",
+    unit: "count",
+    surfaces: [],
+    curated: false,
+    freshness: "snapshot",
+    allowedScopes: ["all"],
+  },
 ];
 
 export function getCapability(key: string): AlertCapability | undefined {

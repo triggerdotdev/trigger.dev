@@ -1,7 +1,7 @@
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { boundedIn } from "@trigger.dev/database";
-import type { NotifierRef } from "@internal/alert-contracts";
+import { getCapability, type NotifierRef } from "@internal/alert-contracts";
 import { appendChatMessageOnce, chatExists } from "@internal/dashboard-agent-db";
 import {
   alertCreatedMessage,
@@ -24,7 +24,9 @@ import {
   NoNotifiersError,
   IncompleteChatNotifierError,
   InvalidNotifierError,
+  InvalidQueryAlertError,
 } from "~/v3/services/alerts/createAlertFromDraft.server";
+import { validateAlertDraft } from "~/v3/services/alerts/validateAlertDraft.server";
 import {
   buildCondition,
   buildScope,
@@ -145,6 +147,21 @@ export const action = dashboardAction(
       notifiers.push({ type: "chat", chatId: body.chatId, userId });
     }
 
+    const draftError = validateAlertDraft({
+      capability: getCapability(body.form.capabilityKey),
+      capabilityKey: body.form.capabilityKey,
+      surface: "alerts_page",
+      conditionKind: body.form.conditionKind,
+      quietWindowSec:
+        body.form.conditionKind === "absence"
+          ? (body.form.quietWindowMinutes ?? 0) * 60
+          : undefined,
+      scope: buildScope(body.form),
+    });
+    if (draftError) {
+      return json({ error: draftError.message }, { status: 400 });
+    }
+
     try {
       const alert = await createAlertFromDraft(prisma, {
         organizationId: body.organizationId,
@@ -157,6 +174,8 @@ export const action = dashboardAction(
         expiresAt: body.form.expiresAt ? new Date(body.form.expiresAt) : undefined,
         notifiers,
         createdBy: userId,
+        query: body.form.query,
+        querySignalChoice: body.form.querySignalChoice,
       });
 
       const message = await appendCreatedCard({
@@ -170,6 +189,9 @@ export const action = dashboardAction(
 
       return json({ ok: true, alertId: alert.id, alertName: alert.name, message });
     } catch (error) {
+      if (error instanceof InvalidQueryAlertError) {
+        return json({ error: error.message }, { status: 422 });
+      }
       if (DOMAIN_ERRORS.some((cls) => error instanceof cls)) {
         return json({ error: (error as Error).message }, { status: 400 });
       }

@@ -3,6 +3,7 @@
 // schedules, and `reason: "upgrade"` drops it (or replaces it) AND persists that on the row.
 
 import { postgresTest } from "@internal/testcontainers";
+import { $transaction as realTransaction } from "@trigger.dev/database";
 import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect, vi } from "vitest";
 
@@ -40,6 +41,15 @@ vi.mock("~/db.server", () => {
   return {
     prisma: lazyProxy(primaryHolder, "primaryHolder.client"),
     $replica: lazyProxy(primaryHolder, "primaryHolder.client"),
+    // The real shared transaction helper on the per-test writer; only the webapp wrapper's span
+    // and logging are absent.
+    $transaction: (_client: unknown, nameOrFn: unknown, fnOrOptions?: unknown, options?: unknown) =>
+      realTransaction(
+        primaryHolder.client,
+        (typeof nameOrFn === "function" ? nameOrFn : fnOrOptions) as any,
+        () => {},
+        (typeof nameOrFn === "function" ? fnOrOptions : options) as any
+      ),
   };
 });
 
@@ -81,7 +91,11 @@ vi.mock("~/v3/services/cancelTaskRun.server", () => ({
 import { PostgresRunStore } from "@internal/run-store";
 import type { CreateRunInput } from "@internal/run-store";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { ensureRunForSession, swapSessionRun } from "~/services/realtime/sessionRunManager.server";
+import {
+  ensureRunForSession,
+  SessionClosedError,
+  swapSessionRun,
+} from "~/services/realtime/sessionRunManager.server";
 
 let seq = 0;
 
@@ -598,5 +612,86 @@ describe("session runs — external deployment id", () => {
 
     const stored = await prisma.session.findFirstOrThrow({ where: { id: session.id } });
     expect(stored.triggerConfig).toMatchObject({ externalDeploymentId: "commit-old" });
+  });
+});
+
+// The caller read the session as open, but a close committed on the writer before the run claim.
+describe("session runs — claim lost to a close", () => {
+  postgresTest("ensure throws SessionClosedError", async ({ prisma }) => {
+    const suffix = `closed_ensure_${seq++}`;
+    const { seed } = await setup(prisma as unknown as PrismaClient, suffix);
+    triggerState.result = {
+      run: { id: cuidRunId(`ce${seq}`), friendlyId: `run_${suffix}_new`, status: "PENDING" },
+    };
+
+    const session = await prisma.session.create({
+      data: {
+        friendlyId: `session_${suffix}`,
+        type: "chat.agent",
+        projectId: seed.project.id,
+        runtimeEnvironmentId: seed.environment.id,
+        environmentType: "PRODUCTION",
+        organizationId: seed.organization.id,
+        taskIdentifier: "my-chat",
+        triggerConfig: { basePayload: {} },
+        closedAt: new Date(),
+      },
+    });
+
+    const error = await ensureRunForSession({
+      session,
+      environment: environmentFor(seed),
+      reason: "continuation",
+    }).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(SessionClosedError);
+    expect((error as Error).name).toBe("SessionClosedError");
+    const stored = await prisma.session.findFirstOrThrow({ where: { id: session.id } });
+    expect(stored.currentRunId).toBeNull();
+  });
+
+  postgresTest("swap throws SessionClosedError", async ({ prisma }) => {
+    const suffix = `closed_swap_${seq++}`;
+    const { seed, writerStore } = await setup(prisma as unknown as PrismaClient, suffix);
+
+    const callingRunId = cuidRunId(`cs${seq}`);
+    await writerStore.createRun(
+      buildCreateRunInput({
+        runId: callingRunId,
+        friendlyId: `run_${suffix}_calling`,
+        organizationId: seed.organization.id,
+        projectId: seed.project.id,
+        runtimeEnvironmentId: seed.environment.id,
+      })
+    );
+    triggerState.result = {
+      run: { id: cuidRunId(`cs2${seq}`), friendlyId: `run_${suffix}_new`, status: "PENDING" },
+    };
+
+    const session = await prisma.session.create({
+      data: {
+        friendlyId: `session_${suffix}`,
+        type: "chat.agent",
+        projectId: seed.project.id,
+        runtimeEnvironmentId: seed.environment.id,
+        environmentType: "PRODUCTION",
+        organizationId: seed.organization.id,
+        taskIdentifier: "my-chat",
+        triggerConfig: { basePayload: {} },
+        currentRunId: callingRunId,
+        closedAt: new Date(),
+      },
+    });
+
+    const error = await swapSessionRun({
+      session,
+      callingRunId,
+      environment: environmentFor(seed),
+      reason: "manual",
+    }).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(SessionClosedError);
+    const stored = await prisma.session.findFirstOrThrow({ where: { id: session.id } });
+    expect(stored.currentRunId).toBe(callingRunId);
   });
 });

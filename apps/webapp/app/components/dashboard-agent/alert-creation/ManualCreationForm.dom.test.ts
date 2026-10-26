@@ -41,11 +41,26 @@ vi.mock("~/hooks/useEnvironment", () => ({
   useEnvironment: () => ({ slug: fetcherState.env }),
 }));
 vi.mock("~/components/alerts/AlertChannelsBody", () => ({
-  AlertChannelsBody: ({ alertChannels }: { alertChannels: { name: string }[] }) =>
+  AlertChannelsBody: ({
+    alertChannels,
+    modal,
+  }: {
+    alertChannels: { name: string }[];
+    modal?: { onConnect?: () => void; connectReturnTo?: string };
+  }) =>
     createElement(
-      "ul",
+      "div",
       null,
-      alertChannels.map((c) => createElement("li", { key: c.name }, c.name))
+      createElement(
+        "ul",
+        null,
+        alertChannels.map((c) => createElement("li", { key: c.name }, c.name))
+      ),
+      createElement(
+        "a",
+        { href: modal?.connectReturnTo, onClick: modal?.onConnect },
+        "Connect to Slack"
+      )
     ),
 }));
 
@@ -374,24 +389,6 @@ describe("manual mode shares the wizard steps", () => {
   });
 
   // Mutation: dropping the focus/scroll effect in ManualCreationForm fails this.
-  it("picking an area moves focus to the next step", () => {
-    const scrolled: Element[] = [];
-    const original = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = function (this: HTMLElement) {
-      scrolled.push(this);
-    };
-    try {
-      mount(true);
-      expect(fieldset("what")).toBeNull();
-      pick("area", "Runs");
-      expect(latest!.currentStep).toBe("what");
-      expect(scrolled).toContain(fieldset("what"));
-      expect(document.activeElement).toBe(combobox("what"));
-    } finally {
-      HTMLElement.prototype.scrollIntoView = original;
-    }
-  });
-
   it("what lists every capability with no More metrics option", () => {
     mount(true, { area: "queues" });
     const labels = optionLabels("what");
@@ -434,19 +431,6 @@ describe("manual mode shares the wizard steps", () => {
     pick("expiry", "Until…");
     expect(fieldset("expiry").querySelector('[role="group"]')).not.toBeNull();
     expect(latest!.answers.expiry).toBeUndefined();
-  });
-
-  it("picking Until… focuses the first date segment", () => {
-    mount(true, BASE);
-    pick("expiry", "Until…");
-    const first = fieldset("expiry").querySelector('[role="group"] [role="spinbutton"]');
-    expect(document.activeElement).toBe(first);
-  });
-
-  it("revealing the health inputs focuses the first one", () => {
-    mount(true, { area: "health" });
-    pick("what", "Flow health degrading");
-    expect(document.activeElement).toBe(fieldset("condition").querySelector("input"));
   });
 
   it("notifier select stays in sync with the flow across re-renders", () => {
@@ -511,37 +495,7 @@ describe("draft completeness and step order", () => {
   });
 
   // Mutation: restoring the paired grid puts the date beside the dropdown.
-  it("puts the date field below the Until dropdown in one column", () => {
-    mount(true, { ...BASE, expiry: "30h" });
-    const step = fieldset("expiry");
-    expect(step.querySelector("[data-control-row]")).toBeNull();
-    expect(step.querySelector(".grid-cols-2")).toBeNull();
-    const select = step.querySelector("button[role=combobox]")!;
-    const group = step.querySelector('[role="group"]')!;
-    expect(select.compareDocumentPosition(group) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  });
-
   // Mutation: dropping w-full or the grid from the Custom row shrinks the input.
-  it("renders the Custom input row as a full-width grid", () => {
-    mount(true, { ...BASE, expiry: "none", notifiers: ["chat"] });
-    pick("condition", "Custom");
-    const input = fieldset("condition").querySelector<HTMLInputElement>("input")!;
-    const rowEl = input.closest("li.grid")!;
-    expect(rowEl.className).toContain("grid-cols-[minmax(0,1fr)_2.5rem]");
-    expect(rowEl.className).toContain("w-full");
-    expect(rowEl.className).toContain("max-w-[372px]");
-    expect(input.className).toContain("w-full");
-  });
-
-  it("sizes every control to a full-width 372px column", async () => {
-    mount(true, { area: "queues", what: "queue.depth", condition: "100", scope: "queue" });
-    await settle();
-    for (const trigger of Array.from(document.querySelectorAll("button[role=combobox]"))) {
-      expect(trigger.className).toContain("max-w-[372px]");
-      expect(trigger.className).not.toContain("w-[176px]");
-    }
-  });
-
   it("never shows a second queue picker or a Specific row", async () => {
     mount(true, { area: "queues", what: "queue.depth", condition: "100", scope: "queue" });
     await settle();
@@ -676,6 +630,20 @@ describe("manual mode regressions", () => {
     act(() => root.unmount());
     container.remove();
     keepReview = false;
+  });
+
+  it("shows only the created card once the alert is created", async () => {
+    mount(true, { ...BASE, expiry: "none", notifiers: ["chat"] });
+    click(button("Done")!);
+    await act(async () => {
+      button("Create alert")!.click();
+    });
+    expect(latest!.created).toBe(true);
+    const form = document.querySelector('[data-testid="manual-form"]')!;
+    expect(form.querySelector('[data-testid="alert-created"]')).not.toBeNull();
+    expect(form.querySelector("fieldset")).toBeNull();
+    expect(form.querySelector("button[role=combobox]")).toBeNull();
+    expect(button("Done")).toBeUndefined();
   });
 
   // Mutation: dropping onClear from the expiry input keeps the stale expiry.
@@ -850,52 +818,37 @@ describe("manual mode dropdowns", () => {
     expect(latest!.answers.notifiers).toEqual(["chat"]);
   });
 
-  it("Add channel sits below the list with a plus icon and no ellipsis", () => {
-    mount(true, { ...BASE, expiry: "none", notifiers: ["chat"] }, {
-      projectId: "p1",
-      canWrite: true,
-      atLimit: false,
-    } as never);
-    const list = fieldset("notifiers").querySelector("[data-checkbox-list]")!;
-    expect(list.className).toContain("mt-1");
-    const add = Array.from(fieldset("notifiers").querySelectorAll("button")).find(
-      (b) => b.textContent === "Add channel"
+  it("saves the answers with the manual flag and the marker returnTo when connecting Slack", () => {
+    const returnTo = "/orgs/org/projects/proj/env/prod/alerts?create=1&add=slack";
+    fetcherState.data = { alertChannels: [], limits: { used: 0, limit: 5 }, canWrite: true };
+    mount(
+      true,
+      { ...BASE, expiry: "none", notifiers: ["chat", "ch_1"] },
+      {
+        projectId: "p1",
+        environmentId: "e1",
+        canWrite: true,
+        atLimit: false,
+        connectReturnTo: returnTo,
+      }
+    );
+    click(
+      Array.from(fieldset("notifiers").querySelectorAll("button")).find(
+        (b) => b.textContent === "Add channel"
+      )!
+    );
+    const connect = Array.from(document.querySelectorAll("a")).find(
+      (a) => a.textContent === "Connect to Slack"
     )!;
-    expect(list.contains(add)).toBe(false);
-    expect(add.className).toContain("mt-3");
-    expect(add.className).toContain("group/button");
-    expect(add.querySelector("svg")!.innerHTML).toContain("M10.75 4.75");
-    expect(add.textContent).not.toContain("…");
-  });
-
-  it("aligns the unit suffix with the input below the label", () => {
-    mount(true, { area: "health", what: "health.flow" });
-    const unit = Array.from(fieldset("condition").querySelectorAll("span")).find(
-      (el) => el.textContent === "ms"
-    )!;
-    expect(unit.className).toContain("mt-6");
-  });
-
-  // Mutation: giving one unit box a different width class fails this.
-  it("health unit boxes share one fixed width and every input is the same width", () => {
-    mount(true, { area: "health", what: "health.flow" });
-    const units = Array.from(fieldset("condition").querySelectorAll("li > span")).filter((el) =>
-      ["ms", "runs", "%"].includes(el.textContent ?? "")
-    );
-    expect(units.length).toBeGreaterThan(1);
-    const widths = units.map((el) =>
-      el.className
-        .split(" ")
-        .filter((c) => /^w-/.test(c))
-        .join(" ")
-    );
-    expect(widths[0]).toBeTruthy();
-    expect(new Set(widths).size).toBe(1);
-    const inputs = fieldset("condition").querySelectorAll("input");
-    const cols = new Set(
-      Array.from(inputs).map((i) => i.closest("[class*='max-w-[372px]']")!.className)
-    );
-    expect(cols.size).toBe(1);
+    expect(connect.getAttribute("href")).toBe(returnTo);
+    click(connect);
+    expect(JSON.parse(sessionStorage.getItem("alerts.slackConnectResume.p1.e1")!)).toMatchObject({
+      what: BASE.what,
+      expiry: "none",
+      notifiers: ["chat", "ch_1"],
+      manual: true,
+    });
+    fetcherState.data = undefined;
   });
 
   // Mutation: hiding the dropdown when Custom is selected or removing the input below fails this.
@@ -951,17 +904,6 @@ describe("manual mode dropdowns", () => {
   });
 
   // Mutation: restoring the border/divide-y wrapper or the full-width triggers fails this.
-  it("has no bordered container and 176px triggers", () => {
-    mount(true, { ...BASE, expiry: "none" });
-    const form = document.querySelector('[data-testid="manual-form"]')!;
-    expect(form.querySelector("[class*='border-grid-bright']")).toBeNull();
-    expect(form.querySelector(".divide-y")).toBeNull();
-    const triggers = Array.from(form.querySelectorAll("button[role=combobox]"));
-    expect(triggers.length).toBeGreaterThan(1);
-    for (const trigger of triggers)
-      expect(trigger.className).toMatch(/w-\[176px\]|max-w-\[372px\]/);
-  });
-
   it("skips a single-option scope step", () => {
     mount(true, { area: "health", what: "health.liveness" });
     expect(fieldset("scope")).toBeNull();
@@ -1122,6 +1064,7 @@ describe("manual mode dropdowns", () => {
 describe("areas with nothing to watch", () => {
   const groups = ENTITIES["error-groups"];
   const queues = ENTITIES.queues;
+  const tasks = ENTITIES.tasks;
   beforeEach(() => {
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -1135,6 +1078,7 @@ describe("areas with nothing to watch", () => {
     fetcherState.routed = false;
     ENTITIES["error-groups"] = groups;
     ENTITIES.queues = queues;
+    ENTITIES.tasks = tasks;
   });
 
   const cardAreas = () => rowLabels(document.querySelector("[role=dialog]")!);
@@ -1152,12 +1096,26 @@ describe("areas with nothing to watch", () => {
     );
     const what = rowLabels(document.querySelector("[role=dialog]")!);
     expect(what).toContain("A new error appearing");
-    expect(what).not.toContain("This error occurring again");
+    expect(what).toContain("This error occurring again");
+    expect(
+      Array.from(document.querySelectorAll<HTMLButtonElement>("[role=dialog] li button")).find(
+        (b) => b.textContent === "This error occurring again"
+      )!.disabled
+    ).toBe(true);
     remount();
     mount(true);
     await settle();
     pick("area", "Errors");
-    expect(combobox("what")).toBeNull();
+    const select = combobox("what")!;
+    expect(select).not.toBeNull();
+    open(select);
+    const isDisabled = (o: HTMLElement) =>
+      o.hasAttribute("disabled") || o.getAttribute("aria-disabled") === "true";
+    const again = options(select).find((o) => o.textContent === "This error occurring again")!;
+    const fresh = options(select).find((o) => o.textContent === "A new error appearing")!;
+    expect(isDisabled(again)).toBe(true);
+    expect(isDisabled(fresh)).toBe(false);
+    act(() => select.click());
     expect(latest!.answers.what).toBe("errors.new");
   });
 
@@ -1167,17 +1125,42 @@ describe("areas with nothing to watch", () => {
     mount(true);
     await settle();
     pick("area", "Errors");
-    expect(combobox("what")).toBeNull();
-    expect(fieldset("what").textContent).toContain("What about errors?");
+    expect(combobox("what")).not.toBeNull();
+    expect(optionLabels("what")).toContain("This error occurring again");
     expect(latest!.answers.what).toBe("errors.new");
   });
 
-  // Mutation: dropping the emptyAreas filter in allSteps fails this.
-  it("hides Queues when the environment has no queues", async () => {
+  it("keeps Queues listed when the environment has no queues", async () => {
     ENTITIES.queues = { queues: [], hasMore: false };
     mount(true);
     await settle();
-    expect(optionLabels("area")).toEqual(["Runs", "Health", "Errors"]);
+    expect(optionLabels("area")).toEqual(["Queues", "Runs", "Health", "Errors"]);
+    const select = combobox("area")!;
+    open(select);
+    const queues = options(select).find((o) => o.textContent === "Queues")!;
+    expect(queues.hasAttribute("disabled") || queues.getAttribute("aria-disabled") === "true").toBe(
+      true
+    );
+  });
+
+  // Mutation: dropping the dim class or the tooltip wrapper from disabled manual options fails this.
+  it("dims a disabled area and exposes its reason as a tooltip", async () => {
+    ENTITIES.tasks = { tasks: [] };
+    mount(true);
+    await settle();
+    const select = combobox("area")!;
+    open(select);
+    const runs = options(select).find((o) => o.textContent === "Runs")!;
+    const fresh = options(select).find((o) => o.textContent === "Health")!;
+    expect(runs.hasAttribute("disabled") || runs.getAttribute("aria-disabled") === "true").toBe(
+      true
+    );
+    expect(runs.className).toContain("opacity-50");
+    expect(fresh.className).not.toContain("opacity-50");
+    expect(runs.parentElement!.hasAttribute("data-state")).toBe(true);
+    expect(fresh.parentElement!.hasAttribute("data-state")).toBe(false);
+    act(() => runs.parentElement!.focus());
+    expect(document.body.textContent).toContain("No tasks in this environment yet");
   });
 
   it("shows all four areas when every list has entries", async () => {

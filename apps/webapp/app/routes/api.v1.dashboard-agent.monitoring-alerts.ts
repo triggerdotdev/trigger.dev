@@ -18,74 +18,26 @@ import {
 import { authorizeWatchEnvironmentById } from "~/services/dashboardAgentWatches.server";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
-import { rbac } from "~/services/rbac.server";
-import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
+import {
+  authenticateDashboardAgent,
+  authorizeAlerts,
+  gateMonitoringAlerts,
+} from "~/services/dashboardAgentMonitoringAlerts.server";
 import { createAlertAndSchedule } from "~/v3/services/alerts/alertLifecycle.server";
+import {
+  createAlertFromDraft,
+  InvalidQueryAlertError,
+  QUERY_DOMAIN_ERRORS,
+  type AlertDraftScope,
+} from "~/v3/services/alerts/createAlertFromDraft.server";
 import { offeredCapabilities } from "~/v3/services/alerts/offeredCapabilities.server";
 import { validateAlertDraft } from "~/v3/services/alerts/validateAlertDraft.server";
 import { validateAlertNotifiers } from "~/v3/services/alerts/validateAlertNotifiers.server";
 import { alertDisplayName } from "~/v3/services/alerts/alertDisplayName";
-import {
-  canUseMonitoringAlerts,
-  resolveMonitoringAlertsEnvironment,
-} from "~/services/monitoringAlertsApi.server";
-import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-
-async function authenticate(
-  request: Request
-): Promise<{ userId: string; environmentId: string } | { error: Response }> {
-  const authentication = await authenticateUatOrApiRequest(request);
-  const actor = authentication?.userActor;
-  if (!actor || actor.client !== "dashboard-agent") {
-    return { error: json({ error: "Invalid or missing access token" }, { status: 401 }) };
-  }
-  if (!actor.environmentId) {
-    return {
-      error: json(
-        { error: "This chat has no environment context.", code: "invalid_target" },
-        { status: 400 }
-      ),
-    };
-  }
-  return { userId: actor.userId, environmentId: actor.environmentId };
-}
+import { resolveMonitoringAlertsEnvironment } from "~/services/monitoringAlertsApi.server";
 
 function contextStatus(code: AgentAlertContextError) {
   return code === "environment_mismatch" ? 400 : 404;
-}
-
-async function gateMonitoringAlerts(environment: AuthenticatedEnvironment, userId: string) {
-  return canUseMonitoringAlerts(
-    {
-      id: environment.project.id,
-      externalRef: environment.project.externalRef,
-      organizationId: environment.organizationId,
-      organizationSlug: environment.organization.slug,
-      organizationFeatureFlags:
-        (environment.organization.featureFlags as Record<string, unknown> | null) ?? null,
-    },
-    userId
-  );
-}
-
-async function authorizeAlerts(
-  request: Request,
-  environment: AuthenticatedEnvironment,
-  action: "read" | "write"
-): Promise<Response | undefined> {
-  const auth = await rbac.authenticateUserActor(request, {
-    organizationId: environment.organizationId,
-    projectId: environment.project.id,
-  });
-  if (!auth.ok) {
-    return json({ error: auth.error }, { status: auth.status });
-  }
-  if (!auth.ability.can(action, { type: "alerts", envType: environment.type })) {
-    return json(
-      { error: `You don't have permission to ${action === "read" ? "view" : "manage"} alerts` },
-      { status: 403 }
-    );
-  }
 }
 
 const ListQuerySchema = z.object({
@@ -111,17 +63,26 @@ const looseNotifierRef = z.discriminatedUnion("type", [
   }),
 ]);
 
-const CreateBodySchema = z.object({
-  chatId: z.string().min(1),
-  capabilityKey: z.string().min(1),
-  environment: z.enum(["dev", "staging", "prod", "preview"]).optional(),
-  name: z.string().optional(),
-  scope: alertParamsSchema.shape.scope.optional(),
-  windowSec: alertParamsSchema.shape.windowSec,
-  condition: conditionSchema,
-  behavior: behaviorSchema.optional(),
-  notifiers: z.array(looseNotifierRef).optional(),
-});
+const CreateBodySchema = z
+  .object({
+    chatId: z.string().min(1),
+    capabilityKey: z.string().min(1),
+    environment: z.enum(["dev", "staging", "prod", "preview"]).optional(),
+    name: z.string().optional(),
+    scope: alertParamsSchema.shape.scope.optional(),
+    windowSec: alertParamsSchema.shape.windowSec,
+    condition: conditionSchema,
+    behavior: behaviorSchema.optional(),
+    notifiers: z.array(looseNotifierRef).optional(),
+    query: z.string().max(8192).optional(),
+    signal: z
+      .object({ mode: z.enum(["threshold", "absence", "match"]), measure: z.string().optional() })
+      .optional(),
+  })
+  .refine(
+    (v) => v.capabilityKey === "custom.query" || (v.query === undefined && v.signal === undefined),
+    { message: "query and signal are only valid for the custom.query capability", path: ["query"] }
+  );
 
 const ResolveBodySchema = z.object({
   chatId: z.string().min(1),
@@ -129,7 +90,7 @@ const ResolveBodySchema = z.object({
 });
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const auth = await authenticate(request);
+  const auth = await authenticateDashboardAgent(request);
   if ("error" in auth) return auth.error;
 
   const params = Object.fromEntries(new URL(request.url).searchParams.entries());
@@ -234,7 +195,7 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: "Method not allowed" }, { status: 405 });
   }
 
-  const auth = await authenticate(request);
+  const auth = await authenticateDashboardAgent(request);
   if ("error" in auth) return auth.error;
 
   let rawBody: unknown;
@@ -310,6 +271,7 @@ export async function action({ request }: ActionFunctionArgs) {
     capabilityKey: body.capabilityKey,
     surface: "agent",
     conditionKind: body.condition.kind,
+    quietWindowSec: body.condition.kind === "absence" ? body.condition.quietWindowSec : undefined,
     scope: body.scope,
   });
   if (draftError) {
@@ -393,6 +355,50 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   const scope = body.scope ?? { type: "all" as const };
+
+  if (body.capabilityKey === "custom.query") {
+    try {
+      const alert = await createAlertFromDraft(prisma, {
+        organizationId: environment.organizationId,
+        projectId: environment.project.id,
+        environmentId: environment.id,
+        capabilityKey: body.capabilityKey,
+        scope: scope as AlertDraftScope,
+        condition: body.condition,
+        expiresAt: body.behavior?.expiresAt ? new Date(body.behavior.expiresAt) : undefined,
+        notifiers,
+        name: body.name,
+        createdBy: auth.userId,
+        query: body.query,
+        querySignalChoice: body.signal,
+      });
+      return json({
+        created: true,
+        alert: {
+          id: alert.id,
+          capabilityKey: alert.capabilityKey,
+          lifecycle: alert.lifecycle,
+          attention: alert.attention,
+        },
+      });
+    } catch (error) {
+      if (error instanceof InvalidQueryAlertError) {
+        return json({ error: error.message }, { status: 422 });
+      }
+      if (QUERY_DOMAIN_ERRORS.some((cls) => error instanceof cls)) {
+        return json({ error: (error as Error).message }, { status: 400 });
+      }
+      if (error instanceof Response) throw error;
+      logger.error("Failed to create query alert via agent", {
+        organizationId: environment.organizationId,
+        projectId: environment.project.id,
+        environmentId: environment.id,
+        userId: auth.userId,
+        error,
+      });
+      return json({ error: "Internal Server Error" }, { status: 500 });
+    }
+  }
 
   try {
     const alert = await createAlertAndSchedule(prisma, {
