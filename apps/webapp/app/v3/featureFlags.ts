@@ -59,8 +59,6 @@ export const FEATURE_FLAG = {
   apiRateLimitMetricsEnabled: "apiRateLimitMetricsEnabled",
   queueArchivingEnabled: "queueArchivingEnabled",
   supportAccessSettingsEnabled: "supportAccessSettingsEnabled",
-  progressiveTraceLoadingEnabled: "progressiveTraceLoadingEnabled",
-  publicTracePagingEnabled: "publicTracePagingEnabled",
   runTokenInjection: "runTokenInjection",
 } as const;
 
@@ -235,9 +233,6 @@ export const FeatureFlagCatalog = {
   // Shows the org Support Access settings page. Off until every webapp enforces the setting;
   // the org override wins over the global value.
   [FEATURE_FLAG.supportAccessSettingsEnabled]: z.boolean(),
-  [FEATURE_FLAG.progressiveTraceLoadingEnabled]: z.boolean(),
-  // Page parameters on the public trace API. Off: they're ignored and the tree is returned.
-  [FEATURE_FLAG.publicTracePagingEnabled]: z.boolean(),
   // Injects a signed per-attempt TRIGGER_RUN_TOKEN into deployed runs. Org override wins over
   // the global value. Requires RUN_TOKEN_ISSUER_URL and an active internal run signing key.
   [FEATURE_FLAG.runTokenInjection]: z.boolean(),

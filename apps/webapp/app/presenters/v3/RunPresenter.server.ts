@@ -6,8 +6,6 @@ import type { SpanSummary } from "~/v3/eventRepository/eventRepository.types";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
 import { env } from "~/env.server";
-import { FEATURE_FLAG } from "~/v3/featureFlags";
-import { makeFlag } from "~/v3/featureFlags.server";
 import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { canLiveTail } from "./liveTailGate";
 import { assembleFirstTraceChunk, type TraceReadScope } from "./traceFirstChunk.server";
@@ -131,7 +129,7 @@ export class RunPresenter {
         slug: projectSlug,
         organization: { members: { some: { userId } } },
       },
-      select: { id: true, organization: { select: { featureFlags: true } } },
+      select: { id: true },
     });
 
     if (!authorizedProject) {
@@ -209,31 +207,20 @@ export class RunPresenter {
       ? millisecondsToNanoseconds(run.startedAt.getTime() - triggeredAt.getTime())
       : undefined;
 
-    const orgFeatureFlags =
-      (authorizedProject.organization?.featureFlags as Record<string, unknown>) ?? {};
-
     // Read before the first chunk so the first tail covers the background load.
     const firstChunkReadAt = Date.now();
 
-    const progressivePromise = makeFlag(this.#prismaClient)({
-      key: FEATURE_FLAG.progressiveTraceLoadingEnabled,
-      defaultValue: false,
-      overrides: orgFeatureFlags,
-    });
-
-    const firstChunkPromise = progressivePromise.then((progressiveEnabled) =>
-      progressiveEnabled && canLiveTail(run.taskEventStore, env.TRACE_VIEW_EMERGENCY_SPAN_CAP)
-        ? repository.getTraceChunk(
-            getTaskEventStoreTableForRun(run),
-            environment.id,
-            run.traceId,
-            traceTimeBounds.startCreatedAt,
-            traceTimeBounds.endCreatedAt,
-            undefined,
-            { includeDebugLogs: showDebug }
-          )
-        : undefined
-    );
+    const firstChunkPromise = canLiveTail(run.taskEventStore, env.TRACE_VIEW_EMERGENCY_SPAN_CAP)
+      ? repository.getTraceChunk(
+          getTaskEventStoreTableForRun(run),
+          environment.id,
+          run.traceId,
+          traceTimeBounds.startCreatedAt,
+          traceTimeBounds.endCreatedAt,
+          undefined,
+          { includeDebugLogs: showDebug }
+        )
+      : Promise.resolve(undefined);
 
     const [user, firstChunk] = await Promise.all([
       this.#prismaClient.user.findFirst({
