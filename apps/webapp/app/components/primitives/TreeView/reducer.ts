@@ -44,6 +44,8 @@ type UpdateTreeAction = {
   type: "UPDATE_TREE";
   payload: {
     tree: FlatTree<any>;
+    /** Nodes new to the tree that should start collapsed. */
+    collapsedIds?: string[];
   };
 };
 
@@ -528,12 +530,15 @@ export function reducer(state: TreeState, action: Action): TreeState {
     case "UPDATE_TREE": {
       //update the tree but try and keep the selected and expanded states
       const selectedId = selectedIdFromState(state.nodes);
-      const collapsedIds = collapsedIdsFromState(state.nodes);
+      const collapsedIds = collapsedIdsFromState(state.nodes).concat(
+        action.payload.collapsedIds ?? []
+      );
       const newState = concreteStateFromInput({
         ...state,
         tree: action.payload.tree,
         selectedId,
         collapsedIds,
+        openSelectedAncestors: false,
       });
       return newState;
     }

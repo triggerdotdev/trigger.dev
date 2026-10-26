@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getRunFinishedAt } from "~/v3/eventRepository/traceInsertedAtBound";
-import { settleUnloadedRoot } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam/settleUnloadedRoot";
+import { settleUnloadedRoot } from "~/components/runs/v3/trace/settleUnloadedRoot";
 
 const start = new Date("2026-10-01T10:00:00.000Z");
 const completedAt = new Date("2026-10-01T10:00:06.000Z");

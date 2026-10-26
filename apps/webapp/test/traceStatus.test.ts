@@ -3,7 +3,7 @@ import {
   getTraceStatus,
   type TraceStatus,
   type TraceStatusInput,
-} from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam/traceStatus";
+} from "~/components/runs/v3/trace/traceStatus";
 
 const liveRun: TraceStatusInput = {
   runFinished: false,
