@@ -13,6 +13,7 @@ import {
   alertDraftPatchSchema,
   applyDraftPatch,
   errorGroupToResolve,
+  queryWatchFromPatch,
   type AlertDraftPatch,
 } from "./draftPatch";
 import { draftResultLines } from "./useCreationAgentSend";
@@ -264,6 +265,23 @@ describe("below-threshold operator", () => {
   it("accepts operator < on a query patch", () => {
     const patch = { area: "query", query: "SELECT 1", condition: { operator: "<" } };
     expect(alertDraftPatchSchema.safeParse(patch).success).toBe(true);
+  });
+
+  it("forwards condition value and windowSec in queryWatchFromPatch", () => {
+    const patch = {
+      area: "query",
+      query: "SELECT count() FROM runs",
+      querySignalChoice: { mode: "threshold" as const, measure: "count" },
+      condition: { operator: ">" as const, value: 42, windowSec: 1800 },
+    };
+    expect(queryWatchFromPatch(patch)).toEqual({
+      query: "SELECT count() FROM runs",
+      mode: "threshold",
+      measure: "count",
+      operator: ">",
+      value: 42,
+      windowSec: 1800,
+    });
   });
 });
 

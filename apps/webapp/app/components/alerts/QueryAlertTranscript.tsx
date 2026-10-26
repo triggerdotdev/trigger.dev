@@ -39,6 +39,8 @@ export type QueryWatchPrefill = {
   mode?: QueryAlertMode;
   measure?: string;
   operator?: ">" | "<";
+  value?: number;
+  windowSec?: number;
 };
 
 export function queryWatchPrefill(
@@ -105,6 +107,8 @@ export function QueryAlertTranscript({
           mode: prefill.mode,
           measure: prefill.measure,
           operator: prefill.operator,
+          value: prefill.value,
+          windowSec: prefill.windowSec,
           ...analyzed,
         }
       : undefined;

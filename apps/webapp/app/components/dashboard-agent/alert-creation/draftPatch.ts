@@ -67,6 +67,8 @@ export function queryWatchFromPatch(patch: AlertDraftPatch): QueryWatchPrefill |
     mode: patch.querySignalChoice?.mode,
     measure: patch.querySignalChoice?.measure,
     operator: patch.condition?.operator,
+    value: patch.condition?.value,
+    windowSec: patch.condition?.windowSec,
   };
 }
 
