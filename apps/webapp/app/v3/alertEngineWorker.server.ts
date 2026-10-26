@@ -86,7 +86,7 @@ function initializeWorker() {
           {
             db: prisma,
             evaluateBinding: createProductionEvaluateBinding({
-              queryConcurrency: env.ALERT_QUERY_CONCURRENCY,
+              queryLane: "alerts",
               checkpointLookbackSec: env.ALERT_CHECKPOINT_LOOKBACK_SEC,
               queryEvaluatorConfig: {
                 failureRateMinVolume: env.ALERT_FAILURE_RATE_MIN_VOLUME,

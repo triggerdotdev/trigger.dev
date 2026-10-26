@@ -1,11 +1,23 @@
+import type { Session } from "@trigger.dev/database";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { nanoid } from "nanoid";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
+import {
+  ensureRunForSession,
+  SessionClosedError,
+  type EnsureRunReason,
+  type EnsureRunResult,
+} from "~/services/realtime/sessionRunManager.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
-import { drainSessionStreamWaitpoints } from "~/services/sessionStreamWaitpointCache.server";
+import {
+  claimSessionStreamPart,
+  drainSessionStreamWaitpoints,
+  releaseSessionStreamPart,
+} from "~/services/sessionStreamWaitpointCache.server";
 import { engine } from "~/v3/runEngine.server";
+import { ServiceValidationError } from "~/v3/services/common.server";
 
 type SessionChannelIO = "out" | "in";
 
@@ -17,7 +29,7 @@ type SessionChannelIO = "out" | "in";
  * key the agent registered with via `sessions.open(...).in.wait()`, so writers
  * and readers converge regardless of which URL form they used.
  */
-export async function completeSessionStreamWaitpoints(
+async function completeSessionStreamWaitpoints(
   environmentId: string,
   addressingKey: string,
   io: SessionChannelIO,
@@ -108,4 +120,101 @@ export async function appendServerSessionRecord({
 
   await completeSessionStreamWaitpoints(environment.id, addressingKey, io, part);
   return true;
+}
+
+type EnsureOutcome =
+  | { ok: true; result: EnsureRunResult }
+  /** `sessionClosed`: the run claim lost to a close, so there is no run to ensure. */
+  | { ok: false; error: unknown; sessionClosed: boolean };
+
+export type EnsureRunThenAppendResult =
+  /** `seq` is undefined when another append already claimed `partId`. */
+  | { ok: true; seq: number | undefined; ensure: EnsureOutcome }
+  | { ok: false; kind: "unsupported_backend" }
+  | { ok: false; kind: "rejected"; status: number; message: string; ensure: EnsureOutcome }
+  | { ok: false; kind: "failed"; error: unknown; ensure: EnsureOutcome };
+
+/**
+ * Ensure the session has a live run, then append one record and wake its waiters. Outcomes are
+ * returned, not thrown, so each caller picks its own policy.
+ *
+ * Ensure goes first: a revived run reads the record from the channel (continuations never carry
+ * it in the payload), and a rejected append doesn't skip the ensure. A `partId` is claimed before
+ * appending, so a retry appends nothing but still wakes waiters; a failed append releases it.
+ */
+export async function ensureRunThenAppend({
+  session,
+  environment,
+  addressingKey,
+  io,
+  part,
+  partId,
+  reason,
+}: {
+  session: Pick<
+    Session,
+    | "id"
+    | "friendlyId"
+    | "taskIdentifier"
+    | "triggerConfig"
+    | "currentRunId"
+    | "currentRunVersion"
+    | "streamBasinName"
+  >;
+  environment: AuthenticatedEnvironment;
+  addressingKey: string;
+  io: SessionChannelIO;
+  part: string;
+  partId?: string;
+  reason: EnsureRunReason;
+}): Promise<EnsureRunThenAppendResult> {
+  const realtimeStream = getRealtimeStreamInstance(environment, "v2", { session });
+
+  if (!(realtimeStream instanceof S2RealtimeStreams)) {
+    return { ok: false, kind: "unsupported_backend" };
+  }
+
+  const ensure = await ensureRun({ session, environment, reason });
+
+  const wonClaim = partId
+    ? await claimSessionStreamPart(environment.id, addressingKey, io, partId)
+    : true;
+
+  let seq: number | undefined;
+  if (wonClaim) {
+    const [appendError, appendedSeq] = await tryCatch(
+      realtimeStream.appendPartToSessionStream(part, partId ?? nanoid(7), addressingKey, io)
+    );
+
+    if (appendError) {
+      if (partId) {
+        await releaseSessionStreamPart(environment.id, addressingKey, io, partId);
+      }
+      if (appendError instanceof ServiceValidationError) {
+        return {
+          ok: false,
+          kind: "rejected",
+          status: appendError.status ?? 422,
+          message: appendError.message,
+          ensure,
+        };
+      }
+      return { ok: false, kind: "failed", error: appendError, ensure };
+    }
+
+    seq = appendedSeq ?? undefined;
+  }
+
+  await completeSessionStreamWaitpoints(environment.id, addressingKey, io, part);
+  return { ok: true, seq, ensure };
+}
+
+async function ensureRun(
+  params: Parameters<typeof ensureRunForSession>[0]
+): Promise<EnsureOutcome> {
+  const [error, result] = await tryCatch(ensureRunForSession(params));
+  if (error) {
+    return { ok: false, error, sessionClosed: error instanceof SessionClosedError };
+  }
+  return { ok: true, result };
 }

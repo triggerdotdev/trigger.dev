@@ -64,7 +64,7 @@ function ZoomRangeTooltip({ active, from, to }: { active?: boolean; from: string
 // hovered bucket shows one value (base), not base + overlay. Defined at module scope (not inline in
 // the renderer) so recharts reconciles it in place across hover re-renders instead of remounting
 // the portaled tooltip — the latter caused a flicker while moving along the line.
-export function warningSwatchThreshold(
+function warningSwatchThreshold(
   warningOverlay: ChartLineRendererProps["warningOverlay"]
 ): number | undefined {
   return warningOverlay && "tooltipSwatch" in warningOverlay && warningOverlay.tooltipSwatch
@@ -86,7 +86,7 @@ export function warningSwatchColor(
     : undefined;
 }
 
-function OverlayFilteredTooltip({
+export function OverlayFilteredTooltip({
   overlayThreshold,
   overlayColor,
   overlayDirection,
@@ -101,12 +101,9 @@ function OverlayFilteredTooltip({
     <ChartTooltipContent
       {...props}
       payload={payload}
-      color={warningSwatchColor(
-        payload?.[0]?.value,
-        overlayThreshold,
-        overlayColor,
-        overlayDirection
-      )}
+      itemColor={(item) =>
+        warningSwatchColor(item.value, overlayThreshold, overlayColor, overlayDirection)
+      }
     />
   );
 }
@@ -737,7 +734,8 @@ export function ChartLineRenderer({
             (props: ActiveDotProps) =>
               props.cx != null &&
               props.cy != null &&
-              overlayDotVisible(props.payload, key, over) ? (
+              overlayDotVisible(props.payload, key, over) &&
+              isOver(props.payload as (typeof data)[number], key) ? (
                 <circle
                   cx={props.cx}
                   cy={props.cy}

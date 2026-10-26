@@ -37,6 +37,8 @@ import { evaluateCreatedAtGate, runAgeBucket } from "./workloadTokenAuthorizatio
 import { dequeueWorkerQueues } from "~/runEngine/concerns/workerQueueDequeue.server";
 import {
   createWorkerQueueConsumer,
+  refusedSubscriptions,
+  workerServesQueue,
   type WorkerQueueConsumer,
   type WorkerQueueConsumerOptions,
 } from "~/runEngine/concerns/workerQueueSubscriptions.server";
@@ -71,7 +73,7 @@ if (workloadCreatedAtGateEnabled && !workloadTokenCutoff) {
   );
 }
 
-type WorkloadGateAction = "start" | "complete" | "continue" | "snapshots_since";
+type WorkloadGateAction = "start" | "complete" | "continue" | "snapshots_since" | "restore_outcome";
 
 const meter = getMeter("workload-auth-gate");
 
@@ -275,6 +277,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
           region: workerGroup.region,
           workloadType: workerGroup.workloadType,
           allowedSubscriptions: env.RUN_ENGINE_WORKER_QUEUE_SUBSCRIPTIONS[workerGroup.id] ?? [],
+          mixedRuntime: env.RUN_ENGINE_MIXED_RUNTIME_WORKER_GROUPS.includes(workerGroup.id),
         });
       }
     );
@@ -371,6 +374,9 @@ export class WorkerGroupTokenService extends WithRunEngine {
   }
 }
 
+// Each process warns once per group, as an instance is built on every worker request.
+const warnedRefusedGroups = new Set<string>();
+
 const WorkerInstanceEnv = z.enum(["dev", "staging", "prod"]).default("prod");
 type WorkerInstanceEnv = z.infer<typeof WorkerInstanceEnv>;
 
@@ -401,6 +407,14 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     this.workerInstanceId = opts.workerInstanceId;
     this.masterQueue = opts.masterQueue;
     this.queueConsumer = createWorkerQueueConsumer(opts);
+
+    if (refusedSubscriptions(opts).length > 0 && !warnedRefusedGroups.has(opts.workerGroupId)) {
+      warnedRefusedGroups.add(opts.workerGroupId);
+      logger.warn(
+        "[WorkerGroupTokenService] Refusing container lanes for a MICROVM worker group that is not mixed",
+        { workerGroupId: opts.workerGroupId }
+      );
+    }
   }
 
   async connect(metadata: Record<string, any>): Promise<void> {
@@ -729,15 +743,23 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     message,
     runnerId,
     environmentId,
+    fallbackWorkerQueue,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
-    outcome: "requeue" | "fail";
+    outcome: "requeue" | "fail" | "fallback";
     reason: string;
     message?: string;
     runnerId?: string;
     environmentId?: string;
+    fallbackWorkerQueue?: (workerQueue: string) => string | undefined;
   }) {
+    await this.assertCreatedAtGate({
+      runId: fromFriendlyId(runFriendlyId),
+      environmentId,
+      action: "restore_outcome",
+    });
+
     return await this._engine.reportRestoreOutcome({
       runId: fromFriendlyId(runFriendlyId),
       snapshotId: fromFriendlyId(snapshotFriendlyId),
@@ -747,6 +769,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       workerId: this.workerInstanceId,
       runnerId,
       environmentId,
+      fallbackWorkerQueue,
+      servesWorkerQueue: (workerQueue) => workerServesQueue(this.queueConsumer, workerQueue),
     });
   }
 

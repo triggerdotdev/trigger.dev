@@ -255,7 +255,10 @@ function emptySkipped(): SkippedRuns {
   return { postgres: 0, redisPrimary: 0, noSnapshots: 0, unknown: 0, expired: 0 };
 }
 
-/** Finished runs keep their MemoryDB keys for this long, then the whole keyspace expires. Matches the webapp's completed TTL. */
+/**
+ * The webapp's DEFAULT completed TTL. If the target environment overrides
+ * RUN_ENGINE_SNAPSHOT_STORE_COMPLETED_TTL_MS, expired runs are misclassified.
+ */
 export const FINISHED_RUN_RETENTION_MS = 4 * 24 * 60 * 60 * 1000;
 
 function isExpired(

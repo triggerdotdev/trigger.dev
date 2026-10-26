@@ -2,7 +2,10 @@ import {
   ALERT_RAISED_BUTTON_TEXT,
   ALERT_RAISED_LABEL,
   alertRaisedSentence,
+  boundDetail,
 } from "emails/src/alertRaisedContent";
+
+const SLACK_SECTION_MAX = 2900;
 
 function escapeSlackText(text: string) {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -25,7 +28,15 @@ export function buildAlertSlackMessage(params: {
       text: { type: "mrkdwn", text: escapeSlackText(alertRaisedSentence(params)) },
     },
     ...(params.detail
-      ? [{ type: "section", text: { type: "mrkdwn", text: escapeSlackText(params.detail) } }]
+      ? [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: boundDetail(escapeSlackText(params.detail), SLACK_SECTION_MAX),
+            },
+          },
+        ]
       : []),
     {
       type: "actions",

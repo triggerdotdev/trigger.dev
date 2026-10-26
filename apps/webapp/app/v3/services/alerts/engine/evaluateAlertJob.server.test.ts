@@ -231,7 +231,7 @@ describe("runEvaluateAlertJob", () => {
       expect.objectContaining({ alertId: alert.id, capabilityKey: alert.capabilityKey }),
     ]);
     const nextAt = (await job(worker, alert.id))!.timestamp.getTime();
-    const cadenceMs = getCapability(alert.capabilityKey)!.minCadenceSec * 1000;
+    const cadenceMs = Math.min(getCapability(alert.capabilityKey)!.minCadenceSec, 60) * 1000;
     expect(nextAt).toBeGreaterThan(startedAt);
     expect((nextAt - alertPhaseOffsetMs(alert.id)) % cadenceMs).toBe(0);
     expect((await getAlert(db, { id: alert.id }))!.nextEvaluationAt!.getTime()).toBe(nextAt);

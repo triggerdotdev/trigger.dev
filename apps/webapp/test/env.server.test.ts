@@ -115,4 +115,28 @@ describe("webapp environment secrets", () => {
     expect(env.GITHUB_APP_CLIENT_ID).toBe("client-id");
     expect(env.GITHUB_APP_CLIENT_SECRET).toBe("client-secret");
   });
+
+  it("defaults the snapshot store completed-state TTL to 4 days", async () => {
+    process.env = { ...requiredEnv };
+
+    const { env } = await import("../app/env.server");
+
+    expect(env.RUN_ENGINE_SNAPSHOT_STORE_COMPLETED_TTL_MS).toBe(4 * 24 * 60 * 60 * 1_000);
+  });
+
+  it("reads the snapshot store completed-state TTL from the environment", async () => {
+    process.env = { ...requiredEnv, RUN_ENGINE_SNAPSHOT_STORE_COMPLETED_TTL_MS: "3600000" };
+
+    const { env } = await import("../app/env.server");
+
+    expect(env.RUN_ENGINE_SNAPSHOT_STORE_COMPLETED_TTL_MS).toBe(3_600_000);
+  });
+
+  it("rejects a non-positive snapshot store completed-state TTL", async () => {
+    process.env = { ...requiredEnv, RUN_ENGINE_SNAPSHOT_STORE_COMPLETED_TTL_MS: "0" };
+
+    await expect(import("../app/env.server")).rejects.toThrow(
+      "RUN_ENGINE_SNAPSHOT_STORE_COMPLETED_TTL_MS"
+    );
+  });
 });

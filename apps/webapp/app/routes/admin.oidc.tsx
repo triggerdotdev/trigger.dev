@@ -27,6 +27,7 @@ import {
   type OidcSigningStatus,
 } from "~/services/oidc/signingKeyService.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { adminOriginForRequest } from "~/services/adminOrigin.server";
 import { requestUrl } from "~/utils/requestUrl.server";
 
 const PurposeSchema = z.enum(["EXTERNAL_OIDC", "INTERNAL_RUN"]);
@@ -74,7 +75,8 @@ export const action = dashboardAction(
       );
     }
     // SameSite cookies alone do not protect against other origins on the same site.
-    if (request.headers.get("Origin") !== requestUrl(request).origin) {
+    const expectedOrigin = adminOriginForRequest(request) ?? requestUrl(request).origin;
+    if (request.headers.get("Origin") !== expectedOrigin) {
       return typedjson({ error: "Invalid request origin" }, { status: 403 });
     }
     const result = MutationSchema.safeParse(Object.fromEntries(await request.formData()));

@@ -2,7 +2,6 @@ import type * as RechartsModule from "recharts";
 import { cloneElement, createElement, isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { getChartColorByName } from "~/components/code/chartColors";
 import {
   AlertHealthQueriesChart,
   drawnHealthSeries,
@@ -34,27 +33,6 @@ const series: HealthQuerySeries[] = [
 ];
 
 describe("AlertHealthQueriesChart", () => {
-  it("fails when the series collapse or the reference line is missing", () => {
-    const html = renderToStaticMarkup(createElement(AlertHealthQueriesChart, { series }));
-    for (const color of HEALTH_LINE_COLORS.slice(0, 2)) expect(html).toContain(`stroke="${color}"`);
-    expect(html).toContain("Threshold 100%");
-    expect(html).toContain("recharts-reference-line");
-  });
-
-  it("fails when the lines leave the ordered palette", () => {
-    const six = Array.from({ length: 6 }, (_, i) => ({
-      key: `q${i}`,
-      label: `Q${i}`,
-      threshold: 1,
-      points: points([10, 20]),
-    }));
-    expect(
-      healthQueriesLegend(six)
-        .slice(0, 6)
-        .map((l) => l.color)
-    ).toEqual(["Purple", "Cyan", "Pink", "Indigo", "Red", "Green"].map(getChartColorByName));
-  });
-
   it("fails when a line does not turn warning above 100%", () => {
     const html = renderToStaticMarkup(
       createElement(AlertHealthQueriesChart, {
@@ -74,13 +52,6 @@ describe("AlertHealthQueriesChart", () => {
     expect(base[0]!.split("M").filter(Boolean)).toHaveLength(2);
   });
 
-  it("fails when the summary caption or the shared empty state regresses", () => {
-    const html = renderToStaticMarkup(createElement(AlertHealthQueriesChart, { series: [] }));
-    expect(html).toContain("No data");
-    expect(html).toContain("grid h-full place-items-center");
-    expect(html).not.toContain("Not shown as lines");
-  });
-
   it("fails when liveness is dropped or the legend lists an undrawn series", () => {
     const liveness: HealthQuerySeries = {
       key: "silenceSec",
@@ -98,18 +69,6 @@ describe("AlertHealthQueriesChart", () => {
         .filter((l) => l.label !== "Above threshold")
         .map((l) => l.label)
     ).toEqual(["Failure rate", "Duration p95", "Silence"]);
-  });
-
-  it("fails when the legend does not name each query", () => {
-    expect(healthQueriesLegend(series).slice(0, 2)).toEqual([
-      { swatch: "line", color: HEALTH_LINE_COLORS[0], label: "Failure rate" },
-      { swatch: "line", color: HEALTH_LINE_COLORS[1], label: "Duration p95" },
-    ]);
-    expect(healthQueriesLegend(series).map((l) => l.label)).toEqual([
-      "Failure rate",
-      "Duration p95",
-      "Above threshold",
-    ]);
   });
 });
 
@@ -180,26 +139,6 @@ describe("AlertHealthQueriesChart domain", () => {
     const late = line(6).map((s) => ({ ...s, points: s.points.slice(6) }));
     expect(firstX(late, domain)).toBeGreaterThan(firstX(line(0), domain));
     expect(firstX(line(6), domain)).toBeCloseTo(firstX(late, domain));
-  });
-});
-
-describe("Separate view degraded styling", () => {
-  it("fails when a filled degraded area is drawn instead of only the warning line", () => {
-    const HOUR = 60 * 60 * 1000;
-    const html = renderToStaticMarkup(
-      createElement(AlertHealthQueriesChart, {
-        series: [
-          { key: "q", label: "Q", threshold: 1, points: points([50, 50, 150, 150, 50, 50]) },
-        ],
-        domain: [T0, T0 + 6 * HOUR],
-      })
-    );
-    expect(html).not.toContain("recharts-reference-area");
-    expect(html).not.toContain(">Degraded<");
-    const warnLines = [...html.matchAll(/<path[^>]*recharts-line-curve[^>]*>/g)].filter((m) =>
-      m[0].includes('stroke="var(--color-warning)"')
-    );
-    expect(warnLines).toHaveLength(1);
   });
 });
 

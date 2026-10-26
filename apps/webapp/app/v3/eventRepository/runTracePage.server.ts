@@ -5,7 +5,7 @@ import { err, ok, type Result } from "neverthrow";
 import { logger } from "~/services/logger.server";
 import type { IEventRepository } from "./eventRepository.types";
 import { encodeTraceCursor } from "./traceCursor";
-import { getTraceInsertedAtEnd } from "./traceInsertedAtBound";
+import { getTraceInsertedAtEnd, getTraceStartTimeEnd } from "./traceInsertedAtBound";
 import { buildTracePage } from "./tracePage";
 import type { TracePageRequest } from "./tracePageRequest";
 import type { TaskEventStoreTable } from "../taskEventStore.server";
@@ -42,7 +42,7 @@ export async function getRunTracePage({
       environmentId,
       run.traceId,
       run.createdAt,
-      run.completedAt ?? undefined,
+      getTraceStartTimeEnd(run),
       pageRequest.after,
       { limit: pageRequest.limit, insertedAtEnd: getTraceInsertedAtEnd(run) }
     )

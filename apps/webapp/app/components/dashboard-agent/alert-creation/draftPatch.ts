@@ -1,6 +1,8 @@
 import type { AlertCreationDraft } from "@internal/dashboard-agent-contracts";
 import type { AlertScopeType } from "@internal/alert-contracts";
 import { z } from "zod";
+import { MAX_WATCH_QUERY_LENGTH } from "~/components/alerts/queryAlertLink";
+import type { QueryWatchPrefill } from "~/components/alerts/QueryAlertTranscript";
 import { encodeErrorGroupScope, errorFingerprint } from "~/utils/errorGroupScope";
 import { needsScopeValue, resolveCapability, type FlowAnswers } from "./flow-state";
 
@@ -20,7 +22,7 @@ export const alertDraftPatchSchema = z
     condition: z
       .object({
         kind: z.string().optional(),
-        operator: z.literal(">").optional(),
+        operator: z.enum([">", "<"]).optional(),
         value: z.number().optional(),
         unit: z.string().optional(),
         windowSec: z.number().optional(),
@@ -42,11 +44,31 @@ export const alertDraftPatchSchema = z
         })
       )
       .optional(),
+    query: z.string().max(MAX_WATCH_QUERY_LENGTH).optional(),
+    querySignalChoice: z
+      .object({
+        mode: z.enum(["threshold", "absence", "match"]),
+        measure: z.string().optional(),
+      })
+      .optional(),
     reason: z.string().optional(),
   })
-  .strict();
+  .strict()
+  .refine((patch) => patch.condition?.operator !== "<" || patch.area === "query", {
+    message: "Below-threshold alerts aren't supported yet",
+  });
 
 export type AlertDraftPatch = z.infer<typeof alertDraftPatchSchema>;
+
+export function queryWatchFromPatch(patch: AlertDraftPatch): QueryWatchPrefill | undefined {
+  if (patch.area !== "query" || !patch.query?.trim()) return undefined;
+  return {
+    query: patch.query,
+    mode: patch.querySignalChoice?.mode,
+    measure: patch.querySignalChoice?.measure,
+    operator: patch.condition?.operator,
+  };
+}
 
 /** The id to look up when an errorGroup patch didn't carry the task identifier. */
 export function errorGroupToResolve(patch: AlertDraftPatch): string | undefined {

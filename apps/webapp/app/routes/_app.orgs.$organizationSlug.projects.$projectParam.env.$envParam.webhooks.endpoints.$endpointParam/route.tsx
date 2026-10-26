@@ -17,6 +17,7 @@ import type { WebhookValueSource } from "@trigger.dev/core/v3";
 import { type MutableRefObject, Suspense, useEffect, useRef, useState } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { WebhookIcon } from "~/assets/icons/WebhookIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { PageBody } from "~/components/layout/AppLayout";
@@ -127,6 +128,25 @@ async function canCancelWaiters(
   return auth.ok && auth.ability.can("write", { type: "waitpoints", envType: environment.type });
 }
 
+const NO_WEBHOOKS_WRITE = "You don't have permission to change webhooks in this environment.";
+
+async function canWriteWebhooks(
+  request: Request,
+  scope: {
+    userId: string;
+    organizationId: string;
+    projectId: string;
+    environmentType: RuntimeEnvironmentType;
+  }
+): Promise<boolean> {
+  const auth = await rbac.authenticateSession(request, {
+    userId: scope.userId,
+    organizationId: scope.organizationId,
+    projectId: scope.projectId,
+  });
+  return auth.ok && auth.ability.can("write", { type: "webhooks", envType: scope.environmentType });
+}
+
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { user, project, environment, endpointParam } = await requireWebhookAccess(request, params);
 
@@ -203,6 +223,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   return typeddefer({
     canCancelWaiters: await canCancelWaiters(request, { user, project, environment }),
+    canWrite: await canWriteWebhooks(request, {
+      userId: user.id,
+      organizationId: project.organizationId,
+      projectId: project.id,
+      environmentType: environment.type,
+    }),
     endpoint,
     ingestUrl,
     routing,
@@ -268,6 +294,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         };
   }
 
+  const canWrite = await canWriteWebhooks(request, {
+    userId: user.id,
+    organizationId: project.organizationId,
+    projectId: project.id,
+    environmentType: environment.type,
+  });
+  if (!canWrite) throwPermissionDenied(NO_WEBHOOKS_WRITE);
+
   // Generate (integrator-supplied secret): the UI reveals it ONCE for pasting into the provider.
   if (intent === "generate-secret") {
     const ttl = PreviousSecretTtlFormField.safeParse(Object.fromEntries(formData));
@@ -324,6 +358,7 @@ export default function Page() {
     waiters,
     composerEndpoints,
     canCancelWaiters: canCancel,
+    canWrite,
   } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
@@ -485,6 +520,7 @@ export default function Page() {
               routing={routing}
               verifier={verifier}
               hasVerifyToken={hasVerifyToken}
+              canWrite={canWrite}
             />
           </ResizablePanel>
         </ResizablePanelGroup>
@@ -501,13 +537,18 @@ function EndpointSidebar({
   routing,
   verifier,
   hasVerifyToken,
+  canWrite,
 }: {
   endpoint: WebhookEndpointDetail;
   ingestUrl: string;
   hasVerifyToken: boolean;
   routing: LoaderData["routing"];
   verifier: LoaderData["verifier"];
+  canWrite: boolean;
 }) {
+  const disabledReason = canWrite
+    ? undefined
+    : "You don't have permission to change this endpoint.";
   const metadataJson =
     endpoint.metadata != null && Object.keys(endpoint.metadata as object).length > 0
       ? JSON.stringify(endpoint.metadata, null, 2)
@@ -569,12 +610,16 @@ function EndpointSidebar({
                   )}
                   <div className="flex flex-wrap items-center gap-2">
                     {canGenerate ? (
-                      <GenerateSecretDialog hasSigningSecret={endpoint.hasSigningSecret} />
+                      <GenerateSecretDialog
+                        hasSigningSecret={endpoint.hasSigningSecret}
+                        disabledReason={disabledReason}
+                      />
                     ) : null}
                     <SetSecretDialog
                       hasSigningSecret={endpoint.hasSigningSecret}
                       credentialNoun={credentialNoun}
                       variant={canGenerate ? "tertiary/small" : "secondary/small"}
+                      disabledReason={disabledReason}
                     />
                   </div>
                 </div>
@@ -595,7 +640,10 @@ function EndpointSidebar({
                         Not set, the provider cannot verify this URL yet
                       </span>
                     )}
-                    <GenerateVerifyTokenDialog hasVerifyToken={hasVerifyToken} />
+                    <GenerateVerifyTokenDialog
+                      hasVerifyToken={hasVerifyToken}
+                      disabledReason={disabledReason}
+                    />
                     <Hint>
                       The provider sends a GET with <code>{getHandshake.tokenParam}</code> when you
                       save the URL; it must carry this token.
@@ -841,10 +889,12 @@ function SetSecretDialog({
   hasSigningSecret,
   credentialNoun,
   variant = "secondary/small",
+  disabledReason,
 }: {
   hasSigningSecret: boolean;
   credentialNoun: string;
   variant?: "secondary/small" | "tertiary/small";
+  disabledReason?: string;
 }) {
   const fetcher = useFetcher<typeof action>();
   const [open, setOpen] = useState(false);
@@ -863,7 +913,12 @@ function SetSecretDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant={variant} LeadingIcon={KeyIcon}>
+        <Button
+          variant={variant}
+          LeadingIcon={KeyIcon}
+          disabled={disabledReason !== undefined}
+          tooltip={disabledReason}
+        >
           {verb} {credentialNoun}
         </Button>
       </DialogTrigger>
@@ -916,7 +971,13 @@ function SetSecretDialog({
 
 // For integrator-supplied secrets (GitHub/GitLab/standard): mint a strong secret server-side,
 // store it, and reveal it ONCE so the user can paste it into their provider.
-function GenerateSecretDialog({ hasSigningSecret }: { hasSigningSecret: boolean }) {
+function GenerateSecretDialog({
+  hasSigningSecret,
+  disabledReason,
+}: {
+  hasSigningSecret: boolean;
+  disabledReason?: string;
+}) {
   const fetcher = useFetcher<typeof action>();
   const [open, setOpen] = useState(false);
   const isSubmitting = fetcher.state !== "idle";
@@ -930,7 +991,12 @@ function GenerateSecretDialog({ hasSigningSecret }: { hasSigningSecret: boolean 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="secondary/small" LeadingIcon={SparklesIcon}>
+        <Button
+          variant="secondary/small"
+          LeadingIcon={SparklesIcon}
+          disabled={disabledReason !== undefined}
+          tooltip={disabledReason}
+        >
           {hasSigningSecret ? "Regenerate secret" : "Generate secret"}
         </Button>
       </DialogTrigger>
@@ -995,7 +1061,13 @@ function GenerateSecretDialog({ hasSigningSecret }: { hasSigningSecret: boolean 
  * signing secret: minted server-side, stored encrypted, revealed once for the provider's Verify
  * Token field. Regenerating replaces it and the URL must be re-verified in the provider.
  */
-function GenerateVerifyTokenDialog({ hasVerifyToken }: { hasVerifyToken: boolean }) {
+function GenerateVerifyTokenDialog({
+  hasVerifyToken,
+  disabledReason,
+}: {
+  hasVerifyToken: boolean;
+  disabledReason?: string;
+}) {
   const fetcher = useFetcher<typeof action>();
   const [open, setOpen] = useState(false);
   const [dismissedToken, setDismissedToken] = useState<string | undefined>(undefined);
@@ -1029,7 +1101,12 @@ function GenerateVerifyTokenDialog({ hasVerifyToken }: { hasVerifyToken: boolean
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button variant="secondary/small" LeadingIcon={SparklesIcon}>
+        <Button
+          variant="secondary/small"
+          LeadingIcon={SparklesIcon}
+          disabled={disabledReason !== undefined}
+          tooltip={disabledReason}
+        >
           {hasVerifyToken ? "Regenerate verify token" : "Generate verify token"}
         </Button>
       </DialogTrigger>

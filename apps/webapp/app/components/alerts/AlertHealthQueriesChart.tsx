@@ -17,7 +17,7 @@ export const HEALTH_LINE_COLORS = ["Purple", "Cyan", "Pink", "Indigo", "Red", "G
 
 const healthLineColor = (i: number) => HEALTH_LINE_COLORS[i % HEALTH_LINE_COLORS.length];
 
-export const HEALTH_QUERIES_WARNING_OVERLAY = {
+const HEALTH_QUERIES_WARNING_OVERLAY = {
   threshold: 100,
   direction: "above" as const,
   color: WARNING_COLOR,

@@ -13,6 +13,23 @@ export function isDeprecatedConfigRuntime(runtime: unknown): runtime is Deprecat
   return runtime === "experimental-node-24" || runtime === "experimental-node-26";
 }
 
+/**
+ * True for every bun runtime, including the plain "bun" alias that already-deployed
+ * workers still report. Branch on this instead of `runtime === "bun"` so a new bun
+ * version never regresses a bun-specific code path.
+ */
+export function isBunRuntime(runtime: unknown): boolean {
+  return typeof runtime === "string" && (runtime === "bun" || runtime.startsWith("bun-"));
+}
+
+/**
+ * True for the bun runtimes whose image contains no node binary ("bun-1.4", ...).
+ * "bun" / "bun-legacy" run on a node + bun image and are excluded.
+ */
+export function isNodelessBunRuntime(runtime: unknown): boolean {
+  return isBunRuntime(runtime) && runtime !== "bun" && runtime !== "bun-legacy";
+}
+
 /** Maps a deprecated runtime alias to the runtime that should be used instead. */
 export function deprecatedRuntimeReplacement(runtime: DeprecatedConfigRuntime): BuildRuntime {
   switch (runtime) {
@@ -66,6 +83,8 @@ export function binaryForRuntime(runtime: BuildRuntime): string {
     case "node-26":
       return "node";
     case "bun":
+    case "bun-legacy":
+    case "bun-1.4":
       return "bun";
     default:
       throw new Error(`Unsupported runtime ${runtime}`);
@@ -80,6 +99,8 @@ export function execPathForRuntime(runtime: BuildRuntime): string {
     case "node-26":
       return process.execPath;
     case "bun":
+    case "bun-legacy":
+    case "bun-1.4":
       if (typeof process.env.BUN_INSTALL === "string") {
         return join(process.env.BUN_INSTALL, "bin", "bun");
       }
@@ -129,7 +150,9 @@ export function execOptionsForRuntime(
 
       return dedupFlags(flags);
     }
-    case "bun": {
+    case "bun":
+    case "bun-legacy":
+    case "bun-1.4": {
       return "";
     }
   }

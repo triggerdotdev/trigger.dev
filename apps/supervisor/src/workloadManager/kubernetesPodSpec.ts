@@ -1,4 +1,5 @@
 import type { k8s } from "../clients/kubernetes.js";
+import { isBunRuntime } from "@trigger.dev/core/v3/build";
 
 /**
  * An empty label is the documented off-switch, leaving the pod unpinned. The Helm
@@ -146,7 +147,7 @@ export function runnerSecurityContext(
     allowPrivilegeEscalation: false,
     capabilities: { drop: ["ALL"] },
     ...(level === "restricted"
-      ? { runAsNonRoot: true, runAsUser: runtime === "bun" ? BUN_RUN_AS_USER : runAsUser }
+      ? { runAsNonRoot: true, runAsUser: isBunRuntime(runtime) ? BUN_RUN_AS_USER : runAsUser }
       : {}),
   };
 }

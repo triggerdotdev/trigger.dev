@@ -30,12 +30,25 @@ export const ConfigRuntime = z.enum([
   // Deprecated aliases, kept for backwards compatibility. Use "node-24"/"node-26" instead.
   "experimental-node-24",
   "experimental-node-26",
+  // "bun" and "bun-legacy" are the same runtime: bun 1.3 alongside a node binary. "bun" stays the
+  // default spelling so existing configs, bundles and build extensions keep working unchanged.
   "bun",
+  "bun-legacy",
+  // Node-less bun runtime: the image contains no node binary.
+  "bun-1.4",
 ]);
 
 export type ConfigRuntime = z.infer<typeof ConfigRuntime>;
 
-export const BuildRuntime = z.enum(["node", "node-22", "node-24", "node-26", "bun"]);
+export const BuildRuntime = z.enum([
+  "node",
+  "node-22",
+  "node-24",
+  "node-26",
+  "bun",
+  "bun-legacy",
+  "bun-1.4",
+]);
 
 export type BuildRuntime = z.infer<typeof BuildRuntime>;
 

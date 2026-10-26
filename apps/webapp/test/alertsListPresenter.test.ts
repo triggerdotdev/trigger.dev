@@ -7,6 +7,7 @@ import {
   type getAlertHealthEvents,
 } from "~/v3/services/alerts/storage/alertStore.server";
 import { startAlertsPostgres } from "./helpers/alertTables";
+import { AlertDetailPresenter } from "~/presenters/v3/AlertDetailPresenter.server";
 import { AlertsListPresenter } from "~/presenters/v3/AlertsListPresenter.server";
 
 const bucketQuery = vi.hoisted(() => ({ calls: [] as string[][] }));
@@ -40,6 +41,8 @@ const BASE = {
   environmentId: "env_1",
   createdBy: "user_1",
 };
+
+const NO_FILTERS = { search: "", areas: [], period: undefined };
 
 const MONTH = new Date().toISOString().slice(0, 7);
 
@@ -833,5 +836,74 @@ describe("AlertsListPresenter channel warning", () => {
       expect(await names(["needs_attention"])).toEqual([]);
     },
     120_000
+  );
+
+  postgresTest(
+    "a raised alert with a broken channel still filters as needs attention",
+    async ({ prisma }) => {
+      const { organization, project, environment, channel } = await seedWorld(prisma, ["STAGING"]);
+      await createAlert(db, {
+        organizationId: organization.id,
+        projectId: project.id,
+        environmentId: environment.id,
+        createdBy: "user_1",
+        capabilityKey: "queue.depth",
+        params: { queue: "worker-1" },
+        condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
+        attention: "needs_attention",
+        name: "raised",
+        notifiers: [{ type: "channel", channelId: channel.id }],
+      });
+      const presenter = new AlertsListPresenter(db, prisma);
+      const list = (statuses: ("needs_attention" | "active" | "inactive")[]) =>
+        presenter
+          .call({ environmentId: environment.id, filters: { ...NO_FILTERS, statuses } })
+          .then((r) => r.rows.map((row) => row.name));
+
+      const { rows } = await presenter.call({ environmentId: environment.id });
+      expect(rows[0]).toMatchObject({ status: "needs_attention", hasChannelIssue: true });
+      expect(await list(["needs_attention"])).toEqual(["raised"]);
+      expect(await list(["active"])).toEqual([]);
+    }
+  );
+
+  postgresTest(
+    "reports a deleted channel when the environment is not found",
+    async ({ prisma }) => {
+      const { organization, project } = await seedWorld(prisma, ["STAGING"]);
+      const alert = await createAlert(db, {
+        organizationId: organization.id,
+        projectId: project.id,
+        environmentId: "env_missing",
+        createdBy: "user_1",
+        capabilityKey: "queue.depth",
+        params: { environmentId: "env_missing", scope: { type: "all" } },
+        condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
+        name: "orphan",
+        notifiers: [{ type: "channel", channelId: "chan_deleted" }],
+      });
+
+      const { rows } = await new AlertsListPresenter(db, prisma).call({
+        environmentId: "env_missing",
+      });
+      expect(rows[0]).toMatchObject({ status: "active", hasChannelIssue: true });
+
+      const detail = await new AlertDetailPresenter(
+        db,
+        prisma,
+        undefined,
+        async () => null,
+        async () => null,
+        {
+          evaluateBinding: async () => ({
+            result: { kind: "stateful", outcome: "not_met", facts: {} },
+          }),
+        }
+      ).call({ id: alert.id, projectId: project.id, environmentId: "env_missing" });
+      expect(detail?.channelIssues).toEqual([
+        { channelId: "chan_deleted", name: null, reason: "deleted" },
+      ]);
+      expect(detail?.status).toEqual({ status: "active" });
+    }
   );
 });

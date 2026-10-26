@@ -91,6 +91,36 @@ describe("regenerate API key branch handling", () => {
     expect(newKeyResponse.status).not.toBe(401);
   });
 
+  it("rejects a hidden root key without rotating or returning it", async () => {
+    const server = getTestServer();
+    const { environment, pat, project } = await seedTestUserProject(server.prisma);
+    await server.prisma.runtimeEnvironment.update({
+      where: { id: environment.id },
+      data: { rootApiKeyHiddenAt: new Date() },
+    });
+
+    const response = await server.webapp.fetch(
+      `/api/v1/projects/${project.externalRef}/dev/regenerate-api-key`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${pat.token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ revokeImmediately: true }),
+      }
+    );
+
+    expect(response.status).toBe(409);
+    const body = await response.text();
+    const persisted = await server.prisma.runtimeEnvironment.findUniqueOrThrow({
+      where: { id: environment.id },
+      select: { apiKey: true },
+    });
+    expect(persisted.apiKey).toBe(environment.apiKey);
+    expect(body).not.toContain(environment.apiKey);
+  });
+
   it("rejects a malformed body without rotating the root key", async () => {
     const server = getTestServer();
     const { environment, pat, project } = await seedTestUserProject(server.prisma);

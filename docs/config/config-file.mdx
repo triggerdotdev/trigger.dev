@@ -329,7 +329,7 @@ After each call we restore the few attributes we use to link a span to its run, 
 
 If you don't set a `runtime`, your tasks run on the current Node.js LTS. Setting `runtime: "node"` does the same thing — see the Node.js versions section below to pin a specific version instead.
 
-We currently only officially support the `node` runtime, but you can try our experimental `bun` runtime by setting the `runtime` option in your config file:
+We currently only officially support the `node` runtime, but you can try our experimental Bun runtimes by setting the `runtime` option in your config file:
 
 ```ts trigger.config.ts
 import { defineConfig } from "@trigger.dev/sdk";
@@ -341,7 +341,7 @@ export default defineConfig({
 });
 ```
 
-See our [Bun guide](/guides/frameworks/bun) for more information.
+`bun` runs on Bun 1.3 with a Node.js binary alongside it. `bun-1.4` runs on a Bun-only image with no Node.js binary. See our [Bun guide](/guides/frameworks/bun) for the differences.
 
 ### Node.js versions
 

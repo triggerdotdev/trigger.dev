@@ -1,6 +1,10 @@
 import { getCapability } from "@internal/alert-contracts";
 import type { Alert, AlertEvent } from "../storage/alertStore.server";
-import { alertOccurrenceDetail } from "emails/src/alertRaisedContent";
+import {
+  alertOccurrenceDetail,
+  alertQueryDetail,
+  CUSTOM_QUERY_CAPABILITY_KEY,
+} from "emails/src/alertRaisedContent";
 
 function formatSeconds(sec: number): string {
   if (sec % 3600 === 0) return `${sec / 3600}h`;
@@ -40,6 +44,23 @@ function occurrenceSentence(facts: unknown, errorTitle?: string | null): string 
   return detail ? ` ${detail}.` : "";
 }
 
+function chatPrefix(type: string, name: string): string {
+  switch (type) {
+    case "raised":
+      return `Alert raised: ${name}`;
+    case "recovered":
+      return `Alert recovered: ${name}`;
+    case "resolved":
+      return `Alert resolved: ${name}`;
+    case "expired":
+      return `Alert expired: ${name}`;
+    case "stopped":
+      return `Alert stopped: ${name}`;
+    default:
+      return `Alert update: ${name}`;
+  }
+}
+
 export function alertEventChatText(
   event: Pick<AlertEvent, "type" | "facts">,
   alert: Pick<Alert, "name" | "capabilityKey">,
@@ -47,6 +68,11 @@ export function alertEventChatText(
 ): string {
   const name = alert.name ?? alert.capabilityKey;
   const title = getCapability(alert.capabilityKey)?.title ?? alert.capabilityKey;
+  if (alert.capabilityKey === CUSTOM_QUERY_CAPABILITY_KEY) {
+    const detail = alertQueryDetail(event.facts, name);
+    const prefix = chatPrefix(event.type, name);
+    return detail ? `${prefix}\n${detail}` : `${prefix}.`;
+  }
   const reading =
     readingSentence((event.facts ?? {}) as Record<string, unknown>, title) ||
     (event.type === "raised" ? occurrenceSentence(event.facts, errorTitle) : "");

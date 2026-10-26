@@ -577,6 +577,7 @@ Within a single assistant turn the AI SDK chunk types you'll typically see, in o
 | `tool-input-start` / `tool-input-delta` / `tool-input-available` | tool-call argument streaming | The tool the model is calling. |
 | `tool-output-available` | tool result | After the agent runs the tool. |
 | `data-*` | `{ type: "data-<name>", data: ... }` | Custom data parts written by the agent's hooks. |
+| `data-subagent` | `{ type: "data-subagent", transient: true, data: { toolCallId, seq, chunks } }` | A batch of a sub-agent's chunks written by [`chat.forwardSubAgent`](/ai-chat/patterns/sub-agents). `seq` counts from 0 per `toolCallId`; skip batches you have already applied when you resume. |
 | `finish-step` / `finish` | end markers for the assistant message | Followed by the `turn-complete` control record. |
 
 Refer to the AI SDK docs linked above for the full union — only the two control records below are Trigger.dev-specific.

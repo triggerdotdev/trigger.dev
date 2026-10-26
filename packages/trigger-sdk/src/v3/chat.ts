@@ -2563,6 +2563,15 @@ export function createChatTransport(options: TriggerChatTransportOptions): Trigg
   return new TriggerChatTransport(options);
 }
 
+export {
+  SUB_AGENT_DATA_TYPE,
+  createSubAgentMessages,
+  type SubAgentChunkBatch,
+  type SubAgentDataChunk,
+  type SubAgentMessages,
+  type SubAgentMessagesOptions,
+} from "./subAgentStream.js";
+
 // Server-side agent chat re-exports.
 export {
   AgentChat,

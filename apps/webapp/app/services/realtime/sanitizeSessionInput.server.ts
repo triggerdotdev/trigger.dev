@@ -24,12 +24,22 @@ export function stripClientIngressFields(part: string): string {
   const payload = (record as { payload?: unknown }).payload as Record<string, unknown> | undefined;
   if (!payload || typeof payload !== "object") return part;
 
+  return removeClientIngressFields(payload) ? JSON.stringify(record) : part;
+}
+
+export function stripClientIngressFieldsFromBasePayload<T extends Record<string, unknown>>(
+  basePayload: T
+): T {
+  const copy = { ...basePayload };
+  removeClientIngressFields(copy);
+  return copy;
+}
+
+function removeClientIngressFields(payload: Record<string, unknown>): boolean {
   const forgedWebhookAction =
     Object.hasOwn(payload, "actionSource") && payload.actionSource === "webhook";
   const forgedChannelEvent = Object.hasOwn(payload, "channelEvent");
-  if (!forgedWebhookAction && !forgedChannelEvent) return part;
-
   if (forgedWebhookAction) delete payload.actionSource;
   if (forgedChannelEvent) delete payload.channelEvent;
-  return JSON.stringify(record);
+  return forgedWebhookAction || forgedChannelEvent;
 }

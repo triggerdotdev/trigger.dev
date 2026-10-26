@@ -1,3 +1,4 @@
+import { parseClickhouseDateTime } from "./clickhouseDateTime";
 import {
   compileTemplate as compileTemplateWithCtx,
   displayStatus,
@@ -468,7 +469,7 @@ export async function getMetricSeries(
   const withEmptyWindows = (result: Record<string, unknown>[]) =>
     fillEmpty
       ? result.map((r) => {
-          const start = new Date(r.bucket as string).getTime();
+          const start = parseClickhouseDateTime(r.bucket as string).getTime();
           const span = Math.min(start + bucketSeconds * 1000, toMs) - Math.max(start, fromMs);
           return Number(r.windows) < Math.floor(span / windowMs) ? { ...r, value: 0 } : r;
         })
@@ -509,7 +510,7 @@ export async function getMetricSeries(
       range
     ).then((result) => withEmptyWindows(result.filter(hasValue)));
     const toPoint = (r: Record<string, unknown>) => ({
-      bucket: new Date(r.bucket as string).getTime(),
+      bucket: parseClickhouseDateTime(r.bucket as string).getTime(),
       value: Number(r.value) || 0,
     });
     const aggPoints = aggRows.map(toPoint);
@@ -552,7 +553,7 @@ export async function getMetricSeries(
     seriesByKey.set("__agg__", aggPoints.length === 0 && gapValue !== 0 ? [] : fill(aggPoints));
   } else {
     const points = rows.map((r) => ({
-      bucket: new Date(r.bucket as string).getTime(),
+      bucket: parseClickhouseDateTime(r.bucket as string).getTime(),
       value: Number(r.value) || 0,
     }));
     seriesByKey.set(

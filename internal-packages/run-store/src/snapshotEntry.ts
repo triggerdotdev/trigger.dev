@@ -1,9 +1,5 @@
-// Builds the Redis entry for each execution-snapshot write site, from that site's own INPUT.
-//
-// Not from the delegate's return value: no nested write site includes the snapshot in what it
-// returns. `createRun` returns the run, `expireParkedRun` returns a count, and the rest return a
-// selected `TaskRun`. That means every value Postgres derives rather than receives has to be
-// reproduced here, and snapshotEntry.parity.test.ts is what keeps the two sides from drifting.
+// Builds each write site's entry from its INPUT, because no write site returns the snapshot. Every
+// value that Postgres derives must be reproduced here; snapshotEntry.parity.test.ts catches drift.
 import type { TaskRunStatus } from "@trigger.dev/database";
 import type { SnapshotEntryInput } from "./redisSnapshotStore.js";
 import type {
@@ -165,19 +161,16 @@ export function entryFromCreateExecutionSnapshot(
 }
 
 /**
- * A terminal entry is what makes the append script apply the completion TTL. FINISHED is the only
- * terminal execution status; the run-level status is not consulted, because a run reaches its
- * terminal state through a FINISHED snapshot in every path.
+ * A terminal entry arms the completed TTL in `applyEntry`. The run status is not checked, because
+ * every path to a final run writes a FINISHED snapshot.
  */
 export function isTerminalEntry(entry: SnapshotEntryInput): boolean {
   return entry.executionStatus === "FINISHED";
 }
 
 /**
- * Builds an entry from a snapshot ROW rather than a write site's input, which only the repair path
- * needs: it re-appends a snapshot Postgres already holds, so every derived value is read back rather
- * than reproduced. A null column is omitted, not carried as null, so the document matches what the
- * lost append would have written.
+ * Builds an entry from a Postgres snapshot ROW, for `scripts/compare-snapshot-stores.mts`. A null
+ * column is omitted, not carried as null, to match what a write site stores.
  */
 export function entryFromSnapshotRow(row: SnapshotRowForEntry): SnapshotEntryInput {
   return {

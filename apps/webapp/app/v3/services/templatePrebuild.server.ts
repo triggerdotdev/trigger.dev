@@ -1,9 +1,11 @@
-import { getMeter } from "@internal/tracing";
+import { getMeter, type Meter } from "@internal/tracing";
 import type { MachinePresetName } from "@trigger.dev/core/v3";
 import { prisma as defaultPrisma, type PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { isOrgMigrated } from "~/runEngine/concerns/computeMigration.server";
 import { logger } from "~/services/logger.server";
+import type { TaskMetadataCache } from "~/services/taskMetadataCache.server";
+import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.server";
 import { getEntitlement } from "~/services/platform.v3.server";
 import { singleton } from "~/utils/singleton";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
@@ -11,7 +13,12 @@ import { makeFlag } from "~/v3/featureFlags.server";
 import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
 import { resolveComputeAccess } from "~/v3/regionAccess.server";
-import { backingForQueue, workerRegionRegistry } from "~/v3/workerRegions.server";
+import { WorkerGroupService } from "~/v3/services/worker/workerGroupService.server";
+import {
+  backingForQueue,
+  selfBackingWorkerGroups,
+  workerRegionRegistry,
+} from "~/v3/workerRegions.server";
 
 // wait: hold finalisation until the builder replies or times out. shadow: fire and
 // forget. Neither ever fails the deploy.
@@ -33,13 +40,31 @@ export type TemplateBuildOutcome =
   | "timeout"
   | "rate_limited";
 
+/** Why a deploy was or was not eligible, logged when the prebuild is skipped. */
+type EligibilityDiagnostics = {
+  organizationId?: string;
+  workloadType?: string;
+  masterQueue?: string;
+  hasBacking?: boolean;
+  registryRows?: number | "cold";
+  migrated?: boolean;
+  eligible?: boolean;
+};
+
 type TemplateBuildRequestSkip = "no_builder" | "has_key" | "no_pinned_image";
+
+/** Why a 2xx from the builder still ended as `failed`: the key was not written. */
+export type TemplateKeyStoreFailure = "invalid_template_id" | "not_stored" | "store_error";
+
+export type TemplateBuildResult =
+  | { outcome: Exclude<TemplateBuildOutcome, "failed"> }
+  | { outcome: "failed"; reason?: TemplateKeyStoreFailure };
 
 export type TemplateBuildRequestResult = {
   deploymentId: string;
   friendlyId?: string;
 } & (
-  | { outcome: TemplateBuildOutcome }
+  | TemplateBuildResult
   | { outcome: "skipped"; reason: TemplateBuildRequestSkip }
   | { outcome: "not_found" }
 );
@@ -52,6 +77,8 @@ export type TemplateBuilderConfig = {
   timeoutMs: number;
   presets: MachinePresetName[];
   shadowRolloutPct: number;
+  /** Worker groups that are their own compute backing (see selfBackingWorkerGroups). */
+  mixedRuntimeWorkerGroups: readonly string[];
 };
 
 export type TemplateCreateRequest = {
@@ -69,18 +96,26 @@ type TemplateCreateResponse = {
   error?: string;
 };
 
-const telemetry = singleton("templatePrebuildTelemetry", () => {
-  const meter = getMeter("template-prebuild");
+export function templatePrebuildTelemetry(meter: Meter) {
   return {
     calls: meter.createCounter("deploy.template_prebuild.calls", {
       description: "Template builder calls made at deploy finalisation",
+    }),
+    skips: meter.createCounter("deploy.template_prebuild.skips", {
+      description: "Deploy finalisations that did not call the template builder",
     }),
     duration: meter.createHistogram("deploy.template_prebuild.duration_ms", {
       description: "Template builder call duration",
       unit: "ms",
     }),
   };
-});
+}
+
+type TemplatePrebuildTelemetry = ReturnType<typeof templatePrebuildTelemetry>;
+
+const defaultTelemetry = singleton("templatePrebuildTelemetry", () =>
+  templatePrebuildTelemetry(getMeter("template-prebuild"))
+);
 
 /** The image pinned by digest, or undefined when no valid digest is known. */
 export function pinnedImageReference(
@@ -133,7 +168,13 @@ export class TemplatePrebuildService {
       timeoutMs: env.TEMPLATE_BUILDER_TIMEOUT_MS,
       presets: env.TEMPLATE_BUILDER_MACHINE_PRESETS,
       shadowRolloutPct: env.TEMPLATE_BUILDER_SHADOW_ROLLOUT_PCT,
-    }
+      mixedRuntimeWorkerGroups: selfBackingWorkerGroups(
+        env.RUN_ENGINE_MIXED_RUNTIME_WORKER_GROUPS,
+        env.TRIGGER_WORKER_QUEUE_V2_ENABLED === "1"
+      ),
+    },
+    private readonly taskMetaCache: TaskMetadataCache = taskMetadataCacheInstance,
+    private readonly telemetry: TemplatePrebuildTelemetry = defaultTelemetry
   ) {}
 
   /**
@@ -153,8 +194,16 @@ export class TemplatePrebuildService {
     outcome?: TemplateBuildOutcome;
   }> {
     try {
-      const { mode, reason } = await this.resolveMode(options.projectId);
+      const { mode, reason, diagnostics } = await this.resolve(options.projectId);
       if (mode === "skip") {
+        logger.info("Template prebuild skipped", {
+          deploymentId: options.deploymentFriendlyId,
+          projectId: options.projectId,
+          mode,
+          reason,
+          ...diagnostics,
+        });
+        this.telemetry.skips.add(1, { reason, eligible: diagnostics.eligible ?? false });
         return { mode, reason };
       }
 
@@ -164,6 +213,7 @@ export class TemplatePrebuildService {
           deploymentId: options.deploymentFriendlyId,
           imageReference: options.imageReference,
         });
+        this.telemetry.skips.add(1, { reason: "no-digest", eligible: true });
         return { mode: "skip", reason };
       }
 
@@ -180,12 +230,13 @@ export class TemplatePrebuildService {
           `event: log\ndata: ${JSON.stringify({ message: "Building compute template..." })}\n\n`
         )
         .catch(() => {});
-      return { mode, reason, outcome: await build };
+      return { mode, reason, outcome: (await build).outcome };
     } catch (error) {
       logger.error("Template prebuild failed before calling the builder", {
         deploymentId: options.deploymentFriendlyId,
         error: error instanceof Error ? error.message : String(error),
       });
+      this.telemetry.skips.add(1, { reason: "error" });
       return { mode: "skip" };
     }
   }
@@ -193,29 +244,49 @@ export class TemplatePrebuildService {
   async resolveMode(
     projectId: string
   ): Promise<{ mode: TemplatePrebuildMode; reason: TemplatePrebuildReason }> {
-    if (!this.config.url) {
-      return { mode: "skip", reason: "no-builder" };
-    }
+    const { mode, reason } = await this.resolve(projectId);
+    return { mode, reason };
+  }
 
+  // Resolves eligibility even without a builder, so a skip shows whether the deploy would build.
+  private async resolve(projectId: string): Promise<{
+    mode: TemplatePrebuildMode;
+    reason: TemplatePrebuildReason;
+    diagnostics: EligibilityDiagnostics;
+  }> {
     const project = await this.prisma.project.findFirst({
       where: { id: projectId },
-      select: {
-        defaultWorkerGroup: { select: { workloadType: true, masterQueue: true } },
-        organization: { select: { id: true, featureFlags: true } },
-      },
+      select: { organization: { select: { id: true, featureFlags: true } } },
     });
 
     if (!project) {
-      return { mode: "skip", reason: "no-project" };
+      return { mode: "skip", reason: "no-project", diagnostics: {} };
     }
 
-    const reason = await this.eligibility(project);
+    // As on the trigger path, a project without its own default group uses the global one.
+    const defaultWorkerGroup = await new WorkerGroupService({
+      prisma: this.prisma,
+    }).getDefaultWorkerGroupForProject({ projectId });
+
+    const diagnostics: EligibilityDiagnostics = {
+      organizationId: project.organization.id,
+      workloadType: defaultWorkerGroup?.workloadType,
+      masterQueue: defaultWorkerGroup?.masterQueue,
+    };
+    const reason = await this.eligibility(
+      { ...project, defaultWorkerGroup: defaultWorkerGroup ?? null },
+      diagnostics
+    );
+    diagnostics.eligible = reason !== "none";
+    if (!this.config.url) {
+      return { mode: "skip", reason: "no-builder", diagnostics };
+    }
     if (reason === "none") {
-      return { mode: "skip", reason };
+      return { mode: "skip", reason, diagnostics };
     }
     // The rollout only samples orgs without compute, so it never holds their deploys.
     if (reason === "rollout") {
-      return { mode: "shadow", reason };
+      return { mode: "shadow", reason, diagnostics };
     }
 
     const wait = await makeFlag(this.prisma)({
@@ -224,21 +295,31 @@ export class TemplatePrebuildService {
       overrides: (project.organization.featureFlags as Record<string, unknown>) ?? {},
     });
 
-    return { mode: wait ? "wait" : "shadow", reason };
+    return { mode: wait ? "wait" : "shadow", reason, diagnostics };
   }
 
-  private async eligibility(project: {
-    defaultWorkerGroup: { workloadType: string; masterQueue: string } | null;
-    organization: { id: string; featureFlags: unknown };
-  }): Promise<TemplatePrebuildReason> {
+  private async eligibility(
+    project: {
+      defaultWorkerGroup: { workloadType: string; masterQueue: string } | null;
+      organization: { id: string; featureFlags: unknown };
+    },
+    diagnostics: EligibilityDiagnostics
+  ): Promise<TemplatePrebuildReason> {
+    const groups = workerRegionRegistry.current();
+    const defaultQueue = project.defaultWorkerGroup?.masterQueue;
+    const backing = defaultQueue
+      ? backingForQueue(defaultQueue, groups ?? [], this.config.mixedRuntimeWorkerGroups)
+      : undefined;
+    diagnostics.registryRows = groups ? groups.length : "cold";
+    diagnostics.hasBacking = backing !== undefined;
+
     if (project.defaultWorkerGroup?.workloadType === "MICROVM") {
       return "microvm-native";
     }
 
     // Migrated orgs run on the compute backing although their stored default is
     // still the container region. A cold registry read finds no backing, so skips.
-    const defaultQueue = project.defaultWorkerGroup?.masterQueue;
-    if (defaultQueue && backingForQueue(defaultQueue, workerRegionRegistry.current() ?? [])) {
+    if (backing) {
       const decision = {
         orgId: project.organization.id,
         orgFeatureFlags: project.organization.featureFlags as Record<string, unknown> | null,
@@ -258,6 +339,7 @@ export class TemplatePrebuildService {
         }
         migrated = isOrgMigrated({ ...decision, planType });
       }
+      diagnostics.migrated = migrated;
       if (migrated) {
         return "migrated";
       }
@@ -321,27 +403,28 @@ export class TemplatePrebuildService {
     if (!image) {
       return { ...base, outcome: "skipped", reason: "no_pinned_image" };
     }
-    const outcome = await this.build(image, "shadow", {
+    const result = await this.build(image, "shadow", {
       id: deployment.id,
       friendlyId: deployment.friendlyId,
     });
-    return { ...base, outcome };
+    return { ...base, ...result };
   }
 
   /**
    * Call the builder once and store the template key on success. Resolves with
-   * the outcome; never rejects.
+   * the outcome, which is `failed` when the key was not written; never rejects.
    */
   async build(
     image: string,
     mode: Exclude<TemplatePrebuildMode, "skip">,
     deployment: { id: string; friendlyId: string }
-  ): Promise<TemplateBuildOutcome> {
+  ): Promise<TemplateBuildResult> {
     const startedAt = performance.now();
     const body = templateCreateRequest(image, this.config.presets, deployment.friendlyId);
     const log = { deploymentId: deployment.friendlyId, image, mode };
 
     let outcome: TemplateBuildOutcome;
+    let reason: TemplateKeyStoreFailure | undefined;
     try {
       const response = await fetch(new URL("/templates", this.config.url).toString(), {
         method: "POST",
@@ -369,10 +452,22 @@ export class TemplatePrebuildService {
           squashfsMs: parsed?.squashfs_ms,
         });
         // The write keeps going if it outlasts the timeout, but wait mode stops waiting.
-        await withinBudget(
-          this.storeTemplateKey(deployment.id, image, parsed?.template_id, log),
-          this.config.timeoutMs - (performance.now() - startedAt)
+        const remaining = () => this.config.timeoutMs - (performance.now() - startedAt);
+        const write = this.storeTemplateKey(deployment.id, image, parsed?.template_id, log);
+        const cached = write.then((result) =>
+          result === "stored"
+            ? this.cacheTemplateKey(deployment.id, parsed?.template_id as string, log)
+            : undefined
         );
+        const stored = await withinBudget(write, remaining());
+        // The cache is best effort, so a slow cache never changes the outcome.
+        await withinBudget(cached, remaining());
+        if (stored === undefined) {
+          outcome = "timeout";
+        } else if (stored !== "stored") {
+          outcome = "failed";
+          reason = stored;
+        }
       } else {
         outcome = response.status === 429 ? "rate_limited" : "failed";
         logger.error("Template prebuild failed", {
@@ -393,9 +488,9 @@ export class TemplatePrebuildService {
     }
 
     const attributes = { outcome, mode };
-    telemetry.calls.add(1, attributes);
-    telemetry.duration.record(performance.now() - startedAt, attributes);
-    return outcome;
+    this.telemetry.calls.add(1, attributes);
+    this.telemetry.duration.record(performance.now() - startedAt, attributes);
+    return outcome === "failed" ? { outcome, reason } : { outcome };
   }
 
   // In shadow mode the deployment may already be DEPLOYED; then only store the key
@@ -405,14 +500,14 @@ export class TemplatePrebuildService {
     image: string,
     templateId: unknown,
     log: Record<string, unknown>
-  ): Promise<void> {
+  ): Promise<"stored" | TemplateKeyStoreFailure> {
     const templateKey = validTemplateKey(templateId);
     if (!templateKey) {
       logger.warn("Template prebuild returned no valid template id", {
         ...log,
         templateId: typeof templateId === "string" ? templateId.slice(0, 100) : templateId,
       });
-      return;
+      return "invalid_template_id";
     }
     try {
       const { count } = await this.prisma.workerDeployment.updateMany({
@@ -421,9 +516,38 @@ export class TemplatePrebuildService {
       });
       if (count === 0) {
         logger.warn("Template prebuild did not store the template key", { ...log, templateKey });
+        return "not_stored";
       }
     } catch (error) {
       logger.error("Template prebuild could not store the template key", {
+        ...log,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return "store_error";
+    }
+    return "stored";
+  }
+
+  // The database is the source of truth; the cache refills from it.
+  private async cacheTemplateKey(
+    deploymentId: string,
+    templateKey: string,
+    log: Record<string, unknown>
+  ): Promise<void> {
+    try {
+      const deployment = await this.prisma.workerDeployment.findFirst({
+        where: { id: deploymentId },
+        select: { workerId: true, environmentId: true },
+      });
+      if (deployment?.workerId) {
+        await this.taskMetaCache.setTemplateKey(
+          deployment.environmentId,
+          deployment.workerId,
+          templateKey
+        );
+      }
+    } catch (error) {
+      logger.error("Template prebuild could not cache the template key", {
         ...log,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -431,15 +555,17 @@ export class TemplatePrebuildService {
   }
 }
 
-async function withinBudget(work: Promise<void>, ms: number): Promise<void> {
+/** The work's result, or undefined when the budget runs out first. */
+async function withinBudget<T>(work: Promise<T>, ms: number): Promise<T | undefined> {
   let timer: NodeJS.Timeout | undefined;
-  await Promise.race([
+  const result = await Promise.race([
     work,
-    new Promise<void>((resolve) => {
-      timer = setTimeout(resolve, Math.max(0, ms));
+    new Promise<undefined>((resolve) => {
+      timer = setTimeout(() => resolve(undefined), Math.max(0, ms));
     }),
   ]);
   clearTimeout(timer);
+  return result;
 }
 
 function parseResponse(text: string): TemplateCreateResponse | undefined {

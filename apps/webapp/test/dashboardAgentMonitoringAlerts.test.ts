@@ -152,6 +152,8 @@ vi.mock("~/v3/alertsRateLimiter.server", () => ({
 }));
 
 const { loader, action } = await import("~/routes/api.v1.dashboard-agent.monitoring-alerts");
+const { action: analyzeAction } =
+  await import("~/routes/api.v1.dashboard-agent.monitoring-alerts.analyze-query");
 const { DASHBOARD_AGENT_UAT_CAP, mintDashboardAgentUserActorToken } =
   await import("~/services/dashboardAgent.server");
 
@@ -254,6 +256,192 @@ afterEach(async () => {
 });
 
 describe("dashboard-agent monitoring alerts route", () => {
+  postgresTest(
+    "create rejects custom.query without a query",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seedProjectWithEnvironments(prisma, "agentquery", ["prod"]);
+
+      const env = makeEnv(
+        seeded.organization.id,
+        seeded.project.id,
+        seeded.environments.prod.id,
+        seeded.organization.slug,
+        seeded.project.externalRef
+      );
+      ctx.uatClaims = { userId: seeded.user.id, environmentId: env.id, client: "dashboard-agent" };
+      ctx.alertContext = { ok: true, environment: env };
+
+      const response = await action({
+        request: jsonRequest("https://test/api/v1/dashboard-agent/monitoring-alerts", {
+          chatId: "chat_1",
+          capabilityKey: "custom.query",
+          condition: { kind: "threshold", operator: ">", value: 5, windowSec: 3600 },
+          behavior: {},
+        }),
+        params: {},
+        context: {},
+      } as any);
+
+      expect(response.status).toBeGreaterThanOrEqual(400);
+      expect(response.status).toBeLessThan(500);
+      const alerts = await listAlerts(ctx.prisma, { projectId: seeded.project.id });
+      expect(alerts).toHaveLength(0);
+    }
+  );
+
+  postgresTest(
+    "create rejects an absence window below the capability floor",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seedProjectWithEnvironments(prisma, "absfloor", ["prod"]);
+      const env = makeEnv(
+        seeded.organization.id,
+        seeded.project.id,
+        seeded.environments.prod.id,
+        seeded.organization.slug,
+        seeded.project.externalRef
+      );
+      ctx.uatClaims = { userId: seeded.user.id, environmentId: env.id, client: "dashboard-agent" };
+      ctx.alertContext = { ok: true, environment: env };
+
+      const response = await action({
+        request: jsonRequest("https://test/api/v1/dashboard-agent/monitoring-alerts", {
+          chatId: "chat_1",
+          capabilityKey: "runs.created",
+          condition: { kind: "absence", quietWindowSec: 600 },
+        }),
+        params: {},
+        context: {},
+      } as any);
+
+      expect(response.status).toBe(400);
+      expect((await response.json()).error).toBe("Quiet window must be at least 1800 seconds");
+      expect(await listAlerts(ctx.prisma, { projectId: seeded.project.id })).toHaveLength(0);
+    }
+  );
+
+  describe("query alerts", () => {
+    const COUNT_QUERY = "SELECT count() AS failures FROM runs WHERE status = 'Failed'";
+
+    function useAgent(slug: string) {
+      const env = makeEnv("org_1", "proj_1", "env_prod", slug, `proj_${slug}`);
+      ctx.uatClaims = { userId: "user_1", environmentId: "env_prod", client: "dashboard-agent" };
+      ctx.alertContext = { ok: true, environment: env };
+    }
+
+    function post(path: string, body: unknown, handler = action) {
+      return handler({
+        request: jsonRequest(`https://test/api/v1/dashboard-agent/${path}`, body),
+        params: {},
+        context: {},
+      } as any);
+    }
+
+    postgresTest(
+      "analyze-query returns modes for a valid query",
+      async ({ prisma, postgresContainer }) => {
+        await boot(prisma, postgresContainer.getConnectionUri());
+        useAgent("qanalyzeok");
+
+        const response = await post(
+          "monitoring-alerts/analyze-query",
+          { query: COUNT_QUERY },
+          analyzeAction
+        );
+
+        expect(response.status).toBe(200);
+        const { analysis } = await response.json();
+        expect(analysis.ok).toBe(true);
+        expect(analysis.modes.map((m: { mode: string }) => m.mode)).toContain("threshold");
+      }
+    );
+
+    // Mutation: dropping the alerts read check in analyze-query fails this.
+    postgresTest("analyze-query needs read:alerts", async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      useAgent("qanalyzenoread");
+      ctx.tokenCap = DASHBOARD_AGENT_UAT_CAP.filter((c) => c !== "read:alerts");
+
+      const response = await post(
+        "monitoring-alerts/analyze-query",
+        { query: COUNT_QUERY },
+        analyzeAction
+      );
+
+      expect(response.status).toBe(403);
+      expect((await response.json()).error).toContain("permission");
+    });
+
+    // Mutation: dropping the monitoring alerts gate in analyze-query fails this.
+    postgresTest(
+      "analyze-query is gated off when alerts are disabled",
+      async ({ prisma, postgresContainer }) => {
+        await boot(prisma, postgresContainer.getConnectionUri());
+        const user = await prisma.user.create({
+          data: { email: "agent-analyze-gate@example.com", authenticationMethod: "MAGIC_LINK" },
+        });
+        const env = makeEnv("org_1", "proj_1", "env_prod", "qgate", "proj_qgate", {
+          alertsEnabled: false,
+        });
+        ctx.uatClaims = { userId: user.id, environmentId: "env_prod", client: "dashboard-agent" };
+        ctx.alertContext = { ok: true, environment: env };
+
+        const response = await post(
+          "monitoring-alerts/analyze-query",
+          { query: COUNT_QUERY },
+          analyzeAction
+        );
+
+        expect(response.status).toBe(403);
+        expect((await response.json()).error).toContain("not enabled");
+      }
+    );
+
+    postgresTest(
+      "create derives the query signal on the server",
+      async ({ prisma, postgresContainer }) => {
+        await boot(prisma, postgresContainer.getConnectionUri());
+        useAgent("qcreateok");
+
+        const response = await post("monitoring-alerts", {
+          chatId: "chat_1",
+          capabilityKey: "custom.query",
+          condition: { kind: "threshold", operator: ">", value: 5, windowSec: 3600 },
+          query: COUNT_QUERY,
+          signal: { mode: "threshold" },
+        });
+
+        expect(response.status).toBe(200);
+        const { alert } = await response.json();
+        const row = await getAlert(ctx.prisma, { id: alert.id, projectId: "proj_1" });
+        expect(row!.query).toBe(COUNT_QUERY);
+        const signal = (row!.params as any).querySignal;
+        expect(signal.measure).toBe("failures");
+        expect(signal.v).toBe(1);
+        expect(signal.sources[0].windowColumn).toBeTruthy();
+      }
+    );
+
+    postgresTest(
+      "create rejects a query on a curated capability",
+      async ({ prisma, postgresContainer }) => {
+        await boot(prisma, postgresContainer.getConnectionUri());
+        useAgent("qcreatecurated");
+
+        const response = await post("monitoring-alerts", {
+          chatId: "chat_1",
+          capabilityKey: "queue.depth",
+          condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
+          query: COUNT_QUERY,
+        });
+
+        expect(response.status).toBe(400);
+        expect(await listAlerts(ctx.prisma, { projectId: "proj_1" })).toHaveLength(0);
+      }
+    );
+  });
+
   postgresTest("create rejects a malformed expiresAt", async ({ prisma, postgresContainer }) => {
     await boot(prisma, postgresContainer.getConnectionUri());
     const seeded = await seedProjectWithEnvironments(prisma, "badexpiry", ["prod"]);

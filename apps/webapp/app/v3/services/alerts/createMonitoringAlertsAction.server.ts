@@ -21,6 +21,12 @@ import {
 import { validateAlertDraft } from "~/v3/services/alerts/validateAlertDraft.server";
 import { validateAlertNotifiers } from "~/v3/services/alerts/validateAlertNotifiers.server";
 import {
+  createAlertFromDraft,
+  InvalidQueryAlertError,
+  QUERY_DOMAIN_ERRORS,
+  type AlertDraftScope,
+} from "~/v3/services/alerts/createAlertFromDraft.server";
+import {
   MonitoringAlertsParamsSchema,
   MonitoringAlertsCreateBodySchema,
 } from "~/v3/services/alerts/monitoringAlertsSchemas";
@@ -68,6 +74,8 @@ export function createMonitoringAlertsAction(
         capabilityKey: body.data.capabilityKey,
         surface: "mcp",
         conditionKind: body.data.condition.kind,
+        quietWindowSec:
+          body.data.condition.kind === "absence" ? body.data.condition.quietWindowSec : undefined,
         scope: body.data.params.scope,
       });
       if (draftError) {
@@ -112,6 +120,44 @@ export function createMonitoringAlertsAction(
           { error: notifierError.message },
           { status: notifierError.reason === "channel" ? 422 : 400 }
         );
+      }
+
+      if (body.data.capabilityKey === "custom.query") {
+        try {
+          const alert = await createAlertFromDraft(
+            prisma,
+            {
+              organizationId: project.organizationId,
+              projectId: project.id,
+              environmentId: environment.id,
+              capabilityKey: body.data.capabilityKey,
+              scope: body.data.params.scope as AlertDraftScope,
+              condition: body.data.condition,
+              expiresAt: body.data.behavior.expiresAt
+                ? new Date(body.data.behavior.expiresAt)
+                : undefined,
+              notifiers: body.data.notifiers,
+              name: body.data.name,
+              createdBy: authentication.userId,
+              query: body.data.query,
+              querySignalChoice: body.data.signal,
+            },
+            deps.lifecycle
+          );
+          return json({ alert });
+        } catch (error) {
+          if (error instanceof InvalidQueryAlertError) {
+            return json({ error: error.message }, { status: 422 });
+          }
+          if (QUERY_DOMAIN_ERRORS.some((cls) => error instanceof cls)) {
+            return json({ error: (error as Error).message }, { status: 400 });
+          }
+          logger.error("Failed to create monitoring alert", {
+            error,
+            projectRef: params.projectRef,
+          });
+          return json({ error: "Something went wrong, please try again." }, { status: 500 });
+        }
       }
 
       try {

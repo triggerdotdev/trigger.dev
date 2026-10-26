@@ -42,9 +42,16 @@ export function parseJsonText(value: unknown): unknown {
   }
 }
 
+export const querySignalChoiceSchema = z.object({
+  mode: z.enum(["threshold", "absence", "match"]),
+  measure: z.string().max(256).optional(),
+});
+
 export const alertDraftPatchSchema = z.object({
-  area: z.enum(["queues", "runs", "health", "errors"]).optional(),
+  area: z.enum(["queues", "runs", "health", "errors", "query"]).optional(),
   what: z.string().optional(),
+  query: z.string().max(8192).optional(),
+  querySignalChoice: querySignalChoiceSchema.optional(),
   scope: z
     .object({
       type: z.enum(["queue", "queuePattern", "task", "all", "errorGroup"]),
@@ -61,9 +68,7 @@ export const alertDraftPatchSchema = z.object({
   condition: z
     .object({
       kind: z.enum(["threshold", "state", "occurrence", "absence"]).optional(),
-      operator: z
-        .literal(">", { message: "Below-threshold alerts aren't supported yet" })
-        .optional(),
+      operator: z.enum([">", "<"]).optional(),
       value: z.number().optional(),
       unit: z.string().optional(),
       windowSec: z.number().optional(),
@@ -94,7 +99,7 @@ const draftText = z.string().max(256);
 export const alertCreationDraftSchema = z.object({
   capabilityKey: draftText.optional(),
   answers: z.object({
-    area: z.enum(["queues", "runs", "health", "errors"]).optional(),
+    area: z.enum(["queues", "runs", "health", "errors", "query"]).optional(),
     what: draftText.optional(),
     scope: z.enum(["queue", "queuePattern", "task", "all", "errorGroup", "fingerprint"]).optional(),
     scopeValue: draftText.optional(),
@@ -103,6 +108,8 @@ export const alertCreationDraftSchema = z.object({
     windowMinutes: z.number().optional(),
     notifiers: z.array(draftText).max(20).optional(),
     expiry: draftText.optional(),
+    query: z.string().max(8192).optional(),
+    querySignalChoice: querySignalChoiceSchema.optional(),
   }),
 });
 

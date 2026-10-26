@@ -9,6 +9,8 @@ import {
   replaceRequestBody,
 } from "~/components/alerts/createAlertRequest";
 import { LEGACY_ALERTS_ROUTE_ID } from "~/components/alerts/legacyAlertChannels";
+import { QueryAlertForm } from "~/components/alerts/QueryAlertForm";
+import type { QueryAlertPrefill } from "~/components/alerts/queryAlertLink";
 import type { AlertChannel } from "~/components/dashboard-agent/alert-creation/CreationFlow";
 import {
   useCreationFlowState,
@@ -151,12 +153,14 @@ function ManualAlertCreation({
 /* oxlint-disable jsx-a11y/no-static-element-interactions -- Escape bubbles from focused controls inside the panel. */
 function ManualAlertCreationPanel({
   prefill,
+  queryPrefill,
   alertDetailPath,
   onCreated,
   onReplaced,
   onClose,
 }: {
   prefill: DraftPrefillParams;
+  queryPrefill?: QueryAlertPrefill;
   alertDetailPath: (alertId: string) => string;
   onCreated: (alertId: string | undefined) => void;
   onReplaced?: (result: ReplacedResult) => void;
@@ -190,13 +194,21 @@ function ManualAlertCreationPanel({
       />
       <CreationChatShell placement="docked" title="New alert">
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          <ManualAlertCreation
-            key={`${environment.id}:${JSON.stringify(prefill)}`}
-            prefill={prefill}
-            alertDetailPath={alertDetailPath}
-            onCreated={onCreated}
-            onReplaced={onReplaced}
-          />
+          {queryPrefill ? (
+            <QueryAlertForm
+              key={`${environment.id}:${queryPrefill.query}`}
+              prefill={queryPrefill}
+              onCreated={onCreated}
+            />
+          ) : (
+            <ManualAlertCreation
+              key={`${environment.id}:${JSON.stringify(prefill)}`}
+              prefill={prefill}
+              alertDetailPath={alertDetailPath}
+              onCreated={onCreated}
+              onReplaced={onReplaced}
+            />
+          )}
         </div>
       </CreationChatShell>
     </div>
@@ -208,6 +220,7 @@ function ManualAlertCreationPanel({
 export function ManualAlertCreationDock({
   open,
   prefill,
+  queryPrefill,
   alertDetailPath,
   onCreated,
   onReplaced,
@@ -216,6 +229,7 @@ export function ManualAlertCreationDock({
 }: {
   open: boolean;
   prefill: DraftPrefillParams;
+  queryPrefill?: QueryAlertPrefill;
   alertDetailPath: (alertId: string) => string;
   onCreated: (alertId: string | undefined) => void;
   onReplaced?: (result: ReplacedResult) => void;
@@ -262,6 +276,7 @@ export function ManualAlertCreationDock({
       >
         <ManualAlertCreationPanel
           prefill={prefill}
+          queryPrefill={queryPrefill}
           alertDetailPath={alertDetailPath}
           onCreated={onCreated}
           onReplaced={onReplaced}

@@ -359,6 +359,28 @@ export function buildTraceChunkCursorPredicate(cursor: TraceChunkCursor): {
   };
 }
 
+// The sort key's form of the exact start_time bounds, so granules outside them are skipped.
+// Implied by the exact bounds; ClickHouse doesn't always derive it from a string literal.
+export function buildTraceStartTimeSortKeyPredicate({
+  startNs,
+  endNs,
+}: {
+  startNs: string;
+  endNs?: string;
+}): {
+  clause: string;
+  params: { windowStartNs: string; windowEndNs?: string };
+} {
+  const lower = "toUnixTimestamp(start_time) >= intDiv({windowStartNs: Int64}, 1000000000)";
+  if (!endNs) {
+    return { clause: lower, params: { windowStartNs: startNs } };
+  }
+  return {
+    clause: `${lower} AND toUnixTimestamp(start_time) <= intDiv({windowEndNs: Int64}, 1000000000)`,
+    params: { windowStartNs: startNs, windowEndNs: endNs },
+  };
+}
+
 export function buildTraceChunkKeyPredicate(cursor: TraceChunkCursor): {
   clause: string;
   params: { keyStartTime: string; keySpanId: string };

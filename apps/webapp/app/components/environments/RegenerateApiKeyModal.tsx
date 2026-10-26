@@ -19,6 +19,7 @@ type ModalProps = {
   title: string;
   hasVercelIntegration: boolean;
   isDevelopment: boolean;
+  isRootApiKeyHidden?: boolean;
 };
 
 type ModalContentProps = ModalProps & {
@@ -31,6 +32,7 @@ export function RegenerateApiKeyModal({
   title,
   hasVercelIntegration,
   isDevelopment,
+  isRootApiKeyHidden = false,
 }: ModalProps) {
   const randomWord = generateTwoRandomWords();
   const [open, setOpen] = useState(false);
@@ -48,6 +50,7 @@ export function RegenerateApiKeyModal({
           title={title}
           hasVercelIntegration={hasVercelIntegration}
           isDevelopment={isDevelopment}
+          isRootApiKeyHidden={isRootApiKeyHidden}
           randomWord={randomWord}
           closeModal={() => setOpen(false)}
         />
@@ -62,6 +65,7 @@ const RegenerateApiKeyModalContent = ({
   title,
   hasVercelIntegration,
   isDevelopment,
+  isRootApiKeyHidden,
   closeModal,
 }: ModalContentProps) => {
   const [confirmationText, setConfirmationText] = useState("");
@@ -83,6 +87,7 @@ const RegenerateApiKeyModalContent = ({
         action={`/resources/environments/${id}/regenerate-api-key`}
         className="mt-2 w-full"
       >
+        {isRootApiKeyHidden ? <input type="hidden" name="rootApiKeyHidden" value="true" /> : null}
         <Fieldset className="w-full">
           <InputGroup className="max-w-full">
             <RadioGroup name="previousKey" defaultValue="grace" className="flex flex-col gap-2">
@@ -91,14 +96,22 @@ const RegenerateApiKeyModalContent = ({
                 value="grace"
                 variant="description"
                 label="Keep the previous key working for 24 hours"
-                description="Roll out the new key to your environment variables without downtime. The previous key stops working after 24 hours."
+                description={
+                  isRootApiKeyHidden
+                    ? "Anything still using the previous key keeps working for 24 hours."
+                    : "Roll out the new key to your environment variables without downtime. The previous key stops working after 24 hours."
+                }
               />
               <RadioGroupItem
                 id="previousKey-revoke"
                 value="revoke"
                 variant="description"
                 label="Revoke the previous key immediately"
-                description="Choose this if the key may have leaked. Deployments and services still using the previous key will fail until they are updated with the new key."
+                description={
+                  isRootApiKeyHidden
+                    ? "Choose this if the key may have leaked. It stops working now, along with any older key still in its 24-hour window."
+                    : "Choose this if the key may have leaked. It stops working now, along with any older key still in its 24-hour window. Deployments and services still using them will fail until they are updated with the new key."
+                }
               />
             </RadioGroup>
           </InputGroup>

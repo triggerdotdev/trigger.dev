@@ -27,6 +27,7 @@ const TOOL_LABELS: Record<string, string> = {
   delete_watch_subscription: "Deleting an alert",
   describe_alert_capabilities: "Listing alert capabilities",
   create_monitoring_alert: "Creating an alert",
+  analyze_query_alert: "Checking the query for an alert",
   update_alert_draft: "Updating the alert draft",
   list_monitoring_alerts: "Listing alerts",
   resolve_monitoring_alert: "Resolving an alert",

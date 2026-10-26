@@ -139,7 +139,7 @@ export function LegacyAlertsSection({
   );
 }
 
-export function LegacyDeleteFooter({
+function LegacyDeleteFooter({
   onCancel,
   onConfirm,
 }: {

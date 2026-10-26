@@ -66,3 +66,53 @@ export function createAlertRequestBody(
     },
   };
 }
+
+export type QueryAlertDraft = {
+  query: string;
+  name: string;
+  mode: "threshold" | "absence" | "match";
+  measure?: string;
+  operator: ">" | "<";
+  value?: number;
+  windowMinutes: number;
+  expiry?: string;
+  notifiers: string[];
+};
+
+export type QueryAlertChatRequest = { chatId: string; transcriptChatId: string };
+
+export function queryAlertRequestBody(
+  ids: { organizationId: string; projectId: string; environmentId: string },
+  draft: QueryAlertDraft,
+  chat?: QueryAlertChatRequest
+) {
+  const wantsChat = Boolean(chat) && draft.notifiers.includes("chat");
+  const conditionKind =
+    draft.mode === "match" ? "occurrence" : draft.mode === "absence" ? "absence" : "threshold";
+  return {
+    organizationId: ids.organizationId,
+    projectId: ids.projectId,
+    environmentId: ids.environmentId,
+    name: draft.name,
+    chatNotifier: wantsChat ? ("on" as const) : undefined,
+    chatId: wantsChat ? chat!.chatId : undefined,
+    transcriptChatId: chat?.transcriptChatId,
+    expiry: draft.expiry && EXPIRY_TOKEN_PATTERN.test(draft.expiry) ? draft.expiry : undefined,
+    form: {
+      capabilityKey: "custom.query",
+      scopeType: "all",
+      conditionKind,
+      operator: draft.mode === "threshold" ? draft.operator : undefined,
+      value: draft.mode === "threshold" ? draft.value : undefined,
+      windowMinutes: draft.mode === "threshold" ? draft.windowMinutes : undefined,
+      quietWindowMinutes: draft.mode === "absence" ? draft.windowMinutes : undefined,
+      query: draft.query,
+      querySignalChoice: {
+        mode: draft.mode,
+        measure: draft.mode === "match" ? undefined : draft.measure,
+      },
+      expiresAt: expiryToIso(draft.expiry),
+      notifierChannelIds: draft.notifiers.filter((n) => n !== "chat"),
+    },
+  };
+}

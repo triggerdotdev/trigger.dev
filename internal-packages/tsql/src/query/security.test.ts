@@ -191,6 +191,80 @@ describe("Cross-Tenant Security", () => {
     });
   });
 
+  describe("Aliases cannot shadow a table alias", () => {
+    const ownTenant = `JSONExtract('{"organization_id":"org_tenant1","project_id":"proj_tenant1","environment_id":"env_tenant1"}', 'Tuple(organization_id String, project_id String, environment_id String)')`;
+
+    it.each([
+      ["a WHERE alias", `SELECT id FROM task_runs AS r WHERE ${ownTenant} AS r IS NOT NULL`],
+      ["a SELECT alias", `SELECT id, ${ownTenant} AS r FROM task_runs AS r`],
+      ["the implicit table alias", `SELECT id, ${ownTenant} AS task_runs FROM task_runs`],
+      ["a different case", `SELECT id, ${ownTenant} AS R FROM task_runs AS r`],
+      ["an ARRAY JOIN alias", `SELECT id FROM task_runs AS r ARRAY JOIN [${ownTenant}] AS r`],
+      [
+        "a dotted ARRAY JOIN alias",
+        "SELECT id FROM task_runs ARRAY JOIN ['org_tenant1'] AS `task_runs.organization_id`",
+      ],
+      [
+        "a dotted SELECT alias",
+        "SELECT id, 'org_tenant1' AS `r.organization_id` FROM task_runs AS r",
+      ],
+      ["a WITH alias", `WITH ${ownTenant} AS r SELECT id FROM task_runs AS r`],
+      [
+        "an ORDER BY alias",
+        `SELECT id FROM task_runs AS r ORDER BY (${ownTenant} AS r) IS NOT NULL`,
+      ],
+      ["a GROUP BY alias", `SELECT id FROM task_runs AS r GROUP BY id, (${ownTenant} AS r)`],
+      ["a backticked alias", "SELECT id, " + ownTenant + " AS `r` FROM task_runs AS `r`"],
+      [
+        "an alias inside a function",
+        `SELECT id, length(toString(${ownTenant} AS r)) AS n FROM task_runs AS r`,
+      ],
+      ["a scalar subquery alias", `SELECT id, (SELECT ${ownTenant}) AS r FROM task_runs AS r`],
+      ["a FROM subquery", `SELECT id FROM (SELECT id, ${ownTenant} AS r FROM task_runs AS r)`],
+      [
+        "the second branch of a UNION",
+        `SELECT id FROM task_runs AS q UNION ALL SELECT id FROM task_runs AS r WHERE ${ownTenant} AS r IS NOT NULL`,
+      ],
+      [
+        "an aggregate hidden in a lambda",
+        `SELECT id, if(length(arrayMap(x -> count(), [1])) > 0, ${ownTenant}, ${ownTenant}) AS r FROM task_runs AS r`,
+      ],
+      [
+        "a joined table's alias",
+        `SELECT r.id, ${ownTenant} AS e FROM task_runs AS r JOIN task_events AS e ON r.id = e.run_id`,
+      ],
+      [
+        "a WITH alias carried into a UNION branch",
+        `WITH ${ownTenant} AS r SELECT id FROM task_runs AS q UNION ALL SELECT id FROM task_runs AS r`,
+      ],
+      [
+        "a WITH alias carried into a UNION branch's implicit table alias",
+        `WITH ${ownTenant} AS task_runs SELECT 'x' AS id UNION ALL SELECT id FROM task_runs`,
+      ],
+      [
+        "a WITH alias around a FROM subquery",
+        `WITH ${ownTenant} AS r SELECT id FROM (SELECT id FROM task_runs AS r)`,
+      ],
+      [
+        "a dotted WITH alias around an IN subquery",
+        "WITH 'org_tenant1' AS `task_runs.organization_id` SELECT 1 AS x WHERE 1 IN (SELECT 1 FROM task_runs)",
+      ],
+    ])("should reject %s", (_, query) => {
+      expect(() => compile(query)).toThrow(/conflicts with the table alias/);
+    });
+
+    it("should allow aggregate aliases that reuse the table name", () => {
+      const { sql } = compile("SELECT status, count() AS task_runs FROM task_runs GROUP BY status");
+      expect(sql).toContain("count() AS task_runs");
+    });
+
+    it("should allow an alias that only matches a table in another scope", () => {
+      expect(() =>
+        compile(`SELECT s.id FROM (SELECT id, ${ownTenant} AS r FROM task_runs) AS s`)
+      ).not.toThrow();
+    });
+  });
+
   describe("PREWHERE", () => {
     it.each([
       ["top-level query", "SELECT count(*) FROM task_runs PREWHERE toUInt8(task_identifier) = 1"],
@@ -697,6 +771,80 @@ describe("Multi-join Tenant Guard Qualification", () => {
     expect(whereClause).toMatch(/\br\b[^,]*organization_id/);
     expect(whereClause).toMatch(/\be1\b[^,]*organization_id/);
     expect(whereClause).toMatch(/\be2\b[^,]*organization_id/);
+  });
+
+  it("prints each table alias once in JOIN queries", () => {
+    const { sql } = compile(
+      "SELECT count() FROM task_runs r JOIN task_events e ON r.id = e.run_id"
+    );
+    expect(sql).toContain("trigger_dev.task_runs_v2 AS r JOIN trigger_dev.task_events_v2 AS e ON");
+    expect(sql).not.toMatch(/AS r AS r|AS e AS e/);
+  });
+
+  it("keeps the alias on subqueries", () => {
+    const { sql } = compile("SELECT s.id FROM (SELECT id FROM task_runs) AS s");
+    expect(sql).toMatch(/\) AS s\b/);
+  });
+
+  describe("window conditions", () => {
+    const from = new Date("2026-10-22T10:00:00.000Z");
+    const to = new Date("2026-10-22T11:00:00.000Z");
+    const windowConditions = [
+      { table: "task_runs", column: "created_at", from, to },
+      { table: "task_events", column: "timestamp", from, to },
+    ];
+
+    it("bounds every joined table on its own column", () => {
+      const { sql } = compile(
+        "SELECT count() FROM task_runs r JOIN task_events e ON r.id = e.run_id",
+        { windowConditions }
+      );
+      expect(sql).toContain("greaterOrEquals(r.created_at,");
+      expect(sql).toContain("less(r.created_at,");
+      expect(sql).toContain("greaterOrEquals(e.timestamp,");
+      expect(sql).toContain("less(e.timestamp,");
+    });
+
+    it("bounds subqueries and UNION branches", () => {
+      const { sql } = compile(
+        "SELECT id FROM (SELECT id FROM task_runs) UNION ALL SELECT run_id FROM task_events",
+        { windowConditions }
+      );
+      expect(sql).toContain("less(task_runs.created_at,");
+      expect(sql).toContain("less(task_events.timestamp,");
+    });
+
+    it("scopes a branch window to its top-level UNION branch", () => {
+      const later = new Date("2026-10-22T12:00:00.000Z");
+      const { sql, params } = compile(
+        "SELECT count() FROM (SELECT id FROM task_runs UNION ALL SELECT id FROM task_runs) UNION ALL SELECT count() FROM task_runs",
+        {
+          windowConditions: [
+            { table: "task_runs", column: "created_at", from, to, branch: 0 },
+            { table: "task_runs", column: "created_at", from: to, to: later, branch: 1 },
+          ],
+        }
+      );
+      const bounds = (part: string) =>
+        [
+          ...part.matchAll(
+            /(greaterOrEquals|less)\(task_runs\.created_at, toDateTime64\(\{(\w+):/g
+          ),
+        ].map((m) => params[m[2]!]);
+      // The first two parts are branch 0's inner UNION, the third is branch 1.
+      const parts = sql.split("UNION ALL");
+      expect(parts).toHaveLength(3);
+      expect(bounds(parts[0]!)).toEqual(["2026-10-22 10:00:00.000", "2026-10-22 11:00:00.000"]);
+      expect(bounds(parts[1]!)).toEqual(["2026-10-22 10:00:00.000", "2026-10-22 11:00:00.000"]);
+      expect(bounds(parts[2]!)).toEqual(["2026-10-22 11:00:00.000", "2026-10-22 12:00:00.000"]);
+    });
+
+    it("leaves tables without a window condition alone", () => {
+      const { sql } = compile("SELECT count() FROM task_events", {
+        windowConditions: [windowConditions[0]!],
+      });
+      expect(sql).not.toContain("timestamp");
+    });
   });
 
   it("should ensure guards cannot bind to wrong table by verifying separate qualifications", () => {

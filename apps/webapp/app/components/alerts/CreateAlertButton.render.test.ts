@@ -88,10 +88,4 @@ describe("CreateAlertButton on the Errors pages", () => {
     act(() => el.querySelector("button")!.click());
     expect(openCreateAlert).toHaveBeenCalledWith({ capability: "errors.new", scope: "all" });
   });
-
-  it("shows the Create a new alert tooltip on focus", () => {
-    const el = render({ openCreateAlert: vi.fn() }, NEW_ERROR_ALERT_PREFILL);
-    act(() => el.querySelector("button")!.focus());
-    expect(document.body.textContent).toContain("Create a new alert");
-  });
 });

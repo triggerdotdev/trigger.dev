@@ -10,6 +10,7 @@ import { singleton } from "~/utils/singleton";
 import { createReloadingRegistry } from "~/utils/reloadingRegistry.server";
 
 export type WorkerGroupRegionRow = {
+  id: string;
   masterQueue: string;
   region: string | null;
   workloadType: WorkloadType;
@@ -31,25 +32,38 @@ export function regionForQueue(queue: string, groups: WorkerGroupRegionRow[]): s
 }
 
 /**
- * Forward map: the compute (MICROVM) backing queue for the region that `queue`
- * belongs to, or undefined if the region has no compute backing. `queue` is the
- * resolved (container) worker queue; we look up its region, then find a visible
- * MICROVM group in the same region. Returns the backing group's queue and its
- * `enableFastPath` so the caller adopts the backing's fast-path setting.
+ * Forward map: the compute backing queue for the region that `queue` belongs to, or undefined if
+ * the region has no compute backing. `queue` is the resolved (container) worker queue; we look up
+ * its region, then find a visible MICROVM group in the same region. Failing that, a group listed in
+ * `mixedRuntimeGroupIds` is its own backing, as it carries compute consumers too. Returns the
+ * backing group's queue and its `enableFastPath` so the caller adopts the backing's setting.
  */
 export function backingForQueue(
   queue: string,
-  groups: WorkerGroupRegionRow[]
+  groups: WorkerGroupRegionRow[],
+  mixedRuntimeGroupIds: readonly string[]
 ): { workerQueue: string; enableFastPath: boolean } | undefined {
   const self = groups.find((g) => g.masterQueue === queue);
   const region = self?.region;
   if (!region) return undefined;
-  const backing = groups.find(
-    (g) =>
-      g.workloadType === "MICROVM" && g.region === region && !g.hidden && g.masterQueue !== queue
-  );
+  const backing =
+    groups.find(
+      (g) =>
+        g.workloadType === "MICROVM" && g.region === region && !g.hidden && g.masterQueue !== queue
+    ) ?? (mixedRuntimeGroupIds.includes(self.id) ? self : undefined);
   if (!backing) return undefined;
   return { workerQueue: backing.masterQueue, enableFastPath: backing.enableFastPath };
+}
+
+/**
+ * The mixed-runtime groups that may be their own compute backing. Only v2 queues have compat lanes
+ * that keep compute runs apart from container runs, so none qualifies while v2 queues are off.
+ */
+export function selfBackingWorkerGroups(
+  mixedRuntimeGroupIds: readonly string[],
+  v2Enabled: boolean
+): readonly string[] {
+  return v2Enabled ? mixedRuntimeGroupIds : [];
 }
 
 /**
@@ -107,6 +121,7 @@ export const workerRegionRegistry = singleton("workerRegionRegistry", () =>
     load: () =>
       prisma.workerInstanceGroup.findMany({
         select: {
+          id: true,
           masterQueue: true,
           region: true,
           workloadType: true,

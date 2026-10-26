@@ -10,7 +10,6 @@ import {
   type AlertEventType,
   type EvaluationResult,
   type NotifierRef,
-  getCapability,
   transition,
   type AlertState,
   type Behavior,
@@ -22,6 +21,7 @@ import {
   laneRetryAt,
   nextEvaluationAt as computeNextEvaluationAt,
 } from "./alertSchedule";
+import { resolveAlertCapability } from "../queryAlerts/resolveAlertCapability.server";
 
 function isQueryConcurrencyRejection(err: unknown): boolean {
   return (
@@ -36,6 +36,8 @@ async function defaultEnqueueDelivery(params: { eventId: string; eventAt: Date }
     await import("../delivery/enqueueAlertEventDelivery.server");
   return enqueueAlertEventDelivery(params);
 }
+
+const UNAVAILABLE_REASON_CHARS = 300;
 
 export type CompositeHysteresisState = {
   consecutiveMet: number;
@@ -107,6 +109,7 @@ export interface EvaluateAlertOutcome {
   bindingFailed?: boolean;
   laneRejected?: boolean;
   unavailableReason?: string;
+  unavailableCode?: string;
   events: AlertEventType[];
   deliveryCount: number;
   alert?: Alert | null;
@@ -117,17 +120,30 @@ export async function evaluateAlert(
   deps: EvaluateAlertDeps
 ): Promise<EvaluateAlertOutcome> {
   const windowSec = deps.windowSec ?? DEFAULT_DISTRIBUTION_WINDOW_SEC;
-  const capability = getCapability(alert.capabilityKey);
-  if (!capability) {
+  const resolved = resolveAlertCapability(alert);
+  if (!resolved) {
     deps.logger?.error("unknown capability", { capabilityKey: alert.capabilityKey });
     const released = await releaseLeaseToNextCadence(alert, deps);
     return { applied: released, events: [], deliveryCount: 0 };
   }
+  const { capability } = resolved;
 
   let result: EvaluationResult;
   let evaluatorStatePatch: Record<string, unknown> | undefined;
   try {
-    ({ result, evaluatorStatePatch } = await deps.evaluateBinding(alert, capability));
+    ({ result, evaluatorStatePatch } = resolved.unavailable
+      ? {
+          result: {
+            kind: "stateful",
+            outcome: "unavailable",
+            facts: {
+              unavailableReason: resolved.unavailable.reason,
+              unavailableCode: resolved.unavailable.code,
+            },
+          },
+          evaluatorStatePatch: alert.evaluatorState ?? undefined,
+        }
+      : await deps.evaluateBinding(alert, capability));
   } catch (err) {
     const laneRejected = isQueryConcurrencyRejection(err);
     const raw = err instanceof Error ? err.message : String(err);
@@ -185,10 +201,12 @@ export async function evaluateAlert(
   }
 
   let unavailableReason: string | null = null;
+  let unavailableCode: string | undefined;
   if (result.kind === "stateful" && result.outcome === "unavailable") {
     const facts = result.facts as Record<string, unknown>;
     const raw = typeof facts.unavailableReason === "string" ? facts.unavailableReason : "unknown";
-    unavailableReason = raw.slice(0, 120);
+    unavailableReason = raw.slice(0, UNAVAILABLE_REASON_CHARS);
+    unavailableCode = typeof facts.unavailableCode === "string" ? facts.unavailableCode : undefined;
   }
 
   if (capability.binding.compositeOf && result.kind === "stateful") {
@@ -287,11 +305,13 @@ export async function evaluateAlert(
     ...(conditionChanged ? { observedConditionChangedAt: now } : {}),
     evaluatorState: {
       ...(evaluatorStatePatch ?? {}),
-      lastError: unavailableReason ? { reason: unavailableReason, at: now.toISOString() } : null,
+      lastError: unavailableReason
+        ? { reason: unavailableReason, code: unavailableCode, at: now.toISOString() }
+        : null,
     },
   };
 
-  const outcomeEvents = buildOutcomeEvents(events, result, now);
+  const outcomeEvents = buildOutcomeEvents(events, result, now, capability);
 
   const deliveries: Array<{ alertEventIndex: number; notifier: NotifierRef }> = [];
   const notifiers = (alert.notifiers ?? []) as NotifierRef[];
@@ -344,6 +364,7 @@ export async function evaluateAlert(
     applied: true,
     alert: outcome.alert,
     ...(unavailableReason ? { unavailableReason } : {}),
+    ...(unavailableCode ? { unavailableCode } : {}),
     events,
     deliveryCount: outcome.deliveries.length,
   };
@@ -353,7 +374,7 @@ export function releaseLeaseToNextCadence(
   alert: Alert & { evaluationLeaseId: string },
   deps: Pick<EvaluateAlertDeps, "db" | "windowSec">
 ): Promise<boolean> {
-  const cadenceSec = getCapability(alert.capabilityKey)?.minCadenceSec ?? 300;
+  const cadenceSec = resolveAlertCapability(alert)?.capability.minCadenceSec ?? 300;
   return releaseLeaseForRetry(deps.db, {
     alertId: alert.id,
     leaseId: alert.evaluationLeaseId,
@@ -376,10 +397,49 @@ function scheduleNext(alert: Alert, cadenceSec: number, now: Date, windowSec: nu
   });
 }
 
+const BATCH_ROWS = 10;
+const BATCH_EXTRA_COLUMNS = 3;
+const BATCH_VALUE_CHARS = 200;
+
+function batchValue(value: unknown): unknown {
+  if (typeof value === "string") return value.slice(0, BATCH_VALUE_CHARS);
+  if (value !== null && typeof value === "object") {
+    return JSON.stringify(value).slice(0, BATCH_VALUE_CHARS);
+  }
+  return value;
+}
+
+function occurrenceBatch(
+  occurrences: Extract<EvaluationResult, { kind: "occurrence" }>["occurrences"],
+  capability: AlertCapability
+) {
+  const rowKey = capability.binding.rowKey ?? [];
+  const skip = new Set([...rowKey, capability.binding.rowTimeColumn]);
+  const rows = [...occurrences]
+    .sort((a, b) => a.rowTime.getTime() - b.rowTime.getTime())
+    .slice(0, BATCH_ROWS)
+    .map((o) => ({
+      id: rowKey.length ? rowKey.map((col) => String(o.facts[col])).join(":") : o.sourceEventId,
+      time: o.rowTime.toISOString(),
+      columns: Object.fromEntries(
+        Object.entries(o.facts)
+          .filter(([col]) => !skip.has(col))
+          .slice(0, BATCH_EXTRA_COLUMNS)
+          .map(([col, value]) => [col, batchValue(value)])
+      ),
+    }));
+  return {
+    rows,
+    total: occurrences.length,
+    overflow: Math.max(0, occurrences.length - BATCH_ROWS),
+  };
+}
+
 function buildOutcomeEvents(
   events: AlertEventType[],
   result: EvaluationResult,
-  now: Date
+  now: Date,
+  capability: AlertCapability
 ): Array<{
   type: AlertEventType;
   at: Date;
@@ -394,11 +454,16 @@ function buildOutcomeEvents(
     (latest, o) => (!latest || o.rowTime > latest.rowTime ? o : latest),
     undefined
   );
+  const facts = occ ? (occ.facts as Record<string, unknown>) : result.facts;
+  const batch =
+    capability.binding.source === "custom"
+      ? { batch: occurrenceBatch(result.occurrences, capability) }
+      : {};
   return events.map((type) => {
     return {
       type,
       at: now,
-      facts: occ ? (occ.facts as Record<string, unknown>) : result.facts,
+      facts: { ...facts, ...batch },
       sourceEventId: occ?.sourceEventId,
     };
   });

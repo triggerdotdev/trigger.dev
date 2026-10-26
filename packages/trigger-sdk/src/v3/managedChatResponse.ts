@@ -11,11 +11,12 @@ export class ManagedChatResponse {
   private chunks: UIMessageChunk[] = [];
   private original?: UIMessage;
   private fallbackId = generateId();
-  private completedSteps = 0;
-  private dataBoundary = 0;
-  private generationOffset = 0;
+  private openStepToolCallIds = new Set<string>();
+  private finishedToolCallIds = new Set<string>();
+  /** Data written now waits for the step that made these tool calls. */
+  private dataAnchor?: string[];
   private orderedSteps = true;
-  private pendingData: Array<{ chunk: UIMessageChunk; capture: boolean; after: number }> = [];
+  private pendingData: Array<{ chunk: UIMessageChunk; capture: boolean; anchor: string[] }> = [];
 
   constructor(
     private readonly publish: (stream: ReadableStream<UIMessageChunk>) => Promise<unknown>
@@ -38,32 +39,42 @@ export class ManagedChatResponse {
     return this.original?.id === id;
   }
 
-  beginGeneration(): void {
-    this.generationOffset = this.completedSteps;
-    this.dataBoundary = this.completedSteps;
-  }
-
-  afterStep(completedSteps: number): void {
-    this.dataBoundary = this.orderedSteps ? this.generationOffset + completedSteps : 0;
+  /**
+   * Hold data written from now on until the step that made `toolCallIds` has
+   * finished in this stream. Anchored by tool call rather than step count, so
+   * it holds whichever generation made the calls and whenever it is piped. A
+   * generation that is never piped (e.g. nested in a tool) holds its data until
+   * the pipe ends or the response closes.
+   */
+  afterToolStep(toolCallIds: readonly string[]): void {
+    this.dataAnchor =
+      this.orderedSteps &&
+      toolCallIds.length > 0 &&
+      !toolCallIds.some((id) => this.finishedToolCallIds.has(id))
+        ? [...toolCallIds]
+        : undefined;
   }
 
   /** Raw pipes own their output ordering and do not feed this capture. */
   useRawPipe(): void {
     this.orderedSteps = false;
-    this.dataBoundary = 0;
     this.flushPendingData();
   }
 
   private flushPendingData(): void {
-    this.dataBoundary = this.completedSteps;
+    this.dataAnchor = undefined;
     for (const next of this.pendingData.splice(0)) this.write(next.chunk, next.capture);
+  }
+
+  private finished(anchor: readonly string[]): boolean {
+    return anchor.some((id) => this.finishedToolCallIds.has(id));
   }
 
   writeData(chunk: UIMessageChunk): void {
     const capture = chunk.type.startsWith("data-") && !("transient" in chunk && chunk.transient);
     if (this.closed) throw new Error("The managed chat response is closed");
-    if (this.dataBoundary > this.completedSteps) {
-      this.pendingData.push({ chunk, capture, after: this.dataBoundary });
+    if (this.dataAnchor && !this.finished(this.dataAnchor)) {
+      this.pendingData.push({ chunk, capture, anchor: this.dataAnchor });
     } else this.write(chunk, capture);
   }
 
@@ -85,12 +96,15 @@ export class ManagedChatResponse {
     }
     if (capture) this.chunks.push(chunk);
     this.controller!.enqueue(chunk);
-    if (capture && chunk.type === "finish-step") {
-      this.completedSteps++;
-      while (this.pendingData[0] && this.pendingData[0].after <= this.completedSteps) {
-        const next = this.pendingData.shift()!;
-        this.write(next.chunk, next.capture);
-      }
+    if (!capture) return;
+    const toolCallId = (chunk as { toolCallId?: unknown }).toolCallId;
+    if (typeof toolCallId === "string") this.openStepToolCallIds.add(toolCallId);
+    if (chunk.type === "finish-step") {
+      for (const id of this.openStepToolCallIds) this.finishedToolCallIds.add(id);
+      this.openStepToolCallIds.clear();
+      const released = this.pendingData.filter((next) => this.finished(next.anchor));
+      this.pendingData = this.pendingData.filter((next) => !released.includes(next));
+      for (const next of released) this.write(next.chunk, next.capture);
     }
   }
 

@@ -5,6 +5,7 @@ import {
   isColumnReferencedInExpression,
   createFallbackExpression,
   injectFallbackConditions,
+  selectStatementText,
   type WhereClauseCondition,
 } from "./index.js";
 import { column, type TableSchema } from "./query/schema.js";
@@ -959,5 +960,22 @@ describe("health alert template functions", () => {
     });
 
     expect(sql).toContain("dateDiff(second, max(triggered_at), now())");
+  });
+});
+
+describe("selectStatementText", () => {
+  it.each([
+    ["SELECT run_id FROM runs;", "SELECT run_id FROM runs"],
+    ["SELECT run_id FROM runs -- trailing", "SELECT run_id FROM runs"],
+    [
+      "/* lead */ SELECT a FROM runs UNION ALL SELECT a FROM runs ;\n",
+      "SELECT a FROM runs UNION ALL SELECT a FROM runs",
+    ],
+    [
+      "SELECT a FROM runs WHERE task_identifier = '🔥' -- c",
+      "SELECT a FROM runs WHERE task_identifier = '🔥'",
+    ],
+  ])("%j keeps only the statement", (query, expected) => {
+    expect(selectStatementText(query)).toBe(expected);
   });
 });

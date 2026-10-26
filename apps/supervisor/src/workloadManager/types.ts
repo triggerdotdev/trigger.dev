@@ -26,6 +26,8 @@ export interface WorkloadManager {
 
 export interface WorkloadManagerCreateOptions {
   image: string;
+  // A prebuilt template of the image, as the deployment recorded it; unvalidated.
+  templateKey?: string;
   machine: MachinePreset;
   version: string;
   nextAttemptNumber?: number;

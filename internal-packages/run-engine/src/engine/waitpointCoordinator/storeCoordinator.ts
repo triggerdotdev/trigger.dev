@@ -590,9 +590,9 @@ export class WaitpointCompletionConflictError extends Error {
 }
 
 /**
- * How long a terminal record and a reclaimed run partition are retained. Aligned with the
- * 14-day terminal snapshot window on the TRES side, so a resume that needs to reread either
- * store finds both or neither.
+ * How long a terminal record and a reclaimed run partition are retained. Longer than the default
+ * TRES completed TTL (4 days, `RUN_ENGINE_SNAPSHOT_STORE_COMPLETED_TTL_MS`), so a resume that can
+ * still read its snapshots also finds this record.
  */
 export const DEFAULT_TERMINAL_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 

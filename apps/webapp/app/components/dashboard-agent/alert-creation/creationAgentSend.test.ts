@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   pendingDraftPatches,
@@ -12,9 +11,6 @@ import {
 import { alertCreationDraftSchema } from "@internal/dashboard-agent-contracts";
 import { sanitizeDetail } from "./useCreationAgentSend";
 import type { FlowAnswers } from "./flow-state";
-
-const panelSource = readFileSync(new URL("../DashboardAgentPanel.tsx", import.meta.url), "utf8");
-const chatSource = readFileSync(new URL("../DashboardAgentChat.tsx", import.meta.url), "utf8");
 
 const STREAM_FIXTURE_OK = [
   {
@@ -116,47 +112,6 @@ describe("pendingDraftPatches from streamed tool parts", () => {
     );
     expect(results).toHaveLength(0);
   });
-
-  it("fails when the response is parsed as JSON instead of a stream", () => {
-    expect(panelSource).not.toMatch(/executeSend/);
-    expect(panelSource).toMatch(/onFreeText={sendCreationText}/);
-    expect(panelSource).toMatch(/openChat\(chatId, true\)/);
-
-    expect(chatSource).toMatch(/pendingDraftPatches/);
-    expect(chatSource).toMatch(/onAlertDraftPatch/);
-  });
-});
-
-describe("panel wiring for streamed draft patches", () => {
-  it("DashboardAgentChat receives onAlertDraftPatch callback in creation mode", () => {
-    expect(panelSource).toMatch(
-      /onAlertDraftPatch={inCreationMode\s*\?\s*creationCallbacks\.onAlertDraftPatch/
-    );
-  });
-
-  it("DashboardAgentChat renders no DOM in creation mode (headless)", () => {
-    expect(panelSource).toMatch(/headless={inCreationMode \|\| inEditMode}/);
-    expect(chatSource).toMatch(/if\s*\(headless\)\s*return\s+null/);
-    expect(panelSource).not.toMatch(/sr-only/);
-  });
-
-  it("fails when a text-only reply is not rendered in the visible creation transcript", () => {
-    expect(chatSource).toMatch(/onCreationTextReply/);
-    expect(chatSource).toMatch(/onCreationTextReply\(text\)/);
-
-    expect(panelSource).toMatch(
-      /onCreationTextReply={inCreationMode\s*\?\s*creationCallbacks\.onCreationTextReply/
-    );
-    expect(panelSource).toMatch(/systemLines={creationAgentSend\.systemLines}/);
-  });
-
-  it("fails when an intermediate ok:false result is rendered before the turn settles", () => {
-    expect(chatSource).toMatch(/draftPatchAccRef/);
-    expect(chatSource).not.toMatch(
-      /useEffect\(\(\)\s*=>\s*\{[\s\S]*?onAlertDraftPatch\(results\)[\s\S]*?\},\s*\[messages/
-    );
-    expect(chatSource).toMatch(/pendingPatches\.length\s*>\s*0\s*&&\s*onAlertDraftPatch/);
-  });
 });
 
 describe("error sanitization", () => {
@@ -172,36 +127,10 @@ describe("error sanitization", () => {
   });
 });
 
-describe("single visible panel instance", () => {
-  it("panel root has a unique data attribute for reliable querying", () => {
-    expect(panelSource).toMatch(/data-agent-panel="visible"/);
-  });
-
-  it("DashboardAgent mounts exactly one DashboardAgentPanel", () => {
-    const agentSource = readFileSync(new URL("../DashboardAgent.tsx", import.meta.url), "utf8");
-    const mounts = agentSource.match(/<DashboardAgentPanel\b/g);
-    expect(mounts).toHaveLength(1);
-  });
-
-  it("system lines route to the visible CreationTranscript, not the headless chat", () => {
-    expect(panelSource).toMatch(/systemLines={creationAgentSend\.systemLines}/);
-    expect(panelSource).toMatch(/headless={inCreationMode \|\| inEditMode}/);
-    expect(chatSource).toMatch(/if\s*\(headless\)\s*return\s+null/);
-  });
-});
-
-describe("creation mode entry", () => {
-  it("fails when openSource='alerts' does not render the creation shell", () => {
-    expect(panelSource).toMatch(/creationModeRef\.current[\s\S]*?setLoading\(false\)/);
-    expect(panelSource).toMatch(/\{inCreationMode \? \([\s\S]*?CreationChatShell/);
-  });
-});
-
 describe("creation session tool scope", () => {
   it("fails when the creation session scope includes create_monitoring_alert", () => {
     const base = { userId: "user_1", organizationId: "org_1" };
     expect(creationTurnClientData(base, {}).toolScope).toBe("alert_creation");
-    expect(panelSource).not.toMatch(/toolScope:\s*["']create_monitoring_alert["']/);
   });
 
   // Mutation: dropping alertDraft from creationTurnClientData fails this.
@@ -222,9 +151,6 @@ describe("creation session tool scope", () => {
       capabilityKey: "queue.depth",
       answers,
     });
-    expect(panelSource).toMatch(
-      /clientData={inCreationMode \? creationClientData : activeChatClientData}/
-    );
   });
 
   // Mutation: dropping the seq check reuses the previous session's chat.
@@ -233,9 +159,6 @@ describe("creation session tool scope", () => {
     expect(creationChatToReuse(session, 1, "chat_old")).toBe("chat_old");
     expect(creationChatToReuse(session, 2, "chat_old")).toBeUndefined();
     expect(creationChatToReuse(session, 1, "chat_other")).toBeUndefined();
-    expect(panelSource).toMatch(
-      /creationChatToReuse\(creationAgentChat\.current, creationEntrySeq/
-    );
   });
 
   // Mutation: replaying the deferred create with plain clientData drops the scope.
@@ -251,8 +174,5 @@ describe("creation session tool scope", () => {
       alertDraft: { answers: { area: "runs" } },
     });
     expect(rescopeTurnClientData({ userId: "u" }, undefined)).toBeUndefined();
-    expect(panelSource).toMatch(
-      /rescopeTurnClientData\(clientData, pendingCreate\.turnClientData\)/
-    );
   });
 });

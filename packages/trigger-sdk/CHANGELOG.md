@@ -1,5 +1,103 @@
 # @trigger.dev/sdk
 
+## 4.8.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.8.1`
+
+## 4.8.0
+
+### Minor Changes
+
+- Route verified webhooks into agent sessions with `chat.event({ endpoint, key })`, and connect external chat surfaces with `chat.channels.custom({ endpoint })`. Both subscribe to a shared webhook endpoint, so an agent and your other webhook tasks can use the same provider URL. Channels support reply delivery, session binding, conversation seeding, and lifecycle reactions, and a failed turn posts a short line instead of the error (`errorMessage` sets it, as a string or a function of the failure). Use `chat.createWatchToken()` to watch a session from another surface. ([`d6955ee9f`](https://github.com/triggerdotdev/trigger.dev/commit/d6955ee9f31b0b1a3af55bb8fbbc77ba68bcb3f7))
+
+  A connector can also stream replies natively (`stream()`), mirror the session's state into the surface (`lifecycle()`), show tool calls as they run (`progress()`), stop a running turn from the surface (`onControl()`), post approvals and tool controls and resume the run from a verified click, download files only the surface can read (`download()`), and acknowledge or fold in messages that arrive mid-turn (`received()`, `pendingMessages`).
+
+- Add hosted webhooks: declare an endpoint once with `webhooks.endpoint.define({ id, source })` and Trigger.dev hosts its URL, verifies every request, and routes each event to the endpoint's subscribers. Subscribe tasks with `webhook({ endpoint, filter, onEvent })`, each with its own type-safe filter, and pause a run until a matching webhook arrives with `webhooks.waiter.create()` and `webhooks.waiter.wait()`. ([`d6955ee9f`](https://github.com/triggerdotdev/trigger.dev/commit/d6955ee9f31b0b1a3af55bb8fbbc77ba68bcb3f7))
+
+  ```ts
+  export const stripe = webhooks.endpoint.define({
+    id: "stripe",
+    source: webhooks.stripe(),
+  });
+
+  export const fulfill = webhook({
+    id: "fulfill",
+    endpoint: stripe,
+    filter: "event.type == 'checkout.session.completed'",
+    onEvent: async ({ event }) => {},
+  });
+
+  const waiter = await webhooks.waiter.create(stripe, {
+    match: { "event.data.object.metadata.orderId": order.id },
+  });
+  const { event } = await webhooks.waiter.wait(waiter).unwrap();
+  ```
+
+  Sources cover presets (`webhooks.stripe()`, `webhooks.github()`, `webhooks.svix()`, `webhooks.discord()`, and others), named providers (`webhooks.clerk()`, `webhooks.shopify()`, and more) and `webhooks.custom<T>(config)`, and most carry a setup prompt an AI coding agent can follow to register the endpoint. Retries are deduplicated on the provider's own event or delivery id where it sends one. Filters, keys and waiter `match` paths share the `event.`, `header.` and `webhook.` namespaces, and filters accept `== null` / `!= null` presence checks and `event any (...)` over a payload that is an array of events. `webhook()` takes `task()` options such as `queue`, `machine` and `retry`. The HTTP API lists endpoints and deliveries, replays deliveries, and creates and cancels waiters, and both it and the MCP server can read an endpoint's setup prompt and generate or store its signing secret.
+
+- Add `@trigger.dev/slack`: turn a `chat.agent` into a native Slack agent. Each DM or channel thread is a durable session, the reply streams into the thread with the turn's tool calls shown as a plan, approvals are Approve and Deny buttons, and Slack's stop button stops the turn. ([`6e715da77`](https://github.com/triggerdotdev/trigger.dev/commit/6e715da7709c48eedd134d52645d825b3569e0ff))
+
+  ```ts
+  import { appMentions, slack, webhookSource } from "@trigger.dev/slack";
+
+  const slackEvents = webhooks.endpoint.define({
+    id: "slack",
+    source: webhookSource(),
+  });
+
+  export const support = chat.agent({
+    id: "support",
+    channels: [
+      slack({
+        id: "slack",
+        endpoint: slackEvents,
+        token: process.env.SLACK_BOT_TOKEN!,
+        startOn: appMentions(),
+      }),
+    ],
+    run: async ({ messages, signal, streamText }) =>
+      streamText({ model, messages, abortSignal: signal }),
+  });
+  ```
+
+  `startOn` decides which channel messages start a session (`appMentions()` answers when the agent is @mentioned). Images and PDFs people share reach the model, messages sent while the agent is answering can be folded into the reply, tools can post their own buttons, and `ownWorkspaceOnly` ignores Slack Connect guests.
+
+- Add `@trigger.dev/linear`: turn a `chat.agent` into a Linear agent. Assign it an issue or @mention it, and Linear's agent session becomes a durable Trigger.dev session: the reply posts back to Linear, tool calls show as activities, `linearPlanTool()` keeps the plan Linear shows as a checklist, and approvals are Approve and Deny options that resume the run. ([`1586c4a3f`](https://github.com/triggerdotdev/trigger.dev/commit/1586c4a3f7638837a0615453f6e5b5d9b92491a4))
+
+  ```ts
+  import { linear, webhookSource } from "@trigger.dev/linear";
+
+  const linearEvents = webhooks.endpoint.define({
+    id: "linear",
+    source: webhookSource(),
+  });
+
+  export const triage = chat.agent({
+    id: "triage",
+    channels: [
+      linear({
+        id: "linear",
+        endpoint: linearEvents,
+        token: process.env.LINEAR_ACCESS_TOKEN!,
+      }),
+    ],
+    run: async ({ messages, signal, streamText }) =>
+      streamText({ model, messages, abortSignal: signal }),
+  });
+  ```
+
+  The first turn gets the issue's context and earlier comments, images and PDFs in the issue reach the model, a Stop in Linear winds the turn down, and `errorMessage` sets the text a failed turn shows.
+
+### Patch Changes
+
+- The `streamText` passed to a `chat.agent`'s `run()` now turns AI SDK telemetry on by default, so each model step and tool call shows up as a span in the run trace even when the agent doesn't store a prompt with `chat.prompt.set()`. An agent with `telemetry: { recordUserMessage: false }` gets these spans without prompt and response content, including when it stores a prompt (whose variables are left out of the span metadata). Pass `experimental_telemetry: { isEnabled: false }` at the call site to turn them off, or `recordInputs: false` / `recordOutputs: false` to keep them without content. ([`bd7cc3525`](https://github.com/triggerdotdev/trigger.dev/commit/bd7cc35252d25223859a3e8f696de05cc6527bc7))
+- Add `webhooks.hookdeck()`, a source for deliveries relayed through a Hookdeck connection. It verifies the `x-hookdeck-signature` header with the project's signing secret, keeps verifying while the secret is being rolled (Hookdeck sends the previous secret's signature in `x-hookdeck-signature-2`), and deduplicates retries on `x-hookdeck-eventid`. The event is the original provider's payload, so pass its type: `webhooks.hookdeck<Stripe.Event>()`. If the Hookdeck project's header prefix was changed, pass it as `webhooks.hookdeck({ headerPrefix })` so retries keep deduplicating. ([`51b39fbc6`](https://github.com/triggerdotdev/trigger.dev/commit/51b39fbc6ff0eeeda78fd292d974e7aaa747a086))
+- Updated dependencies:
+  - `@trigger.dev/core@4.8.0`
+
 ## 4.7.6
 
 ### Patch Changes

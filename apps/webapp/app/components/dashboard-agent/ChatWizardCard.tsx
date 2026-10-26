@@ -74,6 +74,7 @@ export type ChatWizardStep = {
   question: string;
   description?: string;
   descriptionAction?: { label: string };
+  content?: ReactNode;
   options: ChatWizardOption[];
   allowSkip?: boolean;
   multiSelect?: boolean;
@@ -843,6 +844,7 @@ export function ChatWizardCard({
             <StepDescription step={step} />
           </p>
         ) : null}
+        {step.content ? <div className="w-full pt-1.5">{step.content}</div> : null}
       </div>
       <div className="relative flex min-h-0 flex-col">
         <ul

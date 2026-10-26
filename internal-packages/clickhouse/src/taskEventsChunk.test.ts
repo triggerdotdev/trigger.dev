@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildTraceChunkCursorPredicate,
+  buildTraceStartTimeSortKeyPredicate,
   sliceTraceChunk,
   TRACE_CHUNK_ORDER_BY,
   type TraceChunkCursor,
@@ -22,6 +23,34 @@ describe("buildTraceChunkCursorPredicate", () => {
 
   it("orders by (start_time, span_id) so the cursor tuple is total", () => {
     expect(TRACE_CHUNK_ORDER_BY).toBe("start_time ASC, span_id ASC");
+  });
+});
+
+describe("buildTraceStartTimeSortKeyPredicate", () => {
+  it("bounds the sort key's toUnixTimestamp(start_time) by both seconds", () => {
+    const { clause, params } = buildTraceStartTimeSortKeyPredicate({
+      startNs: "1758629500000000000",
+      endNs: "1758629566130262875",
+    });
+
+    expect(clause).toBe(
+      "toUnixTimestamp(start_time) >= intDiv({windowStartNs: Int64}, 1000000000) AND toUnixTimestamp(start_time) <= intDiv({windowEndNs: Int64}, 1000000000)"
+    );
+    expect(params).toEqual({
+      windowStartNs: "1758629500000000000",
+      windowEndNs: "1758629566130262875",
+    });
+  });
+
+  it("leaves the end open for live runs", () => {
+    const { clause, params } = buildTraceStartTimeSortKeyPredicate({
+      startNs: "1758629500000000000",
+    });
+
+    expect(clause).toBe(
+      "toUnixTimestamp(start_time) >= intDiv({windowStartNs: Int64}, 1000000000)"
+    );
+    expect(params).toEqual({ windowStartNs: "1758629500000000000" });
   });
 });
 

@@ -11,25 +11,31 @@ export function concreteStateFromInput({
   filter,
   selectedId,
   collapsedIds,
+  openSelectedAncestors = true,
 }: {
   tree: FlatTree<any>;
   filter: Filter<any, any> | undefined;
   selectedId: string | undefined;
   collapsedIds: string[] | undefined;
+  /** Off on rebuilds, so ancestors the user collapsed stay collapsed. */
+  openSelectedAncestors?: boolean;
 }): TreeState {
   const state: PartialNodeState = {};
-  collapsedIds?.forEach((id) => {
-    const hasTreeItem = tree.some((item) => item.id === id);
-    if (hasTreeItem) {
-      state[id] = { expanded: false };
-    }
-  });
+  if (collapsedIds && collapsedIds.length > 0) {
+    const treeIds = new Set(tree.map((item) => item.id));
+    collapsedIds.forEach((id) => {
+      if (treeIds.has(id)) {
+        state[id] = { expanded: false };
+      }
+    });
+  }
   if (selectedId) {
     const selectedNode = tree.find((node) => node.id === selectedId);
     if (selectedNode) {
-      state[selectedId] = { selected: true };
+      // Keep a collapsed selection collapsed when the tree is rebuilt.
+      state[selectedId] = { ...state[selectedId], selected: true };
       //make sure all parents are expanded
-      let parentId = selectedNode.parentId;
+      let parentId = openSelectedAncestors ? selectedNode.parentId : undefined;
       while (parentId) {
         state[parentId] = { expanded: true };
         const parent = tree.find((node) => node.id === parentId);

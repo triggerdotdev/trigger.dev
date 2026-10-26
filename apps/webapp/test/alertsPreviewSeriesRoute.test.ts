@@ -1,5 +1,5 @@
 import { postgresTest } from "@internal/testcontainers";
-import { expect, vi } from "vitest";
+import { expect, it, vi } from "vitest";
 import {
   loadPreviewSeries,
   MAX_WINDOW_MINUTES,
@@ -131,4 +131,46 @@ postgresTest("fails when windowMinutes above the cap is accepted", async ({ pris
   expect(result.status).toBe(200);
   const body = result.body as PreviewSeriesResponse;
   expect(body.windowSec).toBe(MAX_WINDOW_MINUTES * 60);
+});
+
+it("400 on a control character in the scope value", async () => {
+  const loaded = { calls: [] as unknown[] };
+  vi.resetModules();
+  vi.doMock("~/services/routeBuilders/dashboardBuilder", () => ({
+    dashboardLoader: (_options: unknown, handler: any) => (args: any) =>
+      handler({
+        ...args,
+        user: { id: "user_1" },
+        params: { organizationSlug: "org", projectParam: "proj", envParam: "prod" },
+      }),
+  }));
+  vi.doMock("~/v3/canUseAlertsList.server", () => ({
+    requireAlertsEnabledOrForbid: async () => {},
+  }));
+  vi.doMock("~/v3/services/alerts/previewSeries.server", async (importOriginal) => {
+    const original = await importOriginal<Record<string, unknown>>();
+    return {
+      ...original,
+      loadPreviewSeries: async (input: unknown) => {
+        loaded.calls.push(input);
+        throw new Error("Invalid character in alert scope value");
+      },
+    };
+  });
+  const route =
+    await import("~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.alerts.preview-series");
+  const url = new URL("http://localhost/alerts/preview-series");
+  url.searchParams.set("capabilityKey", "queue.depth");
+  url.searchParams.set("scopeType", "queue");
+  url.searchParams.set("scopeValue", "q\u0001");
+  const response = await (route.loader as any)({
+    request: new Request(url),
+    params: {},
+    context: {},
+  });
+  expect(response.status).toBe(400);
+  expect(loaded.calls).toHaveLength(0);
+  vi.doUnmock("~/services/routeBuilders/dashboardBuilder");
+  vi.doUnmock("~/v3/canUseAlertsList.server");
+  vi.doUnmock("~/v3/services/alerts/previewSeries.server");
 });

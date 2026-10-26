@@ -103,6 +103,8 @@ const { createMonitoringAlertsAction } =
   await import("~/v3/services/alerts/createMonitoringAlertsAction.server");
 const { action: alertAction, loader: alertLoader } =
   await import("~/routes/api.v1.projects.$projectRef.monitoring-alerts.$alertId");
+const { action: analyzeAction } =
+  await import("~/routes/api.v1.projects.$projectRef.monitoring-alerts.analyze-query");
 const { loader: capabilitiesLoader } =
   await import("~/routes/api.v1.projects.$projectRef.monitoring-alert-capabilities");
 
@@ -1526,4 +1528,156 @@ describe("monitoring alerts API environment-tier permissions", () => {
       expect((await response.json()).error).toBe("Unauthorized");
     }
   );
+
+  describe("query alerts", () => {
+    const COUNT_QUERY = "SELECT count() AS failures FROM runs WHERE status = 'Failed'";
+
+    async function setup(prisma: PrismaClient, connectionUri: string, slug: string) {
+      await boot(prisma, connectionUri);
+      const seeded = await seed(prisma, slug, true);
+      ctx.userId = seeded.user.id;
+      await createChat(ctx.agentDb, {
+        id: "chat_1",
+        organizationId: seeded.organization.id,
+        userId: seeded.user.id,
+      });
+      return seeded;
+    }
+
+    function createQueryAlert(projectRef: string, overrides: Record<string, unknown>) {
+      return listAction({
+        request: jsonRequest(
+          `https://example.test/api/v1/projects/${projectRef}/monitoring-alerts`,
+          {
+            capabilityKey: "custom.query",
+            environment: "prod",
+            params: { scope: { type: "all" } },
+            condition: { kind: "threshold", operator: ">", value: 5, windowSec: 3600 },
+            behavior: {},
+            notifiers: [{ type: "chat", chatId: "chat_1" }],
+            query: COUNT_QUERY,
+            signal: { mode: "threshold" },
+            ...overrides,
+          }
+        ),
+        params: { projectRef },
+        context: {},
+      } as any);
+    }
+
+    postgresTest(
+      "creates a query alert with a server-derived signal",
+      async ({ prisma, postgresContainer }) => {
+        const seeded = await setup(prisma, postgresContainer.getConnectionUri(), "qalertok");
+        const response = await createQueryAlert(seeded.project.externalRef, {});
+        expect(response.status).toBe(200);
+        const { alert } = await response.json();
+        const row = await getAlert(ctx.prisma, { id: alert.id, projectId: seeded.project.id });
+        expect(row!.capabilityKey).toBe("custom.query");
+        const signal = (row!.params as any).querySignal;
+        expect(signal.measure).toBe("failures");
+        expect(signal.v).toBe(1);
+        expect(signal.sources[0].windowColumn).toBeTruthy();
+      }
+    );
+
+    postgresTest(
+      "keeps the curated absence floor, while a query absence uses its source floor",
+      async ({ prisma, postgresContainer }) => {
+        const seeded = await setup(prisma, postgresContainer.getConnectionUri(), "qalertfloor");
+        const absence = { kind: "absence", quietWindowSec: 600 };
+        const curated = await createQueryAlert(seeded.project.externalRef, {
+          capabilityKey: "runs.created",
+          condition: absence,
+          query: undefined,
+          signal: undefined,
+        });
+        expect(curated.status).toBe(422);
+        expect((await curated.json()).error).toBe("Quiet window must be at least 1800 seconds");
+
+        const query = await createQueryAlert(seeded.project.externalRef, {
+          condition: absence,
+          signal: { mode: "absence" },
+        });
+        expect(query.status).toBe(200);
+      }
+    );
+
+    postgresTest("rejects query on a curated capability", async ({ prisma, postgresContainer }) => {
+      const seeded = await setup(prisma, postgresContainer.getConnectionUri(), "qalertcurated");
+      const response = await createQueryAlert(seeded.project.externalRef, {
+        capabilityKey: "queue.depth",
+        params: { scope: { type: "queue", queue: "worker-1" } },
+        condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
+      });
+      expect(response.status).toBe(400);
+    });
+
+    postgresTest(
+      "rejects an invalid query with the analyzer message",
+      async ({ prisma, postgresContainer }) => {
+        const seeded = await setup(prisma, postgresContainer.getConnectionUri(), "qalertbad");
+        const response = await createQueryAlert(seeded.project.externalRef, {
+          query: `${COUNT_QUERY} LIMIT 5`,
+        });
+        expect(response.status).toBe(422);
+        expect((await response.json()).error).toBeTruthy();
+      }
+    );
+
+    postgresTest(
+      "analyze-query returns 403 when alerts are off",
+      async ({ prisma, postgresContainer }) => {
+        await boot(prisma, postgresContainer.getConnectionUri());
+        const seeded = await seed(prisma, "qalertoff", false);
+        ctx.userId = seeded.user.id;
+        const projectRef = seeded.project.externalRef;
+        const response = await analyzeAction({
+          request: jsonRequest(
+            `https://example.test/api/v1/projects/${projectRef}/monitoring-alerts/analyze-query`,
+            { query: COUNT_QUERY }
+          ),
+          params: { projectRef },
+          context: {},
+        } as any);
+        expect(response.status).toBe(403);
+      }
+    );
+
+    postgresTest(
+      "analyze-query returns 404 for an unknown project",
+      async ({ prisma, postgresContainer }) => {
+        await setup(prisma, postgresContainer.getConnectionUri(), "qalert404");
+        const response = await analyzeAction({
+          request: jsonRequest(
+            "https://example.test/api/v1/projects/proj_missing/monitoring-alerts/analyze-query",
+            { query: COUNT_QUERY }
+          ),
+          params: { projectRef: "proj_missing" },
+          context: {},
+        } as any);
+        expect(response.status).toBe(404);
+      }
+    );
+
+    postgresTest("analyze-query returns modes", async ({ prisma, postgresContainer }) => {
+      const seeded = await setup(prisma, postgresContainer.getConnectionUri(), "qalertanalyze");
+      const projectRef = seeded.project.externalRef;
+      const analyze = async (query: string) => {
+        const response = await analyzeAction({
+          request: jsonRequest(
+            `https://example.test/api/v1/projects/${projectRef}/monitoring-alerts/analyze-query`,
+            { query }
+          ),
+          params: { projectRef },
+          context: {},
+        } as any);
+        expect(response.status).toBe(200);
+        return (await response.json()).analysis;
+      };
+
+      const scalar = await analyze(COUNT_QUERY);
+      expect(scalar.modes.map((m: any) => m.mode)).toContain("threshold");
+    });
+  });
 });

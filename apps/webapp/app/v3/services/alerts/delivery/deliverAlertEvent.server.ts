@@ -34,7 +34,13 @@ import {
 import { ApiErrorGroupPresenter } from "~/presenters/v3/ApiErrorGroupPresenter.server";
 import { sendAlertEmail } from "~/services/email.server";
 import { logger } from "~/services/logger.server";
-import { alertOccurrenceDetail, occurrenceFingerprint } from "emails/src/alertRaisedContent";
+import {
+  alertOccurrenceDetail,
+  alertQueryDetail,
+  CUSTOM_QUERY_CAPABILITY_KEY,
+  linkFingerprint,
+  occurrenceFingerprint,
+} from "emails/src/alertRaisedContent";
 import { v3AlertPath, v3ErrorPath } from "~/utils/pathBuilder";
 import { alertsRateLimiter } from "~/v3/alertsRateLimiter.server";
 import { isOrganizationAlertsEnabled } from "~/v3/canUseAlertsList.server";
@@ -229,7 +235,10 @@ export async function deliverAlertEvent(
   const retryableErrors: unknown[] = [];
   let contextPromise: Promise<AlertContext | null> | undefined;
   const getContext = () => (contextPromise ??= loadAlertContext(alert));
-  const fingerprint = event.type === "raised" ? occurrenceFingerprint(event.facts) : null;
+  const fingerprint =
+    event.type === "raised" && alert.capabilityKey !== CUSTOM_QUERY_CAPABILITY_KEY
+      ? occurrenceFingerprint(event.facts)
+      : null;
   let titlePromise: Promise<string | null> | undefined;
   const getErrorTitle = () =>
     fingerprint
@@ -455,6 +464,17 @@ async function deliverToChannel(params: {
   }
 }
 
+async function channelDetail(
+  alert: Alert,
+  event: AlertEvent,
+  getErrorTitle: () => Promise<string | null>
+): Promise<string | null> {
+  if (alert.capabilityKey === CUSTOM_QUERY_CAPABILITY_KEY) {
+    return alertQueryDetail(event.facts, alert.name ?? alert.capabilityKey);
+  }
+  return alertOccurrenceDetail(event.facts, await getErrorTitle());
+}
+
 async function deliverEmail(params: {
   channel: ChannelInfo;
   alert: Alert;
@@ -478,12 +498,12 @@ async function deliverEmail(params: {
     capabilityKey: params.alert.capabilityKey,
     headline: params.headline,
     raisedAt: params.event.at.toISOString(),
-    detail: alertOccurrenceDetail(params.event.facts, await params.getErrorTitle()),
+    detail: await channelDetail(params.alert, params.event, params.getErrorTitle),
     facts: params.facts,
     dashboardLink: alertDashboardLink(
       context,
       params.alert.id,
-      occurrenceFingerprint(params.event.facts)
+      linkFingerprint(params.alert.capabilityKey, params.event.facts)
     ),
     organization: context.organization.title,
     project: context.project.name,
@@ -525,11 +545,11 @@ async function deliverSlack(params: {
     project: context.project.name,
     environment: context.environment.name,
     raisedAt: params.event.at.toISOString(),
-    detail: alertOccurrenceDetail(params.event.facts, await params.getErrorTitle()),
+    detail: await channelDetail(params.alert, params.event, params.getErrorTitle),
     dashboardLink: alertDashboardLink(
       context,
       params.alert.id,
-      occurrenceFingerprint(params.event.facts)
+      linkFingerprint(params.alert.capabilityKey, params.event.facts)
     ),
   });
 
@@ -573,6 +593,14 @@ async function deliverWebhookChannel(params: {
         type: params.event.type,
         at: params.event.at,
         facts: params.event.facts,
+        ...(params.alert.capabilityKey === CUSTOM_QUERY_CAPABILITY_KEY
+          ? {
+              summary: alertQueryDetail(
+                params.event.facts,
+                params.alert.name ?? params.alert.capabilityKey
+              )?.split("\n")[0],
+            }
+          : {}),
       },
       environment: { id: params.alert.environmentId },
       organization: { id: params.alert.organizationId },

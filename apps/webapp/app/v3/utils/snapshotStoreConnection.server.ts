@@ -1,10 +1,10 @@
 import { createRedisClusterClient, type Cluster } from "@internal/redis";
 import { RedisSnapshotStore, type SnapshotStoreMetrics } from "@internal/run-store";
 
+const DEFAULT_COMPLETED_TTL_MS = 4 * 24 * 60 * 60 * 1_000;
 const COMMAND_TIMEOUT_MS = 1_000;
 const CONNECT_TIMEOUT_MS = 500;
 const POLICY_CHECK_INTERVAL_MS = 30_000;
-const COMPLETED_TTL_MS = 4 * 24 * 60 * 60 * 1_000;
 
 /** Infrastructure only. Rollout modes belong to the existing polled flags, not this URL. */
 export function snapshotClusterOptions(endpoint: string) {
@@ -45,7 +45,12 @@ export function snapshotClusterOptions(endpoint: string) {
  */
 export function createSnapshotConnection(
   endpoint: string,
-  options: { metrics?: SnapshotStoreMetrics; onError?: (error: Error) => void } = {}
+  options: {
+    metrics?: SnapshotStoreMetrics;
+    onError?: (error: Error) => void;
+    /** How long a finished run's snapshot state stays in the store. */
+    completedTtlMs?: number;
+  } = {}
 ) {
   const clientOptions = snapshotClusterOptions(endpoint);
   let client: Cluster | undefined;
@@ -114,7 +119,7 @@ export function createSnapshotConnection(
     getStore: () =>
       (store ??= new RedisSnapshotStore({
         client: getClient(),
-        completedTtlMs: COMPLETED_TTL_MS,
+        completedTtlMs: options.completedTtlMs ?? DEFAULT_COMPLETED_TTL_MS,
         beforeCommand,
         metrics: options.metrics,
       })),

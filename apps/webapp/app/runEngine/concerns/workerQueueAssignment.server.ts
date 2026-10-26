@@ -49,6 +49,9 @@ export function workerQueueForBirth({
   splitEnabled,
   workerGroups,
   rootTriggerSource,
+  templateFallback,
+  compute,
+  anyCompatAllowed,
 }: {
   workerQueue: string;
   region: string | undefined;
@@ -59,6 +62,12 @@ export function workerQueueForBirth({
   splitEnabled: boolean;
   workerGroups: readonly Pick<WorkerGroupRegionRow, "masterQueue" | "workloadType">[];
   rootTriggerSource: string | undefined;
+  /** The run stays off compute because its deployment has no template key. */
+  templateFallback?: boolean;
+  /** The run moved to its region's compute backing, so it defaults to compute in a mixed group. */
+  compute?: boolean;
+  /** The org is compute-enabled and the deployment has a template, so either runtime can run it. */
+  anyCompatAllowed: boolean;
 }): string {
   if (envType === "DEVELOPMENT") {
     return workerQueue;
@@ -70,7 +79,8 @@ export function workerQueueForBirth({
     return workerQueueForRun({ workerQueue, rootTriggerSource, splitEnabled });
   }
 
-  const defaultCompatibility = group.workloadType === "MICROVM" ? "compute" : "container";
+  const defaultCompatibility =
+    compute || group.workloadType === "MICROVM" ? "compute" : "container";
   const compatibility = FeatureFlagCatalog[FEATURE_FLAG.workerQueueCompatibility].safeParse(
     environmentOverride.compat ??
       orgFeatureFlags?.[FEATURE_FLAG.workerQueueCompatibility] ??
@@ -79,13 +89,18 @@ export function workerQueueForBirth({
   const channel = FeatureFlagCatalog[FEATURE_FLAG.workerQueueChannel].safeParse(
     environmentOverride.channel ?? orgFeatureFlags?.[FEATURE_FLAG.workerQueueChannel] ?? "stable"
   );
+  const parsed = compatibility.success ? compatibility.data : defaultCompatibility;
+  // An `any` item goes to whichever runtime takes it first, so only a run compute can start is one.
+  const compat = parsed === "any" && !anyCompatAllowed ? "container" : parsed;
+  // Match the dequeue fallback: container consumers take only the stable channel.
+  const keylessOnContainers = templateFallback && compat === "container";
   const assignment = formatWorkerQueue({
     region: region ?? workerQueue,
     version: WORKER_QUEUE_VERSION,
     class: "ondemand",
     phase: "fresh",
-    compat: compatibility.success ? compatibility.data : defaultCompatibility,
-    channel: channel.success ? channel.data : "stable",
+    compat,
+    channel: !keylessOnContainers && channel.success ? channel.data : "stable",
   });
 
   return workerQueueForRun({

@@ -14,11 +14,14 @@ import {
   pollDelayMs,
   publishedSuspend,
   restoreHeartbeat,
+  reportTemplateKeyRefusal,
   restoreOutcome,
   runnerBodyFor,
+  runnerStartFailure,
   runnerTokenSecretName,
   settleRestoreFailure,
   suspendOutcome,
+  type RestoreOutcomeReport,
 } from "./runCrd.js";
 import {
   ListWatch,
@@ -53,6 +56,8 @@ vi.mock("../clients/kubernetes.js", () => ({
 
 const meta = { name: "runner-abc123", namespace: "v4-runs", runtime: "container" } as const;
 
+const TEMPLATE_KEY = "4f2b1c0e9d8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c";
+
 function createOptions(
   overrides: Partial<WorkloadManagerCreateOptions> = {}
 ): WorkloadManagerCreateOptions {
@@ -73,6 +78,11 @@ function createOptions(
     snapshotFriendlyId: "snapshot_abc",
     ...overrides,
   };
+}
+
+/** The microvm lane creates a Runner only with a valid template key. */
+function keyedOptions(overrides: Partial<WorkloadManagerCreateOptions> = {}) {
+  return createOptions({ templateKey: TEMPLATE_KEY, ...overrides });
 }
 
 /**
@@ -276,6 +286,55 @@ describe("runnerBodyFor", () => {
 });
 
 /**
+ * A template key lets the operator start a microvm guest from a template. A key
+ * the CRD would reject is never put on the Runner; create refuses the run instead.
+ */
+describe("runnerBodyFor carries a template key only where it can be used", () => {
+  const microvm = { ...meta, runtime: "microvm" } as const;
+
+  it("carries a valid key on the microvm lane, beside the image", () => {
+    const opts = createOptions({ templateKey: TEMPLATE_KEY });
+    const body = runnerBodyFor(opts, microvm);
+
+    expect(body.spec.templateKey).toBe(TEMPLATE_KEY);
+    expect(body.spec.image).toBe(opts.image);
+  });
+
+  it("leaves it off when the run has none", () => {
+    expect(runnerBodyFor(createOptions(), microvm).spec).not.toHaveProperty("templateKey");
+  });
+
+  it("leaves it off on the container lane", () => {
+    const body = runnerBodyFor(createOptions({ templateKey: TEMPLATE_KEY }), meta);
+
+    expect(body.spec).not.toHaveProperty("templateKey");
+  });
+
+  // Strict field validation would fail the whole create on the CRD's pattern.
+  it.each([
+    ["uppercase", TEMPLATE_KEY.toUpperCase()],
+    ["short", TEMPLATE_KEY.slice(1)],
+    ["prefixed", `sha256:${TEMPLATE_KEY}`],
+    ["empty", ""],
+  ])("leaves a %s key off", (_, templateKey) => {
+    const body = runnerBodyFor(createOptions({ templateKey }), microvm);
+
+    expect(body.spec).not.toHaveProperty("templateKey");
+  });
+
+  it("carries it on a resume too", () => {
+    const restore = { snapshotID: "6f1c2a9e-snap", node: "node-a" };
+    const body = runnerBodyFor(createOptions({ templateKey: TEMPLATE_KEY }), {
+      ...microvm,
+      restore,
+    });
+
+    expect(body.spec.templateKey).toBe(TEMPLATE_KEY);
+    expect(body.spec.restore).toEqual(restore);
+  });
+});
+
+/**
  * A resume is the cold-start Runner plus the snapshot to restore from; the
  * operator adds nothing else to the pod for it, so nothing else may differ.
  */
@@ -381,6 +440,7 @@ describe("run-crd carries every shared create-option or excludes it on purpose",
   /** Every key of WorkloadManagerCreateOptions; KEYS_ARE_EXHAUSTIVE fails to compile otherwise. */
   const CREATE_OPTION_KEYS = [
     "image",
+    "templateKey",
     "machine",
     "version",
     "nextAttemptNumber",
@@ -436,6 +496,7 @@ describe("run-crd carries every shared create-option or excludes it on purpose",
    */
   const PROBES: Record<ListedKey, Partial<WorkloadManagerCreateOptions>> = {
     image: { image: `registry.example.com/other/worker:2@sha256:${"1".repeat(64)}` },
+    templateKey: { templateKey: TEMPLATE_KEY },
     machine: { machine: { name: "micro", cpu: 0.25, memory: 0.25, centsPerMs: 0 } },
     version: { version: "99.9.9" },
     nextAttemptNumber: { nextAttemptNumber: 5 },
@@ -468,11 +529,13 @@ describe("run-crd carries every shared create-option or excludes it on purpose",
   };
 
   const excluded = new Set(Object.keys(RUN_CRD_EXCLUDED) as ListedKey[]);
-  const baseline = JSON.stringify(runnerBodyFor(createOptions(), meta));
+  // The microvm lane carries a superset of what the container lane does.
+  const probeMeta = { ...meta, runtime: "microvm" } as const;
+  const baseline = JSON.stringify(runnerBodyFor(createOptions(), probeMeta));
 
   /** True when setting the field's probe changes the Runner runnerBodyFor builds. */
   function changesRunner(field: ListedKey): boolean {
-    return JSON.stringify(runnerBodyFor(createOptions(PROBES[field]), meta)) !== baseline;
+    return JSON.stringify(runnerBodyFor(createOptions(PROBES[field]), probeMeta)) !== baseline;
   }
 
   it("lists every create option, so a new field cannot slip past this test", () => {
@@ -527,7 +590,7 @@ describe("RunCrdWorkloadManager.create", () => {
     deleteRunner.mockResolvedValue({});
   });
 
-  // createOptions() is dequeued at 03:00:00, so the default is an earlier delivery.
+  // keyedOptions() is dequeued at 03:00:00, so the default is an earlier delivery.
   const inTheWay = (snapshotFriendlyID: string, dequeuedAt?: string) => ({
     metadata: { name: "runner-abc123", uid: "uid-existing" },
     spec: {
@@ -539,6 +602,21 @@ describe("RunCrdWorkloadManager.create", () => {
     },
   });
 
+  it("submits the deployment's template key with a cold start", async () => {
+    await manager().create(keyedOptions());
+
+    const { body } = createRunner.mock.calls[0]![0];
+    expect(body.spec.templateKey).toBe(TEMPLATE_KEY);
+  });
+
+  it.each([
+    ["no", undefined, "TemplateKeyMissing"],
+    ["a malformed", TEMPLATE_KEY.toUpperCase(), "TemplateKeyMalformed"],
+  ])("creates no Runner for a cold start with %s template key", async (_, templateKey, reason) => {
+    await expect(manager().create(createOptions({ templateKey }))).rejects.toThrow(reason);
+    expect(createRunner).not.toHaveBeenCalled();
+  });
+
   // The platform requeued an earlier delivery that never started the attempt.
   it("replaces a Runner an earlier delivery left, guarded by its uid", async () => {
     createRunner
@@ -546,7 +624,7 @@ describe("RunCrdWorkloadManager.create", () => {
       .mockResolvedValueOnce({ metadata: { uid: "uid-recreated" } });
     getRunner.mockResolvedValue(inTheWay("snapshot_earlier"));
 
-    await manager().create(createOptions());
+    await manager().create(keyedOptions());
 
     expect(deleteRunner).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -567,7 +645,7 @@ describe("RunCrdWorkloadManager.create", () => {
     createSecret.mockResolvedValue({ metadata: { uid: "uid-secret" } });
     patchObject.mockResolvedValue({});
 
-    await manager().create(createOptions({ deploymentToken: "tok" }));
+    await manager().create(keyedOptions({ deploymentToken: "tok" }));
 
     const [first, second] = createRunner.mock.calls.map(
       ([{ body }]) => body.spec.deployment.token.name
@@ -579,7 +657,7 @@ describe("RunCrdWorkloadManager.create", () => {
     createRunner.mockRejectedValueOnce({ code: 409 });
     getRunner.mockResolvedValue(inTheWay("snapshot_abc"));
 
-    await manager().create(createOptions());
+    await manager().create(keyedOptions());
 
     expect(deleteRunner).not.toHaveBeenCalled();
     expect(createRunner).toHaveBeenCalledTimes(1);
@@ -594,7 +672,7 @@ describe("RunCrdWorkloadManager.create", () => {
     createRunner.mockRejectedValueOnce({ code: 409 });
     getRunner.mockResolvedValue(inTheWay("snapshot_later", dequeuedAt));
 
-    await expect(manager().create(createOptions())).rejects.toThrow("stale");
+    await expect(manager().create(keyedOptions())).rejects.toThrow("stale");
     expect(deleteRunner).not.toHaveBeenCalled();
     expect(createRunner).toHaveBeenCalledTimes(1);
   });
@@ -606,7 +684,7 @@ describe("RunCrdWorkloadManager.create", () => {
       .mockResolvedValueOnce(inTheWay("snapshot_earlier"))
       .mockResolvedValueOnce(inTheWay("snapshot_abc", "2026-08-27T03:00:00.000Z"));
 
-    await manager().create(createOptions());
+    await manager().create(keyedOptions());
 
     expect(createRunner).toHaveBeenCalledTimes(2);
   });
@@ -615,7 +693,7 @@ describe("RunCrdWorkloadManager.create", () => {
     createRunner.mockRejectedValue({ code: 409 });
     getRunner.mockResolvedValue(inTheWay("snapshot_earlier"));
 
-    await expect(manager().create(createOptions())).rejects.toThrow("still in the way");
+    await expect(manager().create(keyedOptions())).rejects.toThrow("still in the way");
     expect(createRunner).toHaveBeenCalledTimes(2);
   });
 
@@ -623,7 +701,7 @@ describe("RunCrdWorkloadManager.create", () => {
     createRunner.mockRejectedValueOnce({ code: 409 });
     getRunner.mockRejectedValue({ code: 404 });
 
-    await manager().create(createOptions());
+    await manager().create(keyedOptions());
 
     expect(deleteRunner).not.toHaveBeenCalled();
     expect(createRunner).toHaveBeenCalledTimes(2);
@@ -665,7 +743,7 @@ describe("RunCrdWorkloadManager.restore", () => {
   }
 
   it("creates a Runner named from the checkpoint that restores its location", async () => {
-    await expect(manager().restore(createOptions(), checkpoint)).resolves.toEqual({
+    await expect(manager().restore(keyedOptions(), checkpoint)).resolves.toEqual({
       runnerId: getRestoreRunnerId("run_abc123", "checkpoint_abc"),
       uid: "uid-created",
     });
@@ -675,10 +753,25 @@ describe("RunCrdWorkloadManager.restore", () => {
     expect(body.spec.restore).toEqual({ snapshotID: "6f1c2a9e-snap", node: "node-a" });
   });
 
+  it("creates no resume without a template key", async () => {
+    await expect(manager().restore(createOptions(), checkpoint)).rejects.toThrow(
+      "TemplateKeyMissing"
+    );
+    expect(createRunner).not.toHaveBeenCalled();
+  });
+
+  it("submits the deployment's template key with the restore", async () => {
+    await manager().restore(keyedOptions(), checkpoint);
+
+    const { body } = createRunner.mock.calls[0]![0];
+    expect(body.spec.templateKey).toBe(TEMPLATE_KEY);
+    expect(body.spec.restore).toEqual({ snapshotID: "6f1c2a9e-snap", node: "node-a" });
+  });
+
   // Restored anywhere else, the snapshot is not there to load.
   it("refuses a location that names no node, before creating anything", async () => {
     await expect(
-      manager().restore(createOptions(), { ...checkpoint, location: "6f1c2a9e-snap" })
+      manager().restore(keyedOptions(), { ...checkpoint, location: "6f1c2a9e-snap" })
     ).rejects.toThrow("is not <node>/<snapshot>");
     expect(createRunner).not.toHaveBeenCalled();
   });
@@ -689,7 +782,7 @@ describe("RunCrdWorkloadManager.restore", () => {
       createRunner.mockRejectedValue({ code: 409 });
       getRunner.mockResolvedValue(existing(phase));
 
-      await expect(manager().restore(createOptions(), checkpoint)).resolves.toEqual({
+      await expect(manager().restore(keyedOptions(), checkpoint)).resolves.toEqual({
         runnerId: getRestoreRunnerId("run_abc123", "checkpoint_abc"),
         uid: "uid-existing",
       });
@@ -709,7 +802,7 @@ describe("RunCrdWorkloadManager.restore", () => {
         .mockResolvedValueOnce({ metadata: { uid: "uid-recreated" } });
       getRunner.mockResolvedValue(existing(phase));
 
-      await expect(manager().restore(createOptions(), checkpoint)).resolves.toEqual({
+      await expect(manager().restore(keyedOptions(), checkpoint)).resolves.toEqual({
         runnerId: getRestoreRunnerId("run_abc123", "checkpoint_abc"),
         uid: "uid-recreated",
       });
@@ -731,7 +824,7 @@ describe("RunCrdWorkloadManager.restore", () => {
     getRunner.mockResolvedValue(existing("Failed"));
     deleteRunner.mockRejectedValue({ code });
 
-    await expect(manager().restore(createOptions(), checkpoint)).resolves.toMatchObject({
+    await expect(manager().restore(keyedOptions(), checkpoint)).resolves.toMatchObject({
       uid: "uid-recreated",
     });
   });
@@ -741,7 +834,7 @@ describe("RunCrdWorkloadManager.restore", () => {
     getRunner.mockResolvedValue(existing("Failed"));
     deleteRunner.mockRejectedValue({ code: 500 });
 
-    await expect(manager().restore(createOptions(), checkpoint)).rejects.toEqual({ code: 500 });
+    await expect(manager().restore(keyedOptions(), checkpoint)).rejects.toEqual({ code: 500 });
     expect(createRunner).toHaveBeenCalledTimes(1);
   });
 
@@ -749,7 +842,7 @@ describe("RunCrdWorkloadManager.restore", () => {
     createRunner.mockRejectedValue({ code: 409 });
     getRunner.mockResolvedValue(existing("Failed"));
 
-    await expect(manager().restore(createOptions(), checkpoint)).rejects.toThrow(
+    await expect(manager().restore(keyedOptions(), checkpoint)).rejects.toThrow(
       "already ended (Failed)"
     );
     expect(deleteRunner).toHaveBeenCalledTimes(1);
@@ -758,7 +851,7 @@ describe("RunCrdWorkloadManager.restore", () => {
   // The collector may not have taken the deleted resume's Secret yet.
   it("gives each resume create its own token Secret", async () => {
     createSecret.mockResolvedValue({ metadata: { uid: "uid-secret" } });
-    const opts = createOptions({ deploymentToken: "token-abc" });
+    const opts = keyedOptions({ deploymentToken: "token-abc" });
 
     await manager().restore(opts, checkpoint);
     await manager().restore(opts, checkpoint);
@@ -771,7 +864,7 @@ describe("RunCrdWorkloadManager.restore", () => {
 
   it("keeps one token Secret name per cold start, so a redrive finds it", async () => {
     createSecret.mockResolvedValue({ metadata: { uid: "uid-secret" } });
-    const opts = createOptions({ deploymentToken: "token-abc" });
+    const opts = keyedOptions({ deploymentToken: "token-abc" });
 
     await manager().create(opts);
     await manager().create(opts);
@@ -786,7 +879,7 @@ describe("RunCrdWorkloadManager.restore", () => {
       existing("Restoring", { snapshotID: "other-snap", node: "node-a" })
     );
 
-    await expect(manager().restore(createOptions(), checkpoint)).rejects.toThrow(
+    await expect(manager().restore(keyedOptions(), checkpoint)).rejects.toThrow(
       "not node-a/6f1c2a9e-snap"
     );
   });
@@ -795,7 +888,7 @@ describe("RunCrdWorkloadManager.restore", () => {
     createRunner.mockRejectedValue({ code: 409 });
     getRunner.mockRejectedValue({ code: 500 });
 
-    await expect(manager().restore(createOptions(), checkpoint)).rejects.toEqual({ code: 500 });
+    await expect(manager().restore(keyedOptions(), checkpoint)).rejects.toEqual({ code: 500 });
   });
 
   // A requeue deletes the failed resume, and its redelivery can land in between.
@@ -805,7 +898,7 @@ describe("RunCrdWorkloadManager.restore", () => {
       .mockResolvedValueOnce({ metadata: { uid: "uid-recreated" } });
     getRunner.mockRejectedValue({ code: 404 });
 
-    await expect(manager().restore(createOptions(), checkpoint)).resolves.toEqual({
+    await expect(manager().restore(keyedOptions(), checkpoint)).resolves.toEqual({
       runnerId: getRestoreRunnerId("run_abc123", "checkpoint_abc"),
       uid: "uid-recreated",
     });
@@ -816,7 +909,7 @@ describe("RunCrdWorkloadManager.restore", () => {
     createRunner.mockRejectedValue({ code: 409 });
     getRunner.mockRejectedValueOnce({ code: 404 }).mockResolvedValueOnce(existing("Pending"));
 
-    await expect(manager().restore(createOptions(), checkpoint)).resolves.toEqual({
+    await expect(manager().restore(keyedOptions(), checkpoint)).resolves.toEqual({
       runnerId: getRestoreRunnerId("run_abc123", "checkpoint_abc"),
       uid: "uid-existing",
     });
@@ -1414,6 +1507,22 @@ describe("RunnerRestoreInformer", () => {
     ]);
   });
 
+  it("carries the Runner's owner environment on a restore it did not watch", async () => {
+    const { informer, unwatched, adopted, list } = setup();
+    const bootstrap = { runFriendlyID: "run_abc", snapshotFriendlyID: "snapshot_abc" };
+    const owner = { envID: "env_abc" };
+    const starting = { ...runner("runner-b", "Restoring"), spec: { bootstrap, owner } };
+    listRunners.mockReset();
+    listRunners.mockResolvedValue({ items: [starting], metadata: {} });
+
+    await list();
+    informer.emit("add", { ...failed("runner-a"), spec: { bootstrap, owner } });
+    informer.emit("add", starting);
+
+    expect(unwatched).toEqual([expect.objectContaining({ environmentId: "env_abc" })]);
+    expect(adopted).toEqual([expect.objectContaining({ environmentId: "env_abc" })]);
+  });
+
   it("gets a restore listed already failed reported against its bootstrap snapshot", async () => {
     const informer = fakeInformer();
     const report = vi.fn(async () => ({ success: true as const }));
@@ -1616,6 +1725,10 @@ describe("classifyRestoreFailure", () => {
     ["SnapshotNodeUnschedulable", { outcome: "fail" }],
     ["RestoreNotSupported", { outcome: "fail" }],
     ["SnapshotNotFound", { outcome: "fail" }],
+    // The node runtime will not restore this snapshot for this Runner on any attempt.
+    ["SnapshotRefused", { outcome: "fail" }],
+    // The template may be on another node, so a resume is requeued rather than failed.
+    ["TemplateNotFound", { outcome: "requeue", deleteRunner: true }],
     ["PodStartTimeout", { outcome: "requeue", deleteRunner: true }],
     ["StartError", { outcome: "requeue", deleteRunner: true }],
     ["ContainerFailed", { outcome: "requeue", deleteRunner: true }],
@@ -1677,6 +1790,55 @@ describe("settleRestoreFailure", () => {
       reason: "StartError",
       message: "pulling the image: 401",
     });
+  });
+
+  it("deletes a resume whose template is missing, then requeues it", async () => {
+    const d = deps();
+    const message = "template abc is not available on node node-a: not in the store";
+
+    await expect(
+      settleRestoreFailure(failure("TemplateNotFound", "uid-a", message), d)
+    ).resolves.toEqual({ action: "reported", outcome: "requeue", result: "ok" });
+    expect(d.calls).toEqual(["delete", "report"]);
+    expect(d.report).toHaveBeenCalledWith({
+      outcome: "requeue",
+      reason: "TemplateNotFound",
+      message,
+    });
+  });
+
+  // A cold start has no checkpoint tying it to this lane, so the platform moves it.
+  it("deletes a cold start whose template is missing, then reports a fallback", async () => {
+    const d = deps();
+    const message = "template abc is not available on node node-a: not in the store";
+
+    await expect(
+      settleRestoreFailure(
+        {
+          ...failure("TemplateNotFound", "uid-a", message),
+          action: { outcome: "fallback", deleteRunner: true },
+        },
+        d
+      )
+    ).resolves.toEqual({ action: "reported", outcome: "fallback", result: "ok" });
+    expect(d.calls).toEqual(["delete", "report"]);
+    expect(d.report).toHaveBeenCalledWith({
+      outcome: "fallback",
+      reason: "TemplateNotFound",
+      message,
+    });
+  });
+
+  it("reports no fallback for a cold start whose Runner was not deleted", async () => {
+    const d = deps({ deleteError: new Error("connection reset") });
+
+    await expect(
+      settleRestoreFailure(
+        { ...failure("TemplateNotFound"), action: { outcome: "fallback", deleteRunner: true } },
+        d
+      )
+    ).resolves.toEqual({ action: "kept", error: "connection reset" });
+    expect(d.report).not.toHaveBeenCalled();
   });
 
   // The Runner may be running a guest the watch never saw start.
@@ -1742,6 +1904,18 @@ describe("settleRestoreFailure", () => {
       reason: "SnapshotNodeGone",
       message: "node a is gone",
     });
+  });
+
+  it("fails a resume whose snapshot the node runtime refused, then deletes the Runner", async () => {
+    const d = deps();
+
+    await expect(
+      settleRestoreFailure(failure("SnapshotRefused", "uid-a", "snapshot owner does not match"), d)
+    ).resolves.toEqual({ action: "reported", outcome: "fail", result: "ok" });
+    expect(d.calls).toEqual(["report", "delete"]);
+    expect(d.report).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "fail", reason: "SnapshotRefused" })
+    );
   });
 
   it("reports nothing when the Runner could not be read", async () => {
@@ -2240,5 +2414,175 @@ describe("checkpoint locations", () => {
 
   it.each(["", "snap", "/snap", "node/", "a/b/c"])("refuse %j", (location) => {
     expect(() => parseCheckpointLocation(location)).toThrow();
+  });
+});
+
+describe("reportTemplateKeyRefusal", () => {
+  function report(result: Awaited<ReturnType<RestoreOutcomeReport>> = { success: true }) {
+    return vi.fn<RestoreOutcomeReport>(async () => result);
+  }
+
+  it("moves a cold start without a key to the fallback lane", async () => {
+    const r = report();
+
+    await expect(reportTemplateKeyRefusal({ runtime: "microvm" }, r)).resolves.toEqual({
+      outcome: "fallback",
+      reason: "TemplateKeyMissing",
+      result: "ok",
+    });
+    expect(r).toHaveBeenCalledWith({ outcome: "fallback", reason: "TemplateKeyMissing" });
+  });
+
+  // A resume can only be restored on the lane that took its snapshot.
+  it("fails a resume without a key", async () => {
+    const r = report();
+
+    await expect(
+      reportTemplateKeyRefusal({ runtime: "microvm", checkpoint: { type: "COMPUTE" } }, r)
+    ).resolves.toMatchObject({ outcome: "fail", reason: "TemplateKeyMissing", result: "ok" });
+    expect(r).toHaveBeenCalledWith({ outcome: "fail", reason: "TemplateKeyMissing" });
+  });
+
+  it.each([
+    ["uppercase", TEMPLATE_KEY.toUpperCase()],
+    ["short", TEMPLATE_KEY.slice(1)],
+    ["prefixed", `sha256:${TEMPLATE_KEY}`],
+    ["empty", ""],
+  ])("treats a %s key as malformed", async (_, templateKey) => {
+    const r = report();
+
+    await expect(
+      reportTemplateKeyRefusal({ runtime: "microvm", templateKey }, r)
+    ).resolves.toMatchObject({ outcome: "fallback", reason: "TemplateKeyMalformed" });
+    expect(r).toHaveBeenCalledWith({ outcome: "fallback", reason: "TemplateKeyMalformed" });
+  });
+
+  it("reports nothing for a valid key", async () => {
+    const r = report();
+
+    await expect(
+      reportTemplateKeyRefusal(
+        { runtime: "microvm", templateKey: TEMPLATE_KEY, checkpoint: { type: "COMPUTE" } },
+        r
+      )
+    ).resolves.toBeUndefined();
+    expect(r).not.toHaveBeenCalled();
+  });
+
+  it("reports nothing for a resume the checkpoint client restores", async () => {
+    const reports: unknown[] = [];
+
+    await expect(
+      reportTemplateKeyRefusal(
+        { runtime: "microvm", checkpoint: { type: "DOCKER" } },
+        async (body) => {
+          reports.push(body);
+          return { success: true };
+        }
+      )
+    ).resolves.toBeUndefined();
+    expect(reports).toEqual([]);
+  });
+
+  it("reports nothing on the container lane", async () => {
+    const r = report();
+
+    await expect(reportTemplateKeyRefusal({ runtime: "container" }, r)).resolves.toBeUndefined();
+    expect(r).not.toHaveBeenCalled();
+  });
+
+  it("tells a conflict from a failed report", async () => {
+    await expect(
+      reportTemplateKeyRefusal(
+        { runtime: "microvm" },
+        report({ success: false, error: "moved on", statusCode: 409 })
+      )
+    ).resolves.toMatchObject({ result: "conflict" });
+    await expect(
+      reportTemplateKeyRefusal(
+        { runtime: "microvm" },
+        report({ success: false, error: "unavailable", statusCode: 503 })
+      )
+    ).resolves.toMatchObject({ result: "error", error: "unavailable" });
+  });
+});
+
+describe("runnerStartFailure", () => {
+  const message = `template ${TEMPLATE_KEY} is not available on node node-a: not in the store`;
+
+  function failedRunner(
+    reason: string,
+    overrides: { labels?: Record<string, string>; bootstrap?: object | null } = {}
+  ) {
+    return {
+      metadata: {
+        name: "runner-abc123",
+        uid: "uid-a",
+        ...(overrides.labels ? { labels: overrides.labels } : {}),
+      },
+      spec:
+        overrides.bootstrap === null
+          ? {}
+          : {
+              bootstrap: overrides.bootstrap ?? {
+                runFriendlyID: "run_abc123",
+                snapshotFriendlyID: "snapshot_abc",
+                dequeuedAt: "2026-08-27T03:00:00.000Z",
+              },
+              owner: { envID: "env_abc" },
+            },
+      status: {
+        phase: "Failed",
+        conditions: [{ type: "Failed", status: "True", reason, message }],
+      },
+    };
+  }
+
+  it("names the run and dequeue of a cold start whose template is missing", () => {
+    expect(runnerStartFailure(failedRunner("TemplateNotFound"))).toEqual({
+      runnerId: "runner-abc123",
+      runFriendlyId: "run_abc123",
+      snapshotFriendlyId: "snapshot_abc",
+      environmentId: "env_abc",
+      outcome: {
+        ok: false,
+        reason: "TemplateNotFound",
+        error: `TemplateNotFound: ${message}`,
+        message,
+        uid: "uid-a",
+      },
+    });
+  });
+
+  // The restore watch settles a resume; reporting it here as well would requeue it twice.
+  it("leaves a resume to the restore watch", () => {
+    expect(
+      runnerStartFailure(failedRunner("TemplateNotFound", { labels: { [RESTORE_LABEL]: "true" } }))
+    ).toBeUndefined();
+  });
+
+  // A bad image or a crash would fail the same way on any node.
+  it.each(["StartError", "ContainerFailed", "PodStartTimeout", "OOMKilled"])(
+    "leaves a cold start that failed with %s alone",
+    (reason) => {
+      expect(runnerStartFailure(failedRunner(reason))).toBeUndefined();
+    }
+  );
+
+  it("ignores a Runner that has not failed", () => {
+    expect(
+      runnerStartFailure({ ...failedRunner("TemplateNotFound"), status: { phase: "Pending" } })
+    ).toBeUndefined();
+  });
+
+  it("ignores a Runner with no dequeue to report against", () => {
+    expect(
+      runnerStartFailure(failedRunner("TemplateNotFound", { bootstrap: null }))
+    ).toBeUndefined();
+    expect(
+      runnerStartFailure(
+        failedRunner("TemplateNotFound", { bootstrap: { runFriendlyID: "run_abc123" } })
+      )
+    ).toBeUndefined();
   });
 });

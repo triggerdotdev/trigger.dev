@@ -503,6 +503,21 @@ for await (const chunk of stream) {
 }
 ```
 
+## Sub-agents
+
+When a tool delegates to a sub-agent with [`chat.forwardSubAgent`](/ai-chat/patterns/sub-agents), the parent's tool part has no output until the sub-agent finishes. `useSubAgentMessages` rebuilds the sub-agent's message from the chunks streamed so far:
+
+```tsx app/components/chat.tsx
+import { useChat } from "@ai-sdk/react";
+import { useSubAgentMessages } from "@trigger.dev/sdk/chat/react";
+
+const subAgents = useSubAgentMessages();
+const { messages } = useChat({ transport, onData: subAgents.onData });
+
+// in the tool card: live while it runs, the tool output once it finishes
+const message = subAgents.get(part.toolCallId) ?? part.output;
+```
+
 ## Multi-tab coordination
 
 When the same chat is open in multiple browser tabs, `multiTab: true` prevents duplicate messages and syncs conversation state across tabs. Only one tab can send at a time. Other tabs enter read-only mode with real-time message updates.

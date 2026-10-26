@@ -80,6 +80,14 @@ import {
 } from "~/v3/services/alerts/storage/alertStore.server";
 import { createQueryRowRunner } from "~/v3/services/alerts/engine/productionEvaluateBinding.server";
 import {
+  getQueryAlertSeries,
+  type QuerySeriesMode,
+} from "~/v3/services/alerts/queryAlerts/queryAlertSeries.server";
+import {
+  CUSTOM_QUERY_CAPABILITY,
+  resolveAlertCapability,
+} from "~/v3/services/alerts/queryAlerts/resolveAlertCapability.server";
+import {
   AlertNotFoundError,
   AlertActionNotAllowedError,
   AlertActivationInvalidError,
@@ -199,6 +207,8 @@ export const loader = dashboardLoader(
     let metricSeriesEntries: [string, MetricSeriesPoint[]][] = [];
     let healthBands: HealthBandRow[] = [];
     let componentSeries: HealthQuerySeries[] = [];
+    let queryGroups: string[] = [];
+    let querySeriesMode: QuerySeriesMode | undefined;
     try {
       const capability = getCapability(rawAlert.capabilityKey);
 
@@ -221,7 +231,7 @@ export const loader = dashboardLoader(
                   projectId: project.id,
                   window: detailWindow,
                 },
-                createQueryRowRunner(1)
+                createQueryRowRunner()
               ).catch(() => undefined)
             : undefined,
         ]);
@@ -242,9 +252,30 @@ export const loader = dashboardLoader(
           healthBucketMs(detailWindow, capability?.minCadenceSec ?? 300),
           chart.healthySince
         );
+      } else if (rawAlert.capabilityKey === CUSTOM_QUERY_CAPABILITY) {
+        const params = alertParamsSchema.parse(rawAlert.params);
+        const seriesMap = await getQueryAlertSeries(
+          {
+            alert: {
+              id: rawAlert.id,
+              organizationId: project.organizationId,
+              projectId: project.id,
+              params,
+            },
+            capability: resolveAlertCapability(rawAlert),
+            condition: conditionSchema.parse(rawAlert.condition),
+            window: detailWindow,
+          },
+          createQueryRowRunner(undefined, { userAuthoredQuery: true })
+        );
+        metricSeriesEntries = Array.from(seriesMap.entries());
+        queryGroups = params.querySignal?.groupColumns?.length
+          ? metricSeriesEntries.map(([key]) => key)
+          : [];
+        querySeriesMode = params.querySignal?.mode;
       } else if (capability?.binding.type === "query") {
         const params = alertParamsSchema.parse(rawAlert.params);
-        const runner = createQueryRowRunner(1);
+        const runner = createQueryRowRunner();
         const metricMap = await getMetricSeries(
           {
             alertId,
@@ -287,6 +318,8 @@ export const loader = dashboardLoader(
       metricSeriesEntries,
       healthBands,
       componentSeries,
+      queryGroups,
+      querySeriesMode,
       channels,
       now,
       window: detailWindow,
@@ -1026,6 +1059,8 @@ export default function Page() {
     window: detailWindow,
     createdAt,
     permissions,
+    queryGroups,
+    querySeriesMode,
   } = useTypedLoaderData<typeof loader>();
   const [searchParams, setSearchParams] = useSearchParams();
   const editMode = searchParams.get("edit") === "1";
@@ -1103,6 +1138,8 @@ export default function Page() {
                   window={detailWindow}
                   now={now}
                   createdAt={createdAt}
+                  queryGroups={queryGroups}
+                  querySeriesMode={querySeriesMode}
                 />
                 <ActivityPanel alert={alert} now={now} />
               </div>

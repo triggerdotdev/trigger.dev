@@ -672,6 +672,9 @@ export function parseTranscriptRuntimeState(value: unknown): TranscriptRuntimeSt
               id: value.id,
               messageIds: value.messageIds as string[],
               messages: value.messages as ModelMessage[],
+              ...(value.kind === "steering" || value.kind === "background"
+                ? { kind: value.kind }
+                : {}),
               ...(Array.isArray(value.trimmedMessageIds)
                 ? {
                     trimmedMessageIds: value.trimmedMessageIds.filter(

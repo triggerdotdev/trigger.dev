@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useThrottledRefresh } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam/useThrottledRefresh";
+import { useThrottledRefresh } from "~/components/runs/v3/trace/useThrottledRefresh";
 
 const INTERVAL_MS = 5_000;
 

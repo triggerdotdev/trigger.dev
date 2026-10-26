@@ -30,6 +30,7 @@ import {
   type SimpleComparisonCondition,
   type TimeRange,
   type WhereClauseCondition,
+  type WindowCondition,
 } from "./query/printer_context.js";
 import { createSchemaRegistry, type FieldMappings, type TableSchema } from "./query/schema.js";
 
@@ -129,6 +130,7 @@ export {
   type SimpleComparisonCondition,
   type TimeRange,
   type WhereClauseCondition,
+  type WindowCondition,
 } from "./query/printer_context.js";
 
 // Re-export time bucket utilities
@@ -174,9 +176,10 @@ export {
  * const ast = parseTSQLSelect("SELECT * FROM users WHERE id = 1");
  * ```
  */
-export function parseTSQLSelect(query: string): SelectQuery | SelectSetQuery {
+function parseSelectTree(query: string) {
   const inputStream = CharStreams.fromString(query);
   const lexer = new TSQLLexer(inputStream);
+  lexer.removeErrorListeners();
   const tokenStream = new CommonTokenStream(lexer);
   const parser = new TSQLParser(tokenStream);
 
@@ -190,6 +193,139 @@ export function parseTSQLSelect(query: string): SelectQuery | SelectSetQuery {
   if (errorListener.error) {
     throw new TSQLSyntaxError(errorListener.error);
   }
+  return parseTree;
+}
+
+const CASE_BEFORE_THEN = -1;
+const CLOSER_OF = new Map([
+  [TSQLLexer.LPAREN, TSQLLexer.RPAREN],
+  [TSQLLexer.LBRACKET, TSQLLexer.RBRACKET],
+  [TSQLLexer.LBRACE, TSQLLexer.RBRACE],
+  [TSQLLexer.STRING_ESCAPE_TRIGGER, TSQLLexer.RBRACE],
+  [TSQLLexer.FULL_STRING_ESCAPE_TRIGGER, TSQLLexer.RBRACE],
+  [TSQLLexer.CASE, CASE_BEFORE_THEN],
+]);
+const CLOSING_TOKENS = new Set([
+  TSQLLexer.RPAREN,
+  TSQLLexer.RBRACKET,
+  TSQLLexer.RBRACE,
+  TSQLLexer.END,
+]);
+const OPERAND_END_TOKENS = new Set([
+  TSQLLexer.IDENTIFIER,
+  TSQLLexer.FLOATING_LITERAL,
+  TSQLLexer.OCTAL_LITERAL,
+  TSQLLexer.DECIMAL_LITERAL,
+  TSQLLexer.HEXADECIMAL_LITERAL,
+  TSQLLexer.STRING_LITERAL,
+  TSQLLexer.QUOTE_SINGLE,
+  TSQLLexer.QUOTE_DOUBLE,
+  TSQLLexer.BACKQUOTE,
+  ...CLOSING_TOKENS,
+]);
+const AMBIGUOUS_TOKENS = new Set([
+  TSQLLexer.ARROW,
+  TSQLLexer.INTERVAL,
+  TSQLLexer.CASE,
+  TSQLLexer.QUERY,
+]);
+const QUOTE_TOKENS = new Set([TSQLLexer.QUOTE_SINGLE, TSQLLexer.QUOTE_DOUBLE, TSQLLexer.BACKQUOTE]);
+
+export type TSQLNesting = {
+  maxDepth: number;
+  cost: number;
+  tokens: number;
+  dotRun: number;
+  quotes: number;
+  operators: number;
+  weight: number;
+};
+
+export function measureTSQLNesting(query: string, limits?: Partial<TSQLNesting>): TSQLNesting {
+  const lexer = new TSQLLexer(CharStreams.fromString(query));
+  const stats: TSQLNesting = {
+    maxDepth: 0,
+    cost: 0,
+    tokens: 0,
+    dotRun: 0,
+    quotes: 0,
+    operators: 0,
+    weight: 0,
+  };
+  lexer.removeErrorListeners();
+  lexer.addErrorListener({
+    syntaxError: () => {
+      if (++stats.quotes > (limits?.quotes ?? Infinity)) throw new Error("Too many lexer errors");
+    },
+  });
+  const exceeded = () =>
+    !!limits &&
+    (Object.keys(stats) as (keyof TSQLNesting)[]).some(
+      (key) => stats[key] > (limits[key] ?? Infinity)
+    );
+  const closers: number[] = [];
+  let prefix = 0;
+  let dotRun = 0;
+  let betweens = 0;
+  let previous: number | undefined;
+  const open = () => {
+    stats.maxDepth = Math.max(stats.maxDepth, closers.length + prefix);
+    stats.cost += closers.length + prefix;
+  };
+  try {
+    for (let token = lexer.nextToken(); token.type !== TSQLLexer.EOF; token = lexer.nextToken()) {
+      if (token.channel !== TSQLLexer.DEFAULT_TOKEN_CHANNEL) continue;
+      const type = token.type;
+      stats.tokens++;
+      if (QUOTE_TOKENS.has(type)) stats.quotes++;
+      if (type === TSQLLexer.DOT) stats.dotRun = Math.max(stats.dotRun, ++dotRun);
+      else if (previous !== TSQLLexer.DOT) dotRun = 0;
+      const afterOperand =
+        previous !== undefined &&
+        (OPERAND_END_TOKENS.has(previous) || (type === TSQLLexer.NOT && previous === TSQLLexer.IS));
+      const unary = (type === TSQLLexer.NOT || type === TSQLLexer.DASH) && !afterOperand;
+      if (type === TSQLLexer.BETWEEN) stats.cost += ++betweens;
+      stats.weight += 1 + closers.length + prefix + betweens;
+      if (unary || AMBIGUOUS_TOKENS.has(type)) stats.operators++;
+      if (unary) {
+        prefix++;
+        open();
+      } else {
+        prefix = 0;
+        const closer = CLOSER_OF.get(type);
+        if (closer !== undefined) {
+          closers.push(closer);
+          open();
+        } else if (type === closers[closers.length - 1]) {
+          closers.pop();
+        } else if (type === TSQLLexer.THEN && closers[closers.length - 1] === CASE_BEFORE_THEN) {
+          closers[closers.length - 1] = TSQLLexer.END;
+        }
+      }
+      previous = type;
+      if (exceeded()) break;
+    }
+  } catch {}
+  return stats;
+}
+
+/**
+ * The text of the SELECT statement itself, taken from the parse tree: leading and
+ * trailing comments and a terminating `;` are dropped, so it can be nested in a subquery.
+ */
+export function selectStatementText(query: string): string {
+  const parseTree = parseSelectTree(query);
+  const statement = parseTree.selectSetStmt() ?? parseTree.selectStmt();
+  if (!statement?.stop) {
+    throw new TSQLSyntaxError("Expected SELECT query");
+  }
+  return Array.from(query)
+    .slice(statement.start.startIndex, statement.stop.stopIndex + 1)
+    .join("");
+}
+
+export function parseTSQLSelect(query: string): SelectQuery | SelectSetQuery {
+  const parseTree = parseSelectTree(query);
 
   const converter = new TSQLParseTreeConverter();
   const ast = converter.visit(parseTree);
@@ -573,6 +709,8 @@ export interface CompileTSQLOptions {
    * percentile over buckets that often contain no samples at all).
    */
   minBucketSeconds?: number;
+  /** Per-table [from, to) windows enforced at every reference to the table (JOINs, subqueries, UNIONs). */
+  windowConditions?: WindowCondition[];
 }
 
 /**
@@ -607,9 +745,13 @@ export interface CompileTSQLOptions {
  * );
  * ```
  */
-export function compileTSQL(query: string, options: CompileTSQLOptions): PrintResult {
+export function compileTSQL(
+  query: string,
+  options: CompileTSQLOptions,
+  select?: SelectQuery | SelectSetQuery
+): PrintResult {
   // 1. Parse the TSQL query
-  let ast = parseTSQLSelect(query);
+  let ast = select ?? parseTSQLSelect(query);
 
   // 2. Inject fallback WHERE conditions if provided (applied at AST level - top-level query only)
   if (options.whereClauseFallback && Object.keys(options.whereClauseFallback).length > 0) {
@@ -633,6 +775,7 @@ export function compileTSQL(query: string, options: CompileTSQLOptions): PrintRe
     timeRange: options.timeRange,
     fillGaps: options.fillGaps,
     minBucketSeconds: options.minBucketSeconds,
+    windowConditions: options.windowConditions,
   });
 
   // 6. Print the AST to ClickHouse SQL (enforced conditions applied at printer level)

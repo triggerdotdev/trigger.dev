@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { settleUnloadedRoot } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam/settleUnloadedRoot";
+import { getRunFinishedAt } from "~/v3/eventRepository/traceInsertedAtBound";
+import { settleUnloadedRoot } from "~/components/runs/v3/trace/settleUnloadedRoot";
 
 const start = new Date("2026-10-01T10:00:00.000Z");
 const completedAt = new Date("2026-10-01T10:00:06.000Z");
@@ -23,7 +24,7 @@ const loading = {
   events: [event("root"), event("child")],
   duration: 1_000_000,
   rootSpanStatus: "executing" as const,
-  run: { status: "COMPLETED_SUCCESSFULLY" as const, completedAt },
+  run: { status: "COMPLETED_SUCCESSFULLY" as const, finishedAt: completedAt },
 };
 
 describe("settleUnloadedRoot", () => {
@@ -48,7 +49,7 @@ describe("settleUnloadedRoot", () => {
   it("marks a failed run's root as errored", () => {
     const result = settleUnloadedRoot({
       ...loading,
-      run: { status: "COMPLETED_WITH_ERRORS", completedAt },
+      run: { status: "COMPLETED_WITH_ERRORS", finishedAt: completedAt },
     });
     expect(result.rootSpanStatus).toBe("failed");
     expect(result.events[0].data.isError).toBe(true);
@@ -57,16 +58,33 @@ describe("settleUnloadedRoot", () => {
   it("marks a canceled run's root as canceled", () => {
     const result = settleUnloadedRoot({
       ...loading,
-      run: { status: "CANCELED", completedAt },
+      run: { status: "CANCELED", finishedAt: completedAt },
     });
     expect(result.events[0].data.isCancelled).toBe(true);
+  });
+
+  it("ends a CANCELED run with no completedAt at its last update", () => {
+    const finishedAt = getRunFinishedAt({
+      status: "CANCELED",
+      completedAt: null,
+      updatedAt: completedAt,
+    });
+    const result = settleUnloadedRoot({
+      ...loading,
+      run: { status: "CANCELED", finishedAt: finishedAt ?? null },
+    });
+    expect(result.events[0].data).toMatchObject({
+      isPartial: false,
+      isCancelled: true,
+      duration: SIX_SECONDS_NS,
+    });
   });
 
   it("accepts ISO strings from the loader", () => {
     const result = settleUnloadedRoot({
       ...loading,
       events: [event("root", { startTime: start.toISOString() })],
-      run: { status: "COMPLETED_SUCCESSFULLY", completedAt: completedAt.toISOString() },
+      run: { status: "COMPLETED_SUCCESSFULLY", finishedAt: completedAt.toISOString() },
     });
     expect(result.duration).toBe(SIX_SECONDS_NS);
   });
@@ -79,7 +97,7 @@ describe("settleUnloadedRoot", () => {
   });
 
   it("changes nothing while the run is still running", () => {
-    const input = { ...loading, run: { status: "EXECUTING" as const, completedAt: null } };
+    const input = { ...loading, run: { status: "EXECUTING" as const, finishedAt: null } };
     expect(settleUnloadedRoot(input).events).toBe(input.events);
   });
 
@@ -89,21 +107,24 @@ describe("settleUnloadedRoot", () => {
   });
 
   it("marks an expired run's root as errored, like its completion row would", () => {
-    const result = settleUnloadedRoot({ ...loading, run: { status: "EXPIRED", completedAt } });
+    const result = settleUnloadedRoot({
+      ...loading,
+      run: { status: "EXPIRED", finishedAt: completedAt },
+    });
     expect(result.rootSpanStatus).toBe("failed");
     expect(result.events[0].data.isError).toBe(true);
   });
 
-  it("changes nothing without completedAt, even with a final status", () => {
+  it("changes nothing without a finished time, even with a final status", () => {
     const input = {
       ...loading,
-      run: { status: "COMPLETED_SUCCESSFULLY" as const, completedAt: null },
+      run: { status: "COMPLETED_SUCCESSFULLY" as const, finishedAt: null },
     };
     expect(settleUnloadedRoot(input).events).toBe(input.events);
   });
 
   it("changes nothing for statuses that aren't final", () => {
-    const input = { ...loading, run: { status: "PENDING_VERSION" as const, completedAt: null } };
+    const input = { ...loading, run: { status: "PENDING_VERSION" as const, finishedAt: null } };
     expect(settleUnloadedRoot(input).events).toBe(input.events);
   });
 });

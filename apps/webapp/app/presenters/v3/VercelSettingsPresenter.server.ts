@@ -24,6 +24,7 @@ export type VercelSettingsResult = {
   enabled: boolean;
   hasOrgIntegration: boolean;
   authInvalid?: boolean;
+  disabled?: boolean;
   authError?: string;
   connectedProject?: {
     id: string;
@@ -61,6 +62,7 @@ export type VercelOnboardingData = {
   availableProjects: VercelAvailableProject[];
   hasProjectSelected: boolean;
   authInvalid?: boolean;
+  disabled?: boolean;
   authError?: string;
   existingVariables: Record<string, { environments: string[] }>; // Environment slugs (non-archived only)
   gitHubAppInstallations: GitHubAppInstallation[];
@@ -131,10 +133,12 @@ export class VercelSettingsPresenter extends BasePresenter {
     if (hasOrgIntegration) {
       const tokenResult = await VercelIntegrationRepository.validateVercelToken(orgIntegration);
       if (tokenResult.isErr() || !tokenResult.value.isValid) {
+        const disabled = tokenResult.isErr() && tokenResult.error.reason === "disabled";
         return ok({
           enabled: true,
           hasOrgIntegration: true,
-          authInvalid: true,
+          authInvalid: !disabled,
+          disabled,
           authError: tokenResult.isErr() ? tokenResult.error.message : "Vercel token is invalid",
           connectedProject: undefined,
           isGitHubConnected: false,
@@ -267,6 +271,7 @@ export class VercelSettingsPresenter extends BasePresenter {
           connectedProject,
         ]) => {
           const fetchVercelData = async (): Promise<{
+            disabled?: boolean;
             customEnvironments: VercelCustomEnvironment[];
             autoAssignCustomDomains: boolean | null;
             vercelManageAccessUrl?: string;
@@ -363,7 +368,12 @@ export class VercelSettingsPresenter extends BasePresenter {
               );
             }
 
+            const disabled = [customEnvsResult, autoAssignResult, triggerVersionResult].some(
+              (r) => r.isErr() && r.error.reason === "disabled"
+            );
+
             return {
+              disabled,
               customEnvironments: customEnvsResult.isOk() ? customEnvsResult.value : [],
               autoAssignCustomDomains: autoAssignResult.isOk() ? autoAssignResult.value : null,
               vercelManageAccessUrl,
@@ -377,26 +387,39 @@ export class VercelSettingsPresenter extends BasePresenter {
             cause: error,
           })).map(
             ({
+              disabled,
               customEnvironments,
               autoAssignCustomDomains,
               vercelManageAccessUrl,
               currentTriggerVersion,
               currentTriggerVersionFetchFailed,
             }) =>
-              ({
-                enabled: true,
-                hasOrgIntegration,
-                authInvalid: false,
-                connectedProject,
-                isGitHubConnected,
-                hasStagingEnvironment,
-                hasPreviewEnvironment,
-                customEnvironments,
-                autoAssignCustomDomains,
-                vercelManageAccessUrl,
-                currentTriggerVersion,
-                currentTriggerVersionFetchFailed,
-              }) as VercelSettingsResult
+              (disabled
+                ? {
+                    enabled: true,
+                    hasOrgIntegration,
+                    authInvalid: false,
+                    disabled: true,
+                    connectedProject: undefined,
+                    isGitHubConnected: false,
+                    hasStagingEnvironment: false,
+                    hasPreviewEnvironment: false,
+                    customEnvironments: [],
+                  }
+                : {
+                    enabled: true,
+                    hasOrgIntegration,
+                    authInvalid: false,
+                    connectedProject,
+                    isGitHubConnected,
+                    hasStagingEnvironment,
+                    hasPreviewEnvironment,
+                    customEnvironments,
+                    autoAssignCustomDomains,
+                    vercelManageAccessUrl,
+                    currentTriggerVersion,
+                    currentTriggerVersionFetchFailed,
+                  }) as VercelSettingsResult
           );
         }
       )
@@ -497,12 +520,14 @@ export class VercelSettingsPresenter extends BasePresenter {
 
         const tokenResult = await VercelIntegrationRepository.validateVercelToken(orgIntegration);
         if (tokenResult.isErr() || !tokenResult.value.isValid) {
+          const disabled = tokenResult.isErr() && tokenResult.error.reason === "disabled";
           return {
             customEnvironments: [],
             environmentVariables: [],
             availableProjects: [],
             hasProjectSelected: false,
-            authInvalid: true,
+            authInvalid: !disabled,
+            disabled,
             authError: tokenResult.isErr() ? tokenResult.error.message : "Vercel token is invalid",
             existingVariables: {},
             gitHubAppInstallations,
@@ -520,6 +545,7 @@ export class VercelSettingsPresenter extends BasePresenter {
             availableProjects: [],
             hasProjectSelected: false,
             authInvalid: clientResult.error.authInvalid,
+            disabled: clientResult.error.reason === "disabled",
             authError: clientResult.error.authInvalid ? clientResult.error.message : undefined,
             existingVariables: {},
             gitHubAppInstallations,
@@ -555,6 +581,7 @@ export class VercelSettingsPresenter extends BasePresenter {
             availableProjects: [],
             hasProjectSelected: false,
             authInvalid: availableProjectsResult.error.authInvalid,
+            disabled: availableProjectsResult.error.reason === "disabled",
             authError: availableProjectsResult.error.authInvalid
               ? availableProjectsResult.error.message
               : undefined,
@@ -607,6 +634,26 @@ export class VercelSettingsPresenter extends BasePresenter {
                   }>
                 ),
           ]);
+        const disabled =
+          (customEnvironmentsResult.isErr() &&
+            customEnvironmentsResult.error.reason === "disabled") ||
+          (projectEnvVarsResult.isErr() && projectEnvVarsResult.error.reason === "disabled") ||
+          (sharedEnvVarsResult.isErr() && sharedEnvVarsResult.error.reason === "disabled");
+
+        if (disabled) {
+          return {
+            customEnvironments: [],
+            environmentVariables: [],
+            availableProjects: availableProjectsResult.value,
+            hasProjectSelected: true,
+            disabled: true,
+            existingVariables: {},
+            gitHubAppInstallations,
+            isGitHubConnected,
+            isOnboardingComplete: false,
+          };
+        }
+
         const authInvalid =
           (customEnvironmentsResult.isErr() && customEnvironmentsResult.error.authInvalid) ||
           (projectEnvVarsResult.isErr() && projectEnvVarsResult.error.authInvalid) ||
