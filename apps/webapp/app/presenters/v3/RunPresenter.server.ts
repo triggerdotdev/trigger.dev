@@ -210,7 +210,11 @@ export class RunPresenter {
     // Read before the first chunk so the first tail covers the background load.
     const firstChunkReadAt = Date.now();
 
-    const firstChunkPromise = canLiveTail(run.taskEventStore, env.TRACE_VIEW_EMERGENCY_SPAN_CAP)
+    const firstChunkPromise = canLiveTail(
+      run.taskEventStore,
+      env.TRACE_VIEW_EMERGENCY_SPAN_CAP,
+      env.EVENT_REPOSITORY_V1_REROUTE_ENABLED
+    )
       ? repository.getTraceChunk(
           getTaskEventStoreTableForRun(run),
           environment.id,

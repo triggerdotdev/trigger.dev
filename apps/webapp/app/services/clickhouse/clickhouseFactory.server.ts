@@ -10,6 +10,7 @@ import { clampToEmergencySpanCap } from "~/v3/eventRepository/emergencySpanCap.s
 import { singleton } from "~/utils/singleton";
 import type { OrganizationDataStoresRegistry } from "~/services/dataStores/organizationDataStoresRegistry.server";
 import { type IEventRepository } from "~/v3/eventRepository/eventRepository.types";
+import { effectiveEventStore } from "~/v3/eventRepository/effectiveEventStore";
 
 // Declared before the singletons below, which initialize clients at module load.
 const LOGS_LIST_REQUEST_TIMEOUT_MARGIN_SECONDS = 5;
@@ -696,7 +697,10 @@ export class ClickhouseFactory {
   /** Event repositories keyed by hostname hash (stateful, must be reused). */
   private readonly _eventRepositoryCache = new Map<string, ClickhouseEventRepository>();
 
-  constructor(private readonly _registry: OrganizationDataStoresRegistry) {}
+  constructor(
+    private readonly _registry: OrganizationDataStoresRegistry,
+    private readonly _v1RerouteEnabled: boolean = env.EVENT_REPOSITORY_V1_REROUTE_ENABLED
+  ) {}
 
   async isReady(): Promise<boolean> {
     if (!this._registry.isLoaded) {
@@ -774,9 +778,11 @@ export class ClickhouseFactory {
   }
 
   getEventRepositoryForOrganizationSync(
-    store: string,
+    requestedStore: string,
     organizationId: string
   ): { key: string; repository: IEventRepository } {
+    // Normalized before the cache key, so "clickhouse" and "clickhouse_v2" share one repository
+    const store = effectiveEventStore(requestedStore, this._v1RerouteEnabled);
     const dataStore = this._registry.get(organizationId, "CLICKHOUSE");
 
     if (!dataStore) {
