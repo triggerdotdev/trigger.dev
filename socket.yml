@@ -1,0 +1,12 @@
+version: 2
+
+projectIgnorePaths:
+  - "/packages/cli-v3/e2e/fixtures"
+
+triggerPaths:
+  - "package.json"
+  - "pnpm-lock.yaml"
+  - "pnpm-workspace.yaml"
+  - "package-lock.json"
+  - "yarn.lock"
+  - "socket.yml"
