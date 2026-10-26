@@ -31,6 +31,7 @@ import {
 import { isFinalRunStatus } from "../statuses.js";
 import type { HeartbeatTimeouts } from "../types.js";
 import type { SystemResources } from "./systems.js";
+import type { Histogram } from "@internal/tracing";
 
 import { boundedIn } from "@trigger.dev/database";
 /** Waitpoint outputs can be 100KB+, so a large fetch can exceed the NAPI string limit. */
@@ -485,13 +486,75 @@ export async function getExecutionSnapshotsSince(
   });
 }
 
+const CREATED_AT_CLAMP_WARN_MS = 5;
+
+export type PreviousSnapshot = { id: string; createdAt: Date };
+
+export type SnapshotIdentity = { id: string; createdAt: Date };
+
+const CUID_TIMESTAMP_LENGTH = 8;
+const CUID_TAIL_LENGTH = 16;
+
+function cuidTimestampMs(id: string): number | undefined {
+  if (id.length !== 1 + CUID_TIMESTAMP_LENGTH + CUID_TAIL_LENGTH || id[0] !== "c") {
+    return undefined;
+  }
+  const timestamp = parseInt(id.slice(1, 1 + CUID_TIMESTAMP_LENGTH), 36);
+  return Number.isFinite(timestamp) ? timestamp : undefined;
+}
+
+function snapshotIdAt(timestampMs: number): string {
+  const fresh = SnapshotId.generate().id;
+  return `c${timestampMs.toString(36)}${fresh.slice(-CUID_TAIL_LENGTH)}`;
+}
+
 export class ExecutionSnapshotSystem {
   private readonly $: SystemResources;
   private readonly heartbeatTimeouts: HeartbeatTimeouts;
+  private readonly createdAtClampHistogram: Histogram;
 
   constructor(private readonly options: ExecutionSnapshotSystemOptions) {
     this.$ = options.resources;
     this.heartbeatTimeouts = options.heartbeatTimeouts;
+    this.createdAtClampHistogram = this.$.meter.createHistogram(
+      "run_engine.snapshot.created_at_clamp",
+      {
+        description:
+          "How far ahead of the writer's clock a snapshot was stamped to sort after the snapshot it follows",
+        unit: "ms",
+      }
+    );
+  }
+
+  // Engine orders snapshots by createdAt, runners by id, both from the writer's clock: keep both after the predecessor.
+  public nextSnapshotIdentity(previous: PreviousSnapshot, runId: string): SnapshotIdentity {
+    const now = Date.now();
+    const floor =
+      Math.max(
+        previous.createdAt.getTime(),
+        cuidTimestampMs(previous.id) ?? Number.NEGATIVE_INFINITY
+      ) + 1;
+    if (now >= floor) {
+      return { id: SnapshotId.generate().id, createdAt: new Date(now) };
+    }
+
+    const clampMs = floor - now;
+    if (clampMs > 1) {
+      this.createdAtClampHistogram.record(clampMs);
+    }
+    if (clampMs > CREATED_AT_CLAMP_WARN_MS) {
+      this.$.logger.warn(
+        "Snapshot stamped ahead of this engine's clock to follow its predecessor",
+        {
+          runId,
+          clampMs,
+          previousSnapshotId: previous.id,
+          previousCreatedAt: previous.createdAt,
+        }
+      );
+    }
+
+    return { id: snapshotIdAt(floor), createdAt: new Date(floor) };
   }
 
   public async createExecutionSnapshot(
@@ -501,6 +564,7 @@ export class ExecutionSnapshotSystem {
       run,
       snapshot,
       previousSnapshotId,
+      previousSnapshot,
       snapshotRoute,
       batchId,
       environmentId,
@@ -526,6 +590,7 @@ export class ExecutionSnapshotSystem {
         metadata?: Prisma.JsonValue;
       };
       previousSnapshotId?: string;
+      previousSnapshot?: PreviousSnapshot;
       snapshotRoute?: SnapshotRouteWire;
       batchId?: string;
       environmentId: string;
@@ -549,11 +614,15 @@ export class ExecutionSnapshotSystem {
     store?: RunStore
   ) {
     // Minted above the store, so a retry inside the store replays the same transition idempotently.
-    const id = snapshotId ?? SnapshotId.generate().id;
+    const identity = previousSnapshot
+      ? this.nextSnapshotIdentity(previousSnapshot, run.id)
+      : undefined;
+    const id = snapshotId ?? identity?.id ?? SnapshotId.generate().id;
 
     const newSnapshot = await (store ?? this.$.runStore).createExecutionSnapshot(
       {
         id,
+        createdAt: identity?.createdAt,
         run,
         snapshot,
         previousSnapshotId,

@@ -441,6 +441,7 @@ export class RunEngine {
     this.delayedRunSystem = new DelayedRunSystem({
       resources,
       enqueueSystem: this.enqueueSystem,
+      executionSnapshotSystem: this.executionSnapshotSystem,
     });
 
     this.debounceSystem = new DebounceSystem({
@@ -475,6 +476,7 @@ export class RunEngine {
     this.ttlSystem = new TtlSystem({
       resources,
       waitpointSystem: this.waitpointSystem,
+      executionSnapshotSystem: this.executionSnapshotSystem,
       finalizationGuardDelayMs: this.options.finalizationGuardDelayMs,
     });
 
@@ -2768,6 +2770,7 @@ export class RunEngine {
           const { wasRequeued } = await this.runAttemptSystem.tryNackAndRequeue({
             run,
             snapshotRoute: snapshotRouteFromSnapshot(latestSnapshot),
+            previousSnapshot: latestSnapshot,
             environment: {
               id: latestSnapshot.environmentId,
               type: latestSnapshot.environmentType,

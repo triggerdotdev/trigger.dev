@@ -62,6 +62,7 @@ import type { DelayedRunSystem } from "./delayedRunSystem.js";
 import type {
   EnhancedExecutionSnapshot,
   ExecutionSnapshotSystem,
+  PreviousSnapshot,
 } from "./executionSnapshotSystem.js";
 import {
   executionResultFromSnapshot,
@@ -537,6 +538,7 @@ export class RunAttemptSystem {
                     }`,
                   },
                   previousSnapshotId: latestSnapshot.id,
+                  previousSnapshot: latestSnapshot,
                   snapshotRoute: previousRoute,
                   environmentId: latestSnapshot.environmentId,
                   environmentType: latestSnapshot.environmentType,
@@ -841,6 +843,7 @@ export class RunAttemptSystem {
               usageDurationMs: updatedUsage.usageDurationMs,
               costInCents: updatedUsage.costInCents,
               snapshot: {
+                ...this.executionSnapshotSystem.nextSnapshotIdentity(latestSnapshot, runId),
                 executionStatus: "FINISHED",
                 description: "Task completed successfully",
                 snapshotRoute: snapshotRouteFromSnapshot(latestSnapshot),
@@ -1216,6 +1219,7 @@ export class RunAttemptSystem {
                 const nackResult = await this.tryNackAndRequeue({
                   run,
                   snapshotRoute: snapshotRouteFromSnapshot(latestSnapshot),
+                  previousSnapshot: latestSnapshot,
                   environment: env,
                   orgId: env.organizationId,
                   projectId: env.project.id,
@@ -1250,6 +1254,7 @@ export class RunAttemptSystem {
                     description: "Attempt failed with a short delay, starting a new attempt",
                   },
                   previousSnapshotId: latestSnapshot.id,
+                  previousSnapshot: latestSnapshot,
                   snapshotRoute: snapshotRouteFromSnapshot(latestSnapshot),
                   environmentId: latestSnapshot.environmentId,
                   environmentType: latestSnapshot.environmentType,
@@ -1345,6 +1350,7 @@ export class RunAttemptSystem {
   public async tryNackAndRequeue({
     run,
     snapshotRoute,
+    previousSnapshot,
     environment,
     orgId,
     projectId,
@@ -1362,6 +1368,7 @@ export class RunAttemptSystem {
   }: {
     run: { id: string };
     snapshotRoute?: SnapshotRouteWire;
+    previousSnapshot?: PreviousSnapshot;
     environment: {
       id: string;
       type: RuntimeEnvironmentType;
@@ -1427,6 +1434,7 @@ export class RunAttemptSystem {
       const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
         run: requeuedRun,
         snapshotRoute,
+        previousSnapshot,
         snapshot: {
           executionStatus: "QUEUED",
           description: "Requeued the run after a failure",
@@ -1569,6 +1577,7 @@ export class RunAttemptSystem {
           }
           const requeued = await this.tryNackAndRequeue({
             run: { id: runId },
+            previousSnapshot: latestSnapshot,
             environment: {
               id: latestSnapshot.environmentId,
               type: latestSnapshot.environmentType,
@@ -1838,6 +1847,7 @@ export class RunAttemptSystem {
                 description: "Run was cancelled",
               },
               previousSnapshotId: latestSnapshot.id,
+              previousSnapshot: latestSnapshot,
               snapshotRoute: snapshotRouteFromSnapshot(latestSnapshot),
               environmentId: latestSnapshot.environmentId,
               environmentType: latestSnapshot.environmentType,
@@ -1869,6 +1879,7 @@ export class RunAttemptSystem {
             description: "Run was cancelled, not finished",
           },
           previousSnapshotId: latestSnapshot.id,
+          previousSnapshot: latestSnapshot,
           snapshotRoute: snapshotRouteFromSnapshot(latestSnapshot),
           environmentId: latestSnapshot.environmentId,
           environmentType: latestSnapshot.environmentType,
@@ -2035,6 +2046,7 @@ export class RunAttemptSystem {
           description: "Run failed",
         },
         previousSnapshotId: latestSnapshot.id,
+        previousSnapshot: latestSnapshot,
         snapshotRoute: snapshotRouteFromSnapshot(latestSnapshot),
         environmentId: env.id,
         environmentType: env.type,

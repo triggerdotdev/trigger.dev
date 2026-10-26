@@ -212,6 +212,7 @@ export class CheckpointSystem {
             metadata: snapshot.metadata,
           },
           previousSnapshotId: snapshot.id,
+          previousSnapshot: snapshot,
           snapshotRoute: snapshotRouteFromSnapshot(snapshot),
           batchId: snapshot.batchId ?? undefined,
           completedWaitpoints: snapshot.completedWaitpoints.map((waitpoint) => ({
@@ -248,6 +249,7 @@ export class CheckpointSystem {
             metadata: snapshot.metadata,
           },
           previousSnapshotId: snapshot.id,
+          previousSnapshot: snapshot,
           snapshotRoute: snapshotRouteFromSnapshot(snapshot),
           batchId: snapshot.batchId ?? undefined,
           completedWaitpoints: snapshot.completedWaitpoints.map((waitpoint) => ({
@@ -417,6 +419,7 @@ export class CheckpointSystem {
           description: CONTINUED_AFTER_SUSPENDED_DESCRIPTION,
         },
         previousSnapshotId: snapshot.id,
+        previousSnapshot: snapshot,
         snapshotRoute: snapshotRouteFromSnapshot(snapshot),
         environmentId: snapshot.environmentId,
         environmentType: snapshot.environmentType,
