@@ -6,28 +6,25 @@ import {
 } from "./snapshotKeys.js";
 
 /**
- * The one consumer group the recovery workers join on every partition stream. Delivery through the
- * group plus XAUTOCLAIM, transition-token idempotency, and atomic finalize give "exactly one
- * effective owner" as an emergent property, so no exclusive partition lease is built (M4).
+ * The recovery sweep's consumer group on every partition stream. The sweep holds one fleet-wide
+ * lease (`recoveryLeaseKey`), not a lease per partition. Group delivery, XAUTOCLAIM,
+ * transition-token idempotency and the atomic finalize, abort and settle make a redelivery after a
+ * crash or a lease handover harmless.
  */
 export const RECOVERY_CONSUMER_GROUP = "snap-recovery";
 
 export type PendingEntry = { id: string; fields: Record<string, string> };
 
 /**
- * Scaffolding for the pending-index topology (M2): the per-partition recovery streams with a consumer
- * group each, plus add/enumerate primitives. NO recovery worker and NO prepare protocol here — those
- * are M3/M4. The stream key derivation is fixed here so the Lua primitives can hard-code it later.
+ * The per-partition pending streams. The prepare Lua adds an entry, and finalize and abort
+ * delete it. The recovery sweep consumes the streams, and the depth gauges read {@link summary}.
  */
 export class PendingIndex {
   constructor(private readonly redis: RedisClient) {}
 
   /**
-   * Idempotently create a partition's pending stream and its consumer group. MKSTREAM creates an
-   * empty stream if absent; a repeat call returns BUSYGROUP, which is swallowed. The group starts at
-   * `0` (not `$`) so a recovery role that boots AFTER units are already prepared still consumes the
-   * whole unresolved backlog — finalize/abort remove their stream entries, so only unresolved units
-   * remain to re-deliver.
+   * Idempotent. The group starts at `0`, not `$`, so a sweep that starts after units were prepared
+   * still gets the whole unresolved backlog.
    */
   async ensureGroup(partition: number): Promise<void> {
     try {
@@ -44,14 +41,12 @@ export class PendingIndex {
     }
   }
 
-  /** Create the consumer group on every one of the fixed 256 partition streams. */
   async ensureAllGroups(): Promise<void> {
     for (let partition = 0; partition < PENDING_PARTITION_COUNT; partition++) {
       await this.ensureGroup(partition);
     }
   }
 
-  /** Add one entry to the run's partition pending stream, returning the stream id. */
   async add(runId: string, fields: Record<string, string>): Promise<string> {
     const args: string[] = [];
     for (const [key, value] of Object.entries(fields)) {
@@ -60,11 +55,7 @@ export class PendingIndex {
     return (await this.redis.xadd(pendingStreamKeyForRun(runId), "*", ...args)) as string;
   }
 
-  /**
-   * A cheap depth/age summary for a partition's pending stream, for the recovery gauges: the number of
-   * still-unresolved prepared units (stream length; finalize/abort remove them) and the wall-clock ms
-   * of the oldest one, taken from its stream id. Two O(1) reads, never a full scan.
-   */
+  /** Unresolved unit count and oldest unit age, for the recovery gauges. Never a full scan. */
   async summary(partition: number): Promise<{ count: number; oldestMs?: number }> {
     const key = pendingStreamKey(partition);
     const [len, first] = await Promise.all([
@@ -76,7 +67,6 @@ export class PendingIndex {
     return { count: len as number, oldestMs };
   }
 
-  /** Enumerate a partition's pending entries in insertion order. */
   async enumerate(partition: number): Promise<PendingEntry[]> {
     const rows = (await this.redis.xrange(pendingStreamKey(partition), "-", "+")) as Array<
       [string, string[]]
@@ -84,11 +74,7 @@ export class PendingIndex {
     return rows.map(([id, flat]) => toEntry(id, flat));
   }
 
-  /**
-   * Deliver a partition's never-yet-delivered entries to this consumer via the recovery group. The
-   * entries move into the consumer's pending-entries list until XACKed, so a crash before ACK leaves
-   * them reclaimable by {@link autoclaim} (M4).
-   */
+  /** Delivered entries stay pending until settled, so {@link autoclaim} can reclaim them. */
   async readGroup(partition: number, consumer: string, count = 64): Promise<PendingEntry[]> {
     const reply = (await this.redis.xreadgroup(
       "GROUP",
@@ -106,9 +92,8 @@ export class PendingIndex {
   }
 
   /**
-   * Re-claim entries a dead or slow consumer left pending past `minIdleMs`, reassigning them to this
-   * consumer. Together with idempotent finalize/abort this gives at-least-once recovery without an
-   * exclusive partition lease (M4).
+   * Reclaims entries idle for more than `minIdleMs`. With the idempotent finalize and abort, this
+   * gives at-least-once recovery across crashes and lease handovers.
    */
   async autoclaim(
     partition: number,
@@ -117,10 +102,8 @@ export class PendingIndex {
     cursor = "0",
     count = 64
   ): Promise<{ cursor: string; entries: PendingEntry[] }> {
-    // XAUTOCLAIM scans at most `count` entries per call starting at `cursor` and returns the next
-    // cursor to resume from; passing "0" every time re-scans only the front of a large PEL and can
-    // starve later entries. Thread the returned cursor across recovery passes (Redis returns "0" at
-    // the end, which wraps naturally to the beginning).
+    // Callers must pass the returned cursor to the next call. Always "0" rescans only the front of
+    // a large pending list and starves later entries.
     const reply = (await this.redis.xautoclaim(
       pendingStreamKey(partition),
       RECOVERY_CONSUMER_GROUP,
@@ -136,14 +119,9 @@ export class PendingIndex {
   }
 
   /**
-   * Atomically settle one resolved entry: XACK it out of the recovery group's pending list AND XDEL it
-   * from the stream, in a single Lua op (both target the same partition stream, so one key / one slot).
-   * A separate ack() then remove() could crash between the two, leaving the entry ACKed-but-undeleted
-   * (a leaked stream member) or, on a redelivery, deleted-but-still-pending. The single op leaves only
-   * the fully-settled or fully-unsettled state. Idempotent: a repeat call (lost reply, redelivery)
-   * XACKs/XDELs nothing and is a no-op, so re-settling is always safe. finalize/abort still XDEL their
-   * own entries inside their Lua; this settles the rest (notably a quarantine, which leaves its entry
-   * behind) so the recovery stream stays bounded with no separate sweeper.
+   * XACK and XDEL in one script, so a crash cannot leave an entry acked but not deleted, or the
+   * reverse. Idempotent. Finalize and abort delete their own entries. This removes the entries
+   * that stay after other outcomes, for example a quarantine, so the stream stays bounded.
    */
   async settle(partition: number, id: string): Promise<void> {
     await this.redis.eval(

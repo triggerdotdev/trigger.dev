@@ -64,7 +64,7 @@ export class EnqueueSystem {
       metadata?: Prisma.JsonValue;
     };
     previousSnapshotId?: string;
-    /** Server-to-store birth evidence. Not published to workers or exposed through an API. */
+    /** Server-side only: never published to workers or exposed through an API. */
     snapshotRoute?: SnapshotRouteWire;
     batchId?: string;
     checkpoint?: Pick<TaskRunCheckpoint, "id" | "type">;
@@ -77,30 +77,23 @@ export class EnqueueSystem {
     runnerId?: string;
     skipRunLock?: boolean;
     /**
-     * When true, arm the run's TTL on the queued message. Set by every path that is the run's
-     * first real entry into the queue: trigger, a delayed run coming due, and the pending-version
-     * promotion. Waitpoint and checkpoint re-enqueues must not re-arm it. Default false.
+     * Arms the run's TTL. Set only on the run's first real entry into the queue: trigger, a
+     * delayed run coming due, and the pending-version promotion. Re-enqueues must not re-arm it.
      */
     includeTtl?: boolean;
     /**
-     * When true, the scheduling-delay clock starts at the run's queue position (its
-     * `queueTimestamp`, which for a delayed run is `delayUntil`) rather than now. Set only where
-     * the run was genuinely eligible to execute from that moment: trigger and a delayed run
-     * coming due.
-     *
-     * Deliberately separate from `includeTtl`, because the two disagree on the pending-version
-     * promotion: that promotion is the run's first entry into the queue (so TTL arms there), but
-     * the run was NOT runnable while it waited for a worker version, and its `queueTimestamp`
-     * still holds the original trigger time. Anchoring there would bill the whole wait-for-deploy
-     * period as queue scheduling delay. Default false, so a new call site has to opt in.
+     * Starts the scheduling-delay clock at `queueTimestamp` (`delayUntil` for a delayed run), not
+     * now. Set only where the run was eligible from that moment: trigger and a delayed run coming
+     * due. It is separate from `includeTtl` because of the pending-version promotion: the run was
+     * not runnable while it waited for a worker version, so anchoring there would bill the
+     * wait-for-deploy time as queue delay.
      */
     anchorEligibilityAtQueuePosition?: boolean;
-    /** When true, allow the queue to push directly to worker queue if concurrency is available. */
+    /** Lets the queue push straight to the worker queue when concurrency is available. */
     enableFastPath?: boolean;
     /**
-     * When set (inside `runStore.runInTransaction`), the snapshot write goes through this tx-bound
-     * store so the promote+snapshot pair is atomic on the run's owning DB. The Redis enqueue
-     * below is not part of that transaction.
+     * A tx-bound store from `runStore.runInTransaction`, so the snapshot write commits with the
+     * caller's writes. The queue publish is not part of that transaction.
      */
     store?: RunStore;
   }) {
@@ -146,11 +139,7 @@ export class EnqueueSystem {
     });
   }
 
-  /**
-   * Publishes the run to the RunQueue without writing an execution snapshot. Callers that already
-   * hold a `QUEUED` snapshot (the trigger path writes one inside the run-create transaction) use
-   * this so the run does not pay for a second snapshot write.
-   */
+  /** Publishes without a snapshot write, for callers that already hold a `QUEUED` snapshot. */
   public async publishRun({
     run,
     env,
@@ -168,7 +157,7 @@ export class EnqueueSystem {
     includeTtl?: boolean;
     /** See `enqueueRun`. */
     anchorEligibilityAtQueuePosition?: boolean;
-    /** When true, allow the queue to push directly to worker queue if concurrency is available. */
+    /** See `enqueueRun`. */
     enableFastPath?: boolean;
   }) {
     const workerQueue = workerQueueForPublish(run, env, checkpoint);
@@ -177,8 +166,6 @@ export class EnqueueSystem {
     const timestamp = queuePositionMs - run.priorityMs;
     const eligibleAtMs = anchorEligibilityAtQueuePosition ? queuePositionMs : Date.now();
 
-    // Include TTL only when explicitly requested (first enqueue from trigger).
-    // Re-enqueues (waitpoint, checkpoint, delayed, pending version) must not add TTL.
     let ttlExpiresAt: number | undefined;
     if (includeTtl && run.ttl) {
       const expireAt = parseNaturalLanguageDuration(run.ttl);

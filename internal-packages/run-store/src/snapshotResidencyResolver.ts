@@ -1,33 +1,23 @@
 import type { StateVersionRead } from "./redisSnapshotStore.js";
 
-// The on-demand residency resolver: resolves a runId to exactly one immutable residency answer from
-// durable MemoryDB state when the operation has no preceding snapshot. Every durable read MUST
-// target the MemoryDB PRIMARY (never a replica): a
-// replica miss or a stale replica head cannot decide absence, residency, or the committed head. The
-// injected `store` is expected to hold a primary connection.
-
-/** The minimal MemoryDB-primary read surface the resolver needs. RedisSnapshotStore satisfies it. */
+/**
+ * The resolver's reads. The store must read the MemoryDB primary: a replica cannot decide absence,
+ * residency or the committed head.
+ */
 export interface SnapshotResidencyReads {
-  /** The birth residency stamped on the no-TTL `res` marker, or undefined when there is no marker. */
+  /** The `res` marker, or undefined. A mirrored marker expires with the run state. */
   readBirthResidency(runId: string): Promise<string | undefined>;
-  /** Run-state presence + versioned-namespace check: absent | known | unknown (unknown fails closed). */
   readStateVersion(runId: string): Promise<StateVersionRead>;
-  /**
-   * Pending-protocol state in one round trip: `prepared` (a prepared-but-unfinalized unit exists,
-   * surfacing pendingBirth) and `quarantined` (an unresolvable unit was moved aside, so the run fails
-   * closed and must never resolve to Postgres).
-   */
   readPendingState(runId: string): Promise<{ prepared: boolean; quarantined: boolean }>;
 }
 
 /**
- * The five-way resolution. `committed` carries the run's immutable residency and never means postgres
- * (postgres runs have no MemoryDB birth key); `absent` proves only a MemoryDB miss; `pendingBirth` must
- * trigger commit resolution + retry at the caller; `expired` is a redis-primary run whose snapshot
- * state aged out (never an empty Postgres success); `error` is fail-closed on any read failure.
+ * - `absent`: MemoryDB has nothing. This does not prove that the run is in Postgres.
+ * - `pendingBirth`: the caller must resolve the pending unit, then resolve again.
+ * - `expired`: a redis-primary run whose state aged out. Reads must fail, not read Postgres.
+ * - `error`: fail closed.
  *
- * `organizationId` is attached on a committed result WHEN a `resolveOrganizationId` is injected, so a
- * reader can dispatch on the run org's live dial without a separate organization query.
+ * `organizationId` is set only when `resolveOrganizationId` is injected.
  */
 export type SnapshotResidencyResolution =
   | { kind: "committed"; residency: "mirrored" | "redis-primary"; organizationId?: string }
@@ -38,7 +28,6 @@ export type SnapshotResidencyResolution =
 
 export type SnapshotResidencyResolverOptions = {
   store: SnapshotResidencyReads | (() => SnapshotResidencyReads);
-  /** Optional durable organization lookup for callers without server context. */
   resolveOrganizationId?: (runId: string) => Promise<string | undefined>;
 };
 
@@ -50,8 +39,6 @@ export class SnapshotResidencyResolver {
   }
 
   resolve(runId: string): Promise<SnapshotResidencyResolution> {
-    // No residency cache or TaskRun existence query. A miss proves only MemoryDB absence;
-    // Postgres residency is established by the caller's existing TRES metadata.
     return this.#resolveDurable(runId);
   }
 
@@ -64,18 +51,15 @@ export class SnapshotResidencyResolver {
         this.store.readBirthResidency(runId),
       ]);
     } catch {
-      // A MemoryDB error is NEVER a miss.
+      // A MemoryDB error is never a miss.
       return { kind: "error" };
     }
 
-    // An unknown state version fails closed, exactly like an unreadable key.
     if (state.kind === "unknown") return { kind: "error" };
 
     if (state.kind === "known") {
-      // Committed: a live run-state keyspace. Residency comes from the birth marker; a live keyspace
-      // with no valid marker is structurally invalid, so fail closed rather than guess.
+      // A live keyspace with no valid marker is invalid, so fail closed rather than guess.
       if (res === "mirrored" || res === "redis-primary") {
-        // A MemoryDB error reading the org is never a miss: fail closed, exactly like the state read.
         let organizationId: string | undefined;
         if (this.options.resolveOrganizationId) {
           try {
@@ -93,9 +77,7 @@ export class SnapshotResidencyResolver {
       return { kind: "error" };
     }
 
-    // No committed run-state. Read the pending-protocol state once. A quarantined run failed closed
-    // durably: it must NEVER resolve to absent/Postgres, so it is an error exactly like an unreadable
-    // key. A prepared-but-unfinalized birth is pendingBirth, distinct from a miss.
+    // A quarantined run must never resolve to absent, because absent can read Postgres.
     let pending: { prepared: boolean; quarantined: boolean };
     try {
       pending = await this.store.readPendingState(runId);
@@ -105,10 +87,9 @@ export class SnapshotResidencyResolver {
     if (pending.quarantined) return { kind: "error" };
     if (pending.prepared) return { kind: "pendingBirth" };
 
-    // Genuine miss: distinguish by the residency marker.
-    if (res === undefined) return { kind: "absent" }; // caller must establish a Postgres snapshot
-    if (res === "redis-primary") return { kind: "expired" }; // marker outlived aged-out state
-    if (res === "mirrored") return { kind: "absent" }; // mirrored after expiry reads Postgres
-    return { kind: "error" }; // unrecognized marker: fail closed
+    if (res === undefined) return { kind: "absent" };
+    if (res === "redis-primary") return { kind: "expired" }; // the marker outlived the state
+    if (res === "mirrored") return { kind: "absent" }; // Postgres holds the complete copy
+    return { kind: "error" };
   }
 }
