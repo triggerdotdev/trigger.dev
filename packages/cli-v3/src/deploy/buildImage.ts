@@ -2,6 +2,7 @@ import { logger } from "../utilities/logger.js";
 import { depot } from "@depot/cli";
 import { x } from "tinyexec";
 import type { BuildManifest, BuildRuntime } from "@trigger.dev/core/v3/schemas";
+import { isNodelessBunRuntime } from "@trigger.dev/core/v3/build";
 import { networkInterfaces } from "os";
 import { join } from "path";
 import { safeReadJSONFile } from "../utilities/fileSystem.js";
@@ -708,9 +709,18 @@ export type GenerateContainerfileOptions = {
   entrypoint: string;
 };
 
+// "bun" and "bun-legacy" are the same node + bun image
+const BUN_LEGACY_BASE_IMAGE =
+  "triggerdotdev/bun:1.3-node20-bookworm@sha256:445d326788a0ba252e93c3923546fc06c44a5c303a0f476821f3f677864e160f";
+const BUN_LEGACY_BUILD_IMAGE =
+  "triggerdotdev/bun:1.3-node20-bookworm-build@sha256:3fbcebfc0eb098f70d7b3d29e81b26f59ef1c21887703b85621e9cfe50ab7bce";
+
 // Prebuilt in base-images/; both maps must be bumped together, from one publish run
 export const BASE_IMAGE: Record<BuildRuntime, string> = {
-  bun: "triggerdotdev/bun:1.3-node20-bookworm@sha256:25b467196277b9d75a37773ee36d28b65ca81a6f41786f7d7d7f1fad95fb5a31",
+  bun: BUN_LEGACY_BASE_IMAGE,
+  "bun-legacy": BUN_LEGACY_BASE_IMAGE,
+  "bun-1.4":
+    "triggerdotdev/bun:1.4-bookworm@sha256:91c471435cbf097e2301f17ec456cc398dc9ce9161d2317f4bbbd9cdae73a86e",
   node: "triggerdotdev/node:24-bookworm@sha256:3cdc82425d824f1059fddd64b881947bf8edf4f0a5a9176145dba4889f8731ff",
   "node-22":
     "triggerdotdev/node:22-bookworm@sha256:40c519460ee37b51a8f3c6286e9aeb910231dec01e4d655fa8164cc28fbad5f2",
@@ -721,7 +731,10 @@ export const BASE_IMAGE: Record<BuildRuntime, string> = {
 };
 
 export const BUILD_IMAGE: Record<BuildRuntime, string> = {
-  bun: "triggerdotdev/bun:1.3-node20-bookworm-build@sha256:a2d5e6d1ec25946ca1d86abdd9ffb9c589376df64ee1b490c461607953931245",
+  bun: BUN_LEGACY_BUILD_IMAGE,
+  "bun-legacy": BUN_LEGACY_BUILD_IMAGE,
+  "bun-1.4":
+    "triggerdotdev/bun:1.4-bookworm-build@sha256:9b16175d5bd65d036beae9f04518c0b6c8327aa5d7855002188899fb6f9a7376",
   node: "triggerdotdev/node:24-bookworm-build@sha256:34a3f4554d1684e078b104bd2b7ba6743776ad9002ebceef707dee91fa629c41",
   "node-22":
     "triggerdotdev/node:22-bookworm-build@sha256:7a4395f00b0939040f17a988a5fa49c5386992f88bc1ba1dd2e35bec610cf735",
@@ -773,7 +786,9 @@ export async function generateContainerfile(options: GenerateContainerfileOption
     case "node-26": {
       return await generateNodeContainerfile(options);
     }
-    case "bun": {
+    case "bun":
+    case "bun-legacy":
+    case "bun-1.4": {
       return await generateBunContainerfile(options);
     }
   }
@@ -865,6 +880,10 @@ ${trustStoreHardening(options.image?.buildBase)}`;
 async function generateBunContainerfile(options: GenerateContainerfileOptions) {
   const { baseImage, buildStage, buildArgs, buildEnvVars, postInstallCommands, customization } =
     parseGenerateOptions(options);
+
+  // The node-less images have no node binary, so the run controller itself runs under bun.
+  // The legacy node + bun image keeps the controller on node.
+  const controllerBinary = isNodelessBunRuntime(options.runtime) ? "bun" : "node";
 
   return `# syntax=docker/dockerfile:1
 # check=skip=SecretsUsedInArgOrEnv
@@ -960,7 +979,7 @@ COPY --from=code --chown=bun:bun /app ./
 # Copy the index.json file from the indexer stage
 COPY --from=indexer --chown=bun:bun /app/index.json ./
 
-ENTRYPOINT [ "dumb-init", "node", "${options.entrypoint}" ]
+ENTRYPOINT [ "dumb-init", "${controllerBinary}", "${options.entrypoint}" ]
 CMD []
   `;
 }

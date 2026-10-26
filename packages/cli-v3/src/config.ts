@@ -7,6 +7,7 @@ import type {
 } from "@trigger.dev/core/v3";
 import type { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import {
+  isBunRuntime,
   DEFAULT_RUNTIME,
   deprecatedRuntimeReplacement,
   isDeprecatedConfigRuntime,
@@ -367,10 +368,10 @@ function validateConfig(config: TriggerConfig, warn = true) {
     );
   }
 
-  if (config.runtime && config.runtime === "bun") {
+  if (isBunRuntime(config.runtime)) {
     warn &&
       prettyWarning(
-        `The "bun" runtime is currently experimental, and certain features may not work, especially opentelemetry instrumentation of 3rd party packages.`
+        `The "${config.runtime}" runtime is currently experimental, and certain features may not work, especially opentelemetry instrumentation of 3rd party packages.`
       );
   }
 }

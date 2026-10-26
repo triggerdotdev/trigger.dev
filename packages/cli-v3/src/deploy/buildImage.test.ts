@@ -51,8 +51,18 @@ const images: Array<[BuildRuntime, string, string]> = [
   ],
   [
     "bun",
-    "triggerdotdev/bun:1.3-node20-bookworm@sha256:25b467196277b9d75a37773ee36d28b65ca81a6f41786f7d7d7f1fad95fb5a31",
-    "triggerdotdev/bun:1.3-node20-bookworm-build@sha256:a2d5e6d1ec25946ca1d86abdd9ffb9c589376df64ee1b490c461607953931245",
+    "triggerdotdev/bun:1.3-node20-bookworm@sha256:445d326788a0ba252e93c3923546fc06c44a5c303a0f476821f3f677864e160f",
+    "triggerdotdev/bun:1.3-node20-bookworm-build@sha256:3fbcebfc0eb098f70d7b3d29e81b26f59ef1c21887703b85621e9cfe50ab7bce",
+  ],
+  [
+    "bun-legacy",
+    "triggerdotdev/bun:1.3-node20-bookworm@sha256:445d326788a0ba252e93c3923546fc06c44a5c303a0f476821f3f677864e160f",
+    "triggerdotdev/bun:1.3-node20-bookworm-build@sha256:3fbcebfc0eb098f70d7b3d29e81b26f59ef1c21887703b85621e9cfe50ab7bce",
+  ],
+  [
+    "bun-1.4",
+    "triggerdotdev/bun:1.4-bookworm@sha256:91c471435cbf097e2301f17ec456cc398dc9ce9161d2317f4bbbd9cdae73a86e",
+    "triggerdotdev/bun:1.4-bookworm-build@sha256:9b16175d5bd65d036beae9f04518c0b6c8327aa5d7855002188899fb6f9a7376",
   ],
 ];
 
@@ -84,6 +94,55 @@ describe("generateContainerfile", () => {
 
       expect(containerfile).toContain(`"${indexScript}" ]`);
       expect(containerfile).not.toMatch(/^RUN (node|bun run) \//m);
+    }
+  );
+
+  it.each(["bun", "bun-legacy", "bun-1.4"] as BuildRuntime[])(
+    "builds %s on a bun image with the bun user",
+    async (runtime) => {
+      const containerfile = await generateContainerfile({
+        runtime,
+        build: {},
+        image: undefined,
+        indexScript: "index.js",
+        entrypoint: "entrypoint.js",
+      });
+
+      expect(containerfile).toContain(`FROM ${BASE_IMAGE[runtime]} AS base`);
+      expect(containerfile).toContain("USER bun");
+      expect(containerfile).toContain("RUN bun install --production --no-save");
+      expect(containerfile).toContain(`RUN [ "bun", "run", "index.js" ]`);
+    }
+  );
+
+  it.each(["bun", "bun-legacy"] as BuildRuntime[])(
+    "keeps the run controller on node for the %s node + bun image",
+    async (runtime) => {
+      const containerfile = await generateContainerfile({
+        runtime,
+        build: {},
+        image: undefined,
+        indexScript: "index.js",
+        entrypoint: "entrypoint.js",
+      });
+
+      expect(containerfile).toContain(`ENTRYPOINT [ "dumb-init", "node", "entrypoint.js" ]`);
+    }
+  );
+
+  it.each(["bun-1.4"] as BuildRuntime[])(
+    "runs the run controller under bun on the node-less %s image",
+    async (runtime) => {
+      const containerfile = await generateContainerfile({
+        runtime,
+        build: {},
+        image: undefined,
+        indexScript: "index.js",
+        entrypoint: "entrypoint.js",
+      });
+
+      expect(containerfile).toContain(`ENTRYPOINT [ "dumb-init", "bun", "entrypoint.js" ]`);
+      expect(containerfile).not.toContain(`"dumb-init", "node"`);
     }
   );
 
@@ -353,7 +412,7 @@ describe("generateContainerfile", () => {
     expect(repair).toBeGreaterThan(instructions);
   });
 
-  it.each(["node", "bun"] as BuildRuntime[])(
+  it.each(["node", "bun-legacy", "bun-1.4"] as BuildRuntime[])(
     "splits node_modules and app code into separate layers for %s",
     async (runtime) => {
       const containerfile = await generateContainerfile({
@@ -364,7 +423,7 @@ describe("generateContainerfile", () => {
         entrypoint: "entrypoint.js",
       });
 
-      const user = runtime === "bun" ? "bun:bun" : "node:node";
+      const user = runtime.startsWith("bun") ? "bun:bun" : "node:node";
 
       expect(containerfile).toContain("FROM scratch AS code");
       expect(containerfile).toContain("COPY --from=build --exclude=node_modules /app /app");
@@ -377,7 +436,7 @@ describe("generateContainerfile", () => {
     }
   );
 
-  it.each(["node", "bun"] as BuildRuntime[])(
+  it.each(["node", "bun-legacy"] as BuildRuntime[])(
     "orders post-install commands, the node_modules guard, and the code stage for %s",
     async (runtime) => {
       const containerfile = await generateContainerfile({

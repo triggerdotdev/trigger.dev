@@ -21,7 +21,11 @@ import { Evt } from "evt";
 import { type ChildProcess, fork } from "node:child_process";
 import { chalkError, chalkGrey, chalkRun, prettyPrintDate } from "../utilities/cliOutput.js";
 
-import { execOptionsForRuntime, execPathForRuntime } from "@trigger.dev/core/v3/build";
+import {
+  execOptionsForRuntime,
+  execPathForRuntime,
+  isBunRuntime,
+} from "@trigger.dev/core/v3/build";
 import { nodeOptionsWithMaxOldSpaceSize } from "@trigger.dev/core/v3/machines";
 import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import { logger } from "../utilities/logger.js";
@@ -157,11 +161,16 @@ export class TaskRunProcess {
       cwd,
     });
 
+    // bun accepts --no-warnings but rejects node's --no-warnings=<type> form at startup
+    const noWarningsFlag = isBunRuntime(workerManifest.runtime)
+      ? "--no-warnings"
+      : "--no-warnings=ExperimentalWarning";
+
     this._child = fork(workerManifest.workerEntryPoint, executorArgs(workerManifest), {
       stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
       cwd,
       env: fullEnv,
-      execArgv: ["--trace-uncaught", "--no-warnings=ExperimentalWarning"],
+      execArgv: ["--trace-uncaught", noWarningsFlag],
       execPath: execPathForRuntime(workerManifest.runtime),
       serialization: "json",
     });
