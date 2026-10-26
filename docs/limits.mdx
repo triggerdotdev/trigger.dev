@@ -193,13 +193,14 @@ A waiter can wait for up to 90 days.
 
 ## Webhook processing concurrency
 
-This limit controls how many webhook deliveries and waiter resumes are processed at once per environment. More wait their turn. It is not a limit on the runs those deliveries start, which use your normal [concurrency limits](#concurrency-limits).
+This limit controls how many webhook deliveries and waiter resumes are processed at once per environment. Additional deliveries wait their turn. It is not a limit on the runs those deliveries start, which use your normal [concurrency limits](#concurrency-limits).
 
 | Pricing tier | Limit                    |
 | :----------- | :----------------------- |
 | Free         | 5 concurrent deliveries  |
 | Hobby        | 10 concurrent deliveries |
 | Pro          | 50 concurrent deliveries |
+| Enterprise   | Set per organization     |
 
 ## Webhook delivery retention
 
@@ -212,7 +213,7 @@ How long [deliveries](/webhooks/deliveries) stay visible in the dashboard and th
 | Pro          | 30 days                      |
 | Enterprise   | 90, 180 or 365 days          |
 
-Deliveries are stored for at least 30 days, so upgrading your plan shows older deliveries right away.
+By default, deliveries are stored for at least 30 days, so upgrading your plan shows older deliveries that are still stored. An organization can ask us to store deliveries only for its retention period instead. Deliveries past that period are then deleted and can't be shown again after an upgrade.
 
 ## Webhook subscribers
 

@@ -85,9 +85,9 @@ A request must pass verification before anything else happens. Provider handshak
 
 ## Pricing and limits
 
-Webhooks have no separate charge on Trigger.dev Cloud. Receiving, verifying, filtering and recording deliveries is included in every plan. The runs a delivery starts or resumes are billed like any other run, by compute time. See [pricing](https://trigger.dev/pricing).
+Webhooks have no separate charge on Trigger.dev Cloud. Receiving, verifying, filtering and recording deliveries is included in every plan. The runs a delivery starts or resumes are billed like any other run: a per-run invocation cost plus compute time. See [pricing](https://trigger.dev/pricing).
 
-A delivery that no subscriber's filter matches starts no run, so it uses no compute. A run [waiting](/webhooks/waiters) for a webhook is suspended, so it uses no compute until the webhook arrives.
+A delivery that no subscriber's filter matches starts no run for any subscriber, so it costs nothing. A run already waiting for that webhook still resumes. A run [waiting](/webhooks/waiters) for a webhook is suspended, so it uses no compute until the webhook arrives.
 
 Each plan sets limits on the ingest rate, waiting runs, processing concurrency and how long deliveries are kept. See [Limits](/limits#webhook-ingest-rate-limits).
 

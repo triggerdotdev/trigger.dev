@@ -192,7 +192,7 @@ Waiting saves you compute, but it doesn't always free up concurrency — see [Wa
 
 ## Filter webhooks before they start runs
 
-Give each [webhook](/webhooks/overview) subscriber a [filter](/webhooks/filters) so it only runs for the events it handles. A delivery that no filter matches is recorded as `FILTERED` and starts no run, so you aren't charged compute for it. Receiving webhooks has no separate charge.
+Give each [webhook](/webhooks/overview) subscriber a [filter](/webhooks/filters) so it only runs for the events it handles. A delivery that no subscriber's filter matches starts no run for any subscriber, so you aren't charged for it. Filters only apply to subscribers: a run [waiting](/webhooks/waiters) for a matching webhook still resumes and uses compute. Receiving webhooks has no separate charge.
 
 ## Use debounce to consolidate multiple triggers
 
