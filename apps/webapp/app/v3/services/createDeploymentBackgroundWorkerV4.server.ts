@@ -19,17 +19,25 @@ import { recordDeploymentFinished } from "./recordDeploymentFinished.server";
 import { env } from "~/env.server";
 import { webhookPrisma } from "~/db.server";
 import { DeploymentService } from "./deployment.server";
+import {
+  captureDeploymentIndex,
+  getDeploymentIndexStore,
+  type DeploymentIndexStore,
+} from "../deploymentIndex.server";
 
 export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
   private readonly _taskMetaCache: TaskMetadataCache;
+  private readonly _deploymentIndexStore: DeploymentIndexStore | undefined;
 
   constructor(
     prisma?: PrismaClientOrTransaction,
     replica?: PrismaClientOrTransaction,
-    taskMetaCache: TaskMetadataCache = taskMetadataCacheInstance
+    taskMetaCache: TaskMetadataCache = taskMetadataCacheInstance,
+    deploymentIndexStore: DeploymentIndexStore | undefined = getDeploymentIndexStore()
   ) {
     super(prisma, replica);
     this._taskMetaCache = taskMetaCache;
+    this._deploymentIndexStore = deploymentIndexStore;
   }
 
   public async call(
@@ -118,6 +126,32 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
           projectId: environment.projectId,
         });
         return;
+      }
+
+      const [indexError, indexReference] = await tryCatch(
+        captureDeploymentIndex(
+          environment,
+          deployment,
+          body,
+          this._deploymentIndexStore,
+          this._prisma
+        )
+      );
+
+      if (indexError) {
+        logger.error("Error storing deployment index", {
+          error: indexError,
+          deploymentId,
+          environmentId: environment.id,
+        });
+
+        const serviceError = new ServiceValidationError(
+          "Failed to store the deployment index, so this deployment failed. Deploy again to retry."
+        );
+
+        await this.#failBackgroundWorkerDeployment(deployment, serviceError, environment);
+
+        throw serviceError;
       }
 
       const [findOrCreateError, backgroundWorker] = await tryCatch(
@@ -285,6 +319,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
           type: backgroundWorker.engine === "V2" ? "MANAGED" : "V1",
           // runtime is already set when the deployment is created, we only need to set the version
           runtimeVersion: body.metadata.runtimeVersion,
+          ...indexReference,
         },
       });
 

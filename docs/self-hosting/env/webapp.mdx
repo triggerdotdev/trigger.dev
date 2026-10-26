@@ -123,6 +123,14 @@ mode: "wide"
 | `ARTIFACTS_OBJECT_STORE_ACCESS_KEY_ID`           | No       | —                     | Optional artifacts store access key.                                                                               |
 | `ARTIFACTS_OBJECT_STORE_SECRET_ACCESS_KEY`       | No       | —                     | Optional artifacts store secret key.                                                                               |
 | `ARTIFACTS_OBJECT_STORE_REGION`                  | No       | —                     | Optional artifacts store region.                                                                                   |
+| `DEPLOYMENT_INDEX_OBJECT_STORE_BASE_URL`         | No       | —                     | Optional separate store for deployment index snapshots. If not set, uses main object store.                        |
+| `DEPLOYMENT_INDEX_OBJECT_STORE_BUCKET`           | No       | —                     | Deployment index store bucket. Required together with the base URL.                                                |
+| `DEPLOYMENT_INDEX_OBJECT_STORE_ACCESS_KEY_ID`    | No       | —                     | Deployment index store access key.                                                                                 |
+| `DEPLOYMENT_INDEX_OBJECT_STORE_SECRET_ACCESS_KEY` | No       | —                     | Deployment index store secret key.                                                                                 |
+| `DEPLOYMENT_INDEX_OBJECT_STORE_REGION`           | No       | —                     | Deployment index store region.                                                                                     |
+| `DEPLOYMENT_INDEX_OBJECT_STORE_SERVICE`          | No       | s3                    | Deployment index store service.                                                                                    |
+| `DEPLOYMENT_INDEX_UPLOAD_MAX_ATTEMPTS`           | No       | 4                     | Attempts to store a deployment's index before the deploy fails.                                                    |
+| `DEPLOYMENT_INDEX_CAPTURE_ENABLED`               | No       | false                 | Set to true to store each deployment's full index in object storage when it deploys. |
 | **Alerts**                                       |          |                       |                                                                                                                    |
 | `ORG_SLACK_INTEGRATION_CLIENT_ID`                | No       | —                     | Slack client ID. Required for Slack alerts.                                                                        |
 | `ORG_SLACK_INTEGRATION_CLIENT_SECRET`            | No       | —                     | Slack client secret. Required for Slack alerts.                                                                    |

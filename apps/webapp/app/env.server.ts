@@ -995,6 +995,17 @@ const EnvironmentSchema = z
     ARTIFACTS_OBJECT_STORE_ACCESS_KEY_ID: z.string().optional(),
     ARTIFACTS_OBJECT_STORE_SECRET_ACCESS_KEY: z.string().optional(),
     ARTIFACTS_OBJECT_STORE_REGION: z.string().optional(),
+
+    // Dedicated store for full deployment index snapshots. Unset falls back to the OBJECT_STORE_* provider.
+    DEPLOYMENT_INDEX_OBJECT_STORE_BASE_URL: z.string().optional(),
+    DEPLOYMENT_INDEX_OBJECT_STORE_BUCKET: z.string().optional(),
+    DEPLOYMENT_INDEX_OBJECT_STORE_ACCESS_KEY_ID: z.string().optional(),
+    DEPLOYMENT_INDEX_OBJECT_STORE_SECRET_ACCESS_KEY: z.string().optional(),
+    DEPLOYMENT_INDEX_OBJECT_STORE_REGION: z.string().optional(),
+    DEPLOYMENT_INDEX_OBJECT_STORE_SERVICE: z.string().default("s3"),
+    DEPLOYMENT_INDEX_UPLOAD_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(4),
+    // Default for the deploymentIndexCaptureEnabled flag; a global flag row overrides it.
+    DEPLOYMENT_INDEX_CAPTURE_ENABLED: BoolEnv.default(false),
     EVENTS_BATCH_SIZE: z.coerce.number().int().default(100),
     EVENTS_BATCH_INTERVAL: z.coerce.number().int().default(1000),
     EVENTS_DEFAULT_LOG_RETENTION: z.coerce.number().int().default(7),

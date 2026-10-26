@@ -2467,6 +2467,12 @@ model WorkerDeployment {
   /// Key of the microVM template prebuilt from this deployment's image, set when the builder succeeds
   templateKey    String?
 
+  /// Object key of the full index snapshot in the deployment index store. Set only after the upload succeeds.
+  indexObjectKey     String?
+  /// sha256 hex of the snapshot's uncompressed JSON
+  indexSha256        String?
+  indexFormatVersion Int?
+
   externalBuildData   Json?
   buildServerMetadata Json?
   /// Encrypted build-time env vars for pre-bundled (fromBundle) deploys, as an
