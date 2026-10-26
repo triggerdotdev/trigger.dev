@@ -7,6 +7,7 @@ import {
   FeatureFlagCatalog,
   GLOBAL_LOCKED_FLAGS,
   GRACED_FLAG_GROUPS,
+  parseStoredOrgFlags,
   validatePartialFeatureFlags,
 } from "~/v3/featureFlags";
 import { env } from "~/env.server";
@@ -400,10 +401,8 @@ export function mergeOrgFeatureFlags(
   globalFlags: Partial<FeatureFlagCatalog>,
   orgFeatureFlags: unknown
 ) {
-  const parsed = orgFeatureFlags
-    ? validatePartialFeatureFlags(orgFeatureFlags as Record<string, unknown>)
-    : ({ success: false } as const);
-  return { ...globalFlags, ...(parsed.success ? parsed.data : {}) };
+  const { valid } = parseStoredOrgFlags(orgFeatureFlags);
+  return { ...globalFlags, ...valid };
 }
 
 /**

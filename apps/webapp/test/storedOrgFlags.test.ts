@@ -1,3 +1,4 @@
+import { mergeOrgFeatureFlags } from "~/v3/featureFlags.server";
 import { describe, expect, it } from "vitest";
 import {
   FEATURE_FLAG,
@@ -92,5 +93,22 @@ describe("isUnchangedInvalidFlag", () => {
   it("is false when nothing invalid is stored for the key", () => {
     expect(isUnchangedInvalidFlag(KEY, { [KEY]: { x: null } }, undefined)).toBe(false);
     expect(isUnchangedInvalidFlag(KEY, { [KEY]: { x: null } }, {})).toBe(false);
+  });
+});
+
+describe("mergeOrgFeatureFlags", () => {
+  it("keeps valid org overrides when one stored flag value is invalid", () => {
+    const globalFlags = {
+      [FEATURE_FLAG.hasLogsPageAccess]: false,
+      [FEATURE_FLAG.realtimeBackend]: "redis" as const,
+    };
+    const orgFeatureFlags = {
+      [FEATURE_FLAG.hasLogsPageAccess]: true,
+      [FEATURE_FLAG.realtimeBackend]: "not-a-backend",
+    };
+
+    const merged = mergeOrgFeatureFlags(globalFlags, orgFeatureFlags);
+    expect(merged[FEATURE_FLAG.hasLogsPageAccess]).toBe(true);
+    expect(merged[FEATURE_FLAG.realtimeBackend]).toBe("redis");
   });
 });

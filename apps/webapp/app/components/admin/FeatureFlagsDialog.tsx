@@ -15,6 +15,7 @@ import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { cn } from "~/utils/cn";
 import {
   FEATURE_FLAG,
+  derivedFlagsClearedWith,
   ORG_LOCKED_FLAG_EFFECT,
   ORG_LOCKED_FLAGS,
   isUnchangedInvalidFlag,
@@ -96,7 +97,9 @@ export function FeatureFlagsDialog({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [unlocked, setUnlocked] = useState(false);
 
-  const isLocked = (key: string) => !unlocked && ORG_LOCKED_FLAGS.includes(key);
+  const isLocked = (key: string) =>
+    (!unlocked || ORG_LOCKED_FLAG_EFFECT[key as FeatureFlagKey] === "derived") &&
+    ORG_LOCKED_FLAGS.includes(key);
 
   useEffect(() => {
     if (open && orgId) {
@@ -148,6 +151,9 @@ export function FeatureFlagsDialog({
     setOverrides((prev) => {
       const next = { ...prev };
       delete next[key];
+      for (const derivedKey of derivedFlagsClearedWith(key)) {
+        delete next[derivedKey];
+      }
       return next;
     });
   };
