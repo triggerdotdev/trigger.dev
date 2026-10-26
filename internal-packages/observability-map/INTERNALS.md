@@ -261,7 +261,7 @@ scoping, the same way `try { String(0); }` reads as error handling and for the s
 credits.
 
 An `ability.can(...)` call in the handler is deliberately not a third way to be scoped.
-`apps/webapp/CLAUDE.md` says why: the OSS fallback ability is permissive
+`apps/webapp/AGENTS.md` says why: the OSS fallback ability is permissive
 (`internal-packages/rbac/src/fallback.ts` returns `permissiveAbility` for a PAT and
 `buildFallbackAbility(user.admin)` for a session, neither of which reads org membership), so an
 ability check enforces the role while the membership-scoped query is the tenant floor.

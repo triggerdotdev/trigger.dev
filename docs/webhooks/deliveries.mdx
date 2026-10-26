@@ -4,10 +4,6 @@ description: "Inspect webhook payloads, where each delivery went, and the runs i
 sidebarTitle: "Deliveries and endpoints"
 ---
 
-import WebhooksBetaBanner from "/snippets/webhooks-beta-banner.mdx";
-
-<WebhooksBetaBanner />
-
 **A delivery records a verified webhook event and what happened to it at each subscriber.** Find deliveries on an endpoint's **Deliveries** tab. A run that a delivery triggered links back to it, and to its endpoint, from the run's **Detail** tab.
 
 ## Endpoints
@@ -85,7 +81,14 @@ Trigger.dev uses the endpoint and idempotency key to deduplicate incoming events
 
 A retry after the delivery window expires can create another delivery record. If the task-run idempotency window is still active, routing returns the existing run instead of starting another one.
 
-When the source maps a provider event ID, that ID becomes the key. For example, Stripe uses the event body's `id`, and GitHub uses the `X-GitHub-Delivery` header.
+When the source maps a provider event ID, that ID becomes the key, so the provider's own retries of an event are recognised as duplicates:
+
+| Key | Sources |
+| --- | --- |
+| A header | GitHub (`X-GitHub-Delivery`), Svix and Autumn (`svix-id`), Standard Webhooks, Loops and Granola (`webhook-id`), Linear (`Linear-Delivery`), PagerDuty (`X-Webhook-Id`), Jira (`X-Atlassian-Webhook-Identifier`), Zendesk (`X-Zendesk-Webhook-Invocation-Id`), Attio (`Idempotency-Key`), Shopify (`X-Shopify-Webhook-Id`), Hookdeck (`X-Hookdeck-Eventid`, or `<prefix>-eventid` with a custom header prefix) |
+| A body field | Stripe, Notion, Vercel, Intercom, WorkOS, Metronome, Mux, Langfuse and Plain (`id`), Square, Slack and Typeform (`event_id`), Firecrawl (`webhookId`) |
+
+The other named sources (Zoom, Calendly, Sentry, DocuSign, ElevenLabs, Vapi, Retell, Tailscale, Infisical, PlanetScale, Supabase, Discord) use the fallback below.
 
 If the source doesn't map an event ID, the key is derived from the raw body, timestamp, and signature. A retry with a different timestamp or signature can therefore produce a different key. For a [custom source](/webhooks/sources#custom-providers), set `idempotencyField` to a stable event identifier when the provider supplies one.
 

@@ -152,6 +152,11 @@ const ENVELOPE_LIMITS = {
 // caller-supplied value could throw inside pMap after the new block was installed.
 const SUPERSEDED_CLEANUP_CONCURRENCY = 10;
 
+// Bounds the concurrent per-id record reads a resume resolution issues. A resume reads one record
+// per distinct store-resident blocker; this caps the fan-out so a wide wait cannot open an
+// unbounded burst of Redis commands at once.
+const RESOLVER_READ_CONCURRENCY = 20;
+
 /** Thrown before any hashing, serialization or Redis call when a completion is too large. */
 export class WaitpointCompletionTooLargeError extends Error {
   constructor(
@@ -291,6 +296,17 @@ export function encodeCompletionForDelivery(
 ): EncodedWaitpointCompletion {
   return EncodedWaitpointCompletion.encode(completion, context);
 }
+
+/**
+ * One store-resident waitpoint as {@link WaitpointStoreCoordinator.readCompletedRecords} returns it.
+ * The completion stays the coordinator's OWN opaque {@link WaitpointCompletion}; the resolver, not the
+ * store, maps it to the frozen TRES record shape.
+ */
+export type WaitpointStoredRecord = {
+  status: WaitpointStatus;
+  record: WaitpointRecordInput;
+  completion?: WaitpointCompletion;
+};
 
 export type WatcherEntry = {
   runId: string;
@@ -574,9 +590,9 @@ export class WaitpointCompletionConflictError extends Error {
 }
 
 /**
- * How long a terminal record and a reclaimed run partition are retained. Aligned with the
- * 14-day terminal snapshot window on the TRES side, so a resume that needs to reread either
- * store finds both or neither.
+ * How long a terminal record and a reclaimed run partition are retained. Longer than the default
+ * TRES completed TTL (4 days, `RUN_ENGINE_SNAPSHOT_STORE_COMPLETED_TTL_MS`), so a resume that can
+ * still read its snapshots also finds this record.
  */
 export const DEFAULT_TERMINAL_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 
@@ -1872,6 +1888,46 @@ export class WaitpointStoreCoordinator {
       delivered: Number(reply[10]),
       fanoutFailures: Number(reply[11]),
     };
+  }
+
+  /**
+   * Read the frozen record + completion for a set of store-resident waitpoints, for the
+   * completed-waitpoint resolver.
+   *
+   * One `HMGET` per id, run concurrently: each waitpoint's keys carry the id as their own hash
+   * tag, so a pipeline or `MGET` would span cluster slots and be rejected under cluster mode.
+   *
+   * Returns ONLY the ids that are present. Absence is distinct from failure and is the caller's to
+   * fail loud on: a recognised store id missing from the store is an integrity error, never a
+   * signal to fall back to Postgres. A Redis error THROWS out of the `HMGET` and is never seen here
+   * as an absent record, so an availability failure can never be mistaken for a missing waitpoint.
+   */
+  async readCompletedRecords(ids: string[]): Promise<Map<string, WaitpointStoredRecord>> {
+    const out = new Map<string, WaitpointStoredRecord>();
+    const distinct = [...new Set(ids)];
+    await pMap(
+      distinct,
+      async (id) => {
+        const keys = waitpointKeys(id);
+        const [r, status, c] = await this.redis.hmget(keys.record, "r", "status", "c");
+        // No 'r' means no record hash under this id at all — absent, not an error.
+        if (r == null) {
+          return;
+        }
+        const record = parseJson<WaitpointRecordInput>(r);
+        if (!record) {
+          throw new Error(`Waitpoint ${id} is present in the store with no record blob`);
+        }
+        out.set(id, {
+          status: status === "COMPLETED" ? "COMPLETED" : "PENDING",
+          record,
+          completion: parseJson<WaitpointCompletion>(c ?? undefined),
+        });
+      },
+      { concurrency: RESOLVER_READ_CONCURRENCY }
+    );
+
+    return out;
   }
 
   #fanoutIndex(

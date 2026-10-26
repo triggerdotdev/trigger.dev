@@ -340,4 +340,109 @@ describe("RunsRepository (part 3/4)", () => {
       expect(productionRuns.runs[0].friendlyId).toBe("run_production");
     }
   );
+
+  replicationContainerTest(
+    "should filter runs by completion time with filterByCompletedAt",
+    async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
+      const { clickhouse } = await setupClickhouseReplication({
+        prisma,
+        databaseUrl: postgresContainer.getConnectionUri(),
+        clickhouseUrl: clickhouseContainer.getConnectionUrl(),
+        redisOptions,
+      });
+
+      const organization = await prisma.organization.create({
+        data: {
+          title: "test",
+          slug: "test",
+        },
+      });
+
+      const project = await prisma.project.create({
+        data: {
+          name: "test",
+          slug: "test",
+          organizationId: organization.id,
+          externalRef: "test",
+        },
+      });
+
+      const runtimeEnvironment = await prisma.runtimeEnvironment.create({
+        data: {
+          slug: "test",
+          type: "DEVELOPMENT",
+          projectId: project.id,
+          organizationId: organization.id,
+          apiKey: "test",
+          pkApiKey: "test",
+          shortcode: "test",
+        },
+      });
+
+      const day = 24 * 60 * 60 * 1000;
+      const to = Date.now();
+      const from = to - 60 * 60 * 1000;
+      const completedAt = new Date(from + 10 * 60 * 1000);
+
+      for (const [friendlyId, createdAt, runCompletedAt] of [
+        ["run_created_1d_before", new Date(from - day), completedAt],
+        ["run_created_2d_before", new Date(from - 2 * day), completedAt],
+        ["run_created_10d_before", new Date(from - 10 * day), completedAt],
+        ["run_created_31d_before", new Date(from - 31 * day), completedAt],
+        ["run_completed_before_from", new Date(from - 10 * day), new Date(from - day)],
+        ["run_not_completed", new Date(from - day), null],
+      ] as const) {
+        await prisma.taskRun.create({
+          data: {
+            friendlyId,
+            taskIdentifier: "my-task",
+            status: "COMPLETED_WITH_ERRORS",
+            createdAt,
+            completedAt: runCompletedAt,
+            payload: JSON.stringify({ foo: "bar" }),
+            traceId: friendlyId,
+            spanId: friendlyId,
+            queue: "test",
+            runtimeEnvironmentId: runtimeEnvironment.id,
+            projectId: project.id,
+            organizationId: organization.id,
+            environmentType: "DEVELOPMENT",
+            engine: "V2",
+          },
+        });
+      }
+
+      await setTimeout(1000);
+
+      const runsRepository = new RunsRepository({
+        prisma,
+        clickhouse,
+      });
+
+      const baseOptions = {
+        page: { size: 10 },
+        projectId: project.id,
+        environmentId: runtimeEnvironment.id,
+        organizationId: organization.id,
+        from,
+        to,
+      };
+
+      const byCompletedAt = await runsRepository.listRuns({
+        ...baseOptions,
+        filterByCompletedAt: true,
+      });
+
+      expect(byCompletedAt.runs.map((r) => r.friendlyId)).toEqual([
+        "run_created_1d_before",
+        "run_created_2d_before",
+        "run_created_10d_before",
+      ]);
+      expect(await runsRepository.countRuns({ ...baseOptions, filterByCompletedAt: true })).toBe(3);
+
+      const byCreatedAt = await runsRepository.listRuns(baseOptions);
+
+      expect(byCreatedAt.runs).toHaveLength(0);
+    }
+  );
 });

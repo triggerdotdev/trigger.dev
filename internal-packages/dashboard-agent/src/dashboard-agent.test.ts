@@ -3,7 +3,13 @@
 // register at module load.
 import { mockChatAgent, type MockChatAgentHarness } from "@trigger.dev/sdk/ai/test";
 
-import { convertToModelMessages, tool, type UIMessage } from "ai";
+import {
+  convertToModelMessages,
+  InvalidToolInputError,
+  NoSuchToolError,
+  tool,
+  type UIMessage,
+} from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { z } from "zod";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -29,7 +35,10 @@ import {
   sanitizeReplayedToolInputs,
   truncateEvalToolOutput,
   withNativeReasoningMetadata,
+  TOOL_INPUT_INVALID_MESSAGE,
+  TOOL_UNAVAILABLE_MESSAGE,
   TURN_FAILED_MESSAGE,
+  turnErrorReport,
   turnFailureMessageId,
   type DashboardAgentEvalPolicyCheck,
   type DashboardAgentStore,
@@ -51,8 +60,11 @@ import {
   userMessage,
 } from "./test-support";
 import { getSystemPrompt } from "./agent-runtime";
-import { systemPromptFor } from "./prompt-assembly";
-import { DASHBOARD_AGENT_WATCH_TOOL_NAMES } from "./tool-schemas";
+import { systemPromptFor, toolSchemasFor } from "./prompt-assembly";
+import {
+  DASHBOARD_AGENT_MONITORING_ALERT_TOOL_NAMES,
+  DASHBOARD_AGENT_WATCH_TOOL_NAMES,
+} from "./tool-schemas";
 import { buildDashboardAgentTools } from "./tools";
 
 describe("dashboardAgent (mock harness)", () => {
@@ -1099,13 +1111,13 @@ describe("the system prompt", () => {
   it("only carries the watch guidance when watches are enabled", async () => {
     for (const mode of ["assistant", "code"] as const) {
       const off = await getSystemPrompt(mode);
-      expect(off.text).not.toContain("Watches — telling the user later");
+      expect(off.text).not.toContain("Watches - telling the user later");
       expect(off.text).not.toContain("schedule_watch");
 
       expect(off.text).toBe(systemPromptFor(mode));
 
       const on = await getSystemPrompt(mode, { watchEnabled: true });
-      expect(on.text).toContain("Watches — telling the user later");
+      expect(on.text).toContain("Watches - telling the user later");
       expect(on.text).toContain("schedule_watch");
       // The turn's prompt is exactly what the head-start helper composes.
       expect(on.text).toBe(systemPromptFor(mode, { watchEnabled: true }));
@@ -1261,6 +1273,22 @@ describe("buildDashboardAgentTools", () => {
 
     const enabled = Object.keys(buildDashboardAgentTools({ watchEnabled: true }));
     for (const name of DASHBOARD_AGENT_WATCH_TOOL_NAMES) expect(enabled).toContain(name);
+  });
+
+  it("only registers the monitoring alert tools when alerts are enabled", () => {
+    for (const ctx of [{}, { watchEnabled: false }]) {
+      const names = Object.keys(buildDashboardAgentTools(ctx));
+      for (const name of DASHBOARD_AGENT_MONITORING_ALERT_TOOL_NAMES) {
+        expect(names).not.toContain(name);
+      }
+      const schemas = Object.keys(toolSchemasFor("assistant", ctx));
+      for (const name of DASHBOARD_AGENT_MONITORING_ALERT_TOOL_NAMES) {
+        expect(schemas).not.toContain(name);
+      }
+    }
+
+    const enabled = Object.keys(buildDashboardAgentTools({ watchEnabled: true }));
+    for (const name of DASHBOARD_AGENT_MONITORING_ALERT_TOOL_NAMES) expect(enabled).toContain(name);
   });
 
   it("render_view echoes a validated view spec back as its output", async () => {
@@ -2336,9 +2364,13 @@ describe("watch alert tools", () => {
     }
   }
 
-  it("list_alerts reads the project's subscriptions as the user", async () => {
+  it("list_watch_subscriptions reads the project's subscriptions as the user", async () => {
     const alerts = [{ id: "alert_1", type: "EMAIL", label: "k***@trigger.dev", enabled: true }];
-    const { result, requests } = await callAlertTool("list_alerts", {}, { body: { alerts } });
+    const { result, requests } = await callAlertTool(
+      "list_watch_subscriptions",
+      {},
+      { body: { alerts } }
+    );
 
     expect(requests).toHaveLength(1);
     expect(requests[0]?.url).toBe(
@@ -2360,9 +2392,9 @@ describe("watch alert tools", () => {
     enabled: true,
   };
 
-  it("create_alert posts the email channel and reports the created alert", async () => {
+  it("create_watch_subscription posts the email channel and reports the created alert", async () => {
     const { result, requests } = await callAlertTool(
-      "create_alert",
+      "create_watch_subscription",
       { email: "someone@example.com" },
       { body: CREATED_CHANNEL }
     );
@@ -2378,7 +2410,7 @@ describe("watch alert tools", () => {
 
     // With no email the host defaults to the user's account email, so the body carries
     // only the chat scope and the channel.
-    const noEmail = await callAlertTool("create_alert", {}, { body: CREATED_CHANNEL });
+    const noEmail = await callAlertTool("create_watch_subscription", {}, { body: CREATED_CHANNEL });
     expect(JSON.parse(String(noEmail.requests[0]?.init?.body))).toEqual({
       chatId: "chat_alerts",
       channel: "email",
@@ -2386,9 +2418,9 @@ describe("watch alert tools", () => {
   });
 
   // `code` is the key both alert routes send a 403 refusal under.
-  it("create_alert relays a 403 with the reason the host gave", async () => {
+  it("create_watch_subscription relays a 403 with the reason the host gave", async () => {
     const noEmailSetup = await callAlertTool(
-      "create_alert",
+      "create_watch_subscription",
       {},
       { status: 403, body: { error: "denied", code: "email_alerts_not_configured" } }
     );
@@ -2396,16 +2428,16 @@ describe("watch alert tools", () => {
     expect(noEmailSetup.result.error).toContain("dashboard");
 
     const flag = await callAlertTool(
-      "create_alert",
+      "create_watch_subscription",
       {},
       { status: 403, body: { error: "denied", code: "dashboard_agent_disabled" } }
     );
     expect(flag.result.error).toContain("aren't enabled here");
   });
 
-  it("create_alert relays the address refusal verbatim", async () => {
+  it("create_watch_subscription relays the address refusal verbatim", async () => {
     const refused = await callAlertTool(
-      "create_alert",
+      "create_watch_subscription",
       { email: "someone@else.com" },
       {
         status: 400,
@@ -2418,9 +2450,9 @@ describe("watch alert tools", () => {
     expect(refused.result.error).toBe("Alerts can only be sent to your own account email.");
   });
 
-  it("delete_alert deletes by id and surfaces a failure as text", async () => {
+  it("delete_watch_subscription deletes by id and surfaces a failure as text", async () => {
     const { result, requests } = await callAlertTool(
-      "delete_alert",
+      "delete_watch_subscription",
       { alertId: "alert_1" },
       { body: { ok: true } }
     );
@@ -2429,7 +2461,7 @@ describe("watch alert tools", () => {
     expect(result).toEqual({ deleted: true, alertId: "alert_1" });
 
     const missing = await callAlertTool(
-      "delete_alert",
+      "delete_watch_subscription",
       { alertId: "alert_gone" },
       { status: 404, body: { error: "No such alert." } }
     );
@@ -2438,9 +2470,9 @@ describe("watch alert tools", () => {
 
   it("the alert tools fail closed with no delegated token, without hitting the network", async () => {
     for (const [name, input] of [
-      ["list_alerts", {}],
-      ["create_alert", {}],
-      ["delete_alert", { alertId: "alert_1" }],
+      ["list_watch_subscriptions", {}],
+      ["create_watch_subscription", {}],
+      ["delete_watch_subscription", { alertId: "alert_1" }],
     ] as const) {
       const { result, requests } = await callAlertTool(
         name,
@@ -2638,5 +2670,128 @@ describe("the view-model tools don't echo the view back to the model", () => {
       type: "json",
       value: output,
     });
+  });
+});
+
+describe("a turn that calls a tool the chat does not have", () => {
+  let harness: MockChatAgentHarness | undefined;
+
+  afterEach(async () => {
+    await harness?.close();
+    harness = undefined;
+  });
+
+  it("records that the tool is missing, not a generic failure", async () => {
+    const { store } = fakeStore();
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_missing_tool",
+      clientData: CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentToolsKey, {
+          list_runs: tool({
+            description: "test double",
+            inputSchema: z.object({}),
+            execute: async () => ({ runs: [] }),
+          }),
+        });
+        set(
+          dashboardAgentModelKey,
+          mockModel([toolCallStep("update_alert_draft", {}), textStep("answered")])
+        );
+      },
+    });
+
+    const turn = await harness.sendMessage(userMessage("make it 200"));
+    const toolError = turn.chunks.find(
+      (chunk) => (chunk as { type?: string }).type === "tool-output-error"
+    ) as { errorText?: string } | undefined;
+    expect(toolError?.errorText).toBe(TOOL_UNAVAILABLE_MESSAGE);
+    await new Promise((r) => setTimeout(r, 30));
+
+    const stored = savedTranscript(store, "chat_missing_tool");
+    const failure = stored.find((message) => message.id === turnFailureMessageId(0));
+    expect(failure?.parts).toEqual([{ type: "text", text: TOOL_UNAVAILABLE_MESSAGE }]);
+  });
+});
+
+describe("a turn that calls a tool with invalid input", () => {
+  let harness: MockChatAgentHarness | undefined;
+
+  afterEach(async () => {
+    await harness?.close();
+    harness = undefined;
+  });
+
+  it("returns the error to the model instead of failing the turn", async () => {
+    const { store } = fakeStore();
+    const model = mockModel([
+      toolCallStep("update_alert_draft", { patch: "not a patch" }),
+      textStep("answered"),
+    ]);
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_invalid_tool_input",
+      clientData: CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentToolsKey, {
+          update_alert_draft: tool({
+            description: "test double",
+            inputSchema: z.object({ patch: z.object({ what: z.string() }) }),
+            execute: async () => ({ ok: true }),
+          }),
+        });
+        set(dashboardAgentModelKey, model);
+      },
+    });
+
+    const turn = await harness.sendMessage(userMessage("make it 200"));
+    const inputError = turn.chunks.find(
+      (chunk) => (chunk as { type?: string }).type === "tool-input-error"
+    ) as { errorText?: string } | undefined;
+    expect(inputError?.errorText).toBe(TOOL_INPUT_INVALID_MESSAGE);
+    expect(JSON.stringify(model.doStreamCalls[1]?.prompt)).toContain(
+      "Invalid input for tool update_alert_draft"
+    );
+    await new Promise((r) => setTimeout(r, 30));
+
+    const stored = savedTranscript(store, "chat_invalid_tool_input");
+    expect(stored.find((message) => message.id === turnFailureMessageId(0))).toBeUndefined();
+  });
+});
+
+describe("turnErrorReport", () => {
+  it("names the missing tool instead of masking it as a generic failure", () => {
+    const report = turnErrorReport(
+      new NoSuchToolError({ toolName: "update_alert_draft", availableTools: ["list_runs"] })
+    );
+    expect(report.text).toBe(TOOL_UNAVAILABLE_MESSAGE);
+    expect(report.fields).toMatchObject({
+      toolName: "update_alert_draft",
+      availableTools: ["list_runs"],
+    });
+  });
+
+  it("names the tool and its issues for invalid input", () => {
+    const parsed = z.object({ patch: z.object({}) }).safeParse({ patch: "x" });
+    const report = turnErrorReport(
+      new InvalidToolInputError({
+        toolName: "update_alert_draft",
+        toolInput: '{"patch":"x"}',
+        cause: parsed.error,
+      })
+    );
+    expect(report.text).toBe(TOOL_INPUT_INVALID_MESSAGE);
+    expect(report.failsTurn).toBe(false);
+    expect(report.fields).toMatchObject({
+      toolName: "update_alert_draft",
+      issues: [expect.objectContaining({ path: ["patch"] })],
+    });
+  });
+
+  it("keeps the generic text for any other error", () => {
+    const report = turnErrorReport(new Error("upstream_connect_error"));
+    expect(report.text).toBe(TURN_FAILED_MESSAGE);
+    expect(report.fields).toEqual({ error: "upstream_connect_error" });
   });
 });

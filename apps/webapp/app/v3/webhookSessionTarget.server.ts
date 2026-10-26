@@ -2,6 +2,10 @@ import { SessionTriggerConfig as SessionTriggerConfigSchema } from "@trigger.dev
 import { Prisma, type PrismaClient, type Session } from "@trigger.dev/database";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import type { SessionTriggerConfig } from "~/services/realtime/sessionRunManager.server";
+import {
+  isSafeSessionExternalId,
+  SESSION_EXTERNAL_ID_FOLD_ERROR,
+} from "~/services/realtime/sessionChannels.server";
 import { findOrCreateSession, findSessionByExternalId } from "~/services/realtime/sessions.server";
 
 export type WebhookSessionResolution =
@@ -25,6 +29,13 @@ export async function resolveWebhookSession(params: {
   db?: Pick<PrismaClient, "session">;
 }): Promise<WebhookSessionResolution> {
   const { environment, externalId, taskIdentifier, db } = params;
+
+  if (!isSafeSessionExternalId(externalId)) {
+    return {
+      kind: "rejected",
+      error: `Invalid session key: ${SESSION_EXTERNAL_ID_FOLD_ERROR}`,
+    };
+  }
 
   const existing = await findSessionByExternalId(environment, externalId, db);
   if (existing) {

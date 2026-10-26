@@ -20,6 +20,8 @@ import { type PrismaClientOrTransaction } from "~/db.server";
 import { boundedIn, type Prisma } from "@trigger.dev/database";
 type RunCursorRow = { runId: string; createdAt: number };
 
+const COMPLETED_AT_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
+
 /**
  * Re-throws a runs-list query error, converting a ClickHouse resource-limit rejection (execution
  * time or memory) into a typed {@link RunsListQueryError} so callers can surface an actionable 4xx
@@ -472,14 +474,40 @@ function applyRunFiltersToQueryBuilder<T>(
     });
   }
 
-  if (options.from) {
-    queryBuilder.where("created_at >= fromUnixTimestamp64Milli({from: Int64})", {
-      from: options.from,
-    });
-  }
+  if (options.filterByCompletedAt) {
+    if (options.to) {
+      queryBuilder.where("created_at <= fromUnixTimestamp64Milli({to: Int64})", { to: options.to });
+    }
 
-  if (options.to) {
-    queryBuilder.where("created_at <= fromUnixTimestamp64Milli({to: Int64})", { to: options.to });
+    if (options.from && options.to) {
+      queryBuilder.where("created_at >= fromUnixTimestamp64Milli({createdFrom: Int64})", {
+        createdFrom: options.from - COMPLETED_AT_LOOKBACK_MS,
+      });
+      queryBuilder.where(
+        "((completed_at >= fromUnixTimestamp64Milli({from: Int64}) AND completed_at <= fromUnixTimestamp64Milli({to: Int64})) OR (completed_at IS NULL AND created_at >= fromUnixTimestamp64Milli({from: Int64})))",
+        { from: options.from, to: options.to }
+      );
+    } else if (options.from) {
+      queryBuilder.where(
+        "(completed_at >= fromUnixTimestamp64Milli({from: Int64}) OR (completed_at IS NULL AND created_at >= fromUnixTimestamp64Milli({from: Int64})))",
+        { from: options.from }
+      );
+    } else if (options.to) {
+      queryBuilder.where(
+        "(completed_at <= fromUnixTimestamp64Milli({to: Int64}) OR completed_at IS NULL)",
+        { to: options.to }
+      );
+    }
+  } else {
+    if (options.from) {
+      queryBuilder.where("created_at >= fromUnixTimestamp64Milli({from: Int64})", {
+        from: options.from,
+      });
+    }
+
+    if (options.to) {
+      queryBuilder.where("created_at <= fromUnixTimestamp64Milli({to: Int64})", { to: options.to });
+    }
   }
 
   if (options.tasks && options.tasks.length > 0) {

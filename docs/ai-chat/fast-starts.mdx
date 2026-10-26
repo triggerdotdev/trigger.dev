@@ -80,7 +80,7 @@ export const myChat = chat.agent({
     if (preloaded) return; // Already initialized in onPreload
     // ... fallback initialization for non-preloaded runs
   },
-  run: async ({ messages, signal }) => {
+  run: async ({ messages, signal, streamText }) => {
     return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });

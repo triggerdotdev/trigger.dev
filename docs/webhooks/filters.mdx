@@ -4,10 +4,6 @@ description: "Choose which verified webhook events reach each subscriber, by pay
 sidebarTitle: "Filters"
 ---
 
-import WebhooksBetaBanner from "/snippets/webhooks-beta-banner.mdx";
-
-<WebhooksBetaBanner />
-
 **A filter selects which verified deliveries reach a subscriber.** Each subscriber on an [endpoint](/webhooks/overview) has its own filter, so one delivery can start one task and skip another. A delivery no subscriber takes is recorded with status `FILTERED`, so you can inspect it in the dashboard.
 
 ## Add a filter
@@ -98,6 +94,8 @@ Paths must have non-empty segments. `event.data.amount` is valid; `event.`, `eve
 
 Values are strings in single quotes (`'created'`), numbers (`10000`), booleans (`true`), or `null`. Use a list of these values with `in` and `not in`.
 
+A `null` value checks presence. `event.issue.pull_request != null` matches events that have the field, and `== null` matches events where it is missing or `null`. It works on any field, including fields your event type marks as required, because a missing field compares equal to `null`.
+
 ### Comparing two fields
 
 Equality and comparison operators also accept a field path on the right-hand side:
@@ -112,6 +110,12 @@ event.billing.country == event.shipping.country
 
 ```text Filter expression
 event.items any ( quantity > 0 )
+```
+
+When the payload itself is an array, as with providers that batch several events into one request (Tailscale, for example), quantify over `event`:
+
+```text Filter expression
+event any ( type == 'nodeCreated' )
 ```
 
 ### Spacing

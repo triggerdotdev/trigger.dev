@@ -124,7 +124,7 @@ export function wrapVercelCallWithRecovery<T>(
       ...(error.status === undefined ? {} : { status: error.status }),
       authInvalid: apiError.authInvalid,
     });
-    return { message, authInvalid: apiError.authInvalid };
+    return { message, reason: apiError.reason, authInvalid: apiError.authInvalid };
   });
 }
 

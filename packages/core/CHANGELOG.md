@@ -1,5 +1,91 @@
 # internal-platform
 
+## 4.8.1
+
+## 4.8.0
+
+### Minor Changes
+
+- Add hosted webhooks: declare an endpoint once with `webhooks.endpoint.define({ id, source })` and Trigger.dev hosts its URL, verifies every request, and routes each event to the endpoint's subscribers. Subscribe tasks with `webhook({ endpoint, filter, onEvent })`, each with its own type-safe filter, and pause a run until a matching webhook arrives with `webhooks.waiter.create()` and `webhooks.waiter.wait()`. ([`d6955ee9f`](https://github.com/triggerdotdev/trigger.dev/commit/d6955ee9f31b0b1a3af55bb8fbbc77ba68bcb3f7))
+
+  ```ts
+  export const stripe = webhooks.endpoint.define({
+    id: "stripe",
+    source: webhooks.stripe(),
+  });
+
+  export const fulfill = webhook({
+    id: "fulfill",
+    endpoint: stripe,
+    filter: "event.type == 'checkout.session.completed'",
+    onEvent: async ({ event }) => {},
+  });
+
+  const waiter = await webhooks.waiter.create(stripe, {
+    match: { "event.data.object.metadata.orderId": order.id },
+  });
+  const { event } = await webhooks.waiter.wait(waiter).unwrap();
+  ```
+
+  Sources cover presets (`webhooks.stripe()`, `webhooks.github()`, `webhooks.svix()`, `webhooks.discord()`, and others), named providers (`webhooks.clerk()`, `webhooks.shopify()`, and more) and `webhooks.custom<T>(config)`, and most carry a setup prompt an AI coding agent can follow to register the endpoint. Retries are deduplicated on the provider's own event or delivery id where it sends one. Filters, keys and waiter `match` paths share the `event.`, `header.` and `webhook.` namespaces, and filters accept `== null` / `!= null` presence checks and `event any (...)` over a payload that is an array of events. `webhook()` takes `task()` options such as `queue`, `machine` and `retry`. The HTTP API lists endpoints and deliveries, replays deliveries, and creates and cancels waiters, and both it and the MCP server can read an endpoint's setup prompt and generate or store its signing secret.
+
+### Patch Changes
+
+- Realtime streams now reconnect and resume when the stream backend reports a failed read mid-stream, instead of ending early as if the stream had finished. This affects `runs.subscribeToRun` with streams, `useRealtimeRunWithStreams`, and chat streams. ([`23730b034`](https://github.com/triggerdotdev/trigger.dev/commit/23730b0344342a96731d52dbdc60626565519e26))
+- HMAC webhook verifier configs accept `additionalSignatureHeaders`: more headers that can carry a signature, matched as alternatives to `signatureHeader`. Providers that send a second signature during a secret rotation (Hookdeck's `x-hookdeck-signature-2`) keep verifying through the rotation. ([`08d1ddbd3`](https://github.com/triggerdotdev/trigger.dev/commit/08d1ddbd3531d47ee4fb7f684f07987e2e59ec7e))
+- The `generate_webhook_secret` and `set_webhook_secret` MCP tools take an optional `previousSecretTtlSeconds` to keep accepting a webhook endpoint's old signing secret while the provider switches to the new one (up to 7 days), and report when the old secret stops working. ([`98adb6662`](https://github.com/triggerdotdev/trigger.dev/commit/98adb6662562dbfa99f7c026ddb544c4486e03f6))
+- Add `webhooks.hookdeck()`, a source for deliveries relayed through a Hookdeck connection. It verifies the `x-hookdeck-signature` header with the project's signing secret, keeps verifying while the secret is being rolled (Hookdeck sends the previous secret's signature in `x-hookdeck-signature-2`), and deduplicates retries on `x-hookdeck-eventid`. The event is the original provider's payload, so pass its type: `webhooks.hookdeck<Stripe.Event>()`. If the Hookdeck project's header prefix was changed, pass it as `webhooks.hookdeck({ headerPrefix })` so retries keep deduplicating. ([`51b39fbc6`](https://github.com/triggerdotdev/trigger.dev/commit/51b39fbc6ff0eeeda78fd292d974e7aaa747a086))
+
+## 4.7.6
+
+### Patch Changes
+
+- Fix `timestamp` and other `Date` fields being logged as `{}` in structured log lines. ([`7a5a1f144`](https://github.com/triggerdotdev/trigger.dev/commit/7a5a1f144c98c808fb423bc0736bac7733ab3029))
+
+## 4.7.5
+
+### Patch Changes
+
+- Manage custom metric dashboards from code. `query.dashboards` lists, creates, updates and deletes custom dashboards and their widgets, and every widget query is checked when it is saved. The MCP server adds `create_dashboard` and `set_dashboard_widgets`, so your AI assistant can build a dashboard for you. ([`252624c92`](https://github.com/triggerdotdev/trigger.dev/commit/252624c92077a8326e9b68f7b6713beca173d8b1))
+
+  ```ts
+  import { query } from "@trigger.dev/sdk";
+
+  await query.dashboards.create({
+    title: "Email tasks",
+    widgets: [
+      {
+        title: "Total runs",
+        query: "SELECT count() AS total FROM runs",
+        display: { type: "bignumber", column: "total", aggregation: "sum" },
+      },
+    ],
+  });
+  ```
+
+- `trigger deploy` and `trigger promote` now say which environment they're targeting, and accept `--prod` as a shorthand for `--env prod`. When `TRIGGER_ACCESS_TOKEN` holds an environment API key and you don't pass `--env`, they now use that key's environment instead of assuming prod. Passing an `--env` that doesn't match the key is now an error, where before the deploy went to the key's environment. ([`70ea83d38`](https://github.com/triggerdotdev/trigger.dev/commit/70ea83d38fc6a5ddff6c83e8285d2df72f40a9d8))
+
+  Preview deploys now detect the branch on CI providers that check out a detached HEAD, such as GitLab, Bitbucket, CircleCI, Buildkite, Travis CI, Jenkins and Azure Pipelines, instead of creating a branch called `HEAD`. Test links printed after a preview deploy now open the preview branch you deployed instead of staging.
+
+  The MCP `deploy` tool no longer defaults to prod, so your AI assistant has to choose the environment.
+
+- Redact span content before it leaves the worker. `telemetry.spanProcessors` in `trigger.config.ts` runs your own span processors ahead of every export, to Trigger.dev and to your own exporters, so you can redact or drop span content before it reaches the run trace. `chat.agent` also takes a `telemetry` option to stop recording the user's message and `clientData` on its spans. ([`32b36b143`](https://github.com/triggerdotdev/trigger.dev/commit/32b36b1433dddb4f9d2cbd4c0320b146c7d6c858))
+
+  ```ts
+  export default defineConfig({
+    telemetry: { spanProcessors: [new MyRedactingSpanProcessor()] },
+  });
+
+  chat.agent({
+    id: "my-chat",
+    telemetry: { recordUserMessage: false, recordClientData: false },
+    run: async ({ messages, signal, streamText }) =>
+      streamText({ model, messages, abortSignal: signal }),
+  });
+  ```
+
+- Fix run subscriptions crashing Node with `Controller is already closed` after you `break` out of the loop, and stop polling once you do. `ApiClient` subscribe methods also accept a custom `fetchClient`. ([`9f4295bff`](https://github.com/triggerdotdev/trigger.dev/commit/9f4295bff186f430b0e21e652683aad7970f5307))
+
 ## 4.7.4
 
 ### Patch Changes

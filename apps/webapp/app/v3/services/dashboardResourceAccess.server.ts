@@ -1,6 +1,27 @@
 import { type PrismaClientOrTransaction, RuntimeEnvironmentType } from "@trigger.dev/database";
-import type { HostRbacController } from "@trigger.dev/rbac";
+import type { HostRbacController, RbacAbility } from "@trigger.dev/rbac";
 import { throwPermissionDenied } from "~/utils/permissionDenied";
+
+export function canAcrossEnvironments(
+  ability: Pick<RbacAbility, "can">,
+  action: string,
+  type: string,
+  environmentTypes: readonly RuntimeEnvironmentType[]
+) {
+  return (environmentTypes.length ? environmentTypes : Object.values(RuntimeEnvironmentType)).every(
+    (envType) => ability.can(action, { type, envType })
+  );
+}
+
+export function requireAcrossEnvironments(
+  ability: Pick<RbacAbility, "can">,
+  action: string,
+  type: string,
+  environmentTypes: readonly RuntimeEnvironmentType[]
+) {
+  if (!canAcrossEnvironments(ability, action, type, environmentTypes))
+    throwPermissionDenied("You don't have permission in every affected environment.");
+}
 
 export async function dashboardResourceAccess(
   database: PrismaClientOrTransaction,
@@ -46,25 +67,18 @@ export async function dashboardResourceAccess(
   if (!auth.ok) throwPermissionDenied();
   const can = (action: string, type: string) =>
     auth.ability.can(action, { type, ...(environment ? { envType: environment.type } : {}) });
-  const canAcrossEnvironments = (
-    action: string,
-    type: string,
-    environmentTypes: readonly RuntimeEnvironmentType[]
-  ) =>
-    (environmentTypes.length ? environmentTypes : Object.values(RuntimeEnvironmentType)).every(
-      (envType) => auth.ability.can(action, { type, envType })
-    );
   return {
     can,
-    canAcrossEnvironments,
-    requireAcrossEnvironments(
+    canAcrossEnvironments: (
       action: string,
       type: string,
       environmentTypes: readonly RuntimeEnvironmentType[]
-    ) {
-      if (!canAcrossEnvironments(action, type, environmentTypes))
-        throwPermissionDenied("You don't have permission in every affected environment.");
-    },
+    ) => canAcrossEnvironments(auth.ability, action, type, environmentTypes),
+    requireAcrossEnvironments: (
+      action: string,
+      type: string,
+      environmentTypes: readonly RuntimeEnvironmentType[]
+    ) => requireAcrossEnvironments(auth.ability, action, type, environmentTypes),
     require(action: string, type: string) {
       if (!can(action, type))
         throwPermissionDenied("You don't have permission to perform this action.");

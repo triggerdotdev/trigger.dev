@@ -35,7 +35,7 @@ export function showCodeAskPrompt(args: { path: string; line: number; sha: strin
   const shortSha = args.sha.slice(0, 7);
   return (
     `Propose a fix. Reply with one fenced \`\`\`diff block holding the minimal change, ` +
-    `anchored to ${args.path}:${args.line}@${shortSha} — re-read that file at that commit if you need it. ` +
+    `anchored to ${args.path}:${args.line}@${shortSha} - re-read that file at that commit if you need it. ` +
     `If ${shortSha} isn't the branch head, or that version was built from a dirty tree, say so in one line. ` +
     `Don't restate the investigation.`
   );
@@ -81,7 +81,7 @@ function investigationCapabilities(
       label: "Keep digging",
       intent: {
         kind: "ask",
-        prompt: "Keep digging into this — what else can you check?",
+        prompt: "Keep digging into this - what else can you check?",
       },
     });
   }
@@ -272,7 +272,7 @@ export function createInvestigationRenderer(
         console.error("investigation upsert failed", error);
         return {
           error:
-            "Couldn't save the investigation right now. Say what you found in prose, honestly — if a card is already open it will be closed as inconclusive when the turn ends.",
+            "Couldn't save the investigation right now. Say what you found in prose, honestly - if a card is already open it will be closed as inconclusive when the turn ends.",
         };
       }
 

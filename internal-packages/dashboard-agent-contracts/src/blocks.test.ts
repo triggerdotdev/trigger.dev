@@ -695,6 +695,23 @@ describe("host-emitted blocks are not model-facing", () => {
   });
 });
 
+describe("alert_created block", () => {
+  const body = {
+    type: "alert_created",
+    alertId: "alert_1",
+    name: "Queue depth above 100",
+    rows: [{ label: "Notifying", value: "Notifying: this chat." }],
+  };
+
+  it("is host-emitted: the model's union refuses it, the host's and the stored ones take it", () => {
+    expect(viewBlockInputSchema.safeParse(body).success).toBe(false);
+    expect(
+      viewBlockSchema.safeParse({ ...body, id: "alert:alert_1", revision: 0, version: 1 }).success
+    ).toBe(true);
+    expect(parseStoredViewBlock(body)).toMatchObject({ type: "alert_created", alertId: "alert_1" });
+  });
+});
+
 describe("investigation capabilities", () => {
   const capabilities = {
     version: 1,

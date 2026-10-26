@@ -6,6 +6,7 @@ import { useDashboardAgentAvailable } from "~/components/dashboard-agent/dashboa
 import { NEW_CHAT_SHORTCUT } from "~/components/dashboard-agent/DashboardAgentHeader";
 import { TOGGLE_PANEL_SHORTCUT } from "~/components/dashboard-agent/dashboardAgentLauncher";
 import { COLUMNS_SHORTCUT } from "~/components/runs/v3/RunsDisplayOptions";
+import { useCopyPublicUrl } from "~/hooks/useCopyPublicUrl";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { Header3 } from "./primitives/Headers";
 import { SideMenuItemButton } from "./navigation/SideMenuItem";
@@ -48,6 +49,7 @@ export function ShortcutsAutoOpen() {
 
 function ShortcutContent() {
   const agent = useDashboardAgentAvailable();
+  const copyPublicUrl = useCopyPublicUrl();
   const rows = aiShortcutRows({ agent });
   const shows = (row: AiShortcutRow) => rows.includes(row);
 
@@ -111,6 +113,12 @@ function ShortcutContent() {
             <Shortcut name="Help & Feedback">
               <ShortcutKey shortcut={{ key: "h" }} variant="medium/bright" />
             </Shortcut>
+            {copyPublicUrl.enabled && (
+              <Shortcut name="Copy public URL">
+                <ShortcutKey shortcut={{ modifiers: ["mod", "alt"] }} variant="medium/bright" />
+                <ShortcutKey shortcut={{ key: "l" }} variant="medium/bright" />
+              </Shortcut>
+            )}
           </div>
           {shows("agent-new-chat") && (
             <div className="space-y-3">

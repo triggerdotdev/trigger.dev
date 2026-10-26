@@ -7,6 +7,7 @@ import {
   BoolEnv,
   NodeLabelValue,
   OrgPlacementOverrides,
+  ReservedPorts,
   Tolerations,
 } from "./envUtil.js";
 
@@ -57,6 +58,15 @@ export const Env = z
     TRIGGER_WORKLOAD_API_HOST_INTERNAL: z.string().default("0.0.0.0"),
     TRIGGER_WORKLOAD_API_PORT_INTERNAL: z.coerce.number().default(8020), // This is the port the workload API listens on
     TRIGGER_WORKLOAD_API_PORT_EXTERNAL: z.coerce.number().default(8020), // This is the exposed port passed to the run controller
+    // How long to keep retrying temporary failures of `continue` for a run restored from a
+    // checkpoint; unset keeps the default retries.
+    TRIGGER_CONTINUE_RETRY_BUDGET_MS: z.coerce
+      .number()
+      .int()
+      .min(120_000)
+      // The runner waits at most 300s for this response: Node's default `fetch` header timeout.
+      .max(290_000)
+      .optional(),
 
     // Runner settings
     RUNNER_HEARTBEAT_INTERVAL_SECONDS: z.coerce.number().optional(),
@@ -271,6 +281,7 @@ export const Env = z
       .default("node-24-plus"),
     KUBERNETES_RUNNER_SECURITY_CONTEXT: z.enum(["off", "baseline", "restricted"]).default("off"),
     KUBERNETES_RUNNER_RUN_AS_USER: z.coerce.number().int().min(1).default(1000),
+    KUBERNETES_POD_RESERVED_SOURCE_PORTS: ReservedPorts,
 
     // Pod DNS config: override the cluster default ndots to `KUBERNETES_POD_DNS_NDOTS`.
     // Default k8s ndots is 5: any name with fewer than 5 dots (e.g. `api.example.com`, 2 dots) is first walked

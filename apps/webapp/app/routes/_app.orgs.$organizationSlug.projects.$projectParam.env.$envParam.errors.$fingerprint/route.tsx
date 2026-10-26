@@ -2,7 +2,7 @@ import { parseWithZod } from "@conform-to/zod/v4";
 import { BellAlertIcon } from "@heroicons/react/20/solid";
 import { useFetcher, useRevalidator } from "@remix-run/react";
 import { type ActionFunctionArgs, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { IconAlarmSnooze as IconAlarmSnoozeBase, IconCircleDotted } from "@tabler/icons-react";
+import { IconAlarmSnooze as IconAlarmSnoozeBase } from "@tabler/icons-react";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
 import { isPast } from "date-fns";
 import { AnimatePresence, motion } from "framer-motion";
@@ -22,8 +22,9 @@ import { z } from "zod";
 import { BugIcon } from "~/assets/icons/BugIcon";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
+import { ErrorActionsMenu } from "~/components/errors/ErrorActionsMenu";
+import { errorGroupAlertPrefill } from "~/components/alerts/errorAlertPrefill";
 import { CodeBlock } from "~/components/code/CodeBlock";
-import { InvestigateButton } from "~/components/dashboard-agent/InvestigateButton";
 import { WatchButton } from "~/components/dashboard-agent/WatchButton";
 import { errorWatchRecommendation } from "~/components/dashboard-agent/watch-recommendations";
 import { errorGroupPrompt } from "~/components/dashboard-agent/investigate-prompts";
@@ -42,9 +43,10 @@ import { Callout } from "~/components/primitives/Callout";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime, RelativeDateTime } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
+import { DetailChartBlock } from "~/components/primitives/DetailChartBlock";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Popover, PopoverArrowTrigger, PopoverContent } from "~/components/primitives/Popover";
+import { MarkAsDropdown } from "~/components/primitives/MarkAsDropdown";
 import * as Property from "~/components/primitives/PropertyTable";
 import {
   ResizableHandle,
@@ -64,7 +66,7 @@ import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
-import { findProjectBySlug } from "~/models/project.server";
+import { findProjectBySlug, findProjectWithOrgFlagsBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   type ErrorGroupActivity,
@@ -88,6 +90,7 @@ import {
   v3ErrorsPath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
+import { canUseAlertsList } from "~/v3/canUseAlertsList.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { ErrorGroupActions } from "~/v3/services/errorGroupActions.server";
 import { errorAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
@@ -234,7 +237,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Fingerprint parameter is required", { status: 400 });
   }
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  const project = await findProjectWithOrgFlagsBySlug(organizationSlug, projectParam, userId);
   if (!project) {
     throw new Response("Project not found", { status: 404 });
   }
@@ -315,7 +318,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       })
     : { canCancelRuns: true, canReplayRuns: true };
 
+  const alertsEnabled = await canUseAlertsList({
+    orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+    userId,
+  });
+
   return typeddefer({
+    alertsEnabled,
     data: detailPromise,
     activity: activityPromise,
     organizationSlug,
@@ -328,6 +337,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 export default function Page() {
   const {
+    alertsEnabled,
     data,
     activity,
     organizationSlug,
@@ -377,16 +387,18 @@ export default function Page() {
           }}
           title={<span className="font-mono text-xs">{ErrorId.toFriendlyId(fingerprint)}</span>}
         />
-        <PageAccessories>
-          <LinkButton
-            to={alertsHref}
-            variant="secondary/small"
-            LeadingIcon={BellAlertIcon}
-            leadingIconClassName="text-alerts"
-          >
-            Configure alerts…
-          </LinkButton>
-        </PageAccessories>
+        {alertsEnabled ? null : (
+          <PageAccessories>
+            <LinkButton
+              to={alertsHref}
+              variant="secondary/small"
+              LeadingIcon={BellAlertIcon}
+              leadingIconClassName="text-alerts"
+            >
+              Configure alerts…
+            </LinkButton>
+          </PageAccessories>
+        )}
       </NavBar>
 
       <PageBody scrollable={false}>
@@ -422,6 +434,7 @@ export default function Page() {
                   fingerprint={fingerprint}
                   canCancelRuns={canCancelRuns}
                   canReplayRuns={canReplayRuns}
+                  alertsEnabled={alertsEnabled}
                 />
               );
             }}
@@ -442,6 +455,7 @@ function ErrorGroupDetail({
   fingerprint,
   canCancelRuns,
   canReplayRuns,
+  alertsEnabled,
 }: {
   errorGroup: ErrorGroupSummary | undefined;
   runList: NextRunList | undefined;
@@ -452,6 +466,7 @@ function ErrorGroupDetail({
   fingerprint: string;
   canCancelRuns: boolean;
   canReplayRuns: boolean;
+  alertsEnabled: boolean;
 }) {
   const { value, values } = useSearchParams();
   const organization = useOrganization();
@@ -490,12 +505,14 @@ function ErrorGroupDetail({
       <ResizablePanel id="error-main" min="300px">
         <div className="grid h-full grid-rows-[12rem_1fr] overflow-hidden">
           {/* Activity chart */}
-          <div className="flex flex-col gap-3 overflow-hidden border-b border-grid-bright bg-background-bright py-2 pl-2 pr-4">
-            <div className="flex items-center gap-2">
-              <TimeFilter defaultPeriod="7d" labelName="Occurred" />
-              <LogsVersionFilter />
-            </div>
-
+          <DetailChartBlock
+            toolbar={
+              <>
+                <TimeFilter defaultPeriod="7d" labelName="Occurred" />
+                <LogsVersionFilter />
+              </>
+            }
+          >
             <Suspense fallback={<ActivityChartBlankState />}>
               <TypedAwait resolve={activity} errorElement={<ActivityChartBlankState />}>
                 {(result) => {
@@ -506,7 +523,7 @@ function ErrorGroupDetail({
                 }}
               </TypedAwait>
             </Suspense>
-          </div>
+          </DetailChartBlock>
 
           {/* Runs Table */}
           <div className="flex flex-col gap-1 overflow-y-hidden">
@@ -580,7 +597,11 @@ function ErrorGroupDetail({
       {/* Right-hand detail sidebar */}
       <ResizableHandle id="error-detail-handle" />
       <ResizablePanel id="error-detail" min="280px" default="380px" max="500px" isStaticAtRest>
-        <ErrorDetailSidebar errorGroup={errorGroup} fingerprint={fingerprint} />
+        <ErrorDetailSidebar
+          errorGroup={errorGroup}
+          fingerprint={fingerprint}
+          alertsEnabled={alertsEnabled}
+        />
       </ResizablePanel>
     </ResizablePanelGroup>
   );
@@ -589,25 +610,37 @@ function ErrorGroupDetail({
 function ErrorDetailSidebar({
   errorGroup,
   fingerprint,
+  alertsEnabled,
 }: {
   errorGroup: ErrorGroupSummary;
   fingerprint: string;
+  alertsEnabled: boolean;
 }) {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
   return (
     <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
-      <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed px-3 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-grid-dimmed px-3 py-2">
         <Header2 className="truncate">Details</Header2>
-        {/* Both buttons self-hide when the agent isn't available. */}
-        <div className="flex shrink-0 items-center gap-1">
-          <InvestigateButton
-            prompt={errorGroupPrompt(
+        <div className="flex flex-wrap items-center gap-1">
+          <WatchButton
+            spec={errorWatchRecommendation(ErrorId.toFriendlyId(errorGroup.fingerprint))}
+            alertsEnabled={alertsEnabled}
+          />
+          <ErrorActionsMenu
+            investigatePrompt={errorGroupPrompt(
               ErrorId.toFriendlyId(errorGroup.fingerprint),
               errorGroup.taskIdentifier
             )}
-            label="Investigate this error"
-          />
-          <WatchButton
-            spec={errorWatchRecommendation(ErrorId.toFriendlyId(errorGroup.fingerprint))}
+            watchPrefill={
+              alertsEnabled
+                ? errorGroupAlertPrefill(errorGroup.taskIdentifier, errorGroup.fingerprint)
+                : undefined
+            }
+            organization={organization}
+            project={project}
+            environment={environment}
           />
         </div>
       </div>
@@ -618,7 +651,7 @@ function ErrorDetailSidebar({
             <Property.Item className="gap-1">
               <Property.Label>Error status</Property.Label>
               <Property.Value>
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <ErrorStatusBadge
                     status={errorGroup.state.status}
                     prominence="bright"
@@ -831,12 +864,13 @@ function ErrorStatusDropdown({
 
   return (
     <>
-      <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
-        <PopoverArrowTrigger variant="primary" disabled={isSubmitting} className="items-center">
-          <IconCircleDotted className="-ml-1 mr-1 size-3.5 text-white" />
-          Mark error as…
-        </PopoverArrowTrigger>
-        <PopoverContent className="inline-flex min-w-0! flex-col p-1" align="end">
+      <MarkAsDropdown
+        label="Mark error as…"
+        disabled={isSubmitting}
+        open={popoverOpen}
+        onOpenChange={setPopoverOpen}
+      >
+        {() => (
           <ErrorStatusMenuItems
             status={state.status}
             taskIdentifier={taskIdentifier}
@@ -846,8 +880,8 @@ function ErrorStatusDropdown({
               setCustomIgnoreOpen(true);
             }}
           />
-        </PopoverContent>
-      </Popover>
+        )}
+      </MarkAsDropdown>
 
       <CustomIgnoreDialog
         open={customIgnoreOpen}

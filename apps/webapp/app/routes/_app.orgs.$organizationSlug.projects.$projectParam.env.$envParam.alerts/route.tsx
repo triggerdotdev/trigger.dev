@@ -1,74 +1,80 @@
-import { getFormProps, useForm } from "@conform-to/react";
-import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
 import { parseWithZod } from "@conform-to/zod/v4";
-import {
-  BellAlertIcon,
-  BellSlashIcon,
-  BookOpenIcon,
-  EnvelopeIcon,
-  LockClosedIcon,
-  PlusIcon,
-  TrashIcon,
-} from "@heroicons/react/20/solid";
-import { Form, Outlet, useActionData, useNavigation } from "@remix-run/react";
-import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { SlackIcon } from "@trigger.dev/companyicons";
-import type { ProjectAlertChannelType, ProjectAlertType } from "@trigger.dev/database";
-import assertNever from "assert-never";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { BookOpenIcon } from "@heroicons/react/20/solid";
+import { Outlet, useLoaderData, useNavigate, useSearchParams } from "@remix-run/react";
+import { type ActionFunctionArgs, defer, json, redirect } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { AlertsNoneDev, AlertsNoneDeployed } from "~/components/BlankStatePanels";
-import { Feedback } from "~/components/Feedback";
-import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
-import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { ClipboardField } from "~/components/primitives/ClipboardField";
-import { DetailCell } from "~/components/primitives/DetailCell";
-import { Header2, Header3 } from "~/components/primitives/Headers";
+import { useEffect, useRef } from "react";
+import { AlertsList } from "~/components/alerts/AlertsList";
+import { hasLegacyAlerts } from "~/components/alerts/hasLegacyAlerts.server";
+import { LegacyAlertChannelsPage } from "~/components/alerts/LegacyAlertChannelsPage";
+import { LegacyAlertsBanner } from "~/components/alerts/LegacyAlertsBanner";
+import { ManualAlertCreationDock } from "~/components/alerts/ManualAlertCreation";
+import type { QueryAlertPrefill } from "~/components/alerts/queryAlertLink";
+import { createAlertPrompt } from "~/components/dashboard-agent/investigate-prompts";
+import { useDashboardAgent } from "~/components/dashboard-agent/dashboardAgentLauncher";
+import {
+  asArea,
+  stripCreateSearchParams,
+  type DraftPrefillParams,
+} from "~/components/dashboard-agent/alert-creation/flow-state";
+import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { LinkButton } from "~/components/primitives/Buttons";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
-import { Paragraph } from "~/components/primitives/Paragraph";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableCellMenu,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-} from "~/components/primitives/Table";
-import {
-  SimpleTooltip,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "~/components/primitives/Tooltip";
-import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
 import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
-import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
-import { findProjectBySlug } from "~/models/project.server";
+import { findProjectWithOrgFlagsBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   AlertChannelListPresenter,
   type AlertChannelListPresenterRecord,
 } from "~/presenters/v3/AlertChannelListPresenter.server";
-import { requireUserId } from "~/services/session.server";
-import { cn } from "~/utils/cn";
+import type { AlertListRow } from "~/presenters/v3/alertListRow";
+import { parseAlertsListSearchParams } from "~/components/alerts/alertsListFilters";
+import {
+  AlertsListPresenter,
+  type AlertsListFilters,
+} from "~/presenters/v3/AlertsListPresenter.server";
+import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
+import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { rbac } from "~/services/rbac.server";
+import { getImpersonationState } from "~/services/impersonation.server";
+import { hasAdminDisplayAccess, requireUserId } from "~/services/session.server";
+import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
+import { canUseAlertsList } from "~/v3/canUseAlertsList.server";
+import {
+  canAcrossEnvironments,
+  requireAcrossEnvironments,
+} from "~/v3/services/dashboardResourceAccess.server";
+import { throwPermissionDenied } from "~/utils/permissionDenied";
+import {
+  AlertActionNotAllowedError,
+  AlertNotFoundError,
+  performAlertAction,
+} from "~/v3/services/alerts/alertActions.server";
+import {
+  authorizedChannelWhere,
+  writeAuthorizedChannel,
+  type AuthorizedChannel,
+} from "~/v3/services/alerts/authorizedChannelWrite.server";
 import {
   EnvironmentParamSchema,
   docsPath,
-  v3BillingPath,
-  v3NewProjectAlertPath,
+  v3AlertPath,
+  v3AlertCreatePath,
+  v3ProjectAlertChannelsPath,
   v3ProjectAlertsPath,
+  v3ProjectLegacyAlertsPath,
 } from "~/utils/pathBuilder";
 import { alertsWorker } from "~/v3/alertsWorker.server";
 import { alertsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
+import { isV2AlertId, isNewAlertAction } from "~/v3/services/alerts/alertIdRouting";
+import { queryAlertPrefill } from "~/v3/services/alerts/queryAlerts/queryAlertPrefill.server";
 
 export const handle: Handle = {
   agentPageContext: (data) => alertsAgentPageContext(data),
@@ -77,36 +83,120 @@ import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Alerts");
 
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
-
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
-  if (!project) {
-    throw new Response(undefined, {
-      status: 404,
-      statusText: "Project not found",
-    });
+export function redirectChannelsView(
+  request: Request,
+  params: { organizationSlug: string; projectParam: string; envParam: string }
+) {
+  const search = new URL(request.url).searchParams;
+  if (search.get("view") !== "channels" && search.get("modal") !== "channels") {
+    return null;
   }
+  search.delete("view");
+  search.delete("modal");
+  const query = search.toString();
+  return redirect(
+    `${v3ProjectAlertChannelsPath(
+      { slug: params.organizationSlug },
+      { slug: params.projectParam },
+      { slug: params.envParam }
+    )}${query ? `?${query}` : ""}`
+  ) as unknown as Response;
+}
 
-  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
-  if (!environment) {
-    throw new Response(undefined, {
-      status: 404,
-      statusText: "Environment not found",
+export const loader = dashboardLoader(
+  {
+    params: EnvironmentParamSchema,
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
+    authorization: { action: "read", resource: { type: "alerts" } },
+  },
+  async ({ params, user, request, ability }) => {
+    const { projectParam, organizationSlug, envParam } = params;
+
+    const channelsRedirect = redirectChannelsView(request, params);
+    if (channelsRedirect) {
+      return channelsRedirect;
+    }
+
+    const project = await findProjectWithOrgFlagsBySlug(organizationSlug, projectParam, user.id);
+    if (!project) {
+      throw new Response(undefined, {
+        status: 404,
+        statusText: "Project not found",
+      });
+    }
+
+    const environment = await findEnvironmentBySlug(project.id, envParam, user.id);
+    if (!environment) {
+      throw new Response(undefined, {
+        status: 404,
+        statusText: "Environment not found",
+      });
+    }
+    if (!ability.can("read", { type: "alerts", envType: environment.type })) {
+      throwPermissionDenied();
+    }
+
+    const alertsListEnabled = await canUseAlertsList({
+      orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+      user,
     });
+
+    if (!alertsListEnabled) {
+      const presenter = new AlertChannelListPresenter();
+      const canWrite = ability.can("write", { type: "alerts", envType: environment.type });
+      const data = await presenter.call(project.id, environment.type, (channel) =>
+        canAcrossEnvironments(ability, "write", "alerts", channel.environmentTypes)
+      );
+      return defer({ mode: "legacy" as const, canWrite, ...data }) as unknown as Response;
+    }
+
+    const { isViewingAsUser } = await getImpersonationState(request, user.id);
+    const showAdminUi = hasAdminDisplayAccess({ ...user, isViewingAsUser });
+    const agentAvailable = await canAccessDashboardAgent({
+      userId: user.id,
+      isAdmin: showAdminUi && user.admin,
+      isImpersonating: showAdminUi && user.isImpersonating,
+      organizationSlug,
+      orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+    });
+
+    const searchParams = new URL(request.url).searchParams;
+    const listPresenter = new AlertsListPresenter();
+    const {
+      rows: alerts,
+      page,
+      totalPages,
+      truncated,
+    } = await listPresenter.call({
+      environmentId: environment.id,
+      page: Number(searchParams.get("page")) || 1,
+      filters: {
+        search: searchParams.get("search") ?? "",
+        ...parseAlertsListSearchParams(searchParams),
+      } as AlertsListFilters,
+    });
+
+    return defer({
+      mode: "new" as const,
+      alerts,
+      ...(await hasLegacyAlerts(project.id)),
+      page,
+      totalPages,
+      truncated,
+      canWrite: ability.can("write", { type: "alerts", envType: environment.type }),
+      canDelete: ability.can("delete", { type: "alerts", envType: environment.type }),
+      agentAvailable,
+      queryAlert: searchParams.get("source") === "query" ? queryAlertPrefill(searchParams) : null,
+    }) as unknown as Response;
   }
-
-  const presenter = new AlertChannelListPresenter();
-  const data = await presenter.call(project.id, environment.type);
-
-  return typedjson(data);
-};
+);
 
 const schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("delete"), id: z.string() }),
   z.object({ action: z.literal("disable"), id: z.string() }),
   z.object({ action: z.literal("enable"), id: z.string() }),
+  z.object({ action: z.literal("resolve"), id: z.string() }),
+  z.object({ action: z.literal("stop"), id: z.string() }),
 ]);
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
@@ -124,29 +214,127 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     return json(submission.reply());
   }
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  const project = await findProjectWithOrgFlagsBySlug(organizationSlug, projectParam, userId);
 
   if (!project) {
     return json(submission.reply({ formErrors: ["Project not found"] }));
   }
 
-  switch (submission.value.action) {
-    case "delete": {
-      const alertChannel = await prisma.projectAlertChannel.delete({
-        where: { id: submission.value.id, projectId: project.id },
+  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+  if (!environment) {
+    return json(submission.reply({ formErrors: ["Environment not found"] }));
+  }
+
+  const auth = await rbac.authenticateSession(request, {
+    userId,
+    organizationId: project.organizationId,
+    projectId: project.id,
+  });
+  const envType = environment.type;
+  if (!auth.ok || !auth.ability.can("write", { type: "alerts", envType })) {
+    throwPermissionDenied();
+  }
+  if (
+    submission.value.action === "delete" &&
+    !auth.ability.can("delete", { type: "alerts", envType })
+  ) {
+    throwPermissionDenied();
+  }
+
+  // Legacy channel enable/disable/delete only apply to the legacy channel list this route
+  // renders when the new alerts UI is off; resolve is the opposite -- new-alerts only.
+  const alertsListEnabled = await canUseAlertsList({
+    orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+    userId,
+  });
+  const isV2Id = isV2AlertId(submission.value.id);
+  if (isNewAlertAction(submission.value.action, submission.value.id) !== alertsListEnabled) {
+    throw new Response(undefined, { status: 404, statusText: "Not found" });
+  }
+  const mutateChannel = async (
+    write: (channel: AuthorizedChannel) => Promise<AuthorizedChannel | null>
+  ) => {
+    const outcome = await writeAuthorizedChannel(
+      prisma,
+      { id: submission.value.id, projectId: project.id },
+      (environmentTypes) =>
+        requireAcrossEnvironments(
+          auth.ability,
+          submission.value.action === "delete" ? "delete" : "write",
+          "alerts",
+          environmentTypes
+        ),
+      write
+    );
+    if (!outcome.found) {
+      throw new Response(undefined, { status: 404, statusText: "Not found" });
+    }
+    return outcome.result;
+  };
+  const setEnabled = (enabled: boolean) =>
+    mutateChannel(async (channel) => {
+      const updated = await prisma.projectAlertChannel.updateMany({
+        where: authorizedChannelWhere(channel),
+        data: { enabled },
       });
+      return updated.count > 0 ? channel : null;
+    });
+
+  switch (submission.value.action) {
+    case "resolve":
+    case "stop":
+    case "delete": {
+      if (!isV2Id && submission.value.action === "delete") {
+        const alertChannel = await mutateChannel(async (channel) => {
+          const deleted = await prisma.projectAlertChannel.deleteMany({
+            where: authorizedChannelWhere(channel),
+          });
+          return deleted.count > 0 ? channel : null;
+        });
+
+        return redirectWithSuccessMessage(
+          v3ProjectAlertsPath(
+            { slug: organizationSlug },
+            { slug: projectParam },
+            { slug: envParam }
+          ),
+          request,
+          `Deleted ${alertChannel.name} alert`
+        );
+      }
+
+      try {
+        await performAlertAction(prisma, {
+          intent: submission.value.action as "resolve" | "stop" | "delete",
+          alertId: submission.value.id,
+          projectId: project.id,
+          environmentId: environment.id,
+          actorId: userId,
+        });
+      } catch (error) {
+        if (error instanceof AlertNotFoundError) {
+          throw new Response(undefined, { status: 404, statusText: "Alert not found" });
+        }
+        if (error instanceof AlertActionNotAllowedError) {
+          return json(submission.reply({ formErrors: [error.message] }));
+        }
+        throw error;
+      }
+
+      const successMessages: Record<string, string> = {
+        resolve: "Alert resolved",
+        stop: "Alert stopped",
+        delete: "Alert deleted",
+      };
 
       return redirectWithSuccessMessage(
         v3ProjectAlertsPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
         request,
-        `Deleted ${alertChannel.name} alert`
+        successMessages[submission.value.action] ?? "Done"
       );
     }
     case "disable": {
-      const alertChannel = await prisma.projectAlertChannel.update({
-        where: { id: submission.value.id, projectId: project.id },
-        data: { enabled: false },
-      });
+      const alertChannel = await setEnabled(false);
 
       return redirectWithSuccessMessage(
         v3ProjectAlertsPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
@@ -155,10 +343,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       );
     }
     case "enable": {
-      const alertChannel = await prisma.projectAlertChannel.update({
-        where: { id: submission.value.id, projectId: project.id },
-        data: { enabled: true },
-      });
+      const alertChannel = await setEnabled(true);
 
       if (alertChannel.alertTypes.includes("ERROR_GROUP")) {
         await alertsWorker.enqueue({
@@ -180,434 +365,185 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 };
 
+type NewLoaderData = {
+  mode: "new";
+  alerts: AlertListRow[];
+  page: number;
+  totalPages: number;
+  truncated: boolean;
+  hasLegacyAlerts: boolean;
+  hasMigratableLegacyAlerts: boolean;
+  canWrite: boolean;
+  canDelete: boolean;
+  agentAvailable: boolean;
+  queryAlert: QueryAlertPrefill | null;
+};
+
+const QUERY_CREATE_PARAMS = ["source", "q", "qperiod", "mode", "measure"];
+
+function stripCreateParams(params: URLSearchParams): URLSearchParams {
+  const next = stripCreateSearchParams(params);
+  if (params.get("source") === "query") for (const key of QUERY_CREATE_PARAMS) next.delete(key);
+  return next;
+}
+
+type LegacyLoaderData = {
+  mode: "legacy";
+  alertChannels: AlertChannelListPresenterRecord[];
+  limits: { used: number; limit: number };
+  canWrite: boolean;
+};
+
+type LoaderData = NewLoaderData | LegacyLoaderData;
+
 export default function Page() {
-  const { alertChannels, limits } = useTypedLoaderData<typeof loader>();
+  const data = useLoaderData() as unknown as LoaderData;
+
+  if (data.mode === "new") {
+    return (
+      <NewAlertsPage
+        alerts={data.alerts}
+        hasMigratableLegacyAlerts={data.hasMigratableLegacyAlerts}
+        page={data.page}
+        totalPages={data.totalPages}
+        truncated={data.truncated}
+        hasLegacyAlerts={data.hasLegacyAlerts}
+        canWrite={data.canWrite}
+        canDelete={data.canDelete}
+        agentAvailable={data.agentAvailable}
+        queryAlert={data.queryAlert}
+      />
+    );
+  }
+
+  return <LegacyAlertChannelsPage alertChannels={data.alertChannels} limits={data.limits} />;
+}
+
+function NewAlertsPage({
+  alerts,
+  hasMigratableLegacyAlerts,
+  page,
+  totalPages,
+  truncated,
+  hasLegacyAlerts,
+  canWrite,
+  canDelete,
+  agentAvailable,
+  queryAlert,
+}: {
+  alerts: NewLoaderData["alerts"];
+  hasMigratableLegacyAlerts: boolean;
+  page: number;
+  totalPages: number;
+  truncated: boolean;
+  hasLegacyAlerts: boolean;
+  canWrite: boolean;
+  canDelete: boolean;
+  agentAvailable: boolean;
+  queryAlert: QueryAlertPrefill | null;
+}) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const showSelfServe = useShowSelfServe();
+  const agent = useDashboardAgent();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const queryCreate = searchParams.get("create") === "1" && searchParams.get("source") === "query";
+  const wantCreate = searchParams.get("create") === "1" && !queryCreate;
+  const listQuery = searchParams.toString();
+  const pendingCreateRef = useRef<{
+    area?: DraftPrefillParams["area"];
+    capability?: string;
+    scope?: string;
+    scopeValue?: string;
+  } | null>(
+    wantCreate
+      ? {
+          area: asArea(searchParams.get("area") ?? undefined),
+          capability: searchParams.get("capability") ?? undefined,
+          scope: searchParams.get("scope") ?? undefined,
+          scopeValue: searchParams.get("scopeValue") ?? undefined,
+        }
+      : null
+  );
+  useEffect(() => {
+    if (wantCreate && !pendingCreateRef.current) {
+      pendingCreateRef.current = {
+        area: asArea(searchParams.get("area") ?? undefined),
+        capability: searchParams.get("capability") ?? undefined,
+        scope: searchParams.get("scope") ?? undefined,
+        scopeValue: searchParams.get("scopeValue") ?? undefined,
+      };
+    }
+  }, [wantCreate, searchParams]);
 
-  const requiresUpgrade = limits.used >= limits.limit;
+  useEffect(() => {
+    const pending = pendingCreateRef.current;
+    if (!pending || !agent) return;
+    pendingCreateRef.current = null;
+    agent.openCreateAlert(pending);
+    setSearchParams((prev) => stripCreateSearchParams(prev), { replace: true });
+  }, [agent, setSearchParams]);
+
+  const manualCreate = (wantCreate && !agentAvailable && !agent) || queryCreate;
+  const alertPath = (alertId: string) => v3AlertPath(organization, project, environment, alertId);
 
   return (
-    <PageContainer>
-      <NavBar>
-        <PageTitle title="Alerts" />
-        <PageAccessories>
-          <WhenAgentUnavailable>
-            <LinkButton
-              LeadingIcon={BookOpenIcon}
-              to={docsPath("v3/troubleshooting-alerts")}
-              variant="docs/small"
-            >
-              Alerts docs
-            </LinkButton>
-          </WhenAgentUnavailable>
-        </PageAccessories>
-      </NavBar>
-      <PageBody scrollable={false}>
-        {alertChannels.length > 0 ? (
-          <div className="grid max-h-full min-h-full grid-rows-[auto_1fr_auto]">
-            <div className="flex h-fit items-end justify-between p-2 pl-3">
-              <Header2 className="">Project alerts</Header2>
-              {alertChannels.length > 0 && !requiresUpgrade && (
-                <LinkButton
-                  to={v3NewProjectAlertPath(organization, project, environment)}
-                  variant="primary/small"
-                  LeadingIcon={PlusIcon}
-                  shortcut={{ key: "n" }}
-                >
-                  New alert
-                </LinkButton>
-              )}
-            </div>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHeaderCell>Name</TableHeaderCell>
-                  <TableHeaderCell>Alert types</TableHeaderCell>
-                  <TableHeaderCell>Channel</TableHeaderCell>
-                  <TableHeaderCell>Enabled</TableHeaderCell>
-                  <TableHeaderCell>Environments</TableHeaderCell>
-                  <TableHeaderCell hiddenLabel>Actions</TableHeaderCell>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {alertChannels.length > 0 ? (
-                  alertChannels.map((alertChannel) => (
-                    <TableRow key={alertChannel.id}>
-                      <TableCell className={alertChannel.enabled ? "" : "opacity-50"}>
-                        {alertChannel.name}
-                      </TableCell>
-                      <TableCell className={alertChannel.enabled ? "" : "opacity-50"}>
-                        {alertChannel.alertTypes.map((type) => alertTypeTitle(type)).join(", ")}
-                      </TableCell>
-                      <TableCell className={cn("py-1", alertChannel.enabled ? "" : "opacity-50")}>
-                        <AlertChannelDetails alertChannel={alertChannel} />
-                      </TableCell>
-                      <TableCell className={alertChannel.enabled ? "" : "opacity-50"}>
-                        <EnabledStatus
-                          enabled={alertChannel.enabled}
-                          enabledIcon={BellAlertIcon}
-                          disabledIcon={BellSlashIcon}
-                        />
-                      </TableCell>
-                      <TableCell className={alertChannel.enabled ? "" : "opacity-50"}>
-                        <div className="flex items-center gap-3">
-                          {alertChannel.environmentTypes.map((environmentType) => (
-                            <EnvironmentCombo
-                              key={environmentType}
-                              environment={{ type: environmentType }}
-                              className="text-xs"
-                            />
-                          ))}
-                        </div>
-                      </TableCell>
-                      <TableCellMenu
-                        isSticky
-                        popoverContent={
-                          <>
-                            {alertChannel.enabled ? (
-                              <DisableAlertChannelButton id={alertChannel.id} />
-                            ) : (
-                              <EnableAlertChannelButton id={alertChannel.id} />
-                            )}
-                            <DeleteAlertChannelButton id={alertChannel.id} />
-                          </>
-                        }
-                        className={
-                          alertChannel.enabled
-                            ? ""
-                            : "group-hover/table-row:bg-background-bright/50"
-                        }
-                      />
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={6}>
-                      <div className="flex flex-col items-center justify-center py-6">
-                        <Header2 spacing className="text-text-bright">
-                          You haven't created any project alerts yet
-                        </Header2>
-                        <Paragraph variant="small" className="mb-4">
-                          Get alerted when runs or deployments fail, or when deployments succeed in
-                          both Prod and Staging environments.
-                        </Paragraph>
-                        <LinkButton
-                          to={v3NewProjectAlertPath(organization, project, environment)}
-                          variant="primary/medium"
-                          LeadingIcon={PlusIcon}
-                          shortcut={{ key: "n" }}
-                        >
-                          New alert
-                        </LinkButton>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-            <div className="flex h-fit items-stretch gap-3">
-              <div className="flex w-full items-start justify-between">
-                <div className="flex h-fit w-full items-center gap-4 border-t border-grid-bright bg-background-bright p-[0.86rem] pl-4">
-                  <SimpleTooltip
-                    button={
-                      <div className="size-6">
-                        <svg className="h-full w-full -rotate-90 overflow-visible">
-                          <circle
-                            className="fill-none stroke-grid-bright"
-                            strokeWidth="4"
-                            r="10"
-                            cx="12"
-                            cy="12"
-                          />
-                          <circle
-                            className={`fill-none ${
-                              requiresUpgrade ? "stroke-error" : "stroke-success"
-                            }`}
-                            strokeWidth="4"
-                            r="10"
-                            cx="12"
-                            cy="12"
-                            strokeDasharray={`${(limits.used / limits.limit) * 62.8} 62.8`}
-                            strokeDashoffset="0"
-                            strokeLinecap="round"
-                          />
-                        </svg>
-                      </div>
-                    }
-                    content={`${Math.round((limits.used / limits.limit) * 100)}%`}
-                  />
-                  <div className="flex w-full items-center justify-between gap-6">
-                    {requiresUpgrade ? (
-                      <Header3 className="text-error">
-                        You've used all {limits.limit} of your available alerts. Upgrade your plan
-                        to enable more.
-                      </Header3>
-                    ) : (
-                      <Header3>
-                        You've used {limits.used}/{limits.limit} of your alerts.
-                      </Header3>
-                    )}
-
-                    {showSelfServe ? (
-                      <LinkButton to={v3BillingPath(organization)} variant="secondary/small">
-                        Upgrade
-                      </LinkButton>
-                    ) : (
-                      <Feedback
-                        defaultValue="enterprise"
-                        button={<Button variant="secondary/small">Request more</Button>}
-                      />
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : environment.type === "DEVELOPMENT" ? (
-          <MainCenteredContainer className="max-w-md">
-            <AlertsNoneDev />
-          </MainCenteredContainer>
-        ) : (
-          <MainCenteredContainer className="max-w-md">
-            <AlertsNoneDeployed />
-          </MainCenteredContainer>
-        )}
-        <Outlet />
-      </PageBody>
-    </PageContainer>
-  );
-}
-
-function DeleteAlertChannelButton(props: { id: string }) {
-  const lastSubmission = useActionData();
-  const navigation = useNavigation();
-
-  const isLoading =
-    navigation.state !== "idle" &&
-    navigation.formMethod === "post" &&
-    navigation.formData?.get("action") === "delete";
-
-  const [form] = useForm({
-    id: "delete-alert-channel",
-    // TODO: type this
-    lastResult: lastSubmission as any,
-    onValidate({ formData }) {
-      return parseWithZod(formData, { schema });
-    },
-    shouldRevalidate: "onSubmit",
-  });
-
-  return (
-    <Form method="post" {...getFormProps(form)}>
-      <input type="hidden" name="id" value={props.id} />
-      <Button
-        name="action"
-        value="delete"
-        fullWidth
-        textAlignLeft
-        type="submit"
-        variant="small-menu-item"
-        LeadingIcon={TrashIcon}
-        leadingIconClassName="text-rose-500"
-        className="text-xs"
-      >
-        {isLoading ? "Deleting" : "Delete"}
-      </Button>
-    </Form>
-  );
-}
-
-function DisableAlertChannelButton(props: { id: string }) {
-  const lastSubmission = useActionData();
-  const navigation = useNavigation();
-
-  const isLoading =
-    navigation.state !== "idle" &&
-    navigation.formMethod === "post" &&
-    navigation.formData?.get("action") === "delete";
-
-  const [form] = useForm({
-    id: "disable-alert-channel",
-    // TODO: type this
-    lastResult: lastSubmission as any,
-    onValidate({ formData }) {
-      return parseWithZod(formData, { schema });
-    },
-    shouldRevalidate: "onSubmit",
-  });
-
-  return (
-    <Form method="post" {...getFormProps(form)}>
-      <input type="hidden" name="id" value={props.id} />
-
-      <Button
-        name="action"
-        value="disable"
-        type="submit"
-        fullWidth
-        textAlignLeft
-        variant="small-menu-item"
-        LeadingIcon={BellSlashIcon}
-        leadingIconClassName="text-dimmed"
-        className="text-xs"
-      >
-        {isLoading ? "Disabling" : "Disable"}
-      </Button>
-    </Form>
-  );
-}
-
-function EnableAlertChannelButton(props: { id: string }) {
-  const lastSubmission = useActionData();
-  const navigation = useNavigation();
-
-  const isLoading =
-    navigation.state !== "idle" &&
-    navigation.formMethod === "post" &&
-    navigation.formData?.get("action") === "delete";
-
-  const [form] = useForm({
-    id: "enable-alert-channel",
-    // TODO: type this
-    lastResult: lastSubmission as any,
-    onValidate({ formData }) {
-      return parseWithZod(formData, { schema });
-    },
-    shouldRevalidate: "onSubmit",
-  });
-
-  return (
-    <Form method="post" {...getFormProps(form)}>
-      <input type="hidden" name="id" value={props.id} />
-
-      <Button
-        name="action"
-        value="enable"
-        type="submit"
-        fullWidth
-        textAlignLeft
-        variant="small-menu-item"
-        LeadingIcon={BellAlertIcon}
-        leadingIconClassName="text-success"
-        className="text-xs"
-      >
-        {isLoading ? "Enabling" : "Enable"}
-      </Button>
-    </Form>
-  );
-}
-
-function AlertChannelDetails({ alertChannel }: { alertChannel: AlertChannelListPresenterRecord }) {
-  switch (alertChannel.properties?.type) {
-    case "EMAIL": {
-      return (
-        <DetailCell
-          leadingIcon={
-            <AlertChannelTypeIcon
-              channelType={alertChannel.type}
-              className="size-5 text-text-dimmed"
+    <ManualAlertCreationDock
+      open={manualCreate}
+      queryPrefill={queryCreate ? (queryAlert ?? undefined) : undefined}
+      prefill={{
+        area: asArea(searchParams.get("area") ?? undefined),
+        capability: searchParams.get("capability") ?? undefined,
+        scope: searchParams.get("scope") ?? undefined,
+        scopeValue: searchParams.get("scopeValue") ?? undefined,
+      }}
+      alertDetailPath={alertPath}
+      onCreated={(alertId) =>
+        alertId
+          ? navigate(alertPath(alertId))
+          : setSearchParams((prev) => stripCreateParams(prev), { replace: true })
+      }
+      onClose={() => setSearchParams((prev) => stripCreateParams(prev), { replace: true })}
+    >
+      <PageContainer>
+        <NavBar>
+          <PageTitle title="Alerts" />
+          <PageAccessories>
+            <WhenAgentUnavailable>
+              <LinkButton
+                LeadingIcon={BookOpenIcon}
+                to={docsPath("v3/troubleshooting-alerts")}
+                variant="docs/small"
+              >
+                Alerts docs
+              </LinkButton>
+            </WhenAgentUnavailable>
+          </PageAccessories>
+        </NavBar>
+        <div className="grid grid-rows-[auto_1fr] overflow-hidden">
+          <LegacyAlertsBanner show={hasMigratableLegacyAlerts} />
+          <PageBody scrollable={false}>
+            <AlertsList
+              alerts={alerts}
+              newAlertPath={v3AlertCreatePath(organization, project, environment)}
+              newAlertPrompt={createAlertPrompt(environmentFullTitle(environment))}
+              alertPath={alertPath}
+              canWrite={canWrite}
+              canDelete={canDelete}
+              hasLegacyAlerts={hasLegacyAlerts}
+              channelsTo={`${v3ProjectAlertChannelsPath(organization, project, environment)}${
+                listQuery ? `?${listQuery}` : ""
+              }`}
+              legacyTo={v3ProjectLegacyAlertsPath(organization, project, environment)}
+              page={page}
+              totalPages={totalPages}
+              truncated={truncated}
             />
-          }
-          leadingIconClassName="text-text-dimmed"
-          label={"Email"}
-          description={alertChannel.properties.email}
-          boxClassName="group-hover/table-row:bg-background-bright"
-          className="h-12"
-        />
-      );
-    }
-    case "WEBHOOK": {
-      return (
-        <DetailCell
-          leadingIcon={
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger>
-                  <AlertChannelTypeIcon
-                    channelType={alertChannel.type}
-                    className="size-5 text-text-dimmed"
-                  />
-                </TooltipTrigger>
-                <TooltipContent className="flex items-center gap-1">Webhook</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          }
-          leadingIconClassName="text-text-dimmed"
-          label={alertChannel.properties.url}
-          description={
-            <ClipboardField
-              value={alertChannel.properties.secret}
-              variant="secondary/small"
-              icon={<LockClosedIcon className="size-4" />}
-              iconButton
-              secure={"•".repeat(alertChannel.properties.secret.length)}
-              className="mt-1 w-80"
-            />
-          }
-          boxClassName="group-hover/table-row:bg-background-bright"
-        />
-      );
-    }
-    case "SLACK": {
-      return (
-        <DetailCell
-          leadingIcon={
-            <AlertChannelTypeIcon
-              channelType={alertChannel.type}
-              className="size-5 text-text-dimmed"
-            />
-          }
-          leadingIconClassName="text-text-dimmed"
-          label={"Slack"}
-          description={`#${alertChannel.properties.channelName}`}
-          boxClassName="group-hover/table-row:bg-background-bright"
-        />
-      );
-    }
-  }
-
-  return null;
-}
-
-export function alertTypeTitle(alertType: ProjectAlertType): string {
-  switch (alertType) {
-    case "TASK_RUN":
-      return "Task run failure";
-    case "TASK_RUN_ATTEMPT":
-      return "Task attempt failure";
-    case "DEPLOYMENT_FAILURE":
-      return "Deployment failure";
-    case "DEPLOYMENT_SUCCESS":
-      return "Deployment success";
-    case "ERROR_GROUP":
-      return "Error group";
-    case "DASHBOARD_AGENT_WATCH":
-      return "Dashboard agent watches";
-    default: {
-      throw new Error(`Unknown alertType: ${alertType}`);
-    }
-  }
-}
-
-export function AlertChannelTypeIcon({
-  channelType,
-  className,
-}: {
-  channelType: ProjectAlertChannelType;
-  className: string;
-}) {
-  switch (channelType) {
-    case "EMAIL":
-      return <EnvelopeIcon className={className} />;
-    case "SLACK":
-      return <SlackIcon className={className} />;
-    case "WEBHOOK":
-      return <GlobeLinesIcon className={className} />;
-    default: {
-      assertNever(channelType);
-    }
-  }
+            <Outlet />
+          </PageBody>
+        </div>
+      </PageContainer>
+    </ManualAlertCreationDock>
+  );
 }

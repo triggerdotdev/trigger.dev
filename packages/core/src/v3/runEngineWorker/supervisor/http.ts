@@ -24,6 +24,11 @@ import {
   WorkerApiRunSnapshotsSinceResponseBody,
 } from "./schemas.js";
 import type { SupervisorClientCommonOptions, SupervisorHttpRequestMetric } from "./types.js";
+import {
+  retryContinueWithinBudget,
+  type ContinueRetryBudget,
+  type ContinueRetrySummary,
+} from "./continueRetry.js";
 import { getDefaultWorkerHeaders } from "./util.js";
 import { wrapZodFetch, type ApiResult, type ZodFetchOptions } from "../../zodfetch.js";
 import { createHeaders } from "../util.js";
@@ -303,36 +308,49 @@ export class SupervisorHttpClient {
     runId: string,
     snapshotId: string,
     runnerId?: string,
-    environmentId?: string
-  ) {
-    return this.request(
-      "continue_run_execution",
-      WorkerApiContinueRunExecutionRequestBody,
-      `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/continue`,
-      {
-        method: "GET",
-        headers: {
-          ...this.defaultHeaders,
-          ...this.runnerIdHeader(runnerId),
-          ...this.environmentIdHeader(environmentId),
+    environmentId?: string,
+    options?: { retryBudget?: ContinueRetryBudget }
+  ): Promise<
+    ApiResult<WorkerApiContinueRunExecutionRequestBody> & { retry?: ContinueRetrySummary }
+  > {
+    const continueRun = (retry: ZodFetchOptions["retry"], signal?: AbortSignal) =>
+      this.request(
+        "continue_run_execution",
+        WorkerApiContinueRunExecutionRequestBody,
+        `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/continue`,
+        {
+          method: "GET",
+          headers: {
+            ...this.defaultHeaders,
+            ...this.runnerIdHeader(runnerId),
+            ...this.environmentIdHeader(environmentId),
+          },
+          signal,
         },
-      },
-      {
-        // This is the hop that reaches the engine, so it's where a transient
-        // database outage during resume surfaces (as a retryable 5xx). Resuming
-        // is idempotent server-side (guarded by the snapshot id), so retry
-        // generously to ride out the outage rather than aborting the run.
-        // `randomize` jitters the delay so a fleet of runs resuming at once
-        // doesn't stampede the DB the moment it recovers.
-        retry: {
-          minTimeoutInMs: 500,
-          maxTimeoutInMs: 10_000,
-          maxAttempts: 8,
-          factor: 2,
-          randomize: true,
-        },
-      }
-    );
+        { retry }
+      );
+
+    if (options?.retryBudget) {
+      // Each attempt is a single request; the budget decides whether and when to try again.
+      return retryContinueWithinBudget(
+        (signal) => continueRun({ maxAttempts: 1 }, signal),
+        options.retryBudget
+      );
+    }
+
+    // This is the hop that reaches the engine, so it's where a transient
+    // database outage during resume surfaces (as a retryable 5xx). Resuming
+    // is idempotent server-side (guarded by the snapshot id), so retry
+    // generously to ride out the outage rather than aborting the run.
+    // `randomize` jitters the delay so a fleet of runs resuming at once
+    // doesn't stampede the DB the moment it recovers.
+    return continueRun({
+      minTimeoutInMs: 500,
+      maxTimeoutInMs: 10_000,
+      maxAttempts: 8,
+      factor: 2,
+      randomize: true,
+    });
   }
 
   async reportRestoreOutcome(

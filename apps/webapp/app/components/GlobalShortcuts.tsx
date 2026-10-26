@@ -1,5 +1,6 @@
 import { useNavigate, useSubmit } from "@remix-run/react";
 import { useEffect } from "react";
+import { useCopyPublicUrl } from "~/hooks/useCopyPublicUrl";
 import { useIsImpersonating } from "~/hooks/useOrganizations";
 import { useOptionalUser } from "~/hooks/useUser";
 import { adminPath } from "~/utils/pathBuilder";
@@ -10,6 +11,7 @@ export function GlobalShortcuts() {
   const isImpersonating = useIsImpersonating();
   const navigate = useNavigate();
   const submit = useSubmit();
+  const copyPublicUrl = useCopyPublicUrl();
 
   const isAdmin = Boolean(user?.admin) || isImpersonating;
 
@@ -17,6 +19,13 @@ export function GlobalShortcuts() {
     if (!isAdmin) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code === "KeyL" && event.altKey && (event.metaKey || event.ctrlKey)) {
+        if (!copyPublicUrl.enabled) return;
+        event.preventDefault();
+        if (!event.repeat) copyPublicUrl.copy();
+        return;
+      }
+
       // Admin escape hatch: Cmd+Option+A (Ctrl+Alt+A on Windows) opens the admin dashboard, or stops
       // impersonating. Avoids Escape — Chrome/macOS never delivers a keydown for Escape+modifier (why
       // the old Cmd+Esc did nothing). Matched on `event.code`, not `event.key`, because Option makes
@@ -34,7 +43,7 @@ export function GlobalShortcuts() {
 
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [isAdmin, isImpersonating, navigate, submit]);
+  }, [isAdmin, isImpersonating, navigate, submit, copyPublicUrl]);
 
   return null;
 }

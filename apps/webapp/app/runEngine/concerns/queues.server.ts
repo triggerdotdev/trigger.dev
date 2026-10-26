@@ -2,7 +2,10 @@ import { sanitizeQueueName } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
+import {
+  findCurrentWorkerDeployment,
+  findCurrentWorkerFromEnvironment,
+} from "~/v3/models/workerDeployment.server";
 import type {
   LockedBackgroundWorker,
   QueueManager,
@@ -101,6 +104,7 @@ export class DefaultQueueManager implements QueueManager {
     let taskTtl: string | null | undefined;
     let taskKind: string | undefined;
     let taskGates: TaskMetadataGate[] | null | undefined;
+    let templateKey: string | null | undefined;
 
     // Determine queue name based on lockToVersion and provided options
     if (lockedBackgroundWorker) {
@@ -153,6 +157,7 @@ export class DefaultQueueManager implements QueueManager {
         }
         taskKind = lockedMeta?.triggerSource;
         taskGates = lockedMeta?.gates;
+        templateKey = lockedMeta?.templateKey;
       } else {
         // No queue override - resolve default queue + TTL + triggerSource via cache,
         // falling back to a single BackgroundWorkerTask lookup on miss.
@@ -192,6 +197,7 @@ export class DefaultQueueManager implements QueueManager {
         lockedQueueId = lockedMeta.queueId ?? undefined;
         taskKind = lockedMeta.triggerSource;
         taskGates = lockedMeta.gates;
+        templateKey = lockedMeta.templateKey;
       }
     } else {
       // Task is not locked to a specific version, use regular logic
@@ -208,6 +214,7 @@ export class DefaultQueueManager implements QueueManager {
       taskTtl = taskInfo.taskTtl;
       taskKind = taskInfo.taskKind;
       taskGates = taskInfo.taskGates;
+      templateKey = taskInfo.templateKey;
     }
 
     // Sanitize the final determined queue name once
@@ -292,6 +299,7 @@ export class DefaultQueueManager implements QueueManager {
       taskTtl,
       taskKind,
       gates: gates && gates.length > 0 ? gates : undefined,
+      templateKey,
     };
   }
 
@@ -300,6 +308,7 @@ export class DefaultQueueManager implements QueueManager {
     taskTtl?: string | null;
     taskKind?: string | undefined;
     taskGates?: TaskMetadataGate[] | null;
+    templateKey?: string | null;
   }> {
     const { taskId, environment, body } = request;
     const { queue } = body.options ?? {};
@@ -323,6 +332,7 @@ export class DefaultQueueManager implements QueueManager {
         taskTtl: meta?.ttl ?? undefined,
         taskKind: meta?.triggerSource,
         taskGates: meta?.gates,
+        templateKey: meta?.templateKey,
       };
     }
 
@@ -344,6 +354,7 @@ export class DefaultQueueManager implements QueueManager {
         taskTtl: meta.ttl,
         taskKind: meta.triggerSource,
         taskGates: meta.gates,
+        templateKey: meta.templateKey,
       };
     }
 
@@ -352,6 +363,7 @@ export class DefaultQueueManager implements QueueManager {
       taskTtl: meta.ttl,
       taskKind: meta.triggerSource,
       taskGates: meta.gates,
+      templateKey: meta.templateKey,
     };
   }
 
@@ -404,6 +416,7 @@ export class DefaultQueueManager implements QueueManager {
 
     recordTaskMetaResolve("locked", source);
 
+    const templateKey = row.worker.deployment?.templateKey ?? null;
     const entry: TaskMetadataEntry = {
       slug,
       ttl: row.ttl,
@@ -415,9 +428,9 @@ export class DefaultQueueManager implements QueueManager {
 
     // Fire-and-forget back-fill — `setByWorker` upserts the single field and
     // refreshes the hash TTL. Errors are logged inside the cache and swallowed.
-    void this.taskMetaCache.setByWorker(workerId, entry);
+    void this.taskMetaCache.setByWorker(workerId, entry, templateKey);
 
-    return entry;
+    return { ...entry, templateKey };
   }
 
   private findLockedTaskRow(
@@ -433,6 +446,7 @@ export class DefaultQueueManager implements QueueManager {
         triggerSource: true,
         gates: true,
         queue: { select: { id: true, name: true } },
+        worker: { select: { deployment: { select: { templateKey: true } } } },
       },
     });
   }
@@ -459,7 +473,18 @@ export class DefaultQueueManager implements QueueManager {
     // the adjacent BackgroundWorkerTask lookup below uses `replicaPrisma` too
     // (replica lag for "just deployed" is bounded the same way for both
     // queries; reading from the writer here would only widen the window).
-    const worker = await findCurrentWorkerFromEnvironment(environment, this.replicaPrisma);
+    let worker: { id: string } | null;
+    let templateKey: string | null = null;
+    if (environment.type === "DEVELOPMENT") {
+      worker = await findCurrentWorkerFromEnvironment(environment, this.replicaPrisma);
+    } else {
+      const deployment = await findCurrentWorkerDeployment({
+        environmentId: environment.id,
+        prismaClient: this.replicaPrisma,
+      });
+      worker = deployment?.worker ?? null;
+      templateKey = deployment?.templateKey ?? null;
+    }
     if (!worker) {
       recordTaskMetaResolve("current", "miss");
       return null;
@@ -495,9 +520,9 @@ export class DefaultQueueManager implements QueueManager {
     // keyspaces so a subsequent locked-or-not trigger hits the cache. The
     // env-keyspace TTL is preserved (promotion owns it); the by-worker TTL
     // is refreshed (sliding window keeps active workers warm).
-    void this.taskMetaCache.setByCurrentWorker(environment.id, worker.id, entry);
+    void this.taskMetaCache.setByCurrentWorker(environment.id, worker.id, entry, templateKey);
 
-    return entry;
+    return { ...entry, templateKey };
   }
 
   async validateQueueLimits(

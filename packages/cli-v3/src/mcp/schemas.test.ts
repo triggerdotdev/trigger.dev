@@ -26,3 +26,37 @@ describe("MCP schemas", () => {
     expect(delay.anyOf).toContainEqual(expect.objectContaining({ format: "date-time" }));
   });
 });
+
+describe("alert schemas", () => {
+  it("only advertises queues/runs/health as example areas (no candidate area listed)", () => {
+    const jsonSchema = z.toJSONSchema(schemas.ListAlertCapabilitiesInput) as any;
+
+    expect(jsonSchema.properties.area.description).toBe(
+      "Filter capabilities to a specific area, e.g. 'queues', 'runs', 'health'."
+    );
+  });
+
+  it("has no dead scope type left over from the removed capabilities", () => {
+    const scopeType = schemas.CreateAlertInput.shape.params.shape.scope.unwrap().shape.type;
+    expect(scopeType.options).toEqual(["queue", "queuePattern", "task", "all", "errorGroup"]);
+  });
+
+  it("fails when params are dropped before the server call", () => {
+    const input = {
+      projectRef: "proj_123",
+      capabilityKey: "health.all",
+      params: { scope: { type: "all" } },
+      condition: {
+        kind: "state",
+        stateKey: "flow",
+        params: { schedulingDelayMs: 5000 },
+      },
+      behavior: {},
+      notifiers: [{ type: "chat", chatId: "chat_1" }],
+    };
+
+    const parsed = schemas.CreateAlertInput.parse(input);
+
+    expect((parsed.condition as any).params).toEqual({ schedulingDelayMs: 5000 });
+  });
+});

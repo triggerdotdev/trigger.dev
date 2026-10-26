@@ -6,7 +6,6 @@ import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { env } from "~/env.server";
 import {
   clearImpersonation,
   findImpersonationTarget,
@@ -23,6 +22,7 @@ import {
   supportAccessRequestPath,
 } from "~/utils/pathBuilder";
 import { isSameOriginNavigation } from "~/utils/sameOriginNavigation";
+import { loginOriginForRequest } from "~/services/adminOrigin.server";
 
 // Everything this route's loader and action touch on the server lives in
 // `~/models/admin.server` on purpose: Remix only strips `loader`, `action` and
@@ -66,7 +66,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   // from outside the app (address bar, bookmark, a link shared elsewhere) get
   // the consent page below instead, whose "Start Support Access" button posts back from
   // our own page and so satisfies the same check.
-  if (isSameOriginNavigation(request, env.LOGIN_ORIGIN)) {
+  if (isSameOriginNavigation(request, loginOriginForRequest(request))) {
     throw await startImpersonation(request, organizationSlug, path, user);
   }
 
@@ -147,7 +147,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   // The consent page posts from our own origin, so this holds. Re-applied here
   // so another site cannot drive the POST either.
-  if (!isSameOriginNavigation(request, env.LOGIN_ORIGIN)) {
+  if (!isSameOriginNavigation(request, loginOriginForRequest(request))) {
     logger.warn("Refusing cross-site impersonation submission", {
       userId: user.id,
       organizationSlug: params.organizationSlug,

@@ -42,6 +42,7 @@ const { action, loader } = createActionApiRoute(
     headers: HeadersSchema,
     body: CreateBatchRequestBody,
     allowJWT: true,
+    allowRunToken: true,
     maxContentLength: 131_072, // 128KB is plenty for the batch metadata
     authorization: {
       action: "batchTrigger",

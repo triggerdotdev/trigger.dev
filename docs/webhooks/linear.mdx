@@ -4,10 +4,6 @@ description: "Turn a chat.agent into a Linear agent: assign it an issue or @ment
 sidebarTitle: "Linear agents"
 ---
 
-import WebhooksBetaBanner from "/snippets/webhooks-beta-banner.mdx";
-
-<WebhooksBetaBanner />
-
 Linear opens an **agent session** when someone @mentions your app in an issue or delegates (assigns) an issue to it. `linear()` from `@trigger.dev/linear` is a [channel](/webhooks/channels) connector for those sessions: each one becomes a durable Trigger.dev [session](/ai-chat/sessions), the user's prompt runs as a turn, and the agent's work shows up in Linear as thoughts, actions, a plan, an approval card when it needs a decision, and a response when it is done.
 
 ```ts
@@ -67,7 +63,7 @@ linear({ id: "linear", endpoint: linearEvents, token, context: { guidance: false
 | Turn starts | An ephemeral `thought` ("Looking into this...") |
 | A tool is called | An ephemeral `action` with the tool name and input, then the same action with its `result` |
 | The reply is ready | A `response` with the reply as markdown |
-| The turn fails | An `error` |
+| The turn fails | An `error` saying "Something went wrong answering this. Try again." (`errorMessage` changes it) |
 | A tool needs a human decision | An `elicitation` with Approve and Deny options, or the tool's own options from `interactions` (see [Approvals and choices](#approvals-and-choices)) |
 | The user picks an option | A `thought` recording the decision ("Approved by Jane.", "Jane chose "High".") |
 | A prompt arrives while the agent works | A `thought` ("Got it, I'll take that into account.") as soon as it arrives (see [Prompts sent while the agent is working](#prompts-sent-while-the-agent-is-working)) |
@@ -176,6 +172,7 @@ The first Linear turn binds the session to the agent session ([bound sessions](/
 | `approvals` | `{ [toolName]: (input, call) => { title?, body } }` | Custom approval card body per tool. Default lays the tool input out as markdown. |
 | `interactions` | `{ [toolName]: (call) => { title?, body, options } }` | A tool's own select card; the chosen option resolves the tool to `{ selected }`. |
 | `receivedThought` | `string`, function or `null` | Thought posted as soon as a prompt arrives while the agent is working. Default "Got it, I'll take that into account.", null for none. |
+| `errorMessage` | `string \| (ctx) => string` | The error activity's text when a turn fails, fixed or built from the failure ([details](/webhooks/channels#when-a-turn-fails)). Default "Something went wrong answering this. Try again." |
 | `ack` | message, `null`, or function | The first thought. Pass `null` to post nothing before the response. |
 | `inbound` / `outbound` | functions | Map the event to the turn, and the reply to an activity. |
 | `delivery` | `"final"` or `"stream"` | `"final"` (default) posts the response when the turn ends. `"stream"` also posts ephemeral thoughts as the reply streams. |

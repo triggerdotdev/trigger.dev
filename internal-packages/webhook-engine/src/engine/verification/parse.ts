@@ -11,6 +11,7 @@ import { buildSigningBytes, readHeader, timestampDistanceMs, timestampToMs } fro
 // The subset of a verifier config shared by every signed scheme (hmac, asymmetric).
 export type SignedConfig = {
   signatureHeader: string;
+  additionalSignatureHeaders?: string[];
   signature?: WebhookSignatureExtraction;
   timestamp?: WebhookTimestampConfig;
   signingString: WebhookSigningString;
@@ -97,6 +98,10 @@ export function prepareSignedVerification(
 
   const { signatures, fields } = parseSignatureHeader(rawHeader, config.signature);
   if (signatures.length === 0) return { ok: false, error: "no signature found in header" };
+  for (const name of config.additionalSignatureHeaders ?? []) {
+    const value = input.headers[name.toLowerCase()];
+    if (value) signatures.push(...parseSignatureHeader(value, config.signature).signatures);
+  }
 
   const ctx: ResolveContext = {
     headers: input.headers,

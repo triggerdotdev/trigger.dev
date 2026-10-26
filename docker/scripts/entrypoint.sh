@@ -1,6 +1,12 @@
 #!/bin/sh
 set -xe
 
+# A NODE_OPTIONS set at deploy time replaces the image's, so keep the CA distrust preload on it.
+case " ${NODE_OPTIONS:-} " in
+  *" --require=/triggerdotdev/scripts/distrust-cas.cjs "*) ;;
+  *) export NODE_OPTIONS="--require=/triggerdotdev/scripts/distrust-cas.cjs${NODE_OPTIONS:+ $NODE_OPTIONS}" ;;
+esac
+
 if [ -n "$DATABASE_HOST" ]; then
   scripts/wait-for-it.sh ${DATABASE_HOST} -- echo "database is up"
 fi

@@ -252,6 +252,12 @@ export type BatchQueueOptions = {
     factor?: number;
     /** Whether to add jitter to retry delays. Default: true */
     randomize?: boolean;
+    /**
+     * Total attempt ceiling for failures the callback marks `infrastructureRetry` (a transient
+     * outage of a dependency, not a problem with the item). Those keep retrying on the same backoff
+     * past `maxAttempts`, up to this many attempts. Default: `maxAttempts` (no extension).
+     */
+    infrastructureMaxAttempts?: number;
   };
 };
 
@@ -268,6 +274,8 @@ export type ProcessBatchItemCallback = (params: {
   attempt: number;
   /** Whether this is the final attempt (no more retries after this). */
   isFinalAttempt: boolean;
+  /** Whether a failure marked `infrastructureRetry` on this attempt would be its last. */
+  isFinalInfrastructureAttempt: boolean;
 }) => Promise<
   | { success: true; runId: string }
   | {
@@ -282,6 +290,11 @@ export type ProcessBatchItemCallback = (params: {
        * can finalize quickly without burning through the retry ladder.
        */
       skipRetries?: boolean;
+      /**
+       * When true, the failure is a transient infrastructure outage: the item retries until
+       * `isFinalInfrastructureAttempt` rather than `isFinalAttempt`.
+       */
+      infrastructureRetry?: boolean;
     }
 >;
 

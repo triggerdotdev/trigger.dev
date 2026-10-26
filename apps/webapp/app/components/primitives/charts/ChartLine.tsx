@@ -29,6 +29,7 @@ const SYNC_LINE_COLOR = "var(--color-text-faint)";
 // added to config/series, so it stays out of the legend, no-data check and series totals. Deduped
 // out of the tooltip so a hovered bucket shows one value, not the base + overlay retrace.
 const WARNING_OVERLAY_KEY = "__warningOverlay";
+const WARNING_BASE_KEY = "__warningBase";
 
 type CurveType =
   | "basis"
@@ -63,11 +64,46 @@ function ZoomRangeTooltip({ active, from, to }: { active?: boolean; from: string
 // hovered bucket shows one value (base), not base + overlay. Defined at module scope (not inline in
 // the renderer) so recharts reconciles it in place across hover re-renders instead of remounting
 // the portaled tooltip — the latter caused a flicker while moving along the line.
-function OverlayFilteredTooltip(props: any) {
+function warningSwatchThreshold(
+  warningOverlay: ChartLineRendererProps["warningOverlay"]
+): number | undefined {
+  return warningOverlay && "tooltipSwatch" in warningOverlay && warningOverlay.tooltipSwatch
+    ? warningOverlay.threshold
+    : undefined;
+}
+
+export function warningSwatchColor(
+  value: unknown,
+  threshold: number | undefined,
+  color?: string,
+  direction: "above" | "below" = "above"
+): string | undefined {
+  const n = Number(value);
+  return threshold != null &&
+    Number.isFinite(n) &&
+    (direction === "below" ? n < threshold : n > threshold)
+    ? (color ?? "var(--color-warning)")
+    : undefined;
+}
+
+export function OverlayFilteredTooltip({
+  overlayThreshold,
+  overlayColor,
+  overlayDirection,
+  ...props
+}: any) {
+  const payload = props.payload?.filter(
+    (p: any) =>
+      !String(p.dataKey).startsWith(WARNING_OVERLAY_KEY) &&
+      !String(p.dataKey).startsWith(WARNING_BASE_KEY)
+  );
   return (
     <ChartTooltipContent
       {...props}
-      payload={props.payload?.filter((p: any) => p.dataKey !== WARNING_OVERLAY_KEY)}
+      payload={payload}
+      itemColor={(item) =>
+        warningSwatchColor(item.value, overlayThreshold, overlayColor, overlayDirection)
+      }
     />
   );
 }
@@ -126,17 +162,30 @@ export type ChartLineRendererProps = {
   thresholdStroke?: { value: number; aboveColor: string; series?: string };
   /**
    * Per-bucket warning recolour: a series is retraced in the warning colour only across buckets
-   * where it crosses a limit — either strictly above a constant `threshold` (single-series case,
-   * applied to the first series), or where one series drops below another (`series` below `below`,
+   * where it crosses a limit — either strictly above a constant `threshold` (applied to
+   * every series), or where one series drops below another (`series` below `below`,
    * e.g. started < enqueued = "not keeping up"). The mask extends one bucket forward so a lone
    * crossing still yields a visible segment. Unlike {@link thresholdStroke}'s gradient split,
    * non-crossing buckets always stay the base colour. The overlay is excluded from the legend and
    * deduped out of the tooltip. Non-stacked line charts only.
    */
   warningOverlay?:
-    | { threshold: number; color?: string }
+    | {
+        threshold: number;
+        direction?: "above" | "below";
+        color?: string;
+        tooltipSwatch?: true;
+      }
     | { series: string; below: string; color?: string }
     | { series: string; atOrAbove: string; color?: string };
+  /** Vertical bands drawn behind the lines (e.g. a degraded interval). */
+  referenceAreas?: Array<{
+    x1: number;
+    x2: number;
+    fill?: string;
+    fillOpacity?: number;
+    label?: string;
+  }>;
   /** Width injected by ResponsiveContainer */
   width?: number;
   /** Height injected by ResponsiveContainer */
@@ -226,6 +275,7 @@ export function ChartLineRenderer({
   referenceLines,
   thresholdStroke,
   warningOverlay,
+  referenceAreas,
   width,
   height,
 }: ChartLineRendererProps) {
@@ -306,40 +356,65 @@ export function ChartLineRenderer({
           : 1;
   }
 
-  // Per-bucket warning overlay: single-series line charts only. Retrace the primary series in the
-  // warning colour, non-null only across over-threshold stretches. Include the immediate neighbours
+  // Per-bucket warning overlay: retrace each overlaid series in the warning colour, non-null only
+  // across over-threshold stretches. Include the immediate neighbours
   // of an over-threshold bucket (both endpoints of a segment must be non-null), so the crossing
   // segment on BOTH sides is drawn — the colour change tracks the axis crossing symmetrically, and
   // a lone over-threshold bucket still yields a visible segment.
-  const overlayKey =
+  const overlayKeys =
     warningOverlay && !stacked
       ? "series" in warningOverlay
-        ? warningOverlay.series
-        : visibleSeries[0]
-      : undefined;
+        ? [warningOverlay.series]
+        : visibleSeries
+      : [];
+  const overlayKey = overlayKeys[0];
   const overlayActive = overlayKey != null;
-  const chartData = overlayActive
-    ? data.map((row, i) => {
-        const isOver = (r: (typeof data)[number] | undefined) => {
-          if (!r) return false;
-          const v = Number(r[overlayKey]);
-          if (!Number.isFinite(v)) return false;
-          if ("below" in warningOverlay!) {
-            // "Not keeping up": the series dips below its companion (e.g. started < enqueued).
-            const b = Number(r[warningOverlay.below]);
-            return Number.isFinite(b) && v < b;
-          }
-          if ("atOrAbove" in warningOverlay!) {
-            // "At the limit": the series reaches or exceeds its companion (e.g. running >= limit).
-            const b = Number(r[warningOverlay.atOrAbove]);
-            return Number.isFinite(b) && b > 0 && v >= b;
-          }
-          return v > warningOverlay!.threshold;
-        };
-        const inOverlay = isOver(data[i - 1]) || isOver(row) || isOver(data[i + 1]);
-        return { ...row, [WARNING_OVERLAY_KEY]: inOverlay ? row[overlayKey] : null };
-      })
-    : data;
+  const isOver = (r: (typeof data)[number] | undefined, key = overlayKey) => {
+    if (!r || key == null) return false;
+    const v = Number(r[key]);
+    if (!Number.isFinite(v)) return false;
+    if ("below" in warningOverlay!) {
+      // "Not keeping up": the series dips below its companion (e.g. started < enqueued).
+      const b = Number(r[warningOverlay.below]);
+      return Number.isFinite(b) && v < b;
+    }
+    if ("atOrAbove" in warningOverlay!) {
+      // "At the limit": the series reaches or exceeds its companion (e.g. running >= limit).
+      const b = Number(r[warningOverlay.atOrAbove]);
+      return Number.isFinite(b) && b > 0 && v >= b;
+    }
+    return warningOverlay!.direction === "below"
+      ? v < warningOverlay!.threshold
+      : v > warningOverlay!.threshold;
+  };
+  const stepSplit =
+    overlayKeys.length === 1 && lineType.startsWith("step") && xAxisPropsProp?.type === "number";
+  const overlayLines = stepSplit
+    ? [{ key: overlayKey!, base: WARNING_BASE_KEY, over: WARNING_OVERLAY_KEY }]
+    : overlayKeys.map((key) => ({
+        key,
+        base: `${WARNING_BASE_KEY}_${key}`,
+        over: `${WARNING_OVERLAY_KEY}_${key}`,
+      }));
+  const chartData = stepSplit
+    ? stepOverlayRows(data, overlayKey!, dataKey, lineType, (r) => isOver(r))
+    : overlayActive
+      ? data.map((row) => ({ ...row }))
+      : data;
+  if (!stepSplit) {
+    for (const { key, base, over } of overlayLines) {
+      const inOverlay = data.map(
+        (row, i) => isOver(data[i - 1], key) || isOver(row, key) || isOver(data[i + 1], key)
+      );
+      const overlaySegment = (i: number) => !!inOverlay[i] && !!inOverlay[i + 1];
+      chartData.forEach((row, i) => {
+        const inBase =
+          (i > 0 && !overlaySegment(i - 1)) || (i < data.length - 1 && !overlaySegment(i));
+        row[over] = inOverlay[i] ? data[i][key] : null;
+        row[base] = inBase ? data[i][key] : null;
+      });
+    }
+  }
 
   const yAxisConfig = {
     axisLine: false,
@@ -422,13 +497,40 @@ export function ChartLineRenderer({
     ) : showLegend ? (
       () => null
     ) : overlayActive ? (
-      <OverlayFilteredTooltip valueFormatter={tooltipValueFormatter} />
+      <OverlayFilteredTooltip
+        valueFormatter={tooltipValueFormatter}
+        overlayThreshold={warningSwatchThreshold(warningOverlay)}
+        overlayColor={warningOverlay?.color}
+        overlayDirection={
+          warningOverlay && "direction" in warningOverlay ? warningOverlay.direction : undefined
+        }
+      />
     ) : (
       <ChartTooltipContent valueFormatter={tooltipValueFormatter} />
     );
 
   const referenceOverlays = (
     <>
+      {referenceAreas?.map((area) => (
+        <ReferenceArea
+          key={`area-${area.x1}-${area.x2}`}
+          x1={area.x1}
+          x2={area.x2}
+          fill={area.fill}
+          fillOpacity={area.fillOpacity}
+          className="pointer-events-none"
+          label={
+            area.label
+              ? {
+                  value: area.label,
+                  position: "insideTopLeft",
+                  fontSize: REFERENCE_LABEL_FONT_SIZE,
+                  fill: "var(--color-text-dimmed)",
+                }
+              : undefined
+          }
+        />
+      ))}
       {/* Synced drag-to-zoom selection — mirrored across charts in the same group. */}
       {syncZoomSelection && (
         <ReferenceArea
@@ -570,7 +672,13 @@ export function ChartLineRenderer({
             key={key}
             dataKey={key}
             type={lineType}
-            stroke={gradientLine ? `url(#${gradientId})` : config[key]?.color}
+            stroke={
+              gradientLine
+                ? `url(#${gradientId})`
+                : overlayKeys.includes(key)
+                  ? "none"
+                  : config[key]?.color
+            }
             strokeWidth={1}
             dot={showDots ? { r: 1.5, fill: config[key]?.color, strokeWidth: 0 } : false}
             // The hover dot matches the line colour under it: for a gradient (threshold) line it
@@ -594,31 +702,108 @@ export function ChartLineRenderer({
           />
         );
       })}
-      {overlayActive && (
+      {overlayLines.map(({ key, base }) => (
+        <Line
+          key={base}
+          dataKey={base}
+          type={lineType}
+          stroke={config[key]?.color}
+          strokeWidth={1}
+          dot={false}
+          activeDot={false}
+          connectNulls={false}
+          legendType="none"
+          isAnimationActive={false}
+        />
+      ))}
+      {overlayLines.map(({ key, over }) => (
         // Drawn after the base line so the warning colour sits on top. connectNulls={false} keeps
         // the mask to over-threshold stretches; excluded from the legend and (above) the tooltip.
         // Its active dot inherits the warning colour so the hover dot is yellow over yellow.
         // Same 1px width as the base line so the warning stretch matches the other lines — it traces
         // the same points over its over-threshold buckets, so it covers the base exactly.
         <Line
-          key={WARNING_OVERLAY_KEY}
-          dataKey={WARNING_OVERLAY_KEY}
+          key={over}
+          dataKey={over}
           type={lineType}
           stroke={warningOverlay!.color ?? "var(--color-warning)"}
           strokeWidth={1}
           dot={false}
-          activeDot={{
-            r: 4,
-            fill: warningOverlay!.color ?? "var(--color-warning)",
-            strokeWidth: 0,
-          }}
+          activeDot={
+            // oxlint-disable-next-line react/no-unstable-nested-components -- Recharts invokes this renderer with hover coordinates.
+            (props: ActiveDotProps) =>
+              props.cx != null &&
+              props.cy != null &&
+              overlayDotVisible(props.payload, key, over) &&
+              isOver(props.payload as (typeof data)[number], key) ? (
+                <circle
+                  cx={props.cx}
+                  cy={props.cy}
+                  r={4}
+                  fill={warningOverlay!.color ?? "var(--color-warning)"}
+                />
+              ) : (
+                <g />
+              )
+          }
           connectNulls={false}
           legendType="none"
           isAnimationActive={false}
         />
-      )}
+      ))}
     </LineChart>
   );
+}
+
+// Inserted step rows carry the previous level in the overlay column; their dot would sit off the line.
+export function overlayDotVisible(
+  payload: Record<string, unknown> | undefined,
+  key: string,
+  overKey = WARNING_OVERLAY_KEY
+) {
+  return payload?.[overKey] != null && payload[overKey] === payload?.[key];
+}
+
+type StepPoint = { row: Record<string, unknown>; level: unknown; over: boolean | null };
+
+// Splits each over/under crossing into its own vertical so a segment colours by the level it sits at.
+function stepOverlayRows(
+  data: Record<string, unknown>[],
+  key: string,
+  dataKey: string,
+  lineType: CurveType,
+  isOver: (r: Record<string, unknown>) => boolean
+) {
+  const finite = (r: Record<string, unknown>) => Number.isFinite(Number(r[key]));
+  const pts: StepPoint[] = [];
+  data.forEach((row, i) => {
+    const prev = data[i - 1];
+    if (prev && finite(prev) && finite(row) && isOver(prev) !== isOver(row)) {
+      const before = { level: prev[key], over: isOver(prev) };
+      const after = { level: row[key], over: isOver(row) };
+      if (lineType === "stepAfter") pts.push({ row, ...before });
+      else if (lineType === "stepBefore") pts.push({ row: prev, ...after });
+      else {
+        const mid = { ...prev, [dataKey]: (Number(prev[dataKey]) + Number(row[dataKey])) / 2 };
+        pts.push({ row: mid, ...before }, { row: mid, ...after });
+      }
+    }
+    pts.push({ row, level: row[key], over: finite(row) ? isOver(row) : null });
+  });
+  const segment = (j: number) => {
+    const a = pts[j];
+    const b = pts[j + 1];
+    if (!a || !b || a.over === null || b.over === null) return null;
+    return a.over !== b.over ? true : a.over;
+  };
+  return pts.map((p, j) => {
+    const roles = [segment(j - 1), segment(j)];
+    return {
+      ...p.row,
+      [WARNING_OVERLAY_KEY]: roles.includes(true) ? p.level : null,
+      [WARNING_BASE_KEY]: roles.includes(false) ? p.level : null,
+    };
+  });
 }
 
 type ActiveDotProps = {

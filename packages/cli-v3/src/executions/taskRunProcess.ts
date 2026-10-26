@@ -21,7 +21,11 @@ import { Evt } from "evt";
 import { type ChildProcess, fork } from "node:child_process";
 import { chalkError, chalkGrey, chalkRun, prettyPrintDate } from "../utilities/cliOutput.js";
 
-import { execOptionsForRuntime, execPathForRuntime } from "@trigger.dev/core/v3/build";
+import {
+  execOptionsForRuntime,
+  execPathForRuntime,
+  isBunRuntime,
+} from "@trigger.dev/core/v3/build";
 import { nodeOptionsWithMaxOldSpaceSize } from "@trigger.dev/core/v3/machines";
 import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import { logger } from "../utilities/logger.js";
@@ -141,6 +145,7 @@ export class TaskRunProcess {
 
     const fullEnv = {
       ...$env,
+      ...trustStoreEnv(process.env, $env),
       OTEL_IMPORT_HOOK_INCLUDES: workerManifest.otelImportHook?.include?.join(","),
       // TODO: this will probably need to use something different for bun (maybe --preload?)
       NODE_OPTIONS: execOptionsForRuntime(workerManifest.runtime, workerManifest, maxOldSpaceSize),
@@ -156,11 +161,16 @@ export class TaskRunProcess {
       cwd,
     });
 
+    // bun accepts --no-warnings but rejects node's --no-warnings=<type> form at startup
+    const noWarningsFlag = isBunRuntime(workerManifest.runtime)
+      ? "--no-warnings"
+      : "--no-warnings=ExperimentalWarning";
+
     this._child = fork(workerManifest.workerEntryPoint, executorArgs(workerManifest), {
       stdio: [/*stdin*/ "ignore", /*stdout*/ "pipe", /*stderr*/ "pipe", "ipc"],
       cwd,
       env: fullEnv,
-      execArgv: ["--trace-uncaught", "--no-warnings=ExperimentalWarning"],
+      execArgv: ["--trace-uncaught", noWarningsFlag],
       execPath: execPathForRuntime(workerManifest.runtime),
       serialization: "json",
     });
@@ -604,6 +614,27 @@ export class TaskRunProcess {
       message: String(error),
     };
   }
+}
+
+const TRUST_STORE_ENV_KEYS = [
+  "NODE_EXTRA_CA_CERTS",
+  "SSL_CERT_FILE",
+  "REQUESTS_CA_BUNDLE",
+  "PIP_CERT",
+] as const;
+
+export function trustStoreEnv(
+  controllerEnv: NodeJS.ProcessEnv,
+  runEnv: Record<string, string | undefined>
+): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const key of TRUST_STORE_ENV_KEYS) {
+    const value = runEnv[key] ?? controllerEnv[key];
+    if (value) {
+      env[key] = value;
+    }
+  }
+  return env;
 }
 
 function executorArgs(workerManifest: WorkerManifest): string[] {

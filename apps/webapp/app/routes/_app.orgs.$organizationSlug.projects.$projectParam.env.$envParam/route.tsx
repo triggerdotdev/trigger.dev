@@ -21,7 +21,7 @@ import { selectAccessibleEnvironment } from "~/utils/environmentAccess";
 import { EnvironmentParamSchema, v3ProjectPath } from "~/utils/pathBuilder";
 import { getPromotedDashboardAgentPrompt } from "~/components/dashboard-agent/suggested-prompts/promotedPrompt.server";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
-import { canUseDashboardAgentWatches } from "~/v3/canUseDashboardAgentWatches.server";
+import { canUseAlertsList } from "~/v3/canUseAlertsList.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -102,17 +102,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
   });
 
-  // Watches are a separate switch inside the agent, default off, so the panel renders
-  // without any watch affordance until an org gets it.
   const dashboardAgentActingUserId = user.isImpersonating
     ? await getImpersonatorUserId(request)
     : undefined;
   const dashboardAgentWatchEnabled =
     hasDashboardAgentAccess && !dashboardAgentActingUserId
-      ? await canUseDashboardAgentWatches({
-          userId: user.id,
-          organizationSlug,
+      ? await canUseAlertsList({
           orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+          user,
         })
       : false;
 

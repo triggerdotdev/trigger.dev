@@ -8,8 +8,15 @@ import type {
   HostBearerAuthResult,
   RbacResource,
 } from "@trigger.dev/rbac";
+import { authenticateRunToken } from "~/services/oidc/runTokenAuth.server";
+import { isRunTokenFormat } from "~/services/oidc/runTokenVerify";
 import { rbac } from "~/services/rbac.server";
 import { singleton } from "~/utils/singleton";
+
+export type HostBearerAuthOptions = BearerAuthOptions & {
+  // Accept per-attempt run tokens. Opt-in per route; routes must declare an authorization check.
+  allowRunToken?: boolean;
+};
 
 type ApiAuthResult = "success" | "invalid" | "forbidden" | "error";
 
@@ -28,14 +35,17 @@ const telemetry = singleton("apiAuthTelemetry", () => {
 
 export async function authenticateBearerWithTelemetry(
   request: Request,
-  options: BearerAuthOptions
+  options: HostBearerAuthOptions
 ): Promise<HostBearerAuthResult> {
   const startedAt = performance.now();
   const classified = classifyCredential(request, options.allowJWT ?? false);
   let final = { ...classified, result: "error" as ApiAuthResult };
 
   try {
-    const result = await rbac.authenticateBearer(request, options);
+    const result =
+      classified.credentialKind === "run_token"
+        ? await authenticateRunTokenBearer(request, options.allowRunToken ?? false)
+        : await rbac.authenticateBearer(request, options);
     // The host LazyController always attaches `resolution`; fall back to the
     // format-based classification if a caller (e.g. a test double) omits it.
     const resolution = result.resolution ?? classified;
@@ -57,6 +67,49 @@ export async function authenticateBearerWithTelemetry(
       lookup_path: final.lookupPath,
     });
   }
+}
+
+const RUN_TOKEN_RESOLUTION = { credentialKind: "run_token", lookupPath: "run_token" } as const;
+
+// Run tokens are host-owned and verified locally, so they never reach the RBAC controller.
+async function authenticateRunTokenBearer(
+  request: Request,
+  allowRunToken: boolean
+): Promise<HostBearerAuthResult> {
+  if (!allowRunToken) {
+    return {
+      ok: false,
+      status: 401,
+      error: "Run tokens are not accepted for this endpoint",
+      resolution: RUN_TOKEN_RESOLUTION,
+    };
+  }
+
+  const result = await authenticateRunToken(bearerToken(request) ?? "");
+  if (!result.ok) {
+    return { ...result, resolution: RUN_TOKEN_RESOLUTION };
+  }
+
+  return {
+    ok: true,
+    environment: result.environment,
+    subject: {
+      type: "runToken",
+      runId: result.claims.run_id,
+      environmentId: result.environment.id,
+      organizationId: result.environment.organizationId,
+      projectId: result.environment.projectId,
+    },
+    ability: result.ability,
+    resolution: RUN_TOKEN_RESOLUTION,
+  };
+}
+
+function bearerToken(request: Request): string | undefined {
+  return request.headers
+    .get("Authorization")
+    ?.replace(/^Bearer /, "")
+    .trim();
 }
 
 export async function authenticateAuthorizeBearerWithTelemetry(
@@ -126,11 +179,9 @@ function classifyCredential(
   request: Request,
   allowJWT: boolean
 ): { credentialKind: BearerCredentialKind; lookupPath: BearerLookupPath } {
-  const token = request.headers
-    .get("Authorization")
-    ?.replace(/^Bearer /, "")
-    .trim();
+  const token = bearerToken(request);
   if (!token) return { credentialKind: "unknown", lookupPath: "not_found" };
+  if (isRunTokenFormat(token)) return RUN_TOKEN_RESOLUTION;
   if (token.startsWith("pk_")) {
     return { credentialKind: "legacy_public_key", lookupPath: "legacy_public" };
   }

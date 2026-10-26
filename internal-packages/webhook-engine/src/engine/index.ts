@@ -4,6 +4,7 @@ import { Logger } from "@trigger.dev/core/logger";
 import type {
   Prisma,
   WebhookDatabase,
+  WebhookReplicaDatabase,
   WebhookDelivery,
   WebhookDeliveryStatus,
   WebhookEndpoint,
@@ -37,9 +38,8 @@ import {
 import { isInfrastructureError, WebhookInfrastructureError } from "./errors.js";
 import { QueueMemoryGuard } from "./memoryGuard.js";
 import { ensurePartitions, listDatedPartitions, partitionsCoveredUntil } from "./partitions.js";
-import { type CachedEndpoint, TtlCache } from "./cache.js";
 import { evaluateFilter, parseFilter } from "./filter/index.js";
-import { verify } from "./verification/index.js";
+import { verifyWithSecrets } from "./verification/index.js";
 import { sha256Hex } from "./verification/util.js";
 import { deriveIdempotencyKey, parseEventBody } from "./verification/derive.js";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
@@ -122,6 +122,13 @@ type TargetOutcome =
 type TaskTarget = Extract<WebhookRoutingTarget, { type: "task" }>;
 type SessionTarget = Extract<WebhookRoutingTarget, { type: "session" }>;
 
+/** An ACTIVE endpoint with its signing secrets (current first) and parsed routing targets. */
+type ResolvedEndpoint = {
+  endpoint: WebhookEndpoint;
+  secrets: [string, ...string[]];
+  targets: ParsedRoutingTarget[];
+};
+
 /** The response contract declared on a verifier artifact, if any (bundles carry none). */
 function artifactResponseContract(artifact: WebhookVerifierArtifact) {
   return "response" in artifact ? artifact.response : undefined;
@@ -202,7 +209,6 @@ export class WebhookEngine {
   private deliveryExecutionDuration: Histogram;
   private deliveryExecutionFailureCounter: Counter;
   private ensurePartitionsCounter: Counter;
-  private endpointCacheCounter: Counter;
   private ingestCounter: Counter;
   private ingestRefusedCounter: Counter;
   private frontGateRequeuedCounter: Counter;
@@ -217,19 +223,17 @@ export class WebhookEngine {
   private partitionCoverageTimer?: NodeJS.Timeout;
 
   prisma: WebhookDatabase;
+  private readonly replica: WebhookReplicaDatabase;
 
   private triggerTask: TriggerWebhookTaskCallback;
   private waiterStore!: WebhookWaiterStore;
   private readonly waiterLimits: WebhookWaiterLimits;
-  // Caches the endpoint + resolved signing secret per opaqueId so the ingest hot path skips two
-  // Postgres reads (endpoint lookup + secret decrypt). Both are immutable per endpoint within the
-  // TTL; a status change or secret rotation takes effect after at most the TTL.
-  private endpointCache: TtlCache<CachedEndpoint>;
 
   constructor(private readonly options: WebhookEngineOptions) {
     this.logger =
       options.logger ?? new Logger("WebhookEngine", (this.options.logLevel ?? "info") as any);
     this.prisma = options.prisma;
+    this.replica = options.replica ?? options.prisma;
     this.triggerTask = options.triggerTask;
     this.waiterLimits = { ...DEFAULT_WAITER_LIMITS, ...options.waiters?.limits };
 
@@ -256,9 +260,6 @@ export class WebhookEngine {
     );
     this.ensurePartitionsCounter = this.meter.createCounter("webhook_ensure_partitions_total", {
       description: "Total number of ensurePartitions cron runs",
-    });
-    this.endpointCacheCounter = this.meter.createCounter("webhook_endpoint_cache_total", {
-      description: "Endpoint+secret cache lookups on the ingest hot path, by result (hit/miss)",
     });
     this.ingestCounter = this.meter.createCounter("webhook_ingest_total", {
       description:
@@ -299,11 +300,6 @@ export class WebhookEngine {
       if (!this.partitionsCoveredUntil) return;
       result.observe((this.partitionsCoveredUntil.getTime() - Date.now()) / DAY_MS);
     });
-
-    this.endpointCache = new TtlCache<CachedEndpoint>(
-      options.endpointCache?.ttlMs ?? 30_000,
-      options.endpointCache?.maxSize ?? 10_000
-    );
 
     if (options.disabled) {
       this.logger.info("Webhook engine disabled; skipping Redis and worker setup");
@@ -385,12 +381,9 @@ export class WebhookEngine {
     return startSpan(this.tracer, "webhook.ingest", async (span) => {
       span.setAttribute("opaqueId", input.opaqueId);
 
-      // 1+2. Resolve the endpoint + signing secret (cached per opaqueId). Fail-closed outcomes
-      // (not found / inactive / secret missing) are never cached, so verify only ever runs with a
-      // non-empty secret.
       const resolved = await this.#resolveEndpoint(input.opaqueId);
       if (!resolved.ok) return resolved.result;
-      const { endpoint, secret } = resolved;
+      const { endpoint, secrets } = resolved;
 
       // 3. Verify inline. safeParse the Json artifact so a corrupt row is a 400, not a 5xx storm.
       const parsedArtifact = WebhookVerifierArtifact.safeParse(endpoint.verifierArtifact);
@@ -398,12 +391,12 @@ export class WebhookEngine {
         return { outcome: "verification_failed", error: "corrupt verifier artifact" };
       }
       const response = artifactResponseContract(parsedArtifact.data);
-      const verdict = verify(parsedArtifact.data, {
-        rawBytes: input.rawBytes,
-        headers: input.headers,
-        url: input.url,
-        secret,
-      });
+      const verdict = verifyWithSecrets(
+        parsedArtifact.data,
+        { rawBytes: input.rawBytes, headers: input.headers, url: input.url },
+        secrets
+      );
+      if (verdict.secretIndex) span.setAttribute("webhook.previous_secret", true);
       if (!verdict.ok) {
         return { outcome: "verification_failed", error: verdict.error ?? "invalid", response };
       }
@@ -661,7 +654,7 @@ export class WebhookEngine {
     this.#assertEnabled();
     return startSpan(this.tracer, "webhook.unsupportedMethod", async (span) => {
       span.setAttribute("opaqueId", opaqueId);
-      const endpoint = await this.prisma.webhookEndpoint.findFirst({
+      const endpoint = await this.replica.webhookEndpoint.findFirst({
         where: { opaqueId },
         select: { status: true, verifierArtifact: true },
       });
@@ -693,7 +686,7 @@ export class WebhookEngine {
     return startSpan(this.tracer, "webhook.getHandshake", async (span) => {
       span.setAttribute("opaqueId", input.opaqueId);
 
-      const endpoint = await this.prisma.webhookEndpoint.findFirst({
+      const endpoint = await this.replica.webhookEndpoint.findFirst({
         where: { opaqueId: input.opaqueId },
       });
       if (!endpoint) return { outcome: "endpoint_not_found" };
@@ -1206,18 +1199,17 @@ export class WebhookEngine {
 
       const resolved = await this.#resolveEndpoint(input.opaqueId);
       if (!resolved.ok) return resolved.result;
-      const { endpoint, secret } = resolved;
+      const { endpoint, secrets } = resolved;
 
       const parsedArtifact = WebhookVerifierArtifact.safeParse(endpoint.verifierArtifact);
       if (!parsedArtifact.success) {
         return { outcome: "verification_failed", error: "corrupt verifier artifact" };
       }
-      const verdict = verify(parsedArtifact.data, {
-        rawBytes: input.rawBytes,
-        headers: input.headers,
-        url: input.url,
-        secret,
-      });
+      const verdict = verifyWithSecrets(
+        parsedArtifact.data,
+        { rawBytes: input.rawBytes, headers: input.headers, url: input.url },
+        secrets
+      );
       if (!verdict.ok) {
         return {
           outcome: "verification_failed",
@@ -1240,36 +1232,22 @@ export class WebhookEngine {
     });
   }
 
-  // Resolve the endpoint + plaintext signing secret for an opaqueId, cached. Only fully-resolved
-  // (ACTIVE + secret present) endpoints are cached; fail-closed outcomes always re-read.
   async #resolveEndpoint(
     opaqueId: string
-  ): Promise<
-    | { ok: true; endpoint: WebhookEndpoint; secret: string; targets: ParsedRoutingTarget[] }
-    | { ok: false; result: IngestResult }
-  > {
-    const cached = this.endpointCache.get(opaqueId);
-    if (cached) {
-      this.endpointCacheCounter.add(1, { result: "hit" });
-      return {
-        ok: true,
-        endpoint: cached.endpoint,
-        secret: cached.secret,
-        targets: cached.targets,
-      };
-    }
-    this.endpointCacheCounter.add(1, { result: "miss" });
-
+  ): Promise<({ ok: true } & ResolvedEndpoint) | { ok: false; result: IngestResult }> {
     // Single-row via the global @unique on opaqueId (Q2).
-    const endpoint = await this.prisma.webhookEndpoint.findFirst({ where: { opaqueId } });
+    const endpoint = await this.replica.webhookEndpoint.findFirst({ where: { opaqueId } });
     if (!endpoint) return { ok: false, result: { outcome: "endpoint_not_found" } };
     if (endpoint.status !== "ACTIVE")
       return { ok: false, result: { outcome: "endpoint_inactive" } };
 
     // Injected port keeps the engine SecretStore-free.
-    const secret = endpoint.signingSecretKey
+    const resolvedSecret = endpoint.signingSecretKey
       ? await this.options.resolveSigningSecret(endpoint.signingSecretKey)
       : undefined;
+    const [secret, ...previousSecrets] = (
+      Array.isArray(resolvedSecret) ? resolvedSecret : [resolvedSecret]
+    ).filter((value): value is string => Boolean(value));
     if (!secret) {
       const artifact = WebhookVerifierArtifact.safeParse(endpoint.verifierArtifact);
       return {
@@ -1283,8 +1261,7 @@ export class WebhookEngine {
 
     const targets = parseRoutingTargets(endpoint, this.logger);
 
-    this.endpointCache.set(opaqueId, { endpoint, secret, targets });
-    return { ok: true, endpoint, secret, targets };
+    return { ok: true, endpoint, secrets: [secret, ...previousSecrets], targets };
   }
 
   // Evaluate a session routing target's `startOn` against the event. Absent => start allowed. A parse or

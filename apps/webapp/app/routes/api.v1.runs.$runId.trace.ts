@@ -8,10 +8,11 @@ import { env } from "~/env.server";
 import { anyResource, createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { clampToEmergencySpanCap } from "~/v3/eventRepository/emergencySpanCap.server";
 import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
-import { getTraceInsertedAtEnd } from "~/v3/eventRepository/traceInsertedAtBound";
+import {
+  getTraceInsertedAtEnd,
+  getTraceStartTimeEnd,
+} from "~/v3/eventRepository/traceInsertedAtBound";
 import { getRunTracePage } from "~/v3/eventRepository/runTracePage.server";
-import { FEATURE_FLAG } from "~/v3/featureFlags";
-import { makeFlag } from "~/v3/featureFlags.server";
 import { toPageSpan } from "~/v3/eventRepository/tracePage";
 import {
   DEFAULT_TRACE_PAGE_SIZE,
@@ -94,10 +95,7 @@ export const loader = createLoaderApiRoute(
   async ({ resource: resolved, authentication, request }) => {
     const searchParams = new URL(request.url).searchParams;
 
-    if (
-      hasPageParams(searchParams) &&
-      (await isTracePagingEnabled(authentication.environment.organization.featureFlags))
-    ) {
+    if (hasPageParams(searchParams)) {
       const pageRequest = parseTracePageRequest(searchParams, DEFAULT_TRACE_PAGE_SIZE);
       if (pageRequest.isErr()) {
         return json({ error: PAGE_REQUEST_ERRORS[pageRequest.error] }, { status: 400 });
@@ -128,7 +126,7 @@ export const loader = createLoaderApiRoute(
       run.traceId,
       run.spanId,
       run.createdAt,
-      run.completedAt ?? undefined,
+      getTraceStartTimeEnd(run),
       { insertedAtEnd: getTraceInsertedAtEnd(run) }
     );
 
@@ -152,15 +150,6 @@ export const loader = createLoaderApiRoute(
 
 function hasPageParams(searchParams: URLSearchParams): boolean {
   return searchParams.has("page[size]") || searchParams.has("page[after]");
-}
-
-// Off: page parameters are ignored and the request gets today's tree response.
-function isTracePagingEnabled(orgFeatureFlags: unknown): Promise<boolean> {
-  return makeFlag()({
-    key: FEATURE_FLAG.publicTracePagingEnabled,
-    defaultValue: false,
-    overrides: (orgFeatureFlags as Record<string, unknown>) ?? {},
-  });
 }
 
 const PAGE_REQUEST_ERRORS = {

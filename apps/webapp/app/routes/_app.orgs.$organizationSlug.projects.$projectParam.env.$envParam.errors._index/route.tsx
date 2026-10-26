@@ -40,7 +40,7 @@ import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { formatDateTime, RelativeDateTime } from "~/components/primitives/DateTime";
 import { Header3 } from "~/components/primitives/Headers";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { PopoverSectionHeader } from "~/components/primitives/Popover";
 import { SearchInput } from "~/components/primitives/SearchInput";
@@ -67,10 +67,15 @@ import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
 import { appliedSummary, FilterMenuProvider, TimeFilter } from "~/components/runs/v3/SharedFilters";
 import { $replica } from "~/db.server";
+import { useEnvironment } from "~/hooks/useEnvironment";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
+import { CreateAlertButton } from "~/components/alerts/CreateAlertButton";
+import { NEW_ERROR_ALERT_PREFILL } from "~/components/alerts/errorAlertPrefill";
 import { useInterval } from "~/hooks/useInterval";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useSearchParams } from "~/hooks/useSearchParam";
-import { findProjectBySlug } from "~/models/project.server";
+import { findProjectWithOrgFlagsBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   ErrorsListPresenter,
@@ -84,6 +89,7 @@ import { getCurrentPlan } from "~/services/platform.v3.server";
 import { requireUser } from "~/services/session.server";
 import { formatNumberCompact } from "~/utils/numberFormatter";
 import { EnvironmentParamSchema, v3ErrorPath } from "~/utils/pathBuilder";
+import { canUseAlertsList } from "~/v3/canUseAlertsList.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { errorsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
@@ -101,7 +107,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  const project = await findProjectWithOrgFlagsBySlug(organizationSlug, projectParam, userId);
   if (!project) {
     throw new Response("Project not found", { status: 404 });
   }
@@ -129,6 +135,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const directionRaw = url.searchParams.get("direction");
   const direction =
     directionRaw === "forward" || directionRaw === "backward" ? directionRaw : undefined;
+
+  const alertsEnabled = await canUseAlertsList({
+    orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+    userId,
+  });
 
   const plan = await getCurrentPlan(project.organizationId);
   const retentionLimitDays = plan?.v3Subscription?.plan?.limits.logRetentionDays.number ?? 30;
@@ -181,6 +192,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     occurrences: occurrencesPromise,
     defaultPeriod: "1d",
     retentionLimitDays,
+    alertsEnabled,
     organizationSlug,
     projectParam,
     envParam,
@@ -193,6 +205,7 @@ export default function Page() {
     occurrences,
     defaultPeriod,
     retentionLimitDays,
+    alertsEnabled,
     organizationSlug,
     projectParam,
     envParam,
@@ -209,17 +222,31 @@ export default function Page() {
     }, [revalidator]),
   });
 
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
   const location = useOptimisticLocation();
   const alertsHref = useMemo(() => {
+    if (alertsEnabled) return undefined;
     const params = new URLSearchParams(location.search);
     params.set("alerts", "true");
     return `?${params.toString()}`;
-  }, [location.search]);
+  }, [alertsEnabled, location.search]);
 
   return (
     <>
       <NavBar>
         <PageTitle title="Errors" />
+        {alertsEnabled ? (
+          <PageAccessories>
+            <CreateAlertButton
+              organization={organization}
+              project={project}
+              environment={environment}
+              prefill={NEW_ERROR_ALERT_PREFILL}
+            />
+          </PageAccessories>
+        ) : null}
       </NavBar>
 
       <PageBody scrollable={false}>
@@ -417,7 +444,7 @@ function FiltersBar({
   list?: ErrorsListData;
   defaultPeriod?: string;
   retentionLimitDays: number;
-  alertsHref: string;
+  alertsHref?: string;
 }) {
   const location = useOptimisticLocation();
   const searchParams = new URLSearchParams(location.search);
@@ -483,16 +510,18 @@ function FiltersBar({
         )}
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
-        <LinkButton
-          to={alertsHref}
-          variant="secondary/small"
-          LeadingIcon={BellAlertIcon}
-          leadingIconClassName="text-alerts"
-          shortcut={alertsShortcut}
-          tooltip="Configure alerts"
-        >
-          Configure alerts…
-        </LinkButton>
+        {alertsHref ? (
+          <LinkButton
+            to={alertsHref}
+            variant="secondary/small"
+            LeadingIcon={BellAlertIcon}
+            leadingIconClassName="text-alerts"
+            shortcut={alertsShortcut}
+            tooltip="Configure alerts"
+          >
+            Configure alerts…
+          </LinkButton>
+        ) : null}
         {list && <ListPagination list={list} />}
       </div>
     </div>

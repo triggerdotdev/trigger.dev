@@ -41,6 +41,12 @@ import { listAgentsTool } from "./tools/agents.js";
 import { startAgentChatTool, sendAgentMessageTool, closeAgentChatTool } from "./tools/agentChat.js";
 import { readSessionChannelTool, writeSessionChannelTool } from "./tools/sessionChannels.js";
 import {
+  createAlertTool,
+  listAlertCapabilitiesTool,
+  listAlertsTool,
+  resolveAlertTool,
+} from "./tools/alerts.js";
+import {
   generateWebhookSecretTool,
   getWebhookDeliveryTool,
   getWebhookEndpointDetailsTool,
@@ -69,6 +75,8 @@ const WRITE_TOOLS = new Set([
   sendAgentMessageTool.name,
   closeAgentChatTool.name,
   writeSessionChannelTool.name,
+  createAlertTool.name,
+  resolveAlertTool.name,
   generateWebhookSecretTool.name,
   setWebhookSecretTool.name,
   replayWebhookDeliveryTool.name,
@@ -123,6 +131,10 @@ export function registerTools(context: McpContext) {
     readSessionChannelTool,
     writeSessionChannelTool,
     getReportTool,
+    listAlertCapabilitiesTool,
+    listAlertsTool,
+    createAlertTool,
+    resolveAlertTool,
     listWebhookEndpointsTool,
     getWebhookEndpointDetailsTool,
     listWebhookDeliveriesTool,

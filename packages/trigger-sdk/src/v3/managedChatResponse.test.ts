@@ -76,7 +76,7 @@ const convert = async (messages: UIMessage[]) =>
 describe("ordered managed response", () => {
   it("matches the browser and persistence, even when prepareStep outruns the UI consumer", async () => {
     const { capture, emitted } = response();
-    capture.afterStep(1);
+    capture.afterToolStep(["lookup-1"]);
     capture.writeData(marker);
     capture.writeData({ type: "data-position", id: "custom", data: "between steps" });
     await capture.pipe(source([...firstStep, ...lastStep]));
@@ -99,7 +99,7 @@ describe("ordered managed response", () => {
     async (termination) => {
       const { capture, emitted } = response();
       const custom: UIMessageChunk = { type: "data-position", data: "accepted" };
-      capture.afterStep(1);
+      capture.afterToolStep(["lookup-1"]);
       capture.writeData(marker);
       capture.writeData(custom);
       if (termination === "close") {
@@ -205,7 +205,7 @@ describe("ordered managed response", () => {
       { type: "finish-step" },
       { type: "data-progress", transient: true, data: "transient" },
     ];
-    if (active) capture.afterStep(1);
+    if (active) capture.afterToolStep(["lookup-1"]);
     writer.merge(source(mixed));
     await flush();
     if (active) await capture.pipe(source(firstStep));
@@ -225,10 +225,11 @@ describe("ordered managed response", () => {
   it("orders injection against the current generation after an earlier generation finished", async () => {
     const { capture, emitted } = response();
     await capture.pipe(source([...firstStep, ...lastStep]));
-    capture.beginGeneration();
-    capture.afterStep(1);
+    capture.afterToolStep(["lookup-2"]);
     capture.writeData(marker);
-    const second = firstStep.slice(1);
+    const second = firstStep
+      .slice(1)
+      .map((c) => ("toolCallId" in c ? { ...c, toolCallId: "lookup-2" } : c));
     await capture.pipe(source(second));
     await capture.close();
     expect(emitted.indexOf(marker)).toBe(emitted.map((c) => c.type).lastIndexOf("finish-step") + 1);
@@ -236,10 +237,10 @@ describe("ordered managed response", () => {
 
   it("keeps raw-pipe injection events observable without capturing raw model output", async () => {
     const { capture, emitted } = response();
-    capture.afterStep(1);
+    capture.afterToolStep(["lookup-1"]);
     capture.writeData(marker);
     capture.useRawPipe();
-    capture.afterStep(2);
+    capture.afterToolStep(["lookup-2"]);
     const custom: UIMessageChunk = { type: "data-position", data: "raw owner" };
     capture.writeData(custom);
     await capture.close();

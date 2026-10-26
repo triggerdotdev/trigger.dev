@@ -4,6 +4,12 @@ import { createUIMessageStream } from "../imports/ai-runtime.js";
 /** How long a reduction runs before handing the event loop back to timers and heartbeats. */
 const YIELD_EVERY_MS = 10;
 
+/** `setImmediate` where it exists (Node), a zero-delay timer in browsers. */
+const yieldToEventLoop =
+  typeof setImmediate === "function"
+    ? () => new Promise<void>((resolve) => setImmediate(resolve))
+    : () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
 /**
  * Reduce recorded `UIMessageChunk`s to the final `UIMessage` they build, with
  * the AI SDK's own reducer.
@@ -85,7 +91,7 @@ async function reducePrefix(
       resume?.();
       resume = undefined;
       if (performance.now() - sliceStart >= YIELD_EVERY_MS) {
-        await new Promise<void>((resolve) => setImmediate(resolve));
+        await yieldToEventLoop();
         sliceStart = performance.now();
       }
     }

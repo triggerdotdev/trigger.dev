@@ -10,8 +10,10 @@ import { selectMintBaselineSource, stampMintKindFlip } from "~/v3/runOpsMigratio
 import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
 import {
   FEATURE_FLAG,
-  validatePartialFeatureFlags,
   getAllFlagControlTypes,
+  isPlainFlagObject,
+  mergeReplacedOrgFlags,
+  parseStoredOrgFlags,
 } from "~/v3/featureFlags";
 import { featuresForRequest } from "~/features.server";
 
@@ -32,7 +34,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const { organizationId } = ParamsSchema.parse(params);
 
-  const [organization, globalFlags, workerGroups] = await Promise.all([
+  const [organization, globalFlags, workerGroups, environments] = await Promise.all([
     prisma.organization.findFirst({
       where: { id: organizationId },
       select: {
@@ -47,17 +49,31 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
+    prisma.runtimeEnvironment.findMany({
+      where: {
+        organizationId,
+        type: { not: "DEVELOPMENT" },
+        archivedAt: null,
+        isBranchableEnvironment: false,
+        project: { deletedAt: null },
+      },
+      select: {
+        id: true,
+        type: true,
+        branchName: true,
+        project: { select: { name: true } },
+      },
+      orderBy: [{ project: { name: "asc" } }, { type: "asc" }, { branchName: "asc" }],
+    }),
   ]);
 
   if (!organization) {
     throw new Response("Organization not found", { status: 404 });
   }
 
-  const orgFlagsResult = organization.featureFlags
-    ? validatePartialFeatureFlags(organization.featureFlags as Record<string, unknown>)
-    : ({ success: false } as const);
-
-  const orgFlags = orgFlagsResult.success ? orgFlagsResult.data : {};
+  const { valid: orgFlags, invalid: invalidOrgFlags } = parseStoredOrgFlags(
+    organization.featureFlags
+  );
   const controlTypes = getAllFlagControlTypes();
 
   // Resolve worker group name for display
@@ -82,10 +98,17 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       slug: organization.slug,
     },
     orgFlags,
+    invalidOrgFlags,
     globalFlags,
     controlTypes,
     workerGroupName,
     workerGroups,
+    environments: environments.map((environment) => ({
+      id: environment.id,
+      type: environment.type,
+      branchName: environment.branchName,
+      projectName: environment.project.name,
+    })),
     isManagedCloud,
   });
 }
@@ -105,41 +128,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  if (
-    body === null ||
-    (typeof body === "object" && !Array.isArray(body) && Object.keys(body).length === 0)
-  ) {
-    // Clear all flags. No grace stamp (nothing to flip) and no read-then-write race.
-    try {
-      await prisma.organization.update({
-        where: { id: organizationId },
-        data: { featureFlags: Prisma.JsonNull },
-      });
-    } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") {
-        throw new Response("Organization not found", { status: 404 });
-      }
-      throw e;
-    }
-
-    controlPlaneResolver.invalidateOrganization(organizationId);
-    return json({ success: true });
+  // null (the dialog with nothing set) clears every known flag. Stored keys this release
+  // doesn't know survive it, like any other save: the dialog never showed them.
+  const requestedBody = body === null ? {} : body;
+  if (!isPlainFlagObject(requestedBody)) {
+    return json({ error: "Invalid feature flags" }, { status: 400 });
   }
-
-  const validationResult = validatePartialFeatureFlags(body as Record<string, unknown>);
-  if (!validationResult.success) {
-    return json(
-      { error: "Invalid feature flags", details: validationResult.error.issues },
-      { status: 400 }
-    );
-  }
-
-  // Derived grace-stamp fields are computed server-side; never trust them from the body.
-  const {
-    runOpsMintKindPrev: _ignoredPrev,
-    runOpsMintKindFlippedAt: _ignoredFlippedAt,
-    ...requestedFlags
-  } = validationResult.data;
 
   // Seed the flip baseline from the current GLOBAL mint flags so an org's FIRST per-org override
   // is graced from the currently-effective global kind, not the hardcoded default "cuid".
@@ -152,10 +146,23 @@ export async function action({ request, params }: ActionFunctionArgs) {
       SELECT "featureFlags" FROM "Organization" WHERE "id" = ${organizationId} FOR UPDATE`;
 
     if (rows.length === 0) {
-      return false;
+      return { status: "not_found" } as const;
     }
 
     const existingRaw = rows[0].featureFlags as Record<string, unknown> | null;
+
+    // Validated against the stored row, so an unchanged invalid value can be sent back as is.
+    const merged = mergeReplacedOrgFlags(requestedBody, existingRaw);
+    if (!merged.success) {
+      return { status: "rejected", rejectedKeys: merged.rejectedKeys } as const;
+    }
+
+    // Derived grace-stamp fields are computed server-side; never trust them from the body.
+    const {
+      runOpsMintKindPrev: _ignoredPrev,
+      runOpsMintKindFlippedAt: _ignoredFlippedAt,
+      ...requestedFlags
+    } = merged.flags;
 
     // Anchor the flip stamp to the control-plane DB clock (see the v1 route), not this process's.
     const [{ now: controlPlaneNow }] = await tx.$queryRaw<{ now: Date }[]>`SELECT now() AS now`;
@@ -169,14 +176,27 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
     await tx.organization.update({
       where: { id: organizationId },
-      data: { featureFlags: stamped as Prisma.InputJsonValue },
+      data: {
+        featureFlags:
+          Object.keys(stamped).length === 0 ? Prisma.JsonNull : (stamped as Prisma.InputJsonValue),
+      },
     });
 
-    return true;
+    return { status: "updated" } as const;
   });
 
-  if (!updated) {
+  if (updated.status === "not_found") {
     throw new Response("Organization not found", { status: 404 });
+  }
+
+  if (updated.status === "rejected") {
+    return json(
+      {
+        error: `Invalid feature flags: ${updated.rejectedKeys.join(", ")}`,
+        details: updated.rejectedKeys.map((key) => ({ path: [key], message: "Invalid value" })),
+      },
+      { status: 400 }
+    );
   }
 
   // Org feature flags are embedded in every env of the org; drop all its cached env rows.

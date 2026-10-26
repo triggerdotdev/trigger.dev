@@ -57,6 +57,18 @@ export interface InCondition {
 export type WhereClauseCondition = SimpleComparisonCondition | BetweenCondition | InCondition;
 
 /**
+ * Half-open time window [from, to) enforced on one table's column at every reference.
+ */
+export interface WindowCondition {
+  table: string;
+  column: string;
+  from: Date;
+  to: Date;
+  /** Applies only inside this top-level UNION ALL branch (0-based) when set. */
+  branch?: number;
+}
+
+/**
  * A time range used by `timeBucket()` to determine the appropriate bucket interval.
  */
 export interface TimeRange {
@@ -134,6 +146,9 @@ export class PrinterContext {
    */
   readonly minBucketSeconds?: number;
 
+  /** Per-table time windows merged into the enforced guard. */
+  readonly windowConditions: WindowCondition[];
+
   constructor(
     /** Schema registry containing allowed tables and columns */
     public readonly schema: SchemaRegistry,
@@ -151,7 +166,8 @@ export class PrinterContext {
     /** Opt-in gap-fill for time-bucketed queries */
     fillGaps?: boolean,
     /** Floor for the timeBucket() interval, in seconds */
-    minBucketSeconds?: number
+    minBucketSeconds?: number,
+    windowConditions: WindowCondition[] = []
   ) {
     // Initialize with default settings
     this.settings = { ...DEFAULT_QUERY_SETTINGS, ...settings };
@@ -160,6 +176,7 @@ export class PrinterContext {
     this.timeRange = timeRange;
     this.fillGaps = fillGaps;
     this.minBucketSeconds = minBucketSeconds;
+    this.windowConditions = windowConditions;
   }
 
   /**
@@ -242,7 +259,8 @@ export class PrinterContext {
       this.enforcedWhereClause,
       this.timeRange,
       this.fillGaps,
-      this.minBucketSeconds
+      this.minBucketSeconds,
+      this.windowConditions
     );
     // Share the same values map so parameters are unified
     child.values = this.values;
@@ -301,6 +319,8 @@ export interface PrinterContextOptions {
    * would pick, for series whose samples are too sparse to read at that width.
    */
   minBucketSeconds?: number;
+  /** Per-table time windows applied at every reference to the table. */
+  windowConditions?: WindowCondition[];
 }
 
 /**
@@ -314,6 +334,7 @@ export function createPrinterContext(options: PrinterContextOptions): PrinterCon
     options.enforcedWhereClause,
     options.timeRange,
     options.fillGaps,
-    options.minBucketSeconds
+    options.minBucketSeconds,
+    options.windowConditions
   );
 }

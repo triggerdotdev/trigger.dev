@@ -53,7 +53,8 @@ export type WorkerApiContinueRunExecutionRequestBody = z.infer<
 >;
 
 export const WorkerApiRunRestoreOutcomeRequestBody = z.object({
-  outcome: z.enum(["requeue", "fail"]),
+  // `fallback` requeues a run that has not started onto the worker queue the platform falls back to.
+  outcome: z.enum(["requeue", "fail", "fallback"]),
   reason: z.string().max(256),
   // Matches the cap the engine applies to a run error's message.
   message: z

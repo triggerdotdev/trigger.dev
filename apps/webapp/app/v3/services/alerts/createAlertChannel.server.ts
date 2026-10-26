@@ -1,4 +1,5 @@
 import {
+  isUniqueConstraintError,
   type ProjectAlertChannel,
   type ProjectAlertType,
   type RuntimeEnvironmentType,
@@ -6,9 +7,14 @@ import {
 import { nanoid } from "nanoid";
 import { env } from "~/env.server";
 import { findProjectByRef } from "~/models/project.server";
-import { encryptSecret } from "~/services/secrets/secretStore.server";
+import {
+  decryptSecret,
+  EncryptedSecretValueSchema,
+  encryptSecret,
+} from "~/services/secrets/secretStore.server";
 import { alertsWorker } from "~/v3/alertsWorker.server";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
+import { type PrismaClientOrTransaction } from "~/db.server";
 import { BaseService, ServiceValidationError } from "../baseService.server";
 import { assertSafeWebhookUrl, UnsafeWebhookUrlError } from "./safeWebhookUrl.server";
 
@@ -17,6 +23,8 @@ export type CreateAlertChannelOptions = {
   alertTypes: ProjectAlertType[];
   environmentTypes: RuntimeEnvironmentType[];
   deduplicationKey?: string;
+  authorizedChannel?: { id: string; environmentTypes: RuntimeEnvironmentType[] } | null;
+  createOnly?: boolean;
   channel:
     | {
         type: "EMAIL";
@@ -34,6 +42,12 @@ export type CreateAlertChannelOptions = {
         integrationId: string | undefined;
       };
 };
+
+export class AlertChannelChangedError extends Error {
+  constructor() {
+    super("Alert channel changed, retry");
+  }
+}
 
 export class CreateAlertChannelService extends BaseService {
   public async call(
@@ -65,27 +79,67 @@ export class CreateAlertChannelService extends BaseService {
         ? (["STAGING", "PRODUCTION"] satisfies RuntimeEnvironmentType[])
         : options.environmentTypes;
 
-    const existingAlertChannel = options.deduplicationKey
-      ? await this._prisma.projectAlertChannel.findFirst({
-          where: {
-            projectId: project.id,
-            deduplicationKey: options.deduplicationKey,
-          },
-        })
-      : undefined;
+    const integrationId =
+      options.channel.type === "SLACK" ? (options.channel.integrationId ?? null) : null;
+
+    if (integrationId) {
+      await assertSlackIntegrationInOrganization(
+        this._prisma,
+        integrationId,
+        project.organizationId
+      );
+    }
+
+    const { authorizedChannel } = options;
+    const existingAlertChannel =
+      authorizedChannel !== undefined
+        ? authorizedChannel
+        : options.deduplicationKey && !options.createOnly
+          ? await this._prisma.projectAlertChannel.findFirst({
+              where: {
+                projectId: project.id,
+                deduplicationKey: options.deduplicationKey,
+              },
+            })
+          : undefined;
 
     if (existingAlertChannel) {
-      const updated = await this._prisma.projectAlertChannel.update({
-        where: { id: existingAlertChannel.id },
-        data: {
-          name: options.name,
-          alertTypes: options.alertTypes,
-          type: options.channel.type,
-          properties: await this.#createProperties(options.channel),
-          environmentTypes,
-          enabled: true,
-        },
-      });
+      const data = {
+        name: options.name,
+        alertTypes: options.alertTypes,
+        type: options.channel.type,
+        properties: await this.#createProperties(options.channel),
+        integrationId,
+        environmentTypes,
+        enabled: true,
+      };
+      let updated: ProjectAlertChannel;
+      if (authorizedChannel) {
+        const { count } = await this._prisma.projectAlertChannel.updateMany({
+          where: {
+            id: authorizedChannel.id,
+            projectId: project.id,
+            deduplicationKey: options.deduplicationKey,
+            environmentTypes: { equals: authorizedChannel.environmentTypes },
+          },
+          data,
+        });
+        if (count === 0) {
+          throw new AlertChannelChangedError();
+        }
+        const reread = await this._prisma.projectAlertChannel.findFirst({
+          where: { id: authorizedChannel.id },
+        });
+        if (!reread) {
+          throw new AlertChannelChangedError();
+        }
+        updated = reread;
+      } else {
+        updated = await this._prisma.projectAlertChannel.update({
+          where: { id: existingAlertChannel.id },
+          data,
+        });
+      }
 
       if (options.alertTypes.includes("ERROR_GROUP")) {
         await this.#scheduleErrorAlertEvaluation(project.id);
@@ -94,26 +148,94 @@ export class CreateAlertChannelService extends BaseService {
       return updated;
     }
 
-    const alertChannel = await this._prisma.projectAlertChannel.create({
-      data: {
-        friendlyId: generateFriendlyId("alert_channel"),
-        name: options.name,
-        alertTypes: options.alertTypes,
-        projectId: project.id,
-        type: options.channel.type,
-        properties: await this.#createProperties(options.channel),
-        enabled: true,
-        deduplicationKey: options.deduplicationKey,
-        userProvidedDeduplicationKey: Boolean(options.deduplicationKey),
+    if (!options.deduplicationKey) {
+      const identical = await this.#findIdentical(
+        project.id,
+        options,
         environmentTypes,
-      },
-    });
+        integrationId
+      );
+      if (identical) {
+        return identical;
+      }
+    }
+
+    const alertChannel = await this._prisma.projectAlertChannel
+      .create({
+        data: {
+          friendlyId: generateFriendlyId("alert_channel"),
+          name: options.name,
+          alertTypes: options.alertTypes,
+          projectId: project.id,
+          type: options.channel.type,
+          properties: await this.#createProperties(options.channel),
+          integrationId,
+          enabled: true,
+          deduplicationKey: options.deduplicationKey,
+          userProvidedDeduplicationKey: Boolean(options.deduplicationKey),
+          environmentTypes,
+        },
+      })
+      .catch((error) => {
+        if (
+          authorizedChannel === null &&
+          isUniqueConstraintError(error, ["projectId", "deduplicationKey"])
+        ) {
+          throw new AlertChannelChangedError();
+        }
+        throw error;
+      });
 
     if (options.alertTypes.includes("ERROR_GROUP")) {
       await this.#scheduleErrorAlertEvaluation(project.id);
     }
 
     return alertChannel;
+  }
+
+  async #findIdentical(
+    projectId: string,
+    options: CreateAlertChannelOptions,
+    environmentTypes: RuntimeEnvironmentType[],
+    integrationId: string | null
+  ): Promise<ProjectAlertChannel | undefined> {
+    const { channel } = options;
+    const candidates = await this._prisma.projectAlertChannel.findMany({
+      where: {
+        projectId,
+        enabled: true,
+        name: options.name,
+        type: channel.type,
+        alertTypes: { equals: options.alertTypes },
+        environmentTypes: { equals: environmentTypes },
+        integrationId,
+        properties:
+          channel.type === "EMAIL"
+            ? { path: ["email"], equals: channel.email }
+            : channel.type === "WEBHOOK"
+              ? { path: ["url"], equals: channel.url }
+              : { path: ["channelId"], equals: channel.channelId },
+        AND:
+          channel.type === "WEBHOOK" ? [{ properties: { path: ["version"], equals: "v2" } }] : [],
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    if (channel.type !== "WEBHOOK" || channel.secret === undefined) {
+      return candidates[0];
+    }
+
+    for (const candidate of candidates) {
+      const secret = EncryptedSecretValueSchema.safeParse(
+        (candidate.properties as Record<string, unknown> | null)?.secret
+      );
+      if (
+        secret.success &&
+        (await decryptSecret(env.ENCRYPTION_KEY, secret.data)) === channel.secret
+      ) {
+        return candidate;
+      }
+    }
   }
 
   async #scheduleErrorAlertEvaluation(projectId: string): Promise<void> {
@@ -146,5 +268,20 @@ export class CreateAlertChannelService extends BaseService {
           integrationId: channel.integrationId,
         };
     }
+  }
+}
+
+export async function assertSlackIntegrationInOrganization(
+  prisma: PrismaClientOrTransaction,
+  integrationId: string,
+  organizationId: string
+) {
+  const integration = await prisma.organizationIntegration.findFirst({
+    where: { id: integrationId, service: "SLACK", organizationId, deletedAt: null },
+    select: { id: true },
+  });
+
+  if (!integration) {
+    throw new ServiceValidationError("Slack integration not found");
   }
 }

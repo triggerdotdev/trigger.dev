@@ -424,6 +424,7 @@ export class ErrorGroupPresenter extends BasePresenter {
       pageSize: options.pageSize,
       from: options.from,
       to: options.to,
+      filterByCompletedAt: true,
       cursor: options.cursor,
       direction: options.direction,
       columns: options.columns,

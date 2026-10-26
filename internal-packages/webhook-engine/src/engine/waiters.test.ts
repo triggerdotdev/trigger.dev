@@ -355,7 +355,6 @@ function buildEngine(
       exhaustedRecordDelayMs: over?.exhaustedRecordDelayMs,
       retryBaseDelayMs: 20,
     },
-    endpointCache: { ttlMs: 0 },
     triggerTask: over?.triggerTask ?? makeTaskPort().triggerTask,
     resolveSigningSecret: async (key) => (key === SECRET_KEY ? SECRET : undefined),
     waiters: {

@@ -36,6 +36,7 @@ import { isReservedForExternalSync } from "~/v3/environmentVariableRules.server"
 import { boundedIn } from "@trigger.dev/database";
 import { toVercelApiError, type VercelApiError } from "~/v3/vercel/vercelApiError";
 import { createVercelClient, type VercelClient as Vercel } from "~/v3/vercel/vercelClient.server";
+import { vercelErrorLogMetadata } from "~/v3/vercel/vercelErrorLogMetadata";
 import {
   callVercelWithRecovery,
   wrapVercelCallWithRecovery,
@@ -236,7 +237,11 @@ export class VercelIntegrationRepository {
 
     if (!clientId || !clientSecret) {
       logger.error("Vercel integration not configured");
-      return errAsync({ message: "Vercel integration not configured", authInvalid: false });
+      return errAsync({
+        message: "Vercel integration not configured",
+        reason: "other",
+        authInvalid: false,
+      });
     }
 
     return ResultAsync.fromPromise(
@@ -580,8 +585,9 @@ export class VercelIntegrationRepository {
             const body = await response.text().catch(() => "");
             const error = new Error(
               `Failed to fetch Vercel shared environment variables: ${response.status} ${response.statusText} — ${body}`
-            ) as Error & { status?: number };
+            ) as Error & { status?: number; body?: string };
             error.status = response.status;
+            error.body = body;
             throw error;
           }
 
@@ -2000,23 +2006,42 @@ export class VercelIntegrationRepository {
 
   static uninstallVercelIntegration(
     integration: OrganizationIntegration & { tokenReference: SecretReference }
-  ): ResultAsync<{ authInvalid: boolean }, VercelApiError> {
-    return this.getVercelClient(integration).andThen((client) =>
-      ResultAsync.fromPromise(
-        (async () => {
-          const secret = await getSecretStore(integration.tokenReference.provider).getSecret(
-            VercelSecretSchema,
-            integration.tokenReference.key
-          );
+  ): ResultAsync<{ authInvalid: boolean; sharedWith?: string }, VercelApiError> {
+    return ResultAsync.fromPromise(
+      (async () => {
+        const secret = await getSecretStore(integration.tokenReference.provider).getSecret(
+          VercelSecretSchema,
+          integration.tokenReference.key
+        );
 
-          if (!secret?.installationId) {
-            throw new Error("Installation ID not found in Vercel integration");
-          }
+        if (!secret?.installationId) {
+          throw new Error("Installation ID not found in Vercel integration");
+        }
 
-          return secret.installationId;
-        })(),
-        toVercelApiError
-      ).andThen((installationId) =>
+        const sharedWith = await prisma.organizationIntegration.findFirst({
+          where: {
+            id: { not: integration.id },
+            service: "VERCEL",
+            deletedAt: null,
+            integrationData: { path: ["installationId"], equals: secret.installationId },
+          },
+          select: { id: true },
+        });
+
+        return { installationId: secret.installationId, sharedWith: sharedWith?.id };
+      })(),
+      toVercelApiError
+    ).andThen(({ installationId, sharedWith }) => {
+      if (sharedWith) {
+        logger.info("Vercel installation still used by another integration, not uninstalling", {
+          installationId,
+          integrationId: integration.id,
+          sharedWith,
+        });
+        return okAsync({ authInvalid: false, sharedWith });
+      }
+
+      return this.getVercelClient(integration).andThen((client) =>
         ResultAsync.fromPromise(
           client.integrations.deleteConfiguration({
             id: installationId,
@@ -2025,19 +2050,25 @@ export class VercelIntegrationRepository {
         )
           .map(() => ({ authInvalid: false }))
           .orElse((error) => {
-            const isAuthError = toVercelApiError(error).authInvalid;
+            if (vercelErrorLogMetadata(error).status === 404) {
+              logger.info("Vercel configuration already removed", { installationId });
+              return okAsync({ authInvalid: false });
+            }
+
+            const apiError = toVercelApiError(error);
             logger.error("Failed to uninstall Vercel integration", {
               installationId,
               error: error instanceof Error ? error.message : "Unknown error",
-              isAuthError,
+              isAuthError: apiError.authInvalid,
+              reason: apiError.reason,
             });
-            // Auth errors (401/403): still clean up on our side, return flag for caller
-            if (isAuthError) {
+            // Revoked token: still clean up on our side, return flag for caller
+            if (apiError.authInvalid) {
               return okAsync({ authInvalid: true });
             }
-            return errAsync(toVercelApiError(error));
+            return errAsync(apiError);
           })
-      )
-    );
+      );
+    });
   }
 }

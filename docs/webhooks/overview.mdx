@@ -4,10 +4,6 @@ description: "Receive provider webhooks on hosted, verified endpoints and route 
 sidebarTitle: "Overview"
 ---
 
-import WebhooksBetaBanner from "/snippets/webhooks-beta-banner.mdx";
-
-<WebhooksBetaBanner />
-
 **A webhook endpoint is one hosted URL that you register with a provider.** Trigger.dev verifies every request against the endpoint's [source](/webhooks/sources), records it as a [delivery](/webhooks/deliveries), and hands the event to everything subscribed to the endpoint.
 
 Declare the endpoint once, then subscribe to it:
@@ -62,6 +58,22 @@ Each subscriber has its own [filter](/webhooks/filters), so one delivery can rea
 | `headers` | Request headers as a Web `Headers` object, with case-insensitive `get()` and `has()` methods. Credentials such as signatures are removed. |
 | `endpoint` | The endpoint the delivery arrived on: `id`, `declaredId`, `tenantId`, `externalRef`, and the `metadata` you declared. |
 | `ctx` | The same [run context](/context) that regular tasks receive. |
+
+`webhook()` also takes the options a [task](/tasks/overview) does, such as `queue`, `concurrency`, `machine`, `retry`, `maxDuration` and the lifecycle hooks. For example, to handle one delivery at a time:
+
+```ts
+export const orders = webhook({
+  id: "stripe-orders",
+  endpoint: stripe,
+  queue: { concurrencyLimit: 1 },
+  retry: { maxAttempts: 5 },
+  onEvent: async ({ event }) => {
+    // ...
+  },
+});
+```
+
+The limit covers every delivery the task handles. To process each customer's events in order while different customers run in parallel, route them to an agent with [session routing](/webhooks/session-routing): deliveries with the same key land in one session and are handled one after another.
 
 `webhooks.endpoint.define` also takes a `description` and `metadata`. The metadata is passed to every subscriber as `endpoint.metadata`. The endpoint `id` can't start with `wh_`, which is reserved for the ids Trigger.dev generates.
 

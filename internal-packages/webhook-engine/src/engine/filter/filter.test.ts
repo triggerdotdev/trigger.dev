@@ -68,6 +68,49 @@ describe("parseFilter", () => {
     }
   });
 
+  it("rejects empty path segments in fields, references, and quantifiers", () => {
+    for (const filter of [
+      "event == 1",
+      "event. == 1",
+      "event..amount >= 1",
+      "event.amount. >= 1",
+      "event.data.object..amount >= 1",
+      "header. == 'x'",
+      "header..name == 'x'",
+      "event.amount >= event..limit",
+      "event.amount >= webhook.",
+      "event..items any ( amount >= 1 )",
+      "event.items any ( amount. >= 1 )",
+      "event.items any ( item..amount >= 1 )",
+    ]) {
+      expect(() => parseFilter(filter), filter).toThrow(FilterParseError);
+    }
+  });
+
+  it("quantifies over the event itself when the body is an array", () => {
+    const ast = parseFilter("event any ( type == 'nodeCreated' )");
+    expect(ast).toEqual({
+      kind: "quantifier",
+      mode: "any",
+      path: "event",
+      clause: { path: "type", op: "eq", value: "nodeCreated" },
+    });
+    const event = [{ type: "nodeNeedsApproval" }, { type: "nodeCreated" }];
+    const ctx = { event, headers: {}, webhook: {} };
+    expect(evaluateFilter(ast, ctx).match).toBe(true);
+    expect(evaluateFilter(parseFilter("event all ( type == 'nodeCreated' )"), ctx).match).toBe(
+      false
+    );
+    expect(evaluateFilter(ast, { ...ctx, event: { type: "nodeCreated" } }).match).toBe(false);
+    for (const filter of [
+      "event == 'x'",
+      "header any ( type == 'x' )",
+      "webhook any ( id == 'x' )",
+    ]) {
+      expect(() => parseFilter(filter), filter).toThrow(FilterParseError);
+    }
+  });
+
   it("enforces the soft clause cap", () => {
     const big = Array.from({ length: 60 }, () => "event.action == 'created'").join(" && ");
     expect(() => parseFilter(big)).toThrow(/too complex/);

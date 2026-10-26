@@ -105,7 +105,7 @@ function logBoundaryError(
 // needed.
 async function authenticateRequestForApiBuilder(
   request: Request,
-  { allowJWT }: { allowJWT: boolean }
+  { allowJWT, allowRunToken = false }: { allowJWT: boolean; allowRunToken?: boolean }
 ): Promise<
   | { ok: false; status: 401 | 403; error: string }
   | {
@@ -115,7 +115,7 @@ async function authenticateRequestForApiBuilder(
       restrictedApiKey: boolean;
     }
 > {
-  const result = await authenticateBearerWithTelemetry(request, { allowJWT });
+  const result = await authenticateBearerWithTelemetry(request, { allowJWT, allowRunToken });
   if (!result.ok) {
     // Plugin auth distinguishes 401 (who are you?) from 403 (you're not
     // allowed) — e.g. a suspended account or IP block returns 403.
@@ -142,7 +142,11 @@ async function authenticateRequestForApiBuilder(
     ok: true,
     authentication,
     ability: result.ability,
-    restrictedApiKey: result.subject.type === "apiKey" && result.subject.restricted,
+    // Run tokens carry narrow scopes, so like restricted keys they fail closed on routes
+    // without an authorization check.
+    restrictedApiKey:
+      (result.subject.type === "apiKey" && result.subject.restricted) ||
+      result.subject.type === "runToken",
   };
 }
 
@@ -284,6 +288,7 @@ type ApiKeyRouteBuilderOptions<
   searchParams?: TSearchParamsSchema;
   headers?: THeadersSchema;
   allowJWT?: boolean;
+  allowRunToken?: boolean;
   corsStrategy?: "all" | "none";
   findResource: (
     params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
@@ -355,6 +360,7 @@ export function createLoaderApiRoute<
       searchParams: searchParamsSchema,
       headers: headersSchema,
       allowJWT = false,
+      allowRunToken = false,
       corsStrategy = "none",
       authorization,
       findResource,
@@ -366,7 +372,10 @@ export function createLoaderApiRoute<
     }
 
     try {
-      const authResult = await authenticateRequestForApiBuilder(request, { allowJWT });
+      const authResult = await authenticateRequestForApiBuilder(request, {
+        allowJWT,
+        allowRunToken,
+      });
       if (!authResult.ok) {
         return await wrapResponse(
           request,
@@ -1136,6 +1145,7 @@ type ApiKeyActionRouteBuilderOptions<
   searchParams?: TSearchParamsSchema;
   headers?: THeadersSchema;
   allowJWT?: boolean;
+  allowRunToken?: boolean;
   corsStrategy?: "all" | "none";
   method?: "POST" | "PUT" | "DELETE" | "PATCH";
   findResource?: (
@@ -1233,6 +1243,7 @@ export function createActionApiRoute<
     headers: headersSchema,
     body: bodySchema,
     allowJWT = false,
+    allowRunToken = false,
     corsStrategy = "none",
     authorization,
     maxContentLength,
@@ -1261,7 +1272,10 @@ export function createActionApiRoute<
     }
 
     try {
-      const authResult = await authenticateRequestForApiBuilder(request, { allowJWT });
+      const authResult = await authenticateRequestForApiBuilder(request, {
+        allowJWT,
+        allowRunToken,
+      });
       if (!authResult.ok) {
         return await wrapResponse(
           request,

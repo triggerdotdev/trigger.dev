@@ -1,7 +1,7 @@
 # Test containers
 
 Vitest utilities for writing tests against real Postgres, Prisma, Redis and ClickHouse - we don't mock
-(see the root `CLAUDE.md`), we boot containers. Also exposes a duration-weighted shard sequencer for
+(see the root `AGENTS.md`), we boot containers. Also exposes a duration-weighted shard sequencer for
 splitting slow suites across CI shards.
 
 ## Choosing a fixture

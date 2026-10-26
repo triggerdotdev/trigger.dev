@@ -57,6 +57,9 @@ function signatureHeaderNames(artifact: unknown): Set<string> {
   const config = parsed.data.config;
   if (config.scheme === "hmac" || config.scheme === "asymmetric") {
     names.add(config.signatureHeader.toLowerCase());
+    if (config.scheme === "hmac") {
+      for (const header of config.additionalSignatureHeaders ?? []) names.add(header.toLowerCase());
+    }
     if (config.timestamp?.source.from === "header") {
       const { name, fallback } = config.timestamp.source;
       for (const header of [name, ...(fallback ?? [])]) names.add(header.toLowerCase());

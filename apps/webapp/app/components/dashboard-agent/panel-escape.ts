@@ -4,12 +4,20 @@
  * those from a document listener that runs after this handler, so the event arrives here
  * undefaulted. Deciding on the DOM target is what tells the two apart.
  */
+export function ownsEscape(el: Pick<Element, "getAttribute">): boolean {
+  return el.getAttribute("aria-expanded") === "true" && el.getAttribute("aria-haspopup") !== null;
+}
+
 export function escapeClosesPanel(event: {
   key: string;
   defaultPrevented: boolean;
   /** Whether the event's target is a DOM descendant of the panel. */
   targetInsidePanel: boolean;
+  /** An open in-panel popover (Ariakit dialog) owns Escape. */
+  targetInDialog?: boolean;
+  /** The target is a trigger whose popup (e.g. a Select list) is open and owns Escape. */
+  targetExpanded?: boolean;
 }): boolean {
   if (event.key !== "Escape" || event.defaultPrevented) return false;
-  return event.targetInsidePanel;
+  return event.targetInsidePanel && !event.targetInDialog && !event.targetExpanded;
 }

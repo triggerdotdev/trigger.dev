@@ -69,7 +69,7 @@ Write a summary in under 400 words, as notes rather than prose. Keep, in this or
 1. What the user is trying to do, in their own terms, and anything they asked to be remembered.
 2. Facts already established, with the run ids, queue names, task identifiers, error fingerprints and numbers they rest on. Never restate a number you cannot see.
 3. Any investigation that is open: its investigationId, its title and its current outcome.
-4. Any watch the transcript records — what it was set up to watch, and what it said if it reported. Write it as what the transcript recorded, never as what is true now: a watch can expire or be cancelled without saying so here, so never present one as current.
+4. Any watch the transcript records - what it was set up to watch, and what it said if it reported. Write it as what the transcript recorded, never as what is true now: a watch can expire or be cancelled without saying so here, so never present one as current.
 5. What was asked most recently and what is still unanswered.
 
 Drop tool mechanics, retries, and anything already superseded. Do not add advice, and do not invent anything that is not in the transcript. Everything you write is a record of what the transcript said, not a claim about the present.`;

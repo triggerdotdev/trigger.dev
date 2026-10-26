@@ -1,7 +1,7 @@
 import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
-import { oidcSigningKeyService } from "~/services/oidc/instance.server";
+import { externalOidcSigningService } from "~/services/oidc/instance.server";
 import { OIDC_JWKS_HTTP_MAX_AGE_SECONDS } from "~/services/oidc/constants";
 
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -13,7 +13,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 
   try {
-    const jwks = await oidcSigningKeyService.getPublicJwks();
+    const jwks = await externalOidcSigningService.getPublicJwks();
     return json(jwks, {
       headers: {
         "Cache-Control": `public, max-age=${OIDC_JWKS_HTTP_MAX_AGE_SECONDS}`,

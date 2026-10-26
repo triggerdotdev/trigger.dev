@@ -80,7 +80,6 @@ containerTestWithIsolatedRedis(
         tenantConcurrency: async (environmentId) => (environmentId === "env_noisy" ? 2 : 4),
         pollIntervalMs: 20,
       },
-      endpointCache: { ttlMs: 0 },
       triggerTask,
       resolveSigningSecret: async (key) => (key === SECRET_KEY ? SECRET : undefined),
       logLevel: "error",
@@ -117,7 +116,6 @@ containerTestWithIsolatedRedis(
     const common = {
       prisma,
       redis: redisOptions,
-      endpointCache: { ttlMs: 0 },
       resolveSigningSecret: async (key: string) => (key === SECRET_KEY ? SECRET : undefined),
       logLevel: "error" as const,
     };

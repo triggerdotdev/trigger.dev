@@ -14,6 +14,7 @@ type WorkerDeploymentWithWorkerTasks = Prisma.WorkerDeploymentGetPayload<{
     id: true;
     imageReference: true;
     version: true;
+    templateKey: true;
     worker: {
       select: {
         id: true;
@@ -76,6 +77,7 @@ export async function findCurrentWorkerDeployment({
           id: true,
           imageReference: true,
           version: true,
+          templateKey: true,
           type: true,
           worker: {
             select: {
@@ -117,6 +119,7 @@ export async function findCurrentWorkerDeployment({
       id: true,
       imageReference: true,
       version: true,
+      templateKey: true,
       type: true,
       worker: {
         select: {

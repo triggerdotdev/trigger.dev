@@ -10,7 +10,7 @@ import { WatchButton } from "./WatchButton";
  * `WatchButton` reads `watchEnabled` off the provider it can't render without — this proves
  * the flag, not just the missing-provider case `WatchButton.tsx`'s own comment already covers.
  */
-function markup(watchEnabled: boolean) {
+function markup(watchEnabled: boolean, alertsEnabled?: boolean) {
   return renderToStaticMarkup(
     createElement(
       OperatingSystemContextProvider,
@@ -26,12 +26,17 @@ function markup(watchEnabled: boolean) {
               setOpen: () => {},
               openWith: () => {},
               openWithWatch: () => {},
+              openCreateAlert: () => {},
+              openEditAlert: () => {},
               unreadWakes: 0,
               unreadWork: 0,
               watchEnabled,
             },
           },
-          createElement(WatchButton, { spec: { kind: "run_finished", runId: "run_1" } as never })
+          createElement(WatchButton, {
+            spec: { kind: "run_finished", runId: "run_1" } as never,
+            alertsEnabled,
+          })
         )
       )
     )
@@ -45,5 +50,13 @@ describe("WatchButton", () => {
 
   it("renders the button once watch functionality is enabled", () => {
     expect(markup(true)).toContain("Watch");
+  });
+
+  it("renders nothing when new alerts are enabled", () => {
+    expect(markup(true, true)).toBe("");
+  });
+
+  it("renders the button when new alerts are disabled", () => {
+    expect(markup(true, false)).toContain("Watch");
   });
 });

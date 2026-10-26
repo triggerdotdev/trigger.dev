@@ -6,8 +6,6 @@ import type { SpanSummary } from "~/v3/eventRepository/eventRepository.types";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
 import { env } from "~/env.server";
-import { FEATURE_FLAG } from "~/v3/featureFlags";
-import { makeFlag } from "~/v3/featureFlags.server";
 import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { canLiveTail } from "./liveTailGate";
 import { assembleFirstTraceChunk, type TraceReadScope } from "./traceFirstChunk.server";
@@ -15,6 +13,7 @@ import { applyAncestorOverrides, buildTraceView } from "~/v3/eventRepository/tra
 import { runStore } from "~/v3/runStore.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { runTriggeredAt } from "~/v3/runTimestamps";
+import { getRunFinishedAt, getTraceStartTimeEnd } from "~/v3/eventRepository/traceInsertedAtBound";
 
 export class RunEnvironmentMismatchError extends Error {
   constructor(message: string) {
@@ -97,6 +96,7 @@ export class RunPresenter {
           queueTimestamp: true,
           scheduleId: true,
           completedAt: true,
+          updatedAt: true,
           logsDeletedAt: true,
           annotations: true,
           rootTaskRun: {
@@ -129,7 +129,7 @@ export class RunPresenter {
         slug: projectSlug,
         organization: { members: { some: { userId } } },
       },
-      select: { id: true, organization: { select: { featureFlags: true } } },
+      select: { id: true },
     });
 
     if (!authorizedProject) {
@@ -159,12 +159,14 @@ export class RunPresenter {
       id: run.id,
       number: run.number,
       friendlyId: run.friendlyId,
+      taskIdentifier: run.taskIdentifier,
       traceId: run.traceId,
       spanId: run.spanId,
       status: run.status,
       isFinished: isFinalRunStatus(run.status),
       startedAt: run.startedAt,
       completedAt: run.completedAt,
+      finishedAt: getRunFinishedAt(run) ?? null,
       logsDeletedAt: showDeletedLogs ? null : run.logsDeletedAt,
       rootTaskRun: run.rootTaskRun,
       parentTaskRun: run.parentTaskRun,
@@ -194,7 +196,7 @@ export class RunPresenter {
     // A child view only reads its own lifetime, not the root's.
     const traceTimeBounds = {
       startCreatedAt: run.createdAt,
-      endCreatedAt: run.completedAt ?? undefined,
+      endCreatedAt: getTraceStartTimeEnd(run),
     };
 
     // Resolve agent-kind once so the tree renderer can swap icon/colour for
@@ -205,31 +207,20 @@ export class RunPresenter {
       ? millisecondsToNanoseconds(run.startedAt.getTime() - triggeredAt.getTime())
       : undefined;
 
-    const orgFeatureFlags =
-      (authorizedProject.organization?.featureFlags as Record<string, unknown>) ?? {};
-
     // Read before the first chunk so the first tail covers the background load.
     const firstChunkReadAt = Date.now();
 
-    const progressivePromise = makeFlag(this.#prismaClient)({
-      key: FEATURE_FLAG.progressiveTraceLoadingEnabled,
-      defaultValue: false,
-      overrides: orgFeatureFlags,
-    });
-
-    const firstChunkPromise = progressivePromise.then((progressiveEnabled) =>
-      progressiveEnabled && canLiveTail(run.taskEventStore, env.TRACE_VIEW_EMERGENCY_SPAN_CAP)
-        ? repository.getTraceChunk(
-            getTaskEventStoreTableForRun(run),
-            environment.id,
-            run.traceId,
-            traceTimeBounds.startCreatedAt,
-            traceTimeBounds.endCreatedAt,
-            undefined,
-            { includeDebugLogs: showDebug }
-          )
-        : undefined
-    );
+    const firstChunkPromise = canLiveTail(run.taskEventStore, env.TRACE_VIEW_EMERGENCY_SPAN_CAP)
+      ? repository.getTraceChunk(
+          getTaskEventStoreTableForRun(run),
+          environment.id,
+          run.traceId,
+          traceTimeBounds.startCreatedAt,
+          traceTimeBounds.endCreatedAt,
+          undefined,
+          { includeDebugLogs: showDebug }
+        )
+      : Promise.resolve(undefined);
 
     const [user, firstChunk] = await Promise.all([
       this.#prismaClient.user.findFirst({

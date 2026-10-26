@@ -538,3 +538,37 @@ describe("API bearer auth — environment/project edge cases", () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe("admin waitpoint rollout controls", () => {
+  it("saves the normal org/global flag without writing derived global state", async () => {
+    const user = await seedTestUser(server.prisma, { admin: true });
+    const pat = await seedTestPAT(server.prisma, user.id);
+    const organization = await server.prisma.organization.create({
+      data: { title: "Waitpoint rollout", slug: `waitpoint-rollout-${user.id}` },
+    });
+    const post = async (path: string, body: unknown) => {
+      const response = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${pat.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      expect(response.status, await response.text()).toBe(200);
+    };
+    const globalPath = "/admin/api/v1/feature-flags";
+    try {
+      await post(`/admin/api/v1/orgs/${organization.id}/feature-flags`, {
+        waitpointStoreEnabled: true,
+      });
+      await post(globalPath, { waitpointStoreEnabled: false });
+      expect(
+        (await server.prisma.organization.findFirstOrThrow({ where: { id: organization.id } }))
+          .featureFlags
+      ).toMatchObject({ waitpointStoreEnabled: true });
+      expect(
+        await server.prisma.featureFlag.findFirst({ where: { key: "waitpointRolloutState" } })
+      ).toBeNull();
+    } finally {
+      await post(globalPath, { waitpointStoreEnabled: false });
+    }
+  });
+});

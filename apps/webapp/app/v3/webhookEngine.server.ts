@@ -7,7 +7,7 @@ import type { WebhookDeliverTaskErrorType, WebhookRedisOptions } from "@internal
 import { tryCatch } from "@trigger.dev/core/utils";
 import { resolve4 } from "node:dns/promises";
 import { z } from "zod";
-import { prisma, webhookPartitionPrisma, webhookPrisma } from "~/db.server";
+import { $replica, webhookPartitionPrisma, webhookPrisma, webhookReplica } from "~/db.server";
 import { env } from "~/env.server";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
@@ -21,6 +21,7 @@ import { engine as runEngine } from "./runEngine.server";
 import { ServiceValidationError } from "./services/common.server";
 import { TriggerTaskService } from "./services/triggerTask.server";
 import { resolveWebhookSession } from "./webhookSessionTarget.server";
+import { activeSigningSecrets, StoredSigningSecret } from "./webhookSigningSecret";
 import { webhookLimitsForEnvironment } from "./webhookLimits.server";
 import { webhookPortErrorMessage } from "./webhookPortErrors.server";
 import { webhookWaitpoints } from "./webhookWaitpoints.server";
@@ -77,10 +78,6 @@ function webhookRedisConnection(): WebhookRedisOptions {
   };
 }
 
-// The plaintext signing secret is stored under the "DATABASE" SecretStore
-// provider as { secret: string } (same shape as environment variables).
-const SigningSecretSchema = z.object({ secret: z.string() });
-
 /** The GET verification token (Meta hub.verify_token) an endpoint owner generated in the dashboard. */
 const VerifyTokenSchema = z.object({ token: z.string() });
 
@@ -92,10 +89,11 @@ export function webhookVerifyTokenKey(endpointId: string): string {
 function createWebhookEngine() {
   // The engine owns the webhook tables, so it runs on the webhook DB client. The signing-secret
   // store stays on the main client below (SecretStore is control-plane, not part of the split).
-  const secretStore = getSecretStore("DATABASE", { prismaClient: prisma });
+  const secretStore = getSecretStore("DATABASE", { prismaClient: $replica });
 
   const engine = new WebhookEngine({
     prisma: webhookPrisma,
+    replica: webhookReplica,
     partitionPrisma: webhookPartitionPrisma,
     logLevel: env.WEBHOOK_ENGINE_LOG_LEVEL,
     disabled: env.WEBHOOK_ENABLED !== "1",
@@ -124,10 +122,6 @@ function createWebhookEngine() {
       defaultTtlSeconds: env.WEBHOOK_FRONT_GATE_DEFAULT_TTL_SECONDS,
       maxTtlSeconds: env.WEBHOOK_FRONT_GATE_MAX_TTL_SECONDS,
     },
-    endpointCache: {
-      ttlMs: env.WEBHOOK_ENDPOINT_CACHE_TTL_MS,
-      maxSize: env.WEBHOOK_ENDPOINT_CACHE_MAX_SIZE,
-    },
     waiters: {
       limits: {
         perEnvironment: env.WEBHOOK_WAITER_MAX_PER_ENVIRONMENT,
@@ -141,9 +135,10 @@ function createWebhookEngine() {
     tracer,
     meter,
     resolveSigningSecret: async (key) => {
-      const value = await secretStore.getSecret(SigningSecretSchema, key);
+      const value = await secretStore.getSecret(StoredSigningSecret, key);
       // Fail closed: an unset/empty secret returns undefined so ingest rejects.
-      return value?.secret || undefined;
+      const secrets = activeSigningSecrets(value, new Date());
+      return secrets.length > 0 ? secrets : undefined;
     },
     resolveVerifyToken: async (endpointId) => {
       const value = await secretStore.getSecret(

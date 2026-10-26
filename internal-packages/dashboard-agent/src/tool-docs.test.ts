@@ -29,7 +29,7 @@ describe("what a docs answer costs", () => {
     expect(formatted.length).toBeLessThanOrEqual(DOCS_RESULT_MAX_CHARS);
     // A handful of results, each an excerpt rather than the whole section.
     expect(formatted.split("\n---\n").length).toBeLessThanOrEqual(5);
-    expect(formatted).toContain("[excerpt — the rest is on the page]");
+    expect(formatted).toContain("[excerpt - the rest is on the page]");
   });
 
   it("drops the image markup, which is bytes the model can't use", () => {

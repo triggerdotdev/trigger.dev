@@ -8,6 +8,7 @@ export default {
     ".": {
       entry: [
         "scripts/**/*.{js,mjs,cjs,ts,mts,cts}",
+        "docker/scripts/distrust-cas.cjs",
         "vitest.internal.config.ts",
         "vitest.internal-reports.config.mjs",
       ],
@@ -25,6 +26,7 @@ export default {
         "prisma/populate.ts",
         "seed*.{ts,mts}",
         "scripts/**/*.{js,mjs,cjs,ts,mts,cts}",
+        "app/components/alerts/AlertMetricSparkline.tsx",
         "test/**/*.producer.ts",
         "test/bench/analyzeProfile.ts",
         "test/types/**/*.types.ts",
@@ -93,7 +95,7 @@ export default {
     },
     "packages/trigger-sdk": {
       ignoreFiles: ["src/**/*-cjs.cts", "src/v3/index-browser.mts"],
-      ignoreDependencies: ["ai-v7", "react"],
+      ignoreDependencies: ["ai-v7", "react", "stripe"],
     },
     docs: {
       entry: ["snippets/**/*.jsx"],

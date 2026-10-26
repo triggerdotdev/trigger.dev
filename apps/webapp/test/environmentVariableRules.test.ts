@@ -20,6 +20,16 @@ describe("removeBlacklistedVariables", () => {
     expect(result).toEqual([{ key: "NORMAL_VAR", value: "normal" }]);
   });
 
+  it("removes TRIGGER_RUN_TOKEN so a customer value can't replace the platform credential", () => {
+    const variables: EnvironmentVariable[] = [
+      { key: "TRIGGER_RUN_TOKEN", value: "customer-value" },
+      { key: "NORMAL_VAR", value: "normal" },
+    ];
+
+    expect(removeBlacklistedVariables(variables)).toEqual([{ key: "NORMAL_VAR", value: "normal" }]);
+    expect(isReservedForExternalSync("TRIGGER_RUN_TOKEN")).toBe(true);
+  });
+
   it("should handle empty input array", () => {
     const variables: EnvironmentVariable[] = [];
 

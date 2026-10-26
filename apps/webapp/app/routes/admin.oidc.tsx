@@ -17,23 +17,48 @@ import {
 } from "~/components/primitives/Table";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
-import { oidcSigningKeyService } from "~/services/oidc/instance.server";
-import { OidcSigningKeyError } from "~/services/oidc/signingKeyService.server";
+import {
+  externalOidcSigningService,
+  internalRunSigningService,
+  signingServiceFor,
+} from "~/services/oidc/instance.server";
+import {
+  OidcSigningKeyError,
+  type OidcSigningStatus,
+} from "~/services/oidc/signingKeyService.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { adminOriginForRequest } from "~/services/adminOrigin.server";
 import { requestUrl } from "~/utils/requestUrl.server";
 
+const PurposeSchema = z.enum(["EXTERNAL_OIDC", "INTERNAL_RUN"]);
+type Purpose = z.infer<typeof PurposeSchema>;
+
 const MutationSchema = z.discriminatedUnion("intent", [
-  z.object({ intent: z.literal("generate") }),
-  z.object({ intent: z.literal("activate"), keyId: z.string().min(1) }),
-  z.object({ intent: z.literal("disable") }),
+  z.object({ intent: z.literal("generate"), purpose: PurposeSchema }),
+  z.object({ intent: z.literal("activate"), purpose: PurposeSchema, keyId: z.string().min(1) }),
+  z.object({ intent: z.literal("disable"), purpose: PurposeSchema }),
 ]);
 
 type MutationResult = { success?: boolean; error?: string };
 
+const ISSUER_SETTING: Record<Purpose, string> = {
+  EXTERNAL_OIDC: "OIDC_ISSUER_URL",
+  INTERNAL_RUN: "RUN_TOKEN_ISSUER_URL",
+};
+
 export const loader = dashboardLoader({ authorization: { requireSuper: true } }, async () => {
-  const status = await oidcSigningKeyService.getSigningStatus();
+  const [external, internal] = await Promise.all([
+    externalOidcSigningService.getSigningStatus(),
+    internalRunSigningService.getSigningStatus(),
+  ]);
   return typedjson(
-    { issuer: env.OIDC_ISSUER_URL, status, now: Date.now() },
+    {
+      keySets: [
+        { purpose: "EXTERNAL_OIDC" as const, issuer: env.OIDC_ISSUER_URL, status: external },
+        { purpose: "INTERNAL_RUN" as const, issuer: env.RUN_TOKEN_ISSUER_URL, status: internal },
+      ],
+      now: Date.now(),
+    },
     {
       headers: { "Cache-Control": "no-store" },
     }
@@ -50,31 +75,33 @@ export const action = dashboardAction(
       );
     }
     // SameSite cookies alone do not protect against other origins on the same site.
-    if (request.headers.get("Origin") !== requestUrl(request).origin) {
+    const expectedOrigin = adminOriginForRequest(request) ?? requestUrl(request).origin;
+    if (request.headers.get("Origin") !== expectedOrigin) {
       return typedjson({ error: "Invalid request origin" }, { status: 403 });
     }
-    if (!env.OIDC_ISSUER_URL) {
-      return typedjson(
-        { error: "Configure OIDC_ISSUER_URL before managing keys" },
-        { status: 400 }
-      );
-    }
-
     const result = MutationSchema.safeParse(Object.fromEntries(await request.formData()));
     if (!result.success) {
       return typedjson({ error: "Invalid key operation" }, { status: 400 });
     }
 
+    const service = signingServiceFor(result.data.purpose);
+    if (!service.issuer) {
+      return typedjson(
+        { error: `Configure ${ISSUER_SETTING[result.data.purpose]} before managing these keys` },
+        { status: 400 }
+      );
+    }
+
     try {
       switch (result.data.intent) {
         case "generate":
-          await oidcSigningKeyService.generateStagedKey(user.id);
+          await service.generateStagedKey(user.id);
           break;
         case "activate":
-          await oidcSigningKeyService.activateKey(result.data.keyId, user.id);
+          await service.activateKey(result.data.keyId, user.id);
           break;
         case "disable":
-          await oidcSigningKeyService.disableSigning(user.id);
+          await service.disableSigning(user.id);
           break;
       }
       return typedjson({ success: true });
@@ -84,6 +111,7 @@ export const action = dashboardAction(
       }
       logger.error("OIDC signing key operation failed", {
         operation: result.data.intent,
+        purpose: result.data.purpose,
         userId: user.id,
       });
       return typedjson(
@@ -97,9 +125,58 @@ export const action = dashboardAction(
 );
 
 export default function AdminOidcRoute() {
-  const { issuer, status, now } = useTypedLoaderData<typeof loader>();
-  const generateFetcher = useFetcher<MutationResult>();
+  const { keySets, now } = useTypedLoaderData<typeof loader>();
   const revalidator = useRevalidator();
+
+  return (
+    <main className="flex h-full flex-col gap-6 overflow-y-auto px-4 pb-4">
+      <div className="flex items-center justify-between gap-4">
+        <Paragraph className="text-text-bright">OIDC signing keys</Paragraph>
+        <Button
+          variant="tertiary/small"
+          onClick={() => revalidator.revalidate()}
+          disabled={revalidator.state !== "idle"}
+        >
+          Refresh
+        </Button>
+      </div>
+      {keySets.map((keySet) => (
+        <KeySet key={keySet.purpose} {...keySet} now={now} />
+      ))}
+      <Paragraph variant="small">
+        Keys use RS256. Private keys are encrypted and are never displayed. Each key set rotates
+        independently. Refresh after the activation-ready time to enable activation.
+      </Paragraph>
+    </main>
+  );
+}
+
+const KEY_SET_COPY: Record<Purpose, { title: string; description: string }> = {
+  EXTERNAL_OIDC: {
+    title: "External OIDC",
+    description:
+      "Signs tokens for external relying parties such as cloud providers. Public keys are published at the issuer's JWKS URL.",
+  },
+  INTERNAL_RUN: {
+    title: "Internal run tokens",
+    description:
+      "Signs per-attempt run tokens accepted by the Trigger API. Public keys are never published.",
+  },
+};
+
+function KeySet({
+  purpose,
+  issuer,
+  status,
+  now,
+}: {
+  purpose: Purpose;
+  issuer: string | undefined;
+  status: OidcSigningStatus;
+  now: number;
+}) {
+  const generateFetcher = useFetcher<MutationResult>();
+  const copy = KEY_SET_COPY[purpose];
   const keys = [
     ...(status.activeKey ? [status.activeKey] : []),
     ...(status.stagedKey ? [status.stagedKey] : []),
@@ -107,35 +184,28 @@ export default function AdminOidcRoute() {
   ];
 
   return (
-    <main className="flex h-full flex-col gap-4 overflow-y-auto px-4 pb-4">
+    <section className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-4">
         <div className="space-y-1">
-          <Paragraph className="text-text-bright">OIDC signing keys</Paragraph>
+          <Paragraph className="text-text-bright">{copy.title}</Paragraph>
+          <Paragraph variant="small">{copy.description}</Paragraph>
           <Paragraph variant="small">
             {issuer
               ? `Issuer: ${issuer}`
-              : "OIDC is disabled. Configure OIDC_ISSUER_URL to enable it."}
+              : `Disabled. Configure ${ISSUER_SETTING[purpose]} to enable it.`}
           </Paragraph>
         </div>
-        <div className="flex gap-2">
+        <generateFetcher.Form method="post">
+          <input type="hidden" name="intent" value="generate" />
+          <input type="hidden" name="purpose" value={purpose} />
           <Button
-            variant="tertiary/small"
-            onClick={() => revalidator.revalidate()}
-            disabled={revalidator.state !== "idle"}
+            type="submit"
+            variant="primary/small"
+            disabled={!issuer || !!status.stagedKey || generateFetcher.state !== "idle"}
           >
-            Refresh
+            Generate key
           </Button>
-          <generateFetcher.Form method="post">
-            <input type="hidden" name="intent" value="generate" />
-            <Button
-              type="submit"
-              variant="primary/small"
-              disabled={!issuer || !!status.stagedKey || generateFetcher.state !== "idle"}
-            >
-              Generate key
-            </Button>
-          </generateFetcher.Form>
-        </div>
+        </generateFetcher.Form>
       </div>
 
       {generateFetcher.data?.error && (
@@ -143,12 +213,12 @@ export default function AdminOidcRoute() {
       )}
       <Callout variant={issuer && status.activeKey ? "info" : "warning"}>
         {!issuer
-          ? "Token signing is disabled because OIDC_ISSUER_URL is not configured. Stored signing keys are unchanged."
+          ? `Token signing is disabled because ${ISSUER_SETTING[purpose]} is not configured. Stored signing keys are unchanged.`
           : status.activeKey
-            ? "One key signs new tokens. Staged keys are published before activation, and retired public keys remain available until existing tokens expire."
+            ? "One key signs new tokens. Staged keys are trusted before activation, and retired public keys remain trusted until existing tokens expire."
             : "No active signing key. Token signing is disabled. Retained public keys can still verify existing tokens."}
       </Callout>
-      {issuer && (
+      {issuer && purpose === "EXTERNAL_OIDC" && (
         <div className="flex gap-4 text-sm text-text-link">
           <a href={`${issuer}/.well-known/openid-configuration`} target="_blank" rel="noreferrer">
             Discovery document
@@ -165,7 +235,7 @@ export default function AdminOidcRoute() {
             <TableHeaderCell>Status</TableHeaderCell>
             <TableHeaderCell>Generated</TableHeaderCell>
             <TableHeaderCell>Activation ready</TableHeaderCell>
-            <TableHeaderCell>Public until</TableHeaderCell>
+            <TableHeaderCell>Trusted until</TableHeaderCell>
             <TableHeaderCell>Actions</TableHeaderCell>
           </TableRow>
         </TableHeader>
@@ -192,18 +262,20 @@ export default function AdminOidcRoute() {
                   {key.status === "STAGED" && (
                     <KeyMutation
                       intent="activate"
+                      purpose={purpose}
                       keyId={key.id}
                       disabled={!issuer || key.readyAt.getTime() > now}
                       label="Activate"
-                      confirmation="Activate this key? It will sign new tokens. Any current signing key will be retired, but its public key will remain available for existing tokens."
+                      confirmation="Activate this key? It will sign new tokens. Any current signing key in this set will be retired, but its public key will remain trusted for existing tokens."
                     />
                   )}
                   {key.status === "ACTIVE" && (
                     <KeyMutation
                       intent="disable"
+                      purpose={purpose}
                       disabled={!issuer}
                       label="Disable signing"
-                      confirmation="Disable token signing? No new tokens can be signed until another key is activated. Existing tokens remain valid until expiry."
+                      confirmation="Disable token signing for this key set? No new tokens can be signed until another key is activated. Existing tokens remain valid until expiry."
                     />
                   )}
                 </TableCell>
@@ -212,22 +284,20 @@ export default function AdminOidcRoute() {
           )}
         </TableBody>
       </Table>
-      <Paragraph variant="small">
-        Keys use RS256. Private keys are encrypted and are never displayed. Refresh after the
-        activation-ready time to enable activation.
-      </Paragraph>
-    </main>
+    </section>
   );
 }
 
 function KeyMutation({
   intent,
+  purpose,
   keyId,
   disabled,
   label,
   confirmation,
 }: {
   intent: "activate" | "disable";
+  purpose: Purpose;
   keyId?: string;
   disabled: boolean;
   label: string;
@@ -256,6 +326,7 @@ function KeyMutation({
             </Button>
             <fetcher.Form method="post" onSubmit={() => setOpen(false)}>
               <input type="hidden" name="intent" value={intent} />
+              <input type="hidden" name="purpose" value={purpose} />
               {keyId && <input type="hidden" name="keyId" value={keyId} />}
               <Button
                 type="submit"

@@ -2,12 +2,16 @@ import { getFormProps, getInputProps, getSelectProps, useForm } from "@conform-t
 import { parseWithZod } from "@conform-to/zod/v4";
 import { HashtagIcon, LockClosedIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useNavigate, useNavigation } from "@remix-run/react";
-import { type LoaderFunctionArgs } from "@remix-run/router";
-import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { json, redirect } from "@remix-run/server-runtime";
 import { SlackIcon } from "@trigger.dev/companyicons";
 import { useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import {
+  AlertChannelForm,
+  AlertChannelFormSchema,
+  formDataToAlertChannel,
+} from "~/components/alerts/AlertChannelForm";
 import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -24,6 +28,7 @@ import { Label } from "~/components/primitives/Label";
 import SegmentedControl from "~/components/primitives/SegmentedControl";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
+import { RuntimeEnvironmentType } from "~/database-types";
 import { env } from "~/env.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -31,11 +36,16 @@ import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { NewAlertChannelPresenter } from "~/presenters/v3/NewAlertChannelPresenter.server";
-import { requireUserId } from "~/services/session.server";
+import { logger } from "~/services/logger.server";
+import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
+import type { RbacAbility } from "@trigger.dev/rbac";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { requireAcrossEnvironments } from "~/v3/services/dashboardResourceAccess.server";
 import { cn } from "~/utils/cn";
 import {
   EnvironmentParamSchema,
-  ProjectParamSchema,
+  v3AlertCreatePath,
+  v3ProjectAlertChannelsPath,
   v3ProjectAlertsPath,
 } from "~/utils/pathBuilder";
 import {
@@ -46,7 +56,9 @@ import {
   assertSafeWebhookUrl,
   UnsafeWebhookUrlError,
 } from "~/v3/services/alerts/safeWebhookUrl.server";
+import { ServiceValidationError } from "~/v3/services/common.server";
 import { pageMeta } from "~/utils/pageTitle";
+import { canUseAlertsListForSlug } from "~/v3/canUseAlertsList.server";
 
 type SlackChannel = { id?: string; name?: string; is_private?: boolean };
 
@@ -58,16 +70,21 @@ function renderSlackChannel(channels: SlackChannel[], value: string | string[]) 
 
 export const meta = pageMeta("New alert");
 
+const legacyAlertTypes: CreateAlertChannelOptions["alertTypes"] = [
+  "TASK_RUN",
+  "DEPLOYMENT_FAILURE",
+  "DEPLOYMENT_SUCCESS",
+];
+
+const allEnvironmentTypes: CreateAlertChannelOptions["environmentTypes"] =
+  Object.values(RuntimeEnvironmentType);
+
 const FormSchema = z
   .object({
     alertTypes: z
-      .array(
-        z.enum(["TASK_RUN", "DEPLOYMENT_FAILURE", "DEPLOYMENT_SUCCESS", "DASHBOARD_AGENT_WATCH"])
-      )
+      .array(z.enum(["TASK_RUN", "DEPLOYMENT_FAILURE", "DEPLOYMENT_SUCCESS"]))
       .min(1)
-      .or(
-        z.enum(["TASK_RUN", "DEPLOYMENT_FAILURE", "DEPLOYMENT_SUCCESS", "DASHBOARD_AGENT_WATCH"])
-      ),
+      .or(z.enum(["TASK_RUN", "DEPLOYMENT_FAILURE", "DEPLOYMENT_SUCCESS"])),
     environmentTypes: z
       .array(z.enum(["STAGING", "PRODUCTION", "PREVIEW"]))
       .min(1)
@@ -159,41 +176,54 @@ function formDataToCreateAlertChannelOptions(
   }
 }
 
-export async function loader({ request, params }: LoaderFunctionArgs) {
-  const userId = await requireUserId(request);
-  const { organizationSlug, projectParam } = ProjectParamSchema.parse(params);
+export const loader = dashboardLoader(
+  {
+    params: EnvironmentParamSchema,
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
+    authorization: { action: "write", resource: { type: "alerts" } },
+  },
+  async ({ request, params, user }) => {
+    const userId = user.id;
+    const { organizationSlug, projectParam, envParam } = params;
+    const alertsListEnabled = await canUseAlertsListForSlug(userId, organizationSlug);
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+    const url = new URL(request.url);
+    const option = url.searchParams.get("option");
 
-  if (!project) {
-    throw new Response("Project not found", { status: 404 });
+    if (alertsListEnabled && option === null) {
+      throw redirect(
+        v3AlertCreatePath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam })
+      );
+    }
+
+    const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+
+    if (!project) {
+      throw new Response("Project not found", { status: 404 });
+    }
+
+    const presenter = new NewAlertChannelPresenter();
+
+    const results = await presenter.call(project.id);
+
+    const emailAlertsEnabled =
+      env.ALERT_FROM_EMAIL !== undefined && env.ALERT_RESEND_API_KEY !== undefined;
+
+    return typedjson({
+      ...results,
+      option: option === "slack" ? ("SLACK" as const) : undefined,
+      emailAlertsEnabled,
+      alertsListEnabled,
+    });
   }
+);
 
-  const presenter = new NewAlertChannelPresenter();
-
-  const results = await presenter.call(project.id);
-
-  const url = new URL(request.url);
-  const option = url.searchParams.get("option");
-
-  const emailAlertsEnabled =
-    env.ALERT_FROM_EMAIL !== undefined && env.ALERT_RESEND_API_KEY !== undefined;
-
-  return typedjson({
-    ...results,
-    option: option === "slack" ? ("SLACK" as const) : undefined,
-    emailAlertsEnabled,
-  });
-}
-
-export const action = async ({ request, params }: ActionFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
-
-  if (request.method.toUpperCase() !== "POST") {
-    return { status: 405, body: "Method Not Allowed" };
-  }
-
+async function legacyAction(
+  request: Request,
+  userId: string,
+  ability: RbacAbility,
+  { organizationSlug, projectParam, envParam }: z.infer<typeof EnvironmentParamSchema>
+) {
   const formData = await request.formData();
 
   const submission = parseWithZod(formData, { schema: FormSchema });
@@ -220,12 +250,19 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
   }
 
+  const options = formDataToCreateAlertChannelOptions(submission.value);
+  requireAcrossEnvironments(ability, "write", "alerts", options.environmentTypes);
+
   const service = new CreateAlertChannelService();
-  const alertChannel = await service.call(
-    project.externalRef,
-    userId,
-    formDataToCreateAlertChannelOptions(submission.value)
-  );
+  let alertChannel;
+  try {
+    alertChannel = await service.call(project.externalRef, userId, options);
+  } catch (error) {
+    if (error instanceof ServiceValidationError) {
+      return json(submission.reply({ formErrors: [error.message] }));
+    }
+    throw error;
+  }
 
   if (!alertChannel) {
     return json(submission.reply({ formErrors: ["Failed to create alert channel"] }));
@@ -236,10 +273,121 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     request,
     `Created ${alertChannel.name} alert`
   );
-};
+}
+
+export const action = dashboardAction(
+  {
+    params: EnvironmentParamSchema,
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
+    authorization: { action: "write", resource: { type: "alerts" } },
+  },
+  async ({ request, params, user, ability }) => {
+    const userId = user.id;
+    const { organizationSlug, projectParam, envParam } = params;
+
+    if (request.method.toUpperCase() !== "POST") {
+      throw new Response("Method Not Allowed", { status: 405 });
+    }
+
+    if (!(await canUseAlertsListForSlug(userId, organizationSlug))) {
+      return legacyAction(request, userId, ability, { organizationSlug, projectParam, envParam });
+    }
+
+    const formData = await request.formData();
+
+    const submission = parseWithZod(formData, { schema: AlertChannelFormSchema });
+
+    if (submission.status !== "success") {
+      return json(submission.reply());
+    }
+
+    const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+
+    if (!project) {
+      return json(submission.reply({ formErrors: ["Project not found"] }));
+    }
+
+    // Validate the webhook URL before storing it, for an inline field error.
+    if (submission.value.type === "WEBHOOK") {
+      try {
+        await assertSafeWebhookUrl(submission.value.channelValue);
+      } catch (error) {
+        if (error instanceof UnsafeWebhookUrlError) {
+          return json(submission.reply({ fieldErrors: { channelValue: [error.message] } }));
+        }
+        throw error;
+      }
+    }
+
+    requireAcrossEnvironments(ability, "write", "alerts", allEnvironmentTypes);
+
+    const service = new CreateAlertChannelService();
+    let alertChannel;
+    try {
+      alertChannel = await service.call(project.externalRef, userId, {
+        ...formDataToAlertChannel(submission.value),
+        alertTypes: legacyAlertTypes,
+        environmentTypes: allEnvironmentTypes,
+      });
+    } catch (error) {
+      if (error instanceof Response) throw error;
+      if (error instanceof ServiceValidationError) {
+        return json(submission.reply({ formErrors: [error.message] }));
+      }
+      logger.error("Failed to create alert channel", {
+        organizationId: project.organizationId,
+        projectId: project.id,
+        userId,
+        error,
+      });
+      throw error;
+    }
+
+    if (!alertChannel) {
+      return json(submission.reply({ formErrors: ["Failed to create alert channel"] }));
+    }
+
+    return redirectWithSuccessMessage(
+      v3ProjectAlertChannelsPath(
+        { slug: organizationSlug },
+        { slug: projectParam },
+        { slug: envParam }
+      ),
+      request,
+      `Created ${alertChannel.name} alert`
+    );
+  }
+);
 
 export default function Page() {
-  const { slack, option, emailAlertsEnabled } = useTypedLoaderData<typeof loader>();
+  const { slack, option, emailAlertsEnabled, alertsListEnabled } =
+    useTypedLoaderData<typeof loader>();
+
+  if (!alertsListEnabled) {
+    return (
+      <LegacyNewAlertDialog slack={slack} option={option} emailAlertsEnabled={emailAlertsEnabled} />
+    );
+  }
+
+  return (
+    <AlertChannelForm
+      mode="create"
+      slack={slack}
+      emailAlertsEnabled={emailAlertsEnabled}
+      defaultType={option ?? "EMAIL"}
+    />
+  );
+}
+
+function LegacyNewAlertDialog({
+  slack,
+  option,
+  emailAlertsEnabled,
+}: {
+  slack: React.ComponentProps<typeof AlertChannelForm>["slack"];
+  option?: "SLACK";
+  emailAlertsEnabled: boolean;
+}) {
   const lastSubmission = useActionData();
   const navigation = useNavigation();
   const navigate = useNavigate();
@@ -456,18 +604,6 @@ export default function Page() {
                 label="Deployments succeed"
                 defaultChecked
               />
-
-              <div className="flex items-center gap-1">
-                <CheckboxWithLabel
-                  name={alertTypes.name}
-                  id="DASHBOARD_AGENT_WATCH"
-                  value="DASHBOARD_AGENT_WATCH"
-                  variant="simple/small"
-                  label="Dashboard agent watches"
-                  className="pr-0"
-                />
-                <InfoIconTooltip content="You'll receive an alert when a watch you set up with the dashboard agent fires." />
-              </div>
 
               <FormError id={alertTypes.errorId}>{alertTypes.errors}</FormError>
             </InputGroup>

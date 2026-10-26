@@ -22,7 +22,9 @@ import {
   RunCrdWorkloadManager,
   RunnerKillInformer,
   RunnerRestoreInformer,
+  reportTemplateKeyRefusal,
   settleRestoreFailure,
+  type RunnerStartFailure,
 } from "./workloadManager/runCrd.js";
 import { workerLaneFor, type WorkloadManagerBackend } from "./workerLane.js";
 import { RestoreWatcher, type RestoreFailure } from "./services/restoreWatcher.js";
@@ -86,6 +88,20 @@ const outboundRequestDuration = new Histogram({
   help: "Duration of outbound HTTP requests from the supervisor, by target name and outcome. Includes the HTTP client's internal retries and backoff.",
   labelNames: ["name", "outcome"],
   buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 11, 12.5, 15, 20, 30, 60],
+  registers: [register],
+});
+
+const startReportsTotal = new Counter({
+  name: "supervisor_start_reports_total",
+  help: "Cold starts the operator failed before they began, moved to the fallback lane through the platform, by result: ok, conflict when the run had already moved on, or error.",
+  labelNames: ["result"],
+  registers: [register],
+});
+
+const templateKeyRefusalsTotal = new Counter({
+  name: "supervisor_template_key_refusals_total",
+  help: "Dequeued runs this lane created no Runner for, as they had no valid template key, by outcome (fallback or fail) and result: ok, conflict when the run had already moved on, or error.",
+  labelNames: ["outcome", "result"],
   registers: [register],
 });
 
@@ -183,6 +199,9 @@ class ManagedSupervisor {
         this.runnerKillInformer = new RunnerKillInformer({
           namespace: env.KUBERNETES_NAMESPACE,
           onRunnerKilled: (runnerId, kill) => void killReporter.onRunnerKilled(runnerId, kill),
+          ...(env.KUBERNETES_RUN_CRD_ENABLED
+            ? { onRunnerStartFailed: (failure) => void this.reportStartFailure(failure) }
+            : {}),
         });
       }
     }
@@ -197,10 +216,16 @@ class ManagedSupervisor {
         this.restoreInformer = new RunnerRestoreInformer({
           namespace: env.KUBERNETES_NAMESPACE,
           onUnwatchedFailure: (failure) => void this.restoreWatcher?.report(failure),
-          onUnwatchedRestore: ({ runnerId, uid, runFriendlyId, snapshotFriendlyId }) => {
+          onUnwatchedRestore: ({
+            runnerId,
+            uid,
+            runFriendlyId,
+            snapshotFriendlyId,
+            environmentId,
+          }) => {
             if (runFriendlyId && snapshotFriendlyId) {
               void this.restoreWatcher?.watch(
-                { runFriendlyId, snapshotFriendlyId },
+                { runFriendlyId, snapshotFriendlyId, environmentId },
                 { runnerId, uid }
               );
             }
@@ -505,6 +530,11 @@ class ManagedSupervisor {
 
             const { checkpoint, ...rest } = message;
 
+            if (this.runCrdManager && (await this.refuseWithoutTemplateKey(message))) {
+              setExtra(fromContext(), "path_taken", "no_template_key");
+              return;
+            }
+
             if (checkpoint) {
               setExtra(fromContext(), "path_taken", "restore");
               this.logger.debug("Restoring run", { runId: message.run.id });
@@ -604,6 +634,7 @@ class ManagedSupervisor {
       runnerSnapshotter: this.runCrdManager,
       wideEventOpts: this.wideEventOpts,
       wideEventsNoisyRoutes: this.wideEventsNoisyRoutes,
+      continueRetryBudgetMs: env.TRIGGER_CONTINUE_RETRY_BUDGET_MS,
     });
 
     this.workloadServer.on("runConnected", this.onRunConnected.bind(this));
@@ -654,6 +685,7 @@ class ManagedSupervisor {
       envId: message.environment.id,
       envType: message.environment.type,
       image: message.image,
+      templateKey: message.templateKey,
       machine: message.run.machine,
       orgId: message.organization.id,
       projectId: message.project.id,
@@ -690,6 +722,7 @@ class ManagedSupervisor {
         {
           runFriendlyId: message.run.friendlyId,
           snapshotFriendlyId: message.snapshot.friendlyId,
+          environmentId: message.environment.id,
         },
         restore
       );
@@ -733,6 +766,7 @@ class ManagedSupervisor {
   private async reportRestoreFailure({
     runFriendlyId,
     snapshotFriendlyId,
+    environmentId,
     runnerId,
     outcome,
   }: RestoreFailure) {
@@ -759,7 +793,8 @@ class ManagedSupervisor {
             runFriendlyId,
             snapshotFriendlyId,
             body,
-            runnerId
+            runnerId,
+            environmentId
           ),
       }
     );
@@ -801,6 +836,105 @@ class ManagedSupervisor {
             ...fields,
             error: settled.cleanupError,
           });
+        }
+    }
+  }
+
+  /** Reports a run this lane needs a template key for and has none, rather than starting it. */
+  private async refuseWithoutTemplateKey(message: DequeuedMessage): Promise<boolean> {
+    const refused = await reportTemplateKeyRefusal(
+      {
+        runtime: env.KUBERNETES_RUNNER_RUNTIME,
+        templateKey: message.templateKey,
+        checkpoint: message.checkpoint,
+      },
+      (body) =>
+        this.workerSession.httpClient.reportRestoreOutcome(
+          message.run.friendlyId,
+          message.snapshot.friendlyId,
+          body,
+          undefined,
+          message.environment.id
+        )
+    );
+    if (!refused) {
+      return false;
+    }
+    templateKeyRefusalsTotal.inc({ outcome: refused.outcome, result: refused.result });
+    const fields = {
+      runId: message.run.friendlyId,
+      snapshotId: message.snapshot.friendlyId,
+      outcome: refused.outcome,
+      reason: refused.reason,
+      result: refused.result,
+    };
+    if (refused.result === "error") {
+      this.logger.error("No Runner created without a template key, and the report failed", {
+        ...fields,
+        error: refused.error,
+      });
+    } else {
+      this.logger.warn("No Runner created without a template key", fields);
+    }
+    return true;
+  }
+
+  /**
+   * Moves a cold start the operator failed before its attempt began to the platform's fallback
+   * lane, rather than leaving it to the stall timeout. Without one it is requeued here, and the
+   * queue's redelivery budget bounds how often a run comes back this way.
+   */
+  private async reportStartFailure(failure: RunnerStartFailure) {
+    const { runFriendlyId, snapshotFriendlyId, runnerId, environmentId, outcome } = failure;
+    const fields = { runFriendlyId, snapshotFriendlyId, runnerId, reason: outcome.reason };
+    this.logger.warn("Runner start failed (run-crd)", { ...fields, error: outcome.error });
+    const manager = this.runCrdManager;
+    if (!manager) {
+      this.logger.warn(
+        "Runner start failure left to the stall timeout, no run-crd manager",
+        fields
+      );
+      return;
+    }
+    await this.workerSession.httpClient.sendDebugLog(runFriendlyId, {
+      time: new Date(),
+      message: "runner failed to start on the node",
+      properties: { runnerId, error: outcome.error },
+    });
+    const settled = await settleRestoreFailure(
+      { runnerId, outcome, action: { outcome: "fallback", deleteRunner: true } },
+      {
+        deleteRunner: (name, uid) => manager.deleteFailedRunner(name, uid),
+        report: (body) =>
+          this.workerSession.httpClient.reportRestoreOutcome(
+            runFriendlyId,
+            snapshotFriendlyId,
+            body,
+            runnerId,
+            environmentId
+          ),
+      }
+    );
+    switch (settled.action) {
+      case "none":
+        return;
+      case "kept":
+        this.logger.warn("Failed start Runner not deleted, so the run was not moved", {
+          ...fields,
+          error: settled.error,
+        });
+        return;
+      case "reported":
+        startReportsTotal.inc({ result: settled.result });
+        if (settled.result === "error") {
+          this.logger.warn("Start failure report failed", { ...fields, error: settled.error });
+        } else {
+          this.logger.info(
+            settled.result === "conflict"
+              ? "Start failure not applied, the run has moved on"
+              : "Start failure reported, the run was moved",
+            fields
+          );
         }
     }
   }

@@ -522,6 +522,7 @@ export class ControlPlaneResolver {
           friendlyId: promotion.deployment.friendlyId,
           imageReference: promotion.deployment.imageReference,
           imagePlatform: promotion.deployment.imagePlatform,
+          templateKey: promotion.deployment.templateKey,
         },
       };
     }
@@ -555,6 +556,7 @@ export class ControlPlaneResolver {
         friendlyId: latestV2Deployment.friendlyId,
         imageReference: latestV2Deployment.imageReference,
         imagePlatform: latestV2Deployment.imagePlatform,
+        templateKey: latestV2Deployment.templateKey,
       },
     };
   }

@@ -4,6 +4,7 @@ import type { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import {
   createTaskMetadataFailedErrorStack,
   DuplicateTaskIdsError,
+  WebhookIndexingError,
   formatErrorCauses,
   TaskIndexingImportError,
   TaskMetadataParseError,
@@ -205,6 +206,22 @@ export function startDevOutput(options: DevOutputOptions) {
         cliLink("View the task docs", "https://trigger.dev/docs/tasks/overview")
       );
       askAiForHelp(`Duplicate task ids: ${error.collisions.map((c) => c.id).join(", ")}`);
+    } else if (error instanceof WebhookIndexingError) {
+      const collisions = error.collisions.map(({ id, filePaths }) => {
+        const distinct = Array.from(new Set(filePaths));
+
+        return distinct.length === 1
+          ? `Endpoint ${chalkTask(id)} was defined more than once in ${distinct[0]}`
+          : `Endpoint ${chalkTask(id)} was defined in:\n${distinct.map((f) => `  ${f}`).join("\n")}`;
+      });
+      const body = [...collisions, ...error.problems].join("\n\n");
+
+      prettyError(
+        "Webhook endpoints could not be indexed",
+        `${body}\n\nEndpoint ids must be unique across your project, and every subscriber needs an endpoint defined with webhooks.endpoint.define().`,
+        cliLink("View the webhook docs", "https://trigger.dev/docs/webhooks/overview")
+      );
+      askAiForHelp(`Webhook indexing errors: ${error.message}`);
     } else if (error instanceof SchedulePlanLimitError) {
       prettyError(SCHEDULE_PLAN_LIMIT_HEADER, error.message);
       // The dev command exits after this error, so there's no rebuild to wait for

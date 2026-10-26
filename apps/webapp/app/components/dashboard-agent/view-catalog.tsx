@@ -1,4 +1,5 @@
 import type { AgentIntent, ViewBlock } from "@internal/dashboard-agent-contracts";
+import { AlertCreatedCard } from "~/components/alerts/creationCards";
 import { ActionsBlock } from "./ActionsBlock";
 import { AgentChart } from "./AgentChart";
 import { InvestigationCard } from "./InvestigationCard";
@@ -69,6 +70,8 @@ export function ViewBlocks({
           // Host-emitted only, so the model cannot fabricate a confirmation.
           case "watch_result":
             return watchEnabled ? <WatchResultBlock key={key} block={block} /> : null;
+          case "alert_created":
+            return <AlertCreatedCard key={key} block={block} />;
           case "report":
             return (
               <ReportView

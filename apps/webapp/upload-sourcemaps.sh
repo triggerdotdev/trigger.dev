@@ -1,7 +1,11 @@
 #!/bin/bash
 set -eo pipefail
 
-if [ -n "$SENTRY_ORG" ] && [ -n "$SENTRY_PROJECT" ] && [ -n "$SENTRY_AUTH_TOKEN" ] && [ -n "$SENTRY_RELEASE" ]; then
+# Set during a Sentry outage so the image still builds; the maps are deleted either way so they never ship.
+if [ "$SKIP_SENTRY_SOURCEMAP_UPLOAD" = "true" ]; then
+  echo "Skipping sourcemap upload: SKIP_SENTRY_SOURCEMAP_UPLOAD is true"
+  rm -rf ./build/*.map
+elif [ -n "$SENTRY_ORG" ] && [ -n "$SENTRY_PROJECT" ] && [ -n "$SENTRY_AUTH_TOKEN" ] && [ -n "$SENTRY_RELEASE" ]; then
   sentry-cli releases new $SENTRY_RELEASE
   sentry-cli sourcemaps inject ./build
   sentry-cli sourcemaps upload ./build --release $SENTRY_RELEASE

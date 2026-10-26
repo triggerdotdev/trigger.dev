@@ -89,6 +89,7 @@ export type * from "./taskEvents.js";
 export {
   buildTraceChunkCursorPredicate,
   buildTraceChunkKeyPredicate,
+  buildTraceStartTimeSortKeyPredicate,
   sliceTraceChunk,
   TRACE_CHUNK_ORDER_BY,
 } from "./taskEvents.js";

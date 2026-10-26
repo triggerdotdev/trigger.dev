@@ -25,6 +25,7 @@ import { resolveThemePreference, useSystemThemeSync } from "./hooks/useSystemThe
 import { clearImpersonation } from "./models/admin.server";
 import { getImpersonationState, getRawImpersonationId } from "./services/impersonation.server";
 import { getUser } from "./services/session.server";
+import { adminOriginForRequest } from "./services/adminOrigin.server";
 import {
   normalizeIconContrast,
   normalizeSystemDarkTheme,
@@ -125,6 +126,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const headers = new Headers();
   headers.append("Set-Cookie", await commitSession(session));
+  const appOrigin = adminOriginForRequest(request) ?? env.APP_ORIGIN;
 
   return typedjson(
     {
@@ -136,8 +138,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       posthogUiHost,
       features,
       appEnv: env.APP_ENV,
-      appOrigin: env.APP_ORIGIN,
-      apiOrigin: env.API_ORIGIN ?? env.APP_ORIGIN,
+      appOrigin,
+      publicAppOrigin: env.PUBLIC_APP_ORIGIN,
+      apiOrigin: env.API_ORIGIN ?? appOrigin,
       dashboardAgentBaseUrl: env.DASHBOARD_AGENT_BASE_URL ?? "https://api.trigger.dev",
       triggerCliTag: env.TRIGGER_CLI_TAG,
       timezone,

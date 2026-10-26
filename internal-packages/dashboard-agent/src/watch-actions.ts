@@ -13,6 +13,7 @@ import {
   watchResolutions,
   watchResultNeedsAttention,
   type InvestigationState,
+  type AlertInvestigateContext,
   type WatchObservedOutcome,
   type WatchResolution,
   type WatchSpec,
@@ -149,6 +150,34 @@ export const watchInvestigateActionSchema = z.object({
   investigationId: z.string().optional(),
 });
 
+export type AlertInvestigateAction = {
+  type: "alert.investigate";
+  id: string;
+  alertId: string;
+  context: AlertInvestigateContext;
+};
+
+export const alertInvestigateActionSchema = z.object({
+  type: z.literal("alert.investigate"),
+  id: z.string(),
+  alertId: z.string(),
+  context: z.object({
+    alertId: z.string(),
+    capabilityKey: z.string(),
+    environmentId: z.string(),
+    scope: z
+      .object({
+        type: z.string(),
+        queue: z.string().optional(),
+        pattern: z.string().optional(),
+        taskIdentifier: z.string().optional(),
+      })
+      .optional(),
+    facts: z.record(z.string(), z.unknown()),
+    timeWindow: z.object({ startAt: z.string(), endAt: z.string() }).optional(),
+  }),
+});
+
 /**
  * Every action the agent accepts. The union is the whole vocabulary: anything
  * else fails to parse and never reaches a handler.
@@ -162,14 +191,18 @@ export const watchInvestigateActionSchema = z.object({
 export const dashboardAgentActionSchema = z.union([
   watchWakeActionSchema,
   watchInvestigateActionSchema,
+  alertInvestigateActionSchema,
 ]);
 
-export type DashboardAgentAction = WatchWakeAction | WatchInvestigateAction;
+export type DashboardAgentAction =
+  | WatchWakeAction
+  | WatchInvestigateAction
+  | AlertInvestigateAction;
 
 // The per-wake framing only. How a wake is narrated lives in the managed system
 // prompt's Watches section, which is the cached block.
 const WAKE_INSTRUCTION =
-  'A watch you set up earlier has resolved and reports once, right now — this is not a question, and nobody is waiting on a reply. Write ONE short message: what the watch found, the numbers from the facts below, and one suggested next step. Say what happened; never say the watch "fired" or "expired". A window that ran out with the condition still not true is an answer, not a failure. No tools, no new investigation, no recap.';
+  'A watch you set up earlier has resolved and reports once, right now - this is not a question, and nobody is waiting on a reply. Write ONE short message: what the watch found, the numbers from the facts below, and one suggested next step. Say what happened; never say the watch "fired" or "expired". A window that ran out with the condition still not true is an answer, not a failure. No tools, no new investigation, no recap.';
 
 /**
  * How the watch ended. The narration speaks resolution and observed outcome,
@@ -191,11 +224,11 @@ function wakeOutcome(action: WatchWakeAction): string {
     case "condition_met":
       return "the condition became true inside the window";
     case "condition_impossible":
-      return "the condition can no longer become true — that is the answer, not a timeout";
+      return "the condition can no longer become true - that is the answer, not a timeout";
     case "window_completed":
       // Deliberately not "nothing happened": "it didn't drain in an hour" is what
       // the user asked to be told.
-      return "the window ran out with the condition still not true — this is the answer the user asked for, so report it plainly";
+      return "the window ran out with the condition still not true - this is the answer the user asked for, so report it plainly";
   }
 }
 
@@ -231,7 +264,7 @@ function wakeSubject(action: WatchedSubject): string {
 // The wake's line when the investigation is pre-approved. Phrased as a fact about
 // this turn so the model can't turn it into an offer.
 function investigationInstruction(action: WatchWakeAction): string {
-  return `The user pre-approved an investigation for an outcome like this when they created the watch, and it has ALREADY been started for them — say so in one short clause, in the past tense, as part of your single message ("…I've started looking into why"). Never offer it, never ask, and don't describe what you'll check: you are conducting it right now and the findings land in your very next message, with the investigation card. Subject: ${wakeSubject(
+  return `The user pre-approved an investigation for an outcome like this when they created the watch, and it has ALREADY been started for them - say so in one short clause, in the past tense, as part of your single message ("…I've started looking into why"). Never offer it, never ask, and don't describe what you'll check: you are conducting it right now and the findings land in your very next message, with the investigation card. Subject: ${wakeSubject(
     action
   )}.`;
 }
@@ -280,7 +313,7 @@ function wakePrompt(
   const subjectLink = wakeSubjectLink(action, tenancy);
   return [
     WAKE_INSTRUCTION,
-    `Resolution: ${wakeResolution(action)} — ${wakeOutcome(action)}.`,
+    `Resolution: ${wakeResolution(action)} - ${wakeOutcome(action)}.`,
     `Watching: ${action.spec.kind}${action.identity ? ` (${action.identity})` : ""}.`,
     action.observed
       ? `What the final check observed:\n${JSON.stringify(action.observed, null, 2)}`
@@ -288,7 +321,7 @@ function wakePrompt(
     action.note ? `Why the user asked for it: ${action.note}` : undefined,
     `Facts from the check:\n${JSON.stringify(action.facts, null, 2)}`,
     subjectLink
-      ? `When you point at the watched object, link it: ${subjectLink} — use this exact markdown link, not a bare name.`
+      ? `When you point at the watched object, link it: ${subjectLink} - use this exact markdown link, not a bare name.`
       : undefined,
     wakeStartsInvestigation(action) ? investigationInstruction(action) : undefined,
   ]
@@ -623,8 +656,8 @@ function investigatePrompt(args: {
   const { action, investigationId } = args;
   const subjectLink = wakeSubjectLink(action, args.tenancy);
   return [
-    `Conduct the investigation the user pre-approved when they created this watch, right now, and finish it in this message. Nobody asked a question and nobody is waiting on a reply: your wake message has already told them the watch resolved and that you started looking into why, so this is the follow-up you promised — write it as its own message, and never re-narrate the wake.`,
-    `The investigation is ALREADY OPEN as \`${investigationId}\`. Pass that exact investigationId to every render_view you make, so you revise that one card instead of opening a second. Your last tool call must be a render_view of it carrying a terminal outcome (concluded or inconclusive) — an investigation left at in_progress is an unfinished answer.`,
+    `Conduct the investigation the user pre-approved when they created this watch, right now, and finish it in this message. Nobody asked a question and nobody is waiting on a reply: your wake message has already told them the watch resolved and that you started looking into why, so this is the follow-up you promised - write it as its own message, and never re-narrate the wake.`,
+    `The investigation is ALREADY OPEN as \`${investigationId}\`. Pass that exact investigationId to every render_view you make, so you revise that one card instead of opening a second. Your last tool call must be a render_view of it carrying a terminal outcome (concluded or inconclusive) - an investigation left at in_progress is an unfinished answer.`,
     `Subject: ${wakeSubject(action)} (${action.spec.kind}${
       action.identity ? `, ${action.identity}` : ""
     }).`,
@@ -633,14 +666,14 @@ function investigatePrompt(args: {
       ? `What the resolving check observed:\n${JSON.stringify(action.observed, null, 2)}`
       : undefined,
     action.facts && Object.keys(action.facts).length > 0
-      ? `Facts from that check — start from these rather than re-reading them:\n${JSON.stringify(
+      ? `Facts from that check - start from these rather than re-reading them:\n${JSON.stringify(
           action.facts,
           null,
           2
         )}`
       : undefined,
     subjectLink
-      ? `When you point at the watched object, link it: ${subjectLink} — use this exact markdown link, not a bare name.`
+      ? `When you point at the watched object, link it: ${subjectLink} - use this exact markdown link, not a bare name.`
       : undefined,
   ]
     .filter(Boolean)
@@ -796,6 +829,18 @@ export async function handleWatchAction(args: {
   const typed = args.action as DashboardAgentAction;
   if (typed.type === "watch.investigate") {
     return conductWatchInvestigation({ action: typed, chatId, clientData, uiMessages });
+  }
+  if (typed.type === "alert.investigate") {
+    const msgId = `alert:${typed.alertId}:investigate`;
+    if (!uiMessages.some((m) => m.id === msgId)) {
+      const text = "Alert investigation is not available yet.";
+      await chat.pipe(fixedNarrationChunks(msgId, text));
+      chat.history.set([
+        ...uiMessages,
+        { id: msgId, role: "assistant", parts: [{ type: "text", text }] },
+      ]);
+    }
+    return undefined;
   }
   return narrateWatchWake({ action: typed, chatId, clientData, uiMessages });
 }

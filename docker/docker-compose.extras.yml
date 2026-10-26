@@ -125,15 +125,12 @@ services:
     depends_on:
       - prometheus
 
-  # Six-node Redis cluster (3 masters, 3 replicas) for validating the execution-snapshot store.
-  # The store's single-slot guarantee only means anything against a cluster-mode endpoint, and the
-  # recovery worker's per-master fan-out is unreachable on a single node.
+  # Six-node Redis cluster (3 masters, 3 replicas) for the execution-snapshot store. The {pNNN}
+  # single-slot guarantee and the per-master quarantine scan only mean anything in cluster mode.
   #
-  #   RUN_ENGINE_SNAPSHOT_STORE_REDIS_HOST=127.0.0.1
-  #   RUN_ENGINE_SNAPSHOT_STORE_REDIS_PORT=7001
-  #   RUN_ENGINE_SNAPSHOT_STORE_REDIS_CLUSTER_MODE_ENABLED=1
+  #   RUN_ENGINE_SNAPSHOT_STORE_REDIS_URL=redis://127.0.0.1:7001
   #
-  # ioredis discovers the other five nodes from that one seed.
+  # The store always connects in cluster mode. ioredis discovers the other five nodes from that seed.
   redis-cluster:
     container_name: ${CONTAINER_PREFIX:-}redis-cluster
     image: redis:7.2@sha256:74566c6910d13ae61e7ce73ebd3127438a1fe805b309b097c323142719ec8a5b

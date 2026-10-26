@@ -1,5 +1,5 @@
 import { createContext, useContext, useMemo, useState } from "react";
-import { useAppOrigin } from "~/hooks/useAppOrigin";
+import { useAppOrigin, usePublicAppOrigin } from "~/hooks/useAppOrigin";
 import { useProject } from "~/hooks/useProject";
 import { useTriggerCliTag } from "~/hooks/useTriggerCliTag";
 import {
@@ -42,8 +42,9 @@ function usePackageManager() {
 
 function useApiUrl() {
   const appOrigin = useAppOrigin();
+  const origin = usePublicAppOrigin() ?? appOrigin;
 
-  switch (appOrigin) {
+  switch (origin) {
     case "https://cloud.trigger.dev":
       return undefined;
     case "https://test-cloud.trigger.dev":
@@ -51,7 +52,7 @@ function useApiUrl() {
     case "https://internal.trigger.dev":
       return "https://internal-api.trigger.dev";
     default:
-      return appOrigin;
+      return origin;
   }
 }
 

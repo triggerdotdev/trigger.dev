@@ -4,10 +4,6 @@ description: "Route verified webhook deliveries to a durable per-key session ins
 sidebarTitle: "Session routing"
 ---
 
-import WebhooksBetaBanner from "/snippets/webhooks-beta-banner.mdx";
-
-<WebhooksBetaBanner />
-
 A plain [`webhook()`](/webhooks/overview) runs a fresh, stateless run for every delivery. Sometimes you want the opposite: deliveries that share a key (a customer, an installation, an issue) should land on **one durable [session](/ai-chat/sessions)** and be handled in order, with state carried across them. That is what session routing does.
 
 Instead of a handler, you declare a `chat.event` on an [endpoint](/webhooks/overview) and list it on an agent. The verified delivery is routed to a find-or-created session and arrives as an [action](/ai-chat/actions).
@@ -87,7 +83,14 @@ When the same session is also a [channel](/webhooks/channels) conversation (a Sl
 ```ts
 export const orderAgent = chat.agent({
   id: "order-agent",
-  channels: [slack({ id: "support-slack", endpoint: slackEvents, token: process.env.SLACK_BOT_TOKEN! })],
+  channels: [
+    slack({
+      id: "support-slack",
+      endpoint: slackEvents,
+      token: process.env.SLACK_BOT_TOKEN!,
+      startOn: appMentions(),
+    }),
+  ],
   events: [orderEvents],
   onAction: async ({ action }) => {
     if (action.type === "order.event") {

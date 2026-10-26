@@ -38,7 +38,7 @@ describe("which model narrates a wake", () => {
     expect(plan.text.split("\n\n")).toEqual([
       "task/send-receipt queue drained",
       "You asked to be told when: tell me when the backlog drains",
-      "Nothing to do — I've stopped watching it.",
+      "Nothing to do - I've stopped watching it.",
     ]);
   });
 

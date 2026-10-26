@@ -52,6 +52,7 @@ import {
   type ResolvedRunLockedWorker,
 } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
+import { getTraceStartTimeEnd } from "~/v3/eventRepository/traceInsertedAtBound";
 
 export type PromptSpanData = {
   slug: string;
@@ -116,6 +117,7 @@ export class SpanPresenter extends BasePresenter {
     spanId,
     runFriendlyId,
     linkedRunId,
+    showDebug = false,
   }: {
     userId: string;
     projectSlug: string;
@@ -127,6 +129,7 @@ export class SpanPresenter extends BasePresenter {
     spanId: string;
     runFriendlyId: string;
     linkedRunId?: string;
+    showDebug?: boolean;
   }) {
     const project = await this._replica.project.findFirst({
       where: {
@@ -156,8 +159,10 @@ export class SpanPresenter extends BasePresenter {
           runtimeEnvironmentId: true,
           projectId: true,
           taskEventStore: true,
+          status: true,
           createdAt: true,
           completedAt: true,
+          updatedAt: true,
         },
       },
       this._prisma
@@ -225,8 +230,9 @@ export class SpanPresenter extends BasePresenter {
       environmentId: parentRun.runtimeEnvironmentId,
       projectId: parentRun.projectId,
       createdAt: parentRun.createdAt,
-      completedAt: parentRun.completedAt,
+      endCreatedAt: getTraceStartTimeEnd(parentRun),
       eventRepository: repository,
+      showDebug,
     });
 
     if (!span) {
@@ -690,7 +696,8 @@ export class SpanPresenter extends BasePresenter {
     environmentId,
     projectId,
     createdAt,
-    completedAt,
+    endCreatedAt,
+    showDebug,
   }: {
     eventRepository: IEventRepository;
     traceId: string;
@@ -699,7 +706,8 @@ export class SpanPresenter extends BasePresenter {
     projectId: string;
     eventStore: TaskEventStoreTable;
     createdAt: Date;
-    completedAt: Date | null;
+    endCreatedAt: Date | undefined;
+    showDebug: boolean;
   }) {
     const span = await eventRepository.getSpan(
       eventStore,
@@ -707,8 +715,8 @@ export class SpanPresenter extends BasePresenter {
       spanId,
       traceId,
       createdAt,
-      completedAt ?? undefined,
-      { includeDebugLogs: true }
+      endCreatedAt,
+      { includeDebugLogs: showDebug }
     );
 
     if (!span) {

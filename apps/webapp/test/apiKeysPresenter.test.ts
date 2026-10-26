@@ -156,7 +156,7 @@ containerTest(
 );
 
 containerTest(
-  "does not return hidden root key material and preserves additional keys",
+  "masks a hidden root key to its last four characters and preserves additional keys",
   async ({ prisma }) => {
     const { organization, project, user } = await createTestOrgProjectWithMember(prisma);
     const environment = await createRuntimeEnvironment(prisma, {
@@ -191,14 +191,52 @@ containerTest(
     });
     const serialized = JSON.stringify(result);
 
-    expect(result.rootApiKey).toBeNull();
+    expect(result.rootApiKey).toEqual({
+      id: environment.id,
+      name: "Root API key",
+      value: null,
+      obfuscated: "tr_prod_••••••••xQ9Z",
+      isHidden: true,
+    });
     expect(result.environment.apiKey).toBeNull();
     expect(result.apiKeys).toHaveLength(1);
     expect(result.apiKeys[0]?.name).toBe("Application key");
     expect(serialized).not.toContain(environment.apiKey);
-    expect(serialized).not.toContain(environment.apiKey.slice(-4));
+    expect(serialized).not.toContain(environment.apiKey.slice("tr_prod_".length, -4));
+    expect(serialized).not.toContain(environment.apiKey.slice(-5));
   }
 );
+
+containerTest("returns a visible root key in full alongside its mask", async ({ prisma }) => {
+  const { organization, project, user } = await createTestOrgProjectWithMember(prisma);
+  const environment = await createRuntimeEnvironment(prisma, {
+    projectId: project.id,
+    organizationId: organization.id,
+    type: "PRODUCTION",
+    slug: uniqueId("prod"),
+    apiKey: `tr_prod_${uniqueId("visible-root")}_aB3c`,
+  });
+  const presenter = new ApiKeysPresenter(prisma, {
+    apiKeyPresets: async () => [],
+    describeApiKeyPolicy: async () => ({}),
+  });
+
+  const result = await presenter.call({
+    userId: user.id,
+    organizationSlug: organization.slug,
+    projectSlug: project.slug,
+    environmentSlug: environment.slug,
+  });
+
+  expect(result.rootApiKey).toEqual({
+    id: environment.id,
+    name: "Root API key",
+    value: environment.apiKey,
+    obfuscated: "tr_prod_••••••••aB3c",
+    isHidden: false,
+  });
+  expect(result.environment.apiKey).toBe(environment.apiKey);
+});
 
 containerTest(
   "uses the parent environment's root key visibility for branches",
@@ -232,9 +270,17 @@ containerTest(
       projectSlug: project.slug,
       environmentSlug: branch.slug,
     });
+    const serialized = JSON.stringify(result);
 
-    expect(result.rootApiKey).toBeNull();
+    expect(result.rootApiKey).toMatchObject({
+      id: parent.id,
+      value: null,
+      obfuscated: `tr_preview_••••••••${parent.apiKey.slice(-4)}`,
+      isHidden: true,
+    });
     expect(result.environment.apiKey).toBeNull();
+    expect(serialized).not.toContain(parent.apiKey);
+    expect(serialized).not.toContain(branch.apiKey);
   }
 );
 

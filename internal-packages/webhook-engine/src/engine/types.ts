@@ -1,7 +1,7 @@
 import type { Logger } from "@trigger.dev/core/logger";
 import type { WebhookEndpointContext, WebhookResponseConfig } from "@trigger.dev/core/v3";
 import type { Meter, Tracer } from "@internal/tracing";
-import type { WebhookDatabase } from "@trigger.dev/database";
+import type { WebhookDatabase, WebhookReplicaDatabase } from "@trigger.dev/database";
 import type { FairQueueRedisOptions } from "@trigger.dev/redis-worker";
 
 /**
@@ -49,6 +49,12 @@ export interface WebhookEngineOptions {
   logger?: Logger;
   logLevel?: string;
   prisma: WebhookDatabase;
+  /**
+   * Read replica for the endpoint lookups on the public ingress paths (deliveries, waiter URLs, GET
+   * handshakes, unsupported methods). Defaults to prisma. Replica lag can briefly hide a just-created
+   * or just-activated endpoint; that tradeoff is accepted to keep ingress reads off the writer.
+   */
+  replica?: WebhookReplicaDatabase;
   /** Direct owner connection for partition DDL. Defaults to prisma when not configured. */
   partitionPrisma?: WebhookDatabase;
   redis: WebhookRedisOptions;
@@ -102,12 +108,10 @@ export interface WebhookEngineOptions {
   tracer?: Tracer;
   meter?: Meter;
   frontGate?: { defaultTtlSeconds?: number; maxTtlSeconds?: number };
-  // Hot-path cache for the endpoint + resolved signing secret, keyed by opaqueId. ttlMs <= 0 disables.
-  endpointCache?: { ttlMs?: number; maxSize?: number };
   triggerTask: TriggerWebhookTaskCallback;
   // Q4: injected so the engine never imports the webapp SecretStore. Returns the
   // plaintext signing secret, or undefined/empty so ingest fails closed.
-  resolveSigningSecret: (key: string) => Promise<string | undefined>;
+  resolveSigningSecret: (key: string) => Promise<string | readonly string[] | undefined>;
   /**
    * The verify token a provider's GET URL verification must present (Meta's `hub.verify_token`),
    * by endpoint id. Separate from the signing secret and generated in the dashboard; undefined

@@ -2,10 +2,11 @@ import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { makeFlag } from "~/v3/featureFlags.server";
+import { canUseAlertsList } from "./canUseAlertsList.server";
 
 /**
- * Whether the agent may offer watches in this org, per the `dashboardAgentWatchEnabled`
- * flag with a per-org override winning. Both env defaults are off, so an unflagged install
+ * Whether the agent may offer watches in this org: the `dashboardAgentWatchEnabled` flag
+ * (per-org override winning) and the alerts gate. Both env defaults are off, so an unflagged install
  * has no watch tools, no watch guidance and no watch UI. Must stay server-side.
  */
 export async function canUseDashboardAgentWatches(options: {
@@ -37,5 +38,7 @@ export async function canUseDashboardAgentWatches(options: {
     overrides: overrides ?? {},
   });
 
-  return Boolean(flagResult);
+  if (!flagResult) return false;
+
+  return canUseAlertsList({ orgFeatureFlags: overrides ?? {}, userId });
 }

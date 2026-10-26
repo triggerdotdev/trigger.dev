@@ -491,7 +491,7 @@ describe("DequeueSystem controlPlaneResolver (worker-task read shape)", () => {
   /**
    * The resolver must ship only the columns the dequeue path reads: for each task id/slug +
    * machineConfig/retryConfig/maxDurationInSeconds; for the deployment id/friendlyId/
-   * imageReference/imagePlatform; for each queue id/name. The heavy JSON columns it never reads
+   * imageReference/imagePlatform/templateKey; for each queue id/name. The heavy JSON columns it never reads
    * (task payloadSchema/config/queueConfig/description, deployment externalBuildData/
    * buildServerMetadata/errorData/git, queue rateLimit) must NOT come back, so the hot
    * control-plane read stops shipping the large per-query payload.
@@ -572,6 +572,7 @@ describe("DequeueSystem controlPlaneResolver (worker-task read shape)", () => {
         "id",
         "imagePlatform",
         "imageReference",
+        "templateKey",
       ]);
 
       const queue = version.queues.find((q) => q.id === cp.queue.id);

@@ -12,3 +12,4 @@ export * from "./snapshotEntry.js";
 export * from "./snapshotResidency.js";
 export * from "./snapshotResidencyResolver.js";
 export * from "./taskRunExecutionSnapshotStore.js";
+export * from "./completedWaitpointHydratingRunStore.js";

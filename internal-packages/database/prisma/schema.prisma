@@ -590,11 +590,20 @@ enum OidcSigningKeyStatus {
   RETIRED
 }
 
+/// Each purpose is a separate key set with its own issuer, rotation and publication.
+enum OidcSigningKeyPurpose {
+  /// Tokens for external relying parties; public keys are served at the issuer's JWKS URL.
+  EXTERNAL_OIDC
+  /// Per-attempt run tokens verified only by the platform; public keys are never served.
+  INTERNAL_RUN
+}
+
 model OidcSigningKey {
-  id     String               @id @default(cuid())
-  kid    String               @unique
-  /// At most one STAGED and one ACTIVE key: enforced by a partial unique index in the migration.
-  status OidcSigningKeyStatus
+  id      String                @id @default(cuid())
+  kid     String                @unique
+  purpose OidcSigningKeyPurpose @default(EXTERNAL_OIDC)
+  /// At most one STAGED and one ACTIVE key per purpose: enforced by a partial unique index in the migration.
+  status  OidcSigningKeyStatus
 
   publicJwk   Json
   readyAt     DateTime
@@ -917,6 +926,95 @@ model WebhookDelivery {
   @@index([webhookEndpointId, createdAt(sort: Desc)]) // dashboard recent-deliveries; also partition-pruned
 }
 
+model Alert {
+  id                         String    @id
+  // plain columns, NO @relation -> no FK
+  organizationId             String
+  projectId                  String
+  environmentId              String
+  capabilityKey              String
+  params                     Json
+  condition                  Json
+  query                      String?
+  expiresAt                  DateTime? @db.Timestamptz(6)
+  lifecycle                  String    @default("active")
+  attention                  String    @default("clear")
+  observedCondition          String    @default("unknown")
+  observedConditionChangedAt DateTime? @db.Timestamptz(6)
+  pendingMetSince            DateTime? @db.Timestamptz(6)
+  evaluatorState             Json?
+  evaluationLeaseId          String?
+  evaluationLeaseUntil       DateTime? @db.Timestamptz(6)
+  lastEvaluatedAt            DateTime? @db.Timestamptz(6)
+  nextEvaluationAt           DateTime? @db.Timestamptz(6) // NULL means due now
+  notifiers                  Json      @default("[]")
+  name                       String?
+  createdBy                  String
+  createdAt                  DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt                  DateTime  @default(now()) @db.Timestamptz(6)
+  resolvedAt                 DateTime? @db.Timestamptz(6)
+  resolvedBy                 String?
+  stoppedAt                  DateTime? @db.Timestamptz(6)
+  stoppedBy                  String?
+  lastOccurrenceAt           DateTime? @db.Timestamptz(6)
+  occurrencesSinceRaise      Int       @default(0)
+  occurrencesTotal           BigInt    @default(0)
+
+  // SQL-only (migration): ("lifecycle", "nextEvaluationAt" NULLS FIRST) and partial active "expiresAt"
+  @@index([environmentId, lifecycle])
+  @@index([lifecycle, evaluationLeaseUntil])
+  @@index([projectId])
+  @@index([organizationId])
+}
+
+/// RANGE-partitioned by month on `at` (see migration).
+model AlertEvent {
+  id            String
+  alertId       String
+  type          String
+  at            DateTime @default(now()) @db.Timestamptz(6)
+  facts         Json     @default("{}")
+  actorId       String?
+  sourceEventId String?
+
+  @@id([id, at])
+  @@index([alertId, at(sort: Desc)])
+}
+
+model AlertOccurrenceSeen {
+  alertId       String
+  sourceEventId String
+  rowTime       DateTime @db.Timestamptz(6)
+  seenAt        DateTime @default(now()) @db.Timestamptz(6)
+  expiresAt     DateTime @db.Timestamptz(6)
+
+  @@id([alertId, sourceEventId])
+  @@index([expiresAt])
+}
+
+/// RANGE-partitioned by month on `eventAt` (see migration).
+model AlertDelivery {
+  id               String
+  alertEventId     String
+  eventAt          DateTime  @db.Timestamptz(6)
+  notifierId       String // stable dedup key from notifierRefKey
+  notifier         Json
+  status           String    @default("pending")
+  claimId          String?
+  claimedAt        DateTime? @db.Timestamptz(6)
+  deliveredAt      DateTime? @db.Timestamptz(6)
+  failureReason    String?
+  providerMetadata Json?
+  attempts         Int       @default(0)
+  firstAttemptAt   DateTime? @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@id([id, eventAt])
+  @@unique([alertEventId, notifierId, eventAt])
+  @@index([status, createdAt])
+  @@index([status, claimedAt])
+}
+
 enum WebhookDeliveryStatus {
   PENDING
   PROCESSING
@@ -1067,6 +1165,8 @@ model SessionRun {
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId])
+  /// Pages a session's runs by `(triggeredAt, id)` and counts rows at or before a cursor.
+  @@index([sessionId, triggeredAt, id])
 }
 
 model TaskRun {
@@ -2364,6 +2464,14 @@ model WorkerDeployment {
 
   imageReference String?
   imagePlatform  String  @default("linux/amd64")
+  /// Key of the microVM template prebuilt from this deployment's image, set when the builder succeeds
+  templateKey    String?
+
+  /// Object key of the full index snapshot in the deployment index store. Set only after the upload succeeds.
+  indexObjectKey     String?
+  /// sha256 hex of the snapshot's uncompressed JSON
+  indexSha256        String?
+  indexFormatVersion Int?
 
   externalBuildData   Json?
   buildServerMetadata Json?

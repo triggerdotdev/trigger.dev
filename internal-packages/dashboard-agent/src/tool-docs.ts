@@ -46,7 +46,7 @@ export function formatDocsResults(parts: string[]): string {
 
     const excerpt =
       body.length > DOC_EXCERPT_MAX_CHARS
-        ? `${sliceWellFormed(body, DOC_EXCERPT_MAX_CHARS).trimEnd()}… [excerpt — the rest is on the page]`
+        ? `${sliceWellFormed(body, DOC_EXCERPT_MAX_CHARS).trimEnd()}… [excerpt - the rest is on the page]`
         : body;
 
     const entry = [

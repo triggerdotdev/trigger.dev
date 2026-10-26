@@ -35,6 +35,7 @@ export function settledMessageId(messageId: string): string {
  * it and it never counts against the message cap.
  */
 export const WAKE_REQUEST_MESSAGE_ID_PREFIX = "wake-request:";
+export const ALERT_CREATION_OPENING_MESSAGE_ID_PREFIX = "alert_creation:opening:";
 export const INVESTIGATE_REQUEST_MESSAGE_ID_PREFIX = "investigate-request:";
 
 export function wakeRequestMessageId(actionId: string): string {
@@ -49,6 +50,7 @@ const AGENT_REQUEST_ID_PREFIXES = [
   WATCH_REQUEST_MESSAGE_ID_PREFIX,
   WAKE_REQUEST_MESSAGE_ID_PREFIX,
   INVESTIGATE_REQUEST_MESSAGE_ID_PREFIX,
+  ALERT_CREATION_OPENING_MESSAGE_ID_PREFIX,
 ];
 
 /** The request a wake or investigation turn answers: the agent asking itself. */

@@ -119,6 +119,7 @@ export function InfoIconTooltip({
   contentClassName,
   variant = "basic",
   disableHoverableContent = false,
+  delayDuration,
   enabled = true,
 }: {
   content: React.ReactNode;
@@ -126,6 +127,7 @@ export function InfoIconTooltip({
   contentClassName?: string;
   variant?: Variant;
   disableHoverableContent?: boolean;
+  delayDuration?: number;
   enabled?: boolean;
 }) {
   const icon = (
@@ -140,6 +142,7 @@ export function InfoIconTooltip({
       variant={variant}
       className={contentClassName}
       disableHoverableContent={disableHoverableContent}
+      delayDuration={delayDuration}
     />
   );
 }

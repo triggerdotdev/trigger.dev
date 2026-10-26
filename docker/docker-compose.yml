@@ -174,7 +174,7 @@ services:
       - app_network
     environment:
       MC_HOST_local: http://minioadmin:minioadmin@minio:9000
-    command: ["mb", "--ignore-existing", "local/packets"]
+    command: ["mb", "--ignore-existing", "local/packets", "local/deployment-indexes"]
     restart: "no"
 
   electric:

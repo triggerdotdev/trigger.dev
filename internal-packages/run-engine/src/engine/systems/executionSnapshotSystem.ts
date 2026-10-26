@@ -23,13 +23,17 @@ import {
   SnapshotStateExpiredError,
   snapshotRouteFromSnapshot,
 } from "@internal/run-store";
-import { ExecutionSnapshotNotFoundError, ServiceValidationError } from "../errors.js";
+import {
+  ExecutionSnapshotNotFoundError,
+  LatestExecutionSnapshotNotFoundError,
+  ServiceValidationError,
+} from "../errors.js";
 import { isFinalRunStatus } from "../statuses.js";
 import type { HeartbeatTimeouts } from "../types.js";
 import type { SystemResources } from "./systems.js";
 
 import { boundedIn } from "@trigger.dev/database";
-/** Chunk size for fetching waitpoints to avoid NAPI string conversion limits */
+/** Waitpoint outputs can be 100KB+, so a large fetch can exceed the NAPI string limit. */
 const WAITPOINT_CHUNK_SIZE = 100;
 
 export type ExecutionSnapshotSystemOptions = {
@@ -61,13 +65,9 @@ function enhanceExecutionSnapshot(
 }
 
 /**
- * Transforms a snapshot (with checkpoint but without waitpoints) into an EnhancedExecutionSnapshot
- * by combining it with pre-fetched waitpoints.
- *
- * This is the ONE place that expands a distinct waitpoint across its repeated positions in
- * `completedWaitpointOrder`, assigns `index`, and builds the nested `completedByTaskRun` (with its
- * batch) and `completedByBatch` objects. Every backend feeds it the same unenhanced rows, so none of
- * them can produce a runner payload the others would not.
+ * Builds an EnhancedExecutionSnapshot from a snapshot and its unenhanced waitpoint rows. This is
+ * the only place that expands a waitpoint over its `completedWaitpointOrder` positions, so every
+ * backend produces the same runner payload.
  */
 export function enhanceExecutionSnapshotWithWaitpoints(
   snapshot: ExecutionSnapshotWithCheckpoint,
@@ -79,8 +79,7 @@ export function enhanceExecutionSnapshotWithWaitpoints(
     friendlyId: SnapshotId.toFriendlyId(snapshot.id),
     runFriendlyId: RunId.toFriendlyId(snapshot.runId),
     completedWaitpoints: waitpoints.flatMap((w) => {
-      // Get all indexes of the waitpoint in the completedWaitpointOrder
-      // We do this because the same run can be in a batch multiple times (i.e. same idempotencyKey)
+      // One waitpoint can fill several batch positions (the same idempotency key).
       let indexes: (number | undefined)[] = [];
       for (let i = 0; i < completedWaitpointOrder.length; i++) {
         if (completedWaitpointOrder[i] === w.id) {
@@ -131,16 +130,12 @@ export function enhanceExecutionSnapshotWithWaitpoints(
   };
 }
 
-/**
- * Gets the waitpoint IDs linked to a snapshot via the _completedWaitpoints join table.
- * Uses raw SQL to avoid fetching full waitpoint data.
- */
+/** Waitpoint ids of a snapshot. Raw SQL without a `runStore`; MemoryDB for a redis-primary run. */
 async function getSnapshotWaitpointIds(
   prisma: PrismaClientOrTransaction,
   snapshotId: string,
   runStore?: RunStore,
-  // The owning run id, so the router can route to the run's store (the completed-waitpoint join
-  // co-locates with the snapshot/run) instead of fanning out to both run-ops DBs.
+  // Lets the router read the run's own store instead of both run-ops DBs.
   runId?: string,
   organizationId?: SnapshotReadContext
 ): Promise<string[]> {
@@ -154,14 +149,12 @@ async function getSnapshotWaitpointIds(
   return result.map((r) => r.B);
 }
 
-// Reads the snapshot's completed-waitpoint ids AND whether the snapshot is visible on this reader, in
-// one query, so a multi-reader replica can't return the ids from a different point-in-time than the
-// snapshot. `present=false` -> this reader lacks the snapshot; its empty id list is not authoritative.
+// One query, so the ids and the snapshot's presence come from the same reader state.
+// `present: false` means this reader lacks the snapshot, so its empty id list is not authoritative.
 async function getSnapshotWaitpointIdsWithPresence(
   prisma: PrismaClientOrTransaction,
   snapshotId: string,
   runStore?: RunStore,
-  // The owning run id, so the router can route to the run's store instead of fanning out.
   runId?: string,
   organizationId?: SnapshotReadContext
 ): Promise<{ present: boolean; ids: string[] }> {
@@ -186,17 +179,11 @@ async function getSnapshotWaitpointIdsWithPresence(
   };
 }
 
-/**
- * Fetches waitpoints in chunks to avoid NAPI string conversion limits.
- * This is necessary because waitpoints can have large outputs (100KB+),
- * and fetching many at once can exceed Node.js string limits.
- */
 async function fetchWaitpointsInChunks(
   prisma: PrismaClientOrTransaction,
   waitpointIds: string[],
   runStore?: RunStore,
-  // The owning run id, so the router routes to the run's store and only falls back to the other DB
-  // for the rare cross-tree token, instead of fanning every chunk out to both run-ops DBs.
+  // Lets the router read the run's own store, and the other DB only for a cross-tree token.
   runId?: string
 ): Promise<Waitpoint[]> {
   if (waitpointIds.length === 0) return [];
@@ -236,9 +223,9 @@ export type LatestExecutionSnapshotOrFinishedRun<S extends Prisma.TaskRunSelect>
   | { snapshot: null; finishedRun: FinishedRunRow<S> };
 
 /**
- * Like `getLatestExecutionSnapshot`, but when the run's snapshot state has expired and its run row
- * is final, returns that row (selected with `runSelect` plus `status`) instead of throwing. Every
- * other error, and expired state on a non-final row, is rethrown unchanged.
+ * Like `getLatestExecutionSnapshot`, but returns the final run row (`runSelect` plus `status`) when
+ * the snapshot state expired or the run has no snapshot. A run created already failed has no
+ * snapshot. Any other error, or a non-final row, rethrows.
  */
 export async function getLatestExecutionSnapshotOrFinishedRun<S extends Prisma.TaskRunSelect>(
   prisma: PrismaClientOrTransaction,
@@ -257,17 +244,19 @@ export async function getLatestExecutionSnapshotOrFinishedRun<S extends Prisma.T
     );
     return { snapshot, finishedRun: null };
   } catch (error) {
-    if (!(error instanceof SnapshotStateExpiredError)) {
+    if (
+      !(error instanceof SnapshotStateExpiredError) &&
+      !(error instanceof LatestExecutionSnapshotNotFoundError)
+    ) {
       throw error;
     }
-    // Prisma's select-payload mapping does not compose over an intersection, so the row is read with
-    // `status` added and typed as the caller's selection plus `status`.
+    // Prisma cannot map a select over an intersection, so cast to the selection plus `status`.
     const run = (await runStore.findRun(
       { id: runId },
       { select: { ...runSelect, status: true } },
       prisma
     )) as FinishedRunRow<S> | null;
-    if (!run || !isExpiredSnapshotOfFinishedRun(error, run.status)) {
+    if (!run || !isFinalRunStatus(run.status)) {
       throw error;
     }
     return { snapshot: null, finishedRun: run };
@@ -275,9 +264,8 @@ export async function getLatestExecutionSnapshotOrFinishedRun<S extends Prisma.T
 }
 
 /**
- * Gets the most recent valid snapshot for a run. When `environmentId` is provided the read is scoped
- * to that environment (tenant boundary): a run in another environment reads as not-found and rejects
- * with a 404 rather than leaking existence. Internal callers omit it to read regardless of env.
+ * Returns the latest valid snapshot. With `environmentId`, a run in another environment throws a
+ * 404, so its existence does not leak.
  */
 export async function getLatestExecutionSnapshot(
   prisma: PrismaClientOrTransaction,
@@ -301,7 +289,7 @@ export async function getLatestExecutionSnapshot(
     if (environmentId) {
       throw new ServiceValidationError(`No execution snapshot found for TaskRun ${runId}`, 404);
     }
-    throw new Error(`No execution snapshot found for TaskRun ${runId}`);
+    throw new LatestExecutionSnapshotNotFoundError(runId);
   }
 
   return enhanceExecutionSnapshot(snapshot);
@@ -362,36 +350,23 @@ export function executionDataFromSnapshot(snapshot: EnhancedExecutionSnapshot): 
 }
 
 /**
- * Gets execution snapshots created after the specified snapshot.
- *
- * IMPORTANT: This function is optimized to avoid N×M data explosion when runs have many
- * completed waitpoints. Due to the many-to-many relation, once waitpoints complete,
- * all subsequent snapshots have the same waitpoints linked. For a run with 24 snapshots
- * and 236 waitpoints with 100KB outputs each, fetching all waitpoints for all snapshots
- * would result in ~570MB of data, causing "Failed to convert rust String into napi string" errors.
- *
- * Solution: Only the LATEST snapshot's waitpoints are fetched and included. The runner's
- * SnapshotManager only processes completedWaitpoints from the latest snapshot anyway -
- * intermediate snapshots' waitpoints are ignored. This reduces data from N×M to just M.
- *
- * Waitpoints are fetched in chunks (100 at a time) to handle batches up to 1000 items.
+ * Returns at most the 50 newest valid snapshots after `sinceSnapshotId`, oldest first. Only the
+ * latest one carries its completed waitpoints. The runner ignores them on older snapshots, and
+ * loading them for every snapshot (N×M) exceeds the NAPI string limit.
  */
 export async function getExecutionSnapshotsSince(
   prisma: PrismaClientOrTransaction,
   runId: string,
   sinceSnapshotId: string,
   runStore?: RunStore,
-  // The primary, for read-repair when `prisma` is a lagging read replica (see Step 3). Omit when
-  // `prisma` is already the primary.
+  // The primary, for read-repair when `prisma` is a lagging replica.
   repairClient?: PrismaClientOrTransaction,
-  // When set, scopes both reads to this environment (tenant boundary): a run in another env reads as
-  // not-found. Omit to read regardless of environment (internal callers).
+  // Scopes both reads to this environment. A run in another environment reads as not-found.
   environmentId?: string,
   organizationId?: string
 ): Promise<EnhancedExecutionSnapshot[]> {
   const envScope = environmentId ? { environmentId } : {};
 
-  // Step 1: Find the createdAt of the sinceSnapshotId
   const sinceSnapshot = runStore
     ? await runStore.findExecutionSnapshot(
         {
@@ -412,7 +387,6 @@ export async function getExecutionSnapshotsSince(
 
   const snapshotContext = snapshotRouteFromSnapshot(sinceSnapshot);
 
-  // Step 2: Fetch snapshots WITHOUT waitpoints to avoid N×M data explosion
   const snapshots = runStore
     ? await runStore.findManyExecutionSnapshots(
         {
@@ -424,7 +398,7 @@ export async function getExecutionSnapshotsSince(
           },
           include: {
             checkpoint: true,
-            // DO NOT include completedWaitpoints here - this causes the N×M explosion
+            // Do not include completedWaitpoints (N×M, see the function doc).
           },
           orderBy: { createdAt: "desc" },
           take: 50,
@@ -441,7 +415,7 @@ export async function getExecutionSnapshotsSince(
         },
         include: {
           checkpoint: true,
-          // DO NOT include completedWaitpoints here - this causes the N×M explosion
+          // Do not include completedWaitpoints (N×M, see the function doc).
         },
         orderBy: { createdAt: "desc" },
         take: 50,
@@ -449,7 +423,6 @@ export async function getExecutionSnapshotsSince(
 
   if (snapshots.length === 0) return [];
 
-  // Step 3: Get waitpoint IDs for the LATEST snapshot only (first in desc order)
   const latestSnapshot = snapshots[0];
   let readClient = prisma;
   const { present, ids } = await getSnapshotWaitpointIdsWithPresence(
@@ -461,10 +434,8 @@ export async function getExecutionSnapshotsSince(
   );
   let waitpointIds = ids;
 
-  // Read-repair (multi-reader): Step 2 saw this snapshot, but on a multi-reader replica the join read
-  // can hit a laggier reader that does not have it yet. present=false means its empty id list is not
-  // authoritative - re-read from the primary so the runner is not handed a waitpoint-less continue
-  // (which it silently drops, hanging the run). Single-reader replicas never hit this (present stays true).
+  // Read-repair: a laggier reader can lack this snapshot, so its empty id list is not
+  // authoritative. The runner drops a continue with no waitpoints, and the run hangs.
   if (repairClient && repairClient !== prisma && !present) {
     waitpointIds = await getSnapshotWaitpointIds(
       repairClient,
@@ -476,13 +447,9 @@ export async function getExecutionSnapshotsSince(
     readClient = repairClient;
   }
 
-  // Read-repair (batch): completedWaitpointOrder is written on the snapshot row in the same statement as the
-  // snapshot, so it is authoritative. If it lists more waitpoints than the join read returned, the
-  // _completedWaitpoints rows are stale on this client (a lagging read replica) - re-read them from the
-  // primary so the runner is not handed a waitpoint-less continue, which it drops and the run hangs.
-  // Distinct: completedWaitpointOrder can list the same id twice (a run batched under one idempotency
-  // key) while the _completedWaitpoints join is deduped, so compare unique ids or the repair fires every
-  // poll even against a caught-up replica.
+  // Read-repair: completedWaitpointOrder is on the snapshot row, so it is authoritative. Fewer
+  // join ids means stale join rows on a lagging replica. Compare distinct ids: the order can repeat
+  // an id (one idempotency key), but the join cannot.
   const expectedCount = new Set(latestSnapshot.completedWaitpointOrder ?? []).size;
   if (repairClient && repairClient !== prisma && waitpointIds.length < expectedCount) {
     const repaired = await getSnapshotWaitpointIds(
@@ -498,7 +465,6 @@ export async function getExecutionSnapshotsSince(
     }
   }
 
-  // Step 4: Fetch waitpoints in chunks to avoid NAPI string conversion limits
   let waitpoints = await fetchWaitpointsInChunks(readClient, waitpointIds, runStore, runId);
 
   if (repairClient && readClient !== repairClient && waitpoints.length < waitpointIds.length) {
@@ -509,8 +475,6 @@ export async function getExecutionSnapshotsSince(
     );
   }
 
-  // Step 5: Build enhanced snapshots - only latest gets waitpoints, others get empty arrays
-  // The runner only uses completedWaitpoints from the latest snapshot anyway
   return snapshots.reverse().map((snapshot) => {
     const isLatest = snapshot.id === latestSnapshot.id;
     return enhanceExecutionSnapshotWithWaitpoints(
@@ -551,9 +515,8 @@ export class ExecutionSnapshotSystem {
       error,
     }: {
       /**
-       * Caller-supplied TRANSITION id: minted once per logical transition (e.g. so a publish guard can
-       * arm keyed by it before the write) and NEVER reused for different snapshot data. The store insert
-       * ignores conflicts, so a reused id keeps the first committed row and silently drops the new data.
+       * Transition id. Supply it only to key a publish guard before the write. Never reuse it for
+       * different data: the insert ignores conflicts, so the new data is silently dropped.
        */
       snapshotId?: string;
       run: { id: string; status: TaskRunStatus; attemptNumber?: number | null };
@@ -576,23 +539,16 @@ export class ExecutionSnapshotSystem {
         id: string;
         index?: number;
       }[];
-      // Lazily resolves the full completed-waitpoint records for a redis-primary snapshot to reproduce
-      // the Postgres join. A THUNK so the fetch is deferred to the store's cycle-building path and never
-      // runs on a postgres-resident resume; supplied at the unblock site, undefined on mirrored/postgres.
+      // Full records for a redis-primary completed-waitpoint cycle. The store calls it only for a
+      // redis-primary snapshot. See `#completedWaitpointRecordsResolver` in waitpointSystem.ts.
       resolveCompletedWaitpointRecords?: () => Promise<CompletedWaitpointRecord[]>;
       error?: string;
     },
-    // When set (inside runStore.runInTransaction), the snapshot write goes through the owning store
-    // with `prisma` = that store's own tx, so it shares ONE transaction with the sibling write (e.g.
-    // startAttempt) and a mid-pair failure rolls both back. Otherwise the router routes it.
-    // The heartbeat/eventBus side effects below are unchanged.
+    // Set inside runStore.runInTransaction (`prisma` is then its tx), so a failure also rolls back
+    // the sibling write. Unset, the router picks the store.
     store?: RunStore
   ) {
-    // Mint the snapshot id here (above the store) unless the caller supplied one, so a connection-blip
-    // retry inside the store replays the SAME transition idempotently (the store's conflict-ignoring
-    // insert keyed by the id, then a read) instead of duplicating it. The id is a transition id: minted
-    // once per transition, never reused for different data. A caller supplies it only to arm a publish
-    // guard keyed by the id before the write.
+    // Minted above the store, so a retry inside the store replays the same transition idempotently.
     const id = snapshotId ?? SnapshotId.generate().id;
 
     const newSnapshot = await (store ?? this.$.runStore).createExecutionSnapshot(
@@ -618,7 +574,6 @@ export class ExecutionSnapshotSystem {
     );
 
     if (!error) {
-      //set heartbeat (if relevant)
       const intervalMs = this.#getHeartbeatIntervalMs(newSnapshot.executionStatus);
       if (intervalMs !== null) {
         await this.$.worker.enqueue({
@@ -665,7 +620,7 @@ export class ExecutionSnapshotSystem {
   }): Promise<ExecutionResult> {
     const prisma = tx ?? this.$.prisma;
 
-    //we don't need to acquire a run lock for any of this, it's not critical if it happens on an older version
+    // No run lock: a heartbeat against an older snapshot is harmless.
     let latestSnapshot: EnhancedExecutionSnapshot;
     try {
       latestSnapshot = await getLatestExecutionSnapshot(
@@ -676,8 +631,8 @@ export class ExecutionSnapshotSystem {
         organizationId
       );
     } catch (error) {
-      // A transient snapshot store outage must not let the heartbeat job lapse, or every live run
-      // is stalled once the store is back. Expired state (a finished run) is not an outage.
+      // A transient store outage must not let the heartbeat lapse, or every live run stalls after
+      // it. Expired state (a finished run) is not an outage.
       if (
         error instanceof SnapshotReadUnavailableError &&
         !(error instanceof SnapshotStateExpiredError) &&
@@ -731,7 +686,6 @@ export class ExecutionSnapshotSystem {
       lastHeartbeatAt: new Date(),
     });
 
-    //extending the heartbeat
     const intervalMs = this.#getHeartbeatIntervalMs(latestSnapshot.executionStatus);
     if (intervalMs !== null) {
       await this.$.worker.reschedule(
@@ -783,9 +737,8 @@ export class ExecutionSnapshotSystem {
   }
 
   /**
-   * Enqueues a heartbeat job for a snapshot if the execution status requires one.
-   * Use this after nesting a snapshot create inside a taskRun.update() to replicate
-   * the heartbeat side effect that createExecutionSnapshot normally handles.
+   * Enqueues the heartbeat that createExecutionSnapshot would, for a snapshot created another way
+   * (for example, nested in a taskRun.update()).
    */
   public async enqueueHeartbeatIfNeeded(snapshot: {
     id: string;

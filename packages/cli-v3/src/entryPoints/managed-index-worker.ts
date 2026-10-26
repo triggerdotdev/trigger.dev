@@ -17,6 +17,7 @@ import { readFile } from "node:fs/promises";
 import sourceMapSupport from "source-map-support";
 import { registerResources } from "../indexing/registerResources.js";
 import { reportTaskIdCollisions } from "../indexing/reportTaskIdCollisions.js";
+import { reportWebhookIndexingErrors } from "../indexing/reportWebhookIndexingErrors.js";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 import { detectRuntimeVersion } from "@trigger.dev/core/v3/build";
@@ -115,8 +116,13 @@ const { buildManifest, importErrors, config, timings } = await bootstrap();
 // Fail indexing if two task definitions share an id (across files and task
 // types). The catalog keys tasks by id, so without this the second definition
 // would silently overwrite the first.
-if (await reportTaskIdCollisions(safeSend)) {
+if (await reportWebhookIndexingErrors(safeSend)) {
   // Give the message time to flush before the parent kills the worker.
+  await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  process.exit(0);
+}
+
+if (await reportTaskIdCollisions(safeSend)) {
   await new Promise<void>((resolve) => setTimeout(resolve, 10));
   process.exit(0);
 }
@@ -193,6 +199,7 @@ await sendMessageInCatalog(
       skills: resourceCatalog.listSkillManifests(),
       webhookEndpoints: resourceCatalog.listWebhookEndpointManifests(),
       webhookSubscribers: resourceCatalog.listWebhookSubscribers(),
+      unclaimedSessionWebhooks: resourceCatalog.listUnclaimedSessionWebhooks(),
       queues: resourceCatalog.listQueueManifests(),
       concurrencyLimits: resourceCatalog.listConcurrencyLimitManifests(),
       configPath: buildManifest.configPath,

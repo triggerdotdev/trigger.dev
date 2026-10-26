@@ -1,7 +1,7 @@
 /**
  * Whether `request` is an unambiguously same-origin navigation, used to
- * CSRF-gate state-changing GET routes. `allowedOrigin` is the dashboard origin
- * (caller passes `env.LOGIN_ORIGIN`, kept out so the rule stays testable).
+ * CSRF-gate state-changing GET routes. `allowedOrigin` is the configured dashboard
+ * origin selected for this request, passed in so the rule stays testable.
  *
  * Deny-by-default: prefer `Sec-Fetch-Site: same-origin` when present, otherwise
  * require a `Referer` whose origin matches `allowedOrigin`. Anything

@@ -283,6 +283,8 @@ export const DequeuedMessage = z.object({
   dequeuedAt: z.coerce.date(),
   workerQueueLength: z.number().optional(),
   image: z.string().optional(),
+  /** Names a prebuilt template of `image`. */
+  templateKey: z.string().optional(),
   checkpoint: DequeueMessageCheckpoint.optional(),
   completedWaitpoints: z.array(CompletedWaitpoint),
   backgroundWorker: z.object({

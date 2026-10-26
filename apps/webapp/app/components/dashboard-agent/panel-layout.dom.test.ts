@@ -15,7 +15,9 @@ import {
   FLOATING_MIN_SIZE,
   FLOATING_WIDTH,
   FloatingAgentWindow,
+  ALERTS_FLOATING_HEIGHT,
   initialFloatingRect,
+  initialFloatingRectFor,
   readAgentPanelWidth,
   writeAgentPanelWidth,
   type DashboardAgentMode,
@@ -61,6 +63,16 @@ async function gesture(target: Element, steps: Point[]) {
   await release(target, steps[steps.length - 1]!);
 }
 
+/** The dock hint fades out before it unmounts: waits that out, up to a deadline. */
+async function waitForHintToLeave(label: string) {
+  const deadline = Date.now() + 1000;
+  while (document.body.textContent?.includes(label) && Date.now() < deadline) {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+  }
+}
+
 function panInfo(dx: number, dy: number): PanInfo {
   return {
     delta: { x: dx, y: dy },
@@ -93,13 +105,14 @@ describe("initialFloatingRect", () => {
 // `data-agent-no-drag` action (opted out), same as DashboardAgentHeader's button group.
 function renderFloatingAgentWindow(
   onRequestModeChange?: (mode: DashboardAgentMode) => void,
-  mode: DashboardAgentMode = "floating"
+  mode: DashboardAgentMode = "floating",
+  initialRect?: ReturnType<typeof initialFloatingRect>
 ) {
   let latestDrag!: FloatingDragProps;
   function Harness({ current }: { current: DashboardAgentMode }) {
     return createElement(
       FloatingAgentWindow,
-      { mode: current, onRequestModeChange },
+      { mode: current, onRequestModeChange, initialRect },
       (drag: FloatingDragProps) => {
         // oxlint-disable-next-line react/globals -- test harness capturing the render-prop's value.
         latestDrag = drag;
@@ -150,6 +163,14 @@ describe("the floating window's rect, wired with panel-layout's own constants", 
     // Above in-page z-50 chrome (e.g. CodeBlock's copy/expand toolbar); portals still win
     // ties on z-50 since they mount later in the DOM.
     expect(view.outer().className).toContain("z-50");
+  });
+
+  it("applies the initialRect it is given", () => {
+    const view = renderFloatingAgentWindow(undefined, "floating", initialFloatingRectFor("alerts"));
+    expect(view.outer().style.height).toBe(`${ALERTS_FLOATING_HEIGHT}px`);
+    expect(view.outer().style.top).toBe(
+      `${window.innerHeight - ALERTS_FLOATING_HEIGHT - FLOATING_MARGIN}px`
+    );
   });
 
   it("never shrinks below FLOATING_MIN_SIZE when the east edge is dragged inwards", async () => {
@@ -226,6 +247,7 @@ describe("FloatingAgentWindow's drag-to-dock zones", () => {
 
     expect(modes).toEqual(["rightPanel"]);
     expect(view.outerLeft()).toBe(leftBeforeDrag);
+    await waitForHintToLeave("Dock right");
     expect(document.body.textContent).not.toContain("Dock right");
   });
 
@@ -234,7 +256,7 @@ describe("FloatingAgentWindow's drag-to-dock zones", () => {
     const view = renderFloatingAgentWindow((mode) => modes.push(mode));
 
     await pressAndMove(view.titleEl(), [{ x: 500, y: 300 }, topZonePoint()]);
-    expect(document.body.textContent).toContain("Fullscreen");
+    expect(document.body.textContent).toContain("Full page");
 
     await release(view.titleEl(), topZonePoint());
 
@@ -288,9 +310,9 @@ describe("FloatingAgentWindow keeps its child mounted across every mode transiti
     }
   });
 
-  // The dock hint is a conditional sibling rendered before the window. `{cond && …}` keeps
-  // the slot when false, so the window keeps its position among the children and React
-  // never remounts it — a remount here would kill the turn streaming inside the chat.
+  // The dock hint renders before the window, inside an `AnimatePresence` that is always there,
+  // so the window keeps its position among the children and React never remounts it — a
+  // remount here would kill the turn streaming inside the chat, even mid-fade.
   it("never remounts the child while a dock hint appears and disappears", async () => {
     let mounts = 0;
     function Marker() {
@@ -326,8 +348,9 @@ describe("FloatingAgentWindow keeps its child mounted across every mode transiti
     expect(document.body.textContent).toContain("Dock right");
     expect(mounts).toBe(1);
 
-    // Back out of every zone: the hint unmounts again.
+    // Back out of every zone: the hint fades out and unmounts again.
     await dispatchPointer(title(), "pointermove", { x: 400, y: 400 });
+    await waitForHintToLeave("Dock right");
     expect(document.body.textContent).not.toContain("Dock right");
     expect(mounts).toBe(1);
 
@@ -561,5 +584,17 @@ describe("docked width persistence", () => {
     expect(readAgentPanelWidth()).toBe(AGENT_PANEL_DEFAULT_WIDTH);
     writeAgentPanelWidth(0);
     expect(readAgentPanelWidth()).toBe(AGENT_PANEL_DEFAULT_WIDTH);
+  });
+});
+
+describe("initialFloatingRectFor", () => {
+  it("opens the alerts creation window at the prototype height", () => {
+    expect(initialFloatingRectFor("alerts").h).toBe(ALERTS_FLOATING_HEIGHT);
+    expect(ALERTS_FLOATING_HEIGHT).toBe(512);
+  });
+
+  it("keeps the default rect for every other source", () => {
+    expect(initialFloatingRectFor(undefined)).toEqual(initialFloatingRect());
+    expect(initialFloatingRectFor(undefined).h).toBe(600);
   });
 });

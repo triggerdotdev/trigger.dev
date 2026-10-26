@@ -5,21 +5,18 @@ import {
   isAgentRequestMessageId,
   isTurnRequestMessageId,
   type AgentIntent,
+  type AlertCreationDraft,
   type SuggestedPrompt,
   type WatchSpec,
 } from "@internal/dashboard-agent-contracts";
 import { useLocation, useNavigate } from "@remix-run/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
-import { PlusIcon } from "~/assets/icons/PlusIcon";
-import { Button } from "~/components/primitives/Buttons";
-import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { useToast } from "~/components/primitives/Toast";
 import { AgentQuotaNotice, AgentUpgradeBlock } from "./AgentUpgradeGate";
-import { DashboardAgentComposer } from "./DashboardAgentComposer";
+import { DashboardAgentComposer, NewChatButton } from "./DashboardAgentComposer";
 import { DashboardAgentContextBanner } from "./DashboardAgentContextBanner";
 import { DashboardAgentHero } from "./DashboardAgentHero";
-import { NEW_CHAT_SHORTCUT } from "./DashboardAgentHeader";
 import { DashboardAgentMessages, type TurnActivity } from "./DashboardAgentMessages";
 import { MESSAGE_TOO_LARGE_ERROR } from "./message-limits";
 import {
@@ -32,6 +29,7 @@ import {
 import { createTranscriptOrder, orderTranscript } from "./message-order";
 import { navigateDestination } from "./navigate-target";
 import { pendingNavigateIntents, pendingWatchIntents } from "./pending-intents";
+import { pendingDraftPatches, type ToolResultPayload } from "./alert-creation/draftPatch";
 import type { AgentPageContext } from "./page-context-types";
 import { earliestInFlightToolCall } from "./progress-line";
 import { retryAction } from "./retry-action";
@@ -88,7 +86,11 @@ export type DashboardAgentClientData = {
   environmentId?: string;
   currentPage?: string;
   pageContext?: AgentPageContext;
+  toolScope?: "alert_creation";
+  alertDraft?: AlertCreationDraft;
 };
+
+const MESSAGE_LIMIT_ERROR = "You've reached your message limit.";
 
 /** Mounted with `key={chatId}`: the resume cursor arrives via `sessions`, not setSession. */
 export function DashboardAgentChat({
@@ -112,12 +114,16 @@ export function DashboardAgentChat({
   onWatchIntent,
   onCancelWatch,
   onTurnSettled,
+  onAlertDraftPatch,
+  onCreationTextReply,
+  onTurnError,
   onActivityChange,
   onQuotaChange,
   refusalGenRef,
   onNewChat,
   showNewChat,
   watchEnabled = false,
+  headless = false,
 }: {
   chatId: string;
   initialMessages: UIMessage[];
@@ -144,6 +150,9 @@ export function DashboardAgentChat({
   onWatchIntent?: (spec: WatchSpec) => void;
   onCancelWatch: (watchId: string) => void;
   onTurnSettled: () => void;
+  onAlertDraftPatch?: (results: ToolResultPayload[]) => void;
+  onCreationTextReply?: (text: string) => void;
+  onTurnError?: (message: string) => void;
   onActivityChange?: (chatId: string, activity: TurnActivity | null) => void;
   /** The poll lives here, so this is where the panel learns the cap has lifted. */
   onQuotaChange?: (
@@ -156,6 +165,7 @@ export function DashboardAgentChat({
   showNewChat: boolean;
   /** Withholds watch chips, the watch result card and the wake banner while the flag is off. */
   watchEnabled?: boolean;
+  headless?: boolean;
 }) {
   const [input, setInput] = useState("");
   // Set when the server refuses a send over the cap, so the block shows at once rather than
@@ -203,7 +213,7 @@ export function DashboardAgentChat({
         if (reached) {
           refusalGenRef.current += 1;
           setQuotaReached(reached);
-          throw new Error("You've reached your message limit.");
+          throw new Error(MESSAGE_LIMIT_ERROR);
         }
       }
       return res;
@@ -429,10 +439,15 @@ export function DashboardAgentChat({
       consumedSeq: sentRequestSeq.current,
       canSend,
     });
+    if (outcome === "hold" && atMessageCap && onTurnError) {
+      sentRequestSeq.current = sendRequest.seq;
+      onTurnError(MESSAGE_LIMIT_ERROR);
+      return;
+    }
     if (outcome !== "send") return;
     sentRequestSeq.current = sendRequest.seq;
     submit(sendRequest.text);
-  }, [sendRequest, submit, canSend]);
+  }, [sendRequest, submit, canSend, atMessageCap, onTurnError]);
 
   // Over the cap, a retry only earns another 403 — same guard as `submit`. A watch's
   // consent record is a user message nobody typed, so retry never treats it as one.
@@ -523,6 +538,17 @@ export function DashboardAgentChat({
     if (proposed) onWatchIntent?.(proposed.spec);
   }, [messages, onWatchIntent]);
 
+  const draftPatchAccRef = useRef<ToolResultPayload[]>([]);
+  const draftPatchSeenRef = useRef<Set<string> | null>(null);
+  if (draftPatchSeenRef.current === null) {
+    draftPatchSeenRef.current = new Set();
+    pendingDraftPatches(initialMessages, draftPatchSeenRef.current);
+  }
+  useEffect(() => {
+    const results = pendingDraftPatches(messages, draftPatchSeenRef.current!);
+    if (results.length > 0) draftPatchAccRef.current.push(...results);
+  }, [messages]);
+
   const teardownRef = useRef<() => void>(() => {});
 
   teardownRef.current = () => {
@@ -558,6 +584,21 @@ export function DashboardAgentChat({
     if (!wasInFlight || !nowSettled) return;
 
     onTurnSettled();
+    const pendingPatches = draftPatchAccRef.current;
+    draftPatchAccRef.current = [];
+    if (pendingPatches.length > 0 && onAlertDraftPatch) {
+      onAlertDraftPatch(pendingPatches);
+    }
+    if (onCreationTextReply) {
+      const last = messagesRef.current[messagesRef.current.length - 1];
+      if (last?.role === "assistant") {
+        const text = (last.parts ?? [])
+          .filter((p: UIMessage["parts"][number]) => p.type === "text")
+          .map((p: UIMessage["parts"][number]) => (p as { type: "text"; text: string }).text)
+          .join("\n\n");
+        if (text.trim()) onCreationTextReply(text);
+      }
+    }
     // The terminal card is written to the chat row after the stream closes, so this
     // mounted panel would otherwise keep showing the last `in_progress` revision — or,
     // if the stream died mid-tool, the tool call it never got an output for.
@@ -567,7 +608,15 @@ export function DashboardAgentChat({
       apply: (merge) => setMessages((current) => merge(current)),
       wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     });
-  }, [status, onTurnSettled, actionPath, chatId, setMessages]);
+  }, [
+    status,
+    onTurnSettled,
+    onAlertDraftPatch,
+    onCreationTextReply,
+    actionPath,
+    chatId,
+    setMessages,
+  ]);
 
   // Not cleared on unmount: the turn carries on server-side and reports again on remount.
   useEffect(() => {
@@ -583,6 +632,12 @@ export function DashboardAgentChat({
       entityId={entityId}
     />
   );
+
+  useEffect(() => {
+    if (headless && effectiveError) onTurnError?.(effectiveError.message);
+  }, [headless, effectiveError, onTurnError]);
+
+  if (headless) return null;
 
   return (
     <>
@@ -646,37 +701,21 @@ export function DashboardAgentChat({
           context={contextBanner}
         />
       ) : (
-        <>
-          <DashboardAgentComposer
-            value={input}
-            onChange={setInput}
-            onSubmit={() => submit(input)}
-            onStop={stop}
-            isStreaming={isStreaming}
-            focusKey={sendRequest?.seq}
-            context={contextBanner}
-            trailingAction={
-              showNewChat && (
-                <Button
-                  variant="minimal/small"
-                  className="aspect-square h-6 shrink-0 p-1 mr-[6px]"
-                  aria-label="New chat"
-                  tooltip={
-                    <span className="flex items-center">
-                      New chat
-                      <ShortcutKey shortcut={NEW_CHAT_SHORTCUT} variant="medium" />
-                    </span>
-                  }
-                  onClick={onNewChat}
-                  LeadingIcon={<PlusIcon className="size-4 text-text-dimmed" />}
-                />
-              )
-            }
-          />
-          {quota.kind === "within" && (
-            <AgentQuotaNotice remaining={quota.remaining} limit={quota.limit} />
-          )}
-        </>
+        <DashboardAgentComposer
+          value={input}
+          onChange={setInput}
+          onSubmit={() => submit(input)}
+          onStop={stop}
+          isStreaming={isStreaming}
+          focusKey={sendRequest?.seq}
+          context={contextBanner}
+          trailingAction={showNewChat && <NewChatButton onClick={onNewChat} />}
+          notice={
+            quota.kind === "within" ? (
+              <AgentQuotaNotice remaining={quota.remaining} limit={quota.limit} />
+            ) : undefined
+          }
+        />
       )}
     </>
   );

@@ -226,8 +226,10 @@ describe("chat.agent transcript changesets", () => {
 
       expect(promptText(stepPrompts[0])).toContain("[note] drained at the step boundary");
       const state = stateOf(completed()[0]!.changeset.changes);
-      expect(state?.injections).toHaveLength(1);
-      expect(state!.injections![0]!.afterId).toBe("u1");
+      expect(state?.injections).toBeUndefined();
+      expect(state?.steering).toEqual([
+        expect.objectContaining({ kind: "background", messageIds: [] }),
+      ]);
     } finally {
       await first.close();
     }

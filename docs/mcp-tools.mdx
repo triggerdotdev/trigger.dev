@@ -4,8 +4,6 @@ sidebarTitle: "Tools"
 description: "Learn about how to use the tools available in the Trigger.dev MCP Server"
 ---
 
-import WebhooksBetaNote from "/snippets/webhooks-beta-note.mdx";
-
 ## Documentation and Search Tools
 
 ### search_docs
@@ -352,8 +350,6 @@ Append one record to a named side channel's `in` stream. Sends control input to 
 
 ## Webhook Tools
 
-<WebhooksBetaNote />
-
 Set up and debug [hosted webhook endpoints](/webhooks/overview). Endpoint ids start with `wh_` and delivery ids with `whd_`; endpoint tools also accept an endpoint's declared id. The same operations are on the [Webhooks API](/management/webhooks/list-endpoints).
 
 ### list_webhook_endpoints
@@ -415,6 +411,10 @@ Generate a new signing secret for an endpoint and return it once, for providers 
 
 **Parameters:**
 - `endpointId` (required): the endpoint's declared id (such as `payments`) or `wh_` id
+- `previousSecretTtlSeconds` (optional): keep accepting the replaced secret for this many seconds (up to 604800, 7 days) while the provider switches to the new one. Omit it, or pass `0`, to replace the secret immediately, for example when it leaked. The response says when the old secret stops working.
+
+**Example usage:**
+- `"Rotate the GitHub endpoint's secret and keep the old one working for a day"`
 
 ### set_webhook_secret
 
@@ -423,6 +423,7 @@ Store a signing secret or public key the provider issued, such as Stripe's `whse
 **Parameters:**
 - `endpointId` (required): the endpoint's declared id (such as `payments`) or `wh_` id
 - `secret` (required): the secret or public key
+- `previousSecretTtlSeconds` (optional): keep accepting the replaced secret for this many seconds (up to 604800, 7 days) while the provider switches to the new one. Omit it, or pass `0`, to replace the secret immediately, for example when it leaked. The response says when the old secret stops working.
 
 <Callout type="warning">
   `replay_webhook_delivery`, `generate_webhook_secret` and `set_webhook_secret` are write operations and are not available in readonly mode.

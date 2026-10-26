@@ -1,0 +1,1 @@
+ALTER TABLE "trigger_dashboard_agent"."chats" ADD COLUMN "kind" text;

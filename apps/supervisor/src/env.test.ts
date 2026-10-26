@@ -202,3 +202,25 @@ describe("worker cell name", () => {
     expect(() => Env.parse({ ...base, TRIGGER_WORKER_CELL_NAME: "bad/name" })).toThrow();
   });
 });
+
+describe("continue retry budget", () => {
+  it("is off when unset", () => {
+    expect(Env.parse(base).TRIGGER_CONTINUE_RETRY_BUDGET_MS).toBeUndefined();
+  });
+
+  it("accepts a budget within the bounds", () => {
+    for (const value of ["120000", "270000", "290000"]) {
+      expect(
+        Env.parse({ ...base, TRIGGER_CONTINUE_RETRY_BUDGET_MS: value })
+          .TRIGGER_CONTINUE_RETRY_BUDGET_MS
+      ).toBe(Number(value));
+    }
+  });
+
+  it.each(["", "0", "-1", "60000", "119999", "290001", "not-a-number"])(
+    "refuses %j, so a bad value stops the supervisor from starting",
+    (value) => {
+      expect(() => Env.parse({ ...base, TRIGGER_CONTINUE_RETRY_BUDGET_MS: value })).toThrow();
+    }
+  );
+});

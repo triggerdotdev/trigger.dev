@@ -4,7 +4,7 @@ export { isInfrastructureError, WebhookInfrastructureError } from "./engine/erro
 export { parseFilter, FilterParseError } from "./engine/filter/index.js";
 export { signWithVerifierConfig } from "./engine/signing/index.js";
 export type { SignResult, SignArgs } from "./engine/signing/index.js";
-export { verify } from "./engine/verification/index.js";
+export { verify, verifyWithSecrets } from "./engine/verification/index.js";
 export type { VerifyInput, VerifierResult } from "./engine/verification/index.js";
 export type {
   WebhookEngineOptions,

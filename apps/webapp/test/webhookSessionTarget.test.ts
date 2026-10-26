@@ -117,6 +117,26 @@ describe("resolveWebhookSession", () => {
     expect(second.isCached).toBe(true);
   });
 
+  containerTest(
+    "a session key that names another session's channel stream is rejected without a row",
+    async ({ prisma }) => {
+      const environment = await seedEnvironment(prisma);
+
+      const result = await resolveWebhookSession({
+        environment,
+        externalId: "T1:C1/channels/tools",
+        taskIdentifier: "agent-a",
+        isSessionStart: true,
+        db: prisma,
+      });
+
+      expect(result.kind).toBe("rejected");
+      expect(await prisma.session.count({ where: { runtimeEnvironmentId: environment.id } })).toBe(
+        0
+      );
+    }
+  );
+
   containerTest("a non-start event with no session is skipped", async ({ prisma }) => {
     const environment = await seedEnvironment(prisma);
 

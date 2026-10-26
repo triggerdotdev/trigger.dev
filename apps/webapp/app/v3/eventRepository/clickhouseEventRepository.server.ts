@@ -1,6 +1,7 @@
 import {
   buildTraceChunkCursorPredicate,
   buildTraceChunkKeyPredicate,
+  buildTraceStartTimeSortKeyPredicate,
   sliceTraceChunk,
   toTaskEventSearchV2RowIfEligible,
   TRACE_CHUNK_ORDER_BY,
@@ -1903,6 +1904,21 @@ export class ClickhouseEventRepository implements IEventRepository {
     return queryBuilder;
   }
 
+  #whereStartTimeWindow(
+    queryBuilder: { where: (clause: string, params?: any) => unknown },
+    start: Date,
+    end: Date | undefined
+  ) {
+    const startNs = convertDateToNanoseconds(start).toString();
+    const endNs = end ? convertDateToNanoseconds(end).toString() : undefined;
+    queryBuilder.where("start_time >= {startCreatedAt: String}", { startCreatedAt: startNs });
+    if (endNs) {
+      queryBuilder.where("start_time <= {endCreatedAt: String}", { endCreatedAt: endNs });
+    }
+    const sortKey = buildTraceStartTimeSortKeyPredicate({ startNs, endNs });
+    queryBuilder.where(sortKey.clause, sortKey.params);
+  }
+
   #applyTraceScopeWhere(
     queryBuilder: { where: (clause: string, params?: any) => unknown },
     {
@@ -1927,15 +1943,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       ? new Date(endCreatedAt.getTime() + 60_000)
       : undefined;
 
-    queryBuilder.where("start_time >= {startCreatedAt: String}", {
-      startCreatedAt: convertDateToNanoseconds(startCreatedAtWithBuffer).toString(),
-    });
-
-    if (endCreatedAtWithBuffer) {
-      queryBuilder.where("start_time <= {endCreatedAt: String}", {
-        endCreatedAt: convertDateToNanoseconds(endCreatedAtWithBuffer).toString(),
-      });
-    }
+    this.#whereStartTimeWindow(queryBuilder, startCreatedAtWithBuffer, endCreatedAtWithBuffer);
 
     if (this._version === "v2") {
       queryBuilder.where("inserted_at >= {insertedAtStart: DateTime64(3)}", {
@@ -1959,7 +1967,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       }
     }
 
-    if (options?.includeDebugLogs === false) {
+    if (options?.includeDebugLogs !== true) {
       queryBuilder.where("kind != {kind: String}", { kind: "DEBUG_EVENT" });
     }
   }
@@ -2400,15 +2408,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         ? new Date(endCreatedAt.getTime() + 60_000)
         : undefined;
 
-      queryBuilder.where("start_time >= {startCreatedAt: String}", {
-        startCreatedAt: convertDateToNanoseconds(startCreatedAtWithBuffer).toString(),
-      });
-
-      if (endCreatedAtWithBuffer) {
-        queryBuilder.where("start_time <= {endCreatedAt: String}", {
-          endCreatedAt: convertDateToNanoseconds(endCreatedAtWithBuffer).toString(),
-        });
-      }
+      this.#whereStartTimeWindow(queryBuilder, startCreatedAtWithBuffer, endCreatedAtWithBuffer);
 
       if (this._version === "v2") {
         queryBuilder.where("inserted_at >= {insertedAtStart: DateTime64(3)}", {
@@ -2417,7 +2417,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       }
     }
 
-    if (options?.includeDebugLogs === false) {
+    if (options?.includeDebugLogs !== true) {
       queryBuilder.where("kind != {kind: String}", { kind: "DEBUG_EVENT" });
     }
 
@@ -2522,21 +2522,17 @@ export class ClickhouseEventRepository implements IEventRepository {
     queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
     queryBuilder.where("trace_id = {traceId: String}", { traceId });
     queryBuilder.where("span_id = {spanId: String}", { spanId });
-    queryBuilder.where("start_time >= {startCreatedAt: String}", {
-      startCreatedAt: convertDateToNanoseconds(startCreatedAtWithBuffer).toString(),
-    });
-
-    if (endCreatedAt) {
-      queryBuilder.where("start_time <= {endCreatedAt: String}", {
-        endCreatedAt: convertDateToNanoseconds(endCreatedAt).toString(),
-      });
-    }
+    this.#whereStartTimeWindow(queryBuilder, startCreatedAtWithBuffer, endCreatedAt);
 
     // For v2, add inserted_at filtering for partition pruning
     if (this._version === "v2") {
       queryBuilder.where("inserted_at >= {insertedAtStart: DateTime64(3)}", {
         insertedAtStart: convertDateToClickhouseDateTime(startCreatedAtWithBuffer),
       });
+    }
+
+    if (options?.includeDebugLogs !== true) {
+      queryBuilder.where("kind != {kind: String}", { kind: "DEBUG_EVENT" });
     }
 
     queryBuilder.orderBy("start_time ASC");
@@ -3006,15 +3002,7 @@ export class ClickhouseEventRepository implements IEventRepository {
 
       const startCreatedAtWithBuffer = new Date(startCreatedAt.getTime() - 1000);
 
-      queryBuilder.where("start_time >= {startCreatedAt: String}", {
-        startCreatedAt: convertDateToNanoseconds(startCreatedAtWithBuffer).toString(),
-      });
-
-      if (endCreatedAt) {
-        queryBuilder.where("start_time <= {endCreatedAt: String}", {
-          endCreatedAt: convertDateToNanoseconds(endCreatedAt).toString(),
-        });
-      }
+      this.#whereStartTimeWindow(queryBuilder, startCreatedAtWithBuffer, endCreatedAt);
 
       if (this._version === "v2") {
         queryBuilder.where("inserted_at >= {insertedAtStart: DateTime64(3)}", {
@@ -3029,7 +3017,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       }
     }
 
-    if (options?.includeDebugLogs === false) {
+    if (options?.includeDebugLogs !== true) {
       queryBuilder.where("kind != {kind: String}", { kind: "DEBUG_EVENT" });
     }
 
@@ -3263,15 +3251,7 @@ export class ClickhouseEventRepository implements IEventRepository {
 
     queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
     queryBuilder.where("trace_id = {traceId: String}", { traceId });
-    queryBuilder.where("start_time >= {startCreatedAt: String}", {
-      startCreatedAt: convertDateToNanoseconds(startCreatedAtWithBuffer).toString(),
-    });
-
-    if (endCreatedAt) {
-      queryBuilder.where("start_time <= {endCreatedAt: String}", {
-        endCreatedAt: convertDateToNanoseconds(endCreatedAt).toString(),
-      });
-    }
+    this.#whereStartTimeWindow(queryBuilder, startCreatedAtWithBuffer, endCreatedAt);
 
     if (this._version === "v2") {
       queryBuilder.where("inserted_at >= {insertedAtStart: DateTime64(3)}", {
@@ -3438,15 +3418,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
     queryBuilder.where("trace_id = {traceId: String}", { traceId });
     queryBuilder.where("run_id = {runId: String}", { runId });
-    queryBuilder.where("start_time >= {startCreatedAt: String}", {
-      startCreatedAt: convertDateToNanoseconds(startCreatedAtWithBuffer).toString(),
-    });
-
-    if (endCreatedAt) {
-      queryBuilder.where("start_time <= {endCreatedAt: String}", {
-        endCreatedAt: convertDateToNanoseconds(endCreatedAt).toString(),
-      });
-    }
+    this.#whereStartTimeWindow(queryBuilder, startCreatedAtWithBuffer, endCreatedAt);
 
     // For v2, add inserted_at filtering for partition pruning
     if (this._version === "v2") {

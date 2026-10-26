@@ -3,6 +3,7 @@ import {
   nodetypeNodeSelector,
   runPodTolerations,
   runnerSecurityContext,
+  withReservedSourcePorts,
   withRunnerSeccompProfile,
   withNodeSelector,
 } from "./kubernetesPodSpec.js";
@@ -155,6 +156,51 @@ describe("withRunnerSeccompProfile", () => {
   });
 });
 
+describe("withReservedSourcePorts", () => {
+  const reserved = { name: "net.ipv4.ip_local_reserved_ports", value: "50080,50081" };
+
+  it("leaves the spec untouched when unset", () => {
+    for (const ports of [undefined, ""]) {
+      expect(withReservedSourcePorts(basePodSpec, ports)).toBe(basePodSpec);
+    }
+  });
+
+  it("adds the sysctl and keeps the rest of the security context", () => {
+    expect(withReservedSourcePorts(basePodSpec, "50080,50081")).toEqual({
+      ...basePodSpec,
+      securityContext: { ...basePodSpec.securityContext, sysctls: [reserved] },
+    });
+  });
+
+  it("adds a security context when the spec has none", () => {
+    expect(withReservedSourcePorts({ restartPolicy: "Never" }, "50080,50081")).toEqual({
+      restartPolicy: "Never",
+      securityContext: { sysctls: [reserved] },
+    });
+  });
+
+  it("preserves existing sysctls", () => {
+    const existing = { name: "net.ipv4.ip_local_port_range", value: "32768 60999" };
+    const podSpec = { ...basePodSpec, securityContext: { sysctls: [existing] } };
+
+    expect(withReservedSourcePorts(podSpec, "50080,50081").securityContext?.sysctls).toEqual([
+      existing,
+      reserved,
+    ]);
+  });
+
+  it("replaces an existing value rather than duplicating the name", () => {
+    const podSpec = {
+      ...basePodSpec,
+      securityContext: { sysctls: [{ ...reserved, value: "40000" }] },
+    };
+
+    expect(withReservedSourcePorts(podSpec, "50080,50081").securityContext?.sysctls).toEqual([
+      reserved,
+    ]);
+  });
+});
+
 describe("runnerSecurityContext", () => {
   it("sets nothing when off", () => {
     expect(runnerSecurityContext("off", 1000, "node-24")).toBeUndefined();
@@ -176,8 +222,10 @@ describe("runnerSecurityContext", () => {
     });
   });
 
-  it("pins bun's own uid, which differs from node's", () => {
-    expect(runnerSecurityContext("restricted", 1000, "bun")?.runAsUser).toBe(1001);
+  it("pins bun's own uid, which differs from node's, for every bun runtime", () => {
+    for (const runtime of ["bun", "bun-legacy", "bun-1.4"]) {
+      expect(runnerSecurityContext("restricted", 1000, runtime)?.runAsUser).toBe(1001);
+    }
   });
 
   it("falls back to the configured uid when the runtime is unknown", () => {

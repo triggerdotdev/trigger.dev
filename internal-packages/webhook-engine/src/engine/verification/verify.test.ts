@@ -1,8 +1,9 @@
 import { createHmac, generateKeyPairSync, sign as cryptoSign, type KeyObject } from "node:crypto";
 import { WebhookVerifierConfig } from "@trigger.dev/core/v3";
+import { webhookProviderConfigs } from "@trigger.dev/core/webhooks";
 import { describe, expect, it } from "vitest";
 import { parseEventBody } from "./derive.js";
-import { verify } from "./index.js";
+import { verify, verifyWithSecrets } from "./index.js";
 import type { VerifyInput } from "./types.js";
 
 // Real signatures computed with node:crypto, exercised through the config-driven verifier.
@@ -332,6 +333,75 @@ describe("hmac verifier (config-driven)", () => {
     );
     expect(result.ok).toBe(true);
     expect(result.idempotencyKey).toBe("sq_1");
+  });
+});
+
+describe("provider retries", () => {
+  function slackAttempt(body: string, sentAtS: number, retryNum?: number) {
+    const sig = createHmac("sha256", "whsec_test_secret")
+      .update(`v0:${sentAtS}:${body}`)
+      .digest("hex");
+    return input({
+      rawBytes: bytes(body),
+      nowMs: sentAtS * 1000,
+      headers: {
+        "x-slack-signature": `v0=${sig}`,
+        "x-slack-request-timestamp": String(sentAtS),
+        ...(retryNum
+          ? { "x-slack-retry-num": String(retryNum), "x-slack-retry-reason": "http_timeout" }
+          : {}),
+      },
+    });
+  }
+
+  it("gives a Slack event and its retries one key", () => {
+    const body = JSON.stringify({
+      type: "event_callback",
+      team_id: "T1",
+      event_id: "Ev0MDYA7HL",
+      event: { type: "message", channel: "D1", ts: "1700000000.000100", text: "hi" },
+    });
+    const slack = cfg(webhookProviderConfigs.slack.config());
+    const first = verify(slack, slackAttempt(body, NOW_S));
+    const retry = verify(slack, slackAttempt(body, NOW_S + 61, 1));
+    expect(first.ok && retry.ok).toBe(true);
+    expect(first.idempotencyKey).toBe("Ev0MDYA7HL");
+    expect(retry.idempotencyKey).toBe(first.idempotencyKey);
+  });
+
+  it("decodes a Slack click and keys it on the delivery when it has no event_id", () => {
+    const click = { type: "block_actions", actions: [{ action_id: "trigger_tool_1" }] };
+    const body = `payload=${encodeURIComponent(JSON.stringify(click))}`;
+    const slack = cfg(webhookProviderConfigs.slack.config());
+    const first = verify(slack, slackAttempt(body, NOW_S));
+    const second = verify(slack, slackAttempt(body, NOW_S + 1));
+    expect(first.ok).toBe(true);
+    expect(first.parsedEvent).toEqual(click);
+    expect(first.idempotencyKey).toMatch(/^[0-9a-f]{64}$/);
+    expect(second.idempotencyKey).not.toBe(first.idempotencyKey);
+  });
+  it("gives a Linear delivery and its retries one key", () => {
+    const delivery = "9180c0a4-8f16-486a-8472-648394eae869";
+    const attempt = (sentAtMs: number) => {
+      const body = JSON.stringify({
+        type: "AgentSessionEvent",
+        action: "created",
+        agentSession: { id: "session-1" },
+        webhookTimestamp: sentAtMs,
+      });
+      const sig = createHmac("sha256", "whsec_test_secret").update(body).digest("hex");
+      return input({
+        rawBytes: bytes(body),
+        nowMs: sentAtMs,
+        headers: { "linear-signature": sig, "linear-delivery": delivery },
+      });
+    };
+    const linear = cfg(webhookProviderConfigs.linear.config());
+    const first = verify(linear, attempt(NOW_MS));
+    const retry = verify(linear, attempt(NOW_MS + 60_400));
+    expect(first.ok && retry.ok).toBe(true);
+    expect(first.idempotencyKey).toBe(delivery);
+    expect(retry.idempotencyKey).toBe(first.idempotencyKey);
   });
 });
 
@@ -667,5 +737,108 @@ describe("header fallbacks", () => {
 
   it("fails as a missing timestamp when no listed header is set", () => {
     expect(run({})).toMatchObject({ ok: false, error: "missing timestamp" });
+  });
+});
+
+describe("verifyWithSecrets", () => {
+  const githubConfig = cfg({
+    scheme: "hmac",
+    algorithm: "sha256",
+    encoding: "hex",
+    signatureHeader: "x-hub-signature-256",
+    signature: { fieldSeparator: "=", field: "sha256" },
+    signingString: "raw",
+    idempotencyField: { from: "header", name: "x-github-delivery" },
+  });
+  const body = JSON.stringify({ action: "opened" });
+
+  function signedWith(secret: string) {
+    const sig = createHmac("sha256", secret).update(body).digest("hex");
+    return {
+      url: "https://api.example.com/webhooks/v1/ingest/abc",
+      nowMs: NOW_MS,
+      rawBytes: bytes(body),
+      headers: { "x-hub-signature-256": `sha256=${sig}`, "x-github-delivery": "d-1" },
+    };
+  }
+
+  it("accepts the current secret at index 0", () => {
+    const result = verifyWithSecrets(githubConfig, signedWith("new"), ["new", "old"]);
+    expect(result).toMatchObject({ ok: true, secretIndex: 0, idempotencyKey: "d-1" });
+  });
+
+  it("accepts a previous secret and reports its index", () => {
+    const result = verifyWithSecrets(githubConfig, signedWith("old"), ["new", "old"]);
+    expect(result).toMatchObject({ ok: true, secretIndex: 1, idempotencyKey: "d-1" });
+  });
+
+  it("returns the current secret's failure when none match", () => {
+    const result = verifyWithSecrets(githubConfig, signedWith("other"), ["new", "old"]);
+    expect(result).toMatchObject({ ok: false, error: "signature mismatch" });
+    expect(result.secretIndex).toBeUndefined();
+  });
+
+  it("rejects the old secret once only the current one is listed", () => {
+    expect(verifyWithSecrets(githubConfig, signedWith("old"), ["new"]).ok).toBe(false);
+  });
+});
+
+describe("additionalSignatureHeaders", () => {
+  const hookdeckConfig = cfg({
+    scheme: "hmac",
+    algorithm: "sha256",
+    encoding: "base64",
+    signatureHeader: "x-hookdeck-signature",
+    additionalSignatureHeaders: ["x-hookdeck-signature-2"],
+    signature: {},
+    signingString: "raw",
+    idempotencyField: { from: "header", name: "x-hookdeck-eventid" },
+  });
+  const body = JSON.stringify({ type: "order.created" });
+  const sign = (secret: string) => createHmac("sha256", secret).update(body).digest("base64");
+
+  function delivery(headers: Record<string, string>) {
+    return {
+      url: "https://api.example.com/webhooks/v1/ingest/abc",
+      nowMs: NOW_MS,
+      rawBytes: bytes(body),
+      headers: { "x-hookdeck-eventid": "evt_1", ...headers },
+    };
+  }
+
+  const rotating = delivery({
+    "x-hookdeck-signature": sign("new"),
+    "x-hookdeck-signature-2": sign("old"),
+  });
+
+  it("matches the old secret through the additional header during a rotation", () => {
+    expect(verifyWithSecrets(hookdeckConfig, rotating, ["old"])).toMatchObject({
+      ok: true,
+      idempotencyKey: "evt_1",
+    });
+  });
+
+  it("matches the new secret through the main header during a rotation", () => {
+    expect(verifyWithSecrets(hookdeckConfig, rotating, ["new"]).ok).toBe(true);
+  });
+
+  it("rejects a secret that signed neither header", () => {
+    expect(verifyWithSecrets(hookdeckConfig, rotating, ["other"])).toMatchObject({
+      ok: false,
+      error: "signature mismatch",
+    });
+  });
+
+  it("verifies with only the main header present", () => {
+    const single = delivery({ "x-hookdeck-signature": sign("new") });
+    expect(verifyWithSecrets(hookdeckConfig, single, ["new"]).ok).toBe(true);
+  });
+
+  it("still requires the main header", () => {
+    const onlyAdditional = delivery({ "x-hookdeck-signature-2": sign("old") });
+    expect(verifyWithSecrets(hookdeckConfig, onlyAdditional, ["old"])).toMatchObject({
+      ok: false,
+      error: "missing signature header",
+    });
   });
 });

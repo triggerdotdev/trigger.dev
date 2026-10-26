@@ -32,24 +32,19 @@ import { createSnapshotStoreMetrics } from "./utils/snapshotStoreMetrics.server"
 import { logger } from "~/services/logger.server";
 
 type BuildRunStoreDeps = {
-  /** Synchronous construction hook; absent returns the original stores without a wrapper. */
+  /** Wraps each leaf store, for example in the snapshot-store decorator. */
   decorateLeaf?: (leaf: RunStore, logicalRoute: string) => RunStore;
-  /** Boot constant: true only when both run-ops DBs are configured and the split flag is on. */
+  /** True when both run-ops DBs are configured. RUN_OPS_SPLIT_ENABLED does not affect it. */
   splitEnabled: boolean;
-  /** Split-only handles. Required when splitEnabled is true; omitted entirely when OFF
-   * so single-DB callers never touch the run-ops clients (keeps mocks/passthrough clean). */
+  /** Required when splitEnabled is true. */
   newWriter?: RunOpsPrismaClient;
   newReplica?: RunOpsPrismaClient;
   legacyWriter?: PrismaClient;
   legacyReplica?: PrismaReplicaClient;
-  /** Single-DB store handles (control-plane pair). Used verbatim when split is OFF. */
   singleWriter: PrismaClient;
   singleReplica: PrismaReplicaClient;
-  /** Id-to-shard-key resolver; defaults to the core resolveShard inside RoutingRunStore. */
   resolveShard?: (id: string) => ShardKey;
-  /** Gen-2 shard handles. When non-empty, buildRunStore builds one dedicated store per descriptor and
-   * hands them to the N-way router; an aliased shard shares its target's database. Empty/absent keeps
-   * the two-store compat router. */
+  /** Gen-2 shards. When empty, the two-store compat router is built. */
   shards?: Array<{
     key: ShardKey;
     writer: RunOpsPrismaClient;
@@ -57,23 +52,17 @@ type BuildRunStoreDeps = {
     aliasOf?: ShardKey;
     resilience?: TransactionResilienceConfig;
   }>;
-  /** Per-pool transaction-resilience configs threaded into the store(s) this builds (IoC). */
   singleResilience?: TransactionResilienceConfig;
   newResilience?: TransactionResilienceConfig;
   legacyResilience?: TransactionResilienceConfig;
 };
 
 /**
- * Pure run-store builder (no env / no boot side effects — webapp testability rule).
+ * Pure: no env reads and no boot side effects, so tests can call it.
  *
- * Split OFF (default / self-host): returns the exact passthrough PostgresRunStore we
- * have always returned, built from the single control-plane handles. No second store
- * is constructed and no marker predicate is consulted, so behavior is byte-identical
- * to single-DB today.
- *
- * Split ON: returns a RoutingRunStore that selects between a NEW store (where new runs
- * are born) and a LEGACY store (draining) by run-id residency (id shape). There is no cuid
- * migration, so a LEGACY-classified id is always LEGACY-resident.
+ * Split off: one PostgresRunStore over the control-plane handles.
+ * Split on: a RoutingRunStore that picks the NEW or LEGACY store by run-id shape. Runs never move
+ * between them, so a LEGACY-shaped id always lives in LEGACY.
  */
 export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
   const decorate = (leaf: RunStore, route: string) => deps.decorateLeaf?.(leaf, route) ?? leaf;
@@ -92,9 +81,8 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
   if (!deps.newWriter || !deps.newReplica || !deps.legacyWriter || !deps.legacyReplica) {
     throw new Error("buildRunStore: split is enabled but run-ops store handles are missing");
   }
-  // The NEW store is backed by the dedicated RunOpsPrismaClient (subset schema): relation-shaped
-  // ops branch onto FK-free scalars + explicit join models. The LEGACY store keeps the default
-  // "legacy" variant (full @trigger.dev/database schema with implicit M2M + @relations).
+  // NEW uses the dedicated subset schema (FK-free scalars, explicit join models). LEGACY uses the
+  // full schema.
   const newStore = decorate(
     new PostgresRunStore({
       prisma: deps.newWriter,
@@ -115,9 +103,7 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
     "legacy"
   );
 
-  // Gen-2 shards: one dedicated store per descriptor, handed to the N-way router. An aliased shard
-  // builds a store over its target's (shared) client and carries aliasOf, so the router dedups it out
-  // of fan-out sums by declaration. No shards -> the two-store compat router (byte-identical).
+  // An aliased shard shares its target's client. The router uses aliasOf to count it once.
   const shardStores = (deps.shards ?? []).map((shard) => ({
     key: shard.key,
     store: decorate(
@@ -156,10 +142,8 @@ const routingStoreMetrics: RoutingStoreMetrics = singleton("routingStoreMetrics"
     labelNames: ["from", "to"],
     registers: [metricsRegister],
   });
-  // The only per-shard series /metrics carries, so a cohort ramp is visible per shard while it
-  // happens. On every routed operation: the label child is resolved once per shard and cached,
-  // because `inc({ shard })` hashes a fresh label object on each call. Cardinality is bounded by
-  // the shard alphabet plus the two reserved keys.
+  // Label children are cached because `inc({ shard })` hashes a new label object on each call, and
+  // this runs on every routed operation.
   const shardRouted = new Counter({
     name: "runops_shard_routed_total",
     help: "Operations routed to a shard by an id that resolves to it alone. Fan-outs, probes and fallback legs resolve no single shard and are excluded.",
@@ -181,15 +165,12 @@ const routingStoreMetrics: RoutingStoreMetrics = singleton("routingStoreMetrics"
   };
 });
 
-// Build the routing store whenever BOTH run-ops DBs are configured, independent of
-// RUN_OPS_SPLIT_ENABLED. Reads must fan out across both DBs so a run that lives on the new
-// DB stays visible even with the flag off (matches the db.server topology factory). The flag
-// governs write/mint residency + migration via isSplitEnabled(), not read visibility.
+// Independent of RUN_OPS_SPLIT_ENABLED: reads must fan out across both DBs, so a run on the new DB
+// stays visible with the flag off. The flag (isSplitEnabled) controls writes and migration.
 const ROUTING_ENABLED = !!env.RUN_OPS_DATABASE_URL && !!env.RUN_OPS_LEGACY_DATABASE_URL;
 
-// Resolve the run-ops handles, tolerating contexts where they are absent — tests that mock
-// ~/db.server minimally omit them, and accessing a missing export under vi.mock throws. A
-// miss means "no run-ops handles here" and we fall back to single-store.
+// Returns null when the handles are absent, for example under a minimal ~/db.server mock, where a
+// missing export throws. The caller then builds a single store.
 function tryResolveRunOpsHandles() {
   try {
     if (
@@ -205,7 +186,6 @@ function tryResolveRunOpsHandles() {
       newReplica: runOpsNewReplicaClient,
       legacyWriter: runOpsLegacyPrisma,
       legacyReplica: runOpsLegacyReplica,
-      // Absent under a minimal db.server mock; default to no shards so the compat router is built.
       shardHandles: runOpsShardHandles ?? [],
     };
   } catch {
@@ -213,12 +193,13 @@ function tryResolveRunOpsHandles() {
   }
 }
 
-const snapshotStoreRuntime = singleton("SnapshotStoreRuntime", () => {
+export const snapshotStoreRuntime = singleton("SnapshotStoreRuntime", () => {
   const endpoint = env.RUN_ENGINE_SNAPSHOT_STORE_REDIS_URL;
   if (!endpoint) return undefined;
   const metrics = createSnapshotStoreMetrics(metricsRegister);
   const connection = createSnapshotConnection(endpoint, {
     metrics: metrics.store,
+    completedTtlMs: env.RUN_ENGINE_SNAPSHOT_STORE_COMPLETED_TTL_MS,
     onError: (error) => logger.error("Snapshot connection error", { error }),
   });
   return createSnapshotStoreRuntime({
@@ -233,7 +214,6 @@ const snapshotStoreRuntime = singleton("SnapshotStoreRuntime", () => {
 
 export const runStore: RunStore = singleton("RunStore", () => {
   const handles = ROUTING_ENABLED ? tryResolveRunOpsHandles() : null;
-  // Single-store passthrough: self-host (one DB), or a context without run-ops handles.
   if (!handles) {
     return buildRunStore({
       decorateLeaf: snapshotStoreRuntime?.decorate,

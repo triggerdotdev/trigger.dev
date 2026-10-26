@@ -8,9 +8,6 @@ import {
 } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { EditPencilIcon } from "~/assets/icons/EditPencilIcon";
-import { ChatFloatingPanel } from "~/assets/icons/ChatFloatingPanel";
-import { ChatFullScreen } from "~/assets/icons/ChatFullScreen";
-import { ChatRightPanel } from "~/assets/icons/ChatRightPanel";
 import { UserProfilePhoto } from "~/components/UserProfilePhoto";
 import {
   MainHorizontallyCenteredContainer,
@@ -86,6 +83,7 @@ import {
   updateThemePreference,
   updateUnderlineLinksPreference,
 } from "~/services/dashboardPreferences.server";
+import { CHAT_MODE_OPTIONS } from "~/components/dashboard-agent/chat-mode-options";
 import { useChatOpenModePicker } from "~/components/dashboard-agent/use-chat-open-mode-picker";
 import type { ChatOpenMode } from "~/utils/dashboardPreferences";
 import {
@@ -727,7 +725,7 @@ function CustomizeSidebarButton({
 }) {
   const user = useUser();
   const isAdmin = useHasAdminAccess();
-  const { isManagedCloud } = useFeatures();
+  const { isManagedCloud, alertsConfigured } = useFeatures();
   const favorites = useFavorites();
   const [isOpen, setIsOpen] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
@@ -769,16 +767,18 @@ function CustomizeSidebarButton({
           },
         ]
       : []),
-    ...buildSideMenuSections({ ...context, isAdmin, isManagedCloud }).map((section) => ({
-      id: section.id,
-      title: section.title,
-      items: section.items.map((item) => ({
-        id: item.id,
-        name: item.name,
-        icon: item.icon,
-        defaultHidden: item.defaultHidden,
-      })),
-    })),
+    ...buildSideMenuSections({ ...context, isAdmin, alertsConfigured, isManagedCloud }).map(
+      (section) => ({
+        id: section.id,
+        title: section.title,
+        items: section.items.map((item) => ({
+          id: item.id,
+          name: item.name,
+          icon: item.icon,
+          defaultHidden: item.defaultHidden,
+        })),
+      })
+    ),
   ];
 
   return (
@@ -821,16 +821,6 @@ function CustomizeSidebarButton({
   );
 }
 
-const CHAT_OPEN_MODE_OPTIONS: {
-  mode: ChatOpenMode;
-  label: string;
-  Icon: typeof ChatFloatingPanel;
-}[] = [
-  { mode: "floating", label: "Floating", Icon: ChatFloatingPanel },
-  { mode: "rightPanel", label: "Right panel", Icon: ChatRightPanel },
-  { mode: "fullscreen", label: "Fullscreen", Icon: ChatFullScreen },
-];
-
 /** The mode Ask Trigger opens in; in-chat mode switches stay transient and don't change this. */
 function ChatOpenModePicker({
   value,
@@ -844,7 +834,7 @@ function ChatOpenModePicker({
       name="chat-open-mode"
       variant="secondary/small"
       value={value}
-      options={CHAT_OPEN_MODE_OPTIONS.map(({ mode, label, Icon }) => ({
+      options={CHAT_MODE_OPTIONS.map(({ mode, label, Icon }) => ({
         value: mode,
         label: (
           <SimpleTooltip
@@ -902,8 +892,8 @@ export default function Page() {
     onError: useCallback((message: string) => toast.error(message), [toast]),
   });
   const currentChatModeLabel =
-    CHAT_OPEN_MODE_OPTIONS.find((option) => option.mode === desiredChatOpenMode)?.label ??
-    CHAT_OPEN_MODE_OPTIONS[0].label;
+    CHAT_MODE_OPTIONS.find((option) => option.mode === desiredChatOpenMode)?.label ??
+    CHAT_MODE_OPTIONS[0].label;
   const pendingTheme = themeFetcher.formData?.get("theme");
   const pendingContrast = contrastFetcher.formData?.get("contrast");
   const contrast =

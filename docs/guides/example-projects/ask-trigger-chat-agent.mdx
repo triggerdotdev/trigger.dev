@@ -45,12 +45,12 @@ The agent writes a sentence or two, then calls a `renderVisualization` tool with
 
 ### The agent
 
-The agent is a single [`chat.agent()`](/ai-chat/overview) call. Trigger.dev handles the chat session, turn loop, streaming and resumability. The system prompt is a versioned [AI Prompt](/ai/prompts): the editable teaching guidance lives in the prompt template, while the json-render component reference is generated from the catalog at run time and injected as a template variable, so it always matches the deployed code. Setting the resolved prompt with `chat.prompt.set()` lets `chat.toStreamTextOptions()` supply the system text, model, config and telemetry:
+The agent is a single [`chat.agent()`](/ai-chat/overview) call. Trigger.dev handles the chat session, turn loop, streaming and resumability. The system prompt is a versioned [AI Prompt](/ai/prompts): the editable teaching guidance lives in the prompt template, while the json-render component reference is generated from the catalog at run time and injected as a template variable, so it always matches the deployed code. Setting the resolved prompt with `chat.prompt.set()` lets the `streamText` passed to `run()` supply the system text, model, config and telemetry:
 
 ```ts src/trigger/trigger-chat-agent.ts
 import { chat } from "@trigger.dev/sdk/ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { createProviderRegistry, stepCountIs, streamText } from "ai";
+import { createProviderRegistry, stepCountIs } from "ai";
 import { prompts } from "@trigger.dev/sdk";
 import { catalogPromptSection } from "../lib/catalog";
 
@@ -74,6 +74,8 @@ on-screen components, never walls of text.
 export const triggerChatAgent = chat.agent({
   id: "trigger-chat-agent",
   idleTimeoutInSeconds: 300,
+  // Resolves the prompt's provider-prefixed model ("anthropic:claude-haiku-4-5").
+  registry,
   // Public-demo cost guardrail: throttle how many sessions run at once.
   queue: { concurrencyLimit: 10 },
 
@@ -86,21 +88,22 @@ export const triggerChatAgent = chat.agent({
   },
 
   // onTurnStart (not onChatStart) fires on every turn, so the system prompt
-  // survives an idle resume. chat.toStreamTextOptions() picks up the system
-  // text, model, config AND experimental_telemetry from it — the telemetry is
-  // what makes LLM observability (tokens, cost, latency) show up per prompt version.
+  // survives an idle resume. The streamText passed to run() picks up the system
+  // text, model, config and telemetry from it, which is what makes LLM
+  // observability (tokens, cost, latency) show up per prompt version.
   onTurnStart: async () => {
     chat.prompt.set(await getResolvedPrompt());
   },
 
-  run: async ({ messages, tools, signal }) => {
+  run: async ({ messages, tools, signal, streamText }) => {
     // Escalate only genuinely hard turns to Sonnet; everything else stays on
-    // the prompt's base model (Haiku). The override goes AFTER the spread so it wins.
+    // the prompt's base model (Haiku). A model passed here wins over the prompt's,
+    // and a text-only dashboard override leaves the prompt without one.
     const escalate = await needsEscalation(messages);
+    const fallback = chat.prompt().model ? {} : { model: anthropic("claude-haiku-4-5") };
     return streamText({
-      model: anthropic("claude-haiku-4-5"),
-      ...chat.toStreamTextOptions({ registry, tools }),
-      ...(escalate ? { model: anthropic("claude-sonnet-5") } : {}),
+      tools,
+      ...(escalate ? { model: anthropic("claude-sonnet-5") } : fallback),
       messages,
       stopWhen: stepCountIs(15),
       abortSignal: signal,
@@ -109,11 +112,10 @@ export const triggerChatAgent = chat.agent({
 });
 ```
 
-<Warning>
-  On AI SDK v5/v6, `experimental_telemetry` comes from the stored prompt via
-  `chat.toStreamTextOptions()` — without `chat.prompt.set()`, model calls don't appear as spans in
-  the run trace.
-</Warning>
+<Note>
+  The `streamText` passed to `run()` records each model step and tool call as a span, and links them
+  to the stored prompt's version, so tokens, cost and latency show per prompt version.
+</Note>
 
 ### Grounding answers on live docs with MCP
 

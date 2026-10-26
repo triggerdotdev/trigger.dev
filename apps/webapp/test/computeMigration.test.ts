@@ -78,6 +78,8 @@ describe("isOrgMigrated", () => {
   });
 });
 
+const KEY = "a".repeat(64);
+
 describe("resolveComputeMigration", () => {
   const enrolled = {
     planType: "free",
@@ -86,6 +88,8 @@ describe("resolveComputeMigration", () => {
     envType: "PRODUCTION",
     baseEnableFastPath: false,
     region: "us-east-1",
+    environmentCompat: undefined,
+    templateKey: KEY as string | null | undefined,
   };
   const backing = { workerQueue: "us-east-1-next", enableFastPath: true };
 
@@ -97,7 +101,12 @@ describe("resolveComputeMigration", () => {
         orgId: "org_x",
         backing,
       })
-    ).toEqual({ workerQueue: "us-east-1-next", region: "us-east-1", enableFastPath: true });
+    ).toEqual({
+      workerQueue: "us-east-1-next",
+      region: "us-east-1",
+      enableFastPath: true,
+      compute: true,
+    });
   });
   it("leaves the queue unchanged when there is no backing for the region (EU)", () => {
     expect(
@@ -143,4 +152,188 @@ describe("resolveComputeMigration", () => {
       })
     ).toEqual({ workerQueue: undefined, region: undefined, enableFastPath: false });
   });
+
+  describe("environment compat override", () => {
+    const swapped = {
+      workerQueue: "us-east-1-next",
+      region: "us-east-1",
+      enableFastPath: true,
+      compute: true,
+    };
+    const base = { workerQueue: "us-east-1", region: "us-east-1", enableFastPath: false };
+    const notEnrolled = { flags: { computeMigrationEnabled: false } };
+
+    it("compute swaps an org the migration has not enrolled", () => {
+      expect(
+        resolveComputeMigration({
+          ...enrolled,
+          ...notEnrolled,
+          baseWorkerQueue: "us-east-1",
+          orgId: "org_x",
+          backing,
+          environmentCompat: "compute",
+        })
+      ).toEqual(swapped);
+    });
+    it("compute wins over the per-org opt-out for that environment", () => {
+      expect(
+        resolveComputeMigration({
+          ...enrolled,
+          baseWorkerQueue: "us-east-1",
+          orgId: "org_x",
+          orgFeatureFlags: { computeMigrationEnabled: false },
+          backing,
+          environmentCompat: "compute",
+        })
+      ).toEqual(swapped);
+    });
+    it("container keeps an enrolled org's environment on the base queue", () => {
+      expect(
+        resolveComputeMigration({
+          ...enrolled,
+          baseWorkerQueue: "us-east-1",
+          orgId: "org_x",
+          orgFeatureFlags: { computeMigrationEnabled: true },
+          backing,
+          environmentCompat: "container",
+        })
+      ).toEqual(base);
+    });
+    it("any follows the org's migration decision", () => {
+      const input = {
+        ...enrolled,
+        baseWorkerQueue: "us-east-1",
+        orgId: "org_x",
+        backing,
+        environmentCompat: "any" as const,
+      };
+      expect(resolveComputeMigration(input)).toEqual(swapped);
+      expect(resolveComputeMigration({ ...input, ...notEnrolled })).toEqual(base);
+    });
+    it("compute without a backing group leaves the queue unchanged", () => {
+      expect(
+        resolveComputeMigration({
+          ...enrolled,
+          ...notEnrolled,
+          baseWorkerQueue: "eu-central-1",
+          region: "eu-central-1",
+          orgId: "org_x",
+          backing: undefined,
+          environmentCompat: "compute",
+        })
+      ).toEqual({ workerQueue: "eu-central-1", region: "eu-central-1", enableFastPath: false });
+    });
+    it("does not swap DEVELOPMENT", () => {
+      expect(
+        resolveComputeMigration({
+          ...enrolled,
+          baseWorkerQueue: "us-east-1",
+          orgId: "org_x",
+          backing,
+          envType: "DEVELOPMENT",
+          environmentCompat: "compute",
+        })
+      ).toEqual(base);
+    });
+  });
+});
+
+describe("resolveComputeMigration template key", () => {
+  const backing = { workerQueue: "us-east-1-next", enableFastPath: true };
+  const base = { workerQueue: "us-east-1", region: "us-east-1", enableFastPath: false };
+  const swapped = {
+    workerQueue: "us-east-1-next",
+    region: "us-east-1",
+    enableFastPath: true,
+    compute: true,
+  };
+  const input = {
+    baseWorkerQueue: "us-east-1",
+    baseEnableFastPath: false,
+    region: "us-east-1",
+    backing,
+    orgId: "org_x",
+    envType: "PRODUCTION",
+  };
+
+  const notMigrated = [
+    { name: "migration off", planType: "free", orgFeatureFlags: {}, flags: undefined },
+    {
+      name: "global flag off",
+      planType: "free",
+      orgFeatureFlags: {},
+      flags: { computeMigrationEnabled: false, computeMigrationFreePercentage: 100 },
+    },
+    {
+      name: "outside the percentage",
+      planType: "paid",
+      orgFeatureFlags: {},
+      flags: { computeMigrationEnabled: true, computeMigrationPaidPercentage: 0 },
+    },
+    {
+      name: "per-org opt-out",
+      planType: "free",
+      orgFeatureFlags: { computeMigrationEnabled: false },
+      flags: { computeMigrationEnabled: true, computeMigrationFreePercentage: 100 },
+    },
+    {
+      name: "enterprise plan",
+      planType: "enterprise",
+      orgFeatureFlags: {},
+      flags: {
+        computeMigrationEnabled: true,
+        computeMigrationFreePercentage: 100,
+        computeMigrationPaidPercentage: 100,
+      },
+    },
+    {
+      name: "per-org opt-in but container environment",
+      planType: "free",
+      orgFeatureFlags: { computeMigrationEnabled: true },
+      flags: undefined,
+      environmentCompat: "container" as const,
+    },
+  ];
+  const compats = [undefined, "any", "container"] as const;
+  const keys = [KEY, null, undefined];
+
+  for (const org of notMigrated) {
+    for (const environmentCompat of org.environmentCompat ? [org.environmentCompat] : compats) {
+      for (const templateKey of keys) {
+        it(`keeps the base queue for a non-migrated org (${org.name}, compat=${environmentCompat}, key=${templateKey === KEY ? "set" : templateKey})`, () => {
+          expect(
+            resolveComputeMigration({
+              ...input,
+              planType: org.planType,
+              orgFeatureFlags: org.orgFeatureFlags,
+              flags: org.flags,
+              environmentCompat,
+              templateKey,
+            })
+          ).toEqual(base);
+        });
+      }
+    }
+  }
+
+  const migrated = {
+    planType: "free",
+    orgFeatureFlags: {},
+    flags: { computeMigrationEnabled: true, computeMigrationFreePercentage: 100 },
+  };
+
+  for (const environmentCompat of [undefined, "any", "compute"] as const) {
+    it(`keeps a migrated org's keyless deployment on the base queue (compat=${environmentCompat})`, () => {
+      for (const templateKey of [null, undefined, ""]) {
+        expect(
+          resolveComputeMigration({ ...input, ...migrated, environmentCompat, templateKey })
+        ).toEqual({ ...base, templateFallback: true });
+      }
+    });
+    it(`swaps a migrated org's keyed deployment to compute (compat=${environmentCompat})`, () => {
+      expect(
+        resolveComputeMigration({ ...input, ...migrated, environmentCompat, templateKey: KEY })
+      ).toEqual(swapped);
+    });
+  }
 });

@@ -22,6 +22,7 @@ import {
   listRunsSchema,
   listTasksSchema,
   renderViewSchema,
+  renderViewSchemaWithoutWatch,
   runQuerySchema,
   searchDocsSchema,
 } from "./tool-schemas";
@@ -783,7 +784,7 @@ export function buildApiTools(args: {
 
     // A `chart` block's query runs here first — the panel would run it too late to report.
     render_view: tool({
-      ...renderViewSchema,
+      ...(ctx.watchEnabled ? renderViewSchema : renderViewSchemaWithoutWatch),
       execute: async (view) => {
         const scope = await resolveTarget({}, ctx, "render a chart");
         for (const block of view.blocks) {
@@ -795,7 +796,7 @@ export function buildApiTools(args: {
           );
           if (queryError) {
             return {
-              error: `The chart query failed: ${queryError}. Fix the query — column names are snake_case — and render the chart again.`,
+              error: `The chart query failed: ${queryError}. Fix the query - column names are snake_case - and render the chart again.`,
             };
           }
         }

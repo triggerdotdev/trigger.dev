@@ -72,7 +72,7 @@ const FETCH_TIMEOUT_MS = 30_000;
 // where a truncated read gets resumed.
 const READ_TRUNCATION_NOTICE =
   `Truncated to the first ${MAX_READ_LINES} lines / ${MAX_READ_BYTES / 1024}KB. ` +
-  "Read the part you need with startLine and endLine — the line from the stack trace or the search match is where to start.";
+  "Read the part you need with startLine and endLine - the line from the stack trace or the search match is where to start.";
 
 /** Caps a read at both ceilings, whichever bites first. */
 function capRead(content: string): { content: string; truncated: boolean } {

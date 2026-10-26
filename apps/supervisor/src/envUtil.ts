@@ -146,6 +146,36 @@ export const Tolerations = z.string().transform((val, ctx) => {
     });
 });
 
+// The kernel rejects whitespace between entries and reads a leading zero as octal.
+const PORT_OR_RANGE = /^(0|[1-9]\d{0,4})(?:-(0|[1-9]\d{0,4}))?$/;
+
+export const ReservedPorts = z
+  .string()
+  .optional()
+  .transform((val, ctx) => {
+    if (val === undefined || val.trim() === "") {
+      return undefined;
+    }
+
+    const entries = val.split(",").map((entry) => entry.trim());
+
+    for (const entry of entries) {
+      const match = PORT_OR_RANGE.exec(entry);
+      const low = Number(match?.[1]);
+      const high = Number(match?.[2] ?? match?.[1]);
+
+      if (!match || high > 65535 || low > high) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Invalid reserved port "${entry}". Must be a port or an ascending low-high range, within 0-65535.`,
+        });
+        return z.NEVER;
+      }
+    }
+
+    return entries.join(",");
+  });
+
 /**
  * Scalar values are coerced: YAML/JSON easily produce `true` or `3` where a label
  * value is meant, and Kubernetes label values are always strings. An empty value

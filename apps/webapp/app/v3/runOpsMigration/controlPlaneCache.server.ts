@@ -99,6 +99,7 @@ type ResolvedWorkerDeployment = {
   friendlyId: string;
   imageReference: string | null;
   imagePlatform: string;
+  templateKey: string | null;
 };
 
 /** The `select` that yields a `ResolvedWorkerDeployment`. */
@@ -107,6 +108,7 @@ export const resolvedWorkerDeploymentSelect = {
   friendlyId: true,
   imageReference: true,
   imagePlatform: true,
+  templateKey: true,
 } satisfies Prisma.WorkerDeploymentSelect;
 
 /** Mirrors `WorkerDeploymentWithWorkerTasks` in `dequeueSystem.ts` exactly. */

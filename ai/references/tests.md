@@ -10,7 +10,7 @@ Prefer running tests on a single file (and first cding into the directory):
 
 ```bash
 cd apps/webapp
-pnpm run test ./src/components/Button.test.ts
+pnpm run test ./test/myService.test.ts
 ```
 
 If you are cd'ing into a directory, you may have to build dependencies first:
@@ -18,17 +18,17 @@ If you are cd'ing into a directory, you may have to build dependencies first:
 ```bash
 pnpm run build --filter webapp
 cd apps/webapp
-pnpm run test ./src/components/Button.test.ts
+pnpm run test ./test/myService.test.ts
 ```
 
 ## Writing Tests
 
 We use vitest for testing. We almost NEVER mock anything. Start with a top-level "describe", and have multiple "it" statements inside of it.
 
-New test files should be placed right next to the file being tested. For example:
+Where new test files go:
 
-- Source file: `./src/services/MyService.ts`
-- Test file: `./src/services/MyService.test.ts`
+- Webapp: in `apps/webapp/test/`, not next to the source. Vitest there only runs files matched by the `include` list in `apps/webapp/vitest.config.ts`.
+- Packages: follow the package's existing layout. Next to the source (`./src/services/MyService.ts` -> `./src/services/MyService.test.ts`) and a `test/` folder are both fine.
 
 When writing anything that needs redis or postgresql, we have some internal "testcontainers" that are used to spin up a local instance, redis, or both.
 

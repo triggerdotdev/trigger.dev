@@ -4,7 +4,7 @@ sidebarTitle: "Redact chat content"
 description: "Stop a chat agent recording user messages and clientData on its spans, turn off AI SDK prompt and response recording, or redact span content with a span processor before it leaves the worker."
 ---
 
-A chat agent's run trace records conversation content by default: the user's message and the `clientData` your frontend sends. When AI SDK telemetry is on, it also records the prompts and responses of each model call. This page covers the three controls that change that, and what they don't cover.
+A chat agent's run trace records conversation content by default: the user's message, the `clientData` your frontend sends, and, through AI SDK telemetry, the prompts and responses of each model call. This page covers the three controls that change that, and what they don't cover.
 
 ## What the run trace records
 
@@ -13,7 +13,7 @@ A chat agent's run trace records conversation content by default: the user's mes
 | `chat turn N` | The last user message (`chat.user_message`) and its first 80 characters as the span preview | `telemetry.recordUserMessage` |
 | `chat turn N` | The raw `clientData` (`chat.client_data`) | `telemetry.recordClientData` |
 | `pending message injected` | Messages sent mid-turn (`pending.messages`) | `telemetry.recordUserMessage` |
-| AI SDK model call spans, when AI SDK telemetry is on | Prompt messages, response text, tool calls | `experimental_telemetry` on the model call |
+| AI SDK model call spans (on by default with the `streamText` from `run`) | Prompt messages, response text, tool calls | `telemetry.recordUserMessage` for the default config, or `experimental_telemetry` on the model call |
 | Any span | Everything above, plus your own attributes and span events | A span processor |
 
 ## Stop recording chat content
@@ -32,11 +32,11 @@ export const supportAgent = chat.agent({
 });
 ```
 
-The spans still appear in the trace with their timings and token usage. The turn spans have no preview text.
+The spans still appear in the trace with their timings and token usage. The turn spans have no preview text. `recordUserMessage: false` also keeps prompts and responses out of the AI SDK spans that the `streamText` passed to `run()` turns on, with or without a prompt stored by `chat.prompt.set()`, and leaves a stored prompt's variables out of the span metadata, unless the call passes its own `experimental_telemetry`.
 
 ## Stop the AI SDK recording prompts and responses
 
-AI SDK model call spans appear when AI SDK telemetry is on: [`chat.prompt.set()`](/ai-chat/backend#using-prompts) turns it on for you, or you pass `experimental_telemetry` yourself. Those spans include prompts and responses unless you turn that off with `recordInputs` and `recordOutputs`:
+The `streamText` passed to `run()` turns AI SDK telemetry on, so each model call and tool call is a span in the run trace (pass `experimental_telemetry: { isEnabled: false }` to turn the spans off). If you call `streamText` from `ai` yourself, pass `experimental_telemetry` to get them. Those spans include prompts and responses unless you turn that off with `recordInputs` and `recordOutputs`:
 
 ```ts /trigger/support-agent.ts
 import { chat } from "@trigger.dev/sdk/ai";
@@ -50,7 +50,7 @@ export const supportAgent = chat.agent({
       model: anthropic("claude-sonnet-4-5"),
       messages,
       abortSignal: signal,
-      // Replaces any telemetry config from chat.prompt.set(), so keep isEnabled on
+      // Replaces the default telemetry config (and chat.prompt.set()'s), so keep isEnabled on
       experimental_telemetry: { isEnabled: true, recordInputs: false, recordOutputs: false },
     }),
 });

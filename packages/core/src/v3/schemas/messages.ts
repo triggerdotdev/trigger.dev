@@ -47,6 +47,8 @@ export const indexerToWorkerMessages = {
   WEBHOOKS_FAILED_TO_INDEX: z.object({
     version: z.literal("v1").default("v1"),
     collisions: z.array(z.object({ id: z.string(), filePaths: z.array(z.string()) })),
+    /** Subscribers that reference an undefined endpoint, or reuse a subscriber id on one endpoint. */
+    problems: z.array(z.string()).default([]),
   }),
   UNCAUGHT_EXCEPTION: UncaughtExceptionMessage,
 };

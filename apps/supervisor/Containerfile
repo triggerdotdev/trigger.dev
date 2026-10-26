@@ -1,4 +1,4 @@
-FROM node:24.18.0-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS node-24-alpine
+FROM node:24.22.1-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS node-24-alpine
 
 WORKDIR /app
 
@@ -45,6 +45,9 @@ FROM base AS runner
 ENV NODE_ENV production
 
 COPY --from=builder /prod/supervisor /app/apps/supervisor
+COPY --chown=node:node docker/scripts/distrust-cas.cjs /app/scripts/distrust-cas.cjs
+COPY --chown=node:node --chmod=755 apps/supervisor/entrypoint.sh /app/entrypoint.sh
+ENV NODE_OPTIONS=--require=/app/scripts/distrust-cas.cjs
 
 EXPOSE 8000
 USER node
@@ -52,4 +55,5 @@ USER node
 # ensure pnpm is installed during build and not silently downloaded at runtime
 RUN pnpm -v
 
-CMD [ "/usr/bin/dumb-init", "--", "pnpm", "run", "--filter", "supervisor", "start"]
+ENTRYPOINT [ "/app/entrypoint.sh" ]
+CMD [ "pnpm", "run", "--filter", "supervisor", "start"]

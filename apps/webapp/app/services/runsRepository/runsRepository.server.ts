@@ -79,6 +79,7 @@ const RunListInputOptionsSchema = z.object({
   period: z.string().optional(),
   from: z.number().optional(),
   to: z.number().optional(),
+  filterByCompletedAt: z.boolean().optional(),
   isTest: z.boolean().optional(),
   rootOnly: z.boolean().optional(),
   batchId: z.string().optional(),

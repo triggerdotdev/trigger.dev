@@ -32,6 +32,8 @@ export type ChartLegendCompoundProps = {
   onViewAllLegendItems?: () => void;
   /** When true, constrains legend to max 50% height with scrolling */
   scrollable?: boolean;
+  /** Show the total/header row above the legend items. Defaults to true. */
+  showTotal?: boolean;
 };
 
 /**
@@ -55,6 +57,7 @@ export function ChartLegendCompound({
   valueFormatter,
   onViewAllLegendItems,
   scrollable = false,
+  showTotal = true,
 }: ChartLegendCompoundProps) {
   const { config, dataKey, dataKeys, highlight, labelFormatter } = useChartContext();
   const activePayload = useActivePayload();
@@ -176,28 +179,32 @@ export function ChartLegendCompound({
       )}
     >
       {/* Total row */}
-      <div
-        className={cn(
-          "flex w-full shrink-0 items-center justify-between gap-2 rounded px-2 py-1 transition",
-          isHovering ? "text-text-bright" : "text-text-dimmed"
-        )}
-      >
-        <span className="font-medium">{currentTotalLabel}</span>
-        <span className="shrink-0 font-medium tabular-nums">
-          {currentTotal != null ? (
-            valueFormatter ? (
-              valueFormatter(currentTotal)
-            ) : (
-              <AnimatedNumber value={currentTotal} duration={0.25} />
-            )
-          ) : (
-            "\u2013"
-          )}
-        </span>
-      </div>
+      {showTotal && (
+        <>
+          <div
+            className={cn(
+              "flex w-full shrink-0 items-center justify-between gap-2 rounded px-2 py-1 transition",
+              isHovering ? "text-text-bright" : "text-text-dimmed"
+            )}
+          >
+            <span className="font-medium">{currentTotalLabel}</span>
+            <span className="shrink-0 font-medium tabular-nums">
+              {currentTotal != null ? (
+                valueFormatter ? (
+                  valueFormatter(currentTotal)
+                ) : (
+                  <AnimatedNumber value={currentTotal} duration={0.25} />
+                )
+              ) : (
+                "\u2013"
+              )}
+            </span>
+          </div>
 
-      {/* Separator */}
-      <div className="mx-2 my-1 shrink-0 border-t border-grid-dimmed" />
+          {/* Separator */}
+          <div className="mx-2 my-1 shrink-0 border-t border-grid-dimmed" />
+        </>
+      )}
 
       {/* Legend items - scrollable when scrollable prop is true */}
       <div

@@ -74,6 +74,14 @@ export type RbacSubject =
   | { type: "user"; userId: string; organizationId: string; projectId?: string }
   | { type: "personalAccessToken"; tokenId: string; organizationId: string; projectId?: string }
   | { type: "publicJWT"; environmentId: string; organizationId: string; projectId?: string }
+  // Host-owned per-attempt run token. Its ability comes from the token's signed scopes.
+  | {
+      type: "runToken";
+      runId: string;
+      environmentId: string;
+      organizationId: string;
+      projectId?: string;
+    }
   // A host-owned additional environment API key. The host builds its ability
   // from the effective scopes stored with the credential. Route builders use
   // `restricted` to fail closed when a scoped key reaches an endpoint without a

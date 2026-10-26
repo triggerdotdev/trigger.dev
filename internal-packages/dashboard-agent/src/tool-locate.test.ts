@@ -38,7 +38,7 @@ function locate(
 
 const RUN = { kind: "run", id: "run_abc" };
 const ERROR = { kind: "error", id: "error_abc" };
-const UNAVAILABLE = { error: "Couldn't check error error_abc right now — try again." };
+const UNAVAILABLE = { error: "Couldn't check error error_abc right now - try again." };
 
 beforeEach(() => {
   requested.length = 0;

@@ -19,12 +19,13 @@ import { type LanguageModel, type ModelMessage, type ToolSet, type UIMessage } f
 import { z } from "zod";
 import {
   agentPageContextSchema,
+  alertCreationDraftSchema,
   forceSettledInvestigationState,
   investigationStateSchema,
   type InvestigationState,
 } from "@internal/dashboard-agent-contracts";
 import { withCacheBreakpoint } from "./model-provider";
-import { composeSystemPrompt, type DashboardAgentMode } from "./prompt-assembly";
+import { composeSystemPrompt, toolsForTurn, type DashboardAgentMode } from "./prompt-assembly";
 import { codeSystemPrompt, systemPrompt, watchSystemPrompt } from "./prompts";
 import { buildDashboardAgentTools } from "./tools";
 import {
@@ -347,6 +348,8 @@ export const clientDataSchema = z.object({
   // Whether this turn may offer watches, resolved server-side. Defaults to off, so a
   // host that doesn't send it gets no watch tools and no watch guidance.
   watchEnabled: z.boolean().default(false),
+  toolScope: z.string().optional(),
+  alertDraft: alertCreationDraftSchema.optional(),
   // Injected server-side by the `in` proxy each turn, never sent from the
   // browser: a short-lived read-only delegated token, the API origin to call
   // back to, and the project ref + env its tools read.
@@ -470,7 +473,7 @@ export function buildTurnTools(
   chatId: string,
   clientData: z.infer<typeof clientDataSchema> | undefined
 ): ToolSet {
-  return (
+  const tools =
     locals.get(dashboardAgentToolsKey) ??
     buildDashboardAgentTools({
       ...(clientData ?? {}),
@@ -484,6 +487,18 @@ export function buildTurnTools(
           return result;
         },
       },
-    })
-  );
+    });
+  return scopeTurnTools(tools, clientData);
+}
+
+/** On a creation turn: the draft tools on, create and the watch tools off, as head-start has it. */
+export function scopeTurnTools(
+  tools: ToolSet,
+  clientData: { toolScope?: string; watchEnabled?: boolean; repoSnapshot?: unknown } | undefined
+): ToolSet {
+  if (clientData?.toolScope !== "alert_creation") return tools;
+  return toolsForTurn(tools, modeFor(clientData), {
+    watchEnabled: clientData.watchEnabled,
+    scope: "alert_creation",
+  });
 }

@@ -131,7 +131,11 @@ async function seedProject(prisma: PrismaClient) {
   const slug = `alertscope_${suffix()}`;
   const organization = await prisma.organization.create({
     // Watches are flagged off by default, so this suite's org opts in.
-    data: { title: slug, slug, featureFlags: { dashboardAgentWatchEnabled: true } },
+    data: {
+      title: slug,
+      slug,
+      featureFlags: { dashboardAgentWatchEnabled: true, alertsEnabled: true },
+    },
   });
   const project = await prisma.project.create({
     data: { name: slug, slug, organizationId: organization.id, externalRef: `proj_${slug}` },
@@ -224,6 +228,7 @@ describe("the create-watch response's email alert state", () => {
       const subscribed = await subscribeUserToWatchAlerts({
         userId: alice.id,
         environment: subscribeEnvironment(seeded),
+        authorize: () => true,
       });
       expect(subscribed).toMatchObject({ ok: true, email: alice.email });
 
@@ -243,6 +248,7 @@ describe("the create-watch response's email alert state", () => {
       const bobSubscribed = await subscribeUserToWatchAlerts({
         userId: bob.id,
         environment: subscribeEnvironment(seeded),
+        authorize: () => true,
       });
       expect(bobSubscribed).toMatchObject({ ok: true, email: bob.email });
 

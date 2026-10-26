@@ -1,4 +1,5 @@
 import { hashBucket } from "~/utils/computeBucket";
+import type { WorkerQueueEnvironmentOverride } from "~/v3/featureFlags";
 
 /** Subset of the global flags snapshot this resolver reads. */
 type ComputeMigrationFlags = {
@@ -18,7 +19,7 @@ type MigrationDecisionInput = {
  * Whether this org should run on the compute backing. Precedence: per-org override
  * (both directions) wins; otherwise global enable + the plan's percentage bucket.
  * Enterprise and unknown plans are never enrolled by percentage (override only).
- * The sole opt-out is the per-org `computeMigrationEnabled: false`.
+ * Within this decision, the sole opt-out is the per-org `computeMigrationEnabled: false`.
  */
 export function isOrgMigrated({
   planType,
@@ -42,21 +43,39 @@ export function isOrgMigrated({
   return hashBucket(orgId) < pct;
 }
 
+/**
+ * Whether a run may go on an `any` lane. Either runtime takes an `any` item, so only a run that
+ * compute can start qualifies: a compute-enabled org and a deployment with a template.
+ */
+export function allowsAnyCompat({
+  templateKey,
+  ...decision
+}: MigrationDecisionInput & { templateKey: string | null | undefined }): boolean {
+  return !!templateKey && isOrgMigrated(decision);
+}
+
 type ResolveInput = MigrationDecisionInput & {
   baseWorkerQueue: string | undefined;
   baseEnableFastPath: boolean;
   region: string | undefined; // geo of the base queue (same whether migrated or not)
   backing: { workerQueue: string; enableFastPath: boolean } | undefined;
   envType: string;
+  environmentCompat: WorkerQueueEnvironmentOverride["compat"];
+  /** Template key of the deployment from the task metadata. Missing means no key. */
+  templateKey: string | null | undefined;
 };
 
 /**
  * Produce the target descriptor `{ workerQueue, region, enableFastPath }` for a
  * run. When the org is migrated and the region has a compute backing, the queue
- * and fast-path setting come from the MICROVM backing group; `region` is the geo
+ * and fast-path setting come from the compute backing group; `region` is the geo
  * either way. Same-geo swap (us-east-1 -> us-east-1-next): any explicit placement
  * is a geography preference, honored by staying in-region. Applied after region
- * resolution, mirroring the scheduled-split.
+ * resolution, mirroring the scheduled-split. An environment compat of compute or container
+ * decides the swap ahead of the org's migration decision. A deployment without a template key
+ * stays on the base queue. The key can only keep a migrated run off compute: templates can exist
+ * for orgs that are not migrated, and the dequeue check still covers keyless runs that reach
+ * compute.
  */
 export function resolveComputeMigration({
   baseWorkerQueue,
@@ -64,16 +83,34 @@ export function resolveComputeMigration({
   region,
   backing,
   envType,
+  environmentCompat,
+  templateKey,
   ...decision
 }: ResolveInput): {
   workerQueue: string | undefined;
   region: string | undefined;
   enableFastPath: boolean;
+  /** Set when the missing template key kept a migrated run on the base queue. */
+  templateFallback?: true;
+  /** Set when the run moved to the backing, which may be the base queue's own mixed group. */
+  compute?: true;
 } {
   const passthrough = { workerQueue: baseWorkerQueue, region, enableFastPath: baseEnableFastPath };
   if (baseWorkerQueue === undefined) return passthrough;
   if (envType === "DEVELOPMENT") return passthrough;
-  if (!isOrgMigrated(decision)) return passthrough;
   if (!backing) return passthrough;
-  return { workerQueue: backing.workerQueue, region, enableFastPath: backing.enableFastPath };
+  const migrated =
+    environmentCompat === "compute"
+      ? true
+      : environmentCompat === "container"
+        ? false
+        : isOrgMigrated(decision);
+  if (!migrated) return passthrough;
+  if (!templateKey) return { ...passthrough, templateFallback: true };
+  return {
+    workerQueue: backing.workerQueue,
+    region,
+    enableFastPath: backing.enableFastPath,
+    compute: true,
+  };
 }

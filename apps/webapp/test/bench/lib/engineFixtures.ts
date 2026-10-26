@@ -12,7 +12,7 @@ import { CURRENT_DEPLOYMENT_LABEL, generateFriendlyId } from "@trigger.dev/core/
 import type { PrismaClient } from "@trigger.dev/database";
 import { createHash, randomBytes } from "node:crypto";
 
-const MANAGED_WORKER_SECRET = "test-managed-worker-secret-for-e2e-tests";
+export const MANAGED_WORKER_SECRET = "test-managed-worker-secret-for-e2e-tests";
 
 export type EngineFixtures = {
   organizationId: string;

@@ -149,6 +149,12 @@ export const WebhookHmacConfig = z
     algorithm: z.enum(["sha256", "sha1"]),
     encoding: z.enum(["hex", "base64"]), // explicit, no auto-detect (design decision 3)
     signatureHeader: z.string(),
+    /**
+     * More headers that can carry a signature over the same signing string, parsed like
+     * `signatureHeader` and matched as alternatives (e.g. Hookdeck's `x-hookdeck-signature-2`,
+     * signed with the previous secret during a rotation). `signatureHeader` is still required.
+     */
+    additionalSignatureHeaders: z.array(z.string()).max(4).optional(),
     signature: WebhookSignatureExtraction.optional(), // omit = bare whole-header value
     timestamp: WebhookTimestampConfig.optional(),
     signingString: WebhookSigningString,

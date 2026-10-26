@@ -22,6 +22,7 @@ vi.mock("@internal/dashboard-agent-db", async (importOriginal) => ({
   ...((await importOriginal()) as any),
   getWatch: async () => ctx.watch,
   chatExists: async () => true,
+  getChatScope: async () => ({ kind: null, metadata: {} }),
 }));
 
 vi.mock("~/services/dashboardAgentWatchToken.server", () => ({

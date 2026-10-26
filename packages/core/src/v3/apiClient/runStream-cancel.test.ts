@@ -139,6 +139,64 @@ describe("RunSubscription cancellation", () => {
     expect(pendingTimers()).toBeLessThanOrEqual(baseline);
   });
 
+  it("ends iteration and stops polling once the run completes", async () => {
+    runFields = {
+      status: "COMPLETED_SUCCESSFULLY",
+      completedAt: new Date().toISOString().slice(0, -1),
+    };
+    const client = new ApiClient(baseUrl, "tr_test");
+    const shared = new AbortController();
+    const baseline = pendingTimers();
+    const statuses: string[] = [];
+
+    const iterate = (async () => {
+      for await (const run of client.subscribeToRun("run_1", { signal: shared.signal })) {
+        statuses.push(run.status);
+      }
+      return "ended" as const;
+    })();
+
+    const outcome = await Promise.race([iterate, sleep(2_000).then(() => "timeout" as const)]);
+    teardown.abort();
+    if (outcome === "timeout") {
+      shared.abort();
+    }
+
+    expect(outcome).toBe("ended");
+    expect(statuses).toEqual(["COMPLETED"]);
+    const { settled, later } = await requestsAfterSettling();
+    expect(later).toBe(settled);
+    expect(pendingTimers()).toBeLessThanOrEqual(baseline);
+    expect(getEventListeners(shared.signal, "abort")).toHaveLength(0);
+  });
+
+  it("keeps iterating after the run completes when closeOnComplete is false", async () => {
+    runFields = {
+      status: "COMPLETED_SUCCESSFULLY",
+      completedAt: new Date().toISOString().slice(0, -1),
+    };
+    const client = new ApiClient(baseUrl, "tr_test");
+    const subscription = client.subscribeToRun("run_1", {
+      signal: teardown.signal,
+      closeOnComplete: false,
+    });
+
+    const iterate = (async () => {
+      for await (const _ of subscription) {
+      }
+      return "ended" as const;
+    })();
+
+    const outcome = await Promise.race([iterate, sleep(500).then(() => "open" as const)]);
+    const before = requests;
+    await sleep(200);
+
+    expect(outcome).toBe("open");
+    expect(requests).toBeGreaterThan(before);
+    subscription.unsubscribe();
+    await iterate;
+  });
+
   it("removes its listener from a shared signal when the consumer breaks", async () => {
     const client = new ApiClient(baseUrl, "tr_test");
     const shared = new AbortController();

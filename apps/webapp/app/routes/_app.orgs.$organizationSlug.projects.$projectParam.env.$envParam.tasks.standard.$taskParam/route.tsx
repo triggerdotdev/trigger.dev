@@ -3,6 +3,7 @@ import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { Suspense, useMemo, useRef, useState } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { BellAlertIcon } from "@heroicons/react/20/solid";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { MachineLabelCombo } from "~/components/MachineLabelCombo";
@@ -48,7 +49,7 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
-import { findProjectBySlug } from "~/models/project.server";
+import { findProjectWithOrgFlagsBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
 import { getRunColumnsForSelect } from "~/presenters/v3/runColumnsFromRequest.server";
@@ -65,11 +66,13 @@ import {
   v3EnvironmentPath,
   concurrencyQueuePath,
   concurrencyPath,
+  v3AlertCreatePath,
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
 import { parseFiniteInt } from "~/utils/searchParams";
 import { NewRunsButton, TaskRunsList } from "~/components/runs/v3/TaskRunsList";
 import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
+import { canUseAlertsList } from "~/v3/canUseAlertsList.server";
 import { engine } from "~/v3/runEngine.server";
 import { taskAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import type { Handle } from "~/utils/handle";
@@ -93,11 +96,16 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = user.id;
   const { organizationSlug, projectParam, envParam, taskParam } = ParamsSchema.parse(params);
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  const project = await findProjectWithOrgFlagsBySlug(organizationSlug, projectParam, userId);
   if (!project) throw new Response("Project not found", { status: 404 });
 
   const environment = await findEnvironmentBySlug(project.id, envParam, userId);
   if (!environment) throw new Response("Environment not found", { status: 404 });
+
+  const alertsEnabled = await canUseAlertsList({
+    orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+    user,
+  });
 
   const url = new URL(request.url);
   const period = url.searchParams.get("period") ?? undefined;
@@ -184,11 +192,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     activity,
     runList,
     queueMetrics,
+    alertsEnabled,
   });
 };
 
 export default function Page() {
-  const { task, activity, runList, queueMetrics } = useTypedLoaderData<typeof loader>();
+  const { task, activity, runList, queueMetrics, alertsEnabled } =
+    useTypedLoaderData<typeof loader>();
   const zoomToTimeFilter = useZoomToTimeFilter();
   const organization = useOrganization();
   const project = useProject();
@@ -197,6 +207,11 @@ export default function Page() {
   const tasksListingPath = v3EnvironmentPath(organization, project, environment);
   const testPath = v3TestTaskPath(organization, project, environment, {
     taskIdentifier: task.slug,
+  });
+  const newAlertPath = v3AlertCreatePath(organization, project, environment, {
+    area: "runs",
+    scope: "task",
+    scopeValue: task.slug,
   });
   const queuesPath = concurrencyPath(organization, project, environment);
   const queuePath = task.queue
@@ -320,6 +335,7 @@ export default function Page() {
               queuesPath={queuesPath}
               queuePath={queuePath}
               queueMetrics={queueMetrics}
+              newAlertPath={alertsEnabled ? newAlertPath : undefined}
             />
           </ResizablePanel>
         </ResizablePanelGroup>
@@ -334,12 +350,14 @@ function TaskDetailSidebar({
   queuesPath,
   queuePath,
   queueMetrics,
+  newAlertPath,
 }: {
   task: TaskDetail;
   testPath: string;
   queuesPath: string;
   queuePath: string | undefined;
   queueMetrics: { live: QueueLiveCounts; ids: QueueMetricIds } | null;
+  newAlertPath: string | undefined;
 }) {
   const showExportName = task.exportName && task.exportName !== task.slug;
   const retrySummary = formatRetrySummary(task.retry);
@@ -351,6 +369,18 @@ function TaskDetailSidebar({
           <TaskIcon className="size-4.5 shrink-0 text-tasks" />
           <span className="truncate">{task.slug}</span>
         </Header2>
+        {newAlertPath ? (
+          <LinkButton
+            variant="secondary/small"
+            to={newAlertPath}
+            LeadingIcon={BellAlertIcon}
+            leadingIconClassName="text-alerts"
+            className="shrink-0"
+            tooltip="Create a new alert"
+          >
+            Watch
+          </LinkButton>
+        ) : null}
         <LinkButton
           variant="primary/small"
           to={testPath}

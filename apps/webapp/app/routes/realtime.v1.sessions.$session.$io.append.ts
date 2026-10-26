@@ -1,23 +1,14 @@
 import { json } from "@remix-run/server-runtime";
-import { tryCatch } from "@trigger.dev/core/utils";
-import { nanoid } from "nanoid";
 import { z } from "zod";
 import { logger } from "~/services/logger.server";
-import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
-import { ensureRunForSession } from "~/services/realtime/sessionRunManager.server";
 import {
   canonicalSessionAddressingKey,
   resolveSessionWithWriterFallback,
 } from "~/services/realtime/sessions.server";
-import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
-import { stripClientWebhookActionSource } from "~/services/realtime/sanitizeSessionInput.server";
-import {
-  claimSessionStreamPart,
-  releaseSessionStreamPart,
-} from "~/services/sessionStreamWaitpointCache.server";
-import { completeSessionStreamWaitpoints } from "~/services/realtime/sessionChannelAppend.server";
+import { stripClientIngressFields } from "~/services/realtime/sanitizeSessionInput.server";
+import { isSafeSessionExternalId } from "~/services/realtime/sessionChannels.server";
+import { ensureRunThenAppend } from "~/services/realtime/sessionChannelAppend.server";
 import { anyResource, createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
-import { ServiceValidationError } from "~/v3/services/common.server";
 
 const ParamsSchema = z.object({
   session: z.string(),
@@ -67,7 +58,9 @@ const { action, loader } = createActionApiRoute(
           ids.add(session.friendlyId);
           if (session.externalId) ids.add(session.externalId);
         }
-        return anyResource([...ids].map((id) => ({ type: "sessions", id })));
+        return anyResource(
+          [...ids].filter(isSafeSessionExternalId).map((id) => ({ type: "sessions", id }))
+        );
       },
     },
   },
@@ -108,116 +101,63 @@ const { action, loader } = createActionApiRoute(
       );
     }
 
-    const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2", {
+    const addressingKey = canonicalSessionAddressingKey(session, params.session);
+
+    let part = await request.text();
+    if (params.io === "in") {
+      part = stripClientIngressFields(part);
+    }
+
+    // Ensure a live run, then append. A failed ensure is best effort: the
+    // record is durable in S2 and the next append retries the ensure, so the
+    // caller still gets a 200 (the SSE tail delivers it once a run boots).
+    const result = await ensureRunThenAppend({
       session,
+      environment: authentication.environment,
+      addressingKey,
+      io: params.io,
+      part,
+      partId: request.headers.get("X-Part-Id") ?? undefined,
+      reason: "continuation",
     });
 
-    if (!(realtimeStream instanceof S2RealtimeStreams)) {
+    if (!result.ok && result.kind === "unsupported_backend") {
       return json(
         { ok: false, error: "Session channels require the S2 realtime backend" },
         { status: 501 }
       );
     }
 
-    // Probe + ensure a live run before appending. The append itself is
-    // run-independent (S2 stream is durable, keyed on the session) but
-    // the message is useless if no run is alive to consume it. The
-    // probe is a single Prisma read; ensureRunForSession is no-op when
-    // currentRunId is alive, so the steady-state cost is one extra
-    // read in the hot path.
-    //
-    // Best-effort: if ensureRunForSession throws (e.g. the trigger
-    // call fails transiently), still append to S2 — the record is
-    // durable and the next append will retry the ensure step. Don't
-    // surface the error to the caller; the SSE tail just won't deliver
-    // it until a run boots.
-    const [ensureError, ensureResult] = await tryCatch(
-      ensureRunForSession({
-        session,
-        environment: authentication.environment,
-        reason: "continuation",
-      })
-    );
-    if (ensureError) {
-      logger.error("Failed to ensureRunForSession on .in/append", {
+    if (!result.ensure.ok) {
+      // A close that lands mid-request is an expected race, not a failure.
+      const level = result.ensure.sessionClosed ? "warn" : "error";
+      logger[level]("Failed to ensureRunForSession on .in/append", {
         sessionId: session.id,
         externalId: session.externalId,
-        error: ensureError,
+        error: result.ensure.error,
       });
     }
 
-    const addressingKey = canonicalSessionAddressingKey(session, params.session);
-
-    let part = await request.text();
-    if (params.io === "in") {
-      part = stripClientWebhookActionSource(part);
-    }
-
-    const clientPartId = request.headers.get("X-Part-Id");
-    const partId = clientPartId ?? nanoid(7);
-
-    // Idempotency on client-supplied part ids: atomically claim the id before
-    // appending. A concurrent or retried POST that loses the claim skips the
-    // append (no duplicate record) but still falls through to the drain below,
-    // so a retry whose first attempt died before waking the waitpoint can still
-    // recover it. The claim is released on append failure so a genuine retry
-    // can re-claim and proceed.
-    const wonClaim = clientPartId
-      ? await claimSessionStreamPart(
-          authentication.environment.id,
-          addressingKey,
-          params.io,
-          clientPartId
-        )
-      : true;
-
-    let appendSeq: number | undefined;
-    if (wonClaim) {
-      const [appendError, seq] = await tryCatch(
-        realtimeStream.appendPartToSessionStream(part, partId, addressingKey, params.io)
-      );
-      appendSeq = seq ?? undefined;
-
-      if (appendError) {
-        if (clientPartId) {
-          await releaseSessionStreamPart(
-            authentication.environment.id,
-            addressingKey,
-            params.io,
-            clientPartId
-          );
-        }
-        if (appendError instanceof ServiceValidationError) {
-          return json(
-            { ok: false, error: appendError.message },
-            { status: appendError.status ?? 422 }
-          );
-        }
-        logger.error("Failed to append to session stream", {
-          sessionId: session.id,
-          io: params.io,
-          error: appendError,
-        });
-        return json(
-          { ok: false, error: "Something went wrong, please try again." },
-          { status: 500 }
-        );
+    if (!result.ok) {
+      if (result.kind === "rejected") {
+        return json({ ok: false, error: result.message }, { status: result.status });
       }
+      logger.error("Failed to append to session stream", {
+        sessionId: session.id,
+        io: params.io,
+        error: result.error,
+      });
+      return json({ ok: false, error: "Something went wrong, please try again." }, { status: 500 });
     }
-
-    await completeSessionStreamWaitpoints(
-      authentication.environment.id,
-      addressingKey,
-      params.io,
-      part
-    );
 
     // `seq` lets the client correlate this send to the turn that consumes it.
     return json(
       {
         ok: true,
-        seq: appendSeq,
-        ...(ensureResult?.pendingVersion ? { pendingVersion: true } : {}),
+        seq: result.seq,
+        ...(result.ensure.ok && result.ensure.result.pendingVersion
+          ? { pendingVersion: true }
+          : {}),
       },
       { status: 200 }
     );

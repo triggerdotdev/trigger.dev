@@ -4,10 +4,6 @@ description: "Point Slack (or any chat surface) at an agent: messages become tur
 sidebarTitle: "Channels"
 ---
 
-import WebhooksBetaBanner from "/snippets/webhooks-beta-banner.mdx";
-
-<WebhooksBetaBanner />
-
 A [session route](/webhooks/session-routing) delivers a verified event to an agent as an [action](/ai-chat/actions): the agent reacts, and the response is a side effect. A **channel** is the other half: the webhook IS the chat surface. Inbound messages become **turns** (the normal `run()` loop), and the agent's reply is posted **back** to the surface. A Slack thread becomes a real conversation with the agent, exactly like the browser chat, just a different frontend.
 
 List channels on a [`chat.agent`](/ai-chat/overview) alongside (or instead of) `events`:
@@ -15,14 +11,21 @@ List channels on a [`chat.agent`](/ai-chat/overview) alongside (or instead of) `
 ```ts
 import { webhooks } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
-import { slack, webhookSource } from "@trigger.dev/slack";
+import { appMentions, slack, webhookSource } from "@trigger.dev/slack";
 import { anthropic } from "@ai-sdk/anthropic";
 
 const slackEvents = webhooks.endpoint.define({ id: "slack", source: webhookSource() });
 
 export const supportAgent = chat.agent({
   id: "support-agent",
-  channels: [slack({ id: "support-slack", endpoint: slackEvents, token: process.env.SLACK_BOT_TOKEN! })],
+  channels: [
+    slack({
+      id: "support-slack",
+      endpoint: slackEvents,
+      token: process.env.SLACK_BOT_TOKEN!,
+      startOn: appMentions(),
+    }),
+  ],
   run: async ({ messages, streamText }) =>
     streamText({ model: anthropic("claude-sonnet-4-5"), messages }),
 });
@@ -74,6 +77,25 @@ An event that `inbound` maps to an empty message (no text, and no file or data p
 
 List the connector in `chat.agent({ channels: [mySurface] })`, which subscribes the agent to the endpoint with the id `agentId:connectorId`. Other subscribers on the endpoint keep receiving its deliveries.
 
+## When a turn fails
+
+When a turn fails (the model or provider returns an error, or the turn throws), the channel shows a short line instead of the error: "Something went wrong answering this. Try again." by default, or the connector's `errorMessage`. If the reply had partly streamed, the line goes after that text. The error is logged on the run, and `outbound` receives it as `reply.error`, so you can render a failure differently.
+
+`errorMessage` is a fixed string, or a function that builds the line from the failure. It receives the `error`, the `partialText` streamed before it failed, the triggering `event` (undefined on a turn the channel didn't start), the `runId`, the `chatId`, and the `defaultMessage`. Return nothing, or throw, to fall back to the default line.
+
+```ts
+slack({
+  id: "slack",
+  endpoint: slackEvents,
+  token: process.env.SLACK_BOT_TOKEN!,
+  startOn: appMentions(),
+  errorMessage: ({ error, runId }) =>
+    error.message.includes("rate limit")
+      ? "I'm getting a lot of requests right now. Try again in a minute."
+      : `Something went wrong answering this. Try again, or share ref ${runId} with support.`,
+});
+```
+
 ## Stopping a turn from the channel
 
 A connector can map an event to a control with `onControl`. Returning `{ kind: "stop" }` while a turn is running aborts it through the run's `stopSignal`, exactly like the browser's stop button: the partial reply posts with `stopped: true` and the event is consumed instead of running as a turn. `linear()` and `slack()` map their stop buttons this way; a custom connector might map a `/stop` command:
@@ -92,7 +114,7 @@ When nothing is running, the event is handled by `inbound` as an ordinary messag
 Two more hooks let a connector mirror the session into a surface that has its own notion of an agent, the way `slack()` does:
 
 - `lifecycle(state, ctx)` reports `working` when a turn starts (and every 50 minutes while it runs), `waiting` when it pauses on a human decision, `idle` when it ends for any reason, and `closed` on `chat.close()`. `ctx.firstTurn` and `ctx.prompt` are there to title a new conversation. Calls are serialized, so an older report never lands after a newer one.
-- `stream(ctx)`, with `delivery: "stream"`, returns a per-turn transport `{ text(delta), progress?(event), end(outcome) }`. The runtime feeds it the reply's markdown deltas and tool progress, then calls `end({ stopped, pending, errorText? })` once. Resolve `{ delivered: true }` when the reply reached the surface, and the runtime does not post it again. Call `ctx.opened(ref)` once the surface has created the stream message: the ref is saved with the session while the turn runs, and if the worker dies mid-stream the next one calls the connector's `endInterruptedStream(ref, ctx)` before it answers, so the old stream does not look like it is still being written.
+- `stream(ctx)`, with `delivery: "stream"`, returns a per-turn transport `{ text(delta), progress?(event), end(outcome) }`. The runtime feeds it the reply's markdown deltas and tool progress, then calls `end({ stopped, pending, errorText? })` once, with the connector's error line as `errorText` when the turn failed. Resolve `{ delivered: true }` when the reply reached the surface, and the runtime does not post it again. Call `ctx.opened(ref)` once the surface has created the stream message: the ref is saved with the session while the turn runs, and if the worker dies mid-stream the next one calls the connector's `endInterruptedStream(ref, ctx)` before it answers, so the old stream does not look like it is still being written.
 
 ## Bound sessions
 

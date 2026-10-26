@@ -36,12 +36,18 @@ const OUTCOME = {
   },
 } as const;
 
-export function WatchResultBlock({ block }: { block: WatchResultBlockPayload }) {
+export function WatchResultBlock({
+  block,
+  actions,
+}: {
+  block: WatchResultBlockPayload;
+  actions?: React.ReactNode;
+}) {
   const outcome = OUTCOME[block.outcome] ?? OUTCOME.watching;
   const { label, icon } = outcome;
 
   return (
-    <ChatSystemBlock label={label} icon={icon}>
+    <ChatSystemBlock label={label} icon={icon} actions={actions}>
       <p className="text-sm text-text-bright">{block.headline}</p>
       {block.lifetime ? <p className="text-xs text-text-dimmed">{block.lifetime}</p> : null}
       {block.detail ? <p className="text-xs text-text-dimmed">{block.detail}</p> : null}

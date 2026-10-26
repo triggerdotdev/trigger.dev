@@ -25,6 +25,11 @@ type RootApiKeyMutationInput = {
   environmentId: string;
 };
 
+type RegenerateApiKeyInput = RootApiKeyMutationInput & {
+  revokeImmediately?: boolean;
+  allowHidden?: boolean;
+};
+
 export class RootApiKeyNotVisibleError extends Error {
   constructor() {
     super("The root API key is no longer visible");
@@ -34,7 +39,8 @@ export class RootApiKeyNotVisibleError extends Error {
 
 async function findRootApiKeyEnvironment(
   { userId, environmentId }: RootApiKeyMutationInput,
-  prismaClient: PrismaClient
+  prismaClient: PrismaClient,
+  { allowHidden = false }: { allowHidden?: boolean } = {}
 ) {
   const requestedEnvironment = await prismaClient.runtimeEnvironment.findFirst({
     where: {
@@ -82,16 +88,17 @@ async function findRootApiKeyEnvironment(
     throw new Error("User does not have permission to manage this root API key");
   }
 
-  if (environment.rootApiKeyHiddenAt) {
+  if (environment.rootApiKeyHiddenAt && !allowHidden) {
     throw new RootApiKeyNotVisibleError();
   }
 
   return environment;
 }
 
-async function lockVisibleRootApiKeyEnvironment(
+async function lockRootApiKeyEnvironment(
   prismaClient: PrismaTransactionClient,
-  environmentId: string
+  environmentId: string,
+  { allowHidden = false }: { allowHidden?: boolean } = {}
 ) {
   const [environment] = await prismaClient.$queryRaw<
     Array<{ apiKey: string; rootApiKeyHiddenAt: Date | null }>
@@ -102,7 +109,7 @@ async function lockVisibleRootApiKeyEnvironment(
     FOR UPDATE
   `;
 
-  if (!environment || environment.rootApiKeyHiddenAt) {
+  if (!environment || (environment.rootApiKeyHiddenAt && !allowHidden)) {
     throw new RootApiKeyNotVisibleError();
   }
 
@@ -110,10 +117,10 @@ async function lockVisibleRootApiKeyEnvironment(
 }
 
 export async function regenerateApiKey(
-  input: RootApiKeyMutationInput,
+  { revokeImmediately = false, allowHidden = false, ...input }: RegenerateApiKeyInput,
   { prismaClient = prisma }: { prismaClient?: PrismaClient } = {}
 ) {
-  const environment = await findRootApiKeyEnvironment(input, prismaClient);
+  const environment = await findRootApiKeyEnvironment(input, prismaClient, { allowHidden });
   const newApiKey = createApiKeyForEnv(environment.type);
   const newPkApiKey = createPkApiKeyForEnv(environment.type);
   const revokedApiKeyExpiresAt = new Date(Date.now() + REVOKED_API_KEY_GRACE_PERIOD_MS);
@@ -122,7 +129,9 @@ export async function regenerateApiKey(
     prismaClient,
     "regenerate root API key",
     async (tx) => {
-      const currentEnvironment = await lockVisibleRootApiKeyEnvironment(tx, environment.id);
+      const currentEnvironment = await lockRootApiKeyEnvironment(tx, environment.id, {
+        allowHidden,
+      });
 
       await tx.runtimeEnvironment.update({
         where: { id: environment.id },
@@ -132,15 +141,28 @@ export async function regenerateApiKey(
         },
       });
 
-      await tx.revokedApiKey.create({
-        data: {
-          apiKey: currentEnvironment.apiKey,
-          runtimeEnvironmentId: environment.id,
-          expiresAt: revokedApiKeyExpiresAt,
-        },
-      });
+      if (revokeImmediately) {
+        const now = new Date();
+        await tx.revokedApiKey.updateMany({
+          where: { runtimeEnvironmentId: environment.id, expiresAt: { gt: now } },
+          data: { expiresAt: now },
+        });
+      } else {
+        await tx.revokedApiKey.create({
+          data: {
+            apiKey: currentEnvironment.apiKey,
+            runtimeEnvironmentId: environment.id,
+            expiresAt: revokedApiKeyExpiresAt,
+          },
+        });
+      }
 
-      return { ...environment, apiKey: newApiKey, pkApiKey: newPkApiKey };
+      return {
+        ...environment,
+        apiKey: newApiKey,
+        pkApiKey: newPkApiKey,
+        rootApiKeyHiddenAt: currentEnvironment.rootApiKeyHiddenAt,
+      };
     }
   );
 
@@ -166,7 +188,7 @@ export async function disableRootApiKeyVisibility(
     prismaClient,
     "disable root API key visibility",
     async (tx) => {
-      const currentEnvironment = await lockVisibleRootApiKeyEnvironment(tx, environment.id);
+      const currentEnvironment = await lockRootApiKeyEnvironment(tx, environment.id);
 
       await tx.runtimeEnvironment.update({
         where: { id: environment.id },

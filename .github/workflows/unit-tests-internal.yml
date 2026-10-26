@@ -67,7 +67,7 @@ jobs:
       - name: ⎔ Setup node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24.18.0
+          node-version: 24.22.1
           cache: "pnpm"
 
       # ..to avoid rate limits when pulling images
@@ -174,7 +174,7 @@ jobs:
       - name: ⎔ Setup node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24.18.0
+          node-version: 24.22.1
 
       - name: Download blob reports
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -191,7 +191,7 @@ jobs:
 
       - name: 📊 Merge reports
         run: >-
-          pnpm dlx vitest@4.1.7 run --config vitest.internal-reports.config.mjs --merge-reports
+          pnpm dlx vitest@"$(jq -r .devDependencies.vitest "$GITHUB_WORKSPACE/package.json")" run --config vitest.internal-reports.config.mjs --merge-reports
           --reporter=default --reporter=json --outputFile.json=internal-test-results.json
 
       - name: Validate merged test timings

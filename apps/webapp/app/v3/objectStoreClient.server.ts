@@ -34,8 +34,16 @@ export type ObjectRange = {
   etag: string | undefined;
 };
 
+/** Whether a create-only write stored the body or found an object already at the key. */
+export type PutIfAbsentResult = "created" | "exists";
+
 interface IObjectStoreClient {
   putObject(key: string, body: ReadableStream | string, contentType: string): Promise<string>;
+  putObjectIfAbsent(
+    key: string,
+    body: Uint8Array<ArrayBuffer>,
+    contentType: string
+  ): Promise<PutIfAbsentResult>;
   getObject(key: string): Promise<string>;
   getObjectResponse(key: string): Promise<Response>;
   objectExists(key: string): Promise<boolean>;
@@ -115,6 +123,25 @@ class Aws4FetchClient implements IObjectStoreClient {
       throw new Error(`Failed to upload to object store: ${response.statusText}`);
     }
     return objectUrl;
+  }
+
+  async putObjectIfAbsent(
+    key: string,
+    body: Uint8Array<ArrayBuffer>,
+    contentType: string
+  ): Promise<PutIfAbsentResult> {
+    const response = await this.awsClient.fetch(this.buildUrl(key), {
+      method: "PUT",
+      headers: { "Content-Type": contentType, "If-None-Match": "*" },
+      body,
+    });
+    if (response.status === 412) return "exists";
+    if (!response.ok) {
+      throw new Error(
+        `Failed to upload to object store: ${response.status} ${response.statusText}`
+      );
+    }
+    return "created";
   }
 
   async getObject(key: string): Promise<string> {
@@ -228,6 +255,29 @@ class AwsSdkClient implements IObjectStoreClient {
       })
     );
     return this.logicalObjectUrl(key);
+  }
+
+  async putObjectIfAbsent(
+    key: string,
+    body: Uint8Array<ArrayBuffer>,
+    contentType: string
+  ): Promise<PutIfAbsentResult> {
+    try {
+      await this.s3Client.send(
+        new PutObjectCommand({
+          Bucket: this.config.bucket,
+          Key: this.toS3ObjectKey(key),
+          Body: body,
+          ContentType: contentType,
+          IfNoneMatch: "*",
+        })
+      );
+      return "created";
+    } catch (error) {
+      if ((error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode === 412)
+        return "exists";
+      throw error;
+    }
   }
 
   async getObject(key: string): Promise<string> {
@@ -362,6 +412,14 @@ export class ObjectStoreClient implements IObjectStoreClient {
 
   putObject(key: string, body: ReadableStream | string, contentType: string): Promise<string> {
     return this.impl.putObject(key, body, contentType);
+  }
+
+  putObjectIfAbsent(
+    key: string,
+    body: Uint8Array<ArrayBuffer>,
+    contentType: string
+  ): Promise<PutIfAbsentResult> {
+    return this.impl.putObjectIfAbsent(key, body, contentType);
   }
 
   getObject(key: string): Promise<string> {

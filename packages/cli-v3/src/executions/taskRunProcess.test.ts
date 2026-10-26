@@ -1,4 +1,4 @@
-import { TaskRunProcess, type TaskRunProcessOptions } from "./taskRunProcess.js";
+import { TaskRunProcess, trustStoreEnv, type TaskRunProcessOptions } from "./taskRunProcess.js";
 import { describe, it, expect, vi } from "vitest";
 import { UncaughtExceptionError, UnexpectedExitError } from "@trigger.dev/core/v3/errors";
 import type {
@@ -57,6 +57,50 @@ function createExecution(runId: string, attemptNumber: number): TaskRunExecution
     machine: { name: "small-1x", cpu: 0.5, memory: 0.5, centsPerMs: 0 },
   } as unknown as TaskRunExecution;
 }
+
+describe("trustStoreEnv", () => {
+  const controllerEnv = {
+    SSL_CERT_FILE: "/etc/ssl/certs/ca-certificates.crt",
+    REQUESTS_CA_BUNDLE: "/etc/ssl/certs/ca-certificates.crt",
+    PIP_CERT: "/etc/ssl/certs/ca-certificates.crt",
+    PATH: "/usr/bin",
+  };
+
+  it("forwards the controller's trust store variables to the task process", () => {
+    expect(trustStoreEnv(controllerEnv, {})).toEqual({
+      SSL_CERT_FILE: "/etc/ssl/certs/ca-certificates.crt",
+      REQUESTS_CA_BUNDLE: "/etc/ssl/certs/ca-certificates.crt",
+      PIP_CERT: "/etc/ssl/certs/ca-certificates.crt",
+    });
+  });
+
+  it("lets the run's own variables win", () => {
+    expect(trustStoreEnv(controllerEnv, { REQUESTS_CA_BUNDLE: "/app/corp.pem" })).toEqual({
+      SSL_CERT_FILE: "/etc/ssl/certs/ca-certificates.crt",
+      REQUESTS_CA_BUNDLE: "/app/corp.pem",
+      PIP_CERT: "/etc/ssl/certs/ca-certificates.crt",
+    });
+  });
+
+  it("sets nothing when neither side defines them", () => {
+    expect(trustStoreEnv({ PATH: "/usr/bin" }, {})).toEqual({});
+  });
+
+  it("lets the run's NODE_EXTRA_CA_CERTS win over the image's empty value", () => {
+    expect(
+      trustStoreEnv(
+        { NODE_EXTRA_CA_CERTS: "" },
+        { NODE_EXTRA_CA_CERTS: "/app/certs/corp-root.pem" }
+      )
+    ).toEqual({ NODE_EXTRA_CA_CERTS: "/app/certs/corp-root.pem" });
+  });
+
+  it("forwards NODE_EXTRA_CA_CERTS baked into the image when the run sets none", () => {
+    expect(trustStoreEnv({ NODE_EXTRA_CA_CERTS: "/app/certs/corp-root.pem" }, {})).toEqual({
+      NODE_EXTRA_CA_CERTS: "/app/certs/corp-root.pem",
+    });
+  });
+});
 
 describe("TaskRunProcess", () => {
   describe("execute() on a dead child process", () => {

@@ -32,6 +32,12 @@ import { BulkActionService } from "./services/bulk/BulkActionV2.server";
 import { prisma } from "~/db.server";
 import { sweepPreviewAutoArchives } from "~/services/previewAutoArchive.server";
 import { controlPlaneResolver } from "./runOpsMigration/controlPlaneResolver.server";
+import { alertDeliveryRetryCap } from "./services/alerts/delivery/deliverAlertEvent.server";
+import { runAlertsHousekeeping } from "./services/alerts/engine/alertsTick.server";
+import { isAlertsConfigured } from "./services/alerts/alertsConfigured.server";
+import { runAlertPartitionMaintenance } from "./services/alerts/engine/alertPartitionMaintenance.server";
+import { alertPartitionDdlClient } from "./services/alerts/storage/alertPartitionClient.server";
+import { tracer } from "./tracer.server";
 import {
   ORG_PROVISIONING_VISIBILITY_TIMEOUT_MS,
   OrgProvisioningPayloadSchema,
@@ -56,6 +62,12 @@ function initializeWorker() {
   // its sweeps hit a missing schema and drip a dead-letter entry every run.
   const dashboardAgentConfigured =
     env.DASHBOARD_AGENT_ENABLED === "1" || Boolean(env.DASHBOARD_AGENT_DATABASE_URL);
+
+  // Alerts live in the dashboard-agent-db schema but are their own feature, unrelated
+  // to whether the dashboard agent itself is enabled.
+  const alertsConfigured = isAlertsConfigured({
+    alertsEnabled: env.ALERTS_ENABLED,
+  });
 
   const worker = new RedisWorker({
     name: "common-worker",
@@ -212,6 +224,29 @@ function initializeWorker() {
           maxAttempts: 1,
         },
       },
+      "alerts.evaluateTick": {
+        schema: CronSchema,
+        visibilityTimeoutMs: 60_000 * 2,
+        retry: {
+          maxAttempts: 1,
+        },
+      },
+      "alerts.housekeeping": {
+        schema: CronSchema,
+        visibilityTimeoutMs: 60_000 * 2,
+        ...(alertsConfigured ? { cron: "*/5 * * * *", jitterInMs: 30_000 } : {}),
+        retry: {
+          maxAttempts: 1,
+        },
+      },
+      "alerts.partitionMaintenance": {
+        schema: CronSchema,
+        visibilityTimeoutMs: 300_000,
+        ...(alertsConfigured ? { cron: "17 * * * *" } : {}),
+        retry: {
+          maxAttempts: 1,
+        },
+      },
       // Soft-deletes a deleted organization's chats; retention hard-deletes them later.
       "dashboardAgent.purgeOrganization": {
         schema: z.object({
@@ -340,6 +375,28 @@ function initializeWorker() {
         }
 
         if (failure) throw failure;
+      },
+      "alerts.evaluateTick": async () => {},
+      "alerts.housekeeping": async () => {
+        await runAlertsHousekeeping(
+          { now: new Date() },
+          {
+            db: prisma,
+            retryCap: alertDeliveryRetryCap(),
+            startSpan: (name, fn) => tracer.startActiveSpan(name, fn),
+            logger,
+          }
+        );
+      },
+      "alerts.partitionMaintenance": async () => {
+        await runAlertPartitionMaintenance(
+          { now: new Date() },
+          {
+            prisma,
+            ddlClient: alertPartitionDdlClient,
+            logger,
+          }
+        );
       },
       "dashboardAgent.purgeOrganization": async ({ payload }) => {
         const soft = await purgeDashboardAgentChatsForOrganization({
