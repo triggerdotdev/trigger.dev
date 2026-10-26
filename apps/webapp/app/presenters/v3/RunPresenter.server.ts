@@ -15,6 +15,7 @@ import { applyAncestorOverrides, buildTraceView } from "~/v3/eventRepository/tra
 import { runStore } from "~/v3/runStore.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { runTriggeredAt } from "~/v3/runTimestamps";
+import { getRunFinishedAt, getTraceStartTimeEnd } from "~/v3/eventRepository/traceInsertedAtBound";
 
 export class RunEnvironmentMismatchError extends Error {
   constructor(message: string) {
@@ -97,6 +98,7 @@ export class RunPresenter {
           queueTimestamp: true,
           scheduleId: true,
           completedAt: true,
+          updatedAt: true,
           logsDeletedAt: true,
           annotations: true,
           rootTaskRun: {
@@ -166,6 +168,7 @@ export class RunPresenter {
       isFinished: isFinalRunStatus(run.status),
       startedAt: run.startedAt,
       completedAt: run.completedAt,
+      finishedAt: getRunFinishedAt(run) ?? null,
       logsDeletedAt: showDeletedLogs ? null : run.logsDeletedAt,
       rootTaskRun: run.rootTaskRun,
       parentTaskRun: run.parentTaskRun,
@@ -195,7 +198,7 @@ export class RunPresenter {
     // A child view only reads its own lifetime, not the root's.
     const traceTimeBounds = {
       startCreatedAt: run.createdAt,
-      endCreatedAt: run.completedAt ?? undefined,
+      endCreatedAt: getTraceStartTimeEnd(run),
     };
 
     // Resolve agent-kind once so the tree renderer can swap icon/colour for

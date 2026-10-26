@@ -17,7 +17,7 @@ type SettleInput<E extends SettleableEvent> = {
   events: E[];
   duration: number;
   rootSpanStatus: RootSpanStatus;
-  run: { status: TaskRunStatus; completedAt: Date | string | null };
+  run: { status: TaskRunStatus; finishedAt: Date | string | null };
 };
 
 type Settled<E> = { events: E[]; duration: number; rootSpanStatus: RootSpanStatus };
@@ -38,13 +38,13 @@ function rootOutcome(
   return undefined;
 }
 
-/** Ends a finished run's root at `completedAt` while its completion row is missing. */
+/** Ends a finished run's root at its finished time while its completion row is missing. */
 export function settleUnloadedRoot<E extends SettleableEvent>(input: SettleInput<E>): Settled<E> {
   const { events, duration, rootSpanStatus, run } = input;
   const unchanged = { events, duration, rootSpanStatus };
 
   const root = events[0];
-  if (!run.completedAt || rootSpanStatus !== "executing" || !root?.data.isPartial) {
+  if (!run.finishedAt || rootSpanStatus !== "executing" || !root?.data.isPartial) {
     return unchanged;
   }
 
@@ -53,7 +53,7 @@ export function settleUnloadedRoot<E extends SettleableEvent>(input: SettleInput
 
   const rootDuration = Math.max(
     0,
-    (new Date(run.completedAt).getTime() - new Date(root.data.startTime).getTime()) * 1_000_000
+    (new Date(run.finishedAt).getTime() - new Date(root.data.startTime).getTime()) * 1_000_000
   );
 
   const settledRoot = {

@@ -1,12 +1,13 @@
 import { type SpanEvents } from "@trigger.dev/core/v3";
 import { type TaskEventStyle } from "@trigger.dev/core/v3/schemas";
 import { nanosecondsToMilliseconds } from "@trigger.dev/core/v3/utils/durations";
-import { boundedIn, type PrismaReplicaClient } from "@trigger.dev/database";
+import { boundedIn, type PrismaReplicaClient, type TaskRunStatus } from "@trigger.dev/database";
 import { $replica } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { getAdminOnlyForEvent } from "~/utils/timelineSpanEvents";
 import { type SpanSummary, type TraceSummary } from "~/v3/eventRepository/eventRepository.types";
 import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
+import { getTraceStartTimeEnd } from "~/v3/eventRepository/traceInsertedAtBound";
 import { runStore } from "~/v3/runStore.server";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 
@@ -44,8 +45,10 @@ type TraceRun = {
   friendlyId: string;
   traceId: string;
   spanId: string;
+  status: TaskRunStatus;
   createdAt: Date;
   completedAt: Date | null;
+  updatedAt: Date;
   taskEventStore: string;
 };
 
@@ -62,7 +65,7 @@ export async function getDashboardAgentRunTrace({
 }): Promise<{ trace: DashboardAgentTrace } | undefined> {
   const repository = await getEventRepositoryForStore(run.taskEventStore, organizationId);
   const storeTable = getTaskEventStoreTableForRun(run);
-  const endCreatedAt = run.completedAt ?? undefined;
+  const endCreatedAt = getTraceStartTimeEnd(run);
 
   let summary: TraceSummary | undefined = await repository.getTraceSummary(
     storeTable,

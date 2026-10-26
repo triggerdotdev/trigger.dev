@@ -5,6 +5,7 @@ import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { runStore } from "~/v3/runStore.server";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
+import { getTraceStartTimeEnd } from "~/v3/eventRepository/traceInsertedAtBound";
 
 export class TraceChunkPresenter {
   #prismaClient: PrismaClient;
@@ -47,7 +48,9 @@ export class TraceChunkPresenter {
           createdAt: true,
           taskEventStore: true,
           traceId: true,
+          status: true,
           completedAt: true,
+          updatedAt: true,
           logsDeletedAt: true,
           runtimeEnvironmentId: true,
         },
@@ -91,7 +94,7 @@ export class TraceChunkPresenter {
     const storeTable = getTaskEventStoreTableForRun(run);
     // A child view only reads its own lifetime, not the root's.
     const startCreatedAt = run.createdAt;
-    const endCreatedAt = run.completedAt ?? undefined;
+    const endCreatedAt = getTraceStartTimeEnd(run);
 
     if (filter === "errors") {
       const errors = await repository.getTraceErrorEvents(

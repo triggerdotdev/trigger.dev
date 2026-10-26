@@ -8,7 +8,10 @@ import { env } from "~/env.server";
 import { anyResource, createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { clampToEmergencySpanCap } from "~/v3/eventRepository/emergencySpanCap.server";
 import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
-import { getTraceInsertedAtEnd } from "~/v3/eventRepository/traceInsertedAtBound";
+import {
+  getTraceInsertedAtEnd,
+  getTraceStartTimeEnd,
+} from "~/v3/eventRepository/traceInsertedAtBound";
 import { getRunTracePage } from "~/v3/eventRepository/runTracePage.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { makeFlag } from "~/v3/featureFlags.server";
@@ -128,7 +131,7 @@ export const loader = createLoaderApiRoute(
       run.traceId,
       run.spanId,
       run.createdAt,
-      run.completedAt ?? undefined,
+      getTraceStartTimeEnd(run),
       { insertedAtEnd: getTraceInsertedAtEnd(run) }
     );
 

@@ -481,7 +481,7 @@ export default function Page() {
   const environment = useEnvironment();
   const isConnected = useCrossEngineIsConnected({
     logCount: trace?.events.length ?? 0,
-    isCompleted: run.completedAt !== null,
+    isCompleted: run.finishedAt !== null,
   });
   const { value } = useSearchParams();
   const tableState = decodeURIComponent(value("tableState") ?? "");
@@ -711,17 +711,17 @@ const INSPECTOR_REFRESH_MS = 5_000;
 // final rows that become visible late still land, but not long after completion.
 const LIVE_TAIL_UNRESOLVED_ROOT_MS = 5 * 60_000;
 
-function msSinceCompleted(run: { completedAt: string | null }): number | null {
-  return run.completedAt ? Date.now() - new Date(run.completedAt).getTime() : null;
+function msSinceFinished(run: { finishedAt: string | null }): number | null {
+  return run.finishedAt ? Date.now() - new Date(run.finishedAt).getTime() : null;
 }
 
 function shouldLiveReload(
-  run: { completedAt: string | null },
+  run: { finishedAt: string | null },
   rootSpanStatus: "executing" | "completed" | "failed"
 ): boolean {
-  const sinceCompleted = msSinceCompleted(run);
-  if (sinceCompleted === null || sinceCompleted < 30_000) return true;
-  return rootSpanStatus === "executing" && sinceCompleted < LIVE_TAIL_UNRESOLVED_ROOT_MS;
+  const sinceFinished = msSinceFinished(run);
+  if (sinceFinished === null || sinceFinished < 30_000) return true;
+  return rootSpanStatus === "executing" && sinceFinished < LIVE_TAIL_UNRESOLVED_ROOT_MS;
 }
 
 // Legacy path (live tail off): revalidate on ping, with the old size cap.
@@ -732,10 +732,10 @@ function shouldLiveReloadLegacy({
 }: {
   events: TraceEvent[];
   maximumLiveReloadingSetting: number;
-  run: { completedAt: string | null };
+  run: { finishedAt: string | null };
 }): boolean {
   if (events.length > maximumLiveReloadingSetting) return false;
-  if (run.completedAt && new Date(run.completedAt).getTime() < Date.now() - 30_000) return false;
+  if (run.finishedAt && new Date(run.finishedAt).getTime() < Date.now() - 30_000) return false;
   return true;
 }
 
@@ -785,7 +785,7 @@ function TraceView({
   const traceIsTruncated = isTruncated || progressiveIsTruncated;
 
   // The page data still shows the run unfinished, so a finish reload is useful.
-  const runDataUnfinished = !run.isFinished && run.completedAt === null;
+  const runDataUnfinished = !run.isFinished && run.finishedAt === null;
 
   // Display only: live reload and finish detection keep using the unsettled root.
   const settled = useMemo(
@@ -794,9 +794,9 @@ function TraceView({
         events,
         duration,
         rootSpanStatus,
-        run: { status: run.status, completedAt: run.completedAt },
+        run: { status: run.status, finishedAt: run.finishedAt },
       }),
-    [events, duration, rootSpanStatus, run.status, run.completedAt]
+    [events, duration, rootSpanStatus, run.status, run.finishedAt]
   );
 
   const changeToSpan = useDebounce((selectedSpan: string) => {
@@ -814,8 +814,8 @@ function TraceView({
       });
 
   const traceStatus = getTraceStatus({
-    // Same rule as live reload: only an end time means the run is done.
-    runFinished: run.completedAt !== null,
+    // Same rule as live reload: only a finished time means the run is done.
+    runFinished: run.finishedAt !== null,
     rootSpanStatus,
     isComplete,
     isTruncated: traceIsTruncated,
@@ -888,8 +888,8 @@ function TraceView({
 
   // SSE is off during the background load, so pick up rows written meanwhile. Runs
   // even if live reload already stopped, as long as the run finished recently.
-  const sinceCompleted = msSinceCompleted(run);
-  const recentlyActive = sinceCompleted === null || sinceCompleted < LIVE_TAIL_UNRESOLVED_ROOT_MS;
+  const sinceFinished = msSinceFinished(run);
+  const recentlyActive = sinceFinished === null || sinceFinished < LIVE_TAIL_UNRESOLVED_ROOT_MS;
   const prevIsCompleteRef = useRef(isComplete);
   useEffect(() => {
     const wasComplete = prevIsCompleteRef.current;
@@ -969,7 +969,7 @@ function TraceView({
                 environmentType={run.environment.type}
                 rootRun={run.rootTaskRun}
                 parentRun={run.parentTaskRun}
-                isCompleted={run.completedAt !== null}
+                isCompleted={run.finishedAt !== null}
                 treeSnapshot={resizable.tree as ResizableSnapshot}
                 errorsOnly={errorsOnly}
                 filterText={filterText}
@@ -1061,11 +1061,11 @@ function NoLogsView({
 
   const logRetention = plan?.v3Subscription?.plan?.limits.logRetentionDays.number ?? 30;
 
-  const completedAt = run.completedAt ? new Date(run.completedAt) : undefined;
+  const finishedAt = run.finishedAt ? new Date(run.finishedAt) : undefined;
   const now = new Date();
 
-  const daysSinceCompleted = completedAt
-    ? Math.floor((now.getTime() - completedAt.getTime()) / (1000 * 60 * 60 * 24))
+  const daysSinceCompleted = finishedAt
+    ? Math.floor((now.getTime() - finishedAt.getTime()) / (1000 * 60 * 60 * 24))
     : undefined;
 
   const isWithinLogRetention =
@@ -1089,7 +1089,7 @@ function NoLogsView({
               // Buffered runs always carry a synthetic trace (see
               // buildSyntheticTraceForBufferedRun) so they never reach
               // this branch — the message here is the pre-mollifier
-              // copy for runs with no completedAt and no logs.
+              // copy for runs with no finished time and no logs.
               <InfoPanel variant="info" icon={InformationCircleIcon} title="We delete old logs">
                 <Paragraph variant="small">
                   We tidy up older logs to keep things running smoothly.
