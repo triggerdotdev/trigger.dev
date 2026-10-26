@@ -1624,8 +1624,10 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
    * through a transaction-bound decorated store that writes each snapshot to Postgres and collects the
    * ordered staged entry. Every snapshot the transaction produces becomes ONE transaction-sized
    * PreparedPgUnit: the MemoryDB prepare happens inside the transaction before commit, the finalize
-   * after commit succeeds. A throw before commit aborts the prepared unit; an ambiguous commit (the
-   * callback returned but the commit itself threw) leaves the unit PENDING for the recovery worker.
+   * after commit succeeds. A throw before commit aborts the prepared unit. An ambiguous commit (the
+   * callback returned but the commit itself threw) is settled from Postgres before it is reported: a
+   * commit that happened returns the callback's value, a rollback rethrows, and an unsettled unit is
+   * left PENDING for the recovery worker.
    * A transaction that produces no mirrored snapshot entry (all-postgres, or no snapshot write) commits
    * exactly as the undecorated store would, with no MemoryDB work.
    */
@@ -1655,6 +1657,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     const transitionToken = this.#newToken();
     let prepared = false;
     let callbackReturned = false;
+    let callbackValue: R | undefined;
 
     let result: R;
     try {
@@ -1733,14 +1736,25 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
           await this.#hooks.afterPrepare();
         }
         callbackReturned = true;
+        callbackValue = value;
         return value;
       });
     } catch (error) {
       // A throw from inside the callback rolled the transaction back: abort the prepared unit so no
-      // orphan pending record remains. A throw AFTER the callback returned is an ambiguous commit:
-      // leave the unit PENDING and let the recovery worker resolve it via pg_xact_status.
+      // orphan pending record remains.
       if (prepared && !callbackReturned) {
         await this.#store.abortPrepared(boundRunId, transitionToken).catch(() => undefined);
+      }
+      // A throw AFTER the callback returned is an ambiguous commit: Postgres may have committed and
+      // only the acknowledgement was lost (a commit reply after the client's transaction timeout), or
+      // it may have rolled back. Failing a committed transaction strands its caller: the write is
+      // durable, so a retry of the same transition is rejected as stale. Settle it from Postgres now.
+      if (
+        prepared &&
+        callbackReturned &&
+        (await this.#ambiguousCommitApplied(boundRunId, collected))
+      ) {
+        return callbackValue as R;
       }
       if (error instanceof PendingUnitBusyError && this.#resolvePending) {
         // Nothing was prepared, so there is nothing to abort. A live/unknown transaction is left alone;
@@ -1887,6 +1901,24 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     if (committed?.id !== expectedCur || committed.organizationId !== unit.organizationId)
       return false;
     return this.#store.repairMirroredHead({ runId: unit.runId, id: committed.id }, observedCur);
+  }
+
+  // Resolves the pending unit of an ambiguous commit through the recovery resolver, which finalizes
+  // or aborts it from pg_xact_status on a free connection and leaves anything unproven untouched, then
+  // reports the write as applied ONLY when read-back proves the staged entries are the committed state.
+  // A concurrent reader may already have resolved the unit; the proof is the same either way. Anything
+  // unproven (no resolver, a transaction still in progress, a rollback) stays a failure for the caller.
+  async #ambiguousCommitApplied(runId: string, collected: CollectedEntry[]): Promise<boolean> {
+    if (this.#resolvePending) {
+      try {
+        await this.#resolvePending(runId, { requireSettledTransaction: true });
+      } catch {
+        return false;
+      }
+    }
+    if (!(await this.#stagedEntriesAlreadyApplied(runId, collected))) return false;
+    this.#metrics?.recordWrite("written");
+    return true;
   }
 
   // Exceptional-path proof for a stale/noop finalize: every staged entry must ALREADY be the committed
