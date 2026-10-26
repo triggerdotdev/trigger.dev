@@ -24,6 +24,13 @@ import type { InferUITools, ToolSet, UIDataTypes, UIMessage } from "ai";
  */
 export const PENDING_MESSAGE_INJECTED_TYPE = "data-pending-message-injected" as const;
 
+/**
+ * Message-part `type` value marking where `chat.inject` messages drained
+ * mid-turn reached the model. Separate from the pending-message type so
+ * clients that render injection markers do not render these.
+ */
+export const BACKGROUND_INJECTION_TYPE = "data-background-injected" as const;
+
 // Declared in `chat.ts` (a public subpath) so customer declaration emit can
 // name them — declaring them here breaks `declaration: true` consumers with
 // TS2742, since this module isn't reachable via the package exports map.

@@ -408,6 +408,41 @@ export type UsePendingMessagesReturn = {
   getInjectedMessages: (part: unknown) => InjectedMessage[];
 };
 
+/** @internal */
+export function isInjectionPart(part: unknown): boolean {
+  return (
+    typeof part === "object" &&
+    part !== null &&
+    (part as any).type === PENDING_MESSAGE_INJECTED_TYPE
+  );
+}
+
+/** @internal */
+export function injectedMessageIdsOf(part: unknown): string[] {
+  if (!isInjectionPart(part)) return [];
+  const ids = (part as any).data?.messageIds;
+  return Array.isArray(ids) ? ids : [];
+}
+
+/** @internal */
+export function injectedMessagesOf(part: unknown): InjectedMessage[] {
+  if (!isInjectionPart(part)) return [];
+  const msgs = (part as any).data?.messages;
+  return Array.isArray(msgs) ? msgs : [];
+}
+
+/** @internal */
+export function collectInjectedMessageIds(messages: ReadonlyArray<UIMessage>): string[] {
+  const ids: string[] = [];
+  for (const msg of messages) {
+    if (msg.role !== "assistant") continue;
+    for (const part of msg.parts ?? []) {
+      ids.push(...injectedMessageIdsOf(part));
+    }
+  }
+  return ids;
+}
+
 /**
  * React hook for managing pending messages (steering) during streaming.
  *
@@ -469,20 +504,10 @@ export function usePendingMessages<TUIMessage extends UIMessage = UIMessage>(
   useEffect(() => {
     if (status !== "streaming") return;
     let newlyInjected = false;
-    for (const msg of messages) {
-      if (msg.role !== "assistant") continue;
-      for (const part of msg.parts ?? []) {
-        if ((part as any).type === PENDING_MESSAGE_INJECTED_TYPE) {
-          const messageIds = (part as any).data?.messageIds;
-          if (Array.isArray(messageIds)) {
-            for (const id of messageIds) {
-              if (!injectedIdsRef.current.has(id)) {
-                injectedIdsRef.current.add(id);
-                newlyInjected = true;
-              }
-            }
-          }
-        }
+    for (const id of collectInjectedMessageIds(messages)) {
+      if (!injectedIdsRef.current.has(id)) {
+        injectedIdsRef.current.add(id);
+        newlyInjected = true;
       }
     }
     // Remove injected steering messages from the pending overlay immediately
@@ -579,31 +604,9 @@ export function usePendingMessages<TUIMessage extends UIMessage = UIMessage>(
     [transport, chatId, metadata]
   );
 
-  const isInjectionPoint = useCallback(
-    (part: unknown): boolean =>
-      typeof part === "object" &&
-      part !== null &&
-      (part as any).type === PENDING_MESSAGE_INJECTED_TYPE,
-    []
-  );
-
-  const getInjectedMessageIds = useCallback(
-    (part: unknown): string[] => {
-      if (!isInjectionPoint(part)) return [];
-      const ids = (part as any).data?.messageIds;
-      return Array.isArray(ids) ? ids : [];
-    },
-    [isInjectionPoint]
-  );
-
-  const getInjectedMessages = useCallback(
-    (part: unknown): InjectedMessage[] => {
-      if (!isInjectionPoint(part)) return [];
-      const msgs = (part as any).data?.messages;
-      return Array.isArray(msgs) ? msgs : [];
-    },
-    [isInjectionPoint]
-  );
+  const isInjectionPoint = isInjectionPart;
+  const getInjectedMessageIds = injectedMessageIdsOf;
+  const getInjectedMessages = injectedMessagesOf;
 
   const pending: PendingMessage[] = pendingMsgs.map((m) => ({
     id: m.id,

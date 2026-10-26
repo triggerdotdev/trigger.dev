@@ -113,6 +113,7 @@ import {
   convertSteeredMessages,
   retainStepMessages,
   steeringMarkers,
+  withoutInjectionMarkers,
   type SteeringInjection,
 } from "./steeringContext.js";
 
@@ -134,6 +135,7 @@ import {
   type InferChatClientData,
   type InferChatUIMessage,
   type InferChatUIMessageFromTools,
+  BACKGROUND_INJECTION_TYPE,
   PENDING_MESSAGE_INJECTED_TYPE,
   upsertIncomingMessage,
   chatRunTags,
@@ -2901,13 +2903,6 @@ function spliceHandoverPartial(
  * @internal
  */
 const chatBackgroundQueueKey = locals.create<ModelMessage[]>("chat.backgroundQueue");
-/**
- * Background injections a step-boundary drain handed to the model this turn,
- * with the transcript message they followed. Reconciled into the model lane
- * and the persisted injections once the turn's response is in.
- */
-const chatPendingBackgroundKey =
-  locals.create<{ afterId: string; messages: ModelMessage[] }[]>("chat.pendingBackground");
 
 /**
  * System-role context injected mid-conversation, held for the instructions lane.
@@ -4451,6 +4446,34 @@ function modelFormOf(m: UIMessage, batch: UIMessage[], injected: ModelMessage[])
 }
 
 /**
+ * Record a prepared injection and write its marker into the response, so the
+ * model lane rebuilds it at the step boundary where the model received it.
+ */
+function markInjection(
+  steps: CompactionStep[],
+  messageIds: string[],
+  messages: ModelMessage[],
+  markerMessages: Array<{ id: string; text: string }>,
+  kind?: "background"
+): void {
+  const id = generateMessageId();
+  const injections = locals.get(chatSteeringInjectionsKey) ?? new Map();
+  injections.set(id, { id, messageIds, messages, ...(kind ? { kind } : {}) });
+  locals.set(chatSteeringInjectionsKey, injections);
+  const response = managedResponse();
+  // prepareStep can run ahead of the UI consumer. Admit the marker only
+  // once the actual preceding finish-step chunk has entered this stream.
+  response.afterToolStep(
+    steps.at(-1)?.content.flatMap((part) => (part.toolCallId ? [part.toolCallId] : [])) ?? []
+  );
+  response.writeData({
+    type: kind === "background" ? BACKGROUND_INJECTION_TYPE : PENDING_MESSAGE_INJECTED_TYPE,
+    id,
+    data: { messageIds, messages: markerMessages },
+  });
+}
+
+/**
  * Drain the steering queue as a batch. Calls `shouldInject` once with all
  * pending messages. If it returns true, calls `prepareMessages` once to
  * transform the batch, then clears the queue.
@@ -4468,7 +4491,6 @@ async function drainSteeringQueue(
   steps: CompactionStep[],
   queueOverride?: SteeringQueueEntry[]
 ): Promise<DrainedSteering> {
-  if (steps.length === 0) managedResponse().beginGeneration();
   const queue = queueOverride ?? locals.get(chatSteeringQueueKey);
   if (!queue || queue.length === 0) return EMPTY_DRAIN;
 
@@ -4606,23 +4628,12 @@ async function drainSteeringQueue(
       }
 
       if (injected.length > 0) {
-        const id = generateMessageId();
-        const messageIds = claimedUIMessages.map((m) => m.id);
-        const injections = locals.get(chatSteeringInjectionsKey) ?? new Map();
-        injections.set(id, { id, messageIds, messages: injected });
-        locals.set(chatSteeringInjectionsKey, injections);
-        const response = managedResponse();
-        // prepareStep can run ahead of the UI consumer. Admit the marker only
-        // once the actual preceding finish-step chunk has entered this stream.
-        response.afterStep(steps.length);
-        response.writeData({
-          type: PENDING_MESSAGE_INJECTED_TYPE,
-          id,
-          data: {
-            messageIds,
-            messages: claimedUIMessages.map((m) => ({ id: m.id, text: textOfUIMessage(m) })),
-          },
-        });
+        markInjection(
+          steps,
+          claimedUIMessages.map((m) => m.id),
+          injected,
+          claimedUIMessages.map((m) => ({ id: m.id, text: textOfUIMessage(m) }))
+        );
       }
 
       // Fire onInjected callback
@@ -5439,13 +5450,7 @@ function toStreamTextOptions(
       if (bgQueue && bgQueue.length > 0) {
         const injected = bgQueue.splice(0); // drain
         resultMessages = [...(resultMessages ?? messages), ...injected];
-        const pendingBackground = locals.get(chatPendingBackgroundKey) ?? [];
-        pendingBackground.push({
-          afterId:
-            (locals.get(chatCurrentUIMessagesKey) as UIMessage[] | undefined)?.at(-1)?.id ?? "",
-          messages: injected,
-        });
-        locals.set(chatPendingBackgroundKey, pendingBackground);
+        markInjection(steps, [], injected, [], "background");
       }
 
       // 4. Parallel tool results in call order, the order the next turn's history
@@ -9165,23 +9170,6 @@ function chatAgent<
       // registered) — the wire is delta-only now, no longer a seed.
       let accumulatedMessages: ModelMessage[] = [];
       /**
-       * Give the model accumulator the background injections a step-boundary
-       * drain handed to the model this turn, and record them for persistence.
-       * Returns how many model messages were appended.
-       */
-      const reconcilePendingBackground = (): number => {
-        const pending = locals.get(chatPendingBackgroundKey);
-        if (!pending || pending.length === 0) return 0;
-        locals.set(chatPendingBackgroundKey, []);
-        let appended = 0;
-        for (const entry of pending) {
-          accumulatedMessages.push(...entry.messages);
-          laneInjections.push(entry);
-          appended += entry.messages.length;
-        }
-        return appended;
-      };
-      /**
        * Give the model accumulator the steering messages a drain consumed,
        * in the form the model actually received. Appended, never reconverted
        * from the UI lane, so a model-only compaction summary survives. Called
@@ -9210,6 +9198,15 @@ function chatAgent<
       // Accumulated UI messages for persistence. Mirrors the model accumulator
       // but in frontend-friendly UIMessage format (with parts, id, etc.).
       let accumulatedUIMessages: TUIMessage[] = [];
+
+      const cleanIncomingMessage = (msg: TUIMessage): TUIMessage => {
+        if (msg.role !== "assistant") return withoutInjectionMarkers(msg);
+        const cleaned = cleanupAbortedParts(msg);
+        // Markers are the agent's own; only a known assistant message keeps them.
+        return accumulatedUIMessages.some((m) => m.id === msg.id)
+          ? cleaned
+          : withoutInjectionMarkers(cleaned);
+      };
 
       // ── Snapshot + replay (gated on prior-state signals) ─────────────
       //
@@ -10960,9 +10957,8 @@ function chatAgent<
             // Cleaning happens once here so `extractLastUserMessageText` and
             // every downstream consumer see the same message shape — and
             // `cleanupAbortedParts` no longer has to be re-applied below.
-            const cleanedIncomingMessages: TUIMessage[] = incomingMessages.map((msg) =>
-              msg.role === "assistant" ? cleanupAbortedParts(msg) : msg
-            );
+            const cleanedIncomingMessages: TUIMessage[] =
+              incomingMessages.map(cleanIncomingMessage);
             const lastUserMessage = extractLastUserMessageText(cleanedIncomingMessages);
 
             channelTurnRan =
@@ -11036,7 +11032,6 @@ function chatAgent<
                 locals.set(chatOutGateKey, createChatOutGate());
                 locals.set(chatCompactionStateKey, undefined);
                 locals.set(chatSteeringQueueKey, []);
-                locals.set(chatPendingBackgroundKey, []);
                 await locals.get(chatManagedResponseKey)?.close();
                 locals.set(chatManagedResponseKey, undefined);
                 locals.set(chatManagedResponseActiveKey, true);
@@ -12308,11 +12303,10 @@ function chatAgent<
                   // before the response is appended so the order stays
                   // steer-then-answer. Outside the `capturedResponseMessage`
                   // branches below, so a turn that captured no response is covered.
-                  const steerTailThisTurn =
-                    reconcilePendingSteer({
-                      turnNew: turnNewModelMessages,
-                      response: capturedResponseMessage,
-                    }).reduce((n, e) => n + e.model.length, 0) + reconcilePendingBackground();
+                  const steerTailThisTurn = reconcilePendingSteer({
+                    turnNew: turnNewModelMessages,
+                    response: capturedResponseMessage,
+                  }).reduce((n, e) => n + e.model.length, 0);
 
                   // Append the assistant's response (partial or complete) to the accumulator.
                   // The onFinish callback fires even on abort/stop, so partial responses
@@ -13346,7 +13340,8 @@ function chatAgent<
             // yet (a pre-run hook threw), so fold the wire message in for the
             // error event + snapshot — the cursor has already advanced past it,
             // so otherwise it survives in neither the snapshot nor the `.in` tail.
-            const erroredWireMessage = (currentWirePayload as { message?: TUIMessage }).message;
+            const rawWireMessage = (currentWirePayload as { message?: TUIMessage }).message;
+            const erroredWireMessage = rawWireMessage && cleanIncomingMessage(rawWireMessage);
             const erroredUIMessages =
               erroredWireMessage &&
               !accumulatedUIMessages.some((m) => m.id === erroredWireMessage.id)
@@ -13414,7 +13409,6 @@ function chatAgent<
             let erroredNewModelMessages: ModelMessage[] = [];
 
             const reconciledSteer = reconcilePendingSteer({ response: partialResponse });
-            const backgroundTailThisTurn = reconcilePendingBackground();
 
             if (!responseCommitted) {
               try {
@@ -13442,8 +13436,7 @@ function chatAgent<
                       accumulatedMessages,
                       erroredUIMessages[partialIdx]!,
                       partialResponse!,
-                      reconciledSteer.reduce((n, e) => n + e.model.length, 0) +
-                        backgroundTailThisTurn
+                      reconciledSteer.reduce((n, e) => n + e.model.length, 0)
                     );
                     if (!ok) {
                       logger.warn(

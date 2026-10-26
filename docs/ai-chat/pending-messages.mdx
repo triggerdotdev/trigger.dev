@@ -132,6 +132,8 @@ When messages are injected, the SDK automatically writes a `data-pending-message
 - Remove them from the pending overlay
 - Render them inline at the injection point in the assistant response
 
+Background injections appear as a different data part (`data-background-injected`) that `usePendingMessages` ignores. It is not a user message.
+
 A "pending message injected" span also appears in the run trace.
 
 ## Backend: chat.createSession
