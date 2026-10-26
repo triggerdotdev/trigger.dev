@@ -2,6 +2,7 @@ import { createCookieSessionStorage } from "@remix-run/node";
 import { EmailLinkStrategy } from "remix-auth-email-link";
 import { describe, expect, it } from "vitest";
 import { pinMagicLinkOrigin } from "./magicLinkOrigin.server";
+import { createAdminOriginResolver } from "../utils/adminOrigin";
 
 const LOGIN_ORIGIN = "https://cloud.example";
 
@@ -11,6 +12,7 @@ function createStrategy() {
     {
       secret: "test-magic-link-secret",
       callbackURL: "/magic",
+      validateSessionMagicLink: true,
       sendEmail: async ({ magicLink }) => {
         sentLinks.push(magicLink);
       },
@@ -43,9 +45,43 @@ async function requestLink(strategy: EmailLinkStrategy<{ id: string }>, headers:
 
   expect(thrown).toBeInstanceOf(Response);
   expect((thrown as Response).headers.get("Location")).toBe("/login/magic");
+  return { sessionStorage, cookie: (thrown as Response).headers.get("Set-Cookie")!.split(";")[0] };
 }
 
 describe("pinMagicLinkOrigin", () => {
+  it.each(["http://admin.localhost:5400", "https://admin.example"])(
+    "completes same-browser login on %s and rejects a browser without its cookie",
+    async (origin) => {
+      const { strategy, sentLinks } = createStrategy();
+      const adminOriginForRequest = createAdminOriginResolver("https://admin.example");
+      pinMagicLinkOrigin(
+        strategy,
+        (request) => adminOriginForRequest(request) ?? "http://admin.localhost:5400"
+      );
+      const { sessionStorage, cookie } = await requestLink(strategy, {
+        Host: new URL(origin).host,
+        "X-Forwarded-Host": "attacker.example",
+      });
+      expect(new URL(sentLinks[0]).origin).toBe(origin);
+      const options = {
+        name: "email-link",
+        sessionKey: "user",
+        sessionErrorKey: "auth:error",
+        sessionStrategyKey: "strategy",
+      };
+      await expect(
+        strategy.authenticate(new Request(sentLinks[0]), sessionStorage, options)
+      ).rejects.toThrow(/Sign in link invalid/);
+      await expect(
+        strategy.authenticate(
+          new Request(sentLinks[0], { headers: { Cookie: cookie } }),
+          sessionStorage,
+          options
+        )
+      ).resolves.toEqual({ id: "user" });
+    }
+  );
+
   it("builds the link from the request's forwarded host without it", async () => {
     const { strategy, sentLinks } = createStrategy();
 
@@ -65,6 +101,30 @@ describe("pinMagicLinkOrigin", () => {
     });
 
     expect(sentLinks).toHaveLength(1);
+    expect(sentLinks[0].startsWith(`${LOGIN_ORIGIN}/magic?token=`)).toBe(true);
+  });
+
+  it("selects the temporary admin origin without trusting forwarded headers", async () => {
+    const { strategy, sentLinks } = createStrategy();
+    const adminOriginForRequest = createAdminOriginResolver("https://admin.example");
+    pinMagicLinkOrigin(strategy, (request) => adminOriginForRequest(request) ?? LOGIN_ORIGIN);
+
+    await requestLink(strategy, {
+      Host: "admin.example",
+      "X-Forwarded-Host": "attacker.example",
+      "X-Forwarded-Proto": "http",
+    });
+
+    expect(sentLinks[0].startsWith("https://admin.example/magic?token=")).toBe(true);
+  });
+
+  it("falls back to the canonical origin for an unallowlisted Host", async () => {
+    const { strategy, sentLinks } = createStrategy();
+    const adminOriginForRequest = createAdminOriginResolver("https://admin.example");
+    pinMagicLinkOrigin(strategy, (request) => adminOriginForRequest(request) ?? LOGIN_ORIGIN);
+
+    await requestLink(strategy, { Host: "attacker.example" });
+
     expect(sentLinks[0].startsWith(`${LOGIN_ORIGIN}/magic?token=`)).toBe(true);
   });
 

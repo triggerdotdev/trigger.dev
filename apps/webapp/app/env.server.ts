@@ -434,6 +434,8 @@ const EnvironmentSchema = z
     // Read directly from process.env in server.ts (before this schema loads); declared here for discoverability.
     WEBAPP_TELNET_LOGS_PORT: z.coerce.number().optional(),
     LOGIN_ORIGIN: z.string().default("http://localhost:3030"),
+    // Temporary single admin origin; retain the name used by the cloud sidecars.
+    ADDITIONAL_LOGIN_ORIGINS: z.string().optional(),
     LOGIN_RATE_LIMITS_ENABLED: BoolEnv.default(true),
     MAGIC_LINK_SAME_BROWSER_REQUIRED: BoolEnv.default(true),
     APP_ORIGIN: z.string().default("http://localhost:3030"),

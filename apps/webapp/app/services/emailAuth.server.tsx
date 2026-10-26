@@ -6,6 +6,7 @@ import { sendMagicLinkEmail } from "~/services/email.server";
 import type { AuthUser } from "./authUser";
 import { logger } from "./logger.server";
 import { pinMagicLinkOrigin } from "./magicLinkOrigin.server";
+import { loginOriginForRequest } from "./adminOrigin.server";
 
 import { postAuthentication } from "./postAuth.server";
 import { SsoRequiredError, ssoRedirectForEmail } from "./ssoAutoDiscovery.server";
@@ -75,7 +76,7 @@ const emailStrategy = new EmailLinkStrategy(
   },
   verifyMagicLink
 );
-pinMagicLinkOrigin(emailStrategy, env.LOGIN_ORIGIN);
+pinMagicLinkOrigin(emailStrategy, loginOriginForRequest);
 
 export function addEmailLinkStrategy(authenticator: Authenticator<AuthUser>) {
   authenticator.use(emailStrategy);

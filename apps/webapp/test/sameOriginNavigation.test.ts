@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isSameOriginNavigation } from "../app/utils/sameOriginNavigation.js";
+import { createAdminOriginResolver } from "../app/utils/adminOrigin.js";
 
 const ORIGIN = "https://app.trigger.dev";
 const req = (headers: Record<string, string>) =>
@@ -23,6 +24,42 @@ describe("isSameOriginNavigation", () => {
       true
     );
   });
+
+  it.each(["http://admin.localhost:5400", "https://admin.example"])(
+    "allows same-origin admin navigation on %s but rejects cross-origin submissions",
+    (origin) => {
+      const adminOriginForRequest = createAdminOriginResolver("https://admin.example");
+      const request = (headers: Record<string, string>) =>
+        new Request("http://backend.internal/logout", {
+          headers: { Host: new URL(origin).host, ...headers },
+        });
+      const expectedOrigin = adminOriginForRequest(request({})) ?? "http://admin.localhost:5400";
+
+      expect(
+        isSameOriginNavigation(request({ "sec-fetch-site": "same-origin" }), expectedOrigin)
+      ).toBe(true);
+      expect(isSameOriginNavigation(request({ referer: `${origin}/admin` }), expectedOrigin)).toBe(
+        true
+      );
+      expect(
+        isSameOriginNavigation(request({ referer: "https://evil.example/" }), expectedOrigin)
+      ).toBe(false);
+      expect(
+        isSameOriginNavigation(
+          request({
+            referer:
+              origin === "https://admin.example"
+                ? "http://admin.localhost:5400/"
+                : "https://admin.example/",
+          }),
+          expectedOrigin
+        )
+      ).toBe(false);
+      expect(
+        isSameOriginNavigation(request({ "sec-fetch-site": "same-site" }), expectedOrigin)
+      ).toBe(false);
+    }
+  );
 
   it("rejects a Referer from a different origin", () => {
     expect(isSameOriginNavigation(req({ referer: "https://evil.example.com/x" }), ORIGIN)).toBe(
