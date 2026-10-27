@@ -1,8 +1,10 @@
 import { ApiClient } from "../apiClient/index.js";
+import { resolveRunTokenCredentialSelection } from "../runToken.js";
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
 import { getEnvVar } from "../utils/getEnv.js";
-import { isDefaultDevBranch } from "../utils/gitBranch.js";
+import { isDefaultDevBranch, sanitizeBranchName } from "../utils/gitBranch.js";
 import { sdkScope } from "../sdkScope/index.js";
+import { taskContext } from "../task-context-api.js";
 import type { ApiClientConfiguration } from "./types.js";
 
 const API_NAME = "api-client";
@@ -53,7 +55,12 @@ export class APIClientManagerAPI {
   get accessToken(): string | undefined {
     const scoped = sdkScope.getStore();
     if (scoped) {
-      return scoped.apiClientConfig.accessToken ?? scoped.apiClientConfig.secretKey;
+      return (
+        scoped.apiClientConfig.accessToken ??
+        scoped.apiClientConfig.secretKey ??
+        getEnvVar("TRIGGER_SECRET_KEY") ??
+        getEnvVar("TRIGGER_ACCESS_TOKEN")
+      );
     }
     const config = this.#getConfig();
     return (
@@ -96,11 +103,7 @@ export class APIClientManagerAPI {
   public resolveApiClientConfig(partial: ApiClientConfiguration = {}): ApiClientConfiguration {
     return {
       baseURL: partial.baseURL ?? getEnvVar("TRIGGER_API_URL"),
-      accessToken:
-        partial.accessToken ??
-        partial.secretKey ??
-        getEnvVar("TRIGGER_SECRET_KEY") ??
-        getEnvVar("TRIGGER_ACCESS_TOKEN"),
+      accessToken: partial.accessToken ?? partial.secretKey,
       secretKey: partial.secretKey,
       refreshAccessToken: partial.refreshAccessToken,
       previewBranch:
@@ -115,7 +118,8 @@ export class APIClientManagerAPI {
   }
 
   get client(): ApiClient | undefined {
-    if (!this.baseURL || !this.accessToken) {
+    const accessToken = this.accessToken ?? getEnvVar("TRIGGER_RUN_TOKEN");
+    if (!this.baseURL || !accessToken) {
       return undefined;
     }
 
@@ -126,17 +130,24 @@ export class APIClientManagerAPI {
 
     return new ApiClient(
       this.baseURL,
-      this.accessToken,
+      accessToken,
       this.branchName,
       requestOptions,
       futureFlags,
-      source?.refreshAccessToken
+      source?.refreshAccessToken,
+      source?.accessToken || source?.secretKey
+        ? undefined
+        : this.#defaultCredentialResolver(this.branchName)
     );
   }
 
   clientOrThrow(config?: ApiClientConfiguration): ApiClient {
     const baseURL = config?.baseURL ?? this.baseURL;
-    const accessToken = config?.accessToken ?? config?.secretKey ?? this.accessToken;
+    const accessToken =
+      config?.accessToken ??
+      config?.secretKey ??
+      this.accessToken ??
+      getEnvVar("TRIGGER_RUN_TOKEN");
 
     if (!baseURL || !accessToken) {
       throw new ApiClientMissingError(this.apiClientMissingError());
@@ -154,7 +165,10 @@ export class APIClientManagerAPI {
       branchName,
       requestOptions,
       futureFlags,
-      config?.refreshAccessToken ?? source?.refreshAccessToken
+      config?.refreshAccessToken ?? source?.refreshAccessToken,
+      config?.accessToken || config?.secretKey || source?.accessToken || source?.secretKey
+        ? undefined
+        : this.#defaultCredentialResolver(branchName)
     );
   }
 
@@ -181,6 +195,44 @@ export class APIClientManagerAPI {
   public setGlobalAPIClientConfiguration(config: ApiClientConfiguration): boolean {
     return registerGlobal(API_NAME, config, true);
   }
+
+  #defaultCredentialResolver(branchName: string | undefined) {
+    return (operation: string, recordSelection: boolean) => {
+      const environmentType = taskContext.ctx?.environment.type;
+      const isBranchable = environmentType === "PREVIEW" || environmentType === "DEVELOPMENT";
+      const platformBranch =
+        sanitizeBranchName(getEnvVar("TRIGGER_PREVIEW_BRANCH") ?? getDevBranchEnvVar()) ??
+        undefined;
+      const requestedBranch = sanitizeBranchName(branchName) ?? undefined;
+      const targetBranch =
+        environmentType === "DEVELOPMENT" && isDefaultDevBranch(requestedBranch)
+          ? undefined
+          : requestedBranch;
+      return this.#resolveDefaultCredential(
+        operation,
+        recordSelection,
+        isBranchable && targetBranch !== platformBranch
+      );
+    };
+  }
+
+  #resolveDefaultCredential = (
+    operation: string,
+    recordSelection: boolean,
+    branchOverride: boolean
+  ) => {
+    const source = sdkScope.getStore()?.apiClientConfig ?? this.#getConfig();
+    const explicit = source?.accessToken ?? source?.secretKey;
+    return (
+      explicit ??
+      resolveRunTokenCredentialSelection(
+        operation,
+        getEnvVar("TRIGGER_SECRET_KEY") ?? getEnvVar("TRIGGER_ACCESS_TOKEN"),
+        recordSelection,
+        branchOverride
+      )
+    );
+  };
 
   #getConfig(): ApiClientConfiguration | undefined {
     return getGlobal(API_NAME);

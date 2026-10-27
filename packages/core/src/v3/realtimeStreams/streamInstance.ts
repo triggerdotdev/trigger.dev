@@ -61,7 +61,7 @@ export class StreamInstance<T> implements StreamsWriter {
             runId: this.options.runId,
             source: this.options.source,
             baseUrl: this.options.baseUrl,
-            headers: this.options.apiClient.getHeaders(),
+            resolveHeaders: (operation) => this.options.apiClient.getHeaders(operation),
             signal: this.options.signal,
             version,
             target: "self",

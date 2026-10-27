@@ -6,6 +6,7 @@ import {
   apiClientManager,
   generateJWT as internal_generateJWT,
   isAdditionalApiKey,
+  isRunToken,
 } from "@trigger.dev/core/v3";
 import "@trigger.dev/core/v3/sdk-scope-storage";
 
@@ -112,7 +113,8 @@ type PublicTokenPermissions = {
 type CreatePublicTokenOptions = {
   /**
    * A collection of permission scopes to be granted to the token. This remains
-   * optional for root API key compatibility; additional API keys require at
+   * optional for root API key compatibility. Scope-less tokens use root-key
+   * signing even when a run token is available; additional API keys require at
    * least one scope.
    *
    * @example
@@ -160,7 +162,7 @@ type CreatePublicTokenOptions = {
 
 // A `Date` becomes Unix seconds; duration strings and numbers pass through. A
 // bare number is already Unix seconds, matching how the local signing path
-// reads it, so both key types treat the option the same.
+// reads it, so all credential types treat the option the same.
 function serverExpirationTime(
   expirationTime: number | Date | string | undefined
 ): number | string | undefined {
@@ -178,8 +180,11 @@ async function createServerPublicToken(
     return result.token;
   } catch (error) {
     if (error !== null && typeof error === "object" && "status" in error && error.status === 404) {
+      const credentialType = isRunToken(apiClient.getAccessToken("createPublicToken"))
+        ? "run token"
+        : "additional API key";
       throw new Error(
-        "This additional API key cannot self-sign public tokens, and the server does not support public-token minting. Upgrade the server or use the root API key."
+        `This ${credentialType} cannot self-sign public tokens, and the server does not support public-token minting. Upgrade the server or use the root API key.`
       );
     }
 
@@ -213,14 +218,17 @@ async function createServerPublicToken(
 async function createPublicToken(options?: CreatePublicTokenOptions): Promise<string> {
   const scopes = options?.scopes ? flattenScopes(options.scopes) : [];
   const apiClient = apiClientManager.clientOrThrow();
+  // Empty scopes grant no permissions, not admin; retain legacy root-key signing.
+  const accessToken = apiClient.getAccessToken(
+    scopes.length === 0 ? "generateJWTClaims" : "createPublicToken"
+  );
 
-  if (isAdditionalApiKey(apiClient.accessToken)) {
-    // Additional keys cannot self-sign, and the server rejects empty scope
-    // lists because they cannot authorize anything. Keep the legacy root-key
-    // behaviour unchanged while failing clearly for this new credential type.
+  if (isAdditionalApiKey(accessToken) || isRunToken(accessToken)) {
+    // Server minting requires scopes; retain root-key signing with no scopes.
     if (scopes.length === 0) {
+      const credentialType = isRunToken(accessToken) ? "a run token" : "an additional API key";
       throw new Error(
-        "auth.createPublicToken() requires at least one scope when using an additional API key. " +
+        `auth.createPublicToken() requires at least one scope when using ${credentialType}. ` +
           'For example: auth.createPublicToken({ scopes: { read: { runs: ["run_1234"] } } })'
       );
     }
@@ -235,7 +243,7 @@ async function createPublicToken(options?: CreatePublicTokenOptions): Promise<st
   const claims = await apiClient.generateJWTClaims();
 
   return await internal_generateJWT({
-    secretKey: apiClient.accessToken,
+    secretKey: accessToken,
     payload: {
       ...claims,
       scopes: options?.scopes ? scopes : undefined,
@@ -332,6 +340,7 @@ async function createTriggerPublicToken(
   options?: CreateTriggerTokenOptions
 ): Promise<string> {
   const apiClient = apiClientManager.clientOrThrow();
+  const accessToken = apiClient.getAccessToken("createPublicToken");
   const scopes = flattenScopes({
     trigger: {
       tasks: task,
@@ -339,7 +348,7 @@ async function createTriggerPublicToken(
   });
   const oneTimeUse = typeof options?.multipleUse === "boolean" ? !options.multipleUse : true;
 
-  if (isAdditionalApiKey(apiClient.accessToken)) {
+  if (isAdditionalApiKey(accessToken) || isRunToken(accessToken)) {
     return createServerPublicToken(apiClient, {
       scopes,
       expirationTime: serverExpirationTime(options?.expirationTime),
@@ -351,7 +360,7 @@ async function createTriggerPublicToken(
   const claims = await apiClient.generateJWTClaims();
 
   return await internal_generateJWT({
-    secretKey: apiClient.accessToken,
+    secretKey: accessToken,
     payload: {
       ...claims,
       otu: oneTimeUse,
@@ -415,6 +424,7 @@ async function createBatchTriggerPublicToken(
   options?: CreateTriggerTokenOptions
 ): Promise<string> {
   const apiClient = apiClientManager.clientOrThrow();
+  const accessToken = apiClient.getAccessToken("createPublicToken");
   const scopes = flattenScopes({
     batchTrigger: {
       tasks: task,
@@ -422,7 +432,7 @@ async function createBatchTriggerPublicToken(
   });
   const oneTimeUse = typeof options?.multipleUse === "boolean" ? !options.multipleUse : true;
 
-  if (isAdditionalApiKey(apiClient.accessToken)) {
+  if (isAdditionalApiKey(accessToken) || isRunToken(accessToken)) {
     return createServerPublicToken(apiClient, {
       scopes,
       expirationTime: serverExpirationTime(options?.expirationTime),
@@ -434,7 +444,7 @@ async function createBatchTriggerPublicToken(
   const claims = await apiClient.generateJWTClaims();
 
   return await internal_generateJWT({
-    secretKey: apiClient.accessToken,
+    secretKey: accessToken,
     payload: {
       ...claims,
       otu: oneTimeUse,
