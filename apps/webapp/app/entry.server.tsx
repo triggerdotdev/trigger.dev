@@ -26,6 +26,7 @@ import { logger } from "./services/logger.server";
 import { buildImgSrcDirective, parseCspImageOrigins, withImgSrc } from "./utils/cspImageOrigins";
 import { singleton } from "./utils/singleton";
 import { remoteBuildsEnabled } from "./v3/remoteImageBuilder.server";
+import { legacyEventStoreWarning } from "./v3/eventRepository/effectiveEventStore";
 import {
   registerRunEngineEventBusHandlers,
   setupBatchQueueCallbacks,
@@ -87,6 +88,19 @@ const IMG_SRC_DIRECTIVE = buildImgSrcDirective(
     return origins;
   })
 );
+
+singleton("LegacyEventStoreWarning", () => {
+  const warning = legacyEventStoreWarning(
+    env.EVENT_REPOSITORY_DEFAULT_STORE,
+    env.EVENT_REPOSITORY_V1_REROUTE_ENABLED
+  );
+
+  if (warning) {
+    logger.warn(warning);
+  }
+
+  return warning;
+});
 
 export default function handleRequest(
   request: Request,

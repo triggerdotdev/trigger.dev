@@ -8,6 +8,7 @@ import { logger } from "~/services/logger.server";
 import { flag } from "../featureFlags.server";
 import { getTaskEventStore } from "../taskEventStore.server";
 import { resolveEventStore } from "./resolveEventStore.server";
+import { LEGACY_FLAG_STORE_WARNING } from "./effectiveEventStore";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 
 export const EVENT_STORE_TYPES = {
@@ -17,6 +18,17 @@ export const EVENT_STORE_TYPES = {
 } as const;
 
 export type EventStoreType = (typeof EVENT_STORE_TYPES)[keyof typeof EVENT_STORE_TYPES];
+
+let legacyFlagStoreWarned = false;
+
+function warnLegacyFlagStore() {
+  if (legacyFlagStoreWarned) {
+    return;
+  }
+
+  legacyFlagStoreWarned = true;
+  logger.warn(LEGACY_FLAG_STORE_WARNING);
+}
 /**
  * Async variant of {@link resolveEventRepositoryForStore}. Awaits the factory's
  * registry readiness before returning the ClickHouse event repository; for
@@ -61,6 +73,7 @@ export async function getConfiguredEventRepository(
     flag,
     defaultStore: env.EVENT_REPOSITORY_DEFAULT_STORE,
     v1RerouteEnabled: env.EVENT_REPOSITORY_V1_REROUTE_ENABLED,
+    onLegacyFlagStore: warnLegacyFlagStore,
   });
 
   if (taskEventStore === EVENT_STORE_TYPES.CLICKHOUSE_V2) {
@@ -90,6 +103,7 @@ export async function getEventRepository(
     flag,
     defaultStore: env.EVENT_REPOSITORY_DEFAULT_STORE,
     v1RerouteEnabled: env.EVENT_REPOSITORY_V1_REROUTE_ENABLED,
+    onLegacyFlagStore: warnLegacyFlagStore,
   });
 
   // Non-ClickHouse stores (e.g. the "taskEvent" DB default for Postgres-backed
