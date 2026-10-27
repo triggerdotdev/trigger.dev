@@ -733,8 +733,6 @@ export class RunAttemptSystem {
     runnerId?: string;
     environmentId?: string;
   }): Promise<CompleteRunAttemptResult> {
-    await this.#notifyMetadataUpdated(runId, completion);
-
     switch (completion.ok) {
       case true: {
         return this.attemptSucceeded({
@@ -794,12 +792,17 @@ export class RunAttemptSystem {
           );
 
           if (latestSnapshot.id !== snapshotId) {
-            throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);
+            throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400, {
+              code: "SNAPSHOT_CONFLICT",
+              latestSnapshotId: latestSnapshot.id,
+            });
           }
 
           if (latestSnapshot.executionStatus === "FINISHED") {
             throw new ServiceValidationError("Run is already finished", 400);
           }
+
+          await this.#notifyMetadataUpdated(runId, completion);
 
           span.setAttribute("completionStatus", completion.ok);
           span.setAttribute("runId", runId);
@@ -1001,12 +1004,17 @@ export class RunAttemptSystem {
           );
 
           if (latestSnapshot.id !== snapshotId) {
-            throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);
+            throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400, {
+              code: "SNAPSHOT_CONFLICT",
+              latestSnapshotId: latestSnapshot.id,
+            });
           }
 
           if (latestSnapshot.executionStatus === "FINISHED") {
             throw new ServiceValidationError("Run is already finished", 400);
           }
+
+          await this.#notifyMetadataUpdated(runId, completion);
 
           span.setAttribute("completionStatus", completion.ok);
 
