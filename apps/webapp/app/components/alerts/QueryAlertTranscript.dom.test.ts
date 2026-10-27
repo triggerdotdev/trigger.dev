@@ -333,6 +333,19 @@ describe("QueryAlertTranscript", () => {
     choose("For 24 hours");
   }
 
+  it("keeps the agent-suggested threshold and window", async () => {
+    await mount({ operator: ">", value: 42, windowSec: 601 });
+    choose("Continue");
+    choose("Value crosses a threshold");
+    expect(input("Threshold").value).toBe("42");
+    expect(row("Above").querySelector('[aria-label="Selected"]')).not.toBeNull();
+    expect(
+      document.querySelector<HTMLButtonElement>('button[aria-label="Next question"]')!.disabled
+    ).toBe(false);
+    choose("Above");
+    expect(input("Window").value).toBe("11");
+  });
+
   it("offers This chat in the agent, preselected, and sends the chat ids", async () => {
     const release = vi.fn();
     await mount({}, { chatId: "chat_on_use", ensure: async () => ({ chatId: "chat_1", release }) });

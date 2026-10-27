@@ -56,13 +56,19 @@ export function useQueryAlertDraft(
   const measure = mode === "match" ? undefined : signal.measure;
 
   const [operator, setOperator] = useState<">" | "<">(prefill.operator ?? ">");
-  const [valueText, setValueText] = useState("");
+  const [valueText, setValueText] = useState(() =>
+    typeof prefill.value === "number" && Number.isFinite(prefill.value) ? String(prefill.value) : ""
+  );
   const value = valueText.trim() === "" ? undefined : Number(valueText);
   const valueValid = mode !== "threshold" || (value !== undefined && Number.isFinite(value));
 
   const bounds = queryWindowBounds(analysis.limits);
   const defaultWindow = defaultQueryWindowMinutes(prefill.period, analysis.limits);
-  const [windowText, setWindowText] = useState(() => String(defaultWindow));
+  const [windowText, setWindowText] = useState(() => {
+    const windowSec = prefill.windowSec;
+    if (typeof windowSec !== "number" || !Number.isFinite(windowSec)) return String(defaultWindow);
+    return String(Math.min(bounds.max, Math.max(bounds.min, Math.ceil(windowSec / 60))));
+  });
   const windowMinutes = mode === "match" ? defaultWindow : Number(windowText);
   const windowValid =
     mode === "match" ||

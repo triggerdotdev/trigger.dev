@@ -18,6 +18,8 @@ export type QueryAlertPrefill = {
   mode?: QueryAlertMode;
   measure?: string;
   operator?: ">" | "<";
+  value?: number;
+  windowSec?: number;
 };
 
 export function queryAlertNameKey(mode: QueryAlertMode, measure?: string) {
