@@ -100,13 +100,45 @@ describe("WatchQueryButton", () => {
     expect(container.textContent).toBe("");
   });
 
-  it("renders nothing when the analysis is ok but has no modes", () => {
+  it("disables the button and shows the first reason when the query can't be watched", () => {
+    const reason = "Remove time buckets from GROUP BY.";
     render({
       alertsPath: "/alerts",
       period: "7d",
-      watch: { query: "SELECT 1", analysis: analysis({}) },
+      watch: {
+        query: "SELECT 1",
+        analysis: analysis({
+          ok: false,
+          unsupported: [
+            { mode: "threshold", code: "group_by_time", message: reason },
+            { mode: "absence", code: "group_by_time", message: reason },
+            { mode: "match", code: "aggregated", message: "Other reason." },
+          ],
+        }),
+      },
     });
-    expect(container.textContent).toBe("");
+    const button = container.querySelector<HTMLButtonElement>("[data-testid=watch-query] button")!;
+    expect(button.textContent).toBe("Watch");
+    expect(button.getAttribute("aria-disabled")).toBe("true");
+    expect(button.tabIndex).toBe(0);
+    expect(container.querySelector("a")).toBeNull();
+    const describedBy = button.getAttribute("aria-describedby")!;
+    expect(document.getElementById(describedBy)!.textContent).toBe(reason);
+    expect(document.querySelector("[role=tooltip]")).toBeNull();
+    act(() => button.focus());
+    expect(document.querySelector("[role=tooltip]")!.textContent).toBe(reason);
+  });
+
+  it("enables the button for a supported query", () => {
+    render({
+      alertsPath: "/alerts",
+      period: "7d",
+      watch: { query: "SELECT count() AS failures FROM runs", analysis: THRESHOLD },
+    });
+    expect(
+      container.querySelector<HTMLAnchorElement>("[data-testid=watch-query] a")
+    ).not.toBeNull();
+    expect(container.querySelector("button")).toBeNull();
   });
 
   it("links to the alerts page with the query as base64url (catches dropped encoding)", () => {
@@ -168,11 +200,12 @@ describe("WatchQueryButton", () => {
     form.remove();
   });
 
-  it("renders nothing when the encoded query exceeds 8 KB even though it has fewer characters", () => {
+  it("disables the button when the encoded query exceeds 8 KB even though it has fewer characters", () => {
     const query = `SELECT count() AS failures FROM runs -- ${"é".repeat(3500)}`;
     expect(query.length).toBeLessThan(8192);
     render({ alertsPath: "/alerts", period: "1h", watch: { query, analysis: THRESHOLD } });
-    expect(container.textContent).toBe("");
+    expect(container.querySelector("button")!.getAttribute("aria-disabled")).toBe("true");
+    expect(container.querySelector("a")).toBeNull();
   });
 
   it("renders nothing when the analysis failed", () => {

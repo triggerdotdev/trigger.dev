@@ -1,9 +1,12 @@
+import { getQuerySource } from "@internal/alert-contracts";
 import type { QueryAlertAnalysis } from "~/v3/services/alerts/queryAlerts/analyzeQueryForAlert.server";
 import { parsePeriodToMs } from "~/utils/periods";
 
 export const MAX_WATCH_QUERY_LENGTH = 8192;
 const MAX_DEFAULT_WINDOW_MINUTES = 24 * 60;
 export const UNUSABLE_QUERY = "This query can't be used for an alert.";
+
+const MODE_MISMATCH_CODES = new Set(["aggregated", "rows_need_aggregate"]);
 
 export type QueryAlertMode = "threshold" | "absence" | "match";
 
@@ -43,7 +46,15 @@ export function watchBlockedReasons(analysis: QueryAlertAnalysis, query: string)
   if (encodeQueryParam(query).length > MAX_WATCH_QUERY_LENGTH)
     return ["Query is too long to watch"];
   if (analysis.ok && analysis.modes.length > 0) return [];
-  const messages = [...analysis.errors, ...analysis.unsupported].map((issue) => issue.message);
+  const matchable = analysis.sources.some((s) =>
+    getQuerySource(s.sourceId)?.modes.includes("match")
+  );
+  const issues = [
+    ...analysis.errors,
+    ...analysis.unsupported.filter((issue) => matchable || issue.mode !== "match"),
+  ];
+  const specific = issues.filter((issue) => !MODE_MISMATCH_CODES.has(issue.code));
+  const messages = (specific.length ? specific : issues).map((issue) => issue.message);
   const unique = [...new Set(messages)].slice(0, 2);
   return unique.length ? unique : [UNUSABLE_QUERY];
 }

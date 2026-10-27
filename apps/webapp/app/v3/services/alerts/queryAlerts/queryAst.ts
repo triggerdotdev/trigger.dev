@@ -96,11 +96,11 @@ export function containsAggregate(expr: Expression): boolean {
 }
 
 /** A field read outside any aggregate call. */
-export function hasFreeField(expr: Expression): boolean {
+export function hasFreeField(expr: Expression, isBound?: (field: Field) => boolean): boolean {
   let found = false;
   walkExpr(expr, (node) => {
     if (isAggregateCall(node) || node.expression_type === "window_function") return false;
-    if (node.expression_type === "field") found = true;
+    if (isField(node) && !isBound?.(node)) found = true;
     return !found;
   });
   return found;

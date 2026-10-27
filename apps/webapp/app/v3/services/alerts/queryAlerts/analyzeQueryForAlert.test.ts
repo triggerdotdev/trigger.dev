@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { measureTSQLNesting } from "@internal/tsql";
 import { describe, expect, it } from "vitest";
+import { watchBlockedReasons } from "~/components/alerts/queryAlertLink";
 import { querySchemas } from "~/v3/querySchemas";
 import {
   analyzeQueryForAlert,
@@ -121,6 +122,60 @@ describe("analyzeQueryForAlert: threshold shapes", () => {
     expect(threshold(a)).toMatchObject({ shape: "grouped", groupColumns: ["s"] });
   });
 
+  it.each([
+    {
+      query:
+        "SELECT minIf(metric_value, metric_name = 'api.rate_limit.remaining_min') AS lowest_remaining, maxIf(metric_value, metric_name = 'api.rate_limit.limit.burst') AS burst, round(lowest_remaining / burst * 100, 1) AS lowest_headroom_pct FROM metrics WHERE metric_name LIKE 'api.rate_limit.%'",
+      measures: ["lowest_remaining", "burst", "lowest_headroom_pct"],
+    },
+    {
+      query:
+        "SELECT countDistinct(bucket_start) AS active_buckets, uniqExactIf(bucket_start, metric_name = 'api.rate_limit.denied') AS limited_buckets, round(limited_buckets / active_buckets * 100, 1) AS limited_pct, limited_buckets * 10 AS seconds_limited FROM metrics WHERE metric_name LIKE 'api.rate_limit.%'",
+      measures: ["active_buckets", "limited_buckets", "limited_pct", "seconds_limited"],
+    },
+  ])("treats expressions over aggregate aliases as measures: $measures", ({ query, measures }) => {
+    const a = analyze(query);
+    expect(a.ok).toBe(true);
+    expect(threshold(a)).toMatchObject({ shape: "scalar" });
+    expect(a.columns.filter((c) => c.role === "measure").map((c) => c.name)).toEqual(measures);
+  });
+
+  it.each([
+    {
+      query: "SELECT f / c AS rate, count() AS c, countIf(status = 'Failed') AS f FROM runs",
+      measures: ["rate", "c", "f"],
+    },
+    { query: "SELECT count() AS Total, total * 2 AS d FROM runs", measures: ["Total", "d"] },
+    {
+      query: "SELECT sum(c) AS status, status * 100 AS pct FROM (SELECT count() AS c FROM runs)",
+      measures: ["status", "pct"],
+    },
+  ])("resolves aggregate aliases like TSQL: $query", ({ query, measures }) => {
+    const a = analyze(query);
+    expect(a.ok).toBe(true);
+    expect(a.columns.filter((c) => c.role === "measure").map((c) => c.name)).toEqual(measures);
+  });
+
+  it("never treats a case-colliding alias as an aggregate alias", () => {
+    const a = analyze(
+      "SELECT task_identifier, attempt_count AS c, count() AS C, c * 2 AS d FROM runs GROUP BY task_identifier, c"
+    );
+    expect(a.columns.filter((c) => c.role === "measure").map((c) => c.name)).toEqual(["C"]);
+  });
+
+  it("does not demand aggregate-alias expressions in GROUP BY", () => {
+    const a = analyze(
+      "SELECT task_identifier, count() AS c, countIf(status = 'Failed') AS f, f / c AS rate FROM runs GROUP BY task_identifier"
+    );
+    expect(a.ok).toBe(true);
+    expect(threshold(a)).toMatchObject({ shape: "grouped", groupColumns: ["task_identifier"] });
+    expect(a.columns.filter((c) => c.role === "measure").map((c) => c.name)).toEqual([
+      "c",
+      "f",
+      "rate",
+    ]);
+  });
+
   it("carries the column format of a measure", () => {
     const a = analyze(
       "SELECT task_identifier, avg(usage_duration) AS d FROM runs GROUP BY task_identifier"
@@ -152,6 +207,18 @@ describe("analyzeQueryForAlert: threshold shapes", () => {
       code: "union_aggregate",
     },
     { query: "SELECT task_identifier, count() AS c FROM runs", code: "mixed_aggregates" },
+    {
+      query: "SELECT task_identifier AS t, upper(t) AS u, count() AS c FROM runs",
+      code: "mixed_aggregates",
+    },
+    {
+      query: "SELECT max(metric_value) AS metric_value, metric_value * 100 AS pct FROM metrics",
+      code: "mixed_aggregates",
+    },
+    {
+      query: "SELECT count() AS c, sum(attempt_count) AS C, c * 2 AS d FROM runs",
+      code: "mixed_aggregates",
+    },
     { query: "SELECT count() AS c FROM runs GROUP BY status", code: "group_by_unprojected" },
     {
       query: "SELECT status, count() AS c FROM runs GROUP BY status, task_identifier",
@@ -732,6 +799,95 @@ describe("analyzeQueryForAlert: nesting guard", () => {
   ])("ignores brackets in $name", ({ query }) => {
     expect(measureTSQLNesting(query).maxDepth).toBe(1);
     expect(analyze(query).ok).toBe(true);
+  });
+});
+
+describe("analyzeQueryForAlert: query shape table", () => {
+  it.each([
+    {
+      name: "min/max If with alias arithmetic",
+      query:
+        "SELECT minIf(metric_value, metric_name = 'api.rate_limit.remaining_min') AS lowest_remaining, maxIf(metric_value, metric_name = 'api.rate_limit.limit.burst') AS burst, round(lowest_remaining / burst * 100, 1) AS lowest_headroom_pct FROM metrics WHERE metric_name LIKE 'api.rate_limit.%'",
+      measures: ["lowest_remaining", "burst", "lowest_headroom_pct"],
+    },
+    {
+      name: "distinct counts with chained aliases",
+      query:
+        "SELECT countDistinct(bucket_start) AS active_buckets, uniqExactIf(bucket_start, metric_name = 'api.rate_limit.denied') AS limited_buckets, round(limited_buckets / active_buckets * 100, 1) AS limited_pct, limited_buckets * 10 AS seconds_limited FROM metrics WHERE metric_name LIKE 'api.rate_limit.%'",
+      measures: ["active_buckets", "limited_buckets", "limited_pct", "seconds_limited"],
+    },
+    {
+      name: "HAVING over an aggregate alias",
+      query: "SELECT task_identifier, count() AS c FROM runs GROUP BY task_identifier HAVING c > 5",
+      measures: ["c"],
+      shape: "grouped",
+    },
+    {
+      name: "ORDER BY without LIMIT",
+      query: "SELECT count() AS c FROM runs ORDER BY c DESC",
+      measures: ["c"],
+    },
+    {
+      name: "IN list filter",
+      query:
+        "SELECT count() AS runs FROM runs WHERE status = 'COMPLETED_WITH_ERRORS' AND task_identifier IN ('a','b')",
+      measures: ["runs"],
+    },
+    {
+      name: "parametric quantile",
+      query: "SELECT quantile(0.95)(usage_duration) AS p95 FROM runs WHERE task_identifier = 'x'",
+      measures: ["p95"],
+    },
+    {
+      name: "division of aggregates",
+      query:
+        "SELECT countIf(status = 'COMPLETED_WITH_ERRORS') / count() * 100 AS failure_pct FROM runs",
+      measures: ["failure_pct"],
+    },
+  ])("accepts $name", ({ query, measures, shape }) => {
+    const a = analyze(query);
+    expect(a.errors).toEqual([]);
+    expect(a.ok).toBe(true);
+    expect(threshold(a)?.measures.map((m) => m.column)).toEqual(measures);
+    if (shape) expect(threshold(a)?.shape).toBe(shape);
+  });
+
+  it("rejects grouping by a time bucket with the time-grouping reason", () => {
+    const a = analyze(
+      "SELECT toStartOfMinute(bucket_start) AS m, count() AS c FROM metrics GROUP BY m LIMIT 1000"
+    );
+    expect(a.errors.map((e) => e.code)).toEqual(["limit"]);
+    const noLimit = analyze(
+      "SELECT toStartOfMinute(bucket_start) AS m, count() AS c FROM metrics GROUP BY m"
+    );
+    expect(noLimit.ok).toBe(false);
+    expect(noLimit.unsupported.find((u) => u.mode === "threshold")).toEqual({
+      mode: "threshold",
+      code: "group_by_time",
+      message: "Remove time buckets from GROUP BY: the alert evaluates one window at a time.",
+    });
+  });
+
+  it("leads with the real reason, not the new-row mismatch", () => {
+    const grouped = analyze(
+      "SELECT toStartOfMinute(bucket_start) AS m, count() AS c FROM metrics GROUP BY m"
+    );
+    expect(watchBlockedReasons(grouped, "q")[0]).toMatch(/time buckets/);
+    const rows = analyze("SELECT run_id FROM runs LIMIT 5");
+    expect(watchBlockedReasons(rows, "q")[0]).toMatch(/LIMIT/);
+  });
+
+  it("shows the aggregate requirement, not row-id advice, for a threshold-only source", () => {
+    const a = analyze("SELECT metric_name FROM metrics");
+    expect(a.unsupported.some((u) => u.mode === "match")).toBe(true);
+    expect(watchBlockedReasons(a, "q")).toEqual([
+      "Threshold alerts need an aggregate such as count() or avg().",
+    ]);
+  });
+
+  it("does not offer new-row alerts for SELECT *", () => {
+    const a = analyze("SELECT * FROM runs WHERE status='FAILED'");
+    expect(match(a)).toBeUndefined();
   });
 });
 

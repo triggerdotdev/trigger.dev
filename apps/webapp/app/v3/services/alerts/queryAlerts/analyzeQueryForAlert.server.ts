@@ -11,8 +11,10 @@ import {
   ExposedTSQLError,
   measureTSQLNesting,
   parseTSQLSelect,
+  type Alias,
   type Call,
   type Expression,
+  type Field,
   type OutputColumnMetadata,
   type SelectQuery,
   type TableSchema,
@@ -26,8 +28,10 @@ import {
   branchesOf,
   containsAggregate,
   containsWindowFunction,
+  fieldsIn,
   fromEntries,
   hasFreeField,
+  isStar,
   isField,
   itemName,
   lastName,
@@ -465,7 +469,30 @@ function analyzeShape(
 
   const query = branches[0]!;
   const items = query.select;
-  const aggregateItem = items.map((item) => containsAggregate(item) && !hasFreeField(item));
+  const visible = visibleColumns(query, schemas, tables);
+  const aliases = items.flatMap((item) =>
+    item.expression_type === "alias" ? [(item as Alias).alias.toLowerCase()] : []
+  );
+  const ambiguous = new Set(aliases.filter((a, i) => aliases.indexOf(a) !== i));
+  const aggregateAliases = new Set<string>();
+  const isAggregateRef = (f: Field) => {
+    const name = String(f.chain[0]);
+    return f.chain.length === 1 && !visible.has(name) && aggregateAliases.has(name.toLowerCase());
+  };
+  const isAggregateItem = (item: Expression) =>
+    (containsAggregate(item) || fieldsIn(item).some(isAggregateRef)) &&
+    !hasFreeField(item, isAggregateRef);
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const item of items) {
+      const alias = item.expression_type === "alias" ? (item as Alias).alias.toLowerCase() : "";
+      if (alias && !ambiguous.has(alias) && !aggregateAliases.has(alias) && isAggregateItem(item)) {
+        aggregateAliases.add(alias);
+        grew = true;
+      }
+    }
+  }
+  const aggregateItem = items.map(isAggregateItem);
   const grouped = !!query.group_by?.length;
 
   if (!grouped && aggregateItem.some((a) => !a)) {
@@ -527,6 +554,22 @@ function analyzeShape(
         : [],
     },
   };
+}
+
+function visibleColumns(
+  query: SelectQuery,
+  schemas: Map<string, TableSchema>,
+  tables: string[]
+): Set<string> {
+  const columnsOf = (table: string) => Object.keys(schemas.get(table)?.columns ?? {});
+  return new Set(
+    fromEntries(query).flatMap((entry) => {
+      if (entry.kind === "table") return columnsOf(entry.table);
+      const select = branchesOf(entry.query)[0]?.select ?? [];
+      if (select.some(isStar)) return tables.flatMap(columnsOf);
+      return select.flatMap((item) => itemName(item) ?? []);
+    })
+  );
 }
 
 function groupsByTime(
