@@ -2,7 +2,7 @@ import type { MetricsV1Input } from "@internal/clickhouse";
 import { describe, expect, it, vi } from "vitest";
 import {
   API_RATE_LIMIT_METRIC_NAMES,
-  ApiRateLimitMetricsAggregator,
+  createApiRateLimitMetricsAggregator,
   rateLimitConfigToLimits,
   type ApiRateLimitMetricsAggregatorOptions,
 } from "~/services/apiRateLimitMetricsAggregator.server";
@@ -42,14 +42,14 @@ function observation(overrides: Partial<RateLimitObservation> = {}): RateLimitOb
 
 function build(overrides: Partial<ApiRateLimitMetricsAggregatorOptions> = {}) {
   const sink = vi.fn<(rows: MetricsV1Input[]) => void>();
-  const onDropped = vi.fn<(count: number) => void>();
+  const onDropped = vi.fn<(count: number, attributes?: Record<string, string>) => void>();
   let now = T0;
-  const aggregator = new ApiRateLimitMetricsAggregator({
+  const aggregator = createApiRateLimitMetricsAggregator({
     bucketSeconds: 10,
     maxEntries: 1000,
     isEnabled: () => true,
     sink,
-    onDropped,
+    counters: { dropped: { add: onDropped } },
     now: () => now,
     ...overrides,
   });
@@ -67,14 +67,14 @@ describe("ApiRateLimitMetricsAggregator", () => {
     aggregator.record(observation());
     setNow(T0 + 3_000);
     aggregator.record(observation());
-    expect(aggregator.size).toBe(1);
+    expect(aggregator.size()).toBe(1);
 
     setNow(Date.UTC(2026, 0, 15, 9, 30, 10, 0));
     aggregator.record(observation());
-    expect(aggregator.size).toBe(2);
+    expect(aggregator.size()).toBe(2);
 
     aggregator.record(observation({ tenant: { ...tenant, environmentId: "env_2" } }));
-    expect(aggregator.size).toBe(3);
+    expect(aggregator.size()).toBe(3);
 
     aggregator.flush();
     const buckets = new Set(sink.mock.calls[0]![0].map((row) => row.bucket_start));
@@ -112,7 +112,7 @@ describe("ApiRateLimitMetricsAggregator", () => {
 
     aggregator.record(observation({ tenant: undefined }));
 
-    expect(aggregator.size).toBe(0);
+    expect(aggregator.size()).toBe(0);
     expect(aggregator.flush()).toBe(0);
     expect(sink).not.toHaveBeenCalled();
   });
@@ -122,11 +122,11 @@ describe("ApiRateLimitMetricsAggregator", () => {
     const { aggregator } = build({ isEnabled: () => enabled });
 
     aggregator.record(observation());
-    expect(aggregator.size).toBe(0);
+    expect(aggregator.size()).toBe(0);
 
     enabled = true;
     aggregator.record(observation());
-    expect(aggregator.size).toBe(1);
+    expect(aggregator.size()).toBe(1);
   });
 
   it("never grows past maxEntries and reports each dropped observation", () => {
@@ -137,12 +137,12 @@ describe("ApiRateLimitMetricsAggregator", () => {
     aggregator.record(observation({ tenant: { ...tenant, environmentId: "env_c" } }));
     aggregator.record(observation({ tenant: { ...tenant, environmentId: "env_d" } }));
 
-    expect(aggregator.size).toBe(2);
+    expect(aggregator.size()).toBe(2);
     expect(onDropped).toHaveBeenCalledTimes(2);
-    expect(onDropped).toHaveBeenCalledWith(1);
+    expect(onDropped).toHaveBeenCalledWith(1, { reason: "cap" });
 
     aggregator.record(observation({ tenant: { ...tenant, environmentId: "env_a" } }));
-    expect(aggregator.size).toBe(2);
+    expect(aggregator.size()).toBe(2);
     expect(onDropped).toHaveBeenCalledTimes(2);
   });
 
@@ -152,10 +152,10 @@ describe("ApiRateLimitMetricsAggregator", () => {
     aggregator.record(observation());
     aggregator.record(observation({ success: false, remaining: -1 }));
     aggregator.record(observation({ tenant: { ...tenant, environmentId: "env_2" } }));
-    expect(aggregator.size).toBe(2);
+    expect(aggregator.size()).toBe(2);
 
     expect(aggregator.discard()).toBe(3);
-    expect(aggregator.size).toBe(0);
+    expect(aggregator.size()).toBe(0);
     expect(aggregator.discard()).toBe(0);
     expect(aggregator.flush()).toBe(0);
     expect(sink).not.toHaveBeenCalled();
@@ -169,10 +169,10 @@ describe("ApiRateLimitMetricsAggregator", () => {
     expect(onDropped).toHaveBeenCalledTimes(1);
 
     expect(aggregator.flush()).toBeGreaterThan(0);
-    expect(aggregator.size).toBe(0);
+    expect(aggregator.size()).toBe(0);
 
     aggregator.record(observation({ tenant: { ...tenant, environmentId: "env_b" } }));
-    expect(aggregator.size).toBe(1);
+    expect(aggregator.size()).toBe(1);
     expect(onDropped).toHaveBeenCalledTimes(1);
 
     aggregator.flush();
@@ -253,7 +253,7 @@ describe("ApiRateLimitMetricsAggregator", () => {
       ])
     );
 
-    expect(aggregator.size).toBe(0);
+    expect(aggregator.size()).toBe(0);
     expect(aggregator.flush()).toBe(0);
     expect(sink).toHaveBeenCalledTimes(1);
   });
@@ -293,7 +293,7 @@ describe("ApiRateLimitMetricsAggregator", () => {
     aggregator.record(observation());
 
     expect(aggregator.flush()).toBe(4);
-    expect(aggregator.size).toBe(0);
+    expect(aggregator.size()).toBe(0);
     await new Promise((resolve) => setImmediate(resolve));
   });
 
@@ -307,7 +307,7 @@ describe("ApiRateLimitMetricsAggregator", () => {
     aggregator.record(observation());
 
     expect(() => aggregator.flush()).not.toThrow();
-    expect(aggregator.size).toBe(0);
+    expect(aggregator.size()).toBe(0);
   });
 
   it("uses bucketSeconds for the bucket width", () => {
@@ -350,5 +350,59 @@ describe("rateLimitConfigToLimits", () => {
     expect(
       rateLimitConfigToLimits({ type: "fixedWindow", window: "0s" as never, tokens: 60 })
     ).toBeUndefined();
+  });
+});
+
+describe("ApiRateLimitMetricsAggregator rows", () => {
+  it("emits the same rows for a fixed sequence of observations", () => {
+    const { aggregator, sink, setNow } = build({
+      isEnabled: (t) => t.environmentId !== "env_off",
+    });
+    const env2 = { ...tenant, environmentId: "env_2", projectId: "proj_2" };
+    const env3 = { ...tenant, environmentId: "env_3" };
+    const fixed: RateLimiterConfig = { type: "fixedWindow", window: "1m", tokens: 60 };
+    const broken: RateLimiterConfig = {
+      type: "slidingWindow",
+      window: "later" as never,
+      tokens: 5,
+    };
+
+    aggregator.record(observation({ success: true, remaining: 40 }));
+    aggregator.record(observation({ success: false, remaining: -2 }));
+    aggregator.record(observation({ success: true, remaining: 12 }));
+    aggregator.record(observation({ tenant: env2, config: fixed, remaining: 30 }));
+    aggregator.record(observation({ tenant: env2, config: fixed, remaining: 25 }));
+    aggregator.record(observation({ tenant: env2, config: tokenBucket, remaining: 26 }));
+    aggregator.record(observation({ tenant: undefined, remaining: 1 }));
+    aggregator.record(observation({ tenant: { ...tenant, environmentId: "env_off" } }));
+    setNow(T0 + 10_000);
+    aggregator.record(observation({ success: false, remaining: 3 }));
+    aggregator.record(observation({ success: false, remaining: 8 }));
+    aggregator.record(observation({ tenant: env3, config: broken, remaining: 4 }));
+    aggregator.record(observation({ tenant: env3, config: broken, remaining: 2 }));
+
+    expect(aggregator.flush()).toBe(15);
+    const rows = sink.mock.calls[0]![0].map((row) =>
+      JSON.stringify(row, Object.keys(row).sort())
+    ).sort();
+    expect(rows).toMatchInlineSnapshot(`
+      [
+        "{"attributes":{},"bucket_start":"2026-01-15 09:30:00","environment_id":"env_1","metric_name":"api.rate_limit.allowed","metric_subject":"","metric_type":"sum","organization_id":"org_1","project_id":"proj_1","value":2}",
+        "{"attributes":{},"bucket_start":"2026-01-15 09:30:00","environment_id":"env_1","metric_name":"api.rate_limit.denied","metric_subject":"","metric_type":"sum","organization_id":"org_1","project_id":"proj_1","value":1}",
+        "{"attributes":{},"bucket_start":"2026-01-15 09:30:00","environment_id":"env_1","metric_name":"api.rate_limit.limit.burst","metric_subject":"","metric_type":"gauge","organization_id":"org_1","project_id":"proj_1","value":750}",
+        "{"attributes":{},"bucket_start":"2026-01-15 09:30:00","environment_id":"env_1","metric_name":"api.rate_limit.limit.per_second","metric_subject":"","metric_type":"gauge","organization_id":"org_1","project_id":"proj_1","value":25}",
+        "{"attributes":{},"bucket_start":"2026-01-15 09:30:00","environment_id":"env_1","metric_name":"api.rate_limit.remaining_min","metric_subject":"","metric_type":"gauge","organization_id":"org_1","project_id":"proj_1","value":0}",
+        "{"attributes":{},"bucket_start":"2026-01-15 09:30:00","environment_id":"env_2","metric_name":"api.rate_limit.allowed","metric_subject":"","metric_type":"sum","organization_id":"org_1","project_id":"proj_2","value":3}",
+        "{"attributes":{},"bucket_start":"2026-01-15 09:30:00","environment_id":"env_2","metric_name":"api.rate_limit.limit.burst","metric_subject":"","metric_type":"gauge","organization_id":"org_1","project_id":"proj_2","value":60}",
+        "{"attributes":{},"bucket_start":"2026-01-15 09:30:00","environment_id":"env_2","metric_name":"api.rate_limit.limit.per_second","metric_subject":"","metric_type":"gauge","organization_id":"org_1","project_id":"proj_2","value":1}",
+        "{"attributes":{},"bucket_start":"2026-01-15 09:30:00","environment_id":"env_2","metric_name":"api.rate_limit.remaining_min","metric_subject":"","metric_type":"gauge","organization_id":"org_1","project_id":"proj_2","value":25}",
+        "{"attributes":{},"bucket_start":"2026-01-15 09:30:10","environment_id":"env_1","metric_name":"api.rate_limit.denied","metric_subject":"","metric_type":"sum","organization_id":"org_1","project_id":"proj_1","value":2}",
+        "{"attributes":{},"bucket_start":"2026-01-15 09:30:10","environment_id":"env_1","metric_name":"api.rate_limit.limit.burst","metric_subject":"","metric_type":"gauge","organization_id":"org_1","project_id":"proj_1","value":750}",
+        "{"attributes":{},"bucket_start":"2026-01-15 09:30:10","environment_id":"env_1","metric_name":"api.rate_limit.limit.per_second","metric_subject":"","metric_type":"gauge","organization_id":"org_1","project_id":"proj_1","value":25}",
+        "{"attributes":{},"bucket_start":"2026-01-15 09:30:10","environment_id":"env_1","metric_name":"api.rate_limit.remaining_min","metric_subject":"","metric_type":"gauge","organization_id":"org_1","project_id":"proj_1","value":3}",
+        "{"attributes":{},"bucket_start":"2026-01-15 09:30:10","environment_id":"env_3","metric_name":"api.rate_limit.allowed","metric_subject":"","metric_type":"sum","organization_id":"org_1","project_id":"proj_1","value":2}",
+        "{"attributes":{},"bucket_start":"2026-01-15 09:30:10","environment_id":"env_3","metric_name":"api.rate_limit.remaining_min","metric_subject":"","metric_type":"gauge","organization_id":"org_1","project_id":"proj_1","value":2}",
+      ]
+    `);
   });
 });

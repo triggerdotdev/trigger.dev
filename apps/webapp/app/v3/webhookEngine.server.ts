@@ -16,6 +16,7 @@ import { ensureRunForSession } from "~/services/realtime/sessionRunManager.serve
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import { drainSessionStreamWaitpoints } from "~/services/sessionStreamWaitpointCache.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
+import { webhookEngineMetricsHooks } from "~/services/webhookMetrics.server";
 import { singleton } from "~/utils/singleton";
 import { engine as runEngine } from "./runEngine.server";
 import { ServiceValidationError } from "./services/common.server";
@@ -134,6 +135,7 @@ function createWebhookEngine() {
     },
     tracer,
     meter,
+    metrics: webhookEngineMetricsHooks(),
     resolveSigningSecret: async (key) => {
       const value = await secretStore.getSecret(StoredSigningSecret, key);
       // Fail closed: an unset/empty secret returns undefined so ingest rejects.

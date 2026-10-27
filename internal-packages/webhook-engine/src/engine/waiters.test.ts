@@ -21,12 +21,13 @@ import {
 import type { Prisma, PrismaClient } from "@trigger.dev/database";
 import type { StoredWebhookRoutingTarget, WebhookDeliveryTargetResult } from "@trigger.dev/core/v3";
 import { WebhookEndpointId } from "@trigger.dev/core/v3/isomorphic";
-import { afterAll, beforeAll, beforeEach, expect } from "vitest";
+import { afterAll, beforeAll, beforeEach, expect, vi } from "vitest";
 import { WebhookEngine } from "./index.js";
 import { WebhookWaiterStore } from "./waiters/store.js";
 import { waiterShape } from "./waiters/match.js";
 import type {
   TriggerWebhookTaskCallback,
+  WebhookEngineMetricsHooks,
   TriggerWebhookTaskParams,
   WebhookWaiterLimits,
   WebhookWaiterOutput,
@@ -342,10 +343,13 @@ function buildEngine(
     completionChunkSize?: number;
     exhaustedRecordDelayMs?: number;
     meter?: Meter;
+    metrics?: WebhookEngineMetricsHooks;
+    tenantConcurrency?: (environmentId: string) => Promise<number>;
   }
 ) {
   return new WebhookEngine({
     meter: over?.meter,
+    metrics: over?.metrics,
     prisma,
     redis: CLUSTER ? { cluster: { nodes: clusterNodes() } } : redisOptions,
     worker: {
@@ -354,6 +358,7 @@ function buildEngine(
       disabled: over?.workerDisabled,
       exhaustedRecordDelayMs: over?.exhaustedRecordDelayMs,
       retryBaseDelayMs: 20,
+      tenantConcurrency: over?.tenantConcurrency,
     },
     triggerTask: over?.triggerTask ?? makeTaskPort().triggerTask,
     resolveSigningSecret: async (key) => (key === SECRET_KEY ? SECRET : undefined),
@@ -1965,6 +1970,194 @@ containerTestWithIsolatedRedis(
       });
       expect(adopted).toMatchObject({ outcome: "limit", reason: "environment_limit" });
     } finally {
+      await engine.quit();
+    }
+  }
+);
+
+function recordingMetrics() {
+  const calls: Array<[string, ...unknown[]]> = [];
+  const hooks: WebhookEngineMetricsHooks = {
+    onWaiterCreated: (...args) => calls.push(["created", ...args]),
+    onWaiterRefused: (...args) => calls.push(["refused", ...args]),
+    onWaiterReleased: (...args) => calls.push(["released", ...args]),
+    onProcessing: (...args) => calls.push(["processing", ...args]),
+  };
+  return { hooks, calls, of: (name: string) => calls.filter((call) => call[0] === name) };
+}
+
+containerTestWithIsolatedRedis(
+  "metric hooks see a waiter created, its job processed and its slot released",
+  async ({ prisma, redisOptions }) => {
+    const endpoint = await createEndpoint(prisma);
+    const metrics = recordingMetrics();
+    const engine = buildEngine(prisma, redisOptions, makeWaitpoints().ports, {
+      metrics: metrics.hooks,
+    });
+
+    try {
+      await createdWaiter(engine, { match: MATCH("ord_metrics") });
+      const env = { environmentId: "env_test", projectId: "proj_test" };
+      await vi.waitFor(() =>
+        expect(metrics.of("created")).toEqual([["created", env, 1, 1_000_000]])
+      );
+
+      await waitForDelivery(
+        prisma,
+        await accepted(engine, signed(endpoint.opaqueId, orderEvent("ord_metrics")))
+      );
+      await vi.waitFor(() => expect(metrics.of("processing")).toHaveLength(2));
+      expect(metrics.of("processing")).toEqual([
+        ["processing", { environmentId: "env_test" }, 1, 100],
+        ["processing", { environmentId: "env_test" }, 0, 100],
+      ]);
+      await vi.waitFor(() =>
+        expect(metrics.of("released")).toEqual([
+          ["released", { ...env, organizationId: "org_test" }, 0],
+        ])
+      );
+      expect(metrics.of("refused")).toEqual([]);
+    } finally {
+      await engine.quit();
+    }
+  }
+);
+
+containerTestWithIsolatedRedis.for<{
+  reason: string;
+  limits?: Partial<WebhookWaiterLimits>;
+  engineLimits?: Partial<WebhookWaiterLimits>;
+  match: Record<string, string>;
+}>([
+  { reason: "environment_limit", limits: { perEnvironment: 1 }, match: MATCH("ord_b") },
+  { reason: "endpoint_limit", limits: { perEndpoint: 1 }, match: MATCH("ord_b") },
+  { reason: "shape_limit", engineLimits: { shapes: 1 }, match: { "event.type": "invoice.paid" } },
+])(
+  "metric hooks see a waiter refused at the $reason",
+  async ({ reason, limits, engineLimits, match }, { prisma, redisOptions }) => {
+    await createEndpoint(prisma);
+    const metrics = recordingMetrics();
+    const engine = buildEngine(prisma, redisOptions, makeWaitpoints().ports, {
+      metrics: metrics.hooks,
+      workerDisabled: true,
+      limits: engineLimits,
+    });
+    const env = { environmentId: "env_test", projectId: "proj_test" };
+
+    try {
+      await createdWaiter(engine, { match: MATCH("ord_a") });
+      const refused = await engine.createWaiter({ ...env, endpoint: "payments", match, limits });
+      expect(refused).toMatchObject({ outcome: "limit", reason });
+      expect(metrics.of("refused")).toEqual([["refused", env, reason]]);
+    } finally {
+      await engine.quit();
+    }
+  }
+);
+
+containerTestWithIsolatedRedis(
+  "metric hooks see a waiter created on an existing waitpoint that had no slot yet",
+  async ({ prisma, redisOptions }) => {
+    await createEndpoint(prisma);
+    const waitpoints = makeWaitpoints();
+    const metrics = recordingMetrics();
+    const engine = buildEngine(prisma, redisOptions, waitpoints.ports, {
+      metrics: metrics.hooks,
+      workerDisabled: true,
+    });
+
+    try {
+      await waitpoints.ports.create({
+        environmentId: "env_test",
+        projectId: "proj_test",
+        idempotencyKey: "webhook-waiter:crashed",
+        timeoutAt: new Date(Date.now() + 60_000),
+        tags: ["webhook:payments"],
+      });
+      const waiter = await createdWaiter(engine, {
+        match: MATCH("ord_crashed"),
+        idempotencyKey: "crashed",
+      });
+      expect(waiter.isCached).toBe(true);
+      await vi.waitFor(() =>
+        expect(metrics.of("created")).toEqual([
+          ["created", { environmentId: "env_test", projectId: "proj_test" }, 1, 1_000_000],
+        ])
+      );
+    } finally {
+      await engine.quit();
+    }
+  }
+);
+
+containerTestWithIsolatedRedis(
+  "without metric hooks finishing a job looks up no concurrency",
+  async ({ prisma, redisOptions }) => {
+    const endpoint = await createEndpoint(prisma, [
+      { type: "task", id: "orders", taskId: "orders" },
+    ]);
+    let lookups = 0;
+    let running!: () => void;
+    const started = new Promise<void>((resolve) => (running = resolve));
+    let finish!: () => void;
+    const finished = new Promise<void>((resolve) => (finish = resolve));
+    const engine = buildEngine(prisma, redisOptions, makeWaitpoints().ports, {
+      tenantConcurrency: async () => {
+        lookups++;
+        return 100;
+      },
+      triggerTask: async () => {
+        running();
+        await finished;
+        return { success: true, runId: "run_lookup" };
+      },
+    });
+
+    try {
+      const id = await accepted(engine, signed(endpoint.opaqueId, orderEvent("ord_lookup")));
+      await started;
+      const whileRunning = lookups;
+      finish();
+      await waitForDelivery(prisma, id);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      expect(lookups).toBe(whileRunning);
+    } finally {
+      await engine.quit();
+    }
+  }
+);
+
+containerTestWithIsolatedRedis.for([
+  {
+    name: "throwing",
+    hook: () => {
+      throw new Error("metrics down");
+    },
+  },
+  {
+    name: "rejecting",
+    hook: (async () => {
+      throw new Error("metrics down");
+    }) as () => void,
+  },
+])(
+  "a $name metric hook doesn't break creating a waiter",
+  async ({ hook }, { prisma, redisOptions }) => {
+    await createEndpoint(prisma);
+    const rejections: unknown[] = [];
+    const onRejection = (reason: unknown) => rejections.push(reason);
+    process.on("unhandledRejection", onRejection);
+    const engine = buildEngine(prisma, redisOptions, makeWaitpoints().ports, {
+      workerDisabled: true,
+      metrics: { onWaiterCreated: hook },
+    });
+
+    try {
+      await createdWaiter(engine, { match: MATCH("ord_hook") });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(rejections).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onRejection);
       await engine.quit();
     }
   }

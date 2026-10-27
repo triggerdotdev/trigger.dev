@@ -45,6 +45,23 @@ export type TriggerWebhookTaskCallback = (params: TriggerWebhookTaskParams) => P
   errorType?: WebhookDeliverTaskErrorType;
 }>;
 
+export type WebhookMetricsEnvironment = {
+  environmentId: string;
+  projectId?: string;
+  organizationId?: string;
+};
+
+/** Called synchronously at waiter and job lifecycle points. A hook that throws is ignored. */
+export type WebhookEngineMetricsHooks = {
+  onWaiterCreated?(env: WebhookMetricsEnvironment, liveCount: number, limit: number): void;
+  onWaiterRefused?(
+    env: WebhookMetricsEnvironment,
+    reason: "environment_limit" | "endpoint_limit" | "shape_limit"
+  ): void;
+  onWaiterReleased?(env: WebhookMetricsEnvironment, liveCount: number): void;
+  onProcessing?(env: WebhookMetricsEnvironment, inFlight: number, limit: number): void;
+};
+
 export interface WebhookEngineOptions {
   logger?: Logger;
   logLevel?: string;
@@ -80,6 +97,7 @@ export interface WebhookEngineOptions {
     /** The first retry's backoff; later ones double from it. Default 1s. */
     retryBaseDelayMs?: number;
   };
+  metrics?: WebhookEngineMetricsHooks;
   partitions?: {
     lookaheadDays?: number; // 7..14; how many days ahead to pre-create
   };

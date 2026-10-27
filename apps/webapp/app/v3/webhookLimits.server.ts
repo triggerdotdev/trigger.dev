@@ -8,6 +8,10 @@ import parseDuration from "parse-duration";
 import { $replica, webhookReplica } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
+import {
+  createWebhookMetricsTenantLookup,
+  type WebhookMetricsTenant,
+} from "~/services/webhookMetricsAggregator.server";
 import { singleton } from "~/utils/singleton";
 import {
   resolveWebhookLimits,
@@ -103,6 +107,29 @@ export async function webhookLimitsForEnvironment(environmentId: string): Promis
   }
   return result.val;
 }
+
+async function loadWebhookMetricsTenant(
+  environmentId: string
+): Promise<WebhookMetricsTenant | null> {
+  const environment = await $replica.runtimeEnvironment.findFirst({
+    where: { id: environmentId },
+    select: {
+      projectId: true,
+      organizationId: true,
+    },
+  });
+  if (!environment) return null;
+  return {
+    organizationId: environment.organizationId,
+    projectId: environment.projectId,
+    environmentId,
+  };
+}
+
+/** The org and project ids of an environment, cached like its limits. */
+export const webhookMetricsTenant = singleton("webhookMetricsTenant", () =>
+  createWebhookMetricsTenantLookup(loadWebhookMetricsTenant)
+);
 
 async function cachedEndpointEnvironment(opaqueId: string): Promise<string | null | undefined> {
   const found = await webhookEndpointEnvironmentCache.found.get(opaqueId);

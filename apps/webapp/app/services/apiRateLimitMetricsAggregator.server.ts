@@ -1,10 +1,13 @@
-import type { MetricsV1Input } from "@internal/clickhouse";
 import type {
   RateLimiterConfig,
   RateLimitObservation,
   RateLimitTenant,
 } from "./authorizationRateLimitMiddleware.server";
-import { logger } from "./logger.server";
+import {
+  createMetricsAggregator,
+  type MetricsAggregatorOptions,
+  type MetricUpdate,
+} from "./metricsAggregator.server";
 import { parseDuration } from "./realtime/duration.server";
 
 export const API_RATE_LIMIT_METRIC_NAMES = {
@@ -53,192 +56,61 @@ export function rateLimitConfigToLimits(config: RateLimiterConfig): RateLimitLim
   return { perSecond: config.tokens / windowSeconds, burst: config.tokens };
 }
 
-export type ApiRateLimitMetricsAggregatorOptions = {
-  bucketSeconds: number;
-  /** Hard cap on distinct (environment, bucket) entries held between flushes. */
-  maxEntries: number;
-  /** Runtime gate, evaluated per observation once a tenant is known. */
-  isEnabled: (tenant: RateLimitTenant) => boolean;
-  /** Receives every flushed batch. A rejected promise or a throw is logged and the batch dropped. */
-  sink: (rows: MetricsV1Input[]) => void | Promise<void>;
-  now?: () => number;
-  onDropped?: (count: number) => void;
-};
-
-type Entry = {
-  organizationId: string;
-  projectId: string;
-  environmentId: string;
-  bucketStartMs: number;
-  allowed: number;
-  denied: number;
-  remainingMin: number;
-  limits: RateLimitLimits | undefined;
-};
+export type ApiRateLimitMetricsAggregatorOptions = Omit<
+  MetricsAggregatorOptions<RateLimitTenant>,
+  "name"
+>;
 
 /**
- * In-process counter for the API rate limiter's allow/deny decisions, keyed by
- * (environment, time bucket). Every flush emits the counts accumulated since the previous
- * flush as delta rows, so several replicas (or one replica across a flush boundary) may
- * emit rows for the same key and sum() at read time stays exact.
+ * Counts the API rate limiter's allow/deny decisions per (environment, time bucket) as
+ * delta rows, so sum() at read time stays exact across replicas and flushes.
  */
-export class ApiRateLimitMetricsAggregator {
-  private readonly entries = new Map<string, Entry>();
-  private readonly bucketMs: number;
-  private readonly maxEntries: number;
-  private readonly isEnabled: (tenant: RateLimitTenant) => boolean;
-  private readonly sink: (rows: MetricsV1Input[]) => void | Promise<void>;
-  private readonly now: () => number;
-  private readonly onDropped?: (count: number) => void;
+export function createApiRateLimitMetricsAggregator(options: ApiRateLimitMetricsAggregatorOptions) {
+  const metrics = createMetricsAggregator({ ...options, name: "api rate limit metrics" });
 
-  constructor(options: ApiRateLimitMetricsAggregatorOptions) {
-    this.bucketMs = options.bucketSeconds * 1000;
-    this.maxEntries = options.maxEntries;
-    this.isEnabled = options.isEnabled;
-    this.sink = options.sink;
-    this.now = options.now ?? Date.now;
-    this.onDropped = options.onDropped;
-  }
-
-  get size(): number {
-    return this.entries.size;
-  }
-
-  record(observation: RateLimitObservation): void {
+  const record = (observation: RateLimitObservation): void => {
     const tenant = observation.tenant;
-    if (!tenant || !this.isEnabled(tenant)) {
+    if (!tenant) {
       return;
     }
-
-    const bucketStartMs = Math.floor(this.now() / this.bucketMs) * this.bucketMs;
-    const key = `${tenant.environmentId}\0${bucketStartMs}`;
-    const remaining = Math.max(0, observation.remaining);
-
-    let entry = this.entries.get(key);
-    if (!entry) {
-      if (this.entries.size >= this.maxEntries) {
-        this.onDropped?.(1);
-        return;
-      }
-      entry = {
-        organizationId: tenant.organizationId,
-        projectId: tenant.projectId,
-        environmentId: tenant.environmentId,
-        bucketStartMs,
-        allowed: 0,
-        denied: 0,
-        remainingMin: remaining,
-        limits: rateLimitConfigToLimits(observation.config),
-      };
-      this.entries.set(key, entry);
-    }
-
-    if (observation.success) {
-      entry.allowed++;
-    } else {
-      entry.denied++;
-    }
-    entry.remainingMin = Math.min(entry.remainingMin, remaining);
-  }
-
-  /**
-   * Throws away everything held without emitting it and returns how many observations
-   * were folded into the discarded entries, so callers can account for them as dropped.
-   */
-  discard(): number {
-    let observations = 0;
-    for (const entry of this.entries.values()) {
-      observations += entry.allowed + entry.denied;
-    }
-    this.entries.clear();
-    return observations;
-  }
-
-  flush(): number {
-    if (this.entries.size === 0) {
-      return 0;
-    }
-
-    const rows: MetricsV1Input[] = [];
-    for (const entry of this.entries.values()) {
-      rows.push(...entryToRows(entry));
-    }
-    this.entries.clear();
-
-    const dropBatch = (error: unknown) => {
-      logger.error("api rate limit metrics: sink failed, dropping batch", {
-        rows: rows.length,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    };
-    try {
-      const result = this.sink(rows);
-      if (result instanceof Promise) {
-        result.catch(dropBatch);
-      }
-    } catch (error) {
-      dropBatch(error);
-    }
-
-    return rows.length;
-  }
-}
-
-function entryToRows(entry: Entry): MetricsV1Input[] {
-  const base = {
-    organization_id: entry.organizationId,
-    project_id: entry.projectId,
-    environment_id: entry.environmentId,
-    metric_subject: "",
-    bucket_start: formatBucketStart(entry.bucketStartMs),
-    attributes: {},
+    metrics.record(tenant, observationUpdates(observation), () => limitUpdates(observation.config));
   };
 
-  const rows: MetricsV1Input[] = [];
-  if (entry.allowed > 0) {
-    rows.push({
-      ...base,
-      metric_name: API_RATE_LIMIT_METRIC_NAMES.allowed,
-      metric_type: "sum",
-      value: entry.allowed,
-    });
-  }
-  if (entry.denied > 0) {
-    rows.push({
-      ...base,
-      metric_name: API_RATE_LIMIT_METRIC_NAMES.denied,
-      metric_type: "sum",
-      value: entry.denied,
-    });
-  }
-  rows.push({
-    ...base,
-    metric_name: API_RATE_LIMIT_METRIC_NAMES.remainingMin,
-    metric_type: "gauge",
-    value: entry.remainingMin,
-  });
-  if (entry.limits) {
-    rows.push(
-      {
-        ...base,
-        metric_name: API_RATE_LIMIT_METRIC_NAMES.limitPerSecond,
-        metric_type: "gauge",
-        value: entry.limits.perSecond,
-      },
-      {
-        ...base,
-        metric_name: API_RATE_LIMIT_METRIC_NAMES.limitBurst,
-        metric_type: "gauge",
-        value: entry.limits.burst,
-      }
-    );
-  }
-  return rows;
+  return {
+    record,
+    size: metrics.size,
+    discard: metrics.discard,
+    flush: metrics.flush,
+    start: metrics.start,
+  };
 }
 
-function formatBucketStart(epochMs: number): string {
-  return new Date(epochMs)
-    .toISOString()
-    .replace("T", " ")
-    .replace(/\.\d{3}Z$/, "");
+export type ApiRateLimitMetricsAggregator = ReturnType<typeof createApiRateLimitMetricsAggregator>;
+
+function observationUpdates(observation: RateLimitObservation): MetricUpdate[] {
+  return [
+    {
+      name: observation.success
+        ? API_RATE_LIMIT_METRIC_NAMES.allowed
+        : API_RATE_LIMIT_METRIC_NAMES.denied,
+      reducer: "sum",
+      value: 1,
+    },
+    {
+      name: API_RATE_LIMIT_METRIC_NAMES.remainingMin,
+      reducer: "min",
+      value: Math.max(0, observation.remaining),
+    },
+  ];
+}
+
+function limitUpdates(config: RateLimiterConfig): MetricUpdate[] {
+  const limits = rateLimitConfigToLimits(config);
+  if (!limits) {
+    return [];
+  }
+  return [
+    { name: API_RATE_LIMIT_METRIC_NAMES.limitPerSecond, reducer: "first", value: limits.perSecond },
+    { name: API_RATE_LIMIT_METRIC_NAMES.limitBurst, reducer: "first", value: limits.burst },
+  ];
 }

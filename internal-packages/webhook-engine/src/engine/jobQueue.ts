@@ -202,6 +202,8 @@ export type WebhookJobQueueOptions = {
      */
     exhausted?: (job: WebhookJob, error: Error) => Promise<void>;
   };
+  /** Called when a job starts or finishes, with the environment's jobs in flight across every process. */
+  onProcessing?: (environmentId: string, inFlight: number, limit: number) => void;
 };
 
 /**
@@ -434,7 +436,9 @@ export class WebhookJobQueue {
     const parent = job.traceContext
       ? propagation.extract(ROOT_CONTEXT, job.traceContext)
       : ROOT_CONTEXT;
+    const tenant = tenantOf(queueId);
     try {
+      this.#reportProcessing(tenant);
       await context.with(parent, async () => {
         if (job.job === "webhook.deliver") {
           await this.options.handlers.deliver({ payload: job.payload, attempt });
@@ -474,7 +478,26 @@ export class WebhookJobQueue {
       }
       await this.fairQueue.failMessage(messageId, queueId, failure);
       await release();
+    } finally {
+      this.#reportProcessing(tenant);
     }
+  }
+
+  #reportProcessing(environmentId: string) {
+    const onProcessing = this.options.onProcessing;
+    if (!onProcessing) return;
+    this.#readProcessing(environmentId).then(
+      ([inFlight, limit]) => onProcessing(environmentId, inFlight, limit),
+      () => {}
+    );
+  }
+
+  async #readProcessing(environmentId: string) {
+    const limit = this.options.tenantConcurrency;
+    return Promise.all([
+      this.redis.scard(this.keys.concurrencyKey("tenant", environmentId)),
+      typeof limit === "number" ? limit : limit(environmentId),
+    ]);
   }
 
   /**

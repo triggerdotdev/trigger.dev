@@ -15,6 +15,7 @@ import { initAlertEngineWorker } from "~/v3/alertEngineWorker.server";
 import { initLogsSearchProjectorWorker } from "~/v3/logsSearchProjectorWorker.server";
 import { initQueueMetricsConsumer, initQueueMetricsEmitter } from "~/v3/queueMetrics.server";
 import { initApiRateLimitMetrics } from "~/services/apiRateLimitMetrics.server";
+import { initWebhookMetrics } from "~/services/webhookMetrics.server";
 import { bootstrap } from "./bootstrap";
 import { LocaleContextProvider } from "./components/primitives/LocaleProvider";
 import type { OperatingSystemPlatform } from "./components/primitives/OperatingSystemProvider";
@@ -301,6 +302,7 @@ initLogsSearchProjectorWorker();
 initQueueMetricsEmitter();
 initQueueMetricsConsumer();
 initApiRateLimitMetrics();
+initWebhookMetrics();
 
 bootstrap().catch((error) => {
   logError(error);

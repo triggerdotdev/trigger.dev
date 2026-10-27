@@ -2,6 +2,7 @@ import { json } from "@remix-run/server-runtime";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { webhookIngressIpRateLimiter } from "~/services/webhookIngressIpRateLimit.server";
+import { withWebhookMetrics } from "~/services/webhookMetrics.server";
 import {
   chargeWebhookIngressBody,
   type IngressRateLimit,
@@ -31,6 +32,28 @@ export type AdmittedWebhookIngress = {
   environment?: { id: string; limit: IngressRateLimit };
 };
 
+export type WebhookIngressDeps = {
+  enabled: boolean;
+  bodySizeLimitMb: number;
+  lookupEndpoint: typeof webhookIngressEndpoint;
+  ipLimiter: Pick<typeof webhookIngressIpRateLimiter, "blockedFor" | "takeBlockedLookup" | "limit">;
+  endpointLimiter: Pick<typeof webhookIngressRateLimiter, "limit">;
+  environmentLimiter: Pick<typeof webhookIngressEnvironmentRateLimiter, "limit">;
+  withMetrics: typeof withWebhookMetrics;
+};
+
+function webhookIngressDeps(): WebhookIngressDeps {
+  return {
+    enabled: env.WEBHOOK_ENABLED === "1" && env.WEBHOOK_INGRESS_ENABLED === "1",
+    bodySizeLimitMb: env.WEBHOOK_INGRESS_BODY_SIZE_LIMIT_MB,
+    lookupEndpoint: webhookIngressEndpoint,
+    ipLimiter: webhookIngressIpRateLimiter,
+    endpointLimiter: webhookIngressRateLimiter,
+    environmentLimiter: webhookIngressEnvironmentRateLimiter,
+    withMetrics: withWebhookMetrics,
+  };
+}
+
 function retryAfterSeconds(reset: number) {
   return Math.max(1, Math.ceil((reset - Date.now()) / 1000));
 }
@@ -43,37 +66,48 @@ function retryAfterSeconds(reset: number) {
  */
 export async function admitWebhookIngress(
   params: { opaqueId?: string },
-  request: Request
+  request: Request,
+  deps: WebhookIngressDeps = webhookIngressDeps()
 ): Promise<AdmittedWebhookIngress | Response> {
-  if (env.WEBHOOK_ENABLED !== "1" || env.WEBHOOK_INGRESS_ENABLED !== "1") {
+  if (!deps.enabled) {
     return refuse("Not found", 404);
   }
   const opaqueId = params.opaqueId;
   if (!opaqueId) return refuse("Not found", 404);
 
   const ip = extractClientIp(request.headers.get("x-forwarded-for"));
-  const blockedFor = webhookIngressIpRateLimiter.blockedFor(ip);
-  let endpoint = await webhookIngressEndpoint(opaqueId, {
+  const blockedFor = deps.ipLimiter.blockedFor(ip);
+  let endpoint = await deps.lookupEndpoint(opaqueId, {
     cachedOnly: blockedFor !== undefined,
   });
   if (
     ip &&
     blockedFor !== undefined &&
     endpoint.exists === undefined &&
-    webhookIngressIpRateLimiter.takeBlockedLookup(ip)
+    deps.ipLimiter.takeBlockedLookup(ip)
   ) {
-    endpoint = await webhookIngressEndpoint(opaqueId);
+    endpoint = await deps.lookupEndpoint(opaqueId);
   }
   if (blockedFor !== undefined && endpoint.exists !== true) return tooManyRequests(blockedFor);
   if (endpoint.exists === false) {
-    const gate = await webhookIngressIpRateLimiter.limit(ip);
+    const gate = await deps.ipLimiter.limit(ip);
     if (!gate.success) return tooManyRequests(gate.retryAfterSeconds);
   }
 
-  const rl = await webhookIngressRateLimiter.limit(opaqueId, {
+  const rl = await deps.endpointLimiter.limit(opaqueId, {
     tokens: endpoint.limits.endpointRateLimitTokens,
     windowSeconds: endpoint.limits.endpointRateLimitWindowSeconds,
   });
+  if (endpoint.environmentId) {
+    deps.withMetrics(endpoint.environmentId, (metrics, tenant) =>
+      metrics.ingress(tenant, "endpoint", {
+        opaqueId,
+        success: rl.success,
+        tokens: endpoint.limits.endpointRateLimitTokens,
+        remaining: rl.remaining,
+      })
+    );
+  }
   if (!rl.success) {
     logger.info("webhook ingress rate limited", { opaqueId });
     return tooManyRequests(retryAfterSeconds(rl.reset));
@@ -87,9 +121,14 @@ export async function admitWebhookIngress(
       windowSeconds: endpoint.limits.environmentRateLimitWindowSeconds,
     },
   };
-  const envLimit = await webhookIngressEnvironmentRateLimiter.limit(
-    environment.id,
-    environment.limit
+  const envLimit = await deps.environmentLimiter.limit(environment.id, environment.limit);
+  deps.withMetrics(environment.id, (metrics, tenant) =>
+    metrics.ingress(tenant, "env", {
+      opaqueId,
+      success: envLimit.success,
+      tokens: environment.limit.tokens,
+      remaining: envLimit.remaining,
+    })
   );
   if (!envLimit.success) {
     logger.info("webhook ingress environment rate limited", {
@@ -97,6 +136,9 @@ export async function admitWebhookIngress(
       environmentId: environment.id,
     });
     return tooManyRequests(retryAfterSeconds(envLimit.reset));
+  }
+  if (request.method === "GET") {
+    deps.withMetrics(environment.id, (metrics, tenant) => metrics.ingressAllowed(tenant, opaqueId));
   }
   return { opaqueId, environment };
 }
@@ -111,9 +153,10 @@ export async function admitWebhookIngress(
  */
 export async function readWebhookIngressRequest(
   request: Request,
-  admitted: AdmittedWebhookIngress
+  admitted: AdmittedWebhookIngress,
+  deps: WebhookIngressDeps = webhookIngressDeps()
 ): Promise<{ rawBytes: Uint8Array; headers: Record<string, string> } | Response> {
-  const limitBytes = env.WEBHOOK_INGRESS_BODY_SIZE_LIMIT_MB * 1024 * 1024;
+  const limitBytes = deps.bodySizeLimitMb * 1024 * 1024;
   const contentLength = Number(request.headers.get("content-length") ?? "0");
   if (Number.isFinite(contentLength) && contentLength > limitBytes) {
     return refuse("Payload too large", 413);
@@ -122,18 +165,14 @@ export async function readWebhookIngressRequest(
   const rawBytes = await readBodyWithCap(request, limitBytes);
   if (rawBytes === null) {
     if (admitted.environment) {
-      await chargeWebhookIngressBody(
-        webhookIngressEnvironmentRateLimiter,
-        admitted.environment,
-        limitBytes + 1
-      );
+      await chargeWebhookIngressBody(deps.environmentLimiter, admitted.environment, limitBytes + 1);
     }
     return refuse("Payload too large", 413);
   }
 
   if (admitted.environment) {
     const envLimit = await chargeWebhookIngressBody(
-      webhookIngressEnvironmentRateLimiter,
+      deps.environmentLimiter,
       admitted.environment,
       rawBytes.byteLength
     );
@@ -143,8 +182,14 @@ export async function readWebhookIngressRequest(
         environmentId: admitted.environment.id,
         bytes: rawBytes.byteLength,
       });
+      deps.withMetrics(admitted.environment.id, (metrics, tenant) =>
+        metrics.ingress(tenant, "body", { opaqueId: admitted.opaqueId, success: false })
+      );
       return tooManyRequests(retryAfterSeconds(envLimit.reset));
     }
+    deps.withMetrics(admitted.environment.id, (metrics, tenant) =>
+      metrics.ingressAllowed(tenant, admitted.opaqueId)
+    );
   }
 
   const headers: Record<string, string> = {};

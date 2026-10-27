@@ -16,4 +16,6 @@ export type {
   ReplayResult,
   WebhookWaitpointPorts,
   WebhookRedisOptions,
+  WebhookEngineMetricsHooks,
+  WebhookMetricsEnvironment,
 } from "./engine/types.js";

@@ -88,6 +88,11 @@ mode: "wide"
 | `API_RATE_LIMIT_METRICS_MAX_ENTRIES`             | No       | 10000                 | Cap on distinct (environment, bucket) entries held between flushes.                                                |
 | `API_RATE_LIMIT_METRICS_WAIT_FOR_ASYNC_INSERT`   | No       | 0                     | Wait for ClickHouse to write each async insert of API rate limit metrics, surfacing write failures.                |
 | `API_RATE_LIMIT_METRICS_INSERT_BUSY_TIMEOUT_MS`  | No       | 10000                 | How long ClickHouse buffers API rate limit metric inserts before writing a part.                                   |
+| `WEBHOOK_METRICS_FLUSH_INTERVAL_MS`              | No       | 10000                 | How often aggregated webhook limit metrics are flushed to ClickHouse.                                              |
+| `WEBHOOK_METRICS_MAX_ENTRIES`                    | No       | 10000                 | Cap on distinct (environment, bucket) entries held between flushes.                                                |
+| `WEBHOOK_METRICS_MAX_ENDPOINTS`                  | No       | 500                   | Cap on endpoints with their own webhook metric rows per environment and bucket; environment totals still count all. |
+| `QUEUE_SIZE_METRICS_INTERVAL_SEC`                | No       | 30                    | Queue size sampling interval in seconds; must divide 60.                                                           |
+| `QUEUE_SIZE_METRICS_MAX_ENVS`                    | No       | 2000                  | Most environments sampled per interval.                                                                            |
 | `DEPLOYMENT_RATE_LIMIT_REFILL_INTERVAL`          | No       | 10s                   | Deployment endpoints rate limit refill interval.                                                                   |
 | `DEPLOYMENT_RATE_LIMIT_MAX`                      | No       | 1500                  | Deployment endpoints rate limit max.                                                                               |
 | `DEPLOYMENT_RATE_LIMIT_REFILL_RATE`              | No       | 500                   | Deployment endpoints rate limit refill rate.                                                                       |

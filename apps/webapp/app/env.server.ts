@@ -839,6 +839,18 @@ const EnvironmentSchema = z
       .positive()
       .default(10_000),
 
+    QUEUE_SIZE_METRICS_INTERVAL_SEC: z.coerce
+      .number()
+      .int()
+      .positive()
+      .refine((seconds) => 60 % seconds === 0, { message: "must divide 60" })
+      .default(30),
+    QUEUE_SIZE_METRICS_MAX_ENVS: z.coerce.number().int().positive().default(2000),
+
+    WEBHOOK_METRICS_FLUSH_INTERVAL_MS: z.coerce.number().int().positive().default(10_000),
+    WEBHOOK_METRICS_MAX_ENTRIES: z.coerce.number().int().positive().default(10_000),
+    WEBHOOK_METRICS_MAX_ENDPOINTS: z.coerce.number().int().positive().default(500),
+
     API_RATE_LIMIT_JWT_WINDOW: z.string().default("1m"),
     API_RATE_LIMIT_JWT_TOKENS: z.coerce.number().int().default(60),
 

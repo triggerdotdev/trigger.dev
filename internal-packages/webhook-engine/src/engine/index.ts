@@ -57,6 +57,8 @@ import type {
   WebhookWaiterLimits,
   TriggerWebhookTaskCallback,
   WebhookDeliverTaskErrorType,
+  WebhookEngineMetricsHooks,
+  WebhookMetricsEnvironment,
   WebhookEngineOptions,
   WebhookRedisOptions,
 } from "./types.js";
@@ -327,6 +329,10 @@ export class WebhookEngine {
       exhaustedRecordDelayMs: options.worker.exhaustedRecordDelayMs,
       retryBaseDelayMs: options.worker.retryBaseDelayMs,
       environmentPayloadBytesLimit: options.queue?.environmentPayloadBytesLimit,
+      onProcessing: options.metrics?.onProcessing
+        ? (environmentId, inFlight, limit) =>
+            this.#metric((hooks) => hooks.onProcessing?.({ environmentId }, inFlight, limit))
+        : undefined,
       handlers: {
         deliver: this.#handleDeliverJob.bind(this),
         completeWaiters: this.#handleCompleteWaitersJob.bind(this),
@@ -878,7 +884,53 @@ export class WebhookEngine {
     this.waitersCreatedCounter.add(1, {
       outcome: result.outcome === "created" && result.isCached ? "cached" : result.outcome,
     });
+    const env = { environmentId: input.environmentId, projectId: input.projectId };
+    if (result.outcome === "limit" && result.reason !== "timeout_too_long") {
+      const reason = result.reason;
+      this.#metric((hooks) => hooks.onWaiterRefused?.(env, reason));
+    }
     return result;
+  }
+
+  async #waiterCreated(input: CreateWebhookWaiterInput, limit: number) {
+    if (!this.options.metrics?.onWaiterCreated) return;
+    const liveCount = await this.waiterStore.environmentCount(input.environmentId).catch(() => -1);
+    if (liveCount < 0) return;
+    const env = { environmentId: input.environmentId, projectId: input.projectId };
+    this.#metric((hooks) => hooks.onWaiterCreated?.(env, liveCount, limit));
+  }
+
+  #metric(call: (hooks: WebhookEngineMetricsHooks) => unknown) {
+    const hooks = this.options.metrics;
+    if (!hooks) return;
+    const failed = (error: unknown) =>
+      this.logger.debug("webhook metrics hook failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    try {
+      const result = call(hooks);
+      if (result && typeof (result as PromiseLike<unknown>).then === "function") {
+        (result as PromiseLike<unknown>).then(undefined, failed);
+      }
+    } catch (error) {
+      failed(error);
+    }
+  }
+
+  #waitersReleased(env: WebhookMetricsEnvironment) {
+    if (!this.options.metrics?.onWaiterReleased) return;
+    this.waiterStore.environmentCount(env.environmentId).then(
+      (liveCount) => this.#metric((hooks) => hooks.onWaiterReleased?.(env, liveCount)),
+      () => {}
+    );
+  }
+
+  #deliveryWaitersReleased(delivery: WebhookDelivery) {
+    this.#waitersReleased({
+      environmentId: delivery.runtimeEnvironmentId,
+      projectId: delivery.projectId,
+      organizationId: delivery.organizationId,
+    });
   }
 
   async #createWaiter(input: CreateWebhookWaiterInput): Promise<CreateWebhookWaiterResult> {
@@ -1066,6 +1118,7 @@ export class WebhookEngine {
         return { outcome: "limit", reason: registered.reason, message };
       }
 
+      if (reservedEnvironment) void this.#waiterCreated(input, limits.perEnvironment);
       return this.#createdWaiter(endpoint, waiterId, shape, expiresAt, isCached);
     });
   }
@@ -1121,6 +1174,7 @@ export class WebhookEngine {
       );
       if (result.outcome === "cancelled") {
         await this.waiterStore.releaseEnvironment(input.environmentId, [input.waiterId]);
+        this.#waitersReleased({ environmentId: input.environmentId });
         await ports.fail({
           environmentId: input.environmentId,
           waitpointId: input.waiterId,
@@ -1767,10 +1821,12 @@ export class WebhookEngine {
     // Free the environment slots before acking the claims: a retry only sees unacked claims, so a
     // release that failed after its ack would never be retried.
     await this.waiterStore.releaseEnvironment(delivery.runtimeEnvironmentId, [...resumed]);
+    if (resumed.size > 0) this.#deliveryWaitersReleased(delivery);
     let counts = await this.waiterStore.resolve(endpoint.id, delivery.id, "ok", [...resumed]);
     if (resumed.size > 0) this.waitersResolvedCounter.add(resumed.size, { result: "resumed" });
     if (givingUp.length > 0) {
       await this.waiterStore.releaseEnvironment(delivery.runtimeEnvironmentId, givingUp);
+      this.#deliveryWaitersReleased(delivery);
       counts = await this.waiterStore.resolve(endpoint.id, delivery.id, "failed", givingUp, error);
       this.waitersResolvedCounter.add(givingUp.length, { result: "failed" });
     }
@@ -2095,6 +2151,7 @@ export class WebhookEngine {
       ).filter((id) => waiterChunk(id, chunks) === chunk);
       if (ids.length > 0) {
         await this.waiterStore.releaseEnvironment(delivery.runtimeEnvironmentId, ids);
+        this.#deliveryWaitersReleased(delivery);
         await this.waiterStore.resolve(
           delivery.webhookEndpointId,
           delivery.id,
