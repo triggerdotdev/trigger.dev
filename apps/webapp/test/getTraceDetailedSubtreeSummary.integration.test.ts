@@ -6,6 +6,7 @@ import {
   ClickhouseEventRepository,
   convertDateToClickhouseDateTime,
 } from "~/v3/eventRepository/clickhouseEventRepository.server";
+import { createInMemoryTracing } from "./utils/tracing";
 
 /**
  * Proves getTraceDetailedSubtreeSummary (used by GET /api/v1/runs/:runId/trace)
@@ -589,6 +590,238 @@ describe("getTraceDetailedSubtreeSummary insertedAtEnd bound", () => {
       );
       expect(ancestor?.rootSpan.id).toBe("ancanchor");
       expect(ancestor?.rootSpan.data.isCancelled).toBe(true);
+    },
+    INTEGRATION_TIMEOUT_MS
+  );
+});
+
+describe("getTraceDetailedSubtreeSummary ancestor walk", () => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const environmentId = "env_ancestor_walk";
+  const baseMs = Date.now() - 30 * DAY_MS;
+  const anchorCreatedMs = 100_000;
+  const expiresAt = convertDateToClickhouseDateTime(new Date(baseMs + 400 * DAY_MS));
+
+  function row(
+    traceId: string,
+    spanId: string,
+    parentSpanId: string,
+    startOffsetMs: number,
+    insertedOffsetMs: number,
+    status: string
+  ): TaskEventV2Input {
+    return {
+      environment_id: environmentId,
+      organization_id: "org_ancestor_walk",
+      project_id: "proj_ancestor_walk",
+      task_identifier: "ancestor-walk-test-task",
+      run_id: `run_${spanId}`,
+      start_time: formatClickhouseStartTime(baseMs, startOffsetMs),
+      inserted_at: convertDateToClickhouseDateTime(new Date(baseMs + insertedOffsetMs)),
+      duration: "1000000000",
+      trace_id: traceId,
+      span_id: spanId,
+      parent_span_id: parentSpanId,
+      message: spanId,
+      kind: "SPAN",
+      status,
+      attributes: {},
+      metadata: "{}",
+      expires_at: expiresAt,
+    };
+  }
+
+  // A child run whose parent span starts before the child's window, under a top span.
+  function childRunRows(traceId: string, anchorStatus: string): TaskEventV2Input[] {
+    return [
+      row(traceId, "top", "", 0, 0, "PARTIAL"),
+      row(traceId, "parent", "top", 1_000, 1_000, "PARTIAL"),
+      row(traceId, "anchor", "parent", anchorCreatedMs, anchorCreatedMs, "PARTIAL"),
+      ...(anchorStatus === "PARTIAL"
+        ? []
+        : [
+            row(
+              traceId,
+              "anchor",
+              "parent",
+              anchorCreatedMs,
+              anchorCreatedMs + 10_000,
+              anchorStatus
+            ),
+          ]),
+      row(
+        traceId,
+        "anchorchild",
+        "anchor",
+        anchorCreatedMs + 1_000,
+        anchorCreatedMs + 1_000,
+        "PARTIAL"
+      ),
+    ];
+  }
+
+  const closedTrace = "1".repeat(32);
+  const truncatedTrace = "2".repeat(32);
+  const cancelledParentTrace = "3".repeat(32);
+  const boundTrace = "4".repeat(32);
+
+  const traceRows: TaskEventV2Input[] = [
+    ...childRunRows(closedTrace, "OK"),
+    // Enough children to truncate the full read, so the subtree walk runs.
+    ...childRunRows(truncatedTrace, "OK"),
+    ...Array.from({ length: TRACE_ROW_LIMIT + 10 }, (_, index) =>
+      row(
+        truncatedTrace,
+        `filler${String(index).padStart(4, "0")}`,
+        "anchor",
+        anchorCreatedMs + 2_000 + index,
+        anchorCreatedMs + 2_000 + index,
+        "OK"
+      )
+    ),
+    ...childRunRows(cancelledParentTrace, "PARTIAL"),
+    row(cancelledParentTrace, "parent", "top", 1_000, 50 * 1_000, "CANCELLED"),
+    // The parent's only rows are stored before the ancestor lower bound.
+    row(boundTrace, "parent", "", 1_000, 1_000, "PARTIAL"),
+    row(boundTrace, "parent", "", 1_000, 2_000, "CANCELLED"),
+    row(boundTrace, "anchor", "parent", anchorCreatedMs, anchorCreatedMs, "PARTIAL"),
+  ];
+
+  function setup(clickhouse: ClickHouse) {
+    return new ClickhouseEventRepository({
+      clickhouse,
+      version: "v2",
+      maximumTraceDetailedSummaryViewCount: TRACE_ROW_LIMIT,
+    });
+  }
+
+  async function insertRows(clickhouse: ClickHouse) {
+    const [insertError] = await clickhouse.taskEventsV2.insert(traceRows, {
+      clickhouse_settings: { async_insert: 0 },
+    });
+    expect(insertError).toBeNull();
+  }
+
+  clickhouseTest(
+    "skips, re-roots, stops early and bounds the ancestor walk",
+    async ({ clickhouseContainer }) => {
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        logLevel: "warn",
+      });
+      const repository = setup(clickhouse);
+      await insertRows(clickhouse);
+      const tracing = createInMemoryTracing();
+
+      const anchorCreatedAt = new Date(baseMs + anchorCreatedMs);
+      const anchorCompletedAt = new Date(baseMs + anchorCreatedMs + 10_000);
+
+      const subtree = (
+        traceId: string,
+        options: { completed?: boolean; ancestorInsertedAtStart?: Date } = {}
+      ) =>
+        tracing.tracer.startActiveSpan(`load ${traceId}`, async (span) => {
+          try {
+            return await repository.getTraceDetailedSubtreeSummary(
+              "taskEvent",
+              environmentId,
+              traceId,
+              "anchor",
+              anchorCreatedAt,
+              options.completed ? anchorCompletedAt : undefined,
+              {
+                insertedAtEnd: options.completed
+                  ? new Date(anchorCompletedAt.getTime() + 7 * DAY_MS)
+                  : undefined,
+                ancestorInsertedAtStart: options.ancestorInsertedAtStart,
+              }
+            );
+          } finally {
+            span.end();
+          }
+        });
+
+      const spanAttributes = (traceId: string) =>
+        tracing.exporter.getFinishedSpans().find((span) => span.name === `load ${traceId}`)
+          ?.attributes;
+
+      // Completed anchor, parent outside the full read: one query, no walk.
+      const closed = await subtree(closedTrace, { completed: true });
+      expect(closed?.rootSpan.id).toBe("anchor");
+      expect(closed?.rootSpan.parentId).toBe("parent");
+      expect(closed?.rootSpan.data.isPartial).toBe(false);
+      expect(closed?.rootSpan.children.map((child) => child.id)).toEqual(["anchorchild"]);
+      expect(spanAttributes(closedTrace)).toMatchObject({
+        "trace.ancestor_walk": "fast_path",
+        "trace.ancestor_hops": 0,
+      });
+
+      // Completed anchor, truncated full read: the walk runs but reads no ancestors.
+      const truncated = await subtree(truncatedTrace, { completed: true });
+      expect(truncated?.rootSpan.id).toBe("anchor");
+      expect(truncated?.rootSpan.data.isPartial).toBe(false);
+      expect(spanAttributes(truncatedTrace)).toMatchObject({
+        "trace.ancestor_walk": "skipped_closed",
+        "trace.ancestor_hops": 0,
+      });
+
+      // Open anchor under a cancelled parent: cancelled, and nothing above the parent is read.
+      const cancelled = await subtree(cancelledParentTrace);
+      expect(cancelled?.rootSpan.id).toBe("anchor");
+      expect(cancelled?.rootSpan.data.isCancelled).toBe(true);
+      expect(findSpan(cancelled?.rootSpan, "anchorchild")?.data.isCancelled).toBe(true);
+      expect(spanAttributes(cancelledParentTrace)).toMatchObject({
+        "trace.ancestor_walk": "walked",
+        "trace.ancestor_hops": 1,
+      });
+
+      // Ancestor rows stored before the lower bound aren't read.
+      const unbounded = await subtree(boundTrace);
+      expect(unbounded?.rootSpan.data.isCancelled).toBe(true);
+      const bounded = await subtree(boundTrace, {
+        ancestorInsertedAtStart: new Date(baseMs + 3_000),
+      });
+      expect(bounded?.rootSpan.id).toBe("anchor");
+      expect(bounded?.rootSpan.data.isPartial).toBe(true);
+      expect(bounded?.rootSpan.data.isCancelled).toBe(false);
+    },
+    INTEGRATION_TIMEOUT_MS
+  );
+
+  clickhouseTest(
+    "returns the subtree without overrides when an ancestor read fails",
+    async ({ clickhouseContainer }) => {
+      // Rejects reads with no inserted_at (partition key) filter: only the unbounded ancestor read.
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        logLevel: "warn",
+        clickhouseSettings: { force_index_by_date: 1 },
+      });
+      const repository = setup(clickhouse);
+      await insertRows(clickhouse);
+      const tracing = createInMemoryTracing();
+
+      const subtree = await tracing.tracer.startActiveSpan("load failing", async (span) => {
+        try {
+          return await repository.getTraceDetailedSubtreeSummary(
+            "taskEvent",
+            environmentId,
+            cancelledParentTrace,
+            "anchor",
+            new Date(baseMs + anchorCreatedMs)
+          );
+        } finally {
+          span.end();
+        }
+      });
+
+      expect(subtree?.rootSpan.id).toBe("anchor");
+      expect(subtree?.rootSpan.data.isPartial).toBe(true);
+      expect(subtree?.rootSpan.data.isCancelled).toBe(false);
+      expect(subtree?.rootSpan.children.map((child) => child.id)).toEqual(["anchorchild"]);
+      expect(
+        tracing.exporter.getFinishedSpans().find((span) => span.name === "load failing")?.attributes
+      ).toMatchObject({ "trace.ancestor_walk": "failed", "trace.ancestor_hops": 1 });
     },
     INTEGRATION_TIMEOUT_MS
   );

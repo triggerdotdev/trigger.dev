@@ -445,10 +445,7 @@ export interface IEventRepository {
     options?: { includeDebugLogs?: boolean; anchorSpanId?: string }
   ): Promise<TraceSummary | undefined>;
 
-  /**
-   * Fetch the anchor span, its ancestors (for override propagation), and all descendants.
-   * `includeAncestors: false` skips the ancestor walk, which has no time bounds.
-   */
+  /** Fetch the anchor span and all its descendants (no ancestors). */
   getTraceSubtreeSummary(
     storeTable: TaskEventStoreTable,
     environmentId: string,
@@ -456,7 +453,7 @@ export interface IEventRepository {
     anchorSpanId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
-    options?: { includeDebugLogs?: boolean; includeAncestors?: boolean }
+    options?: { includeDebugLogs?: boolean }
   ): Promise<TraceSummary | undefined>;
 
   getTraceChunk(
@@ -497,7 +494,10 @@ export interface IEventRepository {
     options?: { includeDebugLogs?: boolean }
   ): Promise<TraceDetailedSummary | undefined>;
 
-  /** Fetch the anchor span subtree as a detailed hierarchical trace rooted at anchorSpanId. */
+  /**
+   * Fetch the anchor span subtree as a detailed hierarchical trace rooted at anchorSpanId.
+   * `ancestorInsertedAtStart` bounds the ancestor reads (e.g. the trace root's createdAt).
+   */
   getTraceDetailedSubtreeSummary(
     storeTable: TaskEventStoreTable,
     environmentId: string,
@@ -505,7 +505,7 @@ export interface IEventRepository {
     anchorSpanId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
-    options?: { includeDebugLogs?: boolean; insertedAtEnd?: Date }
+    options?: { includeDebugLogs?: boolean; insertedAtEnd?: Date; ancestorInsertedAtStart?: Date }
   ): Promise<TraceDetailedSummary | undefined>;
 
   // Streams a trace's events in start_time order, one at a time, without ever

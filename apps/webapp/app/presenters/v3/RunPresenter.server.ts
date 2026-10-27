@@ -331,7 +331,7 @@ export class RunPresenter {
         traceTimeBounds.startCreatedAt,
         traceTimeBounds.endCreatedAt,
         // The anchor is the viewed run: a root has no ancestors, a child doesn't need them.
-        { includeDebugLogs: showDebug, includeAncestors: false }
+        { includeDebugLogs: showDebug }
       );
 
       if (subtreeSummary) {
