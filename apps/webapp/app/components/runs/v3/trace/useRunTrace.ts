@@ -71,12 +71,15 @@ export function useRunTrace({
   errorsOnly,
   maximumLiveReloadingSetting,
   onRunDataStale,
+  readContext,
 }: {
   run: RunTraceRun;
   trace: RunTraceInput;
   errorsOnly: boolean;
   maximumLiveReloadingSetting: number;
   onRunDataStale: () => void;
+  /** Sent with every chunk read; "session" bounds completed runs' reads. */
+  readContext?: "session";
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -84,7 +87,9 @@ export function useRunTrace({
 
   const { isTruncated = false, missingAnchor = false } = trace;
 
-  const chunkPath = v3RunTraceChunkPath(organization, project, environment, run);
+  const chunkPath = v3RunTraceChunkPath(organization, project, environment, run, {
+    context: readContext,
+  });
   const statusPath = v3RunStatusPath(organization, project, environment, run);
   const {
     events,

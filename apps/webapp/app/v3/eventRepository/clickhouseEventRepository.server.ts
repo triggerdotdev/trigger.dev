@@ -2000,7 +2000,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     traceId: string,
     startCreatedAt: Date,
     endCreatedAt: Date | undefined,
-    options?: { includeDebugLogs?: boolean }
+    options?: { includeDebugLogs?: boolean; insertedAtEnd?: Date }
   ): Promise<TraceErrorEvents | undefined> {
     const scope = { environmentId, traceId, startCreatedAt, endCreatedAt, options };
     const maxMatches = this.maximumErrorMatches;
@@ -2092,7 +2092,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     startCreatedAt: Date,
     endCreatedAt: Date | undefined,
     spanId: string,
-    options?: { includeDebugLogs?: boolean }
+    options?: { includeDebugLogs?: boolean; insertedAtEnd?: Date }
   ): Promise<TraceChunkEvent[] | undefined> {
     const rows = await this.#collectSpansUpwards(
       { environmentId, traceId, startCreatedAt, endCreatedAt, options },
@@ -2107,7 +2107,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       traceId: string;
       startCreatedAt: Date;
       endCreatedAt?: Date;
-      options?: { includeDebugLogs?: boolean };
+      options?: { includeDebugLogs?: boolean; insertedAtEnd?: Date };
     },
     seedSpanIds: string[]
   ): Promise<TaskEventChunkV2Result[]> {

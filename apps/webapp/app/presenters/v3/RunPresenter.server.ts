@@ -1,19 +1,18 @@
-import { millisecondsToNanoseconds, RunAnnotations } from "@trigger.dev/core/v3";
 import { prisma, type PrismaClient } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { getUsername } from "~/utils/username";
 import type { SpanSummary } from "~/v3/eventRepository/eventRepository.types";
-import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
 import { env } from "~/env.server";
 import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { canLiveTail } from "./liveTailGate";
-import { assembleFirstTraceChunk, type TraceReadScope } from "./traceFirstChunk.server";
-import { applyAncestorOverrides, buildTraceView } from "~/v3/eventRepository/traceViewBuilder";
+import { buildFirstTrace, readFirstTraceChunk } from "./traceFirstChunk.server";
+import { runQueuedDuration, runTraceBuildOptions, runTraceReadScope } from "./runTraceSetup.server";
+import { buildTraceView } from "~/v3/eventRepository/traceViewBuilder";
 import { runStore } from "~/v3/runStore.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { runTriggeredAt } from "~/v3/runTimestamps";
-import { getRunFinishedAt, getTraceStartTimeEnd } from "~/v3/eventRepository/traceInsertedAtBound";
+import { getRunFinishedAt } from "~/v3/eventRepository/traceInsertedAtBound";
 
 export class RunEnvironmentMismatchError extends Error {
   constructor(message: string) {
@@ -193,40 +192,18 @@ export class RunPresenter {
       environment.organizationId
     );
 
-    // A child view only reads its own lifetime, not the root's.
-    const traceTimeBounds = {
-      startCreatedAt: run.createdAt,
-      endCreatedAt: getTraceStartTimeEnd(run),
-    };
-
-    // Resolve agent-kind once so the tree renderer can swap icon/colour for
-    // the current run's spans without doing per-row lookups.
-    const isAgentRun = RunAnnotations.safeParse(run.annotations).data?.taskKind === "AGENT";
-
-    const queuedDuration = run.startedAt
-      ? millisecondsToNanoseconds(run.startedAt.getTime() - triggeredAt.getTime())
-      : undefined;
-
-    // Read before the first chunk so the first tail covers the background load.
-    const firstChunkReadAt = Date.now();
+    const traceScope = runTraceReadScope(run, environment.id);
+    const queuedDuration = runQueuedDuration(run);
 
     const firstChunkPromise = canLiveTail(
       run.taskEventStore,
       env.TRACE_VIEW_EMERGENCY_SPAN_CAP,
       env.EVENT_REPOSITORY_V1_REROUTE_ENABLED
     )
-      ? repository.getTraceChunk(
-          getTaskEventStoreTableForRun(run),
-          environment.id,
-          run.traceId,
-          traceTimeBounds.startCreatedAt,
-          traceTimeBounds.endCreatedAt,
-          undefined,
-          { includeDebugLogs: showDebug }
-        )
+      ? readFirstTraceChunk({ repository, scope: traceScope, showDebug })
       : Promise.resolve(undefined);
 
-    const [user, firstChunk] = await Promise.all([
+    const [user, firstRead] = await Promise.all([
       this.#prismaClient.user.findFirst({
         where: { id: userId },
         select: { admin: true },
@@ -234,62 +211,27 @@ export class RunPresenter {
       firstChunkPromise,
     ]);
 
-    const buildOptions = {
-      rootSpanId: run.spanId,
-      runFriendlyId: run.friendlyId,
-      isAgentRun,
-      isAdmin: user?.admin ?? false,
-    };
+    const buildOptions = runTraceBuildOptions(run, user?.admin ?? false);
 
-    const traceScope: TraceReadScope = {
-      storeTable: getTaskEventStoreTableForRun(run),
-      environmentId: environment.id,
-      traceId: run.traceId,
-      startCreatedAt: traceTimeBounds.startCreatedAt,
-      endCreatedAt: traceTimeBounds.endCreatedAt,
-    };
-
-    const first = firstChunk
-      ? await assembleFirstTraceChunk({
+    const first = firstRead
+      ? await buildFirstTrace({
           repository,
           scope: traceScope,
-          firstChunk,
+          firstRead,
           anchorSpanId: run.spanId,
           selectedSpanId,
+          buildOptions,
+          startedAt: run.startedAt,
+          queuedDuration,
           showDebug,
-          isAdmin: buildOptions.isAdmin,
+          maxSpans: repository.maximumTraceViewCount,
         })
       : undefined;
 
     if (first?.kind === "progressive") {
-      const { spans, overridesBySpanId } = applyAncestorOverrides(first.assembler.spans);
-      const view = buildTraceView(spans, buildOptions);
-
       return {
         run: runData,
-        trace: {
-          events: view.events,
-          duration: view.duration,
-          rootStartedAt: view.rootStartedAt,
-          rootSpanStatus: view.rootSpanStatus,
-          startedAt: run.startedAt,
-          queuedDuration,
-          overridesBySpanId,
-          linkedRunIdBySpanId: view.linkedRunIdBySpanId,
-          isTruncated: false,
-          missingAnchor: false,
-          progressive: {
-            firstEvents: first.firstEvents,
-            supplementaryFirstEvents: first.supplementaryFirstEvents,
-            nextCursor: first.nextCursor,
-            hasMore: first.hasMore,
-            buildOptions,
-            showDebug,
-            maxSpans: repository.maximumTraceViewCount,
-            liveTailEnabled: true,
-            firstChunkReadAt,
-          },
-        },
+        trace: first.trace,
         maximumLiveReloadingSetting: repository.maximumLiveReloadingSetting,
       };
     }
@@ -312,11 +254,11 @@ export class RunPresenter {
     let traceSummary = skipSummary
       ? undefined
       : await repository.getTraceSummary(
-          getTaskEventStoreTableForRun(run),
+          traceScope.storeTable,
           environment.id,
           run.traceId,
-          traceTimeBounds.startCreatedAt,
-          traceTimeBounds.endCreatedAt,
+          traceScope.startCreatedAt,
+          traceScope.endCreatedAt,
           { includeDebugLogs: showDebug, anchorSpanId: run.spanId }
         );
 
@@ -324,12 +266,12 @@ export class RunPresenter {
 
     if (!traceSummary && !skipSummary) {
       const subtreeSummary = await repository.getTraceSubtreeSummary(
-        getTaskEventStoreTableForRun(run),
+        traceScope.storeTable,
         environment.id,
         run.traceId,
         run.spanId,
-        traceTimeBounds.startCreatedAt,
-        traceTimeBounds.endCreatedAt,
+        traceScope.startCreatedAt,
+        traceScope.endCreatedAt,
         // The anchor is the viewed run: a root has no ancestors, a child doesn't need them.
         { includeDebugLogs: showDebug }
       );

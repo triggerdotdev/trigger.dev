@@ -472,7 +472,7 @@ export interface IEventRepository {
     traceId: string,
     startCreatedAt: Date,
     endCreatedAt: Date | undefined,
-    options?: { includeDebugLogs?: boolean }
+    options?: { includeDebugLogs?: boolean; insertedAtEnd?: Date }
   ): Promise<TraceErrorEvents | undefined>;
 
   getTraceSpanWithAncestors(
@@ -482,7 +482,7 @@ export interface IEventRepository {
     startCreatedAt: Date,
     endCreatedAt: Date | undefined,
     spanId: string,
-    options?: { includeDebugLogs?: boolean }
+    options?: { includeDebugLogs?: boolean; insertedAtEnd?: Date }
   ): Promise<Array<TraceChunkEvent> | undefined>;
 
   getTraceDetailedSummary(

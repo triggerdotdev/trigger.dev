@@ -510,7 +510,7 @@ export class EventRepository implements IEventRepository {
     _traceId: string,
     _startCreatedAt: Date,
     _endCreatedAt: Date | undefined,
-    _options?: { includeDebugLogs?: boolean }
+    _options?: { includeDebugLogs?: boolean; insertedAtEnd?: Date }
   ): Promise<TraceErrorEvents | undefined> {
     return undefined;
   }
@@ -522,7 +522,7 @@ export class EventRepository implements IEventRepository {
     _startCreatedAt: Date,
     _endCreatedAt: Date | undefined,
     _spanId: string,
-    _options?: { includeDebugLogs?: boolean }
+    _options?: { includeDebugLogs?: boolean; insertedAtEnd?: Date }
   ): Promise<TraceChunkEvent[] | undefined> {
     return undefined;
   }

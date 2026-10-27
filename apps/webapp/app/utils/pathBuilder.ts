@@ -626,11 +626,13 @@ export function v3RunTraceChunkPath(
   organization: OrgForPath,
   project: ProjectForPath,
   environment: EnvironmentForPath,
-  run: v3RunForPath
+  run: v3RunForPath,
+  options?: { context?: "session" }
 ) {
-  return `/resources/orgs/${organizationParam(organization)}/projects/${projectParam(
+  const path = `/resources/orgs/${organizationParam(organization)}/projects/${projectParam(
     project
   )}/env/${environmentParam(environment)}/runs/${run.friendlyId}/trace-chunk`;
+  return options?.context ? `${path}?context=${options.context}` : path;
 }
 
 // Run status probe for the trace viewer's live-tail backstop.
