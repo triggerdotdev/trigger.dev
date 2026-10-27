@@ -87,7 +87,7 @@ export async function getDashboardAgentRunTrace({
       run.createdAt,
       endCreatedAt,
       // The tree is built from the anchor down, so ancestors would be read for nothing.
-      { includeDebugLogs: false, includeAncestors: false }
+      { includeDebugLogs: false }
     );
 
     if (subtree) {

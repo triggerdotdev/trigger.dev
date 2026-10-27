@@ -394,6 +394,7 @@ export class WaitpointSystem {
             description: "Run was blocked by a waitpoint.",
           },
           previousSnapshotId: snapshot.id,
+          previousSnapshot: snapshot,
           snapshotRoute: snapshotRouteFromSnapshot(snapshot),
           environmentId: snapshot.environmentId,
           environmentType: snapshot.environmentType,
@@ -695,6 +696,7 @@ export class WaitpointSystem {
                 description: "Run was continued, whilst still executing.",
               },
               previousSnapshotId: snapshot.id,
+              previousSnapshot: snapshot,
               snapshotRoute: snapshotRouteFromSnapshot(snapshot),
               environmentId: snapshot.environmentId,
               environmentType: snapshot.environmentType,
@@ -768,6 +770,7 @@ export class WaitpointSystem {
             run,
             env,
             previousSnapshotId: snapshot.id,
+            previousSnapshot: snapshot,
             snapshotRoute: snapshotRouteFromSnapshot(snapshot),
             snapshot: {
               status: "QUEUED",

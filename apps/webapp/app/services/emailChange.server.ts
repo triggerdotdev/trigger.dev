@@ -1,5 +1,5 @@
 /**
- * Changing an account's email address requires opening a link sent to the new
+ * Changing an account's email address requires confirming a link sent to the new
  * address. Until then the new address sits in `User.pendingEmail` and the live
  * `User.email` (which invites and logins key on) is untouched.
  *
@@ -71,6 +71,11 @@ async function verifyEmailChangeToken(
   if (typeof email !== "string" || email.length === 0) return;
 
   return { userId: sub, email };
+}
+
+export async function previewEmailChange(token: string): Promise<{ email: string } | undefined> {
+  const claims = await verifyEmailChangeToken(env.SESSION_SECRET, token);
+  return claims ? { email: claims.email } : undefined;
 }
 
 type EmailChangeFailure = { ok: false; error: string; status: number };
@@ -201,8 +206,7 @@ export async function confirmEmailChange(token: string): Promise<ConfirmEmailCha
     return failure("This confirmation link is invalid or has expired.", 400);
   }
 
-  // Already applied: mail scanners fetch links before the recipient does, and
-  // people open them twice. Both must read as success, not as a dead link.
+  // Repeated confirmations read as success without sending another notice.
   if (normalizeEmail(user.email) === claims.email) {
     return { ok: true, userId: user.id, email: claims.email };
   }

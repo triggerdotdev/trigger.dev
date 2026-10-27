@@ -24,6 +24,12 @@ const SearchSchema = z.object({
     .max(MAX_DATE_MS)
     .optional()
     .catch(undefined),
+  // Session view: bounds completed runs' reads by write time.
+  context: z.literal("session").optional().catch(undefined),
+  // Returns the run's first chunk as a trace payload instead of a chunk page.
+  start: z.literal("1").optional().catch(undefined),
+  // Selected span for a deep link, fetched with the first chunk.
+  span: z.string().optional().catch(undefined),
 });
 
 function parseCursor(
@@ -41,25 +47,59 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const { projectParam, envParam, runParam } = v3RunParamsSchema.parse(params);
 
   const url = new URL(request.url);
-  const { cursorStartTime, cursorSpanId, debug, limit, filter, insertedAtSince } =
-    SearchSchema.parse(Object.fromEntries(url.searchParams));
+  const {
+    cursorStartTime,
+    cursorSpanId,
+    debug,
+    limit,
+    filter,
+    insertedAtSince,
+    context,
+    start,
+    span,
+  } = SearchSchema.parse(Object.fromEntries(url.searchParams));
 
   const cursor = parseCursor(cursorStartTime, cursorSpanId);
-  const readAt = Date.now();
+  const showDebug = debug === "1" && (user.admin || user.isImpersonating);
   const presenter = new TraceChunkPresenter();
+
+  if (start) {
+    const traceStart = await presenter.start({
+      userId: user.id,
+      projectSlug: projectParam,
+      environmentSlug: envParam,
+      runFriendlyId: runParam,
+      showDebug,
+      isAdmin: user.admin,
+      showDeletedLogs: user.isImpersonating,
+      selectedSpanId: span,
+      emergencySpanCap: env.TRACE_VIEW_EMERGENCY_SPAN_CAP,
+      v1RerouteEnabled: env.EVENT_REPOSITORY_V1_REROUTE_ENABLED,
+      context,
+    });
+
+    if (!traceStart) {
+      throw new Response("Trace not found", { status: 404 });
+    }
+
+    return json(traceStart);
+  }
+
+  const readAt = Date.now();
   const chunk = await presenter.call({
     userId: user.id,
     projectSlug: projectParam,
     environmentSlug: envParam,
     runFriendlyId: runParam,
     cursor,
-    showDebug: debug === "1" && (user.admin || user.isImpersonating),
+    showDebug,
     isAdmin: user.admin,
     showDeletedLogs: user.isImpersonating,
     // Tabs opened before the emergency cap was set; cap their pages too.
     limit: clampToEmergencySpanCap(limit ?? env.EVENTS_CLICKHOUSE_TRACE_CHUNK_SIZE),
     filter,
     tailInsertedAtSinceMs: insertedAtSince,
+    context,
   });
 
   if (!chunk) {

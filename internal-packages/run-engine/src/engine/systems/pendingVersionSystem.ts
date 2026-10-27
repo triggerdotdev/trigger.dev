@@ -3,10 +3,15 @@ import {
   parseNaturalLanguageDuration,
 } from "@trigger.dev/core/v3/isomorphic";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
+import { tryCatch } from "@trigger.dev/core/utils";
 import { toWireRoute, type SnapshotRouteWire } from "@internal/run-store";
 import type { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
 import type { EnqueueSystem } from "./enqueueSystem.js";
-import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
+import {
+  getLatestExecutionSnapshot,
+  type ExecutionSnapshotSystem,
+  type PreviousSnapshot,
+} from "./executionSnapshotSystem.js";
 import type { SystemResources } from "./systems.js";
 
 import { boundedIn } from "@trigger.dev/database";
@@ -220,6 +225,10 @@ export class PendingVersionSystem {
         backgroundWorker.runtimeEnvironment.organization.id
       );
       await this.#settlePendingUnitBeforeTransaction(run.id, snapshotRoute);
+      const previousSnapshot = await this.#latestSnapshotBeforeTransaction(
+        run.id,
+        backgroundWorker.runtimeEnvironment.organization.id
+      );
 
       // Atomic unit: the status promotion and the new QUEUED snapshot must commit together
       // or a crash between them leaves the run promoted-to-PENDING with no snapshot. Under the run-ops
@@ -248,6 +257,7 @@ export class PendingVersionSystem {
               run: { id: run.id, status: "DELAYED" },
               snapshot: { executionStatus: "DELAYED", description: "Run is delayed" },
               snapshotRoute,
+              previousSnapshot,
               batchId: run.batchId ?? undefined,
               environmentId: backgroundWorker.runtimeEnvironment.id,
               environmentType: backgroundWorker.runtimeEnvironment.type,
@@ -266,6 +276,7 @@ export class PendingVersionSystem {
           run: updatedRun,
           env: backgroundWorker.runtimeEnvironment,
           snapshotRoute,
+          previousSnapshot,
           store,
           tx,
           // PENDING_VERSION re-enqueue is the first time this run is actually
@@ -601,6 +612,10 @@ export class PendingVersionSystem {
 
     const snapshotRoute = await this.#snapshotRouteBeforeTransaction(run.id, env.organization.id);
     await this.#settlePendingUnitBeforeTransaction(run.id, snapshotRoute);
+    const previousSnapshot = await this.#latestSnapshotBeforeTransaction(
+      run.id,
+      env.organization.id
+    );
 
     const promoted = await this.$.runStore.runInTransaction(run.id, async (store, tx) => {
       const updateResult = await store.promotePendingVersionRuns(
@@ -626,6 +641,7 @@ export class PendingVersionSystem {
             run: { id: run.id, status: "DELAYED" },
             snapshot: { executionStatus: "DELAYED", description: "Run is delayed" },
             snapshotRoute,
+            previousSnapshot,
             batchId: run.batchId ?? undefined,
             environmentId: env.id,
             environmentType: env.type,
@@ -644,6 +660,7 @@ export class PendingVersionSystem {
         run: updatedRun,
         env,
         snapshotRoute,
+        previousSnapshot,
         store,
         tx,
         includeTtl: true,
@@ -694,6 +711,17 @@ export class PendingVersionSystem {
   ): Promise<SnapshotRouteWire | undefined> {
     const route = await this.$.runStore.readSnapshotRoute(runId, organizationId);
     return route ? toWireRoute(route) : undefined;
+  }
+
+  // Only an ordering floor for the promotion's snapshot, so a failed read promotes without one.
+  async #latestSnapshotBeforeTransaction(
+    runId: string,
+    organizationId: string
+  ): Promise<PreviousSnapshot | undefined> {
+    const [error, snapshot] = await tryCatch(
+      getLatestExecutionSnapshot(this.$.prisma, runId, this.$.runStore, undefined, organizationId)
+    );
+    return error ? undefined : snapshot;
   }
 
   // The promotion publishes the run to the queue inside its transaction, and a rollback does not undo

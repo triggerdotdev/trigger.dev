@@ -2,7 +2,7 @@ import { startSpan } from "@internal/tracing";
 import { assertExhaustive, tryCatch } from "@trigger.dev/core";
 import type { DequeuedMessage, TaskRunInternalError } from "@trigger.dev/core/v3";
 import { RetryOptions, RunAnnotations } from "@trigger.dev/core/v3";
-import { generateInternalId, getMaxDuration, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
+import { getMaxDuration, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
 import { placementTag } from "@trigger.dev/core/v3/serverOnly";
 import type {
   BackgroundWorker,
@@ -27,6 +27,7 @@ import type { RunEngineOptions, WorkerQueueDequeueOptions } from "../types.js";
 import {
   getLatestExecutionSnapshotOrFinishedRun,
   type ExecutionSnapshotSystem,
+  type PreviousSnapshot,
 } from "./executionSnapshotSystem.js";
 import type { RunAttemptSystem } from "./runAttemptSystem.js";
 import type { SystemResources } from "./systems.js";
@@ -254,6 +255,7 @@ export class DequeueSystem {
                       "Tried to dequeue a run that is not in a valid state to be dequeued.",
                   },
                   previousSnapshotId: snapshot.id,
+                  previousSnapshot: snapshot,
                   snapshotRoute: snapshotRouteFromSnapshot(snapshot),
                   environmentId: snapshot.environmentId,
                   environmentType: snapshot.environmentType,
@@ -361,6 +363,7 @@ export class DequeueSystem {
                       description: "Run was continued, whilst still executing.",
                     },
                     previousSnapshotId: snapshot.id,
+                    previousSnapshot: snapshot,
                     snapshotRoute: snapshotRouteFromSnapshot(snapshot),
                     environmentId: snapshot.environmentId,
                     environmentType: snapshot.environmentType,
@@ -449,6 +452,7 @@ export class DequeueSystem {
                       orgId,
                       runId,
                       snapshotRoute: snapshotRouteFromSnapshot(snapshot),
+                      previousSnapshot: snapshot,
                       reason: result.message,
                       statusReason: result.code,
                       tx: prisma,
@@ -489,6 +493,7 @@ export class DequeueSystem {
                     orgId,
                     runId,
                     snapshotRoute: snapshotRouteFromSnapshot(snapshot),
+                    previousSnapshot: snapshot,
                     reason: "No deployment or deployment image reference found for deployed run",
                     statusReason: "NO_DEPLOYMENT",
                     tx: prisma,
@@ -562,7 +567,8 @@ export class DequeueSystem {
                 : result.task.retryConfig;
 
               // Pre-generate snapshot ID so we can construct the result without an extra read
-              const snapshotId = generateInternalId();
+              const { id: snapshotId, createdAt: snapshotCreatedAt } =
+                this.executionSnapshotSystem.nextSnapshotIdentity(snapshot, runId);
 
               const lockedTaskRun = await this.$.runStore.lockRunToWorker(
                 runId,
@@ -582,6 +588,7 @@ export class DequeueSystem {
                   maxAttempts: maxAttempts ?? undefined,
                   snapshot: {
                     id: snapshotId,
+                    createdAt: snapshotCreatedAt,
                     previousSnapshotId: snapshot.id,
                     snapshotRoute: snapshotRouteFromSnapshot(snapshot),
                     attemptNumber: result.run.attemptNumber ?? undefined,
@@ -683,8 +690,6 @@ export class DequeueSystem {
               // Snapshot was created as part of the taskRun.update above (single transaction).
               // Construct the snapshot info from data we already have and handle side effects
               // (heartbeat + event) manually — no extra DB read needed.
-              const snapshotCreatedAt = new Date();
-
               this.$.eventBus.emit("executionSnapshotCreated", {
                 time: snapshotCreatedAt,
                 run: {
@@ -880,6 +885,7 @@ export class DequeueSystem {
               batchId: snapshot.batchId ?? undefined,
               error: dequeueMaxRetriesError,
               snapshotRoute: snapshotRouteFromSnapshot(snapshot),
+              previousSnapshot: snapshot,
               tx: prisma,
             });
           });
@@ -973,6 +979,7 @@ export class DequeueSystem {
     orgId,
     runId,
     snapshotRoute,
+    previousSnapshot,
     workerId,
     runnerId,
     reason,
@@ -982,6 +989,7 @@ export class DequeueSystem {
     orgId: string;
     runId: string;
     snapshotRoute?: SnapshotRouteWire;
+    previousSnapshot?: PreviousSnapshot;
     statusReason: string;
     workerId?: string;
     runnerId?: string;
@@ -1040,6 +1048,7 @@ export class DequeueSystem {
       await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
         run,
         snapshotRoute,
+        previousSnapshot,
         snapshot: {
           executionStatus: "RUN_CREATED",
           description:

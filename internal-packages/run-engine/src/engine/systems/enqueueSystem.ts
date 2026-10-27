@@ -12,7 +12,7 @@ import type { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
 import { QUEUED_SNAPSHOT_DESCRIPTION, QUEUED_SNAPSHOT_STATUS } from "../consts.js";
 import { parseGates } from "../gateParsing.js";
 import { workerQueueForPublish } from "../workerQueueRouting.js";
-import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
+import type { ExecutionSnapshotSystem, PreviousSnapshot } from "./executionSnapshotSystem.js";
 import type { SystemResources } from "./systems.js";
 
 export type EnqueueSystemOptions = {
@@ -42,6 +42,7 @@ export class EnqueueSystem {
     tx,
     snapshot,
     previousSnapshotId,
+    previousSnapshot,
     snapshotRoute,
     batchId,
     checkpoint,
@@ -64,6 +65,7 @@ export class EnqueueSystem {
       metadata?: Prisma.JsonValue;
     };
     previousSnapshotId?: string;
+    previousSnapshot?: PreviousSnapshot;
     /** Server-side only: never published to workers or exposed through an API. */
     snapshotRoute?: SnapshotRouteWire;
     batchId?: string;
@@ -110,6 +112,7 @@ export class EnqueueSystem {
             metadata: snapshot?.metadata ?? undefined,
           },
           previousSnapshotId,
+          previousSnapshot,
           snapshotRoute,
           batchId,
           environmentId: env.id,

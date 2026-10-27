@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { PrismaClient } from "@trigger.dev/database";
+import { generateJWT } from "@trigger.dev/core/v3/jwt";
 import { describe, expect, vi } from "vitest";
 
 const prismaHolder = vi.hoisted(() => ({
@@ -74,13 +75,22 @@ async function seedUser(prisma: PrismaClient) {
 }
 
 describe("email change", () => {
-  postgresTest("live email is untouched until the link is opened", async ({ prisma }) => {
+  postgresTest("live email is untouched until the change is confirmed", async ({ prisma }) => {
     prismaHolder.client = prisma;
     const svc = await import("~/services/emailChange.server");
     const user = await seedUser(prisma);
     const newEmail = `new-${suffix()}@example.test`;
 
     expect(await svc.requestEmailChange(user, ` ${newEmail.toUpperCase()} `)).toEqual({ ok: true });
+
+    expect(await svc.previewEmailChange(lastToken())).toEqual({ email: newEmail });
+    expect(await svc.previewEmailChange("invalid")).toBeUndefined();
+    const expiredJwt = await generateJWT({
+      secretKey: "test-session-secret",
+      payload: { kind: "email_change", sub: user.id, email: newEmail },
+      expirationTime: "-1h",
+    });
+    expect(await svc.previewEmailChange(`tr_ecc_${expiredJwt}`)).toBeUndefined();
 
     const pending = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
     expect(pending.email).toBe(user.email);
@@ -95,8 +105,7 @@ describe("email change", () => {
     expect(confirmed.pendingEmail).toBeNull();
     expect(sent.notices.at(-1)).toEqual({ to: user.email, newEmail });
 
-    // Opening it again (a mail scanner got there first, or a double click)
-    // reads as success without sending another notice.
+    // Confirming again reads as success without sending another notice.
     const noticesBefore = sent.notices.length;
     expect(await svc.confirmEmailChange(token)).toMatchObject({ ok: true, userId: user.id });
     expect(sent.notices.length).toBe(noticesBefore);

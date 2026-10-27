@@ -485,7 +485,7 @@ export class EventRepository implements IEventRepository {
     _anchorSpanId: string,
     _startCreatedAt: Date,
     _endCreatedAt?: Date,
-    _options?: { includeDebugLogs?: boolean; includeAncestors?: boolean }
+    _options?: { includeDebugLogs?: boolean }
   ): Promise<TraceSummary | undefined> {
     // Subtree traversal is ClickHouse-only. Dashboard falls back to the full
     // summary when this returns undefined.
@@ -510,7 +510,7 @@ export class EventRepository implements IEventRepository {
     _traceId: string,
     _startCreatedAt: Date,
     _endCreatedAt: Date | undefined,
-    _options?: { includeDebugLogs?: boolean }
+    _options?: { includeDebugLogs?: boolean; insertedAtEnd?: Date }
   ): Promise<TraceErrorEvents | undefined> {
     return undefined;
   }
@@ -522,7 +522,7 @@ export class EventRepository implements IEventRepository {
     _startCreatedAt: Date,
     _endCreatedAt: Date | undefined,
     _spanId: string,
-    _options?: { includeDebugLogs?: boolean }
+    _options?: { includeDebugLogs?: boolean; insertedAtEnd?: Date }
   ): Promise<TraceChunkEvent[] | undefined> {
     return undefined;
   }
@@ -555,7 +555,7 @@ export class EventRepository implements IEventRepository {
     anchorSpanId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
-    options?: { includeDebugLogs?: boolean; insertedAtEnd?: Date }
+    options?: { includeDebugLogs?: boolean; insertedAtEnd?: Date; ancestorInsertedAtStart?: Date }
   ): Promise<TraceDetailedSummary | undefined> {
     const events = await this.taskEventStore.findDetailedTraceEvents(
       storeTable,

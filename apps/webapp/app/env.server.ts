@@ -2632,6 +2632,8 @@ const EnvironmentSchema = z
     EVENT_REPOSITORY_DEFAULT_STORE: z
       .enum(["postgres", "clickhouse", "clickhouse_v2"])
       .default("postgres"),
+    // Route the legacy "clickhouse" store (task_events_v1) to clickhouse_v2. Set to 0 to keep v1.
+    EVENT_REPOSITORY_V1_REROUTE_ENABLED: BoolEnvWithDefault(true),
     EVENT_REPOSITORY_DEBUG_LOGS_DISABLED: BoolEnv.default(false),
     EVENT_REPOSITORY_POSTGRES_WRITES_DISABLED: BoolEnv.default(false),
     EVENTS_CLICKHOUSE_MAX_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),

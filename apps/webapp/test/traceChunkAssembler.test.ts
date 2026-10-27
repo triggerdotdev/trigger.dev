@@ -244,6 +244,21 @@ describe("TraceChunkAssembler.tailBase", () => {
     expect(a.tailBase()).toBe(9000);
   });
 
+  it("has no base with no rows and nothing pinned", () => {
+    expect(new TraceChunkAssembler().tailBase()).toBeNull();
+  });
+
+  it("tails an empty first chunk from its pinned read time, then from each tail's", () => {
+    const a = new TraceChunkAssembler();
+    a.pinTailFloor(4000);
+    expect(a.tailBase()).toBe(4000);
+    a.completeTailRead(4000, 7000); // the tail found nothing yet
+    expect(a.tailBase()).toBe(7000);
+    a.mergeChunk([ev("r", "", 0, { insertedAt: "8000" })], { source: "tail" });
+    a.completeTailRead(7000, 9000);
+    expect(a.tailBase()).toBe(9000);
+  });
+
   it("uses the pinned floor until a tail from it completes", () => {
     const a = new TraceChunkAssembler();
     a.mergeChunk([ev("r", "", 0, { insertedAt: "9000" })]);

@@ -60,6 +60,7 @@ export const FEATURE_FLAG = {
   queueArchivingEnabled: "queueArchivingEnabled",
   supportAccessSettingsEnabled: "supportAccessSettingsEnabled",
   runTokenInjection: "runTokenInjection",
+  sessionTraceEnabled: "sessionTraceEnabled",
 } as const;
 
 // Mirrors the core worker-queue enums; defined here because this module is imported client-side.
@@ -236,6 +237,9 @@ export const FeatureFlagCatalog = {
   // Injects a signed per-attempt TRIGGER_RUN_TOKEN into deployed runs. Org override wins over
   // the global value. Requires RUN_TOKEN_ISSUER_URL and an active internal run signing key.
   [FEATURE_FLAG.runTokenInjection]: z.boolean(),
+  // Shows the session page's Trace tab and serves its routes. Org override wins over the global
+  // value; off by default. Admins always have it.
+  [FEATURE_FLAG.sessionTraceEnabled]: z.boolean(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;
