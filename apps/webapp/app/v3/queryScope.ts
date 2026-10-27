@@ -10,7 +10,7 @@ import type { QueryScope } from "~/v3/querySchemas";
  * environment and handed to a browser, so anyone holding it could read the whole
  * organization's analytics by changing one field.
  *
- * A secret key is deliberately NOT capped here. It is a server-side credential the
+ * A secret API key, including a restricted additional key, is deliberately NOT capped here. It is a server-side credential the
  * organization's own owner installs, and capping it would change the public API's
  * behaviour for callers who query at organization scope today. A session or PAT
  * caller (the Query page) never goes through this: it picks its scope in the UI,
@@ -38,13 +38,16 @@ export function resolveQueryScope(args: {
 }
 
 /**
- * A public credential is environment-bound; a secret key isn't. `PUBLIC` is the deprecated
+ * Public credentials and run tokens are environment-bound. Additional keys retain their existing
+ * query scope semantics; their abilities still gate query access. `PUBLIC` is the deprecated
  * `pk_*` key — same threat model as a public access token, so it caps the same way. It cannot
  * reach the query API today (the bearer resolver 401s `pk_*`), which is why capping it costs
  * no caller anything and why the helper must not promise it is uncapped.
  */
 export function queryScopeCeilingFor(
-  authenticationType: ApiAuthenticationResultSuccess["type"]
+  authentication: Pick<ApiAuthenticationResultSuccess, "type" | "credentialKind">
 ): QueryScopeCeiling {
-  return authenticationType === "PRIVATE" ? "unbounded" : "environment";
+  return authentication.type === "PRIVATE" && authentication.credentialKind !== "run_token"
+    ? "unbounded"
+    : "environment";
 }

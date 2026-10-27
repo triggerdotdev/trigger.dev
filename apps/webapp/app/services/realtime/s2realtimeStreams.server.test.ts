@@ -137,6 +137,28 @@ describe("S2RealtimeStreams access-token scopes", () => {
     });
   });
 
+  it("restricts scoped run initialization to its exact full stream name", async () => {
+    const streams = createStreams();
+
+    const result = await streams.initializeScopedStream("run_123", "progress");
+
+    const streamName = `${STREAM_PREFIX}/runs/run_123/progress`;
+    expect(result.responseHeaders).toMatchObject({
+      "X-S2-Access-Token": "issued-token-1",
+      "X-S2-Stream-Name": streamName,
+    });
+    expect(issuedRequests).toHaveLength(1);
+    expect(issuedRequests[0]).toMatchObject({
+      scope: {
+        basins: { exact: BASIN },
+        ops: ["append", "create-stream"],
+        streams: { exact: streamName },
+      },
+      auto_prefix_streams: false,
+    });
+    expect(issuedRequests[0]!.scope.streams).not.toHaveProperty("prefix");
+  });
+
   it("keeps the relative, auto-prefixed contract for run stream writers", async () => {
     const streams = createStreams();
 
@@ -166,6 +188,32 @@ describe("S2RealtimeStreams access-token scopes", () => {
     expect(repeated.responseHeaders?.["X-S2-Access-Token"]).toBe("issued-token-1");
     expect(different.responseHeaders?.["X-S2-Access-Token"]).toBe("issued-token-2");
     expect(issuedRequests).toHaveLength(2);
+  });
+
+  it("isolates scoped run tokens from legacy, other run, other stream and session cache entries", async () => {
+    const streams = createStreams({ cache: createAccessTokenCache() });
+
+    const legacy = await streams.initializeStream("run_123", "progress");
+    const first = await streams.initializeScopedStream("run_123", "progress");
+    const repeated = await streams.initializeScopedStream("run_123", "progress");
+    const otherRun = await streams.initializeScopedStream("run_456", "progress");
+    const otherStream = await streams.initializeScopedStream("run_123", "updates");
+    const session = await streams.initializeSessionStream("run_123", "in");
+
+    const token = (result: typeof first) => result.responseHeaders?.["X-S2-Access-Token"];
+    expect(token(legacy)).toBe("issued-token-1");
+    expect(token(first)).toBe("issued-token-2");
+    expect(token(repeated)).toBe(token(first));
+    expect(token(otherRun)).toBe("issued-token-3");
+    expect(token(otherStream)).toBe("issued-token-4");
+    expect(token(session)).toBe("issued-token-5");
+    expect(issuedRequests).toHaveLength(5);
+    expect(issuedRequests.slice(1).map((request) => request.scope.streams)).toEqual([
+      { exact: `${STREAM_PREFIX}/runs/run_123/progress` },
+      { exact: `${STREAM_PREFIX}/runs/run_456/progress` },
+      { exact: `${STREAM_PREFIX}/runs/run_123/updates` },
+      { exact: `${STREAM_PREFIX}/sessions/run_123/in` },
+    ]);
   });
 
   it("returns full stream names when token issuance is disabled", async () => {

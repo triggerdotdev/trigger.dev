@@ -31,7 +31,6 @@ const { action, loader } = createActionApiRoute(
     }),
     body: z.compile(BatchTriggerTaskV3RequestBody),
     allowJWT: true,
-    allowRunToken: true,
     maxContentLength: env.BATCH_TASK_PAYLOAD_MAXIMUM_SIZE,
     authorization: {
       action: "batchTrigger",

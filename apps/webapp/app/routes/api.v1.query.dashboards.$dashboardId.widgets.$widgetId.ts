@@ -1,4 +1,5 @@
 import { json } from "@remix-run/server-runtime";
+import { assertDashboardApiAccess } from "~/services/metricDashboardApiAccess.server";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { UpdateDashboardWidgetRequestBody } from "@trigger.dev/core/v3/schemas";
 import { z } from "zod";
@@ -31,6 +32,7 @@ const { action } = createMultiMethodApiRoute({
     PATCH: {
       body: UpdateDashboardWidgetRequestBody,
       handler: async ({ params, body, authentication }) => {
+        await assertDashboardApiAccess(authentication);
         const { revision, ...changes } = body as z.infer<typeof UpdateDashboardWidgetRequestBody>;
         const service = new MetricDashboardService();
         const ref = {
@@ -75,6 +77,7 @@ const { action } = createMultiMethodApiRoute({
     },
     DELETE: {
       handler: async ({ params, searchParams, authentication }) => {
+        await assertDashboardApiAccess(authentication);
         const [error, result] = await tryCatch(
           new MetricDashboardService().deleteWidget({
             organizationId: authentication.environment.organizationId,

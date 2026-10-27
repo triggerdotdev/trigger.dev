@@ -6,6 +6,7 @@ import { z } from "zod";
 import { isApiKeyInGraceWindow, presentedBearerToken } from "~/services/apiKeyGraceWindow.server";
 import { apiKeyTelemetry, type ApiKeyTelemetry } from "~/services/apiKeyTelemetry.server";
 import { rbac } from "~/services/rbac.server";
+import { authenticateBearerWithTelemetry } from "~/services/authTelemetry.server";
 
 // Public access tokens may be valid for at most 30 days.
 const MAX_PUBLIC_TOKEN_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
@@ -59,8 +60,12 @@ export async function handlePublicTokenRequest(
   telemetryRecorder: ApiKeyTelemetry = apiKeyTelemetry,
   graceWindowLookup: (apiKey: string) => Promise<boolean> = isApiKeyInGraceWindow
 ) {
-  // Public JWTs are intentionally not enabled here. Only API keys may mint tokens.
-  const authResult = await controller.authenticateBearer(request);
+  // Public JWTs cannot mint more tokens. Run tokens use the shared host verifier.
+  const authResult = await authenticateBearerWithTelemetry(
+    request,
+    { allowJWT: false },
+    controller
+  );
   if (!authResult.ok) {
     return json({ error: authResult.error }, { status: authResult.status });
   }

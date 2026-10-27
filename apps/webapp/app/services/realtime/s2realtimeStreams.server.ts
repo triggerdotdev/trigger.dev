@@ -177,6 +177,17 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     });
   }
 
+  async initializeScopedStream(
+    runId: string,
+    streamId: string
+  ): Promise<{ responseHeaders?: Record<string, string> }> {
+    const streamName = this.toStreamName(runId, streamId);
+    return this.#initializeStreamByName(streamName, streamName, {
+      operations: S2_APPEND_TOKEN_OPS,
+      stream: { kind: "exact", value: streamName, autoPrefixStreams: false },
+    });
+  }
+
   /**
    * Initialize an S2 stream by `(sessionFriendlyId, io)` — mirrors
    * {@link initializeStream} but addresses the new `sessions/*` key format.

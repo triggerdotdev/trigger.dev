@@ -7,7 +7,7 @@ import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
-import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { createActionApiRoute, everyResource } from "~/services/routeBuilders/apiBuilder.server";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { engine } from "~/v3/runEngine.server";
 import { runStore } from "~/v3/runStore.server";
@@ -19,6 +19,11 @@ const { action } = createActionApiRoute(
       runFriendlyId: z.string(),
     }),
     method: "POST",
+    authorization: {
+      action: "write",
+      resource: (params) =>
+        everyResource([{ type: "runs", id: params.runFriendlyId }, { type: "waitpoints" }]),
+    },
   },
   async ({ authentication, body, params }): Promise<TypedResponse<WaitForDurationResponseBody>> => {
     const { runFriendlyId } = params;

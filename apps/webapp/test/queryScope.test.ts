@@ -6,25 +6,38 @@ import { queryScopeCeilingFor, resolveQueryScope } from "~/v3/queryScope";
 // caller could read.
 describe("the query scope ceiling", () => {
   it("caps a public access token at its own environment", () => {
-    expect(queryScopeCeilingFor("PUBLIC_JWT")).toBe("environment");
+    expect(queryScopeCeilingFor({ type: "PUBLIC_JWT" })).toBe("environment");
   });
 
   // `PUBLIC` is the deprecated `pk_*` key: browser-shipped and environment-bound, the same
   // shape of credential a public access token is. Nothing routes it here today, so this is
   // the helper refusing to hand it the organization if anything ever does.
   it("caps a public API key at its own environment", () => {
-    expect(queryScopeCeilingFor("PUBLIC")).toBe("environment");
+    expect(queryScopeCeilingFor({ type: "PUBLIC" })).toBe("environment");
   });
 
   it("leaves the secret key uncapped", () => {
-    expect(queryScopeCeilingFor("PRIVATE")).toBe("unbounded");
+    expect(queryScopeCeilingFor({ type: "PRIVATE" })).toBe("unbounded");
+  });
+
+  it("caps run tokens despite their private auth type", () => {
+    const ceiling = queryScopeCeilingFor({ type: "PRIVATE", credentialKind: "run_token" });
+    expect(resolveQueryScope({ ceiling, requested: "organization" }).ok).toBe(false);
+    expect(resolveQueryScope({ ceiling, requested: "project" }).ok).toBe(false);
+    expect(resolveQueryScope({ ceiling, requested: "environment" }).ok).toBe(true);
+  });
+
+  it("preserves restricted additional-key project and organization query scope", () => {
+    const ceiling = queryScopeCeilingFor({ type: "PRIVATE", credentialKind: "additional_api_key" });
+    expect(resolveQueryScope({ ceiling, requested: "organization" }).ok).toBe(true);
+    expect(resolveQueryScope({ ceiling, requested: "project" }).ok).toBe(true);
   });
 
   // Compile-time: the fallback is the cap, but a misspelled credential kind must still not
   // be able to name itself into the uncapped branch.
   it("takes only the credential kinds that exist", () => {
     // @ts-expect-error not an authentication type
-    expect(() => queryScopeCeilingFor("private")).not.toThrow();
+    expect(() => queryScopeCeilingFor({ type: "private" })).not.toThrow();
   });
 });
 

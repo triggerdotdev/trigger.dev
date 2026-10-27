@@ -212,6 +212,7 @@ export type RbacScopeResourceType =
   | "branches"
   | "sessions"
   | "waitpoints"
+  | "packets"
   | "tags"
   | "query"
   | "errors"

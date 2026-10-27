@@ -34,7 +34,7 @@ export function mintRunToken(identity: RunTokenIdentity): Promise<string> {
       attempt: identity.attemptNumber,
       task_id: identity.taskIdentifier,
       ...(identity.deploymentFriendlyId ? { deployment_id: identity.deploymentFriendlyId } : {}),
-      scopes: runTokenScopes(identity.runFriendlyId),
+      scopes: runTokenScopes(),
     },
     {
       audience: RUN_TOKEN_AUDIENCE,

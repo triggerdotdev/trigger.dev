@@ -1,4 +1,3 @@
-import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { UpdateMetadataRequestBody } from "@trigger.dev/core/v3";
@@ -6,10 +5,12 @@ import { z } from "zod";
 import { $replica } from "~/db.server";
 // Aliased to avoid shadowing the local `env` parameter in the handler.
 import { env as appEnv } from "~/env.server";
-import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { updateMetadataService } from "~/services/metadata/updateMetadataInstance.server";
 import { publishChangeRecord } from "~/services/realtime/runChangeNotifierInstance.server";
-import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import {
+  createActionApiRoute,
+  createLoaderApiRoute,
+} from "~/services/routeBuilders/apiBuilder.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { applyMetadataMutationToBufferedRun } from "~/v3/mollifier/applyMetadataMutation.server";
 import { routeOperationsToRun } from "~/v3/mollifier/routeOperationsToRun.server";
@@ -20,62 +21,58 @@ const ParamsSchema = z.object({
   runId: z.string(),
 });
 
-// GET handler added to fix the pre-existing route bug where this URL
-// returned a Remix "no loader" 400 — only PUT (update) was exported, so
-// GET had no handler. Returns `{ metadata, metadataType }` from either
-// the Postgres row or the mollifier buffer snapshot.
-export async function loader({ request, params }: LoaderFunctionArgs) {
-  const authenticationResult = await authenticateApiRequest(request);
-  if (!authenticationResult) {
-    return json({ error: "Invalid or Missing API Key" }, { status: 401 });
-  }
+export const loader = createLoaderApiRoute(
+  {
+    params: ParamsSchema,
+    findResource: async (params) => params.runId,
+    authorization: {
+      action: "read",
+      resource: (runId) => ({ type: "runs", id: runId }),
+    },
+  },
+  async ({ authentication, params }) => {
+    const env = authentication.environment;
 
-  const parsed = ParamsSchema.safeParse(params);
-  if (!parsed.success) {
-    return json({ error: "Invalid or missing run ID" }, { status: 400 });
-  }
-
-  const env = authenticationResult.environment;
-
-  const pgRun = await runStore.findRun(
-    { friendlyId: parsed.data.runId, runtimeEnvironmentId: env.id },
-    { select: { metadata: true, metadataType: true } },
-    $replica
-  );
-  if (pgRun) {
-    return json({ metadata: pgRun.metadata, metadataType: pgRun.metadataType }, { status: 200 });
-  }
-
-  const buffered = await findRunByIdWithMollifierFallback({
-    runId: parsed.data.runId,
-    environmentId: env.id,
-    organizationId: env.organizationId,
-  });
-  if (buffered) {
-    return json(
-      {
-        metadata: buffered.metadata ?? null,
-        metadataType: buffered.metadataType ?? "application/json",
-      },
-      { status: 200 }
+    const pgRun = await runStore.findRun(
+      { friendlyId: params.runId, runtimeEnvironmentId: env.id },
+      { select: { metadata: true, metadataType: true } },
+      $replica
     );
-  }
+    if (pgRun) {
+      return json({ metadata: pgRun.metadata, metadataType: pgRun.metadataType }, { status: 200 });
+    }
 
-  // Read-your-writes: a run drained from the buffer to the primary but not yet replicated misses
-  // both the replica read and the buffer. Re-read the owning primary before 404ing.
-  const primaryRun = await runStore.findRunOnPrimary(
-    { friendlyId: parsed.data.runId, runtimeEnvironmentId: env.id },
-    { select: { metadata: true, metadataType: true } }
-  );
-  if (primaryRun) {
-    return json(
-      { metadata: primaryRun.metadata, metadataType: primaryRun.metadataType },
-      { status: 200 }
+    const buffered = await findRunByIdWithMollifierFallback({
+      runId: params.runId,
+      environmentId: env.id,
+      organizationId: env.organizationId,
+    });
+    if (buffered) {
+      return json(
+        {
+          metadata: buffered.metadata ?? null,
+          metadataType: buffered.metadataType ?? "application/json",
+        },
+        { status: 200 }
+      );
+    }
+
+    // Read-your-writes: a run drained from the buffer to the primary but not yet replicated misses
+    // both the replica read and the buffer. Re-read the owning primary before 404ing.
+    const primaryRun = await runStore.findRunOnPrimary(
+      { friendlyId: params.runId, runtimeEnvironmentId: env.id },
+      { select: { metadata: true, metadataType: true } }
     );
-  }
+    if (primaryRun) {
+      return json(
+        { metadata: primaryRun.metadata, metadataType: primaryRun.metadataType },
+        { status: 200 }
+      );
+    }
 
-  return json({ error: "Run not found" }, { status: 404 });
-}
+    return json({ error: "Run not found" }, { status: 404 });
+  }
+);
 
 const { action } = createActionApiRoute(
   {
@@ -84,8 +81,12 @@ const { action } = createActionApiRoute(
     body: UpdateMetadataRequestBody,
     maxContentLength: 1024 * 1024 * 2, // 2MB
     method: "PUT",
+    authorization: {
+      action: "write",
+      resource: (params) => ({ type: "runs", id: params.runId }),
+    },
   },
-  async ({ authentication, body, params, headers }) => {
+  async ({ authentication, ability, body, params, headers }) => {
     const env = authentication.environment;
     const runId = params.runId;
 
@@ -96,6 +97,7 @@ const { action } = createActionApiRoute(
     const [pgError, pgResult] = await tryCatch(
       updateMetadataService.call(runId, body, env, {
         requestIdempotencyKey: headers["x-trigger-request-idempotency-key"] ?? undefined,
+        ability,
       })
     );
     if (pgError) {
@@ -122,16 +124,25 @@ const { action } = createActionApiRoute(
     }
 
     // PG miss. Target run is either buffered or genuinely absent.
-    const bufferOutcome = await applyMetadataMutationToBufferedRun({
-      runId,
-      environmentId: env.id,
-      organizationId: env.organizationId,
-      maximumSize: appEnv.TASK_RUN_METADATA_MAXIMUM_SIZE,
-      maxRetries: appEnv.TRIGGER_MOLLIFIER_METADATA_MAX_RETRIES,
-      backoffBaseMs: appEnv.TRIGGER_MOLLIFIER_METADATA_BACKOFF_BASE_MS,
-      backoffStepMs: appEnv.TRIGGER_MOLLIFIER_METADATA_BACKOFF_STEP_MS,
-      body: { metadata: body.metadata, operations: body.operations },
-    });
+    const [bufferError, bufferOutcome] = await tryCatch(
+      applyMetadataMutationToBufferedRun({
+        runId,
+        environmentId: env.id,
+        organizationId: env.organizationId,
+        maximumSize: appEnv.TASK_RUN_METADATA_MAXIMUM_SIZE,
+        maxRetries: appEnv.TRIGGER_MOLLIFIER_METADATA_MAX_RETRIES,
+        backoffBaseMs: appEnv.TRIGGER_MOLLIFIER_METADATA_BACKOFF_BASE_MS,
+        backoffStepMs: appEnv.TRIGGER_MOLLIFIER_METADATA_BACKOFF_STEP_MS,
+        body,
+        ability,
+      })
+    );
+    if (bufferError) {
+      if (bufferError instanceof ServiceValidationError) {
+        return json({ error: bufferError.message }, { status: bufferError.status ?? 422 });
+      }
+      throw bufferError;
+    }
 
     if (bufferOutcome.kind === "not_found") {
       return json({ error: "Task Run not found" }, { status: 404 });

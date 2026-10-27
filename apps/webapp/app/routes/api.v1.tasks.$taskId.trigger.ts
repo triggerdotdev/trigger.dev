@@ -55,7 +55,6 @@ const { action, loader } = createActionApiRoute(
     params: ParamsSchema,
     body: z.compile(TriggerTaskRequestBody),
     allowJWT: true,
-    allowRunToken: true,
     maxContentLength: env.TASK_PAYLOAD_MAXIMUM_SIZE,
     authorization: {
       action: "trigger",

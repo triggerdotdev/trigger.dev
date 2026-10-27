@@ -6,6 +6,7 @@ import rbacPlugin, { type RbacAbility, type RoleBaseAccessController } from "@tr
 import { describe, expect, it, vi } from "vitest";
 import type { ApiKeyTelemetry } from "~/services/apiKeyTelemetry.server";
 import { handlePublicTokenRequest } from "~/services/publicTokens.server";
+import { RUN_TOKEN_TTL_SECONDS, runTokenScopes } from "~/services/oidc/runTokenClaims";
 import { generateAdditionalApiKey, generateRootApiKey, hashApiKey } from "~/utils/apiKeys";
 import { createTestOrgProjectWithMember, uniqueId } from "./fixtures/environmentVariablesFixtures";
 
@@ -35,7 +36,7 @@ const permissiveAbility: RbacAbility = {
 
 function controllerWithAbility(
   ability: RbacAbility,
-  subject: "root" | "additional" = "additional"
+  subject: "root" | "additional" | "run" = "additional"
 ) {
   return {
     async authenticateBearer() {
@@ -49,12 +50,19 @@ function controllerWithAbility(
                 userId: "user_test",
                 organizationId: "org_test",
               }
-            : {
-                type: "apiKey" as const,
-                apiKeyId: "key_test",
-                restricted: ability !== permissiveAbility,
-                organizationId: "org_test",
-              },
+            : subject === "run"
+              ? {
+                  type: "runToken" as const,
+                  runId: "run_test",
+                  environmentId: environment.id,
+                  organizationId: "org_test",
+                }
+              : {
+                  type: "apiKey" as const,
+                  apiKeyId: "key_test",
+                  restricted: ability !== permissiveAbility,
+                  organizationId: "org_test",
+                },
         ability,
       };
     },
@@ -101,6 +109,39 @@ describe("POST /api/v1/auth/public-tokens", () => {
 
     expect(graceWindowLookup).toHaveBeenCalledTimes(1);
     expect(graceWindowLookup).toHaveBeenCalledWith("tr_prod_test");
+  });
+
+  it("delegates run-token abilities with the existing public-token lifetime", async () => {
+    const graceWindowLookup = async () => {
+      throw new Error("Run tokens must not use the root-key grace lookup");
+    };
+    const response = await handlePublicTokenRequest(
+      request({ scopes: ["read:runs:run_other"], oneTimeUse: true }, undefined, "25d"),
+      controllerWithAbility(buildJwtAbility(runTokenScopes()), "run"),
+      undefined,
+      graceWindowLookup
+    );
+
+    expect(response.status).toBe(200);
+    const { token } = await responseJson(response);
+    const validation = await validateJWT(token, environment.apiKey);
+    expect(validation.ok).toBe(true);
+    if (!validation.ok) return;
+    expect(validation.payload).toMatchObject({
+      sub: environment.id,
+      pub: true,
+      otu: true,
+      scopes: ["read:runs:run_other"],
+    });
+    expect(validation.payload.exp! - Math.floor(Date.now() / 1000)).toBeGreaterThan(
+      RUN_TOKEN_TTL_SECONDS
+    );
+
+    const denied = await handlePublicTokenRequest(
+      request({ scopes: ["write:runs:run_other"] }),
+      controllerWithAbility(buildJwtAbility(["write:runs:run_test"]), "run")
+    );
+    expect(denied.status).toBe(403);
   });
 
   it("rejects root keys in their rotation grace window", async () => {

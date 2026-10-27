@@ -14,12 +14,13 @@ import {
   resolveSessionByIdOrExternalId,
 } from "~/services/realtime/sessions.server";
 import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
+import { sessionStreamResources } from "~/services/realtime/sessionChannels.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import {
   addSessionStreamWaitpoint,
   removeSessionStreamWaitpoint,
 } from "~/services/sessionStreamWaitpointCache.server";
-import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { createActionApiRoute, everyResource } from "~/services/routeBuilders/apiBuilder.server";
 import { logger } from "~/services/logger.server";
 import { parseDelay } from "~/utils/delays";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
@@ -36,8 +37,20 @@ const { action, loader } = createActionApiRoute(
     body: CreateSessionStreamWaitpointRequestBody,
     maxContentLength: 1024 * 10, // 10KB
     method: "POST",
+    authorization: {
+      action: "write",
+      resource: (params) =>
+        everyResource([{ type: "runs", id: params.runFriendlyId }, { type: "waitpoints" }]),
+    },
   },
-  async ({ authentication, body, params }) => {
+  async ({ authentication, body, params, ability }) => {
+    if (body.io === "in" && authentication.type !== "PRIVATE") {
+      return json(
+        { error: "Reading the in channel requires secret key authentication" },
+        { status: 403 }
+      );
+    }
+
     try {
       const where = {
         friendlyId: params.runFriendlyId,
@@ -76,6 +89,14 @@ const { action, loader } = createActionApiRoute(
       }
 
       const addressingKey = canonicalSessionAddressingKey(maybeSession, body.session);
+      const sessionKeys = new Set([addressingKey]);
+      if (maybeSession) {
+        sessionKeys.add(maybeSession.friendlyId);
+        if (maybeSession.externalId) sessionKeys.add(maybeSession.externalId);
+      }
+      if (!ability.can("read", sessionStreamResources(body.io, sessionKeys))) {
+        return json({ error: "Unauthorized" }, { status: 403 });
+      }
 
       const idempotencyKeyExpiresAt = body.idempotencyKeyTTL
         ? resolveIdempotencyKeyTTL(body.idempotencyKeyTTL)

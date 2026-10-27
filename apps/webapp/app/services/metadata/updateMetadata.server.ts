@@ -18,6 +18,8 @@ import { setTimeout } from "timers/promises";
 import type { LogLevel } from "@trigger.dev/core/logger";
 import { Logger } from "@trigger.dev/core/logger";
 import type { RunStore } from "@internal/run-store";
+import type { RbacAbility } from "@trigger.dev/plugins";
+import { authorizeMetadataTargets } from "./metadataAuthorization.server";
 import { getMeter, type Counter, type Meter } from "@internal/tracing";
 import {
   InMemoryMetadataOperationBuffer,
@@ -565,7 +567,7 @@ export class UpdateMetadataService {
     runId: string,
     body: UpdateMetadataRequestBody,
     environment?: AuthenticatedEnvironment,
-    options?: { requestIdempotencyKey?: string }
+    options?: { requestIdempotencyKey?: string; ability?: RbacAbility }
   ) {
     const ingestId = (kind: "parent" | "root" | "self", targetRunId: string) =>
       options?.requestIdempotencyKey
@@ -586,6 +588,7 @@ export class UpdateMetadataService {
       {
         select: {
           id: true,
+          friendlyId: true,
           batchId: true,
           runTags: true,
           completedAt: true,
@@ -596,12 +599,16 @@ export class UpdateMetadataService {
           parentTaskRun: {
             select: {
               id: true,
+              friendlyId: true,
+              runtimeEnvironmentId: true,
               status: true,
             },
           },
           rootTaskRun: {
             select: {
               id: true,
+              friendlyId: true,
+              runtimeEnvironmentId: true,
               status: true,
             },
           },
@@ -612,6 +619,23 @@ export class UpdateMetadataService {
 
     if (!taskRun) {
       return;
+    }
+
+    if (options?.ability) {
+      authorizeMetadataTargets(options.ability, body, {
+        runId: taskRun.friendlyId,
+        parentRunId: taskRun.parentTaskRun?.friendlyId,
+        rootRunId: taskRun.rootTaskRun?.friendlyId,
+      });
+    }
+    if (environment) {
+      const targets = [
+        ...(body.parentOperations?.length ? [taskRun.parentTaskRun] : []),
+        ...(body.rootOperations?.length ? [taskRun.rootTaskRun] : []),
+      ];
+      if (targets.some((target) => target && target.runtimeEnvironmentId !== environment.id)) {
+        throw new ServiceValidationError("Task Run not found", 404);
+      }
     }
 
     if (!this.#isRunUpdatable(taskRun)) {

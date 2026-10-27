@@ -2,6 +2,8 @@ import { applyMetadataOperations } from "@trigger.dev/core/v3";
 import type { FlushedRunMetadata } from "@trigger.dev/core/v3/schemas";
 import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import type { MollifierBuffer } from "@trigger.dev/redis-worker";
+import type { RbacAbility } from "@trigger.dev/plugins";
+import { authorizeMetadataTargets } from "~/services/metadata/metadataAuthorization.server";
 import { logger } from "~/services/logger.server";
 import { getMollifierBuffer } from "./mollifierBuffer.server";
 
@@ -56,7 +58,8 @@ export async function applyMetadataMutationToBufferedRun(input: {
   // `env.TASK_RUN_METADATA_MAXIMUM_SIZE`). Required so the buffer path
   // doesn't silently allow writes the PG path would have rejected.
   maximumSize: number;
-  body: Pick<FlushedRunMetadata, "metadata" | "operations">;
+  body: Pick<FlushedRunMetadata, "metadata" | "operations" | "parentOperations" | "rootOperations">;
+  ability?: RbacAbility;
   buffer?: MollifierBuffer | null;
   maxRetries?: number;
   // Jittered conflict-backoff envelope: random in [0, base + attempt * step) ms.
@@ -110,6 +113,14 @@ export async function applyMetadataMutationToBufferedRun(input: {
     const snapshotRootTaskRunFriendlyId = snapshotRootTaskRunInternalId
       ? RunId.toFriendlyId(snapshotRootTaskRunInternalId)
       : undefined;
+
+    if (input.ability) {
+      authorizeMetadataTargets(input.ability, input.body, {
+        runId: input.runId,
+        parentRunId: snapshotParentTaskRunFriendlyId,
+        rootRunId: snapshotRootTaskRunFriendlyId,
+      });
+    }
 
     // Match PG semantics: `body.operations` and `body.metadata` are
     // mutually exclusive on a single request. The PG service

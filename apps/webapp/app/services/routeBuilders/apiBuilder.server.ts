@@ -105,7 +105,7 @@ function logBoundaryError(
 // needed.
 async function authenticateRequestForApiBuilder(
   request: Request,
-  { allowJWT, allowRunToken = false }: { allowJWT: boolean; allowRunToken?: boolean }
+  { allowJWT }: { allowJWT: boolean }
 ): Promise<
   | { ok: false; status: 401 | 403; error: string }
   | {
@@ -115,7 +115,7 @@ async function authenticateRequestForApiBuilder(
       restrictedApiKey: boolean;
     }
 > {
-  const result = await authenticateBearerWithTelemetry(request, { allowJWT, allowRunToken });
+  const result = await authenticateBearerWithTelemetry(request, { allowJWT });
   if (!result.ok) {
     // Plugin auth distinguishes 401 (who are you?) from 403 (you're not
     // allowed) — e.g. a suspended account or IP block returns 403.
@@ -126,10 +126,17 @@ async function authenticateRequestForApiBuilder(
   // Plugins return the full AuthenticatedEnvironment shape directly — no
   // follow-up DB lookup. The fallback fetches via Prisma, the cloud plugin
   // via Drizzle; both produce the same slim contract type.
+  // Scoped credentials must fail closed on routes without an authorization check.
+  const restrictedApiKey =
+    (result.subject.type === "apiKey" && result.subject.restricted) ||
+    result.subject.type === "publicJWT" ||
+    result.subject.type === "runToken";
   const authentication: ApiAuthenticationResultSuccess = {
     ok: true,
     apiKey: result.environment.apiKey,
     type: result.subject.type === "publicJWT" ? "PUBLIC_JWT" : "PRIVATE",
+    environmentScoped: restrictedApiKey,
+    credentialKind: result.resolution.credentialKind,
     environment: result.environment,
     realtime: result.jwt?.realtime,
     oneTimeUse: result.jwt?.oneTimeUse,
@@ -142,11 +149,7 @@ async function authenticateRequestForApiBuilder(
     ok: true,
     authentication,
     ability: result.ability,
-    // Run tokens carry narrow scopes, so like restricted keys they fail closed on routes
-    // without an authorization check.
-    restrictedApiKey:
-      (result.subject.type === "apiKey" && result.subject.restricted) ||
-      result.subject.type === "runToken",
+    restrictedApiKey,
   };
 }
 
@@ -288,7 +291,6 @@ type ApiKeyRouteBuilderOptions<
   searchParams?: TSearchParamsSchema;
   headers?: THeadersSchema;
   allowJWT?: boolean;
-  allowRunToken?: boolean;
   corsStrategy?: "all" | "none";
   findResource: (
     params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
@@ -360,7 +362,6 @@ export function createLoaderApiRoute<
       searchParams: searchParamsSchema,
       headers: headersSchema,
       allowJWT = false,
-      allowRunToken = false,
       corsStrategy = "none",
       authorization,
       findResource,
@@ -372,10 +373,7 @@ export function createLoaderApiRoute<
     }
 
     try {
-      const authResult = await authenticateRequestForApiBuilder(request, {
-        allowJWT,
-        allowRunToken,
-      });
+      const authResult = await authenticateRequestForApiBuilder(request, { allowJWT });
       if (!authResult.ok) {
         return await wrapResponse(
           request,
@@ -1145,7 +1143,6 @@ type ApiKeyActionRouteBuilderOptions<
   searchParams?: TSearchParamsSchema;
   headers?: THeadersSchema;
   allowJWT?: boolean;
-  allowRunToken?: boolean;
   corsStrategy?: "all" | "none";
   method?: "POST" | "PUT" | "DELETE" | "PATCH";
   findResource?: (
@@ -1243,7 +1240,6 @@ export function createActionApiRoute<
     headers: headersSchema,
     body: bodySchema,
     allowJWT = false,
-    allowRunToken = false,
     corsStrategy = "none",
     authorization,
     maxContentLength,
@@ -1272,10 +1268,7 @@ export function createActionApiRoute<
     }
 
     try {
-      const authResult = await authenticateRequestForApiBuilder(request, {
-        allowJWT,
-        allowRunToken,
-      });
+      const authResult = await authenticateRequestForApiBuilder(request, { allowJWT });
       if (!authResult.ok) {
         return await wrapResponse(
           request,

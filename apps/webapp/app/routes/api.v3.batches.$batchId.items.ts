@@ -66,7 +66,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
   // work behind it.
   const authResult = await authenticateBearerWithTelemetry(request, {
     allowJWT: true,
-    allowRunToken: true,
   });
 
   if (!authResult.ok) {

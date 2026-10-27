@@ -34,6 +34,7 @@ export * from "./types/index.js";
 export { links } from "./links.js";
 export * from "./jwt.js";
 export * from "./apiKeys.js";
+export * from "./sdkCredentialTelemetry.js";
 export * from "./workloadDeploymentToken.js";
 export * from "./idempotencyKeys.js";
 export * from "./streams/asyncIterableStream.js";

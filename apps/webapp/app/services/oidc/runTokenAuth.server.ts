@@ -29,7 +29,8 @@ async function verifyRunTokenWithActiveKeys(token: string): Promise<RunTokenClai
 /**
  * Verifies a run token locally against the cached internal keys, then loads its environment with
  * one lookup. Rejects archived environments and any org or project mismatch. Does not check that
- * the run is still executing.
+ * the run is still executing. Tokens have an independent 24-hour lifetime: root-key rotation
+ * does not revoke them. There is no per-token emergency revocation.
  */
 export async function resolveRunToken(
   token: string
