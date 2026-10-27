@@ -114,10 +114,9 @@ You need a Trigger.dev project, a Resend inbox on a verified domain, a Slack wor
     cd examples/resend-slack-email-agent
     cp .env.example .env
     pnpm install
-    pnpm dev
     ```
 
-    `pnpm dev` adds two endpoints, `resend` and `slack`, to your environment's **Webhooks** page.
+    Set `TRIGGER_PROJECT_REF` in `.env` to your project's ref, from the project settings page in the dashboard. Then run `pnpm dev`, which adds two endpoints, `resend` and `slack`, to your dev environment's **Webhooks** page.
   </Step>
   <Step title="Connect Resend">
     Add a Resend webhook pointing at the `resend` endpoint URL with the `inbox.email.received` event. Paste its signing secret into the `resend` endpoint, and set `RESEND_API_KEY`.
@@ -133,7 +132,7 @@ You need a Trigger.dev project, a Resend inbox on a verified domain, a Slack wor
   </Step>
 </Steps>
 
-To deploy, run `npx trigger.dev@latest deploy`, set the same environment variables on your production environment, and point Resend and Slack at the production endpoint URLs.
+To deploy, run `npx trigger.dev@latest deploy` and set the same environment variables on your production environment. Production has its own `resend` and `slack` endpoints, with their own URLs and secrets: point a Resend webhook and a Slack app at the production URLs, and paste each one's signing secret into the matching production endpoint. Until then, the endpoint shows "Needs secret" on the Webhooks page.
 
 ## Relevant code
 
