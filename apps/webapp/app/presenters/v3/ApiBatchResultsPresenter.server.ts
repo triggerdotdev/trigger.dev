@@ -85,12 +85,20 @@ export class ApiBatchResultsPresenter extends BasePresenter {
     });
   }
 
-  // Passthrough: batch row off the replica, members via the single run store. No legacy read.
-  async #callPassthrough(
+  // A gen-2 batch id lives only on its shard: neither the passthrough replica nor the gen-1
+  // new/legacy probes hold the row, so both paths route the row read by the id first.
+  #shardReplicaFor(friendlyId: string): PrismaReplicaClient | undefined {
+    const shardKey = resolveShard(friendlyId);
+    if (shardKey === "new" || shardKey === "legacy") return undefined;
+    return (this.readThrough?.shardReplicas ?? runOpsShardReplicas).get(shardKey);
+  }
+
+  #readBatchRow(
+    client: PrismaClientOrTransaction,
     friendlyId: string,
     env: AuthenticatedEnvironment
-  ): Promise<BatchTaskRunExecutionResult | undefined> {
-    const batchRun = await this._replica.batchTaskRun.findFirst({
+  ) {
+    return client.batchTaskRun.findFirst({
       where: {
         friendlyId,
         runtimeEnvironmentId: env.id,
@@ -103,6 +111,18 @@ export class ApiBatchResultsPresenter extends BasePresenter {
         },
       },
     });
+  }
+
+  // Passthrough: batch row off the replica, members via the single run store. No legacy read.
+  async #callPassthrough(
+    friendlyId: string,
+    env: AuthenticatedEnvironment
+  ): Promise<BatchTaskRunExecutionResult | undefined> {
+    const batchRun = await this.#readBatchRow(
+      this.#shardReplicaFor(friendlyId) ?? this._replica,
+      friendlyId,
+      env
+    );
 
     if (!batchRun) {
       return undefined;
@@ -150,26 +170,12 @@ export class ApiBatchResultsPresenter extends BasePresenter {
     const newClient = (this.readThrough?.newClient ?? this._replica) as PrismaReplicaClient;
     const legacyReplica = (this.readThrough?.legacyReplica ?? this._replica) as PrismaReplicaClient;
 
-    const readBatch = (client: PrismaClientOrTransaction) =>
-      client.batchTaskRun.findFirst({
-        where: {
-          friendlyId,
-          runtimeEnvironmentId: env.id,
-        },
-        include: {
-          items: {
-            select: {
-              taskRunId: true,
-            },
-          },
-        },
-      });
+    const batchShard = this.#shardReplicaFor(friendlyId);
+    let batchRun = await this.#readBatchRow(batchShard ?? newClient, friendlyId, env);
 
-    let batchRun = await readBatch(newClient);
-
-    // Legacy READ REPLICA probe, only on a new-probe miss; skipped when past retention.
-    if (!batchRun && !this.readThrough?.isPastRetention?.(friendlyId)) {
-      batchRun = await readBatch(legacyReplica);
+    // Legacy READ REPLICA probe, only on a gen-1 new-probe miss; skipped when past retention.
+    if (!batchRun && !batchShard && !this.readThrough?.isPastRetention?.(friendlyId)) {
+      batchRun = await this.#readBatchRow(legacyReplica, friendlyId, env);
     }
 
     if (!batchRun) {
