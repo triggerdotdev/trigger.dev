@@ -1,14 +1,12 @@
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { AttioClient, syncAttioWorkspace } from "./attioClient.server";
 import { logger } from "./logger.server";
 
 // Syncs new orgs/users into Attio (workspaces/users objects) at signup, via the
 // common worker so a slow Attio never blocks signup. Ongoing field updates are
 // handled by the scheduled sync, not here. No-op without ATTIO_API_KEY.
-
-const ATTIO_API = "https://api.attio.com/v2";
-const IS_TEST = env.APP_ENV !== "production";
 
 export const AttioWorkspaceSyncSchema = z.object({
   orgId: z.string(),
@@ -29,90 +27,9 @@ export const AttioUserSyncSchema = z.object({
 });
 export type AttioUserSync = z.infer<typeof AttioUserSyncSchema>;
 
-class AttioClient {
-  constructor(private readonly apiKey: string) {}
-
-  // Create-or-update by unique attribute; returns the record id. Throws on failure so the worker retries.
-  async #assert(
-    object: string,
-    matchingAttribute: string,
-    values: Record<string, unknown>
-  ): Promise<string> {
-    const url = `${ATTIO_API}/objects/${object}/records?matching_attribute=${matchingAttribute}`;
-    const response = await fetch(url, {
-      method: "PUT",
-      headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ data: { values } }),
-    });
-
-    if (!response.ok) {
-      const body = await response.text();
-      // 5xx/429 are transient (the worker retries); warn + tag so they don't page Sentry. Real 4xx stay error.
-      const transient = response.status >= 500 || response.status === 429;
-      const fields = { object, matchingAttribute, status: response.status, body };
-      if (transient) {
-        logger.warn("Attio assert failed", fields);
-      } else {
-        logger.error("Attio assert failed", fields);
-      }
-      const message = `Attio assert ${object} failed with status ${response.status}`;
-      throw transient
-        ? Object.assign(new Error(message), { logLevel: "warn" as const })
-        : new Error(message);
-    }
-
-    const recordId = ((await response.json()) as any).data?.id?.record_id;
-    if (typeof recordId !== "string") {
-      throw new Error(`Attio assert ${object}: response missing data.id.record_id`);
-    }
-    return recordId;
-  }
-
-  async upsertWorkspace(payload: AttioWorkspaceSync, emailDomain?: string) {
-    // The creating user is an admin of the new org — set their role and link them to the workspace.
-    const adminRecordId = await this.#assert("users", "user_id", {
-      user_id: payload.adminUserId,
-      role: "Admin",
-      is_test: IS_TEST,
-    });
-
-    await this.#assert("workspaces", "workspace_id", {
-      workspace_id: payload.orgId,
-      name: payload.title,
-      org_slug: payload.slug,
-      company_size: payload.companySize ?? undefined,
-      email_domain: emailDomain,
-      signup_date: toDate(payload.createdAt),
-      plan: "Free",
-      account_status: "Active",
-      is_test: IS_TEST,
-      users: [{ target_object: "users", target_record_id: adminRecordId }],
-    });
-  }
-
-  async upsertUser(payload: AttioUserSync) {
-    await this.#assert("users", "user_id", {
-      user_id: payload.userId,
-      primary_email_address: payload.email,
-      marketing_opt_in: payload.marketingEmails,
-      referral_source: payload.referralSource ?? undefined,
-      signup_date: toDate(payload.createdAt),
-      is_test: IS_TEST,
-    });
-  }
-}
-
-// Attio `date` attributes want a bare YYYY-MM-DD value.
-function toDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-// Domain from an email; the cloud-side matcher normalizes it further.
-function domainFromEmail(email: string | undefined): string | undefined {
-  return email?.split("@")[1]?.toLowerCase().trim() || undefined;
-}
-
-const attioClient = env.ATTIO_API_KEY ? new AttioClient(env.ATTIO_API_KEY) : null;
+const attioClient = env.ATTIO_API_KEY
+  ? new AttioClient({ apiKey: env.ATTIO_API_KEY, isTest: env.APP_ENV !== "production" })
+  : null;
 
 export async function enqueueAttioWorkspaceSync(payload: AttioWorkspaceSync) {
   if (!attioClient) return;
@@ -145,11 +62,7 @@ export async function enqueueAttioUserSync(payload: AttioUserSync) {
 
 export async function runAttioWorkspaceSync(payload: AttioWorkspaceSync) {
   if (!attioClient) return;
-  const admin = await prisma.user.findFirst({
-    where: { id: payload.adminUserId },
-    select: { email: true },
-  });
-  await attioClient.upsertWorkspace(payload, domainFromEmail(admin?.email));
+  await syncAttioWorkspace(payload, attioClient, prisma);
 }
 
 export async function runAttioUserSync(payload: AttioUserSync) {

@@ -113,14 +113,15 @@ function initializeWorker() {
         schema: AttioWorkspaceSyncSchema,
         visibilityTimeoutMs: 30_000,
         retry: {
-          maxAttempts: 3,
+          // 2-4 min of backoff, so a short Attio outage or rate limit doesn't dead-letter the job.
+          maxAttempts: 8,
         },
       },
       "attio.syncUser": {
         schema: AttioUserSyncSchema,
         visibilityTimeoutMs: 30_000,
         retry: {
-          maxAttempts: 3,
+          maxAttempts: 8,
         },
       },
       "membership.provisionDevEnvironments": {
