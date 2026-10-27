@@ -100,7 +100,6 @@ import { queuesAgentPageContext } from "~/components/dashboard-agent/suggested-p
 import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 import { handleQueueMutationAction } from "~/models/queueMutation.server";
-import { queueArchivingEnabled } from "~/v3/services/queueArchivingEnabled.server";
 import {
   QueueArchiveButton,
   QueueOverrideConcurrencyButton,
@@ -191,9 +190,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     projectId: project.id,
   });
   const canWriteTasks = auth.ok && auth.ability.can("write", { type: "tasks" });
-  const archivingEnabled = await queueArchivingEnabled(environment.organizationId, {
-    orgFeatureFlags: project.organization.featureFlags,
-  });
 
   // Per-org gate for the metrics UI. When off, this org gets the classic Queues page and
   // no metrics query fires.
@@ -218,8 +214,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       query,
       page,
       includeLimits: true,
-      archived: archivingEnabled && showArchived !== "true" ? "exclude" : "include",
-      detectArchivedActivity: archivingEnabled,
+      archived: showArchived === "true" ? "include" : "exclude",
+      detectArchivedActivity: true,
       // Relevance ordering rides the metrics pipeline, so it is part of the gated UI.
       sort: queueMetricsUiEnabled ? (sort ?? "busiest") : "name",
     });
@@ -290,10 +286,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     let allocation: Awaited<ReturnType<QueueAllocationPresenter["call"]>> | null = null;
     if (queueMetricsUiEnabled) {
       try {
-        allocation = await new QueueAllocationPresenter().call({
-          environment,
-          excludeArchived: archivingEnabled,
-        });
+        allocation = await new QueueAllocationPresenter().call({ environment });
       } catch (error) {
         logger.warn("Queue allocation summary unavailable, rendering without it", {
           error,
@@ -313,7 +306,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       maxPeriodDays,
       canWriteTasks,
       alertsEnabled,
-      archivingEnabled,
     });
   } catch (error) {
     console.error(error);
@@ -465,7 +457,6 @@ function QueuesWithMetricsView() {
     maxPeriodDays,
     canWriteTasks,
     alertsEnabled,
-    archivingEnabled,
   } = useTypedLoaderData<typeof loader>();
 
   const metricsByQueue = metrics?.byQueue ?? {};
@@ -661,11 +652,7 @@ function QueuesWithMetricsView() {
                 Allocated
                 {allocation ? (
                   <InfoIconTooltip
-                    content={`The sum of every queue's concurrency limit. It can go over 100% of the environment limit, which is normal: it lets one queue burst while others are quiet. The environment limit still caps total running work, so queues share it when the environment is busy.${
-                      archivingEnabled
-                        ? " Archived queues aren't counted, even if they still have runs."
-                        : ""
-                    }`}
+                    content={`The sum of every queue's concurrency limit. It can go over 100% of the environment limit, which is normal: it lets one queue burst while others are quiet. The environment limit still caps total running work, so queues share it when the environment is busy. Archived queues aren't counted, even if they still have runs.`}
                     contentClassName="max-w-xs"
                   />
                 ) : null}
@@ -767,7 +754,7 @@ function QueuesWithMetricsView() {
              above. Same left/right split as the classic view's bar. */
           toolbar={
             <>
-              <QueueFilters showArchivedToggle={archivingEnabled} />
+              <QueueFilters />
               <PaginationControls
                 currentPage={pagination.currentPage}
                 totalPages={pagination.mode === "unfiltered" ? pagination.totalPages : 1}
@@ -944,14 +931,12 @@ function QueuesWithMetricsView() {
                           })}
                         />
                       ) : null}
-                      {archivingEnabled || queue.archivedAt ? (
-                        <QueueArchiveButton
-                          queue={queue}
-                          disabled={!canWriteTasks}
-                          lastOnPage={queues.length === 1 && pagination.currentPage > 1}
-                          onDone={close}
-                        />
-                      ) : null}
+                      <QueueArchiveButton
+                        queue={queue}
+                        disabled={!canWriteTasks}
+                        lastOnPage={queues.length === 1 && pagination.currentPage > 1}
+                        onDone={close}
+                      />
                     </div>
                   );
 
@@ -1025,12 +1010,10 @@ function QueuesWithMetricsView() {
                               Paused
                             </Badge>
                           ) : null}
-                          {archivingEnabled ? (
-                            <QueueArchivedBadge
-                              queue={queue}
-                              hasActiveRuns={activeArchivedIds.has(queue.id)}
-                            />
-                          ) : null}
+                          <QueueArchivedBadge
+                            queue={queue}
+                            hasActiveRuns={activeArchivedIds.has(queue.id)}
+                          />
                           {isAtQueueLimit ? (
                             <Badge variant="extra-small" className="text-error">
                               At queue limit
@@ -1422,22 +1405,20 @@ export function isEnvironmentPauseResumeFormSubmission(
   );
 }
 
-export function QueueFilters({ showArchivedToggle = false }: { showArchivedToggle?: boolean }) {
+export function QueueFilters() {
   const { value, replace } = useSearchParams();
 
   return (
     <div className="flex items-center gap-2">
       <SearchInput placeholder="Search queues…" paramName="query" resetParams={["page"]} />
-      {showArchivedToggle ? (
-        <Switch
-          checked={value("showArchived") === "true"}
-          onCheckedChange={(checked) =>
-            replace({ showArchived: checked ? "true" : undefined, page: undefined })
-          }
-          label="Show archived"
-          variant="secondary/small"
-        />
-      ) : null}
+      <Switch
+        checked={value("showArchived") === "true"}
+        onCheckedChange={(checked) =>
+          replace({ showArchived: checked ? "true" : undefined, page: undefined })
+        }
+        label="Show archived"
+        variant="secondary/small"
+      />
     </div>
   );
 }
@@ -1980,7 +1961,6 @@ function ClassicQueuesView() {
     hasFilters,
     autoReloadPollIntervalMs,
     canWriteTasks,
-    archivingEnabled,
     alertsEnabled,
   } = useTypedLoaderData<typeof loader>();
   const activeArchivedIds = new Set(activeArchivedQueues?.map((q) => q.id));
@@ -2124,7 +2104,7 @@ function ClassicQueuesView() {
 
           <div className="grid max-h-full min-h-full grid-rows-[auto_1fr] overflow-x-auto">
             <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-1.5 py-1.5">
-              <QueueFilters showArchivedToggle={archivingEnabled} />
+              <QueueFilters />
               <PaginationControls
                 currentPage={pagination.currentPage}
                 totalPages={pagination.mode === "unfiltered" ? pagination.totalPages : 1}
@@ -2292,14 +2272,12 @@ function ClassicQueuesView() {
                               })}
                             />
                           ) : null}
-                          {archivingEnabled || queue.archivedAt ? (
-                            <QueueArchiveButton
-                              queue={queue}
-                              disabled={!canWriteTasks}
-                              lastOnPage={queues.length === 1 && pagination.currentPage > 1}
-                              onDone={close}
-                            />
-                          ) : null}
+                          <QueueArchiveButton
+                            queue={queue}
+                            disabled={!canWriteTasks}
+                            lastOnPage={queues.length === 1 && pagination.currentPage > 1}
+                            onDone={close}
+                          />
                         </div>
                       );
 
@@ -2326,12 +2304,10 @@ function ClassicQueuesView() {
                                   Paused
                                 </Badge>
                               ) : null}
-                              {archivingEnabled ? (
-                                <QueueArchivedBadge
-                                  queue={queue}
-                                  hasActiveRuns={activeArchivedIds.has(queue.id)}
-                                />
-                              ) : null}
+                              <QueueArchivedBadge
+                                queue={queue}
+                                hasActiveRuns={activeArchivedIds.has(queue.id)}
+                              />
                               {isAtQueueLimit ? (
                                 <Badge variant="extra-small" className="text-error">
                                   At queue limit
