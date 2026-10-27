@@ -357,10 +357,11 @@ export class TraceChunkAssembler {
     return this.#nodes.size;
   }
 
-  // Next tail's starting write time; null when rows have none (v1 or empty).
+  // Next tail's starting write time; null when rows have none (v1).
   tailBase(): number | null {
     if (this.#maxInsertedAt === null) {
-      return null;
+      // No rows yet (an empty first chunk): tail from its read time, then from each tail's.
+      return this.#nodes.size > 0 ? null : (this.#tailHighWater ?? this.#tailFloor);
     }
     if (this.#tailFloor === null) {
       return this.#tailHighWater ?? this.#maxInsertedAt;

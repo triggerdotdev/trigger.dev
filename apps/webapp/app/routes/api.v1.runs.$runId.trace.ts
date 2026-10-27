@@ -13,6 +13,7 @@ import {
   getTraceStartTimeEnd,
 } from "~/v3/eventRepository/traceInsertedAtBound";
 import { getRunTracePage } from "~/v3/eventRepository/runTracePage.server";
+import { getTraceAncestorInsertedAtStart } from "~/v3/eventRepository/traceAncestorBound.server";
 import { toPageSpan } from "~/v3/eventRepository/tracePage";
 import {
   DEFAULT_TRACE_PAGE_SIZE,
@@ -127,7 +128,10 @@ export const loader = createLoaderApiRoute(
       run.spanId,
       run.createdAt,
       getTraceStartTimeEnd(run),
-      { insertedAtEnd: getTraceInsertedAtEnd(run) }
+      {
+        insertedAtEnd: getTraceInsertedAtEnd(run),
+        ancestorInsertedAtStart: await getTraceAncestorInsertedAtStart(run, runStore, $replica),
+      }
     );
 
     trace.getActiveSpan()?.setAttributes({

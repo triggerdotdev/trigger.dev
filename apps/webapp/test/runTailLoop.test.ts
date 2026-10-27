@@ -76,6 +76,25 @@ describe("runTailLoop", () => {
     expect(result).toEqual({ merged: false, truncated: false, finished: true });
   });
 
+  it("tails an empty first chunk until its first span is written", async () => {
+    const assembler = new TraceChunkAssembler();
+    // The empty first chunk was read at BASE.
+    assembler.pinTailFloor(BASE);
+
+    const first = recorder([page([], null, false, BASE + 5_000)]);
+    const empty = await runTailLoop(first.fetchPage, assembler, 1000, OVERLAP_MS);
+    expect(first.calls).toEqual([
+      { cursor: undefined, insertedAtSince: BASE - OVERLAP_MS, limit: expect.any(Number) },
+    ]);
+    expect(empty).toEqual({ merged: false, truncated: false, finished: true });
+
+    const second = recorder([page([wireEv("root", "", BASE + 6_000)], null, false, BASE + 7_000)]);
+    const filled = await runTailLoop(second.fetchPage, assembler, 1000, OVERLAP_MS);
+    expect(second.calls[0]?.insertedAtSince).toBe(BASE + 5_000 - OVERLAP_MS);
+    expect(filled.merged).toBe(true);
+    expect(assembler.hasSpan("root")).toBe(true);
+  });
+
   it("pages through the window and merges each page under the tail source", async () => {
     const assembler = new TraceChunkAssembler();
     seed(assembler, "root", 100_000); // max write time 100_000 => since = 70_000
@@ -219,6 +238,9 @@ describe("runTailLoop", () => {
 
   it("does not tail a store without write times even with a pinned floor", async () => {
     const assembler = new TraceChunkAssembler();
+    assembler.mergeChunk([
+      { ...wireEv("r", "", 0), insertedAt: undefined, startTime: new Date(BASE) },
+    ]);
     assembler.pinTailFloor(100_000);
     const { fetchPage, calls } = recorder([]);
 

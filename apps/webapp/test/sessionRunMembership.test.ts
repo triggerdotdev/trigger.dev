@@ -487,10 +487,18 @@ describe("session run paging queries", () => {
       expect(
         await countSessionRunsAtOrBefore(prisma, { sessionId: session.id, cursor: second.at(-1)! })
       ).toBe(2);
+
+      // A deep link's page starts at the linked row itself.
+      const fromSecond = await findSessionRunsPage(prisma, {
+        sessionId: session.id,
+        atOrBefore: second[0],
+        take: 2,
+      });
+      expect(fromSecond.map((r) => r.id)).toEqual(second.map((r) => r.id));
     }
   );
 
-  postgresTest("both queries use the (sessionId, triggeredAt, id) index", async ({ prisma }) => {
+  postgresTest("all queries use the (sessionId, triggeredAt, id) index", async ({ prisma }) => {
     const { session } = await seedSession(prisma, `explain_${seq++}`);
     const other = await seedSession(prisma, `explain_other_${seq++}`);
     await prisma.$executeRaw`
@@ -512,6 +520,9 @@ describe("session run paging queries", () => {
         newest: await explain(sessionRunsPageQuery({ sessionId: session.id, take: 21 })),
         older: await explain(
           sessionRunsPageQuery({ sessionId: session.id, before: cursor, take: 21 })
+        ),
+        atOrBefore: await explain(
+          sessionRunsPageQuery({ sessionId: session.id, atOrBefore: cursor, take: 21 })
         ),
         count: await explain(sessionRunsAtOrBeforeCountQuery({ sessionId: session.id, cursor })),
       };

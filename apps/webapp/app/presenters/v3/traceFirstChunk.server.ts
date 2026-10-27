@@ -1,11 +1,17 @@
 import { stripAdminOnlyEventRows } from "~/utils/timelineSpanEvents";
 import type {
   IEventRepository,
+  SpanSummary,
   TraceChunk,
   TraceChunkCursor,
   TraceChunkEvent,
 } from "~/v3/eventRepository/eventRepository.types";
 import { TraceChunkAssembler } from "~/v3/eventRepository/traceChunkAssembler";
+import {
+  applyAncestorOverrides,
+  buildTraceView,
+  type BuildTraceViewOptions,
+} from "~/v3/eventRepository/traceViewBuilder";
 import type { TaskEventStoreTable } from "~/v3/taskEventStore.server";
 import { hasWriteTimes } from "./liveTailGate";
 
@@ -37,6 +43,7 @@ export async function assembleFirstTraceChunk({
   selectedSpanId,
   showDebug,
   isAdmin,
+  insertedAtEnd,
 }: {
   repository: Pick<IEventRepository, "getTraceSpanWithAncestors">;
   scope: TraceReadScope;
@@ -45,6 +52,8 @@ export async function assembleFirstTraceChunk({
   selectedSpanId: string | undefined;
   showDebug: boolean;
   isAdmin: boolean;
+  /** Same write-time bound as the first chunk, so the walks can't add rows the pages leave out. */
+  insertedAtEnd?: Date;
 }): Promise<FirstTraceChunk> {
   if (firstChunk.events.length === 0) {
     return { kind: "empty" };
@@ -72,7 +81,7 @@ export async function assembleFirstTraceChunk({
       scope.startCreatedAt,
       scope.endCreatedAt,
       spanId,
-      { includeDebugLogs: showDebug }
+      { includeDebugLogs: showDebug, insertedAtEnd }
     );
     const visible = stripAdminOnlyEventRows(events ?? [], isAdmin).filter(
       (event) => !supplementarySpanIds.has(event.spanId)
@@ -107,5 +116,166 @@ export async function assembleFirstTraceChunk({
     supplementaryFirstEvents: supplementary.length > 0 ? supplementary : undefined,
     nextCursor: firstChunk.nextCursor,
     hasMore: firstChunk.hasMore,
+  };
+}
+
+export async function readFirstTraceChunk({
+  repository,
+  scope,
+  showDebug,
+  insertedAtEnd,
+}: {
+  repository: Pick<IEventRepository, "getTraceChunk">;
+  scope: TraceReadScope;
+  showDebug: boolean;
+  insertedAtEnd?: Date;
+}): Promise<{ firstChunk: TraceChunk; firstChunkReadAt: number } | undefined> {
+  // Read before the first chunk so the first tail covers the background load.
+  const firstChunkReadAt = Date.now();
+  const firstChunk = await repository.getTraceChunk(
+    scope.storeTable,
+    scope.environmentId,
+    scope.traceId,
+    scope.startCreatedAt,
+    scope.endCreatedAt,
+    undefined,
+    { includeDebugLogs: showDebug, insertedAtEnd }
+  );
+  return firstChunk ? { firstChunk, firstChunkReadAt } : undefined;
+}
+
+// The trace payload the progressive trace hook starts from.
+function buildProgressiveTrace({
+  spans,
+  firstEvents,
+  supplementaryFirstEvents,
+  nextCursor,
+  hasMore,
+  buildOptions,
+  startedAt,
+  queuedDuration,
+  showDebug,
+  maxSpans,
+  firstChunkReadAt,
+}: {
+  spans: SpanSummary[];
+  firstEvents: TraceChunkEvent[];
+  supplementaryFirstEvents: TraceChunkEvent[] | undefined;
+  nextCursor: TraceChunkCursor | null;
+  hasMore: boolean;
+  buildOptions: BuildTraceViewOptions;
+  startedAt: Date | null;
+  queuedDuration: number | undefined;
+  showDebug: boolean;
+  maxSpans: number;
+  firstChunkReadAt: number;
+}) {
+  const { spans: overridden, overridesBySpanId } = applyAncestorOverrides(spans);
+  const view = buildTraceView(overridden, buildOptions);
+
+  return {
+    events: view.events,
+    duration: view.duration,
+    rootStartedAt: view.rootStartedAt,
+    rootSpanStatus: view.rootSpanStatus,
+    startedAt,
+    queuedDuration,
+    overridesBySpanId,
+    linkedRunIdBySpanId: view.linkedRunIdBySpanId,
+    isTruncated: false,
+    missingAnchor: false,
+    progressive: {
+      firstEvents,
+      supplementaryFirstEvents,
+      nextCursor,
+      hasMore,
+      buildOptions,
+      showDebug,
+      maxSpans,
+      liveTailEnabled: true,
+      firstChunkReadAt,
+    },
+  };
+}
+
+type ProgressiveTrace = ReturnType<typeof buildProgressiveTrace>;
+
+export type FirstTrace =
+  | { kind: "progressive"; trace: ProgressiveTrace }
+  // No spans yet: the trace is empty but can still tail.
+  | { kind: "empty"; trace: ProgressiveTrace }
+  | { kind: "fallback"; reason: "noWriteTimes" | "anchorMissing" };
+
+const NO_SPANS = {
+  spans: [],
+  firstEvents: [],
+  supplementaryFirstEvents: undefined,
+  nextCursor: null,
+  hasMore: false,
+};
+
+// Assembles the first chunk and builds the payload the progressive trace hook starts from.
+export async function buildFirstTrace({
+  repository,
+  scope,
+  firstRead,
+  anchorSpanId,
+  selectedSpanId,
+  insertedAtEnd,
+  buildOptions,
+  startedAt,
+  queuedDuration,
+  showDebug,
+  maxSpans,
+}: {
+  repository: Pick<IEventRepository, "getTraceSpanWithAncestors">;
+  scope: TraceReadScope;
+  firstRead: { firstChunk: TraceChunk; firstChunkReadAt: number };
+  anchorSpanId: string;
+  selectedSpanId: string | undefined;
+  insertedAtEnd?: Date;
+  buildOptions: BuildTraceViewOptions;
+  startedAt: Date | null;
+  queuedDuration: number | undefined;
+  showDebug: boolean;
+  maxSpans: number;
+}): Promise<FirstTrace> {
+  const first = await assembleFirstTraceChunk({
+    repository,
+    scope,
+    firstChunk: firstRead.firstChunk,
+    anchorSpanId,
+    selectedSpanId,
+    showDebug,
+    isAdmin: buildOptions.isAdmin,
+    insertedAtEnd,
+  });
+
+  if (first.kind === "fallback") {
+    return first;
+  }
+
+  const loaded =
+    first.kind === "progressive"
+      ? {
+          spans: first.assembler.spans,
+          firstEvents: first.firstEvents,
+          supplementaryFirstEvents: first.supplementaryFirstEvents,
+          nextCursor: first.nextCursor,
+          hasMore: first.hasMore,
+        }
+      : NO_SPANS;
+
+  return {
+    kind: first.kind,
+    trace: buildProgressiveTrace({
+      ...loaded,
+      buildOptions,
+      startedAt,
+      queuedDuration,
+      showDebug,
+      maxSpans,
+      firstChunkReadAt: firstRead.firstChunkReadAt,
+    }),
   };
 }

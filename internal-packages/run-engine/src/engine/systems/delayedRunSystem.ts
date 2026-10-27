@@ -5,6 +5,7 @@ import type { PrismaClientOrTransaction, TaskRun } from "@trigger.dev/database";
 import {
   getLatestExecutionSnapshot,
   getLatestExecutionSnapshotOrFinishedRun,
+  type ExecutionSnapshotSystem,
 } from "./executionSnapshotSystem.js";
 import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
 import type { EnqueueSystem } from "./enqueueSystem.js";
@@ -14,15 +15,18 @@ import { ServiceValidationError } from "../errors.js";
 export type DelayedRunSystemOptions = {
   resources: SystemResources;
   enqueueSystem: EnqueueSystem;
+  executionSnapshotSystem: ExecutionSnapshotSystem;
 };
 
 export class DelayedRunSystem {
   private readonly $: SystemResources;
   private readonly enqueueSystem: EnqueueSystem;
+  private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
 
   constructor(private readonly options: DelayedRunSystemOptions) {
     this.$ = options.resources;
     this.enqueueSystem = options.enqueueSystem;
+    this.executionSnapshotSystem = options.executionSnapshotSystem;
   }
 
   /**
@@ -68,6 +72,7 @@ export class DelayedRunSystem {
             {
               delayUntil: delayUntil,
               snapshot: {
+                ...this.executionSnapshotSystem.nextSnapshotIdentity(snapshot, runId),
                 snapshotRoute: snapshotRouteFromSnapshot(snapshot),
                 environmentId: snapshot.environmentId,
                 environmentType: snapshot.environmentType,
@@ -238,6 +243,7 @@ export class DelayedRunSystem {
         run,
         env,
         previousSnapshotId: snapshot.id,
+        previousSnapshot: snapshot,
         snapshotRoute: snapshotRouteFromSnapshot(snapshot),
         batchId: run.batchId ?? undefined,
         skipRunLock: true,

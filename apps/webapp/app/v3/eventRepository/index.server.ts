@@ -5,9 +5,9 @@ import { prisma } from "~/db.server";
 import { runStore } from "../runStore.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { logger } from "~/services/logger.server";
-import { FEATURE_FLAG } from "../featureFlags";
 import { flag } from "../featureFlags.server";
 import { getTaskEventStore } from "../taskEventStore.server";
+import { resolveEventStore } from "./resolveEventStore.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 
 export const EVENT_STORE_TYPES = {
@@ -55,13 +55,13 @@ export async function getConfiguredEventRepository(
     throw new Error("Organization not found when configuring event repository");
   }
 
-  // resolveTaskEventRepositoryFlag checks:
-  // 1. organization.featureFlags (highest priority)
-  // 2. global feature flags (via flags() function)
-  // 3. env.EVENT_REPOSITORY_DEFAULT_STORE (fallback)
-  const taskEventStore = await resolveTaskEventRepositoryFlag(
-    (organization.featureFlags as Record<string, unknown> | null) ?? undefined
-  );
+  // Org override, then the global flag, then EVENT_REPOSITORY_DEFAULT_STORE
+  const taskEventStore = await resolveEventStore({
+    featureFlags: (organization.featureFlags as Record<string, unknown> | null) ?? undefined,
+    flag,
+    defaultStore: env.EVENT_REPOSITORY_DEFAULT_STORE,
+    v1RerouteEnabled: env.EVENT_REPOSITORY_V1_REROUTE_ENABLED,
+  });
 
   if (taskEventStore === EVENT_STORE_TYPES.CLICKHOUSE_V2) {
     const { repository: resolvedRepository } =
@@ -83,7 +83,14 @@ export async function getEventRepository(
   featureFlags: Record<string, unknown> | undefined,
   parentStore: string | undefined
 ): Promise<{ repository: IEventRepository; store: string }> {
-  const taskEventStore = parentStore ?? (await resolveTaskEventRepositoryFlag(featureFlags));
+  // New runs store the effective value, so the legacy v1 store stops spreading through old trees
+  const taskEventStore = await resolveEventStore({
+    parentStore,
+    featureFlags,
+    flag,
+    defaultStore: env.EVENT_REPOSITORY_DEFAULT_STORE,
+    v1RerouteEnabled: env.EVENT_REPOSITORY_V1_REROUTE_ENABLED,
+  });
 
   // Non-ClickHouse stores (e.g. the "taskEvent" DB default for Postgres-backed
   // runs, or the legacy "postgres" value) resolve to the Prisma event repo.
@@ -108,26 +115,6 @@ export async function getEventRepository(
       return { repository: eventRepository, store: getTaskEventStore() };
     }
   }
-}
-
-async function resolveTaskEventRepositoryFlag(
-  featureFlags: Record<string, unknown> | undefined
-): Promise<"clickhouse" | "clickhouse_v2" | "postgres"> {
-  const flagResult = await flag({
-    key: FEATURE_FLAG.taskEventRepository,
-    defaultValue: env.EVENT_REPOSITORY_DEFAULT_STORE,
-    overrides: featureFlags,
-  });
-
-  if (flagResult === "clickhouse_v2") {
-    return "clickhouse_v2";
-  }
-
-  if (flagResult === "clickhouse") {
-    return "clickhouse";
-  }
-
-  return flagResult;
 }
 
 export async function recordRunDebugLog(

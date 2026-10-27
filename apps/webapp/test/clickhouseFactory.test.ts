@@ -6,6 +6,7 @@ import { postgresTest } from "@internal/testcontainers";
 import { OrganizationDataStoresRegistry } from "~/services/dataStores/organizationDataStoresRegistry.server";
 import { ClickhouseConnectionSchema } from "~/services/clickhouse/clickhouseSecretSchemas.server";
 import { ClickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
+import type { ClickhouseEventRepository } from "~/v3/eventRepository/clickhouseEventRepository.server";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -124,4 +125,48 @@ describe("ClickHouse Factory", () => {
       expect(after).toBe(defaultClient);
     }
   );
+  postgresTest(
+    "routes the v1 store to the shared v2 repository when the reroute is on",
+    async ({ prisma }) => {
+      const registry = new OrganizationDataStoresRegistry(prisma, prisma);
+
+      await registry.addDataStore({
+        key: "reroute-store",
+        kind: "CLICKHOUSE",
+        organizationIds: ["org-reroute"],
+        config: ClickhouseConnectionSchema.parse({ url: TEST_URL }),
+      });
+
+      await registry.loadFromDatabase();
+
+      const factory = new ClickhouseFactory(registry, true);
+      const v1 = factory.getEventRepositoryForOrganizationSync("clickhouse", "org-reroute");
+      const v2 = factory.getEventRepositoryForOrganizationSync("clickhouse_v2", "org-reroute");
+
+      expect(v1.key).toBe(v2.key);
+      expect(v1.repository).toBe(v2.repository);
+      expect((v1.repository as ClickhouseEventRepository).version).toBe("v2");
+    }
+  );
+
+  postgresTest("keeps the v1 repository when the reroute is off", async ({ prisma }) => {
+    const registry = new OrganizationDataStoresRegistry(prisma, prisma);
+
+    await registry.addDataStore({
+      key: "no-reroute-store",
+      kind: "CLICKHOUSE",
+      organizationIds: ["org-no-reroute"],
+      config: ClickhouseConnectionSchema.parse({ url: TEST_URL }),
+    });
+
+    await registry.loadFromDatabase();
+
+    const factory = new ClickhouseFactory(registry, false);
+    const v1 = factory.getEventRepositoryForOrganizationSync("clickhouse", "org-no-reroute");
+    const v2 = factory.getEventRepositoryForOrganizationSync("clickhouse_v2", "org-no-reroute");
+
+    expect(v1.key).not.toBe(v2.key);
+    expect((v1.repository as ClickhouseEventRepository).version).toBe("v1");
+    expect((v2.repository as ClickhouseEventRepository).version).toBe("v2");
+  });
 });

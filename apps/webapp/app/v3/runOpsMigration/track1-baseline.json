@@ -68,37 +68,28 @@
     "WaitpointTag.project"
   ],
   "totals": {
-    "violations": 5,
-    "detectorI": 5,
+    "violations": 4,
+    "detectorI": 4,
     "detectorII": 0,
     "detectorIII": 0,
     "write": 0,
-    "read": 5,
+    "read": 4,
     "files": 1,
     "legacyAnnotations": 0
   },
   "violations": [
     {
       "file": "apps/webapp/app/presenters/v3/ApiBatchResultsPresenter.server.ts",
-      "line": 93,
+      "line": 101,
       "model": "BatchTaskRun",
       "delegate": "batchTaskRun",
       "callKind": "read",
       "detector": "i",
-      "snippet": "const batchRun = await this._replica.batchTaskRun.findFirst({"
+      "snippet": "return client.batchTaskRun.findFirst({"
     },
     {
       "file": "apps/webapp/app/presenters/v3/ApiBatchResultsPresenter.server.ts",
-      "line": 154,
-      "model": "BatchTaskRun",
-      "delegate": "batchTaskRun",
-      "callKind": "read",
-      "detector": "i",
-      "snippet": "client.batchTaskRun.findFirst({"
-    },
-    {
-      "file": "apps/webapp/app/presenters/v3/ApiBatchResultsPresenter.server.ts",
-      "line": 214,
+      "line": 220,
       "model": "TaskRun",
       "delegate": "taskRun",
       "callKind": "read",
@@ -107,7 +98,7 @@
     },
     {
       "file": "apps/webapp/app/presenters/v3/ApiBatchResultsPresenter.server.ts",
-      "line": 224,
+      "line": 230,
       "model": "TaskRun",
       "delegate": "taskRun",
       "callKind": "read",
@@ -116,7 +107,7 @@
     },
     {
       "file": "apps/webapp/app/presenters/v3/ApiBatchResultsPresenter.server.ts",
-      "line": 241,
+      "line": 247,
       "model": "TaskRun",
       "delegate": "taskRun",
       "callKind": "read",

@@ -590,46 +590,37 @@ const CHILD_TRACE: TaskEventV2Input[] = [
 ];
 
 describe("ClickhouseEventRepository getTraceSubtreeSummary ancestors", () => {
-  clickhouseTest(
-    "includeAncestors: false reads the child's subtree and no ancestors",
-    async ({ clickhouseContainer }) => {
-      const clickhouse = new ClickHouse({
-        url: clickhouseContainer.getConnectionUrl(),
-        name: "test",
-      });
-      const repository = new ClickhouseEventRepository({
-        clickhouse,
-        version: "v2",
-        insertStrategy: "insert",
-      });
+  clickhouseTest("reads the child's subtree and no ancestors", async ({ clickhouseContainer }) => {
+    const clickhouse = new ClickHouse({
+      url: clickhouseContainer.getConnectionUrl(),
+      name: "test",
+    });
+    const repository = new ClickhouseEventRepository({
+      clickhouse,
+      version: "v2",
+      insertStrategy: "insert",
+    });
 
-      try {
-        const [insertError] = await clickhouse.taskEventsV2.insert(CHILD_TRACE);
-        expect(insertError).toBeNull();
+    try {
+      const [insertError] = await clickhouse.taskEventsV2.insert(CHILD_TRACE);
+      expect(insertError).toBeNull();
 
-        const subtree = (includeAncestors?: boolean) =>
-          repository.getTraceSubtreeSummary(
-            "taskEventPartitioned",
-            ENV_ID,
-            TRACE_ID,
-            "child",
-            CHILD_AT,
-            undefined,
-            { includeDebugLogs: true, includeAncestors }
-          );
-
-        const withoutAncestors = await subtree(false);
-        expect(new Set(withoutAncestors?.spans.map((s) => s.id))).toEqual(
-          new Set(["child", "child-attempt", "child-err", "child-log"])
-        );
-
-        const withAncestors = await subtree();
-        expect(withAncestors?.spans.some((s) => s.id === "root")).toBe(true);
-      } finally {
-        await shutdownRepository(repository);
-      }
+      const subtree = await repository.getTraceSubtreeSummary(
+        "taskEventPartitioned",
+        ENV_ID,
+        TRACE_ID,
+        "child",
+        CHILD_AT,
+        undefined,
+        { includeDebugLogs: true }
+      );
+      expect(new Set(subtree?.spans.map((s) => s.id))).toEqual(
+        new Set(["child", "child-attempt", "child-err", "child-log"])
+      );
+    } finally {
+      await shutdownRepository(repository);
     }
-  );
+  });
 });
 
 describe("ClickhouseEventRepository getTraceSummary anchor", () => {

@@ -57,7 +57,7 @@ type OTLPExporterConfig = {
   meter?: Meter;
 };
 
-class OTLPExporter {
+export class OTLPExporter {
   private _tracer: Tracer;
   private readonly _clickhouseFactory: ClickhouseFactory;
   private readonly _verbose: boolean;
