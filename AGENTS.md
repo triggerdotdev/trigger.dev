@@ -44,6 +44,8 @@ Only run typecheck/build after major changes (new files, significant refactors, 
 
 We use vitest exclusively. **Never mock anything** - use testcontainers instead.
 
+Prefer integration tests that exercise real production behavior and dependencies. Do not add unit tests except in exceptional cases and add a one-line comment explaining the exception: for complex, stable logic that is unlikely to change. Avoid tests coupled to implementation details, source spelling, CSS, markup or copy. Do not duplicate production logic in tests or add redundant cases. Verify new tests are discovered by the intended suite. We have historical unit tests; this is not evidence that new unit tests should be added.
+
 ```bash
 pnpm run test --filter webapp                          # All tests for a package
 cd internal-packages/run-engine
