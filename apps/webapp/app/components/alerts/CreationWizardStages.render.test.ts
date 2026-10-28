@@ -144,15 +144,21 @@ function arrowUp(segment: HTMLElement) {
   });
 }
 
+async function pressEnterOn(button: HTMLButtonElement) {
+  await act(async () => {
+    button.focus();
+    button.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, cancelable: true })
+    );
+  });
+}
+
 async function openQueueDropdown() {
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
   const select = card()!.querySelector<HTMLButtonElement>('button[aria-label="Queue"]')!;
-  act(() => {
-    select.focus();
-    select.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-  });
+  await pressEnterOn(select);
   return select;
 }
 
@@ -797,10 +803,7 @@ describe("wizard card drives step-by-step creation", () => {
     });
     const select = card()!.querySelector<HTMLButtonElement>('button[aria-label="Queue"]')!;
     expect(select.getAttribute("role")).toBe("combobox");
-    act(() => {
-      select.focus();
-      select.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-    });
+    await pressEnterOn(select);
     const popover = document.getElementById(select.getAttribute("aria-controls") ?? "")!;
     const options = Array.from(popover.querySelectorAll<HTMLElement>("[role=option]"));
     expect(options.map((o) => o.textContent)).toEqual(["email-queue", "billing-queue"]);
@@ -810,9 +813,7 @@ describe("wizard card drives step-by-step creation", () => {
     expect(card()?.getAttribute("aria-label")).toBe(promptForStep("scope", latest!.answers));
     const row = select.closest("li")!;
     expect(row.querySelector('[aria-label="Selected"]')).not.toBeNull();
-    act(() => {
-      select.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-    });
+    await pressEnterOn(select);
     expect(latest!.answers).toMatchObject({ scope: "queue", scopeValue: "billing-queue" });
     expect(card()?.getAttribute("aria-label")).toBe("How long should it stay active?");
   });
@@ -829,10 +830,7 @@ describe("wizard card drives step-by-step creation", () => {
     const confirm = () =>
       select.closest("li")!.querySelector<HTMLButtonElement>('button[aria-label="Confirm"]')!;
     expect(confirm().disabled).toBe(true);
-    act(() => {
-      select.focus();
-      select.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-    });
+    await pressEnterOn(select);
     const popover = document.getElementById(select.getAttribute("aria-controls") ?? "")!;
     act(() => popover.querySelectorAll<HTMLElement>("[role=option]")[0]!.click());
     expect(latest!.answers.scopeValue).toBeUndefined();

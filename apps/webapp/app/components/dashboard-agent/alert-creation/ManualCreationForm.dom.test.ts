@@ -86,6 +86,7 @@ const settle = () =>
   });
 
 Element.prototype.scrollIntoView ??= () => {};
+Element.prototype.getClientRects = () => [new DOMRect()] as unknown as DOMRectList;
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -708,15 +709,21 @@ describe("manual mode regressions", () => {
       return new Response(JSON.stringify(kind ? ENTITIES[kind] : {}));
     });
 
-  // Mutation: filter={() => true} lets Enter pick the static "All queues" chip.
+  // Mutation: filter={() => true} keeps stale options, incl. "All queues", under a pending search.
   it("Enter while a search is pending leaves the scope unchanged", async () => {
     mockSearch();
     try {
       mount(true, { area: "queues", what: "queue.depth", condition: "100" });
       await settle();
       const before = { scope: latest!.answers.scope, scopeValue: latest!.answers.scopeValue };
-      const search = typeSearch(combobox("scope")!, "zeta");
+      const select = combobox("scope")!;
+      const search = typeSearch(select, "zeta");
+      await act(async () => {
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+      });
+      expect(options(select)).toHaveLength(0);
       pressEnter(search);
+      await settle();
       expect({ scope: latest!.answers.scope, scopeValue: latest!.answers.scopeValue }).toEqual(
         before
       );
@@ -739,8 +746,12 @@ describe("manual mode regressions", () => {
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 300));
       });
+      await act(async () => {
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+      });
       expect(options(select).map((o) => o.textContent)).toEqual(["zeta-queue"]);
       pressEnter(search);
+      await settle();
       expect(latest!.answers).toMatchObject({ scope: "queue", scopeValue: "zeta-queue" });
     } finally {
       restoreFetch();
