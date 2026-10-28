@@ -1,0 +1,172 @@
+# @trigger.dev/convex
+
+Run Trigger.dev tasks from Convex mutations and read their status and results through Convex reactive queries.
+
+Use Convex for application state and Trigger.dev for work that needs longer execution, more memory, ffmpeg, Playwright, Python, or other system dependencies. Tasks are still written and deployed normally with Trigger.dev.
+
+**Experimental MVP.** No HTTP routes, webhooks, Trigger lifecycle hooks, or changes to your Trigger server are required.
+
+## Install
+
+```sh
+npm install @trigger.dev/convex convex
+npx convex env set TRIGGER_SECRET_KEY tr_dev_...
+```
+
+Choose the Trigger environment's secret key. Never expose it to browser code.
+
+```ts
+// convex/convex.config.ts
+import { defineApp } from "convex/server";
+import trigger from "@trigger.dev/convex/convex.config.js";
+
+const app = defineApp();
+app.use(trigger);
+export default app;
+```
+
+Run `npx convex dev` to generate your application's component references.
+
+```ts
+// convex/trigger.ts
+import { Trigger } from "@trigger.dev/convex";
+import { components, internal } from "./_generated/api";
+
+export const trigger: Trigger = new Trigger(components.trigger, {
+  onComplete: internal.jobs.onComplete, // Optional internal mutation
+});
+```
+
+The explicit `Trigger` annotation avoids circular type inference through Convex's generated API when configuring a completion callback.
+
+## Example: request work and read the result
+
+The example assumes a Trigger task named `render-video` exists. Type-only task imports do not bundle task code into Convex.
+
+```ts
+// convex/schema.ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  jobs: defineTable({
+    owner: v.string(),
+    runId: v.optional(v.string()),
+    status: v.string(),
+    output: v.optional(v.any()),
+  }).index("by_runId", ["runId"]),
+});
+```
+
+```ts
+// convex/jobs.ts
+import { vRun } from "@trigger.dev/convex";
+import { v } from "convex/values";
+import { mutation, query, internalMutation } from "./_generated/server";
+import { trigger } from "./trigger";
+import type { renderVideo } from "../trigger/renderVideo";
+
+export const request = mutation({
+  args: { videoUrl: v.string() },
+  handler: async (ctx, { videoUrl }) => {
+    const user = await ctx.auth.getUserIdentity();
+    if (!user) throw new Error("Unauthorized");
+
+    const jobId = await ctx.db.insert("jobs", {
+      owner: user.subject,
+      status: "PENDING",
+    });
+    const runId = await trigger.trigger<typeof renderVideo>(
+      ctx,
+      "render-video",
+      { videoUrl },
+      { tags: [`job:${jobId}`] },
+    );
+    await ctx.db.patch(jobId, { runId });
+    return jobId;
+  },
+});
+
+export const status = query({
+  args: { jobId: v.id("jobs") },
+  handler: async (ctx, { jobId }) => {
+    const user = await ctx.auth.getUserIdentity();
+    const job = await ctx.db.get(jobId);
+    if (!user || !job || job.owner !== user.subject) return null;
+    return job.runId ? trigger.getRun(ctx, job.runId) : null;
+  },
+});
+
+export const onComplete = internalMutation({
+  args: { run: vRun },
+  handler: async (ctx, { run }) => {
+    const job = await ctx.db.query("jobs")
+      .withIndex("by_runId", q => q.eq("runId", run.id))
+      .unique();
+    if (job) await ctx.db.patch(job._id, {
+      status: run.status,
+      output: run.output,
+    });
+  },
+});
+```
+
+```tsx
+// React
+const run = useQuery(api.jobs.status, { jobId });
+// run.status, run.output, run.error, run.metadata, run.syncStatus
+```
+
+The ID returned by `trigger.trigger` identifies the **component record**, not the Trigger.dev run. The latter becomes available as `run.runId` after submission.
+
+## API
+
+- `trigger(ctx, taskId, payload, options?)`: enqueue work. Calling from a mutation makes the request atomic with your application's writes.
+- `getRun(ctx, id)`: read one record reactively.
+- `listRuns(ctx, paginationOpts)`: paginate records, newest first, up to 100 per page and a bounded read budget.
+- `resume(ctx, id)`: resume paused synchronization using the current credentials.
+
+Trigger options include tags, delay, queue name, concurrency key, machine, metadata, max attempts, max duration, TTL, and a component-level idempotency key.
+
+An optional `idempotencyKey` deduplicates requests across this component instance, regardless of task. Reusing a key returns the original record, even if its payload or task differs. Keys remain reserved while records exist.
+
+The constructor accepts `secretKey` (defaults to `TRIGGER_SECRET_KEY`), `baseUrl` (defaults to `https://api.trigger.dev`), and `onComplete`. HTTP base URLs are permitted only for localhost development.
+
+**Authorization belongs in your application's functions.** The component has no tenant or user model. Do not expose arbitrary record IDs or `listRuns` to clients without enforcing ownership. Queries never return stored credentials or request payloads.
+
+## Execution and reliability
+
+1. The calling mutation writes a component record and schedules submission. If the transaction rolls back, neither survives.
+2. A short action submits to the existing Trigger API with a stable key derived from the record ID.
+3. Scheduled actions retrieve status with backoff from approximately 15 to 60 seconds between checks. Nothing runs in Convex between checks.
+4. A terminal state, including cancellation, is persisted. The optional completion mutation runs in the same transaction, then stored request data and credentials are deleted.
+
+A scheduled watchdog is committed before each network action. An interrupted action is retried on the next check; obsolete responses cannot overwrite newer observations.
+
+Remote submission uses a 24-hour idempotency TTL. Automatic submission retries stop within one hour of creating the record, well before that TTL. This is **not an unlimited exactly-once guarantee**.
+
+Permanent API errors pause synchronization immediately. Eight consecutive transient or callback failures also pause it. Check `syncStatus === "paused"` and `syncError`. Fix the cause, then call `resume` from an authorized mutation. If submission has not been confirmed, it can only resume within the original one-hour window. After that, reconcile with the Trigger dashboard before creating new work.
+
+Keep the same Trigger environment when resuming. Changing credentials does not migrate remote runs between environments. Existing requests retain their original credentials until resumed.
+
+Completion callbacks should be short mutations. If a callback throws, completion and its application writes roll back together and are retried. A broken callback can therefore delay the component's completion state; `syncError` reports synchronization trouble. No callback is needed to use reactive results.
+
+## Limits
+
+- Polling costs Convex executions and Trigger API requests. This MVP is for validating the integration, not high-volume fan-out or subsecond progress.
+- Payload plus trigger options must fit within 256 KiB. Pass storage references for larger inputs.
+- Output, error, and metadata each have a 256 KiB inline budget. Oversized output is omitted with `outputOmitted: true`. Oversized error or metadata is omitted.
+- Trigger's `outputPresignedUrl`, when supplied, is preserved rather than downloaded. These URLs expire. Retrieve the run again through the Trigger API when you need a fresh URL.
+- Run records are retained. Paused requests retain their payload and credentials for recovery. Automatic retention cleanup is not included.
+- No batch API, cancellation command, waitpoint completion, schedules, or streaming yet. Trigger tasks themselves can use those features normally.
+
+## Development
+
+From the repository root:
+
+```sh
+pnpm --filter @trigger.dev/convex build
+pnpm --filter @trigger.dev/convex test
+```
+
+Tests use Convex's in-memory test runtime and real HTTP requests to a local server.

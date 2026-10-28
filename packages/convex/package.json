@@ -1,0 +1,49 @@
+{
+  "name": "@trigger.dev/convex",
+  "version": "0.0.1",
+  "description": "Run Trigger.dev tasks from Convex mutations and query their results reactively",
+  "license": "Apache-2.0",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/triggerdotdev/trigger.dev",
+    "directory": "packages/convex"
+  },
+  "files": [
+    "dist",
+    "src/component",
+    "!src/component/**/*.test.ts"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/client/index.d.ts",
+      "default": "./dist/client/index.js"
+    },
+    "./convex.config.js": {
+      "types": "./dist/component/convex.config.d.ts",
+      "default": "./dist/component/convex.config.js"
+    },
+    "./_generated/component.js": {
+      "types": "./dist/component/_generated/component.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "convex": "^1.48.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "convex": "^1.48.0",
+    "convex-test": "^0.0.65",
+    "typescript": "catalog:",
+    "vitest": "4.1.11"
+  }
+}
