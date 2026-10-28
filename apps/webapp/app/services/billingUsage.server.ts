@@ -1,4 +1,5 @@
 import type {
+  BillingAddOns,
   BillingController,
   BillingMonthlyUsage,
   BillingProjectUsage,
@@ -8,7 +9,7 @@ import { tryCatch } from "@trigger.dev/core/utils";
 import type { ResultAsync } from "neverthrow";
 import { logger } from "~/services/logger.server";
 
-type BillingUsageResult<T> =
+export type BillingUsageResult<T> =
   | { ok: true; value: T }
   | { ok: false; error: BillingUsageError; retryable: boolean };
 
@@ -20,19 +21,25 @@ export type BillingUsageProject = {
   deleted: boolean;
 };
 
-type BillingOrganizationProjectUsage = BillingProjectUsage & {
+export type BillingOrganizationProjectUsage = BillingProjectUsage & {
   projects: BillingUsageProject[];
 };
+
+/** `loadPending` fetches and stores the next chunk of settled days not stored yet. */
+type BillingUsageReadOptions = { loadPending?: boolean };
 
 export type BillingUsageService = {
   getMonthlyUsage(
     organizationId: string,
-    month: string
+    month: string,
+    options?: BillingUsageReadOptions
   ): Promise<BillingUsageResult<BillingMonthlyUsage>>;
   getProjectUsage(
     organizationId: string,
-    month: string
+    month: string,
+    options?: BillingUsageReadOptions
   ): Promise<BillingUsageResult<BillingOrganizationProjectUsage>>;
+  getAddOns(organizationId: string, month: string): Promise<BillingUsageResult<BillingAddOns>>;
 };
 
 export type FindBillingUsageProjects = (
@@ -42,7 +49,7 @@ export type FindBillingUsageProjects = (
 
 export type BillingUsageDependencies = {
   enabled: boolean;
-  controller: Pick<BillingController, "getMonthlyUsage" | "getProjectUsage">;
+  controller: Pick<BillingController, "getMonthlyUsage" | "getProjectUsage" | "getAddOns">;
   findProjects: FindBillingUsageProjects;
 };
 
@@ -79,13 +86,15 @@ async function lookUpProjects(
 
 export function createBillingUsageService(deps: BillingUsageDependencies): BillingUsageService {
   return {
-    async getMonthlyUsage(organizationId, month) {
+    async getMonthlyUsage(organizationId, month, options = {}) {
       if (!deps.enabled) return failure("feature_disabled");
-      return settle(deps.controller.getMonthlyUsage({ organizationId, month }));
+      return settle(deps.controller.getMonthlyUsage({ organizationId, month, ...options }));
     },
-    async getProjectUsage(organizationId, month) {
+    async getProjectUsage(organizationId, month, options = {}) {
       if (!deps.enabled) return failure("feature_disabled");
-      const usage = await settle(deps.controller.getProjectUsage({ organizationId, month }));
+      const usage = await settle(
+        deps.controller.getProjectUsage({ organizationId, month, ...options })
+      );
       if (!usage.ok) return usage;
       const projects = await lookUpProjects(
         organizationId,
@@ -93,6 +102,10 @@ export function createBillingUsageService(deps: BillingUsageDependencies): Billi
         deps.findProjects
       );
       return { ok: true, value: { ...usage.value, projects } };
+    },
+    async getAddOns(organizationId, month) {
+      if (!deps.enabled) return failure("feature_disabled");
+      return settle(deps.controller.getAddOns({ organizationId, month }));
     },
   };
 }

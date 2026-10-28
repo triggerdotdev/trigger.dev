@@ -36,7 +36,6 @@ function makeStubController(overrides: Partial<BillingController> = {}): Billing
         fetchedAt: "2026-10-14T00:00:00.000Z",
         month,
         isCurrentMonth: true,
-        availableFrom: null,
         creditType: null,
         total: 0,
         creditsApplied: 0,
@@ -58,7 +57,21 @@ function makeStubController(overrides: Partial<BillingController> = {}): Billing
         lines: [],
       });
     },
+    getAddOns({ organizationId, month }) {
+      return okAsync({
+        organizationId,
+        fetchedAt: "2026-10-14T00:00:00.000Z",
+        month,
+        creditType: null,
+        invoiceDate: "2026-11-01",
+        next: [],
+        charged: [],
+      });
+    },
     clearCurrentMonthUsage() {
+      return okAsync(undefined);
+    },
+    forgetUsageFrom() {
       return okAsync(undefined);
     },
     ...overrides,
@@ -250,6 +263,35 @@ describe("billing loader", () => {
 
     expect((await controller.clearCurrentMonthUsage("org_1")).isOk()).toBe(true);
     expect(cleared).toEqual(["org_1"]);
+  });
+
+  it("delegates add-ons and forgetting stored usage to the plugin", async () => {
+    const forgotten: [string, string][] = [];
+    const controller = new LazyController({
+      importer: async () =>
+        makePluginModule(
+          makeStubController({
+            forgetUsageFrom(organizationId, from) {
+              forgotten.push([organizationId, from.toISOString()]);
+              return okAsync(undefined);
+            },
+          })
+        ),
+    });
+
+    const addOns = await controller.getAddOns({ organizationId: "org_1", month: "2026-10" });
+    await controller.forgetUsageFrom("org_1", new Date("2026-10-20T00:00:00Z"));
+
+    expect(addOns._unsafeUnwrap()).toMatchObject({ organizationId: "org_1", next: [] });
+    expect(forgotten).toEqual([["org_1", "2026-10-20T00:00:00.000Z"]]);
+  });
+
+  it("fallback reports add-ons as disabled and forgets usage as a no-op", async () => {
+    const controller = loader.create({ forceFallback: true });
+
+    const addOns = await controller.getAddOns({ organizationId: "org_1", month: "2026-10" });
+    expect(addOns._unsafeUnwrapErr()).toBe("feature_disabled");
+    expect((await controller.forgetUsageFrom("org_1", new Date())).isOk()).toBe(true);
   });
 
   it("loads the plugin once and reuses it across calls", async () => {

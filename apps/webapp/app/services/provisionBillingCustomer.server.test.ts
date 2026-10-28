@@ -62,7 +62,13 @@ function harness(
     getProjectUsage() {
       return errAsync("feature_disabled");
     },
+    getAddOns() {
+      return errAsync("feature_disabled");
+    },
     clearCurrentMonthUsage() {
+      return okAsync(undefined);
+    },
+    forgetUsageFrom() {
       return okAsync(undefined);
     },
   };

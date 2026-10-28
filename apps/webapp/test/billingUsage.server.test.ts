@@ -1,4 +1,5 @@
 import type {
+  BillingAddOns,
   BillingMonthlyUsage,
   BillingProjectUsage,
   BillingUsageError,
@@ -16,7 +17,6 @@ const monthlyUsage: BillingMonthlyUsage = {
   fetchedAt: "2026-10-14T12:00:00.000Z",
   month: "2026-10",
   isCurrentMonth: true,
-  availableFrom: "2026-09-04",
   creditType: { id: "usd", name: "USD (cents)", currency: { code: "USD", minorUnitsPerUnit: 100 } },
   total: 600,
   creditsApplied: 300,
@@ -47,6 +47,24 @@ const projectUsage: BillingProjectUsage = {
   lines: [],
 };
 
+const addOns: BillingAddOns = {
+  organizationId: "org_1",
+  fetchedAt: "2026-10-14T12:00:00.000Z",
+  month: "2026-10",
+  creditType: null,
+  invoiceDate: "2026-11-01",
+  next: [
+    {
+      productId: "prod_seats",
+      name: "Additional Seats",
+      quantity: 2,
+      unitPrice: 2000,
+      total: 4000,
+    },
+  ],
+  charged: [],
+};
+
 const projectA: BillingUsageProject = {
   id: "proj_a",
   name: "Alpha",
@@ -64,6 +82,7 @@ function controller(
   return {
     getMonthlyUsage: vi.fn(outcome.monthly ?? (() => okAsync(monthlyUsage))),
     getProjectUsage: vi.fn(outcome.projects ?? (() => okAsync(projectUsage))),
+    getAddOns: vi.fn(() => okAsync(addOns)),
   };
 }
 
@@ -88,6 +107,42 @@ describe("createBillingUsageService", () => {
     });
   });
 
+  it("passes loadPending through so a poll fills in the next chunk of days", async () => {
+    const plugin = controller();
+    const service = createBillingUsageService({
+      enabled: true,
+      controller: plugin,
+      findProjects: findNoProjects,
+    });
+
+    await service.getMonthlyUsage("org_1", "2026-10", { loadPending: true });
+    await service.getProjectUsage("org_1", "2026-10", { loadPending: true });
+
+    expect(plugin.getMonthlyUsage).toHaveBeenCalledWith({
+      organizationId: "org_1",
+      month: "2026-10",
+      loadPending: true,
+    });
+    expect(plugin.getProjectUsage).toHaveBeenCalledWith({
+      organizationId: "org_1",
+      month: "2026-10",
+      loadPending: true,
+    });
+  });
+
+  it("returns the month's add-ons", async () => {
+    const service = createBillingUsageService({
+      enabled: true,
+      controller: controller(),
+      findProjects: findNoProjects,
+    });
+
+    await expect(service.getAddOns("org_1", "2026-10")).resolves.toEqual({
+      ok: true,
+      value: addOns,
+    });
+  });
+
   it("does not call the plugin when billing v2 is disabled", async () => {
     const plugin = controller();
     const service = createBillingUsageService({
@@ -105,8 +160,13 @@ describe("createBillingUsageService", () => {
       ok: false,
       error: "feature_disabled",
     });
+    await expect(service.getAddOns("org_1", "2026-10")).resolves.toMatchObject({
+      ok: false,
+      error: "feature_disabled",
+    });
     expect(plugin.getMonthlyUsage).not.toHaveBeenCalled();
     expect(plugin.getProjectUsage).not.toHaveBeenCalled();
+    expect(plugin.getAddOns).not.toHaveBeenCalled();
   });
 
   it("marks a rate-limited read as retryable", async () => {

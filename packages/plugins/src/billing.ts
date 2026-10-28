@@ -93,6 +93,8 @@ export type BillingUsageWindow = {
 export type BillingUsageMonthParams = {
   organizationId: string;
   month: string;
+  /** Fetch and store the next chunk of settled days that aren't stored yet. */
+  loadPending?: boolean;
 };
 
 export type BillingUsageDay = {
@@ -110,13 +112,22 @@ export type BillingMonthlyUsageLine = {
   total: number;
 };
 
+/** plan: the plan's recurring credit; contract: another credit on a contract; proration: unused time
+ * credited back after a plan or add-on change; goodwill: granted by hand. */
+export type BillingUsageCreditSource = "plan" | "contract" | "proration" | "goodwill";
+
 export type BillingUsageCredit = {
   id: string;
   name: string;
   kind: "credit" | "commit";
+  source?: BillingUsageCreditSource;
   included?: boolean;
+  /** Granted this month. */
   amount: number;
+  /** Applied to usage this month. */
   applied: number;
+  /** What this credit provides for usage this month: the whole grant for a usage-only credit, else what it applied. */
+  forUsage?: number;
   startsAt: string;
   endsAt: string | null;
 };
@@ -126,16 +137,17 @@ export type BillingMonthlyUsage = {
   fetchedAt: string;
   month: string;
   isCurrentMonth: boolean;
-  availableFrom: string | null;
   creditType: BillingCreditType | null;
   total: number;
   creditsApplied: number;
   creditsGranted?: number;
-  /** Credit that offsets usage: grants restricted to usage products, plus what other credits applied to usage. */
+  /** Credit provided for usage this month: the sum of each credit's `forUsage`. */
   creditsForUsage?: number;
   credits?: BillingUsageCredit[];
   days: BillingUsageDay[];
   lines: BillingMonthlyUsageLine[];
+  /** Settled days not stored yet, so missing from the totals. */
+  pendingDays?: number;
 };
 
 export type BillingProjectUsageDayEntry = {
@@ -167,6 +179,33 @@ export type BillingProjectUsage = {
   projectIds: string[];
   days: BillingProjectUsageDay[];
   lines: BillingProjectUsageLine[];
+  pendingDays?: number;
+};
+
+export type BillingAddOnLine = {
+  productId: string;
+  name: string;
+  quantity: number;
+  unitPrice: number | null;
+  total: number;
+};
+
+export type BillingAddOnCharge = {
+  name: string;
+  date: string;
+  total: number;
+};
+
+export type BillingAddOns = {
+  organizationId: string;
+  fetchedAt: string;
+  month: string;
+  creditType: BillingCreditType | null;
+  /** The 1st of the following month, when `next` is invoiced. */
+  invoiceDate: string;
+  next: BillingAddOnLine[];
+  /** Add-on charges and credits invoiced during the month, prorated charges included. */
+  charged: BillingAddOnCharge[];
 };
 
 export interface BillingController {
@@ -190,8 +229,13 @@ export interface BillingController {
     params: BillingUsageMonthParams
   ): ResultAsync<BillingProjectUsage, BillingUsageError>;
 
+  getAddOns(params: BillingUsageMonthParams): ResultAsync<BillingAddOns, BillingUsageError>;
+
   /** Drops the org's cached usage for the current month, e.g. after a plan change. Never fails. */
   clearCurrentMonthUsage(organizationId: string): ResultAsync<void, never>;
+
+  /** Drops the org's stored and cached usage from `from` onwards, e.g. after a change that reprices it. */
+  forgetUsageFrom(organizationId: string, from: Date): ResultAsync<void, never>;
 }
 
 export type BillingPluginConfig = {

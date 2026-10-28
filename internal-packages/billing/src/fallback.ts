@@ -1,4 +1,5 @@
 import type {
+  BillingAddOns,
   BillingController,
   BillingCustomer,
   BillingCustomerError,
@@ -41,7 +42,15 @@ class BillingFallbackController implements BillingController {
     return errAsync("feature_disabled");
   }
 
+  getAddOns(): ResultAsync<BillingAddOns, BillingUsageError> {
+    return errAsync("feature_disabled");
+  }
+
   clearCurrentMonthUsage(): ResultAsync<void, never> {
+    return okAsync(undefined);
+  }
+
+  forgetUsageFrom(): ResultAsync<void, never> {
     return okAsync(undefined);
   }
 }

@@ -1,4 +1,5 @@
 import type {
+  BillingAddOns,
   BillingController,
   BillingCustomer,
   BillingCustomerError,
@@ -17,6 +18,9 @@ import { ResultAsync } from "neverthrow";
 import { BillingFallback } from "./fallback.js";
 
 export type {
+  BillingAddOnCharge,
+  BillingAddOnLine,
+  BillingAddOns,
   BillingController,
   BillingCreditType,
   BillingCurrency,
@@ -26,6 +30,7 @@ export type {
   BillingMonthlyUsage,
   BillingMonthlyUsageLine,
   BillingUsageCredit,
+  BillingUsageCreditSource,
   BillingProjectUsage,
   BillingProjectUsageDay,
   BillingProjectUsageDayEntry,
@@ -153,8 +158,16 @@ export class LazyController implements BillingController {
     return this.call((c) => c.getProjectUsage(params));
   }
 
+  getAddOns(params: BillingUsageMonthParams): ResultAsync<BillingAddOns, BillingUsageError> {
+    return this.call((c) => c.getAddOns(params));
+  }
+
   clearCurrentMonthUsage(organizationId: string): ResultAsync<void, never> {
     return this.call((c) => c.clearCurrentMonthUsage(organizationId));
+  }
+
+  forgetUsageFrom(organizationId: string, from: Date): ResultAsync<void, never> {
+    return this.call((c) => c.forgetUsageFrom(organizationId, from));
   }
 }
 
