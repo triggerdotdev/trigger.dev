@@ -53,6 +53,11 @@ import {
 } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
 import { getTraceStartTimeEnd } from "~/v3/eventRepository/traceInsertedAtBound";
+import {
+  findStartedSession,
+  startedSessionExternalId,
+  traceRootRunId,
+} from "./startedSession.server";
 
 export type PromptSpanData = {
   slug: string;
@@ -155,6 +160,8 @@ export class SpanPresenter extends BasePresenter {
       },
       {
         select: {
+          id: true,
+          rootTaskRunId: true,
           traceId: true,
           runtimeEnvironmentId: true,
           projectId: true,
@@ -233,6 +240,8 @@ export class SpanPresenter extends BasePresenter {
       endCreatedAt: getTraceStartTimeEnd(parentRun),
       eventRepository: repository,
       showDebug,
+      rootRunId: traceRootRunId(parentRun),
+      userId,
     });
 
     if (!span) {
@@ -698,6 +707,8 @@ export class SpanPresenter extends BasePresenter {
     createdAt,
     endCreatedAt,
     showDebug,
+    rootRunId,
+    userId,
   }: {
     eventRepository: IEventRepository;
     traceId: string;
@@ -708,6 +719,8 @@ export class SpanPresenter extends BasePresenter {
     createdAt: Date;
     endCreatedAt: Date | undefined;
     showDebug: boolean;
+    rootRunId: string;
+    userId: string;
   }) {
     const span = await eventRepository.getSpan(
       eventStore,
@@ -723,21 +736,33 @@ export class SpanPresenter extends BasePresenter {
       return;
     }
 
-    const triggeredRuns = await runStore.findRuns(
-      {
-        where: {
-          parentSpanId: spanId,
+    const childExternalId = startedSessionExternalId(span);
+
+    const [triggeredRuns, startedSession] = await Promise.all([
+      runStore.findRuns(
+        {
+          where: {
+            parentSpanId: spanId,
+          },
+          select: {
+            friendlyId: true,
+            taskIdentifier: true,
+            spanId: true,
+            createdAt: true,
+            status: true,
+          },
         },
-        select: {
-          friendlyId: true,
-          taskIdentifier: true,
-          spanId: true,
-          createdAt: true,
-          status: true,
-        },
-      },
-      this._replica
-    );
+        this._replica
+      ),
+      childExternalId
+        ? findStartedSession(this._replica, {
+            environmentId,
+            externalId: childExternalId,
+            rootRunId,
+            userId,
+          })
+        : undefined,
+    ]);
 
     const data = {
       spanId: span.spanId,
@@ -766,6 +791,7 @@ export class SpanPresenter extends BasePresenter {
       entity: span.entity,
       metadata: span.metadata,
       triggeredRuns,
+      startedSession,
       aiData:
         span.properties && typeof span.properties === "object"
           ? extractAISpanData(span.properties as Record<string, unknown>, span.duration / 1_000_000)

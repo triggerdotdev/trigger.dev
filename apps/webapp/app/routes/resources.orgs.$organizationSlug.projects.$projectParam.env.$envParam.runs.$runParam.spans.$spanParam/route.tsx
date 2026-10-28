@@ -105,6 +105,7 @@ import {
   type RunQueueWaiting,
 } from "~/presenters/v3/RunQueueMetricsPresenter.server";
 import { type Span, SpanPresenter, type SpanRun } from "~/presenters/v3/SpanPresenter.server";
+import { type StartedSession } from "~/presenters/v3/startedSession.server";
 import { findProjectWithOrgFlagsBySlug } from "~/models/project.server";
 import { logger } from "~/services/logger.server";
 import { rbac } from "~/services/rbac.server";
@@ -1681,6 +1682,45 @@ function TraceExportMenuItems({ runParam }: { runParam: string }) {
   );
 }
 
+function StartedSessionProperty({ session }: { session: StartedSession }) {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+
+  const id = <CopyableText value={session.externalId} copyValue={session.externalId} asChild />;
+  const status = <SessionStatusCombo status={session.status} />;
+
+  return (
+    <Property.Item>
+      <Property.Label>Started session</Property.Label>
+      <Property.Value>
+        {session.isCurrent ? (
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-0">
+            {id}
+            {status}
+          </span>
+        ) : (
+          <SimpleTooltip
+            button={
+              <TextLink
+                to={v3SessionPath(organization, project, environment, {
+                  friendlyId: session.friendlyId,
+                })}
+                className="group flex flex-wrap items-center gap-x-2 gap-y-0"
+              >
+                {id}
+                {status}
+              </TextLink>
+            }
+            content="Jump to session"
+            disableHoverableContent
+          />
+        )}
+      </Property.Value>
+    </Property.Item>
+  );
+}
+
 function SpanEntity({ span }: { span: Span }) {
   const isAdmin = useHasAdminAccess();
 
@@ -1726,6 +1766,7 @@ function SpanEntity({ span }: { span: Span }) {
           </div>
         )}
         <Property.Table>
+          {span.startedSession && <StartedSessionProperty session={span.startedSession} />}
           <Property.Item>
             <Property.Label className="flex items-center justify-between">
               <span>Message</span>
