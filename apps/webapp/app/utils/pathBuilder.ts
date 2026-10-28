@@ -746,6 +746,18 @@ export function v3SessionPath(
   return `${v3SessionsPath(organization, project, environment)}/${session.friendlyId}`;
 }
 
+// A page of a session's runs for the Trace tab, newest first.
+export function v3SessionRunsPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  session: { friendlyId: string }
+) {
+  return `/resources/orgs/${organizationParam(organization)}/projects/${projectParam(
+    project
+  )}/env/${environmentParam(environment)}/sessions/${encodeURIComponent(session.friendlyId)}/runs`;
+}
+
 export function v3BatchPath(
   organization: OrgForPath,
   project: ProjectForPath,

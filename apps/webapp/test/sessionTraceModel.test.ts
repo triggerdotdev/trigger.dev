@@ -26,6 +26,10 @@ import type {
   SessionTraceRun,
   SessionTraceSpan,
 } from "~/components/sessions/v1/trace/sessionTraceTypes";
+import {
+  resolveSessionPageView,
+  runReasonLabel,
+} from "~/components/sessions/v1/trace/sessionTraceView";
 
 const T0 = Date.parse("2026-10-20T10:00:00.000Z");
 const iso = (offsetMs: number) => new Date(T0 + offsetMs).toISOString();
@@ -541,5 +545,64 @@ describe("sessionRunLoadsReducer", () => {
 
     expect(runLoad(loads, "run_1")).toEqual({ state: "unavailable", reason: "legacyStore" });
     expect(runLoad(loads, "run_2")).toEqual({ state: "logsDeleted" });
+  });
+});
+
+describe("resolveSessionPageView", () => {
+  const resolve = (
+    params: { view?: string; raw?: string; channel?: string },
+    traceEnabled = true
+  ) =>
+    resolveSessionPageView({
+      view: params.view,
+      raw: params.raw,
+      channel: params.channel,
+      traceEnabled,
+    });
+
+  it("opens the Trace tab by default when the feature is on", () => {
+    expect(resolve({})).toBe("trace");
+  });
+
+  it("always shows the conversation when the feature is off, whatever the URL says", () => {
+    expect(resolve({}, false)).toBe("conversation");
+    expect(resolve({ view: "trace" }, false)).toBe("conversation");
+  });
+
+  it("opens the conversation for existing Raw and channel links", () => {
+    expect(resolve({ raw: "1" })).toBe("conversation");
+    expect(resolve({ channel: "events" })).toBe("conversation");
+  });
+
+  it("follows an explicit view over Raw and channel params", () => {
+    expect(resolve({ view: "trace", raw: "1" })).toBe("trace");
+    expect(resolve({ view: "conversation" })).toBe("conversation");
+  });
+
+  it("ignores an unknown view", () => {
+    expect(resolve({ view: "timeline" })).toBe("trace");
+  });
+});
+
+describe("runReasonLabel", () => {
+  it("names the known start reasons", () => {
+    expect(runReasonLabel({ reason: "initial", afterCrash: false })).toBe("First run");
+    expect(runReasonLabel({ reason: "continuation", afterCrash: false })).toBe(
+      "Continued after the previous run ended"
+    );
+    expect(runReasonLabel({ reason: "upgrade", afterCrash: false })).toBe("Moved to a new version");
+    expect(runReasonLabel({ reason: "manual", afterCrash: false })).toBe("Started manually");
+  });
+
+  it("says the run restarted after a crash, whatever its stored reason", () => {
+    expect(runReasonLabel({ reason: "continuation", afterCrash: true })).toBe(
+      "Restarted after the previous run crashed"
+    );
+  });
+
+  it("shows a custom reason as it was sent", () => {
+    expect(runReasonLabel({ reason: "handoff to billing agent", afterCrash: false })).toBe(
+      "handoff to billing agent"
+    );
   });
 });

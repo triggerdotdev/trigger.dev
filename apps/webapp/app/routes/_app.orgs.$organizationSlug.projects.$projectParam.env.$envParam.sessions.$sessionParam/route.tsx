@@ -55,9 +55,13 @@ import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage } from "~/models/message.server";
-import { findProjectBySlug } from "~/models/project.server";
+import { findProjectWithOrgFlagsBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { SessionPresenter } from "~/presenters/v3/SessionPresenter.server";
+import { featuresForRequest } from "~/features.server";
+import { canAccessSessionTrace } from "~/v3/canAccessSessionTrace.server";
+import { SessionTraceTab } from "~/components/sessions/v1/trace/SessionTraceTab";
+import { resolveSessionPageView } from "~/components/sessions/v1/trace/sessionTraceView";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
 import {
@@ -70,7 +74,7 @@ import {
   type StreamChunk,
   useRealtimeStream,
 } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.streams.$streamKey/route";
-import { requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import { type SessionStatus } from "~/services/sessionsRepository/sessionsRepository.server";
 import { cn } from "~/utils/cn";
 import { throwNotFound } from "~/utils/httpErrors";
@@ -79,6 +83,7 @@ import {
   EnvironmentParamSchema,
   v3RunPath,
   v3RunsPath,
+  v3SessionRunsPath,
   v3SessionsPath,
 } from "~/utils/pathBuilder";
 import { sessionsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
@@ -98,13 +103,20 @@ export const handle: Handle = {
 export const meta = pageMeta(({ params }) => [params.sessionParam ?? "Session", "Sessions"]);
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
+  const userId = user.id;
   const { projectParam, organizationSlug, envParam, sessionParam } = ParamsSchema.parse(params);
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  const project = await findProjectWithOrgFlagsBySlug(organizationSlug, projectParam, userId);
   if (!project) {
     return redirectWithErrorMessage("/", request, "Project not found");
   }
+
+  const sessionTraceEnabled = await canAccessSessionTrace({
+    isManagedCloud: featuresForRequest(request).isManagedCloud,
+    isAdmin: user.admin,
+    orgFeatureFlags: project.organization.featureFlags,
+  });
 
   const environment = await findEnvironmentBySlug(project.id, envParam, userId);
   if (!environment) {
@@ -147,11 +159,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     }
   }
 
-  return typedjson({ session, channels, loadedAt: Date.now() });
+  return typedjson({ session, channels, sessionTraceEnabled, loadedAt: Date.now() });
 };
 
 export default function Page() {
-  const { session, channels, loadedAt } = useTypedLoaderData<typeof loader>();
+  const { session, channels, sessionTraceEnabled, loadedAt } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -190,7 +202,11 @@ export default function Page() {
       <PageBody scrollable={false}>
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">
           <ResizablePanel id="session-conversation" min={"300px"}>
-            <ConversationPane session={session} channels={channels} />
+            {sessionTraceEnabled ? (
+              <SessionLeftPane session={session} channels={channels} />
+            ) : (
+              <ConversationPane session={session} channels={channels} pinConversationView={false} />
+            )}
           </ResizablePanel>
           <ResizableHandle id="session-handle" />
           <ResizablePanel
@@ -209,7 +225,63 @@ export default function Page() {
 
 type LoadedSession = ReturnType<typeof useTypedLoaderData<typeof loader>>["session"];
 
-function ConversationPane({ session, channels }: { session: LoadedSession; channels: string[] }) {
+// Trace and Conversation tabs, shown when the session trace is enabled.
+function SessionLeftPane({ session, channels }: { session: LoadedSession; channels: string[] }) {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+  const { value, replace } = useSearchParams();
+  const view = resolveSessionPageView({
+    view: value("view"),
+    raw: value("raw"),
+    channel: value("channel"),
+    traceEnabled: true,
+  });
+
+  return (
+    <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
+      <div className="border-b border-grid-bright px-3">
+        <TabContainer className="-mb-px">
+          <TabButton
+            isActive={view === "trace"}
+            layoutId="session-left-view"
+            onClick={() => replace({ view: "trace" })}
+          >
+            Trace
+          </TabButton>
+          <TabButton
+            isActive={view === "conversation"}
+            layoutId="session-left-view"
+            onClick={() => replace({ view: "conversation" })}
+          >
+            Conversation
+          </TabButton>
+        </TabContainer>
+      </div>
+      <div className="min-h-0 overflow-hidden">
+        {view === "trace" ? (
+          <SessionTraceTab
+            key={session.friendlyId}
+            runsPath={v3SessionRunsPath(organization, project, environment, session)}
+          />
+        ) : (
+          <ConversationPane session={session} channels={channels} pinConversationView />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ConversationPane({
+  session,
+  channels,
+  pinConversationView,
+}: {
+  session: LoadedSession;
+  channels: string[];
+  /** Keep `?view=conversation` so clearing Raw or a channel doesn't switch to the Trace tab. */
+  pinConversationView: boolean;
+}) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -222,13 +294,15 @@ function ConversationPane({ session, channels }: { session: LoadedSession; chann
   const encodedSession = encodeURIComponent(sessionId);
   const sessionResourceBase = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/sessions/${encodedSession}/realtime/v1`;
 
+  const conversationView = pinConversationView ? "conversation" : undefined;
   const setView = useCallback(
-    (raw: boolean) => replace({ raw: raw ? "1" : undefined, channel: undefined }),
-    [replace]
+    (raw: boolean) =>
+      replace({ raw: raw ? "1" : undefined, channel: undefined, view: conversationView }),
+    [replace, conversationView]
   );
   const selectChannel = useCallback(
-    (channel: string) => replace({ channel, raw: undefined }),
-    [replace]
+    (channel: string) => replace({ channel, raw: undefined, view: conversationView }),
+    [replace, conversationView]
   );
 
   const utilityBarProps = {
