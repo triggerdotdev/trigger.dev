@@ -81,6 +81,11 @@ export type RunCrdWorkloadManagerOptions = WorkloadManagerOptions & {
    * deadline, so its failure arrives first and carries the reason.
    */
   restoreTimeoutMs?: number;
+  /**
+   * How long after a failed create with no Runner yet its token Secret is looked at again.
+   * Longer than the API server's request timeout, within which a lost create can still commit.
+   */
+  tokenSecretSettleMs?: number;
   /** Follows resumes from one shared watch; without it each resume is polled. */
   restoreInformer?: RunnerRestoreInformer;
 };
@@ -115,6 +120,7 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
   private readonly suspendPollMs: number;
   private readonly suspendTimeoutMs: number;
   private readonly restoreTimeoutMs: number;
+  private readonly tokenSecretSettleMs: number;
   private readonly restoreInformer?: RunnerRestoreInformer;
   private readonly releaseUnstartedRuns: boolean;
 
@@ -127,6 +133,7 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
     this.suspendPollMs = opts.suspendPollMs ?? 5_000;
     this.suspendTimeoutMs = opts.suspendTimeoutMs ?? 6 * 60_000;
     this.restoreTimeoutMs = opts.restoreTimeoutMs ?? 21 * 60_000;
+    this.tokenSecretSettleMs = opts.tokenSecretSettleMs ?? 2 * 60_000;
     this.restoreInformer = opts.restoreInformer;
   }
 
@@ -553,7 +560,7 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
         fieldValidation: "Strict",
       });
     } catch (err: unknown) {
-      await this.releaseRunnerToken(token, err);
+      await this.settleRunnerToken(token, runnerId);
       // A resume's name carries the checkpoint, so the Runner in the way is this
       // resume, still restoring or held terminal for the operator's TTL. A cold
       // start's carries the attempt: create sorts out which delivery made it.
@@ -570,7 +577,11 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
 
     const runnerUid = uidOf(created);
     if (token && runnerUid) {
-      await this.adoptRunnerToken(token.name, { name: runnerId, uid: runnerUid });
+      await this.adoptRunnerToken(
+        token.name,
+        { name: runnerId, uid: runnerUid },
+        opts.deploymentToken
+      );
     }
     return { uid: runnerUid };
   }
@@ -578,29 +589,40 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
   /**
    * Makes the Runner own the Secret, so the garbage collector takes it with the
    * Runner. An object that never had an owner is not a dependent, so nothing can
-   * collect the Secret before this lands.
+   * collect the Secret before this lands. A Secret gone by then (a redelivery's reuse
+   * raced an earlier delivery's settle) is written again, owned from the start.
    *
    * Never throws: an ownerless Secret holding one expiring token costs less than
    * failing a run that is about to start.
    */
-  private async adoptRunnerToken(name: string, runner: { name: string; uid: string }) {
+  private async adoptRunnerToken(
+    name: string,
+    runner: { name: string; uid: string },
+    token?: string
+  ) {
     const ownerReferences: OwnerReference[] = [
       { apiVersion: `${GROUP}/${VERSION}`, kind: "Runner", name: runner.name, uid: runner.uid },
     ];
-
     try {
-      await this.k8s.objects.patch(
-        {
-          apiVersion: "v1",
-          kind: "Secret",
-          metadata: { name, namespace: this.namespace, ownerReferences },
-        },
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        PatchStrategy.StrategicMergePatch
-      );
+      try {
+        await this.k8s.objects.patch(
+          {
+            apiVersion: "v1",
+            kind: "Secret",
+            metadata: { name, namespace: this.namespace, ownerReferences },
+          },
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          PatchStrategy.StrategicMergePatch
+        );
+      } catch (err: unknown) {
+        if (statusCodeOf(err) !== 404 || token === undefined) {
+          throw err;
+        }
+        await this.writeTokenSecret(name, token, ownerReferences);
+      }
     } catch (err: unknown) {
       this.logger.warn("[RunCrdWorkloadManager] Token secret adoption failed", {
         name,
@@ -611,44 +633,72 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
   }
 
   /**
-   * Deletes the Secret a failed create left behind; with no owner coming, the
-   * collector would never take it. Only on a 4xx that refused the request, and
-   * only when this call wrote it: no status, a 5xx or a 408 may be a create that
-   * committed (a 408 should mean the request never arrived whole, but a proxy
-   * may send one for an upstream timeout), and deleting then would fail a Runner
-   * about to start, so the Secret is kept and logged; an ownerless token is the
-   * cheaper mistake.
+   * A Runner holding the name and referencing the Secret adopts it: the create went
+   * through after all, or another delivery of this attempt reused the digest-named
+   * Secret. One referencing another Secret means nothing will use it, and it is deleted
+   * under its uid. With no Runner yet, or none readable, the same look is taken again
+   * later: the create may still commit, or a delivery reusing the name may be about to,
+   * and a delete now would strand that Runner.
    */
-  private async releaseRunnerToken(
-    token: { name: string; uid?: string } | undefined,
-    err: unknown
-  ) {
+  private async settleRunnerToken(token: RunnerToken | undefined, runnerId: string) {
     if (!token?.uid) {
       return;
     }
-
-    const status = statusCodeOf(err);
-    if (status !== undefined && status >= 400 && status < 500 && status !== 408) {
-      await this.deleteRunnerToken(token.name, token.uid);
+    const kept: WrittenTokenSecret = {
+      name: token.name,
+      uid: token.uid,
+      resourceVersion: token.resourceVersion,
+    };
+    if ((await this.settleHeld(kept, runnerId)) === "settled") {
       return;
     }
+    setTimeout(async () => {
+      if ((await this.settleHeld(kept, runnerId)) === "none") {
+        await this.deleteRunnerToken(kept);
+      }
+    }, this.tokenSecretSettleMs).unref();
+  }
 
-    this.logger.warn("[RunCrdWorkloadManager] Token secret kept after an indeterminate create", {
-      name: token.name,
-      status,
-    });
+  /** Settles the Secret by the Runner under the name, if there is one and it can be read. */
+  private async settleHeld(
+    token: WrittenTokenSecret,
+    runnerId: string
+  ): Promise<"settled" | "none" | "unreadable"> {
+    let holder: unknown;
+    try {
+      holder = await this.getRunner(runnerId);
+    } catch (err: unknown) {
+      if (statusCodeOf(err) === 404) {
+        return "none";
+      }
+      this.logger.warn("[RunCrdWorkloadManager] Token secret kept, Runner unreadable", {
+        name: token.name,
+        runnerId,
+        rawError: err,
+      });
+      return "unreadable";
+    }
+    const holderUid = uidOf(holder);
+    const held = (holder as RunnerOwnerSpec | null)?.spec?.deployment?.token?.name;
+    if (holderUid && held === token.name) {
+      await this.adoptRunnerToken(token.name, { name: runnerId, uid: holderUid });
+    } else {
+      await this.deleteRunnerToken(token);
+    }
+    return "settled";
   }
 
   /**
-   * Preconditioned on uid, so a Secret that is no longer the one this call wrote
-   * is left alone. A 409 is that precondition refusing, which is the answer.
+   * Deleted under its uid and the version it was created with, so a Secret that is no
+   * longer the one this call wrote, or that a Runner adopted meanwhile, is left alone.
+   * No read: the supervisor has no get on Secrets.
    */
-  private async deleteRunnerToken(name: string, uid: string) {
+  private async deleteRunnerToken(token: WrittenTokenSecret) {
     try {
       await this.k8s.core.deleteNamespacedSecret({
         namespace: this.namespace,
-        name,
-        body: { preconditions: { uid } },
+        name: token.name,
+        body: { preconditions: { uid: token.uid, resourceVersion: token.resourceVersion } },
       });
     } catch (err: unknown) {
       const status = statusCodeOf(err);
@@ -656,7 +706,7 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
         return;
       }
       this.logger.warn("[RunCrdWorkloadManager] Token secret cleanup failed", {
-        name,
+        name: token.name,
         rawError: err,
       });
     }
@@ -678,7 +728,7 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
     opts: WorkloadManagerCreateOptions,
     runnerId: string,
     perCreate: boolean
-  ): Promise<{ name: string; key: string; uid?: string } | undefined> {
+  ): Promise<RunnerToken | undefined> {
     if (!opts.deploymentToken) {
       return undefined;
     }
@@ -691,7 +741,7 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
 
     try {
       const created = await this.writeTokenSecret(name, opts.deploymentToken);
-      return { name, key: TOKEN_KEY, uid: uidOf(created) };
+      return { name, key: TOKEN_KEY, ...metadataOf(created) };
     } catch (err: unknown) {
       // A redrive: the name carries the token's digest, so the existing Secret holds
       // the same token. No uid, so the failure path cannot delete what it did not create.
@@ -711,7 +761,7 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
     }
   }
 
-  private async writeTokenSecret(name: string, token: string) {
+  private async writeTokenSecret(name: string, token: string, ownerReferences?: OwnerReference[]) {
     return await this.k8s.core.createNamespacedSecret({
       namespace: this.namespace,
       body: {
@@ -722,6 +772,7 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
             "app.kubernetes.io/part-of": "trigger-worker",
             "app.kubernetes.io/component": "runner-token",
           },
+          ...(ownerReferences ? { ownerReferences } : {}),
         },
         type: "Opaque",
         // Spares the kubelet a watch, and says the token does not change.
@@ -732,8 +783,17 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
   }
 }
 
+/** The Secret a create wrote, by the uid and version that guard its delete. */
+type WrittenTokenSecret = { name: string; uid: string; resourceVersion?: string };
+
+/** The Secret a Runner references; a reused one carries no uid, so it is never deleted. */
+type RunnerToken = { name: string; key: string; uid?: string; resourceVersion?: string };
+
 type RunnerOwnerSpec = {
-  spec?: { owner?: { envID?: string }; deployment?: { friendlyID?: string } };
+  spec?: {
+    owner?: { envID?: string };
+    deployment?: { friendlyID?: string; token?: { name?: string } };
+  };
 };
 
 type ExistingRestore = {
@@ -1457,13 +1517,18 @@ function isRunner(runner: unknown, uid: string | undefined): boolean {
   return uid === undefined || uidOf(runner) === uid;
 }
 
-/** The create response is untyped, and an absent uid just skips adoption. */
-function uidOf(created: unknown): string | undefined {
-  if (typeof created !== "object" || created === null) {
-    return undefined;
-  }
-  const meta = (created as { metadata?: { uid?: unknown } }).metadata;
-  return typeof meta?.uid === "string" ? meta.uid : undefined;
+/** API objects come back untyped: an absent uid skips adoption and guards no delete. */
+function metadataOf(object: unknown): { uid?: string; resourceVersion?: string } {
+  const meta = (object as { metadata?: { uid?: unknown; resourceVersion?: unknown } } | null)
+    ?.metadata;
+  return {
+    uid: typeof meta?.uid === "string" ? meta.uid : undefined,
+    resourceVersion: typeof meta?.resourceVersion === "string" ? meta.resourceVersion : undefined,
+  };
+}
+
+function uidOf(object: unknown): string | undefined {
+  return metadataOf(object).uid;
 }
 
 const TEMPLATE_KEY = /^[a-f0-9]{64}$/;

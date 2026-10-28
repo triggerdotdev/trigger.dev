@@ -237,6 +237,8 @@ export const Env = z
       .int()
       .positive()
       .default(20_000),
+    // At least the API server's default request timeout, within which a lost create can still commit.
+    KUBERNETES_RUNNER_TOKEN_SECRET_SETTLE_MS: z.coerce.number().int().min(60_000).default(120_000),
     KUBERNETES_NAMESPACE: z.string().default("default"),
     KUBERNETES_WORKER_NODETYPE_LABEL: NodeLabelValue.default("v4-worker"),
     KUBERNETES_IMAGE_PULL_SECRETS: z.string().optional(), // csv

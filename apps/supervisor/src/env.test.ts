@@ -249,3 +249,19 @@ describe("continue retry budget", () => {
     }
   );
 });
+
+describe("runner token Secret settle delay", () => {
+  it("defaults to two minutes", () => {
+    expect(Env.parse(base).KUBERNETES_RUNNER_TOKEN_SECRET_SETTLE_MS).toBe(120_000);
+  });
+
+  it("takes a number of milliseconds from a minute up and refuses less", () => {
+    expect(
+      Env.parse({ ...base, KUBERNETES_RUNNER_TOKEN_SECRET_SETTLE_MS: "60000" })
+        .KUBERNETES_RUNNER_TOKEN_SECRET_SETTLE_MS
+    ).toBe(60_000);
+    expect(
+      Env.safeParse({ ...base, KUBERNETES_RUNNER_TOKEN_SECRET_SETTLE_MS: "59999" }).success
+    ).toBe(false);
+  });
+});

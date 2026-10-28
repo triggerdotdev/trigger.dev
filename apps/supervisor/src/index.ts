@@ -256,6 +256,7 @@ class ManagedSupervisor {
         },
         suspendPollMs: env.KUBERNETES_RUNNER_POLL_INTERVAL_MS,
         restoreTimeoutMs: env.KUBERNETES_RUNNER_RESTORE_TIMEOUT_MS,
+        tokenSecretSettleMs: env.KUBERNETES_RUNNER_TOKEN_SECRET_SETTLE_MS,
         restoreInformer: this.restoreInformer,
       });
       this.runCrdManager = runCrdManager;
