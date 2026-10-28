@@ -359,14 +359,16 @@ export type EngineStartRunAttemptResult = StartRunAttemptResult & {
 
 export type RestoreOutcome = "requeue" | "fail" | "fallback";
 
-export type RestoreOutcomeResult =
-  | { ok: true; outcome: RestoreOutcome }
-  | {
-      ok: false;
-      code: "SNAPSHOT_CONFLICT";
-      latestSnapshotId: string;
-      latestExecutionStatus: TaskRunExecutionStatus;
-    };
+type SnapshotConflict = {
+  ok: false;
+  code: "SNAPSHOT_CONFLICT";
+  latestSnapshotId: string;
+  latestExecutionStatus: TaskRunExecutionStatus;
+};
+
+export type RestoreOutcomeResult = { ok: true; outcome: RestoreOutcome } | SnapshotConflict;
+
+export type ReleaseRunResult = { ok: true; requeued: boolean } | SnapshotConflict;
 
 export type HeartbeatTimeouts = {
   PENDING_EXECUTING: number;

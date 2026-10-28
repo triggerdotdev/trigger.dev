@@ -1,6 +1,6 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod/v4";
 import type { AnyZodSchema } from "../../types/schemas.js";
 import { SupervisorHttpClient } from "./http.js";
@@ -88,5 +88,85 @@ describe("supervisor response schema resolution", () => {
     if (!result.success) {
       expect(result.statusCode).toBe(200);
     }
+  });
+});
+
+describe("releaseRun", () => {
+  type Answer = { status: number; body: unknown; headers?: Record<string, string> };
+  type Received = { method?: string; url?: string; headers: Record<string, unknown>; body: string };
+
+  let server: Server;
+  let apiUrl: string;
+  let answer: Answer;
+  let received: Received[];
+
+  beforeAll(async () => {
+    server = createServer((request, response) => {
+      let body = "";
+      request.on("data", (chunk) => (body += chunk));
+      request.on("end", () => {
+        received.push({ method: request.method, url: request.url, headers: request.headers, body });
+        response.writeHead(answer.status, {
+          "content-type": "application/json",
+          ...answer.headers,
+        });
+        response.end(JSON.stringify(answer.body));
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    apiUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+
+  beforeEach(() => {
+    received = [];
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  function release() {
+    const client = new SupervisorHttpClient({ apiUrl, workerToken: "token", instanceName: "test" });
+    return client.releaseRun("run_1", "snapshot_1", { reason: "PodFailed" }, "runner_1", "env_1");
+  }
+
+  it("posts the reason for the run's snapshot and returns whether it was requeued", async () => {
+    answer = { status: 200, body: { ok: true, requeued: true } };
+
+    const result = await release();
+
+    expect(result).toEqual({ success: true, data: { ok: true, requeued: true } });
+    expect(received).toHaveLength(1);
+    expect(received[0]).toMatchObject({
+      method: "POST",
+      url: "/engine/v1/worker-actions/runs/run_1/snapshots/snapshot_1/release",
+      headers: {
+        "x-trigger-worker-runner-id": "runner_1",
+        "x-trigger-worker-environment-id": "env_1",
+      },
+    });
+    expect(JSON.parse(received[0]!.body)).toEqual({ reason: "PodFailed" });
+  });
+
+  it("returns a webapp without the route as a 404, without retrying", async () => {
+    answer = { status: 404, body: { error: "Not Found" } };
+
+    const result = await release();
+
+    expect(result).toMatchObject({ success: false, statusCode: 404 });
+    expect(received).toHaveLength(1);
+  });
+
+  it("returns a conflict as a failure that says not to retry", async () => {
+    answer = {
+      status: 409,
+      body: { error: "Snapshot is no longer the run's dequeued snapshot" },
+      headers: { "x-should-retry": "false" },
+    };
+
+    const result = await release();
+
+    expect(result).toMatchObject({ success: false, statusCode: 409, shouldRetry: false });
+    expect(received).toHaveLength(1);
   });
 });

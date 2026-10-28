@@ -105,6 +105,7 @@ import type {
   EngineStartRunAttemptResult,
   EngineWorker,
   HeartbeatTimeouts,
+  ReleaseRunResult,
   ReportableQueue,
   RestoreOutcome,
   RestoreOutcomeResult,
@@ -2232,6 +2233,39 @@ export class RunEngine {
       runnerId,
       environmentId,
       fallbackWorkerQueue,
+      servesWorkerQueue,
+    });
+  }
+
+  /**
+   * Requeues a run whose worker never started it, while `snapshotId` is still its dequeued
+   * PENDING_EXECUTING snapshot. Each release counts against the queue's dequeue budget and delays
+   * the run by the queue's backoff, as the pending execution timeout does.
+   */
+  async releaseRun({
+    runId,
+    snapshotId,
+    reason,
+    workerId,
+    runnerId,
+    environmentId,
+    servesWorkerQueue,
+  }: {
+    runId: string;
+    snapshotId: string;
+    reason: string;
+    workerId?: string;
+    runnerId?: string;
+    environmentId?: string;
+    servesWorkerQueue?: (workerQueue: string) => boolean;
+  }): Promise<ReleaseRunResult> {
+    return this.runAttemptSystem.releaseRun({
+      runId,
+      snapshotId,
+      reason,
+      workerId,
+      runnerId,
+      environmentId,
       servesWorkerQueue,
     });
   }

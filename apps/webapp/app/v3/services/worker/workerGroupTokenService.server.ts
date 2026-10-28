@@ -74,7 +74,13 @@ if (workloadCreatedAtGateEnabled && !workloadTokenCutoff) {
   );
 }
 
-type WorkloadGateAction = "start" | "complete" | "continue" | "snapshots_since" | "restore_outcome";
+type WorkloadGateAction =
+  | "start"
+  | "complete"
+  | "continue"
+  | "snapshots_since"
+  | "restore_outcome"
+  | "release";
 
 const meter = getMeter("workload-auth-gate");
 
@@ -795,6 +801,36 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       runnerId,
       environmentId,
       fallbackWorkerQueue,
+      servesWorkerQueue: (workerQueue) => workerServesQueue(this.queueConsumer, workerQueue),
+    });
+  }
+
+  async releaseRun({
+    runFriendlyId,
+    snapshotFriendlyId,
+    reason,
+    runnerId,
+    environmentId,
+  }: {
+    runFriendlyId: string;
+    snapshotFriendlyId: string;
+    reason: string;
+    runnerId?: string;
+    environmentId?: string;
+  }) {
+    await this.assertCreatedAtGate({
+      runId: fromFriendlyId(runFriendlyId),
+      environmentId,
+      action: "release",
+    });
+
+    return await this._engine.releaseRun({
+      runId: fromFriendlyId(runFriendlyId),
+      snapshotId: fromFriendlyId(snapshotFriendlyId),
+      reason,
+      workerId: this.workerInstanceId,
+      runnerId,
+      environmentId,
       servesWorkerQueue: (workerQueue) => workerServesQueue(this.queueConsumer, workerQueue),
     });
   }

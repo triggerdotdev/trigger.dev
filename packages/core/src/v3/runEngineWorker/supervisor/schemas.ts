@@ -74,6 +74,18 @@ export type WorkerApiRunRestoreOutcomeResponseBody = z.infer<
   typeof WorkerApiRunRestoreOutcomeResponseBody
 >;
 
+export const WorkerApiRunReleaseRequestBody = z.object({
+  reason: z.string().min(1).max(256),
+});
+export type WorkerApiRunReleaseRequestBody = z.infer<typeof WorkerApiRunReleaseRequestBody>;
+
+export const WorkerApiRunReleaseResponseBody = z.object({
+  ok: z.literal(true),
+  // False when the run could not be requeued, as when its dequeue budget is used up, so it failed.
+  requeued: z.boolean(),
+});
+export type WorkerApiRunReleaseResponseBody = z.infer<typeof WorkerApiRunReleaseResponseBody>;
+
 export const WorkerApiConnectRequestBody = z.object({
   metadata: z.record(z.string(), z.any()),
 });

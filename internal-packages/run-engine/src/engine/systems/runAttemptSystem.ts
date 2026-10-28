@@ -53,6 +53,7 @@ import {
 } from "../statuses.js";
 import type {
   EngineStartRunAttemptResult,
+  ReleaseRunResult,
   RestoreOutcome,
   RestoreOutcomeResult,
   RunEngineOptions,
@@ -139,6 +140,7 @@ export class RunAttemptSystem {
   private readonly delayedRunSystem: DelayedRunSystem;
   private readonly finalizationGuardDelayMs: number;
   private readonly rederivationsCounter: Counter;
+  private readonly releasesCounter: Counter;
   private readonly restoreOutcomesCounter: Counter;
   private readonly cache: UnkeyCache<{
     tasks: BackwardsCompatibleTaskRunExecution["task"];
@@ -164,6 +166,11 @@ export class RunAttemptSystem {
         unit: "runs",
       }
     );
+    this.releasesCounter = this.$.meter.createCounter("run_engine.run_releases", {
+      description:
+        "Dequeued runs a worker released before they started, by reason and result: requeued, dropped when the run could not be requeued (as when its dequeue budget is used up) and failed, or conflict",
+      unit: "releases",
+    });
     this.restoreOutcomesCounter = this.$.meter.createCounter("run_engine.restore_outcomes", {
       description: "Failed restores reported by a supervisor, by outcome, reason and result",
       unit: "reports",
@@ -1372,6 +1379,8 @@ export class RunAttemptSystem {
     resetQueueAttempts = false,
     workerQueue,
     moveToWorkerQueue,
+    description,
+    previousSnapshotId,
     tx,
   }: {
     run: { id: string };
@@ -1403,6 +1412,8 @@ export class RunAttemptSystem {
     workerQueue?: string;
     /** Also moves the run to this worker queue, so later deliveries and retries use it. */
     moveToWorkerQueue?: string;
+    description?: string;
+    previousSnapshotId?: string;
   }): Promise<{ wasRequeued: boolean } & ExecutionResult> {
     const prisma = tx ?? this.$.prisma;
 
@@ -1445,7 +1456,7 @@ export class RunAttemptSystem {
         previousSnapshot,
         snapshot: {
           executionStatus: "QUEUED",
-          description: "Requeued the run after a failure",
+          description: description ?? "Requeued the run after a failure",
         },
         environmentId: environment.id,
         environmentType: environment.type,
@@ -1456,6 +1467,7 @@ export class RunAttemptSystem {
         checkpointId,
         completedWaitpoints,
         batchId,
+        previousSnapshotId,
       });
 
       return {
@@ -1514,14 +1526,6 @@ export class RunAttemptSystem {
         { id: runId },
         { select: { workerQueue: true, lockedRetryConfig: true } }
       );
-      const restoreWorkerQueue =
-        run && latestSnapshot.checkpoint
-          ? workerQueueForPublish(
-              run,
-              { id: latestSnapshot.environmentId, type: latestSnapshot.environmentType },
-              latestSnapshot.checkpoint
-            )
-          : undefined;
 
       // A cold start has no checkpoint to lose, so it cannot fail; a restore cannot change lanes.
       if (
@@ -1529,13 +1533,7 @@ export class RunAttemptSystem {
         latestSnapshot.executionStatus !== "PENDING_EXECUTING" ||
         (outcome === "fail" && !latestSnapshot.checkpointId) ||
         (outcome === "fallback" && latestSnapshot.checkpointId) ||
-        // Only a worker whose group serves the run's worker queue, or its restore's, may report on it.
-        (servesWorkerQueue &&
-          !(
-            run &&
-            (servesWorkerQueue(run.workerQueue) ||
-              (restoreWorkerQueue !== undefined && servesWorkerQueue(restoreWorkerQueue)))
-          ))
+        (servesWorkerQueue && !servesRun(run, latestSnapshot, servesWorkerQueue))
       ) {
         this.restoreOutcomesCounter.add(1, {
           outcome,
@@ -1553,7 +1551,6 @@ export class RunAttemptSystem {
             latestExecutionStatus: latestSnapshot.executionStatus,
             latestCheckpointId: latestSnapshot.checkpointId,
             workerQueue: run?.workerQueue,
-            restoreWorkerQueue,
             workerId,
           }
         );
@@ -1597,13 +1594,7 @@ export class RunAttemptSystem {
             batchId: latestSnapshot.batchId ?? undefined,
             workerId,
             runnerId,
-            error: {
-              type: "INTERNAL_ERROR",
-              code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
-              message: latestSnapshot.checkpointId
-                ? "Restoring the run failed more times than we retry."
-                : "Starting the run failed more times than we retry.",
-            },
+            error: dequeuedMaxRetriesError(latestSnapshot.checkpointId),
             snapshotRoute: snapshotRouteFromSnapshot(latestSnapshot),
             moveToWorkerQueue,
             tx: prisma,
@@ -1658,6 +1649,101 @@ export class RunAttemptSystem {
       }
 
       return { ok: true, outcome };
+    });
+  }
+
+  public async releaseRun({
+    runId,
+    snapshotId,
+    reason,
+    workerId,
+    runnerId,
+    environmentId,
+    servesWorkerQueue,
+  }: {
+    runId: string;
+    snapshotId: string;
+    reason: string;
+    workerId?: string;
+    runnerId?: string;
+    environmentId?: string;
+    servesWorkerQueue?: (workerQueue: string) => boolean;
+  }): Promise<ReleaseRunResult> {
+    const prisma = this.$.prisma;
+
+    return await this.$.runLock.lock("releaseRun", [runId], async () => {
+      const latestSnapshot = await getLatestExecutionSnapshot(
+        prisma,
+        runId,
+        this.$.runStore,
+        environmentId
+      );
+
+      let refused =
+        latestSnapshot.id !== snapshotId || latestSnapshot.executionStatus !== "PENDING_EXECUTING";
+      if (!refused && servesWorkerQueue) {
+        const run = await this.$.runStore.findRunOnPrimary(
+          { id: runId },
+          { select: { workerQueue: true } }
+        );
+        refused = !servesRun(run, latestSnapshot, servesWorkerQueue);
+      }
+
+      if (refused) {
+        this.releasesCounter.add(1, { reason: metricReason(reason), result: "conflict" });
+        this.$.logger.debug(
+          "releaseRun: refused, the snapshot moved on or the worker does not serve the run",
+          {
+            runId,
+            snapshotId,
+            reason,
+            latestSnapshotId: latestSnapshot.id,
+            latestExecutionStatus: latestSnapshot.executionStatus,
+            workerId,
+          }
+        );
+
+        return {
+          ok: false,
+          code: "SNAPSHOT_CONFLICT",
+          latestSnapshotId: latestSnapshot.id,
+          latestExecutionStatus: latestSnapshot.executionStatus,
+        };
+      }
+
+      const { wasRequeued } = await this.tryNackAndRequeue({
+        run: { id: runId },
+        snapshotRoute: snapshotRouteFromSnapshot(latestSnapshot),
+        environment: {
+          id: latestSnapshot.environmentId,
+          type: latestSnapshot.environmentType,
+        },
+        orgId: latestSnapshot.organizationId,
+        projectId: latestSnapshot.projectId,
+        checkpointId: latestSnapshot.checkpointId ?? undefined,
+        completedWaitpoints: latestSnapshot.completedWaitpoints,
+        batchId: latestSnapshot.batchId ?? undefined,
+        workerId,
+        runnerId,
+        error: dequeuedMaxRetriesError(latestSnapshot.checkpointId),
+        description: `Released before the run started: ${reason}`,
+        previousSnapshotId: latestSnapshot.id,
+        previousSnapshot: latestSnapshot,
+        tx: prisma,
+      });
+
+      this.releasesCounter.add(1, {
+        reason: metricReason(reason),
+        result: wasRequeued ? "requeued" : "dropped",
+      });
+      const fields = { runId, snapshotId, reason, workerId, runnerId };
+      if (wasRequeued) {
+        this.$.logger.info("releaseRun: requeued", fields);
+      } else {
+        this.$.logger.warn("releaseRun: the run could not be requeued and failed", fields);
+      }
+
+      return { ok: true, requeued: wasRequeued };
     });
   }
 
@@ -2702,6 +2788,7 @@ function truncateString(str: string | undefined, maxLength: number): string {
 // reasons the operator and supervisor are known to report; the rest is logged.
 const METRIC_REASONS = new Set([
   "ContainerFailed",
+  "CreateFailed",
   "CreateContainerConfigError",
   "PodCannotStart",
   "PodCreateFailed",
@@ -2725,6 +2812,38 @@ const METRIC_REASONS = new Set([
   "Timeout",
   "Unknown",
 ]);
+
+/** Whether a worker group serves the run's worker queue or, for a restore, its restore queue. */
+function servesRun(
+  run: { workerQueue: string } | null,
+  snapshot: Pick<EnhancedExecutionSnapshot, "environmentId" | "environmentType" | "checkpoint">,
+  serves: (workerQueue: string) => boolean
+): boolean {
+  if (!run) {
+    return false;
+  }
+  return (
+    serves(run.workerQueue) ||
+    (!!snapshot.checkpoint &&
+      serves(
+        workerQueueForPublish(
+          run,
+          { id: snapshot.environmentId, type: snapshot.environmentType },
+          snapshot.checkpoint
+        )
+      ))
+  );
+}
+
+function dequeuedMaxRetriesError(checkpointId: string | null | undefined): TaskRunInternalError {
+  return {
+    type: "INTERNAL_ERROR",
+    code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
+    message: checkpointId
+      ? "Restoring the run failed more times than we retry."
+      : "Starting the run failed more times than we retry.",
+  };
+}
 
 function metricReason(reason: string): string {
   return METRIC_REASONS.has(reason) ? reason : "other";
