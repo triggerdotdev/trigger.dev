@@ -1,4 +1,10 @@
-import { describe, expect, it } from "vitest";
+import "./testEnvironment.js";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { ApiException } from "@kubernetes/client-node";
+import { afterAll, describe, expect, it } from "vitest";
+import type { WorkloadManagerCreateOptions } from "./types.js";
 import {
   nodetypeNodeSelector,
   runPodTolerations,
@@ -232,5 +238,120 @@ describe("runnerSecurityContext", () => {
     for (const runtime of [undefined, null, "", "node", "node-22", "node-26"]) {
       expect(runnerSecurityContext("restricted", 1000, runtime)?.runAsUser).toBe(1000);
     }
+  });
+});
+
+// The client builds its API objects from a kubeconfig; nothing contacts this cluster.
+const kubeconfigDir = await mkdtemp(join(tmpdir(), "supervisor-kubeconfig-"));
+process.env.KUBECONFIG = join(kubeconfigDir, "config");
+await writeFile(
+  process.env.KUBECONFIG,
+  [
+    "apiVersion: v1",
+    "kind: Config",
+    "current-context: test",
+    "clusters:",
+    "- name: test",
+    "  cluster:",
+    "    server: http://127.0.0.1:1",
+    "contexts:",
+    "- name: test",
+    "  context:",
+    "    cluster: test",
+    "    user: test",
+    "users:",
+    "- name: test",
+    "  user:",
+    "    token: test",
+    "",
+  ].join("\n")
+);
+
+const { KubernetesWorkloadManager } = await import("./kubernetes.js");
+const { WorkloadNotCreatedError } = await import("./createErrors.js");
+
+// The manager reads the kubeconfig when it is built.
+afterAll(async () => {
+  delete process.env.KUBECONFIG;
+  await rm(kubeconfigDir, { recursive: true, force: true });
+});
+
+/** What client-node raises for a non-2xx answer: the body is the response's raw text. */
+function apiError(code: number, message: string) {
+  const body = JSON.stringify({ kind: "Status", code, message });
+  return new ApiException(code, "Unknown API Status Code!", body, {});
+}
+
+const createOptions = {
+  image: "registry.example.com/task:1",
+  machine: { name: "small-1x", cpu: 0.5, memory: 0.5, centsPerMs: 0 },
+  version: "20261027.1",
+  nextAttemptNumber: 1,
+  dequeuedAt: new Date(),
+  envId: "env_1",
+  envType: "PRODUCTION",
+  orgId: "org_1",
+  projectId: "proj_1",
+  deploymentFriendlyId: "deployment_1",
+  deploymentVersion: "20261027.1",
+  runId: "run1",
+  runFriendlyId: "run_1",
+  snapshotId: "snapshot1",
+  snapshotFriendlyId: "snapshot_1",
+} as WorkloadManagerCreateOptions;
+
+/** Creates with a Kubernetes API whose pod create raises `error`; resolves to what create threw. */
+async function createFailure(releaseUnstartedRuns: boolean, error: Error): Promise<unknown> {
+  const manager = new KubernetesWorkloadManager({
+    workloadApiProtocol: "http",
+    workloadApiPort: 8020,
+    releaseUnstartedRuns,
+  });
+  let creates = 0;
+  const k8s = {
+    core: {
+      createNamespacedPod: async () => {
+        creates++;
+        throw error;
+      },
+    },
+  };
+  Object.assign(manager, { k8s });
+  const thrown = await manager.create(createOptions).then(
+    () => "created",
+    (thrown: unknown) => thrown
+  );
+  expect(creates).toBe(1);
+  return thrown;
+}
+
+describe("KubernetesWorkloadManager create failures", () => {
+  it.each([
+    ["a quota the namespace has used up", apiError(403, "pods is forbidden: exceeded quota")],
+    ["a pod spec the API rejected", apiError(422, "Pod is invalid")],
+  ])("reports %s as nothing running, with releases on", async (_name, error) => {
+    const thrown = await createFailure(true, error);
+
+    expect(thrown).toBeInstanceOf(WorkloadNotCreatedError);
+    expect((thrown as Error).message).toBe(JSON.parse(error.body as string).message);
+  });
+
+  it.each([
+    ["a name a pod still holds", apiError(409, "pods already exists")],
+    ["an answer after which the pod may exist", apiError(500, "etcd leader changed")],
+    ["a request the API asked to slow down", apiError(429, "Too many requests")],
+  ])("leaves %s to the timeout, with releases on", async (_name, error) => {
+    const thrown = await createFailure(true, error);
+
+    expect(thrown).not.toBe("created");
+    expect(thrown).not.toBeInstanceOf(WorkloadNotCreatedError);
+  });
+
+  it("throws a refusal's raw body as before, with releases off", async () => {
+    const error = apiError(403, "pods is forbidden: exceeded quota");
+
+    const thrown = await createFailure(false, error);
+
+    expect(thrown).toBe(error.body);
   });
 });

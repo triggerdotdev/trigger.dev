@@ -42,6 +42,8 @@ import { register } from "./metrics.js";
 import { PodCleaner } from "./services/podCleaner.js";
 import { FailedPodHandler } from "./services/failedPodHandler.js";
 import { RunnerKillReporter } from "./services/runnerKills.js";
+import { dequeuedRun, RunReleaser } from "./services/runReleases.js";
+import { WorkloadNotCreatedError } from "./workloadManager/createErrors.js";
 import { DequeueDrain } from "./services/dequeueDrain.js";
 import { getWorkerToken } from "./workerToken.js";
 import { mintDeploymentToken } from "./workloadToken.js";
@@ -124,6 +126,7 @@ class ManagedSupervisor {
   private readonly restoreWatcher?: RestoreWatcher;
   private readonly runnerKillReporter?: RunnerKillReporter;
   private readonly runnerKillInformer?: RunnerKillInformer;
+  private readonly runReleaser?: RunReleaser;
   private readonly logger = new SimpleStructuredLogger("managed-supervisor");
   private readonly resourceMonitor: ResourceMonitor;
   private readonly checkpointClient?: CheckpointClient;
@@ -180,7 +183,17 @@ class ManagedSupervisor {
       additionalEnvVars: env.RUNNER_ADDITIONAL_ENV_VARS,
       dockerAutoremove: env.DOCKER_AUTOREMOVE_EXITED_CONTAINERS,
       checkpointsEnabled: !!env.TRIGGER_CHECKPOINT_URL,
+      releaseUnstartedRuns: env.RELEASE_UNSTARTED_RUNS_ENABLED,
     } satisfies WorkloadManagerOptions;
+
+    this.runReleaser =
+      env.RELEASE_UNSTARTED_RUNS_ENABLED || env.RELEASE_FAILED_POD_RUNS_ENABLED
+        ? new RunReleaser({
+            register,
+            client: () => this.workerSession.httpClient,
+            runsReleasedAMinute: env.RUN_RELEASES_PER_MINUTE,
+          })
+        : undefined;
 
     this.resourceMonitor = env.RESOURCE_MONITOR_ENABLED
       ? this.isKubernetes
@@ -287,6 +300,7 @@ class ManagedSupervisor {
           namespace: env.KUBERNETES_NAMESPACE,
           reconnectIntervalMs: env.FAILED_POD_HANDLER_RECONNECT_INTERVAL_MS,
         });
+        const runReleaser = env.RELEASE_FAILED_POD_RUNS_ENABLED ? this.runReleaser : undefined;
         this.failedPodHandler = new FailedPodHandler({
           register,
           namespace: env.KUBERNETES_NAMESPACE,
@@ -295,12 +309,19 @@ class ManagedSupervisor {
           onRunnerKilled: this.runnerKillReporter
             ? (runnerId, kill) => this.runnerKillReporter!.onRunnerKilled(runnerId, kill)
             : undefined,
+          onRunPodFailed: runReleaser ? (run) => runReleaser.release(run, "PodFailed") : undefined,
         });
       } else {
         this.logger.warn("Failed pod handler disabled");
       }
     } else if (this.isKubernetes) {
       this.logger.log("🧹 Pod cleaner and failed pod handler disabled, the operator owns run pods");
+    }
+
+    if (env.RELEASE_FAILED_POD_RUNS_ENABLED && !this.failedPodHandler) {
+      this.logger.warn(
+        "RELEASE_FAILED_POD_RUNS_ENABLED has no effect without the failed pod handler"
+      );
     }
 
     if (env.TRIGGER_DEQUEUE_INTERVAL_MS > env.TRIGGER_DEQUEUE_IDLE_INTERVAL_MS) {
@@ -968,6 +989,10 @@ class ManagedSupervisor {
         runId: message.run.friendlyId,
         error,
       });
+
+      if (error instanceof WorkloadNotCreatedError) {
+        await this.runReleaser?.release(dequeuedRun(message), "CreateFailed");
+      }
     }
   }
 

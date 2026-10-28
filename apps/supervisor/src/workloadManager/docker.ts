@@ -9,6 +9,11 @@ import { getDockerHostDomain, getRunnerId, normalizeDockerHostUrl } from "../uti
 import Docker from "dockerode";
 import { tryCatch } from "@trigger.dev/core";
 import { ECRAuthService } from "./ecrAuth.js";
+import {
+  dockerContainerGone,
+  dockerCreateRefused,
+  WorkloadNotCreatedError,
+} from "./createErrors.js";
 
 export class DockerWorkloadManager implements WorkloadManager {
   private readonly logger = new SimpleStructuredLogger("docker-workload-manager");
@@ -184,6 +189,9 @@ export class DockerWorkloadManager implements WorkloadManager {
       );
       if (createImageError) {
         logger.error("Failed to pull image", { error: createImageError });
+        if (this.opts.releaseUnstartedRuns && dockerCreateRefused(createImageError)) {
+          throw new WorkloadNotCreatedError("Failed to pull image", { cause: createImageError });
+        }
         return;
       }
 
@@ -209,6 +217,11 @@ export class DockerWorkloadManager implements WorkloadManager {
 
     if (createContainerError) {
       logger.error("Failed to create container", { error: createContainerError });
+      if (this.opts.releaseUnstartedRuns && dockerCreateRefused(createContainerError)) {
+        throw new WorkloadNotCreatedError("Failed to create container", {
+          cause: createContainerError,
+        });
+      }
       return;
     }
 
@@ -225,7 +238,16 @@ export class DockerWorkloadManager implements WorkloadManager {
 
     if (startError) {
       logger.error("Failed to start container", { error: startError, containerId: container.id });
-      return;
+      if (!this.opts.releaseUnstartedRuns || !dockerCreateRefused(startError)) {
+        return;
+      }
+      // The run's next delivery reuses the name, so the run is released only once the container is gone.
+      const [removeError] = await tryCatch(container.remove({ force: true }));
+      if (removeError && !dockerContainerGone(removeError)) {
+        logger.warn("Failed to remove container after it failed to start", { removeError });
+        return;
+      }
+      throw new WorkloadNotCreatedError("Failed to start container", { cause: startError });
     }
 
     logger.debug("create succeeded", { startResult, containerId: container.id });

@@ -23,6 +23,7 @@ import {
   withNodeSelector,
 } from "./kubernetesPodSpec.js";
 import { rewriteImageRegistry } from "./imageRegistry.js";
+import { k8sCreateRefused, k8sErrorMessage, WorkloadNotCreatedError } from "./createErrors.js";
 
 type ResourceQuantities = {
   [K in "cpu" | "memory" | "ephemeral-storage"]?: string;
@@ -332,6 +333,11 @@ export class KubernetesWorkloadManager implements WorkloadManager {
 
   #handleK8sError(err: unknown) {
     this.#throwUnlessRecord(err);
+
+    if (this.opts.releaseUnstartedRuns && k8sCreateRefused(err)) {
+      this.logger.error("[KubernetesWorkloadManager] Create refused", { rawError: err.body });
+      throw new WorkloadNotCreatedError(k8sErrorMessage(err), { cause: err });
+    }
 
     if ("body" in err && err.body) {
       this.logger.error("[KubernetesWorkloadManager] Create failed", { rawError: err.body });

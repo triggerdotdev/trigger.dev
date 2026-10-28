@@ -33,6 +33,9 @@ mode: "wide"
 | `TRIGGER_DEQUEUE_INTERVAL_MS`               | No       | 250         | Dequeue interval (ms).                                      |
 | `TRIGGER_DEQUEUE_IDLE_INTERVAL_MS`          | No       | 1000 (1s)   | Dequeue idle interval (ms).                                 |
 | `TRIGGER_DEQUEUE_MAX_CONSUMER_COUNT`        | No       | 1           | Max dequeue consumer count.                                 |
+| `RELEASE_UNSTARTED_RUNS_ENABLED`            | No       | false       | Set to true to requeue a run straight away when its container or pod can't be created, rather than after the pending execution timeout. Limited by `RUN_RELEASES_PER_MINUTE`. |
+| `RELEASE_FAILED_POD_RUNS_ENABLED`           | No       | false       | Set to true to requeue a run straight away when its pod fails before the run starts, rather than after the pending execution timeout. Independent of `RELEASE_UNSTARTED_RUNS_ENABLED`; the two share `RUN_RELEASES_PER_MINUTE`. Needs `FAILED_POD_HANDLER_ENABLED`. |
+| `RUN_RELEASES_PER_MINUTE`                   | No       | 5           | Different runs released within a minute, by either release flag, past which every release waits for the timeout again until a slot frees, a run already released included. 0 withholds every release; blank means the default. |
 | **Docker settings**                         |          |             |                                                             |
 | `DOCKER_API_VERSION`                        | No       | v1.41       | Docker API version. You should probably not touch this.     |
 | `DOCKER_STRIP_IMAGE_DIGEST`                 | No       | true        | Strip image digest in Docker. Turning off can cause issues. |
