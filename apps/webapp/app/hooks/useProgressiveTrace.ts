@@ -170,7 +170,9 @@ export async function runTailLoop(
 export function useProgressiveTrace(
   trace: ProgressiveTraceInput,
   chunkPath: string,
-  errorsOnly: boolean
+  errorsOnly: boolean,
+  /** False drops live tails, including ones already queued (throttled, hidden tab, trailing). */
+  tailEnabled = true
 ): ProgressiveTraceState & {
   tailLive: () => void;
   liveTailEnabled: boolean;
@@ -208,6 +210,17 @@ export function useProgressiveTrace(
   const pendingTailRef = useRef(false);
   // Latest tail closure, behind the stable `tailLive`.
   const tailLiveRef = useRef<() => void>(() => {});
+  const tailEnabledRef = useRef(tailEnabled);
+  useEffect(() => {
+    tailEnabledRef.current = tailEnabled;
+    if (tailEnabled) return;
+    pendingTailRef.current = false;
+    hiddenTailRef.current = false;
+    if (deferredTailRef.current !== null) {
+      clearTimeout(deferredTailRef.current);
+      deferredTailRef.current = null;
+    }
+  }, [tailEnabled]);
 
   const rebuild = useCallback((meta: ProgressiveMeta, assembler: TraceChunkAssembler) => {
     if (assemblerRef.current !== assembler) return;
@@ -389,6 +402,7 @@ export function useProgressiveTrace(
   }, [errorsOnly, fullyLoaded, identity, chunkPath, retryGeneration, rebuild]);
 
   const runTail = useCallback(() => {
+    if (!tailEnabledRef.current) return;
     const meta = latestTraceRef.current.progressive;
     const assembler = assemblerRef.current;
     if (!meta || !assembler) return;

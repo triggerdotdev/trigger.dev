@@ -56,6 +56,19 @@ export function liveRunFriendlyId(runs: SessionTraceRun[], totalCount: number): 
   return newest.friendlyId;
 }
 
+/**
+ * The session's newest run, finished or not, when it's loaded. Its trace keeps live updates on
+ * so the tail can pick up late rows after it finishes; older runs never tail.
+ */
+export function newestRunFriendlyId(
+  runs: SessionTraceRun[],
+  totalCount: number
+): string | undefined {
+  const newest = newestRun(runs);
+  if (!newest || newest.number < totalCount) return undefined;
+  return newest.friendlyId;
+}
+
 /** The run expanded when the tab opens: the live run, else the newest loaded. */
 export function initiallyExpandedRunFriendlyId(
   runs: SessionTraceRun[],
@@ -70,4 +83,28 @@ function newestRun(runs: SessionTraceRun[]) {
     if (!newest || run.number > newest.number) newest = run;
   }
   return newest;
+}
+
+/** While the newest run is live or finished in the last 10 minutes, new runs are likely soon. */
+export const RECENT_RUN_POLL_MS = 10_000;
+/** Sessions almost never close, so a quiet session still checks for a new run now and then. */
+export const QUIET_SESSION_POLL_MS = 60_000;
+const RECENTLY_FINISHED_MS = 10 * 60_000;
+
+/** How often to re-read the newest runs page. */
+export function newRunsPollIntervalMs(
+  runs: SessionTraceRun[],
+  totalCount: number,
+  nowMs: number
+): number {
+  if (liveRunFriendlyId(runs, totalCount)) return RECENT_RUN_POLL_MS;
+  const newest = newestRun(runs);
+  // No runs yet: the session was just created and its first run is about to start.
+  if (!newest) return RECENT_RUN_POLL_MS;
+  // Not in the run store yet: it was just triggered and is about to start.
+  if (newest && !newest.status) return RECENT_RUN_POLL_MS;
+  if (!newest?.finishedAt) return QUIET_SESSION_POLL_MS;
+  return nowMs - new Date(newest.finishedAt).getTime() < RECENTLY_FINISHED_MS
+    ? RECENT_RUN_POLL_MS
+    : QUIET_SESSION_POLL_MS;
 }

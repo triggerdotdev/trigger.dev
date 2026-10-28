@@ -2,6 +2,9 @@ import type { SessionTraceRun } from "./sessionTraceTypes";
 
 export type SessionPageView = "trace" | "conversation";
 
+/** Cookie the Trace tab's tree/timeline split is saved under; the session loader reads it. */
+export const SESSION_TREE_AUTOSAVE_ID = "panel-session-tree";
+
 /**
  * Which left-hand tab the session page shows. Trace is the default when the feature is on;
  * links to the conversation's Raw view or a channel still open the conversation.

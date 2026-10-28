@@ -30,10 +30,23 @@ export function isSelectableRow(row: SessionTreeRow<unknown>) {
   return row.kind === "session" || row.kind === "run" || row.kind === "span";
 }
 
+// FNV-1a: a cheap hash so the tree's shape can be compared without keeping every id.
+function hashString(hash: number, value: string) {
+  let next = hash;
+  for (let i = 0; i < value.length; i++) {
+    next ^= value.charCodeAt(i);
+    next = Math.imul(next, 16777619);
+  }
+  return next >>> 0;
+}
+
+const HASH_SEED = 2166136261;
+
 /**
  * One flat list for the whole session: the session row, then runs oldest first, each followed
  * by its loaded spans. Runs can come from several pages; duplicates are merged by friendlyId,
  * the later copy winning, and missing run numbers between pages become a "not loaded" row.
+ * `structureKey` changes whenever the rows or their nesting change, even at the same size.
  */
 export function buildSessionTree<TSpanData>({
   runs,
@@ -44,7 +57,7 @@ export function buildSessionTree<TSpanData>({
   totalCount: number;
   /** Loaded events per run friendlyId, in trace order (parents before children). */
   spansByRun: ReadonlyMap<string, SessionTraceSpan<TSpanData>[]>;
-}): FlatTree<SessionTreeRow<TSpanData>> {
+}): { tree: FlatTree<SessionTreeRow<TSpanData>>; structureKey: string } {
   const session: SessionTreeNode<TSpanData> = {
     id: SESSION_NODE_ID,
     children: [],
@@ -53,9 +66,11 @@ export function buildSessionTree<TSpanData>({
     data: { kind: "session", runCount: totalCount },
   };
   const tree: SessionTreeNode<TSpanData>[] = [session];
+  let shape = HASH_SEED;
 
   const addSessionChild = (id: string, data: SessionTreeRow<TSpanData>) => {
     session.children.push(id);
+    shape = hashString(shape, id);
     const node: SessionTreeNode<TSpanData> = {
       id,
       parentId: SESSION_NODE_ID,
@@ -99,12 +114,14 @@ export function buildSessionTree<TSpanData>({
       run,
       spansLoaded: spans !== undefined,
     });
-    if (spans) graftSpans(tree, runNode, run.friendlyId, spans);
+    if (spans) {
+      shape = hashString(shape, String(graftSpans(tree, runNode, run.friendlyId, spans)));
+    }
     previous = run;
   }
 
   session.hasChildren = session.children.length > 0;
-  return tree;
+  return { tree, structureKey: `${tree.length}:${shape}` };
 }
 
 function uniqueRunsOldestFirst(runs: SessionTraceRun[]) {
@@ -118,30 +135,63 @@ function quietGapMs(previous: SessionTraceRun, next: SessionTraceRun) {
   return new Date(next.createdAt).getTime() - new Date(previous.finishedAt).getTime();
 }
 
-// The run's root span is hidden: the run row stands in for it, so its children move up to the run.
+type GraftedSpans = { nodes: SessionTreeNode<unknown>[]; topLevelIds: string[]; shape: number };
+
+// Keyed by a run's events array: a run whose events didn't change reuses its nodes.
+const graftCache = new WeakMap<object, GraftedSpans>();
+
 function graftSpans<TSpanData>(
   tree: SessionTreeNode<TSpanData>[],
   runNode: SessionTreeNode<TSpanData>,
   runFriendlyId: string,
   spans: SessionTraceSpan<TSpanData>[]
 ) {
-  const grafted = new Map<string, SessionTreeNode<TSpanData>>();
+  let grafted = graftCache.get(spans) as GraftedSpans | undefined;
+  if (!grafted) {
+    grafted = graftRun(runNode.id, runNode.level, runFriendlyId, spans);
+    graftCache.set(spans, grafted);
+  }
+  // A run can have 150k spans: spreading that many arguments throws, so push one at a time.
+  for (const id of grafted.topLevelIds) runNode.children.push(id);
+  runNode.hasChildren = grafted.topLevelIds.length > 0;
+  for (const node of grafted.nodes) tree.push(node as SessionTreeNode<TSpanData>);
+  return grafted.shape;
+}
+
+// The run's root span is hidden: the run row stands in for it, so its children move up to the run.
+function graftRun<TSpanData>(
+  runNodeId: string,
+  runLevel: number,
+  runFriendlyId: string,
+  spans: SessionTraceSpan<TSpanData>[]
+): GraftedSpans {
+  const byId = new Map<string, SessionTreeNode<TSpanData>>();
+  const nodes: SessionTreeNode<TSpanData>[] = [];
+  const topLevelIds: string[] = [];
+  let shape = HASH_SEED;
 
   for (const span of spans) {
     if (span.level === 0) continue;
 
-    const parent = (span.parentId && grafted.get(span.parentId)) || runNode;
+    const parent = span.parentId ? byId.get(span.parentId) : undefined;
     const node: SessionTreeNode<TSpanData> = {
       id: spanNodeId(runFriendlyId, span.id),
-      parentId: parent.id,
+      parentId: parent?.id ?? runNodeId,
       children: [],
       hasChildren: false,
-      level: parent.level + 1,
+      level: (parent?.level ?? runLevel) + 1,
       data: { kind: "span", runFriendlyId, spanId: span.id, span: span.data },
     };
-    parent.children.push(node.id);
-    parent.hasChildren = true;
-    grafted.set(span.id, node);
-    tree.push(node);
+    if (parent) {
+      parent.children.push(node.id);
+      parent.hasChildren = true;
+    } else {
+      topLevelIds.push(node.id);
+    }
+    byId.set(span.id, node);
+    nodes.push(node);
+    shape = hashString(hashString(shape, node.id), node.parentId ?? "");
   }
+
+  return { nodes: nodes as SessionTreeNode<unknown>[], topLevelIds, shape };
 }

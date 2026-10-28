@@ -107,7 +107,7 @@ export function useRunTrace({
     tailLive,
     liveTailEnabled,
     retryLoad,
-  } = useProgressiveTrace(trace, chunkPath, errorsOnly);
+  } = useProgressiveTrace(trace, chunkPath, errorsOnly, live);
 
   const traceIsTruncated = isTruncated || progressiveIsTruncated;
 
@@ -244,5 +244,7 @@ export function useRunTrace({
     traceStatus,
     retryLoad,
     inspectorRefreshKey,
+    /** Every page of the trace has loaded (or loading stopped at a limit or failure). */
+    isComplete,
   };
 }

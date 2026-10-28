@@ -28,6 +28,7 @@ import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  type ResizableSnapshot,
 } from "~/components/primitives/Resizable";
 import { Spinner } from "~/components/primitives/Spinner";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
@@ -61,7 +62,11 @@ import { SessionPresenter } from "~/presenters/v3/SessionPresenter.server";
 import { featuresForRequest } from "~/features.server";
 import { canAccessSessionTrace } from "~/v3/canAccessSessionTrace.server";
 import { SessionTraceTab } from "~/components/sessions/v1/trace/SessionTraceTab";
-import { resolveSessionPageView } from "~/components/sessions/v1/trace/sessionTraceView";
+import {
+  SESSION_TREE_AUTOSAVE_ID,
+  resolveSessionPageView,
+} from "~/components/sessions/v1/trace/sessionTraceView";
+import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
 import {
@@ -159,11 +164,22 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     }
   }
 
-  return typedjson({ session, channels, sessionTraceEnabled, loadedAt: Date.now() });
+  const traceTreeSnapshot = sessionTraceEnabled
+    ? await getResizableSnapshot(request, SESSION_TREE_AUTOSAVE_ID)
+    : undefined;
+
+  return typedjson({
+    session,
+    channels,
+    sessionTraceEnabled,
+    traceTreeSnapshot,
+    loadedAt: Date.now(),
+  });
 };
 
 export default function Page() {
-  const { session, channels, sessionTraceEnabled, loadedAt } = useTypedLoaderData<typeof loader>();
+  const { session, channels, sessionTraceEnabled, traceTreeSnapshot, loadedAt } =
+    useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -203,7 +219,11 @@ export default function Page() {
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">
           <ResizablePanel id="session-conversation" min={"300px"}>
             {sessionTraceEnabled ? (
-              <SessionLeftPane session={session} channels={channels} />
+              <SessionLeftPane
+                session={session}
+                channels={channels}
+                traceTreeSnapshot={traceTreeSnapshot}
+              />
             ) : (
               <ConversationPane session={session} channels={channels} pinConversationView={false} />
             )}
@@ -226,7 +246,15 @@ export default function Page() {
 type LoadedSession = ReturnType<typeof useTypedLoaderData<typeof loader>>["session"];
 
 // Trace and Conversation tabs, shown when the session trace is enabled.
-function SessionLeftPane({ session, channels }: { session: LoadedSession; channels: string[] }) {
+function SessionLeftPane({
+  session,
+  channels,
+  traceTreeSnapshot,
+}: {
+  session: LoadedSession;
+  channels: string[];
+  traceTreeSnapshot: ResizableSnapshot | undefined;
+}) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -263,6 +291,7 @@ function SessionLeftPane({ session, channels }: { session: LoadedSession; channe
           <SessionTraceTab
             key={session.friendlyId}
             runsPath={v3SessionRunsPath(organization, project, environment, session)}
+            treeSnapshot={traceTreeSnapshot}
           />
         ) : (
           <ConversationPane session={session} channels={channels} pinConversationView />
