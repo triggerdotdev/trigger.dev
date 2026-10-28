@@ -28,11 +28,11 @@ function socketError(code: string, message: string) {
 }
 
 describe("k8sCreateRefused", () => {
-  it.each([401, 403, 422])("is true for a %i", (code) => {
+  it.each([400, 401, 403, 404, 422])("is true for a %i", (code) => {
     expect(k8sCreateRefused(apiError(code, "refused"))).toBe(true);
   });
 
-  it.each([408, 409, 500, 504])("is false for a %i, after which a pod may exist", (code) => {
+  it.each([408, 409, 500, 504])("is false for a %i, after which the object may exist", (code) => {
     expect(k8sCreateRefused(apiError(code, "maybe created"))).toBe(false);
   });
 

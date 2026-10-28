@@ -30,6 +30,7 @@ import {
   type Watch,
 } from "@kubernetes/client-node";
 import type { K8sApi } from "../clients/kubernetes.js";
+import { WorkloadNotCreatedError } from "./createErrors.js";
 import { getRestoreRunnerId, getRunnerId } from "../util.js";
 import type { WorkloadManagerCreateOptions } from "./types.js";
 
@@ -574,12 +575,13 @@ describe("run-crd carries every shared create-option or excludes it on purpose",
 });
 
 describe("RunCrdWorkloadManager.create", () => {
-  const manager = () =>
+  const manager = (releaseUnstartedRuns?: boolean) =>
     new RunCrdWorkloadManager({
       workloadApiProtocol: "http",
       workloadApiPort: 8020,
       namespace: "v4-runs",
       runtime: "microvm",
+      releaseUnstartedRuns,
     });
 
   beforeEach(() => {
@@ -588,6 +590,12 @@ describe("RunCrdWorkloadManager.create", () => {
     getRunner.mockReset();
     deleteRunner.mockReset();
     deleteRunner.mockResolvedValue({});
+    createSecret.mockReset();
+    createSecret.mockResolvedValue({ metadata: { uid: "uid-secret" } });
+    deleteSecret.mockReset();
+    deleteSecret.mockResolvedValue({});
+    patchObject.mockReset();
+    patchObject.mockResolvedValue({});
   });
 
   // keyedOptions() is dequeued at 03:00:00, so the default is an earlier delivery.
@@ -641,9 +649,6 @@ describe("RunCrdWorkloadManager.create", () => {
       .mockRejectedValueOnce({ code: 409 })
       .mockResolvedValueOnce({ metadata: { uid: "uid-recreated" } });
     getRunner.mockResolvedValue(inTheWay("snapshot_earlier"));
-    createSecret.mockReset();
-    createSecret.mockResolvedValue({ metadata: { uid: "uid-secret" } });
-    patchObject.mockResolvedValue({});
 
     await manager().create(keyedOptions({ deploymentToken: "tok" }));
 
@@ -706,17 +711,130 @@ describe("RunCrdWorkloadManager.create", () => {
     expect(deleteRunner).not.toHaveBeenCalled();
     expect(createRunner).toHaveBeenCalledTimes(2);
   });
+
+  const apiError = (code: number, message = "refused") => ({
+    code,
+    body: JSON.stringify({ kind: "Status", code, message }),
+  });
+  const withToken = keyedOptions({ deploymentToken: "tok" });
+
+  it.each([
+    ["off", false],
+    ["unset", undefined],
+  ])("rethrows a refused Runner create as it is with the option %s", async (_, flag) => {
+    const failure = apiError(422);
+    createRunner.mockRejectedValueOnce(failure);
+
+    await expect(manager(flag).create(keyedOptions())).rejects.toBe(failure);
+    expect(createRunner).toHaveBeenCalledTimes(1);
+  });
+
+  it("rethrows a refused token Secret create as it is with the option off", async () => {
+    const failure = apiError(403);
+    createSecret.mockRejectedValueOnce(failure);
+
+    await expect(manager(false).create(withToken)).rejects.toBe(failure);
+    expect(createRunner).not.toHaveBeenCalled();
+  });
+
+  describe("with releases on", () => {
+    it("reports a Runner create the API refused as not created", async () => {
+      createRunner.mockRejectedValueOnce(apiError(422, "spec.machine: Unsupported value"));
+
+      const failed = manager(true).create(keyedOptions());
+
+      await expect(failed).rejects.toBeInstanceOf(WorkloadNotCreatedError);
+      await expect(failed).rejects.toMatchObject({ message: "spec.machine: Unsupported value" });
+      expect(createRunner).toHaveBeenCalledTimes(1);
+      expect(getRunner).not.toHaveBeenCalled();
+    });
+
+    it("releases the token Secret of a refused create", async () => {
+      createRunner.mockRejectedValueOnce(apiError(422));
+
+      await expect(manager(true).create(withToken)).rejects.toThrow(WorkloadNotCreatedError);
+
+      expect(createSecret).toHaveBeenCalledTimes(1);
+      expect(deleteSecret).toHaveBeenCalledTimes(1);
+    });
+
+    it("reports a refused token Secret create as not created, with nothing to delete", async () => {
+      createSecret.mockRejectedValueOnce(apiError(403, "secrets is forbidden"));
+
+      const failed = manager(true).create(withToken);
+
+      await expect(failed).rejects.toBeInstanceOf(WorkloadNotCreatedError);
+      await expect(failed).rejects.toMatchObject({ message: "secrets is forbidden" });
+      expect(createRunner).not.toHaveBeenCalled();
+      expect(deleteSecret).not.toHaveBeenCalled();
+    });
+
+    it("keeps the token Secret a redrive found, which it did not create", async () => {
+      createSecret.mockRejectedValueOnce({ code: 409 });
+      createRunner.mockRejectedValueOnce(apiError(422));
+
+      await expect(manager(true).create(withToken)).rejects.toThrow(WorkloadNotCreatedError);
+
+      expect(deleteSecret).not.toHaveBeenCalled();
+    });
+
+    it("rethrows a Runner create that failed with 500 as it is", async () => {
+      const failure = apiError(500);
+      createRunner.mockRejectedValueOnce(failure);
+
+      await expect(manager(true).create(keyedOptions())).rejects.toBe(failure);
+      expect(createRunner).toHaveBeenCalledTimes(1);
+    });
+
+    it("rethrows a token Secret create that failed with 500 as it is", async () => {
+      const failure = apiError(500);
+      createSecret.mockRejectedValueOnce(failure);
+
+      await expect(manager(true).create(withToken)).rejects.toBe(failure);
+      expect(createRunner).not.toHaveBeenCalled();
+    });
+
+    it("reports a refused replacement as not created, with both attempts' token Secrets deleted", async () => {
+      createRunner.mockRejectedValueOnce({ code: 409 }).mockRejectedValueOnce(apiError(403));
+      createSecret
+        .mockResolvedValueOnce({ metadata: { uid: "uid-secret-1" } })
+        .mockResolvedValueOnce({ metadata: { uid: "uid-secret-2" } });
+      getRunner.mockResolvedValue(inTheWay("snapshot_earlier"));
+
+      await expect(manager(true).create(withToken)).rejects.toThrow(WorkloadNotCreatedError);
+
+      expect(deleteRunner).toHaveBeenCalledTimes(1);
+      expect(createRunner).toHaveBeenCalledTimes(2);
+      const [first, second] = createSecret.mock.calls.map(([{ body }]) => body.metadata.name);
+      const deleted = deleteSecret.mock.calls.map(([{ name, body }]) => [
+        name,
+        body.preconditions.uid,
+      ]);
+      expect(deleted).toEqual([
+        [first, "uid-secret-1"],
+        [second, "uid-secret-2"],
+      ]);
+    });
+
+    it("does not wrap a template key refusal", async () => {
+      const failed = manager(true).create(createOptions({ templateKey: undefined }));
+
+      await expect(failed).rejects.toThrow("TemplateKeyMissing");
+      await expect(failed).rejects.not.toBeInstanceOf(WorkloadNotCreatedError);
+    });
+  });
 });
 
 describe("RunCrdWorkloadManager.restore", () => {
   const checkpoint = { id: "checkpoint_abc", location: "node-a/6f1c2a9e-snap" };
 
-  function manager(runtime: "container" | "microvm" = "microvm") {
+  function manager(runtime: "container" | "microvm" = "microvm", releaseUnstartedRuns?: boolean) {
     return new RunCrdWorkloadManager({
       workloadApiProtocol: "http",
       workloadApiPort: 8020,
       namespace: "v4-runs",
       runtime,
+      releaseUnstartedRuns,
     });
   }
 
@@ -751,6 +869,14 @@ describe("RunCrdWorkloadManager.restore", () => {
     const { body } = createRunner.mock.calls[0]![0];
     expect(body.metadata.name).toBe(getRestoreRunnerId("run_abc123", "checkpoint_abc"));
     expect(body.spec.restore).toEqual({ snapshotID: "6f1c2a9e-snap", node: "node-a" });
+  });
+
+  it("reports a refused resume create as not created, with releases on", async () => {
+    createRunner.mockRejectedValueOnce({ code: 422 });
+
+    await expect(
+      manager("microvm", true).restore(keyedOptions(), checkpoint)
+    ).rejects.toBeInstanceOf(WorkloadNotCreatedError);
   });
 
   it("creates no resume without a template key", async () => {

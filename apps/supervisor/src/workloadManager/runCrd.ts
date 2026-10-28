@@ -25,6 +25,7 @@ import type {
   WorkloadManagerOptions,
 } from "./types.js";
 import { killCode, type RunnerKill } from "../services/runnerKills.js";
+import { k8sCreateRefused, k8sErrorMessage, WorkloadNotCreatedError } from "./createErrors.js";
 
 const GROUP = "compute.trigger.dev";
 const VERSION = "v1alpha1";
@@ -115,11 +116,13 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
   private readonly suspendTimeoutMs: number;
   private readonly restoreTimeoutMs: number;
   private readonly restoreInformer?: RunnerRestoreInformer;
+  private readonly releaseUnstartedRuns: boolean;
 
   constructor(opts: RunCrdWorkloadManagerOptions) {
     this.k8s = createK8sApi();
     this.namespace = opts.namespace;
     this.runtime = opts.runtime;
+    this.releaseUnstartedRuns = opts.releaseUnstartedRuns ?? false;
     this.snapshots = opts.snapshots;
     this.suspendPollMs = opts.suspendPollMs ?? 5_000;
     this.suspendTimeoutMs = opts.suspendTimeoutMs ?? 6 * 60_000;
@@ -557,6 +560,10 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
       if (statusCodeOf(err) === 409) {
         return false;
       }
+      if (this.releaseUnstartedRuns && k8sCreateRefused(err)) {
+        this.logger.error("[RunCrdWorkloadManager] Create refused", { runnerId, rawError: err });
+        throw new WorkloadNotCreatedError(k8sErrorMessage(err), { cause: err });
+      }
       this.logger.error("[RunCrdWorkloadManager] Create failed", { runnerId, rawError: err });
       throw err;
     }
@@ -698,6 +705,9 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
         name,
         rawError: err,
       });
+      if (this.releaseUnstartedRuns && k8sCreateRefused(err)) {
+        throw new WorkloadNotCreatedError(k8sErrorMessage(err), { cause: err });
+      }
       throw err;
     }
   }

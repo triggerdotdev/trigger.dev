@@ -363,8 +363,8 @@ export const Env = z
     // Report a run whose runner the runtime killed, so it fails as out of memory only
     // when the runtime says so. Without it the run waits out the heartbeat timeout.
     RUNNER_KILL_REPORTS_ENABLED: BoolEnv.default(true),
-    // Release a run whose container or pod could not be created, so it is requeued at once instead
-    // of waiting out the pending execution timeout.
+    // Release a run whose container, pod or Runner could not be created, so it is requeued at once
+    // instead of waiting out the pending execution timeout.
     RELEASE_UNSTARTED_RUNS_ENABLED: BoolEnv.default(false),
     // Release a run whose pod failed before the run started, likewise. Independent of the flag above.
     RELEASE_FAILED_POD_RUNS_ENABLED: BoolEnv.default(false),
