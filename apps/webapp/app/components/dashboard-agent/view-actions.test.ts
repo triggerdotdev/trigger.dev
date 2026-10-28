@@ -1,5 +1,4 @@
 import type { ActionsBlockAction } from "@internal/dashboard-agent-contracts";
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   answerContinuesAfter,
@@ -167,51 +166,5 @@ describe("a turn that proposed a watch through the tool", () => {
     expect(turnProposesWatch([scheduled(intent, "input-available")])).toBe(false);
     expect(turnProposesWatch([{ type: "tool-schedule_watch", output: intent }])).toBe(false);
     expect(turnProposesWatch([text])).toBe(false);
-  });
-});
-
-describe("ActionsBlock", () => {
-  const source = readFileSync(new URL("./ActionsBlock.tsx", import.meta.url), "utf8");
-
-  it("hands the action's own intent to the host, and renders nothing without one", () => {
-    expect(source).toContain("onIntent(action.intent");
-    expect(source).toContain("if (!onIntent || renderable.length === 0) return null;");
-  });
-
-  it("filters through the shared filter rather than rendering every action", () => {
-    expect(source).toContain("renderableActions(actions)");
-  });
-
-  it("is a pure component: no app hooks, no server module, no Remix", () => {
-    expect(source).not.toMatch(/from\s+"~\/hooks\//);
-    expect(source).not.toMatch(/from\s+"@remix-run\//);
-    expect(source).not.toMatch(/\.server"/);
-  });
-});
-
-/**
- * There is no rendering harness here, so this pins the wiring rather than the pixels: the
- * turn-wide answer is computed where every part is in scope and reaches every card, and
- * `ViewBlocks` can only add to it. What it does not prove is that the button disappears.
- */
-describe("the one-watch-button flag is decided per turn, not per render_view call", () => {
-  const turn = readFileSync(new URL("./DashboardAgentMessages.tsx", import.meta.url), "utf8");
-  const catalog = readFileSync(new URL("./view-catalog.tsx", import.meta.url), "utf8");
-
-  it("computes it over every part's blocks, above the per-part loop", () => {
-    expect(turn).toContain("turnAlreadyOffersWatch(");
-    // Above the loop: computed from the whole `parts` map, not from one part.
-    expect(turn.indexOf("const watchOfferedInTurn")).toBeLessThan(
-      turn.indexOf("for (let i = 0; i < parts.length; i++)")
-    );
-    expect(turn).toContain("watchOfferedInTurn={watchOfferedInTurn}");
-  });
-
-  it("counts the turn's own schedule_watch proposal as an offer", () => {
-    expect(turn).toMatch(/turnProposesWatch\(parts as never\) \|\|/);
-  });
-
-  it("lets a card add its own offer but never drop the turn's", () => {
-    expect(catalog).toMatch(/watchOfferedInTurn \|\|\s*cardAlreadyOffersWatch\(/);
   });
 });

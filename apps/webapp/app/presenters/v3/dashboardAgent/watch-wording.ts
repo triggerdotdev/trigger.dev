@@ -8,7 +8,6 @@
 export {
   formatWatchCadence,
   formatWatchWindow,
-  immediateWatchMessage,
   noteFor,
   presentResolvedWatch,
   WATCH_IN_CHAT_DELIVERY_LINE,

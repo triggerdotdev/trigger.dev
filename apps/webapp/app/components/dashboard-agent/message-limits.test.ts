@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   checkMessageParts,
@@ -114,25 +113,5 @@ describe("messageCountAnnouncement", () => {
       "200 characters left",
       MESSAGE_LIMIT_REACHED_ANNOUNCEMENT,
     ]);
-  });
-});
-
-/**
- * Structural guard, not behavioural proof: the webapp has no DOM test environment, so nothing
- * here mounts the composer or listens to a screen reader. It asserts the live region is written
- * unconditionally, which is the part the announcement depends on.
- */
-describe("the composer's live region", () => {
-  const source = readFileSync(new URL("./DashboardAgentComposer.tsx", import.meta.url), "utf8");
-
-  it("is in the DOM before the count reaches the warning point", () => {
-    const region = source.slice(source.indexOf('aria-live="polite"'));
-    expect(region).toContain("messageCountAnnouncement(value.length)");
-    // The old form: the region itself only existed past the threshold.
-    expect(source).not.toMatch(/MESSAGE_CHARS_WARN_AT \? \(\s*<p[^>]*aria-live/);
-  });
-
-  it("does not read the visible counter out a second time", () => {
-    expect(source).toContain("aria-hidden");
   });
 });

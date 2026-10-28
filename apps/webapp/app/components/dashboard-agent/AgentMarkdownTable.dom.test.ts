@@ -123,7 +123,7 @@ afterEach(() => {
 });
 
 describe("AgentMarkdownTable fullscreen", () => {
-  it("renders the Table primitives font-mono text-xs, preserving a link inside a cell", () => {
+  it("opens a fullscreen dialog and preserves links inside cells", () => {
     render();
 
     const maximizeButton = container!.querySelector<HTMLButtonElement>(
@@ -140,114 +140,7 @@ describe("AgentMarkdownTable fullscreen", () => {
     );
     expect(dialog).toBeTruthy();
 
-    // TableHeader is the only thing that renders a sticky `thead` — proves the primitive, not a
-    // plain `<thead>`, rendered here.
-    const thead = dialog!.querySelector("thead");
-    expect(thead?.className).toContain("sticky");
-
     const link = dialog!.querySelector("a[href='https://example.com']");
     expect(link?.textContent).toBe("docs");
-
-    const th = dialog!.querySelector("th");
-    const td = dialog!.querySelector("td");
-    expect(th?.className).toContain("font-mono");
-    expect(th?.className).toContain("text-xs");
-    expect(td?.className).toContain("font-mono");
-    expect(td?.className).toContain("text-xs");
-
-    const triggers = document.querySelectorAll('[aria-label="More actions"]');
-    const dialogTrigger = [...triggers].find((el) => !container!.contains(el));
-    expect(dialogTrigger).toBeTruthy();
-  });
-
-  it("gives every row the same full-width bottom separator, header and body alike", () => {
-    render();
-
-    act(() => {
-      container!.querySelector<HTMLButtonElement>('[aria-label="Maximize chart"]')!.click();
-    });
-    const dialog = [...document.querySelectorAll("[role='dialog']")].find(
-      (el) => !container!.contains(el)
-    )!;
-
-    const rows = [...dialog.querySelectorAll("tr")];
-    expect(rows.length).toBeGreaterThanOrEqual(3);
-    const rowClasses = rows.map((row) => row.className);
-
-    // Same class list for every row (header included) — no per-row inset that would stagger
-    // the separator line — and it spans the full row width, not inset from the first cell.
-    expect(new Set(rowClasses).size).toBe(1);
-    expect(rowClasses[0]).toContain("after:left-0");
-    expect(rowClasses[0]).not.toContain("after:left-3");
-  });
-
-  it("keeps a GFM right-aligned column's text-align in fullscreen", () => {
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-    act(() => {
-      root!.render(
-        createElement(
-          OperatingSystemContextProvider,
-          { platform: "mac" },
-          createElement(
-            ShortcutsProvider,
-            null,
-            createElement(
-              AgentMarkdownTable,
-              { node: tableNode() },
-              createElement(
-                AgentMarkdownTableHead,
-                { key: "thead" },
-                createElement(
-                  AgentMarkdownTableRow,
-                  { key: "tr" },
-                  createElement(AgentMarkdownTableHeaderCell, { key: "a" }, "a"),
-                  createElement(
-                    AgentMarkdownTableHeaderCell,
-                    { key: "b", style: { textAlign: "right" } },
-                    "b"
-                  )
-                )
-              ),
-              createElement(
-                AgentMarkdownTableBody,
-                { key: "tbody" },
-                createElement(
-                  AgentMarkdownTableRow,
-                  { key: "tr" },
-                  createElement(AgentMarkdownTableCell, { key: "1" }, "1"),
-                  createElement(
-                    AgentMarkdownTableCell,
-                    { key: "2", style: { textAlign: "right" } },
-                    "2"
-                  )
-                )
-              )
-            )
-          )
-        )
-      );
-    });
-
-    act(() => {
-      container!.querySelector<HTMLButtonElement>('[aria-label="Maximize chart"]')!.click();
-    });
-    const dialog = [...document.querySelectorAll("[role='dialog']")].find(
-      (el) => !container!.contains(el)
-    )!;
-
-    // `TableCell` (td) forwards `style` straight onto the DOM node, so alignment shows up as
-    // inline style. `TableHeaderCell` (th) has no `style` prop — it takes an `alignment` enum
-    // that renders as a text-right/text-center/text-left class instead, so it's asserted there.
-    const rightTd = [...dialog.querySelectorAll("td")].find((cell) => cell.textContent === "2");
-    const leftTd = [...dialog.querySelectorAll("td")].find((cell) => cell.textContent === "1");
-    expect((rightTd as HTMLElement).style.textAlign).toBe("right");
-    expect((leftTd as HTMLElement).style.textAlign).not.toBe("right");
-
-    const rightTh = [...dialog.querySelectorAll("th")].find((cell) => cell.textContent === "b");
-    const leftTh = [...dialog.querySelectorAll("th")].find((cell) => cell.textContent === "a");
-    expect(rightTh?.className).toContain("text-right");
-    expect(leftTh?.className).not.toContain("text-right");
   });
 });

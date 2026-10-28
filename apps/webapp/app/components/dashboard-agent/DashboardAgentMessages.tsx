@@ -165,9 +165,6 @@ export function splitActionsBlocks<T>(blocks: T[]): { content: T[]; actions: T[]
   };
 }
 
-// #region chat-layout transcript
-// `chat-layout.test.ts` fails if a spacing utility class appears in this region.
-
 function renderDashboardPart(
   part: UIMessage["parts"][number],
   i: number,
@@ -457,4 +454,3 @@ export function DashboardAgentMessages(props: DashboardAgentMessagesProps) {
     </ChatTranscript>
   );
 }
-// #endregion chat-layout transcript

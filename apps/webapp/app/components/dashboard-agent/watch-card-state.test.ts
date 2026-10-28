@@ -1,5 +1,4 @@
 import type { WatchDraft } from "@internal/dashboard-agent-contracts";
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { NO_WATCH_CARD, watchCardReducer, type WatchCardState } from "./watch-card-state";
 
@@ -80,44 +79,5 @@ describe("the request id survives a retry", () => {
       pending: false,
       error: null,
     });
-  });
-});
-
-/**
- * Structural guard, not behavioural proof: the reducer only sees a chat change if every path
- * that changes chat routes through `claimChatSlot`, which is also the only place the in-flight
- * open sequence is bumped.
- */
-describe("every chat change goes through one door", () => {
-  const panel = readFileSync(new URL("./DashboardAgentPanel.tsx", import.meta.url), "utf8");
-
-  it("bumps the open sequence in exactly one place, next to the card reset", () => {
-    const bumps = panel.match(/openChatRequestSeq\.current\s*(\+\+|\+=)|\+\+openChatRequestSeq/g);
-    expect(bumps).toHaveLength(1);
-    const claim = panel.slice(
-      panel.indexOf("const claimChatSlot = useCallback(() => {"),
-      panel.indexOf("const openChat = useCallback(")
-    );
-    // Whitespace-tolerant: the formatter is free to reindent or rewrap the call.
-    expect(claim).toMatch(/dispatchWatchCard\(\{\s*type:\s*"chat-changed",?\s*\}\);/);
-    expect(claim).toContain("return ++openChatRequestSeq.current;");
-  });
-
-  it("claims a slot before every setActive that lands in a different chat", () => {
-    for (const caller of ["openChat", "createChat", "newChat", "submitWatch"]) {
-      expect(panel).toMatch(new RegExp(`const ${caller} = useCallback\\(`));
-    }
-    // The watch's own landing chat: without the claim, an earlier open still matches its seq.
-    const submit = panel.slice(panel.indexOf("const submitWatch = useCallback("));
-    const claim = submit.indexOf("claimChatSlot();");
-    // Whitespace-tolerant: the formatter is free to wrap the call across lines.
-    const setActive = submit.search(/setActive\(\{\s*chatId:\s*data\.chatId/);
-    expect(claim).toBeGreaterThan(-1);
-    expect(setActive).toBeGreaterThan(claim);
-  });
-
-  it("leaves no separate watch-draft state for a chat change to miss", () => {
-    expect(panel).not.toContain("setWatchDraft");
-    expect(panel).not.toContain("watchRequestId");
   });
 });

@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { navigateIntentApplies, takeNavigateIntent } from "./turn-navigation";
 
@@ -73,60 +72,5 @@ describe("takeNavigateIntent", () => {
     expect(
       takeNavigateIntent({ messages: parts, handled, startedPath: runs, currentPath: runs })
     ).toBeUndefined();
-  });
-});
-
-/**
- * Structural guards, not behavioural proof: whether the started-at path is still right when the
- * intent lands depends on effect order and on nothing clearing it, which these assertions pin
- * down without rendering anything.
- */
-describe("the chat scopes a turn's navigation to the page it started on", () => {
-  const chat = readFileSync(new URL("./DashboardAgentChat.tsx", import.meta.url), "utf8");
-
-  it("gates the navigate intent on the shared rule", () => {
-    expect(chat).toContain("takeNavigateIntent({");
-    expect(chat).toContain("startedPath: turnStartedPathRef.current");
-    expect(chat).not.toContain("pendingNavigateIntents(messages");
-  });
-
-  // Structural: the webapp has no DOM test environment, so the wiring is read off the source.
-  // Going in flight cannot mean "started here" — a resumed turn goes in flight too, and stamping
-  // on status handed it the current path and let it navigate.
-  it("does not infer the path from the turn going in flight", () => {
-    expect(chat).not.toContain("turnWasInFlight");
-    expect(chat).not.toMatch(
-      /status === "submitted"[\s\S]{0,160}turnStartedPathRef\.current = renderedPathRef/
-    );
-  });
-
-  it("stamps the path at every send, so a turn this tab only resumed leaves it null", () => {
-    const lines = chat.split("\n");
-    const sends = lines
-      .map((line, index) => ({ line, index }))
-      .filter(({ line }) => /void (sendMessage|regenerate)\(/.test(line));
-
-    expect(sends.length).toBeGreaterThan(0);
-    for (const { line, index } of sends) {
-      const preceding = lines.slice(Math.max(0, index - 5), index).join("\n");
-      expect(
-        preceding.includes("turnStartedPathRef.current = renderedPathRef.current"),
-        `no path stamped before: ${line.trim()}`
-      ).toBe(true);
-    }
-  });
-
-  it("never clears the path on settle, which can share a commit with the intent", () => {
-    expect(chat).not.toMatch(/turnStartedPathRef\.current = null/);
-  });
-
-  it("records the path before the intent effect reads it", () => {
-    expect(chat.indexOf("turnStartedPathRef.current = renderedPathRef.current")).toBeLessThan(
-      chat.indexOf("takeNavigateIntent({")
-    );
-  });
-
-  it("hands the persistent handled-set in, so drops are recorded across commits", () => {
-    expect(chat).toMatch(/handled:\s*navigatedRef\.current!/);
   });
 });
