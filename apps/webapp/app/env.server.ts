@@ -2839,6 +2839,7 @@ const EnvironmentSchema = z
 
     BILLING_PLUGIN_ENABLED: BoolEnv.default(false),
     BILLING_FORCE_FALLBACK: BoolEnv.default(false),
+    BILLING_V2_ENABLED: BoolEnv.default(false),
     BILLING_DATABASE_CONNECTION_LIMIT: z.coerce.number().int().default(2),
   })
   .and(GithubAppEnvSchema)

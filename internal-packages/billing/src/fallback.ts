@@ -3,6 +3,7 @@ import type {
   BillingCustomer,
   BillingCustomerError,
   ProvisionBillingCustomerResult,
+  ProvisionFreePlanContractResult,
 } from "@trigger.dev/plugins";
 import { errAsync, okAsync, type ResultAsync } from "neverthrow";
 
@@ -22,6 +23,10 @@ class BillingFallbackController implements BillingController {
   }
 
   provisionCustomer(): ResultAsync<ProvisionBillingCustomerResult, BillingCustomerError> {
+    return errAsync("feature_disabled");
+  }
+
+  provisionFreePlanContract(): ResultAsync<ProvisionFreePlanContractResult, BillingCustomerError> {
     return errAsync("feature_disabled");
   }
 }

@@ -81,4 +81,6 @@ export type {
   ProvisionBillingCustomerParams,
   ProvisionBillingCustomerResult,
   ProvisionBillingCustomerOutcome,
+  ProvisionFreePlanContractParams,
+  ProvisionFreePlanContractResult,
 } from "./billing.js";

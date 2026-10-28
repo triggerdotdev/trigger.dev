@@ -28,6 +28,18 @@ export type ProvisionBillingCustomerParams = {
   signal?: AbortSignal;
 };
 
+export type ProvisionFreePlanContractParams = {
+  organizationId: string;
+  signal?: AbortSignal;
+};
+
+export type ProvisionFreePlanContractResult = {
+  organizationId: string;
+  billingCustomerId: string;
+  contractId: string;
+  outcome: "created" | "already_provisioned";
+};
+
 export interface BillingController {
   isUsingPlugin(): Promise<boolean>;
 
@@ -36,6 +48,10 @@ export interface BillingController {
   provisionCustomer(
     params: ProvisionBillingCustomerParams
   ): ResultAsync<ProvisionBillingCustomerResult, BillingCustomerError>;
+
+  provisionFreePlanContract(
+    params: ProvisionFreePlanContractParams
+  ): ResultAsync<ProvisionFreePlanContractResult, BillingCustomerError>;
 }
 
 export type BillingPluginConfig = {

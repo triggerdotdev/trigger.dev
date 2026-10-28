@@ -4,6 +4,8 @@ import type {
   BillingCustomerError,
   ProvisionBillingCustomerParams,
   ProvisionBillingCustomerResult,
+  ProvisionFreePlanContractParams,
+  ProvisionFreePlanContractResult,
 } from "@trigger.dev/billing";
 import { errAsync, okAsync, ResultAsync } from "neverthrow";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,16 +16,30 @@ import {
   type NewOrgProvisionDependencies,
 } from "./provisionBillingCustomer.server";
 
-type Outcome = () => ResultAsync<ProvisionBillingCustomerResult, BillingCustomerError>;
+type Outcome = () => ResultAsync<ProvisionFreePlanContractResult, BillingCustomerError>;
 
 const created: Outcome = () =>
-  okAsync({ organizationId: "org_1", billingCustomerId: "cus_1", outcome: "created" as const });
+  okAsync({
+    organizationId: "org_1",
+    billingCustomerId: "cus_1",
+    contractId: "con_1",
+    outcome: "created" as const,
+  });
 
 const never: Outcome = () => new ResultAsync(new Promise(() => {}));
 
-function harness(outcomes: Outcome[], options: { usingPlugin?: () => Promise<boolean> } = {}) {
-  const calls: ProvisionBillingCustomerParams[] = [];
+function harness(
+  outcomes: Outcome[],
+  options: {
+    usingPlugin?: () => Promise<boolean>;
+    customerOutcomes?: ProvisionBillingCustomerResult["outcome"][];
+  } = {}
+) {
+  const calls: ProvisionFreePlanContractParams[] = [];
+  const customerCalls: ProvisionBillingCustomerParams[] = [];
   const deleted: string[] = [];
+  const customerOutcomes: ProvisionBillingCustomerResult["outcome"][] =
+    options.customerOutcomes ?? ["created"];
 
   const controller: BillingController = {
     isUsingPlugin: options.usingPlugin ?? (async () => true),
@@ -31,6 +47,12 @@ function harness(outcomes: Outcome[], options: { usingPlugin?: () => Promise<boo
       return okAsync(null);
     },
     provisionCustomer(params) {
+      customerCalls.push(params);
+      const outcome =
+        customerOutcomes[Math.min(customerCalls.length - 1, customerOutcomes.length - 1)];
+      return okAsync({ organizationId: "org_1", billingCustomerId: "cus_1", outcome });
+    },
+    provisionFreePlanContract(params) {
       calls.push(params);
       return outcomes[Math.min(calls.length - 1, outcomes.length - 1)]();
     },
@@ -38,13 +60,14 @@ function harness(outcomes: Outcome[], options: { usingPlugin?: () => Promise<boo
 
   const deps: NewOrgProvisionDependencies = {
     enabled: true,
+    createFreePlanContract: true,
     controller,
     deleteOrganization: async (id) => {
       deleted.push(id);
     },
   };
 
-  return { deps, calls, deleted };
+  return { deps, calls, customerCalls, deleted };
 }
 
 function run(deps: NewOrgProvisionDependencies) {
@@ -71,7 +94,7 @@ describe("provisionBillingCustomerForNewOrg", () => {
     expect(deleted).toHaveLength(0);
   });
 
-  it("blocks until the customer is provisioned and keeps the org", async () => {
+  it("blocks until the customer and free plan contract are provisioned and keeps the org", async () => {
     const { deps, calls, deleted } = harness([created]);
 
     expect(await run(deps)).toBe("ok");
@@ -81,12 +104,37 @@ describe("provisionBillingCustomerForNewOrg", () => {
     expect(deleted).toHaveLength(0);
   });
 
+  it("provisions only the customer, without a contract, when free plan contracts are off", async () => {
+    const { deps, calls, customerCalls, deleted } = harness([created]);
+
+    expect(await run({ ...deps, createFreePlanContract: false })).toBe("ok");
+    expect(calls).toHaveLength(0);
+    expect(customerCalls).toHaveLength(1);
+    expect(customerCalls[0].organizationId).toBe("org_1");
+    expect(deleted).toHaveLength(0);
+  });
+
+  it("retries a customer that is still in progress when free plan contracts are off", async () => {
+    const { deps, calls, customerCalls, deleted } = harness([created], {
+      customerOutcomes: ["in_progress", "created"],
+    });
+
+    const result = run({ ...deps, createFreePlanContract: false });
+    await vi.runAllTimersAsync();
+
+    expect(await result).toBe("ok");
+    expect(calls).toHaveLength(0);
+    expect(customerCalls).toHaveLength(2);
+    expect(deleted).toHaveLength(0);
+  });
+
   it("accepts an org that was already provisioned", async () => {
     const { deps, deleted } = harness([
       () =>
         okAsync({
           organizationId: "org_1",
           billingCustomerId: "cus_1",
+          contractId: "con_1",
           outcome: "already_provisioned" as const,
         }),
     ]);
@@ -160,24 +208,6 @@ describe("provisionBillingCustomerForNewOrg", () => {
   it("retries a provisioning call that throws like a transient failure", async () => {
     const { deps, calls } = harness([
       () => new ResultAsync(Promise.reject(new Error("socket hang up"))),
-      created,
-    ]);
-
-    const settled = run(deps);
-    await vi.advanceTimersByTimeAsync(200);
-
-    expect(await settled).toBe("ok");
-    expect(calls).toHaveLength(2);
-  });
-
-  it("retries an in_progress outcome instead of treating it as done", async () => {
-    const { deps, calls } = harness([
-      () =>
-        okAsync({
-          organizationId: "org_1",
-          billingCustomerId: null,
-          outcome: "in_progress" as const,
-        }),
       created,
     ]);
 

@@ -1,10 +1,6 @@
-import type {
-  BillingController,
-  BillingCustomerError,
-  ProvisionBillingCustomerResult,
-} from "@trigger.dev/billing";
+import type { BillingController, BillingCustomerError } from "@trigger.dev/billing";
 import { tryCatch } from "@trigger.dev/core/utils";
-import type { Result } from "neverthrow";
+import type { Result, ResultAsync } from "neverthrow";
 import { logger } from "~/services/logger.server";
 
 const PROVISION_DEADLINE_MS = 20_000;
@@ -21,6 +17,7 @@ const NOT_CONFIGURED_POLICY: NotConfiguredPolicy = "fail";
 
 export type NewOrgProvisionDependencies = {
   enabled: boolean;
+  createFreePlanContract: boolean;
   controller: BillingController;
   deleteOrganization: (organizationId: string) => Promise<void>;
   now?: () => number;
@@ -30,7 +27,7 @@ export type NewOrgProvisionDependencies = {
 
 type Budget = { deadlineAt: number; now: () => number; signal: AbortSignal };
 
-type ProvisionAttempt = Result<ProvisionBillingCustomerResult, BillingCustomerError> | "aborted";
+type ProvisionAttempt = Result<boolean, BillingCustomerError> | "aborted";
 
 export function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise<void>((resolve) => {
@@ -67,7 +64,7 @@ export async function provisionBillingCustomerForNewOrg(
   const error = await provisionOrError(organizationId, deps);
   if (!error) return;
 
-  logger.error("Billing customer provisioning failed; rolling back organization creation", {
+  logger.error("Billing provisioning failed; rolling back organization creation", {
     organizationId,
     error,
   });
@@ -131,11 +128,11 @@ async function provisionWithRetry(
 
   for (let attempt = 1; attempt <= PROVISION_MAX_ATTEMPTS; attempt++) {
     const [thrown, result] = await tryCatch<ProvisionAttempt>(
-      untilAborted(deps.controller.provisionCustomer({ organizationId, signal }), signal)
+      untilAborted(provisionOnce(organizationId, deps, signal), signal)
     );
 
     if (thrown) {
-      logger.error("Billing customer provisioning threw", {
+      logger.error("Billing provisioning threw", {
         organizationId,
         error: thrown instanceof Error ? thrown.message : thrown,
       });
@@ -143,7 +140,7 @@ async function provisionWithRetry(
     } else if (result === "aborted") {
       return "upstream_unavailable";
     } else if (result.isOk()) {
-      if (result.value.outcome !== "in_progress") return undefined;
+      if (result.value) return undefined;
       lastError = "internal";
     } else {
       if (!RETRYABLE_ERRORS.has(result.error)) return result.error;
@@ -157,4 +154,18 @@ async function provisionWithRetry(
   }
 
   return lastError;
+}
+
+// Resolves to whether provisioning is complete; a customer still in progress is retried.
+function provisionOnce(
+  organizationId: string,
+  deps: NewOrgProvisionDependencies,
+  signal: AbortSignal
+): ResultAsync<boolean, BillingCustomerError> {
+  if (deps.createFreePlanContract) {
+    return deps.controller.provisionFreePlanContract({ organizationId, signal }).map(() => true);
+  }
+  return deps.controller
+    .provisionCustomer({ organizationId, signal })
+    .map((result) => result.outcome !== "in_progress");
 }

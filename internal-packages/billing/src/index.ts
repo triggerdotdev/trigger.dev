@@ -6,6 +6,8 @@ import type {
   PluginDatabaseConfig,
   ProvisionBillingCustomerParams,
   ProvisionBillingCustomerResult,
+  ProvisionFreePlanContractParams,
+  ProvisionFreePlanContractResult,
 } from "@trigger.dev/plugins";
 import { ResultAsync } from "neverthrow";
 import { BillingFallback } from "./fallback.js";
@@ -16,6 +18,8 @@ export type {
   BillingCustomerError,
   ProvisionBillingCustomerParams,
   ProvisionBillingCustomerResult,
+  ProvisionFreePlanContractParams,
+  ProvisionFreePlanContractResult,
 } from "@trigger.dev/plugins";
 
 export type BillingCreateOptions = {
@@ -109,6 +113,12 @@ export class LazyController implements BillingController {
     params: ProvisionBillingCustomerParams
   ): ResultAsync<ProvisionBillingCustomerResult, BillingCustomerError> {
     return this.call((c) => c.provisionCustomer(params));
+  }
+
+  provisionFreePlanContract(
+    params: ProvisionFreePlanContractParams
+  ): ResultAsync<ProvisionFreePlanContractResult, BillingCustomerError> {
+    return this.call((c) => c.provisionFreePlanContract(params));
   }
 }
 

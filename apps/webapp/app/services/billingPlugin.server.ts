@@ -17,6 +17,7 @@ const billingPlugin = billing.create({
 export function provisionBillingCustomerForOrg(organizationId: string): Promise<void> {
   return provisionBillingCustomerForNewOrg(organizationId, {
     enabled: billingEnabled,
+    createFreePlanContract: env.BILLING_V2_ENABLED,
     controller: billingPlugin,
     deleteOrganization: async (id) => {
       await prisma.organization.delete({ where: { id } });

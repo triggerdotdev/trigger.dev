@@ -22,6 +22,14 @@ function makeStubController(overrides: Partial<BillingController> = {}): Billing
         outcome: "created" as const,
       });
     },
+    provisionFreePlanContract(params) {
+      return okAsync({
+        organizationId: params.organizationId,
+        billingCustomerId: "cus_stub",
+        contractId: "con_stub",
+        outcome: "created" as const,
+      });
+    },
     ...overrides,
   };
   return stub;
@@ -140,6 +148,27 @@ describe("billing loader", () => {
 
     const result = await controller.getCustomer("org_1");
     expect(result._unsafeUnwrap()).toBeNull();
+  });
+
+  it("fallback refuses to provision a free plan contract", async () => {
+    const controller = loader.create({ forceFallback: true });
+
+    const result = await controller.provisionFreePlanContract({ organizationId: "org_1" });
+    expect(result._unsafeUnwrapErr()).toBe("feature_disabled");
+  });
+
+  it("delegates free plan contract provisioning to the plugin", async () => {
+    const controller = new LazyController({
+      importer: async () => makePluginModule(makeStubController()),
+    });
+
+    const result = await controller.provisionFreePlanContract({ organizationId: "org_1" });
+    expect(result._unsafeUnwrap()).toEqual({
+      organizationId: "org_1",
+      billingCustomerId: "cus_stub",
+      contractId: "con_stub",
+      outcome: "created",
+    });
   });
 
   it("loads the plugin once and reuses it across calls", async () => {
