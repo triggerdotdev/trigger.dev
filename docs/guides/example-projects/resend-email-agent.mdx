@@ -132,7 +132,12 @@ You need a Trigger.dev project, a Resend inbox on a verified domain, a Slack wor
   </Step>
 </Steps>
 
-To deploy, run `npx trigger.dev@latest deploy` and set the same environment variables on your production environment. Production has its own `resend` and `slack` endpoints, with their own URLs and secrets: point a Resend webhook and a Slack app at the production URLs, and paste each one's signing secret into the matching production endpoint. Until then, the endpoint shows "Needs secret" on the Webhooks page.
+To deploy, run `npx trigger.dev@latest deploy`. Production has its own `resend` and `slack` endpoints, with their own URLs and secrets:
+
+1. Create a second Slack app from the manifest with the production `slack` URL, install it, and use its bot token as `SLACK_BOT_TOKEN` in production. A Slack app sends its clicks and replies to one URL, so dev and production each need their own app.
+2. Point a Resend webhook at the production `resend` URL. Disable or delete the dev webhook, or use a separate inbox for dev, so the same email doesn't get drafted twice.
+3. Paste each signing secret into the matching production endpoint. Until then, the endpoint shows "Needs secret" on the Webhooks page.
+4. Set the other environment variables on your production environment as in dev.
 
 ## Relevant code
 
