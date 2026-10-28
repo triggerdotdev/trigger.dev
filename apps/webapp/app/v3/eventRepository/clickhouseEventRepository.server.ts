@@ -151,6 +151,8 @@ export type ClickhouseEventRepositoryConfig = {
   maximumKeyRows?: number;
   maximumLiveReloadingSetting?: number;
   traceChunkSize?: number;
+  /** Server-side `max_execution_time` (seconds) for trace exports; overrides the client-level limit. */
+  exportMaxExecutionTime?: number;
   /**
    * Maximum age in milliseconds for start_time. If start_time is older than this threshold,
    * it will be clamped to the current time when creating events.
@@ -3316,10 +3318,14 @@ export class ClickhouseEventRepository implements IEventRepository {
   ): AsyncIterable<StreamedTraceEvent> {
     const startCreatedAtWithBuffer = new Date(startCreatedAt.getTime() - 1000);
 
+    const exportSettings = this._config.exportMaxExecutionTime
+      ? { settings: { max_execution_time: this._config.exportMaxExecutionTime } }
+      : undefined;
+
     const queryBuilder =
       this._version === "v2"
-        ? this._clickhouse.taskEventsV2.traceEventsForExportQueryBuilder()
-        : this._clickhouse.taskEvents.traceEventsForExportQueryBuilder();
+        ? this._clickhouse.taskEventsV2.traceEventsForExportQueryBuilder(exportSettings)
+        : this._clickhouse.taskEvents.traceEventsForExportQueryBuilder(exportSettings);
 
     queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
     queryBuilder.where("trace_id = {traceId: String}", { traceId });

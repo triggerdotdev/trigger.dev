@@ -442,6 +442,23 @@ const defaultEventsClickhouseClient = singleton(
   initializeEventsClickhouseClient
 );
 
+function getEventsReaderClickhouseSettings(): ClickHouseSettings {
+  return {
+    ...(env.EVENTS_READER_CLICKHOUSE_MAX_EXECUTION_TIME && {
+      max_execution_time: env.EVENTS_READER_CLICKHOUSE_MAX_EXECUTION_TIME,
+    }),
+    ...(env.EVENTS_READER_CLICKHOUSE_MAX_THREADS && {
+      max_threads: env.EVENTS_READER_CLICKHOUSE_MAX_THREADS,
+    }),
+    ...(env.EVENTS_READER_CLICKHOUSE_MAX_MEMORY_USAGE && {
+      max_memory_usage: env.EVENTS_READER_CLICKHOUSE_MAX_MEMORY_USAGE.toString(),
+    }),
+    ...(env.EVENTS_READER_CLICKHOUSE_READONLY && {
+      readonly: env.EVENTS_READER_CLICKHOUSE_READONLY,
+    }),
+  };
+}
+
 function initializeEventsClickhouseClient(): ClickHouse {
   if (!env.EVENTS_CLICKHOUSE_URL) {
     throw new Error("EVENTS_CLICKHOUSE_URL is not set");
@@ -474,6 +491,8 @@ function initializeEventsClickhouseClient(): ClickHouse {
         writerUrl: writerUrl.toString(),
         readerName: "task-events-reader",
         readerUrl: readerUrl.toString(),
+        readerClickhouseSettings: getEventsReaderClickhouseSettings(),
+        readerRequestTimeoutMs: env.EVENTS_READER_CLICKHOUSE_REQUEST_TIMEOUT_MS,
       });
     }
   }
@@ -868,6 +887,9 @@ function buildEventRepository(
         ),
         maximumLiveReloadingSetting: env.EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING,
         traceChunkSize: env.EVENTS_CLICKHOUSE_TRACE_CHUNK_SIZE,
+        exportMaxExecutionTime: clickhouse.hasSeparateReader
+          ? env.EVENTS_READER_CLICKHOUSE_EXPORT_MAX_EXECUTION_TIME
+          : undefined,
         maximumTraceViewCount: env.EVENTS_CLICKHOUSE_MAX_TRACE_VIEW_COUNT,
         maximumErrorMatches: clampToEmergencySpanCap(DEFAULT_MAX_ERROR_MATCHES),
         maximumKeyRows: clampToEmergencySpanCap(DEFAULT_MAX_KEY_ROWS),
@@ -904,6 +926,9 @@ function buildEventRepository(
         ),
         maximumLiveReloadingSetting: env.EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING,
         traceChunkSize: env.EVENTS_CLICKHOUSE_TRACE_CHUNK_SIZE,
+        exportMaxExecutionTime: clickhouse.hasSeparateReader
+          ? env.EVENTS_READER_CLICKHOUSE_EXPORT_MAX_EXECUTION_TIME
+          : undefined,
         maximumTraceViewCount: env.EVENTS_CLICKHOUSE_MAX_TRACE_VIEW_COUNT,
         maximumErrorMatches: clampToEmergencySpanCap(DEFAULT_MAX_ERROR_MATCHES),
         maximumKeyRows: clampToEmergencySpanCap(DEFAULT_MAX_KEY_ROWS),
