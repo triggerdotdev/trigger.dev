@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { xdgAppPaths } from "../imports/xdg-app-paths.js";
@@ -248,7 +256,7 @@ export function readAuthConfigFile(): CliConfigFile | null {
       profiles: oldConfigFormat,
     } satisfies CliConfigFile;
 
-    // Save to new config file location, the old file will remain untouched
+    // Save to new config file location, retaining the old file.
     writeAuthConfigFile(newConfigFormat);
 
     return newConfigFormat;
@@ -260,10 +268,37 @@ export function readAuthConfigFile(): CliConfigFile | null {
 
 function writeAuthConfigFile(config: CliConfigFile) {
   const authConfigFilePath = getAuthConfigFilePath();
-  mkdirSync(path.dirname(authConfigFilePath), {
+  const authConfigFolderPath = path.dirname(authConfigFilePath);
+  mkdirSync(authConfigFolderPath, {
     recursive: true,
+    mode: 0o700,
   });
-  writeFileSync(path.join(authConfigFilePath), JSON.stringify(config, undefined, 2), {
-    encoding: "utf-8",
-  });
+  chmodSync(authConfigFolderPath, 0o700);
+
+  // Migration retains the legacy file, which may still contain credentials.
+  const oldAuthConfigFilePath = getOldAuthConfigFilePath();
+  if (existsSync(oldAuthConfigFilePath)) {
+    try {
+      chmodSync(oldAuthConfigFilePath, 0o600);
+    } catch {
+      logger.warn(
+        `Could not restrict permissions on legacy auth config ${oldAuthConfigFilePath}. It may still be readable by other users; restrict its permissions or remove it after migration.`
+      );
+    }
+  }
+
+  // Replace the inode so existing readers cannot observe newly written credentials.
+  const tempFolderPath = mkdtempSync(path.join(authConfigFolderPath, ".auth-config-"));
+  try {
+    const tempFilePath = path.join(tempFolderPath, CONFIG_FILE);
+    writeFileSync(tempFilePath, JSON.stringify(config, undefined, 2), {
+      encoding: "utf-8",
+      mode: 0o600,
+      flag: "wx",
+    });
+    chmodSync(tempFilePath, 0o600);
+    renameSync(tempFilePath, authConfigFilePath);
+  } finally {
+    rmSync(tempFolderPath, { recursive: true, force: true });
+  }
 }
