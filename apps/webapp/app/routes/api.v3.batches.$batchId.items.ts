@@ -72,6 +72,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: authResult.error }, { status: authResult.status });
   }
 
+  const restrictedApiKey = authResult.subject.type === "apiKey" && authResult.subject.restricted;
+
   // Get the request body stream
   const body = request.body;
   if (!body) {
@@ -98,7 +100,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       streamToAsyncIterable(parsedStream),
       authResult.ability,
       batchId,
-      authResult.subject.type !== "publicJWT"
+      authResult.subject.type !== "publicJWT" && !restrictedApiKey
     );
 
     // Process the stream

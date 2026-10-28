@@ -40,12 +40,15 @@ const { action, loader } = createActionApiRoute(
     },
     corsStrategy: "all",
   },
-  async ({ body, headers, params, authentication }) => {
+  async ({ body, headers, params, authentication, restrictedApiKey }) => {
     if (
-      authentication.type !== "PRIVATE" &&
+      (authentication.type !== "PRIVATE" || restrictedApiKey) &&
       body.items.some((item) => item.options?.payloadType === "application/store")
     ) {
-      return json({ error: "Stored payloads require a private API key" }, { status: 403 });
+      return json(
+        { error: "Stored payloads require an unrestricted private API key" },
+        { status: 403 }
+      );
     }
 
     if (!body.items.length) {

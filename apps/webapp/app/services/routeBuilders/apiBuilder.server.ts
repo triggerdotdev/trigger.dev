@@ -1207,6 +1207,7 @@ type ApiKeyActionHandlerFunction<
     ? z.infer<TBodySchema>
     : undefined;
   authentication: ApiAuthenticationResultSuccess;
+  restrictedApiKey: boolean;
   ability: RbacAbility;
   request: Request;
   resource?: TResource;
@@ -1444,6 +1445,7 @@ export function createActionApiRoute<
             headers: parsedHeaders,
             body: parsedBody,
             authentication: authenticationResult,
+            restrictedApiKey: authResult.restrictedApiKey,
             ability,
             request,
             resource,

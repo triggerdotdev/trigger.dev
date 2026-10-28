@@ -29,7 +29,17 @@ const { action } = createActionApiRoute(
       resource: (params) => ({ type: "tasks", id: params.taskId }),
     },
   },
-  async ({ params, headers, body, authentication, ability }) => {
+  async ({ params, headers, body, authentication, restrictedApiKey, ability }) => {
+    if (
+      (authentication.type !== "PRIVATE" || restrictedApiKey) &&
+      body.items.some((item) => item.options?.payloadType === "application/store")
+    ) {
+      return json(
+        { error: "Stored payloads require an unrestricted private API key" },
+        { status: 403 }
+      );
+    }
+
     const { taskId } = params;
     const {
       "idempotency-key": idempotencyKey,
