@@ -37,6 +37,9 @@ type SupervisorSessionOptions = SupervisorClientCommonOptions & {
   metadata?: Record<string, unknown>;
 };
 
+const RECONNECT_DELAY_MS = 1_000;
+const RECONNECT_DELAY_MAX_MS = 30_000;
+
 export class SupervisorSession extends EventEmitter<WorkerEvents> {
   public readonly httpClient: SupervisorHttpClient;
 
@@ -44,6 +47,9 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
 
   private readonly runNotificationsEnabled: boolean;
   private runNotificationsSocket?: Socket<WorkerServerToClientEvents, WorkerClientToServerEvents>;
+  /** The runs subscribed to, asked for again on every connection: the platform keeps subscriptions per connection. */
+  private readonly runSubscriptions = new Set<string>();
+  private reconnectDelayMs = RECONNECT_DELAY_MS;
 
   private readonly queueConsumerEnabled: boolean;
   private readonly consumerPool: RunQueueConsumerPool;
@@ -111,12 +117,16 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
   subscribeToRunNotifications(runFriendlyIds: string[]) {
     this.logger.debug("Subscribing to run notifications", { runFriendlyIds });
 
-    if (!this.runNotificationsSocket) {
-      this.logger.error("Socket not connected");
+    for (const runFriendlyId of runFriendlyIds) {
+      this.runSubscriptions.add(runFriendlyId);
+    }
+
+    // Not connected, the connect handler asks for the whole set; asking here too would ask twice.
+    if (!this.runNotificationsSocket?.connected) {
       return;
     }
 
-    this.runNotificationsSocket.emit("run:subscribe", { version: "1", runFriendlyIds });
+    this.subscribe(this.runNotificationsSocket, runFriendlyIds);
 
     Promise.allSettled(
       runFriendlyIds.map((runFriendlyId) =>
@@ -131,8 +141,11 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
   unsubscribeFromRunNotifications(runFriendlyIds: string[]) {
     this.logger.debug("Unsubscribing from run notifications", { runFriendlyIds });
 
-    if (!this.runNotificationsSocket) {
-      this.logger.error("Socket not connected");
+    for (const runFriendlyId of runFriendlyIds) {
+      this.runSubscriptions.delete(runFriendlyId);
+    }
+
+    if (!this.runNotificationsSocket?.connected) {
       return;
     }
 
@@ -149,6 +162,13 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
         })
       )
     );
+  }
+
+  private subscribe(
+    socket: Socket<WorkerServerToClientEvents, WorkerClientToServerEvents>,
+    runFriendlyIds: string[]
+  ) {
+    socket.emit("run:subscribe", { version: "1", runFriendlyIds });
   }
 
   private createRunNotificationsSocket() {
@@ -170,15 +190,41 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
     });
     socket.on("connect", () => {
       this.logger.log("[WS] Connected to platform");
+      this.reconnectDelayMs = RECONNECT_DELAY_MS;
+      if (this.runSubscriptions.size > 0) {
+        this.logger.log("[WS] Subscribing to run notifications on connect", {
+          runs: this.runSubscriptions.size,
+        });
+        this.subscribe(socket, [...this.runSubscriptions]);
+      }
     });
     socket.on("connect_error", (error) => {
       this.logger.error("[WS] Connection error", { error });
+      this.reconnectIfGivenUp(socket);
     });
     socket.on("disconnect", (reason, description) => {
       this.logger.log("[WS] Disconnected from platform", { reason, description });
+      this.reconnectIfGivenUp(socket);
     });
 
     return socket;
+  }
+
+  /** socket.io stops after the platform rejects a handshake or disconnects the socket; the session does not. */
+  private reconnectIfGivenUp(
+    socket: Socket<WorkerServerToClientEvents, WorkerClientToServerEvents>
+  ) {
+    if (socket.active || this.runNotificationsSocket !== socket) {
+      return;
+    }
+    const delayMs = this.reconnectDelayMs;
+    this.reconnectDelayMs = Math.min(delayMs * 2, RECONNECT_DELAY_MAX_MS);
+    this.logger.log("[WS] Connecting to platform again", { delayMs });
+    setTimeout(() => {
+      if (this.runNotificationsSocket === socket) {
+        socket.connect();
+      }
+    }, delayMs).unref();
   }
 
   async start() {
@@ -225,7 +271,9 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
   async stop() {
     await this.consumerPool.stop();
     this.heartbeat.stop();
-    this.runNotificationsSocket?.disconnect();
+    const socket = this.runNotificationsSocket;
+    this.runNotificationsSocket = undefined;
+    socket?.disconnect();
   }
 
   private getHeartbeatBody(): WorkerApiHeartbeatRequestBody {
