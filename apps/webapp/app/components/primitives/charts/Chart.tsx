@@ -3,11 +3,12 @@ import * as RechartsPrimitive from "recharts";
 import { cn } from "~/utils/cn";
 import { AnimatedNumber } from "../AnimatedNumber";
 import TooltipPortal from "../TooltipPortal";
+import { safeChartConfig } from "./chartColors";
 
 // Format: { THEME_NAME: CSS_SELECTOR }
 // :is() keeps this one selector once interpolated below; a comma would break
 // scoping. `light` is unscoped on purpose: it's the base the dark rule overrides.
-const THEMES = { light: "", dark: ':is([data-theme="dark"], [data-theme="black"])' } as const;
+const THEMES = { light: "", dark: ":is([data-theme=dark], [data-theme=black])" } as const;
 
 export type ChartState = "loading" | "noData" | "invalid" | "loaded" | undefined;
 
@@ -46,20 +47,22 @@ const ChartContainer = React.forwardRef<
   }
 >(({ id, className, children, config, ...props }, ref) => {
   const uniqueId = React.useId();
-  const chartId = `chart-${id || uniqueId.replace(/:/g, "")}`;
+  const chartId = `chart-${Array.from(uniqueId, (char) => char.charCodeAt(0).toString(16)).join("-")}`;
+  const safeConfig = React.useMemo(() => safeChartConfig(config), [config]);
 
   return (
-    <ChartContext.Provider value={{ config }}>
+    <ChartContext.Provider value={{ config: safeConfig }}>
       <div
-        data-chart={chartId}
+        id={id}
         ref={ref}
         className={cn(
           "[&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line[stroke='#ccc']]:stroke-border/50 [&_.recharts-curve.recharts-tooltip-cursor]:stroke-border [&_.recharts-polar-grid_[stroke='#ccc']]:stroke-border [&_.recharts-radial-bar-background-sector]:fill-muted [&_.recharts-rectangle.recharts-tooltip-cursor]:fill-muted [&_.recharts-reference-line_[stroke='#ccc']]:stroke-border flex aspect-video justify-center text-xs [&_.recharts-dot[stroke='#fff']]:stroke-transparent [&_.recharts-layer]:outline-hidden [&_.recharts-sector[stroke='#fff']]:stroke-transparent [&_.recharts-sector]:outline-hidden [&_.recharts-surface]:outline-hidden",
           className
         )}
         {...props}
+        data-chart={chartId}
       >
-        <ChartStyle id={chartId} config={config} />
+        <ChartStyle id={chartId} config={safeConfig} />
         <RechartsPrimitive.ResponsiveContainer>{children}</RechartsPrimitive.ResponsiveContainer>
       </div>
     </ChartContext.Provider>
@@ -67,37 +70,30 @@ const ChartContainer = React.forwardRef<
 });
 ChartContainer.displayName = "Chart";
 
-const SAFE_CSS_KEY = /^[A-Za-z0-9_-]+$/;
-const UNSAFE_CSS_VALUE = /[<>{};\\]/;
-
 const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
-  const colorConfig = Object.entries(config)
-    .filter(([, config]) => config.theme || config.color)
-    .filter(([key]) => SAFE_CSS_KEY.test(key));
+  const colorConfig = Object.entries(config).filter(([, config]) => config.theme || config.color);
 
   if (!colorConfig.length) {
     return null;
   }
 
   return (
-    <style
-      dangerouslySetInnerHTML={{
-        __html: Object.entries(THEMES)
-          .map(
-            ([theme, prefix]) => `
+    <style>
+      {Object.entries(THEMES)
+        .map(
+          ([theme, prefix]) => `
 ${prefix} [data-chart=${id}] {
 ${colorConfig
-  .map(([key, itemConfig]) => {
+  .map(([, itemConfig], index) => {
     const color = itemConfig.theme?.[theme as keyof typeof itemConfig.theme] || itemConfig.color;
-    return color && !UNSAFE_CSS_VALUE.test(color) ? `  --color-${key}: ${color};` : null;
+    return color ? `  --color-series-${index}: ${color};` : null;
   })
   .join("\n")}
 }
 `
-          )
-          .join("\n"),
-      }}
-    />
+        )
+        .join("\n")}
+    </style>
   );
 };
 

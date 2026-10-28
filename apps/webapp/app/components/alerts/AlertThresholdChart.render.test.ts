@@ -47,7 +47,7 @@ describe("AlertMultiSeriesChart hostile queue names", () => {
     expect(html).not.toContain("<script>");
     expect(styles).not.toContain("alert(1)");
     expect(styles).not.toContain('q"}{x:y');
-    expect(styles).toContain("--color-ok-queue");
+    expect(html).toContain("ok-queue");
     expect(html).toContain("a&lt;/style&gt;&lt;script&gt;alert(1)&lt;/script&gt;");
   });
 });

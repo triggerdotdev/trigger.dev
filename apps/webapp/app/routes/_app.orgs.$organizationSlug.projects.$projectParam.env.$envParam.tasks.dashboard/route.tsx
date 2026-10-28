@@ -128,7 +128,7 @@ export default function TasksDashboardPage() {
                     description="AI agents are tasks that can call LLMs, use tools, and run multi-step conversations. Use them to power chat experiences, intelligent automations, or autonomous workflows."
                     example="A support agent that drafts replies using your docs as context."
                     data={s.agents}
-                    seriesColor="hsl(280 80% 65%)"
+                    seriesColor="#be5eed"
                     listingPath={v3EnvironmentPath(organization, project, environment)}
                     docsHref={docsPath("v3/agents")}
                     emptyTitle="You don't have any agents yet"
@@ -148,7 +148,7 @@ export default function TasksDashboardPage() {
                     description="Standard tasks are durable background functions you trigger from your code. Use them for any async work that needs retries, observability, and reliable execution."
                     example="Process an uploaded video, send a transactional email, or sync data from a third-party API."
                     data={s.standard}
-                    seriesColor="hsl(200 80% 60%)"
+                    seriesColor="#47b4eb"
                     listingPath={v3RunsPath(organization, project, environment)}
                     docsHref={docsPath("v3/tasks-overview")}
                     emptyTitle="You don't have any standard tasks yet"
@@ -168,7 +168,7 @@ export default function TasksDashboardPage() {
                     description="Scheduled tasks run automatically on a cron schedule. Attach as many schedules to a task as you need (e.g. one per customer)."
                     example="Generate a nightly report, refresh a cache every 5 minutes, or send a weekly digest email."
                     data={s.scheduled}
-                    seriesColor="hsl(30 90% 60%)"
+                    seriesColor="#f5993d"
                     listingPath={v3EnvironmentPath(organization, project, environment)}
                     docsHref={docsPath("v3/tasks-scheduled")}
                     emptyTitle="You don't have any scheduled tasks yet"
