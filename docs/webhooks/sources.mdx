@@ -106,6 +106,8 @@ Supabase database webhooks aren't signed, so `supabase()` checks a shared secret
 
 Slack also ships as a chat channel in `@trigger.dev/slack`.
 
+For a complete project built on `resend()`, see the [Resend email agent example](https://github.com/triggerdotdev/examples/tree/main/resend-slack-email-agent). It drafts replies to a Resend inbox and waits for your approval in Slack before sending them.
+
 ### Hookdeck
 
 `hookdeck()` verifies requests that a [Hookdeck](https://hookdeck.com) connection forwards to the endpoint. Hookdeck forwards the original provider's body unchanged, so pass that provider's event type:
