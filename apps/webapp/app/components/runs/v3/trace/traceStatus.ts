@@ -18,6 +18,8 @@ export type TraceStatusInput = {
   missingAnchor: boolean;
   loadFailed: boolean;
   isLiveReloading: boolean;
+  /** False when this view doesn't follow the run live, e.g. a session's older runs. */
+  live: boolean;
   liveTailEnabled: boolean;
   maximumLiveReloadingSetting: number;
 };
@@ -26,7 +28,7 @@ export type TraceStatusInput = {
 export function getTraceStatus(input: TraceStatusInput): TraceStatus {
   // The run row and the tree can disagree for a moment; either one saying "done" wins.
   const finished = input.runFinished || input.rootSpanStatus !== "executing";
-  const liveStopped = !finished && !input.isLiveReloading;
+  const liveStopped = input.live && !finished && !input.isLiveReloading;
 
   if (input.loadFailed && !input.isTruncated) {
     const paused = liveStopped ? " Live updates are paused until it loads." : "";
@@ -50,6 +52,9 @@ export function getTraceStatus(input: TraceStatusInput): TraceStatus {
   }
   if (finished) return { kind: "allLoaded" };
   if (input.isLiveReloading) return { kind: "live" };
+  if (!input.live) {
+    return { kind: "liveOff", reason: "Live updates only follow the latest run." };
+  }
 
   if (!input.liveTailEnabled) {
     return {
