@@ -30,6 +30,37 @@ function makeStubController(overrides: Partial<BillingController> = {}): Billing
         outcome: "created" as const,
       });
     },
+    getMonthlyUsage({ organizationId, month }) {
+      return okAsync({
+        organizationId,
+        fetchedAt: "2026-10-14T00:00:00.000Z",
+        month,
+        isCurrentMonth: true,
+        availableFrom: null,
+        creditType: null,
+        total: 0,
+        creditsApplied: 0,
+        creditsGranted: 0,
+        credits: [],
+        days: [],
+        lines: [],
+      });
+    },
+    getProjectUsage({ organizationId, month }) {
+      return okAsync({
+        organizationId,
+        fetchedAt: "2026-10-14T00:00:00.000Z",
+        month,
+        isCurrentMonth: true,
+        truncated: false,
+        projectIds: [],
+        days: [],
+        lines: [],
+      });
+    },
+    clearCurrentMonthUsage() {
+      return okAsync(undefined);
+    },
     ...overrides,
   };
   return stub;
@@ -169,6 +200,56 @@ describe("billing loader", () => {
       contractId: "con_stub",
       outcome: "created",
     });
+  });
+
+  it("fallback refuses usage reads", async () => {
+    const controller = loader.create({ forceFallback: true });
+
+    const period = await controller.getMonthlyUsage({ organizationId: "org_1", month: "2026-10" });
+    const projects = await controller.getProjectUsage({
+      organizationId: "org_1",
+      month: "2026-10",
+    });
+    expect(period._unsafeUnwrapErr()).toBe("feature_disabled");
+    expect(projects._unsafeUnwrapErr()).toBe("feature_disabled");
+  });
+
+  it("delegates usage reads to the plugin", async () => {
+    const controller = new LazyController({
+      importer: async () => makePluginModule(makeStubController()),
+    });
+
+    const period = await controller.getMonthlyUsage({ organizationId: "org_1", month: "2026-10" });
+    const projects = await controller.getProjectUsage({
+      organizationId: "org_1",
+      month: "2026-10",
+    });
+    expect(period._unsafeUnwrap()).toMatchObject({ organizationId: "org_1", month: "2026-10" });
+    expect(projects._unsafeUnwrap()).toMatchObject({ organizationId: "org_1", projectIds: [] });
+  });
+
+  it("fallback clears the current month's usage as a no-op", async () => {
+    const controller = loader.create({ forceFallback: true });
+
+    expect((await controller.clearCurrentMonthUsage("org_1")).isOk()).toBe(true);
+  });
+
+  it("delegates clearing the current month's usage to the plugin", async () => {
+    const cleared: string[] = [];
+    const controller = new LazyController({
+      importer: async () =>
+        makePluginModule(
+          makeStubController({
+            clearCurrentMonthUsage(organizationId) {
+              cleared.push(organizationId);
+              return okAsync(undefined);
+            },
+          })
+        ),
+    });
+
+    expect((await controller.clearCurrentMonthUsage("org_1")).isOk()).toBe(true);
+    expect(cleared).toEqual(["org_1"]);
   });
 
   it("loads the plugin once and reuses it across calls", async () => {

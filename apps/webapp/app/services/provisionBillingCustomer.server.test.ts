@@ -56,6 +56,15 @@ function harness(
       calls.push(params);
       return outcomes[Math.min(calls.length - 1, outcomes.length - 1)]();
     },
+    getMonthlyUsage() {
+      return errAsync("feature_disabled");
+    },
+    getProjectUsage() {
+      return errAsync("feature_disabled");
+    },
+    clearCurrentMonthUsage() {
+      return okAsync(undefined);
+    },
   };
 
   const deps: NewOrgProvisionDependencies = {

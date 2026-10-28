@@ -2,6 +2,9 @@ import type {
   BillingController,
   BillingCustomer,
   BillingCustomerError,
+  BillingMonthlyUsage,
+  BillingProjectUsage,
+  BillingUsageError,
   ProvisionBillingCustomerResult,
   ProvisionFreePlanContractResult,
 } from "@trigger.dev/plugins";
@@ -28,5 +31,17 @@ class BillingFallbackController implements BillingController {
 
   provisionFreePlanContract(): ResultAsync<ProvisionFreePlanContractResult, BillingCustomerError> {
     return errAsync("feature_disabled");
+  }
+
+  getMonthlyUsage(): ResultAsync<BillingMonthlyUsage, BillingUsageError> {
+    return errAsync("feature_disabled");
+  }
+
+  getProjectUsage(): ResultAsync<BillingProjectUsage, BillingUsageError> {
+    return errAsync("feature_disabled");
+  }
+
+  clearCurrentMonthUsage(): ResultAsync<void, never> {
+    return okAsync(undefined);
   }
 }

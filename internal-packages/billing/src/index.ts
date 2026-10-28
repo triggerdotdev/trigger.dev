@@ -2,7 +2,11 @@ import type {
   BillingController,
   BillingCustomer,
   BillingCustomerError,
+  BillingMonthlyUsage,
   BillingPlugin,
+  BillingProjectUsage,
+  BillingUsageError,
+  BillingUsageMonthParams,
   PluginDatabaseConfig,
   ProvisionBillingCustomerParams,
   ProvisionBillingCustomerResult,
@@ -14,8 +18,24 @@ import { BillingFallback } from "./fallback.js";
 
 export type {
   BillingController,
+  BillingCreditType,
+  BillingCurrency,
   BillingCustomer,
   BillingCustomerError,
+  BillingInvoiceLineItem,
+  BillingMonthlyUsage,
+  BillingMonthlyUsageLine,
+  BillingUsageCredit,
+  BillingProjectUsage,
+  BillingProjectUsageDay,
+  BillingProjectUsageDayEntry,
+  BillingProjectUsageLine,
+  BillingUsageError,
+  BillingUsageDay,
+  BillingUsageMetric,
+  BillingUsageMonthParams,
+  BillingUsageUnit,
+  BillingUsageWindow,
   ProvisionBillingCustomerParams,
   ProvisionBillingCustomerResult,
   ProvisionFreePlanContractParams,
@@ -119,6 +139,22 @@ export class LazyController implements BillingController {
     params: ProvisionFreePlanContractParams
   ): ResultAsync<ProvisionFreePlanContractResult, BillingCustomerError> {
     return this.call((c) => c.provisionFreePlanContract(params));
+  }
+
+  getMonthlyUsage(
+    params: BillingUsageMonthParams
+  ): ResultAsync<BillingMonthlyUsage, BillingUsageError> {
+    return this.call((c) => c.getMonthlyUsage(params));
+  }
+
+  getProjectUsage(
+    params: BillingUsageMonthParams
+  ): ResultAsync<BillingProjectUsage, BillingUsageError> {
+    return this.call((c) => c.getProjectUsage(params));
+  }
+
+  clearCurrentMonthUsage(organizationId: string): ResultAsync<void, never> {
+    return this.call((c) => c.clearCurrentMonthUsage(organizationId));
   }
 }
 
