@@ -1,4 +1,10 @@
-import { createHmac, generateKeyPairSync, sign as cryptoSign, type KeyObject } from "node:crypto";
+import {
+  createHash,
+  createHmac,
+  generateKeyPairSync,
+  sign as cryptoSign,
+  type KeyObject,
+} from "node:crypto";
 import { WebhookVerifierConfig } from "@trigger.dev/core/v3";
 import { webhookProviderConfigs } from "@trigger.dev/core/webhooks";
 import { describe, expect, it } from "vitest";
@@ -470,6 +476,77 @@ describe("asymmetric verifier (config-driven)", () => {
       })
     );
     expect(result.ok).toBe(true);
+  });
+
+  it("verifies a Bridge-style RSA signature over a SHA-256 digest with prehash", () => {
+    const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const pem = publicKey.export({ type: "spki", format: "pem" }).toString();
+    const ts = String(NOW_MS);
+    const body = JSON.stringify({ event_type: "customer.updated" });
+    const digest = createHash("sha256").update(`${ts}.${body}`).digest();
+    const sig = cryptoSign("sha256", digest, privateKey).toString("base64");
+    const config = {
+      scheme: "asymmetric",
+      algorithm: "rsa-sha256",
+      encoding: "base64",
+      signatureHeader: "x-webhook-signature",
+      signature: { itemSeparator: ",", fieldSeparator: "=", field: "v0" },
+      timestamp: {
+        source: { from: "signatureField", field: "t" },
+        unit: "milliseconds",
+        toleranceSeconds: 600,
+      },
+      signingString: { template: "{timestamp}.{body}" },
+      prehash: "sha256",
+    };
+    const request = (cfgOverrides: Record<string, unknown>, rawBody: string) =>
+      verify(
+        cfg({ ...config, ...cfgOverrides }),
+        input({
+          rawBytes: bytes(rawBody),
+          secret: pem,
+          headers: { "x-webhook-signature": `t=${ts},v0=${sig}` },
+        })
+      );
+
+    expect(request({}, body).ok).toBe(true);
+    expect(request({ prehash: undefined }, body).ok).toBe(false);
+    expect(request({}, '{"event_type":"customer.deleted"}').ok).toBe(false);
+  });
+
+  it("verifies an ECDSA P-384 / SHA-384 signature in DER and raw r||s form", () => {
+    const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "P-384" });
+    const pem = publicKey.export({ type: "spki", format: "pem" }).toString();
+    const body = JSON.stringify({ id: "evt_1" });
+    const config = cfg({
+      scheme: "asymmetric",
+      algorithm: "ecdsa-p384",
+      encoding: "base64",
+      signatureHeader: "webhook-signature",
+      signature: {},
+      signingString: "raw",
+    });
+    const withSig = (sig: Buffer, rawBody = body) =>
+      verify(
+        config,
+        input({
+          rawBytes: bytes(rawBody),
+          secret: pem,
+          headers: { "webhook-signature": sig.toString("base64") },
+        })
+      );
+
+    const der = cryptoSign("sha384", Buffer.from(body), privateKey);
+    const p1363 = cryptoSign("sha384", Buffer.from(body), {
+      key: privateKey,
+      dsaEncoding: "ieee-p1363",
+    });
+    expect(withSig(der).ok).toBe(true);
+    expect(withSig(p1363).ok).toBe(true);
+    expect(withSig(der, '{"id":"evt_2"}').ok).toBe(false);
+
+    const sha256Sig = cryptoSign("sha256", Buffer.from(body), privateKey);
+    expect(withSig(sha256Sig).ok).toBe(false);
   });
 });
 

@@ -167,17 +167,23 @@ export type WebhookHmacConfig = z.infer<typeof WebhookHmacConfig>;
 
 // Asymmetric (public-key) signatures: the provider signs with a private key, we verify with
 // their public key. Same parsing/template primitives as HMAC; only the final verify differs.
-// Covers Discord (ed25519), SendGrid (ecdsa-p256), RSA providers. Dynamic key fetch (PayPal
-// cert URL / JWKS) is out of scope → the custom-bundle escape hatch.
+// Covers Discord (ed25519), SendGrid (ecdsa-p256), ecdsa-p384 (SHA-384), RSA providers. Dynamic
+// key fetch (PayPal cert URL / JWKS) is out of scope → the custom-bundle escape hatch.
 export const WebhookAsymmetricConfig = z
   .object({
     scheme: z.literal("asymmetric"),
-    algorithm: z.enum(["ed25519", "ecdsa-p256", "rsa-sha256"]),
+    algorithm: z.enum(["ed25519", "ecdsa-p256", "ecdsa-p384", "rsa-sha256"]),
     encoding: z.enum(["hex", "base64"]), // how the signature value is encoded
     signatureHeader: z.string(),
     signature: WebhookSignatureExtraction.optional(),
     timestamp: WebhookTimestampConfig.optional(),
     signingString: WebhookSigningString,
+    /**
+     * Hash the signing string first and verify the signature over that raw digest, for providers
+     * that sign a digest rather than the payload (Bridge signs `sha256("{timestamp}.{body}")` with
+     * RSA-SHA256, so the payload is hashed twice). Omit to verify over the signing string itself.
+     */
+    prehash: z.enum(["sha256"]).optional(),
     // How the stored public key is encoded: a PEM string, base64 of DER SPKI (SendGrid),
     // or raw key bytes (ed25519 raw, Discord). Defaults to "pem".
     publicKeyEncoding: z.enum(["pem", "spki-der-base64", "raw-hex", "raw-base64"]).optional(),

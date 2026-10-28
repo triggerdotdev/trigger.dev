@@ -242,7 +242,7 @@ Custom sources support these schemes:
 | `hmac` | Computes an HMAC over the raw body or a signing template and compares it with a request header. |
 | `shared-secret` | Compares a static token supplied in a header, bearer token, basic authentication, or request body. |
 | `url-secret` | Compares a token in a URL query parameter. Hosted endpoints don't support path placement. |
-| `asymmetric` | Verifies an Ed25519, ECDSA, or RSA signature using the provider's public key. |
+| `asymmetric` | Verifies an Ed25519, ECDSA (P-256 with SHA-256, P-384 with SHA-384), or RSA-SHA256 signature using the provider's public key. Set `prehash: "sha256"` when the provider signs a SHA-256 digest of the signing string instead of the string itself. |
 
 <Warning>
   Query parameters can appear in access logs, proxies, and traces. Prefer a header-based scheme when
