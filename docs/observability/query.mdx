@@ -57,6 +57,35 @@ ORDER BY minute
 LIMIT 1000
 ```
 
+#### Platform limit metrics
+
+The `metrics` table also records how close your environment is to platform limits. These are the metrics behind [Limits alerts](/troubleshooting-alerts#limits-alerts):
+
+| Metric                          | What it shows                                    |
+| ------------------------------- | ------------------------------------------------ |
+| `queue.size.queued`             | Runs currently queued in the environment         |
+| `queue.size.limit`              | The environment's maximum queued runs            |
+| `webhook.processing.in_flight`  | Webhooks being processed now                     |
+| `webhook.processing.limit`      | The webhook processing concurrency limit         |
+| `webhook.ingress.denied`        | Incoming webhooks rejected by a rate limit       |
+| `webhook.ingress.remaining_min` | The lowest remaining rate limit allowance seen   |
+| `webhook.ingress.limit.tokens`  | The rate limit's allowance per window            |
+| `webhook.waiters.live`          | Runs currently waiting for a webhook             |
+| `webhook.waiters.limit.env`     | The environment's maximum webhook waiters        |
+| `webhook.waiters.refused`       | New webhook waiters that were refused            |
+
+```sql
+SELECT
+  timeBucket(),
+  maxIf(metric_value, metric_name = 'queue.size.queued') AS queued,
+  maxIf(metric_value, metric_name = 'queue.size.limit') AS queue_limit
+FROM metrics
+WHERE metric_name LIKE 'queue.size.%'
+GROUP BY timeBucket
+ORDER BY timeBucket
+LIMIT 1000
+```
+
 ### `prettyFormat()`
 
 Use `prettyFormat()` to format metric values for display:

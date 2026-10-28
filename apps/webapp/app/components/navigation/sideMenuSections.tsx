@@ -148,6 +148,9 @@ export function buildSideMenuSections({
       id: "metrics",
       title: "Observability",
       items: [
+        ...(alertsInObservability
+          ? [{ ...alertsItem, matchPrefix: true, badge: <NewBadge /> }]
+          : []),
         ...(isAdmin || featureFlags.hasLogsPageAccess
           ? [
               {
@@ -172,9 +175,6 @@ export function buildSideMenuSections({
                 dataAction: "errors",
               } satisfies SideMenuItemConfig,
             ]
-          : []),
-        ...(alertsInObservability
-          ? [{ ...alertsItem, matchPrefix: true, badge: <NewBadge /> }]
           : []),
         ...(isAdmin || featureFlags.hasQueryAccess
           ? [

@@ -395,6 +395,10 @@
             ]
           },
           {
+            "group": "Alerts API",
+            "pages": ["management/alerts/create"]
+          },
+          {
             "group": "Errors API",
             "pages": [
               "management/errors/list",

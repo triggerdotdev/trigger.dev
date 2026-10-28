@@ -48,8 +48,9 @@ export const querySignalChoiceSchema = z.object({
 });
 
 export const alertDraftPatchSchema = z.object({
-  area: z.enum(["queues", "runs", "health", "errors", "query"]).optional(),
+  area: z.enum(["queues", "runs", "health", "limits", "errors", "query"]).optional(),
   what: z.string().optional(),
+  name: z.string().trim().min(1).max(120).optional(),
   query: z.string().max(8192).optional(),
   querySignalChoice: querySignalChoiceSchema.optional(),
   scope: z
@@ -73,6 +74,9 @@ export const alertDraftPatchSchema = z.object({
       unit: z.string().optional(),
       windowSec: z.number().optional(),
       params: z.preprocess(parseJsonText, z.record(z.string(), z.number())).optional(),
+      compositeMode: z.enum(["any", "all"]).optional(),
+      signals: z.array(z.enum(["approaching", "limited"])).optional(),
+      components: z.array(z.string()).optional(),
     })
     .optional(),
   behavior: z
@@ -99,12 +103,16 @@ const draftText = z.string().max(256);
 export const alertCreationDraftSchema = z.object({
   capabilityKey: draftText.optional(),
   answers: z.object({
-    area: z.enum(["queues", "runs", "health", "errors", "query"]).optional(),
+    area: z.enum(["queues", "runs", "health", "limits", "errors", "query"]).optional(),
     what: draftText.optional(),
+    name: z.string().max(120).optional(),
     scope: z.enum(["queue", "queuePattern", "task", "all", "errorGroup", "fingerprint"]).optional(),
     scopeValue: draftText.optional(),
     condition: z.string().max(2000).optional(),
     conditionParams: z.record(z.string(), z.number()).optional(),
+    compositeMode: z.enum(["any", "all"]).optional(),
+    signals: z.array(z.enum(["approaching", "limited"])).optional(),
+    components: z.array(draftText).max(32).optional(),
     windowMinutes: z.number().optional(),
     notifiers: z.array(draftText).max(20).optional(),
     expiry: draftText.optional(),

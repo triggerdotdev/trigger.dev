@@ -233,7 +233,7 @@ function QueryAlertFields({
         step={{ ...notifiersStep, error: hasNotifier ? undefined : NO_NOTIFIER }}
         onSelect={selectStep}
       />
-      <Section id="name" title="Name">
+      <Section id="name" title="Name your alert">
         <Input
           variant="small"
           aria-label="Name"

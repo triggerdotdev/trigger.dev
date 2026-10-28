@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { parseErrorGroupScope } from "~/utils/errorGroupScope";
-import { alertKindSchema, type Condition } from "@internal/alert-contracts";
+import { alertKindSchema, limitSignalSchema, type Condition } from "@internal/alert-contracts";
 
 const QuerySignalChoiceSchema = z.object({
   mode: z.enum(["threshold", "absence", "match"]),
@@ -42,6 +42,9 @@ export const FormSchema = z
     holdMinutes: z.coerce.number().optional(),
     quietWindowMinutes: z.coerce.number().optional(),
     conditionParams: z.record(z.string(), z.number().finite()).optional(),
+    compositeMode: z.enum(["any", "all"]).optional(),
+    signals: z.array(limitSignalSchema).optional(),
+    components: z.array(z.string()).optional(),
     query: z.string().max(8192).optional(),
     querySignalChoice: QuerySignalChoiceSchema.optional(),
     expiresAt: z.string().optional(),
@@ -90,6 +93,9 @@ const ChatFormSchema = z
     holdMinutes: z.coerce.number().optional(),
     quietWindowMinutes: z.coerce.number().optional(),
     conditionParams: z.record(z.string(), z.number().finite()).optional(),
+    compositeMode: z.enum(["any", "all"]).optional(),
+    signals: z.array(limitSignalSchema).optional(),
+    components: z.array(z.string()).optional(),
     query: z.string().max(8192).optional(),
     querySignalChoice: QuerySignalChoiceSchema.optional(),
     expiresAt: z.string().optional(),
@@ -185,6 +191,9 @@ export function buildCondition(v: z.infer<typeof FormSchema>): Condition {
         stateKey: v.capabilityKey,
         holdSec: v.holdMinutes ? v.holdMinutes * 60 : undefined,
         params: v.conditionParams,
+        compositeMode: v.compositeMode,
+        signals: v.signals,
+        components: v.components,
       };
     case "occurrence":
       return { kind: "occurrence" };

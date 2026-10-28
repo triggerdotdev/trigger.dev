@@ -67,6 +67,36 @@ function validateDraftPatch(patch: AlertDraftPatch): string[] {
     errors.push("errorGroup scope needs errorId or fingerprint");
   }
 
+  if (cap && patch.condition) {
+    const { compositeMode, components, signals } = patch.condition;
+    const compositeOf = cap.binding.compositeOf;
+    if ((compositeMode !== undefined || components !== undefined) && !compositeOf) {
+      errors.push(`${cap.key} has no components`);
+    }
+    const unknown = components?.filter((c) => !compositeOf?.includes(c)) ?? [];
+    if (compositeOf && (unknown.length > 0 || components?.length === 0)) {
+      errors.push(
+        unknown.length
+          ? `components not part of ${cap.key}: ${unknown.join(", ")}`
+          : "components must not be empty"
+      );
+    }
+    if (signals !== undefined) {
+      const supported =
+        cap.supportedSignals ??
+        (components ?? compositeOf)?.flatMap((key) => getCapability(key)?.supportedSignals ?? []) ??
+        [];
+      const unsupported = signals.filter((s) => !supported.includes(s));
+      if (unsupported.length > 0 || signals.length === 0) {
+        errors.push(
+          unsupported.length
+            ? `signals not supported by ${cap.key}: ${unsupported.join(", ")}`
+            : "signals must not be empty"
+        );
+      }
+    }
+  }
+
   if (cap && patch.condition?.params) {
     const declared = cap.binding.params ?? [];
     try {

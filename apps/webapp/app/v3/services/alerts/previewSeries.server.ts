@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   getCapability,
   isScopeAllowed,
+  selectedComponents,
   type AlertCapability,
   type AlertParams,
 } from "@internal/alert-contracts";
@@ -22,6 +23,10 @@ export const QuerySchema = z.object({
   scopeValue: z.string().optional(),
   windowMinutes: z.coerce.number().positive().optional(),
   threshold: z.coerce.number().finite().optional(),
+  components: z
+    .string()
+    .optional()
+    .transform((value) => value?.split(",").filter(Boolean)),
 });
 
 type SeriesPoint = { t: number; v: number | null };
@@ -45,6 +50,7 @@ export interface LoadPreviewSeriesInput {
   scopeValue?: string;
   windowMinutes?: number;
   threshold?: number;
+  components?: string[];
 }
 
 export type LoadPreviewSeriesResult =
@@ -146,7 +152,13 @@ export async function loadPreviewSeries(
   const runner = deps.runner ?? createQueryRowRunner();
   const cacheKeyPrefix = `preview:${environment.id}:${input.scopeType}:${input.scopeValue ?? ""}:${windowMinutes}`;
 
-  const subKeys = capability.binding.compositeOf;
+  const subKeys = capability.binding.compositeOf
+    ? selectedComponents(capability, {
+        kind: "state",
+        stateKey: capability.key,
+        components: input.components?.length ? input.components : undefined,
+      })
+    : undefined;
   let series: SeriesOut[] = [];
   if (subKeys && subKeys.length > 0) {
     for (const subKey of subKeys) {

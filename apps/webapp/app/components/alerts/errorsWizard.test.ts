@@ -48,7 +48,7 @@ describe("errors wizard", () => {
     expect(answers.scope).toBe("errorGroup");
     expect(skipsScope(answers)).toBe(true);
     const ids = stepIds(answers);
-    expect(ids).toEqual(["area", "what", "scope", "expiry", "notifiers"]);
+    expect(ids).toEqual(["area", "what", "scope", "expiry", "notifiers", "name"]);
     const scope = allSteps(flowFor(answers), [], "chat_1").find((s) => s.id === "scope")!;
     expect(scope.selected).toEqual([encodeErrorGroupScope(GROUP)]);
     expect(scope.question).toBe("Which error should this alert watch?");

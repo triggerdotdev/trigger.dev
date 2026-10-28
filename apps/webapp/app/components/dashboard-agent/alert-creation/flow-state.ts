@@ -1,9 +1,20 @@
-import type { AlertArea, AlertCapability, CapabilityParam } from "@internal/alert-contracts";
-import { listCapabilities } from "@internal/alert-contracts";
+import type {
+  AlertArea,
+  AlertCapability,
+  AlertGroup,
+  CapabilityParam,
+  LimitSignal,
+} from "@internal/alert-contracts";
+import { AREA_DESCRIPTION, listCapabilities } from "@internal/alert-contracts";
+import { stateConditionSummary } from "~/components/alerts/limitSummary";
 import { AREA_ICON, AREA_LABEL } from "~/components/alerts/domainIcons";
 import type { QueryAlertMode } from "~/components/alerts/queryAlertLink";
 import type { RenderIcon } from "~/components/primitives/Icon";
 import { formatNumber } from "~/utils/numberFormatter";
+import {
+  filterOfferedCapabilities,
+  QUEUE_METRIC_LIMITS,
+} from "~/v3/services/alerts/offeredCapabilities";
 import {
   encodeErrorGroupScope,
   errorGroupLabel,
@@ -11,9 +22,22 @@ import {
   type ErrorGroupScope,
 } from "~/utils/errorGroupScope";
 
-export type FlowStepKey = "area" | "what" | "scope" | "condition" | "environments" | "notifiers";
+export type FlowStepKey =
+  | "area"
+  | "what"
+  | "scope"
+  | "condition"
+  | "environments"
+  | "notifiers"
+  | "name";
 
-export type FlowChip = { value: string; label: string; icon?: RenderIcon; description?: string };
+export type FlowChip = {
+  value: string;
+  label: string;
+  icon?: RenderIcon;
+  description?: string;
+  group?: string;
+};
 
 export type FlowAnswers = {
   area?: AlertArea;
@@ -22,6 +46,13 @@ export type FlowAnswers = {
   scopeValue?: string;
   condition?: string;
   conditionParams?: Record<string, number>;
+  compositeMode?: "any" | "all";
+  components?: string[];
+  picked?: string[];
+  name?: string;
+  nameConfirmed?: boolean;
+  conditionConfirmed?: boolean;
+  signals?: LimitSignal[];
   windowMinutes?: number;
   notifiers?: string[];
   expiry?: string;
@@ -52,6 +83,7 @@ export const STEP_ORDER: FlowStepKey[] = [
   "scope",
   "environments",
   "notifiers",
+  "name",
 ];
 
 const REPLACE_CAPABILITY = "runs.failed";
@@ -86,6 +118,7 @@ export function areaChips(): FlowChip[] {
         value: cap.area,
         label: AREA_LABEL[cap.area as keyof typeof AREA_LABEL] ?? cap.area,
         icon: AREA_ICON[cap.area as keyof typeof AREA_ICON],
+        description: AREA_DESCRIPTION[cap.area],
       });
     }
   }
@@ -107,6 +140,7 @@ const CAPABILITY_PHRASE: Record<string, string> = {
   "health.execution": "Execution health degrading",
   "health.liveness": "Tasks going silent",
   "health.all": "Overall health check",
+  "limits.all": "Watch all limits",
   "errors.new": "A new error appearing",
   "errors.occurred_again": "This error occurring again",
 };
@@ -115,14 +149,106 @@ function capabilityPhrase(key: string): string {
   return CAPABILITY_PHRASE[key] ?? resolveCapability(key)?.title ?? key;
 }
 
-export function capabilityChips(area: string | undefined): FlowChip[] {
+const GROUP_ORDER: AlertGroup[] = ["platform", "webhooks"];
+const GROUP_LABEL: Record<AlertGroup, string> = {
+  platform: "Platform",
+  webhooks: "Webhooks",
+};
+export function capabilityChips(area: string | undefined, hiddenAreas: string[] = []): FlowChip[] {
   if (!area) return [];
-  const caps = listCapabilities({ area, surface: "agent" });
-  return caps.map((cap) => ({
-    value: cap.key,
-    label: capabilityPhrase(cap.key),
-    description: cap.description,
-  }));
+  const chips = filterOfferedCapabilities(
+    listCapabilities({ area, surface: "agent" }),
+    !hiddenAreas.includes("queues")
+  ).map((cap) => {
+    const group = cap.group;
+    return {
+      chip: {
+        value: cap.key,
+        label: capabilityPhrase(cap.key),
+        description: cap.description,
+        group: group ? GROUP_LABEL[group] : undefined,
+      },
+      rank: group ? GROUP_ORDER.indexOf(group) : -1,
+    };
+  });
+  return chips.sort((a, b) => a.rank - b.rank).map((entry) => entry.chip);
+}
+
+export function compositeComponents(key: string | undefined, hiddenAreas: string[] = []): string[] {
+  const compositeOf = resolveCapability(key)?.binding.compositeOf ?? [];
+  if (!hiddenAreas.includes("queues")) return compositeOf;
+  return compositeOf.filter((k) => !QUEUE_METRIC_LIMITS.includes(k));
+}
+
+const COMPOSITE_KEY = "limits.all";
+
+export function whatSelection(answers: FlowAnswers, hiddenAreas: string[] = []): string[] {
+  if (answers.picked) return answers.picked;
+  if (answers.what === COMPOSITE_KEY) {
+    return answers.components ?? compositeComponents(COMPOSITE_KEY, hiddenAreas);
+  }
+  return answers.what ? [answers.what] : [];
+}
+
+export function resolveWhat(picked: string[]): { what?: string; components?: string[] } {
+  const parts = resolveCapability(COMPOSITE_KEY)?.binding.compositeOf ?? [];
+  if (picked.length === 1) return { what: picked[0] };
+  const eligible = picked.filter((key) => parts.includes(key));
+  if (eligible.length >= 2) return { what: COMPOSITE_KEY, components: eligible };
+  return { what: eligible[0] };
+}
+
+export function isComposite(key: string | undefined): boolean {
+  return Boolean(resolveCapability(key)?.binding.compositeOf);
+}
+
+export function isLimitCondition(key: string | undefined): boolean {
+  const cap = resolveCapability(key);
+  return Boolean(cap?.supportedSignals || (cap?.binding.compositeOf && cap.area === "limits"));
+}
+
+const SIGNAL_ORDER: LimitSignal[] = ["approaching", "limited"];
+
+export function supportedSignalsFor(key: string | undefined, components?: string[]): LimitSignal[] {
+  const cap = resolveCapability(key);
+  if (!cap) return [];
+  if (cap.supportedSignals) return cap.supportedSignals;
+  const keys = components ?? cap.binding.compositeOf ?? [];
+  return SIGNAL_ORDER.filter((signal) =>
+    keys.some((k) => resolveCapability(k)?.supportedSignals?.includes(signal))
+  );
+}
+
+function approachingRequired(answers: FlowAnswers): boolean {
+  const cap = resolveCapability(answers.what);
+  const parts = cap?.binding.compositeOf
+    ? (answers.components ?? cap.binding.compositeOf)
+    : [cap?.key];
+  return !parts.every((key) => resolveCapability(key)?.supportedSignals?.includes("limited"));
+}
+
+export function effectiveSignals(answers: FlowAnswers): LimitSignal[] {
+  const supported = supportedSignalsFor(answers.what, answers.components);
+  const required = approachingRequired(answers);
+  if (answers.signals) {
+    return supported.filter(
+      (s) => answers.signals!.includes(s) || (s === "approaching" && required)
+    );
+  }
+  const approaching = answers.conditionParams?.utilisationPct !== undefined || required;
+  return (["limited", "approaching"] as const).filter(
+    (s) => supported.includes(s) && (s === "limited" || approaching)
+  );
+}
+
+export function signalsAfterUtilisationEdit(
+  answers: FlowAnswers,
+  filled: boolean
+): LimitSignal[] | undefined {
+  if (!answers.signals) return undefined;
+  const rest = answers.signals.filter((s) => s !== "approaching");
+  if (filled || approachingRequired(answers)) return [...rest, "approaching"];
+  return rest.length > 0 ? rest : undefined;
 }
 
 export function resolveCapability(key: string | undefined): AlertCapability | undefined {
@@ -130,15 +256,33 @@ export function resolveCapability(key: string | undefined): AlertCapability | un
   return listCapabilities().find((c) => c.key === key);
 }
 
-export function capabilityParams(key: string | undefined): CapabilityParam[] {
-  const params = resolveCapability(key)?.binding?.params ?? [];
-  return params.length > 1 ? params.filter((p) => p.key !== "silenceSec") : params;
+export function capabilityParams(
+  key: string | undefined,
+  components?: string[]
+): CapabilityParam[] {
+  const cap = resolveCapability(key);
+  let params = cap?.binding?.params ?? [];
+  if (cap?.binding.compositeOf && components) {
+    const used = new Set(
+      components.flatMap((c) => resolveCapability(c)?.binding.params?.map((p) => p.key) ?? [])
+    );
+    params = params.filter((p) => used.has(p.key));
+  }
+  return params.length > 1
+    ? params.filter((p) => p.key !== "silenceSec" && p.key !== "utilisationPct")
+    : params;
+}
+
+export function requiredParams(key: string | undefined, components?: string[]): CapabilityParam[] {
+  const params = capabilityParams(key, components);
+  return params.length > 1 ? params : [];
 }
 
 const SCOPE_ALL_LABEL: Record<string, string> = {
   queues: "All queues",
   runs: "All runs",
   health: "All tasks",
+  limits: "All tasks",
   errors: "All errors",
 };
 
@@ -336,6 +480,7 @@ function chipsForStep(key: FlowStepKey, answers: FlowAnswers): FlowChip[] {
     case "condition":
     case "environments":
     case "notifiers":
+    case "name":
       return [];
   }
 }
@@ -387,6 +532,8 @@ export function promptForStep(key: FlowStepKey, answers: FlowAnswers): string {
       return "Which environments should it watch?";
     case "notifiers":
       return "Where should it notify you?";
+    case "name":
+      return "Name your alert";
   }
 }
 
@@ -414,7 +561,17 @@ export function conditionSummary(answers: FlowAnswers): string {
   if (kind === "absence" && answers.condition) {
     return `No ${cap.title.toLowerCase()} for ${formatValue(answers.condition)}m`;
   }
-  if (kind === "state") return cap.title;
+  if (kind === "state") {
+    return (
+      stateConditionSummary({
+        stateKey: cap.key,
+        compositeMode: answers.compositeMode,
+        components: answers.components,
+        signals: effectiveSignals(answers),
+        params: answers.conditionParams,
+      }) ?? cap.title
+    );
+  }
   if (kind === "occurrence") return cap.title;
   return cap.title;
 }
@@ -431,11 +588,14 @@ const UNIT_SUFFIX: Record<string, string> = {
   rate_per_hour: "/h",
 };
 
-const ALERT_NAME_MAX = 120;
+export const ALERT_NAME_MAX = 120;
+
+function clampName(name: string): string {
+  return name.length > ALERT_NAME_MAX ? `${name.slice(0, ALERT_NAME_MAX - 1)}…` : name;
+}
 
 export function alertName(answers: FlowAnswers): string {
-  const name = buildAlertName(answers);
-  return name.length > ALERT_NAME_MAX ? `${name.slice(0, ALERT_NAME_MAX - 1)}…` : name;
+  return clampName(answers.name?.trim() || buildAlertName(answers));
 }
 
 function buildAlertName(answers: FlowAnswers): string {
@@ -443,6 +603,9 @@ function buildAlertName(answers: FlowAnswers): string {
   if (!cap) return "New alert";
   const phrase = capabilityPhrase(cap.key);
   const kind = conditionKindFor(answers.what);
+  if (cap.area === "limits" && cap.binding.compositeOf && answers.components) {
+    return conditionSummary(answers);
+  }
   const scopeLabel =
     answers.scope === "all"
       ? (SCOPE_ALL_LABEL[cap.area] ?? "all").toLowerCase()
@@ -468,9 +631,12 @@ export function draftMissing(answers: FlowAnswers): FlowStepKey[] {
   if (!answers.what) missing.push("what");
   if (needsThreshold(answers.what) && !answers.condition?.trim()) missing.push("condition");
   if (needsAbsenceWindow(answers.what) && !answers.condition?.trim()) missing.push("condition");
-  const params = capabilityParams(answers.what);
-  if (params.length > 1 && params.some((p) => answers.conditionParams?.[p.key] === undefined)) {
+  const params = requiredParams(answers.what, answers.components);
+  if (params.some((p) => answers.conditionParams?.[p.key] === undefined)) {
     missing.push("condition");
+  }
+  if (isLimitCondition(answers.what) && answers.what && effectiveSignals(answers).length === 0) {
+    if (supportedSignalsFor(answers.what, answers.components).length > 0) missing.push("condition");
   }
   if (!answers.scope) missing.push("scope");
   if (needsScopeValue(answers.scope) && !answers.scopeValue?.trim()) missing.push("scope");
@@ -501,7 +667,11 @@ export type DraftPrefillParams = {
 };
 
 export function asArea(value: string | undefined): DraftPrefillParams["area"] {
-  return value === "queues" || value === "runs" || value === "health" || value === "errors"
+  return value === "queues" ||
+    value === "runs" ||
+    value === "health" ||
+    value === "limits" ||
+    value === "errors"
     ? value
     : undefined;
 }

@@ -124,6 +124,22 @@ describe("getHealthQuerySeries", () => {
     expect(failure.points.find((p) => p.value !== null)?.value).toBe(200);
   });
 
+  it("fails when the selected components are ignored", async () => {
+    const queries: string[] = [];
+    const runner: QueryRowRunner = async (query) => {
+      queries.push(query);
+      return [{ bucket: "2026-01-01T05:00:00Z", value: 1 }];
+    };
+    const { series } = await getHealthQuerySeries(
+      input({
+        condition: { kind: "state", stateKey: "health", components: ["health.execution"] },
+      }),
+      runner
+    );
+    expect(series.map((s) => s.key)).toEqual(["failureRatePct", "durationP95Ms"]);
+    expect(queries.some((q) => q.includes("concurrency_metrics"))).toBe(false);
+  });
+
   it("fails when terms run in parallel or one failure drops every line", async () => {
     let inFlight = 0;
     let maxInFlight = 0;

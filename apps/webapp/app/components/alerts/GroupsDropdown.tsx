@@ -7,6 +7,7 @@ type GroupsProps = {
   onToggle: (group: string) => void;
   max?: number;
   colors?: Map<string, string>;
+  noun?: string;
 };
 
 export function GroupsDropdown({
@@ -15,6 +16,7 @@ export function GroupsDropdown({
   onToggle,
   max = MAX_VISIBLE_GROUPS,
   colors,
+  noun = "groups",
 }: GroupsProps) {
   const full = selected.length >= max;
 
@@ -29,12 +31,12 @@ export function GroupsDropdown({
       }}
       items={groups}
       filter={true}
-      heading={groups.length > max ? `Search groups · Up to ${max} visible` : "Search groups"}
-      text={`Groups ${selected.length}/${groups.length}`}
+      heading={groups.length > max ? `Search ${noun} · Up to ${max} visible` : `Search ${noun}`}
+      text={`${noun[0]!.toUpperCase()}${noun.slice(1)} ${selected.length}/${groups.length}`}
       clearSearchOnSelection={false}
       allowItemShortcuts={false}
       placement="bottom-end"
-      empty="No groups match"
+      empty={`No ${noun} match`}
     >
       {(items) =>
         items.map((group) => (

@@ -2,10 +2,13 @@ import type { Alert } from "../storage/alertStore.server";
 import {
   type AlertCapability,
   alertParamsSchema,
+  type CompositeFacts,
+  componentFactsKey,
   conditionSchema,
   getCapability,
   occurrenceExpiresAt,
   type Occurrence,
+  selectedComponents,
   validateConditionParams,
 } from "@internal/alert-contracts";
 import type { BindingResult } from "./evaluateAlert.server";
@@ -438,22 +441,39 @@ async function evaluateQueryBinding(
   };
 }
 
+const COMPONENT_FACTS = ["signals", "offendingGroups", "unavailableReason"];
+
+function compositeOutcome(
+  mode: "any" | "all",
+  components: CompositeFacts["components"],
+  failed: boolean
+): { outcome: "met" | "not_met" | "unavailable"; reason?: string } {
+  const available = Object.values(components).filter((c) => c.outcome !== "unavailable");
+  const decided =
+    mode === "all"
+      ? available.some((c) => c.outcome !== "met")
+      : available.some((c) => c.outcome === "met");
+  if (decided) return { outcome: mode === "all" ? "not_met" : "met" };
+  if (failed) return { outcome: "unavailable", reason: "sub_query_failed" };
+  if (available.length === 0) return { outcome: "unavailable", reason: "sub_unavailable" };
+  return { outcome: mode === "all" ? "met" : "not_met" };
+}
+
 async function evaluateCompositeBinding(
   alert: Alert,
   capability: AlertCapability,
   deps: ResolvedDeps
 ): Promise<BindingResult> {
-  const subKeys = capability.binding.compositeOf!;
+  const parsed = conditionSchema.parse(alert.condition);
+  const state = parsed.kind === "state" ? parsed : undefined;
   const condition = alert.condition as Record<string, unknown>;
   const allEffective = mergeEffectiveParams(condition, capability.binding.params);
 
-  const components: Record<string, { outcome: string; effectiveParams: Record<string, number> }> =
-    {};
+  const components: CompositeFacts["components"] = {};
+  const unavailableComponents: string[] = [];
+  const failedComponents: string[] = [];
 
-  let anyMet = false;
-  let anyUnavailable = false;
-
-  for (const subKey of subKeys) {
+  for (const subKey of selectedComponents(capability, parsed)) {
     const subCap = getCapability(subKey);
     if (!subCap) continue;
 
@@ -463,6 +483,7 @@ async function evaluateCompositeBinding(
       capabilityKey: subKey,
       condition: { ...condition, params: subParams },
     } as Alert;
+    const key = componentFactsKey(subKey);
 
     let subResult: BindingResult;
     try {
@@ -474,35 +495,35 @@ async function evaluateCompositeBinding(
       ) {
         throw err;
       }
-      const shortKey = subKey.replace(/^health\./, "");
-      components[shortKey] = { outcome: "unavailable", effectiveParams: subParams };
-      anyUnavailable = true;
+      components[key] = {
+        outcome: "unavailable",
+        effectiveParams: subParams,
+        unavailableReason: "query_failed",
+      };
+      failedComponents.push(key);
       continue;
     }
 
     const outcome = subResult.result.kind === "stateful" ? subResult.result.outcome : "unavailable";
-    const shortKey = subKey.replace(/^health\./, "");
-    components[shortKey] = { outcome, effectiveParams: subParams };
-
-    if (outcome === "met") anyMet = true;
-    if (outcome === "unavailable") anyUnavailable = true;
-  }
-
-  if (anyUnavailable) {
-    return {
-      result: {
-        kind: "stateful",
-        outcome: "unavailable",
-        facts: { components, unavailableReason: "sub_unavailable" },
-      },
+    const facts = subResult.result.facts as Record<string, unknown>;
+    components[key] = {
+      outcome,
+      effectiveParams: subParams,
+      ...Object.fromEntries(COMPONENT_FACTS.filter((k) => k in facts).map((k) => [k, facts[k]])),
     };
+    if (outcome === "unavailable") unavailableComponents.push(key);
   }
 
-  return {
-    result: {
-      kind: "stateful",
-      outcome: anyMet ? "met" : "not_met",
-      facts: { components },
-    },
+  const { outcome, reason } = compositeOutcome(
+    state?.compositeMode ?? "any",
+    components,
+    failedComponents.length > 0
+  );
+  const facts: CompositeFacts = {
+    components,
+    unavailableComponents,
+    failedComponents,
+    ...(reason ? { unavailableReason: reason } : {}),
   };
+  return { result: { kind: "stateful", outcome, facts } };
 }

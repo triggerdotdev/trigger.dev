@@ -85,6 +85,48 @@ describe("queue size metrics sampler", () => {
   });
 
   containerTestWithClickhouse(
+    "a Limits alert selecting the queue component binds its environment",
+    async ({ prisma, redisOptions, clickhouseContainer }) => {
+      const redis = new Redis(redisOptions);
+      onTestFinished(async () => {
+        await redis.quit();
+      });
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        name: "queue-size-sampler-health-all",
+      });
+      onTestFinished(() => clickhouse.close());
+
+      const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      await prisma.alert.create({
+        data: {
+          id: "alert_health_all",
+          organizationId: env.organizationId,
+          projectId: env.projectId,
+          environmentId: env.id,
+          capabilityKey: "limits.all",
+          params: {},
+          condition: { kind: "state", stateKey: "limits.all", components: ["limits.queue"] },
+          createdBy: "test",
+        },
+      });
+
+      const result = await runTick(
+        { now: new Date() },
+        { intervalSec: 30, maxEnvs: 10 },
+        {
+          replica: prisma,
+          redis,
+          clickhouse,
+          lengthOfEnvQueue: async () => 1,
+          insert: insertByOrganization(() => clickhouse),
+        }
+      );
+      expect(result).toMatchObject({ status: "sampled", environments: 1 });
+    }
+  );
+
+  containerTestWithClickhouse(
     "samples active environments once per slot, alert-bound first, and survives failed reads and writes",
     async ({ prisma, redisOptions, clickhouseContainer }) => {
       const redis = new Redis(redisOptions);

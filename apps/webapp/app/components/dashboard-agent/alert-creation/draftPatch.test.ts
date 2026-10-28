@@ -35,6 +35,8 @@ function makeFlow(overrides: Partial<CreationFlowState> = {}): CreationFlowState
     selectChip: noop,
     setCondition: noop,
     setConditionParams: noop,
+    updateAnswers: noop,
+    confirmWhat: noop,
     confirmCondition: noop,
     setScopeValue: noop,
     setWindowMinutes: noop,
@@ -299,11 +301,9 @@ describe("unknown-key rejection", () => {
 });
 
 describe("conditionParams in create request", () => {
-  it("fails when conditionParams is dropped from the create request body", () => {
-    expect(panelSource).toMatch(/conditionParams/);
-    expect(panelSource).toMatch(
-      /conditionParams:\s*\n?\s*kind\s*===\s*["']state["']\s*&&\s*answers\.conditionParams/
-    );
+  it("the agent panel builds its create body with createAlertRequestBody", () => {
+    expect(panelSource).toContain("...createAlertRequestBody(");
+    expect(panelSource).not.toMatch(/conditionParams:/);
   });
 
   it("conditionParams is in the ChatFormSchema", () => {
@@ -320,5 +320,53 @@ describe("conditionParams in create request", () => {
       "utf8"
     );
     expect(draftSource).toMatch(/case\s+["']state["'][\s\S]*?params:\s*v\.conditionParams/);
+  });
+});
+
+describe("Limits patch fields", () => {
+  // Mutation: dropping the fields from applyDraftPatch loses them.
+  it("applies compositeMode, signals and components to the answers", () => {
+    const patch = alertDraftPatchSchema.parse({
+      what: "limits.all",
+      condition: {
+        compositeMode: "all",
+        components: ["health.flow", "limits.api"],
+        signals: ["approaching"],
+      },
+    });
+    expect(applyDraftPatch({}, patch)).toMatchObject({
+      what: "limits.all",
+      compositeMode: "all",
+      components: ["health.flow", "limits.api"],
+      signals: ["approaching"],
+    });
+  });
+
+  it("defaults components to the whole composite when only what is patched", () => {
+    const next = applyDraftPatch({}, alertDraftPatchSchema.parse({ what: "limits.all" }));
+    expect(next.components).toHaveLength(7);
+  });
+
+  it("resets them when the capability changes", () => {
+    const next = applyDraftPatch(
+      {
+        what: "limits.all",
+        compositeMode: "all",
+        components: ["limits.api"],
+        signals: ["limited"],
+      },
+      alertDraftPatchSchema.parse({ what: "limits.api" })
+    );
+    expect(next.compositeMode).toBeUndefined();
+    expect(next.components).toBeUndefined();
+    expect(next.signals).toBeUndefined();
+  });
+});
+
+describe("name patch", () => {
+  it("applies a patched name to the draft answers", () => {
+    const patch = alertDraftPatchSchema.parse({ name: "  Payments queue backing up " });
+    expect(applyDraftPatch({}, patch).name).toBe("Payments queue backing up");
+    expect(() => alertDraftPatchSchema.parse({ name: "   " })).toThrow();
   });
 });

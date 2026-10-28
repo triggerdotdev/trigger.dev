@@ -4,12 +4,18 @@ import { z } from "zod";
 import { MAX_WATCH_QUERY_LENGTH } from "~/components/alerts/queryAlertLink";
 import type { QueryWatchPrefill } from "~/components/alerts/QueryAlertTranscript";
 import { encodeErrorGroupScope, errorFingerprint } from "~/utils/errorGroupScope";
-import { needsScopeValue, resolveCapability, type FlowAnswers } from "./flow-state";
+import {
+  compositeComponents,
+  needsScopeValue,
+  resolveCapability,
+  type FlowAnswers,
+} from "./flow-state";
 
 export const alertDraftPatchSchema = z
   .object({
     area: z.string().optional(),
     what: z.string().optional(),
+    name: z.string().trim().min(1).max(120).optional(),
     scope: z
       .object({
         type: z.string(),
@@ -27,6 +33,9 @@ export const alertDraftPatchSchema = z
         unit: z.string().optional(),
         windowSec: z.number().optional(),
         params: z.record(z.string(), z.number()).optional(),
+        compositeMode: z.enum(["any", "all"]).optional(),
+        signals: z.array(z.enum(["approaching", "limited"])).optional(),
+        components: z.array(z.string()).optional(),
       })
       .optional(),
     behavior: z
@@ -100,6 +109,10 @@ export function applyDraftPatch(answers: FlowAnswers, patch: AlertDraftPatch): F
       next.condition = undefined;
       next.windowMinutes = undefined;
       next.conditionParams = undefined;
+      next.compositeMode = undefined;
+      next.signals = undefined;
+      next.components = undefined;
+      next.picked = undefined;
     }
     next.what = patch.what;
     next.area = resolveCapability(patch.what)?.area ?? next.area;
@@ -132,7 +145,21 @@ export function applyDraftPatch(answers: FlowAnswers, patch: AlertDraftPatch): F
     if (patch.condition.params !== undefined) {
       next.conditionParams = patch.condition.params;
     }
+    if (patch.condition.compositeMode !== undefined) {
+      next.compositeMode = patch.condition.compositeMode;
+    }
+    if (patch.condition.signals !== undefined) next.signals = patch.condition.signals;
+    if (patch.condition.components !== undefined) {
+      next.components = patch.condition.components;
+      next.picked = undefined;
+    }
   }
+
+  if (patch.what !== undefined && next.what === "limits.all" && next.components === undefined) {
+    next.components = compositeComponents("limits.all");
+  }
+
+  if (patch.name !== undefined) next.name = patch.name;
 
   if (patch.behavior !== undefined) {
     const expiry = patch.behavior.expiry ?? patch.behavior.expiresAt;
@@ -161,9 +188,13 @@ function alertDraftContext(answers: FlowAnswers): AlertCreationDraft {
     scopeValue,
     condition,
     conditionParams,
+    compositeMode,
+    signals,
+    components,
     windowMinutes,
     notifiers,
     expiry,
+    name,
   } = answers;
   return {
     capabilityKey: what,
@@ -174,9 +205,13 @@ function alertDraftContext(answers: FlowAnswers): AlertCreationDraft {
       scopeValue,
       condition,
       conditionParams,
+      compositeMode,
+      signals,
+      components,
       windowMinutes,
       notifiers,
       expiry,
+      name,
     },
   };
 }

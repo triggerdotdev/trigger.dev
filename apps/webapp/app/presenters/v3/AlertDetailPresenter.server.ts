@@ -22,6 +22,7 @@ import {
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { conditionSummary, humanizeSeconds } from "~/components/alerts/alertSummaries";
+import { limitScopeLabel } from "~/components/alerts/limitSummary";
 import { formatExpiresAt } from "~/components/alerts/formatExpiresAt";
 import {
   episodeFromTimes,
@@ -47,7 +48,11 @@ import {
   type GetCurrentReadingDeps,
 } from "~/v3/services/alerts/engine/currentReading.server";
 import { AREA_LABEL } from "~/components/alerts/domainIcons";
-import { createProductionEvaluateBinding } from "~/v3/services/alerts/engine/productionEvaluateBinding.server";
+import {
+  createProductionEvaluateBinding,
+  createQueryRowRunner,
+} from "~/v3/services/alerts/engine/productionEvaluateBinding.server";
+import { retryOnConcurrency } from "~/v3/services/alerts/healthQuerySeries.server";
 import {
   parseComponentsFromFacts,
   parseEvaluatorStateComponents,
@@ -122,10 +127,7 @@ export type AlertDetail = {
   episode: AlertEpisode;
   currentReading: CurrentReading;
   objectLink?: AlertDetailObjectLink;
-  factsComponents: Record<
-    "flow" | "execution" | "liveness",
-    { outcome: "met" | "not_met" | "unavailable"; effectiveParams: Record<string, number> }
-  > | null;
+  factsComponents: FactsComponents | null;
   effectiveParams: { key: string; label: string; value: number; unit?: string }[];
 };
 
@@ -282,8 +284,14 @@ function scopeDetail(scope: AlertParams["scope"], area: string): string {
   }
 }
 
-function scopeSummary(scope: AlertParams["scope"], area: string): string {
-  return `${areaLabel(area)} · ${scopeDetail(scope, area)}`;
+function scopeSummary(
+  scope: AlertParams["scope"],
+  area: string,
+  capabilityKey: string,
+  components?: string[]
+): string {
+  const limits = limitScopeLabel(capabilityKey, components);
+  return `${areaLabel(area)} · ${limits ?? scopeDetail(scope, area)}`;
 }
 
 function latestDate(a: Date | undefined, b: Date | null): Date | undefined {
@@ -419,7 +427,9 @@ export class AlertDetailPresenter extends BasePresenter {
       return taskQueue?.friendlyId ?? null;
     },
     private readonly _getCurrentReadingDeps: GetCurrentReadingDeps = {
-      evaluateBinding: createProductionEvaluateBinding({}),
+      evaluateBinding: createProductionEvaluateBinding({
+        queryRowRunner: retryOnConcurrency(createQueryRowRunner(undefined, { lane: "alerts" })),
+      }),
     }
   ) {
     super();
@@ -544,7 +554,12 @@ export class AlertDetailPresenter extends BasePresenter {
         operator: condition.kind === "threshold" ? condition.operator : undefined,
         thresholdValue: condition.kind === "threshold" ? condition.value : undefined,
         scope: alertParams.scope,
-        scopeSummary: scopeSummary(alertParams.scope, capability?.area ?? "unknown"),
+        scopeSummary: scopeSummary(
+          alertParams.scope,
+          capability?.area ?? "unknown",
+          alert.capabilityKey,
+          condition.kind === "state" ? condition.components : undefined
+        ),
         conditionSummary: conditionSummary(condition, capability?.unit, capability?.title),
         compiledQuery:
           alert.query ??

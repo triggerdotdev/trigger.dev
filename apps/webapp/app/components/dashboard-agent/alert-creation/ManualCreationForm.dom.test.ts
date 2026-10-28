@@ -9,7 +9,8 @@ import { OperatingSystemContextProvider } from "~/components/primitives/Operatin
 import { ShortcutsProvider } from "~/components/primitives/ShortcutsProvider";
 import { useCreationFlowState, type AlertChannel, type CreationFlowState } from "./CreationFlow";
 import { parseErrorGroupScope } from "~/utils/errorGroupScope";
-import { capabilityChips, type FlowAnswers } from "./flow-state";
+import { createAlertRequestBody } from "~/components/alerts/createAlertRequest";
+import { alertName, capabilityChips, type FlowAnswers } from "./flow-state";
 
 const fetcherState = vi.hoisted(() => ({
   data: undefined as unknown,
@@ -171,6 +172,13 @@ const row = (step: string, label: string) =>
     (b) => b.textContent === label
   )!;
 const click = (el: HTMLElement) => act(() => el.click());
+const confirmName = () => {
+  const next = document.querySelector('fieldset[data-step="name"]');
+  const confirm = Array.from(next?.querySelectorAll("button") ?? []).find(
+    (b) => b.textContent === "Continue"
+  );
+  if (confirm) act(() => confirm.click());
+};
 const combobox = (step: string) =>
   fieldset(step)?.querySelector<HTMLButtonElement>("button[role=combobox]") ?? null;
 const popover = (select: HTMLElement) =>
@@ -450,6 +458,7 @@ describe("manual mode shares the wizard steps", () => {
         (b) => b.textContent === "Done"
       )!
     );
+    confirmName();
     const form = () => document.querySelector('[data-testid="manual-form"]')!;
     expect(latest!.isReview).toBe(true);
     expect(form().textContent).toContain("Watch");
@@ -570,6 +579,7 @@ describe("manual review lock", () => {
     mount(true, { ...BASE, expiry: "none", notifiers: ["chat"] });
     await settle();
     click(button("Done")!);
+    confirmName();
     keepReview = true;
     expect(latest!.isReview).toBe(true);
     expect(triggers().length).toBeGreaterThan(1);
@@ -580,6 +590,7 @@ describe("manual review lock", () => {
     for (const trigger of triggers()) expect(isDisabled(trigger)).toBe(false);
     expect(button("Done")).toBeDefined();
     click(button("Done")!);
+    confirmName();
     expect(button("Create alert")).toBeDefined();
   });
 
@@ -603,6 +614,7 @@ describe("manual review lock", () => {
     });
     expect(latest!.answers.condition).toBe("137");
     click(button("Done")!);
+    confirmName();
     keepReview = true;
     expect(latest!.isReview).toBe(true);
     click(button("Customize")!);
@@ -610,6 +622,7 @@ describe("manual review lock", () => {
     act(() => field().dispatchEvent(new FocusEvent("focusout", { bubbles: true })));
     expect(latest!.answers.condition).toBeUndefined();
     button("Done")?.click();
+    confirmName();
     await settle();
     expect(latest!.isReview).toBe(false);
     expect(button("Create alert")).toBeUndefined();
@@ -636,6 +649,7 @@ describe("manual mode regressions", () => {
   it("shows only the created card once the alert is created", async () => {
     mount(true, { ...BASE, expiry: "none", notifiers: ["chat"] });
     click(button("Done")!);
+    confirmName();
     await act(async () => {
       button("Create alert")!.click();
     });
@@ -663,6 +677,7 @@ describe("manual mode regressions", () => {
       arrow(3, "ArrowUp");
       expect(latest!.answers.expiry).toBe("2026-10-08T17:00:00.000Z");
       click(button("Done")!);
+      confirmName();
       keepReview = true;
       expect(latest!.isReview).toBe(true);
       click(button("Customize")!);
@@ -675,6 +690,7 @@ describe("manual mode regressions", () => {
       expect(fieldset("expiry").querySelectorAll('[role="spinbutton"]').length).toBeGreaterThan(0);
       expect(fieldset("expiry").textContent).toContain("Must be in the future");
       button("Done")?.click();
+      confirmName();
       await settle();
       expect(button("Create alert")).toBeUndefined();
     } finally {
@@ -1013,6 +1029,7 @@ describe("manual mode dropdowns", () => {
     type(input("Scheduling delay p95"), "40000");
     type(input("Queued runs"), "500");
     click(button("Done")!);
+    confirmName();
     keepReview = true;
     expect(latest!.isReview).toBe(true);
     click(button("Customize")!);
@@ -1020,6 +1037,7 @@ describe("manual mode dropdowns", () => {
     act(() => input("Queued runs").dispatchEvent(new FocusEvent("focusout", { bubbles: true })));
     expect(latest!.answers.conditionParams).toEqual({ schedulingDelayMs: 40000 });
     button("Done")?.click();
+    confirmName();
     await settle();
     expect(latest!.isReview).toBe(false);
     expect(button("Create alert")).toBeUndefined();
@@ -1099,7 +1117,14 @@ describe("areas with nothing to watch", () => {
     ENTITIES["error-groups"] = { groups: [] };
     mount(false);
     await settle();
-    expect(cardAreas()).toEqual(["Queues", "Runs", "Health", "Errors", "Show me what I can watch"]);
+    expect(cardAreas()).toEqual([
+      "Queues",
+      "Runs",
+      "Health",
+      "Limits",
+      "Errors",
+      "Show me what I can watch",
+    ]);
     click(
       Array.from(document.querySelectorAll<HTMLButtonElement>("[role=dialog] li button")).find(
         (b) => b.textContent === "Errors"
@@ -1145,7 +1170,7 @@ describe("areas with nothing to watch", () => {
     ENTITIES.queues = { queues: [], hasMore: false };
     mount(true);
     await settle();
-    expect(optionLabels("area")).toEqual(["Queues", "Runs", "Health", "Errors"]);
+    expect(optionLabels("area")).toEqual(["Queues", "Runs", "Health", "Limits", "Errors"]);
     const select = combobox("area")!;
     open(select);
     const queues = options(select).find((o) => o.textContent === "Queues")!;
@@ -1178,7 +1203,7 @@ describe("areas with nothing to watch", () => {
     mount(true);
     await settle();
     // Mutation: keeping the show-me option in the manual form fails this.
-    expect(optionLabels("area")).toEqual(["Queues", "Runs", "Health", "Errors"]);
+    expect(optionLabels("area")).toEqual(["Queues", "Runs", "Health", "Limits", "Errors"]);
   });
 
   it("a draft prefilled with errors keeps Errors answered when the list is empty", async () => {
@@ -1188,5 +1213,186 @@ describe("areas with nothing to watch", () => {
     expect(chosen("area")).toContain("Errors");
     expect(latest!.answers.area).toBe("errors");
     expect(fieldset("what")).not.toBeNull();
+  });
+});
+
+describe("Limits area in the manual form", () => {
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  // Mutation: dropping components or compositeMode from the answers loses them in the body.
+  it("submits the picked limits as limits.all with components, mode and signals", () => {
+    mount(true, { area: "limits" });
+    tick("what", [
+      "API rate limit running out",
+      "Webhook processing saturating",
+      "Webhook waiters running out",
+    ]);
+    click(
+      Array.from(fieldset("what").querySelectorAll("button")).find(
+        (b) => b.textContent === "Continue"
+      )!
+    );
+    tick("condition", ["Raise when all"]);
+    act(() => latest!.selectChip("scope", "all"));
+    const form = createAlertRequestBody(
+      { organizationId: "o", projectId: "p", environmentId: "e" },
+      { ...latest!.answers, notifiers: ["ch_1"] }
+    );
+    expect(form.name).toBe("All of 3 limits");
+    expect(form.form).toMatchObject({
+      capabilityKey: "limits.all",
+      components: ["limits.api", "limits.webhooks.processing", "limits.webhooks.waiters"],
+      compositeMode: "all",
+      signals: ["limited", "approaching"],
+      conditionParams: { utilisationPct: 80 },
+    });
+  });
+
+  // Mutation: a filled input with a unit and a check must keep the grid at two cells.
+  it("keeps the unit and checkmark in one trailing cell beside a filled input", () => {
+    mount(true, { area: "limits" });
+    tick("what", ["API rate limit running out"]);
+    click(
+      Array.from(fieldset("what").querySelectorAll("button")).find(
+        (b) => b.textContent === "Continue"
+      )!
+    );
+    const input = fieldset("condition").querySelector<HTMLInputElement>(
+      'input[aria-label="Utilisation threshold"]'
+    )!;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, "70");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const row = input.closest("ul")!.parentElement!;
+    const check = row.querySelector('[aria-label="Selected"]')!;
+    expect(row.children).toHaveLength(2);
+    expect(check.previousElementSibling?.textContent).toBe("%");
+  });
+
+  // Mutation: a no-op onValidity on the utilisation input leaves Continue enabled.
+  it("an invalid utilisation percentage blocks Continue", () => {
+    mount(true, { area: "limits" });
+    tick("what", ["API rate limit running out"]);
+    click(
+      Array.from(fieldset("what").querySelectorAll("button")).find(
+        (b) => b.textContent === "Continue"
+      )!
+    );
+    const input = fieldset("condition").querySelector<HTMLInputElement>(
+      'input[aria-label="Utilisation threshold"]'
+    )!;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, "150");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const confirm = Array.from(fieldset("condition").querySelectorAll("button")).find(
+      (b) => b.textContent === "Continue"
+    )!;
+    expect(confirm.disabled).toBe(true);
+  });
+});
+
+describe("Name step", () => {
+  beforeEach(() => {
+    keepReview = false;
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  const nameInput = () =>
+    fieldset("name")?.querySelector<HTMLInputElement>('input[aria-label="Name"]') ?? null;
+  const ids = { organizationId: "o", projectId: "p", environmentId: "e" };
+  const button = (label: string) =>
+    Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
+      (b) => b.textContent === label
+    );
+
+  // Mutation: dropping the prefill leaves the input empty.
+  it("comes last, prefilled with the generated name, and the edited name is created", () => {
+    mount(true, { ...BASE, expiry: "none", notifiers: ["chat"] });
+    tick("notifiers", ["Ops webhook"]);
+    click(button("Done")!);
+    const suggested = alertName(latest!.answers);
+    expect(fieldset("name").querySelector("legend")?.textContent).toBe("Name your alert");
+    expect(nameInput()!.value).toBe(suggested);
+    expect(latest!.isReview).toBe(false);
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
+        nameInput()!,
+        "Billing depth"
+      );
+      nameInput()!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    confirmName();
+    expect(latest!.isReview).toBe(true);
+    expect(createAlertRequestBody(ids, latest!.answers).name).toBe("Billing depth");
+  });
+
+  // Mutation: freezing the suggestion at confirm stops an unedited name following later edits.
+  it("an unedited name follows later edits and an edited one survives them", () => {
+    mount(true, { ...BASE, expiry: "none", notifiers: ["chat"] });
+    tick("notifiers", ["Ops webhook"]);
+    click(button("Done")!);
+    confirmName();
+    expect(latest!.answers.name).toBeUndefined();
+    act(() => latest!.updateAnswers({ condition: "250" }));
+    expect(alertName(latest!.answers)).toContain("250");
+    act(() => latest!.updateAnswers({ name: "Billing depth" }));
+    act(() => latest!.selectChip("scope", "all"));
+    expect(latest!.answers.name).toBe("Billing depth");
+  });
+
+  // Mutation: storing the typed name unclamped breaks the draft schema on the next chat turn.
+  it("a name longer than the draft limit is stored clamped", () => {
+    mount(true, { ...BASE, expiry: "none", notifiers: ["chat"] });
+    tick("notifiers", ["Ops webhook"]);
+    click(button("Done")!);
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
+        nameInput()!,
+        "x".repeat(130)
+      );
+      nameInput()!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(latest!.answers.name).toHaveLength(120);
+  });
+
+  // Mutation: dropping the blank guard lets an empty name through.
+  it("a blank name blocks Continue", () => {
+    mount(true, { ...BASE, expiry: "none", notifiers: ["chat"] });
+    tick("notifiers", ["Ops webhook"]);
+    click(button("Done")!);
+    act(() => latest!.setName(""));
+    const confirm = Array.from(fieldset("name").querySelectorAll("button")).find(
+      (b) => b.textContent === "Continue"
+    )!;
+    expect(confirm.disabled).toBe(true);
+    confirmName();
+    expect(latest!.isReview).toBe(false);
+  });
+
+  it("opens an agent-patched name on the card, prefilled", () => {
+    mount(false, { ...BASE, expiry: "none", notifiers: ["chat"], name: "Agent picked name" });
+    const dialog = document.querySelector("[role=dialog]")!;
+    expect(dialog.getAttribute("aria-label")).toBe("Name your alert");
+    expect(dialog.querySelector<HTMLInputElement>('input[aria-label="Name"]')!.value).toBe(
+      "Agent picked name"
+    );
   });
 });

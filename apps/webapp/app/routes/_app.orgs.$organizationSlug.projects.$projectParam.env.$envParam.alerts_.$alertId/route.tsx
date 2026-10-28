@@ -58,7 +58,10 @@ import {
   type HealthQuerySeries,
   type MetricSeriesPoint,
 } from "~/components/alerts/alertSeriesTypes";
-import { getHealthQuerySeries } from "~/v3/services/alerts/healthQuerySeries.server";
+import {
+  getHealthQuerySeries,
+  getLimitTileSeries,
+} from "~/v3/services/alerts/healthQuerySeries.server";
 import {
   alertLifetimeWindow,
   getMetricSeries,
@@ -127,6 +130,7 @@ import type { EditAlertPrefill } from "~/components/alerts/EditAlertTranscript";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { AlertActivityTable } from "~/components/alerts/AlertActivityTable";
 import { activityRowLink } from "./activityRowLink";
+import type { LimitTileSeries } from "~/components/alerts/limitTiles";
 import { AlertDetailChart } from "~/components/alerts/AlertDetailChart";
 import { AlertDetailSidebar } from "~/components/alerts/AlertDetailSidebar";
 import { alertDetailWindow, healthEventsForBands } from "~/components/alerts/alertDetailWindow";
@@ -207,13 +211,14 @@ export const loader = dashboardLoader(
     let metricSeriesEntries: [string, MetricSeriesPoint[]][] = [];
     let healthBands: HealthBandRow[] = [];
     let componentSeries: HealthQuerySeries[] = [];
+    let limitTiles: LimitTileSeries[] = [];
     let queryGroups: string[] = [];
     let querySeriesMode: QuerySeriesMode | undefined;
     try {
       const capability = getCapability(rawAlert.capabilityKey);
 
       if (alert.kind === "state") {
-        const [events, seedEvent, queryLines] = await Promise.all([
+        const [events, seedEvent, queryLines, tiles] = await Promise.all([
           listAlertEventsInWindow(prisma, alertId, {
             since: detailWindow.since,
             until: detailWindow.until,
@@ -231,11 +236,26 @@ export const loader = dashboardLoader(
                   projectId: project.id,
                   window: detailWindow,
                 },
-                createQueryRowRunner()
+                createQueryRowRunner(undefined, { lane: "alerts" })
               ).catch(() => undefined)
             : undefined,
+          capability?.binding.type === "query"
+            ? getLimitTileSeries(
+                {
+                  alertId,
+                  capability,
+                  params: rawAlert.params,
+                  condition: rawAlert.condition,
+                  organizationId: project.organizationId,
+                  projectId: project.id,
+                  window: detailWindow,
+                },
+                createQueryRowRunner(undefined, { lane: "alerts" })
+              ).catch(() => [])
+            : [],
         ]);
         componentSeries = queryLines?.series ?? [];
+        limitTiles = tiles;
         const chart = planHealthChartEvents({
           seed: seedEvent,
           events,
@@ -318,6 +338,7 @@ export const loader = dashboardLoader(
       metricSeriesEntries,
       healthBands,
       componentSeries,
+      limitTiles,
       queryGroups,
       querySeriesMode,
       channels,
@@ -1054,6 +1075,7 @@ export default function Page() {
     metricSeriesEntries,
     healthBands,
     componentSeries,
+    limitTiles,
     channels,
     now,
     window: detailWindow,
@@ -1135,6 +1157,7 @@ export default function Page() {
                   metricSeriesMap={metricSeriesMap}
                   healthBands={healthBands}
                   componentSeries={componentSeries}
+                  limitTiles={limitTiles}
                   window={detailWindow}
                   now={now}
                   createdAt={createdAt}

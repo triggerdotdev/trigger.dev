@@ -1,9 +1,11 @@
 import {
+  getCapability,
   isScopeAllowed,
   type AlertCapability,
   type AlertKind,
   type AlertScopeType,
   type AlertSurface,
+  type LimitSignal,
 } from "@internal/alert-contracts";
 
 type AlertDraftErrorReason =
@@ -11,7 +13,9 @@ type AlertDraftErrorReason =
   | "surface"
   | "condition_kind"
   | "scope"
-  | "absence_window";
+  | "absence_window"
+  | "components"
+  | "signals";
 
 export interface AlertDraftError {
   reason: AlertDraftErrorReason;
@@ -41,6 +45,78 @@ function validateScope(
   return `capability ${capability.key} does not allow scope type ${scopeType}`;
 }
 
+function allowedSignals(
+  capability: AlertCapability,
+  components?: string[]
+): LimitSignal[] | undefined {
+  if (capability.supportedSignals) return capability.supportedSignals;
+  const parts = components ?? capability.binding.compositeOf;
+  if (!capability.binding.compositeOf || !parts) return undefined;
+  const union = new Set<LimitSignal>();
+  for (const key of parts) {
+    for (const signal of getCapability(key)?.supportedSignals ?? []) union.add(signal);
+  }
+  return union.size ? [...union] : undefined;
+}
+
+function validateLimitFields(
+  capability: AlertCapability,
+  fields: { compositeMode?: string; signals?: string[]; components?: string[] }
+): AlertDraftError | null {
+  const compositeOf = capability.binding.compositeOf;
+  if (fields.compositeMode !== undefined && !compositeOf) {
+    return {
+      reason: "components",
+      message: `capability ${capability.key} does not support compositeMode`,
+    };
+  }
+  if (fields.components !== undefined) {
+    if (!compositeOf) {
+      return {
+        reason: "components",
+        message: `capability ${capability.key} does not support components`,
+      };
+    }
+    const unknown = fields.components.filter((c) => !compositeOf.includes(c));
+    if (unknown.length > 0 || fields.components.length === 0) {
+      return {
+        reason: "components",
+        message: unknown.length
+          ? `components not part of ${capability.key}: ${unknown.join(", ")}`
+          : "Pick at least one component",
+      };
+    }
+  }
+  if (fields.signals !== undefined) {
+    const allowed = allowedSignals(capability, fields.components);
+    if (!allowed) {
+      return {
+        reason: "signals",
+        message: `capability ${capability.key} does not support signals`,
+      };
+    }
+    const unsupported = fields.signals.filter((s) => !allowed.includes(s as LimitSignal));
+    if (unsupported.length > 0 || fields.signals.length === 0) {
+      return {
+        reason: "signals",
+        message: unsupported.length
+          ? `signals not supported by ${capability.key}: ${unsupported.join(", ")}`
+          : "Pick at least one signal",
+      };
+    }
+    const unwatched = (compositeOf ? (fields.components ?? compositeOf) : []).filter(
+      (key) => !getCapability(key)?.supportedSignals?.some((s) => fields.signals!.includes(s))
+    );
+    if (unwatched.length > 0) {
+      return {
+        reason: "signals",
+        message: `selected signals not supported by: ${unwatched.join(", ")}`,
+      };
+    }
+  }
+  return null;
+}
+
 export function validateAlertDraft(params: {
   capability: AlertCapability | undefined;
   capabilityKey: string;
@@ -48,6 +124,9 @@ export function validateAlertDraft(params: {
   conditionKind: string;
   quietWindowSec?: number;
   scope: { type?: string } | undefined;
+  compositeMode?: string;
+  signals?: string[];
+  components?: string[];
 }): AlertDraftError | null {
   const { capability } = params;
 
@@ -77,6 +156,9 @@ export function validateAlertDraft(params: {
     return { reason: "scope", message: scopeError };
   }
 
+  const limitError = validateLimitFields(capability, params);
+  if (limitError) return limitError;
+
   const minWindowSec = absenceWindowFloor(capability);
   if (
     params.conditionKind === "absence" &&
@@ -88,4 +170,15 @@ export function validateAlertDraft(params: {
   }
 
   return null;
+}
+
+export function stateFields(condition: {
+  kind: string;
+  compositeMode?: string;
+  signals?: string[];
+  components?: string[];
+}) {
+  if (condition.kind !== "state") return {};
+  const { compositeMode, signals, components } = condition;
+  return { compositeMode, signals, components };
 }

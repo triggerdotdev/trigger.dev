@@ -79,10 +79,8 @@ import {
 import type { AlertChannel, CreationResult } from "./alert-creation/CreationFlow";
 import { CreationChatShell } from "~/components/alerts/CreationChatShell";
 import { alertChannelsResourcePath } from "~/components/alerts/alertChannelsResourcePath";
-import {
-  EXPIRY_TOKEN_PATTERN,
-  type AlertCreatedMessage,
-} from "~/components/alerts/alertCreatedCard";
+import type { AlertCreatedMessage } from "~/components/alerts/alertCreatedCard";
+import { createAlertRequestBody } from "~/components/alerts/createAlertRequest";
 import { CreationTranscript } from "~/components/alerts/CreationTranscript";
 import { QueryAlertTranscript, queryWatchPrefill } from "~/components/alerts/QueryAlertTranscript";
 import {
@@ -92,8 +90,6 @@ import {
 import {
   alertName,
   asArea,
-  resolveCapability,
-  defaultWindowMinutes,
   searchParamsToAnswers,
   prefillToAnswers,
   isErrorGroupOnly,
@@ -948,9 +944,6 @@ export function DashboardAgentPanel({
       const seq = creationEntrySeqRef.current;
       let release: (() => void) | undefined;
       try {
-        const cap = resolveCapability(answers.what);
-        const kind = cap?.allowedKinds[0] ?? "threshold";
-        const notifierIds = (answers.notifiers ?? []).filter((n) => n !== "chat");
         const wantsChat = (answers.notifiers ?? []).includes("chat");
         const reused = creationChatToReuse(
           creationAgentChat.current,
@@ -982,35 +975,17 @@ export function DashboardAgentPanel({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            organizationId: organization.id,
-            projectId: project.id,
-            environmentId: environment.id,
-            name: alertName(answers),
+            ...createAlertRequestBody(
+              {
+                organizationId: organization.id,
+                projectId: project.id,
+                environmentId: environment.id,
+              },
+              answers
+            ),
             chatNotifier: wantChat ? "on" : undefined,
             chatId: wantChat ? effectiveChatId : undefined,
             transcriptChatId,
-            expiry:
-              answers.expiry && EXPIRY_TOKEN_PATTERN.test(answers.expiry)
-                ? answers.expiry
-                : undefined,
-            form: {
-              capabilityKey: answers.what,
-              scopeType: answers.scope,
-              scopeValue: answers.scopeValue,
-              conditionKind: kind,
-              operator: kind === "threshold" ? ">" : undefined,
-              value: answers.condition ? Number(answers.condition) : undefined,
-              windowMinutes:
-                kind === "threshold"
-                  ? (answers.windowMinutes ?? defaultWindowMinutes(answers.what))
-                  : undefined,
-              quietWindowMinutes:
-                kind === "absence" && answers.condition ? Number(answers.condition) : undefined,
-              conditionParams:
-                kind === "state" && answers.conditionParams ? answers.conditionParams : undefined,
-              expiresAt,
-              notifierChannelIds: notifierIds,
-            },
           }),
         });
         if (!resp.ok) return { ok: false, release };

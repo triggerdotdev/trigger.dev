@@ -9,6 +9,7 @@ import {
 import { applyDashboardAgentMigrations } from "@internal/dashboard-agent-db/testing";
 import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect, vi } from "vitest";
+import { createAlertRequestBody } from "~/components/alerts/createAlertRequest";
 import { alertEvaluationJobId } from "~/v3/services/alerts/engine/evaluateAlertJob.server";
 import { applyAlertsMigration } from "./helpers/alertTables";
 import { alertEngineTest } from "./helpers/alertEngineRedis";
@@ -164,6 +165,115 @@ describe("resources.alerts.create action", () => {
       form: { ...body.form, scopeType: "queue" as const },
     });
     expect(resp.status).toBe(400);
+  });
+
+  async function healthBody(prisma: PrismaClient, seeded: Seeded, extra: Record<string, unknown>) {
+    const channel = await prisma.projectAlertChannel.create({
+      data: {
+        friendlyId: `ch_${Math.random().toString(36).slice(2, 8)}`,
+        name: "own",
+        type: "EMAIL",
+        properties: { type: "EMAIL", email: "a@example.com" },
+        alertTypes: ["ERROR_GROUP"],
+        deduplicationKey: `dk_${Math.random().toString(36).slice(2, 8)}`,
+        projectId: seeded.project.id,
+      },
+    });
+    const body = validBody(seeded);
+    return {
+      ...body,
+      chatNotifier: undefined,
+      form: {
+        ...body.form,
+        capabilityKey: "limits.all",
+        conditionKind: "state" as const,
+        operator: undefined,
+        value: undefined,
+        windowMinutes: undefined,
+        notifierChannelIds: [channel.id],
+        ...extra,
+      },
+    };
+  }
+
+  test("rejects components outside compositeOf and empty signals", async ({ prisma }) => {
+    const seeded = await seed(prisma);
+    const outside = await callAction(
+      seeded.user.id,
+      await healthBody(prisma, seeded, { components: ["queue.depth"] })
+    );
+    expect(outside.status).toBe(400);
+    expect((await outside.json()).error).toContain("queue.depth");
+    const empty = await callAction(
+      seeded.user.id,
+      await healthBody(prisma, seeded, { signals: [] })
+    );
+    expect(empty.status).toBe(400);
+    const mismatched = await callAction(
+      seeded.user.id,
+      await healthBody(prisma, seeded, { components: ["limits.queue"], signals: ["limited"] })
+    );
+    expect(mismatched.status).toBe(400);
+  });
+
+  test("accepts limits.all with and without the new fields", async ({ prisma }) => {
+    const seeded = await seed(prisma);
+    const plain = await callAction(seeded.user.id, await healthBody(prisma, seeded, {}));
+    expect(plain.status).toBe(200);
+    const withFields = await callAction(
+      seeded.user.id,
+      await healthBody(prisma, seeded, {
+        compositeMode: "all",
+        components: ["limits.api"],
+        signals: ["limited"],
+      })
+    );
+    expect(withFields.status).toBe(200);
+    const rows = await prisma.$queryRaw<{ condition: Record<string, unknown> }[]>`
+      SELECT condition FROM "Alert" WHERE "organizationId" = ${seeded.organization.id}
+      ORDER BY "createdAt" DESC LIMIT 1`;
+    expect(rows[0]!.condition).toMatchObject({
+      compositeMode: "all",
+      components: ["limits.api"],
+      signals: ["limited"],
+    });
+  });
+
+  test("persists the manual-form body for a 3-limit composite", async ({ prisma }) => {
+    const seeded = await seed(prisma);
+    const base = await healthBody(prisma, seeded, {});
+    const request = createAlertRequestBody(
+      {
+        organizationId: seeded.organization.id,
+        projectId: seeded.project.id,
+        environmentId: seeded.environment.id,
+      },
+      {
+        area: "limits",
+        what: "limits.all",
+        scope: "all",
+        components: ["limits.api", "limits.webhooks.processing", "limits.webhooks.waiters"],
+        compositeMode: "all",
+        notifiers: [],
+      }
+    );
+    const resp = await callAction(seeded.user.id, {
+      ...request,
+      chatNotifier: undefined,
+      form: { ...request.form, notifierChannelIds: base.form.notifierChannelIds },
+    });
+    expect(resp.status).toBe(200);
+    const rows = await prisma.$queryRaw<{ condition: Record<string, unknown>; name: string }[]>`
+      SELECT condition, name FROM "Alert" WHERE "organizationId" = ${seeded.organization.id}
+      ORDER BY "createdAt" DESC LIMIT 1`;
+    expect(rows[0]!.name).toBe("All of 3 limits");
+    expect(rows[0]!.condition).toMatchObject({
+      stateKey: "limits.all",
+      compositeMode: "all",
+      components: ["limits.api", "limits.webhooks.processing", "limits.webhooks.waiters"],
+      signals: ["limited", "approaching"],
+      params: { utilisationPct: 80 },
+    });
   });
 
   test("rejects foreign channel IDs", async ({ prisma }) => {

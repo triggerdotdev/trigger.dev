@@ -150,7 +150,10 @@ async function sampleSlot(
   const alertBound = await deps.replica.$queryRaw<{ id: string }[]>(Prisma.sql`
     SELECT DISTINCT "environmentId" AS id FROM "Alert"
     WHERE "lifecycle" = 'active'
-      AND "capabilityKey" LIKE 'limits.queue%'
+      AND (
+        "capabilityKey" LIKE 'limits.queue%'
+        OR ("capabilityKey" = 'limits.all' AND ("condition"->'components' IS NULL OR "condition"->'components' ? 'limits.queue'))
+      )
   `);
 
   const [discoveryError, recentlyActive] = await deps.clickhouse.reader.query({

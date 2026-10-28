@@ -15,11 +15,12 @@ const build = (isAdmin: boolean) =>
   });
 
 describe("buildSideMenuSections alerts placement", () => {
-  it("puts Alerts directly after Errors with a New badge when Observability is visible", () => {
+  it("puts Alerts first in Observability, before Logs, with a New badge", () => {
     const sections = build(true);
     const observability = sections.find((s) => s.id === "metrics")!;
     const ids = observability.items.map((i) => i.id);
-    expect(ids.indexOf("alerts")).toBe(ids.indexOf("errors") + 1);
+    expect(ids.indexOf("alerts")).toBe(0);
+    expect(ids.indexOf("logs")).toBe(1);
 
     const alerts = observability.items.find((i) => i.id === "alerts")!;
     expect(isValidElement(alerts.badge) && alerts.badge.type).toBe(NewBadge);

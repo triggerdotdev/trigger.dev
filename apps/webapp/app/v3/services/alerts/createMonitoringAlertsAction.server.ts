@@ -18,7 +18,7 @@ import {
   createAlertAndSchedule,
   type AlertLifecycleDeps,
 } from "~/v3/services/alerts/alertLifecycle.server";
-import { validateAlertDraft } from "~/v3/services/alerts/validateAlertDraft.server";
+import { stateFields, validateAlertDraft } from "~/v3/services/alerts/validateAlertDraft.server";
 import { validateAlertNotifiers } from "~/v3/services/alerts/validateAlertNotifiers.server";
 import {
   createAlertFromDraft,
@@ -77,11 +77,19 @@ export function createMonitoringAlertsAction(
         quietWindowSec:
           body.data.condition.kind === "absence" ? body.data.condition.quietWindowSec : undefined,
         scope: body.data.params.scope,
+        ...stateFields(body.data.condition),
       });
       if (draftError) {
         return json(
           { error: draftError.message },
-          { status: draftError.reason === "scope" ? 400 : 422 }
+          {
+            status:
+              draftError.reason === "scope" ||
+              draftError.reason === "components" ||
+              draftError.reason === "signals"
+                ? 400
+                : 422,
+          }
         );
       }
 

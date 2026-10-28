@@ -74,6 +74,8 @@ export function windowBucketSeconds(window: AlertSeriesWindow, minBucketSeconds:
 
 const TABLE_TIME_COLUMN: Record<string, string> = {
   concurrency_metrics: "bucket_start",
+  metrics: "bucket_start",
+  env_metrics: "bucket_start",
   runs: "triggered_at",
 };
 

@@ -136,8 +136,8 @@ const CAPABILITIES = V1_CAPABILITIES.filter((c) => c.key !== "custom.query");
 
 describe("alert capabilities create and edit", () => {
   postgresTest("covers every registry capability", async ({ prisma }) => {
-    expect(CAPABILITIES).toHaveLength(16);
-    expect(new Set(CAPABILITIES.map((c) => c.key)).size).toBe(16);
+    expect(CAPABILITIES).toHaveLength(24);
+    expect(new Set(CAPABILITIES.map((c) => c.key)).size).toBe(24);
 
     const db = await boot(prisma);
     const seeded = await seed(prisma);

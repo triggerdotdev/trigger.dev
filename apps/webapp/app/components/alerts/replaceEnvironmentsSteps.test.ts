@@ -40,6 +40,8 @@ function makeFlow(answers: FlowAnswers, overrides: Partial<CreationFlowState> = 
     selectChip: noop,
     setCondition: noop,
     setConditionParams: noop,
+    updateAnswers: noop,
+    confirmWhat: noop,
     confirmCondition: noop,
     setScopeValue: noop,
     setWindowMinutes: noop,

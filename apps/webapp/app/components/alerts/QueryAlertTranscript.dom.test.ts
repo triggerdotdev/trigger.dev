@@ -254,7 +254,7 @@ describe("QueryAlertTranscript", () => {
       choose("For 24 hours");
       choose("Ops webhook");
       act(() => button("Continue").click());
-      expect(question()).toBe("What should it be called?");
+      expect(question()).toBe("Name your alert");
       expect(input("Name").value).toBe("took on runs");
       choose("Continue");
 

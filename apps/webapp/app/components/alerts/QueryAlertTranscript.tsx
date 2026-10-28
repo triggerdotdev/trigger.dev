@@ -315,7 +315,7 @@ function QueryAlertChat({
     },
     name: {
       id: "name",
-      question: "What should it be called?",
+      question: "Name your alert",
       allowSkip: false,
       fields: [
         {

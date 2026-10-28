@@ -8,6 +8,7 @@ import type { ReviewCardFields } from "~/components/alerts/creationCards";
 import {
   createdCardFields,
   fullConditionSummary,
+  scopeLabelFor,
   type CreatedCardFields,
 } from "~/components/alerts/alertCreatedCard";
 import type { ChatWizardInput, ChatWizardStep } from "~/components/dashboard-agent/ChatWizardCard";
@@ -20,15 +21,22 @@ import {
   areaChips,
   capabilityChips,
   capabilityParams,
+  resolveWhat,
+  signalsAfterUtilisationEdit,
+  whatSelection,
   conditionKindFor,
   conditionSuggestionChips,
+  effectiveSignals,
+  isComposite,
+  isLimitCondition,
+  requiredParams,
+  supportedSignalsFor,
   CUSTOM_EXPIRY,
   EXPIRY_CHIPS,
   expiryDate,
   expiryFromDate,
   isComplete,
   alertName,
-  labelFor,
   paramSuggestionChips,
   promptForStep,
   isErrorGroupOnly,
@@ -75,9 +83,11 @@ function proseForStep(key: FlowStepKey, answers: FlowAnswers): string {
             ? "Runs"
             : a === "health"
               ? "Health"
-              : a === "errors"
-                ? "Errors"
-                : (a ?? "");
+              : a === "limits"
+                ? "Limits"
+                : a === "errors"
+                  ? "Errors"
+                  : (a ?? "");
       return `In ${areaLabel} I can watch`;
     }
     case "scope":
@@ -88,6 +98,8 @@ function proseForStep(key: FlowStepKey, answers: FlowAnswers): string {
       return promptForStep("environments", answers);
     case "notifiers":
       return "Last thing — where should I tell you?";
+    case "name":
+      return promptForStep("name", answers);
   }
 }
 
@@ -100,7 +112,7 @@ export function buildReviewFields(
   return {
     name: alertName(flow.answers),
     conditionSummary: fullConditionSummary(flow.answers),
-    scopeLabel: labelFor("scope", flow.answers.scope, flow.answers),
+    scopeLabel: scopeLabelFor(flow.answers),
     scopeValue: flow.answers.scope === "errorGroup" ? undefined : flow.answers.scopeValue,
     environmentTitle,
     behavior: "recurring",
@@ -126,6 +138,7 @@ const CARD_STEPS: CardStepId[] = [
   "environments",
   "expiry",
   "notifiers",
+  "name",
 ];
 export const PREVIEW_GROUP = "__preview__";
 const REPLACE_LOCKED = "Fixed when replacing a legacy alert";
@@ -149,6 +162,11 @@ export const NO_NOTIFIER = "Pick at least one destination.";
 const INCOMPLETE_DRAFT = "Answer every step before saving.";
 export const CARD_GAP = 8;
 const PARAM_OPTION = "param:";
+const SIGNAL_OPTION = "signal:";
+const MODE_OPTION = "mode:";
+const MODE_LABEL = { any: "Raise when any", all: "Raise when all" } as const;
+const SIGNAL_HELP =
+  "Fires when the limit is hit; add a percentage to also fire when usage approaches it.";
 const NOTIFIERS_DESCRIPTION =
   "Only channels enabled for this environment are listed. Missing one? Check the channels list.";
 const EXPIRY_DESCRIPTION = "The alert stops checking once it expires.";
@@ -222,7 +240,7 @@ export function scenarioStep(
     options: areaChips()
       .filter((area) => !hiddenAreas.includes(area.value))
       .flatMap((area) =>
-        capabilityChips(area.value).map((chip) => ({
+        capabilityChips(area.value, hiddenAreas).map((chip) => ({
           id: `${area.value}:${chip.value}`,
           label: `${area.label} · ${chip.label}`,
           icon: area.icon,
@@ -243,7 +261,12 @@ export function cardPosition(flow: CreationFlowState): CardStepId | undefined {
 
 function hasConditionStep(what: string | undefined): boolean {
   const kind = conditionKindFor(what);
-  return kind === "threshold" || kind === "absence" || capabilityParams(what).length > 0;
+  return (
+    kind === "threshold" ||
+    kind === "absence" ||
+    isLimitCondition(what) ||
+    capabilityParams(what).length > 0
+  );
 }
 
 function toOptions(chips: FlowChipType[]) {
@@ -252,6 +275,7 @@ function toOptions(chips: FlowChipType[]) {
     label: chip.label,
     icon: chip.icon,
     description: chip.description,
+    group: chip.group,
   }));
 }
 
@@ -328,7 +352,167 @@ function environmentsStep(answers: FlowAnswers): ChatWizardStep {
   };
 }
 
-export function confirmStep(flow: CreationFlowState, stepId: string) {
+function limitConditionStep(flow: CreationFlowState): ChatWizardStep {
+  const { answers } = flow;
+  const composite = isComposite(answers.what);
+  const supported = supportedSignalsFor(answers.what, answers.components);
+  const signals = effectiveSignals(answers);
+  const mode = answers.compositeMode ?? "any";
+  const current = answers.conditionParams ?? {};
+  const setParam = (key: string, value: number) =>
+    flow.setConditionParams({ ...current, [key]: value });
+  const clearParam = (key: string) => {
+    const { [key]: _removed, ...rest } = current;
+    flow.updateAnswers({ conditionParams: rest });
+  };
+  const declared = resolveCapability(answers.what)?.binding.params ?? [];
+  const utilisation = declared.find((p) => p.key === "utilisationPct");
+  const thresholds = composite
+    ? capabilityParams(answers.what, answers.components).filter((p) => p.key !== "utilisationPct")
+    : [];
+  const fields = [
+    ...thresholds.map((param) =>
+      paramInput(
+        param,
+        current[param.key],
+        (v) => setParam(param.key, v),
+        true,
+        () => clearParam(param.key)
+      )
+    ),
+  ];
+  const forced = signals.includes("approaching") && current.utilisationPct === undefined;
+  const below = utilisation
+    ? {
+        ...paramInput(
+          utilisation,
+          forced ? utilisation.default : current.utilisationPct,
+          (v) =>
+            flow.updateAnswers({
+              conditionParams: { ...current, [utilisation.key]: v },
+              signals: signalsAfterUtilisationEdit(answers, true),
+            }),
+          true,
+          () => {
+            const { [utilisation.key]: _removed, ...rest } = current;
+            flow.updateAnswers({
+              conditionParams: rest,
+              signals: signalsAfterUtilisationEdit(answers, false),
+            });
+          }
+        ),
+        unit: "%",
+        check: true,
+        placeholder: String(utilisation.default),
+      }
+    : undefined;
+
+  const missingThreshold = requiredParams(answers.what, answers.components).some(
+    (p) => current[p.key] === undefined
+  );
+  return {
+    allowSkip: false,
+    id: "condition",
+    question: promptForStep("condition", answers),
+    description: [
+      composite ? "Raise when any or all of the selected limits fire." : undefined,
+      SIGNAL_HELP,
+    ]
+      .filter(Boolean)
+      .join(" "),
+    options: [
+      ...(composite
+        ? (["any", "all"] as const).map((m) => ({
+            id: `${MODE_OPTION}${m}`,
+            label: MODE_LABEL[m],
+          }))
+        : []),
+      ...(supported.includes("approaching")
+        ? [{ id: `${SIGNAL_OPTION}approaching`, label: "Approaching the limit", below }]
+        : []),
+    ],
+    multiSelect: true,
+    selected: [...(composite ? [`${MODE_OPTION}${mode}`] : []), "ready"],
+    fields: fields.length ? fields : undefined,
+    confirmLabel: "Continue",
+    confirmDisabled: missingThreshold || (!composite && signals.length === 0),
+    error: missingThreshold ? FILL_THRESHOLDS : undefined,
+  };
+}
+
+const ALL_OPTION = "__all_components__";
+
+function limitsWhatChips(hiddenAreas: string[]) {
+  return capabilityChips("limits", hiddenAreas).filter((chip) => !isComposite(chip.value));
+}
+
+function whatMultiStep(
+  flow: CreationFlowState,
+  hiddenAreas: string[],
+  emptyAreas: string[]
+): ChatWizardStep {
+  const { answers } = flow;
+  const chips = limitsWhatChips(hiddenAreas);
+  const offered = chips.map((chip) => chip.value);
+  const parts = resolveCapability("limits.all")?.binding.compositeOf ?? [];
+  const eligible = offered.filter((key) => parts.includes(key));
+  const selected = whatSelection(answers, hiddenAreas).filter((key) => offered.includes(key));
+  const { what } = resolveWhat(selected);
+  return {
+    allowSkip: false,
+    id: "what",
+    question: promptForStep("what", answers),
+    description: "Pick any number — one makes a single alert, several make one combined alert.",
+    options: [
+      { id: ALL_OPTION, label: "Watch all limits" },
+      ...chips.map((chip) => ({
+        ...toOptions([chip])[0]!,
+        disabledReason: usableCapability(answers.area, chip.value, emptyAreas)
+          ? undefined
+          : emptyHint(answers.area),
+      })),
+      ...toOptions([SHOW_ALL_CHIP]),
+    ],
+    multiSelect: true,
+    selected: [
+      ...(eligible.length > 0 && eligible.every((key) => selected.includes(key))
+        ? [ALL_OPTION]
+        : []),
+      ...selected,
+    ],
+    confirmLabel: "Continue",
+    confirmDisabled: !what,
+  };
+}
+
+export function confirmStep(flow: CreationFlowState, stepId: string, hiddenAreas: string[] = []) {
+  if (stepId === "name") {
+    flow.confirmName();
+    return;
+  }
+  if (stepId === "what") {
+    const offered = limitsWhatChips(hiddenAreas).map((chip) => chip.value);
+    const { what, components } = resolveWhat(
+      whatSelection(flow.answers, hiddenAreas).filter((key) => offered.includes(key))
+    );
+    if (what) flow.confirmWhat(what, components);
+    return;
+  }
+  if (stepId === "condition") {
+    const { answers } = flow;
+    const signals = effectiveSignals(answers);
+    const supported = supportedSignalsFor(answers.what, answers.components);
+    const missing = requiredParams(answers.what, answers.components).some(
+      (p) => answers.conditionParams?.[p.key] === undefined
+    );
+    if ((supported.length > 0 && signals.length === 0) || missing) return;
+    flow.updateAnswers({
+      conditionConfirmed: true,
+      compositeMode: isComposite(answers.what) ? (answers.compositeMode ?? "any") : undefined,
+    });
+    flow.confirmCondition();
+    return;
+  }
   if (stepId === "environments") {
     if (flow.answers.environments?.length)
       flow.patchAnswers({ ...flow.answers, environmentsConfirmed: true });
@@ -374,6 +558,7 @@ export function allSteps(
       : step;
   return CARD_STEPS.filter((id) => id !== "condition" || hasConditionStep(answers.what))
     .filter((id) => id !== "environments" || replacing)
+    .filter((id) => id !== "name" || !replacing)
     .filter((id) => id !== "scope" || !skipsScope(answers) || isErrorGroupOnly(answers.what))
     .map((id): ChatWizardStep => {
       switch (id) {
@@ -402,13 +587,14 @@ export function allSteps(
             selected: answers.area ? [answers.area] : [],
           });
         case "what":
+          if (answers.area === "limits") return whatMultiStep(flow, hiddenAreas, emptyAreas);
           return locked({
             ...base,
             id,
             question: answers.area ? promptForStep("what", answers) : "What should it watch?",
             selectedDescription: resolveCapability(answers.what)?.description,
             options: [
-              ...capabilityChips(answers.area)
+              ...capabilityChips(answers.area, hiddenAreas)
                 .filter(
                   (chip) => chip.value === answers.what || !hiddenAreas.includes(answers.area ?? "")
                 )
@@ -534,6 +720,7 @@ export function allSteps(
           };
         }
         case "condition": {
+          if (isLimitCondition(answers.what)) return limitConditionStep(flow);
           const kind = conditionKindFor(answers.what);
           const params = capabilityParams(answers.what);
           const numericKind = kind === "threshold" || kind === "absence";
@@ -663,6 +850,30 @@ export function allSteps(
             },
           };
         }
+        case "name": {
+          const name = alertName(answers);
+          const blank = answers.name !== undefined && !answers.name.trim();
+          return {
+            ...base,
+            id,
+            question: promptForStep("name", answers),
+            options: [],
+            multiSelect: true,
+            selected: blank ? [] : [id],
+            fields: [
+              {
+                id: "name",
+                ariaLabel: "Name",
+                live: true,
+                current: name,
+                parse: (text) => text.trim() || undefined,
+                onSubmit: flow.setName,
+                onClear: () => flow.setName(""),
+              },
+            ],
+            confirmLabel: "Continue",
+          };
+        }
         case "notifiers": {
           const options = [
             ...(chatId ? [{ id: CHAT_CHIP.value, label: CHAT_CHIP.label }] : []),
@@ -696,7 +907,7 @@ export function applyStepSelection(
   flow: CreationFlowState,
   stepId: string,
   value: string,
-  handlers: { onShowAll: () => void; onAddChannel: () => void }
+  handlers: { onShowAll: () => void; onAddChannel: () => void; hiddenAreas?: string[] }
 ) {
   if (stepId === "scenarios") {
     const [area, what] = value.split(":") as [FlowAnswers["area"], string];
@@ -712,6 +923,26 @@ export function applyStepSelection(
     flow.setScopeValue(value);
     return;
   }
+  if (stepId === "what" && flow.answers.area === "limits") {
+    const offered = limitsWhatChips(handlers.hiddenAreas ?? []).map((chip) => chip.value);
+    const parts = resolveCapability("limits.all")?.binding.compositeOf ?? [];
+    const eligible = offered.filter((key) => parts.includes(key));
+    const current = whatSelection(flow.answers, handlers.hiddenAreas).filter((key) =>
+      offered.includes(key)
+    );
+    const all = eligible.every((key) => current.includes(key));
+    flow.updateAnswers({
+      picked:
+        value === ALL_OPTION
+          ? all
+            ? current.filter((key) => !eligible.includes(key))
+            : [...new Set([...current, ...eligible])]
+          : offered.filter((key) =>
+              key === value ? !current.includes(key) : current.includes(key)
+            ),
+    });
+    return;
+  }
   switch (stepId as CardStepId) {
     case "area":
     case "what":
@@ -719,7 +950,12 @@ export function applyStepSelection(
       flow.selectChip(stepId as FlowStepKey, value);
       return;
     case "condition": {
-      const param = capabilityParams(flow.answers.what)[0];
+      if (value.startsWith(SIGNAL_OPTION)) return;
+      if (value.startsWith(MODE_OPTION)) {
+        flow.updateAnswers({ compositeMode: value.slice(MODE_OPTION.length) as "any" | "all" });
+        return;
+      }
+      const param = capabilityParams(flow.answers.what, flow.answers.components)[0];
       if (value.startsWith(PARAM_OPTION) && param) {
         flow.setConditionParams({ [param.key]: Number(value.slice(PARAM_OPTION.length)) });
         flow.confirmCondition();
