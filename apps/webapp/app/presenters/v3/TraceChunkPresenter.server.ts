@@ -62,8 +62,6 @@ const startRunSelect = {
   annotations: true,
 } satisfies Prisma.TaskRunSelect;
 
-type ChunkRun = Prisma.TaskRunGetPayload<{ select: typeof chunkRunSelect }>;
-
 type TraceChunkPresenterDeps = {
   prismaClient: PrismaClient;
   runStore: Pick<RunStore, "findRun">;
@@ -137,7 +135,7 @@ export class TraceChunkPresenter {
     );
 
     const scope = runTraceReadScope(run, environment.id);
-    const insertedAtEnd = traceInsertedAtEndFor(run, context);
+    const insertedAtEnd = getTraceInsertedAtEnd(run);
     recordReadAttributes(context, insertedAtEnd);
 
     if (filter === "errors") {
@@ -232,7 +230,7 @@ export class TraceChunkPresenter {
     );
 
     const scope = runTraceReadScope(run, environment.id);
-    const insertedAtEnd = traceInsertedAtEndFor(run, context);
+    const insertedAtEnd = getTraceInsertedAtEnd(run);
     recordReadAttributes(context, insertedAtEnd);
 
     const firstRead = await readFirstTraceChunk({ repository, scope, showDebug, insertedAtEnd });
@@ -293,11 +291,6 @@ export class TraceChunkPresenter {
 
     return environment;
   }
-}
-
-// The run page reads unbounded: a child finishing long after the run would lose its final row.
-function traceInsertedAtEndFor(run: ChunkRun, context: TraceReadContext | undefined) {
-  return context === "session" ? getTraceInsertedAtEnd(run) : undefined;
 }
 
 function recordReadAttributes(

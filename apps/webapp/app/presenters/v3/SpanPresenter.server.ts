@@ -52,7 +52,10 @@ import {
   type ResolvedRunLockedWorker,
 } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
-import { getTraceStartTimeEnd } from "~/v3/eventRepository/traceInsertedAtBound";
+import {
+  getTraceInsertedAtEnd,
+  getTraceStartTimeEnd,
+} from "~/v3/eventRepository/traceInsertedAtBound";
 import {
   findStartedSession,
   startedSessionExternalId,
@@ -238,6 +241,7 @@ export class SpanPresenter extends BasePresenter {
       projectId: parentRun.projectId,
       createdAt: parentRun.createdAt,
       endCreatedAt: getTraceStartTimeEnd(parentRun),
+      insertedAtEnd: getTraceInsertedAtEnd(parentRun),
       eventRepository: repository,
       showDebug,
       rootRunId: traceRootRunId(parentRun),
@@ -706,6 +710,7 @@ export class SpanPresenter extends BasePresenter {
     projectId,
     createdAt,
     endCreatedAt,
+    insertedAtEnd,
     showDebug,
     rootRunId,
     userId,
@@ -718,6 +723,7 @@ export class SpanPresenter extends BasePresenter {
     eventStore: TaskEventStoreTable;
     createdAt: Date;
     endCreatedAt: Date | undefined;
+    insertedAtEnd: Date | undefined;
     showDebug: boolean;
     rootRunId: string;
     userId: string;
@@ -729,7 +735,7 @@ export class SpanPresenter extends BasePresenter {
       traceId,
       createdAt,
       endCreatedAt,
-      { includeDebugLogs: showDebug }
+      { includeDebugLogs: showDebug, insertedAtEnd }
     );
 
     if (!span) {

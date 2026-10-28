@@ -75,6 +75,7 @@ async function createRun(
     taskEventStore?: string;
     logsDeletedAt?: Date;
     environmentId?: string;
+    updatedAt?: Date;
   } = {}
 ) {
   return prisma.taskRun.create({
@@ -97,6 +98,7 @@ async function createRun(
       completedAt: options.completedAt === undefined ? COMPLETED_AT : options.completedAt,
       taskEventStore: options.taskEventStore ?? "clickhouse_v2",
       logsDeletedAt: options.logsDeletedAt,
+      updatedAt: options.updatedAt,
     },
   });
 }
@@ -334,14 +336,15 @@ describe("TraceChunkPresenter session context", () => {
           expect(start.trace.progressive.supplementaryFirstEvents).toBeUndefined();
           expect(start.trace.events.map((event) => event.id)).not.toContain("after_window");
 
-          const unbounded = await presenter.start({
+          // The run page (no session context) gets the same bound.
+          const runPage = await presenter.start({
             ...startArgs(seeded, run.friendlyId),
             selectedSpanId: "after_window",
             context: undefined,
           });
-          expect(unbounded?.kind).toBe("progressive");
-          if (unbounded?.kind !== "progressive") return;
-          expect(unbounded.trace.events.map((event) => event.id)).toContain("after_window");
+          expect(runPage?.kind).toBe("progressive");
+          if (runPage?.kind !== "progressive") return;
+          expect(runPage.trace.events.map((event) => event.id)).not.toContain("after_window");
         }
       );
     }
@@ -493,10 +496,16 @@ describe("TraceChunkPresenter session context", () => {
   );
 
   containerTestWithClickhouse(
-    "leaves live runs and reads without the session context unbounded",
+    "bounds run page reads of a completed or cancelled run and leaves live runs unbounded",
     async ({ prisma, clickhouseContainer }) => {
       const seeded = await seed(prisma);
-      const completed = await createRun(prisma, seeded, "completed_unbounded");
+      const completed = await createRun(prisma, seeded, "completed_run_page");
+      // Cancelled mid-execution: final status, no completedAt, so the bound uses updatedAt.
+      const cancelled = await createRun(prisma, seeded, "cancelled", {
+        status: "CANCELED",
+        completedAt: null,
+        updatedAt: COMPLETED_AT,
+      });
       const live = await createRun(prisma, seeded, "live", {
         status: "EXECUTING",
         completedAt: null,
@@ -505,12 +514,19 @@ describe("TraceChunkPresenter session context", () => {
       await withPresenter(
         prisma,
         clickhouseContainer.getConnectionUrl(),
-        [...boundRows(completed), ...boundRows(live)],
+        [...boundRows(completed), ...boundRows(cancelled), ...boundRows(live)],
         async (presenter) => {
+          const bounded = (spanId: string) => [spanId, "within_window"].sort();
           const all = (spanId: string) => [spanId, "after_window", "within_window"].sort();
 
           expect(await readAllPages(presenter, seeded, completed.friendlyId, undefined)).toEqual(
-            all(completed.spanId)
+            bounded(completed.spanId)
+          );
+          expect(await readAllPages(presenter, seeded, cancelled.friendlyId, undefined)).toEqual(
+            bounded(cancelled.spanId)
+          );
+          expect(await readAllPages(presenter, seeded, live.friendlyId, undefined)).toEqual(
+            all(live.spanId)
           );
           expect(await readAllPages(presenter, seeded, live.friendlyId, "session")).toEqual(
             all(live.spanId)
@@ -521,7 +537,14 @@ describe("TraceChunkPresenter session context", () => {
             cursor: undefined,
             filter: "errors",
           });
-          expect(errors!.events.map((event) => event.spanId)).toContain("after_window");
+          expect(errors!.events.map((event) => event.spanId)).not.toContain("after_window");
+
+          const tail = await presenter.call({
+            ...access(seeded, completed.friendlyId),
+            cursor: undefined,
+            tailInsertedAtSinceMs: BASE.getTime(),
+          });
+          expect(tail!.events.map((event) => event.spanId)).not.toContain("after_window");
         }
       );
     }

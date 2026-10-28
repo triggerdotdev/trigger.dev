@@ -7,7 +7,10 @@ import { logger } from "~/services/logger.server";
 import { getAdminOnlyForEvent } from "~/utils/timelineSpanEvents";
 import { type SpanSummary, type TraceSummary } from "~/v3/eventRepository/eventRepository.types";
 import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
-import { getTraceStartTimeEnd } from "~/v3/eventRepository/traceInsertedAtBound";
+import {
+  getTraceInsertedAtEnd,
+  getTraceStartTimeEnd,
+} from "~/v3/eventRepository/traceInsertedAtBound";
 import { runStore } from "~/v3/runStore.server";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 
@@ -66,6 +69,7 @@ export async function getDashboardAgentRunTrace({
   const repository = await getEventRepositoryForStore(run.taskEventStore, organizationId);
   const storeTable = getTaskEventStoreTableForRun(run);
   const endCreatedAt = getTraceStartTimeEnd(run);
+  const insertedAtEnd = getTraceInsertedAtEnd(run);
 
   let summary: TraceSummary | undefined = await repository.getTraceSummary(
     storeTable,
@@ -73,7 +77,7 @@ export async function getDashboardAgentRunTrace({
     run.traceId,
     run.createdAt,
     endCreatedAt,
-    { includeDebugLogs: false, anchorSpanId: run.spanId }
+    { includeDebugLogs: false, anchorSpanId: run.spanId, insertedAtEnd }
   );
 
   // No summary means the anchor span isn't in the summary rows, e.g. it fell past the
@@ -87,7 +91,7 @@ export async function getDashboardAgentRunTrace({
       run.createdAt,
       endCreatedAt,
       // The tree is built from the anchor down, so ancestors would be read for nothing.
-      { includeDebugLogs: false }
+      { includeDebugLogs: false, insertedAtEnd }
     );
 
     if (subtree) {

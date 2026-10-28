@@ -442,7 +442,7 @@ export interface IEventRepository {
     traceId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
-    options?: { includeDebugLogs?: boolean; anchorSpanId?: string }
+    options?: { includeDebugLogs?: boolean; anchorSpanId?: string; insertedAtEnd?: Date }
   ): Promise<TraceSummary | undefined>;
 
   /** Fetch the anchor span and all its descendants (no ancestors). */
@@ -453,7 +453,7 @@ export interface IEventRepository {
     anchorSpanId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
-    options?: { includeDebugLogs?: boolean }
+    options?: { includeDebugLogs?: boolean; insertedAtEnd?: Date }
   ): Promise<TraceSummary | undefined>;
 
   getTraceChunk(
@@ -526,7 +526,8 @@ export interface IEventRepository {
     traceId: string,
     runId: string,
     startCreatedAt: Date,
-    endCreatedAt?: Date
+    endCreatedAt?: Date,
+    options?: { insertedAtEnd?: Date }
   ): Promise<RunPreparedEvent[]>;
 
   getSpan(
@@ -536,7 +537,7 @@ export interface IEventRepository {
     traceId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
-    options?: { includeDebugLogs?: boolean }
+    options?: { includeDebugLogs?: boolean; insertedAtEnd?: Date }
   ): Promise<SpanDetail | undefined>;
 
   // Event recording methods

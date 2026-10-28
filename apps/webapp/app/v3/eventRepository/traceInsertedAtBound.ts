@@ -22,6 +22,7 @@ export function getRunFinishedAt(run: RunFinishFields): Date | undefined {
   return isFinalRunStatus(run.status) ? run.updatedAt : undefined;
 }
 
+// Trade-off: a child finishing more than 7 days after the run shows as still running.
 export function getTraceInsertedAtEnd(run: RunFinishFields): Date | undefined {
   const finishedAt = getRunFinishedAt(run);
   if (!finishedAt || !isFinalRunStatus(run.status)) {
