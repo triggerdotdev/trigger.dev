@@ -18,6 +18,7 @@ type Fault = {
   message: string;
   remaining: number;
   status?: number;
+  code?: string;
 };
 
 /**
@@ -77,8 +78,8 @@ export class S2FaultProxy {
   }
 
   /** Reject before SSE headers, as when concurrent first reads race to create a stream. */
-  rejectNextRead(match: string, status: number, times = 1) {
-    this.faults.push({ match, status, remaining: times, afterBatches: 0, message: "" });
+  rejectNextRead(match: string, status: number, times = 1, code?: string) {
+    this.faults.push({ match, status, code, remaining: times, afterBatches: 0, message: "" });
   }
 
   private takeFault(req: IncomingMessage): Fault | undefined {
@@ -112,7 +113,12 @@ export class S2FaultProxy {
 
     const fault = this.takeFault(req);
     if (fault?.status) {
-      res.writeHead(fault.status).end();
+      if (fault.code) {
+        res.writeHead(fault.status, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ code: fault.code }));
+      } else {
+        res.writeHead(fault.status).end();
+      }
       return;
     }
     const upstream = await fetch(`${target}${req.url}`, {

@@ -344,7 +344,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
 
   /**
    * Non-blocking read of the records after `afterSeqNum`. Retries transient
-   * failures (network errors, creation conflicts, 5xx, and reads S2 ends with an `error` event)
+   * failures (network errors, stream creation races, 5xx, and reads S2 ends with an `error` event)
    * because the `.wait()` race check depends on this read to find a record
    * sent before the waitpoint registered.
    */
@@ -356,9 +356,18 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
       try {
         return await this.#readRecordsOnce(s2Stream, afterSeqNum);
       } catch (error) {
-        const status = (error as { status?: number }).status;
+        const { status, streamNotFound } = error as {
+          status?: number;
+          streamNotFound?: boolean;
+        };
+        // A stream that is still absent after retries has no records yet.
+        if (streamNotFound && attempt + 1 >= maxAttempts) return [];
         const isClientError =
-          status !== undefined && status >= 400 && status < 500 && status !== 409;
+          status !== undefined &&
+          status >= 400 &&
+          status < 500 &&
+          status !== 409 &&
+          !streamNotFound;
         if (isClientError || attempt + 1 >= maxAttempts) {
           this.logger.error("S2 readRecords failed", {
             stream: s2Stream,
@@ -401,13 +410,11 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     );
 
     if (!res.ok) {
-      // Stream may not exist yet (no data sent)
-      if (res.status === 404) {
-        return [];
-      }
+      const streamNotFound = await isS2StreamNotFound(res);
       await cancelResponseBody(res);
       throw Object.assign(new Error(`S2 readRecords failed: ${res.status} ${res.statusText}`), {
         status: res.status,
+        streamNotFound,
       });
     }
 
@@ -808,7 +815,8 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     if (opts.wait != null) qs.set("wait", String(opts.wait));
 
     // Concurrent first readers/writers can race S2's automatic stream creation.
-    // Retry only the conflict, before exposing any SSE bytes to the caller.
+    // S2-lite can also return stream_not_found during this race. Other 404s
+    // (missing basin, token or route) are terminal. Retry before exposing SSE bytes.
     const backoffsMs = [100, 200, 400];
     for (let attempt = 0; ; attempt++) {
       const res = await fetch(
@@ -826,9 +834,11 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
       );
 
       if (!res.ok) {
+        const streamNotFound = await isS2StreamNotFound(res);
         await cancelResponseBody(res);
+        opts.signal?.throwIfAborted();
         const delay = backoffsMs[attempt];
-        if (res.status === 409 && delay !== undefined) {
+        if ((res.status === 409 || streamNotFound) && delay !== undefined) {
           await sleep(delay, undefined, { signal: opts.signal });
           continue;
         }
@@ -853,6 +863,21 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     const digits = lastEventId.split("-")[0];
     const n = Number(digits);
     return Number.isFinite(n) && n >= 0 ? n + 1 : undefined;
+  }
+}
+
+async function isS2StreamNotFound(response: Response): Promise<boolean> {
+  if (response.status !== 404) return false;
+  try {
+    const error: unknown = await response.json();
+    return (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "stream_not_found"
+    );
+  } catch {
+    return false;
   }
 }
 
