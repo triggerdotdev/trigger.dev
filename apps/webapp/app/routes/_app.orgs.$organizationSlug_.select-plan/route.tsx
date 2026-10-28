@@ -5,10 +5,11 @@ import { Header1 } from "~/components/primitives/Headers";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
-import { getCurrentPlan, getPlans } from "~/services/platform.v3.server";
+import { getBillingPagePlan, getPlans } from "~/services/platform.v3.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { OrganizationParamsSchema, organizationPath } from "~/utils/pathBuilder";
 import { PricingPlans } from "../resources.orgs.$organizationSlug.select-plan";
+import { BillingUnavailablePanel } from "../_app.orgs.$organizationSlug.settings.billing/route";
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Choose a plan");
@@ -50,18 +51,42 @@ export const loader = dashboardLoader(
       return redirect(organizationPath({ slug: organizationSlug }));
     }
 
-    const currentPlan = await getCurrentPlan(organization.id);
+    const planRead = await getBillingPagePlan(organization.id);
+    if (planRead.isErr()) {
+      return typedjson({ billingUnavailable: true as const, organizationSlug });
+    }
 
     const periodEnd = new Date();
     periodEnd.setMonth(periodEnd.getMonth() + 1);
 
-    return typedjson({ ...plans, ...currentPlan, organizationSlug, periodEnd });
+    return typedjson({
+      billingUnavailable: false as const,
+      ...plans,
+      ...planRead.value,
+      organizationSlug,
+      periodEnd,
+    });
   }
 );
 
 export default function ChoosePlanPage() {
-  const { plans, v3Subscription, organizationSlug, periodEnd, addOnPricing } =
-    useTypedLoaderData<typeof loader>();
+  const loaderData = useTypedLoaderData<typeof loader>();
+
+  if (loaderData.billingUnavailable) {
+    return (
+      <AppContainer>
+        <PageBody className="bg-background-deep">
+          <BackgroundWrapper>
+            <div className="mx-auto mt-4 flex h-fit min-h-full max-w-md flex-col items-center justify-center lg:mt-0">
+              <BillingUnavailablePanel />
+            </div>
+          </BackgroundWrapper>
+        </PageBody>
+      </AppContainer>
+    );
+  }
+
+  const { plans, v3Subscription, organizationSlug, periodEnd, addOnPricing } = loaderData;
 
   return (
     <AppContainer>

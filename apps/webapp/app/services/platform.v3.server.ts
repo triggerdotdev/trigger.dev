@@ -1,4 +1,4 @@
-import { errAsync, type ResultAsync } from "neverthrow";
+import { err, errAsync, ok, type Result, type ResultAsync } from "neverthrow";
 import { MachinePresetName, tryCatch } from "@trigger.dev/core/v3";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import {
@@ -240,7 +240,7 @@ export function bustBillingLimitCaches(organizationId: string) {
  * plan change — a downgrade can revoke SSO, and serving the previous decision
  * for the stale TTL would keep a surface open that the new plan doesn't allow.
  */
-function invalidatePlanDerivedCaches(organizationId: string) {
+export function invalidatePlanDerivedCaches(organizationId: string) {
   platformCache.entitlement.remove(organizationId).catch(() => {});
   platformCache.ssoEntitlement.remove(organizationId).catch(() => {});
 }
@@ -364,31 +364,12 @@ export async function getCurrentPlan(orgId: string) {
   try {
     const result = await client.currentPlan(orgId);
 
-    const firstDayOfMonth = new Date();
-    firstDayOfMonth.setUTCDate(1);
-    firstDayOfMonth.setUTCHours(0, 0, 0, 0);
-
-    const firstDayOfNextMonth = new Date();
-    firstDayOfNextMonth.setUTCDate(1);
-    firstDayOfNextMonth.setUTCMonth(firstDayOfNextMonth.getUTCMonth() + 1);
-    firstDayOfNextMonth.setUTCHours(0, 0, 0, 0);
-
     if (!result.success) {
       recordPlatformFailure("getCurrentPlan", "no_success");
       return undefined;
     }
 
-    const periodStart = firstDayOfMonth;
-    const periodEnd = firstDayOfNextMonth;
-    const periodRemainingDuration = periodEnd.getTime() - new Date().getTime();
-
-    const usage = {
-      periodStart,
-      periodEnd,
-      periodRemainingDuration,
-    };
-
-    return { ...result, usage };
+    return withUsagePeriod(result);
   } catch (_e) {
     recordPlatformFailure("getCurrentPlan", "caught");
     return undefined;
@@ -407,6 +388,44 @@ export async function getCurrentPlanOrThrow(orgId: string) {
   return result;
 }
 
+function withUsagePeriod<T extends object>(result: T) {
+  const firstDayOfMonth = new Date();
+  firstDayOfMonth.setUTCDate(1);
+  firstDayOfMonth.setUTCHours(0, 0, 0, 0);
+
+  const firstDayOfNextMonth = new Date();
+  firstDayOfNextMonth.setUTCDate(1);
+  firstDayOfNextMonth.setUTCMonth(firstDayOfNextMonth.getUTCMonth() + 1);
+  firstDayOfNextMonth.setUTCHours(0, 0, 0, 0);
+
+  const periodStart = firstDayOfMonth;
+  const periodEnd = firstDayOfNextMonth;
+  const periodRemainingDuration = periodEnd.getTime() - new Date().getTime();
+
+  return { ...result, usage: { periodStart, periodEnd, periodRemainingDuration } };
+}
+
+export type CurrentPlanWithUsage = NonNullable<Awaited<ReturnType<typeof getCurrentPlan>>>;
+
+/**
+ * For the billing pages only: any failed plan read is "billing unavailable" rather than no plan, so
+ * they say so instead of offering plan changes. Every other caller keeps getCurrentPlan.
+ */
+export async function getBillingPagePlan(
+  orgId: string
+): Promise<Result<CurrentPlanWithUsage | undefined, "billing_unavailable">> {
+  if (!client) return ok(undefined);
+
+  const [error, result] = await tryCatch(client.currentPlan(orgId));
+  if (error) {
+    recordPlatformFailure("getCurrentPlan", "caught");
+    return err("billing_unavailable");
+  }
+  if (result.success) return ok(withUsagePeriod(result));
+
+  recordPlatformFailure("getCurrentPlan", "no_success");
+  return err("billing_unavailable");
+}
 export type SelfServePurchaseBlockReason = "plan_unavailable" | "managed_billing";
 
 /**

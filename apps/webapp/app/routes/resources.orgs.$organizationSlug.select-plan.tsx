@@ -38,6 +38,7 @@ import { applyPromoCode, bustPromoCreditsCache, setPlan } from "~/services/platf
 import { clearPromoCodeCookie, getPromoCodeFromCookie } from "~/services/promoCode.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { engine } from "~/v3/runEngine.server";
+import { freePlanButtonLabel } from "~/components/billing/freePlanLabel";
 import { cn } from "~/utils/cn";
 import { sendToPlain } from "~/utils/plain.server";
 import { formatCurrency } from "~/utils/numberFormatter";
@@ -464,13 +465,7 @@ export function TierFree({
               isLoading && navigation.formData?.get("planCode") === null ? Spinner : undefined
             }
           >
-            {subscription?.plan === undefined
-              ? "Select plan"
-              : subscription.plan.type === "free"
-                ? "Current plan"
-                : subscription.canceledAt !== undefined
-                  ? "Current plan"
-                  : "Select plan"}
+            {freePlanButtonLabel(subscription)}
           </Button>
         </Form>
       )}
