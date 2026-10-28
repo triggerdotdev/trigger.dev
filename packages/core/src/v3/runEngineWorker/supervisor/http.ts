@@ -174,7 +174,8 @@ export class SupervisorHttpClient {
     runId: string,
     snapshotId: string,
     body: WorkerApiRunHeartbeatRequestBody,
-    runnerId?: string
+    runnerId?: string,
+    environmentId?: string
   ) {
     return this.request(
       "heartbeat_run",
@@ -185,6 +186,7 @@ export class SupervisorHttpClient {
         headers: {
           ...this.defaultHeaders,
           ...this.runnerIdHeader(runnerId),
+          ...this.environmentIdHeader(environmentId),
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),

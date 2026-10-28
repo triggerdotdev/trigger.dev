@@ -73,6 +73,7 @@ import { setTimeout } from "node:timers/promises";
 import sourceMapSupport from "source-map-support";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
+import { dropInheritedRunToken, installRunToken } from "./runTokenEnv.js";
 import { VERSION } from "../version.js";
 
 sourceMapSupport.install({
@@ -376,6 +377,7 @@ const zodIpc = new ZodIpcConnection({
       sender
     ) => {
       if (env) {
+        dropInheritedRunToken(env);
         populateEnv(env, {
           override: true,
           previousEnv: _lastEnv,
@@ -670,6 +672,7 @@ const zodIpc = new ZodIpcConnection({
     RESOLVE_WAITPOINT: async ({ waitpoint }) => {
       _sharedWorkerRuntime?.resolveWaitpoints([waitpoint]);
     },
+    UPDATE_RUN_TOKEN: async (update) => ({ installed: installRunToken(_execution, update) }),
   },
 });
 

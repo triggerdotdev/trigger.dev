@@ -215,6 +215,7 @@ export class ZodIpcConnection<
         }
 
         clearTimeout(ack.timeout);
+        this.#acks.delete(parsedPacket.data.id);
         ack.resolve(parsedPacket.data.message);
 
         break;
@@ -313,14 +314,15 @@ export class ZodIpcConnection<
     return new Promise((resolve, reject) => {
       const defaultTimeoutInMs = 2000;
 
-      // Timeout if the ACK takes too long to get back to us
+      // Timeout if the ACK takes too long to get back to us. The payload is left out because it
+      // can carry credentials and this error is typically logged.
       const timeout = setTimeout(() => {
+        this.#acks.delete(currentId);
         reject(
           JSON.stringify({
             reason: "sendWithAck() timeout",
             timeoutInMs: timeoutInMs ?? defaultTimeoutInMs,
             type,
-            payload,
           })
         );
       }, timeoutInMs ?? defaultTimeoutInMs);

@@ -1,5 +1,9 @@
 import { assertExhaustive, tryCatch } from "@trigger.dev/core/utils";
-import { type TaskRunExecutionStatus, type RunExecutionData } from "@trigger.dev/core/v3";
+import {
+  type CompleteRunAttemptResult,
+  type TaskRunExecutionStatus,
+  type RunExecutionData,
+} from "@trigger.dev/core/v3";
 import type { RunLogger, SendDebugLogOptions } from "./logger.js";
 import type { MetadataClient } from "./overrides.js";
 
@@ -411,5 +415,22 @@ export class SnapshotManager {
         isProcessingQueue: this.isProcessingQueue,
       },
     });
+  }
+}
+
+export function snapshotStatusForAttemptStatus(
+  attemptStatus: CompleteRunAttemptResult["attemptStatus"]
+): TaskRunExecutionStatus {
+  switch (attemptStatus) {
+    case "RUN_FINISHED":
+      return "FINISHED";
+    case "RUN_PENDING_CANCEL":
+      return "PENDING_CANCEL";
+    case "RETRY_QUEUED":
+      return "QUEUED";
+    case "RETRY_IMMEDIATELY":
+      return "EXECUTING";
+    default:
+      assertExhaustive(attemptStatus);
   }
 }

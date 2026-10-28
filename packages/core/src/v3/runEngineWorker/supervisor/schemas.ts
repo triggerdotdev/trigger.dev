@@ -11,6 +11,7 @@ import {
   CheckpointInput,
   ExecutionResult,
 } from "../../schemas/runEngine.js";
+import { RunTokenHeartbeatReport } from "../runTokenRefresh.js";
 
 export const WorkerApiHeartbeatRequestBody = z.object({
   cpu: z.object({
@@ -110,11 +111,15 @@ export type WorkerApiDequeueResponseBody = z.infer<typeof WorkerApiDequeueRespon
 export const WorkerApiRunHeartbeatRequestBody = z.object({
   cpu: z.number().optional(),
   memory: z.number().optional(),
+  // A malformed report must never fail the heartbeat itself.
+  runToken: RunTokenHeartbeatReport.optional().catch(undefined),
 });
 export type WorkerApiRunHeartbeatRequestBody = z.infer<typeof WorkerApiRunHeartbeatRequestBody>;
 
 export const WorkerApiRunHeartbeatResponseBody = z.object({
   ok: z.literal(true),
+  /** A replacement TRIGGER_RUN_TOKEN, only when the runner's reported token is due for refresh. */
+  runToken: z.string().optional(),
 });
 export type WorkerApiRunHeartbeatResponseBody = z.infer<typeof WorkerApiRunHeartbeatResponseBody>;
 
@@ -123,6 +128,8 @@ export const WorkerApiRunAttemptStartRequestBody = z.object({
   // Set by the supervisor, not the runner. A value this webapp cannot accept drops the stamp, never the attempt.
   workerCell: z.string().max(64).optional().catch(undefined),
   workerLane: z.string().max(32).optional().catch(undefined),
+  /** Set by runners that report and install run-token refreshes, so the attempt can get a short-lived token. */
+  supportsRunTokenRefresh: z.boolean().optional().catch(undefined),
 });
 export type WorkerApiRunAttemptStartRequestBody = z.infer<
   typeof WorkerApiRunAttemptStartRequestBody

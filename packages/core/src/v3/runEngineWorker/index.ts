@@ -7,3 +7,4 @@ export * from "./supervisor/consumerPool.js";
 export * from "./workload/http.js";
 export * from "./workload/schemas.js";
 export * from "./types.js";
+export * from "./runTokenRefresh.js";

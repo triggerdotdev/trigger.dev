@@ -28,6 +28,7 @@ import {
 } from "@trigger.dev/core/v3/build";
 import { nodeOptionsWithMaxOldSpaceSize } from "@trigger.dev/core/v3/machines";
 import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
+import type { RunTokenInstallResult } from "@trigger.dev/core/v3/workers";
 import { logger } from "../utilities/logger.js";
 import {
   CancelledProcessError,
@@ -49,6 +50,8 @@ export type OnSetSuspendableMessage = InferSocketMessageSchema<
   typeof ExecutorToWorkerMessageCatalog,
   "SET_SUSPENDABLE"
 >;
+
+const RUN_TOKEN_INSTALL_ACK_TIMEOUT_MS = 5_000;
 
 export type TaskRunProcessOptions = {
   workerManifest: WorkerManifest;
@@ -339,6 +342,32 @@ export class TaskRunProcess {
 
   isExecuting() {
     return this._currentExecution !== undefined;
+  }
+
+  /** Never throws, and never surfaces IPC errors: they can describe a payload carrying the token. */
+  async installRunToken(update: {
+    runId: string;
+    attemptNumber: number;
+    token: string;
+  }): Promise<RunTokenInstallResult> {
+    if (!this._ipc || !this._child?.connected || this.isBeingKilled) {
+      return { result: "failure", reason: "no_child" };
+    }
+
+    try {
+      const ack = await this._ipc.sendWithAck(
+        "UPDATE_RUN_TOKEN",
+        update,
+        RUN_TOKEN_INSTALL_ACK_TIMEOUT_MS
+      );
+      if (!ack) return { result: "failure", reason: "unsupported" };
+      return ack.installed
+        ? { result: "success" }
+        : { result: "failure", reason: "identity_mismatch" };
+    } catch (error) {
+      const timedOut = typeof error === "string" && error.includes("sendWithAck() timeout");
+      return { result: "failure", reason: timedOut ? "ack_timeout" : "ipc_error" };
+    }
   }
 
   waitpointCompleted(waitpoint: CompletedWaitpoint) {
