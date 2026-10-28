@@ -45,6 +45,8 @@ export type SessionRunLoads = {
 export type SessionRunLoadsAction =
   /** The tree expanded or collapsed a run row. */
   | { type: "expanded"; runFriendlyId: string; expanded: boolean }
+  /** The page opened on a link to this run: it expands and loads ahead of the others. */
+  | { type: "deepLinked"; runFriendlyId: string }
   /** The runs page changed: which runs are in the run store, and which is newest. */
   | { type: "runsChanged"; withStatus: string[]; newestRunId: string | undefined }
   /** A run's loaded trace went from no spans to some, or back (when it unmounts). */
@@ -90,6 +92,7 @@ export function runLoad(loads: SessionRunLoads, runFriendlyId: string): SessionR
  * - At most 3 runs load at once; a run holds its slot until all its pages are in.
  * - A run that settled with no spans becomes loaded when its first span arrives while tailing.
  * - When a newer run takes over, the previous newest run is read afresh once if it was still empty.
+ * - A deep-linked run expands first, so it's the first to load once it's in the run store.
  */
 export function sessionRunLoadsReducer(
   current: SessionRunLoads,
@@ -109,6 +112,14 @@ export function sessionRunLoadsReducer(
         return loadWanted(enqueue(next, [id]));
       }
       return loadWanted(next);
+    }
+    case "deepLinked": {
+      const { runFriendlyId: id } = action;
+      const expanded = new Set([id, ...[...current.expanded].filter((other) => other !== id)]);
+      const queue = current.queue.includes(id)
+        ? [id, ...current.queue.filter((other) => other !== id)]
+        : current.queue;
+      return loadWanted({ ...current, expanded, queue });
     }
     case "runsChanged": {
       const sameStatus = sameMembers(current.withStatus, action.withStatus);

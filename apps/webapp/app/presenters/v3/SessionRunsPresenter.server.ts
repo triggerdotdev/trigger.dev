@@ -52,6 +52,7 @@ export const sessionRunSelect = {
   updatedAt: true,
   taskEventStore: true,
   logsDeletedAt: true,
+  spanId: true,
 } as const;
 
 export type SessionRunRecord = {
@@ -66,6 +67,7 @@ export type SessionRunRecord = {
   updatedAt: Date;
   taskEventStore: string;
   logsDeletedAt: Date | null;
+  spanId: string;
 };
 
 type RunTraceUnavailableReason = NonNullable<ReturnType<typeof runTraceUnavailableBeforeRead>>;
@@ -87,7 +89,8 @@ export type SessionRunsPage = {
   data: SessionRunItem[];
   pagination: { next?: string };
   totalCount: number;
-  view: Record<string, { unavailable?: RunTraceUnavailableReason }>;
+  /** Dashboard only, keyed by run friendlyId. `spanId` is the run's own span (its run panel). */
+  view: Record<string, { unavailable?: RunTraceUnavailableReason; spanId: string }>;
 };
 
 export type SessionRunsPresenterDeps = {
@@ -207,6 +210,7 @@ export class SessionRunsPresenter {
       const run = runsById.get(row.runId);
       if (!run) continue;
       view[run.friendlyId] = {
+        spanId: run.spanId,
         unavailable: this.deps.unavailableBeforeRead(run, {
           showDeletedLogs,
           emergencySpanCap: this.deps.emergencySpanCap,

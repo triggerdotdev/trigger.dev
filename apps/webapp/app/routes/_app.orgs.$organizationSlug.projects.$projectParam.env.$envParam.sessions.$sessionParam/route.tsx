@@ -62,6 +62,9 @@ import { SessionPresenter } from "~/presenters/v3/SessionPresenter.server";
 import { featuresForRequest } from "~/features.server";
 import { canAccessSessionTrace } from "~/v3/canAccessSessionTrace.server";
 import { SessionTraceTab } from "~/components/sessions/v1/trace/SessionTraceTab";
+import { SessionRunInspector } from "~/components/sessions/v1/trace/SessionRunInspector";
+import { SessionPanelStoreProvider } from "~/components/sessions/v1/trace/sessionPanelStore";
+import { useSessionTraceSelection } from "~/components/sessions/v1/trace/useSessionTraceSelection";
 import {
   SESSION_TREE_AUTOSAVE_ID,
   resolveSessionPageView,
@@ -96,6 +99,7 @@ import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnav
 import type { Handle } from "~/utils/handle";
 
 import { pageMeta } from "~/utils/pageTitle";
+import { shouldRevalidateSessionPage } from "./shouldRevalidateSessionPage";
 
 const ParamsSchema = EnvironmentParamSchema.extend({
   sessionParam: z.string(),
@@ -104,6 +108,8 @@ const ParamsSchema = EnvironmentParamSchema.extend({
 export const handle: Handle = {
   agentPageContext: (data) => sessionsAgentPageContext(data),
 };
+
+export { shouldRevalidateSessionPage as shouldRevalidate };
 
 export const meta = pageMeta(({ params }) => [params.sessionParam ?? "Session", "Sessions"]);
 
@@ -216,28 +222,39 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <ResizablePanelGroup orientation="horizontal" className="max-h-full">
-          <ResizablePanel id="session-conversation" min={"300px"}>
-            {sessionTraceEnabled ? (
-              <SessionLeftPane
+        <SessionPanelStoreProvider>
+          <ResizablePanelGroup orientation="horizontal" className="max-h-full">
+            <ResizablePanel id="session-conversation" min={"300px"}>
+              {sessionTraceEnabled ? (
+                <SessionLeftPane
+                  session={session}
+                  channels={channels}
+                  traceTreeSnapshot={traceTreeSnapshot}
+                />
+              ) : (
+                <ConversationPane
+                  session={session}
+                  channels={channels}
+                  pinConversationView={false}
+                />
+              )}
+            </ResizablePanel>
+            <ResizableHandle id="session-handle" />
+            <ResizablePanel
+              id="session-inspector"
+              min="380px"
+              default="420px"
+              className="overflow-hidden"
+            >
+              <InspectorPane
                 session={session}
-                channels={channels}
-                traceTreeSnapshot={traceTreeSnapshot}
+                status={status}
+                isExpired={isExpired}
+                sessionTraceEnabled={sessionTraceEnabled}
               />
-            ) : (
-              <ConversationPane session={session} channels={channels} pinConversationView={false} />
-            )}
-          </ResizablePanel>
-          <ResizableHandle id="session-handle" />
-          <ResizablePanel
-            id="session-inspector"
-            min="380px"
-            default="420px"
-            className="overflow-hidden"
-          >
-            <InspectorPane session={session} status={status} isExpired={isExpired} />
-          </ResizablePanel>
-        </ResizablePanelGroup>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </SessionPanelStoreProvider>
       </PageBody>
     </>
   );
@@ -906,6 +923,35 @@ function MergedStreamRow({
 }
 
 function InspectorPane({
+  session,
+  status,
+  isExpired,
+  sessionTraceEnabled,
+}: {
+  session: LoadedSession;
+  status: SessionStatus;
+  isExpired: boolean;
+  sessionTraceEnabled: boolean;
+}) {
+  // A selected run or span replaces the session details; without the trace, the params mean nothing.
+  const { selection, setSelection } = useSessionTraceSelection();
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+  if (sessionTraceEnabled && selection.kind !== "session") {
+    return (
+      <SessionRunInspector
+        selection={selection}
+        runsPath={v3SessionRunsPath(organization, project, environment, session)}
+        onClose={() => setSelection({ kind: "session" })}
+      />
+    );
+  }
+
+  return <SessionDetailsPane session={session} status={status} isExpired={isExpired} />;
+}
+
+function SessionDetailsPane({
   session,
   status,
   isExpired,

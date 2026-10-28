@@ -9,6 +9,7 @@ import { useProject } from "~/hooks/useProject";
 import type { RunTraceStart } from "~/presenters/v3/TraceChunkPresenter.server";
 import { v3RunTraceChunkPath } from "~/utils/pathBuilder";
 import { isFinalRunStatus } from "~/v3/taskStatus";
+import type { RunPanelData } from "./sessionPanelStore";
 import type { SessionRunLoad, SessionRunLoadOutcome } from "./sessionRunLoads";
 import type { SessionTraceRun } from "./sessionTraceTypes";
 
@@ -28,15 +29,18 @@ type RunTraceSourceProps = {
   run: SessionTraceRun & { status: TaskRunStatus };
   load: SessionRunLoad;
   live: boolean;
+  /** A deep-linked span: the first chunk includes it and its parents even past the first page. */
+  selectedSpanId?: string;
   onSettle: (runFriendlyId: string, loadId: number, outcome: SessionRunLoadOutcome) => void;
   onSnapshot: (runFriendlyId: string, snapshot: RunTraceSnapshot | undefined) => void;
   onSpansChanged: (runFriendlyId: string, hasSpans: boolean) => void;
+  onPanelData: (runFriendlyId: string, data: RunPanelData | undefined) => void;
   onRunDataStale: () => void;
 };
 
 /** Loads one run's trace for the session tree. Renders nothing. */
 export function RunTraceSource(props: RunTraceSourceProps) {
-  const { run, load, onSettle } = props;
+  const { run, load, selectedSpanId, onSettle } = props;
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -49,7 +53,7 @@ export function RunTraceSource(props: RunTraceSourceProps) {
   useEffect(() => {
     if (fetchLoadId === undefined) return;
     const controller = new AbortController();
-    void fetchTraceStart(chunkPath, controller.signal).then((result) => {
+    void fetchTraceStart(chunkPath, selectedSpanId, controller.signal).then((result) => {
       if (controller.signal.aborted) return;
       if (result.kind === "progressive" || result.kind === "empty") {
         // Same JSON payload the run page loader sends; the hook reads its dates as strings.
@@ -59,7 +63,7 @@ export function RunTraceSource(props: RunTraceSourceProps) {
       onSettle(run.friendlyId, fetchLoadId, toOutcome(result));
     });
     return () => controller.abort();
-  }, [fetchLoadId, chunkPath, run.friendlyId, onSettle]);
+  }, [fetchLoadId, chunkPath, selectedSpanId, run.friendlyId, onSettle]);
 
   if (!started) return null;
   return <RunTraceLive {...props} started={started} />;
@@ -73,6 +77,7 @@ function RunTraceLive({
   onSettle,
   onSnapshot,
   onSpansChanged,
+  onPanelData,
   onRunDataStale,
 }: RunTraceSourceProps & { started: StartedTrace }) {
   const trace = useRunTrace({
@@ -101,6 +106,16 @@ function RunTraceLive({
   }, [run.friendlyId, trace.events, trace.duration, trace.rootStartedAt, onSnapshot]);
 
   useEffect(() => () => onSnapshot(run.friendlyId, undefined), [run.friendlyId, onSnapshot]);
+
+  const { inspectorRefreshKey, overridesBySpanId, linkedRunIdBySpanId } = trace;
+  useEffect(() => {
+    onPanelData(run.friendlyId, {
+      refreshKey: inspectorRefreshKey,
+      overridesBySpanId,
+      linkedRunIdBySpanId,
+    });
+  }, [run.friendlyId, inspectorRefreshKey, overridesBySpanId, linkedRunIdBySpanId, onPanelData]);
+  useEffect(() => () => onPanelData(run.friendlyId, undefined), [run.friendlyId, onPanelData]);
 
   // The run's root span is hidden, so only spans below it count as on screen.
   const hasSpans = trace.events.some((event) => event.level > 0);
@@ -139,9 +154,14 @@ export function settledOutcome(
 
 type TraceStartResult = RunTraceStart | { kind: "failed"; message: string };
 
-async function fetchTraceStart(chunkPath: string, signal: AbortSignal): Promise<TraceStartResult> {
+async function fetchTraceStart(
+  chunkPath: string,
+  selectedSpanId: string | undefined,
+  signal: AbortSignal
+): Promise<TraceStartResult> {
   const url = new URL(chunkPath, window.location.origin);
   url.searchParams.set("start", "1");
+  if (selectedSpanId) url.searchParams.set("span", selectedSpanId);
 
   const [error, response] = await tryCatch(fetch(url, { signal }));
   if (error) return { kind: "failed", message: "Couldn't load this run's trace." };

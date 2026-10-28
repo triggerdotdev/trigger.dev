@@ -33,7 +33,12 @@ import type {
   SessionTraceSpan,
 } from "~/components/sessions/v1/trace/sessionTraceTypes";
 import { settledOutcome } from "~/components/sessions/v1/trace/RunTraceSource";
-import { mergeSessionRunPage } from "~/components/sessions/v1/trace/useSessionRunPages";
+import { highlightedNodeId } from "~/components/sessions/v1/trace/sessionTraceSelection";
+import {
+  earlierRunsCursor,
+  holeCursor,
+  mergeSessionRunPage,
+} from "~/components/sessions/v1/trace/useSessionRunPages";
 import type { SessionRunsPage } from "~/presenters/v3/SessionRunsPresenter.server";
 import {
   resolveSessionPageView,
@@ -681,6 +686,11 @@ describe("runReasonLabel", () => {
 });
 
 describe("mergeSessionRunPage", () => {
+  // Inclusive, in the given direction: range(3, 1) is [3, 2, 1].
+  const range = (from: number, to: number) => {
+    const step = from <= to ? 1 : -1;
+    return Array.from({ length: Math.abs(to - from) + 1 }, (_, i) => from + i * step);
+  };
   const item = (number: number, status: SessionTraceRun["status"] = "COMPLETED_SUCCESSFULLY") => ({
     ...run(number, { status }),
     triggeredAt: iso(number * 6 * MINUTE),
@@ -700,12 +710,12 @@ describe("mergeSessionRunPage", () => {
 
   it("keeps runs loaded earlier when the newest page moves past them", () => {
     let loaded = mergeSessionRunPage(undefined, page([25, 24, 23], { next: "c1" }), "newest");
-    loaded = mergeSessionRunPage(loaded, page([22, 21], { next: "c2", totalCount: 25 }), "earlier");
+    loaded = mergeSessionRunPage(loaded, page([22, 21], { next: "c2", totalCount: 25 }), "older");
     loaded = mergeSessionRunPage(loaded, page([26, 25, 24], { next: "c3" }), "newest");
 
     expect(numbers(loaded)).toEqual([21, 22, 23, 24, 25, 26]);
     expect(loaded.totalCount).toBe(26);
-    expect(loaded.earlierCursor).toBe("c2");
+    expect(earlierRunsCursor(loaded)).toBe("c2");
   });
 
   it("replaces a run with its newer read", () => {
@@ -726,9 +736,88 @@ describe("mergeSessionRunPage", () => {
 
   it("takes the earlier cursor from the first page, then from each earlier page", () => {
     let loaded = mergeSessionRunPage(undefined, page([5, 4], { next: "a" }), "newest");
-    expect(loaded.earlierCursor).toBe("a");
-    loaded = mergeSessionRunPage(loaded, page([3, 2, 1], { totalCount: 5 }), "earlier");
-    expect(loaded.earlierCursor).toBeUndefined();
+    expect(earlierRunsCursor(loaded)).toBe("a");
+    loaded = mergeSessionRunPage(loaded, page([3, 2, 1], { totalCount: 5 }), "older");
+    expect(earlierRunsCursor(loaded)).toBeUndefined();
+  });
+
+  // Run numbers between two loaded runs that aren't loaded, as the tree shows them.
+  const holes = (loaded: ReturnType<typeof mergeSessionRunPage>) => {
+    const loadedNumbers = numbers(loaded);
+    return loadedNumbers.slice(1).flatMap((n, i) => {
+      const missing = n - loadedNumbers[i] - 1;
+      return missing > 0 ? [{ newer: `run_${n}`, missing }] : [];
+    });
+  };
+
+  it("loads earlier from a deep-linked page and fills the hole from the newest page's side", () => {
+    // Newest 31-50, plus the page ending at run 3.
+    let loaded = mergeSessionRunPage(undefined, page(range(50, 31), { next: "below31" }), "newest");
+    loaded = mergeSessionRunPage(loaded, page([3, 2, 1], { totalCount: 50 }), "older");
+
+    expect(earlierRunsCursor(loaded)).toBeUndefined();
+    expect(holes(loaded)).toEqual([{ newer: "run_31", missing: 27 }]);
+    expect(holeCursor(loaded, "run_31")).toBe("below31");
+
+    loaded = mergeSessionRunPage(
+      loaded,
+      page(range(30, 4), { next: "below4", totalCount: 50 }),
+      "older"
+    );
+    expect(holes(loaded)).toEqual([]);
+    expect(numbers(loaded)).toEqual(range(1, 50));
+    expect(loaded.totalCount).toBe(50);
+  });
+
+  it("fills a big hole over several reads", () => {
+    let loaded = mergeSessionRunPage(undefined, page(range(250, 231), { next: "c231" }), "newest");
+    loaded = mergeSessionRunPage(loaded, page(range(20, 1), { totalCount: 250 }), "older");
+    expect(holes(loaded)).toEqual([{ newer: "run_231", missing: 210 }]);
+
+    loaded = mergeSessionRunPage(
+      loaded,
+      page(range(230, 131), { next: "c131", totalCount: 250 }),
+      "older"
+    );
+    expect(holes(loaded)).toEqual([{ newer: "run_131", missing: 110 }]);
+    expect(holeCursor(loaded, "run_131")).toBe("c131");
+
+    loaded = mergeSessionRunPage(
+      loaded,
+      page(range(130, 31), { next: "c31", totalCount: 250 }),
+      "older"
+    );
+    loaded = mergeSessionRunPage(
+      loaded,
+      page(range(30, 21), { next: "c21", totalCount: 250 }),
+      "older"
+    );
+    expect(holes(loaded)).toEqual([]);
+  });
+
+  it("keeps the cursor of a poll that skipped past the loaded runs", () => {
+    let loaded = mergeSessionRunPage(undefined, page(range(50, 31), { next: "c31" }), "newest");
+    // 45 new runs between two polls: the newest page is now 76-95.
+    loaded = mergeSessionRunPage(loaded, page(range(95, 76), { next: "c76" }), "newest");
+
+    expect(loaded.totalCount).toBe(95);
+    expect(holes(loaded)).toEqual([{ newer: "run_76", missing: 25 }]);
+    expect(holeCursor(loaded, "run_76")).toBe("c76");
+    expect(earlierRunsCursor(loaded)).toBe("c31");
+  });
+
+  it("dedupes runs read twice by overlapping pages", () => {
+    let loaded = mergeSessionRunPage(undefined, page(range(50, 31), { next: "c31" }), "newest");
+    // The deep-linked run was in the newest page after all.
+    loaded = mergeSessionRunPage(
+      loaded,
+      page(range(40, 21), { next: "c21", totalCount: 50 }),
+      "older"
+    );
+
+    expect(loaded.runsById.size).toBe(30);
+    expect(numbers(loaded)).toEqual(range(21, 50));
+    expect(earlierRunsCursor(loaded)).toBe("c21");
   });
 });
 
@@ -937,5 +1026,65 @@ describe("sessionRunLoadsReducer: what loads when", () => {
     expect(run(loads, { type: "spansChanged", runFriendlyId: "run_1", hasSpans: false })).toBe(
       loads
     );
+  });
+});
+
+describe("sessionRunLoadsReducer: deep links", () => {
+  const deepLinked = (id: string): SessionRunLoadsAction => ({
+    type: "deepLinked",
+    runFriendlyId: id,
+  });
+  const runsChanged = (withStatus: string[], newestRunId?: string): SessionRunLoadsAction => ({
+    type: "runsChanged",
+    withStatus,
+    newestRunId,
+  });
+
+  it("expands the linked run and loads it ahead of the live run", () => {
+    let loads = sessionRunLoadsReducer(createSessionRunLoads(["run_50"]), deepLinked("run_3"));
+    expect([...loads.expanded]).toEqual(["run_3", "run_50"]);
+
+    loads = sessionRunLoadsReducer(loads, runsChanged(["run_3", "run_50"], "run_50"));
+    expect(runLoad(loads, "run_3")).toEqual({ state: "loading", loadId: 1 });
+    expect(runLoad(loads, "run_50")).toEqual({ state: "loading", loadId: 2 });
+  });
+
+  it("moves a queued linked run to the front", () => {
+    const ids = ["run_1", "run_2", "run_3", "run_4", "run_5"];
+    let loads = sessionRunLoadsReducer(createSessionRunLoads(ids), runsChanged(ids, "run_5"));
+    expect(loads.queue).toEqual(["run_4", "run_5"]);
+
+    loads = sessionRunLoadsReducer(loads, deepLinked("run_5"));
+    expect(loads.queue).toEqual(["run_5", "run_4"]);
+  });
+
+  it("waits for the linked run to reach the run store", () => {
+    const loads = sessionRunLoadsReducer(createSessionRunLoads(), deepLinked("run_3"));
+    expect(runLoad(loads, "run_3").state).toBe("idle");
+    expect(runLoad(sessionRunLoadsReducer(loads, runsChanged(["run_3"])), "run_3").state).toBe(
+      "loading"
+    );
+  });
+});
+
+describe("highlightedNodeId", () => {
+  const span = { kind: "span", runFriendlyId: "run_a", spanId: "s1" } as const;
+  const inTree = (ids: string[]) => (id: string) => ids.includes(id);
+
+  it("highlights the selected row when the tree has it", () => {
+    expect(highlightedNodeId({ kind: "session" }, inTree(["session"]))).toBe("session");
+    expect(highlightedNodeId({ kind: "run", runFriendlyId: "run_a" }, inTree(["run:run_a"]))).toBe(
+      "run:run_a"
+    );
+    expect(highlightedNodeId(span, inTree(["run:run_a", "run_a:s1"]))).toBe("run_a:s1");
+  });
+
+  it("highlights the run while its span isn't in the tree", () => {
+    expect(highlightedNodeId(span, inTree(["run:run_a"]))).toBe("run:run_a");
+  });
+
+  it("highlights nothing for a run that isn't loaded", () => {
+    expect(highlightedNodeId(span, inTree([]))).toBeUndefined();
+    expect(highlightedNodeId({ kind: "run", runFriendlyId: "run_b" }, inTree([]))).toBeUndefined();
   });
 });

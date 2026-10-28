@@ -14,7 +14,7 @@ export type SessionTreeRow<TSpanData> =
 
 type SessionTreeNode<TSpanData> = FlatTreeItem<SessionTreeRow<TSpanData>>;
 
-const SESSION_NODE_ID = "session";
+export const SESSION_NODE_ID = "session";
 const LOAD_EARLIER_NODE_ID = "loadEarlier";
 
 export function runNodeId(runFriendlyId: string) {

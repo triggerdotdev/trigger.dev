@@ -31,15 +31,22 @@ import { TreeView, useTree } from "~/components/primitives/TreeView/TreeView";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { SpanTreeRow } from "~/components/runs/v3/trace/TasksTreeView";
+import { KeyboardShortcuts } from "~/components/runs/v3/trace/TraceShortcuts";
 import type { TraceTimelineScale } from "~/components/runs/v3/trace/timelineScale";
 import type { TraceEvent } from "~/components/runs/v3/trace/types";
 import { useInitialDimensions } from "~/hooks/useInitialDimensions";
 import { useInterval } from "~/hooks/useInterval";
 import { cn } from "~/utils/cn";
 import { isFinalRunStatus } from "~/v3/taskStatus";
-import { buildSessionTree, isSelectableRow, type SessionTreeRow } from "./buildSessionTree";
+import {
+  buildSessionTree,
+  isSelectableRow,
+  runNodeId,
+  type SessionTreeRow,
+} from "./buildSessionTree";
 import { RunTraceSource, type RunTraceSnapshot } from "./RunTraceSource";
 import { SessionTimelineRow } from "./SessionTimelineRow";
+import { type RunPanelData, useSessionPanelStore } from "./sessionPanelStore";
 import {
   createSessionRunLoads,
   runLoad,
@@ -56,11 +63,26 @@ import {
   runDuration,
   runTimelineScale,
 } from "./sessionRunTiming";
+import {
+  highlightedNodeId,
+  isSameSelection,
+  rowSelection,
+  selectionNodeId,
+  type SessionTraceSelection,
+} from "./sessionTraceSelection";
 import type { SessionTraceRun } from "./sessionTraceTypes";
 import { SESSION_TREE_AUTOSAVE_ID, runReasonLabel } from "./sessionTraceView";
-import { RUNS_PAGE_SIZE, useSessionRunPages } from "./useSessionRunPages";
+import {
+  RUNS_FILL_MAX,
+  RUNS_PAGE_SIZE,
+  type LoadedRuns,
+  useSessionRunPages,
+} from "./useSessionRunPages";
+import { useSessionTraceSelection } from "./useSessionTraceSelection";
 
 const ROW_HEIGHT_PX = 32;
+// Like the run page: arrowing through rows doesn't write the URL on every step.
+const SELECTION_URL_DEBOUNCE_MS = 250;
 
 // Load states whose trace source stays mounted: collapsing a run keeps its spans.
 // A failed run stays mounted too, so the spans it did load stay on screen.
@@ -81,7 +103,23 @@ export function SessionTraceTab({
   runsPath: string;
   treeSnapshot: ResizableSnapshot | undefined;
 }) {
-  const pages = useSessionRunPages(runsPath);
+  // A run in the URL when the tab opens is a deep link: its page is read with the newest one.
+  const { selection, setSelection } = useSessionTraceSelection();
+  const [deepLinkRunId] = useState(() =>
+    selection.kind === "session" ? undefined : selection.runFriendlyId
+  );
+  const pages = useSessionRunPages(runsPath, deepLinkRunId);
+
+  // A linked run that isn't in the session: drop it and say so until something is selected.
+  const [runNotFound, setRunNotFound] = useState(false);
+  const handledNotFound = useRef(false);
+  useEffect(() => {
+    if (pages.deepLink !== "notFound" || handledNotFound.current) return;
+    handledNotFound.current = true;
+    setRunNotFound(true);
+    setSelection({ kind: "session" });
+  }, [pages.deepLink, setSelection]);
+  const showRunNotFound = runNotFound && selection.kind === "session";
 
   // New runs: re-read the newest page while the tab is visible (focus also refreshes it). It
   // lives here, not in the tree, so a session with no runs yet still picks up its first one.
@@ -129,13 +167,19 @@ export function SessionTraceTab({
   return (
     <SessionTraceTree
       runs={pages.runs}
+      view={pages.view}
       totalCount={pages.totalCount}
       canLoadEarlier={pages.canLoadEarlier}
       loadingEarlier={pages.loadingEarlier}
       earlierError={pages.earlierError}
       onLoadEarlier={pages.loadEarlier}
+      olderLoadBusy={pages.olderLoadBusy}
+      fillingRunFriendlyId={pages.fillingRunFriendlyId}
+      fillFailedRunFriendlyId={pages.fillFailedRunFriendlyId}
+      onFillHole={pages.fillHole}
       onRunDataStale={pages.refreshNewest}
       treeSnapshot={treeSnapshot}
+      notice={showRunNotFound ? "That run isn't in this session." : undefined}
     />
   );
 }
@@ -145,33 +189,71 @@ type Row = SessionTreeRow<SpanData>;
 
 function SessionTraceTree({
   runs,
+  view,
   totalCount,
   canLoadEarlier,
   loadingEarlier,
   earlierError,
   onLoadEarlier,
+  olderLoadBusy,
+  fillingRunFriendlyId,
+  fillFailedRunFriendlyId,
+  onFillHole,
   onRunDataStale,
   treeSnapshot,
+  notice,
 }: {
   runs: SessionTraceRun[];
+  view: LoadedRuns["view"];
   totalCount: number;
   canLoadEarlier: boolean;
   loadingEarlier: boolean;
   earlierError: string | undefined;
   onLoadEarlier: () => void;
+  olderLoadBusy: boolean;
+  fillingRunFriendlyId: string | undefined;
+  fillFailedRunFriendlyId: string | undefined;
+  onFillHole: (newerRunFriendlyId: string, missing: number) => void;
   onRunDataStale: () => void;
   treeSnapshot: ResizableSnapshot | undefined;
+  notice: string | undefined;
 }) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const parentRef = useRef<HTMLDivElement>(null);
   const treeScrollRef = useRef<HTMLDivElement>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(0);
 
+  // The URL holds the selection. A click or arrow key sets the intended selection at once and
+  // writes the URL after a pause. Any URL selection change, ours catching up or one from
+  // elsewhere (closing a panel), clears it, so the URL wins.
+  const { selection, setSelection } = useSessionTraceSelection();
+  const selectedNodeId = selectionNodeId(selection);
+  const [local, setLocal] = useState<SessionTraceSelection>();
+  const [localFor, setLocalFor] = useState(selectedNodeId);
+  if (localFor !== selectedNodeId) {
+    setLocalFor(selectedNodeId);
+    setLocal(undefined);
+  }
+  const intended = local ?? selection;
+
   // Captured once: runs added later (earlier pages, new runs) start collapsed.
   const [openRunId] = useState(() => initiallyExpandedRunFriendlyId(runs, totalCount));
-  const [loads, dispatchLoads] = useReducer(sessionRunLoadsReducer, openRunId, (id) =>
-    createSessionRunLoads(id ? [id] : [])
-  );
+  // A selection in the URL at mount whose run loaded: open there instead of at the bottom.
+  const [deepLink] = useState(() => {
+    if (selection.kind === "session") return undefined;
+    if (!runs.some((run) => run.friendlyId === selection.runFriendlyId)) return undefined;
+    return selection;
+  });
+  const [loads, dispatchLoads] = useReducer(sessionRunLoadsReducer, undefined, () => {
+    const initial = createSessionRunLoads(openRunId ? [openRunId] : []);
+    return deepLink
+      ? sessionRunLoadsReducer(initial, {
+          type: "deepLinked",
+          runFriendlyId: deepLink.runFriendlyId,
+        })
+      : initial;
+  });
   const [snapshots, setSnapshots] = useState<Record<string, RunTraceSnapshot>>({});
   const onSnapshot = useCallback(
     (runFriendlyId: string, snapshot: RunTraceSnapshot | undefined) =>
@@ -192,6 +274,17 @@ function SessionTraceTree({
     (runFriendlyId: string, hasSpans: boolean) =>
       dispatchLoads({ type: "spansChanged", runFriendlyId, hasSpans }),
     []
+  );
+
+  // The side panel is a sibling: it reads run span ids and live panel data from the store.
+  const panelStore = useSessionPanelStore();
+  useEffect(() => {
+    panelStore?.setRunSpanIds(view);
+  }, [panelStore, view]);
+  const onPanelData = useCallback(
+    (runFriendlyId: string, data: RunPanelData | undefined) =>
+      panelStore?.setRunData(runFriendlyId, data),
+    [panelStore]
   );
 
   const spansByRun = useMemo(
@@ -233,7 +326,16 @@ function SessionTraceTree({
   const scaleOfRun = (runFriendlyId: string) =>
     runFriendlyId === liveRunId ? liveScale : settledScales.get(runFriendlyId);
 
+  const highlightedId = highlightedNodeId(intended, (id) => rowsById.has(id));
+  const pendingUrlWrite = local && !isSameSelection(local, selection) ? local : undefined;
+  useEffect(() => {
+    if (!pendingUrlWrite) return;
+    const timer = setTimeout(() => setSelection(pendingUrlWrite), SELECTION_URL_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [pendingUrlWrite, setSelection]);
+
   const {
+    selected,
     nodes,
     getTreeProps,
     getNodeProps,
@@ -241,15 +343,31 @@ function SessionTraceTree({
     toggleExpandNode,
     expandNode,
     collapseNode,
+    expandLevel,
+    collapseLevel,
+    scrollToNode,
     virtualizer,
   } = useTree<Row, undefined>({
     tree,
     parentRef,
     estimatedRowHeight: () => ROW_HEIGHT_PX,
+    // Arrow keys, Home and End skip the gap, "not loaded" and "Load earlier" rows.
+    canSelect: (node) => isSelectableRow(node.data),
     isCollapsedByDefault: (node) =>
-      node.data.kind === "run" && node.data.run.friendlyId !== openRunId,
+      node.data.kind === "run" &&
+      node.data.run.friendlyId !== openRunId &&
+      node.data.run.friendlyId !== deepLink?.runFriendlyId,
     canExpand: (node) => node.data.kind === "run" || node.hasChildren,
     structureKey,
+    // Derived, never set by code: a span not in the tree yet highlights its run.
+    selectedId: highlightedId,
+    // Changes that match the highlight come from the prop; only the user's become intent.
+    onSelectedIdChanged: (id) => {
+      if (!id || id === highlightedId) return;
+      const row = rowsById.get(id);
+      const next = row ? rowSelection(row) : undefined;
+      if (next) setLocal(next);
+    },
     onExpandedChange: (id, expanded) => {
       const row = rowsById.get(id);
       if (row?.kind === "run") {
@@ -261,8 +379,82 @@ function SessionTraceTree({
   // Visible rows: the tree takes a new list in an effect, so scroll fixes wait for this to change.
   const visibleRowCount = virtualizer.options.count;
 
+  // Deep link: reveal the linked row (open its parents, centre it) the first time it's in the
+  // tree. It never selects, so it can't override a row picked while the linked run loads.
+  const pendingScroll = useRef<string | undefined>(
+    deepLink ? runNodeId(deepLink.runFriendlyId) : undefined
+  );
+  // Built once per tree, and only while a deep link needs it.
+  const parentByIdCache = useRef<{
+    tree: typeof tree;
+    parentById: Map<string, string | undefined>;
+  }>();
+  const ancestorsOf = useCallback(
+    (id: string) => {
+      let cached = parentByIdCache.current;
+      if (cached?.tree !== tree) {
+        cached = { tree, parentById: new Map(tree.map((node) => [node.id, node.parentId])) };
+        parentByIdCache.current = cached;
+      }
+      const { parentById } = cached;
+      const ancestors: string[] = [];
+      for (let parent = parentById.get(id); parent; parent = parentById.get(parent)) {
+        ancestors.push(parent);
+      }
+      return ancestors;
+    },
+    [tree]
+  );
+  const revealedDeepLink = useRef(deepLink === undefined);
+  const deepLinkStillIntended = deepLink !== undefined && isSameSelection(intended, deepLink);
+  useLayoutEffect(() => {
+    if (!deepLink || revealedDeepLink.current) return;
+    if (!deepLinkStillIntended) {
+      revealedDeepLink.current = true;
+      return;
+    }
+    const target = selectionNodeId(deepLink);
+    if (!(target in nodes)) return;
+    revealedDeepLink.current = true;
+    for (const ancestor of ancestorsOf(target)) {
+      if (!nodes[ancestor]?.expanded) expandNode(ancestor, false);
+    }
+    pendingScroll.current = target;
+  }, [deepLink, deepLinkStillIntended, nodes, ancestorsOf, expandNode]);
+  // Scrolling, a click or a key in the tab means the user has moved on: stop revealing.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || revealedDeepLink.current) return;
+    const stopRevealing = () => {
+      revealedDeepLink.current = true;
+      pendingScroll.current = undefined;
+    };
+    const events = ["wheel", "touchstart", "pointerdown", "keydown"] as const;
+    for (const event of events) {
+      container.addEventListener(event, stopRevealing, { passive: true, once: true });
+    }
+    return () => {
+      for (const event of events) container.removeEventListener(event, stopRevealing);
+    };
+  }, []);
+  useLayoutEffect(() => {
+    const id = pendingScroll.current;
+    if (!id || !(id in nodes)) return;
+    if (ancestorsOf(id).some((ancestor) => !nodes[ancestor]?.expanded)) return;
+    pendingScroll.current = undefined;
+    scrollToNode(id, "center");
+  }, [nodes, visibleRowCount, ancestorsOf, scrollToNode]);
+
+  // The side panel opens a span once the tree has it, so a span route miss can't leave the page.
+  // Read from the intended selection, so a clicked span is confirmed before its URL write.
+  const intendedNodeId = selectionNodeId(intended);
+  useEffect(() => {
+    if (intended.kind !== "span" || !rowsById.has(intendedNodeId)) return;
+    panelStore?.confirmSpan(intended.runFriendlyId, intended.spanId);
+  }, [intended, intendedNodeId, rowsById, panelStore]);
+
   // Open at the latest run, like the conversation.
-  const openedAtLatest = useRef(false);
+  const openedAtLatest = useRef(deepLink !== undefined);
   useLayoutEffect(() => {
     if (openedAtLatest.current || visibleRowCount === 0) return;
     openedAtLatest.current = true;
@@ -294,7 +486,7 @@ function SessionTraceTree({
 
   // Follow the newest run's new spans, but only if the view was at the bottom when they arrived.
   // The tree takes the new rows a render later, so scroll once its node state has changed.
-  const atBottom = useRef(true);
+  const atBottom = useRef(deepLink === undefined);
   const newestSpanCount = newestRunId ? (snapshots[newestRunId]?.events.length ?? 0) : 0;
   const pendingFollow = useRef<{ nodes: typeof nodes } | null>(null);
   const latestNodes = useRef(nodes);
@@ -315,18 +507,69 @@ function SessionTraceTree({
       atBottom.current && !earlierLoad.current ? { nodes: latestNodes.current } : null;
   }, [newestSpanCount]);
 
-  const runNodeIds = tree.filter((node) => node.data.kind === "run").map((node) => node.id);
-  const allExpanded = runNodeIds.every((id) => nodes[id]?.expanded);
-  const toggleAll = () => {
-    for (const id of runNodeIds) {
-      if (allExpanded) collapseNode(id);
-      else expandNode(id, false);
+  // Run rows always expand and collapse one by one, so the load reducer hears about each.
+  const runNodes = tree.filter((node) => node.data.kind === "run");
+  const allExpanded = runNodes.every((node) => nodes[node.id]?.expanded);
+  const expandAllRuns = () => {
+    for (const node of runNodes) if (!nodes[node.id]?.expanded) expandNode(node.id, false);
+  };
+  const collapseAllRuns = () => {
+    for (const node of runNodes) if (nodes[node.id]?.expanded) collapseNode(node.id);
+  };
+  const toggleAll = () => (allExpanded ? collapseAllRuns() : expandAllRuns());
+
+  // Level keys never start a load: a run only has children once its spans are in, so the
+  // tree's level actions only reach loaded runs. Those are opened first through expandNode.
+  const expandLoadedToLevel = (level: number) => {
+    for (const node of runNodes) {
+      if (node.hasChildren && !nodes[node.id]?.expanded) expandNode(node.id, false);
     }
+    expandLevel(level);
+  };
+  const collapseToLevel = (level: number) =>
+    level <= 1 ? collapseAllRuns() : collapseLevel(level);
+  const toggleLevel = (level: number) => {
+    if (level <= 1) return collapseAllRuns();
+    const first = tree.find((node) => node.level === level && node.hasChildren);
+    if (!first) return;
+    const state = nodes[first.id];
+    if (state?.expanded && state.visible) collapseLevel(level);
+    else expandLoadedToLevel(level);
   };
 
+  // Escape goes back to the session; Alt+←/→ use the level rules above.
+  const treeKeyDown = getTreeProps().onKeyDown;
+  const onTreeKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      selectNode(selectionNodeId({ kind: "session" }));
+      return;
+    }
+    if (event.altKey && (event.key === "ArrowRight" || event.key === "ArrowLeft")) {
+      event.preventDefault();
+      const level = selected ? tree.find((node) => node.id === selected)?.level : undefined;
+      if (level === undefined) return;
+      if (event.key === "ArrowRight") expandLoadedToLevel(level);
+      else collapseToLevel(level);
+      return;
+    }
+    treeKeyDown?.(event);
+  };
+
+  // Keyboard focus stays on the tree, not the row: a selected row loses its tabIndex when the
+  // selection moves on, which would drop focus to the page.
   const selectRow = (id: string) => {
+    parentRef.current?.focus({ preventScroll: true });
     const row = rowsById.get(id);
-    if (row && isSelectableRow(row)) selectNode(id);
+    const next = row ? rowSelection(row) : undefined;
+    if (!next) return;
+    // The run row standing in for a span that isn't in the tree is already highlighted, so the
+    // tree sees no change: clicking it picks the run.
+    if (id === highlightedId && id !== intendedNodeId) {
+      setLocal(next);
+      return;
+    }
+    selectNode(id);
   };
   const scaleForRow = (row: Row) =>
     row.kind === "run"
@@ -336,7 +579,10 @@ function SessionTraceTree({
         : undefined;
 
   return (
-    <div className="grid h-full grid-rows-[2.25rem_1fr_2.5rem] overflow-hidden bg-background-bright">
+    <div
+      ref={containerRef}
+      className="grid h-full grid-rows-[2.25rem_1fr_2.5rem] overflow-hidden bg-background-bright"
+    >
       {runs.map((run) => {
         const load = runLoad(loads, run.friendlyId);
         if (!run.status || !MOUNTED_LOAD_STATES.has(load.state)) return null;
@@ -347,14 +593,21 @@ function SessionTraceTree({
             run={{ ...run, status: run.status }}
             load={load}
             live={run.friendlyId === newestRunId}
+            selectedSpanId={
+              deepLink?.kind === "span" && deepLink.runFriendlyId === run.friendlyId
+                ? deepLink.spanId
+                : undefined
+            }
             onSettle={onSettle}
             onSnapshot={onSnapshot}
             onSpansChanged={onSpansChanged}
+            onPanelData={onPanelData}
             onRunDataStale={onRunDataStale}
           />
         );
       })}
       <div className="flex items-center justify-end gap-2 border-b border-grid-bright px-3">
+        {notice && <span className="mr-auto truncate text-xs text-text-dimmed">{notice}</span>}
         <Button variant="tertiary/small" onClick={toggleAll}>
           {/* Both labels share one cell so the button keeps the wider one's width. */}
           <span className="inline-grid">
@@ -376,8 +629,7 @@ function SessionTraceTree({
               staticRowHeight
               tree={tree}
               nodes={nodes}
-              // No keyboard navigation until selection lands: keys would stop on label rows.
-              getTreeProps={() => ({ ...getTreeProps(), onKeyDown: undefined })}
+              getTreeProps={() => ({ ...getTreeProps(), onKeyDown: onTreeKeyDown })}
               getNodeProps={(id) => ({ ...getNodeProps(id), onClick: () => selectRow(id) })}
               parentClassName="pl-3"
               renderNode={({ node, state }) =>
@@ -408,6 +660,10 @@ function SessionTraceTree({
                     loadingEarlier={loadingEarlier}
                     earlierError={earlierError}
                     onLoadEarlier={loadEarlier}
+                    olderLoadBusy={olderLoadBusy}
+                    fillingRunFriendlyId={fillingRunFriendlyId}
+                    fillFailedRunFriendlyId={fillFailedRunFriendlyId}
+                    onFillHole={onFillHole}
                   />
                 )
               }
@@ -455,7 +711,15 @@ function SessionTraceTree({
           </SessionTimelineColumn>
         </ResizablePanel>
       </ResizablePanelGroup>
-      <div className="flex items-center justify-end gap-2 border-t border-grid-dimmed px-4">
+      <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-4">
+        <div className="flex items-center gap-4 overflow-hidden">
+          <KeyboardShortcuts
+            enabled
+            onExpandAll={expandAllRuns}
+            onCollapseAll={collapseAllRuns}
+            onToggleLevel={toggleLevel}
+          />
+        </div>
         <Slider
           variant="tertiary"
           className="w-20"
@@ -522,6 +786,10 @@ function SessionTreeRowView({
   loadingEarlier,
   earlierError,
   onLoadEarlier,
+  olderLoadBusy,
+  fillingRunFriendlyId,
+  fillFailedRunFriendlyId,
+  onFillHole,
 }: {
   row: Row;
   level: number;
@@ -535,6 +803,10 @@ function SessionTreeRowView({
   loadingEarlier: boolean;
   earlierError: string | undefined;
   onLoadEarlier: () => void;
+  olderLoadBusy: boolean;
+  fillingRunFriendlyId: string | undefined;
+  fillFailedRunFriendlyId: string | undefined;
+  onFillHole: (newerRunFriendlyId: string, missing: number) => void;
 }) {
   switch (row.kind) {
     case "loadEarlier": {
@@ -562,14 +834,35 @@ function SessionTreeRowView({
         </RowFrame>
       );
     }
-    case "notLoaded":
+    case "notLoaded": {
+      // Filled from the newer side, so the runs appear under this row and it stays in place.
+      const count = Math.min(row.count, RUNS_FILL_MAX);
+      const filling = fillingRunFriendlyId === row.newerRunFriendlyId;
       return (
         <RowFrame level={level}>
-          <span className="text-xs text-text-dimmed">
-            {row.count} run{row.count === 1 ? "" : "s"} not loaded
-          </span>
+          <Button
+            variant="secondary/small"
+            disabled={olderLoadBusy}
+            LeadingIcon={filling ? Spinner : undefined}
+            onClick={(event) => {
+              event.stopPropagation();
+              onFillHole(row.newerRunFriendlyId, row.count);
+            }}
+          >
+            {filling
+              ? "Loading runs…"
+              : count === row.count
+                ? `Load ${count} run${count === 1 ? "" : "s"}`
+                : `Load ${count} of ${row.count}`}
+          </Button>
+          {fillFailedRunFriendlyId === row.newerRunFriendlyId ? (
+            <span className="text-xs text-error">Couldn't load these runs. Try again.</span>
+          ) : (
+            <span className="text-xs text-text-faint">{row.count} not loaded</span>
+          )}
         </RowFrame>
       );
+    }
     case "gap":
       return (
         <RowFrame level={level}>

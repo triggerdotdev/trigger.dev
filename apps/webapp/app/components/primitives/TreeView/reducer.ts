@@ -40,6 +40,11 @@ type WithScrollToNode = {
   scrollToNodeFn: ScrollToNodeFn;
 };
 
+/** Rows the visible-node moves can land on; every row when unset. */
+type CanSelectNode = (node: FlatTree<any>[number]) => boolean;
+
+type WithCanSelect = { canSelect?: CanSelectNode };
+
 type UpdateTreeAction = {
   type: "UPDATE_TREE";
   payload: {
@@ -132,27 +137,27 @@ type ToggleExpandLevelAction = {
 
 type SelectFirstVisibleNodeAction = {
   type: "SELECT_FIRST_VISIBLE_NODE";
-  payload: {} & WithScrollToNode;
+  payload: {} & WithScrollToNode & WithCanSelect;
 };
 
 type SelectLastVisibleNodeAction = {
   type: "SELECT_LAST_VISIBLE_NODE";
-  payload: {} & WithScrollToNode;
+  payload: {} & WithScrollToNode & WithCanSelect;
 };
 
 type SelectNextVisibleNodeAction = {
   type: "SELECT_NEXT_VISIBLE_NODE";
-  payload: {} & WithScrollToNode;
+  payload: {} & WithScrollToNode & WithCanSelect;
 };
 
 type SelectPreviousVisibleNodeAction = {
   type: "SELECT_PREVIOUS_VISIBLE_NODE";
-  payload: {} & WithScrollToNode;
+  payload: {} & WithScrollToNode & WithCanSelect;
 };
 
 type SelectParentNodeAction = {
   type: "SELECT_PARENT_NODE";
-  payload: {} & WithScrollToNode;
+  payload: {} & WithScrollToNode & WithCanSelect;
 };
 
 type UpdateFilterAction = {
@@ -409,7 +414,10 @@ export function reducer(state: TreeState, action: Action): TreeState {
       });
     }
     case "SELECT_FIRST_VISIBLE_NODE": {
-      const node = firstVisibleNode(state.tree, state.filteredNodes);
+      const { canSelect } = action.payload;
+      const node = canSelect
+        ? visibleNodes(state.tree, state.filteredNodes).find(canSelect)
+        : firstVisibleNode(state.tree, state.filteredNodes);
       if (node) {
         return reducer(state, {
           type: "SELECT_NODE",
@@ -424,7 +432,10 @@ export function reducer(state: TreeState, action: Action): TreeState {
       return state;
     }
     case "SELECT_LAST_VISIBLE_NODE": {
-      const node = lastVisibleNode(state.tree, state.filteredNodes);
+      const { canSelect } = action.payload;
+      const node = canSelect
+        ? findLastNode(visibleNodes(state.tree, state.filteredNodes), canSelect)
+        : lastVisibleNode(state.tree, state.filteredNodes);
       if (node) {
         return reducer(state, {
           type: "SELECT_NODE",
@@ -446,13 +457,17 @@ export function reducer(state: TreeState, action: Action): TreeState {
           payload: {
             scrollToNode: action.payload.scrollToNode,
             scrollToNodeFn: action.payload.scrollToNodeFn,
+            canSelect: action.payload.canSelect,
           },
         });
       }
 
       const visible = visibleNodes(state.tree, state.filteredNodes);
       const selectedIndex = visible.findIndex((node) => node.id === selected);
-      const nextNode = visible[selectedIndex + 1];
+      const { canSelect } = action.payload;
+      const nextNode = canSelect
+        ? visible.slice(selectedIndex + 1).find(canSelect)
+        : visible[selectedIndex + 1];
       if (nextNode) {
         return reducer(state, {
           type: "SELECT_NODE",
@@ -475,13 +490,20 @@ export function reducer(state: TreeState, action: Action): TreeState {
           payload: {
             scrollToNode: action.payload.scrollToNode,
             scrollToNodeFn: action.payload.scrollToNodeFn,
+            canSelect: action.payload.canSelect,
           },
         });
       }
 
       const visible = visibleNodes(state.tree, state.filteredNodes);
       const selectedIndex = visible.findIndex((node) => node.id === selected);
-      const previousNode = visible[Math.max(0, selectedIndex - 1)];
+      const { canSelect } = action.payload;
+      // A hidden selection (its parent collapsed) starts again from the top, as without canSelect.
+      const previousNode = canSelect
+        ? selectedIndex === -1
+          ? visible.find(canSelect)
+          : findLastNode(visible.slice(0, selectedIndex), canSelect)
+        : visible[Math.max(0, selectedIndex - 1)];
       if (previousNode) {
         return reducer(state, {
           type: "SELECT_NODE",
@@ -504,6 +526,7 @@ export function reducer(state: TreeState, action: Action): TreeState {
           payload: {
             scrollToNode: action.payload.scrollToNode,
             scrollToNodeFn: action.payload.scrollToNodeFn,
+            canSelect: action.payload.canSelect,
           },
         });
       }
@@ -513,7 +536,13 @@ export function reducer(state: TreeState, action: Action): TreeState {
         return state;
       }
 
-      const parentNode = state.tree.find((node) => node.id === selectedNode.parentId);
+      // With canSelect, skip parents that can't be selected.
+      const { canSelect } = action.payload;
+      let parentNode = state.tree.find((node) => node.id === selectedNode.parentId);
+      while (parentNode && canSelect && !canSelect(parentNode)) {
+        const parentId: string | undefined = parentNode.parentId;
+        parentNode = state.tree.find((node) => node.id === parentId);
+      }
       if (parentNode) {
         return reducer(state, {
           type: "SELECT_NODE",
@@ -555,4 +584,11 @@ export function reducer(state: TreeState, action: Action): TreeState {
   }
 
   throw new Error(`Unhandled action type: ${(action as any).type}`);
+}
+
+function findLastNode(nodes: FlatTree<any>, canSelect: CanSelectNode) {
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    if (canSelect(nodes[i])) return nodes[i];
+  }
+  return undefined;
 }
