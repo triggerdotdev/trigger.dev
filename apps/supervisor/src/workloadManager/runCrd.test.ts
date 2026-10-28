@@ -617,6 +617,54 @@ describe("RunCrdWorkloadManager.create", () => {
     expect(body.spec.templateKey).toBe(TEMPLATE_KEY);
   });
 
+  describe("the token Secret after a failed create", () => {
+    beforeEach(() => {
+      createSecret.mockReset();
+      createSecret.mockResolvedValue({ metadata: { uid: "uid-secret" } });
+      deleteSecret.mockReset();
+      deleteSecret.mockResolvedValue({});
+    });
+
+    it.each([
+      ["a 408", { code: 408 }],
+      ["a 500", { code: 500 }],
+      ["a 503", { code: 503 }],
+      ["no status", new Error("socket hang up")],
+    ])("is kept when the create's outcome is unknown: %s", async (_, err) => {
+      createRunner.mockRejectedValue(err);
+      await expect(manager().create(keyedOptions({ deploymentToken: "tok_secret" }))).rejects.toBe(
+        err
+      );
+      expect(createSecret).toHaveBeenCalledTimes(1);
+      expect(deleteSecret).not.toHaveBeenCalled();
+    });
+
+    it.each([[400], [403], [422], [429]])(
+      "is deleted, guarded by its uid, when the create was refused: %s",
+      async (code) => {
+        createRunner.mockRejectedValue({ code });
+        await expect(
+          manager().create(keyedOptions({ deploymentToken: "tok_secret" }))
+        ).rejects.toMatchObject({ code });
+        expect(deleteSecret).toHaveBeenCalledWith(
+          expect.objectContaining({
+            name: expect.stringContaining("-token-"),
+            body: { preconditions: { uid: "uid-secret" } },
+          })
+        );
+      }
+    );
+
+    it("is left alone when an earlier delivery wrote it, whatever refused the create", async () => {
+      createSecret.mockRejectedValue({ code: 409 });
+      createRunner.mockRejectedValue({ code: 422 });
+      await expect(
+        manager().create(keyedOptions({ deploymentToken: "tok_secret" }))
+      ).rejects.toMatchObject({ code: 422 });
+      expect(deleteSecret).not.toHaveBeenCalled();
+    });
+  });
+
   it.each([
     ["no", undefined, "TemplateKeyMissing"],
     ["a malformed", TEMPLATE_KEY.toUpperCase(), "TemplateKeyMalformed"],

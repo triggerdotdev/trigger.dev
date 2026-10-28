@@ -612,13 +612,12 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
 
   /**
    * Deletes the Secret a failed create left behind; with no owner coming, the
-   * collector would never take it.
-   *
-   * Only on a 4xx. No status or a 5xx may be a create that committed before its
-   * response was lost, and deleting then would fail a Runner that is about to
-   * start, so the Secret is kept and logged: an ownerless expiring token is the
-   * cheaper mistake. Reading the Runner back would tell the cases apart; not worth it
-   * for a path this rare. Only when this call wrote it: a create returns a uid, a 409 does not.
+   * collector would never take it. Only on a 4xx that refused the request, and
+   * only when this call wrote it: no status, a 5xx or a 408 may be a create that
+   * committed (a 408 should mean the request never arrived whole, but a proxy
+   * may send one for an upstream timeout), and deleting then would fail a Runner
+   * about to start, so the Secret is kept and logged; an ownerless token is the
+   * cheaper mistake.
    */
   private async releaseRunnerToken(
     token: { name: string; uid?: string } | undefined,
@@ -629,7 +628,7 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
     }
 
     const status = statusCodeOf(err);
-    if (status !== undefined && status >= 400 && status < 500) {
+    if (status !== undefined && status >= 400 && status < 500 && status !== 408) {
       await this.deleteRunnerToken(token.name, token.uid);
       return;
     }

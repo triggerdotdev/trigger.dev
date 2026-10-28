@@ -17,6 +17,10 @@ export default {
       ignoreDependencies: process.env.CI ? ["eslint"] : ["eslint", "lefthook"],
       ignoreBinaries: ["infisical", "prisma"],
     },
+    "apps/supervisor": {
+      // The cluster test mints the certificate of its own proxy with it.
+      ignoreBinaries: ["openssl"],
+    },
     "apps/webapp": {
       entry: [
         "evalite.config.ts",
