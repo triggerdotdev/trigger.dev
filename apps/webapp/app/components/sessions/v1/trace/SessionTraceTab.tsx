@@ -58,6 +58,7 @@ import {
   pageCheck,
   runLoad,
   runLoadId,
+  runOpensExpanded,
   runSpanCount,
   sessionRunLoadsReducer,
   type SessionRunLoad,
@@ -239,7 +240,7 @@ function SessionTraceTree({
   }
   const intended = local ?? selection;
 
-  // Captured once: runs added later (earlier pages, new runs) start collapsed.
+  // Captured once. Runs added later start collapsed, apart from a new newest run (the reducer).
   const [openRunId] = useState(() => initiallyExpandedRunFriendlyId(runs, totalCount));
   // A selection in the URL at mount whose run loaded: open there instead of at the bottom.
   const [deepLink] = useState(() => {
@@ -382,10 +383,10 @@ function SessionTraceTree({
     estimatedRowHeight: () => ROW_HEIGHT_PX,
     // Arrow keys, Home and End skip the gap, "not loaded" and "Load earlier" rows.
     canSelect: (node) => isSelectableRow(node.data),
+    // The load reducer owns which runs are expanded: the opening run, a deep link, a new run.
     isCollapsedByDefault: (node) =>
       node.data.kind === "run" &&
-      node.data.run.friendlyId !== openRunId &&
-      node.data.run.friendlyId !== deepLink?.runFriendlyId,
+      !runOpensExpanded(loadsRef.current, node.data.run.friendlyId, newestRunId),
     canExpand: (node) => node.data.kind === "run" || node.hasChildren,
     structureKey,
     // Derived, never set by code: a span not in the tree yet highlights its run.
@@ -522,10 +523,11 @@ function SessionTraceTree({
     onLoadEarlier();
   };
 
-  // Follow the newest run's new spans, but only if the view was at the bottom when they arrived.
-  // `atBottom` is tracked on scroll, so rows added without a scroll (a new run) keep it true.
+  // Follow a new run and the newest run's new spans, but only if the view was at the bottom when
+  // they arrived. `atBottom` is tracked on scroll, so rows added without a scroll keep it true.
   // The tree takes the new rows a render later, so scroll once its node state has changed.
   const newestSpanCount = newestRunId ? (snapshots[newestRunId]?.events.length ?? 0) : 0;
+  const followKey = `${newestRunId}:${newestSpanCount}`;
   const pendingFollow = useRef<{ nodes: typeof nodes } | null>(null);
   const latestNodes = useRef(nodes);
   useLayoutEffect(() => {
@@ -537,13 +539,13 @@ function SessionTraceTree({
     const scrollElement = parentRef.current;
     if (scrollElement && atBottom.current) scrollElement.scrollTop = scrollElement.scrollHeight;
   }, [nodes]);
-  const followedSpanCount = useRef(newestSpanCount);
+  const followedKey = useRef(followKey);
   useLayoutEffect(() => {
-    if (followedSpanCount.current === newestSpanCount) return;
-    followedSpanCount.current = newestSpanCount;
+    if (followedKey.current === followKey) return;
+    followedKey.current = followKey;
     pendingFollow.current =
       atBottom.current && !earlierLoad.current ? { nodes: latestNodes.current } : null;
-  }, [newestSpanCount]);
+  }, [followKey]);
 
   // Run rows always expand and collapse one by one, so the load reducer hears about each.
   // Expand all tells it first, newest first, so the newest runs load first; the per-row

@@ -141,14 +141,17 @@ export class SessionRunsPresenter {
       : undefined;
     if (anchor === null) return null;
 
-    const [rows, totalCount] = await Promise.all([
+    // The newest page's top row is the newest run, so its number is the total. A separate count
+    // can see a run the rows don't have yet, and the newest run would look not loaded.
+    const isNewestPage = !query.after && !anchor;
+    const [rows, countedTotal] = await Promise.all([
       findSessionRunsPage(replica, {
         sessionId,
         before: query.after,
         atOrBefore: anchor,
         take: query.pageSize + 1,
       }),
-      countSessionRuns(replica, { sessionId }),
+      isNewestPage ? undefined : countSessionRuns(replica, { sessionId }),
     ]);
 
     const pageRows = rows.slice(0, query.pageSize);
@@ -156,7 +159,7 @@ export class SessionRunsPresenter {
     const oldestRow = pageRows.at(-1);
 
     if (!oldestRow) {
-      return { data: [], pagination: {}, totalCount, view: {} };
+      return { data: [], pagination: {}, totalCount: countedTotal ?? 0, view: {} };
     }
 
     const [oldestNumber, runsById] = await Promise.all([
@@ -177,7 +180,7 @@ export class SessionRunsPresenter {
     return {
       data,
       pagination: olderRow ? { next: encodeSessionRunCursor(oldestRow) } : {},
-      totalCount,
+      totalCount: countedTotal ?? oldestNumber + pageRows.length - 1,
       view: this.#view(pageRows, runsById, query.showDeletedLogs),
     };
   }

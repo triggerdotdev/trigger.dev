@@ -15,6 +15,7 @@ import {
   pageCheck,
   runLoad,
   runLoadId,
+  runOpensExpanded,
   runSpanCount,
   sessionRunLoadsReducer,
   type SessionRunLoadOutcome,
@@ -1041,6 +1042,124 @@ describe("sessionRunLoadsReducer: what loads when", () => {
   });
 });
 
+describe("sessionRunLoadsReducer: new runs", () => {
+  type Action = SessionRunLoadsAction;
+  const run = (loads: SessionRunLoads, ...actions: Action[]) =>
+    actions.reduce<SessionRunLoads>(sessionRunLoadsReducer, loads);
+  const runsChanged = (withStatus: string[], newestRunId?: string): Action => ({
+    type: "runsChanged",
+    withStatus,
+    newestRunId,
+  });
+  const expand = (id: string, expanded = true): Action => ({
+    type: "expanded",
+    runFriendlyId: id,
+    expanded,
+  });
+  const opened = () => run(createSessionRunLoads(["run_25"]), runsChanged(["run_25"], "run_25"));
+
+  it("expands a new newest run and loads it", () => {
+    const loads = run(opened(), runsChanged(["run_25", "run_26"], "run_26"));
+    expect(loads.expanded.has("run_26")).toBe(true);
+    expect(runLoad(loads, "run_26").state).toBe("loading");
+  });
+
+  it("leaves the previous run as it was, expanded or collapsed", () => {
+    const stillOpen = run(opened(), runsChanged(["run_25", "run_26"], "run_26"));
+    expect(stillOpen.expanded.has("run_25")).toBe(true);
+
+    const collapsed = run(
+      opened(),
+      expand("run_25", false),
+      runsChanged(["run_25", "run_26"], "run_26")
+    );
+    expect(collapsed.expanded.has("run_25")).toBe(false);
+    expect(collapsed.expanded.has("run_26")).toBe(true);
+  });
+
+  it("expands only the newest of several new runs", () => {
+    const loads = run(opened(), runsChanged(["run_25", "run_26", "run_27", "run_28"], "run_28"));
+    expect([...loads.expanded].sort()).toEqual(["run_25", "run_28"]);
+    expect(runLoad(loads, "run_26").state).toBe("idle");
+    expect(runLoad(loads, "run_27").state).toBe("idle");
+  });
+
+  it("expands nothing on the first read or when older runs are added", () => {
+    const first = run(createSessionRunLoads(), runsChanged(["run_24", "run_25"], "run_25"));
+    expect(first.expanded.size).toBe(0);
+
+    const earlier = run(opened(), runsChanged(["run_5", "run_6", "run_25"], "run_25"));
+    expect([...earlier.expanded]).toEqual(["run_25"]);
+  });
+
+  it("keeps a new run without a status expanded until it reaches the run store", () => {
+    let loads = run(opened(), runsChanged(["run_25"], "run_26"));
+    expect(loads.expanded.has("run_26")).toBe(true);
+    expect(runLoad(loads, "run_26").state).toBe("idle");
+    loads = run(loads, runsChanged(["run_25", "run_26"], "run_26"));
+    expect(runLoad(loads, "run_26").state).toBe("loading");
+  });
+
+  it("starts a new run at the next free slot, ahead of older queued runs", () => {
+    const older = Array.from({ length: 20 }, (_, i) => `run_${i + 1}`);
+    let loads = run(createSessionRunLoads(), runsChanged(older, "run_20"));
+    loads = run(loads, { type: "expandedMany", runFriendlyIds: [...older].reverse() });
+    expect(loads.queue).toHaveLength(17);
+
+    // The new run reaches the run store a poll after it appears.
+    loads = run(loads, runsChanged(older, "run_21"), runsChanged([...older, "run_21"], "run_21"));
+    expect(runLoad(loads, "run_21").state).toBe("queued");
+
+    const loading = runLoad(loads, "run_20");
+    if (loading.state !== "loading") throw new Error("run_20 isn't loading");
+    loads = run(loads, {
+      type: "settle",
+      runFriendlyId: "run_20",
+      loadId: loading.loadId,
+      outcome: { state: "progressive" },
+    });
+    expect(runLoad(loads, "run_21").state).toBe("loading");
+  });
+
+  it("doesn't reopen a run the user collapsed if it becomes the newest again", () => {
+    const loads = run(
+      opened(),
+      runsChanged(["run_25", "run_26"], "run_26"),
+      expand("run_26", false),
+      runsChanged(["run_25", "run_26"], "run_25"),
+      runsChanged(["run_25", "run_26"], "run_26")
+    );
+    expect(loads.expanded.has("run_26")).toBe(false);
+  });
+
+  describe("runOpensExpanded", () => {
+    it("gives the tree the same answer before and after runsChanged is handled", () => {
+      const before = opened();
+      const after = run(before, runsChanged(["run_25", "run_26"], "run_26"));
+      for (const loads of [before, after]) {
+        expect(runOpensExpanded(loads, "run_26", "run_26")).toBe(true);
+        expect(runOpensExpanded(loads, "run_25", "run_26")).toBe(true);
+      }
+    });
+
+    it("opens the starting and deep-linked runs, and nothing else", () => {
+      const loads = run(createSessionRunLoads(["run_25"]), {
+        type: "deepLinked",
+        runFriendlyId: "run_3",
+      });
+      expect(runOpensExpanded(loads, "run_25", undefined)).toBe(true);
+      expect(runOpensExpanded(loads, "run_3", undefined)).toBe(true);
+      expect(runOpensExpanded(loads, "run_4", undefined)).toBe(false);
+      // The first read of the newest run isn't a new run.
+      expect(runOpensExpanded(loads, "run_24", "run_25")).toBe(false);
+    });
+
+    it("doesn't open older runs added by Load earlier", () => {
+      expect(runOpensExpanded(opened(), "run_5", "run_25")).toBe(false);
+    });
+  });
+});
+
 describe("sessionRunLoadsReducer: deep links", () => {
   const deepLinked = (id: string): SessionRunLoadsAction => ({
     type: "deepLinked",
@@ -1052,22 +1171,23 @@ describe("sessionRunLoadsReducer: deep links", () => {
     newestRunId,
   });
 
-  it("expands the linked run and loads it ahead of the live run", () => {
+  it("expands the linked run and loads it with the live run", () => {
     let loads = sessionRunLoadsReducer(createSessionRunLoads(["run_50"]), deepLinked("run_3"));
     expect([...loads.expanded]).toEqual(["run_3", "run_50"]);
 
     loads = sessionRunLoadsReducer(loads, runsChanged(["run_3", "run_50"], "run_50"));
-    expect(runLoad(loads, "run_3")).toEqual({ state: "loading", loadId: 1 });
-    expect(runLoad(loads, "run_50")).toEqual({ state: "loading", loadId: 2 });
+    expect(runLoad(loads, "run_3").state).toBe("loading");
+    expect(runLoad(loads, "run_50").state).toBe("loading");
   });
 
   it("moves a queued linked run to the front", () => {
     const ids = ["run_1", "run_2", "run_3", "run_4", "run_5"];
     let loads = sessionRunLoadsReducer(createSessionRunLoads(ids), runsChanged(ids, "run_5"));
-    expect(loads.queue).toEqual(["run_4", "run_5"]);
+    // The newest run starts first.
+    expect(loads.queue).toEqual(["run_3", "run_4"]);
 
-    loads = sessionRunLoadsReducer(loads, deepLinked("run_5"));
-    expect(loads.queue).toEqual(["run_5", "run_4"]);
+    loads = sessionRunLoadsReducer(loads, deepLinked("run_4"));
+    expect(loads.queue).toEqual(["run_4", "run_3"]);
   });
 
   it("waits for the linked run to reach the run store", () => {

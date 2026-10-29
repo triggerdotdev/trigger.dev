@@ -118,6 +118,34 @@ export function isRunTraceMounted(load: SessionRunLoad): boolean {
   }
 }
 
+/**
+ * A run that just became the newest, replacing a known one, opens expanded, unless the user has
+ * already expanded or collapsed it. Several new runs at once open only the newest.
+ */
+function newRunToOpen(
+  current: SessionRunLoads,
+  newestRunId: string | undefined
+): string | undefined {
+  const previous = current.newestRunId;
+  if (!previous || !newestRunId || previous === newestRunId) return undefined;
+  if (current.expanded.has(newestRunId) || current.collapsedOrder.includes(newestRunId)) {
+    return undefined;
+  }
+  return newestRunId;
+}
+
+/**
+ * Whether a run row opens expanded when it first appears in the tree. Asks the same question as
+ * `runsChanged`, so the answer doesn't depend on whether that event has been handled yet.
+ */
+export function runOpensExpanded(
+  loads: SessionRunLoads,
+  runFriendlyId: string,
+  newestRunId: string | undefined
+): boolean {
+  return loads.expanded.has(runFriendlyId) || newRunToOpen(loads, newestRunId) === runFriendlyId;
+}
+
 /** The starting state, with the run that opens expanded. */
 export function createSessionRunLoads(
   expandedRunIds: string[] = [],
@@ -154,10 +182,12 @@ function runLoadedSpans(loads: SessionRunLoads, runFriendlyId: string): number {
  * Every decision about loading a run's trace lives here:
  * - An expanded run that is in the run store and idle loads, whenever that becomes true.
  * - Expanding a failed run reads it again, but only if none of its spans are on screen.
- * - At most 3 runs load at once; a run holds its slot until all its pages are in.
+ * - At most 3 runs load at once; a run holds its slot until all its pages are in. The newest run
+ *   starts first when it's queued.
  * - A run that settled with no spans becomes loaded when its first span arrives while tailing.
- * - When a newer run takes over, the previous newest run is read afresh once if it was still empty.
- * - A deep-linked run expands first, so it's the first to load once it's in the run store.
+ * - When a newer run takes over, it expands; the previous newest run keeps its state, and is read
+ *   afresh once if it was still empty.
+ * - A deep-linked run expands first, so it loads ahead of every run but the newest.
  * - The span budget: a run starts or fetches a page only within it, after freeing the least
  *   recently collapsed runs if that's enough; the newest run is never held back. A run that would
  *   fit with its own page waits while others load, rather than being cut off.
@@ -209,6 +239,8 @@ export function sessionRunLoadsReducer(
       ) {
         next = withoutLoads(next, [previous]);
       }
+      const opened = newRunToOpen(current, action.newestRunId);
+      if (opened) next = { ...next, expanded: new Set([...next.expanded, opened]) };
       return loadWanted(next);
     }
     case "spanCount": {
@@ -392,11 +424,13 @@ function startQueued(current: SessionRunLoads): SessionRunLoads {
   let inFlight = inFlightCount(current);
   if (inFlight >= MAX_CONCURRENT_RUN_LOADS || current.queue.length === 0) return current;
 
-  let next: SessionRunLoads = {
-    ...current,
-    loads: { ...current.loads },
-    queue: [...current.queue],
-  };
+  // The newest run never waits behind older runs: it's the one being watched.
+  const newest = current.newestRunId;
+  const queue =
+    newest && current.queue.includes(newest)
+      ? [newest, ...current.queue.filter((id) => id !== newest)]
+      : [...current.queue];
+  let next: SessionRunLoads = { ...current, loads: { ...current.loads }, queue };
   // Runs that would fit once the others finish stay queued, in order.
   const waiting: string[] = [];
   while (inFlight < MAX_CONCURRENT_RUN_LOADS) {

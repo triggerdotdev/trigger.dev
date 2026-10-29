@@ -230,6 +230,36 @@ describe("SessionRunsPresenter", () => {
     expect(second?.totalCount).toBe(24);
   });
 
+  postgresTest(
+    "a run added after the page read doesn't change the newest page's total",
+    async ({ prisma }) => {
+      const { deps, query, addRun } = await seedSessionWithRuns(prisma, 23);
+      // A run is triggered right after the page rows are read, and any other read waits for it:
+      // a count would then see 24 runs while the rows end at 23.
+      let runAdded!: () => void;
+      const added = new Promise<void>((resolve) => (runAdded = resolve));
+      const replica = new Proxy(prisma, {
+        get(target, prop, receiver) {
+          if (prop !== "$queryRaw") return Reflect.get(target, prop, receiver);
+          return async (sql: { sql: string }, ...values: unknown[]) => {
+            if (!sql.sql.includes("LIMIT")) {
+              await added;
+              return target.$queryRaw(sql as never, ...values);
+            }
+            const rows = await target.$queryRaw(sql as never, ...values);
+            await addRun(24);
+            runAdded();
+            return rows;
+          };
+        },
+      });
+
+      const page = await new SessionRunsPresenter({ ...deps, replica }).call(query);
+      expect(page?.data[0]?.number).toBe(23);
+      expect(page?.totalCount).toBe(23);
+    }
+  );
+
   postgresTest("afterCrash sees a crashed run on the previous page", async ({ prisma }) => {
     const { deps, query } = await seedSessionWithRuns(prisma, 23, (n) =>
       n === 3 ? { status: "CRASHED" } : {}
