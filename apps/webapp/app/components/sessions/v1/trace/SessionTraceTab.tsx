@@ -51,6 +51,14 @@ import {
   type SessionTreeRow,
 } from "./buildSessionTree";
 import { RunTraceSource, type RunTraceSnapshot } from "./RunTraceSource";
+import {
+  EMERGENCY_CAP_NOTICE,
+  isRunStarting,
+  runLoadBlock,
+  runsUnavailableBeforeRead,
+  unavailableReasonText,
+  type RunLoadBlock,
+} from "./sessionRunFallback";
 import { SessionTimelineRow } from "./SessionTimelineRow";
 import { type RunPanelData, useSessionPanelStore } from "./sessionPanelStore";
 import {
@@ -193,6 +201,7 @@ export function SessionTraceTab({
       fillFailedRunFriendlyId={pages.fillFailedRunFriendlyId}
       onFillHole={pages.fillHole}
       onRunDataStale={pages.refreshNewest}
+      checkedAtMs={checkedAtMs}
       treeSnapshot={treeSnapshot}
       notice={showRunNotFound ? "That run isn't in this session." : undefined}
     />
@@ -215,6 +224,7 @@ function SessionTraceTree({
   fillFailedRunFriendlyId,
   onFillHole,
   onRunDataStale,
+  checkedAtMs,
   treeSnapshot,
   notice,
 }: {
@@ -230,6 +240,8 @@ function SessionTraceTree({
   fillFailedRunFriendlyId: string | undefined;
   onFillHole: (newerRunFriendlyId: string, missing: number) => void;
   onRunDataStale: () => void;
+  /** When the runs were last checked: a run still missing from the run store is judged by it. */
+  checkedAtMs: number;
   treeSnapshot: ResizableSnapshot | undefined;
   notice: string | undefined;
 }) {
@@ -350,9 +362,24 @@ function SessionTraceTree({
     () => runs.filter((run) => run.status).map((run) => run.friendlyId),
     [runs]
   );
+  const runsUnavailable = useMemo(() => runsUnavailableBeforeRead(view), [view]);
   useEffect(() => {
-    dispatchLoads({ type: "runsChanged", withStatus: runsWithStatus, newestRunId });
-  }, [runsWithStatus, newestRunId, dispatchLoads]);
+    dispatchLoads({
+      type: "runsChanged",
+      withStatus: runsWithStatus,
+      unavailable: runsUnavailable,
+      newestRunId,
+    });
+  }, [runsWithStatus, runsUnavailable, newestRunId, dispatchLoads]);
+
+  // Runs that can't load here have no chevron, and Expand all and search leave them alone.
+  const loadBlock = (run: SessionTraceRun) =>
+    runLoadBlock(run, view[run.friendlyId], runLoad(loads, run.friendlyId));
+  const rowCanExpand = (node: { data: Row; hasChildren: boolean }) =>
+    node.data.kind === "run" ? !loadBlock(node.data.run) : node.hasChildren;
+  // The cap applies to every run, so it's said once instead of on each row.
+  const emergencyCap = Object.values(view).some((entry) => entry.unavailable === "emergencyCap");
+  const barNotice = notice ?? (emergencyCap ? EMERGENCY_CAP_NOTICE : undefined);
 
   // Only the live run's scale moves with the clock; the rest are fixed at page load.
   const [openedAtMs] = useState(() => Date.now());
@@ -409,7 +436,7 @@ function SessionTraceTree({
     isCollapsedByDefault: (node) =>
       node.data.kind === "run" &&
       !runOpensExpanded(loadsRef.current, node.data.run.friendlyId, newestRunId),
-    canExpand: (node) => node.data.kind === "run" || node.hasChildren,
+    canExpand: rowCanExpand,
     structureKey,
     // Derived, never set by code: a span not in the tree yet highlights its run.
     selectedId: highlightedId,
@@ -579,9 +606,11 @@ function SessionTraceTree({
   // all tells it first, newest first, so the newest runs load first; the per-row events that
   // follow change nothing.
   const runNodes = useMemo(() => tree.filter((node) => node.data.kind === "run"), [tree]);
-  const allExpanded = runNodes.every((node) => nodes[node.id]?.expanded);
+  const expandableRunNodes = runNodes.filter(rowCanExpand);
+  const allExpanded =
+    expandableRunNodes.length > 0 && expandableRunNodes.every((node) => nodes[node.id]?.expanded);
   const expandAllRuns = () => {
-    const collapsed = runNodes.filter((node) => !nodes[node.id]?.expanded);
+    const collapsed = expandableRunNodes.filter((node) => !nodes[node.id]?.expanded);
     const newestFirst: SessionRunLoadsAction = {
       type: "expandedMany",
       runFriendlyIds: collapsed.flatMap((node) =>
@@ -614,6 +643,8 @@ function SessionTraceTree({
     filtering && row.kind === "run" ? showsResults(row.run.friendlyId) : expanded;
   // A run that never loaded opens for real (it loads); a loaded run's results hide or show.
   const toggleRunInSearch = (runFriendlyId: string, open: boolean) => {
+    const run = runsById.get(runFriendlyId);
+    if (!run || loadBlock(run)) return;
     if (runShowsResults(runLoad(loads, runFriendlyId))) return setRunHidden(runFriendlyId, !open);
     const nodeId = runNodeId(runFriendlyId);
     if (open && !nodes[nodeId]?.expanded) expandNode(nodeId, false);
@@ -635,6 +666,8 @@ function SessionTraceTree({
     }));
   };
   const toggleAll = () => (allShown ? collapseAll() : expandAll());
+  // Nothing to open: every run can't load here (the emergency cap), outside a search.
+  const nothingToExpand = !filtering && expandableRunNodes.length === 0;
 
   // Load all: Expand all's newest-first queue for the runs the search hasn't covered yet.
   const coverage = searchCoverage({ runs, view, loads });
@@ -745,6 +778,16 @@ function SessionTraceTree({
       toggleRunInSearch(selectedRow.run.friendlyId, event.key === "ArrowRight");
       return;
     }
+    // The tree's Right key expands without asking `canExpand`.
+    if (
+      !event.altKey &&
+      event.key === "ArrowRight" &&
+      selectedRow?.kind === "run" &&
+      loadBlock(selectedRow.run)
+    ) {
+      event.preventDefault();
+      return;
+    }
     if (event.altKey && (event.key === "ArrowRight" || event.key === "ArrowLeft")) {
       event.preventDefault();
       const level = selected ? tree.find((node) => node.id === selected)?.level : undefined;
@@ -824,10 +867,10 @@ function SessionTraceTree({
               onLoadAll={loadAllForSearch}
             />
           ) : (
-            notice && <span className="truncate text-xs text-text-dimmed">{notice}</span>
+            barNotice && <span className="truncate text-xs text-text-dimmed">{barNotice}</span>
           )}
         </div>
-        <Button variant="tertiary/small" onClick={toggleAll}>
+        <Button variant="tertiary/small" onClick={toggleAll} disabled={nothingToExpand}>
           {/* Both labels share one cell so the button keeps the wider one's width. */}
           <span className="inline-grid">
             <span className="invisible col-start-1 row-start-1">Collapse all</span>
@@ -867,7 +910,7 @@ function SessionTraceTree({
                     level={node.level}
                     isSelected={state.selected}
                     isExpanded={runIsOpen(node.data, state.expanded)}
-                    canExpand={node.data.kind === "run" || node.hasChildren}
+                    canExpand={rowCanExpand(node)}
                     onToggle={() => {
                       const row = node.data;
                       if (filtering && row.kind === "run") {
@@ -885,6 +928,8 @@ function SessionTraceTree({
                     spanCount={
                       node.data.kind === "run" ? runSpanCount(loads, node.data.run.friendlyId) : 0
                     }
+                    loadBlock={node.data.kind === "run" ? loadBlock(node.data.run) : undefined}
+                    checkedAtMs={checkedAtMs}
                     onRetry={retryRun}
                     canLoadEarlier={canLoadEarlier}
                     loadingEarlier={loadingEarlier}
@@ -1059,6 +1104,8 @@ function SessionTreeRowView({
   isLive,
   load,
   spanCount,
+  loadBlock,
+  checkedAtMs,
   onRetry,
   canLoadEarlier,
   loadingEarlier,
@@ -1078,6 +1125,8 @@ function SessionTreeRowView({
   isLive: boolean;
   load: SessionRunLoad | undefined;
   spanCount: number;
+  loadBlock: RunLoadBlock | undefined;
+  checkedAtMs: number;
   onRetry: (runFriendlyId: string) => void;
   canLoadEarlier: boolean;
   loadingEarlier: boolean;
@@ -1182,6 +1231,8 @@ function SessionTreeRowView({
             isLive={isLive}
             load={load}
             spanCount={spanCount}
+            loadBlock={loadBlock}
+            checkedAtMs={checkedAtMs}
             onRetry={onRetry}
           />
         </RowFrame>
@@ -1196,12 +1247,16 @@ function RunRowContent({
   isLive,
   load,
   spanCount,
+  loadBlock,
+  checkedAtMs,
   onRetry,
 }: {
   run: SessionTraceRun;
   isLive: boolean;
   load: SessionRunLoad | undefined;
   spanCount: number;
+  loadBlock: RunLoadBlock | undefined;
+  checkedAtMs: number;
   onRetry: (runFriendlyId: string) => void;
 }) {
   return (
@@ -1219,16 +1274,49 @@ function RunRowContent({
       {run.status ? (
         <TaskRunStatusCombo status={run.status} className="shrink-0 text-xs" />
       ) : (
-        <span className="text-xs text-text-faint">–</span>
+        <span className="shrink-0 text-xs text-text-faint">
+          {isRunStarting(run, checkedAtMs) ? "Starting…" : "Unavailable"}
+        </span>
       )}
       <span className="min-w-0 truncate text-xs text-text-dimmed">{runReasonLabel(run)}</span>
       <span className="ml-auto flex shrink-0 items-center gap-1.5 pr-2 text-xs tabular-nums text-text-dimmed">
-        {load && hasLoadStatus(load) ? (
+        {loadBlock ? (
+          <RunFallback run={run} block={loadBlock} />
+        ) : load && hasLoadStatus(load) ? (
           <RunLoadStatus run={run} load={load} spanCount={spanCount} onRetry={onRetry} />
         ) : (
           <RunDurationLabel run={run} isLive={isLive} />
         )}
       </span>
+    </>
+  );
+}
+
+// A run whose trace can't load here links to its run page instead of expanding.
+function RunFallback({ run, block }: { run: SessionTraceRun; block: RunLoadBlock }) {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+
+  // Not in the run store: the status slot says so, and a run page may not exist yet.
+  if (block.kind === "notInRunStore") return null;
+
+  const reason = block.kind === "unavailable" ? unavailableReasonText(block.reason) : undefined;
+  const label = block.kind === "logsDeleted" ? "Logs deleted" : "Can't show here";
+  return (
+    <>
+      {reason ? (
+        <SimpleTooltip button={<span>{label}</span>} content={reason} disableHoverableContent />
+      ) : (
+        <span>{label}</span>
+      )}
+      <LinkButton
+        variant="secondary/small"
+        to={v3RunPath(organization, project, environment, run)}
+        onClick={(event) => event.stopPropagation()}
+      >
+        Open run page
+      </LinkButton>
     </>
   );
 }

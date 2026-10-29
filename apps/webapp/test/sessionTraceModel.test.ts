@@ -37,6 +37,11 @@ import type {
   SessionTraceSpan,
 } from "~/components/sessions/v1/trace/sessionTraceTypes";
 import { settledOutcome } from "~/components/sessions/v1/trace/RunTraceSource";
+import {
+  isRunStarting,
+  runLoadBlock,
+  runsUnavailableBeforeRead,
+} from "~/components/sessions/v1/trace/sessionRunFallback";
 import { highlightedNodeId } from "~/components/sessions/v1/trace/sessionTraceSelection";
 import {
   earlierRunsCursor,
@@ -61,6 +66,7 @@ function run(number: number, overrides: Partial<SessionTraceRun> = {}): SessionT
     friendlyId: `run_${number}`,
     reason: "continuation",
     afterCrash: false,
+    triggeredAt: iso(start),
     status: "COMPLETED_SUCCESSFULLY",
     createdAt: iso(start),
     startedAt: iso(start + 1_000),
@@ -844,10 +850,16 @@ describe("newRunsPollIntervalMs", () => {
     expect(newRunsPollIntervalMs([], 0, T0)).toBe(RECENT_RUN_POLL_MS);
   });
 
-  it("polls often while the newest run waits to reach the run store", () => {
-    expect(newRunsPollIntervalMs([run(1), run(2, { status: null, finishedAt: null })], 2, T0)).toBe(
-      RECENT_RUN_POLL_MS
-    );
+  it("polls often while the newest run waits to reach the run store, for 5 minutes", () => {
+    const missing = (triggeredAgoMs: number) =>
+      run(2, {
+        status: null,
+        finishedAt: null,
+        triggeredAt: new Date(T0 - triggeredAgoMs).toISOString(),
+      });
+    expect(newRunsPollIntervalMs([run(1), missing(MINUTE)], 2, T0)).toBe(RECENT_RUN_POLL_MS);
+    // Past the window it shows as unavailable: no reason to keep checking every 10s.
+    expect(newRunsPollIntervalMs([run(1), missing(5 * MINUTE)], 2, T0)).toBe(QUIET_SESSION_POLL_MS);
   });
 });
 
@@ -1483,5 +1495,95 @@ describe("sessionRunLoadsReducer: span budget, load order and retry", () => {
 
     expect(state(loads, "run_1")).toBe("queued");
     expect(loads.queue).toEqual(["run_1"]);
+  });
+});
+
+describe("runs that can't load here", () => {
+  type Action = SessionRunLoadsAction;
+  const apply = (loads: SessionRunLoads, ...actions: Action[]) =>
+    actions.reduce<SessionRunLoads>(sessionRunLoadsReducer, loads);
+  const runsChanged = (
+    withStatus: string[],
+    unavailable: string[],
+    newestRunId?: string
+  ): Action => ({
+    type: "runsChanged",
+    withStatus,
+    unavailable,
+    newestRunId,
+  });
+
+  it("never queues a run the runs route says can't load, even when it opens expanded", () => {
+    const loads = apply(
+      createSessionRunLoads(["run_3"]),
+      runsChanged(["run_1", "run_2", "run_3"], ["run_3"], "run_3")
+    );
+    expect(runLoad(loads, "run_3").state).toBe("idle");
+    expect(loads.queue).toEqual([]);
+  });
+
+  it("leaves those runs out of Expand all and loads the rest", () => {
+    const loads = apply(
+      createSessionRunLoads(),
+      runsChanged(["run_1", "run_2", "run_3"], ["run_2"], "run_3"),
+      { type: "expandedMany", runFriendlyIds: ["run_3", "run_2", "run_1"] }
+    );
+    expect(loads.expanded.has("run_2")).toBe(false);
+    expect(runLoad(loads, "run_2").state).toBe("idle");
+    expect(runLoad(loads, "run_3").state).toBe("loading");
+    expect(runLoad(loads, "run_1").state).toBe("loading");
+  });
+
+  it("doesn't load a deep-linked run that can't load", () => {
+    const loads = apply(
+      createSessionRunLoads(),
+      { type: "deepLinked", runFriendlyId: "run_1" },
+      runsChanged(["run_1", "run_2"], ["run_1"], "run_2")
+    );
+    expect(runLoad(loads, "run_1").state).toBe("idle");
+  });
+
+  it("returns the same state when nothing changed", () => {
+    const first = apply(createSessionRunLoads(), runsChanged(["run_1"], ["run_1"], "run_1"));
+    expect(apply(first, runsChanged(["run_1"], ["run_1"], "run_1"))).toBe(first);
+  });
+
+  it("decides why a run can't load from the route before a read and the first chunk after", () => {
+    const idle = { state: "idle" } as const;
+    expect(runLoadBlock(run(1, { status: null }), undefined, idle)).toEqual({
+      kind: "notInRunStore",
+    });
+    expect(runLoadBlock(run(1), { unavailable: "logsDeleted", spanId: "a" }, idle)).toEqual({
+      kind: "logsDeleted",
+    });
+    expect(runLoadBlock(run(1), { unavailable: "legacyStore", spanId: "a" }, idle)).toEqual({
+      kind: "unavailable",
+      reason: "legacyStore",
+    });
+    expect(
+      runLoadBlock(run(1), { spanId: "a" }, { state: "unavailable", reason: "noSpans", loadId: 1 })
+    ).toEqual({ kind: "unavailable", reason: "noSpans" });
+    expect(runLoadBlock(run(1), { spanId: "a" }, { state: "logsDeleted", loadId: 1 })).toEqual({
+      kind: "logsDeleted",
+    });
+    expect(runLoadBlock(run(1), { spanId: "a" }, { state: "progressive", loadId: 1 })).toBe(
+      undefined
+    );
+  });
+
+  it("lists the runs the route already marks as unavailable", () => {
+    expect(
+      runsUnavailableBeforeRead({
+        run_1: { spanId: "a" },
+        run_2: { unavailable: "emergencyCap", spanId: "b" },
+      })
+    ).toEqual(["run_2"]);
+  });
+
+  it("treats a run missing from the run store as starting for 5 minutes after it was triggered", () => {
+    const triggered = { triggeredAt: "2026-10-20T10:00:00.000Z" };
+    const at = (minutes: number) => Date.parse(triggered.triggeredAt) + minutes * MINUTE;
+    expect(isRunStarting(triggered, at(4))).toBe(true);
+    expect(isRunStarting(triggered, at(5))).toBe(false);
   });
 });

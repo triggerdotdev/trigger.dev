@@ -2,6 +2,7 @@ import { millisecondsToNanoseconds } from "@trigger.dev/core/v3";
 import type { TraceTimelineScale } from "~/components/runs/v3/trace/timelineScale";
 import { isFinalRunStatus } from "~/v3/taskStatus";
 import type { SessionTraceRun } from "./sessionTraceTypes";
+import { isRunStarting } from "./sessionRunFallback";
 
 /** How long a run has executed, from its start to its finish (or now while it runs). */
 export function runDuration(
@@ -101,9 +102,12 @@ export function newRunsPollIntervalMs(
   const newest = newestRun(runs);
   // No runs yet: the session was just created and its first run is about to start.
   if (!newest) return RECENT_RUN_POLL_MS;
-  // Not in the run store yet: it was just triggered and is about to start.
-  if (newest && !newest.status) return RECENT_RUN_POLL_MS;
-  if (!newest?.finishedAt) return QUIET_SESSION_POLL_MS;
+  // Not in the run store yet: it was just triggered and is about to start. Past the window it
+  // shows as unavailable and gets the quiet rate.
+  if (!newest.status) {
+    return isRunStarting(newest, nowMs) ? RECENT_RUN_POLL_MS : QUIET_SESSION_POLL_MS;
+  }
+  if (!newest.finishedAt) return QUIET_SESSION_POLL_MS;
   return nowMs - new Date(newest.finishedAt).getTime() < RECENTLY_FINISHED_MS
     ? RECENT_RUN_POLL_MS
     : QUIET_SESSION_POLL_MS;

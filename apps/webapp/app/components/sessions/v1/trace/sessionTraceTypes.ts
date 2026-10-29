@@ -6,6 +6,7 @@ export type SessionTraceRun = {
   friendlyId: string;
   reason: string;
   afterCrash: boolean;
+  triggeredAt: string;
   status: TaskRunStatus | null;
   createdAt: string | null;
   startedAt: string | null;

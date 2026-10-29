@@ -23,6 +23,7 @@ function run(number: number, overrides: Partial<SessionTraceRun> = {}): SessionT
     friendlyId: `run_${number}`,
     reason: "continuation",
     afterCrash: false,
+    triggeredAt: "2026-10-20T10:00:00.000Z",
     status: "COMPLETED_SUCCESSFULLY",
     createdAt: "2026-10-20T10:00:00.000Z",
     startedAt: "2026-10-20T10:00:01.000Z",

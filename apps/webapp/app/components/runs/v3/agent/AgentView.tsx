@@ -7,6 +7,7 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { AgentMessageView } from "~/components/runs/v3/agent/AgentMessageView";
 import { useAutoScrollToBottom } from "~/hooks/useAutoScrollToBottom";
 import type { TranscriptSeed } from "~/services/realtime/transcriptSeed.server";
+import { v3SessionTranscriptPath } from "~/utils/pathBuilder";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -670,11 +671,13 @@ function useAgentSessionMessages({
     setIsLoadingEarlier(true);
 
     const origin = typeof window !== "undefined" ? window.location.origin : apiOrigin;
-    const url =
-      `${origin}/resources/orgs/${orgSlug}/projects/${projectSlug}/env/${envSlug}` +
-      `/sessions/${encodeURIComponent(sessionId)}/transcript?before=${encodeURIComponent(
-        earlierCursor
-      )}`;
+    const url = `${origin}${v3SessionTranscriptPath(
+      { slug: orgSlug },
+      { slug: projectSlug },
+      { slug: envSlug },
+      sessionId,
+      earlierCursor
+    )}`;
 
     fetch(url)
       .then((resp) => (resp.ok ? resp.json() : Promise.reject(new Error(String(resp.status)))))

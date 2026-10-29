@@ -758,6 +758,20 @@ export function v3SessionRunsPath(
   )}/env/${environmentParam(environment)}/sessions/${encodeURIComponent(session.friendlyId)}/runs`;
 }
 
+// A page of a session's saved transcript: the newest, or the one `before` a message id.
+export function v3SessionTranscriptPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  sessionParam: string,
+  before?: string
+) {
+  const path = `/resources/orgs/${organizationParam(organization)}/projects/${projectParam(
+    project
+  )}/env/${environmentParam(environment)}/sessions/${encodeURIComponent(sessionParam)}/transcript`;
+  return before ? `${path}?before=${encodeURIComponent(before)}` : path;
+}
+
 export function v3BatchPath(
   organization: OrgForPath,
   project: ProjectForPath,

@@ -47,6 +47,8 @@ export type SessionRunLoads = {
   expanded: ReadonlySet<string>;
   /** Runs in the run store: only those have a trace to read. */
   withStatus: ReadonlySet<string>;
+  /** Runs the runs route says can't load here (deleted logs, legacy store, cap): never queued. */
+  unavailable: ReadonlySet<string>;
   /** Spans on screen per run (below its hidden root). */
   spanCounts: Readonly<Record<string, number>>;
   /** Spans each run's trace holds, on screen or not: what the budget counts. */
@@ -67,8 +69,13 @@ export type SessionRunLoadsAction =
   | { type: "expandedMany"; runFriendlyIds: string[] }
   /** The page opened on a link to this run: it expands and loads ahead of the others. */
   | { type: "deepLinked"; runFriendlyId: string }
-  /** The runs page changed: which runs are in the run store, and which is newest. */
-  | { type: "runsChanged"; withStatus: string[]; newestRunId: string | undefined }
+  /** The runs page changed: which runs are in the run store or can't load, and which is newest. */
+  | {
+      type: "runsChanged";
+      withStatus: string[];
+      unavailable?: string[];
+      newestRunId: string | undefined;
+    }
   /** How many of a run's spans are on screen; 0 when its trace unmounts. */
   | { type: "spanCount"; runFriendlyId: string; count: number }
   /** How many spans a run's trace holds, sent as each chunk merges; 0 when it unmounts. */
@@ -157,6 +164,7 @@ export function createSessionRunLoads(
     nextLoadId: 1,
     expanded: new Set(expandedRunIds),
     withStatus: new Set(),
+    unavailable: new Set(),
     spanCounts: {},
     loadedSpans: {},
     collapsedOrder: [],
@@ -180,7 +188,8 @@ function runLoadedSpans(loads: SessionRunLoads, runFriendlyId: string): number {
 
 /**
  * Every decision about loading a run's trace lives here:
- * - An expanded run that is in the run store and idle loads, whenever that becomes true.
+ * - An expanded run that is in the run store and idle loads, whenever that becomes true, unless
+ *   the runs route says it can't load here; Expand all skips those runs.
  * - Expanding a failed run reads it again, but only if none of its spans are on screen.
  * - At most 3 runs load at once; a run holds its slot until all its pages are in. The newest run
  *   starts first when it's queued.
@@ -215,7 +224,9 @@ export function sessionRunLoadsReducer(
       return loadWanted(expandRuns(current, [id]));
     }
     case "expandedMany": {
-      const ids = action.runFriendlyIds.filter((id) => !current.expanded.has(id));
+      const ids = action.runFriendlyIds.filter(
+        (id) => !current.expanded.has(id) && !current.unavailable.has(id)
+      );
       if (ids.length === 0) return current;
       return loadWanted(expandRuns(current, ids));
     }
@@ -230,11 +241,16 @@ export function sessionRunLoadsReducer(
     }
     case "runsChanged": {
       const sameStatus = sameMembers(current.withStatus, action.withStatus);
-      if (sameStatus && current.newestRunId === action.newestRunId) return current;
+      const unavailable = action.unavailable ?? [];
+      const sameUnavailable = sameMembers(current.unavailable, unavailable);
+      if (sameStatus && sameUnavailable && current.newestRunId === action.newestRunId) {
+        return current;
+      }
 
       let next: SessionRunLoads = {
         ...current,
         withStatus: sameStatus ? current.withStatus : new Set(action.withStatus),
+        unavailable: sameUnavailable ? current.unavailable : new Set(unavailable),
         newestRunId: action.newestRunId,
       };
       const previous = current.newestRunId;
@@ -394,7 +410,10 @@ function expandRuns(current: SessionRunLoads, runFriendlyIds: string[]): Session
 // Queues expanded runs that can load and aren't loaded, then fills free slots.
 function loadWanted(current: SessionRunLoads): SessionRunLoads {
   const wanted = [...current.expanded].filter(
-    (id) => current.withStatus.has(id) && runLoad(current, id).state === "idle"
+    (id) =>
+      current.withStatus.has(id) &&
+      !current.unavailable.has(id) &&
+      runLoad(current, id).state === "idle"
   );
   return startQueued(wanted.length > 0 ? enqueue(current, wanted) : current);
 }

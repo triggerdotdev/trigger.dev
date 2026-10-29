@@ -1,5 +1,6 @@
 import type { FlatTree } from "~/components/primitives/TreeView/TreeView";
 import type { SessionTreeRow } from "./buildSessionTree";
+import { runLoadBlock } from "./sessionRunFallback";
 import { runLoad, type SessionRunLoad, type SessionRunLoads } from "./sessionRunLoads";
 import type { SessionTraceRun } from "./sessionTraceTypes";
 import type { LoadedRuns } from "./useSessionRunPages";
@@ -106,9 +107,8 @@ export function searchCoverage({
   const coverage = { searched: 0, searchable: 0, partly: 0, notLoaded: 0, failed: 0 };
   const toLoad: SessionTraceRun[] = [];
   for (const run of runs) {
-    if (!run.status || view[run.friendlyId]?.unavailable) continue;
     const load = runLoad(loads, run.friendlyId);
-    if (load.state === "unavailable" || load.state === "logsDeleted") continue;
+    if (runLoadBlock(run, view[run.friendlyId], load)) continue;
     coverage.searchable++;
     if (load.state === "progressive" || load.state === "empty") {
       coverage.searched++;

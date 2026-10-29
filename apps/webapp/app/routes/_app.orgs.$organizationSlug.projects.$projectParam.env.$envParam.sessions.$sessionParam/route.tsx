@@ -47,6 +47,10 @@ import {
   TaskRunStatusCombo,
 } from "~/components/runs/v3/TaskRunStatus";
 import { TranscriptDownloadButton } from "~/components/sessions/v1/TranscriptDownloadButton";
+import {
+  type ConversationTranscript,
+  useConversationTranscript,
+} from "~/components/sessions/v1/useConversationTranscript";
 import { CloseSessionDialog } from "~/components/sessions/v1/CloseSessionDialog";
 import { SessionStatusCombo } from "~/components/sessions/v1/SessionStatus";
 import { $replica } from "~/db.server";
@@ -93,6 +97,7 @@ import {
   v3RunsPath,
   v3SessionRunsPath,
   v3SessionsPath,
+  v3SessionTranscriptPath,
 } from "~/utils/pathBuilder";
 import { sessionsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
@@ -134,6 +139,16 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throwNotFound("Environment not found");
   }
 
+  // Opening on the Trace tab skips the transcript; the Conversation tab fetches it when shown.
+  const searchParams = new URL(request.url).searchParams;
+  const opensOnConversation =
+    resolveSessionPageView({
+      view: searchParams.get("view") ?? undefined,
+      raw: searchParams.get("raw") ?? undefined,
+      channel: searchParams.get("channel") ?? undefined,
+      traceEnabled: sessionTraceEnabled,
+    }) === "conversation";
+
   const presenter = new SessionPresenter($replica);
   const session = await presenter.call({
     userId,
@@ -141,6 +156,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     sessionParam,
     projectExternalRef: project.externalRef,
     environmentSlug: environment.slug,
+    readTranscript: opensOnConversation,
   });
 
   if (!session) {
@@ -177,6 +193,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return typedjson({
     session,
     channels,
+    transcriptRead: opensOnConversation,
     sessionTraceEnabled,
     traceTreeSnapshot,
     loadedAt: Date.now(),
@@ -184,7 +201,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { session, channels, sessionTraceEnabled, traceTreeSnapshot, loadedAt } =
+  const { session, channels, transcriptRead, sessionTraceEnabled, traceTreeSnapshot, loadedAt } =
     useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
@@ -229,12 +246,14 @@ export default function Page() {
                 <SessionLeftPane
                   session={session}
                   channels={channels}
+                  transcriptRead={transcriptRead}
                   traceTreeSnapshot={traceTreeSnapshot}
                 />
               ) : (
                 <ConversationPane
                   session={session}
                   channels={channels}
+                  transcript={{ ready: true, seed: session.agentView.transcriptSeed }}
                   pinConversationView={false}
                 />
               )}
@@ -266,10 +285,12 @@ type LoadedSession = ReturnType<typeof useTypedLoaderData<typeof loader>>["sessi
 function SessionLeftPane({
   session,
   channels,
+  transcriptRead,
   traceTreeSnapshot,
 }: {
   session: LoadedSession;
   channels: string[];
+  transcriptRead: boolean;
   traceTreeSnapshot: ResizableSnapshot | undefined;
 }) {
   const organization = useOrganization();
@@ -281,6 +302,22 @@ function SessionLeftPane({
     raw: value("raw"),
     channel: value("channel"),
     traceEnabled: true,
+  });
+  // Kept here so switching tabs doesn't fetch it again. Raw and channels don't use it.
+  const channelParam = value("channel");
+  const transcript = useConversationTranscript({
+    transcriptPath: v3SessionTranscriptPath(
+      organization,
+      project,
+      environment,
+      session.agentView.sessionId
+    ),
+    loaderSeed: session.agentView.transcriptSeed,
+    transcriptRead,
+    wanted:
+      view === "conversation" &&
+      value("raw") !== "1" &&
+      !(channelParam && channels.includes(channelParam)),
   });
 
   return (
@@ -311,7 +348,12 @@ function SessionLeftPane({
             treeSnapshot={traceTreeSnapshot}
           />
         ) : (
-          <ConversationPane session={session} channels={channels} pinConversationView />
+          <ConversationPane
+            session={session}
+            channels={channels}
+            transcript={transcript}
+            pinConversationView
+          />
         )}
       </div>
     </div>
@@ -321,10 +363,12 @@ function SessionLeftPane({
 function ConversationPane({
   session,
   channels,
+  transcript,
   pinConversationView,
 }: {
   session: LoadedSession;
   channels: string[];
+  transcript: ConversationTranscript;
   /** Keep `?view=conversation` so clearing Raw or a channel doesn't switch to the Trace tab. */
   pinConversationView: boolean;
 }) {
@@ -387,7 +431,18 @@ function ConversationPane({
         <>
           <ConversationUtilityBar isRaw={isRaw} onChangeView={setView} {...utilityBarProps} />
           <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
-            <AgentView key={session.agentView.sessionId} agentView={session.agentView} />
+            {/* The view reads its seed when it subscribes, so it mounts once the seed is in. */}
+            {transcript.ready ? (
+              <AgentView
+                key={session.agentView.sessionId}
+                agentView={{ ...session.agentView, transcriptSeed: transcript.seed }}
+              />
+            ) : (
+              <div className="flex items-center justify-center gap-2 py-6">
+                <Spinner className="size-4" />
+                <Paragraph variant="small/dimmed">Loading conversation…</Paragraph>
+              </div>
+            )}
           </div>
         </>
       )}
