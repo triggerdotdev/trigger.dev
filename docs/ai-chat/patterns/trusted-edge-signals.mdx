@@ -4,7 +4,7 @@ sidebarTitle: "Trusted edge signals"
 description: "How to safely deliver server-trusted signals (bot scores, JA4, ASN, ReCAPTCHA verdicts) to a chat.agent run via an edge proxy."
 ---
 
-A common need for chat-style endpoints is to drive agent behavior from **server-trusted signals** that the browser cannot be allowed to declare itself — bot management scores, JA4 fingerprints, ASN, ReCAPTCHA verdicts, or any other anti-abuse data only the edge can see. The agent's [`clientData`](/ai-chat/reference#withclientdata) channel is the right delivery mechanism, but `clientData` set in the browser is by definition spoofable. The fix is to move the value population out of the browser and into a trusted edge proxy.
+A common need for chat-style endpoints is to drive agent behavior from **server-trusted signals** that the browser cannot be allowed to declare itself — bot management scores, JA4 fingerprints, ASN, ReCAPTCHA verdicts, or any other anti-abuse data only the edge can see. The agent's [`clientData`](/ai-chat/reference#chatwithclientdata) channel is the right delivery mechanism, but `clientData` set in the browser is by definition spoofable. The fix is to move the value population out of the browser and into a trusted edge proxy.
 
 This page documents the pattern using Cloudflare Workers as the proxy. The same shape applies to any edge layer (custom reverse proxy, Vercel Edge Middleware, AWS Lambda@Edge) — the trust comes from the deployment topology, not from Trigger.dev validating the source.
 
@@ -12,7 +12,7 @@ This page documents the pattern using Cloudflare Workers as the proxy. The same 
 
 It's tempting to ask whether `POST /realtime/v1/sessions/{id}/in/append` could carry the signal as an HTTP header. It cannot. The realtime route reads only `Authorization` and `X-Part-Id`; the remaining headers are dropped at the route boundary and the body is persisted to the durable stream as opaque bytes. There is no `headers → run payload` channel.
 
-The trigger.dev wire payload, on the other hand, has a typed per-turn metadata channel ([`ChatTaskWirePayload.metadata`](/ai-chat/client-protocol#chattaskwirepayload)). It already flows from the wire into [`clientData`](/ai-chat/reference#withclientdata) on every hook (`onBoot`, `onChatStart`, `onTurnStart`, `run`, `onTurnComplete`). That field is where signals must land.
+The trigger.dev wire payload, on the other hand, has a typed per-turn metadata channel ([`ChatTaskWirePayload.metadata`](/ai-chat/client-protocol#chattaskwirepayload)). It already flows from the wire into [`clientData`](/ai-chat/reference#chatwithclientdata) on every hook (`onBoot`, `onChatStart`, `onTurnStart`, `run`, `onTurnComplete`). That field is where signals must land.
 
 ## The trust boundary
 
@@ -329,5 +329,5 @@ You can harden further with a shared-secret header the worker injects (e.g. `X-E
 ## See also
 
 - [Client Protocol](/ai-chat/client-protocol) — the full wire shape the proxy is rewriting.
-- [`withClientData`](/ai-chat/reference#withclientdata) — agent-side typed metadata channel.
+- [`withClientData`](/ai-chat/reference#chatwithclientdata) — agent-side typed metadata channel.
 - [Large payloads](/ai-chat/patterns/large-payloads) — for when injected signals or hooks need to ship more than the 1 MiB stream cap allows.
