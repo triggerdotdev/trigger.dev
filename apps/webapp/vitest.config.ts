@@ -64,6 +64,17 @@ export default defineConfig({
     pool: "forks",
     maxWorkers: "50%",
     setupFiles: ["./test/setup.ts"], // test fallbacks and isolation
+    server: { deps: { inline: [/@uiw\//] } },
+  },
+  resolve: {
+    // Their CommonJS builds would load a second @codemirror/state beside the ESM one tests import.
+    alias: [
+      { find: /^@uiw\/react-codemirror$/, replacement: "@uiw/react-codemirror/esm/index.js" },
+      {
+        find: /^@uiw\/codemirror-extensions-basic-setup$/,
+        replacement: "@uiw/codemirror-extensions-basic-setup/esm/index.js",
+      },
+    ],
   },
   // @ts-ignore
   plugins: [tsconfigPaths({ projects: ["./tsconfig.json"] })],

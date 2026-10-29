@@ -64,6 +64,7 @@ const sections: StorySection[] = [
       { name: "Input fields", slug: "input-fields" },
       { name: "Search fields", slug: "search-fields" },
       { name: "Textarea", slug: "textarea" },
+      { name: "Ignored paths", slug: "ignored-paths" },
       { name: "Checkboxes", slug: "checkboxes" },
       { name: "Radio group", slug: "radio-group" },
       { name: "Switch", slug: "switch" },

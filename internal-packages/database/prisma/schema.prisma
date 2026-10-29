@@ -3128,6 +3128,8 @@ model ConnectedGithubRepository {
 
   previewDeploymentsEnabled Boolean @default(true)
 
+  buildFilters Json?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

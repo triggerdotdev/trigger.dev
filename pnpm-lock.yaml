@@ -690,6 +690,9 @@ importers:
       pg:
         specifier: 8.15.6
         version: 8.15.6
+      picomatch:
+        specifier: ^4.0.5
+        version: 4.0.5
       posthog-js:
         specifier: 1.407.3
         version: 1.407.3
@@ -871,6 +874,9 @@ importers:
       '@types/pg':
         specifier: ^8.11.10
         version: 8.11.14
+      '@types/picomatch':
+        specifier: ^4.0.3
+        version: 4.0.3
       '@types/prismjs':
         specifier: ^1.26.0
         version: 1.26.0
@@ -8634,6 +8640,9 @@ packages:
 
   '@types/pg@8.6.1':
     resolution: {integrity: sha512-1Kc4oAGzAl7uqUStZCDvaLFqZrW9qWSjXOmBfdgyBP5La7Us6Mg4GBvRlSoaZMhQF/zSj1C8CtKMBkoiT8eL8w==}
+
+  '@types/picomatch@4.0.3':
+    resolution: {integrity: sha512-iG0T6+nYJ9FAPmx9SsUlnwcq1ZVRuCXcVEvWnntoPlrOpwtSTKNDC9uVAxTsC3PUvJ+99n4RpAcNgBbHX3JSnQ==}
 
   '@types/prismjs@1.26.0':
     resolution: {integrity: sha512-ZTaqn/qSqUuAq1YwvOFQfVW1AR/oQJlLSZVustdjwI+GZ8kr0MSHBj0tsXPW1EqHubx50gtBEjbPGsdZwQwCjQ==}
@@ -23558,6 +23567,8 @@ snapshots:
       pg-protocol: 1.10.3
       pg-types: 2.2.0
 
+  '@types/picomatch@4.0.3': {}
+
   '@types/prismjs@1.26.0': {}
 
   '@types/prop-types@15.7.5': {}
@@ -26352,13 +26363,13 @@ snapshots:
     dependencies:
       walk-up-path: 4.0.0
 
-  fdir@6.2.0(picomatch@4.0.4):
+  fdir@6.2.0(picomatch@4.0.5):
     optionalDependencies:
-      picomatch: 4.0.4
+      picomatch: 4.0.5
 
-  fdir@6.4.3(picomatch@4.0.4):
+  fdir@6.4.3(picomatch@4.0.5):
     optionalDependencies:
-      picomatch: 4.0.4
+      picomatch: 4.0.5
 
   fdir@6.5.0(picomatch@4.0.4):
     optionalDependencies:
@@ -27633,7 +27644,7 @@ snapshots:
 
   magicast@0.3.5:
     dependencies:
-      '@babel/parser': 7.29.9
+      '@babel/parser': 7.29.7
       '@babel/types': 7.29.8
       source-map-js: 1.2.2
     optional: true
@@ -31029,18 +31040,18 @@ snapshots:
 
   tinyglobby@0.2.10:
     dependencies:
-      fdir: 6.4.3(picomatch@4.0.4)
-      picomatch: 4.0.4
+      fdir: 6.4.3(picomatch@4.0.5)
+      picomatch: 4.0.5
 
   tinyglobby@0.2.17:
     dependencies:
-      fdir: 6.5.0(picomatch@4.0.4)
-      picomatch: 4.0.4
+      fdir: 6.5.0(picomatch@4.0.5)
+      picomatch: 4.0.5
 
   tinyglobby@0.2.2:
     dependencies:
-      fdir: 6.2.0(picomatch@4.0.4)
-      picomatch: 4.0.4
+      fdir: 6.2.0(picomatch@4.0.5)
+      picomatch: 4.0.5
 
   tinypool@2.2.0: {}
 

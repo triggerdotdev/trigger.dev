@@ -480,6 +480,8 @@ const EnvironmentSchema = z
     TRIGGER_TELEMETRY_DISABLED: z.string().optional(),
     AUTH_GITHUB_CLIENT_ID: z.string().optional(),
     AUTH_GITHUB_CLIENT_SECRET: z.string().optional(),
+    GITHUB_IGNORED_PATHS_LIMIT: z.coerce.number().int().positive().default(100),
+    GITHUB_IGNORED_PATH_MAX_LENGTH: z.coerce.number().int().positive().default(256),
     AUTH_GOOGLE_CLIENT_ID: z.string().optional(),
     AUTH_GOOGLE_CLIENT_SECRET: z.string().optional(),
     EMAIL_TRANSPORT: z.enum(["resend", "smtp", "aws-ses"]).optional(),

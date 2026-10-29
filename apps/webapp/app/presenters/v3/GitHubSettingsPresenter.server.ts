@@ -1,7 +1,8 @@
 import { type PrismaClient } from "@trigger.dev/database";
 import { fromPromise, ok, ResultAsync } from "neverthrow";
 import { env } from "~/env.server";
-import { BranchTrackingConfigSchema } from "~/v3/github";
+import { BranchTrackingConfigSchema, BuildFiltersSchema } from "~/v3/github";
+import { ignorePathLimits } from "~/v3/github/ignorePathLimits.server";
 import { BasePresenter } from "./basePresenter.server";
 
 type GitHubSettingsOptions = {
@@ -20,6 +21,8 @@ export class GitHubSettingsPresenter extends BasePresenter {
         installations: undefined,
         isPreviewEnvironmentEnabled: undefined,
         isStagingEnvironmentEnabled: undefined,
+        isVercelIntegrationConnected: undefined,
+        ignorePathLimits: ignorePathLimits(),
       });
     }
 
@@ -38,6 +41,7 @@ export class GitHubSettingsPresenter extends BasePresenter {
           select: {
             branchTracking: true,
             previewDeploymentsEnabled: true,
+            buildFilters: true,
             createdAt: true,
             repository: {
               select: {
@@ -65,10 +69,14 @@ export class GitHubSettingsPresenter extends BasePresenter {
         const branchTracking = branchTrackingOrFailure.success
           ? branchTrackingOrFailure.data
           : undefined;
+        const buildFiltersOrFailure = BuildFiltersSchema.safeParse(
+          connectedGithubRepository.buildFilters
+        );
 
         return {
           ...connectedGithubRepository,
           branchTracking,
+          buildFilters: buildFiltersOrFailure.success ? buildFiltersOrFailure.data : undefined,
         };
       });
 
@@ -143,23 +151,48 @@ export class GitHubSettingsPresenter extends BasePresenter {
         })
       ).map((stagingEnvironment) => stagingEnvironment !== null);
 
+    const isVercelIntegrationConnected = () =>
+      fromPromise(
+        (this._replica as PrismaClient).organizationProjectIntegration.findFirst({
+          select: {
+            id: true,
+          },
+          where: {
+            projectId,
+            deletedAt: null,
+            organizationIntegration: {
+              service: "VERCEL",
+              deletedAt: null,
+            },
+          },
+        }),
+        (error) => ({
+          type: "other" as const,
+          cause: error,
+        })
+      ).map((vercelIntegration) => vercelIntegration !== null);
+
     return ResultAsync.combine([
       isPreviewEnvironmentEnabled(),
       isStagingEnvironmentEnabled(),
       findConnectedGithubRepository(),
       listGithubAppInstallations(),
+      isVercelIntegrationConnected(),
     ]).map(
       ([
         isPreviewEnvironmentEnabled,
         isStagingEnvironmentEnabled,
         connectedGithubRepository,
         githubAppInstallations,
+        isVercelIntegrationConnected,
       ]) => ({
         enabled: true,
         connectedRepository: connectedGithubRepository,
         installations: githubAppInstallations,
         isPreviewEnvironmentEnabled,
         isStagingEnvironmentEnabled,
+        isVercelIntegrationConnected,
+        ignorePathLimits: ignorePathLimits(),
       })
     );
   }

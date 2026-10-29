@@ -3,7 +3,7 @@ import { EditorView, lineNumbers } from "@codemirror/view";
 import { CheckIcon, ClipboardIcon } from "@heroicons/react/20/solid";
 import type { ReactCodeMirrorProps, UseCodeMirror } from "@uiw/react-codemirror";
 import { useCodeMirror } from "@uiw/react-codemirror";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Button } from "../primitives/Buttons";
 import { getEditorSetup } from "./codeMirrorSetup";
@@ -27,23 +27,30 @@ export function TextEditor(opts: TextEditorProps) {
     autoFocus,
     showCopyButton = true,
     additionalActions,
+    extensions: extraExtensions,
   } = opts;
 
-  // Don't use default line numbers from setup — add our own with proper sizing
-  const extensions = getEditorSetup(false);
-  extensions.push(EditorView.lineWrapping);
-  extensions.push(
-    lineNumbers({
-      formatNumber: (n) => String(n),
-    })
-  );
-  extensions.push(
-    EditorView.theme({
-      ".cm-lineNumbers": {
-        minWidth: "40px",
-      },
-    })
-  );
+  // New identities make CodeMirror reconfigure and mount fresh theme styles.
+  const extensions = useMemo(() => {
+    // Don't use default line numbers from setup — add our own with proper sizing
+    const setup = getEditorSetup(false);
+    setup.push(EditorView.lineWrapping);
+    setup.push(
+      lineNumbers({
+        formatNumber: (n) => String(n),
+      })
+    );
+    setup.push(
+      EditorView.theme({
+        ".cm-lineNumbers": {
+          minWidth: "40px",
+        },
+      })
+    );
+    setup.push(...(extraExtensions ?? []));
+    return setup;
+  }, [extraExtensions]);
+  const theme = useMemo(() => darkTheme(), []);
 
   const editor = useRef<HTMLDivElement>(null);
   const settings: Omit<UseCodeMirror, "onBlur"> = {
@@ -55,7 +62,7 @@ export function TextEditor(opts: TextEditorProps) {
     contentEditable: !readOnly,
     value: defaultValue,
     autoFocus,
-    theme: darkTheme(),
+    theme,
     indentWithTab: false,
     basicSetup: false,
     onChange,
