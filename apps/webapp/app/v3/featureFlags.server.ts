@@ -7,7 +7,7 @@ import {
   FeatureFlagCatalog,
   GLOBAL_LOCKED_FLAGS,
   GRACED_FLAG_GROUPS,
-  validatePartialFeatureFlags,
+  mergeOrgFeatureFlags,
 } from "~/v3/featureFlags";
 import { env } from "~/env.server";
 import { isAlertsEnabledEnv } from "~/v3/canUseAlertsList";
@@ -396,15 +396,7 @@ export async function globalFeatureFlags() {
 }
 
 /** The global set with one org's overrides on top. */
-export function mergeOrgFeatureFlags(
-  globalFlags: Partial<FeatureFlagCatalog>,
-  orgFeatureFlags: unknown
-) {
-  const parsed = orgFeatureFlags
-    ? validatePartialFeatureFlags(orgFeatureFlags as Record<string, unknown>)
-    : ({ success: false } as const);
-  return { ...globalFlags, ...(parsed.success ? parsed.data : {}) };
-}
+export { mergeOrgFeatureFlags } from "~/v3/featureFlags";
 
 /**
  * The flags that apply to one organization. Server-side callers that need the

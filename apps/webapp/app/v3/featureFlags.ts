@@ -389,6 +389,15 @@ export function parseStoredOrgFlags(raw: unknown): StoredOrgFlags {
   return result;
 }
 
+/** The global set with one org's overrides on top. */
+export function mergeOrgFeatureFlags(
+  globalFlags: Partial<FeatureFlagCatalog>,
+  orgFeatureFlags: unknown
+): Partial<FeatureFlagCatalog> {
+  const validOrgFlags = orgFeatureFlags ? parseStoredOrgFlags(orgFeatureFlags).valid : {};
+  return { ...globalFlags, ...validOrgFlags };
+}
+
 /** Whether `key` still holds the invalid value the org has stored, i.e. the admin hasn't touched it. */
 export function isUnchangedInvalidFlag(
   key: string,

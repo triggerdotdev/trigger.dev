@@ -4,6 +4,7 @@ import {
   ORG_LOCKED_FLAGS,
   ORG_LOCKED_FLAG_EFFECT,
   isUnchangedInvalidFlag,
+  mergeOrgFeatureFlags,
   parseStoredOrgFlags,
   validatePartialFeatureFlags,
 } from "~/v3/featureFlags";
@@ -92,5 +93,48 @@ describe("isUnchangedInvalidFlag", () => {
   it("is false when nothing invalid is stored for the key", () => {
     expect(isUnchangedInvalidFlag(KEY, { [KEY]: { x: null } }, undefined)).toBe(false);
     expect(isUnchangedInvalidFlag(KEY, { [KEY]: { x: null } }, {})).toBe(false);
+  });
+});
+
+describe("mergeOrgFeatureFlags", () => {
+  const globalFlags = {
+    [FEATURE_FLAG.hasLogsPageAccess]: false,
+    [FEATURE_FLAG.hasQueryAccess]: false,
+  };
+
+  it("merges valid org overrides on top of global flags", () => {
+    const result = mergeOrgFeatureFlags(globalFlags, {
+      [FEATURE_FLAG.hasLogsPageAccess]: true,
+    });
+    expect(result).toEqual({
+      [FEATURE_FLAG.hasLogsPageAccess]: true,
+      [FEATURE_FLAG.hasQueryAccess]: false,
+    });
+  });
+
+  it("preserves valid org flags when an invalid flag is present in stored org flags", () => {
+    const result = mergeOrgFeatureFlags(globalFlags, {
+      [FEATURE_FLAG.hasLogsPageAccess]: true,
+      [FEATURE_FLAG.snapshotStoreMode]: "invalid-mode",
+    });
+    expect(result).toEqual({
+      [FEATURE_FLAG.hasLogsPageAccess]: true,
+      [FEATURE_FLAG.hasQueryAccess]: false,
+    });
+  });
+
+  it("ignores unknown keys in stored org flags when merging", () => {
+    const result = mergeOrgFeatureFlags(globalFlags, {
+      [FEATURE_FLAG.hasLogsPageAccess]: true,
+      unknownKey: "should-be-ignored",
+    });
+    expect(result).toEqual({
+      [FEATURE_FLAG.hasLogsPageAccess]: true,
+      [FEATURE_FLAG.hasQueryAccess]: false,
+    });
+  });
+
+  it.each([null, undefined, "", 123, []])("returns global flags unchanged for %j", (raw) => {
+    expect(mergeOrgFeatureFlags(globalFlags, raw)).toEqual(globalFlags);
   });
 });
