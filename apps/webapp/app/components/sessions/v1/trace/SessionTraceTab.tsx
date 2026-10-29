@@ -81,6 +81,10 @@ import {
 import { useSessionTraceSelection } from "./useSessionTraceSelection";
 
 const ROW_HEIGHT_PX = 32;
+
+function isScrolledToBottom(element: HTMLElement) {
+  return element.scrollTop + element.clientHeight >= element.scrollHeight - ROW_HEIGHT_PX;
+}
 // Like the run page: arrowing through rows doesn't write the URL on every step.
 const SELECTION_URL_DEBOUNCE_MS = 250;
 
@@ -406,6 +410,11 @@ function SessionTraceTree({
     [tree]
   );
   const revealedDeepLink = useRef(deepLink === undefined);
+  // After a deep link, following new spans waits for the user's own scroll, click or key: the
+  // reveal can leave a short live trace at the bottom, and following from there would push the
+  // linked row away. Until armed, scrolls don't update `atBottom`.
+  const followArmed = useRef(deepLink === undefined);
+  const atBottom = useRef(deepLink === undefined);
   const deepLinkStillIntended = deepLink !== undefined && isSameSelection(intended, deepLink);
   useLayoutEffect(() => {
     if (!deepLink || revealedDeepLink.current) return;
@@ -424,10 +433,14 @@ function SessionTraceTree({
   // Scrolling, a click or a key in the tab means the user has moved on: stop revealing.
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || revealedDeepLink.current) return;
+    // Until following is armed: a run link's reveal is already done by the time this runs.
+    if (!container || followArmed.current) return;
     const stopRevealing = () => {
       revealedDeepLink.current = true;
       pendingScroll.current = undefined;
+      followArmed.current = true;
+      const scrollElement = parentRef.current;
+      atBottom.current = scrollElement ? isScrolledToBottom(scrollElement) : false;
     };
     const events = ["wheel", "touchstart", "pointerdown", "keydown"] as const;
     for (const event of events) {
@@ -485,8 +498,8 @@ function SessionTraceTree({
   };
 
   // Follow the newest run's new spans, but only if the view was at the bottom when they arrived.
+  // `atBottom` is tracked on scroll, so rows added without a scroll (a new run) keep it true.
   // The tree takes the new rows a render later, so scroll once its node state has changed.
-  const atBottom = useRef(deepLink === undefined);
   const newestSpanCount = newestRunId ? (snapshots[newestRunId]?.events.length ?? 0) : 0;
   const pendingFollow = useRef<{ nodes: typeof nodes } | null>(null);
   const latestNodes = useRef(nodes);
@@ -669,10 +682,7 @@ function SessionTraceTree({
               }
               onScroll={(scrollTop) => {
                 const element = treeScrollRef.current;
-                if (element) {
-                  atBottom.current =
-                    scrollTop + element.clientHeight >= element.scrollHeight - ROW_HEIGHT_PX;
-                }
+                if (element && followArmed.current) atBottom.current = isScrolledToBottom(element);
                 const timeline = timelineScrollRef.current;
                 if (timeline && Math.abs(timeline.scrollTop - scrollTop) >= 0.5) {
                   timeline.scrollTop = scrollTop;
