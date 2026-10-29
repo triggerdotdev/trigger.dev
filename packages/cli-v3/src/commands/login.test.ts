@@ -58,4 +58,21 @@ describe("resumable login", () => {
       )
     ).toBe(false);
   });
+
+  it("never resumes a login whose approval was going to a loopback callback", () => {
+    expect(
+      isPendingAuthorizationValid(
+        { ...pendingAuthorization, codeVerifier: "verifier", approval: "callback" },
+        pendingAuthorization.apiUrl,
+        Date.parse("2026-01-01T00:01:00.000Z")
+      )
+    ).toBe(false);
+    expect(
+      isPendingAuthorizationValid(
+        { ...pendingAuthorization, codeVerifier: "verifier", approval: "paste" },
+        pendingAuthorization.apiUrl,
+        Date.parse("2026-01-01T00:01:00.000Z")
+      )
+    ).toBe(true);
+  });
 });

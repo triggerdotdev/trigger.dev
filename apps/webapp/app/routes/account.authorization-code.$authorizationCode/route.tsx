@@ -2,12 +2,14 @@ import { CheckCircleIcon } from "@heroicons/react/24/solid";
 import { Form } from "@remix-run/react";
 import { useState } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { redirect } from "@remix-run/server-runtime";
 import { typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
+import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { Header1 } from "~/components/primitives/Headers";
 import { Icon } from "~/components/primitives/Icon";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -97,6 +99,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     status: "consent" as const,
     source,
     clientName,
+    legacy: mintable.legacy,
     requesterIp: mintable.requesterIp,
     requesterLocation: describeIpLocation(requesterLocation) ?? null,
     startedMinutesAgo: Math.max(
@@ -135,7 +138,18 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       requesterIp: token.requesterIp,
     });
 
-    return typedjson({ success: true as const, source, clientName });
+    if (token.approval?.callbackPort) {
+      const callbackUrl = new URL(`http://127.0.0.1:${token.approval.callbackPort}/callback`);
+      callbackUrl.searchParams.set("approval_code", token.approval.approvalCode);
+      throw redirect(callbackUrl.href);
+    }
+
+    return typedjson({
+      success: true as const,
+      source,
+      clientName,
+      approvalCode: token.approval?.approvalCode,
+    });
   } catch (error) {
     if (error instanceof Response) {
       throw error;
@@ -161,7 +175,16 @@ export default function Page() {
   if (actionData) {
     return (
       <AuthShell>
-        {actionData.success ? (
+        {actionData.success && actionData.approvalCode ? (
+          <div className="flex flex-col gap-4">
+            <Header1>Finish logging in</Header1>
+            <Paragraph>Paste this code into the terminal where you started the login.</Paragraph>
+            <ClipboardField value={actionData.approvalCode} variant="secondary/medium" />
+            <Callout variant="warning">
+              Never share this code. Anyone who has it can finish this login and act as you.
+            </Callout>
+          </div>
+        ) : actionData.success ? (
           <div>
             <Header1 className="mb-2 flex items-center gap-1">
               <Icon icon={CheckCircleIcon} className="h-6 w-6 text-emerald-500" /> Successfully
@@ -215,6 +238,13 @@ export default function Page() {
             loaderData.requesterLocation
           )}
         </Paragraph>
+        {loaderData.legacy && (
+          <Callout variant="warning">
+            This login was started by an outdated version of the Trigger.dev CLI, which can't
+            confirm it is running on your computer. Only continue if you just ran a login command
+            yourself, and upgrade the CLI afterwards.
+          </Callout>
+        )}
         <ConsentForm requiresNetworkConfirmation={loaderData.requiresNetworkConfirmation} />
         <Paragraph variant="extra-small">
           Only authorize if you started this login yourself. If you didn't, close this page.

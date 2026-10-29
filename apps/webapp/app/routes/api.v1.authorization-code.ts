@@ -1,13 +1,21 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import type { CreateAuthorizationCodeResponse } from "@trigger.dev/core/v3";
+import {
+  CreateAuthorizationCodeRequestSchema,
+  type CreateAuthorizationCodeRequest,
+  type CreateAuthorizationCodeResponse,
+} from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import {
   AuthorizationCodeRateLimitError,
   checkAuthorizationCodeMintRateLimit,
 } from "~/services/authCodeRateLimiter.server";
-import { createAuthorizationCode } from "~/services/personalAccessToken.server";
+import {
+  CLI_LOGIN_UPGRADE_REQUIRED_MESSAGE,
+  createAuthorizationCode,
+  isLegacyCliLoginAllowed,
+} from "~/services/personalAccessToken.server";
 import { extractClientIp } from "~/utils/extractClientIp.server";
 
 /** Used to create an AuthorizationCode, that can then be used to obtain a Personal Access Token by logging in with the provided URL */
@@ -38,11 +46,30 @@ export async function action({ request }: ActionFunctionArgs) {
     }
   }
 
+  const rawBody = await request.text();
+  let binding: CreateAuthorizationCodeRequest | undefined;
+  if (rawBody.trim()) {
+    let parsedJson: unknown;
+    try {
+      parsedJson = JSON.parse(rawBody);
+    } catch {
+      return json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const parsed = CreateAuthorizationCodeRequestSchema.safeParse(parsedJson);
+    if (!parsed.success) {
+      return json({ error: "Invalid request body" }, { status: 422 });
+    }
+    binding = parsed.data;
+  } else if (!isLegacyCliLoginAllowed()) {
+    return json({ error: CLI_LOGIN_UPGRADE_REQUIRED_MESSAGE }, { status: 400 });
+  }
+
   try {
-    const authorizationCode = await createAuthorizationCode({ requesterIp: clientIp });
+    const authorizationCode = await createAuthorizationCode({ ...binding, requesterIp: clientIp });
     const responseJson: CreateAuthorizationCodeResponse = {
       authorizationCode: authorizationCode.code,
       url: `${env.APP_ORIGIN}/account/authorization-code/${authorizationCode.code}`,
+      approval: binding ? (binding.callbackPort ? "callback" : "paste") : undefined,
     };
 
     return json(responseJson);

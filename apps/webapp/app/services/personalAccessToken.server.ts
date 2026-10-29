@@ -4,7 +4,9 @@ import {
   type User,
 } from "@trigger.dev/database";
 import { compareCliLoginNetworks, needsNetworkConfirmation } from "./cliLoginNetwork.server";
+import type { CreateAuthorizationCodeRequest } from "@trigger.dev/core/v3";
 import { customAlphabet, nanoid } from "nanoid";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
 import { z } from "zod";
 import { prisma } from "~/db.server";
@@ -71,13 +73,22 @@ export type ObfuscatedPersonalAccessToken = Awaited<
 /**
  * Gets a PersonalAccessToken from an Auth Code, this only works within 10 mins of the auth code being created.
  * Codes are single use: the request that discloses the token also deletes the code.
+ *
+ * A code minted with a PKCE challenge only discloses its token to a caller holding both the
+ * matching verifier and the approval code, which reaches only the browser that approved it.
+ * Codes minted without a challenge are only honoured until `CLI_LOGIN_LEGACY_UNTIL`.
  */
-export async function getPersonalAccessTokenFromAuthorizationCode(authorizationCode: string) {
+export async function getPersonalAccessTokenFromAuthorizationCode(
+  authorizationCode: string,
+  proof: { codeVerifier?: string; approvalCode?: string } = {}
+) {
   // Only allow authorization codes created within the short consent window.
   const validAfter = new Date(Date.now() - AUTHORIZATION_CODE_TTL_MS);
   const code = await prisma.authorizationCode.findFirst({
     select: {
       id: true,
+      codeChallenge: true,
+      approvalCodeHash: true,
       personalAccessToken: true,
     },
     where: {
@@ -91,11 +102,28 @@ export async function getPersonalAccessTokenFromAuthorizationCode(authorizationC
     throw new Error("Invalid authorization code, or code expired");
   }
 
+  if (!code.codeChallenge && !isLegacyCliLoginAllowed()) {
+    throw new Error(CLI_LOGIN_UPGRADE_REQUIRED_MESSAGE);
+  }
+
   //there's no PersonalAccessToken associated with this code
   if (!code.personalAccessToken) {
     return {
       token: null,
     };
+  }
+
+  if (code.codeChallenge) {
+    const verified =
+      proof.codeVerifier !== undefined &&
+      proof.approvalCode !== undefined &&
+      code.approvalCodeHash !== null &&
+      safeEqual(codeChallengeFor(proof.codeVerifier), code.codeChallenge) &&
+      safeEqual(hashToken(normalizeApprovalCode(proof.approvalCode)), code.approvalCodeHash);
+
+    if (!verified) {
+      throw new Error("Invalid authorization code, or code expired");
+    }
   }
 
   const consumed = await prisma.authorizationCode.deleteMany({ where: { id: code.id } });
@@ -340,6 +368,37 @@ export async function resolveAndRecheckUserActorClaims(
   return (await assertSourcePatActive(resolved)) ? resolved : undefined;
 }
 
+export const CLI_LOGIN_UPGRADE_REQUIRED_MESSAGE =
+  "This version of the Trigger.dev CLI can no longer log in. Upgrade to the latest version (npx trigger.dev@latest login) and try again.";
+
+/** Whether codes minted without a PKCE challenge, by CLIs that predate it, are still honoured. */
+export function isLegacyCliLoginAllowed(now = new Date()) {
+  return now < new Date(env.CLI_LOGIN_LEGACY_UNTIL);
+}
+
+/** Uppercase without 0, 1, I and O, so an approval code survives being read and retyped. */
+const approvalCodeGenerator = customAlphabet("23456789ABCDEFGHJKLMNPQRSTUVWXYZ", 12);
+
+/** Formats an approval code for display as XXXX-XXXX-XXXX. */
+function formatApprovalCode(approvalCode: string) {
+  return approvalCode.match(/.{1,4}/g)!.join("-");
+}
+
+/** Accepts an approval code as typed or pasted: any case, with or without separators. */
+function normalizeApprovalCode(approvalCode: string) {
+  return approvalCode.toUpperCase().replace(/[^0-9A-Z]/g, "");
+}
+
+function codeChallengeFor(codeVerifier: string) {
+  return createHash("sha256").update(codeVerifier).digest("base64url");
+}
+
+function safeEqual(a: string, b: string) {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
 /**
  * Read-only lookup of an authorization code that is still mintable: it exists, is
  * unconsumed (`personalAccessTokenId: null`), and within the TTL. Lets the
@@ -349,27 +408,44 @@ export async function resolveAndRecheckUserActorClaims(
 export async function getMintableAuthorizationCode(
   authorizationCode: string,
   prismaClient = prisma
-): Promise<{ createdAt: Date; requesterIp: string | null } | null> {
+): Promise<{ legacy: boolean; createdAt: Date; requesterIp: string | null } | null> {
   const validAfter = new Date(Date.now() - AUTHORIZATION_CODE_TTL_MS);
-  return prismaClient.authorizationCode.findFirst({
+  const code = await prismaClient.authorizationCode.findFirst({
     where: {
       code: authorizationCode,
       personalAccessTokenId: null,
       createdAt: { gte: validAfter },
     },
-    select: { createdAt: true, requesterIp: true },
+    select: { codeChallenge: true, createdAt: true, requesterIp: true },
   });
+
+  if (!code) {
+    return null;
+  }
+
+  const legacy = code.codeChallenge === null;
+  if (legacy && !isLegacyCliLoginAllowed()) {
+    return null;
+  }
+
+  return { legacy, createdAt: code.createdAt, requesterIp: code.requesterIp };
 }
 
 /**
  * The requester IP is shown on the consent page and in the authorized-login email, so a value
  * that isn't an IP address (a forged `X-Forwarded-For` on an install without a proxy) isn't stored.
  */
-export function createAuthorizationCode(requester?: { requesterIp?: string | null }) {
-  const requesterIp = requester?.requesterIp?.trim();
+export function createAuthorizationCode(
+  options: Partial<Pick<CreateAuthorizationCodeRequest, "codeChallenge" | "callbackPort">> & {
+    requesterIp?: string | null;
+  } = {}
+) {
+  const requesterIp = options.requesterIp?.trim();
   return prisma.authorizationCode.create({
     data: {
       code: nanoid(64),
+      codeChallenge: options.codeChallenge,
+      callbackPort: options.callbackPort,
       requesterIp: requesterIp && isIP(requesterIp) !== 0 ? requesterIp : undefined,
     },
   });
@@ -388,6 +464,10 @@ export class CliLoginNetworkConfirmationRequiredError extends Error {
 /**
  * Mints a new PersonalAccessToken for an Auth Code. Every authorization gets its own token, so a
  * login never hands out a secret that another CLI or MCP client is already using.
+ *
+ * For a code minted with a PKCE challenge it also issues the approval code the client needs to
+ * exchange the code. The caller hands it to the approving browser only: by redirect to the
+ * client's loopback `callbackPort`, or on the page for the user to paste.
  *
  * Compares the approver's network with the one that minted the code. With
  * `CLI_LOGIN_NETWORK_CHECK=confirm` a login from another network needs `confirmedDifferentNetwork`;
@@ -413,6 +493,12 @@ export async function createPersonalAccessTokenFromAuthorizationCode(
   if (!code) {
     throw new Error("Invalid authorization code, code already used, or code expired");
   }
+
+  if (!code.codeChallenge && !isLegacyCliLoginAllowed()) {
+    throw new Error(CLI_LOGIN_UPGRADE_REQUIRED_MESSAGE);
+  }
+
+  const approvalCode = code.codeChallenge ? approvalCodeGenerator() : undefined;
 
   const networkMatch = compareCliLoginNetworks(code.requesterIp, approval.approverIp);
 
@@ -444,6 +530,7 @@ export async function createPersonalAccessTokenFromAuthorizationCode(
     },
     data: {
       personalAccessTokenId: token.id,
+      approvalCodeHash: approvalCode ? hashToken(approvalCode) : undefined,
     },
   });
 
@@ -452,7 +539,14 @@ export async function createPersonalAccessTokenFromAuthorizationCode(
     throw new Error("Invalid authorization code, code already used, or code expired");
   }
 
-  return { ...token, requesterIp: code.requesterIp, networkMatch };
+  return {
+    ...token,
+    requesterIp: code.requesterIp,
+    networkMatch,
+    approval: approvalCode
+      ? { approvalCode: formatApprovalCode(approvalCode), callbackPort: code.callbackPort }
+      : undefined,
+  };
 }
 
 /** Deletes one page of authorization codes created before the cutoff. */

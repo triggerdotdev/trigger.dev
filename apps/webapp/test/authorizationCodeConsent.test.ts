@@ -7,6 +7,8 @@ import {
 
 vi.setConfig({ testTimeout: 30_000 });
 
+const CHALLENGE = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
+
 function randomCode() {
   return `code_${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
 }
@@ -17,9 +19,13 @@ describe("authorization code consent gate", () => {
   containerTest(
     "a fresh, unconsumed code is mintable and checking it does NOT bind a PAT",
     async ({ prisma }) => {
-      const created = await prisma.authorizationCode.create({ data: { code: randomCode() } });
+      const created = await prisma.authorizationCode.create({
+        data: { code: randomCode(), codeChallenge: CHALLENGE },
+      });
 
-      expect(await getMintableAuthorizationCode(created.code, prisma)).not.toBeNull();
+      expect(await getMintableAuthorizationCode(created.code, prisma)).toMatchObject({
+        legacy: false,
+      });
 
       // The check is read-only — it must not bind a Personal Access Token.
       const after = await prisma.authorizationCode.findFirst({ where: { id: created.id } });
@@ -28,7 +34,9 @@ describe("authorization code consent gate", () => {
   );
 
   containerTest("a code older than the TTL is not mintable", async ({ prisma }) => {
-    const created = await prisma.authorizationCode.create({ data: { code: randomCode() } });
+    const created = await prisma.authorizationCode.create({
+      data: { code: randomCode(), codeChallenge: CHALLENGE },
+    });
 
     await prisma.authorizationCode.update({
       where: { id: created.id },
@@ -41,14 +49,18 @@ describe("authorization code consent gate", () => {
   containerTest(
     "a code created just inside the TTL is still mintable (CLI flow not broken)",
     async ({ prisma }) => {
-      const created = await prisma.authorizationCode.create({ data: { code: randomCode() } });
+      const created = await prisma.authorizationCode.create({
+        data: { code: randomCode(), codeChallenge: CHALLENGE },
+      });
 
       await prisma.authorizationCode.update({
         where: { id: created.id },
         data: { createdAt: new Date(Date.now() - (AUTHORIZATION_CODE_TTL_MS - 30_000)) },
       });
 
-      expect(await getMintableAuthorizationCode(created.code, prisma)).not.toBeNull();
+      expect(await getMintableAuthorizationCode(created.code, prisma)).toMatchObject({
+        legacy: false,
+      });
     }
   );
 

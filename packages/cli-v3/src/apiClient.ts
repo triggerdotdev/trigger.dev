@@ -15,6 +15,7 @@ import type {
   CreateOrgRequestBody,
   CreateProjectRequestBody,
   GetJWTRequestBody,
+  CreateAuthorizationCodeRequest,
 } from "@trigger.dev/core/v3";
 import {
   ActivateFreePlanResponseBody,
@@ -217,21 +218,27 @@ export class CliApiClient {
     this.source = options?.source ?? "cli";
   }
 
-  async createAuthorizationCode() {
+  async createAuthorizationCode(body: CreateAuthorizationCodeRequest) {
     return wrapZodFetch(
       CreateAuthorizationCodeResponseSchema,
       `${this.apiURL}/api/v1/authorization-code`,
       {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
       }
     );
   }
 
-  async getPersonalAccessToken(authorizationCode: string) {
+  async getPersonalAccessToken(
+    authorizationCode: string,
+    proof?: { codeVerifier?: string; approvalCode?: string }
+  ) {
     return wrapZodFetch(GetPersonalAccessTokenResponseSchema, `${this.apiURL}/api/v1/token`, {
       method: "POST",
       body: JSON.stringify({
         authorizationCode,
+        ...proof,
       }),
     });
   }

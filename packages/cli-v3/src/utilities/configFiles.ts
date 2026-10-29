@@ -30,6 +30,8 @@ const PendingAuthorization = z.object({
   apiUrl: z.string().url(),
   createdAt: z.string().datetime(),
   name: z.string().optional(),
+  codeVerifier: z.string().optional(),
+  approval: z.enum(["callback", "paste"]).optional(),
 });
 export type PendingAuthorization = z.infer<typeof PendingAuthorization>;
 

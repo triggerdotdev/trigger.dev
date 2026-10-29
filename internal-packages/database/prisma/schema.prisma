@@ -131,6 +131,12 @@ model AuthorizationCode {
 
   /// Client IP of the request that minted the code, compared with the approving browser's IP. Deleted with the code once it expires.
   requesterIp String?
+  /// S256 PKCE challenge from the client that minted the code. Null for codes minted by CLIs that predate it.
+  codeChallenge    String?
+  /// Loopback port the approving browser is redirected to with the approval code. Null means the user pastes it.
+  callbackPort     Int?
+  /// sha256 of the approval code, which only the approving browser ever sees.
+  approvalCodeHash String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

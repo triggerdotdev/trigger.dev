@@ -1046,6 +1046,7 @@ const EnvironmentSchema = z
     WORKLOAD_TOKEN_CUTOFF: z.string().datetime().optional(),
 
     CLI_LOGIN_NETWORK_CHECK: z.enum(["off", "log", "confirm"]).default("log"),
+    CLI_LOGIN_LEGACY_UNTIL: z.string().datetime().default("2027-01-01T00:00:00.000Z"),
 
     // Development OTEL environment variables
     DEV_OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),

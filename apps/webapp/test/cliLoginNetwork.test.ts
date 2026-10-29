@@ -12,6 +12,7 @@ const mockEnv = vi.hoisted(() => ({
   SESSION_SECRET: "test-session-secret-for-cli-login-network",
   ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef",
   CLI_LOGIN_NETWORK_CHECK: "log" as "off" | "log" | "confirm",
+  CLI_LOGIN_LEGACY_UNTIL: "2999-01-01T00:00:00.000Z",
 }));
 const logger = vi.hoisted(() => ({ debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() }));
 
