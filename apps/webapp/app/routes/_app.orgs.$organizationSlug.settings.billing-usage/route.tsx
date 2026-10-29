@@ -5,9 +5,10 @@ import { BillingUsageView } from "~/components/billing/usage/BillingUsageView";
 import { PageContainer } from "~/components/layout/AppLayout";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { useBillingLimit, useOrganization } from "~/hooks/useOrganizations";
-import { resolveOrgIdFromSlug } from "~/models/organization.server";
+import { resolveOrgIdFromSlugForUser } from "~/models/organization.server";
 import { billingUsage } from "~/services/billingUsageInstance.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { getUserId } from "~/services/session.server";
 import { resolveUsageMonth, usageMonths } from "~/utils/billingUsagePeriod";
 import { shouldReloadUsage, USAGE_PAGE_PARAMS } from "~/utils/billingUsagePageState";
 import { OrganizationParamsSchema, v3BillingLimitsPath } from "~/utils/pathBuilder";
@@ -19,11 +20,12 @@ export const meta = pageMeta("Usage");
 export const loader = dashboardLoader(
   {
     params: OrganizationParamsSchema,
-    context: async (params) => {
-      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+    context: async (params, request) => {
+      const userId = await getUserId(request);
+      if (!userId) return {};
+      const organizationId = await resolveOrgIdFromSlugForUser(params.organizationSlug, userId);
       return organizationId ? { organizationId } : {};
     },
-    authorization: { requireSuper: true },
   },
   async ({ context, request }) => {
     if (!context.organizationId) {
