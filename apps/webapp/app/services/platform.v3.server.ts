@@ -4,9 +4,11 @@ import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import {
   BillingClient,
   defaultMachine as defaultMachineFromPlatform,
+  IpLocationResult,
   machines as machinesFromPlatform,
   type BillingAlertsResult,
   type CreatePrivateLinkConnectionBody,
+  type IpLocation,
   type Limits,
   type MachineCode,
   type PrivateLinkConnection,
@@ -578,6 +580,33 @@ export async function customerPortalUrl(orgId: string, orgSlug: string) {
     recordPlatformFailure("customerPortalUrl", "caught");
     return undefined;
   }
+}
+
+const IP_LOCATION_TIMEOUT_MS = 1_000;
+
+/**
+ * Approximate country and network owner of an IP, from billing's IPinfo Lite data. Returns
+ * `undefined` when billing isn't configured, the IP isn't covered, or the lookup fails or takes
+ * longer than a second, so a slow billing service never holds up a login.
+ */
+export async function getIpLocation(ip: string | null): Promise<IpLocation | undefined> {
+  if (!client || !ip) return undefined;
+
+  const [error, result] = await tryCatch(
+    client.fetch(`/api/v1/ip-location?ip=${encodeURIComponent(ip)}`, IpLocationResult, {
+      signal: AbortSignal.timeout(IP_LOCATION_TIMEOUT_MS),
+    })
+  );
+  if (error) {
+    recordPlatformFailure("getIpLocation", "caught");
+    return undefined;
+  }
+  if (!result.success) {
+    recordPlatformFailure("getIpLocation", "no_success");
+    return undefined;
+  }
+
+  return result.location ?? undefined;
 }
 
 export async function getPlans() {

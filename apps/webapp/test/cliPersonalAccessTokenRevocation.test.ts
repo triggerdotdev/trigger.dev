@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, vi } from "vitest";
 
 /**
- * Revoking a CLI personal access token has to be permanent. Logging in again mints a new secret;
- * it never reinstates the revoked row, and the revoked string never authenticates or gets handed
- * back out over the unauthenticated token endpoint.
+ * Every CLI login mints its own personal access token, and its authorization code discloses that
+ * token exactly once. Revoking a CLI token is permanent: the revoked string never authenticates
+ * or gets handed back out over the unauthenticated token endpoint.
  */
 
 const db = vi.hoisted(() => ({ client: null as any }));
@@ -69,16 +69,39 @@ describe("CLI personal access token revocation", () => {
     db.client = null;
   });
 
-  postgresTest("a later login reuses a live CLI token", async ({ prisma }) => {
+  postgresTest("every login mints its own CLI token", async ({ prisma }) => {
     db.client = prisma;
     const user = await createUser(prisma);
 
     const first = await cliLogin(user.id);
     const second = await cliLogin(user.id);
 
-    expect(second.minted.id).toBe(first.minted.id);
-    expect(await prisma.personalAccessToken.count({ where: { userId: user.id } })).toBe(1);
+    expect(second.minted.id).not.toBe(first.minted.id);
+    expect(secretOf(second.minted)).not.toBe(secretOf(first.minted));
+    expect(
+      await prisma.personalAccessToken.count({ where: { userId: user.id, revokedAt: null } })
+    ).toBe(2);
+    expect(await authenticatePersonalAccessToken(secretOf(first.minted))).toMatchObject({
+      userId: user.id,
+    });
   });
+
+  postgresTest(
+    "a second Authorize on the same code is rejected and leaves no extra live token",
+    async ({ prisma }) => {
+      db.client = prisma;
+      const user = await createUser(prisma);
+
+      const login = await cliLogin(user.id);
+
+      await expect(
+        createPersonalAccessTokenFromAuthorizationCode(login.code, user.id)
+      ).rejects.toThrow("Invalid authorization code, code already used, or code expired");
+      expect(
+        await prisma.personalAccessToken.count({ where: { userId: user.id, revokedAt: null } })
+      ).toBe(1);
+    }
+  );
 
   postgresTest(
     "a revoked CLI token is not revived by a later login, and its secret stays rejected",
@@ -178,7 +201,37 @@ describe("the authorization code token endpoint", () => {
     }
   );
 
-  postgresTest("discloses the live token a later login reused", async ({ prisma }) => {
+  postgresTest("discloses the token only once", async ({ prisma }) => {
+    db.client = prisma;
+    const user = await createUser(prisma);
+
+    const login = await cliLogin(user.id);
+
+    const disclosed = await getPersonalAccessTokenFromAuthorizationCode(login.code);
+    expect(disclosed.token?.token).toBe(secretOf(login.minted));
+
+    await expect(getPersonalAccessTokenFromAuthorizationCode(login.code)).rejects.toThrow(
+      "Invalid authorization code, or code expired"
+    );
+  });
+
+  postgresTest(
+    "concurrent exchanges disclose the token to exactly one caller",
+    async ({ prisma }) => {
+      db.client = prisma;
+      const user = await createUser(prisma);
+
+      const login = await cliLogin(user.id);
+
+      const results = await Promise.allSettled(
+        Array.from({ length: 5 }, () => getPersonalAccessTokenFromAuthorizationCode(login.code))
+      );
+
+      expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    }
+  );
+
+  postgresTest("a login never discloses another login's token", async ({ prisma }) => {
     db.client = prisma;
     const user = await createUser(prisma);
 
@@ -186,7 +239,8 @@ describe("the authorization code token endpoint", () => {
     const second = await cliLogin(user.id);
 
     const disclosed = await getPersonalAccessTokenFromAuthorizationCode(second.code);
-    expect(disclosed.token?.token).toBe(secretOf(first.minted));
+    expect(disclosed.token?.token).toBe(secretOf(second.minted));
+    expect(disclosed.token?.token).not.toBe(secretOf(first.minted));
   });
 
   postgresTest("reports an unapproved code as not ready yet", async ({ prisma }) => {

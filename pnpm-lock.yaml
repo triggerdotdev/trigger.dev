@@ -538,8 +538,8 @@ importers:
         specifier: workspace:*
         version: link:../../internal-packages/otlp-importer
       '@trigger.dev/platform':
-        specifier: 1.4.0
-        version: 1.4.0(zod@4.5.4)
+        specifier: 1.5.0
+        version: 1.5.0(zod@4.5.4)
       '@trigger.dev/plugins':
         specifier: workspace:*
         version: link:../../packages/plugins
@@ -8402,8 +8402,8 @@ packages:
       react: 18.3.1
       react-dom: 18.3.1
 
-  '@trigger.dev/platform@1.4.0':
-    resolution: {integrity: sha512-wOSJGOKkKkcfcB+uq8JJ1YDBONtHsfVBM2Xavt1YTsWOJz+JNoBVodP/2c0Sp0WCdNmbvKiDkH8SdJjNupPcww==}
+  '@trigger.dev/platform@1.5.0':
+    resolution: {integrity: sha512-g/Sngum9j/YDm6Gb5HjasxAEo/0EmTL6Sa19VSxVZt4/uAciAIOqrv5qfwS7walp1jXpUK9VbfoCaLfbh+3LJw==}
     peerDependencies:
       zod: 4.5.4
 
@@ -23274,7 +23274,7 @@ snapshots:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
-  '@trigger.dev/platform@1.4.0(zod@4.5.4)':
+  '@trigger.dev/platform@1.5.0(zod@4.5.4)':
     dependencies:
       zod: 4.5.4
 
@@ -23941,7 +23941,7 @@ snapshots:
       obug: 2.1.4
       std-env: 4.1.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/coverage-v8@4.1.11)(jsdom@30.0.1)(vite@6.4.3(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.1)(tsx@3.12.2)(yaml@2.9.0))
+      vitest: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/coverage-v8@4.1.11)(jsdom@30.0.1)(vite@6.4.3(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.22.4)(yaml@2.9.0))
 
   '@vitest/expect@4.1.11':
     dependencies:

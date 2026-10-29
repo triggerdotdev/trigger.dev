@@ -1,5 +1,11 @@
-import { type PersonalAccessToken, type User } from "@trigger.dev/database";
+import {
+  type PersonalAccessToken,
+  type PrismaClientOrTransaction,
+  type User,
+} from "@trigger.dev/database";
+import { compareCliLoginNetworks, needsNetworkConfirmation } from "./cliLoginNetwork.server";
 import { customAlphabet, nanoid } from "nanoid";
+import { isIP } from "node:net";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "./logger.server";
@@ -62,12 +68,16 @@ export type ObfuscatedPersonalAccessToken = Awaited<
   ReturnType<typeof getValidPersonalAccessTokens>
 >[number];
 
-/** Gets a PersonalAccessToken from an Auth Code, this only works within 10 mins of the auth code being created */
+/**
+ * Gets a PersonalAccessToken from an Auth Code, this only works within 10 mins of the auth code being created.
+ * Codes are single use: the request that discloses the token also deletes the code.
+ */
 export async function getPersonalAccessTokenFromAuthorizationCode(authorizationCode: string) {
   // Only allow authorization codes created within the short consent window.
   const validAfter = new Date(Date.now() - AUTHORIZATION_CODE_TTL_MS);
   const code = await prisma.authorizationCode.findFirst({
     select: {
+      id: true,
       personalAccessToken: true,
     },
     where: {
@@ -86,6 +96,11 @@ export async function getPersonalAccessTokenFromAuthorizationCode(authorizationC
     return {
       token: null,
     };
+  }
+
+  const consumed = await prisma.authorizationCode.deleteMany({ where: { id: code.id } });
+  if (consumed.count === 0) {
+    throw new Error("Invalid authorization code, or code expired");
   }
 
   const decryptedToken = decryptPersonalAccessToken(code.personalAccessToken);
@@ -326,38 +341,62 @@ export async function resolveAndRecheckUserActorClaims(
 }
 
 /**
- * Read-only check that an authorization code is still mintable: it exists, is
+ * Read-only lookup of an authorization code that is still mintable: it exists, is
  * unconsumed (`personalAccessTokenId: null`), and within the TTL. Lets the
  * consent-screen loader show Authorize vs expired/invalid without minting a PAT.
+ * Returns null when the code can't be approved.
  */
-export async function isAuthorizationCodeMintable(
+export async function getMintableAuthorizationCode(
   authorizationCode: string,
   prismaClient = prisma
-): Promise<boolean> {
+): Promise<{ createdAt: Date; requesterIp: string | null } | null> {
   const validAfter = new Date(Date.now() - AUTHORIZATION_CODE_TTL_MS);
-  const code = await prismaClient.authorizationCode.findFirst({
+  return prismaClient.authorizationCode.findFirst({
     where: {
       code: authorizationCode,
       personalAccessTokenId: null,
       createdAt: { gte: validAfter },
     },
-    select: { id: true },
+    select: { createdAt: true, requesterIp: true },
   });
-  return code !== null;
 }
 
-export function createAuthorizationCode() {
+/**
+ * The requester IP is shown on the consent page and in the authorized-login email, so a value
+ * that isn't an IP address (a forged `X-Forwarded-For` on an install without a proxy) isn't stored.
+ */
+export function createAuthorizationCode(requester?: { requesterIp?: string | null }) {
+  const requesterIp = requester?.requesterIp?.trim();
   return prisma.authorizationCode.create({
     data: {
       code: nanoid(64),
+      requesterIp: requesterIp && isIP(requesterIp) !== 0 ? requesterIp : undefined,
     },
   });
 }
 
-/** Creates a PersonalAccessToken from an Auth Code, and return the token. We only ever return the unencrypted token once. */
+/** The approver is on a different network from the one that started the login and hasn't confirmed it. */
+export class CliLoginNetworkConfirmationRequiredError extends Error {
+  constructor() {
+    super(
+      "This login was started from a different network. Confirm you started it on another machine before authorizing it."
+    );
+    this.name = "CliLoginNetworkConfirmationRequiredError";
+  }
+}
+
+/**
+ * Mints a new PersonalAccessToken for an Auth Code. Every authorization gets its own token, so a
+ * login never hands out a secret that another CLI or MCP client is already using.
+ *
+ * Compares the approver's network with the one that minted the code. With
+ * `CLI_LOGIN_NETWORK_CHECK=confirm` a login from another network needs `confirmedDifferentNetwork`;
+ * with `log` only the outcome (never the addresses) is logged.
+ */
 export async function createPersonalAccessTokenFromAuthorizationCode(
   authorizationCode: string,
-  userId: string
+  userId: string,
+  approval: { approverIp?: string | null; confirmedDifferentNetwork?: boolean } = {}
 ) {
   // Only allow authorization codes created within the short consent window.
   const validAfter = new Date(Date.now() - AUTHORIZATION_CODE_TTL_MS);
@@ -375,36 +414,22 @@ export async function createPersonalAccessTokenFromAuthorizationCode(
     throw new Error("Invalid authorization code, code already used, or code expired");
   }
 
-  const existingCliPersonalAccessToken = await prisma.personalAccessToken.findFirst({
-    where: {
-      userId,
-      name: "cli",
-      revokedAt: null,
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
+  const networkMatch = compareCliLoginNetworks(code.requesterIp, approval.approverIp);
 
-  //we only allow you to have one CLI PAT at a time, so return this
-  if (existingCliPersonalAccessToken) {
-    //associate this authorization code with the existing personal access token
-    await prisma.authorizationCode.update({
-      where: {
-        code: authorizationCode,
-      },
-      data: {
-        personalAccessTokenId: existingCliPersonalAccessToken.id,
-      },
+  if (env.CLI_LOGIN_NETWORK_CHECK !== "off") {
+    logger.info("CLI login network check", {
+      networkMatch,
+      mode: env.CLI_LOGIN_NETWORK_CHECK,
+      confirmedDifferentNetwork: approval.confirmedDifferentNetwork === true,
     });
+  }
 
-    //we don't return the decrypted token
-    return {
-      id: existingCliPersonalAccessToken.id,
-      name: existingCliPersonalAccessToken.name,
-      userId: existingCliPersonalAccessToken.userId,
-      obfuscateToken: existingCliPersonalAccessToken.obfuscatedToken,
-    };
+  if (
+    env.CLI_LOGIN_NETWORK_CHECK === "confirm" &&
+    needsNetworkConfirmation(networkMatch) &&
+    approval.confirmedDifferentNetwork !== true
+  ) {
+    throw new CliLoginNetworkConfirmationRequiredError();
   }
 
   const token = await createPersonalAccessToken({
@@ -412,16 +437,68 @@ export async function createPersonalAccessTokenFromAuthorizationCode(
     userId,
   });
 
-  await prisma.authorizationCode.update({
+  const bound = await prisma.authorizationCode.updateMany({
     where: {
-      code: authorizationCode,
+      id: code.id,
+      personalAccessTokenId: null,
     },
     data: {
       personalAccessTokenId: token.id,
     },
   });
 
-  return token;
+  if (bound.count === 0) {
+    await revokePersonalAccessToken(token.id, userId);
+    throw new Error("Invalid authorization code, code already used, or code expired");
+  }
+
+  return { ...token, requesterIp: code.requesterIp, networkMatch };
+}
+
+/** Deletes one page of authorization codes created before the cutoff. */
+function deleteExpiredAuthorizationCodesPage(
+  prismaClient: PrismaClientOrTransaction,
+  cutoff: Date,
+  batchSize: number
+): Promise<number> {
+  return prismaClient.$executeRaw`
+    WITH page AS (
+      SELECT id FROM "AuthorizationCode"
+      WHERE "createdAt" < ${cutoff}
+      LIMIT ${batchSize}
+      FOR UPDATE SKIP LOCKED
+    )
+    DELETE FROM "AuthorizationCode" a
+    USING page WHERE a.id = page.id
+  `;
+}
+
+/**
+ * Deletes authorization codes past their TTL, which can no longer be approved or exchanged, so
+ * abandoned logins don't keep their requester IP. Bounded per run so a large backlog drains over
+ * several runs.
+ */
+export async function sweepExpiredAuthorizationCodes(
+  prismaClient: PrismaClientOrTransaction = prisma,
+  options: { batchSize?: number; maxPages?: number; now?: Date } = {}
+): Promise<{ deleted: number; pages: number }> {
+  const { batchSize = 1000, maxPages = 50, now = new Date() } = options;
+  const cutoff = new Date(now.getTime() - AUTHORIZATION_CODE_TTL_MS);
+  let deleted = 0;
+  let pages = 0;
+
+  while (pages < maxPages) {
+    const count = await deleteExpiredAuthorizationCodesPage(prismaClient, cutoff, batchSize);
+    pages++;
+    deleted += count;
+    if (count < batchSize) break;
+  }
+
+  if (deleted > 0) {
+    logger.info("Deleted expired authorization codes", { deleted, pages });
+  }
+
+  return { deleted, pages };
 }
 
 /** Created a new PersonalAccessToken, and return the token. We only ever return the unencrypted token once. */

@@ -129,6 +129,9 @@ model AuthorizationCode {
   personalAccessToken   PersonalAccessToken? @relation(fields: [personalAccessTokenId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   personalAccessTokenId String?
 
+  /// Client IP of the request that minted the code, compared with the approving browser's IP. Deleted with the code once it expires.
+  requesterIp String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

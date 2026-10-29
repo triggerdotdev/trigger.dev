@@ -39,7 +39,7 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   try {
-    const authorizationCode = await createAuthorizationCode();
+    const authorizationCode = await createAuthorizationCode({ requesterIp: clientIp });
     const responseJson: CreateAuthorizationCodeResponse = {
       authorizationCode: authorizationCode.code,
       url: `${env.APP_ORIGIN}/account/authorization-code/${authorizationCode.code}`,

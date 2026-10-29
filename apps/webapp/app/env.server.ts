@@ -1045,6 +1045,8 @@ const EnvironmentSchema = z
     WORKLOAD_CREATED_AT_GATE_ENABLED: z.string().default("0"),
     WORKLOAD_TOKEN_CUTOFF: z.string().datetime().optional(),
 
+    CLI_LOGIN_NETWORK_CHECK: z.enum(["off", "log", "confirm"]).default("log"),
+
     // Development OTEL environment variables
     DEV_OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
     DEV_OTEL_METRICS_ENDPOINT: z.string().optional(),
