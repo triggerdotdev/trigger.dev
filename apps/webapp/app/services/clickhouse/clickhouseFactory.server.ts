@@ -45,24 +45,6 @@ const defaultLogsClickhouseClient = singleton(
   initializeLogsClickhouseClient
 );
 
-function initializeLogsSearchProjectorClickhouseClient() {
-  const url = new URL(env.LOGS_SEARCH_WRITER_CLICKHOUSE_URL ?? env.CLICKHOUSE_URL);
-  url.searchParams.delete("secure");
-
-  return new ClickHouse({
-    url: url.toString(),
-    name: "logs-search-projector",
-    keepAlive: {
-      enabled: env.CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
-      idleSocketTtl: env.CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
-    },
-    logLevel: env.CLICKHOUSE_LOG_LEVEL,
-    compression: { request: true },
-    maxOpenConnections: Math.min(env.CLICKHOUSE_MAX_OPEN_CONNECTIONS, 2),
-    requestTimeoutMs: (env.LOGS_SEARCH_PROJECTOR_MAX_EXECUTION_TIME_SECONDS + 30) * 1000,
-  });
-}
-
 function getLogsListClickhouseSettings() {
   return {
     max_memory_usage: env.CLICKHOUSE_LOGS_LIST_MAX_MEMORY_USAGE.toString(),
@@ -839,13 +821,6 @@ export class ClickhouseFactory {
  */
 export function getAdminClickhouse(): ClickHouse {
   return defaultAdminClickhouseClient;
-}
-
-export function getLogsSearchProjectorClickhouseClient(): ClickHouse {
-  return singleton(
-    "logsSearchProjectorClickhouseClient",
-    initializeLogsSearchProjectorClickhouseClient
-  );
 }
 
 /** Queue-metrics client for callers with no organization in scope (the ingestion consumer). */

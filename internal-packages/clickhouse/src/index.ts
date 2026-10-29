@@ -34,7 +34,6 @@ import {
   getLogsSearchListQueryBuilder,
 } from "./taskEvents.js";
 import { insertTaskEventsSearchV2 } from "./taskEventsSearch.js";
-import { projectTaskEventsSearchV2Window } from "./taskEventsSearchProjector.js";
 import { insertMetrics } from "./metrics.js";
 import { insertLlmMetrics } from "./llmMetrics.js";
 import {
@@ -94,7 +93,6 @@ export {
   TRACE_CHUNK_ORDER_BY,
 } from "./taskEvents.js";
 export * from "./taskEventsSearch.js";
-export * from "./taskEventsSearchProjector.js";
 export type * from "./metrics.js";
 export type * from "./llmMetrics.js";
 export type * from "./queueMetrics.js";
@@ -386,7 +384,6 @@ export class ClickHouse {
     return {
       insert: insertTaskEventsSearchV2(this.writer),
       logsListQueryBuilder: getLogsSearchListQueryBuilder(this.reader),
-      projectV2Window: projectTaskEventsSearchV2Window(this.writer),
     };
   }
 

@@ -1,5 +1,5 @@
 -- +goose Up
--- Source index supporting closed projector windows on newly written parts.
+-- Source index supporting logs search queries on newly written parts.
 -- ADD INDEX only defines the index for new parts and does not materialize existing parts.
 ALTER TABLE trigger_dev.task_events_v2
   ADD INDEX IF NOT EXISTS idx_inserted_at_projector inserted_at TYPE minmax GRANULARITY 1;

@@ -2486,30 +2486,11 @@ const EnvironmentSchema = z
       .nonnegative()
       .optional(),
 
-    // Scheduled logs-search projection. Disabled by default. LOGS_SEARCH_WRITER_CLICKHOUSE_URL,
-    // or the CLICKHOUSE_URL fallback, must reach both source and destination tables and allow writes.
-    LOGS_SEARCH_PROJECTOR_ENABLED: BoolEnv.default(false),
-    LOGS_SEARCH_PROJECTOR_PREVIEW_ENABLED: BoolEnv.default(false),
-    LOGS_SEARCH_PROJECTOR_MAX_WINDOWS_PER_TICK: z.coerce.number().int().min(1).max(20).default(5),
-    LOGS_SEARCH_PROJECTOR_MAX_EXECUTION_TIME_SECONDS: z.coerce
-      .number()
-      .int()
-      .min(1)
-      .max(300)
-      .default(120),
-    LOGS_SEARCH_PROJECTOR_MAX_ROWS_TO_READ: z.coerce.number().int().positive().default(10_000_000),
-    LOGS_SEARCH_PROJECTOR_MAX_MEMORY_USAGE: z.coerce
-      .number()
-      .int()
-      .positive()
-      .default(1_500_000_000),
-    LOGS_SEARCH_PROJECTOR_MAX_THREADS: z.coerce.number().int().min(1).max(8).default(2),
-
     LOGS_SEARCH_DUAL_WRITE_ACTIVE: z.enum(["off", "by-id", "on"]).default("off"),
     LOGS_SEARCH_DUAL_WRITE_ORGANIZATION_IDS: z.string().default(""),
     LOGS_SEARCH_DUAL_WRITE_MAX_CONCURRENCY: z.coerce.number().int().min(1).max(10).default(2),
     LOGS_SEARCH_DUAL_WRITE_MAX_PENDING: z.coerce.number().int().min(1).max(100).default(4),
-    // Logs-search write side (dual writer, projector). Must share storage with
+    // Logs-search write side (dual writer). Must share storage with
     // EVENTS_CLICKHOUSE_URL and allow writes. Unset: the dual writer uses the events client.
     LOGS_SEARCH_WRITER_CLICKHOUSE_URL: z.string().optional(),
     // Logs-search read side (logs page). Falls back to CLICKHOUSE_READER_URL, then CLICKHOUSE_URL.

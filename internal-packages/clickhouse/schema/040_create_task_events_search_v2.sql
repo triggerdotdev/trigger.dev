@@ -1,6 +1,6 @@
 -- +goose Up
 -- Search v2 stores bounded normalized text outside the task_events_v2 insert path.
--- The source index (idx_inserted_at_projector) is added in an earlier migration.
+-- The source index on inserted_at is added in an earlier migration.
 CREATE TABLE IF NOT EXISTS trigger_dev.task_events_search_v2
 (
   environment_id String,
