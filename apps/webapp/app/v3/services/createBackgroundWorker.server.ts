@@ -1528,7 +1528,7 @@ async function prepareDeclarativeSchedules(
       }
       assertCronMeetsFreeMinimum({
         cron: task.schedule.cron,
-        timezone: task.schedule.timezone,
+        timezone: task.schedule.timezone ?? "UTC",
         minimumWindowDurationSeconds,
         scheduleType: "DECLARATIVE",
         environmentType: environment.type,
@@ -1540,7 +1540,7 @@ async function prepareDeclarativeSchedules(
         taskId: task.id,
         explicitWindow: task.schedule.window,
         cron: task.schedule.cron,
-        timezone: task.schedule.timezone,
+        timezone: task.schedule.timezone ?? "UTC",
         defaultWindowDurationSeconds,
         minimumWindowDurationSeconds,
       });
@@ -1588,7 +1588,7 @@ export async function syncDeclarativeSchedules(
         environment.projectId,
         {
           cron: task.schedule.cron,
-          timezone: task.schedule.timezone,
+          timezone: task.schedule.timezone ?? "UTC",
           taskIdentifier: task.id,
           friendlyId: existingSchedule?.friendlyId,
           window: task.schedule.window,
@@ -1610,6 +1610,7 @@ export async function syncDeclarativeSchedules(
   const apply = async (db: PrismaClientOrTransaction) => {
     for (const { task, existingSchedule, minimumWindowDurationSeconds } of preparedTasks) {
       const normalizedWindow = normalizeScheduleWindow(task.schedule.window);
+      const nextTimezone = task.schedule.timezone ?? "UTC";
 
       if (existingSchedule) {
         // Compare effective windows so equivalent explicit/default values preserve the pending job.
@@ -1625,13 +1626,13 @@ export async function syncDeclarativeSchedules(
         }).window;
         const timingChanged =
           existingSchedule.generatorExpression !== task.schedule.cron ||
-          existingSchedule.timezone !== task.schedule.timezone ||
+          existingSchedule.timezone !== nextTimezone ||
           !scheduleWindowsEqual(previousWindow, nextWindow) ||
           // Clearing the minimum changes the effective range.
           existingSchedule.minimumWindowDurationSeconds !== minimumWindowDurationSeconds;
         const persistedValuesChanged =
           existingSchedule.generatorExpression !== task.schedule.cron ||
-          existingSchedule.timezone !== task.schedule.timezone ||
+          existingSchedule.timezone !== nextTimezone ||
           existingSchedule.windowDurationSeconds !== normalizedWindow.windowDurationSeconds ||
           existingSchedule.windowPercentage !== normalizedWindow.windowPercentage ||
           existingSchedule.minimumWindowDurationSeconds !== minimumWindowDurationSeconds;
@@ -1643,7 +1644,7 @@ export async function syncDeclarativeSchedules(
               data: {
                 generatorExpression: task.schedule.cron,
                 generatorDescription: cronstrue.toString(task.schedule.cron),
-                timezone: task.schedule.timezone,
+                timezone: nextTimezone,
                 minimumWindowDurationSeconds,
                 ...normalizedWindow,
               },
@@ -1675,7 +1676,7 @@ export async function syncDeclarativeSchedules(
             taskIdentifier: task.id,
             generatorExpression: task.schedule.cron,
             generatorDescription: cronstrue.toString(task.schedule.cron),
-            timezone: task.schedule.timezone,
+            timezone: nextTimezone,
             type: "DECLARATIVE",
             minimumWindowDurationSeconds,
             ...normalizedWindow,
