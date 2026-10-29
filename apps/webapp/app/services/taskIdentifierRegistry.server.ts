@@ -45,6 +45,10 @@ export async function syncTaskIdentifiers(
 
   // Batch: insert new rows, update existing rows per source group, archive removed tasks
   await db.$transaction([
+    // Serialize syncs per environment. Each sync locks its own tasks and then
+    // archives everything else, so two concurrent syncs with different task
+    // lists can each hold rows the other needs and deadlock.
+    db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`task_identifier_sync:${environmentId}`}))`,
     // Insert any new task identifiers (skips rows that already exist)
     db.taskIdentifier.createMany({
       data: tasks.map((task) => ({

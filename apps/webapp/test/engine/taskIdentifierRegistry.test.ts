@@ -1,3 +1,4 @@
+import { setTimeout } from "node:timers/promises";
 import { describe, expect, vi } from "vitest";
 
 vi.mock("~/db.server", () => ({
@@ -30,6 +31,111 @@ import type { AuthenticatedEnvironment } from "@internal/run-engine/tests";
 
 vi.setConfig({ testTimeout: 30_000 });
 
+// Polls until `count` backends in this test's database are blocked on a lock.
+async function waitForLockWaiters(prisma: PrismaClient, count: number, what: string) {
+  const deadline = performance.now() + 5_000;
+  let waiting = 0;
+  while (performance.now() < deadline) {
+    const [row] = await prisma.$queryRaw<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM pg_stat_activity
+      WHERE datname = current_database() AND wait_event_type = 'Lock'`;
+    waiting = row.n;
+    if (waiting >= count) return;
+    await setTimeout(20);
+  }
+  expect(waiting, `${what} never blocked on a lock`).toBeGreaterThanOrEqual(count);
+}
+
+type SyncCall = { workerId: string; tasks: string[] };
+
+// Runs two syncs in a fixed interleaving. A separate transaction holds the row
+// lock on `gateSlug`; `first` starts and blocks (directly or not) on it, then
+// `second` starts and blocks, then the gate is released. Returns the error of
+// each sync that failed.
+async function runSyncsBehindRowGate(
+  prisma: PrismaClient,
+  env: AuthenticatedEnvironment,
+  gateSlug: string,
+  first: SyncCall,
+  second: SyncCall
+): Promise<string[]> {
+  const sync = ({ workerId, tasks }: SyncCall) =>
+    Promise.allSettled([
+      syncTaskIdentifiers(
+        env.id,
+        env.project.id,
+        workerId,
+        tasks.map((id) => ({ id })),
+        prisma
+      ),
+    ]);
+
+  let releaseGate!: () => void;
+  const gateReleased = new Promise<void>((resolve) => (releaseGate = resolve));
+  let gateHeld!: () => void;
+  const gateHeldPromise = new Promise<void>((resolve) => (gateHeld = resolve));
+  const gate = prisma.$transaction(
+    async (tx) => {
+      await tx.$queryRaw`
+        SELECT id FROM "TaskIdentifier"
+        WHERE "runtimeEnvironmentId" = ${env.id} AND slug = ${gateSlug}
+        FOR UPDATE`;
+      gateHeld();
+      await gateReleased;
+    },
+    // Shorter than the test timeout, so a hung test still closes the gate.
+    { timeout: 15_000 }
+  );
+
+  let firstResult: ReturnType<typeof sync> | undefined;
+  let secondResult: ReturnType<typeof sync> | undefined;
+  try {
+    await Promise.race([gateHeldPromise, gate]);
+
+    firstResult = sync(first);
+    await waitForLockWaiters(prisma, 1, "first sync");
+
+    secondResult = sync(second);
+    await waitForLockWaiters(prisma, 2, "second sync");
+
+    releaseGate();
+    await gate;
+
+    const results = (await Promise.all([firstResult, secondResult])).flat();
+    return results
+      .filter((r): r is PromiseRejectedResult => r.status === "rejected")
+      .map((r) => String(r.reason));
+  } finally {
+    releaseGate();
+    await gate.catch(() => {});
+    // Don't leave a sync running into fixture teardown if a wait above failed.
+    await Promise.all([firstResult, secondResult]);
+  }
+}
+
+async function seedSyncedTasks(
+  prisma: PrismaClient,
+  env: AuthenticatedEnvironment,
+  slugs: string[]
+) {
+  const worker = await createWorker(prisma, env);
+  await syncTaskIdentifiers(
+    env.id,
+    env.project.id,
+    worker.id,
+    slugs.map((id) => ({ id })),
+    prisma
+  );
+}
+
+async function taskIdentifierState(prisma: PrismaClient, env: AuthenticatedEnvironment) {
+  const rows = await prisma.taskIdentifier.findMany({
+    where: { runtimeEnvironmentId: env.id },
+    orderBy: { slug: "asc" },
+  });
+  return rows.map((r) => [r.slug, r.isInLatestDeployment, r.currentWorkerId]);
+}
+
 async function createWorker(prisma: PrismaClient, env: AuthenticatedEnvironment) {
   return prisma.backgroundWorker.create({
     data: {
@@ -37,7 +143,7 @@ async function createWorker(prisma: PrismaClient, env: AuthenticatedEnvironment)
       contentHash: `hash-${Date.now()}-${Math.random()}`,
       projectId: env.project.id,
       runtimeEnvironmentId: env.id,
-      version: `${Date.now()}`,
+      version: `${Date.now()}-${Math.random()}`,
       metadata: {},
       engine: "V2",
     },
@@ -268,4 +374,64 @@ describe("TaskIdentifierRegistry", () => {
     expect(rows[1].slug).toBe("standard-task");
     expect(rows[1].currentTriggerSource).toBe("STANDARD");
   });
+
+  // Two dev sessions (or a promote racing a rollback) sync the same environment
+  // with different task lists. Each sync updates its own tasks and then archives
+  // everything else, so each can hold rows the other's next statement needs.
+  postgresTest(
+    "should not deadlock when concurrent syncs update and archive each other's tasks",
+    async ({ prisma }) => {
+      const env = await setupAuthenticatedEnvironment(prisma, "DEVELOPMENT");
+      await seedSyncedTasks(prisma, env, ["task-a", "task-b", "task-c"]);
+      const firstWorker = await createWorker(prisma, env);
+      const secondWorker = await createWorker(prisma, env);
+
+      // The first sync locks a and waits on c. The second locks b and queues
+      // behind the first for c. When the gate opens, the first takes c and its
+      // archive then needs b, held by the second.
+      const failures = await runSyncsBehindRowGate(
+        prisma,
+        env,
+        "task-c",
+        { workerId: firstWorker.id, tasks: ["task-a", "task-c"] },
+        { workerId: secondWorker.id, tasks: ["task-b", "task-c"] }
+      );
+
+      expect(failures, failures.join("\n")).toEqual([]);
+      // The first sync commits, then the second runs, so its task list wins.
+      expect(await taskIdentifierState(prisma, env)).toEqual([
+        ["task-a", false, firstWorker.id],
+        ["task-b", true, secondWorker.id],
+        ["task-c", true, secondWorker.id],
+      ]);
+    }
+  );
+
+  postgresTest(
+    "should not deadlock when a sync's archive step waits on a concurrent sync",
+    async ({ prisma }) => {
+      const env = await setupAuthenticatedEnvironment(prisma, "DEVELOPMENT");
+      await seedSyncedTasks(prisma, env, ["task-a", "task-b", "task-c"]);
+      const firstWorker = await createWorker(prisma, env);
+      const secondWorker = await createWorker(prisma, env);
+
+      // The first sync locks a and waits on b. The second locks c, then its
+      // archive waits on a. When the gate opens, the first takes b and then
+      // needs c, held by the second.
+      const failures = await runSyncsBehindRowGate(
+        prisma,
+        env,
+        "task-b",
+        { workerId: firstWorker.id, tasks: ["task-a", "task-b", "task-c"] },
+        { workerId: secondWorker.id, tasks: ["task-c"] }
+      );
+
+      expect(failures, failures.join("\n")).toEqual([]);
+      expect(await taskIdentifierState(prisma, env)).toEqual([
+        ["task-a", false, firstWorker.id],
+        ["task-b", false, firstWorker.id],
+        ["task-c", true, secondWorker.id],
+      ]);
+    }
+  );
 });
