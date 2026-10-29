@@ -1,7 +1,10 @@
 import ts from "@typescript/typescript6";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { BUILDERS } from "./checks/errorClassification.js";
 import type { CatchEvidence, EntryPoint, LogCall } from "./types.js";
+
+const isBuilder = (callee: string | null) => callee !== null && BUILDERS.has(callee);
 
 /** Thrown by `scanFile` when the source does not parse cleanly. */
 export class ParseFailureError extends Error {
@@ -1557,12 +1560,14 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
     actionInitializerCallee: target.actionInitializerCallee,
     loaderBuilderOptions: target.loaderBuilderOptions,
     actionBuilderOptions: target.actionBuilderOptions,
-    // No handler function and no builder call: `export { action } from "./handler.server"` and
-    // `export const action = handleWebhook`. See `EntryPoint.delegating`.
+    // No handler function and no builder call: `export { action } from "./handler.server"`,
+    // `export const action = handleWebhook`, and a route factory defined elsewhere
+    // (`const { action, loader } = createPacketUploadRoute()`). A builder's options stay readable,
+    // so a builder call is never delegating. See `EntryPoint.delegating`.
     delegating:
       target.functions.size === 0 &&
-      target.loaderInitializerCallee === null &&
-      target.actionInitializerCallee === null,
+      !isBuilder(target.loaderInitializerCallee) &&
+      !isBuilder(target.actionInitializerCallee),
     loaderScopesByCaller: scopesByCallerIn(target.loaderFunctions),
     actionScopesByCaller: scopesByCallerIn(target.actionFunctions),
     loaderCheckedCallees: checkedCalleesOf(byExport.loader),
