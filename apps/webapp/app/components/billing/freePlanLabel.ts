@@ -17,3 +17,15 @@ export function freePlanButtonLabel(subscription?: SubscriptionResult, now = new
   });
   return `Starts ${startsAt}`;
 }
+
+export type MovesToPlan = { code: string; title: string };
+
+// Billing sends the plan an org waiting to move to Metronome is on from the move, in the subscription field.
+export function billingMovesToPlanOf(subscription: unknown): MovesToPlan | undefined {
+  if (typeof subscription !== "object" || subscription === null) return undefined;
+  const movesTo = (subscription as { billingMovesToPlan?: unknown }).billingMovesToPlan;
+  if (typeof movesTo !== "object" || movesTo === null) return undefined;
+  const { code, title } = movesTo as { code?: unknown; title?: unknown };
+  if (typeof code !== "string" || typeof title !== "string") return undefined;
+  return { code, title };
+}

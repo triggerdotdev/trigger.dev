@@ -20,7 +20,11 @@ import {
   organizationPath,
   v3StripePortalPath,
 } from "~/utils/pathBuilder";
-import { downgradeTakesEffectAt } from "~/components/billing/freePlanLabel";
+import {
+  billingMovesToPlanOf,
+  downgradeTakesEffectAt,
+  type MovesToPlan,
+} from "~/components/billing/freePlanLabel";
 import { PricingPlans } from "../resources.orgs.$organizationSlug.select-plan";
 import { billingMessageFromKey } from "~/utils/billingMessages";
 import { pageMeta } from "~/utils/pageTitle";
@@ -66,6 +70,7 @@ export const loader = dashboardLoader(
     const currentPlan = planRead.value;
     const showSelfServe = currentPlan?.v3Subscription?.showSelfServe !== false;
     const billingMovesAt = billingMovesAtOf(currentPlan?.subscription);
+    const billingMovesToPlan = billingMovesToPlanOf(currentPlan?.subscription);
 
     //periods
     const periodStart = new Date();
@@ -95,6 +100,7 @@ export const loader = dashboardLoader(
         daysRemaining,
         message,
         billingMovesAt,
+        billingMovesToPlan,
       });
     }
 
@@ -118,6 +124,7 @@ export const loader = dashboardLoader(
       message,
       planProvisioning,
       billingMovesAt,
+      billingMovesToPlan,
     });
   }
 );
@@ -149,6 +156,7 @@ export default function ChoosePlanPage() {
     daysRemaining,
     message,
     billingMovesAt,
+    billingMovesToPlan,
   } = loaderData;
 
   return (
@@ -192,7 +200,13 @@ export default function ChoosePlanPage() {
             <div className="flex flex-col gap-y-3 divide-grid-bright rounded-sm border border-grid-bright bg-background-bright py-2 pr-1 text-text-bright lg:w-fit lg:flex-row lg:items-center lg:divide-x">
               <div className="flex gap-2 px-3 lg:items-center">
                 <StarIcon className="size-5 min-w-5 lg:-mt-0.5" />
-                {planLabel(v3Subscription?.plan, v3Subscription?.canceledAt !== undefined)}
+                {planLabel(
+                  v3Subscription?.plan,
+                  v3Subscription?.canceledAt !== undefined,
+                  billingMovesAt && billingMovesToPlan
+                    ? { ...billingMovesToPlan, startsAt: billingMovesAt }
+                    : undefined
+                )}
               </div>
               {v3Subscription?.isPaying ? (
                 <div className="flex gap-2 px-3 lg:items-center">
@@ -302,9 +316,20 @@ function billingMovesAtOf(subscription: unknown): Date | undefined {
   return typeof movesAt === "string" ? new Date(movesAt) : undefined;
 }
 
-function planLabel(plan: PlanDefinition | undefined, canceled: boolean) {
+function planLabel(
+  plan: PlanDefinition | undefined,
+  canceled: boolean,
+  next?: MovesToPlan & { startsAt: Date }
+) {
   if (!plan || plan.type === "free") {
-    return "You're on the Free plan";
+    if (!next || next.code === plan?.code) return "You're on the Free plan";
+    return (
+      <>
+        You're on the Free plan. From{" "}
+        <DateTime includeTime={false} date={next.startsAt} timeZone="UTC" /> you're on the{" "}
+        {next.title} plan.
+      </>
+    );
   }
 
   if (plan.type === "enterprise") {
@@ -318,6 +343,15 @@ function planLabel(plan: PlanDefinition | undefined, canceled: boolean) {
       <>
         {text}. From <DateTime includeTime={false} date={downgradeTakesEffectAt()} timeZone="UTC" />{" "}
         you're on the Free plan.
+      </>
+    );
+  }
+
+  if (next && next.code !== plan.code) {
+    return (
+      <>
+        {text}. From <DateTime includeTime={false} date={next.startsAt} timeZone="UTC" /> you're on
+        the {next.title} plan.
       </>
     );
   }

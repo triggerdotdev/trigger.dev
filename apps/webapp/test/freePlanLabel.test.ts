@@ -1,6 +1,10 @@
 import type { SubscriptionResult } from "@trigger.dev/platform";
 import { describe, expect, it } from "vitest";
-import { downgradeTakesEffectAt, freePlanButtonLabel } from "~/components/billing/freePlanLabel";
+import {
+  billingMovesToPlanOf,
+  downgradeTakesEffectAt,
+  freePlanButtonLabel,
+} from "~/components/billing/freePlanLabel";
 
 const NOW = new Date("2026-10-31T22:30:00Z");
 
@@ -33,5 +37,25 @@ describe("freePlanButtonLabel", () => {
 describe("downgradeTakesEffectAt", () => {
   it("is the 1st of next month in UTC, not the last day of this one", () => {
     expect(downgradeTakesEffectAt(NOW)).toEqual(new Date("2026-11-01T00:00:00Z"));
+  });
+});
+
+describe("billingMovesToPlanOf", () => {
+  it("reads the plan an org moves to", () => {
+    expect(
+      billingMovesToPlanOf({ billingMovesToPlan: { code: "v3_hobby_1", title: "Hobby" } })
+    ).toEqual({ code: "v3_hobby_1", title: "Hobby" });
+  });
+
+  it("is undefined for an org that isn't moving or a malformed value", () => {
+    for (const subscription of [
+      undefined,
+      null,
+      {},
+      { billingMovesToPlan: "Hobby" },
+      { billingMovesToPlan: { code: "v3_hobby_1" } },
+    ]) {
+      expect(billingMovesToPlanOf(subscription)).toBeUndefined();
+    }
   });
 });
