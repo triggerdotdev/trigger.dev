@@ -1,5 +1,13 @@
 # @trigger.dev/slack
 
+## 4.8.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@4.8.2`
+  - `@trigger.dev/core@4.8.2`
+
 ## 4.8.1
 
 ### Patch Changes

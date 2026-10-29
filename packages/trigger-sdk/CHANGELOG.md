@@ -1,5 +1,30 @@
 # @trigger.dev/sdk
 
+## 4.8.2
+
+### Patch Changes
+
+- Fix `chat.inject` messages added from a tool mid-turn being saved before the assistant's response. They now stay after the tool result, where the model saw them, so the next turn keeps the same prompt prefix. If you roll `@trigger.dev/sdk` back to an earlier version, chats saved by this version lose these mid-turn `chat.inject` messages from the model's context, though the chat history shown in the UI keeps them. ([`fc33769a5`](https://github.com/triggerdotdev/trigger.dev/commit/fc33769a559a69cae687354413b2316bf9fd0bf3))
+- The bundled `trigger-cost-savings` skill now notes that a webhook delivery starts no run when no subscriber's filter matches, so it costs no compute. ([#5051](https://github.com/triggerdotdev/trigger.dev/pull/5051))
+- Stream a sub-agent's reply through a parent tool call with `chat.forwardSubAgent`. Each chunk is written to the parent chat once and the tool resolves with the sub-agent's final message, so streaming a sub-agent costs bytes in proportion to its reply. Yielding `stream.messages()` snapshots resends the whole message on every chunk, which grows with the square of the reply. ([`bdc994c4d`](https://github.com/triggerdotdev/trigger.dev/commit/bdc994c4d3f80d047b4d0a830cca81330912f8c2))
+
+  ```ts
+  execute: async ({ topic }, { toolCallId, abortSignal }) => {
+    const stream = await researcher.sendMessage(topic, { abortSignal });
+    return await chat.forwardSubAgent(stream, { toolCallId });
+  },
+  ```
+
+  Render it while it runs with `useSubAgentMessages()` from `@trigger.dev/sdk/chat/react` (or `createSubAgentMessages()` outside React).
+
+- Fix a `chat.agent` turn failing after a head start that ended with two or more parallel tool calls. When those tools finished out of call order, the agent sent their results to the model twice on the next step, and the provider rejected the request (Anthropic: "each tool_use must have a single result"). Each handed-over tool result is now sent once. ([`d06ee5825`](https://github.com/triggerdotdev/trigger.dev/commit/d06ee5825baf1d92202604f4ebc1107a01a1aad6))
+- Use short-lived run tokens for supported SDK operations inside deployed tasks when available, retaining environment-key compatibility for unsupported operations and missing or expired tokens. Explicit credentials still take precedence. Public-token helpers use server-side minting with run tokens rather than signing locally. ([`5a1c14239`](https://github.com/triggerdotdev/trigger.dev/commit/5a1c14239bcedf85570c8392835bda07482e222e))
+
+  Project and organization queries, and branch overrides targeting another PREVIEW or DEVELOPMENT environment, keep using compatibility credentials. Branch headers do not change credential selection in STAGING or PRODUCTION. Chat subscriptions reread implicit credentials for each connection.
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.8.2`
+
 ## 4.8.1
 
 ### Patch Changes

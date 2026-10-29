@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/convex",
-  "version": "0.0.1",
+  "version": "4.8.2",
   "description": "Run Trigger.dev tasks from Convex mutations and query their results reactively",
   "license": "Apache-2.0",
   "type": "module",
