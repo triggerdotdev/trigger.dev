@@ -16,7 +16,7 @@ import {
 
 const MAX_CHUNK_ATTEMPTS = 3;
 const RETRY_BACKOFF_MS = 400;
-const MAX_PROGRESSIVE_SPANS = 150_000;
+export const MAX_PROGRESSIVE_SPANS = 150_000;
 const BACKGROUND_CHUNK_SIZE = 10_000;
 const REBUILD_COALESCE_MS = 100;
 const TAIL_FETCH_TIMEOUT_MS = 15_000;
@@ -81,13 +81,24 @@ export type ProgressiveTraceState = {
   isComplete: boolean;
   isTruncated: boolean;
   loadFailed: boolean;
+  /** The `retryKey` this state was loaded for. */
+  loadAttempt: number;
+};
+
+export type ProgressiveTraceOptions = {
+  /** Asked before each later page with the spans held so far; false stops there, as truncated. */
+  canFetchPage?: (loadedSpans: number) => boolean;
+  /** The spans held, sent each time a chunk merges, before the tree rebuilds. */
+  onLoadedSpans?: (loadedSpans: number) => void;
+  /** Changing it reloads the later pages, like `retryLoad`. */
+  retryKey?: number;
 };
 
 function toChunkEvent(event: WireChunkEvent) {
   return { ...event, startTime: new Date(event.startTime) };
 }
 
-function initialState(trace: ProgressiveTraceInput): ProgressiveTraceState {
+function initialState(trace: ProgressiveTraceInput, loadAttempt = 0): ProgressiveTraceState {
   return {
     events: trace.events,
     duration: trace.duration,
@@ -98,6 +109,7 @@ function initialState(trace: ProgressiveTraceInput): ProgressiveTraceState {
     isComplete: !trace.progressive?.hasMore,
     isTruncated: false,
     loadFailed: false,
+    loadAttempt,
   };
 }
 
@@ -172,7 +184,8 @@ export function useProgressiveTrace(
   chunkPath: string,
   errorsOnly: boolean,
   /** False drops live tails, including ones already queued (throttled, hidden tab, trailing). */
-  tailEnabled = true
+  tailEnabled = true,
+  { canFetchPage, onLoadedSpans, retryKey = 0 }: ProgressiveTraceOptions = {}
 ): ProgressiveTraceState & {
   tailLive: () => void;
   liveTailEnabled: boolean;
@@ -188,8 +201,12 @@ export function useProgressiveTrace(
     : `static:${trace.events.length}`;
 
   const latestTraceRef = useRef(trace);
+  const canFetchPageRef = useRef(canFetchPage);
+  const onLoadedSpansRef = useRef(onLoadedSpans);
   useEffect(() => {
     latestTraceRef.current = trace;
+    canFetchPageRef.current = canFetchPage;
+    onLoadedSpansRef.current = onLoadedSpans;
   });
   const assemblerRef = useRef<TraceChunkAssembler | null>(null);
   const errorsFetchedRef = useRef(false);
@@ -224,6 +241,7 @@ export function useProgressiveTrace(
 
   const rebuild = useCallback((meta: ProgressiveMeta, assembler: TraceChunkAssembler) => {
     if (assemblerRef.current !== assembler) return;
+    onLoadedSpansRef.current?.(assembler.size);
     assembler.markRendered();
     const { spans, overridesBySpanId } = applyAncestorOverrides(assembler.spans);
     const view = buildTraceView(spans, meta.buildOptions);
@@ -237,6 +255,7 @@ export function useProgressiveTrace(
       isComplete: prev.isComplete,
       isTruncated: prev.isTruncated,
       loadFailed: prev.loadFailed,
+      loadAttempt: prev.loadAttempt,
     }));
   }, []);
 
@@ -246,7 +265,7 @@ export function useProgressiveTrace(
 
   useEffect(() => {
     const current = latestTraceRef.current;
-    setState(initialState(current));
+    setState(initialState(current, retryKey));
     errorsFetchedRef.current = false;
     pendingTailRef.current = false;
     hiddenTailRef.current = false;
@@ -276,6 +295,7 @@ export function useProgressiveTrace(
       assembler.pinTailFloor(meta.firstChunkReadAt);
     }
     assemblerRef.current = assembler;
+    onLoadedSpansRef.current?.(assembler.size);
 
     if (!meta.hasMore || !meta.nextCursor) {
       return;
@@ -330,6 +350,10 @@ export function useProgressiveTrace(
 
     async function loadRemaining() {
       while (!cancelled && cursor) {
+        if (canFetchPageRef.current && !canFetchPageRef.current(assembler.size)) {
+          markComplete(true);
+          return;
+        }
         let data: WireChunkResponse | null = null;
         for (let attempt = 0; attempt < MAX_CHUNK_ATTEMPTS && !cancelled; attempt++) {
           data = await fetchChunk(
@@ -352,6 +376,7 @@ export function useProgressiveTrace(
         }
 
         assembler.mergeChunk(data.events.map(toChunkEvent));
+        onLoadedSpansRef.current?.(assembler.size);
         requestRebuild();
         cursor = data.hasMore ? data.nextCursor : null;
 
@@ -375,7 +400,7 @@ export function useProgressiveTrace(
         rebuildTimer = null;
       }
     };
-  }, [identity, chunkPath, retryGeneration, rebuild]);
+  }, [identity, chunkPath, retryGeneration, retryKey, rebuild]);
 
   // Every chunk is loaded, so the client-side filter already sees every error.
   const fullyLoaded = state.isComplete && !state.loadFailed && !state.isTruncated;
@@ -399,7 +424,7 @@ export function useProgressiveTrace(
     return () => {
       cancelled = true;
     };
-  }, [errorsOnly, fullyLoaded, identity, chunkPath, retryGeneration, rebuild]);
+  }, [errorsOnly, fullyLoaded, identity, chunkPath, retryGeneration, retryKey, rebuild]);
 
   const runTail = useCallback(() => {
     if (!tailEnabledRef.current) return;

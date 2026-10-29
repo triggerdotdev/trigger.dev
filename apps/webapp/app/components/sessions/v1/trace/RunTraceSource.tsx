@@ -1,9 +1,10 @@
 import type { TaskRunStatus } from "@trigger.dev/database";
 import { tryCatch } from "@trigger.dev/core/utils";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { TraceEvent } from "~/components/runs/v3/trace/types";
 import { type RunTraceInput, useRunTrace } from "~/components/runs/v3/trace/useRunTrace";
 import { useEnvironment } from "~/hooks/useEnvironment";
+import { MAX_PROGRESSIVE_SPANS } from "~/hooks/useProgressiveTrace";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import type { RunTraceStart } from "~/presenters/v3/TraceChunkPresenter.server";
@@ -33,7 +34,11 @@ type RunTraceSourceProps = {
   selectedSpanId?: string;
   onSettle: (runFriendlyId: string, loadId: number, outcome: SessionRunLoadOutcome) => void;
   onSnapshot: (runFriendlyId: string, snapshot: RunTraceSnapshot | undefined) => void;
-  onSpansChanged: (runFriendlyId: string, hasSpans: boolean) => void;
+  onSpanCount: (runFriendlyId: string, count: number) => void;
+  /** The spans the run's trace holds, as each chunk merges. */
+  onLoadedSpans: (runFriendlyId: string, loaded: number) => void;
+  /** Asked before each later page, with the spans held so far: the session span budget. */
+  askPage: (runFriendlyId: string, loaded: number) => boolean;
   onPanelData: (runFriendlyId: string, data: RunPanelData | undefined) => void;
   onRunDataStale: () => void;
 };
@@ -76,10 +81,26 @@ function RunTraceLive({
   started,
   onSettle,
   onSnapshot,
-  onSpansChanged,
+  onSpanCount,
+  onLoadedSpans,
+  askPage,
   onPanelData,
   onRunDataStale,
 }: RunTraceSourceProps & { started: StartedTrace }) {
+  // A tail that lands after unmount must not count spans for a run that was freed.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      onLoadedSpans(run.friendlyId, 0);
+    };
+  }, [run.friendlyId, onLoadedSpans]);
+
+  // An in-place retry moves the load to a new attempt; it stays once the run settles.
+  const [retryKey, setRetryKey] = useState(0);
+  if (load.state === "paging" && load.attempt !== retryKey) setRetryKey(load.attempt);
+
   const trace = useRunTrace({
     run: {
       friendlyId: run.friendlyId,
@@ -94,6 +115,11 @@ function RunTraceLive({
     onRunDataStale,
     readContext: "session",
     live,
+    canFetchPage: (loaded) => askPage(run.friendlyId, loaded),
+    onLoadedSpans: (loaded) => {
+      if (mounted.current) onLoadedSpans(run.friendlyId, loaded);
+    },
+    retryKey,
   });
 
   useEffect(() => {
@@ -118,37 +144,63 @@ function RunTraceLive({
   useEffect(() => () => onPanelData(run.friendlyId, undefined), [run.friendlyId, onPanelData]);
 
   // The run's root span is hidden, so only spans below it count as on screen.
-  const hasSpans = trace.events.some((event) => event.level > 0);
+  const spanCount = useMemo(
+    () => trace.events.filter((event) => event.level > 0).length,
+    [trace.events]
+  );
   useEffect(() => {
-    onSpansChanged(run.friendlyId, hasSpans);
-  }, [hasSpans, run.friendlyId, onSpansChanged]);
-  useEffect(() => () => onSpansChanged(run.friendlyId, false), [run.friendlyId, onSpansChanged]);
+    onSpanCount(run.friendlyId, spanCount);
+  }, [spanCount, run.friendlyId, onSpanCount]);
+  useEffect(() => () => onSpanCount(run.friendlyId, 0), [run.friendlyId, onSpanCount]);
 
   // A run keeps its load slot while later pages arrive.
   const inFlightLoadId =
     load.state === "loading" || load.state === "paging" ? load.loadId : undefined;
-  const isComplete = trace.isComplete;
-  const loadFailed = trace.traceStatus.kind === "failed";
-  const noSpansYet = started.kind === "empty" && !hasSpans;
+  const { isComplete, loadFailed, isTruncated } = trace;
+  const noSpansYet = started.kind === "empty" && spanCount === 0;
+  // Until the hook has restarted for a retry, its state still shows the failure.
+  const currentAttempt = trace.loadAttempt === retryKey;
+  const spanLimit = started.trace.progressive?.maxSpans ?? MAX_PROGRESSIVE_SPANS;
   useEffect(() => {
-    if (inFlightLoadId === undefined) return;
-    const outcome = settledOutcome(isComplete, loadFailed, noSpansYet);
+    if (inFlightLoadId === undefined || !currentAttempt) return;
+    const outcome = settledOutcome({ isComplete, loadFailed, isTruncated, noSpansYet, spanLimit });
     if (outcome.state === "paging" && load.state === "paging") return;
     onSettle(run.friendlyId, inFlightLoadId, outcome);
-  }, [inFlightLoadId, isComplete, loadFailed, noSpansYet, load.state, run.friendlyId, onSettle]);
+  }, [
+    inFlightLoadId,
+    currentAttempt,
+    isComplete,
+    loadFailed,
+    isTruncated,
+    noSpansYet,
+    spanLimit,
+    load.state,
+    run.friendlyId,
+    onSettle,
+  ]);
 
   return null;
 }
 
-// A page that kept failing stops the load; the spans already loaded stay on screen.
-export function settledOutcome(
-  isComplete: boolean,
-  loadFailed: boolean,
-  noSpansYet: boolean
-): SessionRunLoadOutcome {
+// A page that kept failing stops the load; the spans already loaded stay on screen. A stop at
+// the session budget settles from the page check first, so a truncation here is the run's cap.
+export function settledOutcome({
+  isComplete,
+  loadFailed,
+  isTruncated,
+  noSpansYet,
+  spanLimit,
+}: {
+  isComplete: boolean;
+  loadFailed: boolean;
+  isTruncated: boolean;
+  noSpansYet: boolean;
+  spanLimit: number;
+}): SessionRunLoadOutcome {
   if (loadFailed)
     return { state: "error", message: "Some of this run's spans couldn't be loaded." };
   if (!isComplete) return { state: "paging" };
+  if (isTruncated) return { state: "cutOff", limit: "run", started: true, spanLimit };
   return noSpansYet ? { state: "empty" } : { state: "progressive" };
 }
 

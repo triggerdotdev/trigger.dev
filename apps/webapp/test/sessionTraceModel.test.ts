@@ -11,8 +11,11 @@ import {
 import {
   MAX_CONCURRENT_RUN_LOADS,
   createSessionRunLoads,
+  isRunTraceMounted,
+  pageCheck,
   runLoad,
   runLoadId,
+  runSpanCount,
   sessionRunLoadsReducer,
   type SessionRunLoadOutcome,
   type SessionRunLoads,
@@ -602,16 +605,8 @@ describe("sessionRunLoadsReducer: the load queue", () => {
     loads = settle(loads, "run_2", { state: "error", message: "boom" });
     const attempt = runLoadId(runLoad(loads, "run_1"));
 
-    loads = sessionRunLoadsReducer(loads, {
-      type: "spansChanged",
-      runFriendlyId: "run_1",
-      hasSpans: true,
-    });
-    loads = sessionRunLoadsReducer(loads, {
-      type: "spansChanged",
-      runFriendlyId: "run_2",
-      hasSpans: true,
-    });
+    loads = sessionRunLoadsReducer(loads, { type: "spanCount", runFriendlyId: "run_1", count: 4 });
+    loads = sessionRunLoadsReducer(loads, { type: "spanCount", runFriendlyId: "run_2", count: 4 });
     expect(runLoad(loads, "run_1")).toEqual({ state: "progressive", loadId: attempt });
     expect(runLoad(loads, "run_2").state).toBe("error");
   });
@@ -856,20 +851,39 @@ describe("newRunsPollIntervalMs", () => {
 });
 
 describe("settledOutcome", () => {
+  const outcome = (overrides: Partial<Parameters<typeof settledOutcome>[0]>) =>
+    settledOutcome({
+      isComplete: true,
+      loadFailed: false,
+      isTruncated: false,
+      noSpansYet: false,
+      spanLimit: 150_000,
+      ...overrides,
+    });
+
   it("keeps the slot while pages are still loading", () => {
-    expect(settledOutcome(false, false, false)).toEqual({ state: "paging" });
+    expect(outcome({ isComplete: false })).toEqual({ state: "paging" });
   });
 
   it("reports a failed page load as an error, even though loading stopped", () => {
-    expect(settledOutcome(true, true, false)).toEqual({
+    expect(outcome({ loadFailed: true })).toEqual({
       state: "error",
       message: "Some of this run's spans couldn't be loaded.",
     });
   });
 
   it("settles as loaded, or empty when the run has no spans yet", () => {
-    expect(settledOutcome(true, false, false)).toEqual({ state: "progressive" });
-    expect(settledOutcome(true, false, true)).toEqual({ state: "empty" });
+    expect(outcome({})).toEqual({ state: "progressive" });
+    expect(outcome({ noSpansYet: true })).toEqual({ state: "empty" });
+  });
+
+  it("settles a truncated load as cut off at the run's own limit", () => {
+    expect(outcome({ isTruncated: true, spanLimit: 80_000 })).toEqual({
+      state: "cutOff",
+      limit: "run",
+      started: true,
+      spanLimit: 80_000,
+    });
   });
 });
 
@@ -963,7 +977,7 @@ describe("sessionRunLoadsReducer: what loads when", () => {
     loads = settleNow(loads, "run_25", { state: "empty" });
     loads = run(
       loads,
-      { type: "spansChanged", runFriendlyId: "run_25", hasSpans: true },
+      { type: "spanCount", runFriendlyId: "run_25", count: 1 },
       runsChanged(["run_25", "run_26"], "run_26")
     );
     expect(state(loads, "run_25")).toBe("progressive");
@@ -983,7 +997,7 @@ describe("sessionRunLoadsReducer: what loads when", () => {
     );
     loads = settleNow(loads, "run_1", { state: "error", message: "boom" });
     loads = settleNow(loads, "run_2", { state: "error", message: "boom" });
-    loads = run(loads, { type: "spansChanged", runFriendlyId: "run_2", hasSpans: true });
+    loads = run(loads, { type: "spanCount", runFriendlyId: "run_2", count: 1 });
     loads = run(
       loads,
       expand("run_1", false),
@@ -1023,9 +1037,7 @@ describe("sessionRunLoadsReducer: what loads when", () => {
     const loads = run(createSessionRunLoads(), runsChanged(["run_1"], "run_1"));
     expect(run(loads, runsChanged(["run_1"], "run_1"))).toBe(loads);
     expect(run(loads, expand("run_1", false))).toBe(loads);
-    expect(run(loads, { type: "spansChanged", runFriendlyId: "run_1", hasSpans: false })).toBe(
-      loads
-    );
+    expect(run(loads, { type: "spanCount", runFriendlyId: "run_1", count: 0 })).toBe(loads);
   });
 });
 
@@ -1086,5 +1098,239 @@ describe("highlightedNodeId", () => {
   it("highlights nothing for a run that isn't loaded", () => {
     expect(highlightedNodeId(span, inTree([]))).toBeUndefined();
     expect(highlightedNodeId({ kind: "run", runFriendlyId: "run_b" }, inTree([]))).toBeUndefined();
+  });
+});
+
+describe("sessionRunLoadsReducer: span budget, load order and retry", () => {
+  type Action = SessionRunLoadsAction;
+  const ids = ["run_1", "run_2", "run_3", "run_4", "run_5"];
+  const run = (loads: SessionRunLoads, ...actions: Action[]) =>
+    actions.reduce<SessionRunLoads>(sessionRunLoadsReducer, loads);
+  const state = (loads: SessionRunLoads, id: string) => runLoad(loads, id).state;
+  const start = (budget?: number) =>
+    run(createSessionRunLoads([], { budget }), {
+      type: "runsChanged",
+      withStatus: ids,
+      newestRunId: "run_5",
+    });
+  const expand = (id: string, expanded = true): Action => ({
+    type: "expanded",
+    runFriendlyId: id,
+    expanded,
+  });
+  const count = (id: string, spans: number): Action => ({
+    type: "spanCount",
+    runFriendlyId: id,
+    count: spans,
+  });
+  const held = (id: string, spans: number): Action => ({
+    type: "spansLoaded",
+    runFriendlyId: id,
+    loaded: spans,
+  });
+  // A run's spans: on screen and held by its trace.
+  const spans = (id: string, n: number) => [count(id, n), held(id, n)];
+  const loadIdOf = (loads: SessionRunLoads, id: string) => {
+    const load = runLoad(loads, id);
+    if (load.state !== "loading" && load.state !== "paging") throw new Error(`${id} isn't loading`);
+    return load.loadId;
+  };
+  const settleNow = (loads: SessionRunLoads, id: string, outcome: SessionRunLoadOutcome) =>
+    run(loads, { type: "settle", runFriendlyId: id, loadId: loadIdOf(loads, id), outcome });
+  // Expands a run and loads it completely with this many spans.
+  const loaded = (loads: SessionRunLoads, id: string, n: number) =>
+    run(settleNow(run(loads, expand(id)), id, { state: "progressive" }), ...spans(id, n));
+  // Expands a run and leaves it paging with this many spans.
+  const paging = (loads: SessionRunLoads, id: string, n: number) =>
+    run(settleNow(run(loads, expand(id)), id, { state: "paging" }), ...spans(id, n));
+
+  it("loads Expand all newest first, and ignores the per-row events that follow", () => {
+    const newestFirst = [...ids].reverse();
+    const loads = run(start(), { type: "expandedMany", runFriendlyIds: newestFirst });
+
+    expect(ids.map((id) => state(loads, id))).toEqual([
+      "queued",
+      "queued",
+      "loading",
+      "loading",
+      "loading",
+    ]);
+    expect(loads.queue).toEqual(["run_2", "run_1"]);
+    expect(run(loads, ...ids.map((id) => expand(id)))).toBe(loads);
+  });
+
+  it("keeps collapsed runs in the order they were collapsed", () => {
+    let loads = run(start(), expand("run_1"), expand("run_2"));
+    loads = run(loads, expand("run_2", false), expand("run_1", false));
+    expect(loads.collapsedOrder).toEqual(["run_2", "run_1"]);
+    expect(run(loads, expand("run_2")).collapsedOrder).toEqual(["run_1"]);
+  });
+
+  it("ignores an unchanged count and a late count from a run that isn't mounted", () => {
+    const loads = loaded(start(), "run_1", 5);
+    expect(run(loads, count("run_1", 5), held("run_1", 5))).toBe(loads);
+    expect(run(loads, count("run_2", 5), held("run_2", 5))).toBe(loads);
+  });
+
+  it("lets a page through within the budget, and always for the newest run", () => {
+    const loads = paging(start(30_000), "run_1", 15_000);
+    expect(pageCheck(loads, "run_1")).toEqual({ allowed: true });
+
+    const newest = paging(start(30_000), "run_5", 100_000);
+    expect(pageCheck(newest, "run_5")).toEqual({ allowed: true });
+  });
+
+  it("counts the spans the asking run holds now, ahead of the last count it sent", () => {
+    const loads = paging(start(30_000), "run_1", 15_000);
+    expect(pageCheck(loads, "run_1", 15_000).allowed).toBe(true);
+    // A page landed but its count hasn't arrived: 25k held plus the next page is over 30k.
+    expect(pageCheck(loads, "run_1", 25_000).allowed).toBe(false);
+  });
+
+  it("keeps a run waiting while others load when it would fit with only its own page", () => {
+    let loads = loaded(start(30_000), "run_1", 12_000);
+    loads = run(loads, expand("run_2"), expand("run_3"));
+    // 12k loaded + a page each for run_2 and run_3 is over 30k, but 12k + one page isn't.
+    expect([state(loads, "run_2"), state(loads, "run_3")]).toEqual(["loading", "queued"]);
+
+    // The newest run never waits behind it.
+    loads = run(loads, expand("run_5"));
+    expect(state(loads, "run_5")).toBe("loading");
+
+    const fits = run(
+      settleNow(settleNow(loads, "run_5", { state: "progressive" }), "run_2", {
+        state: "progressive",
+      }),
+      ...spans("run_2", 2_000)
+    );
+    expect(state(fits, "run_3")).toBe("loading");
+  });
+
+  it("cuts a waiting run off once nothing else is loading and it still doesn't fit", () => {
+    let loads = loaded(start(30_000), "run_1", 12_000);
+    loads = run(loads, expand("run_2"), expand("run_3"));
+    loads = run(loads, ...spans("run_2", 15_000));
+    loads = settleNow(loads, "run_2", { state: "progressive" });
+    expect(runLoad(loads, "run_3")).toMatchObject({
+      state: "cutOff",
+      limit: "session",
+      started: false,
+    });
+  });
+
+  it("frees the least recently collapsed runs, only as many as needed, never the newest or selected", () => {
+    let loads = start(30_000);
+    for (const id of ["run_1", "run_2", "run_3", "run_5"]) loads = loaded(loads, id, 5_000);
+    loads = run(loads, ...["run_5", "run_1", "run_2", "run_3"].map((id) => expand(id, false)), {
+      type: "selected",
+      runFriendlyId: "run_2",
+    });
+    loads = paging(loads, "run_4", 8_000);
+
+    const check = pageCheck(loads, "run_4");
+    expect(check).toEqual({
+      allowed: true,
+      action: { type: "release", runFriendlyIds: ["run_1", "run_3"] },
+    });
+
+    loads = run(loads, check.action!);
+    expect(["run_1", "run_2", "run_3", "run_5"].map((id) => state(loads, id))).toEqual([
+      "idle",
+      "progressive",
+      "idle",
+      "progressive",
+    ]);
+    expect(runSpanCount(loads, "run_1")).toBe(0);
+  });
+
+  it("cuts a run off without freeing anything when freeing isn't enough", () => {
+    let loads = loaded(start(30_000), "run_1", 2_000);
+    loads = run(loads, expand("run_1", false));
+    loads = paging(loads, "run_2", 25_000);
+
+    const check = pageCheck(loads, "run_2");
+    expect(check.allowed).toBe(false);
+    loads = run(loads, check.action!);
+    expect(runLoad(loads, "run_2")).toMatchObject({
+      state: "cutOff",
+      limit: "session",
+      started: true,
+      spanLimit: 30_000,
+    });
+    expect(state(loads, "run_1")).toBe("progressive");
+    expect(isRunTraceMounted(runLoad(loads, "run_2"))).toBe(true);
+
+    // The source's own settle after the hook stops is ignored: the run isn't loading anymore.
+    const loadId = runLoadId(runLoad(loads, "run_2"))!;
+    const outcome: SessionRunLoadOutcome = {
+      state: "cutOff",
+      limit: "run",
+      started: true,
+      spanLimit: 150_000,
+    };
+    expect(run(loads, { type: "settle", runFriendlyId: "run_2", loadId, outcome })).toBe(loads);
+  });
+
+  it("holds back a run that can't start, and checks again when it's expanded again", () => {
+    let loads = loaded(start(30_000), "run_1", 25_000);
+    loads = run(loads, expand("run_2"));
+    expect(runLoad(loads, "run_2")).toMatchObject({
+      state: "cutOff",
+      limit: "session",
+      started: false,
+    });
+    expect(isRunTraceMounted(runLoad(loads, "run_2"))).toBe(false);
+
+    loads = run(loads, expand("run_1", false), expand("run_2", false), expand("run_2"));
+    expect([state(loads, "run_1"), state(loads, "run_2")]).toEqual(["idle", "loading"]);
+  });
+
+  it("frees collapsed runs as the newest run's live tail grows past the budget", () => {
+    let loads = start(30_000);
+    loads = loaded(loads, "run_1", 10_000);
+    loads = loaded(loads, "run_2", 10_000);
+    loads = loaded(loads, "run_5", 5_000);
+    loads = run(loads, expand("run_1", false), expand("run_2", false));
+
+    loads = run(loads, held("run_5", 15_000));
+    expect([state(loads, "run_1"), state(loads, "run_2")]).toEqual(["idle", "progressive"]);
+
+    // Not enough left to free: the rest goes anyway (it lowers what's held), and the newest
+    // run keeps growing.
+    loads = run(loads, held("run_5", 40_000));
+    expect(state(loads, "run_2")).toBe("idle");
+    expect(loads.loadedSpans.run_5).toBe(40_000);
+  });
+
+  it("retries a partly loaded run in place, keeping its trace mounted while it waits", () => {
+    let loads = paging(start(), "run_1", 500);
+    const firstLoadId = loadIdOf(loads, "run_1");
+    loads = settleNow(loads, "run_1", { state: "error", message: "boom" });
+    loads = run(loads, expand("run_2"), expand("run_3"), expand("run_4"));
+
+    loads = run(loads, { type: "retry", runFriendlyId: "run_1" });
+    expect(runLoad(loads, "run_1")).toEqual({ state: "queued", retryOf: firstLoadId });
+    expect(isRunTraceMounted(runLoad(loads, "run_1"))).toBe(true);
+    expect(runLoadId(runLoad(loads, "run_1"))).toBe(firstLoadId);
+
+    loads = settleNow(loads, "run_2", { state: "progressive" });
+    const retried = runLoad(loads, "run_1");
+    expect(retried).toMatchObject({ state: "paging", loadId: firstLoadId });
+    expect(retried.state === "paging" && retried.attempt).not.toBe(0);
+  });
+
+  it("retries a run with nothing on screen from its first chunk, as a new attempt", () => {
+    let loads = run(start(), expand("run_1"));
+    const firstLoadId = loadIdOf(loads, "run_1");
+    loads = settleNow(loads, "run_1", { state: "error", message: "boom" });
+    loads = run(loads, { type: "retry", runFriendlyId: "run_1" });
+
+    expect(state(loads, "run_1")).toBe("loading");
+    expect(loadIdOf(loads, "run_1")).not.toBe(firstLoadId);
+  });
+
+  it("ignores a retry for a run that didn't fail", () => {
+    const loads = loaded(start(), "run_1", 5);
+    expect(run(loads, { type: "retry", runFriendlyId: "run_1" })).toBe(loads);
   });
 });

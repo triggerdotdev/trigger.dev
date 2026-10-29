@@ -5,7 +5,11 @@ import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { useProgressiveTrace, type ProgressiveTraceInput } from "~/hooks/useProgressiveTrace";
+import {
+  useProgressiveTrace,
+  type ProgressiveTraceInput,
+  type ProgressiveTraceOptions,
+} from "~/hooks/useProgressiveTrace";
 
 type Request = { path: string; params: URLSearchParams; at: number };
 type Handler = (request: Request) => Promise<unknown> | unknown;
@@ -109,22 +113,35 @@ function payload(
 
 type HookResult = ReturnType<typeof useProgressiveTrace>;
 
-function render(trace: ProgressiveTraceInput, chunkPath: string, errorsOnly = false) {
+function render(
+  trace: ProgressiveTraceInput,
+  chunkPath: string,
+  errorsOnly = false,
+  options: ProgressiveTraceOptions = {}
+) {
   let latest!: HookResult;
-  function Harness(props: { trace: ProgressiveTraceInput; chunkPath: string }) {
+  function Harness(props: {
+    trace: ProgressiveTraceInput;
+    chunkPath: string;
+    options: ProgressiveTraceOptions;
+  }) {
     // oxlint-disable-next-line react/globals -- test harness capturing the hook's return value.
-    latest = useProgressiveTrace(props.trace, props.chunkPath, errorsOnly);
+    latest = useProgressiveTrace(props.trace, props.chunkPath, errorsOnly, true, props.options);
     return null;
   }
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
-  act(() => root!.render(createElement(Harness, { trace, chunkPath })));
+  act(() => root!.render(createElement(Harness, { trace, chunkPath, options })));
   return {
     result: () => latest,
     ids: () => latest.events.map((event) => event.id),
-    rerender: (next: ProgressiveTraceInput, nextPath = chunkPath) =>
-      act(() => root!.render(createElement(Harness, { trace: next, chunkPath: nextPath }))),
+    rerender: (next: ProgressiveTraceInput, nextPath = chunkPath, nextOptions = options) =>
+      act(() =>
+        root!.render(
+          createElement(Harness, { trace: next, chunkPath: nextPath, options: nextOptions })
+        )
+      ),
   };
 }
 
@@ -331,6 +348,86 @@ describe("useProgressiveTrace live tail", () => {
     await waitFor(() => view.result().isComplete);
     expect(view.result().isTruncated).toBe(true);
     expect(backgroundRequests()).toHaveLength(1);
+  });
+
+  it("asks before each later page and stops there, truncated, when refused", async () => {
+    let page = 0;
+    handler = () => {
+      page++;
+      return {
+        events: [wireEvent(`child${page}`, "root", T0 + page)],
+        nextCursor: { startTime: String(page + 1), spanId: `child${page}` },
+        hasMore: true,
+      };
+    };
+    let asked = 0;
+    const view = render(
+      payload("root", [wireEvent("root", "", T0)], {
+        hasMore: true,
+        nextCursor: { startTime: "1", spanId: "root" },
+      }),
+      `${baseUrl}/a/chunk`,
+      false,
+      { canFetchPage: () => ++asked === 1 }
+    );
+    await waitFor(() => view.result().isComplete);
+    expect(view.result().isTruncated).toBe(true);
+    expect(asked).toBe(2);
+    expect(backgroundRequests()).toHaveLength(1);
+  });
+
+  it("passes the spans held to the page check right after a page lands, before the rebuild", async () => {
+    let page = 0;
+    handler = () => {
+      page++;
+      return {
+        events: [1, 2, 3].map((i) => wireEvent(`p${page}-${i}`, "root", T0 + page * 10 + i)),
+        nextCursor: { startTime: String(page + 10), spanId: `p${page}-3` },
+        hasMore: true,
+      };
+    };
+    const asked: number[] = [];
+    const reported: number[] = [];
+    const view = render(
+      payload("root", [wireEvent("root", "", T0)], {
+        hasMore: true,
+        nextCursor: { startTime: "1", spanId: "root" },
+      }),
+      `${baseUrl}/a/chunk`,
+      false,
+      {
+        canFetchPage: (loaded) => {
+          asked.push(loaded);
+          return asked.length < 2;
+        },
+        onLoadedSpans: (loaded) => reported.push(loaded),
+      }
+    );
+    await waitFor(() => view.result().isComplete);
+    expect(asked).toEqual([1, 4]);
+    // The page's count went out before the check, not only after the coalesced rebuild.
+    expect(reported.slice(0, 2)).toEqual([1, 4]);
+  });
+
+  it("reloads the later pages for a new retry key and reports which attempt it holds", async () => {
+    let fail = true;
+    handler = () =>
+      fail
+        ? FAIL
+        : { events: [wireEvent("child", "root", T0 + 1)], nextCursor: null, hasMore: false };
+    const trace = payload("root", [wireEvent("root", "", T0)], {
+      hasMore: true,
+      nextCursor: { startTime: "1", spanId: "root" },
+    });
+    const view = render(trace, `${baseUrl}/a/chunk`, false, { retryKey: 0 });
+    await waitFor(() => view.result().loadFailed, 4_000);
+    expect(view.result().loadAttempt).toBe(0);
+
+    fail = false;
+    view.rerender(trace, `${baseUrl}/a/chunk`, { retryKey: 7 });
+    await waitFor(() => view.result().isComplete && !view.result().loadFailed);
+    expect(view.result().loadAttempt).toBe(7);
+    expect(view.ids()).toContain("child");
   });
 
   it("doesn't mark the trace truncated when errors-only results are capped", async () => {

@@ -3,7 +3,11 @@ import { useEffect, useMemo, useRef } from "react";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { useProgressiveTrace, type ProgressiveTraceInput } from "~/hooks/useProgressiveTrace";
+import {
+  useProgressiveTrace,
+  type ProgressiveTraceInput,
+  type ProgressiveTraceOptions,
+} from "~/hooks/useProgressiveTrace";
 import { useProject } from "~/hooks/useProject";
 import { useRunStatusBackstop } from "~/hooks/useRunStatusBackstop";
 import { v3RunStatusPath, v3RunStreamingPath, v3RunTraceChunkPath } from "~/utils/pathBuilder";
@@ -73,6 +77,9 @@ export function useRunTrace({
   onRunDataStale,
   readContext,
   live = true,
+  canFetchPage,
+  onLoadedSpans,
+  retryKey,
 }: {
   run: RunTraceRun;
   trace: RunTraceInput;
@@ -83,7 +90,7 @@ export function useRunTrace({
   readContext?: "session";
   /** False turns off the stream, tail and status polling, e.g. for a session's older runs. */
   live?: boolean;
-}) {
+} & ProgressiveTraceOptions) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -104,10 +111,15 @@ export function useRunTrace({
     isComplete,
     isTruncated: progressiveIsTruncated,
     loadFailed,
+    loadAttempt,
     tailLive,
     liveTailEnabled,
     retryLoad,
-  } = useProgressiveTrace(trace, chunkPath, errorsOnly, live);
+  } = useProgressiveTrace(trace, chunkPath, errorsOnly, live, {
+    canFetchPage,
+    onLoadedSpans,
+    retryKey,
+  });
 
   const traceIsTruncated = isTruncated || progressiveIsTruncated;
 
@@ -246,5 +258,10 @@ export function useRunTrace({
     inspectorRefreshKey,
     /** Every page of the trace has loaded (or loading stopped at a limit or failure). */
     isComplete,
+    /** Loading stopped at a span limit. */
+    isTruncated: traceIsTruncated,
+    loadFailed,
+    /** The `retryKey` the loaded state belongs to. */
+    loadAttempt,
   };
 }

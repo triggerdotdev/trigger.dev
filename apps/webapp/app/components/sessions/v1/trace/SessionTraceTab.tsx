@@ -14,7 +14,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
@@ -34,9 +34,14 @@ import { SpanTreeRow } from "~/components/runs/v3/trace/TasksTreeView";
 import { KeyboardShortcuts } from "~/components/runs/v3/trace/TraceShortcuts";
 import type { TraceTimelineScale } from "~/components/runs/v3/trace/timelineScale";
 import type { TraceEvent } from "~/components/runs/v3/trace/types";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useInitialDimensions } from "~/hooks/useInitialDimensions";
 import { useInterval } from "~/hooks/useInterval";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
+import { formatNumber } from "~/utils/numberFormatter";
+import { v3RunPath } from "~/utils/pathBuilder";
 import { isFinalRunStatus } from "~/v3/taskStatus";
 import {
   buildSessionTree,
@@ -49,11 +54,15 @@ import { SessionTimelineRow } from "./SessionTimelineRow";
 import { type RunPanelData, useSessionPanelStore } from "./sessionPanelStore";
 import {
   createSessionRunLoads,
+  isRunTraceMounted,
+  pageCheck,
   runLoad,
   runLoadId,
+  runSpanCount,
   sessionRunLoadsReducer,
   type SessionRunLoad,
   type SessionRunLoadOutcome,
+  type SessionRunLoadsAction,
 } from "./sessionRunLoads";
 import {
   initiallyExpandedRunFriendlyId,
@@ -87,17 +96,6 @@ function isScrolledToBottom(element: HTMLElement) {
 }
 // Like the run page: arrowing through rows doesn't write the URL on every step.
 const SELECTION_URL_DEBOUNCE_MS = 250;
-
-// Load states whose trace source stays mounted: collapsing a run keeps its spans.
-// A failed run stays mounted too, so the spans it did load stay on screen.
-const MOUNTED_LOAD_STATES = new Set<SessionRunLoad["state"]>([
-  "loading",
-  "paging",
-  "progressive",
-  "empty",
-  "error",
-]);
-const IN_FLIGHT_LOAD_STATES = new Set<SessionRunLoad["state"]>(["queued", "loading", "paging"]);
 
 /** The session's runs as one tree, newest page first, with earlier pages on request. */
 export function SessionTraceTab({
@@ -249,7 +247,7 @@ function SessionTraceTree({
     if (!runs.some((run) => run.friendlyId === selection.runFriendlyId)) return undefined;
     return selection;
   });
-  const [loads, dispatchLoads] = useReducer(sessionRunLoadsReducer, undefined, () => {
+  const [loads, reactDispatchLoads] = useReducer(sessionRunLoadsReducer, undefined, () => {
     const initial = createSessionRunLoads(openRunId ? [openRunId] : []);
     return deepLink
       ? sessionRunLoadsReducer(initial, {
@@ -269,15 +267,36 @@ function SessionTraceTree({
       }),
     []
   );
+  // The page check runs between renders, so it reads a ref that every event updates at once,
+  // with the same reducer React runs: a count or a release just sent is never missed.
+  const loadsRef = useRef(loads);
+  const dispatchLoads = useCallback((action: SessionRunLoadsAction) => {
+    loadsRef.current = sessionRunLoadsReducer(loadsRef.current, action);
+    reactDispatchLoads(action);
+  }, []);
   const onSettle = useCallback(
     (runFriendlyId: string, loadId: number, outcome: SessionRunLoadOutcome) =>
       dispatchLoads({ type: "settle", runFriendlyId, loadId, outcome }),
-    []
+    [dispatchLoads]
   );
-  const onSpansChanged = useCallback(
-    (runFriendlyId: string, hasSpans: boolean) =>
-      dispatchLoads({ type: "spansChanged", runFriendlyId, hasSpans }),
-    []
+  const onSpanCount = useCallback(
+    (runFriendlyId: string, count: number) =>
+      dispatchLoads({ type: "spanCount", runFriendlyId, count }),
+    [dispatchLoads]
+  );
+
+  const onLoadedSpans = useCallback(
+    (runFriendlyId: string, loaded: number) =>
+      dispatchLoads({ type: "spansLoaded", runFriendlyId, loaded }),
+    [dispatchLoads]
+  );
+  const askPage = useCallback(
+    (runFriendlyId: string, loaded: number) => {
+      const { allowed, action } = pageCheck(loadsRef.current, runFriendlyId, loaded);
+      if (action) dispatchLoads(action);
+      return allowed;
+    },
+    [dispatchLoads]
   );
 
   // The side panel is a sibling: it reads run span ids and live panel data from the store.
@@ -311,7 +330,7 @@ function SessionTraceTree({
   );
   useEffect(() => {
     dispatchLoads({ type: "runsChanged", withStatus: runsWithStatus, newestRunId });
-  }, [runsWithStatus, newestRunId]);
+  }, [runsWithStatus, newestRunId, dispatchLoads]);
 
   // Only the live run's scale moves with the clock; the rest are fixed at page load.
   const [openedAtMs] = useState(() => Date.now());
@@ -329,6 +348,12 @@ function SessionTraceTree({
   const liveScale = liveRun ? runScale(liveRun, snapshots[liveRun.friendlyId], nowMs) : undefined;
   const scaleOfRun = (runFriendlyId: string) =>
     runFriendlyId === liveRunId ? liveScale : settledScales.get(runFriendlyId);
+
+  // The run holding the selected span keeps its spans under budget pressure.
+  const selectedSpanRunId = intended.kind === "span" ? intended.runFriendlyId : undefined;
+  useEffect(() => {
+    dispatchLoads({ type: "selected", runFriendlyId: selectedSpanRunId });
+  }, [selectedSpanRunId, dispatchLoads]);
 
   const highlightedId = highlightedNodeId(intended, (id) => rowsById.has(id));
   const pendingUrlWrite = local && !isSameSelection(local, selection) ? local : undefined;
@@ -521,10 +546,26 @@ function SessionTraceTree({
   }, [newestSpanCount]);
 
   // Run rows always expand and collapse one by one, so the load reducer hears about each.
+  // Expand all tells it first, newest first, so the newest runs load first; the per-row
+  // events that follow change nothing.
   const runNodes = tree.filter((node) => node.data.kind === "run");
   const allExpanded = runNodes.every((node) => nodes[node.id]?.expanded);
   const expandAllRuns = () => {
-    for (const node of runNodes) if (!nodes[node.id]?.expanded) expandNode(node.id, false);
+    const collapsed = runNodes.filter((node) => !nodes[node.id]?.expanded);
+    const newestFirst: SessionRunLoadsAction = {
+      type: "expandedMany",
+      runFriendlyIds: collapsed.flatMap((node) =>
+        node.data.kind === "run" ? [node.data.run.friendlyId] : []
+      ),
+    };
+    newestFirst.runFriendlyIds.reverse();
+    dispatchLoads(newestFirst);
+    for (const node of collapsed) expandNode(node.id, false);
+  };
+  const retryRun = (runFriendlyId: string) => {
+    dispatchLoads({ type: "retry", runFriendlyId });
+    const id = runNodeId(runFriendlyId);
+    if (!nodes[id]?.expanded) expandNode(id, false);
   };
   const collapseAllRuns = () => {
     for (const node of runNodes) if (nodes[node.id]?.expanded) collapseNode(node.id);
@@ -598,7 +639,7 @@ function SessionTraceTree({
     >
       {runs.map((run) => {
         const load = runLoad(loads, run.friendlyId);
-        if (!run.status || !MOUNTED_LOAD_STATES.has(load.state)) return null;
+        if (!run.status || !isRunTraceMounted(load)) return null;
         // Keyed by attempt: a retry or a fresh read starts from scratch, never from the old trace.
         return (
           <RunTraceSource
@@ -613,7 +654,9 @@ function SessionTraceTree({
             }
             onSettle={onSettle}
             onSnapshot={onSnapshot}
-            onSpansChanged={onSpansChanged}
+            onSpanCount={onSpanCount}
+            onLoadedSpans={onLoadedSpans}
+            askPage={askPage}
             onPanelData={onPanelData}
             onRunDataStale={onRunDataStale}
           />
@@ -669,6 +712,10 @@ function SessionTraceTree({
                         ? runLoad(loads, node.data.run.friendlyId)
                         : undefined
                     }
+                    spanCount={
+                      node.data.kind === "run" ? runSpanCount(loads, node.data.run.friendlyId) : 0
+                    }
+                    onRetry={retryRun}
                     canLoadEarlier={canLoadEarlier}
                     loadingEarlier={loadingEarlier}
                     earlierError={earlierError}
@@ -792,6 +839,8 @@ function SessionTreeRowView({
   onToggle,
   isLive,
   load,
+  spanCount,
+  onRetry,
   canLoadEarlier,
   loadingEarlier,
   earlierError,
@@ -809,6 +858,8 @@ function SessionTreeRowView({
   onToggle: () => void;
   isLive: boolean;
   load: SessionRunLoad | undefined;
+  spanCount: number;
+  onRetry: (runFriendlyId: string) => void;
   canLoadEarlier: boolean;
   loadingEarlier: boolean;
   earlierError: string | undefined;
@@ -910,7 +961,9 @@ function SessionTreeRowView({
           <RunRowContent
             run={row.run}
             isLive={isLive}
-            isLoading={!!load && IN_FLIGHT_LOAD_STATES.has(load.state)}
+            load={load}
+            spanCount={spanCount}
+            onRetry={onRetry}
           />
         </RowFrame>
       );
@@ -922,11 +975,15 @@ function SessionTreeRowView({
 function RunRowContent({
   run,
   isLive,
-  isLoading,
+  load,
+  spanCount,
+  onRetry,
 }: {
   run: SessionTraceRun;
   isLive: boolean;
-  isLoading: boolean;
+  load: SessionRunLoad | undefined;
+  spanCount: number;
+  onRetry: (runFriendlyId: string) => void;
 }) {
   return (
     <>
@@ -946,12 +1003,101 @@ function RunRowContent({
         <span className="text-xs text-text-faint">–</span>
       )}
       <span className="min-w-0 truncate text-xs text-text-dimmed">{runReasonLabel(run)}</span>
-      {isLoading && <Spinner className="size-3 shrink-0" />}
-      <span className="ml-auto shrink-0 pr-2 text-xs tabular-nums text-text-dimmed">
-        <RunDurationLabel run={run} isLive={isLive} />
+      <span className="ml-auto flex shrink-0 items-center gap-1.5 pr-2 text-xs tabular-nums text-text-dimmed">
+        {load && hasLoadStatus(load) ? (
+          <RunLoadStatus run={run} load={load} spanCount={spanCount} onRetry={onRetry} />
+        ) : (
+          <RunDurationLabel run={run} isLive={isLive} />
+        )}
       </span>
     </>
   );
+}
+
+function hasLoadStatus(load: SessionRunLoad) {
+  return ["queued", "loading", "paging", "error", "cutOff"].includes(load.state);
+}
+
+// Takes the duration's place while the run waits, loads, failed or hit a span limit.
+function RunLoadStatus({
+  run,
+  load,
+  spanCount,
+  onRetry,
+}: {
+  run: SessionTraceRun;
+  load: SessionRunLoad;
+  spanCount: number;
+  onRetry: (runFriendlyId: string) => void;
+}) {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+
+  switch (load.state) {
+    case "queued":
+      return <>Waiting to load…</>;
+    case "loading":
+      return <Spinner className="size-3" />;
+    case "paging":
+      return (
+        <>
+          <Spinner className="size-3" />
+          {spanCount > 0 && <>{formatNumber(spanCount)} spans</>}
+        </>
+      );
+    case "error":
+      return (
+        <>
+          <SimpleTooltip
+            button={<span className="text-error">Couldn't load</span>}
+            content={load.message}
+            disableHoverableContent
+          />
+          <Button
+            variant="secondary/small"
+            onClick={(event) => {
+              event.stopPropagation();
+              onRetry(run.friendlyId);
+            }}
+          >
+            Retry
+          </Button>
+        </>
+      );
+    case "cutOff": {
+      const limit = formatNumber(load.spanLimit);
+      const reason =
+        load.limit === "run"
+          ? `Stopped at this run's limit of ${limit} spans.`
+          : load.started
+            ? `Stopped at the limit of ${limit} spans across this session.`
+            : `Loading it would pass the limit of ${limit} spans across this session. Collapse other runs, then expand it again.`;
+      return (
+        <>
+          <SimpleTooltip
+            button={
+              <span>
+                {load.started ? "Partly loaded" : "Not loaded"} ·{" "}
+                {load.limit === "run" ? "run limit" : "session limit"}
+              </span>
+            }
+            content={reason}
+            disableHoverableContent
+          />
+          <LinkButton
+            variant="secondary/small"
+            to={v3RunPath(organization, project, environment, run)}
+            onClick={(event) => event.stopPropagation()}
+          >
+            Open run page
+          </LinkButton>
+        </>
+      );
+    }
+    default:
+      return null;
+  }
 }
 
 // Only the live run counts up; an older unfinished run shows when it started instead.
