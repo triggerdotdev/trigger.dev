@@ -128,6 +128,7 @@ export function insertTaskEventsSearchV2(
     columns: TASK_EVENT_SEARCH_V2_INSERT_COLUMNS,
     settings: {
       input_format_json_throw_on_bad_escape_sequence: 0,
+      exclude_materialize_skip_indexes_on_insert: "idx_search_text",
     },
   });
 }
