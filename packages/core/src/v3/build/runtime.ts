@@ -22,12 +22,20 @@ export function isBunRuntime(runtime: unknown): boolean {
   return typeof runtime === "string" && (runtime === "bun" || runtime.startsWith("bun-"));
 }
 
+/** The date from which "bun" / "bun-legacy" deploys stop being accepted (UTC). */
+export const LEGACY_BUN_REMOVAL_DATE = "2027-01-05";
+
+/** True for the deprecated node + bun runtimes, "bun" and its explicit spelling "bun-legacy". */
+export function isLegacyBunRuntime(runtime: unknown): boolean {
+  return runtime === "bun" || runtime === "bun-legacy";
+}
+
 /**
  * True for the bun runtimes whose image contains no node binary ("bun-1.4", ...).
  * "bun" / "bun-legacy" run on a node + bun image and are excluded.
  */
 export function isNodelessBunRuntime(runtime: unknown): boolean {
-  return isBunRuntime(runtime) && runtime !== "bun" && runtime !== "bun-legacy";
+  return isBunRuntime(runtime) && !isLegacyBunRuntime(runtime);
 }
 
 /** Maps a deprecated runtime alias to the runtime that should be used instead. */

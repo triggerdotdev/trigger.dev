@@ -102,7 +102,7 @@ Examples:
       )
       .option(
         "-r, --runtime <runtime>",
-        "Which runtime to use for the project. Supported: node, node-22, node-24, node-26, bun, bun-1.4",
+        "Which runtime to use for the project. Supported: node, node-22, node-24, node-26, bun-1.4, bun (deprecated)",
         "node-24"
       )
       .option("--skip-package-install", "Skip installing the @trigger.dev/sdk package")

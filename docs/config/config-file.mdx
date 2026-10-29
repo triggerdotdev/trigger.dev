@@ -337,11 +337,11 @@ import { defineConfig } from "@trigger.dev/sdk";
 export default defineConfig({
   project: "<project ref>",
   // Your other config settings...
-  runtime: "bun",
+  runtime: "bun-1.4",
 });
 ```
 
-`bun` runs on Bun 1.3 with a Node.js binary alongside it. `bun-1.4` runs on a Bun-only image with no Node.js binary. See our [Bun guide](/guides/frameworks/bun) for the differences.
+`bun-1.4` runs on a Bun-only image with no Node.js binary. `bun` (Bun 1.3 with a Node.js binary alongside it) is deprecated, and deploys that use it will be rejected from January 5, 2027. See our [Bun guide](/guides/frameworks/bun) for the differences.
 
 ### Node.js versions
 

@@ -1,7 +1,7 @@
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "./config.js";
 
 const projectDirs: string[] = [];
@@ -61,4 +61,31 @@ describe("loadConfig runtime", () => {
       );
     }
   );
+});
+
+describe("loadConfig bun runtime warnings", () => {
+  async function outputWhileLoading(runtime: string) {
+    const cwd = await createProject(runtime);
+    const write = vi.spyOn(process.stdout, "write");
+    try {
+      await loadConfig({ cwd, warn: true });
+      return write.mock.calls.map(([chunk]) => String(chunk)).join("");
+    } finally {
+      write.mockRestore();
+    }
+  }
+
+  it.each(["bun", "bun-legacy"])(
+    "warns that %s is deprecated and points at bun-1.4",
+    async (runtime) => {
+      const output = await outputWhileLoading(runtime);
+
+      expect(output).toMatch(/deprecated/i);
+      expect(output).toContain("bun-1.4");
+    }
+  );
+
+  it("does not deprecate bun-1.4", async () => {
+    expect(await outputWhileLoading("bun-1.4")).not.toMatch(/deprecated/i);
+  });
 });
