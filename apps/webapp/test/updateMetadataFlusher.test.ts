@@ -7,6 +7,7 @@ import { describe, expect } from "vitest";
 import {
   FallbackMetadataOperationBuffer,
   InMemoryMetadataOperationBuffer,
+  type MetadataOperationBuffer,
   RedisMetadataOperationBuffer,
 } from "~/services/metadata/operationBuffer.server";
 import { UpdateMetadataService } from "~/services/metadata/updateMetadata.server";
@@ -62,6 +63,15 @@ async function createRun(
   });
 }
 
+async function seedPoisonedAndHealthy(prisma: PrismaClient) {
+  const env = await seedEnvironment(prisma);
+  const poisoned = await createRun(prisma, env, "run_poisoned");
+  const poisonedChild = await createRun(prisma, env, "run_poisoned_child", poisoned.id);
+  const healthy = await createRun(prisma, env, "run_healthy");
+  const healthyChild = await createRun(prisma, env, "run_healthy_child", healthy.id);
+  return { env, poisoned, poisonedChild, healthy, healthyChild };
+}
+
 async function readMetadata(prisma: PrismaClient, runId: string) {
   const run = await prisma.taskRun.findUnique({ where: { id: runId } });
   if (!run?.metadata) return undefined;
@@ -73,6 +83,38 @@ async function bumpMetadataVersion(prisma: PrismaClient, runId: string) {
     where: { id: runId },
     data: { metadataVersion: { increment: 1 } },
   });
+}
+
+// `$.a\.b` escapes the dot, but the path library re-splits it on write and finds no `a` to put `b`
+// under; with `a` stored it would apply, so the schema accepts it.
+const poison = [{ type: "increment" as const, key: "$.a\\.b", value: 1 }];
+
+async function expectOnlyThePoisonDropped(prisma: PrismaClient, buffer?: MetadataOperationBuffer) {
+  const { poisoned, poisonedChild, healthy, healthyChild } = await seedPoisonedAndHealthy(prisma);
+  const metrics = createInMemoryMetrics();
+  const service = new UpdateMetadataService({
+    prisma,
+    runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
+    buffer,
+    flushEnabled: false,
+    meter: metrics.meter,
+  });
+
+  await service.call(poisonedChild.id, { parentOperations: poison });
+  await service.call(healthyChild.id, {
+    parentOperations: [{ type: "set", key: "done", value: true }],
+  });
+  await service.flushOperations();
+
+  expect(await readMetadata(prisma, healthy.id)).toEqual({ done: true });
+  expect(await readMetadata(prisma, poisoned.id)).toBeUndefined();
+  const rm = await latestMetrics(metrics);
+  expect(gaugeValue(rm, "metadata.buffer.runs_pending", {})).toBe(0);
+  expect(metricSum(rm, "metadata.buffer.requeues", {})).toBe(0);
+  expect(metricSum(rm, "metadata.buffer.drops", { reason: "apply_failed" })).toBe(1);
+
+  service.stopFlushing();
+  await metrics.shutdown();
 }
 
 describe("UpdateMetadataService flusher", () => {
@@ -114,6 +156,355 @@ describe("UpdateMetadataService flusher", () => {
       service.stopFlushing();
     }
   );
+
+  containerTest(
+    "drops the operation whose apply throws, acks the claim, and flushes the rest",
+    async ({ prisma }) => {
+      await expectOnlyThePoisonDropped(prisma);
+    }
+  );
+
+  containerTest(
+    "redis buffer: drops the operation whose apply throws, acks the claim, and flushes the rest",
+    async ({ prisma, redisOptions }) => {
+      const redis = new Redis(redisOptions);
+      await expectOnlyThePoisonDropped(
+        prisma,
+        new RedisMetadataOperationBuffer({ redis, flushDelayMs: 0 })
+      );
+      await redis.quit();
+    }
+  );
+
+  containerTest(
+    "drops only the operation that cannot be applied and writes the rest of its batch",
+    async ({ prisma }) => {
+      const { env, poisoned, poisonedChild } = await seedPoisonedAndHealthy(prisma);
+      const sibling = await createRun(prisma, env, "run_sibling_child", poisoned.id);
+      const metrics = createInMemoryMetrics();
+      const service = new UpdateMetadataService({
+        prisma,
+        runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
+        flushEnabled: false,
+        meter: metrics.meter,
+      });
+
+      const appends = (from: number, to: number) =>
+        Array.from({ length: to - from }, (_, i) => ({
+          type: "append" as const,
+          key: "log",
+          value: from + i,
+        }));
+      await service.call(sibling.id, { parentOperations: appends(0, 10) });
+      await service.call(poisonedChild.id, { parentOperations: poison });
+      await service.call(sibling.id, {
+        parentOperations: [...appends(10, 20), { type: "set", key: "status", value: "ok" }],
+      });
+      await service.flushOperations();
+
+      expect(await readMetadata(prisma, poisoned.id)).toEqual({
+        log: Array.from({ length: 20 }, (_, i) => i),
+        status: "ok",
+      });
+      const rm = await latestMetrics(metrics);
+      expect(metricSum(rm, "metadata.buffer.drops", { reason: "apply_failed" })).toBe(1);
+      expect(gaugeValue(rm, "metadata.buffer.runs_pending", {})).toBe(0);
+
+      service.stopFlushing();
+      await metrics.shutdown();
+    }
+  );
+
+  containerTest(
+    "drops a throwing batch whole once its salvage time is spent",
+    async ({ prisma }) => {
+      const { poisoned, poisonedChild } = await seedPoisonedAndHealthy(prisma);
+      const metrics = createInMemoryMetrics();
+      const service = new UpdateMetadataService({
+        prisma,
+        runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
+        flushEnabled: false,
+        salvageBudgetMs: 0,
+        meter: metrics.meter,
+      });
+
+      await service.call(poisonedChild.id, {
+        parentOperations: [
+          { type: "increment", key: "x", value: 1 },
+          ...poison,
+          { type: "increment", key: "y", value: 1 },
+        ],
+      });
+      await service.flushOperations();
+
+      expect(await readMetadata(prisma, poisoned.id)).toBeUndefined();
+      const rm = await latestMetrics(metrics);
+      expect(metricSum(rm, "metadata.buffer.drops", { reason: "apply_failed" })).toBe(3);
+      expect(gaugeValue(rm, "metadata.buffer.runs_pending", {})).toBe(0);
+
+      service.stopFlushing();
+      await metrics.shutdown();
+    }
+  );
+
+  containerTest(
+    "counts each operation of a claim dropped for size once, the salvage's own drops included",
+    async ({ prisma }) => {
+      const { poisoned, poisonedChild } = await seedPoisonedAndHealthy(prisma);
+      const metrics = createInMemoryMetrics();
+      const service = new UpdateMetadataService({
+        prisma,
+        runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
+        flushEnabled: false,
+        maximumSize: 200,
+        meter: metrics.meter,
+      });
+
+      await service.call(poisonedChild.id, {
+        parentOperations: [
+          ...poison,
+          { type: "set", key: "x", value: "y".repeat(120) },
+          { type: "set", key: "z", value: "y".repeat(120) },
+        ],
+      });
+      await service.flushOperations();
+
+      expect(await readMetadata(prisma, poisoned.id)).toBeUndefined();
+      const rm = await latestMetrics(metrics);
+      expect(metricSum(rm, "metadata.buffer.drops", { reason: "too_large" })).toBe(2);
+      expect(metricSum(rm, "metadata.buffer.drops", { reason: "apply_failed" })).toBe(1);
+      expect(gaugeValue(rm, "metadata.buffer.runs_pending", {})).toBe(0);
+
+      service.stopFlushing();
+      await metrics.shutdown();
+    }
+  );
+
+  containerTest(
+    "drops a pending write whose fence read finds no run instead of writing it again",
+    async ({ prisma }) => {
+      const env = await seedEnvironment(prisma);
+      const parent = await createRun(prisma, env, "run_parent");
+      const child = await createRun(prisma, env, "run_child", parent.id);
+      const metrics = createInMemoryMetrics();
+      const runStore = new HiddenVersionReadRunStore({ prisma, readOnlyPrisma: prisma });
+      const service = new UpdateMetadataService({
+        prisma,
+        runStore,
+        flushEnabled: false,
+        meter: metrics.meter,
+      });
+
+      await service.call(child.id, {
+        parentOperations: [
+          { type: "increment", key: "x", value: 1 },
+          { type: "increment", key: "y", value: 1 },
+        ],
+      });
+      runStore.failNextWrite = "after-commit";
+      await service.flushOperations();
+      runStore.hideNextVersionReadFor = parent.id;
+      await service.flushOperations();
+
+      expect(await readMetadata(prisma, parent.id)).toEqual({ x: 1, y: 1 });
+      const rm = await latestMetrics(metrics);
+      expect(metricSum(rm, "metadata.buffer.requeues", { reason: "unknown_outcome" })).toBe(1);
+      expect(metricSum(rm, "metadata.buffer.drops", { reason: "run_missing" })).toBe(2);
+      expect(gaugeValue(rm, "metadata.buffer.runs_pending", {})).toBe(0);
+
+      service.stopFlushing();
+      await metrics.shutdown();
+    }
+  );
+
+  containerTest(
+    "keeps the write and drops nothing when the completion hook throws",
+    async ({ prisma }) => {
+      const { poisoned, poisonedChild } = await seedPoisonedAndHealthy(prisma);
+      const metrics = createInMemoryMetrics();
+      const service = new UpdateMetadataService({
+        prisma,
+        runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
+        flushEnabled: false,
+        meter: metrics.meter,
+        onRunFlushed: () => {
+          throw new Error("the hook broke");
+        },
+      });
+
+      await service.call(poisonedChild.id, {
+        parentOperations: [{ type: "increment", key: "x", value: 1 }],
+      });
+      await service.flushOperations();
+
+      expect(await readMetadata(prisma, poisoned.id)).toEqual({ x: 1 });
+      const rm = await latestMetrics(metrics);
+      expect(metricSum(rm, "metadata.buffer.drops", {})).toBe(0);
+      expect(metricSum(rm, "metadata.buffer.requeues", {})).toBe(0);
+      expect(gaugeValue(rm, "metadata.buffer.runs_pending", {})).toBe(0);
+
+      service.stopFlushing();
+      await metrics.shutdown();
+    }
+  );
+
+  containerTest(
+    "acks a claim whose processing throws before the write, drops its operations, and flushes the rest",
+    async ({ prisma }) => {
+      const { poisoned, poisonedChild, healthy, healthyChild } =
+        await seedPoisonedAndHealthy(prisma);
+      const metrics = createInMemoryMetrics();
+      let writes = 0;
+      const buffer = new DefectiveClaimBuffer({ maxPendingOperationsPerRun: 1 });
+      buffer.corruptNextClaimFor = poisoned.id;
+      const service = new UpdateMetadataService({
+        prisma,
+        runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
+        buffer,
+        flushEnabled: false,
+        meter: metrics.meter,
+        onBeforeUpdate: async () => {
+          writes++;
+        },
+      });
+
+      await service.call(poisonedChild.id, {
+        parentOperations: [{ type: "set", key: "x", value: 1 }],
+      });
+      await service.call(healthyChild.id, {
+        parentOperations: [{ type: "set", key: "done", value: true }],
+      });
+      await service.flushOperations();
+
+      expect(writes).toBe(1);
+      expect(await readMetadata(prisma, poisoned.id)).toBeUndefined();
+      expect(await readMetadata(prisma, healthy.id)).toEqual({ done: true });
+      let rm = await latestMetrics(metrics);
+      expect(metricSum(rm, "metadata.buffer.drops", { reason: "defect" })).toBe(1);
+      expect(metricSum(rm, "metadata.buffer.requeues", {})).toBe(0);
+
+      // The claim was acknowledged: a claim still held would count against the cap of one.
+      await service.call(poisonedChild.id, {
+        parentOperations: [{ type: "set", key: "y", value: 2 }],
+      });
+      await service.flushOperations();
+
+      expect(writes).toBe(2);
+      expect(await readMetadata(prisma, poisoned.id)).toEqual({ y: 2 });
+      rm = await latestMetrics(metrics);
+      expect(metricSum(rm, "metadata.buffer.drops", {})).toBe(1);
+      expect(gaugeValue(rm, "metadata.buffer.runs_pending", {})).toBe(0);
+
+      service.stopFlushing();
+      await metrics.shutdown();
+    }
+  );
+
+  containerTest(
+    "applies the other operations once, as sent, when one in the batch throws",
+    async ({ prisma }) => {
+      const { env, poisoned, poisonedChild } = await seedPoisonedAndHealthy(prisma);
+      const sibling = await createRun(prisma, env, "run_sibling_child", poisoned.id);
+      const service = new UpdateMetadataService({
+        prisma,
+        runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
+        flushEnabled: false,
+      });
+
+      await service.call(sibling.id, {
+        parentOperations: [
+          { type: "update", value: { count: 0, log: [] } },
+          { type: "increment", key: "count", value: 1 },
+          { type: "append", key: "log", value: "a" },
+        ],
+      });
+      await service.call(sibling.id, {
+        parentOperations: [{ type: "set", key: "files", value: { intro: {}, "report.pdf": {} } }],
+      });
+      await service.call(poisonedChild.id, {
+        parentOperations: [{ type: "set", key: "$.files.*.done", value: true }],
+      });
+      await service.flushOperations();
+
+      expect(await readMetadata(prisma, poisoned.id)).toEqual({
+        count: 1,
+        log: ["a"],
+        files: { intro: {}, "report.pdf": {} },
+      });
+
+      service.stopFlushing();
+    }
+  );
+
+  containerTest(
+    "does not try a dropped operation again when the write retries, even where it would now apply",
+    async ({ prisma }) => {
+      const { poisoned, poisonedChild } = await seedPoisonedAndHealthy(prisma);
+      const metrics = createInMemoryMetrics();
+      let conflicted = false;
+      const service = new UpdateMetadataService({
+        prisma,
+        runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
+        flushEnabled: false,
+        meter: metrics.meter,
+        onAfterRead: async (runId) => {
+          if (runId !== poisoned.id || conflicted) return;
+          conflicted = true;
+          // Another writer stores `a`, under which the poisoned key would apply.
+          await prisma.taskRun.update({
+            where: { id: runId },
+            data: {
+              metadata: JSON.stringify({ a: {} }),
+              metadataType: "application/json",
+              metadataVersion: { increment: 1 },
+            },
+          });
+        },
+      });
+
+      await service.call(poisonedChild.id, {
+        parentOperations: [...poison, { type: "set", key: "done", value: true }],
+      });
+      await service.flushOperations();
+
+      expect(conflicted).toBe(true);
+      expect(await readMetadata(prisma, poisoned.id)).toEqual({ a: {}, done: true });
+      const rm = await latestMetrics(metrics);
+      expect(metricSum(rm, "metadata.buffer.drops", { reason: "apply_failed" })).toBe(1);
+      expect(metricSum(rm, "metadata.buffer.requeues", {})).toBe(0);
+
+      service.stopFlushing();
+      await metrics.shutdown();
+    }
+  );
+
+  containerTest("the flush loop keeps running after a drain throws", async ({ prisma }) => {
+    const { healthy, healthyChild } = await seedPoisonedAndHealthy(prisma);
+    const buffer = new DefectiveClaimBuffer();
+    buffer.breakNextDrain = true;
+    const service = new UpdateMetadataService({
+      prisma,
+      runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
+      buffer,
+      flushEnabled: true,
+      flushIntervalMs: 20,
+    });
+
+    await expect
+      .poll(() => buffer.breakNextDrain, { timeout: 3_000, message: "the loop never drained" })
+      .toBe(false);
+    await service.call(healthyChild.id, {
+      parentOperations: [{ type: "set", key: "done", value: true }],
+    });
+    await expect
+      .poll(() => readMetadata(prisma, healthy.id), {
+        timeout: 3_000,
+        message: "the loop did not flush after the drain threw",
+      })
+      .toEqual({ done: true });
+
+    service.stopFlushing();
+  });
 
   containerTest("drops buffered operations for a run that no longer exists", async ({ prisma }) => {
     const env = await seedEnvironment(prisma);
@@ -1185,6 +1576,26 @@ describe("UpdateMetadataService flusher", () => {
   );
 });
 
+class DefectiveClaimBuffer extends InMemoryMetadataOperationBuffer {
+  corruptNextClaimFor: string | undefined;
+  breakNextDrain = false;
+
+  override async claimDue(...args: Parameters<InMemoryMetadataOperationBuffer["claimDue"]>) {
+    if (this.breakNextDrain) {
+      this.breakNextDrain = false;
+      // A defect, not a failure: a rejected claimDue never stopped the loop.
+      return undefined as never;
+    }
+    const claims = await super.claimDue(...args);
+    const claim = claims.find(({ runId }) => runId === this.corruptNextClaimFor);
+    if (claim) {
+      this.corruptNextClaimFor = undefined;
+      claim.operations[0] = { ...claim.operations[0]!, operation: undefined as never };
+    }
+    return claims;
+  }
+}
+
 class SwitchableRedisBuffer extends RedisMetadataOperationBuffer {
   available = true;
   loseNextReply = false;
@@ -1287,6 +1698,23 @@ class UnreliableWriteRunStore extends PostgresRunStore {
       });
     }
     return result;
+  }
+}
+
+class HiddenVersionReadRunStore extends UnreliableWriteRunStore {
+  hideNextVersionReadFor: string | undefined;
+
+  constructor(...args: ConstructorParameters<typeof PostgresRunStore>) {
+    super(...args);
+    const findRun = this.findRun.bind(this) as (...findArgs: unknown[]) => Promise<unknown>;
+    this.findRun = ((where: { id?: unknown }, ...rest: unknown[]) => {
+      const select = (rest[0] as { select?: object } | undefined)?.select;
+      if (where.id === this.hideNextVersionReadFor && select && !("metadata" in select)) {
+        this.hideNextVersionReadFor = undefined;
+        return Promise.resolve(null);
+      }
+      return findRun(where, ...rest);
+    }) as PostgresRunStore["findRun"];
   }
 }
 

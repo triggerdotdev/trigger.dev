@@ -12,7 +12,7 @@ import {
   MetadataTooLargeError,
 } from "~/utils/packets";
 import { ServiceValidationError } from "~/v3/services/common.server";
-import { Effect, Either, Option, Schedule, Duration, Fiber } from "effect";
+import { Cause, Effect, Either, Option, Schedule, Duration, Fiber } from "effect";
 import { type RuntimeFiber } from "effect/Fiber";
 import { setTimeout } from "timers/promises";
 import type { LogLevel } from "@trigger.dev/core/logger";
@@ -32,6 +32,8 @@ import {
 const RUN_UPDATABLE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
 const MAX_DRAIN_BATCHES_PER_TICK = 100;
+const MAX_DROPS_LOGGED = 20;
+const MAX_LOGGED_CHARS = 200;
 
 class MetadataClaimLostError extends Error {
   constructor(runId: string) {
@@ -49,6 +51,44 @@ class MetadataWriteOutcomeUnknownError extends Error {
   constructor(runId: string, cause: unknown) {
     super(`Metadata write for run ${runId} failed with an unknown outcome`, { cause });
   }
+}
+
+type DroppedOperation = { operation: RunMetadataChangeOperation; error: unknown };
+
+// A dropped operation may not be well formed.
+function loggedKey(operation: RunMetadataChangeOperation): string | undefined {
+  const key = (operation as { key?: unknown }).key;
+  return typeof key === "string" ? key.slice(0, MAX_LOGGED_CHARS) : undefined;
+}
+
+function applyOrSalvage(
+  metadata: Record<string, unknown>,
+  operations: RunMetadataChangeOperation[],
+  budgetMs: number
+): { newMetadata: Record<string, unknown>; applied: number; dropped: DroppedOperation[] } {
+  let newMetadata = metadata;
+  let applied = 0;
+  let deadline: number | undefined;
+  const dropped: DroppedOperation[] = [];
+  const apply = (segment: RunMetadataChangeOperation[]): void => {
+    try {
+      // Copies: a value enters the metadata by reference, so a failed attempt may have mutated it.
+      const result = applyMetadataOperations(newMetadata, structuredClone(segment));
+      newMetadata = result.newMetadata;
+      applied += segment.length - result.unappliedOperations.length;
+    } catch (error) {
+      deadline ??= performance.now() + budgetMs;
+      if (segment.length <= 1 || performance.now() >= deadline) {
+        dropped.push(...segment.map((operation) => ({ operation, error })));
+        return;
+      }
+      const half = Math.ceil(segment.length / 2);
+      apply(segment.slice(0, half));
+      apply(segment.slice(half));
+    }
+  };
+  apply(operations);
+  return { newMetadata, applied, dropped };
 }
 
 function isClaimLost(error: unknown): boolean {
@@ -91,6 +131,8 @@ export type UpdateMetadataServiceOptions = {
   /** Retries of one run's flush before its operations go back to the buffer for a later tick. */
   flushMaxRetries?: number;
   maximumSize?: number;
+  /** How long after a batch's first throw the flusher keeps splitting it; after that a failing segment is dropped whole. */
+  salvageBudgetMs?: number;
   logger?: Logger;
   logLevel?: LogLevel;
   /** Called after the batched flusher writes a run's buffered operations, with everything
@@ -116,6 +158,8 @@ type RequeueReason =
   | "claim_lost"
   | "read_failed";
 
+type DropReason = "apply_failed" | "too_large" | "run_missing" | "invalid_packet" | "defect";
+
 export class UpdateMetadataService {
   private readonly _buffer: MetadataOperationBuffer;
   private _flushFiber: RuntimeFiber<void> | null = null;
@@ -127,8 +171,10 @@ export class UpdateMetadataService {
   private readonly drainBatchSize: number;
   private readonly flushMaxRetries: number;
   private readonly maximumSize: number;
+  private readonly salvageBudgetMs: number;
   private readonly logger: Logger;
   private readonly requeueCounter: Counter;
+  private readonly dropCounter: Counter;
   private runsPending: number | undefined;
 
   constructor(private readonly options: UpdateMetadataServiceOptions) {
@@ -141,6 +187,7 @@ export class UpdateMetadataService {
     this.drainBatchSize = options.drainBatchSize ?? 10;
     this.flushMaxRetries = options.flushMaxRetries ?? 5;
     this.maximumSize = options.maximumSize ?? 1024 * 1024 * 1; // 1MB
+    this.salvageBudgetMs = options.salvageBudgetMs ?? 50;
     this.logger = options.logger ?? new Logger("UpdateMetadataService", options.logLevel ?? "info");
 
     const meter = options.meter ?? getMeter("metadata-flush");
@@ -148,6 +195,10 @@ export class UpdateMetadataService {
       description:
         "Runs whose buffered metadata operations were not written on this attempt, by reason",
       unit: "runs",
+    });
+    this.dropCounter = meter.createCounter("metadata.buffer.drops", {
+      description: "Buffered metadata operations the flusher dropped, by reason",
+      unit: "operations",
     });
     meter
       .createObservableGauge("metadata.buffer.runs_pending", {
@@ -180,10 +231,10 @@ export class UpdateMetadataService {
 
         yield* _(
           this._drainBufferedOperations().pipe(
-            Effect.catchAll((error) =>
+            Effect.catchAllCause((cause) =>
               Effect.sync(() => {
                 this.logger.error("[UpdateMetadataService] Failed to drain buffered operations", {
-                  error,
+                  error: Cause.squash(cause),
                 });
               })
             )
@@ -221,7 +272,20 @@ export class UpdateMetadataService {
         }
 
         for (const claim of claims) {
-          yield* _(this._processClaim(claim));
+          yield* _(
+            this._processClaim(claim).pipe(
+              Effect.catchAllDefect((defect) => {
+                this.logger.error(
+                  "[UpdateMetadataService] Dropping a claim whose processing threw",
+                  {
+                    runId: claim.runId,
+                    error: defect,
+                  }
+                );
+                return this.#ackWithDrops(claim, "defect");
+              })
+            )
+          );
         }
 
         if (claims.length < this.drainBatchSize) {
@@ -274,7 +338,7 @@ export class UpdateMetadataService {
         }
 
         if (!current.right) {
-          yield* _(this._ackClaim(claim));
+          yield* _(this.#ackWithDrops(claim, "run_missing"));
           return;
         }
 
@@ -294,8 +358,9 @@ export class UpdateMetadataService {
         }
       }
 
+      const dropped: DroppedOperation[] = [];
       yield* _(
-        this._updateRunWithOperations(claim, processedOps).pipe(
+        this._updateRunWithOperations(claim, processedOps, dropped).pipe(
           // Catch MetadataTooLargeError before retry logic
           Effect.catchIf(
             (error) => error instanceof MetadataTooLargeError,
@@ -308,10 +373,11 @@ export class UpdateMetadataService {
                 if (this.flushLoggingEnabled) {
                   this.logger.warn(`[UpdateMetadataService] Metadata too large for run`, {
                     runId,
-                    operationsCount: processedOps.length,
+                    operationsCount: claim.operations.length,
                     error: error.message,
                   });
                 }
+                return "too_large" as const;
               })
           ),
           Effect.retry({
@@ -322,7 +388,7 @@ export class UpdateMetadataService {
               !isClaimLost(error) && !isWriteOutcomeUnknown(error) && !isWriteNotSent(error),
           }),
           Effect.matchEffect({
-            onSuccess: () => this._ackClaim(claim),
+            onSuccess: (wholeReason) => this.#ackWithDrops(claim, wholeReason, dropped),
             onFailure: (error) =>
               Effect.gen(this, function* (__) {
                 if (isClaimLost(error)) {
@@ -370,6 +436,33 @@ export class UpdateMetadataService {
     this.requeueCounter.add(1, { reason });
   }
 
+  #recordDrop(reason: DropReason, count: number) {
+    this.dropCounter.add(count, { reason });
+  }
+
+  #ackWithDrops(
+    claim: MetadataBufferClaim,
+    wholeReason?: DropReason,
+    dropped: DroppedOperation[] = []
+  ) {
+    if (wholeReason) {
+      this.#recordDrop(wholeReason, claim.operations.length - dropped.length);
+    }
+    if (dropped.length > 0) {
+      this.#recordDrop("apply_failed", dropped.length);
+      this.logger.warn(`[UpdateMetadataService] Dropped operations that could not be applied`, {
+        runId: claim.runId,
+        droppedCount: dropped.length,
+        dropped: dropped.slice(0, MAX_DROPS_LOGGED).map(({ operation, error }) => ({
+          type: operation.type,
+          key: loggedKey(operation),
+          error: String(error).slice(0, MAX_LOGGED_CHARS),
+        })),
+      });
+    }
+    return this._ackClaim(claim);
+  }
+
   private _ackClaim = (claim: MetadataBufferClaim, options?: { count?: number }) =>
     Effect.tryPromise(() => this._buffer.ack(claim, options)).pipe(
       Effect.catchAll((error) =>
@@ -396,7 +489,8 @@ export class UpdateMetadataService {
 
   private _updateRunWithOperations = (
     claim: MetadataBufferClaim,
-    operations: BufferedRunMetadataChangeOperation[]
+    operations: BufferedRunMetadataChangeOperation[],
+    dropped: DroppedOperation[]
   ) => {
     const runId = claim.runId;
     return Effect.gen(this, function* (_) {
@@ -424,9 +518,9 @@ export class UpdateMetadataService {
       if (!run) {
         this.logger.warn(`[UpdateMetadataService] Dropping operations for missing run`, {
           runId,
-          operationsCount: operations.length,
+          operationsCount: claim.operations.length,
         });
-        return;
+        return "run_missing" as const;
       }
 
       // Testing hook after read
@@ -442,15 +536,14 @@ export class UpdateMetadataService {
         )
       );
 
-      // Apply operations and update
-      const applyResult = applyMetadataOperations(
-        metadata,
-        operations.map((op) => op.operation)
-      );
-
-      if (applyResult.unappliedOperations.length === operations.length) {
+      const skip = new Set(dropped.map(({ operation }) => operation));
+      const attempted = operations
+        .map((op) => op.operation)
+        .filter((operation) => !skip.has(operation));
+      const applyResult = applyOrSalvage(metadata, attempted, this.salvageBudgetMs);
+      dropped.push(...applyResult.dropped);
+      if (applyResult.applied === 0) {
         this.logger.warn(`No operations applied for run ${runId}`);
-        // If no operations were applied, return
         return;
       }
 
@@ -472,7 +565,7 @@ export class UpdateMetadataService {
       if (!newMetadataPacket) {
         // Log and skip if metadata is invalid
         this.logger.warn(`Invalid metadata after operations, skipping update`);
-        return;
+        return "invalid_packet" as const;
       }
 
       // Testing hook before update
@@ -522,16 +615,21 @@ export class UpdateMetadataService {
       }
 
       yield* Effect.sync(() => {
-        this.options.onRunFlushed?.({
-          runId,
-          environmentId: run.runtimeEnvironmentId,
-          tags: run.runTags,
-          batchId: run.batchId,
-          updatedAtMs: writeTime.getTime(),
-        });
+        try {
+          this.options.onRunFlushed?.({
+            runId,
+            environmentId: run.runtimeEnvironmentId,
+            tags: run.runTags,
+            batchId: run.batchId,
+            updatedAtMs: writeTime.getTime(),
+          });
+        } catch (error) {
+          this.logger.error("[UpdateMetadataService] onRunFlushed threw after the write", {
+            runId,
+            error,
+          });
+        }
       });
-
-      return result;
     });
   };
 

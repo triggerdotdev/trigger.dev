@@ -43,3 +43,25 @@ describe("run metadata operation keys", () => {
     expect(isSafeMetadataKey("$.proto\\.constructors")).toBe(true);
   });
 });
+
+// Unit test by exception: which keys the path library reads as the root is stable, and the SDK and API share this check.
+describe("root-only metadata paths", () => {
+  test.each(["$.", "$..", "$.\\"])(
+    "rejects %s, which names nothing below the root, and leaves it unapplied",
+    (key) => {
+      expect(isSafeMetadataKey(key)).toBe(false);
+      expect(
+        UpdateMetadataRequestBody.safeParse({ operations: [{ type: "set", key, value: 1 }] })
+          .success
+      ).toBe(false);
+      expect(applyMetadataOperations({ a: 1 }, [{ type: "set", key, value: 1 }])).toEqual({
+        newMetadata: { a: 1 },
+        unappliedOperations: [{ type: "set", key, value: 1 }],
+      });
+    }
+  );
+
+  test.each(["$", "$.a", "$.items.*.status", "$.[]", "$.''"])("accepts %s", (key) => {
+    expect(isSafeMetadataKey(key)).toBe(true);
+  });
+});
