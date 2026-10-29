@@ -125,6 +125,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       case "DATETIME": {
         const _result = await engine.completeWaitpoint({
           id: waitpointId,
+          organizationId: environment.organization.id,
         });
 
         return redirectWithSuccessMessage(
@@ -143,6 +144,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
                 value: JSON.stringify(timeoutError(new Date())),
                 isError: true,
               },
+              organizationId: environment.organization.id,
             });
 
             return redirectWithSuccessMessage(
@@ -184,6 +186,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             output: finalData.data
               ? { type: finalData.dataType, value: finalData.data, isError: false }
               : undefined,
+            organizationId: environment.organization.id,
           });
 
           return redirectWithSuccessMessage(

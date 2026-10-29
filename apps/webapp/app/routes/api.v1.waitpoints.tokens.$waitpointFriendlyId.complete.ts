@@ -75,6 +75,7 @@ const { action, loader } = createActionApiRoute(
         output: finalData.data
           ? { type: finalData.dataType, value: finalData.data, isError: false }
           : undefined,
+        organizationId: authentication.environment.organization.id,
       });
 
       return json<CompleteWaitpointTokenResponseBody>(

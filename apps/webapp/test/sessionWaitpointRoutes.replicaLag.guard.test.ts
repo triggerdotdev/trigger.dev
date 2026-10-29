@@ -147,7 +147,13 @@ async function seedTenant(prisma: PrismaClient, suffix: string) {
       shortcode: `short_${suffix}`,
     },
   });
-  return { organization, project, environment };
+  // The completion routes read environment.organization.id (to route the continuation by org), so the
+  // authenticated environment must carry the nested organization, as AuthenticatedEnvironment does.
+  return {
+    organization,
+    project,
+    environment: { ...environment, organization: { id: organization.id } },
+  };
 }
 
 function buildCreateRunInput(p: {

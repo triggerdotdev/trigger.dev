@@ -138,6 +138,7 @@ const { action, loader } = createActionApiRoute(
                 type: "application/json",
                 isError: false,
               },
+              organizationId: authentication.environment.organization.id,
             });
 
             // Clean up the Redis cache since we completed it ourselves

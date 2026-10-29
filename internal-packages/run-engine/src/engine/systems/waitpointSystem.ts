@@ -15,8 +15,18 @@ import { resolveCompletedWaitpointRecords } from "./completedWaitpointRecordAdap
 import { sendNotificationToWorker } from "../eventBus.js";
 import { isFinalRunStatus } from "../statuses.js";
 import { LegacyPostgresWaitpointCoordinator } from "../waitpointCoordinator/legacyPostgresCoordinator.js";
+import {
+  RoutingWaitpointCoordinator,
+  type RoutingWaitpointCoordinatorMintPolicy,
+  type WaitpointRunKey,
+} from "../waitpointCoordinator/routingCoordinator.js";
 import type { WaitpointStoreCoordinator } from "../waitpointCoordinator/storeCoordinator.js";
-import type { RunBlockEdge, WaitpointCoordinator } from "../waitpointCoordinator/types.js";
+import type {
+  CompleteParams,
+  RegisterBlocksParams,
+  RunBlockEdge,
+  WaitpointCoordinator,
+} from "../waitpointCoordinator/types.js";
 import type { EnqueueSystem } from "./enqueueSystem.js";
 import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
 import {
@@ -24,7 +34,11 @@ import {
   isExpiredSnapshotOfFinishedRun,
 } from "./executionSnapshotSystem.js";
 import type { SystemResources } from "./systems.js";
-import { snapshotRouteFromSnapshot, type CompletedWaitpointRecord } from "@internal/run-store";
+import {
+  hasStoreWaitpoints,
+  snapshotRouteFromSnapshot,
+  type CompletedWaitpointRecord,
+} from "@internal/run-store";
 
 export type WaitpointSystemOptions = {
   waitpointStoreEnabled?: (
@@ -36,6 +50,21 @@ export type WaitpointSystemOptions = {
   enqueueSystem: EnqueueSystem;
   /** Grace before an unacked completion guard fires. Defaults to 30s. */
   completionGuardDelayMs?: number;
+  /**
+   * Dark routing/mint-selection wiring. Omitted in production today: with no `store` the routing
+   * coordinator is a 1:1 legacy passthrough — no MemoryDB client, no store calls, no `wp:v1` keys —
+   * and every mint stays legacy. A later ticket supplies a store coordinator and a real mint policy
+   * to activate MemoryDB minting per organization.
+   */
+  waitpointRouting?: {
+    store?: WaitpointCoordinator;
+    mintPolicy?: RoutingWaitpointCoordinatorMintPolicy;
+    /**
+     * Optional run-state reader override. By default the owning run's internal waitpointsOnStore
+     * annotation decides after the organization's flag permits store access.
+     */
+    mightHaveStoreBlockers?: (runKey: WaitpointRunKey) => boolean | Promise<boolean>;
+  };
   /**
    * Reads store-format waitpoint records for a redis-primary resume. Undefined keeps the resolver
    * Postgres-only, the only reachable state until store-format minting is wired.
@@ -66,6 +95,7 @@ export class WaitpointSystem {
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
   private readonly enqueueSystem: EnqueueSystem;
   private readonly coordinator: WaitpointCoordinator;
+  private readonly legacyCoordinator: WaitpointCoordinator;
   private readonly completionGuardDelayMs: number;
   readonly #waitpointStore?: Pick<WaitpointStoreCoordinator, "readCompletedRecords">;
 
@@ -76,22 +106,56 @@ export class WaitpointSystem {
     this.#waitpointStore = options.waitpointStore;
     this.completionGuardDelayMs =
       options.completionGuardDelayMs ?? DEFAULT_COMPLETION_GUARD_DELAY_MS;
-    this.coordinator = new LegacyPostgresWaitpointCoordinator({
+    const legacyCoordinator = new LegacyPostgresWaitpointCoordinator({
       // A getter, so a `setRunStore` swap (a test seam) also reaches the coordinator.
       runStore: () => this.$.runStore,
       prisma: this.$.prisma,
       logger: this.$.logger,
     });
+    this.legacyCoordinator = legacyCoordinator;
+    // Dark by default: with no store coordinator the router delegates every operation to Postgres and
+    // never consults the mint policy, so production behaves exactly as before.
+    this.coordinator = options.waitpointRouting?.store
+      ? new RoutingWaitpointCoordinator({
+          legacy: legacyCoordinator,
+          store: options.waitpointRouting?.store,
+          isStoreEnabled: async (organizationId) =>
+            organizationId !== undefined &&
+            (await options.waitpointStoreEnabled?.(organizationId)) === true,
+          mintPolicy: {
+            ...options.waitpointRouting?.mintPolicy,
+            // The router has already checked this mint operation's organization flag.
+            resolveMintMode:
+              options.waitpointRouting?.mintPolicy?.resolveMintMode ?? (() => "redis"),
+            isCapabilityReady:
+              options.waitpointRouting?.mintPolicy?.isCapabilityReady ?? (() => false),
+          },
+          mightHaveStoreBlockers:
+            options.waitpointRouting?.mightHaveStoreBlockers ??
+            (async ({ runId }) => {
+              const run = await this.$.runStore.findRunOnPrimary(
+                { id: runId },
+                { select: { annotations: true } }
+              );
+              // Missing runs stay conservative for delayed cleanup; never use a replica here.
+              return run ? hasStoreWaitpoints(run.annotations) : true;
+            }),
+        })
+      : legacyCoordinator;
   }
 
   public async clearBlockingWaitpoints({
     runId,
+    organizationId,
     tx,
   }: {
     runId: string;
+    // The run's org, so the router can skip MemoryDB for a run whose org could not hold store edges.
+    // Undefined keeps legacy routing without discovering an organization.
+    organizationId?: string;
     tx?: PrismaClientOrTransaction;
   }) {
-    const deleted = await this.coordinator.clearRunBlockState({ runId, tx });
+    const deleted = await this.coordinator.clearRunBlockState({ runId, organizationId, tx });
 
     return deleted.count;
   }
@@ -101,6 +165,7 @@ export class WaitpointSystem {
     id,
     output,
     armGuard = false,
+    organizationId,
   }: {
     id: string;
     output?: {
@@ -110,7 +175,22 @@ export class WaitpointSystem {
     };
     /** Arms the write-ahead completion guard first. The guard's replay passes false. */
     armGuard?: boolean;
+    /**
+     * The waitpoint's organization, from the completing caller's context. A waitpoint is environment-
+     * scoped and every blocking run is resolved within its own environment (see the wait routes), so a
+     * waitpoint cannot block runs across organizations — this one org is carried onto each blocked run's
+     * `continueRunIfUnblocked` so the delayed continuation routes MemoryDB by the run's org rather than
+     * an unknown one, without any per-edge lookup. Undefined (a caller without it, or an old guard
+     * replay) retains the original legacy route, including its error behavior.
+     */
+    organizationId?: string;
   }): Promise<Waitpoint> {
+    // Keep this pre-check outside guard scheduling and its error handling. The router owns its
+    // mutation gate, so an armed call checks again after the durable guard has been persisted.
+    const storeRoutingEnabled =
+      this.coordinator instanceof RoutingWaitpointCoordinator &&
+      (await this.coordinator.isStoreRoutingEnabled(organizationId));
+
     // Armed before the first mutation, so a committed completion always has a durable watcher. An
     // arm failure is not wrapped, so the caller cannot mistake it for one the guard will replay.
     if (armGuard) {
@@ -120,10 +200,11 @@ export class WaitpointSystem {
     // From here the guard owns eventual completion. A failure is wrapped as
     // WaitpointCompletionGuardArmedError, so the API can return success and let the guard replay.
     try {
-      const { waitpoint, blockedRuns } = await this.coordinator.complete({
-        waitpointId: id,
-        output,
-      });
+      const params: CompleteParams = { waitpointId: id, output };
+      if (storeRoutingEnabled) params.organizationId = organizationId;
+      const { waitpoint, blockedRuns } = await (
+        storeRoutingEnabled ? this.coordinator : this.legacyCoordinator
+      ).complete(params);
 
       if (blockedRuns.length === 0) {
         this.$.logger.debug(`completeWaitpoint: no TaskRunWaitpoints found for waitpoint`, {
@@ -146,7 +227,12 @@ export class WaitpointSystem {
           // The fixed job id debounces repeat enqueues.
           id: jobId,
           job: "continueRunIfUnblocked",
-          payload: { runId: run.taskRunId },
+          // Carry the completion's org (== every blocked run's org; see the doc on this method) so the
+          // delayed continuation can route MemoryDB when enabled. Disabled/unwired jobs retain
+          // the original runId-only payload.
+          payload: storeRoutingEnabled
+            ? { runId: run.taskRunId, organizationId }
+            : { runId: run.taskRunId },
           availableAt,
         });
 
@@ -333,6 +419,7 @@ export class WaitpointSystem {
     batch,
     workerId,
     runnerId,
+    expectedEnvironmentId,
     tx,
   }: {
     runId: string;
@@ -344,6 +431,11 @@ export class WaitpointSystem {
     batch?: { id: string; index?: number };
     workerId?: string;
     runnerId?: string;
+    // An environment the run MUST belong to. When set, the run's snapshot read is scoped to it, so a
+    // run from another org/project/env yields no snapshot and throws (404) BEFORE any edge is
+    // registered — the cross-org registration guard for the public token-wait route. The run's
+    // snapshots are all in its own environment, so a snapshot found under this id proves membership.
+    expectedEnvironmentId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<TaskRunExecutionSnapshot> {
     const prisma = tx ?? this.$.prisma;
@@ -353,16 +445,18 @@ export class WaitpointSystem {
     let $waitpoints = typeof waitpoints === "string" ? [waitpoints] : waitpoints;
 
     return await this.$.runLock.lock("blockRunWithWaitpoint", [runId], async () => {
+      // Scoped to expectedEnvironmentId when the caller supplied one: a foreign run has no snapshot in
+      // that env, so this throws before registerBlocks and no cross-org edge is written.
       let snapshot: TaskRunExecutionSnapshot = await getLatestExecutionSnapshot(
         prisma,
         runId,
         this.$.runStore,
-        undefined,
+        expectedEnvironmentId,
         organizationId
       );
 
       // Two statements, in this order: see the READ COMMITTED note on the method.
-      const { pendingCount } = await this.coordinator.registerBlocks({
+      const params: RegisterBlocksParams = {
         runId,
         waitpointIds: $waitpoints,
         projectId,
@@ -370,7 +464,11 @@ export class WaitpointSystem {
         batchId: batch?.id,
         batchIndex: batch?.index,
         client: prisma,
-      });
+      };
+      if (this.coordinator instanceof RoutingWaitpointCoordinator) {
+        params.organizationId = organizationId;
+      }
+      const { pendingCount, storeRoutingEnabled } = await this.coordinator.registerBlocks(params);
 
       const isRunBlocked = pendingCount > 0;
 
@@ -429,7 +527,7 @@ export class WaitpointSystem {
           // The fixed job id debounces rapid repeat blocks.
           id: `continueRunIfUnblocked:${runId}`,
           job: "continueRunIfUnblocked",
-          payload: { runId: runId },
+          payload: storeRoutingEnabled ? { runId, organizationId } : { runId: runId },
           availableAt: new Date(Date.now() + 50),
         });
       }
@@ -514,13 +612,19 @@ export class WaitpointSystem {
     await this.completeWaitpoint({
       id: waitpointId,
       output,
+      organizationId,
     });
   }
 
   public async continueRunIfUnblocked({
     runId,
+    organizationId,
   }: {
     runId: string;
+    // The blocked run's org, carried independently of the route: the common delayed-completion enqueue
+    // has no route but does know the org, so this keeps run-keyed routing from querying MemoryDB for
+    // every legacy run. Undefined (old payload / no org) keeps the legacy route.
+    organizationId?: string;
   }): Promise<WaitpointContinuationResult> {
     this.$.logger.debug(`continueRunIfUnblocked: start`, {
       runId,
@@ -528,8 +632,20 @@ export class WaitpointSystem {
 
     await this.$.raceSimulationSystem.waitForRacepoint({ runId });
 
+    // Use the explicitly carried org for the flag check. Without it, keep the legacy route
+    // without discovering an organisation or consulting MemoryDB.
+    const routingOrganizationId = organizationId;
+
     return await this.$.runLock.lock("continueRunIfUnblocked", [runId], async () => {
-      const blockingWaitpoints = await this.coordinator.readRunBlockState(runId);
+      // 1. Get the any blocking waitpoints, routed by the run's org.
+      const storeRoutingEnabled =
+        this.coordinator instanceof RoutingWaitpointCoordinator &&
+        (await this.coordinator.isStoreRoutingEnabled(routingOrganizationId));
+      const blockingWaitpoints = storeRoutingEnabled
+        ? await this.coordinator.readRunBlockState(runId, {
+            organizationId: routingOrganizationId,
+          })
+        : await this.legacyCoordinator.readRunBlockState(runId);
 
       if (blockingWaitpoints.some((w) => w.waitpoint.status !== "COMPLETED")) {
         this.$.logger.debug(`continueRunIfUnblocked: blocking waitpoints still exist`, {
@@ -803,6 +919,7 @@ export class WaitpointSystem {
       if (blockingWaitpoints.length > 0) {
         await this.coordinator.clearRunBlockState({
           runId,
+          organizationId: routingOrganizationId,
           edgeIds: blockingWaitpoints.map((b) => b.id),
         });
 
@@ -1046,6 +1163,7 @@ export class WaitpointSystem {
         const completed = await this.completeWaitpoint({
           id: waitpoint.id,
           output,
+          organizationId: runAfterLock.organizationId ?? undefined,
         });
         return completed;
       }

@@ -153,6 +153,79 @@ export class LatestExecutionSnapshotNotFoundError extends Error {
   }
 }
 
+/**
+ * A store-format waitpoint blocker reached the generic single-call registration seam. Registering a
+ * MemoryDB blocker is a THREE-STEP BARRIER — it cannot be expressed by one `registerBlocks` call:
+ *
+ *   1. `absorbBlockers` (run-side): install the block id under a compare-and-set, add the ordered
+ *      waitpoint references and the distinct pending set, and subtract any completion receipts that
+ *      already arrived.
+ *   2. The caller publishes the DURABLE blocked execution snapshot transition.
+ *   3. `registerAndDeliver` (waitpoint-side): register the run as a watcher on each waitpoint and
+ *      immediately deliver any completion the register reports, passing the step-1 absorb result.
+ *
+ * The transition in step 2 MUST land between steps 1 and 3 — the protocol prefers a recoverable
+ * orphaned coordination record over a committed blocked run with no recoverable registration. A single
+ * `registerBlocks` call would register wholly before (or after) the transition, so it is refused here
+ * rather than left as a callable path that looks safe but violates the barrier. The barrier-aware
+ * registration seam and its call-site wiring belong to the blocker-registration migration; until then a
+ * store-format blocker must never be registered through this seam. Legacy (Postgres) blockers are
+ * unaffected — READ COMMITTED lets their edge write and pending re-check straddle the transition safely.
+ */
+export class StoreWaitpointRegistrationUnsupported extends Error {
+  readonly runId: string;
+  readonly waitpointIds: string[];
+  constructor(params: { runId: string; waitpointIds: string[] }) {
+    super(
+      `Cannot register store-format waitpoint(s) [${params.waitpointIds.join(
+        ", "
+      )}] against run ${params.runId} through the single-call seam: MemoryDB registration is a three-step ` +
+        `barrier (absorb → publish blocked transition → register/deliver) that this seam cannot express`
+    );
+    this.name = "StoreWaitpointRegistrationUnsupported";
+    this.runId = params.runId;
+    this.waitpointIds = params.waitpointIds;
+  }
+}
+
+/**
+ * A run whose organization could hold MemoryDB block edges was asked to clear its block state inside a
+ * rollback-capable Postgres lifecycle transaction (`tx`). Clearing MemoryDB cannot join that
+ * transaction, so a clear-then-rollback would leave the run's store blockers destroyed with Postgres
+ * unchanged. This fails loud BEFORE either store is mutated. Activation must instead clear MemoryDB
+ * only AFTER the durable lifecycle transition has committed (a non-transactional post-transition
+ * cleanup, which is allowed to clear both stores). In the dark default (never-enabled org, no store)
+ * this is unreachable — the transactional clear stays legacy-only.
+ */
+export class TransactionalStoreClearUnsupported extends Error {
+  readonly runId: string;
+  constructor(runId: string) {
+    super(
+      `Cannot clear run ${runId} block state transactionally: the run may hold MemoryDB blockers, and a ` +
+        `store clear cannot join the Postgres transaction. Clear MemoryDB only after the lifecycle ` +
+        `transition durably commits.`
+    );
+    this.name = "TransactionalStoreClearUnsupported";
+    this.runId = runId;
+  }
+}
+
+/**
+ * A store-format waitpoint id reached the router but no store coordinator is wired. A recognised
+ * store id must never fall back to Postgres, so this fails loud rather than mis-routing. In the dark
+ * default (no organisation enabled, no store minted) this is unreachable.
+ */
+export class StoreWaitpointWithoutStoreCoordinator extends Error {
+  readonly waitpointId: string;
+  constructor(waitpointId: string) {
+    super(
+      `Store-format waitpoint ${waitpointId} has no store coordinator to route to; refusing to fall back to Postgres`
+    );
+    this.name = "StoreWaitpointWithoutStoreCoordinator";
+    this.waitpointId = waitpointId;
+  }
+}
+
 export class UnclassifiableWaitpointId extends Error {
   readonly waitpointId: string;
   readonly waitpointIdLength: number;

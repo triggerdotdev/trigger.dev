@@ -318,6 +318,13 @@ export type WatcherEntry = {
   batchIndex?: number;
   spanIdToComplete?: string;
   createdAt: string;
+  /**
+   * The watching run's organization. The explicit slot for the asynchronous fanout to carry the same
+   * value the inline path threads through `BlockedRun`, so a fanout-driven continuation can route
+   * MemoryDB by the run's own org instead of reaching the predicate with an unknown org. Optional and
+   * unused by this layer; the blocker-registration migration populates it.
+   */
+  organizationId?: string;
 };
 
 export type CreateIfAbsentResult =

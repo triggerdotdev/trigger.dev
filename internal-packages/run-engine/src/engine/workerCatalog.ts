@@ -74,6 +74,10 @@ export const workerCatalog = {
   continueRunIfUnblocked: {
     schema: z.object({
       runId: z.string(),
+      // The blocked run's org, so the continuation can skip MemoryDB for a never-enabled org
+      // when handling a delayed continuation. Optional: an old queued payload lacks it and routes
+      // through the legacy coordinator until a caller supplies trusted organisation context.
+      organizationId: z.string().optional(),
     }),
     visibilityTimeoutMs: 30_000,
   },

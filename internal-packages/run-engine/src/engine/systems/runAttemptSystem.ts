@@ -929,6 +929,7 @@ export class RunAttemptSystem {
               output: completion.output
                 ? { value: completion.output, type: completion.outputType, isError: false }
                 : undefined,
+              organizationId: env.organizationId,
             });
           }
 
@@ -1026,7 +1027,11 @@ export class RunAttemptSystem {
           span.setAttribute("completionStatus", completion.ok);
 
           //remove waitpoints blocking the run
-          const deletedCount = await this.waitpointSystem.clearBlockingWaitpoints({ runId, tx });
+          const deletedCount = await this.waitpointSystem.clearBlockingWaitpoints({
+            runId,
+            organizationId: latestSnapshot.organizationId,
+            tx,
+          });
           if (deletedCount > 0) {
             this.$.logger.debug("Cleared blocking waitpoints", { runId, deletedCount });
           }
@@ -1988,6 +1993,7 @@ export class RunAttemptSystem {
           await this.waitpointSystem.completeWaitpoint({
             id: run.associatedWaitpoint.id,
             output: { value: JSON.stringify(error), isError: true },
+            organizationId: latestSnapshot.organizationId,
           });
         }
 
@@ -2378,6 +2384,8 @@ export class RunAttemptSystem {
         await this.waitpointSystem.completeWaitpoint({
           id: run.associatedWaitpoint.id,
           output: this.waitpointSystem.buildWaitpointOutputFromRun(run),
+          // This recovery re-derivation selects no organizationId; leave it conservative rather than
+          // widen the query solely to skip a MemoryDB lookup.
         });
       }
 

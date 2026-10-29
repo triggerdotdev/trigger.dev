@@ -324,6 +324,7 @@ function createWebhookEngine() {
                 runEngine.completeWaitpoint({
                   id: waitpointId,
                   output: { value: part, type: "application/json", isError: false },
+                  organizationId: environment.organization.id,
                 })
               )
             )

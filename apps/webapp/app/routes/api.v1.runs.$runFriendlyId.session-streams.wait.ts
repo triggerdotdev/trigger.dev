@@ -180,6 +180,7 @@ const { action, loader } = createActionApiRoute(
                   type: "application/json",
                   isError: false,
                 },
+                organizationId: authentication.environment.organization.id,
               });
 
               await removeSessionStreamWaitpoint(

@@ -337,6 +337,7 @@ export class RunEngine {
         continueRunIfUnblocked: async ({ payload }) => {
           await this.waitpointSystem.continueRunIfUnblocked({
             runId: payload.runId,
+            organizationId: payload.organizationId,
           });
         },
         ensureRunFinalized: async ({ payload }) => {
@@ -2065,6 +2066,7 @@ export class RunEngine {
     batch,
     workerId,
     runnerId,
+    expectedEnvironmentId,
     tx,
   }: {
     runId: string;
@@ -2076,6 +2078,11 @@ export class RunEngine {
     batch?: { id: string; index?: number };
     workerId?: string;
     runnerId?: string;
+    // An environment the blocked run MUST belong to. A public route passes its authenticated env so a
+    // caller cannot block a run from another org/project/env: the run's snapshot read is scoped to this
+    // id and yields nothing (404) for a foreign run, before any edge is registered. Omitted by trusted
+    // internal callers.
+    expectedEnvironmentId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<TaskRunExecutionSnapshot> {
     return this.waitpointSystem.blockRunWithWaitpoint({
@@ -2088,6 +2095,7 @@ export class RunEngine {
       batch,
       workerId,
       runnerId,
+      expectedEnvironmentId,
       tx,
     });
   }
@@ -2097,6 +2105,7 @@ export class RunEngine {
     id,
     output,
     armGuard,
+    organizationId,
   }: {
     id: string;
     output?: {
@@ -2109,6 +2118,12 @@ export class RunEngine {
      * completeWaitpointWithGuard sets it only when runStoreInfraRetryEnabled is on.
      */
     armGuard?: boolean;
+    /**
+     * The waitpoint's organization, from the completing caller's context. Threaded onto each blocked
+     * run's `continueRunIfUnblocked` so the delayed continuation routes MemoryDB by the run's org
+     * without a per-completion lookup. Optional: a caller without it stays conservative.
+     */
+    organizationId?: string;
   }): Promise<Waitpoint> {
     // Guard first, so an unclassifiable id fails here instead of applying locally. Do not branch
     // on decision.store: waitpointSystem.completeWaitpoint does the store routing.
@@ -2116,7 +2131,12 @@ export class RunEngine {
     if (guard) {
       await guard({ waitpointId: id, routeKind: "RESUME_TOKEN" });
     }
-    return this.waitpointSystem.completeWaitpoint({ id, output, armGuard: armGuard ?? false });
+    return this.waitpointSystem.completeWaitpoint({
+      id,
+      output,
+      armGuard: armGuard ?? false,
+      organizationId,
+    });
   }
 
   /**

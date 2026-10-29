@@ -6,7 +6,7 @@ import {
 } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { PostgresRunStore, RoutingRunStore } from "@internal/run-store";
-import { BatchId, generateWaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import { BatchId, generateWaitpointId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import type { Prisma, PrismaClient } from "@trigger.dev/database";
 import { describe, expect } from "vitest";
 import { setTimeout } from "node:timers/promises";
@@ -16,6 +16,9 @@ import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "../tests/s
 import { WaitpointSystem } from "./waitpointSystem.js";
 import { WaitpointStoreCoordinator } from "../waitpointCoordinator/storeCoordinator.js";
 import { buildCompletedWaitpointRecords } from "./completedWaitpointResolver.js";
+import { Logger } from "@trigger.dev/core/logger";
+import { LegacyPostgresWaitpointCoordinator } from "../waitpointCoordinator/legacyPostgresCoordinator.js";
+import { RoutingWaitpointCoordinator } from "../waitpointCoordinator/routingCoordinator.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -26,6 +29,7 @@ vi.setConfig({ testTimeout: 60_000 });
  */
 class CountingRunStore extends PostgresRunStore {
   calls: string[] = [];
+  blockInputs: string[][] = [];
 
   override async upsertWaitpoint<T extends Prisma.WaitpointUpsertArgs>(
     args: Prisma.SelectSubset<T, Prisma.WaitpointUpsertArgs>,
@@ -59,6 +63,7 @@ class CountingRunStore extends PostgresRunStore {
     params: Parameters<PostgresRunStore["blockRunWithWaitpointEdges"]>[0]
   ): Promise<void> {
     this.calls.push("blockRunWithWaitpointEdges");
+    this.blockInputs.push(params.waitpointIds);
     return super.blockRunWithWaitpointEdges(params);
   }
   override async countPendingWaitpoints(waitpointIds: string[], client?: any): Promise<number> {
@@ -238,8 +243,261 @@ describe("WaitpointSystem create/block write routing", () => {
           wired["resolveResumeCompletedWaitpointRecords"]("parent", blockers, env.organizationId)
         ).rejects.toThrow(`No store waitpoint record for ${id}`);
         expect(checkedOrganizations).toEqual(["disabled-org", env.organizationId]);
+        await waitpointStore.createIfAbsent({
+          status: "PENDING",
+          record: {
+            id,
+            friendlyId: row.friendlyId,
+            type: "DATETIME",
+            environmentId: env.id,
+            projectId: env.projectId,
+            createdAt: row.createdAt.toISOString(),
+            updatedAt: row.updatedAt.toISOString(),
+            userProvidedIdempotencyKey: false,
+            tags: [],
+          },
+        });
+        await expect(
+          wired["resolveResumeCompletedWaitpointRecords"]("parent", blockers, env.organizationId)
+        ).rejects.toThrow(`Store waitpoint ${id} is PENDING, not COMPLETED`);
       } finally {
         await waitpointStore.quit();
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTestWithIsolatedRedis(
+    "unwired and disabled routing preserve legacy completion, registration and continuation payloads",
+    async ({ prisma, redisOptions }) => {
+      const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const controlOrg = await prisma.organization.create({
+        data: { title: "Disabled control organization", slug: "disabled-control-org" },
+      });
+      const legacyStore = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
+      const destinationStore = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
+      const engine = buildEngine(prisma, redisOptions, legacyStore);
+      const resources = engine.waitpointSystem["options"].resources;
+      // Both destinations execute real Postgres operations. This proves the router contract;
+      // native Redis record integrity is covered by the separate StoreCoordinator tests.
+      const destination = new LegacyPostgresWaitpointCoordinator({
+        runStore: () => destinationStore,
+        prisma,
+        logger: new Logger("routing-test", "error"),
+      });
+      const legacy = new LegacyPostgresWaitpointCoordinator({
+        runStore: () => legacyStore,
+        prisma,
+        logger: new Logger("routing-test", "error"),
+      });
+      try {
+        await setupBackgroundWorker(engine, env, "routing-test");
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_darkrouting",
+            environment: env,
+            taskIdentifier: "routing-test",
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "routing-trace",
+            spanId: "routing-span",
+            workerQueue: "main",
+            queue: "task/routing-test",
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+        for (const mode of ["unwired", "disabled", "control", "enabled"] as const) {
+          const checkedOrganizations: (string | undefined)[] = [];
+          const organizationId = mode === "control" ? controlOrg.id : env.organizationId;
+          let flagDisabled = mode === "disabled";
+          let disableAfterNextCheck = false;
+          const isEnabled = (id?: string) => {
+            checkedOrganizations.push(id);
+            const enabled = !flagDisabled && id === env.organizationId;
+            if (disableAfterNextCheck) {
+              flagDisabled = true;
+              disableAfterNextCheck = false;
+            }
+            return enabled;
+          };
+          const wired = mode !== "unwired";
+          const router = new RoutingWaitpointCoordinator({
+            legacy,
+            store: wired ? destination : undefined,
+            isStoreEnabled: isEnabled,
+            mintPolicy: { resolveMintMode: () => "redis", isCapabilityReady: () => true },
+          });
+          const system = new WaitpointSystem({
+            ...engine.waitpointSystem["options"],
+            waitpointStoreEnabled: isEnabled,
+            waitpointRouting: wired
+              ? {
+                  store: destination,
+                  mintPolicy: { resolveMintMode: () => "redis", isCapabilityReady: () => true },
+                }
+              : undefined,
+          });
+          const expectOneFlagCheck = (before: number) => {
+            expect(checkedOrganizations.slice(before)).toEqual(wired ? [organizationId] : []);
+          };
+          for (const native of [false, true]) {
+            const id = native ? generateWaitpointId("DATETIME") : WaitpointId.generate().id;
+            await prisma.waitpoint.create({
+              data: {
+                id,
+                friendlyId: `waitpoint_${id}`,
+                type: "DATETIME",
+                status: "PENDING",
+                idempotencyKey: id,
+                userProvidedIdempotencyKey: false,
+                projectId: env.projectId,
+                environmentId: env.id,
+              },
+            });
+            const ids = [id, id];
+            legacyStore.calls.length = 0;
+            destinationStore.calls.length = 0;
+            const params = {
+              runId: run.id,
+              waitpointIds: ids,
+              projectId: env.projectId,
+              organizationId,
+              client: prisma,
+            };
+            let beforeFlagChecks = checkedOrganizations.length;
+            if (mode === "enabled" && native) {
+              await expect(router.registerBlocks(params)).rejects.toThrow("three-step barrier");
+              expectOneFlagCheck(beforeFlagChecks);
+              beforeFlagChecks = checkedOrganizations.length;
+              await expect(router.registerBlocksLockless(params)).rejects.toThrow(
+                "three-step barrier"
+              );
+              expectOneFlagCheck(beforeFlagChecks);
+              expect(legacyStore.calls).toEqual([]);
+            } else {
+              expect(await router.registerBlocks(params)).toEqual(
+                mode === "enabled"
+                  ? { pendingCount: 1, storeRoutingEnabled: true }
+                  : { pendingCount: 1 }
+              );
+              expectOneFlagCheck(beforeFlagChecks);
+              beforeFlagChecks = checkedOrganizations.length;
+              await router.registerBlocksLockless(params);
+              expectOneFlagCheck(beforeFlagChecks);
+              // Direct delegation preserves the original collection, including duplicates.
+              if (mode !== "enabled") expect(legacyStore.blockInputs.at(-1)).toBe(ids);
+              expect(legacyStore.calls).toEqual([
+                "blockRunWithWaitpointEdges",
+                "countPendingWaitpoints",
+                "blockRunWithWaitpointEdges",
+              ]);
+              expect(destinationStore.calls).toEqual([]);
+              beforeFlagChecks = checkedOrganizations.length;
+              await system.blockRunWithWaitpoint({
+                runId: run.id,
+                waitpoints: ids,
+                projectId: env.projectId,
+                organizationId,
+              });
+              expectOneFlagCheck(beforeFlagChecks);
+              expect(destinationStore.calls).toEqual([]);
+            }
+            // Ensure a fan-out edge even when enabled registration correctly rejected this parent.
+            await legacy.registerBlocks(params);
+            legacyStore.calls.length = 0;
+            beforeFlagChecks = checkedOrganizations.length;
+            const result = await system.completeWaitpoint({ id, organizationId });
+            expect(checkedOrganizations.slice(beforeFlagChecks)).toEqual(
+              !wired ? [] : mode === "enabled" ? [organizationId, organizationId] : [organizationId]
+            );
+            expect(result.status).toBe("COMPLETED");
+            const nativeDispatch = mode === "enabled" && native;
+            expect(nativeDispatch ? legacyStore.calls : destinationStore.calls).toEqual([]);
+            const used = nativeDispatch ? destinationStore : legacyStore;
+            expect(used.calls).toEqual([
+              "forWaitpointCompletion",
+              "markWaitpointCompleted",
+              "findManyTaskRunWaitpoints",
+            ]);
+            const job = await resources.worker.getJob(`continueRunIfUnblocked:${run.id}`);
+            expect(job?.item).toEqual(
+              mode === "enabled" ? { runId: run.id, organizationId } : { runId: run.id }
+            );
+            await resources.worker.ack(`continueRunIfUnblocked:${run.id}`);
+            if (!nativeDispatch) {
+              // Complete-before-register uses the same gated payload on the immediate unblock path.
+              beforeFlagChecks = checkedOrganizations.length;
+              // A flag change after the check affects the next operation, not this registration's
+              // route or derived continuation payload. There is no decision cache across operations.
+              disableAfterNextCheck = mode === "enabled";
+              await system.blockRunWithWaitpoint({
+                runId: run.id,
+                waitpoints: ids,
+                projectId: env.projectId,
+                organizationId,
+              });
+              expectOneFlagCheck(beforeFlagChecks);
+              const immediate = await resources.worker.getJob(`continueRunIfUnblocked:${run.id}`);
+              expect(immediate?.item).toEqual(
+                mode === "enabled" ? { runId: run.id, organizationId } : { runId: run.id }
+              );
+              await resources.worker.ack(`continueRunIfUnblocked:${run.id}`);
+              if (mode === "enabled") {
+                beforeFlagChecks = checkedOrganizations.length;
+                await system.completeWaitpoint({ id, organizationId });
+                expectOneFlagCheck(beforeFlagChecks);
+                const disabledJob = await resources.worker.getJob(
+                  `continueRunIfUnblocked:${run.id}`
+                );
+                expect(disabledJob?.item).toEqual({ runId: run.id });
+                await resources.worker.ack(`continueRunIfUnblocked:${run.id}`);
+                flagDisabled = false;
+              }
+            }
+            // Direct callers retain their own gate; the system decision is never reusable authority.
+            beforeFlagChecks = checkedOrganizations.length;
+            const direct = await router.complete({ waitpointId: id, organizationId });
+            expect(direct.waitpoint.status).toBe("COMPLETED");
+            expectOneFlagCheck(beforeFlagChecks);
+            const missing = generateWaitpointId("DATETIME");
+            legacyStore.calls.length = 0;
+            destinationStore.calls.length = 0;
+            beforeFlagChecks = checkedOrganizations.length;
+            await expect(system.completeWaitpoint({ id: missing, organizationId })).rejects.toThrow(
+              "Waitpoint not found"
+            );
+            expect(checkedOrganizations.slice(beforeFlagChecks)).toEqual(
+              !wired ? [] : mode === "enabled" ? [organizationId, organizationId] : [organizationId]
+            );
+            expect(mode === "enabled" ? legacyStore.calls : destinationStore.calls).toEqual([]);
+            // Unknown org and old payloads restore the original Postgres route without discovery.
+            await router.clearRunBlockState({ runId: run.id, organizationId });
+            expect(await router.readRunBlockState(run.id, { organizationId })).toEqual([]);
+          }
+          legacyStore.calls.length = 0;
+          destinationStore.calls.length = 0;
+          const beforeFlagChecks = checkedOrganizations.length;
+          // Use the system-built router to exercise its mint-policy wrapper as well as the gate.
+          await system["coordinator"].createDateTimeWaitpoint({
+            projectId: env.projectId,
+            environmentId: env.id,
+            completedAfter: new Date(),
+            mintContext: { organizationId, parentResidency: "redis-primary" },
+          });
+          expectOneFlagCheck(beforeFlagChecks);
+          expect(mode === "enabled" ? legacyStore.calls : destinationStore.calls).toEqual([]);
+          expect(mode === "enabled" ? destinationStore.calls : legacyStore.calls).toEqual([
+            "upsertWaitpoint",
+          ]);
+          if (!wired) expect(checkedOrganizations).toEqual([]);
+          else expect(checkedOrganizations.every((id) => id === organizationId)).toBe(true);
+        }
+      } finally {
         await engine.quit();
       }
     }
