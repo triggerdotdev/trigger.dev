@@ -118,7 +118,8 @@ export function TreeView<TData>({
             if (!node) return null;
             const state = nodes[node.id];
             if (!state) return null;
-            if (!state.visible) return null;
+            // The virtualizer's rows are the visible ones, filter included; `nodes` ignores the
+            // filter, so a match inside a collapsed node is hidden there.
             return (
               <div
                 key={node.id}
@@ -191,6 +192,8 @@ export type UseTreeStateOutput = {
   toggleNodeSelection: (id: string, scrollToNode?: boolean) => void;
   expandNode: (id: string, scrollToNode?: boolean) => void;
   collapseNode: (id: string) => void;
+  expandNodes: (ids: string[]) => void;
+  collapseNodes: (ids: string[]) => void;
   toggleExpandNode: (id: string, scrollToNode?: boolean) => void;
   expandAllBelowDepth: (depth: number) => void;
   collapseAllBelowDepth: (depth: number) => void;
@@ -388,6 +391,17 @@ export function useTree<TData, TFilterValue>({
     dispatch({ type: "COLLAPSE_NODE", payload: { id } });
   };
 
+  /** Several nodes in one pass; `onExpandedChange` still hears about each one that changes. */
+  const expandNodes = (ids: string[]) => {
+    for (const id of ids) notifyExpanded(id, true);
+    dispatch({ type: "EXPAND_NODES", payload: { ids } });
+  };
+
+  const collapseNodes = (ids: string[]) => {
+    for (const id of ids) notifyExpanded(id, false);
+    dispatch({ type: "COLLAPSE_NODES", payload: { ids } });
+  };
+
   const toggleExpandNode = (id: string, scrollToNode = true) => {
     const node = state.nodes[id];
     if (node) {
@@ -568,6 +582,8 @@ export function useTree<TData, TFilterValue>({
     toggleNodeSelection,
     expandNode,
     collapseNode,
+    expandNodes,
+    collapseNodes,
     toggleExpandNode,
     expandAllBelowDepth,
     collapseAllBelowDepth,

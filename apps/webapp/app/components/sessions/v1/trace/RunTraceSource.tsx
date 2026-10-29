@@ -30,6 +30,8 @@ type RunTraceSourceProps = {
   run: SessionTraceRun & { status: TaskRunStatus };
   load: SessionRunLoad;
   live: boolean;
+  /** Errors only is on: a run that isn't fully loaded also reads its errors from the server. */
+  errorsOnly: boolean;
   /** A deep-linked span: the first chunk includes it and its parents even past the first page. */
   selectedSpanId?: string;
   onSettle: (runFriendlyId: string, loadId: number, outcome: SessionRunLoadOutcome) => void;
@@ -78,6 +80,7 @@ function RunTraceLive({
   run,
   load,
   live,
+  errorsOnly,
   started,
   onSettle,
   onSnapshot,
@@ -110,7 +113,7 @@ function RunTraceLive({
       finishedAt: run.finishedAt,
     },
     trace: started.trace,
-    errorsOnly: false,
+    errorsOnly,
     maximumLiveReloadingSetting: LEGACY_LIVE_RELOAD_LIMIT,
     onRunDataStale,
     readContext: "session",

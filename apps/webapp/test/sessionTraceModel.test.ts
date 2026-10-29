@@ -1453,4 +1453,35 @@ describe("sessionRunLoadsReducer: span budget, load order and retry", () => {
     const loads = loaded(start(), "run_1", 5);
     expect(run(loads, { type: "retry", runFriendlyId: "run_1" })).toBe(loads);
   });
+
+  it("takes a run waiting for a slot out of the queue when it's collapsed", () => {
+    let loads = run(start(), { type: "expandedMany", runFriendlyIds: [...ids].reverse() });
+    expect(loads.queue).toEqual(["run_2", "run_1"]);
+
+    loads = run(loads, expand("run_2", false));
+    expect(state(loads, "run_2")).toBe("idle");
+    expect(loads.queue).toEqual(["run_1"]);
+
+    // Collapse all after Expand all: the loading runs carry on, nothing else starts.
+    loads = run(loads, ...ids.map((id) => expand(id, false)));
+    expect(ids.map((id) => state(loads, id))).toEqual([
+      "idle",
+      "idle",
+      "loading",
+      "loading",
+      "loading",
+    ]);
+    loads = settleNow(loads, "run_3", { state: "progressive" });
+    expect([state(loads, "run_1"), state(loads, "run_2")]).toEqual(["idle", "idle"]);
+  });
+
+  it("keeps an in-place retry queued when its run is collapsed", () => {
+    let loads = paging(start(), "run_1", 500);
+    loads = settleNow(loads, "run_1", { state: "error", message: "boom" });
+    loads = run(loads, expand("run_2"), expand("run_3"), expand("run_4"));
+    loads = run(loads, { type: "retry", runFriendlyId: "run_1" }, expand("run_1", false));
+
+    expect(state(loads, "run_1")).toBe("queued");
+    expect(loads.queue).toEqual(["run_1"]);
+  });
 });

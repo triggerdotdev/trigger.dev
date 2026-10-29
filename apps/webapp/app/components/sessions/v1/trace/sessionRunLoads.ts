@@ -204,7 +204,13 @@ export function sessionRunLoadsReducer(
         const expanded = new Set(current.expanded);
         expanded.delete(id);
         const collapsedOrder = [...current.collapsedOrder.filter((other) => other !== id), id];
-        return { ...current, expanded, collapsedOrder };
+        const next = { ...current, expanded, collapsedOrder };
+        // A run still waiting for a slot doesn't load once collapsed; an in-place retry keeps its
+        // place, since its spans are on screen.
+        const load = runLoad(current, id);
+        if (load.state !== "queued" || load.retryOf !== undefined) return next;
+        const { [id]: _dequeued, ...loads } = current.loads;
+        return { ...next, loads, queue: current.queue.filter((other) => other !== id) };
       }
       return loadWanted(expandRuns(current, [id]));
     }

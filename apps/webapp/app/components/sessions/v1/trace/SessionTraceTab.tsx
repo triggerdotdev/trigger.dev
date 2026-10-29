@@ -32,6 +32,7 @@ import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import { SpanTreeRow } from "~/components/runs/v3/trace/TasksTreeView";
 import { KeyboardShortcuts } from "~/components/runs/v3/trace/TraceShortcuts";
+import { TraceFilters } from "~/components/runs/v3/trace/TraceToolbar";
 import type { TraceTimelineScale } from "~/components/runs/v3/trace/timelineScale";
 import type { TraceEvent } from "~/components/runs/v3/trace/types";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -80,6 +81,17 @@ import {
   selectionNodeId,
   type SessionTraceSelection,
 } from "./sessionTraceSelection";
+import {
+  countMatches,
+  isFiltering,
+  NO_FILTER,
+  runShowsResults,
+  runsToCollapseOnClear,
+  searchCoverage,
+  sessionRowPassesFilter,
+  type SearchCoverage,
+  type SessionTraceFilter,
+} from "./sessionTraceSearch";
 import type { SessionTraceRun } from "./sessionTraceTypes";
 import { SESSION_TREE_AUTOSAVE_ID, runReasonLabel } from "./sessionTraceView";
 import {
@@ -240,6 +252,15 @@ function SessionTraceTree({
   }
   const intended = local ?? selection;
 
+  // Search and errors only. Runs Load all opens collapse again when the search is cleared,
+  // unless the user expanded or collapsed them meanwhile, or they hold the selection.
+  const [filter, setFilter] = useState<SessionTraceFilter>(NO_FILTER);
+  const filtering = isFiltering(filter);
+  const openedForSearch = useRef(new Set<string>());
+  const touchedDuringSearch = useRef(new Set<string>());
+  // Set while Load all or the clear handler move rows, so those moves aren't "touched".
+  const searchMovingRows = useRef(false);
+
   // Captured once. Runs added later start collapsed, apart from a new newest run (the reducer).
   const [openRunId] = useState(() => initiallyExpandedRunFriendlyId(runs, totalCount));
   // A selection in the URL at mount whose run loaded: open there instead of at the bottom.
@@ -372,12 +393,13 @@ function SessionTraceTree({
     selectNode,
     toggleExpandNode,
     expandNode,
-    collapseNode,
+    expandNodes,
+    collapseNodes,
     expandLevel,
     collapseLevel,
     scrollToNode,
     virtualizer,
-  } = useTree<Row, undefined>({
+  } = useTree<Row, SessionTraceFilter>({
     tree,
     parentRef,
     estimatedRowHeight: () => ROW_HEIGHT_PX,
@@ -401,8 +423,16 @@ function SessionTraceTree({
     onExpandedChange: (id, expanded) => {
       const row = rowsById.get(id);
       if (row?.kind === "run") {
+        if (filtering && !searchMovingRows.current) {
+          touchedDuringSearch.current.add(row.run.friendlyId);
+        }
         dispatchLoads({ type: "expanded", runFriendlyId: row.run.friendlyId, expanded });
       }
+    },
+    // No value means no filter: the session row passing would otherwise hide every run's spans.
+    filter: {
+      value: filtering ? filter : undefined,
+      fn: (value, node) => sessionRowPassesFilter(value, node.data),
     },
   });
 
@@ -451,11 +481,9 @@ function SessionTraceTree({
     const target = selectionNodeId(deepLink);
     if (!(target in nodes)) return;
     revealedDeepLink.current = true;
-    for (const ancestor of ancestorsOf(target)) {
-      if (!nodes[ancestor]?.expanded) expandNode(ancestor, false);
-    }
+    expandNodes(ancestorsOf(target).filter((ancestor) => !nodes[ancestor]?.expanded));
     pendingScroll.current = target;
-  }, [deepLink, deepLinkStillIntended, nodes, ancestorsOf, expandNode]);
+  }, [deepLink, deepLinkStillIntended, nodes, ancestorsOf, expandNodes]);
   // Scrolling, a click or a key in the tab means the user has moved on: stop revealing.
   useEffect(() => {
     const container = containerRef.current;
@@ -547,10 +575,10 @@ function SessionTraceTree({
       atBottom.current && !earlierLoad.current ? { nodes: latestNodes.current } : null;
   }, [followKey]);
 
-  // Run rows always expand and collapse one by one, so the load reducer hears about each.
-  // Expand all tells it first, newest first, so the newest runs load first; the per-row
-  // events that follow change nothing.
-  const runNodes = tree.filter((node) => node.data.kind === "run");
+  // Several run rows change in one tree pass; the load reducer still hears about each. Expand
+  // all tells it first, newest first, so the newest runs load first; the per-row events that
+  // follow change nothing.
+  const runNodes = useMemo(() => tree.filter((node) => node.data.kind === "run"), [tree]);
   const allExpanded = runNodes.every((node) => nodes[node.id]?.expanded);
   const expandAllRuns = () => {
     const collapsed = runNodes.filter((node) => !nodes[node.id]?.expanded);
@@ -562,24 +590,129 @@ function SessionTraceTree({
     };
     newestFirst.runFriendlyIds.reverse();
     dispatchLoads(newestFirst);
-    for (const node of collapsed) expandNode(node.id, false);
+    expandNodes(collapsed.map((node) => node.id));
   };
   const retryRun = (runFriendlyId: string) => {
     dispatchLoads({ type: "retry", runFriendlyId });
     const id = runNodeId(runFriendlyId);
     if (!nodes[id]?.expanded) expandNode(id, false);
   };
-  const collapseAllRuns = () => {
-    for (const node of runNodes) if (nodes[node.id]?.expanded) collapseNode(node.id);
+  const collapseAllRuns = () =>
+    collapseNodes(runNodes.filter((node) => nodes[node.id]?.expanded).map((node) => node.id));
+  // During a search a run's chevron shows or hides its matches; nothing loads or unloads.
+  const hiddenRuns = useMemo(() => new Set(filter.hiddenRuns), [filter.hiddenRuns]);
+  const setRunHidden = (runFriendlyId: string, hidden: boolean) =>
+    setFilter((prev) => ({
+      ...prev,
+      hiddenRuns: hidden
+        ? [...prev.hiddenRuns.filter((id) => id !== runFriendlyId), runFriendlyId]
+        : prev.hiddenRuns.filter((id) => id !== runFriendlyId),
+    }));
+  const showsResults = (runFriendlyId: string) =>
+    runShowsResults(runLoad(loads, runFriendlyId)) && !hiddenRuns.has(runFriendlyId);
+  const runIsOpen = (row: Row, expanded: boolean) =>
+    filtering && row.kind === "run" ? showsResults(row.run.friendlyId) : expanded;
+  // A run that never loaded opens for real (it loads); a loaded run's results hide or show.
+  const toggleRunInSearch = (runFriendlyId: string, open: boolean) => {
+    if (runShowsResults(runLoad(loads, runFriendlyId))) return setRunHidden(runFriendlyId, !open);
+    const nodeId = runNodeId(runFriendlyId);
+    if (open && !nodes[nodeId]?.expanded) expandNode(nodeId, false);
   };
-  const toggleAll = () => (allExpanded ? collapseAllRuns() : expandAllRuns());
+  // During a search, Collapse all hides every run's results and Expand all shows them again;
+  // only Load all loads.
+  const allShown = filtering ? hiddenRuns.size === 0 : allExpanded;
+  const expandAll = () => {
+    if (!filtering) return expandAllRuns();
+    setFilter((prev) => ({ ...prev, hiddenRuns: [] }));
+  };
+  const collapseAll = () => {
+    if (!filtering) return collapseAllRuns();
+    setFilter((prev) => ({
+      ...prev,
+      hiddenRuns: runNodes.flatMap((node) =>
+        node.data.kind === "run" ? [node.data.run.friendlyId] : []
+      ),
+    }));
+  };
+  const toggleAll = () => (allShown ? collapseAll() : expandAll());
+
+  // Load all: Expand all's newest-first queue for the runs the search hasn't covered yet.
+  const coverage = searchCoverage({ runs, view, loads });
+  const matchCount = useMemo(
+    () => (filtering ? countMatches(tree, filter) : 0),
+    [filtering, tree, filter]
+  );
+  const loadAllForSearch = () => {
+    if (coverage.toLoad.length === 0) return;
+    for (const id of coverage.toLoad) openedForSearch.current.add(id);
+    dispatchLoads({ type: "expandedMany", runFriendlyIds: coverage.toLoad });
+    searchMovingRows.current = true;
+    expandNodes(coverage.toLoad.map(runNodeId));
+    searchMovingRows.current = false;
+  };
+
+  // Clearing the search undoes Load all and keeps what the user was looking at in view: the
+  // selected row, else the row at the top.
+  const pendingClearScroll = useRef<{ id: string; align: "start" | "center" }>();
+  const topVisibleNodeId = () => {
+    const top = parentRef.current?.scrollTop ?? 0;
+    const item = virtualizer.getVirtualItems().find((virtualItem) => virtualItem.end > top);
+    return item ? String(item.key) : undefined;
+  };
+  const updateFilter = (change: Partial<SessionTraceFilter>) => {
+    const next = { ...filter, ...change };
+    next.text = next.text.toLowerCase();
+    if (!isFiltering(next)) next.hiddenRuns = [];
+    setFilter(next);
+    if (!filtering || isFiltering(next)) return;
+
+    const keep = new Set(touchedDuringSearch.current);
+    if (intended.kind !== "session") keep.add(intended.runFriendlyId);
+    const collapse = runsToCollapseOnClear(openedForSearch.current, keep);
+    openedForSearch.current = new Set();
+    touchedDuringSearch.current = new Set();
+
+    const selectedRow = intended.kind !== "session" ? highlightedId : undefined;
+    const target = selectedRow ?? topVisibleNodeId();
+    searchMovingRows.current = true;
+    collapseNodes(collapse.map(runNodeId).filter((id) => nodes[id]?.expanded));
+    // The filter showed the selected row inside rows that may be collapsed.
+    if (selectedRow) {
+      expandNodes(ancestorsOf(selectedRow).filter((ancestor) => !nodes[ancestor]?.expanded));
+    }
+    searchMovingRows.current = false;
+    if (target)
+      pendingClearScroll.current = { id: target, align: selectedRow ? "center" : "start" };
+  };
+  // The debounced search box calls back later: always reach this render's handler.
+  const updateFilterRef = useRef(updateFilter);
+  useLayoutEffect(() => {
+    updateFilterRef.current = updateFilter;
+  });
+  const onFilterTextChange = useCallback((text: string) => updateFilterRef.current({ text }), []);
+  const onErrorsOnlyChange = useCallback(
+    (errorsOnly: boolean) => updateFilterRef.current({ errorsOnly }),
+    []
+  );
+  useLayoutEffect(() => {
+    const pending = pendingClearScroll.current;
+    if (!pending) return;
+    // The tree drops the filter a render later: wait until its rows are the unfiltered ones.
+    const shown = tree.filter((node) => nodes[node.id]?.visible);
+    if (shown.length !== visibleRowCount) return;
+    pendingClearScroll.current = undefined;
+    // A top row inside a run that just collapsed: keep its run in place instead.
+    const target = [pending.id, ...ancestorsOf(pending.id)].find((id) => nodes[id]?.visible);
+    const index = shown.findIndex((node) => node.id === target);
+    if (index !== -1) virtualizer.scrollToIndex(index, { align: pending.align });
+  }, [nodes, visibleRowCount, tree, ancestorsOf, virtualizer]);
 
   // Level keys never start a load: a run only has children once its spans are in, so the
-  // tree's level actions only reach loaded runs. Those are opened first through expandNode.
+  // tree's level actions only reach loaded runs. Those are opened first through expandNodes.
   const expandLoadedToLevel = (level: number) => {
-    for (const node of runNodes) {
-      if (node.hasChildren && !nodes[node.id]?.expanded) expandNode(node.id, false);
-    }
+    expandNodes(
+      runNodes.filter((node) => node.hasChildren && !nodes[node.id]?.expanded).map((n) => n.id)
+    );
     expandLevel(level);
   };
   const collapseToLevel = (level: number) =>
@@ -599,6 +732,17 @@ function SessionTraceTree({
     if (event.key === "Escape") {
       event.preventDefault();
       selectNode(selectionNodeId({ kind: "session" }));
+      return;
+    }
+    const selectedRow = selected ? rowsById.get(selected) : undefined;
+    if (
+      filtering &&
+      !event.altKey &&
+      selectedRow?.kind === "run" &&
+      (event.key === "ArrowRight" || event.key === "ArrowLeft")
+    ) {
+      event.preventDefault();
+      toggleRunInSearch(selectedRow.run.friendlyId, event.key === "ArrowRight");
       return;
     }
     if (event.altKey && (event.key === "ArrowRight" || event.key === "ArrowLeft")) {
@@ -649,6 +793,7 @@ function SessionTraceTree({
             run={{ ...run, status: run.status }}
             load={load}
             live={run.friendlyId === newestRunId}
+            errorsOnly={filter.errorsOnly}
             selectedSpanId={
               deepLink?.kind === "span" && deepLink.runFriendlyId === run.friendlyId
                 ? deepLink.spanId
@@ -664,14 +809,30 @@ function SessionTraceTree({
           />
         );
       })}
-      <div className="flex items-center justify-end gap-2 border-b border-grid-bright px-3">
-        {notice && <span className="mr-auto truncate text-xs text-text-dimmed">{notice}</span>}
+      <div className="flex items-center gap-2 border-b border-grid-bright pl-1.5 pr-3">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto scrollbar-none">
+          <TraceFilters
+            onFilterTextChange={onFilterTextChange}
+            errorsOnly={filter.errorsOnly}
+            onErrorsOnlyChange={onErrorsOnlyChange}
+          />
+          {filtering ? (
+            <SearchCoverageNote
+              coverage={coverage}
+              matches={matchCount}
+              errorsOnly={filter.errorsOnly}
+              onLoadAll={loadAllForSearch}
+            />
+          ) : (
+            notice && <span className="truncate text-xs text-text-dimmed">{notice}</span>
+          )}
+        </div>
         <Button variant="tertiary/small" onClick={toggleAll}>
           {/* Both labels share one cell so the button keeps the wider one's width. */}
           <span className="inline-grid">
             <span className="invisible col-start-1 row-start-1">Collapse all</span>
             <span className="col-start-1 row-start-1 text-center">
-              {allExpanded ? "Collapse all" : "Expand all"}
+              {allShown ? "Collapse all" : "Expand all"}
             </span>
           </span>
         </Button>
@@ -705,9 +866,16 @@ function SessionTraceTree({
                     row={node.data}
                     level={node.level}
                     isSelected={state.selected}
-                    isExpanded={state.expanded}
+                    isExpanded={runIsOpen(node.data, state.expanded)}
                     canExpand={node.data.kind === "run" || node.hasChildren}
-                    onToggle={() => toggleExpandNode(node.id, false)}
+                    onToggle={() => {
+                      const row = node.data;
+                      if (filtering && row.kind === "run") {
+                        toggleRunInSearch(row.run.friendlyId, !showsResults(row.run.friendlyId));
+                        return;
+                      }
+                      toggleExpandNode(node.id, false);
+                    }}
                     isLive={node.data.kind === "run" && node.data.run.friendlyId === liveRunId}
                     load={
                       node.data.kind === "run"
@@ -774,8 +942,8 @@ function SessionTraceTree({
         <div className="flex items-center gap-4 overflow-hidden">
           <KeyboardShortcuts
             enabled
-            onExpandAll={expandAllRuns}
-            onCollapseAll={collapseAllRuns}
+            onExpandAll={expandAll}
+            onCollapseAll={collapseAll}
             onToggleLevel={toggleLevel}
           />
         </div>
@@ -792,6 +960,55 @@ function SessionTraceTree({
         />
       </div>
     </div>
+  );
+}
+
+function SearchCoverageNote({
+  coverage,
+  matches,
+  errorsOnly,
+  onLoadAll,
+}: {
+  coverage: SearchCoverage;
+  matches: number;
+  errorsOnly: boolean;
+  onLoadAll: () => void;
+}) {
+  const { partly } = coverage;
+  const plural = (n: number, word: string) => `${formatNumber(n)} ${word}${n === 1 ? "" : "es"}`;
+  return (
+    <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-text-dimmed">
+      <span>
+        Searching {coverage.searched} of {coverage.searchable} shown runs ·{" "}
+        {plural(matches, "match")}
+      </span>
+      {partly > 0 && (
+        <SimpleTooltip
+          button={<span className="text-text-faint">· {partly} partly</span>}
+          content={
+            errorsOnly
+              ? `${partly} ${partly === 1 ? "run" : "runs"} stopped at a span limit. Their errors are also read from the server, but other matches only come from the spans loaded here.`
+              : `${partly} ${partly === 1 ? "run" : "runs"} stopped at a span limit, so only the spans loaded here were searched.`
+          }
+          disableHoverableContent
+        />
+      )}
+      {coverage.notLoaded > 0 && (
+        <SimpleTooltip
+          button={
+            <span className="text-text-faint">· {coverage.notLoaded} not loaded (span limit)</span>
+          }
+          content="The session reached its span limit before these runs loaded. Open their run pages to see them."
+          disableHoverableContent
+        />
+      )}
+      {coverage.failed > 0 && <span className="text-error">· {coverage.failed} failed</span>}
+      {coverage.toLoad.length > 0 && (
+        <Button variant="tertiary/small" onClick={onLoadAll}>
+          Load all
+        </Button>
+      )}
+    </span>
   );
 }
 
