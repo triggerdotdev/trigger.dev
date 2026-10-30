@@ -645,6 +645,7 @@
           {
             "group": "Example tasks",
             "pages": [
+              "guides/examples/apify-actor-run",
               "guides/examples/dall-e3-generate-image",
               "guides/examples/deepgram-transcribe-audio",
               "guides/examples/fal-ai-image-to-cartoon",
