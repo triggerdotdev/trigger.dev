@@ -1,5 +1,14 @@
 # internal-platform
 
+## 4.8.3
+
+### Patch Changes
+
+- CLI and MCP logins are now bound to the machine that started them. Approving a login in your browser sends you back to the CLI automatically, or, when the browser is on another machine, shows a code to paste into the terminal (or pass with `trigger.dev login --code`). Older CLI versions will need to upgrade to log in. ([`1a36c23fb`](https://github.com/triggerdotdev/trigger.dev/commit/1a36c23fb1f4bee60eb7e3ed7a62836ba4a11bb9))
+- Add private-beta OIDC authentication for deployed Cloud tasks, with an AWS credential provider and environment-specific setup instructions. Install `@aws-sdk/client-sts` to use `@trigger.dev/sdk/oidc/aws`, upgrade your deployment CLI, and redeploy. Contact us to enable access for your organization. ([`65352bc90`](https://github.com/triggerdotdev/trigger.dev/commit/65352bc90aff3788f466569997f2f6a24229ff5a))
+- Deprecates the legacy Bun runtime. `runtime: "bun"` (and its explicit spelling `"bun-legacy"`), which deploys Bun 1.3.3 with Node.js 20 alongside it, now prints a deprecation warning, and deploys that use it will be rejected from January 5, 2027. Switch to `runtime: "bun-1.4"` (Bun 1.4.4 on an image with no Node.js binary) and redeploy. ([`5f8171cab`](https://github.com/triggerdotdev/trigger.dev/commit/5f8171cab0e5d2b02e6446455b6569ba7c031a3b))
+- Fix parent and root metadata updates being lost after one update could not be applied. Only that update is now skipped, and the rest are written. Metadata keys that name only the root, such as `$.` or `$..`, are now ignored on a run's own metadata instead of throwing, and rejected for parent and root metadata, which fails the whole request. ([`53441fd20`](https://github.com/triggerdotdev/trigger.dev/commit/53441fd20292f8b01dbf67f72069873ec07c25da))
+
 ## 4.8.2
 
 ### Patch Changes

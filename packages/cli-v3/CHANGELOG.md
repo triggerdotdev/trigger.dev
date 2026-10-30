@@ -1,5 +1,17 @@
 # trigger.dev
 
+## 4.8.3
+
+### Patch Changes
+
+- CLI and MCP logins are now bound to the machine that started them. Approving a login in your browser sends you back to the CLI automatically, or, when the browser is on another machine, shows a code to paste into the terminal (or pass with `trigger.dev login --code`). Older CLI versions will need to upgrade to log in. ([`1a36c23fb`](https://github.com/triggerdotdev/trigger.dev/commit/1a36c23fb1f4bee60eb7e3ed7a62836ba4a11bb9))
+- Add `trigger webhooks set-secret` and `trigger webhooks generate-secret`, which store a webhook endpoint's signing secret without printing it. `set-secret` reads the secret from a pipe, an environment variable or a `.env` file, and `generate-secret` saves the new secret to an env file. When the endpoint already has a secret, both ask how long the old one keeps working (or take `--previous-secret-ttl 24h` in scripts). The MCP server's `set_webhook_secret` and `generate_webhook_secret` descriptions now point AI agents at these commands, so the secret stays out of the agent's context. ([`daaaa41db`](https://github.com/triggerdotdev/trigger.dev/commit/daaaa41dbb0c4ed92887addbd27d17f55f516817))
+- Deprecates the legacy Bun runtime. `runtime: "bun"` (and its explicit spelling `"bun-legacy"`), which deploys Bun 1.3.3 with Node.js 20 alongside it, now prints a deprecation warning, and deploys that use it will be rejected from January 5, 2027. Switch to `runtime: "bun-1.4"` (Bun 1.4.4 on an image with no Node.js binary) and redeploy. ([`5f8171cab`](https://github.com/triggerdotdev/trigger.dev/commit/5f8171cab0e5d2b02e6446455b6569ba7c031a3b))
+- Updated dependencies:
+  - `@trigger.dev/core@4.8.3`
+  - `@trigger.dev/build@4.8.3`
+  - `@trigger.dev/schema-to-json@4.8.3`
+
 ## 4.8.2
 
 ### Patch Changes
