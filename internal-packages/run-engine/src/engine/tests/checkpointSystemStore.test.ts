@@ -150,7 +150,14 @@ describe("CheckpointSystem store routing (single-DB passthrough)", () => {
     "checkpoint create routes the TaskRunCheckpoint write + SUSPENDED snapshot through the store",
     async ({ prisma, redisOptions }) => {
       const countingStore = new CountingPostgresRunStore({ prisma, readOnlyPrisma: prisma });
-      const engine = new RunEngine(createEngineOptions(redisOptions, prisma, countingStore));
+      let checkpointFlagCalls = 0;
+      const engine = new RunEngine({
+        ...createEngineOptions(redisOptions, prisma, countingStore),
+        waitpointStoreEnabled: async () => {
+          checkpointFlagCalls++;
+          return false;
+        },
+      });
 
       try {
         const { run, blockingSnapshotId } = await driveToCheckpointable(
@@ -161,6 +168,7 @@ describe("CheckpointSystem store routing (single-DB passthrough)", () => {
 
         const checkpointsBefore = countingStore.checkpointCreates;
         const snapshotsBefore = countingStore.snapshotCreates;
+        checkpointFlagCalls = 0;
 
         const checkpointResult = await engine.createCheckpoint({
           runId: run.id,
@@ -174,6 +182,10 @@ describe("CheckpointSystem store routing (single-DB passthrough)", () => {
         });
 
         expect(checkpointResult.ok).toBe(true);
+        // No store router is installed: a checkpoint must not resolve the waitpoint flag.
+        expect(checkpointFlagCalls).toBe(0);
+        // An unwired check must not create a Promise on the checkpoint path.
+        expect(engine.waitpointSystem.isStoreRoutingEnabled()).toBe(false);
 
         // (1) a TaskRunCheckpoint row exists for the run (joined via the SUSPENDED snapshot).
         const persistedCheckpoint = await prisma.taskRunCheckpoint.findFirst({

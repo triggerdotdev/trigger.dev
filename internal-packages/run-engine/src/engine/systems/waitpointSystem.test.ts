@@ -331,6 +331,8 @@ describe("WaitpointSystem create/block write routing", () => {
             store: wired ? destination : undefined,
             isStoreEnabled: isEnabled,
             mintPolicy: { resolveMintMode: () => "redis", isCapabilityReady: () => true },
+            withLegacyRegistrationLock: (runId, operation) =>
+              resources.runLock.lock("routing-test", [runId], operation),
           });
           const system = new WaitpointSystem({
             ...engine.waitpointSystem["options"],
@@ -342,8 +344,9 @@ describe("WaitpointSystem create/block write routing", () => {
                 }
               : undefined,
           });
-          const expectOneFlagCheck = (before: number) => {
-            expect(checkedOrganizations.slice(before)).toEqual(wired ? [organizationId] : []);
+          const expectFlagChecks = (before: number, enabledCount = 1) => {
+            const count = !wired ? 0 : mode === "enabled" ? enabledCount : 1;
+            expect(checkedOrganizations.slice(before)).toEqual(Array(count).fill(organizationId));
           };
           for (const native of [false, true]) {
             const id = native ? generateWaitpointId("DATETIME") : WaitpointId.generate().id;
@@ -372,23 +375,20 @@ describe("WaitpointSystem create/block write routing", () => {
             let beforeFlagChecks = checkedOrganizations.length;
             if (mode === "enabled" && native) {
               await expect(router.registerBlocks(params)).rejects.toThrow("three-step barrier");
-              expectOneFlagCheck(beforeFlagChecks);
+              expectFlagChecks(beforeFlagChecks);
               beforeFlagChecks = checkedOrganizations.length;
               await expect(router.registerBlocksLockless(params)).rejects.toThrow(
                 "three-step barrier"
               );
-              expectOneFlagCheck(beforeFlagChecks);
+              expectFlagChecks(beforeFlagChecks);
               expect(legacyStore.calls).toEqual([]);
             } else {
-              expect(await router.registerBlocks(params)).toEqual(
-                mode === "enabled"
-                  ? { pendingCount: 1, storeRoutingEnabled: true }
-                  : { pendingCount: 1 }
-              );
-              expectOneFlagCheck(beforeFlagChecks);
+              expect(await router.registerBlocks(params)).toEqual({ pendingCount: 1 });
+              // The cleanup fence has its own independent gate after registration's routing gate.
+              expectFlagChecks(beforeFlagChecks, 2);
               beforeFlagChecks = checkedOrganizations.length;
               await router.registerBlocksLockless(params);
-              expectOneFlagCheck(beforeFlagChecks);
+              expectFlagChecks(beforeFlagChecks, 3);
               // Direct delegation preserves the original collection, including duplicates.
               if (mode !== "enabled") expect(legacyStore.blockInputs.at(-1)).toBe(ids);
               expect(legacyStore.calls).toEqual([
@@ -404,7 +404,8 @@ describe("WaitpointSystem create/block write routing", () => {
                 projectId: env.projectId,
                 organizationId,
               });
-              expectOneFlagCheck(beforeFlagChecks);
+              // System admission, absorption, and cleanup-fence gates remain separate stages.
+              expectFlagChecks(beforeFlagChecks, 3);
               expect(destinationStore.calls).toEqual([]);
             }
             // Ensure a fan-out edge even when enabled registration correctly rejected this parent.
@@ -432,8 +433,8 @@ describe("WaitpointSystem create/block write routing", () => {
             if (!nativeDispatch) {
               // Complete-before-register uses the same gated payload on the immediate unblock path.
               beforeFlagChecks = checkedOrganizations.length;
-              // A flag change after the check affects the next operation, not this registration's
-              // route or derived continuation payload. There is no decision cache across operations.
+              // A flag change after system admission is rechecked by absorption. The system still
+              // carries its admitted org onto the continuation; the next operation evaluates afresh.
               disableAfterNextCheck = mode === "enabled";
               await system.blockRunWithWaitpoint({
                 runId: run.id,
@@ -441,7 +442,7 @@ describe("WaitpointSystem create/block write routing", () => {
                 projectId: env.projectId,
                 organizationId,
               });
-              expectOneFlagCheck(beforeFlagChecks);
+              expectFlagChecks(beforeFlagChecks, 2);
               const immediate = await resources.worker.getJob(`continueRunIfUnblocked:${run.id}`);
               expect(immediate?.item).toEqual(
                 mode === "enabled" ? { runId: run.id, organizationId } : { runId: run.id }
@@ -450,7 +451,7 @@ describe("WaitpointSystem create/block write routing", () => {
               if (mode === "enabled") {
                 beforeFlagChecks = checkedOrganizations.length;
                 await system.completeWaitpoint({ id, organizationId });
-                expectOneFlagCheck(beforeFlagChecks);
+                expectFlagChecks(beforeFlagChecks);
                 const disabledJob = await resources.worker.getJob(
                   `continueRunIfUnblocked:${run.id}`
                 );
@@ -463,7 +464,7 @@ describe("WaitpointSystem create/block write routing", () => {
             beforeFlagChecks = checkedOrganizations.length;
             const direct = await router.complete({ waitpointId: id, organizationId });
             expect(direct.waitpoint.status).toBe("COMPLETED");
-            expectOneFlagCheck(beforeFlagChecks);
+            expectFlagChecks(beforeFlagChecks);
             const missing = generateWaitpointId("DATETIME");
             legacyStore.calls.length = 0;
             destinationStore.calls.length = 0;
@@ -489,7 +490,7 @@ describe("WaitpointSystem create/block write routing", () => {
             completedAfter: new Date(),
             mintContext: { organizationId, parentResidency: "redis-primary" },
           });
-          expectOneFlagCheck(beforeFlagChecks);
+          expectFlagChecks(beforeFlagChecks);
           expect(mode === "enabled" ? legacyStore.calls : destinationStore.calls).toEqual([]);
           expect(mode === "enabled" ? destinationStore.calls : legacyStore.calls).toEqual([
             "upsertWaitpoint",

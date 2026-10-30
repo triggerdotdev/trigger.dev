@@ -6,18 +6,26 @@ import {
   UnclassifiableRunId,
 } from "@trigger.dev/core/v3/isomorphic";
 import type { Logger } from "@trigger.dev/core/logger";
-import type { PrismaClient, Waitpoint } from "@trigger.dev/database";
+import type { PrismaClient, PrismaClientOrTransaction, Waitpoint } from "@trigger.dev/database";
 import { boundedIn, Prisma } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import { UnclassifiableWaitpointId } from "../errors.js";
 import type {
+  AbandonRunBlockersParams,
+  AbsorbBlockersParams,
+  AbsorbedBlockersParams,
+  AbsorbBlockersResult,
+  AcknowledgeResumeParams,
   AssociatedWaitpointData,
+  BlockerRegistration,
   ClearRunBlockStateParams,
+  ReleaseRunBlockersParams,
   CompleteParams,
   CompleteResult,
   CreateDateTimeWaitpointParams,
   CreateManualWaitpointParams,
   CreateWaitpointResult,
+  RegisterBlockersResult,
   RegisterBlocksLocklessParams,
   RegisterBlocksParams,
   RunBlockEdge,
@@ -118,6 +126,80 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
   async registerBlocksLockless(params: RegisterBlocksLocklessParams): Promise<void> {
     await this.#writeBlockEdges(params);
   }
+
+  async finalizeBlockers(_params: AbsorbedBlockersParams): Promise<void> {}
+
+  async hasAbsorbedBlockers(_params: AbsorbedBlockersParams): Promise<boolean> {
+    return false;
+  }
+
+  // Phase 1. Legacy has no absorb/register split: the edge write IS the absorption, and the separate
+  // pending re-count is the same READ COMMITTED re-read `registerBlocks` does. The count is carried in
+  // the noop continuation so phase 3 can return it unchanged.
+  async absorbBlockers({ client, ...edge }: AbsorbBlockersParams): Promise<AbsorbBlockersResult> {
+    await this.#writeBlockEdges(edge);
+    const pendingCount = await this.runStore.countPendingWaitpoints(
+      edge.waitpointIds,
+      client,
+      edge.runId
+    );
+    return { pendingCount, registration: { kind: "noop", pendingCount } };
+  }
+
+  // Phase 3. Nothing to register for a Postgres blocker — completion fans out at complete() time by
+  // querying the edges. Returns the pending count absorb carried, so the caller's resume decision is
+  // identical to today's single-call behaviour.
+  async registerBlockers(registration: BlockerRegistration): Promise<RegisterBlockersResult> {
+    if (registration.kind !== "noop") {
+      throw new Error(
+        `LegacyPostgresWaitpointCoordinator.registerBlockers received a ${registration.kind} continuation`
+      );
+    }
+    return { pendingCount: registration.pendingCount };
+  }
+
+  // Postgres has no store block-operation id.
+  async currentStoreBlockId(): Promise<string | undefined> {
+    return undefined;
+  }
+
+  // Postgres has no watcher registration or resume handoff to acknowledge — completion already fanned
+  // out at complete() time — so the resume cleanup is just deleting the run's consumed edge rows.
+  async acknowledgeResume(params: AcknowledgeResumeParams): Promise<void> {
+    await this.clearRunBlockState({ runId: params.runId, edgeIds: params.edgeIds });
+  }
+
+  // No terminal-fence to install for Postgres: deleting the edge rows is the cancel/terminal cleanup.
+  async releaseRunBlockers(params: ReleaseRunBlockersParams): Promise<{ count: number }> {
+    return this.clearRunBlockState({ runId: params.runId, tx: params.tx });
+  }
+
+  // No terminal marker to avoid either: a retry abandon is the same edge delete for Postgres.
+  async abandonRunBlockers(params: AbandonRunBlockersParams): Promise<{ count: number }> {
+    return this.clearRunBlockState({ runId: params.runId, tx: params.tx });
+  }
+
+  // No store watchers to withdraw on the legacy half — the retained store replay never reaches here.
+  async resumeRetainedWithdrawal(): Promise<{ count: number }> {
+    return { count: 0 };
+  }
+
+  // A pure-Postgres run IS legacy-only: delete its edges in the caller's client, before the transition.
+  async clearLegacyBlockersBeforeTransition(params: {
+    runId: string;
+    organizationId?: string;
+    tx?: PrismaClientOrTransaction;
+  }): Promise<{ count: number }> {
+    return this.clearRunBlockState({ runId: params.runId, tx: params.tx });
+  }
+
+  // No store contribution to compensate on the legacy half of a mixed absorption.
+  async compensateAbsorption(): Promise<void> {}
+
+  // No store block to fence: a pure-Postgres run never installs a MemoryDB cycle over a previous one.
+  async armCleanupFence(): Promise<void> {}
+
+  async assertNoCleanupOwed(): Promise<void> {}
 
   async complete({ waitpointId, output }: CompleteParams): Promise<CompleteResult> {
     // Residency store-selection guard. complete arrives with only (waitpointId, output) — no run

@@ -1,9 +1,32 @@
 import { z } from "zod";
 
 export const workerCatalog = {
+  recoverWaitpointBlock: {
+    schema: z.object({
+      runId: z.string(),
+      organizationId: z.string(),
+      projectId: z.string(),
+      waitpoints: z.array(z.string()),
+      blockOperation: z.object({
+        id: z.string(),
+        absorptionId: z.string(),
+        cycleAnchor: z.string(),
+        expectedPreviousBlockId: z.string().optional(),
+      }),
+      timeout: z.coerce.date().optional(),
+      spanIdToComplete: z.string().optional(),
+      batch: z.object({ id: z.string(), index: z.number().optional() }).optional(),
+      workerId: z.string().optional(),
+      runnerId: z.string().optional(),
+      expectedEnvironmentId: z.string().optional(),
+    }),
+    visibilityTimeoutMs: 30_000,
+    retry: { maxAttempts: 10_000, minTimeoutInMs: 1_000, maxTimeoutInMs: 300_000 },
+  },
   finishWaitpoint: {
     schema: z.object({
       waitpointId: z.string(),
+      organizationId: z.string().optional(),
       error: z.string().optional(),
     }),
     visibilityTimeoutMs: 30_000,
@@ -114,6 +137,7 @@ export const workerCatalog = {
   ensureWaitpointCompleted: {
     schema: z.object({
       waitpointId: z.string(),
+      organizationId: z.string().optional(),
       output: z
         .object({
           value: z.string(),
@@ -134,6 +158,25 @@ export const workerCatalog = {
       runId: z.string(),
     }),
     visibilityTimeoutMs: 30_000,
+  },
+  /**
+   * Retry cleanup when Postgres registration and immediate MemoryDB cleanup both fail.
+   * Hold the parent run lock. Remove only this operation's added edges.
+   * Preserve successful registrations and newer blocks.
+   */
+  ensureAbsorptionCompensated: {
+    schema: z.object({
+      runId: z.string(),
+      blockId: z.string(),
+      absorptionId: z.string(),
+      organizationId: z.string().optional(),
+    }),
+    visibilityTimeoutMs: 30_000,
+    retry: {
+      maxAttempts: 10_000,
+      minTimeoutInMs: 1_000,
+      maxTimeoutInMs: 300_000,
+    },
   },
 };
 

@@ -24,6 +24,7 @@ export const ROUTES_BY_GIVEN_RUN_ID: readonly string[] = [
   "recordRetryOutcome",
   "requeueRun",
   "recordBulkActionMembership",
+  "markRunWaitpointsOnStore",
   "cancelRun",
   "failRunPermanently",
   "finalizeRun",

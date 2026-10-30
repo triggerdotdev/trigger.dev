@@ -1,4 +1,5 @@
-import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
+import { createHash, randomUUID } from "node:crypto";
+import { createRedisClient, type RedisClient, type RedisOptions } from "@internal/redis";
 import type { Counter, Meter } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { parseWaitpointId } from "@trigger.dev/core/v3/isomorphic";
@@ -13,10 +14,22 @@ import {
   idempotencyKey,
   parseEdgeField,
   runBlockKeys,
+  runContributionKey,
+  runContributionIndexKey,
+  runRegistrationSourcesKey,
+  contributionMember,
+  registrationEvidence,
+  runWithdrawalKey,
+  runWithdrawalTargetsKey,
+  runResultKey,
   waitpointKeys,
   watcherField,
 } from "./keys.js";
-import { registerWaitpointCommands } from "./scripts.js";
+import {
+  registerWaitpointCommands,
+  RUN_CLEANUP_PAGE_SIZE,
+  RETAIN_WAITPOINT_RECORD,
+} from "./scripts.js";
 
 /** The values written into a record's `status` field. Uppercase, and never a token. */
 export type WaitpointStatus = "PENDING" | "COMPLETED";
@@ -39,7 +52,16 @@ type ScriptName =
   | "runMarkHandoffAcked"
   | "runTerminalCleanup"
   | "runReadBlockState"
-  | "runClear";
+  | "runClear"
+  | "runAbandonRetainAndClear"
+  | "runTerminalRetainAndClear"
+  | "runArmCleanupFence"
+  | "runReadCleanupFence"
+  | "runClearCleanupFence"
+  | "runFinalizeRetainedWithdrawal"
+  | "runWithdrawalPage"
+  | "runCompensateAbsorption"
+  | "runDeleteContribution";
 
 /**
  * The immutable half of a waitpoint, written once at creation. Carries every field the
@@ -85,6 +107,44 @@ export type WaitpointCompletion = {
   outputIsError: boolean;
   output: WaitpointCompletionOutput;
 };
+
+/** A receipt may replace a source read only when it carries a complete, matching frozen record. */
+function assertRetainedCompletion(
+  receipt: WaitpointCompletion & { record?: WaitpointRecordInput },
+  waitpointId: string
+): asserts receipt is WaitpointCompletion & { record: WaitpointRecordInput } {
+  const record = receipt.record;
+  const parsed = parseWaitpointId(waitpointId);
+  const output = receipt.output;
+  if (
+    !record ||
+    parsed.format !== "b32hexW" ||
+    record.id !== waitpointId ||
+    record.type !== parsed.type ||
+    typeof record.friendlyId !== "string" ||
+    typeof record.environmentId !== "string" ||
+    typeof record.projectId !== "string" ||
+    !Number.isFinite(Date.parse(record.createdAt)) ||
+    !Number.isFinite(Date.parse(record.updatedAt)) ||
+    typeof record.userProvidedIdempotencyKey !== "boolean" ||
+    !Array.isArray(record.tags) ||
+    !record.tags.every((tag) => typeof tag === "string") ||
+    (record.type === "RUN" &&
+      (typeof record.completedByTaskRunId !== "string" || !record.completedByTaskRunId)) ||
+    typeof receipt.outputType !== "string" ||
+    typeof receipt.outputIsError !== "boolean" ||
+    !Number.isFinite(Date.parse(receipt.completedAt)) ||
+    (output !== null &&
+      (typeof output !== "object" ||
+        !(
+          ("inline" in output && typeof output.inline === "string") ||
+          ("ref" in output && typeof output.ref === "string")
+        )))
+  ) {
+    throw new Error(`Invalid retained completion for waitpoint ${waitpointId}`);
+  }
+  assertCompletionWithinLimits(receipt, "registerAndDeliver.retained");
+}
 
 /**
  * The largest inline completion output this coordinator will accept, in BYTES.
@@ -273,10 +333,11 @@ export class EncodedWaitpointCompletion {
   /** The ONLY way to obtain one. Validates, then serializes exactly once. */
   static encode(
     completion: WaitpointCompletion | undefined,
-    context: string
+    context: string,
+    record?: WaitpointRecordInput
   ): EncodedWaitpointCompletion {
     assertCompletionWithinLimits(completion, context);
-    const json = completion ? JSON.stringify(completion) : "";
+    const json = completion ? JSON.stringify(record ? { ...completion, record } : completion) : "";
     return new EncodedWaitpointCompletion(
       ENCODED_CONSTRUCTOR_TOKEN,
       json,
@@ -292,9 +353,10 @@ export class EncodedWaitpointCompletion {
 
 export function encodeCompletionForDelivery(
   completion: WaitpointCompletion | undefined,
-  context: string
+  context: string,
+  record?: WaitpointRecordInput
 ): EncodedWaitpointCompletion {
-  return EncodedWaitpointCompletion.encode(completion, context);
+  return EncodedWaitpointCompletion.encode(completion, context, record);
 }
 
 /**
@@ -338,7 +400,13 @@ export type CreateIfAbsentResult =
 
 export type RegisterOrReportResult =
   | { outcome: "registered" }
-  | { outcome: "completed"; completion?: WaitpointCompletion };
+  | {
+      outcome: "completed";
+      completion?: WaitpointCompletion;
+      record?: WaitpointRecordInput;
+      /** The completing run's id (record `cbt`), returned ATOMICALLY with the envelope for cachedRunId. */
+      completedByTaskRunId?: string;
+    };
 
 /** The lifecycle of a waitpoint's fanout obligation. `absent` means none was ever owed. */
 export type FanoutState = "absent" | "pending" | "done" | "quarantined";
@@ -366,10 +434,10 @@ export type BlockEdge = {
   createdAt: string;
   type: WaitpointRecordInput["type"];
   completedAfter?: string;
-  // Set when the register step already reported this waitpoint COMPLETED. The box, not
+  // Set when a source read or register step reported this waitpoint COMPLETED. The box, not
   // `completion`, carries the "reported" fact: box present + no completion means
   // COMPLETED-with-no-envelope, box absent means never reported.
-  reported?: { completion?: WaitpointCompletion };
+  reported?: { completion?: WaitpointCompletion & { record?: WaitpointRecordInput } };
 };
 
 export type AbsorbResult = {
@@ -378,7 +446,7 @@ export type AbsorbResult = {
    * on to a block this operation did not expect; `terminal` means it has been through
    * cleanup. Both mutated nothing, and neither may proceed to registration.
    */
-  outcome: "absorbed" | "stale" | "terminal";
+  outcome: "absorbed" | "stale" | "terminal" | "cleanupOwed";
   /** The block the run is actually on, for diagnosing a refusal. */
   currentBlockId?: string;
   /**
@@ -394,7 +462,10 @@ export type AbsorbResult = {
    * a decision to resume.
    */
   storePendingTotal: number;
-  alreadyDelivered: Array<{ waitpointId: string; completion?: WaitpointCompletion }>;
+  alreadyDelivered: Array<{
+    waitpointId: string;
+    completion?: WaitpointCompletion & { record?: WaitpointRecordInput };
+  }>;
   /**
    * What the rollover did about the SUPERSEDED cycle's watcher registrations, when this call
    * replaced one. Absent when nothing was superseded — a first block, or a same-block retry.
@@ -403,6 +474,18 @@ export type AbsorbResult = {
    * just installed, so the caller gets the block AND the residue.
    */
   supersededCleanup?: SupersededCleanup;
+  /**
+   * Cached spans closed by an early/racing delivery during registerAndDeliver, for the caller to emit as
+   * cachedRunCompleted. Empty from a bare absorb (delivery is registration's job). Shape matches the
+   * contract layer's CachedSpanCompletion; kept inline so this low-level module stays free of that import.
+   */
+  cachedSpanCompletions?: Array<{
+    spanId: string;
+    spanCreatedAt: string;
+    blockedRunId: string;
+    hasError: boolean;
+    cachedRunId?: string;
+  }>;
 };
 
 export type SupersededCleanup = {
@@ -487,6 +570,13 @@ export type FanoutClaim =
       failures: number;
       /** Completion time in epoch ms, for the completion-to-delivery latency signal. */
       completedAtMs: number;
+      /**
+       * The waitpoint record's `completedByTaskRunId`, carried once per claimed page so cached-span
+       * completion can supply it as `cachedRunId` without a per-watcher record read. Undefined when the
+       * record does not carry it.
+       */
+      completedByTaskRunId?: string;
+      record?: WaitpointRecordInput;
       page: FanoutPageEntry[];
     };
 
@@ -604,7 +694,11 @@ export class WaitpointCompletionConflictError extends Error {
 export const DEFAULT_TERMINAL_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 
 export type WaitpointStoreCoordinatorOptions = {
-  redisOptions: RedisOptions;
+  redisOptions?: RedisOptions;
+  /** App-owned standalone or MemoryDB cluster client. No eager connection is required. */
+  client?: RedisClient;
+  /** Connect and validate infrastructure before commands; inert until a store operation. */
+  beforeCommand?: () => Promise<void>;
   logger?: Logger;
   meter?: Meter;
   /** Defaults to {@link DEFAULT_TERMINAL_RETENTION_MS}. */
@@ -643,7 +737,9 @@ function decodeHandoff(raw: string | undefined): HandoffState {
 }
 
 export class WaitpointStoreCoordinator {
-  private readonly redis: Redis;
+  private readonly redis: RedisClient;
+  private readonly beforeCommand?: () => Promise<void>;
+  private readonly ownsClient: boolean;
   private readonly logger: Logger;
   private readonly terminalRetentionMs: number;
   private readonly clock: () => number;
@@ -663,10 +759,17 @@ export class WaitpointStoreCoordinator {
     this.logger = options.logger ?? new Logger("WaitpointStoreCoordinator", "debug");
     this.terminalRetentionMs = options.terminalRetentionMs ?? DEFAULT_TERMINAL_RETENTION_MS;
     this.clock = options.clock ?? Date.now;
-    this.redis = createRedisClient(options.redisOptions, {
-      onError: (error) =>
-        this.logger.error("WaitpointStoreCoordinator redis client error", { error }),
-    });
+    if (!options.client && !options.redisOptions) {
+      throw new Error("Waitpoint store requires a Redis client or connection options");
+    }
+    this.beforeCommand = options.beforeCommand;
+    this.ownsClient = !options.client;
+    this.redis =
+      options.client ??
+      createRedisClient(options.redisOptions!, {
+        onError: (error) =>
+          this.logger.error("WaitpointStoreCoordinator redis client error", { error }),
+      });
     registerWaitpointCommands(this.redis);
 
     if (options.meter) {
@@ -712,6 +815,11 @@ export class WaitpointStoreCoordinator {
   // Idempotent and error-swallowing: every test calls this in a finally, and a double quit
   // must never mask the real assertion failure.
   async quit(): Promise<void> {
+    if (!this.ownsClient) return;
+    if (this.redis.status === "wait" || this.redis.status === "end") {
+      this.redis.disconnect();
+      return;
+    }
     if (!this.#quit) {
       this.#quit = this.redis.quit().then(
         () => undefined,
@@ -731,7 +839,32 @@ export class WaitpointStoreCoordinator {
    */
   #call(script: ScriptName, keys: string[], ...argv: string[]): Promise<string[]> {
     assertSingleSlot(script, keys);
-    const command = this.redis[script] as (...args: string[]) => Promise<string[]>;
+    // Each read-affecting mutation gets a fresh epoch, including retries of a logical operation.
+    // Delivery initializes the epoch only; its immutable receipt ordinal preserves an ongoing read.
+    if (
+      [
+        "runAbsorbBlockers",
+        "runDeliverCompletion",
+        "runMarkHandoffAcked",
+        "runTerminalCleanup",
+        "runClear",
+        "runAbandonRetainAndClear",
+        "runTerminalRetainAndClear",
+        "runCompensateAbsorption",
+      ].includes(script)
+    ) {
+      argv.push(randomUUID());
+    }
+    const command = Reflect.get(this.redis, script) as (...args: string[]) => Promise<string[]>;
+    return this.#dispatch(command, keys, argv);
+  }
+
+  async #dispatch(
+    command: (...args: string[]) => Promise<string[]>,
+    keys: string[],
+    argv: string[]
+  ): Promise<string[]> {
+    await this.beforeCommand?.();
     return command.call(this.redis, ...keys, ...argv);
   }
 
@@ -764,7 +897,8 @@ export class WaitpointStoreCoordinator {
       JSON.stringify(args.record),
       args.status,
       args.completion ? JSON.stringify(args.completion) : "",
-      String(this.terminalRetentionMs)
+      String(this.terminalRetentionMs),
+      args.record.completedByTaskRunId ?? ""
     );
 
     if (reply[0] === "created") {
@@ -794,6 +928,8 @@ export class WaitpointStoreCoordinator {
     batchIndex?: number | null;
     spanIdToComplete?: string;
     createdAt: string;
+    /** The watching run's org, stored on the watcher so the fanout continuation routes without a lookup. */
+    organizationId?: string;
   }): Promise<RegisterOrReportResult> {
     const keys = waitpointKeys(args.waitpointId);
 
@@ -805,6 +941,7 @@ export class WaitpointStoreCoordinator {
       batchIndex: args.batchIndex ?? undefined,
       spanIdToComplete: args.spanIdToComplete,
       createdAt: args.createdAt,
+      organizationId: args.organizationId,
     };
 
     const reply = await this.#call(
@@ -821,7 +958,12 @@ export class WaitpointStoreCoordinator {
       // Registration after completion needs no fanout: the frozen envelope comes straight
       // back and the caller delivers it against the run's own shard.
       this.metrics.registrations?.add(1, { outcome: "reported_complete" });
-      return { outcome: "completed", completion: parseJson<WaitpointCompletion>(reply[1]) };
+      return {
+        outcome: "completed",
+        completion: parseJson<WaitpointCompletion>(reply[1]),
+        completedByTaskRunId: reply[2] || undefined,
+        record: parseJson<WaitpointRecordInput>(reply[3]),
+      };
     }
 
     this.metrics.registrations?.add(1, { outcome: "registered" });
@@ -1026,15 +1168,29 @@ export class WaitpointStoreCoordinator {
      * predecessor makes the two distinguishable, and a mismatch is refused as `stale`.
      */
     expectedPreviousBlockId?: string;
+    /**
+     * Stable across retries and unique to this additive operation. Each operation claims its edges;
+     * compensation releases those claims and removes only edges with no remaining claims.
+     * The adapter always supplies it. Direct calls without an ID retain their claims until block cleanup.
+     */
+    absorptionId?: string;
+    registrationEvidence?: string;
+    batchIndex?: number;
   }): Promise<AbsorbResult> {
     // Every reported completion, checked before the loop below serializes any of them. A
     // reported completion rides into absorption as a receipt, so it reaches the same
     // `JSON.stringify` an inline completion does and needs the same ceiling.
     for (const item of args.edges) {
       assertCompletionWithinLimits(item.reported?.completion, `absorbBlockers:${item.waitpointId}`);
+      if (item.reported?.completion?.record !== undefined) {
+        assertRetainedCompletion(item.reported.completion, item.waitpointId);
+      }
     }
 
     const keys = runBlockKeys(args.runId);
+    const replayCleanup = args.expectedPreviousBlockId
+      ? await this.#withdrawSupersededWatchers(args.runId, args.expectedPreviousBlockId)
+      : undefined;
 
     // No fast path for an empty list: storePendingTotal is defined as the run's WHOLE
     // store-resident pending set, so it has to be read even when nothing is requested.
@@ -1060,16 +1216,40 @@ export class WaitpointStoreCoordinator {
 
     const reply = await this.#call(
       "runAbsorbBlockers",
-      [keys.pend, keys.done, keys.edge, keys.state],
-      ...argv
+      [
+        keys.pend,
+        keys.done,
+        keys.edge,
+        keys.state,
+        runContributionKey(args.runId, args.blockId, args.absorptionId ?? ""),
+        runResultKey(args.runId),
+        keys.refs,
+        keys.edgeIndex,
+        keys.doneOrder,
+        keys.early,
+        keys.earlyOrder,
+        runWithdrawalKey(args.runId, args.expectedPreviousBlockId ?? ""),
+        runWithdrawalTargetsKey(args.runId, args.expectedPreviousBlockId ?? ""),
+        runContributionIndexKey(args.runId),
+      ],
+      ...argv,
+      args.absorptionId ?? "",
+      contributionMember(args.blockId, args.absorptionId ?? ""),
+      args.registrationEvidence ??
+        registrationEvidence(
+          args.edges.map((edge) => edge.waitpointId),
+          args.batchIndex ?? args.edges[0]?.batchIndex ?? undefined
+        )
     );
 
-    // Refused outcomes mutated NOTHING — not pend, done, edge, blk, hs, term, and no
-    // watchers. The caller must not go on to register, so this is a result and not a partial
+    // Refused scripts mutate no active block state. An earlier retained predecessor can still
+    // converge on a stale retry; the caller must not register, so this is a result and not a partial
     // absorb: `registerBlocks` stops here, and a direct caller reads `outcome`.
-    if (reply[0] === "stale" || reply[0] === "terminal") {
+    if (reply[0] === "stale" || reply[0] === "terminal" || reply[0] === "cleanupOwed") {
       this.metrics.staleAbsorbs?.add(1, { outcome: reply[0] });
       return {
+        // `cleanupOwed`: a previous mixed block's cross-store cleanup is still owed, so this DIFFERENT block
+        // is refused (active block unchanged) until the fence clears — reply[1] is the block that owes cleanup.
         outcome: reply[0],
         currentBlockId: reply[1] || undefined,
         pendingOfRequested: 0,
@@ -1082,21 +1262,22 @@ export class WaitpointStoreCoordinator {
     // after the fields those two delimit. See the `out` table in runAbsorbBlockers.
     const supersededBlockId = reply[3] ?? "";
     const supersededFieldCount = Number(reply[4] ?? 0);
-    const supersededFields = reply.slice(5, 5 + supersededFieldCount);
 
     const alreadyDelivered: AbsorbResult["alreadyDelivered"] = [];
     for (let i = 5 + supersededFieldCount; i < reply.length; i += 2) {
       alreadyDelivered.push({
         waitpointId: reply[i]!,
-        completion: parseJson<WaitpointCompletion>(reply[i + 1]),
+        completion: parseJson<WaitpointCompletion & { record?: WaitpointRecordInput }>(
+          reply[i + 1]
+        ),
       });
     }
 
-    // AFTER the script committed, never before: the block is installed either way, and a
-    // cleanup that ran first could withdraw registrations for a rollover that then failed.
+    // Fresh targets exist only after the atomic rollover committed. A retry may also have
+    // converged an already-retained predecessor before the CAS, without touching active state.
     const supersededCleanup = supersededBlockId
-      ? await this.#withdrawSupersededWatchers(args.runId, supersededBlockId, supersededFields)
-      : undefined;
+      ? await this.#withdrawSupersededWatchers(args.runId, supersededBlockId)
+      : replayCleanup;
 
     return {
       outcome: "absorbed",
@@ -1108,84 +1289,50 @@ export class WaitpointStoreCoordinator {
   }
 
   /**
-   * Withdraw a superseded block's watcher registrations from their waitpoint shards.
-   *
-   * Each waitpoint is its own shard, so this cannot be part of the rollover script and cannot
-   * be atomic with it. That is the whole reason the fields are returned rather than acted on
-   * inside the Lua.
-   *
-   * Idempotent by construction: the watcher field carries the block id, so withdrawing the
-   * superseded block's registration cannot touch the new block's — even when the new block
-   * blocks on the very same waitpoint. `absent` and `missing` are both SUCCESS: a watcher
-   * already gone, or a waitpoint that has since expired, is the state this is trying to reach.
-   *
-   * THE BOUNDARY: a crash, a lost reply, or a cross-shard failure between the rollover
-   * committing and these unregistrations completing leaves registrations behind. They are inert
-   * — a completion delivering under a superseded block id is refused as stale — but they are
-   * unreachable from the run side, because the edge set that named them is gone. Repairing that
-   * residue is the reconciliation lane's, and this method reports it rather than retrying forever.
+   * Withdraw a detached predecessor in bounded, replay-safe pages. Watcher fields contain the block
+   * identity, so this never removes a newer block's registration. Retire only successful targets;
+   * failures remain in the no-TTL manifest for an explicit predecessor retry/reconciliation. Current
+   * application block-operation builders do not request rollover; this is the primitive's contract,
+   * not an automatically scheduled recovery promise.
    */
   async #withdrawSupersededWatchers(
     runId: string,
-    blockId: string,
-    fields: string[]
-  ): Promise<SupersededCleanup> {
-    const targets = fields.flatMap((field) => {
-      const parsed = parseEdgeField(field);
-      if (!parsed) {
-        // An unparseable field cannot name a waitpoint to unregister from. Reported as residue
-        // rather than dropped silently, because it means the edge encoding drifted.
-        this.logger.error("Waitpoint rollover found an unparseable superseded edge field", {
-          runId,
-          blockId,
-          field,
-        });
-        return [];
-      }
-      return [parsed];
-    });
-
+    blockId: string
+  ): Promise<SupersededCleanup | undefined> {
+    let page = await this.readWithdrawalPage({ runId, blockId });
+    if (!page) return undefined;
     const failed: SupersededCleanup["failed"] = [];
     let withdrawn = 0;
-
-    await pMap(
-      targets,
-      async (target) => {
-        try {
-          await this.unregisterWatcher({
-            waitpointId: target.waitpointId,
-            runId,
-            blockId,
-            batchIndex: target.batchIndex,
-          });
-          // Every outcome the call can return — unregistered, absent, missing — means no
-          // registration under this block id remains, which is what was asked for.
-          withdrawn++;
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          failed.push({ ...target, error: message });
-          this.metrics.supersededWatcherCleanupFailures?.add(1);
-          this.logger.error("Waitpoint rollover could not withdraw a superseded watcher", {
-            runId,
-            blockId,
-            waitpointId: target.waitpointId,
-            error,
-          });
-        }
-      },
-      { concurrency: SUPERSEDED_CLEANUP_CONCURRENCY }
-    );
-
-    const unparseable = fields.length - targets.length;
-    if (failed.length > 0 || unparseable > 0) {
-      this.logger.error("Waitpoint rollover left reconciliation residue", {
-        runId,
-        blockId,
-        failed: failed.length,
-        unparseable,
-      });
+    while (page.fields.length > 0) {
+      const acknowledged: string[] = [];
+      await pMap(
+        page.fields,
+        async (field) => {
+          const target = parseEdgeField(field);
+          if (!target) throw new Error(`Invalid retained withdrawal target: ${field}`);
+          try {
+            await this.unregisterWatcher({ ...target, runId, blockId });
+            acknowledged.push(field);
+            withdrawn++;
+          } catch (error) {
+            failed.push({
+              ...target,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            this.metrics.supersededWatcherCleanupFailures?.add(1);
+          }
+        },
+        { concurrency: SUPERSEDED_CLEANUP_CONCURRENCY }
+      );
+      // Successful targets can be retired even if their page has failures. Failed targets remain
+      // durably discoverable by the same predecessor identity on a stale or ordinary caller retry.
+      await this.acknowledgeWithdrawalPage({ runId, blockId, fields: acknowledged });
+      if (failed.length > 0) break;
+      const next = await this.readWithdrawalPage({ runId, blockId });
+      if (!next) return { blockId, withdrawn, failed }; // Another retrier finalized the same manifest.
+      page = next;
     }
-
+    if (failed.length === 0) await this.finalizeRetainedWithdrawal({ runId, blockId });
     return { blockId, withdrawn, failed };
   }
 
@@ -1213,6 +1360,8 @@ export class WaitpointStoreCoordinator {
     runId: string;
     blockId: string;
     edges: BlockEdge[];
+    /** The watching run's org, stored on each watcher so the fanout continuation routes without a lookup. */
+    organizationId?: string;
     /**
      * What `absorbBlockers` reported for this same block. REQUIRED: registration is step 4
      * of the block sequence and step 2 always precedes it, so there is no supported flow in
@@ -1227,7 +1376,21 @@ export class WaitpointStoreCoordinator {
     );
     let storePendingTotal = args.absorbed.storePendingTotal;
 
+    // Absorption returns receipts under the current block's atomic fence. Their immutable metadata
+    // survives source expiry, so replay must consume it rather than registering an already-delivered
+    // waitpoint again. Older receipts without metadata still require the ordinary source validation.
+    const cbtByWaitpoint = new Map<string, string | undefined>();
+    const retained = new Map(
+      args.absorbed.alreadyDelivered.map((entry) => [entry.waitpointId, entry])
+    );
+
     for (const item of args.edges) {
+      const retainedCompletion = retained.get(item.waitpointId)?.completion;
+      if (retainedCompletion?.record !== undefined) {
+        assertRetainedCompletion(retainedCompletion, item.waitpointId);
+        cbtByWaitpoint.set(item.waitpointId, retainedCompletion.record.completedByTaskRunId);
+        continue;
+      }
       const result = await this.registerOrReport({
         waitpointId: item.waitpointId,
         runId: args.runId,
@@ -1235,7 +1398,12 @@ export class WaitpointStoreCoordinator {
         batchIndex: item.batchIndex,
         spanIdToComplete: item.spanIdToComplete,
         createdAt: item.createdAt,
+        organizationId: args.organizationId,
       });
+
+      if (result.outcome === "completed" && !cbtByWaitpoint.has(item.waitpointId)) {
+        cbtByWaitpoint.set(item.waitpointId, result.completedByTaskRunId);
+      }
 
       if (result.outcome !== "completed" || delivered.has(item.waitpointId)) {
         continue;
@@ -1248,6 +1416,8 @@ export class WaitpointStoreCoordinator {
         blockId: args.blockId,
         waitpointId: item.waitpointId,
         completion: result.completion,
+        requireCurrentBlock: true,
+        record: result.record,
       });
       delivered.set(item.waitpointId, result.completion);
       storePendingTotal = receipt.storePendingTotal;
@@ -1261,7 +1431,22 @@ export class WaitpointStoreCoordinator {
       }
     }
 
+    // Cached-span completions for edges whose delivery happened here (early or racing) and that carry a
+    // span. Independent of resumability — one blocker may close its span while others stay pending. The
+    // completed run identity (cachedRunId) came back ATOMICALLY with each completion above, so it can never
+    // diverge from the envelope at the record's expiry.
+    const cachedSpanCompletions = args.edges
+      .filter((edge) => edge.spanIdToComplete && delivered.has(edge.waitpointId))
+      .map((edge) => ({
+        spanId: edge.spanIdToComplete!,
+        spanCreatedAt: edge.createdAt,
+        blockedRunId: args.runId,
+        hasError: delivered.get(edge.waitpointId)?.outputIsError ?? false,
+        cachedRunId: cbtByWaitpoint.get(edge.waitpointId),
+      }));
+
     return {
+      cachedSpanCompletions,
       // This half only runs once absorption succeeded — a refusal never reaches it.
       outcome: "absorbed",
       pendingOfRequested,
@@ -1292,6 +1477,8 @@ export class WaitpointStoreCoordinator {
     runId: string;
     /** A FRESH id per block operation — see `runAbsorbBlockers` for why reuse is unsafe. */
     blockId: string;
+    /** The contribution identity; defaults to the block id when the caller runs one absorption per block. */
+    absorptionId?: string;
     edges: BlockEdge[];
     /** Forwarded to `absorbBlockers` as the compare-and-set precondition. */
     expectedPreviousBlockId?: string;
@@ -1301,6 +1488,7 @@ export class WaitpointStoreCoordinator {
       blockId: args.blockId,
       edges: args.edges.map(({ reported: _reported, ...edge }) => edge),
       expectedPreviousBlockId: args.expectedPreviousBlockId,
+      absorptionId: args.absorptionId ?? args.blockId,
     });
 
     // A refusal stops here. Registering for a block the store declined to install would leave
@@ -1330,10 +1518,13 @@ export class WaitpointStoreCoordinator {
      * done; the receipt is simply empty.
      */
     completion?: WaitpointCompletion;
+    record?: WaitpointRecordInput;
+    /** Production delivery follows absorption; refuse absence after cleanup/expiry. */
+    requireCurrentBlock?: boolean;
   }): Promise<DeliverResult> {
     return this.deliverEncodedCompletion({
       ...args,
-      encoded: encodeCompletionForDelivery(args.completion, "deliverCompletion"),
+      encoded: encodeCompletionForDelivery(args.completion, "deliverCompletion", args.record),
     });
   }
 
@@ -1349,6 +1540,7 @@ export class WaitpointStoreCoordinator {
     blockId: string;
     waitpointId: string;
     encoded: EncodedWaitpointCompletion;
+    requireCurrentBlock?: boolean;
   }): Promise<DeliverResult> {
     if (!EncodedWaitpointCompletion.isEncoded(args.encoded)) {
       throw new TypeError(
@@ -1360,10 +1552,20 @@ export class WaitpointStoreCoordinator {
 
     const reply = await this.#call(
       "runDeliverCompletion",
-      [keys.pend, keys.done, keys.state],
+      [
+        keys.pend,
+        keys.done,
+        keys.state,
+        runResultKey(args.runId),
+        keys.refs,
+        keys.doneOrder,
+        keys.early,
+        keys.earlyOrder,
+      ],
       args.blockId,
       args.waitpointId,
-      args.encoded.json
+      args.encoded.json,
+      args.requireCurrentBlock ? "1" : "0"
     );
 
     const outcome = reply[0] as DeliverResult["outcome"];
@@ -1435,7 +1637,18 @@ export class WaitpointStoreCoordinator {
 
     const reply = await this.#call(
       "runTerminalCleanup",
-      [keys.pend, keys.done, keys.edge, keys.state],
+      [
+        keys.pend,
+        keys.done,
+        keys.edge,
+        keys.state,
+        runResultKey(args.runId),
+        keys.refs,
+        keys.edgeIndex,
+        keys.doneOrder,
+        keys.early,
+        keys.earlyOrder,
+      ],
       String(this.clock()),
       String(this.terminalRetentionMs),
       voidHandoff
@@ -1452,12 +1665,14 @@ export class WaitpointStoreCoordinator {
   }
 
   /**
-   * Withdraw this run's registrations from a set of waitpoints, then arm its terminal
-   * window. Used on cancellation and on terminal completion of a blocked run.
-   *
-   * The loop is over the run's OWN edges, so its width is the run's blocker count — the
-   * same bound the block operation already had — and never the waitpoint's watcher count.
-   * Each waitpoint sits on its own shard, so this cannot be one script.
+   * Withdraw this run's registrations on cancellation or terminal completion of a blocked run, TERMINAL
+   * FIRST: {@link terminalRetainAndClear} atomically installs the fence, clears the active block, arms the
+   * tombstone TTL and captures the withdrawal targets into the durable (no-TTL) record BEFORE any watcher
+   * is withdrawn cross-shard. So a fanout page claimed before the withdrawal refuses as `terminal`, and a
+   * partial withdrawal (or crash) leaves every unacknowledged target in the retained hash for
+   * {@link resumeRetainedWithdrawal} to finish — even after the ordinary run-state keys have expired. The
+   * record is removed only once every target has converged (a thrown Redis error rejects here and keeps
+   * it). The loop width is the run's own blocker count, never the waitpoint's watcher count.
    */
   async releaseRunWatchers(args: {
     runId: string;
@@ -1467,98 +1682,575 @@ export class WaitpointStoreCoordinator {
      * is the one a cancellation or terminal completion is interrupting.
      */
     blockId?: string;
-    /** Defaults to every edge currently recorded for the run. */
-    edges?: Array<{ waitpointId: string; batchIndex?: number | null }>;
     /** Concurrent unregistrations. Bounded so a wide batch cannot flood the cluster. */
     concurrency?: number;
   }): Promise<{ unregistered: number; cleanup: CleanupResult }> {
-    const state = args.blockId && args.edges ? undefined : await this.readBlockState(args.runId);
-    const blockId = args.blockId ?? state?.blockId;
-    const edges =
-      args.edges ??
-      (state?.edges ?? []).map((edge) => ({
-        waitpointId: edge.waitpointId,
-        batchIndex: edge.batchIndex,
-      }));
-
-    // TERMINAL FIRST, then withdraw. The reverse order looked tidier and did not fence
-    // anything: a fanout page claimed before the withdrawal already holds its watcher data,
-    // so deleting the registration cannot stop that delivery — it would land while `term` was
-    // still unset, empty `pend` and set `hs='owed'`, publishing a resume for a run being
-    // cancelled. Installing `term` on the run's own shard first makes any such delivery
-    // refuse as `terminal`, which is a decision on one slot and needs no cross-shard ordering.
-    const cleanup = await this.cleanupRunBlockState({ runId: args.runId, reason: args.reason });
-
-    // `retained` means the run is NOT terminal, so the fence is not in place. Withdrawing now
-    // would be the old unsafe order, so it is not done. Unreachable for these reasons — they
-    // all void an owed handoff — but the guard is what makes that a fact rather than a hope.
-    if (cleanup.outcome === "retained") {
+    const target = args.blockId ?? (await this.currentBlockId(args.runId));
+    if (!target) {
+      // Resumed snapshots may still own results after their active block was acknowledged.
+      // This terminal-only operation fences delivery and arms result retention in one slot.
+      const cleanup = await this.cleanupRunBlockState({ runId: args.runId, reason: args.reason });
+      await this.retireRunRegistrationSources(args.runId);
       return { unregistered: 0, cleanup };
     }
 
-    // Now inert: the registrations can no longer produce a resume, so a cross-shard failure
-    // below leaves reconciliation residue and never a wrong wake-up.
-    const outcomes = blockId
-      ? await pMap(
-          edges,
-          (edge) =>
-            this.unregisterWatcher({
-              waitpointId: edge.waitpointId,
-              runId: args.runId,
-              blockId,
-              batchIndex: edge.batchIndex,
-            }),
-          { concurrency: args.concurrency ?? 10 }
-        )
-      : [];
-    const unregistered = outcomes.filter((o) => o.outcome === "unregistered").length;
+    const retained = await this.terminalRetainAndClear({ runId: args.runId, blockId: target });
+    if (retained.outcome === "stale") {
+      return {
+        unregistered: 0,
+        cleanup: { outcome: "armed", handoffWas: "none", state: "present" },
+      };
+    }
 
-    return { unregistered, cleanup };
+    await this.retireRunRegistrationSources(args.runId);
+    let unregistered = 0;
+    for (;;) {
+      const page = await this.readWithdrawalPage({ runId: args.runId, blockId: target });
+      if (!page || page.fields.length === 0) break;
+      const outcomes = await pMap(
+        page.fields,
+        (field) => {
+          const parsed = parseEdgeField(field);
+          if (!parsed) throw new Error(`Invalid retained withdrawal target: ${field}`);
+          return this.unregisterWatcher({
+            waitpointId: parsed.waitpointId,
+            runId: args.runId,
+            blockId: target,
+            batchIndex: parsed.batchIndex,
+          });
+        },
+        { concurrency: Math.max(1, Math.min(args.concurrency ?? 10, RUN_CLEANUP_PAGE_SIZE)) }
+      );
+      unregistered += outcomes.filter((o) => o.outcome === "unregistered").length;
+      // A crash before this acknowledgement replays the whole page idempotently. Never acknowledge
+      // a partially failed page; retained targets outlive source records and the terminal tombstone.
+      await this.acknowledgeWithdrawalPage({
+        runId: args.runId,
+        blockId: target,
+        fields: page.fields,
+      });
+    }
+    await this.finalizeRetainedWithdrawal({ runId: args.runId, blockId: target });
+
+    return {
+      unregistered,
+      cleanup: { outcome: "armed", handoffWas: "none", state: "present" },
+    };
+  }
+
+  /**
+   * ATOMICALLY record ONE block's watcher-withdrawal targets and clear its active run-side state, so a
+   * crash before withdrawal can never strand an active block with no watchers. Fenced to the exact block:
+   * a stale/terminal block writes and clears nothing. Read and acknowledge bounded pages to drain it.
+   */
+  async abandonRetainAndClear(args: {
+    runId: string;
+    blockId: string;
+  }): Promise<
+    { outcome: "retained" } | { outcome: "stale" | "terminal"; currentBlockId?: string }
+  > {
+    const keys = runBlockKeys(args.runId);
+    const reply = await this.#call(
+      "runAbandonRetainAndClear",
+      [
+        keys.pend,
+        keys.done,
+        keys.edge,
+        keys.state,
+        runWithdrawalKey(args.runId, args.blockId),
+        runWithdrawalTargetsKey(args.runId, args.blockId),
+        keys.refs,
+        keys.edgeIndex,
+        keys.doneOrder,
+        keys.early,
+        keys.earlyOrder,
+      ],
+      args.blockId
+    );
+    if (reply[0] === "retained") {
+      return { outcome: "retained" };
+    }
+    return { outcome: reply[0] as "stale" | "terminal", currentBlockId: reply[1] || undefined };
+  }
+
+  /**
+   * ATOMICALLY retain ONE block's watcher-withdrawal targets and terminalize the run: it installs the
+   * terminal fence, clears the active block and arms the retention TTL on the run-state tombstone ONLY,
+   * capturing the withdrawal targets in the SAME durable (no-TTL) record the non-terminal abandon uses. So
+   * a watcher withdrawal still owed after the fortnight tombstone expires never loses its target list.
+   * Fenced to the exact block; a run with no coordination state writes nothing.
+   */
+  async terminalRetainAndClear(args: {
+    runId: string;
+    blockId: string;
+  }): Promise<
+    { outcome: "retained" } | { outcome: "absent" | "stale" | "terminal"; currentBlockId?: string }
+  > {
+    const keys = runBlockKeys(args.runId);
+    const reply = await this.#call(
+      "runTerminalRetainAndClear",
+      [
+        keys.pend,
+        keys.done,
+        keys.edge,
+        keys.state,
+        runWithdrawalKey(args.runId, args.blockId),
+        runResultKey(args.runId),
+        runWithdrawalTargetsKey(args.runId, args.blockId),
+        keys.refs,
+        keys.edgeIndex,
+        keys.doneOrder,
+        keys.early,
+        keys.earlyOrder,
+      ],
+      args.blockId,
+      String(this.clock()),
+      String(this.terminalRetentionMs)
+    );
+    if (reply[0] === "retained") {
+      return { outcome: "retained" };
+    }
+    return {
+      outcome: reply[0] as "absent" | "stale" | "terminal",
+      currentBlockId: reply[1] || undefined,
+    };
+  }
+
+  /**
+   * Durably mark this run's exact current store block as cleanup-owed. While set, {@link absorbBlockers}
+   * refuses a DIFFERENT block. Armed before the retry/requeue transition; cleared only once the block's
+   * cross-store cleanup has fully converged.
+   */
+  async armCleanupFence(args: { runId: string; blockId: string }): Promise<void> {
+    await this.#call("runArmCleanupFence", [runBlockKeys(args.runId).state], args.blockId);
+  }
+
+  /** Read only the existing cleanup fence; never install an empty block for a legacy wait. */
+  async readCleanupFence(runId: string): Promise<string | undefined> {
+    const reply = await this.#call("runReadCleanupFence", [runBlockKeys(runId).state]);
+    return reply[0] || undefined;
+  }
+
+  /** Lift the cleanup-owed fence, but only when it names this exact block. */
+  async clearCleanupFence(args: { runId: string; blockId: string }): Promise<void> {
+    await this.#call("runClearCleanupFence", [runBlockKeys(args.runId).state], args.blockId);
+  }
+
+  /** Read at most one hard-bounded, non-consuming page of this block's durable withdrawal targets. */
+  async readWithdrawalPage(args: {
+    runId: string;
+    blockId: string;
+  }): Promise<{ blockId: string; fields: string[] } | undefined> {
+    const reply = await this.#call(
+      "runWithdrawalPage",
+      [
+        runWithdrawalKey(args.runId, args.blockId),
+        runWithdrawalTargetsKey(args.runId, args.blockId),
+      ],
+      args.blockId,
+      "read"
+    );
+    return reply[0] === "absent" ? undefined : { blockId: args.blockId, fields: reply.slice(1) };
+  }
+
+  /** Acknowledge only targets whose watchers have converged. Duplicate/stale acknowledgements are safe. */
+  async acknowledgeWithdrawalPage(args: {
+    runId: string;
+    blockId: string;
+    fields: string[];
+  }): Promise<void> {
+    if (args.fields.length > RUN_CLEANUP_PAGE_SIZE)
+      throw new Error("Withdrawal page exceeds limit");
+    await this.#call(
+      "runWithdrawalPage",
+      [
+        runWithdrawalKey(args.runId, args.blockId),
+        runWithdrawalTargetsKey(args.runId, args.blockId),
+      ],
+      args.blockId,
+      "ack",
+      ...args.fields
+    );
+  }
+
+  /**
+   * ATOMICALLY retire a converged block's recovery evidence: delete its retained-withdrawal record and,
+   * in the same same-slot step, clear its cleanup-owed fence when it names this exact block. Called only
+   * after every retained target is absent/unregistered, so the record and its matching fence can never be
+   * separated by a process crash. Returns whether the fence was cleared.
+   */
+  async finalizeRetainedWithdrawal(args: {
+    runId: string;
+    blockId: string;
+  }): Promise<{ fenceCleared: boolean }> {
+    const keys = runBlockKeys(args.runId);
+    const reply = await this.#call(
+      "runFinalizeRetainedWithdrawal",
+      [
+        runWithdrawalKey(args.runId, args.blockId),
+        keys.state,
+        runWithdrawalTargetsKey(args.runId, args.blockId),
+      ],
+      args.blockId
+    );
+    if (reply[0] === "retained") throw new Error("Withdrawal still has unacknowledged targets");
+    return { fenceCleared: reply[0] === "cleared" };
+  }
+
+  /** Terminal callers hold the parent lock and fence registration before retiring its sources. */
+  async retireRunRegistrationSources(runId: string): Promise<void> {
+    await this.beforeCommand?.();
+    for (;;) {
+      const members = await this.redis.zrange(
+        runContributionIndexKey(runId),
+        0,
+        RUN_CLEANUP_PAGE_SIZE - 1
+      );
+      if (members.length === 0) return;
+      for (const member of members) {
+        const identity: unknown = JSON.parse(member);
+        if (
+          !Array.isArray(identity) ||
+          identity.length !== 2 ||
+          !identity.every((part) => typeof part === "string")
+        ) {
+          throw new Error("Invalid registration contribution identity");
+        }
+        await this.deleteContribution({ runId, blockId: identity[0], absorptionId: identity[1] });
+      }
+    }
+  }
+
+  /** Record release targets before acquiring source holds. The caller holds the parent lock. */
+  async prepareRegistrationSources(args: {
+    runId: string;
+    blockId: string;
+    absorptionId: string;
+    waitpointIds: string[];
+    evidence: string;
+    expectedPreviousBlockId?: string;
+  }): Promise<void> {
+    await this.beforeCommand?.();
+    const keys = [
+      runBlockKeys(args.runId).state,
+      runContributionKey(args.runId, args.blockId, args.absorptionId),
+      runRegistrationSourcesKey(args.runId, args.blockId, args.absorptionId),
+      runContributionIndexKey(args.runId),
+    ];
+    assertSingleSlot("prepareRegistrationSources", keys);
+    const prepared = await this.redis.eval(
+      `
+      local current = redis.call('HGET', KEYS[1], 'blk') or ''
+      local fence = redis.call('HGET', KEYS[1], 'co') or ''
+      if redis.call('HGET', KEYS[1], 'term') == '1' or
+        (fence ~= '' and fence ~= ARGV[1]) or
+        (current ~= ARGV[1] and current ~= ARGV[2]) then return 0 end
+      if redis.call('SCARD', KEYS[2]) > 0 and
+        redis.call('SISMEMBER', KEYS[2], ARGV[3]) == 0 then
+        return redis.error_reply('Registration request does not match its preparation')
+      end
+      if redis.call('SISMEMBER', KEYS[2], '!registered') == 1 then return 0 end
+      redis.call('SADD', KEYS[2], ARGV[3])
+      redis.call('ZADD', KEYS[4], 0, ARGV[4])
+      for i = 5, #ARGV do redis.call('ZADD', KEYS[3], 0, ARGV[i]) end
+      return 1
+      `,
+      keys.length,
+      ...keys,
+      args.blockId,
+      args.expectedPreviousBlockId ?? "",
+      args.evidence,
+      contributionMember(args.blockId, args.absorptionId),
+      ...args.waitpointIds
+    );
+    if (prepared !== 1) return; // Absorption still performs the authoritative block CAS.
+    const token = this.#registrationHoldToken(args);
+    for (const waitpointId of args.waitpointIds) {
+      // A missing source may have a retained parent result; the subsequent read decides.
+      await this.redis.eval(
+        `if redis.call('EXISTS', KEYS[1]) == 0 then return 0 end
+         if redis.call('HSETNX', KEYS[1], ARGV[1], '1') == 1 then
+           redis.call('HINCRBY', KEYS[1], 'rh', 1)
+         end
+         redis.call('PERSIST', KEYS[1])
+         return 1`,
+        1,
+        waitpointKeys(waitpointId).record,
+        token
+      );
+    }
+  }
+
+  #registrationHoldToken(args: { runId: string; blockId: string; absorptionId: string }): string {
+    return (
+      "rh:" +
+      createHash("sha256")
+        .update(JSON.stringify([args.runId, args.blockId, args.absorptionId]))
+        .digest("hex")
+    );
+  }
+
+  /** Keep each target discoverable until its exact hold is released. Replays are harmless. */
+  async releaseRegistrationSources(args: {
+    runId: string;
+    blockId: string;
+    absorptionId: string;
+  }): Promise<void> {
+    await this.beforeCommand?.();
+    const manifest = runRegistrationSourcesKey(args.runId, args.blockId, args.absorptionId);
+    const token = this.#registrationHoldToken(args);
+    for (;;) {
+      const sources = await this.redis.zrange(manifest, 0, RUN_CLEANUP_PAGE_SIZE - 1);
+      if (sources.length === 0) return;
+      for (const waitpointId of sources) {
+        const keys = waitpointKeys(waitpointId);
+        await this.redis.eval(
+          `local record, ttl = KEYS[1], tonumber(ARGV[2])
+           if redis.call('EXISTS', record) == 0 then return 0 end
+           if redis.call('HDEL', KEYS[1], ARGV[1]) == 1 then
+             local remaining = redis.call('HINCRBY', KEYS[1], 'rh', -1)
+             if remaining == 0 then redis.call('HDEL', KEYS[1], 'rh') end
+           end
+           local fanout = redis.call('HGET', KEYS[2], 'state') or ''
+           if (tonumber(redis.call('HGET', KEYS[1], 'rh')) or 0) == 0 and
+             redis.call('HGET', KEYS[1], 'status') == 'COMPLETED' and
+             (fanout == '' or fanout == 'done') and redis.call('PTTL', KEYS[1]) < 0 then
+${RETAIN_WAITPOINT_RECORD}
+           end
+           return 1`,
+          2,
+          keys.record,
+          keys.fanout,
+          token,
+          String(this.terminalRetentionMs)
+        );
+        await this.redis.zrem(manifest, waitpointId);
+      }
+    }
+  }
+
+  /**
+   * Check the request hash with a fixed number of Redis reads. Do not read or change edge lists.
+   * Hold the parent run lock across this check and the recovery attempt.
+   */
+  async hasAbsorbedBlockers(args: {
+    runId: string;
+    blockId: string;
+    absorptionId: string;
+    waitpointIds: string[];
+    batchIndex?: number;
+  }): Promise<boolean> {
+    await this.beforeCommand?.();
+    const keys = runBlockKeys(args.runId);
+    const [blockId, terminal] = await this.redis.hmget(keys.state, "blk", "term");
+    if (blockId !== args.blockId || terminal === "1") return false;
+    if (
+      !(await this.redis.sismember(
+        runContributionKey(args.runId, args.blockId, args.absorptionId),
+        "!accepted"
+      ))
+    )
+      return false;
+    return (
+      (await this.redis.sismember(
+        runContributionKey(args.runId, args.blockId, args.absorptionId),
+        registrationEvidence(args.waitpointIds, args.batchIndex)
+      )) === 1
+    );
+  }
+
+  /** Remove cleanup targets after phase 3. Keep the request proof until registration finishes. */
+  async markRegistrationComplete(args: {
+    runId: string;
+    blockId: string;
+    absorptionId: string;
+    evidence: string;
+  }): Promise<void> {
+    await this.beforeCommand?.();
+    const key = runContributionKey(args.runId, args.blockId, args.absorptionId);
+    await this.redis.eval(
+      `
+      if redis.call('SISMEMBER', KEYS[1], ARGV[1]) == 0 then
+        return redis.error_reply('Missing registration acceptance proof')
+      end
+      redis.call('UNLINK', KEYS[1])
+      redis.call('SADD', KEYS[1], ARGV[1], '!accepted', '!registered')
+      return 1
+    `,
+      1,
+      key,
+      args.evidence
+    );
+    await this.releaseRegistrationSources(args);
+  }
+
+  /** The edge fields claimed by one absorption, or [] once registered/compensated. */
+  async readContribution(args: {
+    runId: string;
+    blockId: string;
+    absorptionId: string;
+  }): Promise<string[]> {
+    await this.beforeCommand?.();
+    return (
+      await this.redis.smembers(runContributionKey(args.runId, args.blockId, args.absorptionId))
+    ).filter((field) => !field.startsWith("!"));
+  }
+
+  /** Remove the request proof and its index entry after registration finishes. */
+  async deleteContribution(args: {
+    runId: string;
+    blockId: string;
+    absorptionId: string;
+  }): Promise<void> {
+    await this.releaseRegistrationSources(args);
+    await this.#call(
+      "runDeleteContribution",
+      [
+        runContributionKey(args.runId, args.blockId, args.absorptionId),
+        runContributionIndexKey(args.runId),
+      ],
+      contributionMember(args.blockId, args.absorptionId)
+    );
+  }
+
+  /**
+   * Roll back one absorption in bounded atomic pages, each fenced to the exact current block. Remove
+   * only edges with no remaining claims and their now-unreferenced receipts/pending ids; unrelated early receipts
+   * may still belong to concurrent additive registrations. The last page clears a phantom block unless
+   * its cleanup fence still owns it. Each page consumes its contribution in the same commit as removal,
+   * so replay never loses an unfinished target or touches a newer/terminal block. `removed` counts fields
+   * consumed during this invocation, not earlier pages whose reply was lost.
+   */
+  async compensateAbsorption(args: {
+    runId: string;
+    blockId: string;
+    absorptionId: string;
+    unacceptedEvidence?: string;
+  }): Promise<{ outcome: "cleared" | "retained" | "stale"; surviving: number; removed: number }> {
+    if (args.unacceptedEvidence !== undefined) {
+      await this.beforeCommand?.();
+      const matches = await this.redis.eval(
+        `return redis.call('SISMEMBER', KEYS[1], '!accepted') == 0 and
+          redis.call('SISMEMBER', KEYS[1], ARGV[1]) == 1 and 1 or 0`,
+        1,
+        runContributionKey(args.runId, args.blockId, args.absorptionId),
+        args.unacceptedEvidence
+      );
+      if (matches !== 1) return { outcome: "retained", surviving: 0, removed: 0 };
+    }
+    await this.releaseRegistrationSources(args);
+    const keys = runBlockKeys(args.runId);
+    let removed = 0;
+    for (;;) {
+      const reply = await this.#call(
+        "runCompensateAbsorption",
+        [
+          keys.pend,
+          keys.done,
+          keys.edge,
+          keys.state,
+          runContributionKey(args.runId, args.blockId, args.absorptionId),
+          keys.refs,
+          keys.edgeIndex,
+          keys.doneOrder,
+          keys.early,
+          keys.earlyOrder,
+          runContributionIndexKey(args.runId),
+        ],
+        args.blockId,
+        args.absorptionId,
+        contributionMember(args.blockId, args.absorptionId)
+      );
+      removed += Number(reply[2]);
+      if (Number(reply[3]) === 0) {
+        return {
+          outcome: reply[0] as "cleared" | "retained" | "stale",
+          surviving: Number(reply[1]),
+          removed,
+        };
+      }
+    }
+  }
+
+  /** Fixed-size identity lookup for lifecycle cleanup; never materializes blocker collections. */
+  async currentBlockId(runId: string): Promise<string | undefined> {
+    await this.beforeCommand?.();
+    return (await this.redis.hget(runBlockKeys(runId).state, "blk")) || undefined;
+  }
+
+  /** Read fixed-size handoff state, optionally fenced to one block, without blocker collections. */
+  async readBlockHandoff(runId: string, expectedBlockId?: string): Promise<HandoffState> {
+    await this.beforeCommand?.();
+    const keys = runBlockKeys(runId);
+    const [blockId, handoff, terminal] = await this.redis.hmget(keys.state, "blk", "hs", "term");
+    if (expectedBlockId !== undefined && (blockId !== expectedBlockId || terminal === "1")) {
+      return "none";
+    }
+    return decodeHandoff(handoff ?? undefined);
   }
 
   async readBlockState(runId: string): Promise<BlockState> {
     const keys = runBlockKeys(runId);
-    const reply = await this.#call("runReadBlockState", [
-      keys.pend,
-      keys.done,
-      keys.edge,
-      keys.state,
-    ]);
-
-    // Slots 0 and 1 are true element counts, but slot 2 is the FLAT length of the edge
-    // HGETALL — two entries per edge, field then value. The cursor arithmetic below relies
-    // on that asymmetry, so do not "normalise" it without changing the Lua too.
-    const pendCount = Number(reply[0]);
-    const doneCount = Number(reply[1]);
-    const edgeCount = Number(reply[2]);
-    const blockId = reply[3] || undefined;
-    const handoff = decodeHandoff(reply[4]);
-    const terminal = reply[5] === "1";
-
-    let cursor = 6;
-    const pendingIds = reply.slice(cursor, cursor + pendCount);
-    cursor += pendCount;
-    const deliveredIds = reply.slice(cursor, cursor + doneCount);
-    cursor += doneCount;
-
-    const edges: BlockStateEdge[] = [];
-    for (let i = 0; i < edgeCount; i += 2) {
-      const edgeId = reply[cursor + i]!;
-      // An edge value is always a non-empty JSON.stringify, so a missing slot here means
-      // the cursor walked off the end of the reply. That must fail loudly, not decode a
-      // BlockEdge with no waitpointId — the exact off-by-one this task's arithmetic guards
-      // against.
-      const edgeJson = reply[cursor + i + 1];
-      if (!edgeJson) {
-        throw new Error(
-          `readBlockState(${runId}): missing edge payload at reply index ${cursor + i + 1}`
+    for (;;) {
+      const pendingIds: string[] = [],
+        deliveredIds: string[] = [];
+      const seenPending = new Set<string>(),
+        seenDelivered = new Set<string>();
+      const edges: BlockStateEdge[] = [];
+      let revision = "",
+        cutoff = "0",
+        edgeOffset = 0,
+        earlyAfter = "";
+      let snapshot: Pick<BlockState, "blockId" | "handoff" | "terminal"> | undefined;
+      for (;;) {
+        const reply = await this.#call(
+          "runReadBlockState",
+          [keys.edge, keys.state, keys.edgeIndex, keys.doneOrder, keys.earlyOrder],
+          snapshot ? "page" : "start",
+          revision,
+          cutoff,
+          String(edgeOffset),
+          earlyAfter
         );
+        if (reply[0] === "stale") break;
+        if (!snapshot) {
+          revision = reply[1]!;
+          cutoff = reply[2]!;
+          snapshot = {
+            blockId: reply[3] || undefined,
+            handoff: decodeHandoff(reply[4]),
+            terminal: reply[5] === "1",
+          };
+        }
+        const edgeCount = Number(reply[6]),
+          earlyCount = Number(reply[7]);
+        let cursor = 8;
+        for (let i = 0; i < edgeCount; i++, cursor += 3) {
+          const edgeJson = reply[cursor + 1];
+          if (!edgeJson) throw new Error(`readBlockState(${runId}): missing edge payload`);
+          const stored = JSON.parse(edgeJson) as BlockEdge;
+          edges.push({ ...stored, edgeId: reply[cursor]! });
+          const delivered = reply[cursor + 2] === "1";
+          const seen = delivered ? seenDelivered : seenPending;
+          if (!seen.has(stored.waitpointId)) {
+            seen.add(stored.waitpointId);
+            (delivered ? deliveredIds : pendingIds).push(stored.waitpointId);
+          }
+        }
+        for (let i = 0; i < earlyCount; i++) {
+          const id = reply[cursor + i * 2]!;
+          if (!seenDelivered.has(id)) {
+            seenDelivered.add(id);
+            deliveredIds.push(id);
+          }
+          earlyAfter = reply[cursor + i * 2 + 1]!;
+        }
+        edgeOffset += edgeCount;
+        if (edgeCount < RUN_CLEANUP_PAGE_SIZE && earlyCount < RUN_CLEANUP_PAGE_SIZE) {
+          return { ...snapshot, pendingIds, deliveredIds, edges };
+        }
       }
-      const stored = JSON.parse(edgeJson) as BlockEdge;
-      edges.push({ ...stored, edgeId });
     }
-
-    return { pendingIds, deliveredIds, edges, blockId, handoff, terminal };
   }
 
   /**
@@ -1567,8 +2259,10 @@ export class WaitpointStoreCoordinator {
    * The selective form RECONCILES: any pending or delivered entry that no surviving edge
    * references goes too, not only the named ones. See runClear in scripts.ts for why.
    *
-   * This is the low-level state operation. It does NOT consult the handoff obligation —
-   * `cleanupRunBlockState` is the lifecycle gate that does.
+   * This low-level exact-block operation does not consult the handoff obligation. A full clear
+   * also removes the cleanup fence. Its caller must already own lifecycle and legacy-edge cleanup;
+   * failed-attempt recovery instead retains withdrawal evidence and finalizes the fence last.
+   * `cleanupRunBlockState` supplies the handoff gate for its lifecycle callers.
    */
   async clearBlockState(args: {
     runId: string;
@@ -1596,16 +2290,33 @@ export class WaitpointStoreCoordinator {
     const keys = runBlockKeys(args.runId);
     const edgeIds = args.edgeIds ?? [];
 
-    const reply = await this.#call(
-      "runClear",
-      [keys.pend, keys.done, keys.edge, keys.state],
-      args.blockId,
-      String(edgeIds.length),
-      ...edgeIds
-    );
-
-    const outcome = reply[0] as "cleared" | "drained" | "stale" | "terminal";
-    return { outcome, currentBlockId: reply[1] || undefined };
+    let result: Awaited<ReturnType<WaitpointStoreCoordinator["clearBlockState"]>>;
+    for (let offset = 0; offset < Math.max(1, edgeIds.length); offset += RUN_CLEANUP_PAGE_SIZE) {
+      const page = edgeIds.slice(offset, offset + RUN_CLEANUP_PAGE_SIZE);
+      const reply = await this.#call(
+        "runClear",
+        [
+          keys.pend,
+          keys.done,
+          keys.edge,
+          keys.state,
+          keys.refs,
+          keys.edgeIndex,
+          keys.doneOrder,
+          keys.early,
+          keys.earlyOrder,
+        ],
+        args.blockId,
+        String(page.length),
+        ...page
+      );
+      result = {
+        outcome: reply[0] as "cleared" | "drained" | "stale" | "terminal",
+        currentBlockId: reply[1] || undefined,
+      };
+      if (result.outcome === "stale" || result.outcome === "terminal") return result;
+    }
+    return result!;
   }
 
   // ---------------------------------------------------------------------------
@@ -1659,16 +2370,17 @@ export class WaitpointStoreCoordinator {
       throw new Error(`claimFanoutPage(${args.waitpointId}): claim returned no fence token`);
     }
 
-    const pageLength = Number(reply[7]);
+    const completedByTaskRunId = reply[7] || undefined;
+    const pageLength = Number(reply[8]);
     const page: FanoutPageEntry[] = [];
     for (let i = 0; i < pageLength; i++) {
-      const field = reply[8 + i * 2];
+      const field = reply[9 + i * 2];
       if (field === undefined) {
         throw new Error(
-          `claimFanoutPage(${args.waitpointId}): missing watcher field at reply index ${8 + i * 2}`
+          `claimFanoutPage(${args.waitpointId}): missing watcher field at reply index ${9 + i * 2}`
         );
       }
-      page.push({ field, watcher: parseJson<WatcherEntry>(reply[8 + i * 2 + 1]) });
+      page.push({ field, watcher: parseJson<WatcherEntry>(reply[9 + i * 2 + 1]) });
     }
 
     return {
@@ -1679,6 +2391,8 @@ export class WaitpointStoreCoordinator {
       completedAtMs: Number(reply[4]),
       failures: Number(reply[5]),
       epoch,
+      completedByTaskRunId,
+      record: parseJson<WaitpointRecordInput>(reply[9 + pageLength * 2]),
       page,
     };
   }
@@ -1909,12 +2623,33 @@ export class WaitpointStoreCoordinator {
    * signal to fall back to Postgres. A Redis error THROWS out of the `HMGET` and is never seen here
    * as an absent record, so an availability failure can never be mistaken for a missing waitpoint.
    */
-  async readCompletedRecords(ids: string[]): Promise<Map<string, WaitpointStoredRecord>> {
+  async readCompletedRecords(
+    ids: string[],
+    runId?: string
+  ): Promise<Map<string, WaitpointStoredRecord>> {
     const out = new Map<string, WaitpointStoredRecord>();
     const distinct = [...new Set(ids)];
+    await this.beforeCommand?.();
+    // Parent snapshot results have no active TTL and survive block acknowledgement/rollover.
+    // Read only the IDs owned by the snapshot; original waitpoint records may have expired.
+    if (runId && distinct.length > 0) {
+      const receipts = await this.redis.hmget(runResultKey(runId), ...distinct);
+      for (let i = 0; i < distinct.length; i++) {
+        const receipt = parseJson<WaitpointCompletion & { record?: WaitpointRecordInput }>(
+          receipts[i] ?? undefined
+        );
+        if (!receipt?.record) continue;
+        const { record, ...completion } = receipt;
+        if (record.id !== distinct[i])
+          throw new Error(`Parent result has mismatched waitpoint identity: ${distinct[i]}`);
+        out.set(distinct[i]!, { status: "COMPLETED", record, completion });
+      }
+    }
+
     await pMap(
       distinct,
       async (id) => {
+        if (out.has(id)) return;
         const keys = waitpointKeys(id);
         const [r, status, c] = await this.redis.hmget(keys.record, "r", "status", "c");
         // No 'r' means no record hash under this id at all — absent, not an error.

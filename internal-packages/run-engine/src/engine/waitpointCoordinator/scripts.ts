@@ -1,14 +1,18 @@
-import type { Callback, Redis, Result } from "@internal/redis";
+import type { Callback, RedisClient, Result } from "@internal/redis";
 
 /**
- * Lua for the waitpoint coordination protocol. Four rules hold throughout:
+ * Lua for the waitpoint coordination protocol. Scripts assume protocol-owned key types and command
+ * permissions. Atomic execution excludes interleaving; Redis does not roll back a command error.
+ * Recovery handles interruption and lost replies between script invocations and cross-shard work.
+ *
+ * Four rules hold throughout:
  *
  *  1. Every key a script touches is declared in KEYS. No script builds a key name inside
  *     Lua. ioredis prefixes only the KEYS array, so a key minted in Lua would be
  *     unprefixed while the client wrote a prefixed one — and a script with a single
  *     declared key gives the caller's single-slot assertion nothing to compare.
- *  2. Lua never parses JSON. Each script branches only on a short status string and moves
- *     opaque blobs, so every encoding decision stays in TypeScript.
+ *  2. Completion/edge payloads remain opaque. Watcher registration decodes watcher JSON
+ *     only to fill missing cached-span metadata on a duplicate registration.
  *  3. A missing HGET returns Lua `false`, not `nil` — measured directly against a live
  *     Redis: `EVAL "return {'a', false, 'c'}"` and a table holding a missing-field HGET
  *     result both come back as 3 elements; only `EVAL "return {'a', nil, 'c'}"` comes back
@@ -53,6 +57,9 @@ import type { Callback, Redis, Result } from "@internal/redis";
  * delivery.
  */
 
+/** Hard ceiling for a single cleanup script's work and target reply. */
+export const RUN_CLEANUP_PAGE_SIZE = 128;
+
 const STORED_COMPLETED = "COMPLETED";
 
 const MISSING = "missing";
@@ -83,6 +90,7 @@ const ACKNOWLEDGED = "acknowledged";
 const UNKNOWN = "unknown";
 const RETAINED = "retained";
 const ARMED = "armed";
+const CLEANUP_OWED = "cleanupOwed";
 const PENDING_RECORD = "pending-record";
 const ACKED = "acked";
 const NOT_DUE = "notdue";
@@ -101,7 +109,14 @@ const PERSIST_RUN_KEYS = `
       for i = 1, 4 do redis.call('PERSIST', KEYS[i]) end
 `;
 
-export function registerWaitpointCommands(redis: Redis): void {
+// An accepted registration retains its source until a watcher or parent result owns completion.
+export const RETAIN_WAITPOINT_RECORD = `
+      if (tonumber(redis.call('HGET', record, 'rh')) or 0) == 0 then
+        redis.call('PEXPIRE', record, ttl)
+      end
+`;
+
+export function registerWaitpointCommands(redis: RedisClient): void {
   /**
    * KEYS: record. ARGV: recordJson, status ('PENDING'|'COMPLETED'), completionJson (''),
    * terminalTtlMs.
@@ -135,6 +150,11 @@ export function registerWaitpointCommands(redis: Redis): void {
       if ARGV[3] ~= '' then
         redis.call('HSET', record, 'c', ARGV[3])
       end
+      -- The immutable completed-run identity, stored as its own field so fanout and registration can read
+      -- it once per page (as cachedRunId) without decoding the whole record.
+      if ARGV[5] ~= nil and ARGV[5] ~= '' then
+        redis.call('HSET', record, 'cbt', ARGV[5])
+      end
       if ARGV[2] == '${STORED_COMPLETED}' then
         redis.call('PEXPIRE', record, ttl)
       end
@@ -156,19 +176,38 @@ export function registerWaitpointCommands(redis: Redis): void {
       end
 
       if redis.call('HGET', record, 'status') == '${STORED_COMPLETED}' then
-        return { '${DID_COMPLETE}', redis.call('HGET', record, 'c') or '' }
+        -- Return the completed-run identity (cbt) in the SAME atomic reply as the completion envelope, so a
+        -- delivered completion and its cachedRunId can never diverge at the record's expiry.
+        return {
+          '${DID_COMPLETE}',
+          redis.call('HGET', record, 'c') or '',
+          redis.call('HGET', record, 'cbt') or '',
+          redis.call('HGET', record, 'r') or ''
+        }
       end
 
       -- The watcher lands before any flip can read the watcher set, because this script
       -- and wpComplete are both atomic on this same shard. So a register either appears
       -- in the flip's watcher set, or it observes COMPLETED above.
       --
-      -- HSETNX: the first registration wins, mirroring the edge's ON CONFLICT DO NOTHING.
+      -- HSETNX: keep one watcher per run/block/index. Source-publication recovery can
+      -- register before the foreground creates its cached span, so a duplicate may fill
+      -- an absent span (and its creation time). The first actual span still wins.
       -- The queue is pushed only when HSETNX actually set the field, keeping the two in
       -- step: the hash is the authority for whether a watcher is still live (a cancellation
       -- HDELs it), the queue is the paging order the fanout worker walks.
       if redis.call('HSETNX', watchers, ARGV[1], ARGV[2]) == 1 then
         redis.call('RPUSH', queue, ARGV[1])
+      else
+        local incoming = cjson.decode(ARGV[2])
+        if incoming.spanIdToComplete and incoming.spanIdToComplete ~= cjson.null and incoming.spanIdToComplete ~= '' then
+          local existing = cjson.decode(redis.call('HGET', watchers, ARGV[1]))
+          if not existing.spanIdToComplete or existing.spanIdToComplete == cjson.null or existing.spanIdToComplete == '' then
+            existing.spanIdToComplete = incoming.spanIdToComplete
+            existing.createdAt = incoming.createdAt
+            redis.call('HSET', watchers, ARGV[1], cjson.encode(existing))
+          end
+        end
       end
       return { '${REGISTERED}' }
     `,
@@ -250,7 +289,7 @@ export function registerWaitpointCommands(redis: Redis): void {
       -- watchers that were withdrawn while the waitpoint was pending, and those would
       -- otherwise sit on a key with no reader and no TTL.
       redis.call('DEL', queue, watchers)
-      redis.call('PEXPIRE', record, ttl)
+${RETAIN_WAITPOINT_RECORD}
       return { '${DID_COMPLETE}', ARGV[1], '${ABSENT}' }
     `,
   });
@@ -349,6 +388,7 @@ export function registerWaitpointCommands(redis: Redis): void {
         redis.call('HGET', fanout, 'cAt') or '0',
         redis.call('HGET', fanout, 'fail') or '0',
         epoch,
+        redis.call('HGET', record, 'cbt') or '',
         tostring(#page)
       }
       for i = 1, #page do
@@ -358,6 +398,8 @@ export function registerWaitpointCommands(redis: Redis): void {
         out[#out + 1] = redis.call('HGET', watchers, page[i]) or ''
       end
 
+      -- Immutable metadata is returned in the same atomic read as the completion.
+      out[#out + 1] = redis.call('HGET', record, 'r') or ''
       return out
     `,
   });
@@ -448,7 +490,7 @@ export function registerWaitpointCommands(redis: Redis): void {
       -- left.
       redis.call('DEL', queue, watchers)
       redis.call('PEXPIRE', fanout, ttl)
-      redis.call('PEXPIRE', record, ttl)
+${RETAIN_WAITPOINT_RECORD}
 
       return { '${DRAINED}', redis.call('HGET', fanout, 'del') or '0' }
     `,
@@ -774,6 +816,13 @@ export function registerWaitpointCommands(redis: Redis): void {
     `,
   });
 
+  // Bounded admission read for legacy-only edges. The caller holds the run lock through the
+  // subsequent Postgres write, serializing it with cleanup-fence installation and replay.
+  redis.defineCommand("runReadCleanupFence", {
+    numberOfKeys: 1,
+    lua: `return { redis.call('HGET', KEYS[1], 'co') or '' }`,
+  });
+
   /**
    * KEYS: pend, done, edge, st.
    * ARGV: blockId, n, then n groups of 5 — waitpointId, edgeField, edgeJson, reportedFlag
@@ -798,16 +847,20 @@ export function registerWaitpointCommands(redis: Redis): void {
    * The caller therefore owes a fresh id per block operation.
    */
   redis.defineCommand("runAbsorbBlockers", {
-    numberOfKeys: 4,
+    numberOfKeys: 14,
     lua: `
-      local pend, done, edge, st = KEYS[1], KEYS[2], KEYS[3], KEYS[4]
+      local pend, done, edge, st, contrib, results = KEYS[1], KEYS[2], KEYS[3], KEYS[4], KEYS[5], KEYS[6]
       local n = tonumber(ARGV[4])
+      local edgeIndex, doneOrder, early, earlyOrder = KEYS[8], KEYS[9], KEYS[10], KEYS[11]
+      local wd, targets = KEYS[12], KEYS[13]
 
       -- Guard before any write: a wrong n must not half-apply the script. HDEL/HSETNX below
-      -- are irreversible mid-script, and Redis does not roll back a script that errors.
-      if n == nil or #ARGV ~= 4 + n * 5 then
+      -- are irreversible mid-script, and Redis does not roll back a script that errors. The trailing
+      -- ARGV carries the absorption id, index member and read revision after the edge groups.
+      if n == nil or (#ARGV ~= 8 + n * 5 and #ARGV ~= 7 + n * 5) then
         return redis.error_reply('runAbsorbBlockers: arity mismatch')
       end
+      local evidenceOffset = #ARGV == 8 + n * 5 and 3 or 2
       if ARGV[1] == '' then
         return redis.error_reply('runAbsorbBlockers: ARGV[1] must be a block id')
       end
@@ -825,6 +878,16 @@ export function registerWaitpointCommands(redis: Redis): void {
         return { '${TERMINAL}', previous }
       end
 
+      -- The cleanup-owed fence: a previous mixed block still owes its cross-store cleanup (its block-id-less
+      -- Postgres delete plus store withdrawal). A DIFFERENT block must not become active until that clears,
+      -- or a delayed B1 cleanup could delete a reused B2 legacy edge. A same-block operation (an idempotent
+      -- retry of the fenced block itself) is not blocked; the higher layer's cycle-anchor precondition
+      -- fences a genuine delayed replay of it.
+      local cleanupOwed = redis.call('HGET', st, 'co') or ''
+      if cleanupOwed ~= '' and cleanupOwed ~= ARGV[1] then
+        return { '${CLEANUP_OWED}', cleanupOwed }
+      end
+
       -- Block ids are random, so they carry no order and cannot be compared. The caller names
       -- the predecessor it believes it is replacing instead, which is what makes a delayed
       -- retry of an older operation distinguishable from a legitimate rollover.
@@ -835,38 +898,33 @@ export function registerWaitpointCommands(redis: Redis): void {
       if not (isRetry or isRollover or isFirst) then
         return { '${STALE}', previous }
       end
+      -- Validate the declared predecessor's retained keys before any mutation. Rollover moves the
+      -- hash instead of enumerating it; the manifest survives a lost reply and empty old blocks.
+      if isRollover and (redis.call('EXISTS', wd, targets) > 0) then
+        return redis.error_reply('runAbsorbBlockers: predecessor withdrawal already retained')
+      end
 ${PERSIST_RUN_KEYS}
-      -- Returned to the caller, because this edge hash is the only record of which waitpoint
-      -- shards the previous cycle registered on, and the sweep below destroys it.
+      for i = 7, 11 do redis.call('PERSIST', KEYS[i]) end
+      redis.call('PERSIST', results)
       local supersededBlock = ''
-      local supersededFields = {}
-
       if isRollover then
-        -- A clean sweep. A receipt carries no block id, so nothing here can tell one left by
-        -- the previous cycle from one belonging to this cycle — and there is no such thing
-        -- while another block is installed, because a delivery quoting a block id that is not
-        -- current is refused as stale. Receipts survive only for a first block, where they are
-        -- a genuine early delivery, and for a same-block retry.
-        supersededBlock = previous
-        supersededFields = redis.call('HKEYS', edge)
-        redis.call('DEL', pend, done, edge)
+        redis.call('SET', wd, previous)
+        if redis.call('EXISTS', edge) == 1 then redis.call('RENAME', edge, targets) end
+        redis.call('PERSIST', targets)
+        redis.call('UNLINK', pend, done, KEYS[7], edgeIndex, doneOrder, early, earlyOrder)
       end
-
-      if not isRetry then
-        redis.call('HSET', st, 'blk', ARGV[1], 'hs', '')
+      -- Retry discovery is independent of the fresh-rollover branch.
+      if expectsPrevious and redis.call('GET', wd) == expected then supersededBlock = expected end
+      redis.call('HSET', st, 'rev', ARGV[#ARGV])
+      if not isRetry then redis.call('HSET', st, 'blk', ARGV[1], 'hs', '') end
+      if evidenceOffset == 3 and ARGV[#ARGV - evidenceOffset] ~= '' then
+        redis.call('SADD', contrib, '!accepted', ARGV[#ARGV - 1])
+        redis.call('ZADD', KEYS[14], 0, ARGV[#ARGV - evidenceOffset + 1])
       end
-
-      -- seenDelivered makes the delivered-pair output DISTINCT BY ID: two edges for one
-      -- waitpoint must contribute one pair, not two.
       local requestedIds = {}
       local seenDelivered = {}
-      -- Slot 1 is the outcome on EVERY path, so a rejection is explicit rather than inferred
-      -- from a slot that would otherwise hold a count. Slots 4 and 5 delimit the superseded
-      -- fields, keeping the delivered pairs after them unambiguous however many there are.
-      local out = { '${ABSORBED}', '0', '0', supersededBlock, tostring(#supersededFields) }
-      for i = 1, #supersededFields do
-        out[#out + 1] = supersededFields[i]
-      end
+      -- Keep the old field-count slot at zero; targets are read only in hard-bounded pages.
+      local out = { '${ABSORBED}', '0', '0', supersededBlock, '0' }
 
       for i = 0, n - 1 do
         local id           = ARGV[5 + i * 5]
@@ -875,10 +933,38 @@ ${PERSIST_RUN_KEYS}
         local reportedFlag = ARGV[8 + i * 5]
         local reported     = ARGV[9 + i * 5]
 
-        -- HSETNX is the ON CONFLICT DO NOTHING of the edge write: a retry must not
-        -- overwrite the first attempt's metadata.
-        redis.call('HSETNX', edge, field, edgeJson)
+        -- Preserve the first edge metadata, but count each operation's claim separately.
+        -- A failed earlier operation must not remove an edge adopted by a later one.
+        local inserted = redis.call('HSETNX', edge, field, edgeJson)
+        if inserted == 1 then
+          redis.call('HINCRBY', KEYS[7], id, 1)
+          redis.call('ZADD', edgeIndex, redis.call('HINCRBY', st, 'edgeSeq', 1), field)
+        end
+        local claimField = '!' .. field
+        if ARGV[#ARGV - evidenceOffset] ~= '' then
+          if redis.call('SISMEMBER', contrib, '!registered') == 0 and redis.call('SADD', contrib, field) == 1 then
+            -- Existing edges without claim counts predate this protocol or have no operation ID.
+            if inserted == 0 then redis.call('HSETNX', KEYS[7], claimField, 1) end
+            if redis.call('HGET', KEYS[7], claimField) ~= '-1' then
+              redis.call('HINCRBY', KEYS[7], claimField, 1)
+            end
+            redis.call('ZADD', KEYS[14], 0, ARGV[#ARGV - evidenceOffset + 1])
+          end
+        else
+          -- Calls without an operation ID have no compensation path. Keep their claim until cleanup.
+          redis.call('HSET', KEYS[7], claimField, -1)
+        end
         requestedIds[id] = true
+        -- Adopt the first early receipt before considering a reported completion. Its ordinal and
+        -- envelope are immutable; moving it invalidates the structural read revision above.
+        local earlyReceipt = redis.call('HGET', early, id)
+        if earlyReceipt then
+          if redis.call('HSETNX', done, id, earlyReceipt) == 1 then
+            redis.call('ZADD', doneOrder, redis.call('ZSCORE', earlyOrder, id), id)
+          end
+          redis.call('HDEL', early, id)
+          redis.call('ZREM', earlyOrder, id)
+        end
 
         if reportedFlag == '1' then
           -- Already COMPLETED when the watcher registered. It never becomes pending, even
@@ -887,7 +973,12 @@ ${PERSIST_RUN_KEYS}
           -- HSETNX, not HSET: a fanout delivery that raced ahead of this absorb has
           -- already written the frozen envelope, and this branch's reported value may be ''.
           -- Overwriting would trade a real envelope for an empty one.
-          redis.call('HSETNX', done, id, reported)
+          if redis.call('HSETNX', done, id, reported) == 1 then
+            redis.call('ZADD', doneOrder, redis.call('HINCRBY', st, 'seq', 1), id)
+          end
+          -- Retain the snapshot result in the same fenced commit as the active block. A source
+          -- captured before absorption can expire immediately without erasing the accepted result.
+          redis.call('HSETNX', results, id, redis.call('HGET', done, id))
           redis.call('SREM', pend, id)
           if not seenDelivered[id] then
             seenDelivered[id] = true
@@ -921,8 +1012,15 @@ ${PERSIST_RUN_KEYS}
         end
       end
 
+      local remaining = redis.call('SCARD', pend)
+      -- An already-completed source can finish this block during absorption, before registration.
+      -- Preserve the same durable handoff obligation as delivery, without re-arming an acknowledged
+      -- cycle or making an empty block with no completion receipts owe a resume.
+      if remaining == 0 and (redis.call('HLEN', done) + redis.call('HLEN', early)) > 0 and redis.call('HGET', st, 'hs') ~= 'ack' then
+        redis.call('HSET', st, 'hs', 'owed')
+      end
       out[2] = tostring(pendingOfRequested)
-      out[3] = tostring(redis.call('SCARD', pend))
+      out[3] = tostring(remaining)
       return out
     `,
   });
@@ -950,22 +1048,23 @@ ${PERSIST_RUN_KEYS}
    * HSETNX, so a redelivery is visibly a duplicate, cannot rewrite a frozen receipt, and
    * cannot signal a resume the fresh delivery has already signalled.
    *
-   * One residual case is deliberately left to the reconciliation lane: a delivery that
-   * arrives after the whole run partition, `term` marker included, has aged out of its
-   * retention window reads as an early delivery and writes a receipt with no owning block.
-   * It cannot resume anything — a resume needs a block id and a complete pending set — but
-   * it is an orphan, and reaping orphans is that lane's work, not this script's.
+   * Production registration/fanout requires the current block: absorption always precedes watcher
+   * publication. This also refuses delayed work after terminal state expires. Explicit primitive
+   * early delivery may omit that requirement when the caller owns a subsequent absorption.
    */
   redis.defineCommand("runDeliverCompletion", {
-    numberOfKeys: 3,
+    numberOfKeys: 8,
     lua: `
-      local pend, done, st = KEYS[1], KEYS[2], KEYS[3]
+      local pend, done, st, results = KEYS[1], KEYS[2], KEYS[3], KEYS[4]
 
       if redis.call('HGET', st, 'term') == '1' then
         return { '${TERMINAL}', '0', '0', '' }
       end
 
       local current = redis.call('HGET', st, 'blk')
+      if ARGV[4] == '1' and (not current or current == '') then
+        return { '${STALE}', '0', '0', '' }
+      end
       if current and current ~= '' and current ~= ARGV[1] then
         return { '${STALE}', tostring(redis.call('SCARD', pend)), '0', current }
       end
@@ -977,7 +1076,16 @@ ${PERSIST_RUN_KEYS}
         return { '${ACKED}', tostring(redis.call('SCARD', pend)), '0', current }
       end
 
-      local fresh = redis.call('HSETNX', done, ARGV[2], ARGV[3])
+      local receipts, order = done, KEYS[6]
+      if redis.call('HEXISTS', KEYS[5], ARGV[2]) == 0 then receipts, order = KEYS[7], KEYS[8] end
+      -- Initialize a fresh epoch after absence/expiry, but ongoing deliveries do not invalidate a
+      -- read. Its captured seq reconstructs pending-at-start even after SREM below.
+      redis.call('HSETNX', st, 'rev', ARGV[5])
+      local fresh = redis.call('HSETNX', receipts, ARGV[2], ARGV[3])
+      if fresh == 1 then redis.call('ZADD', order, redis.call('HINCRBY', st, 'seq', 1), ARGV[2]) end
+      -- The snapshot result and active receipt commit together, after all block/terminal
+      -- fences. Immutable waitpoint IDs make replay and later cycles unable to rewrite a result.
+      redis.call('HSETNX', results, ARGV[2], redis.call('HGET', receipts, ARGV[2]))
       redis.call('SREM', pend, ARGV[2])
       local remaining = redis.call('SCARD', pend)
 
@@ -1025,7 +1133,7 @@ ${PERSIST_RUN_KEYS}
         return { '${STALE}', current }
       end
 
-      redis.call('HSET', st, 'hs', 'ack')
+      redis.call('HSET', st, 'hs', 'ack', 'rev', ARGV[2])
       return { '${ACKNOWLEDGED}' }
     `,
   });
@@ -1044,7 +1152,7 @@ ${PERSIST_RUN_KEYS}
    * abandoned. State is expired, never deleted, so receipts stay readable for the window.
    */
   redis.defineCommand("runTerminalCleanup", {
-    numberOfKeys: 4,
+    numberOfKeys: 10,
     lua: `
       local st = KEYS[4]
 
@@ -1056,7 +1164,8 @@ ${PERSIST_RUN_KEYS}
       -- A run with no coordination state at all is a no-op, not a tombstone. Writing one
       -- per terminal run would cost a key carrying a fortnight's TTL for every run in the
       -- system, and a run that never absorbed a blocker has no receipt to protect.
-      if redis.call('EXISTS', KEYS[1], KEYS[2], KEYS[3], KEYS[4]) == 0 then
+      if redis.call('EXISTS', KEYS[1], KEYS[2], KEYS[3], KEYS[4]) == 0 and
+         (ARGV[3] ~= '1' or redis.call('EXISTS', KEYS[5]) == 0) then
         return { '${ARMED}', '', 'absent' }
       end
 
@@ -1065,47 +1174,62 @@ ${PERSIST_RUN_KEYS}
         return { '${RETAINED}', 'handoff-owed' }
       end
 
-      redis.call('HSET', st, 'term', '1', 'hs', '', 'termAt', ARGV[1])
+      redis.call('HSET', st, 'term', '1', 'hs', '', 'termAt', ARGV[1], 'rev', ARGV[4])
       for i = 1, 4 do redis.call('PEXPIRE', KEYS[i], ttl) end
+      for i = 6, 10 do redis.call('PEXPIRE', KEYS[i], ttl) end
+      -- Resume is not result consumption. Only the run's terminal lifecycle arms this TTL.
+      if ARGV[3] == '1' then redis.call('PEXPIRE', KEYS[5], ttl) end
 
       return { '${ARMED}', hs, 'present' }
     `,
   });
 
-  // KEYS: pend, done, edge, st.
+  /**
+   * KEYS: edge, st, edgeIndex, doneOrder, earlyOrder.
+   * ARGV: start|page, structural revision, completion cutoff, edge offset, last early ordinal.
+   * A snapshot is (rev, seq): membership/deletion changes rev; fresh immutable receipts only advance
+   * seq. Pages therefore reconstruct statuses at start without restarting for ordinary fanout.
+   */
   redis.defineCommand("runReadBlockState", {
-    numberOfKeys: 4,
+    numberOfKeys: 5,
     lua: `
-      local pend, done, edge, st = KEYS[1], KEYS[2], KEYS[3], KEYS[4]
-
-      local pendIds = redis.call('SMEMBERS', pend)
-      -- HKEYS, never HGETALL: the delivered set's values are completion envelopes with
-      -- inline outputs, and materializing those inside a single-threaded script would
-      -- block the shard.
-      local doneIds = redis.call('HKEYS', done)
-      local edges   = redis.call('HGETALL', edge)
-      local state   = redis.call('HMGET', st, 'blk', 'hs', 'term')
-
-      local out = {
-        tostring(#pendIds), tostring(#doneIds), tostring(#edges),
-        state[1] or '', state[2] or '', state[3] or ''
-      }
-      for i = 1, #pendIds do out[#out + 1] = pendIds[i] end
-      for i = 1, #doneIds do out[#out + 1] = doneIds[i] end
-      for i = 1, #edges   do out[#out + 1] = edges[i]   end
+      local edge, st, edgeIndex, doneOrder, earlyOrder = unpack(KEYS)
+      local state = redis.call('HMGET', st, 'rev', 'seq', 'blk', 'hs', 'term')
+      local revision = state[1] or ''
+      local cutoff = tonumber(ARGV[3]) or 0
+      if ARGV[1] == 'start' then cutoff = tonumber(state[2]) or 0
+      elseif revision ~= ARGV[2] then return { '${STALE}' } end
+      local edgeOffset = tonumber(ARGV[4])
+      local earlyAfter = ARGV[5] == '' and '-inf' or '(' .. ARGV[5]
+      local fields = redis.call('ZRANGE', edgeIndex, edgeOffset, edgeOffset + ${RUN_CLEANUP_PAGE_SIZE} - 1)
+      local earlyIds = redis.call('ZRANGEBYSCORE', earlyOrder, earlyAfter, cutoff, 'WITHSCORES', 'LIMIT', 0, ${RUN_CLEANUP_PAGE_SIZE})
+      local out = { 'page', revision, tostring(cutoff), state[3] or '', state[4] or '', state[5] or '', tostring(#fields), tostring(#earlyIds / 2) }
+      for i = 1, #fields do
+        local field = fields[i]
+        local sep = string.find(field, '#[^#]*$')
+        local id = string.sub(field, 1, sep - 1)
+        local ordinal = tonumber(redis.call('ZSCORE', doneOrder, id))
+        out[#out + 1] = field
+        out[#out + 1] = redis.call('HGET', edge, field) or ''
+        out[#out + 1] = ordinal and ordinal <= cutoff and '1' or '0'
+      end
+      for i = 1, #earlyIds do out[#out + 1] = earlyIds[i] end
       return out
     `,
   });
 
-  // KEYS: pend, done, edge, st. ARGV: n, then n edge fields. n = 0 clears everything.
+  // KEYS: pend, done, edge, st, refs. ARGV: blockId, n, then n edge fields.
+  // n = 0 unlinks the full active partition, including co; the exact-block CAS still applies.
+  // Only callers that already own lifecycle/legacy cleanup may use full-clear. Retry cleanup uses
+  // retain-and-clear plus finalizeRetainedWithdrawal so its cross-store fence survives interruption.
   redis.defineCommand("runClear", {
-    numberOfKeys: 4,
+    numberOfKeys: 9,
     lua: `
       local pend, done, edge, st = KEYS[1], KEYS[2], KEYS[3], KEYS[4]
       local n = tonumber(ARGV[2])
 
       -- Guard before any write, same reasoning as runAbsorbBlockers.
-      if n == nil or #ARGV ~= 2 + n then
+      if n == nil or #ARGV ~= 3 + n or n > ${RUN_CLEANUP_PAGE_SIZE} then
         return redis.error_reply('runClear: arity mismatch')
       end
       if ARGV[1] == '' then
@@ -1127,43 +1251,289 @@ ${PERSIST_RUN_KEYS}
       end
 
       if n == 0 then
-        redis.call('DEL', pend, done, edge, st)
+        redis.call('UNLINK', unpack(KEYS))
         return { '${CLEARED}', current }
       end
 
+      redis.call('HSET', st, 'rev', ARGV[#ARGV])
       for i = 1, n do
-        redis.call('HDEL', edge, ARGV[2 + i])
-      end
-
-      -- Reconcile rather than delete by name. The edge set is the authority: after the
-      -- drain, pend and done may only hold ids that some surviving edge still references.
-      -- A superset of "remove the drained ids", because one waitpoint can hold several
-      -- edges at different batch indexes, and because a delivery that landed before its
-      -- blockers were absorbed leaves a receipt no name-derived drain could reach.
-      local remaining = {}
-      local fields = redis.call('HKEYS', edge)
-      for i = 1, #fields do
-        local sep = string.find(fields[i], '#[^#]*$')
-        if sep then
-          remaining[string.sub(fields[i], 1, sep - 1)] = true
+        local field = ARGV[2 + i]
+        if redis.call('HDEL', edge, field) == 1 then
+          redis.call('HDEL', KEYS[5], '!' .. field)
+          redis.call('ZREM', KEYS[6], field)
+          local sep = string.find(field, '#[^#]*$')
+          if sep then
+            local id = string.sub(field, 1, sep - 1)
+            if redis.call('HINCRBY', KEYS[5], id, -1) <= 0 then
+              redis.call('HDEL', KEYS[5], id)
+              redis.call('HDEL', done, id)
+              redis.call('ZREM', KEYS[7], id)
+              redis.call('SREM', pend, id)
+            end
+          end
         end
       end
 
-      local doneIds = redis.call('HKEYS', done)
-      for i = 1, #doneIds do
-        if not remaining[doneIds[i]] then
-          redis.call('HDEL', done, doneIds[i])
-        end
-      end
-
-      local pendIds = redis.call('SMEMBERS', pend)
-      for i = 1, #pendIds do
-        if not remaining[pendIds[i]] then
-          redis.call('SREM', pend, pendIds[i])
-        end
-      end
+      -- Every unreferenced receipt is isolated here. Detach them all just as the old full-parent
+      -- reconciliation did, while references above preserve another batch index's receipt.
+      redis.call('UNLINK', KEYS[8], KEYS[9])
 
       return { '${DRAINED}', current }
+    `,
+  });
+
+  /**
+   * Detach one exact block in constant work. RENAME transfers ownership of the complete edge hash,
+   * including after a lost reply, without copying/encoding its fields. The separate manifest keeps an
+   * empty withdrawal discoverable. Neither retained key expires; page acknowledgement owns reclamation.
+   * KEYS: pend, done, edge, st, wd, targets, refs. ARGV: blockId.
+   */
+  redis.defineCommand("runAbandonRetainAndClear", {
+    numberOfKeys: 11,
+    lua: `
+      local pend, done, edge, st, wd, targets, refs = unpack(KEYS)
+      if ARGV[1] == '' then return redis.error_reply('runAbandonRetainAndClear: missing block id') end
+      local current = redis.call('HGET', st, 'blk') or ''
+      if redis.call('HGET', st, 'term') == '1' then return { '${TERMINAL}', current } end
+      if current ~= ARGV[1] then return { '${STALE}', current } end
+      local retained = redis.call('GET', wd)
+      if retained and retained ~= ARGV[1] then
+        return redis.error_reply('runAbandonRetainAndClear: invalid withdrawal identity')
+      end
+      local hasEdge = redis.call('EXISTS', edge) == 1
+      if hasEdge and redis.call('EXISTS', targets) == 1 then
+        return redis.error_reply('runAbandonRetainAndClear: active and retained targets conflict')
+      end
+      -- The manifest is the first durable write. If it cannot be recorded, nothing is detached.
+      redis.call('SET', wd, ARGV[1])
+      if redis.call('EXISTS', edge) == 1 then redis.call('RENAME', edge, targets) end
+      redis.call('PERSIST', targets)
+      redis.call('UNLINK', pend, done, refs, KEYS[8], KEYS[9], KEYS[10], KEYS[11])
+      redis.call('HDEL', st, 'blk', 'hs')
+      redis.call('HSET', st, 'rev', ARGV[2])
+      return { '${RETAINED}' }
+    `,
+  });
+
+  /** KEYS: pend, done, edge, st, wd, results, targets, refs. ARGV: blockId, nowMs, ttlMs. */
+  redis.defineCommand("runTerminalRetainAndClear", {
+    numberOfKeys: 12,
+    lua: `
+      local pend, done, edge, st, wd, results, targets, refs = unpack(KEYS)
+      if ARGV[1] == '' then return redis.error_reply('runTerminalRetainAndClear: missing block id') end
+      local ttl = tonumber(ARGV[3])
+      if ttl == nil or ttl <= 0 then return redis.error_reply('runTerminalRetainAndClear: invalid TTL') end
+      local current = redis.call('HGET', st, 'blk') or ''
+      if redis.call('HGET', st, 'term') == '1' then return { '${TERMINAL}', current } end
+      if current ~= '' and current ~= ARGV[1] then return { '${STALE}', current } end
+      local retained = redis.call('GET', wd)
+      if retained and retained ~= ARGV[1] then
+        return redis.error_reply('runTerminalRetainAndClear: invalid withdrawal identity')
+      end
+      local hasEdge = redis.call('EXISTS', edge) == 1
+      if current == ARGV[1] and hasEdge and redis.call('EXISTS', targets) == 1 then
+        return redis.error_reply('runTerminalRetainAndClear: active and retained targets conflict')
+      end
+      local owesCleanup = current == ARGV[1] or retained or redis.call('HGET', st, 'co') == ARGV[1]
+      if current == '' and not owesCleanup and redis.call('EXISTS', results) == 0 then
+        return { '${ABSENT}' }
+      end
+      if current == ARGV[1] then
+        -- Publish recovery evidence before detaching the active hash.
+        redis.call('SET', wd, ARGV[1])
+        if hasEdge then redis.call('RENAME', edge, targets) end
+        redis.call('PERSIST', targets)
+      end
+      redis.call('UNLINK', pend, done, edge, refs, KEYS[9], KEYS[10], KEYS[11], KEYS[12])
+      redis.call('HSET', st, 'term', '1', 'hs', '', 'termAt', ARGV[2], 'rev', ARGV[4])
+      redis.call('HDEL', st, 'blk')
+      redis.call('PEXPIRE', st, ttl)
+      redis.call('PEXPIRE', results, ttl)
+      if owesCleanup then return { '${RETAINED}' } end
+      return { '${ABSENT}' }
+    `,
+  });
+
+  /** Read without consuming; ack only after the cross-shard watcher withdrawals converge. */
+  redis.defineCommand("runWithdrawalPage", {
+    numberOfKeys: 2,
+    lua: `
+      local wd, targets = KEYS[1], KEYS[2]
+      if ARGV[1] == '' then return redis.error_reply('runWithdrawalPage: missing block id') end
+      local identity = redis.call('GET', wd)
+      if not identity then return { '${ABSENT}' } end
+      if identity ~= ARGV[1] then return redis.error_reply('runWithdrawalPage: invalid block identity') end
+      if ARGV[2] == 'read' then
+        local fields = redis.call('HRANDFIELD', targets, ${RUN_CLEANUP_PAGE_SIZE})
+        local out = { '${RETAINED}' }
+        for i = 1, #fields do out[#out + 1] = fields[i] end
+        return out
+      end
+      if ARGV[2] ~= 'ack' or #ARGV - 2 > ${RUN_CLEANUP_PAGE_SIZE} then
+        return redis.error_reply('runWithdrawalPage: invalid acknowledgement')
+      end
+      for i = 3, #ARGV do redis.call('HDEL', targets, ARGV[i]) end
+      return { '${ACKNOWLEDGED}' }
+    `,
+  });
+
+  /**
+   * KEYS: st. ARGV: blockId.
+   *
+   * Durably mark this run's exact current store block as cleanup-owed, so `runAbsorbBlockers` refuses a
+   * DIFFERENT block until the fence is cleared. Set BEFORE the retry/requeue transition. A terminal run
+   * (already fenced by `term`) is a no-op — its own fence already refuses every absorb.
+   */
+  redis.defineCommand("runArmCleanupFence", {
+    numberOfKeys: 1,
+    lua: `
+      local st = KEYS[1]
+      if ARGV[1] == '' then
+        return redis.error_reply('runArmCleanupFence: ARGV[1] must be the block id')
+      end
+      if redis.call('HGET', st, 'term') == '1' then
+        return { '${TERMINAL}' }
+      end
+      redis.call('HSET', st, 'co', ARGV[1])
+      return { '${ARMED}' }
+    `,
+  });
+
+  /**
+   * KEYS: st. ARGV: blockId.
+   *
+   * Remove the cleanup-owed fence, but ONLY when it names this exact block — so a stale clear can never
+   * lift a newer block's owed fence. Called as the LAST step of a block's cleanup, after both its legacy
+   * delete and its store retain-and-clear/withdrawal have converged.
+   */
+  redis.defineCommand("runClearCleanupFence", {
+    numberOfKeys: 1,
+    lua: `
+      local st = KEYS[1]
+      if ARGV[1] == '' then
+        return redis.error_reply('runClearCleanupFence: ARGV[1] must be the block id')
+      end
+      if redis.call('HGET', st, 'co') == ARGV[1] then
+        redis.call('HDEL', st, 'co')
+        return { '${CLEARED}' }
+      end
+      return { '${ABSENT}' }
+    `,
+  });
+
+  /**
+   * KEYS: wd (the exact block's withdrawal manifest), st, targets. ARGV: blockId.
+   *
+   * ATOMICALLY retire a converged block's recovery evidence: delete its retained-withdrawal record AND
+   * clear its cleanup-owed fence, in one same-slot step, so a process death can never leave the fence set
+   * with no durable record to recover from (which would reject every later block forever). Both keys share
+   * the run's `{runId}` hash slot. Idempotent: a missing record and/or an already-cleared or differently-
+   * owned fence are all fine. The fence is cleared ONLY when it names THIS block — a newer block's `co` is
+   * never touched. Refuses while any unacknowledged target remains.
+   */
+  redis.defineCommand("runFinalizeRetainedWithdrawal", {
+    numberOfKeys: 3,
+    lua: `
+      local wd, st = KEYS[1], KEYS[2]
+      if ARGV[1] == '' then
+        return redis.error_reply('runFinalizeRetainedWithdrawal: ARGV[1] must be the block id')
+      end
+      local identity = redis.call('GET', wd)
+      if identity and identity ~= ARGV[1] then
+        return redis.error_reply('runFinalizeRetainedWithdrawal: invalid block identity')
+      end
+      if redis.call('HLEN', KEYS[3]) ~= 0 then
+        return { '${RETAINED}' }
+      end
+      local cleanupOwed = redis.call('HGET', st, 'co')
+      redis.call('UNLINK', wd, KEYS[3])
+      if cleanupOwed == ARGV[1] then
+        redis.call('HDEL', st, 'co')
+        return { '${CLEARED}' }
+      end
+      return { '${ABSENT}' }
+    `,
+  });
+
+  /**
+   * Retire successful registration bookkeeping and its discovery entry in one same-slot commit.
+   */
+  redis.defineCommand("runDeleteContribution", {
+    numberOfKeys: 2,
+    lua: `
+      redis.call('UNLINK', KEYS[1])
+      redis.call('ZREM', KEYS[2], ARGV[1])
+      return { '${CLEARED}' }
+    `,
+  });
+
+  /**
+   * Compensate at most one page, preserving unrelated edges and duplicate waitpoint references.
+   * SPOP progress, edge removal and final index retirement commit together, including lost replies.
+   * KEYS: pend, done, edge, st, contribution, refs, edgeIndex, doneOrder, early, earlyOrder, index.
+   * ARGV: blockId, absorptionId, indexMember, revision.
+   */
+  redis.defineCommand("runCompensateAbsorption", {
+    numberOfKeys: 11,
+    lua: `
+      local pend, done, edge, st, contrib, refs = unpack(KEYS)
+      if ARGV[1] == '' or ARGV[2] == '' then
+        return redis.error_reply('runCompensateAbsorption: missing identity')
+      end
+      local current = redis.call('HGET', st, 'blk') or ''
+      if current ~= ARGV[1] or redis.call('HGET', st, 'term') == '1' then
+        redis.call('UNLINK', contrib)
+        redis.call('ZREM', KEYS[11], ARGV[3])
+        return { '${STALE}', '0', '0', '0' }
+      end
+      -- Registered operations owe tail recovery, never compensation of accepted edges.
+      if redis.call('SISMEMBER', contrib, '!registered') == 1 then
+        return { '${RETAINED}', tostring(redis.call('HLEN', edge)), '0', '0' }
+      end
+      redis.call('HSET', st, 'rev', ARGV[4])
+      redis.call('SREM', contrib, '!accepted')
+      local removed = redis.call('SPOP', contrib, ${RUN_CLEANUP_PAGE_SIZE})
+      local removedFields = 0
+      for i = 1, #removed do
+        local field = removed[i]
+        if string.sub(field, 1, 1) ~= '!' then removedFields = removedFields + 1 end
+        local releaseEdge = false
+        if string.sub(field, 1, 1) ~= '!' and redis.call('HEXISTS', edge, field) == 1 then
+          local claimField = '!' .. field
+          local claims = tonumber(redis.call('HGET', refs, claimField)) or 1
+          if claims > 1 then
+            redis.call('HINCRBY', refs, claimField, -1)
+          elseif claims ~= -1 then
+            redis.call('HDEL', refs, claimField)
+            releaseEdge = true
+          end
+        end
+        if releaseEdge and redis.call('HDEL', edge, field) == 1 then
+          redis.call('ZREM', KEYS[7], field)
+          local sep = string.find(field, '#[^#]*$')
+          if sep then
+            local id = string.sub(field, 1, sep - 1)
+            if redis.call('HINCRBY', refs, id, -1) <= 0 then
+              redis.call('HDEL', refs, id)
+              redis.call('HDEL', done, id)
+              redis.call('ZREM', KEYS[8], id)
+              redis.call('SREM', pend, id)
+            end
+          end
+        end
+      end
+      local surviving = redis.call('HLEN', edge)
+      local remaining = redis.call('SCARD', contrib)
+      if remaining == 0 then redis.call('ZREM', KEYS[11], ARGV[3]) end
+      local outcome = '${RETAINED}'
+      if surviving == 0 and remaining == 0 then
+        redis.call('UNLINK', pend, done, edge, refs, KEYS[7], KEYS[8], KEYS[9], KEYS[10])
+        if redis.call('HGET', st, 'co') ~= ARGV[1] then
+          redis.call('HDEL', st, 'blk', 'hs')
+          outcome = '${CLEARED}'
+        end
+      end
+      return { outcome, tostring(surviving), tostring(removedFields), tostring(remaining) }
     `,
   });
 }
@@ -1176,6 +1546,7 @@ declare module "@internal/redis" {
       status: string,
       completionJson: string,
       terminalTtlMs: string,
+      completedByTaskRunId: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
     wpRegisterOrReport(
@@ -1271,20 +1642,38 @@ declare module "@internal/redis" {
       doneKey: string,
       edgeKey: string,
       stateKey: string,
+      contributionKey: string,
+      resultsKey: string,
+      refsKey: string,
+      edgeIndexKey: string,
+      doneOrderKey: string,
+      earlyKey: string,
+      earlyOrderKey: string,
+      predecessorWithdrawalKey: string,
+      predecessorTargetsKey: string,
+      contributionIndexKey: string,
       ...args: Array<string | Callback<string[]>>
     ): Result<string[], Context>;
     runDeliverCompletion(
       pendKey: string,
       doneKey: string,
       stateKey: string,
+      resultsKey: string,
+      refsKey: string,
+      doneOrderKey: string,
+      earlyKey: string,
+      earlyOrderKey: string,
       blockId: string,
       waitpointId: string,
       completionJson: string,
+      requireCurrentBlock: string,
+      revision: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
     runMarkHandoffAcked(
       stateKey: string,
       blockId: string,
+      revision: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
     runTerminalCleanup(
@@ -1292,16 +1681,29 @@ declare module "@internal/redis" {
       doneKey: string,
       edgeKey: string,
       stateKey: string,
+      resultsKey: string,
+      refsKey: string,
+      edgeIndexKey: string,
+      doneOrderKey: string,
+      earlyKey: string,
+      earlyOrderKey: string,
       nowMs: string,
       terminalTtlMs: string,
       voidHandoff: string,
+      revision: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
     runReadBlockState(
-      pendKey: string,
-      doneKey: string,
       edgeKey: string,
       stateKey: string,
+      edgeIndexKey: string,
+      doneOrderKey: string,
+      earlyOrderKey: string,
+      mode: string,
+      revision: string,
+      cutoff: string,
+      edgeOffset: string,
+      earlyAfter: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
     runClear(
@@ -1309,7 +1711,94 @@ declare module "@internal/redis" {
       doneKey: string,
       edgeKey: string,
       stateKey: string,
+      refsKey: string,
+      edgeIndexKey: string,
+      doneOrderKey: string,
+      earlyKey: string,
+      earlyOrderKey: string,
       ...args: Array<string | Callback<string[]>>
+    ): Result<string[], Context>;
+    runAbandonRetainAndClear(
+      pendKey: string,
+      doneKey: string,
+      edgeKey: string,
+      stateKey: string,
+      withdrawalKey: string,
+      targetsKey: string,
+      refsKey: string,
+      edgeIndexKey: string,
+      doneOrderKey: string,
+      earlyKey: string,
+      earlyOrderKey: string,
+      expectedBlockId: string,
+      revision: string,
+      callback?: Callback<string[]>
+    ): Result<string[], Context>;
+    runTerminalRetainAndClear(
+      pendKey: string,
+      doneKey: string,
+      edgeKey: string,
+      stateKey: string,
+      withdrawalKey: string,
+      resultsKey: string,
+      targetsKey: string,
+      refsKey: string,
+      edgeIndexKey: string,
+      doneOrderKey: string,
+      earlyKey: string,
+      earlyOrderKey: string,
+      expectedBlockId: string,
+      nowMs: string,
+      terminalTtlMs: string,
+      revision: string,
+      callback?: Callback<string[]>
+    ): Result<string[], Context>;
+    runReadCleanupFence(stateKey: string, callback?: Callback<string[]>): Result<string[], Context>;
+    runArmCleanupFence(
+      stateKey: string,
+      blockId: string,
+      callback?: Callback<string[]>
+    ): Result<string[], Context>;
+    runClearCleanupFence(
+      stateKey: string,
+      blockId: string,
+      callback?: Callback<string[]>
+    ): Result<string[], Context>;
+    runFinalizeRetainedWithdrawal(
+      withdrawalKey: string,
+      stateKey: string,
+      targetsKey: string,
+      blockId: string,
+      callback?: Callback<string[]>
+    ): Result<string[], Context>;
+    runWithdrawalPage(
+      withdrawalKey: string,
+      targetsKey: string,
+      ...args: Array<string | Callback<string[]>>
+    ): Result<string[], Context>;
+    runDeleteContribution(
+      contributionKey: string,
+      contributionIndexKey: string,
+      member: string,
+      callback?: Callback<string[]>
+    ): Result<string[], Context>;
+    runCompensateAbsorption(
+      pendKey: string,
+      doneKey: string,
+      edgeKey: string,
+      stateKey: string,
+      contributionKey: string,
+      refsKey: string,
+      edgeIndexKey: string,
+      doneOrderKey: string,
+      earlyKey: string,
+      earlyOrderKey: string,
+      contributionIndexKey: string,
+      blockId: string,
+      absorptionId: string,
+      member: string,
+      revision: string,
+      callback?: Callback<string[]>
     ): Result<string[], Context>;
   }
 }

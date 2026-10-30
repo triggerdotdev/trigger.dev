@@ -293,6 +293,7 @@ export class RunEngine {
         finishWaitpoint: async ({ payload }) => {
           await this.waitpointSystem.completeWaitpoint({
             id: payload.waitpointId,
+            organizationId: payload.organizationId,
             output: payload.error
               ? {
                   value: payload.error,
@@ -351,7 +352,19 @@ export class RunEngine {
           await this.waitpointSystem.ensureWaitpointCompleted({
             waitpointId: payload.waitpointId,
             output: payload.output,
+            organizationId: payload.organizationId,
           });
+        },
+        ensureAbsorptionCompensated: async ({ payload }) => {
+          await this.waitpointSystem.ensureAbsorptionCompensated({
+            runId: payload.runId,
+            blockId: payload.blockId,
+            absorptionId: payload.absorptionId,
+            organizationId: payload.organizationId,
+          });
+        },
+        recoverWaitpointBlock: async ({ payload }) => {
+          await this.waitpointSystem.recoverWaitpointBlock(payload);
         },
         enqueueDelayedRun: async ({ payload }) => {
           await this.delayedRunSystem.enqueueDelayedRun({ runId: payload.runId });
@@ -437,6 +450,8 @@ export class RunEngine {
 
     this.checkpointSystem = new CheckpointSystem({
       resources,
+      waitpointStoreEnabled: (organizationId) =>
+        this.waitpointSystem.isStoreRoutingEnabled(organizationId),
       executionSnapshotSystem: this.executionSnapshotSystem,
       enqueueSystem: this.enqueueSystem,
     });
@@ -474,6 +489,7 @@ export class RunEngine {
       executionSnapshotSystem: this.executionSnapshotSystem,
       enqueueSystem: this.enqueueSystem,
       completionGuardDelayMs: options.completionGuardDelayMs,
+      waitpointStore: options.waitpointStore,
     });
 
     this.ttlSystem = new TtlSystem({
@@ -2068,6 +2084,7 @@ export class RunEngine {
     workerId,
     runnerId,
     expectedEnvironmentId,
+    blockOperation,
     tx,
   }: {
     runId: string;
@@ -2084,6 +2101,14 @@ export class RunEngine {
     // id and yields nothing (404) for a foreign run, before any edge is registered. Omitted by trusted
     // internal callers.
     expectedEnvironmentId?: string;
+    // Use the block ID and cycle anchor captured by the caller.
+    // Required for MemoryDB waits; ignored for Postgres waits.
+    blockOperation?: {
+      id: string;
+      absorptionId: string;
+      cycleAnchor: string;
+      expectedPreviousBlockId?: string;
+    };
     tx?: PrismaClientOrTransaction;
   }): Promise<TaskRunExecutionSnapshot> {
     return this.waitpointSystem.blockRunWithWaitpoint({
@@ -2097,6 +2122,7 @@ export class RunEngine {
       workerId,
       runnerId,
       expectedEnvironmentId,
+      blockOperation,
       tx,
     });
   }

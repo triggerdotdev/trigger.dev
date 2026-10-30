@@ -24,6 +24,7 @@ import {
   type GlobalRateLimiter,
 } from "@trigger.dev/redis-worker";
 import type { ControlPlaneResolver } from "./controlPlaneResolver.js";
+import type { WaitpointSystemOptions } from "./systems/waitpointSystem.js";
 import type { FairQueueSelectionStrategyOptions } from "../run-queue/fairQueueSelectionStrategy.js";
 import type { RunQueueMetricsEmitter, RunQueueOptions } from "../run-queue/index.js";
 import type { MinimalAuthenticatedEnvironment } from "../shared/index.js";
@@ -278,6 +279,12 @@ export type RunEngineOptions = {
    * completion whose inline side effects never acked it. Default: 30s.
    */
   completionGuardDelayMs?: number;
+
+  /**
+   * The MemoryDB completed-record reader, for resolving store-format completed waitpoints in a
+   * Redis-primary resume cycle. Dark by default (undefined leaves the resolver Postgres-only).
+   */
+  waitpointStore?: WaitpointSystemOptions["waitpointStore"];
   heartbeatTimeoutsMs?: Partial<HeartbeatTimeouts>;
   repairSnapshotTimeoutMs?: number;
   treatProductionExecutionStallsAsOOM?: boolean;

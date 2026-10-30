@@ -189,6 +189,61 @@ export class StoreWaitpointRegistrationUnsupported extends Error {
 }
 
 /**
+ * A store-format blocker reached the block seam without a caller-owned block-operation identity. The
+ * store's compare-and-set needs a stable, caller-supplied identity that survives retries and is captured
+ * with the logical operation — NOT re-derived from whatever snapshot is latest when the operation runs —
+ * so a delayed operation from an older cycle carries its ORIGINAL identity and is refused stale after a
+ * newer cycle is installed. Without it, a delayed replay would silently adopt the current cycle's identity
+ * and be accepted. Legacy (Postgres) blockers need no identity and never reach this. In the dark default
+ * (no store minting) this is unreachable.
+ */
+export class StoreWaitpointBlockOperationIdentityRequired extends Error {
+  readonly runId: string;
+  readonly waitpointIds: string[];
+  constructor(params: { runId: string; waitpointIds: string[] }) {
+    super(
+      `Cannot register store-format waitpoint(s) [${params.waitpointIds.join(
+        ", "
+      )}] against run ${params.runId}: a store block operation requires a caller-owned block identity ` +
+        `(blockOperation.id) that survives retries; re-deriving it from the latest snapshot cannot fence a ` +
+        `delayed operation from an older cycle`
+    );
+    this.name = "StoreWaitpointBlockOperationIdentityRequired";
+    this.runId = params.runId;
+    this.waitpointIds = params.waitpointIds;
+  }
+}
+
+/**
+ * Reject an operation from an earlier run cycle before it changes MemoryDB.
+ * Check the snapshot anchor even if cleanup has already removed the old block.
+ * Legacy waits do not use this check.
+ */
+export class StoreWaitpointBlockCycleAdvanced extends Error {
+  readonly runId: string;
+  readonly waitpointIds: string[];
+  readonly expectedCycleAnchor: string;
+  readonly currentCycleAnchor: string;
+  constructor(params: {
+    runId: string;
+    waitpointIds: string[];
+    expectedCycleAnchor: string;
+    currentCycleAnchor: string;
+  }) {
+    super(
+      `Store block operation for run ${params.runId} carries cycle anchor ${params.expectedCycleAnchor}, ` +
+        `but the run's active cycle has advanced to ${params.currentCycleAnchor}; refusing to re-block a ` +
+        `run whose attempt is over`
+    );
+    this.name = "StoreWaitpointBlockCycleAdvanced";
+    this.runId = params.runId;
+    this.waitpointIds = params.waitpointIds;
+    this.expectedCycleAnchor = params.expectedCycleAnchor;
+    this.currentCycleAnchor = params.currentCycleAnchor;
+  }
+}
+
+/**
  * A run whose organization could hold MemoryDB block edges was asked to clear its block state inside a
  * rollback-capable Postgres lifecycle transaction (`tx`). Clearing MemoryDB cannot join that
  * transaction, so a clear-then-rollback would leave the run's store blockers destroyed with Postgres
@@ -207,6 +262,30 @@ export class TransactionalStoreClearUnsupported extends Error {
     );
     this.name = "TransactionalStoreClearUnsupported";
     this.runId = runId;
+  }
+}
+
+/**
+ * A mixed-residency absorption accepted the MemoryDB half but its legacy half failed AND the immediate
+ * compensating rollback of the store contribution also failed. Carries the exact fenced targets so the
+ * caller can arm a durable retry rather than report the rejected operation as clean while leaving store
+ * residue. `compensationCause` is the failed cleanup error.
+ */
+export class StoreAbsorptionCompensationFailed extends Error {
+  readonly runId: string;
+  readonly blockId: string;
+  readonly absorptionId: string;
+  readonly compensationCause: unknown;
+  constructor(args: { runId: string; blockId: string; absorptionId: string; cause: unknown }) {
+    super(
+      `Mixed absorption for run ${args.runId} block ${args.blockId} accepted MemoryDB but failed legacy, ` +
+        `and compensating the store contribution failed.`
+    );
+    this.name = "StoreAbsorptionCompensationFailed";
+    this.runId = args.runId;
+    this.blockId = args.blockId;
+    this.absorptionId = args.absorptionId;
+    this.compensationCause = args.cause;
   }
 }
 
