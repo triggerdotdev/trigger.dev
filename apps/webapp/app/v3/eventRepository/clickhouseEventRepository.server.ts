@@ -1064,9 +1064,9 @@ export class ClickhouseEventRepository implements IEventRepository {
       status: "OK",
       attributes: {
         error: {
-          message: spanEvent.properties.exception.message,
-          name: spanEvent.properties.exception.type,
-          stackTrace: spanEvent.properties.exception.stacktrace,
+          message: spanEvent.properties.exception?.message,
+          name: spanEvent.properties.exception?.type,
+          stackTrace: spanEvent.properties.exception?.stacktrace,
         },
       },
       metadata: JSON.stringify(spanEvent.properties),

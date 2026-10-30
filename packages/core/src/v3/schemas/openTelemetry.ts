@@ -61,8 +61,13 @@ export const SpanEvents = z.array(SpanEvent);
 
 export type SpanEvents = z.infer<typeof SpanEvents>;
 
+function hasExceptionProperties(event: SpanEvent): boolean {
+  const exception = (event.properties as Record<string, unknown> | undefined)?.exception;
+  return typeof exception === "object" && exception !== null;
+}
+
 export function isExceptionSpanEvent(event: SpanEvent): event is ExceptionSpanEvent {
-  return event.name === "exception";
+  return event.name === "exception" && hasExceptionProperties(event);
 }
 
 export function isCancellationSpanEvent(event: SpanEvent): event is CancellationSpanEvent {
