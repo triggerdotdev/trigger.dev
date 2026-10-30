@@ -178,6 +178,8 @@ export const internalEvents = webhook({
 });
 ```
 
+To accept a signature from more than one header, list the extra headers in `additionalSignatureHeaders` (up to 4). Trigger.dev parses each one like `signatureHeader` and accepts a match in any of them. Use this when a provider sends a second signature, for example one signed with the previous secret during a rotation. `signatureHeader` is still required. The built-in [`hookdeck()`](#hookdeck) source already checks `X-Hookdeck-Signature-2` this way.
+
 The optional `setupPrompt` is the provider-specific part of the endpoint's [setup prompt](/webhooks/connect#set-it-up-with-an-ai-agent): where the provider's webhook settings are and how to register a URL there. Trigger.dev adds the URL, the subscribers' filters and the signing secret steps around it.
 
 ### Form-encoded bodies
