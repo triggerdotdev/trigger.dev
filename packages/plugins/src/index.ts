@@ -43,6 +43,15 @@ export {
 } from "./rbac.js";
 
 export type { PluginDatabaseConfig } from "./databaseConfig.js";
+export type {
+  ExternalOidcController,
+  ExternalOidcEnvironment,
+  ExternalOidcMintResult,
+  ExternalOidcPlugin,
+  ExternalOidcPluginConfig,
+  ExternalOidcRunIdentity,
+  ExternalOidcSetup,
+} from "./oidc.js";
 
 export type {
   SsoPlugin,

@@ -3,6 +3,7 @@ import {
   type ApiClient,
   type ApiClientConfiguration,
   type CreatePublicTokenRequestBody,
+  type GetOIDCTokenOptions,
   apiClientManager,
   generateJWT as internal_generateJWT,
   isAdditionalApiKey,
@@ -34,6 +35,7 @@ export function configure(options: ApiClientConfiguration) {
 export const auth = {
   configure,
   createPublicToken,
+  getOIDCToken,
   createTriggerPublicToken,
   createBatchTriggerPublicToken,
   withAuth,
@@ -41,6 +43,16 @@ export const auth = {
   withTriggerPublicToken,
   withBatchTriggerPublicToken,
 };
+
+/**
+ * Mint a short-lived OIDC token for an external service from a deployed task run.
+ * Uses the current run identity, ignoring credentials from configure() or withAuth().
+ */
+async function getOIDCToken(
+  options: GetOIDCTokenOptions
+): Promise<{ token: string; expiresAt: Date }> {
+  return apiClientManager.getOIDCToken(options);
+}
 
 type PublicTokenPermissionProperties = {
   /**

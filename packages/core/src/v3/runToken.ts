@@ -23,7 +23,10 @@ export function isRunToken(token: string): boolean {
   }
 }
 
-function selectionReason(token: string): RunTokenSelectionReason {
+export function runTokenSelectionReason(
+  token: string,
+  expiryBufferSeconds = RUN_TOKEN_EXPIRY_BUFFER_SECONDS
+): RunTokenSelectionReason {
   if (!isRunToken(token)) return "malformed_token";
 
   try {
@@ -39,7 +42,7 @@ function selectionReason(token: string): RunTokenSelectionReason {
       return "malformed_token";
     }
 
-    if (claims.exp <= Date.now() / 1_000 + RUN_TOKEN_EXPIRY_BUFFER_SECONDS) return "expired_token";
+    if (claims.exp <= Date.now() / 1_000 + expiryBufferSeconds) return "expired_token";
     if (!claims.scopes.includes("admin")) return "old_scope";
     return "selected";
   } catch {
@@ -77,7 +80,7 @@ export function resolveRunTokenCredentialSelection(
     reason = "unsupported_operation";
   } else {
     token = getEnvVar("TRIGGER_RUN_TOKEN");
-    reason = token ? selectionReason(token) : "missing_token";
+    reason = token ? runTokenSelectionReason(token) : "missing_token";
   }
 
   const credential = reason === "selected" ? token : fallback;

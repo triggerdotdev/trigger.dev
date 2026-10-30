@@ -4,6 +4,7 @@ export * from "./apiClient/pagination.js";
 export * from "./apiClient/runTracePages.js";
 export type { ApiPromise, OffsetLimitPagePromise, CursorPagePromise } from "./apiClient/core.js";
 export * from "./apiClient/errors.js";
+export { OIDCTokenError, type GetOIDCTokenOptions } from "./apiClient/oidc.js";
 export * from "./apiClient/refreshAccessToken.js";
 export * from "./clock-api.js";
 export * from "./errors.js";

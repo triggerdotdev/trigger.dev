@@ -46,6 +46,8 @@ export type { ApiClientConfiguration, TaskRunContext };
 
 export {
   ApiError,
+  OIDCTokenError,
+  type GetOIDCTokenOptions,
   AuthenticationError,
   BadRequestError,
   ConflictError,

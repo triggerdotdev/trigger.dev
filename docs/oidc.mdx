@@ -1,0 +1,262 @@
+---
+title: "OpenID Connect (OIDC)"
+description: "Access AWS and other services from deployed tasks using short-lived credentials instead of stored cloud keys."
+---
+
+<Note>
+  OIDC is in private beta on Trigger.dev Cloud. [Contact us](https://trigger.dev/contact) to request
+  access.
+</Note>
+
+OIDC lets a deployed task on Trigger.dev Cloud prove its identity to an external service without storing a long-lived cloud key. Trigger.dev issues a short-lived identity token. The service validates that token and grants only the permissions you configured for that identity.
+
+## Prerequisites
+
+- Use `@trigger.dev/sdk` and the Trigger.dev CLI (`trigger.dev`) **4.8.3 or later**, including the CLI used by your CI or deployment integration.
+- **Redeploy after upgrading the CLI**, then start a new run on the new deployment. Updating the SDK alone does not update the runner in an existing deployment. Replaying a run against an old deployment does not upgrade it.
+- Request tokens inside the executing task attempt, in Production, Staging, or a Preview environment. Development runs do not receive internal run tokens.
+
+## Set up AWS
+
+<Steps>
+  <Step title="Select your deployed environment">
+    Open your project in the dashboard, select the Production, Staging, or Preview environment that
+    needs AWS access, then open [**OIDC**](https://cloud.trigger.dev/_/oidc) in the environment menu. Configure each environment separately.
+  </Step>
+  <Step title="Create an IAM OIDC identity provider">
+    In the AWS IAM console, open **Identity providers → Add provider → OpenID Connect**. Paste the
+    **Issuer URL** from the dashboard into **Provider URL** and use `sts.amazonaws.com` as the
+    **Audience**. You only need one provider per issuer in an AWS account; reuse it if it already exists.
+
+    Alternatively, use the AWS CLI with the exact issuer URL from the dashboard:
+
+    ```bash
+    aws iam create-open-id-connect-provider \
+      --url "https://oidc.trigger.dev" \
+      --client-id-list sts.amazonaws.com
+    ```
+
+    For Terraform-managed infrastructure, see [Terraform setup](#terraform-setup) below.
+  </Step>
+  <Step title="Create an IAM role with the exact trust policy">
+    Enter your AWS account ID in the dashboard setup page, then copy its trust policy into an IAM
+    role's **Trust relationships**. The policy allows `sts:AssumeRoleWithWebIdentity` only when both
+    the audience and the complete environment subject match.
+
+    Exact matching is the default. Keep the organization ID, project reference, environment type,
+    and audience fixed. To share a role across all Preview branches in one project, keep the
+    audience under `StringEquals` and use `StringLike` for only the subject. Replace the trust
+    policy's `Condition` with:
+
+    ```json
+    {
+      "StringEquals": {
+        "oidc.trigger.dev:aud": "sts.amazonaws.com"
+      },
+      "StringLike": {
+        "oidc.trigger.dev:sub": "org:YOUR_ORG_ID:project:YOUR_PROJECT_REF:env:PREVIEW:*"
+      }
+    }
+    ```
+
+    Replace the organization ID and project reference with the exact values from your dashboard
+    subject. This deliberately trusts all
+    current and future Preview branches in that project, including anyone allowed to deploy them.
+    Never wildcard the organization or project portions. Keep `PREVIEW` fixed so the role does not
+    also trust Production or Staging.
+
+    For a single Preview branch, use its persisted environment slug, not the parent environment's
+    identity or a branch display name. No session tags or `sts:TagSession` permission are required.
+  </Step>
+  <Step title="Attach a least-privilege permissions policy">
+    The trust policy controls who can assume the role. Attach a separate permissions policy that
+    controls what the role can do. For example, to read objects under one S3 prefix:
+
+    ```json
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Action": "s3:GetObject",
+          "Resource": "arn:aws:s3:::YOUR_BUCKET/trigger/*"
+        }
+      ]
+    }
+    ```
+  </Step>
+  <Step title="Install the SDK and AWS dependencies">
+    ```bash
+    npm install @trigger.dev/sdk@latest @aws-sdk/client-sts @aws-sdk/client-s3
+    ```
+
+    `@aws-sdk/client-sts` is an optional peer dependency of the Trigger.dev SDK. Install it explicitly
+    when using the AWS credential provider. Install the AWS service clients your task uses as well.
+  </Step>
+  <Step title="Use the credential provider and redeploy">
+    Replace the role ARN, AWS region, bucket, and object key below, or copy the personalized code
+    from the dashboard:
+
+    ```typescript
+    import { task } from "@trigger.dev/sdk";
+    import { awsCredentialProvider } from "@trigger.dev/sdk/oidc/aws";
+    import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+
+    export const readFromS3 = task({
+      id: "read-from-s3",
+      run: async () => {
+        const s3 = new S3Client({
+          region: "us-east-1",
+          credentials: awsCredentialProvider({
+            roleArn: "arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/YOUR_ROLE_NAME",
+            region: "us-east-1",
+          }),
+        });
+
+        const result = await s3.send(
+          new GetObjectCommand({ Bucket: "YOUR_BUCKET", Key: "trigger/example.txt" })
+        );
+        return { contents: await result.Body?.transformToString() };
+      },
+    });
+    ```
+
+    ```bash
+    npx trigger.dev@latest deploy
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  Create the AWS client inside `run` and reuse it only within that run. A module-scope client can
+  reuse a previous run's cached credentials and attribute AWS activity to that run.
+</Warning>
+
+The provider requires `roleArn` and `region`, and accepts optional `roleSessionName` and `durationSeconds`. The AWS service client's region does not configure the separate STS client. AWS sessions default to 3,600 seconds (one hour), subject to the role's allowed session duration. The default role session name is the current run ID, sanitized to AWS's allowed characters and limited to 64 characters, so AWS activity can be attributed to a run. A role session name is not a session tag.
+
+## Terraform setup
+
+Use these resources instead of creating the provider and role through the console. Copy the exact
+issuer URL and subject from the environment's OIDC page into the input variables. This example uses
+exact subject matching; attach a least-privilege permissions policy to the role separately, as in
+the setup steps above.
+
+```hcl
+terraform {
+  required_providers {
+    aws = {
+      source = "hashicorp/aws"
+    }
+  }
+}
+
+provider "aws" {
+  region = "us-east-1"
+}
+
+variable "trigger_oidc_issuer" {
+  type = string
+}
+
+variable "trigger_oidc_subject" {
+  type = string
+}
+
+locals {
+  issuer_host = trimsuffix(trimprefix(var.trigger_oidc_issuer, "https://"), "/")
+}
+
+resource "aws_iam_openid_connect_provider" "trigger" {
+  url            = var.trigger_oidc_issuer
+  client_id_list = ["sts.amazonaws.com"]
+}
+
+resource "aws_iam_role" "trigger" {
+  name = "trigger-s3-reader"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = "sts:AssumeRoleWithWebIdentity"
+      Principal = {
+        Federated = aws_iam_openid_connect_provider.trigger.arn
+      }
+      Condition = {
+        StringEquals = {
+          "${local.issuer_host}:aud" = "sts.amazonaws.com"
+          "${local.issuer_host}:sub" = var.trigger_oidc_subject
+        }
+      }
+    }]
+  })
+}
+```
+
+If the IAM provider already exists, import it into Terraform state rather than creating a duplicate:
+
+```bash
+terraform import aws_iam_openid_connect_provider.trigger \
+  arn:aws:iam::YOUR_AWS_ACCOUNT_ID:oidc-provider/oidc.trigger.dev
+```
+
+## Other OIDC integrations
+
+<Note>
+  More first-party OIDC integrations will be added soon.
+</Note>
+
+For a service that accepts OIDC, request a token with that service's expected audience inside your task:
+
+```typescript
+import { auth, task } from "@trigger.dev/sdk";
+
+export const federatedTask = task({
+  id: "federated-task",
+  run: async () => {
+    const { token } = await auth.getOIDCToken({ audience: "https://service.example.com" });
+    // Exchange this token using your service's federation API. Never log the token.
+    const response = await fetch("https://service.example.com/federated-resource", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error(`Service request failed: ${response.status}`);
+    return response.json();
+  },
+});
+```
+
+`auth.getOIDCToken({ audience })` returns `Promise<{ token: string; expiresAt: Date }>`. If you cache tokens, leave enough time before `expiresAt` to complete the exchange. Configure the external service to validate the issuer's signature, audience, expiry, and exact environment subject. Do not use an OIDC token to call Trigger.dev APIs.
+
+Token-request failures throw `OIDCTokenError`, exported from `@trigger.dev/sdk`, for both local validation and API errors. It extends `ApiError` and preserves the error code, message, HTTP status and headers; API failures retain the original error as `cause`.
+
+## Local development
+
+`trigger dev` does not receive internal run tokens and cannot mint external OIDC tokens. Use your own development credentials, such as an AWS SSO profile. If the same task needs to work locally and deployed, explicitly choose local credentials for Development:
+
+```typescript
+import { task } from "@trigger.dev/sdk";
+import { awsCredentialProvider } from "@trigger.dev/sdk/oidc/aws";
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+
+export const readFromS3 = task({
+  id: "read-from-s3",
+  run: async (_, { ctx }) => {
+    const s3 = new S3Client({
+      region: "us-east-1",
+      credentials:
+        ctx.environment.type === "DEVELOPMENT"
+          ? undefined // Use your own local AWS credential chain, for example AWS_PROFILE.
+          : awsCredentialProvider({
+              roleArn: "arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/YOUR_ROLE_NAME",
+              region: "us-east-1",
+            }),
+    });
+    const result = await s3.send(
+      new GetObjectCommand({ Bucket: "YOUR_BUCKET", Key: "trigger/example.txt" })
+    );
+    return { contents: await result.Body?.transformToString() };
+  },
+});
+```
+
+Authenticate locally with your AWS tooling before running the task. Do not catch OIDC errors and fall back to static credentials in deployed environments.

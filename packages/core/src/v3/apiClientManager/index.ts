@@ -1,4 +1,5 @@
 import { ApiClient } from "../apiClient/index.js";
+import { requestOIDCToken, type GetOIDCTokenOptions } from "../apiClient/oidc.js";
 import { resolveRunTokenCredentialSelection } from "../runToken.js";
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
 import { getEnvVar } from "../utils/getEnv.js";
@@ -170,6 +171,11 @@ export class APIClientManagerAPI {
         ? undefined
         : this.#defaultCredentialResolver(branchName)
     );
+  }
+
+  async getOIDCToken(options: GetOIDCTokenOptions) {
+    const source = sdkScope.getStore()?.apiClientConfig ?? this.#getConfig();
+    return requestOIDCToken(options, this.baseURL!, source?.requestOptions);
   }
 
   runWithConfig<R extends (...args: any[]) => Promise<any>>(

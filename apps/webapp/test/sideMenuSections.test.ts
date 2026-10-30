@@ -14,6 +14,30 @@ const build = (isAdmin: boolean) =>
     isManagedCloud: false,
   });
 
+// Catches: exposing OIDC navigation before server-side enablement or on self-hosted installs.
+it.each([
+  { oidcEnabled: undefined, isManagedCloud: true, visible: false },
+  { oidcEnabled: false, isManagedCloud: true, visible: false },
+  { oidcEnabled: true, isManagedCloud: false, visible: false },
+  { oidcEnabled: true, isManagedCloud: true, visible: true },
+])(
+  "gates OIDC navigation on setup availability ($oidcEnabled, $isManagedCloud)",
+  ({ oidcEnabled, isManagedCloud, visible }) => {
+    const sections = buildSideMenuSections({
+      organization: { slug: "org" },
+      project: { slug: "proj" },
+      environment: { slug: "prod" },
+      isAdmin: true,
+      alertsConfigured: true,
+      featureFlags: { oidcEnabled },
+      isManagedCloud,
+    });
+    expect(sections.flatMap((section) => section.items).some((item) => item.id === "oidc")).toBe(
+      visible
+    );
+  }
+);
+
 describe("buildSideMenuSections alerts placement", () => {
   it("puts Alerts first in Observability, before Logs, with a New badge", () => {
     const sections = build(true);

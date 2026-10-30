@@ -10,6 +10,11 @@ description: "Authenticate backend requests with environment-specific API keys."
   environment variable, never commit them to source control, and never expose them in frontend code.
 </Warning>
 
+<Tip>
+  To access AWS or another external service from a deployed task without stored cloud keys, use
+  [OpenID Connect (OIDC)](/oidc). Trigger.dev API keys cannot mint OIDC tokens.
+</Tip>
+
 ## Create an API key
 
 Create a separate named key for each service or integration that accesses Trigger.dev.

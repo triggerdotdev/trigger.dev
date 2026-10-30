@@ -59,6 +59,7 @@ export const FEATURE_FLAG = {
   apiRateLimitMetricsEnabled: "apiRateLimitMetricsEnabled",
   supportAccessSettingsEnabled: "supportAccessSettingsEnabled",
   runTokenInjection: "runTokenInjection",
+  externalOidc: "externalOidc",
   sessionTraceEnabled: "sessionTraceEnabled",
 } as const;
 
@@ -235,6 +236,7 @@ export const FeatureFlagCatalog = {
   // Injects a signed per-attempt TRIGGER_RUN_TOKEN into deployed runs. Org override wins over
   // the global value. Requires RUN_TOKEN_ISSUER_URL and an active internal run signing key.
   [FEATURE_FLAG.runTokenInjection]: z.boolean(),
+  [FEATURE_FLAG.externalOidc]: z.boolean(),
   // Shows the session page's Trace tab and serves its routes. Org override wins over the global
   // value; off by default. Admins always have it.
   [FEATURE_FLAG.sessionTraceEnabled]: z.boolean(),
@@ -252,6 +254,7 @@ export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runOpsMintShard,
   FEATURE_FLAG.runOpsMintShardEnvPins,
   FEATURE_FLAG.apiRateLimitMetricsEnabled,
+  FEATURE_FLAG.externalOidc,
   FEATURE_FLAG.workerQueueCompatibility,
   FEATURE_FLAG.workerQueueChannel,
   FEATURE_FLAG.workerQueueEnvironmentOverrides,

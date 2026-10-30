@@ -36,6 +36,7 @@ import {
   v3ErrorsPath,
   v3LogsPath,
   v3ModelsPath,
+  v3OidcPath,
   v3ProjectAlertsPath,
   v3ProjectSettingsIntegrationsPath,
   v3PromptsPath,
@@ -96,6 +97,7 @@ export function buildSideMenuSections({
     hasQueryAccess?: boolean;
     hasLogsPageAccess?: boolean;
     alertsEnabled?: boolean;
+    oidcEnabled?: boolean;
   };
   isManagedCloud: boolean;
   /** Side-menu-only extras on the Dashboards item; the customize modal has no use for them. */
@@ -285,6 +287,18 @@ export function buildSideMenuSections({
         to: v3ApiKeysPath(organization, project, environment),
         dataAction: "api keys",
       },
+      ...(isManagedCloud && featureFlags.oidcEnabled
+        ? [
+            {
+              id: "oidc",
+              name: "OIDC",
+              icon: KeyIcon,
+              activeIconColor: "text-text-bright",
+              to: v3OidcPath(organization, project, environment),
+              dataAction: "oidc",
+            } satisfies SideMenuItemConfig,
+          ]
+        : []),
       ...(alertsInObservability ? [] : [alertsItem]),
       ...(isManagedCloud
         ? [

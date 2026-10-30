@@ -46,7 +46,8 @@
                 "searchable": true,
                 "pages": ["runs/list-best-practices"]
               },
-              "apikeys"
+              "apikeys",
+              "oidc"
             ]
           },
           {
