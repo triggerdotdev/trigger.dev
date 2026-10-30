@@ -1,5 +1,14 @@
 # @trigger.dev/sdk
 
+## 4.8.3
+
+### Patch Changes
+
+- Fix reloading a chat mid-turn after its access token was refreshed. A token refresh during a streaming turn persisted a resume cursor from the middle of the turn, so a reload resumed past chunks the page needed and failed to rebuild the assistant message ("No tool invocation found for tool call ID"). The persisted cursor now stays at the start of the turn until it completes, so a reload replays the whole turn. ([`9fd1de656`](https://github.com/triggerdotdev/trigger.dev/commit/9fd1de656eb9f96968f43525966a4cc8f5f71348))
+- Add private-beta OIDC authentication for deployed Cloud tasks, with an AWS credential provider and environment-specific setup instructions. Install `@aws-sdk/client-sts` to use `@trigger.dev/sdk/oidc/aws`, upgrade your deployment CLI, and redeploy. Contact us to enable access for your organization. ([`65352bc90`](https://github.com/triggerdotdev/trigger.dev/commit/65352bc90aff3788f466569997f2f6a24229ff5a))
+- Updated dependencies:
+  - `@trigger.dev/core@4.8.3`
+
 ## 4.8.2
 
 ### Patch Changes
