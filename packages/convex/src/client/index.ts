@@ -75,6 +75,14 @@ export class Trigger {
     return ctx.runQuery(this.component.runs.list, { paginationOpts });
   }
 
+  /**
+   * Request an earlier status check without accepting client-supplied run data.
+   * The check is scheduled, coalesced, and rate-limited; observe getRun for its result.
+   */
+  async refresh(ctx: MutationCtx, id: string): Promise<null> {
+    return ctx.runMutation(this.component.runs.refresh, { id });
+  }
+
   async resume(ctx: MutationCtx, id: string): Promise<null> {
     return ctx.runMutation(this.component.runs.resume, { id, config: this.runtimeConfig() });
   }

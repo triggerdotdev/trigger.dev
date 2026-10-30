@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { internal } from "./api.js";
 import { internalAction, internalMutation } from "./server.js";
-import { pause } from "./runs.js";
+import { pause, scheduleRefresh } from "./runs.js";
 import { ApiError, inlineValue, request } from "./apiClient.js";
 import {
   IDEMPOTENCY_TTL,
@@ -35,7 +35,13 @@ export const tick = internalMutation({
       return null;
     }
     const nextGeneration = generation + 1;
-    await ctx.db.patch("runs", id, { generation: nextGeneration, checks: run.checks + 1 });
+    await ctx.db.patch("runs", id, {
+      generation: nextGeneration,
+      checks: run.checks + 1,
+      checking: true,
+      refreshRequested: undefined,
+      lastCheckAt: run.runId ? Date.now() : run.lastCheckAt,
+    });
     // Schedule the watchdog transactionally before starting an action that can be interrupted.
     await ctx.scheduler.runAfter(
       Math.max(pollDelay(run.checks), REQUEST_TIMEOUT_MS + WATCHDOG_MARGIN_MS),
@@ -124,8 +130,14 @@ export const recordError = internalMutation({
     const run = await ctx.db.get("runs", id);
     if (!run || run.generation !== generation || run.syncStatus === "complete") return null;
     const failures = run.failures + 1;
-    await ctx.db.patch("runs", id, { failures, syncError: message, updatedAt: Date.now() });
+    await ctx.db.patch("runs", id, {
+      failures,
+      syncError: message,
+      checking: undefined,
+      updatedAt: Date.now(),
+    });
     if (permanent || failures >= MAX_SYNC_FAILURES) await pause(ctx, run, message);
+    else await scheduleRefresh(ctx, run);
     return null;
   },
 });

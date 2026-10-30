@@ -6,7 +6,7 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { Trigger, vRun, type ComponentApi } from "../client/index.js";
 import schema from "./schema.js";
-import { MAX_INLINE_BYTES } from "./shared.js";
+import { MAX_INLINE_BYTES, MIN_REFRESH_INTERVAL_MS } from "./shared.js";
 
 const modules = {
   "./_generated/component.ts": () => import("./_generated/component.js"),
@@ -63,6 +63,10 @@ const { createTest, api, internal } = app.defineModules({
         return id;
       },
     }),
+    refresh: app.mutation({
+      args: { id: v.string() },
+      handler: async (ctx, { id }) => new Trigger(app.components.trigger).refresh(ctx, id),
+    }),
   },
 });
 
@@ -92,6 +96,8 @@ let remoteStatus: string;
 let remoteIsCompleted: boolean;
 let largeOutput: boolean;
 let submittedOptions: Record<string, unknown>;
+let holdNextPoll: boolean;
+let releasePoll: (() => void) | undefined;
 
 beforeAll(async () => {
   server = createServer(async (req, res) => {
@@ -125,19 +131,26 @@ beforeAll(async () => {
         return;
       }
       const completed = activePolls-- <= 0;
-      res.end(
-        JSON.stringify({
-          id: "run_1",
-          status: completed ? remoteStatus : "EXECUTING",
-          isCompleted: completed && remoteIsCompleted,
-          output: completed
-            ? largeOutput
-              ? "x".repeat(MAX_INLINE_BYTES + 1)
-              : { url: "https://example.com/video.mp4" }
-            : undefined,
-          metadata: { progress: completed ? 100 : 50 },
-        })
-      );
+      const body = JSON.stringify({
+        id: "run_1",
+        status: completed ? remoteStatus : "EXECUTING",
+        isCompleted: completed && remoteIsCompleted,
+        output: completed
+          ? largeOutput
+            ? "x".repeat(MAX_INLINE_BYTES + 1)
+            : { url: "https://example.com/video.mp4" }
+          : undefined,
+        metadata: { progress: completed ? 100 : 50 },
+      });
+      if (holdNextPoll) {
+        holdNextPoll = false;
+        releasePoll = () => {
+          if (!res.writableEnded) res.end(body);
+          releasePoll = undefined;
+        };
+      } else {
+        res.end(body);
+      }
     }
   });
   server.listen(0, "127.0.0.1");
@@ -162,8 +175,13 @@ beforeEach(() => {
   remoteIsCompleted = true;
   largeOutput = false;
   submittedOptions = {};
+  holdNextPoll = false;
+  releasePoll = undefined;
 });
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  releasePoll?.();
+  vi.useRealTimers();
+});
 afterAll(
   () =>
     new Promise<void>((resolve, reject) => {
@@ -342,6 +360,135 @@ test("a failing callback rolls back completion and can be retried without duplic
     syncStatus: "complete",
   });
   expect(await t.run((ctx) => ctx.db.query("completions").collect())).toHaveLength(1);
+});
+
+async function runScheduled(t: ReturnType<typeof createTest>, advanceMs = 0): Promise<void> {
+  // Convex timestamps have sub-millisecond precision, so zero-delay jobs may fall just after now.
+  vi.advanceTimersByTime(advanceMs + 1);
+  await t.finishInProgressScheduledFunctions();
+  vi.advanceTimersByTime(1);
+  await t.finishInProgressScheduledFunctions();
+}
+
+// Catches: refresh bursts bypassing the check cooldown or racing the polling callback.
+test("refreshes promptly, bounds repeated checks, and completes once alongside polling", async () => {
+  activePolls = 1;
+  const t = createTest();
+  const id = await t.mutation(api.jobs.request, {});
+  await runScheduled(t);
+  expect(submissions).toBe(1);
+  expect(polls).toBe(0);
+
+  await Promise.all(Array.from({ length: 3 }, () => t.mutation(api.jobs.refresh, { id })));
+  await runScheduled(t);
+  expect(polls).toBe(1);
+  expect(await t.query(app.components.trigger.runs.get, { id })).toMatchObject({
+    status: "EXECUTING",
+    metadata: { progress: 50 },
+  });
+
+  await Promise.all(Array.from({ length: 3 }, () => t.mutation(api.jobs.refresh, { id })));
+  await runScheduled(t, MIN_REFRESH_INTERVAL_MS / 2);
+  expect(polls).toBe(1);
+  await runScheduled(t, MIN_REFRESH_INTERVAL_MS / 2);
+  expect(polls).toBe(2);
+  expect(await t.query(app.components.trigger.runs.get, { id })).toMatchObject({
+    status: "COMPLETED",
+    syncStatus: "complete",
+    output: { url: "https://example.com/video.mp4" },
+  });
+  await t.mutation(api.jobs.refresh, { id });
+  await drain(t);
+  expect(polls).toBe(2);
+  expect(submissions).toBe(1);
+  expect(await t.run((ctx) => ctx.db.query("completions").collect())).toHaveLength(1);
+});
+
+// Catches: refresh fencing out an in-flight observation or losing its completion hint.
+test("coalesces hints during an in-flight request and follows it with another check", async () => {
+  activePolls = 1;
+  const t = createTest();
+  const id = await t.mutation(api.jobs.request, {});
+  await runScheduled(t);
+  holdNextPoll = true;
+  const received = once(server, "request");
+  await t.mutation(api.jobs.refresh, { id });
+  vi.advanceTimersByTime(1);
+  await t.finishInProgressScheduledFunctions();
+  vi.advanceTimersByTime(1);
+  const checking = t.finishInProgressScheduledFunctions();
+  await received;
+  try {
+    await t.mutation(api.jobs.refresh, { id });
+    await t.mutation(api.jobs.refresh, { id });
+    vi.advanceTimersByTime(MIN_REFRESH_INTERVAL_MS);
+    expect(polls).toBe(1);
+    releasePoll!();
+    await checking;
+    expect(await t.query(app.components.trigger.runs.get, { id })).toMatchObject({
+      status: "EXECUTING",
+      syncStatus: "active",
+      metadata: { progress: 50 },
+    });
+    await runScheduled(t);
+    expect(polls).toBe(2);
+    expect(await t.query(app.components.trigger.runs.get, { id })).toMatchObject({
+      status: "COMPLETED",
+      syncStatus: "complete",
+    });
+    expect(await t.run((ctx) => ctx.db.query("completions").collect())).toHaveLength(1);
+  } finally {
+    releasePoll?.();
+    await checking;
+  }
+});
+
+// Catches: a failed status request leaving refresh permanently blocked as in-flight.
+test("allows a refresh after a retryable status error", async () => {
+  pollFailures = 1;
+  const t = createTest();
+  const id = await t.mutation(api.jobs.request, {});
+  await runScheduled(t);
+  await t.mutation(api.jobs.refresh, { id });
+  await runScheduled(t);
+  expect(polls).toBe(1);
+  expect(await t.query(app.components.trigger.runs.get, { id })).toMatchObject({
+    syncStatus: "active",
+  });
+  await t.mutation(api.jobs.refresh, { id });
+  await runScheduled(t, MIN_REFRESH_INTERVAL_MS);
+  expect(polls).toBe(2);
+  expect(await t.query(app.components.trigger.runs.get, { id })).toMatchObject({
+    syncStatus: "complete",
+  });
+});
+
+// Catches: browser hints resubmitting pending work or bypassing a permanent synchronization failure.
+test("does not submit pending work early or resume paused synchronization", async () => {
+  pollFailures = 1;
+  pollFailureStatus = 401;
+  const t = createTest();
+  const id = await t.mutation(api.jobs.request, {});
+  await t.mutation(api.jobs.refresh, { id });
+  expect(submissions).toBe(0);
+  await runScheduled(t);
+  await t.mutation(api.jobs.refresh, { id });
+  await runScheduled(t);
+  expect(await t.query(app.components.trigger.runs.get, { id })).toMatchObject({
+    syncStatus: "paused",
+  });
+  await t.mutation(api.jobs.refresh, { id });
+  await runScheduled(t, MIN_REFRESH_INTERVAL_MS);
+  expect(polls).toBe(1);
+  expect(submissions).toBe(1);
+  await t.mutation(app.components.trigger.runs.resume, {
+    id,
+    config: { secretKey: "test-only-key", baseUrl },
+  });
+  await drain(t);
+  expect(await t.query(app.components.trigger.runs.get, { id })).toMatchObject({
+    syncStatus: "complete",
+  });
 });
 
 test("rejects large inputs before scheduling remote work", async () => {

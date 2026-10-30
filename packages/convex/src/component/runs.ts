@@ -9,6 +9,7 @@ import { internalMutation, internalQuery, mutation, query, type DataModel } from
 import {
   MAX_INLINE_BYTES,
   MAX_PAGE_BYTES,
+  MIN_REFRESH_INTERVAL_MS,
   SUBMISSION_WINDOW_MS,
   vConfig,
   vRun,
@@ -19,7 +20,18 @@ import {
 type RunDoc = DataModel["runs"]["document"];
 
 export function toRun(run: RunDoc): Run {
-  const { _id, _creationTime, generation, checks, failures, callback, ...fields } = run;
+  const {
+    _id,
+    _creationTime,
+    generation,
+    checks,
+    failures,
+    callback,
+    checking,
+    refreshRequested,
+    lastCheckAt,
+    ...fields
+  } = run;
   return { id: _id, createdAt: _creationTime, ...fields };
 }
 
@@ -110,6 +122,36 @@ export const list = query({
   },
 });
 
+export async function scheduleRefresh(
+  ctx: GenericMutationCtx<DataModel>,
+  run: RunDoc
+): Promise<void> {
+  if (!run.refreshRequested) return;
+  const delay =
+    run.lastCheckAt === undefined
+      ? 0
+      : Math.max(0, run.lastCheckAt + MIN_REFRESH_INTERVAL_MS - Date.now());
+  await ctx.scheduler.runAfter(delay, internal.worker.tick, {
+    id: run._id,
+    generation: run.generation,
+  });
+}
+
+export const refresh = mutation({
+  args: { id: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { id }): Promise<null> => {
+    const runId = ctx.db.normalizeId("runs", id);
+    const run = runId ? await ctx.db.get("runs", runId) : null;
+    if (!run) throw new Error("Run not found");
+    if (!run.runId || run.syncStatus !== "active" || run.refreshRequested) return null;
+    await ctx.db.patch(run._id, { refreshRequested: true });
+    // Preserve the in-flight observation; its result will schedule any requested follow-up.
+    if (!run.checking) await scheduleRefresh(ctx, { ...run, refreshRequested: true });
+    return null;
+  },
+});
+
 export const resume = mutation({
   args: { id: v.string(), config: vConfig },
   returns: v.null(),
@@ -136,6 +178,8 @@ export const resume = mutation({
       failures: 0,
       checks: 0,
       generation,
+      checking: undefined,
+      refreshRequested: undefined,
       updatedAt: Date.now(),
     });
     await ctx.scheduler.runAfter(0, internal.worker.tick, { id: run._id, generation });
@@ -168,6 +212,7 @@ export const recordSubmission = internalMutation({
       syncError: undefined,
       failures: 0,
       checks: 0,
+      checking: undefined,
       updatedAt: Date.now(),
     });
     return null;
@@ -195,6 +240,8 @@ export const recordStatus = internalMutation({
       syncStatus: completed ? ("complete" as const) : ("active" as const),
       syncError: undefined,
       failures: 0,
+      checking: undefined,
+      refreshRequested: completed ? undefined : run.refreshRequested,
       updatedAt: Date.now(),
     };
     await ctx.db.patch("runs", id, updates);
@@ -209,6 +256,8 @@ export const recordStatus = internalMutation({
         .withIndex("by_run", (q) => q.eq("run", id))
         .unique();
       if (request) await ctx.db.delete("requests", request._id);
+    } else {
+      await scheduleRefresh(ctx, run);
     }
     return null;
   },
@@ -222,6 +271,8 @@ export async function pause(
   await ctx.db.patch("runs", run._id, {
     syncStatus: "paused",
     syncError: message,
+    checking: undefined,
+    refreshRequested: undefined,
     updatedAt: Date.now(),
   });
 }

@@ -124,6 +124,7 @@ The ID returned by `trigger.trigger` identifies the **component record**, not th
 - `trigger(ctx, taskId, payload, options?)`: enqueue work. Calling from a mutation makes the request atomic with your application's writes.
 - `getRun(ctx, id)`: read one record reactively.
 - `listRuns(ctx, paginationOpts)`: paginate records, newest first, up to 100 per page and a bounded read budget.
+- `refresh(ctx, id)`: schedule an earlier status check for an active, submitted run. Returns `null` after scheduling, not the updated run.
 - `resume(ctx, id)`: resume paused synchronization using the current credentials.
 
 Trigger options include tags, delay, queue name, concurrency key, machine, metadata, max attempts, max duration, TTL, and a component-level idempotency key.
@@ -133,6 +134,35 @@ An optional `idempotencyKey` deduplicates requests across this component instanc
 The constructor accepts `secretKey` (defaults to `TRIGGER_SECRET_KEY`), `baseUrl` (defaults to `https://api.trigger.dev`), and `onComplete`. HTTP base URLs are permitted only for localhost development.
 
 **Authorization belongs in your application's functions.** The component has no tenant or user model. Do not expose arbitrary record IDs or `listRuns` to clients without enforcing ownership. Queries never return stored credentials or request payloads.
+
+## Realtime progress and faster result delivery
+
+Use [Trigger Realtime](https://trigger.dev/docs/realtime/overview) for responsive browser progress, and Convex queries for durable application state. When Realtime reports that a run is complete, call an ownership-checked application mutation that requests a component refresh:
+
+```ts
+// convex/jobs.ts
+export const refresh = mutation({
+  args: { jobId: v.id("jobs") },
+  handler: async (ctx, { jobId }) => {
+    const user = await ctx.auth.getUserIdentity();
+    const job = await ctx.db.get(jobId);
+    if (!user || !job || job.owner !== user.subject) throw new Error("Unauthorized");
+    if (job.runId) await trigger.refresh(ctx, job.runId);
+  },
+});
+```
+
+Pass the component record ID to `refresh`, not the remote Trigger run ID. Your browser subscribes to the latter, available as `run.runId` from `getRun`.
+
+A refresh is only a hint: the component retrieves status and output directly from Trigger and uses the same validation, completion callback, and credential cleanup as normal polling. It never accepts client-supplied status or output. Observe `getRun` or your application query for the persisted result; awaiting `refresh` does not wait for that result.
+
+- Refresh requests are coalesced per run. Status checks requested this way start at least five seconds after the previous status check.
+- A hint received during a check queues one follow-up instead of interrupting or discarding the in-flight response. If that response completes the run, no follow-up is needed.
+- Pending submissions, paused synchronization, and completed records are no-ops. Refresh never submits a task or resumes paused work; use `resume` after repairing a paused synchronization.
+- Call refresh when Realtime observes completion, including an already-completed run after reconnecting. Do not call it on every metadata update to animate progress.
+- Scheduled polling and its watchdog remain enabled. Convex can still finish the run if the browser closes, the subscription disconnects, or the refresh request fails. No persistent subscription inside a Convex action is required.
+
+**Realtime token safety:** authenticate the token request, verify job ownership, and issue a short-lived token scoped to the exact remote run. Keep the root Trigger key server-side. A run-read token can also read the run through REST, including its payload; Realtime `skipColumns` is not a restriction on REST access. Keep worker credentials, storage-upload capabilities, and other secrets out of token-readable payloads, outputs, metadata, and errors. Application mutations must enforce ownership even when component refreshes are coalesced.
 
 ## Execution and reliability
 

@@ -8,6 +8,9 @@ export default defineSchema({
     generation: v.number(),
     checks: v.number(),
     failures: v.number(),
+    checking: v.optional(v.boolean()),
+    refreshRequested: v.optional(v.boolean()),
+    lastCheckAt: v.optional(v.number()),
     callback: v.optional(v.string()),
   }).index("by_key", ["idempotencyKey"]),
   requests: defineTable({

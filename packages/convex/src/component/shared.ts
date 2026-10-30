@@ -49,6 +49,7 @@ export type Config = Infer<typeof vConfig>;
 const FIRST_POLL_MS = 15_000;
 const MAX_POLL_MS = 60_000;
 export const REQUEST_TIMEOUT_MS = 10_000;
+export const MIN_REFRESH_INTERVAL_MS = 5_000;
 export const WATCHDOG_MARGIN_MS = 5_000;
 export const MAX_SYNC_FAILURES = 8;
 export const SUBMISSION_WINDOW_MS = 60 * 60 * 1_000;
