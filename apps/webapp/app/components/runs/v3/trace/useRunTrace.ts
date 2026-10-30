@@ -80,6 +80,7 @@ export function useRunTrace({
   canFetchPage,
   onLoadedSpans,
   retryKey,
+  paused = false,
 }: {
   run: RunTraceRun;
   trace: RunTraceInput;
@@ -119,6 +120,7 @@ export function useRunTrace({
     canFetchPage,
     onLoadedSpans,
     retryKey,
+    paused,
   });
 
   const traceIsTruncated = isTruncated || progressiveIsTruncated;
@@ -166,8 +168,10 @@ export function useRunTrace({
 
   // The callback's identity is unstable, so effects read it from a ref.
   const onRunDataStaleRef = useRef(onRunDataStale);
+  const pausedRef = useRef(paused);
   useEffect(() => {
     onRunDataStaleRef.current = onRunDataStale;
+    pausedRef.current = paused;
   });
 
   const streamedEvents = useEventSource(
@@ -207,7 +211,7 @@ export function useRunTrace({
   useRunStatusBackstop({
     enabled: live && liveTailEnabled && runDataUnfinished,
     statusPath,
-    shouldSkip: () => document.visibilityState === "hidden",
+    shouldSkip: () => document.visibilityState === "hidden" || pausedRef.current,
     onStatus: (data) => {
       if (data.isFinished || data.completedAt !== null) {
         // The reload alone won't refresh the tree if the span count didn't change.

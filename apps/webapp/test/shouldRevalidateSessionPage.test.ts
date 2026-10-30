@@ -68,6 +68,25 @@ describe("shouldRevalidateSessionPage", () => {
     ).toBe(true);
   });
 
+  // Catches: Raw or a channel made client-only, so Rendered remounts with a stale transcript and drops turns.
+  it("revalidates when Raw or a channel is toggled, even with the view set", () => {
+    expect(
+      shouldRevalidateSessionPage(
+        args(sessionUrl("?view=conversation"), sessionUrl("?view=conversation&raw=1"))
+      )
+    ).toBe(true);
+    expect(
+      shouldRevalidateSessionPage(
+        args(sessionUrl("?view=conversation&raw=1"), sessionUrl("?view=conversation"))
+      )
+    ).toBe(true);
+    expect(
+      shouldRevalidateSessionPage(
+        args(sessionUrl("?view=conversation&channel=a"), sessionUrl("?view=conversation"))
+      )
+    ).toBe(true);
+  });
+
   it("revalidates on an explicit revalidate, a form submission or another session", () => {
     expect(
       shouldRevalidateSessionPage(args(sessionUrl("?run=run_a"), sessionUrl("?run=run_a")))

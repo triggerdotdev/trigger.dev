@@ -30,6 +30,8 @@ type RunTraceSourceProps = {
   run: SessionTraceRun & { status: TaskRunStatus };
   load: SessionRunLoad;
   live: boolean;
+  /** The tab is hidden: live tails wait until it's shown again. */
+  paused: boolean;
   /** Errors only is on: a run that isn't fully loaded also reads its errors from the server. */
   errorsOnly: boolean;
   /** A deep-linked span: the first chunk includes it and its parents even past the first page. */
@@ -80,6 +82,7 @@ function RunTraceLive({
   run,
   load,
   live,
+  paused,
   errorsOnly,
   started,
   onSettle,
@@ -118,6 +121,7 @@ function RunTraceLive({
     onRunDataStale,
     readContext: "session",
     live,
+    paused,
     canFetchPage: (loaded) => askPage(run.friendlyId, loaded),
     onLoadedSpans: (loaded) => {
       if (mounted.current) onLoadedSpans(run.friendlyId, loaded);

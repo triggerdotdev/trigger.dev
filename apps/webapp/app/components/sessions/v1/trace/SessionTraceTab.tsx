@@ -6,7 +6,9 @@ import {
 } from "@heroicons/react/20/solid";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -108,6 +110,7 @@ import {
   RUNS_FILL_MAX,
   RUNS_PAGE_SIZE,
   type LoadedRuns,
+  type NewestPageReason,
   useSessionRunPages,
 } from "./useSessionRunPages";
 import { useSessionTraceSelection } from "./useSessionTraceSelection";
@@ -120,13 +123,19 @@ function isScrolledToBottom(element: HTMLElement) {
 // Like the run page: arrowing through rows doesn't write the URL on every step.
 const SELECTION_URL_DEBOUNCE_MS = 250;
 
+// Rows' clocks stop while the tab is hidden.
+const TraceTabActiveContext = createContext(true);
+
 /** The session's runs as one tree, newest page first, with earlier pages on request. */
 export function SessionTraceTab({
   runsPath,
   treeSnapshot,
+  active,
 }: {
   runsPath: string;
   treeSnapshot: ResizableSnapshot | undefined;
+  /** False while the Conversation tab is shown: the tab stays mounted but makes no requests. */
+  active: boolean;
 }) {
   // A run in the URL when the tab opens is a deep link: its page is read with the newest one.
   const { selection, setSelection } = useSessionTraceSelection();
@@ -149,24 +158,33 @@ export function SessionTraceTab({
   // New runs: re-read the newest page while the tab is visible (focus also refreshes it). It
   // lives here, not in the tree, so a session with no runs yet still picks up its first one.
   const [checkedAtMs, setCheckedAtMs] = useState(() => Date.now());
+  const { refreshNewest } = pages;
+  const checkNewest = useCallback(
+    (reason: NewestPageReason) => {
+      setCheckedAtMs(Date.now());
+      refreshNewest(reason);
+    },
+    [refreshNewest]
+  );
   useInterval({
     interval: newRunsPollIntervalMs(pages.runs ?? [], pages.totalCount, checkedAtMs),
-    disabled: pages.state.status !== "ready",
+    disabled: pages.state.status !== "ready" || !active,
     onLoad: false,
     onFocus: false,
-    callback: () => {
-      setCheckedAtMs(Date.now());
-      pages.refreshNewest("poll");
-    },
+    callback: () => checkNewest("poll"),
   });
   useInterval({
-    disabled: pages.state.status !== "ready",
+    disabled: pages.state.status !== "ready" || !active,
     onLoad: false,
-    callback: () => {
-      setCheckedAtMs(Date.now());
-      pages.refreshNewest("focus");
-    },
+    callback: () => checkNewest("focus"),
   });
+  // Shown again after Conversation: check at once instead of waiting for the next poll.
+  const wasActive = useRef(active);
+  useEffect(() => {
+    const shown = active && !wasActive.current;
+    wasActive.current = active;
+    if (shown && pages.state.status === "ready") checkNewest("focus");
+  }, [active, pages.state.status, checkNewest]);
 
   if (pages.state.status === "loading") {
     return (
@@ -199,23 +217,26 @@ export function SessionTraceTab({
   }
 
   return (
-    <SessionTraceTree
-      runs={pages.runs}
-      view={pages.view}
-      totalCount={pages.totalCount}
-      canLoadEarlier={pages.canLoadEarlier}
-      loadingEarlier={pages.loadingEarlier}
-      earlierError={pages.earlierError}
-      onLoadEarlier={pages.loadEarlier}
-      olderLoadBusy={pages.olderLoadBusy}
-      fillingRunFriendlyId={pages.fillingRunFriendlyId}
-      fillFailedRunFriendlyId={pages.fillFailedRunFriendlyId}
-      onFillHole={pages.fillHole}
-      onRunDataStale={pages.refreshNewest}
-      checkedAtMs={checkedAtMs}
-      treeSnapshot={treeSnapshot}
-      notice={showRunNotFound ? "That run isn't in this session." : undefined}
-    />
+    <TraceTabActiveContext.Provider value={active}>
+      <SessionTraceTree
+        runs={pages.runs}
+        view={pages.view}
+        totalCount={pages.totalCount}
+        canLoadEarlier={pages.canLoadEarlier}
+        loadingEarlier={pages.loadingEarlier}
+        earlierError={pages.earlierError}
+        onLoadEarlier={pages.loadEarlier}
+        olderLoadBusy={pages.olderLoadBusy}
+        fillingRunFriendlyId={pages.fillingRunFriendlyId}
+        fillFailedRunFriendlyId={pages.fillFailedRunFriendlyId}
+        onFillHole={pages.fillHole}
+        onRunDataStale={pages.refreshNewest}
+        checkedAtMs={checkedAtMs}
+        treeSnapshot={treeSnapshot}
+        notice={showRunNotFound ? "That run isn't in this session." : undefined}
+        active={active}
+      />
+    </TraceTabActiveContext.Provider>
   );
 }
 
@@ -238,6 +259,7 @@ function SessionTraceTree({
   checkedAtMs,
   treeSnapshot,
   notice,
+  active,
 }: {
   runs: SessionTraceRun[];
   view: LoadedRuns["view"];
@@ -255,6 +277,7 @@ function SessionTraceTree({
   checkedAtMs: number;
   treeSnapshot: ResizableSnapshot | undefined;
   notice: string | undefined;
+  active: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const parentRef = useRef<HTMLDivElement>(null);
@@ -335,6 +358,9 @@ function SessionTraceTree({
     loadsRef.current = sessionRunLoadsReducer(loadsRef.current, action);
     reactDispatchLoads(action);
   }, []);
+  useEffect(() => {
+    dispatchLoads({ type: "paused", paused: !active });
+  }, [active, dispatchLoads]);
   const onSettle = useCallback(
     (runFriendlyId: string, loadId: number, outcome: SessionRunLoadOutcome) =>
       dispatchLoads({ type: "settle", runFriendlyId, loadId, outcome }),
@@ -411,7 +437,11 @@ function SessionTraceTree({
   // Only the live run's scale moves with the clock; the rest are fixed at page load.
   const [openedAtMs] = useState(() => Date.now());
   const [nowMs, setNowMs] = useState(openedAtMs);
-  useInterval({ interval: 1_000, disabled: !liveRunId, callback: () => setNowMs(Date.now()) });
+  useInterval({
+    interval: 1_000,
+    disabled: !liveRunId || !active,
+    callback: () => setNowMs(Date.now()),
+  });
   const settledScales = useMemo(() => {
     const scales = new Map<string, TraceTimelineScale>();
     for (const run of runs) {
@@ -869,6 +899,7 @@ function SessionTraceTree({
             run={{ ...run, status: run.status }}
             load={load}
             live={run.friendlyId === newestRunId}
+            paused={!active}
             errorsOnly={filter.errorsOnly}
             selectedSpanId={
               deepLink?.kind === "span" && deepLink.runFriendlyId === run.friendlyId
@@ -1018,8 +1049,9 @@ function SessionTraceTree({
       </ResizablePanelGroup>
       <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-4">
         <div className="flex items-center gap-4 overflow-hidden">
+          {/* Shortcuts listen on the document, so `inert` on the hidden tab doesn't stop them. */}
           <KeyboardShortcuts
-            enabled
+            enabled={active}
             onExpandAll={expandAll}
             onCollapseAll={collapseAll}
             onToggleLevel={toggleLevel}
@@ -1450,8 +1482,13 @@ function RunLoadStatus({
 
 // Only the live run counts up; an older unfinished run shows when it started instead.
 function RunDurationLabel({ run, isLive }: { run: SessionTraceRun; isLive: boolean }) {
+  const active = useContext(TraceTabActiveContext);
   const [nowMs, setNowMs] = useState(() => Date.now());
-  useInterval({ interval: 1_000, disabled: !isLive, callback: () => setNowMs(Date.now()) });
+  useInterval({
+    interval: 1_000,
+    disabled: !isLive || !active,
+    callback: () => setNowMs(Date.now()),
+  });
 
   const duration = runDuration(run, nowMs);
   if (!duration) return run.status && !isFinalRunStatus(run.status) ? <>Queued</> : null;

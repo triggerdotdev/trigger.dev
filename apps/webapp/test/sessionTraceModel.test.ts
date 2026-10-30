@@ -496,6 +496,34 @@ describe("sessionRunLoadsReducer: the load queue", () => {
     expect(loads.queue).toEqual(ids.slice(3));
   });
 
+  // Catches: a hidden Trace tab still starting queued runs, or never starting them once shown again.
+  it("starts no queued run while the tab is hidden, and fills the slots when it's shown", () => {
+    const paused = (value: boolean): SessionRunLoadsAction => ({ type: "paused", paused: value });
+    let loads = apply(...ids.slice(0, 5).map((id) => expand(id)), paused(true));
+    loads = settle(loads, "run_1", { state: "progressive" });
+    loads = sessionRunLoadsReducer(loads, expand("run_6"));
+
+    expect(states(loads, ids.slice(0, 6))).toEqual([
+      "progressive",
+      "loading",
+      "loading",
+      "queued",
+      "queued",
+      "queued",
+    ]);
+    expect(sessionRunLoadsReducer(loads, paused(true))).toBe(loads);
+
+    loads = sessionRunLoadsReducer(loads, paused(false));
+    expect(states(loads, ids.slice(0, 6))).toEqual([
+      "progressive",
+      "loading",
+      "loading",
+      "loading",
+      "queued",
+      "queued",
+    ]);
+  });
+
   it("gives every load attempt its own id, and keeps it once the run settles", () => {
     let loads = apply(expand("run_1"), expand("run_2"), expand("run_3"));
     const loadIds = ["run_1", "run_2", "run_3"].map((id) => loadIdOf(loads, id));

@@ -92,6 +92,8 @@ export type ProgressiveTraceOptions = {
   onLoadedSpans?: (loadedSpans: number) => void;
   /** Changing it reloads the later pages, like `retryLoad`. */
   retryKey?: number;
+  /** Holds live tails like a hidden browser tab: one tail on resume if a signal arrived. */
+  paused?: boolean;
 };
 
 function toChunkEvent(event: WireChunkEvent) {
@@ -185,7 +187,7 @@ export function useProgressiveTrace(
   errorsOnly: boolean,
   /** False drops live tails, including ones already queued (throttled, hidden tab, trailing). */
   tailEnabled = true,
-  { canFetchPage, onLoadedSpans, retryKey = 0 }: ProgressiveTraceOptions = {}
+  { canFetchPage, onLoadedSpans, retryKey = 0, paused = false }: ProgressiveTraceOptions = {}
 ): ProgressiveTraceState & {
   tailLive: () => void;
   liveTailEnabled: boolean;
@@ -219,8 +221,9 @@ export function useProgressiveTrace(
   // Timestamp of the last tail read, for the size-aware cadence governor.
   const lastTailAtRef = useRef(0);
   const lastSweepAtRef = useRef(0);
-  // A signal arrived while the tab was hidden; tail once when it's visible again.
+  // A signal arrived while the tab was hidden or paused; tail once when it's back.
   const hiddenTailRef = useRef(false);
+  const pausedRef = useRef(paused);
   // A throttled signal schedules one tail for when the interval ends.
   const deferredTailRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // A signal arrived mid-tail; run one trailing pass.
@@ -431,7 +434,7 @@ export function useProgressiveTrace(
     const meta = latestTraceRef.current.progressive;
     const assembler = assemblerRef.current;
     if (!meta || !assembler) return;
-    if (document.visibilityState === "hidden") {
+    if (document.visibilityState === "hidden" || pausedRef.current) {
       hiddenTailRef.current = true;
       return;
     }
@@ -500,6 +503,7 @@ export function useProgressiveTrace(
   useEffect(() => {
     const onVisibilityChange = () => {
       if (document.visibilityState !== "visible" || !hiddenTailRef.current) return;
+      if (pausedRef.current) return;
       hiddenTailRef.current = false;
       tailLiveRef.current();
     };
@@ -509,6 +513,14 @@ export function useProgressiveTrace(
       if (deferredTailRef.current !== null) clearTimeout(deferredTailRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    const resumed = pausedRef.current && !paused;
+    pausedRef.current = paused;
+    if (!resumed || !hiddenTailRef.current || document.visibilityState !== "visible") return;
+    hiddenTailRef.current = false;
+    tailLiveRef.current();
+  }, [paused]);
 
   // A kept tree still needs the ancestors of a newly deep-linked span.
   const supplementary = progressive?.supplementaryFirstEvents;

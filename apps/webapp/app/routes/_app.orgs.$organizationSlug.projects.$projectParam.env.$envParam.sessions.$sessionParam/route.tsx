@@ -322,6 +322,14 @@ function SessionLeftPane({
       !(channelParam && channels.includes(channelParam)),
   });
 
+  // Each tab mounts the first time it's shown and then stays mounted, so switching back keeps
+  // its state and the conversation stream never stops.
+  const [opened, setOpened] = useState(() => ({
+    trace: view === "trace",
+    conversation: view === "conversation",
+  }));
+  if (!opened[view]) setOpened({ ...opened, [view]: true });
+
   return (
     <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
       <div className="border-b border-grid-bright px-3">
@@ -345,22 +353,43 @@ function SessionLeftPane({
           </TabButton>
         </TabContainer>
       </div>
-      <div className="min-h-0 overflow-hidden">
-        {view === "trace" ? (
-          <SessionTraceTab
-            key={session.friendlyId}
-            runsPath={v3SessionRunsPath(organization, project, environment, session)}
-            treeSnapshot={traceTreeSnapshot}
-          />
-        ) : (
-          <ConversationPane
-            session={session}
-            channels={channels}
-            transcript={transcript}
-            pinConversationView
-          />
+      <div className="relative min-h-0 overflow-hidden">
+        {opened.trace && (
+          <SessionTabPanel active={view === "trace"}>
+            <SessionTraceTab
+              key={session.friendlyId}
+              runsPath={v3SessionRunsPath(organization, project, environment, session)}
+              treeSnapshot={traceTreeSnapshot}
+              active={view === "trace"}
+            />
+          </SessionTabPanel>
+        )}
+        {opened.conversation && (
+          <SessionTabPanel active={view === "conversation"}>
+            <ConversationPane
+              session={session}
+              channels={channels}
+              transcript={transcript}
+              pinConversationView
+              active={view === "conversation"}
+            />
+          </SessionTabPanel>
         )}
       </div>
+    </div>
+  );
+}
+
+// The hidden tab stays laid out (not display:none), so its scroll positions and panel sizes
+// survive, but it can't be focused or clicked.
+function SessionTabPanel({ active, children }: { active: boolean; children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.inert = !active;
+  }, [active]);
+  return (
+    <div ref={ref} aria-hidden={!active} className={cn("absolute inset-0", !active && "invisible")}>
+      {children}
     </div>
   );
 }
@@ -370,12 +399,14 @@ function ConversationPane({
   channels,
   transcript,
   pinConversationView,
+  active = true,
 }: {
   session: LoadedSession;
   channels: string[];
   transcript: ConversationTranscript;
   /** Keep `?view=conversation` so clearing Raw or a channel doesn't switch to the Trace tab. */
   pinConversationView: boolean;
+  active?: boolean;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -441,6 +472,7 @@ function ConversationPane({
               <AgentView
                 key={session.agentView.sessionId}
                 agentView={{ ...session.agentView, transcriptSeed: transcript.seed }}
+                paused={!active}
               />
             ) : (
               <div className="flex items-center justify-center gap-2 py-6">

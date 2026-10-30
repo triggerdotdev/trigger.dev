@@ -62,6 +62,8 @@ export type SessionRunLoads = {
   budget: number;
   /** How often the budget freed collapsed runs or cut one off, for analytics. */
   budgetHits: { freed: number; cutOff: number };
+  /** The tab is hidden: queued runs wait, runs already loading finish. */
+  paused: boolean;
 };
 
 export type SessionRunLoadsAction =
@@ -87,7 +89,9 @@ export type SessionRunLoadsAction =
   /** Retry a failed run: in place when some of its spans are on screen, else from the start. */
   | { type: "retry"; runFriendlyId: string }
   /** Frees runs back to idle, cancelling a fetch in flight (its late settle won't match). */
-  | { type: "release"; runFriendlyIds: string[]; forBudget?: boolean };
+  | { type: "release"; runFriendlyIds: string[]; forBudget?: boolean }
+  /** The tab was hidden or shown again. */
+  | { type: "paused"; paused: boolean };
 
 /** What to do before a run fetches its next page. */
 type PageDecision =
@@ -174,6 +178,7 @@ export function createSessionRunLoads(
     newestRunId: undefined,
     budget,
     budgetHits: { freed: 0, cutOff: 0 },
+    paused: false,
   };
 }
 
@@ -343,6 +348,11 @@ export function sessionRunLoadsReducer(
         action.forBudget ? freeForBudget(current, released) : withoutLoads(current, released)
       );
     }
+    case "paused": {
+      if (current.paused === action.paused) return current;
+      const next = { ...current, paused: action.paused };
+      return action.paused ? next : startQueued(next);
+    }
   }
 }
 
@@ -464,6 +474,7 @@ function withoutLoads(current: SessionRunLoads, runFriendlyIds: string[]): Sessi
 }
 
 function startQueued(current: SessionRunLoads): SessionRunLoads {
+  if (current.paused) return current;
   let inFlight = inFlightCount(current);
   if (inFlight >= MAX_CONCURRENT_RUN_LOADS || current.queue.length === 0) return current;
 

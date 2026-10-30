@@ -80,7 +80,14 @@ const INITIAL_PAYLOAD_TIMESTAMP = 0;
  * Intended to be mounted inside a scrollable container — the component
  * does not own its own scrollbar.
  */
-export function AgentView({ agentView }: { agentView: AgentViewAuth }) {
+export function AgentView({
+  agentView,
+  paused = false,
+}: {
+  agentView: AgentViewAuth;
+  /** Hidden: the streams keep reading, but the messages render once it's shown again. */
+  paused?: boolean;
+}) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -93,6 +100,7 @@ export function AgentView({ agentView }: { agentView: AgentViewAuth }) {
     envSlug: environment.slug,
     initialMessages: agentView.initialMessages,
     transcriptSeed: agentView.transcriptSeed,
+    paused,
   });
 
   // Sticky-bottom auto-scroll: walks up to find the inspector's scroll
@@ -245,6 +253,7 @@ function useAgentSessionMessages({
   envSlug,
   initialMessages,
   transcriptSeed,
+  paused,
 }: {
   sessionId: string;
   apiOrigin: string;
@@ -253,6 +262,7 @@ function useAgentSessionMessages({
   envSlug: string;
   initialMessages: UIMessage[];
   transcriptSeed?: TranscriptSeed;
+  paused: boolean;
 }): {
   messages: UIMessage[];
   hasEarlier: boolean;
@@ -316,8 +326,14 @@ function useAgentSessionMessages({
   const lastFlushAtRef = useRef<number>(0);
   const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleFlush = useRef<() => void>(() => {});
+  const pausedRef = useRef(paused);
+  const flushOnResumeRef = useRef(false);
 
   scheduleFlush.current = () => {
+    if (pausedRef.current) {
+      flushOnResumeRef.current = true;
+      return;
+    }
     if (pendingTimerRef.current !== null) return; // already scheduled
     const now = Date.now();
     const sinceLast = now - lastFlushAtRef.current;
@@ -328,6 +344,13 @@ function useAgentSessionMessages({
       setMessagesById(new Map(pendingRef.current));
     }, delay);
   };
+
+  useEffect(() => {
+    pausedRef.current = paused;
+    if (paused || !flushOnResumeRef.current) return;
+    flushOnResumeRef.current = false;
+    scheduleFlush.current();
+  }, [paused]);
 
   useEffect(() => {
     const abort = new AbortController();
