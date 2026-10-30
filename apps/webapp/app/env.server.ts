@@ -1359,6 +1359,8 @@ const EnvironmentSchema = z
     RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_SCHEDULE: z.string().optional(),
     RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_JITTER_IN_MS: z.coerce.number().int().optional(),
     RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_JITTER_IN_MS: z.coerce.number().int().optional(),
+    // Blank or 0 means the engine default of 1000; clamped to 1..10000 in RunQueue.
+    RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_COUNT: OptionalLimitEnv,
 
     // TTL System settings for automatic run expiration
     RUN_ENGINE_TTL_SYSTEM_DISABLED: BoolEnv.default(false),

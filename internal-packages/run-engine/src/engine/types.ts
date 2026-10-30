@@ -146,6 +146,7 @@ export type RunEngineOptions = {
       processMarkedSchedule?: string;
       scanJitterInMs?: number;
       processMarkedJitterInMs?: number;
+      scanCount?: number;
     };
     /** TTL system options for automatic run expiration */
     ttlSystem?: {
