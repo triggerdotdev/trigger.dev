@@ -15,6 +15,7 @@ import {
 } from "./sessionPanelStore";
 import { SESSION_SPAN_TAB_PARAM, type SessionTraceSelection } from "./sessionTraceSelection";
 import { fetchRunsPage } from "./useSessionRunPages";
+import { useSessionViewAnalytics } from "./useSessionViewAnalytics";
 
 type RunOrSpanSelection = Exclude<SessionTraceSelection, { kind: "session" }>;
 
@@ -29,6 +30,7 @@ export function SessionRunInspector({
   runsPath: string;
   onClose: () => void;
 }) {
+  const track = useSessionViewAnalytics();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -85,7 +87,11 @@ export function SessionRunInspector({
       ? v3RunSpanPath(organization, project, environment, run, { spanId: selection.spanId })
       : v3RunPath(organization, project, environment, run);
   const openRunPage = (
-    <LinkButton variant="secondary/small" to={runPagePath}>
+    <LinkButton
+      variant="secondary/small"
+      to={runPagePath}
+      onClick={() => track("open_run_page", { from: "panel" })}
+    >
       Open run page
     </LinkButton>
   );

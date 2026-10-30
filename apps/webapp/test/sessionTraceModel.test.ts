@@ -1362,10 +1362,11 @@ describe("sessionRunLoadsReducer: span budget, load order and retry", () => {
     const check = pageCheck(loads, "run_4");
     expect(check).toEqual({
       allowed: true,
-      action: { type: "release", runFriendlyIds: ["run_1", "run_3"] },
+      action: { type: "release", runFriendlyIds: ["run_1", "run_3"], forBudget: true },
     });
 
     loads = run(loads, check.action!);
+    expect(loads.budgetHits).toEqual({ freed: 1, cutOff: 0 });
     expect(["run_1", "run_2", "run_3", "run_5"].map((id) => state(loads, id))).toEqual([
       "idle",
       "progressive",
@@ -1389,6 +1390,7 @@ describe("sessionRunLoadsReducer: span budget, load order and retry", () => {
       started: true,
       spanLimit: 30_000,
     });
+    expect(loads.budgetHits).toEqual({ freed: 0, cutOff: 1 });
     expect(state(loads, "run_1")).toBe("progressive");
     expect(isRunTraceMounted(runLoad(loads, "run_2"))).toBe(true);
 
@@ -1403,6 +1405,20 @@ describe("sessionRunLoadsReducer: span budget, load order and retry", () => {
     expect(run(loads, { type: "settle", runFriendlyId: "run_2", loadId, outcome })).toBe(loads);
   });
 
+  // Catches: "budget reached" sent when a run only hit its own span limit or was just collapsed.
+  it("doesn't count the run's own cap or a plain release as the budget", () => {
+    let loads = paging(start(30_000), "run_1", 5_000);
+    loads = settleNow(loads, "run_1", {
+      state: "cutOff",
+      limit: "run",
+      started: true,
+      spanLimit: 5_000,
+    });
+    loads = run(loads, expand("run_1", false), { type: "release", runFriendlyIds: ["run_1"] });
+    expect(state(loads, "run_1")).toBe("idle");
+    expect(loads.budgetHits).toEqual({ freed: 0, cutOff: 0 });
+  });
+
   it("holds back a run that can't start, and checks again when it's expanded again", () => {
     let loads = loaded(start(30_000), "run_1", 25_000);
     loads = run(loads, expand("run_2"));
@@ -1412,9 +1428,11 @@ describe("sessionRunLoadsReducer: span budget, load order and retry", () => {
       started: false,
     });
     expect(isRunTraceMounted(runLoad(loads, "run_2"))).toBe(false);
+    expect(loads.budgetHits).toEqual({ freed: 0, cutOff: 1 });
 
     loads = run(loads, expand("run_1", false), expand("run_2", false), expand("run_2"));
     expect([state(loads, "run_1"), state(loads, "run_2")]).toEqual(["idle", "loading"]);
+    expect(loads.budgetHits).toEqual({ freed: 1, cutOff: 1 });
   });
 
   it("frees collapsed runs as the newest run's live tail grows past the budget", () => {
@@ -1426,6 +1444,7 @@ describe("sessionRunLoadsReducer: span budget, load order and retry", () => {
 
     loads = run(loads, held("run_5", 15_000));
     expect([state(loads, "run_1"), state(loads, "run_2")]).toEqual(["idle", "progressive"]);
+    expect(loads.budgetHits.freed).toBe(1);
 
     // Not enough left to free: the rest goes anyway (it lowers what's held), and the newest
     // run keeps growing.

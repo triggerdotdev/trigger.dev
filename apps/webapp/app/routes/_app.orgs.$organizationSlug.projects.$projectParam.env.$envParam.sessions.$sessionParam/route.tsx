@@ -66,6 +66,7 @@ import { SessionPresenter } from "~/presenters/v3/SessionPresenter.server";
 import { featuresForRequest } from "~/features.server";
 import { canAccessSessionTrace } from "~/v3/canAccessSessionTrace.server";
 import { SessionTraceTab } from "~/components/sessions/v1/trace/SessionTraceTab";
+import { useSessionViewAnalytics } from "~/components/sessions/v1/trace/useSessionViewAnalytics";
 import { SessionRunInspector } from "~/components/sessions/v1/trace/SessionRunInspector";
 import { SessionPanelStoreProvider } from "~/components/sessions/v1/trace/sessionPanelStore";
 import { useSessionTraceSelection } from "~/components/sessions/v1/trace/useSessionTraceSelection";
@@ -303,6 +304,7 @@ function SessionLeftPane({
     channel: value("channel"),
     traceEnabled: true,
   });
+  const track = useSessionViewAnalytics();
   // Kept here so switching tabs doesn't fetch it again. Raw and channels don't use it.
   const channelParam = value("channel");
   const transcript = useConversationTranscript({
@@ -334,7 +336,10 @@ function SessionLeftPane({
           <TabButton
             isActive={view === "conversation"}
             layoutId="session-left-view"
-            onClick={() => replace({ view: "conversation" })}
+            onClick={() => {
+              if (view !== "conversation") track("conversation_opened");
+              replace({ view: "conversation" });
+            }}
           >
             Conversation
           </TabButton>

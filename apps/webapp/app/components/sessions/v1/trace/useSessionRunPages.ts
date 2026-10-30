@@ -33,19 +33,23 @@ type PagesState =
 /** What became of the deep-linked run, if the page opened with one. */
 export type DeepLinkResult = "none" | "loaded" | "notFound" | "failed";
 
+/** Why the newest page is read; the route labels its metrics with it. */
+export type NewestPageReason = "open" | "focus" | "poll";
+
 export type PageResult =
   | { ok: true; page: SessionRunsPage }
   | { ok: false; status: number | undefined; message: string };
 
 export async function fetchRunsPage(
   runsPath: string,
-  params: { after?: string; size?: number; run?: string },
+  params: { after?: string; size?: number; run?: string; reason?: NewestPageReason },
   signal: AbortSignal
 ): Promise<PageResult> {
   const url = new URL(runsPath, window.location.origin);
   url.searchParams.set("page[size]", String(params.size ?? RUNS_PAGE_SIZE));
   if (params.after) url.searchParams.set("page[after]", params.after);
   if (params.run) url.searchParams.set("run", params.run);
+  if (params.reason) url.searchParams.set("reason", params.reason);
 
   const [error, response] = await tryCatch(fetch(url, { signal }));
   if (error) return { ok: false, status: undefined, message: "Couldn't load this session's runs." };
@@ -143,7 +147,7 @@ export function useSessionRunPages(runsPath: string, deepLinkRunFriendlyId?: str
   useEffect(() => {
     const controller = new AbortController();
     void Promise.all([
-      fetchRunsPage(runsPath, {}, controller.signal),
+      fetchRunsPage(runsPath, { reason: "open" }, controller.signal),
       initialDeepLink
         ? fetchRunsPage(runsPath, { run: initialDeepLink }, controller.signal)
         : undefined,
@@ -218,20 +222,23 @@ export function useSessionRunPages(runsPath: string, deepLinkRunFriendlyId?: str
   );
 
   // Re-reads the newest page, e.g. when a run starts or finishes. Runs already loaded stay.
-  const refreshNewest = useCallback(() => {
-    if (refreshController.current) return;
-    const controller = new AbortController();
-    refreshController.current = controller;
-    void fetchRunsPage(runsPath, {}, controller.signal).then((result) => {
-      if (refreshController.current === controller) refreshController.current = null;
-      if (controller.signal.aborted || !result.ok) return;
-      setState((prev) =>
-        prev.status === "ready"
-          ? { ...prev, loaded: mergeSessionRunPage(prev.loaded, result.page, "newest") }
-          : prev
-      );
-    });
-  }, [runsPath]);
+  const refreshNewest = useCallback(
+    (reason: NewestPageReason = "poll") => {
+      if (refreshController.current) return;
+      const controller = new AbortController();
+      refreshController.current = controller;
+      void fetchRunsPage(runsPath, { reason }, controller.signal).then((result) => {
+        if (refreshController.current === controller) refreshController.current = null;
+        if (controller.signal.aborted || !result.ok) return;
+        setState((prev) =>
+          prev.status === "ready"
+            ? { ...prev, loaded: mergeSessionRunPage(prev.loaded, result.page, "newest") }
+            : prev
+        );
+      });
+    },
+    [runsPath]
+  );
 
   const runs = useMemo(() => (loaded ? [...loaded.runsById.values()] : undefined), [loaded]);
 

@@ -2,6 +2,8 @@ import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { TraceChunkPresenter } from "~/presenters/v3/TraceChunkPresenter.server";
+import { chunkRequestKind } from "~/presenters/v3/sessionTraceRequestKind";
+import { requestFeature, viewerOf, withRequestFeature } from "~/services/requestFeature.server";
 import { requireUser } from "~/services/session.server";
 import { v3RunParamsSchema } from "~/utils/pathBuilder";
 import { clampToEmergencySpanCap } from "~/v3/eventRepository/emergencySpanCap.server";
@@ -42,11 +44,24 @@ function parseCursor(
   return undefined;
 }
 
+type ChunkSearch = z.infer<typeof SearchSchema>;
+
 export async function loader({ request, params }: LoaderFunctionArgs) {
+  const url = new URL(request.url);
+  const search = SearchSchema.parse(Object.fromEntries(url.searchParams));
+
+  return withRequestFeature(search.context ? "session.trace" : "run.trace", () =>
+    loadChunk(request, params, search)
+  );
+}
+
+async function loadChunk(
+  request: Request,
+  params: LoaderFunctionArgs["params"],
+  search: ChunkSearch
+) {
   const user = await requireUser(request);
   const { projectParam, envParam, runParam } = v3RunParamsSchema.parse(params);
-
-  const url = new URL(request.url);
   const {
     cursorStartTime,
     cursorSpanId,
@@ -57,7 +72,14 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     context,
     start,
     span,
-  } = SearchSchema.parse(Object.fromEntries(url.searchParams));
+  } = search;
+
+  requestFeature.describe({
+    kind: chunkRequestKind(search),
+    viewer: viewerOf(user),
+    readContext: context ?? "run",
+    serverTiming: context === "session",
+  });
 
   const cursor = parseCursor(cursorStartTime, cursorSpanId);
   const showDebug = debug === "1" && (user.admin || user.isImpersonating);
@@ -80,6 +102,12 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
     if (!traceStart) {
       throw new Response("Trace not found", { status: 404 });
+    }
+
+    if (traceStart.kind === "unavailable") {
+      requestFeature.recordFallback("chunk", traceStart.reason);
+    } else if (traceStart.kind === "logsDeleted") {
+      requestFeature.recordFallback("chunk", "logsDeleted");
     }
 
     return json(traceStart);

@@ -28,6 +28,7 @@ import { ServiceValidationError } from "~/v3/services/common.server";
 import { EngineServiceValidationError } from "@internal/run-engine";
 import { unroutableIdResponse } from "./unroutableId.server";
 import { tenantContext, tenantContextFromAuthEnvironment } from "~/services/tenantContext.server";
+import { withRequestFeature, type RequestFeatureName } from "~/services/requestFeature.server";
 
 // Client aborts and service-level validation errors aren't bugs — they're
 // expected at API boundaries. Log them at `warn` so they stay in stdout
@@ -304,6 +305,8 @@ type ApiKeyRouteBuilderOptions<
       : undefined
   ) => Promise<TResource | undefined>;
   shouldRetryNotFound?: boolean;
+  // Opt-in metrics label for the request and its ClickHouse queries.
+  feature?: RequestFeatureName;
   authorization?: {
     action: string;
     resource: (
@@ -356,7 +359,7 @@ export function createLoaderApiRoute<
   options: ApiKeyRouteBuilderOptions<TParamsSchema, TSearchParamsSchema, THeadersSchema, TResource>,
   handler: ApiKeyHandlerFunction<TParamsSchema, TSearchParamsSchema, THeadersSchema, TResource>
 ) {
-  return async function loader({ request, params }: LoaderFunctionArgs) {
+  const loader = async function ({ request, params }: LoaderFunctionArgs) {
     const {
       params: paramsSchema,
       searchParams: searchParamsSchema,
@@ -529,6 +532,8 @@ export function createLoaderApiRoute<
       }
     }
   };
+
+  return (args: LoaderFunctionArgs) => withRequestFeature(options.feature, () => loader(args));
 }
 
 // `environmentId` is checked against a user-actor token's environment claim, so an env-scoped

@@ -32,6 +32,12 @@ import type { Agent as HttpAgent } from "http";
 import type { Agent as HttpsAgent } from "https";
 import { ClickhouseQueryBuilder, ClickhouseQueryFastBuilder } from "./queryBuilder.js";
 import { randomUUID } from "node:crypto";
+import { getQueryObserver, type QueryObservation } from "./queryObserver.js";
+
+const READ_ROWS_BUCKETS = [
+  100, 1_000, 10_000, 50_000, 100_000, 250_000, 500_000, 1_000_000, 2_500_000, 5_000_000,
+  10_000_000, 25_000_000, 50_000_000, 100_000_000,
+];
 
 function queryStatsFromSummary(summary: Record<string, unknown> | undefined): QueryStats {
   const readBytes = Number(summary?.read_bytes ?? 0);
@@ -106,6 +112,8 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
     this.queryReadRows = this.meter.createHistogram("clickhouse.query.read_rows", {
       description: "Rows read by a ClickHouse query, from the x-clickhouse-summary header",
       unit: "{row}",
+      // The default buckets stop at 10,000, so every percentile above that read 10,000.
+      advice: { explicitBucketBoundaries: READ_ROWS_BUCKETS },
     });
     this.queryReadBytes = this.meter.createHistogram("clickhouse.query.read_bytes", {
       description: "Bytes read by a ClickHouse query, from the x-clickhouse-summary header",
@@ -158,7 +166,8 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
     startedAt: number,
     result: { errorType?: string; summary?: Record<string, unknown> }
   ) {
-    const attributes = { client: this.name, operation };
+    const observer = getQueryObserver();
+    const attributes = { client: this.name, operation, ...observer?.metricAttributes?.() };
     this.queryDuration.record(performance.now() - startedAt, {
       ...attributes,
       status: result.errorType ? "error" : "ok",
@@ -166,14 +175,21 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
     if (result.errorType) {
       this.queryErrors.add(1, { ...attributes, error_type: result.errorType });
     }
+    const observation: QueryObservation = {
+      client: this.name,
+      operation,
+      errorType: result.errorType,
+    };
     const summary = result.summary;
     if (summary) {
       const elapsedNs = Number(summary.elapsed_ns);
       if (Number.isFinite(elapsedNs) && elapsedNs > 0) {
-        this.queryServerDuration.record(elapsedNs / 1_000_000, attributes);
+        observation.serverDurationMs = elapsedNs / 1_000_000;
+        this.queryServerDuration.record(observation.serverDurationMs, attributes);
       }
       const readRows = Number(summary.read_rows);
       if (Number.isFinite(readRows)) {
+        observation.readRows = readRows;
         this.queryReadRows.record(readRows, attributes);
       }
       const readBytes = Number(summary.read_bytes);
@@ -185,6 +201,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
         this.queryMemoryUsage.record(memoryUsage, attributes);
       }
     }
+    observer?.onQuery?.(observation);
   }
 
   public query<TIn extends z.ZodSchema<any>, TOut extends z.ZodSchema<any>>(req: {

@@ -78,6 +78,11 @@ import {
   getOccurrenceCountsSinceQueryBuilder,
 } from "./errors.js";
 export { msToClickHouseInterval } from "./intervals.js";
+export {
+  setQueryObserver,
+  type QueryObservation,
+  type QueryObserver,
+} from "./client/queryObserver.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import type { Meter } from "@internal/tracing";
 import type { Agent as HttpAgent } from "http";

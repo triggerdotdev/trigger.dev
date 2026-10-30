@@ -34,6 +34,8 @@ export const SessionRunsSearchParams = z
       .string()
       .regex(/^run_[a-z0-9]+$/, "Invalid run ID")
       .optional(),
+    // Dashboard only: why the newest page was read, for the route's metrics.
+    reason: z.enum(["open", "focus", "poll"]).optional().catch(undefined),
   })
   .refine((value) => !(value["page[after]"] && value.run), {
     message: "Cannot pass both page[after] and run",

@@ -100,6 +100,8 @@ import {
   type SearchCoverage,
   type SessionTraceFilter,
 } from "./sessionTraceSearch";
+import { newBudgetOutcomes, searchStarted, type BudgetOutcome } from "./sessionViewAnalytics";
+import { useSessionViewAnalytics } from "./useSessionViewAnalytics";
 import type { SessionTraceRun } from "./sessionTraceTypes";
 import { SESSION_TREE_AUTOSAVE_ID, runReasonLabel } from "./sessionTraceView";
 import {
@@ -151,9 +153,18 @@ export function SessionTraceTab({
     interval: newRunsPollIntervalMs(pages.runs ?? [], pages.totalCount, checkedAtMs),
     disabled: pages.state.status !== "ready",
     onLoad: false,
+    onFocus: false,
     callback: () => {
       setCheckedAtMs(Date.now());
-      pages.refreshNewest();
+      pages.refreshNewest("poll");
+    },
+  });
+  useInterval({
+    disabled: pages.state.status !== "ready",
+    onLoad: false,
+    callback: () => {
+      setCheckedAtMs(Date.now());
+      pages.refreshNewest("focus");
     },
   });
 
@@ -304,6 +315,22 @@ function SessionTraceTree({
   // The page check runs between renders, so it reads a ref that every event updates at once,
   // with the same reducer React runs: a count or a release just sent is never missed.
   const loadsRef = useRef(loads);
+  const track = useSessionViewAnalytics(runs.length);
+  // Budget reached: each outcome once per page view (Expand all near the limit hits it often).
+  const reportedBudget = useRef(new Set<BudgetOutcome>());
+  const lastBudgetHits = useRef(loads.budgetHits);
+  useEffect(() => {
+    const outcomes = newBudgetOutcomes(
+      lastBudgetHits.current,
+      loads.budgetHits,
+      reportedBudget.current
+    );
+    lastBudgetHits.current = loads.budgetHits;
+    for (const outcome of outcomes) {
+      reportedBudget.current.add(outcome);
+      track("budget_reached", { outcome });
+    }
+  }, [loads.budgetHits, track]);
   const dispatchLoads = useCallback((action: SessionRunLoadsAction) => {
     loadsRef.current = sessionRunLoadsReducer(loadsRef.current, action);
     reactDispatchLoads(action);
@@ -618,10 +645,12 @@ function SessionTraceTree({
       ),
     };
     newestFirst.runFriendlyIds.reverse();
+    track("expand_all", { runs: newestFirst.runFriendlyIds.length });
     dispatchLoads(newestFirst);
     expandNodes(collapsed.map((node) => node.id));
   };
   const retryRun = (runFriendlyId: string) => {
+    track("retry");
     dispatchLoads({ type: "retry", runFriendlyId });
     const id = runNodeId(runFriendlyId);
     if (!nodes[id]?.expanded) expandNode(id, false);
@@ -677,6 +706,7 @@ function SessionTraceTree({
   );
   const loadAllForSearch = () => {
     if (coverage.toLoad.length === 0) return;
+    track("load_all", { runs: coverage.toLoad.length });
     for (const id of coverage.toLoad) openedForSearch.current.add(id);
     dispatchLoads({ type: "expandedMany", runFriendlyIds: coverage.toLoad });
     searchMovingRows.current = true;
@@ -697,6 +727,9 @@ function SessionTraceTree({
     next.text = next.text.toLowerCase();
     if (!isFiltering(next)) next.hiddenRuns = [];
     setFilter(next);
+    if (searchStarted(filter, next)) {
+      track("search_used", { text: next.text !== "", errors_only: next.errorsOnly });
+    }
     if (!filtering || isFiltering(next)) return;
 
     const keep = new Set(touchedDuringSearch.current);
@@ -1294,6 +1327,7 @@ function RunRowContent({
 
 // A run whose trace can't load here links to its run page instead of expanding.
 function RunFallback({ run, block }: { run: SessionTraceRun; block: RunLoadBlock }) {
+  const track = useSessionViewAnalytics();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -1313,7 +1347,10 @@ function RunFallback({ run, block }: { run: SessionTraceRun; block: RunLoadBlock
       <LinkButton
         variant="secondary/small"
         to={v3RunPath(organization, project, environment, run)}
-        onClick={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          track("open_run_page", { from: "row", reason: block.kind });
+        }}
       >
         Open run page
       </LinkButton>
@@ -1337,6 +1374,7 @@ function RunLoadStatus({
   spanCount: number;
   onRetry: (runFriendlyId: string) => void;
 }) {
+  const track = useSessionViewAnalytics();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -1395,7 +1433,10 @@ function RunLoadStatus({
           <LinkButton
             variant="secondary/small"
             to={v3RunPath(organization, project, environment, run)}
-            onClick={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              track("open_run_page", { from: "row", reason: "cutOff" });
+            }}
           >
             Open run page
           </LinkButton>

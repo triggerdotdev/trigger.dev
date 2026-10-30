@@ -1,4 +1,4 @@
-import { ClickHouse, type ClickHouseSettings } from "@internal/clickhouse";
+import { ClickHouse, setQueryObserver, type ClickHouseSettings } from "@internal/clickhouse";
 import { createHash } from "crypto";
 import {
   ClickhouseEventRepository,
@@ -11,6 +11,10 @@ import { singleton } from "~/utils/singleton";
 import type { OrganizationDataStoresRegistry } from "~/services/dataStores/organizationDataStoresRegistry.server";
 import { type IEventRepository } from "~/v3/eventRepository/eventRepository.types";
 import { effectiveEventStore } from "~/v3/eventRepository/effectiveEventStore";
+import { requestFeatureQueryObserver } from "~/services/requestFeature.server";
+
+// Labels and totals ClickHouse queries made inside a feature-labelled request.
+setQueryObserver(requestFeatureQueryObserver);
 
 // Declared before the singletons below, which initialize clients at module load.
 const LOGS_LIST_REQUEST_TIMEOUT_MARGIN_SECONDS = 5;

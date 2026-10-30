@@ -16,6 +16,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import type { RbacAbility, RbacResource } from "@trigger.dev/rbac";
 import type { z } from "zod";
+import type { RequestFeatureName } from "../requestFeature.server";
 
 type AnyZodSchema = z.ZodType;
 
@@ -68,6 +69,8 @@ export type DashboardLoaderOptions<TParams, TSearchParams, TContext extends Auth
   // Where to send users who pass auth but fail the ability check. Defaults
   // to "/" (the home page).
   unauthorizedRedirect?: string;
+  // Opt-in metrics label for the request and its ClickHouse queries.
+  feature?: RequestFeatureName;
 };
 
 export type DashboardLoaderHandlerArgs<TParams, TSearchParams, TContext> = {
@@ -92,25 +95,28 @@ export function dashboardLoader<
     // Server-only — see comment at top. Node caches the module after the
     // first call, so the dynamic import is effectively free past warmup.
     const { authenticateAndAuthorize } = await import("./dashboardBuilder.server");
-    const result = await authenticateAndAuthorize(request, params, options);
-    if (!result.ok) throw result.response;
+    const { withRequestFeature } = await import("../requestFeature.server");
 
-    return handler({
-      params: result.params as InferZod<TParams>,
-      searchParams: result.searchParams as InferZod<TSearchParams>,
-      user: result.user,
-      ability: result.ability,
-      context: result.context as TContext,
-      request,
+    return withRequestFeature(options.feature, async () => {
+      const result = await authenticateAndAuthorize(request, params, options);
+      if (!result.ok) throw result.response;
+
+      return handler({
+        params: result.params as InferZod<TParams>,
+        searchParams: result.searchParams as InferZod<TSearchParams>,
+        user: result.user,
+        ability: result.ability,
+        context: result.context as TContext,
+        request,
+      });
     });
   };
 }
 
-export type DashboardActionOptions<
-  TParams,
-  TSearchParams,
-  TContext extends AuthScope,
-> = DashboardLoaderOptions<TParams, TSearchParams, TContext>;
+export type DashboardActionOptions<TParams, TSearchParams, TContext extends AuthScope> = Omit<
+  DashboardLoaderOptions<TParams, TSearchParams, TContext>,
+  "feature"
+>;
 
 export type DashboardActionHandlerArgs<TParams, TSearchParams, TContext> =
   DashboardLoaderHandlerArgs<TParams, TSearchParams, TContext>;

@@ -60,6 +60,8 @@ export type SessionRunLoads = {
   /** The session's newest run, when it's loaded. */
   newestRunId: string | undefined;
   budget: number;
+  /** How often the budget freed collapsed runs or cut one off, for analytics. */
+  budgetHits: { freed: number; cutOff: number };
 };
 
 export type SessionRunLoadsAction =
@@ -85,7 +87,7 @@ export type SessionRunLoadsAction =
   /** Retry a failed run: in place when some of its spans are on screen, else from the start. */
   | { type: "retry"; runFriendlyId: string }
   /** Frees runs back to idle, cancelling a fetch in flight (its late settle won't match). */
-  | { type: "release"; runFriendlyIds: string[] };
+  | { type: "release"; runFriendlyIds: string[]; forBudget?: boolean };
 
 /** What to do before a run fetches its next page. */
 type PageDecision =
@@ -171,6 +173,7 @@ export function createSessionRunLoads(
     selectedRunId: undefined,
     newestRunId: undefined,
     budget,
+    budgetHits: { freed: 0, cutOff: 0 },
   };
 }
 
@@ -300,7 +303,7 @@ export function sessionRunLoadsReducer(
       const over = loadedTotal(next) - next.budget;
       if (over <= 0) return next;
       const freeable = freeableRuns(next);
-      return withoutLoads(next, takeUntil(next, freeable, over) ?? freeable);
+      return freeForBudget(next, takeUntil(next, freeable, over) ?? freeable);
     }
     case "selected": {
       if (current.selectedRunId === action.runFriendlyId) return current;
@@ -318,7 +321,9 @@ export function sessionRunLoadsReducer(
               attempt: load.state === "paging" ? load.attempt : 0,
             }
           : { ...action.outcome, loadId: load.loadId };
-      return startQueued({ ...current, loads: { ...current.loads, [action.runFriendlyId]: next } });
+      const settled = { ...current, loads: { ...current.loads, [action.runFriendlyId]: next } };
+      const cutBySession = action.outcome.state === "cutOff" && action.outcome.limit === "session";
+      return startQueued(cutBySession ? countCutOff(settled) : settled);
     }
     case "retry": {
       const { runFriendlyId: id } = action;
@@ -334,7 +339,9 @@ export function sessionRunLoadsReducer(
     case "release": {
       const released = action.runFriendlyIds.filter((id) => id in current.loads);
       if (released.length === 0) return current;
-      return loadWanted(withoutLoads(current, released));
+      return loadWanted(
+        action.forBudget ? freeForBudget(current, released) : withoutLoads(current, released)
+      );
     }
   }
 }
@@ -359,7 +366,7 @@ export function pageCheck(
     case "free":
       return {
         allowed: true,
-        action: { type: "release", runFriendlyIds: decision.runFriendlyIds },
+        action: { type: "release", runFriendlyIds: decision.runFriendlyIds, forBudget: true },
       };
     case "cutOff": {
       const load = runLoad(current, runFriendlyId);
@@ -422,6 +429,17 @@ function enqueue(current: SessionRunLoads, runFriendlyIds: string[]): SessionRun
   const loads = { ...current.loads };
   for (const id of runFriendlyIds) loads[id] = { state: "queued" };
   return { ...current, loads, queue: [...current.queue, ...runFriendlyIds] };
+}
+
+function freeForBudget(current: SessionRunLoads, runFriendlyIds: string[]): SessionRunLoads {
+  if (runFriendlyIds.length === 0) return current;
+  const { freed, cutOff } = current.budgetHits;
+  return { ...withoutLoads(current, runFriendlyIds), budgetHits: { freed: freed + 1, cutOff } };
+}
+
+function countCutOff(current: SessionRunLoads): SessionRunLoads {
+  const { freed, cutOff } = current.budgetHits;
+  return { ...current, budgetHits: { freed, cutOff: cutOff + 1 } };
 }
 
 function withoutLoads(current: SessionRunLoads, runFriendlyIds: string[]): SessionRunLoads {
@@ -489,15 +507,17 @@ function startQueued(current: SessionRunLoads): SessionRunLoads {
       if (over > 0) {
         const toFree = takeUntil(next, freeableRuns(next), over);
         if (!toFree) {
-          next = settleAt(next, id, {
-            state: "cutOff",
-            limit: "session",
-            started: false,
-            spanLimit: next.budget,
-          });
+          next = countCutOff(
+            settleAt(next, id, {
+              state: "cutOff",
+              limit: "session",
+              started: false,
+              spanLimit: next.budget,
+            })
+          );
           continue;
         }
-        next = withoutLoads(next, toFree);
+        next = freeForBudget(next, toFree);
       }
     }
 
