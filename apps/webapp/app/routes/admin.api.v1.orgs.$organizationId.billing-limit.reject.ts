@@ -1,7 +1,7 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
+import { requireBillingServiceOrAdminApiRequest } from "~/services/billingServiceAuth.server";
 import { bustBillingLimitCaches } from "~/services/platform.v3.server";
 import { BillingLimitConvergeEnvironmentsService } from "~/v3/services/billingLimit/billingLimitConvergeEnvironmentsService.server";
 import { enqueueBillingLimitConverge } from "~/v3/billingLimitWorker.server";
@@ -12,7 +12,7 @@ const ParamsSchema = z.object({
 
 /** Billing platform webhook: org billing limit grace expired. Idempotent — returns 202. */
 export async function action({ request, params }: ActionFunctionArgs) {
-  await requireAdminApiRequest(request);
+  await requireBillingServiceOrAdminApiRequest(request);
 
   if (request.method.toLowerCase() !== "post") {
     return json({ error: "Method not allowed" }, { status: 405 });

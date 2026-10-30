@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
+import { requireBillingServiceOrAdminApiRequest } from "~/services/billingServiceAuth.server";
 import { isValidDuration } from "~/services/realtime/duration.server";
 import {
   deprovisionBasinForOrg,
@@ -21,7 +21,7 @@ const BodySchema = z.discriminatedUnion("action", [
 ]);
 
 export async function action({ request, params }: ActionFunctionArgs) {
-  await requireAdminApiRequest(request);
+  await requireBillingServiceOrAdminApiRequest(request);
 
   const { organizationId } = ParamsSchema.parse(params);
 

@@ -1,7 +1,7 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
+import { requireBillingServiceOrAdminApiRequest } from "~/services/billingServiceAuth.server";
 import { enqueueOrgProvisioningJob } from "~/v3/services/orgProvisioningJobs.server";
 
 const ParamsSchema = z.object({
@@ -9,7 +9,7 @@ const ParamsSchema = z.object({
 });
 
 export async function action({ request, params }: ActionFunctionArgs) {
-  await requireAdminApiRequest(request);
+  await requireBillingServiceOrAdminApiRequest(request);
 
   const { organizationId } = ParamsSchema.parse(params);
 
