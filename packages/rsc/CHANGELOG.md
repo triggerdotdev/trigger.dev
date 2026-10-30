@@ -1,5 +1,12 @@
 # @trigger.dev/rsc
 
+## 4.8.4
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.8.4`
+
 ## 4.8.3
 
 ### Patch Changes
