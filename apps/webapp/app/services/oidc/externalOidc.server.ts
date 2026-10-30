@@ -10,7 +10,9 @@ import { env } from "~/env.server";
 import { isCloud } from "~/services/platform.v3.server";
 import { createRedisRateLimitClient } from "~/services/rateLimiterCore.server";
 import { singleton } from "~/utils/singleton";
+import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
 import { runStore } from "~/v3/runStore.server";
+import { resolveExternalOidcFlags } from "./externalOidcFeatureFlags";
 import { loadExternalOidcPlugin } from "./externalOidcPlugin.server";
 import { ExternalOidcRateLimits } from "./externalOidcRateLimit.server";
 import { externalOidcSigningService } from "./instance.server";
@@ -37,7 +39,11 @@ export function getExternalOidcController(): Promise<ExternalOidcController | nu
 export async function isExternalOidcEnabled(orgFeatureFlags: unknown): Promise<boolean> {
   if (!runTokenInjectionEnabled(orgFeatureFlags)) return false;
   const controller = await getExternalOidcController();
-  return controller?.isEnabled(orgFeatureFlags) ?? false;
+  return (
+    controller?.isEnabled(
+      resolveExternalOidcFlags(globalFlagsRegistry.current() ?? {}, orgFeatureFlags)
+    ) ?? false
+  );
 }
 
 async function findEnvironment(
@@ -70,7 +76,10 @@ async function findEnvironment(
     organizationId: environment.organizationId,
     projectId: environment.projectId,
     projectRef: environment.project.externalRef,
-    orgFeatureFlags: environment.organization.featureFlags,
+    orgFeatureFlags: resolveExternalOidcFlags(
+      globalFlagsRegistry.current() ?? {},
+      environment.organization.featureFlags
+    ),
   };
 }
 
