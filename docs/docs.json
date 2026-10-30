@@ -281,6 +281,7 @@
                   "cli-switch",
                   "cli-tasks-commands",
                   "cli-update-commands",
+                  "cli-webhooks-commands",
                   "cli-whoami-commands"
                 ]
               }

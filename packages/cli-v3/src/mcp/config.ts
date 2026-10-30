@@ -275,13 +275,13 @@ export const toolsMetadata = {
     name: "generate_webhook_secret",
     title: "Generate Webhook Secret",
     description:
-      "Generate a new signing secret for a hosted webhook endpoint and return it once, for providers where you choose the secret (for example GitHub). It replaces the existing secret; pass previousSecretTtlSeconds to keep accepting the old one while you update the provider, otherwise deliveries signed with it fail. Never print, log or commit the returned secret.",
+      "Generate a new signing secret for a hosted webhook endpoint and return it once, for providers where you choose the secret (for example GitHub). It replaces the existing secret; pass previousSecretTtlSeconds to keep accepting the old one while you update the provider, otherwise deliveries signed with it fail. Never print, log or commit the returned secret. The returned secret enters your context. To keep it out, run the CLI instead: `npx trigger.dev@latest webhooks generate-secret <endpoint> --env <env> --to-env <NAME>` saves it to .env.local without printing it, so you can pass it to the provider by variable name, or `--print` pipes it straight into the provider's CLI. When the endpoint already has a secret, add `--previous-secret-ttl` (for example 24h, or 0 if the old secret leaked). Prefer the CLI whenever you can run shell commands.",
   },
   set_webhook_secret: {
     name: "set_webhook_secret",
     title: "Set Webhook Secret",
     description:
-      "Store the signing secret (or public key) a provider issued for a hosted webhook endpoint, for example the whsec_ secret Stripe returns when a webhook endpoint is created. It replaces the existing secret; pass previousSecretTtlSeconds to keep accepting the old one for a while.",
+      "Store the signing secret (or public key) a provider issued for a hosted webhook endpoint, for example the whsec_ secret Stripe returns when a webhook endpoint is created. It replaces the existing secret; pass previousSecretTtlSeconds to keep accepting the old one for a while. The secret you pass here enters your context. To keep it out, run the CLI instead, which never prints it: pipe it from the provider's CLI (`<provider command> | npx trigger.dev@latest webhooks set-secret <endpoint> --env <env>`), or read it from an environment variable or the project's .env files (`webhooks set-secret <endpoint> --env <env> --from-env STRIPE_WEBHOOK_SECRET`). When the endpoint already has a secret, add `--previous-secret-ttl` (for example 24h, or 0 if the old secret leaked). Prefer the CLI whenever you can run shell commands.",
   },
   list_agents: {
     name: "list_agents",
