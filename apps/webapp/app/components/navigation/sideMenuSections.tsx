@@ -291,7 +291,7 @@ export function buildSideMenuSections({
         ? [
             {
               id: "oidc",
-              name: "OIDC",
+              name: "Workload identity",
               icon: KeyIcon,
               activeIconColor: "text-text-bright",
               to: v3OidcPath(organization, project, environment),

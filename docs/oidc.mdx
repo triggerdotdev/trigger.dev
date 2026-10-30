@@ -1,14 +1,14 @@
 ---
-title: "OpenID Connect (OIDC)"
-description: "Access AWS and other services from deployed tasks using short-lived credentials instead of stored cloud keys."
+title: "Workload identity"
+description: "Access AWS from your tasks without storing long-lived credentials."
 ---
 
 <Note>
-  OIDC is in private beta on Trigger.dev Cloud. [Contact us](https://trigger.dev/contact) to request
-  access.
+  Workload identity is in private beta on Trigger.dev Cloud. [Contact us](https://trigger.dev/contact)
+  to request access.
 </Note>
 
-OIDC lets a deployed task on Trigger.dev Cloud prove its identity to an external service without storing a long-lived cloud key. Trigger.dev issues a short-lived identity token. The service validates that token and grants only the permissions you configured for that identity.
+Workload identity lets a deployed task on Trigger.dev Cloud access AWS and other services without storing long-lived credentials. It uses OIDC-based workload identity federation: Trigger.dev issues a short-lived OpenID Connect (OIDC) token, and the service validates it before granting the permissions configured for that identity.
 
 ## Prerequisites
 
@@ -21,7 +21,7 @@ OIDC lets a deployed task on Trigger.dev Cloud prove its identity to an external
 <Steps>
   <Step title="Select your deployed environment">
     Open your project in the dashboard, select the Production, Staging, or Preview environment that
-    needs AWS access, then open [**OIDC**](https://cloud.trigger.dev/_/oidc) in the environment menu. Configure each environment separately.
+    needs AWS access, then open [**Workload identity**](https://cloud.trigger.dev/_/oidc) in the environment menu. Configure each environment separately.
   </Step>
   <Step title="Create an IAM OIDC identity provider">
     In the AWS IAM console, open **Identity providers → Add provider → OpenID Connect**. Paste the
@@ -137,9 +137,9 @@ The provider requires `roleArn` and `region`, and accepts optional `roleSessionN
 ## Terraform setup
 
 Use these resources instead of creating the provider and role through the console. Copy the exact
-issuer URL and subject from the environment's OIDC page into the input variables. This example uses
-exact subject matching; attach a least-privilege permissions policy to the role separately, as in
-the setup steps above.
+issuer URL and subject from the environment's Workload identity page into the input variables. This
+example uses exact subject matching; attach a least-privilege permissions policy to the role separately,
+as in the setup steps above.
 
 ```hcl
 terraform {

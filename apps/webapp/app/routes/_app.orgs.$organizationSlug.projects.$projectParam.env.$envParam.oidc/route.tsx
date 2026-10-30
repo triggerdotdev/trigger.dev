@@ -27,7 +27,7 @@ import { AWS_S3_READ_PERMISSIONS, awsOidcTaskExample, awsOidcTrustPolicy } from 
 import { pageMeta } from "~/utils/pageTitle";
 import { docsPath, EnvironmentParamSchema } from "~/utils/pathBuilder";
 
-export const meta = pageMeta("OpenID Connect (OIDC)");
+export const meta = pageMeta("Workload identity");
 
 export const loader = dashboardLoader(
   {
@@ -80,21 +80,21 @@ export default function OidcSetupPage() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title="OpenID Connect (OIDC)" />
+        <PageTitle title="Workload identity" />
         <PageAccessories>
           <LinkButton to={docsPath("oidc")} variant="secondary/small" target="_blank">
-            OIDC documentation
+            Workload identity documentation
           </LinkButton>
         </PageAccessories>
       </NavBar>
       <PageBody>
         <MainHorizontallyCenteredContainer className="mb-12 max-w-3xl space-y-6">
-          <Paragraph>Access AWS from deployed tasks using short-lived credentials.</Paragraph>
+          <Paragraph>Access AWS from your tasks without storing long-lived credentials.</Paragraph>
 
           {state === "development" ? (
             <Callout variant="info">
-              OIDC requires a deployed environment. Select Production, Staging or Preview. For local
-              development, use your own AWS credentials.
+              Workload identity requires a deployed environment. Select Production, Staging or
+              Preview. For local development, use your own AWS credentials.
             </Callout>
           ) : setup ? (
             <>
