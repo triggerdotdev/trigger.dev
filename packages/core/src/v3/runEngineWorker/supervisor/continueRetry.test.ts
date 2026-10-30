@@ -1,6 +1,6 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SupervisorHttpClient } from "./http.js";
 
 const createdAt = "2026-01-01T00:00:00.000Z";
@@ -38,7 +38,8 @@ describe("SupervisorHttpClient.continueRunExecution retries", () => {
   let script: Reply[] = [];
   let requests = 0;
 
-  beforeAll(async () => {
+  beforeEach(async () => {
+    requests = 0;
     server = createServer((_request, response) => {
       const reply = script[Math.min(requests, script.length - 1)]!;
       requests++;
@@ -67,13 +68,9 @@ describe("SupervisorHttpClient.continueRunExecution retries", () => {
     apiUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   });
 
-  afterAll(async () => {
+  afterEach(async () => {
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
-  });
-
-  beforeEach(() => {
-    requests = 0;
   });
 
   function continueWithBudget(budget: { budgetMs: number; minAttemptBudgetMs?: number }) {
