@@ -6,6 +6,12 @@ Use Convex for application state and Trigger.dev for work that needs longer exec
 
 **Experimental MVP.** No HTTP routes, webhooks, Trigger lifecycle hooks, or changes to your Trigger server are required.
 
+## Example
+
+[Try the live demo](https://ardent-rabbit-965.convex.site).
+
+The [image-editing example](https://github.com/triggerdotdev/trigger.dev/tree/main/packages/convex/example) demonstrates private image processing, Realtime progress, and Convex synchronization. It uses Trigger.dev `4.8.3` from npmjs and runs as a standalone pnpm workspace. The example is not included in npm packages or component builds.
+
 ## Install
 
 ```sh
@@ -118,6 +124,21 @@ const run = useQuery(api.jobs.status, { jobId });
 ```
 
 The ID returned by `trigger.trigger` identifies the **component record**, not the Trigger.dev run. The latter becomes available as `run.runId` after submission.
+
+## Agent skill
+
+The package ships a versioned [`trigger-convex` skill](https://github.com/triggerdotdev/trigger.dev/blob/main/packages/convex/skills/trigger-convex/SKILL.md) covering transactional triggering, owned reactive queries, callbacks, Realtime + refresh, reload recovery, and token safety.
+
+Ask your coding assistant to read `node_modules/@trigger.dev/convex/skills/trigger-convex/SKILL.md`, or copy it into your assistant's native skill directory. For example, from a project with this package installed:
+
+```sh
+mkdir -p .agents/skills/trigger-convex
+cp node_modules/@trigger.dev/convex/skills/trigger-convex/SKILL.md .agents/skills/trigger-convex/SKILL.md
+```
+
+Use `.claude/skills/`, `.cursor/skills/`, or `.github/skills/` instead if appropriate for your assistant. Re-copy after upgrading `@trigger.dev/convex`; copied files do not update automatically. For non-hoisted installs, locate the package with `node -p "require.resolve('@trigger.dev/convex/package.json')"`.
+
+This skill is installed manually, not through `npx trigger.dev@latest skills`. Older package versions may not contain it.
 
 ## API
 

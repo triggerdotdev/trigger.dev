@@ -79,6 +79,9 @@ export default {
       ignoreDependencies: ["@epic-web/test-server", "execa", "find-up"],
       ignoreBinaries: ["xdg-open"],
     },
+    "packages/convex": {
+      ignore: ["example/**"],
+    },
     "packages/core": {
       ignoreFiles: ["src/**/*-cjs.cts"],
       ignoreDependencies: ["ai-v7"],

@@ -1,0 +1,7 @@
+packages:
+  - "."
+
+minimumReleaseAge: 4320
+minimumReleaseAgeExclude:
+  - trigger.dev
+  - "@trigger.dev/*"

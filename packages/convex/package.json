@@ -15,7 +15,9 @@
   "files": [
     "dist",
     "src/component",
-    "!src/component/**/*.test.ts"
+    "skills/*/SKILL.md",
+    "!src/component/**/*.test.ts",
+    "!example/**"
   ],
   "exports": {
     ".": {
