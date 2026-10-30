@@ -165,6 +165,7 @@
             "group": "Webhooks",
             "pages": [
               "webhooks/overview",
+              "webhooks/public-beta",
               "webhooks/sources",
               "webhooks/connect",
               "webhooks/deliveries",
@@ -804,6 +805,11 @@
     ]
   },
   "redirects": [
+    {
+      "source": "/webhooks/private-beta",
+      "destination": "/webhooks/public-beta",
+      "permanent": true
+    },
     {
       "source": "/queue-concurrency",
       "destination": "/concurrency",
