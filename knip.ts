@@ -22,7 +22,6 @@ export default {
         "evalite.config.ts",
         "vitest.*.config.ts",
         "evals/**/*.eval.ts",
-        "memory-leak-detector.js",
         "prisma/populate.ts",
         "seed*.{ts,mts}",
         "scripts/**/*.{js,mjs,cjs,ts,mts,cts}",

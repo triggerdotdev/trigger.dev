@@ -4,7 +4,7 @@ describe("familyOf", () => {
   it("classifies each family from the flat-route filename", () => {
     expect(familyOf("api.v1.runs.$runId.ts")).toBe("api.v1");
     expect(familyOf("api.something.ts")).toBe("api.other");
-    expect(familyOf("admin.api.v1.gc.ts")).toBe("admin");
+    expect(familyOf("admin.api.v1.feature-flags.ts")).toBe("admin");
     expect(familyOf("resources.queues.ts")).toBe("resources");
     expect(familyOf("_app.orgs.$slug.ts")).toBe("dashboard");
     expect(familyOf("otel.v1.logs.ts")).toBe("ingest");
