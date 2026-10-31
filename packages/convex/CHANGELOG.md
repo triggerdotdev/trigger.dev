@@ -1,5 +1,11 @@
 # @trigger.dev/convex
 
+## 4.8.4
+
+### Patch Changes
+
+- Add a bundled agent skill for integrating Trigger.dev with Convex, including transactional triggering, Realtime progress, recovery, and scoped-token safety. Install it manually from the package; it is not part of the CLI skills installer. ([`9422dc65d`](https://github.com/triggerdotdev/trigger.dev/commit/9422dc65d26e745a8d3670a7977d04b938553d9d))
+
 ## 4.8.3
 
 ### Patch Changes
