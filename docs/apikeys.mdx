@@ -123,6 +123,15 @@ Revoking a key takes effect immediately and cannot be reversed. Requests using t
 
 Removing a team member does not revoke keys they created. Review and revoke their keys separately when their access changes.
 
+### Regenerate the root key
+
+The key marked **Root** on the API keys page has a **Regenerate…** action in its row menu. Regenerating issues a new root key for the environment, and you choose what happens to the previous one:
+
+- **Keep the previous key working for 24 hours** (the default): roll out the new key to your environment variables without downtime. The previous key stops working after 24 hours.
+- **Revoke the previous key immediately**: choose this if the key may have leaked. The previous key stops working now, along with any older root key still in its 24-hour window. Deployments and services still using them fail until you update them with the new key.
+
+The page always lists the root key. If the root key is hidden, it appears masked to its last 4 characters. You can regenerate a hidden root key, but you can't reveal or copy it.
+
 ## Create public access tokens
 
 API keys can be used to create scoped [Public Access Tokens](/realtime/auth) using `auth.createPublicToken()`.
