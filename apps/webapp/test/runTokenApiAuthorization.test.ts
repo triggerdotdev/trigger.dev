@@ -551,7 +551,8 @@ describe("run-token API authorization", () => {
     const uploaded = await v2.action(args("PUT", "run_packet_test/output.json", token));
     expect(uploaded.status).toBe(200);
     const upload = await uploaded.json();
-    expect(upload.storagePath).toBe("s3://run_packet_test/output.json");
+    // A run token's upload lands in its own namespace, which is the only place its triggers may point.
+    expect(upload.storagePath).toBe("s3://uploads/run/run_packet_test/run_packet_test/output.json");
     expect((await fetch(upload.presignedUrl, { method: "PUT", body: '{"ok":true}' })).status).toBe(
       200
     );

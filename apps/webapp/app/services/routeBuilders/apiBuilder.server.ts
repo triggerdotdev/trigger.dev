@@ -11,6 +11,7 @@ import { logger } from "../logger.server";
 import { rbac } from "../rbac.server";
 import { authenticateBearerWithTelemetry } from "~/services/authTelemetry.server";
 import type { RbacAbility, RbacResource } from "@trigger.dev/rbac";
+import type { RbacSubject } from "@trigger.dev/plugins";
 import { isUserActorToken } from "@trigger.dev/rbac";
 import {
   resolveAndRecheckUserActorClaims,
@@ -114,6 +115,7 @@ async function authenticateRequestForApiBuilder(
       authentication: ApiAuthenticationResultSuccess;
       ability: RbacAbility;
       restrictedApiKey: boolean;
+      subject: RbacSubject;
     }
 > {
   const result = await authenticateBearerWithTelemetry(request, { allowJWT });
@@ -151,6 +153,7 @@ async function authenticateRequestForApiBuilder(
     authentication,
     ability: result.ability,
     restrictedApiKey,
+    subject: result.subject,
   };
 }
 
@@ -1213,6 +1216,7 @@ type ApiKeyActionHandlerFunction<
     : undefined;
   authentication: ApiAuthenticationResultSuccess;
   restrictedApiKey: boolean;
+  subject: RbacSubject;
   ability: RbacAbility;
   request: Request;
   resource?: TResource;
@@ -1451,6 +1455,7 @@ export function createActionApiRoute<
             body: parsedBody,
             authentication: authenticationResult,
             restrictedApiKey: authResult.restrictedApiKey,
+            subject: authResult.subject,
             ability,
             request,
             resource,

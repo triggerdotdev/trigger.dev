@@ -15,6 +15,7 @@ import {
   generatePresignedUrl,
   hasObjectStoreClient,
   INVALID_PACKET_STORAGE_PATH,
+  isPacketPathUnder,
   jsonPacketPresignFailure,
   normalizePacketRelativePath,
   parseStorageUri,
@@ -852,5 +853,31 @@ describe("Object Storage", () => {
     env.OBJECT_STORE_REGION = originalEnvObj.OBJECT_STORE_REGION;
     env.OBJECT_STORE_DEFAULT_PROTOCOL = originalEnvObj.OBJECT_STORE_DEFAULT_PROTOCOL;
     env.TASK_PAYLOAD_OFFLOAD_THRESHOLD = originalEnvObj.TASK_PAYLOAD_OFFLOAD_THRESHOLD;
+  });
+});
+
+describe("isPacketPathUnder", () => {
+  const ns = "uploads/run/run_a";
+
+  it.each([
+    "uploads/run/run_a/trigger/packet_abc/payload.json",
+    "s3://uploads/run/run_a/trigger/packet_abc/payload.json",
+  ])("accepts the credential's own upload %s", (pointer) => {
+    expect(isPacketPathUnder(pointer, ns)).toBe(true);
+  });
+
+  it.each([
+    "uploads/run/run_ab/trigger/packet_abc/payload.json",
+    "uploads/run/run_a",
+    "uploads/run/run_a/../run_b/payload.json",
+    "/uploads/run/run_a/payload.json",
+    "trigger/packet_abc/payload.json",
+    "run_a/payload.json",
+    "run_b-1/output.json",
+    "",
+    undefined,
+    42,
+  ])("rejects %s", (pointer) => {
+    expect(isPacketPathUnder(pointer, ns)).toBe(false);
   });
 });

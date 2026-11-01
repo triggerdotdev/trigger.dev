@@ -56,21 +56,24 @@ describe("streaming batch item authorization", () => {
     }
 
     await expect(
-      collect(authorizeBatchItems(storedPayloadItem(), ability, "batch_123", false))
+      collect(authorizeBatchItems(storedPayloadItem(), ability, "batch_123", () => false))
     ).rejects.toThrow();
   });
 
+  const ownUploadsOnly = (pointer: unknown) =>
+    typeof pointer === "string" && pointer.startsWith("uploads/key/k1/");
+
   it.each([
-    { name: "public JWT", scopes: ["write:batch:batch_123"], allowStoredPayloads: false },
+    { name: "public JWT", scopes: ["write:batch:batch_123"], allowStoredPayload: () => false },
     {
       name: "restricted API key",
       scopes: ["batchTrigger:tasks:task-a"],
-      allowStoredPayloads: false,
+      allowStoredPayload: ownUploadsOnly,
     },
-    { name: "unrestricted API key", scopes: ["admin"], allowStoredPayloads: true },
+    { name: "unrestricted API key", scopes: ["admin"], allowStoredPayload: () => true },
   ])(
     "enforces stored-payload permission for $name on every item",
-    async ({ scopes, allowStoredPayloads }) => {
+    async ({ scopes, allowStoredPayload }) => {
       const ability = withActionAliases(buildJwtAbility(scopes));
       const inline = { task: "task-a", payload: {} };
       const stored = {
@@ -87,11 +90,11 @@ describe("streaming batch item authorization", () => {
         items(),
         ability,
         "batch_123",
-        allowStoredPayloads
+        allowStoredPayload
       );
       const iterator = stream[Symbol.asyncIterator]();
       await expect(iterator.next()).resolves.toMatchObject({ value: inline, done: false });
-      if (allowStoredPayloads) {
+      if (allowStoredPayload(stored.payload)) {
         await expect(iterator.next()).resolves.toMatchObject({ value: stored, done: false });
         await expect(iterator.next()).resolves.toMatchObject({ done: true });
       } else {
@@ -99,6 +102,22 @@ describe("streaming batch item authorization", () => {
       }
     }
   );
+
+  it("passes each item's pointer to the stored-payload predicate", async () => {
+    const ability = withActionAliases(buildJwtAbility(["batchTrigger:tasks:task-a"]));
+    const uploaded = {
+      task: "task-a",
+      payload: "uploads/key/k1/trigger/packet_abc/payload.json",
+      options: { payloadType: "application/store" },
+    };
+    async function* items() {
+      yield uploaded;
+    }
+
+    await expect(
+      collect(authorizeBatchItems(items(), ability, "batch_123", ownUploadsOnly))
+    ).resolves.toEqual([uploaded]);
+  });
 
   it("does not delegate batch-wide writes from selected-task credentials", () => {
     const ability = withActionAliases(buildJwtAbility(["batchTrigger:tasks:task-a"]));

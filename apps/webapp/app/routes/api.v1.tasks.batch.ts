@@ -3,6 +3,10 @@ import { BatchTriggerTaskV2RequestBody } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
 import { getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import {
+  STORED_PAYLOAD_FORBIDDEN_ERROR,
+  storedPayloadPointerPolicy,
+} from "~/services/packetApi.server";
 import { createActionApiRoute, everyResource } from "~/services/routeBuilders/apiBuilder.server";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
@@ -40,15 +44,15 @@ const { action, loader } = createActionApiRoute(
     },
     corsStrategy: "all",
   },
-  async ({ body, headers, params, authentication, restrictedApiKey }) => {
+  async ({ body, headers, params, authentication, subject }) => {
+    const allowStoredPayload = storedPayloadPointerPolicy(subject);
     if (
-      (authentication.type !== "PRIVATE" || restrictedApiKey) &&
-      body.items.some((item) => item.options?.payloadType === "application/store")
+      body.items.some(
+        (item) =>
+          item.options?.payloadType === "application/store" && !allowStoredPayload(item.payload)
+      )
     ) {
-      return json(
-        { error: "Stored payloads require an unrestricted private API key" },
-        { status: 403 }
-      );
+      return json({ error: STORED_PAYLOAD_FORBIDDEN_ERROR }, { status: 403 });
     }
 
     if (!body.items.length) {

@@ -7,6 +7,10 @@ import { canWriteParentRun } from "~/utils/parentRunAuthorization.server";
 import { clientSafeErrorMessage } from "~/utils/prismaErrors";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
+import {
+  STORED_PAYLOAD_FORBIDDEN_ERROR,
+  storedPayloadPointerPolicy,
+} from "~/services/packetApi.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { BatchTriggerV3Service } from "~/v3/services/batchTriggerV3.server";
 import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
@@ -29,15 +33,15 @@ const { action } = createActionApiRoute(
       resource: (params) => ({ type: "tasks", id: params.taskId }),
     },
   },
-  async ({ params, headers, body, authentication, restrictedApiKey, ability }) => {
+  async ({ params, headers, body, authentication, subject, ability }) => {
+    const allowStoredPayload = storedPayloadPointerPolicy(subject);
     if (
-      (authentication.type !== "PRIVATE" || restrictedApiKey) &&
-      body.items.some((item) => item.options?.payloadType === "application/store")
+      body.items.some(
+        (item) =>
+          item.options?.payloadType === "application/store" && !allowStoredPayload(item.payload)
+      )
     ) {
-      return json(
-        { error: "Stored payloads require an unrestricted private API key" },
-        { status: 403 }
-      );
+      return json({ error: STORED_PAYLOAD_FORBIDDEN_ERROR }, { status: 403 });
     }
 
     const { taskId } = params;

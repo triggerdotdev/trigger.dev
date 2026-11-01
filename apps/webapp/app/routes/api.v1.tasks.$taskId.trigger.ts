@@ -14,6 +14,10 @@ import { getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
 import { determineRealtimeStreamsVersion } from "~/services/realtime/v1StreamsGlobal.server";
+import {
+  STORED_PAYLOAD_FORBIDDEN_ERROR,
+  storedPayloadPointerPolicy,
+} from "~/services/packetApi.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import {
@@ -62,15 +66,10 @@ const { action, loader } = createActionApiRoute(
     },
     corsStrategy: "all",
   },
-  async ({ body, headers, params, authentication, restrictedApiKey, ability }) => {
-    if (
-      (authentication.type !== "PRIVATE" || restrictedApiKey) &&
-      body.options?.payloadType === "application/store"
-    ) {
-      return json(
-        { error: "Stored payloads require an unrestricted private API key" },
-        { status: 403 }
-      );
+  async ({ body, headers, params, authentication, subject, ability }) => {
+    const allowStoredPayload = storedPayloadPointerPolicy(subject);
+    if (body.options?.payloadType === "application/store" && !allowStoredPayload(body.payload)) {
+      return json({ error: STORED_PAYLOAD_FORBIDDEN_ERROR }, { status: 403 });
     }
 
     const {
