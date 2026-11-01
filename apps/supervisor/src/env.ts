@@ -42,6 +42,9 @@ export const Env = z
     // also reject invalid tokens.
     WORKLOAD_TOKEN_SECRET: z.string().optional(),
     WORKLOAD_TOKEN_ENFORCEMENT: z.enum(["disabled", "log", "enforce"]).default("disabled"),
+    WORKLOAD_TOKEN_SECRET_PREVIOUS: z.string().optional(),
+    WORKLOAD_TOKEN_PREVIOUS_RUN_CUTOFF: z.string().datetime().optional(),
+    WORKLOAD_TOKEN_PREVIOUS_CUTOFF_MODE: z.enum(["log", "enforce"]).default("log"),
     DELETE_CHECKPOINTS_ON_COMPLETION: BoolEnv.default(false), // irreversible; enable per cluster
     // Absolute expiry for minted deployment tokens. Deterministic (no wall-clock issued-at) so every
     // pod of a deployment carries an identical token; bump before this date. Must outlive any run.
@@ -464,6 +467,14 @@ export const Env = z
         message:
           "WORKLOAD_TOKEN_SECRET is required when WORKLOAD_TOKEN_ENFORCEMENT is not disabled",
         path: ["WORKLOAD_TOKEN_SECRET"],
+      });
+    }
+    if (data.WORKLOAD_TOKEN_PREVIOUS_RUN_CUTOFF && !data.WORKLOAD_TOKEN_SECRET_PREVIOUS) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "WORKLOAD_TOKEN_PREVIOUS_RUN_CUTOFF is set but WORKLOAD_TOKEN_SECRET_PREVIOUS is not, so the cutoff would never apply",
+        path: ["WORKLOAD_TOKEN_PREVIOUS_RUN_CUTOFF"],
       });
     }
     if (data.DELETE_CHECKPOINTS_ON_COMPLETION && data.WORKLOAD_TOKEN_ENFORCEMENT === "disabled") {

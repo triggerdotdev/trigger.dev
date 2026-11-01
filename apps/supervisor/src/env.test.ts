@@ -265,3 +265,17 @@ describe("runner token Secret settle delay", () => {
     ).toBe(false);
   });
 });
+
+describe("previous workload token key", () => {
+  it("defaults the cutoff mode to log", () => {
+    expect(Env.parse(base).WORKLOAD_TOKEN_PREVIOUS_CUTOFF_MODE).toBe("log");
+  });
+
+  it("refuses a run cutoff without a previous secret", () => {
+    const cutoff = { WORKLOAD_TOKEN_PREVIOUS_RUN_CUTOFF: "2026-06-01T00:00:00.000Z" };
+    expect(Env.safeParse({ ...base, ...cutoff }).success).toBe(false);
+    expect(
+      Env.safeParse({ ...base, ...cutoff, WORKLOAD_TOKEN_SECRET_PREVIOUS: "previous" }).success
+    ).toBe(true);
+  });
+});

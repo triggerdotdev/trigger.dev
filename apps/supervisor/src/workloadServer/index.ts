@@ -26,7 +26,12 @@ import { Counter } from "prom-client";
 import { env } from "../env.js";
 import { register } from "../metrics.js";
 import {
+  checkPreviousKeyRunCutoff,
+  previousKeyCutoffEnforced,
+  previousKeyCutoffMode,
   verifyDeploymentIdHeader,
+  type WorkloadAuthTransport,
+  type WorkloadTokenKey,
   workloadTokenEnforced,
   workloadTokensEnabled,
 } from "../workloadToken.js";
@@ -93,6 +98,29 @@ function legacifyCheckpointType<T extends { checkpoint?: { type: string } | null
   return item;
 }
 
+type SupervisorSocketData = WorkloadClientSocketData & {
+  workloadTokenKey?: WorkloadTokenKey;
+  workloadTokenClaims?: WorkloadDeploymentTokenClaims;
+};
+
+type PreviousKeyCaller = {
+  transport: WorkloadAuthTransport;
+  remoteAddress?: string;
+  remotePort?: number;
+  runnerId?: string;
+  userAgent?: string;
+  route: string;
+  claims?: WorkloadDeploymentTokenClaims;
+};
+
+function runFriendlyIdFromMessage(message: unknown): string {
+  const friendlyId = (message as { run?: { friendlyId?: unknown } } | undefined)?.run?.friendlyId;
+  if (typeof friendlyId !== "string") {
+    throw new Error("Run event without a string run friendlyId");
+  }
+  return friendlyId;
+}
+
 type WorkloadServerEvents = {
   runConnected: [
     {
@@ -139,7 +167,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     WorkloadClientToServerEvents,
     WorkloadServerToClientEvents,
     DefaultEventsMap,
-    WorkloadClientSocketData
+    SupervisorSocketData
   >;
 
   private readonly runSockets = new Map<
@@ -148,7 +176,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       WorkloadClientToServerEvents,
       WorkloadServerToClientEvents,
       DefaultEventsMap,
-      WorkloadClientSocketData
+      SupervisorSocketData
     >
   >();
 
@@ -224,7 +252,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
    * which is why environmentId stays gated on enforce.
    */
   private async authorizeWorkloadRequest(
-    req: IncomingMessage
+    req: IncomingMessage,
+    runFriendlyId: string
   ): Promise<
     { ok: true; environmentId?: string; claims?: WorkloadDeploymentTokenClaims } | { ok: false }
   > {
@@ -238,6 +267,21 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       return { ok: false };
     }
 
+    if (
+      result.key === "previous" &&
+      !this.previousKeyRunAllowed(runFriendlyId, {
+        transport: "http",
+        remoteAddress: req.socket.remoteAddress,
+        remotePort: req.socket.remotePort,
+        runnerId: this.runnerIdFromRequest(req),
+        userAgent: this.headerValueFromRequest(req, "user-agent"),
+        route: `${req.method} ${req.url}`,
+        claims: result.claims,
+      })
+    ) {
+      return { ok: false };
+    }
+
     return {
       ok: true,
       environmentId:
@@ -246,6 +290,31 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           : undefined,
       claims: result.outcome === "jwt_valid" ? result.claims : undefined,
     };
+  }
+
+  private previousKeyRunAllowed(runFriendlyId: string, caller: PreviousKeyCaller): boolean {
+    const cutoff = checkPreviousKeyRunCutoff(runFriendlyId);
+    const { claims, ...callerFields } = caller;
+    const logArgs = {
+      runId: runFriendlyId,
+      key: "previous",
+      cutoffResult: cutoff,
+      cutoffMode: previousKeyCutoffMode,
+      ...callerFields,
+      deployment: claims?.deployment,
+      environmentId: claims?.environment_id,
+      orgId: claims?.org_id,
+      projectId: claims?.project_id,
+      exp: claims?.exp,
+    };
+
+    if (cutoff === "pass") {
+      this.logger.debug("Previous-key token accepted", logArgs);
+      return true;
+    }
+
+    this.logger.warn("Previous-key token used for a run created after the cutoff", logArgs);
+    return !(workloadTokenEnforced && previousKeyCutoffEnforced);
   }
 
   /**
@@ -416,7 +485,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               "POST",
               async () => {
                 const { req, reply, params, body } = ctx;
-                const auth = await this.authorizeWorkloadRequest(req);
+                const auth = await this.authorizeWorkloadRequest(req, params.runFriendlyId);
                 if (!auth.ok) {
                   reply.empty(401);
                   return;
@@ -462,7 +531,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               "POST",
               async () => {
                 const { req, reply, params, body } = ctx;
-                const auth = await this.authorizeWorkloadRequest(req);
+                const auth = await this.authorizeWorkloadRequest(req, params.runFriendlyId);
                 if (!auth.ok) {
                   reply.empty(401);
                   return;
@@ -519,7 +588,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               "POST",
               async () => {
                 const { req, reply, params, body } = ctx;
-                const auth = await this.authorizeWorkloadRequest(req);
+                const auth = await this.authorizeWorkloadRequest(req, params.runFriendlyId);
                 if (!auth.ok) {
                   reply.empty(401);
                   return;
@@ -561,7 +630,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               "GET",
               async () => {
                 const { reply, params, req } = ctx;
-                const auth = await this.authorizeWorkloadRequest(req);
+                const auth = await this.authorizeWorkloadRequest(req, params.runFriendlyId);
                 if (!auth.ok) {
                   reply.empty(401);
                   return;
@@ -665,7 +734,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               "GET",
               async () => {
                 const { req, reply, params } = ctx;
-                const auth = await this.authorizeWorkloadRequest(req);
+                const auth = await this.authorizeWorkloadRequest(req, params.runFriendlyId);
                 if (!auth.ok) {
                   reply.empty(401);
                   return;
@@ -728,7 +797,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               "GET",
               async () => {
                 const { req, reply, params } = ctx;
-                const auth = await this.authorizeWorkloadRequest(req);
+                const auth = await this.authorizeWorkloadRequest(req, params.runFriendlyId);
                 if (!auth.ok) {
                   reply.empty(401);
                   return;
@@ -814,7 +883,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       WorkloadClientToServerEvents,
       WorkloadServerToClientEvents,
       DefaultEventsMap,
-      WorkloadClientSocketData
+      SupervisorSocketData
     > = io.of("/workload");
 
     websocketServer.on("disconnect", (socket) => {
@@ -822,7 +891,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     });
     websocketServer.use(async (socket, next) => {
       const setSocketDataFromHeader = (
-        dataKey: keyof typeof socket.data,
+        dataKey: keyof WorkloadClientSocketData,
         headerName: string,
         required: boolean = true
       ) => {
@@ -865,6 +934,9 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           socket.disconnect(true);
           return;
         }
+
+        socket.data.workloadTokenKey = result.key;
+        socket.data.workloadTokenClaims = result.claims;
 
         // Re-source the deployment id from the verified claim; the raw header may be an opaque token.
         // A legacy bare id is itself the friendlyId, so it's safe to keep.
@@ -1000,6 +1072,17 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         emitSocketLifecycle("run_disconnected", friendlyId, reason);
       };
 
+      const previousKeySocketMayBind = (friendlyId: string, eventName: "run:start" | "run:stop") =>
+        socket.data.workloadTokenKey !== "previous" ||
+        this.previousKeyRunAllowed(friendlyId, {
+          transport: "ws",
+          remoteAddress: socket.handshake.address,
+          runnerId: socket.data.runnerId,
+          userAgent: socket.handshake.headers["user-agent"],
+          route: eventName,
+          claims: socket.data.workloadTokenClaims,
+        });
+
       socketLogger.debug("wsServer socket connected", { ...getSocketMetadata() });
 
       // FIXME: where does this get set?
@@ -1044,7 +1127,11 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         log.debug("Handling run:start");
 
         try {
-          runConnected(message.run.friendlyId);
+          const friendlyId = runFriendlyIdFromMessage(message);
+          if (!previousKeySocketMayBind(friendlyId, "run:start")) {
+            return;
+          }
+          runConnected(friendlyId);
         } catch (error) {
           log.error("run:start error", { error });
         }
@@ -1060,7 +1147,11 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         log.debug("Handling run:stop");
 
         try {
-          runDisconnected(message.run.friendlyId, "run_stop_message");
+          const friendlyId = runFriendlyIdFromMessage(message);
+          if (!previousKeySocketMayBind(friendlyId, "run:stop")) {
+            return;
+          }
+          runDisconnected(friendlyId, "run_stop_message");
         } catch (error) {
           log.error("run:stop error", { error });
         }
