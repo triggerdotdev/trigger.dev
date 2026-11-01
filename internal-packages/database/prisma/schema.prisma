@@ -1864,6 +1864,9 @@ model WorkerGroupToken {
 
   tokenHash String @unique
 
+  previousTokenHash       String?   @unique
+  previousTokenValidUntil DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

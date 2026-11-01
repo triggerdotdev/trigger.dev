@@ -28,8 +28,10 @@ import {
   type WorkerInstanceGroupType,
 } from "@trigger.dev/database";
 import { acceptsWorkerStamp } from "./workerGroupAccess";
+import { matchesAnyManagedWorkerSecret } from "./managedWorkerSecret.server";
+import { sanitizeWorkerHeaders } from "./sanitizeWorkerHeaders";
 import { json } from "@remix-run/server-runtime";
-import { createHash, timingSafeEqual } from "crypto";
+import { createHash } from "crypto";
 import { customAlphabet } from "nanoid";
 import { z } from "zod";
 import { env } from "~/env.server";
@@ -129,20 +131,85 @@ export class WorkerGroupTokenService extends WithRunEngine {
     const workerGroup = await this._prisma.workerInstanceGroup.findFirst({
       where: {
         token: {
-          tokenHash,
+          OR: [
+            { tokenHash },
+            { previousTokenHash: tokenHash, previousTokenValidUntil: { gt: new Date() } },
+          ],
         },
+      },
+      include: {
+        token: { select: { tokenHash: true, previousTokenValidUntil: true } },
       },
     });
 
     if (!workerGroup) {
-      logger.warn("[WorkerGroupTokenService] No matching worker group found", { token });
+      logger.warn("[WorkerGroupTokenService] No matching worker group found");
       return null;
     }
 
-    return workerGroup;
+    const { token: matchedToken, ...group } = workerGroup;
+    const tokenValidUntil =
+      matchedToken.tokenHash === tokenHash
+        ? undefined
+        : (matchedToken.previousTokenValidUntil ?? undefined);
+
+    return { ...group, tokenValidUntil };
   }
 
-  async rotateToken({ workerGroupId }: { workerGroupId: string }) {
+  async rotateToken({ workerGroupId, graceMs }: { workerGroupId: string; graceMs: number }) {
+    const workerGroup = await this._prisma.workerInstanceGroup.findFirst({
+      where: {
+        id: workerGroupId,
+      },
+      include: {
+        token: true,
+      },
+    });
+
+    if (!workerGroup) {
+      logger.error("[WorkerGroupTokenService] WorkerGroup not found", { workerGroupId });
+      return { outcome: "not_found" as const };
+    }
+
+    const activeGraceUntil = workerGroup.token.previousTokenValidUntil;
+    if (activeGraceUntil && activeGraceUntil.getTime() > Date.now()) {
+      logger.error("[WorkerGroupTokenService] Previous token still within grace", {
+        workerGroupId,
+        previousTokenValidUntil: activeGraceUntil,
+      });
+      return { outcome: "grace_active" as const, previousTokenValidUntil: activeGraceUntil };
+    }
+
+    const rawToken = await this.generateToken();
+    const previousTokenValidUntil = new Date(Date.now() + graceMs);
+
+    const updated = await this._prisma.workerGroupToken.updateMany({
+      where: {
+        id: workerGroup.tokenId,
+        tokenHash: workerGroup.token.tokenHash,
+      },
+      data: {
+        tokenHash: rawToken.hash,
+        previousTokenHash: workerGroup.token.tokenHash,
+        previousTokenValidUntil,
+      },
+    });
+
+    if (updated.count === 0) {
+      logger.error("[WorkerGroupTokenService] Concurrent token rotation detected", {
+        workerGroupId,
+      });
+      return { outcome: "conflict" as const };
+    }
+
+    return {
+      outcome: "rotated" as const,
+      plaintext: rawToken.plaintext,
+      previousTokenValidUntil,
+    };
+  }
+
+  async revokePreviousToken({ workerGroupId }: { workerGroupId: string }) {
     const workerGroup = await this._prisma.workerInstanceGroup.findFirst({
       where: {
         id: workerGroupId,
@@ -154,26 +221,18 @@ export class WorkerGroupTokenService extends WithRunEngine {
       return;
     }
 
-    const rawToken = await this.generateToken();
-
     const workerGroupToken = await this._prisma.workerGroupToken.update({
       where: {
         id: workerGroup.tokenId,
       },
       data: {
-        tokenHash: rawToken.hash,
+        previousTokenHash: null,
+        previousTokenValidUntil: null,
       },
     });
 
-    if (!workerGroupToken) {
-      logger.error("[WorkerGroupTokenService] WorkerGroupToken not found", { workerGroupId });
-      return;
-    }
-
     return {
       id: workerGroupToken.id,
-      tokenHash: workerGroupToken.tokenHash,
-      plaintext: rawToken.plaintext,
     };
   }
 
@@ -203,7 +262,6 @@ export class WorkerGroupTokenService extends WithRunEngine {
 
     if (!token.startsWith(this.tokenPrefix)) {
       logger.error("[WorkerGroupTokenService] Token does not start with expected prefix", {
-        token,
         prefix: this.tokenPrefix,
       });
       return;
@@ -227,22 +285,13 @@ export class WorkerGroupTokenService extends WithRunEngine {
       return;
     }
 
-    const encoder = new TextEncoder();
-
-    const a = encoder.encode(managedWorkerSecret);
-    const b = encoder.encode(env.MANAGED_WORKER_SECRET);
-
-    if (a.byteLength !== b.byteLength) {
-      logger.error("[WorkerGroupTokenService] Managed secret length mismatch", {
-        managedWorkerSecret,
-        headers: this.sanitizeHeaders(request),
-      });
-      return;
-    }
-
-    if (!timingSafeEqual(a, b)) {
+    if (
+      !matchesAnyManagedWorkerSecret(managedWorkerSecret, [
+        env.MANAGED_WORKER_SECRET,
+        env.MANAGED_WORKER_SECRET_PREVIOUS,
+      ])
+    ) {
       logger.error("[WorkerGroupTokenService] Managed secret mismatch", {
-        managedWorkerSecret,
         headers: this.sanitizeHeaders(request),
       });
       return;
@@ -256,7 +305,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
         const workerGroup = await this.findWorkerGroup({ token });
 
         if (!workerGroup) {
-          logger.warn("[WorkerGroupTokenService] Worker group not found", { token });
+          logger.warn("[WorkerGroupTokenService] Worker group not found", { instanceName });
           return;
         }
 
@@ -285,6 +334,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
           workloadType: workerGroup.workloadType,
           allowedSubscriptions: env.RUN_ENGINE_WORKER_QUEUE_SUBSCRIPTIONS[workerGroup.id] ?? [],
           mixedRuntime: env.RUN_ENGINE_MIXED_RUNTIME_WORKER_GROUPS.includes(workerGroup.id),
+          tokenValidUntil: workerGroup.tokenValidUntil,
         });
       }
     );
@@ -292,6 +342,15 @@ export class WorkerGroupTokenService extends WithRunEngine {
     if (result.err) {
       logger.error("[WorkerGroupTokenService] Failed to authenticate worker instance", {
         error: result.err,
+      });
+      return;
+    }
+
+    if (result.val?.tokenValidUntil && result.val.tokenValidUntil.getTime() <= Date.now()) {
+      await authenticatedWorkerInstanceCache.authenticatedWorkerInstance.remove(cacheKey.join("-"));
+      logger.warn("[WorkerGroupTokenService] Previous worker group token has expired", {
+        instanceName,
+        workerGroupId: result.val.workerGroupId,
       });
       return;
     }
@@ -368,16 +427,8 @@ export class WorkerGroupTokenService extends WithRunEngine {
     }
   }
 
-  private sanitizeHeaders(request: Request, skipHeaders = ["authorization"]) {
-    const sanitizedHeaders: Partial<Record<string, string>> = {};
-
-    for (const [key, value] of request.headers.entries()) {
-      if (!skipHeaders.includes(key.toLowerCase())) {
-        sanitizedHeaders[key] = value;
-      }
-    }
-
-    return sanitizedHeaders;
+  private sanitizeHeaders(request: Request) {
+    return sanitizeWorkerHeaders(request.headers);
   }
 }
 
@@ -391,6 +442,7 @@ export type AuthenticatedWorkerInstanceOptions = WithRunEngineOptions<
   WorkerQueueConsumerOptions & {
     type: WorkerInstanceGroupType;
     name: string;
+    tokenValidUntil?: Date;
   }
 >;
 
@@ -400,6 +452,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
   readonly workerGroupId: string;
   readonly workerInstanceId: string;
   readonly masterQueue: string;
+  readonly tokenValidUntil?: Date;
   private readonly queueConsumer: WorkerQueueConsumer;
 
   // FIXME: Required for unmanaged workers
@@ -413,6 +466,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     this.workerGroupId = opts.workerGroupId;
     this.workerInstanceId = opts.workerInstanceId;
     this.masterQueue = opts.masterQueue;
+    this.tokenValidUntil = opts.tokenValidUntil;
     this.queueConsumer = createWorkerQueueConsumer(opts);
 
     if (refusedSubscriptions(opts).length > 0 && !warnedRefusedGroups.has(opts.workerGroupId)) {

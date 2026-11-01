@@ -1034,6 +1034,10 @@ const EnvironmentSchema = z
     EVENTS_LOAD_SHEDDING_ENABLED: z.string().default("1"),
 
     MANAGED_WORKER_SECRET: z.string().min(1).refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
+    MANAGED_WORKER_SECRET_PREVIOUS: z.preprocess(
+      (v) => (v === "" ? undefined : v),
+      z.string().min(1).refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE).optional()
+    ),
 
     // Allow booting with a known-insecure published default secret. Temporary
     // bridge for deployments that can't rotate yet; rotate as soon as possible.
