@@ -1,13 +1,10 @@
-import { CalendarDaysIcon, ChevronUpDownIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { endOfDay, format, startOfDay } from "date-fns";
 import { useEffect, useState } from "react";
 import { useTypedFetcher } from "remix-typedjson";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { InlineCode } from "~/components/code/InlineCode";
 import { Feedback } from "~/components/Feedback";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { Calendar } from "~/components/primitives/Calendar";
 import { Callout } from "~/components/primitives/Callout";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
@@ -17,7 +14,6 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
 import { RadioGroup, RadioGroupItem } from "~/components/primitives/RadioButton";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import SegmentedControl from "~/components/primitives/SegmentedControl";
@@ -27,9 +23,16 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import type { ApiKeyPreset } from "~/services/apiKeyPresetValidation.server";
 import { SCOPE_CAPABILITIES, scopeDetailForPreset } from "~/utils/apiKeyScopeDetail";
+import {
+  apiKeyExpiryDay,
+  apiKeyExpiryTimestamp,
+  DEFAULT_API_KEY_EXPIRY_DAYS,
+  isApiKeyExpiryDayExpired,
+} from "~/utils/apiKeyExpiry";
 import { cn } from "~/utils/cn";
 import { v3BillingPath } from "~/utils/pathBuilder";
 import type { action, ApiKeyActionData } from "./route";
+import { ApiKeyExpiryPicker } from "./ApiKeyExpiryPicker";
 
 type NewApiKeyDialogProps = {
   availableTasks: string[];
@@ -55,15 +58,17 @@ export function NewApiKeyDialog({
   const [showError, setShowError] = useState(false);
   const [name, setName] = useState("");
   const [expiration, setExpiration] = useState("90-days");
-  const [customExpiryDate, setCustomExpiryDate] = useState<Date>();
+  const [expiryDate, setExpiryDate] = useState<Date | undefined>(() =>
+    apiKeyExpiryDay(new Date(), DEFAULT_API_KEY_EXPIRY_DAYS)
+  );
+  const [expiryError, setExpiryError] = useState(false);
   const defaultPresetId =
     presets?.find((preset) => preset.id === "FULL_ACCESS" && preset.available)?.id ??
     presets?.find((preset) => preset.available)?.id ??
     "FULL_ACCESS";
   const additionalPresetIds =
     presets?.filter((preset) => !KNOWN_PRESET_IDS.has(preset.id)).map((preset) => preset.id) ?? [];
-  const expiresAt = expirationDate(expiration, customExpiryDate);
-  const needsCustomExpiryDate = expiration === "custom" && !customExpiryDate;
+  const expiresAt = expiryDate ? apiKeyExpiryTimestamp(expiryDate) : undefined;
   const [presetId, setPresetId] = useState(defaultPresetId);
   const [taskScope, setTaskScope] = useState<"all" | "selected">("all");
   const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
@@ -87,7 +92,8 @@ export function NewApiKeyDialog({
     if (nextOpen) {
       setName("");
       setExpiration("90-days");
-      setCustomExpiryDate(undefined);
+      setExpiryDate(apiKeyExpiryDay(new Date(), DEFAULT_API_KEY_EXPIRY_DAYS));
+      setExpiryError(false);
       setPresetId(defaultPresetId);
       setTaskScope("all");
       setSelectedTasks([]);
@@ -145,7 +151,12 @@ export function NewApiKeyDialog({
         ) : (
           <fetcher.Form
             method="post"
-            onSubmit={() => setShowError(false)}
+            onSubmit={(event) => {
+              setShowError(false);
+              const expired = expiryDate !== undefined && isApiKeyExpiryDayExpired(expiryDate);
+              setExpiryError(expired);
+              if (expired) event.preventDefault();
+            }}
             className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto]"
           >
             <input type="hidden" name="action" value="create" />
@@ -173,7 +184,7 @@ export function NewApiKeyDialog({
               <div className={cn("min-w-0 px-5 pb-6 pt-4", showAccessControls && "space-y-5")}>
                 <div
                   className={cn(
-                    "grid gap-4 pb-5 sm:grid-cols-[minmax(0,1fr)_12rem]",
+                    "grid items-start gap-4 pb-5 sm:grid-cols-[minmax(0,1fr)_16rem]",
                     showAccessControls && "border-b border-grid-dimmed"
                   )}
                 >
@@ -193,36 +204,20 @@ export function NewApiKeyDialog({
                   </InputGroup>
 
                   <InputGroup fullWidth>
-                    <Label>Expires</Label>
-                    <Select<string, { value: string; label: string }>
-                      value={expiration}
-                      setValue={setExpiration}
-                      items={API_KEY_EXPIRATIONS}
-                      variant="secondary/medium"
-                      dropdownIcon
-                      className="w-full justify-between"
-                      text={(value) =>
-                        API_KEY_EXPIRATIONS.find((option) => option.value === value)?.label
-                      }
-                    >
-                      {(options) =>
-                        options.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))
-                      }
-                    </Select>
-                    {expiration === "custom" ? (
-                      <CustomExpiryDatePicker
-                        value={customExpiryDate}
-                        onChange={setCustomExpiryDate}
-                      />
-                    ) : null}
+                    <Label htmlFor="api-key-expiry">Expires</Label>
+                    <ApiKeyExpiryPicker
+                      expiration={expiration}
+                      date={expiryDate}
+                      onChange={(nextExpiration, date) => {
+                        setExpiration(nextExpiration);
+                        setExpiryDate(date);
+                        setExpiryError(false);
+                      }}
+                    />
                     <Hint>
-                      {needsCustomExpiryDate
-                        ? "Pick the last day this key works"
-                        : formatExpiryHint(expiresAt, expiration === "custom")}
+                      {expiration === "never"
+                        ? "Works until you revoke it."
+                        : "Expires at the end of the chosen day, UTC."}
                     </Hint>
                   </InputGroup>
                 </div>
@@ -293,7 +288,11 @@ export function NewApiKeyDialog({
 
             <div className="flex items-center gap-3 border-t border-grid-bright px-5 py-3">
               {(() => {
-                const error = showError && actionData && !actionData.ok ? actionData.error : null;
+                const error = expiryError
+                  ? "This expiry date has passed. Choose another date."
+                  : showError && actionData && !actionData.ok
+                    ? actionData.error
+                    : null;
                 const hint =
                   needsSelectedTask && selectedTasks.length === 0
                     ? "Pick at least one task, or switch to all tasks."
@@ -318,7 +317,6 @@ export function NewApiKeyDialog({
                   variant="primary/small"
                   disabled={
                     !name.trim() ||
-                    needsCustomExpiryDate ||
                     !selectedPresetIsAvailable ||
                     (needsSelectedTask &&
                       (selectedTasks.length === 0 ||
@@ -350,14 +348,6 @@ const KNOWN_PRESET_IDS = new Set([
   "WAITPOINTS_ONLY",
 ]);
 
-const API_KEY_EXPIRATIONS = [
-  { value: "30-days", label: "In 30 days" },
-  { value: "90-days", label: "In 90 days" },
-  { value: "1-year", label: "In 1 year" },
-  { value: "custom", label: "Custom date" },
-  { value: "never", label: "Never" },
-];
-
 // 0 none · 1 read · 2 read & write · 3 allowed (an action) · 4 full
 const SCOPE_LEVEL_WORDS = ["No access", "Read", "Read & write", "Allowed", "Full access"] as const;
 const SCOPE_LEVEL_TONES = ["none", "read", "write", "write", "write"] as const;
@@ -375,68 +365,6 @@ function expandScopeString(raw: string, scoped: boolean, tasks: string[]): strin
     shown.push(`… +${tasks.length - 3} more`);
   }
   return shown;
-}
-
-function formatExpiryHint(expiresAt: Date | undefined, endOfDay: boolean): string {
-  if (!expiresAt) {
-    return "Works until you revoke it";
-  }
-  const date = new Intl.DateTimeFormat("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(expiresAt);
-  return endOfDay ? `Until the end of ${date}` : date;
-}
-
-function expirationDate(expiration: string, customDate: Date | undefined): Date | undefined {
-  if (expiration === "custom") {
-    return customDate ? endOfDay(customDate) : undefined;
-  }
-  const days = { "30-days": 30, "90-days": 90, "1-year": 365 }[expiration];
-  return days ? new Date(Date.now() + days * 24 * 60 * 60 * 1_000) : undefined;
-}
-
-function CustomExpiryDatePicker({
-  value,
-  onChange,
-}: {
-  value: Date | undefined;
-  onChange: (date: Date | undefined) => void;
-}) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="secondary/medium"
-          LeadingIcon={CalendarDaysIcon}
-          TrailingIcon={ChevronUpDownIcon}
-          fullWidth
-          textAlignLeft
-          aria-label="Expiration date"
-          className={cn(!value && "text-text-dimmed")}
-        >
-          {value ? format(value, "d MMM yyyy") : "Select date"}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="end">
-        <Calendar
-          mode="single"
-          required
-          selected={value}
-          defaultMonth={value}
-          disabled={{ before: startOfDay(new Date()) }}
-          onSelect={(date) => {
-            onChange(date);
-            setOpen(false);
-          }}
-        />
-      </PopoverContent>
-    </Popover>
-  );
 }
 
 function PresetGroup({
