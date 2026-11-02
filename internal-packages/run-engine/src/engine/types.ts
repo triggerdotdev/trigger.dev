@@ -275,6 +275,11 @@ export type RunEngineOptions = {
    */
   finalizationGuardDelayMs?: number;
   /**
+   * What `startRunAttempt` does when the run already has an attempt executing: "log" records it
+   * and starts another attempt as before, "enforce" refuses with a 409. Default: "log".
+   */
+  duplicateAttemptStartCheck?: "off" | "log" | "enforce";
+  /**
    * Delay before the `ensureWaitpointCompleted` write-ahead guard fires after a manual/API waitpoint
    * completion whose inline side effects never acked it. Default: 30s.
    */

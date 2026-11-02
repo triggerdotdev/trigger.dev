@@ -1057,6 +1057,8 @@ const EnvironmentSchema = z
     // cutoff pass (grandfathered). Default off = no run-row read, byte-for-byte today's behavior.
     WORKLOAD_CREATED_AT_GATE_ENABLED: z.string().default("0"),
     WORKLOAD_TOKEN_CUTOFF: z.string().datetime().optional(),
+    // Whether an attempt start for a run that already has an attempt executing is logged or refused.
+    RUN_ENGINE_DUPLICATE_ATTEMPT_START_CHECK: z.enum(["off", "log", "enforce"]).default("log"),
 
     CLI_LOGIN_NETWORK_CHECK: z.enum(["off", "log", "confirm"]).default("log"),
     CLI_LOGIN_LEGACY_UNTIL: z.string().datetime().default("2027-01-01T00:00:00.000Z"),

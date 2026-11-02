@@ -581,6 +581,7 @@ export class RunEngine {
       machines: this.options.machines,
       retryWarmStartThresholdMs: this.options.retryWarmStartThresholdMs,
       finalizationGuardDelayMs: this.options.finalizationGuardDelayMs,
+      duplicateAttemptStartCheck: this.options.duplicateAttemptStartCheck,
       redisOptions: this.options.cache?.redis ?? this.options.runLock.redis,
     });
 

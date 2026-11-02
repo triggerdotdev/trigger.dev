@@ -184,6 +184,7 @@ function createRunEngine() {
       factor: env.RUN_ENGINE_SUSPENDED_HEARTBEAT_RETRIES_FACTOR,
     },
     retryWarmStartThresholdMs: env.RUN_ENGINE_RETRY_WARM_START_THRESHOLD_MS,
+    duplicateAttemptStartCheck: env.RUN_ENGINE_DUPLICATE_ATTEMPT_START_CHECK,
     pendingVersionRunIdLookup: runEnginePendingVersionLookup,
     externalDeploymentParkDeadlineMs: env.EXTERNAL_DEPLOYMENT_PARK_DEADLINE_MS,
     billing: {

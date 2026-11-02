@@ -38,7 +38,7 @@ import type {
   PrismaClientOrTransaction,
   RuntimeEnvironmentType,
 } from "@trigger.dev/database";
-import { MAX_TASK_RUN_ATTEMPTS } from "../consts.js";
+import { MAX_TASK_RUN_ATTEMPTS, RETRY_IMMEDIATELY_SNAPSHOT_DESCRIPTION } from "../consts.js";
 import { runStatusFromError, ServiceValidationError } from "../errors.js";
 import { sendNotificationToWorker } from "../eventBus.js";
 import { getMachinePreset, machinePresetFromName } from "../machinePresets.js";
@@ -88,6 +88,7 @@ export type RunAttemptSystemOptions = {
   delayedRunSystem: DelayedRunSystem;
   retryWarmStartThresholdMs?: number;
   finalizationGuardDelayMs?: number;
+  duplicateAttemptStartCheck?: RunEngineOptions["duplicateAttemptStartCheck"];
   machines: RunEngineOptions["machines"];
   redisOptions: RedisOptions;
 };
@@ -142,6 +143,7 @@ export class RunAttemptSystem {
   private readonly rederivationsCounter: Counter;
   private readonly releasesCounter: Counter;
   private readonly restoreOutcomesCounter: Counter;
+  private readonly duplicateAttemptStartsCounter: Counter;
   private readonly cache: UnkeyCache<{
     tasks: BackwardsCompatibleTaskRunExecution["task"];
     machinePresets: MachinePreset;
@@ -175,6 +177,13 @@ export class RunAttemptSystem {
       description: "Failed restores reported by a supervisor, by outcome, reason and result",
       unit: "reports",
     });
+    this.duplicateAttemptStartsCounter = this.$.meter.createCounter(
+      "run_engine.duplicate_attempt_starts",
+      {
+        description: "Attempt starts for a run that already has an attempt executing, by outcome",
+        unit: "requests",
+      }
+    );
 
     const ctx = new DefaultStatefulContext();
     const memory = createLRUMemoryStore(5000);
@@ -396,6 +405,8 @@ export class RunAttemptSystem {
               latestSnapshotId: latestSnapshot.id,
             });
           }
+
+          this.#checkDuplicateAttemptStart(latestSnapshot, runnerId);
 
           const taskRun = await this.$.runStore.findRun(
             {
@@ -1271,7 +1282,7 @@ export class RunAttemptSystem {
                   run,
                   snapshot: {
                     executionStatus: "EXECUTING",
-                    description: "Attempt failed with a short delay, starting a new attempt",
+                    description: RETRY_IMMEDIATELY_SNAPSHOT_DESCRIPTION,
                   },
                   previousSnapshotId: latestSnapshot.id,
                   previousSnapshot: latestSnapshot,
@@ -2043,6 +2054,46 @@ export class RunAttemptSystem {
         };
       });
     });
+  }
+
+  /**
+   * A runner starts an attempt from the PENDING_EXECUTING snapshot a dequeue wrote, or from the
+   * EXECUTING snapshot written when a failed attempt is retried in the same process. Any other
+   * executing snapshot means an attempt is already running.
+   */
+  #checkDuplicateAttemptStart(
+    latestSnapshot: Pick<
+      EnhancedExecutionSnapshot,
+      "id" | "runId" | "executionStatus" | "description" | "attemptNumber" | "runnerId"
+    >,
+    runnerId: string | undefined
+  ) {
+    const mode = this.options.duplicateAttemptStartCheck ?? "log";
+    if (
+      mode === "off" ||
+      !isExecuting(latestSnapshot.executionStatus) ||
+      latestSnapshot.description === RETRY_IMMEDIATELY_SNAPSHOT_DESCRIPTION
+    ) {
+      return;
+    }
+
+    const enforced = mode === "enforce";
+    this.duplicateAttemptStartsCounter.add(1, { outcome: enforced ? "refused" : "logged" });
+    this.$.logger.warn("startRunAttempt: the run already has an attempt executing", {
+      runId: latestSnapshot.runId,
+      snapshotId: latestSnapshot.id,
+      executionStatus: latestSnapshot.executionStatus,
+      attemptNumber: latestSnapshot.attemptNumber,
+      executingRunnerId: latestSnapshot.runnerId,
+      runnerId,
+      enforced,
+    });
+
+    if (enforced) {
+      throw new ServiceValidationError("The run already has an attempt executing", 409, {
+        code: "ATTEMPT_ALREADY_EXECUTING",
+      });
+    }
   }
 
   async #permanentlyFailRun({
