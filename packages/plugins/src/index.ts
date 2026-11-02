@@ -113,3 +113,15 @@ export type {
   BillingProjectUsageLine,
   BillingProjectUsage,
 } from "./billing.js";
+
+export type {
+  AcknowledgeSecurityNoticeResult,
+  SecurityNotice,
+  SecurityNoticeApiKeyStatus,
+  SecurityNoticeBanner,
+  SecurityNoticeEnvironment,
+  SecurityNoticeScope,
+  SecurityNoticesController,
+  SecurityNoticesPlugin,
+  SecurityNoticesPluginConfig,
+} from "./securityNotices.js";

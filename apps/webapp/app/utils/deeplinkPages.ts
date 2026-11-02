@@ -32,6 +32,7 @@ export const ENV_PAGE_TARGETS: ReadonlyMap<string, DeeplinkTarget> = new Map([
   ["regions", page("regions")],
   ["runs", page("runs")],
   ["schedules", page("schedules")],
+  ["security-notices", page("security-notices")],
   ["sessions", page("sessions")],
   ["settings", page("settings")],
   ["tasks", { landing: "", prefix: "tasks" }],

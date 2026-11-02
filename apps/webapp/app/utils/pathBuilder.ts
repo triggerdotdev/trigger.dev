@@ -259,6 +259,14 @@ export function v3TasksStreamingPath(
   return `${v3EnvironmentPath(organization, project, environment)}/tasks/stream`;
 }
 
+export function v3SecurityNoticesPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/security-notices`;
+}
+
 export function v3ApiKeysPath(
   organization: OrgForPath,
   project: ProjectForPath,
