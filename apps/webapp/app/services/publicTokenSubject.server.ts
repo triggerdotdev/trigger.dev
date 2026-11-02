@@ -4,7 +4,7 @@ import { env } from "~/env.server";
 let codec: PublicTokenSubjectCodec | undefined;
 
 function getCodec(): PublicTokenSubjectCodec {
-  codec ??= createPublicTokenSubjectCodec(env.ENCRYPTION_KEY);
+  codec ??= createPublicTokenSubjectCodec(env.PUBLIC_TOKEN_SUBJECT_SECRET ?? env.ENCRYPTION_KEY);
   return codec;
 }
 

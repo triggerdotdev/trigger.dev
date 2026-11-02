@@ -417,6 +417,11 @@ const EnvironmentSchema = z
       )
       .refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
     PUBLIC_TOKEN_SEALED_SUBJECT_ENABLED: BoolEnv.default(false),
+    PUBLIC_TOKEN_SUBJECT_SECRET: z
+      .string()
+      .min(32)
+      .refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE)
+      .optional(),
     // Enables the AWS_KMS secret store provider. Callers opt in per secret; everything else
     // stays encrypted with ENCRYPTION_KEY.
     SECRET_STORE_AWS_KMS_KEY_ID: z.string().optional(),
@@ -2879,9 +2884,10 @@ if (env.ALLOW_INSECURE_DEFAULT_SECRETS) {
       ["MAGIC_LINK_SECRET", env.MAGIC_LINK_SECRET],
       ["ENCRYPTION_KEY", env.ENCRYPTION_KEY],
       ["MANAGED_WORKER_SECRET", env.MANAGED_WORKER_SECRET],
+      ["PUBLIC_TOKEN_SUBJECT_SECRET", env.PUBLIC_TOKEN_SUBJECT_SECRET],
     ] as const
   )
-    .filter(([, value]) => INSECURE_SECRET_VALUES.includes(value))
+    .filter(([, value]) => value !== undefined && INSECURE_SECRET_VALUES.includes(value))
     .map(([name]) => name);
 
   if (insecure.length > 0) {
