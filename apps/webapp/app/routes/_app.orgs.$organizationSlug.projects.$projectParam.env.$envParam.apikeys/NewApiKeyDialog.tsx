@@ -1,10 +1,13 @@
+import { CalendarDaysIcon, ChevronUpDownIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
+import { endOfDay, format, startOfDay } from "date-fns";
 import { useEffect, useState } from "react";
 import { useTypedFetcher } from "remix-typedjson";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { InlineCode } from "~/components/code/InlineCode";
 import { Feedback } from "~/components/Feedback";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Calendar } from "~/components/primitives/Calendar";
 import { Callout } from "~/components/primitives/Callout";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
@@ -14,6 +17,7 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
 import { RadioGroup, RadioGroupItem } from "~/components/primitives/RadioButton";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import SegmentedControl from "~/components/primitives/SegmentedControl";
@@ -51,13 +55,15 @@ export function NewApiKeyDialog({
   const [showError, setShowError] = useState(false);
   const [name, setName] = useState("");
   const [expiration, setExpiration] = useState("90-days");
+  const [customExpiryDate, setCustomExpiryDate] = useState<Date>();
   const defaultPresetId =
     presets?.find((preset) => preset.id === "FULL_ACCESS" && preset.available)?.id ??
     presets?.find((preset) => preset.available)?.id ??
     "FULL_ACCESS";
   const additionalPresetIds =
     presets?.filter((preset) => !KNOWN_PRESET_IDS.has(preset.id)).map((preset) => preset.id) ?? [];
-  const expiresAt = expirationDate(expiration);
+  const expiresAt = expirationDate(expiration, customExpiryDate);
+  const needsCustomExpiryDate = expiration === "custom" && !customExpiryDate;
   const [presetId, setPresetId] = useState(defaultPresetId);
   const [taskScope, setTaskScope] = useState<"all" | "selected">("all");
   const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
@@ -81,6 +87,7 @@ export function NewApiKeyDialog({
     if (nextOpen) {
       setName("");
       setExpiration("90-days");
+      setCustomExpiryDate(undefined);
       setPresetId(defaultPresetId);
       setTaskScope("all");
       setSelectedTasks([]);
@@ -206,7 +213,17 @@ export function NewApiKeyDialog({
                         ))
                       }
                     </Select>
-                    <Hint>{formatExpiryHint(expiresAt)}</Hint>
+                    {expiration === "custom" ? (
+                      <CustomExpiryDatePicker
+                        value={customExpiryDate}
+                        onChange={setCustomExpiryDate}
+                      />
+                    ) : null}
+                    <Hint>
+                      {needsCustomExpiryDate
+                        ? "Pick the last day this key works"
+                        : formatExpiryHint(expiresAt, expiration === "custom")}
+                    </Hint>
                   </InputGroup>
                 </div>
 
@@ -301,6 +318,7 @@ export function NewApiKeyDialog({
                   variant="primary/small"
                   disabled={
                     !name.trim() ||
+                    needsCustomExpiryDate ||
                     !selectedPresetIsAvailable ||
                     (needsSelectedTask &&
                       (selectedTasks.length === 0 ||
@@ -336,6 +354,7 @@ const API_KEY_EXPIRATIONS = [
   { value: "30-days", label: "In 30 days" },
   { value: "90-days", label: "In 90 days" },
   { value: "1-year", label: "In 1 year" },
+  { value: "custom", label: "Custom date" },
   { value: "never", label: "Never" },
 ];
 
@@ -358,20 +377,66 @@ function expandScopeString(raw: string, scoped: boolean, tasks: string[]): strin
   return shown;
 }
 
-function formatExpiryHint(expiresAt?: Date): string {
+function formatExpiryHint(expiresAt: Date | undefined, endOfDay: boolean): string {
   if (!expiresAt) {
     return "Works until you revoke it";
   }
-  return new Intl.DateTimeFormat("en-GB", {
+  const date = new Intl.DateTimeFormat("en-GB", {
     day: "numeric",
     month: "short",
     year: "numeric",
   }).format(expiresAt);
+  return endOfDay ? `Until the end of ${date}` : date;
 }
 
-function expirationDate(expiration: string): Date | undefined {
+function expirationDate(expiration: string, customDate: Date | undefined): Date | undefined {
+  if (expiration === "custom") {
+    return customDate ? endOfDay(customDate) : undefined;
+  }
   const days = { "30-days": 30, "90-days": 90, "1-year": 365 }[expiration];
   return days ? new Date(Date.now() + days * 24 * 60 * 60 * 1_000) : undefined;
+}
+
+function CustomExpiryDatePicker({
+  value,
+  onChange,
+}: {
+  value: Date | undefined;
+  onChange: (date: Date | undefined) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="secondary/medium"
+          LeadingIcon={CalendarDaysIcon}
+          TrailingIcon={ChevronUpDownIcon}
+          fullWidth
+          textAlignLeft
+          aria-label="Expiration date"
+          className={cn(!value && "text-text-dimmed")}
+        >
+          {value ? format(value, "d MMM yyyy") : "Select date"}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="end">
+        <Calendar
+          mode="single"
+          required
+          selected={value}
+          defaultMonth={value}
+          disabled={{ before: startOfDay(new Date()) }}
+          onSelect={(date) => {
+            onChange(date);
+            setOpen(false);
+          }}
+        />
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 function PresetGroup({

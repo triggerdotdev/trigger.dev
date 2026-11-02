@@ -31,8 +31,8 @@ API keys belong to one environment. A Development key cannot access Production, 
     Select the project and environment the integration needs to access, then open [**API keys**](https://cloud.trigger.dev/_/apikeys).
   </Step>
   <Step title="Create the key">
-    Click **New API key**, enter a descriptive name, and optionally set an expiration date. Names can
-    contain up to 64 characters.
+    Click **New API key**, enter a descriptive name, and choose when it expires: in 30 days, 90
+    days, or 1 year, on a custom date, or never. Names can contain up to 64 characters.
   </Step>
   <Step title="Choose its access">
     Select the narrowest access preset that supports the integration. For task-aware presets, choose
@@ -117,7 +117,7 @@ The key must belong to the target environment. Use a Production key with `--env 
 
 ## Expire and revoke keys
 
-Set an expiration date when creating a key if the integration only needs temporary access. An expired key stops authenticating automatically.
+Set an expiration date when creating a key if the integration only needs temporary access. A key with a custom date works until the end of that day in your local time zone. An expired key stops authenticating automatically.
 
 Revoking a key takes effect immediately and cannot be reversed. Requests using the key fail, and the key can no longer create public access tokens. Create a replacement before revoking a key when you need to rotate it without interrupting the integration.
 
