@@ -158,6 +158,7 @@ class ManagedSupervisor {
       DOCKER_REGISTRY_PASSWORD,
       TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_PASSWORD,
       WORKLOAD_TOKEN_SECRET,
+      WORKLOAD_TOKEN_SECRET_PREVIOUS,
       ...envWithoutSecrets
     } = env;
 
