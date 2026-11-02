@@ -20,6 +20,7 @@ import { env as appEnv } from "~/env.server";
 import { assertSourcePatActive } from "~/services/personalAccessToken.server";
 import { logger } from "~/services/logger.server";
 import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
+import { publicTokenSubject } from "~/services/publicTokenSubject.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -185,7 +186,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         : undefined);
 
     const claims = {
-      sub: runtimeEnv.id,
+      sub: publicTokenSubject(runtimeEnv.id),
       pub: true,
       ...(scopes ? { scopes } : {}),
       ...(actorUserId

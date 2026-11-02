@@ -10,6 +10,7 @@ import {
 } from "@trigger.dev/plugins";
 import { createHash } from "node:crypto";
 import { buildJwtAbility, permissiveAbility } from "./ability.js";
+import { resolvePublicTokenSubject, type PublicTokenSubjectCodec } from "./publicTokenSubject.js";
 
 export type BearerCredentialClients = {
   // Used for the `lastUsedAt` telemetry write; reads go to the replica.
@@ -32,6 +33,7 @@ export type BearerLookupPath =
   | "additional"
   | "jwt_current"
   | "jwt_rotated"
+  | "jwt_legacy_subject"
   | "legacy_public"
   | "run_token"
   | "not_found";
@@ -68,13 +70,19 @@ export function resolveJwtSigningKey(env: {
  * Additional API-key credentials carry DB-persisted effective scopes, which
  * are compiled into their final ability here without a plugin policy lookup.
  */
+export type BearerCredentialResolverOptions = {
+  publicTokenSubjects?: PublicTokenSubjectCodec;
+};
+
 export class BearerCredentialResolver {
   private readonly prisma: PrismaClient;
   private readonly replica: PrismaClient;
+  private readonly publicTokenSubjects?: PublicTokenSubjectCodec;
 
-  constructor(clients: BearerCredentialClients) {
+  constructor(clients: BearerCredentialClients, options?: BearerCredentialResolverOptions) {
     this.prisma = clients.primary;
     this.replica = clients.replica;
+    this.publicTokenSubjects = options?.publicTokenSubjects;
   }
 
   async authenticate(
@@ -99,8 +107,9 @@ export class BearerCredentialResolver {
     }
 
     if (options?.allowJWT && isPublicJWT(rawToken)) {
-      const envId = extractJWTSub(rawToken);
-      if (!envId) {
+      const sub = extractJWTSub(rawToken);
+      const subject = sub ? resolvePublicTokenSubject(sub, this.publicTokenSubjects) : undefined;
+      if (!subject) {
         return {
           ok: false,
           status: 401,
@@ -112,7 +121,7 @@ export class BearerCredentialResolver {
       // Match the include shape of the slim AuthenticatedEnvironment so
       // the bridge can use the returned env without a follow-up fetch.
       const env = await this.replica.runtimeEnvironment.findFirst({
-        where: { id: envId },
+        where: { id: subject.environmentId },
         include: {
           project: true,
           organization: true,
@@ -136,7 +145,7 @@ export class BearerCredentialResolver {
         };
       }
 
-      let lookupPath: BearerLookupPath = "jwt_current";
+      let lookupPath: BearerLookupPath = subject.legacy ? "jwt_legacy_subject" : "jwt_current";
       let result = await validateJWT(rawToken, resolveJwtSigningKey(env));
 
       // Root-key rotation grace window, mirroring the bearer path below: a
@@ -160,7 +169,7 @@ export class BearerCredentialResolver {
           select: { apiKey: true },
         });
 
-        if (revoked.length > 0) lookupPath = "jwt_rotated";
+        if (revoked.length > 0 && !subject.legacy) lookupPath = "jwt_rotated";
 
         for (const candidate of revoked) {
           const retried = await validateJWT(rawToken, candidate.apiKey);

@@ -416,6 +416,7 @@ const EnvironmentSchema = z
         "ENCRYPTION_KEY must be exactly 32 bytes"
       )
       .refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
+    PUBLIC_TOKEN_SEALED_SUBJECT_ENABLED: BoolEnv.default(false),
     // Enables the AWS_KMS secret store provider. Callers opt in per secret; everything else
     // stays encrypted with ENCRYPTION_KEY.
     SECRET_STORE_AWS_KMS_KEY_ID: z.string().optional(),

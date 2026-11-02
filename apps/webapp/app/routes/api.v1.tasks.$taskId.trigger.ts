@@ -30,6 +30,7 @@ import { sanitizeTriggerSource } from "~/utils/triggerSource";
 import { runStore } from "~/v3/runStore.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "~/v3/services/triggerTask.server";
+import { publicTokenSubject } from "~/services/publicTokenSubject.server";
 
 const ParamsSchema = z.object({
   taskId: z.string(),
@@ -220,7 +221,7 @@ async function responseHeaders(
   const { environment, realtime } = authentication;
 
   const claims = {
-    sub: environment.id,
+    sub: publicTokenSubject(environment.id),
     pub: true,
     scopes: [`read:runs:${run.friendlyId}`, `write:inputStreams:${run.friendlyId}`],
     realtime,

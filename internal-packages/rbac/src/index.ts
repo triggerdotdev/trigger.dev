@@ -23,6 +23,7 @@ import { RoleBaseAccessFallback } from "./fallback.js";
 // exchange route imports it to project requested scopes against it.
 export { CAPLESS_USER_ACTOR_SCOPES } from "./fallback.js";
 import { BearerCredentialResolver, type BearerResolution } from "./bearerCredentials.js";
+import type { PublicTokenSubjectCodec } from "./publicTokenSubject.js";
 export type {
   BearerAuthOptions,
   RoleBaseAccessController,
@@ -54,6 +55,13 @@ export type { UserActorAuthResult, UserActorClaims } from "@trigger.dev/plugins"
 export { buildJwtAbility, scopesWithinAbility } from "./ability.js";
 export { FULL_ACCESS_PRESET_ID, scopesGrantFullAccess } from "@trigger.dev/plugins";
 export { resolveJwtSigningKey } from "./bearerCredentials.js";
+export {
+  createPublicTokenSubjectCodec,
+  isSealedPublicTokenSubject,
+  resolvePublicTokenSubject,
+  type PublicTokenSubjectCodec,
+  type ResolvedPublicTokenSubject,
+} from "./publicTokenSubject.js";
 // Re-export the user-actor token grammar so the webapp mints/checks tokens
 // through @trigger.dev/rbac (it doesn't import @trigger.dev/plugins directly).
 export {
@@ -75,6 +83,7 @@ export type RbacCreateOptions = {
   // Platform secret used to verify delegated user-actor tokens (tr_uat_).
   // Threaded through to the plugin / fallback's authenticateUserActor.
   userActorSecret?: string;
+  publicTokenSubjects?: PublicTokenSubjectCodec;
   // Writer/reader connection URLs + pool sizes for a plugin that owns its
   // own database client, resolved by the host from its env so the plugin
   // follows the host's writer/replica topology. The fallback ignores this —
@@ -143,7 +152,8 @@ class LazyController implements RoleBaseAccessController {
 
   constructor(prisma: RbacPrismaInput, options?: RbacCreateOptions) {
     this._hostCredentialResolver = new BearerCredentialResolver(
-      "primary" in prisma ? prisma : { primary: prisma, replica: prisma }
+      "primary" in prisma ? prisma : { primary: prisma, replica: prisma },
+      { publicTokenSubjects: options?.publicTokenSubjects }
     );
     this._init = this.load(prisma, options);
     // load() runs eagerly but the result is awaited lazily on first method
@@ -162,6 +172,7 @@ class LazyController implements RoleBaseAccessController {
     if (options?.forceFallback) {
       return new RoleBaseAccessFallback(prisma, {
         userActorSecret: options?.userActorSecret,
+        publicTokenSubjects: options?.publicTokenSubjects,
       }).create();
     }
     const moduleName = "@triggerdotdev/plugins/rbac";
@@ -221,6 +232,7 @@ class LazyController implements RoleBaseAccessController {
 
       return new RoleBaseAccessFallback(prisma, {
         userActorSecret: options?.userActorSecret,
+        publicTokenSubjects: options?.publicTokenSubjects,
       }).create();
     }
   }

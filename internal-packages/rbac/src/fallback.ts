@@ -22,6 +22,7 @@ import { createHash } from "node:crypto";
 import type { PrismaClient } from "@trigger.dev/database";
 import { buildFallbackAbility, buildJwtAbility, permissiveAbility } from "./ability.js";
 import { BearerCredentialResolver } from "./bearerCredentials.js";
+import type { PublicTokenSubjectCodec } from "./publicTokenSubject.js";
 
 // Reads only: a capless token still has to reach its own JWT exchange (gated on `read:apiKeys`).
 export const CAPLESS_USER_ACTOR_SCOPES = ["read:all"];
@@ -50,6 +51,7 @@ function resolvePrismaClients(input: PrismaInput): FallbackPrismaClients {
 export type FallbackOptions = {
   // Platform secret for verifying delegated user-actor tokens (tr_uat_).
   userActorSecret?: string;
+  publicTokenSubjects?: PublicTokenSubjectCodec;
 };
 
 export class RoleBaseAccessFallback {
@@ -78,7 +80,9 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     this.prisma = clients.primary;
     this.replica = clients.replica;
     this.userActorSecret = options?.userActorSecret;
-    this.bearer = new BearerCredentialResolver(clients);
+    this.bearer = new BearerCredentialResolver(clients, {
+      publicTokenSubjects: options?.publicTokenSubjects,
+    });
   }
 
   async isUsingPlugin(): Promise<boolean> {

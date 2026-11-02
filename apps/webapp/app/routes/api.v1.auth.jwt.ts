@@ -7,6 +7,7 @@ import { z } from "zod";
 import { authenticateBearerWithTelemetry } from "~/services/authTelemetry.server";
 import { isApiKeyInGraceWindow, presentedBearerToken } from "~/services/apiKeyGraceWindow.server";
 import { logger } from "~/services/logger.server";
+import { publicTokenSubject } from "~/services/publicTokenSubject.server";
 
 const RequestBodySchema = z.object({
   claims: z
@@ -119,7 +120,7 @@ export async function action({ request }: LoaderFunctionArgs) {
     }
 
     const claims = {
-      sub: authenticationResult.environment.id,
+      sub: publicTokenSubject(authenticationResult.environment.id),
       pub: true,
       ...(requestedScopes.length > 0 ? { scopes: requestedScopes } : {}),
     };

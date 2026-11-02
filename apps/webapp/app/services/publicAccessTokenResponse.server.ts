@@ -1,5 +1,6 @@
 import { generateJWT } from "@trigger.dev/core/v3";
 import { resolveJwtSigningKey } from "@trigger.dev/rbac";
+import { publicTokenSubject } from "~/services/publicTokenSubject.server";
 
 export type PublicAccessTokenEnvironment = {
   id: string;
@@ -19,7 +20,7 @@ export async function publicAccessTokenResponseHeaders({
   const jwt = await generateJWT({
     secretKey: resolveJwtSigningKey(environment),
     payload: {
-      sub: environment.id,
+      sub: publicTokenSubject(environment.id),
       pub: true,
       scopes,
     },
@@ -27,7 +28,7 @@ export async function publicAccessTokenResponseHeaders({
   });
 
   return {
-    "x-trigger-jwt-claims": JSON.stringify({ sub: environment.id, pub: true }),
+    "x-trigger-jwt-claims": JSON.stringify({ sub: publicTokenSubject(environment.id), pub: true }),
     "x-trigger-jwt": jwt,
   };
 }

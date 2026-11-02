@@ -6,7 +6,7 @@ import {
   SDK_CREDENTIAL_OPERATION_HEADER,
   SDK_CREDENTIAL_REASON_HEADER,
 } from "@trigger.dev/core/v3";
-import { isPublicJWT } from "@trigger.dev/core/v3/jwt";
+import { extractJWTSub, isPublicJWT } from "@trigger.dev/core/v3/jwt";
 import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 import type { BearerAuthOptions, BearerAuthResult } from "@trigger.dev/plugins";
 import type {
@@ -17,6 +17,7 @@ import type {
   RbacResource,
   RoleBaseAccessController,
 } from "@trigger.dev/rbac";
+import { isSealedPublicTokenSubject } from "@trigger.dev/rbac";
 import { authenticateRunToken } from "~/services/oidc/runTokenAuth.server";
 import { isRunTokenFormat } from "~/services/oidc/runTokenVerify";
 import { rbac } from "~/services/rbac.server";
@@ -220,7 +221,11 @@ function classifyCredential(
     return { credentialKind: "legacy_public_key", lookupPath: "legacy_public" };
   }
   if (allowJWT && isPublicJWT(token)) {
-    return { credentialKind: "public_jwt", lookupPath: "jwt_current" };
+    const sub = extractJWTSub(token);
+    return {
+      credentialKind: "public_jwt",
+      lookupPath: sub && !isSealedPublicTokenSubject(sub) ? "jwt_legacy_subject" : "jwt_current",
+    };
   }
   if (isAdditionalApiKey(token)) {
     return { credentialKind: "additional_api_key", lookupPath: "additional" };

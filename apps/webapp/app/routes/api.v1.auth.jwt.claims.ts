@@ -2,6 +2,7 @@ import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { publicTokenSubject } from "~/services/publicTokenSubject.server";
 
 export async function action({ request }: LoaderFunctionArgs) {
   try {
@@ -13,7 +14,7 @@ export async function action({ request }: LoaderFunctionArgs) {
     }
 
     const claims = {
-      sub: authenticationResult.environment.id,
+      sub: publicTokenSubject(authenticationResult.environment.id),
       pub: true,
     };
 

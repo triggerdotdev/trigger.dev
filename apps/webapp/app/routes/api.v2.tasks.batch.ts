@@ -27,6 +27,7 @@ import { clientSafeErrorMessage } from "~/utils/prismaErrors";
 import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
 import { determineRealtimeStreamsVersion } from "~/services/realtime/v1StreamsGlobal.server";
 import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
+import { publicTokenSubject } from "~/services/publicTokenSubject.server";
 
 const { action, loader } = createActionApiRoute(
   {
@@ -215,7 +216,7 @@ async function responseHeaders(
   environment: AuthenticatedEnvironment
 ): Promise<Record<string, string>> {
   const claims = {
-    sub: environment.id,
+    sub: publicTokenSubject(environment.id),
     pub: true,
     scopes: [`read:batch:${batch.id}`],
   };
@@ -227,7 +228,7 @@ async function responseHeaders(
   });
 
   return {
-    "x-trigger-jwt-claims": JSON.stringify({ sub: environment.id, pub: true }),
+    "x-trigger-jwt-claims": JSON.stringify({ sub: publicTokenSubject(environment.id), pub: true }),
     "x-trigger-jwt": jwt,
   };
 }

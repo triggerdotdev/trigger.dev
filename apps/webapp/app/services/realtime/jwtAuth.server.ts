@@ -4,9 +4,10 @@ import {
   validateJWT,
   type ValidationResult,
 } from "@trigger.dev/core/v3/jwt";
-import { resolveJwtSigningKey } from "@trigger.dev/rbac";
+import { resolveJwtSigningKey, resolvePublicTokenSubject } from "@trigger.dev/rbac";
 import { $replica } from "~/db.server";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
+import { publicTokenSubjects } from "~/services/publicTokenSubject.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";
 
 type ValidatePublicJwtKeySuccess = {
@@ -33,7 +34,13 @@ export async function validatePublicJwtKey(token: string): Promise<ValidatePubli
     return { ok: false, error: "Invalid Public Access Token, missing subject." };
   }
 
-  const environment = await findEnvironmentById(sub);
+  const subject = resolvePublicTokenSubject(sub, publicTokenSubjects);
+
+  if (!subject) {
+    return { ok: false, error: "Invalid Public Access Token, environment not found." };
+  }
+
+  const environment = await findEnvironmentById(subject.environmentId);
 
   if (!environment) {
     return { ok: false, error: "Invalid Public Access Token, environment not found." };

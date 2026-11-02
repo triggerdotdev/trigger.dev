@@ -7,6 +7,7 @@ import { isApiKeyInGraceWindow, presentedBearerToken } from "~/services/apiKeyGr
 import { apiKeyTelemetry, type ApiKeyTelemetry } from "~/services/apiKeyTelemetry.server";
 import { rbac } from "~/services/rbac.server";
 import { authenticateBearerWithTelemetry } from "~/services/authTelemetry.server";
+import { publicTokenSubject } from "~/services/publicTokenSubject.server";
 
 // Public access tokens may be valid for at most 30 days.
 const MAX_PUBLIC_TOKEN_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
@@ -133,7 +134,7 @@ export async function handlePublicTokenRequest(
     token = await generateJWT({
       secretKey: resolveJwtSigningKey(authResult.environment),
       payload: {
-        sub: authResult.environment.id,
+        sub: publicTokenSubject(authResult.environment.id),
         pub: true,
         scopes: parsedBody.data.scopes,
         ...(parsedBody.data.oneTimeUse ? { otu: true } : {}),
