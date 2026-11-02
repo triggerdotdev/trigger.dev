@@ -7,6 +7,7 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { AgentMessageView } from "~/components/runs/v3/agent/AgentMessageView";
 import { useAutoScrollToBottom } from "~/hooks/useAutoScrollToBottom";
 import type { TranscriptSeed } from "~/services/realtime/transcriptSeed.server";
+import { v3SessionTranscriptPath } from "~/utils/pathBuilder";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -79,7 +80,14 @@ const INITIAL_PAYLOAD_TIMESTAMP = 0;
  * Intended to be mounted inside a scrollable container — the component
  * does not own its own scrollbar.
  */
-export function AgentView({ agentView }: { agentView: AgentViewAuth }) {
+export function AgentView({
+  agentView,
+  paused = false,
+}: {
+  agentView: AgentViewAuth;
+  /** Hidden: the streams keep reading, but the messages render once it's shown again. */
+  paused?: boolean;
+}) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -92,6 +100,7 @@ export function AgentView({ agentView }: { agentView: AgentViewAuth }) {
     envSlug: environment.slug,
     initialMessages: agentView.initialMessages,
     transcriptSeed: agentView.transcriptSeed,
+    paused,
   });
 
   // Sticky-bottom auto-scroll: walks up to find the inspector's scroll
@@ -244,6 +253,7 @@ function useAgentSessionMessages({
   envSlug,
   initialMessages,
   transcriptSeed,
+  paused,
 }: {
   sessionId: string;
   apiOrigin: string;
@@ -252,6 +262,7 @@ function useAgentSessionMessages({
   envSlug: string;
   initialMessages: UIMessage[];
   transcriptSeed?: TranscriptSeed;
+  paused: boolean;
 }): {
   messages: UIMessage[];
   hasEarlier: boolean;
@@ -315,8 +326,14 @@ function useAgentSessionMessages({
   const lastFlushAtRef = useRef<number>(0);
   const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleFlush = useRef<() => void>(() => {});
+  const pausedRef = useRef(paused);
+  const flushOnResumeRef = useRef(false);
 
   scheduleFlush.current = () => {
+    if (pausedRef.current) {
+      flushOnResumeRef.current = true;
+      return;
+    }
     if (pendingTimerRef.current !== null) return; // already scheduled
     const now = Date.now();
     const sinceLast = now - lastFlushAtRef.current;
@@ -327,6 +344,13 @@ function useAgentSessionMessages({
       setMessagesById(new Map(pendingRef.current));
     }, delay);
   };
+
+  useEffect(() => {
+    pausedRef.current = paused;
+    if (paused || !flushOnResumeRef.current) return;
+    flushOnResumeRef.current = false;
+    scheduleFlush.current();
+  }, [paused]);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -670,11 +694,13 @@ function useAgentSessionMessages({
     setIsLoadingEarlier(true);
 
     const origin = typeof window !== "undefined" ? window.location.origin : apiOrigin;
-    const url =
-      `${origin}/resources/orgs/${orgSlug}/projects/${projectSlug}/env/${envSlug}` +
-      `/sessions/${encodeURIComponent(sessionId)}/transcript?before=${encodeURIComponent(
-        earlierCursor
-      )}`;
+    const url = `${origin}${v3SessionTranscriptPath(
+      { slug: orgSlug },
+      { slug: projectSlug },
+      { slug: envSlug },
+      sessionId,
+      earlierCursor
+    )}`;
 
     fetch(url)
       .then((resp) => (resp.ok ? resp.json() : Promise.reject(new Error(String(resp.status)))))

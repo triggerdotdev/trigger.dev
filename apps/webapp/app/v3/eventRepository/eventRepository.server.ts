@@ -453,7 +453,7 @@ export class EventRepository implements IEventRepository {
     traceId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
-    options?: { includeDebugLogs?: boolean; anchorSpanId?: string }
+    options?: { includeDebugLogs?: boolean; anchorSpanId?: string; insertedAtEnd?: Date }
   ): Promise<TraceSummary | undefined> {
     return await startActiveSpan("getTraceSummary", async (span) => {
       const events = await this.taskEventStore.findTraceEvents(
@@ -485,7 +485,7 @@ export class EventRepository implements IEventRepository {
     _anchorSpanId: string,
     _startCreatedAt: Date,
     _endCreatedAt?: Date,
-    _options?: { includeDebugLogs?: boolean }
+    _options?: { includeDebugLogs?: boolean; insertedAtEnd?: Date }
   ): Promise<TraceSummary | undefined> {
     // Subtree traversal is ClickHouse-only. Dashboard falls back to the full
     // summary when this returns undefined.
@@ -625,7 +625,8 @@ export class EventRepository implements IEventRepository {
     traceId: string,
     runId: string,
     startCreatedAt: Date,
-    endCreatedAt?: Date
+    endCreatedAt?: Date,
+    _options?: { insertedAtEnd?: Date }
   ): Promise<RunPreparedEvent[]> {
     return await startActiveSpan("getRunEvents", async (span) => {
       const events = await this.taskEventStore.findMany(
@@ -680,7 +681,7 @@ export class EventRepository implements IEventRepository {
     traceId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
-    options?: { includeDebugLogs?: boolean }
+    options?: { includeDebugLogs?: boolean; insertedAtEnd?: Date }
   ): Promise<SpanDetail | undefined> {
     return await startActiveSpan("getSpan", async (s) => {
       const spanEvent = await this.#getSpanEvent({

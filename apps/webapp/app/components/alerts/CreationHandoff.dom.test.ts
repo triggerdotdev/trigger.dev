@@ -303,7 +303,7 @@ describe("creation card hands off to the chat and back", () => {
     });
     act(() => button("Continue setup")!.click());
     expect(card()?.getAttribute("aria-label")).toBe("How long should it stay active?");
-    expect(card()?.textContent).toContain("4 of 5");
+    expect(card()?.textContent).toContain("4 of 6");
   });
 
   // Mutation: dropping the selected check from hasNext lets Next pass an unanswered step.

@@ -29,7 +29,7 @@ export function createWaitpointResultRunStore(
         requestedIds: ids,
         legacyReader: async () => [],
         storeReader: async (requested) => {
-          const entries = await options.store.readCompletedRecords(requested);
+          const entries = await options.store.readCompletedRecords(requested, context.runId);
           for (const [id, entry] of entries) {
             if (entry.record.environmentId !== context.environmentId) {
               throw new UnresolvableCompletedWaitpointRecordsError(

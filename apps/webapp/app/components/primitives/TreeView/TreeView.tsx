@@ -118,7 +118,8 @@ export function TreeView<TData>({
             if (!node) return null;
             const state = nodes[node.id];
             if (!state) return null;
-            if (!state.visible) return null;
+            // The virtualizer's rows are the visible ones, filter included; `nodes` ignores the
+            // filter, so a match inside a collapsed node is hidden there.
             return (
               <div
                 key={node.id}
@@ -162,6 +163,8 @@ type TreeStateHookProps<TData, TFilterValue> = {
   filter?: Filter<TData, TFilterValue>;
   /** Nodes that start collapsed when they first appear, initially or as the tree grows. */
   isCollapsedByDefault?: (node: FlatTreeItem<TData>) => boolean;
+  /** Rows arrow keys can land on; others are skipped. Every row when unset. */
+  canSelect?: (node: FlatTreeItem<TData>) => boolean;
   /** Whether a node can be expanded or collapsed. Defaults to having children. */
   canExpand?: (node: FlatTreeItem<TData>) => boolean;
   /** Called when a single node is expanded or collapsed (click, keyboard, toggle). */
@@ -189,6 +192,8 @@ export type UseTreeStateOutput = {
   toggleNodeSelection: (id: string, scrollToNode?: boolean) => void;
   expandNode: (id: string, scrollToNode?: boolean) => void;
   collapseNode: (id: string) => void;
+  expandNodes: (ids: string[]) => void;
+  collapseNodes: (ids: string[]) => void;
   toggleExpandNode: (id: string, scrollToNode?: boolean) => void;
   expandAllBelowDepth: (depth: number) => void;
   collapseAllBelowDepth: (depth: number) => void;
@@ -200,7 +205,7 @@ export type UseTreeStateOutput = {
   selectNextVisibleNode: (scrollToNode?: boolean) => void;
   selectPreviousVisibleNode: (scrollToNode?: boolean) => void;
   selectParentNode: (scrollToNode?: boolean) => void;
-  scrollToNode: (id: string) => void;
+  scrollToNode: (id: string, align?: "auto" | "center") => void;
 };
 
 export function useTree<TData, TFilterValue>({
@@ -212,6 +217,7 @@ export function useTree<TData, TFilterValue>({
   estimatedRowHeight,
   filter,
   isCollapsedByDefault,
+  canSelect,
   canExpand = (node) => node.hasChildren,
   onExpandedChange,
   structureKey,
@@ -344,11 +350,11 @@ export function useTree<TData, TFilterValue>({
     overscan: 50,
   });
 
-  const scrollToNodeFn = (id: string) => {
+  const scrollToNodeFn = (id: string, align: "auto" | "center" = "auto") => {
     const itemIndex = state.visibleNodeIds.findIndex((nodeId) => nodeId === id);
 
     if (itemIndex !== -1) {
-      virtualizer.scrollToIndex(itemIndex, { align: "auto" });
+      virtualizer.scrollToIndex(itemIndex, { align });
     }
   };
 
@@ -385,6 +391,17 @@ export function useTree<TData, TFilterValue>({
     dispatch({ type: "COLLAPSE_NODE", payload: { id } });
   };
 
+  /** Several nodes in one pass; `onExpandedChange` still hears about each one that changes. */
+  const expandNodes = (ids: string[]) => {
+    for (const id of ids) notifyExpanded(id, true);
+    dispatch({ type: "EXPAND_NODES", payload: { ids } });
+  };
+
+  const collapseNodes = (ids: string[]) => {
+    for (const id of ids) notifyExpanded(id, false);
+    dispatch({ type: "COLLAPSE_NODES", payload: { ids } });
+  };
+
   const toggleExpandNode = (id: string, scrollToNode = true) => {
     const node = state.nodes[id];
     if (node) {
@@ -396,35 +413,35 @@ export function useTree<TData, TFilterValue>({
   const selectFirstVisibleNode = (scrollToNode = true) => {
     dispatch({
       type: "SELECT_FIRST_VISIBLE_NODE",
-      payload: { scrollToNode, scrollToNodeFn },
+      payload: { scrollToNode, scrollToNodeFn, canSelect },
     });
   };
 
   const selectLastVisibleNode = (scrollToNode = true) => {
     dispatch({
       type: "SELECT_LAST_VISIBLE_NODE",
-      payload: { scrollToNode, scrollToNodeFn },
+      payload: { scrollToNode, scrollToNodeFn, canSelect },
     });
   };
 
   const selectNextVisibleNode = (scrollToNode = true) => {
     dispatch({
       type: "SELECT_NEXT_VISIBLE_NODE",
-      payload: { scrollToNode, scrollToNodeFn },
+      payload: { scrollToNode, scrollToNodeFn, canSelect },
     });
   };
 
   const selectPreviousVisibleNode = (scrollToNode = true) => {
     dispatch({
       type: "SELECT_PREVIOUS_VISIBLE_NODE",
-      payload: { scrollToNode, scrollToNodeFn },
+      payload: { scrollToNode, scrollToNodeFn, canSelect },
     });
   };
 
   const selectParentNode = (scrollToNode = true) => {
     dispatch({
       type: "SELECT_PARENT_NODE",
-      payload: { scrollToNode, scrollToNodeFn },
+      payload: { scrollToNode, scrollToNodeFn, canSelect },
     });
   };
 
@@ -565,6 +582,8 @@ export function useTree<TData, TFilterValue>({
     toggleNodeSelection,
     expandNode,
     collapseNode,
+    expandNodes,
+    collapseNodes,
     toggleExpandNode,
     expandAllBelowDepth,
     collapseAllBelowDepth,

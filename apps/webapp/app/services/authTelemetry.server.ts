@@ -1,22 +1,26 @@
 import { getMeter } from "@internal/tracing";
 import { isAdditionalApiKey } from "@trigger.dev/core/v3/apiKeys";
+import {
+  isSdkCredentialTelemetryOperation,
+  isSdkCredentialTelemetryReason,
+  SDK_CREDENTIAL_OPERATION_HEADER,
+  SDK_CREDENTIAL_REASON_HEADER,
+} from "@trigger.dev/core/v3";
 import { isPublicJWT } from "@trigger.dev/core/v3/jwt";
-import type { BearerAuthOptions } from "@trigger.dev/plugins";
+import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
+import type { BearerAuthOptions, BearerAuthResult } from "@trigger.dev/plugins";
 import type {
   BearerCredentialKind,
   BearerLookupPath,
+  BearerResolution,
   HostBearerAuthResult,
   RbacResource,
+  RoleBaseAccessController,
 } from "@trigger.dev/rbac";
 import { authenticateRunToken } from "~/services/oidc/runTokenAuth.server";
 import { isRunTokenFormat } from "~/services/oidc/runTokenVerify";
 import { rbac } from "~/services/rbac.server";
 import { singleton } from "~/utils/singleton";
-
-export type HostBearerAuthOptions = BearerAuthOptions & {
-  // Accept per-attempt run tokens. Opt-in per route; routes must declare an authorization check.
-  allowRunToken?: boolean;
-};
 
 type ApiAuthResult = "success" | "invalid" | "forbidden" | "error";
 
@@ -30,22 +34,27 @@ const telemetry = singleton("apiAuthTelemetry", () => {
     unit: "ms",
   });
 
-  return { attempts, duration };
+  const sdkCredentialSelections = meter.createCounter("api_auth.sdk_credential_selections", {
+    description: "SDK credential selections reported on API authentication attempts",
+  });
+
+  return { attempts, duration, sdkCredentialSelections };
 });
 
 export async function authenticateBearerWithTelemetry(
   request: Request,
-  options: HostBearerAuthOptions
+  options: BearerAuthOptions,
+  controller: Pick<RoleBaseAccessController, "authenticateBearer"> = rbac
 ): Promise<HostBearerAuthResult> {
   const startedAt = performance.now();
   const classified = classifyCredential(request, options.allowJWT ?? false);
   let final = { ...classified, result: "error" as ApiAuthResult };
 
   try {
-    const result =
+    const result: BearerAuthResult & { resolution?: BearerResolution } =
       classified.credentialKind === "run_token"
-        ? await authenticateRunTokenBearer(request, options.allowRunToken ?? false)
-        : await rbac.authenticateBearer(request, options);
+        ? await authenticateRunTokenBearer(request)
+        : await controller.authenticateBearer(request, options);
     // The host LazyController always attaches `resolution`; fall back to the
     // format-based classification if a caller (e.g. a test double) omits it.
     const resolution = result.resolution ?? classified;
@@ -55,11 +64,12 @@ export async function authenticateBearerWithTelemetry(
       result: result.ok ? "success" : result.status === 403 ? "forbidden" : "invalid",
     };
     recordAuthAttempt("rbac", final.credentialKind, final.lookupPath, final.result);
-    return result;
+    return { ...result, resolution };
   } catch (error) {
     recordAuthAttempt("rbac", final.credentialKind, final.lookupPath, final.result);
     throw error;
   } finally {
+    recordSdkCredentialSelection(request, final.credentialKind);
     telemetry.duration.record(performance.now() - startedAt, {
       resolver: "rbac",
       credential_kind: final.credentialKind,
@@ -72,22 +82,28 @@ export async function authenticateBearerWithTelemetry(
 const RUN_TOKEN_RESOLUTION = { credentialKind: "run_token", lookupPath: "run_token" } as const;
 
 // Run tokens are host-owned and verified locally, so they never reach the RBAC controller.
-async function authenticateRunTokenBearer(
-  request: Request,
-  allowRunToken: boolean
-): Promise<HostBearerAuthResult> {
-  if (!allowRunToken) {
-    return {
-      ok: false,
-      status: 401,
-      error: "Run tokens are not accepted for this endpoint",
-      resolution: RUN_TOKEN_RESOLUTION,
-    };
-  }
-
+async function authenticateRunTokenBearer(request: Request): Promise<HostBearerAuthResult> {
   const result = await authenticateRunToken(bearerToken(request) ?? "");
   if (!result.ok) {
     return { ...result, resolution: RUN_TOKEN_RESOLUTION };
+  }
+
+  const rawBranch = request.headers.get("x-trigger-branch");
+  const branch = sanitizeBranchName(rawBranch);
+  const environment = result.environment;
+  const requestedBranch =
+    environment.type === "DEVELOPMENT" && isDefaultDevBranch(branch) ? null : branch;
+  if (
+    (environment.type === "PREVIEW" || environment.type === "DEVELOPMENT") &&
+    rawBranch &&
+    (branch === null || requestedBranch !== environment.branchName)
+  ) {
+    return {
+      ok: false,
+      status: 401,
+      error: "x-trigger-branch does not match the run token environment",
+      resolution: RUN_TOKEN_RESOLUTION,
+    };
   }
 
   return {
@@ -148,6 +164,7 @@ export async function observeLegacyBearerAuthentication<T extends { ok: boolean 
     recordAuthAttempt("legacy", classified.credentialKind, classified.lookupPath, result);
     throw error;
   } finally {
+    recordSdkCredentialSelection(request, classified.credentialKind);
     telemetry.duration.record(performance.now() - startedAt, {
       resolver: "legacy",
       credential_kind: classified.credentialKind,
@@ -155,6 +172,23 @@ export async function observeLegacyBearerAuthentication<T extends { ok: boolean 
       lookup_path: classified.lookupPath,
     });
   }
+}
+
+const sdkTelemetryRecorded = new WeakSet<Request>();
+
+function recordSdkCredentialSelection(request: Request, credentialKind: BearerCredentialKind) {
+  if (sdkTelemetryRecorded.has(request)) return;
+  const operation = request.headers.get(SDK_CREDENTIAL_OPERATION_HEADER);
+  const reason = request.headers.get(SDK_CREDENTIAL_REASON_HEADER);
+  if (!isSdkCredentialTelemetryOperation(operation) || !isSdkCredentialTelemetryReason(reason))
+    return;
+
+  sdkTelemetryRecorded.add(request);
+  telemetry.sdkCredentialSelections.add(1, {
+    operation,
+    reason,
+    credential_kind: credentialKind,
+  });
 }
 
 function recordAuthAttempt(

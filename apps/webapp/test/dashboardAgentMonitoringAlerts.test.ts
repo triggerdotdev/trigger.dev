@@ -960,6 +960,52 @@ describe("dashboard-agent monitoring alerts authorization", () => {
   );
 
   postgresTest(
+    "capabilities listing carries groups, supported signals and components",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      await seedAuthorized(prisma, "hlcaps");
+
+      const response = await loader({
+        request: jsonRequest(`${ALERTS_URL}?capabilities=true&area=limits`),
+        params: {},
+        context: {},
+      } as any);
+      expect(response.status).toBe(200);
+      const { capabilities } = await response.json();
+      const byKey = (key: string) => capabilities.find((c: { key: string }) => c.key === key);
+      expect(byKey("limits.api")).toMatchObject({
+        group: "platform",
+        supportedSignals: ["approaching", "limited"],
+      });
+      expect(byKey("limits.webhooks.waiters").group).toBe("webhooks");
+      expect(byKey("health.flow")).toBeUndefined();
+      expect(byKey("limits.all").components).toHaveLength(7);
+    }
+  );
+
+  postgresTest(
+    "create rejects limits.all components outside its composite",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seedAuthorized(prisma, "hlbad");
+
+      const response = await action({
+        request: jsonRequest(ALERTS_URL, {
+          chatId: "chat_1",
+          capabilityKey: "limits.all",
+          condition: { kind: "state", stateKey: "limits.all", components: ["queue.depth"] },
+        }),
+        params: {},
+        context: {},
+      } as any);
+
+      expect(response.status).toBe(400);
+      const alerts = await listAlerts(ctx.prisma, { projectId: seeded.project.id });
+      expect(alerts).toHaveLength(0);
+    }
+  );
+
+  postgresTest(
     "a token without read:alerts cannot list alerts or capabilities",
     async ({ prisma, postgresContainer }) => {
       await boot(prisma, postgresContainer.getConnectionUri());

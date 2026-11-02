@@ -1,0 +1,115 @@
+---
+title: "Create an alert"
+description: "Create a monitoring alert for a project, including Limits alerts."
+api: "POST https://api.trigger.dev/api/v1/projects/{projectRef}/monitoring-alerts"
+---
+
+import { PrivateBeta } from "/snippets/feature-status.jsx";
+
+<PrivateBeta flag="alertsEnabled" />
+
+Authenticate with a [personal access token](/management/authentication).
+
+## Body
+
+<ParamField body="capabilityKey" type="string" required>
+  What to alert on. Use `limits.all` for a combined Limits alert, or a single limit such as `limits.api`,
+  `limits.concurrency`, `limits.queue`, `limits.webhooks.processing`,
+  `limits.webhooks.env_rate`, `limits.webhooks.endpoint_rate` or `limits.webhooks.waiters`.
+</ParamField>
+
+<ParamField body="environment" type="string" required>
+  One of `dev`, `staging`, `prod` or `preview`.
+</ParamField>
+
+<ParamField body="branch" type="string">
+  Preview branch. Only valid when `environment` is `preview`.
+</ParamField>
+
+<ParamField body="params" type="object" required>
+  <Expandable title="properties">
+    <ParamField body="windowSec" type="number">
+      Evaluation window in seconds.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="condition" type="object" required>
+  For Limits alerts, set `kind` to `state` and `stateKey` to the same value as `capabilityKey`.
+  <Expandable title="properties">
+    <ParamField body="components" type="string[]">
+      `limits.all` only. The limits to watch. Defaults to all of them. Values are the single limit
+      capability keys above.
+    </ParamField>
+    <ParamField body="compositeMode" type="&quot;any&quot; | &quot;all&quot;">
+      `limits.all` only. Raise when any selected limit is true, or only when all are.
+    </ParamField>
+    <ParamField body="signals" type="(&quot;approaching&quot; | &quot;limited&quot;)[]">
+      Which limit signals to watch. `approaching` means usage has reached the utilisation share;
+      `limited` means the limit is already affecting traffic. `limits.queue` only supports
+      `approaching`.
+    </ParamField>
+    <ParamField body="params" type="object">
+      Thresholds, for example `utilisationPct` (default 80, from 1 to 100).
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="notifiers" type="object[]" required>
+  At least one notifier, for example `{ "type": "channel", "channelId": "..." }`.
+</ParamField>
+
+<ParamField body="behavior" type="object" required>
+  Optional `expiresAt` (ISO 8601 date in the future).
+</ParamField>
+
+<ParamField body="name" type="string">
+  A name for the alert.
+</ParamField>
+
+Invalid `components` or `signals` return a `400` with an error message.
+
+## Examples
+
+Watch every limit and raise when any is true:
+
+```bash
+curl -X POST "https://api.trigger.dev/api/v1/projects/proj_1234/monitoring-alerts" \
+  -H "Authorization: Bearer $TRIGGER_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "capabilityKey": "limits.all",
+    "environment": "prod",
+    "params": { "windowSec": 300 },
+    "condition": {
+      "kind": "state",
+      "stateKey": "limits.all",
+      "compositeMode": "any",
+      "signals": ["approaching", "limited"],
+      "params": { "utilisationPct": 80 }
+    },
+    "behavior": {},
+    "notifiers": [{ "type": "channel", "channelId": "channel_1234" }]
+  }'
+```
+
+Watch only the API rate limit, when usage reaches 90%:
+
+```bash
+curl -X POST "https://api.trigger.dev/api/v1/projects/proj_1234/monitoring-alerts" \
+  -H "Authorization: Bearer $TRIGGER_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "capabilityKey": "limits.api",
+    "environment": "prod",
+    "params": { "windowSec": 300 },
+    "condition": {
+      "kind": "state",
+      "stateKey": "limits.api",
+      "signals": ["approaching"],
+      "params": { "utilisationPct": 90 }
+    },
+    "behavior": {},
+    "notifiers": [{ "type": "channel", "channelId": "channel_1234" }]
+  }'
+```

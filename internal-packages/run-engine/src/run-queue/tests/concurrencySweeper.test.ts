@@ -4,9 +4,10 @@ import { Logger } from "@trigger.dev/core/logger";
 import { describe } from "node:test";
 import { setTimeout } from "node:timers/promises";
 import { FairQueueSelectionStrategy } from "../fairQueueSelectionStrategy.js";
-import { RunQueue } from "../index.js";
+import { RunQueue, SWEEPER_SET_CONCURRENCY } from "../index.js";
 import { RunQueueFullKeyProducer } from "../keyProducer.js";
 import type { InputPayload } from "../types.js";
+import { commandCalls, seedSweeperKeyspace } from "./sweeperKeyspace.js";
 import { Decimal } from "@trigger.dev/database";
 
 const testOptions = {
@@ -170,6 +171,189 @@ describe("RunQueue Concurrency Sweeper", () => {
         // env concurrency should be 1
         const envConcurrency3 = await queue.currentConcurrencyOfEnvironment(authenticatedEnvDev);
         expect(envConcurrency3).toBe(1);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "scans the keyspace in large SCAN batches, bounds callback fan-out, and finds the same members",
+    async ({ redisContainer }) => {
+      // Catches: the sweeper falling back to tiny SCAN pages (~1.7M SCANs per prod sweep) or bursting one callback per set in a page.
+      const createQueue = (
+        scanCount: number | undefined,
+        seen: Set<string>,
+        inFlight: { now: number; max: number }
+      ) =>
+        new RunQueue({
+          ...testOptions,
+          logger: new Logger("RunQueue", "warn"),
+          masterQueueConsumersDisabled: true,
+          workerOptions: { disabled: true },
+          queueSelectionStrategy: new FairQueueSelectionStrategy({
+            redis: {
+              keyPrefix: "runqueue:test:",
+              host: redisContainer.getHost(),
+              port: redisContainer.getPort(),
+            },
+            keys: testOptions.keys,
+          }),
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          concurrencySweeper: {
+            scanCount,
+            callback: async (runIds) => {
+              inFlight.max = Math.max(inFlight.max, ++inFlight.now);
+              await setTimeout(1);
+              runIds.forEach((id) => seen.add(id));
+              inFlight.now--;
+              return [];
+            },
+          },
+        });
+
+      const sweep = async (scanCount: number | undefined) => {
+        const seen = new Set<string>();
+        const inFlight = { now: 0, max: 0 };
+        const queue = createQueue(scanCount, seen, inFlight);
+        try {
+          const before = await commandCalls(queue.redis, "scan");
+          await queue["scanConcurrencySets"]();
+          const scans = (await commandCalls(queue.redis, "scan")) - before;
+          return { seen, scans, maxInFlight: inFlight.max, dbsize: await queue.redis.dbsize() };
+        } finally {
+          await queue.quit();
+        }
+      };
+
+      const seedQueue = createQueue(undefined, new Set(), { now: 0, max: 0 });
+      let expected: Set<string>;
+      try {
+        expected = await seedSweeperKeyspace(seedQueue.redis, {
+          concurrencySets: 2_000,
+          unrelatedPerSet: 9,
+        });
+      } finally {
+        await seedQueue.quit();
+      }
+
+      const legacy = await sweep(10);
+      const current = await sweep(undefined);
+
+      // Same members reach the callback whatever the batch size.
+      expect(legacy.seen).toEqual(expected);
+      expect(current.seen).toEqual(expected);
+
+      // ~20k keys: the old COUNT 10 needs ~2,000 SCANs, the default must stay near dbsize/1000.
+      expect(current.dbsize).toBeGreaterThanOrEqual(20_000);
+      expect(legacy.scans).toBeGreaterThan(1_000);
+      expect(current.scans).toBeLessThanOrEqual(Math.ceil(current.dbsize / 1000) * 2);
+
+      // A 1000-key SCAN page can hold hundreds of matches; the callback (a DB query in
+      // the engine) must not fan out wider than the old 10-key page did.
+      expect(current.maxInFlight).toBeGreaterThan(1);
+      expect(current.maxInFlight).toBeLessThanOrEqual(SWEEPER_SET_CONCURRENCY);
+    }
+  );
+
+  redisTest(
+    "does not resolve the sweep until the last SCAN page has been processed",
+    async ({ redisContainer }) => {
+      // Catches: the sweep resolving on SCAN "end" while the last page's sets are still being processed.
+      const seen = new Set<string>();
+      const queue = new RunQueue({
+        ...testOptions,
+        logger: new Logger("RunQueue", "warn"),
+        masterQueueConsumersDisabled: true,
+        workerOptions: { disabled: true },
+        queueSelectionStrategy: new FairQueueSelectionStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+        concurrencySweeper: {
+          scanCount: 30,
+          callback: async (runIds) => {
+            await setTimeout(50);
+            runIds.forEach((id) => seen.add(id));
+            return [];
+          },
+        },
+      });
+
+      try {
+        // 40 sets at COUNT 30 is two pages, the second non-empty. While the first is processed
+        // the stream reads ahead to the end, so "end" fires as soon as the second page is handed
+        // out, before its callbacks finish. A single page can't show this ("end" waits for
+        // resume()), nor can an empty last page.
+        const expected = await seedSweeperKeyspace(queue.redis, {
+          concurrencySets: 40,
+          unrelatedPerSet: 0,
+        });
+
+        const stats = await queue["scanConcurrencySets"]();
+        expect(seen).toEqual(expected);
+        expect(stats?.streamCallbacks).toBeGreaterThan(1);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "does not resolve a set until its last SSCAN page has been processed",
+    async ({ redisContainer }) => {
+      // Catches: a concurrency set resolving on SSCAN "end" while its last page's callback is still pending.
+      const seen = new Set<string>();
+      const queue = new RunQueue({
+        ...testOptions,
+        logger: new Logger("RunQueue", "warn"),
+        masterQueueConsumersDisabled: true,
+        workerOptions: { disabled: true },
+        queueSelectionStrategy: new FairQueueSelectionStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+        concurrencySweeper: {
+          callback: async (runIds) => {
+            await setTimeout(50);
+            runIds.forEach((id) => seen.add(id));
+            return [];
+          },
+        },
+      });
+
+      try {
+        // 250 members is past the listpack limit, so SSCAN COUNT 100 pages through a hashtable.
+        const expected = Array.from({ length: 250 }, (_, i) => `run_${i}`);
+        await queue.redis.sadd(
+          testOptions.keys.queueCurrentConcurrencyKey(authenticatedEnvDev, messageDev.queue),
+          ...expected
+        );
+
+        await queue["scanConcurrencySets"]();
+        expect(seen).toEqual(new Set(expected));
       } finally {
         await queue.quit();
       }

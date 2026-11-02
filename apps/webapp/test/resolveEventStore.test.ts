@@ -90,4 +90,46 @@ describe("resolveEventStore", () => {
       })
     ).toBe("clickhouse");
   });
+
+  postgresTest("flags an org override that still selects the retired store", async ({ prisma }) => {
+    const onLegacyFlagStore = vi.fn();
+
+    const store = await resolveEventStore({
+      featureFlags: { taskEventRepository: "clickhouse" },
+      flag: makeFlag(prisma),
+      defaultStore: "postgres",
+      v1RerouteEnabled: true,
+      onLegacyFlagStore,
+    });
+
+    expect(store).toBe("clickhouse_v2");
+    expect(onLegacyFlagStore).toHaveBeenCalledOnce();
+  });
+
+  postgresTest(
+    "leaves inherited stores and the env default to the startup warning",
+    async ({ prisma }) => {
+      const onLegacyFlagStore = vi.fn();
+      const flag = makeFlag(prisma);
+
+      await resolveEventStore({
+        parentStore: "clickhouse",
+        featureFlags: undefined,
+        flag,
+        defaultStore: "postgres",
+        v1RerouteEnabled: true,
+        onLegacyFlagStore,
+      });
+
+      await resolveEventStore({
+        featureFlags: undefined,
+        flag,
+        defaultStore: "clickhouse",
+        v1RerouteEnabled: true,
+        onLegacyFlagStore,
+      });
+
+      expect(onLegacyFlagStore).not.toHaveBeenCalled();
+    }
+  );
 });

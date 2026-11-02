@@ -102,12 +102,17 @@ function useClickhouse(url: string, prisma: PrismaClient) {
 
 const KIND = { threshold: "threshold", absence: "absence", match: "occurrence" } as const;
 
-function queryAlert(query: string, mode: "threshold" | "absence" | "match", condition?: Condition) {
+function queryAlert(
+  query: string,
+  mode: "threshold" | "absence" | "match",
+  condition?: Condition,
+  measure?: string
+) {
   const analysis = analyzeQueryForAlert(query, {
     tableSchemas: querySchemas,
     flags: { QUEUE_METRICS: true },
   });
-  const signal = toQuerySignal(analysis, { mode });
+  const signal = toQuerySignal(analysis, { mode, measure });
   if (!signal.ok) throw new Error(signal.message);
   const params: AlertParams = {
     environmentId: TENANT.env,
@@ -357,6 +362,17 @@ describe("query alert series", () => {
         { since: new Date(now - 3 * HOUR), until: new Date(now) }
       );
       expect(having.get("task-a")?.map((p) => p.value)).toEqual([2, null, null]);
+
+      const derived = await seriesFor(
+        queryAlert(
+          "SELECT count() AS runs, runs * 2 AS doubled, task_identifier FROM runs GROUP BY task_identifier",
+          "threshold",
+          HOUR_THRESHOLD,
+          "doubled"
+        ),
+        { since: new Date(now - 3 * HOUR), until: new Date(now) }
+      );
+      expect(derived.get("task-a")?.map((p) => p.value)).toEqual([4, null, null]);
     }
   );
 

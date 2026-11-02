@@ -12,7 +12,9 @@ import {
   type SessionRunsPage,
 } from "~/presenters/v3/SessionRunsPresenter.server";
 import { findSessionForRunsView } from "~/presenters/v3/sessionRunsAccess.server";
+import { runsPageRequestKind } from "~/presenters/v3/sessionTraceRequestKind";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
+import { requestFeature, viewerOf } from "~/services/requestFeature.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { runStore } from "~/v3/runStore.server";
@@ -25,6 +27,12 @@ function notFound(reason: string) {
   return json({ error: "Not found" }, { status: 404 });
 }
 
+function recordUnavailableRuns(page: SessionRunsPage) {
+  for (const { unavailable } of Object.values(page.view)) {
+    if (unavailable) requestFeature.recordFallback("runs", unavailable);
+  }
+}
+
 // GET: a page of a session's runs for the Trace tab, newest first.
 export const loader = dashboardLoader(
   {
@@ -32,8 +40,11 @@ export const loader = dashboardLoader(
     searchParams: SessionRunsSearchParams,
     context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
     authorization: { action: "read", resource: { type: "sessions" } },
+    feature: "session.trace",
   },
   async ({ params, searchParams, user, request }) => {
+    requestFeature.describe({ kind: runsPageRequestKind(searchParams), viewer: viewerOf(user) });
+
     const access = await findSessionForRunsView({
       organizationSlug: params.organizationSlug,
       projectSlug: params.projectParam,
@@ -66,6 +77,10 @@ export const loader = dashboardLoader(
       showDeletedLogs: user.isImpersonating,
     });
     if (!page) return notFound("Run not in session");
+
+    // Polls and focus refreshes re-read rows already on screen.
+    const kind = runsPageRequestKind(searchParams);
+    if (kind !== "poll" && kind !== "focus") recordUnavailableRuns(page);
 
     return json<SessionRunsPage>(page);
   }

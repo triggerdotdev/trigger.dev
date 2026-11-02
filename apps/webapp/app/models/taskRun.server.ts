@@ -33,25 +33,16 @@ export function executionResultForTaskRun(
   taskRun: TaskRunWithAttempts
 ): TaskRunExecutionResult | undefined {
   if (SUCCESSFUL_STATUSES.includes(taskRun.status)) {
-    // find the last attempt that was successful
-    const attempt = taskRun.attempts.find((a) => a.status === TaskRunAttemptStatus.COMPLETED);
-
-    if (!attempt) {
-      logger.error("Task run is successful but no successful attempt found", {
-        taskRunId: taskRun.id,
-        taskRunStatus: taskRun.status,
-        taskRunAttempts: taskRun.attempts.map((a) => a.status),
-      });
-
-      return undefined;
-    }
+    // Run-engine runs write no attempt rows: the result lives on the run itself.
+    const source =
+      taskRun.attempts.find((a) => a.status === TaskRunAttemptStatus.COMPLETED) ?? taskRun;
 
     return {
       ok: true,
       id: taskRun.friendlyId,
       taskIdentifier: taskRun.taskIdentifier,
-      output: attempt.output ?? undefined,
-      outputType: attempt.outputType,
+      output: source.output ?? undefined,
+      outputType: source.outputType,
     } satisfies TaskRunSuccessfulExecutionResult;
   }
 
@@ -68,26 +59,17 @@ export function executionResultForTaskRun(
       } satisfies TaskRunFailedExecutionResult;
     }
 
-    const attempt = taskRun.attempts.find((a) => a.status === TaskRunAttemptStatus.FAILED);
+    const source =
+      taskRun.attempts.find((a) => a.status === TaskRunAttemptStatus.FAILED) ?? taskRun;
 
-    if (!attempt) {
-      logger.error("Task run is failed but no failed attempt found", {
-        taskRunId: taskRun.id,
-        taskRunStatus: taskRun.status,
-        taskRunAttempts: taskRun.attempts.map((a) => a.status),
-      });
-
-      return undefined;
-    }
-
-    const error = TaskRunError.safeParse(attempt.error);
+    const error = TaskRunError.safeParse(source.error);
 
     if (!error.success) {
       logger.error("Failed to parse error from failed task run attempt", {
         taskRunId: taskRun.id,
         taskRunStatus: taskRun.status,
         taskRunAttempts: taskRun.attempts.map((a) => a.status),
-        error: attempt.error,
+        error: source.error,
       });
 
       return {

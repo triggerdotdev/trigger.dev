@@ -10,6 +10,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { TestServer } from "@internal/testcontainers/webapp";
 import { startTestServer } from "@internal/testcontainers/webapp";
 import { generateJWT } from "@trigger.dev/core/v3/jwt";
+import { createHash } from "node:crypto";
+import { generateAdditionalApiKey } from "~/utils/apiKeys";
 import { seedTestEnvironment } from "./helpers/seedTestEnvironment";
 import { seedTestPAT, seedTestUser } from "./helpers/seedTestPAT";
 import { seedTestRun } from "./helpers/seedTestRun";
@@ -146,41 +148,159 @@ describe("Packet download authorization", () => {
     expect(inlineOutput.status).toBe(404);
   });
 
-  it("rejects stored-payload pointers from public JWTs on trigger", async () => {
-    const { environment } = await seedTestEnvironment(server.prisma);
-    const jwt = await generateTestJWT(environment, { scopes: ["write:tasks:test-task"] });
-
-    const res = await server.webapp.fetch("/api/v1/tasks/test-task/trigger", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        payload: "run_victim/payload.json",
-        options: { payloadType: "application/store" },
-      }),
-    });
-
-    expect(res.status).toBe(403);
-  });
-
-  it("rejects stored-payload pointers from public JWTs on batch trigger", async () => {
-    const { environment } = await seedTestEnvironment(server.prisma);
-    const jwt = await generateTestJWT(environment, { scopes: ["write:tasks:test-task"] });
-
-    const res = await server.webapp.fetch("/api/v2/tasks/batch", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        items: [
-          {
-            task: "test-task",
-            payload: "run_victim/payload.json",
-            options: { payloadType: "application/store" },
+  describe.each([
+    "public JWT",
+    "restricted API key",
+    "root API key",
+    "unrestricted API key",
+  ] as const)("%s stored pointers", (credential) => {
+    it.each([
+      "trigger",
+      "v1 batch",
+      "v2 batch",
+      "v3 items",
+      // This legacy route does not accept public JWTs.
+      ...(credential === "public JWT" ? [] : (["task-scoped v1 batch"] as const)),
+    ] as const)("enforces stored-pointer permission on %s", async (route) => {
+      const { environment, project } = await seedTestEnvironment(server.prisma);
+      const { batchFriendlyId: seededBatchFriendlyId, run } = await seedTestRun(server.prisma, {
+        environmentId: environment.id,
+        projectId: project.id,
+        withBatch: route !== "v3 items",
+      });
+      let batchFriendlyId = seededBatchFriendlyId;
+      if (route === "v3 items") {
+        // Phase 1 initializes both the database record and Redis queue metadata.
+        const response = await server.webapp.fetch("/api/v3/batches", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${environment.apiKey}`,
+            "Content-Type": "application/json",
           },
-        ],
-      }),
-    });
+          body: JSON.stringify({ runCount: 1, taskIdentifiers: ["test-task"] }),
+        });
+        expect(response.status).toBe(202);
+        batchFriendlyId = (await response.json()).id;
+      } else {
+        await server.prisma.batchTaskRun.update({
+          where: { id: run.batchId! },
+          data: { status: "PENDING", runCount: 1 },
+        });
+      }
+      // Keep JSON-route controls independent of worker/deployment setup.
+      // The payload gate must run even when a matching run is cached.
+      const idempotencyKey = "stored-payload-authorization";
+      await server.prisma.taskRun.update({
+        where: { id: run.id },
+        data: {
+          idempotencyKey,
+          idempotencyKeyExpiresAt: new Date(Date.now() + 3_600_000),
+        },
+      });
 
-    expect(res.status).toBe(403);
+      let token: string;
+      if (credential === "public JWT") {
+        // Include a batch-wide grant to ensure it cannot bypass the payload gate.
+        token = await generateTestJWT(environment, {
+          scopes: ["write:tasks:test-task", `write:batch:${batchFriendlyId}`],
+        });
+      } else if (credential === "root API key") {
+        token = environment.apiKey;
+      } else {
+        const user = await seedTestUser(server.prisma);
+        token = generateAdditionalApiKey("DEVELOPMENT").apiKey;
+        await server.prisma.apiKey.create({
+          data: {
+            name: "Task-scoped ingestion key",
+            keyHash: createHash("sha256").update(token).digest("hex"),
+            lastFour: token.slice(-4),
+            runtimeEnvironmentId: environment.id,
+            createdByUserId: user.id,
+            presetId: credential === "restricted API key" ? "TRIGGER_ONLY" : null,
+            scopes:
+              credential === "restricted API key"
+                ? ["trigger:tasks:test-task", "batchTrigger:tasks:test-task"]
+                : ["admin"],
+          },
+        });
+      }
+
+      const item = {
+        task: "test-task",
+        index: 0,
+        payload: "run_other/payload.json",
+        options: { payloadType: "application/store", idempotencyKey },
+      };
+      const path =
+        route === "trigger"
+          ? "/api/v1/tasks/test-task/trigger"
+          : route === "v3 items"
+            ? `/api/v3/batches/${batchFriendlyId}/items`
+            : route === "task-scoped v1 batch"
+              ? "/api/v1/tasks/test-task/batch"
+              : `/api/${route === "v1 batch" ? "v1" : "v2"}/tasks/batch`;
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "idempotency-key": idempotencyKey,
+          "Content-Type": route === "v3 items" ? "application/x-ndjson" : "application/json",
+        },
+        body:
+          route === "v3 items"
+            ? `${JSON.stringify(item)}\n`
+            : JSON.stringify(route === "trigger" ? item : { items: [item] }),
+      });
+
+      if (credential === "public JWT" || credential === "restricted API key") {
+        expect(res.status).toBe(403);
+        expect(await res.json()).toEqual({
+          error:
+            route === "v3 items"
+              ? "Unauthorized"
+              : "Stored payloads require an unrestricted private API key",
+        });
+        expect(
+          await server.prisma.taskRun.count({ where: { runtimeEnvironmentId: environment.id } })
+        ).toBe(1);
+        expect(
+          await server.prisma.batchTaskRun.count({
+            where: { runtimeEnvironmentId: environment.id },
+          })
+        ).toBe(1);
+        expect(
+          await server.prisma.batchTaskRun.findFirst({ where: { friendlyId: batchFriendlyId } })
+        ).toMatchObject({ status: "PENDING", sealed: false });
+        if (route === "task-scoped v1 batch" && credential === "restricted API key") {
+          const inlineResponse = await server.webapp.fetch(path, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              items: [{ payload: { message: "inline" }, options: { idempotencyKey } }],
+            }),
+          });
+          expect(inlineResponse.status).toBe(200);
+          expect(await inlineResponse.json()).toMatchObject({
+            batchId: expect.stringMatching(/^batch_/),
+            runs: [run.friendlyId],
+          });
+        }
+      } else {
+        expect(res.status).toBe(route === "v1 batch" || route === "v2 batch" ? 202 : 200);
+        if (route === "trigger") {
+          expect(await res.json()).toMatchObject({ id: run.friendlyId, isCached: true });
+        } else if (route === "v3 items") {
+          expect(await res.json()).toMatchObject({ itemsAccepted: 1, sealed: true });
+        } else if (route === "task-scoped v1 batch") {
+          expect(await res.json()).toMatchObject({
+            batchId: expect.stringMatching(/^batch_/),
+            runs: [run.friendlyId],
+          });
+        } else {
+          expect(await res.json()).toMatchObject({ id: expect.stringMatching(/^batch_/) });
+        }
+      }
+    });
   });
 });
 

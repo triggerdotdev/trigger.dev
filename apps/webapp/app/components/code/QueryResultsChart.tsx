@@ -15,6 +15,7 @@ import { aggregateValues } from "../primitives/charts/aggregation";
 import { MAX_SERIES } from "~/components/primitives/charts/seriesFromRows";
 import { getRunStatusChartColor } from "~/components/runs/v3/TaskRunStatus";
 import { getSeriesColor } from "./chartColors";
+import { safeChartColor } from "../primitives/charts/chartColors";
 
 const MAX_SVG_ELEMENT_BUDGET = 6_000;
 const MIN_DATA_POINTS = 100;
@@ -287,10 +288,10 @@ function fillTimeGaps(
         __rawDate: bucket.rawDate,
         __granularity: granularity,
         __originalX: bucket.originalX,
+        ...Object.fromEntries(
+          series.map((s) => [s, aggregateValues(bucket.values[s], aggregation)])
+        ),
       };
-      for (const s of series) {
-        point[s] = aggregateValues(bucket.values[s], aggregation);
-      }
       filledData.push(point);
     } else {
       // Create a null-filled data point so gaps appear in line/bar charts
@@ -300,10 +301,8 @@ function fillTimeGaps(
         __rawDate: new Date(t),
         __granularity: granularity,
         __originalX: new Date(t).toISOString(),
+        ...Object.fromEntries(series.map((s) => [s, null])),
       };
-      for (const s of series) {
-        gapPoint[s] = null;
-      }
       filledData.push(gapPoint);
     }
   }
@@ -591,10 +590,10 @@ function transformDataForChart(
         __rawDate: rawDate,
         __granularity: granularity,
         __originalX: originalX,
+        ...Object.fromEntries(
+          yAxisColumns.map((col) => [col, aggregateValues(yValues[col], aggregation)])
+        ),
       };
-      for (const yCol of yAxisColumns) {
-        point[yCol] = aggregateValues(yValues[yCol], aggregation);
-      }
       return point;
     });
 
@@ -652,7 +651,7 @@ function transformDataForChart(
   const groupTotals = new Map<string, number>();
   const groupedByX = new Map<
     string | number,
-    { values: Record<string, number[]>; rawDate: Date | null; originalX: unknown }
+    { values: Map<string, number[]>; rawDate: Date | null; originalX: unknown }
   >();
 
   for (const row of rows) {
@@ -667,14 +666,14 @@ function transformDataForChart(
     groupTotals.set(groupValue, (groupTotals.get(groupValue) ?? 0) + Math.abs(yValue));
 
     if (!groupedByX.has(xKey)) {
-      groupedByX.set(xKey, { values: {}, rawDate, originalX: row[xAxisColumn] });
+      groupedByX.set(xKey, { values: new Map(), rawDate, originalX: row[xAxisColumn] });
     }
 
     const existing = groupedByX.get(xKey)!;
-    if (!existing.values[groupValue]) {
-      existing.values[groupValue] = [];
+    if (!existing.values.has(groupValue)) {
+      existing.values.set(groupValue, []);
     }
-    existing.values[groupValue].push(yValue);
+    existing.values.get(groupValue)!.push(yValue);
   }
 
   // Keep only the top MAX_SERIES groups by absolute total to avoid O(n) processing
@@ -697,10 +696,13 @@ function transformDataForChart(
       __rawDate: rawDate,
       __granularity: granularity,
       __originalX: originalX,
+      ...Object.fromEntries(
+        series.map((group) => {
+          const groupValues = values.get(group);
+          return [group, groupValues ? aggregateValues(groupValues, aggregation) : 0];
+        })
+      ),
     };
-    for (const group of series) {
-      point[group] = values[group] ? aggregateValues(values[group], aggregation) : 0;
-    }
     return point;
   });
 
@@ -936,20 +938,34 @@ export const QueryResultsChart = memo(function QueryResultsChart({
     return col?.customRenderType === "runStatus";
   }, [groupByColumn, columns]);
 
-  // Build chart config for colors/labels
-  const chartConfig = useMemo(() => {
-    const cfg: ChartConfig = {};
-    sortedSeries.forEach((s, i) => {
-      const statusColor = groupByIsRunStatus ? getRunStatusChartColor(s) : undefined;
-      const originalIndex = config.yAxisColumns.indexOf(s);
-      const colorIndex = originalIndex >= 0 ? originalIndex : i;
-      cfg[s] = {
-        label: s,
-        color: statusColor ?? config.seriesColors?.[s] ?? getSeriesColor(colorIndex),
-      };
-    });
-    return cfg;
-  }, [sortedSeries, groupByIsRunStatus, config.seriesColors, config.yAxisColumns]);
+  // Keep data-derived names in labels, never in chart identifiers or CSS variable names.
+  const { chartConfig, chartData, chartSeries } = useMemo(() => {
+    const chartSeries = sortedSeries.map((_, i) => `series-${i}`);
+    const chartConfig: ChartConfig = Object.fromEntries(
+      sortedSeries.map((s, i) => {
+        const statusColor = groupByIsRunStatus ? getRunStatusChartColor(s) : undefined;
+        const originalIndex = config.yAxisColumns.indexOf(s);
+        const colorIndex = originalIndex >= 0 ? originalIndex : i;
+        return [
+          chartSeries[i],
+          {
+            label: s,
+            color:
+              statusColor ?? safeChartColor(config.seriesColors?.[s]) ?? getSeriesColor(colorIndex),
+          },
+        ];
+      })
+    );
+    const chartData = data.map((point) => ({
+      ...Object.fromEntries(sortedSeries.map((s, i) => [chartSeries[i], point[s]])),
+      __chartX: point[xDataKey],
+      __rawDate: point.__rawDate,
+      __granularity: point.__granularity,
+      __originalX: point.__originalX,
+    }));
+    return { chartConfig, chartData, chartSeries };
+  }, [sortedSeries, data, xDataKey, groupByIsRunStatus, config.seriesColors, config.yAxisColumns]);
+  const chartVisibleSeries = chartSeries.slice(0, visibleSeries.length);
 
   // Custom tooltip label formatter for better date display
   const tooltipLabelFormatter = useMemo(() => {
@@ -1182,10 +1198,10 @@ export const QueryResultsChart = memo(function QueryResultsChart({
       <div ref={chartMeasureRef} className="h-full w-full">
         <Chart.Root
           config={chartConfig}
-          data={data}
-          dataKey={xDataKey}
-          series={sortedSeries}
-          visibleSeries={visibleSeries}
+          data={chartData}
+          dataKey="__chartX"
+          series={chartSeries}
+          visibleSeries={chartVisibleSeries}
           labelFormatter={legendLabelFormatter}
           showLegend={showLegend}
           maxLegendItems={fullLegend ? Infinity : 5}
@@ -1215,10 +1231,10 @@ export const QueryResultsChart = memo(function QueryResultsChart({
     <div ref={chartMeasureRef} className="h-full w-full">
       <Chart.Root
         config={chartConfig}
-        data={data}
-        dataKey={xDataKey}
-        series={sortedSeries}
-        visibleSeries={visibleSeries}
+        data={chartData}
+        dataKey="__chartX"
+        series={chartSeries}
+        visibleSeries={chartVisibleSeries}
         labelFormatter={legendLabelFormatter}
         showLegend={showLegend}
         maxLegendItems={fullLegend ? Infinity : 5}

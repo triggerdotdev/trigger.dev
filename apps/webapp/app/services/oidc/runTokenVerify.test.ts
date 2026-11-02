@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildJwtAbility, scopesWithinAbility, withActionAliases } from "@trigger.dev/rbac";
 import { generateRs256KeyPair, importRs256PrivateKey, signRs256Jwt } from "./crypto";
 import {
   RUN_TOKEN_AUDIENCE,
@@ -16,7 +17,7 @@ const claims = {
   environment_id: "env_1",
   run_id: "run_1",
   attempt: 1,
-  scopes: runTokenScopes("run_1"),
+  scopes: runTokenScopes(),
 };
 
 async function setup() {
@@ -38,6 +39,16 @@ async function setup() {
 }
 
 describe("run tokens", () => {
+  it("grants environment administration and delegation, but not platform super access", () => {
+    expect(runTokenScopes()).toEqual(["admin"]);
+    const ability = withActionAliases(buildJwtAbility(runTokenScopes()));
+    expect(ability.can("write", { type: "runs", id: "run_other" })).toBe(true);
+    expect(ability.can("read", { type: "sessions", id: "session:channels:chat:out" })).toBe(true);
+    expect(ability.can("write", { type: "inputStreams", id: "run_other" })).toBe(true);
+    expect(ability.canSuper()).toBe(false);
+    expect(scopesWithinAbility(["read:runs:run_other", "write:waitpoints"], ability).ok).toBe(true);
+  });
+
   it("verifies a run token and returns its claims", async () => {
     const { jwks, sign } = await setup();
     const token = await sign();

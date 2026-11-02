@@ -10,7 +10,6 @@ import {
 } from "~/v3/services/concurrencySystem.server";
 import { ArchiveQueueService, archiveQueueErrorMessage } from "~/v3/services/archiveQueue.server";
 import { PauseQueueService } from "~/v3/services/pauseQueue.server";
-import { queueArchivingEnabled } from "~/v3/services/queueArchivingEnabled.server";
 
 /**
  * Handles the per-queue mutating form actions (pause/resume/override/remove-override/archive/
@@ -292,18 +291,6 @@ export async function handleQueueMutationAction({
       const friendlyId = formData.get("friendlyId");
       if (!friendlyId) {
         return redirectWithErrorMessage(redirectPath, request, "Queue ID is required");
-      }
-
-      // Unarchiving stays allowed so queues archived before the flag was turned off can come back.
-      if (
-        action === "queue-archive" &&
-        !(await queueArchivingEnabled(environment.organizationId))
-      ) {
-        return redirectWithErrorMessage(
-          redirectPath,
-          request,
-          "Queue archiving isn't enabled for this organization"
-        );
       }
 
       const service = new ArchiveQueueService();

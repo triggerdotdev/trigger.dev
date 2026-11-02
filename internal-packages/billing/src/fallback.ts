@@ -1,8 +1,13 @@
 import type {
+  BillingAddOns,
   BillingController,
   BillingCustomer,
   BillingCustomerError,
+  BillingMonthlyUsage,
+  BillingProjectUsage,
+  BillingUsageError,
   ProvisionBillingCustomerResult,
+  ProvisionFreePlanContractResult,
 } from "@trigger.dev/plugins";
 import { errAsync, okAsync, type ResultAsync } from "neverthrow";
 
@@ -23,5 +28,29 @@ class BillingFallbackController implements BillingController {
 
   provisionCustomer(): ResultAsync<ProvisionBillingCustomerResult, BillingCustomerError> {
     return errAsync("feature_disabled");
+  }
+
+  provisionFreePlanContract(): ResultAsync<ProvisionFreePlanContractResult, BillingCustomerError> {
+    return errAsync("feature_disabled");
+  }
+
+  getMonthlyUsage(): ResultAsync<BillingMonthlyUsage, BillingUsageError> {
+    return errAsync("feature_disabled");
+  }
+
+  getProjectUsage(): ResultAsync<BillingProjectUsage, BillingUsageError> {
+    return errAsync("feature_disabled");
+  }
+
+  getAddOns(): ResultAsync<BillingAddOns, BillingUsageError> {
+    return errAsync("feature_disabled");
+  }
+
+  clearCurrentMonthUsage(): ResultAsync<void, never> {
+    return okAsync(undefined);
+  }
+
+  forgetUsageFrom(): ResultAsync<void, never> {
+    return okAsync(undefined);
   }
 }

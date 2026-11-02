@@ -171,7 +171,7 @@ describe("createProductionEvaluateBinding", () => {
     expect(outcome.events).not.toContain("raised");
   });
 
-  it("composite health.all: one failed component does not recover a raised alert (mutation: unavailable only when all fail)", async () => {
+  it("composite health.all: a failed component holds a raised alert instead of recovering (mutation: failures treated as no data)", async () => {
     await createAlert(db, {
       ...BASE,
       capabilityKey: "health.all",
@@ -197,7 +197,73 @@ describe("createProductionEvaluateBinding", () => {
 
     expect(outcome.applied).toBe(true);
     expect(outcome.events).not.toContain("recovered");
-    expect(outcome.unavailableReason).toBe("sub_unavailable");
+    expect(outcome.unavailableReason).toBe("sub_query_failed");
+  });
+
+  async function compositeWithFailedFlow(
+    condition: Record<string, unknown>,
+    executionMet: boolean
+  ) {
+    await createAlert(db, {
+      ...BASE,
+      capabilityKey: "health.all",
+      params: { environmentId: "env_pd", scope: { type: "all" } },
+      condition: { kind: "state", stateKey: "degraded", ...condition },
+    });
+    const claimed = await claimOne(new Date());
+    const binding = createProductionEvaluateBinding({
+      queryRowRunner: async (query) => {
+        if (query.includes("concurrency_metrics")) throw new Error("clickhouse down");
+        if (query.includes("is_finished = 1")) return [{ value: executionMet ? 1 : 0 }];
+        return [{ value: 1 }];
+      },
+    });
+    const { result } = await binding(claimed, getCapability("health.all")!);
+    if (result.kind !== "stateful") throw new Error("expected stateful result");
+    return result;
+  }
+
+  it("composite any: a met component stays met while another fails (mutation: failure wins over met)", async () => {
+    const result = await compositeWithFailedFlow({}, true);
+    expect(result.outcome).toBe("met");
+    expect(result.facts.failedComponents).toEqual(["flow"]);
+  });
+
+  it("composite all: a failed component holds unless an available one is not met (mutation: failures ignored)", async () => {
+    const held = await compositeWithFailedFlow({ compositeMode: "all" }, true);
+    expect(held.outcome).toBe("unavailable");
+    expect(held.facts.unavailableReason).toBe("sub_query_failed");
+
+    await resetAlerts();
+    const notMet = await compositeWithFailedFlow({ compositeMode: "all" }, false);
+    expect(notMet.outcome).toBe("not_met");
+  });
+
+  it("composite health.all: every component failing keeps a raised alert unrecovered", async () => {
+    await createAlert(db, {
+      ...BASE,
+      capabilityKey: "health.all",
+      params: { environmentId: "env_pd", scope: { type: "all" } },
+      condition: { kind: "state", stateKey: "degraded" },
+      attention: "needs_attention",
+      observedCondition: "met",
+      evaluatorState: { compositeHysteresis: { consecutiveMet: 0, consecutiveNotMet: 1 } },
+    });
+    const claimed = await claimOne(new Date());
+    const binding = createProductionEvaluateBinding({
+      queryRowRunner: async () => {
+        throw new Error("clickhouse down");
+      },
+    });
+
+    const outcome = await evaluateAlert(claimed, {
+      db,
+      evaluateBinding: binding,
+      enqueueDelivery: async () => {},
+    });
+
+    expect(outcome.events).not.toContain("recovered");
+    expect(outcome.unavailableReason).toBe("sub_query_failed");
   });
 
   it("health.flow: met with GROUP BY queue when one queue trips", async () => {
@@ -259,7 +325,7 @@ describe("createProductionEvaluateBinding", () => {
     expect(capturedQuery).not.toContain("{{p.");
   });
 
-  it("composite runs each component exactly once through the injected runner", async () => {
+  it("a persisted health.all condition without components runs only the legacy three (mutation: default to compositeOf)", async () => {
     await createAlert(db, {
       ...BASE,
       capabilityKey: "health.all",

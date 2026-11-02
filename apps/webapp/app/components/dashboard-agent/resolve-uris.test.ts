@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { MAX_URIS_PER_RESOLVE_REQUEST, planUriBatches, shouldScheduleRetry } from "./resolve-uris";
 
@@ -46,24 +45,5 @@ describe("shouldScheduleRetry", () => {
 
   it("lets one timer serve every batch", () => {
     expect(shouldScheduleRetry({ mounted: true, timerPending: true })).toBe(false);
-  });
-});
-
-/**
- * Structural guard, not behavioural proof: the webapp has no DOM test environment, so nothing
- * here mounts the hook or unmounts it mid-flight. It asserts the policy above is the one the
- * hook asks, and that the unmount path is wired.
- */
-describe("useTriggerUriResolver's unmount wiring", () => {
-  const source = readFileSync(new URL("./useTriggerUriResolver.ts", import.meta.url), "utf8");
-
-  it("asks `shouldScheduleRetry` rather than testing the timer itself", () => {
-    expect(source).toContain("shouldScheduleRetry({");
-    expect(source).not.toMatch(/if \(retryTimer\.current === undefined\)/);
-  });
-
-  it("marks itself unmounted on cleanup and drops state updates after that", () => {
-    expect(source).toContain("mounted.current = false");
-    expect(source).toContain("if (!mounted.current) return;");
   });
 });

@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 /**
  * Waitpoint coordination keyspace. Three hash tags, deliberately:
  *
@@ -40,7 +42,20 @@ export type WaitpointKeys = {
   /** The durable fanout entry: claim, lease, failure streak and drain state. */
   fanout: string;
 };
-export type RunBlockKeys = { pend: string; done: string; edge: string; state: string };
+export type RunBlockKeys = {
+  pend: string;
+  done: string;
+  edge: string;
+  state: string;
+  /** Edge counts by waitpoint ID and operation claim counts by `!edgeField`. */
+  refs: string;
+  /** Stable edge order and immutable first-completion ordinals for bounded snapshot reads. */
+  edgeIndex: string;
+  doneOrder: string;
+  /** Unreferenced receipts are detached in constant work by selective reconciliation. */
+  early: string;
+  earlyOrder: string;
+};
 export type FanoutIndexKeys = { due: string; quarantine: string };
 
 export function waitpointKeys(waitpointId: string): WaitpointKeys {
@@ -55,7 +70,53 @@ export function runBlockKeys(runId: string): RunBlockKeys {
     done: `${base}:done`,
     edge: `${base}:edge`,
     state: `${base}:st`,
+    refs: `${base}:refs`,
+    edgeIndex: `${base}:ei`,
+    doneOrder: `${base}:do`,
+    early: `${base}:early`,
+    earlyOrder: `${base}:eo`,
   };
+}
+
+/** Immutable completions referenced by this parent's durable snapshots, retained until terminal cleanup. */
+export function runResultKey(runId: string): string {
+  return `${NAMESPACE}:run:{${runId}}:results`;
+}
+
+/**
+ * The durable manifest retained for ONE block while its watchers are being
+ * withdrawn (terminal release or non-terminal abandon). Its target hash is detached atomically from
+ * the active edge hash. The manifest survives even an empty hash so a failed or interrupted
+ * withdrawal can be retried from an authoritative target list even when the active block is gone or a
+ * newer block is installed. Keyed by block id (same hash slot as the run's block keys) so it never
+ * collides with another cycle's record.
+ */
+export function runWithdrawalKey(runId: string, blockId: string): string {
+  return `${NAMESPACE}:run:{${runId}}:wd:${blockId}`;
+}
+
+/** The detached edge hash owned by a retained withdrawal; never expires before convergence. */
+export function runWithdrawalTargetsKey(runId: string, blockId: string): string {
+  return `${runWithdrawalKey(runId, blockId)}:edges`;
+}
+
+/**
+ * Store the edges claimed by one registration, plus its acceptance markers.
+ * Cleanup releases these claims without removing edges still claimed by another operation.
+ * After phase 3, keep only the request proof until registration finishes.
+ * Each operation has its own key in the run's Redis hash slot.
+ */
+export function runContributionKey(runId: string, blockId: string, absorptionId: string): string {
+  return `${NAMESPACE}:run:{${runId}}:cn:${blockId}:${absorptionId}`;
+}
+
+/** Outstanding contribution identities for a known run; bounded pages, no TTL or keyspace scan. */
+export function runContributionIndexKey(runId: string): string {
+  return `${NAMESPACE}:run:{${runId}}:contributions`;
+}
+
+export function contributionMember(blockId: string, absorptionId: string): string {
+  return JSON.stringify([blockId, absorptionId]);
 }
 
 /**
@@ -205,4 +266,23 @@ export function assertSingleSlot(operation: string, keys: string[]): void {
       throw new WaitpointKeyTagError(operation, keys, key);
     }
   }
+}
+
+/** Source holds that an unfinished registration must release, in its parent's slot. */
+export function runRegistrationSourcesKey(
+  runId: string,
+  blockId: string,
+  absorptionId: string
+): string {
+  return `${runContributionKey(runId, blockId, absorptionId)}:sources`;
+}
+
+/** Hash the full request. Reserved proof markers cannot match edge fields. */
+export function registrationEvidence(waitpointIds: string[], batchIndex?: number): string {
+  return (
+    "!request:" +
+    createHash("sha256")
+      .update(JSON.stringify([batchIndex ?? null, [...new Set(waitpointIds)].sort()]))
+      .digest("hex")
+  );
 }

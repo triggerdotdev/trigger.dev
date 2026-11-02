@@ -1,3 +1,4 @@
+import type { LimitSignal } from "@internal/alert-contracts";
 import type {
   AlertCreatedBlock,
   AlertCreatedRow,
@@ -22,6 +23,7 @@ import {
   type FlowAnswers,
 } from "~/components/dashboard-agent/alert-creation/flow-state";
 import { formatNumber } from "~/utils/numberFormatter";
+import { limitScopeLabel } from "./limitSummary";
 
 export const ALERT_CREATION_OPENING_TEXT = "Create a new alert";
 export const REVIEW_MESSAGE =
@@ -40,6 +42,13 @@ export type CreatedCardFields = {
   expiresAt?: string;
 };
 
+export function scopeLabelFor(answers: FlowAnswers): string {
+  return (
+    (answers.what ? limitScopeLabel(answers.what, answers.components) : undefined) ??
+    labelFor("scope", answers.scope, answers)
+  );
+}
+
 export function fullConditionSummary(answers: FlowAnswers): string {
   const base = conditionSummary(answers);
   if (!base) return "";
@@ -56,7 +65,7 @@ export function createdCardFields(
   return {
     name: name ?? alertName(answers),
     conditionSummary: fullConditionSummary(answers),
-    scopeLabel: labelFor("scope", answers.scope, answers),
+    scopeLabel: scopeLabelFor(answers),
     scopeValue: answers.scope === "errorGroup" ? undefined : answers.scopeValue,
     environmentTitle,
     behavior: "recurring",
@@ -146,6 +155,9 @@ type CreateAlertRequestCard = {
     windowMinutes?: number;
     quietWindowMinutes?: number;
     conditionParams?: Record<string, number>;
+    compositeMode?: "any" | "all";
+    signals?: LimitSignal[];
+    components?: string[];
     expiresAt?: string;
     notifierChannelIds: string[];
   };
@@ -166,6 +178,9 @@ export function answersFromCreateRequest(body: CreateAlertRequestCard): FlowAnsw
     scopeValue: form.scopeValue,
     condition: condition === undefined ? undefined : String(condition),
     conditionParams: form.conditionParams,
+    compositeMode: form.compositeMode,
+    signals: form.signals,
+    components: form.components,
     windowMinutes: form.conditionKind === "threshold" ? form.windowMinutes : undefined,
     notifiers: [...(body.chatNotifier === "on" ? ["chat"] : []), ...form.notifierChannelIds],
     expiry: body.expiry ?? form.expiresAt,

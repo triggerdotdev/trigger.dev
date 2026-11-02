@@ -41,4 +41,16 @@ describe("ZodIpcConnection", () => {
       echoed: "hello",
     });
   });
+
+  it("rejects a timed-out sendWithAck without echoing the payload", async () => {
+    const connection = forkChild();
+
+    const error = await connection.sendWithAck("STALL", { secret: "tr_run_secret" }, 200).then(
+      () => undefined,
+      (reason: unknown) => String(reason)
+    );
+
+    expect(error).toContain("sendWithAck() timeout");
+    expect(error).not.toContain("tr_run_secret");
+  });
 });

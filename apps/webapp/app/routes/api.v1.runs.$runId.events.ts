@@ -4,7 +4,10 @@ import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { anyResource, createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { ApiRetrieveRunPresenter } from "~/presenters/v3/ApiRetrieveRunPresenter.server";
 import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
-import { getTraceStartTimeEnd } from "~/v3/eventRepository/traceInsertedAtBound";
+import {
+  getTraceInsertedAtEnd,
+  getTraceStartTimeEnd,
+} from "~/v3/eventRepository/traceInsertedAtBound";
 
 const ParamsSchema = z.object({
   runId: z.string(), // This is the run friendly ID
@@ -57,7 +60,8 @@ export const loader = createLoaderApiRoute(
       run.traceId,
       run.friendlyId,
       run.createdAt,
-      getTraceStartTimeEnd(run)
+      getTraceStartTimeEnd(run),
+      { insertedAtEnd: getTraceInsertedAtEnd(run) }
     );
 
     // TODO: return only relevant fields, avoid returning the whole events

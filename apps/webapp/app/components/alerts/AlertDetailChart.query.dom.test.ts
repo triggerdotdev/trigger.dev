@@ -66,8 +66,18 @@ vi.mock("./ActivityBars", async (importOriginal) => ({
 }));
 vi.mock("./AlertThresholdChart", async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  AlertMultiSeriesChart: ({ seriesMap }: { seriesMap: Map<string, unknown> }) =>
-    createElement("i", { "data-chart": "multi", "data-keys": [...seriesMap.keys()].join(",") }),
+  AlertMultiSeriesChart: ({
+    seriesMap,
+    label,
+  }: {
+    seriesMap: Map<string, unknown>;
+    label: string;
+  }) =>
+    createElement("i", {
+      "data-chart": "multi",
+      "data-keys": [...seriesMap.keys()].join(","),
+      "data-label": label,
+    }),
 }));
 
 const HOUR = 60 * 60 * 1000;
@@ -203,6 +213,7 @@ describe("AlertDetailChart query groups", () => {
     expect(document.querySelector<HTMLInputElement>("input")!.placeholder).not.toContain("Up to");
   });
 
+  // Mutation: labelling a sole selected group with the alert title fails the label check.
   it("shows the only remaining group even after it was deselected", () => {
     const c = mount({ queryGroups: ["g9", "g8"] });
     act(() => c.querySelector<HTMLElement>("button")!.click());
@@ -211,6 +222,7 @@ describe("AlertDetailChart query groups", () => {
     )!;
     act(() => g9.click());
     expect(keys(c)).toEqual(["g8"]);
+    expect(c.querySelector("[data-chart=multi]")!.getAttribute("data-label")).toBe("g8");
 
     render({ queryGroups: ["g9"] });
     expect(keys(c)).toEqual(["g9"]);

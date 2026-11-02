@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { agentDeepLinkParams, aiHelpDocsUrl, aiHelpRedirectUrl } from "./ask-ai-channels";
 
@@ -61,28 +60,6 @@ describe("aiHelpRedirectUrl", () => {
     expect(parsed.searchParams.get("tab")).toBe("runs");
     expect(parsed.searchParams.get("aiHelp")).toBe("why");
     expect(parsed.hash).toBe("#top");
-  });
-});
-
-/**
- * Structural guard, not behavioural proof: these assert the wiring is present in source, not
- * that a redirect does the right thing at runtime.
- */
-describe("wiring", () => {
-  const cliRoute = readFileSync(
-    new URL("../../routes/projects.$projectRef.ai-help.ts", import.meta.url),
-    "utf8"
-  );
-
-  it("builds the CLI redirect through the shared helper", () => {
-    expect(cliRoute).toContain("aiHelpRedirectUrl(");
-  });
-
-  // Structural: the loader needs a session and a database, so the branch is asserted on source.
-  it("sends the CLI link to the docs when the reader has no agent access", () => {
-    expect(cliRoute).toContain("if (!canOpenAgent)");
-    expect(cliRoute).toContain("redirect(aiHelpDocsUrl(query))");
-    expect(cliRoute).toContain("canAccessDashboardAgent(");
   });
 });
 

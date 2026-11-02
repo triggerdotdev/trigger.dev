@@ -28,6 +28,7 @@ export const action = createActionWorkerApiRoute(
       isWarmStart: body.isWarmStart,
       workerCell: body.workerCell,
       workerLane: body.workerLane,
+      supportsRunTokenRefresh: body.supportsRunTokenRefresh,
       runnerId,
       environmentId,
     });

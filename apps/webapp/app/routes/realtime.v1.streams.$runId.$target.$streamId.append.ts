@@ -4,7 +4,7 @@ import { nanoid } from "nanoid";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
-import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { anyResource, createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { runStore } from "~/v3/runStore.server";
 
@@ -25,49 +25,64 @@ const { action } = createActionApiRoute(
   {
     params: ParamsSchema,
     maxContentLength: MAX_APPEND_BODY_BYTES,
+    method: "POST",
+    findResource: async (params, authentication) => {
+      const where = {
+        friendlyId: params.runId,
+        runtimeEnvironmentId: authentication.environment.id,
+      };
+      const args = {
+        select: {
+          id: true,
+          friendlyId: true,
+          runtimeEnvironmentId: true,
+          parentTaskRun: {
+            select: {
+              friendlyId: true,
+              runtimeEnvironmentId: true,
+            },
+          },
+          rootTaskRun: {
+            select: {
+              friendlyId: true,
+              runtimeEnvironmentId: true,
+            },
+          },
+        },
+      };
+      // Replica lag can null out a live run; a spurious 404 permanently fails the append. Re-read the
+      // owning primary on a replica miss.
+      const run =
+        (await runStore.findRun(where, args, $replica)) ??
+        (await runStore.findRunOnPrimary(where, args));
+
+      if (!run) {
+        throw new Response("Run not found", { status: 404 });
+      }
+
+      const target =
+        params.target === "self"
+          ? run
+          : params.target === "parent"
+            ? run.parentTaskRun
+            : run.rootTaskRun;
+
+      if (!target || target.runtimeEnvironmentId !== authentication.environment.id) {
+        throw new Response("Target not found", { status: 404 });
+      }
+      return target;
+    },
+    authorization: {
+      action: "write",
+      resource: (_params, _search, _headers, _body, target) =>
+        anyResource(target ? [{ type: "runs", id: target.friendlyId }] : []),
+    },
   },
-  async ({ request, params, authentication }) => {
-    const where = {
-      friendlyId: params.runId,
-      runtimeEnvironmentId: authentication.environment.id,
-    };
-    const args = {
-      select: {
-        id: true,
-        friendlyId: true,
-        parentTaskRun: {
-          select: {
-            friendlyId: true,
-          },
-        },
-        rootTaskRun: {
-          select: {
-            friendlyId: true,
-          },
-        },
-      },
-    };
-    // Replica lag can null out a live run; a spurious 404 permanently fails the append. Re-read the
-    // owning primary on a replica miss.
-    const run =
-      (await runStore.findRun(where, args, $replica)) ??
-      (await runStore.findRunOnPrimary(where, args));
-
-    if (!run) {
-      return new Response("Run not found", { status: 404 });
-    }
-
-    const targetId =
-      params.target === "self"
-        ? run.friendlyId
-        : params.target === "parent"
-          ? run.parentTaskRun?.friendlyId
-          : run.rootTaskRun?.friendlyId;
-
-    if (!targetId) {
+  async ({ request, params, authentication, resource: target }) => {
+    if (!target) {
       return new Response("Target not found", { status: 404 });
     }
-
+    const targetId = target.friendlyId;
     const targetRun = await runStore.findRun(
       {
         friendlyId: targetId,

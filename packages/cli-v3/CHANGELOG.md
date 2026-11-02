@@ -1,5 +1,29 @@
 # trigger.dev
 
+## 4.8.3
+
+### Patch Changes
+
+- CLI and MCP logins are now bound to the machine that started them. Approving a login in your browser sends you back to the CLI automatically, or, when the browser is on another machine, shows a code to paste into the terminal (or pass with `trigger.dev login --code`). Older CLI versions will need to upgrade to log in. ([`1a36c23fb`](https://github.com/triggerdotdev/trigger.dev/commit/1a36c23fb1f4bee60eb7e3ed7a62836ba4a11bb9))
+- Add `trigger webhooks set-secret` and `trigger webhooks generate-secret`, which store a webhook endpoint's signing secret without printing it. `set-secret` reads the secret from a pipe, an environment variable or a `.env` file, and `generate-secret` saves the new secret to an env file. When the endpoint already has a secret, both ask how long the old one keeps working (or take `--previous-secret-ttl 24h` in scripts). The MCP server's `set_webhook_secret` and `generate_webhook_secret` descriptions now point AI agents at these commands, so the secret stays out of the agent's context. ([`daaaa41db`](https://github.com/triggerdotdev/trigger.dev/commit/daaaa41dbb0c4ed92887addbd27d17f55f516817))
+- Deprecates the legacy Bun runtime. `runtime: "bun"` (and its explicit spelling `"bun-legacy"`), which deploys Bun 1.3.3 with Node.js 20 alongside it, now prints a deprecation warning, and deploys that use it will be rejected from January 5, 2027. Switch to `runtime: "bun-1.4"` (Bun 1.4.4 on an image with no Node.js binary) and redeploy. ([`5f8171cab`](https://github.com/triggerdotdev/trigger.dev/commit/5f8171cab0e5d2b02e6446455b6569ba7c031a3b))
+- Updated dependencies:
+  - `@trigger.dev/core@4.8.3`
+  - `@trigger.dev/build@4.8.3`
+  - `@trigger.dev/schema-to-json@4.8.3`
+
+## 4.8.2
+
+### Patch Changes
+
+- Deployed tasks now keep a valid short-lived run token for their whole run: the token is refreshed during long runs and before a run resumes from a checkpoint. A warm-started task no longer keeps the previous run's token when the next run has none, and run credentials are left out of runner debug logs. ([`aa9de9d94`](https://github.com/triggerdotdev/trigger.dev/commit/aa9de9d9483b54edd09792c25c7d1a97694604af))
+- Upgrade `socket.io-client` to 4.8.4 so projects using the SDK and CLI install `ws` 8.21 instead of 8.17.1, which has published advisories (GHSA-96hv-2xvq-fx4p, GHSA-58qx-3vcg-4xpx). The old pin blocked upgrading `ws` without a package manager override. ([`2df9860b4`](https://github.com/triggerdotdev/trigger.dev/commit/2df9860b4c736da3ba3b8dd61b8f08a4d9b03521))
+- Adds the `bun-1.4` runtime. `runtime: "bun-1.4"` deploys on Bun 1.4.4 in a Bun-only image with no Node.js binary, and the run controller itself runs under Bun. `runtime: "bun"` is unchanged (Bun 1.3 with Node.js alongside it); `bun-legacy` is accepted as an explicit spelling of the same runtime. On Bun 1.4 the worker no longer crashes at startup on the `--no-warnings=ExperimentalWarning` flag. ([`a8a87850b`](https://github.com/triggerdotdev/trigger.dev/commit/a8a87850bdaa57b6e40c0dcdbdf8b5bf59a39113))
+- Updated dependencies:
+  - `@trigger.dev/core@4.8.2`
+  - `@trigger.dev/build@4.8.2`
+  - `@trigger.dev/schema-to-json@4.8.2`
+
 ## 4.8.1
 
 ### Patch Changes

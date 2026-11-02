@@ -6,6 +6,9 @@ import { redisTest } from "@internal/testcontainers";
 import { type RedisOptions } from "@internal/redis";
 import { generateWaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { describe, expect } from "vitest";
+import { createRedisClient } from "@internal/redis";
+import { runResultKey, waitpointKeys } from "./keys.js";
+import { WaitpointFanoutWorker } from "./fanoutWorker.js";
 import {
   WaitpointStoreCoordinator,
   type WaitpointCompletion,
@@ -134,3 +137,65 @@ describe("WaitpointStoreCoordinator.readCompletedRecords", () => {
     }
   );
 });
+
+redisTest(
+  "parent snapshots retain atomic completed metadata through acknowledgement and terminal cleanup",
+  async ({ redisOptions }) => {
+    const store = new WaitpointStoreCoordinator({ redisOptions });
+    const redis = createRedisClient(redisOptions);
+    const worker = new WaitpointFanoutWorker({ coordinator: store, enabled: false });
+    try {
+      const early = generateWaitpointId("DATETIME");
+      const late = generateWaitpointId("RUN");
+      const pending = generateWaitpointId("RUN");
+      const records = [
+        record(early, { type: "DATETIME", completedAfter: NOW }),
+        record(late, { type: "RUN", completedByTaskRunId: "run_child" }),
+      ];
+      for (const rec of records) await store.createIfAbsent({ record: rec, status: "PENDING" });
+      await store.complete({ waitpointId: early, completion: completion() });
+      await store.createIfAbsent({ record: record(pending), status: "PENDING" });
+      await store.registerBlocks({
+        runId: "run_parent",
+        blockId: "block_parent",
+        edges: [early, late, pending].map((waitpointId) => ({ waitpointId, createdAt: NOW })),
+      });
+      await store.complete({ waitpointId: late, completion: completion() });
+      expect((await worker.visit(late)).outcome).toBe("drained");
+      // Simulate expiry only after both the registration and fanout receipts are durable.
+      await redis.del(waitpointKeys(early).record, waitpointKeys(late).record);
+      expect((await store.readCompletedRecords([early, late])).size).toBe(0);
+      expect((await store.readBlockState("run_parent")).pendingIds).toEqual([pending]);
+      const retained = await store.readCompletedRecords([early, late], "run_parent");
+      for (const rec of records)
+        expect(retained.get(rec.id)).toEqual({
+          status: "COMPLETED",
+          record: rec,
+          completion: completion(),
+        });
+      expect((await store.readCompletedRecords([early], "run_other")).size).toBe(0);
+      await store.clearBlockState({ runId: "run_parent", blockId: "block_parent" });
+      expect((await store.readCompletedRecords([early, late], "run_parent")).size).toBe(2);
+      expect(await redis.pttl(runResultKey("run_parent"))).toBe(-1);
+      await store.cleanupRunBlockState({ runId: "run_parent", reason: "resume" });
+      expect(await redis.pttl(runResultKey("run_parent"))).toBe(-1);
+      await store.releaseRunWatchers({ runId: "run_parent", reason: "terminal" });
+      expect(await redis.pttl(runResultKey("run_parent"))).toBeGreaterThan(0);
+      expect(
+        (
+          await store.deliverCompletion({
+            runId: "run_parent",
+            blockId: "block_parent",
+            waitpointId: early,
+            completion: completion(),
+            record: records[0],
+          })
+        ).outcome
+      ).toBe("terminal");
+    } finally {
+      await worker.stop();
+      await redis.quit();
+      await store.quit();
+    }
+  }
+);

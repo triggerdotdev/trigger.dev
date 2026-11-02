@@ -309,7 +309,7 @@ export function SelectTrigger({
         ref.current.click();
       }
     },
-    disabled,
+    disabled: disabled || !shortcut,
   });
 
   const showTooltip = tooltipTitle || shortcut;

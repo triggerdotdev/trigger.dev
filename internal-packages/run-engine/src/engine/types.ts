@@ -24,6 +24,7 @@ import {
   type GlobalRateLimiter,
 } from "@trigger.dev/redis-worker";
 import type { ControlPlaneResolver } from "./controlPlaneResolver.js";
+import type { WaitpointSystemOptions } from "./systems/waitpointSystem.js";
 import type { FairQueueSelectionStrategyOptions } from "../run-queue/fairQueueSelectionStrategy.js";
 import type { RunQueueMetricsEmitter, RunQueueOptions } from "../run-queue/index.js";
 import type { MinimalAuthenticatedEnvironment } from "../shared/index.js";
@@ -146,6 +147,7 @@ export type RunEngineOptions = {
       processMarkedSchedule?: string;
       scanJitterInMs?: number;
       processMarkedJitterInMs?: number;
+      scanCount?: number;
     };
     /** TTL system options for automatic run expiration */
     ttlSystem?: {
@@ -277,6 +279,12 @@ export type RunEngineOptions = {
    * completion whose inline side effects never acked it. Default: 30s.
    */
   completionGuardDelayMs?: number;
+
+  /**
+   * The MemoryDB completed-record reader, for resolving store-format completed waitpoints in a
+   * Redis-primary resume cycle. Dark by default (undefined leaves the resolver Postgres-only).
+   */
+  waitpointStore?: WaitpointSystemOptions["waitpointStore"];
   heartbeatTimeoutsMs?: Partial<HeartbeatTimeouts>;
   repairSnapshotTimeoutMs?: number;
   treatProductionExecutionStallsAsOOM?: boolean;
@@ -359,14 +367,16 @@ export type EngineStartRunAttemptResult = StartRunAttemptResult & {
 
 export type RestoreOutcome = "requeue" | "fail" | "fallback";
 
-export type RestoreOutcomeResult =
-  | { ok: true; outcome: RestoreOutcome }
-  | {
-      ok: false;
-      code: "SNAPSHOT_CONFLICT";
-      latestSnapshotId: string;
-      latestExecutionStatus: TaskRunExecutionStatus;
-    };
+type SnapshotConflict = {
+  ok: false;
+  code: "SNAPSHOT_CONFLICT";
+  latestSnapshotId: string;
+  latestExecutionStatus: TaskRunExecutionStatus;
+};
+
+export type RestoreOutcomeResult = { ok: true; outcome: RestoreOutcome } | SnapshotConflict;
+
+export type ReleaseRunResult = { ok: true; requeued: boolean } | SnapshotConflict;
 
 export type HeartbeatTimeouts = {
   PENDING_EXECUTING: number;

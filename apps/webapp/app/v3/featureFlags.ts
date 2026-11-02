@@ -57,9 +57,9 @@ export const FEATURE_FLAG = {
   freeScheduleMinimumWindowEnabled: "freeScheduleMinimumWindowEnabled",
   deployNowEnabled: "deployNowEnabled",
   apiRateLimitMetricsEnabled: "apiRateLimitMetricsEnabled",
-  queueArchivingEnabled: "queueArchivingEnabled",
   supportAccessSettingsEnabled: "supportAccessSettingsEnabled",
   runTokenInjection: "runTokenInjection",
+  externalOidc: "externalOidc",
   sessionTraceEnabled: "sessionTraceEnabled",
 } as const;
 
@@ -230,13 +230,14 @@ export const FeatureFlagCatalog = {
   // Strict z.boolean() (not z.coerce.boolean()): coercion reads the string
   // "false" as true, which would enable an off-by-default gate.
   [FEATURE_FLAG.deployNowEnabled]: z.boolean(),
-  [FEATURE_FLAG.queueArchivingEnabled]: z.boolean(),
   // Shows the org Support Access settings page. Off until every webapp enforces the setting;
   // the org override wins over the global value.
   [FEATURE_FLAG.supportAccessSettingsEnabled]: z.boolean(),
   // Injects a signed per-attempt TRIGGER_RUN_TOKEN into deployed runs. Org override wins over
   // the global value. Requires RUN_TOKEN_ISSUER_URL and an active internal run signing key.
   [FEATURE_FLAG.runTokenInjection]: z.boolean(),
+  // Org override wins over the global value; off by default.
+  [FEATURE_FLAG.externalOidc]: z.boolean(),
   // Shows the session page's Trace tab and serves its routes. Org override wins over the global
   // value; off by default. Admins always have it.
   [FEATURE_FLAG.sessionTraceEnabled]: z.boolean(),

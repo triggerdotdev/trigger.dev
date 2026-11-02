@@ -153,6 +153,7 @@ describe("ManualAlertCreation", () => {
       pick("expiry", "For 24 hours");
       click(checkbox("notifiers", "Ops webhook"));
       click(button("Done")!);
+      click(button("Continue")!);
       await act(async () => button("Create alert")!.click());
       const calls = fetchMock.mock.calls.filter(([url]) => url === "/resources/alerts/create");
       expect(calls).toHaveLength(1);

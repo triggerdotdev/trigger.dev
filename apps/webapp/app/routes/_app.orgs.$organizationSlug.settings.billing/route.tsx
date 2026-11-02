@@ -13,13 +13,18 @@ import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
 import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
-import { getCurrentPlan, getPlans } from "~/services/platform.v3.server";
+import { getBillingPagePlan, getPlans } from "~/services/platform.v3.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import {
   OrganizationParamsSchema,
   organizationPath,
   v3StripePortalPath,
 } from "~/utils/pathBuilder";
+import {
+  billingMovesToPlanOf,
+  downgradeTakesEffectAt,
+  type MovesToPlan,
+} from "~/components/billing/freePlanLabel";
 import { PricingPlans } from "../resources.orgs.$organizationSlug.select-plan";
 import { billingMessageFromKey } from "~/utils/billingMessages";
 import { pageMeta } from "~/utils/pageTitle";
@@ -58,8 +63,14 @@ export const loader = dashboardLoader(
       throw new Response(null, { status: 404, statusText: "Organization not found" });
     }
 
-    const currentPlan = await getCurrentPlan(organization.id);
+    const planRead = await getBillingPagePlan(organization.id);
+    if (planRead.isErr()) {
+      return typedjson({ billingUnavailable: true as const, organizationSlug });
+    }
+    const currentPlan = planRead.value;
     const showSelfServe = currentPlan?.v3Subscription?.showSelfServe !== false;
+    const billingMovesAt = billingMovesAtOf(currentPlan?.subscription);
+    const billingMovesToPlan = billingMovesToPlanOf(currentPlan?.subscription);
 
     //periods
     const periodStart = new Date();
@@ -80,6 +91,7 @@ export const loader = dashboardLoader(
 
     if (!showSelfServe) {
       return typedjson({
+        billingUnavailable: false as const,
         showSelfServe: false as const,
         ...currentPlan,
         organizationSlug,
@@ -87,6 +99,8 @@ export const loader = dashboardLoader(
         periodEnd,
         daysRemaining,
         message,
+        billingMovesAt,
+        billingMovesToPlan,
       });
     }
 
@@ -99,6 +113,7 @@ export const loader = dashboardLoader(
     }
 
     return typedjson({
+      billingUnavailable: false as const,
       showSelfServe: true as const,
       ...plans,
       ...currentPlan,
@@ -108,12 +123,29 @@ export const loader = dashboardLoader(
       daysRemaining,
       message,
       planProvisioning,
+      billingMovesAt,
+      billingMovesToPlan,
     });
   }
 );
 
 export default function ChoosePlanPage() {
   const loaderData = useTypedLoaderData<typeof loader>();
+
+  if (loaderData.billingUnavailable) {
+    return (
+      <PageContainer>
+        <NavBar>
+          <PageTitle title="Billing" />
+        </NavBar>
+        <PageBody>
+          <MainCenteredContainer className="max-w-md">
+            <BillingUnavailablePanel />
+          </MainCenteredContainer>
+        </PageBody>
+      </PageContainer>
+    );
+  }
 
   const {
     showSelfServe,
@@ -123,6 +155,8 @@ export default function ChoosePlanPage() {
     periodEnd,
     daysRemaining,
     message,
+    billingMovesAt,
+    billingMovesToPlan,
   } = loaderData;
 
   return (
@@ -152,6 +186,12 @@ export default function ChoosePlanPage() {
         {showSelfServe ? (
           <div className="flex flex-col gap-3">
             <PlanProvisioningCallout status={loaderData.planProvisioning} />
+            {billingMovesAt && (
+              <Callout variant="info">
+                Billing for this organization moves on{" "}
+                <DateTime includeTime={false} date={billingMovesAt} timeZone="UTC" />.
+              </Callout>
+            )}
             {message && (
               <Callout variant="idea" className="mb-2">
                 {message}
@@ -163,7 +203,9 @@ export default function ChoosePlanPage() {
                 {planLabel(
                   v3Subscription?.plan,
                   v3Subscription?.canceledAt !== undefined,
-                  periodEnd
+                  billingMovesAt && billingMovesToPlan
+                    ? { ...billingMovesToPlan, startsAt: billingMovesAt }
+                    : undefined
                 )}
               </div>
               {v3Subscription?.isPaying ? (
@@ -218,6 +260,20 @@ export default function ChoosePlanPage() {
   );
 }
 
+/** Shown instead of the plan and plan picker while billing can't read the org's plan. */
+export function BillingUnavailablePanel() {
+  return (
+    <InfoPanel
+      title="Billing"
+      icon={CreditCardIcon}
+      iconClassName="text-amber-500"
+      panelClassName="max-w-full"
+    >
+      <Paragraph variant="small">Billing is temporarily unavailable, try again shortly.</Paragraph>
+    </InfoPanel>
+  );
+}
+
 function PlanProvisioningCallout({ status }: { status?: PlanProvisioningStatus }) {
   useAutoRevalidate({ interval: 3000, disabled: status !== "pending" });
 
@@ -253,9 +309,27 @@ function PlanProvisioningCallout({ status }: { status?: PlanProvisioningStatus }
   }
 }
 
-function planLabel(plan: PlanDefinition | undefined, canceled: boolean, periodEnd: Date) {
+// Billing sends it in the subscription field, which the platform schema passes through untouched.
+function billingMovesAtOf(subscription: unknown): Date | undefined {
+  if (typeof subscription !== "object" || subscription === null) return undefined;
+  const movesAt = (subscription as { billingMovesAt?: unknown }).billingMovesAt;
+  return typeof movesAt === "string" ? new Date(movesAt) : undefined;
+}
+
+function planLabel(
+  plan: PlanDefinition | undefined,
+  canceled: boolean,
+  next?: MovesToPlan & { startsAt: Date }
+) {
   if (!plan || plan.type === "free") {
-    return "You're on the Free plan";
+    if (!next || next.code === plan?.code) return "You're on the Free plan";
+    return (
+      <>
+        You're on the Free plan. From{" "}
+        <DateTime includeTime={false} date={next.startsAt} timeZone="UTC" /> you're on the{" "}
+        {next.title} plan.
+      </>
+    );
   }
 
   if (plan.type === "enterprise") {
@@ -267,7 +341,17 @@ function planLabel(plan: PlanDefinition | undefined, canceled: boolean, periodEn
   if (canceled) {
     return (
       <>
-        {text}. From <DateTime includeTime={false} date={periodEnd} /> you're on the Free plan.
+        {text}. From <DateTime includeTime={false} date={downgradeTakesEffectAt()} timeZone="UTC" />{" "}
+        you're on the Free plan.
+      </>
+    );
+  }
+
+  if (next && next.code !== plan.code) {
+    return (
+      <>
+        {text}. From <DateTime includeTime={false} date={next.startsAt} timeZone="UTC" /> you're on
+        the {next.title} plan.
       </>
     );
   }

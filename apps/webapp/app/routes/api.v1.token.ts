@@ -8,7 +8,10 @@ import {
   AuthorizationCodeRateLimitError,
   checkAuthorizationCodeTokenPollRateLimit,
 } from "~/services/authCodeRateLimiter.server";
-import { getPersonalAccessTokenFromAuthorizationCode } from "~/services/personalAccessToken.server";
+import {
+  CLI_LOGIN_UPGRADE_REQUIRED_MESSAGE,
+  getPersonalAccessTokenFromAuthorizationCode,
+} from "~/services/personalAccessToken.server";
 import { clientSafeErrorMessage } from "~/utils/prismaErrors";
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -45,7 +48,8 @@ export async function action({ request }: ActionFunctionArgs) {
 
   try {
     const personalAccessToken = await getPersonalAccessTokenFromAuthorizationCode(
-      body.data.authorizationCode
+      body.data.authorizationCode,
+      { codeVerifier: body.data.codeVerifier, approvalCode: body.data.approvalCode }
     );
 
     const responseJson: GetPersonalAccessTokenResponse = {
@@ -54,7 +58,9 @@ export async function action({ request }: ActionFunctionArgs) {
     return json(responseJson);
   } catch (error) {
     if (error instanceof Error) {
-      const expected = error.message === "Invalid authorization code, or code expired";
+      const expected =
+        error.message === "Invalid authorization code, or code expired" ||
+        error.message === CLI_LOGIN_UPGRADE_REQUIRED_MESSAGE;
       const fields = { url: request.url, error: error.message };
       if (expected) {
         logger.warn("Error getting PersonalAccessToken from AuthorizationCode", fields);

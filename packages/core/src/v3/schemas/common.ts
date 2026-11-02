@@ -8,12 +8,24 @@ export type Enum<T extends string> = { [K in T]: K };
 const DANGEROUS_METADATA_KEY_SEGMENTS = new Set(["__proto__", "constructor", "prototype"]);
 
 /**
- * Prototype-pollution guard for run metadata operation keys. JSON paths are applied via
+ * Whether a run metadata operation key can be applied at all. JSON paths are applied via
  * JSONHeroPath, so dangerous path segments must be rejected. JSONHeroPath unescapes `\.` when it
  * parses a path and re-splits on it when it writes, so backslashes are segment boundaries too.
  * Literal keys are assigned directly, where only __proto__ can change the target object's prototype.
  */
 export function isSafeMetadataKey(key: string): boolean {
+  return namesBelowRoot(key) && hasNoDangerousSegment(key);
+}
+
+// JSONHeroPath's own component pattern; parsing with JSONHeroPath here would shift its shared regex state.
+const JSON_PATH_COMPONENTS = /(?:[^.\\]|\\.)+/g;
+
+/** JSONHeroPath reads a key with no component after `$` (`$.`, `$..`) as the root, which it cannot set. */
+function namesBelowRoot(key: string): boolean {
+  return !key.startsWith("$.") || (key.match(JSON_PATH_COMPONENTS)?.length ?? 0) > 1;
+}
+
+function hasNoDangerousSegment(key: string): boolean {
   if (!key.startsWith("$.")) {
     return key !== "__proto__";
   }
@@ -21,9 +33,12 @@ export function isSafeMetadataKey(key: string): boolean {
   return !key.split(/[.[\]'"\\]+/).some((segment) => DANGEROUS_METADATA_KEY_SEGMENTS.has(segment));
 }
 
-const MetadataOperationKey = z.string().refine(isSafeMetadataKey, {
-  message: "Metadata key may not reference __proto__, constructor, or prototype",
-});
+const MetadataOperationKey = z
+  .string()
+  .refine(namesBelowRoot, { message: "A JSON path key must name a segment below $" })
+  .refine(hasNoDangerousSegment, {
+    message: "Metadata key may not reference __proto__, constructor, or prototype",
+  });
 
 export const RunMetadataUpdateOperation = z.object({
   type: z.literal("update"),

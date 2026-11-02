@@ -8,9 +8,11 @@ import type {
 import type { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import {
   isBunRuntime,
+  isLegacyBunRuntime,
   DEFAULT_RUNTIME,
   deprecatedRuntimeReplacement,
   isDeprecatedConfigRuntime,
+  LEGACY_BUN_REMOVAL_DATE,
   resolveBuildRuntime,
 } from "@trigger.dev/core/v3/build";
 import * as c12 from "c12";
@@ -368,12 +370,27 @@ function validateConfig(config: TriggerConfig, warn = true) {
     );
   }
 
-  if (isBunRuntime(config.runtime)) {
-    warn &&
-      prettyWarning(
-        `The "${config.runtime}" runtime is currently experimental, and certain features may not work, especially opentelemetry instrumentation of 3rd party packages.`
-      );
+  const bunWarning = bunRuntimeWarning(config.runtime);
+  if (warn && bunWarning) {
+    prettyWarning(bunWarning);
   }
+}
+
+function bunRuntimeWarning(runtime: unknown): string | undefined {
+  if (isLegacyBunRuntime(runtime)) {
+    const removalDate = new Date(`${LEGACY_BUN_REMOVAL_DATE}T00:00:00Z`).toLocaleDateString(
+      "en-US",
+      { timeZone: "UTC", year: "numeric", month: "long", day: "numeric" }
+    );
+
+    return `The "${runtime}" runtime (Bun 1.3.3 with Node.js 20) is deprecated, and deploys using it will be rejected from ${removalDate}. Switch to "bun-1.4": it runs Bun 1.4.4 on an image with no Node.js binary, so tasks that spawn \`node\` need it added with a build extension. See https://trigger.dev/docs/guides/frameworks/bun`;
+  }
+
+  if (isBunRuntime(runtime)) {
+    return `The "${runtime}" runtime is currently experimental, and certain features may not work, especially opentelemetry instrumentation of 3rd party packages.`;
+  }
+
+  return undefined;
 }
 
 function adaptResolveEnvVarsToSyncEnvVarsExtension(

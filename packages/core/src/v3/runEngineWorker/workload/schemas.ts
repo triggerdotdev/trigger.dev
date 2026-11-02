@@ -2,7 +2,7 @@ import { z } from "zod/v4";
 import { discriminatedUnion } from "../../utils/zod.js";
 import {
   WorkerApiRunHeartbeatRequestBody,
-  WorkerApiHeartbeatResponseBody,
+  WorkerApiRunHeartbeatResponseBody,
   WorkerApiRunAttemptCompleteRequestBody,
   WorkerApiRunAttemptCompleteResponseBody,
   WorkerApiRunAttemptStartRequestBody,
@@ -16,7 +16,7 @@ import {
 export const WorkloadHeartbeatRequestBody = WorkerApiRunHeartbeatRequestBody;
 export type WorkloadHeartbeatRequestBody = z.infer<typeof WorkloadHeartbeatRequestBody>;
 
-export const WorkloadHeartbeatResponseBody = WorkerApiHeartbeatResponseBody;
+export const WorkloadHeartbeatResponseBody = WorkerApiRunHeartbeatResponseBody;
 export type WorkloadHeartbeatResponseBody = z.infer<typeof WorkloadHeartbeatResponseBody>;
 
 export const WorkloadSuspendRunResponseBody = discriminatedUnion("ok", [

@@ -94,6 +94,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       output: finalData.data
         ? { type: finalData.dataType, value: finalData.data, isError: false }
         : undefined,
+      organizationId: environment.organization.id,
     });
 
     return json<CompleteWaitpointTokenResponseBody>(

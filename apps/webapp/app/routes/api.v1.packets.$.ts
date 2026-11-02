@@ -1,78 +1,87 @@
-import type { ActionFunctionArgs } from "@remix-run/server-runtime";
-import { json } from "@remix-run/server-runtime";
-import { z } from "zod";
-import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { isPublicJWT } from "@trigger.dev/core/v3/jwt";
+import type { ApiAuthenticationResultSuccess } from "~/services/apiAuth.server";
+import { authenticateBearerWithTelemetry } from "~/services/authTelemetry.server";
 import { logger } from "~/services/logger.server";
+import { apiCors } from "~/utils/apiCors";
+import {
+  assertPacketNamespaceAccess,
+  createPacketUploadRoute,
+  PacketParamsSchema,
+} from "~/services/packetApi.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { generatePresignedUrl, jsonPacketPresignFailure } from "~/v3/objectStore.server";
 
-const ParamsSchema = z.object({
-  "*": z.string(),
-});
+const { action } = createPacketUploadRoute({ forceNoPrefix: true });
+export { action };
 
-export async function action({ request, params }: ActionFunctionArgs) {
-  // Ensure this is a POST request
-  if (request.method.toUpperCase() !== "PUT") {
-    return { status: 405, body: "Method Not Allowed" };
-  }
-
-  // Next authenticate the request
-  const authenticationResult = await authenticateApiRequest(request);
-
-  if (!authenticationResult) {
-    return json({ error: "Invalid or Missing API key" }, { status: 401 });
-  }
-
-  const parsedParams = ParamsSchema.parse(params);
-  const filename = parsedParams["*"];
-
-  const signed = await generatePresignedUrl(
-    authenticationResult.environment.project.externalRef,
-    authenticationResult.environment.slug,
-    filename,
-    "PUT",
-    { forceNoPrefix: true }
-  );
-
-  if (!signed.success) {
-    return jsonPacketPresignFailure(signed);
-  }
-
-  // Caller can now use this URL to upload to that object.
-  return json({ presignedUrl: signed.url });
-}
-
-export const loader = createLoaderApiRoute(
+const scopedLoader = createLoaderApiRoute(
   {
-    params: ParamsSchema,
+    params: PacketParamsSchema,
     allowJWT: true,
     corsStrategy: "all",
-    findResource: async () => 1, // This is a dummy function, we don't need to find a resource
+    findResource: async () => ({ type: "packets" }),
+    authorization: {
+      action: "read",
+      resource: (packets) => packets,
+    },
   },
   async ({ params, authentication }) => {
-    const filename = params["*"];
-
-    // Public tokens should use /api/v1/runs/:runId/packets/:field, which authorizes
-    // against the owning run. Access here is kept for clients on older SDKs.
-    if (authentication.type === "PUBLIC_JWT") {
-      logger.info("Legacy packet download with public token", {
-        environmentId: authentication.environment.id,
-        projectId: authentication.environment.projectId,
-      });
-    }
-
-    const signed = await generatePresignedUrl(
-      authentication.environment.project.externalRef,
-      authentication.environment.slug,
-      filename,
-      "GET"
-    );
-
-    if (!signed.success) {
-      return jsonPacketPresignFailure(signed);
-    }
-
-    // Caller can now use this URL to fetch that object.
-    return json({ presignedUrl: signed.url });
+    assertPacketNamespaceAccess(authentication);
+    return downloadPacket(authentication, params["*"]);
   }
 );
+
+async function downloadPacket(authentication: ApiAuthenticationResultSuccess, filename: string) {
+  const signed = await generatePresignedUrl(
+    authentication.environment.project.externalRef,
+    authentication.environment.slug,
+    filename,
+    "GET"
+  );
+  return signed.success ? json({ presignedUrl: signed.url }) : jsonPacketPresignFailure(signed);
+}
+
+export async function loader(args: LoaderFunctionArgs) {
+  const { request, params } = args;
+  const bearer = request.headers
+    .get("Authorization")
+    ?.replace(/^Bearer /, "")
+    .trim();
+  if (request.method === "OPTIONS" || !bearer || !isPublicJWT(bearer)) {
+    return scopedLoader(args);
+  }
+
+  // ponytail: legacy public-JWT GET remains in every environment, including DEVELOPMENT's shared
+  // packet namespace, until the SEC-762 diagnostic log drains. Other credentials use packet abilities.
+  try {
+    const result = await authenticateBearerWithTelemetry(request, { allowJWT: true });
+    if (!result.ok) {
+      return apiCors(request, json({ error: result.error }, { status: result.status }));
+    }
+    if (result.subject.type !== "publicJWT") {
+      return apiCors(request, json({ error: "Invalid Public Access Token" }, { status: 401 }));
+    }
+    const authentication: ApiAuthenticationResultSuccess = {
+      ok: true,
+      apiKey: result.environment.apiKey,
+      type: "PUBLIC_JWT",
+      environmentScoped: true,
+      credentialKind: result.resolution.credentialKind,
+      environment: result.environment,
+    };
+    const parsed = PacketParamsSchema.safeParse(params);
+    if (!parsed.success) {
+      return apiCors(request, json({ error: "Params Error" }, { status: 400 }));
+    }
+    logger.info("Legacy packet download with public token", {
+      environmentId: authentication.environment.id,
+      projectId: authentication.environment.projectId,
+      environmentType: authentication.environment.type,
+    });
+    return apiCors(request, await downloadPacket(authentication, parsed.data["*"]));
+  } catch (error) {
+    if (error instanceof Response) return apiCors(request, error);
+    throw error;
+  }
+}

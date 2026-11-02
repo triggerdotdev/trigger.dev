@@ -41,7 +41,11 @@ export function useShortcutKeys({
 
   const keys = createKeysFromShortcut(relevantShortcut);
 
-  const isEnabled = !disabled && areShortcutsEnabled && relevantShortcut?.enabled !== false;
+  const isEnabled =
+    !disabled &&
+    areShortcutsEnabled &&
+    !!relevantShortcut?.key &&
+    relevantShortcut.enabled !== false;
 
   useHotkeys(
     keys,

@@ -31,7 +31,7 @@ import {
   type AlertDraftScope,
 } from "~/v3/services/alerts/createAlertFromDraft.server";
 import { offeredCapabilities } from "~/v3/services/alerts/offeredCapabilities.server";
-import { validateAlertDraft } from "~/v3/services/alerts/validateAlertDraft.server";
+import { stateFields, validateAlertDraft } from "~/v3/services/alerts/validateAlertDraft.server";
 import { validateAlertNotifiers } from "~/v3/services/alerts/validateAlertNotifiers.server";
 import { alertDisplayName } from "~/v3/services/alerts/alertDisplayName";
 import { resolveMonitoringAlertsEnvironment } from "~/services/monitoringAlertsApi.server";
@@ -47,7 +47,7 @@ const ListQuerySchema = z.object({
 });
 
 const CapabilitiesQuerySchema = z.object({
-  area: z.enum(["queues", "runs", "health", "errors"]).optional(),
+  area: z.enum(["queues", "runs", "health", "limits", "errors"]).optional(),
   curatedOnly: z
     .string()
     .optional()
@@ -127,11 +127,14 @@ export async function loader({ request }: LoaderFunctionArgs) {
         key: c.key,
         title: c.title,
         area: c.area,
+        group: c.group,
         signal: c.signal,
         allowedKinds: c.allowedKinds,
         allowedScopes: c.allowedScopes,
         unit: c.unit,
         curated: c.curated,
+        supportedSignals: c.supportedSignals,
+        components: c.binding.compositeOf,
         params: c.binding.params?.map((p) => ({
           key: p.key,
           label: p.label,
@@ -273,6 +276,7 @@ export async function action({ request }: ActionFunctionArgs) {
     conditionKind: body.condition.kind,
     quietWindowSec: body.condition.kind === "absence" ? body.condition.quietWindowSec : undefined,
     scope: body.scope,
+    ...stateFields(body.condition),
   });
   if (draftError) {
     return json({ error: draftError.message }, { status: 400 });
@@ -421,6 +425,7 @@ export async function action({ request }: ActionFunctionArgs) {
         capabilityKey: alert.capabilityKey,
         lifecycle: alert.lifecycle,
         attention: alert.attention,
+        ...stateFields(alert.condition as Parameters<typeof stateFields>[0]),
       },
     });
   } catch (error) {

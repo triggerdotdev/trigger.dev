@@ -157,6 +157,9 @@ export const action = dashboardAction(
           ? (body.form.quietWindowMinutes ?? 0) * 60
           : undefined,
       scope: buildScope(body.form),
+      compositeMode: body.form.compositeMode,
+      signals: body.form.signals,
+      components: body.form.components,
     });
     if (draftError) {
       return json({ error: draftError.message }, { status: 400 });

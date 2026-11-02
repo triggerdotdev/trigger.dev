@@ -1,5 +1,6 @@
 import type { Condition } from "@internal/alert-contracts";
 import { formatAlertValue } from "./formatAlertTick";
+import { stateConditionSummary } from "./limitSummary";
 
 export function humanizeSeconds(seconds: number): string {
   if (seconds >= 3600 && seconds % 3600 === 0) return `${seconds / 3600}h`;
@@ -21,7 +22,7 @@ export function conditionSummary(condition: Condition, unit?: string, title?: st
         condition.windowSec
       )}`;
     case "state":
-      return `State: ${condition.stateKey}`;
+      return stateConditionSummary(condition) ?? `State: ${condition.stateKey}`;
     case "occurrence":
       return title ?? "New occurrence";
     case "absence":

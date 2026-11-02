@@ -120,6 +120,7 @@ const { action } = createActionApiRoute(
           type: "application/json",
           isError: false,
         },
+        organizationId: authentication.environment.organization.id,
       });
       await deleteInputStreamWaitpoint(params.runId, params.streamId);
     }

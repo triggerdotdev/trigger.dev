@@ -59,6 +59,9 @@ export async function action({ request }: LoaderFunctionArgs) {
     if (!authenticationResult.ok) {
       return json({ error: "Invalid or Missing API key" }, { status: authenticationResult.status });
     }
+    if (authenticationResult.subject.type === "runToken") {
+      return json({ error: "Invalid or Missing API key" }, { status: 401 });
+    }
 
     // A revoked key still authenticates through the grace window (by design,
     // for zero-downtime rotation). It must not mint new JWTs: those are signed

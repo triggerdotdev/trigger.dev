@@ -34,7 +34,6 @@ import {
   getLogsSearchListQueryBuilder,
 } from "./taskEvents.js";
 import { insertTaskEventsSearchV2 } from "./taskEventsSearch.js";
-import { projectTaskEventsSearchV2Window } from "./taskEventsSearchProjector.js";
 import { insertMetrics } from "./metrics.js";
 import { insertLlmMetrics } from "./llmMetrics.js";
 import {
@@ -79,6 +78,11 @@ import {
   getOccurrenceCountsSinceQueryBuilder,
 } from "./errors.js";
 export { msToClickHouseInterval } from "./intervals.js";
+export {
+  setQueryObserver,
+  type QueryObservation,
+  type QueryObserver,
+} from "./client/queryObserver.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import type { Meter } from "@internal/tracing";
 import type { Agent as HttpAgent } from "http";
@@ -94,7 +98,6 @@ export {
   TRACE_CHUNK_ORDER_BY,
 } from "./taskEvents.js";
 export * from "./taskEventsSearch.js";
-export * from "./taskEventsSearchProjector.js";
 export type * from "./metrics.js";
 export type * from "./llmMetrics.js";
 export type * from "./queueMetrics.js";
@@ -169,6 +172,8 @@ export type ClickHouseConfig =
       url?: string;
       writerUrl?: never;
       readerUrl?: never;
+      readerClickhouseSettings?: never;
+      readerRequestTimeoutMs?: never;
     } & ClickhouseCommonConfig)
   | ({
       name?: never;
@@ -177,6 +182,10 @@ export type ClickHouseConfig =
       writerUrl: string;
       readerName?: string;
       readerUrl: string;
+      /** Applied to the reader only, on top of `clickhouseSettings`. */
+      readerClickhouseSettings?: ClickHouseSettings;
+      /** Reader-only override of `requestTimeoutMs`. */
+      readerRequestTimeoutMs?: number;
     } & ClickhouseCommonConfig);
 
 export class ClickHouse {
@@ -215,14 +224,14 @@ export class ClickHouse {
       this.reader = new ClickhouseClient({
         name: config.readerName ?? "clickhouse-reader",
         url: config.readerUrl,
-        clickhouseSettings: config.clickhouseSettings,
+        clickhouseSettings: { ...config.clickhouseSettings, ...config.readerClickhouseSettings },
         logger: this.logger,
         meter: config.meter,
         logLevel: config.logLevel,
         keepAlive: config.keepAlive,
         httpAgent: config.httpAgent,
         maxOpenConnections: config.maxOpenConnections,
-        requestTimeoutMs: config.requestTimeoutMs,
+        requestTimeoutMs: config.readerRequestTimeoutMs ?? config.requestTimeoutMs,
         compression: config.compression,
       });
       this.writer = new ClickhouseClient({
@@ -265,6 +274,11 @@ export class ClickHouse {
       url: process.env.CLICKHOUSE_URL,
       name: process.env.CLICKHOUSE_NAME,
     });
+  }
+
+  /** True when reads and writes go to separate services. */
+  get hasSeparateReader(): boolean {
+    return this._splitClients;
   }
 
   async close() {
@@ -375,7 +389,6 @@ export class ClickHouse {
     return {
       insert: insertTaskEventsSearchV2(this.writer),
       logsListQueryBuilder: getLogsSearchListQueryBuilder(this.reader),
-      projectV2Window: projectTaskEventsSearchV2Window(this.writer),
     };
   }
 

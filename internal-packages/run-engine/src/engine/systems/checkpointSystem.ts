@@ -16,6 +16,7 @@ import type { SystemResources } from "./systems.js";
 import { snapshotRouteFromSnapshot } from "@internal/run-store";
 import { ServiceValidationError } from "../errors.js";
 import type { EnqueueSystem } from "./enqueueSystem.js";
+import { cycleAnchorSnapshotId } from "./waitpointSystem.js";
 
 /** The description of the EXECUTING snapshot `continueRunExecution` writes. */
 export const CONTINUED_AFTER_SUSPENDED_DESCRIPTION = "Run was continued after being suspended";
@@ -24,6 +25,7 @@ export type CheckpointSystemOptions = {
   resources: SystemResources;
   executionSnapshotSystem: ExecutionSnapshotSystem;
   enqueueSystem: EnqueueSystem;
+  waitpointStoreEnabled?: (organizationId: string) => boolean | Promise<boolean>;
 };
 
 export class CheckpointSystem {
@@ -240,13 +242,28 @@ export class CheckpointSystem {
           checkpoint: taskRunCheckpoint,
         } satisfies CreateCheckpointResult;
       } else {
+        // An unwired capability check returns false synchronously.
+        const storeEnabled =
+          (snapshot.executionStatus === "EXECUTING_WITH_WAITPOINTS" ||
+            snapshot.executionStatus === "SUSPENDED") &&
+          this.options.waitpointStoreEnabled?.(env.organizationId);
         //create a new execution snapshot, with the checkpoint
         const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
           run,
           snapshot: {
             executionStatus: "SUSPENDED",
             description: "Run was suspended after creating a checkpoint.",
-            metadata: snapshot.metadata,
+            metadata:
+              storeEnabled && (await storeEnabled) === true
+                ? {
+                    ...(snapshot.metadata &&
+                    typeof snapshot.metadata === "object" &&
+                    !Array.isArray(snapshot.metadata)
+                      ? snapshot.metadata
+                      : {}),
+                    waitpointCycleAnchor: cycleAnchorSnapshotId(snapshot),
+                  }
+                : snapshot.metadata,
           },
           previousSnapshotId: snapshot.id,
           previousSnapshot: snapshot,

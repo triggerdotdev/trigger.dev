@@ -267,6 +267,14 @@ export function v3ApiKeysPath(
   return `${v3EnvironmentPath(organization, project, environment)}/apikeys`;
 }
 
+export function v3OidcPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/oidc`;
+}
+
 export function v3BulkActionsPath(
   organization: OrgForPath,
   project: ProjectForPath,
@@ -744,6 +752,32 @@ export function v3SessionPath(
   session: { friendlyId: string }
 ) {
   return `${v3SessionsPath(organization, project, environment)}/${session.friendlyId}`;
+}
+
+// A page of a session's runs for the Trace tab, newest first.
+export function v3SessionRunsPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  session: { friendlyId: string }
+) {
+  return `/resources/orgs/${organizationParam(organization)}/projects/${projectParam(
+    project
+  )}/env/${environmentParam(environment)}/sessions/${encodeURIComponent(session.friendlyId)}/runs`;
+}
+
+// A page of a session's saved transcript: the newest, or the one `before` a message id.
+export function v3SessionTranscriptPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  sessionParam: string,
+  before?: string
+) {
+  const path = `/resources/orgs/${organizationParam(organization)}/projects/${projectParam(
+    project
+  )}/env/${environmentParam(environment)}/sessions/${encodeURIComponent(sessionParam)}/transcript`;
+  return before ? `${path}?before=${encodeURIComponent(before)}` : path;
 }
 
 export function v3BatchPath(

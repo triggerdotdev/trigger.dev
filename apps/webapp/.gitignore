@@ -23,4 +23,3 @@ storybook-static
 
 /prisma/seed.js
 /prisma/populate.js
-.memory-snapshots

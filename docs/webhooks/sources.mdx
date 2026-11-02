@@ -106,6 +106,8 @@ Supabase database webhooks aren't signed, so `supabase()` checks a shared secret
 
 Slack also ships as a chat channel in `@trigger.dev/slack`.
 
+For a complete project built on `resend()`, see the [Resend email agent example](https://github.com/triggerdotdev/examples/tree/main/resend-slack-email-agent). It drafts replies to a Resend inbox and waits for your approval in Slack before sending them.
+
 ### Hookdeck
 
 `hookdeck()` verifies requests that a [Hookdeck](https://hookdeck.com) connection forwards to the endpoint. Hookdeck forwards the original provider's body unchanged, so pass that provider's event type:
@@ -242,7 +244,7 @@ Custom sources support these schemes:
 | `hmac` | Computes an HMAC over the raw body or a signing template and compares it with a request header. |
 | `shared-secret` | Compares a static token supplied in a header, bearer token, basic authentication, or request body. |
 | `url-secret` | Compares a token in a URL query parameter. Hosted endpoints don't support path placement. |
-| `asymmetric` | Verifies an Ed25519, ECDSA, or RSA signature using the provider's public key. |
+| `asymmetric` | Verifies an Ed25519, ECDSA (P-256 with SHA-256, P-384 with SHA-384), or RSA-SHA256 signature using the provider's public key. Set `prehash: "sha256"` when the provider signs a SHA-256 digest of the signing string instead of the string itself. |
 
 <Warning>
   Query parameters can appear in access logs, proxies, and traces. Prefer a header-based scheme when

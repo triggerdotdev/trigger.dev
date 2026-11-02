@@ -6,6 +6,7 @@ import type {
   WorkerApiRunAttemptCompleteRequestBody,
   WorkerApiRunAttemptStartRequestBody,
   WorkerApiRunHeartbeatRequestBody,
+  WorkerApiRunReleaseRequestBody,
   WorkerApiRunRestoreOutcomeRequestBody,
   WorkerApiDebugLogBody,
   WorkerApiSuspendRunRequestBody,
@@ -19,6 +20,7 @@ import {
   WorkerApiRunAttemptStartResponseBody,
   WorkerApiRunHeartbeatResponseBody,
   WorkerApiRunLatestSnapshotResponseBody,
+  WorkerApiRunReleaseResponseBody,
   WorkerApiRunRestoreOutcomeResponseBody,
   WorkerApiSuspendRunResponseBody,
   WorkerApiRunSnapshotsSinceResponseBody,
@@ -174,7 +176,8 @@ export class SupervisorHttpClient {
     runId: string,
     snapshotId: string,
     body: WorkerApiRunHeartbeatRequestBody,
-    runnerId?: string
+    runnerId?: string,
+    environmentId?: string
   ) {
     return this.request(
       "heartbeat_run",
@@ -185,6 +188,7 @@ export class SupervisorHttpClient {
         headers: {
           ...this.defaultHeaders,
           ...this.runnerIdHeader(runnerId),
+          ...this.environmentIdHeader(environmentId),
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
@@ -364,6 +368,35 @@ export class SupervisorHttpClient {
       "report_restore_outcome",
       WorkerApiRunRestoreOutcomeResponseBody,
       `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/restore-outcome`,
+      {
+        method: "POST",
+        headers: {
+          ...this.defaultHeaders,
+          ...this.runnerIdHeader(runnerId),
+          ...this.environmentIdHeader(environmentId),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }
+    );
+  }
+
+  /**
+   * Gives back a run this worker dequeued but never started. The platform requeues it with the
+   * engine's dequeue backoff and charges its dequeue budget, as the pending execution timeout
+   * would; once that budget is spent the run fails instead, and `requeued` is false.
+   */
+  async releaseRun(
+    runId: string,
+    snapshotId: string,
+    body: WorkerApiRunReleaseRequestBody,
+    runnerId?: string,
+    environmentId?: string
+  ): Promise<ApiResult<WorkerApiRunReleaseResponseBody>> {
+    return this.request(
+      "release_run",
+      WorkerApiRunReleaseResponseBody,
+      `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/release`,
       {
         method: "POST",
         headers: {

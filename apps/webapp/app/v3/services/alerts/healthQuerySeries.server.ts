@@ -3,9 +3,12 @@ import {
   alertParamsSchema,
   conditionSchema,
   getCapability,
+  selectedComponents,
   type AlertCapability,
   type AlertParams,
+  type Condition,
 } from "@internal/alert-contracts";
+import { isLimitComponent, type LimitTileSeries } from "~/components/alerts/limitTiles";
 import {
   healthQueryTerms,
   percentOfThreshold,
@@ -56,6 +59,10 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+export function retryOnConcurrency(runner: QueryRowRunner): QueryRowRunner {
+  return (query, context, range, opts) => withRetry(() => runner(query, context, range, opts));
+}
+
 export type HealthQueryLines = { series: HealthQuerySeries[] };
 
 export function worstGroupQuery(
@@ -94,15 +101,20 @@ export async function getHealthQuerySeries(
     return { series: [] };
   }
 
-  const capabilities = (input.capability.binding.compositeOf ?? [input.capability.key]).flatMap(
-    (key) => {
-      const capability = getCapability(key);
-      const binding = capability?.binding;
-      return capability && binding?.type === "query" && binding.template && binding.table
-        ? [capability]
-        : [];
-    }
-  );
+  const keys = input.capability.binding.compositeOf
+    ? selectedComponents(input.capability, condition)
+    : [input.capability.key];
+  const capabilities = keys.flatMap((key) => {
+    const capability = getCapability(key);
+    const binding = capability?.binding;
+    return capability &&
+      !isLimitComponent(key) &&
+      binding?.type === "query" &&
+      binding.template &&
+      binding.table
+      ? [capability]
+      : [];
+  });
   if (capabilities.length === 0) return { series: [] };
   const cadences = capabilities.map((c) => c.binding.minCadenceSec);
   const maxWindowSec = Math.max(
@@ -265,4 +277,116 @@ async function worstGroupSeries(
   return points.length === 0
     ? []
     : fillMetricBuckets(points, sinceMs, untilMs, bucketSeconds, null, undefined, maxBuckets);
+}
+
+const APPROACHING_TEMPLATE =
+  /^SELECT\s+(?:(\w+),\s+)?\(.*?\) AS met, (.+?) AS reading_(?:value|count), .+? AS samples FROM (\S+) WHERE \{\{scope\}\}(.*)$/s;
+
+export function limitTileQuery(
+  capability: AlertCapability,
+  params: AlertParams,
+  templateParams: Record<string, number>,
+  bucketSeconds: number,
+  maxBuckets: number
+): string | undefined {
+  const source = capability.binding.signalTemplates?.approaching;
+  const match = source ? APPROACHING_TEMPLATE.exec(source) : null;
+  if (!match) {
+    logger.warn("alerts.detail.limit_tile_template_unmatched", { key: capability.key });
+    return undefined;
+  }
+  const [, groupBy, reading, table, tail] = match;
+  return buildBucketedQuery({
+    template: `SELECT ${reading} FROM ${table} WHERE {{scope}}${tail!.replace(/\s+GROUP BY .*$/s, "")}`,
+    table: table!,
+    scope: scopeWhere(params),
+    bucketSeconds,
+    maxBuckets,
+    grouped: false,
+    templateParams,
+    partitionBy: groupBy,
+  });
+}
+
+export function limitTileKeys(capability: AlertCapability, condition?: Condition): string[] {
+  if (!capability.binding.compositeOf) {
+    return isLimitComponent(capability.key) ? [capability.key] : [];
+  }
+  return selectedComponents(capability, condition).filter(isLimitComponent);
+}
+
+export async function getLimitTileSeries(
+  input: HealthQueryInput,
+  runner: QueryRowRunner
+): Promise<LimitTileSeries[]> {
+  let params: AlertParams;
+  let condition;
+  try {
+    params = alertParamsSchema.parse(input.params);
+    const parsed = conditionSchema.parse(input.condition);
+    condition = parsed.kind === "state" ? parsed : undefined;
+  } catch {
+    return [];
+  }
+  const sinceMs = input.window.since.getTime();
+  const untilMs = input.window.until.getTime();
+  const buildTile = async (key: string): Promise<LimitTileSeries | undefined> => {
+    const capability = getCapability(key);
+    if (!capability) return undefined;
+    const templateParams = resolveEffectiveParams(condition, capability.binding.params);
+    const bucketSeconds = windowBucketSeconds(input.window, capability.binding.minCadenceSec);
+    const maxBuckets = Math.ceil((untilMs - sinceMs) / (bucketSeconds * 1000)) + 1;
+    const fetchPoints = async () => {
+      const query = limitTileQuery(capability, params, templateParams, bucketSeconds, maxBuckets);
+      if (!query) return [];
+      try {
+        const rows = await withRetry(() =>
+          runner(
+            query,
+            {
+              organizationId: input.organizationId,
+              projectId: input.projectId,
+              environmentId: params.environmentId,
+            },
+            { from: input.window.since.toISOString(), to: input.window.until.toISOString() }
+          )
+        );
+        const sampled = rows
+          .filter((r) => r.value !== null && r.value !== undefined)
+          .map((r) => ({
+            bucket: parseClickhouseDateTime(r.bucket as string).getTime(),
+            value: Number(r.value) || 0,
+          }));
+        return sampled.length === 0
+          ? []
+          : fillMetricBuckets(
+              sampled,
+              sinceMs,
+              untilMs,
+              bucketSeconds,
+              null,
+              undefined,
+              maxBuckets
+            );
+      } catch (error) {
+        logger.warn("alerts.detail.limit_tile_failed", {
+          alertId: input.alertId,
+          key,
+          error,
+        });
+        return null;
+      }
+    };
+    const points = await fetchPoints();
+    return {
+      key,
+      label: capability.shortTitle ?? capability.title,
+      threshold: templateParams.utilisationPct ?? null,
+      points: points ?? [],
+      failed: points === null,
+    };
+  };
+  const tiles: (LimitTileSeries | undefined)[] = [];
+  for (const key of limitTileKeys(input.capability, condition)) tiles.push(await buildTile(key));
+  return tiles.filter((tile): tile is LimitTileSeries => tile !== undefined);
 }

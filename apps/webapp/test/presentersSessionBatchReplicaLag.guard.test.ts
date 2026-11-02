@@ -287,6 +287,7 @@ describe("session/batch dashboard presenters under replica lag", () => {
         sessionParam: sessionFriendlyId,
         projectExternalRef: seed.project.externalRef,
         environmentSlug: "dev",
+        readTranscript: true,
       });
 
       // The run reads really hit the (lagging) replica.

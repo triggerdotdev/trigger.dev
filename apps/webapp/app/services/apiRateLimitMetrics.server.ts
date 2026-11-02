@@ -3,7 +3,10 @@ import { env } from "~/env.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { singleton } from "~/utils/singleton";
 import { meter } from "~/v3/tracer.server";
-import { ApiRateLimitMetricsAggregator } from "./apiRateLimitMetricsAggregator.server";
+import {
+  createApiRateLimitMetricsAggregator,
+  type ApiRateLimitMetricsAggregator,
+} from "./apiRateLimitMetricsAggregator.server";
 import {
   apiRateLimitMetricsInsertSettings,
   exportApiRateLimitMetricRows,
@@ -13,7 +16,6 @@ import type {
   RateLimitTenant,
 } from "./authorizationRateLimitMiddleware.server";
 import { logger } from "./logger.server";
-import { signalsEmitter } from "./signals.server";
 
 function enabledByEnv(): boolean {
   return env.API_RATE_LIMIT_METRICS_ENABLED !== "0";
@@ -86,68 +88,16 @@ function createAggregator(): ApiRateLimitMetricsAggregator {
       "API rate limit metric rows lost because ClickHouse rejected the insert request; failures while writing a queued async insert are not visible here",
   });
 
-  const aggregator = new ApiRateLimitMetricsAggregator({
+  const aggregator = createApiRateLimitMetricsAggregator({
     bucketSeconds: env.API_RATE_LIMIT_METRICS_BUCKET_SECONDS,
     maxEntries: env.API_RATE_LIMIT_METRICS_MAX_ENTRIES,
     isEnabled: createRuntimeGate(),
     sink: (rows) => exportRows(rows, (failed) => insertFailedCounter.add(failed)),
-    onDropped: (count) => droppedCounter.add(count, { reason: "cap" }),
+    counters: { dropped: droppedCounter, rowsFlushed: flushedCounter },
+    flushIntervalMs: env.API_RATE_LIMIT_METRICS_FLUSH_INTERVAL_MS,
+    ready: clickhouseFactory.isReady(),
   });
-
-  let routingReady = false;
-  clickhouseFactory
-    .isReady()
-    .then(() => {
-      routingReady = true;
-    })
-    .catch((error) => {
-      logger.error("api rate limit metrics: data store registry never became ready", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    });
-
-  let deferredWarned = false;
-  const flush = () => {
-    if (!routingReady) {
-      if (aggregator.size > 0 && !deferredWarned) {
-        deferredWarned = true;
-        logger.warn("api rate limit metrics: flush deferred, data store routing not ready", {
-          pendingEntries: aggregator.size,
-        });
-      }
-      return;
-    }
-    try {
-      const flushed = aggregator.flush();
-      if (flushed > 0) {
-        flushedCounter.add(flushed);
-      }
-    } catch (error) {
-      logger.error("api rate limit metrics: flush failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  };
-
-  const interval = setInterval(flush, env.API_RATE_LIMIT_METRICS_FLUSH_INTERVAL_MS);
-  interval.unref();
-
-  const shutdown = () => {
-    clearInterval(interval);
-    if (!routingReady) {
-      const dropped = aggregator.discard();
-      if (dropped > 0) {
-        droppedCounter.add(dropped, { reason: "shutdown_before_ready" });
-        logger.warn("api rate limit metrics: shutting down before routing was ready, dropping", {
-          droppedObservations: dropped,
-        });
-      }
-      return;
-    }
-    flush();
-  };
-  signalsEmitter.on("SIGTERM", shutdown);
-  signalsEmitter.on("SIGINT", shutdown);
+  aggregator.start();
 
   return aggregator;
 }

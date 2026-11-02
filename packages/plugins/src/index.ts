@@ -43,6 +43,15 @@ export {
 } from "./rbac.js";
 
 export type { PluginDatabaseConfig } from "./databaseConfig.js";
+export type {
+  ExternalOidcController,
+  ExternalOidcEnvironment,
+  ExternalOidcMintResult,
+  ExternalOidcPlugin,
+  ExternalOidcPluginConfig,
+  ExternalOidcRunIdentity,
+  ExternalOidcSetup,
+} from "./oidc.js";
 
 export type {
   SsoPlugin,
@@ -81,4 +90,26 @@ export type {
   ProvisionBillingCustomerParams,
   ProvisionBillingCustomerResult,
   ProvisionBillingCustomerOutcome,
+  ProvisionFreePlanContractParams,
+  ProvisionFreePlanContractResult,
+  BillingUsageError,
+  BillingCurrency,
+  BillingCreditType,
+  BillingInvoiceLineItem,
+  BillingUsageWindow,
+  BillingUsageMetric,
+  BillingUsageUnit,
+  BillingUsageMonthParams,
+  BillingUsageDay,
+  BillingMonthlyUsageLine,
+  BillingMonthlyUsage,
+  BillingUsageCredit,
+  BillingUsageCreditSource,
+  BillingAddOnLine,
+  BillingAddOnCharge,
+  BillingAddOns,
+  BillingProjectUsageDayEntry,
+  BillingProjectUsageDay,
+  BillingProjectUsageLine,
+  BillingProjectUsage,
 } from "./billing.js";

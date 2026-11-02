@@ -18,7 +18,7 @@ import type { ResolvedUri } from "./ReportView";
 // doesn't reach a link rendered in the table's fullscreen dialog (portaled outside that
 // container). Apply the app's standard link styling directly instead, reusing the trigger://
 // resolution from `TriggerAwareAnchor` rather than forking it.
-export function AgentAnchor({ href, children }: { href?: string; children?: ReactNode }) {
+function AgentAnchor({ href, children }: { href?: string; children?: ReactNode }) {
   return (
     <TriggerAwareAnchor href={href} className={textLinkClassName()}>
       {children}

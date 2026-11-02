@@ -60,6 +60,46 @@ describe("streaming batch item authorization", () => {
     ).rejects.toThrow();
   });
 
+  it.each([
+    { name: "public JWT", scopes: ["write:batch:batch_123"], allowStoredPayloads: false },
+    {
+      name: "restricted API key",
+      scopes: ["batchTrigger:tasks:task-a"],
+      allowStoredPayloads: false,
+    },
+    { name: "unrestricted API key", scopes: ["admin"], allowStoredPayloads: true },
+  ])(
+    "enforces stored-payload permission for $name on every item",
+    async ({ scopes, allowStoredPayloads }) => {
+      const ability = withActionAliases(buildJwtAbility(scopes));
+      const inline = { task: "task-a", payload: {} };
+      const stored = {
+        task: "task-a",
+        payload: "run_other/payload.json",
+        options: { payloadType: "application/store" },
+      };
+      async function* items() {
+        yield inline;
+        yield stored;
+      }
+
+      const stream = await authorizedBatchItemStream(
+        items(),
+        ability,
+        "batch_123",
+        allowStoredPayloads
+      );
+      const iterator = stream[Symbol.asyncIterator]();
+      await expect(iterator.next()).resolves.toMatchObject({ value: inline, done: false });
+      if (allowStoredPayloads) {
+        await expect(iterator.next()).resolves.toMatchObject({ value: stored, done: false });
+        await expect(iterator.next()).resolves.toMatchObject({ done: true });
+      } else {
+        await expect(iterator.next()).rejects.toThrow();
+      }
+    }
+  );
+
   it("does not delegate batch-wide writes from selected-task credentials", () => {
     const ability = withActionAliases(buildJwtAbility(["batchTrigger:tasks:task-a"]));
 

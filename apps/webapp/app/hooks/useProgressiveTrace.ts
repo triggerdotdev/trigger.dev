@@ -16,7 +16,7 @@ import {
 
 const MAX_CHUNK_ATTEMPTS = 3;
 const RETRY_BACKOFF_MS = 400;
-const MAX_PROGRESSIVE_SPANS = 150_000;
+export const MAX_PROGRESSIVE_SPANS = 150_000;
 const BACKGROUND_CHUNK_SIZE = 10_000;
 const REBUILD_COALESCE_MS = 100;
 const TAIL_FETCH_TIMEOUT_MS = 15_000;
@@ -81,13 +81,26 @@ export type ProgressiveTraceState = {
   isComplete: boolean;
   isTruncated: boolean;
   loadFailed: boolean;
+  /** The `retryKey` this state was loaded for. */
+  loadAttempt: number;
+};
+
+export type ProgressiveTraceOptions = {
+  /** Asked before each later page with the spans held so far; false stops there, as truncated. */
+  canFetchPage?: (loadedSpans: number) => boolean;
+  /** The spans held, sent each time a chunk merges, before the tree rebuilds. */
+  onLoadedSpans?: (loadedSpans: number) => void;
+  /** Changing it reloads the later pages, like `retryLoad`. */
+  retryKey?: number;
+  /** Holds live tails like a hidden browser tab: one tail on resume if a signal arrived. */
+  paused?: boolean;
 };
 
 function toChunkEvent(event: WireChunkEvent) {
   return { ...event, startTime: new Date(event.startTime) };
 }
 
-function initialState(trace: ProgressiveTraceInput): ProgressiveTraceState {
+function initialState(trace: ProgressiveTraceInput, loadAttempt = 0): ProgressiveTraceState {
   return {
     events: trace.events,
     duration: trace.duration,
@@ -98,6 +111,7 @@ function initialState(trace: ProgressiveTraceInput): ProgressiveTraceState {
     isComplete: !trace.progressive?.hasMore,
     isTruncated: false,
     loadFailed: false,
+    loadAttempt,
   };
 }
 
@@ -170,7 +184,10 @@ export async function runTailLoop(
 export function useProgressiveTrace(
   trace: ProgressiveTraceInput,
   chunkPath: string,
-  errorsOnly: boolean
+  errorsOnly: boolean,
+  /** False drops live tails, including ones already queued (throttled, hidden tab, trailing). */
+  tailEnabled = true,
+  { canFetchPage, onLoadedSpans, retryKey = 0, paused = false }: ProgressiveTraceOptions = {}
 ): ProgressiveTraceState & {
   tailLive: () => void;
   liveTailEnabled: boolean;
@@ -186,8 +203,12 @@ export function useProgressiveTrace(
     : `static:${trace.events.length}`;
 
   const latestTraceRef = useRef(trace);
+  const canFetchPageRef = useRef(canFetchPage);
+  const onLoadedSpansRef = useRef(onLoadedSpans);
   useEffect(() => {
     latestTraceRef.current = trace;
+    canFetchPageRef.current = canFetchPage;
+    onLoadedSpansRef.current = onLoadedSpans;
   });
   const assemblerRef = useRef<TraceChunkAssembler | null>(null);
   const errorsFetchedRef = useRef(false);
@@ -200,17 +221,30 @@ export function useProgressiveTrace(
   // Timestamp of the last tail read, for the size-aware cadence governor.
   const lastTailAtRef = useRef(0);
   const lastSweepAtRef = useRef(0);
-  // A signal arrived while the tab was hidden; tail once when it's visible again.
+  // A signal arrived while the tab was hidden or paused; tail once when it's back.
   const hiddenTailRef = useRef(false);
+  const pausedRef = useRef(paused);
   // A throttled signal schedules one tail for when the interval ends.
   const deferredTailRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // A signal arrived mid-tail; run one trailing pass.
   const pendingTailRef = useRef(false);
   // Latest tail closure, behind the stable `tailLive`.
   const tailLiveRef = useRef<() => void>(() => {});
+  const tailEnabledRef = useRef(tailEnabled);
+  useEffect(() => {
+    tailEnabledRef.current = tailEnabled;
+    if (tailEnabled) return;
+    pendingTailRef.current = false;
+    hiddenTailRef.current = false;
+    if (deferredTailRef.current !== null) {
+      clearTimeout(deferredTailRef.current);
+      deferredTailRef.current = null;
+    }
+  }, [tailEnabled]);
 
   const rebuild = useCallback((meta: ProgressiveMeta, assembler: TraceChunkAssembler) => {
     if (assemblerRef.current !== assembler) return;
+    onLoadedSpansRef.current?.(assembler.size);
     assembler.markRendered();
     const { spans, overridesBySpanId } = applyAncestorOverrides(assembler.spans);
     const view = buildTraceView(spans, meta.buildOptions);
@@ -224,6 +258,7 @@ export function useProgressiveTrace(
       isComplete: prev.isComplete,
       isTruncated: prev.isTruncated,
       loadFailed: prev.loadFailed,
+      loadAttempt: prev.loadAttempt,
     }));
   }, []);
 
@@ -233,7 +268,7 @@ export function useProgressiveTrace(
 
   useEffect(() => {
     const current = latestTraceRef.current;
-    setState(initialState(current));
+    setState(initialState(current, retryKey));
     errorsFetchedRef.current = false;
     pendingTailRef.current = false;
     hiddenTailRef.current = false;
@@ -263,6 +298,7 @@ export function useProgressiveTrace(
       assembler.pinTailFloor(meta.firstChunkReadAt);
     }
     assemblerRef.current = assembler;
+    onLoadedSpansRef.current?.(assembler.size);
 
     if (!meta.hasMore || !meta.nextCursor) {
       return;
@@ -317,6 +353,10 @@ export function useProgressiveTrace(
 
     async function loadRemaining() {
       while (!cancelled && cursor) {
+        if (canFetchPageRef.current && !canFetchPageRef.current(assembler.size)) {
+          markComplete(true);
+          return;
+        }
         let data: WireChunkResponse | null = null;
         for (let attempt = 0; attempt < MAX_CHUNK_ATTEMPTS && !cancelled; attempt++) {
           data = await fetchChunk(
@@ -339,6 +379,7 @@ export function useProgressiveTrace(
         }
 
         assembler.mergeChunk(data.events.map(toChunkEvent));
+        onLoadedSpansRef.current?.(assembler.size);
         requestRebuild();
         cursor = data.hasMore ? data.nextCursor : null;
 
@@ -362,7 +403,7 @@ export function useProgressiveTrace(
         rebuildTimer = null;
       }
     };
-  }, [identity, chunkPath, retryGeneration, rebuild]);
+  }, [identity, chunkPath, retryGeneration, retryKey, rebuild]);
 
   // Every chunk is loaded, so the client-side filter already sees every error.
   const fullyLoaded = state.isComplete && !state.loadFailed && !state.isTruncated;
@@ -386,13 +427,14 @@ export function useProgressiveTrace(
     return () => {
       cancelled = true;
     };
-  }, [errorsOnly, fullyLoaded, identity, chunkPath, retryGeneration, rebuild]);
+  }, [errorsOnly, fullyLoaded, identity, chunkPath, retryGeneration, retryKey, rebuild]);
 
   const runTail = useCallback(() => {
+    if (!tailEnabledRef.current) return;
     const meta = latestTraceRef.current.progressive;
     const assembler = assemblerRef.current;
     if (!meta || !assembler) return;
-    if (document.visibilityState === "hidden") {
+    if (document.visibilityState === "hidden" || pausedRef.current) {
       hiddenTailRef.current = true;
       return;
     }
@@ -461,6 +503,7 @@ export function useProgressiveTrace(
   useEffect(() => {
     const onVisibilityChange = () => {
       if (document.visibilityState !== "visible" || !hiddenTailRef.current) return;
+      if (pausedRef.current) return;
       hiddenTailRef.current = false;
       tailLiveRef.current();
     };
@@ -470,6 +513,14 @@ export function useProgressiveTrace(
       if (deferredTailRef.current !== null) clearTimeout(deferredTailRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    const resumed = pausedRef.current && !paused;
+    pausedRef.current = paused;
+    if (!resumed || !hiddenTailRef.current || document.visibilityState !== "visible") return;
+    hiddenTailRef.current = false;
+    tailLiveRef.current();
+  }, [paused]);
 
   // A kept tree still needs the ancestors of a newly deep-linked span.
   const supplementary = progressive?.supplementaryFirstEvents;

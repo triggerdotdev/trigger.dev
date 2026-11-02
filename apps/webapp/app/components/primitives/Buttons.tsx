@@ -389,13 +389,32 @@ export function ButtonContent(props: ButtonContentPropsType) {
 
 type ButtonPropsType = Pick<
   JSX.IntrinsicElements["button"],
-  "type" | "disabled" | "onClick" | "name" | "value" | "form" | "autoFocus" | "aria-label"
+  | "type"
+  | "disabled"
+  | "onClick"
+  | "name"
+  | "value"
+  | "form"
+  | "autoFocus"
+  | "aria-label"
+  | "aria-describedby"
 > &
   React.ComponentProps<typeof ButtonContent>;
 
 /* oxlint-disable react/button-has-type -- Callers can select button, reset, or submit semantics. */
 export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
-  ({ type, disabled, autoFocus, onClick, "aria-label": ariaLabel, ...props }, ref) => {
+  (
+    {
+      type,
+      disabled,
+      autoFocus,
+      onClick,
+      "aria-label": ariaLabel,
+      "aria-describedby": ariaDescribedBy,
+      ...props
+    },
+    ref
+  ) => {
     const innerRef = useRef<HTMLButtonElement>(null);
     useImperativeHandle(ref, () => innerRef.current as HTMLButtonElement);
 
@@ -425,6 +444,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
         form={props.form}
         autoFocus={autoFocus}
         aria-label={ariaLabel}
+        aria-describedby={ariaDescribedBy}
       >
         <ButtonContent
           {...props}

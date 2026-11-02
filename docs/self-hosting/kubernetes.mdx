@@ -679,6 +679,8 @@ webapp:
 
 This only affects new runs; existing runs continue to read from wherever their events were originally stored.
 
+If you set `EVENT_REPOSITORY_DEFAULT_STORE` to the legacy `clickhouse` store, switch it to `clickhouse_v2`. To keep events recorded before the switch, follow [Move from the legacy clickhouse store](/self-hosting/docker#move-from-the-legacy-clickhouse-store) and run the queries with `kubectl exec` against your ClickHouse pod.
+
 ### Realtime streams
 
 Realtime streams power AI-agent token streaming and run streams. They default to **v2**, backed by the bundled `s2` deployment — [s2-lite](https://s2.dev), the open-source, self-hostable S2 server. The chart deploys it with a persistent volume, so no extra services are required.

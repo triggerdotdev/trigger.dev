@@ -34,6 +34,8 @@ export const SessionRunsSearchParams = z
       .string()
       .regex(/^run_[a-z0-9]+$/, "Invalid run ID")
       .optional(),
+    // Dashboard only: why the newest page was read, for the route's metrics.
+    reason: z.enum(["open", "focus", "poll"]).optional().catch(undefined),
   })
   .refine((value) => !(value["page[after]"] && value.run), {
     message: "Cannot pass both page[after] and run",
@@ -52,6 +54,7 @@ export const sessionRunSelect = {
   updatedAt: true,
   taskEventStore: true,
   logsDeletedAt: true,
+  spanId: true,
 } as const;
 
 export type SessionRunRecord = {
@@ -66,6 +69,7 @@ export type SessionRunRecord = {
   updatedAt: Date;
   taskEventStore: string;
   logsDeletedAt: Date | null;
+  spanId: string;
 };
 
 type RunTraceUnavailableReason = NonNullable<ReturnType<typeof runTraceUnavailableBeforeRead>>;
@@ -87,7 +91,8 @@ export type SessionRunsPage = {
   data: SessionRunItem[];
   pagination: { next?: string };
   totalCount: number;
-  view: Record<string, { unavailable?: RunTraceUnavailableReason }>;
+  /** Dashboard only, keyed by run friendlyId. `spanId` is the run's own span (its run panel). */
+  view: Record<string, { unavailable?: RunTraceUnavailableReason; spanId: string }>;
 };
 
 export type SessionRunsPresenterDeps = {
@@ -138,14 +143,17 @@ export class SessionRunsPresenter {
       : undefined;
     if (anchor === null) return null;
 
-    const [rows, totalCount] = await Promise.all([
+    // The newest page's top row is the newest run, so its number is the total. A separate count
+    // can see a run the rows don't have yet, and the newest run would look not loaded.
+    const isNewestPage = !query.after && !anchor;
+    const [rows, countedTotal] = await Promise.all([
       findSessionRunsPage(replica, {
         sessionId,
         before: query.after,
         atOrBefore: anchor,
         take: query.pageSize + 1,
       }),
-      countSessionRuns(replica, { sessionId }),
+      isNewestPage ? undefined : countSessionRuns(replica, { sessionId }),
     ]);
 
     const pageRows = rows.slice(0, query.pageSize);
@@ -153,7 +161,7 @@ export class SessionRunsPresenter {
     const oldestRow = pageRows.at(-1);
 
     if (!oldestRow) {
-      return { data: [], pagination: {}, totalCount, view: {} };
+      return { data: [], pagination: {}, totalCount: countedTotal ?? 0, view: {} };
     }
 
     const [oldestNumber, runsById] = await Promise.all([
@@ -174,7 +182,7 @@ export class SessionRunsPresenter {
     return {
       data,
       pagination: olderRow ? { next: encodeSessionRunCursor(oldestRow) } : {},
-      totalCount,
+      totalCount: countedTotal ?? oldestNumber + pageRows.length - 1,
       view: this.#view(pageRows, runsById, query.showDeletedLogs),
     };
   }
@@ -207,6 +215,7 @@ export class SessionRunsPresenter {
       const run = runsById.get(row.runId);
       if (!run) continue;
       view[run.friendlyId] = {
+        spanId: run.spanId,
         unavailable: this.deps.unavailableBeforeRead(run, {
           showDeletedLogs,
           emergencySpanCap: this.deps.emergencySpanCap,

@@ -12,7 +12,7 @@ import { buildTraceView } from "~/v3/eventRepository/traceViewBuilder";
 import { runStore } from "~/v3/runStore.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { runTriggeredAt } from "~/v3/runTimestamps";
-import { getRunFinishedAt } from "~/v3/eventRepository/traceInsertedAtBound";
+import { getRunFinishedAt, getTraceInsertedAtEnd } from "~/v3/eventRepository/traceInsertedAtBound";
 
 export class RunEnvironmentMismatchError extends Error {
   constructor(message: string) {
@@ -193,6 +193,7 @@ export class RunPresenter {
     );
 
     const traceScope = runTraceReadScope(run, environment.id);
+    const insertedAtEnd = getTraceInsertedAtEnd(run);
     const queuedDuration = runQueuedDuration(run);
 
     const firstChunkPromise = canLiveTail(
@@ -200,7 +201,7 @@ export class RunPresenter {
       env.TRACE_VIEW_EMERGENCY_SPAN_CAP,
       env.EVENT_REPOSITORY_V1_REROUTE_ENABLED
     )
-      ? readFirstTraceChunk({ repository, scope: traceScope, showDebug })
+      ? readFirstTraceChunk({ repository, scope: traceScope, showDebug, insertedAtEnd })
       : Promise.resolve(undefined);
 
     const [user, firstRead] = await Promise.all([
@@ -220,6 +221,7 @@ export class RunPresenter {
           firstRead,
           anchorSpanId: run.spanId,
           selectedSpanId,
+          insertedAtEnd,
           buildOptions,
           startedAt: run.startedAt,
           queuedDuration,
@@ -259,7 +261,7 @@ export class RunPresenter {
           run.traceId,
           traceScope.startCreatedAt,
           traceScope.endCreatedAt,
-          { includeDebugLogs: showDebug, anchorSpanId: run.spanId }
+          { includeDebugLogs: showDebug, anchorSpanId: run.spanId, insertedAtEnd }
         );
 
     let isTruncated = traceSummary?.isTruncated ?? false;
@@ -273,7 +275,7 @@ export class RunPresenter {
         traceScope.startCreatedAt,
         traceScope.endCreatedAt,
         // The anchor is the viewed run: a root has no ancestors, a child doesn't need them.
-        { includeDebugLogs: showDebug }
+        { includeDebugLogs: showDebug, insertedAtEnd }
       );
 
       if (subtreeSummary) {

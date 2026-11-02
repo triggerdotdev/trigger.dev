@@ -33,9 +33,10 @@ import {
   REVIEW_MESSAGE,
   shownCreatedBlock,
 } from "~/components/alerts/alertCreatedCard";
-import type {
-  CreationFlowState,
-  AlertChannel,
+import {
+  useDefaultComponents,
+  type CreationFlowState,
+  type AlertChannel,
 } from "~/components/dashboard-agent/alert-creation/CreationFlow";
 import {
   allSteps,
@@ -189,6 +190,7 @@ export function CreationTranscript({
     Boolean(chatId) &&
     !flow.answers.replace &&
     !flow.answers.notifiers?.length;
+  useDefaultComponents(flow, hiddenAreas);
   const { toggleNotifier } = flow;
   useEffect(() => {
     if (!needsChatDefault || chatDefaulted.current) return;
@@ -254,6 +256,7 @@ export function CreationTranscript({
     }
     applyStepSelection(flow, stepId, value, {
       onShowAll: () => setScenarios(true),
+      hiddenAreas,
       onAddChannel: () => setAddingChannel(true),
     });
     if (!step?.multiSelect) setView(undefined);
@@ -379,7 +382,7 @@ export function CreationTranscript({
                     onCreate: flow.create,
                     onCustomize: () => {
                       setCustomizing(true);
-                      setCustomIndex(hasNotifier ? 0 : Number.MAX_SAFE_INTEGER);
+                      setCustomIndex(hasNotifier ? 0 : -1);
                     },
                     blockedReason: hasNotifier ? undefined : NO_NOTIFIER,
                     onStartOver: startOver,
@@ -441,7 +444,12 @@ export function CreationTranscript({
                 scenarioOpen
                   ? 0
                   : editing
-                    ? Math.min(customIndex, customSteps.length - 1)
+                    ? customIndex < 0
+                      ? Math.max(
+                          0,
+                          customSteps.findIndex((step) => step.id === "notifiers")
+                        )
+                      : Math.min(customIndex, customSteps.length - 1)
                     : viewIndex
               }
               onStepChange={(index) => {
@@ -456,7 +464,7 @@ export function CreationTranscript({
                 else setCardClosed(true);
               }}
               onConfirm={(stepId) => {
-                confirmStep(flow, stepId);
+                confirmStep(flow, stepId, hiddenAreas);
                 setCustomizing(false);
               }}
               maxHeight={roomHeight > CARD_GAP ? roomHeight - CARD_GAP : undefined}

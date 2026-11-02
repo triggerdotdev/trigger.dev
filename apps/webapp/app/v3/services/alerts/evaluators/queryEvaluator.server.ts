@@ -625,6 +625,101 @@ async function evaluateState(
   };
 }
 
+const MAX_OFFENDING_GROUPS = 8;
+const SIGNAL_COLUMNS = new Set(["met", "reading_value", "reading_count", "samples"]);
+
+async function evaluateLimitSignals(
+  capability: AlertCapability,
+  input: QueryEvaluatorInput,
+  runner: QueryRowRunner
+): Promise<EvaluationResult> {
+  const condition = input.condition as Extract<Condition, { kind: "state" }>;
+  const signalTemplates = capability.binding.signalTemplates ?? {};
+  const bucketSec = capability.binding.minCadenceSec;
+  const windowSec = input.params.windowSec ?? bucketSec;
+  const effectiveParams = resolveEffectiveParams(condition, capability.binding.params);
+  const selected = (capability.supportedSignals ?? []).filter(
+    (signal) => !condition.signals || condition.signals.includes(signal)
+  );
+
+  const signals: Record<string, Record<string, unknown>> = {};
+  const offendingGroups = new Set<string>();
+  let anyAvailable = false;
+  let anyMet = false;
+  for (const signal of selected) {
+    const template = signalTemplates[signal];
+    if (!template) continue;
+    const rows = await runner(
+      compileTemplate(template, {
+        scope: scopeWhere(input.params),
+        params: effectiveParams,
+      }),
+      {
+        organizationId: input.organizationId,
+        projectId: input.projectId,
+        environmentId: input.params.environmentId,
+      },
+      windowRange(input.now, windowSec)
+    );
+    const sampled = rows.filter((row) => Number(row.samples) > 0);
+    const readingKey = / AS reading_count, /.test(template) ? "count" : "value";
+    const readings = sampled.map((row) => Number(row[`reading_${readingKey}`]));
+    const metRows = sampled.filter((row) => Number(row.met) !== 0);
+    const met = metRows.length > 0;
+    if (sampled.length > 0) anyAvailable = true;
+    if (met) anyMet = true;
+    for (const row of metRows) {
+      const group = Object.entries(row)
+        .filter(([column]) => !SIGNAL_COLUMNS.has(column))
+        .map(([, value]) => String(value))
+        .join(" / ");
+      if (group) offendingGroups.add(group);
+    }
+    const reading =
+      sampled.length === 0
+        ? null
+        : readingKey === "count"
+          ? readings.reduce((a, b) => a + b, 0)
+          : Math.max(...readings);
+    signals[signal] = {
+      [readingKey]: reading,
+      ...(signal === "approaching" ? { threshold: effectiveParams.utilisationPct } : {}),
+      met,
+    };
+  }
+
+  const extra = {
+    effectiveParams,
+    signals,
+    ...(offendingGroups.size > 0
+      ? { offendingGroups: [...offendingGroups].slice(0, MAX_OFFENDING_GROUPS) }
+      : {}),
+  };
+  if (!anyAvailable) {
+    return {
+      kind: "stateful",
+      outcome: "unavailable",
+      facts: buildFacts(null, windowSec, bucketSec, input.now, capability.unit, undefined, {
+        ...extra,
+        unavailableReason: selected.length > 0 ? "no_data" : "no_selected_signals",
+      }),
+    };
+  }
+  return {
+    kind: "stateful",
+    outcome: anyMet ? "met" : "not_met",
+    facts: buildFacts(
+      anyMet ? 1 : 0,
+      windowSec,
+      bucketSec,
+      input.now,
+      capability.unit,
+      undefined,
+      extra
+    ),
+  };
+}
+
 // An absence alert observes one full window from creation or reactivation before it can raise.
 function absenceOutcome(count: number, windowSec: number, input: QueryEvaluatorInput) {
   const graceUntil = input.observingSince
@@ -834,7 +929,9 @@ export async function evaluateQueryCapability(
   }
 
   if (input.condition.kind === "state") {
-    return evaluateState(capability, input, resolvedRunner);
+    return capability.binding.signalTemplates
+      ? evaluateLimitSignals(capability, input, resolvedRunner)
+      : evaluateState(capability, input, resolvedRunner);
   }
 
   if (!capability.binding.template || !capability.binding.table) {

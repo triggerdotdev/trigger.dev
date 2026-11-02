@@ -55,7 +55,6 @@ const { action, loader } = createActionApiRoute(
     params: ParamsSchema,
     body: z.compile(TriggerTaskRequestBody),
     allowJWT: true,
-    allowRunToken: true,
     maxContentLength: env.TASK_PAYLOAD_MAXIMUM_SIZE,
     authorization: {
       action: "trigger",
@@ -63,9 +62,15 @@ const { action, loader } = createActionApiRoute(
     },
     corsStrategy: "all",
   },
-  async ({ body, headers, params, authentication, ability }) => {
-    if (authentication.type !== "PRIVATE" && body.options?.payloadType === "application/store") {
-      return json({ error: "Stored payloads require a private API key" }, { status: 403 });
+  async ({ body, headers, params, authentication, restrictedApiKey, ability }) => {
+    if (
+      (authentication.type !== "PRIVATE" || restrictedApiKey) &&
+      body.options?.payloadType === "application/store"
+    ) {
+      return json(
+        { error: "Stored payloads require an unrestricted private API key" },
+        { status: 403 }
+      );
     }
 
     const {

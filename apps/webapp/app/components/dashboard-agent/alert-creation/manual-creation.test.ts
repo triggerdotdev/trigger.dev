@@ -5,6 +5,7 @@ import { ChatRequestSchema as RequestSchema } from "~/v3/services/alerts/alertDr
 import { notifyLabel, extractAlertId } from "./CreationFlow";
 import {
   capabilityChips,
+  effectiveSignals,
   EXPIRY_CHIPS,
   expiryFromDate,
   prefillToAnswers,
@@ -246,7 +247,15 @@ describe("simplified wizard options", () => {
 
   // Mutation: re-adding the behavior step.
   it("STEP_ORDER has no behavior step", () => {
-    expect(STEP_ORDER).toEqual(["area", "what", "condition", "scope", "environments", "notifiers"]);
+    expect(STEP_ORDER).toEqual([
+      "area",
+      "what",
+      "condition",
+      "scope",
+      "environments",
+      "notifiers",
+      "name",
+    ]);
   });
 
   // Mutation: no longer filtering queuePattern from the scope options.
@@ -485,5 +494,20 @@ describe("createdAlertId flows from create response to SuccessCard link", () => 
   it("fails if alertId is dropped from the response", () => {
     const result = extractAlertId({ alertId: "alert_abc" });
     expect(result).toBe("alert_abc");
+  });
+});
+
+describe("effectiveSignals", () => {
+  // Mutation: dropping the implicit approaching rule leaves limits.queue unwatched.
+  it.each([
+    [
+      ["limits.api", "limits.queue"],
+      ["approaching", "limited"],
+    ],
+    [["limits.api", "limits.webhooks.waiters"], ["limited"]],
+  ])("limits.all %j with signals [limited] watches %j", (components, expected) => {
+    expect(effectiveSignals({ what: "limits.all", components, signals: ["limited"] })).toEqual(
+      expected
+    );
   });
 });

@@ -9,5 +9,6 @@ new ZodIpcConnection({
   handlers: {
     FLUSH: async () => {},
     PING: async ({ value }) => ({ echoed: value }),
+    STALL: () => new Promise<void>(() => {}),
   },
 });
