@@ -12,6 +12,7 @@ export type ExternalOidcEnvironment = {
   slug: string;
   type: string;
   organizationId: string;
+  organizationSlug: string;
   projectId: string;
   projectRef: string;
   orgFeatureFlags: unknown;
@@ -38,11 +39,16 @@ export interface ExternalOidcController {
   mint(params: { run: ExternalOidcRunIdentity; audience: string }): Promise<ExternalOidcMintResult>;
 }
 
+export function organizationOidcIssuer(baseUrl: string, organizationSlug: string): string {
+  return `${baseUrl}/${encodeURIComponent(organizationSlug)}`;
+}
+
 export type ExternalOidcPluginConfig = {
+  /** HTTPS origin shared by all organization issuers. */
   issuer: string;
   signJwt: (
     payload: Record<string, unknown>,
-    options: { audience: string; subject: string; expiresInSeconds: number }
+    options: { issuer: string; audience: string; subject: string; expiresInSeconds: number }
   ) => Promise<string>;
   /** The run's live environment, or null if it is archived, deleted or does not match. */
   findEnvironment: (run: ExternalOidcRunIdentity) => Promise<ExternalOidcEnvironment | null>;

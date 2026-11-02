@@ -17,6 +17,7 @@ import { KeyIcon } from "~/assets/icons/KeyIcon";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { LogsIcon } from "~/assets/icons/LogsIcon";
 import { QueuesIcon } from "~/assets/icons/QueuesIcon";
+import { ShieldIcon } from "~/assets/icons/ShieldIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import {
   type EnvironmentForPath,
@@ -291,8 +292,8 @@ export function buildSideMenuSections({
         ? [
             {
               id: "oidc",
-              name: "Workload identity",
-              icon: KeyIcon,
+              name: "OIDC",
+              icon: ShieldIcon,
               activeIconColor: "text-text-bright",
               to: v3OidcPath(organization, project, environment),
               dataAction: "oidc",

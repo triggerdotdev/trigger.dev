@@ -9,6 +9,7 @@ import {
   type PrismaTransactionClient,
 } from "@trigger.dev/database";
 import { expect } from "vitest";
+import { oidcDiscovery } from "~/utils/oidcIssuer";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { OIDC_RETIRED_KEY_RETENTION_SECONDS } from "./constants";
 import { verifyRs256Jwt } from "./crypto";
@@ -175,6 +176,58 @@ postgresTest("stages, rotates, retires and disables real RSA signing keys", asyn
   currentTime = new Date(currentTime.getTime() + OIDC_RETIRED_KEY_RETENTION_SECONDS * 1_000 + 1);
   await expect(service.getPublicJwks()).resolves.toEqual({ keys: [] });
 });
+
+// Catches: the shared signer overwriting organization issuers with its configured base origin.
+postgresTest(
+  "organization issuers share keys but cannot substitute for each other",
+  async ({ prisma }) => {
+    let currentTime = new Date("2026-01-01T00:00:00.000Z");
+    const service = createService(prisma, () => currentTime);
+    const staged = await service.generateStagedKey(actor);
+    currentTime = staged.readyAt;
+    await service.activateKey(staged.id, actor);
+    const jwks = await service.getPublicJwks();
+
+    const issuers = ["acme", "other-org"].map((slug) => oidcDiscovery(issuer, slug).issuer);
+    for (const organizationIssuer of issuers) {
+      const token = await service.signJwt(
+        {},
+        {
+          issuer: organizationIssuer,
+          audience,
+          subject: "workload",
+          expiresInSeconds: 300,
+        }
+      );
+      await expect(
+        verifyRs256Jwt({
+          token,
+          jwks,
+          issuer: organizationIssuer,
+          audience,
+          now: currentTime,
+        })
+      ).resolves.toMatchObject({
+        payload: { iss: organizationIssuer },
+        protectedHeader: { kid: staged.kid },
+      });
+      for (const wrongIssuer of [
+        issuer,
+        ...issuers.filter((value) => value !== organizationIssuer),
+      ]) {
+        await expect(
+          verifyRs256Jwt({
+            token,
+            jwks,
+            issuer: wrongIssuer,
+            audience,
+            now: currentTime,
+          })
+        ).rejects.toThrow();
+      }
+    }
+  }
+);
 
 postgresTest(
   "database rejects concurrent staged keys and a second active key",

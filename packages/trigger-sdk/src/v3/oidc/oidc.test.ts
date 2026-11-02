@@ -13,6 +13,7 @@ import { unregisterGlobal } from "../../../../core/dist/esm/v3/utils/globals.js"
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { auth } from "../auth.js";
 import { awsCredentialProvider } from "./aws.js";
+import { infisicalAccessToken } from "./infisical.js";
 
 const envNames = [
   "TRIGGER_RUN_TOKEN",
@@ -348,5 +349,92 @@ describe("run-only OIDC and AWS credentials over HTTP", () => {
         region: "us-east-1",
       })()
     ).rejects.toThrow("AWS STS did not return complete temporary credentials");
+  });
+
+  describe("Infisical token exchange", () => {
+    let siteUrl: string;
+    let requests: { path?: string; contentType?: string; body: unknown }[];
+    let status: number;
+    let body: unknown;
+
+    beforeEach(async () => {
+      requests = [];
+      status = 200;
+      body = { accessToken: "infisical-token", tokenType: "Bearer", expiresIn: 900 };
+      siteUrl = await listen(
+        createServer(async (request, response) => {
+          let data = "";
+          for await (const chunk of request) data += chunk;
+          requests.push({
+            path: request.url,
+            contentType: request.headers["content-type"],
+            body: JSON.parse(data),
+          });
+          response.writeHead(status, { "Content-Type": "application/json" });
+          response.end(JSON.stringify(body));
+        })
+      );
+    });
+
+    // Catches: wrong audience or exchange payload, stale cached tokens, and overstated expiration.
+    it("exchanges fresh run tokens with configurable site, audience, and organization", async () => {
+      const startedAt = Date.now();
+      const first = await infisicalAccessToken({
+        identityId: "identity-one",
+        siteUrl: `${siteUrl}/`,
+      });
+      expect(first).toMatchObject({ accessToken: "infisical-token", tokenType: "Bearer" });
+      expect(first.expiresAt.getTime()).toBeGreaterThanOrEqual(startedAt + 900_000);
+      expect(first.expiresAt.getTime()).toBeLessThanOrEqual(Date.now() + 900_000);
+      await infisicalAccessToken({
+        identityId: "identity-two",
+        siteUrl,
+        audience: "custom-audience",
+        organizationSlug: "infisical-org",
+      });
+      expect(mintRequests.map((request) => request.body)).toEqual([
+        { audience: siteUrl },
+        { audience: "custom-audience" },
+      ]);
+      expect(requests).toEqual([
+        {
+          path: "/api/v1/auth/oidc-auth/login",
+          contentType: "application/json",
+          body: { identityId: "identity-one", jwt: "external-1" },
+        },
+        {
+          path: "/api/v1/auth/oidc-auth/login",
+          contentType: "application/json",
+          body: {
+            identityId: "identity-two",
+            jwt: "external-2",
+            organizationSlug: "infisical-org",
+          },
+        },
+      ]);
+    });
+
+    // Catches: losing useful provider failures or leaking an echoed OIDC token in an error.
+    it("includes the rejection status and message without exposing the token", async () => {
+      status = 401;
+      body = { message: "Audience mismatch for external-1" };
+      await expect(infisicalAccessToken({ identityId: "identity", siteUrl })).rejects.toThrow(
+        "Infisical OIDC login failed (401): Audience mismatch for [redacted]"
+      );
+      expect(requests).toHaveLength(1);
+    });
+
+    // Catches: returning unusable credentials from a malformed successful exchange.
+    it.each([
+      { accessToken: "", tokenType: "Bearer", expiresIn: 900 },
+      { accessToken: "token", tokenType: "Bearer", expiresIn: 0 },
+      { accessToken: "token", tokenType: "Bearer", expiresIn: "900" },
+      { accessToken: "token", tokenType: "other", expiresIn: 900 },
+    ])("rejects invalid credentials: %j", async (invalid) => {
+      body = invalid;
+      await expect(infisicalAccessToken({ identityId: "identity", siteUrl })).rejects.toThrow(
+        "Infisical OIDC login returned an invalid access token or expiration."
+      );
+    });
   });
 });

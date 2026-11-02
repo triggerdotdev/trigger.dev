@@ -1,0 +1,120 @@
+---
+title: "Connect to AWS"
+sidebarTitle: "AWS"
+description: "Assume an IAM role from your tasks without storing AWS access keys."
+---
+
+Use `awsCredentialProvider` to exchange a Trigger.dev OIDC token for temporary AWS credentials through STS. Pass it to your AWS SDK client to obtain and refresh credentials automatically.
+
+Follow the [OIDC prerequisites](/oidc#prerequisites), then go to the [OIDC](https://cloud.trigger.dev/_/oidc) page for your environment and copy the issuer URL and subject.
+
+## Configure AWS
+
+### Create an OIDC identity provider
+
+In AWS IAM, add an OpenID Connect identity provider with:
+
+- **Provider URL**: your issuer URL, `https://oidc.trigger.dev/YOUR_ORG_SLUG`.
+- **Audience**: `sts.amazonaws.com`, the audience used by the SDK's AWS helper.
+
+Reuse the provider if one already exists for this issuer in your AWS account.
+
+### Create an IAM role
+
+Create a role with this trust policy. Replace the AWS account ID and organization slug, and replace `YOUR_ENVIRONMENT_SUBJECT` with the **complete subject copied from the dashboard**.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::YOUR_AWS_ACCOUNT_ID:oidc-provider/oidc.trigger.dev/YOUR_ORG_SLUG"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "oidc.trigger.dev/YOUR_ORG_SLUG:aud": "sts.amazonaws.com",
+          "oidc.trigger.dev/YOUR_ORG_SLUG:sub": "YOUR_ENVIRONMENT_SUBJECT"
+        }
+      }
+    }
+  ]
+}
+```
+
+Attach a permissions policy for the operations your task needs. For the S3 example below, allow `s3:GetObject` on `arn:aws:s3:::YOUR_BUCKET/trigger/*`. The trust policy controls who can assume the role; it does not grant S3 permissions. No session tags are required.
+
+## Use the role in your task
+
+Install the STS peer dependency and the AWS clients your task uses:
+
+```bash
+npm install @trigger.dev/sdk@latest @aws-sdk/client-sts @aws-sdk/client-s3
+```
+
+Replace the role ARN, region, bucket, and object key:
+
+```typescript
+import { task } from "@trigger.dev/sdk";
+import { awsCredentialProvider } from "@trigger.dev/sdk/oidc/aws";
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+
+export const readFromS3 = task({
+  id: "read-from-s3",
+  run: async () => {
+    const s3 = new S3Client({
+      region: "us-east-1",
+      credentials: awsCredentialProvider({
+        roleArn: "arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/YOUR_ROLE_NAME",
+        region: "us-east-1",
+      }),
+    });
+
+    const result = await s3.send(
+      new GetObjectCommand({
+        Bucket: "YOUR_BUCKET",
+        Key: "trigger/example.txt",
+      }),
+    );
+    return { contents: await result.Body?.transformToString() };
+  },
+});
+```
+
+Redeploy with CLI 4.8.3 or later and start a new run on that deployment.
+
+<Warning>
+  Create the AWS client inside `run` and reuse it only within that run. A
+  module-scope client can reuse a previous run's cached credentials and
+  attribute AWS activity to that run.
+</Warning>
+
+### Provider options
+
+| Option            | Required | Behavior                                                                                            |
+| ----------------- | -------- | --------------------------------------------------------------------------------------------------- |
+| `roleArn`         | Yes      | IAM role to assume.                                                                                 |
+| `region`          | Yes      | Region for STS. The AWS service client's region does not configure STS.                             |
+| `roleSessionName` | No       | Defaults to the current run ID, sanitized to AWS's allowed characters and limited to 64 characters. |
+| `durationSeconds` | No       | Defaults to 3,600 seconds (one hour), subject to the role's allowed session duration.               |
+
+For local development, use your own AWS credential chain, such as an AWS SSO profile. If a task runs both locally and deployed, select local credentials explicitly when `ctx.environment.type === "DEVELOPMENT"`.
+
+## Trust all Preview branches
+
+For a single Preview environment, use its exact subject with the policy above. To share a role across **all current and future Preview branches** in one project, replace only the policy's `Condition` with:
+
+```json
+{
+  "StringEquals": {
+    "oidc.trigger.dev/YOUR_ORG_SLUG:aud": "sts.amazonaws.com"
+  },
+  "StringLike": {
+    "oidc.trigger.dev/YOUR_ORG_SLUG:sub": "org:YOUR_ORG_ID:project:YOUR_PROJECT_REF:env:PREVIEW:*"
+  }
+}
+```
+
+Keep the organization ID, project reference, `PREVIEW` environment type, and audience fixed. This deliberately grants access to anyone allowed to deploy a Preview branch in that project. Never wildcard the organization or project, or use this policy for a role intended only for Production or Staging.

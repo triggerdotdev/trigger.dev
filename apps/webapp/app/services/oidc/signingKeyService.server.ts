@@ -251,18 +251,20 @@ export class OidcSigningKeyService {
   async signJwt(
     payload: JWTPayload,
     {
+      issuer = this.#issuer,
       audience,
       subject,
       expiresInSeconds,
       typ,
     }: {
+      issuer?: string;
       audience: string | string[];
       subject: string;
       expiresInSeconds: number;
       typ?: string;
     }
   ): Promise<string> {
-    if (!this.#issuer) {
+    if (!this.#issuer || !issuer) {
       throw new OidcSigningKeyError("OIDC_NOT_CONFIGURED", "OIDC issuer is not configured");
     }
 
@@ -275,7 +277,7 @@ export class OidcSigningKeyService {
       payload,
       privateKey: activeKey.privateKey,
       kid: activeKey.kid,
-      issuer: this.#issuer,
+      issuer,
       audience,
       subject,
       expiresInSeconds,

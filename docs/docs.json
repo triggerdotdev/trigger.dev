@@ -47,7 +47,10 @@
                 "pages": ["runs/list-best-practices"]
               },
               "apikeys",
-              "oidc"
+              {
+                "group": "OIDC",
+                "pages": ["oidc", "oidc/aws", "oidc/infisical", "oidc/custom"]
+              }
             ]
           },
           {

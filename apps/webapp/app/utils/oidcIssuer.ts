@@ -1,3 +1,4 @@
+import { organizationOidcIssuer } from "@trigger.dev/plugins";
 import { z } from "zod";
 
 export const OidcIssuerSchema = z
@@ -15,7 +16,8 @@ export const OidcIssuerSchema = z
   }, "OIDC_ISSUER_URL must be an HTTPS origin without credentials, a path, query or fragment")
   .transform((value) => new URL(value).origin);
 
-export function oidcDiscovery(issuer: string) {
+export function oidcDiscovery(baseUrl: string, organizationSlug: string) {
+  const issuer = organizationOidcIssuer(baseUrl, organizationSlug);
   return {
     issuer,
     jwks_uri: `${issuer}/.well-known/jwks.json`,

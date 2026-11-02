@@ -65,7 +65,7 @@ async function findEnvironment(
       organizationId: true,
       projectId: true,
       project: { select: { externalRef: true } },
-      organization: { select: { featureFlags: true } },
+      organization: { select: { slug: true, featureFlags: true } },
     },
   });
   if (!environment) return null;
@@ -74,6 +74,7 @@ async function findEnvironment(
     slug: environment.slug,
     type: environment.type,
     organizationId: environment.organizationId,
+    organizationSlug: environment.organization.slug,
     projectId: environment.projectId,
     projectRef: environment.project.externalRef,
     orgFeatureFlags: resolveExternalOidcFlags(
