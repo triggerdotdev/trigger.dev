@@ -1,9 +1,11 @@
+import { withAdminAudit } from "~/services/adminAudit/adminAudit.server";
 import { useId, useState } from "react";
 import { useFetcher } from "@remix-run/react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { noteAdminRequest } from "~/services/adminAudit/adminAuditContext.server";
 import { Button } from "~/components/primitives/Buttons";
 import {
   Dialog,
@@ -71,9 +73,11 @@ const DeleteSchema = z.object({
 
 const FormSchema = z.discriminatedUnion("_action", [AddSchema, UpdateSchema, DeleteSchema]);
 
-export async function action({ request }: ActionFunctionArgs) {
+async function handleAction({ request }: ActionFunctionArgs) {
   const user = await requireUser(request);
   if (!user.admin || !env.ADMIN_DASHBOARD_ENABLED) throw redirect("/");
+
+  noteAdminRequest(request, { captureBody: true });
 
   const formData = await request.formData();
 
@@ -510,3 +514,5 @@ function AddDataStoreDialog({
     </Dialog>
   );
 }
+
+export const action = withAdminAudit(handleAction);

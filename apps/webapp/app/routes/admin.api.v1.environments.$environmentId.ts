@@ -1,3 +1,4 @@
+import { withAdminAudit } from "~/services/adminAudit/adminAudit.server";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
@@ -17,7 +18,7 @@ const RequestBodySchema = z.object({
   orgMaximumConcurrencyLimit: z.number(),
 });
 
-export async function action({ request, params }: ActionFunctionArgs) {
+async function handleAction({ request, params }: ActionFunctionArgs) {
   await requireAdminApiRequest(request);
 
   const parsedParams = ParamsSchema.parse(params);
@@ -61,7 +62,7 @@ const SearchParamsSchema = z.object({
   queue: z.string().optional(),
 });
 
-export async function loader({ request, params }: LoaderFunctionArgs) {
+async function handleLoader({ request, params }: LoaderFunctionArgs) {
   await requireAdminApiRequest(request);
 
   const parsedParams = ParamsSchema.parse(params);
@@ -109,3 +110,6 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   return json({ id: environment.id, concurrencyLimit, currentConcurrency });
 }
+
+export const loader = withAdminAudit(handleLoader);
+export const action = withAdminAudit(handleAction);

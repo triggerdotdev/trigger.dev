@@ -1,3 +1,4 @@
+import { withAdminAudit } from "~/services/adminAudit/adminAudit.server";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import type { Prisma } from "@trigger.dev/database";
@@ -18,7 +19,7 @@ const ParamsSchema = z.object({
   organizationId: z.string(),
 });
 
-export async function loader({ request, params }: LoaderFunctionArgs) {
+async function handleLoader({ request, params }: LoaderFunctionArgs) {
   await requireAdminApiRequest(request);
 
   const { organizationId } = ParamsSchema.parse(params);
@@ -47,7 +48,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   });
 }
 
-export async function action({ request, params }: ActionFunctionArgs) {
+async function handleAction({ request, params }: ActionFunctionArgs) {
   await requireAdminApiRequest(request);
 
   const { organizationId } = ParamsSchema.parse(params);
@@ -144,3 +145,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 }
+
+export const loader = withAdminAudit(handleLoader);
+export const action = withAdminAudit(handleAction);

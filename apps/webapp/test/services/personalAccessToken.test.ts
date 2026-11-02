@@ -57,7 +57,7 @@ describe("authenticatePersonalAccessToken — lastAccessedAt throttle", () => {
 
     const result = await authenticatePersonalAccessToken("tr_pat_validtoken");
 
-    expect(result).toEqual({ userId: "user_1" });
+    expect(result).toEqual({ userId: "user_1", tokenId: "pat_123" });
     expect(updateManyMock).toHaveBeenCalledTimes(1);
 
     const call = updateManyMock.mock.calls[0][0];

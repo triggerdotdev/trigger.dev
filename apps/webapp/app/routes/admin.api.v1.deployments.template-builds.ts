@@ -1,3 +1,4 @@
+import { withAdminAudit } from "~/services/adminAudit/adminAudit.server";
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/v3";
@@ -12,7 +13,7 @@ const BodySchema = z.object({
   force: z.boolean().default(false),
 });
 
-export async function action({ request }: ActionFunctionArgs) {
+async function handleAction({ request }: ActionFunctionArgs) {
   await requireAdminApiRequest(request);
 
   if (request.method.toUpperCase() !== "POST") {
@@ -43,3 +44,5 @@ export async function action({ request }: ActionFunctionArgs) {
 
   return json({ results });
 }
+
+export const action = withAdminAudit(handleAction);

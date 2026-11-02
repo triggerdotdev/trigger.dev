@@ -37,6 +37,7 @@ import {
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { prisma } from "~/db.server";
+import { extractClientIp } from "~/utils/extractClientIp.server";
 import { rbac } from "~/services/rbac.server";
 import {
   type CreatedPersonalAccessToken,
@@ -212,6 +213,10 @@ export const action: ActionFunction = async ({ request }) => {
           name: submission.value.tokenName,
           userId,
           roleId: submittedRoleId,
+          auditSource: {
+            ip: extractClientIp(request.headers.get("x-forwarded-for")),
+            userAgent: request.headers.get("user-agent"),
+          },
         });
 
         return json({ ...submission.reply(), payload: { token: tokenResult } });

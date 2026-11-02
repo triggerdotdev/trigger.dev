@@ -1,3 +1,4 @@
+import { withAdminAudit } from "~/services/adminAudit/adminAudit.server";
 import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
@@ -7,7 +8,7 @@ import {
   writeQueueMetricsControls,
 } from "~/v3/queueMetrics.server";
 
-export async function loader({ request }: LoaderFunctionArgs) {
+async function handleLoader({ request }: LoaderFunctionArgs) {
   await requireAdminApiRequest(request);
   const [controls, streams] = await Promise.all([
     readQueueMetricsControls(),
@@ -21,7 +22,7 @@ const BodySchema = z.object({
   sampleRate: z.number().min(0).max(1).optional(),
 });
 
-export async function action({ request }: ActionFunctionArgs) {
+async function handleAction({ request }: ActionFunctionArgs) {
   await requireAdminApiRequest(request);
 
   if (request.method !== "POST") {
@@ -43,3 +44,6 @@ export async function action({ request }: ActionFunctionArgs) {
   await writeQueueMetricsControls(parsed.data);
   return json({ ok: true, controls: await readQueueMetricsControls() });
 }
+
+export const loader = withAdminAudit(handleLoader);
+export const action = withAdminAudit(handleAction);

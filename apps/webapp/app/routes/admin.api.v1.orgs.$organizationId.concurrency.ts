@@ -1,3 +1,4 @@
+import { withAdminAudit } from "~/services/adminAudit/adminAudit.server";
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
@@ -18,7 +19,7 @@ const RequestBodySchema = z.object({
   production: z.number().optional(),
 });
 
-export async function action({ request, params }: ActionFunctionArgs) {
+async function handleAction({ request, params }: ActionFunctionArgs) {
   await requireBillingServiceOrAdminApiRequest(request);
 
   const { organizationId } = ParamsSchema.parse(params);
@@ -38,3 +39,5 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   return json({ success: true, queued: true }, { status: 202 });
 }
+
+export const action = withAdminAudit(handleAction);

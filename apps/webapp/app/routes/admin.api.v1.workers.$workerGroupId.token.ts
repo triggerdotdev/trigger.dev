@@ -1,3 +1,4 @@
+import { withAdminAudit } from "~/services/adminAudit/adminAudit.server";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { z } from "zod";
@@ -20,7 +21,7 @@ const RequestBodySchema = z.discriminatedUnion("action", [
   }),
 ]);
 
-export async function action({ request, params }: ActionFunctionArgs) {
+async function handleAction({ request, params }: ActionFunctionArgs) {
   await requireAdminApiRequest(request);
 
   if (request.method !== "POST") {
@@ -86,3 +87,5 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
   }
 }
+
+export const action = withAdminAudit(handleAction);

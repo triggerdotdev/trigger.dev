@@ -2826,6 +2826,9 @@ const EnvironmentSchema = z
     // login path.
     SSO_DATABASE_WRITER_CONNECTION_LIMIT: z.coerce.number().int().default(2),
     SSO_DATABASE_READER_CONNECTION_LIMIT: z.coerce.number().int().default(5),
+
+    /** Records admin API calls, admin dashboard mutations and admin PAT minting through the admin audit plugin. */
+    ADMIN_AUDIT_ENABLED: BoolEnv.default(false),
     // Emit a console.log when the SSO fallback is selected because no
     // plugin is installed. Default off so OSS deployments stay quiet.
     SSO_LOG_FALLBACK: BoolEnv.default(false),

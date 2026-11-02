@@ -2,6 +2,7 @@ import { prisma } from "~/db.server";
 import type { LoaderFunction } from "@remix-run/node";
 import { env } from "~/env.server";
 import { rbac } from "~/services/rbac.server";
+import { getAdminAuditController } from "~/services/adminAudit/adminAudit.server";
 import { getExternalOidcController } from "~/services/oidc/externalOidc.server";
 import { getSecurityNoticesController } from "~/services/securityNotices.server";
 import { isOtlpWorkerPoolHealthy } from "~/v3/otlpWorkerPool.server";
@@ -16,6 +17,7 @@ export const loader: LoaderFunction = async ({ request }) => {
     // not be silently bypassed by the DB-disabled flag.
     await rbac.isUsingPlugin();
     await getExternalOidcController();
+    await getAdminAuditController();
     await getSecurityNoticesController();
 
     if (env.OTEL_TRANSFORM_WORKER_POOL_ENABLED && !isOtlpWorkerPoolHealthy()) {

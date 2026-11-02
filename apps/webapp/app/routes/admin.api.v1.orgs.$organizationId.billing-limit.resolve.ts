@@ -1,3 +1,4 @@
+import { withAdminAudit } from "~/services/adminAudit/adminAudit.server";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
@@ -18,7 +19,7 @@ const BodySchema = z.object({
 });
 
 /** Billing platform webhook: org resolved billing limit to ok. Idempotent — returns 202. */
-export async function action({ request, params }: ActionFunctionArgs) {
+async function handleAction({ request, params }: ActionFunctionArgs) {
   await requireBillingServiceOrAdminApiRequest(request);
 
   if (request.method.toLowerCase() !== "post") {
@@ -68,3 +69,5 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   return json({ success: true, accepted: true }, { status: 202 });
 }
+
+export const action = withAdminAudit(handleAction);

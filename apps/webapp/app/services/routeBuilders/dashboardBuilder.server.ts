@@ -6,6 +6,7 @@
 import { json, redirect } from "@remix-run/server-runtime";
 import type { RbacAbility } from "@trigger.dev/rbac";
 import { env } from "~/env.server";
+import { noteAdminRequest } from "~/services/adminAudit/adminAuditContext.server";
 import { rbac } from "~/services/rbac.server";
 import { getUserId } from "~/services/session.server";
 import { permissionDeniedResponse } from "~/utils/permissionDenied";
@@ -107,6 +108,10 @@ export async function authenticateAndAuthorize<TParams, TSearchParams, TContext 
     const denied = isSuperGate
       ? !isAuthorized(auth.ability, options.authorization)
       : !hasScope || !isAuthorized(auth.ability, options.authorization);
+
+    if (isSuperGate && request.method !== "GET" && request.method !== "HEAD") {
+      noteAdminRequest(request, { captureBody: !denied });
+    }
 
     if (denied) {
       // Super-admin gates must not reveal that the route exists, so they

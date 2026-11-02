@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { env } from "~/env.server";
+import { noteAdminRequest } from "~/services/adminAudit/adminAuditContext.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
 
 /**
@@ -8,6 +9,7 @@ import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
  */
 export async function requireBillingServiceOrAdminApiRequest(request: Request): Promise<void> {
   if (isBillingServiceRequest(request, env.BILLING_SERVICE_SECRET)) {
+    noteAdminRequest(request, { actor: { kind: "billing_service" }, captureBody: true });
     return;
   }
 

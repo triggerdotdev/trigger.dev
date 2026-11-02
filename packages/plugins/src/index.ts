@@ -45,6 +45,19 @@ export {
 export type { PluginDatabaseConfig } from "./databaseConfig.js";
 export { organizationOidcIssuer } from "./oidc.js";
 export type {
+  AdminAuditActivity,
+  AdminAuditActor,
+  AdminAuditActorKind,
+  AdminAuditController,
+  AdminAuditEvent,
+  AdminAuditHttp,
+  AdminAuditIpLocation,
+  AdminAuditPat,
+  AdminAuditPlugin,
+  AdminAuditPluginConfig,
+  AdminAuditSourceEndpoint,
+} from "./adminAudit.js";
+export type {
   ExternalOidcController,
   ExternalOidcEnvironment,
   ExternalOidcMintResult,

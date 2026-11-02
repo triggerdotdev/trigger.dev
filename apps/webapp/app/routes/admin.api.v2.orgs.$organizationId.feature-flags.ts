@@ -1,9 +1,11 @@
+import { withAdminAudit } from "~/services/adminAudit/adminAudit.server";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { Prisma } from "@trigger.dev/database";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { prisma } from "~/db.server";
+import { noteAdminRequest } from "~/services/adminAudit/adminAuditContext.server";
 import { requireUser } from "~/services/session.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { selectMintBaselineSource, stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
@@ -26,7 +28,7 @@ const ParamsSchema = z.object({
   organizationId: z.string(),
 });
 
-export async function loader({ request, params }: LoaderFunctionArgs) {
+async function handleLoader({ request, params }: LoaderFunctionArgs) {
   const user = await requireUser(request);
   if (!user.admin) {
     throw new Response("Unauthorized", { status: 403 });
@@ -113,11 +115,13 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   });
 }
 
-export async function action({ request, params }: ActionFunctionArgs) {
+async function handleAction({ request, params }: ActionFunctionArgs) {
   const user = await requireUser(request);
   if (!user.admin) {
     throw new Response("Unauthorized", { status: 403 });
   }
+
+  noteAdminRequest(request, { captureBody: true });
 
   const { organizationId } = ParamsSchema.parse(params);
 
@@ -204,3 +208,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   return json({ success: true });
 }
+
+export const loader = withAdminAudit(handleLoader);
+export const action = withAdminAudit(handleAction);

@@ -10,11 +10,13 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
 import { z } from "zod";
 import { prisma } from "~/db.server";
+import { noteAdminRequest, recordAdminPatCreated } from "./adminAudit/adminAuditContext.server";
 import { logger } from "./logger.server";
 import { rbac } from "./rbac.server";
 import { decryptToken, encryptToken, hashToken } from "~/utils/tokens.server";
 import { env } from "~/env.server";
 import { isUserActorToken, verifyUserActorToken, type UserActorClaims } from "@trigger.dev/rbac";
+import type { AdminAuditSourceEndpoint } from "@trigger.dev/plugins";
 
 const tokenValueLength = 40;
 //lowercase only, removed 0 and l to avoid confusion
@@ -39,6 +41,8 @@ type CreatePersonalAccessTokenOptions = {
   // the CLI auth-code path doesn't pass one (legacy behaviour
   // preserved — those PATs run with no explicit role).
   roleId?: string;
+  /** Where the mint came from, for the admin audit trail when the user is an admin. */
+  auditSource?: AdminAuditSourceEndpoint;
 };
 
 /** Returns obfuscated access tokens that aren't revoked */
@@ -158,6 +162,8 @@ export async function revokePersonalAccessToken(tokenId: string, userId: string)
 
 export type PersonalAccessTokenAuthenticationResult = {
   userId: string;
+  /** The PAT row id. Absent for delegated user-actor tokens. */
+  tokenId?: string;
   /**
    * Verified claims when the caller presented a delegated user-actor token. They ride on the
    * result so no caller can hold the actor without its environment scope.
@@ -242,6 +248,7 @@ export async function authenticateAdminRequest(
   const authResult = await authenticateApiRequestWithPersonalAccessToken(request);
 
   if (!authResult) {
+    noteAdminRequest(request, { actor: { kind: "unauthenticated" }, captureBody: false });
     return { ok: false, status: 401, message: "Invalid or Missing API key" };
   }
 
@@ -250,8 +257,20 @@ export async function authenticateAdminRequest(
   });
 
   if (!user) {
+    noteAdminRequest(request, { actor: { kind: "unauthenticated" }, captureBody: false });
     return { ok: false, status: 401, message: "Invalid or Missing API key" };
   }
+
+  noteAdminRequest(request, {
+    actor: {
+      kind: "user_pat",
+      userId: user.id,
+      email: user.email,
+      isAdmin: user.admin,
+      tokenId: authResult.tokenId,
+    },
+    captureBody: user.admin,
+  });
 
   if (!user.admin) {
     return { ok: false, status: 403, message: "You must be an admin to perform this action" };
@@ -326,6 +345,7 @@ export async function authenticatePersonalAccessToken(
 
   return {
     userId: personalAccessToken.userId,
+    tokenId: personalAccessToken.id,
   };
 }
 
@@ -521,6 +541,7 @@ export async function createPersonalAccessTokenFromAuthorizationCode(
   const token = await createPersonalAccessToken({
     name: "cli",
     userId,
+    auditSource: { ip: approval.approverIp ?? null, userAgent: null },
   });
 
   const bound = await prisma.authorizationCode.updateMany({
@@ -600,6 +621,7 @@ export async function createPersonalAccessToken({
   name,
   userId,
   roleId,
+  auditSource,
 }: CreatePersonalAccessTokenOptions) {
   const token = createToken();
   const encryptedToken = encryptToken(token, env.ENCRYPTION_KEY);
@@ -652,6 +674,13 @@ export async function createPersonalAccessToken({
       userId,
     });
   }
+
+  void recordAdminPatCreated({
+    userId,
+    tokenId: personalAccessToken.id,
+    name,
+    source: auditSource,
+  });
 
   return {
     id: personalAccessToken.id,

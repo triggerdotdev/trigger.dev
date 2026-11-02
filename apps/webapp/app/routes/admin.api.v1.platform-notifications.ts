@@ -1,3 +1,4 @@
+import { withAdminAudit } from "~/services/adminAudit/adminAudit.server";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { err, ok, type Result } from "neverthrow";
 import { logger } from "~/services/logger.server";
@@ -17,7 +18,7 @@ async function authenticateAdmin(request: Request): Promise<Result<AdminUser, Au
     : err({ status: result.status, message: result.message });
 }
 
-export async function action({ request }: ActionFunctionArgs) {
+async function handleAction({ request }: ActionFunctionArgs) {
   if (request.method !== "POST") {
     return json({ error: "Method not allowed" }, { status: 405 });
   }
@@ -49,3 +50,5 @@ export async function action({ request }: ActionFunctionArgs) {
 
   return json(result.value, { status: 201 });
 }
+
+export const action = withAdminAudit(handleAction);
