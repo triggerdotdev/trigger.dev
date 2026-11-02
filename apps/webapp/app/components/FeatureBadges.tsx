@@ -2,33 +2,6 @@ import { cn } from "~/utils/cn";
 import { Badge } from "./primitives/Badge";
 import { SimpleTooltip } from "./primitives/Tooltip";
 
-export function AlphaBadge({
-  inline = false,
-  className,
-}: {
-  inline?: boolean;
-  className?: string;
-}) {
-  return (
-    <SimpleTooltip
-      button={
-        <Badge
-          variant="extra-small"
-          className={cn(
-            "system:border-transparent system:bg-blue-500 system:text-white",
-            inline ? "inline-grid" : "",
-            className
-          )}
-        >
-          Alpha
-        </Badge>
-      }
-      content="This feature is in Alpha"
-      disableHoverableContent
-    />
-  );
-}
-
 export function BetaBadge({ inline = false, className }: { inline?: boolean; className?: string }) {
   return (
     <SimpleTooltip

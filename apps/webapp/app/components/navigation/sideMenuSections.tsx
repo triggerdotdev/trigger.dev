@@ -45,7 +45,7 @@ import {
   v3WaitpointTokensPath,
 } from "~/utils/pathBuilder";
 import { computeCanUseAlertsList } from "~/v3/canUseAlertsList";
-import { AlphaBadge, NewBadge } from "../FeatureBadges";
+import { NewBadge } from "../FeatureBadges";
 import { type RenderIcon } from "../primitives/Icon";
 import { type SideMenuSectionId } from "./sideMenuTypes";
 
@@ -163,7 +163,7 @@ export function buildSideMenuSections({
                 activeIconColor: "text-logs",
                 to: v3LogsPath(organization, project, environment),
                 dataAction: "logs",
-                badge: <AlphaBadge />,
+                badge: <NewBadge />,
               } satisfies SideMenuItemConfig,
             ]
           : []),
@@ -297,6 +297,7 @@ export function buildSideMenuSections({
               activeIconColor: "text-text-bright",
               to: v3OidcPath(organization, project, environment),
               dataAction: "oidc",
+              badge: <NewBadge />,
             } satisfies SideMenuItemConfig,
           ]
         : []),
