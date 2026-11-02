@@ -88,6 +88,9 @@ const SemanticAttributes = {
  * active or observed gate never re-anchors; the Lua helper inlines the same value. */
 const GATE_QUEUED_COUNTER_TTL_SECONDS = 86400;
 
+/** Concurrency sets the sweeper processes at once from one SCAN page (the old COUNT 10 page width). */
+export const SWEEPER_SET_CONCURRENCY = 10;
+
 /** Counters a dequeue script tallies for its reconcile work; positional on the reply's third slot. */
 type ReconcileCounters = {
   passesGroup: number;
@@ -1324,6 +1327,8 @@ export type RunQueueOptions = {
     scanJitterInMs?: number;
     processMarkedSchedule?: string;
     processMarkedJitterInMs?: number;
+    /** SCAN COUNT hint per call while looking for currentConcurrency sets */
+    scanCount?: number;
     callback: ConcurrencySweeperCallback;
   };
   /** TTL system for automatic run expiration */
@@ -2867,7 +2872,7 @@ export class RunQueue {
    * Create a scan stream for queue current concurrency keys
    */
   public currentConcurrencyScanStream(
-    count: number = 10,
+    count: number,
     onEnd?: () => void,
     onError?: (error: Error) => void
   ): { stream: Readable; redis: Redis } {
@@ -4960,13 +4965,17 @@ export class RunQueue {
     };
 
     const { promise, resolve, reject } = promiseWithResolvers<typeof stats>();
+    // "end" can fire while the last page is still being processed; finish it first.
+    let processing: Promise<void> = Promise.resolve();
 
     const { stream, redis } = this.currentConcurrencyScanStream(
-      10,
+      boundedInt(this.options.concurrencySweeper?.scanCount, 1000, 1, 10_000),
       () => {
-        this.logger.debug("Concurrency scan stream closed", { stats });
+        void processing.then(() => {
+          this.logger.debug("Concurrency scan stream closed", { stats });
 
-        resolve(stats);
+          resolve(stats);
+        });
       },
       (error) => {
         this.logger.error("Concurrency scan stream error", {
@@ -5011,11 +5020,21 @@ export class RunQueue {
 
       stats.processedKeys += uniqueKeys.length;
 
-      await Promise.allSettled(uniqueKeys.map((key) => this.processConcurrencySet(key))).finally(
-        () => {
-          stream.resume();
+      // A full SCAN page can hold hundreds of matches; cap the fan-out so the per-set callback
+      // (a DB query in the engine) doesn't burst.
+      processing = (async () => {
+        for (let i = 0; i < uniqueKeys.length; i += SWEEPER_SET_CONCURRENCY) {
+          await Promise.allSettled(
+            uniqueKeys
+              .slice(i, i + SWEEPER_SET_CONCURRENCY)
+              .map((key) => this.processConcurrencySet(key))
+          );
         }
-      );
+      })().finally(() => {
+        stream.resume();
+      });
+
+      await processing;
     });
 
     return promise;
@@ -5027,9 +5046,11 @@ export class RunQueue {
     });
 
     const { promise, resolve, reject } = promiseWithResolvers<void>();
+    // Same as the SCAN page level: "end" can fire while the last SSCAN page is in flight.
+    let processing: Promise<void> = Promise.resolve();
 
     stream.on("end", () => {
-      resolve();
+      void processing.then(() => resolve());
     });
 
     stream.on("error", (error) => {
@@ -5041,7 +5062,7 @@ export class RunQueue {
       reject(error);
     });
 
-    stream.on("data", async (runIds: string[]) => {
+    const processPage = async (runIds: string[]) => {
       stream.pause();
 
       if (this.abortController.signal.aborted) {
@@ -5069,6 +5090,10 @@ export class RunQueue {
       }
 
       stream.resume();
+    };
+
+    stream.on("data", (runIds: string[]) => {
+      processing = processPage(runIds);
     });
 
     return promise;

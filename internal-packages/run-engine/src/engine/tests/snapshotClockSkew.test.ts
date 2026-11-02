@@ -334,6 +334,32 @@ describe("RunEngine snapshot ordering across engine clocks", () => {
   );
 
   containerTestWithIsolatedRedis(
+    "releasing a run dequeued on an engine whose clock is ahead requeues it after that snapshot",
+    async ({ prisma, redisOptions }) => {
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const { run } = await triggerRun(engine, prisma, ["test-task"]);
+        const message = await withClockAhead(() => dequeueOne(engine));
+
+        const released = await engine.releaseRun({
+          runId: run.id,
+          snapshotId: message.snapshot.id,
+          reason: "PodFailed",
+        });
+        expect(released).toEqual({ ok: true, requeued: true });
+
+        const latest = await engine.getRunExecutionData({ runId: run.id });
+        assertNonNullable(latest);
+        expect(latest.snapshot.executionStatus).toBe("QUEUED");
+        await expectSnapshotsInWriteOrder(prisma, run.id);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTestWithIsolatedRedis(
     "a run parked for a missing version on an engine whose clock is ahead is promoted",
     async ({ prisma, redisOptions }) => {
       const engine = createEngine(prisma, redisOptions, {

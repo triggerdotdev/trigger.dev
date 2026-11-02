@@ -1,9 +1,12 @@
 import type { AlertCreatedBlock } from "@internal/dashboard-agent-contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ALERT_NAME_MAX,
   capabilityParams,
   conditionKindFor,
+  isLimitCondition,
   defaultWindowMinutes,
+  compositeComponents,
   draftMissing,
   isComplete,
   needsScopeValue,
@@ -20,13 +23,13 @@ import {
 function shouldSkipCondition(what: string | undefined): boolean {
   const kind = conditionKindFor(what);
   if (kind === "threshold" || kind === "absence") return false;
-  return capabilityParams(what).length === 0;
+  return !isLimitCondition(what) && capabilityParams(what).length === 0;
 }
 
 function skipsStep(key: FlowStepKey | undefined, answers: FlowAnswers): boolean {
   if (key === "condition") return shouldSkipCondition(answers.what);
   if (key === "scope") return skipsScope(answers);
-  if (key === "environments") return !answers.replace;
+  if (key === "environments" || key === "name") return !answers.replace;
   return false;
 }
 
@@ -54,6 +57,10 @@ export type CreationFlowState = {
   selectChip: (key: FlowStepKey, value: string) => void;
   setCondition: (value: string) => void;
   setConditionParams: (params: Record<string, number> | undefined) => void;
+  updateAnswers: (patch: Partial<FlowAnswers>) => void;
+  confirmWhat: (what: string, components?: string[]) => void;
+  setName: (name: string) => void;
+  confirmName: () => void;
   confirmCondition: () => void;
   setScopeValue: (value: string) => void;
   setWindowMinutes: (value: number) => void;
@@ -72,13 +79,27 @@ function initialStepIndex(answers: FlowAnswers): number {
       if (answers.expiry === undefined) return i;
       continue;
     }
+    if (key === "name") {
+      if (!answers.replace && answers.name !== undefined && !answers.nameConfirmed) return i;
+      continue;
+    }
     if (key === "environments") {
       if (answers.replace && (!answers.environmentsConfirmed || !answers.environments?.length))
         return i;
       continue;
     }
     if (skipsStep(key, answers)) continue;
-    if (answers[key] === undefined) return i;
+    if (key === "condition" && isLimitCondition(answers.what)) {
+      if (
+        !answers.conditionConfirmed &&
+        answers.signals === undefined &&
+        answers.compositeMode === undefined
+      ) {
+        return i;
+      }
+      continue;
+    }
+    if (answers[key as keyof FlowAnswers] === undefined) return i;
   }
   return STEP_ORDER.length;
 }
@@ -143,9 +164,13 @@ export function useCreationFlowState(
           key,
           prompt: promptForStep(key, answers),
           label:
-            key === "notifiers" || key === "environments"
-              ? (answers[key] ?? []).join(", ")
-              : labelFor(key, answers[key] as string, answers),
+            key === "what" && answers.components
+              ? answers.components
+                  .map((component) => resolveCapability(component)?.title ?? component)
+                  .join(", ")
+              : key === "notifiers" || key === "environments"
+                ? (answers[key] ?? []).join(", ")
+                : labelFor(key, answers[key] as string, answers),
         })),
     [stepIndex, answers]
   );
@@ -167,7 +192,17 @@ export function useCreationFlowState(
       const built = withAutoAnswers({
         ...base,
         ...(carryScope ? { scope: a.scope } : {}),
-        ...(key === "scope" ? { condition: a.condition, conditionParams: a.conditionParams } : {}),
+        ...(key === "scope"
+          ? {
+              condition: a.condition,
+              conditionParams: a.conditionParams,
+              compositeMode: a.compositeMode,
+              signals: a.signals,
+              conditionConfirmed: a.conditionConfirmed,
+              name: a.name,
+              components: a.components,
+            }
+          : {}),
         notifiers: a.notifiers,
         scopeValue: key === "scope" ? undefined : a.scopeValue,
         windowMinutes: key === "what" || key === "area" ? undefined : a.windowMinutes,
@@ -225,6 +260,18 @@ export function useCreationFlowState(
     setAnswers((prev) => ({ ...prev, conditionParams: params }));
   }, []);
 
+  const updateAnswers = useCallback((patch: Partial<FlowAnswers>) => {
+    setAnswers((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  const confirmWhat = useCallback(
+    (what: string, components?: string[]) => {
+      selectChip("what", what);
+      setAnswers((prev) => ({ ...prev, components, picked: undefined }));
+    },
+    [selectChip]
+  );
+
   const confirmCondition = useCallback(() => {
     setStepIndex((i) => Math.max(i, stepAfter("condition", answers)));
   }, [answers]);
@@ -242,8 +289,25 @@ export function useCreationFlowState(
   const confirmNotifiers = useCallback(() => {
     if ((answers.notifiers ?? []).length === 0) return;
     const missing = draftMissing(answers)[0];
-    setStepIndex(missing ? STEP_ORDER.indexOf(missing) : STEP_ORDER.length);
+    const toName = !missing && !answers.replace && !answers.nameConfirmed;
+    setStepIndex(
+      missing
+        ? STEP_ORDER.indexOf(missing)
+        : toName
+          ? STEP_ORDER.indexOf("name")
+          : STEP_ORDER.length
+    );
   }, [answers]);
+
+  const setName = useCallback((name: string) => {
+    setAnswers((prev) => ({ ...prev, name: name.slice(0, ALERT_NAME_MAX) }));
+  }, []);
+
+  const confirmName = useCallback(() => {
+    if (answers.name !== undefined && !answers.name.trim()) return;
+    setAnswers((prev) => ({ ...prev, nameConfirmed: true }));
+    setStepIndex(STEP_ORDER.length);
+  }, [answers.name]);
 
   const setExpiry = useCallback((value: string) => {
     setAnswers((a) => ({ ...a, expiry: value }));
@@ -305,6 +369,10 @@ export function useCreationFlowState(
     selectChip,
     setCondition,
     setConditionParams,
+    updateAnswers,
+    confirmWhat,
+    setName,
+    confirmName,
     confirmCondition,
     setScopeValue,
     setWindowMinutes,
@@ -329,4 +397,15 @@ export function notifyLabel(answers: FlowAnswers, channels: AlertChannel[]): str
     parts.push(ch ? ch.name : id);
   }
   return parts.join(", ") || "None";
+}
+
+export function useDefaultComponents(flow: CreationFlowState, hiddenAreas: string[]) {
+  const { answers, updateAnswers } = flow;
+  const hidden = hiddenAreas.join(",");
+  useEffect(() => {
+    if (answers.what !== "limits.all") return;
+    const offered = compositeComponents("limits.all", hidden ? hidden.split(",") : []);
+    const next = (answers.components ?? offered).filter((key) => offered.includes(key));
+    if (next.length !== answers.components?.length) updateAnswers({ components: next });
+  }, [answers.what, answers.components, hidden, updateAnswers]);
 }

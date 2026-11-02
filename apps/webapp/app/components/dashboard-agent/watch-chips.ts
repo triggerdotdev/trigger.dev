@@ -8,10 +8,6 @@
  */
 import type { WatchStatus } from "@internal/dashboard-agent-contracts";
 
-// The immediate-check wording lives in the presenter with the rest of the
-// user-facing copy. Re-exported here for chip callers.
-export { immediateWatchMessage } from "~/presenters/v3/dashboardAgent";
-
 import {
   formatWatchCadence,
   shortFingerprint,

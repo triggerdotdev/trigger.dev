@@ -13,6 +13,7 @@ const liveRun: TraceStatusInput = {
   missingAnchor: false,
   loadFailed: false,
   isLiveReloading: true,
+  live: true,
   liveTailEnabled: true,
   maximumLiveReloadingSetting: 1000,
 };
@@ -103,6 +104,36 @@ describe("getTraceStatus", () => {
     for (const status of states) {
       expect(reasonOf(status)).toContain("Search and filters may be incomplete");
     }
+  });
+
+  it("says live updates are off when the view doesn't follow the run", () => {
+    for (const liveTailEnabled of [true, false]) {
+      const status = getTraceStatus({
+        ...liveRun,
+        liveTailEnabled,
+        isLiveReloading: false,
+        live: false,
+      });
+      expect(status).toEqual({
+        kind: "liveOff",
+        reason: "Live updates only follow the latest run.",
+      });
+    }
+  });
+
+  it("doesn't say live updates are paused for a failed load the view doesn't follow", () => {
+    const status = getTraceStatus({
+      ...liveRun,
+      isLiveReloading: false,
+      live: false,
+      loadFailed: true,
+    });
+    expect(status.kind).toBe("failed");
+    expect(reasonOf(status)).not.toContain("Live updates");
+  });
+
+  it("shows a finished run as all loaded even when the view doesn't follow it", () => {
+    expect(getTraceStatus({ ...finishedRun, live: false })).toEqual({ kind: "allLoaded" });
   });
 
   it("explains the legacy size cap when live updates are off", () => {

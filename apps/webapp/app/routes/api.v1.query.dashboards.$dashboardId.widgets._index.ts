@@ -1,4 +1,5 @@
 import { json } from "@remix-run/server-runtime";
+import { assertDashboardApiAccess } from "~/services/metricDashboardApiAccess.server";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { AddDashboardWidgetRequestBody } from "@trigger.dev/core/v3/schemas";
 import { z } from "zod";
@@ -26,6 +27,7 @@ const { action } = createActionApiRoute(
     },
   },
   async ({ params, body, authentication }) => {
+    await assertDashboardApiAccess(authentication);
     const { revision, ...widget } = body;
 
     const [error, result] = await tryCatch(

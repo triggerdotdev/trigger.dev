@@ -230,6 +230,36 @@ describe("SessionRunsPresenter", () => {
     expect(second?.totalCount).toBe(24);
   });
 
+  postgresTest(
+    "a run added after the page read doesn't change the newest page's total",
+    async ({ prisma }) => {
+      const { deps, query, addRun } = await seedSessionWithRuns(prisma, 23);
+      // A run is triggered right after the page rows are read, and any other read waits for it:
+      // a count would then see 24 runs while the rows end at 23.
+      let runAdded!: () => void;
+      const added = new Promise<void>((resolve) => (runAdded = resolve));
+      const replica = new Proxy(prisma, {
+        get(target, prop, receiver) {
+          if (prop !== "$queryRaw") return Reflect.get(target, prop, receiver);
+          return async (sql: { sql: string }, ...values: unknown[]) => {
+            if (!sql.sql.includes("LIMIT")) {
+              await added;
+              return target.$queryRaw(sql as never, ...values);
+            }
+            const rows = await target.$queryRaw(sql as never, ...values);
+            await addRun(24);
+            runAdded();
+            return rows;
+          };
+        },
+      });
+
+      const page = await new SessionRunsPresenter({ ...deps, replica }).call(query);
+      expect(page?.data[0]?.number).toBe(23);
+      expect(page?.totalCount).toBe(23);
+    }
+  );
+
   postgresTest("afterCrash sees a crashed run on the previous page", async ({ prisma }) => {
     const { deps, query } = await seedSessionWithRuns(prisma, 23, (n) =>
       n === 3 ? { status: "CRASHED" } : {}
@@ -306,20 +336,22 @@ describe("SessionRunsPresenter", () => {
     const presenter = new SessionRunsPresenter(ctx.deps);
     const r = (n: number) => `run_${ctx.suffix}r${n}`;
 
+    const s = (n: number) => `span_${ctx.suffix}r${n}`;
+
     const page = await presenter.call(ctx.query);
     expect(page?.view).toEqual({
-      [r(1)]: { unavailable: "logsDeleted" },
-      [r(2)]: { unavailable: "legacyStore" },
-      [r(3)]: {},
+      [r(1)]: { spanId: s(1), unavailable: "logsDeleted" },
+      [r(2)]: { spanId: s(2), unavailable: "legacyStore" },
+      [r(3)]: { spanId: s(3) },
     });
 
     const impersonating = await presenter.call({ ...ctx.query, showDeletedLogs: true });
-    expect(impersonating?.view[r(1)]).toEqual({});
+    expect(impersonating?.view[r(1)]).toEqual({ spanId: s(1) });
 
     const capped = await new SessionRunsPresenter({ ...ctx.deps, emergencySpanCap: 1000 }).call(
       ctx.query
     );
-    expect(capped?.view[r(3)]).toEqual({ unavailable: "emergencyCap" });
+    expect(capped?.view[r(3)]).toEqual({ spanId: s(3), unavailable: "emergencyCap" });
   });
 
   postgresTest("a v1-store run loads only while the v1 reroute is on", async ({ prisma }) => {
@@ -327,13 +359,16 @@ describe("SessionRunsPresenter", () => {
     const r1 = `run_${ctx.suffix}r1`;
 
     const rerouted = await new SessionRunsPresenter(ctx.deps).call(ctx.query);
-    expect(rerouted?.view[r1]).toEqual({});
+    expect(rerouted?.view[r1]).toEqual({ spanId: `span_${ctx.suffix}r1` });
 
     const notRerouted = await new SessionRunsPresenter({
       ...ctx.deps,
       v1RerouteEnabled: false,
     }).call(ctx.query);
-    expect(notRerouted?.view[r1]).toEqual({ unavailable: "legacyStore" });
+    expect(notRerouted?.view[r1]).toEqual({
+      spanId: `span_${ctx.suffix}r1`,
+      unavailable: "legacyStore",
+    });
   });
 
   postgresTest("run= returns the page ending at that run", async ({ prisma }) => {

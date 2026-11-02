@@ -125,6 +125,10 @@ export class DelegatingRunStore implements RunStore {
     return this.delegate.requeueRun(runId, args, tx);
   }
 
+  markRunWaitpointsOnStore(runId: string): Promise<void> {
+    return this.delegate.markRunWaitpointsOnStore(runId);
+  }
+
   recordBulkActionMembership(
     runId: string,
     bulkActionId: string,

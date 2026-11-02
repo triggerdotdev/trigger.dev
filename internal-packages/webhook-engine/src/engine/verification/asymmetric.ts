@@ -1,5 +1,5 @@
 import type { WebhookAsymmetricConfig as AsymmetricConfig } from "@trigger.dev/core/v3";
-import { createPublicKey, verify as cryptoVerify, type KeyObject } from "node:crypto";
+import { createHash, createPublicKey, verify as cryptoVerify, type KeyObject } from "node:crypto";
 import { deriveIdempotencyKey, parseEventBody } from "./derive.js";
 import { prepareSignedVerification } from "./parse.js";
 import type { SchemeVerifier, VerifierResult, VerifyInput } from "./types.js";
@@ -8,6 +8,17 @@ import { decodeSignature } from "./util.js";
 // SPKI DER prefix for an Ed25519 public key (RFC 8410): 12-byte header + 32 raw key bytes.
 // Lets us accept a raw Ed25519 key (e.g. Discord's hex public key) without a PEM wrapper.
 const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
+
+// Ed25519 is PureEdDSA (no prehash) → algorithm null; the others name the digest Node signs with.
+const NODE_ALGORITHM: Record<AsymmetricConfig["algorithm"], string | null> = {
+  ed25519: null,
+  "ecdsa-p256": "sha256",
+  "ecdsa-p384": "sha384",
+  "rsa-sha256": "sha256",
+};
+
+// ECDSA signatures arrive either DER-encoded or as raw r||s (IEEE P1363); accept both.
+const DSA_ENCODINGS = ["der", "ieee-p1363"] as const;
 
 function importPublicKey(
   stored: string,
@@ -46,20 +57,22 @@ export const asymmetricVerifier: SchemeVerifier = {
       return fail("invalid public key", cfg, input);
     }
 
-    // Ed25519 is PureEdDSA (no prehash) → algorithm null; ECDSA/RSA hash with sha256.
-    const nodeAlgorithm = cfg.algorithm === "ed25519" ? null : "sha256";
+    const nodeAlgorithm = NODE_ALGORITHM[cfg.algorithm];
+    const message = cfg.prehash
+      ? createHash(cfg.prehash).update(prep.signingBytes).digest()
+      : prep.signingBytes;
+    const isEcdsa = cfg.algorithm === "ecdsa-p256" || cfg.algorithm === "ecdsa-p384";
+    const keys = isEcdsa ? DSA_ENCODINGS.map((dsaEncoding) => ({ key, dsaEncoding })) : [key];
 
     const matched = prep.signatures.some((sig) => {
-      try {
-        return cryptoVerify(
-          nodeAlgorithm,
-          prep.signingBytes,
-          key,
-          decodeSignature(sig, cfg.encoding)
-        );
-      } catch {
-        return false;
-      }
+      const signature = decodeSignature(sig, cfg.encoding);
+      return keys.some((k) => {
+        try {
+          return cryptoVerify(nodeAlgorithm, message, k, signature);
+        } catch {
+          return false;
+        }
+      });
     });
     if (!matched) return fail("signature mismatch", cfg, input);
 

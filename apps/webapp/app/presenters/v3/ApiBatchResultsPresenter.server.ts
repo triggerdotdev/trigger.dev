@@ -34,6 +34,9 @@ const memberRunSelect = {
   friendlyId: true,
   status: true,
   taskIdentifier: true,
+  output: true,
+  outputType: true,
+  error: true,
   attempts: {
     select: {
       status: true,
@@ -85,6 +88,19 @@ export class ApiBatchResultsPresenter extends BasePresenter {
     });
   }
 
+  // Batches minted by the v3 and run-engine services record their members as run friendly ids
+  // in `runIds`, in trigger order; item rows are absent (run engine) or only cover the
+  // non-idempotency-cached runs (v3). Older batches keep internal ids there and use item rows.
+  #members(batchRun: { items: { taskRunId: string }[]; runIds: string[] }) {
+    return batchRun.runIds.length > 0 && batchRun.runIds.every((id) => id.startsWith("run_"))
+      ? { by: "friendlyId" as const, ids: batchRun.runIds }
+      : { by: "id" as const, ids: batchRun.items.map((item) => item.taskRunId) };
+  }
+
+  #memberWhere(by: "id" | "friendlyId", ids: string[]) {
+    return by === "id" ? { id: { in: boundedIn(ids) } } : { friendlyId: { in: boundedIn(ids) } };
+  }
+
   // A gen-2 batch id lives only on its shard: neither the passthrough replica nor the gen-1
   // new/legacy probes hold the row, so both paths route the row read by the id first.
   #shardReplicaFor(friendlyId: string): PrismaReplicaClient | undefined {
@@ -128,9 +144,9 @@ export class ApiBatchResultsPresenter extends BasePresenter {
       return undefined;
     }
 
-    const taskRunIds = batchRun.items.map((item) => item.taskRunId);
+    const members = this.#members(batchRun);
 
-    if (taskRunIds.length === 0) {
+    if (members.ids.length === 0) {
       return {
         id: batchRun.friendlyId,
         items: [],
@@ -139,19 +155,19 @@ export class ApiBatchResultsPresenter extends BasePresenter {
 
     const taskRuns = await this.runStore.findRuns(
       {
-        where: { id: { in: boundedIn(taskRunIds) } },
+        where: this.#memberWhere(members.by, members.ids),
         select: memberRunSelect,
       },
       this._prisma
     );
 
-    const runMap = new Map(taskRuns.map((run) => [run.id, run]));
+    const runMap = new Map(taskRuns.map((run) => [run[members.by], run]));
 
     return {
       id: batchRun.friendlyId,
-      items: batchRun.items
-        .map((item) => {
-          const run = runMap.get(item.taskRunId);
+      items: members.ids
+        .map((id) => {
+          const run = runMap.get(id);
           return run ? executionResultForTaskRun(run as TaskRunWithAttempts) : undefined;
         })
         .filter(Boolean),
@@ -182,14 +198,16 @@ export class ApiBatchResultsPresenter extends BasePresenter {
       return undefined;
     }
 
-    if (batchRun.items.length === 0) {
+    const members = this.#members(batchRun);
+
+    if (members.ids.length === 0) {
       return {
         id: batchRun.friendlyId,
         items: [],
       };
     }
 
-    const taskRunIds = batchRun.items.map((item) => item.taskRunId);
+    const taskRunIds = members.ids;
 
     // A gen-2 id is directly routable to its own shard, so it must not join the gen-1 read:
     // it would miss there, and (being dedicated-family) never reach the legacy probe either.
@@ -218,7 +236,7 @@ export class ApiBatchResultsPresenter extends BasePresenter {
     const newRows = (
       genOneIds.length > 0
         ? ((await newClient.taskRun.findMany({
-            where: { id: { in: boundedIn(genOneIds) } },
+            where: this.#memberWhere(members.by, genOneIds),
             select: memberRunSelect,
           })) as TaskRunWithAttempts[])
         : []
@@ -228,14 +246,14 @@ export class ApiBatchResultsPresenter extends BasePresenter {
           [...idsByShard.entries()].map(
             async ([shardKey, ids]) =>
               (await shardReplicas.get(shardKey)!.taskRun.findMany({
-                where: { id: { in: boundedIn(ids) } },
+                where: this.#memberWhere(members.by, ids),
                 select: memberRunSelect,
               })) as TaskRunWithAttempts[]
           )
         )
       ).flat()
     );
-    const runsById = new Map(newRows.map((run) => [run.id, run]));
+    const runsById = new Map(newRows.map((run) => [run[members.by], run]));
 
     // A dedicated-family id (gen-1 v1 or gen-2) can only live on its own store, so only
     // misses that AREN'T dedicated-shaped are candidates for the legacy probe — mirrors
@@ -245,18 +263,18 @@ export class ApiBatchResultsPresenter extends BasePresenter {
     );
     if (legacyCandidateIds.length > 0) {
       const legacyRows = (await legacyReplica.taskRun.findMany({
-        where: { id: { in: boundedIn(legacyCandidateIds) } },
+        where: this.#memberWhere(members.by, legacyCandidateIds),
         select: memberRunSelect,
       })) as TaskRunWithAttempts[];
       for (const run of legacyRows) {
-        runsById.set(run.id, run);
+        runsById.set(run[members.by], run);
       }
     }
 
     // not-found members are omitted (matches today's drop-undefined behavior); the
     // dangling-reference termination gate (separate unit) governs whether that's permitted.
-    const memberResults = batchRun.items.map((item) => {
-      const run = runsById.get(item.taskRunId);
+    const memberResults = members.ids.map((id) => {
+      const run = runsById.get(id);
       return run ? executionResultForTaskRun(run) : undefined;
     });
 

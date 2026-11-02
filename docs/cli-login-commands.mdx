@@ -24,10 +24,16 @@ yarn dlx trigger.dev@latest login
 
 </CodeGroup>
 
+When the CLI opens your browser, approving the login sends you back to the CLI automatically. If the browser is on another machine, for example when you're connected over SSH, use `--no-browser`: after you approve, the page shows a code to paste into the terminal.
+
 ## Options
 
 <ParamField body="No browser" type="--no-browser">
-  Do not open the browser. Print the URL only.
+  Do not open the browser. Print the URL only, and finish the login by pasting the code shown after you approve.
+</ParamField>
+
+<ParamField body="Code" type="--code <code>">
+  Finish a pending login with the code shown in your browser. Use this after `--no-wait`, or when the terminal can't prompt for the code.
 </ParamField>
 
 <ParamField body="Email" type="--email <email>">

@@ -10,6 +10,9 @@ export type StreamsWriterV1Options<T> = {
   key: string;
   source: ReadableStream<T>;
   headers?: Record<string, string>;
+  resolveHeaders?: (
+    operation: "legacyStreamIngest" | "legacyStreamResumeProbe"
+  ) => Record<string, string>;
   signal?: AbortSignal;
   version?: string;
   target?: "self" | "parent" | "root";
@@ -102,6 +105,7 @@ export class StreamsWriterV1<T> implements StreamsWriter {
         path: url.pathname + url.search,
         headers: {
           ...this.options.headers,
+          ...this.options.resolveHeaders?.("legacyStreamIngest"),
           "Content-Type": "application/json",
           "X-Client-Id": this.clientId,
           "X-Resume-From-Chunk": startFromChunk.toString(),
@@ -369,6 +373,7 @@ export class StreamsWriterV1<T> implements StreamsWriter {
         path: url.pathname + url.search,
         headers: {
           ...this.options.headers,
+          ...this.options.resolveHeaders?.("legacyStreamResumeProbe"),
           "X-Client-Id": this.clientId,
           "X-Stream-Version": this.options.version ?? "v1",
         },

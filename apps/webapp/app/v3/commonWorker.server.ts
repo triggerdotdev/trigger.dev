@@ -28,6 +28,7 @@ import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAle
 import { BatchTriggerV3Service } from "./services/batchTriggerV3.server";
 import { TimeoutDeploymentService } from "./services/timeoutDeployment.server";
 import { sweepExpiredBuildEnvVars } from "./services/sweepDeploymentBuildEnvVars.server";
+import { sweepExpiredAuthorizationCodes } from "~/services/personalAccessToken.server";
 import { BulkActionService } from "./services/bulk/BulkActionV2.server";
 import { prisma } from "~/db.server";
 import { sweepPreviewAutoArchives } from "~/services/previewAutoArchive.server";
@@ -102,6 +103,13 @@ function initializeWorker() {
           : {}),
         retry: { maxAttempts: 3 },
       },
+      "authorizationCodes.sweepExpired": {
+        schema: CronSchema,
+        cron: "*/30 * * * *",
+        jitterInMs: 60_000,
+        visibilityTimeoutMs: 60_000 * 5,
+        retry: { maxAttempts: 1 },
+      },
       scheduleEmail: {
         schema: DeliverEmailSchema,
         visibilityTimeoutMs: 60_000,
@@ -113,14 +121,15 @@ function initializeWorker() {
         schema: AttioWorkspaceSyncSchema,
         visibilityTimeoutMs: 30_000,
         retry: {
-          maxAttempts: 3,
+          // 2-4 min of backoff, so a short Attio outage or rate limit doesn't dead-letter the job.
+          maxAttempts: 8,
         },
       },
       "attio.syncUser": {
         schema: AttioUserSyncSchema,
         visibilityTimeoutMs: 30_000,
         retry: {
-          maxAttempts: 3,
+          maxAttempts: 8,
         },
       },
       "membership.provisionDevEnvironments": {
@@ -302,6 +311,9 @@ function initializeWorker() {
           windowDays: env.DEPLOYMENTS_REDEPLOY_WINDOW_DAYS,
           batchSize: env.DEPLOYMENTS_BUILD_ENV_VARS_SWEEP_BATCH_SIZE,
         });
+      },
+      "authorizationCodes.sweepExpired": async () => {
+        await sweepExpiredAuthorizationCodes(prisma);
       },
       scheduleEmail: async ({ payload }) => {
         await sendEmail(payload);

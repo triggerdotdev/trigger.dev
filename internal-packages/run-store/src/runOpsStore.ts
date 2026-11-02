@@ -954,6 +954,10 @@ export class RoutingRunStore implements RunStore {
     return (await this.#routeForWrite(runId)).requeueRun(runId, args);
   }
 
+  async markRunWaitpointsOnStore(runId: string): Promise<void> {
+    return (await this.#routeForWrite(runId)).markRunWaitpointsOnStore(runId);
+  }
+
   async recordBulkActionMembership(
     runId: string,
     bulkActionId: string,

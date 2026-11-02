@@ -21,6 +21,18 @@ The prompt tells the agent to use the Trigger.dev MCP server (`npx trigger.dev@l
 | `generate_webhook_secret` | Generates a signing secret and returns it once, for providers where you choose the secret. Optionally keeps accepting the old secret (`previousSecretTtlSeconds`). |
 | `set_webhook_secret` | Stores a secret the provider issued. Optionally keeps accepting the old secret (`previousSecretTtlSeconds`). |
 
+### Keep the secret out of the agent's context
+
+A secret passed to `set_webhook_secret`, or returned by `generate_webhook_secret`, becomes part of the agent's conversation. The [CLI webhooks commands](/cli-webhooks-commands) store the secret without printing it, and the MCP tool descriptions point agents that can run shell commands to them:
+
+```bash
+# Store a secret the provider issued, from an env file or a pipe
+npx trigger.dev@latest webhooks set-secret stripe --env prod --from-env STRIPE_WEBHOOK_SECRET
+
+# Generate one and save it to .env.local for the agent to pass to the provider by name
+npx trigger.dev@latest webhooks generate-secret github --env prod --to-env GITHUB_WEBHOOK_SECRET
+```
+
 Without the MCP server, the same operations are available on the REST API with the environment's secret key:
 
 | Request | What it does |

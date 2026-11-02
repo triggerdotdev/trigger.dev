@@ -16,6 +16,7 @@ import {
   truncateClickhouseTables,
 } from "./clickhouse";
 import { createDbBlipController, type DbBlipController } from "./dbBlip";
+import { type HotStandby, startHotStandby } from "./hotStandby";
 import { getTaskMetadata, logCleanup, logSetup } from "./logs";
 import { type MinIOConnectionConfig, type StartedMinIOContainer, MinIOContainer } from "./minio";
 import {
@@ -47,6 +48,16 @@ export {
 export { OtelCollectorContainer, StartedOtelCollectorContainer } from "./otelCollector";
 export { laggingReplica, type LaggingModel } from "./laggingReplica";
 export { createDbBlipController, type DbBlipController, type DbBlipHandle } from "./dbBlip";
+export {
+  installRecoveryConflictGate,
+  connectReaderClient,
+  BUFFER_DEADLOCK_RECOVERY_CONFLICT,
+  SNAPSHOT_RECOVERY_CONFLICT,
+  type RecoveryConflictGate,
+  type RecoveryConflictGateError,
+  type ReaderClientDriver,
+} from "./recoveryConflictGate";
+export { type HotStandby, type LockConflict, type StandbyConflicts } from "./hotStandby";
 export {
   hasLocalRedisServer,
   startLocalRedisCluster,
@@ -1043,3 +1054,21 @@ export const postgresAndMinioTest = withWarmup(
 
 export { slotOf, expectOneSlot } from "./clusterSlot";
 export { createFaultInjector, type FaultInjector } from "./faultInjection";
+
+type HotStandbyContext = NetworkContext & { hotStandby: HotStandby };
+
+/**
+ * A real primary streaming to a real hot standby (two containers per test). Slower than the other
+ * Postgres fixtures; use it only for behaviour that needs actual WAL replay. See {@link HotStandby}.
+ */
+export const hotStandbyTest = test.extend<HotStandbyContext>({
+  network,
+  hotStandby: async ({ network }, use) => {
+    const { hotStandby, close } = await startHotStandby(network);
+    try {
+      await use(hotStandby);
+    } finally {
+      await close();
+    }
+  },
+});

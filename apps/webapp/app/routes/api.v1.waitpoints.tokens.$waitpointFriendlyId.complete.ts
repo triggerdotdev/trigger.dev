@@ -22,7 +22,6 @@ const { action, loader } = createActionApiRoute(
     body: CompleteWaitpointTokenRequestBody,
     maxContentLength: env.TASK_PAYLOAD_MAXIMUM_SIZE,
     allowJWT: true,
-    allowRunToken: true,
     authorization: {
       action: "write",
       resource: (params) => ({ type: "waitpoints", id: params.waitpointFriendlyId }),
@@ -76,6 +75,7 @@ const { action, loader } = createActionApiRoute(
         output: finalData.data
           ? { type: finalData.dataType, value: finalData.data, isError: false }
           : undefined,
+        organizationId: authentication.environment.organization.id,
       });
 
       return json<CompleteWaitpointTokenResponseBody>(

@@ -6,6 +6,7 @@ import {
   type AutosaveState,
 } from "~/components/deployments/gitSettingsAutosave";
 import { GitHubBranchTracking } from "~/components/deployments/GitHubBranchTracking";
+import { IgnoredPathsEditor } from "~/components/deployments/IgnoredPathsEditor";
 import { GitHubOnboardingConnection } from "~/components/deployments/GitHubOnboardingConnection";
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod/v4";
@@ -28,7 +29,7 @@ import {
 } from "@remix-run/react";
 import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { GitBranchIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { z } from "zod";
 import { OctoKitty } from "~/components/GitHubLoginButton";
@@ -50,6 +51,8 @@ import {
   SettingsActions,
   SettingsBlock,
   SettingsRowDescription,
+  SettingsRowTitle,
+  SETTINGS_ROW_TITLE_GAP,
 } from "~/components/primitives/SettingsLayout";
 import {
   EnvironmentIcon,
@@ -70,6 +73,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { env } from "~/env.server";
 import { GitHubSettingsPresenter } from "~/presenters/v3/GitHubSettingsPresenter.server";
+import { ignorePathLimits } from "~/v3/github/ignorePathLimits.server";
 import { logger } from "~/services/logger.server";
 import { triggerInitialDeployment } from "~/services/platform.v3.server";
 import { marketplaceInitialDeploymentOptions } from "~/v3/services/marketplaceInitialDeploymentOptions.server";
@@ -84,7 +88,12 @@ import {
   githubAppInstallPath,
   v3ProjectSettingsIntegrationsPath,
 } from "~/utils/pathBuilder";
-import { type BranchTrackingConfig } from "~/v3/github";
+import {
+  type BranchTrackingConfig,
+  type BuildFilters,
+  type IgnorePathLimits,
+  ignorePathsSchema,
+} from "~/v3/github";
 import { sanitizeGitHubSettingsRedirect } from "~/v3/github/githubSettingsRedirect.server";
 
 // ============================================================================
@@ -110,6 +119,7 @@ export type GitHubAppInstallation = {
 export type ConnectedGitHubRepo = {
   branchTracking: BranchTrackingConfig | undefined;
   previewDeploymentsEnabled: boolean;
+  buildFilters: BuildFilters | undefined;
   createdAt: Date;
   repository: GitHubRepository;
 };
@@ -141,11 +151,17 @@ export const UpdateGitSettingsFormSchema = z.object({
   redirectUrl: z.string().optional(),
 });
 
-const GitHubActionSchema = z.discriminatedUnion("action", [
-  ConnectGitHubRepoFormSchema,
-  DisconnectGitHubRepoFormSchema,
-  UpdateGitSettingsFormSchema,
-]);
+function gitSettingsWithIgnorePathsSchema(limits: IgnorePathLimits) {
+  return UpdateGitSettingsFormSchema.extend({ ignorePaths: ignorePathsSchema(limits) });
+}
+
+function gitHubActionSchema(limits: IgnorePathLimits) {
+  return z.discriminatedUnion("action", [
+    ConnectGitHubRepoFormSchema,
+    DisconnectGitHubRepoFormSchema,
+    gitSettingsWithIgnorePathsSchema(limits),
+  ]);
+}
 
 // ============================================================================
 // Loader
@@ -242,7 +258,7 @@ export const action = dashboardAction(
     }
 
     const formData = await request.formData();
-    const submission = parseWithZod(formData, { schema: GitHubActionSchema });
+    const submission = parseWithZod(formData, { schema: gitHubActionSchema(ignorePathLimits()) });
 
     const autosave =
       new URL(request.url).searchParams.get("autosave") === "1" &&
@@ -370,13 +386,16 @@ export const action = dashboardAction(
 
     // Handle update-git-settings action
     if (actionType === "update-git-settings") {
-      const { productionBranch, stagingBranch, previewDeploymentsEnabled } = submission.value;
+      const { productionBranch, stagingBranch, previewDeploymentsEnabled, ignorePaths } =
+        submission.value;
 
       const resultOrFail = await projectSettingsService.updateGitSettings(
         projectId,
         productionBranch,
         stagingBranch,
-        previewDeploymentsEnabled
+        previewDeploymentsEnabled,
+        // Empty and omitted both parse to []; only forms that send the field may clear it.
+        formData.has("ignorePaths") ? { ignorePaths } : undefined
       );
 
       if (resultOrFail.isOk()) {
@@ -831,6 +850,8 @@ export function ConnectedGitHubRepoForm({
   billingPath,
   redirectUrl,
   canManageGithub = true,
+  vercelIntegrationConnected = false,
+  ignorePathLimits,
 }: {
   connectedGitHubRepo: ConnectedGitHubRepo;
   previewEnvironmentEnabled?: boolean;
@@ -841,16 +862,27 @@ export function ConnectedGitHubRepoForm({
   billingPath: string;
   redirectUrl?: string;
   canManageGithub?: boolean;
+  vercelIntegrationConnected?: boolean;
+  ignorePathLimits: IgnorePathLimits;
 }) {
   const lastSubmission = useActionData() as any;
   const navigation = useNavigation();
 
+  const savedIgnorePaths = connectedGitHubRepo.buildFilters?.ignorePaths.join("\n") ?? "";
   const [hasGitSettingsChanges, setHasGitSettingsChanges] = useState(false);
   const [gitSettingsValues, setGitSettingsValues] = useState({
     productionBranch: connectedGitHubRepo.branchTracking?.prod?.branch || "",
     stagingBranch: connectedGitHubRepo.branchTracking?.staging?.branch || "",
     previewDeploymentsEnabled: connectedGitHubRepo.previewDeploymentsEnabled,
+    ignorePaths: savedIgnorePaths,
   });
+  const [ignorePathsValid, setIgnorePathsValid] = useState(
+    () => ignorePathsSchema(ignorePathLimits).safeParse(savedIgnorePaths).success
+  );
+  const onIgnorePathsChange = useCallback((patterns: string[], valid: boolean) => {
+    setGitSettingsValues((prev) => ({ ...prev, ignorePaths: patterns.join("\n") }));
+    setIgnorePathsValid(valid);
+  }, []);
 
   useEffect(() => {
     const hasChanges =
@@ -858,10 +890,12 @@ export function ConnectedGitHubRepoForm({
         (connectedGitHubRepo.branchTracking?.prod?.branch || "") ||
       gitSettingsValues.stagingBranch !==
         (connectedGitHubRepo.branchTracking?.staging?.branch || "") ||
-      gitSettingsValues.previewDeploymentsEnabled !== connectedGitHubRepo.previewDeploymentsEnabled;
+      gitSettingsValues.previewDeploymentsEnabled !==
+        connectedGitHubRepo.previewDeploymentsEnabled ||
+      gitSettingsValues.ignorePaths !== savedIgnorePaths;
     // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setHasGitSettingsChanges(hasChanges);
-  }, [gitSettingsValues, connectedGitHubRepo]);
+  }, [gitSettingsValues, connectedGitHubRepo, savedIgnorePaths]);
 
   const [gitSettingsForm, fields] = useForm({
     id: "update-git-settings",
@@ -869,7 +903,7 @@ export function ConnectedGitHubRepoForm({
     shouldRevalidate: "onSubmit",
     onValidate({ formData }) {
       return parseWithZod(formData, {
-        schema: UpdateGitSettingsFormSchema,
+        schema: gitSettingsWithIgnorePathsSchema(ignorePathLimits),
       });
     },
   });
@@ -1080,9 +1114,32 @@ export function ConnectedGitHubRepoForm({
           />
         </SettingsRow>
 
+        <SettingsBlock className="flex flex-col gap-3">
+          <div className={SETTINGS_ROW_TITLE_GAP}>
+            <SettingsRowTitle>Ignored paths</SettingsRowTitle>
+            <SettingsRowDescription>
+              One glob per line, relative to the repo root. A push that only changes matching files
+              doesn't deploy.
+            </SettingsRowDescription>
+            {vercelIntegrationConnected && (
+              <SettingsRowDescription className="text-warning">
+                Ignored paths don't apply while the Vercel integration is connected, because Vercel
+                deployments wait on each build.
+              </SettingsRowDescription>
+            )}
+          </div>
+          <IgnoredPathsEditor
+            name={fields.ignorePaths.name}
+            defaultPatterns={connectedGitHubRepo.buildFilters?.ignorePaths ?? []}
+            limits={ignorePathLimits}
+            onChange={onIgnorePathsChange}
+          />
+        </SettingsBlock>
+
         <FormError>{fields.productionBranch?.errors}</FormError>
         <FormError>{fields.stagingBranch?.errors}</FormError>
         <FormError>{fields.previewDeploymentsEnabled?.errors}</FormError>
+        <FormError>{fields.ignorePaths?.errors}</FormError>
         <FormError>{gitSettingsForm.errors}</FormError>
 
         <SettingsActions>
@@ -1091,7 +1148,12 @@ export function ConnectedGitHubRepoForm({
             name="action"
             value="update-git-settings"
             variant="secondary/small"
-            disabled={isGitSettingsLoading || !hasGitSettingsChanges || !canManageGithub}
+            disabled={
+              isGitSettingsLoading ||
+              !hasGitSettingsChanges ||
+              !ignorePathsValid ||
+              !canManageGithub
+            }
             tooltip={
               canManageGithub
                 ? undefined
@@ -1648,6 +1710,10 @@ export function GitHubSettingsPanel({
       <>
         {layout === "settings" && <GitHubAppInstalledRow />}
         <ConnectedGitHubRepoForm
+          // A new project or newly saved paths start the form from the loaded values.
+          key={[projectSlug, ...(data.connectedRepository.buildFilters?.ignorePaths ?? [])].join(
+            "\n"
+          )}
           connectedGitHubRepo={data.connectedRepository}
           previewEnvironmentEnabled={data.isPreviewEnvironmentEnabled}
           stagingEnvironmentEnabled={data.isStagingEnvironmentEnabled}
@@ -1657,6 +1723,8 @@ export function GitHubSettingsPanel({
           billingPath={billingPath}
           redirectUrl={effectiveRedirectUrl}
           canManageGithub={data.canManageGithub}
+          vercelIntegrationConnected={data.isVercelIntegrationConnected}
+          ignorePathLimits={data.ignorePathLimits}
         />
       </>
     );

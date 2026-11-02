@@ -1,5 +1,8 @@
 export {
   alertAreaSchema,
+  AREA_DESCRIPTION,
+  alertGroupSchema,
+  limitSignalSchema,
   alertSignalSchema,
   alertKindSchema,
   alertUnitSchema,
@@ -33,6 +36,8 @@ export {
 
 export type {
   AlertArea,
+  AlertGroup,
+  LimitSignal,
   AlertSignal,
   AlertKind,
   AlertUnit,
@@ -81,3 +86,12 @@ export {
   modesForTables,
 } from "./querySources.js";
 export type { QueryMode, QuerySource } from "./querySources.js";
+
+export {
+  LEGACY_HEALTH_COMPONENTS,
+  selectedComponents,
+  componentFactsKey,
+  compositeComponentSchema,
+  compositeFactsSchema,
+} from "./composite.js";
+export type { CompositeComponent, CompositeFacts } from "./composite.js";

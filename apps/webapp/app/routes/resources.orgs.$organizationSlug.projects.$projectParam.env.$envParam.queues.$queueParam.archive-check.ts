@@ -7,7 +7,6 @@ import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { ArchiveQueueService, archiveQueueErrorMessage } from "~/v3/services/archiveQueue.server";
-import { queueArchivingEnabled } from "~/v3/services/queueArchivingEnabled.server";
 
 const ParamsSchema = EnvironmentParamSchema.extend({ queueParam: z.string() });
 
@@ -34,13 +33,6 @@ export const loader = dashboardLoader(
     const environment = await findEnvironmentBySlug(project.id, params.envParam, user.id);
     if (!environment) {
       throw new Response(undefined, { status: 404, statusText: "Environment not found" });
-    }
-
-    if (!(await queueArchivingEnabled(environment.organizationId))) {
-      return json<ArchiveCheckResult>({
-        archivable: false,
-        reason: "Queue archiving isn't enabled for this organization.",
-      });
     }
 
     const result = await new ArchiveQueueService().check(environment, params.queueParam);

@@ -112,6 +112,7 @@ function createRunEngine() {
         processMarkedSchedule: env.RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_SCHEDULE,
         scanJitterInMs: env.RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_JITTER_IN_MS,
         processMarkedJitterInMs: env.RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_JITTER_IN_MS,
+        scanCount: env.RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_COUNT,
       },
       ttlSystem: {
         disabled: env.RUN_ENGINE_TTL_SYSTEM_DISABLED,

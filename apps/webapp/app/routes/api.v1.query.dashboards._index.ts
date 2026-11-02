@@ -1,4 +1,5 @@
 import { json } from "@remix-run/server-runtime";
+import { assertDashboardApiAccess } from "~/services/metricDashboardApiAccess.server";
 import { tryCatch } from "@trigger.dev/core/utils";
 import {
   CreateDashboardRequestBody,
@@ -57,6 +58,7 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ authentication }) => {
+    await assertDashboardApiAccess(authentication);
     const builtIn = BUILT_IN_DASHBOARD_KEYS.map((key) => {
       try {
         return serializeDashboard(builtInDashboard(key));
@@ -84,6 +86,7 @@ const { action } = createActionApiRoute(
     },
   },
   async ({ body, authentication }) => {
+    await assertDashboardApiAccess(authentication);
     const [error, dashboard] = await tryCatch(
       (async () => {
         if (body.widgets) {

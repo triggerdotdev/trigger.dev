@@ -17,8 +17,16 @@ const { action } = createActionApiRoute(
     }),
     maxContentLength: 1024 * 10, // 10KB
     method: "POST",
+    authorization: {
+      action: "write",
+      resource: (params) => ({ type: "runs", id: params.runFriendlyId }),
+    },
   },
-  async ({ authentication, params }) => {
+  async ({ authentication, params, ability }) => {
+    if (!ability.can("read", { type: "waitpoints", id: params.waitpointFriendlyId })) {
+      return json({ error: "Unauthorized" }, { status: 403 });
+    }
+
     // Resume tokens are actually just waitpoints
     const waitpointId = WaitpointId.toId(params.waitpointFriendlyId);
     const runId = RunId.toId(params.runFriendlyId);

@@ -20,6 +20,7 @@ type ModalProps = {
   hasVercelIntegration: boolean;
   isDevelopment: boolean;
   isRootApiKeyHidden?: boolean;
+  onSwitchToApiKeys: () => void;
 };
 
 type ModalContentProps = ModalProps & {
@@ -33,9 +34,11 @@ export function RegenerateApiKeyModal({
   hasVercelIntegration,
   isDevelopment,
   isRootApiKeyHidden = false,
+  onSwitchToApiKeys,
 }: ModalProps) {
   const randomWord = generateTwoRandomWords();
   const [open, setOpen] = useState(false);
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -51,6 +54,7 @@ export function RegenerateApiKeyModal({
           hasVercelIntegration={hasVercelIntegration}
           isDevelopment={isDevelopment}
           isRootApiKeyHidden={isRootApiKeyHidden}
+          onSwitchToApiKeys={onSwitchToApiKeys}
           randomWord={randomWord}
           closeModal={() => setOpen(false)}
         />
@@ -66,6 +70,7 @@ const RegenerateApiKeyModalContent = ({
   hasVercelIntegration,
   isDevelopment,
   isRootApiKeyHidden,
+  onSwitchToApiKeys,
   closeModal,
 }: ModalContentProps) => {
   const [confirmationText, setConfirmationText] = useState("");
@@ -79,6 +84,24 @@ const RegenerateApiKeyModalContent = ({
 
   return (
     <div className="flex flex-col items-center gap-y-4 pt-4">
+      {!isRootApiKeyHidden ? (
+        <Callout variant="info">
+          <div className="flex flex-col items-start gap-2">
+            <Paragraph variant="small">
+              For routine key management, use individually managed API keys instead.
+            </Paragraph>
+            <Button
+              variant="secondary/small"
+              onClick={() => {
+                closeModal();
+                onSwitchToApiKeys();
+              }}
+            >
+              Switch to API keys…
+            </Button>
+          </div>
+        </Callout>
+      ) : null}
       <Callout variant="warning">
         {`A new API key will be issued for the ${title} environment. Choose what happens to the previous key.`}
       </Callout>

@@ -1053,6 +1053,23 @@ export class PostgresRunStore implements RunStore {
     ) as Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
   }
 
+  async markRunWaitpointsOnStore(runId: string): Promise<void> {
+    const marked = await this.prisma.$executeRaw`
+      UPDATE "TaskRun"
+      SET "annotations" =
+            (CASE WHEN jsonb_typeof("annotations") = 'object'
+              THEN "annotations" ELSE '{}'::jsonb END) || '{"waitpointsOnStore":true}'::jsonb,
+          "updatedAt" = CURRENT_TIMESTAMP
+      WHERE "id" = ${runId}
+        AND ("annotations" -> 'waitpointsOnStore') IS DISTINCT FROM 'true'::jsonb
+    `;
+    if (marked === 0) {
+      // An existing marker is already durable; avoid another row version/replication event.
+      // Preserve the missing-run error before the caller may absorb native edges.
+      await this.prisma.taskRun.findFirstOrThrow({ where: { id: runId }, select: { id: true } });
+    }
+  }
+
   async recordBulkActionMembership(
     runId: string,
     bulkActionId: string,

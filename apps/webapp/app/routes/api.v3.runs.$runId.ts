@@ -11,7 +11,6 @@ export const loader = createLoaderApiRoute(
   {
     params: ParamsSchema,
     allowJWT: true,
-    allowRunToken: true,
     corsStrategy: "all",
     findResource: (params, auth) => {
       return ApiRetrieveRunPresenter.findRun(params.runId, auth.environment);

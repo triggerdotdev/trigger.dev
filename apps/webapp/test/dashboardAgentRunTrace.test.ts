@@ -416,6 +416,79 @@ function depthOf(rootSpan: DashboardAgentTraceSpan | undefined): number {
 
 describe("the dashboard agent run trace", () => {
   containerTestWithClickhouse(
+    "bounds a completed run's reads at completedAt + 7d",
+    async ({ prisma, clickhouseContainer }) => {
+      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        logLevel: "error",
+      });
+      const repository = new ClickhouseEventRepository({ clickhouse, version: "v2" });
+      ctx.repository = repository;
+
+      const createdAt = new Date("2026-09-01T10:00:00.000Z");
+      const completedAt = new Date(createdAt.getTime() + 60 * 60_000);
+      const day = 24 * 60 * 60 * 1000;
+      const expiresAt = convertDateToClickhouseDateTime(new Date(Date.now() + day));
+      const row = (
+        spanId: string,
+        parentSpanId: string,
+        status: "PARTIAL" | "OK",
+        insertedAt: Date
+      ): TaskEventV2Input => ({
+        environment_id: environment.id,
+        organization_id: environment.organizationId,
+        project_id: environment.projectId,
+        task_identifier: TASK_IDENTIFIER,
+        run_id: runId,
+        trace_id: traceId,
+        start_time: clickhouseStartTime(createdAt.getTime() + 10),
+        inserted_at: convertDateToClickhouseDateTime(insertedAt),
+        duration: String(CHILD_DURATION_NS),
+        span_id: spanId,
+        parent_span_id: parentSpanId,
+        message: TASK_IDENTIFIER,
+        kind: "SPAN",
+        status,
+        attributes: {},
+        metadata: "{}",
+        expires_at: expiresAt,
+      });
+
+      const [insertError] = await clickhouse.taskEventsV2.insert([
+        row(rootSpanId, "", "OK", createdAt),
+        row(childSpanId, rootSpanId, "PARTIAL", createdAt),
+        row(childSpanId, rootSpanId, "OK", new Date(completedAt.getTime() + 8 * day)),
+      ]);
+      expect(insertError).toBeNull();
+
+      const read = (status: "COMPLETED_SUCCESSFULLY" | "EXECUTING") =>
+        getDashboardAgentRunTrace({
+          run: {
+            friendlyId: runId,
+            traceId,
+            spanId: rootSpanId,
+            status,
+            createdAt,
+            completedAt: status === "EXECUTING" ? null : completedAt,
+            updatedAt: completedAt,
+            taskEventStore: "clickhouse_v2",
+          },
+          environmentId: environment.id,
+          organizationId: environment.organizationId,
+          prisma,
+        });
+
+      const completed = await read("COMPLETED_SUCCESSFULLY");
+      expect(completed?.trace.rootSpan.children[0]?.data.isPartial).toBe(true);
+
+      const live = await read("EXECUTING");
+      expect(live?.trace.rootSpan.children[0]?.data.isPartial).toBe(false);
+    },
+    TIMEOUT_MS
+  );
+
+  containerTestWithClickhouse(
     "reports the same millisecond durations, task slugs and customer-visible events on both event stores",
     async ({ prisma, clickhouseContainer }) => {
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");

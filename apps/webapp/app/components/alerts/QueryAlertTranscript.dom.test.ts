@@ -254,7 +254,7 @@ describe("QueryAlertTranscript", () => {
       choose("For 24 hours");
       choose("Ops webhook");
       act(() => button("Continue").click());
-      expect(question()).toBe("What should it be called?");
+      expect(question()).toBe("Name your alert");
       expect(input("Name").value).toBe("took on runs");
       choose("Continue");
 
@@ -332,6 +332,19 @@ describe("QueryAlertTranscript", () => {
     choose("Continue");
     choose("For 24 hours");
   }
+
+  it("keeps the agent-suggested threshold and window", async () => {
+    await mount({ operator: ">", value: 42, windowSec: 601 });
+    choose("Continue");
+    choose("Value crosses a threshold");
+    expect(input("Threshold").value).toBe("42");
+    expect(row("Above").querySelector('[aria-label="Selected"]')).not.toBeNull();
+    expect(
+      document.querySelector<HTMLButtonElement>('button[aria-label="Next question"]')!.disabled
+    ).toBe(false);
+    choose("Above");
+    expect(input("Window").value).toBe("11");
+  });
 
   it("offers This chat in the agent, preselected, and sends the chat ids", async () => {
     const release = vi.fn();

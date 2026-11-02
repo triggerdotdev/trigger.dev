@@ -1,5 +1,13 @@
-import { type PersonalAccessToken, type User } from "@trigger.dev/database";
+import {
+  type PersonalAccessToken,
+  type PrismaClientOrTransaction,
+  type User,
+} from "@trigger.dev/database";
+import { compareCliLoginNetworks, needsNetworkConfirmation } from "./cliLoginNetwork.server";
+import type { CreateAuthorizationCodeRequest } from "@trigger.dev/core/v3";
 import { customAlphabet, nanoid } from "nanoid";
+import { createHash, timingSafeEqual } from "node:crypto";
+import { isIP } from "node:net";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "./logger.server";
@@ -62,12 +70,25 @@ export type ObfuscatedPersonalAccessToken = Awaited<
   ReturnType<typeof getValidPersonalAccessTokens>
 >[number];
 
-/** Gets a PersonalAccessToken from an Auth Code, this only works within 10 mins of the auth code being created */
-export async function getPersonalAccessTokenFromAuthorizationCode(authorizationCode: string) {
+/**
+ * Gets a PersonalAccessToken from an Auth Code, this only works within 10 mins of the auth code being created.
+ * Codes are single use: the request that discloses the token also deletes the code.
+ *
+ * A code minted with a PKCE challenge only discloses its token to a caller holding both the
+ * matching verifier and the approval code, which reaches only the browser that approved it.
+ * Codes minted without a challenge are only honoured until `CLI_LOGIN_LEGACY_UNTIL`.
+ */
+export async function getPersonalAccessTokenFromAuthorizationCode(
+  authorizationCode: string,
+  proof: { codeVerifier?: string; approvalCode?: string } = {}
+) {
   // Only allow authorization codes created within the short consent window.
   const validAfter = new Date(Date.now() - AUTHORIZATION_CODE_TTL_MS);
   const code = await prisma.authorizationCode.findFirst({
     select: {
+      id: true,
+      codeChallenge: true,
+      approvalCodeHash: true,
       personalAccessToken: true,
     },
     where: {
@@ -81,11 +102,33 @@ export async function getPersonalAccessTokenFromAuthorizationCode(authorizationC
     throw new Error("Invalid authorization code, or code expired");
   }
 
+  if (!code.codeChallenge && !isLegacyCliLoginAllowed()) {
+    throw new Error(CLI_LOGIN_UPGRADE_REQUIRED_MESSAGE);
+  }
+
   //there's no PersonalAccessToken associated with this code
   if (!code.personalAccessToken) {
     return {
       token: null,
     };
+  }
+
+  if (code.codeChallenge) {
+    const verified =
+      proof.codeVerifier !== undefined &&
+      proof.approvalCode !== undefined &&
+      code.approvalCodeHash !== null &&
+      safeEqual(codeChallengeFor(proof.codeVerifier), code.codeChallenge) &&
+      safeEqual(hashToken(normalizeApprovalCode(proof.approvalCode)), code.approvalCodeHash);
+
+    if (!verified) {
+      throw new Error("Invalid authorization code, or code expired");
+    }
+  }
+
+  const consumed = await prisma.authorizationCode.deleteMany({ where: { id: code.id } });
+  if (consumed.count === 0) {
+    throw new Error("Invalid authorization code, or code expired");
   }
 
   const decryptedToken = decryptPersonalAccessToken(code.personalAccessToken);
@@ -325,15 +368,47 @@ export async function resolveAndRecheckUserActorClaims(
   return (await assertSourcePatActive(resolved)) ? resolved : undefined;
 }
 
+export const CLI_LOGIN_UPGRADE_REQUIRED_MESSAGE =
+  "This version of the Trigger.dev CLI can no longer log in. Upgrade to the latest version (npx trigger.dev@latest login) and try again.";
+
+/** Whether codes minted without a PKCE challenge, by CLIs that predate it, are still honoured. */
+export function isLegacyCliLoginAllowed(now = new Date()) {
+  return now < new Date(env.CLI_LOGIN_LEGACY_UNTIL);
+}
+
+/** Uppercase without 0, 1, I and O, so an approval code survives being read and retyped. */
+const approvalCodeGenerator = customAlphabet("23456789ABCDEFGHJKLMNPQRSTUVWXYZ", 12);
+
+/** Formats an approval code for display as XXXX-XXXX-XXXX. */
+function formatApprovalCode(approvalCode: string) {
+  return approvalCode.match(/.{1,4}/g)!.join("-");
+}
+
+/** Accepts an approval code as typed or pasted: any case, with or without separators. */
+function normalizeApprovalCode(approvalCode: string) {
+  return approvalCode.toUpperCase().replace(/[^0-9A-Z]/g, "");
+}
+
+function codeChallengeFor(codeVerifier: string) {
+  return createHash("sha256").update(codeVerifier).digest("base64url");
+}
+
+function safeEqual(a: string, b: string) {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
 /**
- * Read-only check that an authorization code is still mintable: it exists, is
+ * Read-only lookup of an authorization code that is still mintable: it exists, is
  * unconsumed (`personalAccessTokenId: null`), and within the TTL. Lets the
  * consent-screen loader show Authorize vs expired/invalid without minting a PAT.
+ * Returns null when the code can't be approved.
  */
-export async function isAuthorizationCodeMintable(
+export async function getMintableAuthorizationCode(
   authorizationCode: string,
   prismaClient = prisma
-): Promise<boolean> {
+): Promise<{ legacy: boolean; createdAt: Date; requesterIp: string | null } | null> {
   const validAfter = new Date(Date.now() - AUTHORIZATION_CODE_TTL_MS);
   const code = await prismaClient.authorizationCode.findFirst({
     where: {
@@ -341,23 +416,67 @@ export async function isAuthorizationCodeMintable(
       personalAccessTokenId: null,
       createdAt: { gte: validAfter },
     },
-    select: { id: true },
+    select: { codeChallenge: true, createdAt: true, requesterIp: true },
   });
-  return code !== null;
+
+  if (!code) {
+    return null;
+  }
+
+  const legacy = code.codeChallenge === null;
+  if (legacy && !isLegacyCliLoginAllowed()) {
+    return null;
+  }
+
+  return { legacy, createdAt: code.createdAt, requesterIp: code.requesterIp };
 }
 
-export function createAuthorizationCode() {
+/**
+ * The requester IP is shown on the consent page and in the authorized-login email, so a value
+ * that isn't an IP address (a forged `X-Forwarded-For` on an install without a proxy) isn't stored.
+ */
+export function createAuthorizationCode(
+  options: Partial<Pick<CreateAuthorizationCodeRequest, "codeChallenge" | "callbackPort">> & {
+    requesterIp?: string | null;
+  } = {}
+) {
+  const requesterIp = options.requesterIp?.trim();
   return prisma.authorizationCode.create({
     data: {
       code: nanoid(64),
+      codeChallenge: options.codeChallenge,
+      callbackPort: options.callbackPort,
+      requesterIp: requesterIp && isIP(requesterIp) !== 0 ? requesterIp : undefined,
     },
   });
 }
 
-/** Creates a PersonalAccessToken from an Auth Code, and return the token. We only ever return the unencrypted token once. */
+/** The approver is on a different network from the one that started the login and hasn't confirmed it. */
+export class CliLoginNetworkConfirmationRequiredError extends Error {
+  constructor() {
+    super(
+      "This login was started from a different network. Confirm you started it on another machine before authorizing it."
+    );
+    this.name = "CliLoginNetworkConfirmationRequiredError";
+  }
+}
+
+/**
+ * Mints a new PersonalAccessToken for an Auth Code. Every authorization gets its own token, so a
+ * login never hands out a secret that another CLI or MCP client is already using.
+ *
+ * For a code minted with a PKCE challenge it also issues the approval code the client needs to
+ * exchange the code. The caller hands it to the approving browser only: by redirect to the
+ * client's loopback `callbackPort`, or on the page for the user to paste.
+ *
+ * Compares the approver's network with the one that minted the code. With
+ * `CLI_LOGIN_NETWORK_CHECK=confirm` a login from another network needs `confirmedDifferentNetwork`;
+ * with `log` only the outcome (never the addresses) is logged.
+ */
 export async function createPersonalAccessTokenFromAuthorizationCode(
   authorizationCode: string,
-  userId: string
+  userId: string,
+  approval: { approverIp?: string | null; confirmedDifferentNetwork?: boolean } = {}
 ) {
   // Only allow authorization codes created within the short consent window.
   const validAfter = new Date(Date.now() - AUTHORIZATION_CODE_TTL_MS);
@@ -375,36 +494,28 @@ export async function createPersonalAccessTokenFromAuthorizationCode(
     throw new Error("Invalid authorization code, code already used, or code expired");
   }
 
-  const existingCliPersonalAccessToken = await prisma.personalAccessToken.findFirst({
-    where: {
-      userId,
-      name: "cli",
-      revokedAt: null,
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
+  if (!code.codeChallenge && !isLegacyCliLoginAllowed()) {
+    throw new Error(CLI_LOGIN_UPGRADE_REQUIRED_MESSAGE);
+  }
 
-  //we only allow you to have one CLI PAT at a time, so return this
-  if (existingCliPersonalAccessToken) {
-    //associate this authorization code with the existing personal access token
-    await prisma.authorizationCode.update({
-      where: {
-        code: authorizationCode,
-      },
-      data: {
-        personalAccessTokenId: existingCliPersonalAccessToken.id,
-      },
+  const approvalCode = code.codeChallenge ? approvalCodeGenerator() : undefined;
+
+  const networkMatch = compareCliLoginNetworks(code.requesterIp, approval.approverIp);
+
+  if (env.CLI_LOGIN_NETWORK_CHECK !== "off") {
+    logger.info("CLI login network check", {
+      networkMatch,
+      mode: env.CLI_LOGIN_NETWORK_CHECK,
+      confirmedDifferentNetwork: approval.confirmedDifferentNetwork === true,
     });
+  }
 
-    //we don't return the decrypted token
-    return {
-      id: existingCliPersonalAccessToken.id,
-      name: existingCliPersonalAccessToken.name,
-      userId: existingCliPersonalAccessToken.userId,
-      obfuscateToken: existingCliPersonalAccessToken.obfuscatedToken,
-    };
+  if (
+    env.CLI_LOGIN_NETWORK_CHECK === "confirm" &&
+    needsNetworkConfirmation(networkMatch) &&
+    approval.confirmedDifferentNetwork !== true
+  ) {
+    throw new CliLoginNetworkConfirmationRequiredError();
   }
 
   const token = await createPersonalAccessToken({
@@ -412,16 +523,76 @@ export async function createPersonalAccessTokenFromAuthorizationCode(
     userId,
   });
 
-  await prisma.authorizationCode.update({
+  const bound = await prisma.authorizationCode.updateMany({
     where: {
-      code: authorizationCode,
+      id: code.id,
+      personalAccessTokenId: null,
     },
     data: {
       personalAccessTokenId: token.id,
+      approvalCodeHash: approvalCode ? hashToken(approvalCode) : undefined,
     },
   });
 
-  return token;
+  if (bound.count === 0) {
+    await revokePersonalAccessToken(token.id, userId);
+    throw new Error("Invalid authorization code, code already used, or code expired");
+  }
+
+  return {
+    ...token,
+    requesterIp: code.requesterIp,
+    networkMatch,
+    approval: approvalCode
+      ? { approvalCode: formatApprovalCode(approvalCode), callbackPort: code.callbackPort }
+      : undefined,
+  };
+}
+
+/** Deletes one page of authorization codes created before the cutoff. */
+function deleteExpiredAuthorizationCodesPage(
+  prismaClient: PrismaClientOrTransaction,
+  cutoff: Date,
+  batchSize: number
+): Promise<number> {
+  return prismaClient.$executeRaw`
+    WITH page AS (
+      SELECT id FROM "AuthorizationCode"
+      WHERE "createdAt" < ${cutoff}
+      LIMIT ${batchSize}
+      FOR UPDATE SKIP LOCKED
+    )
+    DELETE FROM "AuthorizationCode" a
+    USING page WHERE a.id = page.id
+  `;
+}
+
+/**
+ * Deletes authorization codes past their TTL, which can no longer be approved or exchanged, so
+ * abandoned logins don't keep their requester IP. Bounded per run so a large backlog drains over
+ * several runs.
+ */
+export async function sweepExpiredAuthorizationCodes(
+  prismaClient: PrismaClientOrTransaction = prisma,
+  options: { batchSize?: number; maxPages?: number; now?: Date } = {}
+): Promise<{ deleted: number; pages: number }> {
+  const { batchSize = 1000, maxPages = 50, now = new Date() } = options;
+  const cutoff = new Date(now.getTime() - AUTHORIZATION_CODE_TTL_MS);
+  let deleted = 0;
+  let pages = 0;
+
+  while (pages < maxPages) {
+    const count = await deleteExpiredAuthorizationCodesPage(prismaClient, cutoff, batchSize);
+    pages++;
+    deleted += count;
+    if (count < batchSize) break;
+  }
+
+  if (deleted > 0) {
+    logger.info("Deleted expired authorization codes", { deleted, pages });
+  }
+
+  return { deleted, pages };
 }
 
 /** Created a new PersonalAccessToken, and return the token. We only ever return the unencrypted token once. */

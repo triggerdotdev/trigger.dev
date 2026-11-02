@@ -2,8 +2,8 @@ import { Logger } from "@trigger.dev/core/logger";
 import { CronSchema, Worker as RedisWorker } from "@trigger.dev/redis-worker";
 import { z } from "zod";
 import { env } from "~/env.server";
-import { createRedisClient } from "~/redis.server";
-import { prisma } from "~/db.server";
+import { createRedisClient, type RedisClient } from "~/redis.server";
+import { $replica, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { isOrganizationAlertsEnabled } from "./canUseAlertsList.server";
@@ -21,6 +21,11 @@ import {
   reconcileAlertJobs,
   redisReconcileCursorStore,
 } from "./services/alerts/engine/reconcileAlertJobs.server";
+import {
+  insertByOrganization,
+  queueSizeMetricsCron,
+  runTick,
+} from "./services/queueSizeMetricsSampler.server";
 
 function initializeWorker() {
   const redisOptions = {
@@ -48,6 +53,16 @@ function initializeWorker() {
     })
   );
 
+  let queueSizeMetricsRedis: RedisClient | undefined;
+  const queueSizeMetricsLock = () =>
+    (queueSizeMetricsRedis ??= createRedisClient("metrics:queue-size", {
+      host: redisOptions.host,
+      port: redisOptions.port,
+      username: redisOptions.username,
+      password: redisOptions.password,
+      tlsDisabled: env.ALERT_ENGINE_WORKER_REDIS_TLS_DISABLED === "true",
+    }));
+
   logger.debug(`👨‍🏭 Initializing alert engine worker at host ${env.ALERT_ENGINE_WORKER_REDIS_HOST}`);
 
   const worker = new RedisWorker({
@@ -65,6 +80,14 @@ function initializeWorker() {
         schema: CronSchema,
         visibilityTimeoutMs: 300_000,
         ...(alertsConfigured ? { cron: RECONCILE_CRON, jitterInMs: 300_000 } : {}),
+        retry: {
+          maxAttempts: 1,
+        },
+      },
+      "metrics.queueSize": {
+        schema: CronSchema,
+        visibilityTimeoutMs: env.QUEUE_SIZE_METRICS_INTERVAL_SEC * 1000,
+        cron: queueSizeMetricsCron(env.QUEUE_SIZE_METRICS_INTERVAL_SEC),
         retry: {
           maxAttempts: 1,
         },
@@ -113,6 +136,32 @@ function initializeWorker() {
         );
         logger.info("alerts.reconcile", result);
       }),
+      "metrics.queueSize": async ({ payload }) => {
+        const [{ engine }, { clickhouseFactory }, { getQueueMetricsClickhouseClient }] =
+          await Promise.all([
+            import("./runEngine.server"),
+            import("~/services/clickhouse/clickhouseFactoryInstance.server"),
+            import("~/services/clickhouse/clickhouseFactory.server"),
+          ]);
+        await clickhouseFactory.isReady();
+        const result = await runTick(
+          { now: new Date(), scheduledAt: new Date(payload.timestamp) },
+          {
+            intervalSec: env.QUEUE_SIZE_METRICS_INTERVAL_SEC,
+            maxEnvs: env.QUEUE_SIZE_METRICS_MAX_ENVS,
+          },
+          {
+            replica: $replica,
+            redis: queueSizeMetricsLock(),
+            clickhouse: getQueueMetricsClickhouseClient(),
+            lengthOfEnvQueue: (environment) => engine.lengthOfEnvQueue(environment),
+            insert: insertByOrganization((organizationId) =>
+              clickhouseFactory.getClickhouseForOrganizationSync(organizationId, "events")
+            ),
+          }
+        );
+        logger.debug("metrics.queueSize", result);
+      },
     },
   });
 

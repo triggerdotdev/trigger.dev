@@ -767,6 +767,15 @@ type ChatSessionState = {
   supersededInputSeq?: number;
   /** Whether the agent is currently streaming a response. Set on first chunk, cleared on turn-complete. */
   isStreaming?: boolean;
+  /**
+   * The resume cursor from before the current turn's first record. Persisted
+   * in place of `lastEventId` until the turn ends, so a reload replays the
+   * whole turn: a cursor from the middle of a turn resumes past chunks the
+   * client needs to rebuild the message. Set when a turn is sent or its first
+   * record arrives (which covers reconnects and sessions hydrated without
+   * `isStreaming`), cleared wherever streaming ends.
+   */
+  turnStart?: { lastEventId: string | undefined };
   /** Set once the outstanding turn is declared dead: a later stop must not gate the next turn on it. */
   outstandingTurnAbandoned?: boolean;
   /** Set once the session is closed. Terminal — sends and reconnects stop. */
@@ -859,6 +868,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           lastEventId: session.lastEventId,
           activeInputSeq: session.activeInputSeq,
           isStreaming: session.isStreaming,
+          ...(session.isStreaming ? { turnStart: { lastEventId: session.lastEventId } } : {}),
           closed: session.closed,
           closedReason: session.closedReason,
         });
@@ -1028,6 +1038,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
     state.activeInputSeq = inSeq;
     state.isStreaming = true;
+    state.turnStart = { lastEventId: state.lastEventId };
     state.outstandingTurnAbandoned = false;
     this.notifySessionChange(chatId, state);
 
@@ -1120,6 +1131,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     const state: ChatSessionState = {
       publicAccessToken: accessToken,
       isStreaming: true,
+      turnStart: { lastEventId: undefined },
     };
     this.sessions.set(chatId, state);
     this.notifySessionChange(chatId, state);
@@ -1160,6 +1172,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       const state = sessions.get(chatId);
       if (state && state.isStreaming) {
         state.isStreaming = false;
+        state.turnStart = undefined;
         notifyChange(chatId, state);
       }
     };
@@ -1411,6 +1424,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     // otherwise a reload resumes mid-turn and replays the chunks the user
     // explicitly stopped.
     state.isStreaming = false;
+    state.turnStart = undefined;
     this.notifySessionChange(chatId, state);
     return true;
   };
@@ -1485,6 +1499,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     // no-ops when the persisted session says isStreaming: false).
     state.activeInputSeq = inSeq;
     state.isStreaming = true;
+    state.turnStart = { lastEventId: state.lastEventId };
     state.outstandingTurnAbandoned = false;
     this.notifySessionChange(chatId, state);
 
@@ -1507,16 +1522,15 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   };
 
   setSession(chatId: string, session: ChatSessionPersistedState): void {
-    this.sessions.set(
-      chatId,
-      this.applyPendingResumeCursor(chatId, {
-        publicAccessToken: session.publicAccessToken,
-        lastEventId: session.lastEventId,
-        activeInputSeq: session.activeInputSeq,
-        isStreaming: session.isStreaming,
-      })
-    );
-    this.notifySessionChange(chatId, this.toPersisted(this.sessions.get(chatId)!));
+    const state = this.applyPendingResumeCursor(chatId, {
+      publicAccessToken: session.publicAccessToken,
+      lastEventId: session.lastEventId,
+      activeInputSeq: session.activeInputSeq,
+      isStreaming: session.isStreaming,
+    });
+    if (state.isStreaming) state.turnStart = { lastEventId: state.lastEventId };
+    this.sessions.set(chatId, state);
+    this.notifySessionChange(chatId, state);
   }
 
   /**
@@ -1532,7 +1546,10 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     if (existing?.publicAccessToken) {
       if (existing.lastEventId === undefined) {
         existing.lastEventId = lastEventId;
-        this.notifySessionChange(chatId, this.toPersisted(existing));
+        if (existing.turnStart?.lastEventId === undefined && existing.isStreaming) {
+          existing.turnStart = { lastEventId };
+        }
+        this.notifySessionChange(chatId, existing);
       }
       this.pendingResumeCursors.delete(chatId);
       return;
@@ -1700,7 +1717,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
   private toPersisted = (state: ChatSessionState): ChatSessionPersistedState => ({
     publicAccessToken: state.publicAccessToken,
-    lastEventId: state.lastEventId,
+    lastEventId: state.turnStart ? state.turnStart.lastEventId : state.lastEventId,
     activeInputSeq: state.activeInputSeq,
     isStreaming: state.isStreaming,
     closed: state.closed,
@@ -1722,6 +1739,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     state.closed = true;
     if (reason) state.closedReason = reason;
     state.isStreaming = false;
+    state.turnStart = undefined;
     state.activeInputSeq = undefined;
     state.skipToTurnComplete = false;
     state.supersededInputSeq = undefined;
@@ -2015,6 +2033,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     state.publicAccessToken = publicAccessToken;
     state.lastEventId = undefined;
     state.isStreaming = false;
+    state.turnStart = undefined;
     this.sessions.set(chatId, state);
     this.notifySessionChange(chatId, state);
   }
@@ -2219,6 +2238,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           // leaving it spinning on a stream nobody will finish.
           if (state.isStreaming && this.activeStreams.get(chatId) === internalAbort) {
             state.isStreaming = false;
+            state.turnStart = undefined;
             this.notifySessionChange(chatId, state);
           }
           return null;
@@ -2293,7 +2313,10 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               return;
             }
 
-            if (value.id) state.lastEventId = value.id;
+            if (value.id) {
+              state.turnStart ??= { lastEventId: state.lastEventId };
+              state.lastEventId = value.id;
+            }
             // Any record — including the first of a resumed connection, which
             // arrives via `primed` — re-earns the resubscribe budget, so a long
             // turn spanning many long-poll windows keeps streaming.
@@ -2371,6 +2394,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
                 }
                 state.activeInputSeq = undefined;
                 state.isStreaming = false;
+                state.turnStart = undefined;
                 this.notifySessionChange(chatId, state);
                 throw new Error("The previous turn's output was lost. Try again.");
               }
@@ -2450,6 +2474,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               state.activeInputSeq = undefined;
               sinceInSeq = undefined;
               state.isStreaming = false;
+              state.turnStart = undefined;
               this.notifySessionChange(chatId, state);
               this.coordinator?.release(chatId);
               this.coordinator?.broadcastSession(chatId, {
@@ -2526,6 +2551,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           // A superseded stream cannot settle the replacement stream.
           if (this.activeStreams.get(chatId) === internalAbort) {
             state.isStreaming = false;
+            state.turnStart = undefined;
             this.notifySessionChange(chatId, state);
           }
           this.emitEvent({

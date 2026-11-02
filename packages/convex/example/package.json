@@ -1,0 +1,41 @@
+{
+  "name": "convex-image-processing",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "packageManager": "pnpm@10.33.2",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "dev:convex": "convex dev",
+    "deploy:convex": "convex deploy",
+    "deploy:site": "static-hosting deploy --build-command 'pnpm build'",
+    "upload:site": "static-hosting upload --build --build-command 'pnpm build'",
+    "deploy:trigger": "trigger deploy --profile test --env prod --native-build --skip-update-check"
+  },
+  "dependencies": {
+    "@convex-dev/static-hosting": "0.2.1",
+    "@trigger.dev/convex": "4.8.3",
+    "@trigger.dev/react-hooks": "4.8.3",
+    "@trigger.dev/sdk": "4.8.3",
+    "ai": "7.0.140",
+    "convex": "1.48.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "sharp": "0.35.5",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@trigger.dev/build": "4.8.3",
+    "@types/node": "24.13.3",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "convex-test": "0.0.65",
+    "trigger.dev": "4.8.3",
+    "typescript": "5.9.3",
+    "vite": "8.3.5",
+    "vitest": "4.1.11"
+  }
+}

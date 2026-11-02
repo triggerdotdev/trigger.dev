@@ -1,4 +1,5 @@
 import { json } from "@remix-run/server-runtime";
+import { assertDashboardApiAccess } from "~/services/metricDashboardApiAccess.server";
 import { tryCatch } from "@trigger.dev/core/utils";
 import {
   ReplaceDashboardRequestBody,
@@ -32,6 +33,7 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ params, authentication }) => {
+    await assertDashboardApiAccess(authentication);
     const [error, dashboard] = await tryCatch(
       new MetricDashboardService().get({
         organizationId: authentication.environment.organizationId,
@@ -58,6 +60,7 @@ const { action } = createMultiMethodApiRoute({
     PATCH: {
       body: UpdateDashboardRequestBody,
       handler: async ({ params, body, authentication }) => {
+        await assertDashboardApiAccess(authentication);
         const input = body as z.infer<typeof UpdateDashboardRequestBody>;
         const [error, dashboard] = await tryCatch(
           new MetricDashboardService().update({
@@ -79,6 +82,7 @@ const { action } = createMultiMethodApiRoute({
     PUT: {
       body: ReplaceDashboardRequestBody,
       handler: async ({ params, body, authentication }) => {
+        await assertDashboardApiAccess(authentication);
         const input = body as z.infer<typeof ReplaceDashboardRequestBody>;
         const [error, dashboard] = await tryCatch(
           (async () => {
@@ -104,6 +108,7 @@ const { action } = createMultiMethodApiRoute({
     },
     DELETE: {
       handler: async ({ params, authentication }) => {
+        await assertDashboardApiAccess(authentication);
         const [error, dashboard] = await tryCatch(
           new MetricDashboardService().delete({
             organizationId: authentication.environment.organizationId,

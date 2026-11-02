@@ -554,6 +554,12 @@ export interface RunStore {
     args: { select: S; workerQueue?: string },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+  /**
+   * Write the sticky internal annotations marker before MemoryDB waitpoint state. The caller holds
+   * the same run lifecycle lock as attempt stamping, so a stamp cannot overwrite a concurrent mark.
+   */
+  markRunWaitpointsOnStore(runId: string): Promise<void>;
+
   recordBulkActionMembership(
     runId: string,
     bulkActionId: string,

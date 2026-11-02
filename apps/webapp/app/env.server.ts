@@ -429,6 +429,7 @@ const EnvironmentSchema = z
     ADMIN_EMAILS: z.string().refine(isValidRegex, "ADMIN_EMAILS must be a valid regex.").optional(),
     // Instance-level kill switch for the admin dashboard and user impersonation.
     ADMIN_DASHBOARD_ENABLED: BoolEnv.default(true),
+    BILLING_SERVICE_SECRET: z.string().min(32).optional(),
     REMIX_APP_PORT: z.string().optional(),
     // Opt-in, dev-only: stream this process's logs over a local telnet/TCP socket on this port.
     // Read directly from process.env in server.ts (before this schema loads); declared here for discoverability.
@@ -480,6 +481,8 @@ const EnvironmentSchema = z
     TRIGGER_TELEMETRY_DISABLED: z.string().optional(),
     AUTH_GITHUB_CLIENT_ID: z.string().optional(),
     AUTH_GITHUB_CLIENT_SECRET: z.string().optional(),
+    GITHUB_IGNORED_PATHS_LIMIT: z.coerce.number().int().positive().default(100),
+    GITHUB_IGNORED_PATH_MAX_LENGTH: z.coerce.number().int().positive().default(256),
     AUTH_GOOGLE_CLIENT_ID: z.string().optional(),
     AUTH_GOOGLE_CLIENT_SECRET: z.string().optional(),
     EMAIL_TRANSPORT: z.enum(["resend", "smtp", "aws-ses"]).optional(),
@@ -839,6 +842,18 @@ const EnvironmentSchema = z
       .positive()
       .default(10_000),
 
+    QUEUE_SIZE_METRICS_INTERVAL_SEC: z.coerce
+      .number()
+      .int()
+      .positive()
+      .refine((seconds) => 60 % seconds === 0, { message: "must divide 60" })
+      .default(30),
+    QUEUE_SIZE_METRICS_MAX_ENVS: z.coerce.number().int().positive().default(2000),
+
+    WEBHOOK_METRICS_FLUSH_INTERVAL_MS: z.coerce.number().int().positive().default(10_000),
+    WEBHOOK_METRICS_MAX_ENTRIES: z.coerce.number().int().positive().default(10_000),
+    WEBHOOK_METRICS_MAX_ENDPOINTS: z.coerce.number().int().positive().default(500),
+
     API_RATE_LIMIT_JWT_WINDOW: z.string().default("1m"),
     API_RATE_LIMIT_JWT_TOKENS: z.coerce.number().int().default(60),
 
@@ -1030,6 +1045,9 @@ const EnvironmentSchema = z
     // cutoff pass (grandfathered). Default off = no run-row read, byte-for-byte today's behavior.
     WORKLOAD_CREATED_AT_GATE_ENABLED: z.string().default("0"),
     WORKLOAD_TOKEN_CUTOFF: z.string().datetime().optional(),
+
+    CLI_LOGIN_NETWORK_CHECK: z.enum(["off", "log", "confirm"]).default("log"),
+    CLI_LOGIN_LEGACY_UNTIL: z.string().datetime().default("2027-01-01T00:00:00.000Z"),
 
     // Development OTEL environment variables
     DEV_OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
@@ -1342,6 +1360,8 @@ const EnvironmentSchema = z
     RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_SCHEDULE: z.string().optional(),
     RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_JITTER_IN_MS: z.coerce.number().int().optional(),
     RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_JITTER_IN_MS: z.coerce.number().int().optional(),
+    // Blank or 0 means the engine default of 1000; clamped to 1..10000 in RunQueue.
+    RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_COUNT: OptionalLimitEnv,
 
     // TTL System settings for automatic run expiration
     RUN_ENGINE_TTL_SYSTEM_DISABLED: BoolEnv.default(false),
@@ -2472,30 +2492,11 @@ const EnvironmentSchema = z
       .nonnegative()
       .optional(),
 
-    // Scheduled logs-search projection. Disabled by default. LOGS_SEARCH_WRITER_CLICKHOUSE_URL,
-    // or the CLICKHOUSE_URL fallback, must reach both source and destination tables and allow writes.
-    LOGS_SEARCH_PROJECTOR_ENABLED: BoolEnv.default(false),
-    LOGS_SEARCH_PROJECTOR_PREVIEW_ENABLED: BoolEnv.default(false),
-    LOGS_SEARCH_PROJECTOR_MAX_WINDOWS_PER_TICK: z.coerce.number().int().min(1).max(20).default(5),
-    LOGS_SEARCH_PROJECTOR_MAX_EXECUTION_TIME_SECONDS: z.coerce
-      .number()
-      .int()
-      .min(1)
-      .max(300)
-      .default(120),
-    LOGS_SEARCH_PROJECTOR_MAX_ROWS_TO_READ: z.coerce.number().int().positive().default(10_000_000),
-    LOGS_SEARCH_PROJECTOR_MAX_MEMORY_USAGE: z.coerce
-      .number()
-      .int()
-      .positive()
-      .default(1_500_000_000),
-    LOGS_SEARCH_PROJECTOR_MAX_THREADS: z.coerce.number().int().min(1).max(8).default(2),
-
     LOGS_SEARCH_DUAL_WRITE_ACTIVE: z.enum(["off", "by-id", "on"]).default("off"),
     LOGS_SEARCH_DUAL_WRITE_ORGANIZATION_IDS: z.string().default(""),
     LOGS_SEARCH_DUAL_WRITE_MAX_CONCURRENCY: z.coerce.number().int().min(1).max(10).default(2),
     LOGS_SEARCH_DUAL_WRITE_MAX_PENDING: z.coerce.number().int().min(1).max(100).default(4),
-    // Logs-search write side (dual writer, projector). Must share storage with
+    // Logs-search write side (dual writer). Must share storage with
     // EVENTS_CLICKHOUSE_URL and allow writes. Unset: the dual writer uses the events client.
     LOGS_SEARCH_WRITER_CLICKHOUSE_URL: z.string().optional(),
     // Logs-search read side (logs page). Falls back to CLICKHOUSE_READER_URL, then CLICKHOUSE_URL.
@@ -2542,6 +2543,17 @@ const EnvironmentSchema = z
       .transform((v) => v ?? process.env.CLICKHOUSE_URL),
     // Events read replica (traces/spans/logs). No CLICKHOUSE_READER_URL fallback by design: this write-capable client opts in explicitly.
     EVENTS_READER_CLICKHOUSE_URL: z.string().optional(),
+    // Reader-only limits for event reads; each is sent only when set.
+    EVENTS_READER_CLICKHOUSE_MAX_EXECUTION_TIME: z.coerce.number().int().positive().optional(),
+    EVENTS_READER_CLICKHOUSE_EXPORT_MAX_EXECUTION_TIME: z.coerce
+      .number()
+      .int()
+      .positive()
+      .optional(),
+    EVENTS_READER_CLICKHOUSE_MAX_THREADS: z.coerce.number().int().positive().optional(),
+    EVENTS_READER_CLICKHOUSE_MAX_MEMORY_USAGE: z.coerce.number().int().positive().optional(),
+    EVENTS_READER_CLICKHOUSE_READONLY: z.enum(["1", "2"]).optional(),
+    EVENTS_READER_CLICKHOUSE_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
     EVENTS_CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
     EVENTS_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
     EVENTS_CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
@@ -2783,6 +2795,8 @@ const EnvironmentSchema = z
     PRIVATE_CONNECTIONS_ENABLED: z.string().optional(),
     PRIVATE_CONNECTIONS_AWS_ACCOUNT_IDS: z.string().optional(),
 
+    REQUIRE_PLUGINS: z.string().optional(),
+
     // Force RBAC to not use the plugin
     RBAC_FORCE_FALLBACK: BoolEnv.default(false),
 
@@ -2827,6 +2841,7 @@ const EnvironmentSchema = z
 
     BILLING_PLUGIN_ENABLED: BoolEnv.default(false),
     BILLING_FORCE_FALLBACK: BoolEnv.default(false),
+    BILLING_V2_ENABLED: BoolEnv.default(false),
     BILLING_DATABASE_CONNECTION_LIMIT: z.coerce.number().int().default(2),
   })
   .and(GithubAppEnvSchema)

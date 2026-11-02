@@ -583,7 +583,7 @@ export class WaitpointFanoutWorker {
       // that will never succeed is worth telling apart from one that might.
       let encoded: EncodedWaitpointCompletion;
       try {
-        encoded = encodeCompletionForDelivery(completion, `fanout:${waitpointId}`);
+        encoded = encodeCompletionForDelivery(completion, `fanout:${waitpointId}`, claim.record);
       } catch (error) {
         this.logger.error("Waitpoint fanout completion is undeliverable", {
           waitpointId,
@@ -702,6 +702,7 @@ export class WaitpointFanoutWorker {
             blockId,
             waitpointId,
             encoded,
+            requireCurrentBlock: true,
           });
           // `stale`, `terminal` and `acked` all mean the run's shard will refuse a
           // redelivery identically, so the watcher is retired rather than retried.

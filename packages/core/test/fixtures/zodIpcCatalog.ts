@@ -9,6 +9,11 @@ export const ParentToChild = {
     message: z.object({ value: z.string() }),
     callback: z.object({ echoed: z.string() }),
   },
+  // The child never answers this one.
+  STALL: {
+    message: z.object({ secret: z.string() }),
+    callback: z.void(),
+  },
 };
 
 export const ChildToParent = {};

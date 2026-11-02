@@ -1194,6 +1194,137 @@ describe("TriggerChatTransport", () => {
       expect(appendAuth).toBe("Bearer fresh-pat");
       expect(transport.getSession("chat-401")?.publicAccessToken).toBe("fresh-pat");
     });
+
+    function midTurnHarness() {
+      const encoder = new TextEncoder();
+      const record = (seq: number, chunk: UIMessageChunk | undefined) =>
+        chunk
+          ? {
+              body: JSON.stringify({ data: chunk, id: `p-${seq}` }),
+              seq_num: seq,
+              timestamp: seq,
+              headers: [],
+            }
+          : {
+              body: "",
+              seq_num: seq,
+              timestamp: seq,
+              headers: [["trigger-control", "turn-complete"]],
+            };
+      const batch = (records: unknown[]) =>
+        encoder.encode(`event: batch\ndata: ${JSON.stringify({ records })}\n\n`);
+
+      let outController: ReadableStreamDefaultController<Uint8Array> | undefined;
+      const appends: number[] = [];
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) {
+          appends.push(appends.length + 1);
+          return appends.length === harness.failAppend ? authError(401) : defaultAppendResponse();
+        }
+        if (isSessionOutSubscribeUrl(urlStr)) {
+          const body = new ReadableStream<Uint8Array>({
+            start(controller) {
+              outController = controller;
+              controller.enqueue(
+                batch([
+                  record(41, { type: "start", messageId: "a-1" }),
+                  record(42, { type: "text-start", id: "t-1" }),
+                  record(43, { type: "text-delta", id: "t-1", delta: "Reading" }),
+                ])
+              );
+            },
+          });
+          return new Response(body, {
+            status: 200,
+            headers: { "content-type": "text/event-stream", "X-Stream-Version": "v2" },
+          });
+        }
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const harness = {
+        failAppend: 0,
+        appends,
+        persisted: [] as ChatSessionPersistedState[],
+        completeTurn() {
+          outController!.enqueue(
+            batch([record(44, { type: "text-end", id: "t-1" }), record(45, undefined)])
+          );
+          outController!.close();
+        },
+      };
+      return harness;
+    }
+
+    it("persists the turn's starting cursor when a refresh lands mid-turn", async () => {
+      const harness = midTurnHarness();
+      harness.failAppend = 2;
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: vi.fn().mockResolvedValue("fresh-pat"),
+        sessions: { "chat-mid": { publicAccessToken: "stale-pat", lastEventId: "40" } },
+        onSessionChange: (_chatId, session) => {
+          if (session) harness.persisted.push(session);
+        },
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-mid",
+        messageId: undefined,
+        messages: [createUserMessage("research queues")],
+        abortSignal: undefined,
+      });
+      const reader = stream.getReader();
+      for (let i = 0; i < 3; i++) await reader.read();
+
+      await transport.sendPendingMessage("chat-mid", createUserMessage("cover cost too"));
+
+      expect(harness.appends).toHaveLength(3);
+      const refreshed = harness.persisted.at(-1)!;
+      expect(refreshed.publicAccessToken).toBe("fresh-pat");
+      expect(refreshed.isStreaming).toBe(true);
+      expect(refreshed.lastEventId).toBe("40");
+      expect(transport.getSession("chat-mid")?.lastEventId).toBe("40");
+
+      harness.completeTurn();
+      while (!(await reader.read()).done) {}
+
+      const completed = harness.persisted.at(-1)!;
+      expect(completed.isStreaming).toBe(false);
+      expect(completed.lastEventId).toBe("45");
+    });
+
+    it("keeps the turn's starting cursor after a reconnect when the session was saved without isStreaming", async () => {
+      const harness = midTurnHarness();
+      harness.failAppend = 1;
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: vi.fn().mockResolvedValue("fresh-pat"),
+        sessions: { "chat-reload": { publicAccessToken: "stale-pat", lastEventId: "40" } },
+        onSessionChange: (_chatId, session) => {
+          if (session) harness.persisted.push(session);
+        },
+      });
+
+      const stream = await transport.reconnectToStream({ chatId: "chat-reload" });
+      const reader = stream!.getReader();
+      for (let i = 0; i < 3; i++) await reader.read();
+
+      await transport.sendPendingMessage("chat-reload", createUserMessage("cover cost too"));
+
+      expect(harness.appends).toHaveLength(2);
+      const refreshed = harness.persisted.at(-1)!;
+      expect(refreshed.publicAccessToken).toBe("fresh-pat");
+      expect(refreshed.lastEventId).toBe("40");
+      expect(transport.getSession("chat-reload")?.lastEventId).toBe("40");
+
+      harness.completeTurn();
+      while (!(await reader.read()).done) {}
+
+      expect(transport.getSession("chat-reload")?.lastEventId).toBe("45");
+    });
   });
 
   describe("stopGeneration", () => {

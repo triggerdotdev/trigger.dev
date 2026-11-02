@@ -171,6 +171,7 @@ export class TtlSystem {
         await this.waitpointSystem.completeWaitpoint({
           id: updatedRun.associatedWaitpoint.id,
           output: { value: JSON.stringify(error), isError: true },
+          organizationId: snapshot.organizationId,
         });
       }
 

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  AREA_DESCRIPTION,
+  alertAreaSchema,
   alertCapabilitySchema,
   conditionSchema,
   evaluationResultSchema,
@@ -36,6 +38,7 @@ import {
 
 const VALID_QUERY_TABLES = [
   "runs",
+  "metrics",
   "concurrency_metrics",
   "env_metrics",
   "errors",
@@ -109,6 +112,24 @@ const VALID_QUEUE_METRICS_COLUMNS = [
   "wait_ms_count",
   "wait_quantiles",
 ];
+
+const LIMIT_KEYS = [
+  "limits.api",
+  "limits.concurrency",
+  "limits.queue",
+  "limits.webhooks.processing",
+  "limits.webhooks.env_rate",
+  "limits.webhooks.endpoint_rate",
+  "limits.webhooks.waiters",
+];
+
+it("gives every limit a short series label of at most three words", () => {
+  for (const key of LIMIT_KEYS) {
+    const short = getCapability(key)?.shortTitle;
+    expect(short, key).toBeTruthy();
+    expect(short!.split(/\s+/).length, key).toBeLessThanOrEqual(3);
+  }
+});
 
 describe("schemas", () => {
   it("round-trips a valid capability", () => {
@@ -371,8 +392,8 @@ describe("validateConditionParams", () => {
 });
 
 describe("registry", () => {
-  it("has 16 capabilities", () => {
-    expect(V1_CAPABILITIES).toHaveLength(17);
+  it("has 25 capabilities", () => {
+    expect(V1_CAPABILITIES).toHaveLength(25);
   });
 
   it("has unique keys", () => {
@@ -465,6 +486,62 @@ describe("registry", () => {
           ],
           "table": "runs",
           "template": "SELECT dateDiff('second', max(triggered_at), now()) > {{p.silenceSec}} FROM runs WHERE {{scope}}",
+        },
+        "limits.all": {
+          "scopes": [
+            "all",
+          ],
+          "table": undefined,
+          "template": undefined,
+        },
+        "limits.api": {
+          "scopes": [
+            "all",
+          ],
+          "table": "metrics",
+          "template": "SELECT (if(maxIf(metric_value, metric_name = 'api.rate_limit.limit.burst') > 0, (maxIf(metric_value, metric_name = 'api.rate_limit.limit.burst') - minIf(metric_value, metric_name = 'api.rate_limit.remaining_min')) * 100 / (maxIf(metric_value, metric_name = 'api.rate_limit.limit.burst')) >= {{p.utilisationPct}}, 0)) OR (sumIf(metric_value, metric_name = 'api.rate_limit.denied') > 0) FROM metrics WHERE {{scope}} AND metric_name LIKE 'api.rate_limit.%'",
+        },
+        "limits.concurrency": {
+          "scopes": [
+            "all",
+          ],
+          "table": "env_metrics",
+          "template": "SELECT (if(max(max_env_limit) > 0, max(max_env_running) * 100 / (max(max_env_limit)) >= {{p.utilisationPct}}, 0)) OR (max(max_env_limit) > 0 AND max(max_env_running) >= max(max_env_limit)) FROM env_metrics WHERE {{scope}}",
+        },
+        "limits.queue": {
+          "scopes": [
+            "all",
+          ],
+          "table": "metrics",
+          "template": "SELECT (if(maxIf(metric_value, metric_name = 'queue.size.limit') > 0, maxIf(metric_value, metric_name = 'queue.size.queued') * 100 / (maxIf(metric_value, metric_name = 'queue.size.limit')) >= {{p.utilisationPct}}, 0)) FROM metrics WHERE {{scope}} AND metric_name LIKE 'queue.size.%'",
+        },
+        "limits.webhooks.endpoint_rate": {
+          "scopes": [
+            "all",
+          ],
+          "table": "metrics",
+          "template": "SELECT (if(maxIf(metric_value, metric_name = 'webhook.ingress.limit.tokens' AND attributes.scope = 'endpoint') > 0, (maxIf(metric_value, metric_name = 'webhook.ingress.limit.tokens' AND attributes.scope = 'endpoint') - minIf(metric_value, metric_name = 'webhook.ingress.remaining_min' AND attributes.scope = 'endpoint')) * 100 / (maxIf(metric_value, metric_name = 'webhook.ingress.limit.tokens' AND attributes.scope = 'endpoint')) >= {{p.utilisationPct}}, 0)) OR (sumIf(metric_value, metric_name = 'webhook.ingress.denied' AND attributes.scope = 'endpoint') > 0) FROM metrics WHERE {{scope}} AND metric_name LIKE 'webhook.ingress.%' AND machine_id != '' GROUP BY machine_id",
+        },
+        "limits.webhooks.env_rate": {
+          "scopes": [
+            "all",
+          ],
+          "table": "metrics",
+          "template": "SELECT (if(maxIf(metric_value, metric_name = 'webhook.ingress.limit.tokens' AND attributes.scope = 'env') > 0, (maxIf(metric_value, metric_name = 'webhook.ingress.limit.tokens' AND attributes.scope = 'env') - minIf(metric_value, metric_name = 'webhook.ingress.remaining_min' AND attributes.scope = 'env')) * 100 / (maxIf(metric_value, metric_name = 'webhook.ingress.limit.tokens' AND attributes.scope = 'env')) >= {{p.utilisationPct}}, 0)) OR (sumIf(metric_value, metric_name = 'webhook.ingress.denied' AND attributes.scope = 'env') > 0) FROM metrics WHERE {{scope}} AND metric_name LIKE 'webhook.ingress.%'",
+        },
+        "limits.webhooks.processing": {
+          "scopes": [
+            "all",
+          ],
+          "table": "metrics",
+          "template": "SELECT (if(maxIf(metric_value, metric_name = 'webhook.processing.limit') > 0, maxIf(metric_value, metric_name = 'webhook.processing.in_flight') * 100 / (maxIf(metric_value, metric_name = 'webhook.processing.limit')) >= {{p.utilisationPct}}, 0)) FROM metrics WHERE {{scope}} AND metric_name LIKE 'webhook.processing.%'",
+        },
+        "limits.webhooks.waiters": {
+          "scopes": [
+            "all",
+          ],
+          "table": "metrics",
+          "template": "SELECT (if(maxIf(metric_value, metric_name = 'webhook.waiters.limit.env') > 0, maxIf(metric_value, metric_name = 'webhook.waiters.live') * 100 / (maxIf(metric_value, metric_name = 'webhook.waiters.limit.env')) >= {{p.utilisationPct}}, 0)) OR (sumIf(metric_value, metric_name = 'webhook.waiters.refused' AND attributes.reason = 'environment_limit') > 0) FROM metrics WHERE {{scope}} AND metric_name LIKE 'webhook.waiters.%'",
         },
         "queue.concurrency": {
           "scopes": [
@@ -798,6 +875,14 @@ describe("registry", () => {
     "health.execution": ["all"],
     "health.liveness": ["all"],
     "health.all": ["all"],
+    "limits.all": ["all"],
+    "limits.api": ["all"],
+    "limits.concurrency": ["all"],
+    "limits.queue": ["all"],
+    "limits.webhooks.processing": ["all"],
+    "limits.webhooks.env_rate": ["all"],
+    "limits.webhooks.endpoint_rate": ["all"],
+    "limits.webhooks.waiters": ["all"],
     "custom.query": ["all"],
     "errors.new": ["task", "all"],
     "errors.occurred_again": ["errorGroup"],
@@ -823,8 +908,9 @@ describe("registry", () => {
     expect(isScopeAllowed(healthAll, "queue")).toBe(false);
   });
 
-  it("health.all is composite of health.flow, health.execution, health.liveness", () => {
+  it("health.all is composite of the three health checks", () => {
     const cap = getCapability("health.all")!;
+    expect(cap.title).toBe("Health (All)");
     expect(cap.binding.compositeOf).toEqual(["health.flow", "health.execution", "health.liveness"]);
   });
 
@@ -838,6 +924,14 @@ describe("registry", () => {
       "schedulingDelayMs",
       "silenceSec",
     ]);
+  });
+
+  it("limits.all is a composite of every limit with the shared utilisation param", () => {
+    const cap = getCapability("limits.all")!;
+    expect(cap.area).toBe("limits");
+    expect(cap.title).toBe("Watch all limits");
+    expect(cap.binding.compositeOf).toEqual(LIMIT_KEYS);
+    expect(cap.binding.params!.map((p) => p.key)).toEqual(["utilisationPct"]);
   });
 
   it("health.flow template includes GROUP BY queue", () => {
@@ -868,6 +962,116 @@ describe("registry", () => {
   it("rejects compositeOf referencing a non-state capability", () => {
     const metricCap = getCapability("queue.depth")!;
     expect(metricCap.signal).not.toBe("state");
+  });
+});
+
+describe("limits", () => {
+  const limits = V1_CAPABILITIES.filter(
+    (c) => c.key.startsWith("limits.") && c.key !== "limits.all"
+  );
+
+  it("registers the V1 limit capabilities", () => {
+    expect(limits.map((c) => c.key)).toEqual(LIMIT_KEYS);
+  });
+
+  it.each(LIMIT_KEYS)("%s is a grouped state capability with signals and params", (key) => {
+    const cap = getCapability(key)!;
+    expect(cap.area).toBe("limits");
+    expect(cap.allowedKinds).toEqual(["state"]);
+    expect(cap.group).toBe(key.startsWith("limits.webhooks.") ? "webhooks" : "platform");
+    expect(cap.minCadenceSec).toBe(300);
+    expect(cap.freshness).toBe("snapshot");
+    expect(cap.supportedSignals!.length).toBeGreaterThan(0);
+    expect(Object.keys(cap.binding.signalTemplates!)).toEqual(cap.supportedSignals);
+    expect(cap.binding.params).toEqual([
+      {
+        key: "utilisationPct",
+        label: "Utilisation",
+        unit: "percent",
+        default: 80,
+        min: 1,
+        max: 100,
+      },
+    ]);
+    const params = Object.fromEntries(cap.binding.params!.map((p) => [p.key, p.default]));
+    for (const template of [
+      cap.binding.template!,
+      ...Object.values(cap.binding.signalTemplates!),
+    ]) {
+      const sql = compileTemplate(template, "1 = 1", params);
+      expect(sql).not.toMatch(/\{\{/);
+      expect(sql).toContain(`FROM ${cap.binding.table} WHERE 1 = 1`);
+    }
+  });
+
+  it("only declares the limited signal where a denial metric exists", () => {
+    const approachingOnly = limits.filter((c) => !c.supportedSignals!.includes("limited"));
+    expect(approachingOnly.map((c) => c.key)).toEqual([
+      "limits.queue",
+      "limits.webhooks.processing",
+    ]);
+  });
+
+  it("checks API usage against the rate-limit bucket, independent of the window", () => {
+    const template = getCapability("limits.api")!.binding.signalTemplates!.approaching!;
+    expect(template).toContain("api.rate_limit.limit.burst");
+    expect(template).not.toMatch(/per_second|\* 300/);
+  });
+
+  it("gates environment concurrency on the queue metrics source", () => {
+    const cap = getCapability("limits.concurrency")!;
+    expect(cap.binding.signalTemplates!.limited).not.toContain("throttled_count");
+    expect(cap.binding.table).toBe("env_metrics");
+    expect(QUERY_SOURCES.env_metrics!.flag).toBe("QUEUE_METRICS");
+  });
+
+  it("checks the endpoint rate limit per endpoint", () => {
+    expect(getCapability("limits.webhooks.endpoint_rate")!.binding.template).toMatch(
+      /GROUP BY machine_id$/
+    );
+  });
+
+  it("lists each area on its own", () => {
+    const limitsArea = listCapabilities({ area: "limits" }).map((c) => c.key);
+    expect(limitsArea).toEqual([...LIMIT_KEYS, "limits.all"]);
+    expect(new Set(listCapabilities({ area: "limits" }).map((c) => c.group))).toEqual(
+      new Set(["platform", "webhooks", undefined])
+    );
+    const health = listCapabilities({ area: "health" }).map((c) => c.key);
+    expect(health).toEqual(["health.flow", "health.execution", "health.liveness", "health.all"]);
+    expect(listCapabilities({ area: "queues" }).map((c) => c.key)).toEqual(
+      expect.arrayContaining(["queue.concurrency", "queue.stalled"])
+    );
+  });
+
+  it("requires a group on limit capabilities except composites", () => {
+    const cap = getCapability("limits.api")!;
+    expect(() => alertCapabilitySchema.parse({ ...cap, group: undefined })).toThrow(
+      "limits capabilities require a group"
+    );
+    expect(() => alertCapabilitySchema.parse(getCapability("limits.all")!)).not.toThrow();
+  });
+
+  it("state conditions accept compositeMode and signals, and stay valid without them", () => {
+    const condition = {
+      kind: "state",
+      stateKey: "limits.all",
+      compositeMode: "all",
+      signals: ["limited"],
+    };
+    expect(conditionSchema.parse(condition)).toEqual(condition);
+    expect(conditionSchema.parse({ kind: "state", stateKey: "health.flow" })).toEqual({
+      kind: "state",
+      stateKey: "health.flow",
+    });
+    expect(() => conditionSchema.parse({ ...condition, signals: ["denied"] })).toThrow();
+    expect(() => conditionSchema.parse({ ...condition, compositeMode: "some" })).toThrow();
+  });
+
+  it("adds the limits area and frames it as runtime limits", () => {
+    expect(alertAreaSchema.options).toContain("limits");
+    expect(AREA_DESCRIPTION.limits).toContain("limits that can interrupt or degrade runtime flow");
+    expect(AREA_DESCRIPTION.health).toBeUndefined();
   });
 });
 

@@ -1,7 +1,11 @@
 import { type PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { DeleteProjectService } from "~/services/deleteProject.server";
-import { BranchTrackingConfigSchema, type BranchTrackingConfig } from "~/v3/github";
+import {
+  BranchTrackingConfigSchema,
+  type BranchTrackingConfig,
+  type BuildFilters,
+} from "~/v3/github";
 import { checkGitHubBranchExists } from "~/services/gitHub.server";
 import { errAsync, fromPromise, okAsync, ResultAsync } from "neverthrow";
 import { type BuildSettings } from "~/v3/buildSettings";
@@ -126,7 +130,8 @@ export class ProjectSettingsService {
     projectId: string,
     productionBranch?: string,
     stagingBranch?: string,
-    previewDeploymentsEnabled?: boolean
+    previewDeploymentsEnabled?: boolean,
+    buildFilters?: BuildFilters
   ) {
     const getExistingConnectedRepo = () =>
       fromPromise(
@@ -226,6 +231,7 @@ export class ProjectSettingsService {
               staging: data.stagingBranch ? { branch: data.stagingBranch } : {},
             } satisfies BranchTrackingConfig,
             previewDeploymentsEnabled: data.previewDeploymentsEnabled,
+            buildFilters,
           },
         }),
         (error) => ({ type: "other" as const, cause: error })

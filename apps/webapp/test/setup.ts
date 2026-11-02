@@ -2,6 +2,8 @@ import { vi } from "vitest";
 import type * as IORedisModule from "ioredis";
 import type * as TaskMetadataCacheModule from "~/services/taskMetadataCache.server";
 
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
 // CI has no .env and no REDIS_HOST/REDIS_PORT, so import-time guards like
 // autoIncrementCounter.server.ts throw and their suites fail to collect. Default
 // the pair — the ioredis mock below forces lazyConnect, so nothing ever dials.
@@ -134,6 +136,15 @@ vi.mock("~/services/taskMetadataCacheInstance.server", async () => {
   );
   return { taskMetadataCacheInstance: new NoopTaskMetadataCache() };
 });
+
+// getTaskIdentifiers() reads this cache before falling back to the database. The
+// defaulted REDIS_HOST above points it at a Redis CI doesn't run, so each read
+// stalls ~20 reconnect cycles (10s cold, ~40s warm) before its caught error.
+// Match the module's own behavior without a cache host: miss and fall through.
+vi.mock("~/services/taskIdentifierCache.server", () => ({
+  getTaskIdentifiersFromCache: vi.fn().mockResolvedValue(null),
+  populateTaskIdentifierCache: vi.fn().mockResolvedValue(undefined),
+}));
 
 // The org-data-stores registry singleton is constructed at import (transitively via
 // the ClickHouse factory instance, which many presenters pull in). Its ctor fires a

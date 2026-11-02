@@ -22,7 +22,6 @@ export default {
         "evalite.config.ts",
         "vitest.*.config.ts",
         "evals/**/*.eval.ts",
-        "memory-leak-detector.js",
         "prisma/populate.ts",
         "seed*.{ts,mts}",
         "scripts/**/*.{js,mjs,cjs,ts,mts,cts}",
@@ -78,6 +77,9 @@ export default {
       ],
       ignoreDependencies: ["@epic-web/test-server", "execa", "find-up"],
       ignoreBinaries: ["xdg-open"],
+    },
+    "packages/convex": {
+      ignore: ["example/**"],
     },
     "packages/core": {
       ignoreFiles: ["src/**/*-cjs.cts"],

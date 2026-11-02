@@ -21,7 +21,7 @@ import {
 import { alertDraftContextText, toolSchemasFor, withAlertDraftContext } from "./prompt-assembly";
 import { clientDataSchema, scopeTurnTools } from "./agent-runtime";
 import { buildDashboardAgentTools } from "./tools";
-import { behaviorSchema, getCapability } from "@internal/alert-contracts";
+import { alertAreaSchema, behaviorSchema, getCapability } from "@internal/alert-contracts";
 
 describe("creation turn tools on the agent run", () => {
   const base = { userActorToken: "uat", apiOrigin: "https://api.example.com", chatId: "chat_1" };
@@ -135,9 +135,10 @@ describe("monitoring alert tools time out instead of hanging", () => {
 });
 
 describe("describe_alert_capabilities area enum", () => {
-  it("lists queues/runs/health/errors", () => {
+  it("lists queues/runs/health/limits/errors from the alert area schema", () => {
     const areaField = describeAlertCapabilitiesInputSchema.shape.area.unwrap();
-    expect(areaField.options).toEqual(["queues", "runs", "health", "errors"]);
+    expect(areaField.options).toEqual(alertAreaSchema.options.filter((a) => a !== "query"));
+    expect(areaField.options).toEqual(["queues", "runs", "health", "limits", "errors"]);
   });
 });
 
@@ -607,5 +608,73 @@ describe("query alerts", () => {
     const missing = await run("update_alert_draft", { patch: { area: "query" } });
     expect(missing.ok).toBe(false);
     expect(missing.errors).toContainEqual(expect.stringContaining("needs query"));
+  });
+});
+
+describe("Limits condition fields", () => {
+  const fields = {
+    compositeMode: "all",
+    components: ["limits.api", "limits.webhooks.waiters"],
+    signals: ["approaching"],
+  };
+
+  // Mutation: dropping the fields from the schema strips them from the call.
+  it("create_monitoring_alert carries the fields to the server", async () => {
+    let body: any;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: { body?: string }) => {
+        body = init?.body ? JSON.parse(init.body) : undefined;
+        return new Response(JSON.stringify({ alert: { id: "alert_1" } }), { status: 200 });
+      })
+    );
+    const input = createMonitoringAlertInputSchema.parse({
+      capabilityKey: "limits.all",
+      condition: { kind: "state", stateKey: "limits.all", ...fields },
+    });
+    await run("create_monitoring_alert", input);
+    expect(body.condition).toMatchObject(fields);
+  });
+
+  it("update_alert_draft keeps the fields in the patch", async () => {
+    const patch = { what: "limits.all", condition: { kind: "state", ...fields } };
+    const parsed = (tools().update_alert_draft as any).inputSchema.parse({ patch });
+    const result = await run("update_alert_draft", parsed);
+    expect(result.ok).toBe(true);
+    expect(result.patch.condition).toMatchObject(fields);
+  });
+
+  it("rejects components outside the composite, empty and unsupported signals", async () => {
+    const bad = (condition: object, what = "limits.all") =>
+      run("update_alert_draft", { patch: { what, condition } });
+    expect((await bad({ components: ["queue.depth"] })).ok).toBe(false);
+    expect((await bad({ signals: [] }, "limits.api")).ok).toBe(false);
+    expect((await bad({ signals: ["limited"] }, "limits.queue")).ok).toBe(false);
+    expect((await bad({ signals: ["limited"] }, "limits.api")).ok).toBe(true);
+    expect((await bad({ components: ["limits.queue"], signals: ["limited"] })).ok).toBe(false);
+    expect((await bad({ components: ["limits.api"], signals: ["limited"] })).ok).toBe(true);
+  });
+
+  it("states the framing line in the prompt", () => {
+    expect(DASHBOARD_AGENT_SYSTEM_PROMPT).toContain(
+      "Limits covers limits that can interrupt or degrade runtime flow; for limits.all pick components and any/all, for a limit pick signals."
+    );
+  });
+
+  it("describe_alert_capabilities mentions groups and supported signals", () => {
+    const description = (dashboardAgentToolSchemas.describe_alert_capabilities as any).description;
+    expect(description).toContain("groups: platform, webhooks");
+    expect(description).toContain("supportedSignals");
+  });
+});
+
+describe("draft name", () => {
+  it("update_alert_draft carries a name in the patch", async () => {
+    const parsed = (tools().update_alert_draft as any).inputSchema.parse({
+      patch: { what: "queue.depth", name: "Payments depth" },
+    });
+    const result = await run("update_alert_draft", parsed);
+    expect(result.ok).toBe(true);
+    expect(result.patch.name).toBe("Payments depth");
   });
 });

@@ -125,6 +125,14 @@ function type(input: HTMLInputElement, value: string) {
 const done = () =>
   Array.from(card()!.querySelectorAll("button")).find((b) => b.textContent === "Done")!;
 
+function finish() {
+  act(() => done().click());
+  const confirm = Array.from(card()?.querySelectorAll("button") ?? []).find(
+    (b) => b.textContent === "Continue" && card()?.getAttribute("aria-label") === "Name your alert"
+  );
+  if (confirm) act(() => confirm.click());
+}
+
 function reviewButton(label: string) {
   return Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
     (b) => !card()?.contains(b) && b.textContent === label
@@ -144,15 +152,21 @@ function arrowUp(segment: HTMLElement) {
   });
 }
 
+async function pressEnterOn(button: HTMLButtonElement) {
+  await act(async () => {
+    button.focus();
+    button.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, cancelable: true })
+    );
+  });
+}
+
 async function openQueueDropdown() {
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
   const select = card()!.querySelector<HTMLButtonElement>('button[aria-label="Queue"]')!;
-  act(() => {
-    select.focus();
-    select.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-  });
+  await pressEnterOn(select);
   return select;
 }
 
@@ -182,10 +196,17 @@ describe("wizard card drives step-by-step creation", () => {
     container.remove();
   });
 
-  it("stage A card asks for the area with 5 options and no chips row", () => {
+  it("stage A card asks for the area with 6 options and no chips row", () => {
     mount();
     expect(card()?.getAttribute("aria-label")).toBe("What would you like me to watch?");
-    expect(cardRows()).toEqual(["Queues", "Runs", "Health", "Errors", "Show me what I can watch"]);
+    expect(cardRows()).toEqual([
+      "Queues",
+      "Runs",
+      "Health",
+      "Limits",
+      "Errors",
+      "Show me what I can watch",
+    ]);
     const outside = Array.from(document.querySelectorAll("button")).filter(
       (b) => !card()!.contains(b) && b.textContent?.trim() === "Queues"
     );
@@ -197,7 +218,7 @@ describe("wizard card drives step-by-step creation", () => {
     pick("Queues");
     expect(latest!.answers.area).toBe("queues");
     expect(card()?.getAttribute("aria-label")).toBe(promptForStep("what", { area: "queues" }));
-    expect(card()?.textContent).toContain("2 of 5");
+    expect(card()?.textContent).toContain("2 of 6");
   });
 
   // Mutation: restoring curatedOnly or the More metrics toggle fails this.
@@ -236,7 +257,7 @@ describe("wizard card drives step-by-step creation", () => {
     nav("Next question");
     nav("Next question");
     nav("Next question");
-    expect(card()?.textContent).toContain("5 of 6");
+    expect(card()?.textContent).toContain("5 of 7");
     expect(
       card()!.querySelector<HTMLButtonElement>('button[aria-label="Next question"]')!.disabled
     ).toBe(true);
@@ -351,7 +372,7 @@ describe("wizard card drives step-by-step creation", () => {
     const transcript = document.querySelector('[data-testid="creation-flow"]')!;
     expect(transcript.querySelectorAll("button, input")).toHaveLength(0);
     expect(transcript.textContent).toBe("Create a new alert");
-    expect(card()?.textContent).toContain("3 of 6");
+    expect(card()?.textContent).toContain("3 of 7");
     expect(card()?.getAttribute("aria-label")).toBe(promptForStep("condition", latest!.answers));
     expect(cardRows()).toEqual(["50", "100", "200", "Custom"]);
   });
@@ -363,7 +384,7 @@ describe("wizard card drives step-by-step creation", () => {
     expect(done().disabled).toBe(true);
     pick("Ops webhook");
     expect(latest!.answers.notifiers).toEqual(["ch_1"]);
-    act(() => done().click());
+    finish();
     expect(onSubmit).not.toHaveBeenCalled();
     expect(latest!.isReview).toBe(true);
     expect(card()).toBeNull();
@@ -376,10 +397,10 @@ describe("wizard card drives step-by-step creation", () => {
     mount();
     toNotifiers();
     pick("Ops webhook");
-    act(() => done().click());
+    finish();
     act(() => reviewButton("Customize").click());
     expect(card()?.getAttribute("aria-label")).toBe("What would you like me to watch?");
-    expect(card()?.textContent).toContain("1 of 6");
+    expect(card()?.textContent).toContain("1 of 7");
     const queues = Array.from(card()!.querySelectorAll("li button")).find(
       (b) => b.textContent === "Queues"
     )!;
@@ -402,7 +423,7 @@ describe("wizard card drives step-by-step creation", () => {
     pick("All queues");
     pick("No expiry");
     pick("Ops webhook");
-    act(() => done().click());
+    finish();
     act(() => reviewButton("Customize").click());
     pick("Queues");
     pick("Depth getting too high");
@@ -448,7 +469,7 @@ describe("wizard card drives step-by-step creation", () => {
     act(() => reviewButton("Customize").click());
     expect(card()?.getAttribute("aria-label")).toBe(promptForStep("notifiers", {}));
     pick("Ops webhook");
-    act(() => done().click());
+    finish();
     expect(reviewButton("Create alert").disabled).toBe(false);
     act(() => reviewButton("Create alert").click());
     expect(onSubmit).toHaveBeenCalledTimes(1);
@@ -458,7 +479,7 @@ describe("wizard card drives step-by-step creation", () => {
     mount();
     toNotifiers();
     pick("Ops webhook");
-    act(() => done().click());
+    finish();
     act(() => reviewButton("Customize").click());
     pick("Queues");
     pick("Oldest run waiting too long");
@@ -468,7 +489,7 @@ describe("wizard card drives step-by-step creation", () => {
     expect(card()?.getAttribute("aria-label")).toBe(promptForStep("condition", latest!.answers));
     pick("1,000ms");
     expect(latest!.isReview).toBe(false);
-    act(() => done().click());
+    finish();
     expect(latest!.isReview).toBe(true);
     expect(reviewButton("Create alert")).toBeDefined();
   });
@@ -477,7 +498,7 @@ describe("wizard card drives step-by-step creation", () => {
     mount();
     toNotifiers();
     pick("Ops webhook");
-    act(() => done().click());
+    finish();
     act(() => reviewButton("Customize").click());
     expect(reviewButton("Create alert")).toBeUndefined();
     act(() => card()!.querySelector<HTMLButtonElement>('button[aria-label="Close"]')!.click());
@@ -490,7 +511,7 @@ describe("wizard card drives step-by-step creation", () => {
     mount();
     toNotifiers();
     pick("Ops webhook");
-    act(() => done().click());
+    finish();
     const transcript = document.querySelector('[data-testid="creation-flow"]')!;
     expect(transcript.querySelector('[data-testid^="frozen-step-"]')).toBeNull();
     expect(transcript.textContent).not.toContain("What would you like me to watch?");
@@ -507,11 +528,11 @@ describe("wizard card drives step-by-step creation", () => {
     mount();
     toNotifiers();
     pick("Ops webhook");
-    act(() => done().click());
+    finish();
     act(() => reviewButton("Start over").click());
     expect(latest!.answers).toEqual({});
     expect(card()?.getAttribute("aria-label")).toBe("What would you like me to watch?");
-    expect(card()?.textContent).toContain("1 of 5");
+    expect(card()?.textContent).toContain("1 of 6");
   });
 
   it("no stage offers Skip", () => {
@@ -797,10 +818,7 @@ describe("wizard card drives step-by-step creation", () => {
     });
     const select = card()!.querySelector<HTMLButtonElement>('button[aria-label="Queue"]')!;
     expect(select.getAttribute("role")).toBe("combobox");
-    act(() => {
-      select.focus();
-      select.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-    });
+    await pressEnterOn(select);
     const popover = document.getElementById(select.getAttribute("aria-controls") ?? "")!;
     const options = Array.from(popover.querySelectorAll<HTMLElement>("[role=option]"));
     expect(options.map((o) => o.textContent)).toEqual(["email-queue", "billing-queue"]);
@@ -810,9 +828,7 @@ describe("wizard card drives step-by-step creation", () => {
     expect(card()?.getAttribute("aria-label")).toBe(promptForStep("scope", latest!.answers));
     const row = select.closest("li")!;
     expect(row.querySelector('[aria-label="Selected"]')).not.toBeNull();
-    act(() => {
-      select.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-    });
+    await pressEnterOn(select);
     expect(latest!.answers).toMatchObject({ scope: "queue", scopeValue: "billing-queue" });
     expect(card()?.getAttribute("aria-label")).toBe("How long should it stay active?");
   });
@@ -829,10 +845,7 @@ describe("wizard card drives step-by-step creation", () => {
     const confirm = () =>
       select.closest("li")!.querySelector<HTMLButtonElement>('button[aria-label="Confirm"]')!;
     expect(confirm().disabled).toBe(true);
-    act(() => {
-      select.focus();
-      select.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-    });
+    await pressEnterOn(select);
     const popover = document.getElementById(select.getAttribute("aria-controls") ?? "")!;
     act(() => popover.querySelectorAll<HTMLElement>("[role=option]")[0]!.click());
     expect(latest!.answers.scopeValue).toBeUndefined();
@@ -1012,6 +1025,7 @@ async function navigateToCreated(value = "100", notifier = "Test Webhook") {
   navigateToNotifiers(value);
   clickAriaPressed(notifier);
   clickAriaPressed("Done");
+  clickAriaPressed("Continue");
   await clickCreate();
 }
 
@@ -1088,6 +1102,7 @@ describe("creation flow submission", () => {
     clickAriaPressed("No expiry");
     clickAriaPressed("Test Webhook");
     clickAriaPressed("Done");
+    clickAriaPressed("Continue");
     await clickCreate();
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
@@ -1124,6 +1139,7 @@ describe("creation flow submission", () => {
     navigateToNotifiers();
     clickAriaPressed("Test Webhook");
     clickAriaPressed("Done");
+    clickAriaPressed("Continue");
     const create = findButtonByText("Create alert")!;
     act(() => create.click());
     act(() => create.click());
@@ -1153,6 +1169,7 @@ describe("creation flow submission", () => {
 
     clickAriaPressed("No expiry");
     clickAriaPressed("Done");
+    clickAriaPressed("Continue");
     await clickCreate();
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
@@ -1254,6 +1271,7 @@ describe("creation flow submission", () => {
 
     clickAriaPressed("Test Webhook");
     clickAriaPressed("Done");
+    clickAriaPressed("Continue");
     await clickCreate();
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
@@ -1275,6 +1293,8 @@ const flow = {
   selectChip: noop,
   setCondition: noop,
   setConditionParams: noop,
+  updateAnswers: noop,
+  confirmWhat: noop,
   confirmCondition: noop,
   setScopeValue: noop,
   setWindowMinutes: noop,

@@ -396,6 +396,94 @@ describe("ApiBatchResultsPresenter passthrough (single-DB collapse)", () => {
     }
   );
 
+  // Run-engine batches write no BatchTaskRunItem rows: members are the run friendly ids in
+  // `runIds`, in trigger order. Reading only the item rows answered `items: []` for every one.
+  postgresTest("single-DB run-engine batch hydrates members from runIds", async ({ prisma }) => {
+    const ctx = await seedEnv(prisma, "pt-runids");
+    await relaxFks(prisma);
+
+    const memberIds = [legacyRunId("h"), legacyRunId("i")];
+    for (const [i, id] of memberIds.entries()) {
+      await seedMember(prisma, ctx, {
+        id,
+        friendlyId: `run_pt_runids_${i}`,
+        status: "COMPLETED_SUCCESSFULLY",
+        output: JSON.stringify({ i }),
+      });
+    }
+    await prisma.batchTaskRun.create({
+      data: {
+        friendlyId: "batch_pt_runids",
+        runtimeEnvironmentId: ctx.environment.id,
+        runCount: 2,
+        // Reverse of seed order, so the result order is proven to follow `runIds`.
+        runIds: ["run_pt_runids_1", "run_pt_runids_0"],
+        batchVersion: "runengine:v2",
+      },
+    });
+
+    const presenter = new ApiBatchResultsPresenter(
+      prisma,
+      prisma,
+      { splitEnabled: false, legacyReplica: throwingPrisma },
+      new PostgresRunStore({ prisma, readOnlyPrisma: prisma })
+    );
+
+    const result = await presenter.call("batch_pt_runids", env(ctx));
+
+    expect(result!.items.map((item) => (item as { output?: string }).output)).toEqual([
+      JSON.stringify({ i: 1 }),
+      JSON.stringify({ i: 0 }),
+    ]);
+  });
+
+  // A v3 batch writes item rows only for runs that were not idempotency-cached, so a batch
+  // mixing cached and new runs must still come back whole, in `runIds` order.
+  postgresTest(
+    "single-DB v3 batch with partial item rows hydrates from runIds",
+    async ({ prisma }) => {
+      const ctx = await seedEnv(prisma, "pt-v3mixed");
+      await relaxFks(prisma);
+
+      const memberIds = [legacyRunId("j"), legacyRunId("k")];
+      for (const [i, id] of memberIds.entries()) {
+        await seedMember(prisma, ctx, {
+          id,
+          friendlyId: `run_pt_v3mixed_${i}`,
+          status: "COMPLETED_SUCCESSFULLY",
+          output: JSON.stringify({ i }),
+        });
+      }
+      const batch = await prisma.batchTaskRun.create({
+        data: {
+          friendlyId: "batch_pt_v3mixed",
+          runtimeEnvironmentId: ctx.environment.id,
+          runCount: 2,
+          runIds: ["run_pt_v3mixed_1", "run_pt_v3mixed_0"],
+          batchVersion: "v3",
+        },
+      });
+      // Only the second member was freshly triggered; the first was idempotency-cached.
+      await prisma.batchTaskRunItem.create({
+        data: { batchTaskRunId: batch.id, taskRunId: memberIds[1], status: "COMPLETED" },
+      });
+
+      const presenter = new ApiBatchResultsPresenter(
+        prisma,
+        prisma,
+        { splitEnabled: false, legacyReplica: throwingPrisma },
+        new PostgresRunStore({ prisma, readOnlyPrisma: prisma })
+      );
+
+      const result = await presenter.call("batch_pt_v3mixed", env(ctx));
+
+      expect(result!.items.map((item) => (item as { output?: string }).output)).toEqual([
+        JSON.stringify({ i: 1 }),
+        JSON.stringify({ i: 0 }),
+      ]);
+    }
+  );
+
   postgresTest("single-DB absent batch friendlyId returns undefined", async ({ prisma }) => {
     const ctx = await seedEnv(prisma, "pt-nf");
     const runStore = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });

@@ -105,6 +105,7 @@ import type {
   EngineStartRunAttemptResult,
   EngineWorker,
   HeartbeatTimeouts,
+  ReleaseRunResult,
   ReportableQueue,
   RestoreOutcome,
   RestoreOutcomeResult,
@@ -250,6 +251,7 @@ export class RunEngine {
         processMarkedSchedule: options.queue?.concurrencySweeper?.processMarkedSchedule,
         scanJitterInMs: options.queue?.concurrencySweeper?.scanJitterInMs,
         processMarkedJitterInMs: options.queue?.concurrencySweeper?.processMarkedJitterInMs,
+        scanCount: options.queue?.concurrencySweeper?.scanCount,
         callback: this.#concurrencySweeperCallback.bind(this),
       },
       shardCount: options.queue?.shardCount,
@@ -291,6 +293,7 @@ export class RunEngine {
         finishWaitpoint: async ({ payload }) => {
           await this.waitpointSystem.completeWaitpoint({
             id: payload.waitpointId,
+            organizationId: payload.organizationId,
             output: payload.error
               ? {
                   value: payload.error,
@@ -336,6 +339,7 @@ export class RunEngine {
         continueRunIfUnblocked: async ({ payload }) => {
           await this.waitpointSystem.continueRunIfUnblocked({
             runId: payload.runId,
+            organizationId: payload.organizationId,
           });
         },
         ensureRunFinalized: async ({ payload }) => {
@@ -348,7 +352,19 @@ export class RunEngine {
           await this.waitpointSystem.ensureWaitpointCompleted({
             waitpointId: payload.waitpointId,
             output: payload.output,
+            organizationId: payload.organizationId,
           });
+        },
+        ensureAbsorptionCompensated: async ({ payload }) => {
+          await this.waitpointSystem.ensureAbsorptionCompensated({
+            runId: payload.runId,
+            blockId: payload.blockId,
+            absorptionId: payload.absorptionId,
+            organizationId: payload.organizationId,
+          });
+        },
+        recoverWaitpointBlock: async ({ payload }) => {
+          await this.waitpointSystem.recoverWaitpointBlock(payload);
         },
         enqueueDelayedRun: async ({ payload }) => {
           await this.delayedRunSystem.enqueueDelayedRun({ runId: payload.runId });
@@ -434,6 +450,8 @@ export class RunEngine {
 
     this.checkpointSystem = new CheckpointSystem({
       resources,
+      waitpointStoreEnabled: (organizationId) =>
+        this.waitpointSystem.isStoreRoutingEnabled(organizationId),
       executionSnapshotSystem: this.executionSnapshotSystem,
       enqueueSystem: this.enqueueSystem,
     });
@@ -471,6 +489,7 @@ export class RunEngine {
       executionSnapshotSystem: this.executionSnapshotSystem,
       enqueueSystem: this.enqueueSystem,
       completionGuardDelayMs: options.completionGuardDelayMs,
+      waitpointStore: options.waitpointStore,
     });
 
     this.ttlSystem = new TtlSystem({
@@ -2064,6 +2083,8 @@ export class RunEngine {
     batch,
     workerId,
     runnerId,
+    expectedEnvironmentId,
+    blockOperation,
     tx,
   }: {
     runId: string;
@@ -2075,6 +2096,19 @@ export class RunEngine {
     batch?: { id: string; index?: number };
     workerId?: string;
     runnerId?: string;
+    // An environment the blocked run MUST belong to. A public route passes its authenticated env so a
+    // caller cannot block a run from another org/project/env: the run's snapshot read is scoped to this
+    // id and yields nothing (404) for a foreign run, before any edge is registered. Omitted by trusted
+    // internal callers.
+    expectedEnvironmentId?: string;
+    // Use the block ID and cycle anchor captured by the caller.
+    // Required for MemoryDB waits; ignored for Postgres waits.
+    blockOperation?: {
+      id: string;
+      absorptionId: string;
+      cycleAnchor: string;
+      expectedPreviousBlockId?: string;
+    };
     tx?: PrismaClientOrTransaction;
   }): Promise<TaskRunExecutionSnapshot> {
     return this.waitpointSystem.blockRunWithWaitpoint({
@@ -2087,6 +2121,8 @@ export class RunEngine {
       batch,
       workerId,
       runnerId,
+      expectedEnvironmentId,
+      blockOperation,
       tx,
     });
   }
@@ -2096,6 +2132,7 @@ export class RunEngine {
     id,
     output,
     armGuard,
+    organizationId,
   }: {
     id: string;
     output?: {
@@ -2108,6 +2145,12 @@ export class RunEngine {
      * completeWaitpointWithGuard sets it only when runStoreInfraRetryEnabled is on.
      */
     armGuard?: boolean;
+    /**
+     * The waitpoint's organization, from the completing caller's context. Threaded onto each blocked
+     * run's `continueRunIfUnblocked` so the delayed continuation routes MemoryDB by the run's org
+     * without a per-completion lookup. Optional: a caller without it stays conservative.
+     */
+    organizationId?: string;
   }): Promise<Waitpoint> {
     // Guard first, so an unclassifiable id fails here instead of applying locally. Do not branch
     // on decision.store: waitpointSystem.completeWaitpoint does the store routing.
@@ -2115,7 +2158,12 @@ export class RunEngine {
     if (guard) {
       await guard({ waitpointId: id, routeKind: "RESUME_TOKEN" });
     }
-    return this.waitpointSystem.completeWaitpoint({ id, output, armGuard: armGuard ?? false });
+    return this.waitpointSystem.completeWaitpoint({
+      id,
+      output,
+      armGuard: armGuard ?? false,
+      organizationId,
+    });
   }
 
   /**
@@ -2232,6 +2280,39 @@ export class RunEngine {
       runnerId,
       environmentId,
       fallbackWorkerQueue,
+      servesWorkerQueue,
+    });
+  }
+
+  /**
+   * Requeues a run whose worker never started it, while `snapshotId` is still its dequeued
+   * PENDING_EXECUTING snapshot. Each release counts against the queue's dequeue budget and delays
+   * the run by the queue's backoff, as the pending execution timeout does.
+   */
+  async releaseRun({
+    runId,
+    snapshotId,
+    reason,
+    workerId,
+    runnerId,
+    environmentId,
+    servesWorkerQueue,
+  }: {
+    runId: string;
+    snapshotId: string;
+    reason: string;
+    workerId?: string;
+    runnerId?: string;
+    environmentId?: string;
+    servesWorkerQueue?: (workerQueue: string) => boolean;
+  }): Promise<ReleaseRunResult> {
+    return this.runAttemptSystem.releaseRun({
+      runId,
+      snapshotId,
+      reason,
+      workerId,
+      runnerId,
+      environmentId,
       servesWorkerQueue,
     });
   }

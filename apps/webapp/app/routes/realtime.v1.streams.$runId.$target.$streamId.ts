@@ -1,8 +1,10 @@
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
+import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import {
+  anyResource,
   createActionApiRoute,
   createLoaderApiRoute,
 } from "~/services/routeBuilders/apiBuilder.server";
@@ -17,52 +19,66 @@ const ParamsSchema = z.object({
 const { action } = createActionApiRoute(
   {
     params: ParamsSchema,
+    findResource: async (params, authentication) => {
+      const where = {
+        friendlyId: params.runId,
+        runtimeEnvironmentId: authentication.environment.id,
+      };
+      const args = {
+        select: {
+          id: true,
+          friendlyId: true,
+          streamBasinName: true,
+          runtimeEnvironmentId: true,
+          parentTaskRun: {
+            select: {
+              friendlyId: true,
+              streamBasinName: true,
+              runtimeEnvironmentId: true,
+            },
+          },
+          rootTaskRun: {
+            select: {
+              friendlyId: true,
+              streamBasinName: true,
+              runtimeEnvironmentId: true,
+            },
+          },
+        },
+      };
+      // Replica lag can null out a live run; a spurious 404 permanently fails the ingest client.
+      // Re-read the owning primary on a replica miss.
+      const run =
+        (await runStore.findRun(where, args, $replica)) ??
+        (await runStore.findRunOnPrimary(where, args));
+
+      if (!run) {
+        throw new Response("Run not found", { status: 404 });
+      }
+
+      const targetRun =
+        params.target === "self"
+          ? run
+          : params.target === "parent"
+            ? run.parentTaskRun
+            : run.rootTaskRun;
+
+      if (!targetRun || targetRun.runtimeEnvironmentId !== authentication.environment.id) {
+        throw new Response("Target not found", { status: 404 });
+      }
+
+      return targetRun;
+    },
+    authorization: {
+      action: "write",
+      resource: (_params, _search, _headers, _body, targetRun) =>
+        anyResource(targetRun ? [{ type: "runs", id: targetRun.friendlyId }] : []),
+    },
   },
-  async ({ request, params, authentication }) => {
-    const where = {
-      friendlyId: params.runId,
-      runtimeEnvironmentId: authentication.environment.id,
-    };
-    const args = {
-      select: {
-        id: true,
-        friendlyId: true,
-        streamBasinName: true,
-        parentTaskRun: {
-          select: {
-            friendlyId: true,
-            streamBasinName: true,
-          },
-        },
-        rootTaskRun: {
-          select: {
-            friendlyId: true,
-            streamBasinName: true,
-          },
-        },
-      },
-    };
-    // Replica lag can null out a live run; a spurious 404 permanently fails the ingest client.
-    // Re-read the owning primary on a replica miss.
-    const run =
-      (await runStore.findRun(where, args, $replica)) ??
-      (await runStore.findRunOnPrimary(where, args));
-
-    if (!run) {
-      return new Response("Run not found", { status: 404 });
-    }
-
-    const targetRun =
-      params.target === "self"
-        ? run
-        : params.target === "parent"
-          ? run.parentTaskRun
-          : run.rootTaskRun;
-
-    if (!targetRun?.friendlyId) {
+  async ({ request, params, authentication, resource: targetRun }) => {
+    if (!targetRun) {
       return new Response("Target not found", { status: 404 });
     }
-
     const targetId = targetRun.friendlyId;
     const basinContext = { run: { streamBasinName: targetRun.streamBasinName ?? null } };
 
@@ -104,7 +120,10 @@ const { action } = createActionApiRoute(
         basinContext
       );
 
-      const { responseHeaders } = await realtimeStream.initializeStream(targetId, params.streamId);
+      const { responseHeaders } =
+        authentication.environmentScoped && realtimeStream instanceof S2RealtimeStreams
+          ? await realtimeStream.initializeScopedStream(targetId, params.streamId)
+          : await realtimeStream.initializeStream(targetId, params.streamId);
 
       return json(
         {
@@ -165,42 +184,48 @@ const loader = createLoaderApiRoute(
           id: true,
           friendlyId: true,
           streamBasinName: true,
+          runtimeEnvironmentId: true,
           parentTaskRun: {
             select: {
               friendlyId: true,
               streamBasinName: true,
+              runtimeEnvironmentId: true,
             },
           },
           rootTaskRun: {
             select: {
               friendlyId: true,
               streamBasinName: true,
+              runtimeEnvironmentId: true,
             },
           },
         },
       };
       // Replica lag can null out a live run; a spurious 404 permanently fails the HEAD probe.
       // Re-read the owning primary on a replica miss.
-      const run = await runStore.findRun(where, args, $replica);
-      return run ?? runStore.findRunOnPrimary(where, args);
+      const run =
+        (await runStore.findRun(where, args, $replica)) ??
+        (await runStore.findRunOnPrimary(where, args));
+      if (!run) {
+        throw new Response("Run not found", { status: 404 });
+      }
+      const targetRun =
+        params.target === "self"
+          ? run
+          : params.target === "parent"
+            ? run.parentTaskRun
+            : run.rootTaskRun;
+      if (!targetRun || targetRun.runtimeEnvironmentId !== authentication.environment.id) {
+        throw new Response("Target not found", { status: 404 });
+      }
+      return targetRun;
+    },
+    authorization: {
+      action: "read",
+      resource: (targetRun) => ({ type: "runs", id: targetRun.friendlyId }),
     },
   },
-  async ({ request, params, resource: run, authentication }) => {
-    if (!run) {
-      return new Response("Run not found", { status: 404 });
-    }
-
-    const targetRun =
-      params.target === "self"
-        ? run
-        : params.target === "parent"
-          ? run.parentTaskRun
-          : run.rootTaskRun;
-
-    if (!targetRun?.friendlyId) {
-      return new Response("Target not found", { status: 404 });
-    }
-
+  async ({ request, params, resource: targetRun, authentication }) => {
     const targetId = targetRun.friendlyId;
 
     // Handle HEAD request to get last chunk index

@@ -1,21 +1,50 @@
 import type {
+  BillingAddOns,
   BillingController,
   BillingCustomer,
   BillingCustomerError,
+  BillingMonthlyUsage,
   BillingPlugin,
+  BillingProjectUsage,
+  BillingUsageError,
+  BillingUsageMonthParams,
   PluginDatabaseConfig,
   ProvisionBillingCustomerParams,
   ProvisionBillingCustomerResult,
+  ProvisionFreePlanContractParams,
+  ProvisionFreePlanContractResult,
 } from "@trigger.dev/plugins";
 import { ResultAsync } from "neverthrow";
 import { BillingFallback } from "./fallback.js";
 
 export type {
+  BillingAddOnCharge,
+  BillingAddOnLine,
+  BillingAddOns,
   BillingController,
+  BillingCreditType,
+  BillingCurrency,
   BillingCustomer,
   BillingCustomerError,
+  BillingInvoiceLineItem,
+  BillingMonthlyUsage,
+  BillingMonthlyUsageLine,
+  BillingUsageCredit,
+  BillingUsageCreditSource,
+  BillingProjectUsage,
+  BillingProjectUsageDay,
+  BillingProjectUsageDayEntry,
+  BillingProjectUsageLine,
+  BillingUsageError,
+  BillingUsageDay,
+  BillingUsageMetric,
+  BillingUsageMonthParams,
+  BillingUsageUnit,
+  BillingUsageWindow,
   ProvisionBillingCustomerParams,
   ProvisionBillingCustomerResult,
+  ProvisionFreePlanContractParams,
+  ProvisionFreePlanContractResult,
 } from "@trigger.dev/plugins";
 
 export type BillingCreateOptions = {
@@ -109,6 +138,36 @@ export class LazyController implements BillingController {
     params: ProvisionBillingCustomerParams
   ): ResultAsync<ProvisionBillingCustomerResult, BillingCustomerError> {
     return this.call((c) => c.provisionCustomer(params));
+  }
+
+  provisionFreePlanContract(
+    params: ProvisionFreePlanContractParams
+  ): ResultAsync<ProvisionFreePlanContractResult, BillingCustomerError> {
+    return this.call((c) => c.provisionFreePlanContract(params));
+  }
+
+  getMonthlyUsage(
+    params: BillingUsageMonthParams
+  ): ResultAsync<BillingMonthlyUsage, BillingUsageError> {
+    return this.call((c) => c.getMonthlyUsage(params));
+  }
+
+  getProjectUsage(
+    params: BillingUsageMonthParams
+  ): ResultAsync<BillingProjectUsage, BillingUsageError> {
+    return this.call((c) => c.getProjectUsage(params));
+  }
+
+  getAddOns(params: BillingUsageMonthParams): ResultAsync<BillingAddOns, BillingUsageError> {
+    return this.call((c) => c.getAddOns(params));
+  }
+
+  clearCurrentMonthUsage(organizationId: string): ResultAsync<void, never> {
+    return this.call((c) => c.clearCurrentMonthUsage(organizationId));
+  }
+
+  forgetUsageFrom(organizationId: string, from: Date): ResultAsync<void, never> {
+    return this.call((c) => c.forgetUsageFrom(organizationId, from));
   }
 }
 

@@ -1,5 +1,31 @@
 # internal-platform
 
+## 4.8.3
+
+### Patch Changes
+
+- CLI and MCP logins are now bound to the machine that started them. Approving a login in your browser sends you back to the CLI automatically, or, when the browser is on another machine, shows a code to paste into the terminal (or pass with `trigger.dev login --code`). Older CLI versions will need to upgrade to log in. ([`1a36c23fb`](https://github.com/triggerdotdev/trigger.dev/commit/1a36c23fb1f4bee60eb7e3ed7a62836ba4a11bb9))
+- Add private-beta OIDC authentication for deployed Cloud tasks, with an AWS credential provider and environment-specific setup instructions. Install `@aws-sdk/client-sts` to use `@trigger.dev/sdk/oidc/aws`, upgrade your deployment CLI, and redeploy. Contact us to enable access for your organization. ([`65352bc90`](https://github.com/triggerdotdev/trigger.dev/commit/65352bc90aff3788f466569997f2f6a24229ff5a))
+- Deprecates the legacy Bun runtime. `runtime: "bun"` (and its explicit spelling `"bun-legacy"`), which deploys Bun 1.3.3 with Node.js 20 alongside it, now prints a deprecation warning, and deploys that use it will be rejected from January 5, 2027. Switch to `runtime: "bun-1.4"` (Bun 1.4.4 on an image with no Node.js binary) and redeploy. ([`5f8171cab`](https://github.com/triggerdotdev/trigger.dev/commit/5f8171cab0e5d2b02e6446455b6569ba7c031a3b))
+- Fix parent and root metadata updates being lost after one update could not be applied. Only that update is now skipped, and the rest are written. Metadata keys that name only the root, such as `$.` or `$..`, are now ignored on a run's own metadata instead of throwing, and rejected for parent and root metadata, which fails the whole request. ([`53441fd20`](https://github.com/triggerdotdev/trigger.dev/commit/53441fd20292f8b01dbf67f72069873ec07c25da))
+
+## 4.8.2
+
+### Patch Changes
+
+- Run metadata operations now reject JSON-path keys that use escaped dots to reach `__proto__`, `constructor` or `prototype`. ([`dce5048a8`](https://github.com/triggerdotdev/trigger.dev/commit/dce5048a8e4ac35e72f85b4534239dec6a013211))
+- Deployed tasks now keep a valid short-lived run token for their whole run: the token is refreshed during long runs and before a run resumes from a checkpoint. A warm-started task no longer keeps the previous run's token when the next run has none, and run credentials are left out of runner debug logs. ([`aa9de9d94`](https://github.com/triggerdotdev/trigger.dev/commit/aa9de9d9483b54edd09792c25c7d1a97694604af))
+- Use short-lived run tokens for supported SDK operations inside deployed tasks when available, retaining environment-key compatibility for unsupported operations and missing or expired tokens. Explicit credentials still take precedence. Public-token helpers use server-side minting with run tokens rather than signing locally. ([`5a1c14239`](https://github.com/triggerdotdev/trigger.dev/commit/5a1c14239bcedf85570c8392835bda07482e222e))
+
+  Project and organization queries, and branch overrides targeting another PREVIEW or DEVELOPMENT environment, keep using compatibility credentials. Branch headers do not change credential selection in STAGING or PRODUCTION. Chat subscriptions reread implicit credentials for each connection.
+
+- Upgrade `socket.io-client` to 4.8.4 so projects using the SDK and CLI install `ws` 8.21 instead of 8.17.1, which has published advisories (GHSA-96hv-2xvq-fx4p, GHSA-58qx-3vcg-4xpx). The old pin blocked upgrading `ws` without a package manager override. ([`2df9860b4`](https://github.com/triggerdotdev/trigger.dev/commit/2df9860b4c736da3ba3b8dd61b8f08a4d9b03521))
+- `runs.subscribeToRun` now ends after the run completes. The `for await` loop exits right after the update with the final status, and the subscription stops its connection, so a script that subscribes to a run exits on its own. Pass `stopOnCompletion: false` to keep the subscription open after completion. ([`485ab83aa`](https://github.com/triggerdotdev/trigger.dev/commit/485ab83aaf55057af9da8944570285f05880eaaf))
+- Add `SupervisorHttpClient.releaseRun`, which gives back a dequeued run the worker never started so the platform requeues it at once instead of after the pending execution timeout. ([`ba51e5573`](https://github.com/triggerdotdev/trigger.dev/commit/ba51e557325260170f2a399fc19028747aca50a2))
+- The supervisor keeps its run notification subscriptions across reconnects to the webapp, and reconnects when the webapp turns its handshake away, so cancellations and resolved waits keep reaching running tasks after a webapp restart or deploy. ([`a9e69ab7d`](https://github.com/triggerdotdev/trigger.dev/commit/a9e69ab7d4d5c5374802616699ea826d2c4b9135))
+- Adds the `bun-1.4` runtime. `runtime: "bun-1.4"` deploys on Bun 1.4.4 in a Bun-only image with no Node.js binary, and the run controller itself runs under Bun. `runtime: "bun"` is unchanged (Bun 1.3 with Node.js alongside it); `bun-legacy` is accepted as an explicit spelling of the same runtime. On Bun 1.4 the worker no longer crashes at startup on the `--no-warnings=ExperimentalWarning` flag. ([`a8a87850b`](https://github.com/triggerdotdev/trigger.dev/commit/a8a87850bdaa57b6e40c0dcdbdf8b5bf59a39113))
+- Asymmetric webhook sources can now verify ECDSA P-384 signatures (`algorithm: "ecdsa-p384"`, SHA-384) and providers that sign a SHA-256 digest of the signing string (`prehash: "sha256"`). ECDSA signatures are accepted in DER or raw `r||s` form. ([`4ed2e3780`](https://github.com/triggerdotdev/trigger.dev/commit/4ed2e3780c3bbe92c6a69e0f2356f3839bbf776b))
+
 ## 4.8.1
 
 ## 4.8.0

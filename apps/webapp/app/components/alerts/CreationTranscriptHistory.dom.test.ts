@@ -94,6 +94,8 @@ function makeFlow(overrides: Partial<CreationFlowState>): CreationFlowState {
     selectChip: noop,
     setCondition: noop,
     setConditionParams: noop,
+    updateAnswers: noop,
+    confirmWhat: noop,
     confirmCondition: noop,
     setScopeValue: noop,
     setWindowMinutes: noop,

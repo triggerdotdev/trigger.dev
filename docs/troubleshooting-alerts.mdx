@@ -3,6 +3,8 @@ title: "Alerts"
 description: "Get alerted when runs or deployments fail, or when deployments succeed."
 ---
 
+import { PrivateBeta } from "/snippets/feature-status.jsx";
+
 We support receiving alerts for the following events:
 - Run fails
 - Deployment fails
@@ -43,6 +45,43 @@ Click on the triple dot menu on the right side of the table row and select "Disa
 
 </Steps>
 
+
+## Limits alerts
+
+<PrivateBeta flag="alertsEnabled" />
+
+A **Limits** alert watches limits that can interrupt or degrade runtime flow. Pick one limit for a single alert, or several (or "Watch all limits") for one combined alert.
+
+| Group    | What you can watch                                                                                                                                                       |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Platform | API rate limit running out, Environment concurrency filling up, Queue size nearing its limit                                                                              |
+| Webhooks | Webhook processing saturating, Webhook ingress getting rate-limited, Webhook endpoint getting rate-limited, Webhook waiters running out                                  |
+
+### Signals
+
+Each limit has up to two signals. Choose one or both:
+
+- **Limit reached**: the limit is already affecting traffic, for example requests are being rejected.
+- **Approaching the limit**: usage has reached a share of the limit. The default is 80%, and you can change it.
+
+Queue size only has the approaching signal.
+
+### Any or all
+
+When you watch more than one limit, choose when the alert raises:
+
+- **Any**: raise when at least one selected limit is true.
+- **All**: raise only when every selected limit is true at the same time.
+
+### Queue metrics
+
+Environment concurrency and queue size need queue metrics for your environment. If they aren't available, they aren't offered when you create the alert.
+
+### No data
+
+A limit shows "No data" until its metrics exist, for example before your environment has made any API requests or received any webhooks. You can query these metrics yourself, see [Platform limit metrics](/observability/query#platform-limit-metrics).
+
+You can also create these alerts with the [API](/management/alerts/create).
 
 ## Error group alerts
 

@@ -133,6 +133,39 @@ postgresTest("fails when windowMinutes above the cap is accepted", async ({ pris
   expect(body.windowSec).toBe(MAX_WINDOW_MINUTES * 60);
 });
 
+postgresTest("composites preview only the selected components", async ({ prisma }) => {
+  const { user, organization, project, environment } = await seedOrgProjectEnv(prisma, "health");
+  const load = (components?: string[], capabilityKey = "limits.all") =>
+    loadPreviewSeries(
+      {
+        userId: user.id,
+        organizationSlug: organization.slug,
+        projectParam: project.slug,
+        envParam: environment.slug,
+        capabilityKey,
+        scopeType: "all",
+        components,
+      },
+      { runner: noopRunner, db: prisma }
+    );
+  const subKeys = (body: unknown) => [
+    ...new Set((body as PreviewSeriesResponse).series.map((s) => s.key.split(":")[0])),
+  ];
+
+  expect(subKeys((await load(["limits.api", "limits.queue"])).body)).toEqual([
+    "limits.api",
+    "limits.queue",
+  ]);
+  expect(subKeys((await load(undefined, "health.all")).body)).toEqual([
+    "health.flow",
+    "health.execution",
+    "health.liveness",
+  ]);
+  expect(subKeys((await load(["health.execution"], "health.all")).body)).toEqual([
+    "health.execution",
+  ]);
+});
+
 it("400 on a control character in the scope value", async () => {
   const loaded = { calls: [] as unknown[] };
   vi.resetModules();

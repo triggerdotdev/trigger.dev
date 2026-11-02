@@ -7,7 +7,7 @@ import {
   XMarkIcon,
 } from "@heroicons/react/20/solid";
 import { CheckMarkIcon } from "~/assets/icons/CheckMarkIcon";
-import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
+import { Fragment, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { AlertChannelsDialog } from "~/components/alerts/AlertChannelsDialog";
 import { expiryError } from "~/components/dashboard-agent/alert-creation/flow-state";
 import { Button } from "~/components/primitives/Buttons";
@@ -29,6 +29,8 @@ export type ChatWizardOption = {
   expanded?: boolean;
   disabledReason?: string;
   description?: string;
+  group?: string;
+  below?: ChatWizardInput;
 };
 
 export function StepDescription({ step }: { step: ChatWizardStep }) {
@@ -67,6 +69,7 @@ export type ChatWizardInput = {
   onClear?: () => void;
   current?: string;
   live?: boolean;
+  check?: boolean;
 };
 
 export type ChatWizardStep = {
@@ -262,6 +265,9 @@ function TextRow({
             setText(e.target.value);
             if (!e.target.value.trim()) setTouched(false);
             const parsed = parseInput(input, e.target.value);
+            if (input.live && !e.target.value.trim() && input.current !== undefined) {
+              input.onClear?.();
+            }
             if (!input.live) return;
             if (parsed !== undefined) input.onSubmit(parsed);
           }}
@@ -396,7 +402,11 @@ function CardText({ input, label, autoFocus, onValidity, onRestore, onAdvance }:
       value={text.trim()}
       unit={input.unit}
       valid={value !== undefined}
-      selected={!input.live && value !== undefined && value === input.current}
+      selected={
+        input.check
+          ? value !== undefined
+          : !input.live && value !== undefined && value === input.current
+      }
       onConfirm={input.live ? undefined : confirm}
       onRestore={onRestore}
       label={label}
@@ -419,6 +429,9 @@ function CardText({ input, label, autoFocus, onValidity, onRestore, onAdvance }:
           setText(e.target.value);
           if (!e.target.value.trim()) setTouched(false);
           const parsed = parseInput(input, e.target.value);
+          if (input.live && !e.target.value.trim() && input.current !== undefined) {
+            input.onClear?.();
+          }
           if (!input.live) return;
           if (parsed !== undefined) input.onSubmit(parsed);
         }}
@@ -709,7 +722,9 @@ export function ChatWizardCard({
   const fieldCount = step?.fields?.length ?? 0;
   const moveTo = (index: number) => {
     setActiveIndex(index);
-    listRef.current?.children[index + fieldCount]?.scrollIntoView?.({ block: "nearest" });
+    listRef.current
+      ?.querySelectorAll(":scope > li:not([data-group-header])")
+      [index + fieldCount]?.scrollIntoView?.({ block: "nearest" });
   };
   const advance = hasNext ? () => onStepChange(stepIndex + 1) : undefined;
   const restore = () => {
@@ -914,23 +929,41 @@ export function ChatWizardCard({
               </button>
             );
             return (
-              <li key={option.id} className="group relative">
-                {info ? (
-                  <OptionInfo label={option.label} description={info} picked={picked} />
+              <Fragment key={option.id}>
+                {option.group && option.group !== rows[index - 1]?.group ? (
+                  <li
+                    data-group-header
+                    className="px-3 pb-1 pt-2 text-xxs uppercase tracking-wide text-text-dimmed"
+                  >
+                    {option.group}
+                  </li>
                 ) : null}
-                {option.disabledReason ? (
-                  <SimpleTooltip
-                    asChild
-                    disableHoverableContent
-                    delayDuration={TOOLTIP_DELAY_MS}
-                    className={TOOLTIP_WIDTH}
-                    button={<span className="block">{row}</span>}
-                    content={option.disabledReason}
+                <li className="group relative">
+                  {info ? (
+                    <OptionInfo label={option.label} description={info} picked={picked} />
+                  ) : null}
+                  {option.disabledReason ? (
+                    <SimpleTooltip
+                      asChild
+                      disableHoverableContent
+                      delayDuration={TOOLTIP_DELAY_MS}
+                      className={TOOLTIP_WIDTH}
+                      button={<span className="block">{row}</span>}
+                      content={option.disabledReason}
+                    />
+                  ) : (
+                    row
+                  )}
+                </li>
+                {option.below ? (
+                  <CardInput
+                    key={`${step.id}:${option.below.id}:${resets}`}
+                    input={option.below}
+                    onValidity={reportValidity(`${step.id}:${option.below.id}`)}
+                    onRestore={restore}
                   />
-                ) : (
-                  row
-                )}
-              </li>
+                ) : null}
+              </Fragment>
             );
           })}
           {step.entity ? (

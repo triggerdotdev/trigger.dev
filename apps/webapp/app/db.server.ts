@@ -1,6 +1,7 @@
 import {
   Prisma,
   PrismaClient,
+  TokenBucketRetryBudget,
   boundedIn,
   $transaction as transac,
   type PrismaClientOrTransaction,
@@ -11,7 +12,7 @@ import {
   type WebhookReplicaDatabase,
 } from "@trigger.dev/database";
 import { RunOpsPrismaClient } from "@internal/run-ops-database";
-import { markReadReplicaClient } from "@internal/run-store";
+import { markReadReplicaClient, withReplicaRecoveryConflictRetry } from "@internal/run-store";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import invariant from "tiny-invariant";
@@ -170,6 +171,55 @@ function captureInfraErrorsRunOps(client: RunOpsPrismaClient): RunOpsPrismaClien
   return captureInfrastructureErrors(
     client as unknown as PrismaClient
   ) as unknown as RunOpsPrismaClient;
+}
+
+// At most one budget-exhausted warn per replica per interval, so a long burst can't flood the logs.
+const RECOVERY_CONFLICT_BUDGET_EXHAUSTED_LOG_INTERVAL_MS = 30_000;
+
+// A run-ops replica cancels a read that blocks WAL replay ("conflict with recovery"); the same read
+// a moment later normally succeeds. Applied to the dedicated run-ops replicas (new and gen-2 shards),
+// not the legacy one. Each replica gets its own budget, so a conflict burst on one shard can't spend
+// another's retries; the builders run once per database, and an aliased shard shares its target's
+// client and budget.
+//
+// Applied after the other extensions so tracing and error capture see one call and its final
+// outcome, and before markReadReplicaClient, which brands the returned object.
+//
+// An empty budget means cancelled reads are failing again, so that is logged with the number of
+// refusals since the previous warn. Refusals that fall inside the interval are only reported by the
+// next warn, so the tail of a burst that ends inside the interval is never logged.
+function retryRunOpsReplicaRecoveryConflicts(
+  clientType: string,
+  client: RunOpsPrismaClient
+): RunOpsPrismaClient {
+  let lastExhaustedLogAt = 0;
+  let exhaustedSinceLastLog = 0;
+  return withReplicaRecoveryConflictRetry(client, {
+    maxAttempts: 3,
+    backoffMinMs: 25,
+    backoffMaxMs: 100,
+    budget: new TokenBucketRetryBudget({ ratePerSec: 20, burst: 50 }),
+    onRetry: (info) => {
+      logger.info("Retrying a run-ops replica read cancelled by a recovery conflict", {
+        clientType,
+        ...info,
+      });
+    },
+    onBudgetExhausted: (info) => {
+      exhaustedSinceLastLog++;
+      const now = Date.now();
+      if (now - lastExhaustedLogAt < RECOVERY_CONFLICT_BUDGET_EXHAUSTED_LOG_INTERVAL_MS) {
+        return;
+      }
+      logger.warn("Run-ops replica recovery-conflict retry budget exhausted; reads are failing", {
+        clientType,
+        ...info,
+        exhaustedSinceLastLog,
+      });
+      lastExhaustedLogAt = now;
+      exhaustedSinceLastLog = 0;
+    },
+  });
 }
 
 export const prisma = singleton("prisma", () =>
@@ -390,7 +440,8 @@ export function selectRunOpsTopology(
 // assertRunOpsSplitSentinel(). Because the builder callbacks only run when
 // splitEnabled is true, single-DB reuses prisma/$replica by reference and opens
 // nothing new. The builders apply the SAME wrapper pair the control-plane
-// singletons use (captureInfrastructureErrors(tagDatasource(datasource, clientType, raw))).
+// singletons use (captureInfrastructureErrors(tagDatasource(datasource, clientType, raw))); the new
+// and shard replicas also get retryRunOpsReplicaRecoveryConflicts.
 const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
   const newUrl = env.RUN_OPS_DATABASE_URL;
   // Gate on the opt-in flag too: the distinct-DB sentinel only runs when the flag is on.
@@ -466,19 +517,22 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
       // which this callback never touches, so the writer stays unbranded.
       buildNewReplica: (url, clientType) =>
         markReadReplicaClient(
-          captureInfraErrorsRunOps(
-            tagDatasourceRunOps(
-              "run-ops-replica",
-              clientType,
-              buildRunOpsClient({
-                url,
+          retryRunOpsReplicaRecoveryConflicts(
+            clientType,
+            captureInfraErrorsRunOps(
+              tagDatasourceRunOps(
+                "run-ops-replica",
                 clientType,
-                role: "replica",
-                connectionLimit: newPoolKnobs.replicaConnectionLimit,
-                poolTimeout: newPoolKnobs.replicaPoolTimeout,
-                connectTimeout: newPoolKnobs.replicaConnectionTimeout,
-                useDriverAdapter: newPoolKnobs.replicaDriverAdapter,
-              })
+                buildRunOpsClient({
+                  url,
+                  clientType,
+                  role: "replica",
+                  connectionLimit: newPoolKnobs.replicaConnectionLimit,
+                  poolTimeout: newPoolKnobs.replicaPoolTimeout,
+                  connectTimeout: newPoolKnobs.replicaConnectionTimeout,
+                  useDriverAdapter: newPoolKnobs.replicaDriverAdapter,
+                })
+              )
             )
           )
         ),
@@ -547,19 +601,22 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
         const descriptor = shardDescriptorsByKey.get(shard.key);
         const knobs = resolveRunOpsPoolKnobs("new", descriptor?.knobs);
         return markReadReplicaClient(
-          captureInfraErrorsRunOps(
-            tagDatasourceRunOps(
-              "run-ops-replica",
-              `run-ops-shard-${shard.key}-replica`,
-              buildRunOpsClient({
-                url: shard.replicaUrl!,
-                clientType: `run-ops-shard-${shard.key}-replica`,
-                role: "replica",
-                connectionLimit: knobs.replicaConnectionLimit,
-                poolTimeout: knobs.replicaPoolTimeout,
-                connectTimeout: knobs.replicaConnectionTimeout,
-                useDriverAdapter: knobs.replicaDriverAdapter,
-              })
+          retryRunOpsReplicaRecoveryConflicts(
+            `run-ops-shard-${shard.key}-replica`,
+            captureInfraErrorsRunOps(
+              tagDatasourceRunOps(
+                "run-ops-replica",
+                `run-ops-shard-${shard.key}-replica`,
+                buildRunOpsClient({
+                  url: shard.replicaUrl!,
+                  clientType: `run-ops-shard-${shard.key}-replica`,
+                  role: "replica",
+                  connectionLimit: knobs.replicaConnectionLimit,
+                  poolTimeout: knobs.replicaPoolTimeout,
+                  connectTimeout: knobs.replicaConnectionTimeout,
+                  useDriverAdapter: knobs.replicaDriverAdapter,
+                })
+              )
             )
           )
         );

@@ -797,6 +797,97 @@ describe("monitoring alerts API", () => {
     expect(body.error).toContain("unknown param key");
   });
 
+  describe("Limits condition fields", () => {
+    async function post(
+      prisma: PrismaClient,
+      postgresContainer: { getConnectionUri(): string },
+      capabilityKey: string,
+      condition: Record<string, unknown>
+    ) {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "monalertshl", true);
+      ctx.userId = seeded.user.id;
+      await createChat(ctx.agentDb, {
+        id: "chat_1",
+        organizationId: seeded.organization.id,
+        userId: seeded.user.id,
+      });
+      return listAction({
+        request: jsonRequest(
+          `https://example.test/api/v1/projects/${seeded.project.externalRef}/monitoring-alerts`,
+          {
+            capabilityKey,
+            environment: "prod",
+            params: {},
+            condition: { kind: "state", stateKey: capabilityKey, ...condition },
+            behavior: {},
+            notifiers: [{ type: "chat", chatId: "chat_1" }],
+          }
+        ),
+        params: { projectRef: seeded.project.externalRef },
+        context: {},
+      } as any);
+    }
+
+    postgresTest(
+      "rejects components outside compositeOf",
+      async ({ prisma, postgresContainer }) => {
+        const response = await post(prisma, postgresContainer, "limits.all", {
+          components: ["limits.api", "queue.depth"],
+        });
+        expect(response.status).toBe(400);
+        expect((await response.json()).error).toContain("queue.depth");
+      }
+    );
+
+    postgresTest(
+      "rejects signals a selected component does not support",
+      async ({ prisma, postgresContainer }) => {
+        const response = await post(prisma, postgresContainer, "limits.all", {
+          components: ["limits.api", "limits.queue"],
+          signals: ["limited"],
+        });
+        expect(response.status).toBe(400);
+      }
+    );
+
+    postgresTest("rejects empty signals", async ({ prisma, postgresContainer }) => {
+      const response = await post(prisma, postgresContainer, "limits.api", { signals: [] });
+      expect(response.status).toBe(400);
+    });
+
+    postgresTest("rejects a signal the capability lacks", async ({ prisma, postgresContainer }) => {
+      const response = await post(prisma, postgresContainer, "limits.queue", {
+        signals: ["limited"],
+      });
+      expect(response.status).toBe(400);
+    });
+
+    postgresTest("accepts and echoes the fields", async ({ prisma, postgresContainer }) => {
+      const response = await post(prisma, postgresContainer, "limits.all", {
+        compositeMode: "all",
+        components: ["limits.api", "limits.webhooks.waiters"],
+        signals: ["approaching"],
+        params: { utilisationPct: 90 },
+      });
+      expect(response.status).toBe(200);
+      const { alert } = await response.json();
+      expect(alert.condition).toMatchObject({
+        compositeMode: "all",
+        components: ["limits.api", "limits.webhooks.waiters"],
+        signals: ["approaching"],
+      });
+    });
+
+    postgresTest(
+      "still accepts a payload without the fields",
+      async ({ prisma, postgresContainer }) => {
+        const response = await post(prisma, postgresContainer, "limits.all", {});
+        expect(response.status).toBe(200);
+      }
+    );
+  });
+
   postgresTest("describe includes params for health.all", async ({ prisma, postgresContainer }) => {
     await boot(prisma, postgresContainer.getConnectionUri());
     const seeded = await seed(prisma, "monalertsdescparams", true);

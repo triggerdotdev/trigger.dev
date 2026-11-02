@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useUserTimeZone } from "~/components/primitives/DateTime";
 import { DetailChartBlock } from "~/components/primitives/DetailChartBlock";
 import { TimeFilter } from "~/components/runs/v3/SharedFilters";
@@ -42,6 +42,12 @@ import {
   assignGroupColors,
   thresholdChartLegend,
 } from "./AlertThresholdChart";
+import {
+  hasTileData,
+  isLimitComponent,
+  isLimitsComposite,
+  type LimitTileSeries,
+} from "./limitTiles";
 import { defaultGroupSelection, MAX_VISIBLE_GROUPS } from "./queryGroupSelection";
 
 const METRIC_LABEL: Record<string, string> = {
@@ -90,6 +96,7 @@ type AlertDetailChartProps = {
   metricSeriesMap: Map<string, MetricSeriesPoint[]>;
   healthBands: HealthBandRow[];
   componentSeries?: HealthQuerySeries[];
+  limitTiles?: LimitTileSeries[];
   window: DetailWindow & { isLifetime?: boolean; explicitTo?: boolean };
   now: Date;
   createdAt?: Date;
@@ -97,26 +104,60 @@ type AlertDetailChartProps = {
   querySeriesMode?: "threshold" | "absence" | "match";
 };
 
-export function AlertDetailChart(props: AlertDetailChartProps) {
+function limitsAsQueryProps(
+  props: AlertDetailChartProps,
+  tiles: LimitTileSeries[]
+): AlertDetailChartProps {
+  const { alert } = props;
+  const single = tiles.length === 1 ? tiles[0] : undefined;
+  return {
+    ...props,
+    alert: {
+      ...alert,
+      kind: "threshold",
+      operator: ">",
+      thresholdValue: tiles.find((t) => t.threshold !== null)?.threshold ?? undefined,
+      unitSuffix: "%",
+      scope: { type: "all" },
+      currentReading: { status: "unavailable" },
+      capabilityTitle: single?.label ?? alert.capabilityTitle,
+    } as AlertDetail,
+    metricSeriesMap: single
+      ? new Map([["__agg__", single.points]])
+      : new Map(tiles.map((t) => [t.label, t.points])),
+    queryGroups: tiles.length > 1 ? tiles.map((t) => t.label) : [],
+    querySeriesMode: "threshold",
+  };
+}
+
+export function AlertDetailChart(rawProps: AlertDetailChartProps) {
   const [healthView, setHealthView] = useState<HealthView>("together");
   const [picked, setPicked] = useState<string[] | null>(null);
+  const isLimits =
+    rawProps.alert.kind === "state" &&
+    (isLimitComponent(rawProps.alert.capabilityKey) ||
+      isLimitsComposite(rawProps.alert.capabilityKey));
+  const props = isLimits
+    ? limitsAsQueryProps(
+        rawProps,
+        (rawProps.limitTiles ?? []).filter((t) => !t.failed && hasTileData(t.points))
+      )
+    : rawProps;
   const { alert, window, metricSeriesMap, queryGroups = [] } = props;
   const showToggle = alert.kind === "state" && (props.componentSeries?.length ?? 0) > 1;
+  const groups = queryGroups;
+  const groupSeries = metricSeriesMap;
   const grouped =
     alert.kind === "threshold" && props.querySeriesMode !== "match" && queryGroups.length > 0;
-  const defaults = useMemo(
-    () =>
-      grouped
-        ? defaultGroupSelection({
-            groups: queryGroups,
-            seriesMap: metricSeriesMap,
-            operator: alert.operator,
-            range: { since: window.since.getTime(), until: window.until.getTime() },
-          })
-        : [],
-    [grouped, queryGroups, metricSeriesMap, alert.operator, window.since, window.until]
-  );
-  const showPicker = grouped && queryGroups.length > 1;
+  const defaults = grouped
+    ? defaultGroupSelection({
+        groups,
+        seriesMap: groupSeries,
+        operator: alert.operator,
+        range: { since: window.since.getTime(), until: window.until.getTime() },
+      })
+    : [];
+  const showPicker = grouped && groups.length > 1;
   const selected = showPicker ? (picked ?? defaults) : defaults;
   // Colours carry over from the previous selection, so a toggle doesn't repaint other groups.
   const [colorState, setColorState] = useState({ key: "", colors: new Map<string, string>() });
@@ -135,29 +176,42 @@ export function AlertDetailChart(props: AlertDetailChartProps) {
           : [...selected, group]
     );
 
+  const loadedTiles = rawProps.limitTiles ?? [];
+  const limitsUnloaded =
+    isLimits &&
+    metricSeriesMap.size === 0 &&
+    (loadedTiles.length === 0 || loadedTiles.some((t) => t.failed));
+
   return (
     <DetailChartBlock
       toolbar={<AlertDetailFilterBar lifetime={window.isLifetime ? window : undefined} />}
     >
       <div className="min-h-[210px] flex-1">
-        <AlertDetailChartBody
-          {...props}
-          healthView={healthView}
-          selectedGroups={grouped ? selected : undefined}
-          groupColors={groupColors}
-          accessory={
-            showToggle ? (
-              <HealthViewToggle value={healthView} onChange={setHealthView} />
-            ) : showPicker ? (
-              <GroupsDropdown
-                groups={queryGroups}
-                selected={selected}
-                onToggle={toggleGroup}
-                colors={groupColors}
-              />
-            ) : undefined
-          }
-        />
+        {limitsUnloaded ? (
+          <div className="flex h-full items-center justify-center text-xs text-text-dimmed">
+            Couldn't load this data. Try again in a moment.
+          </div>
+        ) : (
+          <AlertDetailChartBody
+            {...props}
+            healthView={healthView}
+            selectedGroups={grouped ? selected : undefined}
+            groupColors={groupColors}
+            accessory={
+              showToggle ? (
+                <HealthViewToggle value={healthView} onChange={setHealthView} />
+              ) : showPicker ? (
+                <GroupsDropdown
+                  groups={groups}
+                  selected={selected}
+                  onToggle={toggleGroup}
+                  colors={groupColors}
+                  noun={isLimits ? "limits" : undefined}
+                />
+              ) : undefined
+            }
+          />
+        )}
       </div>
     </DetailChartBlock>
   );
@@ -168,6 +222,7 @@ function AlertDetailChartBody({
   metricSeriesMap,
   healthBands,
   componentSeries = [],
+  limitTiles = [],
   window,
   now,
   createdAt,
@@ -234,7 +289,9 @@ function AlertDetailChartBody({
         : undefined;
     const threshold =
       typeof facts?.threshold === "number" ? facts.threshold : (alert.thresholdValue ?? null);
-    const label = METRIC_LABEL[alert.capabilityKey] ?? alert.capabilityTitle;
+    const soleGroup =
+      pick.multi && pick.seriesMap.size === 1 ? [...pick.seriesMap.keys()][0] : undefined;
+    const label = soleGroup ?? METRIC_LABEL[alert.capabilityKey] ?? alert.capabilityTitle;
     const chart = pick.multi ? (
       <AlertMultiSeriesChart
         seriesMap={pick.seriesMap}

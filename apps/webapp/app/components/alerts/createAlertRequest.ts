@@ -2,7 +2,11 @@ import { EXPIRY_TOKEN_PATTERN } from "~/components/alerts/alertCreatedCard";
 import {
   alertName,
   defaultWindowMinutes,
+  effectiveSignals,
+  isLimitCondition,
+  isComposite,
   resolveCapability,
+  supportedSignalsFor,
   type FlowAnswers,
 } from "~/components/dashboard-agent/alert-creation/flow-state";
 
@@ -34,6 +38,30 @@ export function replaceRequestBody(answers: FlowAnswers): FormData {
   return body;
 }
 
+function limitFields(answers: FlowAnswers) {
+  const cap = resolveCapability(answers.what);
+  const params = answers.conditionParams;
+  if (!cap || !isLimitCondition(answers.what)) return { conditionParams: params };
+  const composite = isComposite(answers.what);
+  const hasSignals = supportedSignalsFor(answers.what, answers.components).length > 0;
+  const signals = hasSignals ? effectiveSignals(answers) : undefined;
+  const { utilisationPct, ...rest } = params ?? {};
+  const pct =
+    utilisationPct ?? cap.binding.params?.find((p) => p.key === "utilisationPct")?.default;
+  const conditionParams =
+    signals?.includes("approaching") && pct !== undefined
+      ? { ...rest, utilisationPct: pct }
+      : params
+        ? rest
+        : undefined;
+  return {
+    conditionParams,
+    signals,
+    compositeMode: composite ? (answers.compositeMode ?? "any") : undefined,
+    components: composite ? answers.components : undefined,
+  };
+}
+
 export function createAlertRequestBody(
   ids: { organizationId: string; projectId: string; environmentId: string },
   answers: FlowAnswers
@@ -59,8 +87,7 @@ export function createAlertRequestBody(
           : undefined,
       quietWindowMinutes:
         kind === "absence" && answers.condition ? Number(answers.condition) : undefined,
-      conditionParams:
-        kind === "state" && answers.conditionParams ? answers.conditionParams : undefined,
+      ...(kind === "state" ? limitFields(answers) : {}),
       expiresAt: expiryToIso(answers.expiry),
       notifierChannelIds: (answers.notifiers ?? []).filter((n) => n !== "chat"),
     },

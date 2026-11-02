@@ -8,7 +8,6 @@ import type {
   CheckpointInput,
   CompleteRunAttemptResult,
   DequeuedMessage,
-  ExecutionResult,
   MachinePreset,
   StartRunAttemptResult,
   TaskRunExecutionResult,
@@ -18,6 +17,7 @@ import { SemanticInternalAttributes } from "@trigger.dev/core/v3";
 import { fromFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import {
   WORKER_HEADERS,
+  type RunTokenHeartbeatReport,
   type WeightedWorkerQueueSubscription,
   type WorkerQueueClass,
 } from "@trigger.dev/core/v3/workers";
@@ -50,6 +50,7 @@ import { singleton } from "~/utils/singleton";
 import { resolveVariablesForEnvironment } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
 import { meteringClaims } from "~/v3/utils/meteringClaims.server";
+import { refreshRunTokenOnHeartbeat } from "./runTokenRefresh.server";
 import type { WithRunEngineOptions } from "../baseService.server";
 import { WithRunEngine } from "../baseService.server";
 
@@ -73,7 +74,13 @@ if (workloadCreatedAtGateEnabled && !workloadTokenCutoff) {
   );
 }
 
-type WorkloadGateAction = "start" | "complete" | "continue" | "snapshots_since" | "restore_outcome";
+type WorkloadGateAction =
+  | "start"
+  | "complete"
+  | "continue"
+  | "snapshots_since"
+  | "restore_outcome"
+  | "release";
 
 const meter = getMeter("workload-auth-gate");
 
@@ -518,17 +525,36 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     runFriendlyId,
     snapshotFriendlyId,
     runnerId,
+    environmentId,
+    runTokenReport,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
     runnerId?: string;
-  }): Promise<ExecutionResult> {
-    return await this._engine.heartbeatRun({
+    environmentId?: string;
+    runTokenReport?: RunTokenHeartbeatReport;
+  }): Promise<{ runToken?: string }> {
+    const heartbeat = await this._engine.heartbeatRun({
       runId: fromFriendlyId(runFriendlyId),
       snapshotId: fromFriendlyId(snapshotFriendlyId),
       workerId: this.workerInstanceId,
       runnerId,
     });
+
+    const runToken = await refreshRunTokenOnHeartbeat({
+      report: runTokenReport,
+      heartbeat,
+      snapshotFriendlyId,
+      environmentId,
+      findRun: (runId) =>
+        this._engine.runStore.findRun(
+          { id: runId },
+          { select: { taskIdentifier: true, runtimeEnvironmentId: true, lockedById: true } }
+        ),
+      replica: this._replica,
+    });
+
+    return { runToken };
   }
 
   async startRunAttempt({
@@ -539,6 +565,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     workerLane,
     runnerId,
     environmentId,
+    supportsRunTokenRefresh,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
@@ -547,6 +574,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     workerLane?: string;
     runnerId?: string;
     environmentId?: string;
+    supportsRunTokenRefresh?: boolean;
   }): Promise<
     StartRunAttemptResult & {
       envVars: Record<string, string>;
@@ -590,7 +618,10 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     });
 
     const runToken =
-      environment && runTokenInjectionEnabled(environment.organization?.featureFlags)
+      environment &&
+      supportsRunTokenRefresh === true &&
+      environmentId === environment.id &&
+      runTokenInjectionEnabled(environment.organization?.featureFlags)
         ? await this.mintRunTokenOrSkip(environment, engineResult)
         : undefined;
 
@@ -770,6 +801,36 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       runnerId,
       environmentId,
       fallbackWorkerQueue,
+      servesWorkerQueue: (workerQueue) => workerServesQueue(this.queueConsumer, workerQueue),
+    });
+  }
+
+  async releaseRun({
+    runFriendlyId,
+    snapshotFriendlyId,
+    reason,
+    runnerId,
+    environmentId,
+  }: {
+    runFriendlyId: string;
+    snapshotFriendlyId: string;
+    reason: string;
+    runnerId?: string;
+    environmentId?: string;
+  }) {
+    await this.assertCreatedAtGate({
+      runId: fromFriendlyId(runFriendlyId),
+      environmentId,
+      action: "release",
+    });
+
+    return await this._engine.releaseRun({
+      runId: fromFriendlyId(runFriendlyId),
+      snapshotId: fromFriendlyId(snapshotFriendlyId),
+      reason,
+      workerId: this.workerInstanceId,
+      runnerId,
+      environmentId,
       servesWorkerQueue: (workerQueue) => workerServesQueue(this.queueConsumer, workerQueue),
     });
   }

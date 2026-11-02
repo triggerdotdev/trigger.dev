@@ -14,6 +14,7 @@ import {
   type inferSchemaOut,
   InputStreamOncePromise,
   isAdditionalApiKey,
+  isRunToken,
   isSchemaZodEsque,
   logger,
   type MachinePresetName,
@@ -16658,10 +16659,10 @@ function resolveChatStartBaseURL(
   return raw.replace(/\/$/, "");
 }
 
-function overrideRequestHeaders(accessToken: string): Record<string, string> {
+function overrideRequestHeaders(authHeaders: Record<string, string>): Record<string, string> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    Authorization: `Bearer ${accessToken}`,
+    ...authHeaders,
     "x-trigger-source": "sdk",
   };
   // Forward the preview-branch hint so override-mode requests land on the
@@ -16691,17 +16692,18 @@ async function callSessionsCreateWithOverride(args: {
   publicAccessToken: string;
   pendingVersion?: boolean;
 }> {
-  const accessToken = apiClientManager.accessToken;
-  if (!accessToken) {
+  const apiClient = apiClientManager.client;
+  if (!apiClient) {
     throw new Error(
       "chat.createStartSessionAction: no API access token configured. Set TRIGGER_SECRET_KEY or call apiClientManager.setGlobalAPIClientConfiguration before invoking the action."
     );
   }
+  const authHeaders = apiClient.getAuthenticationHeaders("createSession");
   const ctx: ChatStartSessionEndpointContext = { endpoint: "sessions", chatId: args.chatId };
   const url = `${resolveChatStartBaseURL("sessions", args.chatId, args.baseURLOption)}/api/v1/sessions`;
   const init: RequestInit = {
     method: "POST",
-    headers: overrideRequestHeaders(accessToken),
+    headers: overrideRequestHeaders(authHeaders),
     // This path bypasses `sessions.start`, so it resolves the pin itself.
     body: JSON.stringify(withResolvedExternalDeploymentId(args.body)),
   };
@@ -16727,18 +16729,20 @@ async function mintPublicTokenWithOverride(args: {
   baseURLOption: string | ChatStartSessionBaseURLResolver | undefined;
   fetchOverride: ChatStartSessionFetchOverride | undefined;
 }): Promise<string> {
-  const accessToken = apiClientManager.accessToken;
-  if (!accessToken) {
+  const apiClient = apiClientManager.client;
+  if (!apiClient) {
     throw new Error("chat.createStartSessionAction: no API access token configured for JWT mint.");
   }
+  const authHeaders = apiClient.getAuthenticationHeaders("createPublicToken");
+  const accessToken = authHeaders.Authorization.slice("Bearer ".length);
   const ctx: ChatStartSessionEndpointContext = { endpoint: "auth", chatId: args.chatId };
   const scopes = [`read:sessions:${args.chatId}`, `write:sessions:${args.chatId}`];
-  const serverMint = isAdditionalApiKey(accessToken);
+  const serverMint = isAdditionalApiKey(accessToken) || isRunToken(accessToken);
   const endpoint = serverMint ? "/api/v1/auth/public-tokens" : "/api/v1/auth/jwt/claims";
   const url = `${resolveChatStartBaseURL("auth", args.chatId, args.baseURLOption)}${endpoint}`;
   const init: RequestInit = {
     method: "POST",
-    headers: overrideRequestHeaders(accessToken),
+    headers: overrideRequestHeaders(authHeaders),
     ...(serverMint
       ? {
           body: JSON.stringify({
@@ -16755,12 +16759,10 @@ async function mintPublicTokenWithOverride(args: {
     ? await args.fetchOverride(url, init, ctx)
     : await fetch(url, init);
   if (!response.ok) {
-    // An additional API key cannot self-sign, so it must use the server mint
-    // endpoint. On a server too old to expose it, explain the recovery path
-    // instead of surfacing a bare 404 (mirrors auth.createServerPublicToken).
     if (serverMint && response.status === 404) {
+      const credentialType = isRunToken(accessToken) ? "run token" : "additional API key";
       throw new Error(
-        "This additional API key cannot self-sign public tokens, and the server does not support public-token minting. Upgrade the server or use the root API key."
+        `This ${credentialType} cannot self-sign public tokens, and the server does not support public-token minting. Upgrade the server or use the root API key.`
       );
     }
     const text = await response.text().catch(() => "");

@@ -75,6 +75,7 @@ import {
   resendEmailChange,
 } from "~/services/emailChange.server";
 import { logger } from "~/services/logger.server";
+import { isExternalOidcEnabled } from "~/services/oidc/externalOidc.server";
 import { type EmailOwnership } from "~/services/ssoManagedIdentity.server";
 import {
   updateContrastPreference,
@@ -251,7 +252,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
     // Resolved here, not from route matches: /account sits outside an org, so
     // `useFeatureFlags` would see none and the dialog would offer a shorter
     // section list than the side menu - and saving it drops the rest.
-    featureFlags: Awaited<ReturnType<typeof resolveOrganizationFeatureFlags>>;
+    featureFlags: Awaited<ReturnType<typeof resolveOrganizationFeatureFlags>> & {
+      oidcEnabled: boolean;
+    };
   } | null = null;
   try {
     const { organization, project, environment } = await new SelectBestEnvironmentPresenter().call({
@@ -261,7 +264,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
       organization: { slug: organization.slug },
       project: { slug: project.slug },
       environment: { slug: environment.slug },
-      featureFlags: await resolveOrganizationFeatureFlags(organization.featureFlags),
+      featureFlags: {
+        ...(await resolveOrganizationFeatureFlags(organization.featureFlags)),
+        oidcEnabled: await isExternalOidcEnabled(organization.featureFlags),
+      },
     };
   } catch (error) {
     logger.debug("Account page: no sidebar context for this user", {

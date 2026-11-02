@@ -13,6 +13,14 @@ describe("offered capabilities", () => {
     expect(offered.length).toBeGreaterThan(0);
   });
 
+  it("hides the queue-metric limits when queue metrics are off", () => {
+    const offered = filterOfferedCapabilities(caps, false).map((c) => c.key);
+    expect(offered).not.toContain("limits.concurrency");
+    expect(offered).not.toContain("limits.queue");
+    expect(offered).toContain("limits.api");
+    expect(filterOfferedCapabilities(caps, true).map((c) => c.key)).toContain("limits.queue");
+  });
+
   it("offers queue capabilities when queue metrics are on", () => {
     const offered = filterOfferedCapabilities(caps, true);
     expect(offered.some((c) => c.key === "queue.depth")).toBe(true);

@@ -1479,6 +1479,10 @@ export class ClickHousePrinter {
       return "Float64"; // Default
     }
 
+    if (["round", "floor", "ceil", "trunc", "abs"].includes(name)) {
+      return (call.args[0] && this.inferExpressionType(call.args[0])) ?? "Float64";
+    }
+
     // dateDiff returns Int64 (signed difference)
     if (name === "datediff" || name === "date_diff") {
       return "Int64";

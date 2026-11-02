@@ -15,6 +15,7 @@ import {
 } from "~/models/runtimeEnvironment.server";
 import type {
   BearerAuthOptions,
+  BearerCredentialKind,
   RbacAbility,
   RbacResource,
   UserActorClaims,
@@ -73,6 +74,9 @@ export type ApiAuthenticationResultSuccess = {
   ok: true;
   apiKey: string;
   type: "PUBLIC" | "PRIVATE" | "PUBLIC_JWT";
+  // Scoped credentials need resource authorization and packet namespace protections.
+  environmentScoped?: boolean;
+  credentialKind?: BearerCredentialKind;
   environment: AuthenticatedEnvironment;
   oneTimeUse?: boolean;
   realtime?: {
@@ -319,6 +323,9 @@ export async function authenticateApiKeyRequest(
   if (!result.ok) {
     return result;
   }
+  if (result.subject.type === "runToken") {
+    return { ok: false, status: 401, error: "Run tokens are not accepted for this endpoint" };
+  }
 
   return {
     ok: true,
@@ -368,6 +375,9 @@ export async function authenticateApiKeyWithScope(
   );
   if (!result.ok) {
     return result;
+  }
+  if (result.subject.type === "runToken") {
+    return { ok: false, status: 401, error: "Run tokens are not accepted for this endpoint" };
   }
 
   return {
@@ -612,10 +622,12 @@ export async function authenticateRequest<
   }
 
   if (allowedMethods.apiKey) {
-    const result = await authenticateApiKey(apiKey, {
-      allowPublicKey: false,
-      branchName,
-    });
+    const result = await observeLegacyBearerAuthentication(request, () =>
+      authenticateApiKey(apiKey, {
+        allowPublicKey: false,
+        branchName,
+      })
+    );
 
     if (!result) {
       return;

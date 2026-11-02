@@ -3,6 +3,7 @@ import { redirect } from "remix-typedjson";
 import { prisma } from "~/db.server";
 import { getSupportAccessOrgSlugs } from "~/services/impersonation.server";
 import { logger } from "~/services/logger.server";
+import { isExternalOidcEnabled } from "~/services/oidc/externalOidc.server";
 import { type UserFromSession } from "~/services/session.server";
 import { newOrganizationPath, newProjectPath } from "~/utils/pathBuilder";
 import { SelectBestEnvironmentPresenter } from "./SelectBestEnvironmentPresenter.server";
@@ -166,25 +167,30 @@ export class OrganizationsPresenter {
 
     const globalFlags = await globalFeatureFlags();
 
-    return orgs.map((org) => {
-      const combinedFlags = mergeOrgFeatureFlags(globalFlags, org.featureFlags);
+    return Promise.all(
+      orgs.map(async (org) => {
+        const combinedFlags = mergeOrgFeatureFlags(globalFlags, org.featureFlags);
 
-      return {
-        id: org.id,
-        slug: org.slug,
-        title: org.title,
-        avatar: parseAvatar(org.avatar, defaultAvatar),
-        featureFlags: combinedFlags,
-        supportAccessMode: org.supportAccessMode,
-        projects: org.projects.map((project) => ({
-          id: project.id,
-          slug: project.slug,
-          name: project.name,
-          updatedAt: project.updatedAt,
-          externalRef: project.externalRef,
-        })),
-      };
-    });
+        return {
+          id: org.id,
+          slug: org.slug,
+          title: org.title,
+          avatar: parseAvatar(org.avatar, defaultAvatar),
+          featureFlags: {
+            ...combinedFlags,
+            oidcEnabled: await isExternalOidcEnabled(org.featureFlags),
+          },
+          supportAccessMode: org.supportAccessMode,
+          projects: org.projects.map((project) => ({
+            id: project.id,
+            slug: project.slug,
+            name: project.name,
+            updatedAt: project.updatedAt,
+            externalRef: project.externalRef,
+          })),
+        };
+      })
+    );
   }
 
   #getEnvironment({

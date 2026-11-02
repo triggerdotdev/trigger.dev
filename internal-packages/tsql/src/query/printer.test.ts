@@ -578,6 +578,14 @@ describe("ClickHousePrinter", () => {
       );
     });
 
+    it("should infer a numeric type for round()", () => {
+      const { columns } = printQuery(
+        "SELECT round(count() / 3, 1) AS r FROM runs",
+        createJsonContext()
+      );
+      expect(columns).toContainEqual(expect.objectContaining({ name: "r", type: "Float64" }));
+    });
+
     it("should cast JSON subfield to String with multiple fields and underscore aliases", () => {
       const ctx = createJsonContext();
       const { sql, columns } = printQuery(

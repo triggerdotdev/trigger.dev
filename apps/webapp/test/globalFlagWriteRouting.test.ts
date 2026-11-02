@@ -96,6 +96,11 @@ describe("lockedFlagsInPayload — what the global page refuses", () => {
     ]);
   });
 
+  // Catches: rejecting the external OIDC global toggle as an org-only flag.
+  it("allows external OIDC to be configured globally", () => {
+    expect(lockedFlagsInPayload([FEATURE_FLAG.externalOidc], true)).toEqual([]);
+  });
+
   it("allows the shard list, because that is the page's ramp lever", () => {
     expect(lockedFlagsInPayload([FEATURE_FLAG.runOpsMintShardSet], true)).toEqual([]);
   });

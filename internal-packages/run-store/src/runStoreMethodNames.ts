@@ -19,6 +19,7 @@ export const RUN_STORE_METHOD_NAMES = [
   "recordRetryOutcome",
   "requeueRun",
   "recordBulkActionMembership",
+  "markRunWaitpointsOnStore",
   "cancelRun",
   "failRunPermanently",
   "finalizeRun",

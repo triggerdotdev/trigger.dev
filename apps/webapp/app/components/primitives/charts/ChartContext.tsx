@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 import type { ChartConfig, ChartState } from "./Chart";
+import { safeChartConfig } from "./chartColors";
 import { useHighlightState, type UseHighlightStateReturn } from "./hooks/useHighlightState";
 import {
   useZoomSelection,
@@ -85,7 +86,7 @@ export type ChartProviderProps = {
 };
 
 export function ChartProvider({
-  config,
+  config: configProp,
   data,
   dataKey,
   series,
@@ -97,6 +98,7 @@ export function ChartProvider({
   showLegend = false,
   children,
 }: ChartProviderProps) {
+  const config = useMemo(() => safeChartConfig(configProp), [configProp]);
   const highlight = useHighlightState();
   const zoomState = useZoomSelection();
 

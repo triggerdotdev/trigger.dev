@@ -123,4 +123,14 @@ export const WorkerToExecutorMessageCatalog = {
       waitpoint: CompletedWaitpoint,
     }),
   },
+  /** Replaces TRIGGER_RUN_TOKEN, but only while the process is still executing this run attempt. */
+  UPDATE_RUN_TOKEN: {
+    message: z.object({
+      runId: z.string(),
+      attemptNumber: z.number().int(),
+      token: z.string(),
+    }),
+    // Children without a handler ack with no payload, which callers must treat as not installed.
+    callback: z.object({ installed: z.boolean() }).optional(),
+  },
 };

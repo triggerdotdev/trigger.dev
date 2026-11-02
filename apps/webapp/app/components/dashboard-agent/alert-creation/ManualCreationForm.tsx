@@ -1,6 +1,7 @@
 import { ChevronDownIcon, PlusIcon } from "@heroicons/react/20/solid";
+import { CheckMarkIcon } from "~/assets/icons/CheckMarkIcon";
 import { useFetcher } from "@remix-run/react";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { AlertChannelsDialog } from "~/components/alerts/AlertChannelsDialog";
 import { saveSlackConnectResume } from "~/components/alerts/slackConnectResume";
 import { errorGroupResolver, type ErrorGroupOption } from "~/components/alerts/errorGroupOptions";
@@ -38,7 +39,7 @@ import { useOptionalProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
 import { parseErrorGroupScope } from "~/utils/errorGroupScope";
 import { v3EnvironmentPath } from "~/utils/pathBuilder";
-import type { AlertChannel, CreationFlowState } from "./CreationFlow";
+import { useDefaultComponents, type AlertChannel, type CreationFlowState } from "./CreationFlow";
 import { isErrorGroupOnly, scopeEntityKindFor } from "./flow-state";
 
 const CUSTOM_VALUE = "__custom__";
@@ -99,12 +100,15 @@ function UnitInput({
           onValidity={onValidity}
         />
       </ul>
-      {input.unit ? (
-        <span
-          className={`flex h-6 w-10 shrink-0 items-center justify-start text-xs text-text-dimmed ${stacked ? "mt-6" : ""}`}
+      {input.unit || (input.check && input.current !== undefined) ? (
+        <div
+          className={`flex h-6 w-10 shrink-0 items-center justify-start gap-1 text-xs text-text-dimmed ${stacked ? "mt-6" : ""}`}
         >
-          {input.unit}
-        </span>
+          {input.unit ? <span>{input.unit}</span> : null}
+          {input.check && input.current !== undefined ? (
+            <CheckMarkIcon aria-label="Selected" className="size-4 shrink-0 text-success" />
+          ) : null}
+        </div>
       ) : null}
     </li>
   );
@@ -113,9 +117,11 @@ function UnitInput({
 function ChannelCheckboxes({
   step,
   onSelect,
+  report,
 }: {
   step: ChatWizardStep;
   onSelect: (stepId: string, optionId: string) => void;
+  report: (key: string) => (valid: boolean) => void;
 }) {
   const adding = step.options.find((option) => option.id === ADD_CHANNEL_OPTION);
   return (
@@ -155,6 +161,11 @@ function ChannelCheckboxes({
                   {option.icon ? <Icon icon={option.icon} className="size-4 shrink-0" /> : null}
                   {option.label}
                 </label>
+                {option.below ? (
+                  <ul className="mt-1.5 pl-6">
+                    <UnitInput input={option.below} stacked onValidity={report(option.below.id)} />
+                  </ul>
+                ) : null}
               </li>
             )
           )}
@@ -280,7 +291,7 @@ export function ManualStep({
         </p>
       ) : null}
       <ul className="flex flex-col gap-1.5">
-        {checkboxes ? <ChannelCheckboxes step={step} onSelect={onSelect} /> : null}
+        {checkboxes ? <ChannelCheckboxes step={step} onSelect={onSelect} report={report} /> : null}
         {checkboxes ? null : (
           <li>
             <ul className="flex flex-col gap-1.5">
@@ -334,38 +345,55 @@ export function ManualStep({
                     onSearchChange={entity?.onSearch}
                   >
                     {(list) =>
-                      list.map((item) => (
-                        <ItemHint key={item.id} reason={item.disabledReason}>
-                          <SelectItem
-                            value={item.id}
-                            checkPosition={step.multiSelect ? "left" : "right"}
-                            disabled={Boolean(item.disabledReason)}
-                            className={cn(
-                              "text-text-bright",
-                              item.disabledReason && "cursor-not-allowed opacity-50"
-                            )}
-                            {...(item.id === customId && !step.multiSelect
-                              ? { setValueOnClick: false, hideOnClick: true, onClick: revealCustom }
-                              : {})}
-                            {...(step.multiSelect
-                              ? {
-                                  setValueOnClick: false,
-                                  hideOnClick: item.id === ADD_CHANNEL_OPTION,
-                                  onClick: () => onSelect(step.id, item.id),
-                                }
-                              : {})}
-                            icon={
-                              item.icon ? (
-                                <Icon
-                                  icon={item.icon}
-                                  className="mr-1 size-4 shrink-0 text-text-dimmed"
-                                />
-                              ) : undefined
-                            }
-                          >
-                            {item.label}
-                          </SelectItem>
-                        </ItemHint>
+                      list.map((item, index) => (
+                        <Fragment key={item.id}>
+                          {"group" in item &&
+                          item.group &&
+                          item.group !==
+                            (list[index - 1] as { group?: string } | undefined)?.group ? (
+                            <div
+                              data-group-header
+                              className="px-2 pb-1 pt-2 text-xxs uppercase tracking-wide text-text-dimmed"
+                            >
+                              {item.group}
+                            </div>
+                          ) : null}
+                          <ItemHint reason={item.disabledReason}>
+                            <SelectItem
+                              value={item.id}
+                              checkPosition={step.multiSelect ? "left" : "right"}
+                              disabled={Boolean(item.disabledReason)}
+                              className={cn(
+                                "text-text-bright",
+                                item.disabledReason && "cursor-not-allowed opacity-50"
+                              )}
+                              {...(item.id === customId && !step.multiSelect
+                                ? {
+                                    setValueOnClick: false,
+                                    hideOnClick: true,
+                                    onClick: revealCustom,
+                                  }
+                                : {})}
+                              {...(step.multiSelect
+                                ? {
+                                    setValueOnClick: false,
+                                    hideOnClick: item.id === ADD_CHANNEL_OPTION,
+                                    onClick: () => onSelect(step.id, item.id),
+                                  }
+                                : {})}
+                              icon={
+                                item.icon ? (
+                                  <Icon
+                                    icon={item.icon}
+                                    className="mr-1 size-4 shrink-0 text-text-dimmed"
+                                  />
+                                ) : undefined
+                              }
+                            >
+                              {item.label}
+                            </SelectItem>
+                          </ItemHint>
+                        </Fragment>
                       ))
                     }
                   </Select>
@@ -543,6 +571,7 @@ export function ManualCreationForm({
   useEffect(() => {
     if (autoConfirm) confirmStep(flow, "environments");
   }, [autoConfirm]); // eslint-disable-line react-hooks/exhaustive-deps -- confirm once on open
+  useDefaultComponents(flow, hiddenAreas ?? []);
   const { confirmCondition } = flow;
   useEffect(() => {
     if (position === "condition" && conditionFilled) confirmCondition();
@@ -586,6 +615,7 @@ export function ManualCreationForm({
     if (!step?.multiSelect && step?.selected?.includes(value) && value !== CONTINUE_OPTION) return;
     applyStepSelection(flow, stepId, value, {
       onShowAll: () => {},
+      hiddenAreas,
       onAddChannel: () => setAddingChannel(true),
     });
   }
@@ -618,7 +648,7 @@ export function ManualCreationForm({
               step.multiSelect && !reviewShown && !(replacing && step.id === "environments")
                 ? () => {
                     setCustomizing(false);
-                    confirmStep(flow, step.id);
+                    confirmStep(flow, step.id, hiddenAreas);
                   }
                 : undefined
             }

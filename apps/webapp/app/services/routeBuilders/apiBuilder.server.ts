@@ -28,6 +28,7 @@ import { ServiceValidationError } from "~/v3/services/common.server";
 import { EngineServiceValidationError } from "@internal/run-engine";
 import { unroutableIdResponse } from "./unroutableId.server";
 import { tenantContext, tenantContextFromAuthEnvironment } from "~/services/tenantContext.server";
+import { withRequestFeature, type RequestFeatureName } from "~/services/requestFeature.server";
 
 // Client aborts and service-level validation errors aren't bugs — they're
 // expected at API boundaries. Log them at `warn` so they stay in stdout
@@ -105,7 +106,7 @@ function logBoundaryError(
 // needed.
 async function authenticateRequestForApiBuilder(
   request: Request,
-  { allowJWT, allowRunToken = false }: { allowJWT: boolean; allowRunToken?: boolean }
+  { allowJWT }: { allowJWT: boolean }
 ): Promise<
   | { ok: false; status: 401 | 403; error: string }
   | {
@@ -115,7 +116,7 @@ async function authenticateRequestForApiBuilder(
       restrictedApiKey: boolean;
     }
 > {
-  const result = await authenticateBearerWithTelemetry(request, { allowJWT, allowRunToken });
+  const result = await authenticateBearerWithTelemetry(request, { allowJWT });
   if (!result.ok) {
     // Plugin auth distinguishes 401 (who are you?) from 403 (you're not
     // allowed) — e.g. a suspended account or IP block returns 403.
@@ -126,10 +127,17 @@ async function authenticateRequestForApiBuilder(
   // Plugins return the full AuthenticatedEnvironment shape directly — no
   // follow-up DB lookup. The fallback fetches via Prisma, the cloud plugin
   // via Drizzle; both produce the same slim contract type.
+  // Scoped credentials must fail closed on routes without an authorization check.
+  const restrictedApiKey =
+    (result.subject.type === "apiKey" && result.subject.restricted) ||
+    result.subject.type === "publicJWT" ||
+    result.subject.type === "runToken";
   const authentication: ApiAuthenticationResultSuccess = {
     ok: true,
     apiKey: result.environment.apiKey,
     type: result.subject.type === "publicJWT" ? "PUBLIC_JWT" : "PRIVATE",
+    environmentScoped: restrictedApiKey,
+    credentialKind: result.resolution.credentialKind,
     environment: result.environment,
     realtime: result.jwt?.realtime,
     oneTimeUse: result.jwt?.oneTimeUse,
@@ -142,11 +150,7 @@ async function authenticateRequestForApiBuilder(
     ok: true,
     authentication,
     ability: result.ability,
-    // Run tokens carry narrow scopes, so like restricted keys they fail closed on routes
-    // without an authorization check.
-    restrictedApiKey:
-      (result.subject.type === "apiKey" && result.subject.restricted) ||
-      result.subject.type === "runToken",
+    restrictedApiKey,
   };
 }
 
@@ -288,7 +292,6 @@ type ApiKeyRouteBuilderOptions<
   searchParams?: TSearchParamsSchema;
   headers?: THeadersSchema;
   allowJWT?: boolean;
-  allowRunToken?: boolean;
   corsStrategy?: "all" | "none";
   findResource: (
     params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
@@ -302,6 +305,8 @@ type ApiKeyRouteBuilderOptions<
       : undefined
   ) => Promise<TResource | undefined>;
   shouldRetryNotFound?: boolean;
+  // Opt-in metrics label for the request and its ClickHouse queries.
+  feature?: RequestFeatureName;
   authorization?: {
     action: string;
     resource: (
@@ -354,13 +359,12 @@ export function createLoaderApiRoute<
   options: ApiKeyRouteBuilderOptions<TParamsSchema, TSearchParamsSchema, THeadersSchema, TResource>,
   handler: ApiKeyHandlerFunction<TParamsSchema, TSearchParamsSchema, THeadersSchema, TResource>
 ) {
-  return async function loader({ request, params }: LoaderFunctionArgs) {
+  const loader = async function ({ request, params }: LoaderFunctionArgs) {
     const {
       params: paramsSchema,
       searchParams: searchParamsSchema,
       headers: headersSchema,
       allowJWT = false,
-      allowRunToken = false,
       corsStrategy = "none",
       authorization,
       findResource,
@@ -372,10 +376,7 @@ export function createLoaderApiRoute<
     }
 
     try {
-      const authResult = await authenticateRequestForApiBuilder(request, {
-        allowJWT,
-        allowRunToken,
-      });
+      const authResult = await authenticateRequestForApiBuilder(request, { allowJWT });
       if (!authResult.ok) {
         return await wrapResponse(
           request,
@@ -531,6 +532,8 @@ export function createLoaderApiRoute<
       }
     }
   };
+
+  return (args: LoaderFunctionArgs) => withRequestFeature(options.feature, () => loader(args));
 }
 
 // `environmentId` is checked against a user-actor token's environment claim, so an env-scoped
@@ -1145,7 +1148,6 @@ type ApiKeyActionRouteBuilderOptions<
   searchParams?: TSearchParamsSchema;
   headers?: THeadersSchema;
   allowJWT?: boolean;
-  allowRunToken?: boolean;
   corsStrategy?: "all" | "none";
   method?: "POST" | "PUT" | "DELETE" | "PATCH";
   findResource?: (
@@ -1210,6 +1212,7 @@ type ApiKeyActionHandlerFunction<
     ? z.infer<TBodySchema>
     : undefined;
   authentication: ApiAuthenticationResultSuccess;
+  restrictedApiKey: boolean;
   ability: RbacAbility;
   request: Request;
   resource?: TResource;
@@ -1243,7 +1246,6 @@ export function createActionApiRoute<
     headers: headersSchema,
     body: bodySchema,
     allowJWT = false,
-    allowRunToken = false,
     corsStrategy = "none",
     authorization,
     maxContentLength,
@@ -1272,10 +1274,7 @@ export function createActionApiRoute<
     }
 
     try {
-      const authResult = await authenticateRequestForApiBuilder(request, {
-        allowJWT,
-        allowRunToken,
-      });
+      const authResult = await authenticateRequestForApiBuilder(request, { allowJWT });
       if (!authResult.ok) {
         return await wrapResponse(
           request,
@@ -1451,6 +1450,7 @@ export function createActionApiRoute<
             headers: parsedHeaders,
             body: parsedBody,
             authentication: authenticationResult,
+            restrictedApiKey: authResult.restrictedApiKey,
             ability,
             request,
             resource,

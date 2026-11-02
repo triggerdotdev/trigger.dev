@@ -1,4 +1,4 @@
-import { ClickHouse, type ClickHouseSettings } from "@internal/clickhouse";
+import { ClickHouse, setQueryObserver, type ClickHouseSettings } from "@internal/clickhouse";
 import { createHash } from "crypto";
 import {
   ClickhouseEventRepository,
@@ -11,6 +11,10 @@ import { singleton } from "~/utils/singleton";
 import type { OrganizationDataStoresRegistry } from "~/services/dataStores/organizationDataStoresRegistry.server";
 import { type IEventRepository } from "~/v3/eventRepository/eventRepository.types";
 import { effectiveEventStore } from "~/v3/eventRepository/effectiveEventStore";
+import { requestFeatureQueryObserver } from "~/services/requestFeature.server";
+
+// Labels and totals ClickHouse queries made inside a feature-labelled request.
+setQueryObserver(requestFeatureQueryObserver);
 
 // Declared before the singletons below, which initialize clients at module load.
 const LOGS_LIST_REQUEST_TIMEOUT_MARGIN_SECONDS = 5;
@@ -44,24 +48,6 @@ const defaultLogsClickhouseClient = singleton(
   "logsClickhouseClient",
   initializeLogsClickhouseClient
 );
-
-function initializeLogsSearchProjectorClickhouseClient() {
-  const url = new URL(env.LOGS_SEARCH_WRITER_CLICKHOUSE_URL ?? env.CLICKHOUSE_URL);
-  url.searchParams.delete("secure");
-
-  return new ClickHouse({
-    url: url.toString(),
-    name: "logs-search-projector",
-    keepAlive: {
-      enabled: env.CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
-      idleSocketTtl: env.CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
-    },
-    logLevel: env.CLICKHOUSE_LOG_LEVEL,
-    compression: { request: true },
-    maxOpenConnections: Math.min(env.CLICKHOUSE_MAX_OPEN_CONNECTIONS, 2),
-    requestTimeoutMs: (env.LOGS_SEARCH_PROJECTOR_MAX_EXECUTION_TIME_SECONDS + 30) * 1000,
-  });
-}
 
 function getLogsListClickhouseSettings() {
   return {
@@ -442,6 +428,23 @@ const defaultEventsClickhouseClient = singleton(
   initializeEventsClickhouseClient
 );
 
+function getEventsReaderClickhouseSettings(): ClickHouseSettings {
+  return {
+    ...(env.EVENTS_READER_CLICKHOUSE_MAX_EXECUTION_TIME && {
+      max_execution_time: env.EVENTS_READER_CLICKHOUSE_MAX_EXECUTION_TIME,
+    }),
+    ...(env.EVENTS_READER_CLICKHOUSE_MAX_THREADS && {
+      max_threads: env.EVENTS_READER_CLICKHOUSE_MAX_THREADS,
+    }),
+    ...(env.EVENTS_READER_CLICKHOUSE_MAX_MEMORY_USAGE && {
+      max_memory_usage: env.EVENTS_READER_CLICKHOUSE_MAX_MEMORY_USAGE.toString(),
+    }),
+    ...(env.EVENTS_READER_CLICKHOUSE_READONLY && {
+      readonly: env.EVENTS_READER_CLICKHOUSE_READONLY,
+    }),
+  };
+}
+
 function initializeEventsClickhouseClient(): ClickHouse {
   if (!env.EVENTS_CLICKHOUSE_URL) {
     throw new Error("EVENTS_CLICKHOUSE_URL is not set");
@@ -474,6 +477,8 @@ function initializeEventsClickhouseClient(): ClickHouse {
         writerUrl: writerUrl.toString(),
         readerName: "task-events-reader",
         readerUrl: readerUrl.toString(),
+        readerClickhouseSettings: getEventsReaderClickhouseSettings(),
+        readerRequestTimeoutMs: env.EVENTS_READER_CLICKHOUSE_REQUEST_TIMEOUT_MS,
       });
     }
   }
@@ -822,13 +827,6 @@ export function getAdminClickhouse(): ClickHouse {
   return defaultAdminClickhouseClient;
 }
 
-export function getLogsSearchProjectorClickhouseClient(): ClickHouse {
-  return singleton(
-    "logsSearchProjectorClickhouseClient",
-    initializeLogsSearchProjectorClickhouseClient
-  );
-}
-
 /** Queue-metrics client for callers with no organization in scope (the ingestion consumer). */
 export function getQueueMetricsClickhouseClient(): ClickHouse {
   return defaultQueueMetricsClickhouseClient;
@@ -868,6 +866,9 @@ function buildEventRepository(
         ),
         maximumLiveReloadingSetting: env.EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING,
         traceChunkSize: env.EVENTS_CLICKHOUSE_TRACE_CHUNK_SIZE,
+        exportMaxExecutionTime: clickhouse.hasSeparateReader
+          ? env.EVENTS_READER_CLICKHOUSE_EXPORT_MAX_EXECUTION_TIME
+          : undefined,
         maximumTraceViewCount: env.EVENTS_CLICKHOUSE_MAX_TRACE_VIEW_COUNT,
         maximumErrorMatches: clampToEmergencySpanCap(DEFAULT_MAX_ERROR_MATCHES),
         maximumKeyRows: clampToEmergencySpanCap(DEFAULT_MAX_KEY_ROWS),
@@ -904,6 +905,9 @@ function buildEventRepository(
         ),
         maximumLiveReloadingSetting: env.EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING,
         traceChunkSize: env.EVENTS_CLICKHOUSE_TRACE_CHUNK_SIZE,
+        exportMaxExecutionTime: clickhouse.hasSeparateReader
+          ? env.EVENTS_READER_CLICKHOUSE_EXPORT_MAX_EXECUTION_TIME
+          : undefined,
         maximumTraceViewCount: env.EVENTS_CLICKHOUSE_MAX_TRACE_VIEW_COUNT,
         maximumErrorMatches: clampToEmergencySpanCap(DEFAULT_MAX_ERROR_MATCHES),
         maximumKeyRows: clampToEmergencySpanCap(DEFAULT_MAX_KEY_ROWS),

@@ -14,6 +14,7 @@
 
 import { heteroPostgresTest, laggingReplica } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
+import { buildJwtAbility } from "@trigger.dev/plugins";
 import { describe, expect, vi } from "vitest";
 
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
@@ -31,6 +32,7 @@ const ctx = vi.hoisted(() => ({
   project: undefined as any,
   session: undefined as any,
   userId: "user_realtime_guard",
+  scopes: undefined as string[] | undefined,
 }));
 
 // A single marker class used for BOTH the S2 backend mock and the getRealtimeStreamInstance mock, so
@@ -105,7 +107,7 @@ vi.mock("~/services/rbac.server", () => ({
       ok: true,
       environment: ctx.environment,
       subject: { type: "private" },
-      ability: { can: () => true, canSuper: () => true },
+      ability: ctx.scopes ? buildJwtAbility(ctx.scopes) : { can: () => true, canSuper: () => true },
       jwt: undefined,
     }),
   },
@@ -323,6 +325,7 @@ async function setupLiveRunWithFrozenReplica(prisma: PrismaClient) {
   ctx.project = { id: seed.project.id, slug: seed.project.slug };
   ctx.session = { id: "session_marker", friendlyId: "session_marker", externalId: null };
   ctx.userId = seed.userId;
+  ctx.scopes = undefined;
 
   return { seed, runId, friendlyId, replica };
 }
@@ -358,6 +361,174 @@ function rawPost(url: string, body: string) {
     body,
   });
 }
+
+describe("stream route authorization", () => {
+  heteroPostgresTest(
+    "authorizes the resolved target for every stream transport",
+    async ({ prisma14 }) => {
+      const prisma = prisma14 as unknown as PrismaClient;
+      const { seed, runId, friendlyId } = await setupLiveRunWithFrozenReplica(prisma);
+      const parentId = `${runId}_parent`;
+      const parentFriendlyId = `${friendlyId}_parent`;
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      await store.createRun(
+        buildCreateRunInput({
+          runId: parentId,
+          friendlyId: parentFriendlyId,
+          organizationId: seed.organization.id,
+          projectId: seed.project.id,
+          runtimeEnvironmentId: seed.environment.id,
+        })
+      );
+      await prisma.taskRun.update({
+        where: { id: runId },
+        data: { parentTaskRunId: parentId, rootTaskRunId: parentId },
+      });
+
+      for (const target of ["self", "parent", "root"]) {
+        const targetId = target === "self" ? friendlyId : parentFriendlyId;
+        for (const method of ["PUT", "POST", "APPEND", "HEAD"]) {
+          const action = method === "HEAD" ? "read" : "write";
+          const call = () => {
+            const url = `http://localhost/realtime/v1/streams/${friendlyId}/${target}/s1`;
+            const request =
+              method === "APPEND"
+                ? rawPost(`${url}/append`, "part")
+                : new Request(url, { method, ...(method === "POST" ? { body: "part" } : {}) });
+            const handler =
+              method === "HEAD"
+                ? streamTargetLoader
+                : method === "APPEND"
+                  ? streamTargetAppendAction
+                  : streamTargetAction;
+            return invoke(
+              () =>
+                handler({
+                  request,
+                  params: { runId: friendlyId, target, streamId: "s1" },
+                  context: {} as never,
+                }) as Promise<Response>
+            );
+          };
+          ctx.scopes = [`${action}:runs:${friendlyId}`];
+          expect((await call()).status).toBe(
+            target === "self" ? (method === "PUT" ? 202 : 200) : 403
+          );
+          ctx.scopes = [`${action}:runs:${targetId}`];
+          expect((await call()).status).toBe(method === "PUT" ? 202 : 200);
+          ctx.scopes = ["admin"];
+          expect((await call()).status).toBe(method === "PUT" ? 202 : 200);
+        }
+      }
+
+      const foreign = await seedTenant(prisma, `foreign_${seq++}`);
+      await prisma.taskRun.update({
+        where: { id: parentId },
+        data: { runtimeEnvironmentId: foreign.environment.id },
+      });
+      for (const target of ["parent", "root"]) {
+        for (const method of ["PUT", "POST", "APPEND", "HEAD"]) {
+          const url = `http://localhost/realtime/v1/streams/${friendlyId}/${target}/s1`;
+          const request =
+            method === "APPEND"
+              ? rawPost(`${url}/append`, "part")
+              : new Request(url, { method, ...(method === "POST" ? { body: "part" } : {}) });
+          const handler =
+            method === "HEAD"
+              ? streamTargetLoader
+              : method === "APPEND"
+                ? streamTargetAppendAction
+                : streamTargetAction;
+          expect(
+            (
+              await invoke(
+                () =>
+                  handler({
+                    request,
+                    params: { runId: friendlyId, target, streamId: "s1" },
+                    context: {} as never,
+                  }) as Promise<Response>
+              )
+            ).status
+          ).toBe(404);
+        }
+      }
+    }
+  );
+
+  heteroPostgresTest(
+    "requires both run mutation and input read/waitpoint capabilities",
+    async ({ prisma14 }) => {
+      const { friendlyId } = await setupLiveRunWithFrozenReplica(
+        prisma14 as unknown as PrismaClient
+      );
+      const call = () =>
+        invoke(
+          () =>
+            inputStreamsWaitAction({
+              request: jsonPost(`http://localhost/api/v1/runs/${friendlyId}/input-streams/wait`, {
+                streamId: "s1",
+              }),
+              params: { runFriendlyId: friendlyId },
+              context: {} as never,
+            }) as Promise<Response>
+        );
+      for (const scopes of [
+        [`write:runs:${friendlyId}`, "write:waitpoints"],
+        ["read:inputStreams", "write:waitpoints"],
+        [`write:runs:${friendlyId}`, "read:inputStreams"],
+        [`write:runs:${friendlyId}`, "write:waitpoints", "read:inputStreams:other"],
+      ]) {
+        ctx.scopes = scopes;
+        expect((await call()).status).toBe(403);
+      }
+      ctx.scopes = [
+        `write:runs:${friendlyId}`,
+        "write:waitpoints",
+        `read:inputStreams:${friendlyId}`,
+      ];
+      expect((await call()).status).toBe(200);
+    }
+  );
+
+  heteroPostgresTest(
+    "session waits require read access to the actual session and direction",
+    async ({ prisma14 }) => {
+      const { friendlyId } = await setupLiveRunWithFrozenReplica(
+        prisma14 as unknown as PrismaClient
+      );
+      const call = () =>
+        invoke(
+          () =>
+            sessionStreamsWaitAction({
+              request: jsonPost(`http://localhost/api/v1/runs/${friendlyId}/session-streams/wait`, {
+                session: "session_marker",
+                io: "in",
+              }),
+              params: { runFriendlyId: friendlyId },
+              context: {} as never,
+            }) as Promise<Response>
+        );
+      const required = [`write:runs:${friendlyId}`, "write:waitpoints"];
+      for (const scope of [
+        "read:sessions:other",
+        "read:sessions:session_marker:out",
+        "read:sessions:session_marker:channels:tools:in",
+      ]) {
+        ctx.scopes = [...required, scope];
+        expect((await call()).status).toBe(403);
+      }
+      for (const scope of [
+        "read:sessions:session_marker:in",
+        "read:sessions:addr_marker:in",
+        "read:sessions:session_marker",
+      ]) {
+        ctx.scopes = [...required, scope];
+        expect((await call()).status).toBe(200);
+      }
+    }
+  );
+});
 
 describe("realtime-stream routes under replica lag", () => {
   // 1. realtime.v1.runs.$runId loader (createLoaderApiRoute findResource) — SDK subscribeToRun.

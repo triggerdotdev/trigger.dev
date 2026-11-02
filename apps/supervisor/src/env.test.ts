@@ -185,6 +185,31 @@ describe("Env superRefine - backpressure source awareness", () => {
   });
 });
 
+describe("releasing runs that never started", () => {
+  it("is off by default for both failed creates and failed pods", () => {
+    const env = Env.parse(base);
+    expect(env.RELEASE_UNSTARTED_RUNS_ENABLED).toBe(false);
+    expect(env.RELEASE_FAILED_POD_RUNS_ENABLED).toBe(false);
+  });
+
+  it("limits releases to five different runs a minute unless told otherwise, never fewer than none", () => {
+    expect(Env.parse(base).RUN_RELEASES_PER_MINUTE).toBe(5);
+    expect(Env.parse({ ...base, RUN_RELEASES_PER_MINUTE: "0" }).RUN_RELEASES_PER_MINUTE).toBe(0);
+    expect(() => Env.parse({ ...base, RUN_RELEASES_PER_MINUTE: "-1" })).toThrow();
+    expect(Env.parse({ ...base, RUN_RELEASES_PER_MINUTE: " " }).RUN_RELEASES_PER_MINUTE).toBe(5);
+  });
+
+  it("turns on each path on its own", () => {
+    const creates = Env.parse({ ...base, RELEASE_UNSTARTED_RUNS_ENABLED: "true" });
+    expect(creates.RELEASE_UNSTARTED_RUNS_ENABLED).toBe(true);
+    expect(creates.RELEASE_FAILED_POD_RUNS_ENABLED).toBe(false);
+
+    const pods = Env.parse({ ...base, RELEASE_FAILED_POD_RUNS_ENABLED: "1" });
+    expect(pods.RELEASE_UNSTARTED_RUNS_ENABLED).toBe(false);
+    expect(pods.RELEASE_FAILED_POD_RUNS_ENABLED).toBe(true);
+  });
+});
+
 describe("worker cell name", () => {
   it("treats an empty value as unset", () => {
     expect(
@@ -223,4 +248,20 @@ describe("continue retry budget", () => {
       expect(() => Env.parse({ ...base, TRIGGER_CONTINUE_RETRY_BUDGET_MS: value })).toThrow();
     }
   );
+});
+
+describe("runner token Secret settle delay", () => {
+  it("defaults to two minutes", () => {
+    expect(Env.parse(base).KUBERNETES_RUNNER_TOKEN_SECRET_SETTLE_MS).toBe(120_000);
+  });
+
+  it("takes a number of milliseconds from a minute up and refuses less", () => {
+    expect(
+      Env.parse({ ...base, KUBERNETES_RUNNER_TOKEN_SECRET_SETTLE_MS: "60000" })
+        .KUBERNETES_RUNNER_TOKEN_SECRET_SETTLE_MS
+    ).toBe(60_000);
+    expect(
+      Env.safeParse({ ...base, KUBERNETES_RUNNER_TOKEN_SECRET_SETTLE_MS: "59999" }).success
+    ).toBe(false);
+  });
 });

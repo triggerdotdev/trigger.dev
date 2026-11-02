@@ -58,7 +58,7 @@ const { action, loader } = createActionApiRoute(
 
     // The credential's own scope is the ceiling, not the body's. See queryScope.ts.
     const resolvedScope = resolveQueryScope({
-      ceiling: queryScopeCeilingFor(authentication.type),
+      ceiling: queryScopeCeilingFor(authentication),
       requested: scope as QueryScope,
     });
     if (!resolvedScope.ok) {

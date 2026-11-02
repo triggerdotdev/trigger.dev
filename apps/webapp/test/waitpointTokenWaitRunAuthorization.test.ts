@@ -2,7 +2,8 @@ import { PostgresRunStore } from "@internal/run-store";
 import { postgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
 import { RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
-import { beforeEach, describe, expect, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildJwtAbility } from "@trigger.dev/plugins";
 import { seedTestEnvironment } from "./helpers/seedTestEnvironment";
 
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
@@ -138,6 +139,16 @@ beforeEach(() => {
 });
 
 describe("waitpoint-token wait run authorization", () => {
+  it("cannot wait for a token without permission to read its output", async () => {
+    const handler = await routeHandler();
+    const response = await handler({
+      ability: buildJwtAbility(["write:runs:run_self", "read:waitpoints:waitpoint_other"]),
+      params: { runFriendlyId: "run_self", waitpointFriendlyId: "waitpoint_target" },
+    });
+    expect(response.status).toBe(403);
+    expect(H.engineCalls).toHaveLength(0);
+  });
+
   postgresTest("rejects a run from another runtime environment", async ({ prisma }) => {
     const seed = await seedTestEnvironment(prisma);
     const foreignEnvironment = await prisma.runtimeEnvironment.create({
@@ -159,6 +170,7 @@ describe("waitpoint-token wait run authorization", () => {
     const handler = await routeHandler();
 
     const response = await handler({
+      ability: buildJwtAbility(["admin"]),
       authentication: {
         environment: {
           ...seed.environment,
@@ -193,6 +205,7 @@ describe("waitpoint-token wait run authorization", () => {
       const handler = await routeHandler();
 
       const response = await handler({
+        ability: buildJwtAbility(["admin"]),
         authentication: {
           environment: {
             ...seed.environment,

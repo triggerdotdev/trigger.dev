@@ -124,6 +124,7 @@ export function runShapeStream<TRunTypes extends AnyRunTypes>(
     {
       headers: options?.headers,
       resolveHeaders: options?.resolveHeaders,
+      fetchClient: options?.fetchClient,
       signal: abortController.signal,
     }
   );
@@ -736,6 +737,7 @@ export class SSEStreamSubscriptionFactory implements StreamSubscriptionFactory {
     private options: {
       headers?: Record<string, string>;
       signal?: AbortSignal;
+      fetchClient?: typeof fetch;
       resolveHeaders?: () => Promise<Record<string, string>>;
     }
   ) {}

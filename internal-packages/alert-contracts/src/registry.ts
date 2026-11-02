@@ -1,4 +1,11 @@
-import type { AlertCapability, AlertScopeType, AlertSurface } from "./schemas.js";
+import type {
+  AlertCapability,
+  AlertGroup,
+  AlertScopeType,
+  AlertSurface,
+  CapabilityParam,
+  LimitSignal,
+} from "./schemas.js";
 
 export const CURRENTLY_QUEUED_PREDICATE_PENDING =
   "status = 'PENDING' AND queued_at IS NOT NULL AND dequeued_at IS NULL";
@@ -13,6 +20,231 @@ const ERROR_GROUP_SCOPES: AlertScopeType[] = ["errorGroup"];
 
 const FAILED_RUN_PREDICATE =
   "status IN ('CRASHED', 'SYSTEM_FAILURE', 'TIMED_OUT', 'COMPLETED_WITH_ERRORS')";
+
+const UTILISATION_PARAM: CapabilityParam = {
+  key: "utilisationPct",
+  label: "Utilisation",
+  unit: "percent",
+  default: 80,
+  min: 1,
+  max: 100,
+};
+
+function metric(fn: "sumIf" | "maxIf" | "minIf", name: string, filter = ""): string {
+  return `${fn}(metric_value, metric_name = '${name}'${filter})`;
+}
+
+function utilisationAtLeast(used: string, limit: string): string {
+  return `if(${limit} > 0, ${used} * 100 / (${limit}) >= {{p.utilisationPct}}, 0)`;
+}
+
+type SignalExpr = { met: string; reading: string; as: "value" | "count"; samples: string };
+
+function allOf(names: string[], filter = ""): string {
+  const counts = names.map((name) => `countIf(metric_name = '${name}'${filter})`);
+  return counts.length === 1 ? counts[0]! : `least(${counts.join(", ")})`;
+}
+
+function anyOf(names: string[], filter = ""): string {
+  return `countIf(metric_name IN (${names.map((name) => `'${name}'`).join(", ")})${filter})`;
+}
+
+function utilisation(used: string, limit: string, samples: string): SignalExpr {
+  return {
+    met: utilisationAtLeast(used, limit),
+    reading: `if(${limit} > 0, ${used} * 100 / (${limit}), 0)`,
+    as: "value",
+    samples,
+  };
+}
+
+function denied(count: string, samples: string): SignalExpr {
+  return { met: `${count} > 0`, reading: count, as: "count", samples };
+}
+
+function limitCapability(def: {
+  key: string;
+  group: AlertGroup;
+  title: string;
+  shortTitle: string;
+  description: string;
+  table: "metrics" | "env_metrics";
+  signals: Partial<Record<LimitSignal, SignalExpr>>;
+  groupBy?: string;
+  tail?: string;
+}): AlertCapability {
+  const select = (expr: string) =>
+    `SELECT ${expr} FROM ${def.table} WHERE {{scope}}${def.tail ?? ""}`;
+  const entries = Object.entries(def.signals) as [LimitSignal, SignalExpr][];
+  const groupColumn = def.groupBy ? `${def.groupBy}, ` : "";
+  return {
+    key: def.key,
+    area: "limits",
+    group: def.group,
+    signal: "state",
+    allowedKinds: ["state"],
+    binding: {
+      type: "query",
+      template: select(entries.map(([, expr]) => `(${expr.met})`).join(" OR ")),
+      signalTemplates: Object.fromEntries(
+        entries.map(([name, expr]) => [
+          name,
+          select(
+            `${groupColumn}(${expr.met}) AS met, ${expr.reading} AS reading_${expr.as}, ${expr.samples} AS samples`
+          ),
+        ])
+      ),
+      table: def.table,
+      minCadenceSec: 300,
+      params: [UTILISATION_PARAM],
+    },
+    minCadenceSec: 300,
+    title: def.title,
+    shortTitle: def.shortTitle,
+    description: def.description,
+    surfaces: NO_CONTEXTUAL,
+    curated: true,
+    freshness: "snapshot",
+    allowedScopes: HEALTH_SCOPES,
+    supportedSignals: entries.map(([name]) => name),
+  };
+}
+
+const webhookRate = (scope: "env" | "endpoint") => {
+  const filter = ` AND attributes.scope = '${scope}'`;
+  const gauges = ["webhook.ingress.limit.tokens", "webhook.ingress.remaining_min"];
+  return {
+    approaching: utilisation(
+      `(${metric("maxIf", "webhook.ingress.limit.tokens", filter)} - ${metric("minIf", "webhook.ingress.remaining_min", filter)})`,
+      metric("maxIf", "webhook.ingress.limit.tokens", filter),
+      allOf(gauges, filter)
+    ),
+    limited: denied(
+      metric("sumIf", "webhook.ingress.denied", filter),
+      anyOf(["webhook.ingress.denied", ...gauges], filter)
+    ),
+  };
+};
+
+const LIMIT_CAPABILITIES: AlertCapability[] = [
+  limitCapability({
+    key: "limits.api",
+    group: "platform",
+    title: "API rate limit running out",
+    shortTitle: "API rate limit",
+    description:
+      "Whether API requests are near or over the rate limit. Approaching when usage of the rate-limit bucket reaches the utilisation share; limited when requests are denied.",
+    table: "metrics",
+    signals: {
+      approaching: utilisation(
+        `(${metric("maxIf", "api.rate_limit.limit.burst")} - ${metric("minIf", "api.rate_limit.remaining_min")})`,
+        metric("maxIf", "api.rate_limit.limit.burst"),
+        allOf(["api.rate_limit.limit.burst", "api.rate_limit.remaining_min"])
+      ),
+      limited: denied(
+        metric("sumIf", "api.rate_limit.denied"),
+        anyOf(["api.rate_limit.allowed", "api.rate_limit.denied"])
+      ),
+    },
+    tail: " AND metric_name LIKE 'api.rate_limit.%'",
+  }),
+  limitCapability({
+    key: "limits.concurrency",
+    group: "platform",
+    title: "Environment concurrency filling up",
+    shortTitle: "Concurrency",
+    description:
+      "Whether running runs are near or at the environment base concurrency limit, before any burst. Approaching when they reach the utilisation share of the base limit; limited when running runs reach the base limit.",
+    table: "env_metrics",
+    signals: {
+      approaching: utilisation("max(max_env_running)", "max(max_env_limit)", "count()"),
+      limited: {
+        met: "max(max_env_limit) > 0 AND max(max_env_running) >= max(max_env_limit)",
+        reading: "max(max_env_running)",
+        as: "value",
+        samples: "count()",
+      },
+    },
+  }),
+  limitCapability({
+    key: "limits.queue",
+    group: "platform",
+    title: "Queue size nearing its limit",
+    shortTitle: "Queue size",
+    description:
+      "Whether queued runs are near the environment's maximum. Approaching when they reach the utilisation share of the limit.",
+    table: "metrics",
+    signals: {
+      approaching: utilisation(
+        metric("maxIf", "queue.size.queued"),
+        metric("maxIf", "queue.size.limit"),
+        allOf(["queue.size.queued", "queue.size.limit"])
+      ),
+    },
+    tail: " AND metric_name LIKE 'queue.size.%'",
+  }),
+  limitCapability({
+    key: "limits.webhooks.processing",
+    group: "webhooks",
+    title: "Webhook processing saturating",
+    shortTitle: "Webhook processing",
+    description:
+      "Whether webhooks being processed are near the concurrency limit. Approaching when they reach the utilisation share of the limit.",
+    table: "metrics",
+    signals: {
+      approaching: utilisation(
+        metric("maxIf", "webhook.processing.in_flight"),
+        metric("maxIf", "webhook.processing.limit"),
+        allOf(["webhook.processing.in_flight", "webhook.processing.limit"])
+      ),
+    },
+    tail: " AND metric_name LIKE 'webhook.processing.%'",
+  }),
+  limitCapability({
+    key: "limits.webhooks.env_rate",
+    group: "webhooks",
+    title: "Webhook ingress getting rate-limited",
+    shortTitle: "Webhook ingress",
+    description:
+      "Whether incoming webhooks are near or over the environment rate limit. Approaching when they reach the utilisation share of the window; limited when webhooks are denied.",
+    table: "metrics",
+    signals: webhookRate("env"),
+    tail: " AND metric_name LIKE 'webhook.ingress.%'",
+  }),
+  limitCapability({
+    key: "limits.webhooks.endpoint_rate",
+    group: "webhooks",
+    title: "Webhook endpoint getting rate-limited",
+    shortTitle: "Webhook endpoint",
+    description:
+      "Whether any webhook endpoint is near or over its rate limit, checked per endpoint. Approaching when it reaches the utilisation share of the window; limited when webhooks are denied.",
+    table: "metrics",
+    signals: webhookRate("endpoint"),
+    groupBy: "machine_id",
+    tail: " AND metric_name LIKE 'webhook.ingress.%' AND machine_id != '' GROUP BY machine_id",
+  }),
+  limitCapability({
+    key: "limits.webhooks.waiters",
+    group: "webhooks",
+    title: "Webhook waiters running out",
+    shortTitle: "Webhook waiters",
+    description:
+      "Whether runs waiting for webhooks are near or over the environment limit. Approaching when they reach the utilisation share of the limit; limited when new waiters are refused.",
+    table: "metrics",
+    signals: {
+      approaching: utilisation(
+        metric("maxIf", "webhook.waiters.live"),
+        metric("maxIf", "webhook.waiters.limit.env"),
+        allOf(["webhook.waiters.live", "webhook.waiters.limit.env"])
+      ),
+      limited: denied(
+        metric("sumIf", "webhook.waiters.refused", " AND attributes.reason = 'environment_limit'"),
+        anyOf(["webhook.waiters.refused", "webhook.waiters.live", "webhook.waiters.limit.env"])
+      ),
+    },
+    tail: " AND metric_name LIKE 'webhook.waiters.%'",
+  }),
+];
 
 export const V1_CAPABILITIES: AlertCapability[] = [
   {
@@ -360,7 +592,27 @@ export const V1_CAPABILITIES: AlertCapability[] = [
     minCadenceSec: 300,
     title: "Health (All)",
     description:
-      "Combined state of flow, execution and liveness. True when any of the three checks is true.",
+      "Combined state of flow, execution and liveness. True when any of the three checks is true, or with compositeMode all, when all of them are.",
+    surfaces: NO_CONTEXTUAL,
+    curated: true,
+    freshness: "snapshot",
+    allowedScopes: HEALTH_SCOPES,
+  },
+  ...LIMIT_CAPABILITIES,
+  {
+    key: "limits.all",
+    area: "limits",
+    signal: "state",
+    allowedKinds: ["state"],
+    binding: {
+      type: "query",
+      minCadenceSec: 300,
+      compositeOf: LIMIT_CAPABILITIES.map((c) => c.key),
+      params: [UTILISATION_PARAM],
+    },
+    minCadenceSec: 300,
+    title: "Watch all limits",
+    description: "One combined alert over the limits you pick",
     surfaces: NO_CONTEXTUAL,
     curated: true,
     freshness: "snapshot",

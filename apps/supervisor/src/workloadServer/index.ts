@@ -528,7 +528,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                   params.runFriendlyId,
                   params.snapshotFriendlyId,
                   body,
-                  this.runnerIdFromRequest(req)
+                  this.runnerIdFromRequest(req),
+                  auth.environmentId
                 );
 
                 if (!heartbeatResponse.success) {
@@ -540,9 +541,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                   return;
                 }
 
-                reply.json({
-                  ok: true,
-                } satisfies WorkloadHeartbeatResponseBody);
+                // Carries any replacement run token through to the runner. Never log this body.
+                reply.json(heartbeatResponse.data satisfies WorkloadHeartbeatResponseBody);
               },
               { highFrequency: true }
             ),

@@ -75,6 +75,8 @@ type MemberSeed = {
   status: "COMPLETED_SUCCESSFULLY" | "COMPLETED_WITH_ERRORS";
   output?: string;
   error?: unknown;
+  /** Run-engine shape: result on the TaskRun row, no TaskRunAttempt row. */
+  noAttempt?: boolean;
 };
 
 // Drop the TaskRunAttempt worker/queue FKs so attempts can be seeded without standing up
@@ -156,8 +158,11 @@ async function seedNewMember(
       isTest: false,
       taskEventStore: "taskEvent",
       depth: 0,
+      ...(m.noAttempt ? { output: m.output, error: m.error as any } : {}),
     },
   });
+
+  if (m.noAttempt) return;
 
   await prisma17.taskRunAttempt.create({
     data: {
@@ -479,7 +484,9 @@ describe("ApiBatchResultsPresenter split mode — real run-ops dedicated schema 
 
   // A gen-2 BATCH id is minted onto its shard, so the batch row (not just its members) lives
   // only there. Both read paths must route the row by its own id; before this, the gen-1
-  // probes missed and the endpoint 404'd for a batch that `batch.retrieve` found.
+  // probes missed and the endpoint 404'd for a batch that `batch.retrieve` found. The batch is
+  // seeded in the run-engine shape (members in `runIds`, no item rows, results on the run rows
+  // with no attempt rows), which the presenter used to answer with an empty list.
   for (const splitEnabled of [true, false]) {
     oneShardTest(
       `a gen-2 batch whose row lives only on its shard returns its members (split ${
@@ -496,15 +503,26 @@ describe("ApiBatchResultsPresenter split mode — real run-ops dedicated schema 
             { envId: ctx.environment.id, orgId: ctx.organization.id, projectId: ctx.project.id },
             {
               id,
-              friendlyId: `run_shard_${i}`,
+              // Real shape: the friendly id carries the internal id, so it routes to the shard too.
+              friendlyId: `run_${id}`,
               status: "COMPLETED_SUCCESSFULLY",
               output: JSON.stringify({ i }),
+              noAttempt: true,
             }
           );
         }
 
+        // Run-engine shape: no item rows, members are the run friendly ids in `runIds`, in order.
         const batchFriendlyId = `batch_${generateRunOpsIdV2("a")}`;
-        await seedBatchOnNew(shardPrisma, ctx.environment.id, batchFriendlyId, memberIds);
+        await shardPrisma.batchTaskRun.create({
+          data: {
+            friendlyId: batchFriendlyId,
+            runtimeEnvironmentId: ctx.environment.id,
+            runCount: memberIds.length,
+            runIds: memberIds.map((id) => `run_${id}`),
+            batchVersion: "runengine:v2",
+          },
+        });
 
         const shardReplicas = new Map([["a", shardPrisma as unknown as PrismaReplicaClient]]);
         const presenter = splitEnabled

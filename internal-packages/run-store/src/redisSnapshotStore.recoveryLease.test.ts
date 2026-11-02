@@ -188,6 +188,8 @@ describe("RecoverySweeper pending gauges and the recovery lease", () => {
         });
         expect(prepared.outcome).toBe("prepared");
 
+        // Age is measured from Redis's stream timestamp; establish a positive age independently of
+        // host/Redis clock skew or a prepare and sweep happening in the same millisecond.
         const { oldestMs } = await index.summary(runToPartition(runId));
         expect(oldestMs).toBeTypeOf("number");
         vi.useFakeTimers({ toFake: ["Date"] });

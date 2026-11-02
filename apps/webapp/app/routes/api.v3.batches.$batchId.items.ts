@@ -66,12 +66,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
   // work behind it.
   const authResult = await authenticateBearerWithTelemetry(request, {
     allowJWT: true,
-    allowRunToken: true,
   });
 
   if (!authResult.ok) {
     return json({ error: authResult.error }, { status: authResult.status });
   }
+
+  const restrictedApiKey = authResult.subject.type === "apiKey" && authResult.subject.restricted;
 
   // Get the request body stream
   const body = request.body;
@@ -99,7 +100,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       streamToAsyncIterable(parsedStream),
       authResult.ability,
       batchId,
-      authResult.subject.type !== "publicJWT"
+      authResult.subject.type !== "publicJWT" && !restrictedApiKey
     );
 
     // Process the stream

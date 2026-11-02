@@ -3,7 +3,11 @@ import { useEffect, useMemo, useRef } from "react";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useEventSource } from "~/hooks/useEventSource";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { useProgressiveTrace, type ProgressiveTraceInput } from "~/hooks/useProgressiveTrace";
+import {
+  useProgressiveTrace,
+  type ProgressiveTraceInput,
+  type ProgressiveTraceOptions,
+} from "~/hooks/useProgressiveTrace";
 import { useProject } from "~/hooks/useProject";
 import { useRunStatusBackstop } from "~/hooks/useRunStatusBackstop";
 import { v3RunStatusPath, v3RunStreamingPath, v3RunTraceChunkPath } from "~/utils/pathBuilder";
@@ -72,6 +76,11 @@ export function useRunTrace({
   maximumLiveReloadingSetting,
   onRunDataStale,
   readContext,
+  live = true,
+  canFetchPage,
+  onLoadedSpans,
+  retryKey,
+  paused = false,
 }: {
   run: RunTraceRun;
   trace: RunTraceInput;
@@ -80,7 +89,9 @@ export function useRunTrace({
   onRunDataStale: () => void;
   /** Sent with every chunk read; "session" bounds completed runs' reads. */
   readContext?: "session";
-}) {
+  /** False turns off the stream, tail and status polling, e.g. for a session's older runs. */
+  live?: boolean;
+} & ProgressiveTraceOptions) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -101,10 +112,16 @@ export function useRunTrace({
     isComplete,
     isTruncated: progressiveIsTruncated,
     loadFailed,
+    loadAttempt,
     tailLive,
     liveTailEnabled,
     retryLoad,
-  } = useProgressiveTrace(trace, chunkPath, errorsOnly);
+  } = useProgressiveTrace(trace, chunkPath, errorsOnly, live, {
+    canFetchPage,
+    onLoadedSpans,
+    retryKey,
+    paused,
+  });
 
   const traceIsTruncated = isTruncated || progressiveIsTruncated;
 
@@ -125,13 +142,15 @@ export function useRunTrace({
 
   // Tail path (flag on): delta-fetch per signal, skipped for truncated or partly
   // failed trees. Legacy path: revalidate per signal, with the old size cap.
-  const isLiveReloading = liveTailEnabled
-    ? shouldLiveReload(run, rootSpanStatus) && !traceIsTruncated && !loadFailed
-    : shouldLiveReloadLegacy({
-        eventCount: events.length,
-        maximumLiveReloadingSetting,
-        run,
-      });
+  const isLiveReloading =
+    live &&
+    (liveTailEnabled
+      ? shouldLiveReload(run, rootSpanStatus) && !traceIsTruncated && !loadFailed
+      : shouldLiveReloadLegacy({
+          eventCount: events.length,
+          maximumLiveReloadingSetting,
+          run,
+        }));
 
   const traceStatus = getTraceStatus({
     // Same rule as live reload: only a finished time means the run is done.
@@ -142,14 +161,17 @@ export function useRunTrace({
     missingAnchor,
     loadFailed,
     isLiveReloading,
+    live,
     liveTailEnabled,
     maximumLiveReloadingSetting,
   });
 
   // The callback's identity is unstable, so effects read it from a ref.
   const onRunDataStaleRef = useRef(onRunDataStale);
+  const pausedRef = useRef(paused);
   useEffect(() => {
     onRunDataStaleRef.current = onRunDataStale;
+    pausedRef.current = paused;
   });
 
   const streamedEvents = useEventSource(
@@ -177,19 +199,19 @@ export function useRunTrace({
   useEffect(() => {
     const previous = prevRootSpanRef.current;
     prevRootSpanRef.current = { runId: run.friendlyId, status: rootSpanStatus };
-    if (!liveTailEnabled || previous.runId !== run.friendlyId) return;
+    if (!live || !liveTailEnabled || previous.runId !== run.friendlyId) return;
     if (previous.status === "executing" && rootSpanStatus !== "executing" && runDataUnfinished) {
       onRunDataStaleRef.current();
     }
-  }, [run.friendlyId, rootSpanStatus, liveTailEnabled, runDataUnfinished]);
+  }, [run.friendlyId, rootSpanStatus, live, liveTailEnabled, runDataUnfinished]);
 
   // Tail path backstop: reload when the run starts and when it finishes, even if the
   // tail missed the root's final row. Polls whatever the stream is doing, and keeps
   // reloading until the page data agrees (a reload can read a lagging replica).
   useRunStatusBackstop({
-    enabled: liveTailEnabled && runDataUnfinished,
+    enabled: live && liveTailEnabled && runDataUnfinished,
     statusPath,
-    shouldSkip: () => document.visibilityState === "hidden",
+    shouldSkip: () => document.visibilityState === "hidden" || pausedRef.current,
     onStatus: (data) => {
       if (data.isFinished || data.completedAt !== null) {
         // The reload alone won't refresh the tree if the span count didn't change.
@@ -205,19 +227,20 @@ export function useRunTrace({
     pollMs: RUN_STATUS_BACKSTOP_POLL_MS,
   });
 
-  // SSE is off during the background load, so pick up rows written meanwhile. Runs
-  // even if live reload already stopped, as long as the run finished recently.
+  // SSE is off during the background load (and while not live), so pick up rows written
+  // meanwhile. Runs even if live reload already stopped, as long as the run finished recently.
   const sinceFinished = msSinceFinished(run);
   const recentlyActive = sinceFinished === null || sinceFinished < LIVE_TAIL_UNRESOLVED_ROOT_MS;
-  const prevIsCompleteRef = useRef(isComplete);
+  const catchUpReady = live && isComplete;
+  const prevCatchUpReadyRef = useRef(catchUpReady);
   useEffect(() => {
-    const wasComplete = prevIsCompleteRef.current;
-    prevIsCompleteRef.current = isComplete;
-    if (!liveTailEnabled || wasComplete || !isComplete) return;
+    const wasReady = prevCatchUpReadyRef.current;
+    prevCatchUpReadyRef.current = catchUpReady;
+    if (!liveTailEnabled || wasReady || !catchUpReady) return;
     if (recentlyActive && !traceIsTruncated && !loadFailed) {
       tailLive();
     }
-  }, [isComplete, recentlyActive, traceIsTruncated, loadFailed, liveTailEnabled, tailLive]);
+  }, [catchUpReady, recentlyActive, traceIsTruncated, loadFailed, liveTailEnabled, tailLive]);
 
   // Tail path: the inspector loads separately, so reload it when the tree changes. After
   // the background load, rebuilds come from the tail or a revalidate merge.
@@ -237,5 +260,12 @@ export function useRunTrace({
     traceStatus,
     retryLoad,
     inspectorRefreshKey,
+    /** Every page of the trace has loaded (or loading stopped at a limit or failure). */
+    isComplete,
+    /** Loading stopped at a span limit. */
+    isTruncated: traceIsTruncated,
+    loadFailed,
+    /** The `retryKey` the loaded state belongs to. */
+    loadAttempt,
   };
 }

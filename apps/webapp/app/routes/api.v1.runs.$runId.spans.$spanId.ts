@@ -5,7 +5,10 @@ import { $replica } from "~/db.server";
 import { extractAISpanData } from "~/components/runs/v3/ai";
 import { anyResource, createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
-import { getTraceStartTimeEnd } from "~/v3/eventRepository/traceInsertedAtBound";
+import {
+  getTraceInsertedAtEnd,
+  getTraceStartTimeEnd,
+} from "~/v3/eventRepository/traceInsertedAtBound";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
 import { buildSyntheticSpanDetailBody } from "~/v3/mollifier/syntheticApiResponses.server";
@@ -107,7 +110,8 @@ export const loader = createLoaderApiRoute(
       params.spanId,
       run.traceId,
       run.createdAt,
-      getTraceStartTimeEnd(run)
+      getTraceStartTimeEnd(run),
+      { insertedAtEnd: getTraceInsertedAtEnd(run) }
     );
 
     if (!span) {

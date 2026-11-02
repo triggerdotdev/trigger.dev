@@ -15,6 +15,9 @@ import { fanoutRetryDelayMs } from "./fanoutPolicy.js";
 import { WaitpointFanoutWorker, type FanoutWorkerHooks } from "./fanoutWorker.js";
 import {
   edgeField,
+  runBlockKeys,
+  runResultKey,
+  runWithdrawalKey,
   fanoutIndexKeys,
   fanoutPartition,
   waitpointKeys,
@@ -225,7 +228,10 @@ describe("completion with one watcher", () => {
       expect(tick.visits).toHaveLength(1);
       expect(tick.visits[0]).toMatchObject({ delivered: 1, outcome: "drained", pages: 1 });
 
-      expect(JSON.parse((await receiptFor(probe, "run_1", "w_a"))!)).toEqual(completion());
+      expect(JSON.parse((await receiptFor(probe, "run_1", "w_a"))!)).toEqual({
+        ...completion(),
+        record: record("w_a"),
+      });
       expect(await probe.scard("wp:v1:run:{run_1}:pend")).toBe(0);
 
       const keys = waitpointKeys("w_a");
@@ -609,7 +615,10 @@ describe("worker failure and reclaiming", () => {
         // run still holds exactly one receipt.
         expect(redelivered).toMatchObject({ duplicates: 1, delivered: 0, outcome: "drained" });
         expect(await probe.hlen("wp:v1:run:{run_1}:done")).toBe(1);
-        expect(JSON.parse((await receiptFor(probe, "run_1", "w_a"))!)).toEqual(completion());
+        expect(JSON.parse((await receiptFor(probe, "run_1", "w_a"))!)).toEqual({
+          ...completion(),
+          record: record("w_a"),
+        });
       } finally {
         probe.disconnect();
         await store.quit();
@@ -2532,7 +2541,10 @@ describe("block-scoped watcher registration", () => {
       // Refused, and told which block the run is actually on. It neither overwrote the
       // receipt nor re-armed a handoff block two already owns.
       expect(late).toMatchObject({ outcome: "stale", currentBlockId: BLOCK_2 });
-      expect(JSON.parse((await receiptFor(probe, RUN, "w_a"))!)).toEqual(completion());
+      expect(JSON.parse((await receiptFor(probe, RUN, "w_a"))!)).toEqual({
+        ...completion(),
+        record: record("w_a"),
+      });
       const state = await store.readBlockState(RUN);
       expect(state.blockId).toBe(BLOCK_2);
       expect(state.deliveredIds).toEqual(["w_a"]);
@@ -3253,7 +3265,10 @@ describe("completion encoding reuse", () => {
 
         // And the envelope every run received is unchanged.
         for (const runId of runIds) {
-          expect(JSON.parse((await receiptFor(probe, runId, "w_a"))!)).toEqual(completion());
+          expect(JSON.parse((await receiptFor(probe, runId, "w_a"))!)).toEqual({
+            ...completion(),
+            record: record("w_a"),
+          });
         }
       } finally {
         probe.disconnect();
@@ -3945,6 +3960,76 @@ describe("a quarantined claim reports failures, not attempts", () => {
       } finally {
         probe.disconnect();
         await store.quit();
+      }
+    }
+  );
+});
+
+describe("delivery after terminal retention", () => {
+  redisTest(
+    "restarted fanout cannot resurrect a run after its terminal marker expires while withdrawal remains owed",
+    async ({ redisOptions }) => {
+      const store = new WaitpointStoreCoordinator({ redisOptions, terminalRetentionMs: 20 });
+      const probe = createRedisClient(redisOptions);
+      const clock = fakeClock();
+      let first = true;
+      const stopped = worker(store, {
+        clock: clock.now,
+        hooks: {
+          beforeDeliver: async () => {
+            if (!first) return;
+            first = false;
+            await store.terminalRetainAndClear({
+              runId: "expired-run",
+              blockId: `${BLOCK}_expired-run`,
+            });
+            throw new Error("withdrawal/worker interrupted before delivery");
+          },
+        },
+      });
+      const restarted = worker(store, { workerId: "restarted", clock: clock.now });
+      try {
+        await pending(store, "late-source");
+        await blockRuns(store, "late-source", ["expired-run"]);
+        await store.complete({ waitpointId: "late-source", completion: completion() });
+        clock.advance(1_000);
+        expect((await stopped.visit("late-source")).failures).toBe(1);
+        await expect
+          .poll(() => probe.exists(runBlockKeys("expired-run").state), {
+            timeout: 2000,
+            interval: 5,
+            message: "terminal marker did not expire",
+          })
+          .toBe(0);
+        expect(await probe.pttl(waitpointKeys("late-source").record)).toBe(-1);
+        expect(await probe.exists(runWithdrawalKey("expired-run", `${BLOCK}_expired-run`))).toBe(1);
+        // Worker/queue processing may stop for arbitrarily long, independently of retry count.
+        clock.advance(7 * 24 * 60 * 60 * 1000);
+        const result = await restarted.visit("late-source");
+        expect(result.outcome).toBe("drained");
+        expect(result.rejected).toBe(1);
+        expect(
+          await probe.exists(
+            runResultKey("expired-run"),
+            ...Object.values(runBlockKeys("expired-run"))
+          )
+        ).toBe(0);
+        // Explicit primitive early delivery remains supported for callers that own absorption.
+        expect(
+          (
+            await store.deliverCompletion({
+              runId: "early-run",
+              blockId: "early",
+              waitpointId: "late-source",
+              completion: completion(),
+            })
+          ).outcome
+        ).toBe("delivered");
+      } finally {
+        await stopped.stop();
+        await restarted.stop();
+        await store.quit();
+        await probe.quit();
       }
     }
   );

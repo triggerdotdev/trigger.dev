@@ -376,3 +376,62 @@ describe("PostgresRunStore dual-schema (P2-store-bodies)", () => {
     }
   );
 });
+
+describe("native waitpoint marker", () => {
+  for (const dedicated of [false, true]) {
+    const fixture = dedicated ? heteroRunOpsPostgresTest : heteroPostgresTest;
+    fixture(
+      `marking is monotonic without redundant row versions (${dedicated ? "dedicated" : "legacy"})`,
+      async ({ prisma17 }) => {
+        const schemaVariant = dedicated ? "dedicated" : "legacy";
+        const client = prisma17 as unknown as PrismaClient;
+        const store = new PostgresRunStore({
+          prisma: prisma17 as never,
+          readOnlyPrisma: prisma17 as never,
+          schemaVariant,
+        });
+        const env = await seedEnvironment(prisma17, schemaVariant, "marker");
+        for (const initial of [undefined, { triggerSource: "sdk", workerCell: "cell-a" }]) {
+          const runId = initial ? "marker-annotated" : "marker-null";
+          const input = buildCreateRunInput({
+            runId,
+            friendlyId: `run_${runId}`,
+            taskIdentifier: "task",
+            organizationId: env.organization.id,
+            projectId: env.project.id,
+            runtimeEnvironmentId: env.environment.id,
+          });
+          if (initial) input.data.annotations = initial;
+          await store.createRun(input);
+          const versions = () =>
+            client.$queryRaw<
+              Array<{ xmin: string; annotations: Record<string, unknown> | null }>
+            >`SELECT xmin::text, "annotations" FROM "TaskRun" WHERE id = ${runId}`;
+          const before = (await versions())[0]!;
+          expect(before.annotations).toEqual(initial ?? null);
+          // Race the FIRST mark with an unrelated JSONB merge on the unmarked row.
+          await Promise.all([
+            store.markRunWaitpointsOnStore(runId),
+            client.$executeRaw`
+              UPDATE "TaskRun"
+              SET "annotations" = COALESCE("annotations", '{}'::jsonb) || '{"independent":"kept"}'::jsonb
+              WHERE id = ${runId}
+            `,
+          ]);
+          const first = (await versions())[0]!;
+          expect(first.annotations).toEqual({
+            ...initial,
+            waitpointsOnStore: true,
+            independent: "kept",
+          });
+          expect(first.xmin).not.toBe(before.xmin);
+          await store.markRunWaitpointsOnStore(runId);
+          expect((await versions())[0]!.xmin).toBe(first.xmin);
+        }
+        await expect(store.markRunWaitpointsOnStore("missing-run")).rejects.toMatchObject({
+          code: "P2025",
+        });
+      }
+    );
+  }
+});

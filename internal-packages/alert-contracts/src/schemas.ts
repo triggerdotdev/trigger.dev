@@ -1,7 +1,18 @@
 import { z } from "zod";
 
-export const alertAreaSchema = z.enum(["queues", "runs", "health", "errors", "query"]);
+export const alertAreaSchema = z.enum(["queues", "runs", "health", "limits", "errors", "query"]);
 export type AlertArea = z.infer<typeof alertAreaSchema>;
+
+export const AREA_DESCRIPTION: Partial<Record<AlertArea, string>> = {
+  limits:
+    "Watch the limits that can interrupt or degrade runtime flow: when hit, they block, drop or slow runs and webhooks.",
+};
+
+export const alertGroupSchema = z.enum(["platform", "webhooks"]);
+export type AlertGroup = z.infer<typeof alertGroupSchema>;
+
+export const limitSignalSchema = z.enum(["approaching", "limited"]);
+export type LimitSignal = z.infer<typeof limitSignalSchema>;
 
 export const alertSignalSchema = z.enum(["metric", "state", "event"]);
 export type AlertSignal = z.infer<typeof alertSignalSchema>;
@@ -62,6 +73,10 @@ export const queryBindingSchema = z
     measure: z.string().optional(),
     groupBy: z.array(z.string()).optional(),
     rowTimeColumn: z.string().optional(),
+    signalTemplates: z
+      .object({ approaching: z.string().optional(), limited: z.string().optional() })
+      .strict()
+      .optional(),
   })
   .superRefine((binding, ctx) => {
     const declared = new Set(binding.ctx ?? []);
@@ -75,22 +90,29 @@ export const queryBindingSchema = z
 export const alertBindingSchema = queryBindingSchema;
 export type AlertBinding = z.infer<typeof alertBindingSchema>;
 
-export const alertCapabilitySchema = z.object({
-  key: z.string(),
-  area: alertAreaSchema,
-  signal: alertSignalSchema,
-  allowedKinds: z.array(alertKindSchema),
-  binding: alertBindingSchema,
-  title: z.string(),
-  description: z.string().optional(),
-  unit: alertUnitSchema.optional(),
-  surfaces: z.array(alertSurfaceSchema),
-  curated: z.boolean(),
-  minWindowSec: z.number().optional(),
-  freshness: alertFreshnessSchema,
-  minCadenceSec: z.number(),
-  allowedScopes: z.array(alertScopeTypeSchema),
-});
+export const alertCapabilitySchema = z
+  .object({
+    key: z.string(),
+    area: alertAreaSchema,
+    group: alertGroupSchema.optional(),
+    signal: alertSignalSchema,
+    allowedKinds: z.array(alertKindSchema),
+    binding: alertBindingSchema,
+    title: z.string(),
+    shortTitle: z.string().optional(),
+    description: z.string().optional(),
+    unit: alertUnitSchema.optional(),
+    surfaces: z.array(alertSurfaceSchema),
+    curated: z.boolean(),
+    minWindowSec: z.number().optional(),
+    freshness: alertFreshnessSchema,
+    minCadenceSec: z.number(),
+    allowedScopes: z.array(alertScopeTypeSchema),
+    supportedSignals: z.array(limitSignalSchema).optional(),
+  })
+  .refine((cap) => cap.area !== "limits" || !!cap.group || !!cap.binding.compositeOf, {
+    message: "limits capabilities require a group",
+  });
 export type AlertCapability = z.infer<typeof alertCapabilitySchema>;
 
 export const conditionSchema = z.discriminatedUnion("kind", [
@@ -106,6 +128,9 @@ export const conditionSchema = z.discriminatedUnion("kind", [
     stateKey: z.string(),
     holdSec: z.number().int().positive().optional(),
     params: z.record(z.string(), z.number().finite()).optional(),
+    compositeMode: z.enum(["any", "all"]).optional(),
+    signals: z.array(limitSignalSchema).optional(),
+    components: z.array(z.string()).min(1).optional(),
   }),
   z.object({
     kind: z.literal("occurrence"),

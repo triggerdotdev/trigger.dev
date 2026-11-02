@@ -7,6 +7,7 @@ import { createK8sApi } from "../clients/kubernetes.js";
 import { ReconnectingInformer } from "../clients/reconnectingInformer.js";
 import { register } from "../metrics.js";
 import { podKill, type RunnerKill } from "./runnerKills.js";
+import { runOfPod, type DequeuedRun } from "./runReleases.js";
 
 // Operator-owned pods carry app=task-run too, since the network policy selects
 // on it, so they have to be excluded by their own label instead. Unconditional:
@@ -25,6 +26,8 @@ export type FailedPodHandlerOptions = {
   register?: Registry;
   /** Called with the pod's name, its runner id, when the runtime killed its run-controller. */
   onRunnerKilled?: (runnerId: string, kill: RunnerKill) => Promise<unknown>;
+  /** Called with the run a failed pod was dequeued for, unless the pod shut down gracefully. */
+  onRunPodFailed?: (run: DequeuedRun) => Promise<unknown>;
 };
 
 export class FailedPodHandler {
@@ -33,6 +36,7 @@ export class FailedPodHandler {
   private readonly k8s: K8sApi;
   private readonly namespace: string;
   private readonly onRunnerKilled?: FailedPodHandlerOptions["onRunnerKilled"];
+  private readonly onRunPodFailed?: FailedPodHandlerOptions["onRunPodFailed"];
 
   private isRunning = false;
 
@@ -58,6 +62,7 @@ export class FailedPodHandler {
 
     this.namespace = opts.namespace;
     this.onRunnerKilled = opts.onRunnerKilled;
+    this.onRunPodFailed = opts.onRunPodFailed;
 
     this.watch = new ReconnectingInformer({
       name: "failed-pod-informer",
@@ -217,16 +222,21 @@ export class FailedPodHandler {
   private async onPodFailed(pod: V1Pod) {
     this.logger.debug("pod-failed", this.podSummary(pod));
 
+    let run: DequeuedRun | undefined;
     try {
-      await this.processFailedPod(pod);
+      run = await this.processFailedPod(pod);
     } catch (error) {
       this.logger.error("pod-failed: error processing pod", this.podSummary(pod), { error });
-    } finally {
-      await this.deletePod(pod);
+    }
+    const deleted = await this.deletePod(pod);
+
+    // The run's next pod takes this pod's name, so it is released only once this one is gone.
+    if (deleted && run && this.onRunPodFailed) {
+      await this.onRunPodFailed(run);
     }
   }
 
-  private async processFailedPod(pod: V1Pod) {
+  private async processFailedPod(pod: V1Pod): Promise<DequeuedRun | undefined> {
     this.logger.verbose("pod-failed: processing pod", this.podSummary(pod));
 
     const mainContainer = pod.status?.containerStatuses?.find((c) => c.name === "run-controller");
@@ -252,25 +262,41 @@ export class FailedPodHandler {
     if (kill && this.onRunnerKilled) {
       await this.onRunnerKilled(pod.metadata!.name!, kill);
     }
+
+    return runOfPod(pod);
   }
 
-  private async deletePod(pod: V1Pod) {
+  private async deletePod(pod: V1Pod): Promise<boolean> {
     this.logger.verbose("pod-failed: deleting pod", this.podSummary(pod));
+    // With a release the run's next pod takes this name within seconds, so the delete must spare it.
+    const releasing = this.onRunPodFailed !== undefined;
     try {
       await this.k8s.core.deleteNamespacedPod({
         name: pod.metadata!.name!,
         namespace: this.namespace,
+        ...(releasing ? { body: { preconditions: { uid: pod.metadata!.uid! } } } : {}),
       });
       this.deletedPodsTotal.inc({
         namespace: this.namespace,
         status: this.podStatus(pod),
       });
+      return true;
     } catch (error) {
+      const code = (error as { code?: unknown } | null)?.code;
+      if (releasing && code === 404) {
+        this.logger.info("pod-failed: pod already gone", this.podSummary(pod));
+        return true;
+      }
+      if (releasing && code === 409) {
+        this.logger.info("pod-failed: pod already replaced, leaving it", this.podSummary(pod));
+        return false;
+      }
       this.logger.error("pod-failed: error deleting pod", this.podSummary(pod), { error });
       this.deletionErrorsTotal.inc({
         namespace: this.namespace,
         error_type: error instanceof Error ? error.name : "unknown",
       });
+      return false;
     }
   }
 

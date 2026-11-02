@@ -237,6 +237,8 @@ export const Env = z
       .int()
       .positive()
       .default(20_000),
+    // At least the API server's default request timeout, within which a lost create can still commit.
+    KUBERNETES_RUNNER_TOKEN_SECRET_SETTLE_MS: z.coerce.number().int().min(60_000).default(120_000),
     KUBERNETES_NAMESPACE: z.string().default("default"),
     KUBERNETES_WORKER_NODETYPE_LABEL: NodeLabelValue.default("v4-worker"),
     KUBERNETES_IMAGE_PULL_SECRETS: z.string().optional(), // csv
@@ -363,6 +365,17 @@ export const Env = z
     // Report a run whose runner the runtime killed, so it fails as out of memory only
     // when the runtime says so. Without it the run waits out the heartbeat timeout.
     RUNNER_KILL_REPORTS_ENABLED: BoolEnv.default(true),
+    // Release a run whose container, pod or Runner could not be created, so it is requeued at once
+    // instead of waiting out the pending execution timeout.
+    RELEASE_UNSTARTED_RUNS_ENABLED: BoolEnv.default(false),
+    // Release a run whose pod failed before the run started, likewise. Independent of the flag above.
+    RELEASE_FAILED_POD_RUNS_ENABLED: BoolEnv.default(false),
+    // Different runs released within a minute, by either flag, past which every release waits out
+    // the timeout until a slot frees. 0 withholds every release; blank means the default.
+    RUN_RELEASES_PER_MINUTE: z.preprocess(
+      (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+      z.coerce.number().int().min(0).default(5)
+    ),
     FAILED_POD_HANDLER_RECONNECT_INTERVAL_MS: z.coerce.number().int().default(1000),
     FAILED_POD_HANDLER_WATCH_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(300),
 

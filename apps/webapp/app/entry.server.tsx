@@ -12,9 +12,9 @@ import { initSnapshotRecoveryWorker } from "~/v3/snapshotRecoveryWorker.server";
 import { initMollifierStaleSweepWorker } from "~/v3/mollifierStaleSweepWorker.server";
 import { initBillingLimitWorker } from "~/v3/billingLimitWorker.server";
 import { initAlertEngineWorker } from "~/v3/alertEngineWorker.server";
-import { initLogsSearchProjectorWorker } from "~/v3/logsSearchProjectorWorker.server";
 import { initQueueMetricsConsumer, initQueueMetricsEmitter } from "~/v3/queueMetrics.server";
 import { initApiRateLimitMetrics } from "~/services/apiRateLimitMetrics.server";
+import { initWebhookMetrics } from "~/services/webhookMetrics.server";
 import { bootstrap } from "./bootstrap";
 import { LocaleContextProvider } from "./components/primitives/LocaleProvider";
 import type { OperatingSystemPlatform } from "./components/primitives/OperatingSystemProvider";
@@ -26,6 +26,7 @@ import { logger } from "./services/logger.server";
 import { buildImgSrcDirective, parseCspImageOrigins, withImgSrc } from "./utils/cspImageOrigins";
 import { singleton } from "./utils/singleton";
 import { remoteBuildsEnabled } from "./v3/remoteImageBuilder.server";
+import { legacyEventStoreWarning } from "./v3/eventRepository/effectiveEventStore";
 import {
   registerRunEngineEventBusHandlers,
   setupBatchQueueCallbacks,
@@ -87,6 +88,19 @@ const IMG_SRC_DIRECTIVE = buildImgSrcDirective(
     return origins;
   })
 );
+
+singleton("LegacyEventStoreWarning", () => {
+  const warning = legacyEventStoreWarning(
+    env.EVENT_REPOSITORY_DEFAULT_STORE,
+    env.EVENT_REPOSITORY_V1_REROUTE_ENABLED
+  );
+
+  if (warning) {
+    logger.warn(warning);
+  }
+
+  return warning;
+});
 
 export default function handleRequest(
   request: Request,
@@ -283,10 +297,10 @@ initSnapshotRecoveryWorker();
 initMollifierStaleSweepWorker();
 initBillingLimitWorker();
 initAlertEngineWorker();
-initLogsSearchProjectorWorker();
 initQueueMetricsEmitter();
 initQueueMetricsConsumer();
 initApiRateLimitMetrics();
+initWebhookMetrics();
 
 bootstrap().catch((error) => {
   logError(error);

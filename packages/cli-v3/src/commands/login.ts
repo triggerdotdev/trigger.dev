@@ -1,4 +1,4 @@
-import { intro, log, outro, select } from "@clack/prompts";
+import { intro, isCancel, log, outro, select, text } from "@clack/prompts";
 import { recordSpanException } from "@trigger.dev/core/v3/workers";
 import type { Command } from "commander";
 import open from "open";
@@ -34,6 +34,13 @@ import { whoAmI } from "./whoami.js";
 import { logger } from "../utilities/logger.js";
 import { spinner } from "../utilities/windows.js";
 import { isLinuxServer } from "../utilities/linux.js";
+import {
+  type ApprovalCallback,
+  createPkcePair,
+  listenForApprovalCallback,
+  LoginTimedOutError,
+  waitForApprovalCode,
+} from "../utilities/loginApproval.js";
 import { VERSION } from "../version.js";
 import { env, isCI } from "std-env";
 import { CLOUD_API_URL } from "../consts.js";
@@ -42,7 +49,7 @@ import {
   NotPersonalAccessTokenError,
   NotAccessTokenError,
 } from "../utilities/accessTokens.js";
-import { links } from "@trigger.dev/core/v3";
+import { links, type CreateAuthorizationCodeRequest } from "@trigger.dev/core/v3";
 
 const LoginCommandOptions = CommonCommandOptions.extend({
   browser: z.boolean().default(true),
@@ -50,6 +57,7 @@ const LoginCommandOptions = CommonCommandOptions.extend({
   name: z.string().trim().min(3).max(50).optional(),
   cancelPending: z.boolean().default(false),
   wait: z.boolean().default(true),
+  code: z.string().optional(),
 });
 
 type LoginCommandOptions = z.infer<typeof LoginCommandOptions>;
@@ -69,6 +77,7 @@ Examples:
   # Headless / agent (print URL and resume later)
   $ trigger.dev login --email you@example.com --name "Alex Smith" --no-browser --no-wait
   $ trigger.dev login --no-browser
+  $ trigger.dev login --code ABCD-EFGH-JKLM
 
   # Login to a named profile
   $ trigger.dev login --profile staging`
@@ -78,6 +87,7 @@ Examples:
       .option("--name <name>", "Set your full name after authorization")
       .option("--cancel-pending", "Cancel a pending login and keep the current account")
       .option("--no-wait", "Save the authorization and exit so login can be resumed later")
+      .option("--code <code>", "Finish a pending login with the code shown in your browser")
   )
     .version(VERSION, "-v, --version", "Display the version number")
     .action(async (options) => {
@@ -104,6 +114,7 @@ async function _loginCommand(options: LoginCommandOptions) {
     name: options.name,
     cancelPending: options.cancelPending,
     wait: options.wait,
+    code: options.code,
   });
 }
 
@@ -117,6 +128,7 @@ export type LoginOptions = {
   name?: string;
   cancelPending?: boolean;
   wait?: boolean;
+  code?: string;
 };
 
 export const PENDING_AUTHORIZATION_ERROR =
@@ -218,6 +230,16 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
         deletePendingAuthorization(options?.profile);
       }
 
+      if (opts.code && resumableAuthorization?.approval !== "paste") {
+        const error =
+          "There's no pending login to finish with this code. Run `trigger.dev login` to start one.";
+        if (!opts.embedded) {
+          outro(error);
+        }
+        span.end();
+        return { ok: false as const, error };
+      }
+
       if (opts.embedded && resumableAuthorization) {
         span.end();
         return { ok: false as const, error: PENDING_AUTHORIZATION_ERROR };
@@ -227,6 +249,7 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
         resumableAuthorization &&
         authConfig?.accessToken &&
         !opts.embedded &&
+        !opts.code &&
         opts.browser !== false &&
         process.stdin.isTTY
       ) {
@@ -376,156 +399,125 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
 
       const apiUrl = configuredApiUrl;
       const apiClient = new CliApiClient(apiUrl);
-      const { pendingAuthorization, resumed } = await getOrCreatePendingAuthorization({
-        apiClient,
-        apiUrl,
-        email: opts.email,
-        name: opts.name,
-        profile: options?.profile,
-        existing: resumableAuthorization,
-      });
-      const resumedToken = resumed
-        ? await getPersonalAccessTokenIfReady(
-            apiClient,
-            pendingAuthorization.authorizationCode,
-            options?.profile
-          )
-        : undefined;
+      const canOpenBrowser = opts.browser !== false && !(await isLinuxServer());
+      const callback =
+        !resumableAuthorization && opts.wait && canOpenBrowser
+          ? await listenForApprovalCallback("Return to your terminal to continue.")
+          : undefined;
 
-      if (!resumedToken) {
-        log.step(
-          `Please visit the following URL to login:\n${chalkLink(pendingAuthorization.url)}`
-        );
-
-        if (opts.browser === false) {
-          log.message("Browser auto-open disabled. Visit the URL above to login.");
-        } else if (await isLinuxServer()) {
-          log.message("Please install `xdg-utils` to automatically open the login URL.");
-        } else {
-          await open(pendingAuthorization.url);
-        }
-
-        if (!opts.wait) {
-          if (!opts.embedded) {
-            outro(
-              `Authorization saved. Run \`trigger.dev login${
-                options?.profile ? ` --profile ${options.profile}` : ""
-              }\` again after approving access.`
-            );
-          }
-
-          span.end();
-          return {
-            ok: false as const,
-            error: "Authorization pending",
-          };
-        }
-      }
-
-      const getPersonalAccessTokenSpinner = spinner();
-      if (!resumedToken) {
-        getPersonalAccessTokenSpinner.start("Waiting for you to login");
-      }
       try {
-        const indexResult =
-          resumedToken ??
-          (await pRetry(
-            () => getPersonalAccessToken(apiClient, pendingAuthorization.authorizationCode),
-            {
-              //poll at a fixed 1s interval. ~5 min window so the user has time to
-              //approve the consent screen; stays within the code's 10-min validity.
-              factor: 1,
-              retries: 300,
-              minTimeout: 1000,
-            }
-          ));
-
-        if (resumedToken) {
-          log.success(`Logged in with token ${indexResult.obfuscatedToken}`);
-        } else {
-          getPersonalAccessTokenSpinner.stop(`Logged in with token ${indexResult.obfuscatedToken}`);
-        }
-
-        writeAuthConfigProfile(
-          {
-            accessToken: indexResult.token,
-            apiUrl,
-            pendingProfileName: pendingAuthorization.name,
-          },
-          options?.profile
-        );
-
-        await completeProfileIfNeeded({
-          apiClient: new CliApiClient(apiUrl, indexResult.token),
-          name: pendingAuthorization.name,
+        const { pendingAuthorization, resumed } = await getOrCreatePendingAuthorization({
+          apiClient,
+          apiUrl,
+          email: opts.email,
+          name: opts.name,
           profile: options?.profile,
+          existing: resumableAuthorization,
+          callbackPort: callback?.port,
         });
 
-        // Only fetch notifications for standalone login, not when embedded in dev
-        // (dev.ts handles its own notification fetch to avoid double counting)
-        const notificationPromise = opts.embedded
-          ? undefined
-          : fetchPlatformNotification({
-              apiClient: new CliApiClient(apiUrl, indexResult.token),
-            });
+        try {
+          const indexResult = await getTokenForPendingAuthorization({
+            apiClient,
+            pendingAuthorization,
+            resumed,
+            callback,
+            browser: opts.browser,
+            wait: opts.wait,
+            code: opts.code,
+            embedded: opts.embedded,
+            profile: options?.profile,
+          });
 
-        const whoAmIResult = await whoAmI(
-          {
-            profile: options?.profile ?? "default",
-            skipTelemetry: !span.isRecording(),
-            logLevel: logger.loggerLevel,
-          },
-          opts.embedded
-        );
+          if (!indexResult) {
+            span.end();
+            return {
+              ok: false as const,
+              error: "Authorization pending",
+            };
+          }
 
-        if (!whoAmIResult.success) {
-          throw new Error(whoAmIResult.error);
+          writeAuthConfigProfile(
+            {
+              accessToken: indexResult.token,
+              apiUrl,
+              pendingProfileName: pendingAuthorization.name,
+            },
+            options?.profile
+          );
+
+          await completeProfileIfNeeded({
+            apiClient: new CliApiClient(apiUrl, indexResult.token),
+            name: pendingAuthorization.name,
+            profile: options?.profile,
+          });
+
+          // Only fetch notifications for standalone login, not when embedded in dev
+          // (dev.ts handles its own notification fetch to avoid double counting)
+          const notificationPromise = opts.embedded
+            ? undefined
+            : fetchPlatformNotification({
+                apiClient: new CliApiClient(apiUrl, indexResult.token),
+              });
+
+          const whoAmIResult = await whoAmI(
+            {
+              profile: options?.profile ?? "default",
+              skipTelemetry: !span.isRecording(),
+              logLevel: logger.loggerLevel,
+            },
+            opts.embedded
+          );
+
+          if (!whoAmIResult.success) {
+            throw new Error(whoAmIResult.error);
+          }
+
+          const profileName = options?.profile ?? "default";
+
+          // Set this profile as the current default
+          writeAuthConfigCurrentProfileName(profileName);
+
+          if (opts.embedded) {
+            log.step("Logged in successfully");
+          } else {
+            outro("Logged in successfully");
+          }
+
+          await awaitAndDisplayPlatformNotification(notificationPromise);
+
+          span.end();
+
+          return {
+            ok: true as const,
+            profile: profileName,
+            userId: whoAmIResult.data.userId,
+            email: whoAmIResult.data.email,
+            dashboardUrl: whoAmIResult.data.dashboardUrl,
+            auth: {
+              accessToken: indexResult.token,
+              apiUrl,
+              tokenType: "personal" as const,
+            },
+          };
+        } catch (e) {
+          if (e instanceof AbortError || e instanceof LoginTimedOutError) {
+            deletePendingAuthorization(options?.profile);
+            log.error(e.message);
+          } else if (e instanceof ApprovalCodeRejectedError) {
+            log.error(e.message);
+          }
+
+          recordSpanException(span, e);
+          span.end();
+
+          return {
+            ok: false as const,
+            error: e instanceof Error ? e.message : String(e),
+          };
         }
-
-        const profileName = options?.profile ?? "default";
-
-        // Set this profile as the current default
-        writeAuthConfigCurrentProfileName(profileName);
-
-        if (opts.embedded) {
-          log.step("Logged in successfully");
-        } else {
-          outro("Logged in successfully");
-        }
-
-        await awaitAndDisplayPlatformNotification(notificationPromise);
-
-        span.end();
-
-        return {
-          ok: true as const,
-          profile: profileName,
-          userId: whoAmIResult.data.userId,
-          email: whoAmIResult.data.email,
-          dashboardUrl: whoAmIResult.data.dashboardUrl,
-          auth: {
-            accessToken: indexResult.token,
-            apiUrl,
-            tokenType: "personal" as const,
-          },
-        };
-      } catch (e) {
-        if (!resumedToken) {
-          getPersonalAccessTokenSpinner.stop(`Failed to get access token`);
-        }
-
-        if (e instanceof AbortError) {
-          deletePendingAuthorization(options?.profile);
-          log.error(e.message);
-        }
-
-        recordSpanException(span, e);
-        span.end();
-
-        return {
-          ok: false as const,
-          error: e instanceof Error ? e.message : String(e),
-        };
+      } finally {
+        callback?.close();
       }
     } catch (e) {
       recordSpanException(span, e);
@@ -547,7 +539,7 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
   });
 }
 
-const AUTHORIZATION_CODE_TTL_MS = 10 * 60 * 1000;
+export const AUTHORIZATION_CODE_TTL_MS = 10 * 60 * 1000;
 
 export function addEmailToAuthorizationUrl(url: string, email?: string) {
   if (!email) return url;
@@ -562,7 +554,11 @@ export function isPendingAuthorizationValid(
   apiUrl: string,
   now = Date.now()
 ): pendingAuthorization is PendingAuthorization {
-  if (!pendingAuthorization || pendingAuthorization.apiUrl !== apiUrl) {
+  if (
+    !pendingAuthorization ||
+    pendingAuthorization.apiUrl !== apiUrl ||
+    pendingAuthorization.approval === "callback"
+  ) {
     return false;
   }
 
@@ -577,6 +573,7 @@ async function getOrCreatePendingAuthorization({
   name,
   profile,
   existing,
+  callbackPort,
 }: {
   apiClient: CliApiClient;
   apiUrl: string;
@@ -584,6 +581,7 @@ async function getOrCreatePendingAuthorization({
   name?: string;
   profile?: string;
   existing?: PendingAuthorization;
+  callbackPort?: number;
 }) {
   if (isPendingAuthorizationValid(existing, apiUrl)) {
     const pendingAuthorization = {
@@ -599,17 +597,189 @@ async function getOrCreatePendingAuthorization({
     deletePendingAuthorization(profile);
   }
 
-  const authorizationCodeResult = await createAuthorizationCode(apiClient);
+  const { codeVerifier, codeChallenge } = createPkcePair();
+  const authorizationCodeResult = await createAuthorizationCode(apiClient, {
+    codeChallenge,
+    codeChallengeMethod: "S256",
+    callbackPort,
+  });
   const pendingAuthorization = {
     authorizationCode: authorizationCodeResult.authorizationCode,
     url: addEmailToAuthorizationUrl(authorizationCodeResult.url, email),
     apiUrl,
     createdAt: new Date().toISOString(),
     name,
+    codeVerifier: authorizationCodeResult.approval ? codeVerifier : undefined,
+    approval: authorizationCodeResult.approval,
   } satisfies PendingAuthorization;
 
-  writePendingAuthorization(pendingAuthorization, profile);
+  if (pendingAuthorization.approval !== "callback") {
+    writePendingAuthorization(pendingAuthorization, profile);
+  }
   return { pendingAuthorization, resumed: false };
+}
+
+/** The server rejected an approval code. The pending login is kept so the user can retry it. */
+class ApprovalCodeRejectedError extends Error {}
+
+/**
+ * Waits for the pending login to be approved and returns its token, or undefined when the login
+ * is left pending for a later `trigger.dev login`.
+ *
+ * Logins the server binds to this client finish with the approval code that only the approving
+ * browser receives: by redirect to `callback`, or pasted by the user. Logins against a server that
+ * predates approval codes poll for the token with the authorization code alone, once a second for
+ * about five minutes, inside the code's ten-minute validity.
+ */
+async function getTokenForPendingAuthorization({
+  apiClient,
+  pendingAuthorization,
+  resumed,
+  callback,
+  browser,
+  wait,
+  code,
+  embedded,
+  profile,
+}: {
+  apiClient: CliApiClient;
+  pendingAuthorization: PendingAuthorization;
+  resumed: boolean;
+  callback?: ApprovalCallback;
+  browser?: boolean;
+  wait: boolean;
+  code?: string;
+  embedded: boolean;
+  profile?: string;
+}) {
+  const { approval } = pendingAuthorization;
+  const profileFlag = profile ? ` --profile ${profile}` : "";
+
+  if (resumed && !approval) {
+    const resumedToken = await getPersonalAccessTokenIfReady(
+      apiClient,
+      pendingAuthorization.authorizationCode,
+      profile
+    );
+
+    if (resumedToken) {
+      log.success(`Logged in with token ${resumedToken.obfuscatedToken}`);
+      return resumedToken;
+    }
+  }
+
+  if (approval === "paste" && code) {
+    const token = await exchangeApprovalCode(apiClient, pendingAuthorization, code);
+    log.success(`Logged in with token ${token.obfuscatedToken}`);
+    return token;
+  }
+
+  log.step(`Please visit the following URL to login:\n${chalkLink(pendingAuthorization.url)}`);
+
+  if (browser === false) {
+    log.message("Browser auto-open disabled. Visit the URL above to login.");
+  } else if (await isLinuxServer()) {
+    log.message("Please install `xdg-utils` to automatically open the login URL.");
+  } else {
+    await open(pendingAuthorization.url);
+  }
+
+  const canPrompt = approval === "paste" && process.stdin.isTTY;
+
+  if (!wait || (approval === "paste" && !canPrompt)) {
+    if (!embedded) {
+      outro(
+        approval === "paste"
+          ? `Authorization saved. After approving access, run \`trigger.dev login --code <code>${profileFlag}\` with the code shown in your browser.`
+          : `Authorization saved. Run \`trigger.dev login${profileFlag}\` again after approving access.`
+      );
+    }
+
+    return undefined;
+  }
+
+  if (approval === "paste") {
+    for (;;) {
+      const pasted = await text({
+        message: "After approving, paste the code shown in your browser",
+        validate: (value) => (value?.trim() ? undefined : "Enter the code from your browser"),
+      });
+
+      if (isCancel(pasted)) {
+        return undefined;
+      }
+
+      try {
+        const token = await exchangeApprovalCode(apiClient, pendingAuthorization, pasted);
+        log.success(`Logged in with token ${token.obfuscatedToken}`);
+        return token;
+      } catch (error) {
+        if (!(error instanceof ApprovalCodeRejectedError)) {
+          throw error;
+        }
+
+        log.error(error.message);
+      }
+    }
+  }
+
+  const getPersonalAccessTokenSpinner = spinner();
+  getPersonalAccessTokenSpinner.start("Waiting for you to login");
+
+  try {
+    const token =
+      approval === "callback" && callback
+        ? await exchangeApprovalCode(
+            apiClient,
+            pendingAuthorization,
+            await waitForApprovalCode(
+              callback,
+              Date.parse(pendingAuthorization.createdAt) + AUTHORIZATION_CODE_TTL_MS - Date.now(),
+              `Login timed out waiting for the browser. If your browser can't reach this machine, run \`trigger.dev login --no-browser${profileFlag}\` to finish with a code instead.`
+            )
+          )
+        : await pRetry(
+            () => getPersonalAccessToken(apiClient, pendingAuthorization.authorizationCode),
+            { factor: 1, retries: 300, minTimeout: 1000 }
+          );
+
+    getPersonalAccessTokenSpinner.stop(`Logged in with token ${token.obfuscatedToken}`);
+    return token;
+  } catch (error) {
+    getPersonalAccessTokenSpinner.stop(`Failed to get access token`);
+    throw error;
+  }
+}
+
+/** Exchanges an approved, client-bound authorization code for its token. */
+export async function exchangeApprovalCode(
+  apiClient: CliApiClient,
+  pendingAuthorization: Pick<PendingAuthorization, "authorizationCode" | "codeVerifier">,
+  approvalCode: string
+) {
+  const result = await apiClient.getPersonalAccessToken(pendingAuthorization.authorizationCode, {
+    codeVerifier: pendingAuthorization.codeVerifier,
+    approvalCode: approvalCode.trim(),
+  });
+
+  if (!result.success) {
+    if (result.statusCode === 400) {
+      throw new ApprovalCodeRejectedError(
+        `That code didn't work: ${result.error}. Check it matches the code shown in your browser.`
+      );
+    }
+
+    throw new AbortError(result.error);
+  }
+
+  if (!result.data.token) {
+    throw new ApprovalCodeRejectedError("This login hasn't been approved in the browser yet.");
+  }
+
+  return {
+    token: result.data.token.token,
+    obfuscatedToken: result.data.token.obfuscatedToken,
+  };
 }
 
 async function completeProfileIfNeeded({
@@ -706,13 +876,16 @@ export async function getPersonalAccessToken(apiClient: CliApiClient, authorizat
   });
 }
 
-async function createAuthorizationCode(apiClient: CliApiClient) {
+async function createAuthorizationCode(
+  apiClient: CliApiClient,
+  body: CreateAuthorizationCodeRequest
+) {
   return await tracer.startActiveSpan("createAuthorizationCode", async (span) => {
     try {
       //generate authorization code
       const createAuthCodeSpinner = spinner();
       createAuthCodeSpinner.start("Creating authorization code");
-      const authorizationCodeResult = await apiClient.createAuthorizationCode();
+      const authorizationCodeResult = await apiClient.createAuthorizationCode(body);
 
       if (!authorizationCodeResult.success) {
         createAuthCodeSpinner.stop(

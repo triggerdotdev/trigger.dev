@@ -78,7 +78,6 @@ import { formatNumberCompact } from "~/utils/numberFormatter";
 import { cn } from "~/utils/cn";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { handleQueueMutationAction } from "~/models/queueMutation.server";
-import { queueArchivingEnabled } from "~/v3/services/queueArchivingEnabled.server";
 import {
   QueueArchiveButton,
   QueueOverrideConcurrencyButton,
@@ -146,7 +145,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     projectId: project.id,
   });
   const canWriteTasks = auth.ok && auth.ability.can("write", { type: "tasks" });
-  const archivingEnabled = await queueArchivingEnabled(environment.organizationId);
 
   const retrieve = await new QueueRetrievePresenter().call({
     environment,
@@ -193,7 +191,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     maxPeriodDays,
     canWriteTasks,
     alertsEnabled,
-    archivingEnabled,
     ids: {
       organizationId: environment.organizationId,
       projectId: environment.projectId,
@@ -295,7 +292,6 @@ export default function Page() {
     maxPeriodDays,
     canWriteTasks,
     alertsEnabled,
-    archivingEnabled,
   } = useTypedLoaderData<typeof loader>();
 
   const organization = useOrganization();
@@ -353,7 +349,7 @@ export default function Page() {
       <AnimatedOrgBannerBar show={queue.paused} variant="warning">
         {`"${queue.name}" queue paused. No new runs will be dequeued and executed.`}
       </AnimatedOrgBannerBar>
-      <AnimatedOrgBannerBar show={archivingEnabled && queue.archivedAt !== null} variant="warning">
+      <AnimatedOrgBannerBar show={queue.archivedAt !== null} variant="warning">
         {`"${queue.name}" queue archived. It's hidden from the Concurrency list, but its runs are unaffected.`}
       </AnimatedOrgBannerBar>
       <MetricsLayout.Root>
@@ -455,9 +451,7 @@ export default function Page() {
               withQueueName
               disabled={!canWriteTasks}
             />
-            {archivingEnabled || queue.archivedAt ? (
-              <QueueArchiveButton queue={queue} trigger="button" disabled={!canWriteTasks} />
-            ) : null}
+            <QueueArchiveButton queue={queue} trigger="button" disabled={!canWriteTasks} />
           </div>
         </MetricsLayout.Filters>
 
