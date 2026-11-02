@@ -1,15 +1,13 @@
+import { trace } from "@internal/tracing";
 import { json, type ActionFunctionArgs } from "@remix-run/node";
 import { decodeJwt } from "jose";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
-import {
-  externalOidcOutcomes,
-  getExternalOidcController,
-  getExternalOidcRateLimits,
-} from "./externalOidc.server";
+import { getExternalOidcController, getExternalOidcRateLimits } from "./externalOidc.server";
 import { internalRunSigningService } from "./instance.server";
-import { isRunTokenFormat, verifyRunToken } from "./runTokenVerify";
+import { externalOidcTelemetry } from "./externalOidcTelemetry.server";
+import { isRunTokenFormat, verifyRunToken, type RunTokenClaims } from "./runTokenVerify";
 
 const MAX_AUDIENCE_LENGTH = 2_048;
 
@@ -26,35 +24,40 @@ const TokenRequest = z
 
 const NO_STORE = { "Cache-Control": "no-store" };
 
-function failure(
-  code: string,
-  error: string,
-  status: number,
-  headers: Record<string, string> = {}
-) {
-  externalOidcOutcomes.add(1, { outcome: code });
-  return json({ error, code }, { status, headers: { ...NO_STORE, ...headers } });
-}
-
 export async function externalOidcTokenAction({ request }: ActionFunctionArgs) {
-  if (request.method !== "POST") {
-    return failure("METHOD_NOT_ALLOWED", "Method not allowed", 405, { Allow: "POST" });
-  }
+  const startedAt = performance.now();
+  const span = trace.getActiveSpan();
+  let outcome = "OIDC_SERVICE_UNAVAILABLE";
+  let claims: RunTokenClaims | undefined;
 
-  const controller = await getExternalOidcController();
-  if (!controller) {
-    return failure(
-      "OIDC_UNAVAILABLE",
-      "External OIDC is only available on Trigger.dev Cloud",
-      503,
-      { "x-should-retry": "false" }
-    );
+  function failure(
+    code: string,
+    error: string,
+    status: number,
+    headers: Record<string, string> = {}
+  ) {
+    outcome = code;
+    return json({ error, code }, { status, headers: { ...NO_STORE, ...headers } });
   }
 
   try {
+    if (request.method !== "POST") {
+      return failure("METHOD_NOT_ALLOWED", "Method not allowed", 405, { Allow: "POST" });
+    }
+
+    const controller = await getExternalOidcController();
+    if (!controller) {
+      return failure(
+        "OIDC_UNAVAILABLE",
+        "External OIDC is only available on Trigger.dev Cloud",
+        503,
+        { "x-should-retry": "false" }
+      );
+    }
+
     // Only run tokens: root keys, PATs, sessions and public JWTs cannot mint.
     const bearer = /^Bearer ([^\s]+)$/i.exec(request.headers.get("Authorization") ?? "")?.[1];
-    const claims =
+    claims =
       bearer && env.RUN_TOKEN_ISSUER_URL && isRunTokenFormat(bearer)
         ? await verifyRunToken({
             token: bearer,
@@ -100,17 +103,40 @@ export async function externalOidcTokenAction({ request }: ActionFunctionArgs) {
 
     const expiry = decodeJwt(result.token).exp;
     if (typeof expiry !== "number") throw new Error("OIDC plugin returned a token without expiry");
-    externalOidcOutcomes.add(1, { outcome: "minted" });
+    outcome = "minted";
     return json(
       { token: result.token, expiresAt: new Date(expiry * 1_000).toISOString() },
       { headers: NO_STORE }
     );
   } catch (error) {
-    logger.error("External OIDC mint failed", { error });
+    logger.error("External OIDC mint failed", {
+      error,
+      organizationId: claims?.org_id,
+      projectId: claims?.project_id,
+      environmentId: claims?.environment_id,
+      runId: claims?.run_id,
+    });
     return failure(
       "OIDC_SERVICE_UNAVAILABLE",
       "OIDC token service is temporarily unavailable",
       503
     );
+  } finally {
+    const telemetry = externalOidcTelemetry();
+    telemetry.tokenRequests.add(1, { outcome });
+    telemetry.tokenDuration.record(performance.now() - startedAt, { outcome });
+    // Reuse the request's sampling decision; tenant IDs never become metric labels.
+    if (span?.isRecording()) {
+      span.setAttributes({
+        "oidc.outcome": outcome,
+        ...(claims && {
+          "oidc.organization_id": claims.org_id,
+          "oidc.project_id": claims.project_id,
+          "oidc.environment_id": claims.environment_id,
+          "oidc.run_id": claims.run_id,
+          "oidc.attempt": claims.attempt,
+        }),
+      });
+    }
   }
 }

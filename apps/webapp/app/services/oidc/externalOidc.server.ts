@@ -1,4 +1,3 @@
-import { getMeter } from "@internal/tracing";
 import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import type {
   ExternalOidcController,
@@ -126,9 +125,3 @@ export function getExternalOidcRateLimits(): ExternalOidcRateLimits {
       )
   );
 }
-
-export const externalOidcOutcomes = singleton("externalOidcOutcomes", () =>
-  getMeter("external-oidc").createCounter("external_oidc.token.requests", {
-    description: "External OIDC token requests by outcome",
-  })
-);
