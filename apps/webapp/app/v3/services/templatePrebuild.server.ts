@@ -1,5 +1,6 @@
 import { getMeter, type Meter } from "@internal/tracing";
 import type { MachinePresetName } from "@trigger.dev/core/v3";
+import type { Prisma, RuntimeEnvironmentType } from "@trigger.dev/database";
 import { prisma as defaultPrisma, type PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { isOrgMigrated } from "~/runEngine/concerns/computeMigration.server";
@@ -57,16 +58,22 @@ type TemplateBuildRequestSkip = "no_builder" | "has_key" | "no_pinned_image";
 export type TemplateKeyStoreFailure = "invalid_template_id" | "not_stored" | "store_error";
 
 export type TemplateBuildResult =
-  | { outcome: Exclude<TemplateBuildOutcome, "failed"> }
+  | { outcome: Exclude<TemplateBuildOutcome, "failed">; templateKey?: string }
   | { outcome: "failed"; reason?: TemplateKeyStoreFailure };
 
 export type TemplateBuildRequestResult = {
   deploymentId: string;
   friendlyId?: string;
+  shortCode?: string;
+  projectRef?: string;
+  environmentType?: RuntimeEnvironmentType;
+  /** The key the deployment has after the request, when it has one. */
+  templateKey?: string;
 } & (
   | TemplateBuildResult
   | { outcome: "skipped"; reason: TemplateBuildRequestSkip }
   | { outcome: "not_found" }
+  | { outcome: "ambiguous" }
 );
 
 const BUILD_REQUEST_CONCURRENCY = 10;
@@ -358,21 +365,32 @@ export class TemplatePrebuildService {
   }
 
   /**
-   * Requests a shadow build for each deployment, by id or friendly id, whatever its age. A
-   * deployment that has a key is skipped unless `force` is set. The store guard still applies.
+   * Requests a shadow build for each deployment, by id, friendly id or short code, whatever its
+   * age. A deployment that has a key is skipped unless `force` is set. The store guard still
+   * applies. `timeoutMs` overrides the builder timeout; `onResult` sees each result as it settles.
    */
   async requestBuilds({
     deploymentIds,
     force = false,
+    timeoutMs,
+    onResult,
   }: {
     deploymentIds: string[];
     force?: boolean;
+    timeoutMs?: number;
+    onResult?: (result: TemplateBuildRequestResult) => void;
   }): Promise<TemplateBuildRequestResult[]> {
     const results: TemplateBuildRequestResult[] = [];
     for (let i = 0; i < deploymentIds.length; i += BUILD_REQUEST_CONCURRENCY) {
       const batch = deploymentIds.slice(i, i + BUILD_REQUEST_CONCURRENCY);
       results.push(
-        ...(await Promise.all(batch.map((deploymentId) => this.requestBuild(deploymentId, force))))
+        ...(await Promise.all(
+          batch.map(async (deploymentId) => {
+            const result = await this.requestBuild(deploymentId, force, timeoutMs);
+            onResult?.(result);
+            return result;
+          })
+        ))
       );
     }
     return results;
@@ -380,16 +398,46 @@ export class TemplatePrebuildService {
 
   private async requestBuild(
     deploymentId: string,
-    force: boolean
+    force: boolean,
+    timeoutMs: number | undefined
   ): Promise<TemplateBuildRequestResult> {
-    const deployment = await this.prisma.workerDeployment.findFirst({
+    const select = {
+      id: true,
+      friendlyId: true,
+      shortCode: true,
+      imageReference: true,
+      templateKey: true,
+      project: { select: { externalRef: true } },
+      environment: { select: { type: true } },
+    } satisfies Prisma.WorkerDeploymentSelect;
+    const byId = await this.prisma.workerDeployment.findFirst({
       where: { OR: [{ id: deploymentId }, { friendlyId: deploymentId }] },
-      select: { id: true, friendlyId: true, imageReference: true, templateKey: true },
+      select,
     });
+    // A short code is unique per project only, so a second match means it is ambiguous. With no
+    // project it cannot use the (projectId, shortCode) index, so it is looked up only as a fallback.
+    const matches = byId
+      ? [byId]
+      : await this.prisma.workerDeployment.findMany({
+          where: { shortCode: deploymentId },
+          select,
+          take: 2,
+        });
+    if (matches.length > 1) {
+      return { deploymentId, outcome: "ambiguous" };
+    }
+    const deployment = matches[0];
     if (!deployment) {
       return { deploymentId, outcome: "not_found" };
     }
-    const base = { deploymentId, friendlyId: deployment.friendlyId };
+    const base = {
+      deploymentId,
+      friendlyId: deployment.friendlyId,
+      shortCode: deployment.shortCode,
+      projectRef: deployment.project.externalRef,
+      environmentType: deployment.environment.type,
+      ...(deployment.templateKey ? { templateKey: deployment.templateKey } : {}),
+    };
     if (!this.config.url) {
       return { ...base, outcome: "skipped", reason: "no_builder" };
     }
@@ -403,10 +451,12 @@ export class TemplatePrebuildService {
     if (!image) {
       return { ...base, outcome: "skipped", reason: "no_pinned_image" };
     }
-    const result = await this.build(image, "shadow", {
-      id: deployment.id,
-      friendlyId: deployment.friendlyId,
-    });
+    const result = await this.build(
+      image,
+      "shadow",
+      { id: deployment.id, friendlyId: deployment.friendlyId },
+      timeoutMs
+    );
     return { ...base, ...result };
   }
 
@@ -417,7 +467,8 @@ export class TemplatePrebuildService {
   async build(
     image: string,
     mode: Exclude<TemplatePrebuildMode, "skip">,
-    deployment: { id: string; friendlyId: string }
+    deployment: { id: string; friendlyId: string },
+    timeoutMs: number = this.config.timeoutMs
   ): Promise<TemplateBuildResult> {
     const startedAt = performance.now();
     const body = templateCreateRequest(image, this.config.presets, deployment.friendlyId);
@@ -425,6 +476,7 @@ export class TemplatePrebuildService {
 
     let outcome: TemplateBuildOutcome;
     let reason: TemplateKeyStoreFailure | undefined;
+    let templateKey: string | undefined;
     try {
       const response = await fetch(new URL("/templates", this.config.url).toString(), {
         method: "POST",
@@ -433,7 +485,7 @@ export class TemplatePrebuildService {
           ...(this.config.token ? { Authorization: `Bearer ${this.config.token}` } : {}),
         },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(this.config.timeoutMs),
+        signal: AbortSignal.timeout(timeoutMs),
       });
       const text = await response.text();
       const parsed = parseResponse(text);
@@ -452,7 +504,7 @@ export class TemplatePrebuildService {
           squashfsMs: parsed?.squashfs_ms,
         });
         // The write keeps going if it outlasts the timeout, but wait mode stops waiting.
-        const remaining = () => this.config.timeoutMs - (performance.now() - startedAt);
+        const remaining = () => timeoutMs - (performance.now() - startedAt);
         const write = this.storeTemplateKey(deployment.id, image, parsed?.template_id, log);
         const cached = write.then((result) =>
           result === "stored"
@@ -464,7 +516,9 @@ export class TemplatePrebuildService {
         await withinBudget(cached, remaining());
         if (stored === undefined) {
           outcome = "timeout";
-        } else if (stored !== "stored") {
+        } else if (stored === "stored") {
+          templateKey = validTemplateKey(parsed?.template_id);
+        } else {
           outcome = "failed";
           reason = stored;
         }
@@ -490,7 +544,10 @@ export class TemplatePrebuildService {
     const attributes = { outcome, mode };
     this.telemetry.calls.add(1, attributes);
     this.telemetry.duration.record(performance.now() - startedAt, attributes);
-    return outcome === "failed" ? { outcome, reason } : { outcome };
+    if (outcome === "failed") {
+      return { outcome, reason };
+    }
+    return templateKey ? { outcome, templateKey } : { outcome };
   }
 
   // In shadow mode the deployment may already be DEPLOYED; then only store the key

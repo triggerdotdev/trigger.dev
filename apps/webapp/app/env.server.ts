@@ -943,6 +943,8 @@ const EnvironmentSchema = z
     TEMPLATE_BUILDER_TOKEN: z.string().optional(),
     // How long wait mode holds finalisation for the builder before carrying on.
     TEMPLATE_BUILDER_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
+    // How long the admin template-builds route waits on each build when `wait` is set.
+    TEMPLATE_BUILDER_ADMIN_TIMEOUT_MS: z.coerce.number().int().positive().default(900_000),
     // Machine presets whose shapes are sent with the template request.
     TEMPLATE_BUILDER_MACHINE_PRESETS: z
       .string()

@@ -133,6 +133,19 @@ async function createDeployment(
   });
 }
 
+/** The fields every found deployment's result carries. */
+function described(
+  row: { friendlyId: string; shortCode: string },
+  project: { externalRef: string }
+) {
+  return {
+    friendlyId: row.friendlyId,
+    shortCode: row.shortCode,
+    projectRef: project.externalRef,
+    environmentType: "PRODUCTION",
+  };
+}
+
 async function storedTemplateKey(prisma: any, deploymentId: string) {
   const row = await prisma.workerDeployment.findFirst({
     where: { id: deploymentId },
@@ -750,17 +763,28 @@ describe("requestBuilds", () => {
         });
 
         expect(results).toEqual([
-          { deploymentId: byId.id, friendlyId: byId.friendlyId, outcome: "built" },
-          { deploymentId: old.friendlyId, friendlyId: old.friendlyId, outcome: "built" },
+          {
+            deploymentId: byId.id,
+            ...described(byId, project),
+            outcome: "built",
+            templateKey: TEMPLATE_KEY,
+          },
+          {
+            deploymentId: old.friendlyId,
+            ...described(old, project),
+            outcome: "built",
+            templateKey: TEMPLATE_KEY,
+          },
           {
             deploymentId: keyed.id,
-            friendlyId: keyed.friendlyId,
+            ...described(keyed, project),
+            templateKey: "b".repeat(64),
             outcome: "skipped",
             reason: "has_key",
           },
           {
             deploymentId: unpinned.id,
-            friendlyId: unpinned.friendlyId,
+            ...described(unpinned, project),
             outcome: "skipped",
             reason: "no_pinned_image",
           },
@@ -834,8 +858,9 @@ describe("requestBuilds", () => {
 
         expect(result).toEqual({
           deploymentId: row.id,
-          friendlyId: row.friendlyId,
+          ...described(row, project),
           outcome: "already_there",
+          templateKey: TEMPLATE_KEY,
         });
         expect(await storedTemplateKey(prisma, row.id)).toBe(TEMPLATE_KEY);
       } finally {
@@ -858,7 +883,7 @@ describe("requestBuilds", () => {
 
       expect(result).toEqual({
         deploymentId: row.id,
-        friendlyId: row.friendlyId,
+        ...described(row, project),
         outcome: "failed",
         reason: "invalid_template_id",
       });
@@ -890,7 +915,7 @@ describe("requestBuilds", () => {
 
       expect(result).toEqual({
         deploymentId: row.id,
-        friendlyId: row.friendlyId,
+        ...described(row, project),
         outcome: "failed",
         reason: "not_stored",
       });
@@ -923,7 +948,7 @@ describe("requestBuilds", () => {
 
       expect(results?.[0]).toEqual({
         deploymentId: row.id,
-        friendlyId: row.friendlyId,
+        ...described(row, project),
         outcome: "failed",
         reason: "store_error",
       });
@@ -944,10 +969,93 @@ describe("requestBuilds", () => {
     await expect(service.requestBuilds({ deploymentIds: [row.id] })).resolves.toEqual([
       {
         deploymentId: row.id,
-        friendlyId: row.friendlyId,
+        ...described(row, project),
         outcome: "skipped",
         reason: "no_builder",
       },
     ]);
+  });
+
+  postgresTest("finds a deployment by its short code", async ({ prisma }) => {
+    const server = await builder(reply(200, { template_id: TEMPLATE_KEY }));
+    try {
+      const project = await createProject(prisma);
+      const row = await createDeployment(prisma, project, {
+        status: "DEPLOYED",
+        imageReference: PINNED,
+      });
+      const service = new TemplatePrebuildService(prisma, config({ url: server.url }));
+
+      const [result] = await service.requestBuilds({ deploymentIds: [row.shortCode] });
+
+      expect(result).toEqual({
+        deploymentId: row.shortCode,
+        ...described(row, project),
+        outcome: "built",
+        templateKey: TEMPLATE_KEY,
+      });
+      expect(await storedTemplateKey(prisma, row.id)).toBe(TEMPLATE_KEY);
+    } finally {
+      await server.close();
+    }
+  });
+
+  postgresTest("builds nothing for a short code two projects share", async ({ prisma }) => {
+    const server = await builder(reply(200, { template_id: TEMPLATE_KEY }));
+    try {
+      const first = await createDeployment(prisma, await createProject(prisma), {
+        status: "DEPLOYED",
+        imageReference: PINNED,
+      });
+      const second = await createDeployment(prisma, await createProject(prisma), {
+        status: "DEPLOYED",
+        imageReference: PINNED,
+      });
+      await prisma.workerDeployment.update({
+        where: { id: second.id },
+        data: { shortCode: first.shortCode },
+      });
+      const service = new TemplatePrebuildService(prisma, config({ url: server.url }));
+
+      const results = await service.requestBuilds({ deploymentIds: [first.shortCode] });
+
+      expect(results).toEqual([{ deploymentId: first.shortCode, outcome: "ambiguous" }]);
+      expect(server.requests).toHaveLength(0);
+    } finally {
+      await server.close();
+    }
+  });
+
+  postgresTest("waits past the default timeout when given a longer one", async ({ prisma }) => {
+    const server = await builder((req, body, res) => {
+      setTimeout(() => reply(200, { template_id: TEMPLATE_KEY })(req, body, res), 300);
+    });
+    try {
+      const project = await createProject(prisma);
+      const row = await createDeployment(prisma, project, {
+        status: "DEPLOYED",
+        imageReference: PINNED,
+      });
+      const service = new TemplatePrebuildService(
+        prisma,
+        config({ url: server.url, timeoutMs: 100 })
+      );
+
+      const [short] = await service.requestBuilds({ deploymentIds: [row.id] });
+      expect(short).toMatchObject({ outcome: "timeout" });
+      expect(await storedTemplateKey(prisma, row.id)).toBeNull();
+
+      const seen: unknown[] = [];
+      const [long] = await service.requestBuilds({
+        deploymentIds: [row.id],
+        timeoutMs: 5_000,
+        onResult: (result) => seen.push(result),
+      });
+      expect(long).toMatchObject({ outcome: "built", templateKey: TEMPLATE_KEY });
+      expect(seen).toEqual([long]);
+      expect(await storedTemplateKey(prisma, row.id)).toBe(TEMPLATE_KEY);
+    } finally {
+      await server.close();
+    }
   });
 });
