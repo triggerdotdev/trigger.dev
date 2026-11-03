@@ -250,6 +250,7 @@ class ManagedSupervisor {
         ...workloadManagerOptions,
         namespace: env.KUBERNETES_NAMESPACE,
         runtime: env.KUBERNETES_RUNNER_RUNTIME,
+        nodeName: env.TRIGGER_WORKER_INSTANCE_NAME,
         snapshots: {
           enabled: env.COMPUTE_SNAPSHOTS_ENABLED,
           delayMs: env.COMPUTE_SNAPSHOT_DELAY_MS,

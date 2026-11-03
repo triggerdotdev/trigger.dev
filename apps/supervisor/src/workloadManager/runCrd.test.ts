@@ -582,6 +582,7 @@ describe("RunCrdWorkloadManager.create", () => {
       workloadApiProtocol: "http",
       workloadApiPort: 8020,
       namespace: "v4-runs",
+      nodeName: "node-a",
       runtime: "microvm",
       releaseUnstartedRuns,
       tokenSecretSettleMs: SETTLE_MS,
@@ -692,6 +693,7 @@ describe("RunCrdWorkloadManager.create", () => {
         workloadApiProtocol: "http",
         workloadApiPort: 8020,
         namespace: "v4-runs",
+        nodeName: "node-a",
         runtime: "microvm",
         tokenSecretSettleMs: 5 * SETTLE_MS,
       });
@@ -1044,6 +1046,7 @@ describe("RunCrdWorkloadManager.restore", () => {
       workloadApiProtocol: "http",
       workloadApiPort: 8020,
       namespace: "v4-runs",
+      nodeName: "node-a",
       runtime,
       releaseUnstartedRuns,
     });
@@ -1311,6 +1314,7 @@ describe("RunCrdWorkloadManager.awaitRestore after the watch times out", () => {
       workloadApiProtocol: "http",
       workloadApiPort: 8020,
       namespace: "v4-runs",
+      nodeName: "node-a",
       runtime: "microvm",
       restoreInformer: { awaitRestore } as unknown as RunnerRestoreInformer,
     });
@@ -2388,6 +2392,7 @@ describe("RunCrdWorkloadManager.suspend", () => {
       workloadApiProtocol: "http",
       workloadApiPort: 8020,
       namespace: "v4-runs",
+      nodeName: "node-a",
       runtime: "microvm",
       snapshots,
       suspendPollMs: 1,
@@ -2464,15 +2469,21 @@ describe("RunCrdWorkloadManager.suspend", () => {
     });
   });
 
-  it("lists the answered suspends not yet submitted", async () => {
+  it("lists the answered suspends not yet submitted on this node", async () => {
     const annotations = {
       [SUSPEND_ANNOTATION]: "snapshot_abc",
       [SUSPEND_RUN_ANNOTATION]: "run_abc",
     };
+    const placedOn = (node: string) => ({ ...taken.status, placement: { node } });
     listRunners.mockResolvedValue({
       items: [
-        { ...taken, metadata: { name: "runner-abc123", annotations } },
-        { metadata: { name: "runner-idle" }, status: { phase: "Running" } },
+        { metadata: { name: "runner-abc123", annotations }, status: placedOn("node-a") },
+        { metadata: { name: "runner-elsewhere", annotations }, status: placedOn("node-b") },
+        { metadata: { name: "runner-unplaced", annotations }, status: taken.status },
+        {
+          metadata: { name: "runner-idle" },
+          status: { phase: "Running", placement: { node: "node-a" } },
+        },
       ],
     });
 
@@ -2620,6 +2631,7 @@ describe("RunCrdWorkloadManager.suspend", () => {
       workloadApiProtocol: "http",
       workloadApiPort: 8020,
       namespace: "v4-runs",
+      nodeName: "node-a",
       runtime: "container",
       snapshots: { enabled: true, delayMs: 0, dispatchLimit: 1 },
     });

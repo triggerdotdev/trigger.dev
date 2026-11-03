@@ -67,6 +67,8 @@ export type RunCrdWorkloadManagerOptions = WorkloadManagerOptions & {
    * Runner on a cell with no RuntimeClass rather than serve it with weaker isolation.
    */
   runtime: RunnerRuntime;
+  /** The node this process runs on. Suspend recovery only touches Runners placed on it. */
+  nodeName: string;
   /** Suspends go to the operator only under microvm, where there is a guest to snapshot. */
   snapshots?: { enabled: boolean; delayMs: number; dispatchLimit: number };
   /** How often a suspend's or a polled resume's outcome is read back off the Runner. */
@@ -116,6 +118,7 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
   private readonly k8s: K8sApi;
   private readonly namespace: string;
   private readonly runtime: RunnerRuntime;
+  private readonly nodeName: string;
   private readonly snapshots?: RunCrdWorkloadManagerOptions["snapshots"];
   private readonly suspendPollMs: number;
   private readonly suspendTimeoutMs: number;
@@ -128,6 +131,7 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
     this.k8s = createK8sApi();
     this.namespace = opts.namespace;
     this.runtime = opts.runtime;
+    this.nodeName = opts.nodeName;
     this.releaseUnstartedRuns = opts.releaseUnstartedRuns ?? false;
     this.snapshots = opts.snapshots;
     this.suspendPollMs = opts.suspendPollMs ?? 5_000;
@@ -195,7 +199,7 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
     return publishedSuspend(await this.getRunner(runnerId));
   }
 
-  /** Every Runner whose latest suspend has an outcome not yet marked submitted. */
+  /** Every Runner on this node whose latest suspend has an outcome not yet marked submitted. */
   async publishedSuspends(): Promise<PublishedSuspend[]> {
     const list = (await this.k8s.custom.listNamespacedCustomObject({
       group: GROUP,
@@ -204,6 +208,9 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
       plural: PLURAL,
     })) as { items?: unknown[] } | null;
     return (list?.items ?? []).flatMap((runner) => {
+      if ((runner as RunnerPlacementStatus | null)?.status?.placement?.node !== this.nodeName) {
+        return [];
+      }
       const published = publishedSuspend(runner);
       return published ? [published] : [];
     });
@@ -800,6 +807,8 @@ type ExistingRestore = {
   spec?: { restore?: Partial<RunnerRestore> };
   status?: { phase?: string };
 };
+
+type RunnerPlacementStatus = { status?: { placement?: { node?: string } } };
 
 type RunnerSuspendStatus = {
   status?: {

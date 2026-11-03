@@ -274,6 +274,7 @@ describe.skipIf(!KUBECONFIG)("RunCrdWorkloadManager against a real Kubernetes AP
       workloadApiProtocol: "http",
       workloadApiPort: 8020,
       namespace: NAMESPACE,
+      nodeName: "node-a",
       runtime: "microvm",
       tokenSecretSettleMs: SETTLE_MS,
     });
