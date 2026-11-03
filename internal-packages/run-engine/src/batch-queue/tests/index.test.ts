@@ -953,4 +953,56 @@ describe("BatchQueue", () => {
       }
     );
   });
+
+  describe("visibility heartbeat", () => {
+    redisTest(
+      "should not redeliver an item that takes longer than the visibility timeout",
+      { timeout: 60_000 },
+      async ({ redisContainer }) => {
+        const queue = new BatchQueue({
+          redis: {
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+            keyPrefix: "test:",
+          },
+          drr: { quantum: 5, maxDeficit: 50 },
+          consumerCount: 2,
+          consumerIntervalMs: 50,
+          visibilityTimeoutMs: 1_000,
+          startConsumers: false,
+        });
+
+        const invocations: number[] = [];
+
+        try {
+          queue.onProcessItem(async ({ itemIndex }) => {
+            const isFirst = invocations.length === 0;
+            invocations.push(itemIndex);
+            if (isFirst) {
+              await new Promise((resolve) => setTimeout(resolve, 9_000));
+            }
+            return { success: true, runId: `run-${itemIndex}` };
+          });
+
+          await queue.initializeBatch(createInitOptions("batch-hb", "env-hb", 1));
+          await enqueueItems(queue, "batch-hb", "env-hb", createBatchItems(1));
+
+          queue.start();
+
+          await vi.waitFor(
+            () => {
+              expect(invocations.length).toBeGreaterThanOrEqual(1);
+            },
+            { timeout: 10_000 }
+          );
+
+          await new Promise((resolve) => setTimeout(resolve, 14_000));
+
+          expect(invocations).toEqual([0]);
+        } finally {
+          await queue.close();
+        }
+      }
+    );
+  });
 });
