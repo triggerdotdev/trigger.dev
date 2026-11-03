@@ -23,7 +23,7 @@ export type MfaAction =
   | { type: "CANCEL_SETUP" }
   | { type: "VALIDATE_TOTP"; code: string }
   | { type: "VALIDATION_SUCCESS"; recoveryCodes: string[] }
-  | { type: "VALIDATION_FAILED"; error: string; setupData: { secret: string; otpAuthUrl: string } }
+  | { type: "VALIDATION_FAILED"; error: string }
   | { type: "RECOVERY_CODES_SAVED" }
   | { type: "OPEN_DISABLE_DIALOG" }
   | { type: "DISABLE_MFA" }
@@ -85,7 +85,6 @@ function mfaReducer(state: MfaState, action: MfaAction): MfaState {
       return {
         ...state,
         phase: "enabling",
-        setupData: action.setupData,
         error: action.error,
         isSubmitting: false,
       };
@@ -203,7 +202,6 @@ export function useMfaSetup(initialIsEnabled: boolean) {
             dispatch({
               type: "VALIDATION_FAILED",
               error: data.error || "Invalid code",
-              setupData: { secret: data.secret!, otpAuthUrl: data.otpAuthUrl! },
             });
           }
           break;
