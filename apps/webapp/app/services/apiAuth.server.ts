@@ -36,6 +36,8 @@ import {
   isOrganizationAccessToken,
 } from "./organizationAccessToken.server";
 import { isPublicJWT, validatePublicJwtKey } from "./realtime/jwtAuth.server";
+import { isApiKeyInGraceWindow } from "./apiKeyGraceWindow.server";
+import { isAdditionalApiKey } from "@trigger.dev/core/v3/apiKeys";
 import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 import {
   authenticateAuthorizeBearerWithTelemetry,
@@ -355,10 +357,21 @@ export type ApiKeyScopeAuthorization = {
   allowPreviewParent?: boolean;
 };
 
+// A rotated root key keeps working during its grace window so callers can
+// switch over without downtime. It must not be able to ship code or change the
+// environment's variables: deployed runs receive the current root key, so
+// either would let the old key recover its replacement. It also can't read
+// variables, which may hold secrets updated after the rotation.
+function isDeniedDuringGraceWindow(action: string, resource: RbacResource): boolean {
+  if (resource.type === "envvars") return true;
+  return resource.type === "deployments" && action !== "read";
+}
+
 export async function authenticateApiKeyWithScope(
   request: Request,
   { action, resource, allowJWT = false, allowPreviewParent = false }: ApiKeyScopeAuthorization,
-  authorizeBearer: typeof authenticateAuthorizeBearerWithTelemetry = authenticateAuthorizeBearerWithTelemetry
+  authorizeBearer: typeof authenticateAuthorizeBearerWithTelemetry = authenticateAuthorizeBearerWithTelemetry,
+  isInGraceWindow: typeof isApiKeyInGraceWindow = isApiKeyInGraceWindow
 ): Promise<
   | { ok: true; authentication: ApiAuthenticationResultSuccess }
   | { ok: false; status: 401 | 403; error: string }
@@ -378,6 +391,19 @@ export async function authenticateApiKeyWithScope(
   }
   if (result.subject.type === "runToken") {
     return { ok: false, status: 401, error: "Run tokens are not accepted for this endpoint" };
+  }
+
+  if (
+    isDeniedDuringGraceWindow(action, resource) &&
+    !isAdditionalApiKey(apiKey.trim()) &&
+    // The bearer resolvers trim the token, so the lookup must match on the same value.
+    (await isInGraceWindow(apiKey.trim()))
+  ) {
+    return {
+      ok: false,
+      status: 401,
+      error: "This API key has been rotated. Use the environment's current secret key.",
+    };
   }
 
   return {
