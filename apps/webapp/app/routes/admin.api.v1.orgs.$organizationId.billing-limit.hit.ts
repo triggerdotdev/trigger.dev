@@ -7,7 +7,7 @@ import {
   type BillingLimitHitWebhookBody,
 } from "~/services/billingLimit.schemas";
 import { logger } from "~/services/logger.server";
-import { requireBillingServiceOrAdminApiRequest } from "~/services/billingServiceAuth.server";
+import { requireBillingServiceRequest } from "~/services/billingServiceAuth.server";
 import { bustBillingLimitCaches } from "~/services/platform.v3.server";
 import {
   enqueueBillingLimitCancelInProgressRuns,
@@ -22,7 +22,7 @@ const ParamsSchema = z.object({
 
 /** Billing platform webhook: org entered billing limit grace. Idempotent — returns 202. */
 async function handleAction({ request, params }: ActionFunctionArgs) {
-  await requireBillingServiceOrAdminApiRequest(request);
+  await requireBillingServiceRequest(request);
 
   if (request.method.toLowerCase() !== "post") {
     return json({ error: "Method not allowed" }, { status: 405 });

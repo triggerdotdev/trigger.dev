@@ -2,7 +2,7 @@ import { withAdminAudit } from "~/services/adminAudit/adminAudit.server";
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { requireBillingServiceOrAdminApiRequest } from "~/services/billingServiceAuth.server";
+import { requireBillingServiceRequest } from "~/services/billingServiceAuth.server";
 import { isValidDuration } from "~/services/realtime/duration.server";
 import {
   deprovisionBasinForOrg,
@@ -22,7 +22,7 @@ const BodySchema = z.discriminatedUnion("action", [
 ]);
 
 async function handleAction({ request, params }: ActionFunctionArgs) {
-  await requireBillingServiceOrAdminApiRequest(request);
+  await requireBillingServiceRequest(request);
 
   const { organizationId } = ParamsSchema.parse(params);
 

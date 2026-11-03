@@ -2,7 +2,7 @@ import { withAdminAudit } from "~/services/adminAudit/adminAudit.server";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { requireBillingServiceOrAdminApiRequest } from "~/services/billingServiceAuth.server";
+import { requireBillingServiceRequest } from "~/services/billingServiceAuth.server";
 import { enqueueOrgProvisioningJob } from "~/v3/services/orgProvisioningJobs.server";
 
 const ParamsSchema = z.object({
@@ -10,7 +10,7 @@ const ParamsSchema = z.object({
 });
 
 async function handleAction({ request, params }: ActionFunctionArgs) {
-  await requireBillingServiceOrAdminApiRequest(request);
+  await requireBillingServiceRequest(request);
 
   const { organizationId } = ParamsSchema.parse(params);
 
