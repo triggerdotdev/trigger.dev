@@ -47,6 +47,7 @@
                 "pages": ["runs/list-best-practices"]
               },
               "apikeys",
+              "rotate-api-keys",
               "oidc"
             ]
           },

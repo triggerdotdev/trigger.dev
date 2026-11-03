@@ -1,0 +1,111 @@
+---
+title: "Rotate API keys without downtime"
+sidebarTitle: "Rotate API keys"
+description: "Replace a Trigger.dev API key while both the old and new keys work, so your backend, CI, and deployed tasks never fail to authenticate."
+---
+
+**Rotate an API key without failed requests by keeping the previous key valid until everything uses the new one.** You issue the new key, roll it out to every service that calls Trigger.dev, confirm nothing still uses the old key, and only then revoke it.
+
+How you get that overlap depends on the key:
+
+| Key | How the overlap works |
+| --- | --- |
+| [Individual API key](#rotate-an-individual-api-key) | Create a second key, roll it out, then revoke the first. Both keys work until you revoke. |
+| [Root key](#rotate-the-root-key) | Regenerate it and keep the previous key working for 24 hours while you roll out the new one. |
+
+If a key may have leaked, follow [Rotate a key that may have leaked](#rotate-a-key-that-may-have-leaked) instead.
+
+## Find everywhere the key is used
+
+List every place that holds the key before you rotate it. A service you miss keeps sending the old key and fails once it's revoked.
+
+- **Backend environment variables**: `TRIGGER_SECRET_KEY` wherever you trigger tasks or call the API, for example Vercel, Railway, Fly, or your own servers.
+- **Secret managers**: AWS Secrets Manager, Doppler, 1Password, or similar.
+- **CI**: `TRIGGER_ACCESS_TOKEN` in workflows that run `trigger deploy`, for example [GitHub Actions](/github-actions).
+- **Code that configures the SDK directly**: any `configure({ secretKey })` call that reads the key from a different variable.
+
+Deployed tasks don't need to be on this list. We inject `TRIGGER_SECRET_KEY` into every run, so runs that start after you rotate the root key receive the new key without a redeploy.
+
+## Rotate an individual API key
+
+Individual API keys rotate with no time limit, because the old key keeps working until you revoke it.
+
+<Steps titleSize="h3">
+  <Step title="Create the replacement key">
+    Open [**API keys**](https://cloud.trigger.dev/_/apikeys) for the same environment and click **New API key**. Give it the same access preset and task selection as the key it replaces, and a name that tells the two apart, such as `checkout-service-2026-11`. Copy the secret, because it's shown only once.
+  </Step>
+  <Step title="Roll out the new key">
+    Update the key in every place you listed, then redeploy or restart each service so it reads the new value. Most hosts, including Vercel, only apply a changed environment variable on the next deploy.
+  </Step>
+  <Step title="Confirm the old key is idle">
+    On the API keys page, check the **Last used** column. The new key's time should be recent, and the old key's should stop moving once every service has switched.
+  </Step>
+  <Step title="Revoke the old key">
+    Click **Revoke…** on the old key. Revoking takes effect immediately and can't be undone.
+  </Step>
+</Steps>
+
+## Rotate the root key
+
+The root key is the key marked **Root** on the API keys page. Regenerating it can keep the previous root key valid for 24 hours, which is the window you have to roll out the new one.
+
+<Steps titleSize="h3">
+  <Step title="Regenerate with a 24-hour overlap">
+    On the root key's row, open the menu and click **Regenerate…**. Choose **Keep the previous key working for 24 hours**, which is the default, enter the confirmation text, and click **Regenerate**.
+
+    If the project uses the [Vercel integration](/vercel-integration), leave **Also update TRIGGER_SECRET_KEY in Vercel** checked to write the new key to Vercel for you. You still need to redeploy on Vercel for it to take effect.
+  </Step>
+  <Step title="Roll out the new key">
+    Copy the new root key and update `TRIGGER_SECRET_KEY`, and `TRIGGER_ACCESS_TOKEN` if CI deploys with the root key, everywhere you listed. Redeploy or restart each service.
+  </Step>
+  <Step title="Finish within 24 hours">
+    The previous root key stops working 24 hours after you regenerate. Any service still using it fails to authenticate after that, so complete the rollout inside the window.
+  </Step>
+</Steps>
+
+<Note>
+  Regenerating again doesn't extend the window. Each previous root key expires 24 hours after the
+  regeneration that replaced it, and choosing **Revoke the previous key immediately** ends every
+  window that is still open.
+</Note>
+
+## Rotate a key that may have leaked
+
+A leaked key should stop working as soon as possible, but revoking it before your services have the new key causes failed requests. Choose the order based on which key leaked.
+
+**An individual API key leaked.** Follow [Rotate an individual API key](#rotate-an-individual-api-key) and move through the steps quickly. The old key is valid only for the minutes it takes to roll out the replacement.
+
+**The root key leaked.** Regenerating with a 24-hour overlap leaves the leaked key valid for up to a day. Revoking it immediately breaks every service that still uses it. To avoid both, move your services off the root key first:
+
+<Steps titleSize="h3">
+  <Step title="Create an individual API key">
+    Click **New API key** and create a key with the access each service needs. Free and Hobby plans use the **No restrictions** preset.
+  </Step>
+  <Step title="Replace the root key in every service">
+    Set `TRIGGER_SECRET_KEY` (and `TRIGGER_ACCESS_TOKEN` in CI) to the new individual key and redeploy each service. Check **Last used** on the new key to confirm traffic has moved.
+  </Step>
+  <Step title="Regenerate the root key and revoke immediately">
+    Open **Regenerate…** on the root key and choose **Revoke the previous key immediately**. The leaked key and any older root key in its 24-hour window stop working now. Your services keep running because they no longer use the root key, and new task runs receive the new root key automatically.
+  </Step>
+</Steps>
+
+If you can't update your services quickly, regenerate the root key with **Revoke the previous key immediately** right away and accept that services still using it fail until you deploy the new key.
+
+A leaked key may also mean the credentials stored in your [environment variables](/deploy-environment-variables) were exposed. Rotate those with their providers and update them in Trigger.dev.
+
+## Verify the rotation
+
+- The new key's **Last used** time updates as your services make requests.
+- Triggering a task from each service succeeds and creates a run in the dashboard.
+- After the old key is revoked or its 24-hour window ends, no service logs authentication errors from Trigger.dev.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="API keys" icon="key" href="/apikeys">
+    Create keys, choose access presets, and set expiration dates.
+  </Card>
+  <Card title="Environment variables" icon="lock" href="/deploy-environment-variables">
+    Update the secrets your deployed tasks use.
+  </Card>
+</CardGroup>

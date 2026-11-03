@@ -119,7 +119,7 @@ The key must belong to the target environment. Use a Production key with `--env 
 
 Set an expiration date when creating a key if the integration only needs temporary access. An expired key stops authenticating automatically.
 
-Revoking a key takes effect immediately and cannot be reversed. Requests using the key fail, and the key can no longer create public access tokens. Create a replacement before revoking a key when you need to rotate it without interrupting the integration.
+Revoking a key takes effect immediately and cannot be reversed. Requests using the key fail, and the key can no longer create public access tokens. Create a replacement before revoking a key when you need to rotate it without interrupting the integration. See [Rotate API keys without downtime](/rotate-api-keys).
 
 Removing a team member does not revoke keys they created. Review and revoke their keys separately when their access changes.
 
