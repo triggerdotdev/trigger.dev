@@ -79,7 +79,7 @@ import type {
   UIMessageChunk,
 } from "ai";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
-import { chatRunTags } from "./ai-shared.js";
+import { chatRunTags, sanitizeClientHistory, sanitizeClientWirePayload } from "./ai-shared.js";
 import { triggerConcurrencyBody } from "./concurrency-shared.js";
 import { withResolvedExternalDeploymentId } from "./externalDeploymentId.js";
 import type { SessionTriggerConfigInput } from "./sessions.js";
@@ -608,7 +608,9 @@ async function openHandoverSession(opts: {
   /** Request-lifecycle signal on the HTTP path; omitted on the detached path. */
   requestSignal?: AbortSignal;
 }): Promise<InternalSession> {
-  const { chatId, uiMessages, wirePayload } = opts;
+  const { chatId } = opts;
+  const uiMessages = sanitizeClientHistory(opts.uiMessages);
+  const wirePayload = sanitizeClientWirePayload(opts.wirePayload);
   if (!chatId) {
     throw new Error("[chat.handover] missing `chatId`");
   }

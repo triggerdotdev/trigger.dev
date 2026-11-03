@@ -178,7 +178,7 @@ With `hydrateMessages`, your hook was the source of truth and the runtime wrote 
     ```ts lib/transcript-storage.ts
     loadContext: async ({ chatId, clientData }, { incomingMessages }) => {
       const branch = await db.activeBranch(chatId, clientData.userId);
-      return [...branch, ...incomingMessages];
+      return [...branch, ...incomingMessages.filter((m) => m.role === "user")];
     },
     ```
 

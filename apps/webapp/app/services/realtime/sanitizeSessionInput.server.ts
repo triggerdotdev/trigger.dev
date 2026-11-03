@@ -13,18 +13,38 @@
  * runtime rejects it as malformed.
  */
 export function stripClientIngressFields(part: string): string {
+  return sanitizeClientInPart(part).part;
+}
+
+/**
+ * {@link stripClientIngressFields}, plus the record's `kind` read from the same parse, so a route can
+ * refuse kinds only a server may append (see {@link isServerOnlySessionInKind}).
+ */
+export function sanitizeClientInPart(part: string): { part: string; kind: string | undefined } {
   let record: unknown;
   try {
     record = JSON.parse(part);
   } catch {
-    return part;
+    return { part, kind: undefined };
   }
-  if (!record || typeof record !== "object") return part;
+  if (!record || typeof record !== "object") return { part, kind: undefined };
+
+  const rawKind = (record as { kind?: unknown }).kind;
+  const kind = typeof rawKind === "string" ? rawKind : undefined;
 
   const payload = (record as { payload?: unknown }).payload as Record<string, unknown> | undefined;
-  if (!payload || typeof payload !== "object") return part;
+  if (!payload || typeof payload !== "object") return { part, kind };
 
-  return removeClientIngressFields(payload) ? JSON.stringify(record) : part;
+  return { part: removeClientIngressFields(payload) ? JSON.stringify(record) : part, kind };
+}
+
+/**
+ * `.in` record kinds only the customer's server sends: the head-start handover and its skip signal. The
+ * agent takes the first one it receives as the warm first-turn response, tool calls included, so a
+ * public access token must not be able to append one.
+ */
+export function isServerOnlySessionInKind(kind: string | undefined): boolean {
+  return kind === "handover" || kind === "handover-skip";
 }
 
 export function stripClientIngressFieldsFromBasePayload<T extends Record<string, unknown>>(

@@ -676,6 +676,7 @@ const EnvironmentSchema = z
       .default(process.env.REDIS_TLS_DISABLED ?? "false"),
     REALTIME_STREAMS_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
     REALTIME_STREAMS_INACTIVITY_TIMEOUT_MS: z.coerce.number().int().default(60000), // 1 minute
+    REALTIME_SESSION_IN_HANDOVER_GUARD: z.enum(["enforce", "log"]).default("enforce"),
 
     REALTIME_MAXIMUM_CREATED_AT_FILTER_AGE_IN_MS: z.coerce
       .number()

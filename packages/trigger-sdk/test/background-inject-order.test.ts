@@ -525,7 +525,7 @@ describe("injection markers outside assistant messages", () => {
     expect(steeringMarkers(messages).map((m) => m.id)).toEqual(["m-bg"]);
   });
 
-  it("drops marker parts from an incoming assistant message with a new id", async () => {
+  it("ignores an incoming assistant message with a new id, markers included", async () => {
     const { model, prompts } = scriptedModel([toolCallChunks("tc-1", "work")]);
     const harness = mockChatAgent(makeAgent("marker-in-new-assistant", model, []), {
       chatId: "marker-in-new-assistant",
@@ -548,12 +548,9 @@ describe("injection markers outside assistant messages", () => {
           } as never,
         ],
       });
-      await waitFor(
-        () => !!harness.getSnapshot()?.messages.some((e) => e.id === "a-client"),
-        "client message saved"
-      );
-      const saved = harness.getSnapshot()!.messages.map((e) => e.message);
-      expect(saved.find((m) => m.id === "a-client")?.parts.map((p) => p.type)).toEqual(["text"]);
+      const saved = (await settledSnapshot(harness)).messages.map((e) => e.message);
+      expect(saved.some((m) => m.id === "a-client")).toBe(false);
+      expect(steeringMarkers(saved).map((m) => m.id)).toEqual([existing!.id]);
       const lane = JSON.stringify(prompts.at(-1));
       expect(lane.split("REMINDER").length - 1).toBe(1);
     } finally {

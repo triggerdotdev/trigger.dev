@@ -5,7 +5,11 @@ import {
   canonicalSessionAddressingKey,
   resolveSessionWithWriterFallback,
 } from "~/services/realtime/sessions.server";
-import { stripClientIngressFields } from "~/services/realtime/sanitizeSessionInput.server";
+import { env } from "~/env.server";
+import {
+  isServerOnlySessionInKind,
+  sanitizeClientInPart,
+} from "~/services/realtime/sanitizeSessionInput.server";
 import { isSafeSessionExternalId } from "~/services/realtime/sessionChannels.server";
 import { ensureRunThenAppend } from "~/services/realtime/sessionChannelAppend.server";
 import { anyResource, createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
@@ -105,7 +109,25 @@ const { action, loader } = createActionApiRoute(
 
     let part = await request.text();
     if (params.io === "in") {
-      part = stripClientIngressFields(part);
+      const sanitized = sanitizeClientInPart(part);
+      part = sanitized.part;
+      if (isServerOnlySessionInKind(sanitized.kind) && authentication.type !== "PRIVATE") {
+        const enforce = env.REALTIME_SESSION_IN_HANDOVER_GUARD === "enforce";
+        logger.warn("Server-only record appended to session.in with a public access token", {
+          sessionId: session.id,
+          kind: sanitized.kind,
+          enforced: enforce,
+        });
+        if (enforce) {
+          return json(
+            {
+              ok: false,
+              error: "Appending a handover to the in channel requires secret key authentication",
+            },
+            { status: 403 }
+          );
+        }
+      }
     }
 
     // Ensure a live run, then append. A failed ensure is best effort: the
