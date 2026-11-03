@@ -4,6 +4,10 @@ import type { PrismaClient } from "@trigger.dev/database";
 import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
 import { WebhookDeliveriesReplicationService } from "~/services/webhookDeliveriesReplicationService.server";
+import {
+  expectFlushLsnHoldsPastIdleWal,
+  withShortWalSenderTimeout,
+} from "./utils/replicationUtils";
 import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickhouseFactory";
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -215,6 +219,31 @@ describe("WebhookDeliveriesReplicationService", () => {
 
         const rows = await readEndpoints(clickhouse);
         expect(rows.map((row: { endpoint_id: string }) => row.endpoint_id)).toEqual([endpoint.id]);
+      } finally {
+        await service.stop();
+      }
+    }
+  );
+
+  // Catches: the 1s ack loop re-acking an older commit LSN after a keepalive ack (flush_lsn regresses).
+  replicationContainerTest(
+    "never acknowledges an older commit LSN after a keepalive acknowledgement",
+    async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        name: "webhook-deliveries-replication",
+        logLevel: "warn",
+      });
+      const service = buildService(
+        clickhouse,
+        withShortWalSenderTimeout(postgresContainer.getConnectionUri()),
+        redisOptions
+      );
+      await service.start();
+
+      try {
+        await createEndpoint(prisma, await seedEnvironment(prisma));
+        await expectFlushLsnHoldsPastIdleWal(prisma, "webhook_deliveries_to_clickhouse_v1");
       } finally {
         await service.stop();
       }

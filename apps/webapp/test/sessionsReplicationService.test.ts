@@ -3,6 +3,10 @@ import { replicationContainerTest } from "@internal/testcontainers";
 import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
 import { SessionsReplicationService } from "~/services/sessionsReplicationService.server";
+import {
+  expectFlushLsnHoldsPastIdleWal,
+  withShortWalSenderTimeout,
+} from "./utils/replicationUtils";
 import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickhouseFactory";
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -210,6 +214,77 @@ describe("SessionsReplicationService", () => {
       expect(result?.[0].closed_at).toBeDefined();
 
       await service.stop();
+    }
+  );
+
+  // Catches: the 1s ack loop re-acking an older commit LSN after a keepalive ack (flush_lsn regresses).
+  replicationContainerTest(
+    "never acknowledges an older commit LSN after a keepalive acknowledgement",
+    async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        name: "sessions-replication",
+        logLevel: "warn",
+      });
+
+      const slotName = "sessions_keepalive_ack_v1";
+      const service = new SessionsReplicationService({
+        clickhouseFactory: new TestReplicationClickhouseFactory(clickhouse),
+        pgConnectionUrl: withShortWalSenderTimeout(postgresContainer.getConnectionUri()),
+        serviceName: "sessions-replication",
+        slotName,
+        publicationName: "sessions_keepalive_ack_v1_publication",
+        redisOptions,
+        maxFlushConcurrency: 1,
+        flushIntervalMs: 100,
+        flushBatchSize: 1,
+        leaderLockTimeoutMs: 5000,
+        leaderLockExtendIntervalMs: 1000,
+        logLevel: "warn",
+      });
+
+      await service.start();
+      try {
+        const organization = await prisma.organization.create({
+          data: { title: "test", slug: "test" },
+        });
+        const project = await prisma.project.create({
+          data: {
+            name: "test",
+            slug: "test",
+            organizationId: organization.id,
+            externalRef: "test",
+          },
+        });
+        const environment = await prisma.runtimeEnvironment.create({
+          data: {
+            slug: "test",
+            type: "DEVELOPMENT",
+            projectId: project.id,
+            organizationId: organization.id,
+            apiKey: "test",
+            pkApiKey: "test",
+            shortcode: "test",
+          },
+        });
+        await prisma.session.create({
+          data: {
+            id: "session_test_keepalive_ack",
+            friendlyId: "session_keepalive_ack",
+            type: "chat.agent",
+            projectId: project.id,
+            runtimeEnvironmentId: environment.id,
+            environmentType: "DEVELOPMENT",
+            organizationId: organization.id,
+            taskIdentifier: "my-agent",
+            triggerConfig: { basePayload: { messages: [], trigger: "preload" } },
+          },
+        });
+
+        await expectFlushLsnHoldsPastIdleWal(prisma, slotName);
+      } finally {
+        await service.stop();
+      }
     }
   );
 });
