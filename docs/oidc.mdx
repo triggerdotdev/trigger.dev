@@ -4,11 +4,6 @@ sidebarTitle: "Overview"
 description: "Use workload identity to access external services from your tasks without storing long-lived credentials."
 ---
 
-<Note>
-  OIDC workload identity is in private beta on Trigger.dev Cloud. [Contact
-  us](https://trigger.dev/contact) to request access.
-</Note>
-
 Trigger.dev uses **workload identity** in an OpenID Connect (OIDC) flow to let your tasks authenticate to external services without storing long-lived access keys.
 
 Instead of saving a service's credentials as environment variables, configure it to trust Trigger.dev as an identity provider. Your task requests a signed, short-lived token that identifies its environment. The service verifies that identity and grants the permissions you configure, usually by exchanging the token for temporary credentials.
