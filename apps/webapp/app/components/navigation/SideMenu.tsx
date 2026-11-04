@@ -945,6 +945,10 @@ export function SideMenu({
                 data-action="tasks"
                 isCollapsed={isCollapsed}
                 yieldActiveToFavorite
+                nestedPaths={[
+                  `${v3EnvironmentPath(organization, project, environment)}/tasks`,
+                  `${v3EnvironmentPath(organization, project, environment)}/agents`,
+                ]}
               />
               <SideMenuItem
                 name="Runs"
@@ -955,6 +959,7 @@ export function SideMenu({
                 data-action="runs"
                 isCollapsed={isCollapsed}
                 yieldActiveToFavorite
+                matchPrefix
               />
               <SideMenuItem
                 name="Sessions"
@@ -965,6 +970,7 @@ export function SideMenu({
                 data-action="sessions"
                 isCollapsed={isCollapsed}
                 yieldActiveToFavorite
+                matchPrefix
               />
               {(isManagedCloud ||
                 user.admin ||
@@ -980,6 +986,7 @@ export function SideMenu({
                   badge={<BetaBadge />}
                   isCollapsed={isCollapsed}
                   yieldActiveToFavorite
+                  matchPrefix
                 />
               )}
             </div>
@@ -1141,7 +1148,8 @@ function CustomizableSideMenuSection({
             activeIconColor={item.activeIconColor}
             inactiveIconColor={item.inactiveIconColor ?? "text-text-dimmed"}
             to={item.to}
-            matchPrefix={item.matchPrefix}
+            matchPrefix={item.matchPrefix ?? (item.id !== "dashboards")}
+            nestedPaths={item.nestedPaths}
             data-action={item.dataAction}
             badge={item.badge}
             isCollapsed={isCollapsed}

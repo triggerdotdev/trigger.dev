@@ -61,6 +61,93 @@ export function SideMenuLabel({
   );
 }
 
+/**
+ * Normalizes a URL path by stripping any hash, query parameters, and trailing slashes.
+ */
+export function normalizePath(path: string): string {
+  const [clean = ""] = path.split("#")[0].split("?");
+  if (clean.length > 1 && clean.endsWith("/")) {
+    return clean.slice(0, -1);
+  }
+  return clean;
+}
+
+/**
+ * Checks whether currentPath matches targetPath, optionally checking nested paths
+ * while respecting segment boundaries.
+ */
+export function matchesPath(currentPath: string, targetPath: string, matchPrefix = false): boolean {
+  const normalizedCurrent = normalizePath(currentPath);
+  const normalizedTarget = normalizePath(targetPath);
+
+  if (normalizedCurrent === normalizedTarget) {
+    return true;
+  }
+
+  if (matchPrefix) {
+    return normalizedCurrent.startsWith(`${normalizedTarget}/`);
+  }
+
+  return false;
+}
+
+export type IsSideMenuItemActiveOptions = {
+  currentPath: string;
+  targetPath: string;
+  matchPrefix?: boolean;
+  nestedPaths?: string[];
+  isActiveOverride?: boolean;
+  yieldActiveToFavorite?: boolean;
+  activeFavoriteId?: string;
+};
+
+/**
+ * Determines whether a sidebar navigation item should be marked active.
+ *
+ * Respects:
+ * - Direct isActive overrides (e.g. from favorites).
+ * - Yielding active highlight to a matching active favorite.
+ * - Exact path matching.
+ * - Segment-boundary-aware prefix matching (e.g. /concurrency does NOT match /concurrency-limits).
+ * - Nested paths for parent items whose subpages live under distinct paths (e.g. Tasks).
+ */
+export function isSideMenuItemActive({
+  currentPath,
+  targetPath,
+  matchPrefix = false,
+  nestedPaths,
+  isActiveOverride,
+  yieldActiveToFavorite = false,
+  activeFavoriteId,
+}: IsSideMenuItemActiveOptions): boolean {
+  if (isActiveOverride !== undefined) {
+    return isActiveOverride;
+  }
+
+  if (yieldActiveToFavorite && activeFavoriteId !== undefined) {
+    return false;
+  }
+
+  if (matchesPath(currentPath, targetPath, matchPrefix)) {
+    return true;
+  }
+
+  if (nestedPaths && nestedPaths.length > 0) {
+    const normalizedTarget = normalizePath(targetPath);
+    for (const nested of nestedPaths) {
+      const resolved =
+        nested.startsWith("/") && !nested.startsWith(normalizedTarget)
+          ? `${normalizedTarget}${nested}`
+          : nested;
+      if (matchesPath(currentPath, resolved, true)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 export function SideMenuItem({
   icon,
   activeIconColor,
@@ -80,6 +167,7 @@ export function SideMenuItem({
   isActive: isActiveOverride,
   yieldActiveToFavorite = false,
   matchPrefix = false,
+  nestedPaths,
   "data-action": dataAction,
 }: {
   icon?: RenderIcon;
@@ -101,6 +189,8 @@ export function SideMenuItem({
   /** Overrides the default pathname === to active check (e.g. favorites match on full URL). */
   isActive?: boolean;
   matchPrefix?: boolean;
+  /** Additional subpaths (e.g. /tasks, /agents) that should activate this parent item. */
+  nestedPaths?: string[];
   /**
    * In menus that render the Favorites section (the main project menu), an active favorite owns
    * the highlight, so the plain item yields its active state to it. Menus without a favorites
@@ -114,10 +204,15 @@ export function SideMenuItem({
   // Only the user's OWN favorites own a view (via the marker param); markers from shared links
   // don't count (see useActiveFavoriteId).
   const activeFavoriteId = useActiveFavoriteId();
-  const isActive =
-    isActiveOverride ??
-    ((pathName === to || (matchPrefix && pathName.startsWith(`${to}/`))) &&
-      (!yieldActiveToFavorite || activeFavoriteId === undefined));
+  const isActive = isSideMenuItemActive({
+    currentPath: pathName,
+    targetPath: to,
+    matchPrefix,
+    nestedPaths,
+    isActiveOverride,
+    yieldActiveToFavorite,
+    activeFavoriteId,
+  });
 
   const isIndented = indented && !isCollapsed;
 

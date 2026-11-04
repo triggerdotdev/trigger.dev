@@ -180,6 +180,7 @@ function DashboardChildMenuItem({
       activeIconColor={activeIconColor}
       inactiveIconColor={inactiveIconColor}
       to={item.path}
+      matchPrefix={true}
       isCollapsed={isCollapsed}
       disableIconHover
       yieldActiveToFavorite

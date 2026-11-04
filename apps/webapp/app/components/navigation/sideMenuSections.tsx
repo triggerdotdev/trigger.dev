@@ -59,6 +59,7 @@ type SideMenuItemConfig = {
   inactiveIconColor?: string;
   to: string;
   matchPrefix?: boolean;
+  nestedPaths?: string[];
   dataAction?: string;
   badge?: ReactNode;
   trailingIconClassName?: string;
