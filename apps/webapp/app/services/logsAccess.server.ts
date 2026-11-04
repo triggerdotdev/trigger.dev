@@ -1,5 +1,5 @@
 import { prisma } from "~/db.server";
-import { FEATURE_FLAG, validateFeatureFlagValue } from "~/v3/featureFlags";
+import { resolveOrganizationFeatureFlags } from "~/v3/featureFlags.server";
 
 export async function hasLogsPageAccess(
   userId: string,
@@ -19,11 +19,10 @@ export async function hasLogsPageAccess(
     select: { featureFlags: true },
   });
 
-  if (!organization?.featureFlags) {
+  if (!organization) {
     return false;
   }
 
-  const flags = organization.featureFlags as Record<string, unknown>;
-  const result = validateFeatureFlagValue(FEATURE_FLAG.hasLogsPageAccess, flags.hasLogsPageAccess);
-  return result.success && result.data === true;
+  const flags = await resolveOrganizationFeatureFlags(organization.featureFlags);
+  return flags.hasLogsPageAccess === true;
 }
