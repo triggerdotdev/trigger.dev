@@ -1,4 +1,4 @@
-import { withAdminAudit } from "~/services/adminAudit/adminAudit.server";
+import { withAdminApi } from "~/services/adminApi.server";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { seedLlmPricing, syncLlmCatalog } from "@internal/llm-model-catalog";
 import { prisma } from "~/db.server";
@@ -39,4 +39,4 @@ async function handleAction({ request }: ActionFunctionArgs) {
   });
 }
 
-export const action = withAdminAudit(handleAction);
+export const action = withAdminApi(handleAction);

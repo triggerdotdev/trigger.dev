@@ -1,4 +1,4 @@
-import { withAdminAudit } from "~/services/adminAudit/adminAudit.server";
+import { withAdminApi } from "~/services/adminApi.server";
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
@@ -82,4 +82,4 @@ async function handleLoader({ request, params }: LoaderFunctionArgs) {
   return json(report);
 }
 
-export const loader = withAdminAudit(handleLoader);
+export const loader = withAdminApi(handleLoader);

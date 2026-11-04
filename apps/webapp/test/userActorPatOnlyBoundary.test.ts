@@ -22,7 +22,7 @@ vi.mock("~/db.server", () => {
   return { prisma: proxy, $replica: proxy, sqlDatabaseSchema: undefined };
 });
 vi.mock("~/env.server", () => ({
-  env: { SESSION_SECRET, ENCRYPTION_KEY },
+  env: { SESSION_SECRET, ENCRYPTION_KEY, ADMIN_API_ENABLED: true },
 }));
 vi.mock("~/services/logger.server", () => ({
   logger: { debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() },

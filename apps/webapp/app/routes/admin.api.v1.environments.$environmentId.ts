@@ -1,4 +1,4 @@
-import { withAdminAudit } from "~/services/adminAudit/adminAudit.server";
+import { withAdminApi } from "~/services/adminApi.server";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
@@ -111,5 +111,5 @@ async function handleLoader({ request, params }: LoaderFunctionArgs) {
   return json({ id: environment.id, concurrencyLimit, currentConcurrency });
 }
 
-export const loader = withAdminAudit(handleLoader);
-export const action = withAdminAudit(handleAction);
+export const loader = withAdminApi(handleLoader);
+export const action = withAdminApi(handleAction);

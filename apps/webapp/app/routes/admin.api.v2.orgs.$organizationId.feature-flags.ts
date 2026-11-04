@@ -1,4 +1,4 @@
-import { withAdminAudit } from "~/services/adminAudit/adminAudit.server";
+import { withAdminApi } from "~/services/adminApi.server";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { Prisma } from "@trigger.dev/database";
@@ -209,5 +209,5 @@ async function handleAction({ request, params }: ActionFunctionArgs) {
   return json({ success: true });
 }
 
-export const loader = withAdminAudit(handleLoader);
-export const action = withAdminAudit(handleAction);
+export const loader = withAdminApi(handleLoader);
+export const action = withAdminApi(handleAction);

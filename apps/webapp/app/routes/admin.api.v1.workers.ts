@@ -1,4 +1,4 @@
-import { withAdminAudit } from "~/services/adminAudit/adminAudit.server";
+import { withAdminApi } from "~/services/adminApi.server";
 import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { type Project, WorkerInstanceGroupType, WorkloadType } from "@trigger.dev/database";
@@ -264,5 +264,5 @@ async function setWorkerGroupAsDefaultForProject(
   };
 }
 
-export const loader = withAdminAudit(handleLoader);
-export const action = withAdminAudit(handleAction);
+export const loader = withAdminApi(handleLoader);
+export const action = withAdminApi(handleAction);

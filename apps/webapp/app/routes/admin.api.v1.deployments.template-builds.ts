@@ -1,4 +1,4 @@
-import { withAdminAudit } from "~/services/adminAudit/adminAudit.server";
+import { withAdminApi } from "~/services/adminApi.server";
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/v3";
@@ -28,4 +28,4 @@ async function handleAction({ request }: ActionFunctionArgs) {
   return adminTemplateBuilds(parsedBody.data);
 }
 
-export const action = withAdminAudit(handleAction);
+export const action = withAdminApi(handleAction);

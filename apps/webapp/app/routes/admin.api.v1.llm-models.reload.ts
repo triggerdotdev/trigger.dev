@@ -1,4 +1,4 @@
-import { withAdminAudit } from "~/services/adminAudit/adminAudit.server";
+import { withAdminApi } from "~/services/adminApi.server";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
 import { llmPricingRegistry } from "~/v3/llmPricingRegistry.server";
@@ -15,4 +15,4 @@ async function handleAction({ request }: ActionFunctionArgs) {
   return json({ success: true, message: "LLM pricing registry reloaded" });
 }
 
-export const action = withAdminAudit(handleAction);
+export const action = withAdminApi(handleAction);

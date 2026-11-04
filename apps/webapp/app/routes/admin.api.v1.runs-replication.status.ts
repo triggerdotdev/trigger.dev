@@ -1,4 +1,4 @@
-import { withAdminAudit } from "~/services/adminAudit/adminAudit.server";
+import { withAdminApi } from "~/services/adminApi.server";
 import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import Redis from "ioredis";
 import { env } from "~/env.server";
@@ -63,4 +63,4 @@ async function handleLoader({ request }: LoaderFunctionArgs) {
   });
 }
 
-export const loader = withAdminAudit(handleLoader);
+export const loader = withAdminApi(handleLoader);

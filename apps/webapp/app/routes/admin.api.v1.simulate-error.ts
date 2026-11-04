@@ -1,4 +1,4 @@
-import { withAdminAudit } from "~/services/adminAudit/adminAudit.server";
+import { withAdminApi } from "~/services/adminApi.server";
 import { type DataFunctionArgs } from "@remix-run/node";
 import { requireUser } from "~/services/session.server";
 
@@ -12,4 +12,4 @@ async function handleLoader({ request }: DataFunctionArgs) {
   throw new Error("Test error");
 }
 
-export const loader = withAdminAudit(handleLoader);
+export const loader = withAdminApi(handleLoader);

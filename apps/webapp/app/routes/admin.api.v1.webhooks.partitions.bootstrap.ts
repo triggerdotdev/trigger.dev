@@ -1,4 +1,4 @@
-import { withAdminAudit } from "~/services/adminAudit/adminAudit.server";
+import { withAdminApi } from "~/services/adminApi.server";
 import { bootstrapPartitions } from "@internal/webhook-engine";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { webhookPartitionPrisma } from "~/db.server";
@@ -20,4 +20,4 @@ async function handleAction({ request }: ActionFunctionArgs) {
   return json({ success: true, ...result });
 }
 
-export const action = withAdminAudit(handleAction);
+export const action = withAdminApi(handleAction);

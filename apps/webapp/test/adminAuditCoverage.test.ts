@@ -12,11 +12,15 @@ function adminRouteFiles(): string[] {
 
 /**
  * Admin routes are audited by wrapping their exports, so a route that forgets the wrapper is a
- * silent gap. Admin API loaders and actions must use `withAdminAudit`; admin dashboard actions must
- * use it or a super-admin `dashboardAction`, which wraps itself.
+ * silent gap. Admin API loaders and actions must use `withAdminApi`, which audits and also refuses
+ * the call when `ADMIN_API_ENABLED` is off; admin dashboard actions must use `withAdminAudit` or a
+ * super-admin `dashboardAction`, which wraps itself.
  */
 describe("admin audit coverage", () => {
-  /** Catches: a new or edited admin route whose loader or action skips the audit trail. */
+  /**
+   * Catches: a new or edited admin route whose loader or action skips the audit trail, or an
+   * admin API route that stays reachable on an instance with the admin API turned off.
+   */
   it("wraps every admin API export and every admin dashboard action", () => {
     const unaudited: string[] = [];
 
@@ -28,7 +32,9 @@ describe("admin audit coverage", () => {
         const [, name, rest] = match;
         if (!isApi && name === "loader") continue;
 
-        const wrapped = rest.trimStart().startsWith("= withAdminAudit(");
+        const wrapped = rest
+          .trimStart()
+          .startsWith(isApi ? "= withAdminApi(" : "= withAdminAudit(");
         const superAdminDashboardAction =
           !isApi &&
           rest.trimStart().startsWith("= dashboardAction(") &&
