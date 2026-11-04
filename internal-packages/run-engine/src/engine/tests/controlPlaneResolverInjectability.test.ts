@@ -175,6 +175,9 @@ describe("RunEngine controlPlaneResolver injectability", () => {
         async resolveWorkerVersion(): Promise<ResolvedWorkerVersion | null> {
           return null;
         },
+        async resolveDeploymentStatus() {
+          return null;
+        },
         async assertEnvExists(): Promise<void> {},
       };
 

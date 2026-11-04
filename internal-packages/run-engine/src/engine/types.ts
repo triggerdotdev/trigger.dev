@@ -76,6 +76,15 @@ export type CrossSeamGuardHook = (input: {
   routeKind: "MANUAL" | "DATETIME" | "RESUME_TOKEN" | "IDEMPOTENCY_REUSE" | "RUN";
 }) => Promise<CrossSeamGuardDecision>;
 
+/**
+ * How dequeue treats a run whose deployment hasn't finished deploying.
+ * - `off`: start it, as before the check existed (no extra reads).
+ * - `shadow`: start it, but record what enforce would have done (log + metric).
+ * - `enforce`: fail it if the deployment failed, timed out, was canceled or is stuck; hold it
+ *   while the deployment is still in progress.
+ */
+export type DeploymentStatusMode = "off" | "shadow" | "enforce";
+
 export type RunEngineOptions = {
   /** Independent of snapshot residency. Omitted means the existing Postgres waitpoint behavior. */
   waitpointStoreEnabled?: (
@@ -119,6 +128,16 @@ export type RunEngineOptions = {
     masterQueueConsumerDequeueCount?: number;
     workerOptions?: WorkerConcurrencyOptions;
     retryOptions?: RetryOptions;
+    /** How long a run waits before re-checking a deployment that is still deploying. Defaults to 30s. */
+    deploymentWaitRetryMs?: number;
+    /**
+     * How long after a deployment started deploying a run keeps waiting for it. Past this the
+     * deployment is treated as dead and the run fails. Set it above the deploy timeout. Defaults
+     * to 16 minutes.
+     */
+    deploymentWaitMaxMs?: number;
+    /** Read on every dequeue that resolves a deployment, so it can change without a restart. Defaults to `shadow`. */
+    deploymentStatusMode?: () => DeploymentStatusMode;
     defaultEnvConcurrency?: number;
     defaultEnvConcurrencyBurstFactor?: number;
     logLevel?: LogLevel;

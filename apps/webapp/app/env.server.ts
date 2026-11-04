@@ -1651,6 +1651,9 @@ const EnvironmentSchema = z
     RUN_ENGINE_QUEUE_RECONCILE_LOCK_TTL_SECONDS: z.coerce.number().int().positive().default(10),
     RUN_ENGINE_QUEUE_RECONCILE_MAX_PASSES_PER_DEQUEUE: z.coerce.number().int().min(0).default(2),
     RUN_ENGINE_TREAT_PRODUCTION_EXECUTION_STALLS_AS_OOM: z.string().default("0"),
+    // Fallback for the deploymentStatusMode global flag: how dequeue treats a run whose
+    // deployment hasn't finished deploying (off, shadow = log and count only, enforce).
+    RUN_ENGINE_DEPLOYMENT_STATUS_MODE: z.enum(["off", "shadow", "enforce"]).default("shadow"),
     // When on, the worker continue route answers temporary database errors with 503 and a busy run
     // lock with 409, which the supervisor keeps retrying, instead of a 422 that aborts the run.
     RUN_ENGINE_CONTINUE_RETRYABLE_ERRORS_ENABLED: BoolEnv.default(false),

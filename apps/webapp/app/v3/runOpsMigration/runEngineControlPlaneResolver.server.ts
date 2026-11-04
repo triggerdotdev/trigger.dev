@@ -2,6 +2,7 @@ import type {
   ControlPlaneResolver as EngineControlPlaneResolver,
   EnvDeletionState,
   ResolvedAuthenticatedEnv,
+  ResolvedDeploymentStatus,
   ResolvedEngineEnv,
   ResolvedWorkerVersion,
 } from "@internal/run-engine";
@@ -50,6 +51,10 @@ export class RunEngineControlPlaneResolver implements EngineControlPlaneResolver
 
   async resolveEnvDeletionState(environmentId: string): Promise<EnvDeletionState | null> {
     return this.#resolver.resolveEnvDeletionState(environmentId);
+  }
+
+  async resolveDeploymentStatus(deploymentId: string): Promise<ResolvedDeploymentStatus | null> {
+    return this.#resolver.resolveDeploymentStatus(deploymentId);
   }
 
   async resolveWorkerVersion(args: {

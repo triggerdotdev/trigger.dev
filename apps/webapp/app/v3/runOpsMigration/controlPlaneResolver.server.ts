@@ -3,6 +3,7 @@ import type {
   PrismaClient,
   PrismaReplicaClient,
   RuntimeEnvironmentType,
+  WorkerDeploymentStatus,
 } from "@trigger.dev/database";
 import { prisma, $replica } from "~/db.server";
 import { env } from "~/env.server";
@@ -178,6 +179,19 @@ export class ControlPlaneResolver {
    * process can serve pre-deletion state until its entry expires. A caller whose decision must
    * not be made on that stale value uses this instead.
    */
+  /** A deployment's status from the control-plane primary: no cache, no replica lag. */
+  async resolveDeploymentStatus(
+    deploymentId: string
+  ): Promise<{ status: WorkerDeploymentStatus; deployingSince: Date } | null> {
+    const deployment = await this.controlPlanePrimary.workerDeployment.findFirst({
+      where: { id: deploymentId },
+      select: { status: true, builtAt: true, createdAt: true },
+    });
+    return deployment
+      ? { status: deployment.status, deployingSince: deployment.builtAt ?? deployment.createdAt }
+      : null;
+  }
+
   async resolveEnvDeletionState(environmentId: string): Promise<EnvDeletionState | null> {
     const env = await this.controlPlanePrimary.runtimeEnvironment.findFirst({
       where: { id: environmentId },
@@ -520,6 +534,7 @@ export class ControlPlaneResolver {
         deployment: {
           id: promotion.deployment.id,
           friendlyId: promotion.deployment.friendlyId,
+          status: promotion.deployment.status,
           imageReference: promotion.deployment.imageReference,
           imagePlatform: promotion.deployment.imagePlatform,
           templateKey: promotion.deployment.templateKey,
@@ -554,6 +569,7 @@ export class ControlPlaneResolver {
       deployment: {
         id: latestV2Deployment.id,
         friendlyId: latestV2Deployment.friendlyId,
+        status: latestV2Deployment.status,
         imageReference: latestV2Deployment.imageReference,
         imagePlatform: latestV2Deployment.imagePlatform,
         templateKey: latestV2Deployment.templateKey,

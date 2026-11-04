@@ -50,6 +50,9 @@ export const FEATURE_FLAG = {
   queueMetricsUiEnabled: "queueMetricsUiEnabled",
   // Build path for CLI deploys, resolved by DeploymentService.getDeploySettings.
   deployBuildPath: "deployBuildPath",
+  // Global only, read per dequeue from the in-memory flag snapshot; RUN_ENGINE_DEPLOYMENT_STATUS_MODE
+  // applies when unset.
+  deploymentStatusMode: "deploymentStatusMode",
   deployBuildPathPreview: "deployBuildPathPreview",
   deployBuildPathStaging: "deployBuildPathStaging",
   deployBuildPathProduction: "deployBuildPathProduction",
@@ -223,6 +226,7 @@ export const FeatureFlagCatalog = {
   // separate). Off unless enabled for the org.
   [FEATURE_FLAG.queueMetricsUiEnabled]: z.coerce.boolean(),
   [FEATURE_FLAG.deployBuildPath]: DeployBuildPath,
+  [FEATURE_FLAG.deploymentStatusMode]: z.enum(["off", "shadow", "enforce"]),
   [FEATURE_FLAG.deployBuildPathPreview]: DeployBuildPath,
   [FEATURE_FLAG.deployBuildPathStaging]: DeployBuildPath,
   [FEATURE_FLAG.deployBuildPathProduction]: DeployBuildPath,
@@ -281,6 +285,8 @@ export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runOpsMintShardSetFlippedAt,
   FEATURE_FLAG.runOpsMintShardOverride,
   FEATURE_FLAG.oidcIntegrationGuidesPublished,
+  // Read per dequeue from the global flag snapshot only; the org's flags aren't loaded there.
+  FEATURE_FLAG.deploymentStatusMode,
 ];
 
 export type OrgLockedFlagEffect = "live" | "ignored" | "derived";
@@ -299,6 +305,7 @@ export const ORG_LOCKED_FLAG_EFFECT: Partial<Record<FeatureFlagKey, OrgLockedFla
   [FEATURE_FLAG.runOpsMintShardSetFlippedAt]: "ignored",
   [FEATURE_FLAG.runOpsMintShardOverride]: "ignored",
   [FEATURE_FLAG.oidcIntegrationGuidesPublished]: "ignored",
+  [FEATURE_FLAG.deploymentStatusMode]: "ignored",
   [FEATURE_FLAG.runOpsMintKindPrev]: "derived",
   [FEATURE_FLAG.runOpsMintKindFlippedAt]: "derived",
 };

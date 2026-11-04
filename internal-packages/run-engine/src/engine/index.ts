@@ -597,6 +597,9 @@ export class RunEngine {
       runAttemptSystem: this.runAttemptSystem,
       machines: this.options.machines,
       billingCache: this.billingCache,
+      deploymentWaitRetryMs: this.options.queue.deploymentWaitRetryMs,
+      deploymentWaitMaxMs: this.options.queue.deploymentWaitMaxMs,
+      deploymentStatusMode: this.options.queue.deploymentStatusMode,
     });
 
     this.#startWorkerQueueObserver();
