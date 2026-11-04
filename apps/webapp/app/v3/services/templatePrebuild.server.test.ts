@@ -840,6 +840,88 @@ describe("requestBuilds", () => {
     }
   });
 
+  // Catches: a builder with every build slot taken leaving a migration's builds unbuilt.
+  postgresTest("retries a 429 from the builder until a build slot is free", async ({ prisma }) => {
+    let calls = 0;
+    const server = await builder((req, body, res) => {
+      calls += 1;
+      (calls < 3
+        ? reply(429, { code: "busy" })
+        : reply(201, { template_id: TEMPLATE_KEY, template_source: "built" }))(req, body, res);
+    });
+    try {
+      const project = await createProject(prisma);
+      const row = await createDeployment(prisma, project, {
+        status: "DEPLOYED",
+        imageReference: PINNED,
+      });
+      const service = new TemplatePrebuildService(
+        prisma,
+        config({ url: server.url, busyRetryMs: 10 })
+      );
+
+      const [result] = await service.requestBuilds({ deploymentIds: [row.id] });
+
+      expect(result).toMatchObject({ outcome: "built", templateKey: TEMPLATE_KEY });
+      expect(server.requests).toHaveLength(3);
+    } finally {
+      await server.close();
+    }
+  });
+
+  // Catches: a build node-proxy timed out on being recorded as failed while it carries on.
+  postgresTest("asks again after node-proxy times out on a build", async ({ prisma }) => {
+    let calls = 0;
+    const server = await builder((req, body, res) => {
+      calls += 1;
+      (calls < 2
+        ? reply(504, { error: "no answer within 300s" })
+        : reply(201, { template_id: TEMPLATE_KEY, template_source: "mirror" }))(req, body, res);
+    });
+    try {
+      const project = await createProject(prisma);
+      const row = await createDeployment(prisma, project, {
+        status: "DEPLOYED",
+        imageReference: PINNED,
+      });
+      const service = new TemplatePrebuildService(
+        prisma,
+        config({ url: server.url, busyRetryMs: 10 })
+      );
+
+      const [result] = await service.requestBuilds({ deploymentIds: [row.id] });
+
+      expect(result).toMatchObject({ outcome: "already_there", templateKey: TEMPLATE_KEY });
+      expect(server.requests).toHaveLength(2);
+    } finally {
+      await server.close();
+    }
+  });
+
+  // Catches: a gateway answering 504 at once being retried with no wait until the budget ends.
+  postgresTest("waits before asking again after a 504", async ({ prisma }) => {
+    const server = await builder(reply(504, { error: "no answer" }));
+    try {
+      const project = await createProject(prisma);
+      const row = await createDeployment(prisma, project, {
+        status: "DEPLOYED",
+        imageReference: PINNED,
+      });
+      const service = new TemplatePrebuildService(
+        prisma,
+        config({ url: server.url, busyRetryMs: 1_000, timeoutMs: 2_000 })
+      );
+
+      const [result] = await service.requestBuilds({ deploymentIds: [row.id] });
+
+      expect(result).toMatchObject({ outcome: "failed" });
+      // Waits are 500 to 1,500 ms, so at most four requests fit in the 2,000 ms budget.
+      expect(server.requests.length).toBeLessThanOrEqual(4);
+    } finally {
+      await server.close();
+    }
+  });
+
   postgresTest(
     "reports a stored key the mirror already had as already_there",
     async ({ prisma }) => {

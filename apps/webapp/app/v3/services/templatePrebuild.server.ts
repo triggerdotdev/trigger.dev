@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from "node:timers/promises";
 import { getMeter, type Meter } from "@internal/tracing";
 import type { MachinePresetName } from "@trigger.dev/core/v3";
 import type { Prisma, RuntimeEnvironmentType } from "@trigger.dev/database";
@@ -86,7 +87,13 @@ export type TemplateBuilderConfig = {
   shadowRolloutPct: number;
   /** Worker groups that are their own compute backing (see selfBackingWorkerGroups). */
   mixedRuntimeWorkerGroups: readonly string[];
+  /** Mean wait before retrying a 429 (no free build slot) or 504 (build outlasted the proxy). */
+  busyRetryMs?: number;
 };
+
+// About one build: a builder with every slot taken refuses at once, so a slot frees up as a
+// build ends. node-proxy drops fcrun's Retry-After, so the wait is fixed here.
+const BUSY_RETRY_MS = 30_000;
 
 export type TemplateCreateRequest = {
   image: string;
@@ -477,17 +484,32 @@ export class TemplatePrebuildService {
     let outcome: TemplateBuildOutcome;
     let reason: TemplateKeyStoreFailure | undefined;
     let templateKey: string | undefined;
+    const remaining = () => timeoutMs - (performance.now() - startedAt);
     try {
-      const response = await fetch(new URL("/templates", this.config.url).toString(), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(this.config.token ? { Authorization: `Bearer ${this.config.token}` } : {}),
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-      const text = await response.text();
+      const post = () =>
+        fetch(new URL("/templates", this.config.url).toString(), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(this.config.token ? { Authorization: `Bearer ${this.config.token}` } : {}),
+          },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(Math.max(0, Math.floor(remaining()))),
+        });
+      let response = await post();
+      let text = await response.text();
+      // Retried while the budget allows. A 429 means the builder started nothing. A 504 is
+      // node-proxy giving up on a build that carries on, so asking again joins or finds it. Both
+      // wait first, so a gateway answering 504 at once is not hammered.
+      while (response.status === 429 || response.status === 504) {
+        const wait = (this.config.busyRetryMs ?? BUSY_RETRY_MS) * (0.5 + Math.random());
+        if (remaining() <= wait) {
+          break;
+        }
+        await sleep(wait);
+        response = await post();
+        text = await response.text();
+      }
       const parsed = parseResponse(text);
 
       if (response.ok) {
@@ -504,7 +526,6 @@ export class TemplatePrebuildService {
           squashfsMs: parsed?.squashfs_ms,
         });
         // The write keeps going if it outlasts the timeout, but wait mode stops waiting.
-        const remaining = () => timeoutMs - (performance.now() - startedAt);
         const write = this.storeTemplateKey(deployment.id, image, parsed?.template_id, log);
         const cached = write.then((result) =>
           result === "stored"
