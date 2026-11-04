@@ -2,6 +2,7 @@ import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { publicAppOrigin } from "~/services/adminOrigin.server";
 import { inviteMembers } from "~/models/member.server";
 import { checkInviteRateLimit, InviteRateLimitError } from "~/services/inviteRateLimiter.server";
 import { logger } from "~/services/logger.server";
@@ -96,7 +97,7 @@ export const action = createActionPATApiRoute(
           orgName: invite.organization.title,
           inviterName: invite.inviter.name ?? undefined,
           inviterEmail: invite.inviter.email,
-          inviteLink: `${env.LOGIN_ORIGIN}${acceptInvitePath(invite.token)}`,
+          inviteLink: `${publicAppOrigin()}${acceptInvitePath(invite.token)}`,
         });
       } catch (error) {
         logger.error("Failed to send invite email", { error, orgParam: params.orgParam });

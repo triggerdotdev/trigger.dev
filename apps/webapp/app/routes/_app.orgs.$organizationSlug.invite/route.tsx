@@ -26,6 +26,7 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
+import { publicAppOrigin } from "~/services/adminOrigin.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { inviteMembers } from "~/models/member.server";
 import { checkInviteRateLimit, InviteRateLimitError } from "~/services/inviteRateLimiter.server";
@@ -255,7 +256,7 @@ export const action = dashboardAction(
             orgName: invite.organization.title,
             inviterName: invite.inviter.name ?? undefined,
             inviterEmail: invite.inviter.email,
-            inviteLink: `${env.LOGIN_ORIGIN}${acceptInvitePath(invite.token)}`,
+            inviteLink: `${publicAppOrigin()}${acceptInvitePath(invite.token)}`,
           });
         } catch (error) {
           console.error("Failed to send invite email");

@@ -13,6 +13,7 @@ import { generateJWT, validateJWT } from "@trigger.dev/core/v3/jwt";
 import { Ratelimit } from "@upstash/ratelimit";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { publicAppOrigin } from "~/services/adminOrigin.server";
 import { sendEmail } from "~/services/email.server";
 import { logger } from "~/services/logger.server";
 import { createRedisRateLimitClient, RateLimiter } from "~/services/rateLimiter.server";
@@ -151,7 +152,7 @@ export async function requestEmailChange(
   await prisma.user.update({ where: { id: user.id }, data: { pendingEmail: email } });
 
   const token = await signEmailChangeToken(env.SESSION_SECRET, { userId: user.id, email });
-  const confirmLink = `${env.LOGIN_ORIGIN}${EMAIL_CHANGE_CONFIRM_PATH}?token=${encodeURIComponent(token)}`;
+  const confirmLink = `${publicAppOrigin()}${EMAIL_CHANGE_CONFIRM_PATH}?token=${encodeURIComponent(token)}`;
 
   try {
     await sendEmail({ email: "confirm-email-change", to: email, confirmLink });
