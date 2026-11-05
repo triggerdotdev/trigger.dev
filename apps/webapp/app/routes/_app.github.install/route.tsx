@@ -7,6 +7,7 @@ import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { newOrganizationPath } from "~/utils/pathBuilder";
 import { logger } from "~/services/logger.server";
 import { sanitizeRedirectPath } from "~/utils";
+import { canConnectIntegration } from "~/v3/deploymentAccess.server";
 
 const QuerySchema = z.object({
   org_slug: z.string(),
@@ -53,6 +54,10 @@ export const loader = dashboardLoader(
 
     if (!org) {
       throw redirect(newOrganizationPath());
+    }
+
+    if (!(await canConnectIntegration(org.id, "github"))) {
+      throw redirect(redirect_to);
     }
 
     const { url, cookieHeader } = await createGitHubAppInstallSession(org.id, redirect_to);

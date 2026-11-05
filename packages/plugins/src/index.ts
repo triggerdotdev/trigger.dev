@@ -129,6 +129,18 @@ export type {
 } from "./billing.js";
 
 export type {
+  DeploymentAccessBillingStatus,
+  DeploymentAccessCheck,
+  DeploymentAccessController,
+  DeploymentAccessDecision,
+  DeploymentAccessPlugin,
+  DeploymentAccessPluginConfig,
+  DeploymentAccessStage,
+  DeploymentIntegrationAccess,
+  SlidingWindowHitResult,
+} from "./deploymentAccess.js";
+
+export type {
   AcknowledgeSecurityNoticeResult,
   SecurityNotice,
   SecurityNoticeApiKeyStatus,

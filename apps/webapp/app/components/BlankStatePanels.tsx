@@ -361,6 +361,7 @@ type DeployNowProps = {
   connectedGithubRepository?: { repository: { fullName: string; htmlUrl: string } };
   environmentGitHubBranch?: string;
   deployNowEnabled?: boolean;
+  githubConnectAvailable?: boolean;
   isPlatformConfigured?: boolean;
   canDeployNow?: boolean;
   atomicVercelUrl?: string;
@@ -695,6 +696,7 @@ function DeploymentOnboardingSteps(props: DeployNowProps = {}) {
     <PackageManagerProvider>
       <DeploymentOnboardingFrame
         enhanced={!!githubOnboarding}
+        githubTab={props.githubConnectAvailable !== false}
         title={environmentFullTitle(environment)}
         environment={environment}
         help={

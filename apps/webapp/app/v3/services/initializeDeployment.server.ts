@@ -13,6 +13,11 @@ import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { createRemoteImageBuild, remoteBuildsEnabled } from "../remoteImageBuilder.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
+import {
+  checkDeployAccess,
+  DeploymentAccessError,
+  deniedMessage,
+} from "../deploymentAccess.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { resolveDeployBaseImages } from "../deployBaseImages.server";
 import { getDeploymentImageRef } from "../getDeploymentImageRef.server";
@@ -65,6 +70,26 @@ export class InitializeDeploymentService extends BaseService {
     options?: { cliVersion?: string; redeployOf?: string; buildEnvVars?: EncryptedSecretValue }
   ): Promise<InitializeDeploymentResult> {
     return this.traceWithEnv("call", environment, async (span) => {
+      // An older CLI attaching to a deployment the build server already created (the commitSha
+      // workaround below) isn't a new deploy, so it only gets the read-only check.
+      const attachingToExistingDeployment =
+        payload.gitMeta?.commitSha?.startsWith("deployment_") === true;
+      const access = await checkDeployAccess({
+        stage: attachingToExistingDeployment ? "preflight" : "initialize",
+        organizationId: environment.organization.id,
+        projectId: environment.project.id,
+        environmentId: environment.id,
+        contentHash: payload.contentHash,
+        hasGitMetadata: Boolean(payload.gitMeta?.commitSha || payload.gitMeta?.remoteUrl),
+        triggeredVia: payload.triggeredVia,
+        cliVersion: options?.cliVersion,
+      });
+      if (!access.allowed && access.kind === "denied") {
+        throw new DeploymentAccessError(deniedMessage(access));
+      }
+      // A limit is applied further down, after the idempotent external-id short-circuit, so a
+      // re-run that creates nothing is never refused.
+
       let runtime: BuildRuntime;
       try {
         runtime = resolveBuildRuntime(payload.runtime);
@@ -221,6 +246,8 @@ export class InitializeDeploymentService extends BaseService {
           isPromoted: reuse.isPromoted,
         };
       }
+
+      if (!access.allowed) throw new DeploymentAccessError(deniedMessage(access));
 
       span.setAttribute("outcome", "created");
 

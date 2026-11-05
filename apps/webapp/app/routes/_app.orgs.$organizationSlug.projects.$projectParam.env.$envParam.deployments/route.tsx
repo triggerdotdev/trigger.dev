@@ -208,6 +208,7 @@ export default function Page() {
     redeployCutoff,
     canDeployNow,
     deployNowEnabled,
+    githubConnectAvailable,
     isPlatformConfigured,
     showGitHubOnboarding: loaderShowsGitHubOnboarding,
     onboardingDetails: loaderOnboardingDetails,
@@ -484,6 +485,7 @@ export default function Page() {
                   connectedGithubRepository={connectedGithubRepository}
                   environmentGitHubBranch={environmentGitHubBranch}
                   deployNowEnabled={deployNowEnabled}
+                  githubConnectAvailable={githubConnectAvailable}
                   isPlatformConfigured={isPlatformConfigured}
                   canDeployNow={canDeployNow}
                   atomicVercelUrl={atomicVercelUrl}

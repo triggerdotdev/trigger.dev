@@ -9,6 +9,7 @@ import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { deploymentOnboardingEnabled } from "~/v3/services/deploymentOnboardingEnabled.server";
 import { BranchTrackingConfigSchema, getTrackedBranchForEnvironment } from "~/v3/github";
 import { TriggerDeployNowService } from "~/v3/services/triggerDeployNow.server";
+import { checkDeployAccess } from "~/v3/deploymentAccess.server";
 
 export function deployNowPath(
   organizationSlug: string,
@@ -40,7 +41,11 @@ export const action = dashboardAction(
 
     // Feature-flag gate: the button is hidden when off, but the action is the
     // real security boundary.
-    if (!(await deploymentOnboardingEnabled(project.organizationId))) {
+    if (
+      !(await deploymentOnboardingEnabled(project.organizationId)) ||
+      !(await checkDeployAccess({ stage: "preflight", organizationId: project.organizationId }))
+        .allowed
+    ) {
       return json({ ok: false, error: "Not available" }, { status: 403 });
     }
 

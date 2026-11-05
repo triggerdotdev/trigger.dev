@@ -19,6 +19,7 @@ import { ButtonSpinner } from "~/components/primitives/Spinner";
 import { prisma } from "~/db.server";
 import { authenticator } from "~/services/auth.server";
 import { logger } from "~/services/logger.server";
+import { canConnectIntegration } from "~/v3/deploymentAccess.server";
 import { requireUserId } from "~/services/session.server";
 import { ssoRedirectForEmail } from "~/services/ssoAutoDiscovery.server";
 import { confirmBasicDetailsPath, newProjectPath } from "~/utils/pathBuilder";
@@ -274,6 +275,10 @@ export async function action({ request }: ActionFunctionArgs) {
   if (!project) {
     logger.error("Project not found or access denied", { projectId, userId });
     return json({ error: "Project not found" }, { status: 404 });
+  }
+
+  if (!(await canConnectIntegration(project.organizationId, "vercel"))) {
+    return json({ error: "Couldn't connect this project to Vercel." }, { status: 403 });
   }
 
   const environment = await prisma.runtimeEnvironment.findFirst({
