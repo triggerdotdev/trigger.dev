@@ -279,3 +279,16 @@ describe("previous workload token key", () => {
     ).toBe(true);
   });
 });
+
+describe("guest snapshot cleaner", () => {
+  // Catches: the cleaner turning on, or starting without a proxy or token, by default.
+  it("is off by default and needs a node proxy URL and a token path when enabled", () => {
+    expect(Env.parse(base).GUEST_SNAPSHOT_CLEANER_ENABLED).toBe(false);
+    const enabled = { ...base, GUEST_SNAPSHOT_CLEANER_ENABLED: "true" };
+    const proxy = { GUEST_SNAPSHOT_CLEANER_NODE_PROXY_URL: "http://10.0.0.1:8083" };
+    const token = { GUEST_SNAPSHOT_CLEANER_TOKEN_PATH: "/var/run/secrets/cleaner/token" };
+    expect(Env.safeParse({ ...enabled, ...proxy }).success).toBe(false);
+    expect(Env.safeParse({ ...enabled, ...token }).success).toBe(false);
+    expect(Env.safeParse({ ...enabled, ...proxy, ...token }).success).toBe(true);
+  });
+});

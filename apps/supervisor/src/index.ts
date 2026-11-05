@@ -40,6 +40,7 @@ import { resolveResponseSchema } from "./clients/responseSchemas.js";
 import { collectDefaultMetrics, Counter, Gauge, Histogram } from "prom-client";
 import { register } from "./metrics.js";
 import { PodCleaner } from "./services/podCleaner.js";
+import { GuestSnapshotCleaner } from "./services/guestSnapshotCleaner.js";
 import { FailedPodHandler } from "./services/failedPodHandler.js";
 import { RunnerKillReporter } from "./services/runnerKills.js";
 import { dequeuedRun, RunReleaser } from "./services/runReleases.js";
@@ -133,6 +134,7 @@ class ManagedSupervisor {
   private readonly warmStartVerifier?: WarmStartVerificationService;
 
   private readonly podCleaner?: PodCleaner;
+  private readonly guestSnapshotCleaner?: GuestSnapshotCleaner;
   private readonly failedPodHandler?: FailedPodHandler;
   private readonly backpressureMonitors: BackpressureMonitor[] = [];
   private readonly backpressureRedis?: Redis;
@@ -272,6 +274,26 @@ class ManagedSupervisor {
       });
       this.workloadManager = runCrdManager;
       this.workloadManagerBackend = "run-crd";
+
+      if (
+        env.GUEST_SNAPSHOT_CLEANER_ENABLED &&
+        env.GUEST_SNAPSHOT_CLEANER_NODE_PROXY_URL &&
+        env.GUEST_SNAPSHOT_CLEANER_TOKEN_PATH
+      ) {
+        this.logger.log("🧹 Guest snapshot cleaner enabled", {
+          nodeProxyUrl: env.GUEST_SNAPSHOT_CLEANER_NODE_PROXY_URL,
+          intervalMs: env.GUEST_SNAPSHOT_CLEANER_INTERVAL_MS,
+          minAgeMs: env.GUEST_SNAPSHOT_CLEANER_MIN_AGE_MS,
+        });
+        this.guestSnapshotCleaner = new GuestSnapshotCleaner({
+          nodeProxyUrl: env.GUEST_SNAPSHOT_CLEANER_NODE_PROXY_URL,
+          tokenPath: env.GUEST_SNAPSHOT_CLEANER_TOKEN_PATH,
+          minAgeMs: env.GUEST_SNAPSHOT_CLEANER_MIN_AGE_MS,
+          intervalMs: env.GUEST_SNAPSHOT_CLEANER_INTERVAL_MS,
+          client: () => this.workerSession.httpClient,
+          register,
+        });
+      }
     } else if (this.isKubernetes) {
       this.workloadManager = new KubernetesWorkloadManager(workloadManagerOptions);
       this.workloadManagerBackend = "kubernetes";
@@ -1078,6 +1100,7 @@ class ManagedSupervisor {
     // Optional services
     this.backpressureMonitors.forEach((m) => m.start());
     await this.podCleaner?.start();
+    this.guestSnapshotCleaner?.start();
     await this.failedPodHandler?.start();
     await this.restoreInformer?.start();
     await this.runnerKillInformer?.start();
@@ -1113,6 +1136,7 @@ class ManagedSupervisor {
     this.backpressureMonitors.forEach((m) => m.stop());
     await this.backpressureRedis?.quit();
     await this.podCleaner?.stop();
+    this.guestSnapshotCleaner?.stop();
     await this.failedPodHandler?.stop();
 
     // Last: it waits for the requests in flight, which can take until the timeout.

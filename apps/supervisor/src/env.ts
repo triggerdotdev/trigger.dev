@@ -204,6 +204,12 @@ export const Env = z
     COMPUTE_SNAPSHOTS_ENABLED: BoolEnv.default(false),
     COMPUTE_SNAPSHOT_DELAY_MS: z.coerce.number().int().min(0).max(60_000).default(5_000),
     COMPUTE_SNAPSHOT_DISPATCH_LIMIT: z.coerce.number().int().min(1).max(100).default(10),
+    // Deletes this node's suspend snapshots that no run can restore from any more.
+    GUEST_SNAPSHOT_CLEANER_ENABLED: BoolEnv.default(false),
+    GUEST_SNAPSHOT_CLEANER_INTERVAL_MS: z.coerce.number().int().positive().default(300_000),
+    GUEST_SNAPSHOT_CLEANER_MIN_AGE_MS: z.coerce.number().int().min(0).default(1_800_000),
+    GUEST_SNAPSHOT_CLEANER_NODE_PROXY_URL: z.string().url().optional(), // http://<host ip>:8083
+    GUEST_SNAPSHOT_CLEANER_TOKEN_PATH: z.string().optional(), // projected service account token
 
     // Kubernetes settings
     KUBERNETES_FORCE_ENABLED: BoolEnv.default(false),
@@ -484,6 +490,20 @@ export const Env = z
           "DELETE_CHECKPOINTS_ON_COMPLETION needs WORKLOAD_TOKEN_ENFORCEMENT set to log or enforce: the tenancy it deletes by comes from the deployment token, so with tokens disabled it would silently reclaim nothing",
         path: ["DELETE_CHECKPOINTS_ON_COMPLETION"],
       });
+    }
+    if (data.GUEST_SNAPSHOT_CLEANER_ENABLED) {
+      for (const key of [
+        "GUEST_SNAPSHOT_CLEANER_NODE_PROXY_URL",
+        "GUEST_SNAPSHOT_CLEANER_TOKEN_PATH",
+      ] as const) {
+        if (!data[key]) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `${key} is required when GUEST_SNAPSHOT_CLEANER_ENABLED is true`,
+            path: [key],
+          });
+        }
+      }
     }
     if (
       data.TRIGGER_DEQUEUE_BACKPRESSURE_ENABLED &&
