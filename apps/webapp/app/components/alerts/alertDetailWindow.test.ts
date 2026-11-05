@@ -40,6 +40,13 @@ describe("alertDetailWindow", () => {
     expect(window.until.getTime()).toBe(to);
     expect(window.since.getTime()).toBe(to - 7 * DAY);
   });
+
+  // Catches: a 10-year period scanning past the detail window cap.
+  it("fails when a long period is not clamped to 90 days", () => {
+    const window = alertDetailWindow({ period: "3650d" }, lifetime, undefined, 90);
+    expect(window.until.getTime() - window.since.getTime()).toBe(90 * DAY);
+    expect(window.clamped).toBe(true);
+  });
 });
 
 describe("alertDetailWindow from creation", () => {

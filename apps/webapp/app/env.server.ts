@@ -1158,6 +1158,7 @@ const EnvironmentSchema = z
     ALERT_FAILURE_RATE_MIN_VOLUME: z.coerce.number().int().default(10),
     ALERT_CHECKPOINT_LOOKBACK_SEC: z.coerce.number().int().min(0).default(3600),
     ALERT_SEEN_RETENTION_SEC: z.coerce.number().int().min(7200).default(604800),
+    ALERT_DETAIL_MAX_WINDOW_DAYS: z.coerce.number().int().min(1).default(90),
     ALERT_DELIVERY_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(8),
     ALERT_DELIVERY_MAX_AGE_HOURS: z.coerce.number().positive().default(24),
     ALERT_SNAPSHOT_RANGE_SEC: z.coerce

@@ -79,6 +79,7 @@ export function AlertDetailFilterBar({ lifetime }: { lifetime?: DetailWindow }) 
     <TimeFilter
       defaultPeriod={DETAIL_DEFAULT_PERIOD}
       labelName="Occurred"
+      period={lifetime ? "" : undefined}
       from={lifetime ? String(lifetime.since.getTime()) : undefined}
       to={lifetime ? String(lifetime.until.getTime()) : undefined}
     />
@@ -97,7 +98,7 @@ type AlertDetailChartProps = {
   healthBands: HealthBandRow[];
   componentSeries?: HealthQuerySeries[];
   limitTiles?: LimitTileSeries[];
-  window: DetailWindow & { isLifetime?: boolean; explicitTo?: boolean };
+  window: DetailWindow & { isLifetime?: boolean; explicitTo?: boolean; clamped?: boolean };
   now: Date;
   createdAt?: Date;
   queryGroups?: string[];
@@ -184,7 +185,9 @@ export function AlertDetailChart(rawProps: AlertDetailChartProps) {
 
   return (
     <DetailChartBlock
-      toolbar={<AlertDetailFilterBar lifetime={window.isLifetime ? window : undefined} />}
+      toolbar={
+        <AlertDetailFilterBar lifetime={window.isLifetime || window.clamped ? window : undefined} />
+      }
     >
       <div className="min-h-[210px] flex-1">
         {limitsUnloaded ? (

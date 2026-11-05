@@ -25,7 +25,6 @@ import {
   type RowCursor,
 } from "../evaluators/queryEvaluator.server";
 import { executeQuery, type QueryConcurrencyLane } from "~/services/queryService.server";
-import { getLimit } from "~/services/platform.v3.server";
 import { logger } from "~/services/logger.server";
 import { env } from "~/env.server";
 import { z } from "zod";
@@ -49,6 +48,7 @@ export function createQueryRowRunner(
       concurrency: options.lane ? { lane: options.lane } : undefined,
       userAuthoredQuery: options.userAuthoredQuery,
       skipTimeConstraint: opts?.fullRetention,
+      skipQueryPeriodLimit: true,
       windowConditions: opts?.windowConditions,
       querySettings: opts?.maxRows ? { maxRows: opts.maxRows } : undefined,
       // Zone-less DateTime output is read as UTC.
@@ -253,11 +253,6 @@ async function evaluateQueryBinding(
   const checkpoint = storedCheckpoint(alert);
   const activatedFloor = storedActivatedFloor(alert);
   const usesCheckpoint = capability.binding.ctx?.includes("checkpoint") ?? false;
-  const floor = capability.binding.fullRetention
-    ? new Date(
-        now.getTime() - (await getLimit(alert.organizationId, "queryPeriodDays", 30)) * 86_400_000
-      )
-    : undefined;
   const observingSince = activatedFloor
     ? new Date(Math.max(alert.createdAt.getTime(), Date.parse(activatedFloor)))
     : alert.createdAt;
@@ -265,7 +260,7 @@ async function evaluateQueryBinding(
     checkpoint ? new Date(checkpoint) : undefined,
     observingSince,
     deps.checkpointLookbackSec,
-    { now, seenRetentionSec: deps.seenRetentionSec, floor }
+    { now, seenRetentionSec: deps.seenRetentionSec }
   );
   const forwardSince = checkpoint
     ? new Date(Math.max(lateSince.getTime(), Math.floor(Date.parse(checkpoint) / 60_000) * 60_000))
@@ -276,10 +271,7 @@ async function evaluateQueryBinding(
   const savedWindow = storedCursor(alert, "lateCursor", rowKey, timeColumns)
     ? storedLateWindow(alert)
     : undefined;
-  const lateMinSince = Math.max(
-    now.getTime() - (deps.seenRetentionSec - deps.checkpointLookbackSec) * 1000,
-    floor?.getTime() ?? 0
-  );
+  const lateMinSince = now.getTime() - (deps.seenRetentionSec - deps.checkpointLookbackSec) * 1000;
   const resumeFrom = storedLateResumeFrom(alert);
   const lateRange = savedWindow
     ? {

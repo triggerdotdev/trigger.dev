@@ -193,7 +193,8 @@ export const loader = dashboardLoader(
         to: parseTimestamp(toStr),
       },
       rawAlert ? alertLifetimeWindow(rawAlert) : undefined,
-      rawAlert?.createdAt
+      rawAlert?.createdAt,
+      env.ALERT_DETAIL_MAX_WINDOW_DAYS
     );
 
     const presenter = new AlertDetailPresenter();

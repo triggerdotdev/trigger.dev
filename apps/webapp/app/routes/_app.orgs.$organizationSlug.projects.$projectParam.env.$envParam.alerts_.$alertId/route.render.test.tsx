@@ -237,19 +237,22 @@ function makeAlert(overrides: Partial<AlertDetail> = {}): AlertDetail {
   };
 }
 
-function render(node: React.ReactNode) {
-  const router = createMemoryRouter([
-    {
-      path: "/",
-      element: (
-        <OperatingSystemContextProvider platform="mac">
-          <ShortcutsProvider>
-            <LocaleContextProvider locales={["en-US"]}>{node}</LocaleContextProvider>
-          </ShortcutsProvider>
-        </OperatingSystemContextProvider>
-      ),
-    },
-  ]);
+function render(node: React.ReactNode, url = "/") {
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/",
+        element: (
+          <OperatingSystemContextProvider platform="mac">
+            <ShortcutsProvider>
+              <LocaleContextProvider locales={["en-US"]}>{node}</LocaleContextProvider>
+            </ShortcutsProvider>
+          </OperatingSystemContextProvider>
+        ),
+      },
+    ],
+    { initialEntries: [url] }
+  );
   return renderToStaticMarkup(<RouterProvider router={router} />);
 }
 
@@ -352,6 +355,15 @@ describe("AlertDetailFilterBar", () => {
     const html = render(<AlertDetailFilterBar lifetime={lifetime} />);
     expect(html).toContain("Jan 1");
     expect(html).not.toContain("7 days");
+  });
+
+  // Catches: a clamped window labelled with the URL period instead of its dates.
+  it("fails when a clamped window shows the requested period", () => {
+    const until = new Date("2026-04-01T00:00:00Z");
+    const clamped = { since: new Date(until.getTime() - 90 * 86_400_000), until };
+    const html = render(<AlertDetailFilterBar lifetime={clamped} />, "/?period=3650d");
+    expect(html).toContain("Jan 1");
+    expect(html).not.toContain("3650");
   });
 });
 
