@@ -160,6 +160,8 @@ export function AlertDetailSidebar({
   actions,
   statusAction,
   footer,
+  alerts,
+  inGroup,
 }: {
   alert: AlertDetail;
   environmentTitle: string;
@@ -167,6 +169,8 @@ export function AlertDetailSidebar({
   actions?: React.ReactNode;
   statusAction?: React.ReactNode;
   footer?: React.ReactNode;
+  alerts?: { id: string; name: string; path: string }[];
+  inGroup?: boolean;
 }) {
   return (
     <div className="grid h-full grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-background-bright">
@@ -176,19 +180,21 @@ export function AlertDetailSidebar({
       </div>
       <div className="min-h-0 overflow-y-auto px-3 py-3">
         <Property.Table>
-          <Property.Item className="gap-1">
-            <Property.Label>Alert status</Property.Label>
-            <Property.Value>
-              <div className="flex items-center justify-between gap-1.5">
-                <AlertStatusBadge
-                  status={alert.status.status}
-                  label={statusLabel(alert.status)}
-                  prominence="bright"
-                />
-                {statusAction}
-              </div>
-            </Property.Value>
-          </Property.Item>
+          {!inGroup && (
+            <Property.Item className="gap-1">
+              <Property.Label>Alert status</Property.Label>
+              <Property.Value>
+                <div className="flex items-center justify-between gap-1.5">
+                  <AlertStatusBadge
+                    status={alert.status.status}
+                    label={statusLabel(alert.status)}
+                    prominence="bright"
+                  />
+                  {statusAction}
+                </div>
+              </Property.Value>
+            </Property.Item>
+          )}
 
           <Property.Item className="gap-1">
             <Property.Label>Condition</Property.Label>
@@ -204,17 +210,34 @@ export function AlertDetailSidebar({
             </Property.Value>
           </Property.Item>
 
-          <Property.Item>
-            <Property.Label>Scope</Property.Label>
-            <Property.Value>
-              <span className="mr-1 text-text-dimmed">{environmentTitle} ·</span>
-              {objectLinkPath && alert.objectLink ? (
-                <TextLink to={objectLinkPath}>{alert.objectLink.name}</TextLink>
-              ) : (
-                <span>{alert.scopeSummary}</span>
-              )}
-            </Property.Value>
-          </Property.Item>
+          {alerts && (
+            <Property.Item className="gap-1">
+              <Property.Label>Alerts</Property.Label>
+              <Property.Value>
+                <ul className="flex flex-col gap-1 rounded-md border border-grid-bright px-2 py-3 text-sm">
+                  {alerts.map((member) => (
+                    <li key={member.id} className="min-w-0 truncate">
+                      <TextLink to={member.path}>{member.name}</TextLink>
+                    </li>
+                  ))}
+                </ul>
+              </Property.Value>
+            </Property.Item>
+          )}
+
+          {!alerts && (
+            <Property.Item>
+              <Property.Label>Scope</Property.Label>
+              <Property.Value>
+                <span className="mr-1 text-text-dimmed">{environmentTitle} ·</span>
+                {objectLinkPath && alert.objectLink ? (
+                  <TextLink to={objectLinkPath}>{alert.objectLink.name}</TextLink>
+                ) : (
+                  <span>{alert.scopeSummary}</span>
+                )}
+              </Property.Value>
+            </Property.Item>
+          )}
 
           {alert.compiledQuery && (
             <Property.Item className="gap-1">
@@ -246,14 +269,16 @@ export function AlertDetailSidebar({
             </Property.Value>
           </Property.Item>
 
-          <Property.Item>
-            <Property.Label>
-              {alert.kind === "occurrence" ? "Occurrences" : "Raised"}
-            </Property.Label>
-            <Property.Value>
-              <span className="tabular-nums">{alert.occurrenceCount.toLocaleString("en")}</span>
-            </Property.Value>
-          </Property.Item>
+          {!inGroup && (
+            <Property.Item>
+              <Property.Label>
+                {alert.kind === "occurrence" ? "Occurrences" : "Raised"}
+              </Property.Label>
+              <Property.Value>
+                <span className="tabular-nums">{alert.occurrenceCount.toLocaleString("en")}</span>
+              </Property.Value>
+            </Property.Item>
+          )}
 
           {alert.firstEventAt && alert.lastEventAt && (
             <>
@@ -272,53 +297,57 @@ export function AlertDetailSidebar({
             </>
           )}
 
-          <Property.Item>
-            <Property.Label>Behavior</Property.Label>
-            <Property.Value>{alert.behaviorLabel}</Property.Value>
-          </Property.Item>
+          {!inGroup && (
+            <Property.Item>
+              <Property.Label>Behavior</Property.Label>
+              <Property.Value>{alert.behaviorLabel}</Property.Value>
+            </Property.Item>
+          )}
 
-          <Property.Item className="gap-1">
-            <Property.Label>Notify</Property.Label>
-            <Property.Value>
-              <div className="flex flex-wrap gap-1.5">
-                {alert.notifiers.length === 0 ? (
-                  <Paragraph variant="extra-small" className="text-text-dimmed">
-                    No notifiers
-                  </Paragraph>
-                ) : (
-                  alert.notifiers.map((notifier) => {
-                    const issue = alert.channelIssues.find(
-                      (i) => `channel:${i.channelId}` === notifier.key
-                    );
-                    if (!issue) {
-                      return (
-                        <Badge key={notifier.key} variant="small">
-                          {notifier.label}
-                        </Badge>
+          {!inGroup && (
+            <Property.Item className="gap-1">
+              <Property.Label>Notify</Property.Label>
+              <Property.Value>
+                <div className="flex flex-wrap gap-1.5">
+                  {alert.notifiers.length === 0 ? (
+                    <Paragraph variant="extra-small" className="text-text-dimmed">
+                      No notifiers
+                    </Paragraph>
+                  ) : (
+                    alert.notifiers.map((notifier) => {
+                      const issue = alert.channelIssues.find(
+                        (i) => `channel:${i.channelId}` === notifier.key
                       );
-                    }
-                    return (
-                      <SimpleTooltip
-                        key={notifier.key}
-                        button={
-                          <span className="inline-flex items-center rounded bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning contrast-chip">
-                            {issue.reason === "deleted"
-                              ? "Deleted channel"
-                              : issue.reason === "disabled"
-                                ? "Disabled channel"
-                                : notifier.label}
-                          </span>
-                        }
-                        content="Edit channels to fix this notification channel."
-                        side="top"
-                        disableHoverableContent
-                      />
-                    );
-                  })
-                )}
-              </div>
-            </Property.Value>
-          </Property.Item>
+                      if (!issue) {
+                        return (
+                          <Badge key={notifier.key} variant="small">
+                            {notifier.label}
+                          </Badge>
+                        );
+                      }
+                      return (
+                        <SimpleTooltip
+                          key={notifier.key}
+                          button={
+                            <span className="inline-flex items-center rounded bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning contrast-chip">
+                              {issue.reason === "deleted"
+                                ? "Deleted channel"
+                                : issue.reason === "disabled"
+                                  ? "Disabled channel"
+                                  : notifier.label}
+                            </span>
+                          }
+                          content="Edit channels to fix this notification channel."
+                          side="top"
+                          disableHoverableContent
+                        />
+                      );
+                    })
+                  )}
+                </div>
+              </Property.Value>
+            </Property.Item>
+          )}
         </Property.Table>
         {footer}
       </div>

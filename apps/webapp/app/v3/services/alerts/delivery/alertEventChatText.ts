@@ -5,6 +5,7 @@ import {
   alertQueryDetail,
   CUSTOM_QUERY_CAPABILITY_KEY,
 } from "emails/src/alertRaisedContent";
+import { groupFiredDetail } from "../groupFired";
 
 function formatSeconds(sec: number): string {
   if (sec % 3600 === 0) return `${sec / 3600}h`;
@@ -73,6 +74,8 @@ export function alertEventChatText(
     const prefix = chatPrefix(event.type, name);
     return detail ? `${prefix}\n${detail}` : `${prefix}.`;
   }
+  const fired = groupFiredDetail(alert.capabilityKey, event.facts);
+  if (fired && event.type === "raised") return `Alert raised: ${name}. ${fired}.`;
   const reading =
     readingSentence((event.facts ?? {}) as Record<string, unknown>, title) ||
     (event.type === "raised" ? occurrenceSentence(event.facts, errorTitle) : "");

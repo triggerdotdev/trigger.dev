@@ -34,31 +34,76 @@ const MonitoringAlertsScopeParamsSchema = z.object({
   windowSec: alertParamsSchema.shape.windowSec,
 });
 
-export const MonitoringAlertsCreateBodySchema = z
-  .object({
-    capabilityKey: z.string(),
-    environment: z.enum(["dev", "staging", "prod", "preview"]),
-    branch: BranchSchema.optional(),
-    params: MonitoringAlertsScopeParamsSchema,
-    condition: conditionSchema,
-    behavior: behaviorSchema,
-    notifiers: z
-      .array(notifierRefSchema)
-      .min(1, "At least one notifier is required")
-      .refine((notifiers) => notifiers.every((n) => n.type !== "chat" || Boolean(n.chatId)), {
-        message: "A chat notifier must include chatId",
-      }),
-    name: z.string().optional(),
-    query: z.string().max(8192).optional(),
-    signal: z
-      .object({ mode: z.enum(["threshold", "absence", "match"]), measure: z.string().optional() })
-      .optional(),
-  })
+const AlertDraftBodySchema = z.object({
+  capabilityKey: z.string(),
+  params: MonitoringAlertsScopeParamsSchema,
+  condition: conditionSchema,
+  behavior: behaviorSchema,
+  notifiers: z
+    .array(notifierRefSchema)
+    .min(1, "At least one notifier is required")
+    .refine((notifiers) => notifiers.every((n) => n.type !== "chat" || Boolean(n.chatId)), {
+      message: "A chat notifier must include chatId",
+    }),
+  name: z.string().optional(),
+  query: z.string().max(8192).optional(),
+  signal: z
+    .object({ mode: z.enum(["threshold", "absence", "match"]), measure: z.string().optional() })
+    .optional(),
+});
+
+const queryOnlyForCustomQuery = {
+  check: (v: { capabilityKey: string; query?: string; signal?: unknown }) =>
+    v.capabilityKey === "custom.query" || (v.query === undefined && v.signal === undefined),
+  issue: {
+    message: "query and signal are only valid for the custom.query capability",
+    path: ["query"],
+  },
+};
+
+const MonitoringAlertsMemberBodySchema = AlertDraftBodySchema.strict().refine(
+  queryOnlyForCustomQuery.check,
+  queryOnlyForCustomQuery.issue
+);
+export type MonitoringAlertsMemberBody = z.infer<typeof MonitoringAlertsMemberBodySchema>;
+
+export const MonitoringAlertsCreateBodySchema = AlertDraftBodySchema.extend({
+  environment: z.enum(["dev", "staging", "prod", "preview"]),
+  branch: BranchSchema.optional(),
+  condition: z.union([
+    conditionSchema,
+    z.object({
+      kind: z.literal("state"),
+      stateKey: z.literal("group"),
+      compositeMode: z.enum(["any", "all"]).optional(),
+      memberAlertIds: z.array(z.string()).min(1),
+    }),
+  ]),
+  members: z.array(MonitoringAlertsMemberBodySchema).min(1).max(20).optional(),
+})
   .refine(branchOnlyForPreview.check, branchOnlyForPreview.issue)
-  .refine(
-    (v) => v.capabilityKey === "custom.query" || (v.query === undefined && v.signal === undefined),
-    { message: "query and signal are only valid for the custom.query capability", path: ["query"] }
-  );
+  .refine(queryOnlyForCustomQuery.check, queryOnlyForCustomQuery.issue)
+  .refine((v) => !isGroupBody(v) || groupSize(v) >= 2, {
+    message: "A group needs at least 2 alerts",
+    path: ["condition", "memberAlertIds"],
+  })
+  .refine((v) => !isGroupBody(v) || groupSize(v) <= 20, {
+    message: "A group can have at most 20 alerts",
+    path: ["condition", "memberAlertIds"],
+  });
+
+type GroupBodyShape = {
+  condition: { kind: string; memberAlertIds?: string[] };
+  members?: unknown[];
+};
+
+function isGroupBody(v: GroupBodyShape) {
+  return !!v.condition.memberAlertIds || !!v.members;
+}
+
+function groupSize(v: GroupBodyShape) {
+  return (v.condition.memberAlertIds?.length ?? 0) + (v.members?.length ?? 0);
+}
 
 export const MonitoringAlertsAnalyzeBodySchema = z.object({
   query: z.string().min(1).max(8192),

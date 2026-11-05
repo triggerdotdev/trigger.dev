@@ -1,7 +1,11 @@
 import { buildActivityTimeAxis } from "~/components/primitives/charts/activityTimeAxis";
 import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
 import type { MetricSeriesPoint } from "~/components/alerts/alertSeriesTypes";
-import { EVENT_CHART_COLOR, raiseBucket } from "./ActivityBars";
+import { EVENT_CHART_COLOR, raiseBucket, raisedLabel, raisedMarker } from "./ActivityBars";
+import {
+  raisedAwareTick,
+  type VerticalMarker,
+} from "~/components/primitives/charts/VerticalMarker";
 import {
   THRESHOLD_LINE_COLOR,
   WARNING_COLOR,
@@ -78,7 +82,7 @@ export function assignGroupColors(
   return next;
 }
 
-function multiSeriesConfig(
+export function multiSeriesConfig(
   keys: string[],
   colors?: Map<string, string>
 ): Record<string, { label: string; color: string }> {
@@ -117,6 +121,33 @@ function thresholdChartParts({
       : { value: { label, color: colors?.get(keys[0] ?? "") ?? EVENT_CHART_COLOR } },
     overlay: thresholdWarningOverlay(threshold, operator),
     referenceLineColor: threshold === null ? undefined : THRESHOLD_LINE_COLOR,
+  };
+}
+
+export function thresholdReferenceLine(threshold: number, formatted: string, compact = false) {
+  return {
+    y: threshold,
+    label: compact ? formatted : `Threshold ${formatted}`,
+    labelPlacement: "outside" as const,
+    color: THRESHOLD_LINE_COLOR,
+  };
+}
+
+export function thresholdXAxis(input: {
+  tickFormatter: (value: number) => string;
+  raiseTick?: number;
+  raiseLabel?: string;
+  marker?: VerticalMarker;
+  ticks: number[];
+}) {
+  return {
+    tickFormatter: (value: number) =>
+      value === input.raiseTick
+        ? `▲ raised ${input.raiseLabel ?? input.tickFormatter(value)}`
+        : input.tickFormatter(value),
+    ticks: input.ticks,
+    interval: 0 as const,
+    ...(input.marker ? { tick: raisedAwareTick(input.marker, input.tickFormatter) } : {}),
   };
 }
 
@@ -204,25 +235,22 @@ export function AlertThresholdChart({
           lineType="monotone"
           showDots={false}
           referenceLines={
-            threshold === null
-              ? undefined
-              : [
-                  {
-                    y: threshold,
-                    label: `Threshold ${format(threshold)}`,
-                    labelPlacement: "outside",
-                    color: THRESHOLD_LINE_COLOR,
-                  },
-                ]
+            threshold === null ? undefined : [thresholdReferenceLine(threshold, format(threshold))]
           }
           warningOverlay={thresholdWarningOverlay(threshold, operator)}
-          xAxisProps={{
-            tickFormatter: (value: number) =>
-              value === raiseTick ? `▲ raised ${tickFormatter(value)}` : tickFormatter(value),
+          xAxisProps={thresholdXAxis({
+            tickFormatter,
+            raiseTick,
+            raiseLabel: raisedAt ? raisedLabel(raisedAt, timeZone) : undefined,
+            marker: raisedMarker(data, raisedAt, timeZone, false),
             ticks: xTicks,
-            interval: 0,
+          })}
+          yAxisProps={{
+            tickFormatter: format,
+            width: Y_AXIS_WIDTH,
+            ticks,
+            domain,
           }}
-          yAxisProps={{ tickFormatter: format, width: Y_AXIS_WIDTH, ticks, domain }}
           tooltipLabelFormatter={tooltipLabelFormatter}
           tooltipValueFormatter={format}
         />
@@ -327,25 +355,22 @@ export function AlertMultiSeriesChart({
           lineType="monotone"
           showDots={false}
           referenceLines={
-            threshold === null
-              ? undefined
-              : [
-                  {
-                    y: threshold,
-                    label: `Threshold ${format(threshold)}`,
-                    labelPlacement: "outside",
-                    color: THRESHOLD_LINE_COLOR,
-                  },
-                ]
+            threshold === null ? undefined : [thresholdReferenceLine(threshold, format(threshold))]
           }
           warningOverlay={thresholdWarningOverlay(threshold, operator)}
-          xAxisProps={{
-            tickFormatter: (value: number) =>
-              value === raiseTick ? `▲ raised ${tickFormatter(value)}` : tickFormatter(value),
+          xAxisProps={thresholdXAxis({
+            tickFormatter,
+            raiseTick,
+            raiseLabel: raisedAt ? raisedLabel(raisedAt, timeZone) : undefined,
+            marker: raisedMarker(firstSeries, raisedAt, timeZone, false),
             ticks: xTicks,
-            interval: 0,
+          })}
+          yAxisProps={{
+            tickFormatter: format,
+            width: Y_AXIS_WIDTH,
+            ticks,
+            domain,
           }}
-          yAxisProps={{ tickFormatter: format, width: Y_AXIS_WIDTH, ticks, domain }}
           tooltipLabelFormatter={tooltipLabelFormatter}
           tooltipValueFormatter={format}
         />

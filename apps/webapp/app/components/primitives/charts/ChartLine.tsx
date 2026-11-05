@@ -15,6 +15,7 @@ import {
 import { ChartTooltip, ChartTooltipContent } from "~/components/primitives/charts/Chart";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
 import { CHART_MARGIN } from "./ChartBar";
+import { verticalMarkerLine, type VerticalMarker } from "./VerticalMarker";
 import { useChartContext } from "./ChartContext";
 import { ChartLineInvalid, ChartLineLoading, ChartLineNoData } from "./ChartLoading";
 import { useHasNoData } from "./ChartRoot";
@@ -135,6 +136,7 @@ export type ChartLineRendererProps = {
   tooltipValueFormatter?: (value: number) => string;
   /** Draw a dot at each data point. Defaults to true; turn off for dense/compact charts. */
   showDots?: boolean;
+  verticalMarker?: VerticalMarker;
   /**
    * Horizontal reference lines (e.g. limits); the y-domain extends to include them.
    *
@@ -273,6 +275,7 @@ export function ChartLineRenderer({
   tooltipValueFormatter,
   showDots = true,
   referenceLines,
+  verticalMarker,
   thresholdStroke,
   warningOverlay,
   referenceAreas,
@@ -556,6 +559,7 @@ export function ChartLineRenderer({
           className="pointer-events-none"
         />
       )}
+      {verticalMarker && verticalMarkerLine(verticalMarker)}
       {referenceLines?.map((line) => (
         <ReferenceLine
           key={`ref-${line.y}-${line.label ?? ""}`}

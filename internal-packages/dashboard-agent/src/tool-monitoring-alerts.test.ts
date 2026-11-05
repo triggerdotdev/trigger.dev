@@ -135,9 +135,11 @@ describe("monitoring alert tools time out instead of hanging", () => {
 });
 
 describe("describe_alert_capabilities area enum", () => {
-  it("lists queues/runs/health/limits/errors from the alert area schema", () => {
+  it("lists the alert areas except query and grouped", () => {
     const areaField = describeAlertCapabilitiesInputSchema.shape.area.unwrap();
-    expect(areaField.options).toEqual(alertAreaSchema.options.filter((a) => a !== "query"));
+    expect(areaField.options).toEqual(
+      alertAreaSchema.options.filter((a) => a !== "query" && a !== "grouped")
+    );
     expect(areaField.options).toEqual(["queues", "runs", "health", "limits", "errors"]);
   });
 });

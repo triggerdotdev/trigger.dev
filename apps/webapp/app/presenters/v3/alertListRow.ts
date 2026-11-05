@@ -23,6 +23,7 @@ export type AlertListRow = {
   scope: AlertParams["scope"] | undefined;
   status: AlertListRowStatus;
   hasChannelIssue: boolean;
+  groupId: string | null;
   inactiveReason?: "completed" | "expired" | "stopped";
   lastEventAt: Date | string | null;
   notifierCount: number;

@@ -392,8 +392,8 @@ describe("validateConditionParams", () => {
 });
 
 describe("registry", () => {
-  it("has 25 capabilities", () => {
-    expect(V1_CAPABILITIES).toHaveLength(25);
+  it("has 26 capabilities", () => {
+    expect(V1_CAPABILITIES).toHaveLength(26);
   });
 
   it("has unique keys", () => {
@@ -452,6 +452,13 @@ describe("registry", () => {
     }
     expect(bindings).toMatchInlineSnapshot(`
       {
+        "alerts.group": {
+          "scopes": [
+            "all",
+          ],
+          "table": undefined,
+          "template": "",
+        },
         "custom.query": {
           "scopes": [
             "all",
@@ -884,6 +891,7 @@ describe("registry", () => {
     "limits.webhooks.endpoint_rate": ["all"],
     "limits.webhooks.waiters": ["all"],
     "custom.query": ["all"],
+    "alerts.group": ["all"],
     "errors.new": ["task", "all"],
     "errors.occurred_again": ["errorGroup"],
   };
@@ -1039,6 +1047,8 @@ describe("limits", () => {
     );
     const health = listCapabilities({ area: "health" }).map((c) => c.key);
     expect(health).toEqual(["health.flow", "health.execution", "health.liveness", "health.all"]);
+    expect(listCapabilities({ area: "grouped" }).map((c) => c.key)).toEqual(["alerts.group"]);
+    expect(listCapabilities({ surface: "agent" }).map((c) => c.key)).not.toContain("alerts.group");
     expect(listCapabilities({ area: "queues" }).map((c) => c.key)).toEqual(
       expect.arrayContaining(["queue.concurrency", "queue.stalled"])
     );

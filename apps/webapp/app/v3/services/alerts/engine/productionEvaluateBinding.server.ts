@@ -6,6 +6,7 @@ import {
   componentFactsKey,
   conditionSchema,
   getCapability,
+  GROUP_CAPABILITY_KEY,
   occurrenceExpiresAt,
   type Occurrence,
   selectedComponents,
@@ -27,6 +28,8 @@ import {
 import { executeQuery, type QueryConcurrencyLane } from "~/services/queryService.server";
 import { logger } from "~/services/logger.server";
 import { env } from "~/env.server";
+import { prisma, type PrismaClientOrTransaction } from "~/db.server";
+import { evaluateAlertGroup } from "./evaluateAlertGroup.server";
 import { z } from "zod";
 
 export function createQueryRowRunner(
@@ -78,6 +81,7 @@ export interface ProductionBindingDeps {
   seenRetentionSec?: number;
   now?: () => Date;
   logger?: BindingLogger;
+  db?: PrismaClientOrTransaction;
 }
 
 interface ResolvedDeps {
@@ -112,6 +116,9 @@ export function createProductionEvaluateBinding(
           facts: { unavailableReason: `invalid_params: ${invalid}` },
         },
       };
+    }
+    if (capability.key === GROUP_CAPABILITY_KEY) {
+      return evaluateAlertGroup(deps.db ?? prisma, alert, resolved.now());
     }
     if (capability.binding.compositeOf) {
       return evaluateCompositeBinding(alert, capability, resolved);

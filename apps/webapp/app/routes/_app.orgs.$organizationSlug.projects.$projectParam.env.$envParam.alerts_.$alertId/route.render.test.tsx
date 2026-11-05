@@ -265,6 +265,41 @@ function between(html: string, start: string, end: string) {
 }
 
 describe("AlertDetailSidebar", () => {
+  it("a grouped member shows no status or notifiers; a plain alert does", () => {
+    const member = render(
+      <AlertDetailSidebar alert={makeAlert({})} environmentTitle="Production" inGroup />
+    );
+    expect(member).not.toContain("Alert status");
+    expect(member).not.toContain("Active");
+    expect(member).not.toContain("Notify");
+    expect(member).not.toContain("Behavior");
+    expect(member).not.toContain("Raised");
+    expect(member).not.toContain("Not sent while grouped");
+    expect(sidebar(makeAlert({}))).toContain("Alert status");
+  });
+
+  it("lists a group's alerts between Condition and Scope", () => {
+    const html = render(
+      <AlertDetailSidebar
+        alert={makeAlert({})}
+        environmentTitle="Production"
+        alerts={[
+          { id: "a1", name: "Queue depth", path: "/alerts/a1" },
+          { id: "a2", name: "Failure rate", path: "/alerts/a2" },
+        ]}
+      />
+    );
+    const box = between(html, "Condition", "Behavior");
+    expect(box.indexOf("Alerts")).toBeGreaterThan(0);
+    expect(box).toContain("Queue depth");
+    expect(box).toContain("Failure rate");
+    expect(box).toContain('href="/alerts/a1"');
+    expect(box).toContain('href="/alerts/a2"');
+    expect(html).not.toContain("Remove");
+    expect(html).not.toContain("Scope");
+    expect(sidebar(makeAlert({}))).toContain("Scope");
+  });
+
   it("fails when status text returns under the badge", () => {
     const status = between(
       sidebar(

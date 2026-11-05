@@ -1,7 +1,19 @@
 import type { ChartBarReferenceArea } from "~/components/primitives/charts/ChartBar";
 import { buildActivityTimeAxis } from "~/components/primitives/charts/activityTimeAxis";
 import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
-import { ActivityBars, EVENT_CHART_COLOR, raiseBucket, type ActivitySeries } from "./ActivityBars";
+import {
+  compactRaiseTicks,
+  dropTicksNearRaise,
+  raisedAwareTick,
+} from "~/components/primitives/charts/VerticalMarker";
+import {
+  ActivityBars,
+  EVENT_CHART_COLOR,
+  raiseBucket,
+  raisedLabel,
+  raisedMarker,
+  type ActivitySeries,
+} from "./ActivityBars";
 import { warningLegendItem, WARNING_COLOR, type ChartLegendItem } from "./ChartLegend";
 import { observedSilence, type SilenceWindow, type TrailingSilence } from "./alertSilence";
 import {
@@ -56,29 +68,32 @@ export function healthTooltipLabel(
   };
 }
 
-const RAISE_TICK_MIN_GAP = 0.12;
-
-export function dropTicksNearRaise(ticks: number[], raise: number): number[] {
-  const range = Math.max(...ticks) - Math.min(...ticks);
-  return ticks.filter((t) => t === raise || Math.abs(t - raise) >= range * RAISE_TICK_MIN_GAP);
-}
+export { dropTicksNearRaise };
 
 export function healthAxis(
   bands: HealthBandRow[],
   raisedAt?: Date | null,
   current?: 1 | 0 | null,
-  timeZone?: string
+  timeZone?: string,
+  compact = false
 ) {
   const data = healthPoints(bands, current);
   const { tickFormatter, tooltipLabelFormatter } = buildActivityTimeAxis(
     data,
     undefined,
     undefined,
-    timeZone
+    timeZone,
+    compact
   );
-  const raiseTick = raisedAt ? raiseBucket(bands, raisedAt) : undefined;
-  const ticks =
-    raiseTick === undefined
+  const raiseTick = !compact && raisedAt ? raiseBucket(bands, raisedAt) : undefined;
+  const marker = compact ? raisedMarker(bands, raisedAt, timeZone) : undefined;
+  const ticks = marker
+    ? compactRaiseTicks(
+        bands.map((band) => band.bucket),
+        undefined,
+        marker
+      )
+    : raiseTick === undefined
       ? undefined
       : dropTicksNearRaise(
           [...new Set([bands[0]!.bucket, raiseTick, bands[bands.length - 1]!.bucket])],
@@ -86,10 +101,14 @@ export function healthAxis(
         );
   return {
     data,
+    marker,
     ticks,
+    tick: marker ? raisedAwareTick(marker, tickFormatter) : undefined,
     tooltipLabelFormatter,
     tickFormatter: (value: number) =>
-      value === raiseTick ? `▲ raised ${tickFormatter(value)}` : tickFormatter(value),
+      value === raiseTick && raisedAt
+        ? `▲ raised ${raisedLabel(raisedAt, timeZone)}`
+        : tickFormatter(value),
   };
 }
 
@@ -98,18 +117,22 @@ export function HealthActivityChart({
   raisedAt,
   current,
   timeZone,
+  compact = false,
 }: {
   bands: HealthBandRow[];
   raisedAt?: Date | null;
   current?: 1 | 0 | null;
   timeZone?: string;
+  compact?: boolean;
 }) {
   const {
     data,
+    marker,
+    tick,
     ticks,
     tickFormatter,
     tooltipLabelFormatter: timeLabel,
-  } = healthAxis(bands, raisedAt, current, timeZone);
+  } = healthAxis(bands, raisedAt, current, timeZone, compact);
   const lastBucket = bands[bands.length - 1]?.bucket ?? 0;
   const tooltipLabelFormatter = healthTooltipLabel(timeLabel, lastBucket, current);
   const label = (value: number) => HEALTH_LABELS[value] ?? "";
@@ -126,10 +149,12 @@ export function HealthActivityChart({
         <Chart.Line
           lineType="stepAfter"
           showDots={false}
+          verticalMarker={marker}
           xAxisProps={{
             type: "number",
             domain: ["dataMin", "dataMax"],
             ...(ticks !== undefined ? { ticks } : {}),
+            ...(tick ? { tick } : {}),
             tickFormatter,
           }}
           yAxisProps={{ domain: [0, 2], ticks: [1], tickFormatter: label }}
@@ -237,7 +262,9 @@ export function AbsenceActivityChart({
   trailing,
   raisedAt,
   timeZone,
+  compact,
 }: {
+  compact?: boolean;
   series: MetricSeriesPoint[];
   quietWindow?: QuietWindowBounds;
   quietWindowSec?: number;
@@ -255,6 +282,7 @@ export function AbsenceActivityChart({
       referenceArea={quietReferenceAreas(series, windowSec, trailing)}
       raisedAt={raisedAt}
       timeZone={timeZone}
+      compact={compact}
     />
   );
 }

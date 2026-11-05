@@ -7,7 +7,7 @@ import { LocaleContextProvider } from "~/components/primitives/LocaleProvider";
 import { OperatingSystemContextProvider } from "~/components/primitives/OperatingSystemProvider";
 import { ShortcutsProvider } from "~/components/primitives/ShortcutsProvider";
 import type { AlertListRow } from "~/presenters/v3/alertListRow";
-import { AlertsList, AlertsListMenuContent, NewAlertButton } from "./AlertsList";
+import { AlertsList, renamedTo, AlertsListMenuContent, NewAlertButton } from "./AlertsList";
 
 describe("AlertsListMenuContent", () => {
   function markup(hasLegacyAlerts: boolean) {
@@ -212,5 +212,14 @@ describe("NewAlertButton", () => {
   it("dims while the agent panel is open", () => {
     expect(markup(true)).toMatch(/<button[^>]*disabled=""[^>]*>[\s\S]*New alert/);
     expect(markup(false)).not.toContain('disabled=""');
+  });
+});
+
+describe("renamedTo", () => {
+  it("accepts only a changed, valid name", () => {
+    expect(renamedTo("   ", "Name 1")).toBeUndefined();
+    expect(renamedTo("Name 1", "Name 1")).toBeUndefined();
+    expect(renamedTo("x".repeat(121), "Name 1")).toBeUndefined();
+    expect(renamedTo("  Name 2 ", "Name 1")).toBe("Name 2");
   });
 });

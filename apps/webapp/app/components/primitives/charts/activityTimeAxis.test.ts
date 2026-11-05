@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildActivityTimeAxis } from "./activityTimeAxis";
+import { buildActivityTimeAxis, dayTicks } from "./activityTimeAxis";
 
 const HOUR = 60 * 60 * 1000;
 const start = Date.UTC(2025, 9, 4, 0, 0, 0);
@@ -15,5 +15,19 @@ describe("buildActivityTimeAxis tick labels", () => {
   it("keeps date-only labels for long ranges", () => {
     const data = Array.from({ length: 8 }, (_, i) => ({ bucket: start + i * 24 * HOUR }));
     expect(buildActivityTimeAxis(data).tickFormatter(start)).toBe("Oct 4");
+  });
+
+  it("dateOnly drops the time on a 42h window", () => {
+    const data = Array.from({ length: 43 }, (_, i) => ({ bucket: start + i * HOUR }));
+    const { tickFormatter } = buildActivityTimeAxis(data, undefined, undefined, "UTC", true);
+    expect(tickFormatter(start + 14 * HOUR)).toBe("Oct 4");
+  });
+
+  it("dayTicks gives one unique date label per day on a 42h window", () => {
+    const data = Array.from({ length: 43 }, (_, i) => ({ bucket: start + i * HOUR }));
+    const { tickFormatter } = buildActivityTimeAxis(data, undefined, undefined, "UTC", true);
+    const labels = dayTicks(data)!.map(tickFormatter);
+    expect(labels).toEqual(["Oct 4", "Oct 5"]);
+    expect(dayTicks(data.slice(0, 20))).toBeUndefined();
   });
 });

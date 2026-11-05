@@ -24,6 +24,8 @@ export type EditAlertPrefill = {
   scopeSummary?: string;
   notifiers: { key: string; label?: string }[];
   expiresAt?: string | null;
+  /** Group alert: also choose when the group fires. */
+  compositeMode?: "any" | "all";
   /** Inactive alert: review expiry and notifiers, then save activates it. */
   activate?: boolean;
 };
@@ -88,6 +90,9 @@ export function EditAlertTranscript({
   const activate = prefill.activate === true;
   const [expiry, setExpiry] = useState(() => initialExpiry(prefill.expiresAt));
   const [stepIndex, setStepIndex] = useState(0);
+  const [mode, setMode] = useState(prefill.compositeMode);
+  const [name, setName] = useState(prefill.name);
+  const offset = prefill.compositeMode ? 1 : 0;
 
   const allChannels = channels;
   const options = notifierOptions(prefill, allChannels, userId);
@@ -120,12 +125,23 @@ export function EditAlertTranscript({
       parse: (text) => expiryFromDate(new Date(text)),
       onSubmit: (value) => {
         setExpiry(value);
-        setStepIndex(1);
+        setStepIndex(offset + 1);
       },
     },
   };
+  const modeStep: ChatWizardStep = {
+    id: "mode",
+    question: "When should the group fire?",
+    options: [
+      { id: "any", label: "Any alert fires" },
+      { id: "all", label: "All alerts fire" },
+    ],
+    selected: mode ? [mode] : [],
+    allowSkip: false,
+  };
 
   const steps: ChatWizardStep[] = [
+    ...(prefill.compositeMode ? [modeStep] : []),
     expiryStep,
     {
       id: "notifiers",
@@ -151,12 +167,31 @@ export function EditAlertTranscript({
       error: !picked.length ? NO_NOTIFIER : !expiry ? NO_EXPIRY : undefined,
       allowSkip: false,
       confirmDisabled: !expiry,
-      ...(activate
-        ? {
-            confirmLabel: "Activate",
-            hint: "Watching resumes from now",
-          }
-        : {}),
+    },
+    {
+      id: "name",
+      question: promptForStep("name", {}),
+      options: [],
+      multiSelect: true,
+      selected: name.trim() ? ["name"] : [],
+      fields: [
+        {
+          id: "name",
+          ariaLabel: "Name",
+          live: true,
+          current: name,
+          parse: (text) => {
+            const trimmed = text.trim();
+            return trimmed.length >= 1 && trimmed.length <= 120 ? trimmed : undefined;
+          },
+          onSubmit: setName,
+          onClear: () => setName(""),
+        },
+      ],
+      allowSkip: false,
+      confirmDisabled: !name.trim(),
+      confirmLabel: activate ? "Activate" : "Save",
+      ...(activate ? { hint: "Watching resumes from now" } : {}),
     },
   ];
 
@@ -165,10 +200,13 @@ export function EditAlertTranscript({
   }
 
   function select(stepId: string, value: string) {
-    if (stepId === "expiry") {
+    if (stepId === "mode") {
+      setMode(value as "any" | "all");
+      setStepIndex(1);
+    } else if (stepId === "expiry") {
       if (value === CUSTOM_EXPIRY) return;
       setExpiry(value);
-      setStepIndex(1);
+      setStepIndex(offset + 1);
     } else if (value === ADD_CHANNEL_OPTION) {
       setAddingChannel(true);
     } else {
@@ -177,15 +215,24 @@ export function EditAlertTranscript({
   }
 
   function save() {
-    if (submitting || !picked.length || !expiry) return;
+    if (submitting || !picked.length || !expiry || !name.trim()) return;
     const expiresAt = expiry === "none" ? "none" : (expiryDate(expiry)?.toISOString() ?? "");
     fetcher.submit(
       activate
-        ? { intent: "activate", respond: "json", notifierIds: picked.join(","), expiresAt }
+        ? {
+            intent: "activate",
+            respond: "json",
+            notifierIds: picked.join(","),
+            ...(mode ? { compositeMode: mode } : {}),
+            ...(name.trim() !== prefill.name ? { name: name.trim() } : {}),
+            expiresAt,
+          }
         : {
             intent: "edit",
             respond: "json",
             ...(changed ? { notifierIds: picked.join(",") } : {}),
+            ...(mode ? { compositeMode: mode } : {}),
+            ...(name.trim() !== prefill.name ? { name: name.trim() } : {}),
             expiresAt,
           },
       { method: "post", action: alertPath }
@@ -253,7 +300,9 @@ export function EditAlertTranscript({
               onSelect={select}
               onSkip={() => {}}
               onClose={() => setClosed(true)}
-              onConfirm={save}
+              onConfirm={(id) =>
+                id === "name" ? save() : setStepIndex(Math.min(stepIndex + 1, steps.length - 1))
+              }
             />
           </div>
         )}

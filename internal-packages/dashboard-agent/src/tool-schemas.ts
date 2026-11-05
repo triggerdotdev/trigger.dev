@@ -503,7 +503,7 @@ export const searchCodeSchema = tool({
 });
 
 export const describeAlertCapabilitiesInputSchema = z.object({
-  area: alertAreaSchema.exclude(["query"]).optional().describe("Filter by area."),
+  area: alertAreaSchema.exclude(["query", "grouped"]).optional().describe("Filter by area."),
   curatedOnly: z.boolean().optional().describe("Recommended only."),
 });
 

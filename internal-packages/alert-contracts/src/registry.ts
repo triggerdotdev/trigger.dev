@@ -7,6 +7,8 @@ import type {
   LimitSignal,
 } from "./schemas.js";
 
+export const GROUP_CAPABILITY_KEY = "alerts.group";
+
 export const CURRENTLY_QUEUED_PREDICATE_PENDING =
   "status = 'PENDING' AND queued_at IS NOT NULL AND dequeued_at IS NULL";
 
@@ -683,6 +685,20 @@ export const V1_CAPABILITIES: AlertCapability[] = [
     title: "Query",
     description: "A user-authored TRQL query alert. The query is built per alert at evaluation.",
     unit: "count",
+    surfaces: [],
+    curated: false,
+    freshness: "snapshot",
+    allowedScopes: ["all"],
+  },
+  {
+    key: GROUP_CAPABILITY_KEY,
+    area: "grouped",
+    signal: "state",
+    allowedKinds: ["state"],
+    binding: { type: "query", template: "", minCadenceSec: 60 },
+    minCadenceSec: 60,
+    title: "Alert group",
+    description: "Combines existing alerts into one alert that reads their latest states.",
     surfaces: [],
     curated: false,
     freshness: "snapshot",

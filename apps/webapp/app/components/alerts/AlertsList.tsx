@@ -12,7 +12,7 @@ import { TrashIcon } from "~/assets/icons/TrashIcon";
 import * as Ariakit from "@ariakit/react";
 import { formatDistanceToNow } from "date-fns";
 import { useFetcher, useNavigate } from "@remix-run/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CodeSquareIcon } from "~/assets/icons/CodeSquareIcon";
 import { StatusIcon } from "~/assets/icons/StatusIcon";
 import { AlertActivityCell } from "~/components/alerts/AlertActivityCell";
@@ -24,6 +24,7 @@ import { useDashboardAgent } from "~/components/dashboard-agent/dashboardAgentLa
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Checkbox } from "~/components/primitives/Checkbox";
 import { RelativeDateTime } from "~/components/primitives/DateTime";
 import {
   Dialog,
@@ -73,6 +74,8 @@ import {
   type AlertListRowStatus,
 } from "~/presenters/v3/alertListRow";
 import { AlertStatusBadge, AlertStatusBreakdown } from "./AlertStatusBadge";
+import { GroupAlertsDialog } from "./GroupAlertsTranscript";
+import { isGroupable } from "./groupAlertsRequest";
 import { AREA_ICON, AREA_LABEL, isAlertArea, WATCHING_TOOLTIP } from "./domainIcons";
 import {
   DEFAULT_PERIOD,
@@ -82,6 +85,8 @@ import {
   MAX_LIST_ALERTS,
 } from "./alertsListFilters";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { cn } from "~/utils/cn";
+import { GROUP_CAPABILITY_KEY } from "@internal/alert-contracts";
 
 export function NewAlertButton({ prompt, path }: { prompt: string; path: string }) {
   const agent = useDashboardAgent();
@@ -175,6 +180,7 @@ export const AREA_OPTIONS: { value: AreaFilterValue; label: string }[] = [
   { value: "health", label: "Health" },
   { value: "limits", label: "Limits" },
   { value: "query", label: "Custom" },
+  { value: "grouped", label: "Grouped" },
   { value: "unknown", label: "Unknown" },
 ];
 
@@ -439,6 +445,7 @@ export function AlertActionsPopoverContent({
   onActivate,
   onEdit,
   onDelete,
+  onUngroup,
 }: {
   alert: AlertListRow;
   canWrite: boolean;
@@ -449,6 +456,7 @@ export function AlertActionsPopoverContent({
   onActivate: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onUngroup?: () => void;
 }) {
   const agent = useDashboardAgent();
   const then = (fn: () => void) => () => {
@@ -498,6 +506,14 @@ export function AlertActionsPopoverContent({
             />
           </>
         )}
+        {alert.capabilityKey === GROUP_CAPABILITY_KEY && onUngroup && (
+          <GatedMenuItem
+            allowed={canWrite && canDelete}
+            icon={XMarkIcon}
+            title="Ungroup"
+            onClick={then(onUngroup)}
+          />
+        )}
         {alert.status === "inactive" && (
           <GatedMenuItem
             allowed={canWrite && canDelete}
@@ -542,6 +558,7 @@ export function AlertActionsCell({
   canDelete: boolean;
 }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [ungroupOpen, setUngroupOpen] = useState(false);
   const fetcher = useFetcher();
   const navigate = useNavigate();
   const agent = useDashboardAgent();
@@ -581,6 +598,7 @@ export function AlertActionsCell({
             onActivate={() => openEdit(true)}
             onEdit={() => openEdit(false)}
             onDelete={() => setDeleteOpen(true)}
+            onUngroup={() => setUngroupOpen(true)}
           />
         )}
       />
@@ -594,27 +612,140 @@ export function AlertActionsCell({
         confirmIcon={TrashIcon}
         onConfirm={() => submitAction("delete")}
       />
+      <RowConfirmDialog
+        open={ungroupOpen}
+        onOpenChange={setUngroupOpen}
+        title="Ungroup alerts"
+        description="The group alert is deleted and its alerts notify on their own again."
+        confirmLabel="Ungroup"
+        confirmVariant="danger/medium"
+        confirmIcon={XMarkIcon}
+        onConfirm={() => submitAction("ungroup")}
+      />
     </>
   );
 }
 
 // ---- Row -----------------------------------------------------------------------
 
+export function renamedTo(draft: string, current: string): string | undefined {
+  const trimmed = draft.trim();
+  return trimmed.length >= 1 && trimmed.length <= 120 && trimmed !== current ? trimmed : undefined;
+}
+
+function InlineName({
+  name,
+  canEdit,
+  onSave,
+}: {
+  name: string;
+  canEdit: boolean;
+  onSave: (name: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(name);
+  const cancelled = useRef(false);
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!editing) return;
+    input.current?.focus();
+    input.current?.setSelectionRange(draft.length, draft.length);
+  }, [editing]); // eslint-disable-line react-hooks/exhaustive-deps -- focus once on entering edit mode
+
+  const finish = () => {
+    setEditing(false);
+    const next = cancelled.current ? undefined : renamedTo(draft, name);
+    cancelled.current = false;
+    if (next) onSave(next);
+  };
+
+  if (editing) {
+    return (
+      <span className="relative block w-full min-w-0 flex-1">
+        <span className="invisible block truncate">{name}</span>
+        <input
+          ref={input}
+          aria-label="Name"
+          value={draft}
+          maxLength={120}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={finish}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") input.current?.blur();
+            if (e.key === "Escape") {
+              cancelled.current = true;
+              input.current?.blur();
+            }
+          }}
+          className="absolute inset-0 w-full min-w-0 border-0 bg-transparent p-0 font-mono leading-[inherit] text-[length:inherit] text-text-bright outline-none ring-0 focus:border-0 focus:shadow-none focus:outline-none focus:ring-0 focus-visible:ring-0"
+        />
+      </span>
+    );
+  }
+
+  const start = (e: { preventDefault: () => void; stopPropagation: () => void }) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDraft(name);
+    setEditing(true);
+  };
+
+  return (
+    <span
+      className={cn("max-w-[14rem] truncate text-text-bright", canEdit && "cursor-text")}
+      title={name}
+      {...(canEdit
+        ? {
+            role: "button",
+            tabIndex: 0,
+            onClick: start,
+            onKeyDown: (e: React.KeyboardEvent) => {
+              if (e.key === "Enter" || e.key === " ") start(e);
+            },
+          }
+        : {})}
+    >
+      {name}
+    </span>
+  );
+}
+
 function AlertGroupRow({
   alert,
   alertPath,
   canWrite,
   canDelete,
+  selectable,
+  selected,
+  onToggle,
 }: {
   alert: AlertListRow;
   alertPath: string;
   canWrite: boolean;
   canDelete: boolean;
+  selectable: boolean;
+  selected: boolean;
+  onToggle: () => void;
 }) {
   const episode = episodeText(alert.episode);
+  const renameFetcher = useFetcher();
+  const displayName = (renameFetcher.formData?.get("name") as string | null) ?? alert.name;
+  const rename = (name: string) =>
+    renameFetcher.submit({ action: "rename", id: alert.id, name }, { method: "post" });
 
   return (
     <TableRow>
+      {selectable ? (
+        <TableCell className="w-8 pr-0">
+          {isGroupable(alert) ? (
+            <Checkbox aria-label={`Select ${alert.name}`} checked={selected} onChange={onToggle} />
+          ) : null}
+        </TableCell>
+      ) : null}
       <TableCell to={alertPath}>
         <span className="flex items-center gap-1.5">
           <AlertStatusBadge status={alert.status} extra={episode} />
@@ -629,11 +760,9 @@ function AlertGroupRow({
         </span>
       </TableCell>
       <TableCell to={alertPath} className="font-mono">
-        <span className="flex min-w-0 flex-col gap-0.5">
-          <span className="flex items-center gap-1.5">
-            <span className="max-w-[14rem] truncate text-text-bright" title={alert.name}>
-              {alert.name}
-            </span>
+        <span className="flex w-full min-w-0 flex-col gap-0.5">
+          <span className="flex w-full items-center gap-1.5">
+            <InlineName name={displayName} canEdit={canWrite} onSave={rename} />
           </span>
         </span>
       </TableCell>
@@ -706,6 +835,34 @@ function useAlertsFilters() {
   };
 }
 
+function GroupBulkBar({
+  count,
+  onGroup,
+  onClear,
+}: {
+  count: number;
+  onGroup: () => void;
+  onClear: () => void;
+}) {
+  if (count === 0) return null;
+  return (
+    <div
+      data-testid="group-bulk-bar"
+      className="sticky bottom-0 flex items-center justify-between gap-2 border-t border-grid-bright bg-background-bright px-3 py-2"
+    >
+      <span className="text-xs text-text-dimmed">{count} selected</span>
+      <div className="flex items-center gap-1.5">
+        <Button variant="minimal/small" onClick={onClear}>
+          Clear
+        </Button>
+        <Button variant="primary/small" disabled={count < 2} onClick={onGroup}>
+          Group {count} alerts
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // ---- Main list -----------------------------------------------------------------
 
 export function AlertsList({
@@ -736,6 +893,27 @@ export function AlertsList({
   canDelete: boolean;
 }) {
   const filters = useAlertsFilters();
+  const agent = useDashboardAgent();
+  const [selection, setSelection] = useState({ key: "", ids: new Set<string>() });
+  const [grouping, setGrouping] = useState(false);
+  const scopeKey = [
+    page,
+    filters.search,
+    filters.statuses.join(),
+    filters.areas.join(),
+    filters.period,
+    filters.from,
+    filters.to,
+  ].join("|");
+  const selected = selection.key === scopeKey ? selection.ids : new Set<string>();
+  const setSelected = (ids: Set<string>) => setSelection({ key: scopeKey, ids });
+  const selectable = canWrite && alerts.filter(isGroupable).length >= 2;
+  const selectedRows = alerts.filter((a) => selected.has(a.id) && isGroupable(a));
+  const toggleSelected = (id: string) => {
+    const next = new Set(selected);
+    if (!next.delete(id)) next.add(id);
+    setSelected(next);
+  };
   const hasFilters =
     filters.search.length > 0 ||
     filters.statuses.length > 0 ||
@@ -745,7 +923,7 @@ export function AlertsList({
     filters.to !== undefined;
 
   return (
-    <div className="grid max-h-full min-h-full grid-rows-[auto_1fr_auto]">
+    <div className="grid max-h-full min-h-full grid-rows-[auto_1fr_auto_auto]">
       <div>
         <FiltersBar
           search={filters.search}
@@ -814,6 +992,7 @@ export function AlertsList({
         <Table containerClassName="max-h-full pb-10" showTopBorder={false}>
           <TableHeader>
             <TableRow>
+              {selectable ? <TableHeaderCell hiddenLabel>Select</TableHeaderCell> : null}
               <TableHeaderCell
                 tooltip={<AlertStatusBreakdown />}
                 disableTooltipHoverableContent
@@ -849,11 +1028,29 @@ export function AlertsList({
                 alertPath={alertPath(alert.id)}
                 canWrite={canWrite}
                 canDelete={canDelete}
+                selectable={selectable}
+                selected={selected.has(alert.id)}
+                onToggle={() => toggleSelected(alert.id)}
               />
             ))}
           </TableBody>
         </Table>
       )}
+      <GroupBulkBar
+        count={selectedRows.length}
+        onGroup={() => {
+          const members = selectedRows.map((a) => ({ id: a.id, name: a.name }));
+          if (agent) agent.openGroupAlerts(members);
+          else setGrouping(true);
+        }}
+        onClear={() => setSelected(new Set())}
+      />
+      {grouping && selectedRows.length >= 2 ? (
+        <GroupAlertsDialog
+          members={selectedRows.map((a) => ({ id: a.id, name: a.name }))}
+          onClose={() => setGrouping(false)}
+        />
+      ) : null}
       {totalPages > 1 && (
         <div className="flex justify-end border-t border-grid-bright p-2">
           <PaginationControls currentPage={page} totalPages={totalPages} />

@@ -74,6 +74,7 @@ export type {
 export {
   V1_CAPABILITIES,
   CURRENTLY_QUEUED_PREDICATE_PENDING,
+  GROUP_CAPABILITY_KEY,
   getCapability,
   listCapabilities,
 } from "./registry.js";

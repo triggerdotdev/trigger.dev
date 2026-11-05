@@ -12,9 +12,10 @@ const DEFAULT_NOTIFIERS = vi.hoisted(() => [
   { type: "chat" },
   { type: "channel", channelId: "ch_1" },
 ]);
-const current = vi.hoisted(() => ({ notifiers: [] as unknown[] }));
+const current = vi.hoisted(() => ({ notifiers: [] as unknown[], extra: {} as object }));
 const canCalls = vi.hoisted(() => [] as unknown[][]);
 const presented = vi.hoisted(() => ({ calls: [] as any[], alert: null as unknown }));
+const groupCalls = vi.hoisted(() => ({ edited: [] as any[] }));
 const chats = vi.hoisted(() => ({ exists: true }));
 const CHANNELS = vi.hoisted(() => [
   { id: "ch_1", projectId: "p1" },
@@ -105,6 +106,16 @@ vi.mock("~/v3/services/alerts/alertActions.server", async (importOriginal) => {
   };
 });
 
+vi.mock("~/v3/services/alerts/alertGroups.server", async (importOriginal) => {
+  const original = await importOriginal<Record<string, unknown>>();
+  return {
+    ...original,
+    editAlertGroup: async (_db: unknown, input: unknown) => {
+      groupCalls.edited.push(input);
+    },
+  };
+});
+
 vi.mock("@internal/dashboard-agent-db", async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
   return {
@@ -120,6 +131,7 @@ vi.mock("~/v3/services/alerts/storage/alertStore.server", async (importOriginal)
     getAlert: async () => ({
       id: "alert_1",
       notifiers: current.notifiers.length > 0 ? current.notifiers : DEFAULT_NOTIFIERS,
+      ...current.extra,
     }),
   };
 });
@@ -452,5 +464,23 @@ describe("alert detail edit action", () => {
     } as any)) as Response;
     expect(response.status).toBe(302);
     expect(edited.calls).toHaveLength(1);
+  });
+
+  it.each([
+    ["activate saves the group mode", undefined, 1],
+    ["a rejected activate leaves the group mode alone", "Already active", 0],
+  ])("%s", async (_name, reject, saved) => {
+    groupCalls.edited = [];
+    activated.reject = reject;
+    try {
+      await action({
+        request: post({ intent: "activate", compositeMode: "all", expiresAt: "none" }),
+        params: {},
+        context: {},
+      } as any);
+      expect(groupCalls.edited).toHaveLength(saved);
+    } finally {
+      activated.reject = undefined;
+    }
   });
 });

@@ -24,7 +24,11 @@ export function stateConditionSummary(state: {
   components?: string[];
   signals?: LimitSignal[];
   params?: Record<string, number>;
+  memberAlertIds?: string[];
 }): string | undefined {
+  if (state.memberAlertIds) {
+    return `${state.compositeMode === "all" ? "All" : "Any"} of ${state.memberAlertIds.length} alerts`;
+  }
   const cap = getCapability(state.stateKey);
   if (!cap) return undefined;
   const compositeOf = cap.binding.compositeOf;

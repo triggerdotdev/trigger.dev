@@ -1,3 +1,4 @@
+import { raisedAwareTick } from "~/components/primitives/charts/VerticalMarker";
 import type * as RechartsModule from "recharts";
 import { cloneElement, createElement, isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -231,7 +232,7 @@ describe("threshold chart raise tick", () => {
     const html = renderToStaticMarkup(
       createElement(AlertThresholdChart, { series: readings, threshold: 4, raisedAt })
     );
-    expect(html).toContain("▲ raised 09:00");
+    expect(html).toMatch(/▲ raised [A-Z][a-z]{2} \d+, 09:20/);
   });
 
   it("fails when the multi-series chart drops the raise tick", () => {
@@ -245,6 +246,23 @@ describe("threshold chart raise tick", () => {
         raisedAt,
       })
     );
-    expect(html).toContain("▲ raised 09:00");
+    expect(html).toMatch(/▲ raised [A-Z][a-z]{2} \d+, 09:20/);
+  });
+});
+
+describe("raisedAwareTick", () => {
+  it("paints the raised tick in the marker colour and the others dimmed", () => {
+    const marker = {
+      x: 5,
+      label: "▲ raised 14:25",
+      color: "var(--color-warning)",
+      anchor: "middle" as const,
+    };
+    const tick = raisedAwareTick(marker, (v) => `t${v}`);
+    const html = (value: number) =>
+      renderToStaticMarkup(createElement(tick, { x: 0, y: 0, payload: { value } }));
+    expect(html(5)).toContain("fill:var(--color-warning)");
+    expect(html(5)).toContain("▲ raised 14:25");
+    expect(html(6)).toContain("fill:var(--color-text-dimmed)");
   });
 });

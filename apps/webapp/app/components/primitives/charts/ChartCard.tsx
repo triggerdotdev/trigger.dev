@@ -176,7 +176,7 @@ export function ChartCard({
           </div>
         ) : hasTitle ? (
           <Card.Header paddingClassName={headerPaddingClassName}>
-            <div className="flex items-center gap-1.5">{title}</div>
+            <div className="flex min-w-0 items-center gap-1.5">{title}</div>
             {(accessory || maximizable) && (
               <Card.Accessory>
                 {accessory}

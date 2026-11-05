@@ -83,11 +83,13 @@ export type AlertDetail = {
   id: string;
   name: string;
   capabilityKey: string;
+  lifecycle: string;
   capabilityTitle: string;
   capabilityDescription?: string;
   area: string;
   environmentId: string;
   kind: Condition["kind"];
+  compositeMode?: "any" | "all";
   operator?: ">" | "<";
   thresholdValue?: number;
   scope: AlertParams["scope"];
@@ -546,11 +548,13 @@ export class AlertDetailPresenter extends BasePresenter {
         id: alert.id,
         name: alert.name ?? capability?.title ?? alert.capabilityKey,
         capabilityKey: alert.capabilityKey,
+        lifecycle: alert.lifecycle,
         capabilityTitle: capability?.title ?? alert.capabilityKey,
         capabilityDescription: capability?.description,
         area: capability?.area ?? "unknown",
         environmentId: alert.environmentId,
         kind: condition.kind,
+        compositeMode: condition.kind === "state" ? condition.compositeMode : undefined,
         operator: condition.kind === "threshold" ? condition.operator : undefined,
         thresholdValue: condition.kind === "threshold" ? condition.value : undefined,
         scope: alertParams.scope,

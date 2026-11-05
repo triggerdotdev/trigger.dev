@@ -69,6 +69,15 @@ Authenticate with a [personal access token](/management/authentication).
 
 Invalid `components` or `signals` return a `400` with an error message.
 
+## Group alerts
+
+Set `capabilityKey` to `alerts.group` to group alerts. The group raises when `compositeMode` is `any` or `all` of its members fire. Members keep evaluating but notify only through the group.
+
+- `condition`: `{ "kind": "state", "stateKey": "group", "compositeMode": "any" | "all", "memberAlertIds": ["alert_1234"] }`.
+- `members` (optional): alerts to create with the group. Each has the same body as a single alert, without `environment` or `branch`. The group and its members are created in one transaction, so a validation error fails the whole request.
+- A group holds at most 20 alerts, existing and inline combined. Members must be active, not already in a group, and in the same environment.
+- `action: "ungroup"` on the alert endpoint dissolves the group. It requires delete permission.
+
 ## Examples
 
 Watch every limit and raise when any is true:

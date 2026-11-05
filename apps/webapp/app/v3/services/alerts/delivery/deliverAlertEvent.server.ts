@@ -52,6 +52,7 @@ import {
 } from "../alertTransport.server";
 import { buildAlertSlackMessage } from "./alertSlackMessage";
 import { alertEventChatText } from "./alertEventChatText";
+import { groupFiredDetail } from "../groupFired";
 
 const WEBHOOK_VERSION = "2026-09-17";
 const STALE_CLAIM_MS = 5 * 60 * 1000;
@@ -476,6 +477,8 @@ async function channelDetail(
   if (alert.capabilityKey === CUSTOM_QUERY_CAPABILITY_KEY) {
     return alertQueryDetail(event.facts, alert.name ?? alert.capabilityKey);
   }
+  const fired = groupFiredDetail(alert.capabilityKey, event.facts);
+  if (fired) return fired;
   return alertOccurrenceDetail(event.facts, await getErrorTitle());
 }
 

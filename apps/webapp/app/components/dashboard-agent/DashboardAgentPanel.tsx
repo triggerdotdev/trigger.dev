@@ -83,6 +83,7 @@ import type { AlertCreatedMessage } from "~/components/alerts/alertCreatedCard";
 import { createAlertRequestBody } from "~/components/alerts/createAlertRequest";
 import { CreationTranscript } from "~/components/alerts/CreationTranscript";
 import { QueryAlertTranscript, queryWatchPrefill } from "~/components/alerts/QueryAlertTranscript";
+import { GroupAlertsTranscript } from "~/components/alerts/GroupAlertsTranscript";
 import {
   EditAlertTranscript,
   type EditAlertPrefill,
@@ -161,6 +162,7 @@ export function DashboardAgentPanel({
   requestedMessage,
   createAlertPrefill,
   editAlertRequest,
+  groupAlertsRequest,
   openChatRequest,
   newChatSeq,
   promotedPrompt,
@@ -188,6 +190,7 @@ export function DashboardAgentPanel({
   /** Prefill for in-place alert creation (from contextual pages). */
   createAlertPrefill?: DraftPrefillParams;
   editAlertRequest?: { prefill: EditAlertPrefill; seq: number };
+  groupAlertsRequest?: { members: { id: string; name: string }[]; seq: number };
   // Every `seq` below distinguishes repeat requests with identical contents.
   requestedMessage?: { text: string; seq: number };
   openChatRequest?: { chatId: string; seq: number };
@@ -536,9 +539,17 @@ export function DashboardAgentPanel({
   const [dismissedEditSeq, setDismissedEditSeq] = useState<number>();
   const activeEdit =
     editAlertRequest && editAlertRequest.seq !== dismissedEditSeq ? editAlertRequest : undefined;
+  const [dismissedGroupSeq, setDismissedGroupSeq] = useState<number>();
+  const activeGroup =
+    groupAlertsRequest && groupAlertsRequest.seq !== dismissedGroupSeq
+      ? groupAlertsRequest
+      : undefined;
+  const activeGroupRef = useRef(activeGroup);
+  activeGroupRef.current = activeGroup;
+  const [groupManual, setGroupManual] = useState(false);
   const activeEditRef = useRef(activeEdit);
   activeEditRef.current = activeEdit;
-  const inEditMode = Boolean(activeEdit);
+  const inEditMode = Boolean(activeEdit) || Boolean(activeGroup);
   const inCreationMode = creationMode && !inEditMode;
   const creationModeRef = useRef(creationMode);
   creationModeRef.current = creationMode;
@@ -782,6 +793,7 @@ export function DashboardAgentPanel({
 
   const newChat = useCallback(() => {
     setDismissedEditSeq(activeEditRef.current?.seq);
+    setDismissedGroupSeq(activeGroupRef.current?.seq);
     setCreationMode(false);
     claimChatSlot();
     setLoading(false);
@@ -1065,13 +1077,15 @@ export function DashboardAgentPanel({
   const queryCreated = queryCreatedKey === queryWatchKey;
   const curatedTitle = creationFlow.created ? "Alert created" : "New alert";
   const creationTitle = queryWatch ? (queryCreated ? "Alert created" : "New alert") : curatedTitle;
-  const headerTitle = inEditMode
-    ? "Edit alert"
-    : inCreationMode
-      ? creationTitle
-      : active
-        ? (activeChat?.title ?? "Chat")
-        : "New chat";
+  const headerTitle = activeGroup
+    ? "Group alerts"
+    : inEditMode
+      ? "Edit alert"
+      : inCreationMode
+        ? creationTitle
+        : active
+          ? (activeChat?.title ?? "Chat")
+          : "New chat";
 
   const errorGroupSource = useErrorGroupSource(
     `/resources${v3EnvironmentPath(organization, project, environment)}/alerts/error-groups`,
@@ -1226,6 +1240,20 @@ export function DashboardAgentPanel({
                 activeEdit.prefill.alertId
               )}
               addChannel={addChannelAccess}
+            />
+          </CreationChatShell>
+        ) : null}
+        {activeGroup && !loading ? (
+          <CreationChatShell placement="docked" title="Group alerts">
+            <GroupAlertsTranscript
+              key={activeGroup.seq}
+              members={activeGroup.members}
+              channels={alertChannels}
+              addChannel={addChannelAccess}
+              manual={groupManual}
+              onManualChange={setGroupManual}
+              onNewChat={newChat}
+              onCreated={() => setDismissedGroupSeq(activeGroup.seq)}
             />
           </CreationChatShell>
         ) : null}

@@ -1,3 +1,4 @@
+import { alertAreaSchema } from "@internal/alert-contracts";
 import { z } from "zod";
 
 export const alertInvestigateContextSchema = z.object({
@@ -48,7 +49,7 @@ export const querySignalChoiceSchema = z.object({
 });
 
 export const alertDraftPatchSchema = z.object({
-  area: z.enum(["queues", "runs", "health", "limits", "errors", "query"]).optional(),
+  area: alertAreaSchema.exclude(["grouped"]).optional(),
   what: z.string().optional(),
   name: z.string().trim().min(1).max(120).optional(),
   query: z.string().max(8192).optional(),
@@ -103,7 +104,7 @@ const draftText = z.string().max(256);
 export const alertCreationDraftSchema = z.object({
   capabilityKey: draftText.optional(),
   answers: z.object({
-    area: z.enum(["queues", "runs", "health", "limits", "errors", "query"]).optional(),
+    area: alertAreaSchema.optional(),
     what: draftText.optional(),
     name: z.string().max(120).optional(),
     scope: z.enum(["queue", "queuePattern", "task", "all", "errorGroup", "fingerprint"]).optional(),

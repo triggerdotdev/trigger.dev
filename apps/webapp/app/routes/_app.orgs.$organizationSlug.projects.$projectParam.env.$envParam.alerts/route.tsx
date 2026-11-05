@@ -53,6 +53,7 @@ import { throwPermissionDenied } from "~/utils/permissionDenied";
 import {
   AlertActionNotAllowedError,
   AlertNotFoundError,
+  editAlert,
   performAlertAction,
 } from "~/v3/services/alerts/alertActions.server";
 import {
@@ -197,6 +198,12 @@ const schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("enable"), id: z.string() }),
   z.object({ action: z.literal("resolve"), id: z.string() }),
   z.object({ action: z.literal("stop"), id: z.string() }),
+  z.object({ action: z.literal("ungroup"), id: z.string() }),
+  z.object({
+    action: z.literal("rename"),
+    id: z.string(),
+    name: z.string().trim().min(1).max(120),
+  }),
 ]);
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
@@ -235,7 +242,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     throwPermissionDenied();
   }
   if (
-    submission.value.action === "delete" &&
+    (submission.value.action === "delete" || submission.value.action === "ungroup") &&
     !auth.ability.can("delete", { type: "alerts", envType })
   ) {
     throwPermissionDenied();
@@ -281,8 +288,25 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     });
 
   switch (submission.value.action) {
+    case "rename": {
+      try {
+        await editAlert(prisma, {
+          alertId: submission.value.id,
+          projectId: project.id,
+          environmentId: environment.id,
+          name: submission.value.name,
+        });
+      } catch (error) {
+        if (error instanceof AlertNotFoundError) {
+          throw new Response(undefined, { status: 404, statusText: "Alert not found" });
+        }
+        throw error;
+      }
+      return json({ ok: true });
+    }
     case "resolve":
     case "stop":
+    case "ungroup":
     case "delete": {
       if (!isV2Id && submission.value.action === "delete") {
         const alertChannel = await mutateChannel(async (channel) => {
@@ -305,7 +329,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
       try {
         await performAlertAction(prisma, {
-          intent: submission.value.action as "resolve" | "stop" | "delete",
+          intent: submission.value.action as "resolve" | "stop" | "delete" | "ungroup",
           alertId: submission.value.id,
           projectId: project.id,
           environmentId: environment.id,
@@ -325,6 +349,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         resolve: "Alert resolved",
         stop: "Alert stopped",
         delete: "Alert deleted",
+        ungroup: "Group removed",
       };
 
       return redirectWithSuccessMessage(

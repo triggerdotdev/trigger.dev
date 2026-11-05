@@ -10,6 +10,7 @@ import {
   type XAxisProps,
   type YAxisProps,
 } from "recharts";
+import { verticalMarkerLine, type VerticalMarker } from "./VerticalMarker";
 import { ChartTooltip, ChartTooltipContent } from "~/components/primitives/charts/Chart";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
 import { useChartContext } from "./ChartContext";
@@ -83,6 +84,7 @@ export type ChartBarRendererProps = {
   referenceLine?: ReferenceLineProps;
   /** Shaded x range, drawn in front of the bars */
   referenceArea?: ChartBarReferenceArea | ChartBarReferenceArea[] | null;
+  verticalMarker?: VerticalMarker;
   /** Custom tooltip label formatter */
   tooltipLabelFormatter?: (label: string, payload: any[]) => string;
   /** Optional formatter for numeric tooltip values (e.g. bytes, duration) */
@@ -113,6 +115,7 @@ export function ChartBarRenderer({
   yAxisProps: yAxisPropsProp,
   referenceLine,
   referenceArea,
+  verticalMarker,
   tooltipLabelFormatter,
   tooltipValueFormatter,
   barRadius = 2,
@@ -347,6 +350,8 @@ export function ChartBarRenderer({
           />
         );
       })}
+
+      {verticalMarker && verticalMarkerLine(verticalMarker)}
 
       {referenceArea &&
         [referenceArea]

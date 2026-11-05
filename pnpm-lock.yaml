@@ -1075,6 +1075,9 @@ importers:
 
   internal-packages/dashboard-agent-contracts:
     dependencies:
+      '@internal/alert-contracts':
+        specifier: workspace:*
+        version: link:../alert-contracts
       zod:
         specifier: 4.5.4
         version: 4.5.4

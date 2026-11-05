@@ -10,10 +10,11 @@ import { applyAlertsMigration } from "./helpers/alertTables";
 
 vi.setConfig({ testTimeout: 120_000 });
 
-vi.mock("~/db.server", () => ({
+vi.mock("~/db.server", async () => ({
   prisma: {},
   $replica: {},
   $transaction: (db: PrismaClient, fn: (tx: unknown) => Promise<unknown>) => db.$transaction(fn),
+  boundedIn: (await import("@trigger.dev/database")).boundedIn,
 }));
 
 const { ReplaceLegacySubscriptionService } =

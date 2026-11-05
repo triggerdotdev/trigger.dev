@@ -12,7 +12,7 @@ import {
 
 export const CREATE_ALERT_PATH = "/resources/alerts/create";
 
-function expiryToIso(exp: string | undefined): string | undefined {
+export function expiryToIso(exp: string | undefined): string | undefined {
   if (!exp || exp === "none") return undefined;
   const EVENT_HOURS: Record<string, number> = { deploy: 168, incident: 720 };
   const hoursMatch = exp.match(/^(\d+)h$/);

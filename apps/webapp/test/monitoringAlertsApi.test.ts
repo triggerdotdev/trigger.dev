@@ -4,7 +4,7 @@ import {
   type DashboardAgentDb,
 } from "@internal/dashboard-agent-db";
 import { applyDashboardAgentMigrations } from "@internal/dashboard-agent-db/testing";
-import { getAlert, listAlerts } from "~/v3/services/alerts/storage/alertStore.server";
+import { createAlert, getAlert, listAlerts } from "~/v3/services/alerts/storage/alertStore.server";
 import {
   alertEvaluationJobId,
   alertEvaluationJobs,
@@ -33,16 +33,21 @@ const ctx = vi.hoisted(() => ({
   userActorClaims: undefined as UserActorClaims | undefined,
 }));
 
-vi.mock("~/db.server", () => {
+vi.mock("~/db.server", async () => {
+  const { boundedIn } = await import("@trigger.dev/database");
   const proxy = new Proxy(
     {},
-    { get: (_target, prop) => (ctx.prisma as unknown as Record<string, unknown>)[prop as string] }
+    {
+      get: (_target, prop) => (ctx.prisma as unknown as Record<string, unknown>)[prop as string],
+      has: (_target, prop) => prop in ctx.prisma,
+    }
   );
   return {
     prisma: proxy,
     $replica: proxy,
     $transaction: (db: PrismaClient, fn: Parameters<PrismaClient["$transaction"]>[0]) =>
-      db.$transaction(fn),
+      "$transaction" in db ? db.$transaction(fn) : fn(db),
+    boundedIn,
     sqlDatabaseSchema: undefined,
   };
 });
@@ -995,6 +1000,153 @@ describe("monitoring alerts API", () => {
     const stored = await getAlert(ctx.prisma, { id: created.alert.id });
     expect(stored?.expiresAt?.toISOString()).toBe(future);
   });
+
+  postgresTest("groups alerts and ungroups them", async ({ prisma, postgresContainer }) => {
+    await boot(prisma, postgresContainer.getConnectionUri());
+    const seeded = await seed(prisma, "monalertsgrp", true);
+    ctx.userId = seeded.user.id;
+    await createChat(ctx.agentDb, {
+      id: "chat_1",
+      organizationId: seeded.organization.id,
+      userId: seeded.user.id,
+    });
+    const ref = seeded.project.externalRef;
+    const memberIn = (environmentId: string) =>
+      createAlert(prisma, {
+        organizationId: seeded.organization.id,
+        projectId: seeded.project.id,
+        environmentId,
+        capabilityKey: "queue.depth",
+        params: { scope: { type: "all" } },
+        condition: { kind: "threshold", operator: ">", value: 1, windowSec: 300 },
+        createdBy: seeded.user.id,
+      });
+    const [a, b, c, elsewhere] = await Promise.all([
+      memberIn(seeded.environment.id),
+      memberIn(seeded.environment.id),
+      memberIn(seeded.environment.id),
+      memberIn("env_other"),
+    ]);
+    const post = (capabilityKey: string, memberAlertIds: string[]) =>
+      listAction({
+        request: jsonRequest(`https://example.test/api/v1/projects/${ref}/monitoring-alerts`, {
+          capabilityKey,
+          environment: "prod",
+          params: {},
+          condition: { kind: "state", stateKey: "group", compositeMode: "all", memberAlertIds },
+          behavior: {},
+          notifiers: [{ type: "chat", chatId: "chat_1" }],
+        }),
+        params: { projectRef: ref },
+        context: {},
+      } as any);
+
+    const created = await post("alerts.group", [a!.id, b!.id]);
+    expect(created.status).toBe(200);
+    const group = (await created.json()).alert;
+
+    for (const [key, ids, status] of [
+      ["alerts.group", [a!.id], 400],
+      ["queue.depth", [a!.id, c!.id], 400],
+      ["alerts.group", [c!.id, elsewhere!.id], 422],
+      ["alerts.group", [a!.id, c!.id], 422],
+      ["alerts.group", [group.id, c!.id], 422],
+    ] as const) {
+      expect((await post(key, [...ids])).status, `${key} ${ids}`).toBe(status);
+    }
+
+    const ungroup = () =>
+      alertAction({
+        request: jsonRequest(
+          `https://example.test/api/v1/projects/${ref}/monitoring-alerts/${group.id}`,
+          { action: "ungroup" }
+        ),
+        params: { projectRef: ref, alertId: group.id },
+        context: {},
+      } as any);
+    ctx.denied = { action: "delete", type: "alerts" };
+    expect((await ungroup()).status).toBe(403);
+    ctx.denied = undefined;
+    const ungrouped = await ungroup();
+    expect(ungrouped.status).toBe(200);
+    expect(await getAlert(prisma, { id: group.id })).toBeNull();
+    expect((await getAlert(prisma, { id: a!.id }))?.groupId).toBeNull();
+  });
+
+  postgresTest(
+    "creates a group with inline members atomically",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "monalertsgrpinline", true);
+      ctx.userId = seeded.user.id;
+      await createChat(ctx.agentDb, {
+        id: "chat_1",
+        organizationId: seeded.organization.id,
+        userId: seeded.user.id,
+      });
+      const ref = seeded.project.externalRef;
+      const existingIn = (environmentId: string) =>
+        createAlert(prisma, {
+          organizationId: seeded.organization.id,
+          projectId: seeded.project.id,
+          environmentId,
+          capabilityKey: "queue.depth",
+          params: { scope: { type: "all" } },
+          condition: { kind: "threshold", operator: ">", value: 1, windowSec: 300 },
+          createdBy: seeded.user.id,
+        });
+      const [elsewhere, existing] = await Promise.all([
+        existingIn("env_other"),
+        existingIn(seeded.environment.id),
+      ]);
+      const notifiers = [{ type: "chat", chatId: "chat_1" }];
+      const member = (value: number) => ({
+        capabilityKey: "queue.depth",
+        params: {},
+        condition: { kind: "threshold", operator: ">", value, windowSec: 300 },
+        behavior: {},
+        notifiers,
+      });
+      const invalidMember = {
+        ...member(0),
+        capabilityKey: "health.flow",
+        condition: { kind: "state", stateKey: "flow", params: { nonExistentParam: 42 } },
+      };
+      const post = (memberAlertIds: string[] | undefined, members: unknown[]) =>
+        listAction({
+          request: jsonRequest(`https://example.test/api/v1/projects/${ref}/monitoring-alerts`, {
+            capabilityKey: "alerts.group",
+            environment: "prod",
+            params: {},
+            condition: { kind: "state", stateKey: "group", compositeMode: "any", memberAlertIds },
+            behavior: {},
+            notifiers,
+            members,
+          }),
+          params: { projectRef: ref },
+          context: {},
+        } as any);
+      const alertCount = () => prisma.alert.count({ where: { projectId: seeded.project.id } });
+
+      for (const [memberAlertIds, members, status] of [
+        [undefined, [member(1), invalidMember], 400],
+        [[elsewhere.id, "alert_missing"], [member(1), member(2)], 422],
+      ] as const) {
+        expect((await post(memberAlertIds && [...memberAlertIds], [...members])).status).toBe(
+          status
+        );
+        expect(await alertCount()).toBe(2);
+      }
+
+      const created = await post(undefined, [member(1), member(2)]);
+      expect(created.status).toBe(200);
+      const group = (await created.json()).alert;
+      const grouped = await prisma.alert.findMany({ where: { groupId: group.id } });
+      expect(grouped).toHaveLength(2);
+      expect(grouped.map((m) => m.id).sort()).toEqual([...group.condition.memberAlertIds].sort());
+      expect((await post([existing!.id], [member(3)])).status).toBe(200);
+    }
+  );
 });
 
 describe("monitoring alerts API RBAC", () => {

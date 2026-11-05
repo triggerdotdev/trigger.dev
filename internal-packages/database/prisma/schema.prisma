@@ -968,12 +968,14 @@ model Alert {
   lastOccurrenceAt           DateTime? @db.Timestamptz(6)
   occurrencesSinceRaise      Int       @default(0)
   occurrencesTotal           BigInt    @default(0)
+  groupId                    String?
 
   // SQL-only (migration): ("lifecycle", "nextEvaluationAt" NULLS FIRST) and partial active "expiresAt"
   @@index([environmentId, lifecycle])
   @@index([lifecycle, evaluationLeaseUntil])
   @@index([projectId])
   @@index([organizationId])
+  @@index([groupId])
 }
 
 /// RANGE-partitioned by month on `at` (see migration).
