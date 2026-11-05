@@ -70,7 +70,7 @@ function useGroupDraft({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
   const footnote = `Groups ${members.map((m) => m.name).join(", ")}. Their own notifications pause while grouped.`;
-  const baseSteps = allSteps(flow, channels, undefined, addChannel);
+  const baseSteps = allSteps(flow, channels, addChannel);
   const notifiersStep = baseSteps.find((step) => step.id === "notifiers")!;
   const expiryStep = baseSteps.find((step) => step.id === "expiry")!;
   const hasNotifier = notifiersStep.options.some(

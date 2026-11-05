@@ -20,7 +20,7 @@ import {
   stopAlertAndUnschedule,
 } from "./alertLifecycle.server";
 import { type AlertDraftScope } from "./alertDraft";
-import { assertAlertDraftValid } from "./createAlertFromDraft.server";
+import { assertAlertDraftValid, NoNotifiersError } from "./createAlertFromDraft.server";
 import { reclaimGroupMembers, removeGroupMember, ungroupAlert } from "./alertGroups.server";
 
 export type AlertActionIntent = "resolve" | "stop" | "delete" | "activate" | "ungroup";
@@ -150,10 +150,9 @@ export async function activateAlert(
     throw new AlertActivationInvalidError("Pick an expiry in the future");
   }
 
-  const notifiers = params.notifiers ?? (alert.notifiers as NotifierRef[]);
-  if (notifiers.length === 0) {
-    throw new AlertActivationInvalidError("Add at least one notifier");
-  }
+  const notifiers = (params.notifiers ?? (alert.notifiers as NotifierRef[])).filter(
+    (notifier) => notifier.type !== "chat"
+  );
   const scope = (alert.params as { scope?: { type?: AlertDraftScope["type"] } }).scope;
   try {
     assertAlertDraftValid({
@@ -172,7 +171,7 @@ export async function activateAlert(
     environmentId: params.environmentId,
     now,
     expiresAt: params.expiresAt,
-    notifiers: params.notifiers,
+    notifiers: params.notifiers ?? notifiers,
   };
   if (alert.capabilityKey !== GROUP_CAPABILITY_KEY) {
     const result = await activateAlertAndSchedule(db, activation, deps);
@@ -212,6 +211,13 @@ export async function editAlert(
   });
   if (!alert) throw new AlertNotFoundError();
 
+  const stored = alert.notifiers as NotifierRef[];
+  const notifiers = (params.notifiers ?? stored).filter((notifier) => notifier.type !== "chat");
+  const writeNotifiers = params.notifiers !== undefined || notifiers.length !== stored.length;
+  if (writeNotifiers && notifiers.length === 0) {
+    throw new AlertActivationInvalidError(new NoNotifiersError().message);
+  }
+
   if (params.name !== undefined && params.name !== alert.name) {
     await db.alert.update({
       where: { id: alert.id },
@@ -228,12 +234,12 @@ export async function editAlert(
     });
   }
 
-  if (params.notifiers !== undefined) {
+  if (writeNotifiers) {
     await updateAlertNotifiers(db, {
       id: params.alertId,
       projectId: params.projectId,
       environmentId: params.environmentId,
-      notifiers: params.notifiers,
+      notifiers,
     });
   }
 }

@@ -9,7 +9,7 @@ import { OperatingSystemContextProvider } from "~/components/primitives/Operatin
 import { ShortcutsProvider } from "~/components/primitives/ShortcutsProvider";
 import { useCreationFlowState, type AlertChannel, type CreationFlowState } from "./CreationFlow";
 import { parseErrorGroupScope } from "~/utils/errorGroupScope";
-import { createAlertRequestBody } from "~/components/alerts/createAlertRequest";
+import { createAlertRequestBody, withKnownNotifiers } from "~/components/alerts/createAlertRequest";
 import { alertName, capabilityChips, type FlowAnswers } from "./flow-state";
 
 const fetcherState = vi.hoisted(() => ({
@@ -119,7 +119,6 @@ function Harness({
   return createElement(CreationTranscript, {
     flow,
     channels: CHANNELS,
-    chatId: "chat_1",
     manual,
     addChannel,
   });
@@ -323,7 +322,7 @@ describe("manual mode shares the wizard steps", () => {
     const notifiers = rowLabels(document.querySelector("[role=dialog]")!);
     remount();
     const card = { condition, expiry, notifiers };
-    expect(card.notifiers).toEqual(["This chat", "Ops webhook", "Email to ops"]);
+    expect(card.notifiers).toEqual(["Ops webhook", "Email to ops"]);
     for (const [step, labels] of Object.entries(card)) {
       remount();
       mount(true, { ...BASE, expiry: "none" });
@@ -426,7 +425,7 @@ describe("manual mode shares the wizard steps", () => {
 
   // Mutation: dropping the clear on Until… keeps the later steps and Create.
   it("switching from No expiry to Until… unsets the expiry and hides later steps", () => {
-    mount(true, { ...BASE, expiry: "none", notifiers: ["chat"] });
+    mount(true, { ...BASE, expiry: "none", notifiers: ["ch_1"] });
     expect(fieldset("notifiers")).not.toBeNull();
     pick("expiry", "Until…");
     expect(latest!.answers.expiry).toBeUndefined();
@@ -443,16 +442,16 @@ describe("manual mode shares the wizard steps", () => {
   });
 
   it("notifier select stays in sync with the flow across re-renders", () => {
-    mount(true, { ...BASE, expiry: "none", notifiers: ["chat"] });
-    expect(checkedLabels("notifiers")).toEqual(["This chat"]);
-    tick("notifiers", ["This chat", "Ops webhook"]);
+    mount(true, { ...BASE, expiry: "none", notifiers: ["ch_2"] });
+    expect(checkedLabels("notifiers")).toEqual(["Email to ops"]);
+    tick("notifiers", ["Email to ops", "Ops webhook"]);
     expect(latest!.answers.notifiers).toEqual(["ch_1"]);
     expect(checkedLabels("notifiers")).toEqual(["Ops webhook"]);
   });
 
   it("Done shows the Watch review card and Start over resets", () => {
-    mount(true, { ...BASE, expiry: "none", notifiers: ["chat"] });
-    tick("notifiers", ["This chat", "Ops webhook"]);
+    mount(true, { ...BASE, expiry: "none", notifiers: ["ch_2"] });
+    tick("notifiers", ["Email to ops", "Ops webhook"]);
     click(
       Array.from(fieldset("notifiers").querySelectorAll("button")).find(
         (b) => b.textContent === "Done"
@@ -497,7 +496,7 @@ describe("draft completeness and step order", () => {
 
   // Mutation: dropping the condition clear on Custom lets an empty threshold save.
   it("switching the threshold to an empty Custom blocks Done", () => {
-    mount(true, { ...BASE, expiry: "none", notifiers: ["chat"] });
+    mount(true, { ...BASE, expiry: "none", notifiers: ["ch_1"] });
     pick("condition", "Custom");
     expect(latest!.answers.condition).toBeUndefined();
     expect(fieldset("notifiers")).toBeNull();
@@ -576,7 +575,7 @@ describe("manual review lock", () => {
 
   // Mutation: removing the read-only gate leaves the form editable under the review card.
   it("locks the form while the review card is shown and Customize unlocks it", async () => {
-    mount(true, { ...BASE, expiry: "none", notifiers: ["chat"] });
+    mount(true, { ...BASE, expiry: "none", notifiers: ["ch_1"] });
     await settle();
     click(button("Done")!);
     confirmName();
@@ -596,7 +595,7 @@ describe("manual review lock", () => {
 
   // Mutation: dropping onClear from the condition input keeps the stale threshold.
   it("clearing a committed custom threshold after Customize blocks review and Create", async () => {
-    mount(true, { ...BASE, expiry: "none", notifiers: ["chat"] });
+    mount(true, { ...BASE, expiry: "none", notifiers: ["ch_1"] });
     await settle();
     pick("condition", "Custom");
     const field = () => fieldset("condition").querySelector<HTMLInputElement>("input")!;
@@ -647,7 +646,7 @@ describe("manual mode regressions", () => {
   });
 
   it("shows only the created card once the alert is created", async () => {
-    mount(true, { ...BASE, expiry: "none", notifiers: ["chat"] });
+    mount(true, { ...BASE, expiry: "none", notifiers: ["ch_1"] });
     click(button("Done")!);
     confirmName();
     await act(async () => {
@@ -665,7 +664,7 @@ describe("manual mode regressions", () => {
   it("editing a committed expiry to a past date clears it and blocks Create", async () => {
     vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-07T10:00:00Z") });
     try {
-      mount(true, { ...BASE, expiry: "30h", notifiers: ["chat"] });
+      mount(true, { ...BASE, expiry: "30h", notifiers: ["ch_1"] });
       await settle();
       const spin = (index: number) =>
         fieldset("expiry").querySelectorAll<HTMLElement>('[role="spinbutton"]')[index]!;
@@ -819,20 +818,20 @@ describe("manual mode dropdowns", () => {
     expect(fieldset("notifiers").querySelector("button[aria-pressed]")).toBeNull();
     const list = fieldset("notifiers").querySelector("[data-checkbox-list]")!;
     expect(list.className).toContain("flex-col");
-    expect(checkboxLabels("notifiers")).toEqual(["This chat", "Ops webhook", "Email to ops"]);
+    expect(checkboxLabels("notifiers")).toEqual(["Ops webhook", "Email to ops"]);
     tick("notifiers", ["Ops webhook", "Email to ops"]);
     expect(latest!.answers.notifiers).toEqual(["ch_1", "ch_2"]);
     expect(checkedLabels("notifiers")).toEqual(["Ops webhook", "Email to ops"]);
   });
 
   it("unticking a selected notifier removes it", () => {
-    mount(true, { ...BASE, expiry: "none", notifiers: ["chat", "ch_1"] });
+    mount(true, { ...BASE, expiry: "none", notifiers: ["ch_2", "ch_1"] });
     tick("notifiers", ["Ops webhook"]);
-    expect(latest!.answers.notifiers).toEqual(["chat"]);
+    expect(latest!.answers.notifiers).toEqual(["ch_2"]);
   });
 
   it("Add channel is a button and is not stored as a notifier", () => {
-    mount(true, { ...BASE, expiry: "none", notifiers: ["chat"] }, {
+    mount(true, { ...BASE, expiry: "none", notifiers: ["ch_1"] }, {
       projectId: "p1",
       canWrite: true,
       atLimit: false,
@@ -842,7 +841,7 @@ describe("manual mode dropdowns", () => {
         (b) => b.textContent === "Add channel"
       )!
     );
-    expect(latest!.answers.notifiers).toEqual(["chat"]);
+    expect(latest!.answers.notifiers).toEqual(["ch_1"]);
   });
 
   it("saves the answers with the manual flag and the marker returnTo when connecting Slack", () => {
@@ -850,7 +849,7 @@ describe("manual mode dropdowns", () => {
     fetcherState.data = { alertChannels: [], limits: { used: 0, limit: 5 }, canWrite: true };
     mount(
       true,
-      { ...BASE, expiry: "none", notifiers: ["chat", "ch_1"] },
+      { ...BASE, expiry: "none", notifiers: ["ch_1"] },
       {
         projectId: "p1",
         environmentId: "e1",
@@ -872,7 +871,7 @@ describe("manual mode dropdowns", () => {
     expect(JSON.parse(sessionStorage.getItem("alerts.slackConnectResume.p1.e1")!)).toMatchObject({
       what: BASE.what,
       expiry: "none",
-      notifiers: ["chat", "ch_1"],
+      notifiers: ["ch_1"],
       manual: true,
     });
     fetcherState.data = undefined;
@@ -1010,7 +1009,7 @@ describe("manual mode dropdowns", () => {
       what: "health.flow",
       scope: "all",
       expiry: "none",
-      notifiers: ["chat"],
+      notifiers: ["ch_1"],
     });
     await settle();
     const button = (label: string) =>
@@ -1051,7 +1050,7 @@ describe("manual mode dropdowns", () => {
       scope: "all",
       conditionParams: { silenceSec: 600 },
       expiry: "none",
-      notifiers: ["chat"],
+      notifiers: ["ch_1"],
     });
     await settle();
     pick("condition", "Custom");
@@ -1325,8 +1324,7 @@ describe("Name step", () => {
 
   // Mutation: dropping the prefill leaves the input empty.
   it("comes last, prefilled with the generated name, and the edited name is created", () => {
-    mount(true, { ...BASE, expiry: "none", notifiers: ["chat"] });
-    tick("notifiers", ["Ops webhook"]);
+    mount(true, { ...BASE, expiry: "none", notifiers: ["ch_1"] });
     click(button("Done")!);
     const suggested = alertName(latest!.answers);
     expect(fieldset("name").querySelector("legend")?.textContent).toBe("Name your alert");
@@ -1346,8 +1344,7 @@ describe("Name step", () => {
 
   // Mutation: freezing the suggestion at confirm stops an unedited name following later edits.
   it("an unedited name follows later edits and an edited one survives them", () => {
-    mount(true, { ...BASE, expiry: "none", notifiers: ["chat"] });
-    tick("notifiers", ["Ops webhook"]);
+    mount(true, { ...BASE, expiry: "none", notifiers: ["ch_1"] });
     click(button("Done")!);
     confirmName();
     expect(latest!.answers.name).toBeUndefined();
@@ -1360,8 +1357,7 @@ describe("Name step", () => {
 
   // Mutation: storing the typed name unclamped breaks the draft schema on the next chat turn.
   it("a name longer than the draft limit is stored clamped", () => {
-    mount(true, { ...BASE, expiry: "none", notifiers: ["chat"] });
-    tick("notifiers", ["Ops webhook"]);
+    mount(true, { ...BASE, expiry: "none", notifiers: ["ch_1"] });
     click(button("Done")!);
     act(() => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
@@ -1375,8 +1371,7 @@ describe("Name step", () => {
 
   // Mutation: dropping the blank guard lets an empty name through.
   it("a blank name blocks Continue", () => {
-    mount(true, { ...BASE, expiry: "none", notifiers: ["chat"] });
-    tick("notifiers", ["Ops webhook"]);
+    mount(true, { ...BASE, expiry: "none", notifiers: ["ch_1"] });
     click(button("Done")!);
     act(() => latest!.setName(""));
     const confirm = Array.from(fieldset("name").querySelectorAll("button")).find(
@@ -1388,11 +1383,23 @@ describe("Name step", () => {
   });
 
   it("opens an agent-patched name on the card, prefilled", () => {
-    mount(false, { ...BASE, expiry: "none", notifiers: ["chat"], name: "Agent picked name" });
+    mount(false, { ...BASE, expiry: "none", notifiers: ["ch_1"], name: "Agent picked name" });
     const dialog = document.querySelector("[role=dialog]")!;
     expect(dialog.getAttribute("aria-label")).toBe("Name your alert");
     expect(dialog.querySelector<HTMLInputElement>('input[aria-label="Name"]')!.value).toBe(
       "Agent picked name"
     );
+  });
+});
+
+describe("stale notifier ids", () => {
+  // Mutation: returning the answers unfiltered lets a stale "chat" reach notifierChannelIds.
+  it("a saved draft's retired chat id never reaches the create body", () => {
+    const answers = { ...BASE, expiry: "none", notifiers: ["chat", "ch_1"] };
+    const body = createAlertRequestBody(
+      { organizationId: "o", projectId: "p", environmentId: "e" },
+      withKnownNotifiers(answers, CHANNELS)
+    );
+    expect(body.form.notifierChannelIds).toEqual(["ch_1"]);
   });
 });

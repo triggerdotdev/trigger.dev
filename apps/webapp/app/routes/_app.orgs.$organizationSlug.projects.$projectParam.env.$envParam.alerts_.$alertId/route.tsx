@@ -50,11 +50,9 @@ import { logger } from "~/services/logger.server";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { canUseAlertsList } from "~/v3/canUseAlertsList.server";
-import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
 import { pickThresholdSeries } from "~/components/alerts/alertSeriesTypes";
 import { alertLifetimeWindow } from "~/v3/services/alerts/alertSeries.server";
-import { GROUP_CAPABILITY_KEY, notifierRefKey, type NotifierRef } from "@internal/alert-contracts";
-import { chatExists } from "@internal/dashboard-agent-db";
+import { GROUP_CAPABILITY_KEY, type NotifierRef } from "@internal/alert-contracts";
 import { getAlert } from "~/v3/services/alerts/storage/alertStore.server";
 import { alertDisplayName } from "~/v3/services/alerts/alertDisplayName";
 import { editAlertGroup } from "~/v3/services/alerts/alertGroups.server";
@@ -75,12 +73,12 @@ import {
 } from "~/v3/services/alerts/alertActions.server";
 import {
   NoNotifiersError,
+  ChatNotifiersNotSupportedError,
   uniqueNotifiers,
 } from "~/v3/services/alerts/createAlertFromDraft.server";
 import {
   buildNotifierOptions,
   parseNotifierKey,
-  validateChatRef,
   type EditableChannel,
 } from "./editNotifierOptions";
 import { boundedIn, type RuntimeEnvironmentType } from "@trigger.dev/database";
@@ -323,50 +321,16 @@ async function resolveEditedNotifiers(
   if (parsed.length !== rawKeys.length) {
     return { error: "Invalid notifier" };
   }
+  if (parsed.some((n) => n.type === "chat")) {
+    return { error: new ChatNotifiersNotSupportedError().message };
+  }
   const channelError = await checkChannels(
     parsed as NotifierRef[],
     ctx.projectId,
     ctx.environmentType
   );
   if (channelError) return { error: channelError };
-  const current = await getAlert(prisma, {
-    id: ctx.alertId,
-    projectId: ctx.projectId,
-    environmentId: ctx.environmentId,
-  });
-  const currentRefs = (current?.notifiers ?? []) as NotifierRef[];
-  const currentByKey = new Map(currentRefs.map((ref) => [notifierRefKey(ref), ref]));
-  const chatRefs = parsed.filter(
-    (n): n is Extract<typeof n, { type: "chat" }> =>
-      n.type === "chat" && !currentByKey.has(notifierRefKey(n as NotifierRef))
-  );
-  for (const chat of chatRefs) {
-    const chatError = validateChatRef(chat, ctx.userId);
-    if (chatError) {
-      return { error: chatError };
-    }
-    const chatIdToCheck = chat.chatId ?? chat.conversationId;
-    if (chatIdToCheck) {
-      const exists = await chatExists(dashboardAgentDb, {
-        chatId: chatIdToCheck,
-        userId: ctx.userId,
-        organizationId: ctx.organizationId,
-      });
-      if (!exists) {
-        return { error: "Unauthorized chat notifier" };
-      }
-    }
-  }
-  const kept = parsed.map((n) => currentByKey.get(notifierRefKey(n as NotifierRef)) ?? n);
-  const keptKeys = new Set(kept.map((n) => notifierRefKey(n as NotifierRef)));
-  const foreign = currentRefs.filter(
-    (ref) =>
-      ref.type === "chat" &&
-      Boolean(ref.userId) &&
-      ref.userId !== ctx.userId &&
-      !keptKeys.has(notifierRefKey(ref))
-  );
-  const notifiers = uniqueNotifiers([...kept, ...foreign] as NotifierRef[]);
+  const notifiers = uniqueNotifiers(parsed as NotifierRef[]);
   if (notifiers.length === 0) {
     return { error: new NoNotifiersError().message };
   }

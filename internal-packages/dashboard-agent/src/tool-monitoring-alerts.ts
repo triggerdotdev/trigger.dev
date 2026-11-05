@@ -213,7 +213,7 @@ export function buildMonitoringAlertTools(args: {
               : {}),
             condition,
             ...(behavior ? { behavior } : {}),
-            ...(notifiers ? { notifiers } : {}),
+            notifiers,
             ...(query ? { query } : {}),
             ...(signal ? { signal } : {}),
           })

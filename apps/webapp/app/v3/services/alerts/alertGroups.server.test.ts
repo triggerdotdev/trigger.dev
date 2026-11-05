@@ -6,7 +6,6 @@ import {
   createAlert,
   expireAlerts,
   getAlert,
-  listAlertEvents,
   type Alert,
 } from "./storage/alertStore.server";
 import { evaluateAlert } from "./engine/evaluateAlert.server";
@@ -27,7 +26,6 @@ import {
   AlertActivationInvalidError,
   performAlertAction,
 } from "./alertActions.server";
-import { alertEventChatText } from "./delivery/alertEventChatText";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -244,10 +242,6 @@ describe("group evaluation", () => {
     const outcome = await evaluateAlert(second.alert, deps);
     expect(outcome.events).toEqual(["raised"]);
     expect(outcome.deliveryCount).toBe(1);
-    const [event] = await listAlertEvents(db, alert.id, { limit: 1 });
-    expect(alertEventChatText(event!, alert)).toBe(
-      "Alert raised: Group of 2 alerts. Fired: API rate limit."
-    );
     const reading = await getCurrentReading(alert, {
       evaluateBinding: groupBinding(),
       cache: createInMemoryCurrentReadingCache(),

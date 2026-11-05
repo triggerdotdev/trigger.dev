@@ -1,10 +1,8 @@
 import { json } from "@remix-run/server-runtime";
 import type { NotifierRef } from "@internal/alert-contracts";
-import { chatExists } from "@internal/dashboard-agent-db";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
 import { hasAccessToEnvironment } from "~/models/runtimeEnvironment.server";
-import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { canUseAlertsList } from "~/v3/canUseAlertsList.server";
 import { createAlertGroup } from "~/v3/services/alerts/alertGroups.server";
@@ -12,20 +10,16 @@ import { findValidNotifierChannelIds } from "~/v3/services/alerts/validateNotifi
 import { throwPermissionDenied } from "~/utils/permissionDenied";
 import { v3AlertPath } from "~/utils/pathBuilder";
 
-const GroupRequestSchema = z
-  .object({
-    organizationId: z.string().min(1),
-    projectId: z.string().min(1),
-    environmentId: z.string().min(1),
-    memberAlertIds: z.array(z.string().min(1)).max(200),
-    compositeMode: z.enum(["any", "all"]),
-    name: z.string().trim().min(1).max(120),
-    notifierChannelIds: z.array(z.string()),
-    chatNotifier: z.enum(["on"]).optional(),
-    chatId: z.string().optional(),
-    expiresAt: z.string().datetime().optional(),
-  })
-  .refine((v) => v.chatNotifier !== "on" || Boolean(v.chatId), { path: ["chatId"] });
+const GroupRequestSchema = z.object({
+  organizationId: z.string().min(1),
+  projectId: z.string().min(1),
+  environmentId: z.string().min(1),
+  memberAlertIds: z.array(z.string().min(1)).max(200),
+  compositeMode: z.enum(["any", "all"]),
+  name: z.string().trim().min(1).max(120),
+  notifierChannelIds: z.array(z.string()).min(1, "At least one channel is required"),
+  expiresAt: z.string().datetime().optional(),
+});
 
 async function bodyScope(_params: unknown, request: Request) {
   const body: unknown = await request
@@ -89,16 +83,6 @@ export const action = dashboardAction(
       type: "channel",
       channelId,
     }));
-    if (body.chatNotifier === "on") {
-      const owned = await chatExists(dashboardAgentDb, {
-        chatId: body.chatId!,
-        organizationId: body.organizationId,
-        userId: user.id,
-      });
-      if (!owned) return json({ error: "Invalid chat reference" }, { status: 400 });
-      notifiers.push({ type: "chat", chatId: body.chatId, userId: user.id });
-    }
-
     const expiresAt = body.expiresAt ? new Date(body.expiresAt) : undefined;
     if (expiresAt && expiresAt.getTime() <= Date.now()) {
       return json({ error: "Pick an expiry in the future" }, { status: 400 });

@@ -21,6 +21,12 @@ export function expiryToIso(exp: string | undefined): string | undefined {
   return Number.isNaN(Date.parse(exp)) ? undefined : new Date(exp).toISOString();
 }
 
+export function withKnownNotifiers(answers: FlowAnswers, channels: { id: string }[]): FlowAnswers {
+  return answers.notifiers
+    ? { ...answers, notifiers: answers.notifiers.filter((id) => channels.some((c) => c.id === id)) }
+    : answers;
+}
+
 export function replaceRequestBody(answers: FlowAnswers): FormData {
   const target = answers.replace!;
   const expiresAt = expiryToIso(answers.expiry);
@@ -34,7 +40,7 @@ export function replaceRequestBody(answers: FlowAnswers): FormData {
   if (expiresAt) body.set("expiresAt", expiresAt);
   if (answers.scope) body.set("scopeType", answers.scope);
   if (answers.scopeValue) body.set("scopeValue", answers.scopeValue);
-  body.set("notifierChannelIds", (answers.notifiers ?? []).filter((n) => n !== "chat").join(","));
+  body.set("notifierChannelIds", (answers.notifiers ?? []).join(","));
   return body;
 }
 
@@ -89,7 +95,7 @@ export function createAlertRequestBody(
         kind === "absence" && answers.condition ? Number(answers.condition) : undefined,
       ...(kind === "state" ? limitFields(answers) : {}),
       expiresAt: expiryToIso(answers.expiry),
-      notifierChannelIds: (answers.notifiers ?? []).filter((n) => n !== "chat"),
+      notifierChannelIds: answers.notifiers ?? [],
     },
   };
 }
@@ -106,14 +112,13 @@ export type QueryAlertDraft = {
   notifiers: string[];
 };
 
-export type QueryAlertChatRequest = { chatId: string; transcriptChatId: string };
+export type QueryAlertChatRequest = { transcriptChatId: string };
 
 export function queryAlertRequestBody(
   ids: { organizationId: string; projectId: string; environmentId: string },
   draft: QueryAlertDraft,
   chat?: QueryAlertChatRequest
 ) {
-  const wantsChat = Boolean(chat) && draft.notifiers.includes("chat");
   const conditionKind =
     draft.mode === "match" ? "occurrence" : draft.mode === "absence" ? "absence" : "threshold";
   return {
@@ -121,8 +126,6 @@ export function queryAlertRequestBody(
     projectId: ids.projectId,
     environmentId: ids.environmentId,
     name: draft.name,
-    chatNotifier: wantsChat ? ("on" as const) : undefined,
-    chatId: wantsChat ? chat!.chatId : undefined,
     transcriptChatId: chat?.transcriptChatId,
     expiry: draft.expiry && EXPIRY_TOKEN_PATTERN.test(draft.expiry) ? draft.expiry : undefined,
     form: {
@@ -139,7 +142,7 @@ export function queryAlertRequestBody(
         measure: draft.mode === "match" ? undefined : draft.measure,
       },
       expiresAt: expiryToIso(draft.expiry),
-      notifierChannelIds: draft.notifiers.filter((n) => n !== "chat"),
+      notifierChannelIds: draft.notifiers,
     },
   };
 }

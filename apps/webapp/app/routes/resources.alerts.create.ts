@@ -22,7 +22,7 @@ import {
   InvalidConditionParamsError,
   InvalidScopeForCapabilityError,
   NoNotifiersError,
-  IncompleteChatNotifierError,
+  ChatNotifiersNotSupportedError,
   InvalidNotifierError,
   InvalidQueryAlertError,
 } from "~/v3/services/alerts/createAlertFromDraft.server";
@@ -45,7 +45,7 @@ const DOMAIN_ERRORS = [
   InvalidConditionParamsError,
   InvalidScopeForCapabilityError,
   NoNotifiersError,
-  IncompleteChatNotifierError,
+  ChatNotifiersNotSupportedError,
   InvalidNotifierError,
 ];
 
@@ -132,20 +132,6 @@ export const action = dashboardAction(
       type: "channel",
       channelId,
     }));
-
-    if (body.chatNotifier === "on") {
-      if (body.chatId) {
-        const owned = await chatExists(dashboardAgentDb, {
-          chatId: body.chatId,
-          organizationId: body.organizationId,
-          userId,
-        });
-        if (!owned) {
-          return json({ error: "Invalid chat reference" }, { status: 400 });
-        }
-      }
-      notifiers.push({ type: "chat", chatId: body.chatId, userId });
-    }
 
     const draftError = validateAlertDraft({
       capability: getCapability(body.form.capabilityKey),

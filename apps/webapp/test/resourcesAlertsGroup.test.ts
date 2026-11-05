@@ -124,6 +124,27 @@ describe("resources.alerts.group action", () => {
     expect(await prisma.alert.count({ where: { groupId: group.id } })).toBe(2);
   });
 
+  test("ignores chatNotifier and stores channel notifiers only", async ({ prisma }) => {
+    const seeded = await seed(prisma);
+    const resp = await callAction(seeded.user.id, {
+      ...body(seeded),
+      chatNotifier: "on",
+      chatId: "x",
+    });
+    expect(resp.status).toBe(200);
+    const group = await prisma.alert.findFirstOrThrow({
+      where: { capabilityKey: "alerts.group" },
+    });
+    expect(group.notifiers).toEqual([{ type: "channel", channelId: seeded.channel.id }]);
+  });
+
+  test("rejects a group without a channel", async ({ prisma }) => {
+    const seeded = await seed(prisma);
+    const resp = await callAction(seeded.user.id, { ...body(seeded), notifierChannelIds: [] });
+    expect(resp.status).toBe(400);
+    expect(await prisma.alert.count({ where: { capabilityKey: "alerts.group" } })).toBe(0);
+  });
+
   test("rejects an organization id that does not own the environment", async ({ prisma }) => {
     const seeded = await seed(prisma);
     const other = await seed(prisma);

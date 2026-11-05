@@ -31,7 +31,7 @@ export type EditAlertPrefill = {
 };
 
 const ADD_CHANNEL_OPTION = "__add_channel__";
-const NO_NOTIFIER = "Pick at least one destination.";
+const NO_NOTIFIER = "Pick at least one channel";
 const NO_EXPIRY = "Pick how long it should stay active.";
 
 /** A past expiry stays unanswered so it has to be picked again. */
@@ -46,26 +46,10 @@ function channelKey(id: string) {
 
 type NotifierOption = { id: string; label: string; disabledReason?: string; locked?: boolean };
 
-function notifierOptions(
-  prefill: EditAlertPrefill,
-  channels: AlertChannel[],
-  userId: string
-): NotifierOption[] {
-  const chats = prefill.notifiers
-    .filter((n) => n.key.startsWith("chat:"))
-    .map((n): NotifierOption => {
-      const owner = n.key.split(":")[2];
-      if (owner === userId) return { id: n.key, label: n.label ?? "This chat" };
-      if (owner === "-") return { id: n.key, label: "Project chat" };
-      return {
-        id: n.key,
-        label: "Another member's chat",
-        disabledReason: "Kept as is; only its owner can change it",
-        locked: true,
-      };
-    });
-  const live = channels.map((ch) => ({ id: channelKey(ch.id), label: ch.name || ch.type }));
-  return [...chats, ...live];
+const isChatKey = (key: string) => key.startsWith("chat:");
+
+function notifierOptions(channels: AlertChannel[]): NotifierOption[] {
+  return channels.map((ch) => ({ id: channelKey(ch.id), label: ch.name || ch.type }));
 }
 
 export function EditAlertTranscript({
@@ -73,18 +57,18 @@ export function EditAlertTranscript({
   channels,
   alertPath,
   addChannel,
-  userId,
   onNewChat,
 }: {
   prefill: EditAlertPrefill;
   channels: AlertChannel[];
   alertPath: string;
   addChannel?: AddChannelAccess;
-  userId: string;
   onNewChat?: () => void;
 }) {
   const fetcher = useFetcher<{ ok?: boolean; error?: string }>();
-  const [selected, setSelected] = useState(() => prefill.notifiers.map((n) => n.key));
+  const [selected, setSelected] = useState(() =>
+    prefill.notifiers.map((n) => n.key).filter((key) => !isChatKey(key))
+  );
   const [closed, setClosed] = useState(false);
   const [addingChannel, setAddingChannel] = useState(false);
   const activate = prefill.activate === true;
@@ -95,16 +79,15 @@ export function EditAlertTranscript({
   const offset = prefill.compositeMode ? 1 : 0;
 
   const allChannels = channels;
-  const options = notifierOptions(prefill, allChannels, userId);
-  const locked = options.filter((o) => o.locked).map((o) => o.id);
-  const chosen = selected.filter((key) => options.some((o) => o.id === key && !o.disabledReason));
-  const picked = [...locked, ...chosen];
+  const options = notifierOptions(allChannels);
+  const picked = selected.filter((key) => options.some((o) => o.id === key));
   const initial = prefill.notifiers
     .map((n) => n.key)
-    .filter((key) => !locked.includes(key))
+    .filter((key) => !isChatKey(key))
     .sort()
     .join(",");
-  const changed = [...chosen].sort().join(",") !== initial;
+  const hadChat = prefill.notifiers.some((n) => isChatKey(n.key));
+  const changed = hadChat || [...picked].sort().join(",") !== initial;
   const updated = fetcher.data?.ok === true;
   const submitting = fetcher.state !== "idle";
 

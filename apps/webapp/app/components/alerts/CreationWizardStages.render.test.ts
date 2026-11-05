@@ -62,11 +62,9 @@ let withComposer = true;
 
 function Harness({
   onSubmit,
-  chatId,
   initial,
 }: {
   onSubmit: (a: FlowAnswers) => void;
-  chatId?: string;
   initial?: FlowAnswers;
 }) {
   const flow = useCreationFlowState(onSubmit, initial);
@@ -75,26 +73,17 @@ function Harness({
   return createElement(CreationTranscript, {
     flow,
     channels: [CHANNEL],
-    chatId,
     onFreeText: withComposer ? freeText : undefined,
   });
 }
 
-function mount(
-  onSubmit: (a: FlowAnswers) => void = vi.fn(),
-  chatId?: string,
-  initial?: FlowAnswers
-) {
+function mount(onSubmit: (a: FlowAnswers) => void = vi.fn(), initial?: FlowAnswers) {
   act(() =>
     root.render(
       createElement(
         OperatingSystemContextProvider,
         { platform: "mac" } as ComponentProps<typeof OperatingSystemContextProvider>,
-        createElement(
-          ShortcutsProvider,
-          null,
-          createElement(Harness, { onSubmit, chatId, initial })
-        )
+        createElement(ShortcutsProvider, null, createElement(Harness, { onSubmit, initial }))
       )
     )
   );
@@ -437,26 +426,18 @@ describe("wizard card drives step-by-step creation", () => {
     expect(latest!.answers.condition).toBe("50");
   });
 
-  it("This chat can be deselected and Done then disables", () => {
-    mount(vi.fn(), "chat_1");
+  it("Done stays disabled with no channel picked and the hint explains why", () => {
+    mount(vi.fn());
     toNotifiers();
-    expect(latest!.answers.notifiers).toEqual(["chat"]);
-    expect(done().disabled).toBe(false);
-    pick("This chat");
-    const chat = Array.from(card()!.querySelectorAll("li button")).find(
-      (b) => b.textContent === "This chat"
-    )!;
-    expect(chat.getAttribute("aria-pressed")).toBe("false");
-    expect(latest!.answers.notifiers).toEqual([]);
     expect(done().disabled).toBe(true);
-    expect(card()!.querySelector("[role=alert]")?.textContent).toBe(
-      "Pick at least one destination."
-    );
+    expect(card()!.querySelector("[role=alert]")?.textContent).toBe("Pick at least one channel");
+    pick("Ops webhook");
+    expect(done().disabled).toBe(false);
   });
 
   it("a draft without notifiers blocks Create and Customize opens the notifiers step", () => {
     const onSubmit = vi.fn();
-    mount(onSubmit, undefined, {
+    mount(onSubmit, {
       area: "queues",
       what: "queue.depth",
       scope: "all",
@@ -465,7 +446,7 @@ describe("wizard card drives step-by-step creation", () => {
     });
     expect(latest!.isReview).toBe(true);
     expect(reviewButton("Create alert").disabled).toBe(true);
-    expect(document.body.textContent).toContain("Pick at least one destination.");
+    expect(document.body.textContent).toContain("Pick at least one channel");
     act(() => reviewButton("Customize").click());
     expect(card()?.getAttribute("aria-label")).toBe(promptForStep("notifiers", {}));
     pick("Ops webhook");
@@ -566,9 +547,7 @@ describe("wizard card drives step-by-step creation", () => {
       (b) => b.textContent === "Done"
     )!;
     expect(done.disabled).toBe(true);
-    expect(card()!.querySelector("[role=alert]")?.textContent).toBe(
-      "Pick at least one destination."
-    );
+    expect(card()!.querySelector("[role=alert]")?.textContent).toBe("Pick at least one channel");
   });
 
   it("re-picking the current value keeps downstream answers", async () => {
@@ -775,7 +754,7 @@ describe("wizard card drives step-by-step creation", () => {
   });
 
   it("Back from expiry to a multi-param health step, Continue advances", () => {
-    mount(vi.fn(), undefined, {
+    mount(vi.fn(), {
       area: "health",
       what: "health.flow",
       scope: "all",
@@ -855,7 +834,7 @@ describe("wizard card drives step-by-step creation", () => {
 
   // Mutation: dropping the Custom fallback for unmatched agent values fails this.
   it("an agent-set value that matches no queue shows a prefilled Custom row", async () => {
-    mount(vi.fn(), undefined, {
+    mount(vi.fn(), {
       area: "queues",
       what: "queue.depth",
       scope: "queue",
@@ -910,8 +889,6 @@ const RequestSchema = z
     organizationId: z.string().min(1),
     projectId: z.string().min(1),
     environmentId: z.string().min(1),
-    chatNotifier: z.enum(["on"]).optional(),
-    chatId: z.string().optional(),
     form: z.object({
       capabilityKey: z.string().min(1),
       scopeType: ScopeTypeSchema,
@@ -930,7 +907,7 @@ const RequestSchema = z
       }, z.string().array()),
     }),
   })
-  .refine((v) => v.chatNotifier === "on" || v.form.notifierChannelIds.length > 0, {
+  .refine((v) => v.form.notifierChannelIds.length > 0, {
     message: "At least one notifier is required",
     path: ["form", "notifierChannelIds"],
   });
@@ -944,37 +921,27 @@ const TEST_CHANNEL: AlertChannel = { id: "ch_test", name: "Test Webhook", type: 
 function FlowHarness({
   onSubmit,
   channels,
-  chatId,
 }: {
   onSubmit?: (a: FlowAnswers) => void;
   channels?: AlertChannel[];
-  chatId?: string;
 }) {
   const flow = useCreationFlowState(onSubmit);
   // eslint-disable-next-line -- test harness captures the hook return
   flowCapture.flow = flow;
-  return createElement(CreationTranscript, { flow, channels, chatId });
+  return createElement(CreationTranscript, { flow, channels });
 }
 
 function latestFlow(): CreationFlowState {
   return flowCapture.flow!;
 }
 
-function mountFlow(
-  onSubmit?: (a: FlowAnswers) => void,
-  channels?: AlertChannel[],
-  chatId?: string
-) {
+function mountFlow(onSubmit?: (a: FlowAnswers) => void, channels?: AlertChannel[]) {
   act(() => {
     root.render(
       createElement(
         OperatingSystemContextProvider,
         { platform: "mac" },
-        createElement(
-          ShortcutsProvider,
-          null,
-          createElement(FlowHarness, { onSubmit, channels, chatId })
-        )
+        createElement(ShortcutsProvider, null, createElement(FlowHarness, { onSubmit, channels }))
       )
     );
   });
@@ -1060,13 +1027,11 @@ describe("creation flow submission", () => {
     const onSubmit = vi.fn((answers: FlowAnswers) => {
       const cap = resolveCapability(answers.what);
       const kind = cap?.allowedKinds[0] ?? "threshold";
-      const notifierIds = (answers.notifiers ?? []).filter((n) => n !== "chat");
+      const notifierIds = answers.notifiers ?? [];
       capturedBody = {
         organizationId: "org_123",
         projectId: "proj_456",
         environmentId: "env_789",
-        chatNotifier: (answers.notifiers ?? []).includes("chat") ? "on" : undefined,
-        chatId: "chat_abc",
         form: {
           capabilityKey: answers.what,
           scopeType: answers.scope,
@@ -1150,7 +1115,7 @@ describe("creation flow submission", () => {
 
   it("Done calls onSubmit with the draft and shows success card (chat stays open)", async () => {
     const onSubmit = vi.fn();
-    mountFlow(onSubmit, undefined, "test_chat");
+    mountFlow(onSubmit, [TEST_CHANNEL]);
 
     clickAriaPressed("Queues");
     clickAriaPressed("Depth getting too high");
@@ -1168,6 +1133,7 @@ describe("creation flow submission", () => {
     clickAriaPressed("All queues");
 
     clickAriaPressed("No expiry");
+    clickAriaPressed("Test Webhook");
     clickAriaPressed("Done");
     clickAriaPressed("Continue");
     await clickCreate();
@@ -1178,82 +1144,11 @@ describe("creation flow submission", () => {
     expect(draft.what).toBe("queue.depth");
     expect(draft.scope).toBe("all");
     expect(draft.condition).toBe("75");
-    expect(draft.notifiers).toContain("chat");
+    expect(draft.notifiers).toEqual(["ch_test"]);
     expect(draft.windowMinutes).toBeGreaterThan(0);
 
     expect(findByTestId("alert-created")).not.toBeNull();
     expect(findByTestId("creation-flow")).not.toBeNull();
-  });
-
-  it("notifier step without chatId hides 'This chat', shows only channel chips", () => {
-    mountFlow(undefined, [TEST_CHANNEL]);
-
-    clickAriaPressed("Queues");
-    clickAriaPressed("Depth getting too high");
-    const input = openCustomInput();
-    act(() => {
-      const setter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype,
-        "value"
-      )?.set;
-      setter?.call(input, "50");
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    pressEnter();
-    clickAriaPressed("All queues");
-    clickAriaPressed("No expiry");
-
-    expect(findButtonByText("This chat")).toBeUndefined();
-    expect(findButtonByText("Test Webhook")).toBeDefined();
-  });
-
-  it("'This chat' chip is hidden without chatId (mutation: showing it stores empty conversationId)", () => {
-    mountFlow(undefined, [TEST_CHANNEL]);
-    clickAriaPressed("Queues");
-    clickAriaPressed("Depth getting too high");
-    const input = openCustomInput();
-    act(() => {
-      const setter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype,
-        "value"
-      )?.set;
-      setter?.call(input, "100");
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    pressEnter();
-    clickAriaPressed("All queues");
-    clickAriaPressed("No expiry");
-
-    expect(latestFlow().currentStep).toBe("notifiers");
-    expect(findButtonByText("This chat")).toBeUndefined();
-    expect(findButtonByText("Test Webhook")).toBeDefined();
-  });
-
-  it("'This chat' is pre-selected and visible at notifiers step (mutation: removing default deselects)", () => {
-    mountFlow(undefined, undefined, "chat_test");
-    clickAriaPressed("Queues");
-    clickAriaPressed("Depth getting too high");
-    const input = openCustomInput();
-    act(() => {
-      const setter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype,
-        "value"
-      )?.set;
-      setter?.call(input, "100");
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    pressEnter();
-    clickAriaPressed("All queues");
-    clickAriaPressed("No expiry");
-
-    expect(latestFlow().currentStep).toBe("notifiers");
-    expect(latestFlow().answers.notifiers).toContain("chat");
-    const chatChip = findButtonByText("This chat");
-    expect(chatChip).toBeDefined();
-    expect(chatChip!.getAttribute("aria-pressed")).toBe("true");
   });
 
   it("fails when queue.stalled cannot advance past the condition step", async () => {

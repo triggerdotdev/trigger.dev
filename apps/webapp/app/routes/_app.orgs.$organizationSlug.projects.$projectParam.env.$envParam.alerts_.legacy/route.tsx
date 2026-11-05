@@ -37,12 +37,11 @@ import {
 } from "~/utils/pathBuilder";
 import { pageMeta } from "~/utils/pageTitle";
 import type { NotifierRef } from "@internal/alert-contracts";
-import { chatExists } from "@internal/dashboard-agent-db";
 import { boundedIn, type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
-import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
 import { availableAlertChannelWhere } from "~/v3/services/alerts/validateNotifierChannels.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
+import { NoNotifiersError } from "~/v3/services/alerts/createAlertFromDraft.server";
 import { DeleteLegacySubscriptionService } from "~/v3/services/alerts/deleteLegacySubscription.server";
 import {
   canAcrossEnvironments,
@@ -84,7 +83,6 @@ const ReplaceSchema = z.object({
     .string()
     .optional()
     .transform((value) => (value ?? "").split(",").filter(Boolean)),
-  chatId: z.string().min(1).optional(),
 });
 
 const ActionSchema = z.discriminatedUnion("intent", [DeleteSchema, ReplaceSchema]);
@@ -92,9 +90,8 @@ const ActionSchema = z.discriminatedUnion("intent", [DeleteSchema, ReplaceSchema
 export const meta = pageMeta("Legacy alerts");
 
 async function replaceNotifiers(
-  project: { id: string; organizationId: string },
-  userId: string,
-  data: { notifierChannelIds: string[]; chatId?: string }
+  project: { id: string },
+  data: { notifierChannelIds: string[] }
 ): Promise<NotifierRef[] | undefined> {
   const ids = [...new Set(data.notifierChannelIds)];
   const channels = ids.length
@@ -107,17 +104,7 @@ async function replaceNotifiers(
       })
     : [];
   if (channels.length !== ids.length) return undefined;
-  const notifiers: NotifierRef[] = ids.map((channelId) => ({ type: "channel", channelId }));
-  if (data.chatId) {
-    const owned = await chatExists(dashboardAgentDb, {
-      chatId: data.chatId,
-      organizationId: project.organizationId,
-      userId,
-    });
-    if (!owned) return undefined;
-    notifiers.push({ type: "chat", chatId: data.chatId, userId });
-  }
-  return notifiers.length ? notifiers : undefined;
+  return ids.map((channelId): NotifierRef => ({ type: "channel", channelId }));
 }
 
 export const loader = dashboardLoader(
@@ -274,7 +261,10 @@ export const action = dashboardAction(
           "Legacy alert deleted"
         );
       }
-      const notifiers = await replaceNotifiers(project, user.id, data);
+      if (data.notifierChannelIds.length === 0) {
+        return json({ error: new NoNotifiersError().message }, { status: 400 });
+      }
+      const notifiers = await replaceNotifiers(project, data);
       if (!notifiers) {
         return json({ error: "One or more selected notifiers were not found" }, { status: 400 });
       }

@@ -11,7 +11,7 @@ import { ShortcutsProvider } from "~/components/primitives/ShortcutsProvider";
 import type { AlertDetail, AlertDetailEvent } from "~/presenters/v3/AlertDetailPresenter.server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { episodeNote, eventEpisodes } from "./eventEpisodes";
-import { buildNotifierOptions, parseNotifierKey, validateChatRef } from "./editNotifierOptions";
+import { buildNotifierOptions, parseNotifierKey } from "./editNotifierOptions";
 
 function evt(type: AlertDetailEvent["type"], at: string): AlertDetailEvent {
   return { id: `${type}_${at}`, type, at: new Date(at), actorId: null, factsSummary: "" };
@@ -101,6 +101,12 @@ describe("buildNotifierOptions", () => {
     expect(disabled!.label).toContain("(disabled)");
     expect(disabled!.disabled).toBe(true);
   });
+
+  it("never offers a stored chat notifier", () => {
+    const current = [{ key: "chat:conv_1:user_1", label: "This chat" }];
+    const options = buildNotifierOptions(projectChannels, current);
+    expect(options.some((o) => o.key.startsWith("chat:"))).toBe(false);
+  });
 });
 
 describe("parseNotifierKey", () => {
@@ -111,66 +117,12 @@ describe("parseNotifierKey", () => {
     });
   });
 
-  it("round-trips chat with userId only (conversationId=project → undefined)", () => {
-    const ref = parseNotifierKey("chat:project:user_1");
-    expect(ref).toEqual({
-      type: "chat",
-      conversationId: undefined,
-      chatId: undefined,
-      userId: "user_1",
-    });
-  });
-
-  it("round-trips chat with conversationId/chatId only (userId=- → undefined)", () => {
-    const ref = parseNotifierKey("chat:conv_abc:-");
-    expect(ref).toEqual({
-      type: "chat",
-      conversationId: "conv_abc",
-      chatId: "conv_abc",
-      userId: undefined,
-    });
-  });
-
-  it("round-trips chat with both conversationId and userId", () => {
-    const ref = parseNotifierKey("chat:conv_abc:user_1");
-    expect(ref).toEqual({
-      type: "chat",
-      conversationId: "conv_abc",
-      chatId: "conv_abc",
-      userId: "user_1",
-    });
+  it("still parses a stored chat key so the save path can reject it", () => {
+    expect(parseNotifierKey("chat:conv_abc:user_1")).toMatchObject({ type: "chat" });
   });
 
   it("returns null for unrecognized format", () => {
     expect(parseNotifierKey("unknown:foo")).toBeNull();
-  });
-});
-
-describe("validateChatRef", () => {
-  it("rejects a bare chat ref with no userId (chat:project:-)", () => {
-    const ref = parseNotifierKey("chat:project:-");
-    expect(ref).not.toBeNull();
-    const error = validateChatRef(ref as any, "user_1");
-    expect(error).toBe("Chat notifier must specify a user");
-  });
-
-  it("rejects a foreign userId", () => {
-    const ref = parseNotifierKey("chat:project:user_other");
-    const error = validateChatRef(ref as any, "user_1");
-    expect(error).toBe("Unauthorized chat notifier");
-  });
-
-  it("accepts the current user's chat ref", () => {
-    const ref = parseNotifierKey("chat:project:user_1");
-    const error = validateChatRef(ref as any, "user_1");
-    expect(error).toBeNull();
-  });
-
-  it("accepts a chat ref with chatId belonging to the current user", () => {
-    const ref = parseNotifierKey("chat:chat_abc:user_1");
-    const error = validateChatRef(ref as any, "user_1");
-    expect(error).toBeNull();
-    expect(ref!).toHaveProperty("chatId", "chat_abc");
   });
 });
 

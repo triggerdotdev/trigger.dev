@@ -382,12 +382,10 @@ function notifiersFor(
   notifiers: NotifierRef[],
   channels: Map<string, NotifierChannel>
 ): AlertDetailNotifier[] {
-  return notifiers.map((notifier) => {
-    if (notifier.type === "chat") {
-      return { key: notifierRefKey(notifier), label: "This chat" };
-    }
+  return notifiers.flatMap((notifier) => {
+    if (notifier.type === "chat") return [];
     const name = channels.get(notifier.channelId)?.name;
-    return { key: notifierRefKey(notifier), label: name ?? "Deleted channel" };
+    return [{ key: notifierRefKey(notifier), label: name ?? "Deleted channel" }];
   });
 }
 

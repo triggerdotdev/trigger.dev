@@ -6,13 +6,10 @@ import type { FlowAnswers } from "./flow-state";
 function buildBody(answers: FlowAnswers) {
   const cap = resolveCapability(answers.what);
   const kind = cap?.allowedKinds[0] ?? "threshold";
-  const notifierIds = (answers.notifiers ?? []).filter((n) => n !== "chat");
   return {
     organizationId: "org_123",
     projectId: "proj_456",
     environmentId: "env_789",
-    chatNotifier: (answers.notifiers ?? []).includes("chat") ? ("on" as const) : undefined,
-    chatId: "chat_abc",
     form: {
       capabilityKey: answers.what,
       scopeType: answers.scope,
@@ -23,24 +20,12 @@ function buildBody(answers: FlowAnswers) {
       windowMinutes: kind === "threshold" ? (answers.windowMinutes ?? 5) : undefined,
       quietWindowMinutes:
         kind === "absence" && answers.condition ? Number(answers.condition) : undefined,
-      notifierChannelIds: notifierIds,
+      notifierChannelIds: answers.notifiers ?? [],
     },
   };
 }
 
 describe("RequestSchema (ChatFormSchema refinements)", () => {
-  it("accepts chat-only notifier", () => {
-    const body = buildBody({
-      area: "queues",
-      what: "queue.depth",
-      scope: "all",
-      condition: "100",
-      windowMinutes: 5,
-      notifiers: ["chat"],
-    });
-    expect(RequestSchema.safeParse(body).success).toBe(true);
-  });
-
   it("accepts channel IDs", () => {
     const body = buildBody({
       area: "queues",
@@ -64,13 +49,12 @@ describe("RequestSchema (ChatFormSchema refinements)", () => {
       operator: ">",
       value: 100,
       windowMinutes: 5,
-      chatNotifier: "on",
       channelIds: [],
     };
     expect(RequestSchema.safeParse(flat).success).toBe(false);
   });
 
-  it("rejects zero notifiers when chatNotifier is not on", () => {
+  it("rejects zero notifiers", () => {
     const body = buildBody({
       area: "queues",
       what: "queue.depth",
@@ -87,14 +71,13 @@ describe("RequestSchema (ChatFormSchema refinements)", () => {
       organizationId: "org_1",
       projectId: "proj_1",
       environmentId: "env_1",
-      chatNotifier: "on" as const,
       form: {
         capabilityKey: "queue.depth",
         scopeType: "all" as const,
         conditionKind: "threshold" as const,
         operator: ">" as const,
         value: 100,
-        notifierChannelIds: [],
+        notifierChannelIds: ["ch_1"],
       },
     };
     expect(RequestSchema.safeParse(body).success).toBe(false);
@@ -105,7 +88,6 @@ describe("RequestSchema (ChatFormSchema refinements)", () => {
       organizationId: "org_1",
       projectId: "proj_1",
       environmentId: "env_1",
-      chatNotifier: "on" as const,
       form: {
         capabilityKey: "queue.depth",
         scopeType: "queue" as const,
@@ -113,7 +95,7 @@ describe("RequestSchema (ChatFormSchema refinements)", () => {
         operator: ">" as const,
         value: 100,
         windowMinutes: 5,
-        notifierChannelIds: [],
+        notifierChannelIds: ["ch_1"],
       },
     };
     expect(RequestSchema.safeParse(body).success).toBe(false);
@@ -124,8 +106,6 @@ describe("RequestSchema (ChatFormSchema refinements)", () => {
       organizationId: "org_1",
       projectId: "proj_1",
       environmentId: "env_1",
-      chatNotifier: "on" as const,
-      chatId: "chat_1",
       form: {
         capabilityKey: "queue.depth",
         scopeType: "queue" as const,
@@ -134,7 +114,7 @@ describe("RequestSchema (ChatFormSchema refinements)", () => {
         operator: ">" as const,
         value: 100,
         windowMinutes: 5,
-        notifierChannelIds: [],
+        notifierChannelIds: ["ch_1"],
       },
     };
     expect(RequestSchema.safeParse(body).success).toBe(true);
@@ -145,12 +125,11 @@ describe("RequestSchema (ChatFormSchema refinements)", () => {
       organizationId: "org_1",
       projectId: "proj_1",
       environmentId: "env_1",
-      chatNotifier: "on" as const,
       form: {
         capabilityKey: "runs.created",
         scopeType: "all" as const,
         conditionKind: "absence" as const,
-        notifierChannelIds: [],
+        notifierChannelIds: ["ch_1"],
       },
     };
     expect(RequestSchema.safeParse(body).success).toBe(false);

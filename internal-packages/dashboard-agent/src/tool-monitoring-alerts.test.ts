@@ -152,8 +152,21 @@ describe("create_monitoring_alert scope type enum", () => {
       capabilityKey: "errors.occurred_again",
       scope: { type: "errorGroup", taskIdentifier: "t", fingerprint: "f" },
       condition: { kind: "occurrence" },
+      notifiers: [{ type: "channel", channelId: "chan_1" }],
     });
     expect(parsed.scope).toEqual({ type: "errorGroup", taskIdentifier: "t", fingerprint: "f" });
+  });
+});
+
+describe("create_monitoring_alert notifiers", () => {
+  const base = { capabilityKey: "queue.depth", condition: { kind: "occurrence" } };
+
+  it.each([
+    ["omitted", undefined],
+    ["empty", []],
+    ["a chat notifier", [{ type: "chat", chatId: "chat_1" }]],
+  ])("rejects %s", (_label, notifiers) => {
+    expect(createMonitoringAlertInputSchema.safeParse({ ...base, notifiers }).success).toBe(false);
   });
 });
 
@@ -244,6 +257,7 @@ describe("create_monitoring_alert params pass-through", () => {
         windowSec: 300,
         params: { foo: 1 },
       },
+      notifiers: [{ type: "channel", channelId: "chan_1" }],
     });
 
     expect(result.success).toBe(true);
@@ -633,6 +647,7 @@ describe("Limits condition fields", () => {
     const input = createMonitoringAlertInputSchema.parse({
       capabilityKey: "limits.all",
       condition: { kind: "state", stateKey: "limits.all", ...fields },
+      notifiers: [{ type: "channel", channelId: "chan_1" }],
     });
     await run("create_monitoring_alert", input);
     expect(body.condition).toMatchObject(fields);

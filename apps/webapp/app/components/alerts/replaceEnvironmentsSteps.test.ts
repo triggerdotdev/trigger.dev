@@ -74,18 +74,17 @@ describe("replace prefill", () => {
 
 describe("environments step", () => {
   it("is present only in replace mode, right after scope", () => {
-    const replace = allSteps(makeFlow(replaceAnswers()), [], undefined).map((s) => s.id);
+    const replace = allSteps(makeFlow(replaceAnswers()), []).map((s) => s.id);
     expect(replace.indexOf("environments")).toBe(replace.indexOf("scope") + 1);
     const plain = allSteps(
       makeFlow({ area: "runs", what: "runs.failed", condition: "0", scope: "all" }),
-      [],
-      undefined
+      []
     ).map((s) => s.id);
     expect(plain).not.toContain("environments");
   });
 
   it("lists the environments with the description and locks scope to all", () => {
-    const steps = allSteps(makeFlow(replaceAnswers()), [], "chat_1");
+    const steps = allSteps(makeFlow(replaceAnswers()), []);
     const step = steps.find((s) => s.id === "environments")!;
     expect(step.description).toBe(DESCRIPTION);
     expect(step.multiSelect).toBe(true);
@@ -100,20 +99,15 @@ describe("environments step", () => {
         { id: "ch_1", name: "Ops email", type: "EMAIL" },
         { id: "ch_2", name: "Slack", type: "SLACK" },
       ],
-      "chat_1",
       { projectId: "p", environmentId: "e", canWrite: true, atLimit: false }
     ).find((s) => s.id === "notifiers")!;
-    expect(notifiers.options.map((o) => o.id)).toEqual(["chat", "ch_1", "ch_2", "__add_channel__"]);
+    expect(notifiers.options.map((o) => o.id)).toEqual(["ch_1", "ch_2", "__add_channel__"]);
     expect(notifiers.selected).toEqual(["ch_1"]);
 
-    const twice = allSteps(
-      makeFlow(replaceAnswers()),
-      [
-        { id: "ch_1", name: "Ops email", type: "EMAIL" },
-        { id: "ch_1", name: "Ops email", type: "EMAIL" },
-      ],
-      undefined
-    ).find((s) => s.id === "notifiers")!;
+    const twice = allSteps(makeFlow(replaceAnswers()), [
+      { id: "ch_1", name: "Ops email", type: "EMAIL" },
+      { id: "ch_1", name: "Ops email", type: "EMAIL" },
+    ]).find((s) => s.id === "notifiers")!;
     expect(twice.options.map((o) => o.id)).toEqual(["ch_1"]);
     expect(twice.selected).toEqual(["ch_1"]);
   });
@@ -121,9 +115,7 @@ describe("environments step", () => {
   it("expands the preview group in place and picks previews one by one", () => {
     const previews = ["a", "b"].map((b) => env(`pr_${b}`, "PREVIEW", b));
     const answers = replaceAnswers([...BASE, ...previews]);
-    const collapsed = allSteps(makeFlow(answers), [], undefined).find(
-      (s) => s.id === "environments"
-    )!;
+    const collapsed = allSteps(makeFlow(answers), []).find((s) => s.id === "environments")!;
     expect(collapsed.options.map((o) => o.label)).toEqual([
       "Production",
       "Staging",
@@ -143,9 +135,7 @@ describe("environments step", () => {
     expect(patches[0]!.previewsExpanded).toBe(true);
     expect(patches[0]!.environments).toEqual(["prod", "stg", "dev"]);
 
-    const expanded = allSteps(makeFlow(patches[0]!), [], undefined).find(
-      (s) => s.id === "environments"
-    )!;
+    const expanded = allSteps(makeFlow(patches[0]!), []).find((s) => s.id === "environments")!;
     expect(expanded.options.map((o) => o.id)).toEqual([
       "prod",
       "stg",

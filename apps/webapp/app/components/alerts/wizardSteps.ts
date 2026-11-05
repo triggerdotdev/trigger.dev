@@ -56,7 +56,6 @@ import {
   parseErrorGroupScope,
 } from "~/utils/errorGroupScope";
 
-export const CHAT_CHIP: FlowChipType = { value: "chat", label: "This chat" };
 export const SHOW_ALL_CHIP: FlowChipType = {
   value: "__show_all__",
   label: "Show me what I can watch",
@@ -158,7 +157,7 @@ const ERROR_ID_OPTION = "__error_id__";
 const CUSTOM_SCOPE = "__custom_scope__";
 export const CONTINUE_OPTION = "__continue__";
 const FILL_THRESHOLDS = "Set every threshold to continue";
-export const NO_NOTIFIER = "Pick at least one destination.";
+export const NO_NOTIFIER = "Pick at least one channel";
 const INCOMPLETE_DRAFT = "Answer every step before saving.";
 export const CARD_GAP = 8;
 const PARAM_OPTION = "param:";
@@ -534,7 +533,6 @@ function toggleEnvironment(flow: CreationFlowState, value: string) {
 export function allSteps(
   flow: CreationFlowState,
   channels: AlertChannel[],
-  chatId: string | undefined,
   addChannel?: AddChannelAccess,
   errorGroups?: ErrorGroupChoices,
   scopeEntities?: string[],
@@ -876,7 +874,6 @@ export function allSteps(
         }
         case "notifiers": {
           const options = [
-            ...(chatId ? [{ id: CHAT_CHIP.value, label: CHAT_CHIP.label }] : []),
             ...channels
               .filter((ch, index) => channels.findIndex((c) => c.id === ch.id) === index)
               .map((ch) => ({ id: ch.id, label: ch.name || ch.type })),
@@ -891,7 +888,8 @@ export function allSteps(
             options: addChannel ? [...options, addChannelOption(addChannel)] : options,
             multiSelect: true,
             selected,
-            confirmDisabled: !isComplete(answers) || answers.expiry === undefined,
+            confirmDisabled:
+              !selected.length || !isComplete(answers) || answers.expiry === undefined,
             error: selected.length
               ? isComplete(answers) && answers.expiry !== undefined
                 ? undefined

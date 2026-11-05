@@ -390,9 +390,7 @@ export type AlertChannel = { id: string; name: string; type: string };
 export function notifyLabel(answers: FlowAnswers, channels: AlertChannel[]): string {
   const selected = answers.notifiers ?? [];
   const parts: string[] = [];
-  if (selected.includes("chat")) parts.push("this chat");
   for (const id of selected) {
-    if (id === "chat") continue;
     const ch = channels.find((c) => c.id === id);
     parts.push(ch ? ch.name : id);
   }

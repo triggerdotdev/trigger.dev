@@ -1,6 +1,6 @@
 import { postgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
-import { expect, vi } from "vitest";
+import { expect, it, vi } from "vitest";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -60,4 +60,27 @@ postgresTest("rejects a channel for another environment type", async ({ prisma }
 
   expect(await check(prod.id)).toBeNull();
   expect(await check(dev.id)).toMatchObject({ reason: "channel" });
+});
+
+const rejects = (notifiers: Parameters<typeof validateAlertNotifiers>[0]["notifiers"]) =>
+  validateAlertNotifiers({
+    notifiers,
+    projectId: "p",
+    organizationId: "o",
+    userId: "u",
+    environmentType: "PRODUCTION",
+  });
+
+it.each([
+  ["no notifiers", [], "At least one channel is required"],
+  [
+    "a chat notifier",
+    [
+      { type: "channel", channelId: "c" },
+      { type: "chat", chatId: "chat_1" },
+    ],
+    "Chat notifiers are not supported",
+  ],
+] as const)("rejects %s", async (_label, notifiers, message) => {
+  expect(await rejects([...notifiers])).toMatchObject({ message });
 });

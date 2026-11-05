@@ -52,13 +52,10 @@ describe("manual form submit body parses ChatFormSchema", () => {
   function buildBody(answers: FlowAnswers) {
     const cap = resolveCapability(answers.what);
     const kind = cap?.allowedKinds[0] ?? "threshold";
-    const notifierIds = (answers.notifiers ?? []).filter((n) => n !== "chat");
     return {
       organizationId: "org_123",
       projectId: "proj_456",
       environmentId: "env_789",
-      chatNotifier: (answers.notifiers ?? []).includes("chat") ? ("on" as const) : undefined,
-      chatId: "chat_abc",
       form: {
         capabilityKey: answers.what,
         scopeType: answers.scope,
@@ -69,7 +66,7 @@ describe("manual form submit body parses ChatFormSchema", () => {
         windowMinutes: kind === "threshold" ? (answers.windowMinutes ?? 5) : undefined,
         quietWindowMinutes:
           kind === "absence" && answers.condition ? Number(answers.condition) : undefined,
-        notifierChannelIds: notifierIds,
+        notifierChannelIds: answers.notifiers ?? [],
       },
     };
   }
@@ -81,7 +78,7 @@ describe("manual form submit body parses ChatFormSchema", () => {
       scope: "all",
       condition: "100",
       windowMinutes: 5,
-      notifiers: ["chat"],
+      notifiers: ["ch_1"],
     });
     expect(RequestSchema.safeParse(body).success).toBe(true);
   });
@@ -93,7 +90,7 @@ describe("manual form submit body parses ChatFormSchema", () => {
       scope: "all",
       condition: "100",
       windowMinutes: 5,
-      notifiers: ["chat"],
+      notifiers: ["ch_1"],
     });
     const { environmentId: _, ...noEnv } = body;
     expect(RequestSchema.safeParse(noEnv).success).toBe(false);
@@ -165,9 +162,9 @@ describe("notifyLabel", () => {
       { id: "ch_1", name: "Slack #alerts", type: "slack" },
       { id: "ch_2", name: "Email ops", type: "email" },
     ];
-    const answers: FlowAnswers = { notifiers: ["chat", "ch_1", "ch_2"] };
+    const answers: FlowAnswers = { notifiers: ["ch_1", "ch_2"] };
     const label = notifyLabel(answers, channels);
-    expect(label).toBe("this chat, Slack #alerts, Email ops");
+    expect(label).toBe("Slack #alerts, Email ops");
     expect(label).not.toContain("ch_1");
     expect(label).not.toContain("ch_2");
   });
@@ -178,13 +175,12 @@ describe("notifyLabel", () => {
   });
 });
 
-describe("ChatRequestSchema rejects chatNotifier without chatId", () => {
-  it("rejects chatNotifier:on without chatId", () => {
+describe("ChatRequestSchema notifiers", () => {
+  it("rejects a body with no channel", () => {
     const body = {
       organizationId: "org_1",
       projectId: "proj_1",
       environmentId: "env_1",
-      chatNotifier: "on" as const,
       form: {
         capabilityKey: "queue.depth",
         scopeType: "all" as const,
@@ -198,27 +194,7 @@ describe("ChatRequestSchema rejects chatNotifier without chatId", () => {
     expect(RequestSchema.safeParse(body).success).toBe(false);
   });
 
-  it("accepts chatNotifier:on with chatId", () => {
-    const body = {
-      organizationId: "org_1",
-      projectId: "proj_1",
-      environmentId: "env_1",
-      chatNotifier: "on" as const,
-      chatId: "chat_abc",
-      form: {
-        capabilityKey: "queue.depth",
-        scopeType: "all" as const,
-        conditionKind: "threshold" as const,
-        operator: ">" as const,
-        value: 100,
-        windowMinutes: 5,
-        notifierChannelIds: [],
-      },
-    };
-    expect(RequestSchema.safeParse(body).success).toBe(true);
-  });
-
-  it("notifier default without chatId is empty", () => {
+  it("notifier default is empty", () => {
     const answers = prefillToAnswers({ capability: "queue.depth" });
     expect(answers.notifiers).toBeUndefined();
   });
@@ -313,73 +289,7 @@ describe("stripCreateSearchParams", () => {
 });
 
 describe("in-place queue prefill produces a valid create payload", () => {
-  it("rejects if chat is the only notifier with no chatId", () => {
-    const answers: FlowAnswers = {
-      area: "queues",
-      what: "queue.depth",
-      scope: "queue",
-      scopeValue: "worker-queue",
-      condition: "100",
-      windowMinutes: 5,
-      notifiers: ["chat"],
-    };
-    const cap = resolveCapability(answers.what);
-    const kind = cap?.allowedKinds[0] ?? "threshold";
-    const notifierIds = (answers.notifiers ?? []).filter((n) => n !== "chat");
-    const body = {
-      organizationId: "org_1",
-      projectId: "proj_1",
-      environmentId: "env_1",
-      chatNotifier: undefined,
-      chatId: undefined,
-      form: {
-        capabilityKey: answers.what,
-        scopeType: answers.scope,
-        scopeValue: answers.scopeValue,
-        conditionKind: kind,
-        operator: kind === "threshold" ? (">" as const) : undefined,
-        value: answers.condition ? Number(answers.condition) : undefined,
-        windowMinutes: kind === "threshold" ? (answers.windowMinutes ?? 5) : undefined,
-        notifierChannelIds: notifierIds,
-      },
-    };
-    const result = RequestSchema.safeParse(body);
-    expect(result.success).toBe(false);
-  });
-
-  it("succeeds with chatNotifier and chatId when session is ready", () => {
-    const answers: FlowAnswers = {
-      area: "queues",
-      what: "queue.depth",
-      scope: "queue",
-      scopeValue: "worker-queue",
-      condition: "100",
-      windowMinutes: 5,
-      notifiers: ["chat"],
-    };
-    const cap = resolveCapability(answers.what);
-    const kind = cap?.allowedKinds[0] ?? "threshold";
-    const body = {
-      organizationId: "org_1",
-      projectId: "proj_1",
-      environmentId: "env_1",
-      chatNotifier: "on" as const,
-      chatId: "chat_session_123",
-      form: {
-        capabilityKey: answers.what,
-        scopeType: answers.scope,
-        scopeValue: answers.scopeValue,
-        conditionKind: kind,
-        operator: kind === "threshold" ? (">" as const) : undefined,
-        value: answers.condition ? Number(answers.condition) : undefined,
-        windowMinutes: kind === "threshold" ? (answers.windowMinutes ?? 5) : undefined,
-        notifierChannelIds: [],
-      },
-    };
-    expect(RequestSchema.safeParse(body).success).toBe(true);
-  });
-
-  it("succeeds with a channel notifier and no chat (in-place without session)", () => {
+  it("succeeds with a channel notifier", () => {
     const answers: FlowAnswers = {
       area: "queues",
       what: "queue.depth",
@@ -391,7 +301,6 @@ describe("in-place queue prefill produces a valid create payload", () => {
     };
     const cap = resolveCapability(answers.what);
     const kind = cap?.allowedKinds[0] ?? "threshold";
-    const notifierIds = (answers.notifiers ?? []).filter((n) => n !== "chat");
     const body = {
       organizationId: "org_1",
       projectId: "proj_1",
@@ -404,7 +313,7 @@ describe("in-place queue prefill produces a valid create payload", () => {
         operator: kind === "threshold" ? (">" as const) : undefined,
         value: answers.condition ? Number(answers.condition) : undefined,
         windowMinutes: kind === "threshold" ? (answers.windowMinutes ?? 5) : undefined,
-        notifierChannelIds: notifierIds,
+        notifierChannelIds: answers.notifiers ?? [],
       },
     };
     expect(RequestSchema.safeParse(body).success).toBe(true);
@@ -417,8 +326,6 @@ describe("queue scopeValue accepts queue identifiers", () => {
       organizationId: "org_1",
       projectId: "proj_1",
       environmentId: "env_1",
-      chatNotifier: "on" as const,
-      chatId: "chat_abc",
       form: {
         capabilityKey: "queue.depth",
         scopeType: "queue" as const,
@@ -427,7 +334,7 @@ describe("queue scopeValue accepts queue identifiers", () => {
         operator: ">" as const,
         value: 100,
         windowMinutes: 5,
-        notifierChannelIds: [],
+        notifierChannelIds: ["ch_1"],
       },
     };
     expect(RequestSchema.safeParse(body).success).toBe(true);
@@ -438,8 +345,6 @@ describe("queue scopeValue accepts queue identifiers", () => {
       organizationId: "org_1",
       projectId: "proj_1",
       environmentId: "env_1",
-      chatNotifier: "on" as const,
-      chatId: "chat_abc",
       form: {
         capabilityKey: "queue.depth",
         scopeType: "queue" as const,
@@ -448,7 +353,7 @@ describe("queue scopeValue accepts queue identifiers", () => {
         operator: ">" as const,
         value: 100,
         windowMinutes: 5,
-        notifierChannelIds: [],
+        notifierChannelIds: ["ch_1"],
       },
     };
     expect(RequestSchema.safeParse(body).success).toBe(false);

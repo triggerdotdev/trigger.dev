@@ -24,24 +24,12 @@ afterAll(async () => {
 });
 
 describe("listChats withMessagesOnly", () => {
-  // Mutation: ignoring alertRoutedChatIds hides the chat an alert reports into.
-  it("listChats hides an empty chat unless its id is in alertRoutedChatIds", async () => {
+  // Mutation: ignoring withMessagesOnly lists empty chats.
+  it("hides an empty chat", async () => {
     const viewer = { organizationId: "org_1", userId: "user_1" };
     await createChat(db, { id: "chat_empty", ...viewer });
-    await createChat(db, { id: "chat_routed", ...viewer });
 
-    const hidden = await listChats(db, {
-      ...viewer,
-      withMessagesOnly: true,
-      alertRoutedChatIds: [],
-    });
-    expect(hidden).toEqual([]);
-
-    const listed = await listChats(db, {
-      ...viewer,
-      withMessagesOnly: true,
-      alertRoutedChatIds: ["chat_routed"],
-    });
-    expect(listed.map((chat) => chat.id)).toEqual(["chat_routed"]);
+    expect(await listChats(db, { ...viewer, withMessagesOnly: true })).toEqual([]);
+    expect((await listChats(db, viewer)).map((chat) => chat.id)).toEqual(["chat_empty"]);
   });
 });

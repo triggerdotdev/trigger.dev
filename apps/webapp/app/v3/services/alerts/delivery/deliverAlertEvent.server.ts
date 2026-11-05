@@ -1,11 +1,6 @@
 import type { ChatPostMessageArguments, ChatPostMessageResponse } from "@slack/web-api";
 import type { OrganizationIntegrationForService } from "~/models/orgIntegration.server";
 import {
-  type DashboardAgentDb,
-  appendChatMessageOnceByChatId,
-  chatExists,
-} from "@internal/dashboard-agent-db";
-import {
   type Alert,
   type AlertEvent,
   claimDelivery,
@@ -20,11 +15,9 @@ import {
   markDeliveryFailed,
   releaseDelivery,
 } from "../storage/alertStore.server";
-import type { UIMessage } from "ai";
 import assertNever from "assert-never";
 import { prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
-import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
 import { environmentTitle } from "~/components/environments/EnvironmentLabel";
 import {
   ProjectAlertEmailProperties,
@@ -51,7 +44,6 @@ import {
   deliverWebhookPayload as defaultDeliverWebhookPayload,
 } from "../alertTransport.server";
 import { buildAlertSlackMessage } from "./alertSlackMessage";
-import { alertEventChatText } from "./alertEventChatText";
 import { groupFiredDetail } from "../groupFired";
 
 const WEBHOOK_VERSION = "2026-09-17";
@@ -87,33 +79,14 @@ type LoadAlertContextFn = (alert: Alert) => Promise<AlertContext | null>;
 
 type LoadErrorTitleFn = (alert: Alert, fingerprint: string) => Promise<string | null>;
 
-type ChatWakeResult = "appended" | "duplicate" | "not_found";
-
-type DeliverChatWakeFn = (params: {
-  chatId: string;
-  actionId: string;
-  alert: Alert;
-  event: AlertEvent;
-  errorTitle?: string | null;
-}) => Promise<ChatWakeResult>;
-
-type VerifyChatForAlertFn = (params: {
-  chatId: string;
-  alert: Alert;
-  userId?: string;
-}) => Promise<boolean>;
-
 export type DeliverAlertEventDeps = {
   db: PrismaClientOrTransaction;
-  chatDb?: DashboardAgentDb;
   sendSlackMessage?: SendSlackMessageFn;
   deliverWebhook?: DeliverWebhookFn;
   sendEmail?: SendAlertEmailFn;
   findSlackIntegration?: FindSlackIntegrationFn;
   findChannel?: FindChannelFn;
   checkRateLimit?: CheckRateLimitFn;
-  deliverChatWake?: DeliverChatWakeFn;
-  verifyChatForAlert?: VerifyChatForAlertFn;
   loadAlertContext?: LoadAlertContextFn;
   loadErrorTitle?: LoadErrorTitleFn;
   isOrganizationEnabled?: (organizationId: string) => Promise<boolean>;
@@ -198,10 +171,6 @@ export async function deliverAlertEvent(
     });
   const checkRateLimit: CheckRateLimitFn =
     deps.checkRateLimit ?? ((channelId) => alertsRateLimiter.check(channelId).catch(() => null));
-  const deliverChatWake: DeliverChatWakeFn =
-    deps.deliverChatWake ?? defaultDeliverChatWake(deps.chatDb ?? dashboardAgentDb);
-  const verifyChatForAlert: VerifyChatForAlertFn =
-    deps.verifyChatForAlert ?? defaultVerifyChatForAlert(deps.chatDb ?? dashboardAgentDb);
   const loadAlertContext = deps.loadAlertContext ?? defaultLoadAlertContext;
   const loadErrorTitle = deps.loadErrorTitle ?? defaultLoadErrorTitle;
   const isOrganizationEnabled = deps.isOrganizationEnabled ?? isOrganizationAlertsEnabled;
@@ -266,50 +235,12 @@ export async function deliverAlertEvent(
 
     try {
       if (delivery.notifier.type === "chat") {
-        const chatId = delivery.notifier.chatId;
-        if (!chatId) {
-          await markDeliveryFailed(db, {
-            id: delivery.id,
-            eventAt,
-            claimId,
-            reason: "chat_not_found",
-          });
-          continue;
-        }
-
-        const owned = await verifyChatForAlert({
-          chatId,
-          alert,
-          userId: delivery.notifier.userId,
+        await markDeliveryFailed(db, {
+          id: delivery.id,
+          eventAt,
+          claimId,
+          reason: "chat_not_supported",
         });
-        if (!owned) {
-          await markDeliveryFailed(db, {
-            id: delivery.id,
-            eventAt,
-            claimId,
-            reason: "notifier_invalid",
-          });
-          continue;
-        }
-
-        const actionId = `alert:${event.id}`;
-        const result = await deliverChatWake({
-          chatId,
-          actionId,
-          alert,
-          event,
-          errorTitle: await getErrorTitle(),
-        });
-        if (result === "appended" || result === "duplicate") {
-          await markDelivered(db, { id: delivery.id, eventAt, claimId });
-        } else {
-          await markDeliveryFailed(db, {
-            id: delivery.id,
-            eventAt,
-            claimId,
-            reason: "chat_not_found",
-          });
-        }
         continue;
       }
 
@@ -625,25 +556,6 @@ async function deliverWebhookChannel(params: {
   return null;
 }
 
-function defaultDeliverChatWake(db: DashboardAgentDb): DeliverChatWakeFn {
-  return async ({ chatId, actionId, alert, event, errorTitle }): Promise<ChatWakeResult> => {
-    const appended = await appendChatMessageOnceByChatId(db, {
-      chatId,
-      message: {
-        id: actionId,
-        role: "assistant",
-        parts: [{ type: "text", text: alertEventChatText(event, alert, errorTitle) }],
-      } satisfies Pick<UIMessage, "id" | "role" | "parts">,
-    });
-    if (appended) return "appended";
-    const existing = await db.query.chatMessages.findFirst({
-      where: (t, { eq: e, and: a }) => a(e(t.chatId, chatId), e(t.messageId, actionId)),
-      columns: { messageId: true },
-    });
-    return existing ? "duplicate" : "not_found";
-  };
-}
-
 async function defaultLoadAlertContext(alert: Alert): Promise<AlertContext | null> {
   const environment = await prisma.runtimeEnvironment.findFirst({
     where: {
@@ -681,13 +593,3 @@ const defaultLoadErrorTitle: LoadErrorTitleFn = async (alert, fingerprint) => {
   const title = `${group.errorType}: ${group.errorMessage}`.replace(/\s+/g, " ").trim();
   return title.length > MAX_ERROR_TITLE ? `${title.slice(0, MAX_ERROR_TITLE - 1)}…` : title;
 };
-
-function defaultVerifyChatForAlert(db: DashboardAgentDb): VerifyChatForAlertFn {
-  return async ({ chatId, alert, userId }) => {
-    return chatExists(db, {
-      chatId,
-      organizationId: alert.organizationId,
-      userId: userId ?? alert.createdBy,
-    });
-  };
-}

@@ -27,6 +27,7 @@ const ctx = vi.hoisted(() => ({
   prisma: undefined as unknown as PrismaClient,
   agentDb: undefined as unknown as DashboardAgentDb,
   userId: undefined as string | undefined,
+  channelId: undefined as unknown as string,
   denied: undefined as { action: string; type: string; envType?: string } | undefined,
   grants: undefined as Array<{ action: string; type: string; envType?: string }> | undefined,
   patContexts: [] as Array<{ organizationId?: string; projectId?: string }>,
@@ -184,6 +185,18 @@ async function seed(
       shortcode: `p${slug.slice(0, 6)}`,
     },
   });
+  const channel = await prisma.projectAlertChannel.create({
+    data: {
+      friendlyId: `f_${slug}`,
+      name: "chan",
+      type: "EMAIL",
+      properties: { type: "EMAIL", email: "a@example.com" },
+      alertTypes: ["TASK_RUN"],
+      environmentTypes: ["DEVELOPMENT", "STAGING", "PREVIEW", "PRODUCTION"],
+      projectId: project.id,
+    },
+  });
+  ctx.channelId = channel.id;
   return { user, organization, project, environment };
 }
 
@@ -228,7 +241,7 @@ describe("monitoring alerts API", () => {
           params: { scope: { type: "queue", queue: "worker-1" } },
           condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
           behavior: {},
-          notifiers: [{ type: "chat", chatId: "chat_1" }],
+          notifiers: [{ type: "channel", channelId: ctx.channelId }],
         }
       ),
       params: { projectRef: seeded.project.externalRef },
@@ -306,7 +319,7 @@ describe("monitoring alerts API", () => {
             params: { scope: { type: "queue", queue: "worker-1" } },
             condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
             behavior: {},
-            notifiers: [{ type: "chat", chatId: "chat_1" }],
+            notifiers: [{ type: "channel", channelId: ctx.channelId }],
           }
         ),
         params: { projectRef: seeded.project.externalRef },
@@ -375,7 +388,7 @@ describe("monitoring alerts API", () => {
             params: { scope: { type: "queue", queue: "worker-1" }, windowSec: 60 },
             condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
             behavior: {},
-            notifiers: [{ type: "chat", chatId: "chat_1" }],
+            notifiers: [{ type: "channel", channelId: ctx.channelId }],
           }
         ),
         params: { projectRef: seeded.project.externalRef },
@@ -411,7 +424,7 @@ describe("monitoring alerts API", () => {
             params: { scope: { type: "queue" } },
             condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
             behavior: {},
-            notifiers: [{ type: "chat", chatId: "chat_1" }],
+            notifiers: [{ type: "channel", channelId: ctx.channelId }],
           }
         ),
         params: { projectRef: seeded.project.externalRef },
@@ -440,7 +453,7 @@ describe("monitoring alerts API", () => {
             params: {},
             condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
             behavior: {},
-            notifiers: [{ type: "chat", chatId: "chat_1" }],
+            notifiers: [{ type: "channel", channelId: ctx.channelId }],
           }
         ),
         params: { projectRef: seeded.project.externalRef },
@@ -467,7 +480,7 @@ describe("monitoring alerts API", () => {
             params: { scope: { type: "queue", queue: "worker-1" } },
             condition: { kind: "occurrence" },
             behavior: {},
-            notifiers: [{ type: "chat", chatId: "chat_1" }],
+            notifiers: [{ type: "channel", channelId: ctx.channelId }],
           }
         ),
         params: { projectRef: seeded.project.externalRef },
@@ -493,7 +506,7 @@ describe("monitoring alerts API", () => {
             params: {},
             condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
             behavior: {},
-            notifiers: [{ type: "chat", chatId: "chat_1" }],
+            notifiers: [{ type: "channel", channelId: ctx.channelId }],
           }
         ),
         params: { projectRef: seeded.project.externalRef },
@@ -519,7 +532,7 @@ describe("monitoring alerts API", () => {
             params: { scope: { type: "task", taskIdentifier: "my-task" } },
             condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
             behavior: {},
-            notifiers: [{ type: "chat", chatId: "chat_1" }],
+            notifiers: [{ type: "channel", channelId: ctx.channelId }],
           }
         ),
         params: { projectRef: seeded.project.externalRef },
@@ -548,7 +561,7 @@ describe("monitoring alerts API", () => {
             params: { scope: { type: "queue", queue: "worker-1" } },
             condition: { kind: "threshold", operator: ">", value: 100, windowSec: 0 },
             behavior: {},
-            notifiers: [{ type: "chat", chatId: "chat_1" }],
+            notifiers: [{ type: "channel", channelId: ctx.channelId }],
           }
         ),
         params: { projectRef: seeded.project.externalRef },
@@ -640,42 +653,44 @@ describe("monitoring alerts API", () => {
     }
   );
 
-  postgresTest(
-    "create rejects a chat notifier that belongs to another org with no row",
-    async ({ prisma, postgresContainer }) => {
-      await boot(prisma, postgresContainer.getConnectionUri());
-      const seeded = await seed(prisma, "monalertschat", true);
-      const other = await seed(prisma, "monalertschatother", true);
-      ctx.userId = seeded.user.id;
+  async function expectCreateRejected(
+    prisma: PrismaClient,
+    connectionUri: string,
+    notifiers: (channelId: string) => unknown
+  ) {
+    await boot(prisma, connectionUri);
+    const seeded = await seed(prisma, "monalertsnotifiers", true);
+    ctx.userId = seeded.user.id;
 
-      const foreignChatId = `chat_${Math.random().toString(36).slice(2, 10)}`;
-      await createChat(ctx.agentDb, {
-        id: foreignChatId,
-        organizationId: other.organization.id,
-        userId: other.user.id,
-      });
+    const response = await listAction({
+      request: jsonRequest(
+        `https://example.test/api/v1/projects/${seeded.project.externalRef}/monitoring-alerts`,
+        {
+          capabilityKey: "queue.depth",
+          environment: "prod",
+          params: { scope: { type: "queue", queue: "worker-1" } },
+          condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
+          behavior: {},
+          notifiers: notifiers(ctx.channelId),
+        }
+      ),
+      params: { projectRef: seeded.project.externalRef },
+      context: {},
+    } as any);
+    expect(response.status).toBe(400);
+    expect(await listAlerts(ctx.prisma, { projectId: seeded.project.id })).toHaveLength(0);
+  }
 
-      const response = await listAction({
-        request: jsonRequest(
-          `https://example.test/api/v1/projects/${seeded.project.externalRef}/monitoring-alerts`,
-          {
-            capabilityKey: "queue.depth",
-            environment: "prod",
-            params: { scope: { type: "queue", queue: "worker-1" } },
-            condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
-            behavior: {},
-            notifiers: [{ type: "chat", chatId: foreignChatId }],
-          }
-        ),
-        params: { projectRef: seeded.project.externalRef },
-        context: {},
-      } as any);
-      expect(response.status).toBe(400);
+  postgresTest("create rejects a chat notifier", async ({ prisma, postgresContainer }) => {
+    await expectCreateRejected(prisma, postgresContainer.getConnectionUri(), (channelId) => [
+      { type: "channel", channelId },
+      { type: "chat", chatId: "chat_1" },
+    ]);
+  });
 
-      const alerts = await listAlerts(ctx.prisma, { projectId: seeded.project.id });
-      expect(alerts).toHaveLength(0);
-    }
-  );
+  postgresTest("create rejects an empty notifier list", async ({ prisma, postgresContainer }) => {
+    await expectCreateRejected(prisma, postgresContainer.getConnectionUri(), () => []);
+  });
 
   postgresTest(
     "create defaults an omitted scope to type all",
@@ -698,7 +713,7 @@ describe("monitoring alerts API", () => {
             params: {},
             condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
             behavior: {},
-            notifiers: [{ type: "chat", chatId: "chat_1" }],
+            notifiers: [{ type: "channel", channelId: ctx.channelId }],
           }
         ),
         params: { projectRef: seeded.project.externalRef },
@@ -712,35 +727,6 @@ describe("monitoring alerts API", () => {
         projectId: seeded.project.id,
       });
       expect((row!.params as { scope: unknown }).scope).toEqual({ type: "all" });
-    }
-  );
-
-  postgresTest(
-    "create rejects a chat notifier with no chatId",
-    async ({ prisma, postgresContainer }) => {
-      await boot(prisma, postgresContainer.getConnectionUri());
-      const seeded = await seed(prisma, "monalertschatnoid", true);
-      ctx.userId = seeded.user.id;
-
-      const response = await listAction({
-        request: jsonRequest(
-          `https://example.test/api/v1/projects/${seeded.project.externalRef}/monitoring-alerts`,
-          {
-            capabilityKey: "queue.depth",
-            environment: "prod",
-            params: { scope: { type: "queue", queue: "worker-1" } },
-            condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
-            behavior: {},
-            notifiers: [{ type: "chat" }],
-          }
-        ),
-        params: { projectRef: seeded.project.externalRef },
-        context: {},
-      } as any);
-      expect(response.status).toBe(400);
-
-      const alerts = await listAlerts(ctx.prisma, { projectId: seeded.project.id });
-      expect(alerts).toHaveLength(0);
     }
   );
 
@@ -762,7 +748,7 @@ describe("monitoring alerts API", () => {
             params: { failureRatePct: 999 },
           },
           behavior: {},
-          notifiers: [{ type: "chat", chatId: "chat_1" }],
+          notifiers: [{ type: "channel", channelId: ctx.channelId }],
         }
       ),
       params: { projectRef: seeded.project.externalRef },
@@ -791,7 +777,7 @@ describe("monitoring alerts API", () => {
             params: { nonExistentParam: 42 },
           },
           behavior: {},
-          notifiers: [{ type: "chat", chatId: "chat_1" }],
+          notifiers: [{ type: "channel", channelId: ctx.channelId }],
         }
       ),
       params: { projectRef: seeded.project.externalRef },
@@ -826,7 +812,7 @@ describe("monitoring alerts API", () => {
             params: {},
             condition: { kind: "state", stateKey: capabilityKey, ...condition },
             behavior: {},
-            notifiers: [{ type: "chat", chatId: "chat_1" }],
+            notifiers: [{ type: "channel", channelId: ctx.channelId }],
           }
         ),
         params: { projectRef: seeded.project.externalRef },
@@ -936,7 +922,7 @@ describe("monitoring alerts API", () => {
             params: { scope: { type: "all" } },
             condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
             behavior: {},
-            notifiers: [{ type: "chat", chatId: "chat_1" }],
+            notifiers: [{ type: "channel", channelId: ctx.channelId }],
           }
         ),
         params: { projectRef: seeded.project.externalRef },
@@ -977,7 +963,7 @@ describe("monitoring alerts API", () => {
             params: { scope: { type: "all" } },
             condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
             behavior: { expiresAt },
-            notifiers: [{ type: "chat", chatId: "chat_1" }],
+            notifiers: [{ type: "channel", channelId: ctx.channelId }],
           }
         ),
         params: { projectRef: seeded.project.externalRef },
@@ -1035,7 +1021,7 @@ describe("monitoring alerts API", () => {
           params: {},
           condition: { kind: "state", stateKey: "group", compositeMode: "all", memberAlertIds },
           behavior: {},
-          notifiers: [{ type: "chat", chatId: "chat_1" }],
+          notifiers: [{ type: "channel", channelId: ctx.channelId }],
         }),
         params: { projectRef: ref },
         context: {},
@@ -1099,7 +1085,7 @@ describe("monitoring alerts API", () => {
         existingIn("env_other"),
         existingIn(seeded.environment.id),
       ]);
-      const notifiers = [{ type: "chat", chatId: "chat_1" }];
+      const notifiers = [{ type: "channel", channelId: ctx.channelId }];
       const member = (value: number) => ({
         capabilityKey: "queue.depth",
         params: {},
@@ -1111,6 +1097,10 @@ describe("monitoring alerts API", () => {
         ...member(0),
         capabilityKey: "health.flow",
         condition: { kind: "state", stateKey: "flow", params: { nonExistentParam: 42 } },
+      };
+      const chatMember = {
+        ...member(1),
+        notifiers: [...notifiers, { type: "chat", chatId: "chat_1" }],
       };
       const post = (memberAlertIds: string[] | undefined, members: unknown[]) =>
         listAction({
@@ -1130,6 +1120,7 @@ describe("monitoring alerts API", () => {
 
       for (const [memberAlertIds, members, status] of [
         [undefined, [member(1), invalidMember], 400],
+        [undefined, [member(1), chatMember], 400],
         [[elsewhere.id, "alert_missing"], [member(1), member(2)], 422],
       ] as const) {
         expect((await post(memberAlertIds && [...memberAlertIds], [...members])).status).toBe(
@@ -1159,7 +1150,7 @@ describe("monitoring alerts API RBAC", () => {
         params: { scope: { type: "all" } },
         condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
         behavior: {},
-        notifiers: [{ type: "chat", chatId: "chat_1" }],
+        notifiers: [{ type: "channel", channelId: ctx.channelId }],
       }
     );
   }
@@ -1272,7 +1263,7 @@ describe("monitoring alerts API RBAC", () => {
             params: { scope: { type: "all" } },
             condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
             behavior: {},
-            notifiers: [{ type: "chat", chatId: "chat_1" }],
+            notifiers: [{ type: "channel", channelId: ctx.channelId }],
           }
         ),
         params: { projectRef: seeded.project.externalRef },
@@ -1306,7 +1297,7 @@ describe("monitoring alerts API RBAC", () => {
         params: { scope: { type: "all" } },
         condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
         behavior: {},
-        notifiers: [{ type: "chat", chatId: "chat_1" }],
+        notifiers: [{ type: "channel", channelId: ctx.channelId }],
       });
       const projectParams = { projectRef: seeded.project.externalRef };
 
@@ -1504,7 +1495,7 @@ describe("monitoring alerts API RBAC", () => {
           params: { scope: { type: "all" } },
           condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
           behavior: {},
-          notifiers: [{ type: "chat", chatId: "chat_1" }],
+          notifiers: [{ type: "channel", channelId: ctx.channelId }],
         }),
         params: { projectRef: seeded.project.externalRef },
         context: {},
@@ -1559,7 +1550,7 @@ describe("monitoring alerts API RBAC", () => {
           params: { scope: { type: "all" } },
           condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
           behavior: {},
-          notifiers: [{ type: "chat", chatId: "chat_1" }],
+          notifiers: [{ type: "channel", channelId: ctx.channelId }],
         }),
         params: { projectRef: seeded.project.externalRef },
         context: {},
@@ -1582,7 +1573,7 @@ describe("monitoring alerts API RBAC", () => {
             params: { scope: { type: "all" } },
             condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
             behavior: {},
-            notifiers: [{ type: "chat", chatId: "chat_1" }],
+            notifiers: [{ type: "channel", channelId: ctx.channelId }],
           }),
           params: { projectRef: seeded.project.externalRef },
           context: {},
@@ -1631,7 +1622,7 @@ describe("monitoring alerts API environment-tier permissions", () => {
         params: { scope: { type: "queue", queue: "worker-1" } },
         condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
         behavior: {},
-        notifiers: [{ type: "chat", chatId: "chat_1" }],
+        notifiers: [{ type: "channel", channelId: ctx.channelId }],
       }),
       params: { projectRef },
       context: {},
@@ -1797,7 +1788,7 @@ describe("monitoring alerts API environment-tier permissions", () => {
             params: { scope: { type: "all" } },
             condition: { kind: "threshold", operator: ">", value: 5, windowSec: 3600 },
             behavior: {},
-            notifiers: [{ type: "chat", chatId: "chat_1" }],
+            notifiers: [{ type: "channel", channelId: ctx.channelId }],
             query: COUNT_QUERY,
             signal: { mode: "threshold" },
             ...overrides,

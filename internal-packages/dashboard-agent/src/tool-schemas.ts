@@ -564,15 +564,9 @@ export const createMonitoringAlertInputSchema = z.object({
     .optional()
     .describe("Optional expiry; otherwise fires until stopped."),
   notifiers: z
-    .array(
-      z.object({
-        type: z.enum(["channel", "chat"]),
-        channelId: z.string().optional(),
-        chatId: z.string().optional(),
-      })
-    )
-    .optional()
-    .describe("Omit to notify this chat."),
+    .array(z.object({ type: z.literal("channel"), channelId: z.string() }))
+    .min(1)
+    .describe("User-picked email, Slack or webhook channels."),
   query: z.string().max(8192).optional().describe("custom.query: TRQL."),
   signal: z
     .object({ mode: z.enum(["threshold", "absence", "match"]), measure: z.string().optional() })
@@ -581,7 +575,7 @@ export const createMonitoringAlertInputSchema = z.object({
 });
 
 export const createMonitoringAlertSchema = tool({
-  description: "Create a monitoring alert. Omit notifiers to default to this chat.",
+  description: "Create a monitoring alert. Ask the user to pick a channel first.",
   inputSchema: createMonitoringAlertInputSchema,
 });
 

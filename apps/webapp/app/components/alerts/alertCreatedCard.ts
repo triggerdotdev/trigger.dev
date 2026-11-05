@@ -144,7 +144,6 @@ export function alertCreationOpeningMessage(chatId: string) {
 }
 
 type CreateAlertRequestCard = {
-  chatNotifier?: "on";
   expiry?: string;
   form: {
     capabilityKey: string;
@@ -182,7 +181,7 @@ export function answersFromCreateRequest(body: CreateAlertRequestCard): FlowAnsw
     signals: form.signals,
     components: form.components,
     windowMinutes: form.conditionKind === "threshold" ? form.windowMinutes : undefined,
-    notifiers: [...(body.chatNotifier === "on" ? ["chat"] : []), ...form.notifierChannelIds],
+    notifiers: form.notifierChannelIds,
     expiry: body.expiry ?? form.expiresAt,
   };
 }

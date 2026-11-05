@@ -72,7 +72,7 @@ export class InvalidScopeForCapabilityError extends Error {
 
 export class NoNotifiersError extends Error {
   constructor() {
-    super("At least one notifier is required");
+    super("At least one channel is required");
   }
 }
 
@@ -82,9 +82,9 @@ export class InvalidNotifierError extends Error {
   }
 }
 
-export class IncompleteChatNotifierError extends Error {
+export class ChatNotifiersNotSupportedError extends Error {
   constructor() {
-    super("A chat notifier needs a conversation to deliver to");
+    super("Chat notifiers are not supported");
   }
 }
 
@@ -107,7 +107,7 @@ export const QUERY_DOMAIN_ERRORS = [
   InvalidConditionParamsError,
   InvalidScopeForCapabilityError,
   NoNotifiersError,
-  IncompleteChatNotifierError,
+  ChatNotifiersNotSupportedError,
   InvalidNotifierError,
 ];
 
@@ -141,8 +141,8 @@ export function assertAlertDraftValid(
     throw new NoNotifiersError();
   }
   for (const notifier of params.notifiers) {
-    if (notifier.type === "chat" && !notifier.chatId?.trim()) {
-      throw new IncompleteChatNotifierError();
+    if (notifier.type === "chat") {
+      throw new ChatNotifiersNotSupportedError();
     }
     if (!notifierRefSchema.safeParse(notifier).success) {
       throw new InvalidNotifierError();

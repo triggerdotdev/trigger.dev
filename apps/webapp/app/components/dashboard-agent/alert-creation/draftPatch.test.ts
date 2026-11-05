@@ -73,6 +73,17 @@ describe("applyDraftPatch", () => {
     expect(applyDraftPatch({}, { behavior: { expiry: "30d" } }).expiry).toBe("720h");
   });
 
+  // Mutation: mapping a non-channel entry to an id lets "chat" reach notifierChannelIds.
+  it("keeps only channel notifiers from a patch", () => {
+    const patch = {
+      notifiers: [
+        { type: "chat", chatId: "chat_1" },
+        { type: "channel", channelId: "ch_1" },
+      ],
+    } as never;
+    expect(applyDraftPatch({}, patch).notifiers).toEqual(["ch_1"]);
+  });
+
   // Mutation: retaining scope/condition on a capability change fails this.
   it("resets capability-dependent fields when the capability changes", () => {
     const base: FlowAnswers = {
@@ -82,11 +93,11 @@ describe("applyDraftPatch", () => {
       scopeValue: "payments",
       condition: "100",
       windowMinutes: 5,
-      notifiers: ["chat"],
+      notifiers: ["ch_1"],
       expiry: "24h",
     };
     const next = applyDraftPatch(base, { what: "runs.failure_rate" });
-    expect(next).toMatchObject({ what: "runs.failure_rate", notifiers: ["chat"], expiry: "24h" });
+    expect(next).toMatchObject({ what: "runs.failure_rate", notifiers: ["ch_1"], expiry: "24h" });
     expect(next.scope).toBeUndefined();
     expect(next.scopeValue).toBeUndefined();
     expect(next.condition).toBeUndefined();

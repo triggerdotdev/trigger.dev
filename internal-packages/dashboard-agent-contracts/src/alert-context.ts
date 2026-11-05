@@ -89,9 +89,8 @@ export const alertDraftPatchSchema = z.object({
   notifiers: z
     .array(
       z.object({
-        type: z.enum(["channel", "chat"]),
+        type: z.enum(["channel"]),
         channelId: z.string().optional(),
-        chatId: z.string().optional(),
       })
     )
     .optional(),

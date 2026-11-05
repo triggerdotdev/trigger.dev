@@ -21,10 +21,7 @@ const PREFILL: EditAlertPrefill = {
   name: "Queue depth above 100",
   conditionSummary: "Queue depth > 100",
   scopeSummary: "Queues · All queues",
-  notifiers: [
-    { key: "channel:ch_1", label: "Ops webhook" },
-    { key: "chat:chat_9:user_2", label: "This chat" },
-  ],
+  notifiers: [{ key: "channel:ch_1", label: "Ops webhook" }],
   expiresAt: null,
 };
 
@@ -52,7 +49,6 @@ function mount(
               { id: "ch_2", name: "Email to ops", type: "EMAIL" },
             ],
             alertPath: "/alerts/a_1",
-            userId: "user_1",
             addChannel,
           })
         )
@@ -129,9 +125,6 @@ describe("edit an alert in the chat", () => {
     expect(card()?.textContent).not.toContain("Recurring");
     expect(row("Ops webhook").getAttribute("aria-pressed")).toBe("true");
     expect(row("Email to ops").getAttribute("aria-pressed")).toBe("false");
-    const teammate = row("Another member's chat");
-    expect(teammate.disabled).toBe(true);
-    expect(teammate.getAttribute("aria-pressed")).toBe("true");
   });
 
   it("Done posts notifiers to the edit action and shows Updated", async () => {
@@ -170,7 +163,7 @@ describe("edit an alert in the chat", () => {
     expect(Object.fromEntries(posted[0]!)).toEqual({
       intent: "edit",
       name: "Renamed",
-      notifierIds: "chat:chat_9:user_2,channel:ch_1,channel:ch_2",
+      notifierIds: "channel:ch_1,channel:ch_2",
       respond: "json",
       expiresAt: "none",
     });
@@ -180,9 +173,7 @@ describe("edit an alert in the chat", () => {
     const updated = document.querySelector('[data-testid="alert-updated"]')!;
     expect(updated.textContent).toContain("Watch");
     expect(updated.textContent).toContain("View alert");
-    expect(updated.textContent).toContain(
-      "Notifying: Another member's chat, Ops webhook, Email to ops."
-    );
+    expect(updated.textContent).toContain("Notifying: Ops webhook, Email to ops.");
   });
 
   it("a group opens on the any/all step and posts the chosen compositeMode", async () => {
@@ -236,21 +227,22 @@ describe("edit an alert in the chat", () => {
     expect(done().disabled).toBe(false);
   });
 
-  it("Done stays enabled when a locked chat is the only notifier", () => {
-    mount({ ...PREFILL, notifiers: [{ key: "chat:chat_9:user_2", label: "This chat" }] });
+  it("legacy chat notifiers are not rendered and are dropped on save", async () => {
+    mount({
+      ...PREFILL,
+      notifiers: [
+        ...PREFILL.notifiers,
+        { key: "chat:chat_9:user_2", label: "This chat" },
+        { key: "chat:project:-", label: "This chat" },
+      ],
+    });
     next();
-    expect(done().disabled).toBe(false);
-    expect(card()!.querySelector("[role=alert]")).toBeNull();
-  });
-
-  it("a project chat row is a normal toggle", () => {
-    mount({ ...PREFILL, notifiers: [{ key: "chat:project:-", label: "This chat" }] });
-    next();
-    const project = row("Project chat");
-    expect(project.disabled).toBe(false);
-    expect(project.getAttribute("aria-pressed")).toBe("true");
-    act(() => project.click());
-    expect(row("Project chat").getAttribute("aria-pressed")).toBe("false");
+    expect(card()!.textContent).not.toMatch(/chat/i);
+    act(() => done().click());
+    act(() => saveButton().click());
+    await flush();
+    await flush();
+    expect(Object.fromEntries(posted[0]!).notifierIds).toBe("channel:ch_1");
   });
 
   it("a deleted channel is not listed and is dropped on save", async () => {
@@ -265,7 +257,7 @@ describe("edit an alert in the chat", () => {
     await flush();
     expect(Object.fromEntries(posted[0]!)).toEqual({
       intent: "edit",
-      notifierIds: "chat:chat_9:user_2,channel:ch_1",
+      notifierIds: "channel:ch_1",
       respond: "json",
       expiresAt: "none",
     });
@@ -331,7 +323,7 @@ describe("activate an inactive alert in the chat", () => {
     expect(Object.fromEntries(posted[0]!)).toEqual({
       intent: "activate",
       respond: "json",
-      notifierIds: "chat:chat_9:user_2,channel:ch_1",
+      notifierIds: "channel:ch_1",
       expiresAt: "none",
     });
     expect(document.querySelector('[data-testid="edit-flow"]')!.textContent).toContain(

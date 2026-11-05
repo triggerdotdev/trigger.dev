@@ -28,11 +28,7 @@ export function buildNotifierOptions(
       });
     }
   }
-  const chatNotifier = currentNotifiers.find((n) => n.key.startsWith("chat:"));
-  const chatOption: NotifierOption | undefined = chatNotifier
-    ? { key: chatNotifier.key, label: chatNotifier.label }
-    : undefined;
-  return chatOption ? [chatOption, ...channelOptions] : channelOptions;
+  return channelOptions;
 }
 
 export function parseNotifierKey(key: string): ParsedNotifierRef | null {
@@ -52,14 +48,5 @@ export function parseNotifierKey(key: string): ParsedNotifierRef | null {
       userId,
     };
   }
-  return null;
-}
-
-export function validateChatRef(
-  chat: Extract<ParsedNotifierRef, { type: "chat" }>,
-  authenticatedUserId: string
-): string | null {
-  if (!chat.userId) return "Chat notifier must specify a user";
-  if (chat.userId !== authenticatedUserId) return "Unauthorized chat notifier";
   return null;
 }

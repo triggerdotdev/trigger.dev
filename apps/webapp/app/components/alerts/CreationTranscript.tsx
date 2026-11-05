@@ -45,7 +45,6 @@ import {
   buildReviewFields,
   CARD_GAP,
   cardPosition,
-  CHAT_CHIP,
   confirmStep,
   CONTINUE_OPTION,
   NO_NOTIFIER,
@@ -66,7 +65,6 @@ export type SystemLine = {
 export function CreationTranscript({
   flow,
   channels = [],
-  chatId,
   alertDetailPath,
   onFreeText,
   systemLines = [],
@@ -83,7 +81,6 @@ export function CreationTranscript({
 }: {
   flow: CreationFlowState;
   channels?: AlertChannel[];
-  chatId?: string;
   alertDetailPath?: (alertId: string) => string;
   onFreeText?: (text: string) => void;
   systemLines?: SystemLine[];
@@ -118,7 +115,6 @@ export function CreationTranscript({
   const [scenarios, setScenarios] = useState(false);
   const [customizing, setCustomizing] = useState(false);
   const [customIndex, setCustomIndex] = useState(0);
-  const chatDefaulted = useRef(false);
   const cardRef = useRef<HTMLDivElement>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const [roomHeight, setRoomHeight] = useState(0);
@@ -148,7 +144,6 @@ export function CreationTranscript({
     ? allSteps(
         flow,
         allChannels,
-        chatId,
         addChannel,
         errorGroups,
         scopeEntities,
@@ -165,15 +160,14 @@ export function CreationTranscript({
   const loadKind =
     scopeEntityKind(flow.answers.scope) ??
     (cardSteps[viewIndex]?.id === "scope" ? entityKind : undefined);
-  const hasNotifier = (flow.answers.notifiers ?? []).some(
-    (id) => (id === CHAT_CHIP.value && Boolean(chatId)) || allChannels.some((ch) => ch.id === id)
+  const hasNotifier = (flow.answers.notifiers ?? []).some((id) =>
+    allChannels.some((ch) => ch.id === id)
   );
   const editing = customizing && flow.isReview;
   const customSteps = editing
     ? allSteps(
         flow,
         allChannels,
-        chatId,
         addChannel,
         errorGroups,
         scopeEntities,
@@ -185,25 +179,13 @@ export function CreationTranscript({
   const cardOpen = editing || (Boolean(position) && !cardClosed);
   const scenarioOpen = scenarios && (editing || Boolean(position));
 
-  const needsChatDefault =
-    flow.currentStep === "notifiers" &&
-    Boolean(chatId) &&
-    !flow.answers.replace &&
-    !flow.answers.notifiers?.length;
   useDefaultComponents(flow, hiddenAreas);
-  const { toggleNotifier } = flow;
-  useEffect(() => {
-    if (!needsChatDefault || chatDefaulted.current) return;
-    chatDefaulted.current = true;
-    toggleNotifier("chat");
-  }, [needsChatDefault, toggleNotifier]);
 
   function startOver() {
     setCustomizing(false);
     setCardClosed(false);
     setScenarios(false);
     setView(undefined);
-    chatDefaulted.current = false;
     (onNewChat ?? flow.reset)();
   }
 
@@ -299,7 +281,6 @@ export function CreationTranscript({
             <ManualCreationForm
               flow={flow}
               channels={channels}
-              chatId={chatId}
               addChannel={addChannel}
               emptyAreas={emptyAreas}
               hiddenAreas={hiddenAreas}

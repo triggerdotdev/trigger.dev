@@ -41,9 +41,9 @@ const AlertDraftBodySchema = z.object({
   behavior: behaviorSchema,
   notifiers: z
     .array(notifierRefSchema)
-    .min(1, "At least one notifier is required")
-    .refine((notifiers) => notifiers.every((n) => n.type !== "chat" || Boolean(n.chatId)), {
-      message: "A chat notifier must include chatId",
+    .min(1, "At least one channel is required")
+    .refine((notifiers) => notifiers.every((n) => n.type !== "chat"), {
+      message: "Chat notifiers are not supported",
     }),
   name: z.string().optional(),
   query: z.string().max(8192).optional(),

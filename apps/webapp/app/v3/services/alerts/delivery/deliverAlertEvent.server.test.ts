@@ -1,17 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.setConfig({ testTimeout: 60_000 });
-import {
-  type DashboardAgentDb,
-  type DashboardAgentDbClient,
-  createDashboardAgentDb,
-  createChat,
-  getChatMessages,
-} from "@internal/dashboard-agent-db";
-import {
-  applyDashboardAgentMigrations,
-  type MigrationExecutor,
-} from "@internal/dashboard-agent-db/testing";
 import type { PrismaClient } from "@trigger.dev/database";
 import {
   ensureAlertPartitions,
@@ -34,8 +23,6 @@ import { SkipRetryError } from "../alertTransport.server";
 import type { NotifierRef } from "@internal/alert-contracts";
 
 let pg: Awaited<ReturnType<typeof startAlertsPostgres>>;
-let client: DashboardAgentDbClient;
-let chatDb: DashboardAgentDb;
 let db: PrismaClient;
 let rawSql: ReturnType<typeof rawSqlClient>;
 
@@ -43,14 +30,9 @@ beforeAll(async () => {
   pg = await startAlertsPostgres();
   db = pg.prisma;
   rawSql = rawSqlClient(db);
-  client = createDashboardAgentDb(pg.container.getConnectionUri(), { max: 5 });
-  chatDb = client.db;
-  const execute: MigrationExecutor = (statement) => client.sql.unsafe(statement).then(() => {});
-  await applyDashboardAgentMigrations(execute);
 }, 120_000);
 
 afterAll(async () => {
-  await client?.close();
   await pg?.stop();
 });
 
@@ -129,20 +111,15 @@ function mockChannel(
   return { id, type, enabled, properties: props, projectId };
 }
 
-function makeDeps(
-  overrides?: Partial<Omit<DeliverAlertEventDeps, "db" | "chatDb">>
-): DeliverAlertEventDeps {
+function makeDeps(overrides?: Partial<Omit<DeliverAlertEventDeps, "db">>): DeliverAlertEventDeps {
   return {
     db,
-    chatDb,
     sendSlackMessage: overrides?.sendSlackMessage ?? vi.fn().mockResolvedValue({ ts: "ts_123" }),
     deliverWebhook: overrides?.deliverWebhook ?? vi.fn().mockResolvedValue(new Response("ok")),
     sendEmail: overrides?.sendEmail ?? vi.fn().mockResolvedValue(undefined),
     findSlackIntegration: overrides?.findSlackIntegration ?? vi.fn().mockResolvedValue(null),
     findChannel: overrides?.findChannel ?? vi.fn().mockResolvedValue(null),
     checkRateLimit: overrides?.checkRateLimit ?? vi.fn().mockResolvedValue({ allowed: true }),
-    deliverChatWake: overrides?.deliverChatWake ?? vi.fn().mockResolvedValue("appended"),
-    verifyChatForAlert: overrides?.verifyChatForAlert ?? vi.fn().mockResolvedValue(true),
     loadAlertContext: overrides?.loadAlertContext ?? vi.fn().mockResolvedValue(ALERT_CONTEXT),
     isOrganizationEnabled: overrides?.isOrganizationEnabled ?? vi.fn().mockResolvedValue(true),
     retryCap: overrides?.retryCap,
@@ -453,175 +430,23 @@ describe("deliverAlertEvent", () => {
     expect(pending).toHaveLength(0);
   });
 
-  it("delivers a chat wake and marks email delivered independently", async () => {
+  it("marks a stored chat notifier failed chat_not_supported without retry or append", async () => {
     const { event } = await seedAlertWithLease({
       notifiers: [
         { type: "channel", channelId: "chan_email" },
         { type: "chat", chatId: "conv_1" },
       ],
     });
-
     const findChannel = vi.fn().mockResolvedValue(mockChannel("chan_email", "EMAIL"));
     const sendEmail = vi.fn().mockResolvedValue(undefined);
-    const deliverChatWake = vi.fn().mockResolvedValue("appended");
-    const deps = makeDeps({ findChannel, sendEmail, deliverChatWake });
-    await deliverAlertEvent(event.id, event.at, deps);
-
-    expect(sendEmail).toHaveBeenCalledTimes(1);
-    expect(deliverChatWake).toHaveBeenCalledTimes(1);
-    const wakeCall = deliverChatWake.mock.calls[0]![0];
-    expect(wakeCall.chatId).toBe("conv_1");
-    expect(wakeCall.actionId).toBe(`alert:${event.id}`);
-    expect(wakeCall.alert.id).toBe(event.alertId);
-    expect(wakeCall.event.facts).toEqual({ queueDepth: 142, threshold: 100 });
-
-    const allDeliveries = await deliveriesForEvent(event.id);
-    const chatDelivery = allDeliveries.find((d) => d.notifier.type === "chat");
-    expect(chatDelivery?.status).toBe("delivered");
-    expect(chatDelivery?.notifierId).toBe("chat:conv_1:-");
-
-    const emailDelivery = allDeliveries.find((d) => d.notifier.type === "channel");
-    expect(emailDelivery?.status).toBe("delivered");
-  });
-
-  it.each([
-    ["raised", "Alert raised"],
-    ["recovered", "Alert recovered"],
-  ] as const)("appends an assistant text message for a %s event", async (eventType, prefix) => {
-    const chatId = `conv_text_${eventType}`;
-    await createChat(chatDb, { id: chatId, organizationId: "org_test", userId: "user_test" });
-    const { event } = await seedAlertWithLease({
-      notifiers: [{ type: "chat", chatId }],
-      eventType,
-      facts: { value: 142, threshold: 100, unit: "count", windowSec: 300 },
-    });
-
-    await deliverAlertEvent(event.id, event.at, {
-      ...makeDeps(),
-      deliverChatWake: undefined,
-    });
-
-    const messages = await getChatMessages(chatDb, {
-      chatId,
-      userId: "user_test",
-      organizationId: "org_test",
-    });
-    const message = (messages as Array<{ id: string }>).find(
-      (m) => m.id === `alert:${event.id}`
-    ) as {
-      role: string;
-      parts: Array<{ type: string; text: string }>;
-    };
-    expect(message.role).toBe("assistant");
-    expect(message.parts[0]!.type).toBe("text");
-    expect(message.parts[0]!.text).toContain("Queue depth high");
-    expect(message.parts[0]!.text.startsWith(prefix)).toBe(true);
-  });
-
-  it("marks chat delivery failed when wake returns not_found", async () => {
-    const { event } = await seedAlertWithLease({
-      notifiers: [{ type: "chat", chatId: "conv_gone" }],
-    });
-
-    const deliverChatWake = vi.fn().mockResolvedValue("not_found");
-    const deps = makeDeps({ deliverChatWake });
-    await deliverAlertEvent(event.id, event.at, deps);
+    await deliverAlertEvent(event.id, event.at, makeDeps({ findChannel, sendEmail }));
 
     const allDeliveries = await deliveriesForEvent(event.id);
     const chatDelivery = allDeliveries.find((d) => d.notifier.type === "chat");
     expect(chatDelivery?.status).toBe("failed");
-    expect(chatDelivery?.failureReason).toBe("chat_not_found");
-    expect(chatDelivery?.notifierId).toBe("chat:conv_gone:-");
-  });
-
-  it("marks chat delivery failed when chatId is missing", async () => {
-    const { event } = await seedAlertWithLease({
-      notifiers: [{ type: "chat", userId: "user_test" }],
-    });
-
-    const deliverChatWake = vi.fn();
-    const deps = makeDeps({ deliverChatWake });
-    await deliverAlertEvent(event.id, event.at, deps);
-
-    expect(deliverChatWake).not.toHaveBeenCalled();
-
-    const allDeliveries = await deliveriesForEvent(event.id);
-    const chatDelivery = allDeliveries.find((d) => d.notifier.type === "chat");
-    expect(chatDelivery?.status).toBe("failed");
-    expect(chatDelivery?.failureReason).toBe("chat_not_found");
-  });
-
-  it("chat delivery action id is stable across replays (idempotent)", async () => {
-    const { event } = await seedAlertWithLease({
-      notifiers: [{ type: "chat", chatId: "conv_replay" }],
-    });
-
-    const deliverChatWake = vi.fn().mockResolvedValue("appended");
-    const deps = makeDeps({ deliverChatWake });
-    await deliverAlertEvent(event.id, event.at, deps);
-
-    expect(deliverChatWake.mock.calls[0]![0].actionId).toBe(`alert:${event.id}`);
-
-    deliverChatWake.mockClear();
-    await deliverAlertEvent(event.id, event.at, deps);
-    expect(deliverChatWake).not.toHaveBeenCalled();
-  });
-
-  it("crash after append but before markDelivered: retry marks delivered via duplicate", async () => {
-    const { event, deliveries } = await seedAlertWithLease({
-      notifiers: [{ type: "chat", chatId: "conv_crash" }],
-    });
-
-    const deliverChatWake = vi.fn().mockResolvedValue("appended");
-    const deps = makeDeps({ deliverChatWake });
-    await deliverAlertEvent(event.id, event.at, deps);
-    expect(deliverChatWake).toHaveBeenCalledTimes(1);
-
-    const delivery = deliveries[0]!;
-    await rawSql`UPDATE "AlertDelivery" SET status = 'delivering', "claimedAt" = NOW() - INTERVAL '6 minutes' WHERE id = ${delivery.id}`;
-
-    deliverChatWake.mockClear();
-    deliverChatWake.mockResolvedValue("duplicate");
-    await deliverAlertEvent(event.id, event.at, deps);
-
-    expect(deliverChatWake).toHaveBeenCalledTimes(1);
-
-    const allDeliveries = await deliveriesForEvent(event.id);
-    expect(allDeliveries[0]!.status).toBe("delivered");
-    expect(allDeliveries[0]!.claimId).not.toBeNull();
-  });
-
-  it("marks delivery failed when chat belongs to another tenant", async () => {
-    const { event } = await seedAlertWithLease({
-      notifiers: [{ type: "chat", chatId: "conv_foreign" }],
-    });
-
-    const verifyChatForAlert = vi.fn().mockResolvedValue(false);
-    const deliverChatWake = vi.fn();
-    const deps = makeDeps({ verifyChatForAlert, deliverChatWake });
-    await deliverAlertEvent(event.id, event.at, deps);
-
-    expect(deliverChatWake).not.toHaveBeenCalled();
-
-    const allDeliveries = await deliveriesForEvent(event.id);
-    const chatDelivery = allDeliveries.find((d) => d.notifier.type === "chat");
-    expect(chatDelivery?.status).toBe("failed");
-    expect(chatDelivery?.failureReason).toBe("notifier_invalid");
-  });
-
-  it("chat soft-deleted between verify and append marks failed, not delivered", async () => {
-    const { event } = await seedAlertWithLease({
-      notifiers: [{ type: "chat", chatId: "conv_deleted" }],
-    });
-
-    const deliverChatWake = vi.fn().mockResolvedValue("not_found");
-    const deps = makeDeps({ deliverChatWake });
-    await deliverAlertEvent(event.id, event.at, deps);
-
-    const allDeliveries = await deliveriesForEvent(event.id);
-    const chatDelivery = allDeliveries.find((d) => d.notifier.type === "chat");
-    expect(chatDelivery?.status).toBe("failed");
-    expect(chatDelivery?.failureReason).toBe("chat_not_found");
+    expect(chatDelivery?.failureReason).toBe("chat_not_supported");
+    expect(findChannel).toHaveBeenCalledTimes(1);
+    expect(allDeliveries.find((d) => d.notifier.type === "channel")?.status).toBe("delivered");
   });
 
   it("rejects a delivery payload without eventAt", () => {

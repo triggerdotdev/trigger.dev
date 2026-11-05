@@ -7,7 +7,6 @@ import {
   conditionSchema,
   getCapability,
   listCapabilities,
-  notifierRefSchema,
   validateConditionParams,
   type NotifierRef,
 } from "@internal/alert-contracts";
@@ -56,11 +55,7 @@ const CapabilitiesQuerySchema = z.object({
 
 const looseNotifierRef = z.discriminatedUnion("type", [
   z.object({ type: z.literal("channel"), channelId: z.string() }),
-  z.object({
-    type: z.literal("chat"),
-    chatId: z.string().optional(),
-    userId: z.string().optional(),
-  }),
+  z.object({ type: z.literal("chat") }),
 ]);
 
 const CreateBodySchema = z
@@ -332,30 +327,17 @@ export async function action({ request }: ActionFunctionArgs) {
   const denied = await authorizeAlerts(request, environment, "write");
   if (denied) return denied;
 
-  const notifiers: NotifierRef[] =
-    body.notifiers && body.notifiers.length > 0
-      ? body.notifiers.map((n) =>
-          n.type === "chat" && !n.chatId ? { ...n, chatId: body.chatId } : n
-        )
-      : [{ type: "chat", chatId: body.chatId }];
+  const notifiers: NotifierRef[] = body.notifiers ?? [];
 
-  for (const n of notifiers) {
-    if (!notifierRefSchema.safeParse(n).success) {
-      return json({ error: "Invalid notifier" }, { status: 400 });
-    }
-  }
-
-  if (body.notifiers && body.notifiers.length > 0) {
-    const notifierError = await validateAlertNotifiers({
-      notifiers,
-      projectId: environment.project.id,
-      organizationId: environment.organizationId,
-      userId: auth.userId,
-      environmentType: environment.type,
-    });
-    if (notifierError) {
-      return json({ error: notifierError.message }, { status: 400 });
-    }
+  const notifierError = await validateAlertNotifiers({
+    notifiers,
+    projectId: environment.project.id,
+    organizationId: environment.organizationId,
+    userId: auth.userId,
+    environmentType: environment.type,
+  });
+  if (notifierError) {
+    return json({ error: notifierError.message }, { status: 400 });
   }
 
   const scope = body.scope ?? { type: "all" as const };
