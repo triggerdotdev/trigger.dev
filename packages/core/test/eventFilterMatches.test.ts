@@ -209,6 +209,18 @@ describe("eventFilterMatches", () => {
     expect(eventFilterMatches(payload, filter)).toBe(true);
   });
 
+  it("should return true for nested $exists = false when the parent key is missing or null", () => {
+    const filter: EventFilter = {
+      user: {
+        email: [{ $exists: false }],
+      },
+    };
+    expect(eventFilterMatches({}, filter)).toBe(true);
+    expect(eventFilterMatches({ user: null }, filter)).toBe(true);
+    expect(eventFilterMatches({ user: {} }, filter)).toBe(true);
+    expect(eventFilterMatches({ user: { email: "a@b.com" } }, filter)).toBe(false);
+  });
+
   it("should return true when payload does match numeric condition", () => {
     const payload = {
       name: "John",
