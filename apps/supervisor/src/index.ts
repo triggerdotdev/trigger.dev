@@ -486,6 +486,7 @@ class ManagedSupervisor {
 
       this.checkpointClient = new CheckpointClient({
         apiUrl: new URL(env.TRIGGER_CHECKPOINT_URL),
+        managedWorkerSecret: env.MANAGED_WORKER_SECRET,
         workerClient: this.workerSession.httpClient,
         orchestrator: this.isKubernetes ? "KUBERNETES" : "DOCKER",
       });

@@ -672,6 +672,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                     runnerId,
                     runFriendlyId: params.runFriendlyId,
                     snapshotFriendlyId: params.snapshotFriendlyId,
+                    environmentId: auth.environmentId,
                     owner: auth.claims && {
                       envId: auth.claims.environment_id,
                       deploymentFriendlyId: auth.claims.deployment,
@@ -710,6 +711,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                     snapshotId: params.snapshotFriendlyId,
                     projectRef,
                     deploymentVersion,
+                    environmentId: auth.environmentId,
                   },
                 });
 

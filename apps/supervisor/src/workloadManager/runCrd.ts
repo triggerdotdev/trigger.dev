@@ -153,23 +153,33 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
     return this.snapshots?.dispatchLimit ?? 1;
   }
 
-  /**
-   * Asks the operator to snapshot the runner's guest by annotating its Runner.
-   * The runner id is the Runner's name. It comes from a workload header and the
-   * snapshot is submitted as the caller's checkpoint, so with an owner a Runner
-   * from another environment or deployment is refused.
-   */
+  async validateSuspend(opts: RunnerSuspendRequest): Promise<RunnerSuspendRequested> {
+    try {
+      const runner = (await this.getRunner(opts.runnerId)) as RunnerOwnerSpec | null;
+      if (!runner) return { ok: false, error: "the Runner was not found" };
+      const spec = runner.spec;
+      if (
+        !opts.owner ||
+        spec?.owner?.envID !== opts.owner.envId ||
+        (opts.owner.deploymentFriendlyId &&
+          spec?.deployment?.friendlyID !== opts.owner.deploymentFriendlyId)
+      )
+        return { ok: false, error: "the Runner belongs to another deployment" };
+      return { ok: true };
+    } catch (err: unknown) {
+      return {
+        ok: false,
+        error:
+          statusCodeOf(err) === 404
+            ? "the Runner was not found"
+            : `suspend owner check failed: ${messageOf(err)}`,
+      };
+    }
+  }
+
+  // The caller validates ownership before delivering earlier outcomes or making this patch.
   async requestSuspend(opts: RunnerSuspendRequest): Promise<RunnerSuspendRequested> {
     try {
-      if (opts.owner) {
-        const spec = ((await this.getRunner(opts.runnerId)) as RunnerOwnerSpec | null)?.spec;
-        if (
-          spec?.owner?.envID !== opts.owner.envId ||
-          spec?.deployment?.friendlyID !== opts.owner.deploymentFriendlyId
-        ) {
-          return { ok: false, error: "the Runner belongs to another deployment" };
-        }
-      }
       await this.k8s.objects.patch(
         {
           apiVersion: `${GROUP}/${VERSION}`,
@@ -1495,7 +1505,16 @@ export function publishedSuspend(runner: unknown): PublishedSuspend | undefined 
     return undefined;
   }
   const outcome = suspendOutcome(runner, request);
-  return outcome && { runnerId: meta.name, runFriendlyId, snapshotFriendlyId: request, outcome };
+  return (
+    outcome && {
+      runnerId: meta.name,
+      runFriendlyId,
+      snapshotFriendlyId: request,
+      outcome,
+      // Recovery has no HTTP caller; the persisted Runner owner supplies its environment.
+      environmentId: (runner as RunnerOwnerSpec | null)?.spec?.owner?.envID,
+    }
+  );
 }
 
 type RunnerRestore = { snapshotID: string; node: string };

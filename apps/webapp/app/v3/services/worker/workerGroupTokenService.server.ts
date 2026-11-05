@@ -82,7 +82,8 @@ type WorkloadGateAction =
   | "continue"
   | "snapshots_since"
   | "restore_outcome"
-  | "release";
+  | "release"
+  | "suspend";
 
 const meter = getMeter("workload-auth-gate");
 
@@ -774,6 +775,21 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     });
   }
 
+  async authorizeSuspend(runFriendlyId: string, environmentId?: string) {
+    await this.assertCreatedAtGate({
+      runId: fromFriendlyId(runFriendlyId),
+      environmentId,
+      action: "suspend",
+    });
+    const snapshot = await this._engine.runStore.findLatestExecutionSnapshot(
+      fromFriendlyId(runFriendlyId),
+      this._prisma,
+      environmentId
+    );
+    if (!snapshot) throw json({ error: "Run does not belong to this worker" }, { status: 403 });
+    return snapshot.environmentId;
+  }
+
   async createCheckpoint({
     runFriendlyId,
     snapshotFriendlyId,
@@ -784,6 +800,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     snapshotFriendlyId: string;
     checkpoint: CheckpointInput;
     runnerId?: string;
+    environmentId?: string;
   }) {
     return await this._engine.createCheckpoint({
       runId: fromFriendlyId(runFriendlyId),

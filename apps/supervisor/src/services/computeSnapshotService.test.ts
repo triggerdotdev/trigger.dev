@@ -41,17 +41,25 @@ function createRunnerService(
   const submitSuspendCompletion = vi.fn(
     async (): Promise<{ success: boolean; error?: string }> => ({ success: true })
   );
+  const preflights: Parameters<SupervisorHttpClient["preflightSuspend"]>[] = [];
   const service = new ComputeSnapshotService({
     runnerSnapshotter: {
       snapshotDelayMs: DELAY_MS,
       snapshotDispatchLimit: 1,
+      validateSuspend: async () => ({ ok: true }),
       requestSuspend,
       awaitSuspend,
       publishedSuspends,
       publishedSuspendOf,
       markSuspendSubmitted,
     },
-    workerClient: { submitSuspendCompletion } as unknown as SupervisorHttpClient,
+    workerClient: {
+      preflightSuspend: async (...args: Parameters<SupervisorHttpClient["preflightSuspend"]>) => {
+        preflights.push(args);
+        return { success: true, data: { ok: true, environmentId: "env_1" } };
+      },
+      submitSuspendCompletion,
+    } as unknown as SupervisorHttpClient,
     wideEventOpts: { service: "supervisor-test", env: {}, enabled: false },
   });
   return {
@@ -62,22 +70,25 @@ function createRunnerService(
     publishedSuspendOf,
     markSuspendSubmitted,
     submitSuspendCompletion,
+    preflights,
   };
 }
 
 describe("ComputeSnapshotService with a runner snapshotter", () => {
   it("submits the snapshot the backend took", async () => {
-    const { service, requestSuspend, awaitSuspend, submitSuspendCompletion } = createRunnerService({
-      ok: true,
-      location: "snap-1",
-    });
+    const { service, requestSuspend, awaitSuspend, submitSuspendCompletion, preflights } =
+      createRunnerService({
+        ok: true,
+        location: "snap-1",
+      });
     try {
       const owner = { envId: "env_1", deploymentFriendlyId: "deployment_1" };
-      service.schedule("run_1", { ...delayedSnapshot(), owner });
+      service.schedule("run_1", { ...delayedSnapshot(), owner, environmentId: owner.envId });
 
       await vi.waitFor(() => expect(submitSuspendCompletion).toHaveBeenCalledTimes(1), {
         timeout: 2_000,
       });
+      expect(preflights).toEqual([["run_1", "snapshot_1", "runner-1", owner.envId]]);
       expect(requestSuspend).toHaveBeenCalledWith({
         runnerId: "runner-1",
         runFriendlyId: "run_1",
@@ -91,6 +102,7 @@ describe("ComputeSnapshotService with a runner snapshotter", () => {
       expect(submitSuspendCompletion).toHaveBeenCalledWith({
         runId: "run_1",
         snapshotId: "snapshot_1",
+        environmentId: owner.envId,
         body: { success: true, checkpoint: { type: "COMPUTE", location: "snap-1" } },
       });
     } finally {

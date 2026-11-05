@@ -45,6 +45,7 @@ export type WorkerApiSuspendRunRequestBody = z.infer<typeof WorkerApiSuspendRunR
 
 export const WorkerApiSuspendRunResponseBody = z.object({
   ok: z.literal(true),
+  environmentId: z.string().optional(),
 });
 export type WorkerApiSuspendRunResponseBody = z.infer<typeof WorkerApiSuspendRunResponseBody>;
 

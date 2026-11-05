@@ -1,4 +1,5 @@
 import type { SupervisorHttpClient } from "../runEngineWorker/index.js";
+import { WORKER_HEADERS } from "../runEngineWorker/consts.js";
 import type {
   CheckpointServiceRestoreRequestBodyInput,
   CheckpointServiceSuspendRequestBodyInput,
@@ -11,6 +12,7 @@ export type CheckpointClientOptions = {
   apiUrl: URL;
   workerClient: SupervisorHttpClient;
   orchestrator: CheckpointType;
+  managedWorkerSecret?: string;
 };
 
 const CANCEL_TIMEOUT_MS = 5_000;
@@ -38,6 +40,9 @@ export class CheckpointClient {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(this.opts.managedWorkerSecret
+            ? { [WORKER_HEADERS.MANAGED_SECRET]: this.opts.managedWorkerSecret }
+            : {}),
         },
         body: JSON.stringify({
           type: this.opts.orchestrator,

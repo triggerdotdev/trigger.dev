@@ -91,7 +91,7 @@ describe("supervisor response schema resolution", () => {
   });
 });
 
-describe("releaseRun", () => {
+describe("supervisor worker actions", () => {
   type Answer = { status: number; body: unknown; headers?: Record<string, string> };
   type Received = { method?: string; url?: string; headers: Record<string, unknown>; body: string };
 
@@ -124,6 +124,42 @@ describe("releaseRun", () => {
   afterAll(async () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
+
+  // Catches: dispatch or checkpoint recording dropping the runner's verified environment.
+  it.each([undefined, "env_verified"])(
+    "preserves suspend caller environment %s on both engine hops",
+    async (environmentId) => {
+      answer = { status: 200, body: { ok: true } };
+      const client = new SupervisorHttpClient({
+        apiUrl,
+        workerToken: "token",
+        instanceName: "test",
+      });
+      expect(
+        (await client.preflightSuspend("run_1", "snapshot_1", "runner_1", environmentId)).success
+      ).toBe(true);
+      expect(
+        (
+          await client.submitSuspendCompletion({
+            runId: "run_1",
+            snapshotId: "snapshot_1",
+            runnerId: "runner_1",
+            environmentId,
+            body: { success: true, checkpoint: { type: "COMPUTE", location: "node/snapshot" } },
+          })
+        ).success
+      ).toBe(true);
+      expect(received).toHaveLength(2);
+      expect(received.map((request) => request.url)).toEqual([
+        "/engine/v1/worker-actions/runs/run_1/snapshots/snapshot_1/suspend/preflight",
+        "/engine/v1/worker-actions/runs/run_1/snapshots/snapshot_1/suspend",
+      ]);
+      for (const request of received) {
+        expect(request.headers["x-trigger-worker-environment-id"]).toBe(environmentId);
+        expect(request.headers["x-trigger-worker-runner-id"]).toBe("runner_1");
+      }
+    }
+  );
 
   function release() {
     const client = new SupervisorHttpClient({ apiUrl, workerToken: "token", instanceName: "test" });

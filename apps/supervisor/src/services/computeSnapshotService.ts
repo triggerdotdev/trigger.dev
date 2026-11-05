@@ -15,24 +15,26 @@ type DelayedSnapshot = {
   runnerId: string;
   runFriendlyId: string;
   snapshotFriendlyId: string;
+  environmentId?: string;
   /** From the caller's verified deployment token, when it carried one. */
   owner?: RunnerOwner;
 };
 
 export type RunnerSuspendResult = { ok: true; location: string } | { ok: false; error: string };
 export type RunnerSuspendRequested = { ok: true } | { ok: false; error: string };
-type RunnerOwner = { envId: string; deploymentFriendlyId: string };
+type RunnerOwner = { envId: string; deploymentFriendlyId?: string };
 export type RunnerSuspendRequest = {
   runnerId: string;
   runFriendlyId: string;
   snapshotFriendlyId: string;
-  owner?: RunnerOwner;
+  owner: RunnerOwner;
 };
 export type PublishedSuspend = {
   runnerId: string;
   runFriendlyId: string;
   snapshotFriendlyId: string;
   outcome: RunnerSuspendResult;
+  environmentId?: string;
 };
 
 const SUSPEND_RECOVERY_INTERVAL_MS = 60_000;
@@ -45,6 +47,7 @@ const SUSPEND_RECOVERY_INTERVAL_MS = 60_000;
 export interface RunnerSnapshotter {
   snapshotDelayMs: number;
   snapshotDispatchLimit: number;
+  validateSuspend(opts: RunnerSuspendRequest): Promise<RunnerSuspendRequested>;
   requestSuspend(opts: RunnerSuspendRequest): Promise<RunnerSuspendRequested>;
   awaitSuspend(opts: {
     runnerId: string;
@@ -151,10 +154,22 @@ export class ComputeSnapshotService {
    */
   async #deliverSuspend(
     runnerSnapshotter: RunnerSnapshotter,
-    target: { runnerId: string; runFriendlyId: string; snapshotFriendlyId: string },
+    target: {
+      runnerId: string;
+      runFriendlyId: string;
+      snapshotFriendlyId: string;
+      environmentId?: string;
+    },
     outcome: RunnerSuspendResult
   ): Promise<boolean> {
-    if (!(await this.#submitCompletion(target.runFriendlyId, target.snapshotFriendlyId, outcome))) {
+    if (
+      !(await this.#submitCompletion(
+        target.runFriendlyId,
+        target.snapshotFriendlyId,
+        outcome,
+        target.environmentId
+      ))
+    ) {
       return false;
     }
     try {
@@ -266,13 +281,15 @@ export class ComputeSnapshotService {
   async #submitCompletion(
     runId: string,
     snapshotFriendlyId: string,
-    outcome: RunnerSuspendResult
+    outcome: RunnerSuspendResult,
+    environmentId?: string
   ): Promise<boolean> {
     const state = fromContext();
     const submitStart = performance.now();
     const result = await this.workerClient.submitSuspendCompletion({
       runId,
       snapshotId: snapshotFriendlyId,
+      environmentId,
       body: outcome.ok
         ? { success: true, checkpoint: { type: "COMPUTE", location: outcome.location } }
         : { success: false, error: outcome.error },
@@ -335,24 +352,46 @@ export class ComputeSnapshotService {
         const key = suspendKey(target);
         this.suspendsInFlight.add(key);
         try {
+          const environmentId = snapshot.environmentId;
           const requested = await this.dispatchLimit(async () => {
-            const earlier = await this.#deliverEarlierSuspend(runnerSnapshotter, target);
-            if (!earlier.ok) {
-              return earlier;
+            // This must precede any Runner patch, including delivery of an earlier suspend.
+            const preflight = await this.workerClient.preflightSuspend(
+              snapshot.runFriendlyId,
+              snapshot.snapshotFriendlyId,
+              snapshot.runnerId,
+              environmentId
+            );
+            if (!preflight.success || !preflight.data.environmentId) {
+              return {
+                ok: false as const,
+                error: `Suspend preflight refused: ${preflight.success ? "not authorized" : preflight.error}`,
+              };
             }
-            return runnerSnapshotter.requestSuspend({
+            const request = {
               ...target,
               runFriendlyId: snapshot.runFriendlyId,
-              owner: snapshot.owner,
-            });
-          });
+              owner: {
+                envId: preflight.data.environmentId,
+                deploymentFriendlyId: snapshot.owner?.deploymentFriendlyId,
+              },
+            };
+            const owner = await runnerSnapshotter.validateSuspend(request);
+            if (!owner.ok) return owner;
+            const earlier = await this.#deliverEarlierSuspend(runnerSnapshotter, target);
+            if (!earlier.ok) return earlier;
+            return runnerSnapshotter.requestSuspend(request);
+          }).catch((error: unknown) => ({
+            ok: false as const,
+            error: `Suspend request failed: ${error instanceof Error ? error.message : String(error)}`,
+          }));
           if (!requested.ok) {
             setExtra(fromContext(), "snapshot.error", requested.error);
             // Nothing was written to the Runner, so there is nothing to mark.
             await this.#submitCompletion(
               snapshot.runFriendlyId,
               snapshot.snapshotFriendlyId,
-              requested
+              requested,
+              environmentId
             );
             return;
           }

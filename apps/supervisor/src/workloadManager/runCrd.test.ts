@@ -2412,6 +2412,7 @@ describe("RunCrdWorkloadManager.suspend", () => {
 
   beforeEach(() => {
     getRunner.mockReset();
+    getRunner.mockResolvedValue(owned);
     patchObject.mockReset();
     patchObject.mockResolvedValue({});
   });
@@ -2420,6 +2421,7 @@ describe("RunCrdWorkloadManager.suspend", () => {
     runnerId: "runner-abc123",
     runFriendlyId: "run_abc",
     snapshotFriendlyId: "snapshot_abc",
+    owner: { envId: "env_1" },
   };
   const owner = { envId: "env_1", deploymentFriendlyId: "deployment_1" };
   const owned = {
@@ -2441,7 +2443,6 @@ describe("RunCrdWorkloadManager.suspend", () => {
       },
     });
     expect(strategy).toBe("application/merge-patch+json");
-    expect(getRunner).not.toHaveBeenCalled();
   });
 
   it("marks a request submitted on the Runner's annotation", async () => {
@@ -2503,8 +2504,7 @@ describe("RunCrdWorkloadManager.suspend", () => {
   it("annotates a Runner the caller's deployment owns", async () => {
     getRunner.mockResolvedValue(owned);
 
-    await expect(manager().requestSuspend({ ...target, owner })).resolves.toEqual({ ok: true });
-    expect(patchObject).toHaveBeenCalledTimes(1);
+    await expect(manager().validateSuspend({ ...target, owner })).resolves.toEqual({ ok: true });
   });
 
   it.each([
@@ -2513,12 +2513,25 @@ describe("RunCrdWorkloadManager.suspend", () => {
   ])("refuses a Runner from another %s", async (_what, caller) => {
     getRunner.mockResolvedValue(owned);
 
-    await expect(manager().requestSuspend({ ...target, owner: caller })).resolves.toEqual({
+    await expect(manager().validateSuspend({ ...target, owner: caller })).resolves.toEqual({
       ok: false,
       error: "the Runner belongs to another deployment",
     });
     expect(patchObject).not.toHaveBeenCalled();
   });
+
+  it.each([null, { code: 404 }])(
+    "distinguishes a missing Runner from an ownership refusal",
+    async (missing) => {
+      if (missing) getRunner.mockRejectedValue(missing);
+      else getRunner.mockResolvedValue(null);
+      await expect(manager().validateSuspend(target)).resolves.toEqual({
+        ok: false,
+        error: "the Runner was not found",
+      });
+      expect(patchObject).not.toHaveBeenCalled();
+    }
+  );
 
   it("fails when the request cannot be made", async () => {
     patchObject.mockRejectedValue(new Error("forbidden"));
@@ -2711,11 +2724,17 @@ describe("publishedSuspend", () => {
   const requested = { [SUSPEND_ANNOTATION]: "snapshot_abc", [SUSPEND_RUN_ANNOTATION]: "run_abc" };
 
   it("returns an answered request the platform has not accepted", () => {
-    expect(publishedSuspend(runner(requested))).toEqual({
+    expect(
+      publishedSuspend({
+        ...runner(requested),
+        spec: { owner: { envID: "env_1" } },
+      })
+    ).toEqual({
       runnerId: "runner-abc123",
       runFriendlyId: "run_abc",
       snapshotFriendlyId: "snapshot_abc",
       outcome: { ok: true, location: "node-a/snap-1" },
+      environmentId: "env_1",
     });
   });
 
