@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { prisma } from "~/db.server";
 import { getHttpContext } from "~/services/httpAsyncStorage.server";
 import { logger } from "~/services/logger.server";
+import { extractClientIp } from "~/utils/extractClientIp.server";
 
 /** What the auth helpers learn about an audited admin route call while it runs. */
 export type AdminAuditRequestState = {
@@ -85,6 +86,68 @@ export async function recordAdminPatCreated(params: {
     });
   } catch (error) {
     logger.warn("Admin audit: failed to record PAT creation", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+/**
+ * Records an admin starting to impersonate a user. Called where every entry point converges
+ * (`redirectWithImpersonation`), because some of them start on a GET that route wrappers don't
+ * record. Never throws.
+ */
+export async function recordAdminImpersonationStarted(params: {
+  request: Request;
+  adminUserId: string;
+  targetUserId: string;
+  organizationSlug: string;
+  /** "allow" for a full session, "scoped" for a customer-approved Support Access session. */
+  access: string;
+  supportAccessRequestId?: string;
+}): Promise<void> {
+  try {
+    const controller = await getAdminAuditController();
+    if (!controller) return;
+
+    const admin = await prisma.user.findFirst({
+      where: { id: params.adminUserId },
+      select: { email: true, admin: true },
+    });
+    const { request } = params;
+
+    controller.record({
+      id: randomUUID(),
+      time: new Date(),
+      activity: "impersonation_started",
+      actor: {
+        kind: "user_session",
+        userId: params.adminUserId,
+        email: admin?.email,
+        isAdmin: admin?.admin ?? false,
+        impersonatedUserId: params.targetUserId,
+      },
+      srcEndpoint: {
+        ip: extractClientIp(request.headers.get("x-forwarded-for")),
+        userAgent: request.headers.get("user-agent")?.slice(0, 300) ?? null,
+      },
+      http: {
+        method: request.method,
+        path: new URL(request.url).pathname.slice(0, 1024),
+        status: 302,
+        durationMs: 0,
+      },
+      requestId: getHttpContext()?.requestId ?? null,
+      bodySummary: {
+        organizationSlug: params.organizationSlug,
+        access: params.access,
+        ...(params.supportAccessRequestId
+          ? { supportAccessRequestId: params.supportAccessRequestId }
+          : {}),
+      },
+      pat: null,
+    });
+  } catch (error) {
+    logger.warn("Admin audit: failed to record impersonation start", {
       error: error instanceof Error ? error.message : String(error),
     });
   }

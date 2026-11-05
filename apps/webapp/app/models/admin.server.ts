@@ -13,6 +13,7 @@ import { requireUser } from "~/services/session.server";
 import { SupportAccessService } from "~/services/supportAccess.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { extractClientIp } from "~/utils/extractClientIp.server";
+import { recordAdminImpersonationStarted } from "~/services/adminAudit/adminAuditContext.server";
 import { impersonationDestinationPath, supportAccessRequestPath } from "~/utils/pathBuilder";
 import { env } from "~/env.server";
 
@@ -299,6 +300,15 @@ export async function redirectWithImpersonation(
       targetId: userId,
     });
   }
+
+  void recordAdminImpersonationStarted({
+    request,
+    adminUserId: user.id,
+    targetUserId: userId,
+    organizationSlug,
+    access: access.value.type,
+    supportAccessRequestId: access.value.type === "scoped" ? access.value.requestId : undefined,
+  });
 
   const session = await setImpersonationId(userId, request, {
     organizationSlugs: [organizationSlug],

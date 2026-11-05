@@ -17,6 +17,7 @@ vi.mock("~/env.server", async () => {
       APP_ORIGIN: "http://localhost:3030",
       ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef",
       SESSION_SECRET: "test-session-secret",
+      MAGIC_LINK_SECRET: "test-magic-link-secret",
       CLI_LOGIN_NETWORK_CHECK: "off",
       REQUIRE_PLUGINS: undefined,
     }),
@@ -39,6 +40,7 @@ import {
   requireAdminApiRequest,
 } from "~/services/personalAccessToken.server";
 import { commitSession, getUserSession } from "~/services/sessionStorage.server";
+import { redirectWithImpersonation } from "~/models/admin.server";
 
 /** Implements the plugin contract by keeping events in memory, standing in for the cloud plugin. */
 function collectingController(): AdminAuditController & { events: AdminAuditEvent[] } {
@@ -256,6 +258,54 @@ describe("admin audit host wiring", () => {
         actor: { userId: admin.id, isAdmin: true },
         srcEndpoint: source,
         pat: { tokenId: adminPat.id, name: "cli" },
+      });
+    }
+  );
+
+  /**
+   * Catches: impersonation that leaves no audit record. The `/@/orgs/<slug>` link starts it on a
+   * GET, which no route wrapper records, so the record has to come from the shared start path.
+   */
+  postgresTest(
+    "records an admin starting to impersonate, including from a GET link",
+    async ({ prisma }) => {
+      const controller = collectingController();
+      setAdminAuditController(Promise.resolve(controller));
+      const admin = await seedUser(prisma, true);
+      const member = await seedUser(prisma, false);
+      const org = await prisma.organization.create({
+        data: {
+          title: "Acme",
+          slug: `acme-${Math.random().toString(36).slice(2, 10)}`,
+          supportAccessMode: "ALLOW",
+          members: { create: [{ userId: member.id }] },
+        },
+      });
+
+      const response = await redirectWithImpersonation(
+        new Request(`http://localhost:3030/@/orgs/${org.slug}`, {
+          headers: { "x-forwarded-for": "203.0.113.9, 82.14.22.5", "user-agent": "Mozilla/5.0" },
+        }),
+        { userId: member.id, organizationSlug: org.slug, path: `/orgs/${org.slug}` },
+        { id: admin.id, admin: true },
+        prisma
+      );
+      expect(response.status).toBe(302);
+      expect(response.headers.get("location")).toBe(`/orgs/${org.slug}`);
+
+      await vi.waitFor(() => expect(controller.events).toHaveLength(1));
+      expect(controller.events[0]).toMatchObject({
+        activity: "impersonation_started",
+        actor: {
+          kind: "user_session",
+          userId: admin.id,
+          email: admin.email,
+          isAdmin: true,
+          impersonatedUserId: member.id,
+        },
+        srcEndpoint: { ip: "82.14.22.5", userAgent: "Mozilla/5.0" },
+        http: { method: "GET", path: `/@/orgs/${org.slug}`, status: 302 },
+        bodySummary: { organizationSlug: org.slug, access: "allow" },
       });
     }
   );

@@ -1,5 +1,10 @@
 /** What happened. Field names follow the OCSF API Activity class where one exists. */
-export type AdminAuditActivity = "api_call" | "dashboard_action" | "pat_created";
+export type AdminAuditActivity =
+  | "api_call"
+  | "dashboard_action"
+  | "pat_created"
+  /** An admin started impersonating a user, from any entry point (some start on a GET). */
+  | "impersonation_started";
 
 export type AdminAuditActorKind =
   | "user_pat"
