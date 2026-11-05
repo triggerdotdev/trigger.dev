@@ -578,3 +578,52 @@ describe("CheckpointSystem location validation", () => {
     }
   );
 });
+
+describe("CheckpointSystem content digest", () => {
+  // Catches: the digest lost between the checkpoint's metadata and the dequeued restore.
+  containerTest(
+    "hands a stored checkpoint's digest back with the restore it is dequeued for",
+    async ({ prisma, redisOptions }) => {
+      const engine = new RunEngine(createEngineOptions(redisOptions, prisma));
+      const digest = `sha256:${"ab".repeat(32)}`;
+
+      try {
+        const { run, blockingSnapshotId, waitpointId } = await driveToCheckpointable(
+          engine,
+          prisma,
+          "run_cpdigest1"
+        );
+
+        const result = await engine.createCheckpoint({
+          runId: run.id,
+          snapshotId: blockingSnapshotId,
+          checkpoint: {
+            type: "KUBERNETES",
+            location: "registry.example.com/ns/image:tag",
+            reason: "TEST_CHECKPOINT",
+            digest,
+          },
+        });
+        expect(result.ok).toBe(true);
+
+        await engine.completeWaitpoint({ id: waitpointId });
+
+        const restored = await vi.waitFor(
+          async () => {
+            const [message] = await engine.dequeueFromWorkerQueue({
+              consumerId: "test_12345",
+              workerQueue: "main",
+            });
+            if (!message) throw new Error("Nothing dequeued yet");
+            return message;
+          },
+          { timeout: 10_000, interval: 100 }
+        );
+
+        expect(restored.checkpoint?.digest).toBe(digest);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+});

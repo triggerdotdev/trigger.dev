@@ -34,6 +34,7 @@ import type { SystemResources } from "./systems.js";
 import type { Histogram } from "@internal/tracing";
 
 import { boundedIn } from "@trigger.dev/database";
+import { checkpointDigestFromMetadata } from "../checkpointMetadata.js";
 /** Waitpoint outputs can be 100KB+, so a large fetch can exceed the NAPI string limit. */
 const WAITPOINT_CHUNK_SIZE = 100;
 
@@ -344,6 +345,7 @@ export function executionDataFromSnapshot(snapshot: EnhancedExecutionSnapshot): 
           location: snapshot.checkpoint.location,
           imageRef: snapshot.checkpoint.imageRef,
           reason: snapshot.checkpoint.reason ?? undefined,
+          digest: checkpointDigestFromMetadata(snapshot.checkpoint.metadata),
         }
       : undefined,
     completedWaitpoints: snapshot.completedWaitpoints,

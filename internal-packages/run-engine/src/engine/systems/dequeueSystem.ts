@@ -42,6 +42,7 @@ import {
   type SnapshotReadContext,
   type SnapshotRouteWire,
 } from "@internal/run-store";
+import { dequeueCheckpointFromRow } from "../checkpointMetadata.js";
 
 const NullableRetryOptions = z.compile(RetryOptions.nullable());
 
@@ -895,7 +896,7 @@ export class DequeueSystem {
                 },
                 image: result.deployment?.imageReference ?? undefined,
                 templateKey: result.deployment?.templateKey ?? undefined,
-                checkpoint: snapshot.checkpoint ?? undefined,
+                checkpoint: dequeueCheckpointFromRow(snapshot.checkpoint),
                 completedWaitpoints: snapshot.completedWaitpoints,
                 backgroundWorker: {
                   id: result.worker.id,

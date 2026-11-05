@@ -83,10 +83,38 @@ describe("suspend completion", () => {
   }, 60_000);
 });
 
-/** Starts a run and blocks it on a waitpoint token, so its latest snapshot can be checkpointed. */
-async function runWaitingOnToken() {
-  const { id: runId } = await api.triggerTask(fixtures.taskIdentifiers[0]!, { payload: {} });
-  const dequeued = await vi.waitFor(
+describe("checkpoint digest", () => {
+  // Catches: the digest stripped by a schema between the suspend request and the restore dequeue.
+  it("hands the digest recorded at suspend back with the restore", async () => {
+    const { runId, snapshotId, tokenId } = await runWaitingOnToken();
+    const digest = `sha256:${"9f".repeat(32)}`;
+
+    expect(
+      ok(
+        await supervisor.submitSuspendCompletion({
+          runId,
+          snapshotId,
+          body: {
+            success: true,
+            checkpoint: {
+              type: "KUBERNETES",
+              location: "registry.example.com/ns/image:tag",
+              digest,
+            },
+          },
+        })
+      )
+    ).toEqual({ ok: true });
+
+    await api.completeWaitpointToken(tokenId, {});
+    const restored = await dequeue();
+
+    expect(restored.checkpoint?.digest).toBe(digest);
+  }, 60_000);
+});
+
+function dequeue() {
+  return vi.waitFor(
     async () => {
       const [message] = ok(await supervisor.dequeue({}));
       if (!message) throw new Error("Nothing dequeued yet");
@@ -94,13 +122,19 @@ async function runWaitingOnToken() {
     },
     { timeout: 10_000, interval: 100 }
   );
+}
+
+/** Starts a run and blocks it on a waitpoint token, so its latest snapshot can be checkpointed. */
+async function runWaitingOnToken() {
+  const { id: runId } = await api.triggerTask(fixtures.taskIdentifiers[0]!, { payload: {} });
+  const dequeued = await dequeue();
   ok(await supervisor.startRunAttempt(runId, dequeued.snapshot.friendlyId, {}));
 
   const token = await api.createWaitpointToken({});
   await api.waitForWaitpointToken({ runFriendlyId: runId, waitpointFriendlyId: token.id });
 
   const { execution } = ok(await supervisor.getLatestSnapshot(runId));
-  return { runId, snapshotId: execution.snapshot.friendlyId };
+  return { runId, snapshotId: execution.snapshot.friendlyId, tokenId: token.id };
 }
 
 function ok<T>(result: { success: true; data: T } | { success: false; error: string }): T {

@@ -4,6 +4,7 @@ import type {
   ExecutionResult,
 } from "@trigger.dev/core/v3";
 import { validateCheckpointLocation } from "@trigger.dev/core/v3";
+import { encodeCheckpointMetadata } from "../checkpointMetadata.js";
 import { CheckpointId } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { sendNotificationToWorker } from "../eventBus.js";
@@ -227,6 +228,7 @@ export class CheckpointSystem {
             location: checkpoint.location,
             imageRef: checkpoint.imageRef,
             reason: checkpoint.reason,
+            metadata: encodeCheckpointMetadata(checkpoint.digest),
             runtimeEnvironmentId: env.id,
             projectId: env.projectId,
           },
