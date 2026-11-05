@@ -15,9 +15,10 @@ vi.mock("~/db.server", () => ({
   $replica: {},
 }));
 
-vi.mock("~/env.server", () => ({
-  env: { ENCRYPTION_KEY: "0".repeat(64) },
-}));
+vi.mock("~/env.server", async () => {
+  const { withLegacyEncryptionKeyring } = await import("../helpers/encryptionEnv");
+  return { env: withLegacyEncryptionKeyring({ ENCRYPTION_KEY: "0".repeat(64) }) };
+});
 
 vi.mock("~/utils/tokens.server", () => ({
   hashToken: (t: string) => `hashed:${t}`,

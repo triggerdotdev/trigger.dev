@@ -1,5 +1,10 @@
 import { type InitializeDeploymentRequestBody } from "@trigger.dev/core/v3";
-import { type EncryptedSecretValue, encryptSecret } from "~/services/secrets/secretStore.server";
+import {
+  type EncryptedSecretValue,
+  encryptSecret,
+  decryptSecret,
+} from "~/services/secrets/secretStore.server";
+import type { EncryptionKeyring } from "~/utils/encryptionKeyring.server";
 import { ServiceValidationError } from "../baseService.server";
 
 /** The envelope stored on a bundle deployment: the redeploy source's copy, or the payload's vars encrypted. */
@@ -7,13 +12,18 @@ export async function buildEnvVarsEnvelope(
   payload: InitializeDeploymentRequestBody,
   options: {
     copyFrom?: EncryptedSecretValue;
-    encryptionKey: string;
+    encryptionKey: EncryptionKeyring;
     maxKeys: number;
     maxBytes: number;
   }
 ): Promise<EncryptedSecretValue | undefined> {
   if (!payload.isNativeBuild || !payload.fromBundle) return undefined;
-  if (options.copyFrom) return options.copyFrom;
+  if (options.copyFrom) {
+    return encryptSecret(
+      options.encryptionKey,
+      await decryptSecret(options.encryptionKey, options.copyFrom)
+    );
+  }
 
   // Stored even when empty: redeploying a bundle requires its envelope
   const buildEnvVars = payload.buildEnvVars ?? {};

@@ -4,6 +4,7 @@ import { createProject } from "./app/models/project.server";
 import type { Organization, Prisma, User } from "@trigger.dev/database";
 import { AuthenticationMethod } from "@trigger.dev/database";
 import { encryptToken, decryptToken, hashToken } from "./app/utils/tokens.server";
+import { EncryptedValueSchema } from "./app/utils/encryptionKeyring.server";
 import { env } from "./app/env.server";
 import { randomBytes } from "node:crypto";
 
@@ -120,8 +121,8 @@ async function ensureLocalCliPat(user: User) {
     where: { userId: user.id, name, revokedAt: null },
   });
   if (existing) {
-    const enc = existing.encryptedToken as { nonce: string; ciphertext: string; tag: string };
-    return { name, token: decryptToken(enc.nonce, enc.ciphertext, enc.tag, env.ENCRYPTION_KEY) };
+    const enc = EncryptedValueSchema.parse(existing.encryptedToken);
+    return { name, token: decryptToken(enc, env.ENCRYPTION_KEYRING) };
   }
   const token = `tr_pat_${randomBytes(20).toString("hex")}`;
   const body = token.slice("tr_pat_".length);
@@ -129,7 +130,7 @@ async function ensureLocalCliPat(user: User) {
     data: {
       name,
       userId: user.id,
-      encryptedToken: encryptToken(token, env.ENCRYPTION_KEY),
+      encryptedToken: encryptToken(token, env.ENCRYPTION_KEYRING),
       hashedToken: hashToken(token),
       obfuscatedToken: `tr_pat_${body.slice(0, 4)}${"•".repeat(18)}${body.slice(-4)}`,
     },

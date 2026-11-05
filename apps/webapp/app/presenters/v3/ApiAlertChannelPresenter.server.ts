@@ -145,7 +145,7 @@ async function channelDataFromProperties(
 
       return {
         url,
-        secret: await decryptSecret(env.ENCRYPTION_KEY, secret),
+        secret: await decryptSecret(env.ENCRYPTION_KEYRING, secret),
       };
     case "SLACK":
       throw new Error("Slack channels are not supported");

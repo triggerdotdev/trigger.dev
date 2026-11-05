@@ -8,17 +8,20 @@ vi.setConfig({ testTimeout: 60_000 });
 
 const db = vi.hoisted(() => ({ client: null as unknown as PrismaClient }));
 
-vi.mock("~/env.server", () => ({
-  env: {
-    ADMIN_AUDIT_ENABLED: true,
-    ADMIN_DASHBOARD_ENABLED: true,
-    APP_ORIGIN: "http://localhost:3030",
-    ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef",
-    SESSION_SECRET: "test-session-secret",
-    CLI_LOGIN_NETWORK_CHECK: "off",
-    REQUIRE_PLUGINS: undefined,
-  },
-}));
+vi.mock("~/env.server", async () => {
+  const { withLegacyEncryptionKeyring } = await import("./helpers/encryptionEnv");
+  return {
+    env: withLegacyEncryptionKeyring({
+      ADMIN_AUDIT_ENABLED: true,
+      ADMIN_DASHBOARD_ENABLED: true,
+      APP_ORIGIN: "http://localhost:3030",
+      ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef",
+      SESSION_SECRET: "test-session-secret",
+      CLI_LOGIN_NETWORK_CHECK: "off",
+      REQUIRE_PLUGINS: undefined,
+    }),
+  };
+});
 
 vi.mock("~/db.server", () => ({
   get prisma() {

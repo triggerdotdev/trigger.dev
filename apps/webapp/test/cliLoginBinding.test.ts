@@ -23,7 +23,10 @@ vi.mock("~/db.server", () => ({
     return db.client;
   },
 }));
-vi.mock("~/env.server", () => ({ env: mockEnv }));
+vi.mock("~/env.server", async () => {
+  const { withLegacyEncryptionKeyring } = await import("./helpers/encryptionEnv");
+  return { env: withLegacyEncryptionKeyring(mockEnv) };
+});
 vi.mock("~/services/logger.server", () => ({
   logger: { debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));

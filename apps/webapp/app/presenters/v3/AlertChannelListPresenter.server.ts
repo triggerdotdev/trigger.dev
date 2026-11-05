@@ -78,7 +78,7 @@ export class AlertChannelListPresenter extends BasePresenter {
         const parsedProperties = ProjectAlertWebhookProperties.parse(alertChannel.properties);
 
         const secret = includeSecrets
-          ? await decryptSecret(env.ENCRYPTION_KEY, parsedProperties.secret)
+          ? await decryptSecret(env.ENCRYPTION_KEYRING, parsedProperties.secret)
           : undefined;
 
         return {

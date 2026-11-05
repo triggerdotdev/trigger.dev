@@ -227,7 +227,7 @@ export class InitializeDeploymentService extends BaseService {
       // Before cancelling superseded deployments, so an invalid payload leaves them running
       const encryptedBuildEnvVars = await buildEnvVarsEnvelope(payload, {
         copyFrom: options?.buildEnvVars,
-        encryptionKey: env.ENCRYPTION_KEY,
+        encryptionKey: env.ENCRYPTION_KEYRING,
         maxKeys: env.DEPLOYMENT_BUILD_ENV_VARS_MAX_KEYS,
         maxBytes: env.DEPLOYMENT_BUILD_ENV_VARS_SIZE_LIMIT_BYTES,
       });

@@ -179,7 +179,11 @@ export async function deliverAlertEvent(
   const sendSlack = deps.sendSlackMessage ?? defaultPostSlackMessage;
   const deliverWebhook =
     deps.deliverWebhook ??
-    ((params) => defaultDeliverWebhookPayload({ ...params, encryptionKey: env.ENCRYPTION_KEY }));
+    ((params) =>
+      defaultDeliverWebhookPayload({
+        ...params,
+        encryptionKey: env.ENCRYPTION_KEYRING,
+      }));
   const sendEmail = deps.sendEmail ?? sendAlertEmail;
   const findSlack = deps.findSlackIntegration ?? defaultFindSlackIntegration;
   const findChannel: FindChannelFn =

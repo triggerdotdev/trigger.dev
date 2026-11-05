@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { resolveEncryptionKeyring, parseEncryptionKeyring } from "./utils/encryptionKeyring.server";
 import { MachinePresetName } from "@trigger.dev/core/v3";
 import {
   parseNaturalLanguageDurationInMs,
@@ -416,6 +417,7 @@ const EnvironmentSchema = z
         "ENCRYPTION_KEY must be exactly 32 bytes"
       )
       .refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
+    ENCRYPTION_KEYRING: z.string().transform(parseEncryptionKeyring).optional(),
     PUBLIC_TOKEN_SEALED_SUBJECT_ENABLED: BoolEnv.default(false),
     PUBLIC_TOKEN_SUBJECT_SECRET: z
       .string()
@@ -423,7 +425,7 @@ const EnvironmentSchema = z
       .refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE)
       .optional(),
     // Enables the AWS_KMS secret store provider. Callers opt in per secret; everything else
-    // stays encrypted with ENCRYPTION_KEY.
+    // stays encrypted with the platform keyring.
     SECRET_STORE_AWS_KMS_KEY_ID: z.string().optional(),
     WHITELISTED_EMAILS: z
       .string()
@@ -2888,8 +2890,15 @@ const EnvironmentSchema = z
     }
   });
 
-export type Environment = z.infer<typeof EnvironmentSchema>;
-export const env = EnvironmentSchema.parse(process.env);
+const environment = EnvironmentSchema.parse(process.env);
+export const env = {
+  ...environment,
+  ENCRYPTION_KEYRING: resolveEncryptionKeyring(
+    environment.ENCRYPTION_KEYRING,
+    environment.ENCRYPTION_KEY
+  ),
+};
+export type Environment = typeof env;
 
 if (env.ALLOW_INSECURE_DEFAULT_SECRETS) {
   const insecure = (

@@ -24,12 +24,15 @@ vi.mock("~/db.server", () => {
   );
   return { prisma: proxy, $replica: proxy, sqlDatabaseSchema: undefined };
 });
-vi.mock("~/env.server", () => ({
-  env: {
-    SESSION_SECRET: "test-session-secret-for-user-actor-claims",
-    ENCRYPTION_KEY: "12345678901234567890123456789012",
-  },
-}));
+vi.mock("~/env.server", async () => {
+  const { withLegacyEncryptionKeyring } = await import("./helpers/encryptionEnv");
+  return {
+    env: withLegacyEncryptionKeyring({
+      SESSION_SECRET: "test-session-secret-for-user-actor-claims",
+      ENCRYPTION_KEY: "12345678901234567890123456789012",
+    }),
+  };
+});
 vi.mock("~/services/logger.server", () => ({
   logger: { debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));

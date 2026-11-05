@@ -1,5 +1,12 @@
 import { type ProjectAlertChannel, type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { ProjectAlertWebhookProperties } from "~/models/projectAlert.server";
+import { env } from "~/env.server";
+import {
+  decryptValue,
+  encryptValue,
+  type EncryptionKeyring,
+} from "~/utils/encryptionKeyring.server";
+import type { PrismaClientOrTransaction } from "~/db.server";
 import { BaseService, ServiceValidationError } from "../baseService.server";
 import {
   assertSlackIntegrationInOrganization,
@@ -11,6 +18,13 @@ export type UpdateAlertChannelOptions = Pick<CreateAlertChannelOptions, "name" |
   Partial<Pick<CreateAlertChannelOptions, "environmentTypes">>;
 
 export class UpdateAlertChannelService extends BaseService {
+  constructor(
+    prismaClient?: PrismaClientOrTransaction,
+    private readonly encryptionKeys: EncryptionKeyring = env.ENCRYPTION_KEYRING
+  ) {
+    super(prismaClient);
+  }
+
   public async call(
     projectId: string,
     channelId: string,
@@ -83,7 +97,14 @@ export class UpdateAlertChannelService extends BaseService {
         }
 
         const stored = ProjectAlertWebhookProperties.parse(existing.properties);
-        return { ...stored, url: channel.url };
+        return {
+          ...stored,
+          url: channel.url,
+          secret: encryptValue(
+            decryptValue(stored.secret, this.encryptionKeys),
+            this.encryptionKeys
+          ),
+        };
       }
       case "SLACK":
         return {

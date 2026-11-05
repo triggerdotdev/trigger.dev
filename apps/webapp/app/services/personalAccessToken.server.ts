@@ -14,6 +14,7 @@ import { noteAdminRequest, recordAdminPatCreated } from "./adminAudit/adminAudit
 import { logger } from "./logger.server";
 import { rbac } from "./rbac.server";
 import { decryptToken, encryptToken, hashToken } from "~/utils/tokens.server";
+import { EncryptedValueSchema as EncryptedSecretValueSchema } from "~/utils/encryptionKeyring.server";
 import { env } from "~/env.server";
 import { isUserActorToken, verifyUserActorToken, type UserActorClaims } from "@trigger.dev/rbac";
 import type { AdminAuditSourceEndpoint } from "@trigger.dev/plugins";
@@ -204,12 +205,6 @@ export async function updateLastAccessedAtIfStale(
     data: { lastAccessedAt: new Date() },
   });
 }
-
-const EncryptedSecretValueSchema = z.object({
-  nonce: z.string(),
-  ciphertext: z.string(),
-  tag: z.string(),
-});
 
 const AuthorizationHeaderSchema = z.string().regex(/^Bearer .+$/);
 
@@ -624,7 +619,7 @@ export async function createPersonalAccessToken({
   auditSource,
 }: CreatePersonalAccessTokenOptions) {
   const token = createToken();
-  const encryptedToken = encryptToken(token, env.ENCRYPTION_KEY);
+  const encryptedToken = encryptToken(token, env.ENCRYPTION_KEYRING);
 
   const personalAccessToken = await prisma.personalAccessToken.create({
     data: {
@@ -715,11 +710,6 @@ function decryptPersonalAccessToken(personalAccessToken: PersonalAccessToken) {
     );
   }
 
-  const decryptedToken = decryptToken(
-    encryptedData.data.nonce,
-    encryptedData.data.ciphertext,
-    encryptedData.data.tag,
-    env.ENCRYPTION_KEY
-  );
+  const decryptedToken = decryptToken(encryptedData.data, env.ENCRYPTION_KEYRING);
   return decryptedToken;
 }

@@ -1,12 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { encryptSecret } from "~/services/secrets/secretStore.server";
+import { resolveEncryptionKeyring } from "~/utils/encryptionKeyring.server";
 import { deliverWebhookPayload, SkipRetryError } from "./alertTransport.server";
 import { UnsafeWebhookUrlError, type safeWebhookFetch } from "./safeWebhookFetch.server";
 
-const ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef";
+const ENCRYPTION_KEYRING = resolveEncryptionKeyring(undefined, "0123456789abcdef0123456789abcdef");
 
 async function makeSecret() {
-  return encryptSecret(ENCRYPTION_KEY, "whsec_test");
+  return encryptSecret(ENCRYPTION_KEYRING, "whsec_test");
 }
 
 function fetchWebhookReturning(response: Response): typeof safeWebhookFetch {
@@ -19,7 +20,7 @@ describe("deliverWebhookPayload", () => {
       deliverWebhookPayload({
         url: "https://example.com/webhook",
         secret: await makeSecret(),
-        encryptionKey: ENCRYPTION_KEY,
+        encryptionKey: ENCRYPTION_KEYRING,
         rawPayload: "{}",
         fetchWebhook: fetchWebhookReturning(new Response(null, { status })),
       })
@@ -31,7 +32,7 @@ describe("deliverWebhookPayload", () => {
       deliverWebhookPayload({
         url: "http://127.0.0.1/webhook",
         secret: await makeSecret(),
-        encryptionKey: ENCRYPTION_KEY,
+        encryptionKey: ENCRYPTION_KEYRING,
         rawPayload: "{}",
         fetchWebhook: vi.fn().mockRejectedValue(new UnsafeWebhookUrlError("private address")),
       })
@@ -42,7 +43,7 @@ describe("deliverWebhookPayload", () => {
     const promise = deliverWebhookPayload({
       url: "https://example.com/webhook",
       secret: await makeSecret(),
-      encryptionKey: ENCRYPTION_KEY,
+      encryptionKey: ENCRYPTION_KEYRING,
       rawPayload: "{}",
       fetchWebhook: fetchWebhookReturning(
         new Response(null, { status: 500, statusText: "Internal Server Error" })
@@ -59,7 +60,7 @@ describe("deliverWebhookPayload", () => {
       const promise = deliverWebhookPayload({
         url: "https://example.com/webhook",
         secret: await makeSecret(),
-        encryptionKey: ENCRYPTION_KEY,
+        encryptionKey: ENCRYPTION_KEYRING,
         rawPayload: "{}",
         fetchWebhook: fetchWebhookReturning(new Response(null, { status })),
       });

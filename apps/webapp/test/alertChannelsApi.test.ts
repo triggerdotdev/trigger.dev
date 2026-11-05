@@ -20,7 +20,12 @@ vi.mock("~/db.server", () => {
   );
   return { prisma: proxy, $replica: proxy, sqlDatabaseSchema: undefined };
 });
-vi.mock("~/env.server", () => ({ env: { ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef" } }));
+vi.mock("~/env.server", async () => {
+  const { withLegacyEncryptionKeyring } = await import("./helpers/encryptionEnv");
+  return {
+    env: withLegacyEncryptionKeyring({ ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef" }),
+  };
+});
 vi.mock("~/services/logger.server", () => ({
   logger: { debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));

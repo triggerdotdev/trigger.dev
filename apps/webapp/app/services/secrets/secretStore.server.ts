@@ -3,7 +3,12 @@ import type { PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
 import { z } from "zod";
 import { env } from "~/env.server";
-import nodeCrypto from "node:crypto";
+import {
+  decryptValue,
+  encryptValue,
+  EncryptedValueSchema,
+  type EncryptionKeyring,
+} from "~/utils/encryptionKeyring.server";
 import { safeJsonParse } from "~/utils/json";
 import { logger } from "../logger.server";
 import type { SecretStoreOptions } from "./secretStoreOptionsSchema.server";
@@ -64,11 +69,7 @@ export class SecretStore {
   }
 }
 
-export const EncryptedSecretValueSchema = z.object({
-  nonce: z.string(),
-  ciphertext: z.string(),
-  tag: z.string(),
-});
+export const EncryptedSecretValueSchema = EncryptedValueSchema;
 
 export type EncryptedSecretValue = z.infer<typeof EncryptedSecretValueSchema>;
 
@@ -80,14 +81,14 @@ const AwsKmsSecretValueSchema = z.object({
 });
 
 /**
- * This stores secrets in the Postgres Database, encrypted using aes-256-gcm with ENCRYPTION_KEY,
+ * This stores secrets in the Postgres Database, encrypted using aes-256-gcm with the platform keyring,
  * or with an AWS KMS key when `awsKmsKeyId` is set. Reads handle both, based on each row's version.
  */
-class PrismaSecretStore implements SecretStoreProvider {
+export class PrismaSecretStore implements SecretStoreProvider {
   #prismaClient: PrismaClientOrTransaction;
 
   constructor(
-    private readonly encryptionKey: string,
+    private readonly encryptionKey: EncryptionKeyring,
     private options?: ProviderInitializationOptions["DATABASE"] & { awsKmsKeyId?: string }
   ) {
     this.#prismaClient = options?.prismaClient ?? prisma;
@@ -178,11 +179,7 @@ class PrismaSecretStore implements SecretStoreProvider {
       );
     }
 
-    const decrypted = await this.#decrypt(
-      encryptedData.data.nonce,
-      encryptedData.data.ciphertext,
-      encryptedData.data.tag
-    );
+    const decrypted = await decryptSecret(this.encryptionKey, encryptedData.data);
 
     const parsedDecrypted = safeJsonParse(decrypted);
 
@@ -199,7 +196,7 @@ class PrismaSecretStore implements SecretStoreProvider {
     const awsKmsKeyId = this.options?.awsKmsKeyId;
     const encrypted = awsKmsKeyId
       ? await encryptWithAwsKms(awsKmsKeyId, key, plaintext)
-      : await this.#encrypt(plaintext);
+      : await encryptSecret(this.encryptionKey, plaintext);
     const version = awsKmsKeyId ? AWS_KMS_SECRET_VERSION : "2";
 
     await this.#prismaClient.secretStore.upsert({
@@ -225,22 +222,6 @@ class PrismaSecretStore implements SecretStoreProvider {
       },
     });
   }
-
-  async #decrypt(nonce: string, ciphertext: string, tag: string): Promise<string> {
-    return await decryptSecret(this.encryptionKey, {
-      nonce,
-      ciphertext,
-      tag,
-    });
-  }
-
-  async #encrypt(value: string): Promise<{
-    nonce: string;
-    ciphertext: string;
-    tag: string;
-  }> {
-    return await encryptSecret(this.encryptionKey, value);
-  }
 }
 
 export function getSecretStore<
@@ -251,7 +232,7 @@ export function getSecretStore<
     case "DATABASE": {
       return new SecretStore(
         new PrismaSecretStore(
-          env.ENCRYPTION_KEY,
+          env.ENCRYPTION_KEYRING,
           options as ProviderInitializationOptions["DATABASE"]
         )
       );
@@ -261,7 +242,7 @@ export function getSecretStore<
         throw new Error("The AWS_KMS secret store requires SECRET_STORE_AWS_KMS_KEY_ID");
       }
       return new SecretStore(
-        new PrismaSecretStore(env.ENCRYPTION_KEY, {
+        new PrismaSecretStore(env.ENCRYPTION_KEYRING, {
           ...(options as ProviderInitializationOptions["AWS_KMS"]),
           awsKmsKeyId: env.SECRET_STORE_AWS_KMS_KEY_ID,
         })
@@ -328,38 +309,15 @@ async function decryptWithAwsKms(
 }
 
 export async function decryptSecret(
-  encryptionKey: string,
+  encryptionKey: EncryptionKeyring,
   secret: EncryptedSecretValue
 ): Promise<string> {
-  const decipher = nodeCrypto.createDecipheriv(
-    "aes-256-gcm",
-    encryptionKey,
-    Buffer.from(secret.nonce, "hex")
-  );
-
-  decipher.setAuthTag(Buffer.from(secret.tag, "hex"));
-
-  let decrypted = decipher.update(secret.ciphertext, "hex", "utf8");
-  decrypted += decipher.final("utf8");
-
-  return decrypted;
+  return decryptValue(secret, encryptionKey);
 }
 
 export async function encryptSecret(
-  encryptionKey: string,
+  encryptionKey: EncryptionKeyring,
   value: string
 ): Promise<EncryptedSecretValue> {
-  const nonce = nodeCrypto.randomBytes(12);
-  const cipher = nodeCrypto.createCipheriv("aes-256-gcm", encryptionKey, nonce);
-
-  let encrypted = cipher.update(value, "utf8", "hex");
-  encrypted += cipher.final("hex");
-
-  const tag = cipher.getAuthTag().toString("hex");
-
-  return {
-    nonce: nonce.toString("hex"),
-    ciphertext: encrypted,
-    tag,
-  };
+  return encryptValue(value, encryptionKey);
 }
