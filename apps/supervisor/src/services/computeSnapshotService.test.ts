@@ -39,7 +39,10 @@ function createRunnerService(
     async (_opts: { runnerId: string; snapshotFriendlyId: string }) => {}
   );
   const submitSuspendCompletion = vi.fn(
-    async (): Promise<{ success: boolean; error?: string }> => ({ success: true })
+    async (): Promise<
+      | { success: true; data: { ok: true; discarded?: { error: string } } }
+      | { success: false; error: string }
+    > => ({ success: true, data: { ok: true } })
   );
   const preflights: Parameters<SupervisorHttpClient["preflightSuspend"]>[] = [];
   const service = new ComputeSnapshotService({
@@ -190,6 +193,27 @@ describe("ComputeSnapshotService with a runner snapshotter", () => {
       });
       await sleep(50);
       expect(markSuspendSubmitted).not.toHaveBeenCalled();
+    } finally {
+      service.stop();
+    }
+  });
+
+  // Catches: the recovery loop resending a discarded suspend on every tick, forever.
+  it("marks a suspend the platform discarded as submitted, since retrying can't change the answer", async () => {
+    const { service, submitSuspendCompletion, markSuspendSubmitted } = createRunnerService({
+      ok: true,
+      location: "node-a/snap-1",
+    });
+    submitSuspendCompletion.mockResolvedValue({
+      success: true,
+      data: { ok: true, discarded: { error: "Not the latest snapshot" } },
+    });
+    try {
+      service.schedule("run_1", delayedSnapshot());
+
+      await vi.waitFor(() => expect(markSuspendSubmitted).toHaveBeenCalledTimes(1), {
+        timeout: 2_000,
+      });
     } finally {
       service.stop();
     }

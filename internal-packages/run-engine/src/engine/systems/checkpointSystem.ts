@@ -3,6 +3,7 @@ import type {
   CreateCheckpointResult,
   ExecutionResult,
 } from "@trigger.dev/core/v3";
+import { validateCheckpointLocation } from "@trigger.dev/core/v3";
 import { CheckpointId } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { sendNotificationToWorker } from "../eventBus.js";
@@ -126,6 +127,38 @@ export class CheckpointSystem {
         return {
           ok: false as const,
           error: `Status ${snapshot.executionStatus} is not checkpointable`,
+        };
+      }
+
+      const validLocation = validateCheckpointLocation(checkpoint);
+
+      if (!validLocation.ok) {
+        this.$.logger.error("Tried to createCheckpoint with an invalid location", {
+          runId,
+          snapshotId: snapshot.id,
+          checkpointType: checkpoint.type,
+          location: checkpoint.location.slice(0, 64),
+          error: validLocation.error,
+        });
+
+        this.$.eventBus.emit("incomingCheckpointDiscarded", {
+          time: new Date(),
+          run: {
+            id: runId,
+          },
+          checkpoint: {
+            discardReason: "Invalid checkpoint location",
+            metadata: checkpoint,
+          },
+          snapshot: {
+            id: snapshot.id,
+            executionStatus: snapshot.executionStatus,
+          },
+        });
+
+        return {
+          ok: false as const,
+          error: "Invalid checkpoint location",
         };
       }
 

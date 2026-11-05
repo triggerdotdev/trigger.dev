@@ -140,7 +140,7 @@ for (const scenario of [
           checkpoint: {
             type: scenario.checkpointType,
             reason: "TEST_RESTORE_QUEUE",
-            location: "test-checkpoint",
+            location: "node-a/snap-1",
             imageRef: "test-image",
           },
         });

@@ -36,13 +36,23 @@ export const action = createActionWorkerApiRoute(
     }
 
     try {
-      await authenticatedWorker.createCheckpoint({
+      const result = await authenticatedWorker.createCheckpoint({
         runFriendlyId,
         snapshotFriendlyId,
         checkpoint: body.checkpoint,
         runnerId,
         environmentId,
       });
+
+      if (!result.ok) {
+        logger.warn("Suspend checkpoint discarded", {
+          runFriendlyId,
+          snapshotFriendlyId,
+          error: result.error,
+        });
+
+        return json({ ok: true, discarded: { error: result.error } });
+      }
 
       return json({ ok: true });
     } catch (error) {

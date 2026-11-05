@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { WorkerApiRunRestoreOutcomeRequestBody } from "./schemas.js";
+import { z } from "zod/v4";
+import {
+  WorkerApiRunRestoreOutcomeRequestBody,
+  WorkerApiSuspendRunResponseBody,
+} from "./schemas.js";
 
 describe("WorkerApiRunRestoreOutcomeRequestBody", () => {
   it("rejects an oversized reason or message", () => {
@@ -38,5 +42,20 @@ describe("WorkerApiRunRestoreOutcomeRequestBody", () => {
     });
 
     expect(parsed).not.toHaveProperty("snapshotRoute");
+  });
+});
+
+describe("WorkerApiSuspendRunResponseBody", () => {
+  const discarded = { ok: true, discarded: { error: "Not the latest snapshot" } };
+
+  // Catches: a discard answer that a supervisor or iceman on an older core reads as a failed submit and resends.
+  it("still reads as delivered to a caller on the shape before discards were reported", () => {
+    const previous = z.object({ ok: z.literal(true) });
+    expect(previous.safeParse(discarded).success).toBe(true);
+  });
+
+  // Catches: the current schema stripping `discarded`, so the supervisor treats a discard as stored.
+  it("keeps the discard reason", () => {
+    expect(WorkerApiSuspendRunResponseBody.parse(discarded)).toEqual(discarded);
   });
 });

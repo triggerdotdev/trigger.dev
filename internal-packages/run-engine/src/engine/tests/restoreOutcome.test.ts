@@ -145,7 +145,7 @@ async function dequeueForRestore(
     checkpoint: {
       type: lanes.checkpointType,
       reason: "TEST_CHECKPOINT",
-      location: "test-location",
+      location: "node-a/snap-1",
       imageRef: "test-image-ref",
     },
   });

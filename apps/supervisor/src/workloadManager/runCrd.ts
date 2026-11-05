@@ -8,7 +8,16 @@ import {
   type ObjectCache,
 } from "@kubernetes/client-node";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
-import type { CheckpointType, EnvironmentType, MachinePreset } from "@trigger.dev/core/v3";
+import type {
+  CheckpointType,
+  ComputeCheckpointLocation,
+  EnvironmentType,
+  MachinePreset,
+} from "@trigger.dev/core/v3";
+import {
+  formatComputeCheckpointLocation,
+  parseComputeCheckpointLocation,
+} from "@trigger.dev/core/v3";
 import { type K8sApi, createK8sApi } from "../clients/kubernetes.js";
 import { ReconnectingInformer } from "../clients/reconnectingInformer.js";
 import { getRestoreRunnerId, getRunnerId } from "../util.js";
@@ -1517,23 +1526,23 @@ export function publishedSuspend(runner: unknown): PublishedSuspend | undefined 
   );
 }
 
-type RunnerRestore = { snapshotID: string; node: string };
+type RunnerRestore = ComputeCheckpointLocation;
 
 /**
  * A checkpoint's location names the node as well as the snapshot, because the
- * node runtime's snapshots are node-local and a resume has to land there.
- * Neither a node name nor a snapshot id can contain a slash.
+ * node runtime's snapshots are node-local and a resume has to land there. The
+ * platform validates the same format when it stores the checkpoint.
  */
 export function checkpointLocation(restore: RunnerRestore): string {
-  return `${restore.node}/${restore.snapshotID}`;
+  return formatComputeCheckpointLocation(restore);
 }
 
 export function parseCheckpointLocation(location: string): RunnerRestore {
-  const [node, snapshotID, ...rest] = location.split("/");
-  if (!node || !snapshotID || rest.length > 0) {
-    throw new Error(`checkpoint location ${JSON.stringify(location)} is not <node>/<snapshot>`);
+  const parsed = parseComputeCheckpointLocation(location);
+  if (!parsed.ok) {
+    throw new Error(`checkpoint location ${JSON.stringify(location)}: ${parsed.error}`);
   }
-  return { node, snapshotID };
+  return parsed.value;
 }
 
 function messageOf(err: unknown): string {

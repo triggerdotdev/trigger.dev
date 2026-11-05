@@ -112,8 +112,8 @@ export class ComputeSnapshotService {
   /**
    * Submits suspend outcomes the backend published that no process delivered,
    * such as one answered while the supervisor restarted, or whose submission
-   * failed. A repeat is harmless: the platform discards a checkpoint for a
-   * snapshot that is no longer current.
+   * failed. A repeat is harmless: the platform answers ok:false for a snapshot
+   * that is no longer current, which still counts as delivered.
    */
   async recoverSuspends(): Promise<void> {
     const runnerSnapshotter = this.runnerSnapshotter;
@@ -300,9 +300,7 @@ export class ComputeSnapshotService {
       result.success ? undefined : new Error(String(result.error))
     );
 
-    if (result.success) {
-      this.logger.debug("Suspend completion submitted", { runId, outcome });
-    } else {
+    if (!result.success) {
       setExtra(state, "submit_completion.error", String(result.error));
       this.logger.error("Failed to submit suspend completion", {
         runId,
@@ -310,8 +308,22 @@ export class ComputeSnapshotService {
         outcome,
         error: result.error,
       });
+      return false;
     }
-    return result.success;
+
+    if (result.data.discarded) {
+      setExtra(state, "submit_completion.discarded", result.data.discarded.error);
+      this.logger.warn("Suspend completion discarded by the platform", {
+        runId,
+        snapshotFriendlyId,
+        outcome,
+        error: result.data.discarded.error,
+      });
+      return true;
+    }
+
+    this.logger.debug("Suspend completion submitted", { runId, outcome });
+    return true;
   }
 
   /** Stop the timer wheel, dropping pending snapshots. */

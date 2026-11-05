@@ -505,3 +505,76 @@ describe("CheckpointSystem checkpoint-family FK-drop app-integrity (both modes)"
     }
   );
 });
+
+describe("CheckpointSystem location validation", () => {
+  // Catches: an unparseable location being stored and the run moved to WAITING_TO_RESUME.
+  containerTest(
+    "refuses a COMPUTE location its restore side can't parse, storing nothing",
+    async ({ prisma, redisOptions }) => {
+      const engine = new RunEngine(createEngineOptions(redisOptions, prisma));
+      const discarded: string[] = [];
+      engine.eventBus.on("incomingCheckpointDiscarded", ({ checkpoint }) => {
+        discarded.push(checkpoint.discardReason);
+      });
+
+      try {
+        const { run, blockingSnapshotId } = await driveToCheckpointable(
+          engine,
+          prisma,
+          "run_cploc1"
+        );
+
+        const result = await engine.createCheckpoint({
+          runId: run.id,
+          snapshotId: blockingSnapshotId,
+          checkpoint: { type: "COMPUTE", location: "foo://bar-123", reason: "TEST_CHECKPOINT" },
+        });
+
+        expect(result.ok).toBe(false);
+        expect(discarded).toEqual(["Invalid checkpoint location"]);
+        expect(await prisma.taskRunCheckpoint.count({ where: { location: "foo://bar-123" } })).toBe(
+          0
+        );
+
+        const latest = await getLatestExecutionSnapshot(prisma, run.id);
+        expect(latest.id).toBe(blockingSnapshotId);
+        expect(latest.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
+
+        const taskRun = await prisma.taskRun.findUniqueOrThrow({ where: { id: run.id } });
+        expect(taskRun.status).toBe("EXECUTING");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  // Catches: validation refusing the real <node>/<snapshot> format, which would discard every compute suspend.
+  containerTest(
+    "stores a COMPUTE location in <node>/<snapshot> form",
+    async ({ prisma, redisOptions }) => {
+      const engine = new RunEngine(createEngineOptions(redisOptions, prisma));
+
+      try {
+        const { run, blockingSnapshotId } = await driveToCheckpointable(
+          engine,
+          prisma,
+          "run_cploc2"
+        );
+        const location = "node-a/0b6f0c8e-2d1a-4b7e-9f3c-5a8d2e1f4c7b";
+
+        const result = await engine.createCheckpoint({
+          runId: run.id,
+          snapshotId: blockingSnapshotId,
+          checkpoint: { type: "COMPUTE", location, reason: "TEST_CHECKPOINT" },
+        });
+
+        expect(result.ok).toBe(true);
+        const latest = await getLatestExecutionSnapshot(prisma, run.id);
+        expect(latest.executionStatus).toBe("SUSPENDED");
+        expect(latest.checkpoint?.location).toBe(location);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+});

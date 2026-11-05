@@ -2780,9 +2780,12 @@ describe("checkpoint locations", () => {
     expect(parseCheckpointLocation(checkpointLocation(restore))).toEqual(restore);
   });
 
-  it.each(["", "snap", "/snap", "node/", "a/b/c"])("refuse %j", (location) => {
-    expect(() => parseCheckpointLocation(location)).toThrow();
-  });
+  it.each(["", "snap", "/snap", "node/", "a/b/c", "foo://bar-123", "Node/snap", "node/-snap"])(
+    "refuse %j",
+    (location) => {
+      expect(() => parseCheckpointLocation(location)).toThrow();
+    }
+  );
 });
 
 describe("reportTemplateKeyRefusal", () => {
