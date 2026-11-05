@@ -216,7 +216,8 @@ export type RbacScopeResourceType =
   | "tags"
   | "query"
   | "errors"
-  | "webhooks";
+  | "webhooks"
+  | "devWorkers";
 
 /**
  * Builds a single `action:type[:id]` scope string from typed parts. Scope

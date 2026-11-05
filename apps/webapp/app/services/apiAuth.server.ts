@@ -412,6 +412,7 @@ export async function authenticateApiKeyWithScope(
       ok: true,
       apiKey,
       type: "PRIVATE",
+      environmentScoped: result.subject.type === "apiKey" && result.subject.restricted,
       environment: result.environment,
       ability: result.ability,
     },

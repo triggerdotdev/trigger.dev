@@ -11,6 +11,7 @@ import { prisma } from "~/db.server";
 import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { defaultMachine } from "~/services/platform.v3.server";
+import { devWorkerAuthorization } from "~/services/devWorkerAuthorization.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { resolveVariablesForEnvironment } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
@@ -20,6 +21,7 @@ import { runStore } from "~/v3/runStore.server";
 
 const { action } = createActionApiRoute(
   {
+    authorization: devWorkerAuthorization,
     body: WorkerApiRunAttemptStartRequestBody,
     params: z.object({
       runFriendlyId: z.string(),

@@ -5,12 +5,14 @@ import type { WorkerApiRunLatestSnapshotResponseBody } from "@trigger.dev/core/v
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
+import { devWorkerAuthorization } from "~/services/devWorkerAuthorization.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { engine } from "~/v3/runEngine.server";
 import { runStore } from "~/v3/runStore.server";
 
 export const loader = createLoaderApiRoute(
   {
+    authorization: devWorkerAuthorization,
     findResource: async () => 1,
     params: z.object({
       runFriendlyId: z.string(),
