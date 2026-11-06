@@ -1,7 +1,11 @@
 import { containerTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect, vi } from "vitest";
-import { getScheduleEnvVisibility } from "~/models/schedules.server";
+import { $transaction } from "~/db.server";
+import {
+  getScheduleEnvVisibility,
+  lockScheduleForRunTokenMutation,
+} from "~/models/schedules.server";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -71,6 +75,99 @@ async function seedScheduleWithInstance(
   });
   return schedule;
 }
+
+describe("run-token schedule mutations", () => {
+  // Catches: mutations of project-shared schedules deleting or changing sibling-environment instances.
+  containerTest(
+    "only locks same-environment imperative schedules for mutation",
+    async ({ prisma }) => {
+      const env = await seedProjectWithEnvs(prisma, "run_token");
+      const schedule = await seedScheduleWithInstance(prisma, env.project.id, env.prodEnv.id, {
+        deduplicationKey: "run-token-dedup",
+      });
+      const lock = () =>
+        $transaction(
+          prisma,
+          (tx) =>
+            lockScheduleForRunTokenMutation(
+              tx,
+              env.project.id,
+              schedule.deduplicationKey!,
+              env.prodEnv.id
+            ),
+          { isolationLevel: "ReadCommitted" }
+        );
+
+      expect((await lock())?.id).toBe(schedule.id);
+      await prisma.taskScheduleInstance.create({
+        data: {
+          taskScheduleId: schedule.id,
+          projectId: env.project.id,
+          environmentId: env.stagingEnv.id,
+        },
+      });
+      expect(await lock()).toBeNull();
+      await prisma.taskScheduleInstance.deleteMany({
+        where: { taskScheduleId: schedule.id, environmentId: env.stagingEnv.id },
+      });
+      await prisma.taskSchedule.update({
+        where: { id: schedule.id },
+        data: { type: "DECLARATIVE" },
+      });
+      expect(await lock()).toBeNull();
+    }
+  );
+
+  // Catches: another environment being attached after the guard but before a shared schedule write.
+  containerTest(
+    "blocks concurrent environment attachment until the mutation commits",
+    async ({ prisma }) => {
+      const env = await seedProjectWithEnvs(prisma, "run_token_race");
+      const schedule = await seedScheduleWithInstance(prisma, env.project.id, env.prodEnv.id);
+      await $transaction(
+        prisma,
+        async (tx) => {
+          expect(
+            (
+              await lockScheduleForRunTokenMutation(
+                tx,
+                env.project.id,
+                schedule.friendlyId,
+                env.prodEnv.id
+              )
+            )?.id
+          ).toBe(schedule.id);
+
+          await expect(
+            $transaction(prisma, async (other) => {
+              await other.$executeRaw`SET LOCAL lock_timeout = '100ms'`;
+              await other.taskScheduleInstance.create({
+                data: {
+                  taskScheduleId: schedule.id,
+                  projectId: env.project.id,
+                  environmentId: env.stagingEnv.id,
+                },
+              });
+            })
+          ).rejects.toThrow(/lock timeout/);
+          await tx.taskSchedule.update({ where: { id: schedule.id }, data: { active: false } });
+        },
+        { isolationLevel: "ReadCommitted" }
+      );
+
+      await prisma.taskScheduleInstance.create({
+        data: {
+          taskScheduleId: schedule.id,
+          projectId: env.project.id,
+          environmentId: env.stagingEnv.id,
+        },
+      });
+      expect(
+        await prisma.taskScheduleInstance.count({ where: { taskScheduleId: schedule.id } })
+      ).toBe(2);
+    }
+  );
+});
 
 describe("getScheduleEnvVisibility", () => {
   containerTest(

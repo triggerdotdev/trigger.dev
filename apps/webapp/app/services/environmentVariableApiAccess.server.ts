@@ -60,7 +60,7 @@ async function authenticateEnvironmentScopedApiRequest(
     {
       personalAccessToken: true,
       organizationAccessToken: true,
-      apiKey: { action, resource: { type: resource } },
+      apiKey: { action, resource: { type: resource }, allowRunToken: resource === "envvars" },
     },
     dependencies
   );

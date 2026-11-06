@@ -347,14 +347,15 @@ export async function authenticateApiKeyRequest(
  * authorizes `action` on `resource`. Root keys (and grace-window root keys)
  * carry the unrestricted `admin` ability, preserving pre-granular behavior.
  *
- * Only apiKey credentials are accepted (no PAT / org token / public key). Use
- * this for routes previously guarded by a bare `authenticateApiRequest` call.
+ * Run tokens require an explicit opt-in after auditing the route's environment boundary.
+ * No PAT / org token / public key. Use this for legacy routes with resource authorization.
  */
 export type ApiKeyScopeAuthorization = {
   action: string;
   resource: RbacResource;
   allowJWT?: boolean;
   allowPreviewParent?: boolean;
+  allowRunToken?: boolean;
 };
 
 // A rotated root key keeps working during its grace window so callers can
@@ -369,7 +370,13 @@ function isDeniedDuringGraceWindow(action: string, resource: RbacResource): bool
 
 export async function authenticateApiKeyWithScope(
   request: Request,
-  { action, resource, allowJWT = false, allowPreviewParent = false }: ApiKeyScopeAuthorization,
+  {
+    action,
+    resource,
+    allowJWT = false,
+    allowPreviewParent = false,
+    allowRunToken = false,
+  }: ApiKeyScopeAuthorization,
   authorizeBearer: typeof authenticateAuthorizeBearerWithTelemetry = authenticateAuthorizeBearerWithTelemetry,
   isInGraceWindow: typeof isApiKeyInGraceWindow = isApiKeyInGraceWindow
 ): Promise<
@@ -389,11 +396,12 @@ export async function authenticateApiKeyWithScope(
   if (!result.ok) {
     return result;
   }
-  if (result.subject.type === "runToken") {
+  if (result.subject.type === "runToken" && !allowRunToken) {
     return { ok: false, status: 401, error: "Run tokens are not accepted for this endpoint" };
   }
 
   if (
+    result.subject.type !== "runToken" &&
     isDeniedDuringGraceWindow(action, resource) &&
     !isAdditionalApiKey(apiKey.trim()) &&
     // The bearer resolvers trim the token, so the lookup must match on the same value.
@@ -412,7 +420,10 @@ export async function authenticateApiKeyWithScope(
       ok: true,
       apiKey,
       type: "PRIVATE",
-      environmentScoped: result.subject.type === "apiKey" && result.subject.restricted,
+      environmentScoped:
+        result.subject.type === "runToken" ||
+        (result.subject.type === "apiKey" && result.subject.restricted),
+      credentialKind: result.subject.type === "runToken" ? "run_token" : undefined,
       environment: result.environment,
       ability: result.ability,
     },
@@ -733,6 +744,21 @@ async function resolveEnvironmentForAuthentication(
               "Invalid project ref for this API key. Make sure you are using an API key associated with that project.",
           },
           { status: 400 }
+        );
+      }
+
+      const targetsBranch =
+        auth.result.environment.parentEnvironmentId &&
+        resolvedBranch === auth.result.environment.branchName &&
+        slug === (auth.result.environment.type === "PREVIEW" ? "preview" : "dev");
+      if (
+        auth.result.credentialKind === "run_token" &&
+        ((auth.result.environment.slug !== slug && !targetsBranch) ||
+          (resolvedBranch && auth.result.environment.branchName !== resolvedBranch))
+      ) {
+        throw json(
+          { error: "Run tokens cannot target another environment or branch" },
+          { status: 403 }
         );
       }
 
