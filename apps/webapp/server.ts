@@ -15,6 +15,7 @@ import type { RateLimitMiddleware } from "~/services/apiRateLimit.server";
 import { type RunWithHttpContextFunction } from "~/services/httpAsyncStorage.server";
 import { createHostHeaderGuard } from "./app/utils/hostHeader";
 import { getRouterPath, pathHasPrefix, sanitizeHttpUrl } from "./app/utils/sanitizeHttpUrl";
+import { blockOtlpIngestRoutes, otlpIngestRoutesDisabled } from "./app/utils/otlpIngestRoutes";
 import {
   createApiOnlyServiceMiddleware,
   parseApiOnlyServiceMode,
@@ -270,6 +271,10 @@ async function startServer() {
 
           next();
         });
+      }
+
+      if (otlpIngestRoutesDisabled(process.env)) {
+        app.use(blockOtlpIngestRoutes);
       }
 
       app.use(apiRateLimiter);
