@@ -2128,11 +2128,6 @@ const EnvironmentSchema = z
     SCHEDULE_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
     SCHEDULE_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(30_000),
     SCHEDULE_WORKER_DISTRIBUTION_WINDOW_SECONDS: z.coerce.number().int().default(30),
-    SCHEDULE_WORKER_CRON_SPREAD_FRACTION: z.coerce
-      .number()
-      .catch(0)
-      .default(1)
-      .transform((value) => (Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0)),
 
     SCHEDULE_WORKER_REDIS_HOST: z
       .string()

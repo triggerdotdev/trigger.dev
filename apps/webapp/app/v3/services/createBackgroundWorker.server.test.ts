@@ -23,7 +23,6 @@ function createTestScheduleEngine(
     worker: { concurrency: 1, disabled: true },
     distributionWindow: { seconds: 0 },
     schedulePhaseSecret: "sync-declarative-schedules-test",
-    cronSpreadFraction: 1,
     onTriggerScheduledTask: async () => ({ success: true }),
     isDevEnvironmentConnectedHandler: async () => true,
   });

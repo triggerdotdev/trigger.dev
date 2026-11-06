@@ -50,13 +50,6 @@ export interface ScheduleEngineOptions {
     seconds: number;
   };
   schedulePhaseSecret: string | Buffer;
-  /**
-   * Fraction of schedules (0 to 1) with cron spread active, gated on each
-   * schedule's deterministic phase. 0 disables spreading entirely; 1 enables
-   * it for every schedule. Raising the fraction is strictly additive — phases
-   * are stable, so a schedule never leaves the rollout once included.
-   */
-  cronSpreadFraction: number;
   tracer?: Tracer;
   meter?: Meter;
   onTriggerScheduledTask: TriggerScheduledTaskCallback;
