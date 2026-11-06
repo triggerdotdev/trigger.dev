@@ -130,16 +130,34 @@ describe("billing loader", () => {
   });
 
   it("falls back when the plugin is not installed", async () => {
-    const controller = new LazyController({
-      importer: async () => {
-        throw moduleNotFound("@triggerdotdev/plugins/billing");
-      },
-    });
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const controller = new LazyController({
+        importer: async () => {
+          throw moduleNotFound("@triggerdotdev/plugins/billing");
+        },
+      });
 
-    await expect(controller.isUsingPlugin()).resolves.toBe(false);
+      await expect(controller.isUsingPlugin()).resolves.toBe(false);
 
-    const result = await controller.provisionCustomer({ organizationId: "org_1", name: "Acme" });
-    expect(result._unsafeUnwrapErr()).toBe("feature_disabled");
+      const result = await controller.provisionCustomer({ organizationId: "org_1", name: "Acme" });
+      expect(result._unsafeUnwrapErr()).toBe("feature_disabled");
+      expect(consoleError).not.toHaveBeenCalled();
+
+      const barePkgController = new LazyController({
+        importer: async () => {
+          const error: NodeJS.ErrnoException = new Error(
+            "Cannot find package '@triggerdotdev/plugins' imported from /triggerdotdev/apps/webapp/build/server/index.js"
+          );
+          error.code = "ERR_MODULE_NOT_FOUND";
+          throw error;
+        },
+      });
+      await expect(barePkgController.isUsingPlugin()).resolves.toBe(false);
+      expect(consoleError).not.toHaveBeenCalled();
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   it("falls back loudly when the plugin is present but fails to initialise", async () => {

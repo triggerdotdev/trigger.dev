@@ -167,6 +167,31 @@ describe("SSO LazyController", () => {
       }
     });
 
+    it("stays silent when Node ESM reports the missing bare package '@triggerdotdev/plugins'", async () => {
+      const previous = process.env.SSO_LOG_FALLBACK;
+      delete process.env.SSO_LOG_FALLBACK;
+      const importer = vi.fn(async () => {
+        const err = Object.assign(
+          new Error(
+            "Cannot find package '@triggerdotdev/plugins' imported from /triggerdotdev/apps/webapp/build/server/index.js"
+          ),
+          { code: "ERR_MODULE_NOT_FOUND" }
+        );
+        throw err;
+      });
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+      try {
+        const controller = new LazyController(fakePrisma, { importer });
+        expect(await controller.isUsingPlugin()).toBe(false);
+        expect(errorSpy).not.toHaveBeenCalled();
+      } finally {
+        errorSpy.mockRestore();
+        if (previous === undefined) delete process.env.SSO_LOG_FALLBACK;
+        else process.env.SSO_LOG_FALLBACK = previous;
+      }
+    });
+
     it("logs an info line when SSO_LOG_FALLBACK=1", async () => {
       const previous = process.env.SSO_LOG_FALLBACK;
       process.env.SSO_LOG_FALLBACK = "1";

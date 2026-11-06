@@ -103,8 +103,11 @@ export class LazyController implements BillingController {
     const code = (error as NodeJS.ErrnoException | undefined)?.code;
     const message = error instanceof Error ? error.message : String(error);
     const isModuleNotFound = code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND";
+    const isPluginItselfMissing =
+      isModuleNotFound &&
+      (message.includes(MODULE_NAME) || message.includes("'@triggerdotdev/plugins'"));
 
-    if (!isModuleNotFound || !message.includes(MODULE_NAME)) {
+    if (!isPluginItselfMissing) {
       console.error(
         "Billing: plugin found but failed to load; falling back to default implementation",
         error

@@ -20,8 +20,15 @@ describe("LazyController plugin loading", () => {
 
   it("falls back silently when REQUIRE_PLUGINS is unset and the plugin is missing", async () => {
     vi.stubEnv("REQUIRE_PLUGINS", "");
-    const controller = loader.create(prismaPlaceholder);
-    await expect(controller.isUsingPlugin()).resolves.toBe(false);
+    vi.stubEnv("RBAC_LOG_FALLBACK", "");
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const controller = loader.create(prismaPlaceholder);
+      await expect(controller.isUsingPlugin()).resolves.toBe(false);
+      expect(errorSpy).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 
   it("throws when REQUIRE_PLUGINS=1 and the plugin is missing", async () => {

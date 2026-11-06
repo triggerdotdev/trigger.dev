@@ -194,7 +194,9 @@ class LazyController implements RoleBaseAccessController {
       const code = (err as NodeJS.ErrnoException | undefined)?.code;
       const message = err instanceof Error ? err.message : String(err);
       const isModuleNotFound = code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND";
-      const isPluginItselfMissing = isModuleNotFound && message.includes(moduleName);
+      const isPluginItselfMissing =
+        isModuleNotFound &&
+        (message.includes(moduleName) || message.includes("'@triggerdotdev/plugins'"));
 
       if (!isPluginItselfMissing) {
         // Either the error wasn't a missing-module error at all, or the
