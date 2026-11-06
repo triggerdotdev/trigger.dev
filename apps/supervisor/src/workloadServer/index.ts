@@ -61,6 +61,13 @@ const checkpointDeleteRequests = new Counter({
   registers: [register],
 });
 
+const snapshotDeleteRequests = new Counter({
+  name: "snapshot_delete_requests_total",
+  help: "Suspend snapshot delete requests attempted at run completion on the microVM lane, by outcome: sent (first try), retried (accepted after retries), gave_up (service down for the whole retry budget), http_error (refused)",
+  labelNames: ["result"],
+  registers: [register],
+});
+
 const continueRetryOutcomes = new Counter({
   name: "supervisor_continue_retry_outcomes_total",
   help: "Count of continue calls retried within a budget, by how the retries ended (succeeded, non_retryable, server_errors, budget_exhausted).",
@@ -143,6 +150,8 @@ type WorkloadServerOptions = {
   host?: string;
   workerClient: SupervisorHttpClient;
   checkpointClient?: CheckpointClient;
+  /** Takes the microVM lane's snapshot deletes, which have no checkpoint service beside them. */
+  snapshotDeleteClient?: CheckpointClient;
   /** The run-crd backend, which asks the operator for a suspend on the Runner. */
   runnerSnapshotter?: RunnerSnapshotter & { snapshotsEnabled: boolean };
   wideEventOpts: WideEventOptions;
@@ -156,6 +165,7 @@ type WorkloadServerOptions = {
 
 export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   private checkpointClient?: CheckpointClient;
+  private readonly snapshotDeleteClient?: CheckpointClient;
   private readonly snapshotService?: ComputeSnapshotService;
 
   private readonly logger = new SimpleStructuredLogger("workload-server");
@@ -193,6 +203,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     this.workerClient = opts.workerClient;
     this.workerStamp = opts.workerStamp ?? {};
     this.checkpointClient = opts.checkpointClient;
+    this.snapshotDeleteClient = opts.snapshotDeleteClient;
     this.wideEventOpts = opts.wideEventOpts;
     this.wideEventsNoisyRoutes = opts.wideEventsNoisyRoutes;
 
@@ -327,6 +338,13 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     attemptStatus: string,
     claims: WorkloadDeploymentTokenClaims | undefined
   ): Promise<void> {
+    if (this.snapshotService) {
+      checkpointDeleteRequests.inc({ result: "not_applicable" });
+      // Not awaited: its retries can run for minutes, and nothing here waits on them.
+      void this.reclaimSnapshots(runFriendlyId, attemptStatus, claims);
+      return;
+    }
+
     if (!env.DELETE_CHECKPOINTS_ON_COMPLETION) {
       checkpointDeleteRequests.inc({ result: "disabled" });
       return;
@@ -334,11 +352,6 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
 
     if (!this.checkpointClient) {
       checkpointDeleteRequests.inc({ result: "no_client" });
-      return;
-    }
-
-    if (this.snapshotService) {
-      checkpointDeleteRequests.inc({ result: "not_applicable" });
       return;
     }
 
@@ -378,6 +391,71 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     }
 
     checkpointDeleteRequests.inc({ result: "sent" });
+  }
+
+  /**
+   * reclaimSnapshots is the microVM lane's reclaim: it asks for every suspend snapshot of the run to
+   * be deleted from the shared store, keyed by the project's ID as the snapshots are labelled.
+   */
+  private async reclaimSnapshots(
+    runFriendlyId: string,
+    attemptStatus: string,
+    claims: WorkloadDeploymentTokenClaims | undefined
+  ): Promise<void> {
+    if (!env.DELETE_SNAPSHOTS_ON_COMPLETION) {
+      snapshotDeleteRequests.inc({ result: "disabled" });
+      return;
+    }
+
+    if (!this.snapshotDeleteClient) {
+      snapshotDeleteRequests.inc({ result: "no_client" });
+      return;
+    }
+
+    if (attemptStatus !== "RUN_FINISHED" && attemptStatus !== "RUN_PENDING_CANCEL") {
+      snapshotDeleteRequests.inc({ result: "not_terminal" });
+      return;
+    }
+
+    if (!claims) {
+      snapshotDeleteRequests.inc({ result: "no_claims" });
+      return;
+    }
+
+    const [error, result] = await tryCatch(
+      this.snapshotDeleteClient.deleteSnapshots({
+        runFriendlyId,
+        body: {
+          orgId: claims.org_id,
+          envId: claims.environment_id,
+          projectId: claims.project_id,
+          deploymentVersion: claims.deployment_version,
+        },
+      })
+    );
+
+    if (error) {
+      snapshotDeleteRequests.inc({ result: "http_error" });
+      this.logger.error("Failed to request snapshot reclaim", { runFriendlyId, error });
+      return;
+    }
+
+    switch (result.outcome) {
+      case "accepted":
+        snapshotDeleteRequests.inc({ result: result.attempts > 1 ? "retried" : "sent" });
+        return;
+      case "rejected":
+        snapshotDeleteRequests.inc({ result: "http_error" });
+        return;
+      case "gave_up":
+        snapshotDeleteRequests.inc({ result: "gave_up" });
+        this.logger.error("Gave up requesting snapshot reclaim", {
+          runFriendlyId,
+          attempts: result.attempts,
+          status: result.status,
+        });
+        return;
+    }
   }
 
   private async cancelCheckpointsAfterReply(runFriendlyId: string): Promise<void> {

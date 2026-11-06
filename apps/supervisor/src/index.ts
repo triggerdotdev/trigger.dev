@@ -131,6 +131,7 @@ class ManagedSupervisor {
   private readonly logger = new SimpleStructuredLogger("managed-supervisor");
   private readonly resourceMonitor: ResourceMonitor;
   private readonly checkpointClient?: CheckpointClient;
+  private readonly snapshotDeleteClient?: CheckpointClient;
   private readonly warmStartVerifier?: WarmStartVerificationService;
 
   private readonly podCleaner?: PodCleaner;
@@ -514,6 +515,15 @@ class ManagedSupervisor {
       });
     }
 
+    if (env.TRIGGER_SNAPSHOT_DELETE_URL) {
+      this.snapshotDeleteClient = new CheckpointClient({
+        apiUrl: new URL(env.TRIGGER_SNAPSHOT_DELETE_URL),
+        managedWorkerSecret: env.MANAGED_WORKER_SECRET,
+        workerClient: this.workerSession.httpClient,
+        orchestrator: "KUBERNETES",
+      });
+    }
+
     if (env.TRIGGER_WARM_START_VERIFY_ENABLED && this.warmStartUrl) {
       this.logger.log("Warm-start delivery verification enabled", {
         delayMs: env.TRIGGER_WARM_START_VERIFY_DELAY_MS,
@@ -678,6 +688,7 @@ class ManagedSupervisor {
       host: env.TRIGGER_WORKLOAD_API_HOST_INTERNAL,
       workerClient: this.workerSession.httpClient,
       checkpointClient: this.checkpointClient,
+      snapshotDeleteClient: this.snapshotDeleteClient,
       runnerSnapshotter: this.runCrdManager,
       wideEventOpts: this.wideEventOpts,
       wideEventsNoisyRoutes: this.wideEventsNoisyRoutes,

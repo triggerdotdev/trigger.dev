@@ -46,6 +46,8 @@ export const Env = z
     WORKLOAD_TOKEN_PREVIOUS_RUN_CUTOFF: z.string().datetime().optional(),
     WORKLOAD_TOKEN_PREVIOUS_CUTOFF_MODE: z.enum(["log", "enforce"]).default("log"),
     DELETE_CHECKPOINTS_ON_COMPLETION: BoolEnv.default(false), // irreversible; enable per cluster
+    // The microVM lane's equivalent: reclaim a finished run's suspend snapshots from the shared store.
+    DELETE_SNAPSHOTS_ON_COMPLETION: BoolEnv.default(false), // irreversible; enable per cluster
     // Absolute expiry for minted deployment tokens. Deterministic (no wall-clock issued-at) so every
     // pod of a deployment carries an identical token; bump before this date. Must outlive any run.
     WORKLOAD_TOKEN_EXP: z.string().datetime().default("2032-01-01T00:00:00.000Z"),
@@ -162,6 +164,9 @@ export const Env = z
     TRIGGER_WARM_START_URL: z.string().optional(),
     TRIGGER_WARM_START_DISPATCH_URL: z.string().optional(),
     TRIGGER_CHECKPOINT_URL: z.string().optional(),
+    // Where the microVM lane sends snapshot deletes. Separate from TRIGGER_CHECKPOINT_URL, which
+    // would also route restores there.
+    TRIGGER_SNAPSHOT_DELETE_URL: z.string().optional(),
     TRIGGER_METADATA_URL: z.string().optional(),
 
     // Warm-start delivery verification: after a warm-start hit, probe the
@@ -489,6 +494,21 @@ export const Env = z
         message:
           "DELETE_CHECKPOINTS_ON_COMPLETION needs WORKLOAD_TOKEN_ENFORCEMENT set to log or enforce: the tenancy it deletes by comes from the deployment token, so with tokens disabled it would silently reclaim nothing",
         path: ["DELETE_CHECKPOINTS_ON_COMPLETION"],
+      });
+    }
+    if (data.DELETE_SNAPSHOTS_ON_COMPLETION && data.WORKLOAD_TOKEN_ENFORCEMENT === "disabled") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "DELETE_SNAPSHOTS_ON_COMPLETION needs WORKLOAD_TOKEN_ENFORCEMENT set to log or enforce: the tenancy it deletes by comes from the deployment token",
+        path: ["DELETE_SNAPSHOTS_ON_COMPLETION"],
+      });
+    }
+    if (data.DELETE_SNAPSHOTS_ON_COMPLETION && !data.TRIGGER_SNAPSHOT_DELETE_URL) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "DELETE_SNAPSHOTS_ON_COMPLETION needs TRIGGER_SNAPSHOT_DELETE_URL",
+        path: ["DELETE_SNAPSHOTS_ON_COMPLETION"],
       });
     }
     if (data.GUEST_SNAPSHOT_CLEANER_ENABLED) {
