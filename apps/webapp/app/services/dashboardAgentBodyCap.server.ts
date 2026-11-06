@@ -4,6 +4,7 @@ import {
   MESSAGE_TOO_LARGE_CODE,
   MESSAGE_TOO_LARGE_ERROR,
 } from "~/components/dashboard-agent/message-limits";
+import { getRouterPath } from "~/utils/sanitizeHttpUrl";
 
 /**
  * The ingress cap for the agent's chat paths. A route can only refuse a body after it has read
@@ -60,11 +61,11 @@ function capRequestBody(req: Request, res: Response, limit: number): void {
 }
 
 /**
- * Only the agent's own paths: every other route keeps the body handling it had. Matched
- * case-insensitively because Remix routes are, and on every method — a DELETE reads a body too.
+ * Only the agent's own paths: every other route keeps the body handling it had. Matched on
+ * the decoded, lowercased path Remix routes on, and on every method: a DELETE reads a body too.
  */
 export function dashboardAgentBodyCap(req: Request, res: Response, next: NextFunction): void {
-  if (!BODY_METHODS.has(req.method) || !AGENT_PATH.test(req.path.toLowerCase())) {
+  if (!BODY_METHODS.has(req.method) || !AGENT_PATH.test(getRouterPath(req) ?? "")) {
     next();
     return;
   }

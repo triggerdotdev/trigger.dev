@@ -132,6 +132,18 @@ describe("the dashboard agent's ingress cap", () => {
     expect(response.status).toBe(413);
   });
 
+  // Catches: a percent-encoded path skipping the cap while Remix still routes it to the agent.
+  it("caps a percent-encoded path, because Remix decodes it before routing", async () => {
+    const { url } = await listen();
+
+    const response = await postChunked(
+      `${url}/%61pi/v1/dashboard-%61gent/watches/batch-check`,
+      DASHBOARD_AGENT_MAX_INGRESS_BYTES * 4
+    );
+
+    expect(response.status).toBe(413);
+  });
+
   it("caps a DELETE, which reads a body on the alerts route", async () => {
     const { url } = await listen();
 
