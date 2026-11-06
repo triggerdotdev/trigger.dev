@@ -1108,7 +1108,7 @@ describe("RunCrdWorkloadManager.restore", () => {
     expect(body.spec.restore).toEqual({ snapshotID: "6f1c2a9e-snap", node: "node-a" });
   });
 
-  // Restored anywhere else, the snapshot is not there to load.
+  // The operator pins the resume to that node while the snapshot is only there.
   it("refuses a location that names no node, before creating anything", async () => {
     await expect(
       manager().restore(keyedOptions(), { ...checkpoint, location: "6f1c2a9e-snap" })
@@ -1222,6 +1222,21 @@ describe("RunCrdWorkloadManager.restore", () => {
     await expect(manager().restore(keyedOptions(), checkpoint)).rejects.toThrow(
       "not node-a/6f1c2a9e-snap"
     );
+  });
+
+  // The operator may have placed it on another node, from the regional store.
+  it("leaves a resume of the same snapshot whatever node it names or landed on", async () => {
+    createRunner.mockRejectedValue({ code: 409 });
+    getRunner.mockResolvedValue({
+      ...existing("Restoring", { snapshotID: "6f1c2a9e-snap", node: "node-b" }),
+      status: { phase: "Restoring", placement: { node: "node-c" } },
+    });
+
+    await expect(manager().restore(keyedOptions(), checkpoint)).resolves.toEqual({
+      runnerId: getRestoreRunnerId("run_abc123", "checkpoint_abc"),
+      uid: "uid-existing",
+    });
+    expect(deleteRunner).not.toHaveBeenCalled();
   });
 
   it("fails when the Runner in the way cannot be read", async () => {

@@ -472,7 +472,8 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
 
   /**
    * Creates a resume: a Runner the operator restores from the checkpoint's
-   * snapshot, on the node holding it, instead of cold-starting. Named from the
+   * snapshot instead of cold-starting, on the node that took it unless the
+   * snapshot is in the regional store. Named from the
    * checkpoint, so a redelivered restore finds the first Runner and leaves it
    * rather than restoring twice. Returns the Runner, also for a resume found in
    * the way, which a restarted supervisor has no other watch on.
@@ -512,7 +513,8 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
 
   /**
    * A resume already in the way counts as this restore only while it restores
-   * the same snapshot. `ended` is the phase of one held terminal for the
+   * the same snapshot. The node is only where the operator starts looking, so
+   * a resume naming or placed on another node still counts. `ended` is the phase of one held terminal for the
    * operator's TTL, which will never resume the guest.
    */
   private async readExistingRestore(
@@ -522,7 +524,7 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
     const existing = (await this.getRunner(runnerId)) as ExistingRestore | null;
     const phase = existing?.status?.phase;
     const spec = existing?.spec?.restore;
-    if (spec?.snapshotID !== restore.snapshotID || spec?.node !== restore.node) {
+    if (spec?.snapshotID !== restore.snapshotID) {
       throw new Error(
         `restore Runner ${runnerId} restores ${JSON.stringify(spec ?? null)}, not ${checkpointLocation(restore)}`
       );
@@ -1529,9 +1531,10 @@ export function publishedSuspend(runner: unknown): PublishedSuspend | undefined 
 type RunnerRestore = ComputeCheckpointLocation;
 
 /**
- * A checkpoint's location names the node as well as the snapshot, because the
- * node runtime's snapshots are node-local and a resume has to land there. The
- * platform validates the same format when it stores the checkpoint.
+ * A checkpoint's location names the node that took the snapshot as well as the
+ * snapshot: a resume has to land there while the snapshot is only on that node,
+ * and prefers it after. The platform validates the same format when it stores
+ * the checkpoint.
  */
 export function checkpointLocation(restore: RunnerRestore): string {
   return formatComputeCheckpointLocation(restore);
