@@ -48,7 +48,7 @@ describe("WorkerApiRunRestoreOutcomeRequestBody", () => {
 describe("WorkerApiSuspendRunResponseBody", () => {
   const discarded = { ok: true, discarded: { error: "Not the latest snapshot" } };
 
-  // Catches: a discard answer that a supervisor or iceman on an older core reads as a failed submit and resends.
+  // Catches: a discard answer that a caller on an older core reads as a failed submit and resends.
   it("still reads as delivered to a caller on the shape before discards were reported", () => {
     const previous = z.object({ ok: z.literal(true) });
     expect(previous.safeParse(discarded).success).toBe(true);

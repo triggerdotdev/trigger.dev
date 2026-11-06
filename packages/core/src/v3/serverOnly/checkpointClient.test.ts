@@ -5,7 +5,7 @@ import { CheckpointClient, type SnapshotDeleteRetry } from "./checkpointClient.j
 import { SupervisorHttpClient } from "../runEngineWorker/supervisor/http.js";
 import { WORKER_HEADERS } from "../runEngineWorker/consts.js";
 
-// Catches: dropping the authentication that lets iceman trust the caller's verified environment.
+// Catches: dropping the authentication that lets the receiver trust the caller's verified environment.
 it("authenticates the legacy suspend hop and preserves its verified environment", async () => {
   let headers: IncomingHttpHeaders = {};
   let body: Record<string, unknown> = {};
@@ -153,7 +153,7 @@ describe("CheckpointClient.deleteSnapshots retries", () => {
       snapshotDeleteRetry,
     }).deleteSnapshots({ runFriendlyId: "run_1", body: tenancy });
 
-  // Catches: a delete lost because the single-replica service was restarting.
+  // Catches: a delete lost because the service was restarting.
   it("retries a restarting service until it accepts", async () => {
     script = [503, "drop", 502, 202];
     expect(await call()).toEqual({ outcome: "accepted", attempts: 4, status: 202 });

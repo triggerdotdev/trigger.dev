@@ -182,7 +182,7 @@ describe("reclaim at run completion", () => {
     });
   });
 
-  // Catches: a delete lost while the single-replica service restarts.
+  // Catches: a delete lost while the service restarts.
   it("retries a restarting service and counts the delete as retried", async () => {
     replies = [503, 502];
     const before = await snapshotDeletes("retried");
