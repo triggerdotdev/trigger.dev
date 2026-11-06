@@ -1,4 +1,9 @@
-import type { Organization, OrgMember, Project } from "@trigger.dev/database";
+import type {
+  Organization,
+  OrgMember,
+  PrismaClientOrTransaction,
+  Project,
+} from "@trigger.dev/database";
 import { z } from "zod";
 import { Prisma as PrismaNamespace, type Prisma, prisma } from "~/db.server";
 import {
@@ -236,10 +241,27 @@ export async function getInviteFromToken({ token }: { token: string }) {
   });
 }
 
+// Invites match the address they were sent to, ignoring case. Don't use
+// Prisma's `equals` with `mode: "insensitive"` for this: it compiles to ILIKE,
+// so "_" and "%" in an address act as wildcards and `j_smith@` would match an
+// invite for `j.smith@`.
+function inviteEmailMatches(inviteEmail: string, userEmail: string) {
+  return inviteEmail.toLowerCase() === userEmail.toLowerCase();
+}
+
+async function findInviteIdsForEmail(client: PrismaClientOrTransaction, email: string) {
+  const rows = await client.$queryRaw<Array<{ id: string }>>`
+    SELECT "id" FROM "OrgMemberInvite" WHERE lower("email") = ${email.toLowerCase()}
+  `;
+  return rows.map((row) => row.id);
+}
+
 export async function getUsersInvites({ email }: { email: string }) {
+  const inviteIds = await findInviteIdsForEmail(prisma, email);
+
   return await prisma.orgMemberInvite.findMany({
     where: {
-      email: { equals: email, mode: "insensitive" },
+      id: { in: boundedIn(inviteIds) },
       organization: {
         deletedAt: null,
       },
@@ -499,10 +521,9 @@ export async function acceptInvite({
   inviteId: string;
   organizationId?: string;
 }) {
-  const invite = await prisma.orgMemberInvite.findFirst({
+  const found = await prisma.orgMemberInvite.findFirst({
     where: {
       id: inviteId,
-      email: { equals: user.email, mode: "insensitive" },
       organization: {
         deletedAt: null,
       },
@@ -515,6 +536,7 @@ export async function acceptInvite({
       },
     },
   });
+  const invite = found && inviteEmailMatches(found.email, user.email) ? found : null;
 
   if (!invite) {
     if (organizationId) {
@@ -598,7 +620,7 @@ export async function acceptInvite({
     await prisma.orgMemberInvite.delete({
       where: {
         id: inviteId,
-        email: { equals: user.email, mode: "insensitive" },
+        email: invite.email,
       },
     });
   } catch (error) {
@@ -638,10 +660,15 @@ export async function declineInvite({
 }) {
   return await prisma.$transaction(async (tx) => {
     //1. delete invite
+    const invite = await tx.orgMemberInvite.findFirst({ where: { id: inviteId } });
+    if (!invite || !inviteEmailMatches(invite.email, user.email)) {
+      throw new Error(INVITE_NOT_FOUND);
+    }
+
     const declinedInvite = await tx.orgMemberInvite.delete({
       where: {
         id: inviteId,
-        email: { equals: user.email, mode: "insensitive" },
+        email: invite.email,
       },
       include: {
         organization: true,
@@ -651,7 +678,7 @@ export async function declineInvite({
     //2. check for other invites
     const remainingInvites = await tx.orgMemberInvite.findMany({
       where: {
-        email: { equals: user.email, mode: "insensitive" },
+        id: { in: boundedIn(await findInviteIdsForEmail(tx, user.email)) },
       },
     });
 
