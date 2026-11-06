@@ -46,6 +46,7 @@ function byteLength(body: string): number {
 }
 import { ChatTabCoordinator } from "./chat-tab-coordinator.js";
 import {
+  anyAbortSignal,
   MAX_EOF_RESUBSCRIBES,
   slimSubmitMessageForWire,
   waitBeforeEofResubscribe,
@@ -1355,7 +1356,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     this.activeStreams.set(options.chatId, abortController);
 
     const abortSignal = options.abortSignal
-      ? AbortSignal.any([options.abortSignal, abortController.signal])
+      ? anyAbortSignal([options.abortSignal, abortController.signal])
       : abortController.signal;
 
     return this.subscribeToSessionStream(state, abortSignal, options.chatId, {
@@ -2064,7 +2065,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     let didSettle = false;
     this.activeStreams.set(chatId, internalAbort);
     const combinedSignal = abortSignal
-      ? AbortSignal.any([abortSignal, internalAbort.signal])
+      ? anyAbortSignal([abortSignal, internalAbort.signal])
       : internalAbort.signal;
 
     if (abortSignal) {

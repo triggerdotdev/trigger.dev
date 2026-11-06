@@ -2950,4 +2950,74 @@ describe("TriggerChatTransport", () => {
       expect(textChunks).toHaveLength(2);
     });
   });
+
+  describe("Safari < 17.4 compatibility (no AbortSignal.any)", () => {
+    it("streams and propagates caller aborts when AbortSignal.any is undefined", async () => {
+      const originalAny = AbortSignal.any;
+      Object.defineProperty(AbortSignal, "any", {
+        value: undefined,
+        configurable: true,
+        writable: true,
+      });
+
+      try {
+        global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+          const urlStr = typeof url === "string" ? url : url.toString();
+          if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+          if (isSessionOutSubscribeUrl(urlStr)) {
+            return defaultSseResponse([
+              { type: "text-delta", id: "p1", delta: "Safari fallback" },
+              { type: "trigger:turn-complete" },
+            ]);
+          }
+          throw new Error(`Unexpected URL: ${urlStr}`);
+        });
+
+        const transport = new TriggerChatTransport({
+          task: "my-chat-task",
+          accessToken: () => "pat",
+          sessions: {
+            "chat-safari": { publicAccessToken: "p", isStreaming: true },
+          },
+        });
+
+        const callerAbort = new AbortController();
+        const stream = await transport.sendMessages({
+          trigger: "submit-message",
+          chatId: "chat-safari",
+          messageId: undefined,
+          messages: [createUserMessage("Hi from Safari 16")],
+          abortSignal: callerAbort.signal,
+        });
+        const chunks = await drainChunks(stream);
+        expect(chunks).toEqual([{ type: "text-delta", id: "p1", delta: "Safari fallback" }]);
+
+        const preAborted = new AbortController();
+        preAborted.abort(new Error("user stopped"));
+        let receivedAbortOnSubscribe = false;
+        global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+          const urlStr = typeof url === "string" ? url : url.toString();
+          if (isSessionOutSubscribeUrl(urlStr)) {
+            receivedAbortOnSubscribe = Boolean(init?.signal?.aborted);
+            return defaultSseResponse([{ type: "trigger:turn-complete" }]);
+          }
+          throw new Error(`Unexpected URL: ${urlStr}`);
+        });
+
+        const resumed = await transport.reconnectToStream({
+          chatId: "chat-safari",
+          abortSignal: preAborted.signal,
+        });
+        await drainChunks(resumed!);
+        expect(receivedAbortOnSubscribe).toBe(true);
+      } finally {
+        Object.defineProperty(AbortSignal, "any", {
+          value: originalAny,
+          configurable: true,
+          writable: true,
+        });
+      }
+    });
+  });
 });
+

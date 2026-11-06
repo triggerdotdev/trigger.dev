@@ -278,3 +278,30 @@ export function waitBeforeEofResubscribe(attempt: number, signal: AbortSignal): 
     if (signal.aborted) done();
   });
 }
+
+/**
+ * Combine multiple `AbortSignal` instances into a single signal, falling back
+ * to manual listener forwarding on runtimes without `AbortSignal.any` (such as
+ * Safari / iOS Safari < 17.4).
+ */
+export function anyAbortSignal(signals: AbortSignal[]): AbortSignal {
+  if (typeof AbortSignal.any === "function") {
+    return AbortSignal.any(signals);
+  }
+
+  const controller = new AbortController();
+  const aborted = signals.find((s) => s.aborted);
+  if (aborted) {
+    controller.abort(aborted.reason);
+    return controller.signal;
+  }
+
+  for (const s of signals) {
+    s.addEventListener("abort", () => controller.abort(s.reason), {
+      once: true,
+      signal: controller.signal,
+    });
+  }
+  return controller.signal;
+}
+
