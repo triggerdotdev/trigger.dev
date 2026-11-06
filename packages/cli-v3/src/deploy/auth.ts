@@ -69,7 +69,7 @@ export async function authenticateForDeploy({
   };
 }
 
-function dashboardUrlForApiUrl(apiUrl: string): string {
+export function dashboardUrlForApiUrl(apiUrl: string): string {
   if (apiUrl === CLOUD_API_URL) {
     return CLOUD_WEB_URL;
   }

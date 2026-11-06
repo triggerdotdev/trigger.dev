@@ -429,6 +429,7 @@ model RuntimeEnvironment {
   taskIdentifiers         TaskIdentifier[]
   apiKeys                 ApiKey[]
   revokedApiKeys          RevokedApiKey[]
+  trustedDeployGrant      TrustedDeployEnvironment?
 
   // A partial unique index also enforces one STAGING/PREVIEW root per project and type.
   // It is defined in SQL because Prisma does not support partial indexes in the schema.
@@ -544,6 +545,7 @@ model Project {
   taskRunCheckpoints             TaskRunCheckpoint[]
   waitpointTags                  WaitpointTag[]
   connectedGithubRepository      ConnectedGithubRepository?
+  trustedDeployRepository        TrustedDeployRepository?
   organizationProjectIntegration OrganizationProjectIntegration[]
   customerQueries                CustomerQuery[]
   playgroundConversations        PlaygroundConversation[]
@@ -3119,6 +3121,51 @@ model GithubRepository {
 
   @@unique([installationId, githubId])
   @@index([installationId])
+}
+
+model TrustedDeployRepository {
+  id String @id @default(cuid())
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String  @unique
+
+  issuer            String  @default("https://token.actions.githubusercontent.com")
+  repositoryOwner   String
+  repositoryName    String
+  repositoryId      String?
+  repositoryOwnerId String?
+
+  environments TrustedDeployEnvironment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum TrustedDeployScope {
+  ANY
+  BRANCH
+  TAG
+  ENVIRONMENT
+}
+
+model TrustedDeployEnvironment {
+  id String @id @default(cuid())
+
+  trustedDeployRepository   TrustedDeployRepository @relation(fields: [trustedDeployRepositoryId], references: [id], onDelete: Cascade)
+  trustedDeployRepositoryId String
+
+  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade)
+  runtimeEnvironmentId String             @unique
+
+  enabled          Boolean            @default(false)
+  scope            TrustedDeployScope
+  scopeValue       String?
+  additionalClaims Json               @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([trustedDeployRepositoryId])
 }
 
 model ConnectedGithubRepository {

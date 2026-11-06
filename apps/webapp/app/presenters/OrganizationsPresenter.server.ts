@@ -4,6 +4,7 @@ import { prisma } from "~/db.server";
 import { getSupportAccessOrgSlugs } from "~/services/impersonation.server";
 import { logger } from "~/services/logger.server";
 import { isExternalOidcEnabled } from "~/services/oidc/externalOidc.server";
+import { isTrustedDeploysEnabled } from "~/services/trustedDeploys/featureFlag.server";
 import { type UserFromSession } from "~/services/session.server";
 import { newOrganizationPath, newProjectPath } from "~/utils/pathBuilder";
 import { SelectBestEnvironmentPresenter } from "./SelectBestEnvironmentPresenter.server";
@@ -179,6 +180,7 @@ export class OrganizationsPresenter {
           featureFlags: {
             ...combinedFlags,
             oidcEnabled: await isExternalOidcEnabled(org.featureFlags),
+            trustedDeploysEnabled: await isTrustedDeploysEnabled(org.featureFlags),
           },
           supportAccessMode: org.supportAccessMode,
           projects: org.projects.map((project) => ({

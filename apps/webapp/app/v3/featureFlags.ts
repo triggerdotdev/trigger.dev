@@ -63,6 +63,7 @@ export const FEATURE_FLAG = {
   supportAccessSettingsEnabled: "supportAccessSettingsEnabled",
   runTokenInjection: "runTokenInjection",
   externalOidc: "externalOidc",
+  trustedDeploysEnabled: "trustedDeploysEnabled",
   oidcIntegrationGuidesPublished: "oidcIntegrationGuidesPublished",
   sessionTraceEnabled: "sessionTraceEnabled",
 } as const;
@@ -243,6 +244,7 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.runTokenInjection]: z.boolean(),
   // Org override wins over the global value; off by default.
   [FEATURE_FLAG.externalOidc]: z.boolean(),
+  [FEATURE_FLAG.trustedDeploysEnabled]: z.boolean(),
   // Global only; keep guide links off until the public docs and SDK release are available.
   [FEATURE_FLAG.oidcIntegrationGuidesPublished]: z.boolean(),
   // Shows the session page's Trace tab and serves its routes. Org override wins over the global

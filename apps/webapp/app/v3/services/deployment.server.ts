@@ -1,6 +1,7 @@
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { BaseService } from "./baseService.server";
 import { errAsync, fromPromise, okAsync, type ResultAsync } from "neverthrow";
+import { randomUUID } from "node:crypto";
 import { type WorkerDeployment, type Project, boundedIn } from "@trigger.dev/database";
 import {
   BuildServerMetadata,
@@ -515,7 +516,8 @@ export class DeploymentService extends BaseService {
   }
 
   public getEventStreamAccessToken(
-    project: Pick<Project, "externalRef">
+    project: Pick<Project, "externalRef">,
+    deployment?: Pick<WorkerDeployment, "shortCode">
   ): ResultAsync<string, { type: "s2_is_disabled" } | { type: "other"; cause: unknown }> {
     if (env.S2_ENABLED !== "1" || !s2) {
       return errAsync({ type: "s2_is_disabled" as const });
@@ -539,16 +541,16 @@ export class DeploymentService extends BaseService {
     const issueS2Token = () =>
       fromPromise(
         s2.accessTokens.issue({
-          id: `${project.externalRef}-${new Date().getTime()}`,
+          id: `${project.externalRef}-${randomUUID()}`,
           expiresAt: new Date(Date.now() + tokenValidityMs),
           scope: {
             ops: ["read"],
             basins: {
               exact: basinName,
             },
-            streams: {
-              prefix: `projects/${project.externalRef}/deployments/`,
-            },
+            streams: deployment
+              ? { exact: `projects/${project.externalRef}/deployments/${deployment.shortCode}` }
+              : { prefix: `projects/${project.externalRef}/deployments/` },
           },
         }),
         (error) => ({
@@ -562,6 +564,8 @@ export class DeploymentService extends BaseService {
         type: "other" as const,
         cause: error,
       }));
+
+    if (deployment) return issueS2Token();
 
     return getTokenFromCache().orElse(() =>
       issueS2Token().andThen((token) =>

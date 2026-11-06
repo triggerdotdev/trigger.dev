@@ -67,7 +67,12 @@ export class InitializeDeploymentService extends BaseService {
   public async call(
     environment: AuthenticatedEnvironment,
     payload: InitializeDeploymentRequestBody,
-    options?: { cliVersion?: string; redeployOf?: string; buildEnvVars?: EncryptedSecretValue }
+    options?: {
+      cliVersion?: string;
+      redeployOf?: string;
+      buildEnvVars?: EncryptedSecretValue;
+      trustedDeploy?: BuildServerMetadata["trustedDeploy"];
+    }
   ): Promise<InitializeDeploymentResult> {
     return this.traceWithEnv("call", environment, async (span) => {
       // An older CLI attaching to a deployment the build server already created (the commitSha
@@ -311,11 +316,16 @@ export class InitializeDeploymentService extends BaseService {
       const s2StreamOrFail = await deploymentService
         .createEventStream(environment.project, { shortCode: deploymentShortCode })
         .andThen(({ basin, stream }) =>
-          deploymentService.getEventStreamAccessToken(environment.project).map((accessToken) => ({
-            basin,
-            stream,
-            accessToken,
-          }))
+          deploymentService
+            .getEventStreamAccessToken(
+              environment.project,
+              options?.trustedDeploy ? { shortCode: deploymentShortCode } : undefined
+            )
+            .map((accessToken) => ({
+              basin,
+              stream,
+              accessToken,
+            }))
         );
 
       if (s2StreamOrFail.isErr()) {
@@ -343,6 +353,7 @@ export class InitializeDeploymentService extends BaseService {
         payload.isNativeBuild || payload.buildId || options?.redeployOf
           ? {
               buildId: payload.buildId,
+              trustedDeploy: options?.trustedDeploy,
               ...(options?.redeployOf ? { redeployOf: options.redeployOf } : {}),
               ...(payload.isNativeBuild
                 ? {

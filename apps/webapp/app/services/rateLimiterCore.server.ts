@@ -8,7 +8,7 @@ type Options = {
   redisClient?: RateLimiterRedisClient;
   keyPrefix: string;
   limiter: Limiter;
-  /** Past this the library stops waiting for Redis and answers "allowed" (its default is 5 s). */
+  /** Past this the library answers "allowed" (default 5 s). Zero disables this fail-open timeout. */
   timeoutMs?: number;
   /**
    * The library's process-local cache of rejections, on by default. It remembers a rejection

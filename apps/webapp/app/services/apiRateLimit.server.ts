@@ -166,6 +166,9 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     "/api/v1/auth/jwt/claims",
     // Dedicated per-run/environment limits prevent a throttled run from draining the API budget.
     "/api/v1/auth/oidc/token",
+    // GitHub JWTs are verified and rate limited by the dedicated submission API.
+    "/api/v1/trusted-deploys/prepare",
+    "/api/v1/trusted-deploys/submit",
     /^\/api\/v1\/runs\/[^/]+\/attempts$/, // /api/v1/runs/$runFriendlyId/attempts
     /^\/api\/v1\/waitpoints\/tokens\/[^/]+\/callback\/[^/]+$/, // /api/v1/waitpoints/tokens/$waitpointFriendlyId/callback/$hash
     ...deploymentApiPaths, // rate limited separately by deploymentRateLimiter

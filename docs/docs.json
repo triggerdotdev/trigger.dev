@@ -218,6 +218,7 @@
               "deployment/overview",
               "deploy-environment-variables",
               "github-actions",
+              "deployment/trusted-publishing",
               "deployment/preview-branches",
               "deployment/dev-branches",
               "deployment/atomic-deployment",
