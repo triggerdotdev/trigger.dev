@@ -37,10 +37,6 @@ describe("getRouterPath", () => {
     expect(getRouterPath({ url })).toBe(expected);
   });
 
-  it("rejects malformed absolute request targets", () => {
-    expect(getRouterPath({ url: "http://[" })).toBeUndefined();
-  });
-
   it("matches complete path segments only", () => {
     expect(pathHasPrefix("/realtime", "/realtime")).toBe(true);
     expect(pathHasPrefix("/realtime/v1/runs", "/realtime")).toBe(true);

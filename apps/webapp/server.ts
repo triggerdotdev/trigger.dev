@@ -13,6 +13,7 @@ import type { Server as IoServer } from "socket.io";
 import type { WebSocketServer } from "ws";
 import type { RateLimitMiddleware } from "~/services/apiRateLimit.server";
 import { type RunWithHttpContextFunction } from "~/services/httpAsyncStorage.server";
+import { createHostHeaderGuard } from "./app/utils/hostHeader";
 import { getRouterPath, pathHasPrefix, sanitizeHttpUrl } from "./app/utils/sanitizeHttpUrl";
 import {
   createApiOnlyServiceMiddleware,
@@ -114,6 +115,9 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
 
 async function startServer() {
   const app = express();
+
+  // First, so no path-matched middleware ever sees a path different from the one Remix routes.
+  app.use(createHostHeaderGuard());
 
   if (process.env.DISABLE_COMPRESSION !== "1") {
     app.use(compression());
