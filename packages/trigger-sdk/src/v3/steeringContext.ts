@@ -15,6 +15,8 @@ export type SteeringInjection = {
 type StepInput = {
   messages: ModelMessage[];
   steps: Array<{ response: { messages: ModelMessage[] } }>;
+  /** AI SDK 7+: response messages accumulated across all steps so far. */
+  responseMessages?: ModelMessage[];
 };
 
 /**
@@ -41,7 +43,7 @@ export function retainStepMessages<T extends StepInput, R extends { messages?: M
       retainedFrom = undefined;
       responseCount = 0;
     }
-    const responses = input.steps.at(-1)?.response.messages ?? [];
+    const responses = input.responseMessages ?? input.steps.at(-1)?.response.messages ?? [];
     if (retainedFrom) {
       responseCount += alreadyIncluded(retainedFrom, responses.slice(responseCount));
       retainedFrom = undefined;

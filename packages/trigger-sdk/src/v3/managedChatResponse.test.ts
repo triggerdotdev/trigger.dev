@@ -367,6 +367,56 @@ describe("steering model context", () => {
     }
   });
 
+  it("accumulates tool results across 3+ steps on AI SDK 7 where step.response.messages is per-step", async () => {
+    const first = modelUser("go");
+    const step1: ModelMessage[] = [
+      { role: "assistant", content: "call-1" },
+      { role: "tool", content: [] },
+    ];
+    const step2: ModelMessage[] = [
+      { role: "assistant", content: "call-2" },
+      { role: "tool", content: [] },
+    ];
+    const step3: ModelMessage[] = [
+      { role: "assistant", content: "call-3" },
+      { role: "tool", content: [] },
+    ];
+
+    const prepare = retainStepMessages(async ({ messages }) => ({ messages }));
+
+    const s1 = await prepare({
+      messages: [first],
+      steps: [],
+      responseMessages: [],
+    });
+    expect(s1?.messages).toEqual([first]);
+
+    const s2 = await prepare({
+      messages: [...s1!.messages!, ...step1],
+      steps: [{ response: { messages: step1 } }],
+      responseMessages: [...step1],
+    });
+    expect(s2?.messages).toEqual([first, ...step1]);
+
+    const s3 = await prepare({
+      messages: [...s2!.messages!, ...step2],
+      steps: [{ response: { messages: step1 } }, { response: { messages: step2 } }],
+      responseMessages: [...step1, ...step2],
+    });
+    expect(s3?.messages).toEqual([first, ...step1, ...step2]);
+
+    const s4 = await prepare({
+      messages: [...s3!.messages!, ...step3],
+      steps: [
+        { response: { messages: step1 } },
+        { response: { messages: step2 } },
+        { response: { messages: step3 } },
+      ],
+      responseMessages: [...step1, ...step2, ...step3],
+    });
+    expect(s4?.messages).toEqual([first, ...step1, ...step2, ...step3]);
+  });
+
   it("retains compaction instead of reintroducing old response segments", async () => {
     const summary = modelUser("summary");
     const old = modelUser("old");
