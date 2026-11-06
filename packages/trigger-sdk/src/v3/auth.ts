@@ -125,9 +125,7 @@ type PublicTokenPermissions = {
 type CreatePublicTokenOptions = {
   /**
    * A collection of permission scopes to be granted to the token. This remains
-   * optional for root API key compatibility. Scope-less tokens use root-key
-   * signing even when a run token is available; additional API keys require at
-   * least one scope.
+   * optional. Tokens without scopes grant no permissions.
    *
    * @example
    *
@@ -230,21 +228,9 @@ async function createServerPublicToken(
 async function createPublicToken(options?: CreatePublicTokenOptions): Promise<string> {
   const scopes = options?.scopes ? flattenScopes(options.scopes) : [];
   const apiClient = apiClientManager.clientOrThrow();
-  // Empty scopes grant no permissions, not admin; retain legacy root-key signing.
-  const accessToken = apiClient.getAccessToken(
-    scopes.length === 0 ? "generateJWTClaims" : "createPublicToken"
-  );
+  const accessToken = apiClient.getAccessToken("createPublicToken");
 
   if (isAdditionalApiKey(accessToken) || isRunToken(accessToken)) {
-    // Server minting requires scopes; retain root-key signing with no scopes.
-    if (scopes.length === 0) {
-      const credentialType = isRunToken(accessToken) ? "a run token" : "an additional API key";
-      throw new Error(
-        `auth.createPublicToken() requires at least one scope when using ${credentialType}. ` +
-          'For example: auth.createPublicToken({ scopes: { read: { runs: ["run_1234"] } } })'
-      );
-    }
-
     return createServerPublicToken(apiClient, {
       scopes,
       expirationTime: serverExpirationTime(options?.expirationTime),

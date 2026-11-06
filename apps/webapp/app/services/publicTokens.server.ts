@@ -13,7 +13,7 @@ import { publicTokenSubject } from "~/services/publicTokenSubject.server";
 const MAX_PUBLIC_TOKEN_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
 
 const RequestBodySchema = z.object({
-  scopes: z.array(z.string()).min(1),
+  scopes: z.array(z.string()),
   expirationTime: z.union([z.string(), z.number()]).optional(),
   oneTimeUse: z.boolean().optional(),
   realtime: z
