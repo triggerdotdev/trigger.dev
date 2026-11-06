@@ -219,7 +219,7 @@ async function startServer() {
     const otlpRateLimiter: RequestHandler = build.entry.module.otlpRateLimiter;
     const runWithHttpContext: RunWithHttpContextFunction = build.entry.module.runWithHttpContext;
     const tenantContextMiddleware: RequestHandler = build.entry.module.tenantContextMiddleware;
-    const dashboardAgentBodyCap: RequestHandler = build.entry.module.dashboardAgentBodyCap;
+    const ingressBodyCap: RequestHandler = build.entry.module.ingressBodyCap;
 
     app.use((req, res, next) => {
       // helpful headers:
@@ -279,9 +279,9 @@ async function startServer() {
 
       app.use(tenantContextMiddleware);
 
-      // Before the Remix handler: the agent's chat body is refused while it streams, so a
+      // Before the Remix handler: capped bodies are refused while they stream, so a
       // route never buffers one that was already too large.
-      app.use(dashboardAgentBodyCap);
+      app.use(ingressBodyCap);
 
       app.all(
         "*",

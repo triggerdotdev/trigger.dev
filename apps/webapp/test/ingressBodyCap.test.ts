@@ -5,11 +5,15 @@ import { Readable } from "node:stream";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   DASHBOARD_AGENT_MAX_INGRESS_BYTES,
-  dashboardAgentBodyCap,
-} from "~/services/dashboardAgentBodyCap.server";
+  createIngressBodyCap,
+  DASHBOARD_AGENT_INGRESS_CAP,
+  otlpIngressCap,
+} from "~/services/ingressBodyCap.server";
 
 // The cap has to hold for a body with no `content-length`: that is the case a route-level
 // check can't cover, because by then the body is already in memory.
+
+const OTLP_MAX_INGRESS_BYTES = 256 * 1024;
 
 let server: Server | undefined;
 
@@ -17,7 +21,9 @@ let server: Server | undefined;
 async function listen(): Promise<{ url: string; buffered: () => number }> {
   let buffered = 0;
   const app = express();
-  app.use(dashboardAgentBodyCap);
+  app.use(
+    createIngressBodyCap([DASHBOARD_AGENT_INGRESS_CAP, otlpIngressCap(OTLP_MAX_INGRESS_BYTES)])
+  );
   app.all("*", async (req, res) => {
     try {
       for await (const chunk of req) buffered += (chunk as Buffer).byteLength;
@@ -192,5 +198,78 @@ describe("the dashboard agent's ingress cap", () => {
 
     expect(response.status).toBe(200);
     expect(buffered()).toBe(size);
+  });
+});
+
+describe("the OTLP ingress cap", () => {
+  it("catches a chunked upload with no content-length being buffered whole", async () => {
+    const { url, buffered } = await listen();
+    const oversized = OTLP_MAX_INGRESS_BYTES * 20;
+
+    const response = await postChunked(`${url}/otel/v1/traces`, oversized, 16 * 1024).catch(
+      () => undefined
+    );
+
+    if (response) expect(response.status).toBe(413);
+    expect(buffered()).toBeLessThan(oversized / 2);
+  });
+
+  it("catches a declared oversized body being read before it is refused", async () => {
+    const { url, buffered } = await listen();
+    const response = await fetch(`${url}/otel/v1/logs`, {
+      method: "POST",
+      headers: { "content-type": "application/x-protobuf" },
+      body: Buffer.alloc(OTLP_MAX_INGRESS_BYTES + 1),
+    });
+
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({ error: "Request body too large" });
+    expect(buffered()).toBe(0);
+  });
+
+  it.each(["/OTEL/v1/traces", "/%6Ftel/v1/logs"])(
+    "catches %s skipping the cap while the router still serves it",
+    async (path) => {
+      const { url } = await listen();
+      const response = await fetch(`${url}${path}`, {
+        method: "POST",
+        body: Buffer.alloc(OTLP_MAX_INGRESS_BYTES + 1),
+      });
+
+      expect(response.status).toBe(413);
+    }
+  );
+
+  it("catches a resumed body reader buffering past the cap while the 413 is queued", async () => {
+    let buffered = 0;
+    const app = express();
+    app.use(
+      createIngressBodyCap([{ ...otlpIngressCap(OTLP_MAX_INGRESS_BYTES), refuse: () => {} }])
+    );
+    app.all("*", (req, res) => {
+      req.on("data", (chunk: Buffer) => {
+        buffered += chunk.byteLength;
+        req.resume();
+      });
+      req.on("end", () => res.status(200).end());
+      req.resume();
+    });
+    server = app.listen(0);
+    await new Promise((resolve) => server!.once("listening", resolve));
+    const url = `http://127.0.0.1:${(server!.address() as AddressInfo).port}`;
+    const oversized = OTLP_MAX_INGRESS_BYTES * 20;
+
+    await postChunked(`${url}/otel/v1/traces`, oversized).catch(() => undefined);
+
+    expect(buffered).toBeLessThanOrEqual(OTLP_MAX_INGRESS_BYTES * 2);
+  });
+
+  it("catches an off-by-one refusing a body exactly at the cap", async () => {
+    const { url } = await listen();
+
+    const response = await postChunked(`${url}/otel/v1/traces`, OTLP_MAX_INGRESS_BYTES, 16 * 1024);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ bytes: OTLP_MAX_INGRESS_BYTES });
   });
 });
