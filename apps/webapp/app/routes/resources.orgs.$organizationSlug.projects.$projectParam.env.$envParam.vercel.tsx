@@ -38,7 +38,7 @@ import {
   redirectWithErrorMessage,
   redirectWithSuccessMessage,
 } from "~/models/message.server";
-import { resolveOrgIdFromSlug } from "~/models/organization.server";
+import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { VercelIntegrationRepository } from "~/models/vercelIntegration.server";
@@ -242,10 +242,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 export const action = dashboardAction(
   {
     params: EnvironmentParamSchema,
-    context: async (params) => {
-      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
-      return organizationId ? { organizationId } : {};
-    },
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
     authorization: { action: "write", resource: { type: "vercel" } },
   },
   async ({ request, params, user }) => {

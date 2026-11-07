@@ -26,13 +26,13 @@ export class EnvironmentVariablesPresenter {
 
   public async call({
     userId,
-    projectSlug,
+    projectId,
     page = 1,
     pageSize = DEFAULT_ENV_VARS_PAGE_SIZE,
     search,
   }: {
     userId: User["id"];
-    projectSlug: Project["slug"];
+    projectId: Project["id"];
     page?: number;
     pageSize?: number;
     search?: string;
@@ -43,7 +43,7 @@ export class EnvironmentVariablesPresenter {
         organization: { select: { featureFlags: true } },
       },
       where: {
-        slug: projectSlug,
+        id: projectId,
         organization: {
           members: {
             some: {

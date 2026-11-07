@@ -45,7 +45,7 @@ import { useList } from "~/hooks/useList";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
-import { resolveOrgIdFromSlug } from "~/models/organization.server";
+import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import {
   environmentVariablesRouteId,
   type loader as environmentVariablesLoader,
@@ -112,16 +112,18 @@ const schema = z.object({
 export const action = dashboardAction(
   {
     params: EnvironmentParamSchema,
-    context: async (params) => {
-      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
-      return organizationId ? { organizationId } : {};
-    },
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
     // Per-environment write:envvars is enforced in the handler — the target
     // environments come from the submission, not the route params.
   },
-  async ({ request, params, user, ability }) => {
+  async ({ request, params, user, ability, context }) => {
     const userId = user.id;
     const { organizationSlug, projectParam, envParam } = params;
+
+    const { projectId } = context;
+    if (!projectId) {
+      throw new Response("Not Found", { status: 404 });
+    }
 
     if (request.method.toUpperCase() !== "POST") {
       throw new Response("Method Not Allowed", { status: 405 });
@@ -138,7 +140,7 @@ export const action = dashboardAction(
     // that can't write a deployed tier can't create vars there via a direct
     // POST (the disabled checkboxes are not the boundary).
     const targetEnvironments = await prisma.runtimeEnvironment.findMany({
-      where: { id: { in: boundedIn(submission.value.environmentIds) } },
+      where: { projectId, id: { in: boundedIn(submission.value.environmentIds) } },
       select: { type: true },
     });
     const hasDeniedEnvironment = targetEnvironments.some(
@@ -156,17 +158,8 @@ export const action = dashboardAction(
       );
     }
 
-    const project = await prisma.project.findUnique({
-      where: {
-        slug: params.projectParam,
-        organization: {
-          members: {
-            some: {
-              userId,
-            },
-          },
-        },
-      },
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, organization: { members: { some: { userId } } } },
       select: {
         id: true,
         organization: { select: { featureFlags: true } },

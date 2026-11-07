@@ -32,8 +32,7 @@ describe("EnvironmentVariablesPresenter", () => {
   postgresTest(
     "keeps secret values redacted while returning non-secret values",
     async ({ prisma }) => {
-      const { user, organization, project, projectSlug } =
-        await createTestOrgProjectWithMember(prisma);
+      const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
       const production = await createRuntimeEnvironment(prisma, {
         projectId: project.id,
         organizationId: organization.id,
@@ -59,7 +58,7 @@ describe("EnvironmentVariablesPresenter", () => {
 
       const result = await new EnvironmentVariablesPresenter(prisma, prisma).call({
         userId: user.id,
-        projectSlug,
+        projectId: project.id,
       });
 
       const secretVariable = result.environmentVariables.find(
@@ -79,8 +78,7 @@ describe("EnvironmentVariablesPresenter", () => {
   postgresTest(
     "returns values for active environments (including branch environments) and excludes archived branch environments",
     async ({ prisma }) => {
-      const { user, organization, project, projectSlug } =
-        await createTestOrgProjectWithMember(prisma);
+      const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
 
       const prodEnvironment = await createRuntimeEnvironment(prisma, {
         projectId: project.id,
@@ -154,7 +152,7 @@ describe("EnvironmentVariablesPresenter", () => {
 
       const result = await new EnvironmentVariablesPresenter(prisma, prisma).call({
         userId: user.id,
-        projectSlug,
+        projectId: project.id,
       });
 
       const environmentIds = result.environments.map((environment) => environment.id);

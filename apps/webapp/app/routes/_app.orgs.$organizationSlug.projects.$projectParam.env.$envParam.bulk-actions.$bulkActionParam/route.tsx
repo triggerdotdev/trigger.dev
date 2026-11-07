@@ -25,7 +25,7 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
-import { resolveOrgIdFromSlug } from "~/models/organization.server";
+import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { BulkActionPresenter } from "~/presenters/v3/BulkActionPresenter.server";
@@ -58,10 +58,7 @@ const BulkActionParamSchema = EnvironmentParamSchema.extend({
 export const loader = dashboardLoader(
   {
     params: BulkActionParamSchema,
-    context: async (params) => {
-      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
-      return organizationId ? { organizationId } : {};
-    },
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
     authorization: { action: "read", resource: { type: "runs" } },
   },
   async ({ params, user, ability }) => {
@@ -111,10 +108,7 @@ export const loader = dashboardLoader(
 export const action = dashboardAction(
   {
     params: BulkActionParamSchema,
-    context: async (params) => {
-      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
-      return organizationId ? { organizationId } : {};
-    },
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
     authorization: { action: "write", resource: { type: "runs" } },
   },
   async ({ request, params, user }) => {

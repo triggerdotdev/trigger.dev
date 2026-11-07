@@ -68,7 +68,7 @@ import {
   redirectWithErrorMessage,
   redirectWithSuccessMessage,
 } from "~/models/message.server";
-import { resolveOrgIdFromSlug } from "~/models/organization.server";
+import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { env } from "~/env.server";
@@ -239,10 +239,7 @@ function redirectWithMessage(
 export const action = dashboardAction(
   {
     params: EnvironmentParamSchema,
-    context: async (params) => {
-      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
-      return organizationId ? { organizationId } : {};
-    },
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
     authorization: { action: "write", resource: { type: "github" } },
   },
   async ({ request, params, user }) => {

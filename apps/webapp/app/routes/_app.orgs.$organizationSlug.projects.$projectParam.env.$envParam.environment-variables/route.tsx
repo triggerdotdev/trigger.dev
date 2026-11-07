@@ -60,13 +60,13 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
-import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import {
   EnvironmentVariablesPresenter,
   type EnvironmentVariableWithSetValues,
 } from "~/presenters/v3/EnvironmentVariablesPresenter.server";
 import { type EnvironmentVariablesEnvironment } from "~/presenters/v3/environmentVariablesEnvironments.server";
 import { logger } from "~/services/logger.server";
+import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { VercelIntegrationService } from "~/services/vercelIntegration.server";
 import { cn } from "~/utils/cn";
@@ -132,15 +132,15 @@ export const loader = dashboardLoader(
       page: z.coerce.number().int().min(1).catch(1),
       search: z.string().trim().min(1).optional().catch(undefined),
     }),
-    context: async (params) => {
-      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
-      return organizationId ? { organizationId } : {};
-    },
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
     // No hard authorization: the page lists every environment. Values in
     // environments the role can't read are masked per-tier below.
   },
-  async ({ params, searchParams, user, ability }) => {
-    const { projectParam } = params;
+  async ({ searchParams, user, ability, context }) => {
+    const { projectId } = context;
+    if (!projectId) {
+      throw new Response("Not Found", { status: 404 });
+    }
 
     try {
       const presenter = new EnvironmentVariablesPresenter();
@@ -153,7 +153,7 @@ export const loader = dashboardLoader(
         allowEmptyEnvironmentVariableValues,
       } = await presenter.call({
         userId: user.id,
-        projectSlug: projectParam,
+        projectId,
         page: searchParams.page,
         search: searchParams.search,
       });
@@ -225,16 +225,26 @@ const schema = z.discriminatedUnion("action", [
 export const action = dashboardAction(
   {
     params: EnvironmentParamSchema,
-    context: async (params) => {
-      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
-      return organizationId ? { organizationId } : {};
-    },
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
     // Per-environment write:envvars is enforced in the handler — the target
     // environment tier comes from the submission, not the route params.
   },
-  async ({ request, params, user, ability }) => {
+  async ({ request, params, user, ability, context }) => {
     const userId = user.id;
     const { organizationSlug, projectParam, envParam } = params;
+
+    const { projectId } = context;
+    if (!projectId) {
+      throw new Response("Not Found", { status: 404 });
+    }
+
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, organization: { members: { some: { userId } } } },
+      select: { id: true },
+    });
+    if (!project) {
+      throw new Response("Not Found", { status: 404 });
+    }
 
     if (request.method.toUpperCase() !== "POST") {
       throw new Response("Method Not Allowed", { status: 405 });
@@ -254,11 +264,14 @@ export const action = dashboardAction(
         ? submission.value.environmentType
         : (
             await prisma.runtimeEnvironment.findFirst({
-              where: { id: submission.value.environmentId },
+              where: { id: submission.value.environmentId, projectId },
               select: { type: true },
             })
           )?.type;
-    if (targetEnvType && !ability.can("write", { type: "envvars", envType: targetEnvType })) {
+    if (!targetEnvType) {
+      return json(submission.reply({ formErrors: ["Environment not found"] }));
+    }
+    if (!ability.can("write", { type: "envvars", envType: targetEnvType })) {
       return json(
         submission.reply({
           formErrors: [
@@ -268,31 +281,12 @@ export const action = dashboardAction(
       );
     }
 
-    const project = await prisma.project.findUnique({
-      where: {
-        slug: params.projectParam,
-        organization: {
-          members: {
-            some: {
-              userId,
-            },
-          },
-        },
-      },
-      select: {
-        id: true,
-      },
-    });
-    if (!project) {
-      return json(submission.reply({ formErrors: ["Project not found"] }));
-    }
-
     // Per-env write gate for the mutating value actions: `environmentId` is a
     // user-supplied hidden field and the repository only checks project
     // membership. Mirrors the create route's check.
     if (submission.value.action === "edit" || submission.value.action === "delete") {
       const submittedEnvs = await prisma.runtimeEnvironment.findMany({
-        where: { projectId: project.id, id: submission.value.environmentId },
+        where: { projectId, id: submission.value.environmentId },
         select: { id: true, type: true, orgMember: { select: { userId: true } } },
       });
       const unauthorizedEnvironmentId = findUnauthorizedEnvironmentId(
@@ -308,7 +302,7 @@ export const action = dashboardAction(
     switch (submission.value.action) {
       case "edit": {
         const repository = new EnvironmentVariablesRepository(prisma);
-        const result = await repository.editValue(project.id, {
+        const result = await repository.editValue(projectId, {
           ...submission.value,
           lastUpdatedBy: {
             type: "user",
@@ -324,7 +318,7 @@ export const action = dashboardAction(
       }
       case "delete": {
         const repository = new EnvironmentVariablesRepository(prisma);
-        const result = await repository.deleteValue(project.id, submission.value);
+        const result = await repository.deleteValue(projectId, submission.value);
 
         if (!result.success) {
           return json(submission.reply({ formErrors: [result.error] }));
@@ -335,7 +329,7 @@ export const action = dashboardAction(
         const vercelService = new VercelIntegrationService();
         await fromPromise(
           (async () => {
-            const integration = await vercelService.getVercelProjectIntegration(project.id);
+            const integration = await vercelService.getVercelProjectIntegration(projectId);
             if (integration) {
               const runtimeEnv = await prisma.runtimeEnvironment.findUnique({
                 where: { id: environmentId },
@@ -343,7 +337,7 @@ export const action = dashboardAction(
               });
               if (runtimeEnv) {
                 await vercelService.removeSyncEnvVarForEnvironment(
-                  project.id,
+                  projectId,
                   key,
                   runtimeEnv.type as TriggerEnvironmentType
                 );
@@ -368,7 +362,7 @@ export const action = dashboardAction(
       }
       case "update-vercel-sync": {
         const vercelService = new VercelIntegrationService();
-        const integration = await vercelService.getVercelProjectIntegration(project.id);
+        const integration = await vercelService.getVercelProjectIntegration(projectId);
 
         if (!integration) {
           return json(submission.reply({ formErrors: ["Vercel integration not found"] }));
@@ -376,7 +370,7 @@ export const action = dashboardAction(
 
         // Update the sync mapping for the specific env var and environment
         await vercelService.updateSyncEnvVarForEnvironment(
-          project.id,
+          projectId,
           submission.value.key,
           submission.value.environmentType,
           submission.value.syncEnabled

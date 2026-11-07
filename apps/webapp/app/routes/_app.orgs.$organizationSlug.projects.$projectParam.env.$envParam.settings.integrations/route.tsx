@@ -27,7 +27,7 @@ import {
   redirectBackWithSuccessMessage,
 } from "~/models/message.server";
 import { prisma } from "~/db.server";
-import { resolveOrgIdFromSlug } from "~/models/organization.server";
+import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
 import { logger } from "~/services/logger.server";
 import { ProjectSettingsService } from "~/services/projectSettings.server";
@@ -53,10 +53,7 @@ export const handle = { pageTitle: "Integrations" };
 export const loader = dashboardLoader(
   {
     params: EnvironmentParamSchema,
-    context: async (params) => {
-      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
-      return organizationId ? { organizationId } : {};
-    },
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
     // No hard authorization: the page renders a PermissionDenied panel for
     // roles that can't manage any integration (see canManageIntegrations).
   },
@@ -162,10 +159,7 @@ const UpdateBuildSettingsFormSchema = z.object({
 export const action = dashboardAction(
   {
     params: EnvironmentParamSchema,
-    context: async (params) => {
-      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
-      return organizationId ? { organizationId } : {};
-    },
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
     // Build settings configure the Git-based deploy, so gate on write:github
     // (a restricted role can view neither this page nor mutate via a POST).
     authorization: { action: "write", resource: { type: "github" } },
