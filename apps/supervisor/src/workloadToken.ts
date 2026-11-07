@@ -1,5 +1,4 @@
 import {
-  classifyDeploymentIdHeader,
   mintWorkloadDeploymentToken,
   type WorkloadDeploymentTokenClaims,
   type WorkloadDeploymentTokenInput,
@@ -8,17 +7,70 @@ import { parseRunId } from "@trigger.dev/core/v3/isomorphic";
 import { Counter, Gauge } from "prom-client";
 import { env } from "./env.js";
 import { register } from "./metrics.js";
+import {
+  classifyDeploymentIdHeaderWithKeySet,
+  mintWorkloadDeploymentTokenEd25519,
+  parseWorkloadTokenPublicKeys,
+  parseWorkloadTokenSecrets,
+  type WorkloadDeploymentTokenKeySet,
+} from "./workloadTokenEd25519.js";
 
 const secret = env.WORKLOAD_TOKEN_SECRET;
+
+const signingKey = env.WORKLOAD_TOKEN_SIGNING_KEY;
+
+const publicKeys = parseWorkloadTokenPublicKeys(env.WORKLOAD_TOKEN_PUBLIC_KEYS);
+
+const secrets = parseWorkloadTokenSecrets(env.WORKLOAD_TOKEN_SECRETS);
 
 const previousSecret =
   env.WORKLOAD_TOKEN_SECRET_PREVIOUS && env.WORKLOAD_TOKEN_SECRET_PREVIOUS !== secret
     ? env.WORKLOAD_TOKEN_SECRET_PREVIOUS
     : undefined;
 
+const currentKeySet: WorkloadDeploymentTokenKeySet = {
+  publicKeys: publicKeys.filter((entry) => !entry.runCutoff).map((entry) => entry.publicKey),
+  hmacSecrets: [
+    ...new Set([
+      ...(secret ? [secret] : []),
+      ...secrets.filter((entry) => !entry.runCutoff).map((entry) => entry.secret),
+    ]),
+  ],
+};
+
+type PreviousKeySet = {
+  keySet: WorkloadDeploymentTokenKeySet;
+  runCutoffMs: number | undefined;
+};
+
 const previousRunCutoffMs = env.WORKLOAD_TOKEN_PREVIOUS_RUN_CUTOFF
   ? new Date(env.WORKLOAD_TOKEN_PREVIOUS_RUN_CUTOFF).getTime()
   : undefined;
+
+const previousKeySets: PreviousKeySet[] = [
+  ...publicKeys
+    .filter((entry) => entry.runCutoff)
+    .map((entry) => ({
+      keySet: { publicKeys: [entry.publicKey], hmacSecrets: [] },
+      runCutoffMs: Date.parse(entry.runCutoff!),
+    })),
+  ...secrets
+    .filter((entry) => entry.runCutoff)
+    .map((entry) => ({
+      keySet: { publicKeys: [], hmacSecrets: [entry.secret] },
+      runCutoffMs: Date.parse(entry.runCutoff!),
+    })),
+  ...(previousSecret
+    ? [
+        {
+          keySet: { publicKeys: [], hmacSecrets: [previousSecret] },
+          runCutoffMs: previousRunCutoffMs,
+        },
+      ]
+    : []),
+];
+
+const hasCurrentKeys = currentKeySet.publicKeys.length + currentKeySet.hmacSecrets.length > 0;
 
 // Absolute expiry (epoch seconds) shared by every mint, so tokens stay byte-deterministic per
 // deployment regardless of when/where a pod is created.
@@ -74,11 +126,19 @@ enforcementModeGauge.set({ mode: env.WORKLOAD_TOKEN_ENFORCEMENT }, 1);
 export async function mintDeploymentToken(
   claims: WorkloadDeploymentTokenInput
 ): Promise<string | undefined> {
-  if (!workloadTokensEnabled || !secret) {
+  if (!workloadTokensEnabled) {
     return undefined;
   }
 
-  const token = await mintWorkloadDeploymentToken(claims, secret, tokenExpSeconds);
+  if (!signingKey && !secret) {
+    throw new Error(
+      "Cannot mint a workload deployment token: set WORKLOAD_TOKEN_SIGNING_KEY or WORKLOAD_TOKEN_SECRET"
+    );
+  }
+
+  const token = signingKey
+    ? mintWorkloadDeploymentTokenEd25519(claims, signingKey, tokenExpSeconds)
+    : await mintWorkloadDeploymentToken(claims, secret!, tokenExpSeconds);
   mintCounter.inc({ env_type: claims.environment_type });
   return token;
 }
@@ -86,11 +146,17 @@ export async function mintDeploymentToken(
 export type WorkloadTokenKey = "current" | "previous";
 
 export type VerifiedDeploymentHeader =
-  | { outcome: "jwt_valid"; key: WorkloadTokenKey; claims: WorkloadDeploymentTokenClaims }
+  | {
+      outcome: "jwt_valid";
+      key: WorkloadTokenKey;
+      claims: WorkloadDeploymentTokenClaims;
+      runCutoffMs?: number;
+    }
   | {
       outcome: "jwt_invalid" | "legacy_bare" | "token_absent";
       key?: undefined;
       claims?: undefined;
+      runCutoffMs?: undefined;
     };
 
 /**
@@ -112,11 +178,11 @@ export async function verifyDeploymentIdHeader(
 }
 
 async function classify(value: string | undefined): Promise<VerifiedDeploymentHeader> {
-  if (!value || !secret) {
+  if (!value || !hasCurrentKeys) {
     return { outcome: "token_absent" };
   }
 
-  const result = await classifyDeploymentIdHeader(value, secret);
+  const result = await classifyDeploymentIdHeaderWithKeySet(value, currentKeySet);
 
   if (result.outcome === "jwt_valid" && result.claims) {
     return { outcome: "jwt_valid", key: "current", claims: result.claims };
@@ -126,10 +192,10 @@ async function classify(value: string | undefined): Promise<VerifiedDeploymentHe
     return { outcome: "legacy_bare" };
   }
 
-  if (previousSecret) {
-    const previous = await classifyDeploymentIdHeader(value, previousSecret);
+  for (const { keySet, runCutoffMs } of previousKeySets) {
+    const previous = await classifyDeploymentIdHeaderWithKeySet(value, keySet);
     if (previous.outcome === "jwt_valid" && previous.claims) {
-      return { outcome: "jwt_valid", key: "previous", claims: previous.claims };
+      return { outcome: "jwt_valid", key: "previous", claims: previous.claims, runCutoffMs };
     }
   }
 
@@ -142,18 +208,24 @@ export const previousKeyCutoffMode = env.WORKLOAD_TOKEN_PREVIOUS_CUTOFF_MODE;
 
 export const previousKeyCutoffEnforced = previousKeyCutoffMode === "enforce";
 
-export function checkPreviousKeyRunCutoff(runFriendlyId: unknown): PreviousKeyCutoffResult {
-  const result = previousKeyRunCutoffResult(runFriendlyId);
+export function checkPreviousKeyRunCutoff(
+  runFriendlyId: unknown,
+  runCutoffMs: number | undefined
+): PreviousKeyCutoffResult {
+  const result = previousKeyRunCutoffResult(runFriendlyId, runCutoffMs);
   previousCutoffCounter.inc({ result, mode: previousKeyCutoffMode });
   return result;
 }
 
-function previousKeyRunCutoffResult(runFriendlyId: unknown): PreviousKeyCutoffResult {
+function previousKeyRunCutoffResult(
+  runFriendlyId: unknown,
+  runCutoffMs: number | undefined
+): PreviousKeyCutoffResult {
   if (typeof runFriendlyId !== "string") {
     return "fail";
   }
 
-  if (previousRunCutoffMs === undefined) {
+  if (runCutoffMs === undefined) {
     return "pass";
   }
 
@@ -167,5 +239,5 @@ function previousKeyRunCutoffResult(runFriendlyId: unknown): PreviousKeyCutoffRe
     return "pass";
   }
 
-  return parsed.timestamp.getTime() < previousRunCutoffMs ? "pass" : "fail";
+  return parsed.timestamp.getTime() < runCutoffMs ? "pass" : "fail";
 }

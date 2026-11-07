@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { createPrivateKey, createPublicKey, randomUUID } from "crypto";
 import { env as stdEnv } from "std-env";
 import { z } from "zod";
 import { WeightedWorkerQueueSubscriptions } from "@trigger.dev/core/v3/runEngineWorker";
@@ -10,6 +10,52 @@ import {
   ReservedPorts,
   Tolerations,
 } from "./envUtil.js";
+import { parseWorkloadTokenPublicKeys, parseWorkloadTokenSecrets } from "./workloadTokenEd25519.js";
+
+function isEd25519PrivateKeyPem(pem: string): boolean {
+  try {
+    return createPrivateKey(pem).asymmetricKeyType === "ed25519";
+  } catch {
+    return false;
+  }
+}
+
+function areEd25519PublicKeys(raw: string | undefined): boolean {
+  try {
+    const entries = parseWorkloadTokenPublicKeys(raw);
+    return (
+      entries.length > 0 &&
+      entries.every((entry) => createPublicKey(entry.publicKey).asymmetricKeyType === "ed25519")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function safePublicKeyEntries(raw: string | undefined) {
+  try {
+    return parseWorkloadTokenPublicKeys(raw);
+  } catch {
+    return [];
+  }
+}
+
+function safeSecretEntries(raw: string | undefined) {
+  try {
+    return parseWorkloadTokenSecrets(raw);
+  } catch {
+    return [];
+  }
+}
+
+function workloadTokenSecretsError(raw: string | undefined): string | undefined {
+  try {
+    parseWorkloadTokenSecrets(raw);
+    return undefined;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
 
 export const Env = z
   .object({
@@ -41,6 +87,9 @@ export const Env = z
     // inbound workload calls. "disabled" = off; "log" = mint + verify + metrics only; "enforce" =
     // also reject invalid tokens.
     WORKLOAD_TOKEN_SECRET: z.string().optional(),
+    WORKLOAD_TOKEN_SIGNING_KEY: z.string().optional(),
+    WORKLOAD_TOKEN_PUBLIC_KEYS: z.string().optional(),
+    WORKLOAD_TOKEN_SECRETS: z.string().optional(),
     WORKLOAD_TOKEN_ENFORCEMENT: z.enum(["disabled", "log", "enforce"]).default("disabled"),
     WORKLOAD_TOKEN_SECRET_PREVIOUS: z.string().optional(),
     WORKLOAD_TOKEN_PREVIOUS_RUN_CUTOFF: z.string().datetime().optional(),
@@ -472,12 +521,35 @@ export const Env = z
         }
       }
     }
-    if (data.WORKLOAD_TOKEN_ENFORCEMENT !== "disabled" && !data.WORKLOAD_TOKEN_SECRET) {
+    const publicKeyEntries = safePublicKeyEntries(data.WORKLOAD_TOKEN_PUBLIC_KEYS);
+    const hasCurrentPublicKey = publicKeyEntries.some((entry) => !entry.runCutoff);
+    const hasCurrentSecretEntry = safeSecretEntries(data.WORKLOAD_TOKEN_SECRETS).some(
+      (entry) => !entry.runCutoff
+    );
+    if (
+      data.WORKLOAD_TOKEN_ENFORCEMENT !== "disabled" &&
+      !data.WORKLOAD_TOKEN_SECRET &&
+      !hasCurrentPublicKey &&
+      !hasCurrentSecretEntry
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message:
-          "WORKLOAD_TOKEN_SECRET is required when WORKLOAD_TOKEN_ENFORCEMENT is not disabled",
+          "WORKLOAD_TOKEN_SECRET, a WORKLOAD_TOKEN_SECRETS entry without a cutoff, or a WORKLOAD_TOKEN_PUBLIC_KEYS entry without runCutoff is required when WORKLOAD_TOKEN_ENFORCEMENT is not disabled",
         path: ["WORKLOAD_TOKEN_SECRET"],
+      });
+    }
+    if (
+      data.WORKLOAD_TOKEN_ENFORCEMENT !== "disabled" &&
+      data.TRIGGER_DEQUEUE_ENABLED &&
+      !data.WORKLOAD_TOKEN_SIGNING_KEY &&
+      !data.WORKLOAD_TOKEN_SECRET
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "WORKLOAD_TOKEN_SIGNING_KEY or WORKLOAD_TOKEN_SECRET is required to mint tokens when TRIGGER_DEQUEUE_ENABLED is true and WORKLOAD_TOKEN_ENFORCEMENT is not disabled",
+        path: ["WORKLOAD_TOKEN_SIGNING_KEY"],
       });
     }
     if (data.WORKLOAD_TOKEN_PREVIOUS_RUN_CUTOFF && !data.WORKLOAD_TOKEN_SECRET_PREVIOUS) {
@@ -486,6 +558,37 @@ export const Env = z
         message:
           "WORKLOAD_TOKEN_PREVIOUS_RUN_CUTOFF is set but WORKLOAD_TOKEN_SECRET_PREVIOUS is not, so the cutoff would never apply",
         path: ["WORKLOAD_TOKEN_PREVIOUS_RUN_CUTOFF"],
+      });
+    }
+    if (
+      data.WORKLOAD_TOKEN_SIGNING_KEY &&
+      !isEd25519PrivateKeyPem(data.WORKLOAD_TOKEN_SIGNING_KEY)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "WORKLOAD_TOKEN_SIGNING_KEY must be an Ed25519 private key in PKCS8 PEM format",
+        path: ["WORKLOAD_TOKEN_SIGNING_KEY"],
+      });
+    }
+    if (
+      data.WORKLOAD_TOKEN_PUBLIC_KEYS?.trim() &&
+      !areEd25519PublicKeys(data.WORKLOAD_TOKEN_PUBLIC_KEYS)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "WORKLOAD_TOKEN_PUBLIC_KEYS must be a JSON array of { publicKey: Ed25519 SPKI PEM, runCutoff?: ISO datetime } entries",
+        path: ["WORKLOAD_TOKEN_PUBLIC_KEYS"],
+      });
+    }
+    const secretsError = data.WORKLOAD_TOKEN_SECRETS?.trim()
+      ? workloadTokenSecretsError(data.WORKLOAD_TOKEN_SECRETS)
+      : undefined;
+    if (secretsError) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: secretsError,
+        path: ["WORKLOAD_TOKEN_SECRETS"],
       });
     }
     if (data.DELETE_CHECKPOINTS_ON_COMPLETION && data.WORKLOAD_TOKEN_ENFORCEMENT === "disabled") {

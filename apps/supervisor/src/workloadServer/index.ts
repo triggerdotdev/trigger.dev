@@ -107,6 +107,7 @@ function legacifyCheckpointType<T extends { checkpoint?: { type: string } | null
 
 type SupervisorSocketData = WorkloadClientSocketData & {
   workloadTokenKey?: WorkloadTokenKey;
+  workloadTokenRunCutoffMs?: number;
   workloadTokenClaims?: WorkloadDeploymentTokenClaims;
 };
 
@@ -118,6 +119,7 @@ type PreviousKeyCaller = {
   userAgent?: string;
   route: string;
   claims?: WorkloadDeploymentTokenClaims;
+  runCutoffMs?: number;
 };
 
 function runFriendlyIdFromMessage(message: unknown): string {
@@ -288,6 +290,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         userAgent: this.headerValueFromRequest(req, "user-agent"),
         route: `${req.method} ${req.url}`,
         claims: result.claims,
+        runCutoffMs: result.runCutoffMs,
       })
     ) {
       return { ok: false };
@@ -304,8 +307,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   }
 
   private previousKeyRunAllowed(runFriendlyId: string, caller: PreviousKeyCaller): boolean {
-    const cutoff = checkPreviousKeyRunCutoff(runFriendlyId);
-    const { claims, ...callerFields } = caller;
+    const { claims, runCutoffMs, ...callerFields } = caller;
+    const cutoff = checkPreviousKeyRunCutoff(runFriendlyId, runCutoffMs);
     const logArgs = {
       runId: runFriendlyId,
       key: "previous",
@@ -1016,6 +1019,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         }
 
         socket.data.workloadTokenKey = result.key;
+        socket.data.workloadTokenRunCutoffMs = result.runCutoffMs;
         socket.data.workloadTokenClaims = result.claims;
 
         // Re-source the deployment id from the verified claim; the raw header may be an opaque token.
@@ -1161,6 +1165,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           userAgent: socket.handshake.headers["user-agent"],
           route: eventName,
           claims: socket.data.workloadTokenClaims,
+          runCutoffMs: socket.data.workloadTokenRunCutoffMs,
         });
 
       socketLogger.debug("wsServer socket connected", { ...getSocketMetadata() });
