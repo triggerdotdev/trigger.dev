@@ -7,6 +7,7 @@ export const SideMenuSectionIdSchema = z.enum([
   "manage",
   "metrics",
   "deployments",
+  "security",
   "project-settings",
   "tasks",
 ]);

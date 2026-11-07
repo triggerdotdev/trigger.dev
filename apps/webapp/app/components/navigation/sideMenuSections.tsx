@@ -229,14 +229,6 @@ export function buildSideMenuSections({
         dataAction: "deployments",
       },
       {
-        id: "environment-variables",
-        name: "Environment variables",
-        icon: IDIcon,
-        activeIconColor: "text-environmentVariables",
-        to: v3EnvironmentVariablesPath(organization, project, environment),
-        dataAction: "environment variables",
-      },
-      {
         id: "preview-branches",
         name: "Preview branches",
         icon: BranchEnvironmentIconSmall,
@@ -252,6 +244,29 @@ export function buildSideMenuSections({
         to: regionsPath(organization, project, environment),
         dataAction: "regions",
       },
+    ],
+  });
+
+  staticSections.push({
+    id: "security",
+    title: "Security",
+    items: [
+      {
+        id: "api-keys",
+        name: "API keys",
+        icon: KeyIcon,
+        activeIconColor: "text-text-bright",
+        to: v3ApiKeysPath(organization, project, environment),
+        dataAction: "api keys",
+      },
+      {
+        id: "environment-variables",
+        name: "Environment variables",
+        icon: IDIcon,
+        activeIconColor: "text-environmentVariables",
+        to: v3EnvironmentVariablesPath(organization, project, environment),
+        dataAction: "environment variables",
+      },
       ...(featureFlags.trustedDeploysEnabled
         ? [
             {
@@ -261,6 +276,19 @@ export function buildSideMenuSections({
               activeIconColor: "text-deployments",
               to: v3TrustedPublishingPath(organization, project, environment),
               dataAction: "trusted-publishing",
+            } satisfies SideMenuItemConfig,
+          ]
+        : []),
+      ...(isManagedCloud && featureFlags.oidcEnabled
+        ? [
+            {
+              id: "oidc",
+              name: "OIDC",
+              icon: ShieldIcon,
+              activeIconColor: "text-text-bright",
+              to: v3OidcPath(organization, project, environment),
+              dataAction: "oidc",
+              badge: <NewBadge />,
             } satisfies SideMenuItemConfig,
           ]
         : []),
@@ -295,27 +323,6 @@ export function buildSideMenuSections({
         to: v3BulkActionsPath(organization, project, environment),
         dataAction: "bulk actions",
       },
-      {
-        id: "api-keys",
-        name: "API keys",
-        icon: KeyIcon,
-        activeIconColor: "text-text-bright",
-        to: v3ApiKeysPath(organization, project, environment),
-        dataAction: "api keys",
-      },
-      ...(isManagedCloud && featureFlags.oidcEnabled
-        ? [
-            {
-              id: "oidc",
-              name: "OIDC",
-              icon: ShieldIcon,
-              activeIconColor: "text-text-bright",
-              to: v3OidcPath(organization, project, environment),
-              dataAction: "oidc",
-              badge: <NewBadge />,
-            } satisfies SideMenuItemConfig,
-          ]
-        : []),
       ...(alertsInObservability ? [] : [alertsItem]),
       ...(isManagedCloud
         ? [

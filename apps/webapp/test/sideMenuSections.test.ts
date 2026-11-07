@@ -75,7 +75,7 @@ describe("buildSideMenuSections alerts placement", () => {
 
     const manage = sections.find((s) => s.id === "manage")!;
     const ids = manage.items.map((i) => i.id);
-    expect(ids.indexOf("alerts")).toBe(ids.indexOf("api-keys") + 1);
+    expect(ids.indexOf("alerts")).toBe(ids.indexOf("bulk-actions") + 1);
     const alerts = manage.items.find((i) => i.id === "alerts")!;
     expect(alerts.badge).toBeUndefined();
     expect(alerts.matchPrefix).toBeUndefined();
@@ -97,11 +97,11 @@ describe("buildSideMenuSections alerts placement", () => {
     expect(manage.items.some((i) => i.id === "alerts")).toBe(false);
   });
 
-  it("keeps Alerts in Manage after API keys when Observability is hidden", () => {
+  it("keeps Alerts in Manage after Bulk actions when Observability is hidden", () => {
     const sections = build(false);
     expect(sections.some((s) => s.id === "metrics")).toBe(false);
 
     const ids = sections.find((s) => s.id === "manage")!.items.map((i) => i.id);
-    expect(ids.indexOf("alerts")).toBe(ids.indexOf("api-keys") + 1);
+    expect(ids.indexOf("alerts")).toBe(ids.indexOf("bulk-actions") + 1);
   });
 });
