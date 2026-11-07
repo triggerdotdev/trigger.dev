@@ -528,6 +528,7 @@ export const Env = z
     );
     if (
       data.WORKLOAD_TOKEN_ENFORCEMENT !== "disabled" &&
+      data.TRIGGER_WORKLOAD_API_ENABLED &&
       !data.WORKLOAD_TOKEN_SECRET &&
       !hasCurrentPublicKey &&
       !hasCurrentSecretEntry
@@ -535,7 +536,7 @@ export const Env = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message:
-          "WORKLOAD_TOKEN_SECRET, a WORKLOAD_TOKEN_SECRETS entry without a cutoff, or a WORKLOAD_TOKEN_PUBLIC_KEYS entry without runCutoff is required when WORKLOAD_TOKEN_ENFORCEMENT is not disabled",
+          "WORKLOAD_TOKEN_SECRET, a WORKLOAD_TOKEN_SECRETS entry without a cutoff, or a WORKLOAD_TOKEN_PUBLIC_KEYS entry without runCutoff is required to verify tokens when TRIGGER_WORKLOAD_API_ENABLED is true and WORKLOAD_TOKEN_ENFORCEMENT is not disabled",
         path: ["WORKLOAD_TOKEN_SECRET"],
       });
     }

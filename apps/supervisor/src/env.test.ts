@@ -405,6 +405,19 @@ describe("ed25519 workload token keys", () => {
     expect(Env.safeParse({ ...publicOnly, WORKLOAD_TOKEN_SECRET: "secret" }).success).toBe(true);
   });
 
+  it("lets a pod without the workload API mint with only a signing key", () => {
+    const mintOnly = {
+      ...base,
+      WORKLOAD_TOKEN_ENFORCEMENT: "enforce",
+      TRIGGER_WORKLOAD_API_ENABLED: "false",
+      WORKLOAD_TOKEN_SIGNING_KEY: ed25519Pems.privateKey,
+    };
+    expect(Env.safeParse(mintOnly).success).toBe(true);
+    expect(Env.safeParse({ ...mintOnly, TRIGGER_WORKLOAD_API_ENABLED: "true" }).success).toBe(
+      false
+    );
+  });
+
   it("accepts an ed25519 signing key and refuses anything else", () => {
     expect(
       Env.safeParse({ ...base, WORKLOAD_TOKEN_SIGNING_KEY: ed25519Pems.privateKey }).success
