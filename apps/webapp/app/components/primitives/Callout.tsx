@@ -13,6 +13,7 @@ import {
 } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import { cn } from "~/utils/cn";
+import { sanitizeLinkTarget } from "~/utils/sanitizeUrl";
 import { Paragraph } from "./Paragraph";
 import { Spinner } from "./Spinner";
 
@@ -85,12 +86,13 @@ export function Callout({
   to?: string;
 }) {
   const variantDefinition = variantClasses[variant];
+  const linkTarget = to === undefined ? undefined : sanitizeLinkTarget(to);
 
-  if (to !== undefined) {
-    if (to.startsWith("http")) {
+  if (linkTarget !== undefined) {
+    if (linkTarget.startsWith("http")) {
       return (
         <a
-          href={to}
+          href={linkTarget}
           target="_blank"
           rel="noreferrer"
           className={cn(
@@ -117,7 +119,7 @@ export function Callout({
     } else {
       return (
         <Link
-          to={to}
+          to={linkTarget}
           className={cn(
             `flex w-full items-start justify-between gap-2.5 rounded-md border py-2 pl-2 pr-3 shadow-md backdrop-blur-xs`,
             variantDefinition.className,

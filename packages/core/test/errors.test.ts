@@ -10,8 +10,10 @@ import {
   createJsonErrorObject,
   formatErrorCauses,
   taskRunErrorEnhancer,
+  exceptionEventEnhancer,
 } from "../src/v3/errors.js";
 import type { TaskRunError } from "../src/v3/schemas/common.js";
+import type { ExceptionEventProperties } from "../src/v3/schemas/openTelemetry.js";
 
 // Helper: build a fake stack with N frames
 function buildStack(messageLines: string[], frameCount: number): string {
@@ -679,5 +681,53 @@ describe("formatErrorCauses", () => {
         stackTrace: true,
       })
     ).toBe("\n\nCaused by: TypeError: inner");
+  });
+});
+
+describe("exceptionEventEnhancer", () => {
+  it("returns only the type, message and stacktrace of an exception event", () => {
+    const exception = {
+      type: "Error",
+      message: "Request failed",
+      stacktrace: "Error: Request failed\n    at fn",
+      link: { name: "Guide", href: "https://example.com/guide" },
+      extra: "value",
+    } as ExceptionEventProperties;
+
+    expect(exceptionEventEnhancer(exception)).toEqual({
+      type: "Error",
+      message: "Request failed",
+      stacktrace: "Error: Request failed\n    at fn",
+    });
+  });
+
+  it("drops fields that are not strings", () => {
+    const exception = { type: "Error", message: { text: "nested" } } as ExceptionEventProperties;
+
+    expect(exceptionEventEnhancer(exception)).toEqual({ type: "Error" });
+  });
+
+  it("adds the machines docs link to an out of memory exception", () => {
+    const enhanced = exceptionEventEnhancer({
+      type: "TASK_PROCESS_OOM_KILLED",
+      stacktrace: "at fn",
+    });
+
+    expect(enhanced.type).toBe("TASK_PROCESS_OOM_KILLED");
+    expect(enhanced.stacktrace).toBe("at fn");
+    expect(enhanced.link).toEqual({
+      name: "Machines",
+      href: "https://trigger.dev/docs/v3/machines",
+    });
+  });
+
+  it("adds the contact link to a SIGSEGV exit", () => {
+    const enhanced = exceptionEventEnhancer({
+      type: "Internal error",
+      message: "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE: Process exited with SIGSEGV",
+    });
+
+    expect(enhanced.type).toBe("TASK_PROCESS_SIGSEGV");
+    expect(enhanced.link?.magic).toBe("CONTACT_FORM");
   });
 });
