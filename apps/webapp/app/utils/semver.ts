@@ -17,6 +17,10 @@ function parseVersionParts(version: string): number[] {
  * Returns a negative number if `a` should come before `b` (i.e. `a` is newer).
  */
 function compareVersionsDescending(a: string, b: string): number {
+  return compareVersionParts(b, a) || b.localeCompare(a);
+}
+
+export function compareVersionParts(a: string, b: string): number {
   const partsA = parseVersionParts(a);
   const partsB = parseVersionParts(b);
   const maxLen = Math.max(partsA.length, partsB.length);
@@ -25,11 +29,11 @@ function compareVersionsDescending(a: string, b: string): number {
     const segA = partsA[i] ?? 0;
     const segB = partsB[i] ?? 0;
     if (segA !== segB) {
-      return segB - segA;
+      return segA - segB;
     }
   }
 
-  return b.localeCompare(a);
+  return 0;
 }
 
 /**

@@ -155,6 +155,7 @@ export async function ensureRunThenAppend({
     Session,
     | "id"
     | "friendlyId"
+    | "externalId"
     | "taskIdentifier"
     | "triggerConfig"
     | "currentRunId"

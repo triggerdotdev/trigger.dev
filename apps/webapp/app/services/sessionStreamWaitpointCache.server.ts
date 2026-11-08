@@ -141,6 +141,20 @@ export async function drainSessionStreamWaitpoints(
   }
 }
 
+export async function listSessionStreamWaitpoints(
+  environmentId: string,
+  addressingKey: string,
+  io: "out" | "in"
+): Promise<string[]> {
+  if (!redis) return [];
+
+  const [members, legacyMembers] = await Promise.all([
+    redis.smembers(buildKey(environmentId, addressingKey, io)),
+    redis.smembers(buildLegacyKey(addressingKey, io)),
+  ]);
+  return [...new Set([...members, ...legacyMembers])];
+}
+
 /**
  * Remove a single waitpoint from the pending set. Called after a race
  * where `.wait()` completed the waitpoint from pre-arrived data.
