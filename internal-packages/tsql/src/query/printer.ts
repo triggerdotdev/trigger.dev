@@ -886,7 +886,7 @@ export class ClickHousePrinter {
       const textColumn = this.getTextColumnForField(field.chain);
       if (textColumn !== null && outputName) {
         // Use the text column instead of the JSON column, with alias to preserve name
-        sqlResult = `${this.printIdentifier(textColumn)} AS ${this.printIdentifier(outputName)}`;
+        sqlResult = `${this.printIdentifier(textColumn)} AS ${this.printGeneratedAlias(outputName)}`;
       } else {
         const virtualColumnName = this.getVirtualColumnNameForField(field.chain);
 
@@ -894,7 +894,7 @@ export class ClickHousePrinter {
           // Visit the field (which will return the expression)
           const visited = this.visit(col);
           // Add the alias to preserve the column name
-          sqlResult = `${visited} AS ${this.printIdentifier(virtualColumnName)}`;
+          sqlResult = `${visited} AS ${this.printGeneratedAlias(virtualColumnName)}`;
         } else {
           // Visit the field to get the ClickHouse SQL
           const visited = this.visit(col);
@@ -907,7 +907,7 @@ export class ClickHousePrinter {
             // e.g., output.message -> "output_message" (not "output_data_message")
             const dataPrefix = this.getDataPrefixForField(field.chain);
             const aliasName = this.buildAliasWithoutDataPrefix(field.chain, dataPrefix);
-            sqlResult = `${visited} AS ${this.printIdentifier(aliasName)}`;
+            sqlResult = `${visited} AS ${this.printGeneratedAlias(aliasName)}`;
             // Override output name for metadata
             effectiveOutputName = aliasName;
           }
@@ -918,7 +918,7 @@ export class ClickHousePrinter {
             sourceColumn?.clickhouseName &&
             sourceColumn.clickhouseName !== outputName
           ) {
-            sqlResult = `${visited} AS ${this.printIdentifier(outputName)}`;
+            sqlResult = `${visited} AS ${this.printGeneratedAlias(outputName)}`;
           } else {
             sqlResult = visited;
           }
@@ -935,7 +935,7 @@ export class ClickHousePrinter {
       const visited = this.visit(col);
       // Add explicit AS clause with the implicit name so ClickHouse results match our metadata
       if (outputName) {
-        sqlResult = `${visited} AS ${this.printIdentifier(outputName)}`;
+        sqlResult = `${visited} AS ${this.printGeneratedAlias(outputName, col)}`;
       } else {
         sqlResult = visited;
       }
@@ -1105,10 +1105,10 @@ export class ClickHousePrinter {
       // Check if this is a virtual column (has expression)
       if (isVirtualColumn(columnSchema)) {
         // Virtual column: use the expression with an alias
-        sqlResult = `(${columnSchema.expression}) AS ${this.printIdentifier(columnName)}`;
+        sqlResult = `(${columnSchema.expression}) AS ${this.printGeneratedAlias(columnName)}`;
       } else if (columnSchema.textColumn) {
         // JSON column with text column optimization: use the text column with alias
-        sqlResult = `${this.printIdentifier(columnSchema.textColumn)} AS ${this.printIdentifier(
+        sqlResult = `${this.printIdentifier(columnSchema.textColumn)} AS ${this.printGeneratedAlias(
           columnName
         )}`;
       } else {
@@ -1117,7 +1117,7 @@ export class ClickHousePrinter {
 
         // If the column has a different internal name, add an alias
         if (clickhouseName !== columnName) {
-          sqlResult = `${this.printIdentifier(clickhouseName)} AS ${this.printIdentifier(
+          sqlResult = `${this.printIdentifier(clickhouseName)} AS ${this.printGeneratedAlias(
             columnName
           )}`;
         } else {
@@ -2074,6 +2074,20 @@ export class ClickHousePrinter {
       if (property === "type" || property === "parent") continue;
       this.findShadowingAlias(value, tableAliases, seen);
     }
+  }
+
+  private printGeneratedAlias(name: string, expr?: Expression): string {
+    const lowerName = name.toLowerCase();
+    for (const tableAlias of this.tableContexts.keys()) {
+      const lowerTableAlias = tableAlias.toLowerCase();
+      if (lowerName !== lowerTableAlias && !lowerName.startsWith(`${lowerTableAlias}.`)) continue;
+      if (expr !== undefined && this.containsAggregateOrWindow(expr)) break;
+      throw new QueryError(
+        `Column name '${name}' conflicts with the table alias '${tableAlias}'. ` +
+          `Give the column an alias with AS, or choose a different table alias.`
+      );
+    }
+    return this.printIdentifier(name);
   }
 
   private containsAggregateOrWindow(expr: unknown, seen = new WeakSet<object>()): boolean {
