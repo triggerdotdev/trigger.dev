@@ -71,15 +71,27 @@ describe("findEnvironmentByApiKey — DEVELOPMENT branch resolution", () => {
       });
 
       // No header → the root dev env (unchanged, day-one behaviour).
-      const noHeader = await findEnvironmentByApiKey(devRoot.apiKey, undefined, prisma);
+      const noHeader = await findEnvironmentByApiKey(
+        devRoot.apiKey,
+        { branchName: undefined, clientIp: null },
+        prisma
+      );
       expect(noHeader?.id).toBe(devRoot.id);
 
       // "default" sentinel → also the root dev env.
-      const defaultHeader = await findEnvironmentByApiKey(devRoot.apiKey, "default", prisma);
+      const defaultHeader = await findEnvironmentByApiKey(
+        devRoot.apiKey,
+        { branchName: "default", clientIp: null },
+        prisma
+      );
       expect(defaultHeader?.id).toBe(devRoot.id);
 
       // A named branch that exists → the child env...
-      const child = await findEnvironmentByApiKey(devRoot.apiKey, "my-feature", prisma);
+      const child = await findEnvironmentByApiKey(
+        devRoot.apiKey,
+        { branchName: "my-feature", clientIp: null },
+        prisma
+      );
       expect(child?.id).toBe(namedBranch.id);
       expect(child?.branchName).toBe("my-feature");
       // ...but carrying the PARENT's api key and ownership, not the child's own key.
@@ -87,11 +99,19 @@ describe("findEnvironmentByApiKey — DEVELOPMENT branch resolution", () => {
       expect(child?.orgMemberId).toBe(orgMember.id);
 
       // A named branch that doesn't exist → null (not a silent fall-through to root).
-      const missing = await findEnvironmentByApiKey(devRoot.apiKey, "does-not-exist", prisma);
+      const missing = await findEnvironmentByApiKey(
+        devRoot.apiKey,
+        { branchName: "does-not-exist", clientIp: null },
+        prisma
+      );
       expect(missing).toBeNull();
 
       // An archived branch → null (archivedAt filter on the child include).
-      const archived = await findEnvironmentByApiKey(devRoot.apiKey, "archived-feature", prisma);
+      const archived = await findEnvironmentByApiKey(
+        devRoot.apiKey,
+        { branchName: "archived-feature", clientIp: null },
+        prisma
+      );
       expect(archived).toBeNull();
     }
   );
@@ -113,7 +133,7 @@ describe("findEnvironmentByApiKey — DEVELOPMENT branch resolution", () => {
     // refs/heads/ prefix is stripped to match the stored branch name.
     const resolved = await findEnvironmentByApiKey(
       devRoot.apiKey,
-      "refs/heads/feature/login",
+      { branchName: "refs/heads/feature/login", clientIp: null },
       prisma
     );
     expect(resolved?.id).toBe(namedBranch.id);
@@ -137,11 +157,19 @@ describe("findEnvironmentByApiKey — PREVIEW (regression guard)", () => {
       });
 
       // No header on a preview key → null (preview has no default).
-      const noHeader = await findEnvironmentByApiKey(previewParent.apiKey, undefined, prisma);
+      const noHeader = await findEnvironmentByApiKey(
+        previewParent.apiKey,
+        { branchName: undefined, clientIp: null },
+        prisma
+      );
       expect(noHeader).toBeNull();
 
       // With a branch → the child, carrying the parent's api key.
-      const resolved = await findEnvironmentByApiKey(previewParent.apiKey, "pr-123", prisma);
+      const resolved = await findEnvironmentByApiKey(
+        previewParent.apiKey,
+        { branchName: "pr-123", clientIp: null },
+        prisma
+      );
       expect(resolved?.id).toBe(previewBranch.id);
       expect(resolved?.apiKey).toBe(previewParent.apiKey);
     }
@@ -194,13 +222,21 @@ describe("findEnvironmentByApiKey — non-branchable", () => {
 
       const prod = await createEnv(prisma, project.id, organization.id, { type: "PRODUCTION" });
 
-      const resolved = await findEnvironmentByApiKey(prod.apiKey, "some-branch", prisma);
+      const resolved = await findEnvironmentByApiKey(
+        prod.apiKey,
+        { branchName: "some-branch", clientIp: null },
+        prisma
+      );
       expect(resolved?.id).toBe(prod.id);
     }
   );
 
   postgresTest("an unknown api key returns null", async ({ prisma }) => {
-    const resolved = await findEnvironmentByApiKey("tr_dev_nonexistent", undefined, prisma);
+    const resolved = await findEnvironmentByApiKey(
+      "tr_dev_nonexistent",
+      { branchName: undefined, clientIp: null },
+      prisma
+    );
     expect(resolved).toBeNull();
   });
 
@@ -215,7 +251,11 @@ describe("findEnvironmentByApiKey — non-branchable", () => {
     } as unknown as PrismaClient;
 
     await expect(
-      findEnvironmentByApiKey("tr_prod_sk_0123456789abcdefghijklmn", undefined, tx)
+      findEnvironmentByApiKey(
+        "tr_prod_sk_0123456789abcdefghijklmn",
+        { branchName: undefined, clientIp: null },
+        tx
+      )
     ).resolves.toBeNull();
     expect(apiKeyFind).toHaveBeenCalledOnce();
     expect(runtimeEnvironmentFind).not.toHaveBeenCalled();
@@ -234,7 +274,9 @@ describe("findEnvironmentByApiKey — non-branchable", () => {
         apiKey: { findFirst: apiKeyFind },
       } as unknown as PrismaClient;
 
-      await expect(findEnvironmentByApiKey(apiKey, undefined, tx)).resolves.toBeNull();
+      await expect(
+        findEnvironmentByApiKey(apiKey, { branchName: undefined, clientIp: null }, tx)
+      ).resolves.toBeNull();
       expect(runtimeEnvironmentFind).toHaveBeenCalledOnce();
       expect(revokedApiKeyFind).toHaveBeenCalledOnce();
       expect(apiKeyFind).not.toHaveBeenCalled();
@@ -262,7 +304,11 @@ describe("findEnvironmentByApiKey — additional keys", () => {
       },
     });
 
-    const resolved = await findEnvironmentByApiKey(plaintext, undefined, prisma);
+    const resolved = await findEnvironmentByApiKey(
+      plaintext,
+      { branchName: undefined, clientIp: null },
+      prisma
+    );
 
     expect(resolved?.id).toBe(environment.id);
     expect(resolved?.apiKey).toBe(environment.apiKey);
@@ -289,7 +335,9 @@ describe("findEnvironmentByApiKey — additional keys", () => {
         },
       });
 
-      await expect(findEnvironmentByApiKey(plaintext, undefined, prisma)).resolves.toBeNull();
+      await expect(
+        findEnvironmentByApiKey(plaintext, { branchName: undefined, clientIp: null }, prisma)
+      ).resolves.toBeNull();
     }
   );
 
@@ -312,7 +360,9 @@ describe("findEnvironmentByApiKey — additional keys", () => {
       },
     });
 
-    await expect(findEnvironmentByApiKey(plaintext, undefined, prisma)).resolves.toBeNull();
+    await expect(
+      findEnvironmentByApiKey(plaintext, { branchName: undefined, clientIp: null }, prisma)
+    ).resolves.toBeNull();
   });
 
   postgresTest("rejects revoked and expired additional keys", async ({ prisma }) => {
@@ -348,8 +398,12 @@ describe("findEnvironmentByApiKey — additional keys", () => {
       ],
     });
 
-    await expect(findEnvironmentByApiKey(revoked, undefined, prisma)).resolves.toBeNull();
-    await expect(findEnvironmentByApiKey(expired, undefined, prisma)).resolves.toBeNull();
+    await expect(
+      findEnvironmentByApiKey(revoked, { branchName: undefined, clientIp: null }, prisma)
+    ).resolves.toBeNull();
+    await expect(
+      findEnvironmentByApiKey(expired, { branchName: undefined, clientIp: null }, prisma)
+    ).resolves.toBeNull();
   });
 
   postgresTest(
@@ -374,9 +428,15 @@ describe("findEnvironmentByApiKey — additional keys", () => {
       });
 
       await expect(
-        findEnvironmentByApiKey(environment.apiKey, undefined, prisma)
+        findEnvironmentByApiKey(
+          environment.apiKey,
+          { branchName: undefined, clientIp: null },
+          prisma
+        )
       ).resolves.toMatchObject({ id: environment.id });
-      await expect(findEnvironmentByApiKey(additional, undefined, prisma)).resolves.toMatchObject({
+      await expect(
+        findEnvironmentByApiKey(additional, { branchName: undefined, clientIp: null }, prisma)
+      ).resolves.toMatchObject({
         id: environment.id,
       });
     }

@@ -2,6 +2,7 @@ import { $transaction, Prisma, prisma } from "~/db.server";
 import { deleteOrgMember } from "./deleteOrgMember.server";
 import { findOrCreateDirectoryUser } from "./directoryUser.server";
 import type { MembershipSource } from "~/models/member.server";
+import { isOrganizationJoinAllowed } from "~/services/accessPolicy.server";
 import { logger } from "~/services/logger.server";
 import { enqueueMemberDevelopmentEnvironments } from "~/services/memberDevEnvironments.server";
 import { rbac } from "~/services/rbac.server";
@@ -28,6 +29,13 @@ export type EnsureOrgMemberParams = {
   roleId: string | null;
   source: MembershipSource;
 };
+
+export class OrganizationNotAcceptingMembersError extends Error {
+  constructor() {
+    super("This organization is not accepting new members.");
+    this.name = "OrganizationNotAcceptingMembersError";
+  }
+}
 
 export type EnsureOrgMemberResult = {
   created: boolean;
@@ -106,6 +114,10 @@ export async function ensureOrgMember(
       source,
     });
     return { created: false, orgMemberId: existing.id, devEnvironmentsQueued: enqueued };
+  }
+
+  if (!(await isOrganizationJoinAllowed({ organizationId }))) {
+    throw new OrganizationNotAcceptingMembersError();
   }
 
   // Two concurrent JIT/invite flows can both miss the findFirst above and

@@ -53,6 +53,7 @@ import {
   createEnvironmentApiKey,
   disableRootApiKeyVisibility,
   revokeEnvironmentApiKey,
+  updateEnvironmentApiKeyIpRanges,
 } from "~/models/api-key.server";
 import {
   redirectWithErrorMessage,
@@ -71,6 +72,12 @@ import { docsPath, EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
+import {
+  ApiKeyAllowedIps,
+  ApiKeyLastUsed,
+  EditApiKeyIpRangesButton,
+  splitIpRangesInput,
+} from "./ApiKeyIpRanges";
 import { NewApiKeyDialog } from "./NewApiKeyDialog";
 
 export const handle: Handle = {
@@ -103,6 +110,7 @@ const CreateApiKeySchema = z.object({
       message: `You can select at most ${MAX_API_KEY_TASK_IDENTIFIERS} tasks`,
     })
     .default([]),
+  allowedIpRanges: z.string().optional(),
 });
 
 const DISABLE_ROOT_API_KEY_VISIBILITY_CONFIRMATION = "disable root key visibility";
@@ -110,6 +118,11 @@ const DISABLE_ROOT_API_KEY_VISIBILITY_CONFIRMATION = "disable root key visibilit
 const ApiKeyActionSchema = z.discriminatedUnion("action", [
   CreateApiKeySchema,
   z.object({ action: z.literal("revoke"), apiKeyId: z.string().min(1) }),
+  z.object({
+    action: z.literal("update-ip-ranges"),
+    apiKeyId: z.string().min(1),
+    allowedIpRanges: z.string().default(""),
+  }),
   z.object({
     action: z.literal("disable-root"),
     confirmation: z.literal(DISABLE_ROOT_API_KEY_VISIBILITY_CONFIRMATION),
@@ -239,6 +252,7 @@ export const action = dashboardAction(
               preset.usesTaskSelection && submission.data.taskScope === "selected"
                 ? submission.data.taskIdentifiers
                 : undefined,
+            allowedIpRanges: splitIpRangesInput(submission.data.allowedIpRanges),
           });
 
           return typedJsonWithSuccessMessage(
@@ -258,6 +272,15 @@ export const action = dashboardAction(
           });
 
           return redirectWithSuccessMessage(returnPath, request, "API key revoked");
+        }
+        case "update-ip-ranges": {
+          await updateEnvironmentApiKeyIpRanges({
+            environmentId: keyEnvironmentId,
+            apiKeyId: submission.data.apiKeyId,
+            allowedIpRanges: splitIpRangesInput(submission.data.allowedIpRanges),
+          });
+
+          return redirectWithSuccessMessage(returnPath, request, "Allowed IP addresses updated");
         }
         case "disable-root": {
           await disableRootApiKeyVisibility({
@@ -450,6 +473,9 @@ export default function Page() {
                           <TableCell>
                             <ApiKeyAccess label="No restrictions" />
                           </TableCell>
+                          <TableCell>
+                            <ApiKeyAllowedIps ranges={[]} />
+                          </TableCell>
                           <TableCell>–</TableCell>
                           <TableCell>–</TableCell>
                           <TableCell>–</TableCell>
@@ -517,23 +543,38 @@ export default function Page() {
                                 usesTaskSelection={apiKey.access.usesTaskSelection}
                               />
                             </TableCell>
+                            <TableCell>
+                              <ApiKeyAllowedIps ranges={apiKey.allowedIpRanges} />
+                            </TableCell>
                             <TableCell>{creator}</TableCell>
                             <TableCell>
                               <DateTime date={apiKey.createdAt} />
                             </TableCell>
                             <TableCell>
-                              {apiKey.lastUsedAt ? <DateTime date={apiKey.lastUsedAt} /> : "Never"}
+                              <ApiKeyLastUsed
+                                lastUsedAt={apiKey.lastUsedAt}
+                                lastUsedIp={apiKey.lastUsedIp}
+                              />
                             </TableCell>
                             <TableCellMenu
                               isSticky
                               className="w-32"
-                              hiddenButtons={
+                              popoverContent={
                                 cannotRevoke ? null : (
-                                  <RevokeApiKeyButton
-                                    id={apiKey.id}
-                                    name={apiKey.name}
-                                    canWrite={canWriteApiKeys}
-                                  />
+                                  <>
+                                    <EditApiKeyIpRangesButton
+                                      id={apiKey.id}
+                                      name={apiKey.name}
+                                      ranges={apiKey.allowedIpRanges}
+                                      lastUsedIp={apiKey.lastUsedIp}
+                                      canWrite={canWriteApiKeys}
+                                    />
+                                    <RevokeApiKeyButton
+                                      id={apiKey.id}
+                                      name={apiKey.name}
+                                      canWrite={canWriteApiKeys}
+                                    />
+                                  </>
                                 )
                               }
                             />
@@ -542,7 +583,7 @@ export default function Page() {
                       })}
 
                       {showCreateApiKeyPrompt ? (
-                        <TableBlankRow colSpan={8}>
+                        <TableBlankRow colSpan={9}>
                           <div className="flex flex-col items-center justify-center gap-y-4 py-8">
                             <div className="flex flex-col items-center gap-y-1">
                               <Header2>Create an API key for your backend</Header2>
@@ -593,6 +634,7 @@ function ApiKeyTableHeader() {
         <TableHeaderCell>Secret key</TableHeaderCell>
         <TableHeaderCell>Status</TableHeaderCell>
         <TableHeaderCell>Access</TableHeaderCell>
+        <TableHeaderCell>Allowed IPs</TableHeaderCell>
         <TableHeaderCell>Created by</TableHeaderCell>
         <TableHeaderCell>Created</TableHeaderCell>
         <TableHeaderCell>Last used</TableHeaderCell>
@@ -842,12 +884,16 @@ function RevokeApiKeyButton({
     <Dialog>
       <DialogTrigger asChild>
         <Button
-          variant="minimal/small"
+          variant="small-menu-item"
           LeadingIcon={NoSymbolIcon}
+          leadingIconClassName="text-error"
+          fullWidth
+          textAlignLeft
+          className="w-full px-1.5 py-[0.9rem]"
           disabled={!canWrite}
           tooltip={canWrite ? undefined : "You don't have permission to revoke API keys"}
         >
-          Revoke…
+          Revoke API key…
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-md">

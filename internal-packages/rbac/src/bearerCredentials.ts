@@ -10,6 +10,7 @@ import {
 } from "@trigger.dev/plugins";
 import { createHash } from "node:crypto";
 import { buildJwtAbility, permissiveAbility } from "./ability.js";
+import { clientIpFromHeaders, isIpAllowed } from "./ipAllowlist.js";
 import { resolvePublicTokenSubject, type PublicTokenSubjectCodec } from "./publicTokenSubject.js";
 
 export type BearerCredentialClients = {
@@ -36,6 +37,7 @@ export type BearerLookupPath =
   | "jwt_legacy_subject"
   | "legacy_public"
   | "run_token"
+  | "ip_not_allowed"
   | "not_found";
 
 // Telemetry-only
@@ -217,7 +219,12 @@ export class BearerCredentialResolver {
     const branchName = sanitizeBranchName(request.headers.get("x-trigger-branch"));
 
     if (isAdditionalApiKey(rawToken)) {
-      return this.resolveAdditionalKey(rawToken, branchName, options?.allowPreviewParent);
+      return this.resolveAdditionalKey(
+        rawToken,
+        branchName,
+        clientIpFromHeaders(request.headers),
+        options?.allowPreviewParent
+      );
     }
 
     return this.resolveRootKey(rawToken, branchName, options?.allowPreviewParent);
@@ -294,6 +301,7 @@ export class BearerCredentialResolver {
   private async resolveAdditionalKey(
     rawToken: string,
     branchName: string | null,
+    clientIp: string | null,
     allowPreviewParent = false
   ): Promise<BearerCredentialResult> {
     const resolution: BearerResolution = {
@@ -311,12 +319,23 @@ export class BearerCredentialResolver {
         id: true,
         lastUsedAt: true,
         scopes: true,
+        allowedIpRanges: true,
         runtimeEnvironment: { include: environmentInclude(branchName) },
       },
     });
 
     if (!match || match.runtimeEnvironment.project.deletedAt !== null) {
       return { ok: false, status: 401, error: "Invalid API key", resolution };
+    }
+
+    if (!isIpAllowed(match.allowedIpRanges, clientIp)) {
+      // Same response as an unknown key, so whoever holds a leaked key can't tell it is valid.
+      return {
+        ok: false,
+        status: 401,
+        error: "Invalid API key",
+        resolution: { credentialKind: "additional_api_key", lookupPath: "ip_not_allowed" },
+      };
     }
 
     const [branchError, resolvedEnvironment] = resolveBranch(
@@ -341,7 +360,7 @@ export class BearerCredentialResolver {
             revokedAt: null,
             OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
           },
-          data: { lastUsedAt: now },
+          data: { lastUsedAt: now, lastUsedIp: clientIp },
         });
       } catch {
         // Authentication should not fail because last-used telemetry could not be recorded.

@@ -61,7 +61,7 @@ const FAILED_RUN_STATUSES = [
 
 type FAILED_RUN_STATUSES = (typeof FAILED_RUN_STATUSES)[number];
 
-const CANCELLABLE_RUN_STATUSES = NON_FINAL_RUN_STATUSES;
+export const CANCELLABLE_RUN_STATUSES = NON_FINAL_RUN_STATUSES;
 
 export function isFinalRunStatus(status: TaskRunStatus): boolean {
   return FINAL_RUN_STATUSES.includes(status);

@@ -3,11 +3,12 @@ import type {
   PrismaTransactionClient,
   RuntimeEnvironment,
 } from "@trigger.dev/database";
-import type { HostRbacController } from "@trigger.dev/rbac";
+import { parseIpRanges, type HostRbacController } from "@trigger.dev/rbac";
 import { customAlphabet } from "nanoid";
 import { MAX_API_KEY_TASK_IDENTIFIERS } from "~/consts";
 import { $transaction, boundedIn, prisma } from "~/db.server";
 import { RuntimeEnvironmentType } from "~/database-types";
+import { env } from "~/env.server";
 import { apiKeyTelemetry, type ApiKeyTelemetry } from "~/services/apiKeyTelemetry.server";
 import { rbac } from "~/services/rbac.server";
 import { generateAdditionalApiKey, generateRootApiKey } from "~/utils/apiKeys";
@@ -234,6 +235,7 @@ export async function createEnvironmentApiKey(
     expiresAt,
     presetId,
     taskIdentifiers,
+    allowedIpRanges,
   }: {
     environmentId: string;
     taskEnvironmentId: string;
@@ -242,15 +244,19 @@ export async function createEnvironmentApiKey(
     expiresAt?: Date;
     presetId: string;
     taskIdentifiers?: string[];
+    // Raw user input: addresses or CIDR ranges. Empty or omitted allows any IP.
+    allowedIpRanges?: string[];
   },
   {
     prismaClient = prisma,
     rbacController = rbac,
     telemetryRecorder = apiKeyTelemetry,
+    allowPrivateIpRanges = env.API_KEY_ALLOW_PRIVATE_IP_RANGES,
   }: {
     prismaClient?: PrismaClient;
     rbacController?: Pick<HostRbacController, "prepareApiKeyPolicy">;
     telemetryRecorder?: ApiKeyTelemetry;
+    allowPrivateIpRanges?: boolean;
   } = {}
 ) {
   const environment = await prismaClient.runtimeEnvironment.findFirst({
@@ -267,6 +273,14 @@ export async function createEnvironmentApiKey(
 
   if (expiresAt && expiresAt.getTime() <= Date.now()) {
     throw new Error("Expiration must be in the future");
+  }
+
+  const ipRanges = parseIpRanges(allowedIpRanges ?? [], {
+    allowNonPublicRanges: allowPrivateIpRanges,
+  });
+  if (!ipRanges.ok) {
+    telemetryRecorder.recordOperation("create", "rejected", "invalid_ip_ranges");
+    throw new Error(ipRanges.error);
   }
 
   const selectedTasks = [...new Set(taskIdentifiers?.map((task) => task.trim()).filter(Boolean))];
@@ -322,6 +336,7 @@ export async function createEnvironmentApiKey(
             expiresAt,
             presetId: prepared.policy.presetId,
             scopes: prepared.policy.scopes,
+            allowedIpRanges: ipRanges.ranges,
           },
         });
       if (environment.type !== "DEVELOPMENT") {
@@ -402,6 +417,54 @@ export async function revokeEnvironmentApiKey(
   }
 
   telemetryRecorder.recordOperation("revoke", "success");
+}
+
+/** Replace the IP ranges an API key may be used from. An empty list allows any IP. */
+export async function updateEnvironmentApiKeyIpRanges(
+  {
+    environmentId,
+    apiKeyId,
+    allowedIpRanges,
+  }: {
+    environmentId: string;
+    apiKeyId: string;
+    allowedIpRanges: string[];
+  },
+  {
+    prismaClient = prisma,
+    telemetryRecorder = apiKeyTelemetry,
+    allowPrivateIpRanges = env.API_KEY_ALLOW_PRIVATE_IP_RANGES,
+  }: {
+    prismaClient?: Pick<PrismaClient, "apiKey">;
+    telemetryRecorder?: ApiKeyTelemetry;
+    allowPrivateIpRanges?: boolean;
+  } = {}
+): Promise<string[]> {
+  const ipRanges = parseIpRanges(allowedIpRanges, { allowNonPublicRanges: allowPrivateIpRanges });
+  if (!ipRanges.ok) {
+    telemetryRecorder.recordOperation("update_ip_ranges", "rejected", "invalid_ip_ranges");
+    throw new Error(ipRanges.error);
+  }
+
+  const result = await (async () => {
+    try {
+      return await prismaClient.apiKey.updateMany({
+        where: { id: apiKeyId, runtimeEnvironmentId: environmentId, revokedAt: null },
+        data: { allowedIpRanges: ipRanges.ranges },
+      });
+    } catch (error) {
+      telemetryRecorder.recordOperation("update_ip_ranges", "error", "database_error");
+      throw error;
+    }
+  })();
+
+  if (result.count !== 1) {
+    telemetryRecorder.recordOperation("update_ip_ranges", "rejected", "not_found_or_revoked");
+    throw new Error("API key not found or already revoked");
+  }
+
+  telemetryRecorder.recordOperation("update_ip_ranges", "success");
+  return ipRanges.ranges;
 }
 
 export function createApiKeyForEnv(envType: RuntimeEnvironment["type"]) {

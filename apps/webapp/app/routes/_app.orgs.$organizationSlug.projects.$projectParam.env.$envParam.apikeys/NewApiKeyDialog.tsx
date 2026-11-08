@@ -33,6 +33,7 @@ import { cn } from "~/utils/cn";
 import { v3BillingPath } from "~/utils/pathBuilder";
 import type { action, ApiKeyActionData } from "./route";
 import { ApiKeyExpiryPicker } from "./ApiKeyExpiryPicker";
+import { ApiKeyIpRangesField } from "./ApiKeyIpRanges";
 
 type NewApiKeyDialogProps = {
   availableTasks: string[];
@@ -72,6 +73,7 @@ export function NewApiKeyDialog({
   const [presetId, setPresetId] = useState(defaultPresetId);
   const [taskScope, setTaskScope] = useState<"all" | "selected">("all");
   const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
+  const [ipRanges, setIpRanges] = useState("");
   const [createdApiKey, setCreatedApiKey] = useState<string>();
 
   useEffect(() => {
@@ -97,6 +99,7 @@ export function NewApiKeyDialog({
       setPresetId(defaultPresetId);
       setTaskScope("all");
       setSelectedTasks([]);
+      setIpRanges("");
       setCreatedApiKey(undefined);
       setShowError(false);
     }
@@ -220,6 +223,10 @@ export function NewApiKeyDialog({
                         : "Expires at the end of the chosen day, UTC."}
                     </Hint>
                   </InputGroup>
+
+                  <div className="sm:col-span-2">
+                    <ApiKeyIpRangesField value={ipRanges} onChange={setIpRanges} />
+                  </div>
                 </div>
 
                 {showAccessControls && presets ? (

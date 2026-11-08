@@ -7,6 +7,21 @@ export type ApplyOperationResult = {
   unappliedOperations: RunMetadataChangeOperation[];
 };
 
+const JSON_PATH_COMPONENTS = /(?:[^.\\]|\\.)+/g;
+
+/** A wildcard key expands over the stored keys, so check each path it expands to as well. */
+function wildcardMatchesAreSafe(key: string, metadata: Record<string, unknown>): boolean {
+  if (!key.startsWith("$.") || !key.match(JSON_PATH_COMPONENTS)?.includes("*")) {
+    return true;
+  }
+
+  const matches: Array<{ path: JSONHeroPath }> = new JSONHeroPath(key).all(metadata, {
+    includePath: true,
+  });
+
+  return matches.every((match) => isSafeMetadataKey(match.path.toString()));
+}
+
 export function applyMetadataOperations(
   currentMetadata: Record<string, unknown>,
   operations: RunMetadataChangeOperation | RunMetadataChangeOperation[]
@@ -18,7 +33,10 @@ export function applyMetadataOperations(
   for (const operation of Array.isArray(operations) ? operations : [operations]) {
     // Prevent unsafe JSON paths and direct __proto__ assignments from changing Object.prototype.
     // ("update" carries no key.)
-    if (operation.type !== "update" && !isSafeMetadataKey(operation.key)) {
+    if (
+      operation.type !== "update" &&
+      (!isSafeMetadataKey(operation.key) || !wildcardMatchesAreSafe(operation.key, newMetadata))
+    ) {
       unappliedOperations.push(operation);
       continue;
     }

@@ -100,7 +100,7 @@ async function checkEmailPolicy(
   email: string
 ): Promise<EmailChangeResult> {
   try {
-    assertEmailAllowed(email);
+    await assertEmailAllowed(email);
   } catch (error) {
     return failure(
       error instanceof Error ? error.message : "That email address isn't allowed.",

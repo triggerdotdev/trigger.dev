@@ -866,6 +866,10 @@ const EnvironmentSchema = z
     WEBHOOK_METRICS_MAX_ENTRIES: z.coerce.number().int().positive().default(10_000),
     WEBHOOK_METRICS_MAX_ENDPOINTS: z.coerce.number().int().positive().default(500),
 
+    // Lets API key IP allowlists include private and reserved ranges. Only for installs whose
+    // clients reach the API over a private network; where requests from inside the platform
+    // arrive from private addresses, such a range would admit them.
+    API_KEY_ALLOW_PRIVATE_IP_RANGES: BoolEnvWithDefault(false),
     API_RATE_LIMIT_JWT_WINDOW: z.string().default("1m"),
     API_RATE_LIMIT_JWT_TOKENS: z.coerce.number().int().default(60),
 

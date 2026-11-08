@@ -151,3 +151,21 @@ export type {
   SecurityNoticesPlugin,
   SecurityNoticesPluginConfig,
 } from "./securityNotices.js";
+
+export type {
+  AccessPolicyController,
+  AccessPolicyPlugin,
+  AccessPolicyPluginConfig,
+  AdminAction,
+  AdminActionField,
+  AdminActionInput,
+  AdminActionResult,
+  AdminPanel,
+  EnvironmentPauseState,
+  OrganizationJoinCheck,
+  OrganizationJoinDecision,
+  SessionCheck,
+  SessionDecision,
+  SignInCheck,
+  SignInDecision,
+} from "./accessPolicy.js";

@@ -36,6 +36,7 @@ import {
   isOrganizationAccessToken,
 } from "./organizationAccessToken.server";
 import { isPublicJWT, validatePublicJwtKey } from "./realtime/jwtAuth.server";
+import { clientIpFromHeaders } from "@trigger.dev/rbac";
 import { isApiKeyInGraceWindow } from "./apiKeyGraceWindow.server";
 import { isAdditionalApiKey } from "@trigger.dev/core/v3/apiKeys";
 import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
@@ -103,6 +104,19 @@ type ApiAuthenticationResultFailure = {
   error: string;
 };
 
+type LegacyApiKeyOptions = {
+  allowPublicKey?: boolean;
+  allowJWT?: boolean;
+  branchName?: string;
+  // Checked against an additional key's allowed IP ranges; see ApiKeyLookupOptions.
+  clientIp: string | null;
+};
+
+/** Reads an auth flag from the caller's own properties only. */
+function ownFlag<T extends object>(options: T, key: keyof T & string): boolean {
+  return Object.hasOwn(options, key) && options[key] === true;
+}
+
 /**
  * @deprecated Use `authenticateApiRequestWithFailure` instead.
  */
@@ -117,7 +131,11 @@ export async function authenticateApiRequest(
   }
 
   return observeLegacyBearerAuthentication(request, () =>
-    authenticateApiKey(apiKey, { ...options, branchName })
+    authenticateApiKey(apiKey, {
+      ...options,
+      branchName,
+      clientIp: clientIpFromHeaders(request.headers),
+    })
   );
 }
 
@@ -139,7 +157,11 @@ export async function authenticateApiRequestWithFailure(
   }
 
   return observeLegacyBearerAuthentication(request, () =>
-    authenticateApiKeyWithFailure(apiKey, { ...options, branchName })
+    authenticateApiKeyWithFailure(apiKey, {
+      ...options,
+      branchName,
+      clientIp: clientIpFromHeaders(request.headers),
+    })
   );
 }
 
@@ -148,11 +170,7 @@ export async function authenticateApiRequestWithFailure(
  */
 export async function authenticateApiKey(
   apiKey: string,
-  options: {
-    allowPublicKey?: boolean;
-    allowJWT?: boolean;
-    branchName?: string;
-  } = {}
+  options: LegacyApiKeyOptions
 ): Promise<ApiAuthenticationResultSuccess | undefined> {
   const result = getApiKeyResult(apiKey);
 
@@ -160,11 +178,11 @@ export async function authenticateApiKey(
     return;
   }
 
-  if (!options.allowPublicKey && result.type === "PUBLIC") {
+  if (!ownFlag(options, "allowPublicKey") && result.type === "PUBLIC") {
     return;
   }
 
-  if (!options.allowJWT && result.type === "PUBLIC_JWT") {
+  if (!ownFlag(options, "allowJWT") && result.type === "PUBLIC_JWT") {
     return;
   }
 
@@ -182,7 +200,10 @@ export async function authenticateApiKey(
       };
     }
     case "PRIVATE": {
-      const environment = await findEnvironmentByApiKey(result.apiKey, options.branchName);
+      const environment = await findEnvironmentByApiKey(result.apiKey, {
+        branchName: options.branchName,
+        clientIp: options.clientIp,
+      });
       if (!environment) {
         return;
       }
@@ -220,11 +241,7 @@ export async function authenticateApiKey(
  */
 async function authenticateApiKeyWithFailure(
   apiKey: string,
-  options: {
-    allowPublicKey?: boolean;
-    allowJWT?: boolean;
-    branchName?: string;
-  } = {}
+  options: LegacyApiKeyOptions
 ): Promise<ApiAuthenticationResult> {
   const result = getApiKeyResult(apiKey);
 
@@ -235,14 +252,14 @@ async function authenticateApiKeyWithFailure(
     };
   }
 
-  if (!options.allowPublicKey && result.type === "PUBLIC") {
+  if (!ownFlag(options, "allowPublicKey") && result.type === "PUBLIC") {
     return {
       ok: false,
       error: "Public API keys are not allowed for this request",
     };
   }
 
-  if (!options.allowJWT && result.type === "PUBLIC_JWT") {
+  if (!ownFlag(options, "allowJWT") && result.type === "PUBLIC_JWT") {
     return {
       ok: false,
       error: "Public JWT API keys are not allowed for this request",
@@ -266,18 +283,23 @@ async function authenticateApiKeyWithFailure(
       };
     }
     case "PRIVATE": {
-      const resolution = await findEnvironmentByApiKeyWithResolution(
-        result.apiKey,
-        options.branchName
-      );
+      const resolution = await findEnvironmentByApiKeyWithResolution(result.apiKey, {
+        branchName: options.branchName,
+        clientIp: options.clientIp,
+      });
       if (!resolution.ok) {
-        return {
-          ok: false,
-          error:
-            resolution.reason === "restricted"
-              ? "This endpoint does not support restricted API keys. Use an API key with full environment access."
-              : "Invalid API Key",
-        };
+        switch (resolution.reason) {
+          case "restricted":
+            return {
+              ok: false,
+              error:
+                "This endpoint does not support restricted API keys. Use an API key with full environment access.",
+            };
+          // A disallowed IP gets the same answer as an unknown key, so the key's validity stays hidden.
+          case "ip-not-allowed":
+          case "not-found":
+            return { ok: false, error: "Invalid API Key" };
+        }
       }
 
       return {
@@ -370,19 +392,18 @@ function isDeniedDuringGraceWindow(action: string, resource: RbacResource): bool
 
 export async function authenticateApiKeyWithScope(
   request: Request,
-  {
-    action,
-    resource,
-    allowJWT = false,
-    allowPreviewParent = false,
-    allowRunToken = false,
-  }: ApiKeyScopeAuthorization,
+  scope: ApiKeyScopeAuthorization,
   authorizeBearer: typeof authenticateAuthorizeBearerWithTelemetry = authenticateAuthorizeBearerWithTelemetry,
   isInGraceWindow: typeof isApiKeyInGraceWindow = isApiKeyInGraceWindow
 ): Promise<
   | { ok: true; authentication: ApiAuthenticationResultSuccess }
   | { ok: false; status: 401 | 403; error: string }
 > {
+  const { action, resource } = scope;
+  const allowJWT = ownFlag(scope, "allowJWT");
+  const allowPreviewParent = ownFlag(scope, "allowPreviewParent");
+  const allowRunToken = ownFlag(scope, "allowRunToken");
+
   const apiKey = getApiKeyFromHeader(request.headers.get("Authorization"));
   if (!apiKey) {
     return { ok: false, status: 401, error: "Invalid or Missing API key" };
@@ -476,10 +497,7 @@ export async function authenticateRequestWithScopedApiKey(
 
 export async function authenticateAuthorizationHeader(
   authorization: string,
-  {
-    allowPublicKey = false,
-    allowJWT = false,
-  }: { allowPublicKey?: boolean; allowJWT?: boolean } = {}
+  options: { allowPublicKey?: boolean; allowJWT?: boolean; clientIp: string | null }
 ): Promise<ApiAuthenticationResult | undefined> {
   const apiKey = getApiKeyFromHeader(authorization);
 
@@ -487,7 +505,11 @@ export async function authenticateAuthorizationHeader(
     return;
   }
 
-  return authenticateApiKey(apiKey, { allowPublicKey, allowJWT });
+  return authenticateApiKey(apiKey, {
+    allowPublicKey: ownFlag(options, "allowPublicKey"),
+    allowJWT: ownFlag(options, "allowJWT"),
+    clientIp: options.clientIp,
+  });
 }
 
 function isPublicApiKey(key: string) {
@@ -664,6 +686,7 @@ export async function authenticateRequest<
       authenticateApiKey(apiKey, {
         allowPublicKey: false,
         branchName,
+        clientIp: clientIpFromHeaders(request.headers),
       })
     );
 

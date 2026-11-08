@@ -68,7 +68,7 @@ export async function countInProgressRunsForBillableEnvironment(
   ]);
 }
 
-async function countRunsForBillableEnvironment(
+export async function countRunsForBillableEnvironment(
   runsRepository: RunsRepository,
   organizationId: string,
   environment: BillableEnvironmentRef,

@@ -21,6 +21,19 @@ export function getManualPauseEnvironmentResult(
   | { proceed: true }
   | { proceed: false; success: true; state: PauseStatus }
   | { proceed: false; success: false; error: string } {
+  if (action === "resumed" && pauseSource === EnvironmentPauseSource.ADMIN_BAN) {
+    return {
+      proceed: false,
+      success: false,
+      error: "This environment is paused by an administrator.",
+    };
+  }
+
+  if (action === "paused" && pauseSource === EnvironmentPauseSource.ADMIN_BAN) {
+    // Already paused by an administrator; keep pauseSource so it can be restored later.
+    return { proceed: false, success: true, state: "paused" };
+  }
+
   if (action === "resumed" && pauseSource === EnvironmentPauseSource.BILLING_LIMIT) {
     return {
       proceed: false,

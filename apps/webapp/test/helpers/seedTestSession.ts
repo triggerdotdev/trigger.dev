@@ -47,9 +47,14 @@ export async function seedTestUser(
 //
 // remix-auth's default sessionKey is "user" and stores AuthUser as
 // { userId } — see apps/webapp/app/services/authUser.ts.
-export async function seedTestSession(opts: { userId: string }): Promise<string> {
+export async function seedTestSession(opts: {
+  userId: string;
+  issuedAt?: number;
+}): Promise<string> {
   const session = await sessionStorage.getSession();
   session.set("user", { userId: opts.userId });
+  // Mirrors SESSION_ISSUED_AT_KEY in app/services/sessionDuration.server.ts.
+  if (opts.issuedAt !== undefined) session.set("issuedAt", opts.issuedAt);
   const setCookie = await sessionStorage.commitSession(session);
   // commitSession returns "__session=<value>; Path=/; ...". The Cookie
   // header only needs the name=value pair.

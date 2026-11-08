@@ -21,6 +21,7 @@ import {
   getOrganizationSessionCap,
   isAllowedSessionDuration,
   SESSION_DURATION_OPTIONS,
+  SESSION_ISSUED_AT_KEY,
 } from "../app/services/sessionDuration.server";
 
 const oneHour = 60 * 60;
@@ -212,6 +213,16 @@ describe("commitAuthenticatedSession", () => {
       expect(updated.nextSessionEnd?.getTime()).toBe(now + oneHour * 1000);
     }
   );
+
+  // Catches: sessions without an issue time, which session policy checks need.
+  containerTest("records when the session was issued", async ({ prisma }) => {
+    const user = await createUser(prisma, "commit-issued@test.com", oneHour);
+    const session = await makeEmptySession();
+
+    await commitAuthenticatedSession(session, user.id, 1_700_000_000_000, prisma);
+
+    expect(session.get(SESSION_ISSUED_AT_KEY)).toBe(1_700_000_000_000);
+  });
 
   containerTest("resets nextSessionEnd to a fresh window on each commit", async ({ prisma }) => {
     const user = await createUser(prisma, "commit-reset@test.com", oneHour);

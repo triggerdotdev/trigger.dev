@@ -455,7 +455,11 @@ model ApiKey {
   presetId String?  @map("preset_id")
   scopes   String[]
 
+  /// CIDR ranges this key may be used from. Empty means any IP.
+  allowedIpRanges String[] @default([]) @map("allowed_ip_ranges")
+
   lastUsedAt DateTime? @map("last_used_at")
+  lastUsedIp String?   @map("last_used_ip")
   revokedAt  DateTime? @map("revoked_at")
   expiresAt  DateTime? @map("expires_at")
   updatedAt  DateTime  @updatedAt @map("updated_at")
@@ -488,6 +492,7 @@ enum RuntimeEnvironmentType {
 
 enum EnvironmentPauseSource {
   BILLING_LIMIT
+  ADMIN_BAN
 }
 
 model Project {

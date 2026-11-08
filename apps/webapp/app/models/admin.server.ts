@@ -1,3 +1,4 @@
+import { forcedSupportAccess } from "~/services/accessPolicy.server";
 import { redirect } from "@remix-run/server-runtime";
 import { $replica, prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
@@ -123,9 +124,17 @@ export async function adminGetUsers(userId: string, { page, search }: SearchPara
   });
 
   const totalUsers = await prisma.user.count();
+  const forced = await forcedSupportAccess(
+    users.flatMap((u) => u.orgMemberships.map(({ organization }) => organization.id))
+  );
 
   return {
-    users,
+    users: users.map((u) => ({
+      ...u,
+      orgMemberships: u.orgMemberships.map(({ organization }) => ({
+        organization: { ...organization, supportAccessForced: forced.has(organization.id) },
+      })),
+    })),
     page,
     pageCount: Math.ceil(totalUsers / pageSize),
     filters: {
@@ -224,9 +233,13 @@ export async function adminGetOrganizations(userId: string, { page, search }: Se
   });
 
   const totalOrgs = await prisma.organization.count();
+  const forced = await forcedSupportAccess(organizations.map((o) => o.id));
 
   return {
-    organizations,
+    organizations: organizations.map((o) => ({
+      ...o,
+      supportAccessForced: forced.has(o.id),
+    })),
     page,
     pageCount: Math.ceil(totalOrgs / pageSize),
     filters: {

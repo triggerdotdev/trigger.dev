@@ -82,6 +82,8 @@ export class ApiKeysPresenter {
               presetId: true,
               scopes: true,
               lastUsedAt: true,
+              lastUsedIp: true,
+              allowedIpRanges: true,
               revokedAt: true,
               expiresAt: true,
               createdAt: true,

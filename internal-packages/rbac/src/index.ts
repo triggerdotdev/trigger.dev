@@ -56,6 +56,13 @@ export { buildJwtAbility, scopesWithinAbility } from "./ability.js";
 export { FULL_ACCESS_PRESET_ID, scopesGrantFullAccess } from "@trigger.dev/plugins";
 export { resolveJwtSigningKey } from "./bearerCredentials.js";
 export {
+  clientIpFromHeaders,
+  isIpAllowed,
+  MAX_API_KEY_IP_RANGES,
+  parseIpRanges,
+  type ParseIpRangesResult,
+} from "./ipAllowlist.js";
+export {
   createPublicTokenSubjectCodec,
   isSealedPublicTokenSubject,
   resolvePublicTokenSubject,
@@ -112,6 +119,10 @@ export function withActionAliases(underlying: RbacAbility): RbacAbility {
     },
     canSuper: () => underlying.canSuper(),
   };
+}
+
+function ownFlag(options: BearerAuthOptions | undefined, key: keyof BearerAuthOptions): boolean {
+  return options !== undefined && Object.getOwnPropertyDescriptor(options, key)?.value === true;
 }
 
 function resolveBearerResolution(
@@ -248,7 +259,12 @@ class LazyController implements RoleBaseAccessController {
   async authenticateBearer(...args: Parameters<RoleBaseAccessController["authenticateBearer"]>) {
     const controller = await this.c();
     const usingPlugin = await controller.isUsingPlugin();
-    const [request, options] = args;
+    const [request, callerOptions] = args;
+    // Pass on only the flags the caller set itself.
+    const options: BearerAuthOptions = {
+      allowJWT: ownFlag(callerOptions, "allowJWT"),
+      allowPreviewParent: ownFlag(callerOptions, "allowPreviewParent"),
+    };
     const rawToken = request.headers
       .get("Authorization")
       ?.replace(/^Bearer /, "")
@@ -263,8 +279,8 @@ class LazyController implements RoleBaseAccessController {
     // remain authoritative in the installed controller.
     const result =
       useHostForPublicJWT || useHostForAdditionalKey
-        ? await this._hostCredentialResolver.authenticate(...args)
-        : await controller.authenticateBearer(...args);
+        ? await this._hostCredentialResolver.authenticate(request, options)
+        : await controller.authenticateBearer(request, options);
 
     const resolution = resolveBearerResolution(result, {
       useHostForAdditionalKey,

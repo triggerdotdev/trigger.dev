@@ -90,6 +90,7 @@ mode: "wide"
 | `API_RATE_LIMIT_METRICS_MAX_ENTRIES`             | No       | 10000                 | Cap on distinct (environment, bucket) entries held between flushes.                                                |
 | `API_RATE_LIMIT_METRICS_WAIT_FOR_ASYNC_INSERT`   | No       | 0                     | Wait for ClickHouse to write each async insert of API rate limit metrics, surfacing write failures.                |
 | `API_RATE_LIMIT_METRICS_INSERT_BUSY_TIMEOUT_MS`  | No       | 10000                 | How long ClickHouse buffers API rate limit metric inserts before writing a part.                                   |
+| `API_KEY_ALLOW_PRIVATE_IP_RANGES`                | No       | 0                     | Allow private and reserved ranges in API key IP allowlists.                                                        |
 | `WEBHOOK_METRICS_FLUSH_INTERVAL_MS`              | No       | 10000                 | How often aggregated webhook limit metrics are flushed to ClickHouse.                                              |
 | `WEBHOOK_METRICS_MAX_ENTRIES`                    | No       | 10000                 | Cap on distinct (environment, bucket) entries held between flushes.                                                |
 | `WEBHOOK_METRICS_MAX_ENDPOINTS`                  | No       | 500                   | Cap on endpoints with their own webhook metric rows per environment and bucket; environment totals still count all. |

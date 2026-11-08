@@ -76,13 +76,21 @@ containerTest(
     expect(stored.rootApiKeyHiddenAt).toEqual(result.rootApiKeyHiddenAt);
     expect(stored.apiKey).not.toBe(oldRootApiKey);
     expect(stored.pkApiKey).not.toBe(oldPkApiKey);
-    await expect(findEnvironmentByApiKey(oldRootApiKey, undefined, prisma)).resolves.toMatchObject({
+    await expect(
+      findEnvironmentByApiKey(oldRootApiKey, { branchName: undefined, clientIp: null }, prisma)
+    ).resolves.toMatchObject({
       id: environment.id,
     });
     await expect(
-      findEnvironmentByApiKey(historicalRootApiKey, undefined, prisma)
+      findEnvironmentByApiKey(
+        historicalRootApiKey,
+        { branchName: undefined, clientIp: null },
+        prisma
+      )
     ).resolves.toMatchObject({ id: environment.id });
-    await expect(findEnvironmentByApiKey(stored.apiKey, undefined, prisma)).resolves.toMatchObject({
+    await expect(
+      findEnvironmentByApiKey(stored.apiKey, { branchName: undefined, clientIp: null }, prisma)
+    ).resolves.toMatchObject({
       id: environment.id,
     });
     expect(revokedRootApiKeys).toEqual(
@@ -273,7 +281,7 @@ containerTest("visibility disable wins a race with root key regeneration", async
   expect(stored.rootApiKeyHiddenAt).toBeInstanceOf(Date);
   expect(revokedCount).toBeGreaterThanOrEqual(1);
   await expect(
-    findEnvironmentByApiKey(environment.apiKey, undefined, prisma)
+    findEnvironmentByApiKey(environment.apiKey, { branchName: undefined, clientIp: null }, prisma)
   ).resolves.toMatchObject({ id: environment.id });
 });
 

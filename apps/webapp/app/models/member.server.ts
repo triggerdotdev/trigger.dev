@@ -11,6 +11,7 @@ import {
   memberDevelopmentEnvironmentWhere,
 } from "./organization.server";
 import { customAlphabet } from "nanoid";
+import { isOrganizationJoinAllowed } from "~/services/accessPolicy.server";
 import { logger } from "~/services/logger.server";
 import { getDefaultEnvironmentConcurrencyLimit } from "~/services/platform.v3.server";
 import { rbac } from "~/services/rbac.server";
@@ -558,6 +559,9 @@ export async function acceptInvite({
   const membershipPolicy = await ssoController.getMembershipPolicy(invite.organizationId);
   if (membershipPolicy.isOk() && !membershipPolicy.value.manualMembershipAllowed) {
     throw new Error(INVITE_BLOCKED_DIRECTORY_MANAGED);
+  }
+  if (!(await isOrganizationJoinAllowed({ organizationId: invite.organizationId }))) {
+    throw new Error(INVITE_NOT_FOUND);
   }
 
   const maximumConcurrencyLimit = await getDefaultEnvironmentConcurrencyLimit(

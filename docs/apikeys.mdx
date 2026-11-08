@@ -32,7 +32,8 @@ API keys belong to one environment. A Development key cannot access Production, 
   </Step>
   <Step title="Create the key">
     Click **New API key**, enter a descriptive name, and choose when it expires: in 30 days, 90
-    days, or 1 year, on a custom date, or never. Names can contain up to 64 characters.
+    days, or 1 year, on a custom date, or never. Names can contain up to 64 characters. To
+    [restrict the key to your servers](#restrict-a-key-to-ip-addresses), list their IP addresses.
   </Step>
   <Step title="Choose its access">
     Select the narrowest access preset that supports the integration. For task-aware presets, choose
@@ -115,6 +116,23 @@ The key must belong to the target environment. Use a Production key with `--env 
   CLI login.
 </Note>
 
+## Restrict a key to IP addresses
+
+Give a key a list of allowed IP addresses to limit where it can be used. Requests using the key from any other address are rejected, so a leaked key is useless outside your network. They get the same `Invalid API key` error as a key that doesn't exist, so the response never confirms the key is real. If a working key suddenly returns that error, check its allowed IP addresses.
+
+- Enter one IPv4 or IPv6 address or CIDR range per line, for example `203.0.113.9` or `203.0.113.0/24`. A key can have up to 50 ranges.
+- Leave the list empty to allow any IP address.
+- Private and reserved ranges, such as `10.0.0.0/8` or `192.168.0.0/16`, are not accepted. Use the public addresses your requests come from.
+- Set the list when you create the key, or change it later with **Edit allowed IPs** in the key's menu. Changes take effect immediately.
+- The API keys page shows the IP address each key was last used from, so you can check it before saving a list.
+- [Public Access Tokens](/realtime/auth) created with the key are not IP-restricted, since they are meant for browsers. Creating one still requires an allowed IP address.
+
+<Tip>
+  To lock down an environment, give each backend its own IP-restricted key, move your applications
+  to those keys, then hide the root key. Your tasks keep working because they don't authenticate
+  with your API keys.
+</Tip>
+
 ## Expire and revoke keys
 
 Set an expiration date when creating a key if the integration only needs temporary access. A key with a custom date works until the end of that day in your local time zone. An expired key stops authenticating automatically.
@@ -152,12 +170,15 @@ The SDK sends the branch automatically. When calling the API directly, send the 
 
 Self-hosted installations support multiple keys with **No restrictions**. The restricted access presets are available in Trigger.dev Cloud.
 
+IP allowlists use the last address in the `X-Forwarded-For` header, so run the webapp behind a reverse proxy that appends the client IP to that header. To allow private ranges because your clients reach the instance over a private network, set `API_KEY_ALLOW_PRIVATE_IP_RANGES=1`.
+
 Keep your instance and SDK current before creating keys. Calling a public-token API with a key on a server that does not support server-minted tokens returns an upgrade error. Upgrade the instance before creating public tokens with an environment API key.
 
 ## Security recommendations
 
 - Create one key per service or integration instead of sharing keys.
 - Choose the narrowest access preset and task selection that supports the integration.
+- Restrict keys used from servers with fixed IP addresses to those addresses.
 - Store keys in a secret manager and inject them as backend environment variables.
 - Set expiration dates for temporary integrations and deployment credentials.
 - Revoke keys when an integration or team member no longer needs access.
