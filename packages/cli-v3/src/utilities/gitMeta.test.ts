@@ -1,5 +1,20 @@
-import { describe, expect, it } from "vitest";
-import { getCiBranch, sanitizeGitRemoteUrl } from "./gitMeta.js";
+import { execFileSync } from "node:child_process";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createGitMeta, getCiBranch, getGitTopLevel, sanitizeGitRemoteUrl } from "./gitMeta.js";
+
+const tempDirs: string[] = [];
+
+afterEach(async () => {
+  vi.unstubAllEnvs();
+  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+});
+
+function runGit(cwd: string, args: string[]): string {
+  return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+}
 
 describe("sanitizeGitRemoteUrl", () => {
   it.each([
@@ -85,5 +100,105 @@ describe("getCiBranch", () => {
     expect(
       getCiBranch({ JENKINS_URL: "https://ci.example.com", BRANCH_NAME: "feature/login" })
     ).toBe("feature/login");
+  });
+});
+
+describe("git worktree support", () => {
+  async function createRepoWithWorktrees() {
+    const baseDir = await mkdtemp(join(tmpdir(), "trigger-git-worktree-"));
+    tempDirs.push(baseDir);
+
+    const repoDir = join(baseDir, "repo");
+    await mkdir(repoDir, { recursive: true });
+
+    runGit(repoDir, ["init", "-b", "main"]);
+    runGit(repoDir, ["config", "user.name", "Test User"]);
+    runGit(repoDir, ["config", "user.email", "test@example.com"]);
+    runGit(repoDir, [
+      "remote",
+      "add",
+      "origin",
+      "https://token@example.com/triggerdotdev/trigger.dev.git",
+    ]);
+
+    await writeFile(join(repoDir, ".gitignore"), ".worktrees/\n");
+    await writeFile(join(repoDir, "index.ts"), "export const version = 1;\n");
+    runGit(repoDir, ["add", "."]);
+    runGit(repoDir, ["commit", "-m", "initial main commit"]);
+    const mainSha = runGit(repoDir, ["rev-parse", "HEAD"]);
+
+    const externalWorktreeDir = join(baseDir, "worktree-external");
+    runGit(repoDir, ["worktree", "add", "-b", "release/external", externalWorktreeDir]);
+    await writeFile(join(externalWorktreeDir, "index.ts"), "export const version = 2;\n");
+    runGit(externalWorktreeDir, ["add", "index.ts"]);
+    runGit(externalWorktreeDir, ["commit", "-m", "external worktree commit"]);
+    const externalSha = runGit(externalWorktreeDir, ["rev-parse", "HEAD"]);
+
+    const nestedWorktreeDir = join(repoDir, ".worktrees", "release");
+    runGit(repoDir, ["worktree", "add", "-b", "release/nested", nestedWorktreeDir]);
+    await writeFile(join(nestedWorktreeDir, "index.ts"), "export const version = 3;\n");
+    runGit(nestedWorktreeDir, ["add", "index.ts"]);
+    runGit(nestedWorktreeDir, ["commit", "-m", "nested worktree commit"]);
+    const nestedSha = runGit(nestedWorktreeDir, ["rev-parse", "HEAD"]);
+
+    // Make the outer checkout dirty to verify nested worktrees do not inherit its status
+    await writeFile(join(repoDir, "index.ts"), "export const version = 99;\n");
+
+    return {
+      repoDir,
+      mainSha,
+      externalWorktreeDir,
+      externalSha,
+      nestedWorktreeDir,
+      nestedSha,
+    };
+  }
+
+  it("reads sanitized origin remoteUrl and commit metadata from an external linked worktree", async () => {
+    vi.stubEnv("GITHUB_ACTIONS", "");
+    vi.stubEnv("TRIGGER_GITHUB_APP", "");
+
+    const { externalWorktreeDir, externalSha } = await createRepoWithWorktrees();
+
+    await expect(getGitTopLevel(externalWorktreeDir)).resolves.toBe(externalWorktreeDir);
+    await expect(createGitMeta(externalWorktreeDir)).resolves.toEqual({
+      source: "local",
+      remoteUrl: "https://example.com/triggerdotdev/trigger.dev.git",
+      commitAuthorName: "Test User",
+      commitMessage: "external worktree commit",
+      commitRef: "release/external",
+      commitSha: externalSha,
+      dirty: false,
+    });
+  });
+
+  it("resolves nested worktree root and metadata instead of the outer checkout", async () => {
+    vi.stubEnv("GITHUB_ACTIONS", "");
+    vi.stubEnv("TRIGGER_GITHUB_APP", "");
+
+    const { repoDir, mainSha, nestedWorktreeDir, nestedSha } = await createRepoWithWorktrees();
+    const nestedSubdir = join(nestedWorktreeDir, "packages", "app");
+    await mkdir(nestedSubdir, { recursive: true });
+
+    await expect(getGitTopLevel(nestedWorktreeDir)).resolves.toBe(nestedWorktreeDir);
+    await expect(getGitTopLevel(nestedSubdir)).resolves.toBe(nestedWorktreeDir);
+
+    const outerMeta = await createGitMeta(repoDir);
+    expect(outerMeta).toMatchObject({
+      commitRef: "main",
+      commitSha: mainSha,
+      dirty: true,
+    });
+
+    const nestedMeta = await createGitMeta(nestedWorktreeDir);
+    expect(nestedMeta).toEqual({
+      source: "local",
+      remoteUrl: "https://example.com/triggerdotdev/trigger.dev.git",
+      commitAuthorName: "Test User",
+      commitMessage: "nested worktree commit",
+      commitRef: "release/nested",
+      commitSha: nestedSha,
+      dirty: false,
+    });
   });
 });

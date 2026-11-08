@@ -1,5 +1,5 @@
 import fs from "fs/promises";
-import { join } from "path";
+import { join, resolve } from "path";
 import ini from "ini";
 import git from "git-last-commit";
 import { x } from "tinyexec";
@@ -15,7 +15,7 @@ export async function createGitMeta(directory: string): Promise<GitMeta | undefi
   }
 
   // Fall back to git commands for local development
-  const remoteUrl = await getOriginUrl(join(directory, ".git/config"));
+  const remoteUrl = await getOriginUrl(directory);
 
   const [commitResult, dirtyResult] = await Promise.allSettled([
     getLastCommit(directory),
@@ -125,6 +125,33 @@ async function isDirty(directory: string): Promise<boolean> {
   }
 }
 
+export async function getGitTopLevel(directory: string): Promise<string | undefined> {
+  try {
+    const result = await x(
+      "git",
+      ["--no-optional-locks", "rev-parse", "--show-toplevel", "--show-cdup"],
+      {
+        nodeOptions: {
+          cwd: directory,
+        },
+      }
+    );
+
+    if (result.exitCode !== 0) {
+      return undefined;
+    }
+
+    const [topLevel, cdup = ""] = result.stdout.trimEnd().split(/\r?\n/);
+    if (!topLevel) {
+      return undefined;
+    }
+
+    return resolve(directory, cdup || ".");
+  } catch {
+    return undefined;
+  }
+}
+
 async function parseGitConfig(configPath: string) {
   try {
     return ini.parse(await fs.readFile(configPath, "utf8"));
@@ -138,8 +165,25 @@ function pluckOriginUrl(gitConfig: { [key: string]: any }): string | undefined {
   return gitConfig['remote "origin"']?.url;
 }
 
-async function getOriginUrl(configPath: string): Promise<string | null> {
-  const gitConfig = await parseGitConfig(configPath);
+async function getOriginUrl(directory: string): Promise<string | null> {
+  try {
+    const result = await x("git", ["--no-optional-locks", "config", "--get", "remote.origin.url"], {
+      nodeOptions: {
+        cwd: directory,
+      },
+    });
+
+    if (result.exitCode === 0) {
+      const originUrl = result.stdout.trim();
+      if (originUrl) {
+        return originUrl;
+      }
+    }
+  } catch {
+    // Fall back to parsing .git/config if invoking git fails
+  }
+
+  const gitConfig = await parseGitConfig(join(directory, ".git/config"));
   if (!gitConfig) {
     return null;
   }

@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -87,5 +88,23 @@ describe("loadConfig bun runtime warnings", () => {
 
   it("does not deprecate bun-1.4", async () => {
     expect(await outputWhileLoading("bun-1.4")).not.toMatch(/deprecated/i);
+  });
+});
+
+describe("loadConfig workspaceDir", () => {
+  it("resolves workspaceDir to a linked git worktree nested inside another checkout", async () => {
+    const repoDir = await createProject();
+
+    execFileSync("git", ["init", "-b", "main"], { cwd: repoDir });
+    execFileSync("git", ["config", "user.name", "Test User"], { cwd: repoDir });
+    execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: repoDir });
+    execFileSync("git", ["add", "."], { cwd: repoDir });
+    execFileSync("git", ["commit", "-m", "initial commit"], { cwd: repoDir });
+
+    const worktreeDir = join(repoDir, ".worktrees", "release");
+    execFileSync("git", ["worktree", "add", "-b", "release", worktreeDir], { cwd: repoDir });
+
+    const config = await loadConfig({ cwd: worktreeDir, warn: false });
+    expect(config.workspaceDir).toBe(worktreeDir);
   });
 });

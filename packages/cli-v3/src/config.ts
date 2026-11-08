@@ -22,6 +22,7 @@ import { readdir } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { findWorkspaceDir, resolveLockfile, resolvePackageJSON, resolveTSConfig } from "pkg-types";
 import { generateCode, loadFile } from "./imports/magicast.js";
+import { getGitTopLevel } from "./utilities/gitMeta.js";
 import { logger } from "./utilities/logger.js";
 import {
   additionalFiles,
@@ -203,7 +204,7 @@ async function resolveConfig(
   const packageJsonPath = await resolvePackageJSON(cwd);
   const tsconfigPath = await safeResolveTsConfig(cwd);
   const lockfilePath = await resolveLockfile(cwd);
-  const workspaceDir = await findWorkspaceDir(cwd);
+  const workspaceDir = (await getGitTopLevel(cwd)) ?? (await findWorkspaceDir(cwd));
 
   const workingDir = result.configFile
     ? dirname(result.configFile)
