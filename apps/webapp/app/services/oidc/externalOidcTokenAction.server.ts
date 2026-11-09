@@ -1,26 +1,13 @@
 import { trace } from "@internal/tracing";
 import { json, type ActionFunctionArgs } from "@remix-run/node";
 import { decodeJwt } from "jose";
-import { z } from "zod";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { getExternalOidcController, getExternalOidcRateLimits } from "./externalOidc.server";
+import { ExternalOidcTokenRequest } from "./externalOidcTokenRequest";
 import { internalRunSigningService } from "./instance.server";
 import { externalOidcTelemetry } from "./externalOidcTelemetry.server";
 import { isRunTokenFormat, verifyRunToken, type RunTokenClaims } from "./runTokenVerify";
-
-const MAX_AUDIENCE_LENGTH = 2_048;
-
-const TokenRequest = z
-  .object({
-    // An audience is an opaque signed value. It is never fetched or used as a URL.
-    audience: z
-      .string()
-      .min(1)
-      .max(MAX_AUDIENCE_LENGTH)
-      .refine((value) => value.trim() === value && !/[\u0000-\u001f\u007f]/.test(value)),
-  })
-  .strict();
 
 const NO_STORE = { "Cache-Control": "no-store" };
 
@@ -69,11 +56,11 @@ export async function externalOidcTokenAction({ request }: ActionFunctionArgs) {
       return failure("INVALID_RUN_TOKEN", "A valid run bearer token is required", 401);
     }
 
-    const parsed = TokenRequest.safeParse(await request.json().catch(() => undefined));
+    const parsed = ExternalOidcTokenRequest.safeParse(await request.json().catch(() => undefined));
     if (!parsed.success) {
       return failure(
         "INVALID_REQUEST",
-        `A non-empty audience of at most ${MAX_AUDIENCE_LENGTH} characters without control characters or surrounding whitespace is required`,
+        parsed.error.issues[0]?.message ?? "Invalid OIDC token request",
         400
       );
     }
@@ -98,6 +85,7 @@ export async function externalOidcTokenAction({ request }: ActionFunctionArgs) {
         attempt: claims.attempt,
       },
       audience: parsed.data.audience,
+      awsSessionTags: parsed.data.awsSessionTags,
     });
     if (!result.ok) return failure(result.code, result.message, result.status);
 

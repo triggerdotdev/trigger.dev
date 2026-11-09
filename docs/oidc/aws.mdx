@@ -99,17 +99,116 @@ Redeploy with CLI 4.8.3 or later and start a new run on that deployment.
 | `region`          | Yes      | Region for STS. The AWS service client's region does not configure STS.                             |
 | `roleSessionName` | No       | Defaults to the current run ID, sanitized to AWS's allowed characters and limited to 64 characters. |
 | `durationSeconds` | No       | Defaults to 3,600 seconds (one hour), subject to the role's allowed session duration.               |
+| `sessionTags`     | No       | Defaults to `false`. Set to `true` to include verified identity tags. Requires `sts:TagSession` in the role trust policy. |
 
 For local development, use your own AWS credential chain, such as an AWS SSO profile. If a task runs both locally and deployed, select local credentials explicitly when `ctx.environment.type === "DEVELOPMENT"`.
 
+## Session tags and task-level access
+
+By default, a role's trust policy only checks the environment subject, so **every task in that environment** can assume the role. Session tags let you restrict a role to specific tasks, or scope resource permissions by task. They are off by default; existing roles keep working unchanged.
+
+Trigger.dev adds these tags to the signed token. Values come from the verified run, never from payloads or caller input:
+
+| Tag | Value |
+| --- | --- |
+| `TriggerOrganizationId` | Organization ID |
+| `TriggerProjectRef` | Project reference, such as `proj_...` |
+| `TriggerEnvironmentId` | Environment ID |
+| `TriggerEnvironmentType` | `PRODUCTION`, `STAGING`, or `PREVIEW` |
+| `TriggerTaskId` | Task identifier, such as `read-from-s3` |
+
+These are AWS session tags, not Trigger.dev run tags. They are not transitive across role chaining.
+
+### Restrict a role to one task
+
+1. Update the trust policy. Add `sts:TagSession` to `Action` and a `TriggerTaskId` condition. AWS rejects tagged tokens if `sts:TagSession` is missing.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::YOUR_AWS_ACCOUNT_ID:oidc-provider/oidc.trigger.dev/YOUR_ORG_SLUG"
+      },
+      "Action": ["sts:AssumeRoleWithWebIdentity", "sts:TagSession"],
+      "Condition": {
+        "StringEquals": {
+          "oidc.trigger.dev/YOUR_ORG_SLUG:aud": "sts.amazonaws.com",
+          "oidc.trigger.dev/YOUR_ORG_SLUG:sub": "YOUR_ENVIRONMENT_SUBJECT",
+          "aws:RequestTag/TriggerTaskId": "read-from-s3"
+        }
+      }
+    }
+  ]
+}
+```
+
+2. Enable tags in the task with `@trigger.dev/sdk` 4.8.4 or later, then redeploy:
+
+```typescript
+awsCredentialProvider({
+  roleArn: "arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/YOUR_ROLE_NAME",
+  region: "us-east-1",
+  sessionTags: true,
+});
+```
+
+Older SDKs reject `sessionTags` in TypeScript and silently ignore it in JavaScript, which sends untagged tokens that this policy rejects.
+
+<Warning>
+  Don't keep another statement that allows untagged assumption for the same subject, or any
+  task can bypass the restriction. This protects against other tasks in the environment, not
+  against people who can deploy: anyone who can deploy to the environment can deploy a task
+  with the trusted ID.
+</Warning>
+
+To use tags only in permissions (below) without restricting tasks, add `sts:TagSession` to `Action` and omit the `aws:RequestTag` condition.
+
+### Use tags in resource permissions
+
+Tags are available in the role's permissions as `aws:PrincipalTag/...`. For example, one role can give each task its own S3 prefix:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::YOUR_BUCKET/${aws:PrincipalTag/TriggerTaskId}/*"
+    }
+  ]
+}
+```
+
+### Without the helper
+
+Request tags with `auth.getOIDCToken({ audience: "sts.amazonaws.com", awsSessionTags: true })`. Other audiences are rejected. Task IDs are sent unchanged, so a task ID that exceeds [AWS session tag limits](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_session-tags.html) makes the STS call fail.
+
 ## Trust all Preview branches
 
-For a single Preview environment, use its exact subject with the policy above. To share a role across **all current and future Preview branches** in one project, replace only the policy's `Condition` with:
+For a single Preview environment, use its exact subject. To allow **any task** across **all current and future Preview branches** in one project, start with the basic trust policy in [Create an IAM role](#create-an-iam-role) and replace its `Condition` with:
 
 ```json
 {
   "StringEquals": {
     "oidc.trigger.dev/YOUR_ORG_SLUG:aud": "sts.amazonaws.com"
+  },
+  "StringLike": {
+    "oidc.trigger.dev/YOUR_ORG_SLUG:sub": "org:YOUR_ORG_ID:project:YOUR_PROJECT_REF:env:PREVIEW:*"
+  }
+}
+```
+
+For a task-restricted Preview role, keep `sts:TagSession` in `Action` and add the task condition to `StringEquals`:
+
+```json
+{
+  "StringEquals": {
+    "oidc.trigger.dev/YOUR_ORG_SLUG:aud": "sts.amazonaws.com",
+    "aws:RequestTag/TriggerTaskId": "read-from-s3"
   },
   "StringLike": {
     "oidc.trigger.dev/YOUR_ORG_SLUG:sub": "org:YOUR_ORG_ID:project:YOUR_PROJECT_REF:env:PREVIEW:*"

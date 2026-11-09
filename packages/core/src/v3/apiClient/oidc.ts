@@ -7,6 +7,8 @@ import { ApiError } from "./errors.js";
 
 export type GetOIDCTokenOptions = {
   audience: string;
+  /** Include verified identity as AWS session tags. Requires audience sts.amazonaws.com and sts:TagSession in the role trust policy. Defaults to false. */
+  awsSessionTags?: boolean;
 };
 
 const OIDCTokenResponse = z.object({
@@ -84,7 +86,10 @@ export async function requestOIDCToken(
       {
         method: "POST",
         headers: { ...requestOptions?.additionalHeaders, "Content-Type": "application/json" },
-        body: JSON.stringify({ audience: options.audience }),
+        body: JSON.stringify({
+          audience: options.audience,
+          ...(options.awsSessionTags ? { awsSessionTags: true } : {}),
+        }),
       },
       {
         retry: requestOptions?.retry,

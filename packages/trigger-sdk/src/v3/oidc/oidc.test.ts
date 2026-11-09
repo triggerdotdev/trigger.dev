@@ -341,6 +341,27 @@ describe("run-only OIDC and AWS credentials over HTTP", () => {
     }
   });
 
+  // Catches: dropping the opt-in before minting, including on credential refresh.
+  it("requests session tags only when enabled", async () => {
+    for (const sessionTags of [undefined, false, true]) {
+      const provider = awsCredentialProvider({
+        roleArn: "arn:aws:iam::123456789012:role/test",
+        region: "us-east-1",
+        sessionTags,
+      });
+      await provider();
+      await provider();
+    }
+    expect(mintRequests.map((request) => request.body)).toEqual([
+      { audience: "sts.amazonaws.com" },
+      { audience: "sts.amazonaws.com" },
+      { audience: "sts.amazonaws.com" },
+      { audience: "sts.amazonaws.com" },
+      { audience: "sts.amazonaws.com", awsSessionTags: true },
+      { audience: "sts.amazonaws.com", awsSessionTags: true },
+    ]);
+  });
+
   it("rejects incomplete STS credentials rather than returning a non-refreshable identity", async () => {
     stsComplete = false;
     await expect(

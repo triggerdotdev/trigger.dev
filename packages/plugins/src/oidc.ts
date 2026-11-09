@@ -36,7 +36,11 @@ export type ExternalOidcMintResult =
 export interface ExternalOidcController {
   isEnabled(orgFeatureFlags: unknown): boolean;
   getSetup(environment: ExternalOidcEnvironment): ExternalOidcSetup;
-  mint(params: { run: ExternalOidcRunIdentity; audience: string }): Promise<ExternalOidcMintResult>;
+  mint(params: {
+    run: ExternalOidcRunIdentity;
+    audience: string;
+    awsSessionTags?: boolean;
+  }): Promise<ExternalOidcMintResult>;
 }
 
 export function organizationOidcIssuer(baseUrl: string, organizationSlug: string): string {
