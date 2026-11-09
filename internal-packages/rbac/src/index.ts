@@ -1,6 +1,9 @@
 import type {
   ApiKeyAccessOptions,
   ApiKeyPolicyDescription,
+  ApiKeyScopeUseEvent,
+  ApiKeyScopeUsage,
+  ApiKeyScopeUsageParams,
   ApiKeyPresetDeleteResult,
   ApiKeyPresetMutationResult,
   BearerAuthOptions,
@@ -26,6 +29,7 @@ import { RoleBaseAccessFallback } from "./fallback.js";
 export { CAPLESS_USER_ACTOR_SCOPES } from "./fallback.js";
 import { BearerCredentialResolver, type BearerResolution } from "./bearerCredentials.js";
 import type { PublicTokenSubjectCodec } from "./publicTokenSubject.js";
+import type { ApiKeyScopeRecorder } from "./scopeUsage.js";
 export type {
   BearerAuthOptions,
   RoleBaseAccessController,
@@ -55,7 +59,12 @@ export type HostRbacController = Omit<Required<RoleBaseAccessController>, "authe
 };
 export type { UserActorAuthResult, UserActorClaims } from "@trigger.dev/plugins";
 export { buildJwtAbility, scopesWithinAbility } from "./ability.js";
-export { FULL_ACCESS_PRESET_ID, scopesGrantFullAccess } from "@trigger.dev/plugins";
+export {
+  FULL_ACCESS_PRESET_ID,
+  scopesGrantFullAccess,
+  UNRESTRICTED_API_KEY_SCOPE_USE,
+} from "@trigger.dev/plugins";
+export type { ApiKeyCapabilityUsage, ApiKeyScopeUsage } from "@trigger.dev/plugins";
 export { resolveJwtSigningKey } from "./bearerCredentials.js";
 export {
   clientIpFromHeaders,
@@ -154,6 +163,15 @@ function resolveBearerResolution(
   };
 }
 
+function scopeRecorderFor(controller: RoleBaseAccessController): ApiKeyScopeRecorder | undefined {
+  if (!controller.recordApiKeyScopeUse) return undefined;
+  return (event) => {
+    try {
+      controller.recordApiKeyScopeUse?.(event);
+    } catch {}
+  };
+}
+
 // Loads the plugin lazily; falls back to the fallback implementation if not installed.
 // Synchronous create() avoids top-level await (not supported in the webapp's CJS build).
 class LazyController implements RoleBaseAccessController {
@@ -162,6 +180,7 @@ class LazyController implements RoleBaseAccessController {
   // optional plugin. The host resolves them with its always-on credential
   // resolver — not a full RBAC fallback controller.
   private readonly _hostCredentialResolver: BearerCredentialResolver;
+  private _recordScopeUse: ApiKeyScopeRecorder | undefined;
 
   constructor(prisma: RbacPrismaInput, options?: RbacCreateOptions) {
     this._hostCredentialResolver = new BearerCredentialResolver(
@@ -169,6 +188,12 @@ class LazyController implements RoleBaseAccessController {
       { publicTokenSubjects: options?.publicTokenSubjects }
     );
     this._init = this.load(prisma, options);
+    this._init.then(
+      (controller) => {
+        this._recordScopeUse = scopeRecorderFor(controller);
+      },
+      () => {}
+    );
     // load() runs eagerly but the result is awaited lazily on first method
     // call. If load() rejects (e.g. REQUIRE_PLUGINS=1 + plugin missing) and
     // nothing awaits _init before Node ticks past, the rejection surfaces
@@ -281,7 +306,11 @@ class LazyController implements RoleBaseAccessController {
     // remain authoritative in the installed controller.
     const result =
       useHostForPublicJWT || useHostForAdditionalKey
-        ? await this._hostCredentialResolver.authenticate(request, options)
+        ? await this._hostCredentialResolver.authenticate(
+            request,
+            options,
+            useHostForAdditionalKey ? this._recordScopeUse : undefined
+          )
         : await controller.authenticateBearer(request, options);
 
     const resolution = resolveBearerResolution(result, {
@@ -413,6 +442,20 @@ class LazyController implements RoleBaseAccessController {
       return { ok: false, error: "API key presets are not available" };
     }
     return controller.deleteApiKeyPreset(...args);
+  }
+
+  recordApiKeyScopeUse(event: ApiKeyScopeUseEvent): void {
+    this._recordScopeUse?.(event);
+  }
+
+  async apiKeyScopeUsage(params: ApiKeyScopeUsageParams): Promise<ApiKeyScopeUsage[] | null> {
+    const controller = await this.c();
+    if (!controller.apiKeyScopeUsage) return null;
+    try {
+      return await controller.apiKeyScopeUsage(params);
+    } catch {
+      return null;
+    }
   }
 
   async allPermissions(

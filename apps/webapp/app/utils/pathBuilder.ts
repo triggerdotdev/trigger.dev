@@ -275,6 +275,15 @@ export function v3ApiKeysPath(
   return `${v3EnvironmentPath(organization, project, environment)}/apikeys`;
 }
 
+export function v3ApiKeyPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  apiKeyId: string
+) {
+  return `${v3ApiKeysPath(organization, project, environment)}/${apiKeyId}`;
+}
+
 export function v3TrustedPublishingPath(
   organization: OrgForPath,
   project: ProjectForPath,

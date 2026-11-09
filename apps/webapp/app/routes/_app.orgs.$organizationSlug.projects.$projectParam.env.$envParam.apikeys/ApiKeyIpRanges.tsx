@@ -12,6 +12,7 @@ import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { TextArea } from "~/components/primitives/TextArea";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { type ActionAppearance, actionButtonProps } from "./ApiKeyActions";
 
 export const IP_RANGES_FIELD = "allowedIpRanges";
 
@@ -133,12 +134,14 @@ export function EditApiKeyIpRangesButton({
   ranges,
   lastUsedIp,
   canWrite,
+  appearance = "menu",
 }: {
   id: string;
   name: string;
   ranges: string[];
   lastUsedIp: string | null;
   canWrite: boolean;
+  appearance?: ActionAppearance;
 }) {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState(ranges.join("\n"));
@@ -156,12 +159,9 @@ export function EditApiKeyIpRangesButton({
     >
       <DialogTrigger asChild>
         <Button
-          variant="small-menu-item"
+          {...actionButtonProps(appearance)}
           LeadingIcon={GlobeAltIcon}
           leadingIconClassName="text-text-dimmed"
-          fullWidth
-          textAlignLeft
-          className="w-full px-1.5 py-[0.9rem]"
           disabled={!canWrite}
           tooltip={canWrite ? undefined : "You don't have permission to edit API keys"}
         >

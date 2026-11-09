@@ -2,6 +2,7 @@ import { DialogClose } from "@radix-ui/react-dialog";
 import {
   type ApiKeyCapabilityCatalogue,
   type ApiKeyCapabilityDifference,
+  type ApiKeyCapabilityMap,
   apiKeyCapabilityDifferences,
   CUSTOM_API_KEY_PRESET_ID,
   FULL_ACCESS_PRESET_ID,
@@ -11,12 +12,7 @@ import { useTypedFetcher } from "remix-typedjson";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
-import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
-import { Hint } from "~/components/primitives/Hint";
-import { Input } from "~/components/primitives/Input";
-import { InputGroup } from "~/components/primitives/InputGroup";
-import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   type ApiKeyAccessPreset,
@@ -28,23 +24,28 @@ import {
   type StoredApiKeyAccess,
   taskSelectionChange,
 } from "~/utils/apiKeyAccess";
+import { type ApiKeyUsageView, fullAccessCapabilities, lossNote } from "~/utils/apiKeyUsage";
 import { cn } from "~/utils/cn";
 import { ApiKeyAccessFields, ApiKeyAccessInputs, ApiKeyAccessPane } from "./ApiKeyAccessPicker";
 import type { action, ApiKeyActionData } from "./route";
+import { MAX_API_KEY_TASK_IDENTIFIERS } from "~/consts";
 import { defaultApiKeyPresetId, useApiKeyAccess } from "./useApiKeyAccess";
 
 export type EditableApiKey = {
   id: string;
   name: string;
-  expiresAt: Date | string | null;
-  allowedIpRanges: string[];
   unmatchedScopes?: string[];
+  usage?: ApiKeyUsageView | null;
 } & StoredApiKeyAccess;
+
+export type EditAccessStart =
+  | { kind: "drift"; presetLabel: string }
+  | { kind: "narrow"; capabilities: ApiKeyCapabilityMap; windowDays: number };
 
 export function EditApiKeyAccessDialog({
   apiKey,
   uneditableMessage,
-  driftPresetLabel,
+  start,
   open,
   onOpenChange,
   availableTasks,
@@ -53,10 +54,11 @@ export function EditApiKeyAccessDialog({
   isRbacPluginAvailable,
   canManagePresets,
   environment,
+  now,
 }: {
   apiKey: EditableApiKey;
   uneditableMessage?: string;
-  driftPresetLabel?: string;
+  start?: EditAccessStart;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   availableTasks: string[];
@@ -65,18 +67,22 @@ export function EditApiKeyAccessDialog({
   isRbacPluginAvailable: boolean;
   canManagePresets: boolean;
   environment: React.ComponentProps<typeof EnvironmentCombo>["environment"];
+  now: number;
 }) {
   const fetcher = useTypedFetcher<typeof action>();
   const actionData = fetcher.data as ApiKeyActionData | undefined;
   const [showError, setShowError] = useState(false);
-  const [initial] = useState(() =>
-    initialApiKeyAccess(
+  const [initial] = useState(() => {
+    const stored = initialApiKeyAccess(
       apiKey,
       presets,
       defaultApiKeyPresetId(presets),
-      driftPresetLabel !== undefined
-    )
-  );
+      start?.kind === "drift"
+    );
+    return start?.kind === "narrow"
+      ? { ...stored, mode: "custom" as const, capabilities: start.capabilities }
+      : stored;
+  });
   const access = useApiKeyAccess({
     presets,
     catalogue: capabilityCatalogue,
@@ -84,8 +90,8 @@ export function EditApiKeyAccessDialog({
     canManagePresets,
     initial,
   });
-  const [confirming, setConfirming] = useState(driftPresetLabel !== undefined);
-  const [driftNote, setDriftNote] = useState(driftPresetLabel);
+  const [confirming, setConfirming] = useState(start !== undefined);
+  const [startNote, setStartNote] = useState(start);
 
   useEffect(() => {
     if (fetcher.state !== "idle") {
@@ -107,8 +113,6 @@ export function EditApiKeyAccessDialog({
 
   const {
     showAccessControls,
-    selectedTasks,
-    needsSelectedTask,
     nextTasks,
     nextFullAccess,
     nextCapabilities,
@@ -117,10 +121,12 @@ export function EditApiKeyAccessDialog({
     canSubmitAccess,
   } = access;
   const differences =
-    capabilityCatalogue && !apiKey.fullAccess && !nextFullAccess
+    capabilityCatalogue && !nextFullAccess
       ? apiKeyCapabilityDifferences(
           capabilityCatalogue.capabilities,
-          apiKey.capabilities ?? {},
+          apiKey.fullAccess
+            ? fullAccessCapabilities(capabilityCatalogue)
+            : (apiKey.capabilities ?? {}),
           nextCapabilities
         )
       : [];
@@ -162,6 +168,17 @@ export function EditApiKeyAccessDialog({
       ? CUSTOM_API_KEY_PRESET_ID
       : (apiKey.presetId ?? FULL_ACCESS_PRESET_ID)) === nextPresetId;
 
+  const error =
+    (showError && actionData && !actionData.ok ? actionData.error : null) ??
+    uneditableMessage ??
+    deletedPresetNote ??
+    null;
+  const saveBlocker = !canSubmitAccess
+    ? saveBlockedReason(access)
+    : changesNothing
+      ? "No changes to save."
+      : undefined;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -171,7 +188,7 @@ export function EditApiKeyAccessDialog({
         )}
       >
         <DialogHeader className="flex flex-row items-center gap-2.5 px-5 pb-3">
-          Edit access
+          Edit access for {apiKey.name}
           <EnvironmentCombo environment={environment} className="text-xs" iconClassName="size-4" />
         </DialogHeader>
         <fetcher.Form
@@ -185,13 +202,20 @@ export function EditApiKeyAccessDialog({
           {confirming && capabilityCatalogue ? (
             <div className="min-h-0 space-y-4 overflow-y-auto px-5 pb-6 pt-4">
               <Paragraph variant="small/bright">Save the new access for {apiKey.name}?</Paragraph>
-              {driftNote ? (
+              {startNote?.kind === "drift" ? (
                 <Paragraph variant="small">
                   {apiKey.name} keeps the access it was created with. Updating gives it what{" "}
-                  {driftNote} grants today.
+                  {startNote.presetLabel} grants today.
+                </Paragraph>
+              ) : startNote?.kind === "narrow" ? (
+                <Paragraph variant="small">
+                  Each area is set to the smallest level that covers what {apiKey.name} used in the
+                  last {startNote.windowDays} days. Go back to adjust it before saving.
                 </Paragraph>
               ) : null}
               <AccessChanges
+                usage={apiKey.usage ?? undefined}
+                now={now}
                 catalogue={capabilityCatalogue}
                 differences={differences}
                 taskChange={taskChange}
@@ -211,7 +235,6 @@ export function EditApiKeyAccessDialog({
               )}
             >
               <div className={cn("min-w-0 px-5 pb-6 pt-4", showAccessControls && "space-y-5")}>
-                <ApiKeyDetails apiKey={apiKey} bordered={showAccessControls} />
                 <ApiKeyAccessFields access={access} availableTasks={availableTasks} />
               </div>
 
@@ -220,29 +243,7 @@ export function EditApiKeyAccessDialog({
           )}
 
           <div className="flex items-center gap-3 border-t border-grid-bright px-5 py-3">
-            {(() => {
-              const error =
-                (showError && actionData && !actionData.ok ? actionData.error : null) ??
-                uneditableMessage ??
-                deletedPresetNote ??
-                null;
-              const hint =
-                needsSelectedTask && selectedTasks.length === 0
-                  ? "Pick at least one task, or switch to all tasks."
-                  : changesNothing
-                    ? "No changes to save."
-                    : "";
-              return (
-                <span
-                  className={cn(
-                    "min-w-0 truncate text-xs",
-                    error ? "text-error" : "text-text-dimmed"
-                  )}
-                >
-                  {error ?? hint}
-                </span>
-              );
-            })()}
+            <span className="min-w-0 truncate text-xs text-error">{error}</span>
             <div className="ml-auto flex shrink-0 items-center gap-2">
               {uneditableMessage ? (
                 <DialogClose asChild>
@@ -254,7 +255,7 @@ export function EditApiKeyAccessDialog({
                   variant="tertiary/small"
                   onClick={() => {
                     setConfirming(false);
-                    setDriftNote(undefined);
+                    setStartNote(undefined);
                   }}
                 >
                   Back
@@ -269,7 +270,8 @@ export function EditApiKeyAccessDialog({
                   key="review"
                   type="button"
                   variant="primary/small"
-                  disabled={changesNothing || !canSubmitAccess}
+                  disabled={saveBlocker !== undefined}
+                  tooltip={saveBlocker}
                   onClick={() => {
                     setShowError(false);
                     setConfirming(true);
@@ -296,42 +298,48 @@ export function EditApiKeyAccessDialog({
   );
 }
 
-function ApiKeyDetails({ apiKey, bordered }: { apiKey: EditableApiKey; bordered: boolean }) {
-  return (
-    <div
-      className={cn(
-        "grid items-start gap-4 pb-5 sm:grid-cols-[minmax(0,1fr)_16rem]",
-        bordered && "border-b border-grid-dimmed"
-      )}
-    >
-      <InputGroup fullWidth>
-        <Label htmlFor="api-key-name">Name</Label>
-        <Input id="api-key-name" value={apiKey.name} readOnly disabled fullWidth />
-      </InputGroup>
-      <InputGroup fullWidth>
-        <Label>Expires</Label>
-        <Paragraph variant="small" className="py-1.5">
-          {apiKey.expiresAt ? <DateTime date={apiKey.expiresAt} /> : "Never"}
-        </Paragraph>
-      </InputGroup>
-      <InputGroup fullWidth className="sm:col-span-2">
-        <Label>Allowed IPs</Label>
-        <Paragraph variant="small">
-          {apiKey.allowedIpRanges.length > 0 ? apiKey.allowedIpRanges.join(", ") : "Any IP"}
-        </Paragraph>
-        <Hint>Name, expiry and allowed IPs stay as they are. Only access changes here.</Hint>
-      </InputGroup>
-    </div>
-  );
+function saveBlockedReason(access: ReturnType<typeof useApiKeyAccess>): string {
+  if (access.needsSelectedTask && access.selectedTasks.length === 0) {
+    return "Pick at least one task, or switch to all tasks.";
+  }
+  if (access.needsSelectedTask && access.selectedTasks.length > MAX_API_KEY_TASK_IDENTIFIERS) {
+    return `Select at most ${MAX_API_KEY_TASK_IDENTIFIERS} tasks.`;
+  }
+  if (access.isCustom && !access.hasCustomCapabilities) {
+    return "Give the key access to at least one area.";
+  }
+  if (!access.selectedPresetIsAvailable) {
+    return "Your plan doesn't include this access.";
+  }
+  return "This access can't be saved.";
+}
+
+function LossNote({
+  catalogue,
+  row,
+  usage,
+  now,
+}: {
+  catalogue: ApiKeyCapabilityCatalogue;
+  row: ApiKeyCapabilityDifference;
+  usage: ApiKeyUsageView;
+  now: number;
+}) {
+  const capability = catalogue.capabilities.find((candidate) => candidate.id === row.capabilityId);
+  return capability ? <>, {lossNote(capability, row.to, usage, now)}</> : null;
 }
 
 function AccessChanges({
+  usage,
+  now,
   catalogue,
   differences,
   taskChange,
   fullAccessChange,
   lostScopes,
 }: {
+  usage?: ApiKeyUsageView;
+  now: number;
   catalogue: ApiKeyCapabilityCatalogue;
   differences: ApiKeyCapabilityDifference[];
   taskChange?: string;
@@ -365,6 +373,9 @@ function AccessChanges({
                 {": "}
                 {levelLabel(catalogue, row.capabilityId, row.to)} (was{" "}
                 {levelLabel(catalogue, row.capabilityId, row.from)})
+                {usage && row.loses ? (
+                  <LossNote catalogue={catalogue} row={row} usage={usage} now={now} />
+                ) : null}
               </li>
             ))}
           </ul>

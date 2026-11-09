@@ -259,7 +259,13 @@ export function buildScope(
 
 type ScopeTarget = true | Set<string>;
 
-export function buildJwtAbility(scopes: string[]): RbacAbility {
+type CompiledScopes = {
+  grantsFullAccess: boolean;
+  allResourceActions: Set<string>;
+  targetsByAction: Map<string, Map<string, ScopeTarget>>;
+};
+
+function compileScopes(scopes: readonly string[]): CompiledScopes {
   const allResourceActions = new Set<string>();
   const targetsByAction = new Map<string, Map<string, ScopeTarget>>();
   let grantsFullAccess = false;
@@ -294,16 +300,38 @@ export function buildJwtAbility(scopes: string[]): RbacAbility {
     }
   }
 
-  const matchesAction = (action: string, resource: RbacResource): boolean => {
-    if (allResourceActions.has(action)) return true;
+  return { grantsFullAccess, allResourceActions, targetsByAction };
+}
 
-    const target = targetsByAction.get(action)?.get(resource.type);
-    if (target === true) return true;
-    return resource.id !== undefined && target?.has(resource.id) === true;
-  };
+function matchingActionScope(
+  compiled: CompiledScopes,
+  action: string,
+  resource: RbacResource
+): string | undefined {
+  if (compiled.allResourceActions.has(action)) return `${action}:all`;
+
+  const target = compiled.targetsByAction.get(action)?.get(resource.type);
+  if (target === true) return `${action}:${resource.type}`;
+  return resource.id !== undefined && target?.has(resource.id) === true
+    ? `${action}:${resource.type}`
+    : undefined;
+}
+
+function matchingScope(
+  compiled: CompiledScopes,
+  action: string,
+  resource: RbacResource
+): string | undefined {
+  return (
+    matchingActionScope(compiled, action, resource) ?? matchingActionScope(compiled, "*", resource)
+  );
+}
+
+export function buildJwtAbility(scopes: string[]): RbacAbility {
+  const compiled = compileScopes(scopes);
 
   const matches = (action: string, resource: RbacResource): boolean =>
-    grantsFullAccess || matchesAction(action, resource) || matchesAction("*", resource);
+    compiled.grantsFullAccess || matchingScope(compiled, action, resource) !== undefined;
 
   return {
     can(action: string, resource: RbacResource | RbacResource[]): boolean {
@@ -315,6 +343,34 @@ export function buildJwtAbility(scopes: string[]): RbacAbility {
       return false;
     },
   };
+}
+
+export const UNRESTRICTED_API_KEY_SCOPE_USE = "unrestricted";
+
+export type ApiKeyScopeMatcher = (
+  action: string,
+  resource: RbacResource | RbacResource[]
+) => string | undefined;
+
+export function buildScopeMatcher(scopes: readonly string[]): ApiKeyScopeMatcher {
+  const compiled = compileScopes(scopes);
+
+  return (action, resource) => {
+    const candidates = Array.isArray(resource) ? resource : [resource];
+    if (compiled.grantsFullAccess) {
+      const first = candidates[0];
+      return first ? scopeForRequest(action, first) : undefined;
+    }
+    for (const candidate of candidates) {
+      const scope = matchingScope(compiled, action, candidate);
+      if (scope) return scope;
+    }
+    return undefined;
+  };
+}
+
+function scopeForRequest(action: string, resource: RbacResource): string {
+  return `${action === "update" ? "write" : action}:${resource.type}`;
 }
 
 /**
@@ -681,6 +737,8 @@ export interface RoleBaseAccessController {
     organizationId: string;
     presetId: string;
   }): Promise<ApiKeyPresetDeleteResult>;
+  recordApiKeyScopeUse?(event: ApiKeyScopeUseEvent): void;
+  apiKeyScopeUsage?(params: ApiKeyScopeUsageParams): Promise<ApiKeyScopeUsage[] | null>;
 
   // Role introspection. The fallback returns []; a plugin may return
   // its own role catalogue.
@@ -750,6 +808,39 @@ export interface RoleBaseAccessController {
   setTokenRole(params: { tokenId: string; roleId: string }): Promise<RoleAssignmentResult>;
   removeTokenRole(tokenId: string): Promise<RoleAssignmentResult>;
 }
+
+export type ApiKeyScopeUseEvent = {
+  organizationId: string;
+  environmentId: string;
+  apiKeyId: string;
+  used: string[];
+};
+
+export type ApiKeyScopeUsageParams = {
+  organizationId: string;
+  windowDays: number;
+  apiKeys: { id: string; createdAt: Date; scopes: string[] }[];
+};
+
+export type ApiKeyCapabilityUsage = {
+  lastUsedAt: Date | null;
+  usedLevelId: string | null;
+};
+
+export type ApiKeyNarrowBlocker =
+  | { kind: "tooLittleHistory"; trackedDays: number; minimumDays: number }
+  | { kind: "usedOutsideCatalogue"; scopes: string[] }
+  | { kind: "usedUnrestrictedRoutes" };
+
+export type ApiKeyScopeUsage = {
+  apiKeyId: string;
+  trackedSince: Date;
+  capabilities: Record<string, ApiKeyCapabilityUsage>;
+  usedOutsideCatalogue: string[];
+  usedUnrestrictedRoutes: boolean;
+  narrowTo: ApiKeyCapabilityMap | null;
+  narrowBlocker?: ApiKeyNarrowBlocker;
+};
 
 // Mutation result for role create/update — success carries the new
 // `role`, failure carries a user-facing `error` string.

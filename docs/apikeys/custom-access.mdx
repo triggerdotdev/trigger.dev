@@ -155,9 +155,33 @@ Saving and deleting presets needs the Owner or Admin role in the organization, s
 
 ## See a key's access
 
-The **Access** column on the API keys page shows a key's preset. For a custom key it shows **Custom**, followed by the presets the access matches, such as "Operator + Deploy only", or the number of selected tasks. Hover the cell to see each area and level, read from the key itself.
+The **Access** column on the API keys page shows a key's preset. For a custom key it shows **Custom**, followed by the presets the access matches, such as "Operator + Deploy only", or the number of selected tasks. Click a key to open its details: each area and level, read from the key itself, and its selected tasks. **Show scopes** lists the scopes behind each level.
 
 To change a custom key later, use [**Edit access**](/apikeys#change-a-keys-access).
+
+## See what a key uses
+
+Trigger.dev Cloud records which access each API key uses, so you can find access a key never needs and remove it. Click a key to open its details. Under **Access**, each area the key has shows:
+
+- **Last used** with the date and time the key last used it, or **Never**
+- the level it used when that's less than it has, such as **Read last used** on an area with read and write access
+
+For a key with **No restrictions**, every area is listed. Below the areas, **Usage tracked since** shows when tracking started.
+
+Usage is recorded per area and level, not per request: there are no counts, paths or IP addresses. The last-used time can lag by up to an hour.
+
+### Narrow a key to what it used
+
+In the key's details, click **Narrow to what it used** below its access. [**Edit access**](/apikeys#change-a-keys-access) opens with the smallest level per area that covers the key's requests in the last 30 days, keeping its selected tasks, and asks you to confirm: it lists each area the key loses with when it was last used. Click **Back** to adjust the grid, or **Save access** to apply it. The secret doesn't change, so nothing needs redeploying.
+
+Narrowing isn't offered when:
+
+- the key has less than 7 days of recorded usage
+- the key used access the grid doesn't cover
+- a key with **No restrictions** called endpoints that only unrestricted keys can use, such as `whoami` and pausing or resuming an environment, in the last 30 days. A narrower key would break those calls.
+- your plan doesn't include restricted keys
+
+Access that a key uses rarely, such as a monthly report, can look unused after 30 days. Check the last-used note on each area before you save.
 
 ## Next steps
 

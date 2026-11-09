@@ -72,6 +72,19 @@ export const MISSING_API_KEY_MESSAGE =
 export const REVOKED_API_KEY_MESSAGE = "This key was revoked, so its access can't be changed.";
 export const EXPIRED_API_KEY_MESSAGE = "This key has expired. Create a new key instead.";
 
+export const DISABLE_ROOT_API_KEY_VISIBILITY_CONFIRMATION = "disable root key visibility";
+
+export function uneditableApiKeyMessage(
+  apiKey: { revokedAt: Date | string | null; expiresAt: Date | string | null } | undefined,
+  now: number
+): string | undefined {
+  if (!apiKey || apiKey.revokedAt) return REVOKED_API_KEY_MESSAGE;
+  if (apiKey.expiresAt && new Date(apiKey.expiresAt).getTime() <= now) {
+    return EXPIRED_API_KEY_MESSAGE;
+  }
+  return undefined;
+}
+
 export type ChosenPreset = { id: string; label?: string };
 
 export function chosenPreset(presets: Presets, id: string): ChosenPreset {

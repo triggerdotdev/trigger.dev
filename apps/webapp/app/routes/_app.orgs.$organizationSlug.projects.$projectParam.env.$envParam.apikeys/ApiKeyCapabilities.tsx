@@ -60,6 +60,7 @@ export function CapabilityList({
   unmatchedScopes,
   showScopes = false,
   taskIdentifiers,
+  notes,
 }: {
   catalogue: ApiKeyCapabilityCatalogue;
   capabilities: ApiKeyCapabilityMap;
@@ -68,6 +69,7 @@ export function CapabilityList({
   unmatchedScopes?: string[];
   showScopes?: boolean;
   taskIdentifiers?: string[];
+  notes?: Record<string, ReactNode>;
 }) {
   const rows = catalogue.capabilities
     .map((capability) => {
@@ -104,6 +106,9 @@ export function CapabilityList({
               {fullAccess ? "Full access" : (level?.label ?? "None")}
             </span>
           </div>
+          {notes?.[capability.id] ? (
+            <div className="ml-4 mt-0.5 text-xs text-text-dimmed">{notes[capability.id]}</div>
+          ) : null}
           {showScopes && level && level.scopes.length > 0 ? (
             <div className="ml-4 mt-1 flex flex-col gap-0.5">
               {shownScopes(capability, level.scopes, taskIdentifiers).map((scope) => (

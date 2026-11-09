@@ -9,7 +9,12 @@ import { hashApiKey } from "~/utils/apiKeys";
 import { BuildRuntime } from "@trigger.dev/core/v3";
 import { isAdditionalApiKey } from "@trigger.dev/core/v3/apiKeys";
 import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
-import { isIpAllowed, scopesGrantFullAccess } from "@trigger.dev/rbac";
+import {
+  isIpAllowed,
+  scopesGrantFullAccess,
+  UNRESTRICTED_API_KEY_SCOPE_USE,
+} from "@trigger.dev/rbac";
+import { rbac } from "~/services/rbac.server";
 
 export type { RuntimeEnvironment };
 
@@ -227,6 +232,15 @@ async function resolveEnvironmentByApiKey(
   //don't return deleted projects
   if (environment.project.deletedAt !== null) {
     return { ok: false, reason: "not-found" };
+  }
+
+  if (additionalApiKey) {
+    rbac.recordApiKeyScopeUse({
+      organizationId: environment.organizationId,
+      environmentId: environment.id,
+      apiKeyId: additionalApiKey.id,
+      used: [UNRESTRICTED_API_KEY_SCOPE_USE],
+    });
   }
 
   if (environment.type === "PREVIEW") {

@@ -1,24 +1,17 @@
-import {
-  BookOpenIcon,
-  CheckCircleIcon,
-  ExclamationTriangleIcon,
-  KeyIcon,
-  NoSymbolIcon,
-  PencilSquareIcon,
-  PlusIcon,
-} from "@heroicons/react/20/solid";
-import { CUSTOM_API_KEY_PRESET_ID } from "@trigger.dev/plugins";
+import { BookOpenIcon, KeyIcon, PencilSquareIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, useRevalidator, useSearchParams } from "@remix-run/react";
+import { Outlet, useLocation, useParams, useRevalidator, useSearchParams } from "@remix-run/react";
 import { useState } from "react";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { CodeBlock } from "~/components/code/CodeBlock";
-import { InlineCode } from "~/components/code/InlineCode";
 import { RegenerateApiKeyModal } from "~/components/environments/RegenerateApiKeyModal";
-import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
+import {
+  type EnvironmentCombo,
+  environmentFullTitle,
+} from "~/components/environments/EnvironmentLabel";
 import {
   MainHorizontallyCenteredContainer,
   PageBody,
@@ -33,11 +26,16 @@ import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { Header2 } from "~/components/primitives/Headers";
-import { Input } from "~/components/primitives/Input";
-import { InputGroup } from "~/components/primitives/InputGroup";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
+import {
+  RESIZABLE_PANEL_ANIMATION,
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+  collapsibleHandleClassName,
+} from "~/components/primitives/Resizable";
 import { Switch } from "~/components/primitives/Switch";
 import {
   Table,
@@ -50,47 +48,33 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
-import { MAX_API_KEY_TASK_IDENTIFIERS } from "~/consts";
-import {
-  createEnvironmentApiKey,
-  disableRootApiKeyVisibility,
-  isApiKeyUserError,
-  revokeEnvironmentApiKey,
-  updateEnvironmentApiKeyAccess,
-  updateEnvironmentApiKeyIpRanges,
-} from "~/models/api-key.server";
-import {
-  redirectWithErrorMessage,
-  redirectWithSuccessMessage,
-  typedJsonWithErrorMessage,
-  typedJsonWithSuccessMessage,
-} from "~/models/message.server";
-import { findProjectBySlug } from "~/models/project.server";
-import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import { useEnvironment } from "~/hooks/useEnvironment";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
 import { ApiKeysPresenter } from "~/presenters/v3/ApiKeysPresenter.server";
-import {
-  API_KEY_PRESET_PERMISSION_MESSAGE,
-  canManageApiKeyPresets,
-  validateApiKeyAccess,
-} from "~/services/apiKeyPresetValidation.server";
-import { logger } from "~/services/logger.server";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { rbac } from "~/services/rbac.server";
-import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
-import { docsPath, EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { docsPath, EnvironmentParamSchema, v3ApiKeyPath, v3ApiKeysPath } from "~/utils/pathBuilder";
 import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
-import { EXPIRED_API_KEY_MESSAGE, REVOKED_API_KEY_MESSAGE } from "~/utils/apiKeyAccess";
+import { uneditableApiKeyMessage } from "~/utils/apiKeyAccess";
 import { ApiKeyAccessCell } from "./ApiKeyAccessCell";
 import {
-  ApiKeyAllowedIps,
-  ApiKeyLastUsed,
-  EditApiKeyIpRangesButton,
-  splitIpRangesInput,
-} from "./ApiKeyIpRanges";
+  ApiKeyStatus,
+  apiKeyCreator,
+  DisableRootApiKeyButton,
+  editableApiKey,
+  RevokeApiKeyButton,
+  ROOT_API_KEY_PARAM,
+} from "./ApiKeyActions";
+import { ApiKeyAllowedIps, ApiKeyLastUsed, EditApiKeyIpRangesButton } from "./ApiKeyIpRanges";
+import { apiKeysAction, canManageOrganizationPresets } from "./apiKeysAction.server";
 import { EditApiKeyAccessDialog, type EditableApiKey } from "./EditApiKeyAccessDialog";
 import { NewApiKeyDialog } from "./NewApiKeyDialog";
+
+export type { ApiKeyActionData } from "./apiKeysAction.server";
 
 export const handle: Handle = {
   agentPageContext: () => sectionAgentPageContext("apikeys"),
@@ -103,80 +87,6 @@ export const meta = pageMeta("API keys");
 const ApiKeySearchParams = z.object({
   showRevoked: z.preprocess((value) => value === "true" || value === true, z.boolean()).optional(),
 });
-
-const CapabilitiesField = z
-  .string()
-  .optional()
-  .transform((value, ctx) => {
-    if (!value) return undefined;
-    try {
-      return z.record(z.string(), z.string()).parse(JSON.parse(value));
-    } catch {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Invalid capabilities" });
-      return z.NEVER;
-    }
-  });
-
-const AccessFields = {
-  presetId: z.string().trim().min(1),
-  capabilities: CapabilitiesField,
-  taskScope: z.enum(["all", "selected"]).optional(),
-  taskIdentifiers: z
-    .array(z.string().trim().min(1, "Task identifiers cannot be blank"))
-    .max(MAX_API_KEY_TASK_IDENTIFIERS, {
-      message: `You can select at most ${MAX_API_KEY_TASK_IDENTIFIERS} tasks`,
-    })
-    .default([]),
-};
-
-const CreateApiKeySchema = z.object({
-  action: z.literal("create"),
-  name: z.string().trim().min(1).max(64),
-  expiresAt: z.preprocess(
-    (value) => (value === "" || value === undefined ? undefined : value),
-    z.coerce
-      .date()
-      .refine((date) => date.getTime() > Date.now(), "Expiration must be in the future")
-      .optional()
-  ),
-  ...AccessFields,
-  allowedIpRanges: z.string().optional(),
-});
-
-const DISABLE_ROOT_API_KEY_VISIBILITY_CONFIRMATION = "disable root key visibility";
-
-const ApiKeyActionSchema = z.discriminatedUnion("action", [
-  CreateApiKeySchema,
-  z.object({ action: z.literal("revoke"), apiKeyId: z.string().min(1) }),
-  z.object({ action: z.literal("update-access"), apiKeyId: z.string().min(1), ...AccessFields }),
-  z.object({
-    action: z.literal("update-ip-ranges"),
-    apiKeyId: z.string().min(1),
-    allowedIpRanges: z.string().default(""),
-  }),
-  z.object({
-    action: z.literal("save-preset"),
-    name: z.string(),
-    description: z.string().default(""),
-    capabilities: CapabilitiesField,
-    limitsTasks: z
-      .string()
-      .optional()
-      .transform((value) => value === "true"),
-  }),
-  z.object({ action: z.literal("delete-preset"), presetId: z.string().min(1) }),
-  z.object({
-    action: z.literal("disable-root"),
-    confirmation: z.literal(DISABLE_ROOT_API_KEY_VISIBILITY_CONFIRMATION),
-  }),
-]);
-
-export type ApiKeyActionData =
-  | { ok: true; action: "create"; apiKey: string }
-  | { ok: true; action: "update-access"; apiKeyId: string }
-  | { ok: true; action: "save-preset"; presetId: string }
-  | { ok: true; action: "delete-preset"; presetId: string }
-  | { ok: false; error: string };
 
 export const loader = dashboardLoader(
   {
@@ -236,234 +146,35 @@ export const loader = dashboardLoader(
   }
 );
 
-async function canManageOrganizationPresets(
-  request: Request,
-  userId: string,
-  organizationId: string | undefined
-) {
-  if (!organizationId) return false;
-  const auth = await rbac.authenticateSession(request, { userId, organizationId });
-  return auth.ok && canManageApiKeyPresets(auth.ability);
-}
+export const action = apiKeysAction;
 
-async function presetsToValidate(organizationId: string, presetId: string | undefined) {
-  if (presetId === CUSTOM_API_KEY_PRESET_ID) {
-    return (await rbac.isUsingPlugin()) ? [] : null;
-  }
-  return (await rbac.apiKeyAccessOptions(organizationId))?.presets ?? null;
-}
+export type ApiKeysOutletContext = {
+  apiKeys: ApiKeysData["apiKeys"];
+  rootApiKey: ApiKeysData["rootApiKey"];
+  environment: ApiKeysData["environment"];
+  environmentLabel: React.ComponentProps<typeof EnvironmentCombo>["environment"];
+  availableTasks: string[];
+  presets: ApiKeysData["presets"];
+  capabilityCatalogue: ApiKeysData["capabilityCatalogue"];
+  isRbacPluginAvailable: boolean;
+  canWriteApiKeys: boolean;
+  canManagePresets: boolean;
+  canEditAccess: boolean;
+  canManageRootApiKey: boolean;
+  hasVercelIntegration: boolean;
+  loadedAt: number;
+  listPath: string;
+  openMigration: () => void;
+};
 
-export const action = dashboardAction(
-  {
-    params: EnvironmentParamSchema,
-    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
-    // The environment tier is only known after resolving the route params,
-    // so write:apiKeys is enforced in the handler before any mutation.
-  },
-  async ({ request, params, user, ability }) => {
-    if (request.method.toUpperCase() !== "POST") {
-      throw new Response("Method Not Allowed", { status: 405 });
-    }
-
-    const project = await findProjectBySlug(params.organizationSlug, params.projectParam, user.id);
-    if (!project) {
-      throw new Response("Project not found", { status: 404 });
-    }
-
-    const environment = await findEnvironmentBySlug(project.id, params.envParam, user.id);
-    if (!environment) {
-      throw new Response("Environment not found", { status: 404 });
-    }
-
-    if (!ability.can("write", { type: "apiKeys", envType: environment.type })) {
-      return typedJsonWithErrorMessage(
-        { ok: false as const, error: "You don't have permission to manage these API keys." },
-        request,
-        "You don't have permission to manage these API keys."
-      );
-    }
-
-    const formData = await request.formData();
-    const hasTaskParameters = formData.has("taskScope") || formData.has("taskIdentifiers");
-    const submission = ApiKeyActionSchema.safeParse({
-      ...Object.fromEntries(formData),
-      taskIdentifiers: formData.getAll("taskIdentifiers"),
-    });
-    if (!submission.success) {
-      const error = submission.error.issues[0]?.message ?? "Invalid API key request";
-      return typedJsonWithErrorMessage({ ok: false as const, error }, request, error);
-    }
-
-    const keyEnvironmentId = environment.parentEnvironmentId ?? environment.id;
-    const returnPath = `${new URL(request.url).pathname}${new URL(request.url).search}`;
-
-    try {
-      switch (submission.data.action) {
-        case "create": {
-          const access = validateApiKeyAccess({
-            presets: await presetsToValidate(project.organizationId, submission.data.presetId),
-            ...submission.data,
-            hasTaskParameters,
-          });
-          const result = await createEnvironmentApiKey({
-            environmentId: keyEnvironmentId,
-            taskEnvironmentId: environment.id,
-            userId: user.id,
-            name: submission.data.name,
-            expiresAt: submission.data.expiresAt,
-            ...access,
-            allowedIpRanges: splitIpRangesInput(submission.data.allowedIpRanges),
-          });
-
-          return typedJsonWithSuccessMessage(
-            {
-              ok: true as const,
-              action: "create" as const,
-              apiKey: result.plaintext,
-            },
-            request,
-            `Created ${submission.data.name} API key`
-          );
-        }
-        case "update-access": {
-          const access = validateApiKeyAccess({
-            presets: await presetsToValidate(project.organizationId, submission.data.presetId),
-            ...submission.data,
-            hasTaskParameters,
-          });
-          await updateEnvironmentApiKeyAccess({
-            environmentId: keyEnvironmentId,
-            taskEnvironmentId: environment.id,
-            userId: user.id,
-            apiKeyId: submission.data.apiKeyId,
-            ...access,
-          });
-
-          return typedJsonWithSuccessMessage(
-            {
-              ok: true as const,
-              action: "update-access" as const,
-              apiKeyId: submission.data.apiKeyId,
-            },
-            request,
-            "API key access updated"
-          );
-        }
-        case "save-preset": {
-          if (!(await canManageOrganizationPresets(request, user.id, project.organizationId))) {
-            return typedjson({ ok: false as const, error: API_KEY_PRESET_PERMISSION_MESSAGE });
-          }
-          const result = await rbac.createApiKeyPreset({
-            organizationId: project.organizationId,
-            name: submission.data.name,
-            description: submission.data.description,
-            capabilities: submission.data.capabilities ?? {},
-            limitsTasks: submission.data.limitsTasks,
-            createdById: user.id,
-          });
-          if (!result.ok) {
-            return typedjson({ ok: false as const, error: result.error });
-          }
-          return typedJsonWithSuccessMessage(
-            { ok: true as const, action: "save-preset" as const, presetId: result.preset.id },
-            request,
-            `Saved ${result.preset.label} preset`
-          );
-        }
-        case "delete-preset": {
-          if (!(await canManageOrganizationPresets(request, user.id, project.organizationId))) {
-            return typedjson({ ok: false as const, error: API_KEY_PRESET_PERMISSION_MESSAGE });
-          }
-          const result = await rbac.deleteApiKeyPreset({
-            organizationId: project.organizationId,
-            presetId: submission.data.presetId,
-          });
-          if (!result.ok) {
-            return typedjson({ ok: false as const, error: result.error });
-          }
-          return typedJsonWithSuccessMessage(
-            {
-              ok: true as const,
-              action: "delete-preset" as const,
-              presetId: submission.data.presetId,
-            },
-            request,
-            "Preset deleted"
-          );
-        }
-        case "revoke": {
-          await revokeEnvironmentApiKey({
-            environmentId: keyEnvironmentId,
-            apiKeyId: submission.data.apiKeyId,
-          });
-
-          return redirectWithSuccessMessage(returnPath, request, "API key revoked");
-        }
-        case "update-ip-ranges": {
-          await updateEnvironmentApiKeyIpRanges({
-            environmentId: keyEnvironmentId,
-            apiKeyId: submission.data.apiKeyId,
-            allowedIpRanges: splitIpRangesInput(submission.data.allowedIpRanges),
-          });
-
-          return redirectWithSuccessMessage(returnPath, request, "Allowed IP addresses updated");
-        }
-        case "disable-root": {
-          await disableRootApiKeyVisibility({
-            environmentId: keyEnvironmentId,
-            userId: user.id,
-          });
-
-          return redirectWithSuccessMessage(
-            returnPath,
-            request,
-            "Root API key visibility disabled"
-          );
-        }
-      }
-    } catch (error) {
-      if (!isApiKeyUserError(error)) {
-        logger.error("API keys action failed", {
-          action: submission.data.action,
-          environmentId: keyEnvironmentId,
-          error,
-        });
-      }
-      const message = error instanceof Error ? error.message : "Unable to update API keys";
-
-      if (
-        submission.data.action === "create" ||
-        submission.data.action === "update-access" ||
-        submission.data.action === "save-preset" ||
-        submission.data.action === "delete-preset"
-      ) {
-        return typedJsonWithErrorMessage({ ok: false as const, error: message }, request, message);
-      }
-
-      return redirectWithErrorMessage(returnPath, request, message);
-    }
-  }
-);
-
-function uneditableApiKeyMessage(
-  apiKey: { revokedAt: Date | string | null; expiresAt: Date | string | null } | undefined,
-  loadedAt: number
-): string | undefined {
-  if (!apiKey || apiKey.revokedAt) return REVOKED_API_KEY_MESSAGE;
-  if (apiKey.expiresAt && new Date(apiKey.expiresAt).getTime() <= loadedAt) {
-    return EXPIRED_API_KEY_MESSAGE;
-  }
-  return undefined;
-}
+type ApiKeysData = UseDataFunctionReturn<typeof loader>;
 
 export default function Page() {
   const [createApiKeyOpen, setCreateApiKeyOpen] = useState(false);
   const [migrationOpen, setMigrationOpen] = useState(false);
   const [returnToMigration, setReturnToMigration] = useState(false);
-  const [editing, setEditing] = useState<{
-    apiKey: EditableApiKey;
-    driftPresetLabel?: string;
-  } | null>(null);
+  const [editing, setEditing] = useState<EditableApiKey | null>(null);
+  const data = useTypedLoaderData<typeof loader>();
   const {
     environment,
     rootApiKey,
@@ -478,8 +189,17 @@ export default function Page() {
     presets,
     capabilityCatalogue,
     loadedAt,
-  } = useTypedLoaderData<typeof loader>();
+  } = data;
   const revalidator = useRevalidator();
+  const location = useLocation();
+  const organization = useOrganization();
+  const project = useProject();
+  const currentEnvironment = useEnvironment();
+  const { apiKeyParam } = useParams();
+  const isShowingInspector = !!apiKeyParam;
+  const listPath = v3ApiKeysPath(organization, project, currentEnvironment);
+  const rowPath = (apiKeyId: string) =>
+    `${v3ApiKeyPath(organization, project, currentEnvironment, apiKeyId)}${location.search}`;
 
   const apiKeyEnvironmentLabel = {
     ...environment,
@@ -509,24 +229,29 @@ export default function Page() {
   const canEditAccess =
     canWriteApiKeys && isRbacPluginAvailable && presets !== null && capabilityCatalogue !== null;
 
-  function editAccess(apiKey: (typeof apiKeys)[number], fromDrift = false) {
+  function editAccess(apiKey: (typeof apiKeys)[number]) {
     revalidator.revalidate();
-    setEditing({
-      apiKey: {
-        id: apiKey.id,
-        name: apiKey.name,
-        expiresAt: apiKey.expiresAt,
-        allowedIpRanges: apiKey.allowedIpRanges,
-        presetId: apiKey.access.presetId,
-        fullAccess: apiKey.access.fullAccess,
-        capabilities: apiKey.access.capabilities,
-        taskIdentifiers: apiKey.access.taskIdentifiers,
-        unmatchedScopes: apiKey.access.unmatchedScopes,
-        matchesPreset: apiKey.access.matchesPreset,
-      },
-      driftPresetLabel: fromDrift ? apiKey.access.label : undefined,
-    });
+    setEditing(editableApiKey(apiKey));
   }
+
+  const outletContext: ApiKeysOutletContext = {
+    apiKeys,
+    rootApiKey,
+    environment,
+    environmentLabel: apiKeyEnvironmentLabel,
+    availableTasks,
+    presets,
+    capabilityCatalogue,
+    isRbacPluginAvailable,
+    canWriteApiKeys,
+    canManagePresets,
+    canEditAccess,
+    canManageRootApiKey,
+    hasVercelIntegration,
+    loadedAt,
+    listPath: `${listPath}${location.search}`,
+    openMigration: () => setMigrationOpen(true),
+  };
 
   return (
     <PageContainer>
@@ -553,290 +278,310 @@ export default function Page() {
       </NavBar>
       <PageBody scrollable={false}>
         {canReadApiKeys ? (
-          <div className="max-h-full min-h-full overflow-y-auto border-t border-grid-dimmed">
-            {/* The dialog wraps both triggers so it stays mounted when creating the first key swaps
-                the empty state for the table: the new key is only shown once, in this dialog. */}
-            <NewApiKeyDialog
-              open={createApiKeyOpen}
-              onOpenChange={(open) => {
-                setCreateApiKeyOpen(open);
-                if (open) revalidator.revalidate();
-                if (!open && returnToMigration) {
-                  setReturnToMigration(false);
-                  setMigrationOpen(true);
-                }
-              }}
-              availableTasks={availableTasks}
-              presets={presets}
-              capabilityCatalogue={capabilityCatalogue}
-              isRbacPluginAvailable={isRbacPluginAvailable}
-              canManagePresets={canManagePresets}
-              environment={apiKeyEnvironmentLabel}
-            >
-              {(openCreateApiKey) => (
-                <>
-                  <div className="flex h-fit items-center justify-end gap-2 p-3">
-                    <div className="flex items-center gap-2">
-                      {envBlock ? (
-                        <EnvironmentVariablesDialog
-                          environmentType={environment.type}
-                          envBlock={envBlock}
-                        />
-                      ) : null}
-                      <RevokedFilter checked={showRevoked} />
-                      {showCreateApiKeyPrompt ? null : (
-                        <NewApiKeyButton canWrite={canWriteApiKeys} variant="primary/small" />
-                      )}
-                    </div>
-                  </div>
-
-                  {rootApiKey && !rootApiKey.isHidden ? (
-                    <div className="mx-3 mb-3">
-                      <Callout variant="info">
-                        <div className="flex flex-col items-start gap-2">
-                          <div>
-                            <span className="flex flex-wrap items-center gap-2 text-sm text-text-bright">
-                              Switch to individually managed API keys
-                              <Badge variant="extra-small">Recommended</Badge>
-                            </span>
-                            <Paragraph variant="small">
-                              Create keys you can revoke independently, without rotating your root
-                              key.
-                            </Paragraph>
-                          </div>
-                          <Button
-                            variant="secondary/small"
-                            disabled={!canWriteApiKeys}
-                            onClick={() => setMigrationOpen(true)}
-                          >
-                            Switch to API keys…
-                          </Button>
-                        </div>
-                      </Callout>
-                    </div>
-                  ) : null}
-
-                  <Table>
-                    <ApiKeyTableHeader />
-                    <TableBody>
-                      {rootApiKey ? (
-                        <TableRow className="h-[3.25rem] [&_td]:py-2">
-                          <TableCell>
-                            <div className="flex items-center gap-1.5 text-text-bright">
-                              <KeyIcon className="size-4" />
-                              {rootApiKey.name}
-                              <Badge variant="extra-small">Root</Badge>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex w-64 items-center justify-between gap-2">
-                              <span className="font-mono text-text-dimmed">
-                                {rootApiKey.obfuscated}
-                              </span>
-                              {rootApiKey.value ? (
-                                <CopyButton value={rootApiKey.value} variant="icon" size="small" />
-                              ) : (
-                                <InfoIconTooltip
-                                  content={`Root keys are being phased out. Create a new API key instead${chooseAccessHint}.`}
-                                  contentClassName="max-w-xs"
-                                />
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <ApiKeyStatus now={loadedAt} />
-                          </TableCell>
-                          <TableCell>
-                            <ApiKeyAccessCell
-                              label="No restrictions"
-                              fullAccess
-                              catalogue={capabilityCatalogue}
+          <ResizablePanelGroup orientation="horizontal" className="max-h-full">
+            <ResizablePanel id="api-keys-main" min="100px">
+              <div className="max-h-full min-h-full overflow-y-auto border-t border-grid-dimmed">
+                {/* The dialog wraps both triggers so it stays mounted when creating the first key swaps
+                    the empty state for the table: the new key is only shown once, in this dialog. */}
+                <NewApiKeyDialog
+                  open={createApiKeyOpen}
+                  onOpenChange={(open) => {
+                    setCreateApiKeyOpen(open);
+                    if (open) revalidator.revalidate();
+                    if (!open && returnToMigration) {
+                      setReturnToMigration(false);
+                      setMigrationOpen(true);
+                    }
+                  }}
+                  availableTasks={availableTasks}
+                  presets={presets}
+                  capabilityCatalogue={capabilityCatalogue}
+                  isRbacPluginAvailable={isRbacPluginAvailable}
+                  canManagePresets={canManagePresets}
+                  environment={apiKeyEnvironmentLabel}
+                >
+                  {(openCreateApiKey) => (
+                    <>
+                      <div className="flex h-fit items-center justify-end gap-2 p-3">
+                        <div className="flex items-center gap-2">
+                          {envBlock ? (
+                            <EnvironmentVariablesDialog
+                              environmentType={environment.type}
+                              envBlock={envBlock}
                             />
-                          </TableCell>
-                          <TableCell>
-                            <ApiKeyAllowedIps ranges={[]} />
-                          </TableCell>
-                          <TableCell>–</TableCell>
-                          <TableCell>–</TableCell>
-                          <TableCell>–</TableCell>
-                          <TableCellMenu
-                            isSticky
-                            className="w-32"
-                            hiddenButtons={
-                              canManageRootApiKey ? (
-                                <>
-                                  {canWriteApiKeys ? (
-                                    <RegenerateApiKeyModal
-                                      id={environment.keyEnvironmentId}
-                                      title={environmentFullTitle(apiKeyEnvironmentLabel)}
-                                      hasVercelIntegration={hasVercelIntegration}
-                                      isDevelopment={environment.type === "DEVELOPMENT"}
-                                      isRootApiKeyHidden={rootApiKey.isHidden}
-                                      onSwitchToApiKeys={() => setMigrationOpen(true)}
-                                    />
-                                  ) : null}
-                                  {rootApiKey.isHidden ? null : (
-                                    <DisableRootApiKeyButton canWrite={canWriteApiKeys} />
-                                  )}
-                                </>
-                              ) : null
-                            }
-                          />
-                        </TableRow>
+                          ) : null}
+                          <RevokedFilter checked={showRevoked} />
+                          {showCreateApiKeyPrompt ? null : (
+                            <NewApiKeyButton canWrite={canWriteApiKeys} variant="primary/small" />
+                          )}
+                        </div>
+                      </div>
+
+                      {rootApiKey && !rootApiKey.isHidden ? (
+                        <div className="mx-3 mb-3">
+                          <Callout variant="info">
+                            <div className="flex flex-col items-start gap-2">
+                              <div>
+                                <span className="flex flex-wrap items-center gap-2 text-sm text-text-bright">
+                                  Switch to individually managed API keys
+                                  <Badge variant="extra-small">Recommended</Badge>
+                                </span>
+                                <Paragraph variant="small">
+                                  Create keys you can revoke independently, without rotating your
+                                  root key.
+                                </Paragraph>
+                              </div>
+                              <Button
+                                variant="secondary/small"
+                                disabled={!canWriteApiKeys}
+                                onClick={() => setMigrationOpen(true)}
+                              >
+                                Switch to API keys…
+                              </Button>
+                            </div>
+                          </Callout>
+                        </div>
                       ) : null}
 
-                      {apiKeys.map((apiKey) => {
-                        const isExpired = apiKey.expiresAt
-                          ? new Date(apiKey.expiresAt).getTime() <= loadedAt
-                          : false;
-                        const cannotAuthenticate = Boolean(apiKey.revokedAt) || isExpired;
-                        const cannotRevoke = Boolean(apiKey.revokedAt) || isExpired;
-                        const creator =
-                          apiKey.createdBy?.displayName ??
-                          apiKey.createdBy?.name ??
-                          apiKey.createdBy?.email ??
-                          "–";
-
-                        return (
-                          <TableRow
-                            key={apiKey.id}
-                            disabled={cannotAuthenticate}
-                            className="h-[3.25rem] [&_td]:py-2"
-                          >
-                            <TableCell>{apiKey.name}</TableCell>
-                            <TableCell>
-                              <span className="font-mono text-text-dimmed">
-                                {apiKey.obfuscated}
-                              </span>
-                            </TableCell>
-                            <TableCell>
-                              <ApiKeyStatus
-                                revokedAt={apiKey.revokedAt}
-                                expiresAt={apiKey.expiresAt}
-                                now={loadedAt}
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <ApiKeyAccessCell
-                                label={apiKey.access.label}
-                                taskIdentifiers={apiKey.access.taskIdentifiers}
-                                usesTaskSelection={apiKey.access.usesTaskSelection}
-                                isCustom={apiKey.access.isCustom}
-                                fullAccess={apiKey.access.fullAccess}
-                                capabilities={apiKey.access.capabilities}
-                                unmatchedScopes={apiKey.access.unmatchedScopes}
-                                catalogue={capabilityCatalogue}
-                                presets={presets}
-                                drift={apiKey.access.drift}
-                                onReviewDrift={
-                                  canEditAccess && !cannotAuthenticate
-                                    ? () => editAccess(apiKey, true)
-                                    : undefined
+                      <Table>
+                        <ApiKeyTableHeader />
+                        <TableBody>
+                          {rootApiKey ? (
+                            <TableRow
+                              className="h-[3.25rem] [&_td]:py-2"
+                              isSelected={apiKeyParam === ROOT_API_KEY_PARAM}
+                            >
+                              <TableCell to={rowPath(ROOT_API_KEY_PARAM)} isTabbableCell>
+                                <div className="flex items-center gap-1.5 text-text-bright">
+                                  <KeyIcon className="size-4" />
+                                  {rootApiKey.name}
+                                  <Badge variant="extra-small">Root</Badge>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex w-64 items-center justify-between gap-2">
+                                  <span className="font-mono text-text-dimmed">
+                                    {rootApiKey.obfuscated}
+                                  </span>
+                                  {rootApiKey.value ? (
+                                    <CopyButton
+                                      value={rootApiKey.value}
+                                      variant="icon"
+                                      size="small"
+                                    />
+                                  ) : (
+                                    <InfoIconTooltip
+                                      content={`Root keys are being phased out. Create a new API key instead${chooseAccessHint}.`}
+                                      contentClassName="max-w-xs"
+                                    />
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell to={rowPath(ROOT_API_KEY_PARAM)}>
+                                <ApiKeyStatus now={loadedAt} />
+                              </TableCell>
+                              <TableCell to={rowPath(ROOT_API_KEY_PARAM)}>
+                                <ApiKeyAccessCell label="No restrictions" />
+                              </TableCell>
+                              <TableCell to={rowPath(ROOT_API_KEY_PARAM)}>
+                                <ApiKeyAllowedIps ranges={[]} />
+                              </TableCell>
+                              <TableCell to={rowPath(ROOT_API_KEY_PARAM)}>–</TableCell>
+                              <TableCell to={rowPath(ROOT_API_KEY_PARAM)}>–</TableCell>
+                              <TableCell to={rowPath(ROOT_API_KEY_PARAM)}>–</TableCell>
+                              <TableCellMenu
+                                isSticky
+                                className="w-32"
+                                hiddenButtons={
+                                  canManageRootApiKey ? (
+                                    <>
+                                      {canWriteApiKeys ? (
+                                        <RegenerateApiKeyModal
+                                          id={environment.keyEnvironmentId}
+                                          title={environmentFullTitle(apiKeyEnvironmentLabel)}
+                                          hasVercelIntegration={hasVercelIntegration}
+                                          isDevelopment={environment.type === "DEVELOPMENT"}
+                                          isRootApiKeyHidden={rootApiKey.isHidden}
+                                          onSwitchToApiKeys={() => setMigrationOpen(true)}
+                                        />
+                                      ) : null}
+                                      {rootApiKey.isHidden ? null : (
+                                        <DisableRootApiKeyButton canWrite={canWriteApiKeys} />
+                                      )}
+                                    </>
+                                  ) : null
                                 }
                               />
-                            </TableCell>
-                            <TableCell>
-                              <ApiKeyAllowedIps ranges={apiKey.allowedIpRanges} />
-                            </TableCell>
-                            <TableCell>{creator}</TableCell>
-                            <TableCell>
-                              <DateTime date={apiKey.createdAt} />
-                            </TableCell>
-                            <TableCell>
-                              <ApiKeyLastUsed
-                                lastUsedAt={apiKey.lastUsedAt}
-                                lastUsedIp={apiKey.lastUsedIp}
-                              />
-                            </TableCell>
-                            <TableCellMenu
-                              isSticky
-                              className="w-32"
-                              popoverContent={
-                                cannotRevoke ? null : (
-                                  <>
-                                    {canEditAccess ? (
-                                      <Button
-                                        variant="small-menu-item"
-                                        LeadingIcon={PencilSquareIcon}
-                                        fullWidth
-                                        textAlignLeft
-                                        className="w-full px-1.5 py-[0.9rem]"
-                                        onClick={() => editAccess(apiKey)}
-                                      >
-                                        Edit access…
-                                      </Button>
-                                    ) : null}
-                                    <EditApiKeyIpRangesButton
-                                      id={apiKey.id}
-                                      name={apiKey.name}
-                                      ranges={apiKey.allowedIpRanges}
-                                      lastUsedIp={apiKey.lastUsedIp}
-                                      canWrite={canWriteApiKeys}
-                                    />
-                                    <RevokeApiKeyButton
-                                      id={apiKey.id}
-                                      name={apiKey.name}
-                                      canWrite={canWriteApiKeys}
-                                    />
-                                  </>
-                                )
-                              }
-                            />
-                          </TableRow>
-                        );
-                      })}
+                            </TableRow>
+                          ) : null}
 
-                      {showCreateApiKeyPrompt ? (
-                        <TableBlankRow colSpan={9}>
-                          <div className="flex flex-col items-center justify-center gap-y-4 py-8">
-                            <div className="flex flex-col items-center gap-y-1">
-                              <Header2>Create an API key for your backend</Header2>
-                              <Paragraph variant="small">
-                                {`Root keys are being phased out. Create an API key so your backend can authenticate with Trigger.dev${chooseAccessHint}.`}
-                              </Paragraph>
-                            </div>
-                            <NewApiKeyButton canWrite={canWriteApiKeys} variant="primary/medium" />
-                          </div>
-                        </TableBlankRow>
+                          {apiKeys.map((apiKey) => {
+                            const isExpired = apiKey.expiresAt
+                              ? new Date(apiKey.expiresAt).getTime() <= loadedAt
+                              : false;
+                            const cannotRevoke = Boolean(apiKey.revokedAt) || isExpired;
+                            const path = rowPath(apiKey.id);
+
+                            return (
+                              <TableRow
+                                key={apiKey.id}
+                                disabled={cannotRevoke}
+                                isSelected={apiKeyParam === apiKey.id}
+                                className="h-[3.25rem] [&_td]:py-2"
+                              >
+                                <TableCell to={path} isTabbableCell>
+                                  {apiKey.name}
+                                </TableCell>
+                                <TableCell to={path}>
+                                  <span className="font-mono text-text-dimmed">
+                                    {apiKey.obfuscated}
+                                  </span>
+                                </TableCell>
+                                <TableCell to={path}>
+                                  <ApiKeyStatus
+                                    revokedAt={apiKey.revokedAt}
+                                    expiresAt={apiKey.expiresAt}
+                                    now={loadedAt}
+                                  />
+                                </TableCell>
+                                <TableCell to={path}>
+                                  <ApiKeyAccessCell
+                                    label={apiKey.access.label}
+                                    taskIdentifiers={apiKey.access.taskIdentifiers}
+                                    usesTaskSelection={apiKey.access.usesTaskSelection}
+                                    isCustom={apiKey.access.isCustom}
+                                    capabilities={apiKey.access.capabilities}
+                                    catalogue={capabilityCatalogue}
+                                    presets={presets}
+                                    hasDrift={apiKey.access.drift.length > 0}
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <ApiKeyAllowedIps ranges={apiKey.allowedIpRanges} />
+                                </TableCell>
+                                <TableCell to={path}>{apiKeyCreator(apiKey)}</TableCell>
+                                <TableCell to={path}>
+                                  <DateTime date={apiKey.createdAt} />
+                                </TableCell>
+                                <TableCell to={path}>
+                                  <ApiKeyLastUsed
+                                    lastUsedAt={apiKey.lastUsedAt}
+                                    lastUsedIp={apiKey.lastUsedIp}
+                                  />
+                                </TableCell>
+                                <TableCellMenu
+                                  isSticky
+                                  className="w-32"
+                                  popoverContent={
+                                    cannotRevoke ? null : (
+                                      <>
+                                        {canEditAccess ? (
+                                          <Button
+                                            variant="small-menu-item"
+                                            LeadingIcon={PencilSquareIcon}
+                                            fullWidth
+                                            textAlignLeft
+                                            className="w-full px-1.5 py-[0.9rem]"
+                                            onClick={() => editAccess(apiKey)}
+                                          >
+                                            Edit access…
+                                          </Button>
+                                        ) : null}
+                                        <EditApiKeyIpRangesButton
+                                          id={apiKey.id}
+                                          name={apiKey.name}
+                                          ranges={apiKey.allowedIpRanges}
+                                          lastUsedIp={apiKey.lastUsedIp}
+                                          canWrite={canWriteApiKeys}
+                                        />
+                                        <RevokeApiKeyButton
+                                          id={apiKey.id}
+                                          name={apiKey.name}
+                                          canWrite={canWriteApiKeys}
+                                        />
+                                      </>
+                                    )
+                                  }
+                                />
+                              </TableRow>
+                            );
+                          })}
+
+                          {showCreateApiKeyPrompt ? (
+                            <TableBlankRow colSpan={9}>
+                              <div className="flex flex-col items-center justify-center gap-y-4 py-8">
+                                <div className="flex flex-col items-center gap-y-1">
+                                  <Header2>Create an API key for your backend</Header2>
+                                  <Paragraph variant="small">
+                                    {`Root keys are being phased out. Create an API key so your backend can authenticate with Trigger.dev${chooseAccessHint}.`}
+                                  </Paragraph>
+                                </div>
+                                <NewApiKeyButton
+                                  canWrite={canWriteApiKeys}
+                                  variant="primary/medium"
+                                />
+                              </div>
+                            </TableBlankRow>
+                          ) : null}
+                        </TableBody>
+                      </Table>
+                      {editing ? (
+                        <EditApiKeyAccessDialog
+                          key={editing.id}
+                          apiKey={editing}
+                          uneditableMessage={uneditableApiKeyMessage(
+                            apiKeys.find((apiKey) => apiKey.id === editing.id),
+                            loadedAt
+                          )}
+                          open
+                          onOpenChange={(open) => {
+                            if (!open) setEditing(null);
+                          }}
+                          availableTasks={availableTasks}
+                          presets={presets}
+                          capabilityCatalogue={capabilityCatalogue}
+                          isRbacPluginAvailable={isRbacPluginAvailable}
+                          canManagePresets={canManagePresets}
+                          environment={apiKeyEnvironmentLabel}
+                          now={loadedAt}
+                        />
                       ) : null}
-                    </TableBody>
-                  </Table>
-                  {editing ? (
-                    <EditApiKeyAccessDialog
-                      key={editing.apiKey.id}
-                      apiKey={editing.apiKey}
-                      uneditableMessage={uneditableApiKeyMessage(
-                        apiKeys.find((apiKey) => apiKey.id === editing.apiKey.id),
-                        loadedAt
-                      )}
-                      driftPresetLabel={editing.driftPresetLabel}
-                      open
-                      onOpenChange={(open) => {
-                        if (!open) setEditing(null);
-                      }}
-                      availableTasks={availableTasks}
-                      presets={presets}
-                      capabilityCatalogue={capabilityCatalogue}
-                      isRbacPluginAvailable={isRbacPluginAvailable}
-                      canManagePresets={canManagePresets}
-                      environment={apiKeyEnvironmentLabel}
-                    />
-                  ) : null}
-                  <RootApiKeyMigrationDialog
-                    open={migrationOpen && rootApiKey?.isHidden === false}
-                    onOpenChange={setMigrationOpen}
-                    canWrite={canWriteApiKeys}
-                    hasUsableApiKey={hasUsableApiKey}
-                    onCreateApiKey={() => {
-                      setMigrationOpen(false);
-                      setReturnToMigration(true);
-                      openCreateApiKey();
-                    }}
-                  />
-                </>
-              )}
-            </NewApiKeyDialog>
-          </div>
+                      <RootApiKeyMigrationDialog
+                        open={migrationOpen && rootApiKey?.isHidden === false}
+                        onOpenChange={setMigrationOpen}
+                        canWrite={canWriteApiKeys}
+                        hasUsableApiKey={hasUsableApiKey}
+                        onCreateApiKey={() => {
+                          setMigrationOpen(false);
+                          setReturnToMigration(true);
+                          openCreateApiKey();
+                        }}
+                      />
+                    </>
+                  )}
+                </NewApiKeyDialog>
+              </div>
+            </ResizablePanel>
+            <ResizableHandle
+              id="api-keys-handle"
+              className={collapsibleHandleClassName(isShowingInspector)}
+            />
+            <ResizablePanel
+              id="api-keys-inspector"
+              min="450px"
+              default="500px"
+              className="overflow-hidden"
+              collapsible
+              collapsed={!isShowingInspector}
+              onCollapseChange={() => {}}
+              collapsedSize="0px"
+              collapseAnimation={RESIZABLE_PANEL_ANIMATION}
+            >
+              <div className="h-full" style={{ minWidth: 450 }}>
+                <Outlet context={outletContext} />
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
         ) : (
           <MainHorizontallyCenteredContainer className="py-6">
             <PermissionDenied
@@ -1018,170 +763,5 @@ function RootApiKeyMigrationDialog({
         </div>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function DisableRootApiKeyButton({ canWrite }: { canWrite: boolean }) {
-  const [confirmation, setConfirmation] = useState("");
-
-  return (
-    <Dialog>
-      <DialogTrigger asChild>
-        <Button
-          variant="minimal/small"
-          LeadingIcon={NoSymbolIcon}
-          disabled={!canWrite}
-          tooltip={
-            canWrite ? undefined : "You don't have permission to disable root API key visibility"
-          }
-        >
-          Stop using the root key…
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-md">
-        <DialogHeader>Stop using the root API key</DialogHeader>
-        <Form method="post" className="flex flex-col gap-4 pt-3">
-          <input type="hidden" name="action" value="disable-root" />
-          <Callout variant="warning">
-            The current root key will stop working in 24 hours. Any application still using it will
-            fail to authenticate after that.
-          </Callout>
-          <div className="space-y-2">
-            <Paragraph variant="small">
-              Before continuing, replace the root key in your applications with individually managed
-              API keys and verify they work. Existing individual API keys are not affected.
-            </Paragraph>
-            <Paragraph variant="small">
-              This generates a new hidden root key and permanently disables full root key
-              visibility. This can't be reversed.
-            </Paragraph>
-          </div>
-          <InputGroup className="max-w-full">
-            <Paragraph variant="small/bright">
-              Enter{" "}
-              <InlineCode variant="small">
-                {DISABLE_ROOT_API_KEY_VISIBILITY_CONFIRMATION}
-              </InlineCode>{" "}
-              to confirm:
-            </Paragraph>
-            <Input
-              name="confirmation"
-              type="text"
-              placeholder={DISABLE_ROOT_API_KEY_VISIBILITY_CONFIRMATION}
-              autoComplete="off"
-              fullWidth
-              value={confirmation}
-              onChange={(event) => setConfirmation(event.target.value)}
-            />
-          </InputGroup>
-          <FormButtons
-            confirmButton={
-              <Button
-                type="submit"
-                variant="danger/medium"
-                disabled={confirmation !== DISABLE_ROOT_API_KEY_VISIBILITY_CONFIRMATION}
-              >
-                Hide root key and start 24-hour expiry
-              </Button>
-            }
-            cancelButton={
-              <DialogClose asChild>
-                <Button variant="tertiary/medium">Cancel</Button>
-              </DialogClose>
-            }
-          />
-        </Form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function RevokeApiKeyButton({
-  id,
-  name,
-  canWrite,
-}: {
-  id: string;
-  name: string;
-  canWrite: boolean;
-}) {
-  return (
-    <Dialog>
-      <DialogTrigger asChild>
-        <Button
-          variant="small-menu-item"
-          LeadingIcon={NoSymbolIcon}
-          leadingIconClassName="text-error"
-          fullWidth
-          textAlignLeft
-          className="w-full px-1.5 py-[0.9rem]"
-          disabled={!canWrite}
-          tooltip={canWrite ? undefined : "You don't have permission to revoke API keys"}
-        >
-          Revoke API key…
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-md">
-        <DialogHeader>Revoke API key</DialogHeader>
-        <div className="flex flex-col gap-3 pt-3">
-          <Paragraph>
-            Are you sure you want to revoke "{name}"? Requests using this key will stop
-            authenticating, and it won't be able to mint new public tokens. Public tokens it already
-            minted remain valid until they expire. This can't be reversed.
-          </Paragraph>
-          <FormButtons
-            confirmButton={
-              <Form method="post">
-                <input type="hidden" name="action" value="revoke" />
-                <input type="hidden" name="apiKeyId" value={id} />
-                <Button type="submit" variant="danger/medium">
-                  Revoke API key
-                </Button>
-              </Form>
-            }
-            cancelButton={
-              <DialogClose asChild>
-                <Button variant="tertiary/medium">Cancel</Button>
-              </DialogClose>
-            }
-          />
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function ApiKeyStatus({
-  revokedAt,
-  expiresAt,
-  now,
-}: {
-  revokedAt?: Date | string | null;
-  expiresAt?: Date | string | null;
-  now: number;
-}) {
-  if (revokedAt) {
-    return (
-      <div className="flex items-center gap-1 text-xs text-text-dimmed">
-        <NoSymbolIcon className="size-4" />
-        Revoked
-      </div>
-    );
-  }
-
-  if (expiresAt && new Date(expiresAt).getTime() <= now) {
-    return (
-      <div className="flex items-center gap-1 text-xs text-text-dimmed">
-        <ExclamationTriangleIcon className="size-4" />
-        Expired
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex items-center gap-1 text-xs text-success">
-      <CheckCircleIcon className="size-4" />
-      Active
-    </div>
   );
 }

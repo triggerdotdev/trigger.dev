@@ -138,13 +138,15 @@ Give a key a list of allowed IP addresses to limit where it can be used. Request
 
 ## Change a key's access
 
-To change what an existing key can do, open the key's menu and click **Edit access**. Pick another preset or switch to **Custom**, then click **Save access**. The dialog lists what the key gains and loses before you confirm.
+To change what an existing key can do, click the key on the API keys page to open its details, then click **Edit access**. The key's menu has the same option. Pick another preset or switch to **Custom**, then click **Save access**. The dialog lists what the key gains and loses before you confirm.
 
 The key's secret doesn't change, so nothing needs redeploying, and the new access applies to the key's next request. Name, expiry and allowed IP addresses stay as they are. Editing access needs permission to manage API keys in that environment. The root key and revoked or expired keys can't be edited.
 
+To remove access a key never uses, click **Narrow to what it used** in the key's details. See [See what a key uses](/apikeys/custom-access#see-what-a-key-uses).
+
 ### When a key's access differs from its preset
 
-A key keeps the access it was created with. If a preset later grants more or less, keys created before the change don't follow it. The API keys page marks those keys with a dot after the preset name in the **Access** column. Hover the cell to see which areas differ, or select the dot to open **Edit access** with the preset's current access, then click **Save access** to update the key.
+A key keeps the access it was created with. If a preset later grants more or less, keys created before the change don't follow it. When a preset now grants more than a key has, the API keys page marks the key with a dot after the preset name in the **Access** column. Click the key to see which areas the preset now grants, then click **Update to current preset** and **Save access** to update the key.
 
 ## Expire and revoke keys
 
@@ -181,7 +183,7 @@ The SDK sends the branch automatically. When calling the API directly, send the 
 
 ## Self-hosting
 
-Self-hosted installations support multiple keys with **No restrictions**. The restricted access presets, custom access, and saved presets are available in Trigger.dev Cloud.
+Self-hosted installations support multiple keys with **No restrictions**. The restricted access presets, custom access, saved presets and key usage are available in Trigger.dev Cloud.
 
 IP allowlists use the last address in the `X-Forwarded-For` header, so run the webapp behind a reverse proxy that appends the client IP to that header. To allow private ranges because your clients reach the instance over a private network, set `API_KEY_ALLOW_PRIVATE_IP_RANGES=1`.
 

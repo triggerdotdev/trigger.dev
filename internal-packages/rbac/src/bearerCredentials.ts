@@ -12,6 +12,7 @@ import { createHash } from "node:crypto";
 import { buildJwtAbility, permissiveAbility } from "./ability.js";
 import { clientIpFromHeaders, isIpAllowed } from "./ipAllowlist.js";
 import { resolvePublicTokenSubject, type PublicTokenSubjectCodec } from "./publicTokenSubject.js";
+import { recordingApiKeyAbility, type ApiKeyScopeRecorder } from "./scopeUsage.js";
 
 export type BearerCredentialClients = {
   // Used for the `lastUsedAt` telemetry write; reads go to the replica.
@@ -89,7 +90,8 @@ export class BearerCredentialResolver {
 
   async authenticate(
     request: Request,
-    options?: BearerAuthOptions
+    options?: BearerAuthOptions,
+    recordScopeUse?: ApiKeyScopeRecorder
   ): Promise<BearerCredentialResult> {
     // Deprecated public API keys (`pk_*` minted long before public JWTs
     // landed) are intentionally NOT handled here. That token format hasn't
@@ -223,7 +225,8 @@ export class BearerCredentialResolver {
         rawToken,
         branchName,
         clientIpFromHeaders(request.headers),
-        options?.allowPreviewParent
+        options?.allowPreviewParent,
+        recordScopeUse
       );
     }
 
@@ -302,7 +305,8 @@ export class BearerCredentialResolver {
     rawToken: string,
     branchName: string | null,
     clientIp: string | null,
-    allowPreviewParent = false
+    allowPreviewParent = false,
+    recordScopeUse?: ApiKeyScopeRecorder
   ): Promise<BearerCredentialResult> {
     const resolution: BearerResolution = {
       credentialKind: "additional_api_key",
@@ -377,7 +381,17 @@ export class BearerCredentialResolver {
         organizationId: resolvedEnvironment.organizationId,
         projectId: resolvedEnvironment.projectId,
       },
-      ability: buildJwtAbility(match.scopes),
+      ability: recordScopeUse
+        ? recordingApiKeyAbility(
+            match.scopes,
+            {
+              organizationId: resolvedEnvironment.organizationId,
+              environmentId: resolvedEnvironment.id,
+              apiKeyId: match.id,
+            },
+            recordScopeUse
+          )
+        : buildJwtAbility(match.scopes),
       resolution,
     };
   }

@@ -29,11 +29,19 @@ export type {
   RbacScopeAction,
   RbacScopeResourceType,
   BearerAuthOptions,
+  ApiKeyScopeUseEvent,
+  ApiKeyScopeUsage,
+  ApiKeyScopeUsageParams,
+  ApiKeyCapabilityUsage,
+  ApiKeyNarrowBlocker,
+  ApiKeyScopeMatcher,
 } from "./rbac.js";
 
 export {
   buildJwtAbility,
   buildScope,
+  buildScopeMatcher,
+  UNRESTRICTED_API_KEY_SCOPE_USE,
   FULL_ACCESS_PRESET_ID,
   scopesGrantFullAccess,
   scopesWithinAbility,
