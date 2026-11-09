@@ -18,6 +18,7 @@ export type {
   RbacPluginConfig,
   RbacDatabaseConfig,
   SystemRole,
+  ApiKeyAccessOptions,
   ApiKeyPreset,
   ApiKeyPolicy,
   PrepareApiKeyPolicyResult,
@@ -41,6 +42,27 @@ export {
   verifyUserActorToken,
   USER_ACTOR_TOKEN_PREFIX,
 } from "./rbac.js";
+
+export type {
+  ApiKeyCapability,
+  ApiKeyCapabilityCatalogue,
+  ApiKeyCapabilityDifference,
+  ApiKeyCapabilityLevel,
+  ApiKeyCapabilityMap,
+  ApiKeyCapabilityRequirement,
+} from "./apiKeyCapabilities.js";
+export {
+  apiKeyCapabilitiesEqual,
+  apiKeyCapabilitiesForKey,
+  apiKeyCapabilityDifferences,
+  applyApiKeyCapabilityRequirements,
+  CUSTOM_API_KEY_PRESET_ID,
+  mergeApiKeyCapabilities,
+  NO_ACCESS_LEVEL_ID,
+  RESTRICTED_API_KEYS_PLAN_MESSAGE,
+  restrictScopeToTasks,
+  withoutTaskSelectionUnavailable,
+} from "./apiKeyCapabilities.js";
 
 export type { PluginDatabaseConfig } from "./databaseConfig.js";
 export { organizationOidcIssuer } from "./oidc.js";

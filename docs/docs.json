@@ -46,7 +46,10 @@
                 "searchable": true,
                 "pages": ["runs/list-best-practices"]
               },
-              "apikeys",
+              {
+                "group": "API keys",
+                "pages": ["apikeys", "apikeys/custom-access"]
+              },
               {
                 "group": "OIDC",
                 "pages": ["oidc", "oidc/aws", "oidc/infisical", "oidc/custom"]

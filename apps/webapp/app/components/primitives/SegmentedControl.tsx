@@ -67,6 +67,7 @@ type VariantType = keyof typeof variants;
 type Options = {
   label: ReactNode;
   value: string;
+  disabled?: boolean;
 };
 
 type SegmentedControlProps = {
@@ -121,10 +122,12 @@ export default function SegmentedControl({
             <RadioGroup.Option
               key={option.value}
               value={option.value}
+              disabled={option.disabled}
               className={({ checked }) =>
                 cn(
                   "relative flex h-full grow cursor-pointer text-center font-normal focus-custom",
-                  checked ? variantStyle.active : variantStyle.inactive
+                  checked ? variantStyle.active : variantStyle.inactive,
+                  option.disabled && "cursor-not-allowed opacity-50"
                 )
               }
             >

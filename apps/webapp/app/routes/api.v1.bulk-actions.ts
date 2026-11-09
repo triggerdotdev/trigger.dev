@@ -28,9 +28,19 @@ const { action } = createActionApiRoute(
       resource: () => ({ type: "runs" }),
     },
   },
-  async ({ body, authentication }) => {
+  async ({ body, authentication, ability }) => {
     if (!body) {
       return json({ error: "Invalid request body" }, { status: 400 });
+    }
+
+    if (body.action === "replay" && !ability.can("trigger", { type: "tasks" })) {
+      return json(
+        {
+          error:
+            "Bulk replay needs a key that can trigger all tasks. Keys limited to selected tasks can replay runs one at a time.",
+        },
+        { status: 403 }
+      );
     }
 
     if (body.runIds && body.runIds.length > env.BULK_ACTION_MAX_RUN_IDS) {

@@ -4,10 +4,12 @@ import {
   ExclamationTriangleIcon,
   KeyIcon,
   NoSymbolIcon,
+  PencilSquareIcon,
   PlusIcon,
 } from "@heroicons/react/20/solid";
+import { CUSTOM_API_KEY_PRESET_ID } from "@trigger.dev/plugins";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, useSearchParams } from "@remix-run/react";
+import { Form, useRevalidator, useSearchParams } from "@remix-run/react";
 import { useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -52,7 +54,9 @@ import { MAX_API_KEY_TASK_IDENTIFIERS } from "~/consts";
 import {
   createEnvironmentApiKey,
   disableRootApiKeyVisibility,
+  isApiKeyUserError,
   revokeEnvironmentApiKey,
+  updateEnvironmentApiKeyAccess,
   updateEnvironmentApiKeyIpRanges,
 } from "~/models/api-key.server";
 import {
@@ -64,7 +68,8 @@ import {
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { ApiKeysPresenter } from "~/presenters/v3/ApiKeysPresenter.server";
-import { validateCreateApiKeyPreset } from "~/services/apiKeyPresetValidation.server";
+import { validateApiKeyAccess } from "~/services/apiKeyPresetValidation.server";
+import { logger } from "~/services/logger.server";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
@@ -72,12 +77,15 @@ import { docsPath, EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
+import { EXPIRED_API_KEY_MESSAGE, REVOKED_API_KEY_MESSAGE } from "~/utils/apiKeyAccess";
+import { ApiKeyAccessCell } from "./ApiKeyAccessCell";
 import {
   ApiKeyAllowedIps,
   ApiKeyLastUsed,
   EditApiKeyIpRangesButton,
   splitIpRangesInput,
 } from "./ApiKeyIpRanges";
+import { EditApiKeyAccessDialog, type EditableApiKey } from "./EditApiKeyAccessDialog";
 import { NewApiKeyDialog } from "./NewApiKeyDialog";
 
 export const handle: Handle = {
@@ -92,6 +100,31 @@ const ApiKeySearchParams = z.object({
   showRevoked: z.preprocess((value) => value === "true" || value === true, z.boolean()).optional(),
 });
 
+const CapabilitiesField = z
+  .string()
+  .optional()
+  .transform((value, ctx) => {
+    if (!value) return undefined;
+    try {
+      return z.record(z.string(), z.string()).parse(JSON.parse(value));
+    } catch {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Invalid capabilities" });
+      return z.NEVER;
+    }
+  });
+
+const AccessFields = {
+  presetId: z.string().trim().min(1),
+  capabilities: CapabilitiesField,
+  taskScope: z.enum(["all", "selected"]).optional(),
+  taskIdentifiers: z
+    .array(z.string().trim().min(1, "Task identifiers cannot be blank"))
+    .max(MAX_API_KEY_TASK_IDENTIFIERS, {
+      message: `You can select at most ${MAX_API_KEY_TASK_IDENTIFIERS} tasks`,
+    })
+    .default([]),
+};
+
 const CreateApiKeySchema = z.object({
   action: z.literal("create"),
   name: z.string().trim().min(1).max(64),
@@ -102,14 +135,7 @@ const CreateApiKeySchema = z.object({
       .refine((date) => date.getTime() > Date.now(), "Expiration must be in the future")
       .optional()
   ),
-  presetId: z.string().trim().min(1),
-  taskScope: z.enum(["all", "selected"]).optional(),
-  taskIdentifiers: z
-    .array(z.string().trim().min(1, "Task identifiers cannot be blank"))
-    .max(MAX_API_KEY_TASK_IDENTIFIERS, {
-      message: `You can select at most ${MAX_API_KEY_TASK_IDENTIFIERS} tasks`,
-    })
-    .default([]),
+  ...AccessFields,
   allowedIpRanges: z.string().optional(),
 });
 
@@ -118,6 +144,7 @@ const DISABLE_ROOT_API_KEY_VISIBILITY_CONFIRMATION = "disable root key visibilit
 const ApiKeyActionSchema = z.discriminatedUnion("action", [
   CreateApiKeySchema,
   z.object({ action: z.literal("revoke"), apiKeyId: z.string().min(1) }),
+  z.object({ action: z.literal("update-access"), apiKeyId: z.string().min(1), ...AccessFields }),
   z.object({
     action: z.literal("update-ip-ranges"),
     apiKeyId: z.string().min(1),
@@ -131,6 +158,7 @@ const ApiKeyActionSchema = z.discriminatedUnion("action", [
 
 export type ApiKeyActionData =
   | { ok: true; action: "create"; apiKey: string }
+  | { ok: true; action: "update-access"; apiKeyId: string }
   | { ok: false; error: string };
 
 export const loader = dashboardLoader(
@@ -170,6 +198,8 @@ export const loader = dashboardLoader(
         },
         rootApiKey: canReadApiKeys ? data.rootApiKey : null,
         apiKeys: canReadApiKeys ? data.apiKeys : [],
+        presets: canReadApiKeys ? data.presets : [],
+        capabilityCatalogue: canReadApiKeys ? data.capabilityCatalogue : null,
         canReadApiKeys,
         canWriteApiKeys,
         isRbacPluginAvailable,
@@ -185,6 +215,13 @@ export const loader = dashboardLoader(
     }
   }
 );
+
+async function presetsToValidate(organizationId: string, presetId: string | undefined) {
+  if (presetId === CUSTOM_API_KEY_PRESET_ID) {
+    return (await rbac.isUsingPlugin()) ? [] : null;
+  }
+  return (await rbac.apiKeyAccessOptions(organizationId))?.presets ?? null;
+}
 
 export const action = dashboardAction(
   {
@@ -233,12 +270,9 @@ export const action = dashboardAction(
     try {
       switch (submission.data.action) {
         case "create": {
-          const presets = await rbac.apiKeyPresets(project.organizationId);
-          const preset = validateCreateApiKeyPreset({
-            presets,
-            presetId: submission.data.presetId,
-            taskScope: submission.data.taskScope,
-            taskIdentifiers: submission.data.taskIdentifiers,
+          const access = validateApiKeyAccess({
+            presets: await presetsToValidate(project.organizationId, submission.data.presetId),
+            ...submission.data,
             hasTaskParameters,
           });
           const result = await createEnvironmentApiKey({
@@ -247,11 +281,7 @@ export const action = dashboardAction(
             userId: user.id,
             name: submission.data.name,
             expiresAt: submission.data.expiresAt,
-            presetId: preset.presetId,
-            taskIdentifiers:
-              preset.usesTaskSelection && submission.data.taskScope === "selected"
-                ? submission.data.taskIdentifiers
-                : undefined,
+            ...access,
             allowedIpRanges: splitIpRangesInput(submission.data.allowedIpRanges),
           });
 
@@ -263,6 +293,30 @@ export const action = dashboardAction(
             },
             request,
             `Created ${submission.data.name} API key`
+          );
+        }
+        case "update-access": {
+          const access = validateApiKeyAccess({
+            presets: await presetsToValidate(project.organizationId, submission.data.presetId),
+            ...submission.data,
+            hasTaskParameters,
+          });
+          await updateEnvironmentApiKeyAccess({
+            environmentId: keyEnvironmentId,
+            taskEnvironmentId: environment.id,
+            userId: user.id,
+            apiKeyId: submission.data.apiKeyId,
+            ...access,
+          });
+
+          return typedJsonWithSuccessMessage(
+            {
+              ok: true as const,
+              action: "update-access" as const,
+              apiKeyId: submission.data.apiKeyId,
+            },
+            request,
+            "API key access updated"
           );
         }
         case "revoke": {
@@ -296,9 +350,16 @@ export const action = dashboardAction(
         }
       }
     } catch (error) {
+      if (!isApiKeyUserError(error)) {
+        logger.error("API keys action failed", {
+          action: submission.data.action,
+          environmentId: keyEnvironmentId,
+          error,
+        });
+      }
       const message = error instanceof Error ? error.message : "Unable to update API keys";
 
-      if (submission.data.action === "create") {
+      if (submission.data.action === "create" || submission.data.action === "update-access") {
         return typedJsonWithErrorMessage({ ok: false as const, error: message }, request, message);
       }
 
@@ -307,10 +368,25 @@ export const action = dashboardAction(
   }
 );
 
+function uneditableApiKeyMessage(
+  apiKey: { revokedAt: Date | string | null; expiresAt: Date | string | null } | undefined,
+  loadedAt: number
+): string | undefined {
+  if (!apiKey || apiKey.revokedAt) return REVOKED_API_KEY_MESSAGE;
+  if (apiKey.expiresAt && new Date(apiKey.expiresAt).getTime() <= loadedAt) {
+    return EXPIRED_API_KEY_MESSAGE;
+  }
+  return undefined;
+}
+
 export default function Page() {
   const [createApiKeyOpen, setCreateApiKeyOpen] = useState(false);
   const [migrationOpen, setMigrationOpen] = useState(false);
   const [returnToMigration, setReturnToMigration] = useState(false);
+  const [editing, setEditing] = useState<{
+    apiKey: EditableApiKey;
+    driftPresetLabel?: string;
+  } | null>(null);
   const {
     environment,
     rootApiKey,
@@ -322,8 +398,10 @@ export default function Page() {
     hasVercelIntegration,
     availableTasks,
     presets,
+    capabilityCatalogue,
     loadedAt,
   } = useTypedLoaderData<typeof loader>();
+  const revalidator = useRevalidator();
 
   const apiKeyEnvironmentLabel = {
     ...environment,
@@ -350,6 +428,27 @@ export default function Page() {
   const canManageRootApiKey = canWriteApiKeys || rootApiKey?.isHidden === false;
   const chooseAccessHint =
     isRbacPluginAvailable && presets !== null ? ", and choose what it can access" : "";
+  const canEditAccess =
+    canWriteApiKeys && isRbacPluginAvailable && presets !== null && capabilityCatalogue !== null;
+
+  function editAccess(apiKey: (typeof apiKeys)[number], fromDrift = false) {
+    revalidator.revalidate();
+    setEditing({
+      apiKey: {
+        id: apiKey.id,
+        name: apiKey.name,
+        expiresAt: apiKey.expiresAt,
+        allowedIpRanges: apiKey.allowedIpRanges,
+        presetId: apiKey.access.presetId,
+        fullAccess: apiKey.access.fullAccess,
+        capabilities: apiKey.access.capabilities,
+        taskIdentifiers: apiKey.access.taskIdentifiers,
+        unmatchedScopes: apiKey.access.unmatchedScopes,
+        matchesPreset: apiKey.access.matchesPreset,
+      },
+      driftPresetLabel: fromDrift ? apiKey.access.label : undefined,
+    });
+  }
 
   return (
     <PageContainer>
@@ -368,11 +467,7 @@ export default function Page() {
           </AdminDebugTooltip>
 
           <WhenAgentUnavailable>
-            <LinkButton
-              variant="docs/small"
-              LeadingIcon={BookOpenIcon}
-              to={docsPath("/v3/apikeys")}
-            >
+            <LinkButton variant="docs/small" LeadingIcon={BookOpenIcon} to={docsPath("/apikeys")}>
               API keys docs
             </LinkButton>
           </WhenAgentUnavailable>
@@ -387,6 +482,7 @@ export default function Page() {
               open={createApiKeyOpen}
               onOpenChange={(open) => {
                 setCreateApiKeyOpen(open);
+                if (open) revalidator.revalidate();
                 if (!open && returnToMigration) {
                   setReturnToMigration(false);
                   setMigrationOpen(true);
@@ -394,6 +490,7 @@ export default function Page() {
               }}
               availableTasks={availableTasks}
               presets={presets}
+              capabilityCatalogue={capabilityCatalogue}
               isRbacPluginAvailable={isRbacPluginAvailable}
               environment={apiKeyEnvironmentLabel}
             >
@@ -471,7 +568,11 @@ export default function Page() {
                             <ApiKeyStatus now={loadedAt} />
                           </TableCell>
                           <TableCell>
-                            <ApiKeyAccess label="No restrictions" />
+                            <ApiKeyAccessCell
+                              label="No restrictions"
+                              fullAccess
+                              catalogue={capabilityCatalogue}
+                            />
                           </TableCell>
                           <TableCell>
                             <ApiKeyAllowedIps ranges={[]} />
@@ -537,10 +638,22 @@ export default function Page() {
                               />
                             </TableCell>
                             <TableCell>
-                              <ApiKeyAccess
+                              <ApiKeyAccessCell
                                 label={apiKey.access.label}
                                 taskIdentifiers={apiKey.access.taskIdentifiers}
                                 usesTaskSelection={apiKey.access.usesTaskSelection}
+                                isCustom={apiKey.access.isCustom}
+                                fullAccess={apiKey.access.fullAccess}
+                                capabilities={apiKey.access.capabilities}
+                                unmatchedScopes={apiKey.access.unmatchedScopes}
+                                catalogue={capabilityCatalogue}
+                                presets={presets}
+                                drift={apiKey.access.drift}
+                                onReviewDrift={
+                                  canEditAccess && !cannotAuthenticate
+                                    ? () => editAccess(apiKey, true)
+                                    : undefined
+                                }
                               />
                             </TableCell>
                             <TableCell>
@@ -562,6 +675,18 @@ export default function Page() {
                               popoverContent={
                                 cannotRevoke ? null : (
                                   <>
+                                    {canEditAccess ? (
+                                      <Button
+                                        variant="small-menu-item"
+                                        LeadingIcon={PencilSquareIcon}
+                                        fullWidth
+                                        textAlignLeft
+                                        className="w-full px-1.5 py-[0.9rem]"
+                                        onClick={() => editAccess(apiKey)}
+                                      >
+                                        Edit access…
+                                      </Button>
+                                    ) : null}
                                     <EditApiKeyIpRangesButton
                                       id={apiKey.id}
                                       name={apiKey.name}
@@ -597,6 +722,26 @@ export default function Page() {
                       ) : null}
                     </TableBody>
                   </Table>
+                  {editing ? (
+                    <EditApiKeyAccessDialog
+                      key={editing.apiKey.id}
+                      apiKey={editing.apiKey}
+                      uneditableMessage={uneditableApiKeyMessage(
+                        apiKeys.find((apiKey) => apiKey.id === editing.apiKey.id),
+                        loadedAt
+                      )}
+                      driftPresetLabel={editing.driftPresetLabel}
+                      open
+                      onOpenChange={(open) => {
+                        if (!open) setEditing(null);
+                      }}
+                      availableTasks={availableTasks}
+                      presets={presets}
+                      capabilityCatalogue={capabilityCatalogue}
+                      isRbacPluginAvailable={isRbacPluginAvailable}
+                      environment={apiKeyEnvironmentLabel}
+                    />
+                  ) : null}
                   <RootApiKeyMigrationDialog
                     open={migrationOpen && rootApiKey?.isHidden === false}
                     onOpenChange={setMigrationOpen}
@@ -923,29 +1068,6 @@ function RevokeApiKeyButton({
         </div>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function ApiKeyAccess({
-  label,
-  taskIdentifiers,
-  usesTaskSelection = false,
-}: {
-  label: string;
-  taskIdentifiers?: string[];
-  usesTaskSelection?: boolean;
-}) {
-  return (
-    <div className="flex min-w-40 flex-col gap-0.5">
-      <span className="text-xs text-text-bright">{label}</span>
-      {usesTaskSelection ? (
-        <span className="text-xs text-text-dimmed">
-          {taskIdentifiers === undefined
-            ? "All tasks"
-            : `${taskIdentifiers.length} selected ${taskIdentifiers.length === 1 ? "task" : "tasks"}`}
-        </span>
-      ) : null}
-    </div>
   );
 }
 

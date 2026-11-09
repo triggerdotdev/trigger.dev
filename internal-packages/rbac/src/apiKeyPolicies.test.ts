@@ -237,7 +237,7 @@ describe("API-key policy controller composition", () => {
   });
 
   it("delegates API-key policy catalogue, preparation, and description", async () => {
-    const presets = vi.fn(async () => []);
+    const presets = vi.fn(async () => null);
     const prepare = vi.fn(async () => ({
       ok: true as const,
       policy: { presetId: "FULL_ACCESS", scopes: ["admin"] },
@@ -245,7 +245,7 @@ describe("API-key policy controller composition", () => {
     const describePolicy = vi.fn(async () => ({ taskIdentifiers: ["send-email"] }));
     const plugin = {
       isUsingPlugin: vi.fn(async () => true),
-      apiKeyPresets: presets,
+      apiKeyAccessOptions: presets,
       prepareApiKeyPolicy: prepare,
       describeApiKeyPolicy: describePolicy,
     } as unknown as RoleBaseAccessController;
@@ -253,7 +253,7 @@ describe("API-key policy controller composition", () => {
     const prepareParams = { organizationId: "org_123", presetId: "FULL_ACCESS" };
     const policy = { presetId: "TASKS", scopes: ["trigger:tasks:send-email"] };
 
-    await controller.apiKeyPresets("org_123");
+    await controller.apiKeyAccessOptions("org_123");
     await controller.prepareApiKeyPolicy(prepareParams);
     await controller.describeApiKeyPolicy(policy);
 
@@ -267,7 +267,7 @@ describe("API-key policy fallback", () => {
   it("prepares explicit standalone full access and exposes no preset catalogue", async () => {
     const controller = loader.create(prismaPlaceholder, { forceFallback: true });
 
-    await expect(controller.apiKeyPresets("org_123")).resolves.toBeNull();
+    await expect(controller.apiKeyAccessOptions("org_123")).resolves.toBeNull();
     await expect(
       controller.prepareApiKeyPolicy({ organizationId: "org_123", presetId: "FULL_ACCESS" })
     ).resolves.toEqual({

@@ -31,6 +31,12 @@ export type ApiKeyPreset = {
   scopes: string[];
   usesTaskSelection: boolean;
   available: boolean;
+  capabilities?: ApiKeyCapabilityMap;
+};
+
+export type ApiKeyAccessOptions = {
+  presets: ApiKeyPreset[];
+  catalogue: ApiKeyCapabilityCatalogue;
 };
 
 export type ApiKeyPolicy = {
@@ -44,6 +50,8 @@ export type PrepareApiKeyPolicyResult =
 
 export type ApiKeyPolicyDescription = {
   taskIdentifiers?: string[];
+  capabilities?: ApiKeyCapabilityMap;
+  unmatchedScopes?: string[];
 };
 
 export type Permission = {
@@ -632,14 +640,14 @@ export interface RoleBaseAccessController {
   // degradation.
   //
   // Absence must fail CLOSED, and each default is chosen so it does:
-  //   - apiKeyPresets       -> null (identical to "no plugin installed")
+  //   - apiKeyAccessOptions -> null (identical to "no plugin installed")
   //   - prepareApiKeyPolicy -> { ok: false } — NEVER a full-access default;
   //                            key creation stops, while already-issued keys
   //                            keep authorizing from their persisted scopes
   //   - describeApiKeyPolicy -> {} (presentation only)
   // LazyController applies these defaults, so host callers going through
   // `rbac` see a total surface and cannot forget the guard.
-  apiKeyPresets?(organizationId: string): Promise<ApiKeyPreset[] | null>;
+  apiKeyAccessOptions?(organizationId: string): Promise<ApiKeyAccessOptions | null>;
   // `presetId` is deliberately required: an authorization function must not
   // have an implicit default, least of all a full-access one. A caller that
   // omits the field should fail to compile rather than silently mint an admin
@@ -648,6 +656,7 @@ export interface RoleBaseAccessController {
     organizationId: string;
     presetId: string;
     taskIdentifiers?: string[];
+    capabilities?: ApiKeyCapabilityMap;
   }): Promise<PrepareApiKeyPolicyResult>;
   describeApiKeyPolicy?(policy: ApiKeyPolicy): Promise<ApiKeyPolicyDescription>;
 
@@ -734,6 +743,7 @@ export type RoleAssignmentResult =
   | { ok: false; error: string; code?: RoleAssignmentErrorCode };
 
 import type { PluginDatabaseConfig } from "./databaseConfig.js";
+import type { ApiKeyCapabilityCatalogue, ApiKeyCapabilityMap } from "./apiKeyCapabilities.js";
 
 // Host-injected configuration the plugin can't read from the environment
 // itself (the plugin runs in the host's process but owns no env contract).

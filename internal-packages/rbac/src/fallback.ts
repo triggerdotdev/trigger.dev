@@ -309,7 +309,7 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     return null;
   }
 
-  async apiKeyPresets(_organizationId: string) {
+  async apiKeyAccessOptions(_organizationId: string) {
     return null;
   }
 
@@ -317,11 +317,16 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     organizationId: string;
     presetId: string;
     taskIdentifiers?: string[];
+    capabilities?: Record<string, string>;
   }) {
     // Without a plugin there is no preset catalogue, so full access is the only
     // policy on offer — but the caller still has to ask for it by name. Any
     // other preset, or any task selection, is a restricted key and unavailable.
-    if (params.presetId !== FULL_ACCESS_PRESET_ID || (params.taskIdentifiers?.length ?? 0) > 0) {
+    if (
+      params.presetId !== FULL_ACCESS_PRESET_ID ||
+      (params.taskIdentifiers?.length ?? 0) > 0 ||
+      params.capabilities !== undefined
+    ) {
       return { ok: false as const, error: "API key access presets are not available" };
     }
 

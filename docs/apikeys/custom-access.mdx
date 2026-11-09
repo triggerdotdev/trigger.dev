@@ -1,0 +1,158 @@
+---
+title: "Custom API key access"
+sidebarTitle: "Custom access"
+description: "Build an API key's access from presets and per-area levels, and limit it to selected tasks."
+---
+
+**Custom access lets you build a key's access area by area, such as Runs or Deployments, when no single [access preset](/apikeys#access-presets) fits.** A common case is a CI key that operates on runs and also deploys: the **Operator** preset plus the **Deploy only** preset in one key.
+
+Custom access needs the same plan as the restricted access presets. A custom key works everywhere a preset key does: the SDK, the CLI and the API.
+
+## Create a key with custom access
+
+<Steps titleSize="h3">
+  <Step title="Switch to Custom">
+    On the **API keys** page, click **Create API key**. Under **Access**, switch from **Preset**
+    to **Custom**. The grid starts from the preset that was selected, or empty when **No
+    restrictions** is selected.
+  </Step>
+  <Step title="Combine presets">
+    Use **Start from** to replace the grid with a preset, and **Add preset** to add a preset's
+    access to what's already there. For the CI key, pick **Operator** in **Start from**, then
+    **Deploy only** in **Add preset**. Adding a preset never removes access.
+  </Step>
+  <Step title="Adjust each area">
+    Each row is one area of the environment. Set it to **None**, **Read**, or **Read and write**
+    (some rows have their own levels, listed below). **Clear all** sets every row to **None**.
+  </Step>
+  <Step title="Check the summary and create the key">
+    The panel beside the grid names the key's access, for example "Operator + Deploy only", and
+    lists each area with the scopes it grants. Click **Create API key** and copy the secret.
+  </Step>
+</Steps>
+
+## Areas and levels
+
+| Area | Levels |
+| --- | --- |
+| **Tasks** | None, Read, Trigger, Read and trigger, Operate runs |
+| **Runs** | None, Read, Read and write |
+| **Batches** | None, Read |
+| **Queues** | None, Read, Read and write |
+| **Sessions** | None, Read, Read and write |
+| **Tagged runs** | None, Read |
+| **Errors** | None, Read, Read and write |
+| **Webhooks** | None, Read, Read and write |
+| **Waitpoints** | None, Read, Read and write |
+| **Deployments** | None, Read, Read and write |
+| **Preview branches** | None, Manage |
+| **Environment variables** | None, Read, Read and write |
+
+Some levels need another area:
+
+- **Deployments: Read and write** needs **Environment variables: Read and write**, because deploys sync environment variables while building. The grid sets both.
+- Any **Sessions** level needs task trigger access (**Trigger**, **Read and trigger**, or **Operate runs** on all tasks), because sessions continue runs of any task.
+
+The **Operator** preset doesn't include **Waitpoints**. A backend or CI key that creates or completes [waitpoint tokens](/wait-for-token) with `wait.createToken()` or `wait.completeToken()` needs **Waitpoints: Read and write**. The public access token returned with each waitpoint token can complete that token without an API key.
+
+## Use the key from CI
+
+One key triggers a smoke test, waits for it, and deploys. Build it from **Operator** plus **Deploy only**, or limit it to the smoke test task as shown in the next section.
+
+```typescript ci/smoke-test.ts
+import { configure, runs, tasks } from "@trigger.dev/sdk";
+import type { report } from "../src/trigger/report";
+
+configure({ accessToken: process.env.TRIGGER_SECRET_KEY });
+
+const handle = await tasks.trigger<typeof report>("report", { day: "2026-11-07" });
+const run = await runs.poll(handle, { pollIntervalMs: 1000 });
+
+if (run.status !== "COMPLETED") {
+  throw new Error(`Smoke test ${run.id} ended as ${run.status}`);
+}
+```
+
+The CLI reads the same key from `TRIGGER_ACCESS_TOKEN`:
+
+```bash
+TRIGGER_ACCESS_TOKEN="$TRIGGER_SECRET_KEY" npx trigger.dev@latest deploy --env prod
+```
+
+## Limit a custom key to selected tasks
+
+The **Tasks** row applies to **All tasks** or to **Selected tasks**, up to 10 task identifiers per key. For a CI key that deploys and runs one smoke test and nothing else: **Start from** Trigger only, set **Tasks** to **Read and trigger**, choose **Selected tasks** and pick `report`, then **Add preset** Deploy only. The task picker lists the tasks deployed to this environment.
+
+With selected tasks:
+
+- The **Tasks** levels apply only to the selected tasks. Triggering any other task returns a 403.
+- At **Trigger**, the key can't read back the runs it triggers. **Read and trigger** lets it retrieve and poll runs of its selected tasks, and nothing else. **Operate runs** also lets it cancel and replay those runs.
+- **Sessions** is unavailable, because sessions can continue runs of any task.
+- Every other row applies to the whole environment, and the grid marks it **Applies to the whole environment**. Leave a row at **None** if the key should only reach its selected tasks.
+- **Deployments** applies to the whole environment too. A key that can deploy ships new code for every task, so selected tasks don't limit what a deploy can change.
+- Bulk replay needs trigger access to all tasks. A key limited to selected tasks replays runs one at a time.
+
+### List runs with a task-limited key
+
+A run list without a task filter covers every task, so a task-limited key needs the filter:
+
+```typescript Your backend code
+import { runs } from "@trigger.dev/sdk";
+
+for await (const run of runs.list({ taskIdentifier: "report", tag: "nightly" })) {
+  console.log(run.id, run.status);
+}
+```
+
+`runs.list()` without `taskIdentifier` returns a 403. The filter also combines with `batch`. Retrieving a batch with `batch.retrieve()` needs **Runs: Read** or **Batches: Read**, so to wait on a batch with a task-limited key, list its runs with the task filter instead.
+
+## Public access tokens from a custom key
+
+A [Public Access Token](/realtime/auth) can't grant more than the key that creates it. A request for more returns a 403 with `Requested scopes exceed the API key's access`.
+
+- A key without **Runs: Read** can't create a token that reads a run by its ID, even a run it triggered.
+- A key limited to selected tasks asks for those tasks instead:
+
+```typescript Your backend code
+import { auth } from "@trigger.dev/sdk";
+
+const publicToken = await auth.createPublicToken({
+  scopes: { read: { tasks: ["report"] } },
+});
+```
+
+- A key at **Tasks: Trigger** can't create read tokens. The trigger response still includes a token for the run it created (`handle.publicAccessToken`), so a frontend can follow that run.
+
+Your backend sends the browser the run ID and `handle.publicAccessToken`, never the API key. Without React, the browser follows the run with the SDK:
+
+```typescript Your frontend code
+import { configure, runs } from "@trigger.dev/sdk";
+
+configure({ accessToken: publicAccessToken, baseURL: "https://api.trigger.dev" });
+
+for await (const run of runs.subscribeToRun(runId)) {
+  console.log(run.status, run.metadata);
+  if (run.isCompleted) break;
+}
+```
+
+The token reads only that run. Triggering, listing runs or reading another run with it returns a 403.
+
+Use `@trigger.dev/sdk` 4.5.8 or later to create public tokens with an environment API key.
+
+## See a key's access
+
+The **Access** column on the API keys page shows a key's preset. For a custom key it shows **Custom**, followed by the presets the access matches, such as "Operator + Deploy only", or the number of selected tasks. Hover the cell to see each area and level, read from the key itself.
+
+To change a custom key later, use [**Edit access**](/apikeys#change-a-keys-access).
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="API keys" icon="key" href="/apikeys">
+    Create keys, restrict them to IP addresses, and rotate them.
+  </Card>
+  <Card title="Realtime authentication" icon="tower-broadcast" href="/realtime/auth">
+    Create scoped public tokens for frontend and realtime access.
+  </Card>
+</CardGroup>

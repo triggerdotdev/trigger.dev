@@ -1,6 +1,6 @@
 import type {
+  ApiKeyAccessOptions,
   ApiKeyPolicyDescription,
-  ApiKeyPreset,
   BearerAuthOptions,
   BearerAuthResult,
   Permission,
@@ -363,12 +363,12 @@ class LazyController implements RoleBaseAccessController {
   // commit still satisfies it. LazyController is where that optional surface is
   // normalized into a total one: every host caller goes through `rbac`, so the
   // absent-plugin default lives here once instead of at each call site.
-  async apiKeyPresets(
-    ...args: Parameters<NonNullable<RoleBaseAccessController["apiKeyPresets"]>>
-  ): Promise<ApiKeyPreset[] | null> {
+  async apiKeyAccessOptions(
+    ...args: Parameters<NonNullable<RoleBaseAccessController["apiKeyAccessOptions"]>>
+  ): Promise<ApiKeyAccessOptions | null> {
     const controller = await this.c();
     // Same meaning as the no-plugin fallback: no catalogue to offer.
-    return controller.apiKeyPresets ? controller.apiKeyPresets(...args) : null;
+    return controller.apiKeyAccessOptions ? controller.apiKeyAccessOptions(...args) : null;
   }
 
   async prepareApiKeyPolicy(
