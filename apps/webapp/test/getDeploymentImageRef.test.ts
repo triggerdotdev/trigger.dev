@@ -308,6 +308,16 @@ describe("isRepositoryAlreadyExistsError", () => {
 
   // Catches: a missing repository or a network error being taken for a lost race, so the deploy
   // carries on with a repository that doesn't exist.
+  it("recognises the plain Error that @aws-sdk/client-ecr 3.9xx deserialises the code into", () => {
+    // Observed on test cloud with client-ecr 3.931.0: name is "Error" and the service's error
+    // code is only on `__type`. The previous matcher missed it and the deploy failed.
+    const fromCurrentSdk = Object.assign(
+      new Error("The repository with name 'x' already exists in the registry with id '1'"),
+      { __type: "RepositoryAlreadyExistsException", $fault: "client", $metadata: {} }
+    );
+    expect(isRepositoryAlreadyExistsError(fromCurrentSdk)).toBe(true);
+  });
+
   it("does not treat other ECR errors or plain errors as a race", () => {
     expect(
       isRepositoryAlreadyExistsError(

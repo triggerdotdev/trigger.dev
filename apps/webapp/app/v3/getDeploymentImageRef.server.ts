@@ -429,9 +429,14 @@ export function parseEcrRegistryDomain(registryHost: string): EcrRegistryCompone
 }
 
 export function isRepositoryAlreadyExistsError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  // Recent @aws-sdk/client-ecr versions deserialise ECR errors to a plain Error whose name is
+  // "Error"; the service's error code is only on `__type`, as the message.includes("does not
+  // exist") fallback in getEcrRepository already works around for RepositoryNotFoundException.
   return (
     error instanceof RepositoryAlreadyExistsException ||
-    (error instanceof Error && error.name === "RepositoryAlreadyExistsException")
+    error.name === "RepositoryAlreadyExistsException" ||
+    (error as { __type?: unknown }).__type === "RepositoryAlreadyExistsException"
   );
 }
 
