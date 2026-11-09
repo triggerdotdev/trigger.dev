@@ -24,6 +24,7 @@ import {
   StoreWaitpointCoordinator,
 } from "./storeWaitpointCoordinator.js";
 import { WaitpointStoreCoordinator } from "./storeCoordinator.js";
+import { RUN_CLEANUP_PAGE_SIZE } from "./scripts.js";
 import type {
   AbsorbBlockersParams,
   BlockerRegistration,
@@ -702,6 +703,42 @@ describe("Three-phase block protocol and lifecycle (real store adapter through t
   );
 
   containerTest(
+    "TERMINAL-FIRST: release installs the terminal fence before withdrawing watchers, so an in-flight delivery cannot resume a cancelled run",
+    async ({ prisma, redisOptions }) => {
+      const store = new WaitpointStoreCoordinator({ redisOptions });
+      const { routing } = buildRouting(store, prisma);
+      try {
+        const runId = "run_cancel";
+        const wp = generateWaitpointId("MANUAL");
+        await seedPending(store, wp);
+        const { registration } = await routing.absorbBlockers(
+          absorbArgs(prisma, runId, "B1", [wp])
+        );
+        await routing.registerBlockers(registration);
+
+        // Cancel the run: terminal-first release fences the run shard and withdraws the watcher.
+        await routing.releaseRunBlockers({ runId, reason: "cancelled", organizationId: ORG });
+        expect((await store.readBlockState(runId)).terminal).toBe(true);
+        expect(await liveWatchers(store, wp)).toBe(0);
+
+        // A completion + delivery that races in AFTER the fence cannot publish a resume: the run shard
+        // refuses it as terminal.
+        await store.complete({ waitpointId: wp, completion: completionOf("late") });
+        const late = await store.deliverCompletion({
+          runId,
+          blockId: "B1",
+          waitpointId: wp,
+          completion: completionOf("late"),
+        });
+        expect(late.outcome).toBe("terminal");
+        expect(late.resumable).toBe(false);
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  containerTest(
     "RESTART after absorb, before the transition: recovery reconstructs the block from durable records and converges",
     async ({ prisma, redisOptions }) => {
       const store = new WaitpointStoreCoordinator({ redisOptions });
@@ -968,6 +1005,68 @@ describe("Three-phase block protocol and lifecycle (real store adapter through t
             cachedRunId: "run_child",
           },
         ]);
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "FENCE FLOW: an owed cleanup refuses a rollover through the routing seam; abandon lifts the fence, then the rollover installs; a delayed B1 abandon cannot touch B2",
+    async ({ prisma, redisOptions }) => {
+      const store = new WaitpointStoreCoordinator({ redisOptions });
+      const { routing } = buildRouting(store, prisma);
+      try {
+        const runId = "run_fenceflow";
+        const s1 = generateWaitpointId("MANUAL");
+        const s2 = generateWaitpointId("MANUAL");
+        const otherTargets = Array.from({ length: RUN_CLEANUP_PAGE_SIZE }, () =>
+          generateWaitpointId("MANUAL")
+        );
+        for (const id of [s1, s2, ...otherTargets]) await seedPending(store, id);
+
+        // More than one page must converge through the real adapter before it lifts the fence.
+        const { registration } = await routing.absorbBlockers(
+          absorbArgs(prisma, runId, "B1", [s1, ...otherTargets], { absorptionId: "B1" })
+        );
+        await routing.registerBlockers(registration);
+        await routing.armCleanupFence({ runId, blockId: "B1", organizationId: ORG });
+
+        // A rolled-over B2 is REFUSED while B1's cleanup is owed — and nothing was mutated.
+        await expect(
+          routing.absorbBlockers(
+            absorbArgs(prisma, runId, "B2", [s2], {
+              expectedPreviousBlockId: "B1",
+              absorptionId: "B2",
+            })
+          )
+        ).rejects.toBeInstanceOf(StoreWaitpointBlockRefusedError);
+        expect((await store.readBlockState(runId)).blockId).toBe("B1");
+        expect(await liveWatchers(store, s2)).toBe(0);
+
+        // Re-arming the same fence is idempotent (a retried failed-attempt operation).
+        await routing.armCleanupFence({ runId, blockId: "B1", organizationId: ORG });
+
+        // Cleanup abandons B1 (legacy delete, then store retain-and-clear/withdrawal) and lifts the fence
+        // LAST. The non-terminal abandon cleared the active block, so the next attempt's B2 installs fresh.
+        expect(
+          (await routing.abandonRunBlockers({ runId, blockId: "B1", organizationId: ORG })).count
+        ).toBe(RUN_CLEANUP_PAGE_SIZE + 1);
+        expect(await liveWatchers(store, s1)).toBe(0);
+        expect(await liveWatchers(store, otherTargets[otherTargets.length - 1]!)).toBe(0);
+        expect(await store.readWithdrawalPage({ runId, blockId: "B1" })).toBeUndefined();
+        await routing.absorbBlockers(absorbArgs(prisma, runId, "B2", [s2], { absorptionId: "B2" }));
+        const afterB2 = await store.readBlockState(runId);
+        expect(afterB2.blockId).toBe("B2");
+        expect(afterB2.pendingIds).toEqual([s2]);
+
+        // A DELAYED B1 abandon (an obligation redelivery arriving after B2 installed) is fenced to B1 and
+        // cannot drain or withdraw B2's state — nor can its fence-clear lift B2's absence of a fence.
+        await routing.abandonRunBlockers({ runId, blockId: "B1", organizationId: ORG });
+        await routing.resumeRetainedWithdrawal({ runId, blockId: "B1", organizationId: ORG });
+        const b2Intact = await store.readBlockState(runId);
+        expect(b2Intact.blockId).toBe("B2");
+        expect(b2Intact.pendingIds).toEqual([s2]);
       } finally {
         await store.quit();
       }

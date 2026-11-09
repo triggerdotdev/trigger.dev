@@ -11,6 +11,9 @@ import {
   seedSnapshotEnvironment,
 } from "../../../../../run-store/src/testFixtures/snapshotIdFixture.js";
 
+import { StoreWaitpointCoordinator } from "../../waitpointCoordinator/storeWaitpointCoordinator.js";
+import type { WaitpointStoreCoordinator } from "../../waitpointCoordinator/storeCoordinator.js";
+
 export async function parent(prisma: PrismaClient) {
   const env = await seedSnapshotEnvironment(prisma);
   const runId = generateInternalId();
@@ -57,5 +60,13 @@ export function routingEngine(
     tracer: trace.getTracer("waitpoint-system-routing", "test"),
     logLevel: "error",
     ...extra,
+    waitpointRouting: {
+      store: extra.waitpointStore
+        ? new StoreWaitpointCoordinator({
+            store: extra.waitpointStore as WaitpointStoreCoordinator,
+          })
+        : undefined,
+      ...extra.waitpointRouting,
+    },
   });
 }

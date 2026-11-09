@@ -304,7 +304,12 @@ export type RunEngineOptions = {
    * completion whose inline side effects never acked it. Default: 30s.
    */
   completionGuardDelayMs?: number;
-
+  /**
+   * Dark MemoryDB waitpoint routing/mint wiring, forwarded verbatim to {@link WaitpointSystem}. Omitted
+   * in production today: with no `store` the routing coordinator is a 1:1 legacy passthrough and every
+   * mint stays legacy. A later activation ticket supplies a store coordinator and a real mint policy.
+   */
+  waitpointRouting?: WaitpointSystemOptions["waitpointRouting"];
   /**
    * The MemoryDB completed-record reader, for resolving store-format completed waitpoints in a
    * Redis-primary resume cycle. Dark by default (undefined leaves the resolver Postgres-only).

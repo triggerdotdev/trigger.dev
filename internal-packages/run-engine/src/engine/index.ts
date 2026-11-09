@@ -591,6 +591,8 @@ export class RunEngine {
       executionSnapshotSystem: this.executionSnapshotSystem,
       enqueueSystem: this.enqueueSystem,
       completionGuardDelayMs: options.completionGuardDelayMs,
+      // Dark by default (undefined): the routing coordinator stays a 1:1 legacy passthrough.
+      waitpointRouting: options.waitpointRouting,
       waitpointStore: options.waitpointStore,
     });
 
@@ -1347,10 +1349,9 @@ export class RunEngine {
             if (resumeParentOnCompletion && parentTaskRunId && taskRun.associatedWaitpoint) {
               try {
                 if (batch) {
-                  // Batch path: lockless insert. The parent is already EXECUTING_WITH_WAITPOINTS
-                  // from blockRunWithCreatedBatch, so we only need to insert the TaskRunWaitpoint
-                  // row without acquiring the parent run lock. This avoids lock contention when
-                  // processing large batches with high concurrency.
+                  // The batch header already published the blocked snapshot; child edges stay legacy.
+                  // Disabled registration is lockless; enabled registration takes the parent lock
+                  // around the edge write to protect the cleanup fence.
                   await this.waitpointSystem.blockRunWithWaitpointLockless({
                     runId: parentTaskRunId,
                     waitpoints: taskRun.associatedWaitpoint.id,
@@ -1432,10 +1433,9 @@ export class RunEngine {
           //triggerAndWait or batchTriggerAndWait
           if (resumeParentOnCompletion && parentTaskRunId && taskRun.associatedWaitpoint) {
             if (batch) {
-              // Batch path: lockless insert. The parent is already EXECUTING_WITH_WAITPOINTS
-              // from blockRunWithCreatedBatch, so we only need to insert the TaskRunWaitpoint
-              // row without acquiring the parent run lock. This avoids lock contention when
-              // processing large batches with high concurrency.
+              // The batch header already published the blocked snapshot; child edges stay legacy.
+              // Disabled registration is lockless; enabled registration takes the parent lock
+              // around the edge write to protect the cleanup fence.
               await this.waitpointSystem.blockRunWithWaitpointLockless({
                 runId: parentTaskRunId,
                 waitpoints: taskRun.associatedWaitpoint.id,

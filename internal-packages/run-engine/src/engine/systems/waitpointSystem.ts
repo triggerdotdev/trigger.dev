@@ -692,7 +692,7 @@ export class WaitpointSystem {
     idempotencyKey?: string;
     idempotencyKeyExpiresAt?: Date;
   }) {
-    const result = await this.coordinator.createDateTimeWaitpoint({
+    const result = await this.legacyCoordinator.createDateTimeWaitpoint({
       runId,
       projectId,
       environmentId,
@@ -739,7 +739,7 @@ export class WaitpointSystem {
     standaloneResidency?: "NEW" | "LEGACY";
     standaloneShardKey?: ShardKey;
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
-    const result = await this.coordinator.createManualWaitpoint({
+    const result = await this.legacyCoordinator.createManualWaitpoint({
       runId,
       environmentId,
       projectId,
@@ -1078,6 +1078,7 @@ export class WaitpointSystem {
     organizationId: string,
     operation: () => Promise<T>
   ): Promise<T> {
+    // The router checks the flag before admission and again under the acquired run lock.
     return this.coordinator instanceof RoutingWaitpointCoordinator
       ? this.coordinator.withLegacyRegistrationLock(runId, { organizationId }, operation)
       : operation();
@@ -1100,9 +1101,10 @@ export class WaitpointSystem {
   }
 
   /**
-   * blockRunWithWaitpoint without the run lock, for batch items. blockRunWithCreatedBatch has
-   * already moved the parent to EXECUTING_WITH_WAITPOINTS, and a per-item lock causes
-   * LockAcquisitionTimeoutError on large batches. Writes only the idempotent edges and timeouts.
+   * Register batch-item edges after the batch header has published the blocked snapshot.
+   * Disabled organisations retain the lockless, idempotent Postgres insert and timeout scheduling.
+   * Enabled organisations queue admission locally and take the parent run lock only around the
+   * edge write, which re-checks the cleanup fence.
    */
   async blockRunWithWaitpointLockless({
     runId,
@@ -1126,6 +1128,7 @@ export class WaitpointSystem {
     // Keep the lockless path when disabled. When enabled, take the run lock before
     // checking the marker and writing the edge. Unmarked parents do not access MemoryDB.
     // The batch already has a blocked snapshot, so no pending count is needed.
+    // Routing checks the flag before native preparation or locking.
     await this.coordinator.registerBlocksLockless({
       runId,
       organizationId,
@@ -1261,25 +1264,22 @@ export class WaitpointSystem {
     let routingOrganizationId = organizationId;
 
     return await this.$.runLock.lock("continueRunIfUnblocked", [runId], async () => {
-      // 1. Get the any blocking waitpoints, routed by the run's org.
-      const storeRoutingEnabled =
-        this.coordinator instanceof RoutingWaitpointCoordinator &&
-        (await this.coordinator.isStoreRoutingEnabled(routingOrganizationId));
-      let blockingWaitpoints = storeRoutingEnabled
-        ? await this.coordinator.readRunBlockState(runId, {
-            organizationId: routingOrganizationId,
-          })
-        : await this.legacyCoordinator.readRunBlockState(runId);
+      // 1. Disabled orgs use the legacy reader; enabled orgs consult the durable run marker.
+      let blockingWaitpoints = await this.coordinator.readRunBlockState(runId, {
+        organizationId: routingOrganizationId,
+      });
 
       // OBSERVE the exact store block this continuation is about to resume, before the resume transition,
       // so the acknowledgement below targets THIS block and not whichever block is installed by the time
       // it runs. A newer cycle installed in between makes the acknowledgement a stale no-op. Undefined for
       // a legacy-only run or an unmarked run.
-      let observedStoreBlockId = (await this.isWaitpointStoreEnabled(routingOrganizationId))
-        ? await this.coordinator.currentStoreBlockId(runId, {
-            organizationId: routingOrganizationId,
-          })
-        : undefined;
+      // Recheck in the router after the preceding read; do not cache enablement across I/O.
+      let observedStoreBlockId =
+        this.coordinator instanceof RoutingWaitpointCoordinator
+          ? await this.coordinator.currentStoreBlockId(runId, {
+              organizationId: routingOrganizationId,
+            })
+          : undefined;
 
       // 2. There are blockers still, so do nothing
       if (blockingWaitpoints.some((w) => w.waitpoint.status !== "COMPLETED")) {
@@ -1617,7 +1617,7 @@ export class WaitpointSystem {
           );
         } else {
           //5. Remove the blocking waitpoints
-          await this.coordinator.clearRunBlockState({
+          await this.legacyCoordinator.clearRunBlockState({
             runId,
             organizationId: routingOrganizationId,
             edgeIds: blockingWaitpoints.map((b) => b.id),
@@ -1751,7 +1751,7 @@ export class WaitpointSystem {
     environmentId: string;
     anchorRunId: string;
   }) {
-    return this.coordinator.mintAssociatedWaitpointData({
+    return this.legacyCoordinator.mintAssociatedWaitpointData({
       projectId,
       environmentId,
       anchorRunId,
@@ -1895,7 +1895,7 @@ export class WaitpointSystem {
         anchorRunId: runId,
       });
 
-      const waitpoint = await this.coordinator.createAssociatedWaitpoint({
+      const waitpoint = await this.legacyCoordinator.createAssociatedWaitpoint({
         runId,
         data: waitpointData,
       });
