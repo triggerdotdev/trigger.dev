@@ -1,4 +1,6 @@
 import type { PrismaClientOrTransaction } from "~/db.server";
+import { z } from "zod";
+import { FirstTouchSchema, type FirstTouch } from "~/utils/firstTouch";
 import type { AttioUserSync, AttioWorkspaceSync } from "./attio.server";
 import { logger } from "./logger.server";
 
@@ -131,7 +133,11 @@ export class AttioClient {
     }
   }
 
-  async upsertWorkspace(payload: AttioWorkspaceSync, adminEmail?: string) {
+  async upsertWorkspace(
+    payload: AttioWorkspaceSync,
+    adminEmail?: string,
+    attribution?: SignupAttribution
+  ) {
     const adminRecordId = await this.#assertAdminUser(payload.adminUserId, adminEmail);
 
     await this.#assert("workspaces", "workspace_id", {
@@ -143,6 +149,7 @@ export class AttioClient {
       signup_date: toDate(payload.createdAt),
       plan: "Free",
       account_status: "Active",
+      ...attributionValues(attribution),
       is_test: this.options.isTest,
       users: adminRecordId
         ? [{ target_object: "users", target_record_id: adminRecordId }]
@@ -154,7 +161,7 @@ export class AttioClient {
     const values = {
       user_id: payload.userId,
       marketing_opt_in: payload.marketingEmails,
-      referral_source: payload.referralSource ?? undefined,
+      ...attributionValues(payload),
       signup_date: toDate(payload.createdAt),
       is_test: this.options.isTest,
     };
@@ -175,6 +182,47 @@ export class AttioClient {
       }
     }
   }
+}
+
+// How the user found us and their role, from the onboarding form.
+export type SignupAttribution = {
+  referralSource?: string | null;
+  signupRole?: string | null;
+  firstTouch?: FirstTouch | null;
+};
+
+// Each field is parsed on its own so one malformed value doesn't drop the rest.
+const OnboardingDataSchema = z.object({
+  role: z.string().optional().catch(undefined),
+  roleOther: z.string().optional().catch(undefined),
+  firstTouch: FirstTouchSchema.optional().catch(undefined),
+});
+
+export function signupAttributionFromUser(user: {
+  referralSource: string | null;
+  onboardingData: unknown;
+}): SignupAttribution {
+  const parsed = OnboardingDataSchema.safeParse(user.onboardingData);
+  const data = parsed.success ? parsed.data : {};
+  return {
+    referralSource: user.referralSource,
+    signupRole: data.role === "Other" && data.roleOther ? `Other: ${data.roleOther}` : data.role,
+    firstTouch: data.firstTouch,
+  };
+}
+
+// Attio attribution values; empty ones are left out so they never blank a field.
+function attributionValues(attribution: SignupAttribution | undefined) {
+  const firstTouch = attribution?.firstTouch;
+  return {
+    referral_source: attribution?.referralSource || undefined,
+    signup_role: attribution?.signupRole || undefined,
+    first_touch_utm_source: firstTouch?.utmSource || undefined,
+    first_touch_utm_medium: firstTouch?.utmMedium || undefined,
+    first_touch_utm_campaign: firstTouch?.utmCampaign || undefined,
+    first_touch_referrer: firstTouch?.referrer || undefined,
+    first_touch_landing_page: firstTouch?.landingPage || undefined,
+  };
 }
 
 // Attio `date` attributes want a bare YYYY-MM-DD value.
@@ -198,6 +246,7 @@ function domainFromEmail(email: string | undefined): string | undefined {
 }
 
 // Writes the org's workspace, looking up its admin's email for the user record and domain.
+// The admin's signup attribution goes only on their first org, so later orgs don't repeat it.
 export async function syncAttioWorkspace(
   payload: AttioWorkspaceSync,
   client: AttioClient,
@@ -206,9 +255,14 @@ export async function syncAttioWorkspace(
   try {
     const admin = await db.user.findFirst({
       where: { id: payload.adminUserId },
-      select: { email: true },
+      select: { email: true, referralSource: true, onboardingData: true },
     });
-    await client.upsertWorkspace(payload, admin?.email);
+
+    const attribution =
+      admin && !(await createdAnEarlierOrg(db, payload))
+        ? signupAttributionFromUser(admin)
+        : undefined;
+    await client.upsertWorkspace(payload, admin?.email, attribution);
   } catch (error) {
     handleSyncFailure("workspace", { orgId: payload.orgId }, error);
   }
@@ -220,4 +274,26 @@ export async function syncAttioUser(payload: AttioUserSync, client: AttioClient)
   } catch (error) {
     handleSyncFailure("user", { userId: payload.userId }, error);
   }
+}
+
+// Orgs have no creator column. The creator's membership is written in the same insert as the
+// org, so one created within a second of an earlier org marks it as one this user created;
+// invited members (and whoever is oldest after the founder leaves) joined later.
+const CREATED_WITH_ORG_MS = 1_000;
+
+async function createdAnEarlierOrg(db: PrismaClientOrTransaction, payload: AttioWorkspaceSync) {
+  const memberships = await db.orgMember.findMany({
+    where: {
+      userId: payload.adminUserId,
+      organizationId: { not: payload.orgId },
+      organization: { createdAt: { lt: payload.createdAt } },
+    },
+    select: { createdAt: true, organization: { select: { createdAt: true } } },
+  });
+
+  return memberships.some(
+    (membership) =>
+      membership.createdAt.getTime() - membership.organization.createdAt.getTime() <
+      CREATED_WITH_ORG_MS
+  );
 }
