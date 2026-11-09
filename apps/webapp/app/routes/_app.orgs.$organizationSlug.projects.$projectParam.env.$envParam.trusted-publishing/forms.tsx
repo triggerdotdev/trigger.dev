@@ -113,30 +113,9 @@ export function RepositoryForm({
     !/@\d+$/.test(fields.repositoryName.value ?? "");
 
   if (repository && !editing) {
-    const fullName = `${repository.repositoryOwner}/${repository.repositoryName}`;
+    const { repositoryOwner, repositoryName } = repository;
     return (
       <SettingsRow
-        title={
-          <span className="flex min-w-0 items-center gap-1.5">
-            <OctoKitty className="size-4 shrink-0 text-text-bright" />
-            <TextLink
-              href={`https://github.com/${fullName}`}
-              className="min-w-0 break-all"
-              target="_blank"
-              rel="noreferrer"
-            >
-              {repository.repositoryOwner}
-              {repository.repositoryOwnerId && (
-                <span className="text-text-dimmed">@{repository.repositoryOwnerId}</span>
-              )}
-              {" / "}
-              {repository.repositoryName}
-              {repository.repositoryId && (
-                <span className="text-text-dimmed">@{repository.repositoryId}</span>
-              )}
-            </TextLink>
-          </span>
-        }
         action={
           canManage ? (
             <div className="flex gap-2">
@@ -157,7 +136,32 @@ export function RepositoryForm({
             </div>
           ) : undefined
         }
-      />
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+          <OctoKitty className="size-4 shrink-0 text-text-bright" />
+          <SettingsRowTitle className="min-w-0 gap-1.5">
+            <TextLink
+              href={`https://github.com/${repositoryOwner}`}
+              title={repositoryOwner}
+              className="min-w-0 max-w-[40%]"
+              target="_blank"
+              rel="noreferrer"
+            >
+              <span className="truncate">{repositoryOwner}</span>
+            </TextLink>
+            <span className="shrink-0 text-text-faint">/</span>
+            <TextLink
+              href={`https://github.com/${repositoryOwner}/${repositoryName}`}
+              title={repositoryName}
+              className="min-w-0"
+              target="_blank"
+              rel="noreferrer"
+            >
+              <span className="truncate">{repositoryName}</span>
+            </TextLink>
+          </SettingsRowTitle>
+        </div>
+      </SettingsRow>
     );
   }
 
