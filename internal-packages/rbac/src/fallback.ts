@@ -313,6 +313,20 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     return null;
   }
 
+  async createApiKeyPreset(_params: {
+    organizationId: string;
+    name: string;
+    description?: string;
+    capabilities: Record<string, string>;
+    createdById?: string;
+  }) {
+    return { ok: false as const, error: "API key presets are not available" };
+  }
+
+  async deleteApiKeyPreset(_params: { organizationId: string; presetId: string }) {
+    return { ok: false as const, error: "API key presets are not available" };
+  }
+
   async prepareApiKeyPolicy(params: {
     organizationId: string;
     presetId: string;

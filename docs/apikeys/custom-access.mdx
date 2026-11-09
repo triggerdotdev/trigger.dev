@@ -1,7 +1,7 @@
 ---
 title: "Custom API key access"
 sidebarTitle: "Custom access"
-description: "Build an API key's access from presets and per-area levels, and limit it to selected tasks."
+description: "Build an API key's access from presets and per-area levels, limit it to selected tasks, and save the result as a preset your organization can reuse."
 ---
 
 **Custom access lets you build a key's access area by area, such as Runs or Deployments, when no single [access preset](/apikeys#access-presets) fits.** A common case is a CI key that operates on runs and also deploys: the **Operator** preset plus the **Deploy only** preset in one key.
@@ -139,6 +139,19 @@ for await (const run of runs.subscribeToRun(runId)) {
 The token reads only that run. Triggering, listing runs or reading another run with it returns a 403.
 
 Use `@trigger.dev/sdk` 4.5.8 or later to create public tokens with an environment API key.
+
+## Save access as a preset
+
+When your team creates the same kind of key again and again, save its access once. In **Custom**, build the access, click **Save as preset**, and give it a name (up to 64 characters) and an optional description.
+
+Saved presets belong to your organization. They appear under **Your presets** in the preset list of every project and environment, and in the **Start from** and **Add preset** menus.
+
+- A saved preset holds access, not tasks, since task identifiers differ between projects. If you save it while the grid is limited to **Selected tasks**, the preset remembers that: a key made from it starts at **Selected tasks** with nothing picked, and asks for tasks in each project. Switch to **All tasks** only on purpose.
+- Saved presets can't be edited. To change one, delete it and save a new one.
+- An organization can save up to 50 presets. A saved preset can't reuse the name of another preset.
+- Deleting a saved preset doesn't change the keys created from it. They keep their access and show as **Custom** on the API keys page.
+
+Saving and deleting presets needs the Owner or Admin role in the organization, since presets are shared by every project. A project role doesn't count. Anyone who can create API keys in an environment can create keys from saved presets. Saving also needs the plan that restricted presets need; deleting doesn't, so you can clean up after a plan change.
 
 ## See a key's access
 

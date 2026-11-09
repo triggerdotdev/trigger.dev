@@ -1,14 +1,20 @@
+import { TrashIcon } from "@heroicons/react/20/solid";
 import {
   type ApiKeyCapabilityCatalogue,
   type ApiKeyCapabilityMap,
   CUSTOM_API_KEY_PRESET_ID,
   RESTRICTED_API_KEYS_PLAN_MESSAGE,
 } from "@trigger.dev/plugins";
+import { useState } from "react";
+import { useTypedFetcher } from "remix-typedjson";
 import { Feedback } from "~/components/Feedback";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Hint } from "~/components/primitives/Hint";
+import { Input } from "~/components/primitives/Input";
+import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
 import { RadioGroup, RadioGroupItem } from "~/components/primitives/RadioButton";
 import SegmentedControl from "~/components/primitives/SegmentedControl";
 import { TextLink } from "~/components/primitives/TextLink";
@@ -23,6 +29,7 @@ import {
 import { cn } from "~/utils/cn";
 import { v3BillingPath } from "~/utils/pathBuilder";
 import { CapabilityList, CustomCapabilityEditor, TaskScopeControl } from "./ApiKeyCapabilities";
+import type { action, ApiKeyActionData } from "./route";
 import type { ApiKeyAccessState } from "./useApiKeyAccess";
 
 export function ApiKeyAccessFields({
@@ -46,14 +53,22 @@ export function ApiKeyAccessFields({
     selectedTasks,
     setSelectedTasks,
     switchToCustom,
+    selectedPreset,
     showAccessControls,
     isCustom,
+    hasCustomCapabilities,
     selectedPresetIsAvailable,
     usesTaskSelection,
+    usesSelectedTasks,
+    canManagePresets,
   } = access;
   const additionalPresetIds =
-    presets?.filter((preset) => !KNOWN_PRESET_IDS.has(preset.id)).map((preset) => preset.id) ?? [];
+    presets
+      ?.filter((preset) => !KNOWN_PRESET_IDS.has(preset.id) && preset.source !== "organization")
+      .map((preset) => preset.id) ?? [];
+  const organizationPresets = presets?.filter((preset) => preset.source === "organization") ?? [];
   const showTaskAccess = selectedPresetIsAvailable && usesTaskSelection;
+  const selectedIsOrganizationPreset = selectedPreset?.source === "organization";
   const taskAccess = (
     <div
       className={cn(
@@ -117,6 +132,15 @@ export function ApiKeyAccessFields({
           selectedTasks={selectedTasks}
           setSelectedTasks={setSelectedTasks}
           availableTasks={availableTasks}
+          toolbarEnd={
+            canManagePresets ? (
+              <SavePresetButton
+                capabilities={customCapabilities}
+                limitsTasks={usesSelectedTasks}
+                disabled={!capabilityCatalogue.available || !hasCustomCapabilities}
+              />
+            ) : null
+          }
         />
       ) : showAccessControls && presets ? (
         <RadioGroup value={presetId} onValueChange={setPresetId} className="space-y-4">
@@ -126,7 +150,7 @@ export function ApiKeyAccessFields({
             presets={presets}
             ids={["TRIGGER_ONLY", "TASK_OPERATOR"]}
           />
-          {taskAccess}
+          {selectedIsOrganizationPreset ? null : taskAccess}
           <PresetGroup
             title="Environment capabilities"
             presets={presets}
@@ -145,6 +169,22 @@ export function ApiKeyAccessFields({
           {additionalPresetIds.length > 0 ? (
             <PresetGroup title="Other access" presets={presets} ids={additionalPresetIds} />
           ) : null}
+          {organizationPresets.length > 0 ? (
+            <div className="space-y-2.5">
+              <div className="text-xxs font-semibold uppercase tracking-wider text-indigo-400">
+                Your presets
+              </div>
+              <div className="grid gap-2.5 sm:grid-cols-2">
+                {organizationPresets.map((preset) => (
+                  <div key={preset.id} className="relative">
+                    <PresetOptions presets={[preset]} ids={[preset.id]} className="grid h-full" />
+                    {canManagePresets ? <DeletePresetButton preset={preset} /> : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {selectedIsOrganizationPreset ? taskAccess : null}
         </RadioGroup>
       ) : null}
     </>
@@ -442,5 +482,178 @@ function TaskAccessPanel({
         className="mt-3 min-h-[5.5rem]"
       />
     </div>
+  );
+}
+
+function SavePresetButton({
+  capabilities,
+  limitsTasks,
+  disabled,
+}: {
+  capabilities: ApiKeyCapabilityMap;
+  limitsTasks: boolean;
+  disabled: boolean;
+}) {
+  const fetcher = useTypedFetcher<typeof action>();
+  const [open, setOpen] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const result =
+    submitted && fetcher.state === "idle"
+      ? (fetcher.data as ApiKeyActionData | undefined)
+      : undefined;
+  const isOpen = open && !result?.ok;
+  const error = result && !result.ok ? result.error : undefined;
+
+  function save() {
+    if (!name.trim() || fetcher.state !== "idle") return;
+    setSubmitted(true);
+    fetcher.submit(
+      {
+        action: "save-preset",
+        name,
+        description,
+        capabilities: JSON.stringify(capabilities),
+        limitsTasks: String(limitsTasks),
+      },
+      { method: "post" }
+    );
+  }
+
+  function onKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    save();
+  }
+
+  return (
+    <Popover
+      open={isOpen}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next) {
+          setSubmitted(false);
+          setName("");
+          setDescription("");
+        }
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Button type="button" variant="secondary/small" disabled={disabled}>
+          Save as preset
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-80 space-y-3 p-3" align="end">
+        <InputGroup fullWidth>
+          <Label htmlFor="api-key-preset-name">Preset name</Label>
+          <Input
+            id="api-key-preset-name"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            onKeyDown={onKeyDown}
+            maxLength={64}
+            placeholder="e.g. CI deploy and smoke"
+            autoComplete="off"
+            autoFocus
+            fullWidth
+          />
+        </InputGroup>
+        <InputGroup fullWidth>
+          <Label htmlFor="api-key-preset-description">Description (optional)</Label>
+          <Input
+            id="api-key-preset-description"
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            onKeyDown={onKeyDown}
+            maxLength={200}
+            autoComplete="off"
+            fullWidth
+          />
+        </InputGroup>
+        <Paragraph variant="extra-small" className="text-text-dimmed">
+          {limitsTasks
+            ? "Saved for everyone in this organization. Keys made from it ask for tasks each time."
+            : "Saved for everyone in this organization. Tasks are chosen for each key."}
+        </Paragraph>
+        {error ? (
+          <Paragraph variant="extra-small" className="text-error">
+            {error}
+          </Paragraph>
+        ) : null}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="tertiary/small" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="primary/small"
+            disabled={!name.trim()}
+            isLoading={fetcher.state !== "idle"}
+            onClick={save}
+          >
+            Save preset
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function DeletePresetButton({ preset }: { preset: ApiKeyAccessPreset }) {
+  const fetcher = useTypedFetcher<typeof action>();
+  const [open, setOpen] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const result =
+    submitted && fetcher.state === "idle"
+      ? (fetcher.data as ApiKeyActionData | undefined)
+      : undefined;
+  const error = result && !result.ok ? result.error : undefined;
+
+  return (
+    <Popover
+      open={open && !result?.ok}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next) setSubmitted(false);
+      }}
+    >
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={`Delete ${preset.label}`}
+          className="absolute right-2 top-2 rounded p-1 text-text-dimmed transition hover:bg-background-hover hover:text-error"
+        >
+          <TrashIcon className="size-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 space-y-2 p-3" align="end">
+        <div className="text-sm text-text-bright">Delete {preset.label}?</div>
+        <Paragraph variant="extra-small" className="text-text-dimmed">
+          Keys created from this preset keep their access.
+        </Paragraph>
+        {error ? (
+          <Paragraph variant="extra-small" className="text-error">
+            {error}
+          </Paragraph>
+        ) : null}
+        <div className="flex justify-end gap-2 pt-1">
+          <Button type="button" variant="tertiary/small" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="danger/small"
+            isLoading={fetcher.state !== "idle"}
+            onClick={() => {
+              setSubmitted(true);
+              fetcher.submit({ action: "delete-preset", presetId: preset.id }, { method: "post" });
+            }}
+          >
+            Delete preset
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }

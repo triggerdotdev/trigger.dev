@@ -51,6 +51,7 @@ export function EditApiKeyAccessDialog({
   presets,
   capabilityCatalogue,
   isRbacPluginAvailable,
+  canManagePresets,
   environment,
 }: {
   apiKey: EditableApiKey;
@@ -62,6 +63,7 @@ export function EditApiKeyAccessDialog({
   presets: ApiKeyAccessPreset[] | null;
   capabilityCatalogue: ApiKeyCapabilityCatalogue | null;
   isRbacPluginAvailable: boolean;
+  canManagePresets: boolean;
   environment: React.ComponentProps<typeof EnvironmentCombo>["environment"];
 }) {
   const fetcher = useTypedFetcher<typeof action>();
@@ -79,6 +81,7 @@ export function EditApiKeyAccessDialog({
     presets,
     catalogue: capabilityCatalogue,
     isRbacPluginAvailable,
+    canManagePresets,
     initial,
   });
   const [confirming, setConfirming] = useState(driftPresetLabel !== undefined);
@@ -110,6 +113,7 @@ export function EditApiKeyAccessDialog({
     nextFullAccess,
     nextCapabilities,
     nextPresetId,
+    deletedPresetNote,
     canSubmitAccess,
   } = access;
   const differences =
@@ -220,6 +224,7 @@ export function EditApiKeyAccessDialog({
               const error =
                 (showError && actionData && !actionData.ok ? actionData.error : null) ??
                 uneditableMessage ??
+                deletedPresetNote ??
                 null;
               const hint =
                 needsSelectedTask && selectedTasks.length === 0

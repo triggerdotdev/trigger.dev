@@ -3,6 +3,12 @@ export const CUSTOM_API_KEY_PRESET_ID = "CUSTOM";
 export const RESTRICTED_API_KEYS_PLAN_MESSAGE =
   "Restricted API keys need the Pro plan or above. Upgrade to create them.";
 
+export const DELETED_API_KEY_PRESET_MESSAGE = "This saved preset was deleted. Pick another preset.";
+
+export function isSavedApiKeyPresetId(presetId: string): boolean {
+  return presetId.startsWith("apikeypreset_");
+}
+
 export const NO_ACCESS_LEVEL_ID = "none";
 
 export type ApiKeyCapabilityRequirement = {

@@ -30,14 +30,24 @@ export type ApiKeyPreset = {
    */
   scopes: string[];
   usesTaskSelection: boolean;
+  limitsTasks?: boolean;
   available: boolean;
+  source?: ApiKeyPresetSource;
   capabilities?: ApiKeyCapabilityMap;
 };
+
+type ApiKeyPresetSource = "organization";
 
 export type ApiKeyAccessOptions = {
   presets: ApiKeyPreset[];
   catalogue: ApiKeyCapabilityCatalogue;
 };
+
+export type ApiKeyPresetMutationResult =
+  | { ok: true; preset: ApiKeyPreset }
+  | { ok: false; error: string };
+
+export type ApiKeyPresetDeleteResult = { ok: true } | { ok: false; error: string };
 
 export type ApiKeyPolicy = {
   presetId: string | null;
@@ -659,6 +669,18 @@ export interface RoleBaseAccessController {
     capabilities?: ApiKeyCapabilityMap;
   }): Promise<PrepareApiKeyPolicyResult>;
   describeApiKeyPolicy?(policy: ApiKeyPolicy): Promise<ApiKeyPolicyDescription>;
+  createApiKeyPreset?(params: {
+    organizationId: string;
+    name: string;
+    description?: string;
+    capabilities: ApiKeyCapabilityMap;
+    limitsTasks?: boolean;
+    createdById?: string;
+  }): Promise<ApiKeyPresetMutationResult>;
+  deleteApiKeyPreset?(params: {
+    organizationId: string;
+    presetId: string;
+  }): Promise<ApiKeyPresetDeleteResult>;
 
   // Role introspection. The fallback returns []; a plugin may return
   // its own role catalogue.

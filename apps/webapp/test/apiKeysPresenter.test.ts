@@ -367,7 +367,7 @@ containerTest("marks only keys missing access their preset grants today", async 
     ["Operator", "OPERATOR", ["read:tasks", "trigger:tasks"]],
     ["Extended operator", "OPERATOR", ["read:tasks", "trigger:tasks", "read:deployments"]],
     ["Custom", "CUSTOM", ["read:tasks"]],
-    ["Unknown preset", "RETIRED_PRESET", ["read:tasks"]],
+    ["Deleted preset", "apikeypreset_gone", ["read:tasks"]],
   ];
   for (const [name, presetId, scopes] of keys) {
     await prisma.apiKey.create({
@@ -456,6 +456,6 @@ containerTest("marks only keys missing access their preset grants today", async 
     Operator: { label: "Operator", drift: [], matchesPreset: true },
     "Extended operator": { label: "Operator", drift: [], matchesPreset: false },
     Custom: { label: "Custom", drift: [], matchesPreset: false },
-    "Unknown preset": { label: "Custom", drift: [], matchesPreset: false },
+    "Deleted preset": { label: "Custom", drift: [], matchesPreset: false },
   });
 });

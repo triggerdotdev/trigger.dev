@@ -32,6 +32,7 @@ type NewApiKeyDialogProps = {
   presets: ApiKeyAccessPreset[] | null;
   capabilityCatalogue: ApiKeyCapabilityCatalogue | null;
   isRbacPluginAvailable: boolean;
+  canManagePresets: boolean;
   environment: React.ComponentProps<typeof EnvironmentCombo>["environment"];
   children?: (openDialog: () => void) => React.ReactNode;
   open: boolean;
@@ -46,6 +47,7 @@ export function NewApiKeyDialog({
   presets,
   capabilityCatalogue,
   isRbacPluginAvailable,
+  canManagePresets,
   environment,
 }: NewApiKeyDialogProps) {
   const fetcher = useTypedFetcher<typeof action>();
@@ -62,6 +64,7 @@ export function NewApiKeyDialog({
     presets,
     catalogue: capabilityCatalogue,
     isRbacPluginAvailable,
+    canManagePresets,
   });
   const [ipRanges, setIpRanges] = useState("");
   const [createdApiKey, setCreatedApiKey] = useState<string>();
@@ -93,7 +96,13 @@ export function NewApiKeyDialog({
     }
   }
 
-  const { showAccessControls, selectedTasks, needsSelectedTask, canSubmitAccess } = access;
+  const {
+    showAccessControls,
+    selectedTasks,
+    needsSelectedTask,
+    deletedPresetNote,
+    canSubmitAccess,
+  } = access;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -217,14 +226,15 @@ export function NewApiKeyDialog({
                   needsSelectedTask && selectedTasks.length === 0
                     ? "Pick at least one task, or switch to all tasks."
                     : "";
+                const warning = error ?? deletedPresetNote;
                 return (
                   <span
                     className={cn(
                       "min-w-0 truncate text-xs",
-                      error ? "text-error" : "text-text-dimmed"
+                      warning ? "text-error" : "text-text-dimmed"
                     )}
                   >
-                    {error ?? hint}
+                    {warning ?? hint}
                   </span>
                 );
               })()}

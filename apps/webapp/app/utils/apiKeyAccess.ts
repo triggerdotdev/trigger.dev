@@ -72,6 +72,23 @@ export const MISSING_API_KEY_MESSAGE =
 export const REVOKED_API_KEY_MESSAGE = "This key was revoked, so its access can't be changed.";
 export const EXPIRED_API_KEY_MESSAGE = "This key has expired. Create a new key instead.";
 
+export type ChosenPreset = { id: string; label?: string };
+
+export function chosenPreset(presets: Presets, id: string): ChosenPreset {
+  return { id, label: presets?.find((preset) => preset.id === id)?.label };
+}
+
+export function resolvePresetSelection(
+  presets: Presets,
+  chosen: ChosenPreset,
+  defaultPresetId: string
+): { presetId: string; deletedPresetLabel?: string } {
+  if (!presets) return { presetId: defaultPresetId };
+  if (presets.some((preset) => preset.id === chosen.id)) return { presetId: chosen.id };
+  if (chosen.label === undefined) return { presetId: defaultPresetId };
+  return { presetId: "", deletedPresetLabel: chosen.label };
+}
+
 export function capabilityPresets(presets: Presets): CapabilityPreset[] {
   return (presets ?? []).filter((preset): preset is CapabilityPreset => !!preset.capabilities);
 }
@@ -126,7 +143,7 @@ export function summarizeCapabilities(
     preset.label +
     (Object.keys(preset.capabilities).some((id) => scopedIds.has(id)) ? tasksSuffix : "");
 
-  const builtIn = capabilityPresets(presets);
+  const builtIn = capabilityPresets(presets).filter((preset) => preset.source !== "organization");
   const exact = builtIn.find((preset) =>
     apiKeyCapabilitiesEqual(preset.capabilities, capabilities)
   );
@@ -203,6 +220,18 @@ export function customCapabilitiesAfterChange(
     ? withoutTaskSelectionUnavailable(catalogue.capabilities, required)
     : required;
   return applyApiKeyCapabilityRequirements(catalogue.capabilities, allowed).capabilities;
+}
+
+export type TaskAccess = { taskScope: TaskScope; selectedTasks: string[] };
+
+export function taskAccessAfterPreset(
+  preset: { limitsTasks?: boolean },
+  current: TaskAccess,
+  how: "replace" | "add"
+): TaskAccess {
+  if (!preset.limitsTasks) return current;
+  if (how === "add" && current.taskScope === "selected") return current;
+  return { taskScope: "selected", selectedTasks: [] };
 }
 
 export function levelLabel(

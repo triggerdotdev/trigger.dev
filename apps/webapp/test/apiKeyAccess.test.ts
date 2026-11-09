@@ -6,13 +6,16 @@ import type {
 import { describe, expect, it } from "vitest";
 import {
   type ApiKeyAccessPreset,
+  chosenPreset,
   customCapabilitiesAfterChange,
   customKeyUsesSelectedTasks,
   driftLine,
   grantsTaskAccess,
   initialApiKeyAccess,
+  resolvePresetSelection,
   scopesLostOnSave,
   summarizeCapabilities,
+  taskAccessAfterPreset,
   taskSelectionChange,
 } from "~/utils/apiKeyAccess";
 
@@ -56,7 +59,12 @@ const capabilities: ApiKeyCapability[] = [
 
 const catalogue: ApiKeyCapabilityCatalogue = { available: true, capabilities };
 
-function preset(id: string, label: string, map: ApiKeyCapabilityMap): ApiKeyAccessPreset {
+function preset(
+  id: string,
+  label: string,
+  map: ApiKeyCapabilityMap,
+  source?: "organization"
+): ApiKeyAccessPreset {
   return {
     id,
     label,
@@ -65,6 +73,7 @@ function preset(id: string, label: string, map: ApiKeyCapabilityMap): ApiKeyAcce
     usesTaskSelection: false,
     available: true,
     capabilities: map,
+    ...(source ? { source } : {}),
   };
 }
 
@@ -72,6 +81,7 @@ const presets: ApiKeyAccessPreset[] = [
   preset("TRIGGER_ONLY", "Trigger only", { tasks: "trigger" }),
   preset("OBSERVER", "Observer", { tasks: "read", runs: "read" }),
   preset("DEPLOY_ONLY", "Deploy only", { deployments: "readWrite" }),
+  preset("apikeypreset_1", "Saved runs", { runs: "readWrite" }, "organization"),
 ];
 
 describe("summarizeCapabilities", () => {
@@ -86,6 +96,13 @@ describe("summarizeCapabilities", () => {
     expect(
       summarizeCapabilities(catalogue, { deployments: "readWrite", tasks: "trigger" }, presets)
     ).toEqual({ text: "Trigger only + Deploy only" });
+  });
+
+  it("never names an organization preset", () => {
+    expect(summarizeCapabilities(catalogue, { runs: "readWrite" }, presets)).toEqual({
+      listsRows: true,
+      text: "Runs: read and write",
+    });
   });
 
   it("lists the granted rows when no preset or pair matches", () => {
@@ -155,6 +172,35 @@ describe("grantsTaskAccess", () => {
     expect(grantsTaskAccess(catalogue, {}, true)).toBe(true);
     expect(grantsTaskAccess(catalogue, { tasks: "trigger" }, false)).toBe(true);
     expect(grantsTaskAccess(catalogue, { runs: "read" }, false)).toBe(false);
+  });
+});
+
+describe("taskAccessAfterPreset", () => {
+  const allTasks = { taskScope: "all" as const, selectedTasks: ["report"] };
+  const picked = { taskScope: "selected" as const, selectedTasks: ["report"] };
+
+  it("selects Selected tasks with nothing picked for a preset that limits tasks", () => {
+    expect(taskAccessAfterPreset({ limitsTasks: true }, allTasks, "replace")).toEqual({
+      taskScope: "selected",
+      selectedTasks: [],
+    });
+    expect(taskAccessAfterPreset({ limitsTasks: true }, picked, "replace")).toEqual({
+      taskScope: "selected",
+      selectedTasks: [],
+    });
+    expect(taskAccessAfterPreset({ limitsTasks: true }, allTasks, "add")).toEqual({
+      taskScope: "selected",
+      selectedTasks: [],
+    });
+  });
+
+  it("keeps tasks already picked when adding a preset that limits tasks", () => {
+    expect(taskAccessAfterPreset({ limitsTasks: true }, picked, "add")).toEqual(picked);
+  });
+
+  it("leaves task access alone for presets that don't limit tasks", () => {
+    expect(taskAccessAfterPreset({}, allTasks, "replace")).toEqual(allTasks);
+    expect(taskAccessAfterPreset({ limitsTasks: false }, picked, "add")).toEqual(picked);
   });
 });
 
@@ -271,5 +317,35 @@ describe("initialApiKeyAccess", () => {
         capabilities: stored.capabilities,
       });
     }
+  });
+});
+
+describe("resolvePresetSelection", () => {
+  const chosen = chosenPreset(presets, "apikeypreset_1");
+
+  it("keeps a preset that is still listed", () => {
+    expect(resolvePresetSelection(presets, chosen, "TRIGGER_ONLY")).toEqual({
+      presetId: "apikeypreset_1",
+    });
+  });
+
+  it("clears the selection and names the preset when a chosen preset is deleted", () => {
+    const remaining = presets.filter((p) => p.id !== "apikeypreset_1");
+    expect(resolvePresetSelection(remaining, chosen, "TRIGGER_ONLY")).toEqual({
+      presetId: "",
+      deletedPresetLabel: "Saved runs",
+    });
+  });
+
+  it("uses the default for an initial id that was never listed", () => {
+    expect(
+      resolvePresetSelection(presets, chosenPreset(presets, "MISSING"), "TRIGGER_ONLY")
+    ).toEqual({ presetId: "TRIGGER_ONLY" });
+  });
+
+  it("uses the default without presets", () => {
+    expect(resolvePresetSelection(null, chosen, "FULL_ACCESS")).toEqual({
+      presetId: "FULL_ACCESS",
+    });
   });
 });

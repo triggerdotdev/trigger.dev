@@ -1,16 +1,33 @@
-import { RESTRICTED_API_KEYS_PLAN_MESSAGE } from "@trigger.dev/plugins";
+import {
+  DELETED_API_KEY_PRESET_MESSAGE,
+  RESTRICTED_API_KEYS_PLAN_MESSAGE,
+} from "@trigger.dev/plugins";
 import { describe, expect, it } from "vitest";
-import { validateApiKeyAccess } from "~/services/apiKeyPresetValidation.server";
+import {
+  canManageApiKeyPresets,
+  validateApiKeyAccess,
+} from "~/services/apiKeyPresetValidation.server";
 
 const presets = [
   { id: "FULL_ACCESS", available: true, usesTaskSelection: false },
   { id: "DEPLOY_ONLY", available: true, usesTaskSelection: false },
   { id: "ENV_VARS_ONLY", available: false, usesTaskSelection: false },
-  { id: "TASK_OPERATOR", available: true, usesTaskSelection: true },
+  { id: "apikeypreset_kept", available: true, usesTaskSelection: true },
 ];
 
 describe("validateApiKeyAccess", () => {
-  it("rejects an unknown preset id", () => {
+  it("says a saved preset that is no longer listed was deleted", () => {
+    expect(() =>
+      validateApiKeyAccess({
+        presets,
+        presetId: "apikeypreset_gone",
+        taskIdentifiers: [],
+        hasTaskParameters: false,
+      })
+    ).toThrow(DELETED_API_KEY_PRESET_MESSAGE);
+  });
+
+  it("rejects an unknown preset id that isn't a saved preset", () => {
     expect(() =>
       validateApiKeyAccess({
         presets,
@@ -21,36 +38,18 @@ describe("validateApiKeyAccess", () => {
     ).toThrow("Invalid API key access preset");
   });
 
-  it("accepts a listed preset and drops capabilities it doesn't use", () => {
+  it("accepts a listed saved preset", () => {
     expect(
       validateApiKeyAccess({
         presets,
-        presetId: "DEPLOY_ONLY",
-        capabilities: { runs: "read" },
+        presetId: "apikeypreset_kept",
         taskIdentifiers: [],
         hasTaskParameters: false,
       })
     ).toEqual({
-      presetId: "DEPLOY_ONLY",
+      presetId: "apikeypreset_kept",
       capabilities: undefined,
       taskIdentifiers: undefined,
-    });
-  });
-
-  it("passes Custom capabilities and selected tasks through", () => {
-    expect(
-      validateApiKeyAccess({
-        presets,
-        presetId: "CUSTOM",
-        capabilities: { tasks: "trigger" },
-        taskScope: "selected",
-        taskIdentifiers: ["send-email"],
-        hasTaskParameters: true,
-      })
-    ).toEqual({
-      presetId: "CUSTOM",
-      capabilities: { tasks: "trigger" },
-      taskIdentifiers: ["send-email"],
     });
   });
 
@@ -63,5 +62,21 @@ describe("validateApiKeyAccess", () => {
         hasTaskParameters: false,
       })
     ).toThrow(RESTRICTED_API_KEYS_PLAN_MESSAGE);
+  });
+});
+
+describe("canManageApiKeyPresets", () => {
+  const developer = {
+    can: (_action: string, subject: unknown) =>
+      (subject as { envType?: string }).envType === "DEVELOPMENT",
+  };
+  const admin = { can: () => true };
+
+  it("refuses a role that can only write Development API keys", () => {
+    expect(canManageApiKeyPresets(developer as never)).toBe(false);
+  });
+
+  it("allows a role that can write deployed API keys", () => {
+    expect(canManageApiKeyPresets(admin as never)).toBe(true);
   });
 });

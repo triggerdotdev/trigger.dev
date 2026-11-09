@@ -98,7 +98,7 @@ Access presets define what a key can do. On the Free and Hobby plans only the **
 
 **Trigger only** and **Task operator** can be restricted to selected tasks, up to 10 tasks per key. Task restrictions use task identifiers, such as `send-email`. A request involving multiple tasks (such as a batch trigger) succeeds only when the key can access every task in the request, so a task-restricted key can batch-trigger only its selected tasks.
 
-When no single preset fits, such as a CI key that operates on runs and also deploys, build the key's access with [custom access](/apikeys/custom-access).
+When no single preset fits, such as a CI key that operates on runs and also deploys, build the key's access with [custom access](/apikeys/custom-access). Your organization can also save custom access as its own preset.
 
 ## Deploy with an API key
 
@@ -181,7 +181,7 @@ The SDK sends the branch automatically. When calling the API directly, send the 
 
 ## Self-hosting
 
-Self-hosted installations support multiple keys with **No restrictions**. The restricted access presets and custom access are available in Trigger.dev Cloud.
+Self-hosted installations support multiple keys with **No restrictions**. The restricted access presets, custom access, and saved presets are available in Trigger.dev Cloud.
 
 IP allowlists use the last address in the `X-Forwarded-For` header, so run the webapp behind a reverse proxy that appends the client IP to that header. To allow private ranges because your clients reach the instance over a private network, set `API_KEY_ALLOW_PRIVATE_IP_RANGES=1`.
 

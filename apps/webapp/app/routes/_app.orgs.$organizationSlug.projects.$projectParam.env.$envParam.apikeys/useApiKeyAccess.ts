@@ -8,8 +8,12 @@ import { useState } from "react";
 import { MAX_API_KEY_TASK_IDENTIFIERS } from "~/consts";
 import {
   type ApiKeyAccessPreset,
+  chosenPreset,
   customKeyUsesSelectedTasks,
   type InitialApiKeyAccess,
+  resolvePresetSelection,
+  type TaskAccess,
+  taskAccessAfterPreset,
   type TaskScope,
 } from "~/utils/apiKeyAccess";
 
@@ -27,11 +31,13 @@ export function useApiKeyAccess({
   presets,
   catalogue,
   isRbacPluginAvailable,
+  canManagePresets,
   initial,
 }: {
   presets: ApiKeyAccessPreset[] | null;
   catalogue: ApiKeyCapabilityCatalogue | null;
   isRbacPluginAvailable: boolean;
+  canManagePresets: boolean;
   initial?: InitialApiKeyAccess;
 }) {
   const defaultPresetId = defaultApiKeyPresetId(presets);
@@ -45,16 +51,27 @@ export function useApiKeyAccess({
         tasks: [],
       }
   );
-  const [chosenPresetId, setPresetId] = useState(start.presetId);
-  const presetId = presets?.some((preset) => preset.id === chosenPresetId)
-    ? chosenPresetId
-    : defaultPresetId;
+  const [chosen, setChosen] = useState(() => chosenPreset(presets, start.presetId));
+  const { presetId, deletedPresetLabel } = resolvePresetSelection(presets, chosen, defaultPresetId);
   const [accessMode, setAccessMode] = useState<"preset" | "custom">(start.mode);
   const [customCapabilities, setCustomCapabilities] = useState<ApiKeyCapabilityMap>(
     start.capabilities
   );
   const [taskScope, setTaskScope] = useState<TaskScope>(start.taskScope);
   const [selectedTasks, setSelectedTasks] = useState<string[]>(start.tasks);
+
+  function setTaskAccess(next: TaskAccess) {
+    setTaskScope(next.taskScope);
+    setSelectedTasks(next.selectedTasks);
+  }
+
+  function setPresetId(id: string) {
+    setChosen(chosenPreset(presets, id));
+    const preset = presets?.find((candidate) => candidate.id === id);
+    if (preset) {
+      setTaskAccess(taskAccessAfterPreset(preset, { taskScope, selectedTasks }, "replace"));
+    }
+  }
 
   function reset() {
     setPresetId(defaultPresetId);
@@ -103,6 +120,10 @@ export function useApiKeyAccess({
       )
     : {};
   const nextPresetId = isCustom ? CUSTOM_API_KEY_PRESET_ID : presetId;
+  const deletedPresetNote =
+    !isCustom && deletedPresetLabel
+      ? `The saved preset ${deletedPresetLabel} was deleted. Pick another preset.`
+      : undefined;
   const canSubmitAccess =
     selectedPresetIsAvailable &&
     !(isCustom && !hasCustomCapabilities) &&
@@ -114,6 +135,7 @@ export function useApiKeyAccess({
   return {
     presets,
     catalogue,
+    canManagePresets,
     presetId,
     setPresetId,
     accessMode,
@@ -138,6 +160,7 @@ export function useApiKeyAccess({
     nextFullAccess,
     nextCapabilities,
     nextPresetId,
+    deletedPresetNote,
     canSubmitAccess,
   };
 }

@@ -1,9 +1,11 @@
 import {
   type ApiKeyPreset,
   CUSTOM_API_KEY_PRESET_ID,
+  DELETED_API_KEY_PRESET_MESSAGE,
+  isSavedApiKeyPresetId,
   RESTRICTED_API_KEYS_PLAN_MESSAGE,
 } from "@trigger.dev/plugins";
-import { FULL_ACCESS_PRESET_ID } from "@trigger.dev/rbac";
+import { FULL_ACCESS_PRESET_ID, type RbacAbility } from "@trigger.dev/rbac";
 
 type ApiKeyAccessInput = {
   presets: Pick<ApiKeyPreset, "id" | "available" | "usesTaskSelection">[] | null;
@@ -13,6 +15,13 @@ type ApiKeyAccessInput = {
   taskIdentifiers: string[];
   hasTaskParameters: boolean;
 };
+
+export const API_KEY_PRESET_PERMISSION_MESSAGE =
+  "Only admins and owners can save or delete presets. Ask one of them to do it for you.";
+
+export function canManageApiKeyPresets(ability: Pick<RbacAbility, "can">): boolean {
+  return ability.can("write", { type: "apiKeys", envType: "PRODUCTION" });
+}
 
 export type ApiKeyAccess = {
   presetId: string;
@@ -57,7 +66,11 @@ function validatePreset({
 
   const preset = presets.find((candidate) => candidate.id === presetId);
   if (!preset) {
-    throw new Error("Invalid API key access preset");
+    throw new Error(
+      isSavedApiKeyPresetId(presetId)
+        ? DELETED_API_KEY_PRESET_MESSAGE
+        : "Invalid API key access preset"
+    );
   }
   if (!preset.available) {
     throw new Error(RESTRICTED_API_KEYS_PLAN_MESSAGE);

@@ -68,7 +68,11 @@ import {
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { ApiKeysPresenter } from "~/presenters/v3/ApiKeysPresenter.server";
-import { validateApiKeyAccess } from "~/services/apiKeyPresetValidation.server";
+import {
+  API_KEY_PRESET_PERMISSION_MESSAGE,
+  canManageApiKeyPresets,
+  validateApiKeyAccess,
+} from "~/services/apiKeyPresetValidation.server";
 import { logger } from "~/services/logger.server";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { rbac } from "~/services/rbac.server";
@@ -151,6 +155,17 @@ const ApiKeyActionSchema = z.discriminatedUnion("action", [
     allowedIpRanges: z.string().default(""),
   }),
   z.object({
+    action: z.literal("save-preset"),
+    name: z.string(),
+    description: z.string().default(""),
+    capabilities: CapabilitiesField,
+    limitsTasks: z
+      .string()
+      .optional()
+      .transform((value) => value === "true"),
+  }),
+  z.object({ action: z.literal("delete-preset"), presetId: z.string().min(1) }),
+  z.object({
     action: z.literal("disable-root"),
     confirmation: z.literal(DISABLE_ROOT_API_KEY_VISIBILITY_CONFIRMATION),
   }),
@@ -159,6 +174,8 @@ const ApiKeyActionSchema = z.discriminatedUnion("action", [
 export type ApiKeyActionData =
   | { ok: true; action: "create"; apiKey: string }
   | { ok: true; action: "update-access"; apiKeyId: string }
+  | { ok: true; action: "save-preset"; presetId: string }
+  | { ok: true; action: "delete-preset"; presetId: string }
   | { ok: false; error: string };
 
 export const loader = dashboardLoader(
@@ -167,7 +184,7 @@ export const loader = dashboardLoader(
     searchParams: ApiKeySearchParams,
     context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
   },
-  async ({ params, searchParams, user, ability }) => {
+  async ({ request, params, searchParams, user, ability, context }) => {
     try {
       const presenter = new ApiKeysPresenter();
       const [data, isRbacPluginAvailable] = await Promise.all([
@@ -202,6 +219,9 @@ export const loader = dashboardLoader(
         capabilityCatalogue: canReadApiKeys ? data.capabilityCatalogue : null,
         canReadApiKeys,
         canWriteApiKeys,
+        canManagePresets:
+          canWriteApiKeys &&
+          (await canManageOrganizationPresets(request, user.id, context.organizationId)),
         isRbacPluginAvailable,
         showRevoked: searchParams.showRevoked ?? false,
         loadedAt: Date.now(),
@@ -215,6 +235,16 @@ export const loader = dashboardLoader(
     }
   }
 );
+
+async function canManageOrganizationPresets(
+  request: Request,
+  userId: string,
+  organizationId: string | undefined
+) {
+  if (!organizationId) return false;
+  const auth = await rbac.authenticateSession(request, { userId, organizationId });
+  return auth.ok && canManageApiKeyPresets(auth.ability);
+}
 
 async function presetsToValidate(organizationId: string, presetId: string | undefined) {
   if (presetId === CUSTOM_API_KEY_PRESET_ID) {
@@ -319,6 +349,48 @@ export const action = dashboardAction(
             "API key access updated"
           );
         }
+        case "save-preset": {
+          if (!(await canManageOrganizationPresets(request, user.id, project.organizationId))) {
+            return typedjson({ ok: false as const, error: API_KEY_PRESET_PERMISSION_MESSAGE });
+          }
+          const result = await rbac.createApiKeyPreset({
+            organizationId: project.organizationId,
+            name: submission.data.name,
+            description: submission.data.description,
+            capabilities: submission.data.capabilities ?? {},
+            limitsTasks: submission.data.limitsTasks,
+            createdById: user.id,
+          });
+          if (!result.ok) {
+            return typedjson({ ok: false as const, error: result.error });
+          }
+          return typedJsonWithSuccessMessage(
+            { ok: true as const, action: "save-preset" as const, presetId: result.preset.id },
+            request,
+            `Saved ${result.preset.label} preset`
+          );
+        }
+        case "delete-preset": {
+          if (!(await canManageOrganizationPresets(request, user.id, project.organizationId))) {
+            return typedjson({ ok: false as const, error: API_KEY_PRESET_PERMISSION_MESSAGE });
+          }
+          const result = await rbac.deleteApiKeyPreset({
+            organizationId: project.organizationId,
+            presetId: submission.data.presetId,
+          });
+          if (!result.ok) {
+            return typedjson({ ok: false as const, error: result.error });
+          }
+          return typedJsonWithSuccessMessage(
+            {
+              ok: true as const,
+              action: "delete-preset" as const,
+              presetId: submission.data.presetId,
+            },
+            request,
+            "Preset deleted"
+          );
+        }
         case "revoke": {
           await revokeEnvironmentApiKey({
             environmentId: keyEnvironmentId,
@@ -359,7 +431,12 @@ export const action = dashboardAction(
       }
       const message = error instanceof Error ? error.message : "Unable to update API keys";
 
-      if (submission.data.action === "create" || submission.data.action === "update-access") {
+      if (
+        submission.data.action === "create" ||
+        submission.data.action === "update-access" ||
+        submission.data.action === "save-preset" ||
+        submission.data.action === "delete-preset"
+      ) {
         return typedJsonWithErrorMessage({ ok: false as const, error: message }, request, message);
       }
 
@@ -393,6 +470,7 @@ export default function Page() {
     apiKeys,
     canReadApiKeys,
     canWriteApiKeys,
+    canManagePresets,
     isRbacPluginAvailable,
     showRevoked,
     hasVercelIntegration,
@@ -492,6 +570,7 @@ export default function Page() {
               presets={presets}
               capabilityCatalogue={capabilityCatalogue}
               isRbacPluginAvailable={isRbacPluginAvailable}
+              canManagePresets={canManagePresets}
               environment={apiKeyEnvironmentLabel}
             >
               {(openCreateApiKey) => (
@@ -739,6 +818,7 @@ export default function Page() {
                       presets={presets}
                       capabilityCatalogue={capabilityCatalogue}
                       isRbacPluginAvailable={isRbacPluginAvailable}
+                      canManagePresets={canManagePresets}
                       environment={apiKeyEnvironmentLabel}
                     />
                   ) : null}

@@ -7,13 +7,14 @@ import {
   NO_ACCESS_LEVEL_ID,
   restrictScopeToTasks,
 } from "@trigger.dev/plugins";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import {
   Popover,
   PopoverArrowTrigger,
   PopoverContent,
   PopoverMenuItem,
+  PopoverSectionHeader,
 } from "~/components/primitives/Popover";
 import SegmentedControl from "~/components/primitives/SegmentedControl";
 import { Select, SelectItem } from "~/components/primitives/Select";
@@ -25,6 +26,7 @@ import {
   customKeyUsesSelectedTasks,
   isGranted,
   type Presets,
+  taskAccessAfterPreset,
   type TaskScope,
 } from "~/utils/apiKeyAccess";
 import { cn } from "~/utils/cn";
@@ -149,11 +151,13 @@ export function CustomCapabilityEditor({
   selectedTasks,
   setSelectedTasks,
   availableTasks,
+  toolbarEnd,
 }: {
   catalogue: ApiKeyCapabilityCatalogue;
   presets: Presets;
   capabilities: ApiKeyCapabilityMap;
   onChange: (capabilities: ApiKeyCapabilityMap) => void;
+  toolbarEnd?: ReactNode;
   taskScope: TaskScope;
   setTaskScope: (value: TaskScope) => void;
   selectedTasks: string[];
@@ -165,22 +169,41 @@ export function CustomCapabilityEditor({
   const apply = (next: ApiKeyCapabilityMap, nextScope: TaskScope = taskScope) => {
     onChange(customCapabilitiesAfterChange(catalogue, next, nextScope));
   };
+  const pickPreset = (
+    preset: CapabilityPreset,
+    next: ApiKeyCapabilityMap,
+    how: "replace" | "add"
+  ) => {
+    const taskAccess = taskAccessAfterPreset(preset, { taskScope, selectedTasks }, how);
+    setTaskScope(taskAccess.taskScope);
+    setSelectedTasks(taskAccess.selectedTasks);
+    apply(next, taskAccess.taskScope);
+  };
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <PresetMenu label="Start from" presets={presets} onPick={apply} />
+        <PresetMenu
+          label="Start from"
+          presets={presets}
+          onPick={(preset) => pickPreset(preset, preset.capabilities, "replace")}
+        />
         <PresetMenu
           label="Add preset"
           presets={presets}
           onPick={(preset) =>
-            apply(mergeApiKeyCapabilities(catalogue.capabilities, capabilities, preset))
+            pickPreset(
+              preset,
+              mergeApiKeyCapabilities(catalogue.capabilities, capabilities, preset.capabilities),
+              "add"
+            )
           }
         />
         <span className="mx-1 h-4 w-px bg-grid-bright" />
         <Button type="button" variant="minimal/small" onClick={() => onChange({})}>
           Clear all
         </Button>
+        {toolbarEnd ? <div className="ml-auto">{toolbarEnd}</div> : null}
       </div>
       <ul className="flex flex-col rounded-md border border-grid-bright">
         {catalogue.capabilities.map((capability) => {
@@ -344,17 +367,19 @@ function PresetMenu({
 }: {
   label: string;
   presets: Presets;
-  onPick: (capabilities: ApiKeyCapabilityMap) => void;
+  onPick: (preset: CapabilityPreset) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const builtIn = capabilityPresets(presets);
+  const withCapabilities = capabilityPresets(presets);
+  const builtIn = withCapabilities.filter((preset) => preset.source !== "organization");
+  const organization = withCapabilities.filter((preset) => preset.source === "organization");
   const item = (preset: CapabilityPreset) => (
     <PopoverMenuItem
       key={preset.id}
       type="button"
       title={preset.label}
       onClick={() => {
-        onPick(preset.capabilities);
+        onPick(preset);
         setOpen(false);
       }}
     />
@@ -370,6 +395,12 @@ function PresetMenu({
         align="start"
       >
         {builtIn.map(item)}
+        {organization.length > 0 ? (
+          <>
+            <PopoverSectionHeader title="Your presets" />
+            {organization.map(item)}
+          </>
+        ) : null}
       </PopoverContent>
     </Popover>
   );

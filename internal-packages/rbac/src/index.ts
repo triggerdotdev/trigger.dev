@@ -1,6 +1,8 @@
 import type {
   ApiKeyAccessOptions,
   ApiKeyPolicyDescription,
+  ApiKeyPresetDeleteResult,
+  ApiKeyPresetMutationResult,
   BearerAuthOptions,
   BearerAuthResult,
   Permission,
@@ -391,6 +393,26 @@ class LazyController implements RoleBaseAccessController {
     const controller = await this.c();
     // Presentation only — an undescribed policy renders from its stored scopes.
     return controller.describeApiKeyPolicy ? controller.describeApiKeyPolicy(...args) : {};
+  }
+
+  async createApiKeyPreset(
+    ...args: Parameters<NonNullable<RoleBaseAccessController["createApiKeyPreset"]>>
+  ): Promise<ApiKeyPresetMutationResult> {
+    const controller = await this.c();
+    if (!controller.createApiKeyPreset) {
+      return { ok: false, error: "API key presets are not available" };
+    }
+    return controller.createApiKeyPreset(...args);
+  }
+
+  async deleteApiKeyPreset(
+    ...args: Parameters<NonNullable<RoleBaseAccessController["deleteApiKeyPreset"]>>
+  ): Promise<ApiKeyPresetDeleteResult> {
+    const controller = await this.c();
+    if (!controller.deleteApiKeyPreset) {
+      return { ok: false, error: "API key presets are not available" };
+    }
+    return controller.deleteApiKeyPreset(...args);
   }
 
   async allPermissions(
