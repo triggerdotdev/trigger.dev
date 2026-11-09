@@ -1,6 +1,7 @@
 import { type ApiKeyCapabilityCatalogue, type ApiKeyCapabilityMap } from "@trigger.dev/plugins";
 import { Badge } from "~/components/primitives/Badge";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { TruncatedText } from "~/components/primitives/TruncatedText";
 import { type ApiKeyAccessPreset, summarizeCapabilities } from "~/utils/apiKeyAccess";
 
 export function ApiKeyAccessLabel({
@@ -50,29 +51,52 @@ export function ApiKeyAccessCell({
   presets?: ApiKeyAccessPreset[] | null;
   hasDrift?: boolean;
 }) {
+  // Task names are left out here: the count at the end stands for them, with the names in its
+  // tooltip, so a long list can't push it out of view.
+  const summary =
+    isCustom && catalogue && capabilities
+      ? summarizeCapabilities(catalogue, capabilities, presets)
+      : undefined;
+  const text = isCustom ? (summary && !summary.listsRows ? summary.text : undefined) : label;
+
+  // One line: the label truncates first, so the task scope and drift marker stay readable. No
+  // colours of its own: the cell dims it and brightens it on row hover, like the other data.
   return (
-    <div className="flex min-w-40 items-start gap-0.5">
-      <div className="flex flex-col gap-0.5 text-left">
-        <span className="flex items-center gap-1.5 text-xs text-text-bright">
-          <ApiKeyAccessLabel
-            label={label}
-            isCustom={isCustom}
-            capabilities={capabilities}
-            catalogue={catalogue}
-            presets={presets}
-            taskIdentifiers={taskIdentifiers}
-          />
-        </span>
-        {usesTaskSelection ? (
-          <span className="text-xs text-text-dimmed">
-            {taskIdentifiers === undefined
-              ? "All tasks"
-              : `${taskIdentifiers.length} selected ${taskIdentifiers.length === 1 ? "task" : "tasks"}`}
-          </span>
-        ) : null}
-      </div>
+    <div className="flex max-w-[22rem] items-center gap-1.5 text-xs">
+      {isCustom ? (
+        <Badge variant="extra-small" className="shrink-0">
+          Custom
+        </Badge>
+      ) : null}
+      {text ? <TruncatedText text={text} className="min-w-0" /> : null}
+      {usesTaskSelection ? <TaskScope taskIdentifiers={taskIdentifiers} /> : null}
       {hasDrift ? <DriftMarker presetLabel={label} /> : null}
     </div>
+  );
+}
+
+function TaskScope({ taskIdentifiers }: { taskIdentifiers?: string[] }) {
+  const count = taskIdentifiers?.length ?? 0;
+  const scope = (
+    <span className="shrink-0 whitespace-nowrap">
+      · {taskIdentifiers === undefined ? "All tasks" : `${count} ${count === 1 ? "task" : "tasks"}`}
+    </span>
+  );
+  if (!taskIdentifiers || count === 0) return scope;
+  return (
+    <SimpleTooltip
+      asChild
+      side="top"
+      disableHoverableContent
+      button={scope}
+      content={
+        <ul className="flex flex-col gap-0.5 font-mono text-xs">
+          {taskIdentifiers.map((task) => (
+            <li key={task}>{task}</li>
+          ))}
+        </ul>
+      }
+    />
   );
 }
 
@@ -82,10 +106,11 @@ function DriftMarker({ presetLabel }: { presetLabel: string }) {
       asChild
       side="top"
       className="text-xs"
+      disableHoverableContent
       content={`The ${presetLabel} preset now grants more than this key has`}
       button={
-        <span className="mt-px block p-1">
-          <span className="block size-1.5 rounded-full bg-text-dimmed" />
+        <span className="block shrink-0 p-1">
+          <span className="block size-1.5 rounded-full bg-text-dimmed group-hover/table-row:bg-text-bright" />
         </span>
       }
     />

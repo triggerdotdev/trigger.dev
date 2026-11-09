@@ -1,4 +1,4 @@
-import { CheckCircleIcon, ExclamationTriangleIcon, NoSymbolIcon } from "@heroicons/react/20/solid";
+import { NoSymbolIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form } from "@remix-run/react";
 import { useState } from "react";
@@ -46,15 +46,25 @@ export function editableApiKey(apiKey: ApiKeyRow, usage?: ApiKeyUsageView | null
   };
 }
 
-export function DisableRootApiKeyButton({ canWrite }: { canWrite: boolean }) {
+/** Without an `appearance`, renders as a small secondary button (the migration steps). */
+export function DisableRootApiKeyButton({
+  canWrite,
+  appearance,
+}: {
+  canWrite: boolean;
+  appearance?: ActionAppearance;
+}) {
   const [confirmation, setConfirmation] = useState("");
 
   return (
     <Dialog>
       <DialogTrigger asChild>
         <Button
-          variant="minimal/small"
+          {...(appearance
+            ? actionButtonProps(appearance)
+            : { variant: "secondary/small" as const })}
           LeadingIcon={NoSymbolIcon}
+          leadingIconClassName={appearance ? "text-error" : undefined}
           disabled={!canWrite}
           tooltip={
             canWrite ? undefined : "You don't have permission to disable root API key visibility"
@@ -68,13 +78,13 @@ export function DisableRootApiKeyButton({ canWrite }: { canWrite: boolean }) {
         <Form method="post" className="flex flex-col gap-4 pt-3">
           <input type="hidden" name="action" value="disable-root" />
           <Callout variant="warning">
-            The current root key will stop working in 24 hours. Any application still using it will
-            fail to authenticate after that.
+            The current root key will stop working in 24 hours. Anything still using it will fail to
+            authenticate after that.
           </Callout>
           <div className="space-y-2">
             <Paragraph variant="small">
-              Before continuing, replace the root key in your applications with individually managed
-              API keys and verify they work. Existing individual API keys are not affected.
+              Before continuing, set <InlineCode variant="small">TRIGGER_SECRET_KEY</InlineCode> to
+              an API key in every app that triggers your tasks. Existing API keys are not affected.
             </Paragraph>
             <Paragraph variant="small">
               This generates a new hidden root key and permanently disables full root key
@@ -111,7 +121,7 @@ export function DisableRootApiKeyButton({ canWrite }: { canWrite: boolean }) {
             }
             cancelButton={
               <DialogClose asChild>
-                <Button variant="tertiary/medium">Cancel</Button>
+                <Button variant="secondary/medium">Cancel</Button>
               </DialogClose>
             }
           />
@@ -131,7 +141,7 @@ export function actionButtonProps(appearance: ActionAppearance) {
         textAlignLeft: true,
         className: "w-full px-1.5 py-[0.9rem]",
       }
-    : { variant: "tertiary/medium" as const };
+    : { variant: "secondary/medium" as const };
 }
 
 export function RevokeApiKeyButton({
@@ -185,40 +195,5 @@ export function RevokeApiKeyButton({
         </div>
       </DialogContent>
     </Dialog>
-  );
-}
-
-export function ApiKeyStatus({
-  revokedAt,
-  expiresAt,
-  now,
-}: {
-  revokedAt?: Date | string | null;
-  expiresAt?: Date | string | null;
-  now: number;
-}) {
-  if (revokedAt) {
-    return (
-      <div className="flex items-center gap-1 text-xs text-text-dimmed">
-        <NoSymbolIcon className="size-4" />
-        Revoked
-      </div>
-    );
-  }
-
-  if (expiresAt && new Date(expiresAt).getTime() <= now) {
-    return (
-      <div className="flex items-center gap-1 text-xs text-text-dimmed">
-        <ExclamationTriangleIcon className="size-4" />
-        Expired
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex items-center gap-1 text-xs text-success">
-      <CheckCircleIcon className="size-4" />
-      Active
-    </div>
   );
 }

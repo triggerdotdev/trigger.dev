@@ -1,4 +1,4 @@
-import { BookOpenIcon, KeyIcon, PencilSquareIcon, PlusIcon } from "@heroicons/react/20/solid";
+import { BookOpenIcon, PencilSquareIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Outlet, useLocation, useParams, useRevalidator, useSearchParams } from "@remix-run/react";
 import { useState } from "react";
@@ -7,18 +7,17 @@ import { z } from "zod";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { CodeBlock } from "~/components/code/CodeBlock";
+import { InlineCode } from "~/components/code/InlineCode";
 import { RegenerateApiKeyModal } from "~/components/environments/RegenerateApiKeyModal";
-import {
-  type EnvironmentCombo,
-  environmentFullTitle,
-} from "~/components/environments/EnvironmentLabel";
+import { EnvironmentCombo, environmentFullTitle } from "~/components/environments/EnvironmentLabel";
+import { LegacyBadge } from "~/components/FeatureBadges";
 import {
   MainHorizontallyCenteredContainer,
   PageBody,
   PageContainer,
 } from "~/components/layout/AppLayout";
 import { PermissionDenied } from "~/components/PermissionDenied";
-import { Badge } from "~/components/primitives/Badge";
+import { StepContentContainer } from "~/components/StepContentContainer";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { CopyButton } from "~/components/primitives/CopyButton";
@@ -28,6 +27,7 @@ import { FormButtons } from "~/components/primitives/FormButtons";
 import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { StepNumber } from "~/components/primitives/StepNumber";
 import * as Property from "~/components/primitives/PropertyTable";
 import {
   RESIZABLE_PANEL_ANIMATION,
@@ -47,7 +47,8 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { InfoIconTooltip } from "~/components/primitives/Tooltip";
+import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
+import { TruncatedText } from "~/components/primitives/TruncatedText";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -60,15 +61,16 @@ import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-
 import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
 import { uneditableApiKeyMessage } from "~/utils/apiKeyAccess";
+import { secretKeyPlaceholder } from "~/utils/apiKeyPrefix";
 import { ApiKeyAccessCell } from "./ApiKeyAccessCell";
 import {
-  ApiKeyStatus,
   apiKeyCreator,
   DisableRootApiKeyButton,
   editableApiKey,
   RevokeApiKeyButton,
   ROOT_API_KEY_PARAM,
 } from "./ApiKeyActions";
+import { apiKeyStatus, ApiKeyStatusCombo } from "./ApiKeyStatus";
 import { ApiKeyAllowedIps, ApiKeyLastUsed, EditApiKeyIpRangesButton } from "./ApiKeyIpRanges";
 import { apiKeysAction, canManageOrganizationPresets } from "./apiKeysAction.server";
 import { EditApiKeyAccessDialog, type EditableApiKey } from "./EditApiKeyAccessDialog";
@@ -198,6 +200,8 @@ export default function Page() {
   const { apiKeyParam } = useParams();
   const isShowingInspector = !!apiKeyParam;
   const listPath = v3ApiKeysPath(organization, project, currentEnvironment);
+  // Cells take the selected style too, so a selected row keeps it on hover (see deployments).
+  const isRootSelected = apiKeyParam === ROOT_API_KEY_PARAM;
   const rowPath = (apiKeyId: string) =>
     `${v3ApiKeyPath(organization, project, currentEnvironment, apiKeyId)}${location.search}`;
 
@@ -209,14 +213,14 @@ export default function Page() {
         : environment.branchName,
   };
 
-  const envBlock = environment.apiKey
-    ? [
-        `TRIGGER_SECRET_KEY="${environment.apiKey}"`,
-        environment.branchName ? `TRIGGER_PREVIEW_BRANCH="${environment.branchName}"` : null,
-      ]
-        .filter(Boolean)
-        .join("\n")
-    : null;
+  // The dialog shows a placeholder, not the root key: use one of your API keys instead.
+  const keyPlaceholder = secretKeyPlaceholder(environment.type);
+  const envBlock = [
+    `TRIGGER_SECRET_KEY="${keyPlaceholder}"`,
+    environment.branchName ? `TRIGGER_PREVIEW_BRANCH="${environment.branchName}"` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   const hasUsableApiKey = apiKeys.some(
     (apiKey) =>
@@ -224,8 +228,8 @@ export default function Page() {
   );
   const showCreateApiKeyPrompt = rootApiKey?.isHidden === true && !hasUsableApiKey;
   const canManageRootApiKey = canWriteApiKeys || rootApiKey?.isHidden === false;
-  const chooseAccessHint =
-    isRbacPluginAvailable && presets !== null ? ", and choose what it can access" : "";
+  const canLimitAccess = isRbacPluginAvailable && presets !== null;
+  const chooseAccessHint = canLimitAccess ? ", and choose what it can access" : "";
   const canEditAccess =
     canWriteApiKeys && isRbacPluginAvailable && presets !== null && capabilityCatalogue !== null;
 
@@ -255,32 +259,60 @@ export default function Page() {
 
   return (
     <PageContainer>
-      <NavBar>
-        <PageTitle title="API keys" />
-        <PageAccessories>
-          <AdminDebugTooltip>
-            <Property.Table>
-              <Property.Item>
-                <Property.Label>{environment.slug}</Property.Label>
-                <Property.Value>
-                  <CopyableText value={environment.id} asChild hideTooltip />
-                </Property.Value>
-              </Property.Item>
-            </Property.Table>
-          </AdminDebugTooltip>
+      {/* One grid row: the root key banner overlaps the nav bar's bottom line by 1px. */}
+      <div>
+        <NavBar>
+          <PageTitle title="API keys" />
+          <PageAccessories>
+            <AdminDebugTooltip>
+              <Property.Table>
+                <Property.Item>
+                  <Property.Label>{environment.slug}</Property.Label>
+                  <Property.Value>
+                    <CopyableText value={environment.id} asChild hideTooltip />
+                  </Property.Value>
+                </Property.Item>
+              </Property.Table>
+            </AdminDebugTooltip>
 
-          <WhenAgentUnavailable>
-            <LinkButton variant="docs/small" LeadingIcon={BookOpenIcon} to={docsPath("/apikeys")}>
-              API keys docs
-            </LinkButton>
-          </WhenAgentUnavailable>
-        </PageAccessories>
-      </NavBar>
+            <WhenAgentUnavailable>
+              <LinkButton variant="docs/small" LeadingIcon={BookOpenIcon} to={docsPath("/apikeys")}>
+                API keys docs
+              </LinkButton>
+            </WhenAgentUnavailable>
+          </PageAccessories>
+        </NavBar>
+        {rootApiKey && !rootApiKey.isHidden ? (
+          // Opaque, so the overlapped line matches the banner's bottom border exactly.
+          <div className="relative -mt-px bg-background-dimmed">
+            <Callout
+              variant="warning"
+              className="rounded-none border-x-0 shadow-none backdrop-blur-none"
+              cta={
+                <Button
+                  variant="warning/small"
+                  disabled={!canWriteApiKeys}
+                  tooltip={
+                    canWriteApiKeys ? undefined : "You don't have permission to manage API keys"
+                  }
+                  onClick={() => setMigrationOpen(true)}
+                >
+                  Replace root key…
+                </Button>
+              }
+            >
+              {`Root keys are being phased out. Replace yours with API keys you can ${canLimitAccess ? "limit and " : ""}revoke one at a time.`}
+            </Callout>
+          </div>
+        ) : null}
+      </div>
       <PageBody scrollable={false}>
         {canReadApiKeys ? (
           <ResizablePanelGroup orientation="horizontal" className="max-h-full">
             <ResizablePanel id="api-keys-main" min="100px">
-              <div className="max-h-full min-h-full overflow-y-auto border-t border-grid-dimmed">
+              {/* Like the Tasks page: the table fills the rest of the panel and scrolls both ways, so
+                  its horizontal scrollbar sits at the bottom of the page even when it has few rows. */}
+              <div className="flex h-full min-w-0 flex-col overflow-hidden">
                 {/* The dialog wraps both triggers so it stays mounted when creating the first key swaps
                     the empty state for the table: the new key is only shown once, in this dialog. */}
                 <NewApiKeyDialog
@@ -302,67 +334,40 @@ export default function Page() {
                 >
                   {(openCreateApiKey) => (
                     <>
-                      <div className="flex h-fit items-center justify-end gap-2 p-3">
-                        <div className="flex items-center gap-2">
-                          {envBlock ? (
-                            <EnvironmentVariablesDialog
-                              environmentType={environment.type}
-                              envBlock={envBlock}
-                            />
-                          ) : null}
-                          <RevokedFilter checked={showRevoked} />
-                          {showCreateApiKeyPrompt ? null : (
-                            <NewApiKeyButton canWrite={canWriteApiKeys} variant="primary/small" />
-                          )}
-                        </div>
+                      <div className="flex h-fit shrink-0 flex-wrap items-center justify-end gap-2 px-2 py-2">
+                        <EnvironmentVariablesDialog
+                          environment={apiKeyEnvironmentLabel}
+                          envBlock={envBlock}
+                          secretKeyPlaceholder={keyPlaceholder}
+                          canWrite={canWriteApiKeys}
+                          onCreateApiKey={openCreateApiKey}
+                        />
+                        <RevokedFilter checked={showRevoked} />
+                        {showCreateApiKeyPrompt ? null : (
+                          <NewApiKeyButton canWrite={canWriteApiKeys} variant="primary/small" />
+                        )}
                       </div>
 
-                      {rootApiKey && !rootApiKey.isHidden ? (
-                        <div className="mx-3 mb-3">
-                          <Callout variant="info">
-                            <div className="flex flex-col items-start gap-2">
-                              <div>
-                                <span className="flex flex-wrap items-center gap-2 text-sm text-text-bright">
-                                  Switch to individually managed API keys
-                                  <Badge variant="extra-small">Recommended</Badge>
-                                </span>
-                                <Paragraph variant="small">
-                                  Create keys you can revoke independently, without rotating your
-                                  root key.
-                                </Paragraph>
-                              </div>
-                              <Button
-                                variant="secondary/small"
-                                disabled={!canWriteApiKeys}
-                                onClick={() => setMigrationOpen(true)}
-                              >
-                                Switch to API keys…
-                              </Button>
-                            </div>
-                          </Callout>
-                        </div>
-                      ) : null}
-
-                      <Table>
-                        <ApiKeyTableHeader />
+                      <Table containerClassName="min-h-0 flex-1">
+                        <ApiKeyTableHeader showRevoked={showRevoked} />
                         <TableBody>
                           {rootApiKey ? (
-                            <TableRow
-                              className="h-[3.25rem] [&_td]:py-2"
-                              isSelected={apiKeyParam === ROOT_API_KEY_PARAM}
-                            >
-                              <TableCell to={rowPath(ROOT_API_KEY_PARAM)} isTabbableCell>
-                                <div className="flex items-center gap-1.5 text-text-bright">
-                                  <KeyIcon className="size-4" />
+                            <TableRow isSelected={isRootSelected}>
+                              <TableCell
+                                to={rowPath(ROOT_API_KEY_PARAM)}
+                                isSelected={isRootSelected}
+                                isTabbableCell
+                              >
+                                <div className="flex items-center gap-1.5">
                                   {rootApiKey.name}
-                                  <Badge variant="extra-small">Root</Badge>
+                                  <LegacyBadge tooltip="Replace with API keys you can revoke one at a time." />
                                 </div>
                               </TableCell>
-                              <TableCell>
-                                <div className="flex w-64 items-center justify-between gap-2">
-                                  <span className="font-mono text-text-dimmed">
-                                    {rootApiKey.obfuscated}
-                                  </span>
+                              <TableCell isSelected={isRootSelected}>
+                                {/* -my-1: the copy button is taller than a line of text, so this
+                                    keeps the row the same height as the others. */}
+                                <div className="-my-1 flex items-center gap-1">
+                                  <span className="font-mono">{rootApiKey.obfuscated}</span>
                                   {rootApiKey.value ? (
                                     <CopyButton
                                       value={rootApiKey.value}
@@ -371,28 +376,68 @@ export default function Page() {
                                     />
                                   ) : (
                                     <InfoIconTooltip
+                                      disableHoverableContent
                                       content={`Root keys are being phased out. Create a new API key instead${chooseAccessHint}.`}
                                       contentClassName="max-w-xs"
                                     />
                                   )}
                                 </div>
                               </TableCell>
-                              <TableCell to={rowPath(ROOT_API_KEY_PARAM)}>
-                                <ApiKeyStatus now={loadedAt} />
+                              <TableCell
+                                to={rowPath(ROOT_API_KEY_PARAM)}
+                                isSelected={isRootSelected}
+                              >
+                                <ApiKeyStatusCombo status="ACTIVE" className="text-xs" />
                               </TableCell>
-                              <TableCell to={rowPath(ROOT_API_KEY_PARAM)}>
+                              <TableCell
+                                to={rowPath(ROOT_API_KEY_PARAM)}
+                                isSelected={isRootSelected}
+                              >
                                 <ApiKeyAccessCell label="No restrictions" />
                               </TableCell>
-                              <TableCell to={rowPath(ROOT_API_KEY_PARAM)}>
+                              <TableCell
+                                to={rowPath(ROOT_API_KEY_PARAM)}
+                                isSelected={isRootSelected}
+                              >
                                 <ApiKeyAllowedIps ranges={[]} />
                               </TableCell>
-                              <TableCell to={rowPath(ROOT_API_KEY_PARAM)}>–</TableCell>
-                              <TableCell to={rowPath(ROOT_API_KEY_PARAM)}>–</TableCell>
-                              <TableCell to={rowPath(ROOT_API_KEY_PARAM)}>–</TableCell>
+                              <TableCell
+                                to={rowPath(ROOT_API_KEY_PARAM)}
+                                isSelected={isRootSelected}
+                              >
+                                –
+                              </TableCell>
+                              <TableCell
+                                to={rowPath(ROOT_API_KEY_PARAM)}
+                                isSelected={isRootSelected}
+                              >
+                                –
+                              </TableCell>
+                              <TableCell
+                                to={rowPath(ROOT_API_KEY_PARAM)}
+                                isSelected={isRootSelected}
+                              >
+                                –
+                              </TableCell>
+                              <TableCell
+                                to={rowPath(ROOT_API_KEY_PARAM)}
+                                isSelected={isRootSelected}
+                              >
+                                Never
+                              </TableCell>
+                              {showRevoked ? (
+                                <TableCell
+                                  to={rowPath(ROOT_API_KEY_PARAM)}
+                                  isSelected={isRootSelected}
+                                >
+                                  –
+                                </TableCell>
+                              ) : null}
                               <TableCellMenu
+                                isSelected={isRootSelected}
                                 isSticky
                                 className="w-32"
-                                hiddenButtons={
+                                popoverContent={
                                   canManageRootApiKey ? (
                                     <>
                                       {canWriteApiKeys ? (
@@ -403,10 +448,15 @@ export default function Page() {
                                           isDevelopment={environment.type === "DEVELOPMENT"}
                                           isRootApiKeyHidden={rootApiKey.isHidden}
                                           onSwitchToApiKeys={() => setMigrationOpen(true)}
+                                          canLimitAccess={canLimitAccess}
+                                          appearance="menu"
                                         />
                                       ) : null}
                                       {rootApiKey.isHidden ? null : (
-                                        <DisableRootApiKeyButton canWrite={canWriteApiKeys} />
+                                        <DisableRootApiKeyButton
+                                          canWrite={canWriteApiKeys}
+                                          appearance="menu"
+                                        />
                                       )}
                                     </>
                                   ) : null
@@ -416,35 +466,53 @@ export default function Page() {
                           ) : null}
 
                           {apiKeys.map((apiKey) => {
-                            const isExpired = apiKey.expiresAt
-                              ? new Date(apiKey.expiresAt).getTime() <= loadedAt
-                              : false;
-                            const cannotRevoke = Boolean(apiKey.revokedAt) || isExpired;
+                            const status = apiKeyStatus({
+                              revokedAt: apiKey.revokedAt,
+                              expiresAt: apiKey.expiresAt,
+                              now: loadedAt,
+                            });
+                            const isActive = status === "ACTIVE";
                             const path = rowPath(apiKey.id);
+                            const isSelected = apiKeyParam === apiKey.id;
 
                             return (
                               <TableRow
                                 key={apiKey.id}
-                                disabled={cannotRevoke}
-                                isSelected={apiKeyParam === apiKey.id}
-                                className="h-[3.25rem] [&_td]:py-2"
+                                disabled={!isActive}
+                                isSelected={isSelected}
                               >
-                                <TableCell to={path} isTabbableCell>
-                                  {apiKey.name}
-                                </TableCell>
-                                <TableCell to={path}>
-                                  <span className="font-mono text-text-dimmed">
-                                    {apiKey.obfuscated}
-                                  </span>
-                                </TableCell>
-                                <TableCell to={path}>
-                                  <ApiKeyStatus
-                                    revokedAt={apiKey.revokedAt}
-                                    expiresAt={apiKey.expiresAt}
-                                    now={loadedAt}
+                                <TableCell to={path} isSelected={isSelected} isTabbableCell>
+                                  <TruncatedText
+                                    text={apiKey.name}
+                                    className="block max-w-[14rem]"
                                   />
                                 </TableCell>
-                                <TableCell to={path}>
+                                <TableCell to={path} isSelected={isSelected}>
+                                  <span className="font-mono">{apiKey.obfuscated}</span>
+                                </TableCell>
+                                <TableCell to={path} isSelected={isSelected}>
+                                  {apiKey.revokedAt ? (
+                                    <SimpleTooltip
+                                      asChild
+                                      disableHoverableContent
+                                      button={
+                                        // A span trigger, not a button, inside the row's link.
+                                        <span>
+                                          <ApiKeyStatusCombo status={status} className="text-xs" />
+                                        </span>
+                                      }
+                                      content={
+                                        <>
+                                          Revoked{" "}
+                                          <DateTime date={apiKey.revokedAt} showTooltip={false} />
+                                        </>
+                                      }
+                                    />
+                                  ) : (
+                                    <ApiKeyStatusCombo status={status} className="text-xs" />
+                                  )}
+                                </TableCell>
+                                <TableCell to={path} isSelected={isSelected}>
                                   <ApiKeyAccessCell
                                     label={apiKey.access.label}
                                     taskIdentifiers={apiKey.access.taskIdentifiers}
@@ -456,24 +524,46 @@ export default function Page() {
                                     hasDrift={apiKey.access.drift.length > 0}
                                   />
                                 </TableCell>
-                                <TableCell>
+                                <TableCell to={path} isSelected={isSelected}>
                                   <ApiKeyAllowedIps ranges={apiKey.allowedIpRanges} />
                                 </TableCell>
-                                <TableCell to={path}>{apiKeyCreator(apiKey)}</TableCell>
-                                <TableCell to={path}>
-                                  <DateTime date={apiKey.createdAt} />
+                                <TableCell to={path} isSelected={isSelected}>
+                                  <TruncatedText
+                                    text={apiKeyCreator(apiKey)}
+                                    className="block max-w-[10rem]"
+                                  />
                                 </TableCell>
-                                <TableCell to={path}>
+                                <TableCell to={path} isSelected={isSelected}>
+                                  <DateTime date={apiKey.createdAt} includeSeconds={false} />
+                                </TableCell>
+                                <TableCell to={path} isSelected={isSelected}>
                                   <ApiKeyLastUsed
                                     lastUsedAt={apiKey.lastUsedAt}
                                     lastUsedIp={apiKey.lastUsedIp}
                                   />
                                 </TableCell>
+                                <TableCell to={path} isSelected={isSelected}>
+                                  {apiKey.expiresAt ? (
+                                    <DateTime date={apiKey.expiresAt} includeTime={false} />
+                                  ) : (
+                                    "Never"
+                                  )}
+                                </TableCell>
+                                {showRevoked ? (
+                                  <TableCell to={path} isSelected={isSelected}>
+                                    {apiKey.revokedAt ? (
+                                      <DateTime date={apiKey.revokedAt} includeTime={false} />
+                                    ) : (
+                                      "–"
+                                    )}
+                                  </TableCell>
+                                ) : null}
                                 <TableCellMenu
+                                  isSelected={isSelected}
                                   isSticky
                                   className="w-32"
                                   popoverContent={
-                                    cannotRevoke ? null : (
+                                    isActive ? (
                                       <>
                                         {canEditAccess ? (
                                           <Button
@@ -500,7 +590,7 @@ export default function Page() {
                                           canWrite={canWriteApiKeys}
                                         />
                                       </>
-                                    )
+                                    ) : null
                                   }
                                 />
                               </TableRow>
@@ -508,7 +598,7 @@ export default function Page() {
                           })}
 
                           {showCreateApiKeyPrompt ? (
-                            <TableBlankRow colSpan={9}>
+                            <TableBlankRow colSpan={showRevoked ? 11 : 10}>
                               <div className="flex flex-col items-center justify-center gap-y-4 py-8">
                                 <div className="flex flex-col items-center gap-y-1">
                                   <Header2>Create an API key for your backend</Header2>
@@ -596,7 +686,7 @@ export default function Page() {
   );
 }
 
-function ApiKeyTableHeader() {
+function ApiKeyTableHeader({ showRevoked }: { showRevoked: boolean }) {
   return (
     <TableHeader>
       <TableRow>
@@ -608,6 +698,8 @@ function ApiKeyTableHeader() {
         <TableHeaderCell>Created by</TableHeaderCell>
         <TableHeaderCell>Created</TableHeaderCell>
         <TableHeaderCell>Last used</TableHeaderCell>
+        <TableHeaderCell>Expiry</TableHeaderCell>
+        {showRevoked ? <TableHeaderCell>Revoked</TableHeaderCell> : null}
         <TableHeaderCell className="w-32" hiddenLabel>
           Actions
         </TableHeaderCell>
@@ -617,11 +709,17 @@ function ApiKeyTableHeader() {
 }
 
 function EnvironmentVariablesDialog({
-  environmentType,
+  environment,
   envBlock,
+  secretKeyPlaceholder,
+  canWrite,
+  onCreateApiKey,
 }: {
-  environmentType: string;
-  envBlock: string | null;
+  environment: React.ComponentProps<typeof EnvironmentCombo>["environment"];
+  envBlock: string;
+  secretKeyPlaceholder: string;
+  canWrite: boolean;
+  onCreateApiKey: () => void;
 }) {
   return (
     <Dialog>
@@ -629,26 +727,52 @@ function EnvironmentVariablesDialog({
         <Button variant="secondary/small">How to set env vars</Button>
       </DialogTrigger>
       <DialogContent className="max-w-xl">
-        <DialogHeader>Set environment variables</DialogHeader>
+        <DialogHeader className="flex flex-row items-center gap-1.5">
+          Set environment variables
+          <EnvironmentCombo
+            environment={environment}
+            className="text-base"
+            iconClassName="size-5"
+          />
+        </DialogHeader>
         <div className="flex flex-col gap-3 pt-3">
-          {environmentType === "DEVELOPMENT" ? (
+          {environment.type === "DEVELOPMENT" ? (
             <Callout variant="info">
               Every team member gets their own dev API keys. Make sure you're using one from this
               page, otherwise you will trigger runs on your team member's machine.
             </Callout>
           ) : null}
           <Paragraph>
-            Set these environment variables in your backend so the SDK can authenticate with
-            Trigger.dev.
+            Set these in the app that triggers your tasks, so the SDK can authenticate with
+            Trigger.dev. Replace <InlineCode variant="small">{secretKeyPlaceholder}</InlineCode>{" "}
+            with one of your API keys. Its full value is only shown when you create it.
           </Paragraph>
-          {envBlock ? (
-            <CodeBlock
-              language="javascript"
-              code={envBlock}
-              showOpenInModal={false}
-              showLineNumbers={false}
-            />
-          ) : null}
+          <CodeBlock
+            language="javascript"
+            code={envBlock}
+            showOpenInModal={false}
+            showLineNumbers={false}
+          />
+          <FormButtons
+            cancelButton={
+              <DialogClose asChild>
+                <Button variant="secondary/medium">Close</Button>
+              </DialogClose>
+            }
+            confirmButton={
+              <DialogClose asChild>
+                <Button
+                  variant="primary/medium"
+                  LeadingIcon={PlusIcon}
+                  disabled={!canWrite}
+                  tooltip={canWrite ? undefined : "You don't have permission to create API keys"}
+                  onClick={onCreateApiKey}
+                >
+                  Create API key
+                </Button>
+              </DialogClose>
+            }
+          />
         </div>
       </DialogContent>
     </Dialog>
@@ -715,34 +839,39 @@ function RootApiKeyMigrationDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <DialogHeader>Switch to individually managed API keys</DialogHeader>
+        <DialogHeader>Replace your root key</DialogHeader>
         <div className="flex flex-col gap-4 pt-4">
-          <Paragraph variant="small">
-            Your root key keeps working while you make the switch. It only starts expiring when you
-            choose to hide it in the final step.
+          <Paragraph variant="base/bright">
+            Use a separate API key for each app that triggers your tasks, so you can revoke each one
+            on its own. Your root key keeps working until you hide it.
           </Paragraph>
-          <ol className="flex flex-col gap-5">
-            <li className="flex flex-col items-start gap-2">
-              <Header2>1. Create an API key</Header2>
-              <Paragraph variant="small">
-                Give each application its own named key so you can revoke it independently.
+          <div>
+            <StepNumber stepNumber="1" title="Create an API key" />
+            <StepContentContainer>
+              <Paragraph variant="small" spacing>
+                Create one for each app that triggers your tasks.
               </Paragraph>
               <Button variant="primary/small" disabled={!canWrite} onClick={onCreateApiKey}>
-                Create API key
+                Create API key…
               </Button>
-            </li>
-            <li className="flex flex-col gap-2">
-              <Header2>2. Update your applications</Header2>
+            </StepContentContainer>
+            <StepNumber
+              stepNumber="2"
+              title={
+                <>
+                  Update <InlineCode variant="small">TRIGGER_SECRET_KEY</InlineCode>
+                </>
+              }
+            />
+            <StepContentContainer>
               <Paragraph variant="small">
-                Replace the root key in your applications with the new API key and verify everything
-                works.
+                Set it to the new key, then check everything works.
               </Paragraph>
-            </li>
-            <li className="flex flex-col items-start gap-2">
-              <Header2>3. Hide the root key</Header2>
-              <Paragraph variant="small">
-                Once your applications are using individual keys, permanently hide the root key. The
-                current root key will stop working 24 hours later.
+            </StepContentContainer>
+            <StepNumber stepNumber="3" title="Hide the root key" />
+            <StepContentContainer className="mb-0">
+              <Paragraph variant="small" spacing>
+                It stops working 24 hours later.
               </Paragraph>
               {hasUsableApiKey ? (
                 <DisableRootApiKeyButton canWrite={canWrite} />
@@ -751,12 +880,12 @@ function RootApiKeyMigrationDialog({
                   Create an API key before completing this step.
                 </Paragraph>
               )}
-            </li>
-          </ol>
+            </StepContentContainer>
+          </div>
           <FormButtons
             cancelButton={
               <DialogClose asChild>
-                <Button variant="tertiary/medium">Close</Button>
+                <Button variant="secondary/medium">Close</Button>
               </DialogClose>
             }
           />

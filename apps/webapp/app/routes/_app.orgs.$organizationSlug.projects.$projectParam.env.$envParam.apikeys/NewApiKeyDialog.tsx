@@ -113,9 +113,13 @@ export function NewApiKeyDialog({
           showAccessControls ? "lg:max-w-[62rem]" : "lg:max-w-[40rem]"
         )}
       >
-        <DialogHeader className="flex flex-row items-center gap-2.5 px-5 pb-3">
+        <DialogHeader className="flex flex-row items-center gap-1.5 px-5 pb-3">
           New API key
-          <EnvironmentCombo environment={environment} className="text-xs" iconClassName="size-4" />
+          <EnvironmentCombo
+            environment={environment}
+            className="text-base"
+            iconClassName="size-5"
+          />
         </DialogHeader>
         {createdApiKey ? (
           <div className="flex flex-col gap-3 p-4">
@@ -137,7 +141,7 @@ export function NewApiKeyDialog({
             <FormButtons
               confirmButton={
                 <DialogClose asChild>
-                  <Button variant="primary/small">Done</Button>
+                  <Button variant="primary/medium">Done</Button>
                 </DialogClose>
               }
             />
@@ -161,14 +165,16 @@ export function NewApiKeyDialog({
             <div
               className={cn(
                 "grid min-h-0 grid-cols-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control",
-                showAccessControls && "lg:grid-cols-[minmax(0,1fr)_21rem]"
+                // The scrollbar runs beside the summary pane, so its track takes the pane's colour.
+                showAccessControls &&
+                  "lg:grid-cols-[minmax(0,1fr)_21rem] lg:scrollbar-track-background-deep"
               )}
             >
-              <div className={cn("min-w-0 px-5 pb-6 pt-4", showAccessControls && "space-y-5")}>
+              <div className={cn("min-w-0 px-5 pb-4 pt-4", showAccessControls && "space-y-5")}>
                 <div
                   className={cn(
-                    "grid items-start gap-4 pb-5 sm:grid-cols-[minmax(0,1fr)_16rem]",
-                    showAccessControls && "border-b border-grid-dimmed"
+                    "grid items-start gap-4 sm:grid-cols-[minmax(0,1fr)_16rem]",
+                    showAccessControls && "border-b border-grid-dimmed pb-5"
                   )}
                 >
                   <InputGroup fullWidth>
@@ -215,36 +221,37 @@ export function NewApiKeyDialog({
               <ApiKeyAccessPane access={access} />
             </div>
 
-            <div className="flex items-center gap-3 border-t border-grid-bright px-5 py-3">
-              {(() => {
-                const error = expiryError
-                  ? "This expiry date has passed. Choose another date."
-                  : showError && actionData && !actionData.ok
-                    ? actionData.error
-                    : null;
-                const hint =
-                  needsSelectedTask && selectedTasks.length === 0
-                    ? "Pick at least one task, or switch to all tasks."
-                    : "";
-                const warning = error ?? deletedPresetNote;
-                return (
-                  <span
-                    className={cn(
-                      "min-w-0 truncate text-xs",
-                      warning ? "text-error" : "text-text-dimmed"
-                    )}
-                  >
-                    {warning ?? hint}
-                  </span>
-                );
-              })()}
-              <div className="ml-auto flex shrink-0 items-center gap-2">
-                <DialogClose asChild>
-                  <Button variant="tertiary/small">Cancel</Button>
-                </DialogClose>
+            <div className="flex items-center justify-between gap-3 border-t border-grid-bright p-3">
+              <DialogClose asChild>
+                <Button variant="secondary/medium">Cancel</Button>
+              </DialogClose>
+              <div className="flex min-w-0 items-center gap-3">
+                {(() => {
+                  const error = expiryError
+                    ? "This expiry date has passed. Choose another date."
+                    : showError && actionData && !actionData.ok
+                      ? actionData.error
+                      : null;
+                  const hint =
+                    needsSelectedTask && selectedTasks.length === 0
+                      ? "Pick at least one task, or switch to all tasks."
+                      : "";
+                  const warning = error ?? deletedPresetNote;
+                  return (
+                    <span
+                      className={cn(
+                        "min-w-0 truncate text-xs",
+                        warning ? "text-error" : "text-text-dimmed"
+                      )}
+                    >
+                      {warning ?? hint}
+                    </span>
+                  );
+                })()}
                 <Button
                   type="submit"
-                  variant="primary/small"
+                  variant="primary/medium"
+                  className="shrink-0"
                   disabled={!name.trim() || !canSubmitAccess || fetcher.state !== "idle"}
                   isLoading={fetcher.state !== "idle"}
                 >

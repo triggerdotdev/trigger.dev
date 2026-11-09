@@ -1,3 +1,4 @@
+import { ArrowRightIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import {
   type ApiKeyCapabilityCatalogue,
@@ -11,6 +12,8 @@ import { useEffect, useState } from "react";
 import { useTypedFetcher } from "remix-typedjson";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Button } from "~/components/primitives/Buttons";
+import { Header3 } from "~/components/primitives/Headers";
+import { Hint } from "~/components/primitives/Hint";
 import { Callout } from "~/components/primitives/Callout";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -91,7 +94,7 @@ export function EditApiKeyAccessDialog({
     initial,
   });
   const [confirming, setConfirming] = useState(start !== undefined);
-  const [startNote, setStartNote] = useState(start);
+  const [startNote] = useState(start);
 
   useEffect(() => {
     if (fetcher.state !== "idle") {
@@ -184,12 +187,17 @@ export function EditApiKeyAccessDialog({
       <DialogContent
         className={cn(
           "max-h-[80vh] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 pt-2.5",
-          showAccessControls ? "lg:max-w-[62rem]" : "lg:max-w-[40rem]"
+          // The confirm step is a short summary, so it doesn't need the editor's width.
+          confirming ? "lg:max-w-xl" : showAccessControls ? "lg:max-w-[62rem]" : "lg:max-w-[40rem]"
         )}
       >
-        <DialogHeader className="flex flex-row items-center gap-2.5 px-5 pb-3">
+        <DialogHeader className="flex flex-row items-center gap-1.5 px-5 pb-3">
           Edit access for {apiKey.name}
-          <EnvironmentCombo environment={environment} className="text-xs" iconClassName="size-4" />
+          <EnvironmentCombo
+            environment={environment}
+            className="text-base"
+            iconClassName="size-5"
+          />
         </DialogHeader>
         <fetcher.Form
           method="post"
@@ -200,19 +208,21 @@ export function EditApiKeyAccessDialog({
           <input type="hidden" name="apiKeyId" value={apiKey.id} />
           <ApiKeyAccessInputs access={access} />
           {confirming && capabilityCatalogue ? (
-            <div className="min-h-0 space-y-4 overflow-y-auto px-5 pb-6 pt-4">
-              <Paragraph variant="small/bright">Save the new access for {apiKey.name}?</Paragraph>
-              {startNote?.kind === "drift" ? (
-                <Paragraph variant="small">
-                  {apiKey.name} keeps the access it was created with. Updating gives it what{" "}
-                  {startNote.presetLabel} grants today.
-                </Paragraph>
-              ) : startNote?.kind === "narrow" ? (
-                <Paragraph variant="small">
-                  Each area is set to the smallest level that covers what {apiKey.name} used in the
-                  last {startNote.windowDays} days. Go back to adjust it before saving.
-                </Paragraph>
-              ) : null}
+            <div className="min-h-0 space-y-5 overflow-y-auto px-5 pb-5 pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+              <div className="space-y-1">
+                <Paragraph variant="base/bright">Save the new access for {apiKey.name}?</Paragraph>
+                {startNote?.kind === "drift" ? (
+                  <Paragraph variant="small">
+                    {apiKey.name} keeps the access it was created with. Updating gives it what{" "}
+                    {startNote.presetLabel} grants today.
+                  </Paragraph>
+                ) : startNote?.kind === "narrow" ? (
+                  <Paragraph variant="small">
+                    Each area is set to the smallest level that covers what {apiKey.name} used in
+                    the last {startNote.windowDays} days.
+                  </Paragraph>
+                ) : null}
+              </div>
               <AccessChanges
                 usage={apiKey.usage ?? undefined}
                 now={now}
@@ -231,7 +241,9 @@ export function EditApiKeyAccessDialog({
             <div
               className={cn(
                 "grid min-h-0 grid-cols-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control",
-                showAccessControls && "lg:grid-cols-[minmax(0,1fr)_21rem]"
+                // The scrollbar runs beside the summary pane, so its track takes the pane's colour.
+                showAccessControls &&
+                  "lg:grid-cols-[minmax(0,1fr)_21rem] lg:scrollbar-track-background-deep"
               )}
             >
               <div className={cn("min-w-0 px-5 pb-6 pt-4", showAccessControls && "space-y-5")}>
@@ -242,34 +254,30 @@ export function EditApiKeyAccessDialog({
             </div>
           )}
 
-          <div className="flex items-center gap-3 border-t border-grid-bright px-5 py-3">
-            <span className="min-w-0 truncate text-xs text-error">{error}</span>
-            <div className="ml-auto flex shrink-0 items-center gap-2">
-              {uneditableMessage ? (
-                <DialogClose asChild>
-                  <Button variant="secondary/small">Close</Button>
-                </DialogClose>
-              ) : confirming ? (
-                <Button
-                  type="button"
-                  variant="tertiary/small"
-                  onClick={() => {
-                    setConfirming(false);
-                    setStartNote(undefined);
-                  }}
-                >
-                  Back
-                </Button>
-              ) : (
-                <DialogClose asChild>
-                  <Button variant="tertiary/small">Cancel</Button>
-                </DialogClose>
-              )}
+          <div className="flex items-center justify-between gap-3 border-t border-grid-bright p-3">
+            {uneditableMessage ? (
+              <DialogClose asChild>
+                <Button variant="secondary/medium">Close</Button>
+              </DialogClose>
+            ) : confirming && !startNote ? (
+              // Reached from the editor: Back returns to the edits instead of discarding them.
+              <Button type="button" variant="secondary/medium" onClick={() => setConfirming(false)}>
+                Back
+              </Button>
+            ) : (
+              // Opened on this step (drift or narrowing), so there's nothing to go back to.
+              <DialogClose asChild>
+                <Button variant="secondary/medium">{confirming ? "Close" : "Cancel"}</Button>
+              </DialogClose>
+            )}
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="min-w-0 truncate text-xs text-error">{error}</span>
               {uneditableMessage ? null : !confirming ? (
                 <Button
                   key="review"
                   type="button"
-                  variant="primary/small"
+                  variant="primary/medium"
+                  className="shrink-0"
                   disabled={saveBlocker !== undefined}
                   tooltip={saveBlocker}
                   onClick={() => {
@@ -283,7 +291,8 @@ export function EditApiKeyAccessDialog({
                 <Button
                   key="save"
                   type="submit"
-                  variant="primary/small"
+                  variant="primary/medium"
+                  className="shrink-0"
                   disabled={!canSubmitAccess || fetcher.state !== "idle"}
                   isLoading={fetcher.state !== "idle"}
                 >
@@ -326,7 +335,9 @@ function LossNote({
   now: number;
 }) {
   const capability = catalogue.capabilities.find((candidate) => candidate.id === row.capabilityId);
-  return capability ? <>, {lossNote(capability, row.to, usage, now)}</> : null;
+  if (!capability) return null;
+  const note = lossNote(capability, row.to, usage, now);
+  return <Hint>{note.charAt(0).toUpperCase() + note.slice(1)}</Hint>;
 }
 
 function AccessChanges({
@@ -353,26 +364,34 @@ function AccessChanges({
   ].filter((group) => group.rows.length > 0);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-5">
       {fullAccessChange ? (
-        <p className="text-xs text-text-bright">
+        <Paragraph variant="small/bright">
           {fullAccessChange === "gains"
             ? "This key will gain full access to this environment."
             : "This key will lose full access to this environment."}
-        </p>
+        </Paragraph>
       ) : null}
       {groups.map((group) => (
-        <div key={group.title} className="space-y-1">
-          <div className="text-xs font-medium text-text-bright">{group.title}</div>
-          <ul className="space-y-0.5">
+        <div key={group.title}>
+          <Header3 className="mb-2">{group.title}</Header3>
+          <ul className="divide-y divide-grid-dimmed rounded-md border border-grid-bright">
             {group.rows.map((row) => (
-              <li key={row.capabilityId} className="text-xs text-text-dimmed">
-                <span className="text-text-bright">
-                  {capabilityName(catalogue, row.capabilityId)}
-                </span>
-                {": "}
-                {levelLabel(catalogue, row.capabilityId, row.to)} (was{" "}
-                {levelLabel(catalogue, row.capabilityId, row.from)})
+              <li key={row.capabilityId} className="px-3 py-2">
+                <div className="flex items-center justify-between gap-4">
+                  <Paragraph variant="small/bright">
+                    {capabilityName(catalogue, row.capabilityId)}
+                  </Paragraph>
+                  <span className="flex shrink-0 items-center gap-1.5 text-sm">
+                    <span className="text-text-dimmed">
+                      {levelLabel(catalogue, row.capabilityId, row.from)}
+                    </span>
+                    <ArrowRightIcon className="size-3.5 text-text-dimmed" aria-label="to" />
+                    <span className="text-text-bright">
+                      {levelLabel(catalogue, row.capabilityId, row.to)}
+                    </span>
+                  </span>
+                </div>
                 {usage && row.loses ? (
                   <LossNote catalogue={catalogue} row={row} usage={usage} now={now} />
                 ) : null}
@@ -381,15 +400,13 @@ function AccessChanges({
           </ul>
         </div>
       ))}
-      {taskChange ? <p className="text-xs text-text-dimmed">{taskChange}</p> : null}
+      {taskChange ? <Paragraph variant="small">{taskChange}</Paragraph> : null}
       {lostScopes.length > 0 ? (
-        <div className="space-y-1">
-          <div className="text-xs font-medium text-text-bright">
-            This key will lose scopes that no access level covers
-          </div>
-          <ul className="space-y-0.5">
+        <div>
+          <Header3 className="mb-2">This key will lose scopes that no access level covers</Header3>
+          <ul className="divide-y divide-grid-dimmed rounded-md border border-grid-bright">
             {lostScopes.map((scope) => (
-              <li key={scope} className="font-mono text-xs text-text-dimmed">
+              <li key={scope} className="px-3 py-2 font-mono text-xs text-text-dimmed">
                 {scope}
               </li>
             ))}
@@ -397,7 +414,7 @@ function AccessChanges({
         </div>
       ) : null}
       {!fullAccessChange && groups.length === 0 && !taskChange && lostScopes.length === 0 ? (
-        <p className="text-xs text-text-dimmed">The key keeps the same access.</p>
+        <Paragraph variant="small">The key keeps the same access.</Paragraph>
       ) : null}
     </div>
   );

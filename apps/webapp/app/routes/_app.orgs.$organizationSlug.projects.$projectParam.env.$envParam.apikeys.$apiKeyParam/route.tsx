@@ -16,6 +16,7 @@ import { DateTime } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
+import { Switch } from "~/components/primitives/Switch";
 import { ApiKeyUsagePresenter } from "~/presenters/v3/ApiKeyUsagePresenter.server";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
@@ -26,7 +27,6 @@ import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { pageMeta } from "~/utils/pageTitle";
 import { ApiKeyAccessLabel } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.apikeys/ApiKeyAccessCell";
 import {
-  ApiKeyStatus,
   apiKeyCreator,
   DisableRootApiKeyButton,
   editableApiKey,
@@ -34,6 +34,10 @@ import {
   ROOT_API_KEY_PARAM,
 } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.apikeys/ApiKeyActions";
 import { CapabilityList } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.apikeys/ApiKeyCapabilities";
+import {
+  apiKeyStatus,
+  ApiKeyStatusCombo,
+} from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.apikeys/ApiKeyStatus";
 import { EditApiKeyIpRangesButton } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.apikeys/ApiKeyIpRanges";
 import { apiKeysAction } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.apikeys/apiKeysAction.server";
 import {
@@ -96,7 +100,10 @@ export default function Page() {
             <Property.Item>
               <Property.Label>Status</Property.Label>
               <Property.Value>
-                <ApiKeyStatus revokedAt={apiKey.revokedAt} now={context.loadedAt} />
+                <ApiKeyStatusCombo
+                  status={apiKeyStatus({ revokedAt: apiKey.revokedAt, now: context.loadedAt })}
+                  className="text-xs"
+                />
               </Property.Value>
             </Property.Item>
           </Property.Table>
@@ -163,7 +170,7 @@ function ApiKeyInspector({
           <>
             {context.canEditAccess ? (
               <Button
-                variant="tertiary/medium"
+                variant="secondary/medium"
                 LeadingIcon={PencilSquareIcon}
                 leadingIconClassName="text-text-dimmed"
                 onClick={() => editAccess()}
@@ -196,7 +203,10 @@ function ApiKeyInspector({
           <Property.Item>
             <Property.Label>Status</Property.Label>
             <Property.Value>
-              <ApiKeyStatus revokedAt={row.revokedAt} expiresAt={row.expiresAt} now={now} />
+              <ApiKeyStatusCombo
+                status={apiKeyStatus({ revokedAt: row.revokedAt, expiresAt: row.expiresAt, now })}
+                className="text-xs"
+              />
             </Property.Value>
           </Property.Item>
           <Property.Item>
@@ -213,23 +223,40 @@ function ApiKeyInspector({
       </Group>
 
       <Group>
-        <Property.Table>
-          <Property.Item>
-            <Property.Label>Access</Property.Label>
-            <Property.Value>
-              <ApiKeyAccessLabel
-                label={access.label}
-                isCustom={access.isCustom}
-                capabilities={access.capabilities}
-                catalogue={catalogue}
-                presets={context.presets}
-                taskIdentifiers={access.taskIdentifiers}
-              />
-            </Property.Value>
-          </Property.Item>
-        </Property.Table>
+        <div className="flex items-center justify-between gap-3">
+          <Property.Label className="text-sm">Access</Property.Label>
+          {!access.fullAccess && access.capabilities ? (
+            <Switch
+              variant="small"
+              label="Show scopes"
+              checked={showScopes}
+              onCheckedChange={setShowScopes}
+            />
+          ) : null}
+        </div>
+        <div className="text-sm text-text-dimmed">
+          <ApiKeyAccessLabel
+            label={access.label}
+            isCustom={access.isCustom}
+            capabilities={access.capabilities}
+            catalogue={catalogue}
+            presets={context.presets}
+            taskIdentifiers={access.taskIdentifiers}
+          />
+        </div>
+        {access.taskIdentifiers && access.taskIdentifiers.length > 0 ? (
+          <Paragraph variant="extra-small" className="mt-1">
+            Limited to{" "}
+            {access.taskIdentifiers.map((task, index) => (
+              <span key={task}>
+                {index > 0 ? ", " : null}
+                <span className="font-mono text-text-bright">{task}</span>
+              </span>
+            ))}
+          </Paragraph>
+        ) : null}
         {catalogue && (access.fullAccess || access.capabilities) ? (
-          <div className="mt-2">
+          <div className="mt-3">
             <CapabilityList
               catalogue={catalogue}
               capabilities={access.capabilities ?? {}}
@@ -242,34 +269,13 @@ function ApiKeyInspector({
             />
           </div>
         ) : null}
-        {!access.fullAccess && access.capabilities ? (
-          <Button
-            variant="minimal/small"
-            className="-ml-2 mt-1"
-            onClick={() => setShowScopes(!showScopes)}
-          >
-            {showScopes ? "Hide scopes" : "Show scopes"}
-          </Button>
-        ) : null}
-        {access.taskIdentifiers && access.taskIdentifiers.length > 0 ? (
-          <Paragraph variant="extra-small" className="mt-2">
-            Limited to{" "}
-            {access.taskIdentifiers.map((task, index) => (
-              <span key={task}>
-                {index > 0 ? ", " : null}
-                <span className="font-mono text-text-bright">{task}</span>
-              </span>
-            ))}
-          </Paragraph>
-        ) : null}
         {catalogue && access.drift.length > 0 ? (
-          <div className="mt-3 flex items-center justify-between gap-3">
+          <div className="mt-3 flex flex-col items-start gap-2 border-t border-grid-dimmed pt-3">
             <Paragraph variant="extra-small">
               {driftSummary(catalogue, access.label, access.drift)}
             </Paragraph>
             <Button
-              variant="tertiary/small"
-              className="shrink-0"
+              variant="secondary/small"
               disabled={!canEditAccess}
               onClick={() => editAccess({ kind: "drift", presetLabel: access.label })}
             >
@@ -277,7 +283,10 @@ function ApiKeyInspector({
             </Button>
           </div>
         ) : null}
-        {usage && catalogue ? (
+      </Group>
+
+      {usage && catalogue ? (
+        <Group>
           <NarrowToUsage
             row={row}
             usage={usage}
@@ -287,8 +296,8 @@ function ApiKeyInspector({
               editAccess({ kind: "narrow", capabilities, windowDays: usage.windowDays })
             }
           />
-        ) : null}
-      </Group>
+        </Group>
+      ) : null}
 
       <Group>
         <Property.Table>
@@ -314,7 +323,12 @@ function ApiKeyInspector({
               {row.lastUsedAt ? (
                 <>
                   <DateTime date={row.lastUsedAt} />
-                  {row.lastUsedIp ? <> from {row.lastUsedIp}</> : null}
+                  {row.lastUsedIp ? (
+                    <>
+                      {" "}
+                      from <span className="font-mono">{row.lastUsedIp}</span>
+                    </>
+                  ) : null}
                 </>
               ) : (
                 "Never"
@@ -324,7 +338,17 @@ function ApiKeyInspector({
           <Property.Item>
             <Property.Label>Allowed IPs</Property.Label>
             <Property.Value>
-              {row.allowedIpRanges.length > 0 ? row.allowedIpRanges.join(", ") : "Any IP"}
+              {row.allowedIpRanges.length > 0 ? (
+                <ul className="flex flex-col font-mono">
+                  {row.allowedIpRanges.map((range) => (
+                    <li key={range} className="break-all">
+                      {range}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                "Any IP"
+              )}
             </Property.Value>
           </Property.Item>
         </Property.Table>
@@ -400,29 +424,29 @@ function NarrowToUsage({
   });
 
   return (
-    <div className="mt-3 flex flex-col gap-2">
+    <div className="flex flex-col items-start gap-2">
+      <Property.Table>
+        <Property.Item>
+          <Property.Label>Usage tracked since</Property.Label>
+          <Property.Value>
+            <DateTime date={usage.trackedSince} includeTime={false} />
+          </Property.Value>
+        </Property.Item>
+      </Property.Table>
       <Paragraph variant="extra-small">
-        <LabelValue label="Usage tracked since">
-          <DateTime date={usage.trackedSince} includeTime={false} />
-        </LabelValue>
+        {narrow.ok
+          ? `Narrowing sets each area to the smallest level that covers the last ${usage.windowDays} days.`
+          : narrow.reason}
       </Paragraph>
-      <div className="flex items-center gap-3">
-        <Button
-          variant="tertiary/small"
-          className="shrink-0"
-          disabled={!canEdit || !narrow.ok}
-          onClick={() => {
-            if (narrow.ok) onNarrow(narrow.capabilities);
-          }}
-        >
-          Narrow to what it used
-        </Button>
-        <Paragraph variant="extra-small">
-          {narrow.ok
-            ? `Smallest levels that cover the last ${usage.windowDays} days.`
-            : narrow.reason}
-        </Paragraph>
-      </div>
+      <Button
+        variant="secondary/small"
+        disabled={!canEdit || !narrow.ok}
+        onClick={() => {
+          if (narrow.ok) onNarrow(narrow.capabilities);
+        }}
+      >
+        Narrow to what it used
+      </Button>
     </div>
   );
 }
@@ -462,11 +486,13 @@ function RootApiKeyInspector({ context }: { context: ApiKeysOutletContext }) {
                 isDevelopment={environment.type === "DEVELOPMENT"}
                 isRootApiKeyHidden={rootApiKey.isHidden}
                 onSwitchToApiKeys={context.openMigration}
+                canLimitAccess={context.isRbacPluginAvailable && context.presets !== null}
+                appearance="button"
               />
             ) : null}
             {rootApiKey.isHidden ? null : (
               <div className="ml-auto">
-                <DisableRootApiKeyButton canWrite={context.canWriteApiKeys} />
+                <DisableRootApiKeyButton canWrite={context.canWriteApiKeys} appearance="button" />
               </div>
             )}
           </>
@@ -478,7 +504,7 @@ function RootApiKeyInspector({ context }: { context: ApiKeysOutletContext }) {
           <Property.Item>
             <Property.Label>Status</Property.Label>
             <Property.Value>
-              <ApiKeyStatus now={context.loadedAt} />
+              <ApiKeyStatusCombo status="ACTIVE" className="text-xs" />
             </Property.Value>
           </Property.Item>
           <Property.Item>

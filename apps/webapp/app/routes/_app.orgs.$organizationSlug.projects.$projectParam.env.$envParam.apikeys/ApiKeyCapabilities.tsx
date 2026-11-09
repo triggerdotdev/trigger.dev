@@ -7,8 +7,13 @@ import {
   NO_ACCESS_LEVEL_ID,
   restrictScopeToTasks,
 } from "@trigger.dev/plugins";
+import { LockClosedIcon } from "@heroicons/react/20/solid";
+import * as RadioGroupPrimitive from "@radix-ui/react-radio-group";
+import { AnimatePresence, motion } from "framer-motion";
 import { type ReactNode, useEffect, useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
+import { Hint } from "~/components/primitives/Hint";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   Popover,
   PopoverArrowTrigger,
@@ -16,6 +21,7 @@ import {
   PopoverMenuItem,
   PopoverSectionHeader,
 } from "~/components/primitives/Popover";
+import { RadioButtonCircle } from "~/components/primitives/RadioButton";
 import SegmentedControl from "~/components/primitives/SegmentedControl";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import {
@@ -146,6 +152,45 @@ export function CapabilityList({
   );
 }
 
+// Access levels shown as columns of the custom access table, in order. An area with any other
+// level (Tasks) keeps a segmented control above the table.
+const TABLE_LEVEL_IDS = [NO_ACCESS_LEVEL_ID, "read", "readWrite", "manage"];
+
+// A radio that can't be chosen: dashed outline, no fill, faded, and a grey dot when it's the
+// current level, so it doesn't read as a choice.
+const DISABLED_RADIO = {
+  boxClassName: "border-dashed bg-transparent opacity-60",
+  outerCircleClassName: "border-transparent bg-transparent",
+  innerCircleClassName:
+    "fill-text-dimmed text-text-dimmed dark:fill-text-dimmed dark:text-text-dimmed",
+};
+
+/**
+ * The levels an area is limited to because of other areas' current levels, e.g. Deployments read
+ * and write needs Environment variables read and write. Areas with no such limit are absent.
+ */
+function requiredLevels(
+  catalogue: ApiKeyCapability[],
+  capabilities: ApiKeyCapabilityMap
+): Map<string, Set<string>> {
+  const allowed = new Map<string, Set<string>>();
+  for (const capability of catalogue) {
+    const level = capability.levels.find((l) => l.id === capabilities[capability.id]);
+    for (const requirement of level?.requires ?? []) {
+      const current = allowed.get(requirement.capabilityId);
+      allowed.set(
+        requirement.capabilityId,
+        new Set(requirement.levelIds.filter((id) => !current || current.has(id)))
+      );
+    }
+  }
+  return allowed;
+}
+
+function fitsAccessTable(capability: ApiKeyCapability): boolean {
+  return capability.levels.every((level) => TABLE_LEVEL_IDS.includes(level.id));
+}
+
 export function CustomCapabilityEditor({
   catalogue,
   presets,
@@ -185,72 +230,134 @@ export function CustomCapabilityEditor({
     apply(next, taskAccess.taskScope);
   };
 
+  const hasAnyAccess = Object.values(capabilities).some(
+    (levelId) => levelId !== NO_ACCESS_LEVEL_ID
+  );
+  const tableCapabilities = catalogue.capabilities.filter(fitsAccessTable);
+  const otherCapabilities = catalogue.capabilities.filter(
+    (capability) => !fitsAccessTable(capability)
+  );
+  const columns = TABLE_LEVEL_IDS.flatMap((id) => {
+    const level = tableCapabilities
+      .flatMap((capability) => capability.levels)
+      .find((l) => l.id === id);
+    return level ? [{ id, label: level.label }] : [];
+  });
+  const tableGrid = { gridTemplateColumns: `minmax(0, 1fr) repeat(${columns.length}, 5.5rem)` };
+
+  const allowedLevels = requiredLevels(catalogue.capabilities, capabilities);
+  const details = (capability: ApiKeyCapability) => {
+    const selection = capability.taskSelection;
+    const granted = isGranted(capabilities, capability.id);
+    const unavailable = usesSelectedTasks && selection?.kind === "unavailable";
+    const notes: CapabilityNote[] = [
+      ...(unavailable
+        ? [
+            {
+              key: "unavailable",
+              text: `Unavailable with selected tasks. ${selection.reason}`,
+              locked: true,
+            },
+          ]
+        : []),
+      ...(usesSelectedTasks && !selection && granted
+        ? [{ key: "whole-environment", text: "Applies to the whole environment" }]
+        : []),
+      ...requirements
+        .filter((requirement) => requirement.capabilityId === capability.id)
+        .map((note) => ({
+          key: `needed-by-${note.requiredBy}`,
+          locked: true,
+          text: `Needed by ${
+            catalogue.capabilities.find((c) => c.id === note.requiredBy)?.label ?? note.requiredBy
+          }. ${note.note}`,
+        })),
+    ];
+    const allowed = allowedLevels.get(capability.id);
+    // A level can't be picked when task selection rules the area out, or when another area's level
+    // needs this one at a different level (the editor would change it straight back).
+    const canPick = (levelId: string) => !unavailable && (!allowed || allowed.has(levelId));
+    return { selection, granted, unavailable, notes, canPick };
+  };
+  const setLevel = (capability: ApiKeyCapability, levelId: string) =>
+    apply({ ...capabilities, [capability.id]: levelId });
+
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <PresetMenu
-          label="Start from"
-          presets={presets}
-          onPick={(preset) => pickPreset(preset, preset.capabilities, "replace")}
-        />
-        <PresetMenu
-          label="Add preset"
-          presets={presets}
-          onPick={(preset) =>
-            pickPreset(
-              preset,
-              mergeApiKeyCapabilities(catalogue.capabilities, capabilities, preset.capabilities),
-              "add"
-            )
-          }
-        />
-        <span className="mx-1 h-4 w-px bg-grid-bright" />
-        <Button type="button" variant="minimal/small" onClick={() => onChange({})}>
-          Clear all
-        </Button>
-        {toolbarEnd ? <div className="ml-auto">{toolbarEnd}</div> : null}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <PresetMenu
+            label="Start from"
+            heading="Replaces the current access"
+            presets={presets}
+            onPick={(preset) => pickPreset(preset, preset.capabilities, "replace")}
+          />
+          <PresetMenu
+            label="Add preset"
+            heading="Adds to the current access"
+            presets={presets}
+            onPick={(preset) =>
+              pickPreset(
+                preset,
+                mergeApiKeyCapabilities(catalogue.capabilities, capabilities, preset.capabilities),
+                "add"
+              )
+            }
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="minimal/small"
+            disabled={!hasAnyAccess}
+            onClick={() => onChange({})}
+          >
+            Clear all
+          </Button>
+          {toolbarEnd}
+        </div>
       </div>
-      <ul className="flex flex-col rounded-md border border-grid-bright">
-        {catalogue.capabilities.map((capability) => {
-          const notes = requirements.filter(
-            (requirement) => requirement.capabilityId === capability.id
+      <div className="rounded-md border border-grid-bright">
+        {otherCapabilities.map((capability) => {
+          const { selection, granted, unavailable, notes, canPick } = details(capability);
+          const control = (
+            <SegmentedControl
+              name={`capability-${capability.id}`}
+              value={capabilities[capability.id] ?? NO_ACCESS_LEVEL_ID}
+              variant="secondary/small"
+              className="shrink-0"
+              options={capability.levels.map((level) => ({
+                label: level.label,
+                value: level.id,
+                disabled: !canPick(level.id),
+              }))}
+              onChange={(levelId) => setLevel(capability, levelId)}
+            />
           );
-          const selection = capability.taskSelection;
-          const granted = isGranted(capabilities, capability.id);
-          const unavailable = usesSelectedTasks && selection?.kind === "unavailable";
+          const label = (
+            <Paragraph variant={unavailable ? "small" : "small/bright"}>
+              {capability.label}
+            </Paragraph>
+          );
           return (
-            <li
-              key={capability.id}
-              className="flex flex-col gap-1 border-t border-grid-dimmed px-3 py-2 first:border-t-0"
-            >
-              <div className="flex items-center gap-3">
-                <span
-                  className={cn(
-                    "min-w-0 flex-1 text-sm",
-                    unavailable ? "text-text-dimmed" : "text-text-bright"
-                  )}
-                >
-                  {capability.label}
-                </span>
-                {unavailable ? (
-                  <span className="text-xs text-text-dimmed">Unavailable with selected tasks</span>
-                ) : (
-                  <SegmentedControl
-                    name={`capability-${capability.id}`}
-                    value={capabilities[capability.id] ?? NO_ACCESS_LEVEL_ID}
-                    variant="secondary/small"
-                    options={capability.levels.map((level) => ({
-                      label: level.label,
-                      value: level.id,
-                    }))}
-                    onChange={(levelId) => apply({ ...capabilities, [capability.id]: levelId })}
-                  />
-                )}
-              </div>
+            <div key={capability.id} className="border-b border-grid-dimmed px-3 py-2.5">
+              {/* Like the Access header: the control sits beside the description. */}
               {capability.hint ? (
-                <span className="text-xs text-text-dimmed">{capability.hint}</span>
-              ) : null}
-              {selection?.kind === "scoped" && granted ? (
+                <>
+                  {label}
+                  <div className="flex items-center justify-between gap-6">
+                    <Hint>{capability.hint}</Hint>
+                    {control}
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center justify-between gap-6">
+                  {label}
+                  {control}
+                </div>
+              )}
+              <CapabilityNotes notes={notes} className="pt-2" />
+              <Reveal show={selection?.kind === "scoped" && granted}>
                 <TaskScopeControl
                   taskScope={taskScope}
                   setTaskScope={(value) => {
@@ -260,27 +367,125 @@ export function CustomCapabilityEditor({
                   selectedTasks={selectedTasks}
                   setSelectedTasks={setSelectedTasks}
                   availableTasks={availableTasks}
-                  className="mt-1"
+                  label={<TaskAccessLabel />}
+                  className="mt-2.5 border-t border-grid-dimmed pt-2.5"
                 />
-              ) : null}
-              {unavailable ? (
-                <span className="text-xs text-text-dimmed">{selection.reason}</span>
-              ) : null}
-              {usesSelectedTasks && !selection && granted ? (
-                <span className="text-xs text-text-dimmed">Applies to the whole environment</span>
-              ) : null}
-              {notes.map((note) => (
-                <span key={note.requiredBy} className="text-xs text-text-dimmed">
-                  Needed by{" "}
-                  {catalogue.capabilities.find((c) => c.id === note.requiredBy)?.label ??
-                    note.requiredBy}
-                  . {note.note}
-                </span>
-              ))}
-            </li>
+              </Reveal>
+            </div>
           );
         })}
-      </ul>
+        {tableCapabilities.length > 0 ? (
+          <div role="group" aria-label="Access by area">
+            <div
+              className="grid items-center border-b border-grid-dimmed px-3 py-1.5 text-xs text-text-dimmed"
+              style={tableGrid}
+              aria-hidden
+            >
+              <span>Area</span>
+              {columns.map((column) => (
+                <span key={column.id} className="text-center">
+                  {column.label}
+                </span>
+              ))}
+            </div>
+            {tableCapabilities.map((capability) => {
+              const { unavailable, notes, canPick } = details(capability);
+              const value = capabilities[capability.id] ?? NO_ACCESS_LEVEL_ID;
+              const labelId = `api-key-capability-${capability.id}`;
+              return (
+                <RadioGroupPrimitive.Root
+                  key={capability.id}
+                  value={value}
+                  onValueChange={(levelId) => setLevel(capability, levelId)}
+                  orientation="horizontal"
+                  aria-labelledby={labelId}
+                  disabled={unavailable}
+                  className="grid items-center border-b border-grid-dimmed px-3 last:border-b-0"
+                  style={tableGrid}
+                >
+                  <div className="min-w-0 py-2">
+                    <Paragraph id={labelId} variant={unavailable ? "small" : "small/bright"}>
+                      {capability.label}
+                    </Paragraph>
+                    <CapabilityNotes notes={notes} className="pt-0.5" />
+                  </div>
+                  {columns.map((column) => {
+                    const level = capability.levels.find((l) => l.id === column.id);
+                    const disabled = level ? !canPick(level.id) : true;
+                    return level ? (
+                      <RadioGroupPrimitive.Item
+                        key={column.id}
+                        value={level.id}
+                        disabled={disabled}
+                        aria-label={`${capability.label}: ${level.label}`}
+                        className={cn(
+                          "flex items-center justify-center self-stretch rounded focus-custom",
+                          disabled ? "cursor-not-allowed" : "cursor-pointer"
+                        )}
+                      >
+                        <RadioButtonCircle
+                          checked={value === level.id}
+                          {...(disabled ? DISABLED_RADIO : {})}
+                        />
+                      </RadioGroupPrimitive.Item>
+                    ) : (
+                      <span key={column.id} />
+                    );
+                  })}
+                </RadioGroupPrimitive.Root>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+// Opens by height and fades, so content below moves smoothly instead of jumping. It's clipped only
+// while it moves, so focus rings inside aren't cut off.
+const REVEAL_MOTION = {
+  initial: { height: 0, opacity: 0, overflow: "hidden" },
+  animate: { height: "auto", opacity: 1, transitionEnd: { overflow: "visible" } },
+  exit: { height: 0, opacity: 0, overflow: "hidden" },
+  transition: { duration: 0.2, ease: "easeOut" },
+} as const;
+
+function Reveal({ show, children }: { show: boolean; children: ReactNode }) {
+  return (
+    <AnimatePresence initial={false}>
+      {show ? <motion.div {...REVEAL_MOTION}>{children}</motion.div> : null}
+    </AnimatePresence>
+  );
+}
+
+/** `locked`: the note explains why some of this area's levels are disabled. */
+type CapabilityNote = { key: string; text: string; locked?: boolean };
+
+/** Notes under an area's name. Each one opens and closes on its own. */
+function CapabilityNotes({ notes, className }: { notes: CapabilityNote[]; className?: string }) {
+  return (
+    <AnimatePresence initial={false}>
+      {notes.map((note) => (
+        <motion.div key={note.key} {...REVEAL_MOTION}>
+          <div className={cn("flex items-start gap-1.5", className)}>
+            {note.locked ? (
+              <LockClosedIcon className="mt-px size-3 shrink-0 text-text-dimmed" aria-hidden />
+            ) : null}
+            <Hint>{note.text}</Hint>
+          </div>
+        </motion.div>
+      ))}
+    </AnimatePresence>
+  );
+}
+
+/** Label for the All tasks/Selected tasks row, shared by preset and custom access. */
+export function TaskAccessLabel() {
+  return (
+    <div className="min-w-0">
+      <Paragraph variant="small/bright">Task access</Paragraph>
+      <Hint>Choose which tasks this key can access.</Hint>
     </div>
   );
 }
@@ -291,6 +496,7 @@ export function TaskScopeControl({
   selectedTasks,
   setSelectedTasks,
   availableTasks,
+  label,
   className,
 }: {
   taskScope: TaskScope;
@@ -298,6 +504,8 @@ export function TaskScopeControl({
   selectedTasks: string[];
   setSelectedTasks: (value: string[]) => void;
   availableTasks: string[];
+  /** Shown on the left of the toggle row. */
+  label?: ReactNode;
   className?: string;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -315,17 +523,21 @@ export function TaskScopeControl({
 
   return (
     <div className={className}>
-      <SegmentedControl
-        name="task-scope"
-        value={taskScope}
-        onChange={(value) => setTaskScope(value as TaskScope)}
-        fullWidth
-        options={[
-          { label: "All tasks", value: "all" },
-          { label: "Selected tasks", value: "selected" },
-        ]}
-      />
-      {taskScope === "selected" ? (
+      <div className={cn("flex items-center gap-4", label && "justify-between")}>
+        {label}
+        <SegmentedControl
+          name="task-scope"
+          value={taskScope}
+          variant="secondary/small"
+          className="shrink-0"
+          onChange={(value) => setTaskScope(value as TaskScope)}
+          options={[
+            { label: "All tasks", value: "all" },
+            { label: "Selected tasks", value: "selected" },
+          ]}
+        />
+      </div>
+      <Reveal show={taskScope === "selected"}>
         <Select<string[], string>
           open={pickerOpen}
           setOpen={setPickerOpen}
@@ -349,7 +561,7 @@ export function TaskScopeControl({
                 : "No tasks found."}
             </div>
           }
-          className="mt-2 w-full justify-between"
+          className="mt-3 w-full justify-between"
           popoverClassName="max-h-64"
         >
           {(tasks) =>
@@ -360,17 +572,20 @@ export function TaskScopeControl({
             ))
           }
         </Select>
-      ) : null}
+      </Reveal>
     </div>
   );
 }
 
 function PresetMenu({
   label,
+  heading,
   presets,
   onPick,
 }: {
   label: string;
+  /** What picking a preset does, shown at the top of the menu. */
+  heading: string;
   presets: Presets;
   onPick: (preset: CapabilityPreset) => void;
 }) {
@@ -399,6 +614,7 @@ function PresetMenu({
         style={{ maxHeight: "min(24rem, var(--radix-popover-content-available-height))" }}
         align="start"
       >
+        <PopoverSectionHeader title={heading} />
         {builtIn.map(item)}
         {organization.length > 0 ? (
           <>

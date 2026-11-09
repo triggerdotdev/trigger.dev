@@ -1,6 +1,6 @@
 import { RadioGroup } from "@headlessui/react";
-import { motion } from "framer-motion";
-import type { ReactNode } from "react";
+import { animate, motion, useMotionValue } from "framer-motion";
+import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
 
 const sizes = {
@@ -93,7 +93,57 @@ export default function SegmentedControl({
   className,
 }: SegmentedControlProps) {
   const variantStyle = variants[variant];
-  const _isPrimary = variant.startsWith("primary");
+  const [uncontrolledValue, setUncontrolledValue] = useState(defaultValue ?? options[0].value);
+  const selected = value ?? uncontrolledValue;
+  const optionsRef = useRef<HTMLDivElement>(null);
+  const previousSelected = useRef(selected);
+  // The active pill's left and right insets from the selected option. A switch starts them at the
+  // previous option's edges and springs them to 0, so the pill only travels along the control.
+  const pillLeft = useMotionValue(0);
+  const pillRight = useMotionValue(0);
+
+  useLayoutEffect(() => {
+    const previous = previousSelected.current;
+    previousSelected.current = selected;
+    if (previous === selected) return;
+
+    const segments = [
+      ...(optionsRef.current?.querySelectorAll<HTMLElement>("[data-segment-value]") ?? []),
+    ];
+    const from = segments.find((segment) => segment.dataset.segmentValue === previous);
+    const to = segments.find((segment) => segment.dataset.segmentValue === selected);
+    const first = segments[0];
+    const last = segments[segments.length - 1];
+    if (!from || !to || !first || !last) {
+      // Nothing to animate from, so draw the pill on the selected option.
+      pillLeft.set(0);
+      pillRight.set(0);
+      return;
+    }
+
+    // Everything is measured in the same frame, so a page shift cancels out.
+    const fromBox = from.getBoundingClientRect();
+    const toBox = to.getBoundingClientRect();
+    // The spring overshoots a little; these insets keep the pill within the outer options.
+    const minLeft = first.getBoundingClientRect().left - toBox.left;
+    const minRight = toBox.right - last.getBoundingClientRect().right;
+    // Start from where the pill is drawn now, which is mid-flight after a quick second click.
+    const startLeft = fromBox.left + pillLeft.get() - toBox.left;
+    const startRight = toBox.right - (fromBox.right - pillRight.get());
+    pillLeft.set(startLeft);
+    pillRight.set(startRight);
+
+    // One spring drives both edges, so the pill moves and resizes together.
+    const animation = animate(0, 1, {
+      duration: 0.4,
+      type: "spring",
+      onUpdate: (progress) => {
+        pillLeft.set(Math.max(minLeft, startLeft * (1 - progress)));
+        pillRight.set(Math.max(minRight, startRight * (1 - progress)));
+      },
+    });
+    return () => animation.stop();
+  }, [selected, pillLeft, pillRight]);
 
   return (
     <div
@@ -109,6 +159,7 @@ export default function SegmentedControl({
         defaultValue={defaultValue ?? options[0].value}
         name={name}
         onChange={(c: string) => {
+          setUncontrolledValue(c);
           if (onChange) {
             onChange(c);
           }
@@ -116,6 +167,7 @@ export default function SegmentedControl({
         className="w-full"
       >
         <div
+          ref={optionsRef}
           className={cn("flex h-full w-full items-center justify-between", variantStyle.container)}
         >
           {options.map((option) => (
@@ -123,6 +175,7 @@ export default function SegmentedControl({
               key={option.value}
               value={option.value}
               disabled={option.disabled}
+              data-segment-value={option.value}
               className={({ checked }) =>
                 cn(
                   "relative flex h-full grow cursor-pointer text-center font-normal focus-custom",
@@ -143,8 +196,7 @@ export default function SegmentedControl({
                   </div>
                   {checked && (
                     <motion.div
-                      layoutId={`segmented-control-${name}`}
-                      transition={{ duration: 0.4, type: "spring" }}
+                      style={{ left: pillLeft, right: pillRight }}
                       className={variantStyle.selected}
                     />
                   )}

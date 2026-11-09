@@ -1,20 +1,24 @@
 import { TrashIcon } from "@heroicons/react/20/solid";
+import { DialogClose } from "@radix-ui/react-dialog";
 import {
   type ApiKeyCapabilityCatalogue,
   type ApiKeyCapabilityMap,
   CUSTOM_API_KEY_PRESET_ID,
   RESTRICTED_API_KEYS_PLAN_MESSAGE,
 } from "@trigger.dev/plugins";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { useTypedFetcher } from "remix-typedjson";
 import { Feedback } from "~/components/Feedback";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
+import { FormButtons } from "~/components/primitives/FormButtons";
+import { FormError } from "~/components/primitives/FormError";
+import { Header3 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
 import { RadioGroup, RadioGroupItem } from "~/components/primitives/RadioButton";
 import SegmentedControl from "~/components/primitives/SegmentedControl";
 import { TextLink } from "~/components/primitives/TextLink";
@@ -28,7 +32,12 @@ import {
 } from "~/utils/apiKeyAccess";
 import { cn } from "~/utils/cn";
 import { v3BillingPath } from "~/utils/pathBuilder";
-import { CapabilityList, CustomCapabilityEditor, TaskScopeControl } from "./ApiKeyCapabilities";
+import {
+  CapabilityList,
+  CustomCapabilityEditor,
+  TaskAccessLabel,
+  TaskScopeControl,
+} from "./ApiKeyCapabilities";
 import type { action, ApiKeyActionData } from "./route";
 import type { ApiKeyAccessState } from "./useApiKeyAccess";
 
@@ -79,13 +88,16 @@ export function ApiKeyAccessFields({
       )}
     >
       <div className="min-h-0 overflow-hidden">
-        <TaskAccessPanel
-          taskScope={taskScope}
-          setTaskScope={setTaskScope}
-          selectedTasks={selectedTasks}
-          setSelectedTasks={setSelectedTasks}
-          availableTasks={availableTasks}
-        />
+        {/* Inside the clipped row, so a hidden panel adds no space to its group. */}
+        <div className="pt-2.5">
+          <TaskAccessPanel
+            taskScope={taskScope}
+            setTaskScope={setTaskScope}
+            selectedTasks={selectedTasks}
+            setSelectedTasks={setSelectedTasks}
+            availableTasks={availableTasks}
+          />
+        </div>
       </div>
     </div>
   );
@@ -94,30 +106,30 @@ export function ApiKeyAccessFields({
     <>
       {showAccessControls && presets && capabilityCatalogue ? (
         <div className="space-y-1">
-          <div className="flex items-center justify-between gap-3">
-            <Label>Access</Label>
-            <div className="flex min-w-0 items-center gap-3">
-              {capabilityCatalogue.available ? null : <CustomAccessPlanNote />}
-              <SegmentedControl
-                name="access-mode"
-                value={accessMode}
-                variant="secondary/small"
-                onChange={(value) =>
-                  value === "custom" ? switchToCustom() : setAccessMode("preset")
-                }
-                options={[
-                  { label: "Preset", value: "preset" },
-                  { label: "Custom", value: "custom", disabled: !capabilityCatalogue.available },
-                ]}
-              />
-            </div>
+          <Label>Access</Label>
+          <div className="flex items-center justify-between gap-6">
+            {capabilityCatalogue.available ? (
+              <Hint>
+                Use Custom to combine presets and pick the level for each area. It starts from the
+                selected preset, or empty when No restrictions is selected.
+              </Hint>
+            ) : (
+              <CustomAccessPlanNote />
+            )}
+            <SegmentedControl
+              name="access-mode"
+              value={accessMode}
+              variant="secondary/small"
+              className="shrink-0"
+              onChange={(value) =>
+                value === "custom" ? switchToCustom() : setAccessMode("preset")
+              }
+              options={[
+                { label: "Preset", value: "preset" },
+                { label: "Custom", value: "custom", disabled: !capabilityCatalogue.available },
+              ]}
+            />
           </div>
-          {capabilityCatalogue.available ? (
-            <Hint>
-              Use Custom to combine presets and pick the level for each area. It starts from the
-              selected preset, or empty when No restrictions is selected.
-            </Hint>
-          ) : null}
         </div>
       ) : null}
 
@@ -149,8 +161,9 @@ export function ApiKeyAccessFields({
             title="Trigger and operate tasks"
             presets={presets}
             ids={["TRIGGER_ONLY", "TASK_OPERATOR"]}
-          />
-          {selectedIsOrganizationPreset ? null : taskAccess}
+          >
+            {selectedIsOrganizationPreset ? null : taskAccess}
+          </PresetGroup>
           <PresetGroup
             title="Environment capabilities"
             presets={presets}
@@ -170,10 +183,8 @@ export function ApiKeyAccessFields({
             <PresetGroup title="Other access" presets={presets} ids={additionalPresetIds} />
           ) : null}
           {organizationPresets.length > 0 ? (
-            <div className="space-y-2.5">
-              <div className="text-xxs font-semibold uppercase tracking-wider text-indigo-400">
-                Your presets
-              </div>
+            <div>
+              <Header3 className="mb-2.5">Your presets</Header3>
               <div className="grid gap-2.5 sm:grid-cols-2">
                 {organizationPresets.map((preset) => (
                   <div key={preset.id} className="relative">
@@ -182,9 +193,9 @@ export function ApiKeyAccessFields({
                   </div>
                 ))}
               </div>
+              {selectedIsOrganizationPreset ? taskAccess : null}
             </div>
           ) : null}
-          {selectedIsOrganizationPreset ? taskAccess : null}
         </RadioGroup>
       ) : null}
     </>
@@ -265,15 +276,19 @@ function PresetGroup({
   title,
   presets,
   ids,
+  children,
 }: {
   title: string;
   presets: ApiKeyAccessPreset[];
   ids: string[];
+  /** Settings for this group's presets, shown under the options. */
+  children?: ReactNode;
 }) {
   return (
-    <div className="space-y-2.5">
-      <div className="text-xxs font-semibold uppercase tracking-wider text-indigo-400">{title}</div>
+    <div>
+      <Header3 className="mb-2.5">{title}</Header3>
       <PresetOptions presets={presets} ids={ids} className="grid gap-2.5 sm:grid-cols-2" />
+      {children}
     </div>
   );
 }
@@ -408,7 +423,7 @@ function CustomAccessPlanNote() {
   const showSelfServe = useShowSelfServe();
 
   return (
-    <span className="text-right text-xs text-text-dimmed">
+    <span className="text-xs text-text-dimmed">
       {RESTRICTED_API_KEYS_PLAN_MESSAGE}
       {isManagedCloud && showSelfServe ? (
         <>
@@ -471,15 +486,14 @@ function TaskAccessPanel({
   availableTasks: string[];
 }) {
   return (
-    <div className="rounded-md border border-grid-bright bg-background-bright/40 p-3.5">
-      <div className="text-2sm font-medium text-text-bright">Task access</div>
+    <div className="rounded-md border border-grid-bright bg-background-bright p-3">
       <TaskScopeControl
         taskScope={taskScope}
         setTaskScope={setTaskScope}
         selectedTasks={selectedTasks}
         setSelectedTasks={setSelectedTasks}
         availableTasks={availableTasks}
-        className="mt-3 min-h-[5.5rem]"
+        label={<TaskAccessLabel />}
       />
     </div>
   );
@@ -528,7 +542,7 @@ function SavePresetButton({
   }
 
   return (
-    <Popover
+    <Dialog
       open={isOpen}
       onOpenChange={(next) => {
         setOpen(next);
@@ -539,64 +553,71 @@ function SavePresetButton({
         }
       }}
     >
-      <PopoverTrigger asChild>
+      <DialogTrigger asChild>
         <Button type="button" variant="secondary/small" disabled={disabled}>
-          Save as preset
+          Save as preset…
         </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-80 space-y-3 p-3" align="end">
-        <InputGroup fullWidth>
-          <Label htmlFor="api-key-preset-name">Preset name</Label>
-          <Input
-            id="api-key-preset-name"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            onKeyDown={onKeyDown}
-            maxLength={64}
-            placeholder="e.g. CI deploy and smoke"
-            autoComplete="off"
-            autoFocus
-            fullWidth
-          />
-        </InputGroup>
-        <InputGroup fullWidth>
-          <Label htmlFor="api-key-preset-description">Description (optional)</Label>
-          <Input
-            id="api-key-preset-description"
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-            onKeyDown={onKeyDown}
-            maxLength={200}
-            autoComplete="off"
-            fullWidth
-          />
-        </InputGroup>
-        <Paragraph variant="extra-small" className="text-text-dimmed">
-          {limitsTasks
-            ? "Saved for everyone in this organization. Keys made from it ask for tasks each time."
-            : "Saved for everyone in this organization. Tasks are chosen for each key."}
-        </Paragraph>
-        {error ? (
-          <Paragraph variant="extra-small" className="text-error">
-            {error}
+      </DialogTrigger>
+      <DialogContent className="max-w-md">
+        <DialogHeader>Save as preset</DialogHeader>
+        <div className="flex flex-col gap-4 pt-3">
+          <Paragraph variant="small">
+            {limitsTasks
+              ? "Saved for everyone in this organization. Keys made from it ask for tasks each time."
+              : "Saved for everyone in this organization. Tasks are chosen for each key."}
           </Paragraph>
-        ) : null}
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="tertiary/small" onClick={() => setOpen(false)}>
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            variant="primary/small"
-            disabled={!name.trim()}
-            isLoading={fetcher.state !== "idle"}
-            onClick={save}
-          >
-            Save preset
-          </Button>
+          <InputGroup fullWidth>
+            <Label htmlFor="api-key-preset-name">Preset name</Label>
+            <Input
+              id="api-key-preset-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              onKeyDown={onKeyDown}
+              maxLength={64}
+              placeholder="e.g. CI deploy and smoke"
+              autoComplete="off"
+              autoFocus
+              fullWidth
+            />
+          </InputGroup>
+          <InputGroup fullWidth>
+            <Label htmlFor="api-key-preset-description" required={false}>
+              Description
+            </Label>
+            <Input
+              id="api-key-preset-description"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              onKeyDown={onKeyDown}
+              maxLength={200}
+              autoComplete="off"
+              fullWidth
+            />
+          </InputGroup>
+          {error ? <FormError>{error}</FormError> : null}
+          <FormButtons
+            cancelButton={
+              <DialogClose asChild>
+                <Button type="button" variant="secondary/medium">
+                  Cancel
+                </Button>
+              </DialogClose>
+            }
+            confirmButton={
+              <Button
+                type="button"
+                variant="primary/medium"
+                disabled={!name.trim()}
+                isLoading={fetcher.state !== "idle"}
+                onClick={save}
+              >
+                Save preset
+              </Button>
+            }
+          />
         </div>
-      </PopoverContent>
-    </Popover>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -611,14 +632,14 @@ function DeletePresetButton({ preset }: { preset: ApiKeyAccessPreset }) {
   const error = result && !result.ok ? result.error : undefined;
 
   return (
-    <Popover
+    <Dialog
       open={open && !result?.ok}
       onOpenChange={(next) => {
         setOpen(next);
         if (next) setSubmitted(false);
       }}
     >
-      <PopoverTrigger asChild>
+      <DialogTrigger asChild>
         <button
           type="button"
           aria-label={`Delete ${preset.label}`}
@@ -626,34 +647,42 @@ function DeletePresetButton({ preset }: { preset: ApiKeyAccessPreset }) {
         >
           <TrashIcon className="size-3.5" />
         </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-72 space-y-2 p-3" align="end">
-        <div className="text-sm text-text-bright">Delete {preset.label}?</div>
-        <Paragraph variant="extra-small" className="text-text-dimmed">
-          Keys created from this preset keep their access.
-        </Paragraph>
-        {error ? (
-          <Paragraph variant="extra-small" className="text-error">
-            {error}
+      </DialogTrigger>
+      <DialogContent className="max-w-md">
+        <DialogHeader>Delete preset</DialogHeader>
+        <div className="flex flex-col gap-4 pt-3">
+          <Paragraph variant="small">
+            "{preset.label}" will be removed for everyone in this organization. Keys created from it
+            keep their access.
           </Paragraph>
-        ) : null}
-        <div className="flex justify-end gap-2 pt-1">
-          <Button type="button" variant="tertiary/small" onClick={() => setOpen(false)}>
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            variant="danger/small"
-            isLoading={fetcher.state !== "idle"}
-            onClick={() => {
-              setSubmitted(true);
-              fetcher.submit({ action: "delete-preset", presetId: preset.id }, { method: "post" });
-            }}
-          >
-            Delete preset
-          </Button>
+          {error ? <FormError>{error}</FormError> : null}
+          <FormButtons
+            cancelButton={
+              <DialogClose asChild>
+                <Button type="button" variant="secondary/medium">
+                  Cancel
+                </Button>
+              </DialogClose>
+            }
+            confirmButton={
+              <Button
+                type="button"
+                variant="danger/medium"
+                isLoading={fetcher.state !== "idle"}
+                onClick={() => {
+                  setSubmitted(true);
+                  fetcher.submit(
+                    { action: "delete-preset", presetId: preset.id },
+                    { method: "post" }
+                  );
+                }}
+              >
+                Delete preset
+              </Button>
+            }
+          />
         </div>
-      </PopoverContent>
-    </Popover>
+      </DialogContent>
+    </Dialog>
   );
 }

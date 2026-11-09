@@ -12,6 +12,7 @@ import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { TextArea } from "~/components/primitives/TextArea";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { TruncatedText } from "~/components/primitives/TruncatedText";
 import { type ActionAppearance, actionButtonProps } from "./ApiKeyActions";
 
 export const IP_RANGES_FIELD = "allowedIpRanges";
@@ -82,24 +83,32 @@ export function ApiKeyIpRangesField({
 }
 
 export function ApiKeyAllowedIps({ ranges }: { ranges: string[] }) {
+  // No colours of its own: the cell dims it and brightens it on row hover, like the other data.
   if (ranges.length === 0) {
-    return <span className="text-xs text-text-dimmed">Any IP</span>;
+    return <span className="text-xs">Any IP</span>;
   }
 
+  // One line: a long range (IPv6) truncates, and the count of the rest stays at the end.
   const label = (
-    <span className="font-mono text-xs text-text-bright">
-      {ranges[0]}
+    <span className="flex max-w-[13rem] items-center gap-1 text-xs">
+      {/* With more ranges, the cell's tooltip already lists them all in full. */}
       {ranges.length > 1 ? (
-        <span className="font-sans text-text-dimmed"> +{ranges.length - 1} more</span>
-      ) : null}
+        <span className="min-w-0 truncate font-mono">{ranges[0]}</span>
+      ) : (
+        <TruncatedText text={ranges[0]} className="min-w-0 font-mono" />
+      )}
+      {ranges.length > 1 ? <span className="shrink-0">+{ranges.length - 1} more</span> : null}
     </span>
   );
 
   if (ranges.length === 1) return label;
 
   return (
+    // asChild: the label is the trigger, so there's no button inside the row's link.
     <SimpleTooltip
+      asChild
       button={label}
+      disableHoverableContent
       content={
         <ul className="flex flex-col gap-0.5 font-mono text-xs">
           {ranges.map((range) => (
@@ -120,11 +129,16 @@ export function ApiKeyLastUsed({
 }) {
   if (!lastUsedAt) return <>Never</>;
 
+  // One line: the date never truncates; the IP follows it and truncates if it's a long IPv6.
   return (
-    <div className="flex flex-col gap-0.5">
-      <DateTime date={lastUsedAt} />
-      {lastUsedIp ? <span className="font-mono text-xs text-text-dimmed">{lastUsedIp}</span> : null}
-    </div>
+    <span className="flex max-w-[16rem] items-center gap-1.5">
+      <span className="shrink-0">
+        <DateTime date={lastUsedAt} includeSeconds={false} />
+      </span>
+      {lastUsedIp ? (
+        <TruncatedText text={lastUsedIp} className="min-w-0 font-mono text-xs" />
+      ) : null}
+    </span>
   );
 }
 
@@ -204,7 +218,7 @@ export function EditApiKeyIpRangesButton({
             }
             cancelButton={
               <DialogClose asChild>
-                <Button variant="tertiary/medium">Cancel</Button>
+                <Button variant="secondary/medium">Cancel</Button>
               </DialogClose>
             }
           />

@@ -37,3 +37,65 @@ export function NewBadge({ inline = false, className }: { inline?: boolean; clas
     </Badge>
   );
 }
+
+/** For something being phased out. Name its replacement in `tooltip`. */
+export function DeprecatedBadge({
+  tooltip,
+  inline = false,
+  className,
+}: {
+  tooltip: string;
+  inline?: boolean;
+  className?: string;
+}) {
+  return (
+    <SimpleTooltip
+      asChild
+      button={
+        <Badge
+          variant="extra-small"
+          className={cn(
+            "text-warning system:border-transparent system:bg-warning system:text-white",
+            inline ? "inline-grid" : "",
+            className
+          )}
+        >
+          Deprecated
+        </Badge>
+      }
+      content={tooltip}
+      disableHoverableContent
+    />
+  );
+}
+
+/** For an older way that still works. Name the newer option in `tooltip`. */
+export function LegacyBadge({
+  tooltip,
+  inline = false,
+  className,
+}: {
+  tooltip: string;
+  inline?: boolean;
+  className?: string;
+}) {
+  return (
+    <SimpleTooltip
+      asChild
+      button={
+        <Badge
+          variant="extra-small"
+          className={cn(
+            "text-text-dimmed system:border-transparent system:bg-charcoal-500 system:text-white",
+            inline ? "inline-grid" : "",
+            className
+          )}
+        >
+          Legacy
+        </Badge>
+      }
+      content={tooltip}
+      disableHoverableContent
+    />
+  );
+}
