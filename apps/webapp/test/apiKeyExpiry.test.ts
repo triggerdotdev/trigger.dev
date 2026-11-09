@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   apiKeyExpiryDay,
+  apiKeyExpiryDayLabel,
+  apiKeyExpiryEndDay,
   apiKeyExpiryTimestamp,
   DEFAULT_API_KEY_EXPIRY_DAYS,
   isApiKeyExpiryDayExpired,
@@ -42,4 +44,13 @@ describe("API key expiry", () => {
       }
     }
   );
+
+  // Catches: an expiry at the end of 7 Feb showing as 8 Feb at midnight.
+  it("labels a stored expiry with the day it ends on", () => {
+    expect(apiKeyExpiryDayLabel(new Date("2027-02-08T00:00:00.000Z"))).toBe(
+      "7 Feb 2027 (end of day, UTC)"
+    );
+    expect(apiKeyExpiryEndDay("2027-02-08T00:00:00.000Z")).toBe("7 Feb 2027");
+    expect(apiKeyExpiryDayLabel("2027-02-08T12:30:00.000Z")).toBeUndefined();
+  });
 });

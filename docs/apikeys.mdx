@@ -86,10 +86,10 @@ Access presets define what a key can do. On the Free and Hobby plans only the **
 
 | Preset | Access |
 | --- | --- |
-| **Trigger only** | Trigger runs and batches for all or selected tasks. Trigger responses include scoped public access tokens for the runs and batches they create |
-| **Task operator** | Trigger all or selected tasks and inspect or operate on their runs |
-| **Observer** | Read runs, tasks, batches, logs, traces, queues, errors, and webhooks |
-| **Operator** | Observe and operate on runs, queues, errors, webhooks, and sessions, read tagged runs, and trigger tasks |
+| **Trigger only** | Trigger runs and batches for all or selected tasks, and upload large payloads. Trigger responses include scoped public access tokens for the runs and batches they create |
+| **Task operator** | Trigger all or selected tasks, upload large payloads, and inspect or operate on their runs |
+| **Observer** | Read runs, tasks, batches, logs, traces, queues, errors, webhooks, sessions, and prompts |
+| **Operator** | Observe and operate on runs, queues, errors, webhooks, sessions, and waitpoints, close sessions, send to and wait on input streams, read tagged runs and prompts, upload large payloads, and trigger tasks |
 | **Webhooks only** | Read and write [webhooks](/webhooks/overview). Replaying deliveries that trigger tasks and creating webhook waiters require task or waitpoint scopes |
 | **Waitpoints only** | Create, read, and complete [waitpoint tokens](/wait-for-token), and create and cancel webhook waiters. No task or run access |
 | **Deploy only** | Deploy versions, sync environment variables, and manage Preview branches |

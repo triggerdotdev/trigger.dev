@@ -156,17 +156,22 @@ containerTest(
       label: "Restricted access",
       isCustom: false,
       usesTaskSelection: false,
+      presetDeleted: false,
     });
     expect(keysByName.get("Restricted without preset")?.access).toMatchObject({
       presetId: null,
       label: "Custom",
       isCustom: true,
       usesTaskSelection: false,
+      presetDeleted: false,
     });
     expect(keysByName.get("Unknown preset")?.access).toEqual({
       presetId: "REMOVED_PRESET",
       label: "Custom",
       isCustom: true,
+      isOrganizationPreset: false,
+      // Catches: a key whose saved preset was deleted reading as a plain custom key.
+      presetDeleted: true,
       taskIdentifiers: ["send-email"],
       fullAccess: false,
       usesTaskSelection: true,

@@ -1,9 +1,6 @@
 import { PencilSquareIcon } from "@heroicons/react/20/solid";
-import { useOutletContext, useRevalidator } from "@remix-run/react";
-import {
-  type ApiKeyCapabilityCatalogue,
-  type ApiKeyCapabilityDifference,
-} from "@trigger.dev/plugins";
+import { useNavigate, useOutletContext, useRevalidator, useSearchParams } from "@remix-run/react";
+import { type ApiKeyCapabilityCatalogue } from "@trigger.dev/plugins";
 import { type ReactNode, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -16,11 +13,14 @@ import { DateTime } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
+import { TruncatedText } from "~/components/primitives/TruncatedText";
 import { Switch } from "~/components/primitives/Switch";
 import { ApiKeyUsagePresenter } from "~/presenters/v3/ApiKeyUsagePresenter.server";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
-import { capabilityName, levelLabel, uneditableApiKeyMessage } from "~/utils/apiKeyAccess";
+import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { driftSummary, uneditableApiKeyMessage } from "~/utils/apiKeyAccess";
+import { apiKeyExpiryDayLabel } from "~/utils/apiKeyExpiry";
 import { cn } from "~/utils/cn";
 import { type ApiKeyUsageView, capabilityUsageLine, narrowToUsage } from "~/utils/apiKeyUsage";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
@@ -106,10 +106,16 @@ export default function Page() {
                 />
               </Property.Value>
             </Property.Item>
+            {apiKey.revokedAt ? (
+              <Property.Item>
+                <Property.Label>Revoked</Property.Label>
+                <Property.Value>
+                  <DateTime date={apiKey.revokedAt} includeSeconds={false} />
+                </Property.Value>
+              </Property.Item>
+            ) : null}
           </Property.Table>
-          <Paragraph variant="small" className="mt-3">
-            Turn on Show revoked to see this key's details.
-          </Paragraph>
+          <ShowRevokedButton />
         </Group>
       </Inspector>
     );
@@ -136,7 +142,9 @@ function ApiKeyInspector({
   const isExpired = row.expiresAt ? new Date(row.expiresAt).getTime() <= now : false;
   const isActive = !row.revokedAt && !isExpired;
   const canEditAccess = context.canEditAccess && isActive;
+  const isRevoked = !!row.revokedAt;
   const { access } = row;
+  const expiryLabel = row.expiresAt ? apiKeyExpiryDayLabel(row.expiresAt) : undefined;
   const usageNotes =
     usage && catalogue
       ? Object.fromEntries(
@@ -148,7 +156,11 @@ function ApiKeyInspector({
               [
                 capability.id,
                 <LabelValue key={capability.id} label={line.label}>
-                  {line.lastUsedAt ? <DateTime date={line.lastUsedAt} /> : "Never"}
+                  {line.lastUsedAt ? (
+                    <DateTime date={line.lastUsedAt} includeSeconds={false} />
+                  ) : (
+                    "Never"
+                  )}
                 </LabelValue>,
               ],
             ];
@@ -160,6 +172,17 @@ function ApiKeyInspector({
     revalidator.revalidate();
     setEditing({ start });
   }
+
+  const revokeButton = (
+    <div className="ml-auto">
+      <RevokeApiKeyButton
+        id={row.id}
+        name={row.name}
+        canWrite={context.canWriteApiKeys}
+        appearance="button"
+      />
+    </div>
+  );
 
   return (
     <Inspector
@@ -186,16 +209,12 @@ function ApiKeyInspector({
               canWrite={context.canWriteApiKeys}
               appearance="button"
             />
-            <div className="ml-auto">
-              <RevokeApiKeyButton
-                id={row.id}
-                name={row.name}
-                canWrite={context.canWriteApiKeys}
-                appearance="button"
-              />
-            </div>
+            {revokeButton}
           </>
-        ) : null
+        ) : isRevoked ? null : (
+          // Expired keys can't be changed, but revoking takes them off the list.
+          revokeButton
+        )
       }
     >
       <Group>
@@ -209,6 +228,14 @@ function ApiKeyInspector({
               />
             </Property.Value>
           </Property.Item>
+          {row.revokedAt ? (
+            <Property.Item>
+              <Property.Label>Revoked</Property.Label>
+              <Property.Value>
+                <DateTime date={row.revokedAt} includeSeconds={false} />
+              </Property.Value>
+            </Property.Item>
+          ) : null}
           <Property.Item>
             <Property.Label>Environment</Property.Label>
             <Property.Value>
@@ -220,15 +247,22 @@ function ApiKeyInspector({
             <Property.Value className="font-mono">{row.obfuscated}</Property.Value>
           </Property.Item>
         </Property.Table>
+        {isExpired && !isRevoked && row.expiresAt ? (
+          <Paragraph variant="extra-small" className="mt-3">
+            Expired on {expiryLabel ?? <DateTime date={row.expiresAt} includeSeconds={false} />}.
+            Create a new key to replace it.
+          </Paragraph>
+        ) : null}
       </Group>
 
       <Group>
         <div className="flex items-center justify-between gap-3">
           <Property.Label className="text-sm">Access</Property.Label>
-          {!access.fullAccess && access.capabilities ? (
+          {access.fullAccess || access.capabilities ? (
             <Switch
               variant="small"
-              label="Show scopes"
+              // A full-access key has no per-area scopes to list, only the areas themselves.
+              label={access.fullAccess ? "Show areas" : "Show scopes"}
               checked={showScopes}
               onCheckedChange={setShowScopes}
             />
@@ -238,25 +272,23 @@ function ApiKeyInspector({
           <ApiKeyAccessLabel
             label={access.label}
             isCustom={access.isCustom}
+            isOrganizationPreset={access.isOrganizationPreset}
+            presetDeleted={access.presetDeleted}
             capabilities={access.capabilities}
+            unmatchedScopes={access.unmatchedScopes}
             catalogue={catalogue}
             presets={context.presets}
             taskIdentifiers={access.taskIdentifiers}
           />
         </div>
-        {access.taskIdentifiers && access.taskIdentifiers.length > 0 ? (
+        {access.fullAccess ? (
           <Paragraph variant="extra-small" className="mt-1">
-            Limited to{" "}
-            {access.taskIdentifiers.map((task, index) => (
-              <span key={task}>
-                {index > 0 ? ", " : null}
-                <span className="font-mono text-text-bright">{task}</span>
-              </span>
-            ))}
+            Full access to everything in this environment.
           </Paragraph>
         ) : null}
-        {catalogue && (access.fullAccess || access.capabilities) ? (
-          <div className="mt-3">
+        {catalogue && (access.capabilities || (access.fullAccess && showScopes)) ? (
+          // Dimmed on keys that no longer work: what they could do matters less than their status.
+          <div className={cn("mt-3", !isActive && "opacity-50")}>
             <CapabilityList
               catalogue={catalogue}
               capabilities={access.capabilities ?? {}}
@@ -265,11 +297,12 @@ function ApiKeyInspector({
               unmatchedScopes={access.unmatchedScopes}
               showScopes={showScopes}
               taskIdentifiers={access.taskIdentifiers}
+              allTasks
               notes={usageNotes}
             />
           </div>
         ) : null}
-        {catalogue && access.drift.length > 0 ? (
+        {catalogue && isActive && access.drift.length > 0 ? (
           <div className="mt-3 flex flex-col items-start gap-2 border-t border-grid-dimmed pt-3">
             <Paragraph variant="extra-small">
               {driftSummary(catalogue, access.label, access.drift)}
@@ -285,7 +318,28 @@ function ApiKeyInspector({
         ) : null}
       </Group>
 
-      {usage && catalogue ? (
+      <Group>
+        <Property.Table>
+          <Property.Item>
+            <Property.Label>Allowed IPs</Property.Label>
+            <Property.Value>
+              {row.allowedIpRanges.length > 0 ? (
+                <ul className="flex flex-col font-mono">
+                  {row.allowedIpRanges.map((range) => (
+                    <li key={range} className="break-all">
+                      {range}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                "Any IP"
+              )}
+            </Property.Value>
+          </Property.Item>
+        </Property.Table>
+      </Group>
+
+      {usage && catalogue && isActive ? (
         <Group>
           <NarrowToUsage
             row={row}
@@ -308,21 +362,25 @@ function ApiKeyInspector({
           <Property.Item>
             <Property.Label>Created</Property.Label>
             <Property.Value>
-              <DateTime date={row.createdAt} />
+              <DateTime date={row.createdAt} includeSeconds={false} />
             </Property.Value>
           </Property.Item>
-          <Property.Item>
-            <Property.Label>Expires</Property.Label>
-            <Property.Value>
-              {row.expiresAt ? <DateTime date={row.expiresAt} /> : "Never"}
-            </Property.Value>
-          </Property.Item>
+          {isRevoked && !row.expiresAt ? null : (
+            <Property.Item>
+              <Property.Label>{isExpired ? "Expired" : "Expires"}</Property.Label>
+              <Property.Value>
+                {row.expiresAt
+                  ? (expiryLabel ?? <DateTime date={row.expiresAt} includeSeconds={false} />)
+                  : "Never"}
+              </Property.Value>
+            </Property.Item>
+          )}
           <Property.Item>
             <Property.Label>Last used</Property.Label>
             <Property.Value>
               {row.lastUsedAt ? (
                 <>
-                  <DateTime date={row.lastUsedAt} />
+                  <DateTime date={row.lastUsedAt} includeSeconds={false} />
                   {row.lastUsedIp ? (
                     <>
                       {" "}
@@ -332,22 +390,6 @@ function ApiKeyInspector({
                 </>
               ) : (
                 "Never"
-              )}
-            </Property.Value>
-          </Property.Item>
-          <Property.Item>
-            <Property.Label>Allowed IPs</Property.Label>
-            <Property.Value>
-              {row.allowedIpRanges.length > 0 ? (
-                <ul className="flex flex-col font-mono">
-                  {row.allowedIpRanges.map((range) => (
-                    <li key={range} className="break-all">
-                      {range}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                "Any IP"
               )}
             </Property.Value>
           </Property.Item>
@@ -374,33 +416,6 @@ function ApiKeyInspector({
       ) : null}
     </Inspector>
   );
-}
-
-function listNames(names: string[]): string {
-  if (names.length <= 1) return names.join("");
-  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-}
-
-function driftSummary(
-  catalogue: ApiKeyCapabilityCatalogue,
-  presetLabel: string,
-  drift: ApiKeyCapabilityDifference[]
-): string {
-  if (drift.every((difference) => !difference.loses)) {
-    return `${presetLabel} now also grants ${listNames(
-      drift.map((difference) => capabilityName(catalogue, difference.capabilityId))
-    )}.`;
-  }
-  return `${presetLabel} now grants ${drift
-    .map(
-      (difference) =>
-        `${capabilityName(catalogue, difference.capabilityId)}: ${levelLabel(
-          catalogue,
-          difference.capabilityId,
-          difference.to
-        )} (was ${levelLabel(catalogue, difference.capabilityId, difference.from)})`
-    )
-    .join(", ")}.`;
 }
 
 function NarrowToUsage({
@@ -550,6 +565,17 @@ function Inspector({
   footer?: ReactNode;
   children: ReactNode;
 }) {
+  const navigate = useNavigate();
+  // Dialogs opened from the inspector close on Esc themselves; the same press mustn't also close
+  // the inspector. Radix traps focus inside an open dialog, so focus tells us one is open.
+  useShortcutKeys({
+    shortcut: { key: "esc" },
+    action: () => {
+      if (document.activeElement?.closest("[role='dialog'], [role='alertdialog']")) return;
+      navigate(closePath);
+    },
+  });
+
   return (
     <div
       className={cn(
@@ -558,12 +584,14 @@ function Inspector({
       )}
     >
       <div className="mx-3 flex items-center justify-between gap-2 overflow-x-hidden border-b border-grid-dimmed">
-        <Header2 className="truncate whitespace-nowrap">{title}</Header2>
+        <Header2 className="flex min-w-0">
+          <TruncatedText text={title} className="whitespace-nowrap" />
+        </Header2>
         <LinkButton
           to={closePath}
           variant="minimal/small"
           TrailingIcon={ExitIcon}
-          shortcut={{ key: "esc" }}
+          shortcut={{ key: "esc", enabled: false }}
           shortcutPosition="before-trailing-icon"
           className="pl-1"
         />
@@ -576,6 +604,26 @@ function Inspector({
           {footer}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function ShowRevokedButton() {
+  const [, setSearchParams] = useSearchParams();
+  return (
+    <div className="mt-3 flex flex-col items-start gap-2">
+      <Paragraph variant="small">Revoked keys are hidden from the list.</Paragraph>
+      <Button
+        variant="secondary/small"
+        onClick={() =>
+          setSearchParams((searchParams) => {
+            searchParams.set("showRevoked", "true");
+            return searchParams;
+          })
+        }
+      >
+        Show revoked keys
+      </Button>
     </div>
   );
 }

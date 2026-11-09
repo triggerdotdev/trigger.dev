@@ -23,6 +23,7 @@ import {
   grantsTaskAccess,
   initialApiKeyAccess,
   levelLabel,
+  OTHER_SCOPES_NOTE,
   scopesLostOnSave,
   type StoredApiKeyAccess,
   taskSelectionChange,
@@ -247,6 +248,13 @@ export function EditApiKeyAccessDialog({
               )}
             >
               <div className={cn("min-w-0 px-5 pb-6 pt-4", showAccessControls && "space-y-5")}>
+                {apiKey.unmatchedScopes && apiKey.unmatchedScopes.length > 0 ? (
+                  <Callout variant="warning" className={showAccessControls ? undefined : "mb-5"}>
+                    This key also has{" "}
+                    <span className="font-mono">{apiKey.unmatchedScopes.join(", ")}</span>.{" "}
+                    {OTHER_SCOPES_NOTE}
+                  </Callout>
+                ) : null}
                 <ApiKeyAccessFields access={access} availableTasks={availableTasks} />
               </div>
 

@@ -2,6 +2,7 @@ import { RadioGroup } from "@headlessui/react";
 import { animate, motion, useMotionValue } from "framer-motion";
 import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
+import { SimpleTooltip } from "./Tooltip";
 
 const sizes = {
   small: {
@@ -68,6 +69,8 @@ type Options = {
   label: ReactNode;
   value: string;
   disabled?: boolean;
+  /** Shown on hover, e.g. why a disabled option can't be picked. */
+  tooltip?: ReactNode;
 };
 
 type SegmentedControlProps = {
@@ -191,9 +194,22 @@ export default function SegmentedControl({
                     variantStyle.option
                   )}
                 >
-                  <div className="z-10 flex h-full w-full items-center justify-center">
-                    <RadioGroup.Label as="p">{option.label}</RadioGroup.Label>
-                  </div>
+                  {option.tooltip ? (
+                    <SimpleTooltip
+                      asChild
+                      button={
+                        <div className="z-10 flex h-full w-full items-center justify-center">
+                          <RadioGroup.Label as="p">{option.label}</RadioGroup.Label>
+                        </div>
+                      }
+                      content={option.tooltip}
+                      side="top"
+                    />
+                  ) : (
+                    <div className="z-10 flex h-full w-full items-center justify-center">
+                      <RadioGroup.Label as="p">{option.label}</RadioGroup.Label>
+                    </div>
+                  )}
                   {checked && (
                     <motion.div
                       style={{ left: pillLeft, right: pillRight }}

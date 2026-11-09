@@ -22,8 +22,9 @@ Custom access needs the same plan as the restricted access presets. A custom key
     **Deploy only** in **Add preset**. Adding a preset never removes access.
   </Step>
   <Step title="Adjust each area">
-    Each row is one area of the environment. Set it to **None**, **Read**, or **Read and write**
-    (some rows have their own levels, listed below). **Clear all** sets every row to **None**.
+    Each row is one area of the environment. Set it to **None**, **Read**, **Write**, **Read and
+    write**, or **Manage**, where the area has that level. **Tasks** has its own levels, listed
+    below. **Clear all** sets every row to **None**.
   </Step>
   <Step title="Check the summary and create the key">
     The panel beside the grid names the key's access, for example "Operator + Deploy only", and
@@ -38,28 +39,40 @@ Custom access needs the same plan as the restricted access presets. A custom key
 | **Tasks** | None, Read, Trigger, Read and trigger, Operate runs |
 | **Runs** | None, Read, Read and write |
 | **Batches** | None, Read |
+| **Large payloads** | None, Write |
 | **Queues** | None, Read, Read and write |
-| **Sessions** | None, Read, Read and write |
+| **Sessions** | None, Read, Read and write, Manage |
+| **Input streams** | None, Write, Read and write |
 | **Tagged runs** | None, Read |
 | **Errors** | None, Read, Read and write |
 | **Webhooks** | None, Read, Read and write |
-| **Waitpoints** | None, Read, Read and write |
+| **Waitpoints** | None, Read and write |
+| **Prompts** | None, Read, Read and write |
 | **Deployments** | None, Read, Read and write |
 | **Preview branches** | None, Manage |
-| **Environment variables** | None, Read, Read and write |
+| **Env vars** | None, Read, Read and write |
 
 Some levels need another area, and the grid sets it for you:
 
-- **Deployments: Read and write** needs **Environment variables: Read**, because deploys read the environment's variables while building.
-- Any **Sessions** level needs task trigger access (**Trigger**, **Read and trigger**, or **Operate runs** on all tasks), because sessions continue runs of any task.
+- **Deployments: Read and write** needs **Env vars: Read**, because deploys read the environment's variables while building.
+- **Sessions: Read and write** and **Sessions: Manage** need task trigger access (**Trigger**, **Read and trigger**, or **Operate runs** on all tasks), because sessions continue runs of any task. **Sessions: Read** doesn't.
+- **Input streams: Read and write** needs **Runs: Read and write** and **Waitpoints: Read and write**, because waiting on an input stream pauses the run on a waitpoint. **Write**, which only sends, needs neither.
 
-A deploy only writes environment variables when your build uses [`syncEnvVars`](/config/extensions/syncEnvVars) or another extension that syncs them. Only then does the key need **Environment variables: Read and write**. Without it, the deploy fails when it syncs.
+Some levels grant more than their name suggests:
 
-The **Operator** preset doesn't include **Waitpoints**. A backend or CI key that creates or completes [waitpoint tokens](/wait-for-token) with `wait.createToken()` or `wait.completeToken()` needs **Waitpoints: Read and write**. The public access token returned with each waitpoint token can complete that token without an API key.
+- **Large payloads: Write** lets the SDK upload a payload that's too large to send with the trigger request. Keys that trigger tasks with large payloads need it. A key can only read back payloads through the runs it can read. In the Development environment, large payload uploads still need a key with **No restrictions**.
+- **Sessions: Manage** also closes sessions and updates their metadata and tags.
+- **Prompts: Read and write** also changes prompt overrides and promotes versions.
+
+**Waitpoints** has no read-only level. Reading a waitpoint token returns its callback URL, which can complete the token, so reading waitpoints always comes with writing them.
+
+A deploy only writes environment variables when your build uses [`syncEnvVars`](/config/extensions/syncEnvVars) or another extension that syncs them. Only then does the key need **Env vars: Read and write**. Without it, the deploy fails when it syncs.
+
+A backend or CI key that creates or completes [waitpoint tokens](/wait-for-token) with `wait.createToken()` or `wait.completeToken()` needs **Waitpoints: Read and write**. The **Operator** preset includes it. The public access token returned with each waitpoint token can complete that token without an API key.
 
 ## Use the key from CI
 
-One key triggers a smoke test, waits for it, and deploys. Start from **Operator** and set **Deployments** to **Read and write** (the grid adds **Environment variables: Read**), or limit it to the smoke test task as shown in the next section. Raise **Environment variables** to **Read and write** only if the build syncs environment variables.
+One key triggers a smoke test, waits for it, and deploys. Start from **Operator** and set **Deployments** to **Read and write** (the grid adds **Env vars: Read**), or limit it to the smoke test task as shown in the next section. Raise **Env vars** to **Read and write** only if the build syncs environment variables.
 
 ```typescript ci/smoke-test.ts
 import { configure, runs, tasks } from "@trigger.dev/sdk";
@@ -89,7 +102,7 @@ With selected tasks:
 
 - The **Tasks** levels apply only to the selected tasks. Triggering any other task returns a 403.
 - At **Trigger**, the key can't read back the runs it triggers. **Read and trigger** lets it retrieve and poll runs of its selected tasks, and nothing else. **Operate runs** also lets it cancel and replay those runs.
-- **Sessions** is unavailable, because sessions can continue runs of any task.
+- **Sessions** and **Input streams** are unavailable, because they reach runs of any task.
 - Every other row applies to the whole environment, and the grid marks it **Applies to the whole environment**. Leave a row at **None** if the key should only reach its selected tasks.
 - **Deployments** applies to the whole environment too. A key that can deploy ships new code for every task, so selected tasks don't limit what a deploy can change.
 - Bulk replay needs trigger access to all tasks. A key limited to selected tasks replays runs one at a time.

@@ -12,3 +12,24 @@ export function apiKeyExpiryTimestamp(date: Date): Date {
 export function isApiKeyExpiryDayExpired(date: Date, now = new Date()): boolean {
   return apiKeyExpiryTimestamp(date).getTime() <= now.getTime();
 }
+
+/**
+ * The day a stored expiry ends on: "7 Feb 2027" for 2027-02-08T00:00Z, since keys expire at the
+ * end of the chosen UTC day. Undefined when the expiry isn't at a UTC midnight (set some other way).
+ */
+export function apiKeyExpiryEndDay(expiresAt: Date | string): string | undefined {
+  const time = new Date(expiresAt).getTime();
+  if (time % 86_400_000 !== 0) return undefined;
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(time - 86_400_000));
+}
+
+/** The expiry as the create dialog showed it: "7 Feb 2027 (end of day, UTC)". */
+export function apiKeyExpiryDayLabel(expiresAt: Date | string): string | undefined {
+  const day = apiKeyExpiryEndDay(expiresAt);
+  return day ? `${day} (end of day, UTC)` : undefined;
+}

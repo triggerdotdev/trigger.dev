@@ -218,7 +218,12 @@ export const FULL_ACCESS_PRESET_ID = "FULL_ACCESS";
 // declarations and in `buildJwtAbility`'s grammar. A plugin that gates
 // resources beyond this set can widen the union locally — do not add
 // non-public terms here.
-export type RbacScopeAction = "read" | "write" | "trigger" | "batchTrigger";
+//
+// `admin` here is the resource-level action (e.g. `admin:sessions`, which
+// closes sessions and updates their metadata). It is not the bare `admin`
+// scope that grants full access: `buildScope` always appends a type, so it
+// can't produce that.
+export type RbacScopeAction = "read" | "write" | "trigger" | "batchTrigger" | "admin";
 
 export type RbacScopeResourceType =
   | "runs"
@@ -232,6 +237,8 @@ export type RbacScopeResourceType =
   | "sessions"
   | "waitpoints"
   | "packets"
+  | "inputStreams"
+  | "prompts"
   | "tags"
   | "query"
   | "errors"

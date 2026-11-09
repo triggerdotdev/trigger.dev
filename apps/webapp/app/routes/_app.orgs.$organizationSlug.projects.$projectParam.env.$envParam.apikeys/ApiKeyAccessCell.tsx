@@ -4,30 +4,48 @@ import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { TruncatedText } from "~/components/primitives/TruncatedText";
 import { type ApiKeyAccessPreset, summarizeCapabilities } from "~/utils/apiKeyAccess";
 
+/** The inspector's access line: the preset name, or a Custom badge with a summary under it. */
 export function ApiKeyAccessLabel({
   label,
   isCustom = false,
+  isOrganizationPreset = false,
+  presetDeleted = false,
   capabilities,
+  unmatchedScopes,
   catalogue,
   presets,
   taskIdentifiers,
 }: {
   label: string;
   isCustom?: boolean;
+  isOrganizationPreset?: boolean;
+  presetDeleted?: boolean;
   capabilities?: ApiKeyCapabilityMap;
+  unmatchedScopes?: string[];
   catalogue?: ApiKeyCapabilityCatalogue | null;
   presets?: ApiKeyAccessPreset[] | null;
   taskIdentifiers?: string[];
 }) {
-  if (!isCustom) return <span>{label}</span>;
+  if (!isCustom) {
+    return (
+      <span className="inline-flex items-baseline gap-1.5">
+        {label}
+        {isOrganizationPreset ? <span className="text-xs text-text-dimmed">Org preset</span> : null}
+      </span>
+    );
+  }
   const summary =
     catalogue && capabilities
-      ? summarizeCapabilities(catalogue, capabilities, presets, taskIdentifiers)
+      ? summarizeCapabilities(catalogue, capabilities, presets, taskIdentifiers, unmatchedScopes)
       : undefined;
   return (
-    <span className="inline-flex items-center gap-1.5">
-      <Badge variant="extra-small">Custom</Badge>
-      {summary && !summary.listsRows ? summary.text : null}
+    <span className="flex flex-col gap-1">
+      <span className="inline-flex items-center gap-1.5">
+        <Badge variant="extra-small">Custom</Badge>
+        {presetDeleted ? <span className="text-xs">(its preset was deleted)</span> : null}
+        {summary && !summary.listsRows ? summary.text : null}
+      </span>
+      {summary?.basedOn ? <span className="text-xs">{summary.basedOn}</span> : null}
     </span>
   );
 }
@@ -40,6 +58,7 @@ export function ApiKeyAccessCell({
   capabilities,
   catalogue,
   presets,
+  unmatchedScopes,
   hasDrift = false,
 }: {
   label: string;
@@ -47,6 +66,7 @@ export function ApiKeyAccessCell({
   usesTaskSelection?: boolean;
   isCustom?: boolean;
   capabilities?: ApiKeyCapabilityMap;
+  unmatchedScopes?: string[];
   catalogue?: ApiKeyCapabilityCatalogue | null;
   presets?: ApiKeyAccessPreset[] | null;
   hasDrift?: boolean;
@@ -55,7 +75,7 @@ export function ApiKeyAccessCell({
   // tooltip, so a long list can't push it out of view.
   const summary =
     isCustom && catalogue && capabilities
-      ? summarizeCapabilities(catalogue, capabilities, presets)
+      ? summarizeCapabilities(catalogue, capabilities, presets, undefined, unmatchedScopes)
       : undefined;
   const text = isCustom ? (summary && !summary.listsRows ? summary.text : undefined) : label;
 

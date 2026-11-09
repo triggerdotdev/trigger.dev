@@ -24,6 +24,7 @@ import {
 import { RadioButtonCircle } from "~/components/primitives/RadioButton";
 import SegmentedControl from "~/components/primitives/SegmentedControl";
 import { Select, SelectItem } from "~/components/primitives/Select";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import {
   type CapabilityPreset,
   capabilityLabel,
@@ -31,7 +32,9 @@ import {
   customCapabilitiesAfterChange,
   customKeyUsesSelectedTasks,
   isGranted,
+  OTHER_SCOPES_NOTE,
   type Presets,
+  requirementReason,
   taskAccessAfterPreset,
   type TaskScope,
 } from "~/utils/apiKeyAccess";
@@ -66,6 +69,7 @@ export function CapabilityList({
   unmatchedScopes,
   showScopes = false,
   taskIdentifiers,
+  allTasks = false,
   notes,
 }: {
   catalogue: ApiKeyCapabilityCatalogue;
@@ -75,6 +79,8 @@ export function CapabilityList({
   unmatchedScopes?: string[];
   showScopes?: boolean;
   taskIdentifiers?: string[];
+  /** Name every selected task on the Tasks row instead of the first two and a count. */
+  allTasks?: boolean;
   notes?: Record<string, ReactNode>;
 }) {
   const rows = catalogue.capabilities
@@ -106,7 +112,7 @@ export function CapabilityList({
                 tone === "none" ? "text-text-dimmed" : "text-text-bright"
               )}
             >
-              {capabilityLabel(capability, taskIdentifiers)}
+              {capabilityLabel(capability, taskIdentifiers, { allTasks })}
             </span>
             <span className="whitespace-nowrap text-xs text-text-dimmed">
               {fullAccess ? "Full access" : (level?.label ?? "None")}
@@ -139,6 +145,7 @@ export function CapabilityList({
       {unmatchedScopes && unmatchedScopes.length > 0 ? (
         <li className="border-t border-grid-dimmed py-1.5">
           <div className="text-xs text-text-bright">Other scopes</div>
+          <div className="mt-0.5 text-xs text-text-dimmed">{OTHER_SCOPES_NOTE}</div>
           <div className="mt-1 flex flex-col gap-0.5">
             {unmatchedScopes.map((scope) => (
               <code key={scope} className="break-all font-mono text-xxs text-text-dimmed">
@@ -154,7 +161,7 @@ export function CapabilityList({
 
 // Access levels shown as columns of the custom access table, in order. An area with any other
 // level (Tasks) keeps a segmented control above the table.
-const TABLE_LEVEL_IDS = [NO_ACCESS_LEVEL_ID, "read", "readWrite", "manage"];
+const TABLE_LEVEL_IDS = [NO_ACCESS_LEVEL_ID, "read", "write", "readWrite", "manage"];
 
 // A radio that can't be chosen: dashed outline, no fill, faded, and a grey dot when it's the
 // current level, so it doesn't read as a choice.
@@ -167,7 +174,7 @@ const DISABLED_RADIO = {
 
 /**
  * The levels an area is limited to because of other areas' current levels, e.g. Deployments read
- * and write needs Environment variables read and write. Areas with no such limit are absent.
+ * and write needs Env vars read. Areas with no such limit are absent.
  */
 function requiredLevels(
   catalogue: ApiKeyCapability[],
@@ -250,34 +257,29 @@ export function CustomCapabilityEditor({
     const selection = capability.taskSelection;
     const granted = isGranted(capabilities, capability.id);
     const unavailable = usesSelectedTasks && selection?.kind === "unavailable";
-    const notes: CapabilityNote[] = [
-      ...(unavailable
-        ? [
-            {
-              key: "unavailable",
-              text: `Unavailable with selected tasks. ${selection.reason}`,
-              locked: true,
-            },
-          ]
-        : []),
-      ...(usesSelectedTasks && !selection && granted
+    const notes: CapabilityNote[] =
+      usesSelectedTasks && !selection && granted
         ? [{ key: "whole-environment", text: "Applies to the whole environment" }]
-        : []),
-      ...requirements
-        .filter((requirement) => requirement.capabilityId === capability.id)
-        .map((note) => ({
-          key: `needed-by-${note.requiredBy}`,
-          locked: true,
-          text: `Needed by ${
-            catalogue.capabilities.find((c) => c.id === note.requiredBy)?.label ?? note.requiredBy
-          }. ${note.note}`,
-        })),
-    ];
+        : [];
+    // Why some levels can't be picked, shown on the lock and the disabled levels.
+    const lockReason = unavailable
+      ? `Unavailable with selected tasks. ${selection.reason}`
+      : requirements
+          .filter((requirement) => requirement.capabilityId === capability.id)
+          .map((requirement) =>
+            requirementReason(
+              catalogue.capabilities,
+              capabilities,
+              requirement.requiredBy,
+              capability
+            )
+          )
+          .join(" ") || undefined;
     const allowed = allowedLevels.get(capability.id);
     // A level can't be picked when task selection rules the area out, or when another area's level
     // needs this one at a different level (the editor would change it straight back).
     const canPick = (levelId: string) => !unavailable && (!allowed || allowed.has(levelId));
-    return { selection, granted, unavailable, notes, canPick };
+    return { selection, granted, unavailable, notes, lockReason, canPick };
   };
   const setLevel = (capability: ApiKeyCapability, levelId: string) =>
     apply({ ...capabilities, [capability.id]: levelId });
@@ -319,7 +321,8 @@ export function CustomCapabilityEditor({
       </div>
       <div className="rounded-md border border-grid-bright">
         {otherCapabilities.map((capability) => {
-          const { selection, granted, unavailable, notes, canPick } = details(capability);
+          const { selection, granted, unavailable, notes, lockReason, canPick } =
+            details(capability);
           const control = (
             <SegmentedControl
               name={`capability-${capability.id}`}
@@ -330,14 +333,18 @@ export function CustomCapabilityEditor({
                 label: level.label,
                 value: level.id,
                 disabled: !canPick(level.id),
+                tooltip: canPick(level.id) ? undefined : lockReason,
               }))}
               onChange={(levelId) => setLevel(capability, levelId)}
             />
           );
           const label = (
-            <Paragraph variant={unavailable ? "small" : "small/bright"}>
-              {capability.label}
-            </Paragraph>
+            <div className="flex items-center gap-1">
+              <Paragraph variant={unavailable ? "small" : "small/bright"}>
+                {capability.label}
+              </Paragraph>
+              {lockReason ? <LockTooltip reason={lockReason} /> : null}
+            </div>
           );
           return (
             <div key={capability.id} className="border-b border-grid-dimmed px-3 py-2.5">
@@ -389,7 +396,7 @@ export function CustomCapabilityEditor({
               ))}
             </div>
             {tableCapabilities.map((capability) => {
-              const { unavailable, notes, canPick } = details(capability);
+              const { unavailable, notes, lockReason, canPick } = details(capability);
               const value = capabilities[capability.id] ?? NO_ACCESS_LEVEL_ID;
               const labelId = `api-key-capability-${capability.id}`;
               return (
@@ -404,23 +411,27 @@ export function CustomCapabilityEditor({
                   style={tableGrid}
                 >
                   <div className="min-w-0 py-2">
-                    <Paragraph id={labelId} variant={unavailable ? "small" : "small/bright"}>
-                      {capability.label}
-                    </Paragraph>
+                    <div className="flex items-center gap-1">
+                      <Paragraph id={labelId} variant={unavailable ? "small" : "small/bright"}>
+                        {capability.label}
+                      </Paragraph>
+                      {lockReason ? <LockTooltip reason={lockReason} /> : null}
+                    </div>
                     <CapabilityNotes notes={notes} className="pt-0.5" />
                   </div>
                   {columns.map((column) => {
                     const level = capability.levels.find((l) => l.id === column.id);
                     const disabled = level ? !canPick(level.id) : true;
-                    return level ? (
+                    if (!level) return <span key={column.id} />;
+                    const item = (
                       <RadioGroupPrimitive.Item
                         key={column.id}
                         value={level.id}
                         disabled={disabled}
                         aria-label={`${capability.label}: ${level.label}`}
                         className={cn(
-                          "flex items-center justify-center self-stretch rounded focus-custom",
-                          disabled ? "cursor-not-allowed" : "cursor-pointer"
+                          "flex w-full items-center justify-center self-stretch rounded focus-custom",
+                          disabled ? "pointer-events-none" : "cursor-pointer"
                         )}
                       >
                         <RadioButtonCircle
@@ -428,8 +439,30 @@ export function CustomCapabilityEditor({
                           {...(disabled ? DISABLED_RADIO : {})}
                         />
                       </RadioGroupPrimitive.Item>
+                    );
+                    // A disabled radio gets no pointer events, so the wrapper shows why on hover.
+                    return disabled && lockReason ? (
+                      <SimpleTooltip
+                        key={column.id}
+                        asChild
+                        button={
+                          <span className="flex cursor-not-allowed self-stretch justify-center">
+                            {item}
+                          </span>
+                        }
+                        content={lockReason}
+                        side="top"
+                      />
                     ) : (
-                      <span key={column.id} />
+                      <span
+                        key={column.id}
+                        className={cn(
+                          "flex self-stretch justify-center",
+                          disabled && "cursor-not-allowed"
+                        )}
+                      >
+                        {item}
+                      </span>
                     );
                   })}
                 </RadioGroupPrimitive.Root>
@@ -459,8 +492,7 @@ function Reveal({ show, children }: { show: boolean; children: ReactNode }) {
   );
 }
 
-/** `locked`: the note explains why some of this area's levels are disabled. */
-type CapabilityNote = { key: string; text: string; locked?: boolean };
+type CapabilityNote = { key: string; text: string };
 
 /** Notes under an area's name. Each one opens and closes on its own. */
 function CapabilityNotes({ notes, className }: { notes: CapabilityNote[]; className?: string }) {
@@ -468,15 +500,30 @@ function CapabilityNotes({ notes, className }: { notes: CapabilityNote[]; classN
     <AnimatePresence initial={false}>
       {notes.map((note) => (
         <motion.div key={note.key} {...REVEAL_MOTION}>
-          <div className={cn("flex items-start gap-1.5", className)}>
-            {note.locked ? (
-              <LockClosedIcon className="mt-px size-3 shrink-0 text-text-dimmed" aria-hidden />
-            ) : null}
+          <div className={className}>
             <Hint>{note.text}</Hint>
           </div>
         </motion.div>
       ))}
     </AnimatePresence>
+  );
+}
+
+/** A lock after an area's name; hover or focus shows why some of its levels are locked. */
+function LockTooltip({ reason }: { reason: string }) {
+  return (
+    <SimpleTooltip
+      tabbable
+      button={
+        <>
+          <LockClosedIcon className="size-3 text-text-dimmed" aria-hidden />
+          <span className="sr-only">{reason}</span>
+        </>
+      }
+      buttonClassName="flex items-center rounded focus-custom"
+      content={reason}
+      side="top"
+    />
   );
 }
 

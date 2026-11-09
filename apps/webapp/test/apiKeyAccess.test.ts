@@ -10,8 +10,11 @@ import {
   customCapabilitiesAfterChange,
   customKeyUsesSelectedTasks,
   driftLine,
+  driftSummary,
   grantsTaskAccess,
+  OTHER_SCOPES_ONLY_LABEL,
   initialApiKeyAccess,
+  requirementReason,
   resolvePresetSelection,
   scopesLostOnSave,
   summarizeCapabilities,
@@ -126,6 +129,42 @@ describe("summarizeCapabilities", () => {
     expect(summarizeCapabilities(catalogue, { tasks: "none" }, presets)).toEqual({
       text: "No access",
     });
+  });
+
+  // Catches: a key whose only scopes are ones no level covers being labelled "No access".
+  it("never says No access when the key holds scopes outside the levels", () => {
+    expect(summarizeCapabilities(catalogue, {}, presets, undefined, ["read:waitpoints"])).toEqual({
+      text: OTHER_SCOPES_ONLY_LABEL,
+    });
+  });
+
+  // Catches: a custom key built on a preset giving no summary, so the reader adds up the rows.
+  it("names the largest preset the key contains and what it adds", () => {
+    expect(
+      summarizeCapabilities(
+        catalogue,
+        { tasks: "read", runs: "read", deployments: "read" },
+        presets
+      ).basedOn
+    ).toBe("Observer, plus Deployments: Read");
+    expect(
+      summarizeCapabilities(catalogue, { tasks: "read", runs: "readWrite" }, presets).basedOn
+    ).toBe("Observer, plus Runs: Read and write");
+    expect(
+      summarizeCapabilities(catalogue, { runs: "readWrite" }, presets).basedOn
+    ).toBeUndefined();
+  });
+});
+
+describe("driftSummary", () => {
+  // Catches: a raised level described as a newly granted area.
+  it("tells new areas apart from raised levels", () => {
+    expect(
+      driftSummary(catalogue, "Observer", [
+        { capabilityId: "deployments", from: "none", to: "read", gains: true, loses: false },
+        { capabilityId: "runs", from: "read", to: "readWrite", gains: true, loses: false },
+      ])
+    ).toBe("Observer now adds Deployments, and raises Runs to Read and write.");
   });
 });
 
@@ -347,5 +386,50 @@ describe("resolvePresetSelection", () => {
     expect(resolvePresetSelection(null, chosen, "FULL_ACCESS")).toEqual({
       presetId: "FULL_ACCESS",
     });
+  });
+});
+
+describe("requirementReason", () => {
+  const streams: ApiKeyCapability = {
+    id: "inputStreams",
+    label: "Input streams",
+    levels: [
+      none,
+      {
+        id: "readWrite",
+        label: "Read and write",
+        scopes: ["read:inputStreams", "write:inputStreams"],
+        requires: [{ capabilityId: "runs", levelIds: ["readWrite"], note: "" }],
+      },
+    ],
+  };
+  const sessions: ApiKeyCapability = {
+    id: "sessions",
+    label: "Sessions",
+    levels: [
+      none,
+      {
+        id: "manage",
+        label: "Manage",
+        scopes: ["admin:sessions"],
+        requires: [{ capabilityId: "tasks", levelIds: ["trigger", "readTrigger"], note: "" }],
+      },
+    ],
+  };
+  const withRequirements = [...capabilities, streams, sessions];
+
+  it("names the level that locks an area, and the smallest level it needs", () => {
+    // Catches: a lock tooltip that names the wrong area or level, or reads as a paragraph.
+    expect(
+      requirementReason(
+        withRequirements,
+        { inputStreams: "readWrite" },
+        "inputStreams",
+        capabilities[1]!
+      )
+    ).toBe("Input streams: Read and write needs Runs: Read and write.");
+    expect(
+      requirementReason(withRequirements, { sessions: "manage" }, "sessions", capabilities[0]!)
+    ).toBe("Sessions: Manage needs Tasks: Trigger or more.");
   });
 });

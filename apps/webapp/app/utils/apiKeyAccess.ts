@@ -126,24 +126,39 @@ export function isGranted(capabilities: ApiKeyCapabilityMap, id: string) {
   return (capabilities[id] ?? NO_ACCESS_LEVEL_ID) !== NO_ACCESS_LEVEL_ID;
 }
 
-export function capabilityLabel(capability: ApiKeyCapability, taskIdentifiers?: string[]) {
+export function capabilityLabel(
+  capability: ApiKeyCapability,
+  taskIdentifiers?: string[],
+  { allTasks = false }: { allTasks?: boolean } = {}
+) {
   return capability.taskSelection?.kind === "scoped" &&
     taskIdentifiers &&
     taskIdentifiers.length > 0
-    ? `${capability.label} (${taskListLabel(taskIdentifiers)})`
+    ? `${capability.label} (${allTasks ? taskIdentifiers.join(", ") : taskListLabel(taskIdentifiers)})`
     : capability.label;
 }
+
+/** Shown instead of "No access" when a key's only scopes are ones no access level covers. */
+export const OTHER_SCOPES_ONLY_LABEL = "Scopes outside the levels";
+
+export const OTHER_SCOPES_NOTE = "Not covered by any level. Editing access removes them.";
+
+// More extra areas than this read better as a count than as a list.
+const MAX_LISTED_EXTRAS = 3;
 
 export function summarizeCapabilities(
   catalogue: ApiKeyCapabilityCatalogue,
   capabilities: ApiKeyCapabilityMap,
   presets: Presets,
-  taskIdentifiers?: string[]
-): { match?: string; text: string; listsRows?: boolean } {
+  taskIdentifiers?: string[],
+  unmatchedScopes?: string[]
+): { match?: string; text: string; listsRows?: boolean; basedOn?: string } {
   const granted = catalogue.capabilities.filter((capability) =>
     isGranted(capabilities, capability.id)
   );
-  if (granted.length === 0) return { text: "No access" };
+  if (granted.length === 0) {
+    return { text: unmatchedScopes?.length ? OTHER_SCOPES_ONLY_LABEL : "No access" };
+  }
 
   const scopedIds = new Set(
     catalogue.capabilities
@@ -182,6 +197,7 @@ export function summarizeCapabilities(
 
   return {
     listsRows: true,
+    basedOn: basedOnPreset(catalogue, capabilities, contained, labelFor, taskIdentifiers),
     text: granted
       .map((capability) => {
         const level = capability.levels.find((l) => l.id === capabilities[capability.id]);
@@ -189,6 +205,89 @@ export function summarizeCapabilities(
       })
       .join(", "),
   };
+}
+
+/**
+ * The built-in preset covering the most areas, plus what the key adds on top, e.g. "Operator, plus
+ * Deployments: Read and write and Env vars: Read".
+ */
+function basedOnPreset(
+  catalogue: ApiKeyCapabilityCatalogue,
+  capabilities: ApiKeyCapabilityMap,
+  contained: CapabilityPreset[],
+  labelFor: (preset: CapabilityPreset) => string,
+  taskIdentifiers?: string[]
+): string | undefined {
+  const grantedCount = (map: ApiKeyCapabilityMap) =>
+    catalogue.capabilities.filter((capability) => isGranted(map, capability.id)).length;
+  const base = contained.reduce<CapabilityPreset | undefined>(
+    (best, preset) =>
+      !best || grantedCount(preset.capabilities) > grantedCount(best.capabilities) ? preset : best,
+    undefined
+  );
+  if (!base) return undefined;
+
+  const extras = catalogue.capabilities.flatMap((capability) => {
+    const levelId = capabilities[capability.id] ?? NO_ACCESS_LEVEL_ID;
+    if (levelId === (base.capabilities[capability.id] ?? NO_ACCESS_LEVEL_ID)) return [];
+    const level = capability.levels.find((l) => l.id === levelId);
+    return [`${capabilityLabel(capability, taskIdentifiers)}: ${level?.label ?? levelId}`];
+  });
+  // The base must keep at least one of its areas as it is, or naming it says nothing.
+  const keepsBaseArea = catalogue.capabilities.some(
+    (capability) =>
+      isGranted(base.capabilities, capability.id) &&
+      capabilities[capability.id] === base.capabilities[capability.id]
+  );
+  if (extras.length === 0 || !keepsBaseArea) return undefined;
+  return extras.length > MAX_LISTED_EXTRAS
+    ? `${labelFor(base)}, plus ${extras.length} more areas`
+    : `${labelFor(base)}, plus ${listNames(extras)}`;
+}
+
+function listNames(names: string[]): string {
+  if (names.length <= 1) return names.join("");
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/**
+ * What the key's preset grants today that the key doesn't, with new areas and raised levels told
+ * apart: "Operator now adds Prompts, and raises Sessions to Manage."
+ */
+export function driftSummary(
+  catalogue: ApiKeyCapabilityCatalogue,
+  presetLabel: string,
+  drift: ApiKeyCapabilityDifference[]
+): string {
+  if (drift.some((difference) => difference.loses)) {
+    return `${presetLabel} now grants ${drift
+      .map(
+        (difference) =>
+          `${capabilityName(catalogue, difference.capabilityId)}: ${levelLabel(
+            catalogue,
+            difference.capabilityId,
+            difference.to
+          )} (was ${levelLabel(catalogue, difference.capabilityId, difference.from)})`
+      )
+      .join(", ")}.`;
+  }
+  const isNew = (difference: ApiKeyCapabilityDifference) => difference.from === NO_ACCESS_LEVEL_ID;
+  const added = drift.filter(isNew);
+  const raised = drift.filter((difference) => !isNew(difference));
+  const parts = [
+    added.length > 0
+      ? `adds ${listNames(added.map((d) => capabilityName(catalogue, d.capabilityId)))}`
+      : undefined,
+    raised.length > 0
+      ? `raises ${listNames(
+          raised.map(
+            (d) =>
+              `${capabilityName(catalogue, d.capabilityId)} to ${levelLabel(catalogue, d.capabilityId, d.to)}`
+          )
+        )}`
+      : undefined,
+  ].filter((part): part is string => part !== undefined);
+  return `${presetLabel} now ${parts.join(", and ")}.`;
 }
 
 export function customKeyUsesSelectedTasks(
@@ -303,4 +402,26 @@ export function driftLine(
   const to = levelLabel(catalogue, difference.capabilityId, difference.to);
   const name = capabilityName(catalogue, difference.capabilityId);
   return `${name}: ${from}, preset now grants ${to}`;
+}
+
+/**
+ * One sentence naming the level that locks an area, e.g. "Input streams: Read and write needs
+ * Runs: Read and write." When several levels would do, it names the smallest and adds "or more".
+ */
+export function requirementReason(
+  catalogue: ApiKeyCapability[],
+  capabilities: ApiKeyCapabilityMap,
+  requiredById: string,
+  target: ApiKeyCapability
+): string {
+  const requiredBy = catalogue.find((capability) => capability.id === requiredById);
+  const level = requiredBy?.levels.find((l) => l.id === capabilities[requiredById]);
+  const levelIds =
+    level?.requires?.find((requirement) => requirement.capabilityId === target.id)?.levelIds ?? [];
+  const acceptable = target.levels.filter((l) => levelIds.includes(l.id));
+  const cause = requiredBy && level ? `${requiredBy.label}: ${level.label}` : requiredById;
+  const needed = acceptable[0]
+    ? `${target.label}: ${acceptable[0].label}${acceptable.length > 1 ? " or more" : ""}`
+    : target.label;
+  return `${cause} needs ${needed}.`;
 }

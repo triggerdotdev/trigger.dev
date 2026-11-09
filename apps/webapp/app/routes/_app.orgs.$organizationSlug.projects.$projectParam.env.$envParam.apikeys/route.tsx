@@ -61,6 +61,7 @@ import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-
 import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
 import { uneditableApiKeyMessage } from "~/utils/apiKeyAccess";
+import { apiKeyExpiryEndDay } from "~/utils/apiKeyExpiry";
 import { secretKeyPlaceholder } from "~/utils/apiKeyPrefix";
 import { ApiKeyAccessCell } from "./ApiKeyAccessCell";
 import {
@@ -349,7 +350,10 @@ export default function Page() {
                       </div>
 
                       <Table containerClassName="min-h-0 flex-1">
-                        <ApiKeyTableHeader showRevoked={showRevoked} />
+                        <ApiKeyTableHeader
+                          showRevoked={showRevoked}
+                          showSecretKey={!isShowingInspector}
+                        />
                         <TableBody>
                           {rootApiKey ? (
                             <TableRow isSelected={isRootSelected}>
@@ -363,26 +367,28 @@ export default function Page() {
                                   <LegacyBadge tooltip="Replace with API keys you can revoke one at a time." />
                                 </div>
                               </TableCell>
-                              <TableCell isSelected={isRootSelected}>
-                                {/* -my-1: the copy button is taller than a line of text, so this
-                                    keeps the row the same height as the others. */}
-                                <div className="-my-1 flex items-center gap-1">
-                                  <span className="font-mono">{rootApiKey.obfuscated}</span>
-                                  {rootApiKey.value ? (
-                                    <CopyButton
-                                      value={rootApiKey.value}
-                                      variant="icon"
-                                      size="small"
-                                    />
-                                  ) : (
-                                    <InfoIconTooltip
-                                      disableHoverableContent
-                                      content={`Root keys are being phased out. Create a new API key instead${chooseAccessHint}.`}
-                                      contentClassName="max-w-xs"
-                                    />
-                                  )}
-                                </div>
-                              </TableCell>
+                              {isShowingInspector ? null : (
+                                <TableCell isSelected={isRootSelected}>
+                                  {/* -my-1: the copy button is taller than a line of text, so this
+                                      keeps the row the same height as the others. */}
+                                  <div className="-my-1 flex items-center gap-1">
+                                    <span className="font-mono">{rootApiKey.obfuscated}</span>
+                                    {rootApiKey.value ? (
+                                      <CopyButton
+                                        value={rootApiKey.value}
+                                        variant="icon"
+                                        size="small"
+                                      />
+                                    ) : (
+                                      <InfoIconTooltip
+                                        disableHoverableContent
+                                        content={`Root keys are being phased out. Create a new API key instead${chooseAccessHint}.`}
+                                        contentClassName="max-w-xs"
+                                      />
+                                    )}
+                                  </div>
+                                </TableCell>
+                              )}
                               <TableCell
                                 to={rowPath(ROOT_API_KEY_PARAM)}
                                 isSelected={isRootSelected}
@@ -487,9 +493,11 @@ export default function Page() {
                                     className="block max-w-[14rem]"
                                   />
                                 </TableCell>
-                                <TableCell to={path} isSelected={isSelected}>
-                                  <span className="font-mono">{apiKey.obfuscated}</span>
-                                </TableCell>
+                                {isShowingInspector ? null : (
+                                  <TableCell to={path} isSelected={isSelected}>
+                                    <span className="font-mono">{apiKey.obfuscated}</span>
+                                  </TableCell>
+                                )}
                                 <TableCell to={path} isSelected={isSelected}>
                                   {apiKey.revokedAt ? (
                                     <SimpleTooltip
@@ -519,6 +527,7 @@ export default function Page() {
                                     usesTaskSelection={apiKey.access.usesTaskSelection}
                                     isCustom={apiKey.access.isCustom}
                                     capabilities={apiKey.access.capabilities}
+                                    unmatchedScopes={apiKey.access.unmatchedScopes}
                                     catalogue={capabilityCatalogue}
                                     presets={presets}
                                     hasDrift={apiKey.access.drift.length > 0}
@@ -543,11 +552,11 @@ export default function Page() {
                                   />
                                 </TableCell>
                                 <TableCell to={path} isSelected={isSelected}>
-                                  {apiKey.expiresAt ? (
-                                    <DateTime date={apiKey.expiresAt} includeTime={false} />
-                                  ) : (
-                                    "Never"
-                                  )}
+                                  {apiKey.expiresAt
+                                    ? (apiKeyExpiryEndDay(apiKey.expiresAt) ?? (
+                                        <DateTime date={apiKey.expiresAt} includeTime={false} />
+                                      ))
+                                    : "Never"}
                                 </TableCell>
                                 {showRevoked ? (
                                   <TableCell to={path} isSelected={isSelected}>
@@ -590,6 +599,13 @@ export default function Page() {
                                           canWrite={canWriteApiKeys}
                                         />
                                       </>
+                                    ) : status === "EXPIRED" ? (
+                                      // Expired keys can't be changed, but revoking takes them off the list.
+                                      <RevokeApiKeyButton
+                                        id={apiKey.id}
+                                        name={apiKey.name}
+                                        canWrite={canWriteApiKeys}
+                                      />
                                     ) : null
                                   }
                                 />
@@ -598,7 +614,9 @@ export default function Page() {
                           })}
 
                           {showCreateApiKeyPrompt ? (
-                            <TableBlankRow colSpan={showRevoked ? 11 : 10}>
+                            <TableBlankRow
+                              colSpan={(showRevoked ? 11 : 10) - (isShowingInspector ? 1 : 0)}
+                            >
                               <div className="flex flex-col items-center justify-center gap-y-4 py-8">
                                 <div className="flex flex-col items-center gap-y-1">
                                   <Header2>Create an API key for your backend</Header2>
@@ -686,12 +704,19 @@ export default function Page() {
   );
 }
 
-function ApiKeyTableHeader({ showRevoked }: { showRevoked: boolean }) {
+function ApiKeyTableHeader({
+  showRevoked,
+  showSecretKey,
+}: {
+  showRevoked: boolean;
+  /** Hidden while the inspector is open, which shows it, so Access stays in view. */
+  showSecretKey: boolean;
+}) {
   return (
     <TableHeader>
       <TableRow>
         <TableHeaderCell>Name</TableHeaderCell>
-        <TableHeaderCell>Secret key</TableHeaderCell>
+        {showSecretKey ? <TableHeaderCell>Secret key</TableHeaderCell> : null}
         <TableHeaderCell>Status</TableHeaderCell>
         <TableHeaderCell>Access</TableHeaderCell>
         <TableHeaderCell>Allowed IPs</TableHeaderCell>

@@ -397,15 +397,12 @@ function CustomScopePanel({
   return (
     <aside className="border-t border-grid-bright bg-background-deep lg:border-l lg:border-t-0">
       <div className="space-y-3 px-5 pb-6 pt-4 lg:sticky lg:top-0">
-        <div className="rounded-md border border-grid-bright bg-background-bright/40 px-3 py-2 text-xs">
-          {summary.match ? (
-            <span className="text-text-bright">
-              Matches preset: <span className="font-medium">{summary.match}</span>
-            </span>
-          ) : (
-            <span className="text-text-bright">{summary.text}</span>
-          )}
-        </div>
+        {/* Without a match the list below already says what the key gets. */}
+        {summary.match ? (
+          <p className="text-xs text-text-dimmed">
+            Matches preset: <span className="font-medium">{summary.match}</span>
+          </p>
+        ) : null}
         <CapabilityList
           catalogue={catalogue}
           capabilities={capabilities}

@@ -177,6 +177,13 @@ export class ApiKeysPresenter {
             presetId,
             label: preset?.label ?? (isCustom ? "Custom" : "Full access"),
             isCustom,
+            isOrganizationPreset: preset?.source === "organization",
+            // A saved preset the key was made from has since been deleted.
+            presetDeleted:
+              presets !== null &&
+              presetId !== null &&
+              presetId !== CUSTOM_API_KEY_PRESET_ID &&
+              preset === undefined,
             taskIdentifiers: description.taskIdentifiers,
             fullAccess: isFullAccess,
             capabilities: description.capabilities,
