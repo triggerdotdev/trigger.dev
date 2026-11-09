@@ -40,7 +40,9 @@ const HEALTH_CONFIG: ChartConfig = {
 
 const HEALTH_LABELS: Record<number, string> = { 0: "Degraded", 1: "Healthy" };
 
-export function healthPoints(bands: HealthBandRow[], current?: 1 | 0 | null) {
+export type HealthEdge = { from?: number; until?: number };
+
+export function healthPoints(bands: HealthBandRow[], current?: 1 | 0 | null, edge?: HealthEdge) {
   const points = bands.map((b) => ({
     bucket: b.bucket,
     health: b.healthy ? 1 : b.degraded ? 0 : null,
@@ -50,9 +52,12 @@ export function healthPoints(bands: HealthBandRow[], current?: 1 | 0 | null) {
     const width =
       points.length >= 2 ? last.bucket - points[points.length - 2]!.bucket : HEALTH_BUCKET_MS;
     points.push({
-      bucket: last.bucket + width,
+      bucket: edge?.until ?? last.bucket + width,
       health: current === undefined ? last.health : current,
     });
+  }
+  if (edge?.from !== undefined && points.length >= 1) {
+    points.unshift({ bucket: edge.from, health: null });
   }
   return points;
 }
@@ -75,9 +80,10 @@ export function healthAxis(
   raisedAt?: Date | null,
   current?: 1 | 0 | null,
   timeZone?: string,
-  compact = false
+  compact = false,
+  edge?: HealthEdge
 ) {
-  const data = healthPoints(bands, current);
+  const data = healthPoints(bands, current, edge);
   const { tickFormatter, tooltipLabelFormatter } = buildActivityTimeAxis(
     data,
     undefined,
@@ -89,14 +95,20 @@ export function healthAxis(
   const marker = compact ? raisedMarker(bands, raisedAt, timeZone) : undefined;
   const ticks = marker
     ? compactRaiseTicks(
-        bands.map((band) => band.bucket),
+        [...(edge?.from !== undefined ? [edge.from] : []), ...bands.map((band) => band.bucket)],
         undefined,
         marker
       )
     : raiseTick === undefined
       ? undefined
       : dropTicksNearRaise(
-          [...new Set([bands[0]!.bucket, raiseTick, bands[bands.length - 1]!.bucket])],
+          [
+            ...new Set([
+              edge?.from ?? bands[0]!.bucket,
+              raiseTick,
+              bands[bands.length - 1]!.bucket,
+            ]),
+          ],
           raiseTick
         );
   return {
@@ -114,12 +126,14 @@ export function healthAxis(
 
 export function HealthActivityChart({
   bands,
+  edge,
   raisedAt,
   current,
   timeZone,
   compact = false,
 }: {
   bands: HealthBandRow[];
+  edge?: HealthEdge;
   raisedAt?: Date | null;
   current?: 1 | 0 | null;
   timeZone?: string;
@@ -132,7 +146,7 @@ export function HealthActivityChart({
     ticks,
     tickFormatter,
     tooltipLabelFormatter: timeLabel,
-  } = healthAxis(bands, raisedAt, current, timeZone, compact);
+  } = healthAxis(bands, raisedAt, current, timeZone, compact, edge);
   const lastBucket = bands[bands.length - 1]?.bucket ?? 0;
   const tooltipLabelFormatter = healthTooltipLabel(timeLabel, lastBucket, current);
   const label = (value: number) => HEALTH_LABELS[value] ?? "";

@@ -26,6 +26,7 @@ export function tileHasData(tile: GroupMemberTile): boolean {
   if (tile.alert.kind === "state") {
     return (
       tile.healthBands.some((b) => b.healthy || b.degraded) ||
+      tile.componentSeries.some((s) => s.points.some((p) => typeof p.value === "number")) ||
       tile.limitTiles.some((t) => !t.failed && hasTileData(t.points))
     );
   }

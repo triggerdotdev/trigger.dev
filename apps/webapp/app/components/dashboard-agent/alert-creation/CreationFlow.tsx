@@ -5,6 +5,7 @@ import {
   capabilityParams,
   conditionKindFor,
   isLimitCondition,
+  isPickComposite,
   defaultWindowMinutes,
   compositeComponents,
   draftMissing,
@@ -401,8 +402,8 @@ export function useDefaultComponents(flow: CreationFlowState, hiddenAreas: strin
   const { answers, updateAnswers } = flow;
   const hidden = hiddenAreas.join(",");
   useEffect(() => {
-    if (answers.what !== "limits.all") return;
-    const offered = compositeComponents("limits.all", hidden ? hidden.split(",") : []);
+    if (!isPickComposite(answers.what)) return;
+    const offered = compositeComponents(answers.what, hidden ? hidden.split(",") : []);
     const next = (answers.components ?? offered).filter((key) => offered.includes(key));
     if (next.length !== answers.components?.length) updateAnswers({ components: next });
   }, [answers.what, answers.components, hidden, updateAnswers]);

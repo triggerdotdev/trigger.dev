@@ -1,3 +1,4 @@
+import { chats, createDashboardAgentDb, getChatMessages } from "@internal/dashboard-agent-db";
 import { applyDashboardAgentMigrations } from "@internal/dashboard-agent-db/testing";
 import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect, vi } from "vitest";
@@ -166,6 +167,49 @@ describe("resources.alerts.group action", () => {
       seeded.user.id,
       body(seeded, [seeded.members[0]!.id, other.members[0]!.id])
     );
+    expect(resp.status).toBe(400);
+    expect(await prisma.alert.count({ where: { capabilityKey: "alerts.group" } })).toBe(0);
+  });
+
+  test.for([{ withChat: true }, { withChat: false }])(
+    "transcript card with chat=$withChat",
+    async ({ withChat }, { prisma, postgresContainer }) => {
+      const seeded = await seed(prisma);
+      const agentDb = createDashboardAgentDb(postgresContainer.getConnectionUri(), { max: 2 });
+      try {
+        await agentDb.db.insert(chats).values({
+          id: "chat_mine",
+          organizationId: seeded.organization.id,
+          userId: seeded.user.id,
+          title: "Test chat",
+        });
+        const resp = await callAction(seeded.user.id, {
+          ...body(seeded),
+          ...(withChat ? { transcriptChatId: "chat_mine" } : {}),
+        });
+        expect(resp.status).toBe(200);
+        const data = await resp.json();
+        const messages = (await getChatMessages(agentDb.db, {
+          chatId: "chat_mine",
+          userId: seeded.user.id,
+          organizationId: seeded.organization.id,
+        })) as Array<{ id: string }>;
+        expect(messages.map((m) => m.id)).toEqual(
+          withChat ? [`alert_created:${data.alertId}`] : []
+        );
+        expect(data.message?.id).toBe(withChat ? `alert_created:${data.alertId}` : undefined);
+      } finally {
+        await agentDb.close();
+      }
+    }
+  );
+
+  test("rejects a transcript chat the user does not own", async ({ prisma }) => {
+    const seeded = await seed(prisma);
+    const resp = await callAction(seeded.user.id, {
+      ...body(seeded),
+      transcriptChatId: "chat_not_mine",
+    });
     expect(resp.status).toBe(400);
     expect(await prisma.alert.count({ where: { capabilityKey: "alerts.group" } })).toBe(0);
   });

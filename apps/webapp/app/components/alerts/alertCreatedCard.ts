@@ -76,18 +76,24 @@ export function createdCardFields(
   };
 }
 
+function lifetimeRow(
+  fields: Pick<CreatedCardFields, "expiresAt" | "expiryLabel">
+): AlertCreatedRow {
+  return fields.expiresAt
+    ? { label: "Lifetime", value: `It expires ${fields.expiresAt}.`, expiresAt: fields.expiresAt }
+    : {
+        label: "Lifetime",
+        value: fields.expiryLabel
+          ? `It ${fields.expiryLabel}.`
+          : "It stays active until you turn it off.",
+      };
+}
+
 function createdCardRows(fields: CreatedCardFields): AlertCreatedRow[] {
   const scopeVal = fields.scopeValue ? ` · ${fields.scopeValue}` : "";
   const env = fields.environmentTitle ? ` · ${fields.environmentTitle}` : "";
   return [
-    fields.expiresAt
-      ? { label: "Lifetime", value: `It expires ${fields.expiresAt}.`, expiresAt: fields.expiresAt }
-      : {
-          label: "Lifetime",
-          value: fields.expiryLabel
-            ? `It ${fields.expiryLabel}.`
-            : "It stays active until you turn it off.",
-        },
+    lifetimeRow(fields),
     {
       label: "Watching",
       value: `${fields.conditionSummary}${env} · ${fields.scopeLabel}${scopeVal}`,
@@ -97,9 +103,10 @@ function createdCardRows(fields: CreatedCardFields): AlertCreatedRow[] {
   ];
 }
 
-export function alertCreatedBlock(
+function createdBlock(
   alertId: string,
-  fields: CreatedCardFields
+  name: string,
+  rows: AlertCreatedRow[]
 ): EnvelopedAlertCreatedBlock {
   return {
     type: "alert_created",
@@ -107,9 +114,43 @@ export function alertCreatedBlock(
     revision: 0,
     version: VIEW_BLOCK_VERSION,
     alertId,
-    name: fields.name,
-    rows: createdCardRows(fields),
+    name,
+    rows,
   };
+}
+
+export function alertCreatedBlock(
+  alertId: string,
+  fields: CreatedCardFields
+): EnvelopedAlertCreatedBlock {
+  return createdBlock(alertId, fields.name, createdCardRows(fields));
+}
+
+const GROUP_MEMBERS_SHOWN = 5;
+const GROUP_CREATED_MESSAGE = "I created the group. Here is what it watches.";
+
+export type GroupCreatedFields = {
+  name: string;
+  compositeMode: "any" | "all";
+  memberNames: string[];
+  channelNames: string[];
+  expiresAt?: string;
+};
+
+export function groupCreatedBlock(
+  alertId: string,
+  fields: GroupCreatedFields
+): EnvelopedAlertCreatedBlock {
+  const shown = fields.memberNames.slice(0, GROUP_MEMBERS_SHOWN);
+  const more = fields.memberNames.length - shown.length;
+  return createdBlock(alertId, fields.name, [
+    lifetimeRow(fields),
+    {
+      label: "Watching",
+      value: `Raises when: ${fields.compositeMode} of ${fields.memberNames.length} alerts (${shown.join(", ")}${more > 0 ? `, +${more} more` : ""}).`,
+    },
+    { label: "Notifying", value: `Notifying: ${fields.channelNames.join(", ") || "None"}.` },
+  ]);
 }
 
 export type AlertCreatedMessage = {
@@ -121,18 +162,33 @@ export type AlertCreatedMessage = {
   ];
 };
 
-export function alertCreatedMessage(
+function createdMessage(
   alertId: string,
-  fields: CreatedCardFields
+  block: EnvelopedAlertCreatedBlock,
+  text = REVIEW_MESSAGE
 ): AlertCreatedMessage {
   return {
     id: `alert_created:${alertId}`,
     role: "assistant",
     parts: [
-      { type: "text", text: REVIEW_MESSAGE },
-      { type: "data-view", data: { blocks: [alertCreatedBlock(alertId, fields)] } },
+      { type: "text", text },
+      { type: "data-view", data: { blocks: [block] } },
     ],
   };
+}
+
+export function alertCreatedMessage(
+  alertId: string,
+  fields: CreatedCardFields
+): AlertCreatedMessage {
+  return createdMessage(alertId, alertCreatedBlock(alertId, fields));
+}
+
+export function groupCreatedMessage(
+  alertId: string,
+  fields: GroupCreatedFields
+): AlertCreatedMessage {
+  return createdMessage(alertId, groupCreatedBlock(alertId, fields), GROUP_CREATED_MESSAGE);
 }
 
 export function alertCreationOpeningMessage(chatId: string) {

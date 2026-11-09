@@ -7,15 +7,22 @@ import {
 } from "@internal/alert-contracts";
 import pLimit from "p-limit";
 import type { PrismaClient } from "@trigger.dev/database";
-import type { DetailWindow } from "~/components/alerts/alertDetailWindow";
-import { healthEventsForBands } from "~/components/alerts/alertDetailWindow";
+import {
+  alertDetailWindow,
+  healthEventsForBands,
+  type DetailWindow,
+} from "~/components/alerts/alertDetailWindow";
 import { buildHealthBands } from "~/components/alerts/alertSeriesTypes";
 import { type AlertSeriesBundle, type GroupMemberTile } from "~/components/alerts/groupMembers";
 import { env } from "~/env.server";
 import type { AlertDetail } from "~/presenters/v3/AlertDetailPresenter.server";
 import { logger } from "~/services/logger.server";
 import type { QueryConcurrencyLane } from "~/services/queryService.server";
-import { getMetricSeries, planHealthChartEvents } from "~/v3/services/alerts/alertSeries.server";
+import {
+  alertLifetimeWindow,
+  getMetricSeries,
+  planHealthChartEvents,
+} from "~/v3/services/alerts/alertSeries.server";
 import { createQueryRowRunner } from "~/v3/services/alerts/engine/productionEvaluateBinding.server";
 import {
   getHealthQuerySeries,
@@ -45,6 +52,21 @@ export const EMPTY_SERIES: AlertSeriesBundle = {
 };
 
 type SeriesProject = { id: string; organizationId: string };
+
+export function resolveAlertDetailWindow(input: {
+  rawAlert: Alert | null;
+  params: { period?: string; from?: number; to?: number };
+  maxWindowDays: number;
+}) {
+  const { rawAlert } = input;
+  const clampsToCreation = (rawAlert?.condition as { kind?: string } | undefined)?.kind !== "state";
+  return alertDetailWindow(
+    input.params,
+    rawAlert ? alertLifetimeWindow(rawAlert) : undefined,
+    clampsToCreation ? rawAlert?.createdAt : undefined,
+    input.maxWindowDays
+  );
+}
 
 export async function loadAlertSeries(
   prisma: PrismaClient,

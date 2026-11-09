@@ -91,6 +91,7 @@ export type { QueryMode, QuerySource } from "./querySources.js";
 export {
   LEGACY_HEALTH_COMPONENTS,
   selectedComponents,
+  paramsForComponents,
   componentFactsKey,
   compositeComponentSchema,
   compositeFactsSchema,

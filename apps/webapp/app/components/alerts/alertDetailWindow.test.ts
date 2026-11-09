@@ -10,6 +10,11 @@ import { buildHealthBands, type HealthBandRow } from "./alertSeriesTypes";
 import { windowBucketSeconds } from "~/v3/services/alerts/alertSeries.server";
 import { healthBucketMs } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.alerts_.$alertId/healthBucketMs.server";
 
+import { resolveAlertDetailWindow } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.alerts_.$alertId/alertDetailSeries.server";
+
+const rawAlert = (kind: string, createdAt: Date) =>
+  ({ capabilityKey: "k", condition: { kind }, createdAt, lifecycle: "active" }) as never;
+
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 const lifetime = { since: new Date("2026-01-01"), until: new Date("2026-01-02") };
@@ -22,7 +27,10 @@ describe("alertDetailWindow", () => {
   });
 
   it("keeps the lifetime window without params and defaults active alerts to 7d", () => {
-    expect(alertDetailWindow({}, lifetime)).toEqual({ ...lifetime, isLifetime: true });
+    expect(alertDetailWindow({}, lifetime)).toEqual({
+      ...lifetime,
+      isLifetime: true,
+    });
     const active = alertDetailWindow({}, undefined);
     expect(active.until.getTime() - active.since.getTime()).toBe(7 * DAY);
   });
@@ -50,6 +58,14 @@ describe("alertDetailWindow", () => {
 });
 
 describe("alertDetailWindow from creation", () => {
+  // Catches: the filter bar showing the requested dates when only the metrics start was capped.
+  it("flags clamped when only the metrics start hits the max window", () => {
+    const createdAt = new Date(Date.now() - 2 * DAY);
+    const window = alertDetailWindow({ period: "3650d" }, undefined, createdAt, 90);
+    expect(window.since).toEqual(createdAt);
+    expect(window.clamped).toBe(true);
+  });
+
   it("fails when an active alert's window is not clamped to createdAt", () => {
     const createdAt = new Date(Date.now() - 5 * HOUR);
     const window = alertDetailWindow({ period: "7d" }, undefined, createdAt);
@@ -63,6 +79,29 @@ describe("alertDetailWindow from creation", () => {
       ...lifetime,
       isLifetime: true,
     });
+  });
+});
+
+describe("alertDetailWindow createdAt clamp", () => {
+  const createdAt = new Date(Date.now() - 2 * DAY);
+
+  // Catches: the createdAt clamp being reintroduced for state alerts.
+  it("fails when a state alert's window starts at createdAt", () => {
+    const window = resolveAlertDetailWindow({
+      rawAlert: rawAlert("state", createdAt),
+      params: { period: "7d" },
+      maxWindowDays: 90,
+    });
+    expect(window.until.getTime() - window.since.getTime()).toBe(7 * DAY);
+  });
+
+  it("keeps the createdAt clamp for other alert kinds", () => {
+    const window = resolveAlertDetailWindow({
+      rawAlert: rawAlert("threshold", createdAt),
+      params: { period: "7d" },
+      maxWindowDays: 90,
+    });
+    expect(window.since).toEqual(createdAt);
   });
 });
 

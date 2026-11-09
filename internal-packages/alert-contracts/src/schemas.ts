@@ -55,6 +55,7 @@ export const capabilityParamSchema = z.object({
   default: z.number().finite(),
   min: z.number().optional(),
   max: z.number().optional(),
+  component: z.string().optional(),
 });
 export type CapabilityParam = z.infer<typeof capabilityParamSchema>;
 

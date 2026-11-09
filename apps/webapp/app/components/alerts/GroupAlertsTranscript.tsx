@@ -33,6 +33,7 @@ import { SegmentedToggle } from "~/components/primitives/SegmentedToggle";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { permissionDeniedMessage } from "~/utils/permissionDenied";
 
 const MODE_OPTIONS = [
   { id: "any", label: "Raise when any" },
@@ -45,16 +46,22 @@ const STEP_ORDER = ["mode", "notifiers", "expiry", "name"];
 
 type Member = { id: string; name: string };
 
+type ResolveChat = () => Promise<{ chatId?: string; release?: () => void }>;
+
+type GroupCreated = (created: { chatId?: string; message?: unknown }) => void;
+
 function useGroupDraft({
   members,
   channels,
   addChannel,
   onCreated,
+  resolveChatId,
 }: {
   members: Member[];
   channels: AlertChannel[];
   addChannel?: AddChannelAccess;
-  onCreated?: () => void;
+  onCreated?: GroupCreated;
+  resolveChatId?: ResolveChat;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -78,7 +85,11 @@ function useGroupDraft({
   );
   const name = alertName(flow.answers);
   const canCreate =
-    hasNotifier && flow.answers.expiry !== undefined && name.trim() !== "" && !submitting;
+    hasNotifier &&
+    flow.answers.expiry !== undefined &&
+    flow.answers.name?.trim() !== "" &&
+    name.trim() !== "" &&
+    !submitting;
   const overrides: Record<string, Partial<ChatWizardStep>> = {
     notifiers: { confirmDisabled: !hasNotifier, error: hasNotifier ? undefined : NO_NOTIFIER },
     name: { description: footnote, confirmLabel: "Create group", confirmDisabled: !canCreate },
@@ -112,7 +123,11 @@ function useGroupDraft({
   const create = async () => {
     setSubmitting(true);
     setError(undefined);
+    let release: (() => void) | undefined;
     try {
+      const resolved = await resolveChatId?.();
+      const chatId = resolved?.chatId;
+      release = resolved?.release;
       const resp = await fetch(GROUP_ALERTS_PATH, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -129,25 +144,31 @@ function useGroupDraft({
               name: name.trim(),
               notifiers: flow.answers.notifiers ?? [],
               expiry: flow.answers.expiry,
-            }
+            },
+            undefined,
+            chatId
           )
         ),
       });
       const data = (await resp.json().catch(() => ({}))) as {
         ok?: boolean;
         error?: string;
-        message?: string;
+        message?: unknown;
         path?: string;
       };
       if (resp.ok && data.ok) {
-        onCreated?.();
-        if (data.path) navigate(data.path);
+        onCreated?.({ chatId, message: data.message });
+        if (!(chatId && data.message)) {
+          release?.();
+          if (data.path) navigate(data.path);
+        }
         return;
       }
-      setError(data.error ?? data.message ?? CREATE_FAILED);
+      setError(data.error ?? permissionDeniedMessage(data) ?? CREATE_FAILED);
     } catch {
       setError(CREATE_FAILED);
     }
+    release?.();
     setSubmitting(false);
   };
 
@@ -235,16 +256,18 @@ export function GroupAlertsTranscript({
   onManualChange,
   onNewChat,
   onCreated,
+  resolveChatId,
 }: {
   members: Member[];
   channels: AlertChannel[];
   addChannel?: AddChannelAccess;
-  onCreated?: () => void;
+  onCreated?: GroupCreated;
+  resolveChatId?: ResolveChat;
   manual: boolean;
   onManualChange: (manual: boolean) => void;
   onNewChat?: () => void;
 }) {
-  const draft = useGroupDraft({ members, channels, addChannel, onCreated });
+  const draft = useGroupDraft({ members, channels, addChannel, onCreated, resolveChatId });
   const [closed, setClosed] = useState(false);
 
   const modeRow = (

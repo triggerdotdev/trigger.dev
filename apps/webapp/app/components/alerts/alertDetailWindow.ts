@@ -37,9 +37,12 @@ export function alertDetailWindow(
     !period && params.from === undefined
       ? new Date(to.getTime() - parse(DETAIL_DEFAULT_PERIOD)!)
       : from;
-  const fromCreation = !lifetime && createdAt && createdAt > since && createdAt < to;
+  const custom = params.from !== undefined || params.to !== undefined;
+  const fromCreation = !lifetime && !custom && createdAt && createdAt > since && createdAt < to;
+  const periodStart = clampSince(since, to);
   return {
     ...clampSince(fromCreation ? createdAt : since, to),
+    ...(periodStart.clamped ? { clamped: true as const } : {}),
     until: to,
     isLifetime: false,
     explicitTo: params.to !== undefined,

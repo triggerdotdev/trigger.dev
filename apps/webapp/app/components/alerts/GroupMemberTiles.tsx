@@ -10,7 +10,10 @@ export function GroupMemberTiles({
   now,
 }: {
   tiles: GroupMemberTile[];
-  window: DetailWindow & { isLifetime?: boolean; explicitTo?: boolean };
+  window: DetailWindow & {
+    isLifetime?: boolean;
+    explicitTo?: boolean;
+  };
   now: Date;
 }) {
   return (

@@ -1,3 +1,4 @@
+import { paramsForComponents } from "@internal/alert-contracts";
 import { EXPIRY_TOKEN_PATTERN } from "~/components/alerts/alertCreatedCard";
 import {
   alertName,
@@ -47,6 +48,18 @@ export function replaceRequestBody(answers: FlowAnswers): FormData {
 function limitFields(answers: FlowAnswers) {
   const cap = resolveCapability(answers.what);
   const params = answers.conditionParams;
+  if (cap?.area === "health" && isComposite(answers.what)) {
+    const keys = paramsForComponents(cap, answers.components ?? cap.binding.compositeOf ?? []).map(
+      (p) => p.key
+    );
+    return {
+      conditionParams:
+        params && Object.fromEntries(Object.entries(params).filter(([k]) => keys.includes(k))),
+      signals: undefined,
+      compositeMode: answers.compositeMode,
+      components: answers.components,
+    };
+  }
   if (!cap || !isLimitCondition(answers.what)) return { conditionParams: params };
   const composite = isComposite(answers.what);
   const hasSignals = supportedSignalsFor(answers.what, answers.components).length > 0;

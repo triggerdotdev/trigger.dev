@@ -22,11 +22,13 @@ import {
   capabilityChips,
   capabilityParams,
   resolveWhat,
+  compositeKeyForArea,
   signalsAfterUtilisationEdit,
   whatSelection,
   conditionKindFor,
   conditionSuggestionChips,
   effectiveSignals,
+  needsUtilisation,
   isComposite,
   isLimitCondition,
   requiredParams,
@@ -164,8 +166,7 @@ const PARAM_OPTION = "param:";
 const SIGNAL_OPTION = "signal:";
 const MODE_OPTION = "mode:";
 const MODE_LABEL = { any: "Raise when any", all: "Raise when all" } as const;
-const SIGNAL_HELP =
-  "Fires when the limit is hit; add a percentage to also fire when usage approaches it.";
+const SIGNAL_HELP = "Percent of the limit; 100 fires only when it is hit.";
 const NOTIFIERS_DESCRIPTION =
   "Only channels enabled for this environment are listed. Missing one? Check the channels list.";
 const EXPIRY_DESCRIPTION = "The alert stops checking once it expires.";
@@ -239,15 +240,17 @@ export function scenarioStep(
     options: areaChips()
       .filter((area) => !hiddenAreas.includes(area.value))
       .flatMap((area) =>
-        capabilityChips(area.value, hiddenAreas).map((chip) => ({
-          id: `${area.value}:${chip.value}`,
-          label: `${area.label} · ${chip.label}`,
-          icon: area.icon,
-          description: chip.description,
-          disabledReason: usableCapability(area.value, chip.value, emptyAreas)
-            ? undefined
-            : emptyHint(area.value),
-        }))
+        capabilityChips(area.value, hiddenAreas)
+          .filter((chip) => area.value !== "health" || !isComposite(chip.value))
+          .map((chip) => ({
+            id: `${area.value}:${chip.value}`,
+            label: `${area.label} · ${chip.label}`,
+            icon: area.icon,
+            description: chip.description,
+            disabledReason: usableCapability(area.value, chip.value, emptyAreas)
+              ? undefined
+              : emptyHint(area.value),
+          }))
       ),
   };
 }
@@ -434,15 +437,18 @@ function limitConditionStep(flow: CreationFlowState): ChatWizardStep {
     selected: [...(composite ? [`${MODE_OPTION}${mode}`] : []), "ready"],
     fields: fields.length ? fields : undefined,
     confirmLabel: "Continue",
-    confirmDisabled: missingThreshold || (!composite && signals.length === 0),
+    confirmDisabled:
+      missingThreshold || needsUtilisation(answers) || (!composite && signals.length === 0),
     error: missingThreshold ? FILL_THRESHOLDS : undefined,
   };
 }
 
 const ALL_OPTION = "__all_components__";
 
-function limitsWhatChips(hiddenAreas: string[]) {
-  return capabilityChips("limits", hiddenAreas).filter((chip) => !isComposite(chip.value));
+function whatChips(area: string | undefined, hiddenAreas: string[]) {
+  return capabilityChips(area === "health" ? "health" : "limits", hiddenAreas).filter(
+    (chip) => !isComposite(chip.value)
+  );
 }
 
 function whatMultiStep(
@@ -451,19 +457,20 @@ function whatMultiStep(
   emptyAreas: string[]
 ): ChatWizardStep {
   const { answers } = flow;
-  const chips = limitsWhatChips(hiddenAreas);
+  const chips = whatChips(answers.area, hiddenAreas);
   const offered = chips.map((chip) => chip.value);
-  const parts = resolveCapability("limits.all")?.binding.compositeOf ?? [];
+  const parts = resolveCapability(compositeKeyForArea(answers.area))?.binding.compositeOf ?? [];
   const eligible = offered.filter((key) => parts.includes(key));
   const selected = whatSelection(answers, hiddenAreas).filter((key) => offered.includes(key));
   const { what } = resolveWhat(selected);
+  const withAll = answers.area !== "health";
   return {
     allowSkip: false,
     id: "what",
     question: promptForStep("what", answers),
     description: "Pick any number — one makes a single alert, several make one combined alert.",
     options: [
-      { id: ALL_OPTION, label: "Watch all limits" },
+      ...(withAll ? [{ id: ALL_OPTION, label: "Watch all limits" }] : []),
       ...chips.map((chip) => ({
         ...toOptions([chip])[0]!,
         disabledReason: usableCapability(answers.area, chip.value, emptyAreas)
@@ -474,7 +481,7 @@ function whatMultiStep(
     ],
     multiSelect: true,
     selected: [
-      ...(eligible.length > 0 && eligible.every((key) => selected.includes(key))
+      ...(withAll && eligible.length > 0 && eligible.every((key) => selected.includes(key))
         ? [ALL_OPTION]
         : []),
       ...selected,
@@ -490,7 +497,7 @@ export function confirmStep(flow: CreationFlowState, stepId: string, hiddenAreas
     return;
   }
   if (stepId === "what") {
-    const offered = limitsWhatChips(hiddenAreas).map((chip) => chip.value);
+    const offered = whatChips(flow.answers.area, hiddenAreas).map((chip) => chip.value);
     const { what, components } = resolveWhat(
       whatSelection(flow.answers, hiddenAreas).filter((key) => offered.includes(key))
     );
@@ -504,7 +511,8 @@ export function confirmStep(flow: CreationFlowState, stepId: string, hiddenAreas
     const missing = requiredParams(answers.what, answers.components).some(
       (p) => answers.conditionParams?.[p.key] === undefined
     );
-    if ((supported.length > 0 && signals.length === 0) || missing) return;
+    if ((supported.length > 0 && signals.length === 0) || missing || needsUtilisation(answers))
+      return;
     flow.updateAnswers({
       conditionConfirmed: true,
       compositeMode: isComposite(answers.what) ? (answers.compositeMode ?? "any") : undefined,
@@ -585,7 +593,8 @@ export function allSteps(
             selected: answers.area ? [answers.area] : [],
           });
         case "what":
-          if (answers.area === "limits") return whatMultiStep(flow, hiddenAreas, emptyAreas);
+          if (answers.area === "limits" || answers.area === "health")
+            return whatMultiStep(flow, hiddenAreas, emptyAreas);
           return locked({
             ...base,
             id,
@@ -720,7 +729,8 @@ export function allSteps(
         case "condition": {
           if (isLimitCondition(answers.what)) return limitConditionStep(flow);
           const kind = conditionKindFor(answers.what);
-          const params = capabilityParams(answers.what);
+          const params = capabilityParams(answers.what, answers.components);
+          const required = requiredParams(answers.what, answers.components);
           const numericKind = kind === "threshold" || kind === "absence";
           const single = !numericKind && params.length === 1 ? params[0] : undefined;
           const current = answers.conditionParams ?? {};
@@ -742,7 +752,7 @@ export function allSteps(
                   {
                     id: CONTINUE_OPTION,
                     label: "Continue",
-                    disabledReason: params.every((p) => current[p.key] !== undefined)
+                    disabledReason: required.every((p) => current[p.key] !== undefined)
                       ? undefined
                       : FILL_THRESHOLDS,
                   },
@@ -763,7 +773,7 @@ export function allSteps(
                 : []
               : singleValue !== undefined
                 ? [`${PARAM_OPTION}${singleValue}`]
-                : params.length > 1 && params.every((p) => current[p.key] !== undefined)
+                : params.length > 1 && required.every((p) => current[p.key] !== undefined)
                   ? [CONTINUE_OPTION]
                   : [],
             onReveal: () => {
@@ -921,9 +931,12 @@ export function applyStepSelection(
     flow.setScopeValue(value);
     return;
   }
-  if (stepId === "what" && flow.answers.area === "limits") {
-    const offered = limitsWhatChips(handlers.hiddenAreas ?? []).map((chip) => chip.value);
-    const parts = resolveCapability("limits.all")?.binding.compositeOf ?? [];
+  if (stepId === "what" && (flow.answers.area === "limits" || flow.answers.area === "health")) {
+    const offered = whatChips(flow.answers.area, handlers.hiddenAreas ?? []).map(
+      (chip) => chip.value
+    );
+    const parts =
+      resolveCapability(compositeKeyForArea(flow.answers.area))?.binding.compositeOf ?? [];
     const eligible = offered.filter((key) => parts.includes(key));
     const current = whatSelection(flow.answers, handlers.hiddenAreas).filter((key) =>
       offered.includes(key)
@@ -958,7 +971,7 @@ export function applyStepSelection(
         flow.setConditionParams({ [param.key]: Number(value.slice(PARAM_OPTION.length)) });
         flow.confirmCondition();
       } else if (value === CONTINUE_OPTION) {
-        const params = capabilityParams(flow.answers.what);
+        const params = requiredParams(flow.answers.what, flow.answers.components);
         if (params.every((p) => flow.answers.conditionParams?.[p.key] !== undefined)) {
           flow.confirmCondition();
         }

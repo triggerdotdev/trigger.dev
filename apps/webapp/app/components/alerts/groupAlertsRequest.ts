@@ -23,7 +23,8 @@ export function groupAlertsBody(
     notifiers: string[];
     expiry?: string;
   },
-  chatId?: string
+  chatId?: string,
+  transcriptChatId?: string
 ) {
   const expiresAt = expiryToIso(draft.expiry);
   return {
@@ -34,5 +35,6 @@ export function groupAlertsBody(
     notifierChannelIds: draft.notifiers.filter((n) => n !== "chat"),
     ...(chatId && draft.notifiers.includes("chat") ? { chatNotifier: "on", chatId } : {}),
     ...(expiresAt ? { expiresAt } : {}),
+    ...(transcriptChatId ? { transcriptChatId } : {}),
   };
 }

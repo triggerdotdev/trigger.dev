@@ -185,6 +185,21 @@ describe("wizard card drives step-by-step creation", () => {
     container.remove();
   });
 
+  // Catches: Enter inert on the name step, or confirming with an empty name.
+  it("Enter in the name input continues only with a valid name", () => {
+    mount();
+    toNotifiers();
+    pick("Ops webhook");
+    act(() => done().click());
+    const input = card()!.querySelector<HTMLInputElement>('input[aria-label="Name"]')!;
+    type(input, "");
+    enter(input);
+    expect(latest!.isReview).toBe(false);
+    type(input, "My alert");
+    enter(input);
+    expect(latest!.isReview).toBe(true);
+  });
+
   it("stage A card asks for the area with 6 options and no chips row", () => {
     mount();
     expect(card()?.getAttribute("aria-label")).toBe("What would you like me to watch?");
@@ -582,7 +597,9 @@ describe("wizard card drives step-by-step creation", () => {
     expect(freeText).not.toHaveBeenCalled();
     expect(card()?.getAttribute("aria-label")).toBe("What can I watch?");
     const expected = areaChips().flatMap((area) =>
-      capabilityChips(area.value).map((chip) => `${area.label} · ${chip.label}`)
+      capabilityChips(area.value)
+        .filter((chip) => chip.value !== "health.all")
+        .map((chip) => `${area.label} · ${chip.label}`)
     );
     expect(cardRows()).toEqual(expected);
     pick("Runs · Runs taking too long");
@@ -636,6 +653,7 @@ describe("wizard card drives step-by-step creation", () => {
     mount();
     pick("Health");
     pick("Tasks going silent");
+    pick("Continue");
     expect(cardRows()).toEqual(["150s", "300s", "600s", "Custom"]);
     pick("600s");
     expect(latest!.answers.conditionParams).toEqual({ silenceSec: 600 });
@@ -647,6 +665,7 @@ describe("wizard card drives step-by-step creation", () => {
     mount();
     pick("Health");
     pick("Flow health degrading");
+    pick("Continue");
     expect(card()?.getAttribute("aria-label")).toBe("When should this alert fire?");
     expect(card()!.textContent).toContain(
       "Fires when any of these values goes above its threshold."
@@ -688,6 +707,7 @@ describe("wizard card drives step-by-step creation", () => {
     mount();
     pick("Health");
     pick("Flow health degrading");
+    pick("Continue");
     const rows = () => Array.from(card()!.querySelector("ul")!.children);
     const last = () => rows()[rows().length - 1]!;
     expect(rows()).toHaveLength(3);
@@ -703,15 +723,17 @@ describe("wizard card drives step-by-step creation", () => {
     expect(last().querySelector('[aria-label="Selected"]')).not.toBeNull();
   });
 
-  // Mutation: offering silenceSec in multi-param health steps fails this.
-  it("health condition steps do not offer Silence above", () => {
+  // Catches: liveness picked with other checks losing its silence threshold.
+  it("health condition steps offer the silence threshold when liveness is picked", () => {
     mount();
     pick("Health");
-    pick("Overall health check");
+    pick("Flow health degrading");
+    pick("Execution health degrading");
+    pick("Tasks going silent");
+    pick("Continue");
     expect(card()?.getAttribute("aria-label")).toBe("When should this alert fire?");
     expect(card()!.textContent).toContain("Failure rate");
-    expect(card()!.textContent).not.toContain("Silence above");
-    expect(card()!.querySelector('input[aria-label="Silence threshold"]')).toBeNull();
+    expect(card()!.querySelector('input[aria-label="Silence threshold"]')).not.toBeNull();
   });
 
   // Mutation: leaving the multi-param step's selected empty strands the user on it.
@@ -720,6 +742,7 @@ describe("wizard card drives step-by-step creation", () => {
     mount();
     pick("Health");
     pick("Flow health degrading");
+    pick("Continue");
     const field = (label: string) =>
       card()!.querySelector<HTMLInputElement>(`input[aria-label="${label} threshold"]`)!;
     type(field("Scheduling delay p95"), "40000");

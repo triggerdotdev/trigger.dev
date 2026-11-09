@@ -25,6 +25,7 @@ import {
   listCapabilities,
   CURRENTLY_QUEUED_PREDICATE_PENDING,
 } from "./registry.js";
+import { paramsForComponents } from "./composite.js";
 import { QUERY_SOURCES, minCadenceForTables, modesForTables } from "./querySources.js";
 import {
   displayStatus,
@@ -920,6 +921,12 @@ describe("registry", () => {
     const cap = getCapability("health.all")!;
     expect(cap.title).toBe("Health (All)");
     expect(cap.binding.compositeOf).toEqual(["health.flow", "health.execution", "health.liveness"]);
+  });
+
+  // Catches: component tags removed from health.all params.
+  it("paramsForComponents returns only the chosen components' params", () => {
+    const cap = getCapability("health.all")!;
+    expect(paramsForComponents(cap, ["health.liveness"]).map((p) => p.key)).toEqual(["silenceSec"]);
   });
 
   it("health.all params are the union of sub-capability params", () => {

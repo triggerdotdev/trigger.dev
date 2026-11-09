@@ -654,7 +654,7 @@ export function DashboardAgentPanel({
     [actionPath]
   );
   const creationSession = useCreationSession({
-    enabled: inCreationMode,
+    enabled: inCreationMode || Boolean(activeGroup),
     createSession: doCreateSession,
     discardSession: doDiscardSession,
     generation: creationGeneration,
@@ -1168,6 +1168,26 @@ export function DashboardAgentPanel({
     })();
   };
 
+  const resolveGroupChatId = async () => {
+    if (active?.chatId) return { chatId: active.chatId };
+    const chatId = await creationSession.ensure();
+    return chatId ? { chatId, release: creationSession.keep() } : {};
+  };
+  const handleGroupCreated = async (
+    seq: number,
+    { chatId, message }: { chatId?: string; message?: unknown }
+  ) => {
+    setDismissedGroupSeq((dismissed) => Math.max(dismissed ?? seq, seq));
+    revalidator.revalidate();
+    if (!chatId || !message) return;
+    if (activeGroupRef.current?.seq === seq && chatId !== active?.chatId) await openChat(chatId);
+    setAppendedMessages((current) => ({
+      chatId,
+      messages: [message as UIMessage],
+      seq: (current?.seq ?? 0) + 1,
+    }));
+  };
+
   const addChannelAccess = {
     projectId: project.id,
     environmentId: environment.id,
@@ -1243,7 +1263,8 @@ export function DashboardAgentPanel({
               manual={groupManual}
               onManualChange={setGroupManual}
               onNewChat={newChat}
-              onCreated={() => setDismissedGroupSeq(activeGroup.seq)}
+              onCreated={(created) => handleGroupCreated(activeGroup.seq, created)}
+              resolveChatId={resolveGroupChatId}
             />
           </CreationChatShell>
         ) : null}

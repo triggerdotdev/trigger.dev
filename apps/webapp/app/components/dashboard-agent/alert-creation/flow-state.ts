@@ -5,7 +5,7 @@ import type {
   CapabilityParam,
   LimitSignal,
 } from "@internal/alert-contracts";
-import { AREA_DESCRIPTION, listCapabilities } from "@internal/alert-contracts";
+import { AREA_DESCRIPTION, listCapabilities, paramsForComponents } from "@internal/alert-contracts";
 import { stateConditionSummary } from "~/components/alerts/limitSummary";
 import { AREA_ICON, AREA_LABEL } from "~/components/alerts/domainIcons";
 import type { QueryAlertMode } from "~/components/alerts/queryAlertLink";
@@ -181,20 +181,30 @@ export function compositeComponents(key: string | undefined, hiddenAreas: string
 }
 
 const COMPOSITE_KEY = "limits.all";
+const HEALTH_COMPOSITE_KEY = "health.all";
+
+export function isPickComposite(key: string | undefined): boolean {
+  return key === COMPOSITE_KEY || key === HEALTH_COMPOSITE_KEY;
+}
+
+export function compositeKeyForArea(area: string | undefined): string {
+  return area === "health" ? HEALTH_COMPOSITE_KEY : COMPOSITE_KEY;
+}
 
 export function whatSelection(answers: FlowAnswers, hiddenAreas: string[] = []): string[] {
   if (answers.picked) return answers.picked;
-  if (answers.what === COMPOSITE_KEY) {
-    return answers.components ?? compositeComponents(COMPOSITE_KEY, hiddenAreas);
+  if (isPickComposite(answers.what)) {
+    return answers.components ?? compositeComponents(answers.what, hiddenAreas);
   }
   return answers.what ? [answers.what] : [];
 }
 
 export function resolveWhat(picked: string[]): { what?: string; components?: string[] } {
-  const parts = resolveCapability(COMPOSITE_KEY)?.binding.compositeOf ?? [];
+  const compositeKey = compositeKeyForArea(resolveCapability(picked[0])?.area);
+  const parts = resolveCapability(compositeKey)?.binding.compositeOf ?? [];
   if (picked.length === 1) return { what: picked[0] };
   const eligible = picked.filter((key) => parts.includes(key));
-  if (eligible.length >= 2) return { what: COMPOSITE_KEY, components: eligible };
+  if (eligible.length >= 2) return { what: compositeKey, components: eligible };
   return { what: eligible[0] };
 }
 
@@ -262,20 +272,34 @@ export function capabilityParams(
 ): CapabilityParam[] {
   const cap = resolveCapability(key);
   let params = cap?.binding?.params ?? [];
-  if (cap?.binding.compositeOf && components) {
+  if (cap?.area === "health" && cap.binding.compositeOf && components) {
+    params = paramsForComponents(cap, components);
+  } else if (cap?.binding.compositeOf && components) {
     const used = new Set(
       components.flatMap((c) => resolveCapability(c)?.binding.params?.map((p) => p.key) ?? [])
     );
     params = params.filter((p) => used.has(p.key));
   }
+  const keepSilence = cap?.area === "health" && Boolean(cap.binding.compositeOf);
   return params.length > 1
-    ? params.filter((p) => p.key !== "silenceSec" && p.key !== "utilisationPct")
+    ? params.filter((p) => p.key !== "utilisationPct" && (keepSilence || p.key !== "silenceSec"))
     : params;
+}
+
+export function needsUtilisation(answers: FlowAnswers): boolean {
+  const cap = resolveCapability(answers.what);
+  const signals = cap?.supportedSignals;
+  return (
+    !cap?.binding.compositeOf &&
+    Boolean(signals?.includes("approaching") && signals.includes("limited")) &&
+    (!answers.signals || answers.signals.includes("approaching")) &&
+    answers.conditionParams?.utilisationPct === undefined
+  );
 }
 
 export function requiredParams(key: string | undefined, components?: string[]): CapabilityParam[] {
   const params = capabilityParams(key, components);
-  return params.length > 1 ? params : [];
+  return params.length > 1 ? params.filter((p) => p.key !== "silenceSec") : [];
 }
 
 const SCOPE_ALL_LABEL: Record<string, string> = {
@@ -638,6 +662,7 @@ export function draftMissing(answers: FlowAnswers): FlowStepKey[] {
   if (isLimitCondition(answers.what) && answers.what && effectiveSignals(answers).length === 0) {
     if (supportedSignalsFor(answers.what, answers.components).length > 0) missing.push("condition");
   }
+  if (needsUtilisation(answers)) missing.push("condition");
   if (!answers.scope) missing.push("scope");
   if (needsScopeValue(answers.scope) && !answers.scopeValue?.trim()) missing.push("scope");
   if (answers.scope === "errorGroup" && !parseErrorGroupScope(answers.scopeValue)) {

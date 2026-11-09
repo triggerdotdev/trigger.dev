@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { createElement, type ComponentProps } from "react";
+import { createElement, useEffect, useState, type ComponentProps } from "react";
 import { act } from "react-dom/test-utils";
 import { createRoot, type Root } from "react-dom/client";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
@@ -41,11 +41,40 @@ let container: HTMLElement;
 let root: Root;
 const bodies: Record<string, unknown>[] = [];
 let noData = false;
+let sessions = 0;
+let noSession = false;
+let hold: Promise<void> | undefined;
+let intents: unknown[] = [];
+let router: ReturnType<typeof createMemoryRouter>;
+const GROUP_MESSAGE = {
+  id: "alert_created:alert_new",
+  role: "assistant",
+  parts: [
+    { type: "text", text: "done" },
+    {
+      type: "data-view",
+      data: {
+        blocks: [
+          {
+            type: "alert_created",
+            id: "alert:alert_new",
+            revision: 0,
+            version: 1,
+            alertId: "alert_new",
+            name: "Prod",
+            rows: [{ label: "Watching", value: "Raises when: all of 2 alerts (Depth, Failures)." }],
+          },
+        ],
+      },
+    },
+  ],
+};
 
 const button = (label: string) =>
   Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
     (b) => b.textContent?.trim() === label
   );
+const newChatButton = () => document.querySelector<HTMLElement>('[aria-label="New chat"]')!;
 const option = (label: string) =>
   Array.from(document.querySelectorAll<HTMLElement>("li button, li [role=option]")).find((r) =>
     r.textContent?.includes(label)
@@ -59,10 +88,16 @@ function type(el: HTMLInputElement, value: string) {
   });
 }
 
+const groupSeq = { set: (_seq: number) => {} };
+
 function Harness() {
+  const [seq, setSeq] = useState(1);
+  useEffect(() => {
+    groupSeq.set = setSeq;
+  }, []);
   return createElement(DashboardAgentPanel, {
     onClose: () => {},
-    groupAlertsRequest: { members: MEMBERS, seq: 1 },
+    groupAlertsRequest: { members: MEMBERS, seq },
   });
 }
 
@@ -70,22 +105,39 @@ describe("DashboardAgentPanel group mode", () => {
   beforeEach(async () => {
     bodies.length = 0;
     noData = false;
+    sessions = 0;
+    noSession = false;
+    hold = undefined;
+    intents = [];
+    localStorage.clear();
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (url: string, init?: { body?: string }) => {
+      vi.fn(async (url: string, init?: { body?: string | FormData }) => {
         if (url !== "/resources/alerts/group") {
-          return new Response(JSON.stringify({ chats: [], channels: [] }));
+          const intent = init?.body instanceof FormData ? init.body.get("intent") : undefined;
+          if (intent) intents.push(intent);
+          if (intent === "create-session") sessions++;
+          return new Response(
+            JSON.stringify(
+              intent === "create-session" && !noSession
+                ? { chatId: "chat_1" }
+                : { chats: [], channels: [] }
+            )
+          );
         }
-        bodies.push(JSON.parse(init!.body!));
+        bodies.push(JSON.parse(init!.body as string) as Record<string, unknown>);
+        await hold;
         return noData
           ? new Response("", { status: 500 })
-          : new Response(JSON.stringify({ ok: true, path: "/alerts/alert_new" }));
+          : new Response(
+              JSON.stringify({ ok: true, path: "/alerts/alert_new", message: GROUP_MESSAGE })
+            );
       })
     );
-    const router = createMemoryRouter([
+    router = createMemoryRouter([
       {
         path: "/",
         element: createElement(
@@ -137,8 +189,14 @@ describe("DashboardAgentPanel group mode", () => {
     expect(card().textContent).toContain("Groups Depth, Failures.");
     await walkWizard();
     expect(bodies).toEqual([BODY]);
+    expect(bodies[0]).toMatchObject({ transcriptChatId: "chat_1" });
     expect(document.querySelector('[data-testid="group-flow"]')).toBeNull();
     expect(button("Create group")).toBeUndefined();
+    expect(document.querySelector('[data-testid="alert-created"]')?.textContent).toContain(
+      "Prod is active."
+    );
+    expect(router.state.location.pathname).toBe("/");
+    expect(intents).not.toContain("delete");
   });
 
   it("keeps the card and shows an error when the request fails", async () => {
@@ -146,6 +204,62 @@ describe("DashboardAgentPanel group mode", () => {
     await walkWizard();
     expect(document.querySelector("[role=dialog][aria-label]")).not.toBeNull();
     expect(document.body.textContent).toContain("Could not create the group");
+  });
+
+  // Catches: a retried group submit opening a second session.
+  it("reuses one session across a failed and a retried submit", async () => {
+    noData = true;
+    await walkWizard();
+    noData = false;
+    await act(async () => button("Create group")!.click());
+    await settle();
+    expect(bodies.map((b) => b.transcriptChatId)).toEqual(["chat_1", "chat_1"]);
+    expect(sessions).toBe(1);
+  });
+
+  it("navigates to the group when no chat could be resolved", async () => {
+    noSession = true;
+    await walkWizard();
+    expect(bodies[0]).not.toHaveProperty("transcriptChatId");
+    expect(router.state.location.pathname).toBe("/alerts/alert_new");
+  });
+
+  it("does not dismiss a newer wizard when an older submit resolves late", async () => {
+    let release!: () => void;
+    hold = new Promise((resolve) => (release = resolve));
+    await walkWizard();
+    act(() => groupSeq.set(2));
+    await settle();
+    hold = undefined;
+    await act(async () => release());
+    await settle();
+    expect(document.querySelector('[data-testid="group-flow"]')).not.toBeNull();
+  });
+
+  it("keeps the confirmation chat when New chat lands during the submit", async () => {
+    // Catches: the chat is only kept after the POST, so New chat deletes it mid-request.
+    let release!: () => void;
+    hold = new Promise((resolve) => (release = resolve));
+    await walkWizard();
+    await act(async () => newChatButton().click());
+    hold = undefined;
+    await act(async () => release());
+    await settle();
+    expect(intents).not.toContain("delete");
+  });
+
+  it("keeps a newer wizard dismissed when an older submit resolves late", async () => {
+    // Catches: a late completion rewrites the dismissed seq and resurrects the wizard.
+    let release!: () => void;
+    hold = new Promise((resolve) => (release = resolve));
+    await walkWizard();
+    act(() => groupSeq.set(2));
+    await settle();
+    await act(async () => newChatButton().click());
+    hold = undefined;
+    await act(async () => release());
+    await settle();
+    expect(document.querySelector('[data-testid="group-flow"]')).toBeNull();
   });
 
   it("posts the same body from the manual form", async () => {

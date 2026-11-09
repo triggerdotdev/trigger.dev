@@ -137,6 +137,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
           default: p.default,
           min: p.min,
           max: p.max,
+          component: p.component,
         })),
       })),
     });

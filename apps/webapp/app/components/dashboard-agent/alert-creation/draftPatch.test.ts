@@ -358,6 +358,12 @@ describe("Limits patch fields", () => {
     expect(next.components).toHaveLength(7);
   });
 
+  // Catches: health.all drafts left without components.
+  it("defaults health.all components to the three checks", () => {
+    const next = applyDraftPatch({}, alertDraftPatchSchema.parse({ what: "health.all" }));
+    expect(next.components).toEqual(["health.flow", "health.execution", "health.liveness"]);
+  });
+
   it("resets them when the capability changes", () => {
     const next = applyDraftPatch(
       {

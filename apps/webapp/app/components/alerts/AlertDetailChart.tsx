@@ -464,12 +464,21 @@ function AlertDetailChartBody({
       window,
       createdAt
     );
-    const drawn = drawnHealthSeries(lines);
+    const sinceMs = window.since.getTime();
+    const evaluatedFrom = bands[0]?.bucket;
+    const preCreation = createdAt !== undefined && createdAt.getTime() > sinceMs;
+    const edge = {
+      until: window.until.getTime(),
+      ...(preCreation && evaluatedFrom !== undefined && evaluatedFrom > sinceMs
+        ? { from: sinceMs }
+        : {}),
+    };
+    const drawn = drawnHealthSeries(preCreation ? componentSeries : lines);
     const current = degradedNow ? 0 : live && !inactive && alert.evaluated ? 1 : undefined;
     const healthChart = (isCompact: boolean, view: HealthView) => {
       const separate =
         componentSeries.length === 1 || (view === "separate" && componentSeries.length > 1);
-      const together = healthAxis(bands, raisedAt, current, timeZone, isCompact);
+      const together = healthAxis(bands, raisedAt, current, timeZone, isCompact, edge);
       const ends = together.data;
       return {
         legend: healthLegend(separate, drawn),
@@ -483,6 +492,7 @@ function AlertDetailChartBody({
         ) : (
           <HealthActivityChart
             bands={bands}
+            edge={edge}
             raisedAt={raisedAt}
             current={current}
             timeZone={timeZone}

@@ -51,7 +51,6 @@ import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { canUseAlertsList } from "~/v3/canUseAlertsList.server";
 import { pickThresholdSeries } from "~/components/alerts/alertSeriesTypes";
-import { alertLifetimeWindow } from "~/v3/services/alerts/alertSeries.server";
 import { GROUP_CAPABILITY_KEY, type NotifierRef } from "@internal/alert-contracts";
 import { getAlert } from "~/v3/services/alerts/storage/alertStore.server";
 import { alertDisplayName } from "~/v3/services/alerts/alertDisplayName";
@@ -61,7 +60,12 @@ import {
   type AlertSeriesBundle,
   type GroupMemberTile,
 } from "~/components/alerts/groupMembers";
-import { EMPTY_SERIES, loadAlertSeries, loadGroupMemberTiles } from "./alertDetailSeries.server";
+import {
+  EMPTY_SERIES,
+  loadAlertSeries,
+  loadGroupMemberTiles,
+  resolveAlertDetailWindow,
+} from "./alertDetailSeries.server";
 import {
   AlertNotFoundError,
   AlertActionNotAllowedError,
@@ -104,7 +108,6 @@ import { activityRowLink } from "./activityRowLink";
 import { AlertDetailChart, AlertDetailFilterBar } from "~/components/alerts/AlertDetailChart";
 import { AlertDetailSidebar } from "~/components/alerts/AlertDetailSidebar";
 import { GroupMemberTiles, GroupMembershipBanner } from "~/components/alerts/GroupMemberTiles";
-import { alertDetailWindow } from "~/components/alerts/alertDetailWindow";
 import { availableAlertChannelWhere } from "~/v3/services/alerts/validateNotifierChannels.server";
 import { EXPIRY_CHIPS } from "~/components/dashboard-agent/alert-creation/flow-state";
 export const meta = pageMeta("Alert");
@@ -157,16 +160,11 @@ export const loader = dashboardLoader(
       projectId: project.id,
       environmentId: environment.id,
     });
-    const detailWindow = alertDetailWindow(
-      {
-        period,
-        from: parseTimestamp(fromStr),
-        to: parseTimestamp(toStr),
-      },
-      rawAlert ? alertLifetimeWindow(rawAlert) : undefined,
-      rawAlert?.createdAt,
-      env.ALERT_DETAIL_MAX_WINDOW_DAYS
-    );
+    const detailWindow = resolveAlertDetailWindow({
+      rawAlert,
+      params: { period, from: parseTimestamp(fromStr), to: parseTimestamp(toStr) },
+      maxWindowDays: env.ALERT_DETAIL_MAX_WINDOW_DAYS,
+    });
 
     const presenter = new AlertDetailPresenter();
     const alert = await presenter.call({

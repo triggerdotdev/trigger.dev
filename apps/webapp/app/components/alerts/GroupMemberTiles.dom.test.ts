@@ -7,7 +7,7 @@ import { OperatingSystemContextProvider } from "~/components/primitives/Operatin
 import { ShortcutsProvider } from "~/components/primitives/ShortcutsProvider";
 import { PreviewChartCard } from "./PreviewChartCard";
 import { GroupMembershipBanner, GroupMemberTiles } from "./GroupMemberTiles";
-import type { GroupMemberTile } from "./groupMembers";
+import { tileHasData, type GroupMemberTile } from "./groupMembers";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.ResizeObserver ??= class {
@@ -92,6 +92,33 @@ function tile(id: string, peak: number | null = 93): GroupMemberTile {
     querySeriesMode: undefined,
   } as unknown as GroupMemberTile;
 }
+
+describe("tileHasData", () => {
+  // Catches: a state tile with only component metric series rendering as "No activity".
+  it("counts component metric series for state tiles", () => {
+    const state = tile("m0", null);
+    state.alert = { ...state.alert, kind: "state" } as GroupMemberTile["alert"];
+    expect(tileHasData(state)).toBe(false);
+    state.componentSeries = [
+      {
+        key: "failureRatePct",
+        label: "Failure rate",
+        threshold: 10,
+        points: [{ bucket: 1, value: null }],
+      },
+    ];
+    expect(tileHasData(state)).toBe(false);
+    state.componentSeries = [
+      {
+        key: "failureRatePct",
+        label: "Failure rate",
+        threshold: 10,
+        points: [{ bucket: 1, value: 2 }],
+      },
+    ];
+    expect(tileHasData(state)).toBe(true);
+  });
+});
 
 describe("GroupMemberTiles", () => {
   it("renders one compact chart tile per member in a 3-column grid, no link and no status", async () => {

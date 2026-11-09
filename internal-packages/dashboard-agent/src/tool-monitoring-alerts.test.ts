@@ -672,9 +672,19 @@ describe("Limits condition fields", () => {
     expect((await bad({ components: ["limits.api"], signals: ["limited"] })).ok).toBe(true);
   });
 
+  // Catches: health.all components not validated by the agent tool.
+  it("accepts health.all components and rejects unknown ones", async () => {
+    const draft = (components: string[]) =>
+      run("update_alert_draft", {
+        patch: { what: "health.all", condition: { kind: "state", components } },
+      });
+    expect((await draft(["health.flow", "health.liveness"])).ok).toBe(true);
+    expect((await draft(["health.nope"])).ok).toBe(false);
+  });
+
   it("states the framing line in the prompt", () => {
     expect(DASHBOARD_AGENT_SYSTEM_PROMPT).toContain(
-      "Limits covers limits that can interrupt or degrade runtime flow; for limits.all pick components and any/all, for a limit pick signals."
+      "Limits covers limits that can interrupt or degrade runtime flow; for a composite pick components and any/all, for a limit pick signals."
     );
   });
 

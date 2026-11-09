@@ -33,8 +33,13 @@ export function stateConditionSummary(state: {
   if (!cap) return undefined;
   const compositeOf = cap.binding.compositeOf;
   if (compositeOf) {
-    if (cap.area !== "limits") return undefined;
     const count = state.components?.length ?? compositeOf.length;
+    if (cap.area === "health") {
+      return count === compositeOf.length
+        ? `All ${count} checks`
+        : `${count} of ${compositeOf.length} checks`;
+    }
+    if (cap.area !== "limits") return undefined;
     return `${state.compositeMode === "all" ? "All" : "Any"} of ${count} limits`;
   }
   const supported = cap.supportedSignals;
@@ -65,8 +70,21 @@ const SHORT_TITLE: Record<string, string> = {
   "limits.webhooks.waiters": "Webhook waiters",
 };
 
+const HEALTH_SHORT: Record<string, string> = {
+  "health.flow": "Flow",
+  "health.execution": "Execution",
+  "health.liveness": "Liveness",
+};
+
 export function limitScopeLabel(capabilityKey: string, components?: string[]): string | undefined {
   const cap = getCapability(capabilityKey);
+  if (cap?.area === "health") {
+    const parts = cap.binding.compositeOf;
+    const picked = parts && components?.filter((key) => parts.includes(key));
+    return parts && picked?.length && picked.length < parts.length
+      ? picked.map((key) => HEALTH_SHORT[key] ?? key).join(" + ")
+      : undefined;
+  }
   if (cap?.area !== "limits") return undefined;
   const parts = cap.binding.compositeOf;
   if (!parts) return SHORT_TITLE[capabilityKey] ?? cap.title;

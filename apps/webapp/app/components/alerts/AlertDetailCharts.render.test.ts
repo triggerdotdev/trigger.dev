@@ -62,6 +62,15 @@ describe("HealthActivityChart", () => {
     expect(healthPoints(bands).map((p) => p.health)).toEqual([1, 0, null, null]);
   });
 
+  // Catches: a lone band in a long window ending short of the window end.
+  it("fails when a lone band does not extend to the window end", () => {
+    const since = Date.UTC(2026, 9, 1);
+    const until = since + 30 * 24 * HOUR;
+    const lone = { bucket: until - 13 * HOUR, healthy: 1, degraded: null, unknown: null } as const;
+    const points = healthPoints([lone], 1, { from: since, until });
+    expect(points.map((p) => p.bucket)).toEqual([since, lone.bucket, until]);
+  });
+
   it("fails when the trailing point repeats a degraded bucket after recovery", () => {
     const until = Date.parse("2026-10-01T11:56:00Z");
     const seeded = buildHealthBands(

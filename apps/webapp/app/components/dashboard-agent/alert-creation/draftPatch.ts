@@ -154,8 +154,12 @@ export function applyDraftPatch(answers: FlowAnswers, patch: AlertDraftPatch): F
     }
   }
 
-  if (patch.what !== undefined && next.what === "limits.all" && next.components === undefined) {
-    next.components = compositeComponents("limits.all");
+  if (
+    patch.what !== undefined &&
+    (next.what === "limits.all" || next.what === "health.all") &&
+    next.components === undefined
+  ) {
+    next.components = compositeComponents(next.what);
   }
 
   if (patch.name !== undefined) next.name = patch.name;

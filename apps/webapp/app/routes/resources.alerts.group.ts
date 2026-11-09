@@ -1,7 +1,12 @@
 import { json } from "@remix-run/server-runtime";
 import type { NotifierRef } from "@internal/alert-contracts";
+import { boundedIn } from "@trigger.dev/database";
 import { z } from "zod";
+import { groupCreatedMessage } from "~/components/alerts/alertCreatedCard";
 import { $replica, prisma } from "~/db.server";
+import { logger } from "~/services/logger.server";
+import { alertDisplayName } from "~/v3/services/alerts/alertDisplayName";
+import { appendCreatedMessage, ownsChat } from "~/v3/services/alerts/createdCardChat.server";
 import { hasAccessToEnvironment } from "~/models/runtimeEnvironment.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { canUseAlertsList } from "~/v3/canUseAlertsList.server";
@@ -19,7 +24,50 @@ const GroupRequestSchema = z.object({
   name: z.string().trim().min(1).max(120),
   notifierChannelIds: z.array(z.string()).min(1, "At least one channel is required"),
   expiresAt: z.string().datetime().optional(),
+  transcriptChatId: z.string().min(1).optional(),
 });
+
+async function appendGroupCard({
+  chat,
+  alertId,
+  body,
+  channelIds,
+  expiresAt,
+}: {
+  chat: { chatId: string; userId: string; organizationId: string };
+  alertId: string;
+  body: z.infer<typeof GroupRequestSchema>;
+  channelIds: string[];
+  expiresAt?: Date;
+}) {
+  try {
+    const [members, channels] = await Promise.all([
+      $replica.alert.findMany({
+        where: { id: { in: boundedIn(body.memberAlertIds) }, projectId: body.projectId },
+        select: { id: true, name: true, capabilityKey: true, params: true },
+      }),
+      $replica.projectAlertChannel.findMany({
+        where: { id: { in: boundedIn(channelIds) }, projectId: body.projectId },
+        select: { id: true, name: true },
+      }),
+    ]);
+    const message = groupCreatedMessage(alertId, {
+      name: body.name,
+      compositeMode: body.compositeMode,
+      memberNames: body.memberAlertIds
+        .map((id) => members.find((m) => m.id === id))
+        .filter((m) => m !== undefined)
+        .map(alertDisplayName),
+      channelNames: channels.map((c) => c.name),
+      expiresAt: expiresAt?.toISOString(),
+    });
+    await appendCreatedMessage(chat, alertId, message);
+    return message;
+  } catch (error) {
+    logger.error("Failed to build the group created card", { alertId, error });
+    return undefined;
+  }
+}
 
 async function bodyScope(_params: unknown, request: Request) {
   const body: unknown = await request
@@ -70,6 +118,17 @@ export const action = dashboardAction(
       throwPermissionDenied();
     }
 
+    if (
+      body.transcriptChatId &&
+      !(await ownsChat({
+        chatId: body.transcriptChatId,
+        userId: user.id,
+        organizationId: body.organizationId,
+      }))
+    ) {
+      return json({ error: "Invalid chat reference" }, { status: 400 });
+    }
+
     const validChannelIds = await findValidNotifierChannelIds(
       $replica,
       body.projectId,
@@ -101,6 +160,20 @@ export const action = dashboardAction(
     });
     if (!result.ok) return json({ error: result.error }, { status: 400 });
 
+    const message = body.transcriptChatId
+      ? await appendGroupCard({
+          chat: {
+            chatId: body.transcriptChatId,
+            userId: user.id,
+            organizationId: body.organizationId,
+          },
+          alertId: result.alert.id,
+          body,
+          channelIds: validChannelIds,
+          expiresAt,
+        })
+      : undefined;
+
     return json({
       ok: true,
       alertId: result.alert.id,
@@ -110,6 +183,7 @@ export const action = dashboardAction(
         { slug: environment.slug },
         result.alert.id
       ),
+      message,
     });
   }
 );
