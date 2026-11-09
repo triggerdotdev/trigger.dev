@@ -28,6 +28,12 @@ import {
 } from "./workloadManager/runCrd.js";
 import { workerLaneFor, type WorkloadManagerBackend } from "./workerLane.js";
 import { RestoreWatcher, type RestoreFailure } from "./services/restoreWatcher.js";
+import {
+  ColdStartHeartbeats,
+  heartbeatRejected,
+  type ColdStartBeatResult,
+  type ColdStartTarget,
+} from "./services/coldStartHeartbeats.js";
 import { DockerWorkloadManager } from "./workloadManager/docker.js";
 import {
   HttpServer,
@@ -52,7 +58,7 @@ import {
   WarmStartVerificationService,
   type WarmStartTimings,
 } from "./services/warmStartVerificationService.js";
-import { extractTraceparent } from "./util.js";
+import { extractTraceparent, getRunnerId } from "./util.js";
 import { Redis } from "ioredis";
 import { BackpressureMonitor } from "./backpressure/backpressureMonitor.js";
 import { RedisBackpressureSignalSource } from "./backpressure/redisBackpressureSignalSource.js";
@@ -125,6 +131,7 @@ class ManagedSupervisor {
   private readonly runCrdManager?: RunCrdWorkloadManager;
   private readonly restoreInformer?: RunnerRestoreInformer;
   private readonly restoreWatcher?: RestoreWatcher;
+  private readonly coldStartHeartbeats?: ColdStartHeartbeats;
   private readonly runnerKillReporter?: RunnerKillReporter;
   private readonly runnerKillInformer?: RunnerKillInformer;
   private readonly runReleaser?: RunReleaser;
@@ -275,6 +282,16 @@ class ManagedSupervisor {
         reportFailure: (failure) => this.reportRestoreFailure(failure),
         register,
       });
+      if (env.KUBERNETES_RUNNER_START_HEARTBEAT_ENABLED) {
+        this.coldStartHeartbeats = new ColdStartHeartbeats({
+          readState: ({ runnerId, snapshotFriendlyId }) =>
+            runCrdManager.coldStartState(runnerId, snapshotFriendlyId),
+          heartbeat: (target) => this.heartbeatColdStart(target),
+          intervalMs: env.KUBERNETES_RUNNER_RESTORE_HEARTBEAT_INTERVAL_MS,
+          timeoutMs: env.KUBERNETES_RUNNER_START_HEARTBEAT_TIMEOUT_MS,
+          register,
+        });
+      }
       this.workloadManager = runCrdManager;
       this.workloadManagerBackend = "run-crd";
 
@@ -705,6 +722,7 @@ class ManagedSupervisor {
     this.logger.debug("Run connected", { run });
     // The dispatched run reached a runner on this node - no fallback needed.
     this.warmStartVerifier?.cancel(run.friendlyId);
+    this.coldStartHeartbeats?.runnerConnected(run.friendlyId);
     this.workerSession.subscribeToRunNotifications([run.friendlyId]);
   }
 
@@ -821,6 +839,36 @@ class ManagedSupervisor {
         error: result.error,
       });
     }
+  }
+
+  /**
+   * Keeps a cold start's dequeued snapshot from stalling while its Runner waits for a node.
+   * A refusal ends the heartbeat quietly: the run has moved on from the snapshot.
+   */
+  private async heartbeatColdStart({
+    runFriendlyId,
+    snapshotFriendlyId,
+    runnerId,
+  }: ColdStartTarget): Promise<ColdStartBeatResult> {
+    const result = await this.workerSession.httpClient.heartbeatRun(
+      runFriendlyId,
+      snapshotFriendlyId,
+      {},
+      runnerId
+    );
+    if (result.success) {
+      return "ok";
+    }
+    if (heartbeatRejected(result.statusCode)) {
+      return "rejected";
+    }
+    this.logger.warn("Cold start heartbeat failed", {
+      runFriendlyId,
+      snapshotFriendlyId,
+      runnerId,
+      error: result.error,
+    });
+    return "failed";
   }
 
   private async reportRestoreFailure({
@@ -1001,8 +1049,15 @@ class ManagedSupervisor {
 
   private async createWorkload(message: DequeuedMessage, timings: WarmStartTimings) {
     const createStart = performance.now();
+    // Started before the create, which can itself take a while to return.
+    const heartbeat = this.coldStartHeartbeats?.start({
+      runFriendlyId: message.run.friendlyId,
+      snapshotFriendlyId: message.snapshot.friendlyId,
+      runnerId: getRunnerId(message.run.friendlyId, message.run.attemptNumber),
+    });
     try {
       await this.workloadManager.create(await this.createOptionsFor(message, timings));
+      heartbeat?.created();
       recordPhaseSince("workload_create", createStart, undefined);
       workloadCreateDuration.observe(
         { backend: this.workloadManagerBackend, outcome: "success" },
@@ -1015,6 +1070,7 @@ class ManagedSupervisor {
       //   memory: message.run.machine.memory,
       // });
     } catch (error) {
+      heartbeat?.createFailed();
       recordPhaseSince(
         "workload_create",
         createStart,
@@ -1117,6 +1173,7 @@ class ManagedSupervisor {
     await this.failedPodHandler?.start();
     await this.restoreInformer?.start();
     await this.runnerKillInformer?.start();
+    await this.adoptColdStarts();
     await this.metricsServer?.start();
 
     if (env.TRIGGER_WORKLOAD_API_ENABLED) {
@@ -1133,6 +1190,28 @@ class ManagedSupervisor {
     await this.workerSession.start();
   }
 
+  /**
+   * Takes over the heartbeats of the cold starts an earlier process left still starting.
+   * Only a process that dequeues heartbeats cold starts, as for restores.
+   */
+  private async adoptColdStarts() {
+    if (!this.coldStartHeartbeats || !this.runCrdManager || !env.TRIGGER_DEQUEUE_ENABLED) {
+      return;
+    }
+    try {
+      const starting = await this.runCrdManager.startingColdStarts(
+        env.KUBERNETES_RUNNER_RESTORE_HEARTBEAT_INTERVAL_MS
+      );
+      for (const { createdAt, ...target } of starting) {
+        this.coldStartHeartbeats.adopt(target, createdAt);
+      }
+      this.logger.log("Adopting cold start heartbeats", { found: starting.length });
+    } catch (error) {
+      // Those runs are left to the stall timeout, as before cold starts were heartbeated.
+      this.logger.warn("Failed to list cold starts to adopt", { error });
+    }
+  }
+
   async stop() {
     this.logger.log("Shutting down");
     // Stop the verifier first: its timer can otherwise fire mid-shutdown and
@@ -1140,8 +1219,9 @@ class ManagedSupervisor {
     this.warmStartVerifier?.stop();
     await this.workerSession.stop();
     await this.dequeueDrain.stop();
-    // The next process adopts the restores and recovers the suspends left unanswered.
+    // The next process adopts the restores and cold starts, and recovers the suspends left unanswered.
     await this.restoreWatcher?.stop();
+    this.coldStartHeartbeats?.stop();
     await this.restoreInformer?.stop();
     await this.runnerKillInformer?.stop();
 

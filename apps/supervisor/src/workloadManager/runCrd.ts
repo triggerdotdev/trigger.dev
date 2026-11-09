@@ -18,7 +18,7 @@ import {
   formatComputeCheckpointLocation,
   parseComputeCheckpointLocation,
 } from "@trigger.dev/core/v3";
-import { type K8sApi, createK8sApi } from "../clients/kubernetes.js";
+import { type K8sApi, createK8sApi, withTimeout } from "../clients/kubernetes.js";
 import { ReconnectingInformer } from "../clients/reconnectingInformer.js";
 import { getRestoreRunnerId, getRunnerId } from "../util.js";
 import type {
@@ -369,6 +369,38 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
     }
     const outcome = restoreOutcome(runner);
     return outcome ? { ...outcome, createdAt: createdAtOf(runner), uid: uidOf(runner) } : timedOut;
+  }
+
+  /** Reads a cold start's Runner for the heartbeat that covers it. A missing one is gone. */
+  async coldStartState(runnerId: string, snapshotFriendlyId: string): Promise<ColdStartState> {
+    try {
+      return coldStartState(await this.getRunner(runnerId), snapshotFriendlyId);
+    } catch (err: unknown) {
+      if (statusCodeOf(err) === 404) {
+        return "gone";
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * The cold starts still waiting to start, for a new process to take over their
+   * heartbeats. One list, bounded at both ends, as nothing retries it.
+   */
+  async startingColdStarts(timeoutMs: number): Promise<StartingColdStart[]> {
+    const list = (await withTimeout(
+      this.k8s.custom.listNamespacedCustomObject({
+        group: GROUP,
+        version: VERSION,
+        namespace: this.namespace,
+        plural: PLURAL,
+        labelSelector: `${RESTORE_LABEL}!=true`,
+        timeoutSeconds: Math.ceil(timeoutMs / 1000),
+      }),
+      timeoutMs,
+      "Cold start Runner list"
+    )) as KubernetesListObject<KubernetesObject>;
+    return (list.items ?? []).flatMap((runner) => startingColdStart(runner) ?? []);
   }
 
   /** Deletes a failed resume so its redelivery can create it again. */
@@ -1416,6 +1448,49 @@ export function restoreOutcome(runner: unknown): RunnerRestoreResult | undefined
     default:
       return undefined;
   }
+}
+
+/** Where a cold start's Runner stands. `superseded` is a Runner a later delivery created. */
+export type ColdStartState = "starting" | "started" | "failed" | "gone" | "superseded";
+
+/** A Runner that started, failed or belongs to another delivery has no more use for the heartbeat. */
+export function coldStartState(runner: unknown, snapshotFriendlyId: string): ColdStartState {
+  const bootstrap = (runner as RunnerBootstrapSpec | null)?.spec?.bootstrap;
+  if (bootstrap?.snapshotFriendlyID && bootstrap.snapshotFriendlyID !== snapshotFriendlyId) {
+    return "superseded";
+  }
+  const outcome = restoreOutcome(runner);
+  if (!outcome) {
+    return "starting";
+  }
+  return outcome.ok ? "started" : "failed";
+}
+
+export type StartingColdStart = {
+  runFriendlyId: string;
+  snapshotFriendlyId: string;
+  runnerId: string;
+  createdAt: Date;
+};
+
+/** A cold-start Runner not yet running or failed, with what its heartbeat needs. */
+export function startingColdStart(runner: unknown): StartingColdStart | undefined {
+  const meta = (runner as { metadata?: { name?: string; labels?: Record<string, string> } } | null)
+    ?.metadata;
+  const bootstrap = (runner as RunnerBootstrapSpec | null)?.spec?.bootstrap;
+  const createdAt = createdAtOf(runner);
+  if (!meta?.name || meta.labels?.[RESTORE_LABEL] === "true" || restoreOutcome(runner)) {
+    return undefined;
+  }
+  if (!bootstrap?.runFriendlyID || !bootstrap.snapshotFriendlyID || !createdAt) {
+    return undefined;
+  }
+  return {
+    runFriendlyId: bootstrap.runFriendlyID,
+    snapshotFriendlyId: bootstrap.snapshotFriendlyID,
+    runnerId: meta.name,
+    createdAt,
+  };
 }
 
 /** Reasons a cold start fails for that another lane may not, so it is moved there. */

@@ -11,6 +11,8 @@ import {
   awaitRestoreOf,
   checkpointLocation,
   classifyRestoreFailure,
+  coldStartState,
+  startingColdStart,
   parseCheckpointLocation,
   pollDelayMs,
   publishedSuspend,
@@ -2072,6 +2074,63 @@ describe("RunnerRestoreInformer", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("coldStartState", () => {
+  function coldStart(phase?: string, snapshotFriendlyID = "snapshot_1") {
+    return { spec: { bootstrap: { snapshotFriendlyID } }, status: phase ? { phase } : {} };
+  }
+
+  it.each([
+    [undefined, "starting"],
+    ["Pending", "starting"],
+    ["Scheduling", "starting"],
+    ["Running", "started"],
+    ["Suspending", "started"],
+    ["Succeeded", "started"],
+    ["Failed", "failed"],
+  ])("a Runner in phase %s is %s", (phase, expected) => {
+    // Catches: a started or failed Runner read as still starting, so its run stays heartbeated.
+    expect(coldStartState(coldStart(phase), "snapshot_1")).toBe(expected);
+  });
+
+  it("is superseded once a later delivery's Runner took the name", () => {
+    // Catches: a later delivery's Runner heartbeated under an earlier delivery's snapshot.
+    expect(coldStartState(coldStart("Pending", "snapshot_2"), "snapshot_1")).toBe("superseded");
+  });
+});
+
+describe("startingColdStart", () => {
+  function runner(opts: { phase?: string; restore?: boolean } = {}) {
+    return {
+      metadata: {
+        name: "runner-a",
+        creationTimestamp: "2026-11-09T10:00:00Z",
+        ...(opts.restore ? { labels: { [RESTORE_LABEL]: "true" } } : {}),
+      },
+      spec: { bootstrap: { runFriendlyID: "run_a", snapshotFriendlyID: "snapshot_1" } },
+      status: opts.phase ? { phase: opts.phase } : {},
+    };
+  }
+
+  it("takes the heartbeat's run, snapshot, runner and creation time from a starting Runner", () => {
+    // Catches: an adopted cold start heartbeated under the wrong ids or limit.
+    expect(startingColdStart(runner({ phase: "Pending" }))).toEqual({
+      runFriendlyId: "run_a",
+      snapshotFriendlyId: "snapshot_1",
+      runnerId: "runner-a",
+      createdAt: new Date("2026-11-09T10:00:00Z"),
+    });
+  });
+
+  it.each([
+    ["a resume", { restore: true }],
+    ["a running Runner", { phase: "Running" }],
+    ["a failed Runner", { phase: "Failed" }],
+  ])("leaves out %s", (_name, opts) => {
+    // Catches: adoption heartbeating a resume the restore watch owns, or a Runner past its start.
+    expect(startingColdStart(runner(opts))).toBeUndefined();
   });
 });
 

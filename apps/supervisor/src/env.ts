@@ -300,6 +300,16 @@ export const Env = z
       .int()
       .positive()
       .default(20_000),
+    // Heartbeat a cold start's dequeued snapshot, at the restore heartbeat interval, until
+    // its Runner runs or fails, so a Runner waiting for a node is not requeued as stalled.
+    KUBERNETES_RUNNER_START_HEARTBEAT_ENABLED: BoolEnv.default(true),
+    // The most a cold start is heartbeated for. Past the operator's pod start deadline, as
+    // for restores, so its failure arrives first; and still bounded if it never comes.
+    KUBERNETES_RUNNER_START_HEARTBEAT_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(21 * 60_000),
     // At least the API server's default request timeout, within which a lost create can still commit.
     KUBERNETES_RUNNER_TOKEN_SECRET_SETTLE_MS: z.coerce.number().int().min(60_000).default(120_000),
     KUBERNETES_NAMESPACE: z.string().default("default"),
