@@ -404,7 +404,7 @@ export class UpsertTaskScheduleService extends BaseService {
       deduplicationKey: taskSchedule.deduplicationKey,
       environmentId: instance.environmentId,
       schedulePhase: instance.schedulePhase,
-      phaseSecret: env.ENCRYPTION_KEY,
+      phaseSecret: env.SCHEDULE_PHASE_SEED,
       windowDurationSeconds: taskSchedule.windowDurationSeconds,
       windowPercentage: taskSchedule.windowPercentage,
       defaultWindowDurationSeconds: taskSchedule.defaultWindowDurationSeconds,

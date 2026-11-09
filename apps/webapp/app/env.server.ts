@@ -2161,6 +2161,8 @@ const EnvironmentSchema = z
       .string()
       .default(process.env.REDIS_TLS_DISABLED ?? "false"),
 
+    // Stable, non-secret input shared by every schedule calculator. Stored phases take precedence.
+    SCHEDULE_PHASE_SEED: z.string().min(1).default("trigger.dev-schedule-phase-v1"),
     SCHEDULE_ENGINE_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
     SCHEDULE_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
     SCHEDULE_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
