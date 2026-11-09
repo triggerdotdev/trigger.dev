@@ -4944,9 +4944,8 @@ export class RunQueue {
   }
 
   #createBlockingDequeueClient() {
-    const blockingClient = this.redis.duplicate();
-
-    return blockingClient;
+    // One connection per blocking pop, so skip the INFO that ioredis sends on connect.
+    return this.redis.duplicate({ enableReadyCheck: false });
   }
 
   // Call this every 10 minutes

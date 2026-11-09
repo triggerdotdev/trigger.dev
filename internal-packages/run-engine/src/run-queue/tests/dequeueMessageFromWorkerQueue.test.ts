@@ -1,4 +1,5 @@
 import { assertNonNullable, redisTest } from "@internal/testcontainers";
+import { createRedisClient } from "@internal/redis";
 import { trace } from "@internal/tracing";
 import { describe } from "node:test";
 import { FairQueueSelectionStrategy } from "../fairQueueSelectionStrategy.js";
@@ -551,6 +552,53 @@ describe("RunQueue.dequeueMessageFromWorkerQueue", () => {
         expect(dequeued4.message.orgId).toEqual(messageDev.orgId);
         expect(dequeued4.message.version).toEqual("2");
       } finally {
+        await queue.quit();
+      }
+    }
+  );
+  // Catches: blocking worker-queue pops send an INFO ready check on each new Redis connection.
+  redisTest(
+    "a blocking dequeue does not send INFO on its connection",
+    { timeout: 15_000 },
+    async ({ redisContainer }) => {
+      const queue = new RunQueue({
+        ...testOptions,
+        queueSelectionStrategy: new FairQueueSelectionStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+      });
+      // Plain client (no prefix) for CONFIG RESETSTAT / INFO; stats are server-wide.
+      const statsClient = createRedisClient({
+        host: redisContainer.getHost(),
+        port: redisContainer.getPort(),
+      });
+
+      try {
+        // Warm every long-lived connection so their own ready checks are not counted.
+        await queue.dequeueMessageFromWorkerQueue("test_12345", "main");
+        await statsClient.config("RESETSTAT");
+
+        // Empty worker queue: this is one blocking pop on a fresh connection.
+        const dequeued = await queue.dequeueMessageFromWorkerQueue("test_12345", "main");
+        expect(dequeued).toBeUndefined();
+
+        // ioredis sends INFO on connect when enableReadyCheck is on. The blocking
+        // client must not. Redis does not count this INFO in its own reply.
+        const info = await statsClient.info("commandstats");
+        const infoCalls = Number(info.match(/^cmdstat_info:calls=(\d+)/m)?.[1] ?? 0);
+        expect(infoCalls).toBe(0);
+      } finally {
+        await statsClient.quit();
         await queue.quit();
       }
     }
