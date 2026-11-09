@@ -52,7 +52,7 @@
               },
               {
                 "group": "OIDC",
-                "pages": ["oidc", "oidc/aws", "oidc/infisical", "oidc/custom"]
+                "pages": ["oidc", "oidc/aws", "oidc/anthropic", "oidc/infisical", "oidc/custom"]
               }
             ]
           },
