@@ -17,6 +17,7 @@ import {
   EncryptedSecretValueSchema,
 } from "~/services/secrets/secretStore.server";
 import { BuildSettingsSchema } from "../buildSettings";
+import { DeploymentAccessError } from "../deploymentAccess.server";
 import { type RedeploySource, resolveRedeploySource } from "../redeploy";
 import { atomicProductionDeploymentUrl } from "./atomicProductionDeployment.server";
 import { ServiceValidationError } from "./baseService.server";
@@ -57,6 +58,7 @@ export type RedeployDeploymentError =
   | { type: "deployment_in_flight" }
   | { type: "atomic_production"; vercelUrl: string }
   | { type: "failed_to_enqueue_build"; message: string }
+  | { type: "deployment_access_denied"; message: string }
   | { type: "other"; cause: unknown };
 
 type RedeployDeploymentDeps = {
@@ -285,10 +287,14 @@ export class RedeployDeploymentService {
             redeployOf: opts.deploymentShortCode,
             ...(buildEnvVars ? { buildEnvVars } : {}),
           }),
-          (error) =>
-            error instanceof ServiceValidationError && error.status === 409
+          (error) => {
+            if (error instanceof DeploymentAccessError) {
+              return { type: "deployment_access_denied" as const, message: error.message };
+            }
+            return error instanceof ServiceValidationError && error.status === 409
               ? { type: "deployment_in_flight" as const }
-              : other(error)
+              : other(error);
+          }
         );
 
       return initializeOnce()

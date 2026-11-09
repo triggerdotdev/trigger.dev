@@ -10,6 +10,7 @@ import { deploymentOnboardingEnabled } from "~/v3/services/deploymentOnboardingE
 import { BranchTrackingConfigSchema, getTrackedBranchForEnvironment } from "~/v3/github";
 import { TriggerDeployNowService } from "~/v3/services/triggerDeployNow.server";
 import { checkDeployAccess } from "~/v3/deploymentAccess.server";
+import { cardVerificationDeployRefusal } from "~/v3/cardVerificationDeployGate.server";
 
 export function deployNowPath(
   organizationSlug: string,
@@ -47,6 +48,17 @@ export const action = dashboardAction(
         .allowed
     ) {
       return json({ ok: false, error: "Not available" }, { status: 403 });
+    }
+
+    const cardRefusal = await cardVerificationDeployRefusal({
+      id: project.organizationId,
+      slug: organizationSlug,
+    });
+    if (cardRefusal) {
+      return json(
+        { ok: false, code: "CARD_VERIFICATION_REQUIRED", error: cardRefusal },
+        { status: 403 }
+      );
     }
 
     // Resolve the tracked branch for this environment.

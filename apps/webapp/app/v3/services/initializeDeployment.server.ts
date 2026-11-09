@@ -18,6 +18,7 @@ import {
   DeploymentAccessError,
   deniedMessage,
 } from "../deploymentAccess.server";
+import { cardVerificationDeployRefusal } from "../cardVerificationDeployGate.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { resolveDeployBaseImages } from "../deployBaseImages.server";
 import { getDeploymentImageRef } from "../getDeploymentImageRef.server";
@@ -36,6 +37,8 @@ import {
   type ExternalIdReuseDeployment,
 } from "./initializeDeployment/resolveExternalIdReuse.server";
 import { type WorkerDeployment } from "@trigger.dev/database";
+import type { DeploymentAccessController } from "@trigger.dev/plugins";
+import { type PrismaClientOrTransaction } from "~/db.server";
 import { errAsync } from "neverthrow";
 
 const nanoid = customAlphabet("1234567890abcdefghijklmnopqrstuvwxyz", 8);
@@ -64,6 +67,21 @@ export type InitializeDeploymentResult =
     };
 
 export class InitializeDeploymentService extends BaseService {
+  private readonly _deploymentAccess: DeploymentAccessController | null | undefined;
+  private readonly _cardRefusal: typeof cardVerificationDeployRefusal;
+
+  constructor(
+    prisma?: PrismaClientOrTransaction,
+    replica?: PrismaClientOrTransaction,
+    // Tests inject these; production loads the access plugin and asks billing about the card.
+    deploymentAccess?: DeploymentAccessController | null,
+    cardRefusal: typeof cardVerificationDeployRefusal = cardVerificationDeployRefusal
+  ) {
+    super(prisma, replica);
+    this._deploymentAccess = deploymentAccess;
+    this._cardRefusal = cardRefusal;
+  }
+
   public async call(
     environment: AuthenticatedEnvironment,
     payload: InitializeDeploymentRequestBody,
@@ -79,16 +97,19 @@ export class InitializeDeploymentService extends BaseService {
       // workaround below) isn't a new deploy, so it only gets the read-only check.
       const attachingToExistingDeployment =
         payload.gitMeta?.commitSha?.startsWith("deployment_") === true;
-      const access = await checkDeployAccess({
-        stage: attachingToExistingDeployment ? "preflight" : "initialize",
-        organizationId: environment.organization.id,
-        projectId: environment.project.id,
-        environmentId: environment.id,
-        contentHash: payload.contentHash,
-        hasGitMetadata: Boolean(payload.gitMeta?.commitSha || payload.gitMeta?.remoteUrl),
-        triggeredVia: payload.triggeredVia,
-        cliVersion: options?.cliVersion,
-      });
+      const access = await checkDeployAccess(
+        {
+          stage: attachingToExistingDeployment ? "preflight" : "initialize",
+          organizationId: environment.organization.id,
+          projectId: environment.project.id,
+          environmentId: environment.id,
+          contentHash: payload.contentHash,
+          hasGitMetadata: Boolean(payload.gitMeta?.commitSha || payload.gitMeta?.remoteUrl),
+          triggeredVia: payload.triggeredVia,
+          cliVersion: options?.cliVersion,
+        },
+        { controller: this._deploymentAccess }
+      );
       if (!access.allowed && access.kind === "denied") {
         throw new DeploymentAccessError(deniedMessage(access));
       }
@@ -253,6 +274,9 @@ export class InitializeDeploymentService extends BaseService {
       }
 
       if (!access.allowed) throw new DeploymentAccessError(deniedMessage(access));
+
+      const cardRefusal = await this._cardRefusal(environment.organization);
+      if (cardRefusal) throw new DeploymentAccessError(cardRefusal);
 
       span.setAttribute("outcome", "created");
 

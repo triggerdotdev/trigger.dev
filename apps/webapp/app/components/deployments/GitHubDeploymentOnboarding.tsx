@@ -9,8 +9,9 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { VercelAtomicDeploymentNotice } from "./VercelAtomicDeploymentNotice";
 
 export function deployNowRequestError(data: { code?: string; error?: string }): string {
-  // Retrying can't fix a missing branch, so say what the user has to do instead.
+  // Retrying can't fix a missing branch or card, so say what the user has to do instead.
   if (data.code === "BRANCH_NOT_FOUND" && data.error) return data.error;
+  if (data.code === "CARD_VERIFICATION_REQUIRED" && data.error) return data.error;
   return "Couldn't start the deployment. Try again.";
 }
 
