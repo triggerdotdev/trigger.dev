@@ -9,7 +9,10 @@ import {
   type AuthenticationResult,
   type ScopedApiKeyAuthenticationDependencies,
 } from "~/services/apiAuth.server";
-import { resolveAndRecheckUserActorClaims } from "~/services/personalAccessToken.server";
+import {
+  personalAccessTokenAuthFailureBody,
+  resolveAndRecheckUserActorClaims,
+} from "~/services/personalAccessToken.server";
 import { rbac } from "~/services/rbac.server";
 
 type EnvironmentScopedResource = "envvars" | "apiKeys" | "deployments" | "branches";
@@ -188,7 +191,7 @@ export async function authorizePatEnvironmentAccess({
     ? await rbac.authenticateUserActor(request, { organizationId, projectId })
     : await rbac.authenticatePat(request, { organizationId, projectId });
   if (!userAuth.ok) {
-    return json({ error: userAuth.error }, { status: userAuth.status });
+    return json(personalAccessTokenAuthFailureBody(userAuth), { status: userAuth.status });
   }
 
   if (

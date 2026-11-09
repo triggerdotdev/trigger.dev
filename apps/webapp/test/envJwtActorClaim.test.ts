@@ -25,7 +25,11 @@ vi.mock("~/services/logger.server", () => ({
   logger: { debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));
 vi.mock("~/env.server", () => ({ env: { SESSION_SECRET: "test-session-secret" } }));
-vi.mock("~/db.server", () => ({ prisma: {}, $replica: {} }));
+// The 401 path looks up why the token failed; an unknown token has no row.
+vi.mock("~/db.server", () => ({
+  prisma: {},
+  $replica: { personalAccessToken: { findFirst: async () => null } },
+}));
 
 import { validateJWT } from "@trigger.dev/core/v3/jwt";
 import { action } from "~/routes/api.v1.projects.$projectRef.$env.jwt";
@@ -104,6 +108,31 @@ describe("env JWT exchange — act claim", () => {
 
     expect(claims.act).toBeUndefined();
     expect(claims.sub).toBe(environment.id);
+  });
+
+  it("doesn't let a JWT outlive the PAT it was exchanged from", async () => {
+    const validUntil = new Date(Date.now() + 10 * 60 * 1000);
+    mocks.authenticateRequest.mockResolvedValue({
+      type: "personalAccessToken",
+      result: { userId: "usr_42", validUntil },
+    });
+
+    const claims = await mintedClaims({ expirationTime: "24h" });
+
+    expect(claims.exp).toBe(Math.floor(validUntil.getTime() / 1000));
+  });
+
+  it("grants the requested lifetime when the PAT doesn't expire sooner", async () => {
+    mocks.authenticateRequest.mockResolvedValue({
+      type: "personalAccessToken",
+      result: { userId: "usr_42" },
+    });
+    const before = Math.floor(Date.now() / 1000);
+
+    const claims = await mintedClaims({ expirationTime: "1h" });
+
+    expect(claims.exp).toBeGreaterThanOrEqual(before + 60 * 60);
+    expect(claims.exp).toBeLessThanOrEqual(before + 60 * 60 + 5);
   });
 
   it("401s without a token", async () => {

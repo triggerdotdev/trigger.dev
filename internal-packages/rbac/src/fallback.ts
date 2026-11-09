@@ -16,6 +16,8 @@ import type {
 import {
   FULL_ACCESS_PRESET_ID,
   isUserActorToken,
+  personalAccessTokenExpiry,
+  personalAccessTokenExpiryMessage,
   verifyUserActorToken,
 } from "@trigger.dev/plugins";
 import { createHash } from "node:crypto";
@@ -220,10 +222,20 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
       // (see `PatAuthResult.lastAccessedAt` jsdoc). Without this the host
       // would need a second findFirst just to decide whether to fire the
       // updateMany, turning 1 DB roundtrip into 2.
-      select: { id: true, userId: true, lastAccessedAt: true },
+      select: { id: true, userId: true, lastAccessedAt: true, expiresAt: true },
     });
     if (!pat) {
       return { ok: false, status: 401, error: "Invalid PAT" };
+    }
+
+    const expiry = personalAccessTokenExpiry(pat);
+    if (expiry) {
+      return {
+        ok: false,
+        status: 401,
+        error: personalAccessTokenExpiryMessage(expiry),
+        ...expiry,
+      };
     }
 
     return {
@@ -231,6 +243,7 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
       tokenId: pat.id,
       userId: pat.userId,
       lastAccessedAt: pat.lastAccessedAt,
+      expiresAt: pat.expiresAt,
       subject: {
         type: "personalAccessToken",
         tokenId: pat.id,

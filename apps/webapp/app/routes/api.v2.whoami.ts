@@ -4,6 +4,7 @@ import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { v3ProjectPath } from "~/utils/pathBuilder";
 import { authenticateRequest } from "~/services/apiAuth.server";
+import { personalAccessTokenUnauthorizedResponse } from "~/services/personalAccessToken.server";
 
 import { boundedIn } from "@trigger.dev/database";
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -14,7 +15,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
   });
 
   if (!authenticationResult) {
-    return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
+    // The CLI checks its token here before anything else, so say when it has expired.
+    return personalAccessTokenUnauthorizedResponse(request);
   }
 
   const url = new URL(request.url);

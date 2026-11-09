@@ -7,6 +7,7 @@ import { ArchiveBranchService } from "~/services/archiveBranch.server";
 import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
 import { logger } from "~/services/logger.server";
 import { toBranchableEnvironmentType } from "~/utils/branchableEnvironment";
+import { personalAccessTokenUnauthorizedResponse } from "~/services/personalAccessToken.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -36,7 +37,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
   });
 
   if (!authentication.ok) {
-    return json({ error: authentication.error }, { status: authentication.status });
+    return authentication.status === 401
+      ? personalAccessTokenUnauthorizedResponse(request, authentication.error)
+      : json({ error: authentication.error }, { status: authentication.status });
   }
   const authenticationResult = authentication.authentication;
 

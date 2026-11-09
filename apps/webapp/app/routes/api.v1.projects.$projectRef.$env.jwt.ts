@@ -16,7 +16,10 @@ import {
   type AuthenticationResult,
 } from "~/services/apiAuth.server";
 import { env as appEnv } from "~/env.server";
-import { assertSourcePatActive } from "~/services/personalAccessToken.server";
+import {
+  assertSourcePatActive,
+  personalAccessTokenUnauthorizedResponse,
+} from "~/services/personalAccessToken.server";
 import { validateJwtExpiration } from "~/services/jwtExpiration.server";
 import { logger } from "~/services/logger.server";
 import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
@@ -80,7 +83,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
 
     if (!authenticationResult) {
-      return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
+      return personalAccessTokenUnauthorizedResponse(request);
     }
 
     const parsedParams = ParamsSchema.safeParse(params);
@@ -179,10 +182,16 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ error: expiry.error }, { status: 400 });
     }
 
-    // A delegated token can't mint a longer-lived JWT than itself.
+    // A JWT can't outlive the token it was exchanged from, whether a delegated token or a PAT.
+    const sourceExpiresAt = isUat
+      ? userActor?.expiresAt
+      : authenticationResult.type === "personalAccessToken" &&
+          authenticationResult.result.validUntil
+        ? Math.floor(authenticationResult.result.validUntil.getTime() / 1000)
+        : undefined;
     const expirationTime =
-      isUat && userActor?.expiresAt !== undefined
-        ? Math.min(expiry.expirationTime, userActor.expiresAt)
+      sourceExpiresAt !== undefined
+        ? Math.min(expiry.expirationTime, sourceExpiresAt)
         : expiry.expirationTime;
 
     const jwt = await internal_generateJWT({

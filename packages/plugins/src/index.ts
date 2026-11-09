@@ -53,6 +53,15 @@ export {
   USER_ACTOR_TOKEN_PREFIX,
 } from "./rbac.js";
 
+export {
+  PERSONAL_ACCESS_TOKEN_EXPIRED,
+  personalAccessTokenExpiry,
+  personalAccessTokenExpiryMessage,
+} from "./personalAccessTokenExpiry.js";
+export type {
+  PersonalAccessTokenExpiry,
+  PersonalAccessTokenExpiryFields,
+} from "./personalAccessTokenExpiry.js";
 export type {
   ApiKeyCapability,
   ApiKeyCapabilityCatalogue,

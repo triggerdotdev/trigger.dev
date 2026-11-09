@@ -14,6 +14,7 @@ import type { RbacAbility, RbacResource } from "@trigger.dev/rbac";
 import type { RbacSubject } from "@trigger.dev/plugins";
 import { isUserActorToken } from "@trigger.dev/rbac";
 import {
+  personalAccessTokenAuthFailureBody,
   resolveAndRecheckUserActorClaims,
   updateLastAccessedAtIfStale,
 } from "../personalAccessToken.server";
@@ -756,7 +757,7 @@ export function createLoaderPATApiRoute<
         if (!patAuth.ok) {
           return await wrapResponse(
             request,
-            json({ error: patAuth.error }, { status: patAuth.status }),
+            json(personalAccessTokenAuthFailureBody(patAuth), { status: patAuth.status }),
             corsStrategy !== "none"
           );
         }
@@ -1060,7 +1061,7 @@ export function createActionPATApiRoute<
         if (!patAuth.ok) {
           return await wrapResponse(
             request,
-            json({ error: patAuth.error }, { status: patAuth.status }),
+            json(personalAccessTokenAuthFailureBody(patAuth), { status: patAuth.status }),
             corsStrategy !== "none"
           );
         }

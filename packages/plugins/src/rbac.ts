@@ -142,6 +142,7 @@ export type RbacResource = {
 export type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
 import type { AuthenticatedEnvironment as RbacEnv } from "@trigger.dev/core/v3/auth/environment";
 import { generateJWT, validateJWT } from "@trigger.dev/core/v3/jwt";
+import type { PersonalAccessTokenExpiry } from "./personalAccessTokenExpiry.js";
 
 /** @deprecated Renamed to `AuthenticatedEnvironment`. Kept as alias for transitional code. */
 export type RbacEnvironment = RbacEnv;
@@ -564,11 +565,25 @@ export type SessionAuthResult =
 // from the user's role in the target org (passed via `context`),
 // intersected with the PAT's optional max-role cap.
 export type PatAuthResult =
-  | { ok: false; status: 401 | 403; error: string }
+  | { ok: false; status: 401 | 403; error: string; code?: undefined; expiredAt?: undefined }
+  | {
+      // The token exists but has expired. Both fields are set, so the host can tell the
+      // caller why (and where to make a new one) instead of a bare 401.
+      ok: false;
+      status: 401;
+      error: string;
+      code: PersonalAccessTokenExpiry["code"];
+      expiredAt: Date;
+    }
   | {
       ok: true;
       tokenId: string;
       userId: string;
+      // The token's stored `expiresAt` (null when it never expires). Plugins reject expired
+      // tokens themselves; the host rechecks this so a plugin and host on different versions
+      // can't let one through. Optional only for plugins built against an older contract:
+      // when it is absent the host looks the token up itself.
+      expiresAt?: Date | null;
       // The token's stored `lastAccessedAt`, returned alongside the
       // identity so the host can throttle the per-request update in JS
       // (skip the DB roundtrip when the value is fresh). Plugins must

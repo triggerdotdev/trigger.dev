@@ -33,6 +33,23 @@ const parseDeployBaseImagesEnv = (
   return errors.length > 0 ? z.NEVER : images;
 };
 
+// Parses a CSV of day counts from 1 to 3650 (e.g. "30,90,365") into a non-empty, ascending, de-duplicated array.
+const parseExpiryDaysCsv = (raw: string, ctx: z.RefinementCtx): number[] => {
+  const values = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const numbers = values.map(Number);
+  if (numbers.length === 0 || numbers.some((n) => !Number.isInteger(n) || n <= 0 || n > 3650)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "must be a comma-separated list of whole numbers from 1 to 3650",
+    });
+    return z.NEVER;
+  }
+  return [...new Set(numbers)].sort((a, b) => a - b);
+};
+
 // Parses a CSV of machine preset names (e.g. "small-1x,small-2x") into a
 // non-empty array of MachinePresetName.
 const parseMachinePresetCsv = (raw: string, ctx: z.RefinementCtx): MachinePresetName[] => {
@@ -1073,6 +1090,19 @@ const EnvironmentSchema = z
     CARD_VERIFICATION_REQUIRED_FROM: z.string().datetime().optional(),
     // Whether an attempt start for a run that already has an attempt executing is logged or refused.
     RUN_ENGINE_DUPLICATE_ATTEMPT_START_CHECK: z.enum(["off", "log", "enforce"]).default("log"),
+
+    // Lifetimes, in days, offered when creating a personal access token on the dashboard, and the
+    // preselected one. A default that isn't in the list falls back to the first option.
+    PERSONAL_ACCESS_TOKEN_EXPIRY_DAYS: z
+      .string()
+      .default("30,90,365")
+      .transform(parseExpiryDaysCsv),
+    PERSONAL_ACCESS_TOKEN_DEFAULT_EXPIRY_DAYS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .max(3650)
+      .default(90),
 
     CLI_LOGIN_NETWORK_CHECK: z.enum(["off", "log", "confirm"]).default("log"),
     CLI_LOGIN_LEGACY_UNTIL: z.string().datetime().default("2027-01-01T00:00:00.000Z"),

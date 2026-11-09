@@ -9,13 +9,13 @@ import {
 } from "~/services/platformNotifications.server";
 
 type AdminUser = { id: string; admin: boolean };
-type AuthError = { status: number; message: string };
+type AuthError = { status: number; message: string; code?: string };
 
 async function authenticateAdmin(request: Request): Promise<Result<AdminUser, AuthError>> {
   const result = await authenticateAdminRequest(request);
   return result.ok
     ? ok({ id: result.user.id, admin: result.user.admin })
-    : err({ status: result.status, message: result.message });
+    : err({ status: result.status, message: result.message, code: result.code });
 }
 
 async function handleAction({ request }: ActionFunctionArgs) {
@@ -25,8 +25,9 @@ async function handleAction({ request }: ActionFunctionArgs) {
 
   const authResult = await authenticateAdmin(request);
   if (authResult.isErr()) {
-    const { status, message } = authResult.error;
-    return json({ error: message }, { status });
+    const { status, message, code } = authResult.error;
+    // `code` says why, e.g. the token expired, so a client can act on it.
+    return json(code ? { error: message, code } : { error: message }, { status });
   }
 
   let body: unknown;

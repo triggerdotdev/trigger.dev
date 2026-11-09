@@ -164,6 +164,9 @@ model PersonalAccessToken {
   revokedAt      DateTime?
   lastAccessedAt DateTime?
 
+  /// After this the token no longer authenticates. Null means it never expires.
+  expiresAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

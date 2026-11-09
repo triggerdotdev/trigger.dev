@@ -24,6 +24,7 @@ import { isAdditionalApiKey } from "@trigger.dev/core/v3/apiKeys";
 import { isPublicJWT } from "@trigger.dev/core/v3/jwt";
 
 import { RoleBaseAccessFallback } from "./fallback.js";
+import { rejectExpiredPersonalAccessToken } from "./personalAccessTokenExpiry.js";
 // Single source of truth for the capless-token scope ceiling; the env-JWT
 // exchange route imports it to project requested scopes against it.
 export { CAPLESS_USER_ACTOR_SCOPES } from "./fallback.js";
@@ -87,6 +88,13 @@ export {
   signUserActorToken,
   verifyUserActorToken,
   USER_ACTOR_TOKEN_PREFIX,
+} from "@trigger.dev/plugins";
+// The PAT expiry rule, shared with the RBAC plugins so host and plugin agree.
+export {
+  PERSONAL_ACCESS_TOKEN_EXPIRED,
+  personalAccessTokenExpiry,
+  personalAccessTokenExpiryMessage,
+  type PersonalAccessTokenExpiry,
 } from "@trigger.dev/plugins";
 
 // Either a single PrismaClient (used for both writes and reads — fine
@@ -180,9 +188,11 @@ class LazyController implements RoleBaseAccessController {
   // optional plugin. The host resolves them with its always-on credential
   // resolver — not a full RBAC fallback controller.
   private readonly _hostCredentialResolver: BearerCredentialResolver;
+  private readonly _replica: PrismaClient;
   private _recordScopeUse: ApiKeyScopeRecorder | undefined;
 
   constructor(prisma: RbacPrismaInput, options?: RbacCreateOptions) {
+    this._replica = "replica" in prisma ? prisma.replica : prisma;
     this._hostCredentialResolver = new BearerCredentialResolver(
       "primary" in prisma ? prisma : { primary: prisma, replica: prisma },
       { publicTokenSubjects: options?.publicTokenSubjects }
@@ -374,7 +384,10 @@ class LazyController implements RoleBaseAccessController {
   }
 
   async authenticatePat(...args: Parameters<RoleBaseAccessController["authenticatePat"]>) {
-    const result = await (await this.c()).authenticatePat(...args);
+    const result = await rejectExpiredPersonalAccessToken(
+      await (await this.c()).authenticatePat(...args),
+      this._replica
+    );
     return result.ok ? { ...result, ability: withActionAliases(result.ability) } : result;
   }
 

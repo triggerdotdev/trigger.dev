@@ -56,12 +56,12 @@ describe("assertSourcePatActive", () => {
   });
 
   it("returns true when the source PAT is still live", async () => {
-    mocks.patFindFirst.mockResolvedValue({ id: "pat_1234" });
+    mocks.patFindFirst.mockResolvedValue({ expiresAt: null });
 
     expect(await assertSourcePatActive({ userId: "usr_1", pat: "pat_1234" })).toBe(true);
     expect(mocks.patFindFirst).toHaveBeenCalledWith({
       where: { id: "pat_1234", revokedAt: null },
-      select: { id: true },
+      select: { expiresAt: true },
     });
   });
 
@@ -87,7 +87,7 @@ describe("resolveAndRecheckUserActorClaims (apiBuilder verify site)", () => {
 
   it("acts on the verified claims, not the plugin's narrower copy", async () => {
     // A plugin predating a claim delivers an incomplete set; scoping on it would widen access.
-    mocks.patFindFirst.mockResolvedValue({ id: "pat_1234" });
+    mocks.patFindFirst.mockResolvedValue({ expiresAt: null });
     const bearer = await signUserActorToken(SESSION_SECRET, {
       userId: "usr_1",
       client: "cli",
@@ -111,7 +111,7 @@ describe("resolveAndRecheckUserActorClaims (apiBuilder verify site)", () => {
   });
 
   it("allows when the source PAT is still live", async () => {
-    mocks.patFindFirst.mockResolvedValue({ id: "pat_1234" });
+    mocks.patFindFirst.mockResolvedValue({ expiresAt: null });
     const bearer = await tokenWithPat("pat_1234");
 
     const result = await resolveAndRecheckUserActorClaims({ userId: "usr_1" }, bearer);
@@ -130,7 +130,7 @@ describe("resolveAndRecheckUserActorClaims (apiBuilder verify site)", () => {
     expect(result).toBeUndefined();
     expect(mocks.patFindFirst).toHaveBeenCalledWith({
       where: { id: "pat_1234", revokedAt: null },
-      select: { id: true },
+      select: { expiresAt: true },
     });
   });
 });
@@ -168,5 +168,36 @@ describe("mint user-actor token route", () => {
     const { token } = (await response.json()) as { token: string };
     const claims = await verifyUserActorToken(SESSION_SECRET, token);
     expect(claims?.pat).toBe("pat_1234");
+  });
+
+  async function mintedLifetime(body: unknown) {
+    const response = await mint(body);
+    expect(response.status).toBe(200);
+    return ((await response.json()) as { expiresInSeconds: number }).expiresInSeconds;
+  }
+
+  it("caps the lifetime at the source token's fixed expiry", async () => {
+    mocks.authenticatePat.mockResolvedValue({
+      ok: true,
+      tokenId: "pat_1234",
+      userId: "usr_1",
+      expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
+    });
+
+    const lifetime = await mintedLifetime({ ttlSeconds: SEVEN_DAYS });
+
+    expect(lifetime).toBeGreaterThan(2 * 60 * 60 - 5);
+    expect(lifetime).toBeLessThanOrEqual(2 * 60 * 60);
+  });
+
+  it("grants the requested lifetime when the source token has no expiry", async () => {
+    mocks.authenticatePat.mockResolvedValue({
+      ok: true,
+      tokenId: "pat_1234",
+      userId: "usr_1",
+      expiresAt: null,
+    });
+
+    await expect(mintedLifetime({ ttlSeconds: SEVEN_DAYS })).resolves.toBe(SEVEN_DAYS);
   });
 });
