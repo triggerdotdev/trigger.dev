@@ -1,5 +1,5 @@
 import type { CompletedWaitpoint, ExecutionResult, RunExecutionData } from "@trigger.dev/core/v3";
-import { BatchId, RunId, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
+import { BatchId, RunId, SnapshotId, parseWaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import type {
   Prisma,
   PrismaClientOrTransaction,
@@ -366,7 +366,8 @@ export async function getExecutionSnapshotsSince(
   repairClient?: PrismaClientOrTransaction,
   // Scopes both reads to this environment. A run in another environment reads as not-found.
   environmentId?: string,
-  organizationId?: string
+  organizationId?: string,
+  waitpointStoreEnabled?: (organizationId: string) => boolean | Promise<boolean>
 ): Promise<EnhancedExecutionSnapshot[]> {
   const envScope = environmentId ? { environmentId } : {};
 
@@ -468,7 +469,43 @@ export async function getExecutionSnapshotsSince(
     }
   }
 
-  let waitpoints = await fetchWaitpointsInChunks(readClient, waitpointIds, runStore, runId);
+  // Step 4: Fetch waitpoints in chunks to avoid NAPI string conversion limits
+  // Store completions have no Postgres Waitpoint row. Resolve the selected snapshot through the
+  // shared result adapter using its own trusted organization/environment, preserving legacy polling.
+  // A snapshot with no completed waitpoints has nothing to route, so it skips the flag lookup.
+  const hasStoreWaitpoints =
+    waitpointIds.length > 0 &&
+    (await waitpointStoreEnabled?.(latestSnapshot.organizationId)) === true &&
+    waitpointIds.some((id) => parseWaitpointId(id).format !== "legacy");
+  let waitpoints: SnapshotReadWaitpoint[];
+  if (hasStoreWaitpoints) {
+    if (!runStore) throw new Error("Store waitpoint results require a run store");
+    const readSelected = (client: PrismaClientOrTransaction) =>
+      runStore.findExecutionSnapshot(
+        {
+          where: { id: latestSnapshot.id, runId, ...envScope },
+          include: { completedWaitpoints: true, checkpoint: true },
+        },
+        client,
+        snapshotRouteFromSnapshot(latestSnapshot)
+      );
+    let selected = await readSelected(readClient);
+    const storeIds = waitpointIds.filter((id) => parseWaitpointId(id).format !== "legacy");
+    const coversStoreIds = () =>
+      selected !== null &&
+      storeIds.every((id) => selected!.completedWaitpoints.some((w) => w.id === id));
+    // A different reader can lag behind the snapshot/link read. Repair this SAME hydrated snapshot
+    // on the owning primary; a PG-only token read can never recover a store result.
+    if (!coversStoreIds() && repairClient && readClient !== repairClient) {
+      selected = await readSelected(repairClient);
+      readClient = repairClient;
+    }
+    if (!coversStoreIds())
+      throw new Error(`Incomplete store waitpoint results for snapshot ${latestSnapshot.id}`);
+    waitpoints = selected!.completedWaitpoints;
+  } else {
+    waitpoints = await fetchWaitpointsInChunks(readClient, waitpointIds, runStore, runId);
+  }
 
   if (repairClient && readClient !== repairClient && waitpoints.length < waitpointIds.length) {
     const fetchedIds = new Set(waitpoints.map((w) => w.id));

@@ -20,6 +20,8 @@ import type {
   AbsorbedBlockersParams,
   AbsorbBlockersResult,
   AcknowledgeResumeParams,
+  PrepareWaitpointResumeParams,
+  WaitpointResumeIntent,
   AssociatedWaitpointData,
   BlockerRegistration,
   ClearRunBlockStateParams,
@@ -265,9 +267,26 @@ export class RoutingWaitpointCoordinator implements WaitpointCoordinator {
     return this.#store!.resumeRetainedWithdrawal(params);
   }
 
+  async prepareResume(
+    params: PrepareWaitpointResumeParams
+  ): Promise<WaitpointResumeIntent | undefined> {
+    if (!(await this.#runMightHaveStoreBlockers(params))) return undefined;
+    return this.#store!.prepareResume(params);
+  }
+
+  async readResumeIntent(
+    runId: string,
+    context?: RunKeyedRoutingContext
+  ): Promise<WaitpointResumeIntent | undefined> {
+    if (
+      !(await this.#runMightHaveStoreBlockers({ runId, organizationId: context?.organizationId }))
+    )
+      return undefined;
+    return this.#store!.readResumeIntent(runId, context);
+  }
+
   async acknowledgeResume(params: AcknowledgeResumeParams): Promise<void> {
-    // Legacy deletes its edge rows; the store acknowledges the handoff and drains under the block-id
-    // fence. A unmarked run reaches only Postgres. Both touch different stores, so run concurrently.
+    // Unmarked runs use only Postgres. Marked runs retain proof until both stores acknowledge.
     if (
       !(await this.#runMightHaveStoreBlockers({
         runId: params.runId,
@@ -277,10 +296,9 @@ export class RoutingWaitpointCoordinator implements WaitpointCoordinator {
       await this.#legacy.acknowledgeResume(params);
       return;
     }
-    await Promise.all([
-      this.#legacy.acknowledgeResume(params),
-      this.#store!.acknowledgeResume(params),
-    ]);
+    // Keep MemoryDB's resume proof until the Postgres delete has committed.
+    await this.#legacy.acknowledgeResume(params);
+    await this.#store!.acknowledgeResume(params);
   }
 
   async releaseRunBlockers(params: ReleaseRunBlockersParams): Promise<{ count: number }> {

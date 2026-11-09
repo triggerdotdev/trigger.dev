@@ -46,7 +46,26 @@ export type AbsorbedBlockersParams = {
   organizationId?: string;
 };
 
+/** One pending resume, stored with the run's existing MemoryDB state. */
+export type WaitpointResumeIntent = {
+  snapshotId: string;
+  previousSnapshotId: string;
+  blockId?: string;
+  legacyEdgeIdsHash: string;
+};
+
+export type PrepareWaitpointResumeParams = {
+  runId: string;
+  organizationId: string;
+  intent: WaitpointResumeIntent;
+};
+
 export type WaitpointCoordinator = {
+  prepareResume(params: PrepareWaitpointResumeParams): Promise<WaitpointResumeIntent | undefined>;
+  readResumeIntent(
+    runId: string,
+    context?: RunKeyedRoutingContext
+  ): Promise<WaitpointResumeIntent | undefined>;
   clearRunBlockState(params: ClearRunBlockStateParams): Promise<{ count: number }>;
   readRunBlockState(runId: string, context?: RunKeyedRoutingContext): Promise<RunBlockEdge[]>;
   registerBlocks(params: RegisterBlocksParams): Promise<{ pendingCount: number }>;
@@ -273,6 +292,8 @@ export type AbsorbBlockersParams = {
  * the block-id fence; legacy deletes the named edge rows. Never a substitute for terminal cleanup.
  */
 export type AcknowledgeResumeParams = {
+  /** Remove only this resume intent after both acknowledgement halves succeed. */
+  resumeSnapshotId?: string;
   runId: string;
   /**
    * The EXACT store block the continuation observed and is resuming, read once before the resume

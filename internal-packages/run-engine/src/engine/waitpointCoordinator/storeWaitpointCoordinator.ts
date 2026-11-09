@@ -20,6 +20,8 @@ import type {
   AbsorbedBlockersParams,
   AbsorbBlockersResult,
   AcknowledgeResumeParams,
+  PrepareWaitpointResumeParams,
+  WaitpointResumeIntent,
   AssociatedWaitpointData,
   BlockerRegistration,
   ClearRunBlockStateParams,
@@ -121,6 +123,9 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
     // Read completed results before creating the block. On retry, use retained results first.
     // Save the results with the block in one atomic operation.
     // Source expiry must not leave an active block without its result.
+    if (!params.organizationId)
+      throw new Error("Native absorption requires trusted organization ownership");
+    await this.#store.publishRunOwnership(params.runId, params.organizationId);
     try {
       await this.#store.prepareRegistrationSources({
         runId: params.runId,
@@ -249,21 +254,29 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
     return this.#store.currentBlockId(runId);
   }
 
+  async prepareResume(params: PrepareWaitpointResumeParams): Promise<WaitpointResumeIntent> {
+    // Publish discovery before writing run state, including a legacy-only resume on a marked run.
+    await this.#store.publishRunOwnership(params.runId, params.organizationId);
+    return this.#store.prepareResume(params.runId, params.intent);
+  }
+
+  async readResumeIntent(runId: string): Promise<WaitpointResumeIntent | undefined> {
+    return this.#store.readResumeIntent(runId);
+  }
+
   async acknowledgeResume(params: AcknowledgeResumeParams): Promise<void> {
-    // Acknowledge the block that the caller resumed, then clear that same block.
-    // Keep receipts until acknowledgement succeeds so a failed snapshot write can retry.
-    // If a newer block has replaced it, leave the newer block unchanged.
-    if (!params.blockId) {
+    if (params.blockId) {
+      const ack = await this.#store.acknowledgeResumeHandoff({
+        runId: params.runId,
+        blockId: params.blockId,
+      });
+      if (ack.outcome !== "acknowledged") return;
+      await this.#store.clearBlockState({ runId: params.runId, blockId: params.blockId });
       return;
     }
-    const ack = await this.#store.acknowledgeResumeHandoff({
-      runId: params.runId,
-      blockId: params.blockId,
-    });
-    if (ack.outcome !== "acknowledged") {
-      return;
+    if (params.resumeSnapshotId) {
+      await this.#store.clearResumeIntent(params.runId, params.resumeSnapshotId);
     }
-    await this.#store.clearBlockState({ runId: params.runId, blockId: params.blockId });
   }
 
   async abandonRunBlockers(params: AbandonRunBlockersParams): Promise<{ count: number }> {
@@ -334,7 +347,17 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
       reason: params.reason,
       blockId: params.blockId,
     });
-    return { count: result.unregistered };
+    // A stale exact-block obligation is a benign no-op; the current block's owner still owes cleanup.
+    if (result.stale) return { count: result.unregistered };
+    const detached = await this.#store.finishTerminalRunCleanup(params.runId);
+    if (
+      params.organizationId &&
+      !(await this.#store.retireRunOwnership(params.runId, params.organizationId))
+    ) {
+      // Preserve the caller's durable terminal cleanup retry instead of acknowledging residue.
+      throw new Error(`Terminal waitpoint ownership cleanup is incomplete for ${params.runId}`);
+    }
+    return { count: result.unregistered + detached };
   }
 
   // This adapter has no Postgres edges to clear.
@@ -377,7 +400,7 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
 
   // ---- Completion, read, clear (routed here by id shape) --------------------
 
-  async complete({ waitpointId, output }: CompleteParams): Promise<CompleteResult> {
+  async complete({ waitpointId, output, organizationId }: CompleteParams): Promise<CompleteResult> {
     const completion: WaitpointCompletion = {
       completedAt: new Date(this.#clock()).toISOString(),
       outputType: output?.type ?? "application/json",
@@ -388,7 +411,7 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
     // Complete the waitpoint and queue fanout. Repeating the same result is safe.
     // A different result throws WaitpointCompletionConflictError.
     // The fanout worker delivers results in bounded pages.
-    await this.#store.complete({ waitpointId, completion });
+    await this.#store.complete({ waitpointId, completion, organizationId });
 
     const waitpoint = await this.#waitpointFromStore(waitpointId);
     return { waitpoint, blockedRuns: [] };

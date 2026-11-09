@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { timeoutError } from "@trigger.dev/core/v3";
-import type { ShardKey } from "@trigger.dev/core/v3/isomorphic";
+import { parseWaitpointId, type ShardKey } from "@trigger.dev/core/v3/isomorphic";
 import { boundedIn } from "@trigger.dev/database";
 import type {
   PrismaClientOrTransaction,
@@ -87,14 +87,24 @@ type RecoverWaitpointBlock = z.infer<typeof workerCatalog.recoverWaitpointBlock.
 
 const DEFAULT_COMPLETION_GUARD_DELAY_MS = 30_000;
 
-// Delay before the worker retries failed registration cleanup under the run lock.
+// Delay before the worker retries failed registration or lifecycle cleanup under the run lock.
 const BLOCKER_CLEANUP_OBLIGATION_DELAY_MS = 30_000;
 
-// Keep the caller's block identity on retries. Do not replace it with the current block ID.
-// When resuming, read the installed block ID with currentStoreBlockId.
+// Identify the exact block and lifecycle transition whose cleanup is owed.
+export type BlockerCleanupObligation = { blockId: string; transitionId: string } | undefined;
+
+// Keep the caller's block identity on retries. Read the installed identity when resuming.
 
 // Use this exact description to identify a snapshot blocked by a waitpoint.
 const WAITPOINT_BLOCKED_SNAPSHOT_DESCRIPTION = "Run was blocked by a waitpoint.";
+
+function legacyResumeEdgeIdsHash(edges: RunBlockEdge[]): string {
+  const ids = edges
+    .filter((edge) => classifyWaitpointCoordinator(edge.waitpoint.id) === "legacy")
+    .map((edge) => edge.id)
+    .sort();
+  return createHash("sha256").update(JSON.stringify(ids)).digest("hex");
+}
 
 // Return the snapshot ID that identifies the current wait cycle.
 // Before blocking, use the current snapshot. While blocked, use its predecessor.
@@ -189,7 +199,7 @@ export class WaitpointSystem {
               await this.$.runStore.markRunWaitpointsOnStore(runId);
             }),
           withLegacyRegistrationLock: (runId, operation) =>
-            this.$.runLock.lock("registerLegacyWaitpoint", [runId], operation),
+            this.$.runLock.lockQueued("registerLegacyWaitpoint", runId, operation),
           mightHaveStoreBlockers:
             options.waitpointRouting?.mightHaveStoreBlockers ??
             (async ({ runId }) => {
@@ -219,6 +229,221 @@ export class WaitpointSystem {
       organizationId !== undefined &&
       (await this.options.waitpointStoreEnabled?.(organizationId, organizationFlags)) === true
     );
+  }
+
+  /**
+   * The attempt-completion failure cleanup, run AFTER the failure's durable TRES transition and OUTSIDE
+   * the Postgres transaction (so MemoryDB never joins a rollback-capable tx and an enabled org never
+   * throws). The outcome — known only after retry/cancel/failure is decided — chooses the protocol:
+   *
+   *  - `retry` abandons and fences the old attempt's block and withdraws its watchers WITHOUT
+   *    terminalizing the run, so an in-flight old delivery is refused and the next attempt can block
+   *    again with a fresh cycle;
+   *  - `cancelled`/`terminal` release TERMINAL-FIRST (fence, then withdraw), so an in-flight delivery
+   *    can never resume a run being torn down.
+   *
+   * A run reaching attempt completion is normally executing with no active store block, so both are a
+   * no-op there; legacy is unchanged (a full edge delete).
+   */
+  public async cleanupBlockersAfterAttemptFailure({
+    runId,
+    organizationId,
+    outcome,
+  }: {
+    runId: string;
+    organizationId?: string;
+    outcome: "retry" | "cancelled" | "terminal";
+  }): Promise<number> {
+    if (outcome === "retry") {
+      const abandoned = await this.coordinator.abandonRunBlockers({ runId, organizationId });
+      return abandoned.count;
+    }
+    const released = await this.coordinator.releaseRunBlockers({
+      runId,
+      reason: outcome,
+      organizationId,
+    });
+    return released.count;
+  }
+
+  #blockerCleanupObligationId(runId: string, blockId: string, transitionId: string): string {
+    return `ensureBlockersCleanedUp:${runId}:${blockId}:${transitionId}`;
+  }
+
+  /**
+   * Arm the write-ahead cleanup obligation BEFORE a failed attempt's lifecycle transition, so a crash
+   * after the transition commits but before {@link cleanupBlockersAfterAttemptFailure} runs still gets
+   * the block cleaned. It observes the exact installed store block under the caller's run lock; a run
+   * with no store block (the normal executing attempt, and every legacy/unmarked run) arms nothing,
+   * so the dark path keeps its current cost. The obligation is keyed by that block id, so a later cycle's
+   * obligation never collides with this one, and delayed so the inline path can ack it first.
+   */
+  public async armBlockerCleanupObligation({
+    runId,
+    organizationId,
+    transitionId,
+  }: {
+    runId: string;
+    organizationId?: string;
+    // The id minted for this attempt's retry/requeue transition (and stamped on that transition's
+    // snapshot), so a replay can prove that specific transition committed before abandoning.
+    transitionId: string;
+  }): Promise<BlockerCleanupObligation> {
+    const blockId = await this.coordinator.currentStoreBlockId(runId, { organizationId });
+    if (!blockId) {
+      return undefined;
+    }
+    await this.$.worker.enqueueOnce({
+      id: this.#blockerCleanupObligationId(runId, blockId, transitionId),
+      job: "ensureBlockersCleanedUp",
+      payload: { runId, organizationId, blockId, transitionId },
+      availableAt: new Date(Date.now() + BLOCKER_CLEANUP_OBLIGATION_DELAY_MS),
+    });
+    return { blockId, transitionId };
+  }
+
+  /**
+   * The single pre-transition decision for a failed attempt: observe THIS run's current store block ONCE
+   * under the run lock (an unmarked run resolves it without any MemoryDB call). With no current store
+   * block — including a legacy-only run in an enabled or rolled-back org — clear the run's legacy edges
+   * BEFORE the transition, in the CALLER'S client, restoring the crash-safe ordering; no MemoryDB is
+   * touched and no store block is minted. With a store block, arm the write-ahead obligation and let the
+   * sequenced (legacy-first) post-transition cleanup own it.
+   */
+  public async prepareFailedAttemptCleanup({
+    runId,
+    organizationId,
+    transitionId,
+    tx,
+  }: {
+    runId: string;
+    // The run's org, so the router can skip MemoryDB for a run whose org could not hold store edges.
+    // Undefined keeps legacy routing without discovering an organization.
+    organizationId?: string;
+    transitionId: string;
+    tx?: PrismaClientOrTransaction;
+  }): Promise<BlockerCleanupObligation> {
+    const blockId = await this.coordinator.currentStoreBlockId(runId, { organizationId });
+    if (!blockId) {
+      // Legacy-only (or unmarked): no store block, so clear the Postgres edges inline in the caller's
+      // tx — atomic with the transition, and safe because there is no MemoryDB cycle to roll over.
+      await this.coordinator.clearLegacyBlockersBeforeTransition({ runId, organizationId, tx });
+      return undefined;
+    }
+    // Store/mixed block: durably fence off a NEWER store cycle BEFORE publishing the retry transition, so a
+    // rolled-over B2 cannot be absorbed while this block still owes its cross-store cleanup — a block-id-less
+    // Postgres delete run after B2 existed would hit B2's reused legacy edges. The legacy half is NOT
+    // cleared inline here (passing `tx` to that delete does not make it atomic with the Redis-primary store
+    // transition); it is deferred to the fenced cleanup, which deletes the old legacy edges first, then runs
+    // the atomic store retain-and-clear/withdrawal, and lifts the fence last. The fence, not call ordering,
+    // is what durably proves B2 cannot become active before B1's Postgres cleanup completes.
+    await this.coordinator.armCleanupFence({ runId, blockId, organizationId });
+    await this.$.worker.enqueueOnce({
+      id: this.#blockerCleanupObligationId(runId, blockId, transitionId),
+      job: "ensureBlockersCleanedUp",
+      payload: { runId, organizationId, blockId, transitionId },
+      availableAt: new Date(Date.now() + BLOCKER_CLEANUP_OBLIGATION_DELAY_MS),
+    });
+    return { blockId, transitionId };
+  }
+
+  /**
+   * Run the inline failed-attempt cleanup and, on success, ack the obligation armed for this exact block
+   * so it never fires. If this throws (a MemoryDB error after the transition), the obligation is left
+   * armed and re-drives the cleanup later.
+   */
+  public async settleBlockerCleanupAfterAttemptFailure({
+    obligation,
+    runId,
+    organizationId,
+    outcome,
+  }: {
+    obligation: BlockerCleanupObligation;
+    runId: string;
+    organizationId?: string;
+    outcome: "retry" | "cancelled" | "terminal";
+  }): Promise<number> {
+    // No store obligation means preparation already cleared the legacy edges before the transition.
+    // Do not add a second Postgres delete (or a new failure point) after the outcome has committed.
+    if (!obligation) return 0;
+
+    const count = await this.cleanupBlockersAfterAttemptFailure({ runId, organizationId, outcome });
+    await this.$.worker.ack(
+      this.#blockerCleanupObligationId(runId, obligation.blockId, obligation.transitionId)
+    );
+    return count;
+  }
+
+  /**
+   * Redelivery handler for the failed-attempt cleanup obligation. Runs under the run lock and is fenced
+   * to the exact armed block: a newer cycle (or an already-completed cleanup) means the current store
+   * block is no longer this one, so there is nothing to do. Otherwise it binds to durable proof of the
+   * SPECIFIC intended transition rather than to any snapshot advancement: a durably terminal run releases
+   * terminal-first (a checkpoint cannot make a run terminal), and a non-terminal run abandons ONLY once
+   * the minted retry/requeue transition has committed — proven by a snapshot with that id existing, so an
+   * intermediate SUSPENDED checkpoint never triggers an abandon of a still-valid block. Until one of
+   * those is proven it throws to retry.
+   */
+  public async ensureBlockersCleanedUp({
+    runId,
+    organizationId,
+    blockId,
+    transitionId,
+  }: {
+    runId: string;
+    organizationId?: string;
+    blockId: string;
+    transitionId: string;
+  }): Promise<void> {
+    if (!(await this.isWaitpointStoreEnabled(organizationId))) return;
+    await this.$.runLock.lock("ensureBlockersCleanedUp", [runId], async () => {
+      const currentBlockId = await this.coordinator.currentStoreBlockId(runId, { organizationId });
+      const snapshot = await getLatestExecutionSnapshot(this.$.prisma, runId, this.$.runStore);
+
+      if (
+        snapshot.executionStatus === "FINISHED" ||
+        snapshot.executionStatus === "PENDING_CANCEL"
+      ) {
+        // Durable terminal status is proof on its own. Route ALWAYS through the ordered releaseRunBlockers
+        // (store terminalize + finish retained withdrawal FIRST, then the Postgres delete), whether or not
+        // the store block is still current: a first pass that terminalized the store half and cleared its
+        // block id but failed the concurrent legacy delete would otherwise fall to the store-only branch
+        // below and strand the Postgres edges forever. A terminal run has no newer cycle, so a block-id-less
+        // legacy delete is safe, and the store adapter finishes any retained withdrawal for THIS exact block
+        // before reporting convergence.
+        await this.coordinator.releaseRunBlockers({
+          runId,
+          reason: "terminal",
+          organizationId,
+          blockId,
+        });
+        return;
+      }
+
+      if (currentBlockId !== blockId) {
+        // Non-terminal, and this block is no longer the active one — superseded by a newer cycle, or already
+        // cleared by a prior (possibly interrupted) abandon. That is NOT proof the cleanup finished: a
+        // partial abandon leaves a durable withdrawal record for THIS block. Resume it STORE-ONLY — never
+        // the legacy coordinator (whose block-id-less delete would drop a NEWER block's edges, which may
+        // exist here) — fenced to this block id; a no-op if nothing remains.
+        await this.coordinator.resumeRetainedWithdrawal({ runId, blockId, organizationId });
+        return;
+      }
+
+      // Non-terminal: abandon only once the SPECIFIC retry/requeue transition durably committed, proven
+      // by its minted-id snapshot existing. A checkpoint or any other advancement is not that proof.
+      const committed = await this.$.runStore.findExecutionSnapshot(
+        { where: { id: transitionId, runId }, select: { id: true } },
+        this.$.prisma
+      );
+      if (!committed) {
+        throw new Error(
+          `ensureBlockersCleanedUp: retry transition ${transitionId} not yet committed for run ${runId}`
+        );
+      }
+
+      await this.coordinator.abandonRunBlockers({ runId, blockId, organizationId });
+    });
   }
 
   /**
@@ -286,32 +511,40 @@ export class WaitpointSystem {
   }
 
   /** Completes a waitpoint and schedules a continue for each run it blocked. Safe under races. */
-  async completeWaitpoint({
-    id,
-    output,
-    armGuard = false,
-    organizationId,
-  }: {
-    id: string;
-    output?: {
-      value: string;
-      type?: string;
-      isError: boolean;
-    };
-    /** Arms the write-ahead completion guard first. The guard's replay passes false. */
-    armGuard?: boolean;
-    /**
-     * Use the caller's organisation for each resume job. Blocking runs belong to the
-     * same organisation, so no extra lookup is needed for each edge.
-     * Without an organisation, use Postgres routing and reject MemoryDB IDs.
-     */
-    organizationId?: string;
-  }): Promise<Waitpoint> {
+  async completeWaitpoint(
+    {
+      id,
+      output,
+      armGuard = false,
+      organizationId,
+    }: {
+      id: string;
+      output?: {
+        value: string;
+        type?: string;
+        isError: boolean;
+      };
+      /** Arms the write-ahead completion guard first. The guard's replay passes false. */
+      armGuard?: boolean;
+      /** Caller ownership for resume jobs. Missing context keeps legacy routing. */
+      organizationId?: string;
+    },
+    completionLockHeld = false
+  ): Promise<Waitpoint> {
     // Keep this pre-check outside guard scheduling and its error handling. The router owns its
     // mutation gate, so an armed call checks again after the durable guard has been persisted.
     const storeRoutingEnabled =
       this.coordinator instanceof RoutingWaitpointCoordinator &&
       (await this.coordinator.isStoreRoutingEnabled(organizationId));
+
+    if (storeRoutingEnabled && !completionLockHeld) {
+      const parsed = parseWaitpointId(id);
+      if (parsed.format === "b32hexW" && parsed.type === "DATETIME") {
+        return this.withWaitpointCompletionLock(id, () =>
+          this.completeWaitpoint({ id, output, armGuard, organizationId }, true)
+        );
+      }
+    }
 
     // Armed before the first mutation, so a committed completion always has a durable watcher. An
     // arm failure is not wrapped, so the caller cannot mistake it for one the guard will replay.
@@ -386,6 +619,15 @@ export class WaitpointSystem {
       }
       throw error;
     }
+  }
+
+  /** Enabled DATETIME producers and delivery acknowledgement share this admission lock. */
+  withWaitpointCompletionLock<T>(waitpointId: string, operation: () => Promise<T>): Promise<T> {
+    return this.$.runLock.lockQueued(
+      "waitpointCompletion",
+      `waitpoint-completion:${waitpointId}`,
+      operation
+    );
   }
 
   #completionGuardId(waitpointId: string): string {
@@ -685,7 +927,7 @@ export class WaitpointSystem {
       }
 
       // Phase 1: record the waits and count pending results.
-      // MemoryDB waits require the caller's block identity.
+      // MemoryDB waits require the caller's block identity, independent of TRES residency.
       // Pass the returned registration to phase 3 without changes.
       let registration: BlockerRegistration | undefined;
       let pendingCount: number;
@@ -842,6 +1084,22 @@ export class WaitpointSystem {
   }
 
   /**
+   * Lockless early refusal for a legacy child whose parent already owes store cleanup.
+   * The parent run lock is taken only by the edge write, which re-reads the fence under it; a fence
+   * armed between this check and that write refuses the edge there, so the parent's edge set stays safe.
+   */
+  async admitLegacyRegistration<T>(
+    runId: string,
+    organizationId: string,
+    operation: () => Promise<T>
+  ): Promise<T> {
+    if (this.coordinator instanceof RoutingWaitpointCoordinator) {
+      await this.coordinator.assertNoCleanupOwed(runId, { organizationId });
+    }
+    return operation();
+  }
+
+  /**
    * blockRunWithWaitpoint without the run lock, for batch items. blockRunWithCreatedBatch has
    * already moved the parent to EXECUTING_WITH_WAITPOINTS, and a per-item lock causes
    * LockAcquisitionTimeoutError on large batches. Writes only the idempotent edges and timeouts.
@@ -927,6 +1185,62 @@ export class WaitpointSystem {
     });
   }
 
+  /** Finish cleanup only when the exact resume snapshot committed. */
+  async #convergeAdvancedResumeHandoff({
+    runId,
+    observedStoreBlockId,
+    organizationId,
+    waitpointsOnStore,
+    blockingWaitpoints,
+    terminal,
+  }: {
+    runId: string;
+    observedStoreBlockId: string | undefined;
+    organizationId?: string;
+    waitpointsOnStore: boolean;
+    blockingWaitpoints: RunBlockEdge[];
+    terminal: boolean;
+  }): Promise<void> {
+    if (!observedStoreBlockId && !waitpointsOnStore) return;
+    // Nothing to converge: no store block observed AND no consumed edges left behind. Keep the no-op skip
+    // (and its cost) for the common case of an already-fully-drained advanced run.
+    if (!observedStoreBlockId && blockingWaitpoints.length === 0) {
+      return;
+    }
+    if (terminal) {
+      // Terminal-first release deletes the run's legacy edge rows and installs the store fence (fenced to
+      // the observed block, a no-op when none is observed).
+      await this.coordinator.releaseRunBlockers({
+        runId,
+        reason: "terminal",
+        organizationId,
+        blockId: observedStoreBlockId,
+      });
+      return;
+    }
+    const intent = await this.coordinator.readResumeIntent(runId, { organizationId });
+    if (!intent || (observedStoreBlockId && intent.blockId !== observedStoreBlockId)) return;
+    // The legacy delete is atomic. Empty means it may already have succeeded before the store ack failed.
+    const hasLegacyEdges = blockingWaitpoints.some(
+      (edge) => classifyWaitpointCoordinator(edge.waitpoint.id) === "legacy"
+    );
+    if (hasLegacyEdges && intent.legacyEdgeIdsHash !== legacyResumeEdgeIdsHash(blockingWaitpoints))
+      return;
+    const resumed = await this.$.runStore.findExecutionSnapshot(
+      { where: { id: intent.snapshotId, runId }, select: { id: true } },
+      this.$.prisma,
+      organizationId
+    );
+    if (!resumed) return;
+    await this.coordinator.acknowledgeResume({
+      runId,
+      blockId: observedStoreBlockId,
+      organizationId,
+      edgeIds: blockingWaitpoints.map((edge) => edge.id),
+      resumeSnapshotId: intent.snapshotId,
+    });
+  }
+
   public async continueRunIfUnblocked({
     runId,
     organizationId,
@@ -934,7 +1248,7 @@ export class WaitpointSystem {
     runId: string;
     // The blocked run's org, carried independently of the route: the common delayed-completion enqueue
     // has no route but does know the org, so this keeps run-keyed routing from querying MemoryDB for
-    // every legacy run. Undefined (old payload / no org) keeps the legacy route.
+    // every legacy run. Old payloads recover this context from the environment already loaded below.
     organizationId?: string;
   }): Promise<WaitpointContinuationResult> {
     this.$.logger.debug(`continueRunIfUnblocked: start`, {
@@ -943,21 +1257,31 @@ export class WaitpointSystem {
 
     await this.$.raceSimulationSystem.waitForRacepoint({ runId });
 
-    // Use the explicitly carried org for the flag check. Without it, keep the legacy route
-    // without discovering an organisation or consulting MemoryDB.
-    const routingOrganizationId = organizationId;
+    // The org flag gates store discovery; enabled operations then consult this run's durable marker.
+    let routingOrganizationId = organizationId;
 
     return await this.$.runLock.lock("continueRunIfUnblocked", [runId], async () => {
       // 1. Get the any blocking waitpoints, routed by the run's org.
       const storeRoutingEnabled =
         this.coordinator instanceof RoutingWaitpointCoordinator &&
         (await this.coordinator.isStoreRoutingEnabled(routingOrganizationId));
-      const blockingWaitpoints = storeRoutingEnabled
+      let blockingWaitpoints = storeRoutingEnabled
         ? await this.coordinator.readRunBlockState(runId, {
             organizationId: routingOrganizationId,
           })
         : await this.legacyCoordinator.readRunBlockState(runId);
 
+      // OBSERVE the exact store block this continuation is about to resume, before the resume transition,
+      // so the acknowledgement below targets THIS block and not whichever block is installed by the time
+      // it runs. A newer cycle installed in between makes the acknowledgement a stale no-op. Undefined for
+      // a legacy-only run or an unmarked run.
+      let observedStoreBlockId = (await this.isWaitpointStoreEnabled(routingOrganizationId))
+        ? await this.coordinator.currentStoreBlockId(runId, {
+            organizationId: routingOrganizationId,
+          })
+        : undefined;
+
+      // 2. There are blockers still, so do nothing
       if (blockingWaitpoints.some((w) => w.waitpoint.status !== "COMPLETED")) {
         this.$.logger.debug(`continueRunIfUnblocked: blocking waitpoints still exist`, {
           runId,
@@ -997,6 +1321,26 @@ export class WaitpointSystem {
         );
       }
 
+      // A pre-deployment job may carry no org while its legacy batch parent subsequently
+      // acquired reused store children. The environment was already loaded by the ordinary
+      // continuation; only an enabled org re-reads the complete blocker set before resuming.
+      if (
+        routingOrganizationId === undefined &&
+        (await this.isWaitpointStoreEnabled(env.organizationId))
+      ) {
+        routingOrganizationId = env.organizationId;
+        blockingWaitpoints = await this.coordinator.readRunBlockState(runId, {
+          organizationId: routingOrganizationId,
+        });
+        observedStoreBlockId = await this.coordinator.currentStoreBlockId(runId, {
+          organizationId: routingOrganizationId,
+        });
+        if (blockingWaitpoints.some((w) => w.waitpoint.status !== "COMPLETED")) {
+          return { status: "blocked", waitpoints: blockingWaitpoints.map((w) => w.waitpoint) };
+        }
+      }
+
+      //4. Continue the run whether it's executing or not
       let snapshot: Awaited<ReturnType<typeof getLatestExecutionSnapshot>>;
       try {
         snapshot = await getLatestExecutionSnapshot(
@@ -1013,10 +1357,40 @@ export class WaitpointSystem {
         this.$.logger.warn("continueRunIfUnblocked: snapshot state expired, run already finished", {
           runId,
         });
+        if (await this.isWaitpointStoreEnabled(routingOrganizationId)) {
+          await this.#convergeAdvancedResumeHandoff({
+            runId,
+            observedStoreBlockId,
+            organizationId: routingOrganizationId,
+            waitpointsOnStore: hasStoreWaitpoints(run.annotations),
+            blockingWaitpoints,
+            terminal: true,
+          });
+        }
         return {
           status: "skipped",
           reason: "run is finished",
         };
+      }
+
+      let resumeSnapshotId: string | undefined;
+      if (
+        (snapshot.executionStatus === "EXECUTING_WITH_WAITPOINTS" ||
+          snapshot.executionStatus === "SUSPENDED") &&
+        (observedStoreBlockId || hasStoreWaitpoints(run.annotations)) &&
+        (await this.isWaitpointStoreEnabled(routingOrganizationId))
+      ) {
+        const intent = await this.coordinator.prepareResume({
+          runId,
+          organizationId: env.organizationId,
+          intent: {
+            snapshotId: this.executionSnapshotSystem.nextSnapshotIdentity(snapshot, runId).id,
+            previousSnapshotId: snapshot.id,
+            blockId: observedStoreBlockId,
+            legacyEdgeIdsHash: legacyResumeEdgeIdsHash(blockingWaitpoints),
+          },
+        });
+        resumeSnapshotId = intent?.snapshotId;
       }
 
       switch (snapshot.executionStatus) {
@@ -1044,52 +1418,31 @@ export class WaitpointSystem {
             reason: "run is delayed",
           };
         }
-        case "QUEUED": {
-          this.$.logger.info(`continueRunIfUnblocked: run is queued, skipping`, {
-            runId,
-            snapshotId: snapshot.id,
-            executionStatus: snapshot.executionStatus,
-          });
-
-          return {
-            status: "skipped",
-            reason: "run is already queued",
-          };
-        }
-        case "PENDING_EXECUTING": {
-          this.$.logger.info(`continueRunIfUnblocked: run is pending executing, skipping`, {
-            runId,
-            snapshotId: snapshot.id,
-            executionStatus: snapshot.executionStatus,
-          });
-
-          return {
-            status: "skipped",
-            reason: "run is already pending executing",
-          };
-        }
-        case "QUEUED_EXECUTING": {
-          this.$.logger.info(`continueRunIfUnblocked: run is already queued executing, skipping`, {
-            runId,
-            snapshotId: snapshot.id,
-            executionStatus: snapshot.executionStatus,
-          });
-
-          return {
-            status: "skipped",
-            reason: "run is already queued executing",
-          };
-        }
+        case "QUEUED":
+        case "PENDING_EXECUTING":
+        case "QUEUED_EXECUTING":
         case "EXECUTING": {
-          this.$.logger.info(`continueRunIfUnblocked: run is already executing, skipping`, {
+          this.$.logger.info(`continueRunIfUnblocked: run already advanced, skipping`, {
             runId,
             snapshotId: snapshot.id,
             executionStatus: snapshot.executionStatus,
           });
 
+          // Advanced status alone is not resume proof; converge only a durably consumed exact block.
+          if (await this.isWaitpointStoreEnabled(routingOrganizationId)) {
+            await this.#convergeAdvancedResumeHandoff({
+              runId,
+              observedStoreBlockId,
+              organizationId: routingOrganizationId,
+              waitpointsOnStore: hasStoreWaitpoints(run.annotations),
+              blockingWaitpoints,
+              terminal: false,
+            });
+          }
+
           return {
             status: "skipped",
-            reason: "run is already executing",
+            reason: "run already advanced past the blocked snapshot",
           };
         }
         case "PENDING_CANCEL":
@@ -1099,6 +1452,19 @@ export class WaitpointSystem {
             snapshotId: snapshot.id,
             executionStatus: snapshot.executionStatus,
           });
+
+          // The run was torn down; release this exact block terminal-first rather than acknowledge it.
+          if (await this.isWaitpointStoreEnabled(routingOrganizationId)) {
+            await this.#convergeAdvancedResumeHandoff({
+              runId,
+              observedStoreBlockId,
+              organizationId: routingOrganizationId,
+              waitpointsOnStore: hasStoreWaitpoints(run.annotations),
+              blockingWaitpoints,
+              terminal: true,
+            });
+          }
+
           return {
             status: "skipped",
             reason: "run is finished",
@@ -1113,6 +1479,7 @@ export class WaitpointSystem {
           const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
             this.$.prisma,
             {
+              snapshotId: resumeSnapshotId,
               run: {
                 id: runId,
                 status: snapshot.runStatus,
@@ -1196,6 +1563,7 @@ export class WaitpointSystem {
           const newSnapshot = await this.enqueueSystem.enqueueRun({
             run,
             env,
+            snapshotId: resumeSnapshotId,
             previousSnapshotId: snapshot.id,
             previousSnapshot: snapshot,
             snapshotRoute: snapshotRouteFromSnapshot(snapshot),
@@ -1228,16 +1596,38 @@ export class WaitpointSystem {
       }
 
       if (blockingWaitpoints.length > 0) {
-        await this.coordinator.clearRunBlockState({
-          runId,
-          organizationId: routingOrganizationId,
-          edgeIds: blockingWaitpoints.map((b) => b.id),
-        });
+        if (await this.isWaitpointStoreEnabled(routingOrganizationId)) {
+          // 5. The resume snapshot above is now durable, so acknowledge the store handoff and drain the
+          // consumed edges under the block-id fence. Until this boundary, the store keeps completed
+          // receipts so a transient TRES failure retries rather than losing them.
+          await this.coordinator.acknowledgeResume({
+            runId,
+            blockId: observedStoreBlockId,
+            resumeSnapshotId,
+            organizationId: routingOrganizationId,
+            edgeIds: blockingWaitpoints.map((b) => b.id),
+          });
 
-        this.$.logger.debug(`continueRunIfUnblocked: removed blocking waitpoints`, {
-          runId,
-          blockingWaitpointCount: blockingWaitpoints.length,
-        });
+          this.$.logger.debug(
+            `continueRunIfUnblocked: acknowledged resume and drained waitpoints`,
+            {
+              runId,
+              blockingWaitpointCount: blockingWaitpoints.length,
+            }
+          );
+        } else {
+          //5. Remove the blocking waitpoints
+          await this.coordinator.clearRunBlockState({
+            runId,
+            organizationId: routingOrganizationId,
+            edgeIds: blockingWaitpoints.map((b) => b.id),
+          });
+
+          this.$.logger.debug(`continueRunIfUnblocked: removed blocking waitpoints`, {
+            runId,
+            blockingWaitpointCount: blockingWaitpoints.length,
+          });
+        }
       }
 
       return {
@@ -1522,20 +1912,5 @@ export class WaitpointSystem {
 
       return waitpoint;
     });
-  }
-
-  public async clearBlockingWaitpoints({
-    runId,
-    organizationId,
-    tx,
-  }: {
-    runId: string;
-    // Use the run's organisation for routing. If absent, use Postgres without an org lookup.
-    organizationId?: string;
-    tx?: PrismaClientOrTransaction;
-  }) {
-    const deleted = await this.coordinator.clearRunBlockState({ runId, organizationId, tx });
-
-    return deleted.count;
   }
 }

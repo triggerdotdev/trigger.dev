@@ -3,7 +3,11 @@
 // transactions as the pool has connections every one of them waits on the pool it holds and times out.
 // These drive the real engine callers with a ONE-connection pool, which turns any such nested checkout
 // into a deterministic pool timeout. Real Postgres + Redis, no mocks.
-import { assertNonNullable, containerTest } from "@internal/testcontainers";
+import {
+  assertNonNullable,
+  containerTest,
+  containerTestWithIsolatedRedis,
+} from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { setTimeout } from "node:timers/promises";
 import { expect } from "vitest";
@@ -37,7 +41,7 @@ vi.setConfig({ testTimeout: 60_000 });
 
 const ROUTE = "logical:1";
 const machines = {
-  defaultMachine: "small-1x",
+  defaultMachine: "small-1x" as const,
   machines: {
     "small-1x": { name: "small-1x" as const, cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 },
   },
@@ -273,7 +277,7 @@ async function parkedMirroredRun(
 }
 
 describe("snapshot store transactions never check out a second pooled connection", () => {
-  containerTest(
+  containerTestWithIsolatedRedis(
     "continueRunIfUnblocked resumes a redis-primary run with completed waitpoints on a one-connection pool",
     async ({ prisma, postgresContainer, redisOptions }) => {
       const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
@@ -312,10 +316,11 @@ describe("snapshot store transactions never check out a second pooled connection
           dequeued = await setup.dequeueFromWorkerQueue({
             consumerId: "pool_wp",
             workerQueue: "main",
+            blockingPopTimeoutSeconds: 1,
           });
           if (dequeued.length === 0) await setTimeout(200);
         }
-        expect(dequeued.length).toBe(1);
+        expect(dequeued.length, "pool test run never reached the worker queue").toBe(1);
         await setup.startRunAttempt({ runId: run.id, snapshotId: dequeued[0].snapshot.id });
 
         const waitpoint = await setup.createManualWaitpoint({
@@ -352,7 +357,7 @@ describe("snapshot store transactions never check out a second pooled connection
     }
   );
 
-  containerTest(
+  containerTestWithIsolatedRedis(
     "pending-version promotion of a postgres-resident run completes on a one-connection pool",
     async ({ prisma, postgresContainer, redisOptions }) => {
       const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
@@ -393,14 +398,19 @@ describe("snapshot store transactions never check out a second pooled connection
         await setupBackgroundWorker(setup, env, ["test-task-other"]);
         for (let i = 0; i < 10; i++) {
           await setup.runQueue.processMasterQueueForEnvironment(env.id, 5);
-          await setup.dequeueFromWorkerQueue({ consumerId: "pool_pv", workerQueue: "main" });
+          await setup.dequeueFromWorkerQueue({
+            consumerId: "pool_pv",
+            workerQueue: "main",
+            blockingPopTimeoutSeconds: 1,
+          });
           const parked = await prisma.taskRun.findFirstOrThrow({ where: { id: run.id } });
           if (parked.status === "PENDING_VERSION") break;
           await setTimeout(200);
         }
-        expect((await prisma.taskRun.findFirstOrThrow({ where: { id: run.id } })).status).toBe(
-          "PENDING_VERSION"
-        );
+        expect(
+          (await prisma.taskRun.findFirstOrThrow({ where: { id: run.id } })).status,
+          "run never parked in PENDING_VERSION"
+        ).toBe("PENDING_VERSION");
 
         // The worker that has the task. Its scheduled promotion job never runs (workers disabled);
         // the promotion is driven directly on the one-connection pool instead.

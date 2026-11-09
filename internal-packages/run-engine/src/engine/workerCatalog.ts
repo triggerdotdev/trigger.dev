@@ -23,6 +23,12 @@ export const workerCatalog = {
     visibilityTimeoutMs: 30_000,
     retry: { maxAttempts: 10_000, minTimeoutInMs: 1_000, maxTimeoutInMs: 300_000 },
   },
+  deliverWaitpointFanout: {
+    schema: z.object({ waitpointId: z.string(), organizationId: z.string() }),
+    visibilityTimeoutMs: 30_000,
+    retry: { maxAttempts: 10_000, minTimeoutInMs: 1_000, maxTimeoutInMs: 300_000 },
+  },
+  /** Complete a scheduled waitpoint, optionally with an error output. */
   finishWaitpoint: {
     schema: z.object({
       waitpointId: z.string(),
@@ -98,8 +104,8 @@ export const workerCatalog = {
     schema: z.object({
       runId: z.string(),
       // The blocked run's org, so the continuation can skip MemoryDB for a never-enabled org
-      // when handling a delayed continuation. Optional: an old queued payload lacks it and routes
-      // through the legacy coordinator until a caller supplies trusted organisation context.
+      // when handling a delayed continuation. For an old payload without it, the continuation recovers
+      // trusted org context from the environment it already loads before rediscovering blockers.
       organizationId: z.string().optional(),
     }),
     visibilityTimeoutMs: 30_000,
@@ -158,6 +164,22 @@ export const workerCatalog = {
       runId: z.string(),
     }),
     visibilityTimeoutMs: 30_000,
+  },
+  ensureBlockersCleanedUp: {
+    schema: z.object({
+      runId: z.string(),
+      organizationId: z.string().optional(),
+      /** The exact store block this cleans; replay is fenced to it so it never touches a newer cycle. */
+      blockId: z.string(),
+      /** Minted for this attempt's retry/requeue transition and stamped on its snapshot; replay abandons only once that snapshot exists (terminal cleanup uses durable status instead). */
+      transitionId: z.string(),
+    }),
+    visibilityTimeoutMs: 30_000,
+    retry: {
+      maxAttempts: 10_000,
+      minTimeoutInMs: 1_000,
+      maxTimeoutInMs: 300_000,
+    },
   },
   /**
    * Retry cleanup when Postgres registration and immediate MemoryDB cleanup both fail.

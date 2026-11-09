@@ -115,6 +115,24 @@ export function runContributionIndexKey(runId: string): string {
   return `${NAMESPACE}:run:{${runId}}:contributions`;
 }
 
+/** Organization-owned admission evidence. Published before any native run mutation, no TTL. */
+export function organizationRunIndexKey(organizationId: string, partition: number): string {
+  return `${NAMESPACE}:org:{${organizationId}:p${partition}}:runs`;
+}
+
+/** Pending source publication evidence, before the first source write; no TTL. */
+export function organizationPendingSourceIndexKey(
+  organizationId: string,
+  partition: number
+): string {
+  return `${NAMESPACE}:f{p${partition}}:org:${organizationId}:sources`;
+}
+
+/** Detached withdrawal identities outlive ordinary block state and terminal tombstones. */
+export function runWithdrawalIndexKey(runId: string): string {
+  return `${NAMESPACE}:run:{${runId}}:withdrawals`;
+}
+
 export function contributionMember(blockId: string, absorptionId: string): string {
   return JSON.stringify([blockId, absorptionId]);
 }

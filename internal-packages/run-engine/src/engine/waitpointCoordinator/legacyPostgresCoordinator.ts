@@ -16,6 +16,8 @@ import type {
   AbsorbedBlockersParams,
   AbsorbBlockersResult,
   AcknowledgeResumeParams,
+  PrepareWaitpointResumeParams,
+  WaitpointResumeIntent,
   AssociatedWaitpointData,
   BlockerRegistration,
   ClearRunBlockStateParams,
@@ -165,6 +167,16 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
 
   // Postgres has no watcher registration or resume handoff to acknowledge — completion already fanned
   // out at complete() time — so the resume cleanup is just deleting the run's consumed edge rows.
+  async prepareResume(
+    _params: PrepareWaitpointResumeParams
+  ): Promise<WaitpointResumeIntent | undefined> {
+    return undefined;
+  }
+
+  async readResumeIntent(): Promise<WaitpointResumeIntent | undefined> {
+    return undefined;
+  }
+
   async acknowledgeResume(params: AcknowledgeResumeParams): Promise<void> {
     await this.clearRunBlockState({ runId: params.runId, edgeIds: params.edgeIds });
   }

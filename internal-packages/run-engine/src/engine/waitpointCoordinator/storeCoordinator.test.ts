@@ -15,6 +15,9 @@ import {
   runBlockKeys,
   runContributionKey,
   runContributionIndexKey,
+  runWithdrawalIndexKey,
+  organizationRunIndexKey,
+  fanoutPartition,
   contributionMember,
   runResultKey,
   runWithdrawalKey,
@@ -24,6 +27,7 @@ import {
   WaitpointKeyTagError,
 } from "./keys.js";
 import { registerWaitpointCommands, RUN_CLEANUP_PAGE_SIZE } from "./scripts.js";
+import { StoreWaitpointCoordinator } from "./storeWaitpointCoordinator.js";
 import {
   encodeCompletionForDelivery,
   EncodedWaitpointCompletion,
@@ -615,6 +619,7 @@ describe("reply framing (direct Lua — pins the wire shape the coordinator deco
           runWithdrawalKey("run_1", ""),
           runWithdrawalTargetsKey("run_1", ""),
           runContributionIndexKey("run_1"),
+          runWithdrawalIndexKey("run_1"),
           BLOCK_ID,
           "0",
           "",
@@ -669,6 +674,7 @@ describe("reply framing (direct Lua — pins the wire shape the coordinator deco
           runWithdrawalKey("run_1", ""),
           runWithdrawalTargetsKey("run_1", ""),
           runContributionIndexKey("run_1"),
+          runWithdrawalIndexKey("run_1"),
           BLOCK_ID,
           "0",
           "",
@@ -719,6 +725,7 @@ describe("reply framing (direct Lua — pins the wire shape the coordinator deco
         runWithdrawalKey("run_1", ""),
         runWithdrawalTargetsKey("run_1", ""),
         runContributionIndexKey("run_1"),
+        runWithdrawalIndexKey("run_1"),
         BLOCK_ID,
         "0",
         "",
@@ -768,6 +775,7 @@ describe("reply framing (direct Lua — pins the wire shape the coordinator deco
           runWithdrawalKey("run_1", ""),
           runWithdrawalTargetsKey("run_1", ""),
           runContributionIndexKey("run_1"),
+          runWithdrawalIndexKey("run_1"),
           BLOCK_ID,
           "0",
           "",
@@ -820,6 +828,7 @@ describe("reply framing (direct Lua — pins the wire shape the coordinator deco
           runWithdrawalKey("run_1", ""),
           runWithdrawalTargetsKey("run_1", ""),
           runContributionIndexKey("run_1"),
+          runWithdrawalIndexKey("run_1"),
           BLOCK_ID,
           "0",
           "",
@@ -865,6 +874,7 @@ describe("reply framing (direct Lua — pins the wire shape the coordinator deco
           runWithdrawalKey("run_1", ""),
           runWithdrawalTargetsKey("run_1", ""),
           runContributionIndexKey("run_1"),
+          runWithdrawalIndexKey("run_1"),
           BLOCK_ID,
           "0",
           "",
@@ -918,6 +928,7 @@ describe("reply framing (direct Lua — pins the wire shape the coordinator deco
           runWithdrawalKey("run_1", ""),
           runWithdrawalTargetsKey("run_1", ""),
           runContributionIndexKey("run_1"),
+          runWithdrawalIndexKey("run_1"),
           BLOCK_ID,
           "0",
           "",
@@ -965,6 +976,7 @@ describe("reply framing (direct Lua — pins the wire shape the coordinator deco
           runWithdrawalKey("run_1", ""),
           runWithdrawalTargetsKey("run_1", ""),
           runContributionIndexKey("run_1"),
+          runWithdrawalIndexKey("run_1"),
           BLOCK_ID,
           "0",
           "",
@@ -1699,6 +1711,140 @@ redisTest(
 
 describe("bounded cleanup", () => {
   redisTest(
+    "terminal adapter drains indexed contributions and detached withdrawals after state expiry, and refuses an active newer block",
+    async ({ redisOptions }) => {
+      const store = coordinator(redisOptions);
+      const redis = createRedisClient(redisOptions);
+      const adapter = new StoreWaitpointCoordinator({ store });
+      const runId = "terminal_registry_replay",
+        organizationId = "org_terminal_registry";
+      const registry = organizationRunIndexKey(organizationId, fanoutPartition(runId));
+      try {
+        await store.publishRunOwnership(runId, organizationId);
+        expect(
+          (
+            await store.absorbBlockers({
+              runId,
+              blockId: "old",
+              absorptionId: "old",
+              edges: [edge("w_old")],
+            })
+          ).outcome
+        ).toBe("absorbed");
+        // The supported store-only abandon primitive leaves a detached withdrawal, without co.
+        expect(await store.abandonRetainAndClear({ runId, blockId: "old" })).toEqual({
+          outcome: "retained",
+        });
+        // More than one declared page, including evidence from a prior block.
+        for (let i = 0; i <= RUN_CLEANUP_PAGE_SIZE; i++) {
+          expect(
+            (
+              await store.absorbBlockers({
+                runId,
+                blockId: "current",
+                absorptionId: `A${i}`,
+                edges: [edge(`w_${i}`)],
+              })
+            ).outcome
+          ).toBe("absorbed");
+        }
+        expect(await store.terminalRetainAndClear({ runId, blockId: "current" })).toEqual({
+          outcome: "retained",
+        });
+        // Ordinary state can expire while both durable indexes and detached targets survive.
+        await redis.unlink(...Object.values(runBlockKeys(runId)), runResultKey(runId));
+        expect(await redis.zcard(runContributionIndexKey(runId))).toBe(RUN_CLEANUP_PAGE_SIZE + 2);
+        expect(await redis.zcard(runWithdrawalIndexKey(runId))).toBe(2);
+        await adapter.releaseRunBlockers({ runId, organizationId, reason: "terminal" });
+        expect(await redis.zscore(registry, runId)).toBeNull();
+        expect(await redis.zcard(runContributionIndexKey(runId))).toBe(0);
+        expect(await redis.zcard(runWithdrawalIndexKey(runId))).toBe(0);
+        expect(
+          await redis.exists(
+            runWithdrawalTargetsKey(runId, "old"),
+            runWithdrawalTargetsKey(runId, "current"),
+            runContributionKey(runId, "current", "A0"),
+            runContributionKey(runId, "current", `A${RUN_CLEANUP_PAGE_SIZE}`)
+          )
+        ).toBe(0);
+        await adapter.releaseRunBlockers({ runId, organizationId, reason: "terminal" });
+        expect(await redis.zscore(registry, runId)).toBeNull();
+
+        const active = "active_registry_refusal";
+        await store.publishRunOwnership(active, organizationId);
+        expect(
+          (
+            await store.absorbBlockers({
+              runId: active,
+              blockId: "newer",
+              absorptionId: "A",
+              edges: [edge("w_active")],
+            })
+          ).outcome
+        ).toBe("absorbed");
+        await expect(store.finishTerminalRunCleanup(active)).rejects.toThrow(/terminal|cleanup/i);
+        expect(
+          await adapter.releaseRunBlockers({
+            runId: active,
+            organizationId,
+            reason: "terminal",
+            blockId: "stale",
+          })
+        ).toEqual({ count: 0 });
+        expect((await store.readBlockState(active)).pendingIds).toEqual(["w_active"]);
+        expect(await redis.zcard(runContributionIndexKey(active))).toBe(1);
+        expect(
+          await redis.zscore(
+            organizationRunIndexKey(organizationId, fanoutPartition(active)),
+            active
+          )
+        ).toBe("0");
+      } finally {
+        await store.quit();
+        redis.disconnect();
+      }
+    }
+  );
+
+  redisTest(
+    "retains admission evidence through cn/wd obligations and retires only terminal convergence or fully absent state",
+    async ({ redisOptions }) => {
+      const store = coordinator(redisOptions),
+        redis = createRedisClient(redisOptions),
+        runId = "registry_run",
+        org = "org_registry";
+      const index = organizationRunIndexKey(org, fanoutPartition(runId));
+      try {
+        await store.publishRunOwnership(runId, org);
+        // A producer can die immediately after admission: the registry alone still discovers it.
+        expect(await redis.zscore(index, runId)).toBe("0");
+        await store.absorbBlockers({
+          runId,
+          blockId: "B",
+          absorptionId: "A",
+          edges: [edge("w_registry")],
+        });
+        expect(await store.retireRunOwnership(runId, org)).toBe(false);
+        await store.terminalRetainAndClear({ runId, blockId: "B" });
+        expect(await store.retireRunOwnership(runId, org)).toBe(false);
+        const page = await store.readWithdrawalPage({ runId, blockId: "B" });
+        await store.acknowledgeWithdrawalPage({ runId, blockId: "B", fields: page!.fields });
+        await store.finalizeRetainedWithdrawal({ runId, blockId: "B" });
+        // The terminal fence alone does not hide surviving contribution recovery.
+        expect(await store.retireRunOwnership(runId, org)).toBe(false);
+        await store.deleteContribution({ runId, blockId: "B", absorptionId: "A" });
+        expect(await store.retireRunOwnership(runId, org)).toBe(true);
+        expect(await redis.zscore(index, runId)).toBeNull();
+        await store.publishRunOwnership("compensated", org);
+        expect(await store.retireRunOwnership("compensated", org)).toBe(true);
+      } finally {
+        await store.quit();
+        redis.disconnect();
+      }
+    }
+  );
+
+  redisTest(
     "retains large additive blocks without enumerating them and replays acknowledged pages across a newer cycle",
     async ({ redisOptions }) => {
       let store = coordinator(redisOptions);
@@ -1733,6 +1879,7 @@ describe("bounded cleanup", () => {
           keys.doneOrder,
           keys.early,
           keys.earlyOrder,
+          runWithdrawalIndexKey(runId),
           blockId,
           contributionMember("block_test", ""),
           "raw-test-revision"
@@ -1802,6 +1949,7 @@ describe("bounded cleanup", () => {
           keys.doneOrder,
           keys.early,
           keys.earlyOrder,
+          runWithdrawalIndexKey(runId),
           "B2",
           String(Date.now()),
           "10000",

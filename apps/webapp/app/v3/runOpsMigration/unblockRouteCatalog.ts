@@ -48,6 +48,12 @@ export const UNBLOCK_ROUTES: readonly UnblockRoute[] = [
     symbol: "completeWaitpoint (sink declaration)",
   },
   {
+    id: "wp.completeLockedDateTime",
+    kind: "DATETIME",
+    site: WAITPOINT_SYSTEM,
+    symbol: "completeWaitpoint (locked DATETIME re-entry)",
+  },
+  {
     id: "wp.ensureCompleted",
     kind: "RUN",
     site: WAITPOINT_SYSTEM,

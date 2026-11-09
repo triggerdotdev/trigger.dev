@@ -73,7 +73,7 @@ import {
 import type { SystemResources } from "./systems.js";
 import { snapshotRouteFromSnapshot, type SnapshotRouteWire } from "@internal/run-store";
 import type { WaitpointSystem } from "./waitpointSystem.js";
-import { BatchId, RunId } from "@trigger.dev/core/v3/isomorphic";
+import { BatchId, RunId, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
 
 /** A run whose snapshot state has expired has no snapshot to report, only its final run row. */
 export type CancelRunResult =
@@ -855,6 +855,25 @@ export class RunAttemptSystem {
 
           await this.#scheduleFinalizationGuard(runId);
 
+          // A run can reach successful completion while a store block and its watchers are still installed
+          // (a completion racing an in-flight block). FINISHED is terminal for that block, but store
+          // watcher keys have no TTL, so without an explicit release the block leaks forever. Arm a
+          // write-ahead cleanup obligation for the EXACT observed block BEFORE the terminal transition, so a
+          // crash after FINISHED commits but before the inline release still converges. Dark by
+          // construction: a never-enabled org resolves no block and a run with no store block arms nothing,
+          // adding no MemoryDB read or new Postgres cleanup while disabled. Enabled successful completions
+          // may release legacy edges as part of the terminal cleanup.
+          const waitpointStoreEnabled = await this.waitpointSystem.isWaitpointStoreEnabled(
+            latestSnapshot.organizationId
+          );
+          const successCleanupObligation = waitpointStoreEnabled
+            ? await this.waitpointSystem.armBlockerCleanupObligation({
+                runId,
+                organizationId: latestSnapshot.organizationId,
+                transitionId: SnapshotId.generate().id,
+              })
+            : undefined;
+
           const run = await this.$.runStore.completeAttemptSuccess(
             runId,
             {
@@ -971,7 +990,20 @@ export class RunAttemptSystem {
             },
           });
 
-          await this.#finalizeRun(run);
+          await this.#finalizeRun(run, latestSnapshot.organizationId, waitpointStoreEnabled);
+
+          // Release the store block terminal-first AFTER the durable FINISHED transition and every success
+          // side effect, and only if the pre-commit arm observed a block. Gated on the obligation so a
+          // legacy/never-enabled/no-block run makes no store call and gains no cleanup. A throw here leaves
+          // the run finalized and the armed obligation to re-drive the release (idempotent, fenced).
+          if (successCleanupObligation) {
+            await this.waitpointSystem.settleBlockerCleanupAfterAttemptFailure({
+              obligation: successCleanupObligation,
+              runId,
+              organizationId: latestSnapshot.organizationId,
+              outcome: "terminal",
+            });
+          }
 
           return {
             attemptStatus: "RUN_FINISHED",
@@ -1037,14 +1069,14 @@ export class RunAttemptSystem {
 
           span.setAttribute("completionStatus", completion.ok);
 
-          //remove waitpoints blocking the run
-          const deletedCount = await this.waitpointSystem.clearBlockingWaitpoints({
-            runId,
-            organizationId: latestSnapshot.organizationId,
-            tx,
-          });
-          if (deletedCount > 0) {
-            this.$.logger.debug("Cleared blocking waitpoints", { runId, deletedCount });
+          const waitpointStoreEnabled = await this.waitpointSystem.isWaitpointStoreEnabled(
+            latestSnapshot.organizationId
+          );
+          if (!waitpointStoreEnabled) {
+            // Preserve the legacy failure boundary: blockers are cleared in the caller's client BEFORE
+            // retry settings are read or a forced-requeue failure event is emitted. The ordinary caller
+            // passes a real client here, so a later lookup failure must not leave its edges behind.
+            await this.$.runStore.deleteManyTaskRunWaitpoints({ where: { taskRunId: runId } }, tx);
           }
 
           const failedAt = new Date();
@@ -1103,6 +1135,19 @@ export class RunAttemptSystem {
             });
           }
 
+          // Enabled store/mixed runs retain their write-ahead fence and exact transition identity.
+          // Legacy-only enabled runs still clear before the transition through the existing helper.
+          // OFF already cleared above and must neither delete twice nor mint a cleanup transition id.
+          const cleanupTransitionId = waitpointStoreEnabled ? SnapshotId.generate().id : undefined;
+          const cleanupObligation = cleanupTransitionId
+            ? await this.waitpointSystem.prepareFailedAttemptCleanup({
+                runId,
+                organizationId: latestSnapshot.organizationId,
+                transitionId: cleanupTransitionId,
+                tx,
+              })
+            : undefined;
+
           switch (retryResult.outcome) {
             case "cancel_run": {
               const result = await this.cancelRun({
@@ -1112,8 +1157,19 @@ export class RunAttemptSystem {
                 reason: retryResult.reason,
                 finalizeRun: true,
                 attemptDurationMs: completion.usage?.durationMs,
+                // attemptFailed already armed and settles the cleanup obligation for this cancellation.
+                delegateStoreCleanup: true,
                 tx: prisma,
               });
+              // Terminal-first cleanup, AFTER the durable cancel transition and outside the tx.
+              if (cleanupObligation) {
+                await this.waitpointSystem.settleBlockerCleanupAfterAttemptFailure({
+                  obligation: cleanupObligation,
+                  runId,
+                  organizationId: latestSnapshot.organizationId,
+                  outcome: "cancelled",
+                });
+              }
               if (result.snapshot === null) {
                 // Not reachable for a run with a live attempt.
                 throw new Error(
@@ -1129,7 +1185,7 @@ export class RunAttemptSystem {
               };
             }
             case "fail_run": {
-              return await this.#permanentlyFailRun({
+              const result = await this.#permanentlyFailRun({
                 runId,
                 latestSnapshot,
                 failedAt,
@@ -1137,7 +1193,18 @@ export class RunAttemptSystem {
                 workerId,
                 runnerId,
                 attemptDurationMs: completion.usage?.durationMs,
+                waitpointStoreEnabled,
               });
+              // Terminal-first cleanup, AFTER the durable terminal transition and outside the tx.
+              if (cleanupObligation) {
+                await this.waitpointSystem.settleBlockerCleanupAfterAttemptFailure({
+                  obligation: cleanupObligation,
+                  runId,
+                  organizationId: latestSnapshot.organizationId,
+                  outcome: "terminal",
+                });
+              }
+              return result;
             }
             case "retry": {
               const retryAt = new Date(retryResult.settings.timestamp);
@@ -1262,8 +1329,22 @@ export class RunAttemptSystem {
                     code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
                     message: `We tried to dequeue the run the maximum number of times but it wouldn't start executing`,
                   },
+                  // Stamp the requeue transition so a replayed cleanup obligation can prove it committed.
+                  transitionSnapshotId: cleanupTransitionId,
                   tx: prisma,
                 });
+
+                // AFTER the durable nack/requeue transition, outside the tx: a run that could not requeue
+                // is terminal (terminal-first); a requeued run is retryable, so its old block is abandoned
+                // and fenced WITHOUT terminalizing it, leaving the next attempt free to block again.
+                if (cleanupObligation) {
+                  await this.waitpointSystem.settleBlockerCleanupAfterAttemptFailure({
+                    obligation: cleanupObligation,
+                    runId,
+                    organizationId: latestSnapshot.organizationId,
+                    outcome: nackResult.wasRequeued ? "retry" : "terminal",
+                  });
+                }
 
                 if (!nackResult.wasRequeued) {
                   return {
@@ -1279,6 +1360,8 @@ export class RunAttemptSystem {
               const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
                 prisma,
                 {
+                  // Stamp the cleanup transition id so a replayed obligation can prove THIS retry committed.
+                  snapshotId: cleanupTransitionId,
                   run,
                   snapshot: {
                     executionStatus: "EXECUTING",
@@ -1302,6 +1385,17 @@ export class RunAttemptSystem {
                 snapshot: newSnapshot,
                 eventBus: this.$.eventBus,
               });
+
+              // AFTER the durable retry transition, outside the tx: abandon and fence the old attempt's
+              // block WITHOUT terminalizing the run, so the next attempt can open a fresh block cycle.
+              if (cleanupObligation) {
+                await this.waitpointSystem.settleBlockerCleanupAfterAttemptFailure({
+                  obligation: cleanupObligation,
+                  runId,
+                  organizationId: latestSnapshot.organizationId,
+                  outcome: "retry",
+                });
+              }
 
               return {
                 attemptStatus: "RETRY_IMMEDIATELY",
@@ -1394,6 +1488,7 @@ export class RunAttemptSystem {
     batchId,
     resetQueueAttempts = false,
     workerQueue,
+    transitionSnapshotId,
     moveToWorkerQueue,
     description,
     previousSnapshotId,
@@ -1425,6 +1520,9 @@ export class RunAttemptSystem {
      * failures leave it unset so a run that never comes back healthy is still bounded.
      */
     resetQueueAttempts?: boolean;
+    // A caller-minted transition id stamped on the requeue's QUEUED snapshot, so a write-ahead cleanup
+    // obligation can prove this requeue committed. Omitted by callers with no such obligation.
+    transitionSnapshotId?: string;
     workerQueue?: string;
     /** Also moves the run to this worker queue, so later deliveries and retries use it. */
     moveToWorkerQueue?: string;
@@ -1467,6 +1565,7 @@ export class RunAttemptSystem {
       );
 
       const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
+        snapshotId: transitionSnapshotId,
         run: requeuedRun,
         snapshotRoute,
         previousSnapshot,
@@ -1780,6 +1879,7 @@ export class RunAttemptSystem {
     finalizeRun,
     bulkActionId,
     attemptDurationMs,
+    delegateStoreCleanup,
     tx,
   }: {
     runId: string;
@@ -1791,6 +1891,10 @@ export class RunAttemptSystem {
     finalizeRun?: boolean;
     bulkActionId?: string;
     attemptDurationMs?: number;
+    // When the caller already owns the store-blocker cleanup for this cancellation (attemptFailed arms
+    // and settles its own obligation), cancelRun does not arm or release a second one. Every direct
+    // caller leaves it unset, so a direct cancellation of a store-blocked run releases its block itself.
+    delegateStoreCleanup?: boolean;
     tx?: PrismaClientOrTransaction;
   }): Promise<CancelRunResult> {
     const prisma = tx ?? this.$.prisma;
@@ -1839,6 +1943,23 @@ export class RunAttemptSystem {
             ...executionResultFromSnapshot(latestSnapshot),
           };
         }
+
+        // Arm the store-blocker cleanup obligation BEFORE the terminal transition (only when this run
+        // holds an observed store block, so legacy/never-enabled cancellations arm nothing and stay on
+        // their current path), unless the caller owns cleanup. A crash after the transition but before the
+        // inline release is then re-driven; the handler releases on durable terminal status.
+        // One flag decision per direct cancellation; #finalizeRun below reuses only a disabled one.
+        const cancelStoreEnabled = delegateStoreCleanup
+          ? undefined
+          : await this.waitpointSystem.isWaitpointStoreEnabled(latestSnapshot.organizationId);
+        const cancelCleanupObligation =
+          delegateStoreCleanup || !cancelStoreEnabled
+            ? undefined
+            : await this.waitpointSystem.armBlockerCleanupObligation({
+                runId,
+                organizationId: latestSnapshot.organizationId,
+                transitionId: SnapshotId.generate().id,
+              });
 
         const reuseStoredReason =
           reason === undefined && latestSnapshot.executionStatus === "PENDING_CANCEL";
@@ -1973,6 +2094,16 @@ export class RunAttemptSystem {
               snapshot: newSnapshot,
               eventBus: this.$.eventBus,
             });
+            // PENDING_CANCEL is terminal for the store block: release it terminal-first (fenced) after the
+            // durable transition, and ack the obligation. Only when this run held a store block.
+            if (cancelCleanupObligation) {
+              await this.waitpointSystem.settleBlockerCleanupAfterAttemptFailure({
+                obligation: cancelCleanupObligation,
+                runId,
+                organizationId: latestSnapshot.organizationId,
+                outcome: "cancelled",
+              });
+            }
             return {
               alreadyFinished: false,
               ...executionResultFromSnapshot(newSnapshot),
@@ -2008,7 +2139,18 @@ export class RunAttemptSystem {
           });
         }
 
-        await this.#finalizeRun(run);
+        await this.#finalizeRun(run, latestSnapshot.organizationId, cancelStoreEnabled);
+
+        // FINISHED is terminal for the store block: release it terminal-first (fenced) after the durable
+        // transition, and ack the obligation. Only when this run held a store block.
+        if (cancelCleanupObligation) {
+          await this.waitpointSystem.settleBlockerCleanupAfterAttemptFailure({
+            obligation: cancelCleanupObligation,
+            runId,
+            organizationId: latestSnapshot.organizationId,
+            outcome: "cancelled",
+          });
+        }
 
         this.$.eventBus.emit("runCancelled", {
           time: new Date(),
@@ -2104,6 +2246,7 @@ export class RunAttemptSystem {
     workerId,
     runnerId,
     attemptDurationMs,
+    waitpointStoreEnabled,
   }: {
     runId: string;
     latestSnapshot: EnhancedExecutionSnapshot;
@@ -2112,6 +2255,8 @@ export class RunAttemptSystem {
     workerId?: string;
     runnerId?: string;
     attemptDurationMs?: number;
+    // attemptFailed's flag decision, made under the same run lock; #finalizeRun reuses only `false`.
+    waitpointStoreEnabled: boolean;
   }): Promise<CompleteRunAttemptResult> {
     const prisma = this.$.prisma;
 
@@ -2245,7 +2390,7 @@ export class RunAttemptSystem {
         },
       });
 
-      await this.#finalizeRun(run);
+      await this.#finalizeRun(run, env.organizationId, waitpointStoreEnabled);
 
       return {
         attemptStatus: "RUN_FINISHED",
@@ -2258,7 +2403,24 @@ export class RunAttemptSystem {
   /*
    * Whether the run succeeds, fails, is cancelled… we need to run these operations
    */
-  async #finalizeRun({ id, batchId }: { id: string; batchId: string | null }) {
+  async #finalizeRun(
+    {
+      id,
+      batchId,
+      organizationId,
+    }: {
+      id: string;
+      batchId: string | null;
+      organizationId?: string | null;
+    },
+    trustedOrganizationId: string,
+    // The caller's flag decision, made earlier under this run's lock. Only a disabled decision is
+    // reused: the run is already terminal and no store blocker can attach under that lock. An enabled
+    // decision is rechecked after the terminal write.
+    waitpointStoreEnabled?: boolean
+  ) {
+    // Finish mutations return a narrow projection; use the tenant context already loaded by the caller.
+    organizationId = trustedOrganizationId;
     if (batchId) {
       await this.batchSystem.scheduleCompleteBatch({ batchId });
     }
@@ -2266,7 +2428,23 @@ export class RunAttemptSystem {
     //cancel the heartbeats
     await this.$.worker.ack(`heartbeatSnapshot.${id}`);
 
+    if (
+      waitpointStoreEnabled !== false &&
+      (await this.waitpointSystem.isWaitpointStoreEnabled(organizationId))
+    ) {
+      await this.#cleanupTerminalWaitpointResults({ id, organizationId });
+    }
     await this.$.worker.ack(`ensureRunFinalized:${id}`);
+  }
+
+  // Callers gate before allocating cleanup input. The existing finalization guard owns replay if
+  // terminal result cleanup fails after FINISHED, including older PG parents with shared store children.
+  async #cleanupTerminalWaitpointResults(run: { id: string; organizationId?: string | null }) {
+    await this.waitpointSystem.cleanupBlockersAfterAttemptFailure({
+      runId: run.id,
+      organizationId: run.organizationId ?? undefined,
+      outcome: "terminal",
+    });
   }
 
   /**
@@ -2437,6 +2615,13 @@ export class RunAttemptSystem {
           output: this.waitpointSystem.buildWaitpointOutputFromRun(run),
           // This recovery re-derivation selects no organizationId; leave it conservative rather than
           // widen the query solely to skip a MemoryDB lookup.
+        });
+      }
+
+      if (await this.waitpointSystem.isWaitpointStoreEnabled(env?.organizationId)) {
+        await this.#cleanupTerminalWaitpointResults({
+          id: run.id,
+          organizationId: env?.organizationId,
         });
       }
 

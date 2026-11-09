@@ -75,8 +75,42 @@ export type WaitpointFanoutWorkerOptions = {
   retryPolicy?: Partial<FanoutRetryPolicy>;
   logger?: Logger;
   meter?: Meter;
+  /**
+   * Enable partition-index backlog gauges (defaults to true for standalone sweep workers).
+   * Job-driven application delivery uses its existing RedisWorker queue metrics instead:
+   * collecting telemetry must not start global waitpoint Redis scans after an org is disabled.
+   */
+  observeBacklog?: boolean;
   clock?: () => number;
   hooks?: FanoutWorkerHooks;
+  /**
+   * The resume bridge. Called when a fanout delivery empties a run's current pending set
+   * (`resumable`), so the run's continuation is durably scheduled/debounced off the bounded fanout
+   * path — never resumed inline here. Receives the run's org straight off the watcher, so the
+   * continuation routes without an extra lookup. Undefined leaves the delivery bounded and inert (the
+   * dark default until activation wires it to enqueue `continueRunIfUnblocked`).
+   */
+  onResumable?: (ctx: {
+    runId: string;
+    organizationId?: string;
+    waitpointId: string;
+  }) => Promise<void>;
+  /**
+   * The cached-span completion bridge, SEPARATE from onResumable: called for each live watcher in a
+   * claimed page that carries a `spanIdToComplete`. Its cached child completed even if the parent already
+   * acknowledged, advanced to another block, or went terminal, so run delivery rejection does not cancel
+   * this span obligation. Watchers withdrawn before the claim are skipped. At-least-once: a retried page
+   * may call it again, so the emitted event must be idempotent. Undefined leaves store cached-span
+   * completion inert (the dark default until activation wires it, exactly like onResumable).
+   */
+  onCachedSpanComplete?: (ctx: {
+    waitpointId: string;
+    blockedRunId: string;
+    spanId: string;
+    spanCreatedAt: string;
+    hasError: boolean;
+    cachedRunId?: string;
+  }) => Promise<void>;
 };
 
 /**
@@ -148,6 +182,11 @@ export class WaitpointFanoutWorker {
   private readonly logger: Logger;
   private readonly clock: () => number;
   private readonly hooks: FanoutWorkerHooks;
+  private readonly onResumable?: WaitpointFanoutWorkerOptions["onResumable"];
+  private readonly onCachedSpanComplete?: WaitpointFanoutWorkerOptions["onCachedSpanComplete"];
+  // True while this worker self-schedules (started + enabled). A resumable delivery with no resume
+  // bridge fails loud only then — a direct-drive test/harness visit() may deliver without one.
+  private selfScheduling = false;
   private readonly retryPolicy: FanoutRetryPolicy;
   private readonly options: Required<
     Pick<
@@ -210,6 +249,8 @@ export class WaitpointFanoutWorker {
     this.logger = options.logger ?? new Logger("WaitpointFanoutWorker", "debug");
     this.clock = options.clock ?? Date.now;
     this.hooks = options.hooks ?? {};
+    this.onResumable = options.onResumable;
+    this.onCachedSpanComplete = options.onCachedSpanComplete;
     this.retryPolicy = { ...DEFAULT_FANOUT_RETRY_POLICY, ...options.retryPolicy };
     this.options = {
       pageSize: options.pageSize ?? DEFAULTS.pageSize,
@@ -224,7 +265,7 @@ export class WaitpointFanoutWorker {
     assertFanoutWorkerLimits({ ...this.options, ...this.retryPolicy });
 
     if (options.meter) {
-      this.#initializeMetrics(options.meter);
+      this.#initializeMetrics(options.meter, options.observeBacklog ?? true);
     }
   }
 
@@ -252,6 +293,10 @@ export class WaitpointFanoutWorker {
     if (this.timer) {
       return;
     }
+    // A self-scheduling (started + enabled) worker that reaches a resumable delivery with no resume
+    // bridge fails loud there rather than silently consuming the wake-up. A direct-drive test/harness
+    // visit() never sets this, so it may deliver without a bridge.
+    this.selfScheduling = true;
 
     // Cleared here rather than at the end of stop(), so a stop still in flight cannot be
     // overtaken: an interval only exists again once this method has claimed the slot below,
@@ -299,6 +344,7 @@ export class WaitpointFanoutWorker {
     // Synchronous, before any await: the tick reads `draining` when it fires, and no new
     // timer can appear because `start()` now sees `stopping`.
     this.draining = true;
+    this.selfScheduling = false;
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = undefined;
@@ -454,12 +500,12 @@ export class WaitpointFanoutWorker {
    * bound is advisory — a waitpoint with a million watchers occupies the worker for
    * `pageSize * maxPagesPerVisit` deliveries and then yields.
    */
-  async visit(waitpointId: string): Promise<FanoutVisitSummary> {
+  async visit(waitpointId: string, organizationId?: string): Promise<FanoutVisitSummary> {
     this.#assertNotDisposed("visit");
-    return this.#track(this.#visit(waitpointId));
+    return this.#track(this.#visit(waitpointId, organizationId));
   }
 
-  async #visit(waitpointId: string): Promise<FanoutVisitSummary> {
+  async #visit(waitpointId: string, organizationId?: string): Promise<FanoutVisitSummary> {
     const summary: FanoutVisitSummary = {
       waitpointId,
       pages: 0,
@@ -487,7 +533,7 @@ export class WaitpointFanoutWorker {
         // how a spurious one — the price of filing it before the completion flip — is
         // reclaimed.
         summary.outcome = claim.outcome;
-        await this.coordinator.dropFanoutHint(waitpointId);
+        await this.coordinator.dropFanoutHint(waitpointId, organizationId);
         return summary;
       }
 
@@ -597,7 +643,10 @@ export class WaitpointFanoutWorker {
         return summary;
       }
 
-      const outcomes = await this.#deliverPage(waitpointId, claim.page, encoded);
+      const outcomes = await this.#deliverPage(waitpointId, claim.page, encoded, {
+        hasError: completion.outputIsError,
+        cachedRunId: claim.completedByTaskRunId,
+      });
       this.#tally(summary, outcomes);
 
       if (claim.completedAtMs > 0 && this.metrics.deliveryLatency) {
@@ -637,12 +686,12 @@ export class WaitpointFanoutWorker {
         }
         if (ack.outcome === "absent") {
           summary.outcome = "absent";
-          await this.coordinator.dropFanoutHint(waitpointId);
+          await this.coordinator.dropFanoutHint(waitpointId, organizationId);
           return summary;
         }
         if (ack.outcome === "drained" && !failed) {
           summary.outcome = "drained";
-          await this.coordinator.dropFanoutHint(waitpointId);
+          await this.coordinator.dropFanoutHint(waitpointId, organizationId);
           return summary;
         }
       }
@@ -675,10 +724,21 @@ export class WaitpointFanoutWorker {
     return summary;
   }
 
+  // Whether the run still owes a continuation for THIS watcher's block — the DURABLE signal (`hs=owed`),
+  // so a duplicate re-delivery re-drives the bridge, and an already-acknowledged cycle (`hs=ack`) does
+  // not. One bounded read per non-emptying delivery; the emptying delivery takes the `resumable` fast
+  // path and never reaches here.
+  async #runOwesContinuation(runId: string, blockId: string): Promise<boolean> {
+    return (await this.coordinator.readBlockHandoff(runId, blockId)) === "owed";
+  }
+
   async #deliverPage(
     waitpointId: string,
     page: FanoutPageEntry[],
-    encoded: EncodedWaitpointCompletion
+    encoded: EncodedWaitpointCompletion,
+    // Immutable completion metadata read ONCE per claimed page, carried to every watcher's cached-span
+    // event rather than re-read per watcher.
+    spanMeta: { hasError: boolean; cachedRunId?: string }
   ): Promise<WatcherDeliveryOutcome[]> {
     return pMap(
       page,
@@ -704,14 +764,71 @@ export class WaitpointFanoutWorker {
             encoded,
             requireCurrentBlock: true,
           });
-          // `stale`, `terminal` and `acked` all mean the run's shard will refuse a
-          // redelivery identically, so the watcher is retired rather than retried.
+          // `stale`, `terminal` and `acked` refuse the run result. The watcher can retire once its
+          // independent cached-span obligation below also succeeds.
           outcome =
             result.outcome === "delivered"
               ? "delivered"
               : result.outcome === "duplicate"
                 ? "duplicate"
                 : "rejected";
+
+          // The claimed live watcher owns its cached CHILD span independently of whether the PARENT
+          // still accepts this result. Other indexed watchers/pages can already have resumed the parent,
+          // so even an acked/stale/terminal result must finish this span. A withdrawn watcher was skipped
+          // above. Publish before any resume bridge; a throw keeps the page retryable, including after
+          // terminal cleanup. At-least-once: the bridge must tolerate a duplicate span completion.
+          if (entry.watcher.spanIdToComplete) {
+            if (this.onCachedSpanComplete) {
+              await this.onCachedSpanComplete({
+                waitpointId,
+                blockedRunId: runId,
+                spanId: entry.watcher.spanIdToComplete,
+                spanCreatedAt: entry.watcher.createdAt,
+                hasError: spanMeta.hasError,
+                cachedRunId: spanMeta.cachedRunId,
+              });
+            } else if (this.selfScheduling) {
+              throw new Error(
+                `WaitpointFanoutWorker ${this.workerId} delivered a cached-span completion for run ` +
+                  `${runId} with no cached-span bridge; refusing to silently drop the span completion`
+              );
+            }
+          }
+
+          // This delivery emptied the run's current pending set: bridge to the run's continuation, off
+          // the foreground, carrying the org straight off the watcher — only AFTER cached-span completion
+          // succeeded above. A throw here is a delivery failure and retries — the receipt is durable, so
+          // the bridge is re-driven on the next visit (and the cached-span event, being idempotent, may be
+          // published again). Bridge to the run's continuation whenever the run OWES one — not only on
+          // `result.resumable`, which is true just for the delivery that emptied the set and false for a
+          // duplicate. A duplicate re-delivery on a retried page must be able to re-schedule an outstanding,
+          // still unacknowledged continuation; once the continuation acknowledges the handoff it is no
+          // longer owed and this does nothing, so an acknowledged cycle is never re-armed. Skip the whole
+          // check for a direct-drive worker with no bridge (a test/harness affordance). A self-scheduling
+          // worker computes whether the run owes a continuation and, with no bridge, fails loud rather than
+          // dropping the wake-up. Rejected run deliveries must never publish a continuation, even if a
+          // newer block now owes one.
+          if (
+            (outcome === "delivered" || outcome === "duplicate") &&
+            (this.onResumable || this.selfScheduling)
+          ) {
+            const owesContinuation =
+              result.resumable || (await this.#runOwesContinuation(runId, blockId));
+            if (owesContinuation) {
+              if (!this.onResumable) {
+                throw new Error(
+                  `WaitpointFanoutWorker ${this.workerId} delivered a resumable completion for run ` +
+                    `${runId} with no resume bridge; refusing to silently consume the wake-up`
+                );
+              }
+              await this.onResumable({
+                runId,
+                organizationId: entry.watcher.organizationId,
+                waitpointId,
+              });
+            }
+          }
         } catch (error) {
           this.metrics.deliveryFailures?.add(1);
           this.logger.warn("Waitpoint fanout delivery failed", { waitpointId, runId, error });
@@ -813,7 +930,7 @@ export class WaitpointFanoutWorker {
     }
   }
 
-  #initializeMetrics(meter: Meter): void {
+  #initializeMetrics(meter: Meter, observeBacklog: boolean): void {
     this.metrics.watchersDelivered = meter.createCounter("waitpoint.fanout.watchers_delivered", {
       description: "Watchers delivered by the fanout worker, split by fresh versus duplicate",
     });
@@ -839,6 +956,8 @@ export class WaitpointFanoutWorker {
       description: "Completion-to-delivery latency",
       unit: "ms",
     });
+
+    if (!observeBacklog) return;
 
     this.metrics.backlog = meter.createObservableGauge("waitpoint.fanout.backlog", {
       description: "Waitpoints with fanout work due",

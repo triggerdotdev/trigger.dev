@@ -1,3 +1,4 @@
+import type { WaitpointStoreCoordinator } from "./waitpointCoordinator/storeCoordinator.js";
 import { type RedisOptions } from "@internal/redis";
 import type { Meter, Tracer } from "@internal/tracing";
 import type { Logger, LogLevel } from "@trigger.dev/core/logger";
@@ -309,6 +310,7 @@ export type RunEngineOptions = {
    * Redis-primary resume cycle. Dark by default (undefined leaves the resolver Postgres-only).
    */
   waitpointStore?: WaitpointSystemOptions["waitpointStore"];
+  waitpointFanoutStore?: WaitpointStoreCoordinator;
   heartbeatTimeoutsMs?: Partial<HeartbeatTimeouts>;
   repairSnapshotTimeoutMs?: number;
   treatProductionExecutionStallsAsOOM?: boolean;
@@ -498,6 +500,8 @@ export type TriggerParams = {
     existingRun: TaskRun;
     waitpoint: Waitpoint;
     debounceKey: string;
+    /** Native waitpoints only: await inside the trace callback before persisting its partial span. */
+    blockRun?: (spanIdToComplete?: string) => Promise<void>;
   }) => Promise<string | undefined>;
 };
 

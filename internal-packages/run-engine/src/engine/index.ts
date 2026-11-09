@@ -1,3 +1,5 @@
+import { createWaitpointResultRunStore } from "./systems/waitpointResultRunStore.js";
+import { WaitpointFanoutWorker } from "./waitpointCoordinator/fanoutWorker.js";
 import { type Redis, createRedisClient } from "@internal/redis";
 import {
   type Meter,
@@ -8,6 +10,7 @@ import {
   trace,
 } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
+import { tryCatch } from "@trigger.dev/core/utils";
 import {
   type CheckpointInput,
   type CompleteRunAttemptResult,
@@ -25,6 +28,7 @@ import { formatWorkerQueue, WORKER_QUEUE_VERSION } from "@trigger.dev/core/v3/wo
 import {
   generateInternalId,
   parseNaturalLanguageDurationInMs,
+  parseWaitpointId,
   RunId,
   mintWaitpointIdFor,
   type ShardKey,
@@ -175,6 +179,13 @@ export class RunEngine {
         prisma: this.prisma,
         readOnlyPrisma: this.readOnlyPrisma,
       });
+    if (options.waitpointStore && options.waitpointStoreEnabled) {
+      this.runStore = createWaitpointResultRunStore(this.runStore, {
+        store: options.waitpointStore,
+        primaryReadClient: this.prisma,
+        isEnabled: options.waitpointStoreEnabled,
+      });
+    }
     this.controlPlaneResolver =
       options.controlPlaneResolver ??
       new PassthroughControlPlaneResolver({
@@ -290,6 +301,89 @@ export class RunEngine {
       shutdownTimeoutMs: options.worker.shutdownTimeoutMs,
       logger: new Logger("RunEngineWorker", options.logLevel ?? "info"),
       jobs: {
+        deliverWaitpointFanout: async ({ id, payload, deduplicationKey }) => {
+          if (!(await this.waitpointSystem.isWaitpointStoreEnabled(payload.organizationId))) return;
+          const parsed = parseWaitpointId(payload.waitpointId);
+          const dateTime = parsed.format === "b32hexW" && parsed.type === "DATETIME";
+          const deliver = async () => {
+            if (!options.waitpointFanoutStore)
+              throw new Error("Waitpoint fanout store is not wired");
+            const completion = await options.waitpointFanoutStore.describeWaitpoint(
+              payload.waitpointId
+            );
+            // Published DATETIME identities are never recreated after expiry: new mints allocate a
+            // fresh id. Missing RUN identities can still be waiting for publication and must retry.
+            const expiredDateTime = completion.outcome === "missing" && dateTime;
+            if (
+              !expiredDateTime &&
+              (completion.outcome !== "exists" || completion.status !== "COMPLETED")
+            ) {
+              throw new Error("Waitpoint completion has not committed");
+            }
+            this.waitpointFanout ??= new WaitpointFanoutWorker({
+              coordinator: options.waitpointFanoutStore,
+              meter: this.meter,
+              // Durable delivery jobs use the existing engine-worker backlog/age/DLQ gauges.
+              // Reader collection must never scan waitpoint Redis after org rollback.
+              observeBacklog: false,
+              enabled: false,
+              maxPagesPerVisit: 1,
+              onResumable: async ({ runId, organizationId }) => {
+                if (
+                  !organizationId ||
+                  !(await this.waitpointSystem.isWaitpointStoreEnabled(organizationId))
+                )
+                  return;
+                await this.worker.enqueue({
+                  id: `continueRunIfUnblocked:${runId}`,
+                  job: "continueRunIfUnblocked",
+                  payload: { runId, organizationId },
+                  availableAt: new Date(),
+                });
+              },
+              onCachedSpanComplete: async (ctx) => {
+                this.eventBus.emit("cachedRunCompleted", {
+                  time: new Date(),
+                  span: { id: ctx.spanId, createdAt: new Date(ctx.spanCreatedAt) },
+                  blockedRunId: ctx.blockedRunId,
+                  hasError: ctx.hasError,
+                  cachedRunId: ctx.cachedRunId,
+                });
+              },
+            });
+            const result = await this.waitpointFanout.visit(
+              payload.waitpointId,
+              payload.organizationId
+            );
+            if (result.outcome === "more") {
+              // Enqueue replaces the job with a new deduplication identity. The current
+              // worker's fenced ack cannot delete this durable next page; no failure attempt
+              // or backoff is consumed for successful bounded progress.
+              await this.worker.enqueue({
+                id: `deliverWaitpointFanout:${payload.waitpointId}`,
+                job: "deliverWaitpointFanout",
+                payload,
+                availableAt: new Date(),
+              });
+              return;
+            }
+            if (!["drained", "absent", "done"].includes(result.outcome)) {
+              throw new Error(`Waitpoint fanout not converged: ${result.outcome}`);
+            }
+            // Ack while the producer lock is still held. Otherwise a queued completion could
+            // reuse this enqueueOnce job after cleanup but before the worker's outer ack.
+            // The outer fenced ack cannot remove a replacement published after lock release.
+            if (dateTime && id) await this.worker.queue.ack(id, deduplicationKey);
+          };
+          return dateTime
+            ? this.waitpointSystem.withWaitpointCompletionLock(payload.waitpointId, async () => {
+                // Admission may have waited behind a producer while the org was disabled.
+                if (!(await this.waitpointSystem.isWaitpointStoreEnabled(payload.organizationId)))
+                  return;
+                return deliver();
+              })
+            : deliver();
+        },
         finishWaitpoint: async ({ payload }) => {
           await this.waitpointSystem.completeWaitpoint({
             id: payload.waitpointId,
@@ -353,6 +447,14 @@ export class RunEngine {
             waitpointId: payload.waitpointId,
             output: payload.output,
             organizationId: payload.organizationId,
+          });
+        },
+        ensureBlockersCleanedUp: async ({ payload }) => {
+          await this.waitpointSystem.ensureBlockersCleanedUp({
+            runId: payload.runId,
+            organizationId: payload.organizationId,
+            blockId: payload.blockId,
+            transitionId: payload.transitionId,
           });
         },
         ensureAbsorptionCompensated: async ({ payload }) => {
@@ -975,26 +1077,78 @@ export class RunEngine {
                 });
               }
 
-              let spanIdToComplete: string | undefined;
-              if (onDebounced) {
-                spanIdToComplete = await onDebounced({
-                  existingRun: debounceResult.run,
-                  waitpoint,
-                  debounceKey: debounce.key,
+              if (await this.waitpointSystem.isWaitpointStoreEnabled(environment.organization.id)) {
+                // Native traces must not persist a partial span before registration can reject an
+                // advanced cycle. Let the trace callback await registration before it publishes. The
+                // promise also keeps the return-span fallback from registering a second time.
+                const waitpointId = waitpoint.id;
+                const nativeWaitpoint = parseWaitpointId(waitpointId).format !== "legacy";
+                let blocking: Promise<void> | undefined;
+                const blockRun = (spanIdToComplete?: string) =>
+                  (blocking ??= (async () => {
+                    const debounceBlockOperation =
+                      await this.waitpointSystem.buildStoreBlockOperation({
+                        runId: parentTaskRunId,
+                        waitpointId,
+                        organizationId: environment.organization.id,
+                      });
+                    await this.waitpointSystem.blockRunWithWaitpoint({
+                      runId: parentTaskRunId,
+                      waitpoints: waitpointId,
+                      spanIdToComplete,
+                      projectId: environment.project.id,
+                      organizationId: environment.organization.id,
+                      batch,
+                      workerId,
+                      runnerId,
+                      blockOperation: debounceBlockOperation,
+                      // No tx: the block edge is routed to the run's owning store.
+                    });
+                  })());
+
+                const traceAndBlockRun = async () => {
+                  let spanIdToComplete: string | undefined;
+                  if (onDebounced) {
+                    spanIdToComplete = await onDebounced({
+                      existingRun: debounceResult.run,
+                      waitpoint,
+                      debounceKey: debounce.key,
+                      ...(nativeWaitpoint ? { blockRun } : {}),
+                    });
+                  }
+                  await blockRun(spanIdToComplete);
+                };
+                if (!nativeWaitpoint) {
+                  // Refuse an already-owed parent cleanup before trace persistence. The edge write
+                  // re-checks the fence under the parent lock, after the trace callback has run.
+                  await this.waitpointSystem.admitLegacyRegistration(
+                    parentTaskRunId,
+                    environment.organization.id,
+                    traceAndBlockRun
+                  );
+                } else {
+                  await traceAndBlockRun();
+                }
+              } else {
+                let spanIdToComplete: string | undefined;
+                if (onDebounced) {
+                  spanIdToComplete = await onDebounced({
+                    existingRun: debounceResult.run,
+                    waitpoint,
+                    debounceKey: debounce.key,
+                  });
+                }
+                await this.waitpointSystem.blockRunWithWaitpoint({
+                  runId: parentTaskRunId,
+                  waitpoints: waitpoint.id,
+                  spanIdToComplete,
+                  projectId: environment.project.id,
+                  organizationId: environment.organization.id,
+                  batch,
+                  workerId,
+                  runnerId,
                 });
               }
-
-              await this.waitpointSystem.blockRunWithWaitpoint({
-                runId: parentTaskRunId,
-                waitpoints: waitpoint.id,
-                spanIdToComplete,
-                projectId: environment.project.id,
-                organizationId: environment.organization.id,
-                batch,
-                workerId,
-                runnerId,
-                // No tx: the block edge routes to the run's owning DB, not the control-plane tx.
-              });
             }
 
             return debounceResult.run;
@@ -1026,177 +1180,282 @@ export class RunEngine {
         // Stands in for the dropped TaskRun env/project FKs.
         await this.controlPlaneResolver.assertEnvExists(environment.id);
 
-        try {
-          // Forward the bare caller tx so the routing store picks the owning DB by id.
-          taskRun = await this.runStore.createRun(
-            {
-              organizationFlags: environment.organization.featureFlags,
-              data: {
-                id: taskRunId,
-                engine: "V2",
-                status,
-                statusReason: parkedOnExternalDeploymentId
-                  ? PARKED_ON_EXTERNAL_DEPLOYMENT_STATUS_REASON
-                  : undefined,
-                friendlyId,
-                runtimeEnvironmentId: environment.id,
-                environmentType: environment.type,
-                organizationId: environment.organization.id,
-                projectId: environment.project.id,
-                idempotencyKey,
-                idempotencyKeyExpiresAt,
-                idempotencyKeyOptions,
-                taskIdentifier,
-                payload,
-                payloadType,
-                context,
-                traceContext,
-                traceId,
-                spanId,
-                parentSpanId,
-                lockedToVersionId,
-                taskVersion,
-                sdkVersion,
-                cliVersion,
-                concurrencyKey,
-                gates,
-                queue,
-                lockedQueueId,
-                workerQueue,
-                region,
-                isTest,
-                delayUntil,
-                queuedAt,
-                maxAttempts,
-                taskEventStore,
-                priorityMs,
-                queueTimestamp: queueTimestamp ?? delayUntil ?? new Date(),
-                ttl: resolvedTtl,
-                // A mollifier replay can carry tags as `{}`. See createCancelledRun.
-                runTags: Array.isArray(tags) && tags.length > 0 ? tags : undefined,
-                oneTimeUseToken,
-                parentTaskRunId,
-                rootTaskRunId,
-                replayedFromTaskRunFriendlyId,
-                batchId: batch?.id,
-                resumeParentOnCompletion,
-                depth,
-                metadata,
-                metadataType,
-                seedMetadata,
-                seedMetadataType,
-                maxDurationInSeconds,
-                machinePreset: machine,
-                scheduleId,
-                scheduleInstanceId,
-                createdAt,
-                bulkActionGroupIds: bulkActionId ? [bulkActionId] : undefined,
-                planType,
-                realtimeStreamsVersion,
-                streamBasinName,
-                debounce: debounce
-                  ? {
-                      key: debounce.key,
-                      delay: debounce.delay,
-                      createdAt: new Date(),
-                    }
-                  : undefined,
-                annotations,
-              },
-              snapshot: {
-                id: initialSnapshotId,
-                engine: "V2",
-                executionStatus: parkedOnExternalDeploymentId
-                  ? "RUN_CREATED"
-                  : delayUntil
-                    ? "DELAYED"
-                    : QUEUED_SNAPSHOT_STATUS,
-                description: parkedOnExternalDeploymentId
-                  ? `Run is waiting for a deployment of '${parkedOnExternalDeploymentId}'`
-                  : delayUntil
-                    ? "Run is delayed"
-                    : QUEUED_SNAPSHOT_DESCRIPTION,
-                runStatus: status,
-                environmentId: environment.id,
-                environmentType: environment.type,
-                projectId: environment.project.id,
-                organizationId: environment.organization.id,
-                workerId,
-                runnerId,
-              },
-              // A standalone trigger gets its waitpoint lazily, if ever.
-              associatedWaitpoint:
-                resumeParentOnCompletion && parentTaskRunId
-                  ? this.waitpointSystem.buildRunAssociatedWaitpoint({
-                      projectId: environment.project.id,
-                      environmentId: environment.id,
-                      anchorRunId: taskRunId,
-                    })
-                  : undefined,
-              onBirthResidency: (route) => {
-                birthRoute = route;
-              },
-            },
-            tx
+        // A legacy eager child has no store recovery job. Refuse owed parent cleanup before
+        // committing its run/idempotency key; the edge write re-checks the fence under the parent lock.
+        const createRunInput: Parameters<RunStore["createRun"]>[0] = {
+          organizationFlags: environment.organization.featureFlags,
+          data: {
+            id: taskRunId,
+            engine: "V2",
+            status,
+            statusReason: parkedOnExternalDeploymentId
+              ? PARKED_ON_EXTERNAL_DEPLOYMENT_STATUS_REASON
+              : undefined,
+            friendlyId,
+            runtimeEnvironmentId: environment.id,
+            environmentType: environment.type,
+            organizationId: environment.organization.id,
+            projectId: environment.project.id,
+            idempotencyKey,
+            idempotencyKeyExpiresAt,
+            idempotencyKeyOptions,
+            taskIdentifier,
+            payload,
+            payloadType,
+            context,
+            traceContext,
+            traceId,
+            spanId,
+            parentSpanId,
+            lockedToVersionId,
+            taskVersion,
+            sdkVersion,
+            cliVersion,
+            concurrencyKey,
+            gates,
+            queue,
+            lockedQueueId,
+            workerQueue,
+            region,
+            isTest,
+            delayUntil,
+            queuedAt,
+            maxAttempts,
+            taskEventStore,
+            priorityMs,
+            queueTimestamp: queueTimestamp ?? delayUntil ?? new Date(),
+            ttl: resolvedTtl,
+            // A mollifier replay can carry tags as `{}`. See createCancelledRun.
+            runTags: Array.isArray(tags) && tags.length > 0 ? tags : undefined,
+            oneTimeUseToken,
+            parentTaskRunId,
+            rootTaskRunId,
+            replayedFromTaskRunFriendlyId,
+            batchId: batch?.id,
+            resumeParentOnCompletion,
+            depth,
+            metadata,
+            metadataType,
+            seedMetadata,
+            seedMetadataType,
+            maxDurationInSeconds,
+            machinePreset: machine,
+            scheduleId,
+            scheduleInstanceId,
+            createdAt,
+            bulkActionGroupIds: bulkActionId ? [bulkActionId] : undefined,
+            planType,
+            realtimeStreamsVersion,
+            streamBasinName,
+            debounce: debounce
+              ? {
+                  key: debounce.key,
+                  delay: debounce.delay,
+                  createdAt: new Date(),
+                }
+              : undefined,
+            annotations,
+          },
+          snapshot: {
+            id: initialSnapshotId,
+            engine: "V2",
+            executionStatus: parkedOnExternalDeploymentId
+              ? "RUN_CREATED"
+              : delayUntil
+                ? "DELAYED"
+                : QUEUED_SNAPSHOT_STATUS,
+            description: parkedOnExternalDeploymentId
+              ? `Run is waiting for a deployment of '${parkedOnExternalDeploymentId}'`
+              : delayUntil
+                ? "Run is delayed"
+                : QUEUED_SNAPSHOT_DESCRIPTION,
+            runStatus: status,
+            environmentId: environment.id,
+            environmentType: environment.type,
+            projectId: environment.project.id,
+            organizationId: environment.organization.id,
+            workerId,
+            runnerId,
+          },
+          // Only create waitpoint if parent is waiting for this run to complete
+          // For standalone triggers (no waiting parent), waitpoint is created lazily if needed later
+          associatedWaitpoint:
+            resumeParentOnCompletion && parentTaskRunId
+              ? this.waitpointSystem.buildRunAssociatedWaitpoint({
+                  projectId: environment.project.id,
+                  environmentId: environment.id,
+                  anchorRunId: taskRunId,
+                })
+              : undefined,
+          onBirthResidency: (route) => {
+            birthRoute = route;
+          },
+        };
+        if (
+          resumeParentOnCompletion &&
+          parentTaskRunId &&
+          (await this.waitpointSystem.isWaitpointStoreEnabled(environment.organization.id))
+        ) {
+          const createAndBlockRun = async () => {
+            if (!queueTimestamp && !delayUntil) createRunInput.data.queueTimestamp = new Date();
+            if (debounce)
+              (createRunInput.data.debounce as { createdAt: Date }).createdAt = new Date();
+
+            try {
+              // Forward the bare caller tx so the routing store picks the owning DB by id.
+              taskRun = await this.runStore.createRun(createRunInput, tx);
+            } catch (error) {
+              if (error instanceof Prisma.PrismaClientKnownRequestError) {
+                this.logger.debug("engine.trigger(): Prisma transaction error", {
+                  code: error.code,
+                  message: error.message,
+                  meta: error.meta,
+                  idempotencyKey,
+                  environmentId: environment.id,
+                });
+
+                if (error.code === "P2002") {
+                  const target = (error.meta as Record<string, unknown>)?.target;
+                  const targetFields = Array.isArray(target) ? target : [];
+
+                  this.logger.debug("engine.trigger(): P2002 unique constraint violation", {
+                    code: error.code,
+                    message: error.message,
+                    meta: error.meta,
+                    target: targetFields,
+                    idempotencyKey,
+                    environmentId: environment.id,
+                  });
+
+                  if (targetFields.includes("oneTimeUseToken")) {
+                    throw new RunOneTimeUseTokenError(`One-time use token has already been used`);
+                  }
+
+                  // Only idempotency key collisions should be retried
+                  throw new RunDuplicateIdempotencyKeyError(
+                    `Run with idempotency key ${idempotencyKey} already exists`
+                  );
+                }
+              }
+
+              throw error;
+            }
+
+            span.setAttribute("runId", taskRun.id);
+
+            //triggerAndWait or batchTriggerAndWait
+            if (resumeParentOnCompletion && parentTaskRunId && taskRun.associatedWaitpoint) {
+              try {
+                if (batch) {
+                  // Batch path: lockless insert. The parent is already EXECUTING_WITH_WAITPOINTS
+                  // from blockRunWithCreatedBatch, so we only need to insert the TaskRunWaitpoint
+                  // row without acquiring the parent run lock. This avoids lock contention when
+                  // processing large batches with high concurrency.
+                  await this.waitpointSystem.blockRunWithWaitpointLockless({
+                    runId: parentTaskRunId,
+                    waitpoints: taskRun.associatedWaitpoint.id,
+                    projectId: taskRun.associatedWaitpoint.projectId,
+                    organizationId: environment.organization.id,
+                    batch,
+                  });
+                } else {
+                  // Single triggerAndWait: acquire the parent run lock to safely transition
+                  // the snapshot and insert the waitpoint
+                  await this.waitpointSystem.blockRunWithWaitpoint({
+                    runId: parentTaskRunId,
+                    waitpoints: taskRun.associatedWaitpoint.id,
+                    projectId: taskRun.associatedWaitpoint.projectId,
+                    organizationId: environment.organization.id,
+                    batch,
+                    workerId,
+                    runnerId,
+                  });
+                }
+              } catch (blockError) {
+                // Committed but never enqueued: retire it so a keyed re-trigger cannot resolve to it
+                // and block the parent on a waitpoint nothing will complete.
+                await this.#retireUnblockedChild(taskRun, environment.organization.id, blockError);
+                throw blockError;
+              }
+            }
+
+            return taskRun;
+          };
+          taskRun = await this.waitpointSystem.admitLegacyRegistration(
+            parentTaskRunId,
+            environment.organization.id,
+            createAndBlockRun
           );
-        } catch (error) {
-          if (error instanceof Prisma.PrismaClientKnownRequestError) {
-            this.logger.debug("engine.trigger(): Prisma transaction error", {
-              code: error.code,
-              message: error.message,
-              meta: error.meta,
-              idempotencyKey,
-              environmentId: environment.id,
-            });
-
-            if (error.code === "P2002") {
-              const target = (error.meta as Record<string, unknown>)?.target;
-              const targetFields = Array.isArray(target) ? target : [];
-
-              this.logger.debug("engine.trigger(): P2002 unique constraint violation", {
+        } else {
+          try {
+            // Forward the bare caller tx so the routing store picks the owning DB by id.
+            taskRun = await this.runStore.createRun(createRunInput, tx);
+          } catch (error) {
+            if (error instanceof Prisma.PrismaClientKnownRequestError) {
+              this.logger.debug("engine.trigger(): Prisma transaction error", {
                 code: error.code,
                 message: error.message,
                 meta: error.meta,
-                target: targetFields,
                 idempotencyKey,
                 environmentId: environment.id,
               });
 
-              if (targetFields.includes("oneTimeUseToken")) {
-                throw new RunOneTimeUseTokenError(`One-time use token has already been used`);
-              }
+              if (error.code === "P2002") {
+                const target = (error.meta as Record<string, unknown>)?.target;
+                const targetFields = Array.isArray(target) ? target : [];
 
-              throw new RunDuplicateIdempotencyKeyError(
-                `Run with idempotency key ${idempotencyKey} already exists`
-              );
+                this.logger.debug("engine.trigger(): P2002 unique constraint violation", {
+                  code: error.code,
+                  message: error.message,
+                  meta: error.meta,
+                  target: targetFields,
+                  idempotencyKey,
+                  environmentId: environment.id,
+                });
+
+                if (targetFields.includes("oneTimeUseToken")) {
+                  throw new RunOneTimeUseTokenError(`One-time use token has already been used`);
+                }
+
+                // Only idempotency key collisions should be retried
+                throw new RunDuplicateIdempotencyKeyError(
+                  `Run with idempotency key ${idempotencyKey} already exists`
+                );
+              }
             }
+
+            throw error;
           }
 
-          throw error;
-        }
+          span.setAttribute("runId", taskRun.id);
 
-        span.setAttribute("runId", taskRun.id);
-
-        if (resumeParentOnCompletion && parentTaskRunId && taskRun.associatedWaitpoint) {
-          if (batch) {
-            // No parent lock: blockRunWithCreatedBatch already moved the parent to
-            // EXECUTING_WITH_WAITPOINTS, and a lock per item contends on large batches.
-            await this.waitpointSystem.blockRunWithWaitpointLockless({
-              runId: parentTaskRunId,
-              waitpoints: taskRun.associatedWaitpoint.id,
-              projectId: taskRun.associatedWaitpoint.projectId,
-              batch,
-            });
-          } else {
-            await this.waitpointSystem.blockRunWithWaitpoint({
-              runId: parentTaskRunId,
-              waitpoints: taskRun.associatedWaitpoint.id,
-              projectId: taskRun.associatedWaitpoint.projectId,
-              organizationId: environment.organization.id,
-              batch,
-              workerId,
-              runnerId,
-            });
+          //triggerAndWait or batchTriggerAndWait
+          if (resumeParentOnCompletion && parentTaskRunId && taskRun.associatedWaitpoint) {
+            if (batch) {
+              // Batch path: lockless insert. The parent is already EXECUTING_WITH_WAITPOINTS
+              // from blockRunWithCreatedBatch, so we only need to insert the TaskRunWaitpoint
+              // row without acquiring the parent run lock. This avoids lock contention when
+              // processing large batches with high concurrency.
+              await this.waitpointSystem.blockRunWithWaitpointLockless({
+                runId: parentTaskRunId,
+                waitpoints: taskRun.associatedWaitpoint.id,
+                projectId: taskRun.associatedWaitpoint.projectId,
+                organizationId: environment.organization.id,
+                batch,
+              });
+            } else {
+              // Single triggerAndWait: acquire the parent run lock to safely transition
+              // the snapshot and insert the waitpoint
+              await this.waitpointSystem.blockRunWithWaitpoint({
+                runId: parentTaskRunId,
+                waitpoints: taskRun.associatedWaitpoint.id,
+                projectId: taskRun.associatedWaitpoint.projectId,
+                organizationId: environment.organization.id,
+                batch,
+                workerId,
+                runnerId,
+              });
+            }
           }
         }
 
@@ -1399,53 +1658,91 @@ export class RunEngine {
               })
             : undefined;
 
-        // No execution snapshot: this run is never dequeued, executed or heartbeated.
-        const taskRun = await this.runStore.createFailedRun(
-          {
-            data: {
-              id: taskRunId,
-              engine: "V2",
-              status: "SYSTEM_FAILURE",
-              friendlyId,
-              runtimeEnvironmentId: environment.id,
-              environmentType: environment.type,
-              organizationId: environment.organization.id,
-              projectId: environment.project.id,
-              taskIdentifier,
-              payload: payload ?? "",
-              payloadType: payloadType ?? "application/json",
-              context: {},
-              traceContext: (traceContext ?? {}) as Record<string, string | undefined>,
-              traceId: traceId ?? "",
-              spanId: spanId ?? "",
-              queue: queueOverride ?? `task/${taskIdentifier}`,
-              lockedQueueId: lockedQueueIdOverride,
-              isTest: false,
-              completedAt: new Date(),
-              error: error as unknown as Prisma.InputJsonObject,
-              parentTaskRunId,
-              rootTaskRunId,
-              depth: depth ?? 0,
-              batchId: batch?.id,
-              resumeParentOnCompletion,
-              taskEventStore,
-            },
-            associatedWaitpoint: waitpointData,
-          },
-          undefined
-        );
-
-        span.setAttribute("runId", taskRun.id);
-
-        if (resumeParentOnCompletion && parentTaskRunId && taskRun.associatedWaitpoint) {
-          await this.waitpointSystem.blockRunAndCompleteWaitpoint({
-            runId: parentTaskRunId,
-            waitpointId: taskRun.associatedWaitpoint.id,
-            output: { value: JSON.stringify(error), isError: true },
-            projectId: environment.project.id,
+        const createFailedRunInput: Parameters<RunStore["createFailedRun"]>[0] = {
+          data: {
+            id: taskRunId,
+            engine: "V2",
+            status: "SYSTEM_FAILURE",
+            friendlyId,
+            runtimeEnvironmentId: environment.id,
+            environmentType: environment.type,
             organizationId: environment.organization.id,
-            batch,
-          });
+            projectId: environment.project.id,
+            taskIdentifier,
+            payload: payload ?? "",
+            payloadType: payloadType ?? "application/json",
+            context: {},
+            traceContext: (traceContext ?? {}) as Record<string, string | undefined>,
+            traceId: traceId ?? "",
+            spanId: spanId ?? "",
+            queue: queueOverride ?? `task/${taskIdentifier}`,
+            lockedQueueId: lockedQueueIdOverride,
+            isTest: false,
+            completedAt: new Date(),
+            error: error as unknown as Prisma.InputJsonObject,
+            parentTaskRunId,
+            rootTaskRunId,
+            depth: depth ?? 0,
+            batchId: batch?.id,
+            resumeParentOnCompletion,
+            taskEventStore,
+          },
+          associatedWaitpoint: waitpointData,
+        };
+        let taskRun: Awaited<ReturnType<RunStore["createFailedRun"]>>;
+        if (
+          resumeParentOnCompletion &&
+          parentTaskRunId &&
+          (await this.waitpointSystem.isWaitpointStoreEnabled(environment.organization.id))
+        ) {
+          const createAndBlockFailedRun = async () => {
+            createFailedRunInput.data.completedAt = new Date();
+
+            // No execution snapshot is needed: this run never gets dequeued, executed,
+            // or heartbeated, so nothing will call getLatestExecutionSnapshot on it.
+            const taskRun = await this.runStore.createFailedRun(createFailedRunInput, undefined);
+
+            span.setAttribute("runId", taskRun.id);
+
+            // If parent is waiting, block it with the waitpoint then immediately
+            // complete it with the error output so the parent can resume.
+            if (resumeParentOnCompletion && parentTaskRunId && taskRun.associatedWaitpoint) {
+              await this.waitpointSystem.blockRunAndCompleteWaitpoint({
+                runId: parentTaskRunId,
+                waitpointId: taskRun.associatedWaitpoint.id,
+                output: { value: JSON.stringify(error), isError: true },
+                projectId: environment.project.id,
+                organizationId: environment.organization.id,
+                batch,
+              });
+            }
+
+            return taskRun;
+          };
+          taskRun = await this.waitpointSystem.admitLegacyRegistration(
+            parentTaskRunId,
+            environment.organization.id,
+            createAndBlockFailedRun
+          );
+        } else {
+          // No execution snapshot is needed: this run never gets dequeued, executed,
+          // or heartbeated, so nothing will call getLatestExecutionSnapshot on it.
+          taskRun = await this.runStore.createFailedRun(createFailedRunInput, undefined);
+
+          span.setAttribute("runId", taskRun.id);
+
+          // If parent is waiting, block it with the waitpoint then immediately
+          // complete it with the error output so the parent can resume.
+          if (resumeParentOnCompletion && parentTaskRunId && taskRun.associatedWaitpoint) {
+            await this.waitpointSystem.blockRunAndCompleteWaitpoint({
+              runId: parentTaskRunId,
+              waitpointId: taskRun.associatedWaitpoint.id,
+              output: { value: JSON.stringify(error), isError: true },
+              projectId: environment.project.id,
+              organizationId: environment.organization.id,
+              batch,
+            });
+          }
         }
 
         // Without `runFailed`, these failures never reach the customer's ERROR alert channels.
@@ -1938,22 +2235,50 @@ export class RunEngine {
     organizationId: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<Waitpoint | null> {
-    try {
-      const waitpoint = await this.runStore.createWaitpoint(
-        {
-          data: {
-            // From the batch, not the run: the router validates against completedByBatchId.
-            ...mintWaitpointIdFor(batchId),
-            type: "BATCH",
-            idempotencyKey: batchId,
-            userProvidedIdempotencyKey: false,
-            completedByBatchId: batchId,
-            environmentId,
+    const createWaitpointInput: Parameters<RunStore["createWaitpoint"]>[0] = {
+      data: {
+        // From the batch, not the blocked run: the create passes only completedByBatchId,
+        // which is the owner the router validates against.
+        ...mintWaitpointIdFor(batchId),
+        type: "BATCH",
+        idempotencyKey: batchId,
+        userProvidedIdempotencyKey: false,
+        completedByBatchId: batchId,
+        environmentId,
+        projectId,
+      },
+    };
+    if (await this.waitpointSystem.isWaitpointStoreEnabled(organizationId)) {
+      return this.waitpointSystem.withLegacyRegistrationLock(runId, organizationId, async () => {
+        try {
+          const waitpoint = await this.runStore.createWaitpoint(createWaitpointInput, tx);
+
+          await this.blockRunWithWaitpoint({
+            runId,
+            waitpoints: waitpoint.id,
             projectId,
-          },
-        },
-        tx
-      );
+            organizationId,
+            batch: { id: batchId },
+            // No tx: the block edge routes to the run's owning DB, not the control-plane tx.
+          });
+
+          return waitpoint;
+        } catch (error) {
+          if (error instanceof Prisma.PrismaClientKnownRequestError) {
+            // duplicate idempotency key
+            if (error.code === "P2002") {
+              return null;
+            } else {
+              throw error;
+            }
+          }
+          throw error;
+        }
+      });
+    }
+
+    try {
+      const waitpoint = await this.runStore.createWaitpoint(createWaitpointInput, tx);
 
       await this.blockRunWithWaitpoint({
         runId,
@@ -2413,7 +2738,8 @@ export class RunEngine {
         this.runStore,
         repairClient,
         environmentId,
-        organizationId
+        organizationId,
+        this.options.waitpointStoreEnabled
       );
       return snapshots.map(executionDataFromSnapshot);
     };
@@ -2523,13 +2849,21 @@ export class RunEngine {
     return this.quitGate(options);
   }
 
+  private waitpointFanout?: WaitpointFanoutWorker;
+
   async #quit(): Promise<RunEngineShutdownFailure[]> {
     this.workerQueueObserverAbortController?.abort();
 
     const failures = await executeShutdownPhases(
       engineShutdownPhases({
         runQueueQuit: () => this.runQueue.quit(),
-        workerStop: () => this.worker.stop(),
+        workerStop: async () => {
+          try {
+            await this.worker.stop();
+          } finally {
+            await this.waitpointFanout?.dispose();
+          }
+        },
         ttlWorkerStop: () => this.ttlWorker.stop(),
         batchQueueClose: () => this.batchQueue.close(),
         runLockQuit: () => this.runLock.quit(),
@@ -2565,6 +2899,35 @@ export class RunEngine {
     const runIdsToRepair = runIds.filter((runId) => !ignoreRunIds.includes(runId));
 
     return this.#repairRuns(runIdsToRepair, dryRun, environment.organizationId);
+  }
+
+  /** Free the key and fail the run without retry; a retirement failure must not mask the cause. */
+  async #retireUnblockedChild(run: TaskRun, organizationId: string, cause: unknown) {
+    const [error] = await tryCatch(
+      (async () => {
+        if (run.idempotencyKey) {
+          await this.runStore.clearIdempotencyKey({
+            byId: { runId: run.id, idempotencyKey: run.idempotencyKey },
+          });
+        }
+        await this.runAttemptSystem.systemFailure({
+          runId: run.id,
+          organizationId,
+          error: {
+            type: "INTERNAL_ERROR",
+            code: "UNSPECIFIED_ERROR",
+            message: "Parent registration failed after the child run was created",
+          },
+        });
+      })()
+    );
+    if (error) {
+      this.logger.error("Failed to retire a child run whose parent registration failed", {
+        runId: run.id,
+        error,
+        cause,
+      });
+    }
   }
 
   async #repairRuns(runIds: string[], dryRun: boolean, organizationId: string) {

@@ -847,7 +847,7 @@ ${RETAIN_WAITPOINT_RECORD}
    * The caller therefore owes a fresh id per block operation.
    */
   redis.defineCommand("runAbsorbBlockers", {
-    numberOfKeys: 14,
+    numberOfKeys: 15,
     lua: `
       local pend, done, edge, st, contrib, results = KEYS[1], KEYS[2], KEYS[3], KEYS[4], KEYS[5], KEYS[6]
       local n = tonumber(ARGV[4])
@@ -908,6 +908,7 @@ ${PERSIST_RUN_KEYS}
       redis.call('PERSIST', results)
       local supersededBlock = ''
       if isRollover then
+        redis.call('ZADD', KEYS[15], 0, previous)
         redis.call('SET', wd, previous)
         if redis.call('EXISTS', edge) == 1 then redis.call('RENAME', edge, targets) end
         redis.call('PERSIST', targets)
@@ -1289,7 +1290,7 @@ ${PERSIST_RUN_KEYS}
    * KEYS: pend, done, edge, st, wd, targets, refs. ARGV: blockId.
    */
   redis.defineCommand("runAbandonRetainAndClear", {
-    numberOfKeys: 11,
+    numberOfKeys: 12,
     lua: `
       local pend, done, edge, st, wd, targets, refs = unpack(KEYS)
       if ARGV[1] == '' then return redis.error_reply('runAbandonRetainAndClear: missing block id') end
@@ -1304,7 +1305,8 @@ ${PERSIST_RUN_KEYS}
       if hasEdge and redis.call('EXISTS', targets) == 1 then
         return redis.error_reply('runAbandonRetainAndClear: active and retained targets conflict')
       end
-      -- The manifest is the first durable write. If it cannot be recorded, nothing is detached.
+      -- Publish discovery before detaching targets, in the same run slot.
+      redis.call('ZADD', KEYS[12], 0, ARGV[1])
       redis.call('SET', wd, ARGV[1])
       if redis.call('EXISTS', edge) == 1 then redis.call('RENAME', edge, targets) end
       redis.call('PERSIST', targets)
@@ -1317,7 +1319,7 @@ ${PERSIST_RUN_KEYS}
 
   /** KEYS: pend, done, edge, st, wd, results, targets, refs. ARGV: blockId, nowMs, ttlMs. */
   redis.defineCommand("runTerminalRetainAndClear", {
-    numberOfKeys: 12,
+    numberOfKeys: 13,
     lua: `
       local pend, done, edge, st, wd, results, targets, refs = unpack(KEYS)
       if ARGV[1] == '' then return redis.error_reply('runTerminalRetainAndClear: missing block id') end
@@ -1340,6 +1342,7 @@ ${PERSIST_RUN_KEYS}
       end
       if current == ARGV[1] then
         -- Publish recovery evidence before detaching the active hash.
+        redis.call('ZADD', KEYS[13], 0, ARGV[1])
         redis.call('SET', wd, ARGV[1])
         if hasEdge then redis.call('RENAME', edge, targets) end
         redis.call('PERSIST', targets)
@@ -1432,7 +1435,7 @@ ${PERSIST_RUN_KEYS}
    * never touched. Refuses while any unacknowledged target remains.
    */
   redis.defineCommand("runFinalizeRetainedWithdrawal", {
-    numberOfKeys: 3,
+    numberOfKeys: 4,
     lua: `
       local wd, st = KEYS[1], KEYS[2]
       if ARGV[1] == '' then
@@ -1447,6 +1450,7 @@ ${PERSIST_RUN_KEYS}
       end
       local cleanupOwed = redis.call('HGET', st, 'co')
       redis.call('UNLINK', wd, KEYS[3])
+      redis.call('ZREM', KEYS[4], ARGV[1])
       if cleanupOwed == ARGV[1] then
         redis.call('HDEL', st, 'co')
         return { '${CLEARED}' }
@@ -1652,6 +1656,7 @@ declare module "@internal/redis" {
       predecessorWithdrawalKey: string,
       predecessorTargetsKey: string,
       contributionIndexKey: string,
+      withdrawalIndexKey: string,
       ...args: Array<string | Callback<string[]>>
     ): Result<string[], Context>;
     runDeliverCompletion(
@@ -1730,6 +1735,7 @@ declare module "@internal/redis" {
       doneOrderKey: string,
       earlyKey: string,
       earlyOrderKey: string,
+      withdrawalIndexKey: string,
       expectedBlockId: string,
       revision: string,
       callback?: Callback<string[]>
@@ -1747,6 +1753,7 @@ declare module "@internal/redis" {
       doneOrderKey: string,
       earlyKey: string,
       earlyOrderKey: string,
+      withdrawalIndexKey: string,
       expectedBlockId: string,
       nowMs: string,
       terminalTtlMs: string,
@@ -1768,6 +1775,7 @@ declare module "@internal/redis" {
       withdrawalKey: string,
       stateKey: string,
       targetsKey: string,
+      withdrawalIndexKey: string,
       blockId: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
