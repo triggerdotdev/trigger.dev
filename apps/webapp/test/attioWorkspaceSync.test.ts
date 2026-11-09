@@ -2,7 +2,8 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { postgresTest } from "@internal/testcontainers";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { AttioClient, syncAttioWorkspace } from "~/services/attioClient.server";
+import { AttioClient, syncAttioUser, syncAttioWorkspace } from "~/services/attioClient.server";
+import { Logger } from "@trigger.dev/core/logger";
 import { createTestUser } from "./fixtures/environmentVariablesFixtures";
 
 vi.setConfig({ testTimeout: 120_000 });
@@ -14,6 +15,14 @@ const payload = {
   companySize: "1-5",
   createdAt: new Date("2026-10-26T12:00:00Z"),
   adminUserId: "user_1",
+};
+
+const userPayload = {
+  userId: "user_1",
+  email: "Founder@Startup.io",
+  marketingEmails: true,
+  referralSource: "search",
+  createdAt: new Date("2026-10-26T12:00:00Z"),
 };
 
 type AttioRequest = { object: string; values: Record<string, any> };
@@ -29,7 +38,7 @@ const rejection = (status: number, code: string): AttioReply => ({
 });
 
 // A local server standing in for the Attio API: replies per object and records each request.
-describe("AttioClient.upsertWorkspace", () => {
+describe("Attio sync", () => {
   let server: Server;
   let client: AttioClient;
   let requests: AttioRequest[];
@@ -59,7 +68,20 @@ describe("AttioClient.upsertWorkspace", () => {
 
   beforeEach(() => {
     requests = [];
+    logs = [];
   });
+
+  // Every structured log line, captured through the logger's own sink.
+  let logs: Record<string, unknown>[];
+  beforeAll(() => {
+    Logger.onLog = (log) => logs.push(log);
+  });
+  afterAll(() => {
+    Logger.onLog = undefined;
+  });
+  const attioWarnings = () =>
+    logs.filter((l) => l.level === "warn" && String(l.message).startsWith("Attio sync"));
+  const errors = () => logs.filter((l) => l.level === "error");
 
   it("links an existing Attio user without sending the email", async () => {
     reply = ({ object }) => record(`${object}_rec`);
@@ -160,7 +182,137 @@ describe("AttioClient.upsertWorkspace", () => {
     await expect(client.upsertWorkspace(payload, "Admin@Example.com")).rejects.toMatchObject({
       status: 400,
       transient: false,
+      logLevel: "warn",
     });
+  });
+
+  it("tags a transient user sync failure warn so the job retries without paging", async () => {
+    reply = () => rejection(503, "unavailable");
+
+    await expect(syncAttioUser(userPayload, client)).rejects.toMatchObject({
+      status: 503,
+      transient: true,
+      logLevel: "warn",
+    });
+  });
+
+  it("tags a network failure warn so the job retries without paging", async () => {
+    const closed = createServer();
+    await new Promise<void>((resolve) => closed.listen(0, "127.0.0.1", resolve));
+    const { port } = closed.address() as AddressInfo;
+    await new Promise<void>((resolve) => closed.close(() => resolve()));
+    const offline = new AttioClient({
+      apiKey: "key",
+      isTest: false,
+      baseUrl: `http://127.0.0.1:${port}`,
+    });
+
+    const error = await syncAttioUser(userPayload, offline).catch((e) => e);
+    expect(error).toMatchObject({ logLevel: "warn" });
+    expect(error.message).toMatch(/^Attio user sync failed: /);
+    expect(error.cause).toBeInstanceOf(Error);
+  });
+
+  it("finishes without retrying when the email belongs to another Attio user", async () => {
+    reply = ({ values }) =>
+      values.primary_email_address
+        ? rejection(400, "uniqueness_conflict")
+        : rejection(400, "missing_value");
+
+    await expect(syncAttioUser(userPayload, client)).resolves.toBeUndefined();
+
+    expect(requests).toHaveLength(2);
+    expect(attioWarnings()).toEqual([
+      expect.objectContaining({
+        message: "Attio sync rejected, not retrying",
+        job: "user",
+        userId: "user_1",
+        status: 400,
+        code: "uniqueness_conflict",
+      }),
+    ]);
+    expect(errors()).toEqual([]);
+  });
+
+  it("updates the user without the email when a concurrent workspace sync created it", async () => {
+    reply = ({ values }) =>
+      values.primary_email_address ? rejection(400, "uniqueness_conflict") : record("users_rec");
+
+    await syncAttioUser(userPayload, client);
+
+    expect(requests).toHaveLength(2);
+    expect(requests[1].values).not.toHaveProperty("primary_email_address");
+    expect(requests[1].values).toMatchObject({
+      user_id: "user_1",
+      marketing_opt_in: true,
+      referral_source: "search",
+    });
+    expect(attioWarnings()).toEqual([]);
+  });
+
+  it("reports the retry's own rejection when the email-less update fails for another reason", async () => {
+    reply = ({ values }) =>
+      values.primary_email_address
+        ? rejection(400, "uniqueness_conflict")
+        : rejection(400, "validation_type");
+
+    await expect(syncAttioUser(userPayload, client)).resolves.toBeUndefined();
+
+    expect(attioWarnings()).toEqual([
+      expect.objectContaining({
+        message: "Attio sync rejected unexpectedly, not retrying",
+        code: "validation_type",
+      }),
+    ]);
+  });
+
+  it("retries a request timeout", async () => {
+    reply = () => rejection(408, "request_timeout");
+
+    await expect(syncAttioUser(userPayload, client)).rejects.toMatchObject({
+      status: 408,
+      transient: true,
+      logLevel: "warn",
+    });
+  });
+
+  it("finishes with a separate warning on an unexpected rejection", async () => {
+    reply = () => rejection(401, "unauthorized");
+
+    await expect(syncAttioUser(userPayload, client)).resolves.toBeUndefined();
+
+    expect(requests).toHaveLength(1);
+    expect(attioWarnings()).toEqual([
+      expect.objectContaining({
+        message: "Attio sync rejected unexpectedly, not retrying",
+        job: "user",
+        userId: "user_1",
+        status: 401,
+        code: "unauthorized",
+      }),
+    ]);
+    expect(errors()).toEqual([]);
+  });
+
+  postgresTest("finishes the workspace job without retrying on a rejection", async ({ prisma }) => {
+    reply = ({ object }) =>
+      object === "users" ? record("users_rec") : rejection(400, "validation_type");
+    const user = await createTestUser(prisma, "Founder@Startup.io");
+
+    await expect(
+      syncAttioWorkspace({ ...payload, adminUserId: user.id }, client, prisma)
+    ).resolves.toBeUndefined();
+
+    expect(attioWarnings()).toEqual([
+      expect.objectContaining({
+        message: "Attio sync rejected unexpectedly, not retrying",
+        job: "workspace",
+        orgId: "org_1",
+        status: 400,
+        code: "validation_type",
+      }),
+    ]);
+    expect(errors()).toEqual([]);
   });
 
   postgresTest("the worker job sends the admin's email from the database", async ({ prisma }) => {

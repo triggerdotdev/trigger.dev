@@ -5,9 +5,9 @@ import { logger } from "./logger.server";
 const ATTIO_API = "https://api.attio.com/v2";
 
 class AttioRequestError extends Error {
-  // 5xx/429 are transient (the worker retries); tagged warn so they don't page Sentry.
+  // 5xx/429/408 are transient (the worker retries). Always warn: CRM sync failures never page Sentry.
   readonly transient: boolean;
-  readonly logLevel?: "warn";
+  readonly logLevel = "warn" as const;
 
   constructor(
     object: string,
@@ -16,9 +16,36 @@ class AttioRequestError extends Error {
     body: string
   ) {
     super(`Attio assert ${object} failed with status ${status}: ${body.slice(0, 500)}`);
-    this.transient = status >= 500 || status === 429;
-    if (this.transient) this.logLevel = "warn";
+    this.transient = status >= 500 || status === 429 || status === 408;
   }
+}
+
+// Rejections seen in normal operation, e.g. the email already belongs to another Attio user.
+const EXPECTED_REJECTION_CODES = new Set(["uniqueness_conflict", "missing_value"]);
+
+// A 4xx can't succeed on retry: warn and finish the job. Others are rethrown so the job retries.
+function handleSyncFailure(job: string, ids: Record<string, string>, error: unknown) {
+  if (error instanceof AttioRequestError && !error.transient) {
+    const expected = error.code !== undefined && EXPECTED_REJECTION_CODES.has(error.code);
+    // Never log the body: it can contain the conflicting email.
+    logger.warn(
+      expected
+        ? "Attio sync rejected, not retrying"
+        : "Attio sync rejected unexpectedly, not retrying",
+      { job, ...ids, status: error.status, code: error.code }
+    );
+    return;
+  }
+  throw asWarn(job, error);
+}
+
+// Wraps any other failure (network, DB lookup) so the worker logs it at warn; the job still retries.
+function asWarn(job: string, error: unknown): Error {
+  if (error instanceof AttioRequestError) return error;
+  const message = error instanceof Error ? error.message : String(error);
+  return Object.assign(new Error(`Attio ${job} sync failed: ${message}`, { cause: error }), {
+    logLevel: "warn" as const,
+  });
 }
 
 export type AttioClientOptions = {
@@ -124,14 +151,29 @@ export class AttioClient {
   }
 
   async upsertUser(payload: AttioUserSync) {
-    await this.#assert("users", "user_id", {
+    const values = {
       user_id: payload.userId,
-      primary_email_address: payload.email,
       marketing_opt_in: payload.marketingEmails,
       referral_source: payload.referralSource ?? undefined,
       signup_date: toDate(payload.createdAt),
       is_test: this.options.isTest,
-    });
+    };
+    try {
+      await this.#assert("users", "user_id", { ...values, primary_email_address: payload.email });
+    } catch (error) {
+      if (!(error instanceof AttioRequestError) || error.code !== "uniqueness_conflict")
+        throw error;
+
+      // A concurrent workspace sync may have created this user with the email; update it without.
+      try {
+        await this.#assert("users", "user_id", values);
+      } catch (retryError) {
+        // No such user: the email belongs to another Attio user record.
+        if (retryError instanceof AttioRequestError && retryError.code === "missing_value")
+          throw error;
+        throw retryError;
+      }
+    }
   }
 }
 
@@ -161,9 +203,21 @@ export async function syncAttioWorkspace(
   client: AttioClient,
   db: PrismaClientOrTransaction
 ) {
-  const admin = await db.user.findFirst({
-    where: { id: payload.adminUserId },
-    select: { email: true },
-  });
-  await client.upsertWorkspace(payload, admin?.email);
+  try {
+    const admin = await db.user.findFirst({
+      where: { id: payload.adminUserId },
+      select: { email: true },
+    });
+    await client.upsertWorkspace(payload, admin?.email);
+  } catch (error) {
+    handleSyncFailure("workspace", { orgId: payload.orgId }, error);
+  }
+}
+
+export async function syncAttioUser(payload: AttioUserSync, client: AttioClient) {
+  try {
+    await client.upsertUser(payload);
+  } catch (error) {
+    handleSyncFailure("user", { userId: payload.userId }, error);
+  }
 }

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
-import { AttioClient, syncAttioWorkspace } from "./attioClient.server";
+import { AttioClient, syncAttioUser, syncAttioWorkspace } from "./attioClient.server";
 import { logger } from "./logger.server";
 
 // Syncs new orgs/users into Attio (workspaces/users objects) at signup, via the
@@ -42,7 +42,7 @@ export async function enqueueAttioWorkspaceSync(payload: AttioWorkspaceSync) {
       payload,
     });
   } catch (error) {
-    logger.error("Failed to enqueue Attio workspace sync", { orgId: payload.orgId, error });
+    logger.warn("Failed to enqueue Attio workspace sync", { orgId: payload.orgId, error });
   }
 }
 
@@ -56,7 +56,7 @@ export async function enqueueAttioUserSync(payload: AttioUserSync) {
       payload,
     });
   } catch (error) {
-    logger.error("Failed to enqueue Attio user sync", { userId: payload.userId, error });
+    logger.warn("Failed to enqueue Attio user sync", { userId: payload.userId, error });
   }
 }
 
@@ -67,5 +67,5 @@ export async function runAttioWorkspaceSync(payload: AttioWorkspaceSync) {
 
 export async function runAttioUserSync(payload: AttioUserSync) {
   if (!attioClient) return;
-  await attioClient.upsertUser(payload);
+  await syncAttioUser(payload, attioClient);
 }
