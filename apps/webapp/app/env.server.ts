@@ -1067,6 +1067,10 @@ const EnvironmentSchema = z
     // cutoff pass (grandfathered). Default off = no run-row read, byte-for-byte today's behavior.
     WORKLOAD_CREATED_AT_GATE_ENABLED: z.string().default("0"),
     WORKLOAD_TOKEN_CUTOFF: z.string().datetime().optional(),
+    // Free orgs without a verified card can't deploy to cloud. Off by default. With no cutoff, every
+    // Free org is gated; with one, only orgs created at or after it.
+    CARD_VERIFICATION_GATE_ENABLED: BoolEnv.default(false),
+    CARD_VERIFICATION_REQUIRED_FROM: z.string().datetime().optional(),
     // Whether an attempt start for a run that already has an attempt executing is logged or refused.
     RUN_ENGINE_DUPLICATE_ATTEMPT_START_CHECK: z.enum(["off", "log", "enforce"]).default("log"),
 

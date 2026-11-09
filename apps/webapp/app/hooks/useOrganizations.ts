@@ -87,6 +87,23 @@ export function useBillingLimit(matches?: UIMatch[]) {
   return data?.billingLimit;
 }
 
+/** True for an org whose cloud deploys wait on a verified card. */
+export function useDeploysAwaitCardVerification(matches?: UIMatch[]) {
+  const data = useTypedMatchesData<typeof orgLoader>({
+    id: "routes/_app.orgs.$organizationSlug",
+    matches,
+  });
+  return data?.deploysAwaitCardVerification === true;
+}
+
+export function useCanManageBilling(matches?: UIMatch[]) {
+  const data = useTypedMatchesData<typeof orgLoader>({
+    id: "routes/_app.orgs.$organizationSlug",
+    matches,
+  });
+  return data?.canManageBilling === true;
+}
+
 export function useCanManageBillingLimits(matches?: UIMatch[]) {
   const data = useTypedMatchesData<typeof orgLoader>({
     id: "routes/_app.orgs.$organizationSlug",

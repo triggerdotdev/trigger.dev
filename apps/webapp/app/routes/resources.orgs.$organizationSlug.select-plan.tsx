@@ -35,6 +35,7 @@ import { redirectWithErrorMessage } from "~/models/message.server";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { logger } from "~/services/logger.server";
 import { applyPromoCode, bustPromoCreditsCache, setPlan } from "~/services/platform.v3.server";
+import { routeFreePlanToCardStep } from "~/services/freeCardStep.server";
 import { clearPromoCodeCookie, getPromoCodeFromCookie } from "~/services/promoCode.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { engine } from "~/v3/runEngine.server";
@@ -188,7 +189,8 @@ export const action = dashboardAction(
       },
     });
 
-    return result;
+    if (form.type !== "free") return result;
+    return routeFreePlanToCardStep(result, organization);
   }
 );
 

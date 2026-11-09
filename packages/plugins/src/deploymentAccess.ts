@@ -66,6 +66,11 @@ export type DeploymentAccessPluginConfig = {
 export interface DeploymentAccessController {
   checkDeploy(check: DeploymentAccessCheck): Promise<DeploymentAccessDecision>;
   integrationAccess(organizationId: string): Promise<DeploymentIntegrationAccess>;
+  /**
+   * Whether the organization has an override that hasn't expired, whatever it sets. Optional: a
+   * plugin without it reports none.
+   */
+  hasActiveOverride?(organizationId: string): Promise<boolean>;
 }
 
 export interface DeploymentAccessPlugin {

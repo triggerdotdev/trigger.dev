@@ -16,6 +16,10 @@ import { canManageBillingLimits } from "~/services/routeBuilders/permissions.ser
 import { requireUser } from "~/services/session.server";
 import { telemetry } from "~/services/telemetry.server";
 import { organizationPath } from "~/utils/pathBuilder";
+import {
+  gatePlanTypeFromPlan,
+  resolveCardVerificationGate,
+} from "~/v3/cardVerificationGate.server";
 import { isEnvironmentPauseResumeFormSubmission } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.concurrency/route";
 import { isBillingLimitSettingsFormSubmission } from "../_app.orgs.$organizationSlug.settings.billing-limits/billingLimitsRevalidation";
 
@@ -161,6 +165,17 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userCanManageBillingLimits = sessionAuth.ok
     ? canManageBillingLimits(sessionAuth.ability)
     : false;
+  // The card step needs the same permission.
+  const userCanManageBilling = sessionAuth.ok
+    ? sessionAuth.ability.can("manage", { type: "billing" })
+    : false;
+
+  // Replaces the billing-limit prompt for a gated Free org on every page. The gate reads billing
+  // only for Free orgs in its cohort, and "unknown" keeps the banner hidden.
+  const deploysAwaitCardVerification =
+    (await resolveCardVerificationGate(organization.id, {
+      planType: async () => gatePlanTypeFromPlan(plan),
+    }).catch(() => "unknown" as const)) === "gated";
 
   let hasExceededFreeTier = false;
   let usagePercentage = 0;
@@ -211,6 +226,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     isImpersonating: !!impersonationId,
     currentPlan: { ...plan, v3Usage: { ...usage, hasExceededFreeTier, usagePercentage } },
     billingLimit,
+    deploysAwaitCardVerification,
     customDashboards: customDashboardsWithWidgetCount,
     dashboardLimits: {
       used: customDashboards.length,
@@ -218,6 +234,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     },
     widgetLimitPerDashboard,
     canManageBillingLimits: userCanManageBillingLimits,
+    canManageBilling: userCanManageBilling,
     isUsingRbacPlugin,
     isUsingSsoPlugin,
   });

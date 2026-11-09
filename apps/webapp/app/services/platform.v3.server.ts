@@ -34,6 +34,11 @@ import {
   type ResolveBillingLimitRequest,
   type UpdateBillingLimitRequest,
 } from "~/services/billingLimit.schemas";
+import {
+  CardVerificationResultSchema,
+  FreeCardCheckoutResultSchema,
+  type CardVerification,
+} from "~/services/cardVerification.schemas";
 import { createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
 import { createLRUMemoryStore } from "@internal/cache";
 import { existsSync, readFileSync } from "node:fs";
@@ -648,6 +653,61 @@ export async function getCachedPlans(): Promise<PlansResult | undefined> {
     recordPlatformFailure("getPlans", "caught");
     return undefined;
   }
+}
+
+/**
+ * Whether the org has a card that passed Stripe's check. Null when billing is not configured or the
+ * lookup failed, so callers decide how to treat an unknown answer.
+ */
+export async function getCardVerification(
+  organizationId: string
+): Promise<CardVerification | null> {
+  if (!client) return null;
+
+  const [error, response] = await tryCatch(
+    client.fetch(
+      `/api/v1/orgs/${organizationId}/card-verification`,
+      asPlatformSchema(CardVerificationResultSchema)
+    )
+  );
+  if (error) {
+    recordPlatformFailure("getCardVerification", "caught");
+    logger.error("getCardVerification threw", { organizationId, error });
+    return null;
+  }
+  if (!response.success) {
+    recordPlatformFailure("getCardVerification", "no_success");
+    return null;
+  }
+  return {
+    supported: response.supported,
+    verified: response.verified,
+    verifiedAt: response.verifiedAt,
+  };
+}
+
+/** Opens the Stripe page where a Free org saves a card; Stripe checks it with the bank. */
+export async function startFreeCardCheckout(
+  organizationId: string
+): Promise<{ success: true; checkoutUrl: string } | { success: false; error: string }> {
+  if (!client) return { success: false, error: "Billing is not configured" };
+
+  const [error, response] = await tryCatch(
+    client.fetch(
+      `/api/v1/orgs/${organizationId}/card-verification/checkout`,
+      asPlatformSchema(FreeCardCheckoutResultSchema),
+      { method: "POST" }
+    )
+  );
+  if (error) {
+    recordPlatformFailure("startFreeCardCheckout", "caught");
+    return { success: false, error: error.message };
+  }
+  if (!response.success) {
+    recordPlatformFailure("startFreeCardCheckout", "no_success");
+    return { success: false, error: response.error };
+  }
+  return { success: true, checkoutUrl: response.checkoutUrl };
 }
 
 export async function activateFreePlan(
