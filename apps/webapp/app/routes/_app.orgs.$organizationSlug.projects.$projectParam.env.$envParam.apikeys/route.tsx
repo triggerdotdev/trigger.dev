@@ -73,6 +73,7 @@ import {
 } from "./ApiKeyActions";
 import { apiKeyStatus, ApiKeyStatusCombo } from "./ApiKeyStatus";
 import { ApiKeyAllowedIps, ApiKeyLastUsed, EditApiKeyIpRangesButton } from "./ApiKeyIpRanges";
+import { ApiKeyNameCell, EditApiKeyNoteButton } from "./ApiKeyNote";
 import { apiKeysAction, canManageOrganizationPresets } from "./apiKeysAction.server";
 import { EditApiKeyAccessDialog, type EditableApiKey } from "./EditApiKeyAccessDialog";
 import { NewApiKeyDialog } from "./NewApiKeyDialog";
@@ -488,9 +489,10 @@ export default function Page() {
                                 isSelected={isSelected}
                               >
                                 <TableCell to={path} isSelected={isSelected} isTabbableCell>
-                                  <TruncatedText
-                                    text={apiKey.name}
-                                    className="block max-w-[14rem]"
+                                  <ApiKeyNameCell
+                                    name={apiKey.name}
+                                    note={apiKey.description}
+                                    className="max-w-[14rem]"
                                   />
                                 </TableCell>
                                 {isShowingInspector ? null : (
@@ -592,6 +594,13 @@ export default function Page() {
                                           ranges={apiKey.allowedIpRanges}
                                           lastUsedIp={apiKey.lastUsedIp}
                                           canWrite={canWriteApiKeys}
+                                        />
+                                        <EditApiKeyNoteButton
+                                          id={apiKey.id}
+                                          name={apiKey.name}
+                                          note={apiKey.description}
+                                          canWrite={canWriteApiKeys}
+                                          appearance="menu"
                                         />
                                         <RevokeApiKeyButton
                                           id={apiKey.id}

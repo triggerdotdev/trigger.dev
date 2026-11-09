@@ -8,6 +8,7 @@ import {
   isApiKeyUserError,
   revokeEnvironmentApiKey,
   updateEnvironmentApiKeyAccess,
+  updateEnvironmentApiKeyDescription,
   updateEnvironmentApiKeyIpRanges,
 } from "~/models/api-key.server";
 import {
@@ -28,6 +29,7 @@ import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { DISABLE_ROOT_API_KEY_VISIBILITY_CONFIRMATION } from "~/utils/apiKeyAccess";
+import { ApiKeyNoteField } from "~/utils/apiKeyNote";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { splitIpRangesInput } from "./ApiKeyIpRanges";
 
@@ -59,6 +61,7 @@ const AccessFields = {
 const CreateApiKeySchema = z.object({
   action: z.literal("create"),
   name: z.string().trim().min(1).max(64),
+  description: ApiKeyNoteField,
   expiresAt: z.preprocess(
     (value) => (value === "" || value === undefined ? undefined : value),
     z.coerce
@@ -74,6 +77,11 @@ const ApiKeyActionSchema = z.discriminatedUnion("action", [
   CreateApiKeySchema,
   z.object({ action: z.literal("revoke"), apiKeyId: z.string().min(1) }),
   z.object({ action: z.literal("update-access"), apiKeyId: z.string().min(1), ...AccessFields }),
+  z.object({
+    action: z.literal("update-description"),
+    apiKeyId: z.string().min(1),
+    description: ApiKeyNoteField,
+  }),
   z.object({
     action: z.literal("update-ip-ranges"),
     apiKeyId: z.string().min(1),
@@ -182,6 +190,7 @@ export const apiKeysAction = dashboardAction(
             taskEnvironmentId: environment.id,
             userId: user.id,
             name: submission.data.name,
+            description: submission.data.description,
             expiresAt: submission.data.expiresAt,
             ...access,
             allowedIpRanges: splitIpRangesInput(submission.data.allowedIpRanges),
@@ -270,6 +279,19 @@ export const apiKeysAction = dashboardAction(
           });
 
           return redirectWithSuccessMessage(returnPath, request, "API key revoked");
+        }
+        case "update-description": {
+          const note = await updateEnvironmentApiKeyDescription({
+            environmentId: keyEnvironmentId,
+            apiKeyId: submission.data.apiKeyId,
+            description: submission.data.description,
+          });
+
+          return redirectWithSuccessMessage(
+            returnPath,
+            request,
+            note ? "API key note updated" : "API key note removed"
+          );
         }
         case "update-ip-ranges": {
           await updateEnvironmentApiKeyIpRanges({

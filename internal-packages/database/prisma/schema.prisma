@@ -457,6 +457,9 @@ model ApiKey {
   keyHash  String @unique @map("key_hash")
   lastFour String @map("last_four")
 
+  /// Optional one-line note the creator adds to say what the key is for.
+  description String?
+
   runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   runtimeEnvironmentId String             @map("runtime_environment_id")
 

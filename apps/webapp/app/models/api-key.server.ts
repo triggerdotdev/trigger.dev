@@ -18,6 +18,11 @@ import {
   MISSING_API_KEY_MESSAGE,
   REVOKED_API_KEY_MESSAGE,
 } from "~/utils/apiKeyAccess";
+import {
+  API_KEY_NOTE_MAX_LENGTH,
+  API_KEY_NOTE_TOO_LONG_MESSAGE,
+  normalizeApiKeyNote,
+} from "~/utils/apiKeyNote";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 
 const apiKeyId = customAlphabet(
@@ -245,6 +250,7 @@ export async function createEnvironmentApiKey(
     taskEnvironmentId,
     userId,
     name,
+    description,
     expiresAt,
     presetId,
     taskIdentifiers,
@@ -255,6 +261,8 @@ export async function createEnvironmentApiKey(
     taskEnvironmentId: string;
     userId: string;
     name: string;
+    // Optional one-line note; blank becomes null.
+    description?: string | null;
     expiresAt?: Date;
     presetId: string;
     taskIdentifiers?: string[];
@@ -290,6 +298,11 @@ export async function createEnvironmentApiKey(
     throw new Error("Expiration must be in the future");
   }
 
+  const note = normalizeApiKeyNote(description);
+  if (note !== null && note.length > API_KEY_NOTE_MAX_LENGTH) {
+    throw new Error(API_KEY_NOTE_TOO_LONG_MESSAGE);
+  }
+
   const ipRanges = parseIpRanges(allowedIpRanges ?? [], {
     allowNonPublicRanges: allowPrivateIpRanges,
   });
@@ -316,6 +329,7 @@ export async function createEnvironmentApiKey(
         client.apiKey.create({
           data: {
             name,
+            description: note,
             keyHash: generated.keyHash,
             lastFour: generated.lastFour,
             runtimeEnvironmentId: environment.id,
@@ -670,4 +684,50 @@ export function envSlug(environmentType: RuntimeEnvironment["type"]): EnvSlug {
 
 export function isEnvSlug(maybeSlug: string): maybeSlug is EnvSlug {
   return ["dev", "stg", "prod", "preview"].includes(maybeSlug);
+}
+
+/** Set or clear an API key's note. Changes nothing else about the key. */
+export async function updateEnvironmentApiKeyDescription(
+  {
+    environmentId,
+    apiKeyId,
+    description,
+  }: {
+    environmentId: string;
+    apiKeyId: string;
+    description: string | null;
+  },
+  {
+    prismaClient = prisma,
+    telemetryRecorder = apiKeyTelemetry,
+  }: {
+    prismaClient?: Pick<PrismaClient, "apiKey">;
+    telemetryRecorder?: ApiKeyTelemetry;
+  } = {}
+): Promise<string | null> {
+  const note = normalizeApiKeyNote(description);
+  if (note !== null && note.length > API_KEY_NOTE_MAX_LENGTH) {
+    telemetryRecorder.recordOperation("update_description", "rejected", "invalid_description");
+    throw new Error(API_KEY_NOTE_TOO_LONG_MESSAGE);
+  }
+
+  const result = await (async () => {
+    try {
+      return await prismaClient.apiKey.updateMany({
+        where: { id: apiKeyId, runtimeEnvironmentId: environmentId, revokedAt: null },
+        data: { description: note },
+      });
+    } catch (error) {
+      telemetryRecorder.recordOperation("update_description", "error", "database_error");
+      throw error;
+    }
+  })();
+
+  if (result.count !== 1) {
+    telemetryRecorder.recordOperation("update_description", "rejected", "not_found_or_revoked");
+    throw new Error("API key not found or already revoked");
+  }
+
+  telemetryRecorder.recordOperation("update_description", "success");
+  return note;
 }

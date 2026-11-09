@@ -39,6 +39,7 @@ import {
   ApiKeyStatusCombo,
 } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.apikeys/ApiKeyStatus";
 import { EditApiKeyIpRangesButton } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.apikeys/ApiKeyIpRanges";
+import { EditApiKeyNoteButton } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.apikeys/ApiKeyNote";
 import { apiKeysAction } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.apikeys/apiKeysAction.server";
 import {
   type EditAccessStart,
@@ -217,6 +218,26 @@ function ApiKeyInspector({
         )
       }
     >
+      {row.description || isActive ? (
+        // The note reads as a subtitle to the name in the header. Editable while the key works,
+        // like its allowed IPs.
+        <div className="flex items-start gap-1 border-b border-grid-dimmed px-3 py-2">
+          {row.description ? (
+            <Paragraph variant="small" className="min-w-0 flex-1 break-words py-0.5">
+              {row.description}
+            </Paragraph>
+          ) : null}
+          {isActive ? (
+            <EditApiKeyNoteButton
+              id={row.id}
+              name={row.name}
+              note={row.description}
+              canWrite={context.canWriteApiKeys}
+              appearance="inline"
+            />
+          ) : null}
+        </div>
+      ) : null}
       <Group>
         <Property.Table>
           <Property.Item>

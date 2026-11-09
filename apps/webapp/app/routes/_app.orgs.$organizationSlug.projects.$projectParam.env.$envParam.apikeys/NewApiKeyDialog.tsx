@@ -24,6 +24,8 @@ import { cn } from "~/utils/cn";
 import { ApiKeyAccessFields, ApiKeyAccessInputs, ApiKeyAccessPane } from "./ApiKeyAccessPicker";
 import { ApiKeyExpiryPicker } from "./ApiKeyExpiryPicker";
 import { ApiKeyIpRangesField } from "./ApiKeyIpRanges";
+import { ApiKeyNoteInput } from "./ApiKeyNote";
+import { isApiKeyNoteTooLong } from "~/utils/apiKeyNote";
 import type { action, ApiKeyActionData } from "./route";
 import { useApiKeyAccess } from "./useApiKeyAccess";
 
@@ -54,6 +56,7 @@ export function NewApiKeyDialog({
   const actionData = fetcher.data as ApiKeyActionData | undefined;
   const [showError, setShowError] = useState(false);
   const [name, setName] = useState("");
+  const [note, setNote] = useState("");
   const [expiration, setExpiration] = useState("90-days");
   const [expiryDate, setExpiryDate] = useState<Date | undefined>(() =>
     apiKeyExpiryDay(new Date(), DEFAULT_API_KEY_EXPIRY_DAYS)
@@ -86,6 +89,7 @@ export function NewApiKeyDialog({
     onOpenChange(nextOpen);
     if (nextOpen) {
       setName("");
+      setNote("");
       setExpiration("90-days");
       setExpiryDate(apiKeyExpiryDay(new Date(), DEFAULT_API_KEY_EXPIRY_DAYS));
       setExpiryError(false);
@@ -211,6 +215,10 @@ export function NewApiKeyDialog({
                   </InputGroup>
 
                   <div className="sm:col-span-2">
+                    <ApiKeyNoteInput value={note} onChange={setNote} />
+                  </div>
+
+                  <div className="sm:col-span-2">
                     <ApiKeyIpRangesField value={ipRanges} onChange={setIpRanges} />
                   </div>
                 </div>
@@ -252,7 +260,12 @@ export function NewApiKeyDialog({
                   type="submit"
                   variant="primary/medium"
                   className="shrink-0"
-                  disabled={!name.trim() || !canSubmitAccess || fetcher.state !== "idle"}
+                  disabled={
+                    !name.trim() ||
+                    isApiKeyNoteTooLong(note) ||
+                    !canSubmitAccess ||
+                    fetcher.state !== "idle"
+                  }
                   isLoading={fetcher.state !== "idle"}
                 >
                   Create API key

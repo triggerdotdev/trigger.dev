@@ -89,6 +89,7 @@ export class ApiKeysPresenter {
             select: {
               id: true,
               name: true,
+              description: true,
               lastFour: true,
               presetId: true,
               scopes: true,
