@@ -48,16 +48,18 @@ Custom access needs the same plan as the restricted access presets. A custom key
 | **Preview branches** | None, Manage |
 | **Environment variables** | None, Read, Read and write |
 
-Some levels need another area:
+Some levels need another area, and the grid sets it for you:
 
-- **Deployments: Read and write** needs **Environment variables: Read and write**, because deploys sync environment variables while building. The grid sets both.
+- **Deployments: Read and write** needs **Environment variables: Read**, because deploys read the environment's variables while building.
 - Any **Sessions** level needs task trigger access (**Trigger**, **Read and trigger**, or **Operate runs** on all tasks), because sessions continue runs of any task.
+
+A deploy only writes environment variables when your build uses [`syncEnvVars`](/config/extensions/syncEnvVars) or another extension that syncs them. Only then does the key need **Environment variables: Read and write**. Without it, the deploy fails when it syncs.
 
 The **Operator** preset doesn't include **Waitpoints**. A backend or CI key that creates or completes [waitpoint tokens](/wait-for-token) with `wait.createToken()` or `wait.completeToken()` needs **Waitpoints: Read and write**. The public access token returned with each waitpoint token can complete that token without an API key.
 
 ## Use the key from CI
 
-One key triggers a smoke test, waits for it, and deploys. Build it from **Operator** plus **Deploy only**, or limit it to the smoke test task as shown in the next section.
+One key triggers a smoke test, waits for it, and deploys. Start from **Operator** and set **Deployments** to **Read and write** (the grid adds **Environment variables: Read**), or limit it to the smoke test task as shown in the next section. Raise **Environment variables** to **Read and write** only if the build syncs environment variables.
 
 ```typescript ci/smoke-test.ts
 import { configure, runs, tasks } from "@trigger.dev/sdk";
@@ -81,7 +83,7 @@ TRIGGER_ACCESS_TOKEN="$TRIGGER_SECRET_KEY" npx trigger.dev@latest deploy --env p
 
 ## Limit a custom key to selected tasks
 
-The **Tasks** row applies to **All tasks** or to **Selected tasks**, up to 10 task identifiers per key. For a CI key that deploys and runs one smoke test and nothing else: **Start from** Trigger only, set **Tasks** to **Read and trigger**, choose **Selected tasks** and pick `report`, then **Add preset** Deploy only. The task picker lists the tasks deployed to this environment.
+The **Tasks** row applies to **All tasks** or to **Selected tasks**, up to 10 task identifiers per key. For a CI key that deploys and runs one smoke test and nothing else: **Start from** Trigger only, set **Tasks** to **Read and trigger**, choose **Selected tasks** and pick `report`, then set **Deployments** to **Read and write**. The task picker lists the tasks deployed to this environment.
 
 With selected tasks:
 
