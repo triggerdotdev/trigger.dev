@@ -556,6 +556,50 @@ describe("RunQueue.dequeueMessageFromWorkerQueue", () => {
       }
     }
   );
+  // Catches: a master-queue dequeue count of 0 asks for no messages, so runs only the sweep can move stay queued.
+  redisTest(
+    "a master-queue dequeue count of 0 still moves runs to the worker queue",
+    async ({ redisContainer }) => {
+      const queue = new RunQueue({
+        ...testOptions,
+        queueSelectionStrategy: new FairQueueSelectionStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+        masterQueueConsumersIntervalMs: 100,
+        masterQueueConsumerDequeueCount: 0,
+      });
+
+      try {
+        // Skip the enqueue-triggered job so only the master-queue consumer can move the run.
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: messageDev,
+          workerQueue: "main",
+          skipDequeueProcessing: true,
+        });
+
+        const deadline = performance.now() + 5_000;
+        let dequeued = await queue.dequeueMessageFromWorkerQueue("test_12345", "main");
+        while (!dequeued && performance.now() < deadline) {
+          dequeued = await queue.dequeueMessageFromWorkerQueue("test_12345", "main");
+        }
+
+        expect(dequeued?.messageId, "run never reached the worker queue").toEqual(messageDev.runId);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
   // Catches: blocking worker-queue pops send an INFO ready check on each new Redis connection.
   redisTest(
     "a blocking dequeue does not send INFO on its connection",
