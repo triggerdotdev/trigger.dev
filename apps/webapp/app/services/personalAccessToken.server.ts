@@ -26,6 +26,7 @@ import {
   type UserActorClaims,
 } from "@trigger.dev/rbac";
 import { personalAccessTokensPath } from "~/utils/pathBuilder";
+import { PERSONAL_ACCESS_TOKEN_EXPIRING_SOON_DAYS } from "./personalAccessTokenExpiryEmails.server";
 import type { AdminAuditSourceEndpoint } from "@trigger.dev/plugins";
 
 const tokenValueLength = 40;
@@ -43,9 +44,6 @@ export const PAT_LAST_ACCESSED_THROTTLE_MS = 5 * 60 * 1000;
 export const AUTHORIZATION_CODE_TTL_MS = 10 * 60 * 1000;
 
 const SECONDS_PER_DAY = 24 * 60 * 60;
-
-/** A token this close to its fixed expiry is flagged on the tokens page. */
-const EXPIRING_SOON_DAYS = 7;
 
 type CreatePersonalAccessTokenOptions = {
   name: string;
@@ -117,14 +115,15 @@ export function personalAccessTokenAuthFailureBody(failure: {
   return { error: failure.error };
 }
 
+/** The tokens page. The public origin, when set, is the one users can open from a CLI, CI log or email. */
+export function personalAccessTokensUrl() {
+  return `${env.PUBLIC_APP_ORIGIN ?? env.APP_ORIGIN}${personalAccessTokensPath()}`;
+}
+
 /** The 401 body for an expired token: a CLI login says to log in again, others where to make a new one. */
 export function personalAccessTokenExpiryBody(expiry: PersonalAccessTokenExpiry) {
   return {
-    error: personalAccessTokenExpiryMessage(
-      expiry,
-      // The public origin, when set, is the one users can open from a CLI or CI log.
-      `${env.PUBLIC_APP_ORIGIN ?? env.APP_ORIGIN}${personalAccessTokensPath()}`
-    ),
+    error: personalAccessTokenExpiryMessage(expiry, personalAccessTokensUrl()),
     code: expiry.code,
   };
 }
@@ -162,7 +161,8 @@ export async function getValidPersonalAccessTokens(userId: string) {
     isExpiringSoon:
       pat.expiresAt !== null &&
       personalAccessTokenExpiry(pat) === undefined &&
-      pat.expiresAt.getTime() - Date.now() <= EXPIRING_SOON_DAYS * SECONDS_PER_DAY * 1000,
+      pat.expiresAt.getTime() - Date.now() <=
+        PERSONAL_ACCESS_TOKEN_EXPIRING_SOON_DAYS * SECONDS_PER_DAY * 1000,
   }));
 }
 

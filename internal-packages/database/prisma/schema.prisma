@@ -169,7 +169,11 @@ model PersonalAccessToken {
 
   /// Set on CLI login tokens: they stop authenticating this many seconds after their last use
   /// (or creation, if never used). Null means no idle limit.
-  idleTimeoutSeconds Int?
+  idleTimeoutSeconds   Int?
+  /// When the "about to expire" email was sent. Set before sending, so it's sent at most once.
+  expiryReminderSentAt DateTime?
+  /// When the "has expired" email was sent. Set before sending, so it's sent at most once.
+  expiredNoticeSentAt  DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

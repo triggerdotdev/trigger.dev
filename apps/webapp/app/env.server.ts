@@ -2288,6 +2288,8 @@ const EnvironmentSchema = z
       .nonnegative()
       .default(60_000),
     DEPLOYMENTS_BUILD_ENV_VARS_SWEEP_BATCH_SIZE: z.coerce.number().int().positive().default(500),
+    /** Emails owners before and when a dashboard-created personal access token expires. */
+    PERSONAL_ACCESS_TOKEN_EXPIRY_EMAILS_ENABLED: BoolEnv.default(true),
     BULK_ACTION_AUTORELOAD_POLL_INTERVAL_MS: z.coerce.number().int().default(1_000),
     QUEUES_AUTORELOAD_POLL_INTERVAL_MS: z.coerce.number().int().default(5_000),
 
