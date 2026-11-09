@@ -54,9 +54,11 @@ export {
 } from "./rbac.js";
 
 export {
+  CLI_LOGIN_EXPIRED,
   PERSONAL_ACCESS_TOKEN_EXPIRED,
   personalAccessTokenExpiry,
   personalAccessTokenExpiryMessage,
+  personalAccessTokenValidUntil,
 } from "./personalAccessTokenExpiry.js";
 export type {
   PersonalAccessTokenExpiry,

@@ -13,6 +13,7 @@ const { SESSION_SECRET } = vi.hoisted(() => ({
 
 const mocks = vi.hoisted(() => ({
   patFindFirst: vi.fn<(...args: any[]) => Promise<any>>(),
+  patUpdateMany: vi.fn<(...args: any[]) => Promise<any>>(),
   authenticatePat: vi.fn<(...args: any[]) => Promise<any>>(),
   getTokenRole: vi.fn<(...args: any[]) => Promise<any>>(),
 }));
@@ -33,7 +34,9 @@ vi.mock("~/services/rbac.server", () => ({
   rbac: { authenticatePat: mocks.authenticatePat, getTokenRole: mocks.getTokenRole },
 }));
 vi.mock("~/db.server", () => ({
-  prisma: { personalAccessToken: { findFirst: mocks.patFindFirst } },
+  prisma: {
+    personalAccessToken: { findFirst: mocks.patFindFirst, updateMany: mocks.patUpdateMany },
+  },
 }));
 
 import { signUserActorToken, verifyUserActorToken } from "@trigger.dev/rbac";
@@ -44,6 +47,20 @@ import {
 } from "~/services/personalAccessToken.server";
 
 const SEVEN_DAYS = 7 * 24 * 60 * 60;
+
+/** A live source PAT row as the expiry recheck reads it. */
+const LIVE_PAT = {
+  expiresAt: null,
+  idleTimeoutSeconds: null,
+  lastAccessedAt: null,
+  createdAt: new Date(),
+};
+const EXPIRY_SELECT = {
+  expiresAt: true,
+  idleTimeoutSeconds: true,
+  lastAccessedAt: true,
+  createdAt: true,
+};
 
 describe("assertSourcePatActive", () => {
   beforeEach(() => {
@@ -56,12 +73,12 @@ describe("assertSourcePatActive", () => {
   });
 
   it("returns true when the source PAT is still live", async () => {
-    mocks.patFindFirst.mockResolvedValue({ expiresAt: null });
+    mocks.patFindFirst.mockResolvedValue(LIVE_PAT);
 
     expect(await assertSourcePatActive({ userId: "usr_1", pat: "pat_1234" })).toBe(true);
     expect(mocks.patFindFirst).toHaveBeenCalledWith({
       where: { id: "pat_1234", revokedAt: null },
-      select: { expiresAt: true },
+      select: EXPIRY_SELECT,
     });
   });
 
@@ -87,7 +104,7 @@ describe("resolveAndRecheckUserActorClaims (apiBuilder verify site)", () => {
 
   it("acts on the verified claims, not the plugin's narrower copy", async () => {
     // A plugin predating a claim delivers an incomplete set; scoping on it would widen access.
-    mocks.patFindFirst.mockResolvedValue({ expiresAt: null });
+    mocks.patFindFirst.mockResolvedValue(LIVE_PAT);
     const bearer = await signUserActorToken(SESSION_SECRET, {
       userId: "usr_1",
       client: "cli",
@@ -111,7 +128,7 @@ describe("resolveAndRecheckUserActorClaims (apiBuilder verify site)", () => {
   });
 
   it("allows when the source PAT is still live", async () => {
-    mocks.patFindFirst.mockResolvedValue({ expiresAt: null });
+    mocks.patFindFirst.mockResolvedValue(LIVE_PAT);
     const bearer = await tokenWithPat("pat_1234");
 
     const result = await resolveAndRecheckUserActorClaims({ userId: "usr_1" }, bearer);
@@ -130,7 +147,7 @@ describe("resolveAndRecheckUserActorClaims (apiBuilder verify site)", () => {
     expect(result).toBeUndefined();
     expect(mocks.patFindFirst).toHaveBeenCalledWith({
       where: { id: "pat_1234", revokedAt: null },
-      select: { expiresAt: true },
+      select: EXPIRY_SELECT,
     });
   });
 });
@@ -139,7 +156,14 @@ describe("mint user-actor token route", () => {
   beforeEach(() => {
     mocks.authenticatePat.mockReset();
     mocks.getTokenRole.mockReset();
-    mocks.authenticatePat.mockResolvedValue({ ok: true, tokenId: "pat_1234", userId: "usr_1" });
+    mocks.patUpdateMany.mockReset();
+    mocks.patUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.authenticatePat.mockResolvedValue({
+      ok: true,
+      tokenId: "pat_1234",
+      userId: "usr_1",
+      lastAccessedAt: null,
+    });
     mocks.getTokenRole.mockResolvedValue(null);
   });
 
@@ -155,10 +179,20 @@ describe("mint user-actor token route", () => {
     }) as Promise<Response>;
   }
 
-  it("400s a TTL above the 7-day ceiling", async () => {
+  it("400s a TTL above the 7-day ceiling, without counting it as a use", async () => {
     const response = await mint({ ttlSeconds: SEVEN_DAYS + 1 });
 
     expect(response.status).toBe(400);
+    expect(mocks.patUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("refuses a role-restricted PAT without counting it as a use", async () => {
+    mocks.getTokenRole.mockResolvedValue({ roleId: "role_1" });
+
+    const response = await mint({});
+
+    expect(response.status).toBe(403);
+    expect(mocks.patUpdateMany).not.toHaveBeenCalled();
   });
 
   it("mints a token bound to its source PAT at the ceiling", async () => {
@@ -176,12 +210,33 @@ describe("mint user-actor token route", () => {
     return ((await response.json()) as { expiresInSeconds: number }).expiresInSeconds;
   }
 
+  it("caps the lifetime at the source CLI login's idle window, counted from this mint", async () => {
+    mocks.authenticatePat.mockResolvedValue({
+      ok: true,
+      tokenId: "pat_1234",
+      userId: "usr_1",
+      lastAccessedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+      expiresAt: null,
+      idleTimeoutSeconds: 24 * 60 * 60,
+      createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+    });
+
+    const lifetime = await mintedLifetime({ ttlSeconds: SEVEN_DAYS });
+
+    // Minting refreshed the login's last use, so the token gets the full idle window.
+    expect(lifetime).toBeGreaterThan(24 * 60 * 60 - 5);
+    expect(lifetime).toBeLessThanOrEqual(24 * 60 * 60);
+  });
+
   it("caps the lifetime at the source token's fixed expiry", async () => {
     mocks.authenticatePat.mockResolvedValue({
       ok: true,
       tokenId: "pat_1234",
       userId: "usr_1",
+      lastAccessedAt: null,
       expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
+      idleTimeoutSeconds: null,
+      createdAt: new Date(),
     });
 
     const lifetime = await mintedLifetime({ ttlSeconds: SEVEN_DAYS });
@@ -195,9 +250,23 @@ describe("mint user-actor token route", () => {
       ok: true,
       tokenId: "pat_1234",
       userId: "usr_1",
+      lastAccessedAt: null,
       expiresAt: null,
+      idleTimeoutSeconds: null,
+      createdAt: new Date(),
     });
 
     await expect(mintedLifetime({ ttlSeconds: SEVEN_DAYS })).resolves.toBe(SEVEN_DAYS);
+  });
+
+  it("counts minting as a use of the source PAT, so a CLI login doesn't go idle", async () => {
+    await mint({});
+
+    expect(mocks.patUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: "pat_1234" }),
+        data: { lastAccessedAt: expect.any(Date) },
+      })
+    );
   });
 });

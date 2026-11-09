@@ -4,7 +4,7 @@ import { CliApiClient } from "../apiClient.js";
 import { CLOUD_API_URL } from "../consts.js";
 import { readAuthConfigProfile, writeAuthConfigProfile } from "../utilities/configFiles.js";
 import { NotAccessTokenError, validateAccessToken } from "../utilities/accessTokens.js";
-import type { LoginResult } from "../utilities/session.js";
+import { CLI_LOGIN_EXPIRED_CODE, type LoginResult } from "../utilities/session.js";
 import type { CreateAuthorizationCodeRequest } from "@trigger.dev/core/v3";
 import {
   AUTHORIZATION_CODE_TTL_MS,
@@ -81,25 +81,30 @@ export async function mcpAuth(options: McpAuthOptions): Promise<LoginResult> {
     );
     const userData = await apiClient.whoAmI();
 
-    if (!userData.success) {
-      throw new Error(userData.error);
+    if (userData.success) {
+      return {
+        ok: true as const,
+        profile: options?.profile ?? "default",
+        userId: userData.data.userId,
+        email: userData.data.email,
+        dashboardUrl: userData.data.dashboardUrl,
+        auth: {
+          accessToken: authConfig.accessToken,
+          apiUrl: authConfig.apiUrl ?? opts.defaultApiUrl,
+          tokenType: "personal" as const,
+        },
+      };
     }
 
-    return {
-      ok: true as const,
-      profile: options?.profile ?? "default",
-      userId: userData.data.userId,
-      email: userData.data.email,
-      dashboardUrl: userData.data.dashboardUrl,
-      auth: {
-        accessToken: authConfig.accessToken,
-        apiUrl: authConfig.apiUrl ?? opts.defaultApiUrl,
-        tokenType: "personal" as const,
-      },
-    };
+    // A login that went unused for too long is replaced by the login flow below.
+    if (userData.errorCode !== CLI_LOGIN_EXPIRED_CODE) {
+      throw new Error(userData.error);
+    }
   }
 
-  const apiClient = new CliApiClient(authConfig?.apiUrl ?? opts.defaultApiUrl);
+  // Log in again against the profile's own server, not the default one.
+  const loginApiUrl = authConfig?.apiUrl ?? opts.defaultApiUrl;
+  const apiClient = new CliApiClient(loginApiUrl);
 
   const callback = await listenForApprovalCallback("Return to your MCP client to continue.");
 
@@ -153,12 +158,9 @@ export async function mcpAuth(options: McpAuthOptions): Promise<LoginResult> {
     callback.close();
   }
 
-  writeAuthConfigProfile(
-    { accessToken: indexResult.token, apiUrl: opts.defaultApiUrl },
-    options?.profile
-  );
+  writeAuthConfigProfile({ accessToken: indexResult.token, apiUrl: loginApiUrl }, options?.profile);
 
-  const client = new CliApiClient(opts.defaultApiUrl, indexResult.token);
+  const client = new CliApiClient(loginApiUrl, indexResult.token);
   const userData = await client.whoAmI();
 
   if (!userData.success) {
@@ -173,7 +175,7 @@ export async function mcpAuth(options: McpAuthOptions): Promise<LoginResult> {
     dashboardUrl: userData.data.dashboardUrl,
     auth: {
       accessToken: indexResult.token,
-      apiUrl: opts.defaultApiUrl,
+      apiUrl: loginApiUrl,
       tokenType: "personal" as const,
     },
   };

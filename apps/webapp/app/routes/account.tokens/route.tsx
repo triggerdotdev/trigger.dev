@@ -353,6 +353,12 @@ export default function Page() {
                           </ExpiredLabel>
                         ) : personalAccessToken.expiresAt ? (
                           <DateTime date={personalAccessToken.expiresAt} />
+                        ) : personalAccessToken.idleTimeoutLabel !== null ? (
+                          personalAccessToken.isExpired ? (
+                            <ExpiredLabel>Expired (unused)</ExpiredLabel>
+                          ) : (
+                            `After ${personalAccessToken.idleTimeoutLabel} unused`
+                          )
                         ) : (
                           "Never"
                         )}

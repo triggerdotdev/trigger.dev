@@ -13,6 +13,7 @@ const mockEnv = vi.hoisted(() => ({
   SESSION_SECRET: "test-session-secret-for-cli-login-binding",
   ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef",
   CLI_LOGIN_LEGACY_UNTIL: "2000-01-01T00:00:00.000Z",
+  CLI_LOGIN_IDLE_TIMEOUT_DAYS: 7,
 }));
 
 vi.mock("~/db.server", () => ({

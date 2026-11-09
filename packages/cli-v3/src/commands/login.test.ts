@@ -4,6 +4,7 @@ import {
   addEmailToAuthorizationUrl,
   isPendingAuthorizationValid,
   resolveLoginOptions,
+  shouldReplaceExpiredLogin,
 } from "./login.js";
 
 describe("resolveLoginOptions", () => {
@@ -74,5 +75,22 @@ describe("resumable login", () => {
         Date.parse("2026-01-01T00:01:00.000Z")
       )
     ).toBe(true);
+  });
+});
+
+describe("an expired stored login", () => {
+  const expired = { success: false, errorCode: "cli_login_expired" };
+
+  it("is replaced by a new login outside CI, with or without a terminal", () => {
+    expect(shouldReplaceExpiredLogin(expired, false)).toBe(true);
+  });
+
+  it("is reported, not replaced, in CI", () => {
+    expect(shouldReplaceExpiredLogin(expired, true)).toBe(false);
+  });
+
+  it("leaves other auth failures to the existing handling", () => {
+    expect(shouldReplaceExpiredLogin({ success: false, errorCode: undefined }, false)).toBe(false);
+    expect(shouldReplaceExpiredLogin({ success: true }, false)).toBe(false);
   });
 });

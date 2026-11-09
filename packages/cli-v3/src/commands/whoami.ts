@@ -1,7 +1,7 @@
 import { intro, note, outro } from "@clack/prompts";
 import { chalkLink } from "../utilities/cliOutput.js";
 import { logger } from "../utilities/logger.js";
-import { isLoggedIn } from "../utilities/session.js";
+import { CLI_LOGIN_EXPIRED_CODE, isLoggedIn } from "../utilities/session.js";
 import type { Command } from "commander";
 import { printInitialBanner } from "../utilities/initialBanner.js";
 import {
@@ -30,6 +30,7 @@ type WhoAmIResult =
   | {
       success: false;
       error: string;
+      errorCode?: string | null;
     };
 
 const WhoamiCommandOptions = CommonCommandOptions.extend({
@@ -107,7 +108,10 @@ export async function whoAmI(
     if (authentication.error === "fetch failed") {
       !silent && loadingSpinner.stop("Fetch failed. Platform down?");
     } else {
-      if (embedded) {
+      if (authentication.errorCode === CLI_LOGIN_EXPIRED_CODE) {
+        !silent && loadingSpinner.stop("Your CLI login expired");
+        !embedded && outro(authentication.error);
+      } else if (embedded) {
         !silent &&
           loadingSpinner.stop(
             `Failed to check account details. You may want to run \`trigger.dev logout --profile ${
@@ -127,6 +131,7 @@ export async function whoAmI(
     return {
       success: false,
       error: authentication.error,
+      errorCode: authentication.errorCode,
     };
   }
 
@@ -139,6 +144,7 @@ export async function whoAmI(
     return {
       success: false,
       error: userData.error,
+      errorCode: userData.errorCode,
     };
   }
 

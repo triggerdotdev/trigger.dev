@@ -1,11 +1,11 @@
-import type { PatAuthResult } from "@trigger.dev/plugins";
+import type { PatAuthResult, PersonalAccessTokenExpiryFields } from "@trigger.dev/plugins";
 import { personalAccessTokenExpiry, personalAccessTokenExpiryMessage } from "@trigger.dev/plugins";
 import type { PrismaClient } from "@trigger.dev/database";
 
 /**
  * The host's recheck of a plugin's PAT result. The plugin rejects expired tokens itself; this
- * makes sure a plugin built before expiry existed can't accept one. Such a plugin returns no
- * `expiresAt`, so the host reads it.
+ * makes sure a plugin built before an expiry rule existed can't accept one. Such a plugin
+ * doesn't return every expiry column, so the host reads them.
  */
 export async function rejectExpiredPersonalAccessToken(
   result: PatAuthResult,
@@ -14,22 +14,31 @@ export async function rejectExpiredPersonalAccessToken(
 ): Promise<PatAuthResult> {
   if (!result.ok) return result;
 
-  let expiresAt: Date | null;
-  if (result.expiresAt === undefined) {
-    const token = await replica.personalAccessToken.findFirst({
+  let fields: PersonalAccessTokenExpiryFields | null;
+  if (
+    result.expiresAt === undefined ||
+    result.idleTimeoutSeconds === undefined ||
+    result.createdAt === undefined
+  ) {
+    fields = await replica.personalAccessToken.findFirst({
       where: { id: result.tokenId },
-      select: { expiresAt: true },
+      select: { expiresAt: true, idleTimeoutSeconds: true, lastAccessedAt: true, createdAt: true },
     });
-    // If the host can't read the token's expiry, fail closed.
-    if (!token) {
-      return { ok: false, status: 401, error: "Invalid PAT" };
-    }
-    expiresAt = token.expiresAt;
   } else {
-    expiresAt = result.expiresAt;
+    fields = {
+      expiresAt: result.expiresAt,
+      idleTimeoutSeconds: result.idleTimeoutSeconds,
+      lastAccessedAt: result.lastAccessedAt,
+      createdAt: result.createdAt,
+    };
   }
 
-  const expiry = personalAccessTokenExpiry({ expiresAt }, now);
+  // If the host can't read the token's expiry, fail closed.
+  if (!fields) {
+    return { ok: false, status: 401, error: "Invalid PAT" };
+  }
+
+  const expiry = personalAccessTokenExpiry(fields, now);
   if (expiry) {
     return {
       ok: false,
@@ -38,5 +47,10 @@ export async function rejectExpiredPersonalAccessToken(
       ...expiry,
     };
   }
-  return { ...result, expiresAt };
+  return {
+    ...result,
+    expiresAt: fields.expiresAt,
+    idleTimeoutSeconds: fields.idleTimeoutSeconds,
+    createdAt: fields.createdAt,
+  };
 }

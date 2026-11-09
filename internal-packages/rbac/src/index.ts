@@ -91,9 +91,11 @@ export {
 } from "@trigger.dev/plugins";
 // The PAT expiry rule, shared with the RBAC plugins so host and plugin agree.
 export {
+  CLI_LOGIN_EXPIRED,
   PERSONAL_ACCESS_TOKEN_EXPIRED,
   personalAccessTokenExpiry,
   personalAccessTokenExpiryMessage,
+  personalAccessTokenValidUntil,
   type PersonalAccessTokenExpiry,
 } from "@trigger.dev/plugins";
 

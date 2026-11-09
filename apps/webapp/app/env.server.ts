@@ -1104,6 +1104,10 @@ const EnvironmentSchema = z
       .max(3650)
       .default(90),
 
+    // A personal access token minted by a CLI or MCP login stops working after this many days
+    // without use. 0 turns it off. Applies to logins from now on: each token keeps the setting it
+    // was minted with, so tokens minted while it is 0 never expire from disuse.
+    CLI_LOGIN_IDLE_TIMEOUT_DAYS: z.coerce.number().int().min(0).max(3650).default(7),
     CLI_LOGIN_NETWORK_CHECK: z.enum(["off", "log", "confirm"]).default("log"),
     CLI_LOGIN_LEGACY_UNTIL: z.string().datetime().default("2027-01-01T00:00:00.000Z"),
 

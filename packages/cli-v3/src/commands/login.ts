@@ -29,7 +29,7 @@ import {
   awaitAndDisplayPlatformNotification,
   fetchPlatformNotification,
 } from "../utilities/platformNotifications.js";
-import type { LoginResult } from "../utilities/session.js";
+import { CLI_LOGIN_EXPIRED_CODE, type LoginResult } from "../utilities/session.js";
 import { whoAmI } from "./whoami.js";
 import { logger } from "../utilities/logger.js";
 import { spinner } from "../utilities/windows.js";
@@ -142,6 +142,17 @@ export function resolveLoginOptions(options?: LoginOptions) {
     ...options,
     defaultApiUrl: options?.defaultApiUrl ?? CLOUD_API_URL,
   };
+}
+
+/**
+ * A stored login that lapsed from disuse is replaced by a new login, the same way a missing one
+ * is: anywhere except CI, which can't complete a login and gets the server's message instead.
+ */
+export function shouldReplaceExpiredLogin(
+  whoAmIResult: { success: boolean; errorCode?: string | null },
+  inCI: boolean
+): boolean {
+  return !whoAmIResult.success && whoAmIResult.errorCode === CLI_LOGIN_EXPIRED_CODE && !inCI;
 }
 
 export async function login(options?: LoginOptions): Promise<LoginResult> {
@@ -277,12 +288,10 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
         }
       }
 
+      // Set when an expired login is being replaced, so the new login can save its pending name.
+      let replacedLoginPendingName: string | undefined;
+
       if (authConfig?.accessToken && !resumableAuthorization && !apiUrlChanged) {
-        await completeProfileIfNeeded({
-          apiClient: new CliApiClient(configuredApiUrl, authConfig.accessToken),
-          name: authConfig.pendingProfileName,
-          profile: options?.profile,
-        });
         const whoAmIResult = await whoAmI(
           {
             profile: options?.profile ?? "default",
@@ -293,7 +302,25 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
           opts.silent
         );
 
-        if (!whoAmIResult.success) {
+        if (shouldReplaceExpiredLogin(whoAmIResult, isCI)) {
+          // The stored token went unused for too long. Fall through to a new login, which
+          // replaces it, rather than asking the user to log out first.
+          replacedLoginPendingName = authConfig.pendingProfileName;
+          if (!opts.silent) {
+            log.warn(
+              "Your CLI login expired because it wasn't used for a while. Logging in again."
+            );
+          }
+        } else if (!whoAmIResult.success) {
+          // An expired login in CI: show the server's message, which says how to log in again.
+          if (whoAmIResult.errorCode === CLI_LOGIN_EXPIRED_CODE) {
+            if (!opts.embedded) {
+              outro(whoAmIResult.error);
+              throw new SkipLoggingError(whoAmIResult.error);
+            }
+            throw new Error(whoAmIResult.error);
+          }
+
           prettyError("Unable to validate existing personal access token", whoAmIResult.error);
 
           if (!opts.embedded) {
@@ -308,6 +335,14 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
             throw new Error(whoAmIResult.error);
           }
         } else {
+          // Only with a working stored login: an expired one is replaced by the new login
+          // below, which saves the pending name instead.
+          await completeProfileIfNeeded({
+            apiClient: new CliApiClient(configuredApiUrl, authConfig.accessToken),
+            name: authConfig.pendingProfileName,
+            profile: options?.profile,
+          });
+
           if (opts.embedded) {
             span.setAttributes({
               "cli.userId": whoAmIResult.data.userId,
@@ -410,7 +445,9 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
           apiClient,
           apiUrl,
           email: opts.email,
-          name: opts.name,
+          // Stored with the pending login, so a replacement finished by a later `login` run still
+          // saves the name the expired login owed.
+          name: opts.name ?? replacedLoginPendingName,
           profile: options?.profile,
           existing: resumableAuthorization,
           callbackPort: callback?.port,
@@ -437,18 +474,20 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
             };
           }
 
+          const pendingProfileName = pendingAuthorization.name;
+
           writeAuthConfigProfile(
             {
               accessToken: indexResult.token,
               apiUrl,
-              pendingProfileName: pendingAuthorization.name,
+              pendingProfileName,
             },
             options?.profile
           );
 
           await completeProfileIfNeeded({
             apiClient: new CliApiClient(apiUrl, indexResult.token),
-            name: pendingAuthorization.name,
+            name: pendingProfileName,
             profile: options?.profile,
           });
 

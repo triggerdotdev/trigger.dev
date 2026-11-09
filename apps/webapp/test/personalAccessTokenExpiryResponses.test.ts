@@ -75,6 +75,14 @@ const EXPIRED_BODY = {
   code: "personal_access_token_expired",
 };
 
+const CLI_LOGIN_EXPIRED_BODY = {
+  error:
+    "Your CLI login expired because it wasn't used for a while. Run `npx trigger.dev@latest login` to log in again (add `--profile <name>` if you use a named profile). With an older CLI version, run `trigger.dev logout` first.",
+  code: "cli_login_expired",
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 type RouteCall = (token: string) => Promise<unknown>;
 
 function call(
@@ -226,6 +234,29 @@ async function createToken(prisma: PrismaClient) {
   return { token: created.token, tokenId: created.id };
 }
 
+/** A CLI login token, last used 8 days ago, so past its 7-day idle limit. */
+async function createIdleCliLogin(prisma: PrismaClient) {
+  db.client = prisma;
+  const suffix = Math.random().toString(36).slice(2, 10);
+  const user = await prisma.user.create({
+    data: {
+      email: `cli-idle-${suffix}@example.com`,
+      authenticationMethod: "MAGIC_LINK",
+      admin: true,
+    },
+  });
+  const created = await createPersonalAccessToken({
+    name: "cli",
+    userId: user.id,
+    idleTimeoutSeconds: 7 * 24 * 60 * 60,
+  });
+  await prisma.personalAccessToken.update({
+    where: { id: created.id },
+    data: { lastAccessedAt: new Date(Date.now() - 8 * DAY_MS) },
+  });
+  return { token: created.token };
+}
+
 describe("a personal access token past its expiry", () => {
   for (const [name, route] of ROUTES) {
     /** Catches: a route that lets an expired token through, or answers it with a bare 401. */
@@ -254,6 +285,20 @@ describe("a personal access token past its expiry", () => {
 
       expect(response.status).toBe(401);
       expect(await response.json()).not.toHaveProperty("code");
+    });
+  }
+});
+
+describe("a CLI login that went unused for too long", () => {
+  for (const [name, route] of ROUTES) {
+    /** Catches: a route that lets an idle CLI login through, or doesn't say to log in again. */
+    postgresTest(`${name}: gets a 401 that says to log in again`, async ({ prisma }) => {
+      const { token } = await createIdleCliLogin(prisma);
+
+      const response = await responseOf(route, token);
+
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual(CLI_LOGIN_EXPIRED_BODY);
     });
   }
 });

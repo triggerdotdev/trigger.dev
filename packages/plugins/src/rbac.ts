@@ -579,11 +579,13 @@ export type PatAuthResult =
       ok: true;
       tokenId: string;
       userId: string;
-      // The token's stored `expiresAt` (null when it never expires). Plugins reject expired
-      // tokens themselves; the host rechecks this so a plugin and host on different versions
-      // can't let one through. Optional only for plugins built against an older contract:
-      // when it is absent the host looks the token up itself.
+      // The token's stored expiry columns. Plugins reject expired tokens themselves; the host
+      // rechecks these so a plugin and host on different versions can't let one through.
+      // Optional only for plugins built against an older contract: when any is absent the host
+      // looks the token up itself.
       expiresAt?: Date | null;
+      idleTimeoutSeconds?: number | null;
+      createdAt?: Date;
       // The token's stored `lastAccessedAt`, returned alongside the
       // identity so the host can throttle the per-request update in JS
       // (skip the DB roundtrip when the value is fresh). Plugins must

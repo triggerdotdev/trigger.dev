@@ -222,7 +222,14 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
       // (see `PatAuthResult.lastAccessedAt` jsdoc). Without this the host
       // would need a second findFirst just to decide whether to fire the
       // updateMany, turning 1 DB roundtrip into 2.
-      select: { id: true, userId: true, lastAccessedAt: true, expiresAt: true },
+      select: {
+        id: true,
+        userId: true,
+        lastAccessedAt: true,
+        expiresAt: true,
+        idleTimeoutSeconds: true,
+        createdAt: true,
+      },
     });
     if (!pat) {
       return { ok: false, status: 401, error: "Invalid PAT" };
@@ -244,6 +251,8 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
       userId: pat.userId,
       lastAccessedAt: pat.lastAccessedAt,
       expiresAt: pat.expiresAt,
+      idleTimeoutSeconds: pat.idleTimeoutSeconds,
+      createdAt: pat.createdAt,
       subject: {
         type: "personalAccessToken",
         tokenId: pat.id,

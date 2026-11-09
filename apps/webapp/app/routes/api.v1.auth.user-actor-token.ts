@@ -1,9 +1,12 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { signUserActorToken } from "@trigger.dev/rbac";
+import { personalAccessTokenValidUntil, signUserActorToken } from "@trigger.dev/rbac";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
-import { personalAccessTokenAuthFailureBody } from "~/services/personalAccessToken.server";
+import {
+  personalAccessTokenAuthFailureBody,
+  updateLastAccessedAtIfStale,
+} from "~/services/personalAccessToken.server";
 import { rbac } from "~/services/rbac.server";
 
 // Callers pick the TTL (default 1h) up to a hard ceiling; renewal = mint again
@@ -66,9 +69,18 @@ export async function action({ request }: ActionFunctionArgs) {
     }
     const body = parsedBody.data ?? {};
 
-    // Every use of the UAT rechecks its source PAT, so a UAT outliving the PAT's expiry would
-    // just stop working early. Grant only what the PAT has left instead.
-    const sourceValidUntil = patAuth.expiresAt ?? undefined;
+    // A successful mint is a use of the PAT, so it keeps a CLI login token from going idle. A
+    // refused request doesn't count.
+    const lastUsedAt = await updateLastAccessedAtIfStale(patAuth.tokenId, patAuth.lastAccessedAt);
+
+    // Every use of the UAT rechecks its source PAT, so a UAT outliving the PAT's fixed or idle
+    // expiry would just stop working early. Grant only what the PAT has left instead.
+    const sourceValidUntil = personalAccessTokenValidUntil({
+      expiresAt: patAuth.expiresAt ?? null,
+      idleTimeoutSeconds: patAuth.idleTimeoutSeconds ?? null,
+      lastAccessedAt: lastUsedAt,
+      createdAt: patAuth.createdAt ?? lastUsedAt,
+    });
     const requestedTtlSeconds = body.ttlSeconds ?? DEFAULT_UAT_TTL_SECONDS;
     const ttlSeconds = sourceValidUntil
       ? Math.max(

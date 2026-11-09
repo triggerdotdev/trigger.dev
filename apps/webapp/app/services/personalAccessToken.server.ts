@@ -20,6 +20,7 @@ import {
   isUserActorToken,
   personalAccessTokenExpiry,
   personalAccessTokenExpiryMessage,
+  personalAccessTokenValidUntil,
   type PersonalAccessTokenExpiry,
   verifyUserActorToken,
   type UserActorClaims,
@@ -59,7 +60,17 @@ type CreatePersonalAccessTokenOptions = {
   auditSource?: AdminAuditSourceEndpoint;
   /** Days until the token stops working. Omitted for tokens that don't expire. */
   expiresInDays?: number;
+  /** Seconds without use after which the token stops working. Omitted for no idle limit. */
+  idleTimeoutSeconds?: number;
 };
+
+/** The columns `personalAccessTokenExpiry` reads, for every lookup that checks expiry. */
+const expiryColumns = {
+  expiresAt: true,
+  idleTimeoutSeconds: true,
+  lastAccessedAt: true,
+  createdAt: true,
+} as const;
 
 export type PersonalAccessTokenExpiryOption = {
   /** Lifetime in days. */
@@ -106,7 +117,7 @@ export function personalAccessTokenAuthFailureBody(failure: {
   return { error: failure.error };
 }
 
-/** The 401 body for an expired token, pointing at the page where a replacement is made. */
+/** The 401 body for an expired token: a CLI login says to log in again, others where to make a new one. */
 export function personalAccessTokenExpiryBody(expiry: PersonalAccessTokenExpiry) {
   return {
     error: personalAccessTokenExpiryMessage(
@@ -128,6 +139,7 @@ export async function getValidPersonalAccessTokens(userId: string) {
       createdAt: true,
       lastAccessedAt: true,
       expiresAt: true,
+      idleTimeoutSeconds: true,
     },
     where: {
       userId,
@@ -142,6 +154,10 @@ export async function getValidPersonalAccessTokens(userId: string) {
     createdAt: pat.createdAt,
     lastAccessedAt: pat.lastAccessedAt,
     expiresAt: pat.expiresAt,
+    idleTimeoutLabel:
+      pat.idleTimeoutSeconds === null
+        ? null
+        : expiryLabel(Math.round(pat.idleTimeoutSeconds / SECONDS_PER_DAY)),
     isExpired: personalAccessTokenExpiry(pat) !== undefined,
     isExpiringSoon:
       pat.expiresAt !== null &&
@@ -266,25 +282,31 @@ export type PersonalAccessTokenAuthenticationResult = {
  * and the apiBuilder's RBAC-routed PAT flow (which gets `lastAccessedAt`
  * from `rbac.authenticatePat`'s result). Keeps the throttle policy in one
  * place rather than expecting every plugin implementer to re-implement it.
+ *
+ * Returns the last-used time now in effect: the cached value when it was fresh, otherwise now.
  */
 export async function updateLastAccessedAtIfStale(
   tokenId: string,
   lastAccessedAt: Date | null
-): Promise<void> {
+): Promise<Date> {
   if (lastAccessedAt && Date.now() - lastAccessedAt.getTime() <= PAT_LAST_ACCESSED_THROTTLE_MS) {
-    return; // fresh — no roundtrip
+    return lastAccessedAt; // fresh — no roundtrip
   }
+  const now = new Date();
+  // If a concurrent request wins the conditional write, it stored a time within the throttle
+  // window of `now`, so `now` is still the last-used time to within that window.
   await prisma.personalAccessToken.updateMany({
     where: {
       id: tokenId,
       revokedAt: null,
       OR: [
         { lastAccessedAt: null },
-        { lastAccessedAt: { lt: new Date(Date.now() - PAT_LAST_ACCESSED_THROTTLE_MS) } },
+        { lastAccessedAt: { lt: new Date(now.getTime() - PAT_LAST_ACCESSED_THROTTLE_MS) } },
       ],
     },
-    data: { lastAccessedAt: new Date() },
+    data: { lastAccessedAt: now },
   });
+  return now;
 }
 
 const AuthorizationHeaderSchema = z.string().regex(/^Bearer .+$/);
@@ -413,11 +435,15 @@ export async function authenticatePersonalAccessToken(
     return;
   }
 
+  // Checked before the lastAccessedAt write, so a request can't revive an idle-expired token.
   if (personalAccessTokenExpiry(personalAccessToken)) {
     return;
   }
 
-  await updateLastAccessedAtIfStale(personalAccessToken.id, personalAccessToken.lastAccessedAt);
+  const lastUsedAt = await updateLastAccessedAtIfStale(
+    personalAccessToken.id,
+    personalAccessToken.lastAccessedAt
+  );
 
   const decryptedToken = decryptPersonalAccessToken(personalAccessToken);
 
@@ -431,7 +457,10 @@ export async function authenticatePersonalAccessToken(
   return {
     userId: personalAccessToken.userId,
     tokenId: personalAccessToken.id,
-    validUntil: personalAccessToken.expiresAt ?? undefined,
+    validUntil: personalAccessTokenValidUntil({
+      ...personalAccessToken,
+      lastAccessedAt: lastUsedAt,
+    }),
   };
 }
 
@@ -453,7 +482,7 @@ export async function getPersonalAccessTokenExpiry(
 
   const personalAccessToken = await $replica.personalAccessToken.findFirst({
     where: { hashedToken: hashToken(token), revokedAt: null },
-    select: { expiresAt: true },
+    select: expiryColumns,
   });
   return personalAccessToken ? personalAccessTokenExpiry(personalAccessToken) : undefined;
 }
@@ -485,7 +514,7 @@ export async function assertSourcePatActive(claims: UserActorClaims): Promise<bo
 
   const found = await prisma.personalAccessToken.findFirst({
     where: { id: claims.pat, revokedAt: null },
-    select: { expiresAt: true },
+    select: expiryColumns,
   });
   return found !== null && !personalAccessTokenExpiry(found);
 }
@@ -663,6 +692,10 @@ export async function createPersonalAccessTokenFromAuthorizationCode(
     name: "cli",
     userId,
     auditSource: { ip: approval.approverIp ?? null, userAgent: null },
+    idleTimeoutSeconds:
+      env.CLI_LOGIN_IDLE_TIMEOUT_DAYS > 0
+        ? env.CLI_LOGIN_IDLE_TIMEOUT_DAYS * SECONDS_PER_DAY
+        : undefined,
   });
 
   const bound = await prisma.authorizationCode.updateMany({
@@ -744,6 +777,7 @@ export async function createPersonalAccessToken({
   roleId,
   auditSource,
   expiresInDays,
+  idleTimeoutSeconds,
 }: CreatePersonalAccessTokenOptions) {
   const token = createToken();
   const encryptedToken = encryptToken(token, env.ENCRYPTION_KEYRING);
@@ -759,6 +793,7 @@ export async function createPersonalAccessToken({
         expiresInDays === undefined
           ? undefined
           : new Date(Date.now() + expiresInDays * SECONDS_PER_DAY * 1000),
+      idleTimeoutSeconds,
     },
   });
 

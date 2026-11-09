@@ -15,6 +15,10 @@ vi.mock("~/db.server", () => ({
     return db.client;
   },
 }));
+const mockEnv = vi.hoisted(() => ({
+  CLI_LOGIN_IDLE_TIMEOUT_DAYS: 7,
+}));
+
 vi.mock("~/env.server", async () => {
   const { withLegacyEncryptionKeyring } = await import("./helpers/encryptionEnv");
   return {
@@ -25,6 +29,10 @@ vi.mock("~/env.server", async () => {
       APP_ORIGIN: "https://dashboard.example.test",
       PERSONAL_ACCESS_TOKEN_EXPIRY_DAYS: [30, 90, 365],
       PERSONAL_ACCESS_TOKEN_DEFAULT_EXPIRY_DAYS: 90,
+      get CLI_LOGIN_IDLE_TIMEOUT_DAYS() {
+        return mockEnv.CLI_LOGIN_IDLE_TIMEOUT_DAYS;
+      },
+      CLI_LOGIN_NETWORK_CHECK: "off",
       // The built-in RBAC fallback, on the test database. An installed plugin would open its
       // own connection instead.
       RBAC_FORCE_FALLBACK: true,
@@ -36,7 +44,9 @@ import { postgresTest } from "@internal/testcontainers";
 import {
   assertSourcePatActive,
   authenticatePersonalAccessToken,
+  createAuthorizationCode,
   createPersonalAccessToken,
+  createPersonalAccessTokenFromAuthorizationCode,
   getPersonalAccessTokenExpiry,
   getValidPersonalAccessTokens,
   isAllowedPersonalAccessTokenExpiry,
@@ -262,5 +272,117 @@ describe("personal access token expiry options and errors", () => {
     for (const days of [0, 7, 3650, Number.NaN]) {
       expect(isAllowedPersonalAccessTokenExpiry(days)).toBe(false);
     }
+  });
+});
+
+describe("CLI login token idle expiry", () => {
+  beforeEach(() => {
+    db.client = null;
+  });
+
+  async function cliLoginToken(prisma: any) {
+    const user = await createUser(prisma);
+    const code = await createAuthorizationCode();
+    const minted = await createPersonalAccessTokenFromAuthorizationCode(code.code, user.id);
+    return { user, minted };
+  }
+
+  async function lastUsed(prisma: any, tokenId: string, daysAgo: number) {
+    const lastAccessedAt = new Date(Date.now() - daysAgo * DAY_MS);
+    await prisma.personalAccessToken.update({ where: { id: tokenId }, data: { lastAccessedAt } });
+    return lastAccessedAt;
+  }
+
+  postgresTest(
+    "a CLI login token gets the idle timeout and no fixed expiry",
+    async ({ prisma }) => {
+      db.client = prisma;
+      const { minted } = await cliLoginToken(prisma);
+
+      const row = await prisma.personalAccessToken.findUniqueOrThrow({ where: { id: minted.id } });
+      expect(row.idleTimeoutSeconds).toBe(7 * 24 * 60 * 60);
+      expect(row.expiresAt).toBeNull();
+
+      const [listed] = await getValidPersonalAccessTokens(row.userId);
+      expect(listed).toMatchObject({ idleTimeoutLabel: "7 days", isExpired: false });
+    }
+  );
+
+  postgresTest(
+    "a CLI login token unused for over 7 days stops working, and the request doesn't revive it",
+    async ({ prisma }) => {
+      db.client = prisma;
+      const { minted } = await cliLoginToken(prisma);
+      const lastAccessedAt = await lastUsed(prisma, minted.id, 8);
+
+      await expect(authenticatePersonalAccessToken(minted.token)).resolves.toBeUndefined();
+      await expect(getPersonalAccessTokenExpiry(bearerRequest(minted.token))).resolves.toEqual({
+        code: "cli_login_expired",
+        expiredAt: new Date(lastAccessedAt.getTime() + 7 * DAY_MS),
+      });
+      await expect(assertSourcePatActive({ pat: minted.id } as any)).resolves.toBe(false);
+
+      const row = await prisma.personalAccessToken.findUniqueOrThrow({ where: { id: minted.id } });
+      expect(row.lastAccessedAt).toEqual(lastAccessedAt);
+    }
+  );
+
+  postgresTest("a CLI login token used within 7 days keeps working", async ({ prisma }) => {
+    db.client = prisma;
+    const { user, minted } = await cliLoginToken(prisma);
+    await lastUsed(prisma, minted.id, 6);
+
+    const authenticated = await authenticatePersonalAccessToken(minted.token);
+    expect(authenticated).toMatchObject({ userId: user.id });
+    // Using it moves the idle window forward, and the result reports the new end of the window.
+    const row = await prisma.personalAccessToken.findUniqueOrThrow({ where: { id: minted.id } });
+    expect(Date.now() - row.lastAccessedAt!.getTime()).toBeLessThan(60_000);
+    expect(authenticated?.validUntil).toEqual(new Date(row.lastAccessedAt!.getTime() + 7 * DAY_MS));
+  });
+
+  postgresTest(
+    "with the idle timeout set to 0, a CLI login token has no idle limit",
+    async ({ prisma }) => {
+      db.client = prisma;
+      mockEnv.CLI_LOGIN_IDLE_TIMEOUT_DAYS = 0;
+      try {
+        const { user, minted } = await cliLoginToken(prisma);
+        await lastUsed(prisma, minted.id, 365);
+
+        const row = await prisma.personalAccessToken.findUniqueOrThrow({
+          where: { id: minted.id },
+        });
+        expect(row.idleTimeoutSeconds).toBeNull();
+        await expect(authenticatePersonalAccessToken(minted.token)).resolves.toMatchObject({
+          userId: user.id,
+        });
+      } finally {
+        mockEnv.CLI_LOGIN_IDLE_TIMEOUT_DAYS = 7;
+      }
+    }
+  );
+
+  postgresTest("a CLI token minted before idle expiry is unaffected", async ({ prisma }) => {
+    db.client = prisma;
+    const { user, minted } = await cliLoginToken(prisma);
+    await prisma.personalAccessToken.update({
+      where: { id: minted.id },
+      data: { idleTimeoutSeconds: null },
+    });
+    await lastUsed(prisma, minted.id, 365);
+
+    await expect(authenticatePersonalAccessToken(minted.token)).resolves.toMatchObject({
+      userId: user.id,
+    });
+  });
+
+  postgresTest("the login-expired error tells the user to log in again", async () => {
+    expect(
+      personalAccessTokenExpiryBody({ code: "cli_login_expired", expiredAt: new Date() })
+    ).toEqual({
+      error:
+        "Your CLI login expired because it wasn't used for a while. Run `npx trigger.dev@latest login` to log in again (add `--profile <name>` if you use a named profile). With an older CLI version, run `trigger.dev logout` first.",
+      code: "cli_login_expired",
+    });
   });
 });

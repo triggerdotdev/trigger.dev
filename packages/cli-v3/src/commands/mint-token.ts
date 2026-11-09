@@ -7,7 +7,7 @@ import {
   handleTelemetry,
   wrapCommandAction,
 } from "../cli/common.js";
-import { isLoggedIn } from "../utilities/session.js";
+import { CLI_LOGIN_EXPIRED_CODE, isLoggedIn, type LoginResult } from "../utilities/session.js";
 
 const MintTokenCommandOptions = CommonCommandOptions.extend({
   ttl: z.coerce.number().int().positive().optional(),
@@ -52,11 +52,7 @@ async function mintToken(options: MintTokenCommandOptions) {
   const authentication = await isLoggedIn(options.profile);
 
   if (!authentication.ok) {
-    throw new Error(
-      authentication.error === "fetch failed"
-        ? "Fetch failed. Platform down?"
-        : `You must login first. Use \`trigger.dev login --profile ${options.profile}\` to login.`
-    );
+    throw new Error(notLoggedInMessage(authentication, options.profile));
   }
 
   const apiClient = new CliApiClient(authentication.auth.apiUrl, authentication.auth.accessToken);
@@ -81,7 +77,26 @@ async function mintToken(options: MintTokenCommandOptions) {
   process.stderr.write(
     `Minted token for ${authentication.email} (expires in ${result.data.expiresInSeconds}s)\n`
   );
+  if (options.ttl && result.data.expiresInSeconds < options.ttl) {
+    process.stderr.write(
+      "The lifetime was shortened so the token doesn't outlive your login or access token.\n"
+    );
+  }
   console.log(result.data.token);
 
   return result.data;
+}
+
+export function notLoggedInMessage(
+  authentication: Extract<LoginResult, { ok: false }>,
+  profile: string
+) {
+  if (authentication.error === "fetch failed") {
+    return "Fetch failed. Platform down?";
+  }
+  // The server's message says why the login expired and how to log in again.
+  if (authentication.errorCode === CLI_LOGIN_EXPIRED_CODE) {
+    return authentication.error;
+  }
+  return `You must login first. Use \`trigger.dev login --profile ${profile}\` to login.`;
 }

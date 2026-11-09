@@ -13,6 +13,7 @@ const mockEnv = vi.hoisted(() => ({
   ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef",
   CLI_LOGIN_NETWORK_CHECK: "log" as "off" | "log" | "confirm",
   CLI_LOGIN_LEGACY_UNTIL: "2999-01-01T00:00:00.000Z",
+  CLI_LOGIN_IDLE_TIMEOUT_DAYS: 7,
 }));
 const logger = vi.hoisted(() => ({ debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() }));
 

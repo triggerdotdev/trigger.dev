@@ -167,6 +167,10 @@ model PersonalAccessToken {
   /// After this the token no longer authenticates. Null means it never expires.
   expiresAt DateTime?
 
+  /// Set on CLI login tokens: they stop authenticating this many seconds after their last use
+  /// (or creation, if never used). Null means no idle limit.
+  idleTimeoutSeconds Int?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
