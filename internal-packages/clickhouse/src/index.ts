@@ -3,6 +3,7 @@ export type { ClickHouseSettings };
 import { ClickhouseClient } from "./client/client.js";
 import type { ClickhouseReader, ClickhouseWriter } from "./client/types.js";
 import { NoopClient } from "./client/noop.js";
+import { MirroredClickhouseWriter } from "./client/mirroredWriter.js";
 import {
   insertTaskRunsCompactArrays,
   insertRawTaskRunPayloadsCompactArrays,
@@ -164,6 +165,8 @@ export type ClickhouseCommonConfig = {
   };
   maxOpenConnections?: number;
   requestTimeoutMs?: number;
+  /** Every write that the primary accepts is also sent to this ClickHouse service, detached from the caller. Reads are unaffected. */
+  mirrorUrl?: string;
 };
 
 export type ClickHouseConfig =
@@ -193,6 +196,7 @@ export class ClickHouse {
   public readonly writer: ClickhouseWriter;
   private readonly logger: Logger;
   private _splitClients: boolean;
+  private _mirror?: ClickhouseClient;
 
   constructor(config: ClickHouseConfig) {
     this.logger = config.logger ?? new Logger("ClickHouse", config.logLevel ?? "debug");
@@ -217,7 +221,7 @@ export class ClickHouse {
         compression: config.compression,
       });
       this.reader = client;
-      this.writer = client;
+      this.writer = this.withMirror(client, config.name ?? "clickhouse", config);
 
       this._splitClients = false;
     } else if (config.writerUrl && config.readerUrl) {
@@ -234,7 +238,7 @@ export class ClickHouse {
         requestTimeoutMs: config.readerRequestTimeoutMs ?? config.requestTimeoutMs,
         compression: config.compression,
       });
-      this.writer = new ClickhouseClient({
+      const writer = new ClickhouseClient({
         name: config.writerName ?? "clickhouse-writer",
         url: config.writerUrl,
         clickhouseSettings: config.clickhouseSettings,
@@ -247,6 +251,7 @@ export class ClickHouse {
         requestTimeoutMs: config.requestTimeoutMs,
         compression: config.compression,
       });
+      this.writer = this.withMirror(writer, config.writerName ?? "clickhouse-writer", config);
 
       this._splitClients = true;
     } else {
@@ -276,17 +281,43 @@ export class ClickHouse {
     });
   }
 
+  private withMirror(
+    writer: ClickhouseClient,
+    name: string,
+    config: ClickHouseConfig
+  ): ClickhouseWriter {
+    if (!config.mirrorUrl) return writer;
+
+    this.logger.info("🪞 Mirroring ClickHouse writes to host", {
+      host: new URL(config.mirrorUrl).host,
+    });
+
+    this._mirror = new ClickhouseClient({
+      name: `${name}-mirror`,
+      url: config.mirrorUrl,
+      clickhouseSettings: config.clickhouseSettings,
+      logger: this.logger,
+      meter: config.meter,
+      logLevel: config.logLevel,
+      keepAlive: config.keepAlive,
+      httpAgent: config.httpAgent,
+      maxOpenConnections: config.maxOpenConnections,
+      requestTimeoutMs: config.requestTimeoutMs,
+      compression: config.compression,
+    });
+    return new MirroredClickhouseWriter(writer, this._mirror, this.logger);
+  }
+
   /** True when reads and writes go to separate services. */
   get hasSeparateReader(): boolean {
     return this._splitClients;
   }
 
   async close() {
-    if (this._splitClients) {
-      await Promise.all([this.reader.close(), this.writer.close()]);
-    } else {
-      await this.reader.close();
-    }
+    const closing = [this.reader.close()];
+    if (this._splitClients) closing.push(this.writer.close());
+    else if (this._mirror) closing.push(this._mirror.close());
+    await Promise.all(closing);
   }
 
   get taskRuns() {

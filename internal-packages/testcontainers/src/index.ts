@@ -96,7 +96,7 @@ export type {
   StartedRedisContainer,
 };
 
-export { MinIOContainer };
+export { MinIOContainer, ClickHouseContainer, withCiResourceLimits };
 
 type Use<T> = (value: T) => Promise<void>;
 

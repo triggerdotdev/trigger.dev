@@ -33,6 +33,7 @@ export type ClickhouseDataStoreConfig = z.infer<typeof ClickhouseDataStoreConfig
 type ParsedClickhouseDataStore = {
   kind: "CLICKHOUSE";
   url: string;
+  mirrorUrl?: string;
 };
 
 /** Union of all parsed data store types. Extend as new DataStoreKind values are added. */

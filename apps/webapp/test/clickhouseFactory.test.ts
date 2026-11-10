@@ -125,6 +125,62 @@ describe("ClickHouse Factory", () => {
       expect(after).toBe(defaultClient);
     }
   );
+  /**
+   * Catches: a factory cache key that ignores the mirror URL, so setting or clearing a mirror keeps
+   * serving the previously built client and event repository.
+   */
+  postgresTest(
+    "setting a mirror URL yields a fresh client whose writer is mirrored",
+    async ({ prisma }) => {
+      const registry = new OrganizationDataStoresRegistry(prisma, prisma);
+
+      await registry.addDataStore({
+        key: "mirror-store",
+        kind: "CLICKHOUSE",
+        organizationIds: ["org-mirror"],
+        config: ClickhouseConnectionSchema.parse({ url: TEST_URL }),
+      });
+      await registry.loadFromDatabase();
+
+      const factory = new ClickhouseFactory(registry);
+      const before = await factory.getClickhouseForOrganization("org-mirror", "standard");
+      expect(before.writer).toBe(before.reader);
+
+      await registry.updateDataStore({
+        key: "mirror-store",
+        kind: "CLICKHOUSE",
+        organizationIds: ["org-mirror"],
+        config: ClickhouseConnectionSchema.parse({ url: TEST_URL, mirrorUrl: TEST_URL_2 }),
+      });
+      await registry.reload();
+
+      const mirrored = await factory.getClickhouseForOrganization("org-mirror", "standard");
+      expect(mirrored).not.toBe(before);
+      expect(mirrored.writer).not.toBe(mirrored.reader);
+
+      const repoBefore = factory.getEventRepositoryForOrganizationSync(
+        "clickhouse_v2",
+        "org-mirror"
+      );
+
+      await registry.updateDataStore({
+        key: "mirror-store",
+        kind: "CLICKHOUSE",
+        organizationIds: ["org-mirror"],
+        config: ClickhouseConnectionSchema.parse({ url: TEST_URL }),
+      });
+      await registry.reload();
+
+      const cleared = await factory.getClickhouseForOrganization("org-mirror", "standard");
+      expect(cleared).toBe(before);
+      const repoAfter = factory.getEventRepositoryForOrganizationSync(
+        "clickhouse_v2",
+        "org-mirror"
+      );
+      expect(repoAfter.key).not.toBe(repoBefore.key);
+    }
+  );
+
   postgresTest(
     "routes the v1 store to the shared v2 repository when the reroute is on",
     async ({ prisma }) => {
