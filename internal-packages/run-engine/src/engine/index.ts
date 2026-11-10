@@ -440,7 +440,25 @@ export class RunEngine {
         recoverWaitpointBlock: async ({ payload }) => {
           await this.waitpointSystem.recoverWaitpointBlock(payload);
         },
+        recoverDateTimeWaitpoint: async ({ payload }) => {
+          await this.waitpointSystem.recoverDateTimeWaitpoint(payload);
+        },
         finishWaitpoint: async ({ payload }) => {
+          if (
+            this.waitpointSystem.isStoreRoutingWired &&
+            (await this.waitpointSystem.isStoreRoutingEnabled(payload.organizationId))
+          ) {
+            const parsed = parseWaitpointId(payload.waitpointId);
+            await this.waitpointSystem.completeWaitpoint({
+              id: payload.waitpointId,
+              organizationId: payload.organizationId,
+              ...(parsed.format !== "legacy" && parsed.type === "DATETIME"
+                ? { onlyIfPending: true }
+                : {}),
+              output: payload.error ? { value: payload.error, isError: true } : undefined,
+            });
+            return;
+          }
           await this.waitpointSystem.completeWaitpoint({
             id: payload.waitpointId,
             organizationId: payload.organizationId,
@@ -2477,6 +2495,7 @@ export class RunEngine {
     runId,
     projectId,
     environmentId,
+    organizationId,
     completedAfter,
     idempotencyKey,
     idempotencyKeyExpiresAt,
@@ -2485,6 +2504,8 @@ export class RunEngine {
     runId?: string;
     projectId: string;
     environmentId: string;
+    /** The blocking run's org, so a store DATETIME mint can be considered. Absent ⇒ legacy (dark). */
+    organizationId?: string;
     completedAfter: Date;
     idempotencyKey?: string;
     idempotencyKeyExpiresAt?: Date;
@@ -2493,6 +2514,7 @@ export class RunEngine {
       runId,
       projectId,
       environmentId,
+      organizationId,
       completedAfter,
       idempotencyKey,
       idempotencyKeyExpiresAt,
@@ -2504,6 +2526,7 @@ export class RunEngine {
     runId,
     environmentId,
     projectId,
+    organizationId,
     idempotencyKey,
     idempotencyKeyExpiresAt,
     timeout,
@@ -2515,6 +2538,7 @@ export class RunEngine {
     runId?: string;
     environmentId: string;
     projectId: string;
+    organizationId?: string;
     idempotencyKey?: string;
     idempotencyKeyExpiresAt?: Date;
     timeout?: Date;
@@ -2527,6 +2551,7 @@ export class RunEngine {
       runId,
       environmentId,
       projectId,
+      organizationId,
       idempotencyKey,
       idempotencyKeyExpiresAt,
       timeout,
@@ -2686,6 +2711,16 @@ export class RunEngine {
     return this.batchQueue.getEnqueuedCount(batchId);
   }
 
+  /** Native DATETIME read for callers that already selected that storage identity. */
+  async getStoreDateTimeWaitpoint(params: {
+    environmentId: string;
+    projectId: string;
+    waitpointId: string;
+    organizationId?: string;
+  }): Promise<Waitpoint | null> {
+    return this.waitpointSystem.readExistingStoreDateTimeWaitpoint(params);
+  }
+
   async getWaitpoint({
     waitpointId,
     environmentId,
@@ -2719,6 +2754,21 @@ export class RunEngine {
     return waitpoint;
   }
 
+  async readExistingStoreDateTimeWaitpointByKey(params: {
+    runId?: string;
+    environmentId: string;
+    projectId: string;
+    organizationId?: string;
+    idempotencyKey: string;
+    standaloneResidency?: "NEW" | "LEGACY";
+    standaloneShardKey?: ShardKey;
+  }): Promise<Waitpoint | null> {
+    return this.waitpointSystem.readExistingStoreDateTimeWaitpointByKey(params);
+  }
+
+  /**
+   * Prevents a run from continuing until the waitpoint is completed.
+   */
   async blockRunWithWaitpoint({
     runId,
     waitpoints,
@@ -2779,6 +2829,7 @@ export class RunEngine {
     output,
     armGuard,
     organizationId,
+    onlyIfPending,
   }: {
     id: string;
     output?: {
@@ -2797,6 +2848,8 @@ export class RunEngine {
      * without a per-completion lookup. Optional: a caller without it stays conservative.
      */
     organizationId?: string;
+    /** Internal DATETIME token/deadline compatibility; preserves the first completion. */
+    onlyIfPending?: boolean;
   }): Promise<Waitpoint> {
     // Guard first, so an unclassifiable id fails here instead of applying locally. Do not branch
     // on decision.store: waitpointSystem.completeWaitpoint does the store routing.
@@ -2809,6 +2862,7 @@ export class RunEngine {
       output,
       armGuard: armGuard ?? false,
       organizationId,
+      onlyIfPending,
     });
   }
 

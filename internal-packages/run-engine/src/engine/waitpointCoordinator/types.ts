@@ -1,4 +1,4 @@
-import type { ReadClient, SnapshotResidency } from "@internal/run-store";
+import type { ReadClient, SnapshotResidency, RunStore } from "@internal/run-store";
 import type { PrismaClientOrTransaction, Waitpoint } from "@trigger.dev/database";
 import type { ShardKey } from "@trigger.dev/core/v3/isomorphic";
 import type { WaitpointMintType, WaitpointResidency } from "./mintPolicy.js";
@@ -465,6 +465,8 @@ export type BlockerRegistration =
 
 export type CompleteParams = RunKeyedRoutingContext & {
   waitpointId: string;
+  /** Automatic deadline completion preserves any earlier explicit completion atomically. */
+  onlyIfPending?: boolean;
   output?: {
     value: string;
     type?: string;
@@ -494,6 +496,15 @@ export type CreateWaitpointResult =
   | { kind: "created"; waitpoint: Waitpoint };
 
 export type CreateDateTimeWaitpointParams = {
+  /** Fixed foreground publication window for an unkeyed native candidate; internal only. */
+  creationAcceptUntil?: number;
+  /** Stable candidate whose recovery job was armed before acquiring the PG key mutex. */
+  storeId?: string;
+  /** Keyed creation fence and physical owning-database reservation scope; internal only. */
+  keyedCreation?: { acceptUntil: number; scope: string; claimToken: string };
+  keyClaim?: { store: RunStore; tx: PrismaClientOrTransaction };
+  /** Write-ahead obligation, invoked only after routing chose the store and before creation. */
+  beforeStoreCreate?: (id: string) => Promise<void>;
   /**
    * Co-locates the waitpoint with this run's DB. There is deliberately no standalone arm: omitting
    * it on a gen-2 environment lands the row on a gen-1 store, silently. A standalone caller needs
@@ -511,6 +522,7 @@ export type CreateDateTimeWaitpointParams = {
 
 export type CreateManualWaitpointParams = {
   runId?: string;
+  keyClaim?: { store: RunStore; tx: PrismaClientOrTransaction };
   environmentId: string;
   projectId: string;
   idempotencyKey?: string;

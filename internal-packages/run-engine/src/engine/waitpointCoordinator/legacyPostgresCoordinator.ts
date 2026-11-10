@@ -1,4 +1,8 @@
-import type { RunStore } from "@internal/run-store";
+import {
+  DelegatingRunStore,
+  type RunStore,
+  type WaitpointColocationOptions,
+} from "@internal/run-store";
 import { tryCatch } from "@trigger.dev/core/v3";
 import {
   mintWaitpointIdFor,
@@ -63,6 +67,16 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     this.#getRunStore = options.runStore;
     this.prisma = options.prisma;
     this.logger = options.logger;
+  }
+
+  /** Enabled key arbitration only: reuse the original legacy creators on the owning transaction. */
+  withKeyClaim(claim: NonNullable<CreateDateTimeWaitpointParams["keyClaim"]>) {
+    const store = new KeyClaimRunStore(claim.store, claim.tx);
+    return new LegacyPostgresWaitpointCoordinator({
+      runStore: () => store,
+      prisma: this.prisma,
+      logger: this.logger,
+    });
   }
 
   async clearRunBlockState({
@@ -485,6 +499,8 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
         return { kind: "created", waitpoint };
       } catch (error) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+          // A failed statement aborts the claim transaction; only a fresh transaction can retry it.
+          if (this.runStore instanceof KeyClaimRunStore) throw error;
           // Handle unique constraint violation (conflict)
           attempts++;
           if (attempts >= maxRetries) {
@@ -580,5 +596,39 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
       batchId,
       batchIndex,
     });
+  }
+}
+
+/** Used only after the enabled caller has acquired the physical key owner's transaction. */
+class KeyClaimRunStore extends DelegatingRunStore {
+  constructor(
+    delegate: RunStore,
+    private readonly claimTx: PrismaClientOrTransaction
+  ) {
+    super(delegate);
+  }
+
+  override findWaitpoint<T extends Prisma.WaitpointFindFirstArgs>(
+    args: Prisma.SelectSubset<T, Prisma.WaitpointFindFirstArgs>,
+    _client?: Parameters<RunStore["findWaitpoint"]>[1],
+    opts?: WaitpointColocationOptions
+  ): Promise<Prisma.WaitpointGetPayload<T> | null> {
+    return this.delegate.findWaitpoint(args, this.claimTx, opts);
+  }
+
+  override updateWaitpoint<T extends Prisma.WaitpointUpdateArgs>(
+    args: Prisma.SelectSubset<T, Prisma.WaitpointUpdateArgs>,
+    _tx?: PrismaClientOrTransaction,
+    opts?: WaitpointColocationOptions
+  ): Promise<Prisma.WaitpointGetPayload<T>> {
+    return this.delegate.updateWaitpoint(args, this.claimTx, opts);
+  }
+
+  override upsertWaitpoint<T extends Prisma.WaitpointUpsertArgs>(
+    args: Prisma.SelectSubset<T, Prisma.WaitpointUpsertArgs>,
+    _tx?: PrismaClientOrTransaction,
+    opts?: WaitpointColocationOptions
+  ): Promise<Prisma.WaitpointGetPayload<T>> {
+    return this.delegate.upsertWaitpoint(args, this.claimTx, opts);
   }
 }

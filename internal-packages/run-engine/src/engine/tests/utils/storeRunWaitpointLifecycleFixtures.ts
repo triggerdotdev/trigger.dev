@@ -7,7 +7,7 @@ import {
   type SnapshotStoreDial,
   type RunStore,
 } from "@internal/run-store";
-import { type RedisOptions } from "@internal/redis";
+import type { RedisOptions } from "@internal/redis";
 import type { PrismaClient } from "@trigger.dev/database";
 import { expect, vi } from "vitest";
 import { RunEngine } from "../../index.js";

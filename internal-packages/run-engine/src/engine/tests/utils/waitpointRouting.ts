@@ -2,7 +2,7 @@ import { trace } from "@internal/tracing";
 import { RunEngine } from "../../index.js";
 import type { RunEngineOptions } from "../../types.js";
 import { generateInternalId } from "@trigger.dev/core/v3/isomorphic";
-import type { RedisOptions } from "@internal/redis";
+import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
 import { PostgresRunStore } from "@internal/run-store";
 import { Logger } from "@trigger.dev/core/logger";
 import type { PrismaClient } from "@trigger.dev/database";
@@ -36,6 +36,15 @@ export function routing(
   });
 }
 
+export async function keys(redisOptions: RedisOptions, pattern = "wp:v1:*") {
+  const redis = createRedisClient(redisOptions);
+  try {
+    return (await redis.keys(pattern)).sort();
+  } finally {
+    await redis.quit();
+  }
+}
+
 export async function context(prisma: PrismaClient) {
   const env = await seedSnapshotEnvironment(prisma);
   return {
@@ -66,6 +75,37 @@ export async function parent(prisma: PrismaClient) {
     },
   });
   return { runId, projectId: env.projectId, environmentId: env.id, client: prisma };
+}
+
+async function blockers(prisma: PrismaClient, store: WaitpointStoreCoordinator) {
+  const args = await parent(prisma);
+  const legacy = await routing(prisma).createDateTimeWaitpoint({
+    ...args,
+    completedAfter: new Date(),
+  });
+  const stored = await new StoreWaitpointCoordinator({ store }).createDateTimeWaitpoint({
+    ...args,
+    completedAfter: new Date(),
+  });
+  return { args, legacyId: legacy.waitpoint.id, storeId: stored.waitpoint.id };
+}
+
+export async function seedMixed(prisma: PrismaClient, store: WaitpointStoreCoordinator) {
+  const fixture = await blockers(prisma, store);
+  await routing(prisma).registerBlocks({ ...fixture.args, waitpointIds: [fixture.legacyId] });
+  await store.absorbBlockers({
+    runId: fixture.args.runId,
+    blockId: "block",
+    edges: [
+      { waitpointId: fixture.storeId, type: "DATETIME", createdAt: new Date().toISOString() },
+    ],
+  });
+  return fixture;
+}
+
+// Access the existing real client for fixture markers and durable publication; no method is replaced.
+export function coordinatorRedis(store: WaitpointStoreCoordinator): Redis {
+  return (store as unknown as { redis: Redis }).redis;
 }
 
 export function routingEngine(

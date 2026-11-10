@@ -1,11 +1,13 @@
 import { deriveRunWaitpointId } from "../waitpointCoordinator/runWaitpointId.js";
-import { containerTestWithIsolatedRedis as containerTest } from "@internal/testcontainers";
+import { keyedWaitpointTest as containerTest } from "./utils/keyedWaitpointTest.js";
 import { hasStoreWaitpoints, RedisSnapshotStore } from "@internal/run-store";
 import {
   deriveWaitpointIdFromAnchor,
   generateRunOpsId,
   RunId,
   generateWaitpointId,
+  parseWaitpointId,
+  WaitpointId,
 } from "@trigger.dev/core/v3/isomorphic";
 import { createRedisClient } from "@internal/redis";
 import { describe, expect, vi } from "vitest";
@@ -392,6 +394,332 @@ describe("storeWaitpointLifecycleRouting", () => {
           expect(await prisma.waitpoint.count({ where: { completedByTaskRunId: child.id } })).toBe(
             0
           );
+        } finally {
+          await engine.quit();
+          await store.quit();
+
+          await snapshotStore.quit();
+        }
+      }
+    );
+  });
+
+  describe("Store DATETIME waitpoint lifecycle (real RunEngine + MemoryDB)", () => {
+    containerTest(
+      "disabled creation and scheduled legacy completion preserve payloads with unavailable native store",
+      async ({ prisma, redisOptions }) => {
+        const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+        const store = new WaitpointStoreCoordinator({ redisOptions });
+        await store.quit();
+        const engine = makeEngine(prisma, redisOptions, { store, snapshotStore, enabled: false });
+        try {
+          const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+          const timeout = new Date(Date.now() + 1000);
+          const manual = await engine.createManualWaitpoint({
+            projectId: env.project.id,
+            environmentId: env.id,
+            organizationId: env.organization.id,
+            timeout,
+          });
+          const manualJob = await engine["worker"].getJob(`finishWaitpoint.${manual.waitpoint.id}`);
+          expect(manualJob!.item).toEqual({
+            waitpointId: manual.waitpoint.id,
+            error: expect.any(String),
+          });
+          const dateTime = await engine.createDateTimeWaitpoint({
+            projectId: env.project.id,
+            environmentId: env.id,
+            organizationId: env.organization.id,
+            completedAfter: timeout,
+          });
+          const dateJob = await engine["worker"].getJob(`finishWaitpoint.${dateTime.waitpoint.id}`);
+          expect(dateJob!.item).toEqual({ waitpointId: dateTime.waitpoint.id });
+          // Present org context on an old finish job must also remain on the legacy path.
+          await engine["worker"].enqueue({
+            id: `finish-off-org:${dateTime.waitpoint.id}`,
+            job: "finishWaitpoint",
+            payload: { waitpointId: dateTime.waitpoint.id, organizationId: env.organization.id },
+          });
+          await expect
+            .poll(
+              async () =>
+                prisma.waitpoint.findMany({
+                  where: { id: { in: [manual.waitpoint.id, dateTime.waitpoint.id] } },
+                  orderBy: { type: "asc" },
+                  select: { type: true, status: true, outputIsError: true },
+                }),
+              {
+                timeout: 5000,
+                interval: 20,
+                message: "disabled legacy timeout jobs never completed",
+              }
+            )
+            .toEqual([
+              { type: "DATETIME", status: "COMPLETED", outputIsError: false },
+              { type: "MANUAL", status: "COMPLETED", outputIsError: true },
+            ]);
+        } finally {
+          await engine.quit();
+          await snapshotStore.quit();
+        }
+      }
+    );
+
+    for (const dial of ["off", "dual-write", "redis-only"] as const) {
+      for (const enabled of [false, true]) {
+        containerTest(
+          `DATETIME rollout is independent: TRES=${dial}, waitpoints=${enabled}`,
+          async ({ prisma, redisOptions }) => {
+            await prisma.$executeRawUnsafe(
+              `ALTER TABLE "_completedWaitpoints" DROP CONSTRAINT IF EXISTS "_completedWaitpoints_B_fkey"`
+            );
+            const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+            const store = new WaitpointStoreCoordinator({ redisOptions });
+            let enabledOrganization: string | undefined;
+            const engine = makeEngine(prisma, redisOptions, {
+              store,
+              snapshotStore,
+              resolveDial: () => dial,
+              isWaitpointStoreEnabled: (organizationId) => organizationId === enabledOrganization,
+            });
+            try {
+              const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+              const orgId = env.organization.id;
+              await setupBackgroundWorker(engine, env, ["waiter-task"]);
+
+              const run = await triggerRun(engine, env, prisma, {
+                friendlyId:
+                  dial === "off" ? RunId.generate().friendlyId : `run_${generateRunOpsId()}`,
+                taskIdentifier: "waiter-task",
+              });
+              await dequeueAndStart(engine, "c_waiter");
+
+              enabledOrganization = enabled ? orgId : undefined;
+              if (enabled && dial === "off") {
+                const controlOrganization = await prisma.organization.create({
+                  data: { title: "Control", slug: "control-datetime" },
+                });
+                const controlProject = await prisma.project.create({
+                  data: {
+                    name: "Control",
+                    slug: "control",
+                    externalRef: "control-datetime",
+                    organizationId: controlOrganization.id,
+                    defaultWorkerGroupId: env.project.defaultWorkerGroupId,
+                  },
+                });
+                const controlEnvironment = await prisma.runtimeEnvironment.create({
+                  data: {
+                    type: "PRODUCTION",
+                    slug: "control",
+                    projectId: controlProject.id,
+                    organizationId: controlOrganization.id,
+                    apiKey: "control-key",
+                    pkApiKey: "control-pk",
+                    shortcode: "control-datetime",
+                  },
+                  include: { project: true, organization: true, orgMember: true },
+                });
+                const controlRun = await triggerRun(engine, controlEnvironment, prisma, {
+                  friendlyId: RunId.generate().friendlyId,
+                  taskIdentifier: "waiter-task",
+                });
+                const control = await engine.createDateTimeWaitpoint({
+                  runId: controlRun.id,
+                  projectId: controlProject.id,
+                  environmentId: controlEnvironment.id,
+                  organizationId: controlOrganization.id,
+                  completedAfter: new Date(Date.now() + 60_000),
+                  idempotencyKey: "control-datetime",
+                });
+                expect(parseWaitpointId(control.waitpoint.id).format).toBe("legacy");
+                expect(await prisma.waitpoint.count({ where: { id: control.waitpoint.id } })).toBe(
+                  1
+                );
+                expect(await store.probeWaitpointPresence(control.waitpoint.id)).toBe("absent");
+              }
+              // Keep the scheduling window short while the block is installed.
+              const completedAfter = new Date(Date.now() + 1000);
+              const { waitpoint, isCached } = await engine.createDateTimeWaitpoint({
+                runId: run.id,
+                projectId: env.project.id,
+                environmentId: env.id,
+                organizationId: orgId,
+                completedAfter,
+                idempotencyKey: "independent-datetime",
+              });
+
+              expect(isCached).toBe(false);
+              expect(parseWaitpointId(waitpoint.id).format).toBe(enabled ? "b32hexW" : "legacy");
+              expect(await store.probeWaitpointPresence(waitpoint.id)).toBe(
+                enabled ? "present" : "absent"
+              );
+              expect(await prisma.waitpoint.count({ where: { id: waitpoint.id } })).toBe(
+                enabled ? 0 : 1
+              );
+
+              const blockOperation = enabled
+                ? await engine.waitpointSystem.buildStoreBlockOperation({
+                    runId: run.id,
+                    waitpointId: waitpoint.id,
+                    organizationId: orgId,
+                  })
+                : undefined;
+              await engine.blockRunWithWaitpoint({
+                runId: run.id,
+                waitpoints: waitpoint.id,
+                projectId: env.project.id,
+                organizationId: orgId,
+
+                blockOperation,
+              });
+
+              const blocked = await engine.getRunExecutionData({ runId: run.id });
+              expect(blocked?.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
+
+              // The real scheduled completion and fanout must resume this run.
+              await vi.waitFor(
+                async () => {
+                  const ed = await engine.getRunExecutionData({ runId: run.id });
+                  expect(
+                    ed?.snapshot.executionStatus,
+                    "run never reached the expected execution status"
+                  ).toBe("EXECUTING");
+                  expect(ed?.completedWaitpoints).toContainEqual(
+                    expect.objectContaining({
+                      id: waitpoint.id,
+                      type: "DATETIME",
+                      outputIsError: false,
+                    })
+                  );
+                },
+                { timeout: 10_000, interval: 100 }
+              );
+              const replay = await engine.createDateTimeWaitpoint({
+                runId: run.id,
+                projectId: env.project.id,
+                environmentId: env.id,
+                organizationId: orgId,
+                completedAfter: new Date(Date.now() + 60_000),
+                idempotencyKey: "independent-datetime",
+              });
+              expect(replay.isCached).toBe(true);
+              expect(replay.waitpoint.id).toBe(waitpoint.id);
+              expect(replay.waitpoint.completedAfter).toEqual(completedAfter);
+              expect((await store.readBlockState(run.id)).pendingIds).toEqual([]);
+              expect(await prisma.taskRunWaitpoint.count({ where: { taskRunId: run.id } })).toBe(0);
+            } finally {
+              await engine.quit();
+              await store.quit();
+
+              await snapshotStore.quit();
+            }
+          }
+        );
+      }
+    }
+
+    containerTest(
+      "keyed DATETIME preserves cached identities, deadlines and expiry in its owning store",
+      async ({ prisma, redisOptions }) => {
+        const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+        const store = new WaitpointStoreCoordinator({ redisOptions });
+        const engine = makeEngine(prisma, redisOptions, {
+          store,
+          snapshotStore,
+          resolveDial: () => "off",
+        });
+        try {
+          const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+          const orgId = env.organization.id;
+          await setupBackgroundWorker(engine, env, ["waiter-task"]);
+          const run = await triggerRun(engine, env, prisma, {
+            friendlyId: RunId.generate().friendlyId,
+            taskIdentifier: "waiter-task",
+          });
+          await dequeueAndStart(engine, "c_waiter_idem");
+
+          const base = {
+            runId: run.id,
+            projectId: env.project.id,
+            environmentId: env.id,
+            organizationId: orgId,
+            completedAfter: new Date(Date.now() + 60_000),
+          };
+
+          // A changed request deadline cannot replace the first winner's deadline.
+          const first = await engine.createDateTimeWaitpoint({ ...base, idempotencyKey: "dt-1" });
+          const second = await engine.createDateTimeWaitpoint({
+            ...base,
+            completedAfter: new Date(0),
+            idempotencyKey: "dt-1",
+          });
+          expect(second.isCached).toBe(true);
+          expect(second.waitpoint.id).toBe(first.waitpoint.id);
+          expect(second.waitpoint.completedAfter).toEqual(base.completedAfter);
+          expect(parseWaitpointId(first.waitpoint.id).format).toBe("b32hexW");
+          expect(await prisma.waitpoint.count({ where: { id: first.waitpoint.id } })).toBe(0);
+          expect(await store.probeWaitpointPresence(first.waitpoint.id)).toBe("present");
+          const tokenReuse = await engine.waitpointSystem.createManualWaitpoint({
+            environmentId: env.id,
+            projectId: env.project.id,
+            organizationId: orgId,
+            idempotencyKey: "dt-1",
+          });
+          expect(tokenReuse).toMatchObject({
+            isCached: true,
+            waitpoint: { id: first.waitpoint.id, type: "DATETIME" },
+          });
+          const old = await prisma.waitpoint.create({
+            data: {
+              ...WaitpointId.generate(),
+              type: "DATETIME",
+              environmentId: env.id,
+              projectId: env.project.id,
+              idempotencyKey: "old-pg",
+              userProvidedIdempotencyKey: true,
+              completedAfter: base.completedAfter,
+            },
+          });
+          expect(
+            (await engine.createDateTimeWaitpoint({ ...base, idempotencyKey: "old-pg" })).waitpoint
+              .id
+          ).toBe(old.id);
+
+          const expiredPg = await prisma.waitpoint.create({
+            data: {
+              ...WaitpointId.generate(),
+              type: "DATETIME",
+              environmentId: env.id,
+              projectId: env.project.id,
+              idempotencyKey: "expired-pg",
+              userProvidedIdempotencyKey: true,
+              idempotencyKeyExpiresAt: new Date(Date.now() - 1000),
+              completedAfter: base.completedAfter,
+            },
+          });
+          const migrated = await engine.createDateTimeWaitpoint({
+            ...base,
+            idempotencyKey: "expired-pg",
+          });
+          expect(parseWaitpointId(migrated.waitpoint.id).format).toBe("b32hexW");
+          const retired = await prisma.waitpoint.findUniqueOrThrow({ where: { id: expiredPg.id } });
+          expect(retired.inactiveIdempotencyKey).toBe("expired-pg");
+          expect(retired.idempotencyKey).not.toBe("expired-pg");
+          expect(retired.completedAfter).toEqual(expiredPg.completedAfter);
+
+          // Strict expiry still mints a fresh waitpoint once the key has expired.
+          const expired = await engine.createDateTimeWaitpoint({
+            ...base,
+            idempotencyKey: "dt-exp",
+            idempotencyKeyExpiresAt: new Date(Date.now() - 1000),
+          });
+          const afterExpiry = await engine.createDateTimeWaitpoint({
+            ...base,
+            idempotencyKey: "dt-exp",
+          });
+          expect(afterExpiry.waitpoint.id).not.toBe(expired.waitpoint.id);
+          expect(afterExpiry.isCached).toBe(false);
         } finally {
           await engine.quit();
           await store.quit();

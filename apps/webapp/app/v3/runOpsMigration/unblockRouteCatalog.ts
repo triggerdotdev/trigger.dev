@@ -39,7 +39,13 @@ export const UNBLOCK_ROUTES: readonly UnblockRoute[] = [
     id: "index.finishWaitpoint",
     kind: "DATETIME",
     site: INDEX,
-    symbol: "finishWaitpoint redis job",
+    symbol: "finishWaitpoint redis job (store routing enabled)",
+  },
+  {
+    id: "index.finishWaitpoint.legacy",
+    kind: "DATETIME",
+    site: INDEX,
+    symbol: "finishWaitpoint redis job (store routing disabled)",
   },
   {
     id: "wp.sink",
@@ -58,6 +64,18 @@ export const UNBLOCK_ROUTES: readonly UnblockRoute[] = [
     kind: "RUN",
     site: WAITPOINT_SYSTEM,
     symbol: "ensureWaitpointCompleted (completion-guard redelivery)",
+  },
+  {
+    id: "wp.recoverDateTime",
+    kind: "DATETIME",
+    site: WAITPOINT_SYSTEM,
+    symbol: "recoverDateTimeWaitpoint (durable deadline completion)",
+  },
+  {
+    id: "wp.recoverKeyedDateTime",
+    kind: "DATETIME",
+    site: WAITPOINT_SYSTEM,
+    symbol: "recoverDateTimeWaitpoint (published keyed winner deadline completion)",
   },
   {
     id: "wp.blockAndComplete",

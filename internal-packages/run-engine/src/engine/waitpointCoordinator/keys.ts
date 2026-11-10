@@ -128,6 +128,11 @@ export function organizationPendingSourceIndexKey(
   return `${NAMESPACE}:f{p${partition}}:org:${organizationId}:sources`;
 }
 
+/** Exact scoped receipt identities for keyed source attempts, beside organization source discovery. */
+export function organizationSourceReceiptKey(organizationId: string, partition: number): string {
+  return `${organizationPendingSourceIndexKey(organizationId, partition)}:receipts`;
+}
+
 /** Detached withdrawal identities outlive ordinary block state and terminal tombstones. */
 export function runWithdrawalIndexKey(runId: string): string {
   return `${NAMESPACE}:run:{${runId}}:withdrawals`;
@@ -177,6 +182,23 @@ export function fanoutIndexKeys(partition: number): FanoutIndexKeys {
 
 export function idempotencyKey(environmentId: string, key: string): string {
   return `${NAMESPACE}:idem:{${environmentId}}:${key}`;
+}
+
+/** Outcome evidence shares the reservation slot, but never its expiry. */
+export function idempotencyReceiptKey(
+  environmentId: string,
+  key: string,
+  candidateId: string
+): string {
+  return `${NAMESPACE}:idem-receipt:{${environmentId}}:${key.length}:${key}:${candidateId}`;
+}
+
+export function idempotencyClaimKey(environmentId: string, key: string): string {
+  return `${NAMESPACE}:idem-claim:{${environmentId}}:${key.length}:${key}`;
+}
+
+export function candidateMintFenceKey(candidateId: string): string {
+  return `${waitpointKeys(candidateId).record}:mint-fence`;
 }
 
 // "#" separates the id from the index. An absent index collapses onto the empty suffix,

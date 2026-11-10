@@ -1,12 +1,11 @@
 // Real MemoryDB (testcontainer) coverage for the RUN and DATETIME store mint + association-discovery
 // this ticket wires onto the StoreWaitpointCoordinator adapter. redisTest FLUSHALLs before each test.
-// Real MemoryDB (testcontainer) coverage for the RUN and DATETIME store mint + association-discovery
-// this ticket wires onto the StoreWaitpointCoordinator adapter. redisTest FLUSHALLs before each test.
 import { type RedisOptions } from "@internal/redis";
 import { redisTest } from "@internal/testcontainers";
 import {
   deriveWaitpointIdFromAnchor,
   generateRunOpsId,
+  parseWaitpointId,
   WaitpointId,
 } from "@trigger.dev/core/v3/isomorphic";
 import { describe, expect } from "vitest";
@@ -18,6 +17,71 @@ function makeAdapter(redisOptions: RedisOptions) {
   const adapter = new StoreWaitpointCoordinator({ store });
   return { store, adapter };
 }
+
+describe("StoreWaitpointCoordinator DATETIME mint", () => {
+  redisTest(
+    "creates a store-format DATETIME record with its deadline",
+    async ({ redisOptions }) => {
+      const { store, adapter } = makeAdapter(redisOptions);
+      try {
+        const completedAfter = new Date("2027-01-01T00:00:00.000Z");
+        const result = await adapter.createDateTimeWaitpoint({
+          projectId: "proj_1",
+          environmentId: "env_1",
+          completedAfter,
+        });
+
+        expect(result.kind).toBe("created");
+        expect(parseWaitpointId(result.waitpoint.id)).toMatchObject({
+          format: "b32hexW",
+          type: "DATETIME",
+        });
+        expect(result.waitpoint.completedAfter?.toISOString()).toBe(completedAfter.toISOString());
+        expect(await store.probeWaitpointPresence(result.waitpoint.id)).toBe("present");
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "reuses a live DATETIME key and mints a fresh identity after expiry",
+    async ({ redisOptions }) => {
+      const { store, adapter } = makeAdapter(redisOptions);
+      try {
+        const params = {
+          projectId: "proj_1",
+          environmentId: "env_1",
+          completedAfter: new Date("2027-01-01T00:00:00.000Z"),
+          idempotencyKey: "idem-a",
+        };
+        const first = await adapter.createDateTimeWaitpoint(params);
+        const second = await adapter.createDateTimeWaitpoint(params);
+
+        expect(first.kind).toBe("created");
+        expect(second.kind).toBe("cached");
+        expect(second.waitpoint.id).toBe(first.waitpoint.id);
+
+        const base = {
+          projectId: "proj_1",
+          environmentId: "env_1",
+          completedAfter: new Date("2027-01-01T00:00:00.000Z"),
+          idempotencyKey: "idem-exp",
+        };
+        const expired = await adapter.createDateTimeWaitpoint({
+          ...base,
+          idempotencyKeyExpiresAt: new Date(Date.now() - 1000),
+        });
+        const fresh = await adapter.createDateTimeWaitpoint(base);
+
+        expect(fresh.waitpoint.id).not.toBe(expired.waitpoint.id);
+        expect(fresh.kind).toBe("created");
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+});
 
 describe("StoreWaitpointCoordinator RUN mint + association discovery", () => {
   redisTest(

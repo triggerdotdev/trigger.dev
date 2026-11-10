@@ -1,4 +1,7 @@
-import { containerTestWithIsolatedRedis as containerTest } from "@internal/testcontainers";
+import {
+  containerTestWithIsolatedRedis as containerTest,
+  redisTest,
+} from "@internal/testcontainers";
 import { createRedisClient } from "@internal/redis";
 import { deriveRunWaitpointId } from "../waitpointCoordinator/runWaitpointId.js";
 import { workerCatalog } from "../workerCatalog.js";
@@ -9,12 +12,13 @@ import { RedisSnapshotStore } from "@internal/run-store";
 import {
   deriveWaitpointIdFromAnchor,
   generateRunOpsId,
+  parseWaitpointId,
   RunId,
 } from "@trigger.dev/core/v3/isomorphic";
 
 import { waitpointStoreBarrier } from "./utils/waitpointStoreBarrier.js";
 import { describe, expect, vi } from "vitest";
-
+import { StoreWaitpointCoordinator } from "../waitpointCoordinator/storeWaitpointCoordinator.js";
 import { WaitpointStoreCoordinator } from "../waitpointCoordinator/storeCoordinator.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 import {
@@ -26,6 +30,88 @@ import {
 vi.setConfig({ testTimeout: 60_000 });
 
 describe("storeWaitpointAutomaticRecovery", () => {
+  describe("Automatic store waitpoint recovery without traffic", () => {
+    containerTest(
+      "restart completes DATETIME from its durable deadline after creation crashes",
+      async ({ prisma, redisOptions }) => {
+        const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+        const barrier = await waitpointStoreBarrier(redisOptions);
+        let store = new WaitpointStoreCoordinator({
+          redisOptions: {
+            ...barrier.redisOptions,
+            retryStrategy: () => null,
+            maxRetriesPerRequest: 0,
+          },
+        });
+        let engine = makeEngine(prisma, redisOptions, {
+          store,
+          snapshotStore,
+          recoveryDelayMs: 1000,
+        });
+        try {
+          const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+          await setupBackgroundWorker(engine, env, ["parent-task"]);
+          const parent = await triggerRun(engine, env, prisma, {
+            friendlyId: `run_${generateRunOpsId()}`,
+            taskIdentifier: "parent-task",
+          });
+          await dequeueAndStart(engine, "recovery-datetime-parent");
+          // Warm the real candidate script on this dedicated socket before selecting its reply.
+          const base = {
+            runId: parent.id,
+            projectId: env.project.id,
+            environmentId: env.id,
+            organizationId: env.organization.id,
+          };
+          await engine.createDateTimeWaitpoint({
+            ...base,
+            completedAfter: new Date(Date.now() + 60_000),
+          });
+          const completedAfter = new Date(Date.now() + 1000);
+          barrier.pause((args) => args[2] === "2" && args[4]!.endsWith(":mint-fence"), "reply");
+          const creation = engine.createDateTimeWaitpoint({ ...base, completedAfter }).then(
+            () => undefined,
+            (error: unknown) => error
+          );
+          await expect
+            .poll(() => barrier.held, {
+              timeout: 5000,
+              interval: 10,
+              message: "DATETIME source never reached its actual committed reply",
+            })
+            .toBe(true);
+          const id = JSON.parse(barrier.requestArgs![5]!).id as string;
+          expect(await engine["worker"].getJob(`recoverDateTimeWaitpoint:${id}`)).not.toBeNull();
+          expect(await engine["worker"].getJob(`finishWaitpoint:${id}`)).toBeNull();
+          barrier.disconnect();
+          expect(String(await creation)).toMatch(/closed|connection|retry/i);
+          expect(parseWaitpointId(id).format).toBe("b32hexW");
+          await engine.quit();
+          await store.quit();
+          store = new WaitpointStoreCoordinator({ redisOptions });
+          expect(await store.probeWaitpointPresence(id)).toBe("present");
+          engine = makeEngine(prisma, redisOptions, { store, snapshotStore });
+          await vi.waitFor(
+            async () => {
+              const record = await store.describeWaitpoint(id);
+              expect(
+                record.outcome === "exists" ? record.status : undefined,
+                'waitpoint condition never settled: record.outcome === "exists" ? record.status : undefined'
+              ).toBe("COMPLETED");
+            },
+            { timeout: 10_000 }
+          );
+        } finally {
+          await engine.quit();
+          await store.quit();
+
+          await snapshotStore.quit();
+          await barrier.close();
+        }
+      }
+    );
+  });
+
   containerTest(
     "a delayed original producer cannot republish the child after recovery queues it",
     async ({ prisma, redisOptions }) => {
@@ -487,4 +573,33 @@ describe("storeWaitpointAutomaticRecovery", () => {
       }
     );
   }
+
+  redisTest(
+    "keyed DATETIME arms recovery for each candidate before any record effect",
+    async ({ redisOptions }) => {
+      const store = new WaitpointStoreCoordinator({ redisOptions });
+      const coordinator = new StoreWaitpointCoordinator({ store });
+      const candidates: string[] = [];
+      try {
+        const params = {
+          projectId: "recovery-keyed-project",
+          environmentId: "recovery-keyed-env",
+          completedAfter: new Date(Date.now() + 60_000),
+          idempotencyKey: "recovery-keyed-datetime",
+          beforeStoreCreate: async (id: string) => {
+            expect(await store.probeWaitpointPresence(id)).toBe("absent");
+            candidates.push(id);
+          },
+        };
+        const first = await coordinator.createDateTimeWaitpoint(params);
+        const second = await coordinator.createDateTimeWaitpoint(params);
+        expect(candidates).toHaveLength(2);
+        expect(second.kind).toBe("cached");
+        expect(second.waitpoint.id).toBe(first.waitpoint.id);
+        expect(await store.probeWaitpointPresence(candidates[1])).toBe("absent");
+      } finally {
+        await store.quit();
+      }
+    }
+  );
 });

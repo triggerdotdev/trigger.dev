@@ -10,6 +10,8 @@ import type { RunStore } from "./types.js";
 // call per member; member PRESENCE is proved by the compiler, in the assertions at the foot of this
 // file and by `implements RunStore` on the generated class.
 export const RUN_STORE_METHOD_NAMES = [
+  "getWaitpointKeyScope",
+  "runInWaitpointKeyTransaction",
   "runInTransaction",
   "createRun",
   "createCancelledRun",

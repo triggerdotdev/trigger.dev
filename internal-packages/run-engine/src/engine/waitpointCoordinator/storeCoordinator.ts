@@ -13,12 +13,16 @@ import {
   fanoutPartition,
   FANOUT_PARTITION_COUNT,
   idempotencyKey,
+  idempotencyReceiptKey,
+  idempotencyClaimKey,
+  candidateMintFenceKey,
   parseEdgeField,
   runBlockKeys,
   runContributionKey,
   runContributionIndexKey,
   organizationRunIndexKey,
   organizationPendingSourceIndexKey,
+  organizationSourceReceiptKey,
   runWithdrawalIndexKey,
   runRegistrationSourcesKey,
   contributionMember,
@@ -34,6 +38,11 @@ import {
   RUN_CLEANUP_PAGE_SIZE,
   RETAIN_WAITPOINT_RECORD,
 } from "./scripts.js";
+import {
+  assertCreationBudget,
+  installCreationBudget,
+  prepareWithinCreationBudget,
+} from "./creationBudget.js";
 
 /** The values written into a record's `status` field. Uppercase, and never a token. */
 export type WaitpointStatus = "PENDING" | "COMPLETED";
@@ -49,6 +58,16 @@ type ScriptName =
   | "wpUnregisterWatcher"
   | "wpDescribe"
   | "wpIdemReserve"
+  | "wpCreateKeyedCandidate"
+  | "wpIdemReceipt"
+  | "wpPrepareIdemReceipt"
+  | "wpReadIdemClaim"
+  | "wpBeginIdemClaim"
+  | "wpReadIdemReceipt"
+  | "wpCloseKeyedCandidate"
+  | "wpAckIdemReceipt"
+  | "wpCompleteIdemReceipt"
+  | "wpReleaseKeyedCandidate"
   | "wpDiscard"
   | "wpFanoutIndex"
   | "runAbsorbBlockers"
@@ -90,6 +109,14 @@ export type WaitpointRecordInput = {
   completedByTaskRunId?: string;
   completedByBatchId?: string;
 };
+
+function keyRetainUntil(record: WaitpointRecordInput): string {
+  if (record.type !== "DATETIME" || !record.idempotencyKey) return "0";
+  if (!record.idempotencyKeyExpiresAt) return "-1";
+  const expiresAt = Date.parse(record.idempotencyKeyExpiresAt);
+  if (!Number.isFinite(expiresAt)) throw new Error("Invalid keyed waitpoint expiry");
+  return String(expiresAt);
+}
 
 /**
  * A stored output: a small inline value, an already-offloaded reference, or null when the
@@ -776,6 +803,7 @@ export class WaitpointStoreCoordinator {
         onError: (error) =>
           this.logger.error("WaitpointStoreCoordinator redis client error", { error }),
       });
+    installCreationBudget(this.redis);
     registerWaitpointCommands(this.redis);
 
     if (options.meter) {
@@ -865,12 +893,18 @@ export class WaitpointStoreCoordinator {
     return this.#dispatch(command, keys, argv);
   }
 
+  /** Warm the read-only connection/policy facade before acquiring a PG connection. */
+  async prepareForKeyedCreation(): Promise<void> {
+    await this.beforeCommand?.();
+  }
+
   async #dispatch(
     command: (...args: string[]) => Promise<string[]>,
     keys: string[],
     argv: string[]
   ): Promise<string[]> {
-    await this.beforeCommand?.();
+    if (this.beforeCommand) await prepareWithinCreationBudget(this.beforeCommand);
+    assertCreationBudget();
     return command.call(this.redis, ...keys, ...argv);
   }
 
@@ -889,6 +923,18 @@ export class WaitpointStoreCoordinator {
     this.#call(operation as ScriptName, keys).catch(() => undefined);
   }
 
+  /** Reuse the keyed candidate's fixed publication fence without creating a reservation. */
+  async createDateTimeCandidate(record: WaitpointRecordInput, acceptUntil: number): Promise<void> {
+    const reply = await this.#call(
+      "wpCreateKeyedCandidate",
+      [waitpointKeys(record.id).record, candidateMintFenceKey(record.id)],
+      JSON.stringify(record),
+      String(acceptUntil),
+      keyRetainUntil(record)
+    );
+    if (reply[0] === "closed") throw new Error("DATETIME waitpoint creation window closed");
+  }
+
   async createIfAbsent(args: {
     record: WaitpointRecordInput;
     status: WaitpointStatus;
@@ -904,7 +950,8 @@ export class WaitpointStoreCoordinator {
       args.status,
       args.completion ? JSON.stringify(args.completion) : "",
       String(this.terminalRetentionMs),
-      args.record.completedByTaskRunId ?? ""
+      args.record.completedByTaskRunId ?? "",
+      keyRetainUntil(args.record)
     );
 
     if (reply[0] === "created") {
@@ -1101,96 +1148,259 @@ export class WaitpointStoreCoordinator {
     return { outcome };
   }
 
+  async readIdempotencyKey(environmentId: string, key: string): Promise<string | undefined> {
+    return (
+      (
+        await this.#call("wpReadIdemClaim", [
+          idempotencyKey(environmentId, key),
+          idempotencyClaimKey(environmentId, key),
+        ])
+      )[0] || undefined
+    );
+  }
+
+  async beginIdempotencyKeyClaim(args: {
+    environmentId: string;
+    idempotencyKey: string;
+    token: string;
+    acceptUntil: number;
+  }): Promise<{ winnerId?: string }> {
+    const keys = [
+      idempotencyKey(args.environmentId, args.idempotencyKey),
+      idempotencyClaimKey(args.environmentId, args.idempotencyKey),
+    ];
+    const observed = await this.#call("wpReadIdemClaim", keys);
+    if (observed[0]) return { winnerId: observed[0] };
+    await this._beforeIdempotencyClaimBegin();
+    const outcome = await this.#call(
+      "wpBeginIdemClaim",
+      keys,
+      args.token,
+      observed[1],
+      String(args.acceptUntil)
+    );
+    if (outcome[0] === "exists") return { winnerId: outcome[1] };
+    if (outcome[0] !== "claimed") throw new Error(`Keyed waitpoint claim was ${outcome[0]}`);
+    return {};
+  }
+
+  /** Deterministic real-service fault seams; production implementations are inert. */
+  protected async _beforeIdempotencyClaimBegin(): Promise<void> {}
+  protected async _beforeIdempotencyReserve(): Promise<void> {}
+
   /**
-   * Create a waitpoint under an idempotency key.
-   *
-   * The reservation and the record sit under different hash tags, so no script spans
-   * them. That makes the ORDER load-bearing: create first, then reserve.
-   *
-   * Reserve-first would mean a crash between the two steps leaves a reservation naming a
-   * waitpoint that does not exist. Every later request with that key loses the
-   * reservation, blocks on the winner's id, and throws when it registers — correctly, but
-   * forever, because an idempotency key commonly carries no expiry to clear it.
-   *
-   * Create-first inverts the failure: a crash leaves an orphan record that nothing ever
-   * referenced, because its id is random and unpublished. No caller hangs, but nothing
-   * currently reclaims that record either: the backstop collector the wider plan
-   * describes is keyed off a run's status, and this orphan has no owning run, so that
-   * collector never sees it. The record is harmless — inert, unreferenced, never
-   * returned to anyone — but it is a real leak until a later ticket adds a reaper for
-   * standalone idempotency-keyed orphans specifically.
+   * Create before publishing the reservation. A per-candidate receipt atomically records
+   * publication independently of key expiry. The durable recovery job owns receipts until
+   * completion or loser cleanup converges; it then arms their terminal retention window.
    */
   async createWithIdempotencyKey(args: {
     record: WaitpointRecordInput;
     environmentId: string;
     idempotencyKey: string;
-    // `created` means THIS CALL won the reservation, not that the id is new. A retry by the
-    // original creator reports false, because the reservation it is losing to is its own. A
-    // caller must not gate one-time side effects on it without handling that.
+    /** Fixed foreground fence, carried by the recovery job. */
+    acceptUntil?: number;
+    claimToken?: string;
   }): Promise<{ waitpointId: string; created: boolean }> {
-    // Standalone ids only. The discard below deletes this call's own record, and that is
-    // only safe because a freshly minted id was never handed out, so nothing can reference
-    // it. A RUN or BATCH id is DERIVED from its anchor, so any caller can recompute it and
-    // register a watcher on it — discarding one could delete a record already in use.
     const parsed = parseWaitpointId(args.record.id);
     if (parsed.format !== "b32hexW" || (parsed.type !== "DATETIME" && parsed.type !== "MANUAL")) {
       throw new Error(
         `createWithIdempotencyKey requires a freshly minted DATETIME or MANUAL id, got ${args.record.id}`
       );
     }
-
-    await this.createIfAbsent({ record: args.record, status: "PENDING" });
-
-    const expiresAtMs = args.record.idempotencyKeyExpiresAt
-      ? String(new Date(args.record.idempotencyKeyExpiresAt).getTime())
-      : "";
-
-    const reply = await this.#call(
-      "wpIdemReserve",
-      [idempotencyKey(args.environmentId, args.idempotencyKey)],
-      args.record.id,
-      expiresAtMs
-    );
-
-    if (reply[0] === "reserved") {
-      return { waitpointId: args.record.id, created: true };
-    }
-
-    const winner = reply[1];
-    if (winner !== args.record.id) {
-      // Safe to discard: this id is random and was never handed to any caller, so no
-      // watcher can reference it. All four keys share the record's tag.
+    const acceptUntil = args.acceptUntil ?? Date.now() + 300_000;
+    const receipt = idempotencyReceiptKey(args.environmentId, args.idempotencyKey, args.record.id);
+    // Read before creation: an old published winner must never be recreated or discarded
+    // merely because its live reservation has expired and a new generation owns the key.
+    let winner = (await this.#call("wpPrepareIdemReceipt", [receipt], String(acceptUntil)))[0];
+    if (winner === "closed") throw new Error("Keyed waitpoint creation was closed by recovery");
+    let created = false;
+    if (winner === "pending") {
       const keys = waitpointKeys(args.record.id);
-      await this.#call("wpDiscard", [keys.record, keys.watchers, keys.queue, keys.fanout]);
+      const candidate = await this.#call(
+        "wpCreateKeyedCandidate",
+        [keys.record, candidateMintFenceKey(args.record.id)],
+        JSON.stringify(args.record),
+        String(acceptUntil),
+        keyRetainUntil({ ...args.record, idempotencyKey: args.idempotencyKey }),
+        "1"
+      );
+      if (candidate[0] === "closed")
+        throw new Error("Keyed waitpoint creation was closed by recovery");
+      await this._beforeIdempotencyReserve();
+      const reply = await this.#call(
+        "wpIdemReceipt",
+        [
+          idempotencyKey(args.environmentId, args.idempotencyKey),
+          receipt,
+          idempotencyClaimKey(args.environmentId, args.idempotencyKey),
+        ],
+        args.record.id,
+        args.record.idempotencyKeyExpiresAt
+          ? String(new Date(args.record.idempotencyKeyExpiresAt).getTime())
+          : "",
+        String(acceptUntil),
+        "reserve",
+        args.claimToken ?? ""
+      );
+      winner = reply[1];
+      created = reply[0] === "reserved";
     }
+    // A terminal receipt still names the same immutable winner; never treat its marker as an ID.
+    if (winner?.startsWith("completed:")) winner = winner.slice("completed:".length);
+    if (winner !== args.record.id) {
+      await this.#closeKeyedCandidate(args.record.id, acceptUntil);
+    }
+    if (winner === "cancelled") throw new Error("Keyed waitpoint creation was closed by recovery");
+    return { waitpointId: winner, created };
+  }
 
-    return { waitpointId: winner, created: false };
+  /** Seal publication before cleanup. A missing receipt proves this attempt never published. */
+  async recoverIdempotencyCandidate(args: {
+    candidateId: string;
+    environmentId: string;
+    idempotencyKey: string;
+    acceptUntil: number;
+  }): Promise<{ winnerId?: string; completed?: boolean }> {
+    const receipt = idempotencyReceiptKey(
+      args.environmentId,
+      args.idempotencyKey,
+      args.candidateId
+    );
+    let winner = (await this.#call("wpReadIdemReceipt", [receipt]))[0];
+    // Missing evidence after the fixed creation deadline proves candidate creation never
+    // began (prepare precedes it), or an acknowledged operation aged out. Both owe no work.
+    if ((!winner || winner === "pending") && Date.now() <= args.acceptUntil) {
+      throw new Error("Keyed waitpoint foreground creation is still authorized");
+    }
+    if (!winner) return {};
+    if (winner === "pending") {
+      winner = (
+        await this.#call(
+          "wpIdemReceipt",
+          [
+            idempotencyKey(args.environmentId, args.idempotencyKey),
+            receipt,
+            idempotencyClaimKey(args.environmentId, args.idempotencyKey),
+          ],
+          args.candidateId,
+          "",
+          String(args.acceptUntil),
+          "cancel",
+          ""
+        )
+      )[1];
+    }
+    const completed = winner.startsWith("completed:");
+    if (completed) winner = winner.slice("completed:".length);
+    if (winner !== args.candidateId)
+      await this.#closeKeyedCandidate(args.candidateId, args.acceptUntil);
+    return {
+      winnerId: winner === "cancelled" ? undefined : winner,
+      ...(completed ? { completed: true } : {}),
+    };
+  }
+
+  async acknowledgeIdempotencyCandidate(args: {
+    candidateId: string;
+    organizationId?: string;
+    environmentId: string;
+    idempotencyKey: string;
+    acceptUntil: number;
+    winnerId?: string;
+  }): Promise<void> {
+    const receipt = idempotencyReceiptKey(
+      args.environmentId,
+      args.idempotencyKey,
+      args.candidateId
+    );
+    let expected = args.winnerId ?? "cancelled";
+    if (args.winnerId === args.candidateId) {
+      // Completion has converged. Retain that proof before releasing the source, then expire
+      // the receipt only after release succeeds. Every interrupted step is replayed by the job.
+      expected = (await this.#call("wpCompleteIdemReceipt", [receipt], args.candidateId))[0]!;
+      const keys = waitpointKeys(args.candidateId);
+      await this.#call(
+        "wpReleaseKeyedCandidate",
+        [keys.record, keys.fanout],
+        String(this.terminalRetentionMs)
+      );
+    }
+    await this.#call(
+      "wpAckIdemReceipt",
+      [receipt],
+      expected,
+      String(Math.max(0, args.acceptUntil - Date.now()) + this.terminalRetentionMs)
+    );
+    if (args.organizationId) {
+      const finite = await this.redis.pttl(receipt);
+      if (finite === -1) throw new Error("Keyed receipt acknowledgement did not arm retention");
+      await this.retirePendingSource(
+        args.candidateId,
+        args.organizationId,
+        JSON.stringify({ key: receipt, acceptUntil: args.acceptUntil })
+      );
+    }
+  }
+
+  async #closeKeyedCandidate(candidateId: string, acceptUntil: number): Promise<void> {
+    const keys = waitpointKeys(candidateId);
+    await this.#call(
+      "wpCloseKeyedCandidate",
+      [keys.record, keys.watchers, keys.queue, keys.fanout, candidateMintFenceKey(candidateId)],
+      String(Math.max(0, acceptUntil - Date.now()) + this.terminalRetentionMs)
+    );
   }
 
   /** Enabled native producers publish BEFORE source creation, so rollback needs only the org. */
-  async publishPendingSource(waitpointId: string, organizationId: string): Promise<void> {
+  async publishPendingSource(
+    waitpointId: string,
+    organizationId: string,
+    receipt?: { key: string; acceptUntil: number }
+  ): Promise<void> {
     await this.beforeCommand?.();
-    await this.redis.zadd(
-      organizationPendingSourceIndexKey(organizationId, fanoutPartition(waitpointId)),
-      0,
-      waitpointId
+    const index = organizationPendingSourceIndexKey(organizationId, fanoutPartition(waitpointId));
+    if (!receipt) {
+      await this.redis.zadd(index, 0, waitpointId);
+      return;
+    }
+    const metadata = organizationSourceReceiptKey(organizationId, fanoutPartition(waitpointId));
+    assertSingleSlot("publish keyed source ownership", [index, metadata]);
+    await this.redis.eval(
+      `local previous = redis.call('HGET',KEYS[2],ARGV[1])
+       if previous and previous ~= ARGV[2] then return redis.error_reply('Source receipt identity changed') end
+       redis.call('HSET',KEYS[2],ARGV[1],ARGV[2])
+       redis.call('ZADD',KEYS[1],0,ARGV[1]); return 1`,
+      2,
+      index,
+      metadata,
+      waitpointId,
+      JSON.stringify(receipt)
     );
   }
 
-  /** Only after completion/hints or a fenced finite-lived losing candidate own recovery. */
-  async retirePendingSource(waitpointId: string, organizationId: string): Promise<void> {
+  /** Receipt metadata retires only after its exact per-attempt receipt has finite retention. */
+  async retirePendingSource(
+    waitpointId: string,
+    organizationId: string,
+    acknowledgedReceipt?: string
+  ): Promise<void> {
     await this.beforeCommand?.();
     const hints = fanoutIndexKeys(fanoutPartition(waitpointId));
     const index = organizationPendingSourceIndexKey(organizationId, fanoutPartition(waitpointId));
-    assertSingleSlot("retire source ownership", [hints.due, hints.quarantine, index]);
+    const metadata = organizationSourceReceiptKey(organizationId, fanoutPartition(waitpointId));
+    assertSingleSlot("retire source ownership", [hints.due, hints.quarantine, index, metadata]);
     await this.redis.eval(
-      `if redis.call('ZSCORE',KEYS[1],ARGV[1]) or redis.call('ZSCORE',KEYS[2],ARGV[1]) then return 0 end
+      `local receipt = redis.call('HGET',KEYS[4],ARGV[1])
+       if ARGV[2] ~= '' and receipt == ARGV[2] then redis.call('HDEL',KEYS[4],ARGV[1]); receipt = false end
+       if receipt or redis.call('ZSCORE',KEYS[1],ARGV[1]) or redis.call('ZSCORE',KEYS[2],ARGV[1]) then return 0 end
        return redis.call('ZREM',KEYS[3],ARGV[1])`,
-      3,
+      4,
       hints.due,
       hints.quarantine,
       index,
-      waitpointId
+      metadata,
+      waitpointId,
+      acknowledgedReceipt ?? ""
     );
   }
 
@@ -2897,7 +3107,7 @@ ${RETAIN_WAITPOINT_RECORD}
   ): Promise<Map<string, WaitpointStoredRecord>> {
     const out = new Map<string, WaitpointStoredRecord>();
     const distinct = [...new Set(ids)];
-    await this.beforeCommand?.();
+    if (distinct.length > 0) await this.beforeCommand?.();
     // Parent snapshot results have no active TTL and survive block acknowledgement/rollover.
     // Read only the IDs owned by the snapshot; original waitpoint records may have expired.
     if (runId && distinct.length > 0) {
@@ -2952,21 +3162,26 @@ ${RETAIN_WAITPOINT_RECORD}
         args.organizationId,
         fanoutPartition(waitpointId)
       );
-      assertSingleSlot("owned fanout hint", [keys.due, keys.quarantine, index]);
+      const metadata = organizationSourceReceiptKey(
+        args.organizationId,
+        fanoutPartition(waitpointId)
+      );
+      assertSingleSlot("owned fanout hint", [keys.due, keys.quarantine, index, metadata]);
       return this.redis.eval(
         `if ARGV[1] == 'remove' then
            local removed = redis.call('ZREM',KEYS[1],ARGV[2])
-           if ARGV[4] ~= 'keep' and not redis.call('ZSCORE',KEYS[2],ARGV[2]) then redis.call('ZREM',KEYS[3],ARGV[2]) end
+           if ARGV[4] ~= 'keep' and redis.call('HEXISTS',KEYS[4],ARGV[2]) == 0 and not redis.call('ZSCORE',KEYS[2],ARGV[2]) then redis.call('ZREM',KEYS[3],ARGV[2]) end
            return {'removed',tostring(removed)}
          end
          redis.call('ZADD',KEYS[3],0,ARGV[2])
          if ARGV[1] == 'add-nx' then redis.call('ZADD',KEYS[1],'NX',ARGV[3],ARGV[2])
          else redis.call('ZADD',KEYS[1],ARGV[3],ARGV[2]) end
          return {'added'}`,
-        3,
+        4,
         keys.due,
         keys.quarantine,
         index,
+        metadata,
         op,
         waitpointId,
         String(args.score ?? 0),

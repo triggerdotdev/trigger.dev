@@ -569,6 +569,7 @@ describe("Store waitpoint block cycle: identity", () => {
           const legacy = await engine.createManualWaitpoint({
             environmentId: env.id,
             projectId: env.projectId,
+            organizationId: env.organizationId,
           });
           await engine.blockRunWithWaitpoint({
             runId: run.id,

@@ -491,6 +491,17 @@ export type LatestExecutionSnapshotRead = Prisma.TaskRunExecutionSnapshotGetPayl
 }> & { completedWaitpoints: SnapshotReadWaitpoint[] };
 
 export interface RunStore {
+  /** Canonical configured owning database, including declared shard aliases. No I/O. */
+  getWaitpointKeyScope(ownerId?: string): string;
+
+  /** Isolated writer lane for enabled keyed creation; never borrows the ordinary pool. */
+  runInWaitpointKeyTransaction<R>(
+    ownerId: string | undefined,
+    organizationId: string,
+    acceptUntil: number,
+    fn: (store: RunStore, tx: PrismaClientOrTransaction) => Promise<R>
+  ): Promise<R>;
+
   /**
    * Run a co-resident multi-write unit atomically on the store that OWNS `runId`. The callback gets
    * the owning `RunStore` plus a `tx` opened on THAT store's OWN client; passing `tx` to the inner

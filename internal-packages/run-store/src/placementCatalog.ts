@@ -46,6 +46,12 @@ export const GIVEN_RUN_ID_ROUTE = "#routeForWrite(runId)";
 
 export const PLACEMENT_SITES: readonly PlacementSite[] = [
   {
+    method: "runInWaitpointKeyTransaction",
+    basis: "owner-id",
+    missMode: "loud",
+    routes: ["#routeOrNew(ownerId)"],
+  },
+  {
     method: "runInTransaction",
     basis: "own-id",
     missMode: "loud",
@@ -204,6 +210,7 @@ export const PLACEMENT_SITES: readonly PlacementSite[] = [
 
 /** Listed so the union covers the interface: a `getOrCreateThing` must not pass as a read. */
 export const READ_ONLY_METHODS: readonly string[] = [
+  "getWaitpointKeyScope",
   "findRun",
   "findRunOrThrow",
   "findRunOnPrimary",

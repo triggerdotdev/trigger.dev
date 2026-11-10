@@ -41,6 +41,25 @@ export const workerCatalog = {
     visibilityTimeoutMs: 30_000,
     retry: { maxAttempts: 10_000, minTimeoutInMs: 1_000, maxTimeoutInMs: 300_000 },
   },
+  recoverDateTimeWaitpoint: {
+    schema: z.object({
+      waitpointId: z.string(),
+      organizationId: z.string(),
+      projectId: z.string(),
+      environmentId: z.string(),
+      completedAfter: z.coerce.date(),
+      creationAcceptUntil: z.number().optional(),
+      keyedCreation: z
+        .object({
+          scope: z.string(),
+          idempotencyKey: z.string(),
+          acceptUntil: z.number(),
+        })
+        .optional(),
+    }),
+    visibilityTimeoutMs: 30_000,
+    retry: { maxAttempts: 10_000, minTimeoutInMs: 1_000, maxTimeoutInMs: 300_000 },
+  },
   deliverWaitpointFanout: {
     schema: z.object({ waitpointId: z.string(), organizationId: z.string() }),
     visibilityTimeoutMs: 30_000,

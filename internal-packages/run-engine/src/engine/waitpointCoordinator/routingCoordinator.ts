@@ -595,6 +595,13 @@ export class RoutingWaitpointCoordinator implements WaitpointCoordinator {
     return this.#coordinatorForId(params.waitpointId).complete(params);
   }
 
+  /** Resolve operation routing before a caller acquires a bounded PG connection. */
+  async dateTimeCreationCoordinator(mintContext: WaitpointMintContext | undefined) {
+    return (await this.#decideMintResidency("DATETIME", mintContext)) === "store"
+      ? this.#store!
+      : this.#legacy;
+  }
+
   async createDateTimeWaitpoint(
     params: CreateDateTimeWaitpointParams
   ): Promise<CreateWaitpointResult> {
