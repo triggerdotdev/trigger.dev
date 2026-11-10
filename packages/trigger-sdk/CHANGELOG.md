@@ -1,5 +1,17 @@
 # @trigger.dev/sdk
 
+## 4.8.4
+
+### Patch Changes
+
+- `chat.agent` now accepts only two kinds of message from a chat client: user messages, and answers to tool calls the agent made. A tool approval or tool output is merged onto the stored call it answers and runs with the input from the agent's own history, so a client can't add tool calls or change a call's input. `chat.headStart` drops tool calls from the history the client sends, and `upsertIncomingMessage` only adds user messages. ([`44feaaff6`](https://github.com/triggerdotdev/trigger.dev/commit/44feaaff6ea10019af1a24b009609ff25c813c15))
+- Add `infisicalAccessToken` at `@trigger.dev/sdk/oidc/infisical` to authenticate tasks with Infisical using OIDC instead of stored credentials. Supports US, EU, and self-hosted instances, custom audiences, and Infisical organization scoping. ([`63b58f329`](https://github.com/triggerdotdev/trigger.dev/commit/63b58f329012475941cef93b3440cca09514fee0))
+- Add opt-in AWS session tags with `awsCredentialProvider({ sessionTags: true })` for task-level IAM restrictions and attribute-based permissions. Tags come from the verified run identity. Update the role trust policy to allow `sts:TagSession` before enabling them; existing integrations remain untagged. ([`c8ae1ffb5`](https://github.com/triggerdotdev/trigger.dev/commit/c8ae1ffb588895a0ffb8c0dbdcaa1d6e19671edc))
+- Use run credentials for run results, rescheduling, schedules, and environment-variable operations inside tasks. Run credentials remain limited to the current environment: shared schedules cannot be changed, and parent environment variables cannot be written. ([`cd58c750b`](https://github.com/triggerdotdev/trigger.dev/commit/cd58c750b878d39e16acde163b751de2e7491ac0))
+- Create public tokens without scopes from inside tasks using run credentials, without requiring an environment secret key. ([`306d960ca`](https://github.com/triggerdotdev/trigger.dev/commit/306d960caadf4cbe123a205cb4934d071611b360))
+- Updated dependencies:
+  - `@trigger.dev/core@4.8.4`
+
 ## 4.8.3
 
 ### Patch Changes
