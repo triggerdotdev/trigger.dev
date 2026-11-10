@@ -65,6 +65,7 @@ export type {
 // stays disabled by default until then.
 export {
   DEFAULT_TERMINAL_RETENTION_MS,
+  MAX_INLINE_COMPLETION_OUTPUT_BYTES,
   WaitpointCompletionConflictError,
   WaitpointNotFoundError,
   WaitpointStoreCoordinator,
@@ -96,6 +97,7 @@ export type {
   WaitpointStoreCoordinatorOptions,
   WatcherEntry,
 } from "./engine/waitpointCoordinator/storeCoordinator.js";
+export { StoreWaitpointCoordinator } from "./engine/waitpointCoordinator/storeWaitpointCoordinator.js";
 export { WaitpointFanoutWorker } from "./engine/waitpointCoordinator/fanoutWorker.js";
 export type {
   FanoutTickSummary,

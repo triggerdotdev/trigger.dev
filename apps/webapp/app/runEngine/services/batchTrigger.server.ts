@@ -181,30 +181,70 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
     // validate env existence app-side (covers both create arms below).
     await controlPlaneResolver.assertEnvExists(environment.id);
 
+    // Both creation arms must reject owed parent cleanup before consuming the batch token.
     if (body.items.length <= ASYNC_BATCH_PROCESS_SIZE_THRESHOLD) {
-      const batch = await this._engine.runStore.createBatchTaskRun({
-        id: BatchId.fromFriendlyId(batchId),
-        friendlyId: batchId,
-        runtimeEnvironmentId: environment.id,
-        runCount: body.items.length,
-        runIds: [],
-        payload: payloadPacket.data,
-        payloadType: payloadPacket.dataType,
-        options,
-        batchVersion: "runengine:v1",
-        oneTimeUseToken: options.oneTimeUseToken,
-      });
+      let batch;
+      if (
+        parentRunInternalId &&
+        (await this._engine.waitpointSystem.isWaitpointStoreEnabled(environment.organizationId))
+      ) {
+        const admitBatch = async () => {
+          const batch = await this._engine.runStore.createBatchTaskRun({
+            id: BatchId.fromFriendlyId(batchId),
+            friendlyId: batchId,
+            runtimeEnvironmentId: environment.id,
+            runCount: body.items.length,
+            runIds: [],
+            payload: payloadPacket.data,
+            payloadType: payloadPacket.dataType,
+            options,
+            batchVersion: "runengine:v1",
+            oneTimeUseToken: options.oneTimeUseToken,
+          });
 
-      this.onBatchTaskRunCreated.post(batch);
+          this.onBatchTaskRunCreated.post(batch);
 
-      if (parentRunInternalId) {
-        await this._engine.blockRunWithCreatedBatch({
-          runId: parentRunInternalId,
-          batchId: batch.id,
-          environmentId: environment.id,
-          projectId: environment.projectId,
-          organizationId: environment.organizationId,
+          if (parentRunInternalId) {
+            await this._engine.blockRunWithCreatedBatch({
+              runId: parentRunInternalId,
+              batchId: batch.id,
+              environmentId: environment.id,
+              projectId: environment.projectId,
+              organizationId: environment.organizationId,
+            });
+          }
+          return batch;
+        };
+        batch = await this._engine.waitpointSystem.withLegacyRegistrationLock(
+          parentRunInternalId,
+          environment.organizationId,
+          admitBatch
+        );
+      } else {
+        batch = await this._engine.runStore.createBatchTaskRun({
+          id: BatchId.fromFriendlyId(batchId),
+          friendlyId: batchId,
+          runtimeEnvironmentId: environment.id,
+          runCount: body.items.length,
+          runIds: [],
+          payload: payloadPacket.data,
+          payloadType: payloadPacket.dataType,
+          options,
+          batchVersion: "runengine:v1",
+          oneTimeUseToken: options.oneTimeUseToken,
         });
+
+        this.onBatchTaskRunCreated.post(batch);
+
+        if (parentRunInternalId) {
+          await this._engine.blockRunWithCreatedBatch({
+            runId: parentRunInternalId,
+            batchId: batch.id,
+            environmentId: environment.id,
+            projectId: environment.projectId,
+            organizationId: environment.organizationId,
+          });
+        }
       }
 
       const result = await this.#processBatchTaskRunItems({
@@ -273,29 +313,68 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
         }
       }
     } else {
-      const batch = await this._engine.runStore.createBatchTaskRun({
-        id: BatchId.fromFriendlyId(batchId),
-        friendlyId: batchId,
-        runtimeEnvironmentId: environment.id,
-        runCount: body.items.length,
-        runIds: [],
-        payload: payloadPacket.data,
-        payloadType: payloadPacket.dataType,
-        options,
-        batchVersion: "runengine:v1",
-        oneTimeUseToken: options.oneTimeUseToken,
-      });
+      let batch;
+      if (
+        parentRunInternalId &&
+        (await this._engine.waitpointSystem.isWaitpointStoreEnabled(environment.organizationId))
+      ) {
+        const admitBatch = async () => {
+          const batch = await this._engine.runStore.createBatchTaskRun({
+            id: BatchId.fromFriendlyId(batchId),
+            friendlyId: batchId,
+            runtimeEnvironmentId: environment.id,
+            runCount: body.items.length,
+            runIds: [],
+            payload: payloadPacket.data,
+            payloadType: payloadPacket.dataType,
+            options,
+            batchVersion: "runengine:v1",
+            oneTimeUseToken: options.oneTimeUseToken,
+          });
 
-      this.onBatchTaskRunCreated.post(batch);
+          this.onBatchTaskRunCreated.post(batch);
 
-      if (parentRunInternalId) {
-        await this._engine.blockRunWithCreatedBatch({
-          runId: parentRunInternalId,
-          batchId: batch.id,
-          environmentId: environment.id,
-          projectId: environment.projectId,
-          organizationId: environment.organizationId,
+          if (parentRunInternalId) {
+            await this._engine.blockRunWithCreatedBatch({
+              runId: parentRunInternalId,
+              batchId: batch.id,
+              environmentId: environment.id,
+              projectId: environment.projectId,
+              organizationId: environment.organizationId,
+            });
+          }
+          return batch;
+        };
+        batch = await this._engine.waitpointSystem.withLegacyRegistrationLock(
+          parentRunInternalId,
+          environment.organizationId,
+          admitBatch
+        );
+      } else {
+        batch = await this._engine.runStore.createBatchTaskRun({
+          id: BatchId.fromFriendlyId(batchId),
+          friendlyId: batchId,
+          runtimeEnvironmentId: environment.id,
+          runCount: body.items.length,
+          runIds: [],
+          payload: payloadPacket.data,
+          payloadType: payloadPacket.dataType,
+          options,
+          batchVersion: "runengine:v1",
+          oneTimeUseToken: options.oneTimeUseToken,
         });
+
+        this.onBatchTaskRunCreated.post(batch);
+
+        if (parentRunInternalId) {
+          await this._engine.blockRunWithCreatedBatch({
+            runId: parentRunInternalId,
+            batchId: batch.id,
+            environmentId: environment.id,
+            projectId: environment.projectId,
+            organizationId: environment.organizationId,
+          });
+        }
       }
 
       switch (this._batchProcessingStrategy) {
@@ -656,7 +735,10 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
       });
 
       //if all the runs were idempotent, it's possible the batch is already completed
-      await this._engine.tryCompleteBatch({ batchId: batch.id });
+      await this._engine.tryCompleteBatch({
+        batchId: batch.id,
+        organizationId: environment.organizationId,
+      });
     }
 
     // if there are more items to process, requeue the batch

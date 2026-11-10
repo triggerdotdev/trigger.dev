@@ -1118,7 +1118,7 @@ export class BatchQueue {
       if (this.completionCallback) {
         try {
           await this.#startSpan("BatchQueue.completionCallback", async () => {
-            return this.completionCallback!(result);
+            return this.completionCallback!({ ...result, organizationId: meta.organizationId });
           });
 
           // Only cleanup if callback succeeded - preserves Redis data for retry on failure

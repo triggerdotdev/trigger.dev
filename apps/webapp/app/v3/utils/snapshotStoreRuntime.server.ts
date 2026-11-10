@@ -1,10 +1,9 @@
-import { createCompletedWaitpointResolver } from "@internal/run-engine";
+import { createStoreRunCompletedWaitpointResolver } from "@internal/run-engine";
 import {
   PendingIndex,
   PendingRecoveryWorker,
   RouteUnavailableError,
   TaskRunExecutionSnapshotStore,
-  type CompletedWaitpointResolver,
   type PostgresCommitStatus,
   type RunStore,
   type SnapshotDecoratorMetrics,
@@ -18,11 +17,12 @@ export function createSnapshotStoreRuntime(options: {
   rollout: ReturnType<typeof createSnapshotRolloutResolver>;
   getRunStore: () => RunStore;
   metrics?: SnapshotDecoratorMetrics;
+  waitpointStoreEnabled?: (organizationId: string) => boolean | Promise<boolean>;
 }) {
   const leaves = new Map<string, RunStore>();
   let recovery: PendingRecoveryWorker | undefined;
   let pendingIndex: PendingIndex | undefined;
-  let completedWaitpoints: CompletedWaitpointResolver | undefined;
+  let completedWaitpoints: ReturnType<typeof createStoreRunCompletedWaitpointResolver> | undefined;
 
   function primary(route: string) {
     const leaf = leaves.get(route);
@@ -81,9 +81,13 @@ export function createSnapshotStoreRuntime(options: {
           await options.connection.ready();
           await recoveryWorker().resolveEntry({ id: "", fields: { runId } }, recoveryOptions);
         },
-        resolveCompletedWaitpoints: (args) => {
-          completedWaitpoints ??= createCompletedWaitpointResolver(options.getRunStore());
-          return completedWaitpoints(args);
+        resolveCompletedWaitpointsWithContext: (args, context) => {
+          completedWaitpoints ??= createStoreRunCompletedWaitpointResolver(
+            options.getRunStore(),
+            leaf.primaryReadClient,
+            options.waitpointStoreEnabled
+          );
+          return completedWaitpoints(args, context);
         },
         metrics: options.metrics,
       });

@@ -314,6 +314,72 @@ describe("storeWaitpointLifecycleRouting", () => {
       }
     );
 
+    containerTest(
+      "rollback leaves old store associations alone and gives new runs Postgres waitpoints",
+      async ({ prisma, redisOptions }) => {
+        const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+        const store = new WaitpointStoreCoordinator({ redisOptions });
+        const options = { store, snapshotStore, enabled: true };
+        const engine = makeEngine(prisma, redisOptions, options);
+        try {
+          const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+          await setupBackgroundWorker(engine, env, ["parent-task", "child-task"]);
+          const parent = await triggerRun(engine, env, prisma, {
+            friendlyId: `run_${generateRunOpsId()}`,
+            taskIdentifier: "parent-task",
+          });
+          await dequeueAndStart(engine, "rollback_parent");
+          const child = await triggerRun(engine, env, prisma, {
+            friendlyId: `run_${generateRunOpsId()}`,
+            taskIdentifier: "child-task",
+            parentTaskRunId: parent.id,
+            resumeParentOnCompletion: true,
+          });
+          const storeId = deriveWaitpointIdFromAnchor(child.id, "RUN")!;
+          expect(await store.probeWaitpointPresence(storeId)).toBe("present");
+          options.enabled = false;
+          // A disconnected real coordinator makes any accidental store use fail.
+          await store.quit();
+          const lookup = {
+            projectId: env.project.id,
+            environmentId: env.id,
+            blockingParentRunId: parent.id,
+            organizationId: env.organization.id,
+          };
+          await expect(
+            engine.getOrCreateRunWaitpoint({ ...lookup, runId: child.id })
+          ).rejects.toThrow("Existing store waitpoint association is disabled");
+          await expect(
+            engine.waitpointSystem.buildStoreBlockOperation({
+              runId: parent.id,
+              waitpointId: storeId,
+              organizationId: env.organization.id,
+            })
+          ).resolves.toBeUndefined();
+          expect(await prisma.waitpoint.count({ where: { completedByTaskRunId: child.id } })).toBe(
+            0
+          );
+
+          const fresh = await triggerRun(engine, env, prisma, {
+            friendlyId: `run_${generateRunOpsId()}`,
+            taskIdentifier: "child-task",
+          });
+          const waitpoint = await engine.getOrCreateRunWaitpoint({ ...lookup, runId: fresh.id });
+          expect(parseWaitpointId(waitpoint.id).format).toBe("legacy");
+          expect(await prisma.waitpoint.count({ where: { completedByTaskRunId: fresh.id } })).toBe(
+            1
+          );
+          const freshRow = await prisma.taskRun.findUniqueOrThrow({ where: { id: fresh.id } });
+          expect(hasStoreWaitpoints(freshRow.annotations)).toBe(false);
+        } finally {
+          await engine.quit();
+          await store.quit();
+
+          await snapshotStore.quit();
+        }
+      }
+    );
+
     for (const dial of ["off", "dual-write", "redis-only"] as const) {
       for (const enabled of [false, true]) {
         containerTest(
@@ -548,7 +614,134 @@ describe("storeWaitpointLifecycleRouting", () => {
         }
       }
     );
+
+    containerTest(
+      "deploy-dark: a legacy engine keeps the Postgres associated waitpoint and writes no wp:v1 keys",
+      async ({ prisma, redisOptions }) => {
+        const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+        const store = new WaitpointStoreCoordinator({ redisOptions });
+        const engine = makeEngine(prisma, redisOptions, { snapshotStore, store, enabled: false });
+        const probe = createRedisClient(redisOptions);
+        try {
+          await store.quit(); // A disabled organization must work with an unavailable waitpoint store.
+          const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+          await setupBackgroundWorker(engine, env, ["parent-task", "child-task"]);
+
+          const parent = await triggerRun(engine, env, prisma, {
+            friendlyId: `run_${generateRunOpsId()}`,
+            taskIdentifier: "parent-task",
+          });
+          await dequeueAndStart(engine, "c_parent_d");
+
+          const child = await triggerRun(engine, env, prisma, {
+            friendlyId: `run_${generateRunOpsId()}`,
+            taskIdentifier: "child-task",
+            parentTaskRunId: parent.id,
+            resumeParentOnCompletion: true,
+            idempotencyKey: "dark-shared-child",
+            debounce: { key: "dark-debounce", delay: "30s" },
+            delayUntil: new Date(Date.now() + 30_000),
+          });
+
+          // Legacy: a Postgres associated-waitpoint row exists for the child.
+          const dbChild = await prisma.taskRun.findFirst({
+            where: { id: child.id },
+            include: { associatedWaitpoint: true },
+          });
+          expect(dbChild?.associatedWaitpoint).not.toBeNull();
+          expect(dbChild?.associatedWaitpoint?.type).toBe("RUN");
+
+          const { waitpoint: datetime } = await engine.createDateTimeWaitpoint({
+            runId: parent.id,
+            projectId: env.project.id,
+            environmentId: env.id,
+            organizationId: env.organization.id,
+            completedAfter: new Date(Date.now() + 60_000),
+          });
+          expect(await prisma.waitpoint.findUnique({ where: { id: datetime.id } })).toMatchObject({
+            type: "DATETIME",
+            status: "PENDING",
+          });
+
+          // TRES and the waitpoint client are both wired, but the flag keeps creation in Postgres.
+          expect(await probe.keys("wp:v1*")).toEqual([]);
+        } finally {
+          probe.disconnect();
+          await engine.quit();
+          await store.quit();
+
+          await snapshotStore.quit();
+        }
+      }
+    );
   });
+
+  containerTest(
+    "batch scheduling preserves disabled payloads and enabled trusted org context with an unavailable native store",
+    async ({ prisma, redisOptions }) => {
+      const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+      const store = new WaitpointStoreCoordinator({ redisOptions });
+      await store.quit();
+      const enabledOrganizations = new Set<string>();
+      const engine = makeEngine(prisma, redisOptions, {
+        store,
+        snapshotStore,
+        workerDisabled: true,
+        isWaitpointStoreEnabled: (organizationId) => enabledOrganizations.has(organizationId),
+      });
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const controlOrg = await prisma.organization.create({
+          data: { title: "Disabled batch control", slug: "disabled-batch-control" },
+        });
+        // Exercise the real enqueue seam and read the serialized worker data, not an input spy.
+        for (const [label, organizationId] of [
+          ["disabled", env.organization.id],
+          ["control", controlOrg.id],
+          ["old-no-org", undefined],
+        ] as const) {
+          const batchId = `batch-${label}`;
+          await engine.tryCompleteBatch({ batchId, organizationId });
+          await engine.scheduleExpireBatch({
+            batchId,
+            organizationId,
+            availableAt: new Date(Date.now() + 60_000),
+          });
+          expect((await engine["worker"].getJob(`tryCompleteBatch:${batchId}`))!.item).toEqual({
+            batchId,
+          });
+          expect((await engine["worker"].getJob(`expireBatch:${batchId}`))!.item).toEqual({
+            batchId,
+          });
+        }
+        enabledOrganizations.add(env.organization.id);
+        const batchId = "batch-enabled";
+        await engine.tryCompleteBatch({ batchId, organizationId: env.organization.id });
+        await engine.scheduleExpireBatch({
+          batchId,
+          organizationId: env.organization.id,
+          availableAt: new Date(Date.now() + 60_000),
+        });
+        for (const job of ["tryCompleteBatch", "expireBatch"]) {
+          expect((await engine["worker"].getJob(`${job}:${batchId}`))!.item).toEqual({
+            batchId,
+            organizationId: env.organization.id,
+          });
+        }
+        // Enabling one org must not enroll an unaffected control org in stored job context.
+        await engine.tryCompleteBatch({
+          batchId: "batch-control-after",
+          organizationId: controlOrg.id,
+        });
+        expect(
+          (await engine["worker"].getJob("tryCompleteBatch:batch-control-after"))!.item
+        ).toEqual({ batchId: "batch-control-after" });
+      } finally {
+        await engine.quit();
+        await snapshotStore.quit();
+      }
+    }
+  );
 
   describe("Store DATETIME waitpoint lifecycle (real RunEngine + MemoryDB)", () => {
     containerTest(

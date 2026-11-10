@@ -122,7 +122,7 @@ export type BatchCompletionDeps = {
   newWriter: RunOpsPrismaClient;
   legacyWriter: RunOpsPrismaClient;
   shards?: ReadonlyArray<{ key: string; writer: RunOpsPrismaClient }>;
-  tryCompleteBatch: (batchId: string) => Promise<unknown>;
+  tryCompleteBatch: (batchId: string, organizationId?: string) => Promise<unknown>;
 };
 
 /**
@@ -221,7 +221,7 @@ export async function handleBatchCompletion(
 
     // Try to complete the batch (handles waitpoint completion if all runs are done)
     if (status !== "ABORTED") {
-      await deps.tryCompleteBatch(batchId);
+      await deps.tryCompleteBatch(batchId, result.organizationId);
     }
 
     logger.info("Batch completion handled", {

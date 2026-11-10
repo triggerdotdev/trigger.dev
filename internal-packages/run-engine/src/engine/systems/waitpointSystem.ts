@@ -109,6 +109,7 @@ export type WaitpointSystemOptions = {
         | "recoverIdempotencyCandidate"
         | "acknowledgeIdempotencyCandidate"
         | "retirePendingSource"
+        | "readRelatedRunIds"
       >
     >;
 };
@@ -201,6 +202,7 @@ export class WaitpointSystem {
         | "recoverIdempotencyCandidate"
         | "acknowledgeIdempotencyCandidate"
         | "retirePendingSource"
+        | "readRelatedRunIds"
       >
     >;
   // Whether a store coordinator is wired at all. When it is not, the RUN mint decision and terminal
@@ -1015,6 +1017,21 @@ export class WaitpointSystem {
     const scope = `${params.environmentId}:${this.$.runStore.getWaitpointKeyScope(this.#keyClaimOwner(params))}`;
     const id = await this.#waitpointStore.readIdempotencyKey(scope, params.idempotencyKey);
     return id ? this.readExistingStoreDateTimeWaitpoint({ ...params, waitpointId: id }) : null;
+  }
+
+  /** Internal, tenant-scoped history page; does not read or consume live fanout state. */
+  public async readStoreWaitpointRelatedRunIds(params: {
+    waitpointId: string;
+    environmentId: string;
+    projectId: string;
+    organizationId?: string;
+    cursor?: string;
+  }): Promise<{ runIds: string[]; nextCursor?: string }> {
+    const source = await this.readExistingStoreDateTimeWaitpoint(params);
+    if (!source) return { runIds: [] };
+    return (
+      this.#waitpointStore?.readRelatedRunIds?.(params.waitpointId, params.cursor) ?? { runIds: [] }
+    );
   }
 
   /** Existing DATETIME compatibility only; MANUAL minting remains in Postgres. */

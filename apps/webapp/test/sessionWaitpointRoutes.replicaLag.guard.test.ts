@@ -99,6 +99,8 @@ vi.mock("~/services/realtime/sessionRunManager.server", () => ({
 // Waitpoint completion downstream: orthogonal. Record the engine call; canned packet.
 vi.mock("~/v3/runEngine.server", () => ({
   engine: {
+    // Existing legacy-route fixture remains on its disabled waitpoint path.
+    waitpointSystem: { isWaitpointStoreEnabled: async () => false },
     completeWaitpoint: vi.fn(async (args: any) => {
       H.engine.calls.push(args);
       return { id: args.id };

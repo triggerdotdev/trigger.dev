@@ -1,10 +1,11 @@
 import { json } from "@remix-run/server-runtime";
+import { MAX_INLINE_COMPLETION_OUTPUT_BYTES } from "@internal/run-engine";
 import {
   CompleteWaitpointTokenRequestBody,
   type CompleteWaitpointTokenResponseBody,
   stringifyIO,
 } from "@trigger.dev/core/v3";
-import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import { parseWaitpointId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
@@ -36,21 +37,36 @@ const { action, loader } = createActionApiRoute(
       //check permissions
       // The store routes by the waitpointId's residency (id shape) and probes both stores, so a
       // standalone token and a run-owned co-located waitpoint both resolve off the owning replica.
-      let waitpoint = await runStore.findWaitpoint({
-        where: {
-          id: waitpointId,
+      const parsed = (await engine.waitpointSystem.isWaitpointStoreEnabled(
+        authentication.environment.organization.id
+      ))
+        ? parseWaitpointId(waitpointId)
+        : undefined;
+      let waitpoint;
+      if (parsed && parsed.format !== "legacy" && parsed.type === "DATETIME") {
+        waitpoint = await engine.getStoreDateTimeWaitpoint({
+          waitpointId,
           environmentId: authentication.environment.id,
-        },
-      });
-
-      if (!waitpoint) {
-        // Read-your-writes: a token completed right after mint may not have replicated yet.
-        waitpoint = await runStore.findWaitpointOnPrimary({
+          projectId: authentication.environment.project.id,
+          organizationId: authentication.environment.organization.id,
+        });
+      } else {
+        waitpoint = await runStore.findWaitpoint({
           where: {
             id: waitpointId,
             environmentId: authentication.environment.id,
           },
         });
+
+        if (!waitpoint) {
+          // Read-your-writes: a token completed right after mint may not have replicated yet.
+          waitpoint = await runStore.findWaitpointOnPrimary({
+            where: {
+              id: waitpointId,
+              environmentId: authentication.environment.id,
+            },
+          });
+        }
       }
 
       if (!waitpoint) {
@@ -64,19 +80,29 @@ const { action, loader } = createActionApiRoute(
       }
 
       const stringifiedData = await stringifyIO(body.data);
+      const pathPrefix = `${WaitpointId.toFriendlyId(waitpointId)}/token`;
       const finalData = await processWaitpointCompletionPacket(
         stringifiedData,
         authentication.environment,
-        `${WaitpointId.toFriendlyId(waitpointId)}/token`
+        // A losing native completion must not replace the object referenced by the winner.
+        parsed && parsed.format !== "legacy" && parsed.type === "DATETIME"
+          ? `${pathPrefix}/${crypto.randomUUID()}`
+          : pathPrefix,
+        parsed && parsed.format !== "legacy" && parsed.type === "DATETIME"
+          ? MAX_INLINE_COMPLETION_OUTPUT_BYTES
+          : undefined
       );
 
-      const _result = await engine.completeWaitpoint({
+      const completionInput: Parameters<typeof engine.completeWaitpoint>[0] = {
         id: waitpointId,
         output: finalData.data
           ? { type: finalData.dataType, value: finalData.data, isError: false }
           : undefined,
         organizationId: authentication.environment.organization.id,
-      });
+      };
+      if (parsed && parsed.format !== "legacy" && parsed.type === "DATETIME")
+        completionInput.onlyIfPending = true;
+      const _result = await engine.completeWaitpoint(completionInput);
 
       return json<CompleteWaitpointTokenResponseBody>(
         {

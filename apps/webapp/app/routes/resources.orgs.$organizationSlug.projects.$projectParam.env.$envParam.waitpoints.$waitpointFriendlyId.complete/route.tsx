@@ -27,6 +27,11 @@ import { processWaitpointCompletionPacket } from "~/runEngine/concerns/waitpoint
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema, v3RunsPath } from "~/utils/pathBuilder";
+import {
+  isStoreDateTimeWaitpoint,
+  resolveDashboardDateTimeWaitpoint,
+  skipDashboardDateTimeWaitpoint,
+} from "~/services/dashboardDateTimeWaitpoint.server";
 import { engine } from "~/v3/runEngine.server";
 
 const CompleteWaitpointFormData = z.discriminatedUnion("type", [
@@ -90,17 +95,30 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
     const waitpointId = WaitpointId.toId(waitpointFriendlyId);
 
-    let waitpoint = await runStore.findWaitpoint({
-      select: {
-        id: true,
-      },
-      where: {
-        id: waitpointId,
-        projectId: project.id,
-        environmentId: environment.id,
-      },
-    });
-    if (!waitpoint) {
+    const storeDateTime =
+      (await engine.waitpointSystem.isWaitpointStoreEnabled(environment.organization.id)) &&
+      isStoreDateTimeWaitpoint(waitpointId);
+    let waitpoint = storeDateTime
+      ? await resolveDashboardDateTimeWaitpoint(
+          {
+            friendlyId: waitpointFriendlyId,
+            projectId: project.id,
+            environmentId: environment.id,
+            organizationId: environment.organization.id,
+          },
+          engine
+        )
+      : await runStore.findWaitpoint({
+          select: {
+            id: true,
+          },
+          where: {
+            id: waitpointId,
+            projectId: project.id,
+            environmentId: environment.id,
+          },
+        });
+    if (!waitpoint && !storeDateTime) {
       // Read-your-writes: a just-minted token may not have replicated. Re-read the owning primary
       // before the auth guard / "No waitpoint found" (mirrors the token complete/callback routes).
       waitpoint = await runStore.findWaitpointOnPrimary({
@@ -113,7 +131,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       });
     }
 
-    if (!waitpoint) {
+    if (!waitpoint || (storeDateTime && submission.value.type !== "DATETIME")) {
       return redirectWithErrorMessage(
         submission.value.failureRedirect,
         request,
@@ -123,10 +141,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
     switch (submission.value.type) {
       case "DATETIME": {
-        const _result = await engine.completeWaitpoint({
-          id: waitpointId,
-          organizationId: environment.organization.id,
-        });
+        if (storeDateTime) {
+          await skipDashboardDateTimeWaitpoint(waitpointId, environment.organization.id, engine);
+        } else {
+          await engine.completeWaitpoint({
+            id: waitpointId,
+            organizationId: environment.organization.id,
+          });
+        }
 
         return redirectWithSuccessMessage(
           submission.value.successRedirect,

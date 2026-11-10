@@ -2488,7 +2488,10 @@ export class RunAttemptSystem {
     // Finish mutations return a narrow projection; use the tenant context already loaded by the caller.
     organizationId = trustedOrganizationId;
     if (batchId) {
-      await this.batchSystem.scheduleCompleteBatch({ batchId });
+      await this.batchSystem.scheduleCompleteBatch({
+        batchId,
+        organizationId: organizationId ?? undefined,
+      });
     }
 
     //cancel the heartbeats
@@ -2709,7 +2712,10 @@ export class RunAttemptSystem {
       }
 
       if (run.batchId) {
-        await this.batchSystem.scheduleCompleteBatch({ batchId: run.batchId });
+        await this.batchSystem.scheduleCompleteBatch({
+          batchId: run.batchId,
+          organizationId: run.organizationId ?? undefined,
+        });
       }
     });
   }

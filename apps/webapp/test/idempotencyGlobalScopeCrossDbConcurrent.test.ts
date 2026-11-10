@@ -26,8 +26,10 @@ import {
   type StartedNetwork,
   type StartedRedisContainer,
 } from "@internal/testcontainers";
+import { RunEngine } from "@internal/run-engine";
+import { trace } from "@internal/tracing";
 import { PostgresRunStore, RoutingRunStore } from "@internal/run-store";
-import { generateRunOpsId, RunId } from "@trigger.dev/core/v3/isomorphic";
+import { generateRunOpsId, RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClient, TaskRunStatus } from "@trigger.dev/database";
 import { MollifierBuffer } from "@trigger.dev/redis-worker";
 import type { IdempotencyClaimResult } from "@trigger.dev/redis-worker";
@@ -164,10 +166,35 @@ const heteroPgWithRedisTest = heteroPostgresTest.extend<{
   redisContainer: StartedRedisContainer;
   redisOptions: RedisOptions;
   bufferHarness: BufferHarness;
+  waitpointEngine: RunEngine;
 }>({
   network,
   redisContainer,
   redisOptions,
+  waitpointEngine: async ({ prisma14, redisOptions }, use) => {
+    const engine = new RunEngine({
+      prisma: prisma14,
+      tracer: trace.getTracer("cross-db-legacy-waitpoint"),
+      logLevel: "error",
+      worker: { redis: redisOptions, disabled: true, workers: 1, tasksPerWorker: 1 },
+      queue: {
+        redis: redisOptions,
+        masterQueueConsumersDisabled: true,
+        ttlSystem: { disabled: true },
+      },
+      runLock: { redis: redisOptions },
+      machines: {
+        defaultMachine: "small-1x",
+        machines: { "small-1x": { name: "small-1x", cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 } },
+        baseCostInCents: 0.0001,
+      },
+    });
+    try {
+      await use(engine);
+    } finally {
+      await engine.quit();
+    }
+  },
   bufferHarness: async ({ redisOptions }, use) => {
     const harness = buildRealBuffer(redisOptions);
     try {
@@ -582,7 +609,7 @@ describe("run-ops split — CONCURRENT global-scope idempotency dedup across two
 
   heteroPgWithRedisTest(
     "global scope andWait loser: exactly one child AND the loser's parent (other DB) is blocked on the WINNER's run waitpoint",
-    async ({ prisma14, prisma17, bufferHarness }) => {
+    async ({ prisma14, prisma17, bufferHarness, waitpointEngine }) => {
       // The by-id cross-DB resolution (resolveWinnerAcrossDbs) the plain cases don't fully assert:
       // the LOSER is an andWait trigger whose parent lives on the LEGACY DB, while the WINNER's child
       // lives on the NEW DB. When the loser resolves the claim it must (1) dedup to the single winner
@@ -629,11 +656,13 @@ describe("run-ops split — CONCURRENT global-scope idempotency dedup across two
         [];
       const blockCalls: Array<{ runId: string; waitpoints: string | string[] }> = [];
       const winnerWaitpoint = {
-        id: "waitpoint_winner_run",
+        id: WaitpointId.generate().id,
         status: "PENDING" as const,
         outputIsError: false,
       };
       const stubEngine = {
+        // Run the newly added legacy/store classification through the real engine system.
+        waitpointSystem: waitpointEngine.waitpointSystem,
         async getOrCreateRunWaitpoint(input: {
           runId: string;
           projectId: string;

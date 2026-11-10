@@ -1,7 +1,9 @@
+import { parseWaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { z } from "zod";
 import { $replica } from "~/db.server";
+import { processStreamWaitpointCompletionPacket } from "~/runEngine/concerns/waitpointCompletionPacket.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import {
   getInputStreamWaitpoint,
@@ -113,15 +115,30 @@ const { action } = createActionApiRoute(
     // Get first, complete, then delete — so the mapping survives if completeWaitpoint throws
     const waitpointId = await getInputStreamWaitpoint(params.runId, params.streamId);
     if (waitpointId) {
-      await engine.completeWaitpoint({
+      const parsed = (await engine.waitpointSystem.isWaitpointStoreEnabled(
+        authentication.environment.organization.id
+      ))
+        ? parseWaitpointId(waitpointId)
+        : undefined;
+      const storeDateTime = parsed && parsed.format !== "legacy" && parsed.type === "DATETIME";
+      const packet = storeDateTime
+        ? await processStreamWaitpointCompletionPacket(
+            waitpointId,
+            record,
+            authentication.environment
+          )
+        : undefined;
+      const completionInput: Parameters<typeof engine.completeWaitpoint>[0] = {
         id: waitpointId,
         output: {
-          value: JSON.stringify(body.data.data),
-          type: "application/json",
+          value: packet ? packet.data! : record,
+          type: packet ? packet.dataType : "application/json",
           isError: false,
         },
         organizationId: authentication.environment.organization.id,
-      });
+      };
+      if (storeDateTime) completionInput.onlyIfPending = true;
+      await engine.completeWaitpoint(completionInput);
       await deleteInputStreamWaitpoint(params.runId, params.streamId);
     }
 

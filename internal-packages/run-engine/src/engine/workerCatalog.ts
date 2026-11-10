@@ -128,12 +128,14 @@ export const workerCatalog = {
   tryCompleteBatch: {
     schema: z.object({
       batchId: z.string(),
+      organizationId: z.string().optional(),
     }),
     visibilityTimeoutMs: 30_000,
   },
   expireBatch: {
     schema: z.object({
       batchId: z.string(),
+      organizationId: z.string().optional(),
     }),
     visibilityTimeoutMs: 30_000,
   },

@@ -3,7 +3,7 @@ import {
   containerTestWithIsolatedRedis as containerTest,
   redisTest,
 } from "@internal/testcontainers";
-import { RedisSnapshotStore } from "@internal/run-store";
+import { RedisSnapshotStore, type SnapshotStoreDial } from "@internal/run-store";
 import {
   deriveWaitpointIdFromAnchor,
   generateRunOpsId,
@@ -263,6 +263,81 @@ describe("storeWaitpointAutomaticRecovery", () => {
     );
   });
 
+  containerTest(
+    "disabled organization acknowledges recovery work before any run or waitpoint lookup",
+    async ({ prisma, redisOptions }) => {
+      const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+      const store = new WaitpointStoreCoordinator({ redisOptions });
+      const engine = makeEngine(prisma, redisOptions, { store, snapshotStore, enabled: false });
+      try {
+        const runId = generateRunOpsId();
+        const parentRunId = generateRunOpsId();
+        const waitpointId = deriveWaitpointIdFromAnchor(runId, "RUN")!;
+        const operation = {
+          id: `block:${parentRunId}:absent`,
+          absorptionId: "absent",
+          cycleAnchor: "absent",
+        };
+        const organizationId = "disabled-recovery-org";
+        await engine["worker"].enqueue({
+          id: "disabled-run-recovery",
+          job: "recoverRunWaitpoint",
+          payload: { runId, parentRunId, waitpointId, organizationId, blockOperation: operation },
+        });
+        await engine["worker"].enqueue({
+          id: "disabled-block-recovery",
+          job: "recoverWaitpointBlock",
+          payload: {
+            runId: parentRunId,
+            waitpoints: [waitpointId],
+            organizationId,
+            projectId: "absent",
+            blockOperation: operation,
+          },
+        });
+        await engine["worker"].enqueue({
+          id: "disabled-datetime-recovery",
+          job: "recoverDateTimeWaitpoint",
+          payload: {
+            waitpointId,
+            organizationId,
+            projectId: "absent",
+            environmentId: "absent",
+            completedAfter: new Date(),
+          },
+        });
+        await engine["worker"].enqueue({
+          id: "disabled-fanout-recovery",
+          job: "deliverWaitpointFanout",
+          payload: { waitpointId, organizationId },
+        });
+        await vi.waitFor(
+          async () => {
+            for (const id of [
+              "disabled-run-recovery",
+              "disabled-block-recovery",
+              "disabled-datetime-recovery",
+              "disabled-fanout-recovery",
+            ]) {
+              expect(
+                await engine["worker"].queue.getJob(id),
+                "recovery job never left the worker queue"
+              ).toBeNull();
+            }
+          },
+          { timeout: 5000 }
+        );
+        expect(await store.probeWaitpointPresence(waitpointId)).toBe("absent");
+        expect(await prisma.taskRun.count({ where: { id: runId } })).toBe(0);
+      } finally {
+        await engine.quit();
+        await store.quit();
+
+        await snapshotStore.quit();
+      }
+    }
+  );
+
   for (const retireParent of [false, true]) {
     containerTest(
       `a delayed original producer ${retireParent ? "cannot reattach a retired parent cycle" : "cannot republish the child after recovery queues it"}`,
@@ -306,9 +381,10 @@ describe("storeWaitpointAutomaticRecovery", () => {
           const waitpointId = deriveWaitpointIdFromAnchor(runId, "RUN")!;
           barrier.pause(
             (args) =>
-              args[2] === "1" &&
+              args[2] === "2" &&
               args[3] === `wp:v1:{${waitpointId}}` &&
-              args[4]!.includes('"type":"RUN"')
+              args[4] === `wp:v1:{${waitpointId}}:related` &&
+              args[5]!.includes('"type":"RUN"')
           );
           original = triggerRun(engine, env, prisma, {
             friendlyId,
@@ -525,6 +601,93 @@ describe("storeWaitpointAutomaticRecovery", () => {
       }
     }
   );
+
+  for (const terminalPath of ["parked expiry", "finalization replay", "block timeout"] as const) {
+    containerTest(
+      `terminal org context: ${terminalPath} completes a store RUN waitpoint`,
+      async ({ prisma, redisOptions }) => {
+        const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+        const store = new WaitpointStoreCoordinator({ redisOptions });
+        let dial: SnapshotStoreDial = "redis-only";
+        const engine = makeEngine(prisma, redisOptions, {
+          store,
+          snapshotStore,
+          resolveDial: () => dial,
+        });
+        try {
+          const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+          await setupBackgroundWorker(engine, env, ["parent-task", "child-task"]);
+          const parent = await triggerRun(engine, env, prisma, {
+            friendlyId: `run_${generateRunOpsId()}`,
+            taskIdentifier: "parent-task",
+          });
+          await dequeueAndStart(engine, "terminal_context_parent");
+          // Child residency is independently Postgres; its parent's immutable Redis route still mints a store waitpoint.
+          dial = "off";
+          const externalId =
+            terminalPath === "parked expiry" ? "terminal-context-missing-deployment" : undefined;
+          const child = await triggerRun(engine, env, prisma, {
+            friendlyId: `run_${generateRunOpsId()}`,
+            taskIdentifier: "child-task",
+            parentTaskRunId: parent.id,
+            resumeParentOnCompletion: true,
+            parkedOnExternalDeploymentId: externalId,
+          });
+          const waitpointId = deriveWaitpointIdFromAnchor(child.id, "RUN")!;
+          expect(await prisma.waitpoint.count({ where: { completedByTaskRunId: child.id } })).toBe(
+            0
+          );
+          const pending = await store.describeWaitpoint(waitpointId);
+          expect(pending.outcome === "exists" && pending.status).toBe("PENDING");
+          if (terminalPath === "parked expiry") {
+            await engine.pendingVersionSystem.expireParkedExternalDeploymentRun({
+              runId: child.id,
+              externalDeploymentId: externalId!,
+            });
+          } else if (terminalPath === "finalization replay") {
+            // Crash boundary: the terminal row committed, but its waitpoint completion never ran.
+            await prisma.taskRun.update({
+              where: { id: child.id },
+              data: {
+                status: "EXPIRED",
+                expiredAt: new Date(),
+                error: { type: "STRING_ERROR", raw: "expired" },
+              },
+            });
+            await engine.runAttemptSystem.ensureRunFinalized({ runId: child.id });
+          } else {
+            const blockOperation = await engine.waitpointSystem.buildStoreBlockOperation({
+              runId: parent.id,
+              waitpointId,
+              organizationId: env.organization.id,
+            });
+            await engine.blockRunWithWaitpoint({
+              runId: parent.id,
+              waitpoints: waitpointId,
+              projectId: env.project.id,
+              organizationId: env.organization.id,
+              blockOperation,
+              timeout: new Date(Date.now() + 50),
+            });
+          }
+          await vi.waitFor(
+            async () => {
+              const completed = await store.describeWaitpoint(waitpointId);
+              expect(
+                completed.outcome === "exists" && completed.status,
+                'waitpoint condition never settled: completed.outcome === "exists" && completed.status'
+              ).toBe("COMPLETED");
+            },
+            { timeout: 10000, interval: 100 }
+          );
+        } finally {
+          await engine.quit();
+          await store.quit();
+          await snapshotStore.quit();
+        }
+      }
+    );
+  }
 
   containerTest(
     "RUN recovery publishes a shared child without inventing a failed late-parent dependency",

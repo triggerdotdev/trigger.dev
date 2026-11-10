@@ -53,17 +53,33 @@ const { action } = createActionApiRoute(
         runId: run.id,
         projectId: authentication.environment.project.id,
         environmentId: authentication.environment.id,
+        // The blocking run's org, so a store DATETIME mint can be considered (dark until the org opts in).
+        organizationId: authentication.environment.organization.id,
         completedAfter: body.date,
         idempotencyKey: body.idempotencyKey,
         idempotencyKeyExpiresAt: idempotencyKeyExpiresAt,
       });
 
-      const _waitResult = await engine.blockRunWithWaitpoint({
+      // A store-format DATETIME waitpoint needs the caller-owned block-operation identity; undefined for a
+      // legacy waitpoint, which ignores it (the dark default).
+      const blockOperation = (await engine.waitpointSystem.isWaitpointStoreEnabled(
+        authentication.environment.organization.id
+      ))
+        ? await engine.waitpointSystem.buildStoreBlockOperation({
+            runId: run.id,
+            waitpointId: waitpoint.id,
+            organizationId: authentication.environment.organization.id,
+          })
+        : undefined;
+
+      const blockInput: Parameters<typeof engine.blockRunWithWaitpoint>[0] = {
         runId: run.id,
         waitpoints: waitpoint.id,
         projectId: authentication.environment.project.id,
         organizationId: authentication.environment.organization.id,
-      });
+      };
+      if (blockOperation !== undefined) blockInput.blockOperation = blockOperation;
+      const _waitResult = await engine.blockRunWithWaitpoint(blockInput);
 
       return json({
         waitUntil: body.date,

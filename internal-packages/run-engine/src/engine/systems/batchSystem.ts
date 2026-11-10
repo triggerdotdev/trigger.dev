@@ -23,31 +23,49 @@ export class BatchSystem {
     });
   }
 
-  public async scheduleCompleteBatch({ batchId }: { batchId: string }): Promise<void> {
+  public async scheduleCompleteBatch({
+    batchId,
+    organizationId,
+  }: {
+    batchId: string;
+    organizationId?: string;
+  }): Promise<void> {
     await this.$.worker.enqueue({
       //this will debounce the call
       id: `tryCompleteBatch:${batchId}`,
       job: "tryCompleteBatch",
-      payload: { batchId: batchId },
+      payload: (await this.waitpointSystem.isWaitpointStoreEnabled(organizationId))
+        ? { batchId, organizationId }
+        : { batchId },
       availableAt: new Date(Date.now() + 200),
     });
   }
 
-  public async performCompleteBatch({ batchId }: { batchId: string }): Promise<void> {
-    await this.#tryCompleteBatch({ batchId });
+  public async performCompleteBatch({
+    batchId,
+    organizationId,
+  }: {
+    batchId: string;
+    organizationId?: string;
+  }): Promise<void> {
+    await this.#tryCompleteBatch({ batchId, organizationId });
   }
 
   public async scheduleExpireBatch({
     batchId,
     availableAt,
+    organizationId,
   }: {
+    organizationId?: string;
     batchId: string;
     availableAt: Date;
   }): Promise<void> {
     await this.$.worker.enqueue({
       id: `expireBatch:${batchId}`,
       job: "expireBatch",
-      payload: { batchId },
+      payload: (await this.waitpointSystem.isWaitpointStoreEnabled(organizationId))
+        ? { batchId, organizationId }
+        : { batchId },
       availableAt,
     });
   }
@@ -68,7 +86,13 @@ export class BatchSystem {
    * non-PENDING batch and bail. An already-ABORTED batch therefore falls through to complete
    * its waitpoint again, which {@link WaitpointSystem.completeWaitpoint} treats as a no-op.
    */
-  public async expireBatch({ batchId }: { batchId: string }): Promise<void> {
+  public async expireBatch({
+    batchId,
+    organizationId,
+  }: {
+    batchId: string;
+    organizationId?: string;
+  }): Promise<void> {
     return startSpan(this.$.tracer, "expireBatch", async (span) => {
       span.setAttribute("batchId", batchId);
 
@@ -143,6 +167,7 @@ export class BatchSystem {
 
       await this.waitpointSystem.completeWaitpoint({
         id: waitpoint.id,
+        organizationId,
         output: { value: JSON.stringify(error), isError: true },
       });
 
@@ -160,7 +185,13 @@ export class BatchSystem {
    * Checks to see if all runs for a BatchTaskRun are completed, if they are then update the status.
    * This isn't used operationally, but it's used for the Batches dashboard page.
    */
-  async #tryCompleteBatch({ batchId }: { batchId: string }) {
+  async #tryCompleteBatch({
+    batchId,
+    organizationId,
+  }: {
+    batchId: string;
+    organizationId?: string;
+  }) {
     return startSpan(this.$.tracer, "#tryCompleteBatch", async (span) => {
       const batch = await this.$.runStore.findBatchTaskRunById(batchId, undefined, this.$.prisma);
 
@@ -180,7 +211,7 @@ export class BatchSystem {
         this.$.logger.debug("#tryCompleteBatch: Batch completed before its parent resumed", {
           batchId,
         });
-        await this.#resumeBatchParent(batchId);
+        await this.#resumeBatchParent(batchId, organizationId);
         return;
       }
 
@@ -240,14 +271,14 @@ export class BatchSystem {
           return;
         }
 
-        await this.#resumeBatchParent(batchId);
+        await this.#resumeBatchParent(batchId, organizationId);
       } else {
         this.$.logger.debug("#tryCompleteBatch: Not all runs are completed", { batchId });
       }
     });
   }
 
-  async #resumeBatchParent(batchId: string): Promise<void> {
+  async #resumeBatchParent(batchId: string, organizationId?: string): Promise<void> {
     const waitpoint = await this.$.runStore.findWaitpoint(
       {
         where: { completedByBatchId: batchId },
@@ -265,6 +296,7 @@ export class BatchSystem {
 
     await this.waitpointSystem.completeWaitpoint({
       id: waitpoint.id,
+      organizationId,
       output: { value: "Batch waitpoint completed", isError: false },
     });
 

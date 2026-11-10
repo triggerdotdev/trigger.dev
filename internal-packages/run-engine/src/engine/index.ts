@@ -499,10 +499,10 @@ export class RunEngine {
           });
         },
         tryCompleteBatch: async ({ payload }) => {
-          await this.batchSystem.performCompleteBatch({ batchId: payload.batchId });
+          await this.batchSystem.performCompleteBatch(payload);
         },
         expireBatch: async ({ payload }) => {
-          await this.batchSystem.expireBatch({ batchId: payload.batchId });
+          await this.batchSystem.expireBatch(payload);
         },
         continueRunIfUnblocked: async ({ payload }) => {
           await this.waitpointSystem.continueRunIfUnblocked({
@@ -2644,24 +2644,38 @@ export class RunEngine {
     }
   }
 
-  async tryCompleteBatch({ batchId }: { batchId: string }): Promise<void> {
-    return this.batchSystem.scheduleCompleteBatch({ batchId });
+  async tryCompleteBatch({
+    batchId,
+    organizationId,
+  }: {
+    batchId: string;
+    organizationId?: string;
+  }): Promise<void> {
+    return this.batchSystem.scheduleCompleteBatch({ batchId, organizationId });
   }
 
   /** Fails a batch that phase 2 never sealed, and resumes its waiting parent with an error. */
-  async expireBatch({ batchId }: { batchId: string }): Promise<void> {
-    return this.batchSystem.expireBatch({ batchId });
+  async expireBatch({
+    batchId,
+    organizationId,
+  }: {
+    batchId: string;
+    organizationId?: string;
+  }): Promise<void> {
+    return this.batchSystem.expireBatch({ batchId, organizationId });
   }
 
   /** Schedules the seal-timeout reaper. Only a batch that blocks a parent needs it. */
   async scheduleExpireBatch({
     batchId,
     availableAt,
+    organizationId,
   }: {
     batchId: string;
+    organizationId?: string;
     availableAt: Date;
   }): Promise<void> {
-    return this.batchSystem.scheduleExpireBatch({ batchId, availableAt });
+    return this.batchSystem.scheduleExpireBatch({ batchId, availableAt, organizationId });
   }
 
   //MARK: - BatchQueue
@@ -2719,6 +2733,17 @@ export class RunEngine {
     organizationId?: string;
   }): Promise<Waitpoint | null> {
     return this.waitpointSystem.readExistingStoreDateTimeWaitpoint(params);
+  }
+
+  /** Scoped native token subscription history, in fixed-size ID pages. */
+  async getStoreWaitpointRelatedRunIds(params: {
+    waitpointId: string;
+    environmentId: string;
+    projectId: string;
+    organizationId?: string;
+    cursor?: string;
+  }): Promise<{ runIds: string[]; nextCursor?: string }> {
+    return this.waitpointSystem.readStoreWaitpointRelatedRunIds(params);
   }
 
   async getWaitpoint({

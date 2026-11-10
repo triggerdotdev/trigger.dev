@@ -63,6 +63,11 @@ export function waitpointKeys(waitpointId: string): WaitpointKeys {
   return { record: base, watchers: `${base}:w`, queue: `${base}:q`, fanout: `${base}:f` };
 }
 
+/** Successful token subscriptions, independent of destructive watcher/fanout state. */
+export function waitpointRelatedRunsKey(waitpointId: string): string {
+  return `${waitpointKeys(waitpointId).record}:related`;
+}
+
 export function runBlockKeys(runId: string): RunBlockKeys {
   const base = `${NAMESPACE}:run:{${runId}}`;
   return {

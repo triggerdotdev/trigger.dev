@@ -157,9 +157,10 @@ describe("storeWaitpointConcurrentRecovery", () => {
           ).not.toBeNull();
           barrier.pause(
             (args) =>
-              args[2] === "1" &&
+              args[2] === "2" &&
               args[3] === `wp:v1:{${waitpointId}}` &&
-              args[4]!.includes('"type":"RUN"'),
+              args[4] === `wp:v1:{${waitpointId}}:related` &&
+              args[5]!.includes('"type":"RUN"'),
             phase === "before" ? "request" : "reply"
           );
           // Exercise the actual registered callback, including its subsequent child-publication lock.

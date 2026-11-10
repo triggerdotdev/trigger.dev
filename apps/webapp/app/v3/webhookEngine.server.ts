@@ -10,15 +10,13 @@ import { z } from "zod";
 import { $replica, webhookPartitionPrisma, webhookPrisma, webhookReplica } from "~/db.server";
 import { env } from "~/env.server";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
-import { logger } from "~/services/logger.server";
 import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
+import { completeSessionStreamWaitpoints } from "~/services/realtime/sessionChannelAppend.server";
 import { ensureRunForSession } from "~/services/realtime/sessionRunManager.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
-import { drainSessionStreamWaitpoints } from "~/services/sessionStreamWaitpointCache.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { webhookEngineMetricsHooks } from "~/services/webhookMetrics.server";
 import { singleton } from "~/utils/singleton";
-import { engine as runEngine } from "./runEngine.server";
 import { ServiceValidationError } from "./services/common.server";
 import { TriggerTaskService } from "./services/triggerTask.server";
 import { resolveWebhookSession } from "./webhookSessionTarget.server";
@@ -309,27 +307,7 @@ function createWebhookEngine() {
         }
 
         // Wake any `.in` waitpoints the run registered (best-effort; the record is durable in S2).
-        const [drainError, waitpointIds] = await tryCatch(
-          drainSessionStreamWaitpoints(environment.id, addressingKey, "in")
-        );
-        if (drainError) {
-          logger.error("deliverToSession: failed to drain session waitpoints", {
-            externalId,
-            error: drainError,
-          });
-        } else if (waitpointIds && waitpointIds.length > 0) {
-          await Promise.all(
-            waitpointIds.map((waitpointId) =>
-              tryCatch(
-                runEngine.completeWaitpoint({
-                  id: waitpointId,
-                  output: { value: part, type: "application/json", isError: false },
-                  organizationId: environment.organization.id,
-                })
-              )
-            )
-          );
-        }
+        await completeSessionStreamWaitpoints(environment, addressingKey, "in", part);
 
         return { success: true, runId: ensureResult.runId };
       } catch (error) {

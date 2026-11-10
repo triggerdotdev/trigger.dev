@@ -270,9 +270,10 @@ describe("storeRunWaitpointLifecycle", () => {
         const waitpointId = deriveRunWaitpointId(childId)!;
         barrier.pause(
           (args) =>
-            args[2] === "1" &&
+            args[2] === "2" &&
             args[3] === `wp:v1:{${waitpointId}}` &&
-            args[4]!.includes('"type":"RUN"')
+            args[4] === `wp:v1:{${waitpointId}}:related` &&
+            args[5]!.includes('"type":"RUN"')
         );
         original = triggerRun(engine, env, prisma, {
           friendlyId,
@@ -858,7 +859,7 @@ describe("storeRunWaitpointLifecycle", () => {
                 },
               });
               barrier.pause(
-                (args) => args[2] === "4" && args.some((arg) => arg === `wp:v1:{${waitpointId}}`),
+                (args) => args[2] === "5" && args.some((arg) => arg === `wp:v1:{${waitpointId}}`),
                 "reply"
               );
             }

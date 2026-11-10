@@ -1,7 +1,9 @@
+import { parseWaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import type { Session } from "@trigger.dev/database";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { nanoid } from "nanoid";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { processStreamWaitpointCompletionPacket } from "~/runEngine/concerns/waitpointCompletionPacket.server";
 import { logger } from "~/services/logger.server";
 import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
 import {
@@ -12,6 +14,7 @@ import {
 } from "~/services/realtime/sessionRunManager.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import {
+  addSessionStreamWaitpoint,
   claimSessionStreamPart,
   drainSessionStreamWaitpoints,
   releaseSessionStreamPart,
@@ -29,18 +32,22 @@ type SessionChannelIO = "out" | "in";
  * key the agent registered with via `sessions.open(...).in.wait()`, so writers
  * and readers converge regardless of which URL form they used.
  */
-async function completeSessionStreamWaitpoints(
-  environmentId: string,
+export async function completeSessionStreamWaitpoints(
+  environment: AuthenticatedEnvironment,
   addressingKey: string,
   io: SessionChannelIO,
-  part: string
+  part: string,
+  context?: { origin: "playground" },
+  // Injectable so tests can drive a real engine instead of the app singleton.
+  runEngine: typeof engine = engine
 ): Promise<void> {
   const [drainError, waitpointIds] = await tryCatch(
-    drainSessionStreamWaitpoints(environmentId, addressingKey, io)
+    drainSessionStreamWaitpoints(environment.id, addressingKey, io)
   );
 
   if (drainError) {
     logger.error("Failed to drain session stream waitpoints", {
+      ...context,
       addressingKey,
       io,
       error: drainError,
@@ -52,20 +59,89 @@ async function completeSessionStreamWaitpoints(
     return;
   }
 
+  const [flagError, storeEnabled] = await tryCatch(
+    runEngine.waitpointSystem.isWaitpointStoreEnabled(environment.organizationId)
+  );
+  if (flagError) {
+    logger.error("Failed to resolve waitpoint store flag for session stream waitpoints", {
+      ...context,
+      addressingKey,
+      io,
+      error: flagError,
+    });
+  }
+
+  // An unresolved flag takes the flag-off path, exactly as when the flag is off.
+  if (flagError || !storeEnabled) {
+    await Promise.all(
+      waitpointIds.map(async (waitpointId) => {
+        const [completeError] = await tryCatch(
+          runEngine.completeWaitpoint({
+            id: waitpointId,
+            output: {
+              value: part,
+              type: "application/json",
+              isError: false,
+            },
+          })
+        );
+        if (completeError) {
+          logger.error("Failed to complete session stream waitpoint", {
+            ...context,
+            addressingKey,
+            io,
+            waitpointId,
+            error: completeError,
+          });
+        }
+      })
+    );
+    return;
+  }
+
+  // Share one upload across all native waiters; PG waiters keep the original inline packet.
+  let nativePacket: ReturnType<typeof processStreamWaitpointCompletionPacket> | undefined;
+
   await Promise.all(
     waitpointIds.map(async (waitpointId) => {
+      const parsed = parseWaitpointId(waitpointId);
+      const isNativeDateTime = parsed.format !== "legacy" && parsed.type === "DATETIME";
+      const [packetError, packet] = isNativeDateTime
+        ? await tryCatch(
+            (nativePacket ??= processStreamWaitpointCompletionPacket(
+              waitpointId,
+              part,
+              environment
+            ))
+          )
+        : [undefined, undefined];
+      if (isNativeDateTime && packetError) {
+        // Offloading is new for native targets. Preserve their registration if it fails after drain.
+        await addSessionStreamWaitpoint(environment.id, addressingKey, io, waitpointId);
+        logger.error("Failed to prepare session stream waitpoint output", {
+          ...context,
+          addressingKey,
+          io,
+          waitpointId,
+          error: packetError,
+        });
+        return;
+      }
       const [completeError] = await tryCatch(
-        engine.completeWaitpoint({
+        runEngine.completeWaitpoint({
           id: waitpointId,
+          organizationId: environment.organizationId,
+          ...(isNativeDateTime ? { onlyIfPending: true } : {}),
           output: {
-            value: part,
-            type: "application/json",
+            value: isNativeDateTime ? packet!.data! : part,
+            type: isNativeDateTime ? packet!.dataType : "application/json",
             isError: false,
           },
         })
       );
       if (completeError) {
         logger.error("Failed to complete session stream waitpoint", {
+          ...context,
           addressingKey,
           io,
           waitpointId,
@@ -118,7 +194,7 @@ export async function appendServerSessionRecord({
     return false;
   }
 
-  await completeSessionStreamWaitpoints(environment.id, addressingKey, io, part);
+  await completeSessionStreamWaitpoints(environment, addressingKey, io, part);
   return true;
 }
 
@@ -206,7 +282,7 @@ export async function ensureRunThenAppend({
     seq = appendedSeq ?? undefined;
   }
 
-  await completeSessionStreamWaitpoints(environment.id, addressingKey, io, part);
+  await completeSessionStreamWaitpoints(environment, addressingKey, io, part);
   return { ok: true, seq, ensure };
 }
 

@@ -111,21 +111,25 @@ const PERSIST_RUN_KEYS = `
 
 // A keyed DATETIME remains reusable for the reservation's full lifetime. The immutable
 // deadline is copied at creation, so every terminal site can retain it within this same slot.
+// Every command using this fragment declares the related-runs key as its final key.
 export const RETAIN_WAITPOINT_RECORD = `
       local keyUntil = tonumber(redis.call('HGET', record, 'ku') or '0')
       if keyUntil == -1 or redis.call('HEXISTS', record, 'ka') == 1 or
         (tonumber(redis.call('HGET', record, 'rh')) or 0) > 0 then
         redis.call('PERSIST', record)
+        redis.call('PERSIST', KEYS[#KEYS])
       else
         local time = redis.call('TIME')
         local nowMs = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
-        redis.call('PEXPIREAT', record, math.max(nowMs + ttl, keyUntil))
+        local expiresAt = math.max(nowMs + ttl, keyUntil)
+        redis.call('PEXPIREAT', record, expiresAt)
+        redis.call('PEXPIREAT', KEYS[#KEYS], expiresAt)
       end
 `;
 
 export function registerWaitpointCommands(redis: RedisClient): void {
   /**
-   * KEYS: record. ARGV: recordJson, status ('PENDING'|'COMPLETED'), completionJson (''),
+   * KEYS: record, related runs. ARGV: recordJson, status ('PENDING'|'COMPLETED'), completionJson (''),
    * terminalTtlMs.
    *
    * A record created PENDING gets no TTL — it is active state. A record created already
@@ -137,7 +141,7 @@ export function registerWaitpointCommands(redis: RedisClient): void {
    * that has already been armed.
    */
   redis.defineCommand("wpCreateIfAbsent", {
-    numberOfKeys: 1,
+    numberOfKeys: 2,
     lua: `
       local record = KEYS[1]
 
@@ -170,9 +174,9 @@ export function registerWaitpointCommands(redis: RedisClient): void {
     `,
   });
 
-  // KEYS: record, watchers, queue. ARGV: watcherField, watcherJson.
+  // KEYS: record, watchers, queue, related runs. ARGV: watcherField, watcherJson.
   redis.defineCommand("wpRegisterOrReport", {
-    numberOfKeys: 3,
+    numberOfKeys: 4,
     lua: `
       local record, watchers, queue = KEYS[1], KEYS[2], KEYS[3]
 
@@ -182,7 +186,22 @@ export function registerWaitpointCommands(redis: RedisClient): void {
         return { '${MISSING}' }
       end
 
+      local source = cjson.decode(redis.call('HGET', record, 'r'))
+      local incoming = cjson.decode(ARGV[2])
+      if type(incoming.runId) ~= 'string' or incoming.runId == '' then
+        return redis.error_reply('wpRegisterOrReport: invalid run identity')
+      end
+      local function rememberRelatedRun()
+        if source.type == 'DATETIME' or source.type == 'MANUAL' then
+          redis.call('ZADD', KEYS[4], 0, incoming.runId)
+          local ttl = redis.call('PTTL', record)
+          if ttl >= 0 then redis.call('PEXPIRE', KEYS[4], ttl)
+          else redis.call('PERSIST', KEYS[4]) end
+        end
+      end
+
       if redis.call('HGET', record, 'status') == '${STORED_COMPLETED}' then
+        rememberRelatedRun()
         -- Return the completed-run identity (cbt) in the SAME atomic reply as the completion envelope, so a
         -- delivered completion and its cachedRunId can never diverge at the record's expiry.
         return {
@@ -206,7 +225,6 @@ export function registerWaitpointCommands(redis: RedisClient): void {
       if redis.call('HSETNX', watchers, ARGV[1], ARGV[2]) == 1 then
         redis.call('RPUSH', queue, ARGV[1])
       else
-        local incoming = cjson.decode(ARGV[2])
         if incoming.spanIdToComplete and incoming.spanIdToComplete ~= cjson.null and incoming.spanIdToComplete ~= '' then
           local existing = cjson.decode(redis.call('HGET', watchers, ARGV[1]))
           if not existing.spanIdToComplete or existing.spanIdToComplete == cjson.null or existing.spanIdToComplete == '' then
@@ -216,12 +234,13 @@ export function registerWaitpointCommands(redis: RedisClient): void {
           end
         end
       end
+      rememberRelatedRun()
       return { '${REGISTERED}' }
     `,
   });
 
   /**
-   * KEYS: record, watchers, queue, fanout.
+   * KEYS: record, watchers, queue, fanout, related runs.
    * ARGV: completionJson, completionId, nowMs, terminalTtlMs.
    *
    * The atomic half of completion: freeze the envelope and record the fanout obligation,
@@ -235,7 +254,7 @@ export function registerWaitpointCommands(redis: RedisClient): void {
    * false conflict quarantines a healthy waitpoint, which is worse than missing a real one.
    */
   redis.defineCommand("wpComplete", {
-    numberOfKeys: 4,
+    numberOfKeys: 5,
     lua: `
       local record, watchers, queue, fanout = KEYS[1], KEYS[2], KEYS[3], KEYS[4]
 
@@ -412,7 +431,7 @@ export function registerWaitpointCommands(redis: RedisClient): void {
   });
 
   /**
-   * KEYS: record, watchers, queue, fanout.
+   * KEYS: record, watchers, queue, fanout, related runs.
    * ARGV: workerId, epoch, count, nowMs, terminalTtlMs.
    *
    * Acknowledge `count` watchers from the head of the queue, fenced by the claim's epoch.
@@ -435,7 +454,7 @@ export function registerWaitpointCommands(redis: RedisClient): void {
    * it is also the only place the terminal TTL is armed for a waitpoint that had watchers.
    */
   redis.defineCommand("wpFanoutAck", {
-    numberOfKeys: 4,
+    numberOfKeys: 5,
     lua: `
       local record, watchers, queue, fanout = KEYS[1], KEYS[2], KEYS[3], KEYS[4]
 
@@ -756,10 +775,10 @@ export function registerWaitpointCommands(redis: RedisClient): void {
   });
 
   redis.defineCommand("wpCloseKeyedCandidate", {
-    numberOfKeys: 5,
+    numberOfKeys: 6,
     lua: `
       redis.call('SET', KEYS[5], 'closed', 'PX', ARGV[1])
-      redis.call('DEL', KEYS[1], KEYS[2], KEYS[3], KEYS[4])
+      redis.call('DEL', KEYS[1], KEYS[2], KEYS[3], KEYS[4], KEYS[6])
       return { '${DISCARDED}' }
     `,
   });
@@ -791,7 +810,7 @@ export function registerWaitpointCommands(redis: RedisClient): void {
   });
 
   redis.defineCommand("wpReleaseKeyedCandidate", {
-    numberOfKeys: 2,
+    numberOfKeys: 3,
     lua: `
       local record = KEYS[1]
       if redis.call('EXISTS', record) == 0 then return { 'released' } end
@@ -842,12 +861,12 @@ export function registerWaitpointCommands(redis: RedisClient): void {
     `,
   });
 
-  // KEYS: record, watchers, queue, fanout. No ARGV. Discards a losing reservation's
+  // KEYS: record, watchers, queue, fanout, related runs. No ARGV. Discards a losing reservation's
   // orphan record, including any watcher or fanout state it managed to acquire.
   redis.defineCommand("wpDiscard", {
-    numberOfKeys: 4,
+    numberOfKeys: 5,
     lua: `
-      redis.call('DEL', KEYS[1], KEYS[2], KEYS[3], KEYS[4])
+      redis.call('DEL', KEYS[1], KEYS[2], KEYS[3], KEYS[4], KEYS[5])
       return { '${DISCARDED}' }
     `,
   });
@@ -1701,6 +1720,7 @@ declare module "@internal/redis" {
   interface RedisCommander<Context> {
     wpCreateIfAbsent(
       recordKey: string,
+      relatedRunsKey: string,
       recordJson: string,
       status: string,
       completionJson: string,
@@ -1713,6 +1733,7 @@ declare module "@internal/redis" {
       recordKey: string,
       watchersKey: string,
       queueKey: string,
+      relatedRunsKey: string,
       watcherField: string,
       watcherJson: string,
       callback?: Callback<string[]>
@@ -1722,6 +1743,7 @@ declare module "@internal/redis" {
       watchersKey: string,
       queueKey: string,
       fanoutKey: string,
+      relatedRunsKey: string,
       completionJson: string,
       completionId: string,
       nowMs: string,
@@ -1744,6 +1766,7 @@ declare module "@internal/redis" {
       watchersKey: string,
       queueKey: string,
       fanoutKey: string,
+      relatedRunsKey: string,
       workerId: string,
       epoch: string,
       count: string,
@@ -1808,6 +1831,7 @@ declare module "@internal/redis" {
       queueKey: string,
       fanoutKey: string,
       fenceKey: string,
+      relatedRunsKey: string,
       retentionMs: string
     ): Result<string[], Context>;
     wpReadIdemReceipt(receiptKey: string): Result<string[], Context>;
@@ -1815,6 +1839,7 @@ declare module "@internal/redis" {
     wpReleaseKeyedCandidate(
       recordKey: string,
       fanoutKey: string,
+      relatedRunsKey: string,
       retentionMs: string
     ): Result<string[], Context>;
     wpAckIdemReceipt(
@@ -1833,6 +1858,7 @@ declare module "@internal/redis" {
       watchersKey: string,
       queueKey: string,
       fanoutKey: string,
+      relatedRunsKey: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
     wpFanoutIndex(

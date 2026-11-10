@@ -1,7 +1,8 @@
 import { createWaitpointStoreEnabledResolver } from "./utils/waitpointStoreEnabled.server";
 import { FEATURE_FLAG } from "./featureFlags";
 import { globalFlagsRegistry } from "./globalFlagsRegistry.server";
-import { RunEngine } from "@internal/run-engine";
+import { RunEngine, StoreWaitpointCoordinator } from "@internal/run-engine";
+import { waitpointStoreConnection } from "./waitpointStore.server";
 import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { createBatchGlobalRateLimiter } from "~/runEngine/concerns/batchGlobalRateLimiter.server";
@@ -22,7 +23,21 @@ export const engine = singleton("RunEngine", createRunEngine);
 export type { RunEngine };
 
 function createRunEngine() {
+  const waitpointConnection = waitpointStoreConnection;
   const engine = new RunEngine({
+    waitpointStore: waitpointConnection?.store,
+    waitpointFanoutStore: waitpointConnection?.store,
+    waitpointRouting: waitpointConnection
+      ? {
+          store: new StoreWaitpointCoordinator({ store: waitpointConnection.store }),
+          mintPolicy: {
+            // WaitpointSystem checks the one organization/global activation flag first.
+            resolveMintMode: () => "redis",
+            isCapabilityReady: () => true,
+            eligibleTypes: new Set<"RUN" | "DATETIME">(["RUN", "DATETIME"]),
+          },
+        }
+      : undefined,
     waitpointStoreEnabled: createWaitpointStoreEnabledResolver(
       () => globalFlagsRegistry.current(),
       prisma
@@ -286,6 +301,9 @@ function createRunEngine() {
       useReplicaForFastPathRead: env.RUN_ENGINE_DEBOUNCE_USE_REPLICA_FOR_FAST_PATH_READ === "1",
     },
   });
+
+  // Keep the engine and shared MemoryDB connection for the process lifetime so HTTP,
+  // snapshot readers and other event consumers can finish during the server drain.
 
   return engine;
 }

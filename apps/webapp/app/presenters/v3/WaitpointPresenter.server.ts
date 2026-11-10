@@ -1,9 +1,15 @@
+import {
+  isStoreDateTimeWaitpoint,
+  resolveDashboardDateTimeWaitpoint,
+  resolveDashboardWaitpointRelatedRuns,
+} from "~/services/dashboardDateTimeWaitpoint.server";
+import { engine as defaultEngine } from "~/v3/runEngine.server";
 import { isWaitpointOutputTimeout, prettyPrintPacket } from "@trigger.dev/core/v3";
 import { type PrismaClientOrTransaction } from "~/db.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
 import { logger } from "~/services/logger.server";
-import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { controlPlaneResolver as defaultControlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { runStore as defaultRunStore } from "~/v3/runStore.server";
 import { BasePresenter } from "./basePresenter.server";
 import { NextRunListPresenter, type NextRunListItem } from "./NextRunListPresenter.server";
@@ -29,12 +35,35 @@ export class WaitpointPresenter extends BasePresenter {
       legacyReplica?: PrismaClientOrTransaction;
       splitEnabled?: boolean;
     },
-    private readonly runStore = defaultRunStore
+    private readonly runStore = defaultRunStore,
+    private readonly engine = defaultEngine,
+    private readonly controlPlaneResolver = defaultControlPlaneResolver
   ) {
     super(prisma, replica);
   }
 
-  async #findWaitpoint(friendlyId: string, environmentId: string) {
+  async #findWaitpoint(
+    friendlyId: string,
+    environmentId: string,
+    projectId: string,
+    organizationId?: string
+  ) {
+    if (
+      (await this.engine.waitpointSystem.isWaitpointStoreEnabled(organizationId)) &&
+      isStoreDateTimeWaitpoint(friendlyId)
+    ) {
+      const environment = await this.controlPlaneResolver.resolveAuthenticatedEnv(environmentId);
+      if (!environment || environment.project.id !== projectId) return null;
+      return resolveDashboardDateTimeWaitpoint(
+        {
+          friendlyId,
+          environmentId,
+          projectId,
+          organizationId: environment.organizationId,
+        },
+        this.engine
+      );
+    }
     // Keyed by (friendlyId, environmentId) with no classifiable waitpoint id, so the run-store
     // probes NEW then LEGACY and reads each store's own replica — resolving the waitpoint whichever
     // run store owns it. When split is off it reads the single control-plane replica (passthrough).
@@ -82,12 +111,19 @@ export class WaitpointPresenter extends BasePresenter {
     friendlyId,
     environmentId,
     projectId,
+    organizationId,
   }: {
+    organizationId?: string;
     friendlyId: string;
     environmentId: string;
     projectId: string;
   }) {
-    const waitpoint = await this.#findWaitpoint(friendlyId, environmentId);
+    const waitpoint = await this.#findWaitpoint(
+      friendlyId,
+      environmentId,
+      projectId,
+      organizationId
+    );
 
     if (!waitpoint) {
       logger.error(`WaitpointPresenter: Waitpoint not found`, {
@@ -96,7 +132,9 @@ export class WaitpointPresenter extends BasePresenter {
       return null;
     }
 
-    const environment = await controlPlaneResolver.resolveAuthenticatedEnv(waitpoint.environmentId);
+    const environment = await this.controlPlaneResolver.resolveAuthenticatedEnv(
+      waitpoint.environmentId
+    );
 
     if (!environment) {
       logger.error(`WaitpointPresenter: environment not found`, { friendlyId });
@@ -117,7 +155,22 @@ export class WaitpointPresenter extends BasePresenter {
       }
     }
 
-    const connectedRunIds = await this.#connectedRunFriendlyIds(waitpoint.id);
+    // Native subscription history survives watcher delivery/withdrawal, just like PG connections.
+    const storeDateTime =
+      (await this.engine.waitpointSystem.isWaitpointStoreEnabled(environment.organizationId)) &&
+      isStoreDateTimeWaitpoint(waitpoint.id);
+    const connectedRunIds = storeDateTime
+      ? await resolveDashboardWaitpointRelatedRuns(
+          {
+            waitpointId: waitpoint.id,
+            environmentId,
+            projectId,
+            organizationId: environment.organizationId,
+          },
+          this.engine,
+          this.runStore
+        )
+      : await this.#connectedRunFriendlyIds(waitpoint.id);
     const connectedRuns: NextRunListItem[] = [];
 
     if (connectedRunIds.length > 0) {
@@ -149,7 +202,14 @@ export class WaitpointPresenter extends BasePresenter {
     return {
       id: waitpoint.friendlyId,
       type: waitpoint.type,
-      url: generateHttpCallbackUrl(waitpoint.id, environment.apiKey),
+      // Native URLs are verified with the parent's key (branches have their own apiKey).
+      url: storeDateTime
+        ? generateHttpCallbackUrl(
+            waitpoint.id,
+            environment.parentEnvironment?.apiKey ?? environment.apiKey,
+            { environmentId }
+          )
+        : generateHttpCallbackUrl(waitpoint.id, environment.apiKey),
       status: waitpointStatusToApiStatus(waitpoint.status, waitpoint.outputIsError),
       idempotencyKey: waitpoint.idempotencyKey,
       userProvidedIdempotencyKey: waitpoint.userProvidedIdempotencyKey,

@@ -31,6 +31,7 @@ import {
   runWithdrawalTargetsKey,
   runResultKey,
   waitpointKeys,
+  waitpointRelatedRunsKey,
   watcherField,
 } from "./keys.js";
 import {
@@ -945,7 +946,7 @@ export class WaitpointStoreCoordinator {
 
     const reply = await this.#call(
       "wpCreateIfAbsent",
-      [keys.record],
+      [keys.record, waitpointRelatedRunsKey(args.record.id)],
       JSON.stringify(args.record),
       args.status,
       args.completion ? JSON.stringify(args.completion) : "",
@@ -974,6 +975,27 @@ export class WaitpointStoreCoordinator {
     };
   }
 
+  /** Stable source-lifetime history; callers authorize the source before reading a page. */
+  async readRelatedRunIds(
+    waitpointId: string,
+    cursor?: string
+  ): Promise<{ runIds: string[]; nextCursor?: string }> {
+    const pageSize = 25;
+    await this.beforeCommand?.();
+    const runIds = await this.redis.zrangebylex(
+      waitpointRelatedRunsKey(waitpointId),
+      cursor ? `(${cursor}` : "-",
+      "+",
+      "LIMIT",
+      0,
+      pageSize
+    );
+    return {
+      runIds,
+      nextCursor: runIds.length === pageSize ? runIds[runIds.length - 1] : undefined,
+    };
+  }
+
   async registerOrReport(args: {
     waitpointId: string;
     runId: string;
@@ -999,7 +1021,7 @@ export class WaitpointStoreCoordinator {
 
     const reply = await this.#call(
       "wpRegisterOrReport",
-      [keys.record, keys.watchers, keys.queue],
+      [keys.record, keys.watchers, keys.queue, waitpointRelatedRunsKey(args.waitpointId)],
       watcherField(args.runId, args.blockId, args.batchIndex),
       JSON.stringify(watcher)
     );
@@ -1069,7 +1091,13 @@ export class WaitpointStoreCoordinator {
 
     const reply = await this.#call(
       "wpComplete",
-      [keys.record, keys.watchers, keys.queue, keys.fanout],
+      [
+        keys.record,
+        keys.watchers,
+        keys.queue,
+        keys.fanout,
+        waitpointRelatedRunsKey(args.waitpointId),
+      ],
       JSON.stringify(args.completion),
       completionId,
       String(now),
@@ -1321,7 +1349,7 @@ export class WaitpointStoreCoordinator {
       const keys = waitpointKeys(args.candidateId);
       await this.#call(
         "wpReleaseKeyedCandidate",
-        [keys.record, keys.fanout],
+        [keys.record, keys.fanout, waitpointRelatedRunsKey(args.candidateId)],
         String(this.terminalRetentionMs)
       );
     }
@@ -1346,7 +1374,14 @@ export class WaitpointStoreCoordinator {
     const keys = waitpointKeys(candidateId);
     await this.#call(
       "wpCloseKeyedCandidate",
-      [keys.record, keys.watchers, keys.queue, keys.fanout, candidateMintFenceKey(candidateId)],
+      [
+        keys.record,
+        keys.watchers,
+        keys.queue,
+        keys.fanout,
+        candidateMintFenceKey(candidateId),
+        waitpointRelatedRunsKey(candidateId),
+      ],
       String(Math.max(0, acceptUntil - Date.now()) + this.terminalRetentionMs)
     );
   }
@@ -2431,9 +2466,11 @@ export class WaitpointStoreCoordinator {
            redis.call('HINCRBY', KEYS[1], 'rh', 1)
          end
          redis.call('PERSIST', KEYS[1])
+         redis.call('PERSIST', KEYS[2])
          return 1`,
-        1,
+        2,
         waitpointKeys(waitpointId).record,
+        waitpointRelatedRunsKey(waitpointId),
         token
       );
     }
@@ -2476,9 +2513,10 @@ export class WaitpointStoreCoordinator {
 ${RETAIN_WAITPOINT_RECORD}
            end
            return 1`,
-          2,
+          3,
           keys.record,
           keys.fanout,
+          waitpointRelatedRunsKey(waitpointId),
           token,
           String(this.terminalRetentionMs)
         );
@@ -2874,7 +2912,13 @@ ${RETAIN_WAITPOINT_RECORD}
 
     const reply = await this.#call(
       "wpFanoutAck",
-      [keys.record, keys.watchers, keys.queue, keys.fanout],
+      [
+        keys.record,
+        keys.watchers,
+        keys.queue,
+        keys.fanout,
+        waitpointRelatedRunsKey(args.waitpointId),
+      ],
       args.workerId,
       args.epoch,
       String(args.count),
