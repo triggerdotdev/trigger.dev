@@ -51,6 +51,7 @@ import {
 import { loadConfig } from "../config.js";
 import { authenticateForDeploy, userIdForDeploy } from "../deploy/auth.js";
 import {
+  archivePreviewBranch,
   runTrustedDeploy,
   shouldUseGithubOidc,
   validateTrustedDeployOptions,
@@ -84,7 +85,6 @@ import { getProjectClient, upsertBranch } from "../utilities/session.js";
 import { getTmpDir } from "../utilities/tempDirectories.js";
 import { spinner } from "../utilities/windows.js";
 import { login } from "./login.js";
-import { archivePreviewBranch } from "./preview.js";
 import { updateTriggerPackages } from "./update.js";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
@@ -482,11 +482,10 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     //auto-archive a branch if the PR is merged or closed
     if (gitMeta?.pullRequestState === "merged" || gitMeta?.pullRequestState === "closed") {
       log.message(`Pull request ${gitMeta?.pullRequestNumber} is ${gitMeta?.pullRequestState}.`);
-      const $buildSpinner = spinner();
-      $buildSpinner.start(`Archiving preview branch: "${branch}"`);
-      const result = await archivePreviewBranch(authorization, branch, resolvedConfig.project);
-      $buildSpinner.stop(
-        result ? `Successfully archived "${branch}"` : `Failed to archive "${branch}".`
+      await archivePreviewBranch(
+        { type: "token", ...authorization.auth },
+        branch,
+        resolvedConfig.project
       );
       return;
     }

@@ -1,5 +1,9 @@
 import {
   getBranch,
+  ArchiveTrustedPreviewRequest,
+  ArchiveTrustedPreviewResponse,
+  PromoteTrustedDeploymentRequest,
+  PromoteTrustedDeploymentResponse,
   PrepareTrustedDeployRequest,
   PrepareTrustedDeployResponse,
   SubmitTrustedDeployRequest,
@@ -8,7 +12,7 @@ import {
 } from "@trigger.dev/core/v3";
 import { wrapZodFetch } from "@trigger.dev/core/v3/zodfetch";
 import { z } from "zod";
-import type { CliApiClient } from "../apiClient.js";
+import { CliApiClient } from "../apiClient.js";
 import type { DeployCommandOptions } from "../commands/deploy.js";
 import { loadConfig } from "../config.js";
 import { CLOUD_API_URL } from "../consts.js";
@@ -16,6 +20,7 @@ import { readAuthConfigProfile } from "../utilities/configFiles.js";
 import { createGitMeta } from "../utilities/gitMeta.js";
 import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
 import { VERSION } from "../version.js";
+import { spinner } from "../utilities/windows.js";
 import { dashboardUrlForApiUrl } from "./auth.js";
 
 type GithubActionsEnvironment = {
@@ -87,25 +92,21 @@ export async function runTrustedDeploy(
     configFile: options.config,
   });
   const gitMeta = await createGitMeta(config.workspaceDir);
-  if (
-    options.env === "preview" &&
-    (gitMeta?.pullRequestState === "closed" || gitMeta?.pullRequestState === "merged")
-  ) {
-    throw new Error(
-      "OIDC cannot archive Preview branches for closed or merged pull requests. No deployment was created. Run deployment jobs only for opened, synchronize, and reopened events; archive branches in the dashboard or use a separate API-key-authenticated cleanup workflow."
-    );
-  }
   const branch =
     options.env === "preview" ? getBranch({ specified: options.branch, gitMeta }) : undefined;
   if (options.env === "preview" && !branch) {
     throw new Error("Could not determine the Preview branch. Pass --branch <branch>.");
   }
 
-  const apiUrl =
-    process.env.TRIGGER_API_URL ??
-    options.apiUrl ??
-    readAuthConfigProfile(options.profile)?.apiUrl ??
-    CLOUD_API_URL;
+  const apiUrl = trustedDeployApiUrl(options);
+  if (
+    options.env === "preview" &&
+    branch &&
+    (gitMeta?.pullRequestState === "closed" || gitMeta?.pullRequestState === "merged")
+  ) {
+    await archivePreviewBranch({ type: "oidc", apiUrl }, branch, config.project);
+    return;
+  }
   const client = createTrustedDeployClient(apiUrl, {
     projectRef: config.project,
     env: options.env,
@@ -173,7 +174,80 @@ function createTrustedDeployClient(
   };
 }
 
+export function trustedDeployApiUrl(options: { apiUrl?: string; profile: string }) {
+  return (
+    process.env.TRIGGER_API_URL ??
+    options.apiUrl ??
+    readAuthConfigProfile(options.profile)?.apiUrl ??
+    CLOUD_API_URL
+  );
+}
+
+export type PreviewArchiveAuth =
+  | { type: "oidc"; apiUrl: string }
+  | { type: "token"; apiUrl: string; accessToken: string };
+
+export async function archivePreviewBranch(
+  auth: PreviewArchiveAuth,
+  branch: string,
+  projectRef: string
+) {
+  const $spinner = spinner();
+  $spinner.start(`Archiving "${branch}"`);
+  try {
+    const result =
+      auth.type === "oidc"
+        ? await archiveTrustedPreview(auth.apiUrl, { projectRef, env: "preview", branch })
+        : await new CliApiClient(auth.apiUrl, auth.accessToken).archiveBranch(
+            projectRef,
+            "preview",
+            branch
+          );
+    if (!result.success) throw new Error(result.error);
+    $spinner.stop(`Successfully archived "${branch}"`);
+  } catch (error) {
+    $spinner.stop(`Failed to archive "${branch}".`);
+    throw error;
+  }
+}
+
+async function archiveTrustedPreview(
+  apiUrl: string,
+  target: z.input<typeof ArchiveTrustedPreviewRequest>
+) {
+  return wrapZodFetch(
+    ArchiveTrustedPreviewResponse,
+    `${apiUrl.replace(/\/$/, "")}/api/v1/trusted-deploys/archive`,
+    {
+      method: "POST",
+      headers: await githubOidcHeaders(),
+      body: JSON.stringify(ArchiveTrustedPreviewRequest.parse(target)),
+    }
+  );
+}
+
+export async function promoteTrustedDeployment(
+  apiUrl: string,
+  target: z.input<typeof PromoteTrustedDeploymentRequest>
+) {
+  return wrapZodFetch(
+    PromoteTrustedDeploymentResponse,
+    `${apiUrl.replace(/\/$/, "")}/api/v1/trusted-deploys/promote`,
+    {
+      method: "POST",
+      headers: await githubOidcHeaders(),
+      body: JSON.stringify(PromoteTrustedDeploymentRequest.parse(target)),
+    },
+    { retry: { maxAttempts: 1 } }
+  );
+}
+
 async function githubOidcHeaders() {
+  if (!process.env.ACTIONS_ID_TOKEN_REQUEST_URL || !process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN) {
+    throw new Error(
+      "GitHub OIDC is unavailable. Run in GitHub Actions with permissions: id-token: write."
+    );
+  }
   const url = new URL(process.env.ACTIONS_ID_TOKEN_REQUEST_URL!);
   url.searchParams.set("audience", TRUSTED_DEPLOY_AUDIENCE);
   const response = await fetch(url, {

@@ -1,6 +1,10 @@
 import { z } from "zod/v4";
 import { EXTERNAL_DEPLOYMENT_ID_MAX_LENGTH } from "./externalDeploymentId.js";
-import { CreateArtifactResponseBody, InitializeDeploymentResponseBody } from "./schemas/api.js";
+import {
+  CreateArtifactResponseBody,
+  InitializeDeploymentResponseBody,
+  PromoteDeploymentResponseBody,
+} from "./schemas/api.js";
 
 export const GITHUB_ACTIONS_ISSUER = "https://token.actions.githubusercontent.com";
 export const TRUSTED_DEPLOY_AUDIENCE = "https://api.trigger.dev";
@@ -110,6 +114,19 @@ export const PrepareTrustedDeployRequest = TrustedDeployTarget.extend({
   .superRefine(validateBranch);
 
 export const PrepareTrustedDeployResponse = CreateArtifactResponseBody;
+
+export const ArchiveTrustedPreviewRequest = TrustedDeployTarget.extend({
+  env: z.literal("preview"),
+  branch: z.string().min(1).max(255),
+}).strict();
+export const ArchiveTrustedPreviewResponse = z.object({ success: z.literal(true) });
+
+export const PromoteTrustedDeploymentRequest = TrustedDeployTarget.extend({
+  version: z.string().min(1).max(100),
+})
+  .strict()
+  .superRefine(validateBranch);
+export const PromoteTrustedDeploymentResponse = PromoteDeploymentResponseBody;
 
 export const SubmitTrustedDeployRequest = TrustedDeployTarget.extend({
   artifactKey: z.string().min(1).max(1024),

@@ -42,6 +42,14 @@ npx trigger.dev@latest preview archive [path]
 
 ## Options
 
+<ParamField body="Authentication method" type="--auth-method <method>">
+  Use `auto` (default) or `oidc`. In GitHub Actions, `auto` uses OIDC when no
+  `TRIGGER_ACCESS_TOKEN` is set. Explicit `oidc` ignores stored credentials and tokens.
+  See [Trusted publishing](/deployment/trusted-publishing).
+</ParamField>
+
+You can also authenticate with a parent Preview environment API key in `TRIGGER_ACCESS_TOKEN`.
+
 <BranchOption />
 
 <ConfigFileOption />

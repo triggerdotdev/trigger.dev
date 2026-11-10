@@ -1,3 +1,1 @@
-import { trustedDeployAction } from "~/services/trustedDeploys/action.server";
-
-export const action = trustedDeployAction("submit");
+export { submitAction as action } from "~/services/trustedDeploys/action.server";

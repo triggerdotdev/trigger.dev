@@ -67,7 +67,15 @@ npx trigger.dev@latest deploy \
   --branch "$GITHUB_HEAD_REF"
 ```
 
-Run Preview deployment jobs for `pull_request` types `opened`, `synchronize`, and `reopened`, not `closed`. OIDC cannot archive Preview branches: a deploy command for a closed or merged PR exits with an error without creating a deployment. Archive branches in the dashboard, or handle `closed` in a separate cleanup workflow authenticated with an environment API key.
+A Preview deploy for a closed or merged PR archives its branch instead of creating a deployment. You can also archive explicitly from a cleanup job with `id-token: write`:
+
+```bash
+npx trigger.dev@latest preview archive \
+  --auth-method oidc \
+  --branch "$GITHUB_HEAD_REF"
+```
+
+The workflow must match the project's **Preview** trusted-publishing settings. It can archive any Preview branch in that project, regardless of the workflow's current branch. Archiving preserves branch history; an already archived or missing branch is a successful no-op.
 
 `pull_request_target` and other PR event types such as `pull_request_review` are not supported for Preview. Staging and Production reject `pull_request*` events.
 
@@ -109,6 +117,18 @@ For Staging, use `--env staging`. For Preview, use `--env preview --branch YOUR_
 Open **Deployments > Deploys** in the target environment and confirm the new deployment succeeded.
 
 `--auth-method oidc` ignores stored credentials and `TRIGGER_ACCESS_TOKEN`. Without that flag, an explicit `TRIGGER_ACCESS_TOKEN` takes precedence over GitHub OIDC, which takes precedence over a saved login.
+
+## Promote a deployment
+
+To promote a version deployed with `--skip-promotion`, run:
+
+```bash
+npx trigger.dev@latest promote VERSION --auth-method oidc --env prod
+```
+
+Use `--env staging` or `--env preview --branch BRANCH` for other environments. Promotion requires the target environment's trusted-publishing settings, including any GitHub Environment or additional-claim restrictions. It cannot promote a version from a different environment or roll back to an older version.
+
+`preview archive` and `promote` use the same automatic OIDC selection and `--auth-method oidc` override as `deploy`. `preview archive` also accepts a parent Preview environment API key through `TRIGGER_ACCESS_TOKEN`.
 
 ## Limits and troubleshooting
 

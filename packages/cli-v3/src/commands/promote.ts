@@ -15,9 +15,15 @@ import { login } from "./login.js";
 import { createGitMeta } from "../utilities/gitMeta.js";
 import { getBranch } from "@trigger.dev/core/v3";
 import { authenticateForDeploy } from "../deploy/auth.js";
+import {
+  promoteTrustedDeployment,
+  shouldUseGithubOidc,
+  trustedDeployApiUrl,
+} from "../deploy/trustedDeploy.js";
 import { type DeployEnvironment, resolveDeployEnvironment } from "../deploy/environment.js";
 
 const PromoteCommandOptions = CommonCommandOptions.extend({
+  authMethod: z.enum(["auto", "oidc"]).default("auto"),
   projectRef: z.string().optional(),
   apiUrl: z.string().optional(),
   skipUpdateCheck: z.boolean().default(false),
@@ -37,6 +43,7 @@ export function configurePromoteCommand(program: Command) {
     program
       .command("promote")
       .description("Promote a previously deployed version to the current deployment")
+      .option("--auth-method <method>", "Authentication method: auto or oidc", "auto")
       .argument("[version]", "The version to promote")
       .option("-c, --config <config file>", "The name of the config file, found at [path]")
       .option(
@@ -55,7 +62,7 @@ export function configurePromoteCommand(program: Command) {
       )
   ).action(async (version, options) => {
     await handleTelemetry(async () => {
-      await printStandloneInitialBanner(true, options.profile);
+      await printStandloneInitialBanner(!options.skipUpdateCheck, options.profile);
       await promoteCommand(version, options);
     });
   });
@@ -66,7 +73,9 @@ async function promoteCommand(version: string, options: unknown) {
     const environment = resolveDeployEnvironment({
       env: opts.env,
       prod: opts.prod,
-      accessToken: process.env.TRIGGER_ACCESS_TOKEN,
+      accessToken: shouldUseGithubOidc(opts.authMethod, process.env.TRIGGER_ACCESS_TOKEN)
+        ? undefined
+        : process.env.TRIGGER_ACCESS_TOKEN,
     });
 
     logger.debug("Resolved promote environment", environment);
@@ -83,6 +92,36 @@ async function _promoteCommand(version: string, options: PromoteCommandOptions) 
   }
 
   intro(`Promoting version ${version} in ${options.env}`);
+
+  const resolvedConfig = await loadConfig({
+    overrides: { project: options.projectRef },
+    configFile: options.config,
+  });
+
+  logger.debug("Resolved config", resolvedConfig);
+
+  const gitMeta = await createGitMeta(resolvedConfig.workspaceDir);
+  logger.debug("gitMeta", gitMeta);
+
+  const branch =
+    options.env === "preview" ? getBranch({ specified: options.branch, gitMeta }) : undefined;
+  if (options.env === "preview" && !branch) {
+    throw new Error(
+      "Didn't auto-detect preview branch, so you need to specify one. Pass --branch <branch>."
+    );
+  }
+
+  if (shouldUseGithubOidc(options.authMethod, process.env.TRIGGER_ACCESS_TOKEN)) {
+    const promotion = await promoteTrustedDeployment(trustedDeployApiUrl(options), {
+      projectRef: resolvedConfig.project,
+      env: options.env,
+      branch,
+      version,
+    });
+    if (!promotion.success) throw new Error(promotion.error);
+    outro(`Promoted version ${version} in ${options.env}`);
+    return;
+  }
 
   const authorization = await authenticateForDeploy({
     accessToken: process.env.TRIGGER_ACCESS_TOKEN,
@@ -102,24 +141,6 @@ async function _promoteCommand(version: string, options: PromoteCommandOptions) 
         `You must login first. Use the \`login\` CLI command.\n\n${authorization.error}`
       );
     }
-  }
-
-  const resolvedConfig = await loadConfig({
-    overrides: { project: options.projectRef },
-    configFile: options.config,
-  });
-
-  logger.debug("Resolved config", resolvedConfig);
-
-  const gitMeta = await createGitMeta(resolvedConfig.workspaceDir);
-  logger.debug("gitMeta", gitMeta);
-
-  const branch =
-    options.env === "preview" ? getBranch({ specified: options.branch, gitMeta }) : undefined;
-  if (options.env === "preview" && !branch) {
-    throw new Error(
-      "Didn't auto-detect preview branch, so you need to specify one. Pass --branch <branch>."
-    );
   }
 
   const projectClient = await getProjectClient({

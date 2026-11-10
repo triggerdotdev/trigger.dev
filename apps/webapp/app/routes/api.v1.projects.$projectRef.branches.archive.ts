@@ -1,5 +1,6 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { tryCatch } from "@trigger.dev/core";
+import { tryCatch } from "@trigger.dev/core/v3";
+import { sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { authenticateRequestWithScopedApiKey } from "~/services/apiAuth.server";
@@ -66,7 +67,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: parsed.error.message }, { status: 400 });
   }
 
-  const { env, branch } = parsed.data;
+  const { env } = parsed.data;
+  const branch = sanitizeBranchName(parsed.data.branch);
+  if (!branch) return json({ error: "Invalid branch name" }, { status: 400 });
 
   // API keys can only archive Preview branches
   if (

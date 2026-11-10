@@ -2,6 +2,8 @@ import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import {
   PrepareTrustedDeployRequest,
   SubmitTrustedDeployRequest,
+  ArchiveTrustedPreviewRequest,
+  PromoteTrustedDeploymentRequest,
   type SubmitTrustedDeployResponse,
   type BuildServerMetadata,
   type GitMeta,
@@ -17,11 +19,14 @@ import { isBillingConfigured } from "~/services/platform.v3.server";
 import { createRedisRateLimitClient, RateLimiter } from "~/services/rateLimiterCore.server";
 import { UpsertBranchService } from "~/services/upsertBranch.server";
 import { extractClientIp } from "~/utils/extractClientIp.server";
+import { ArchiveBranchService } from "~/services/archiveBranch.server";
+import { ChangeCurrentDeploymentService } from "~/v3/services/changeCurrentDeployment.server";
 import { ArtifactsService, isArtifactKeyOwnedBy } from "~/v3/services/artifacts.server";
 import { InitializeDeploymentService } from "~/v3/services/initializeDeployment.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { logger } from "../logger.server";
 import { verifyGithubDeployToken } from "./github.server";
+import { findTrustedPreviewBranch } from "./findPreviewBranch.server";
 import { isTrustedDeploysEnabled } from "./featureFlag.server";
 import { matchesTrustedDeploy, type GithubDeployClaims } from "./policy";
 
@@ -67,10 +72,26 @@ const PreparedArtifact = z.object({ binding: z.string(), environmentId: z.string
 const environmentTypes = { staging: "STAGING", preview: "PREVIEW", prod: "PRODUCTION" } as const;
 const responseHeaders = { "Cache-Control": "no-store" };
 
-export function trustedDeployAction(operation: "prepare" | "submit") {
+type TrustedTarget = { projectRef: string; env: keyof typeof environmentTypes };
+
+type TrustedContext<T> = {
+  request: Request;
+  input: T;
+  root: ReturnType<typeof toAuthenticated>;
+  claims: GithubDeployClaims;
+  grantId: string;
+};
+
+function trustedDeployRoute<T extends TrustedTarget>(
+  operation: string,
+  schema: z.ZodType<T>,
+  handler: (context: TrustedContext<T>) => Promise<Response>,
+  { requiresBuildServer = false }: { requiresBuildServer?: boolean } = {}
+) {
   return async ({ request }: ActionFunctionArgs) => {
     if (request.method !== "POST") return failure("Method not allowed", 405);
-    if (!isBillingConfigured()) return failure("Trusted deploys require the build server.", 503);
+    if (requiresBuildServer && !isBillingConfigured())
+      return failure("Trusted deploys require the build server.", 503);
 
     try {
       const ip = extractClientIp(request.headers.get("x-forwarded-for")) ?? "unknown";
@@ -88,8 +109,6 @@ export function trustedDeployAction(operation: "prepare" | "submit") {
       }
 
       const body: unknown = await request.json();
-      const schema =
-        operation === "prepare" ? PrepareTrustedDeployRequest : SubmitTrustedDeployRequest;
       const parsed = schema.safeParse(body);
       if (!parsed.success) return failure("Invalid trusted deployment request.", 400);
 
@@ -141,132 +160,7 @@ export function trustedDeployAction(operation: "prepare" | "submit") {
 
       const root = toAuthenticated(grant.runtimeEnvironment);
       await checkRateLimit(environmentLimiter, root.id);
-      const binding = submissionBinding(claims, input, root.id);
-
-      if ("contentLength" in input) {
-        let environment = root;
-        if (input.env === "preview") {
-          const result = await new UpsertBranchService().call(
-            { type: "orgId", organizationId: root.organizationId },
-            {
-              projectId: root.projectId,
-              env: "preview",
-              branchName: input.branch!,
-              git: gitMetadata(claims),
-            }
-          );
-          if (!result.success) return failure(result.error, 400);
-          const branch = await prisma.runtimeEnvironment.findFirst({
-            where: { id: result.branch.id, parentEnvironmentId: root.id, archivedAt: null },
-            include: authIncludeBase,
-          });
-          if (!branch) return failure("Preview branch not found.", 404);
-          environment = toAuthenticated(branch);
-        }
-
-        const artifact = await new ArtifactsService().createArtifact(
-          "deployment_context",
-          environment,
-          input.contentLength
-        );
-        if (artifact.isErr()) {
-          const status = artifact.error.type === "artifact_size_exceeds_limit" ? 400 : 503;
-          return failure(
-            "Could not prepare deployment upload. Check the archive size and retry.",
-            status
-          );
-        }
-        await redis.setex(
-          artifactCacheKey(artifact.value.artifactKey),
-          PREPARED_ARTIFACT_TTL_SECONDS,
-          JSON.stringify({ binding, environmentId: environment.id })
-        );
-        return json(
-          {
-            ...artifact.value,
-            expiresAt: artifact.value.expiresAt.toISOString(),
-          },
-          { headers: responseHeaders }
-        );
-      }
-
-      const stored = await redis.get(artifactCacheKey(input.artifactKey));
-      const prepared = PreparedArtifact.safeParse(stored ? JSON.parse(stored) : null);
-      if (!prepared.success || prepared.data.binding !== binding) {
-        return failure(
-          "The prepared upload expired or belongs to a different workflow or target.",
-          403
-        );
-      }
-      const environmentRow = await prisma.runtimeEnvironment.findFirst({
-        where: {
-          id: prepared.data.environmentId,
-          projectId: root.projectId,
-          type: root.type,
-          parentEnvironmentId: input.env === "preview" ? root.id : null,
-          archivedAt: null,
-        },
-        include: authIncludeBase,
-      });
-      if (!environmentRow || (input.env !== "preview" && environmentRow.id !== root.id)) {
-        return failure("Deployment environment not found.", 404);
-      }
-      const environment = toAuthenticated(environmentRow);
-      if (
-        !input.artifactKey.startsWith("deployments/") ||
-        !isArtifactKeyOwnedBy(environment, input.artifactKey)
-      ) {
-        return failure("Invalid source archive.", 403);
-      }
-
-      const identity: NonNullable<BuildServerMetadata["trustedDeploy"]> = {
-        grantId: grant.id,
-        issuer: claims.iss,
-        subject: claims.sub,
-        repository: claims.repository,
-        repositoryId: claims.repository_id,
-        repositoryOwnerId: claims.repository_owner_id,
-        runId: claims.run_id,
-        runAttempt: claims.run_attempt,
-        workflowRef: claims.job_workflow_ref ?? claims.workflow_ref,
-      };
-      const result = await new InitializeDeploymentService().call(
-        environment,
-        {
-          contentHash: "-",
-          type: "MANAGED",
-          isNativeBuild: true,
-          runtime: input.runtime,
-          artifactKey: input.artifactKey,
-          configFilePath: input.configFilePath,
-          skipPromotion: input.skipPromotion,
-          gitMeta: gitMetadata(claims),
-          triggeredVia: "cli:github_actions",
-          externalId: input.externalId,
-          force: input.force,
-        },
-        {
-          cliVersion: request.headers.get("x-trigger-cli-version")?.slice(0, 128),
-          trustedDeploy: identity,
-        }
-      );
-
-      const { deployment } = result;
-      const response = {
-        id: deployment.friendlyId,
-        contentHash: deployment.contentHash,
-        shortCode: deployment.shortCode,
-        version: deployment.version,
-        imageTag: result.imageRef,
-        imagePlatform: deployment.imagePlatform,
-        externalId: deployment.externalId ?? undefined,
-        outcome: result.outcome,
-        ...(result.outcome === "created"
-          ? { eventStream: result.eventStream, canceledDeployments: result.canceledDeployments }
-          : { isPromoted: result.isPromoted }),
-      } satisfies SubmitTrustedDeployResponse;
-      logger.info("Trusted deployment submitted", { deploymentId: deployment.id, ...identity });
-      return json(response, { headers: responseHeaders });
+      return await handler({ request, input, root, claims, grantId: grant.id });
     } catch (error) {
       if (error instanceof Response) return error;
       if (error instanceof SyntaxError) return failure("Invalid request body.", 400);
@@ -280,6 +174,198 @@ export function trustedDeployAction(operation: "prepare" | "submit") {
     }
   };
 }
+
+export const prepareAction = trustedDeployRoute(
+  "prepare",
+  PrepareTrustedDeployRequest,
+  async ({ input, root, claims }) => {
+    const binding = submissionBinding(claims, input, root.id);
+    let environment = root;
+    if (input.env === "preview") {
+      if (!input.branch) return failure("A Preview branch is required.", 400);
+      const result = await new UpsertBranchService().call(
+        { type: "orgId", organizationId: root.organizationId },
+        {
+          projectId: root.projectId,
+          env: "preview",
+          branchName: input.branch,
+          git: gitMetadata(claims),
+        }
+      );
+      if (!result.success) return failure(result.error, 400);
+      const branch = await prisma.runtimeEnvironment.findFirst({
+        where: { id: result.branch.id, parentEnvironmentId: root.id, archivedAt: null },
+        include: authIncludeBase,
+      });
+      if (!branch) return failure("Preview branch not found.", 404);
+      environment = toAuthenticated(branch);
+    }
+
+    const artifact = await new ArtifactsService().createArtifact(
+      "deployment_context",
+      environment,
+      input.contentLength
+    );
+    if (artifact.isErr()) {
+      const status = artifact.error.type === "artifact_size_exceeds_limit" ? 400 : 503;
+      return failure(
+        "Could not prepare deployment upload. Check the archive size and retry.",
+        status
+      );
+    }
+    await redis.setex(
+      artifactCacheKey(artifact.value.artifactKey),
+      PREPARED_ARTIFACT_TTL_SECONDS,
+      JSON.stringify({ binding, environmentId: environment.id })
+    );
+    return json(
+      {
+        ...artifact.value,
+        expiresAt: artifact.value.expiresAt.toISOString(),
+      },
+      { headers: responseHeaders }
+    );
+  },
+  { requiresBuildServer: true }
+);
+
+export const submitAction = trustedDeployRoute(
+  "submit",
+  SubmitTrustedDeployRequest,
+  async ({ request, input, root, claims, grantId }) => {
+    const binding = submissionBinding(claims, input, root.id);
+    const stored = await redis.get(artifactCacheKey(input.artifactKey));
+    const prepared = PreparedArtifact.safeParse(stored ? JSON.parse(stored) : null);
+    if (!prepared.success || prepared.data.binding !== binding) {
+      return failure(
+        "The prepared upload expired or belongs to a different workflow or target.",
+        403
+      );
+    }
+    const environmentRow = await prisma.runtimeEnvironment.findFirst({
+      where: {
+        id: prepared.data.environmentId,
+        projectId: root.projectId,
+        type: root.type,
+        parentEnvironmentId: input.env === "preview" ? root.id : null,
+        archivedAt: null,
+      },
+      include: authIncludeBase,
+    });
+    if (!environmentRow || (input.env !== "preview" && environmentRow.id !== root.id)) {
+      return failure("Deployment environment not found.", 404);
+    }
+    const environment = toAuthenticated(environmentRow);
+    if (
+      !input.artifactKey.startsWith("deployments/") ||
+      !isArtifactKeyOwnedBy(environment, input.artifactKey)
+    ) {
+      return failure("Invalid source archive.", 403);
+    }
+
+    const identity: NonNullable<BuildServerMetadata["trustedDeploy"]> = {
+      grantId,
+      issuer: claims.iss,
+      subject: claims.sub,
+      repository: claims.repository,
+      repositoryId: claims.repository_id,
+      repositoryOwnerId: claims.repository_owner_id,
+      runId: claims.run_id,
+      runAttempt: claims.run_attempt,
+      workflowRef: claims.job_workflow_ref ?? claims.workflow_ref,
+    };
+    const result = await new InitializeDeploymentService().call(
+      environment,
+      {
+        contentHash: "-",
+        type: "MANAGED",
+        isNativeBuild: true,
+        runtime: input.runtime,
+        artifactKey: input.artifactKey,
+        configFilePath: input.configFilePath,
+        skipPromotion: input.skipPromotion,
+        gitMeta: gitMetadata(claims),
+        triggeredVia: "cli:github_actions",
+        externalId: input.externalId,
+        force: input.force,
+      },
+      {
+        cliVersion: request.headers.get("x-trigger-cli-version")?.slice(0, 128),
+        trustedDeploy: identity,
+      }
+    );
+
+    const { deployment } = result;
+    const response = {
+      id: deployment.friendlyId,
+      contentHash: deployment.contentHash,
+      shortCode: deployment.shortCode,
+      version: deployment.version,
+      imageTag: result.imageRef,
+      imagePlatform: deployment.imagePlatform,
+      externalId: deployment.externalId ?? undefined,
+      outcome: result.outcome,
+      ...(result.outcome === "created"
+        ? { eventStream: result.eventStream, canceledDeployments: result.canceledDeployments }
+        : { isPromoted: result.isPromoted }),
+    } satisfies SubmitTrustedDeployResponse;
+    logger.info("Trusted deployment submitted", { deploymentId: deployment.id, ...identity });
+    return json(response, { headers: responseHeaders });
+  },
+  { requiresBuildServer: true }
+);
+
+export const archiveAction = trustedDeployRoute(
+  "archive",
+  ArchiveTrustedPreviewRequest,
+  async ({ input, root, claims }) => {
+    const environment = await findTrustedPreviewBranch(prisma, root, input.branch);
+    if (environment) {
+      const result = await new ArchiveBranchService().call(
+        { type: "orgId", organizationId: root.organizationId },
+        { environmentId: environment.id }
+      );
+      if (!result.success) return failure(result.error, 400);
+    }
+    logger.info(
+      environment ? "Trusted Preview branch archived" : "Trusted Preview branch already absent",
+      {
+        projectId: root.projectId,
+        branch: input.branch,
+        repository: claims.repository,
+        runId: claims.run_id,
+      }
+    );
+    return json({ success: true }, { headers: responseHeaders });
+  }
+);
+
+export const promoteAction = trustedDeployRoute(
+  "promote",
+  PromoteTrustedDeploymentRequest,
+  async ({ input, root, claims }) => {
+    let environment: { id: string } | null = root;
+    if (input.env === "preview") {
+      if (!input.branch) return failure("A Preview branch is required.", 400);
+      environment = await findTrustedPreviewBranch(prisma, root, input.branch);
+    }
+    if (!environment) return failure("Preview branch not found.", 404);
+    const deployment = await prisma.workerDeployment.findFirst({
+      where: { environmentId: environment.id, version: input.version },
+    });
+    if (!deployment) return failure("Deployment not found.", 404);
+    await new ChangeCurrentDeploymentService().call(deployment, "promote");
+    logger.info("Trusted deployment promoted", {
+      deploymentId: deployment.id,
+      repository: claims.repository,
+      runId: claims.run_id,
+    });
+    return json(
+      { id: deployment.friendlyId, version: deployment.version, shortCode: deployment.shortCode },
+      { headers: responseHeaders }
+    );
+  }
+);
 
 function failure(error: string, status: number) {
   return json({ error }, { status, headers: responseHeaders });
