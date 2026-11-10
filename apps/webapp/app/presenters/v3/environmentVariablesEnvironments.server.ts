@@ -4,6 +4,7 @@ import { filterOrphanedEnvironments, sortEnvironments } from "~/utils/environmen
 
 export type EnvironmentVariablesEnvironment = {
   id: string;
+  slug: string;
   type: RuntimeEnvironmentType;
   isBranchableEnvironment: boolean;
   branchName: string | null;
@@ -45,6 +46,7 @@ export async function loadEnvironmentVariablesEnvironments(
   const environments = await prismaClient.runtimeEnvironment.findMany({
     select: {
       id: true,
+      slug: true,
       type: true,
       isBranchableEnvironment: true,
       branchName: true,
@@ -68,6 +70,7 @@ export async function loadEnvironmentVariablesEnvironments(
   return {
     environments: sortedEnvironments.map((environment) => ({
       id: environment.id,
+      slug: environment.slug,
       type: environment.type,
       isBranchableEnvironment: environment.isBranchableEnvironment,
       branchName: environment.branchName,

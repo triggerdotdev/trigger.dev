@@ -3,6 +3,7 @@ import {
   emptyEnvironmentVariableValuesEnabled,
   EMPTY_ENV_VALUES_DISABLED,
 } from "~/v3/environmentVariables/emptyValuesFlag.server";
+import { listViewSearch } from "~/v3/environmentVariables/environmentFilter";
 import { parseEnvironmentVariableForm } from "~/v3/environmentVariables/forms";
 import {
   LockClosedIcon,
@@ -11,7 +12,7 @@ import {
   PlusIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
-import { Form, useActionData, useNavigate, useNavigation } from "@remix-run/react";
+import { Form, useActionData, useLocation, useNavigate, useNavigation } from "@remix-run/react";
 import { json } from "@remix-run/server-runtime";
 import dotenv from "dotenv";
 import { useState } from "react";
@@ -227,12 +228,13 @@ export const action = dashboardAction(
       return json(submission.reply({ fieldErrors }));
     }
 
+    // Back to the list view the dialog was opened from.
     return redirect(
-      v3EnvironmentVariablesPath(
+      `${v3EnvironmentVariablesPath(
         { slug: organizationSlug },
         { slug: projectParam },
         { slug: envParam }
-      )
+      )}${listViewSearch(request.url)}`
     );
   }
 );
@@ -246,8 +248,15 @@ export default function Page() {
     parentData,
     "Environment variables page loader data must be defined when rendering the create dialog"
   );
-  const { environments, hasStaging, writableEnvironmentIds, allowEmptyEnvironmentVariableValues } =
-    parentData;
+  const {
+    environments,
+    filter,
+    filterEnvironmentIds,
+    filterBranchEnvironmentIds,
+    hasStaging,
+    writableEnvironmentIds,
+    allowEmptyEnvironmentVariableValues,
+  } = parentData;
   // Creating a variable is a write, so gate the targets on write access.
   const writableEnvironmentIdSet = new Set(writableEnvironmentIds);
   const lastSubmission = useActionData();
@@ -256,8 +265,32 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const [selectedEnvironmentIds, setSelectedEnvironmentIds] = useState<Set<string>>(new Set());
-  const [selectedBranchId, setSelectedBranchId] = useState<string | undefined>(undefined);
+  const location = useLocation();
+  // The list this dialog sits on, with its filter, search and page.
+  const listPath = `${v3EnvironmentVariablesPath(organization, project, environment)}${location.search}`;
+  // Start with the environment the list is filtered to (never a branch).
+  const [selectedEnvironmentIds, setSelectedEnvironmentIds] = useState<Set<string>>(
+    () =>
+      new Set(
+        filter === "all"
+          ? []
+          : environments
+              .filter(
+                (env) =>
+                  env.parentEnvironmentId === null &&
+                  filterEnvironmentIds.includes(env.id) &&
+                  writableEnvironmentIdSet.has(env.id)
+              )
+              .map((env) => env.id)
+      )
+  );
+  // And with the preview branch it is narrowed to, when it is narrowed to exactly one.
+  const [selectedBranchId, setSelectedBranchId] = useState<string | undefined>(() => {
+    const [onlyBranchId, ...others] = filterBranchEnvironmentIds;
+    return onlyBranchId && others.length === 0 && writableEnvironmentIdSet.has(onlyBranchId)
+      ? onlyBranchId
+      : undefined;
+  });
 
   // TODO: we only support branch-specific env vars for Preview environments.
   // This keeps setting consistent env vars across Dev/Staging/Prod easier.
@@ -289,6 +322,10 @@ export default function Page() {
     isChecked: boolean,
     environmentType?: string
   ) => {
+    // A branch only applies while Preview is ticked.
+    if (!isChecked && environmentType === "PREVIEW") {
+      setSelectedBranchId(undefined);
+    }
     setSelectedEnvironmentIds((prev) => {
       const newSet = new Set(prev);
 
@@ -330,7 +367,7 @@ export default function Page() {
       open={isOpen}
       onOpenChange={(o) => {
         if (!o) {
-          navigate(v3EnvironmentVariablesPath(organization, project, environment));
+          navigate(listPath);
         }
       }}
     >
@@ -340,7 +377,7 @@ export default function Page() {
           <Fieldset className="max-h-[70vh] overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
             <InputGroup fullWidth>
               <Label>Environments</Label>
-              {selectedBranchId ? (
+              {previewIsSelected && selectedBranchId ? (
                 <input type="hidden" name="environmentIds" value={selectedBranchId} />
               ) : (
                 Array.from(selectedEnvironmentIds).map((id) => (
@@ -542,10 +579,7 @@ export default function Page() {
               </div>
             }
             cancelButton={
-              <LinkButton
-                to={v3EnvironmentVariablesPath(organization, project, environment)}
-                variant="tertiary/medium"
-              >
+              <LinkButton to={listPath} variant="tertiary/medium">
                 Cancel
               </LinkButton>
             }
