@@ -103,15 +103,15 @@ function CardVerificationBanner() {
       variant="warning"
       action={
         canManageBilling ? (
-          <LinkButton variant="warning/small" to={freeCardStepPath(organization)}>
+          <LinkButton variant="warning/small" to={freeCardStepPath(organization, "billing")}>
             Verify card
           </LinkButton>
         ) : undefined
       }
     >
-      Deployments are blocked until you verify a credit card. Verifying is free: we won't charge
-      anything.
-      {!canManageBilling ? " Ask an organization admin to verify a card." : null}
+      Add a card to unlock your Free tier credits. It’s a verification check only, so you won’t be
+      charged.
+      {!canManageBilling ? " Ask an organization admin to add one." : null}
     </AnimatedOrgBannerBar>
   );
 }

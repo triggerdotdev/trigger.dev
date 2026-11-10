@@ -1,4 +1,4 @@
-import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { CheckIcon, CreditCardIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { ArrowDownCircleIcon, ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { Form, useLocation, useNavigation } from "@remix-run/react";
 import { uiComponent } from "@team-plain/ui-components";
@@ -15,7 +15,7 @@ import React, { useEffect, useState } from "react";
 import { z } from "zod";
 import { DefinitionTip } from "~/components/DefinitionTooltip";
 import { Feedback } from "~/components/Feedback";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { DateTime } from "~/components/primitives/DateTime";
 import {
@@ -39,6 +39,7 @@ import { routeFreePlanToCardStep } from "~/services/freeCardStep.server";
 import { clearPromoCodeCookie, getPromoCodeFromCookie } from "~/services/promoCode.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { engine } from "~/v3/runEngine.server";
+import { freeCardStepPath } from "~/components/billing/freeCardStepPath";
 import { freePlanButtonLabel } from "~/components/billing/freePlanLabel";
 import { cn } from "~/utils/cn";
 import { sendToPlain } from "~/utils/plain.server";
@@ -282,6 +283,8 @@ type PricingPlansProps = {
   organizationSlug: string;
   hasPromotedPlan: boolean;
   periodEnd: Date;
+  /** A Free org whose deploys wait on a verified card: its column asks for the card. */
+  awaitsCardVerification?: boolean;
 };
 
 export function PricingPlans({
@@ -291,6 +294,7 @@ export function PricingPlans({
   organizationSlug,
   hasPromotedPlan,
   periodEnd,
+  awaitsCardVerification = false,
 }: PricingPlansProps) {
   return (
     <div className="flex w-full flex-col">
@@ -300,6 +304,7 @@ export function PricingPlans({
           subscription={subscription}
           organizationSlug={organizationSlug}
           periodEnd={periodEnd}
+          awaitsCardVerification={awaitsCardVerification}
         />
         <TierHobby
           plan={plans.hobby}
@@ -352,11 +357,13 @@ export function TierFree({
   subscription,
   organizationSlug,
   periodEnd,
+  awaitsCardVerification = false,
 }: {
   plan: FreePlanDefinition;
   subscription?: SubscriptionResult;
   organizationSlug: string;
   periodEnd: Date;
+  awaitsCardVerification?: boolean;
 }) {
   const location = useLocation();
   const navigation = useNavigation();
@@ -448,6 +455,17 @@ export function TierFree({
             </Form>
           </DialogContent>
         </Dialog>
+      ) : awaitsCardVerification && subscription?.plan?.type === "free" ? (
+        <div className="my-6">
+          <LinkButton
+            variant="primary/large"
+            fullWidth
+            LeadingIcon={CreditCardIcon}
+            to={freeCardStepPath({ slug: organizationSlug }, "billing")}
+          >
+            Verify card
+          </LinkButton>
+        </div>
       ) : (
         <Form action={formAction} method="post" id="subscribe-verified" className="my-6">
           <input type="hidden" name="type" value="free" />

@@ -3,7 +3,6 @@ import type { Command } from "commander";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { BundleError } from "../build/bundle.js";
-import { chalkError } from "../utilities/cliOutput.js";
 import { formatCommandError } from "../utilities/commandError.js";
 import { readAuthConfigCurrentProfileName } from "../utilities/configFiles.js";
 import { logger } from "../utilities/logger.js";
@@ -75,7 +74,7 @@ export async function wrapCommandAction<T extends z.ZodObject<any>, TResult>(
     } else if (e instanceof BundleError) {
       process.exit(1);
     } else {
-      logger.log(`${chalkError("X Error:")} ${formatCommandError(e)}`);
+      logger.commandError(formatCommandError(e));
     }
 
     throw e;

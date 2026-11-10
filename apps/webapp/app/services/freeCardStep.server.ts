@@ -2,8 +2,8 @@ import { tryCatch } from "@trigger.dev/core";
 import type { CardVerification } from "~/services/cardVerification.schemas";
 import { logger } from "~/services/logger.server";
 import { getCardVerification } from "~/services/platform.v3.server";
-import { freeCardStepPath } from "~/components/billing/freeCardStepPath";
-import { newProjectPath, type OrgForPath } from "~/utils/pathBuilder";
+import { freeCardStepPath, type FreeCardReturnTo } from "~/components/billing/freeCardStepPath";
+import { newProjectPath, v3BillingPath, type OrgForPath } from "~/utils/pathBuilder";
 import {
   cardVerificationGateConfig,
   hasActiveDeployAccessOverride,
@@ -64,29 +64,35 @@ const FAILURE_MESSAGES: Record<string, string> = {
   card_not_verified: "Your bank didn't verify that card. Please try another one.",
 };
 
+/** Where the card step hands over once the card is verified or skipped. */
+export function freeCardDonePath(organization: OrgForPath, returnTo?: FreeCardReturnTo) {
+  return returnTo === "billing" ? v3BillingPath(organization) : newProjectPath(organization);
+}
+
 /** Where the user lands after Stripe's card page, and the toast they see. */
 export function freeCardOutcomeRedirect(
   organization: OrgForPath,
   outcome: FreeCardOutcome,
-  reason: string | null
+  reason: string | null,
+  returnTo?: FreeCardReturnTo
 ): { path: string; kind: "success" | "error"; message: string } {
   if (outcome === "complete") {
     return {
-      path: newProjectPath(organization),
+      path: freeCardDonePath(organization, returnTo),
       kind: "success",
       message: "Card verified. You can deploy and run tasks on Trigger.dev Cloud.",
     };
   }
   if (outcome === "canceled") {
     return {
-      path: freeCardStepPath(organization),
+      path: freeCardStepPath(organization, returnTo),
       kind: "error",
       message: "You didn't add a card. Add one now, or skip to use local dev only.",
     };
   }
   // The reason comes from the URL, so only known reasons pick the message.
   return {
-    path: freeCardStepPath(organization),
+    path: freeCardStepPath(organization, returnTo),
     kind: "error",
     message:
       (reason ? FAILURE_MESSAGES[reason] : undefined) ??

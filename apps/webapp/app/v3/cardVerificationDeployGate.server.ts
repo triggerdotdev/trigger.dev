@@ -6,7 +6,7 @@ import {
   type CardVerificationGate,
 } from "./cardVerificationGate.server";
 
-type GatedOrganization = { id: string; slug: string };
+type GatedOrganization = { id: string; slug: string; title: string };
 
 export type CardVerificationDeployGateDependencies = {
   resolveGate?: (organizationId: string) => Promise<CardVerificationGate>;
@@ -15,10 +15,14 @@ export type CardVerificationDeployGateDependencies = {
 };
 
 function cardVerificationRequiredMessage(
-  organization: Pick<GatedOrganization, "slug">,
+  organization: Pick<GatedOrganization, "slug" | "title">,
   appOrigin: string = env.APP_ORIGIN
 ): string {
-  return `This organization needs a verified card before it can deploy. Add one (it won't be charged) at ${appOrigin}${freeCardStepPath(organization)}`;
+  return [
+    "Unlock your Free tier credits to deploy.",
+    `“${organization.title}” needs a card on file to use its free credits for deployments. It’s a verification check only, so you won’t be charged.`,
+    `Add a card: ${appOrigin}${freeCardStepPath(organization)}`,
+  ].join("\n");
 }
 
 /**

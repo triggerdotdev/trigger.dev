@@ -61,6 +61,16 @@ class Logger {
   warn = (...args: unknown[]) => this.doLog("warn", args);
   /** @deprecated **ONLY USE THIS IN THE CLI** - It will hang the process when used in deployed code (!) */
   error = (...args: unknown[]) => this.doLog("error", args);
+  /** An error printed in line with the CLI's step output: a bar line above it and a bar before each line under it. */
+  commandError = (...args: unknown[]) => {
+    if (LOGGER_LEVELS[this.loggerLevel] < LOGGER_LEVELS.error) return;
+    const formatted = this.formatMessage(
+      "error",
+      format(...args),
+      this.columns ? this.columns - 1 : undefined
+    );
+    console.error([chalk.gray("│"), ...withStepBars(formatted)].join("\n"));
+  };
   table<Keys extends string>(data: TableRow<Keys>[], level?: Exclude<LoggerLevel, "none">) {
     const keys: Keys[] = data.length === 0 ? [] : (Object.keys(data[0]!) as Keys[]);
     const t = new CLITable({
@@ -83,7 +93,11 @@ class Logger {
     }
   }
 
-  private formatMessage(level: Exclude<LoggerLevel, "none">, message: string): string {
+  private formatMessage(
+    level: Exclude<LoggerLevel, "none">,
+    message: string,
+    terminalWidth = this.columns
+  ): string {
     const kind = LOGGER_LEVEL_FORMAT_TYPE_MAP[level];
     if (kind) {
       // Format the message using the esbuild formatter.
@@ -91,11 +105,12 @@ class Logger {
       // subsequent lines are put into the `notes`.
       const [firstLine, ...otherLines] = message.split("\n");
       const notes = otherLines.length > 0 ? otherLines.map((text) => ({ text })) : undefined;
-      return formatMessagesSync([{ text: firstLine, notes }], {
+      const formatted = formatMessagesSync([{ text: firstLine, notes }], {
         color: chalk.level > 0,
         kind,
-        terminalWidth: this.columns,
+        terminalWidth,
       })[0]!;
+      return addIconGap(formatted);
     } else {
       return message;
     }
@@ -110,3 +125,14 @@ class Logger {
  * to filter out logging messages.
  */
 export const logger = new Logger();
+
+/** Puts a grey bar before every line after the first, so the message lines up with the CLI's steps. */
+function withStepBars(formatted: string): string[] {
+  const [firstLine = "", ...rest] = formatted.trimEnd().split("\n");
+  return [firstLine, ...rest.map((line) => `${chalk.gray("│")}${line}`)];
+}
+
+/** Adds a space between the error or warning icon and its label. */
+function addIconGap(formatted: string): string {
+  return formatted.replace(/^(\S*[✘▲]) /, "$1  ");
+}

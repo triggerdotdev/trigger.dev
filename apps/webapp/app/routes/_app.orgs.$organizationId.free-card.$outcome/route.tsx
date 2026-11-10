@@ -2,6 +2,8 @@ import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import { parseFreeCardReturnTo } from "~/components/billing/freeCardStepPath";
+import { freeCardReturnCookie } from "~/services/freeCardReturnCookie.server";
 import { freeCardOutcomeRedirect } from "~/services/freeCardStep.server";
 import { requireUserId } from "~/services/session.server";
 
@@ -24,8 +26,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   if (!organization) throw new Response(null, { status: 404 });
 
   const reason = new URL(request.url).searchParams.get("reason");
-  const { path, kind, message } = freeCardOutcomeRedirect(organization, outcome, reason);
-  return kind === "success"
-    ? redirectWithSuccessMessage(path, request, message)
-    : redirectWithErrorMessage(path, request, message);
+  const returnTo = parseFreeCardReturnTo(
+    await freeCardReturnCookie.parse(request.headers.get("cookie"))
+  );
+  const { path, kind, message } = freeCardOutcomeRedirect(organization, outcome, reason, returnTo);
+  const response =
+    kind === "success"
+      ? await redirectWithSuccessMessage(path, request, message)
+      : await redirectWithErrorMessage(path, request, message);
+  // A retry goes back through the card step, whose URL carries the return target again.
+  response.headers.append("Set-Cookie", await freeCardReturnCookie.serialize("", { maxAge: 0 }));
+  return response;
 };

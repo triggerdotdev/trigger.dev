@@ -12,6 +12,7 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
 import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
+import { useDeploysAwaitCardVerification } from "~/hooks/useOrganizations";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { getBillingPagePlan, getPlans } from "~/services/platform.v3.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
@@ -131,6 +132,7 @@ export const loader = dashboardLoader(
 
 export default function ChoosePlanPage() {
   const loaderData = useTypedLoaderData<typeof loader>();
+  const deploysAwaitCardVerification = useDeploysAwaitCardVerification();
 
   if (loaderData.billingUnavailable) {
     return (
@@ -229,6 +231,7 @@ export default function ChoosePlanPage() {
                 organizationSlug={organizationSlug}
                 hasPromotedPlan={false}
                 periodEnd={periodEnd}
+                awaitsCardVerification={deploysAwaitCardVerification}
               />
             </div>
           </div>

@@ -9,6 +9,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("~/db.server", () => ({
   prisma: {
+    organization: {
+      findFirst: async () => ({ id: "org_1", slug: "acme", title: "Acme" }),
+    },
     connectedGithubRepository: {
       findFirst: async () => ({
         branchTracking: { prod: { branch: "main" } },
@@ -81,7 +84,7 @@ describe("deploy now card gate", () => {
         ok: false,
         code: "CARD_VERIFICATION_REQUIRED",
         error:
-          "This organization needs a verified card before it can deploy. Add one (it won't be charged) at https://cloud.example.com/orgs/acme/select-plan/card",
+          "Unlock your Free tier credits to deploy.\n\u201cAcme\u201d needs a card on file to use its free credits for deployments. It\u2019s a verification check only, so you won\u2019t be charged.\nAdd a card: https://cloud.example.com/orgs/acme/select-plan/card",
       },
     });
     expect(mocks.triggerDeployNow).not.toHaveBeenCalled();

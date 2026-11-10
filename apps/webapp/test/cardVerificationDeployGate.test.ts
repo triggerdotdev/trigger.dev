@@ -14,7 +14,7 @@ vi.setConfig({ testTimeout: 60_000 });
 
 const refusalFor = (gate: CardVerificationGate, log = { error: vi.fn() }) =>
   cardVerificationDeployRefusal(
-    { id: "org_1", slug: "acme" },
+    { id: "org_1", slug: "acme", title: "Acme" },
     { resolveGate: async () => gate, appOrigin: "https://cloud.example.com", log }
   );
 
@@ -22,7 +22,11 @@ describe("cardVerificationDeployRefusal", () => {
   // Catches: a gated org refused without the card step link, so the user can't unblock the deploy.
   it("refuses a gated org with a link to the card step", async () => {
     expect(await refusalFor("gated")).toBe(
-      "This organization needs a verified card before it can deploy. Add one (it won't be charged) at https://cloud.example.com/orgs/acme/select-plan/card"
+      [
+        "Unlock your Free tier credits to deploy.",
+        "\u201cAcme\u201d needs a card on file to use its free credits for deployments. It\u2019s a verification check only, so you won\u2019t be charged.",
+        "Add a card: https://cloud.example.com/orgs/acme/select-plan/card",
+      ].join("\n")
     );
   });
 
@@ -115,7 +119,7 @@ async function initialize(
   return { error, deployments, cardRefusal };
 }
 
-const card = "This organization needs a verified card before it can deploy.";
+const card = "Unlock your Free tier credits to deploy.";
 
 // Catches: a gated org's CLI or GitHub deploy creating a deployment, or being refused without
 // the card message the CLI prints and the GitHub check shows.

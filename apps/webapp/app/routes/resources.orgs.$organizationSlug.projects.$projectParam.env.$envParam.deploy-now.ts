@@ -50,10 +50,14 @@ export const action = dashboardAction(
       return json({ ok: false, error: "Not available" }, { status: 403 });
     }
 
-    const cardRefusal = await cardVerificationDeployRefusal({
-      id: project.organizationId,
-      slug: organizationSlug,
+    const organization = await prisma.organization.findFirst({
+      where: { id: project.organizationId },
+      select: { id: true, slug: true, title: true },
     });
+    if (!organization) {
+      return json({ ok: false, error: "Not found" }, { status: 404 });
+    }
+    const cardRefusal = await cardVerificationDeployRefusal(organization);
     if (cardRefusal) {
       return json(
         { ok: false, code: "CARD_VERIFICATION_REQUIRED", error: cardRefusal },
