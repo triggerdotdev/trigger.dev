@@ -80,7 +80,8 @@ function enabledEngine(
     ...existing.options,
     waitpointRouting: {
       store: new StoreWaitpointCoordinator({ store }),
-      mintPolicy: { resolveMintMode: () => "redis", isCapabilityReady: () => true },
+      // Mint children legacy so triggerAndWait stays on the legacy admission path under test.
+      mintPolicy: { resolveMintMode: () => "legacy", isCapabilityReady: () => true },
     },
   });
   return engine;

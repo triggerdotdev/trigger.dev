@@ -2862,6 +2862,24 @@ ${RETAIN_WAITPOINT_RECORD}
   }
 
   /**
+   * Bounded association-discovery probe: is there a record hash under this id at all? Reads ONLY the
+   * record blob field of the single record key — never the completion output, the watcher hash, the
+   * paging queue or the fanout entry — so a caller deciding whether a run's deterministically-derived
+   * store waitpoint exists pays one O(1) `HGET`, not a `wpDescribe` that loads watchers.
+   *
+   * Absence is `"absent"`; a Redis error THROWS out of the `hget` and is never seen as absent, so an
+   * availability failure can never be mistaken for a missing waitpoint. This is discovery of a
+   * deterministically-known id, not a store-first residency probe: the id it checks is fixed by the
+   * anchor, and the answer never re-routes an already-classified id to Postgres.
+   */
+  async probeWaitpointPresence(waitpointId: string): Promise<"present" | "absent"> {
+    const keys = waitpointKeys(waitpointId);
+    await this.beforeCommand?.();
+    const r = await this.redis.hget(keys.record, "r");
+    return r == null ? "absent" : "present";
+  }
+
+  /**
    * Read the frozen record + completion for a set of store-resident waitpoints, for the
    * completed-waitpoint resolver.
    *

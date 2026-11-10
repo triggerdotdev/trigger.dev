@@ -1,4 +1,3 @@
-import type { WaitpointStoreCoordinator } from "./waitpointCoordinator/storeCoordinator.js";
 import { type RedisOptions } from "@internal/redis";
 import type { Meter, Tracer } from "@internal/tracing";
 import type { Logger, LogLevel } from "@trigger.dev/core/logger";
@@ -25,6 +24,7 @@ import {
   type GlobalRateLimiter,
 } from "@trigger.dev/redis-worker";
 import type { ControlPlaneResolver } from "./controlPlaneResolver.js";
+import type { WaitpointStoreCoordinator } from "./waitpointCoordinator/storeCoordinator.js";
 import type { WaitpointSystemOptions } from "./systems/waitpointSystem.js";
 import type { FairQueueSelectionStrategyOptions } from "../run-queue/fairQueueSelectionStrategy.js";
 import type { RunQueueMetricsEmitter, RunQueueOptions } from "../run-queue/index.js";

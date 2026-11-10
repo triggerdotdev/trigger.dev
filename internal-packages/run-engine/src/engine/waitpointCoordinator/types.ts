@@ -1,7 +1,7 @@
 import type { ReadClient, SnapshotResidency } from "@internal/run-store";
 import type { PrismaClientOrTransaction, Waitpoint } from "@trigger.dev/database";
 import type { ShardKey } from "@trigger.dev/core/v3/isomorphic";
-import type { WaitpointMintType } from "./mintPolicy.js";
+import type { WaitpointMintType, WaitpointResidency } from "./mintPolicy.js";
 
 /**
  * The per-mint inputs a routing coordinator needs to select residency. Optional on every create
@@ -179,10 +179,50 @@ export type WaitpointCoordinator = {
     /** This write skips the router's stamp check. */
     anchorRunId: string;
   }): AssociatedWaitpointData;
+  /**
+   * Decide a NEW RUN waitpoint's residency from the mint policy and the blocking parent's, then mint its
+   * data in the chosen store. Async because the residency decision consults the per-org mint mode; the
+   * synchronous legacy path could not express a store mint (no Postgres row, a create-after-commit
+   * sequence). The caller inlines legacy `data` into the child's create, or (store) creates it after the
+   * child commits and blocks the parent on `data.id`. Absent `mintContext` ⇒ legacy (the dark default).
+   */
+  planAssociatedWaitpoint(params: {
+    projectId: string;
+    environmentId: string;
+    anchorRunId: string;
+    mintContext?: WaitpointMintContext;
+  }): Promise<AssociatedWaitpointPlan>;
   createAssociatedWaitpoint(params: {
     runId: string;
     data: AssociatedWaitpointData;
+    /** Trusted organization from the creating caller; no identity-derived discovery. */
+    organizationId?: string;
+    /** Native publication must never fall back to Postgres if rollout changes after planning. */
+    requireStore?: boolean;
   }): Promise<Waitpoint>;
+  /**
+   * Association discovery for a run's RUN waitpoint that lives in the store (no Postgres row): derive the
+   * deterministic id from the run anchor and confirm the record's presence with one bounded read. Returns
+   * the store id when present, undefined when the anchor cannot derive a store id or the record is
+   * confirmed absent. A recognised store id that cannot be read is an availability error, never absence.
+   * Legacy has no store waitpoints (always undefined). Used only on the terminal-completion path, gated by
+   * the caller's monotonic "org ever minted store waitpoints" signal — not by the current mint policy.
+   */
+  findAssociatedRunWaitpointId(
+    runId: string,
+    context?: RunKeyedRoutingContext
+  ): Promise<string | undefined>;
+  /**
+   * Read a run's existing STORE RUN waitpoint as a Waitpoint (deriving the id, reading the record), for
+   * the lazy get-or-create path to reuse an existing store association before applying the mint policy —
+   * so a rolled-back org, or an uncertain earlier response, never mints a second (legacy) association.
+   * Undefined when the anchor derives no store id or no record exists; legacy always undefined. Gated by
+   * the caller's monotonic ever-enabled signal, like {@link findAssociatedRunWaitpointId}.
+   */
+  readAssociatedRunWaitpoint(
+    runId: string,
+    context?: RunKeyedRoutingContext
+  ): Promise<Waitpoint | undefined>;
 };
 
 export type ClearRunBlockStateParams = {
@@ -486,6 +526,16 @@ export type CreateManualWaitpointParams = {
   standaloneShardKey?: ShardKey;
   /** Optional mint-residency inputs. Absent = legacy (the dark default). Only a routing coordinator reads it. */
   mintContext?: WaitpointMintContext;
+};
+
+/**
+ * A RUN waitpoint mint decision: the chosen residency plus the minted data. `legacy` data is inlined
+ * into the child's Postgres create; `store` data (its `id` a deterministic derivation of the anchor) is
+ * created in MemoryDB after the child commits.
+ */
+export type AssociatedWaitpointPlan = {
+  residency: WaitpointResidency;
+  data: AssociatedWaitpointData;
 };
 
 /** The RUN-waitpoint row data. Pure — no store touch — so the mint is coordinator-owned. */

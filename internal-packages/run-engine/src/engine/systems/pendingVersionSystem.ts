@@ -13,6 +13,7 @@ import {
   type PreviousSnapshot,
 } from "./executionSnapshotSystem.js";
 import type { SystemResources } from "./systems.js";
+import { classifyWaitpointCoordinator } from "../waitpointCoordinator/routing.js";
 
 import { boundedIn } from "@trigger.dev/database";
 export type PendingVersionSystemOptions = {
@@ -35,7 +36,22 @@ export type PendingVersionSystemOptions = {
    */
   lagMaxRetries?: number;
   externalDeploymentParkDeadlineMs?: number;
+  finalizationGuardDelayMs?: number;
   executionSnapshotSystem: ExecutionSnapshotSystem;
+  /**
+   * Resolve a run's associated RUN waitpoint id (legacy row or store-derived). Injected as a thunk into
+   * WaitpointSystem, which is constructed after this system. Absent in a bare test harness — then park
+   * expiry falls back to the Postgres associated-waitpoint id, its pre-store behaviour.
+   */
+  resolveAssociatedRunWaitpointId?: (params: {
+    runId: string;
+    legacyAssociatedWaitpointId?: string;
+    organizationId?: string;
+  }) => Promise<string | undefined>;
+  /** Check the same organisation flag before constructing association-discovery work. */
+  waitpointStoreEnabled?: (organizationId?: string) => boolean | Promise<boolean>;
+  /** Uses the same late-bound WaitpointSystem as association resolution; bare harnesses stay legacy. */
+  serializeRunError?: (waitpointId: string, error: unknown) => string;
 };
 
 const DEFAULT_LAG_RETRY_DELAY_MS = 5_000;
@@ -531,6 +547,39 @@ export class PendingVersionSystem {
 
     const now = new Date();
 
+    // Resolve the associated waitpoint id BEFORE the terminal commit. Discovery is deterministic (the run
+    // anchor + the monotonic org signal) and does not need the run to be expired, so doing it here means a
+    // MemoryDB lookup failure rejects the job while the run is still PENDING_VERSION and the redelivery
+    // re-runs it. Resolving after the commit would strand the parent: the retry's status guard sees EXPIRED
+    // and returns before the waitpoint is ever completed. A parked child of a redis-primary parent can hold
+    // a store RUN waitpoint (no Postgres row); fall back to the legacy row id when the store is not wired.
+    const parkedWaitpointId =
+      run.associatedWaitpoint?.id ??
+      (this.options.resolveAssociatedRunWaitpointId &&
+      this.options.waitpointStoreEnabled &&
+      (await this.options.waitpointStoreEnabled(run.organizationId ?? undefined))
+        ? await this.options.resolveAssociatedRunWaitpointId({
+            runId,
+            organizationId: run.organizationId ?? undefined,
+          })
+        : undefined);
+
+    // The expiry retry skips terminal runs. Keep the existing finalization job durable before
+    // committing a native child's expiry, so a lost finishWaitpoint enqueue cannot strand its parent.
+    const needsFinalizationGuard =
+      parkedWaitpointId &&
+      this.options.waitpointStoreEnabled &&
+      classifyWaitpointCoordinator(parkedWaitpointId) === "store" &&
+      (await this.options.waitpointStoreEnabled(run.organizationId ?? undefined));
+    if (needsFinalizationGuard) {
+      await this.$.worker.enqueue({
+        id: `ensureRunFinalized:${runId}`,
+        job: "ensureRunFinalized",
+        payload: { runId },
+        availableAt: new Date(Date.now() + (this.options.finalizationGuardDelayMs ?? 60_000)),
+      });
+    }
+
     const result = await this.$.runStore.expireParkedRun(
       runId,
       {
@@ -556,13 +605,20 @@ export class PendingVersionSystem {
       return;
     }
 
-    if (run.associatedWaitpoint) {
+    if (parkedWaitpointId) {
       await this.$.worker.enqueue({
-        id: `finishWaitpoint.externalDeploymentPark.${run.associatedWaitpoint.id}`,
+        id: `finishWaitpoint.externalDeploymentPark.${parkedWaitpointId}`,
         job: "finishWaitpoint",
         payload: {
-          waitpointId: run.associatedWaitpoint.id,
-          error: JSON.stringify(error),
+          waitpointId: parkedWaitpointId,
+          organizationId: run.organizationId ?? undefined,
+          error:
+            this.options.waitpointStoreEnabled &&
+            classifyWaitpointCoordinator(parkedWaitpointId) === "store" &&
+            (await this.options.waitpointStoreEnabled(run.organizationId ?? undefined))
+              ? (this.options.serializeRunError?.(parkedWaitpointId, error) ??
+                JSON.stringify(error))
+              : JSON.stringify(error),
         },
       });
     }

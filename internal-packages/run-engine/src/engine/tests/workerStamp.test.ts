@@ -1,3 +1,9 @@
+import { DelegatingRunStore, PostgresRunStore, hasStoreWaitpoints } from "@internal/run-store";
+import { createRedisClient } from "@internal/redis";
+import { RunId } from "@trigger.dev/core/v3/isomorphic";
+import type { RunEngineOptions } from "../types.js";
+import { WaitpointStoreCoordinator } from "../waitpointCoordinator/storeCoordinator.js";
+import { StoreWaitpointCoordinator } from "../waitpointCoordinator/storeWaitpointCoordinator.js";
 import { assertNonNullable, containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import type { PrismaClient } from "@trigger.dev/database";
@@ -19,7 +25,11 @@ const triggerAnnotations = {
   rootTriggerSource: "sdk",
 };
 
-function createEngine(prisma: PrismaClient, redisOptions: RedisOptions) {
+function createEngine(
+  prisma: PrismaClient,
+  redisOptions: RedisOptions,
+  options: Partial<RunEngineOptions> = {}
+) {
   return new RunEngine({
     prisma,
     worker: {
@@ -50,6 +60,7 @@ function createEngine(prisma: PrismaClient, redisOptions: RedisOptions) {
     },
     retryWarmStartThresholdMs: 50,
     tracer: trace.getTracer("test", "0.0.0"),
+    ...options,
   });
 }
 
@@ -68,12 +79,13 @@ async function dequeueOne(engine: RunEngine, environmentId: string) {
 async function trigger(
   engine: RunEngine,
   prisma: PrismaClient,
-  environment: MinimalAuthenticatedEnvironment
+  environment: MinimalAuthenticatedEnvironment,
+  friendlyId = `run_${Math.random().toString(36).slice(2, 10)}`
 ) {
   return engine.trigger(
     {
       number: 1,
-      friendlyId: `run_${Math.random().toString(36).slice(2, 10)}`,
+      friendlyId,
       environment,
       taskIdentifier,
       payload: "{}",
@@ -232,3 +244,99 @@ describe("RunEngine worker stamp", () => {
     }
   );
 });
+
+// Pause the real primary read after the attempt has acquired its lifecycle lock. No DB operation is mocked.
+class PausingAnnotationReadStore extends DelegatingRunStore {
+  pause?: { entered: () => void; released: Promise<void> };
+
+  override async findRun(...args: any[]): Promise<any> {
+    const run = await (this.delegate.findRun as (...args: any[]) => Promise<any>)(...args);
+    if (this.pause && args[1]?.select?.annotations) {
+      const pause = this.pause;
+      this.pause = undefined;
+      pause.entered();
+      await pause.released;
+    }
+    return run;
+  }
+}
+
+containerTest(
+  "a rollout during a stale attempt read serializes native association marking with the worker stamp",
+  async ({ prisma, redisOptions }) => {
+    const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+    const store = new PausingAnnotationReadStore(
+      new PostgresRunStore({ prisma, readOnlyPrisma: prisma })
+    );
+    const native = new WaitpointStoreCoordinator({ client: createRedisClient(redisOptions) });
+    const adapter = new StoreWaitpointCoordinator({ store: native });
+    let enabled = false;
+    const engine = createEngine(prisma, redisOptions, {
+      store,
+      waitpointStore: native,
+      waitpointStoreEnabled: () => enabled,
+      waitpointRouting: {
+        store: adapter,
+        mintPolicy: { resolveMintMode: () => "redis", isCapabilityReady: () => true },
+      },
+      // A blocked marker refuses immediately, letting this test prove lock ownership without a timer.
+      runLock: { redis: redisOptions, retryConfig: { maxAttempts: 1 } },
+    });
+    let release!: () => void;
+    let entered!: () => void;
+    const read = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let starting: ReturnType<RunEngine["startRunAttempt"]> | undefined;
+    try {
+      await setupBackgroundWorker(engine, environment, taskIdentifier);
+      const run = await trigger(engine, prisma, environment, RunId.generate().friendlyId);
+      const first = await dequeueOne(engine, environment.id);
+      store.pause = { entered, released };
+      starting = engine.startRunAttempt({
+        runId: run.id,
+        snapshotId: first.snapshot.id,
+        workerCell: "cell-concurrent",
+        workerLane: "microvm",
+      });
+      await read;
+      enabled = true;
+      const association = {
+        runId: run.id,
+        organizationId: environment.organizationId,
+        data: adapter.mintAssociatedWaitpointData({
+          anchorRunId: run.id,
+          projectId: environment.projectId,
+          environmentId: environment.id,
+        }),
+      };
+      await expect(
+        engine.waitpointSystem.createAssociatedWaitpointRecord(association)
+      ).rejects.toThrow(/lock/i);
+      expect(
+        hasStoreWaitpoints(
+          (await prisma.taskRun.findFirstOrThrow({ where: { id: run.id } })).annotations
+        )
+      ).toBe(false);
+      release();
+      await starting;
+      await engine.waitpointSystem.createAssociatedWaitpointRecord(association);
+      expect(
+        (await prisma.taskRun.findFirstOrThrow({ where: { id: run.id } })).annotations
+      ).toEqual({
+        ...triggerAnnotations,
+        workerCell: "cell-concurrent",
+        workerLane: "microvm",
+        waitpointsOnStore: true,
+      });
+    } finally {
+      release();
+      await starting?.catch(() => undefined);
+      await engine.quit();
+      await native.quit();
+    }
+  }
+);

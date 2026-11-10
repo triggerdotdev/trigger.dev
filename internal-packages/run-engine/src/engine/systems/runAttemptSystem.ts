@@ -74,6 +74,7 @@ import type { SystemResources } from "./systems.js";
 import { snapshotRouteFromSnapshot, type SnapshotRouteWire } from "@internal/run-store";
 import type { WaitpointSystem } from "./waitpointSystem.js";
 import { BatchId, RunId, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
+import { classifyWaitpointCoordinator } from "../waitpointCoordinator/routing.js";
 
 /** A run whose snapshot state has expired has no snapshot to report, only its final run row. */
 export type CancelRunResult =
@@ -863,10 +864,10 @@ export class RunAttemptSystem {
           // construction: a never-enabled org resolves no block and a run with no store block arms nothing,
           // adding no MemoryDB read or new Postgres cleanup while disabled. Enabled successful completions
           // may release legacy edges as part of the terminal cleanup.
-          const waitpointStoreEnabled = await this.waitpointSystem.isWaitpointStoreEnabled(
+          const waitpointStoreEnabledAtSuccess = await this.waitpointSystem.isWaitpointStoreEnabled(
             latestSnapshot.organizationId
           );
-          const successCleanupObligation = waitpointStoreEnabled
+          const successCleanupObligation = waitpointStoreEnabledAtSuccess
             ? await this.waitpointSystem.armBlockerCleanupObligation({
                 runId,
                 organizationId: latestSnapshot.organizationId,
@@ -952,12 +953,33 @@ export class RunAttemptSystem {
             },
           });
 
-          // Complete the waitpoint if it exists (runs without waiting parents have no waitpoint)
-          if (run.associatedWaitpoint) {
+          // Complete the waitpoint if it exists (runs without waiting parents have no waitpoint). A store
+          // RUN waitpoint has no Postgres row, so resolve the id from the run anchor via the shared
+          // association-discovery helper; the completion then routes to the owning store by id shape.
+          const associatedWaitpointId =
+            run.associatedWaitpoint?.id ??
+            (this.waitpointSystem.isStoreRoutingWired &&
+            // Reuse only the disabled decision; enabled work must recheck after the terminal write.
+            waitpointStoreEnabledAtSuccess &&
+            (await this.waitpointSystem.isStoreRoutingEnabled(env.organizationId))
+              ? await this.waitpointSystem.resolveAssociatedRunWaitpointId({
+                  runId,
+                  organizationId: env.organizationId,
+                })
+              : undefined);
+          if (associatedWaitpointId) {
             await this.waitpointSystem.completeWaitpoint({
-              id: run.associatedWaitpoint.id,
-              output: completion.output
-                ? { value: completion.output, type: completion.outputType, isError: false }
+              id: associatedWaitpointId,
+              // Store replay fingerprints the output, so an empty string must match the durable run.
+              // Keep the existing truthiness behavior for legacy waitpoints.
+              output: (
+                classifyWaitpointCoordinator(associatedWaitpointId) === "store" &&
+                this.waitpointSystem.isStoreRoutingWired &&
+                (await this.waitpointSystem.isStoreRoutingEnabled(env.organizationId))
+                  ? completion.output != null
+                  : completion.output
+              )
+                ? { value: completion.output!, type: completion.outputType, isError: false }
                 : undefined,
               organizationId: env.organizationId,
             });
@@ -990,7 +1012,11 @@ export class RunAttemptSystem {
             },
           });
 
-          await this.#finalizeRun(run, latestSnapshot.organizationId, waitpointStoreEnabled);
+          await this.#finalizeRun(
+            run,
+            latestSnapshot.organizationId,
+            waitpointStoreEnabledAtSuccess
+          );
 
           // Release the store block terminal-first AFTER the durable FINISHED transition and every success
           // side effect, and only if the pre-commit arm observed a block. Gated on the obligation so a
@@ -1949,17 +1975,16 @@ export class RunAttemptSystem {
         // their current path), unless the caller owns cleanup. A crash after the transition but before the
         // inline release is then re-driven; the handler releases on durable terminal status.
         // One flag decision per direct cancellation; #finalizeRun below reuses only a disabled one.
-        const cancelStoreEnabled = delegateStoreCleanup
+        const waitpointStoreEnabledAtCancellation = delegateStoreCleanup
           ? undefined
           : await this.waitpointSystem.isWaitpointStoreEnabled(latestSnapshot.organizationId);
-        const cancelCleanupObligation =
-          delegateStoreCleanup || !cancelStoreEnabled
-            ? undefined
-            : await this.waitpointSystem.armBlockerCleanupObligation({
-                runId,
-                organizationId: latestSnapshot.organizationId,
-                transitionId: SnapshotId.generate().id,
-              });
+        const cancelCleanupObligation = !waitpointStoreEnabledAtCancellation
+          ? undefined
+          : await this.waitpointSystem.armBlockerCleanupObligation({
+              runId,
+              organizationId: latestSnapshot.organizationId,
+              transitionId: SnapshotId.generate().id,
+            });
 
         const reuseStoredReason =
           reason === undefined && latestSnapshot.executionStatus === "PENDING_CANCEL";
@@ -2130,16 +2155,39 @@ export class RunAttemptSystem {
           runnerId,
         });
 
-        // Complete the waitpoint if it exists (runs without waiting parents have no waitpoint)
-        if (run.associatedWaitpoint) {
+        // Complete the associated RUN waitpoint (legacy row or store-derived) if the run has one.
+        const cancelledWaitpointId =
+          run.associatedWaitpoint?.id ??
+          (this.waitpointSystem.isStoreRoutingWired &&
+          // Delegated cleanup has no earlier decision; otherwise only a known false skips discovery.
+          waitpointStoreEnabledAtCancellation !== false &&
+          (await this.waitpointSystem.isStoreRoutingEnabled(latestSnapshot.organizationId))
+            ? await this.waitpointSystem.resolveAssociatedRunWaitpointId({
+                runId,
+                organizationId: latestSnapshot.organizationId,
+              })
+            : undefined);
+        if (cancelledWaitpointId) {
           await this.waitpointSystem.completeWaitpoint({
-            id: run.associatedWaitpoint.id,
-            output: { value: JSON.stringify(error), isError: true },
+            id: cancelledWaitpointId,
+            output: {
+              value:
+                classifyWaitpointCoordinator(cancelledWaitpointId) === "store" &&
+                this.waitpointSystem.isStoreRoutingWired &&
+                (await this.waitpointSystem.isStoreRoutingEnabled(latestSnapshot.organizationId))
+                  ? this.waitpointSystem.serializeRunError(cancelledWaitpointId, error)
+                  : JSON.stringify(error),
+              isError: true,
+            },
             organizationId: latestSnapshot.organizationId,
           });
         }
 
-        await this.#finalizeRun(run, latestSnapshot.organizationId, cancelStoreEnabled);
+        await this.#finalizeRun(
+          run,
+          latestSnapshot.organizationId,
+          waitpointStoreEnabledAtCancellation
+        );
 
         // FINISHED is terminal for the store block: release it terminal-first (fenced) after the durable
         // transition, and ack the obligation. Only when this run held a store block.
@@ -2356,11 +2404,29 @@ export class RunAttemptSystem {
         removeFromWorkerQueue: true,
       });
 
-      // Complete the waitpoint if it exists (runs without waiting parents have no waitpoint)
-      if (run.associatedWaitpoint) {
+      // Complete the associated RUN waitpoint (legacy row or store-derived) if the run has one.
+      const failedWaitpointId =
+        run.associatedWaitpoint?.id ??
+        (this.waitpointSystem.isStoreRoutingWired &&
+        (await this.waitpointSystem.isStoreRoutingEnabled(env.organizationId))
+          ? await this.waitpointSystem.resolveAssociatedRunWaitpointId({
+              runId,
+              organizationId: env.organizationId,
+            })
+          : undefined);
+      if (failedWaitpointId) {
         await this.waitpointSystem.completeWaitpoint({
-          id: run.associatedWaitpoint.id,
-          output: { value: JSON.stringify(truncatedError), isError: true },
+          id: failedWaitpointId,
+          output: {
+            value:
+              classifyWaitpointCoordinator(failedWaitpointId) === "store" &&
+              this.waitpointSystem.isStoreRoutingWired &&
+              (await this.waitpointSystem.isStoreRoutingEnabled(env.organizationId))
+                ? this.waitpointSystem.serializeRunError(failedWaitpointId, truncatedError)
+                : JSON.stringify(truncatedError),
+            isError: true,
+          },
+          organizationId: env.organizationId,
         });
       }
 
@@ -2495,6 +2561,7 @@ export class RunAttemptSystem {
             error: true,
             batchId: true,
             runtimeEnvironmentId: true,
+            organizationId: true,
             associatedWaitpoint: {
               select: {
                 id: true,
@@ -2598,23 +2665,39 @@ export class RunAttemptSystem {
         });
       }
 
-      if (run.associatedWaitpoint) {
-        const wasPending = run.associatedWaitpoint.status === "PENDING";
-
-        if (wasPending) {
+      // Carry the owning org from this same run read for gated association discovery and completion.
+      const finalizeWaitpointId =
+        run.associatedWaitpoint?.id ??
+        (this.waitpointSystem.isStoreRoutingWired &&
+        (await this.waitpointSystem.isStoreRoutingEnabled(run.organizationId ?? undefined))
+          ? await this.waitpointSystem.resolveAssociatedRunWaitpointId({
+              runId,
+              organizationId: run.organizationId ?? undefined,
+            })
+          : undefined);
+      if (finalizeWaitpointId) {
+        // The re-derivation metric reads the legacy row's status; a store waitpoint's status is not loaded
+        // here (completion is idempotent regardless), so the metric stays scoped to the legacy path.
+        if (run.associatedWaitpoint?.status === "PENDING") {
           this.rederivationsCounter.add(1, { leg: "waitpoint" });
           this.$.logger.warn("ensureRunFinalized: re-deriving lost waitpoint completion", {
             runId,
             runStatus: run.status,
-            waitpointId: run.associatedWaitpoint.id,
+            waitpointId: finalizeWaitpointId,
           });
         }
 
         await this.waitpointSystem.completeWaitpoint({
-          id: run.associatedWaitpoint.id,
-          output: this.waitpointSystem.buildWaitpointOutputFromRun(run),
-          // This recovery re-derivation selects no organizationId; leave it conservative rather than
-          // widen the query solely to skip a MemoryDB lookup.
+          id: finalizeWaitpointId,
+          output: this.waitpointSystem.buildWaitpointOutputFromRun(
+            run,
+            classifyWaitpointCoordinator(finalizeWaitpointId) === "store" &&
+              this.waitpointSystem.isStoreRoutingWired &&
+              (await this.waitpointSystem.isStoreRoutingEnabled(run.organizationId ?? undefined))
+              ? finalizeWaitpointId
+              : undefined
+          ),
+          organizationId: run.organizationId ?? undefined,
         });
       }
 

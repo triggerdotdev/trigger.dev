@@ -4544,3 +4544,21 @@ describe("block clears are fenced on their block", () => {
     }
   );
 });
+
+describe("probeWaitpointPresence (bounded association discovery)", () => {
+  redisTest(
+    "reports present for an existing record and absent for an unknown id",
+    async ({ redisOptions }) => {
+      const store = coordinator(redisOptions);
+      try {
+        const id = generateWaitpointId("RUN");
+        await store.createIfAbsent({ record: record(id, { type: "RUN" }), status: "PENDING" });
+
+        expect(await store.probeWaitpointPresence(id)).toBe("present");
+        expect(await store.probeWaitpointPresence(generateWaitpointId("RUN"))).toBe("absent");
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+});

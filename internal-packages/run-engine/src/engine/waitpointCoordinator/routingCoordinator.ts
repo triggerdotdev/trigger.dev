@@ -1,3 +1,4 @@
+import { deriveRunWaitpointId } from "./runWaitpointId.js";
 import type { Logger } from "@trigger.dev/core/logger";
 import type { PrismaClientOrTransaction, Waitpoint } from "@trigger.dev/database";
 import {
@@ -23,6 +24,7 @@ import type {
   PrepareWaitpointResumeParams,
   WaitpointResumeIntent,
   AssociatedWaitpointData,
+  AssociatedWaitpointPlan,
   BlockerRegistration,
   ClearRunBlockStateParams,
   CurrentBlockContext,
@@ -614,16 +616,76 @@ export class RoutingWaitpointCoordinator implements WaitpointCoordinator {
     environmentId: string;
     anchorRunId: string;
   }): AssociatedWaitpointData {
-    // The synchronous RUN-waitpoint data builder stays legacy in this layer; a store RUN mint has its
-    // own asynchronous path owned by a later ticket. Dark by construction.
+    // The synchronous builder is legacy-only: a store RUN mint has no Postgres row to inline and must
+    // create after the child commits, so it goes through the async `planAssociatedWaitpoint` instead.
     return this.#legacy.mintAssociatedWaitpointData(params);
+  }
+
+  async planAssociatedWaitpoint(params: {
+    projectId: string;
+    environmentId: string;
+    anchorRunId: string;
+    mintContext?: WaitpointMintContext;
+  }): Promise<AssociatedWaitpointPlan> {
+    // Check the rollout before deriving an identity, so disabled creation does no native work.
+    // Both run-ops and CUID children retain their existing TaskRun placement.
+    const selected = await this.#decideMintResidency("RUN", params.mintContext);
+    const residency =
+      selected === "store" && deriveRunWaitpointId(params.anchorRunId) ? "store" : "legacy";
+    const coordinator = residency === "store" ? this.#store! : this.#legacy;
+    return {
+      residency,
+      data: coordinator.mintAssociatedWaitpointData({
+        projectId: params.projectId,
+        environmentId: params.environmentId,
+        anchorRunId: params.anchorRunId,
+      }),
+    };
   }
 
   async createAssociatedWaitpoint(params: {
     runId: string;
     data: AssociatedWaitpointData;
+    organizationId?: string;
+    requireStore?: boolean;
   }): Promise<Waitpoint> {
-    // RUN minting in this foundation is always legacy and carries no trusted organization context.
-    return this.#legacy.createAssociatedWaitpoint(params);
+    if (!(await this.isStoreRoutingEnabled(params.organizationId))) {
+      if (params.requireStore) {
+        throw new Error("Existing store waitpoint association is disabled for this organization");
+      }
+      return this.#legacy.createAssociatedWaitpoint(params);
+    }
+    // Check ownership before writing the marker; a missing store must fail without a mutation.
+    const coordinator = this.#coordinatorForId(params.data.id);
+    if (classifyWaitpointCoordinator(params.data.id) === "store") {
+      await this.#markStoreWaitpoints?.(params.runId, params.organizationId);
+    }
+    return coordinator.createAssociatedWaitpoint(params);
+  }
+
+  // Association discovery uses the child's durable storage marker, regardless of the current org
+  // flag. A Redis error throws rather than pretending the association is absent.
+  async findAssociatedRunWaitpointId(
+    runId: string,
+    context?: RunKeyedRoutingContext
+  ): Promise<string | undefined> {
+    if (
+      !(await this.#runMightHaveStoreBlockers({ runId, organizationId: context?.organizationId }))
+    ) {
+      return undefined;
+    }
+    return this.#store!.findAssociatedRunWaitpointId(runId, context);
+  }
+
+  async readAssociatedRunWaitpoint(
+    runId: string,
+    context?: RunKeyedRoutingContext
+  ): Promise<Waitpoint | undefined> {
+    if (
+      !(await this.#runMightHaveStoreBlockers({ runId, organizationId: context?.organizationId }))
+    ) {
+      return undefined;
+    }
+    return this.#store!.readAssociatedRunWaitpoint(runId, context);
   }
 }

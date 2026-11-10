@@ -19,6 +19,7 @@ import type {
   PrepareWaitpointResumeParams,
   WaitpointResumeIntent,
   AssociatedWaitpointData,
+  AssociatedWaitpointPlan,
   BlockerRegistration,
   ClearRunBlockStateParams,
   ReleaseRunBlockersParams,
@@ -534,6 +535,26 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
         completedByTaskRunId: runId,
       },
     });
+  }
+
+  // Legacy only ever mints legacy; the router selects store when eligible and never reaches here for one.
+  async planAssociatedWaitpoint(params: {
+    projectId: string;
+    environmentId: string;
+    anchorRunId: string;
+  }): Promise<AssociatedWaitpointPlan> {
+    return { residency: "legacy", data: this.mintAssociatedWaitpointData(params) };
+  }
+
+  // A legacy run's RUN waitpoint is a Postgres row reached through `run.associatedWaitpoint`, never a
+  // derived store id, so there is nothing to discover here.
+  async findAssociatedRunWaitpointId(): Promise<string | undefined> {
+    return undefined;
+  }
+
+  // A legacy run's association is a Postgres row read directly by the caller, never a store record.
+  async readAssociatedRunWaitpoint(): Promise<Waitpoint | undefined> {
+    return undefined;
   }
 
   /**

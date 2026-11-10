@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
+import { deriveRunWaitpointId } from "../waitpointCoordinator/runWaitpointId.js";
 import { timeoutError } from "@trigger.dev/core/v3";
-import { parseWaitpointId, type ShardKey } from "@trigger.dev/core/v3/isomorphic";
+import { WaitpointId, parseWaitpointId, type ShardKey } from "@trigger.dev/core/v3/isomorphic";
 import { boundedIn } from "@trigger.dev/database";
 import type {
   PrismaClientOrTransaction,
@@ -20,7 +21,7 @@ import { classifyWaitpointCoordinator } from "../waitpointCoordinator/routing.js
 import { buildCompletedWaitpointRecords } from "./completedWaitpointResolver.js";
 import { resolveCompletedWaitpointRecords } from "./completedWaitpointRecordAdapter.js";
 import { sendNotificationToWorker } from "../eventBus.js";
-import { isFinalRunStatus } from "../statuses.js";
+import { isExecuting, isFinalRunStatus, isPendingExecuting } from "../statuses.js";
 import { LegacyPostgresWaitpointCoordinator } from "../waitpointCoordinator/legacyPostgresCoordinator.js";
 import type { WaitpointStoreCoordinator } from "../waitpointCoordinator/storeCoordinator.js";
 import {
@@ -34,6 +35,8 @@ import type {
   BlockerRegistration,
   CompleteParams,
   RunBlockEdge,
+  AssociatedWaitpointData,
+  AssociatedWaitpointPlan,
   WaitpointCoordinator,
 } from "../waitpointCoordinator/types.js";
 import type { EnqueueSystem } from "./enqueueSystem.js";
@@ -83,9 +86,12 @@ export type WaitpointSystemOptions = {
   waitpointStore?: Pick<WaitpointStoreCoordinator, "readCompletedRecords">;
 };
 
+type RecoverRunWaitpoint = z.infer<typeof workerCatalog.recoverRunWaitpoint.schema>;
 type RecoverWaitpointBlock = z.infer<typeof workerCatalog.recoverWaitpointBlock.schema>;
 
 const DEFAULT_COMPLETION_GUARD_DELAY_MS = 30_000;
+
+export const RUN_WAITPOINT_RECOVERY_COMMIT_WINDOW_MS = 15 * 60_000;
 
 // Delay before the worker retries failed registration or lifecycle cleanup under the run lock.
 const BLOCKER_CLEANUP_OBLIGATION_DELAY_MS = 30_000;
@@ -157,12 +163,17 @@ export class WaitpointSystem {
   private readonly legacyCoordinator: WaitpointCoordinator;
   private readonly completionGuardDelayMs: number;
   readonly #waitpointStore?: Pick<WaitpointStoreCoordinator, "readCompletedRecords">;
+  // Whether a store coordinator is wired at all. When it is not, the RUN mint decision and terminal
+  // association discovery short-circuit to legacy WITHOUT resolving the parent's residency or making any
+  // MemoryDB call, so the dark production path keeps its exact current cost.
+  readonly #storeWired: boolean;
 
   constructor(private readonly options: WaitpointSystemOptions) {
     this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.enqueueSystem = options.enqueueSystem;
     this.#waitpointStore = options.waitpointStore;
+    this.#storeWired = !!options.waitpointRouting?.store;
     this.completionGuardDelayMs =
       options.completionGuardDelayMs ?? DEFAULT_COMPLETION_GUARD_DELAY_MS;
     const legacyCoordinator = new LegacyPostgresWaitpointCoordinator({
@@ -214,10 +225,17 @@ export class WaitpointSystem {
       : legacyCoordinator;
   }
 
-  public isStoreRoutingEnabled(organizationId?: string): boolean | Promise<boolean> {
+  public get isStoreRoutingWired(): boolean {
+    return this.#storeWired;
+  }
+
+  public isStoreRoutingEnabled(
+    organizationId?: string,
+    organizationFlags?: unknown
+  ): boolean | Promise<boolean> {
     return (
       this.coordinator instanceof RoutingWaitpointCoordinator &&
-      this.coordinator.isStoreRoutingEnabled(organizationId)
+      this.isWaitpointStoreEnabled(organizationId, organizationFlags)
     );
   }
 
@@ -559,6 +577,15 @@ export class WaitpointSystem {
     // From here the guard owns eventual completion. A failure is wrapped as
     // WaitpointCompletionGuardArmedError, so the API can return success and let the guard replay.
     try {
+      if (storeRoutingEnabled && organizationId && classifyWaitpointCoordinator(id) === "store") {
+        await this.$.worker.enqueueOnce({
+          id: `deliverWaitpointFanout:${id}`,
+          job: "deliverWaitpointFanout",
+          payload: { waitpointId: id, organizationId },
+          availableAt: new Date(Date.now() + 50),
+        });
+      }
+
       const params: CompleteParams = { waitpointId: id, output };
       if (storeRoutingEnabled) params.organizationId = organizationId;
       const { waitpoint, blockedRuns } = await (
@@ -1146,6 +1173,7 @@ export class WaitpointSystem {
           job: "finishWaitpoint",
           payload: {
             waitpointId: waitpoint,
+            organizationId,
             error: JSON.stringify(timeoutError(timeout)),
           },
           availableAt: timeout,
@@ -1165,6 +1193,7 @@ export class WaitpointSystem {
     projectId,
     organizationId,
     batch,
+    blockOperation,
   }: {
     runId: string;
     waitpointId: string;
@@ -1172,6 +1201,8 @@ export class WaitpointSystem {
     projectId: string;
     organizationId: string;
     batch?: { id: string; index?: number };
+    /** Caller-owned identity for a store-format waitpoint; undefined for a legacy blocker (ignored). */
+    blockOperation?: { id: string; absorptionId: string; cycleAnchor: string };
   }): Promise<void> {
     await this.blockRunWithWaitpoint({
       runId,
@@ -1179,6 +1210,7 @@ export class WaitpointSystem {
       projectId,
       organizationId,
       batch,
+      blockOperation,
     });
 
     await this.completeWaitpoint({
@@ -1758,6 +1790,140 @@ export class WaitpointSystem {
     });
   }
 
+  /**
+   * Decide a NEW RUN waitpoint's residency from the per-org mint policy, independently of
+   * the blocking parent's snapshot residency, and mint its data. With no store wired this is the legacy sync builder with NO parent-residency
+   * resolution and NO MemoryDB call. Blocking uses the route on its authoritative snapshot.
+   */
+  public async planRunAssociatedWaitpoint(params: {
+    projectId: string;
+    environmentId: string;
+    anchorRunId: string;
+    parentRunId: string;
+    organizationId: string;
+    organizationFlags?: unknown;
+  }): Promise<{ plan: AssociatedWaitpointPlan }> {
+    if (
+      !this.#storeWired ||
+      !(await this.isWaitpointStoreEnabled(params.organizationId, params.organizationFlags))
+    ) {
+      return {
+        plan: {
+          residency: "legacy",
+          data: this.buildRunAssociatedWaitpoint({
+            projectId: params.projectId,
+            environmentId: params.environmentId,
+            anchorRunId: params.anchorRunId,
+          }),
+        },
+      };
+    }
+    const plan = await this.coordinator.planAssociatedWaitpoint({
+      projectId: params.projectId,
+      environmentId: params.environmentId,
+      anchorRunId: params.anchorRunId,
+      mintContext: {
+        organizationId: params.organizationId,
+      },
+    });
+    return { plan };
+  }
+
+  /** Armed before child commit, carrying the original parent cycle. No active-run polling. */
+  public async armRunWaitpointRecovery(
+    payload: Omit<RecoverRunWaitpoint, "armedAt">
+  ): Promise<void> {
+    await this.$.worker.enqueueOnce({
+      id: `recoverRunWaitpoint:${payload.runId}`,
+      job: "recoverRunWaitpoint",
+      payload: { ...payload, armedAt: new Date() },
+      availableAt: new Date(Date.now() + (this.options.completionGuardDelayMs ?? 30_000)),
+    });
+  }
+
+  public async recoverRunWaitpoint(payload: RecoverRunWaitpoint): Promise<"retired" | void> {
+    if (!(await this.isWaitpointStoreEnabled(payload.organizationId))) return;
+    const run = await this.$.runStore.findRunOnPrimary(
+      { id: payload.runId },
+      {
+        select: {
+          id: true,
+          organizationId: true,
+          projectId: true,
+          runtimeEnvironmentId: true,
+          status: true,
+          output: true,
+          outputType: true,
+          error: true,
+        },
+      }
+    );
+    if (!run) {
+      // Absence inside the window is not convergence: the producer may still be committing. Past
+      // it, retire. A commit that lands later is inert: the parent is blocked only after createRun
+      // by the same producer, the caller already received the trigger error and retried with a new
+      // id, and the row is never enqueued, exactly as a flag-off crash between createRun and
+      // publishRun leaves it. Keeping the job would retry for ~35 days and then DLQ.
+      if (
+        !payload.armedAt ||
+        Date.now() - payload.armedAt.getTime() < RUN_WAITPOINT_RECOVERY_COMMIT_WINDOW_MS
+      ) {
+        throw new Error(`RUN waitpoint child not committed: ${payload.runId}`);
+      }
+      this.$.logger.warn("recoverRunWaitpoint: child never committed, retiring recovery", {
+        runId: payload.runId,
+        parentRunId: payload.parentRunId,
+        waitpointId: payload.waitpointId,
+      });
+      return "retired";
+    }
+    if (
+      run.organizationId !== payload.organizationId ||
+      deriveRunWaitpointId(run.id) !== payload.waitpointId
+    ) {
+      throw new Error(`RUN waitpoint recovery ownership conflict: ${payload.runId}`);
+    }
+    // A shared child may be waited on by a different parent from the one that triggered it.
+    // Bind this recovery to the child's identity and the waiting parent's owning environment.
+    const parent = await this.$.runStore.findRunOnPrimary(
+      {
+        id: payload.parentRunId,
+        organizationId: payload.organizationId,
+        runtimeEnvironmentId: run.runtimeEnvironmentId,
+        projectId: run.projectId,
+      },
+      { select: { id: true } }
+    );
+    if (!parent) {
+      throw new Error(`RUN waitpoint recovery parent scope conflict: ${payload.parentRunId}`);
+    }
+    const data = {
+      id: payload.waitpointId,
+      friendlyId: WaitpointId.toFriendlyId(payload.waitpointId),
+      type: "RUN" as const,
+      status: "PENDING" as const,
+      idempotencyKey: payload.waitpointId,
+      userProvidedIdempotencyKey: false as const,
+      projectId: run.projectId,
+      environmentId: run.runtimeEnvironmentId,
+    };
+    await this.createAssociatedWaitpointRecord({
+      runId: run.id,
+      data,
+      organizationId: payload.organizationId,
+    });
+    await this.recoverWaitpointBlock({
+      runId: payload.parentRunId,
+      organizationId: payload.organizationId,
+      projectId: run.projectId,
+      waitpoints: [payload.waitpointId],
+      blockOperation: payload.blockOperation,
+      expectedEnvironmentId: run.runtimeEnvironmentId,
+    });
+    // Publication already reconciled terminal state. Normal finalization owns later completion;
+    // parent registration captures completion that arrived before or during this block.
+  }
+
   public async recoverWaitpointBlock(payload: RecoverWaitpointBlock): Promise<void> {
     if (!(await this.isWaitpointStoreEnabled(payload.organizationId))) return;
     try {
@@ -1776,6 +1942,81 @@ export class WaitpointSystem {
       }
       throw error;
     }
+  }
+
+  /** Publish a native RUN association and reconcile terminal state before its parent registers. */
+  public async createAssociatedWaitpointRecord(params: {
+    runId: string;
+    data: AssociatedWaitpointData;
+    organizationId?: string;
+  }): Promise<void> {
+    if (!(await this.isStoreRoutingEnabled(params.organizationId))) {
+      throw new Error("Existing store waitpoint association is disabled for this organization");
+    }
+    await this.coordinator.createAssociatedWaitpoint({ ...params, requireStore: true });
+    if (classifyWaitpointCoordinator(params.data.id) !== "store") return;
+
+    // Publish BEFORE the fresh primary read: completion before publication is replayed here;
+    // completion after this read discovers the published source through the normal finish path.
+    // The run returned by the original create is stale if cancellation won during publication.
+    const publishedRun = await this.$.runStore.findRunOnPrimary(
+      { id: params.runId },
+      {
+        select: { status: true, output: true, outputType: true, error: true, organizationId: true },
+      }
+    );
+    if (!publishedRun) throw new Error(`RUN waitpoint child not committed: ${params.runId}`);
+    if (!isFinalRunStatus(publishedRun.status)) return;
+
+    if (publishedRun.status === "CANCELED") {
+      try {
+        const snapshot = await getLatestExecutionSnapshot(
+          this.$.prisma,
+          params.runId,
+          this.$.runStore,
+          undefined,
+          publishedRun.organizationId ?? undefined
+        );
+        // Cancellation persists the final row before asking an executing worker to wind down.
+        // Its existing finalization guard owns completion until that worker actually finishes.
+        if (
+          isExecuting(snapshot.executionStatus) ||
+          isPendingExecuting(snapshot.executionStatus) ||
+          snapshot.executionStatus === "PENDING_CANCEL"
+        ) {
+          return;
+        }
+      } catch (error) {
+        if (!isExpiredSnapshotOfFinishedRun(error, publishedRun.status)) throw error;
+      }
+    }
+
+    await this.completeWaitpoint({
+      id: params.data.id,
+      output: this.buildWaitpointOutputFromRun(publishedRun, params.data.id),
+      organizationId: publishedRun.organizationId ?? undefined,
+    });
+  }
+
+  /**
+   * The single association-resolution helper every terminal-completion caller uses (success, failure,
+   * cancellation, expiry, finalization). A Postgres association wins unchanged; otherwise, gated by the
+   * organization flag and owning run's durable storage marker, discover the deterministically-derived store id by a bounded
+   * presence probe. Undefined means the run has no associated RUN waitpoint. Never mints a Postgres
+   * replacement; disabling enrollment stops store discovery. Capability and child snapshot residency do not re-route IDs, and a
+   * MemoryDB availability failure throws rather than reading as absent.
+   */
+  public async resolveAssociatedRunWaitpointId(params: {
+    runId: string;
+    legacyAssociatedWaitpointId?: string;
+    organizationId?: string;
+  }): Promise<string | undefined> {
+    if (params.legacyAssociatedWaitpointId) {
+      return params.legacyAssociatedWaitpointId;
+    }
+    return this.coordinator.findAssociatedRunWaitpointId(params.runId, {
+      organizationId: params.organizationId,
+    });
   }
 
   /**
@@ -1799,9 +2040,29 @@ export class WaitpointSystem {
     return { id, absorptionId: `${id}:${params.waitpointId}`, cycleAnchor };
   }
 
+  /** Store RUN errors must survive JSONB object-key reordering during finalization replay. */
+  public serializeRunError(waitpointId: string, error: unknown): string {
+    const parsed = parseWaitpointId(waitpointId);
+    if (parsed.format === "legacy" || parsed.type !== "RUN") {
+      return JSON.stringify(error);
+    }
+    // Only error objects are normalized. Success payloads and legacy completion bytes retain their
+    // existing encoding, and the coordinator still rejects genuinely different completions.
+    return JSON.stringify(error, (_key, value) =>
+      value !== null && typeof value === "object" && !Array.isArray(value)
+        ? Object.fromEntries(
+            Object.keys(value)
+              .sort()
+              .map((key) => [key, value[key]])
+          )
+        : value
+    );
+  }
+
   /** Undefined for a success with no output, or for a run that is not final. */
   public buildWaitpointOutputFromRun(
-    run: Pick<TaskRun, "status" | "output" | "outputType" | "error">
+    run: Pick<TaskRun, "status" | "output" | "outputType" | "error">,
+    storeWaitpointId?: string
   ): { value: string; type?: string; isError: boolean } | undefined {
     if (run.status === "COMPLETED_SUCCESSFULLY") {
       if (run.output == null) {
@@ -1815,7 +2076,9 @@ export class WaitpointSystem {
     }
     if (isFinalRunStatus(run.status)) {
       return {
-        value: JSON.stringify(run.error ?? {}),
+        value: storeWaitpointId
+          ? this.serializeRunError(storeWaitpointId, run.error ?? {})
+          : JSON.stringify(run.error ?? {}),
         isError: true,
       };
     }
@@ -1830,11 +2093,28 @@ export class WaitpointSystem {
     runId,
     projectId,
     environmentId,
+    blockingParentRunId,
+    organizationId,
+    blockingViaBatch,
   }: {
     runId: string;
     projectId: string;
     environmentId: string;
+    /**
+     * The late-waiting parent that owns a NEW mint's block operation. Snapshot residency does not
+     * select waitpoint storage. Absent ⇒ a new mint stays legacy. Never consulted when an
+     * existing association is reused.
+     */
+    blockingParentRunId?: string;
+    organizationId?: string;
+    /**
+     * The parent will block on this waitpoint as part of a BATCH. A batch's children must all be legacy —
+     * its siblings are blocked via the lockless path, which cannot drive the store protocol — so a NEW mint
+     * is forced legacy here, keeping the batch uniform. An existing association is still reused as-is.
+     */
+    blockingViaBatch?: boolean;
   }): Promise<Waitpoint> {
+    // Fast path: reuse an existing Postgres association (unchanged legacy behaviour).
     const run = await this.$.runStore.findRun(
       { id: runId },
       { include: { associatedWaitpoint: true } },
@@ -1849,10 +2129,28 @@ export class WaitpointSystem {
       return run.associatedWaitpoint;
     }
 
-    // Create under the run lock to prevent a race.
+    // Enabled organizations reuse the existing store association before choosing a new mint.
+    // Rollback may abandon store-era runs, but must never create a replacement PG association.
+    if (
+      hasStoreWaitpoints(run.annotations) &&
+      !(await this.isWaitpointStoreEnabled(organizationId ?? run.organizationId ?? undefined))
+    ) {
+      throw new Error("Existing store waitpoint association is disabled for this organization");
+    }
+    const existingStore = hasStoreWaitpoints(run.annotations)
+      ? await this.coordinator.readAssociatedRunWaitpoint(runId, {
+          organizationId: organizationId ?? run.organizationId ?? undefined,
+        })
+      : undefined;
+    if (existingStore) {
+      return existingStore;
+    }
+
+    // Need to create - use run lock to prevent races (operational decisions use latest snapshot inside lock)
     return this.$.runLock.lock("getOrCreateRunWaitpoint", [runId], async () => {
       const prisma = this.$.prisma;
 
+      // Double-check both stores after acquiring the lock.
       const runAfterLock = await this.$.runStore.findRun(
         { id: runId },
         { include: { associatedWaitpoint: true } },
@@ -1866,46 +2164,127 @@ export class WaitpointSystem {
       if (runAfterLock.associatedWaitpoint) {
         return runAfterLock.associatedWaitpoint;
       }
-
-      // Decide from the latest snapshot, not the TaskRun status.
-      let runFinished: boolean;
-      try {
-        const snapshot = await getLatestExecutionSnapshot(
-          prisma,
-          runId,
-          this.$.runStore,
-          undefined,
-          runAfterLock.organizationId ?? undefined
-        );
-        runFinished = snapshot.executionStatus === "FINISHED";
-      } catch (error) {
-        if (!isExpiredSnapshotOfFinishedRun(error, runAfterLock.status)) {
-          throw error;
-        }
-        this.$.logger.warn("getOrCreateRunWaitpoint: snapshot state expired, using final run row", {
-          runId,
-        });
-        runFinished = true;
+      // Rollback may abandon store-era runs, but must never create a replacement PG association.
+      if (
+        hasStoreWaitpoints(runAfterLock.annotations) &&
+        !(await this.isWaitpointStoreEnabled(
+          organizationId ?? runAfterLock.organizationId ?? undefined
+        ))
+      ) {
+        throw new Error("Existing store waitpoint association is disabled for this organization");
+      }
+      const storeAfterLock = hasStoreWaitpoints(runAfterLock.annotations)
+        ? await this.coordinator.readAssociatedRunWaitpoint(runId, {
+            organizationId: organizationId ?? runAfterLock.organizationId ?? undefined,
+          })
+        : undefined;
+      if (storeAfterLock) {
+        return storeAfterLock;
       }
 
-      // Creates and links the waitpoint atomically.
-      const waitpointData = this.buildRunAssociatedWaitpoint({
-        projectId,
-        environmentId,
-        anchorRunId: runId,
-      });
+      // Mint by the organization's waitpoint rollout; a lazy create with no known parent stays
+      // legacy. The id is deterministic (store) or a fresh Postgres row (legacy); create-if-absent makes the
+      // store write idempotent, so a completion racing this create converges either way.
+      // Batch blocking retains its legacy lockless protocol. Shared children use the same parent-based
+      // mint policy; later waiters reuse the durable association regardless of their own residency.
+      const org = organizationId ?? runAfterLock.organizationId ?? undefined;
+      let plan: AssociatedWaitpointPlan | undefined;
+      if (this.#storeWired) {
+        // A legacy eager association commits inline with the child. Missing it on a single
+        // triggerAndWait means its eager store mint may still be pending (or recovering).
+        // Reconstruct that plan from the committed birth parent, never a later PG/batch waiter.
+        const eagerParentRunId =
+          runAfterLock.resumeParentOnCompletion && !runAfterLock.batchId
+            ? runAfterLock.parentTaskRunId
+            : undefined;
+        const mintParentRunId = eagerParentRunId ?? blockingParentRunId;
+        const mintLegacy = !eagerParentRunId && blockingViaBatch;
+        if (this.#storeWired && mintParentRunId && org && !mintLegacy) {
+          plan = (
+            await this.planRunAssociatedWaitpoint({
+              projectId,
+              environmentId,
+              anchorRunId: runId,
+              parentRunId: mintParentRunId,
+              organizationId: org,
+            })
+          ).plan;
+        }
+      }
 
-      const waitpoint = await this.legacyCoordinator.createAssociatedWaitpoint({
-        runId,
-        data: waitpointData,
-      });
+      // Failed-at-creation store children have no snapshot; otherwise use the snapshot, with the
+      // final run row as proof only when the owning Redis snapshot state has explicitly expired.
+      let finished = plan?.residency === "store" && runAfterLock.status === "SYSTEM_FAILURE";
+      if (!finished) {
+        try {
+          const snapshot = await getLatestExecutionSnapshot(
+            prisma,
+            runId,
+            this.$.runStore,
+            undefined,
+            runAfterLock.organizationId ?? undefined
+          );
+          finished = snapshot.executionStatus === "FINISHED";
+        } catch (error) {
+          if (!isExpiredSnapshotOfFinishedRun(error, runAfterLock.status)) {
+            throw error;
+          }
+          this.$.logger.warn(
+            "getOrCreateRunWaitpoint: snapshot state expired, using final run row",
+            {
+              runId,
+            }
+          );
+          finished = true;
+        }
+      }
 
-      if (runFinished) {
-        const output = this.buildWaitpointOutputFromRun(runAfterLock);
+      if (plan?.residency === "store" && blockingParentRunId && org) {
+        const operation = await this.buildStoreBlockOperation({
+          runId: blockingParentRunId,
+          waitpointId: plan.data.id,
+          organizationId: org,
+        });
+        if (!operation) throw new Error("Store RUN recovery requires a parent block operation");
+        await this.armRunWaitpointRecovery({
+          runId,
+          parentRunId: blockingParentRunId,
+          organizationId: org,
+          waitpointId: plan.data.id,
+          blockOperation: operation,
+        });
+      }
+
+      const waitpoint =
+        plan?.residency === "store"
+          ? await this.coordinator.createAssociatedWaitpoint({
+              runId,
+              data: plan.data,
+              organizationId: org,
+              requireStore: true,
+            })
+          : await this.legacyCoordinator.createAssociatedWaitpoint({
+              runId,
+              data:
+                plan?.data ??
+                this.buildRunAssociatedWaitpoint({
+                  projectId,
+                  environmentId,
+                  anchorRunId: runId,
+                }),
+              organizationId: org,
+            });
+
+      // Complete a terminal child immediately so late registration cannot strand its parent.
+      if (finished) {
+        const output = this.buildWaitpointOutputFromRun(
+          runAfterLock,
+          plan?.residency === "store" ? waitpoint.id : undefined
+        );
         const completed = await this.completeWaitpoint({
           id: waitpoint.id,
           output,
-          organizationId: runAfterLock.organizationId ?? undefined,
+          organizationId: org,
         });
         return completed;
       }

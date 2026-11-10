@@ -1,3 +1,4 @@
+import { deriveRunWaitpointId } from "./runWaitpointId.js";
 import { parseWaitpointId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import type { Waitpoint } from "@trigger.dev/database";
 import pMap from "p-map";
@@ -11,6 +12,7 @@ import {
   type AbsorbResult,
   type BlockEdge,
   type WaitpointCompletion,
+  type WaitpointRecordInput,
   type WaitpointStoredRecord,
   type WaitpointStoreCoordinator,
 } from "./storeCoordinator.js";
@@ -23,6 +25,7 @@ import type {
   PrepareWaitpointResumeParams,
   WaitpointResumeIntent,
   AssociatedWaitpointData,
+  AssociatedWaitpointPlan,
   BlockerRegistration,
   ClearRunBlockStateParams,
   ReleaseRunBlockersParams,
@@ -488,12 +491,145 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
     return Promise.reject(this.#mintNotWired("MANUAL"));
   }
 
-  mintAssociatedWaitpointData(): AssociatedWaitpointData {
-    throw this.#mintNotWired("RUN");
+  // The RUN mint id is a pure function of the child anchor, so create-if-absent is idempotent
+  // without a lock and a replay cannot mint a competing waitpoint. Unsupported anchors stay legacy.
+  mintAssociatedWaitpointData(params: {
+    projectId: string;
+    environmentId: string;
+    anchorRunId: string;
+  }): AssociatedWaitpointData {
+    const id = deriveRunWaitpointId(params.anchorRunId);
+    if (!id) {
+      throw new Error(
+        `Store RUN waitpoint requires a supported anchor id, got ${params.anchorRunId}`
+      );
+    }
+    return {
+      id,
+      friendlyId: WaitpointId.toFriendlyId(id),
+      type: "RUN",
+      status: "PENDING",
+      // No user idempotency key on a RUN waitpoint; the deterministic id is its dedup key. Kept
+      // deterministic (the id) so a replay builds identical data, and inert — the resolver omits a
+      // non-user key and create-if-absent dedups on the id, never this field.
+      idempotencyKey: id,
+      userProvidedIdempotencyKey: false,
+      projectId: params.projectId,
+      environmentId: params.environmentId,
+    };
   }
 
-  createAssociatedWaitpoint(): Promise<Waitpoint> {
-    return Promise.reject(this.#mintNotWired("RUN"));
+  async createAssociatedWaitpoint({
+    runId,
+    data,
+    organizationId,
+  }: {
+    runId: string;
+    data: AssociatedWaitpointData;
+    organizationId?: string;
+  }): Promise<Waitpoint> {
+    const record = this.#newRecord({
+      id: data.id,
+      friendlyId: data.friendlyId,
+      type: "RUN",
+      projectId: data.projectId,
+      environmentId: data.environmentId,
+      idempotencyKey: data.idempotencyKey,
+      userProvidedIdempotencyKey: data.userProvidedIdempotencyKey,
+      // The reverse back-pointer a delayed sweep re-derives the completion from (child run → its RUN
+      // waitpoint), and the cachedRunId a completion carries. Matches the legacy row's column.
+      completedByTaskRunId: runId,
+      organizationId,
+    });
+    if (organizationId) await this.#store.publishPendingSource(data.id, organizationId);
+    const created = await this.#store.createIfAbsent({ record, status: "PENDING" });
+    if (created.outcome === "exists") {
+      if (
+        created.record.type !== "RUN" ||
+        created.record.completedByTaskRunId !== runId ||
+        created.record.projectId !== data.projectId ||
+        created.record.environmentId !== data.environmentId
+      ) {
+        throw new Error(`RUN waitpoint ownership conflict: ${data.id}`);
+      }
+      if (organizationId && created.status === "COMPLETED")
+        await this.#store.retirePendingSource(data.id, organizationId);
+      return waitpointFromStoredRecord(data.id, {
+        status: created.status,
+        record: created.record,
+        completion: created.completion,
+      });
+    }
+    return this.#pendingWaitpoint(record);
+  }
+
+  // The store adapter always mints store; the router only routes here when the decision is store.
+  async planAssociatedWaitpoint(params: {
+    projectId: string;
+    environmentId: string;
+    anchorRunId: string;
+  }): Promise<AssociatedWaitpointPlan> {
+    return { residency: "store", data: this.mintAssociatedWaitpointData(params) };
+  }
+
+  // Association discovery for a deterministically-known store RUN id: derive it from the anchor and probe
+  // its presence with one bounded read (no output, no watchers). Undefined for an unsupported anchor (no
+  // store id can exist) or a confirmed-absent record; a Redis error throws, so an availability failure is
+  // never reported as absence. Not a store-first residency probe — the id is fixed by the anchor and the
+  // answer never re-routes an already-classified id.
+  async findAssociatedRunWaitpointId(runId: string): Promise<string | undefined> {
+    const id = deriveRunWaitpointId(runId);
+    if (!id) {
+      return undefined;
+    }
+    return (await this.#store.probeWaitpointPresence(id)) === "present" ? id : undefined;
+  }
+
+  // Read the run's existing store RUN waitpoint as a Waitpoint (for lazy reuse). A Redis error throws, so
+  // an availability failure is never seen as "no association" and never triggers a second mint.
+  async readAssociatedRunWaitpoint(runId: string): Promise<Waitpoint | undefined> {
+    const id = deriveRunWaitpointId(runId);
+    if (!id) {
+      return undefined;
+    }
+    const stored = (await this.#store.readCompletedRecords([id])).get(id);
+    return stored ? waitpointFromStoredRecord(id, stored) : undefined;
+  }
+
+  #newRecord(fields: {
+    id: string;
+    friendlyId?: string;
+    type: WaitpointRecordInput["type"];
+    projectId: string;
+    environmentId: string;
+    organizationId?: string;
+    completedAfter?: string;
+    idempotencyKey?: string;
+    idempotencyKeyExpiresAt?: string;
+    userProvidedIdempotencyKey: boolean;
+    completedByTaskRunId?: string;
+  }): WaitpointRecordInput {
+    const nowIso = new Date(this.#clock()).toISOString();
+    return {
+      id: fields.id,
+      friendlyId: fields.friendlyId ?? WaitpointId.toFriendlyId(fields.id),
+      type: fields.type,
+      environmentId: fields.environmentId,
+      organizationId: fields.organizationId,
+      projectId: fields.projectId,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      userProvidedIdempotencyKey: fields.userProvidedIdempotencyKey,
+      tags: [],
+      idempotencyKey: fields.idempotencyKey,
+      idempotencyKeyExpiresAt: fields.idempotencyKeyExpiresAt,
+      completedAfter: fields.completedAfter,
+      completedByTaskRunId: fields.completedByTaskRunId,
+    };
+  }
+
+  #pendingWaitpoint(record: WaitpointRecordInput): Waitpoint {
+    return waitpointFromStoredRecord(record.id, { status: "PENDING", record });
   }
 
   #mintNotWired(type: string): Error {

@@ -1,6 +1,24 @@
 import { z } from "zod";
 
 export const workerCatalog = {
+  // Each item is a bounded, durable discovery target. Exhausted failures remain in the DLQ.
+  recoverRunWaitpoint: {
+    schema: z.object({
+      parkedOnExternalDeploymentId: z.string().optional(),
+      runId: z.string(),
+      parentRunId: z.string(),
+      organizationId: z.string(),
+      waitpointId: z.string(),
+      blockOperation: z.object({
+        id: z.string(),
+        absorptionId: z.string(),
+        cycleAnchor: z.string(),
+      }),
+      armedAt: z.coerce.date().optional(),
+    }),
+    visibilityTimeoutMs: 30_000,
+    retry: { maxAttempts: 10_000, minTimeoutInMs: 1_000, maxTimeoutInMs: 300_000 },
+  },
   recoverWaitpointBlock: {
     schema: z.object({
       runId: z.string(),
@@ -165,6 +183,15 @@ export const workerCatalog = {
     }),
     visibilityTimeoutMs: 30_000,
   },
+  /**
+   * Write-ahead guard for the failed-attempt MemoryDB blocker cleanup. Armed (only when the run holds an
+   * observed store block) before the failure/retry transition and acked once the inline cleanup succeeds;
+   * it fires only if that path died after the transition committed. On replay it re-drives the SAME
+   * block's cleanup under the run lock, fenced so it never touches a newer cycle: it releases once the run
+   * is durably terminal, abandons once the specific retry/requeue transition (proven by the minted
+   * `transitionId` existing as a snapshot — a checkpoint or other advancement is not proof) has
+   * committed, and otherwise defers. Its retry budget matches the other finalization guards.
+   */
   ensureBlockersCleanedUp: {
     schema: z.object({
       runId: z.string(),
@@ -183,7 +210,7 @@ export const workerCatalog = {
   },
   /**
    * Retry cleanup when Postgres registration and immediate MemoryDB cleanup both fail.
-   * Hold the parent run lock. Remove only this operation's added edges.
+   * Hold the parent run lock. Release only this operation's edge claims.
    * Preserve successful registrations and newer blocks.
    */
   ensureAbsorptionCompensated: {

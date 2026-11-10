@@ -72,6 +72,12 @@ export const UNBLOCK_ROUTES: readonly UnblockRoute[] = [
     symbol: "getOrCreateRunWaitpoint",
   },
   {
+    id: "wp.createAssociated",
+    kind: "RUN",
+    site: WAITPOINT_SYSTEM,
+    symbol: "createAssociatedWaitpointRecord (native publication terminal reconciliation)",
+  },
+  {
     id: "batch.tryCompleteBatch",
     kind: "RUN",
     site: BATCH_SYSTEM,
