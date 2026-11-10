@@ -1,5 +1,21 @@
 # trigger.dev
 
+## 4.8.4
+
+### Patch Changes
+
+- Logins made with `trigger.dev login` or the MCP server now stop working after 7 days without use. When that happens, the CLI and the MCP server start a new login instead of failing with an auth error, and in CI the CLI says to log in again. Self-hosted instances can change the window with `CLI_LOGIN_IDLE_TIMEOUT_DAYS`, or set it to `0` to turn it off for new logins. Logins made before this change aren't affected. ([`c8ee9e309`](https://github.com/triggerdotdev/trigger.dev/commit/c8ee9e309fe1f09025f6c5dc1fbab8107933dec3))
+- Add `infisicalAccessToken` at `@trigger.dev/sdk/oidc/infisical` to authenticate tasks with Infisical using OIDC instead of stored credentials. Supports US, EU, and self-hosted instances, custom audiences, and Infisical organization scoping. ([`63b58f329`](https://github.com/triggerdotdev/trigger.dev/commit/63b58f329012475941cef93b3440cca09514fee0))
+- Deploy from GitHub Actions using Trusted publishing and GitHub OIDC without storing a Trigger.dev API key. These deployments run entirely on the build server and do not grant the CLI access to environment variables. ([`9aafe6989`](https://github.com/triggerdotdev/trigger.dev/commit/9aafe6989af028bc7c9dc96f9d2f1c027ec3323c))
+- Use GitHub Actions trusted publishing with `preview archive` and `promote`, without storing API keys. Preview deploys for closed or merged pull requests now archive their branch. `preview archive` also supports Preview environment API keys through `TRIGGER_ACCESS_TOKEN`. ([`d9172638a`](https://github.com/triggerdotdev/trigger.dev/commit/d9172638a9679c1f698a1b04b35d2cc7abae5fa3))
+
+  Failed Preview archive operations now exit with an error for API-key and personal-token authentication too, including automatic cleanup during deploys. CI cleanup jobs that previously passed despite an archive failure will now fail. Concurrent cleanup jobs succeed when another job has already archived the same branch generation.
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.8.4`
+  - `@trigger.dev/build@4.8.4`
+  - `@trigger.dev/schema-to-json@4.8.4`
+
 ## 4.8.3
 
 ### Patch Changes
