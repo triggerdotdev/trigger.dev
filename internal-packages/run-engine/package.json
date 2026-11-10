@@ -36,6 +36,7 @@
     "p-map": "^6.0.0"
   },
   "devDependencies": {
+    "@internal/run-ops-database": "workspace:*",
     "@internal/testcontainers": "workspace:*",
     "@opentelemetry/sdk-metrics": "2.8.0",
     "@types/seedrandom": "^3.0.8",

@@ -1953,7 +1953,6 @@ describe("bounded cleanup", () => {
           "B2",
           String(Date.now()),
           "10000",
-          contributionMember("block_test", ""),
           "raw-test-revision"
         );
         expect(terminal).toEqual(["retained"]);

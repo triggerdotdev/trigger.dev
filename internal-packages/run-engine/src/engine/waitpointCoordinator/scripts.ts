@@ -1331,6 +1331,14 @@ ${PERSIST_RUN_KEYS}
     lua: `
       local st = KEYS[4]
 
+      -- Optional manual rollback CAS, before every write. Existing lifecycle callers keep their arity.
+      if #ARGV == 5 then
+        local expected = cjson.decode(ARGV[4])
+        local actual = redis.call('HMGET', st, 'rev', 'seq', 'blk', 'co', 'term')
+        for i = 1, 5 do
+          if (actual[i] or '') ~= expected[i] then return { '${STALE}' } end
+        end
+      end
       local ttl = tonumber(ARGV[2])
       if ttl == nil or ttl <= 0 then
         return redis.error_reply('runTerminalCleanup: ARGV[2] must be a positive TTL in ms')
@@ -1349,7 +1357,7 @@ ${PERSIST_RUN_KEYS}
         return { '${RETAINED}', 'handoff-owed' }
       end
 
-      redis.call('HSET', st, 'term', '1', 'hs', '', 'termAt', ARGV[1], 'rev', ARGV[4])
+      redis.call('HSET', st, 'term', '1', 'hs', '', 'termAt', ARGV[1], 'rev', ARGV[#ARGV])
       for i = 1, 4 do redis.call('PEXPIRE', KEYS[i], ttl) end
       for i = 6, 10 do redis.call('PEXPIRE', KEYS[i], ttl) end
       -- Resume is not result consumption. Only the run's terminal lifecycle arms this TTL.
@@ -1497,6 +1505,15 @@ ${PERSIST_RUN_KEYS}
     lua: `
       local pend, done, edge, st, wd, results, targets, refs = unpack(KEYS)
       if ARGV[1] == '' then return redis.error_reply('runTerminalRetainAndClear: missing block id') end
+
+      -- Optional manual rollback CAS, before every write. Existing lifecycle callers keep their arity.
+      if #ARGV == 5 then
+        local expected = cjson.decode(ARGV[4])
+        local actual = redis.call('HMGET', st, 'rev', 'seq', 'blk', 'co', 'term')
+        for i = 1, 5 do
+          if (actual[i] or '') ~= expected[i] then return { '${STALE}' } end
+        end
+      end
       local ttl = tonumber(ARGV[3])
       if ttl == nil or ttl <= 0 then return redis.error_reply('runTerminalRetainAndClear: invalid TTL') end
       local current = redis.call('HGET', st, 'blk') or ''
@@ -1522,7 +1539,7 @@ ${PERSIST_RUN_KEYS}
         redis.call('PERSIST', targets)
       end
       redis.call('UNLINK', pend, done, edge, refs, KEYS[9], KEYS[10], KEYS[11], KEYS[12])
-      redis.call('HSET', st, 'term', '1', 'hs', '', 'termAt', ARGV[2], 'rev', ARGV[4])
+      redis.call('HSET', st, 'term', '1', 'hs', '', 'termAt', ARGV[2], 'rev', ARGV[#ARGV])
       redis.call('HDEL', st, 'blk')
       redis.call('PEXPIRE', st, ttl)
       redis.call('PEXPIRE', results, ttl)

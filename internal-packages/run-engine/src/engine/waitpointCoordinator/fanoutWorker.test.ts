@@ -4008,76 +4008,6 @@ describe("a quarantined claim reports failures, not attempts", () => {
   );
 });
 
-describe("delivery after terminal retention", () => {
-  redisTest(
-    "restarted fanout cannot resurrect a run after its terminal marker expires while withdrawal remains owed",
-    async ({ redisOptions }) => {
-      const store = new WaitpointStoreCoordinator({ redisOptions, terminalRetentionMs: 20 });
-      const probe = createRedisClient(redisOptions);
-      const clock = fakeClock();
-      let first = true;
-      const stopped = worker(store, {
-        clock: clock.now,
-        hooks: {
-          beforeDeliver: async () => {
-            if (!first) return;
-            first = false;
-            await store.terminalRetainAndClear({
-              runId: "expired-run",
-              blockId: `${BLOCK}_expired-run`,
-            });
-            throw new Error("withdrawal/worker interrupted before delivery");
-          },
-        },
-      });
-      const restarted = worker(store, { workerId: "restarted", clock: clock.now });
-      try {
-        await pending(store, "late-source");
-        await blockRuns(store, "late-source", ["expired-run"]);
-        await store.complete({ waitpointId: "late-source", completion: completion() });
-        clock.advance(1_000);
-        expect((await stopped.visit("late-source")).failures).toBe(1);
-        await expect
-          .poll(() => probe.exists(runBlockKeys("expired-run").state), {
-            timeout: 2000,
-            interval: 5,
-            message: "terminal marker did not expire",
-          })
-          .toBe(0);
-        expect(await probe.pttl(waitpointKeys("late-source").record)).toBe(-1);
-        expect(await probe.exists(runWithdrawalKey("expired-run", `${BLOCK}_expired-run`))).toBe(1);
-        // Worker/queue processing may stop for arbitrarily long, independently of retry count.
-        clock.advance(7 * 24 * 60 * 60 * 1000);
-        const result = await restarted.visit("late-source");
-        expect(result.outcome).toBe("drained");
-        expect(result.rejected).toBe(1);
-        expect(
-          await probe.exists(
-            runResultKey("expired-run"),
-            ...Object.values(runBlockKeys("expired-run"))
-          )
-        ).toBe(0);
-        // Explicit primitive early delivery remains supported for callers that own absorption.
-        expect(
-          (
-            await store.deliverCompletion({
-              runId: "early-run",
-              blockId: "early",
-              waitpointId: "late-source",
-              completion: completion(),
-            })
-          ).outcome
-        ).toBe("delivered");
-      } finally {
-        await stopped.stop();
-        await restarted.stop();
-        await store.quit();
-        await probe.quit();
-      }
-    }
-  );
-});
-
 describe("cached-span completion", () => {
   redisTest(
     "completes live cached spans, skips withdrawn watchers, and reports late spans inline",
@@ -4362,6 +4292,76 @@ describe("cached-span completion", () => {
         await w?.dispose();
         await store.quit();
         vi.useRealTimers();
+      }
+    }
+  );
+});
+
+describe("delivery after terminal retention", () => {
+  redisTest(
+    "restarted fanout cannot resurrect a run after its terminal marker expires while withdrawal remains owed",
+    async ({ redisOptions }) => {
+      const store = new WaitpointStoreCoordinator({ redisOptions, terminalRetentionMs: 20 });
+      const probe = createRedisClient(redisOptions);
+      const clock = fakeClock();
+      let first = true;
+      const stopped = worker(store, {
+        clock: clock.now,
+        hooks: {
+          beforeDeliver: async () => {
+            if (!first) return;
+            first = false;
+            await store.terminalRetainAndClear({
+              runId: "expired-run",
+              blockId: `${BLOCK}_expired-run`,
+            });
+            throw new Error("withdrawal/worker interrupted before delivery");
+          },
+        },
+      });
+      const restarted = worker(store, { workerId: "restarted", clock: clock.now });
+      try {
+        await pending(store, "late-source");
+        await blockRuns(store, "late-source", ["expired-run"]);
+        await store.complete({ waitpointId: "late-source", completion: completion() });
+        clock.advance(1_000);
+        expect((await stopped.visit("late-source")).failures).toBe(1);
+        await expect
+          .poll(() => probe.exists(runBlockKeys("expired-run").state), {
+            timeout: 2000,
+            interval: 5,
+            message: "terminal marker did not expire",
+          })
+          .toBe(0);
+        expect(await probe.pttl(waitpointKeys("late-source").record)).toBe(-1);
+        expect(await probe.exists(runWithdrawalKey("expired-run", `${BLOCK}_expired-run`))).toBe(1);
+        // Worker/queue processing may stop for arbitrarily long, independently of retry count.
+        clock.advance(7 * 24 * 60 * 60 * 1000);
+        const result = await restarted.visit("late-source");
+        expect(result.outcome).toBe("drained");
+        expect(result.rejected).toBe(1);
+        expect(
+          await probe.exists(
+            runResultKey("expired-run"),
+            ...Object.values(runBlockKeys("expired-run"))
+          )
+        ).toBe(0);
+        // Explicit primitive early delivery remains supported for callers that own absorption.
+        expect(
+          (
+            await store.deliverCompletion({
+              runId: "early-run",
+              blockId: "early",
+              waitpointId: "late-source",
+              completion: completion(),
+            })
+          ).outcome
+        ).toBe("delivered");
+      } finally {
+        await stopped.stop();
+        await restarted.stop();
+        await store.quit();
+        await probe.quit();
       }
     }
   );

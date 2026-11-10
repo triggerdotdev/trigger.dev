@@ -770,6 +770,9 @@ function decodeHandoff(raw: string | undefined): HandoffState {
   }
 }
 
+/** Exact, fixed-size state reviewed by the manually invoked rollback tool. */
+export type RollbackStateExpectation = [string, string, string, string, string];
+
 export class WaitpointStoreCoordinator {
   private readonly redis: RedisClient;
   private readonly beforeCommand?: () => Promise<void>;
@@ -2120,6 +2123,7 @@ export class WaitpointStoreCoordinator {
   async cleanupRunBlockState(args: {
     runId: string;
     reason: CleanupReason;
+    expectedRollbackState?: RollbackStateExpectation;
   }): Promise<CleanupResult> {
     const keys = runBlockKeys(args.runId);
     const voidHandoff = args.reason === "resume" ? "0" : "1";
@@ -2140,8 +2144,10 @@ export class WaitpointStoreCoordinator {
       ],
       String(this.clock()),
       String(this.terminalRetentionMs),
-      voidHandoff
+      voidHandoff,
+      ...(args.expectedRollbackState ? [JSON.stringify(args.expectedRollbackState)] : [])
     );
+    if (reply[0] === "stale") throw new Error("Rollback state changed; inspect again");
 
     if (reply[0] === "retained") {
       this.metrics.cleanups?.add(1, { reason: args.reason, outcome: "retained" });
@@ -2173,18 +2179,28 @@ export class WaitpointStoreCoordinator {
     blockId?: string;
     /** Concurrent unregistrations. Bounded so a wide batch cannot flood the cluster. */
     concurrency?: number;
+    expectedRollbackState?: RollbackStateExpectation;
   }): Promise<{ unregistered: number; cleanup: CleanupResult; stale?: boolean }> {
     const target = args.blockId ?? (await this.currentBlockId(args.runId));
     if (!target) {
       // Resumed snapshots may still own results after their active block was acknowledged.
       // This terminal-only operation fences delivery and arms result retention in one slot.
-      const cleanup = await this.cleanupRunBlockState({ runId: args.runId, reason: args.reason });
+      const cleanup = await this.cleanupRunBlockState({
+        runId: args.runId,
+        reason: args.reason,
+        expectedRollbackState: args.expectedRollbackState,
+      });
       await this.retireRunRegistrationSources(args.runId);
       return { unregistered: 0, cleanup };
     }
 
-    const retained = await this.terminalRetainAndClear({ runId: args.runId, blockId: target });
+    const retained = await this.terminalRetainAndClear({
+      runId: args.runId,
+      blockId: target,
+      expectedRollbackState: args.expectedRollbackState,
+    });
     if (retained.outcome === "stale") {
+      if (args.expectedRollbackState) throw new Error("Rollback block changed; inspect again");
       return {
         unregistered: 0,
         cleanup: { outcome: "armed", handoffWas: "none", state: "present" },
@@ -2274,6 +2290,7 @@ export class WaitpointStoreCoordinator {
   async terminalRetainAndClear(args: {
     runId: string;
     blockId: string;
+    expectedRollbackState?: RollbackStateExpectation;
   }): Promise<
     { outcome: "retained" } | { outcome: "absent" | "stale" | "terminal"; currentBlockId?: string }
   > {
@@ -2297,7 +2314,8 @@ export class WaitpointStoreCoordinator {
       ],
       args.blockId,
       String(this.clock()),
-      String(this.terminalRetentionMs)
+      String(this.terminalRetentionMs),
+      ...(args.expectedRollbackState ? [JSON.stringify(args.expectedRollbackState)] : [])
     );
     if (reply[0] === "retained") {
       return { outcome: "retained" };

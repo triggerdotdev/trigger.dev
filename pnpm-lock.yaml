@@ -1347,6 +1347,9 @@ importers:
         specifier: 4.5.4
         version: 4.5.4
     devDependencies:
+      '@internal/run-ops-database':
+        specifier: workspace:*
+        version: link:../run-ops-database
       '@internal/testcontainers':
         specifier: workspace:*
         version: link:../testcontainers
