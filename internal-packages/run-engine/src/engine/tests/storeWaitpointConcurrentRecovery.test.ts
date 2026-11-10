@@ -5,14 +5,19 @@ import {
 import { PrismaClient } from "@trigger.dev/database";
 import { createWaitpointStoreEnabledResolver } from "../../../../../apps/webapp/app/v3/utils/waitpointStoreEnabled.server.js";
 import { RedisSnapshotStore } from "@internal/run-store";
-import { generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
+import { deriveWaitpointIdFromAnchor, generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
 import { createRedisClient } from "@internal/redis";
 import { workerCatalog } from "../workerCatalog.js";
 import { waitpointStoreBarrier } from "./utils/waitpointStoreBarrier.js";
 import { describe, expect, vi } from "vitest";
 import { WaitpointStoreCoordinator } from "../waitpointCoordinator/storeCoordinator.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
-import { makeEngine, triggerRun } from "./utils/storeRunWaitpointLifecycleFixtures.js";
+import {
+  makeEngine,
+  triggerRun,
+  dequeueAndStart,
+  restrictedWaitpointStore,
+} from "./utils/storeRunWaitpointLifecycleFixtures.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -97,6 +102,146 @@ describe("storeWaitpointConcurrentRecovery", () => {
       }
     }
   );
+
+  for (const phase of ["before", "after"] as const) {
+    containerTest(
+      `RUN recovery handler converges when child finishes ${phase} association publication`,
+      async ({ prisma, redisOptions }) => {
+        const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+        const { store, admin, username, close } = await restrictedWaitpointStore(redisOptions);
+        const barrier = await waitpointStoreBarrier(redisOptions);
+        const recoveryStore = new WaitpointStoreCoordinator({ redisOptions: barrier.redisOptions });
+        const engine = makeEngine(prisma, redisOptions, {
+          store,
+          snapshotStore,
+          recoveryDelayMs: 60_000,
+        });
+        const recoveryEngine = makeEngine(prisma, redisOptions, {
+          store: recoveryStore,
+          snapshotStore,
+          recoveryDelayMs: 60_000,
+        });
+        let recovery: Promise<unknown> | undefined;
+        try {
+          const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+          await setupBackgroundWorker(engine, env, ["parent-task", "child-task"]);
+          const parent = await triggerRun(engine, env, prisma, {
+            friendlyId: `run_${generateRunOpsId()}`,
+            taskIdentifier: "parent-task",
+          });
+          await dequeueAndStart(engine, "race_parent");
+          const child = await triggerRun(engine, env, prisma, {
+            friendlyId: `run_${generateRunOpsId()}`,
+            taskIdentifier: "child-task",
+          });
+          const attempt = await dequeueAndStart(engine, "race_child");
+          await admin.call("ACL", "SETUSER", username, "-hset");
+          await expect(
+            engine.getOrCreateRunWaitpoint({
+              runId: child.id,
+              projectId: env.project.id,
+              environmentId: env.id,
+              blockingParentRunId: parent.id,
+              organizationId: env.organization.id,
+            })
+          ).rejects.toThrow(/ACL|permission|NOPERM/i);
+          await admin.call("ACL", "SETUSER", username, "+hset");
+          const waitpointId = deriveWaitpointIdFromAnchor(child.id, "RUN")!;
+          const blockOperation = (await engine.waitpointSystem.buildStoreBlockOperation({
+            runId: parent.id,
+            waitpointId,
+            organizationId: env.organization.id,
+          }))!;
+          expect(
+            await engine["worker"].queue.getJob(`recoverRunWaitpoint:${child.id}`)
+          ).not.toBeNull();
+          barrier.pause(
+            (args) =>
+              args[2] === "1" &&
+              args[3] === `wp:v1:{${waitpointId}}` &&
+              args[4]!.includes('"type":"RUN"'),
+            phase === "before" ? "request" : "reply"
+          );
+          // Exercise the actual registered callback, including its subsequent child-publication lock.
+          recovery = recoveryEngine["worker"]["jobs"].recoverRunWaitpoint({
+            payload: {
+              runId: child.id,
+              parentRunId: parent.id,
+              organizationId: env.organization.id,
+              waitpointId,
+              blockOperation,
+            },
+          });
+          await expect
+            .poll(() => barrier.held, {
+              timeout: 5000,
+              interval: 10,
+              message: `RUN recovery never reached the real ${phase} publication boundary`,
+            })
+            .toBe(true);
+          expect(await store.probeWaitpointPresence(waitpointId)).toBe(
+            phase === "before" ? "absent" : "present"
+          );
+          await engine.completeRunAttempt({
+            runId: child.id,
+            snapshotId: attempt.snapshot.id,
+            completion: { id: child.id, ok: true, output: "42", outputType: "application/json" },
+          });
+          barrier.release();
+          await recovery;
+          const stored = (await store.readCompletedRecords([waitpointId])).get(waitpointId)!;
+          expect(stored.status).toBe("COMPLETED");
+          expect(stored.completion?.output).toEqual({ inline: "42" });
+          expect((await store.readBlockState(parent.id)).edges).toEqual([]);
+          expect(
+            (await engine.getRunExecutionData({ runId: parent.id }))?.completedWaitpoints
+          ).toEqual([]);
+          // The failed lazy publication did not accept a wait. An explicit retry registers the
+          // winning terminal source, independent of whether completion beat its publication.
+          const association = await engine.getOrCreateRunWaitpoint({
+            runId: child.id,
+            projectId: env.project.id,
+            environmentId: env.id,
+            blockingParentRunId: parent.id,
+            organizationId: env.organization.id,
+          });
+          await engine.blockRunWithWaitpoint({
+            runId: parent.id,
+            waitpoints: association.id,
+            projectId: env.project.id,
+            organizationId: env.organization.id,
+            blockOperation,
+          });
+          await vi.waitFor(
+            async () => {
+              const resumed = await engine.getRunExecutionData({ runId: parent.id });
+              expect(
+                resumed?.snapshot.executionStatus,
+                "run never reached the expected execution status"
+              ).toBe("EXECUTING");
+              expect(resumed?.completedWaitpoints).toContainEqual(
+                expect.objectContaining({ id: waitpointId, output: "42", outputIsError: false })
+              );
+            },
+            { timeout: 10_000 }
+          );
+          expect(await prisma.waitpoint.count({ where: { completedByTaskRunId: child.id } })).toBe(
+            0
+          );
+        } finally {
+          barrier.release();
+          barrier.release();
+          await recovery?.catch(() => {});
+          await recoveryEngine.quit();
+          await engine.quit();
+          await recoveryStore.quit();
+          await close();
+          await barrier.close();
+          await snapshotStore.quit();
+        }
+      }
+    );
+  }
 
   for (const phase of ["begin", "reserve"] as const) {
     containerTest(

@@ -7,16 +7,16 @@ import {
   type SnapshotStoreDial,
   type RunStore,
 } from "@internal/run-store";
-import type { RedisOptions } from "@internal/redis";
+import { createRedisClient, type RedisOptions } from "@internal/redis";
 import type { PrismaClient } from "@trigger.dev/database";
 import { expect, vi } from "vitest";
 import { RunEngine } from "../../index.js";
 import { createCompletedWaitpointResolver } from "../../systems/completedWaitpointResolver.js";
 import { StoreWaitpointCoordinator } from "../../waitpointCoordinator/storeWaitpointCoordinator.js";
-import type { WaitpointStoreCoordinator } from "../../waitpointCoordinator/storeCoordinator.js";
+import { WaitpointStoreCoordinator } from "../../waitpointCoordinator/storeCoordinator.js";
 import type { setupAuthenticatedEnvironment } from "../setup.js";
 
-function makeRedisRunStore(
+export function makeRedisRunStore(
   prisma: PrismaClient,
   snapshotStore: RedisSnapshotStore,
   resolveDial: () => SnapshotStoreDial = () => "redis-only"
@@ -169,4 +169,27 @@ export async function dequeueAndStart(engine: RunEngine, consumerId: string) {
     runId: dequeued[0]!.run.id,
     snapshotId: dequeued[0]!.snapshot.id,
   });
+}
+
+// The waitpoint store has its own real Redis user, so failures cannot affect snapshot/queue clients.
+export async function restrictedWaitpointStore(
+  redisOptions: RedisOptions,
+  terminalRetentionMs?: number
+) {
+  const admin = createRedisClient(redisOptions);
+  const username = `waitpoint_${crypto.randomUUID().replaceAll("-", "")}`;
+  const password = crypto.randomUUID();
+  await admin.call("ACL", "SETUSER", username, "on", `>${password}`, "~*", "+@all");
+  const client = createRedisClient({ ...redisOptions, username, password });
+  const store = new WaitpointStoreCoordinator({ client, terminalRetentionMs });
+  const close = async () => {
+    try {
+      await store.quit();
+      await admin.call("ACL", "DELUSER", username);
+    } finally {
+      client.disconnect();
+      admin.disconnect();
+    }
+  };
+  return { store, admin, username, close };
 }

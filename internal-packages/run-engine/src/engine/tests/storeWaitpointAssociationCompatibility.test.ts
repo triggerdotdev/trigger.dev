@@ -15,11 +15,96 @@ import {
   makeEngine,
   triggerRun,
   dequeueAndStart,
+  restrictedWaitpointStore,
 } from "./utils/storeRunWaitpointLifecycleFixtures.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
 describe("storeWaitpointAssociationCompatibility", () => {
+  describe("Store RUN waitpoint failure boundary", () => {
+    containerTest(
+      "a crash before the store record write fails loud (no half-block, no phantom); recovery mints exactly once",
+      async ({ prisma, redisOptions }) => {
+        const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+        const { store, admin, username, close } = await restrictedWaitpointStore(redisOptions);
+        let engine = makeEngine(prisma, redisOptions, {
+          store,
+          snapshotStore,
+          recoveryDelayMs: 1000,
+        });
+        try {
+          const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+          const orgId = env.organization.id;
+          await setupBackgroundWorker(engine, env, ["parent-task", "child-task"]);
+
+          const parent = await triggerRun(engine, env, prisma, {
+            friendlyId: `run_${generateRunOpsId()}`,
+            taskIdentifier: "parent-task",
+          });
+          await dequeueAndStart(engine, "c_parent_fb");
+
+          const childFriendlyId = `run_${generateRunOpsId()}`;
+          // Deny the real source-record write only on the waitpoint client.
+          await admin.call("ACL", "SETUSER", username, "-hset");
+          await expect(
+            triggerRun(engine, env, prisma, {
+              friendlyId: childFriendlyId,
+              taskIdentifier: "child-task",
+              parentTaskRunId: parent.id,
+              resumeParentOnCompletion: true,
+            })
+          ).rejects.toThrow(/permission|NOPERM/i);
+
+          const childId = childFriendlyId.replace(/^run_/, "");
+          const derivedId = deriveWaitpointIdFromAnchor(childId, "RUN")!;
+
+          // The child committed, but there is NO store waitpoint and NO phantom Postgres row...
+          expect(await prisma.taskRun.count({ where: { id: childId } })).toBe(1);
+          expect(await store.probeWaitpointPresence(derivedId)).toBe("absent");
+          expect(await prisma.waitpoint.count({ where: { completedByTaskRunId: childId } })).toBe(
+            0
+          );
+
+          // ...and the parent was never half-blocked: it is still plainly EXECUTING.
+          const parentEd = await engine.getRunExecutionData({ runId: parent.id });
+          expect(parentEd?.snapshot.executionStatus).toBe("EXECUTING");
+
+          await engine.quit();
+          await admin.call("ACL", "SETUSER", username, "+hset");
+          engine = makeEngine(prisma, redisOptions, {
+            store,
+            snapshotStore,
+            recoveryDelayMs: 1000,
+          });
+          // With no caller traffic, the worker repairs the source and child queue. The failed
+          // request never accepted a parent edge, so recovery must leave the parent unblocked.
+          await vi.waitFor(
+            async () => {
+              expect(
+                await store.probeWaitpointPresence(derivedId),
+                "waitpoint source never reached its expected presence"
+              ).toBe("present");
+              expect(
+                (await engine.getRunExecutionData({ runId: parent.id }))?.snapshot.executionStatus
+              ).toBe("EXECUTING");
+              expect((await store.readBlockState(parent.id)).edges).toEqual([]);
+              expect(await engine.runQueue.messageExists(orgId, childId)).toBe(1);
+            },
+            { timeout: 10_000, interval: 100 }
+          );
+          expect(await prisma.waitpoint.count({ where: { completedByTaskRunId: childId } })).toBe(
+            0
+          );
+        } finally {
+          await engine.quit();
+          await close();
+
+          await snapshotStore.quit();
+        }
+      }
+    );
+  });
+
   describe("Store RUN waitpoint for a failed-at-creation child", () => {
     containerTest(
       "createFailedTaskRun mints a store RUN waitpoint for a redis-primary parent, completes it, and resumes",
@@ -428,6 +513,93 @@ describe("storeWaitpointAssociationCompatibility", () => {
           expect(replacementWaitpoint.id).not.toBe(oldId);
           const oldRecord = await store.describeWaitpoint(oldId);
           expect(oldRecord.outcome === "exists" && oldRecord.status).toBe("COMPLETED");
+        } finally {
+          await engine.quit();
+          await store.quit();
+
+          await snapshotStore.quit();
+        }
+      }
+    );
+  });
+
+  describe("Parallel triggerAndWait store blocks join one cycle", () => {
+    containerTest(
+      "two children from one redis-primary parent register additively under a single block id, then both resume",
+      async ({ prisma, redisOptions }) => {
+        const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+        const store = new WaitpointStoreCoordinator({ redisOptions });
+        const engine = makeEngine(prisma, redisOptions, { store, snapshotStore });
+        try {
+          const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+          const orgId = env.organization.id;
+          await setupBackgroundWorker(engine, env, ["parent-task", "child-task"]);
+
+          const parent = await triggerRun(engine, env, prisma, {
+            friendlyId: `run_${generateRunOpsId()}`,
+            taskIdentifier: "parent-task",
+          });
+          await dequeueAndStart(engine, "c_parent_par");
+
+          // Two triggerAndWait children on the same parent in the same cycle (Promise.all serializes on the
+          // parent run lock). Each is a separate block call; they must join ONE block, not refuse the second.
+          const childA = await triggerRun(engine, env, prisma, {
+            friendlyId: `run_${generateRunOpsId()}`,
+            taskIdentifier: "child-task",
+            parentTaskRunId: parent.id,
+            resumeParentOnCompletion: true,
+          });
+          const childB = await triggerRun(engine, env, prisma, {
+            friendlyId: `run_${generateRunOpsId()}`,
+            taskIdentifier: "child-task",
+            parentTaskRunId: parent.id,
+            resumeParentOnCompletion: true,
+          });
+          const derivedA = deriveWaitpointIdFromAnchor(childA.id, "RUN")!;
+          const derivedB = deriveWaitpointIdFromAnchor(childB.id, "RUN")!;
+
+          // Both waitpoints live under ONE block id (additive registration), and both are still pending.
+          const state = await store.readBlockState(parent.id);
+          expect(state.blockId).toBeDefined();
+          expect(state.pendingIds.sort()).toEqual([derivedA, derivedB].sort());
+
+          // Complete both children; deliver both to the one block; the parent resumes.
+          for (const child of [childA, childB]) {
+            const attempt = await dequeueAndStart(engine, `c_child_${child.friendlyId}`);
+            await engine.completeRunAttempt({
+              runId: child.id,
+              snapshotId: attempt.snapshot.id,
+              completion: { id: child.id, ok: true, output: "{}", outputType: "application/json" },
+            });
+          }
+          const blockId = (await store.readBlockState(parent.id)).blockId!;
+          for (const derived of [derivedA, derivedB]) {
+            await store.deliverCompletion({
+              runId: parent.id,
+              blockId,
+              waitpointId: derived,
+              completion: {
+                completedAt: new Date().toISOString(),
+                outputType: "application/json",
+                outputIsError: false,
+                output: { inline: "{}" },
+              },
+            });
+          }
+          await engine.waitpointSystem.continueRunIfUnblocked({
+            runId: parent.id,
+            organizationId: orgId,
+          });
+          await vi.waitFor(
+            async () => {
+              const ed = await engine.getRunExecutionData({ runId: parent.id });
+              expect(
+                ed?.snapshot.executionStatus,
+                "run never reached the expected execution status"
+              ).toBe("EXECUTING");
+            },
+            { timeout: 10_000, interval: 100 }
+          );
         } finally {
           await engine.quit();
           await store.quit();

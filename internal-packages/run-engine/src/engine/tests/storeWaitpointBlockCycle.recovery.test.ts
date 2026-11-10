@@ -1,9 +1,10 @@
 import { containerTestWithIsolatedRedis } from "@internal/testcontainers";
-import { RedisSnapshotStore } from "@internal/run-store";
+import { PostgresRunStore, RedisSnapshotStore } from "@internal/run-store";
 import { SnapshotId } from "@trigger.dev/core/v3/isomorphic";
 import { createRedisClient } from "@internal/redis";
 import {
   runBlockKeys,
+  runWithdrawalKey,
   organizationRunIndexKey,
   fanoutPartition,
   runContributionIndexKey,
@@ -832,6 +833,313 @@ describe("Store waitpoint block cycle: recovery", () => {
         expect(
           await prisma.taskRunWaitpoint.findFirst({ where: { taskRunId: run.id } })
         ).toBeNull();
+      } finally {
+        probe.disconnect();
+        await engine.quit();
+        await quitTestStore(store);
+        await snapshotStore.quit();
+      }
+    }
+  );
+
+  containerTestWithIsolatedRedis(
+    "TERMINAL AFTER PARTIAL ABANDON: an interrupted non-terminal abandon (retained + blk cleared, watcher unregister failed) that then goes terminal is recognized as B1 recovery, not stale — terminal cleanup withdraws the watcher, retires the record and fence, deletes the legacy edge, and installs the terminal fence",
+    async ({ prisma, redisOptions }) => {
+      const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+      const store = await createTestStore(redisOptions);
+      const engine = makeEngine(prisma, redisOptions, store, snapshotStore);
+      const probe = createRedisClient(redisOptions);
+      const stKey = (runId: string) => `wp:v1:run:{${runId}}:st`;
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const taskIdentifier = "test-task";
+        await setupBackgroundWorker(engine, env, taskIdentifier);
+        const orgId = env.organization.id;
+        const run = await runToExecuting(engine, env, taskIdentifier, prisma, "run_partabandon");
+
+        const s1 = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const blocked = await blockStore(engine, {
+          runId: run.id,
+          projectId: env.project.id,
+          organizationId: orgId,
+          waitpoints: [s1],
+          blockOperation: { id: "B1", cycleAnchor: await captureAnchor(engine, run.id) },
+        });
+        expect(await describeLiveWatchers(store, s1)).toBe(1);
+
+        // 2+3. Fail the attempt RETRYABLY with s1's watcher unregister failing AFTER B1 was retained and the
+        // active block cleared: leaves withdrawal:B1, co=B1, and the stranded watcher.
+        await rejectWatcherWithdrawal(store, () =>
+          engine.completeRunAttempt({
+            runId: run.id,
+            snapshotId: blocked.id,
+            completion: {
+              ok: false,
+              id: run.id,
+              error: { type: "BUILT_IN_ERROR", name: "Error", message: "retry", stackTrace: "" },
+              retry: { timestamp: Date.now() + 50, delay: 50 },
+            },
+          })
+        );
+        expect((await store.readBlockState(run.id)).blockId).toBeUndefined();
+        expect(await store.readWithdrawalPage({ runId: run.id, blockId: "B1" })).toBeDefined();
+        expect(await probe.hget(stKey(run.id), "co")).toBe("B1");
+        expect(await describeLiveWatchers(store, s1)).toBe(1);
+
+        // A legacy edge present on the run (the mixed case's Postgres half, still owed).
+        await prisma.waitpoint.create({
+          data: {
+            id: "wp_partabandon_l1",
+            friendlyId: "wp_partabandon_l1_friendly",
+            type: "MANUAL",
+            status: "PENDING",
+            idempotencyKey: "idem_partabandon_l1",
+            userProvidedIdempotencyKey: false,
+            projectId: env.project.id,
+            environmentId: env.id,
+          },
+        });
+        await prisma.taskRunWaitpoint.create({
+          data: {
+            id: "trw_partabandon_l1",
+            taskRunId: run.id,
+            waitpointId: "wp_partabandon_l1",
+            projectId: env.project.id,
+          },
+        });
+
+        // 5. The run goes durably terminal before the original obligation succeeds.
+        await engine.cancelRun({ runId: run.id, finalizeRun: true });
+        await vi.waitFor(
+          async () => {
+            const ed = await engine.getRunExecutionData({ runId: run.id });
+            expect(
+              ed?.snapshot.executionStatus,
+              "run never reached the expected execution status"
+            ).toBe("FINISHED");
+          },
+          { timeout: 10_000, interval: 100 }
+        );
+
+        // 6. Replay the cleanup obligation with the fault cleared. runTerminalRetainAndClear must recognize
+        // the exact-B1 recovery evidence (not classify it stale) and drive the full terminal cleanup.
+        await engine.waitpointSystem.ensureBlockersCleanedUp({
+          runId: run.id,
+          organizationId: orgId,
+          blockId: "B1",
+          transitionId: SnapshotId.generate().id,
+        });
+
+        // 7. Everything converged and fenced terminal.
+        expect(await describeLiveWatchers(store, s1)).toBe(0);
+        expect(await store.readWithdrawalPage({ runId: run.id, blockId: "B1" })).toBeUndefined();
+        expect(await probe.hget(stKey(run.id), "co")).toBeNull();
+        const state = await store.readBlockState(run.id);
+        expect(state.blockId).toBeUndefined();
+        expect(state.terminal).toBe(true);
+        expect(
+          await prisma.taskRunWaitpoint.findFirst({ where: { taskRunId: run.id } })
+        ).toBeNull();
+        const late = await store.deliverCompletion({
+          runId: run.id,
+          blockId: "B1",
+          waitpointId: s1,
+          completion: {
+            completedAt: new Date().toISOString(),
+            outputType: "application/json",
+            outputIsError: false,
+            output: null,
+          },
+        });
+        expect(late.outcome).toBe("terminal");
+
+        // 8. Replay again — idempotent.
+        await engine.waitpointSystem.ensureBlockersCleanedUp({
+          runId: run.id,
+          organizationId: orgId,
+          blockId: "B1",
+          transitionId: SnapshotId.generate().id,
+        });
+        expect(await describeLiveWatchers(store, s1)).toBe(0);
+        expect((await store.readBlockState(run.id)).terminal).toBe(true);
+      } finally {
+        probe.disconnect();
+        await engine.quit();
+        await quitTestStore(store);
+        await snapshotStore.quit();
+      }
+    }
+  );
+
+  containerTestWithIsolatedRedis(
+    "COMPENSATION UNDER CLEANUP FENCE: interrupted empty withdrawal replays from durable state and a later wait completes",
+    async ({ prisma, redisOptions }) => {
+      const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+      const store = await createTestStore(redisOptions);
+      const engine = makeEngine(prisma, redisOptions, store, snapshotStore);
+      const probe = createRedisClient(redisOptions);
+      const co = (runId: string) => probe.hget(`wp:v1:run:{${runId}}:st`, "co");
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const taskIdentifier = "test-task";
+        await setupBackgroundWorker(engine, env, taskIdentifier);
+        const orgId = env.organization.id;
+        const run = await runToExecuting(engine, env, taskIdentifier, prisma, "run_compfence");
+        // This fixture bypasses the router: seed its write-ahead marker before writing Redis directly.
+        await new PostgresRunStore({ prisma, readOnlyPrisma: prisma }).markRunWaitpointsOnStore(
+          run.id
+        );
+
+        // 1. B1 installed with ONE contributed store edge (a1) directly — a partial mixed absorb whose
+        // compensation is still owed: blk=B1, edge s1, contribution a1=[s1]; no blocked TRES snapshot.
+        const s1 = await seedStoreWaitpoint(store, env.id, env.project.id);
+        await store.absorbBlockers({
+          runId: run.id,
+          blockId: "B1",
+          edges: [{ waitpointId: s1, createdAt: new Date().toISOString(), type: "MANUAL" }],
+          absorptionId: "a1",
+        });
+        expect((await store.readBlockState(run.id)).blockId).toBe("B1");
+        expect(
+          await store.readContribution({ runId: run.id, blockId: "B1", absorptionId: "a1" })
+        ).toHaveLength(1);
+
+        // A legacy edge (mixed).
+        await prisma.waitpoint.create({
+          data: {
+            id: "wp_compfence_l1",
+            friendlyId: "wp_compfence_l1_friendly",
+            type: "MANUAL",
+            status: "PENDING",
+            idempotencyKey: "idem_compfence_l1",
+            userProvidedIdempotencyKey: false,
+            projectId: env.project.id,
+            environmentId: env.id,
+          },
+        });
+        await prisma.taskRunWaitpoint.create({
+          data: {
+            id: "trw_compfence_l1",
+            taskRunId: run.id,
+            waitpointId: "wp_compfence_l1",
+            projectId: env.project.id,
+          },
+        });
+
+        // 2. Arm co=B1 via failed-attempt preparation, bound to a specific retry transition id T.
+        const transitionId = SnapshotId.generate().id;
+        await engine.waitpointSystem.prepareFailedAttemptCleanup({
+          runId: run.id,
+          organizationId: orgId,
+          transitionId,
+          tx: prisma,
+        });
+        expect(await co(run.id)).toBe("B1");
+
+        // 3. Delayed compensation removes B1's final edge. Because co=B1 is armed, blk=B1 is PRESERVED.
+        await engine.waitpointSystem.ensureAbsorptionCompensated({
+          runId: run.id,
+          organizationId: env.organization.id,
+          blockId: "B1",
+          absorptionId: "a1",
+        });
+
+        // 4. Contribution + edge gone; blk=B1 and co=B1 remain as durable recovery evidence.
+        expect(
+          await store.readContribution({ runId: run.id, blockId: "B1", absorptionId: "a1" })
+        ).toEqual([]);
+        const afterComp = await store.readBlockState(run.id);
+        expect(afterComp.blockId).toBe("B1");
+        expect(afterComp.edges).toEqual([]);
+        expect(afterComp.pendingIds).toEqual([]);
+        expect(await co(run.id)).toBe("B1");
+
+        // 5. Before the retry transition exists, cleanup DEFERS without changing that state. Under
+        // redis-primary reads the missing snapshot throws first; otherwise "not yet committed" does.
+        // Catches: cleanup failing for an unrelated reason passing as the deferral.
+        await expect(
+          engine.waitpointSystem.ensureBlockersCleanedUp({
+            runId: run.id,
+            organizationId: orgId,
+            blockId: "B1",
+            transitionId,
+          })
+        ).rejects.toThrow(/redis-primary snapshot missing|not yet committed/);
+        expect((await store.readBlockState(run.id)).blockId).toBe("B1");
+        expect(await co(run.id)).toBe("B1");
+        expect(
+          await prisma.taskRunWaitpoint.findFirst({ where: { taskRunId: run.id } })
+        ).not.toBeNull();
+
+        // 6. Commit the specific retry/requeue transition.
+        const cur = (await engine.runStore.findLatestExecutionSnapshot(run.id))!;
+        await engine.executionSnapshotSystem.createExecutionSnapshot(prisma, {
+          snapshotId: transitionId,
+          run: { id: run.id, status: cur.runStatus, attemptNumber: cur.attemptNumber },
+          snapshot: { executionStatus: "EXECUTING", description: "retry transition (test)" },
+          previousSnapshotId: cur.id,
+          environmentId: env.id,
+          environmentType: env.type,
+          projectId: env.project.id,
+          organizationId: orgId,
+        });
+
+        // 7. Cleanup commits its ordered legacy delete and atomic retain-and-clear, then stops before
+        // finalization. Replay must use the durable manifest and detached target hash.
+        await prisma.taskRunWaitpoint.deleteMany({ where: { taskRunId: run.id } });
+        await store.abandonRetainAndClear({ runId: run.id, blockId: "B1" });
+        expect(await probe.get(runWithdrawalKey(run.id, "B1"))).toBe("B1");
+        expect(await store.readWithdrawalPage({ runId: run.id, blockId: "B1" })).toEqual({
+          blockId: "B1",
+          fields: [],
+        });
+        expect((await store.readBlockState(run.id)).blockId).toBeUndefined();
+        expect(await co(run.id)).toBe("B1");
+
+        // 8. Ordinary nonterminal cleanup reads the retained record and atomically retires it + co.
+        await engine.waitpointSystem.ensureBlockersCleanedUp({
+          runId: run.id,
+          organizationId: orgId,
+          blockId: "B1",
+          transitionId,
+        });
+        expect((await store.readBlockState(run.id)).blockId).toBeUndefined();
+        expect(await co(run.id)).toBeNull();
+        expect(await store.readWithdrawalPage({ runId: run.id, blockId: "B1" })).toBeUndefined();
+        expect(
+          await prisma.taskRunWaitpoint.findFirst({ where: { taskRunId: run.id } })
+        ).toBeNull();
+
+        // 9. The next native RUN wait can block and resume through the same engine.
+        const s2 = await seedStoreWaitpoint(store, env.id, env.project.id, "RUN");
+        await blockStore(engine, {
+          runId: run.id,
+          projectId: env.project.id,
+          organizationId: orgId,
+          waitpoints: [s2],
+          blockOperation: { id: "B2", cycleAnchor: await captureAnchor(engine, run.id) },
+        });
+        expect((await store.readBlockState(run.id)).blockId).toBe("B2");
+        await engine.waitpointSystem.completeWaitpoint({ id: s2, organizationId: orgId });
+        await store.deliverCompletion({
+          runId: run.id,
+          blockId: "B2",
+          waitpointId: s2,
+          completion: {
+            completedAt: new Date().toISOString(),
+            outputType: "application/json",
+            outputIsError: false,
+            output: null,
+          },
+        });
+        await engine.waitpointSystem.continueRunIfUnblocked({
+          runId: run.id,
+          organizationId: orgId,
+        });
+        expect(
+          (await engine.getRunExecutionData({ runId: run.id }))!.snapshot.executionStatus
+        ).toBe("EXECUTING");
+        expect((await store.readBlockState(run.id)).blockId).toBeUndefined();
       } finally {
         probe.disconnect();
         await engine.quit();

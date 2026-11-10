@@ -74,10 +74,16 @@ export async function parent(prisma: PrismaClient) {
       organizationId: env.organizationId,
     },
   });
-  return { runId, projectId: env.projectId, environmentId: env.id, client: prisma };
+  return {
+    runId,
+    organizationId: env.organizationId,
+    projectId: env.projectId,
+    environmentId: env.id,
+    client: prisma,
+  };
 }
 
-async function blockers(prisma: PrismaClient, store: WaitpointStoreCoordinator) {
+export async function blockers(prisma: PrismaClient, store: WaitpointStoreCoordinator) {
   const args = await parent(prisma);
   const legacy = await routing(prisma).createDateTimeWaitpoint({
     ...args,

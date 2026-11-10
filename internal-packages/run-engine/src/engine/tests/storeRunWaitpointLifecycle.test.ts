@@ -1,10 +1,18 @@
 import { PrismaClient } from "@trigger.dev/database";
 import { deriveRunWaitpointId } from "../waitpointCoordinator/runWaitpointId.js";
 import { containerTestWithIsolatedRedis as containerTest } from "@internal/testcontainers";
-import { hasStoreWaitpoints, RedisSnapshotStore } from "@internal/run-store";
+import {
+  hasStoreWaitpoints,
+  RedisSnapshotStore,
+  type SnapshotStoreDial,
+} from "@internal/run-store";
+import {
+  deriveWaitpointIdFromAnchor,
+  generateRunOpsId,
+  generateWaitpointId,
+  RunId,
+} from "@trigger.dev/core/v3/isomorphic";
 import { createRedisClient } from "@internal/redis";
-import { generateRunOpsId, RunId } from "@trigger.dev/core/v3/isomorphic";
-
 import { waitpointStoreBarrier } from "./utils/waitpointStoreBarrier.js";
 import { describe, expect, vi } from "vitest";
 import { WaitpointStoreCoordinator } from "../waitpointCoordinator/storeCoordinator.js";
@@ -547,4 +555,432 @@ describe("storeRunWaitpointLifecycle", () => {
       }
     }
   );
+
+  for (const enabled of [true, false]) {
+    containerTest(
+      `empty-string RUN completion finalization replay preserves ${enabled ? "store output" : "disabled legacy behavior"}`,
+      async ({ prisma, redisOptions }) => {
+        const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+        const store = new WaitpointStoreCoordinator({ redisOptions });
+        const engine = makeEngine(prisma, redisOptions, { store, snapshotStore, enabled });
+        const probe = createRedisClient(redisOptions);
+        try {
+          const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+          await setupBackgroundWorker(engine, env, ["parent-task", "child-task"]);
+          const parent = await triggerRun(engine, env, prisma, {
+            friendlyId: `run_${generateRunOpsId()}`,
+            taskIdentifier: "parent-task",
+          });
+          await dequeueAndStart(engine, "empty_string_parent");
+          const child = await triggerRun(engine, env, prisma, {
+            friendlyId: `run_${generateRunOpsId()}`,
+            taskIdentifier: "child-task",
+            parentTaskRunId: parent.id,
+            resumeParentOnCompletion: true,
+          });
+          const attempt = await dequeueAndStart(engine, "empty_string_child");
+          expect(attempt.run.id).toBe(child.id);
+          await engine.completeRunAttempt({
+            runId: child.id,
+            snapshotId: attempt.snapshot.id,
+            completion: { id: child.id, ok: true, output: "", outputType: "text/plain" },
+          });
+          const persisted = await prisma.taskRun.findUniqueOrThrow({ where: { id: child.id } });
+          expect(persisted.output).toBe("");
+          expect(persisted.status).toBe("COMPLETED_SUCCESSFULLY");
+
+          // Exercise the real recovery projection and completion builder after the inline completion.
+          // Before the fix this rejects with WaitpointCompletionConflictError on the store path.
+          await engine.runAttemptSystem.ensureRunFinalized({ runId: child.id });
+          if (enabled) {
+            const waitpointId = deriveWaitpointIdFromAnchor(child.id, "RUN")!;
+            const stored = (await store.readCompletedRecords([waitpointId])).get(waitpointId)!;
+            expect(stored.completion).toMatchObject({
+              output: { inline: "" },
+              outputType: "text/plain",
+              outputIsError: false,
+            });
+            // The assembled engine owns fanout; wait for its durable job and continuation.
+            await vi.waitFor(
+              async () => {
+                const resumed = await engine.getRunExecutionData({ runId: parent.id });
+                expect(
+                  resumed?.snapshot.executionStatus,
+                  "run never reached the expected execution status"
+                ).toBe("EXECUTING");
+                expect(resumed?.completedWaitpoints).toContainEqual(
+                  expect.objectContaining({ id: waitpointId, output: "", outputType: "text/plain" })
+                );
+              },
+              { timeout: 10_000 }
+            );
+            await expect(
+              engine.waitpointSystem.completeWaitpoint({
+                id: waitpointId,
+                organizationId: env.organization.id,
+                output: { value: "different", type: "text/plain", isError: false },
+              })
+            ).rejects.toThrow("already completed with a different completion");
+          } else {
+            const legacy = await prisma.waitpoint.findFirstOrThrow({
+              where: { completedByTaskRunId: child.id },
+            });
+            expect(legacy.status).toBe("COMPLETED");
+            expect(legacy.output).toBeNull();
+            expect(await probe.keys("wp:v1*")).toEqual([]);
+          }
+        } finally {
+          probe.disconnect();
+          await engine.quit();
+          await store.quit();
+          await snapshotStore.quit();
+        }
+      }
+    );
+  }
+
+  for (const enabled of [true, false]) {
+    for (const outcome of ["failure", "cancellation"] as const) {
+      containerTest(
+        `${outcome} RUN error replay survives JSONB key reordering (${enabled ? "store" : "disabled"})`,
+        async ({ prisma, redisOptions }) => {
+          const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+          const store = new WaitpointStoreCoordinator({ redisOptions });
+          const engine = makeEngine(prisma, redisOptions, { store, snapshotStore, enabled });
+          const probe = createRedisClient(redisOptions);
+          try {
+            const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+            await setupBackgroundWorker(engine, env, ["parent-task", "child-task"]);
+            const parent = await triggerRun(engine, env, prisma, {
+              friendlyId: `run_${generateRunOpsId()}`,
+              taskIdentifier: "parent-task",
+            });
+            await dequeueAndStart(engine, "error_parent");
+            const child = await triggerRun(engine, env, prisma, {
+              friendlyId: `run_${generateRunOpsId()}`,
+              taskIdentifier: "child-task",
+              parentTaskRunId: parent.id,
+              resumeParentOnCompletion: true,
+            });
+            const attempt = await dequeueAndStart(engine, "error_child");
+            const error =
+              outcome === "failure"
+                ? {
+                    type: "INTERNAL_ERROR" as const,
+                    code: "TASK_RUN_CRASHED" as const,
+                    message: "boom",
+                  }
+                : { type: "STRING_ERROR" as const, raw: "cancelled by regression" };
+            if (outcome === "failure") {
+              await engine.completeRunAttempt({
+                runId: child.id,
+                snapshotId: attempt.snapshot.id,
+                completion: { id: child.id, ok: false, error },
+              });
+            } else {
+              await engine.cancelRun({
+                runId: child.id,
+                reason: "cancelled by regression",
+              });
+              expect(
+                (await engine.getRunExecutionData({ runId: child.id }))?.snapshot.executionStatus
+              ).toBe("PENDING_CANCEL");
+              if (enabled) {
+                // Idempotent publication must preserve cancellation's worker wind-down guard.
+                const { plan } = await engine.waitpointSystem.planRunAssociatedWaitpoint({
+                  anchorRunId: child.id,
+                  parentRunId: parent.id,
+                  projectId: env.project.id,
+                  environmentId: env.id,
+                  organizationId: env.organization.id,
+                });
+                await engine.waitpointSystem.createAssociatedWaitpointRecord({
+                  runId: child.id,
+                  data: plan.data,
+                  organizationId: env.organization.id,
+                });
+                expect(
+                  await prisma.waitpoint.count({ where: { completedByTaskRunId: child.id } })
+                ).toBe(0);
+                const blockOperation = await engine.waitpointSystem.buildStoreBlockOperation({
+                  runId: parent.id,
+                  waitpointId: plan.data.id,
+                  organizationId: env.organization.id,
+                });
+                await engine.waitpointSystem.recoverRunWaitpoint({
+                  runId: child.id,
+                  parentRunId: parent.id,
+                  waitpointId: plan.data.id,
+                  organizationId: env.organization.id,
+                  blockOperation: blockOperation!,
+                });
+                expect(
+                  (await store.readCompletedRecords([plan.data.id])).get(plan.data.id)?.status
+                ).toBe("PENDING");
+              }
+              await engine.cancelRun({
+                runId: child.id,
+                finalizeRun: true,
+                reason: "cancelled by regression",
+              });
+            }
+            const persisted = await prisma.taskRun.findUniqueOrThrow({ where: { id: child.id } });
+            expect(persisted.status).toBe(outcome === "failure" ? "CRASHED" : "CANCELED");
+            expect(persisted.error).toEqual(error);
+            expect(JSON.stringify(persisted.error)).not.toBe(JSON.stringify(error));
+            if (!enabled) {
+              const legacy = await prisma.waitpoint.findFirstOrThrow({
+                where: { completedByTaskRunId: child.id },
+              });
+              expect(legacy.output).toBe(JSON.stringify(error));
+            }
+            await engine.runAttemptSystem.ensureRunFinalized({ runId: child.id });
+            if (enabled) {
+              const id = deriveWaitpointIdFromAnchor(child.id, "RUN")!;
+              const stored = (await store.readCompletedRecords([id])).get(id)!;
+              expect(stored.status).toBe("COMPLETED");
+              expect(stored.completion?.outputIsError).toBe(true);
+              expect(stored.completion?.output).toEqual({
+                inline: engine.waitpointSystem.serializeRunError(id, error),
+              });
+              await expect(
+                engine.waitpointSystem.completeWaitpoint({
+                  id,
+                  organizationId: env.organization.id,
+                  output: {
+                    value: engine.waitpointSystem.serializeRunError(id, {
+                      ...error,
+                      message: "different",
+                    }),
+                    isError: true,
+                  },
+                })
+              ).rejects.toThrow("already completed with a different completion");
+              await vi.waitFor(
+                async () => {
+                  const resumed = await engine.getRunExecutionData({ runId: parent.id });
+                  expect(
+                    resumed?.snapshot.executionStatus,
+                    "run never reached the expected execution status"
+                  ).toBe("EXECUTING");
+                  const result = resumed?.completedWaitpoints.find((wp) => wp.id === id);
+                  expect(result?.outputIsError).toBe(true);
+                  expect(JSON.parse(result!.output!)).toEqual(error);
+                },
+                { timeout: 10_000 }
+              );
+            } else {
+              expect(await probe.keys("wp:v1*")).toEqual([]);
+            }
+          } finally {
+            probe.disconnect();
+            await engine.quit();
+            await store.quit();
+            await snapshotStore.quit();
+          }
+        }
+      );
+    }
+  }
+
+  for (const enabled of [true, false]) {
+    for (const producer of ["failed creation", "TTL", "bulk TTL", "parked expiry"] as const) {
+      containerTest(
+        `${producer} RUN error finalization ${enabled ? "converges after lost completion response" : "preserves legacy bytes"}`,
+        async ({ prisma, redisOptions }) => {
+          const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+          const barrier = await waitpointStoreBarrier(redisOptions);
+          let store = new WaitpointStoreCoordinator({
+            redisOptions: {
+              ...barrier.redisOptions,
+              retryStrategy: () => null,
+              maxRetriesPerRequest: 0,
+            },
+          });
+          let dial: SnapshotStoreDial = "redis-only";
+          let engine = makeEngine(prisma, redisOptions, {
+            store,
+            snapshotStore,
+            enabled,
+            resolveDial: () => dial,
+          });
+          try {
+            // Legacy completion must keep working even when the waitpoint store is unavailable.
+            if (!enabled) await store.quit();
+            const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+            await setupBackgroundWorker(engine, env, ["parent-task", "child-task"]);
+            const parent = await triggerRun(engine, env, prisma, {
+              friendlyId: `run_${generateRunOpsId()}`,
+              taskIdentifier: "parent-task",
+            });
+            await dequeueAndStart(engine, "terminal_error_parent");
+            const friendlyId = `run_${generateRunOpsId()}`;
+            const runId = RunId.fromFriendlyId(friendlyId);
+            const externalId = "terminal-error-missing-deployment";
+            const error = {
+              type: "STRING_ERROR" as const,
+              raw:
+                producer === "failed creation"
+                  ? "failed during trigger"
+                  : producer === "TTL"
+                    ? "Run expired because the TTL (null) was reached"
+                    : producer === "bulk TTL"
+                      ? "Run expired because the TTL was reached"
+                      : `Run expired because no deployment with external id '${externalId}' became available`,
+            };
+            const waitpointId = deriveWaitpointIdFromAnchor(runId, "RUN")!;
+            if (enabled) {
+              // Warm the actual completion script so the held response is its commit reply,
+              // never an initial NOSCRIPT response.
+              const warmId = generateWaitpointId("RUN");
+              const now = new Date().toISOString();
+              await store.createIfAbsent({
+                record: {
+                  id: warmId,
+                  friendlyId: `waitpoint_${warmId}`,
+                  type: "RUN",
+                  projectId: env.project.id,
+                  environmentId: env.id,
+                  createdAt: now,
+                  updatedAt: now,
+                  tags: [],
+                  userProvidedIdempotencyKey: false,
+                },
+                status: "PENDING",
+              });
+              await store.complete({
+                waitpointId: warmId,
+                completion: {
+                  completedAt: now,
+                  output: null,
+                  outputType: "application/json",
+                  outputIsError: false,
+                },
+              });
+              barrier.pause(
+                (args) => args[2] === "4" && args.some((arg) => arg === `wp:v1:{${waitpointId}}`),
+                "reply"
+              );
+            }
+            let completion: Promise<unknown>;
+            if (producer === "failed creation") {
+              completion = engine.createFailedTaskRun({
+                friendlyId,
+                environment: env,
+                taskIdentifier: "child-task",
+                parentTaskRunId: parent.id,
+                resumeParentOnCompletion: true,
+                error,
+              });
+            } else {
+              // The bulk SQL branch needs a PG-resident child; its Redis parent still owns the mint.
+              if (producer === "bulk TTL") dial = "off";
+              const child = await triggerRun(engine, env, prisma, {
+                friendlyId,
+                taskIdentifier: "child-task",
+                parentTaskRunId: parent.id,
+                resumeParentOnCompletion: true,
+                ...(producer === "parked expiry"
+                  ? { parkedOnExternalDeploymentId: externalId }
+                  : {}),
+              });
+              expect(child.id).toBe(runId);
+              completion =
+                producer === "TTL"
+                  ? engine.ttlSystem.expireRun({ runId, organizationId: env.organization.id })
+                  : producer === "bulk TTL"
+                    ? engine.ttlSystem.expireRunsBatch([{ runId }])
+                    : engine.pendingVersionSystem.expireParkedExternalDeploymentRun({
+                        runId,
+                        externalDeploymentId: externalId,
+                      });
+            }
+            const completionOutcome = completion.then(
+              () => undefined,
+              (error: unknown) => error
+            );
+            if (enabled) {
+              await expect
+                .poll(() => barrier.held, {
+                  timeout: 5000,
+                  interval: 10,
+                  message: "RUN completion never reached its committed Redis response",
+                })
+                .toBe(true);
+              // The server committed; dropping the real TCP connection loses only its reply.
+              barrier.disconnect();
+            }
+            const outcome = await completionOutcome;
+            if (enabled && (producer === "failed creation" || producer === "TTL"))
+              expect(String(outcome)).toMatch(/closed|connection|retry/i);
+            else expect(outcome).toBeUndefined();
+            if (enabled) {
+              await engine.quit();
+              await store.quit();
+              store = new WaitpointStoreCoordinator({ redisOptions });
+              engine = makeEngine(prisma, redisOptions, {
+                store,
+                snapshotStore,
+                enabled,
+                resolveDial: () => dial,
+              });
+            }
+
+            const saved = await prisma.taskRun.findUniqueOrThrow({ where: { id: runId } });
+            expect(saved.status).toBe(
+              producer === "failed creation" ? "SYSTEM_FAILURE" : "EXPIRED"
+            );
+            expect(saved.error).toEqual(error);
+            expect(JSON.stringify(saved.error)).not.toBe(JSON.stringify(error));
+            if (enabled) {
+              const first = (await store.readCompletedRecords([waitpointId])).get(waitpointId)!;
+              expect(first.status).toBe("COMPLETED");
+              expect(first.completion).toMatchObject({
+                outputIsError: true,
+                output: { inline: JSON.stringify({ raw: error.raw, type: error.type }) },
+              });
+              if (producer === "TTL" || producer === "bulk TTL") {
+                expect(
+                  await engine["worker"].queue.getJob(`ensureRunFinalized:${runId}`)
+                ).not.toBeNull();
+              }
+
+              // Use the #186 recovery seam, reconstructing only from the committed terminal run.
+              await engine.runAttemptSystem.ensureRunFinalized({ runId });
+              await engine.runAttemptSystem.ensureRunFinalized({ runId });
+              expect(
+                (await store.readCompletedRecords([waitpointId])).get(waitpointId)!.completion
+              ).toEqual(first.completion);
+              expect(await prisma.waitpoint.count({ where: { completedByTaskRunId: runId } })).toBe(
+                0
+              );
+            } else {
+              await vi.waitFor(
+                async () => {
+                  const legacy = await prisma.waitpoint.findFirstOrThrow({
+                    where: { completedByTaskRunId: runId },
+                  });
+                  expect(legacy.status, "waitpoint condition never settled: legacy.status").toBe(
+                    "COMPLETED"
+                  );
+                  expect(legacy.output).toBe(JSON.stringify(error));
+                },
+                { timeout: 10_000, interval: 20 }
+              );
+              await engine.runAttemptSystem.ensureRunFinalized({ runId });
+              const legacy = await prisma.waitpoint.findFirstOrThrow({
+                where: { completedByTaskRunId: runId },
+              });
+              expect(legacy.output).toBe(JSON.stringify(error));
+            }
+          } finally {
+            await engine.quit();
+            await store.quit();
+            await snapshotStore.quit();
+            await barrier.close();
+          }
+        }
+      );
+    }
+  }
 });

@@ -1,5 +1,13 @@
 import { keyedWaitpointTest as containerTest } from "./utils/keyedWaitpointTest.js";
+import { RedisSnapshotStore } from "@internal/run-store";
+import {
+  deriveWaitpointIdFromAnchor,
+  generateRunOpsId,
+  generateWaitpointId,
+  WaitpointId,
+} from "@trigger.dev/core/v3/isomorphic";
 import { createRedisClient } from "@internal/redis";
+import { waitpointStoreBarrier } from "./utils/waitpointStoreBarrier.js";
 import {
   fanoutIndexKeys,
   fanoutPartition,
@@ -7,14 +15,6 @@ import {
   idempotencyReceiptKey,
   waitpointKeys,
 } from "../waitpointCoordinator/keys.js";
-import { waitpointStoreBarrier } from "./utils/waitpointStoreBarrier.js";
-import { RedisSnapshotStore } from "@internal/run-store";
-import {
-  generateRunOpsId,
-  generateWaitpointId,
-  WaitpointId,
-} from "@trigger.dev/core/v3/isomorphic";
-
 import { describe, expect, vi } from "vitest";
 import { StoreWaitpointCoordinator } from "../waitpointCoordinator/storeWaitpointCoordinator.js";
 import {
@@ -23,7 +23,11 @@ import {
 } from "../waitpointCoordinator/storeCoordinator.js";
 import { workerCatalog } from "../workerCatalog.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
-import { makeEngine, triggerRun } from "./utils/storeRunWaitpointLifecycleFixtures.js";
+import {
+  makeEngine,
+  triggerRun,
+  dequeueAndStart,
+} from "./utils/storeRunWaitpointLifecycleFixtures.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -159,6 +163,164 @@ describe("storeWaitpointSourceExpiry", () => {
         await store.quit();
         await redis.quit();
         await barrier.close();
+        await snapshotStore.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "phase-2 failure and premature continuation retain the exact block through source expiry and recovery",
+    async ({ prisma, redisOptions }) => {
+      await prisma.$executeRawUnsafe(
+        `ALTER TABLE "_completedWaitpoints" DROP CONSTRAINT IF EXISTS "_completedWaitpoints_B_fkey"`
+      );
+      const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+      const store = new WaitpointStoreCoordinator({ redisOptions, terminalRetentionMs: 1000 });
+      const engine = makeEngine(prisma, redisOptions, {
+        store,
+        snapshotStore,
+        // Far beyond the test: the prearmed recovery is released explicitly below.
+        recoveryDelayMs: 60_000,
+        resolveDial: () => "off",
+      });
+      const cached: Array<{ cachedRunId?: string; blockedRunId: string; hasError: boolean }> = [];
+      engine.eventBus.on("cachedRunCompleted", (event) => {
+        cached.push(event);
+      });
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        await setupBackgroundWorker(engine, env, ["expiry-parent", "expiry-child"]);
+        const parent = await triggerRun(engine, env, prisma, {
+          friendlyId: `run_${generateRunOpsId()}`,
+          taskIdentifier: "expiry-parent",
+        });
+        await dequeueAndStart(engine, "expiry-recovery-parent");
+        const output = '{"stable":"retained"}';
+        const child = await triggerRun(engine, env, prisma, {
+          friendlyId: `run_${generateRunOpsId()}`,
+          taskIdentifier: "expiry-child",
+        });
+        const childAttempt = await dequeueAndStart(engine, "expiry-recovery-child");
+        await engine.completeRunAttempt({
+          runId: child.id,
+          snapshotId: childAttempt.snapshot.id,
+          completion: { id: child.id, ok: true, output, outputType: "application/json" },
+        });
+        const childId = child.id;
+        const id = deriveWaitpointIdFromAnchor(childId, "RUN")!;
+        // Seed the historical source directly: its original completion/fanout jobs already converged.
+        // This late parent must rely exclusively on its own prearmed registration recovery.
+        const now = new Date().toISOString();
+        await store.createIfAbsent({
+          record: {
+            id,
+            friendlyId: WaitpointId.toFriendlyId(id),
+            type: "RUN",
+            environmentId: env.id,
+            projectId: env.project.id,
+            completedByTaskRunId: childId,
+            userProvidedIdempotencyKey: false,
+            tags: [],
+            createdAt: now,
+            updatedAt: now,
+          },
+          status: "PENDING",
+        });
+        await store.complete({
+          waitpointId: id,
+          completion: {
+            completedAt: now,
+            output: { inline: output },
+            outputType: "application/json",
+            outputIsError: false,
+          },
+        });
+        const blockOperation = await engine.waitpointSystem.buildStoreBlockOperation({
+          runId: parent.id,
+          waitpointId: id,
+          organizationId: env.organization.id,
+        });
+        // Absorption commits the early receipt before the blocked snapshot. A real DB
+        // constraint interrupts the later write, leaving the prearmed recovery obligation.
+        await prisma.$executeRawUnsafe(`ALTER TABLE "TaskRunExecutionSnapshot"
+          ADD CONSTRAINT "test_interrupt_blocked_snapshot"
+          CHECK (description <> 'Run was blocked by a waitpoint.')`);
+        await expect(
+          engine.blockRunWithWaitpoint({
+            runId: parent.id,
+            waitpoints: id,
+            organizationId: env.organization.id,
+            projectId: env.project.id,
+            blockOperation,
+            spanIdToComplete: "expiry-cached-span",
+          })
+        ).rejects.toThrow(/constraint|check/i);
+        // A duplicate completion can deliver continuation before phase 2 recovers. The initial
+        // EXECUTING snapshot is not proof of a resume: retain this exact block and its early receipt.
+        const beforePrematureContinuation = await engine.runStore.findLatestExecutionSnapshot(
+          parent.id
+        );
+        expect(beforePrematureContinuation?.executionStatus).toBe("EXECUTING");
+        expect(
+          await engine.waitpointSystem.continueRunIfUnblocked({
+            runId: parent.id,
+            organizationId: env.organization.id,
+          })
+        ).toMatchObject({ status: "skipped" });
+        expect(await store.currentBlockId(parent.id)).toBe(blockOperation!.id);
+        expect((await store.readBlockState(parent.id)).handoff).toBe("owed");
+        expect((await engine.runStore.findLatestExecutionSnapshot(parent.id))?.id).toBe(
+          beforePrematureContinuation?.id
+        );
+        await prisma.$executeRawUnsafe(`ALTER TABLE "TaskRunExecutionSnapshot"
+          DROP CONSTRAINT "test_interrupt_blocked_snapshot"`);
+        const expiry = createRedisClient(redisOptions);
+        try {
+          await expiry.pexpire(waitpointKeys(id).record, 1);
+          await expect
+            .poll(() => expiry.exists(waitpointKeys(id).record), {
+              timeout: 2000,
+              interval: 20,
+              message: "completed source never expired after durable receipt",
+            })
+            .toBe(0);
+        } finally {
+          expiry.disconnect();
+        }
+        expect(await store.probeWaitpointPresence(id)).toBe("absent");
+        expect(
+          (await store.readCompletedRecords([id], parent.id)).get(id)?.completion?.output
+        ).toEqual({ inline: output });
+        expect((await store.readBlockState(parent.id)).handoff).toBe("owed");
+        // Release the real prearmed recovery only now, from the already-expired source.
+        // Catches: prearmed block recovery resuming the parent before source expiry, or never armed.
+        const recoveryJobId = `recoverWaitpointBlock:${parent.id}:${blockOperation!.absorptionId}`;
+        expect(await engine["worker"].getJob(recoveryJobId)).toMatchObject({ attempt: 0 });
+        await engine["worker"].reschedule(recoveryJobId, new Date());
+        await vi.waitFor(
+          async () => {
+            const data = await engine.getRunExecutionData({ runId: parent.id });
+            expect(
+              data?.snapshot.executionStatus,
+              "run never reached the expected execution status"
+            ).toBe("EXECUTING");
+            expect(data?.completedWaitpoints).toMatchObject([
+              { id, output, completedByTaskRun: { id: childId } },
+            ]);
+            expect(cached).toContainEqual(
+              expect.objectContaining({
+                span: expect.objectContaining({ id: "expiry-cached-span" }),
+                cachedRunId: childId,
+                blockedRunId: parent.id,
+                hasError: false,
+              })
+            );
+          },
+          { timeout: 8000, interval: 100 }
+        );
+      } finally {
+        await engine.quit();
+        await store.quit();
         await snapshotStore.quit();
       }
     }

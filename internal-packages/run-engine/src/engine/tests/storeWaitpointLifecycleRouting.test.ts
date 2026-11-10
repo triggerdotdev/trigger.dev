@@ -1,6 +1,10 @@
 import { deriveRunWaitpointId } from "../waitpointCoordinator/runWaitpointId.js";
 import { keyedWaitpointTest as containerTest } from "./utils/keyedWaitpointTest.js";
-import { hasStoreWaitpoints, RedisSnapshotStore } from "@internal/run-store";
+import {
+  hasStoreWaitpoints,
+  RedisSnapshotStore,
+  type SnapshotStoreDial,
+} from "@internal/run-store";
 import {
   deriveWaitpointIdFromAnchor,
   generateRunOpsId,
@@ -159,6 +163,148 @@ describe("storeWaitpointLifecycleRouting", () => {
           } finally {
             raw.disconnect();
           }
+        } finally {
+          await engine.quit();
+          await store.quit();
+
+          await snapshotStore.quit();
+        }
+      }
+    );
+
+    containerTest(
+      "Postgres and mirrored parents share one MemoryDB child through checkpoint/dequeue and selected snapshot reads",
+      async ({ prisma, redisOptions }) => {
+        await prisma.$executeRawUnsafe(
+          `ALTER TABLE "_completedWaitpoints" DROP CONSTRAINT IF EXISTS "_completedWaitpoints_B_fkey"`
+        );
+        const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+        const store = new WaitpointStoreCoordinator({ redisOptions });
+        let dial: SnapshotStoreDial = "off";
+        const options = { store, snapshotStore, enabled: true, resolveDial: () => dial };
+        const engine = makeEngine(prisma, redisOptions, options);
+        try {
+          const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+          await setupBackgroundWorker(engine, env, ["parent-task", "child-task"]);
+          const parents: Array<{
+            run: Awaited<ReturnType<typeof triggerRun>>;
+            attempt: Awaited<ReturnType<typeof dequeueAndStart>>;
+          }> = [];
+          for (const mode of ["off", "dual-write", "redis-only"] as const) {
+            dial = mode;
+            const run = await triggerRun(engine, env, prisma, {
+              friendlyId: `run_${generateRunOpsId()}`,
+              taskIdentifier: "parent-task",
+            });
+            const attempt = await dequeueAndStart(engine, `shared_${mode}`);
+            parents.push({ run, attempt });
+          }
+          const child = await triggerRun(engine, env, prisma, {
+            friendlyId: `run_${generateRunOpsId()}`,
+            taskIdentifier: "child-task",
+            parentTaskRunId: parents[2]!.run.id,
+            resumeParentOnCompletion: true,
+          });
+          const sharedId = deriveWaitpointIdFromAnchor(child.id, "RUN")!;
+          expect(await store.probeWaitpointPresence(sharedId)).toBe("present");
+          for (const { run } of parents.slice(0, 2)) {
+            const blockOperation = await engine.waitpointSystem.buildStoreBlockOperation({
+              runId: run.id,
+              waitpointId: sharedId,
+              organizationId: env.organization.id,
+            });
+            await engine.blockRunWithWaitpoint({
+              runId: run.id,
+              waitpoints: sharedId,
+              projectId: env.project.id,
+              organizationId: env.organization.id,
+              expectedEnvironmentId: env.id,
+              blockOperation,
+            });
+          }
+          const old = parents[0]!;
+          const blocked = (await engine.getRunExecutionData({ runId: old.run.id }))!.snapshot;
+          const checkpoint = await engine.createCheckpoint({
+            runId: old.run.id,
+            snapshotId: blocked.id,
+            checkpoint: {
+              type: "DOCKER",
+              reason: "TEST_CHECKPOINT",
+              location: "shared-location",
+              imageRef: "shared-image",
+            },
+          });
+          expect(checkpoint.ok).toBe(true);
+          const childAttempt = await dequeueAndStart(engine, "shared_child");
+          await engine.completeRunAttempt({
+            runId: child.id,
+            snapshotId: childAttempt.snapshot.id,
+            completion: {
+              id: child.id,
+              ok: true,
+              output: '{"shared":true}',
+              outputType: "application/json",
+            },
+          });
+          await vi.waitFor(
+            async () => {
+              const oldData = await engine.getRunExecutionData({ runId: old.run.id });
+              expect(
+                oldData?.snapshot.executionStatus,
+                "run never reached the expected execution status"
+              ).toBe("QUEUED");
+              expect(
+                (await engine.getRunExecutionData({ runId: parents[1]!.run.id }))?.snapshot
+                  .executionStatus
+              ).toBe("EXECUTING");
+            },
+            { timeout: 10_000, interval: 100 }
+          );
+          const restored = (
+            await vi.waitFor(
+              async () => {
+                const messages = await engine.dequeueFromWorkerQueue({
+                  blockingPopTimeoutSeconds: 1,
+                  consumerId: "shared_restored",
+                  workerQueue: "main",
+                });
+                expect(messages, "waitpoint condition never settled: messages").toHaveLength(1);
+                return messages;
+              },
+              { timeout: 10_000, interval: 100 }
+            )
+          )[0]!;
+          expect(restored.checkpoint?.location).toBe("shared-location");
+          expect(restored.completedWaitpoints).toMatchObject([
+            { id: sharedId, output: '{"shared":true}', completedByTaskRun: { id: child.id } },
+          ]);
+          await engine.startRunAttempt({ runId: old.run.id, snapshotId: restored.snapshot.id });
+          for (const { run, attempt } of parents.slice(0, 2)) {
+            const latest = (await engine.getRunExecutionData({ runId: run.id }))!;
+            expect(latest.completedWaitpoints).toMatchObject([
+              {
+                id: sharedId,
+                output: '{"shared":true}',
+                outputIsError: false,
+                completedByTaskRun: { id: child.id },
+              },
+            ]);
+            const since = await engine.getSnapshotsSince({
+              runId: run.id,
+              snapshotId: attempt.snapshot.id,
+              environmentId: env.id,
+            });
+            expect(since?.at(-1)?.completedWaitpoints).toMatchObject([
+              { id: sharedId, output: '{"shared":true}', completedByTaskRun: { id: child.id } },
+            ]);
+            expect((await store.readBlockState(run.id)).blockId).toBeUndefined();
+          }
+          expect(await prisma.waitpoint.count({ where: { id: sharedId } })).toBe(0);
+          options.enabled = false;
+          await store.quit();
+          // Rollback may abandon store-era work, but disabled reads must never touch the store.
+          // Catches: disabled-org snapshot reads still routed to the waitpoint store.
+          expect(await engine.getRunExecutionData({ runId: parents[1]!.run.id })).not.toBeNull();
         } finally {
           await engine.quit();
           await store.quit();

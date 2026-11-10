@@ -3,9 +3,13 @@ import {
   generateRunOpsId,
   generateWaitpointId,
   parseWaitpointId,
+  WaitpointId,
 } from "@trigger.dev/core/v3/isomorphic";
 import { describe, expect } from "vitest";
-
+import {
+  StoreWaitpointRegistrationUnsupported,
+  TransactionalStoreClearUnsupported,
+} from "../errors.js";
 import { StoreWaitpointCoordinator } from "./storeWaitpointCoordinator.js";
 import { WaitpointStoreCoordinator } from "./storeCoordinator.js";
 import {
@@ -13,6 +17,7 @@ import {
   context,
   routing,
   parent,
+  blockers,
   seedMixed,
 } from "../tests/utils/waitpointRouting.js";
 
@@ -117,6 +122,79 @@ describe("RoutingWaitpointCoordinator persisted boundaries", () => {
   );
 
   containerTest(
+    "both registration seams refuse store blockers on every parent route before legacy writes",
+    async ({ prisma, redisOptions }) => {
+      const store = new WaitpointStoreCoordinator({ redisOptions });
+      try {
+        const { args, legacyId, storeId } = await blockers(prisma, store);
+        const coordinator = routing(prisma, store);
+        for (const parentResidency of [
+          "postgres",
+          "mirrored",
+          "redis-primary",
+          undefined,
+        ] as const) {
+          const request = { ...args, parentResidency, waitpointIds: [legacyId, storeId] };
+          await expect(coordinator.registerBlocks(request)).rejects.toBeInstanceOf(
+            StoreWaitpointRegistrationUnsupported
+          );
+          await expect(coordinator.registerBlocksLockless(request)).rejects.toBeInstanceOf(
+            StoreWaitpointRegistrationUnsupported
+          );
+        }
+        expect(await prisma.taskRunWaitpoint.count()).toBe(0);
+        expect((await store.readBlockState(args.runId)).edges).toEqual([]);
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "default discovery unions real edges and nontransactional clear drains both stores",
+    async ({ prisma, redisOptions }) => {
+      const store = new WaitpointStoreCoordinator({ redisOptions });
+      try {
+        const { args, legacyId, storeId } = await seedMixed(prisma, store);
+        const coordinator = routing(prisma, store);
+        expect(
+          (await coordinator.readRunBlockState(args.runId)).map((edge) => edge.waitpoint.id).sort()
+        ).toEqual([legacyId, storeId].sort());
+        expect(await coordinator.clearRunBlockState({ runId: args.runId })).toEqual({ count: 2 });
+        expect(await prisma.taskRunWaitpoint.count()).toBe(0);
+        expect((await store.readBlockState(args.runId)).edges).toEqual([]);
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "an unavailable real marker reader falls back conservatively to both stores",
+    async ({ prisma, redisOptions }) => {
+      const store = new WaitpointStoreCoordinator({ redisOptions });
+      const markerReader = new WaitpointStoreCoordinator({ redisOptions });
+      try {
+        const { args, legacyId, storeId } = await seedMixed(prisma, store);
+        await markerReader.quit();
+        const coordinator = routing(prisma, store, {
+          mightHaveStoreBlockers: async ({ runId }) =>
+            (await coordinatorRedis(markerReader).get(runId)) !== null,
+        });
+        expect(
+          (await coordinator.readRunBlockState(args.runId)).map((edge) => edge.waitpoint.id).sort()
+        ).toEqual([legacyId, storeId].sort());
+        await coordinator.clearRunBlockState({ runId: args.runId });
+        expect((await store.readBlockState(args.runId)).edges).toEqual([]);
+        expect(await prisma.taskRunWaitpoint.count()).toBe(0);
+      } finally {
+        await markerReader.quit();
+        await store.quit();
+      }
+    }
+  );
+
+  containerTest(
     "marker lookup receives run and organization and skips a closed store for an unmarked run",
     async ({ prisma, redisOptions }) => {
       const store = new WaitpointStoreCoordinator({ redisOptions });
@@ -151,6 +229,117 @@ describe("RoutingWaitpointCoordinator persisted boundaries", () => {
   );
 
   containerTest(
+    "transactional mixed clear refuses before mutation and legacy-only clear participates in rollback",
+    async ({ prisma, redisOptions }) => {
+      const store = new WaitpointStoreCoordinator({ redisOptions });
+      try {
+        const { args } = await seedMixed(prisma, store);
+        const coordinator = routing(prisma, store);
+        await prisma.$transaction(async (tx) => {
+          await expect(
+            coordinator.clearRunBlockState({ runId: args.runId, tx })
+          ).rejects.toBeInstanceOf(TransactionalStoreClearUnsupported);
+        });
+        expect(await prisma.taskRunWaitpoint.count()).toBe(1);
+        expect((await store.readBlockState(args.runId)).edges).toHaveLength(1);
+        // Catches: a legacy-only clear not deleting the run's edges inside the caller's transaction.
+        await expect(
+          prisma.$transaction(async (tx) => {
+            await routing(prisma).clearRunBlockState({ runId: args.runId, tx });
+            expect(await tx.taskRunWaitpoint.count()).toBe(0);
+            await tx.taskRun.findUniqueOrThrow({ where: { id: "missing-lifecycle-run" } });
+          })
+        ).rejects.toMatchObject({ code: "P2025" });
+        expect(await prisma.taskRunWaitpoint.count()).toBe(1);
+        expect((await store.readBlockState(args.runId)).edges).toHaveLength(1);
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "refused store CAS leaves existing store cycle and legacy edges unchanged",
+    async ({ prisma, redisOptions }) => {
+      const store = new WaitpointStoreCoordinator({ redisOptions });
+      try {
+        const { args, legacyId, storeId } = await seedMixed(prisma, store);
+        const before = await store.readBlockState(args.runId);
+        // Catches: a stale store CAS refusal surfacing as a terminal outcome.
+        await expect(
+          routing(prisma, store).absorbBlockers({
+            ...args,
+            waitpointIds: [legacyId, storeId],
+            blockId: "stale-block",
+            absorptionId: "stale-absorption",
+          })
+        ).rejects.toMatchObject({ name: "StoreWaitpointBlockRefusedError", outcome: "stale" });
+        expect(await store.readBlockState(args.runId)).toEqual(before);
+        expect(await prisma.taskRunWaitpoint.count()).toBe(1);
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "real legacy FK failure compensates only the newly accepted store absorption",
+    async ({ prisma, redisOptions }) => {
+      const store = new WaitpointStoreCoordinator({ redisOptions });
+      try {
+        const { args, storeId } = await blockers(prisma, store);
+        const retained = await new StoreWaitpointCoordinator({ store }).createDateTimeWaitpoint({
+          ...args,
+          completedAfter: new Date(),
+        });
+        const adapter = new StoreWaitpointCoordinator({ store });
+        await adapter.absorbBlockers({
+          ...args,
+          blockId: "block",
+          absorptionId: "retained",
+          waitpointIds: [retained.waitpoint.id],
+        });
+        // Catches: the legacy FK error being replaced while compensating the store absorption.
+        await expect(
+          routing(prisma, store).absorbBlockers({
+            ...args,
+            blockId: "block",
+            absorptionId: "failed",
+            waitpointIds: [storeId, WaitpointId.generate().id],
+          })
+        ).rejects.toMatchObject({ code: "P2010", meta: { code: "23503" } });
+        expect((await store.readBlockState(args.runId)).pendingIds).toEqual([
+          retained.waitpoint.id,
+        ]);
+        expect(await prisma.taskRunWaitpoint.count()).toBe(0);
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "retained store withdrawal and legacy pretransition clear preserve the other store's current edges",
+    async ({ prisma, redisOptions }) => {
+      const store = new WaitpointStoreCoordinator({ redisOptions });
+      try {
+        const { args } = await seedMixed(prisma, store);
+        const coordinator = routing(prisma, store);
+        await coordinator.resumeRetainedWithdrawal({ runId: args.runId, blockId: "old-block" });
+        expect(await prisma.taskRunWaitpoint.count()).toBe(1);
+        const before = await store.readBlockState(args.runId);
+        await prisma.$transaction(async (tx) => {
+          await coordinator.clearLegacyBlockersBeforeTransition({ runId: args.runId, tx });
+        });
+        expect(await prisma.taskRunWaitpoint.count()).toBe(0);
+        expect(await store.readBlockState(args.runId)).toEqual(before);
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  containerTest(
     "rollback still discovers the real store RUN association",
     async ({ prisma, redisOptions }) => {
       const store = new WaitpointStoreCoordinator({ redisOptions });
@@ -165,6 +354,79 @@ describe("RoutingWaitpointCoordinator persisted boundaries", () => {
         });
         expect(await coordinator.findAssociatedRunWaitpointId(runId)).toBe(data.id);
       } finally {
+        await store.quit();
+      }
+    }
+  );
+  containerTest(
+    "a real connection failure during compensation surfaces the fenced absorption identity",
+    async ({ prisma, redisOptions }) => {
+      const store = new WaitpointStoreCoordinator({ redisOptions });
+      const observer = new WaitpointStoreCoordinator({ redisOptions });
+      let release!: () => void;
+      let entered!: () => void;
+      const unlocked = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const locked = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      let holder: Promise<unknown> | undefined;
+      try {
+        const { args, storeId } = await blockers(prisma, store);
+        holder = prisma.$transaction(
+          async (tx) => {
+            await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '2s'");
+            await tx.$executeRawUnsafe('LOCK TABLE "TaskRunWaitpoint" IN ACCESS EXCLUSIVE MODE');
+            entered();
+            let deadline: ReturnType<typeof setTimeout> | undefined;
+            try {
+              await Promise.race([
+                unlocked,
+                new Promise((_, reject) => {
+                  deadline = setTimeout(
+                    () => reject(new Error("compensation test SQL gate was never released")),
+                    5_000
+                  );
+                }),
+              ]);
+            } finally {
+              clearTimeout(deadline);
+            }
+          },
+          { timeout: 10_000 }
+        );
+        await Promise.race([locked, holder]);
+        const failed = expect(
+          routing(prisma, store).absorbBlockers({
+            ...args,
+            waitpointIds: [storeId, WaitpointId.generate().id],
+            blockId: "failed-block",
+            absorptionId: "failed-absorption",
+          })
+        ).rejects.toMatchObject({
+          name: "StoreAbsorptionCompensationFailed",
+          runId: args.runId,
+          blockId: "failed-block",
+          absorptionId: "failed-absorption",
+        });
+        await expect
+          .poll(async () => (await observer.readBlockState(args.runId)).pendingIds, {
+            timeout: 3_000,
+            interval: 10,
+            message: "store absorption never committed before the blocked Postgres insert",
+          })
+          .toEqual([storeId]);
+        await store.quit();
+        release();
+        await holder;
+        await failed;
+        expect(await prisma.taskRunWaitpoint.count()).toBe(0);
+        expect((await observer.readBlockState(args.runId)).pendingIds).toEqual([storeId]);
+      } finally {
+        release();
+        await holder;
+        await observer.quit();
         await store.quit();
       }
     }
