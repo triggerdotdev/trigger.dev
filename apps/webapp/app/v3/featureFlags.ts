@@ -65,7 +65,6 @@ export const FEATURE_FLAG = {
   runTokenInjection: "runTokenInjection",
   externalOidc: "externalOidc",
   trustedDeploysEnabled: "trustedDeploysEnabled",
-  oidcIntegrationGuidesPublished: "oidcIntegrationGuidesPublished",
   sessionTraceEnabled: "sessionTraceEnabled",
 } as const;
 
@@ -252,8 +251,6 @@ export const FeatureFlagCatalog = {
   // Org override wins over the global value; off by default.
   [FEATURE_FLAG.externalOidc]: z.boolean(),
   [FEATURE_FLAG.trustedDeploysEnabled]: z.boolean(),
-  // Global only; keep guide links off until the public docs and SDK release are available.
-  [FEATURE_FLAG.oidcIntegrationGuidesPublished]: z.boolean(),
   // Shows the session page's Trace tab and serves its routes. Org override wins over the global
   // value; off by default. Admins always have it.
   [FEATURE_FLAG.sessionTraceEnabled]: z.boolean(),
@@ -294,7 +291,6 @@ export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runOpsMintShardSetPrev,
   FEATURE_FLAG.runOpsMintShardSetFlippedAt,
   FEATURE_FLAG.runOpsMintShardOverride,
-  FEATURE_FLAG.oidcIntegrationGuidesPublished,
   // Read per dequeue from the global flag snapshot only; the org's flags aren't loaded there.
   FEATURE_FLAG.deploymentStatusMode,
 ];
@@ -314,7 +310,6 @@ export const ORG_LOCKED_FLAG_EFFECT: Partial<Record<FeatureFlagKey, OrgLockedFla
   [FEATURE_FLAG.runOpsMintShardSetPrev]: "ignored",
   [FEATURE_FLAG.runOpsMintShardSetFlippedAt]: "ignored",
   [FEATURE_FLAG.runOpsMintShardOverride]: "ignored",
-  [FEATURE_FLAG.oidcIntegrationGuidesPublished]: "ignored",
   [FEATURE_FLAG.deploymentStatusMode]: "ignored",
   [FEATURE_FLAG.runOpsMintKindPrev]: "derived",
   [FEATURE_FLAG.runOpsMintKindFlippedAt]: "derived",
