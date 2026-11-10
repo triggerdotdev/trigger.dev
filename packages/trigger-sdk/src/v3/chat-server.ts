@@ -79,7 +79,7 @@ import type {
   UIMessageChunk,
 } from "ai";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
-import { chatRunTags } from "./ai-shared.js";
+import { anySignal, chatRunTags } from "./ai-shared.js";
 import { triggerConcurrencyBody } from "./concurrency-shared.js";
 import { withResolvedExternalDeploymentId } from "./externalDeploymentId.js";
 import type { SessionTriggerConfigInput } from "./sessions.js";
@@ -970,7 +970,7 @@ async function openHandoverSession(opts: {
             "out",
             {
               ...(customerLastEventId != null ? { lastEventId: customerLastEventId } : {}),
-              signal: AbortSignal.any([abortController.signal, subscriptionAbort.signal]),
+              signal: anySignal([abortController.signal, subscriptionAbort.signal]),
               onPart: (part) => {
                 if (part.id) latestEventId = part.id;
               },

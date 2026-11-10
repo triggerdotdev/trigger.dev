@@ -136,6 +136,7 @@ import {
   type InferChatClientData,
   type InferChatUIMessage,
   type InferChatUIMessageFromTools,
+  anySignal,
   BACKGROUND_INJECTION_TYPE,
   PENDING_MESSAGE_INJECTED_TYPE,
   upsertIncomingMessage,
@@ -11072,7 +11073,7 @@ function chatAgent<
                 // Three signals for the user's run function
                 const stopSignal = stopController.signal;
                 const cancelSignal = runSignal;
-                const combinedSignal = AbortSignal.any([runSignal, stopController.signal]);
+                const combinedSignal = anySignal([runSignal, stopController.signal]);
 
                 const pmConfig = locals.get(chatPendingMessagesKey);
                 /**
@@ -15859,7 +15860,7 @@ function createChatSession<TClientData = unknown>(
             return { done: true, value: undefined };
           }
 
-          const combinedSignal = AbortSignal.any([runSignal, stop.signal]);
+          const combinedSignal = anySignal([runSignal, stop.signal]);
 
           const turnObj: ChatTurn<TClientData> = {
             number: turn,

@@ -2456,6 +2456,25 @@ describe("TriggerChatTransport", () => {
         vi.useRealTimers();
       }
     });
+
+    it("safely reconnects and aborts when AbortSignal.any is not supported (Safari < 17.4)", async () => {
+      const originalAny = AbortSignal.any;
+      try {
+        // @ts-expect-error - simulating older browser/runtime without AbortSignal.any
+        delete AbortSignal.any;
+
+        const { transport } = quietWatchTransport();
+        const abort = new AbortController();
+        const stream = await transport.reconnectToStream({
+          chatId: "chat-own",
+          abortSignal: abort.signal,
+        });
+        expect(stream).toBeDefined();
+        abort.abort();
+      } finally {
+        AbortSignal.any = originalAny;
+      }
+    });
   });
 
   describe("superseded stream teardown", () => {

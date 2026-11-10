@@ -278,3 +278,50 @@ export function waitBeforeEofResubscribe(attempt: number, signal: AbortSignal): 
     if (signal.aborted) done();
   });
 }
+
+/**
+ * Combines multiple AbortSignals into a single signal.
+ *
+ * Uses native `AbortSignal.any` when available, and falls back to an AbortController
+ * with listeners on environments where `AbortSignal.any` is not supported (such as
+ * Safari < 17.4 or Node < 20.3).
+ */
+export function anySignal(signals: (AbortSignal | undefined | null)[]): AbortSignal {
+  const validSignals = signals.filter((s): s is AbortSignal => s != null);
+  const first = validSignals[0];
+  if (!first) {
+    return new AbortController().signal;
+  }
+  if (validSignals.length === 1) {
+    return first;
+  }
+  if (typeof AbortSignal !== "undefined" && typeof AbortSignal.any === "function") {
+    return AbortSignal.any(validSignals);
+  }
+
+  const controller = new AbortController();
+  const alreadyAborted = validSignals.find((s) => s.aborted);
+  if (alreadyAborted) {
+    controller.abort(alreadyAborted.reason);
+    return controller.signal;
+  }
+
+  const onAbort = (e: Event) => {
+    const s = e.target as AbortSignal;
+    controller.abort(s?.reason);
+    cleanup();
+  };
+
+  const cleanup = () => {
+    for (const s of validSignals) {
+      s.removeEventListener("abort", onAbort);
+    }
+  };
+
+  for (const signal of validSignals) {
+    signal.addEventListener("abort", onAbort, { once: true });
+  }
+
+  return controller.signal;
+}
+

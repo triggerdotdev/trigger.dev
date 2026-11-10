@@ -31,6 +31,7 @@ import {
 } from "@trigger.dev/core/v3";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
 import {
+  anySignal,
   chatRunTags,
   MAX_EOF_RESUBSCRIBES,
   slimSubmitMessageForWire,
@@ -815,7 +816,7 @@ export class AgentChat<TAgent = unknown> {
 
     const internalAbort = new AbortController();
     const combinedSignal = abortSignal
-      ? AbortSignal.any([abortSignal, internalAbort.signal])
+      ? anySignal([abortSignal, internalAbort.signal])
       : internalAbort.signal;
 
     // Detached once the stream ends (see the `finally` below): a caller reusing
