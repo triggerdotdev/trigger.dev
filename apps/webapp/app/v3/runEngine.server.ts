@@ -34,7 +34,12 @@ function createRunEngine() {
             // WaitpointSystem checks the one organization/global activation flag first.
             resolveMintMode: () => "redis",
             isCapabilityReady: () => true,
-            eligibleTypes: new Set<"RUN" | "DATETIME">(["RUN", "DATETIME"]),
+            eligibleTypes: new Set<"RUN" | "DATETIME" | "BATCH" | "MANUAL">([
+              "RUN",
+              "DATETIME",
+              "BATCH",
+              "MANUAL",
+            ]),
           },
         }
       : undefined,

@@ -103,6 +103,7 @@ export async function triggerRun(
     friendlyId: string;
     taskIdentifier: string;
     parentTaskRunId?: string;
+    batch?: { id: string; index?: number };
     resumeParentOnCompletion?: boolean;
     idempotencyKey?: string;
     oneTimeUseToken?: string;
@@ -130,6 +131,7 @@ export async function triggerRun(
       isTest: false,
       tags: [],
       parentTaskRunId: args.parentTaskRunId,
+      batch: args.batch,
       resumeParentOnCompletion: args.resumeParentOnCompletion,
       idempotencyKey: args.idempotencyKey,
       oneTimeUseToken: args.oneTimeUseToken,

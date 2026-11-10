@@ -1035,6 +1035,8 @@ export interface RunStore {
   // --- BatchTaskRun (run-ops) ---
   // Batch row is born on the run-ops store at create. `findBatchTaskRunById`
   // reads the primary by default (worker reads the just-written row; replica lag).
+  markBatchWaitpointOnStore(batchId: string, waitpointId: string): Promise<void>;
+
   createBatchTaskRun(
     data: CreateBatchTaskRunData,
     tx?: PrismaClientOrTransaction

@@ -1,12 +1,25 @@
 import { z } from "zod";
 
 export const workerCatalog = {
+  recoverBatchWaitpoint: {
+    schema: z.object({
+      runId: z.string(),
+      batchId: z.string(),
+      organizationId: z.string(),
+      projectId: z.string(),
+      environmentId: z.string(),
+      cycleAnchor: z.string(),
+    }),
+    visibilityTimeoutMs: 30000,
+    retry: { maxAttempts: 10000, minTimeoutInMs: 1000, maxTimeoutInMs: 300000 },
+  },
   // Each item is a bounded, durable discovery target. Exhausted failures remain in the DLQ.
   recoverRunWaitpoint: {
     schema: z.object({
       parkedOnExternalDeploymentId: z.string().optional(),
       runId: z.string(),
       parentRunId: z.string(),
+      batch: z.object({ id: z.string(), index: z.number().optional() }).optional(),
       organizationId: z.string(),
       waitpointId: z.string(),
       blockOperation: z.object({
@@ -43,6 +56,7 @@ export const workerCatalog = {
   },
   recoverDateTimeWaitpoint: {
     schema: z.object({
+      manual: z.boolean().optional(),
       waitpointId: z.string(),
       organizationId: z.string(),
       projectId: z.string(),
@@ -57,6 +71,11 @@ export const workerCatalog = {
         })
         .optional(),
     }),
+    visibilityTimeoutMs: 30_000,
+    retry: { maxAttempts: 10_000, minTimeoutInMs: 1_000, maxTimeoutInMs: 300_000 },
+  },
+  retireManualWaitpointCatalog: {
+    schema: z.object({ waitpointId: z.string(), organizationId: z.string() }),
     visibilityTimeoutMs: 30_000,
     retry: { maxAttempts: 10_000, minTimeoutInMs: 1_000, maxTimeoutInMs: 300_000 },
   },

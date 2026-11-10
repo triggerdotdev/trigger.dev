@@ -136,6 +136,12 @@ export const PLACEMENT_SITES: readonly PlacementSite[] = [
     why: "Routes by the owning run id when the filter names one; otherwise sums across every store, so a delete cannot quietly skip a shard.",
   },
   {
+    method: "markBatchWaitpointOnStore",
+    basis: "own-id",
+    missMode: "loud",
+    routes: ["#routeForWrite(batchId)"],
+  },
+  {
     method: "createBatchTaskRun",
     basis: "own-id",
     missMode: "silent",

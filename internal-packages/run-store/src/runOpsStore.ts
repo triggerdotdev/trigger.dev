@@ -2211,6 +2211,10 @@ export class RoutingRunStore implements RunStore {
   // BatchTaskRun (run-ops). Route by id-shape: run-ops id→NEW, cuid→LEGACY.
   // ---------------------------------------------------------------------------
 
+  async markBatchWaitpointOnStore(batchId: string, waitpointId: string): Promise<void> {
+    return (await this.#routeForWrite(batchId)).markBatchWaitpointOnStore(batchId, waitpointId);
+  }
+
   async createBatchTaskRun(
     data: CreateBatchTaskRunData,
     tx?: PrismaClientOrTransaction

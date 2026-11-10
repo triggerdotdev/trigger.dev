@@ -41,7 +41,13 @@ describe("Store waitpoint block cycle: recovery", () => {
         await setupBackgroundWorker(engine, env, "test-task");
         const run = await runToExecuting(engine, env, "test-task", prisma, "run_terminalregistry");
         const organizationId = env.organization.id;
-        const wp = await seedStoreWaitpoint(store, env.id, env.project.id, "RUN");
+        const wp = await seedStoreWaitpoint(
+          store,
+          env.id,
+          env.project.id,
+          env.organizationId,
+          "RUN"
+        );
         const operation = {
           runId: run.id,
           organizationId,
@@ -133,7 +139,7 @@ describe("Store waitpoint block cycle: recovery", () => {
         const orgId = env.organization.id;
         const run = await runToExecuting(engine, env, taskIdentifier, prisma, "run_resumereplay");
 
-        const wp = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const wp = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         await blockStore(engine, {
           runId: run.id,
           projectId: env.project.id,
@@ -249,7 +255,7 @@ describe("Store waitpoint block cycle: recovery", () => {
         });
         expect(darkObligation).toBeUndefined();
 
-        const wp = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const wp = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         await blockStore(engine, {
           runId: run.id,
           projectId: env.project.id,
@@ -320,7 +326,7 @@ describe("Store waitpoint block cycle: recovery", () => {
         const orgId = env.organization.id;
         const run = await runToExecuting(engine, env, taskIdentifier, prisma, "run_coabandon");
 
-        const wp = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const wp = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         await blockStore(engine, {
           runId: run.id,
           projectId: env.project.id,
@@ -396,7 +402,7 @@ describe("Store waitpoint block cycle: recovery", () => {
         const orgId = env.organization.id;
         const run = await runToExecuting(engine, env, taskIdentifier, prisma, "run_coterminal");
 
-        const wp = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const wp = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         await blockStore(engine, {
           runId: run.id,
           projectId: env.project.id,
@@ -480,8 +486,8 @@ describe("Store waitpoint block cycle: recovery", () => {
         const orgId = env.organization.id;
         const run = await runToExecuting(engine, env, taskIdentifier, prisma, "run_abretain");
 
-        const w1 = await seedStoreWaitpoint(store, env.id, env.project.id);
-        const w2 = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const w1 = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
+        const w2 = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         await blockStore(engine, {
           runId: run.id,
           projectId: env.project.id,
@@ -541,7 +547,7 @@ describe("Store waitpoint block cycle: recovery", () => {
         const orgId = env.organization.id;
         const run = await runToExecuting(engine, env, taskIdentifier, prisma, "run_succrec");
 
-        const wp = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const wp = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         const blocked = await blockStore(engine, {
           runId: run.id,
           projectId: env.project.id,
@@ -640,7 +646,7 @@ describe("Store waitpoint block cycle: recovery", () => {
         const activeKeys = () =>
           redis.exists(keys.pend, keys.done, keys.edge, keys.refs, keys.edgeIndex, keys.doneOrder);
 
-        const wp = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const wp = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         const blocked = await blockStore(engine, {
           runId: run.id,
           projectId: env.project.id,
@@ -707,7 +713,7 @@ describe("Store waitpoint block cycle: recovery", () => {
         const orgId = env.organization.id;
         const run = await runToExecuting(engine, env, taskIdentifier, prisma, "run_termstale");
 
-        const w2wp = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const w2wp = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         await blockStore(engine, {
           runId: run.id,
           projectId: env.project.id,
@@ -748,8 +754,8 @@ describe("Store waitpoint block cycle: recovery", () => {
         const orgId = env.organization.id;
         const run = await runToExecuting(engine, env, taskIdentifier, prisma, "run_termreplay");
 
-        const s1 = await seedStoreWaitpoint(store, env.id, env.project.id);
-        const s2 = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const s1 = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
+        const s2 = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         await blockStore(engine, {
           runId: run.id,
           projectId: env.project.id,
@@ -857,7 +863,7 @@ describe("Store waitpoint block cycle: recovery", () => {
         const orgId = env.organization.id;
         const run = await runToExecuting(engine, env, taskIdentifier, prisma, "run_partabandon");
 
-        const s1 = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const s1 = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         const blocked = await blockStore(engine, {
           runId: run.id,
           projectId: env.project.id,
@@ -992,7 +998,7 @@ describe("Store waitpoint block cycle: recovery", () => {
 
         // 1. B1 installed with ONE contributed store edge (a1) directly — a partial mixed absorb whose
         // compensation is still owed: blk=B1, edge s1, contribution a1=[s1]; no blocked TRES snapshot.
-        const s1 = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const s1 = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         await store.absorbBlockers({
           runId: run.id,
           blockId: "B1",
@@ -1111,7 +1117,13 @@ describe("Store waitpoint block cycle: recovery", () => {
         ).toBeNull();
 
         // 9. The next native RUN wait can block and resume through the same engine.
-        const s2 = await seedStoreWaitpoint(store, env.id, env.project.id, "RUN");
+        const s2 = await seedStoreWaitpoint(
+          store,
+          env.id,
+          env.project.id,
+          env.organizationId,
+          "RUN"
+        );
         await blockStore(engine, {
           runId: run.id,
           projectId: env.project.id,

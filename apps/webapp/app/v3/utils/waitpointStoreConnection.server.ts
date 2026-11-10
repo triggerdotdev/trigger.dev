@@ -119,10 +119,34 @@ export function createWaitpointStoreConnection(
     )
   );
 
+  // Catalog access must stay as lazy as coordinator method access. Only invocation resolves
+  // the shared store, and private catalog fields require binding to its actual instance.
+  type Catalog = WaitpointStoreCoordinator["manualCatalog"];
+  const catalogMethods = new Set<keyof Catalog>([
+    "getManifest",
+    "publish",
+    "publishCompletedCandidate",
+    "reconcileStatus",
+    "retire",
+    "list",
+  ]);
+  const manualCatalog = new Proxy({} as Catalog, {
+    get(_target, property) {
+      if (property === "toString") return () => "[object ManualWaitpointCatalog]";
+      if (typeof property !== "string" || !catalogMethods.has(property as keyof Catalog))
+        return undefined;
+      return (...args: unknown[]) => {
+        const catalog = getStore().manualCatalog;
+        return Reflect.apply(Reflect.get(catalog, property), catalog, args);
+      };
+    },
+  });
+
   // The engine/router accept a coordinator synchronously. Resolve and bind only the method an
   // enabled path invokes; construction of the engine cannot instantiate a Redis client.
   const facade = new Proxy({} as WaitpointStoreCoordinator, {
     get(_target, property) {
+      if (property === "manualCatalog") return manualCatalog;
       if (property === "quit") return async () => {};
       if (property === "toString") return () => "[object WaitpointStoreCoordinator]";
       if (typeof property !== "string" || !methods.has(property)) return undefined;

@@ -86,6 +86,31 @@ for (const clusterMode of [false, ...(hasLocalRedisServer() ? [true] : [])]) {
             output: null,
           },
         });
+        const manualId = generateWaitpointId("MANUAL");
+        const manualRecord = {
+          id: manualId,
+          friendlyId: `waitpoint_${manualId}`,
+          type: "MANUAL" as const,
+          environmentId: environment.id,
+          organizationId: environment.organizationId,
+          projectId: environment.projectId,
+          createdAt: now,
+          updatedAt: now,
+          userProvidedIdempotencyKey: false,
+          tags: ["cli-manual"],
+        };
+        await store.manualCatalog.publish(manualRecord, Date.now() + 100);
+        await store.createIfAbsent({ record: manualRecord, status: "PENDING" });
+        await store.complete({
+          waitpointId: manualId,
+          organizationId: environment.organizationId,
+          completion: {
+            completedAt: now,
+            outputType: "application/json",
+            outputIsError: false,
+            output: null,
+          },
+        });
         const config = join(directory, "config.json"),
           scope = join(directory, "scope.json");
         await writeFile(
@@ -95,6 +120,10 @@ for (const clusterMode of [false, ...(hasLocalRedisServer() ? [true] : [])]) {
             controlPlaneUrlEnv: "ROLLBACK_DB",
             ...(!clusterMode && { redisCluster: false }),
             redisUrlEnv: "ROLLBACK_REDIS",
+            workerQueue: {
+              redisUrlEnv: "ROLLBACK_WORKER_REDIS",
+              keyPrefix: "rollback-cli:worker:",
+            },
             runStores: { mode: "single", urlEnv: "ROLLBACK_DB" },
           })
         ); // Omit redisCluster to exercise the default.
@@ -102,7 +131,7 @@ for (const clusterMode of [false, ...(hasLocalRedisServer() ? [true] : [])]) {
           scope,
           JSON.stringify({
             organizationId: environment.organizationId,
-            runs: [{ runId, blockIds: [], sourceIds: [sourceId] }],
+            runs: [{ runId, blockIds: [], sourceIds: [sourceId, manualId] }],
           })
         );
         let invocation = 0;
@@ -128,6 +157,7 @@ for (const clusterMode of [false, ...(hasLocalRedisServer() ? [true] : [])]) {
                   ...process.env,
                   NODE_OPTIONS: "--conditions=@triggerdotdev/source",
                   ROLLBACK_DB: postgresContainer.getConnectionUri(),
+                  ROLLBACK_WORKER_REDIS: `redis://:${encodeURIComponent(redisOptions.password ?? "")}@${redisOptions.host}:${redisOptions.port}`,
                   ROLLBACK_REDIS: cluster
                     ? `redis://127.0.0.1:${cluster.nodes[0]!.port}`
                     : `redis://:${encodeURIComponent(redisOptions.password ?? "")}@${redisOptions.host}:${redisOptions.port}`,
@@ -184,6 +214,14 @@ for (const clusterMode of [false, ...(hasLocalRedisServer() ? [true] : [])]) {
         expect(applied.report.results[0].verified).toBe(true);
         const verified = await cli(["--plan", inspected.out, "--verify"]);
         expect(verified.report.results[0].verified).toBe(true);
+        const catalog = await store.manualCatalog.list({
+          organizationId: environment.organizationId,
+          environmentId: environment.id,
+          statuses: ["COMPLETED"],
+          direction: "forward",
+          limit: 10,
+        });
+        expect(catalog.map((item) => item.record.id)).toContain(manualId);
         expect(await redis.pttl(waitpointKeys(sourceId).record)).toBeGreaterThan(0);
         expect(await redis.hlen(waitpointKeys(sourceId).watchers)).toBe(0);
         // Registry ownership must not turn a lookup in the wrong database into abandonment.

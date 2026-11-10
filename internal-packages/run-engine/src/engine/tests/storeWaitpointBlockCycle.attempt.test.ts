@@ -77,7 +77,13 @@ describe("Store waitpoint block cycle: attempt", () => {
           const orgId = env.organization.id;
           const run = await runToExecuting(engine, env, taskIdentifier, prisma, "run_retryblk");
 
-          const wp1 = await seedStoreWaitpoint(store, env.id, env.project.id, "RUN");
+          const wp1 = await seedStoreWaitpoint(
+            store,
+            env.id,
+            env.project.id,
+            env.organizationId,
+            "RUN"
+          );
           const blocked = await blockStore(engine, {
             runId: run.id,
             projectId: env.project.id,
@@ -152,7 +158,13 @@ describe("Store waitpoint block cycle: attempt", () => {
             { timeout: 15_000, interval: 200 }
           );
 
-          const wp2 = await seedStoreWaitpoint(store, env.id, env.project.id, "RUN");
+          const wp2 = await seedStoreWaitpoint(
+            store,
+            env.id,
+            env.project.id,
+            env.organizationId,
+            "RUN"
+          );
           await blockStore(engine, {
             runId: run.id,
             projectId: env.project.id,
@@ -185,7 +197,7 @@ describe("Store waitpoint block cycle: attempt", () => {
         const orgId = env.organization.id;
         const run = await runToExecuting(engine, env, taskIdentifier, prisma, "run_failblk");
 
-        const wp1 = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const wp1 = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         const blocked = await blockStore(engine, {
           runId: run.id,
           projectId: env.project.id,
@@ -248,7 +260,7 @@ describe("Store waitpoint block cycle: attempt", () => {
         const orgId = env.organization.id;
         const run = await runToExecuting(engine, env, taskIdentifier, prisma, "run_cancelblk");
 
-        const wp = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const wp = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         await blockStore(engine, {
           runId: run.id,
           projectId: env.project.id,
@@ -307,7 +319,7 @@ describe("Store waitpoint block cycle: attempt", () => {
         const orgId = env.organization.id;
         const run = await runToExecuting(engine, env, taskIdentifier, prisma, "run_succblk");
 
-        const wp = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const wp = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         const blocked = await blockStore(engine, {
           runId: run.id,
           projectId: env.project.id,
@@ -379,7 +391,15 @@ describe("Store waitpoint block cycle: attempt", () => {
         await setupBackgroundWorker(engine, env, "test-task");
         const orgId = env.organization.id;
         const run = await runToExecuting(engine, env, "test-task", prisma, "run_expiredterminal");
-        const wp = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const { waitpoint } = await engine.createManualWaitpoint({
+          runId: run.id,
+          environmentId: env.id,
+          projectId: env.project.id,
+          organizationId: orgId,
+        });
+        const wp = waitpoint.id;
+        expect((await store.readCompletedRecords([wp])).get(wp)?.record.organizationId).toBe(orgId);
+        expect(await store.manualCatalog.getManifest(orgId, wp)).toBeDefined();
         const blocked = await blockStore(engine, {
           runId: run.id,
           projectId: env.project.id,

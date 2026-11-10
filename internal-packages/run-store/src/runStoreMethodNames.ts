@@ -75,6 +75,7 @@ export const RUN_STORE_METHOD_NAMES = [
   "findTaskRunAttempt",
   "createTaskRunCheckpoint",
   "findTaskRunCheckpointById",
+  "markBatchWaitpointOnStore",
   "createBatchTaskRun",
   "updateBatchTaskRun",
   "findBatchTaskRunById",

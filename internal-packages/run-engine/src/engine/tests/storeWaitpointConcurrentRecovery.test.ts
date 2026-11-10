@@ -246,7 +246,7 @@ describe("storeWaitpointConcurrentRecovery", () => {
 
   for (const phase of ["begin", "reserve"] as const) {
     containerTest(
-      `keyed producer connection loss fences delayed ${phase} after successor PG commit`,
+      `keyed producer connection loss fences delayed ${phase} after successor native MANUAL commit`,
       async ({ prisma, redisOptions }) => {
         const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
         const barrier = await waitpointStoreBarrier(redisOptions);
@@ -323,13 +323,13 @@ describe("storeWaitpointConcurrentRecovery", () => {
           ).toBe(successor.waitpoint.id);
           expect(
             await prisma.waitpoint.count({ where: { environmentId: env.id, idempotencyKey: key } })
-          ).toBe(1);
+          ).toBe(0);
           const actualItems: string[] = await engine["worker"].queue["redis"].hvals("items");
           const queued = actualItems
             .map((entry) => JSON.parse(entry) as { job: string; item: unknown })
             .filter((entry) => entry.job === "recoverDateTimeWaitpoint")
             .map((entry) => workerCatalog.recoverDateTimeWaitpoint.schema.parse(entry.item))
-            .find((payload) => payload.keyedCreation?.idempotencyKey === key);
+            .find((payload) => !payload.manual && payload.keyedCreation?.idempotencyKey === key);
           if (phase === "reserve") {
             expect(
               queued,

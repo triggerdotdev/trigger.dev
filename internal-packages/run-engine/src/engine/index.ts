@@ -1,3 +1,5 @@
+import type { ManualWaitpointCatalogListInput } from "./waitpointCoordinator/manualWaitpointCatalog.js";
+import { classifyWaitpointCoordinator } from "./waitpointCoordinator/routing.js";
 import { createWaitpointResultRunStore } from "./systems/waitpointResultRunStore.js";
 import { type Redis, createRedisClient } from "@internal/redis";
 import {
@@ -305,10 +307,28 @@ export class RunEngine {
       shutdownTimeoutMs: options.worker.shutdownTimeoutMs,
       logger: new Logger("RunEngineWorker", options.logLevel ?? "info"),
       jobs: {
+        retireManualWaitpointCatalog: async ({ id, payload, deduplicationKey }) => {
+          if (!(await this.waitpointSystem.isWaitpointStoreEnabled(payload.organizationId))) return;
+          return this.waitpointSystem.withWaitpointCompletionLock(payload.waitpointId, async () => {
+            if (!(await this.waitpointSystem.isWaitpointStoreEnabled(payload.organizationId)))
+              return;
+            const next = await this.waitpointSystem.retireManualCatalog(payload);
+            if (next !== undefined)
+              await this.worker.enqueue({
+                id: `retireManualWaitpointCatalog:${payload.waitpointId}`,
+                job: "retireManualWaitpointCatalog",
+                payload,
+                availableAt: new Date(next),
+              });
+            else if (id) await this.worker.queue.ack(id, deduplicationKey);
+          });
+        },
         deliverWaitpointFanout: async ({ id, payload, deduplicationKey }) => {
           if (!(await this.waitpointSystem.isWaitpointStoreEnabled(payload.organizationId))) return;
           const parsed = parseWaitpointId(payload.waitpointId);
-          const dateTime = parsed.format === "b32hexW" && parsed.type === "DATETIME";
+          const completionLockedSource =
+            parsed.format === "b32hexW" &&
+            (parsed.type === "DATETIME" || parsed.type === "MANUAL" || parsed.type === "BATCH");
           const deliver = async () => {
             if (!options.waitpointFanoutStore)
               throw new Error("Waitpoint fanout store is not wired");
@@ -317,9 +337,9 @@ export class RunEngine {
             );
             // Published DATETIME identities are never recreated after expiry: new mints allocate a
             // fresh id. Missing RUN identities can still be waiting for publication and must retry.
-            const expiredDateTime = completion.outcome === "missing" && dateTime;
+            const expiredSource = completion.outcome === "missing" && completionLockedSource;
             if (
-              !expiredDateTime &&
+              !expiredSource &&
               (completion.outcome !== "exists" || completion.status !== "COMPLETED")
             ) {
               throw new Error("Waitpoint completion has not committed");
@@ -355,6 +375,11 @@ export class RunEngine {
                 });
               },
             });
+            if (parsed.format === "b32hexW" && parsed.type === "MANUAL")
+              await this.waitpointSystem.prearmManualCatalogRetirement(
+                payload.waitpointId,
+                payload.organizationId
+              );
             const result = await this.waitpointFanout.visit(
               payload.waitpointId,
               payload.organizationId
@@ -377,9 +402,9 @@ export class RunEngine {
             // Ack while the producer lock is still held. Otherwise a queued completion could
             // reuse this enqueueOnce job after cleanup but before the worker's outer ack.
             // The outer fenced ack cannot remove a replacement published after lock release.
-            if (dateTime && id) await this.worker.queue.ack(id, deduplicationKey);
+            if (completionLockedSource && id) await this.worker.queue.ack(id, deduplicationKey);
           };
-          return dateTime
+          return completionLockedSource
             ? this.waitpointSystem.withWaitpointCompletionLock(payload.waitpointId, async () => {
                 // Admission may have waited behind a producer while the org was disabled.
                 if (!(await this.waitpointSystem.isWaitpointStoreEnabled(payload.organizationId)))
@@ -439,6 +464,9 @@ export class RunEngine {
         },
         recoverWaitpointBlock: async ({ payload }) => {
           await this.waitpointSystem.recoverWaitpointBlock(payload);
+        },
+        recoverBatchWaitpoint: async ({ payload }) => {
+          await this.waitpointSystem.recoverBatchWaitpoint(payload);
         },
         recoverDateTimeWaitpoint: async ({ payload }) => {
           await this.waitpointSystem.recoverDateTimeWaitpoint(payload);
@@ -1193,6 +1221,7 @@ export class RunEngine {
                   blockingParentRunId: parentTaskRunId,
                   organizationId: environment.organization.id,
                   blockingViaBatch: !!batch,
+                  blockingBatchId: batch?.id,
                 });
               }
 
@@ -1302,16 +1331,20 @@ export class RunEngine {
         // Decide residency before creating the child: a store RUN waitpoint has no Postgres row
         // to inline. The organization's waitpoint rollout determines a new mint, including idempotent
         // and debounced children; later parents can reuse either home through mixed-store blocking.
-        // Batch children retain their legacy lockless block path. Standalone triggers mint lazily.
+        // A batch header fixes new child residency. Standalone triggers mint lazily.
+        let nativeBatchWaitpointId: string | undefined;
         let runWaitpointPlan: { plan: AssociatedWaitpointPlan } | undefined;
         const waitpointData =
           resumeParentOnCompletion && parentTaskRunId
-            ? !batch &&
-              this.waitpointSystem.isStoreRoutingWired &&
+            ? this.waitpointSystem.isStoreRoutingWired &&
               (await this.waitpointSystem.isStoreRoutingEnabled(
                 environment.organization.id,
                 environment.organization.featureFlags
-              ))
+              )) &&
+              (!batch ||
+                (nativeBatchWaitpointId = await this.waitpointSystem.nativeBatchWaitpointId(
+                  batch.id
+                )))
               ? (runWaitpointPlan = await this.waitpointSystem.planRunAssociatedWaitpoint({
                   projectId: environment.project.id,
                   environmentId: environment.id,
@@ -1342,6 +1375,7 @@ export class RunEngine {
             parentRunId: parentTaskRunId!,
             organizationId: environment.organization.id,
             waitpointId: runWaitpointPlan.plan.data.id,
+            batch,
             blockOperation: runWaitpointBlockOperation,
           });
         }
@@ -1523,16 +1557,29 @@ export class RunEngine {
 
               try {
                 if (batch) {
-                  // The batch header already published the blocked snapshot; child edges stay legacy.
+                  // The batch header fixes child storage; native headers guard each additive admission.
                   // Disabled registration is lockless; enabled registration takes the parent lock
                   // around the edge write to protect the cleanup fence.
-                  await this.waitpointSystem.blockRunWithWaitpointLockless({
-                    runId: parentTaskRunId,
-                    waitpoints: waitpointId,
-                    projectId: waitpointProjectId,
-                    organizationId: environment.organization.id,
-                    batch,
-                  });
+                  if (classifyWaitpointCoordinator(waitpointId) === "store") {
+                    await this.waitpointSystem.blockBatchChild({
+                      runId: parentTaskRunId,
+                      waitpointId,
+                      projectId: waitpointProjectId,
+                      organizationId: environment.organization.id,
+                      batch,
+                      workerId,
+                      runnerId,
+                      ownerWaitpointId: nativeBatchWaitpointId,
+                    });
+                  } else {
+                    await this.waitpointSystem.blockRunWithWaitpointLockless({
+                      runId: parentTaskRunId,
+                      waitpoints: waitpointId,
+                      projectId: waitpointProjectId,
+                      organizationId: environment.organization.id,
+                      batch,
+                    });
+                  }
                 } else {
                   // Single triggerAndWait: acquire the parent run lock to safely transition the snapshot and
                   // register the block. For a store waitpoint, supply the caller-owned block-operation identity
@@ -1631,16 +1678,29 @@ export class RunEngine {
             }
 
             if (batch) {
-              // The batch header already published the blocked snapshot; child edges stay legacy.
+              // The batch header fixes child storage; native headers guard each additive admission.
               // Disabled registration is lockless; enabled registration takes the parent lock
               // around the edge write to protect the cleanup fence.
-              await this.waitpointSystem.blockRunWithWaitpointLockless({
-                runId: parentTaskRunId,
-                waitpoints: waitpointId,
-                projectId: waitpointProjectId,
-                organizationId: environment.organization.id,
-                batch,
-              });
+              if (classifyWaitpointCoordinator(waitpointId) === "store") {
+                await this.waitpointSystem.blockBatchChild({
+                  runId: parentTaskRunId,
+                  waitpointId,
+                  projectId: waitpointProjectId,
+                  organizationId: environment.organization.id,
+                  batch,
+                  workerId,
+                  runnerId,
+                  ownerWaitpointId: nativeBatchWaitpointId,
+                });
+              } else {
+                await this.waitpointSystem.blockRunWithWaitpointLockless({
+                  runId: parentTaskRunId,
+                  waitpoints: waitpointId,
+                  projectId: waitpointProjectId,
+                  organizationId: environment.organization.id,
+                  batch,
+                });
+              }
             } else {
               // Single triggerAndWait: acquire the parent run lock to safely transition the snapshot and
               // register the block. For a store waitpoint, supply the caller-owned block-operation identity
@@ -1881,17 +1941,17 @@ export class RunEngine {
 
         // Decide the associated RUN waitpoint's residency from the organization's waitpoint rollout, the
         // same as the normal trigger path. A store mint has no Postgres row to inline and is created after
-        // the child commits. Batch children stay legacy — their parent is blocked (or would be) via the
-        // lockless path, which cannot drive the store three-phase protocol — exactly as the trigger path.
+        // the child commits. A native batch header permits native children; older headers retain
+        // their legacy registration path — exactly as the trigger path.
         let runWaitpointPlan: { plan: AssociatedWaitpointPlan } | undefined;
         const waitpointData =
           resumeParentOnCompletion && parentTaskRunId
-            ? !batch &&
-              this.waitpointSystem.isStoreRoutingWired &&
+            ? this.waitpointSystem.isStoreRoutingWired &&
               (await this.waitpointSystem.isStoreRoutingEnabled(
                 environment.organization.id,
                 environment.organization.featureFlags
-              ))
+              )) &&
+              (!batch || (await this.waitpointSystem.nativeBatchWaitpointId(batch.id)))
               ? (runWaitpointPlan = await this.waitpointSystem.planRunAssociatedWaitpoint({
                   projectId: environment.project.id,
                   environmentId: environment.id,
@@ -1921,6 +1981,7 @@ export class RunEngine {
             parentRunId: parentTaskRunId!,
             organizationId: environment.organization.id,
             waitpointId: runWaitpointPlan.plan.data.id,
+            batch,
             blockOperation: runWaitpointBlockOperation,
           });
         }
@@ -2521,6 +2582,14 @@ export class RunEngine {
     });
   }
 
+  canReadStoreManualWaitpoints(organizationId: string): boolean | Promise<boolean> {
+    return this.waitpointSystem.canReadStoreManualWaitpoints(organizationId);
+  }
+
+  async listStoreManualWaitpoints(params: ManualWaitpointCatalogListInput) {
+    return this.waitpointSystem.listStoreManualWaitpoints(params);
+  }
+
   /** Creates a MANUAL waitpoint, or returns the existing one for `idempotencyKey`. */
   async createManualWaitpoint({
     runId,
@@ -2577,6 +2646,19 @@ export class RunEngine {
     organizationId: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<Waitpoint | null> {
+    if (
+      this.waitpointSystem.isStoreRoutingWired &&
+      (await this.waitpointSystem.isStoreRoutingEnabled(organizationId))
+    ) {
+      const native = await this.waitpointSystem.blockRunWithNativeBatch({
+        runId,
+        batchId,
+        environmentId,
+        projectId,
+        organizationId,
+      });
+      if (native !== undefined) return native;
+    }
     const createWaitpointInput: Parameters<RunStore["createWaitpoint"]>[0] = {
       data: {
         // From the batch, not the blocked run: the create passes only completedByBatchId,
@@ -2902,6 +2984,7 @@ export class RunEngine {
     blockingParentRunId,
     organizationId,
     blockingViaBatch,
+    blockingBatchId,
   }: {
     runId: string;
     projectId: string;
@@ -2909,8 +2992,9 @@ export class RunEngine {
     /** The late-waiting parent whose residency decides a new mint. Absent ⇒ a new mint stays legacy. */
     blockingParentRunId?: string;
     organizationId?: string;
-    /** The parent will block on this waitpoint as part of a batch: a new mint is forced legacy. */
+    /** The parent waits through a batch, whose header fixes new child storage. */
     blockingViaBatch?: boolean;
+    blockingBatchId?: string;
   }): Promise<Waitpoint> {
     return this.waitpointSystem.getOrCreateRunWaitpoint({
       runId,
@@ -2919,6 +3003,7 @@ export class RunEngine {
       blockingParentRunId,
       organizationId,
       blockingViaBatch,
+      blockingBatchId,
     });
   }
 

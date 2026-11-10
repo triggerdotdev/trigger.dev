@@ -110,25 +110,27 @@ export async function seedStoreWaitpoint(
   store: WaitpointStoreCoordinator,
   environmentId: string,
   projectId: string,
+  organizationId: string,
   type: "MANUAL" | "RUN" = "MANUAL"
 ): Promise<string> {
   const id = generateWaitpointId(type);
   const now = new Date().toISOString();
-  await store.createIfAbsent({
-    record: {
-      id,
-      friendlyId: WaitpointId.toFriendlyId(id),
-      type,
-      environmentId,
-      projectId,
-      completedByTaskRunId: type === "RUN" ? `child_${id}` : undefined,
-      createdAt: now,
-      updatedAt: now,
-      userProvidedIdempotencyKey: false,
-      tags: [],
-    },
-    status: "PENDING",
-  });
+  const record = {
+    id,
+    friendlyId: WaitpointId.toFriendlyId(id),
+    type,
+    environmentId,
+    projectId,
+    organizationId,
+    completedByTaskRunId: type === "RUN" ? `child_${id}` : undefined,
+    createdAt: now,
+    updatedAt: now,
+    userProvidedIdempotencyKey: false,
+    tags: [],
+  };
+  // Match the native MANUAL producer: catalog ownership precedes canonical publication.
+  if (type === "MANUAL") await store.manualCatalog.publish(record, Date.now() + 300_000);
+  await store.createIfAbsent({ record, status: "PENDING" });
   return id;
 }
 

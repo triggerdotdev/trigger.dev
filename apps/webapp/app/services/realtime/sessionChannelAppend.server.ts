@@ -105,8 +105,9 @@ export async function completeSessionStreamWaitpoints(
   await Promise.all(
     waitpointIds.map(async (waitpointId) => {
       const parsed = parseWaitpointId(waitpointId);
-      const isNativeDateTime = parsed.format !== "legacy" && parsed.type === "DATETIME";
-      const [packetError, packet] = isNativeDateTime
+      const isNativeToken =
+        parsed.format !== "legacy" && (parsed.type === "DATETIME" || parsed.type === "MANUAL");
+      const [packetError, packet] = isNativeToken
         ? await tryCatch(
             (nativePacket ??= processStreamWaitpointCompletionPacket(
               waitpointId,
@@ -115,7 +116,7 @@ export async function completeSessionStreamWaitpoints(
             ))
           )
         : [undefined, undefined];
-      if (isNativeDateTime && packetError) {
+      if (isNativeToken && packetError) {
         // Offloading is new for native targets. Preserve their registration if it fails after drain.
         await addSessionStreamWaitpoint(environment.id, addressingKey, io, waitpointId);
         logger.error("Failed to prepare session stream waitpoint output", {
@@ -131,15 +132,18 @@ export async function completeSessionStreamWaitpoints(
         runEngine.completeWaitpoint({
           id: waitpointId,
           organizationId: environment.organizationId,
-          ...(isNativeDateTime ? { onlyIfPending: true } : {}),
+          ...(isNativeToken ? { onlyIfPending: true } : {}),
           output: {
-            value: isNativeDateTime ? packet!.data! : part,
-            type: isNativeDateTime ? packet!.dataType : "application/json",
+            value: isNativeToken ? packet!.data! : part,
+            type: isNativeToken ? packet!.dataType : "application/json",
             isError: false,
           },
         })
       );
       if (completeError) {
+        // Re-arm so the next append retries, except a missing record, which no retry can complete.
+        if (isNativeToken && completeError.name !== "WaitpointNotFoundError")
+          await addSessionStreamWaitpoint(environment.id, addressingKey, io, waitpointId);
         logger.error("Failed to complete session stream waitpoint", {
           ...context,
           addressingKey,

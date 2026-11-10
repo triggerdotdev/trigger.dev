@@ -56,7 +56,9 @@ const { action } = createActionApiRoute(
         ? parseWaitpointId(waitpointId)
         : undefined;
       const storeDateTime =
-        parsed !== undefined && parsed.format !== "legacy" && parsed.type === "DATETIME";
+        parsed !== undefined &&
+        parsed.format !== "legacy" &&
+        (parsed.type === "DATETIME" || parsed.type === "MANUAL");
       let waitpoint;
       if (storeDateTime) {
         waitpoint = await engine.getStoreDateTimeWaitpoint({

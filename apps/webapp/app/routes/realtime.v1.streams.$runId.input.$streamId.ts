@@ -120,8 +120,11 @@ const { action } = createActionApiRoute(
       ))
         ? parseWaitpointId(waitpointId)
         : undefined;
-      const storeDateTime = parsed && parsed.format !== "legacy" && parsed.type === "DATETIME";
-      const packet = storeDateTime
+      const storeToken =
+        parsed &&
+        parsed.format !== "legacy" &&
+        (parsed.type === "DATETIME" || parsed.type === "MANUAL");
+      const packet = storeToken
         ? await processStreamWaitpointCompletionPacket(
             waitpointId,
             record,
@@ -137,7 +140,7 @@ const { action } = createActionApiRoute(
         },
         organizationId: authentication.environment.organization.id,
       };
-      if (storeDateTime) completionInput.onlyIfPending = true;
+      if (storeToken) completionInput.onlyIfPending = true;
       await engine.completeWaitpoint(completionInput);
       await deleteInputStreamWaitpoint(params.runId, params.streamId);
     }

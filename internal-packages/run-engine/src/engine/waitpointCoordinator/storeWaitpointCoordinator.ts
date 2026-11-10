@@ -1,4 +1,4 @@
-import { deriveRunWaitpointId } from "./runWaitpointId.js";
+import { deriveRunWaitpointId, deriveBatchWaitpointId } from "./runWaitpointId.js";
 import {
   generateWaitpointId,
   parseWaitpointId,
@@ -37,6 +37,7 @@ import type {
   CompleteResult,
   CreateDateTimeWaitpointParams,
   CreateManualWaitpointParams,
+  CreateBatchWaitpointParams,
   CreateWaitpointResult,
   RegisterBlockersResult,
   RegisterBlocksLocklessParams,
@@ -56,11 +57,11 @@ const ABANDON_UNREGISTER_CONCURRENCY = 10;
  */
 export class StoreWaitpointBlockRefusedError extends Error {
   readonly runId: string;
-  readonly outcome: "stale" | "terminal" | "cleanupOwed";
+  readonly outcome: "stale" | "terminal" | "cleanupOwed" | "ownerGone";
   readonly currentBlockId?: string;
   constructor(params: {
     runId: string;
-    outcome: "stale" | "terminal" | "cleanupOwed";
+    outcome: "stale" | "terminal" | "cleanupOwed" | "ownerGone";
     currentBlockId?: string;
   }) {
     super(
@@ -82,7 +83,7 @@ export type StoreWaitpointCoordinatorOptions = {
 
 /**
  * Adapt MemoryDB waitpoints to the {@link WaitpointCoordinator} interface.
- * This adapter handles registration, completion, reads and cleanup. Creation methods are not wired here.
+ * Creation follows the routing coordinator's residency decision.
  * Never route a MemoryDB ID to Postgres.
  *
  * Register waits in three phases:
@@ -165,6 +166,7 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
         batchIndex: params.batchIndex,
         expectedPreviousBlockId: params.expectedPreviousBlockId,
         absorptionId,
+        requirePendingWaitpointId: params.requirePendingWaitpointId,
       });
 
       if (absorbed.outcome !== "absorbed") {
@@ -424,14 +426,30 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
     // A different result throws WaitpointCompletionConflictError.
     // The fanout worker delivers results in bounded pages.
     const parsed = parseWaitpointId(waitpointId);
-    await this.#store.complete({
-      waitpointId,
-      completion,
-      organizationId,
-      completionId:
-        onlyIfPending && parsed.format === "b32hexW" && parsed.type === "DATETIME" ? "" : undefined,
-    });
-
+    const nativeManual = parsed.format === "b32hexW" && parsed.type === "MANUAL";
+    const manualRecord = nativeManual
+      ? (await this.#store.readCompletedRecords([waitpointId])).get(waitpointId)?.record
+      : undefined;
+    if (manualRecord)
+      await this.#store.manualCatalog.publishCompletedCandidate(
+        manualRecord,
+        completion.outputIsError
+      );
+    try {
+      await this.#store.complete({
+        waitpointId,
+        completion,
+        organizationId,
+        completionId:
+          onlyIfPending &&
+          parsed.format === "b32hexW" &&
+          (parsed.type === "DATETIME" || parsed.type === "MANUAL")
+            ? ""
+            : undefined,
+      });
+    } finally {
+      if (manualRecord) await this.#store.manualCatalog.reconcileStatus(manualRecord);
+    }
     const waitpoint = await this.#waitpointFromStore(waitpointId);
     return { waitpoint, blockedRuns: [] };
   }
@@ -499,16 +517,26 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
     );
   }
 
-  // DATETIME mints a fresh standalone store id. With an idempotency key the low-level reserve owns strict
-  // expiry (SET NX + PEXPIREAT): a live reservation returns the winner as `cached`; an expired or absent
-  // one lets this call win as `created`. Without a key it is an unconditional create-if-absent.
+  // DATETIME and run-bound MANUAL tokens allocate fresh store identities. Key reservations reuse
+  // a live winner; unkeyed publication respects the caller's fixed candidate fence.
   async createDateTimeWaitpoint(
     params: CreateDateTimeWaitpointParams
   ): Promise<CreateWaitpointResult> {
-    const id = params.storeId ?? generateWaitpointId("DATETIME");
+    return this.#createTimedToken(params, "DATETIME");
+  }
+
+  async #createTimedToken(
+    params: Omit<CreateDateTimeWaitpointParams, "completedAfter"> & {
+      completedAfter?: Date;
+      tags?: string[];
+    },
+    type: "DATETIME" | "MANUAL"
+  ): Promise<CreateWaitpointResult> {
+    const id = params.storeId ?? generateWaitpointId(type);
     await params.beforeStoreCreate?.(id);
     const organizationId = params.mintContext?.organizationId;
-    const acceptUntil = params.keyedCreation?.acceptUntil ?? Date.now() + 300_000;
+    const acceptUntil =
+      params.keyedCreation?.acceptUntil ?? params.creationAcceptUntil ?? Date.now() + 300_000;
     if (organizationId)
       await this.#store.publishPendingSource(
         id,
@@ -526,15 +554,18 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
       );
     const record = this.#newRecord({
       id,
-      type: "DATETIME",
+      type,
+      tags: params.tags ?? [],
       projectId: params.projectId,
       environmentId: params.environmentId,
       organizationId,
-      completedAfter: params.completedAfter.toISOString(),
+      completedAfter: params.completedAfter?.toISOString(),
       idempotencyKey: params.idempotencyKey,
       idempotencyKeyExpiresAt: params.idempotencyKeyExpiresAt?.toISOString(),
       userProvidedIdempotencyKey: !!params.idempotencyKey,
     });
+
+    if (type === "MANUAL") await this.#store.manualCatalog.publish(record, acceptUntil);
 
     if (params.idempotencyKey) {
       const reserved = await this.#store.createWithIdempotencyKey({
@@ -560,8 +591,29 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
     return { kind: "created", waitpoint: this.#pendingWaitpoint(record) };
   }
 
-  createManualWaitpoint(_params: CreateManualWaitpointParams): Promise<CreateWaitpointResult> {
-    return Promise.reject(this.#mintNotWired("MANUAL"));
+  createManualWaitpoint(params: CreateManualWaitpointParams): Promise<CreateWaitpointResult> {
+    return this.#createTimedToken({ ...params, completedAfter: params.timeout }, "MANUAL");
+  }
+
+  async createBatchWaitpoint(params: CreateBatchWaitpointParams): Promise<CreateWaitpointResult> {
+    const id = deriveBatchWaitpointId(params.batchId);
+    if (!id) throw new Error("Native BATCH requires a derivable batch identity");
+    const record = this.#newRecord({
+      id,
+      type: "BATCH",
+      environmentId: params.environmentId,
+      projectId: params.projectId,
+      organizationId: params.mintContext?.organizationId,
+      completedByBatchId: params.batchId,
+      idempotencyKey: params.batchId,
+      userProvidedIdempotencyKey: false,
+    });
+    if (params.mintContext?.organizationId)
+      await this.#store.publishPendingSource(id, params.mintContext.organizationId);
+    const result = await this.#store.createIfAbsent({ record, status: "PENDING" });
+    return result.outcome === "created"
+      ? { kind: "created", waitpoint: this.#pendingWaitpoint(record) }
+      : { kind: "cached", waitpoint: await this.#waitpointFromStore(id) };
   }
 
   // The RUN mint id is a pure function of the child anchor, so create-if-absent is idempotent
@@ -681,6 +733,8 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
     idempotencyKeyExpiresAt?: string;
     userProvidedIdempotencyKey: boolean;
     completedByTaskRunId?: string;
+    completedByBatchId?: string;
+    tags?: string[];
   }): WaitpointRecordInput {
     const nowIso = new Date(this.#clock()).toISOString();
     return {
@@ -693,11 +747,12 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
       createdAt: nowIso,
       updatedAt: nowIso,
       userProvidedIdempotencyKey: fields.userProvidedIdempotencyKey,
-      tags: [],
+      tags: fields.tags ?? [],
       idempotencyKey: fields.idempotencyKey,
       idempotencyKeyExpiresAt: fields.idempotencyKeyExpiresAt,
       completedAfter: fields.completedAfter,
       completedByTaskRunId: fields.completedByTaskRunId,
+      completedByBatchId: fields.completedByBatchId,
     };
   }
 
@@ -705,15 +760,7 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
     return waitpointFromStoredRecord(record.id, { status: "PENDING", record });
   }
 
-  #mintNotWired(type: string): Error {
-    return new Error(
-      `Store-format ${type} minting is not wired in the shared block-protocol commit; the per-type ` +
-        `migration ticket owns it`
-    );
-  }
-
-  // Convert the stored record to the Waitpoint return type.
-  // Reject missing records or envelopes instead of returning incomplete data.
+  // Convert the stored record to the Waitpoint return type. Reject missing records.
   async #waitpointFromStore(waitpointId: string): Promise<Waitpoint> {
     const records = await this.#store.readCompletedRecords([waitpointId]);
     const stored = records.get(waitpointId);

@@ -1,3 +1,9 @@
+import { timeoutError } from "@trigger.dev/core/v3";
+import { parseWaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import {
+  manualWaitpointCatalogManifestKey,
+  parseManualWaitpointCatalogManifest,
+} from "./manualWaitpointCatalog.js";
 import { isDeepStrictEqual } from "node:util";
 import type { RedisClient } from "@internal/redis";
 import { hasStoreWaitpoints, type RunStore } from "@internal/run-store";
@@ -83,6 +89,7 @@ const sourceSchema = z
     record: z.string(),
     completionId: z.string(),
     pendingRegistryOwned: z.boolean().optional(),
+    catalogMetadata: z.string().optional(),
     receiptMetadata: z.string().optional(),
     receiptValue: z.string().nullable().optional(),
     status: z.enum(["PENDING", "COMPLETED"]),
@@ -208,10 +215,11 @@ const READ_SOURCE_VERIFICATION = `
   local compatible = relatedTtl == -2 or
     (sourceTtl >= 0 and relatedTtl == sourceTtl) or
     (sourceTtl == -1 and relatedTtl == -1)
+  local cleared = redis.call('EXISTS',KEYS[2],KEYS[3],KEYS[4]) == 0
   local retained = ((sourceTtl > 0 and not held) or
     (sourceTtl == -1 and ((fields[4] == '-1' and not held) or (fields[5] ~= false and not held)))) and compatible
-    and redis.call('EXISTS',KEYS[2],KEYS[3],KEYS[4]) == 0
-  fields[7], fields[8] = absent and 1 or 0, retained and 1 or 0
+    and cleared
+  fields[7], fields[8], fields[9], fields[10] = absent and 1 or 0, retained and 1 or 0, sourceTtl, (sourceTtl == -1 and compatible and cleared and not held) and 1 or 0
   return fields
 `;
 
@@ -300,6 +308,13 @@ const RETIRE_SOURCE = `
       redis.call('PEXPIRE', KEYS[6], redis.call('PTTL',record))
       redis.call('UNLINK', watchers, queue, fanout)
       return 'retained'
+    elseif ARGV[5] == 'pending-manual' then
+      -- Allocation is fenced; a valid pending token keeps its own lifetime and catalog.
+      redis.call('HDEL',record,'ka')
+      redis.call('PERSIST',record)
+      redis.call('PERSIST',KEYS[6])
+      redis.call('UNLINK',watchers,queue,fanout)
+      return 'retained'
     elseif ARGV[5] == 'datetime' then
       -- The deadline's normal empty completion, fenced by the reviewed immutable record.
       redis.call('HSET',record,'status','COMPLETED','c',ARGV[6],'cid','','cAt',ARGV[7])
@@ -327,10 +342,20 @@ export class ManualWaitpointRollbackRecovery {
     private readonly deps: {
       target: string;
       controlPlane: Pick<PrismaClient, "organization" | "featureFlag" | "runtimeEnvironment">;
-      runStore: Pick<RunStore, "findRunOnPrimary">;
+      runStore: Pick<RunStore, "findRunOnPrimary" | "findBatchTaskRunById">;
       assertRunId?: (runId: string) => void;
       redis: RedisClient;
       store: WaitpointStoreCoordinator;
+      catalogMaintenance?: {
+        schedule: (
+          payload: { waitpointId: string; organizationId: string },
+          availableAt: Date
+        ) => Promise<void>;
+        scheduledAt: (payload: {
+          waitpointId: string;
+          organizationId: string;
+        }) => Promise<Date | undefined>;
+      };
     }
   ) {}
 
@@ -545,14 +570,25 @@ export class ManualWaitpointRollbackRecovery {
       organizationSourceReceiptKey(organizationId, fanoutPartition(waitpointId)),
       waitpointId
     );
-    return receiptMetadata
-      ? {
-          receiptMetadata,
-          receiptValue: await this.deps.redis.get(
-            receiptMetadataSchema.parse(JSON.parse(receiptMetadata)).key
-          ),
-        }
-      : {};
+    const parsed = parseWaitpointId(waitpointId);
+    const catalogMetadata =
+      parsed.format === "b32hexW" && parsed.type === "MANUAL"
+        ? await this.deps.redis.hget(
+            manualWaitpointCatalogManifestKey(organizationId, waitpointId),
+            waitpointId
+          )
+        : null;
+    return {
+      ...(catalogMetadata ? { catalogMetadata } : {}),
+      ...(receiptMetadata
+        ? {
+            receiptMetadata,
+            receiptValue: await this.deps.redis.get(
+              receiptMetadataSchema.parse(JSON.parse(receiptMetadata)).key
+            ),
+          }
+        : {}),
+    };
   }
 
   private async inspectSources(
@@ -870,7 +906,8 @@ export class ManualWaitpointRollbackRecovery {
   private async cleanSources(plan: RollbackPlan, entry?: RollbackPlan["entries"][number]) {
     for (const source of entry?.sources ?? plan.sources) {
       if (entry) await this.checkTarget(plan, entry);
-      if (!entry || source.receiptMetadata) await this.checkSourceOwner(plan, source);
+      if (!entry || source.receiptMetadata || source.catalogMetadata)
+        await this.checkSourceOwner(plan, source);
       await this.assertDisabled(plan.organizationId);
       const receipt = source.receiptMetadata
         ? receiptMetadataSchema.parse(JSON.parse(source.receiptMetadata))
@@ -898,19 +935,25 @@ export class ManualWaitpointRollbackRecovery {
       let action = "";
       if (source.record) {
         const record = JSON.parse(source.record);
-        if (record.type === "DATETIME" && source.status === "COMPLETED")
+        if (["DATETIME", "MANUAL", "BATCH"].includes(record.type) && source.status === "COMPLETED")
           action = "completed-datetime";
         if (source.status === "PENDING" && source.pendingRegistryOwned) {
           const key = waitpointKeys(source.waitpointId).record;
           const elapsedDeadline =
-            record.type === "DATETIME" &&
+            ["DATETIME", "MANUAL"].includes(record.type) &&
             Date.parse(record.completedAfter) <= Date.parse(plan.inspectedAt);
           if (discardCandidate) action = "discard-candidate";
           else if (elapsedDeadline && (await this.deps.redis.hget(key, "status")) === "COMPLETED")
             action = "datetime";
           else if ((await this.deps.redis.pttl(key)) > 0) action = "finite";
           else if (elapsedDeadline) action = "datetime";
-          else if (
+          else if (record.type === "MANUAL")
+            action = source.catalogMetadata ? "pending-manual" : "datetime";
+          else if (record.type === "BATCH" && record.completedByBatchId) {
+            const batch = await this.deps.runStore.findBatchTaskRunById(record.completedByBatchId);
+            if (!batch || batch.status === "COMPLETED" || batch.status === "ABORTED")
+              action = "abandon-run";
+          } else if (
             record.type === "RUN" &&
             !record.userProvidedIdempotencyKey &&
             record.completedByTaskRunId
@@ -926,6 +969,32 @@ export class ManualWaitpointRollbackRecovery {
           }
         }
       }
+      if (source.catalogMetadata && source.record && action !== "discard-candidate") {
+        const keyUntil = await this.deps.redis.hget(waitpointKeys(source.waitpointId).record, "ku");
+        const ttl = await this.deps.redis.pttl(waitpointKeys(source.waitpointId).record);
+        const pendingPreserved =
+          source.status === "PENDING" && action !== "datetime" && action !== "abandon-run";
+        if (!pendingPreserved && keyUntil !== "-1" && ttl !== -2) {
+          if (!this.deps.catalogMaintenance)
+            throw new Error(
+              "Finite MANUAL catalog retention requires workerQueue scheduler configuration before cleanup"
+            );
+          await this.deps.catalogMaintenance.schedule(
+            { waitpointId: source.waitpointId, organizationId: plan.organizationId },
+            new Date(
+              ttl >= 0
+                ? Date.now() + ttl
+                : Math.max(Date.now() + DEFAULT_TERMINAL_RETENTION_MS, Number(keyUntil ?? 0))
+            )
+          );
+        }
+      }
+      const completion = this.naturalCompletion(plan, source);
+      if (source.catalogMetadata && action === "datetime")
+        await this.deps.store.manualCatalog.publishCompletedCandidate(
+          JSON.parse(source.record),
+          JSON.parse(completion).outputIsError
+        );
       const keys = [
         ...Object.values(waitpointKeys(source.waitpointId)),
         candidateMintFenceKey(source.waitpointId),
@@ -941,7 +1010,7 @@ export class ManualWaitpointRollbackRecovery {
         source.status,
         String(DEFAULT_TERMINAL_RETENTION_MS),
         action,
-        this.naturalCompletion(plan),
+        completion,
         String(Date.parse(plan.inspectedAt)),
         receipt ? String(receipt.acceptUntil) : ""
       );
@@ -970,6 +1039,16 @@ export class ManualWaitpointRollbackRecovery {
           String(DEFAULT_TERMINAL_RETENTION_MS)
         );
       }
+      if (source.catalogMetadata && source.record)
+        await this.deps.store.manualCatalog.reconcileStatus(JSON.parse(source.record));
+      if (source.catalogMetadata && this.deps.catalogMaintenance) {
+        const ttl = await this.deps.redis.pttl(waitpointKeys(source.waitpointId).record);
+        if (ttl >= 0)
+          await this.deps.catalogMaintenance.schedule(
+            { waitpointId: source.waitpointId, organizationId: plan.organizationId },
+            new Date(Date.now() + ttl + 1)
+          );
+      }
       // Cross-slot second effect. The saved plan retains this ID/cid even if the source
       // expires before replay. A missing source is accepted only with all source keys absent.
       await this.assertDisabled(plan.organizationId);
@@ -982,33 +1061,71 @@ export class ManualWaitpointRollbackRecovery {
         plan.organizationId,
         fanoutPartition(source.waitpointId)
       );
-      assertSingleSlot("rollback source index", [...Object.values(index), ownership, metadata]);
+      if (source.catalogMetadata) {
+        const remaining = await this.deps.redis.pttl(waitpointKeys(source.waitpointId).record);
+        if (
+          remaining === -2 &&
+          !(await this.deps.store.manualCatalog.retire(
+            parseManualWaitpointCatalogManifest(source.catalogMetadata)
+          ))
+        )
+          throw new Error("MANUAL catalog publication fence is still open");
+      }
+      const catalog = manualWaitpointCatalogManifestKey(plan.organizationId, source.waitpointId);
+      assertSingleSlot("rollback source index", [
+        ...Object.values(index),
+        ownership,
+        metadata,
+        catalog,
+      ]);
       await this.deps.redis.eval(
         `local current = redis.call('HGET',KEYS[4],ARGV[1])
          if current and current ~= ARGV[2] then return redis.error_reply('Source receipt identity changed') end
          redis.call('HDEL',KEYS[4],ARGV[1])
-         for i=1,3 do redis.call('ZREM',KEYS[i],ARGV[1]) end; return 1`,
-        4,
+         for i=1,2 do redis.call('ZREM',KEYS[i],ARGV[1]) end
+         if redis.call('HEXISTS',KEYS[5],ARGV[1]) == 0 then redis.call('ZREM',KEYS[3],ARGV[1]) end; return 1`,
+        5,
         index.due,
         index.quarantine,
         ownership,
         metadata,
+        catalog,
         source.waitpointId,
         source.receiptMetadata ?? ""
       );
     }
   }
 
-  private naturalCompletion(plan: RollbackPlan) {
+  private naturalCompletion(plan: RollbackPlan, source: z.infer<typeof sourceSchema>) {
+    // An elapsed MANUAL deadline completes with the same timeout error as ordinary expiry.
+    const record = source.record ? JSON.parse(source.record) : {};
+    const timedOut =
+      record.type === "MANUAL" && Date.parse(record.completedAfter) <= Date.parse(plan.inspectedAt);
     return JSON.stringify({
       completedAt: plan.inspectedAt,
       outputType: "application/json",
-      outputIsError: false,
-      output: null,
+      outputIsError: Boolean(timedOut),
+      output: timedOut
+        ? { inline: JSON.stringify(timeoutError(new Date(record.completedAfter))) }
+        : null,
     });
   }
 
   private async checkSourceOwner(plan: RollbackPlan, source: z.infer<typeof sourceSchema>) {
+    if (source.catalogMetadata) {
+      const manifest = parseManualWaitpointCatalogManifest(source.catalogMetadata);
+      if (
+        manifest.organizationId !== plan.organizationId ||
+        manifest.waitpointId !== source.waitpointId
+      )
+        throw new Error("Catalog source ownership mismatch");
+      const current = await this.deps.store.manualCatalog.getManifest(
+        plan.organizationId,
+        source.waitpointId
+      );
+      if (current && !isDeepStrictEqual(current, manifest))
+        throw new Error("Catalog source manifest changed; inspect again");
+    }
     if (source.receiptMetadata) {
       const receipt = receiptMetadataSchema.parse(JSON.parse(source.receiptMetadata));
       const metadata = await this.deps.redis.hget(
@@ -1110,6 +1227,29 @@ export class ManualWaitpointRollbackRecovery {
         return source;
       });
       for (const source of selectedSources) await this.checkSourceOwner(plan, source);
+      if (!this.deps.catalogMaintenance)
+        for (const source of [...selectedSources, ...selected.flatMap((entry) => entry.sources)]) {
+          if (
+            !source.catalogMetadata ||
+            !source.record ||
+            (await this.deps.redis.pttl(waitpointKeys(source.waitpointId).record)) === -2
+          )
+            continue;
+          const record = JSON.parse(source.record);
+          const keyUntil = await this.deps.redis.hget(
+            waitpointKeys(source.waitpointId).record,
+            "ku"
+          );
+          if (
+            keyUntil !== "-1" &&
+            (source.status === "COMPLETED" ||
+              (record.completedAfter &&
+                Date.parse(record.completedAfter) <= Date.parse(plan.inspectedAt)))
+          )
+            throw new Error(
+              "Finite MANUAL catalog retention requires workerQueue scheduler configuration before cleanup"
+            );
+        }
       // Preflight all selected targets before the first mutation; revalidate again at each target.
       for (const entry of selected) await this.checkTarget(plan, entry);
     } catch (error) {
@@ -1233,6 +1373,8 @@ export class ManualWaitpointRollbackRecovery {
       string | null,
       number,
       number,
+      number,
+      number,
     ];
   }
 
@@ -1242,20 +1384,61 @@ export class ManualWaitpointRollbackRecovery {
       await this.assertDisabled(plan.organizationId);
       await this.checkSourceOwner(plan, source);
       const index = fanoutIndexKeys(fanoutPartition(source.waitpointId));
-      const [record, status, cid, , , completion, absent, retentionValid] =
-        await this.readSourceVerification(source.waitpointId);
+      const [
+        record,
+        status,
+        cid,
+        keyUntil,
+        ,
+        completion,
+        absent,
+        retentionValid,
+        ttl,
+        pendingRetentionValid,
+      ] = await this.readSourceVerification(source.waitpointId);
+      const catalog = source.catalogMetadata
+        ? await this.deps.store.manualCatalog.getManifest(plan.organizationId, source.waitpointId)
+        : undefined;
+      const intentionalPending = Boolean(
+        catalog && status === "PENDING" && record && JSON.parse(record).type === "MANUAL"
+      );
+      if (catalog && ttl >= 0 && !this.deps.catalogMaintenance)
+        throw new Error(
+          "Finite MANUAL catalog retention requires workerQueue scheduler configuration for verification"
+        );
+      const intentionalRetention = Boolean(catalog && (status === "PENDING" || keyUntil === "-1"));
+      const maintenanceAvailableAt =
+        catalog && ttl >= 0
+          ? await this.deps.catalogMaintenance?.scheduledAt({
+              waitpointId: source.waitpointId,
+              organizationId: plan.organizationId,
+            })
+          : undefined;
+      const catalogVerified =
+        !catalog ||
+        (record !== null &&
+          (intentionalRetention ||
+            Boolean(maintenanceAvailableAt && maintenanceAvailableAt.getTime() > Date.now())));
+
       const retained =
         record === source.record &&
         (status === source.status ||
           (source.pendingRegistryOwned &&
             status === "COMPLETED" &&
-            completion === this.naturalCompletion(plan))) &&
+            completion === this.naturalCompletion(plan, source))) &&
         (cid ?? "") === source.completionId &&
-        retentionValid === 1;
+        (retentionValid === 1 || (intentionalPending && pendingRetentionValid === 1));
       results.push({
         waitpointId: source.waitpointId,
+        ...(catalog
+          ? {
+              catalogRetention: intentionalRetention ? "intentional" : "finite",
+              maintenanceAvailableAt: maintenanceAvailableAt?.toISOString(),
+            }
+          : {}),
         verified:
           (absent === 1 || retained) &&
+          catalogVerified &&
           (await this.deps.redis.zscore(index.due, source.waitpointId)) === null &&
           (await this.deps.redis.zscore(index.quarantine, source.waitpointId)) === null &&
           (await this.deps.redis.zscore(
@@ -1264,7 +1447,7 @@ export class ManualWaitpointRollbackRecovery {
               fanoutPartition(source.waitpointId)
             ),
             source.waitpointId
-          )) === null &&
+          )) === (catalog ? "0" : null) &&
           (await this.deps.redis.hexists(
             organizationSourceReceiptKey(plan.organizationId, fanoutPartition(source.waitpointId)),
             source.waitpointId
@@ -1306,15 +1489,22 @@ export class ManualWaitpointRollbackRecovery {
       const index = fanoutIndexKeys(fanoutPartition(source.waitpointId));
       const unchanged =
         record === source.record && status === source.status && (cid ?? "") === source.completionId;
-      const managed = source.receiptMetadata || (source.pendingRegistryOwned && !unchanged);
+      const managed =
+        source.catalogMetadata ||
+        source.receiptMetadata ||
+        (source.pendingRegistryOwned && !unchanged);
+      const managedResult = managed
+        ? (await this.verifySources({ ...plan, sources: [source] }))[0]
+        : undefined;
       const verified = managed
-        ? (await this.verifySources({ ...plan, sources: [source] }))[0]!.verified
+        ? managedResult!.verified
         : source.status === "PENDING"
           ? unchanged
           : (absent === 1 || (unchanged && retentionValid === 1)) &&
             (await this.deps.redis.zscore(index.due, source.waitpointId)) === null &&
             (await this.deps.redis.zscore(index.quarantine, source.waitpointId)) === null;
       sources.push({
+        ...managedResult,
         waitpointId: source.waitpointId,
         verified,
         status: source.status,

@@ -43,7 +43,11 @@ const { action, loader } = createActionApiRoute(
         ? parseWaitpointId(waitpointId)
         : undefined;
       let waitpoint;
-      if (parsed && parsed.format !== "legacy" && parsed.type === "DATETIME") {
+      if (
+        parsed &&
+        parsed.format !== "legacy" &&
+        (parsed.type === "DATETIME" || parsed.type === "MANUAL")
+      ) {
         waitpoint = await engine.getStoreDateTimeWaitpoint({
           waitpointId,
           environmentId: authentication.environment.id,
@@ -85,10 +89,14 @@ const { action, loader } = createActionApiRoute(
         stringifiedData,
         authentication.environment,
         // A losing native completion must not replace the object referenced by the winner.
-        parsed && parsed.format !== "legacy" && parsed.type === "DATETIME"
+        parsed &&
+          parsed.format !== "legacy" &&
+          (parsed.type === "DATETIME" || parsed.type === "MANUAL")
           ? `${pathPrefix}/${crypto.randomUUID()}`
           : pathPrefix,
-        parsed && parsed.format !== "legacy" && parsed.type === "DATETIME"
+        parsed &&
+          parsed.format !== "legacy" &&
+          (parsed.type === "DATETIME" || parsed.type === "MANUAL")
           ? MAX_INLINE_COMPLETION_OUTPUT_BYTES
           : undefined
       );
@@ -100,7 +108,11 @@ const { action, loader } = createActionApiRoute(
           : undefined,
         organizationId: authentication.environment.organization.id,
       };
-      if (parsed && parsed.format !== "legacy" && parsed.type === "DATETIME")
+      if (
+        parsed &&
+        parsed.format !== "legacy" &&
+        (parsed.type === "DATETIME" || parsed.type === "MANUAL")
+      )
         completionInput.onlyIfPending = true;
       const _result = await engine.completeWaitpoint(completionInput);
 

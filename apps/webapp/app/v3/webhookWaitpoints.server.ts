@@ -122,7 +122,9 @@ export const webhookWaitpoints: WebhookWaitpointPorts = {
       storeEnabled &&
       waitpointIds.some((id) => {
         const parsed = parseWaitpointId(WaitpointId.toId(id));
-        return parsed.format !== "legacy" && parsed.type === "DATETIME";
+        return (
+          parsed.format !== "legacy" && (parsed.type === "DATETIME" || parsed.type === "MANUAL")
+        );
       });
     const pathPrefix = `${deliveryFriendlyId}/webhook-waiters`;
     const packet = await processWaitpointCompletionPacket(
@@ -145,7 +147,11 @@ export const webhookWaitpoints: WebhookWaitpointPorts = {
               ? { type: packet.dataType, value: packet.data, isError: false }
               : undefined,
           };
-          if (parsed && parsed.format !== "legacy" && parsed.type === "DATETIME")
+          if (
+            parsed &&
+            parsed.format !== "legacy" &&
+            (parsed.type === "DATETIME" || parsed.type === "MANUAL")
+          )
             completionInput.onlyIfPending = true;
           const [error] = await tryCatch(engine.completeWaitpoint(completionInput));
           return error
@@ -165,7 +171,11 @@ export const webhookWaitpoints: WebhookWaitpointPorts = {
     const id = WaitpointId.toId(waitpointId);
     const storeEnabled = await engine.waitpointSystem.isWaitpointStoreEnabled(organizationId);
     const parsed = storeEnabled ? parseWaitpointId(id) : undefined;
-    if (parsed && parsed.format !== "legacy" && parsed.type === "DATETIME") {
+    if (
+      parsed &&
+      parsed.format !== "legacy" &&
+      (parsed.type === "DATETIME" || parsed.type === "MANUAL")
+    ) {
       const environment = await environmentOrThrow(environmentId);
       const waitpoint = await engine.getStoreDateTimeWaitpoint({
         waitpointId: id,

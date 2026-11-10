@@ -173,6 +173,7 @@ export type WaitpointCoordinator = {
   complete(params: CompleteParams): Promise<CompleteResult>;
   createDateTimeWaitpoint(params: CreateDateTimeWaitpointParams): Promise<CreateWaitpointResult>;
   createManualWaitpoint(params: CreateManualWaitpointParams): Promise<CreateWaitpointResult>;
+  createBatchWaitpoint(params: CreateBatchWaitpointParams): Promise<CreateWaitpointResult>;
   mintAssociatedWaitpointData(params: {
     projectId: string;
     environmentId: string;
@@ -324,6 +325,7 @@ export type AbsorbBlockersParams = {
    * Optional compatibility hint from older callers. Parent snapshot residency does not gate registration.
    */
   parentResidency?: SnapshotResidency;
+  requirePendingWaitpointId?: string;
 };
 
 /**
@@ -520,7 +522,10 @@ export type CreateDateTimeWaitpointParams = {
   mintContext?: WaitpointMintContext;
 };
 
-export type CreateManualWaitpointParams = {
+export type CreateManualWaitpointParams = Pick<
+  CreateDateTimeWaitpointParams,
+  "storeId" | "creationAcceptUntil" | "keyedCreation" | "beforeStoreCreate"
+> & {
   runId?: string;
   keyClaim?: { store: RunStore; tx: PrismaClientOrTransaction };
   environmentId: string;
@@ -560,4 +565,13 @@ export type AssociatedWaitpointData = {
   userProvidedIdempotencyKey: false;
   projectId: string;
   environmentId: string;
+};
+
+export type CreateBatchWaitpointParams = {
+  requireStore?: boolean;
+  batchId: string;
+  environmentId: string;
+  projectId: string;
+  tx?: PrismaClientOrTransaction;
+  mintContext?: WaitpointMintContext;
 };

@@ -76,7 +76,11 @@ export class ApiWaitpointPresenter extends BasePresenter {
         ? parseWaitpointId(waitpointId)
         : undefined;
       let waitpoint;
-      if (parsed && parsed.format !== "legacy" && parsed.type === "DATETIME") {
+      if (
+        parsed &&
+        parsed.format !== "legacy" &&
+        (parsed.type === "DATETIME" || parsed.type === "MANUAL")
+      ) {
         waitpoint = await this.getStoreWaitpoint({
           waitpointId,
           environmentId: environment.id,
@@ -112,7 +116,9 @@ export class ApiWaitpointPresenter extends BasePresenter {
         url: generateHttpCallbackUrl(
           waitpoint.id,
           environment.apiKey,
-          parsed && parsed.format !== "legacy" && parsed.type === "DATETIME"
+          parsed &&
+            parsed.format !== "legacy" &&
+            (parsed.type === "DATETIME" || parsed.type === "MANUAL")
             ? { environmentId: environment.id }
             : undefined
         ),

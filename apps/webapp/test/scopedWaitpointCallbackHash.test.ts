@@ -1,4 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { generateWaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import {
+  generateHttpCallbackUrl,
+  verifyHttpCallbackHash,
+} from "../app/services/httpCallback.server";
 import {
   generateScopedHttpCallbackHash,
   readHttpCallbackScope,
@@ -8,6 +13,38 @@ import {
 describe("scoped waitpoint callback hash", () => {
   const scope = { waitpointId: "waitpoint-test", environmentId: "environment-test" };
   const key = "test-api-key";
+
+  it.each(["DATETIME", "MANUAL"] as const)(
+    "generates a scoped production callback URL for native %s tokens",
+    (type) => {
+      const waitpointId = generateWaitpointId(type);
+      const url = new URL(generateHttpCallbackUrl(waitpointId, key, scope));
+      const hash = url.pathname.split("/").pop()!;
+      expect(hash).toMatch(/^wp1\./);
+      expect(readHttpCallbackScope(hash)).toEqual({
+        waitpointId,
+        environmentId: scope.environmentId,
+      });
+      expect(verifyScopedHttpCallbackHash(waitpointId, scope.environmentId, hash, key)).toBe(true);
+      expect(verifyScopedHttpCallbackHash(waitpointId, "other-environment", hash, key)).toBe(false);
+      expect(
+        verifyScopedHttpCallbackHash(waitpointId, scope.environmentId, hash, "rotated-key")
+      ).toBe(false);
+    }
+  );
+
+  it("keeps legacy and unscoped callback URLs on their existing hash protocol", () => {
+    for (const [waitpointId, callbackScope] of [
+      ["c".repeat(25), scope],
+      [generateWaitpointId("MANUAL"), undefined],
+    ] as const) {
+      const url = new URL(generateHttpCallbackUrl(waitpointId, key, callbackScope));
+      const hash = url.pathname.split("/").pop()!;
+      expect(hash).toMatch(/^[a-f0-9]{64}$/);
+      expect(readHttpCallbackScope(hash)).toBeUndefined();
+      expect(verifyHttpCallbackHash(waitpointId, hash, key)).toBe(true);
+    }
+  });
 
   it("preserves a URL-safe opaque hash bound to both the waitpoint and its environment", () => {
     const hash = generateScopedHttpCallbackHash(scope, key);

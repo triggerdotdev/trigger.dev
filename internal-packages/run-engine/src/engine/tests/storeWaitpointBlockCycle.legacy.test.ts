@@ -250,7 +250,11 @@ describe("Store waitpoint block cycle: legacy", () => {
             batchId: batch.id,
           });
           expect(header).not.toBeNull();
-          const legacy = await engine.createManualWaitpoint({ ...common, environmentId: env.id });
+          const legacy = await engine.createManualWaitpoint({
+            ...common,
+            runId: undefined,
+            environmentId: env.id,
+          });
           holder = engine["runLock"].lock("unmarkedControl", [run.id], async () => {
             locked.resolve();
             await boundedBarrier(release.promise, "test never released the cleanup run lock");
@@ -283,7 +287,7 @@ describe("Store waitpoint block cycle: legacy", () => {
           engine["runLock"]["retryConfig"].maxAttempts = 1;
           const siblings = await Promise.all(
             Array.from({ length: 32 }, () =>
-              engine.createManualWaitpoint({ ...common, environmentId: env.id })
+              engine.createManualWaitpoint({ ...common, runId: undefined, environmentId: env.id })
             )
           );
           const admissions = await Promise.allSettled(

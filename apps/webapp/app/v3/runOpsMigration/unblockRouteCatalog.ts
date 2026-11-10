@@ -20,7 +20,6 @@ const INDEX = "internal-packages/run-engine/src/engine/index.ts";
 const WAITPOINT_SYSTEM = "internal-packages/run-engine/src/engine/systems/waitpointSystem.ts";
 const TTL_SYSTEM = "internal-packages/run-engine/src/engine/systems/ttlSystem.ts";
 const RUN_ATTEMPT_SYSTEM = "internal-packages/run-engine/src/engine/systems/runAttemptSystem.ts";
-const BATCH_SYSTEM = "internal-packages/run-engine/src/engine/systems/batchSystem.ts";
 
 export const UNBLOCK_ROUTES: readonly UnblockRoute[] = [
   {
@@ -96,16 +95,28 @@ export const UNBLOCK_ROUTES: readonly UnblockRoute[] = [
     symbol: "createAssociatedWaitpointRecord (native publication terminal reconciliation)",
   },
   {
+    id: "wp.publishTerminalBatch",
+    kind: "RUN",
+    site: WAITPOINT_SYSTEM,
+    symbol: "#publishNativeBatch (terminal publication reconciliation)",
+  },
+  {
+    id: "wp.completeNativeBatch",
+    kind: "RUN",
+    site: WAITPOINT_SYSTEM,
+    symbol: "completeBatchWaitpoint (native identity)",
+  },
+  {
     id: "batch.tryCompleteBatch",
     kind: "RUN",
-    site: BATCH_SYSTEM,
-    symbol: "#tryCompleteBatch",
+    site: "internal-packages/run-engine/src/engine/systems/batchSystem.ts",
+    symbol: "#resumeBatchParent (legacy identity)",
   },
   {
     id: "batch.expireBatch",
     kind: "RUN",
-    site: BATCH_SYSTEM,
-    symbol: "expireBatch",
+    site: "internal-packages/run-engine/src/engine/systems/batchSystem.ts",
+    symbol: "expireBatch (legacy identity)",
   },
   {
     id: "ttl.expireRun",

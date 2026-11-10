@@ -5,7 +5,7 @@ import { parseWaitpointId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 
 export function isStoreDateTimeWaitpoint(waitpointId: string) {
   const parsed = parseWaitpointId(waitpointId);
-  return parsed.format !== "legacy" && parsed.type === "DATETIME";
+  return parsed.format !== "legacy" && (parsed.type === "DATETIME" || parsed.type === "MANUAL");
 }
 
 /** Call only after resolving the dashboard's authorized environment/project. */

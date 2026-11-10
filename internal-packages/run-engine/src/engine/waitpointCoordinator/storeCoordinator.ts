@@ -5,6 +5,10 @@ import type { Counter, Meter } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { parseWaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import pMap from "p-map";
+import {
+  ManualWaitpointCatalog,
+  manualWaitpointCatalogManifestKey,
+} from "./manualWaitpointCatalog.js";
 import { completionFingerprint } from "./fanoutPolicy.js";
 import {
   assertSingleSlot,
@@ -112,7 +116,8 @@ export type WaitpointRecordInput = {
 };
 
 function keyRetainUntil(record: WaitpointRecordInput): string {
-  if (record.type !== "DATETIME" || !record.idempotencyKey) return "0";
+  if ((record.type !== "DATETIME" && record.type !== "MANUAL") || !record.idempotencyKey)
+    return "0";
   if (!record.idempotencyKeyExpiresAt) return "-1";
   const expiresAt = Date.parse(record.idempotencyKeyExpiresAt);
   if (!Number.isFinite(expiresAt)) throw new Error("Invalid keyed waitpoint expiry");
@@ -480,7 +485,7 @@ export type AbsorbResult = {
    * on to a block this operation did not expect; `terminal` means it has been through
    * cleanup. Both mutated nothing, and neither may proceed to registration.
    */
-  outcome: "absorbed" | "stale" | "terminal" | "cleanupOwed";
+  outcome: "absorbed" | "stale" | "terminal" | "cleanupOwed" | "ownerGone";
   /** The block the run is actually on, for diagnosing a refusal. */
   currentBlockId?: string;
   /**
@@ -727,6 +732,11 @@ export class WaitpointCompletionConflictError extends Error {
  */
 export const DEFAULT_TERMINAL_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 
+function isManualWaitpoint(id: string) {
+  const parsed = parseWaitpointId(id);
+  return parsed.format === "b32hexW" && parsed.type === "MANUAL";
+}
+
 export type WaitpointStoreCoordinatorOptions = {
   redisOptions?: RedisOptions;
   /** App-owned standalone or MemoryDB cluster client. No eager connection is required. */
@@ -791,6 +801,7 @@ export class WaitpointStoreCoordinator {
     cleanups?: Counter;
   } = {};
   #quit?: Promise<void>;
+  readonly manualCatalog: ManualWaitpointCatalog;
 
   constructor(options: WaitpointStoreCoordinatorOptions) {
     this.logger = options.logger ?? new Logger("WaitpointStoreCoordinator", "debug");
@@ -807,6 +818,11 @@ export class WaitpointStoreCoordinator {
         onError: (error) =>
           this.logger.error("WaitpointStoreCoordinator redis client error", { error }),
       });
+    this.manualCatalog = new ManualWaitpointCatalog({
+      redis: this.redis,
+      beforeCommand: this.beforeCommand,
+      readRecords: (ids) => this.readCompletedRecords(ids),
+    });
     installCreationBudget(this.redis);
     registerWaitpointCommands(this.redis);
 
@@ -1331,6 +1347,7 @@ export class WaitpointStoreCoordinator {
     };
   }
 
+  /** Pending MANUAL allocation ACK holds the completion lock after its publication fence closes. */
   async acknowledgeIdempotencyCandidate(args: {
     candidateId: string;
     organizationId?: string;
@@ -1338,6 +1355,9 @@ export class WaitpointStoreCoordinator {
     idempotencyKey: string;
     acceptUntil: number;
     winnerId?: string;
+    /** Allocation is fenced, but this untimed MANUAL source still owns its pending lifecycle. */
+    pendingManual?: boolean;
+    completed?: boolean;
   }): Promise<void> {
     const receipt = idempotencyReceiptKey(
       args.environmentId,
@@ -1346,14 +1366,17 @@ export class WaitpointStoreCoordinator {
     );
     let expected = args.winnerId ?? "cancelled";
     if (args.winnerId === args.candidateId) {
-      // Completion has converged. Retain that proof before releasing the source, then expire
-      // the receipt only after release succeeds. Every interrupted step is replayed by the job.
-      expected = (await this.#call("wpCompleteIdemReceipt", [receipt], args.candidateId))[0]!;
+      // Completed sources retain terminal proof before release. An untimed MANUAL instead
+      // discharges only its fenced allocation; its pending source remains discoverable.
+      // Preserve a terminal receipt written by an interrupted older recovery attempt too.
+      if (!args.pendingManual || args.completed)
+        expected = (await this.#call("wpCompleteIdemReceipt", [receipt], args.candidateId))[0]!;
       const keys = waitpointKeys(args.candidateId);
       await this.#call(
         "wpReleaseKeyedCandidate",
         [keys.record, keys.fanout, waitpointRelatedRunsKey(args.candidateId)],
-        String(this.terminalRetentionMs)
+        String(this.terminalRetentionMs),
+        args.pendingManual ? "pending-manual" : ""
       );
     }
     await this.#call(
@@ -1368,7 +1391,8 @@ export class WaitpointStoreCoordinator {
       await this.retirePendingSource(
         args.candidateId,
         args.organizationId,
-        JSON.stringify({ key: receipt, acceptUntil: args.acceptUntil })
+        JSON.stringify({ key: receipt, acceptUntil: args.acceptUntil }),
+        args.pendingManual
       );
     }
   }
@@ -1387,6 +1411,48 @@ export class WaitpointStoreCoordinator {
       ],
       String(Math.max(0, acceptUntil - Date.now()) + this.terminalRetentionMs)
     );
+  }
+
+  /** Caller holds the source completion lock and has rechecked the organization flag. */
+  async retireManualCatalog(
+    waitpointId: string,
+    organizationId: string
+  ): Promise<number | undefined> {
+    if (!isManualWaitpoint(waitpointId))
+      throw new Error("Catalog maintenance requires a native MANUAL identity");
+    const manifest = await this.manualCatalog.getManifest(organizationId, waitpointId);
+    const source = (await this.readCompletedRecords([waitpointId])).get(waitpointId);
+    if (
+      source &&
+      (source.record.type !== "MANUAL" || source.record.organizationId !== organizationId)
+    )
+      throw new Error("MANUAL catalog maintenance ownership mismatch");
+    if (!manifest) {
+      if (source) throw new Error("Live MANUAL source has no catalog manifest");
+      // Facet retirement may have committed before the final discovery ACK was lost.
+      await this.retirePendingSource(waitpointId, organizationId);
+      return;
+    }
+    // The producer can crash after the canonical flip but before pruning status candidates.
+    if (source) await this.manualCatalog.reconcileStatus(source.record);
+    await this.beforeCommand?.();
+    // Read expiry and registration holds atomically: releasing the final hold can arm expiry.
+    const [remaining, held, permanent] = (await this.redis.eval(
+      `return {redis.call('PTTL', KEYS[1]),
+        tonumber(redis.call('HGET', KEYS[1], 'rh') or '0'),
+        redis.call('HGET', KEYS[1], 'ku') == '-1' and 1 or 0}`,
+      1,
+      waitpointKeys(waitpointId).record
+    )) as number[];
+    if (remaining! >= 0) return Date.now() + remaining! + 1;
+    if (remaining === -1) {
+      if (held! > 0 && permanent !== 1)
+        return Date.now() + Math.max(1000, this.terminalRetentionMs);
+      return; // Pending, fanout-pinned, or permanently keyed source.
+    }
+    if (!(await this.manualCatalog.retire(manifest)))
+      return Math.max(Date.now() + 1000, manifest.acceptUntil + 1);
+    await this.retirePendingSource(waitpointId, organizationId);
   }
 
   /** Enabled native producers publish BEFORE source creation, so rollback needs only the org. */
@@ -1420,25 +1486,37 @@ export class WaitpointStoreCoordinator {
   async retirePendingSource(
     waitpointId: string,
     organizationId: string,
-    acknowledgedReceipt?: string
+    acknowledgedReceipt?: string,
+    retainPendingSource = false
   ): Promise<void> {
     await this.beforeCommand?.();
     const hints = fanoutIndexKeys(fanoutPartition(waitpointId));
     const index = organizationPendingSourceIndexKey(organizationId, fanoutPartition(waitpointId));
     const metadata = organizationSourceReceiptKey(organizationId, fanoutPartition(waitpointId));
-    assertSingleSlot("retire source ownership", [hints.due, hints.quarantine, index, metadata]);
-    await this.redis.eval(
-      `local receipt = redis.call('HGET',KEYS[4],ARGV[1])
-       if ARGV[2] ~= '' and receipt == ARGV[2] then redis.call('HDEL',KEYS[4],ARGV[1]); receipt = false end
-       if receipt or redis.call('ZSCORE',KEYS[1],ARGV[1]) or redis.call('ZSCORE',KEYS[2],ARGV[1]) then return 0 end
-       return redis.call('ZREM',KEYS[3],ARGV[1])`,
-      4,
+    const catalog = manualWaitpointCatalogManifestKey(organizationId, waitpointId);
+    assertSingleSlot("retire source ownership", [
       hints.due,
       hints.quarantine,
       index,
       metadata,
+      catalog,
+    ]);
+    await this.redis.eval(
+      `local receipt = redis.call('HGET',KEYS[4],ARGV[1])
+       if ARGV[2] ~= '' and receipt == ARGV[2] then redis.call('HDEL',KEYS[4],ARGV[1]); receipt = false end
+       if ARGV[3] == '1' or (ARGV[4] == 'manual' and redis.call('HEXISTS',KEYS[5],ARGV[1]) == 1) then return 0 end
+       if receipt or redis.call('ZSCORE',KEYS[1],ARGV[1]) or redis.call('ZSCORE',KEYS[2],ARGV[1]) then return 0 end
+       return redis.call('ZREM',KEYS[3],ARGV[1])`,
+      5,
+      hints.due,
+      hints.quarantine,
+      index,
+      metadata,
+      catalog,
       waitpointId,
-      acknowledgedReceipt ?? ""
+      acknowledgedReceipt ?? "",
+      retainPendingSource ? "1" : "",
+      isManualWaitpoint(waitpointId) ? "manual" : ""
     );
   }
 
@@ -1596,6 +1674,7 @@ export class WaitpointStoreCoordinator {
     runId: string;
     blockId: string;
     edges: BlockEdge[];
+    requirePendingWaitpointId?: string;
     /**
      * The block this operation believes it is replacing, or `undefined` for a run that should
      * have no block installed yet.
@@ -1673,6 +1752,7 @@ export class WaitpointStoreCoordinator {
         runWithdrawalIndexKey(args.runId),
       ],
       ...argv,
+      args.requirePendingWaitpointId ?? "",
       args.absorptionId ?? "",
       contributionMember(args.blockId, args.absorptionId ?? ""),
       args.registrationEvidence ??
@@ -1685,7 +1765,12 @@ export class WaitpointStoreCoordinator {
     // Refused scripts mutate no active block state. An earlier retained predecessor can still
     // converge on a stale retry; the caller must not register, so this is a result and not a partial
     // absorb: `registerBlocks` stops here, and a direct caller reads `outcome`.
-    if (reply[0] === "stale" || reply[0] === "terminal" || reply[0] === "cleanupOwed") {
+    if (
+      reply[0] === "stale" ||
+      reply[0] === "terminal" ||
+      reply[0] === "cleanupOwed" ||
+      reply[0] === "ownerGone"
+    ) {
       this.metrics.staleAbsorbs?.add(1, { outcome: reply[0] });
       return {
         // `cleanupOwed`: a previous mixed block's cross-store cleanup is still owed, so this DIFFERENT block
@@ -3228,26 +3313,29 @@ ${RETAIN_WAITPOINT_RECORD}
         args.organizationId,
         fanoutPartition(waitpointId)
       );
-      assertSingleSlot("owned fanout hint", [keys.due, keys.quarantine, index, metadata]);
+      const catalog = manualWaitpointCatalogManifestKey(args.organizationId, waitpointId);
+      assertSingleSlot("owned fanout hint", [keys.due, keys.quarantine, index, metadata, catalog]);
       return this.redis.eval(
         `if ARGV[1] == 'remove' then
            local removed = redis.call('ZREM',KEYS[1],ARGV[2])
-           if ARGV[4] ~= 'keep' and redis.call('HEXISTS',KEYS[4],ARGV[2]) == 0 and not redis.call('ZSCORE',KEYS[2],ARGV[2]) then redis.call('ZREM',KEYS[3],ARGV[2]) end
+           if ARGV[4] ~= 'keep' and (ARGV[5] ~= 'manual' or redis.call('HEXISTS',KEYS[5],ARGV[2]) == 0) and redis.call('HEXISTS',KEYS[4],ARGV[2]) == 0 and not redis.call('ZSCORE',KEYS[2],ARGV[2]) then redis.call('ZREM',KEYS[3],ARGV[2]) end
            return {'removed',tostring(removed)}
          end
          redis.call('ZADD',KEYS[3],0,ARGV[2])
          if ARGV[1] == 'add-nx' then redis.call('ZADD',KEYS[1],'NX',ARGV[3],ARGV[2])
          else redis.call('ZADD',KEYS[1],ARGV[3],ARGV[2]) end
          return {'added'}`,
-        4,
+        5,
         keys.due,
         keys.quarantine,
         index,
         metadata,
+        catalog,
         op,
         waitpointId,
         String(args.score ?? 0),
-        args.preserveOwnership ? "keep" : ""
+        args.preserveOwnership ? "keep" : "",
+        isManualWaitpoint(waitpointId) ? "manual" : ""
       ) as Promise<string[]>;
     }
     return this.#call(

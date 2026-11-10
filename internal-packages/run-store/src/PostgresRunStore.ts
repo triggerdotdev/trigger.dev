@@ -2826,6 +2826,24 @@ export class PostgresRunStore implements RunStore {
 
   // --- BatchTaskRun (run-ops) ---
 
+  async markBatchWaitpointOnStore(batchId: string, waitpointId: string): Promise<void> {
+    const count = await this.prisma.$executeRaw`
+      UPDATE "BatchTaskRun" SET "options" = (CASE WHEN jsonb_typeof("options") = 'object' THEN "options" ELSE '{}'::jsonb END) || jsonb_build_object('waitpointStoreId',${waitpointId}::text), "updatedAt" = CURRENT_TIMESTAMP
+      WHERE "id" = ${batchId} AND ("options" ->> 'waitpointStoreId') IS NULL
+    `;
+    if (count === 0) {
+      const batch = await this.prisma.batchTaskRun.findFirst({
+        where: { id: batchId },
+        select: { options: true },
+      });
+      if (
+        !batch ||
+        (batch.options as Record<string, unknown> | null)?.waitpointStoreId !== waitpointId
+      )
+        throw new Error("Batch waitpoint storage identity changed or batch is missing");
+    }
+  }
+
   async createBatchTaskRun(
     data: CreateBatchTaskRunData,
     tx?: PrismaClientOrTransaction

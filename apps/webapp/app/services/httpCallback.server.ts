@@ -10,7 +10,10 @@ export function generateHttpCallbackUrl(
 ) {
   const parsed = scope ? parseWaitpointId(waitpointId) : undefined;
   const hash =
-    scope && parsed && parsed.format !== "legacy" && parsed.type === "DATETIME"
+    scope &&
+    parsed &&
+    parsed.format !== "legacy" &&
+    (parsed.type === "DATETIME" || parsed.type === "MANUAL")
       ? generateScopedHttpCallbackHash({ waitpointId, environmentId: scope.environmentId }, apiKey)
       : generateHttpCallbackHash(waitpointId, apiKey);
 

@@ -1,10 +1,64 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
+import { hasLocalRedisServer, startLocalRedisCluster } from "@internal/testcontainers";
+import { StoreWaitpointCoordinator } from "@internal/run-engine";
 import {
   createWaitpointStoreConnection,
   waitpointClusterOptions,
 } from "~/v3/utils/waitpointStoreConnection.server";
 
+// Exercise actual connection lifecycles rather than the webapp singleton stubs.
+vi.unmock("ioredis");
+
 describe("waitpointStoreConnection.server", () => {
+  test.skipIf(!hasLocalRedisServer())(
+    "lazy catalog methods mint and list native MANUAL tokens through the real connection",
+    async () => {
+      const cluster = await startLocalRedisCluster();
+      let activations = 0;
+      const connection = createWaitpointStoreConnection(
+        `redis://127.0.0.1:${cluster.nodes[0]!.port}`,
+        { onActivate: () => activations++ }
+      );
+      try {
+        const catalog = connection.store.manualCatalog;
+        expect(activations).toBe(0);
+
+        const adapter = new StoreWaitpointCoordinator({ store: connection.store });
+        const created = await adapter.createManualWaitpoint({
+          runId: "run_catalog_proxy",
+          environmentId: "env_catalog_proxy",
+          projectId: "proj_catalog_proxy",
+          mintContext: { organizationId: "org_catalog_proxy" },
+        });
+        expect(created.kind).toBe("created");
+        const list = catalog.list;
+        const rows = await list({
+          organizationId: "org_catalog_proxy",
+          environmentId: "env_catalog_proxy",
+          direction: "forward",
+          limit: 10,
+        });
+        expect(rows.map((row) => row.record.id)).toEqual([created.waitpoint.id]);
+        expect(await catalog.getManifest("org_catalog_proxy", created.waitpoint.id)).toBeDefined();
+        expect(activations).toBe(1);
+        // Consumer shutdown must leave the shared connection under its owner's lifecycle.
+        await connection.store.quit();
+        expect(
+          await list({
+            organizationId: "org_catalog_proxy",
+            environmentId: "env_catalog_proxy",
+            direction: "forward",
+            limit: 10,
+          })
+        ).toHaveLength(1);
+      } finally {
+        await connection.close();
+        await connection.close();
+        await cluster.stop();
+      }
+    },
+    30_000
+  );
   // Catches: MemoryDB cluster options losing the TLS servername, credentials, fail-fast, lazy-connect or timeout settings.
   test("waitpoint MemoryDB configuration preserves the TLS hostname after slot discovery", () => {
     const options = waitpointClusterOptions("rediss://user:p%40ss@waitpoints.example:6380");
@@ -71,6 +125,17 @@ describe("waitpointStoreConnection.server", () => {
     expect(inspected.toJSON).toBeUndefined();
     expect(inspected.constructor).toBeUndefined();
     expect(inspected.unknownMethod).toBeUndefined();
+    const catalog = connection.store.manualCatalog;
+    expect(typeof catalog.publish).toBe("function");
+    expect(typeof catalog.list).toBe("function");
+    expect(JSON.stringify(catalog)).toBe("{}");
+    expect(String(catalog)).toBe("[object ManualWaitpointCatalog]");
+    const inspectedCatalog = catalog as unknown as Record<PropertyKey, unknown>;
+    expect(inspectedCatalog.then).toBeUndefined();
+    expect(inspectedCatalog.toJSON).toBeUndefined();
+    expect(inspectedCatalog.constructor).toBeUndefined();
+    expect(inspectedCatalog.unknownMethod).toBeUndefined();
+    expect(inspectedCatalog[Symbol.toStringTag]).toBeUndefined();
     expect(activations).toBe(0);
     await connection.close();
   });

@@ -635,6 +635,7 @@ describe("reply framing (direct Lua — pins the wire shape the coordinator deco
           "1",
           envelope,
           "",
+          "",
           contributionMember("block_test", ""),
           "raw-test-revision"
         );
@@ -690,6 +691,7 @@ describe("reply framing (direct Lua — pins the wire shape the coordinator deco
           "0",
           "",
           "",
+          "",
           contributionMember("block_test", ""),
           "raw-test-revision"
         );
@@ -739,6 +741,7 @@ describe("reply framing (direct Lua — pins the wire shape the coordinator deco
         edgeField("w_b", 0),
         "{}",
         "0",
+        "",
         "",
         "",
         contributionMember("block_test", ""),
@@ -791,6 +794,7 @@ describe("reply framing (direct Lua — pins the wire shape the coordinator deco
           "1",
           envelope,
           "",
+          "",
           contributionMember("block_test", ""),
           "raw-test-revision"
         );
@@ -837,6 +841,7 @@ describe("reply framing (direct Lua — pins the wire shape the coordinator deco
           edgeField("w_a", 0),
           "{}",
           "1",
+          "",
           "",
           "",
           contributionMember("block_test", ""),
@@ -890,6 +895,7 @@ describe("reply framing (direct Lua — pins the wire shape the coordinator deco
           "0",
           "",
           "",
+          "",
           contributionMember("block_test", ""),
           "raw-test-revision"
         );
@@ -939,6 +945,7 @@ describe("reply framing (direct Lua — pins the wire shape the coordinator deco
           "0",
           "",
           "",
+          "",
           contributionMember("block_test", ""),
           "raw-test-revision"
         );
@@ -985,6 +992,7 @@ describe("reply framing (direct Lua — pins the wire shape the coordinator deco
           field,
           "{}",
           "0",
+          "",
           "",
           "",
           contributionMember("block_test", ""),

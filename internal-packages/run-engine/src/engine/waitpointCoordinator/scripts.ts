@@ -109,7 +109,7 @@ const PERSIST_RUN_KEYS = `
       for i = 1, 4 do redis.call('PERSIST', KEYS[i]) end
 `;
 
-// A keyed DATETIME remains reusable for the reservation's full lifetime. The immutable
+// A keyed token remains reusable for the reservation's full lifetime. The immutable
 // deadline is copied at creation, so every terminal site can retain it within this same slot.
 // Every command using this fragment declares the related-runs key as its final key.
 export const RETAIN_WAITPOINT_RECORD = `
@@ -815,7 +815,13 @@ export function registerWaitpointCommands(redis: RedisClient): void {
       local record = KEYS[1]
       if redis.call('EXISTS', record) == 0 then return { 'released' } end
       if redis.call('HGET', record, 'status') ~= '${STORED_COMPLETED}' then
-        return redis.error_reply('wpReleaseKeyedCandidate: winner is not completed')
+        local token = cjson.decode(redis.call('HGET', record, 'r'))
+        if ARGV[2] ~= 'pending-manual' or token.type ~= 'MANUAL' or
+            (token.completedAfter ~= nil and token.completedAfter ~= cjson.null) then
+          return redis.error_reply('wpReleaseKeyedCandidate: winner is not completed')
+        end
+        redis.call('HDEL', record, 'ka')
+        return { 'released' }
       end
       redis.call('HDEL', record, 'ka')
       local state = redis.call('HGET', KEYS[2], 'state')
@@ -1031,10 +1037,10 @@ export function registerWaitpointCommands(redis: RedisClient): void {
       -- Guard before any write: a wrong n must not half-apply the script. HDEL/HSETNX below
       -- are irreversible mid-script, and Redis does not roll back a script that errors. The trailing
       -- ARGV carries the absorption id, index member and read revision after the edge groups.
-      if n == nil or (#ARGV ~= 8 + n * 5 and #ARGV ~= 7 + n * 5) then
+      if n == nil or (#ARGV ~= 9 + n * 5 and #ARGV ~= 8 + n * 5) then
         return redis.error_reply('runAbsorbBlockers: arity mismatch')
       end
-      local evidenceOffset = #ARGV == 8 + n * 5 and 3 or 2
+      local evidenceOffset = #ARGV == 9 + n * 5 and 3 or 2
       if ARGV[1] == '' then
         return redis.error_reply('runAbsorbBlockers: ARGV[1] must be a block id')
       end
@@ -1071,6 +1077,16 @@ export function registerWaitpointCommands(redis: RedisClient): void {
 
       if not (isRetry or isRollover or isFirst) then
         return { '${STALE}', previous }
+      end
+      -- New batch admissions require their pending header. An exact contribution retained
+      -- after phase one must still finish registration after header delivery, in the same cycle.
+      local requirePending = ARGV[5 + n * 5]
+      if requirePending ~= '' and redis.call('SISMEMBER', pend, requirePending) == 0 and
+          not (isRetry and ARGV[#ARGV - evidenceOffset] ~= '' and
+            ((evidenceOffset == 3 and redis.call('SISMEMBER', contrib, '!accepted') == 1 and
+              redis.call('SISMEMBER', contrib, ARGV[#ARGV - 1]) == 1) or
+             (evidenceOffset == 2 and redis.call('EXISTS', contrib) == 1))) then
+        return { 'ownerGone', previous }
       end
       -- Validate the declared predecessor's retained keys before any mutation. Rollover moves the
       -- hash instead of enumerating it; the manifest survives a lost reply and empty old blocks.
@@ -1857,7 +1873,8 @@ declare module "@internal/redis" {
       recordKey: string,
       fanoutKey: string,
       relatedRunsKey: string,
-      retentionMs: string
+      retentionMs: string,
+      pendingManual?: string
     ): Result<string[], Context>;
     wpAckIdemReceipt(
       receiptKey: string,

@@ -1,4 +1,9 @@
-import { deriveRunWaitpointId } from "../waitpointCoordinator/runWaitpointId.js";
+import type { ManualWaitpointCatalogListInput } from "../waitpointCoordinator/manualWaitpointCatalog.js";
+import { batchTimeoutError } from "./batchSystem.js";
+import {
+  deriveRunWaitpointId,
+  deriveBatchWaitpointId,
+} from "../waitpointCoordinator/runWaitpointId.js";
 import { timeoutError } from "@trigger.dev/core/v3";
 import {
   generateWaitpointId,
@@ -32,7 +37,10 @@ import { resolveCompletedWaitpointRecords } from "./completedWaitpointRecordAdap
 import { sendNotificationToWorker } from "../eventBus.js";
 import { isExecuting, isFinalRunStatus, isPendingExecuting } from "../statuses.js";
 import { LegacyPostgresWaitpointCoordinator } from "../waitpointCoordinator/legacyPostgresCoordinator.js";
-import { waitpointFromStoredRecord } from "../waitpointCoordinator/storeWaitpointCoordinator.js";
+import {
+  StoreWaitpointBlockRefusedError,
+  waitpointFromStoredRecord,
+} from "../waitpointCoordinator/storeWaitpointCoordinator.js";
 import type { WaitpointStoreCoordinator } from "../waitpointCoordinator/storeCoordinator.js";
 import {
   assertCreationBudget,
@@ -66,6 +74,7 @@ import type { z } from "zod";
 import type { SystemResources } from "./systems.js";
 import {
   hasStoreWaitpoints,
+  batchStoreWaitpointId,
   snapshotRouteFromSnapshot,
   type CompletedWaitpointRecord,
 } from "@internal/run-store";
@@ -110,6 +119,8 @@ export type WaitpointSystemOptions = {
         | "acknowledgeIdempotencyCandidate"
         | "retirePendingSource"
         | "readRelatedRunIds"
+        | "manualCatalog"
+        | "retireManualCatalog"
       >
     >;
 };
@@ -203,6 +214,8 @@ export class WaitpointSystem {
         | "acknowledgeIdempotencyCandidate"
         | "retirePendingSource"
         | "readRelatedRunIds"
+        | "manualCatalog"
+        | "retireManualCatalog"
       >
     >;
   // Whether a store coordinator is wired at all. When it is not, the RUN mint decision and terminal
@@ -601,11 +614,20 @@ export class WaitpointSystem {
 
     if (storeRoutingEnabled && !completionLockHeld) {
       const parsed = parseWaitpointId(id);
-      if (parsed.format === "b32hexW" && parsed.type === "DATETIME") {
+      if (
+        parsed.format === "b32hexW" &&
+        (parsed.type === "DATETIME" || parsed.type === "MANUAL" || parsed.type === "BATCH")
+      ) {
         return this.withWaitpointCompletionLock(id, () =>
           this.completeWaitpoint({ id, output, armGuard, onlyIfPending, organizationId }, true)
         );
       }
+    }
+
+    if (storeRoutingEnabled && organizationId) {
+      const parsed = parseWaitpointId(id);
+      if (parsed.format === "b32hexW" && parsed.type === "MANUAL")
+        await this.prearmManualCatalogRetirement(id, organizationId);
     }
 
     // Armed before the first mutation, so a committed completion always has a durable watcher. An
@@ -695,7 +717,46 @@ export class WaitpointSystem {
     }
   }
 
-  /** Enabled DATETIME producers and delivery acknowledgement share this admission lock. */
+  /** Every MANUAL TTL writer prearms this while holding the existing source completion lock. */
+  public async prearmManualCatalogRetirement(
+    waitpointId: string,
+    organizationId: string,
+    availableAt = new Date()
+  ): Promise<void> {
+    await this.$.worker.enqueueOnce({
+      id: `retireManualWaitpointCatalog:${waitpointId}`,
+      job: "retireManualWaitpointCatalog",
+      payload: { waitpointId, organizationId },
+      availableAt,
+    });
+  }
+
+  public async retireManualCatalog(payload: {
+    waitpointId: string;
+    organizationId: string;
+  }): Promise<number | undefined> {
+    if (!this.#waitpointStore?.retireManualCatalog)
+      throw new Error("MANUAL catalog maintenance requires native store");
+    return this.#waitpointStore.retireManualCatalog(payload.waitpointId, payload.organizationId);
+  }
+
+  public canReadStoreManualWaitpoints(organizationId: string): boolean | Promise<boolean> {
+    return this.#storeWired ? this.isWaitpointStoreEnabled(organizationId) : false;
+  }
+
+  public async listStoreManualWaitpoints(
+    params: ManualWaitpointCatalogListInput
+  ): Promise<Waitpoint[]> {
+    if (!this.#storeWired || !(await this.isWaitpointStoreEnabled(params.organizationId)))
+      return [];
+    if (params.id && classifyWaitpointCoordinator(params.id) !== "store") return [];
+    if (!this.#waitpointStore?.manualCatalog) throw new Error("MANUAL catalog is not wired");
+    return (await this.#waitpointStore.manualCatalog.list(params)).map((stored) =>
+      waitpointFromStoredRecord(stored.record.id, stored)
+    );
+  }
+
+  /** Native DATETIME, MANUAL and BATCH producers serialize with final delivery acknowledgement. */
   withWaitpointCompletionLock<T>(waitpointId: string, operation: () => Promise<T>): Promise<T> {
     return this.$.runLock.lockQueued(
       "waitpointCompletion",
@@ -890,7 +951,7 @@ export class WaitpointSystem {
         : generateRunOpsIdV2(shard);
   }
 
-  /** One claim seam for enabled DATETIME and PG creators sharing the existing raw key. */
+  /** One claim seam for enabled native token and PG creators sharing the existing raw key. */
   async #createUnderKeyClaim(
     params: {
       runId?: string;
@@ -1034,7 +1095,7 @@ export class WaitpointSystem {
     );
   }
 
-  /** Existing DATETIME compatibility only; MANUAL minting remains in Postgres. */
+  /** Read native DATETIME and MANUAL tokens for existing API, callback and dashboard consumers. */
   public async readExistingStoreDateTimeWaitpoint(params: {
     waitpointId: string;
     environmentId: string;
@@ -1057,13 +1118,14 @@ export class WaitpointSystem {
     projectId: string;
   }): Promise<Waitpoint | null> {
     const parsed = parseWaitpointId(params.waitpointId);
-    if (parsed.format !== "b32hexW" || parsed.type !== "DATETIME") return null;
+    if (parsed.format !== "b32hexW" || (parsed.type !== "DATETIME" && parsed.type !== "MANUAL"))
+      return null;
     const stored = (await this.#waitpointStore!.readCompletedRecords([params.waitpointId])).get(
       params.waitpointId
     );
     if (
       !stored ||
-      stored.record.type !== "DATETIME" ||
+      (stored.record.type !== "DATETIME" && stored.record.type !== "MANUAL") ||
       stored.record.environmentId !== params.environmentId ||
       stored.record.projectId !== params.projectId
     )
@@ -1075,6 +1137,186 @@ export class WaitpointSystem {
         : stored.completion.output.ref
       : null;
     return waitpoint;
+  }
+
+  /** Native batch admission is decided once from the already-committed batch header. */
+  async blockRunWithNativeBatch(params: {
+    runId: string;
+    batchId: string;
+    projectId: string;
+    environmentId: string;
+    organizationId: string;
+  }): Promise<Waitpoint | null | undefined> {
+    if (
+      !(this.coordinator instanceof RoutingWaitpointCoordinator) ||
+      !(await this.coordinator.canCreateNativeBatch(params.organizationId))
+    )
+      return undefined;
+    const id = deriveBatchWaitpointId(params.batchId);
+    if (!id) return undefined;
+    const batch = await this.$.runStore.findBatchTaskRunById(params.batchId);
+    if (!batch) throw new Error("Batch header is not committed");
+    if (batch.resumedAt) return null;
+    const marked = batchStoreWaitpointId(batch.options);
+    // Existing Postgres headers keep their immutable storage when the flag changes.
+    if (
+      !marked &&
+      (await this.$.runStore.findWaitpoint(
+        { where: { completedByBatchId: params.batchId } },
+        this.$.prisma
+      ))
+    )
+      return undefined;
+    const snapshot = await getLatestExecutionSnapshot(
+      this.$.prisma,
+      params.runId,
+      this.$.runStore,
+      params.environmentId,
+      params.organizationId
+    );
+    const payload = { ...params, cycleAnchor: cycleAnchorSnapshotId(snapshot) };
+    await this.$.worker.enqueueOnce({
+      id: `recoverBatchWaitpoint:${params.batchId}`,
+      job: "recoverBatchWaitpoint",
+      payload,
+      availableAt: new Date(Date.now() + (this.options.completionGuardDelayMs ?? 30000)),
+    });
+    if (!(await this.isStoreRoutingEnabled(params.organizationId)))
+      throw new Error("Native batch publication is disabled");
+    await this.$.runStore.markBatchWaitpointOnStore(params.batchId, id);
+    const result = await this.#publishNativeBatch(payload);
+    await this.$.worker.ack(`recoverBatchWaitpoint:${params.batchId}`);
+    return result;
+  }
+
+  async recoverBatchWaitpoint(
+    payload: z.infer<typeof workerCatalog.recoverBatchWaitpoint.schema>
+  ): Promise<void> {
+    if (!(await this.isWaitpointStoreEnabled(payload.organizationId))) return;
+    const batch = await this.$.runStore.findBatchTaskRunById(payload.batchId);
+    if (!batch || batch.runtimeEnvironmentId !== payload.environmentId)
+      throw new Error("Batch recovery ownership conflict");
+    if (batch.resumedAt) return;
+    if (batchStoreWaitpointId(batch.options) !== deriveBatchWaitpointId(payload.batchId))
+      throw new Error("Batch publication not committed");
+    await this.#publishNativeBatch(payload);
+  }
+
+  async #publishNativeBatch(
+    payload: z.infer<typeof workerCatalog.recoverBatchWaitpoint.schema>
+  ): Promise<Waitpoint> {
+    const result = await this.coordinator.createBatchWaitpoint({
+      ...payload,
+      requireStore: true,
+      mintContext: {
+        organizationId: payload.organizationId,
+        eligibleTypes: new Set(["BATCH"] as const),
+      },
+    });
+    if (classifyWaitpointCoordinator(result.waitpoint.id) !== "store")
+      throw new Error("Native batch publication is disabled");
+    // The batch can finish while its native header is being published. Reconcile the durable
+    // business state before registration, as RUN publication does for already-finished children.
+    const batch = await this.$.runStore.findBatchTaskRunById(payload.batchId);
+    let waitpoint = result.waitpoint;
+    if (batch?.status === "COMPLETED" || batch?.status === "ABORTED") {
+      waitpoint = await this.completeWaitpoint({
+        id: waitpoint.id,
+        organizationId: payload.organizationId,
+        output:
+          batch.status === "ABORTED"
+            ? { value: JSON.stringify(batchTimeoutError(batch)), isError: true }
+            : { value: "Batch waitpoint completed", isError: false },
+      });
+    }
+    try {
+      await this.blockRunWithWaitpoint({
+        runId: payload.runId,
+        waitpoints: result.waitpoint.id,
+        projectId: payload.projectId,
+        organizationId: payload.organizationId,
+        batch: { id: payload.batchId },
+        blockOperation: {
+          id: `block:${payload.runId}:${payload.cycleAnchor}`,
+          absorptionId: payload.batchId,
+          cycleAnchor: payload.cycleAnchor,
+        },
+      });
+    } catch (error) {
+      if (!(error instanceof StoreWaitpointBlockCycleAdvanced)) throw error;
+    }
+    if (batch?.status === "COMPLETED" || batch?.status === "ABORTED")
+      await this.$.runStore.updateManyBatchTaskRun(
+        { where: { id: payload.batchId, resumedAt: null }, data: { resumedAt: new Date() } },
+        this.$.prisma
+      );
+    return waitpoint;
+  }
+
+  async completeBatchWaitpoint(params: {
+    batchId: string;
+    options: unknown;
+    organizationId?: string;
+    output: { value: string; isError: boolean };
+  }): Promise<boolean> {
+    // Read the internal identity only after rollout admission. Disabled paths preserve the PG lookup.
+    const enabled =
+      this.coordinator instanceof RoutingWaitpointCoordinator &&
+      (await this.coordinator.isStoreRoutingEnabled(params.organizationId));
+    const id = enabled ? batchStoreWaitpointId(params.options) : undefined;
+    if (id) {
+      await this.completeWaitpoint({
+        id,
+        organizationId: params.organizationId,
+        output: params.output,
+      });
+      return true;
+    }
+    return false;
+  }
+
+  async nativeBatchWaitpointId(batchId: string): Promise<string | undefined> {
+    const batch = await this.$.runStore.findBatchTaskRunById(batchId);
+    return batchStoreWaitpointId(batch?.options);
+  }
+
+  async blockBatchChild(params: {
+    runId: string;
+    waitpointId: string;
+    projectId: string;
+    organizationId: string;
+    batch: { id: string; index?: number };
+    workerId?: string;
+    runnerId?: string;
+    ownerWaitpointId?: string;
+  }): Promise<void> {
+    const snapshot = await getLatestExecutionSnapshot(
+      this.$.prisma,
+      params.runId,
+      this.$.runStore,
+      undefined,
+      params.organizationId
+    );
+    const owner = params.ownerWaitpointId ?? (await this.nativeBatchWaitpointId(params.batch.id));
+    try {
+      await this.blockRunWithWaitpoint({
+        ...params,
+        waitpoints: params.waitpointId,
+        requirePendingWaitpointId: owner,
+        blockOperation: {
+          id: `block:${params.runId}:${cycleAnchorSnapshotId(snapshot)}`,
+          absorptionId: params.waitpointId,
+          cycleAnchor: cycleAnchorSnapshotId(snapshot),
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof StoreWaitpointBlockCycleAdvanced ||
+        (error instanceof StoreWaitpointBlockRefusedError && error.outcome === "ownerGone")
+      )
+        return;
+      throw error;
+    }
   }
 
   /** Creates a MANUAL waitpoint. With an `idempotencyKey`, an existing waitpoint is returned. */
@@ -1122,6 +1364,49 @@ export class WaitpointSystem {
         standaloneShardKey,
       });
     } else {
+      const mintContext =
+        runId && organizationId
+          ? { organizationId, eligibleTypes: new Set(["MANUAL"] as const) }
+          : undefined;
+      const creationCoordinator =
+        this.coordinator instanceof RoutingWaitpointCoordinator
+          ? await this.coordinator.manualCreationCoordinator(mintContext)
+          : this.legacyCoordinator;
+      const creationAcceptUntil = !idempotencyKey ? Date.now() + 300_000 : undefined;
+      let storeId: string | undefined;
+      const prearm = async (
+        waitpointId: string,
+        keyedCreation?: CreateDateTimeWaitpointParams["keyedCreation"]
+      ) => {
+        await this.prearmManualCatalogRetirement(
+          waitpointId,
+          organizationId!,
+          new Date(keyedCreation?.acceptUntil ?? creationAcceptUntil!)
+        );
+        await this.$.worker.enqueueOnce({
+          id: `recoverDateTimeWaitpoint:${waitpointId}`,
+          job: "recoverDateTimeWaitpoint",
+          payload: {
+            waitpointId,
+            organizationId: organizationId!,
+            projectId,
+            environmentId,
+            completedAfter: timeout ?? new Date(keyedCreation?.acceptUntil ?? creationAcceptUntil!),
+            manual: true,
+            creationAcceptUntil,
+            ...(keyedCreation && idempotencyKey
+              ? {
+                  keyedCreation: {
+                    scope: keyedCreation.scope,
+                    acceptUntil: keyedCreation.acceptUntil,
+                    idempotencyKey,
+                  },
+                }
+              : {}),
+          },
+          availableAt: timeout ?? new Date(keyedCreation?.acceptUntil ?? creationAcceptUntil!),
+        });
+      };
       result = await this.#createUnderKeyClaim(
         {
           runId,
@@ -1133,10 +1418,10 @@ export class WaitpointSystem {
           standaloneResidency,
           standaloneShardKey,
         },
-        async (_keyedCreation, keyClaim) =>
-          (keyClaim
+        async (keyedCreation, keyClaim) =>
+          (creationCoordinator === this.legacyCoordinator && keyClaim
             ? this.legacyCoordinator.withKeyClaim(keyClaim)
-            : this.legacyCoordinator
+            : creationCoordinator
           ).createManualWaitpoint({
             runId,
             environmentId,
@@ -1147,10 +1432,27 @@ export class WaitpointSystem {
             tags,
             standaloneResidency,
             standaloneShardKey,
-          })
+            mintContext,
+            keyedCreation,
+            creationAcceptUntil,
+            storeId,
+            keyClaim,
+            beforeStoreCreate: async (id) => {
+              if (!storeId) await prearm(id, keyedCreation);
+            },
+          }),
+        creationCoordinator === this.legacyCoordinator
+          ? undefined
+          : async (keyedCreation) => {
+              storeId = generateWaitpointId("MANUAL");
+              await prearm(storeId, keyedCreation);
+            }
       );
     }
 
+    if (enabled && classifyWaitpointCoordinator(result.waitpoint.id) === "store") {
+      return { waitpoint: result.waitpoint, isCached: result.kind === "cached" };
+    }
     if (result.kind === "cached") {
       return { waitpoint: result.waitpoint, isCached: true };
     }
@@ -1199,6 +1501,7 @@ export class WaitpointSystem {
     runnerId,
     expectedEnvironmentId,
     blockOperation,
+    requirePendingWaitpointId,
     recoverOnly = false,
     tx,
   }: {
@@ -1228,6 +1531,7 @@ export class WaitpointSystem {
     expectedEnvironmentId?: string;
     /** Recovery can finish an accepted request. It cannot accept a new request. */
     recoverOnly?: boolean;
+    requirePendingWaitpointId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<TaskRunExecutionSnapshot> {
     const prisma = tx ?? this.$.prisma;
@@ -1249,12 +1553,30 @@ export class WaitpointSystem {
       const storeRoutingEnabled =
         this.coordinator instanceof RoutingWaitpointCoordinator &&
         (await this.coordinator.isStoreRoutingEnabled(organizationId));
-      // Reject operations from an earlier cycle before changing either store.
-      // The run lock protects this check. Check the anchor even if the old block is gone.
-      if (
+      if (storeRoutingEnabled && batch && !requirePendingWaitpointId) {
+        const owner = await this.nativeBatchWaitpointId(batch.id);
+        // The header publishes its own edge. All later items, including cached legacy
+        // associations, must join while that header still belongs to this parent block.
+        if (owner && !$waitpoints.includes(owner)) requirePendingWaitpointId = owner;
+      }
+      const hasStoreAdmission =
         storeRoutingEnabled &&
-        $waitpoints.some((id) => classifyWaitpointCoordinator(id) === "store")
-      ) {
+        (!!requirePendingWaitpointId ||
+          $waitpoints.some((id) => classifyWaitpointCoordinator(id) === "store"));
+      if (!blockOperation && storeRoutingEnabled && hasStoreAdmission) {
+        const anchor = cycleAnchorSnapshotId(snapshot);
+        blockOperation = {
+          id: `block:${runId}:${anchor}`,
+          absorptionId: $waitpoints.join(":"),
+          cycleAnchor: anchor,
+        };
+      }
+      // Lifecycle precondition for a store-format blocker, checked UNDER THE RUN LOCK and BEFORE any
+      // coordinator is mutated: the caller-captured TRES cycle anchor must still match the run's current
+      // active cycle. This fences a delayed operation from an attempt that has since resumed, retried or
+      // requeued — even when MemoryDB currently holds no block (a non-terminal abandon), which the store's
+      // compare-and-set alone cannot catch. A same-cycle registration or retry sees a matching anchor.
+      if (storeRoutingEnabled && hasStoreAdmission) {
         const currentAnchor = cycleAnchorSnapshotId(snapshot);
         if (blockOperation && blockOperation.cycleAnchor !== currentAnchor) {
           throw new StoreWaitpointBlockCycleAdvanced({
@@ -1338,20 +1660,32 @@ export class WaitpointSystem {
       let registration: BlockerRegistration | undefined;
       let pendingCount: number;
       if (storeRoutingEnabled) {
-        const absorbed = await this.#absorbBlockersWithCompensationGuard({
-          runId,
-          blockId: blockOperation?.id,
-          absorptionId: blockOperation?.absorptionId,
-          expectedPreviousBlockId: blockOperation?.expectedPreviousBlockId,
-          organizationId,
-          waitpointIds: $waitpoints,
-          projectId,
-          spanIdToComplete,
-          batchId: batch?.id,
-          batchIndex: batch?.index,
-          client: prisma,
-          parentResidency: snapshotRouteFromSnapshot(snapshot)?.residency,
-        });
+        let absorbed;
+        try {
+          absorbed = await this.#absorbBlockersWithCompensationGuard({
+            runId,
+            blockId: blockOperation?.id,
+            absorptionId: blockOperation?.absorptionId,
+            expectedPreviousBlockId: blockOperation?.expectedPreviousBlockId,
+            organizationId,
+            waitpointIds: $waitpoints,
+            projectId,
+            spanIdToComplete,
+            batchId: batch?.id,
+            batchIndex: batch?.index,
+            client: prisma,
+            parentResidency: snapshotRouteFromSnapshot(snapshot)?.residency,
+            requirePendingWaitpointId,
+          });
+        } catch (error) {
+          if (
+            requirePendingWaitpointId &&
+            error instanceof StoreWaitpointBlockRefusedError &&
+            error.outcome === "ownerGone"
+          )
+            return snapshot;
+          throw error;
+        }
         registration = absorbed.registration;
         pendingCount = absorbed.pendingCount;
       } else {
@@ -1583,14 +1917,22 @@ export class WaitpointSystem {
     /** Caller-owned identity for a store-format waitpoint; undefined for a legacy blocker (ignored). */
     blockOperation?: { id: string; absorptionId: string; cycleAnchor: string };
   }): Promise<void> {
-    await this.blockRunWithWaitpoint({
-      runId,
-      waitpoints: waitpointId,
-      projectId,
-      organizationId,
-      batch,
-      blockOperation,
-    });
+    if (
+      batch &&
+      classifyWaitpointCoordinator(waitpointId) === "store" &&
+      (await this.isStoreRoutingEnabled(organizationId))
+    ) {
+      await this.blockBatchChild({ runId, waitpointId, projectId, organizationId, batch });
+    } else {
+      await this.blockRunWithWaitpoint({
+        runId,
+        waitpoints: waitpointId,
+        projectId,
+        organizationId,
+        batch,
+        blockOperation,
+      });
+    }
 
     await this.completeWaitpoint({
       id: waitpointId,
@@ -2291,6 +2633,16 @@ export class WaitpointSystem {
       data,
       organizationId: payload.organizationId,
     });
+    if (payload.batch) {
+      await this.blockBatchChild({
+        runId: payload.parentRunId,
+        waitpointId: payload.waitpointId,
+        projectId: run.projectId,
+        organizationId: payload.organizationId,
+        batch: payload.batch,
+      });
+      return;
+    }
     await this.recoverWaitpointBlock({
       runId: payload.parentRunId,
       organizationId: payload.organizationId,
@@ -2323,6 +2675,8 @@ export class WaitpointSystem {
     }
   }
 
+  // Existing DATETIME helper/job names and diagnostics also cover MANUAL deadlines and allocation
+  // recovery. Keep the persisted job identity compatible with already queued work.
   public async recoverDateTimeWaitpoint(payload: RecoverDateTimeWaitpoint): Promise<void> {
     if (!(await this.isWaitpointStoreEnabled(payload.organizationId))) return;
     if (payload.keyedCreation) {
@@ -2330,27 +2684,71 @@ export class WaitpointSystem {
       if (!store?.recoverIdempotencyCandidate || !store.acknowledgeIdempotencyCandidate) {
         throw new Error("Keyed DATETIME recovery requires the waitpoint store");
       }
+      const recoverCandidate = store.recoverIdempotencyCandidate.bind(store);
+      const acknowledgeCandidate = store.acknowledgeIdempotencyCandidate.bind(store);
       const candidate = {
         candidateId: payload.waitpointId,
         environmentId: payload.keyedCreation.scope,
         idempotencyKey: payload.keyedCreation.idempotencyKey,
         acceptUntil: payload.keyedCreation.acceptUntil,
       };
-      const outcome = await store.recoverIdempotencyCandidate(candidate);
-      // Only THIS attempt's published winner owns this deadline. A losing candidate must
-      // not complete the winner at its own (possibly earlier) requested deadline.
-      if (outcome.winnerId === payload.waitpointId && !outcome.completed) {
-        await this.completeWaitpoint({
-          id: payload.waitpointId,
-          organizationId: payload.organizationId,
-          onlyIfPending: true,
+      const recover = async (pendingAllocation = false) => {
+        const outcome = await recoverCandidate(candidate);
+        // Only THIS attempt's published winner owns this deadline. A losing candidate must
+        // not complete the winner at its own (possibly earlier) requested deadline.
+        if (outcome.winnerId === payload.waitpointId && !outcome.completed) {
+          const manual = payload.manual
+            ? await this.readExistingStoreDateTimeWaitpoint({
+                ...payload,
+                waitpointId: outcome.winnerId,
+              })
+            : undefined;
+          if (!pendingAllocation && (!payload.manual || manual?.completedAfter))
+            await this.completeWaitpoint({
+              id: payload.waitpointId,
+              organizationId: payload.organizationId,
+              onlyIfPending: true,
+              ...(payload.manual && manual?.completedAfter
+                ? {
+                    output: {
+                      value: JSON.stringify(timeoutError(manual.completedAfter)),
+                      isError: true,
+                    },
+                  }
+                : {}),
+            });
+        }
+        const pendingManual =
+          pendingAllocation &&
+          (await this.#readStoreDateTimeWaitpoint(payload))?.status === "PENDING";
+        const acknowledge = async () => {
+          if (payload.manual)
+            await this.prearmManualCatalogRetirement(payload.waitpointId, payload.organizationId);
+          await acknowledgeCandidate({
+            ...candidate,
+            ...outcome,
+            organizationId: payload.organizationId,
+            pendingManual,
+          });
+        };
+        if (payload.manual && !pendingAllocation) {
+          await this.withWaitpointCompletionLock(payload.waitpointId, async () => {
+            if (!(await this.isWaitpointStoreEnabled(payload.organizationId))) return;
+            await acknowledge();
+          });
+        } else await acknowledge();
+      };
+      const manual = payload.manual ? await this.#readStoreDateTimeWaitpoint(payload) : undefined;
+      if (manual && !manual.completedAfter) {
+        // Allocation may finish independently of an untimed token. Fence every foreground
+        // publication first, then serialize receipt retirement with completion/final fanout ACK.
+        if (Date.now() <= candidate.acceptUntil)
+          throw new Error("MANUAL allocation publication is not yet fenced");
+        await this.withWaitpointCompletionLock(payload.waitpointId, async () => {
+          if (!(await this.isWaitpointStoreEnabled(payload.organizationId))) return;
+          await recover(true);
         });
-      }
-      await store.acknowledgeIdempotencyCandidate({
-        ...candidate,
-        ...outcome,
-        organizationId: payload.organizationId,
-      });
+      } else await recover();
       return;
     }
     const existing = await this.readExistingStoreDateTimeWaitpoint(payload);
@@ -2374,11 +2772,20 @@ export class WaitpointSystem {
       );
       return;
     }
-    await this.completeWaitpoint({
-      id: payload.waitpointId,
-      organizationId: payload.organizationId,
-      onlyIfPending: true,
-    });
+    if (!payload.manual || existing.completedAfter)
+      await this.completeWaitpoint({
+        id: payload.waitpointId,
+        organizationId: payload.organizationId,
+        onlyIfPending: true,
+        ...(payload.manual && existing.completedAfter
+          ? {
+              output: {
+                value: JSON.stringify(timeoutError(existing.completedAfter)),
+                isError: true,
+              },
+            }
+          : {}),
+      });
   }
 
   /** Publish a native RUN association and reconcile terminal state before its parent registers. */
@@ -2533,6 +2940,7 @@ export class WaitpointSystem {
     blockingParentRunId,
     organizationId,
     blockingViaBatch,
+    blockingBatchId,
   }: {
     runId: string;
     projectId: string;
@@ -2545,11 +2953,10 @@ export class WaitpointSystem {
     blockingParentRunId?: string;
     organizationId?: string;
     /**
-     * The parent will block on this waitpoint as part of a BATCH. A batch's children must all be legacy —
-     * its siblings are blocked via the lockless path, which cannot drive the store protocol — so a NEW mint
-     * is forced legacy here, keeping the batch uniform. An existing association is still reused as-is.
+     * The waiting batch header fixes new child residency. Existing associations stay unchanged.
      */
     blockingViaBatch?: boolean;
+    blockingBatchId?: string;
   }): Promise<Waitpoint> {
     // Fast path: reuse an existing Postgres association (unchanged legacy behaviour).
     const run = await this.$.runStore.findRun(
@@ -2622,8 +3029,8 @@ export class WaitpointSystem {
       // Mint by the organization's waitpoint rollout; a lazy create with no known parent stays
       // legacy. The id is deterministic (store) or a fresh Postgres row (legacy); create-if-absent makes the
       // store write idempotent, so a completion racing this create converges either way.
-      // Batch blocking retains its legacy lockless protocol. Shared children use the same parent-based
-      // mint policy; later waiters reuse the durable association regardless of their own residency.
+      // Shared children reuse their durable association. Native batch headers permit native new mints;
+      // older Postgres batch headers retain their existing child registration protocol.
       const org = organizationId ?? runAfterLock.organizationId ?? undefined;
       let plan: AssociatedWaitpointPlan | undefined;
       if (this.#storeWired) {
@@ -2635,7 +3042,15 @@ export class WaitpointSystem {
             ? runAfterLock.parentTaskRunId
             : undefined;
         const mintParentRunId = eagerParentRunId ?? blockingParentRunId;
-        const mintLegacy = !eagerParentRunId && blockingViaBatch;
+        const mintLegacy =
+          !eagerParentRunId &&
+          blockingViaBatch &&
+          !(
+            blockingBatchId &&
+            org &&
+            (await this.isStoreRoutingEnabled(org)) &&
+            (await this.nativeBatchWaitpointId(blockingBatchId))
+          );
         if (this.#storeWired && mintParentRunId && org && !mintLegacy) {
           plan = (
             await this.planRunAssociatedWaitpoint({

@@ -33,6 +33,7 @@ import type {
   CompleteResult,
   CreateDateTimeWaitpointParams,
   CreateManualWaitpointParams,
+  CreateBatchWaitpointParams,
   CreateWaitpointResult,
   RegisterBlockersResult,
   RegisterBlocksLocklessParams,
@@ -483,7 +484,16 @@ export class RoutingWaitpointCoordinator implements WaitpointCoordinator {
     const legacyIds = partition.legacy.map((e) => e.item);
     const storeIds = partition.store.map((e) => e.item);
 
-    this.#assertStoreBlockersEligible(params.runId, storeIds, params.blockId);
+    const hasStoreAdmission = storeIds.length > 0 || !!params.requirePendingWaitpointId;
+    this.#assertStoreBlockersEligible(
+      params.runId,
+      storeIds.length
+        ? storeIds
+        : params.requirePendingWaitpointId
+          ? [params.requirePendingWaitpointId]
+          : [],
+      params.blockId
+    );
 
     // Native/mixed absorption checks the fence atomically in its store CAS. Legacy-only writes
     // need the same admission barrier before Postgres can accept a later attempt's edges.
@@ -493,20 +503,21 @@ export class RoutingWaitpointCoordinator implements WaitpointCoordinator {
 
     // Commit the discovery marker first. A crash after it leaves only a harmless extra lookup;
     // a crash after absorption can never leave Redis edges hidden from a restarted/rolled-back process.
-    if (storeIds.length > 0) await this.#markStoreWaitpoints?.(params.runId, params.organizationId);
+    if (hasStoreAdmission) await this.#markStoreWaitpoints?.(params.runId, params.organizationId);
 
     // Store CAS FIRST, then legacy — the two mutating absorptions never run concurrently. A stale/refused
     // store operation throws here BEFORE any legacy edge is written. It cannot change the active store
     // block or register watchers, but may finish an already-retained predecessor withdrawal. Legacy
     // edges are written only after the store half is durably accepted.
-    const storeResult =
-      storeIds.length > 0
-        ? await this.#store!.absorbBlockers({
-            ...params,
-            waitpointIds: storeIds,
-            registrationWaitpointIds: params.waitpointIds,
-          })
-        : undefined;
+    // A native batch also guards a reused PG child before its legacy edge is written.
+    // Even zero-native-edge admissions retain exact request proof until tail work finishes.
+    const storeResult = hasStoreAdmission
+      ? await this.#store!.absorbBlockers({
+          ...params,
+          waitpointIds: storeIds,
+          registrationWaitpointIds: params.waitpointIds,
+        })
+      : undefined;
 
     let legacyResult: AbsorbBlockersResult | undefined;
     try {
@@ -519,7 +530,7 @@ export class RoutingWaitpointCoordinator implements WaitpointCoordinator {
       // the block id and the exact edges just contributed, so an earlier additive call's blockers on the
       // same block and any early-delivery receipts survive. If compensation itself fails, surface the
       // exact fenced targets so the caller arms a durable retry — never report clean while leaving residue.
-      if (storeResult && storeIds.length > 0) {
+      if (storeResult) {
         try {
           await this.#store!.compensateAbsorption({
             runId: params.runId,
@@ -611,6 +622,30 @@ export class RoutingWaitpointCoordinator implements WaitpointCoordinator {
       : this.#legacy.createDateTimeWaitpoint(params);
   }
 
+  async manualCreationCoordinator(
+    mintContext?: WaitpointMintContext
+  ): Promise<WaitpointCoordinator> {
+    return (await this.#decideMintResidency("MANUAL", mintContext)) === "store"
+      ? this.#store!
+      : this.#legacy;
+  }
+  async canCreateNativeBatch(organizationId: string): Promise<boolean> {
+    return (
+      (await this.#decideMintResidency("BATCH", {
+        organizationId,
+        eligibleTypes: new Set(["BATCH"]),
+      })) === "store"
+    );
+  }
+  async createBatchWaitpoint(params: CreateBatchWaitpointParams): Promise<CreateWaitpointResult> {
+    const owner =
+      (await this.#decideMintResidency("BATCH", params.mintContext)) === "store"
+        ? this.#store!
+        : this.#legacy;
+    if (params.requireStore && owner === this.#legacy)
+      throw new Error("Native BATCH waitpoint creation is disabled");
+    return owner.createBatchWaitpoint(params);
+  }
   async createManualWaitpoint(params: CreateManualWaitpointParams): Promise<CreateWaitpointResult> {
     const residency = await this.#decideMintResidency("MANUAL", params.mintContext);
     return residency === "store"

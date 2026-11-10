@@ -44,7 +44,7 @@ describe("Store waitpoint block cycle: identity", () => {
         await setupBackgroundWorker(engine, env, "test-task");
         const run = await runToExecuting(engine, env, "test-task", prisma, "run_marked");
         const other = await runToExecuting(engine, env, "test-task", prisma, "run_unmarked");
-        const wp = await seedStoreWaitpoint(store, env.id, env.project.id); // MANUAL, no deadline
+        const wp = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId); // MANUAL, no deadline
         expect(
           hasStoreWaitpoints(
             (await prisma.taskRun.findFirstOrThrow({ where: { id: run.id } })).annotations
@@ -119,8 +119,8 @@ describe("Store waitpoint block cycle: identity", () => {
         const orgId = env.organization.id;
         const run = await runToExecuting(engine, env, taskIdentifier, prisma, "run_ident");
 
-        const wp1 = await seedStoreWaitpoint(store, env.id, env.project.id);
-        const wp2 = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const wp1 = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
+        const wp2 = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         // Capture cycle 1's anchor when the operation begins; the caller carries it across the cycle.
         const anchor1 = await captureAnchor(engine, run.id);
         const args = (waitpoints: string[], id: string, cycleAnchor: string) => ({
@@ -180,7 +180,7 @@ describe("Store waitpoint block cycle: identity", () => {
         );
 
         // A NEW cycle carries a DIFFERENT caller operation id AND a freshly captured anchor.
-        const wp3 = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const wp3 = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         const anchor2 = await captureAnchor(engine, run.id);
         expect(anchor2).not.toBe(anchor1);
         await blockStore(engine, args([wp3], "op_c2", anchor2));
@@ -206,7 +206,7 @@ describe("Store waitpoint block cycle: identity", () => {
         const orgId = env.organization.id;
         const run = await runToExecuting(engine, env, taskIdentifier, prisma, "run_staleack");
 
-        const wp1 = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const wp1 = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         await blockStore(engine, {
           runId: run.id,
           projectId: env.project.id,
@@ -246,7 +246,7 @@ describe("Store waitpoint block cycle: identity", () => {
         );
 
         // Cycle 2 installs a fresh block under a new caller operation id.
-        const wp2 = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const wp2 = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         await blockStore(engine, {
           runId: run.id,
           projectId: env.project.id,
@@ -283,7 +283,7 @@ describe("Store waitpoint block cycle: identity", () => {
         const orgId = env.organization.id;
         const run = await runToExecuting(engine, env, taskIdentifier, prisma, "run_replay");
 
-        const wp1 = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const wp1 = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         // 1. Capture cycle 1's complete block operation — id AND cycle anchor — the way a delayed retry
         // would carry it verbatim.
         const cycle1Operation = {
@@ -325,7 +325,7 @@ describe("Store waitpoint block cycle: identity", () => {
         );
 
         // 3. Establish cycle 2 with a different blocker, operation id and freshly captured anchor.
-        const wp2 = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const wp2 = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         await blockStore(engine, {
           runId: run.id,
           projectId: env.project.id,
@@ -375,7 +375,7 @@ describe("Store waitpoint block cycle: identity", () => {
         const orgId = env.organization.id;
         const run = await runToExecuting(engine, env, taskIdentifier, prisma, "run_abandonreplay");
 
-        const wp1 = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const wp1 = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         // 1. Block using cycle 1's complete operation.
         const cycle1Operation = {
           runId: run.id,
@@ -441,7 +441,7 @@ describe("Store waitpoint block cycle: identity", () => {
           },
           { timeout: 15_000, interval: 200 }
         );
-        const wp2 = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const wp2 = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         await blockStore(engine, {
           runId: run.id,
           projectId: env.project.id,
@@ -507,7 +507,7 @@ describe("Store waitpoint block cycle: identity", () => {
         // 2. Capture the operation anchor from the pre-block (QUEUED) snapshot.
         const anchor = await captureAnchor(engine, run.id);
 
-        const wp = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const wp = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         const operation = {
           runId: run.id,
           projectId: env.project.id,
@@ -577,7 +577,7 @@ describe("Store waitpoint block cycle: identity", () => {
             projectId: env.projectId,
             organizationId: env.organizationId,
           });
-          const id = await seedStoreWaitpoint(store, env.id, env.projectId);
+          const id = await seedStoreWaitpoint(store, env.id, env.projectId, env.organizationId);
           const operation = {
             id: `checkpoint_${enabled}`,
             cycleAnchor: cycleAnchorSnapshotId(

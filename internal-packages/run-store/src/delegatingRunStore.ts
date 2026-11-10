@@ -686,6 +686,10 @@ export class DelegatingRunStore implements RunStore {
     return this.delegate.findTaskRunCheckpointById(checkpointId, ownerRunId, client);
   }
 
+  markBatchWaitpointOnStore(batchId: string, waitpointId: string): Promise<void> {
+    return this.delegate.markBatchWaitpointOnStore(batchId, waitpointId);
+  }
+
   createBatchTaskRun(
     data: CreateBatchTaskRunData,
     tx?: PrismaClientOrTransaction

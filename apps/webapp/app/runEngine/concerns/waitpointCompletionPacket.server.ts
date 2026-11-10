@@ -73,7 +73,7 @@ export async function processWaitpointCompletionPacket(
   };
 }
 
-/** Stream MANUAL tokens remain inline in Postgres; a reused native DATETIME needs bounded output. */
+/** Native stream tokens need bounded output; legacy tokens retain their inline packet. */
 export async function processStreamWaitpointCompletionPacket(
   waitpointId: string,
   data: string,
@@ -81,7 +81,7 @@ export async function processStreamWaitpointCompletionPacket(
 ): Promise<IOPacket> {
   const packet = { data, dataType: "application/json" };
   const parsed = parseWaitpointId(waitpointId);
-  if (parsed.format === "legacy" || parsed.type !== "DATETIME") {
+  if (parsed.format === "legacy" || (parsed.type !== "DATETIME" && parsed.type !== "MANUAL")) {
     return packet;
   }
 

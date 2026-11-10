@@ -578,7 +578,7 @@ describe("Object Storage", () => {
   postgresAndMinioTest.extend<
     Pick<PostgresAndRedisContext, "network" | "redisContainer" | "redisOptions">
   >({ network, redisContainer, redisOptions })(
-    "stream completions offload reused native DATETIME output and preserve legacy inline output",
+    "stream completions offload native DATETIME and MANUAL output and preserve legacy inline output",
     async ({ prisma, redisOptions, minioConfig, postgresContainer }) => {
       const savedEnv = {
         OBJECT_STORE_BASE_URL: env.OBJECT_STORE_BASE_URL,
@@ -674,6 +674,8 @@ describe("Object Storage", () => {
         expect(parseWaitpointId(token.waitpoint.id).format).toBe("b32hexW");
         expect(token.isCached).toBe(true);
         expect(token.waitpoint.id).toBe(datetime.waitpoint.id);
+        const manual = await engine.createManualWaitpoint({ ...scope });
+        expect(parseWaitpointId(manual.waitpoint.id)).toMatchObject({ type: "MANUAL" });
         const data = JSON.stringify("x".repeat(600 * 1024));
         expect(Buffer.byteLength(data)).toBeGreaterThan(524_288);
         expect(Buffer.byteLength(data)).toBeLessThan(1024 * 1024);
@@ -682,58 +684,60 @@ describe("Object Storage", () => {
         expect(
           await processWaitpointCompletionPacket(legacyPacket, environment, "legacy/token")
         ).toBe(legacyPacket);
-        const packet = await processStreamWaitpointCompletionPacket(
-          token.waitpoint.id,
-          data,
-          environment
-        );
-        expect(packet.dataType).toBe("application/store");
-        await engine.completeWaitpoint({
-          id: token.waitpoint.id,
-          organizationId: environment.organization.id,
-          onlyIfPending: true,
-          output: { value: packet.data!, type: packet.dataType, isError: false },
-        });
-        const completed = await engine.getStoreDateTimeWaitpoint({
-          waitpointId: token.waitpoint.id,
-          ...scope,
-        });
-        expect(completed?.status).toBe("COMPLETED");
-        expect(completed?.outputType).toBe("application/store");
-        expect(completed?.output).toBe(packet.data);
-        const decoded = await downloadPacketFromObjectStore(
-          { data: completed!.output!, dataType: completed!.outputType! },
-          environment
-        );
-        expect(decoded.data).toBe(data);
-        expect(JSON.parse(decoded.data!)).toBe(JSON.parse(data));
-        await expect(
-          downloadPacketFromObjectStore(packet, { ...environment, slug: "another-environment" })
-        ).rejects.toThrow();
+        for (const native of [token, manual]) {
+          const packet = await processStreamWaitpointCompletionPacket(
+            native.waitpoint.id,
+            data,
+            environment
+          );
+          expect(packet.dataType).toBe("application/store");
+          await engine.completeWaitpoint({
+            id: native.waitpoint.id,
+            organizationId: environment.organization.id,
+            onlyIfPending: true,
+            output: { value: packet.data!, type: packet.dataType, isError: false },
+          });
+          const completed = await engine.getStoreDateTimeWaitpoint({
+            waitpointId: native.waitpoint.id,
+            ...scope,
+          });
+          expect(completed?.status).toBe("COMPLETED");
+          expect(completed?.outputType).toBe("application/store");
+          expect(completed?.output).toBe(packet.data);
+          const decoded = await downloadPacketFromObjectStore(
+            { data: completed!.output!, dataType: completed!.outputType! },
+            environment
+          );
+          expect(decoded.data).toBe(data);
+          expect(JSON.parse(decoded.data!)).toBe(JSON.parse(data));
+          await expect(
+            downloadPacketFromObjectStore(packet, { ...environment, slug: "another-environment" })
+          ).rejects.toThrow();
 
-        // A competing send can upload and lose completion without overwriting the accepted value.
-        const competing = await processStreamWaitpointCompletionPacket(
-          token.waitpoint.id,
-          JSON.stringify("y".repeat(600 * 1024)),
-          environment
-        );
-        expect(competing.data).not.toBe(packet.data);
-        await engine.completeWaitpoint({
-          id: token.waitpoint.id,
-          organizationId: environment.organization.id,
-          onlyIfPending: true,
-          output: { value: competing.data!, type: competing.dataType, isError: false },
-        });
-        expect((await downloadPacketFromObjectStore(packet, environment)).data).toBe(data);
-        expect(
-          (await engine.getStoreDateTimeWaitpoint({ waitpointId: token.waitpoint.id, ...scope }))
-            ?.output
-        ).toBe(packet.data);
+          // A competing send can upload and lose completion without overwriting the accepted value.
+          const competing = await processStreamWaitpointCompletionPacket(
+            native.waitpoint.id,
+            JSON.stringify("y".repeat(600 * 1024)),
+            environment
+          );
+          expect(competing.data).not.toBe(packet.data);
+          await engine.completeWaitpoint({
+            id: native.waitpoint.id,
+            organizationId: environment.organization.id,
+            onlyIfPending: true,
+            output: { value: competing.data!, type: competing.dataType, isError: false },
+          });
+          expect((await downloadPacketFromObjectStore(packet, environment)).data).toBe(data);
+          expect(
+            (await engine.getStoreDateTimeWaitpoint({ waitpointId: native.waitpoint.id, ...scope }))
+              ?.output
+          ).toBe(packet.data);
+        }
 
         // PG MANUAL completion keeps the accepted raw record even with no usable object store.
         env.OBJECT_STORE_BASE_URL = undefined;
         env.TASK_PAYLOAD_OFFLOAD_THRESHOLD = 1;
-        const legacy = await engine.createManualWaitpoint({ ...scope });
+        const legacy = await engine.createManualWaitpoint({ ...scope, runId: undefined });
         expect(parseWaitpointId(legacy.waitpoint.id).format).toBe("legacy");
         const inline = await processStreamWaitpointCompletionPacket(
           legacy.waitpoint.id,

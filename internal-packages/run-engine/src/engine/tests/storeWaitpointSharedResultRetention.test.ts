@@ -8,6 +8,7 @@ import {
   deriveWaitpointIdFromAnchor,
   generateRunOpsId,
   generateWaitpointId,
+  mintWaitpointIdFor,
   RunId,
 } from "@trigger.dev/core/v3/isomorphic";
 import { createRedisClient, type Redis } from "@internal/redis";
@@ -302,6 +303,8 @@ describe("storeWaitpointSharedResultRetention", () => {
           if (completionSource === "manual-timeout") {
             const manual = await engine.createManualWaitpoint({
               ...context,
+              // Standalone MANUAL remains a legacy PG token; this test exercises its old timeout job.
+              runId: undefined,
               timeout: new Date(Date.now() + 1000),
             });
             legacyId = manual.waitpoint.id;
@@ -319,8 +322,24 @@ describe("storeWaitpointSharedResultRetention", () => {
                 runIds: [child.friendlyId],
               },
             });
-            legacyId = (await engine.blockRunWithCreatedBatch({ ...context, batchId: batch.id }))!
-              .id;
+            // Seed the pre-deployment PG header explicitly; newly admitted batches are native now.
+            const legacy = await engine.runStore.createWaitpoint({
+              data: {
+                ...mintWaitpointIdFor(batch.id),
+                type: "BATCH",
+                idempotencyKey: batch.id,
+                userProvidedIdempotencyKey: false,
+                completedByBatchId: batch.id,
+                environmentId: env.id,
+                projectId: env.projectId,
+              },
+            });
+            legacyId = legacy.id;
+            await engine.blockRunWithWaitpoint({
+              ...context,
+              waitpoints: legacyId,
+              batch: { id: batch.id },
+            });
             // Exactly the pre-deployment queued payload: no organization field.
             await engine.tryCompleteBatch({ batchId: batch.id });
           }

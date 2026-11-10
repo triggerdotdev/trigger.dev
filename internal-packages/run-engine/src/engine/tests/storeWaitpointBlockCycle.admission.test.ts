@@ -43,7 +43,7 @@ describe("Store waitpoint block cycle: admission", () => {
         const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
         await setupBackgroundWorker(engine, env, "test-task");
         const run = await runToExecuting(engine, env, "test-task", prisma, "run_oldoperation");
-        const wp = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const wp = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         const operation = {
           runId: run.id,
           organizationId: env.organization.id,
@@ -110,8 +110,8 @@ describe("Store waitpoint block cycle: admission", () => {
         // wp1 is absorption "a1": its FIRST registration is faulted with a real pending source,
         // so block B and a1's contribution survive with no watcher — exactly the residue a mixed-
         // residency absorption leaves when the store half committed but the operation did not complete.
-        const wp1 = await seedStoreWaitpoint(store, env.id, env.project.id);
-        const wp2 = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const wp1 = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
+        const wp2 = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         const opA1 = {
           runId: run.id,
           projectId: env.project.id,
@@ -211,7 +211,7 @@ describe("Store waitpoint block cycle: admission", () => {
         const run = await runToExecuting(engine, env, taskIdentifier, prisma, "run_compfirst");
         const anchor = await captureAnchor(engine, run.id);
 
-        const wp = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const wp = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         const op = {
           runId: run.id,
           projectId: env.project.id,
@@ -269,7 +269,7 @@ describe("Store waitpoint block cycle: admission", () => {
         const orgId = env.organization.id;
         const run = await runToExecuting(engine, env, taskIdentifier, prisma, "run_absfence");
 
-        const s1 = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const s1 = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         const blocked = await blockStore(engine, {
           runId: run.id,
           projectId: env.project.id,
@@ -280,7 +280,7 @@ describe("Store waitpoint block cycle: admission", () => {
 
         // A helper that tries to install a DIFFERENT store block B2 directly through the low-level absorb
         // (the store half of what attempt two's blockRunWithWaitpoint would do).
-        const s2 = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const s2 = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         const tryInstallB2 = () =>
           store.absorbBlockers({
             runId: run.id,
@@ -362,7 +362,7 @@ describe("Store waitpoint block cycle: admission", () => {
           projectId: env.project.id,
           organizationId: env.organization.id,
         };
-        const source = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const source = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         const blocked = await blockStore(engine, {
           ...common,
           waitpoints: [source],
@@ -399,7 +399,11 @@ describe("Store waitpoint block cycle: admission", () => {
           runId: run.id,
           snapshotId: dequeued[0]!.snapshot.id,
         });
-        const legacy = await engine.createManualWaitpoint({ ...common, environmentId: env.id });
+        const legacy = await engine.createManualWaitpoint({
+          ...common,
+          runId: undefined,
+          environmentId: env.id,
+        });
         const batch = await prisma.batchTaskRun.create({
           data: {
             id: "cleanup_retry_batch",
@@ -595,13 +599,17 @@ describe("Store waitpoint block cycle: admission", () => {
           projectId: env.project.id,
           organizationId: env.organization.id,
         };
-        const source = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const source = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         await blockStore(engine, {
           ...common,
           waitpoints: [source],
           blockOperation: { id: "B1", cycleAnchor: await captureAnchor(engine, run.id) },
         });
-        const legacy = await engine.createManualWaitpoint({ ...common, environmentId: env.id });
+        const legacy = await engine.createManualWaitpoint({
+          ...common,
+          runId: undefined,
+          environmentId: env.id,
+        });
         const batch = await prisma.batchTaskRun.create({
           data: {
             id: "cleanup_batch",
@@ -697,7 +705,7 @@ describe("Store waitpoint block cycle: admission", () => {
           projectId: env.project.id,
           organizationId: env.organization.id,
         };
-        const source = await seedStoreWaitpoint(store, env.id, env.project.id);
+        const source = await seedStoreWaitpoint(store, env.id, env.project.id, env.organizationId);
         firstNative = engine["runLock"].lock("firstNativeCleanup", [run.id], async () => {
           locked.resolve();
           await boundedBarrier(release.promise, "test never released the cleanup run lock");

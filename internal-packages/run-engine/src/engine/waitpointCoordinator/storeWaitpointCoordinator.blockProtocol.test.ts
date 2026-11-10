@@ -69,21 +69,22 @@ async function seedPending(
   completedByTaskRunId?: string
 ): Promise<void> {
   const now = new Date().toISOString();
-  await store.createIfAbsent({
-    record: {
-      id: waitpointId,
-      friendlyId: WaitpointId.toFriendlyId(waitpointId),
-      type: "MANUAL",
-      environmentId: "env_1",
-      projectId: "proj_1",
-      createdAt: now,
-      updatedAt: now,
-      userProvidedIdempotencyKey: false,
-      tags: [],
-      completedByTaskRunId,
-    },
-    status: "PENDING",
-  });
+  const record = {
+    id: waitpointId,
+    friendlyId: WaitpointId.toFriendlyId(waitpointId),
+    type: "MANUAL" as const,
+    environmentId: "env_1",
+    projectId: "proj_1",
+    organizationId: ORG,
+    createdAt: now,
+    updatedAt: now,
+    userProvidedIdempotencyKey: false,
+    tags: [],
+    completedByTaskRunId,
+  };
+  // Preserve caller-selected protocol identities while honoring the MANUAL mint contract.
+  await store.manualCatalog.publish(record, Date.now() + 300_000);
+  await store.createIfAbsent({ record, status: "PENDING" });
 }
 
 const ORG = "org_1";

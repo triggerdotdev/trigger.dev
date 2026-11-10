@@ -178,7 +178,7 @@ const { action, loader } = createActionApiRoute(
                 (await engine.waitpointSystem.isWaitpointStoreEnabled(
                   authentication.environment.organization.id
                 )) &&
-                result.waitpoint.type === "DATETIME" &&
+                (result.waitpoint.type === "DATETIME" || result.waitpoint.type === "MANUAL") &&
                 parseWaitpointId(result.waitpoint.id).format !== "legacy";
               const packet = storeDateTime
                 ? await processStreamWaitpointCompletionPacket(

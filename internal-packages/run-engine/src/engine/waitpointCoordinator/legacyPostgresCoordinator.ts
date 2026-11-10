@@ -26,6 +26,7 @@ import type {
   AssociatedWaitpointPlan,
   BlockerRegistration,
   ClearRunBlockStateParams,
+  CreateBatchWaitpointParams,
   ReleaseRunBlockersParams,
   CompleteParams,
   CompleteResult,
@@ -515,6 +516,32 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     }
 
     throw new Error(`Failed to create waitpoint after ${maxRetries} attempts due to conflicts.`);
+  }
+
+  async createBatchWaitpoint({
+    batchId,
+    environmentId,
+    projectId,
+    tx,
+  }: CreateBatchWaitpointParams): Promise<CreateWaitpointResult> {
+    // From the batch, not the blocked run: the create passes only completedByBatchId, which is the owner
+    // the router validates against. The id anchors to the batch id. A duplicate batch idempotency key
+    // raises P2002, which the caller maps to its own "already created" contract.
+    const waitpoint = await this.runStore.createWaitpoint(
+      {
+        data: {
+          ...mintWaitpointIdFor(batchId),
+          type: "BATCH",
+          idempotencyKey: batchId,
+          userProvidedIdempotencyKey: false,
+          completedByBatchId: batchId,
+          environmentId,
+          projectId,
+        },
+      },
+      tx
+    );
+    return { kind: "created", waitpoint };
   }
 
   mintAssociatedWaitpointData({

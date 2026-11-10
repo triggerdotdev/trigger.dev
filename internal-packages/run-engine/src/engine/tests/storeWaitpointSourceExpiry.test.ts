@@ -326,79 +326,91 @@ describe("storeWaitpointSourceExpiry", () => {
     }
   );
 
-  containerTest(
-    "unkeyed DATETIME deadline never resurrects an expired early completion",
-    async ({ prisma, redisOptions }) => {
-      const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
-      const store = new WaitpointStoreCoordinator({ redisOptions, terminalRetentionMs: 200 });
-      const engine = makeEngine(prisma, redisOptions, { store, snapshotStore });
-      try {
-        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-        await setupBackgroundWorker(engine, env, ["early-datetime"]);
-        const run = await triggerRun(engine, env, prisma, {
-          friendlyId: `run_${generateRunOpsId()}`,
-          taskIdentifier: "early-datetime",
-        });
-        const created = await engine.createDateTimeWaitpoint({
-          runId: run.id,
-          projectId: env.project.id,
-          environmentId: env.id,
-          organizationId: env.organization.id,
-          completedAfter: new Date(Date.now() + 2000),
-        });
-        const id = created.waitpoint.id;
-        const jobId = `recoverDateTimeWaitpoint:${id}`;
-        const queued = await engine["worker"].getJob(jobId);
-        const payload = workerCatalog.recoverDateTimeWaitpoint.schema.parse(queued!.item);
-        expect(payload.creationAcceptUntil).toBeGreaterThan(Date.now());
-        await engine.completeWaitpoint({
-          id,
-          organizationId: env.organization.id,
-          onlyIfPending: true,
-          output: { value: '{"early":"winner"}', type: "application/json", isError: false },
-        });
-        const original = (await store.readCompletedRecords([id])).get(id)!;
-        expect(original.completion?.output).toEqual({ inline: '{"early":"winner"}' });
-        await engine.waitpointSystem.recoverDateTimeWaitpoint(payload);
-        expect((await store.readCompletedRecords([id])).get(id)).toEqual(original);
-        await vi.waitFor(
-          async () =>
-            expect(
-              await store.probeWaitpointPresence(id),
-              "waitpoint source never reached its expected presence"
-            ).toBe("absent"),
-          { timeout: 10_000, interval: 20 }
-        );
-        // The actual persisted deadline runs after real expiry. It retries during the publication
-        // window, rather than replacing the first completion with a newly created null result.
-        await vi.waitFor(
-          async () => {
-            expect(
-              (await engine["worker"].getJob(jobId))?.attempt,
-              "recovery job never left the worker queue"
-            ).toBeGreaterThan(0);
-          },
-          { timeout: 6000, interval: 20 }
-        );
-        expect(await store.probeWaitpointPresence(id)).toBe("absent");
-        await expect(engine.waitpointSystem.recoverDateTimeWaitpoint(payload)).rejects.toThrow(
-          "publication is not yet fenced"
-        );
-        // An old unfenced payload must fail closed while missing, never recreate or silently ACK.
-        await expect(
-          engine.waitpointSystem.recoverDateTimeWaitpoint({
-            ...payload,
-            creationAcceptUntil: undefined,
-          })
-        ).rejects.toThrow("publication is not yet fenced");
-        expect(await store.probeWaitpointPresence(id)).toBe("absent");
-      } finally {
-        await engine.quit();
-        await store.quit();
-        await snapshotStore.quit();
+  for (const tokenType of ["DATETIME", "MANUAL"] as const) {
+    containerTest(
+      `unkeyed ${tokenType} deadline never resurrects an expired early completion`,
+      async ({ prisma, redisOptions }) => {
+        const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+        const store = new WaitpointStoreCoordinator({ redisOptions, terminalRetentionMs: 200 });
+        const engine = makeEngine(prisma, redisOptions, { store, snapshotStore });
+        try {
+          const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+          await setupBackgroundWorker(engine, env, ["early-datetime"]);
+          const run = await triggerRun(engine, env, prisma, {
+            friendlyId: `run_${generateRunOpsId()}`,
+            taskIdentifier: "early-datetime",
+          });
+          const createParams = {
+            runId: run.id,
+            projectId: env.project.id,
+            environmentId: env.id,
+            organizationId: env.organization.id,
+          };
+          const deadline = new Date(Date.now() + 2000);
+          const created =
+            tokenType === "MANUAL"
+              ? await engine.createManualWaitpoint({ ...createParams, timeout: deadline })
+              : await engine.createDateTimeWaitpoint({
+                  runId: run.id,
+                  projectId: env.project.id,
+                  environmentId: env.id,
+                  organizationId: env.organization.id,
+                  completedAfter: new Date(Date.now() + 2000),
+                });
+          const id = created.waitpoint.id;
+          const jobId = `recoverDateTimeWaitpoint:${id}`;
+          const queued = await engine["worker"].getJob(jobId);
+          const payload = workerCatalog.recoverDateTimeWaitpoint.schema.parse(queued!.item);
+          expect(payload.creationAcceptUntil).toBeGreaterThan(Date.now());
+          await engine.completeWaitpoint({
+            id,
+            organizationId: env.organization.id,
+            onlyIfPending: true,
+            output: { value: '{"early":"winner"}', type: "application/json", isError: false },
+          });
+          const original = (await store.readCompletedRecords([id])).get(id)!;
+          expect(original.completion?.output).toEqual({ inline: '{"early":"winner"}' });
+          await engine.waitpointSystem.recoverDateTimeWaitpoint(payload);
+          expect((await store.readCompletedRecords([id])).get(id)).toEqual(original);
+          await vi.waitFor(
+            async () =>
+              expect(
+                await store.probeWaitpointPresence(id),
+                "waitpoint source never reached its expected presence"
+              ).toBe("absent"),
+            { timeout: 10_000, interval: 20 }
+          );
+          // The actual persisted deadline runs after real expiry. It retries during the publication
+          // window, rather than replacing the first completion with a newly created null result.
+          await vi.waitFor(
+            async () => {
+              expect(
+                (await engine["worker"].getJob(jobId))?.attempt,
+                "recovery job never left the worker queue"
+              ).toBeGreaterThan(0);
+            },
+            { timeout: 6000, interval: 20 }
+          );
+          expect(await store.probeWaitpointPresence(id)).toBe("absent");
+          await expect(engine.waitpointSystem.recoverDateTimeWaitpoint(payload)).rejects.toThrow(
+            "publication is not yet fenced"
+          );
+          // An old unfenced payload must fail closed while missing, never recreate or silently ACK.
+          await expect(
+            engine.waitpointSystem.recoverDateTimeWaitpoint({
+              ...payload,
+              creationAcceptUntil: undefined,
+            })
+          ).rejects.toThrow("publication is not yet fenced");
+          expect(await store.probeWaitpointPresence(id)).toBe("absent");
+        } finally {
+          await engine.quit();
+          await store.quit();
+          await snapshotStore.quit();
+        }
       }
-    }
-  );
+    );
+  }
 
   containerTest(
     "unkeyed DATETIME publication fence handles immediate deadlines and closed unpublished attempts",

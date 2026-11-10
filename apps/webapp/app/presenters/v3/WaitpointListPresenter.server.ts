@@ -1,4 +1,7 @@
 import parse from "parse-duration";
+import { engine as defaultEngine } from "~/v3/runEngine.server";
+import type { RunEngine } from "@internal/run-engine";
+import { parseWaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import {
   type RunEngineVersion,
   type RuntimeEnvironmentType,
@@ -25,7 +28,7 @@ type WaitpointRow = {
   completedAt: Date | null;
   completedAfter: Date | null;
   outputIsError: boolean;
-  idempotencyKey: string;
+  idempotencyKey: string | null;
   idempotencyKeyExpiresAt: Date | null;
   inactiveIdempotencyKey: string | null;
   userProvidedIdempotencyKey: boolean;
@@ -42,6 +45,7 @@ export type WaitpointListOptions = {
       engine: RunEngineVersion;
     };
     apiKey: string;
+    organizationId?: string;
   };
   // filters
   id?: string;
@@ -96,7 +100,11 @@ export class WaitpointListPresenter extends BasePresenter {
       runOpsLegacyReplica?: PrismaClientOrTransaction;
       splitEnabled?: boolean;
     },
-    private readonly runStore = defaultRunStore
+    private readonly runStore = defaultRunStore,
+    private readonly waitpointEngine: Pick<
+      RunEngine,
+      "listStoreManualWaitpoints" | "canReadStoreManualWaitpoints"
+    > = defaultEngine
   ) {
     super(prismaClient, replicaClient);
   }
@@ -179,6 +187,32 @@ export class WaitpointListPresenter extends BasePresenter {
     }
     const createdAtLte: Date | undefined = to !== undefined ? new Date(to) : undefined;
 
+    const nativeEligibility = environment.organizationId
+      ? this.waitpointEngine.canReadStoreManualWaitpoints(environment.organizationId)
+      : false;
+    const nativeScope =
+      environment.organizationId && nativeEligibility !== false && (await nativeEligibility)
+        ? {
+            organizationId: environment.organizationId,
+            environmentId: environment.id,
+            projectId: environment.project.id,
+          }
+        : undefined;
+    const native = nativeScope
+      ? await this.waitpointEngine.listStoreManualWaitpoints({
+          ...nativeScope,
+          ...(id ? { id: id.startsWith("waitpoint_") ? id.slice("waitpoint_".length) : id } : {}),
+          ...(idempotencyKey ? { idempotencyKey } : {}),
+          ...(tags?.length ? { tags } : {}),
+          ...(statusesToFilter.length ? { statuses: statusesToFilter } : {}),
+          outputIsError: filterOutputIsError,
+          createdAtGte: createdAtGte?.toISOString(),
+          createdAtLte: createdAtLte?.toISOString(),
+          cursor,
+          direction,
+          limit: pageSize + 1,
+        })
+      : undefined;
     const tokens = await this.#scanWaitpoints(
       () =>
         this.runStore.findManyWaitpoints({
@@ -220,7 +254,8 @@ export class WaitpointListPresenter extends BasePresenter {
           },
         }),
       pageSize,
-      direction
+      direction,
+      native
     );
 
     const hasMore = tokens.length > pageSize;
@@ -254,19 +289,33 @@ export class WaitpointListPresenter extends BasePresenter {
     let hasAnyTokens = tokensToReturn.length > 0;
     if (!hasAnyTokens) {
       hasAnyTokens = await this.#probeAnyToken(environment.id);
+      if (!hasAnyTokens && nativeScope)
+        hasAnyTokens =
+          (
+            await this.waitpointEngine.listStoreManualWaitpoints({
+              ...nativeScope,
+              direction: "forward",
+              limit: 1,
+            })
+          ).length > 0;
     }
 
     return {
       success: true,
       tokens: tokensToReturn.map((token) => ({
         id: token.friendlyId,
-        url: generateHttpCallbackUrl(token.id, environment.apiKey),
+        url:
+          nativeScope && parseWaitpointId(token.id).format === "b32hexW"
+            ? generateHttpCallbackUrl(token.id, environment.apiKey, {
+                environmentId: environment.id,
+              })
+            : generateHttpCallbackUrl(token.id, environment.apiKey),
         status: waitpointStatusToApiStatus(token.status, token.outputIsError),
         completedAt: token.completedAt ?? undefined,
         timeoutAt: token.completedAfter ?? undefined,
         completedAfter: token.completedAfter ?? undefined,
         idempotencyKey: token.userProvidedIdempotencyKey
-          ? (token.inactiveIdempotencyKey ?? token.idempotencyKey)
+          ? (token.inactiveIdempotencyKey ?? token.idempotencyKey ?? undefined)
           : undefined,
         idempotencyKeyExpiresAt: token.idempotencyKeyExpiresAt ?? undefined,
         tags: token.tags ? token.tags.sort((a, b) => a.localeCompare(b)) : [],
@@ -297,10 +346,12 @@ export class WaitpointListPresenter extends BasePresenter {
   async #scanWaitpoints(
     scan: () => Promise<WaitpointRow[]>,
     pageSize: number,
-    direction: Direction
+    direction: Direction,
+    native?: WaitpointRow[]
   ): Promise<WaitpointRow[]> {
     const overfetch = pageSize + 1;
     const rows = await scan();
+    if (native?.length) rows.push(...native);
     rows.sort((a, b) =>
       direction === "forward" ? compareIdDesc(a.id, b.id) : compareIdAsc(a.id, b.id)
     );

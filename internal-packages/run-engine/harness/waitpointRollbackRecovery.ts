@@ -9,6 +9,8 @@ import { resolveShard } from "@trigger.dev/core/v3/isomorphic";
 import { PostgresRunStore, RoutingRunStore, type RunStore } from "@internal/run-store";
 import { Redis, type RedisClient, createRedisClusterClient } from "@internal/redis";
 import { z } from "zod";
+import { SimpleQueue } from "@trigger.dev/redis-worker";
+import { workerCatalog } from "../src/engine/workerCatalog.js";
 import {
   ManualWaitpointRollbackRecovery,
   rollbackScopeSchema,
@@ -25,6 +27,7 @@ const configSchema = z
     controlPlaneUrlEnv: z.string(),
     redisUrlEnv: z.string(),
     redisCluster: z.boolean().default(true),
+    workerQueue: z.object({ redisUrlEnv: z.string(), keyPrefix: z.string() }).strict().optional(),
     // Must match the deployed read topology, even while creation/split flags are off.
     runStores: z.discriminatedUnion("mode", [
       z.object({ mode: z.literal("single"), urlEnv: z.string() }).strict(),
@@ -73,6 +76,11 @@ async function main() {
   const clients: Array<PrismaClient | InstanceType<typeof RunOpsPrismaClient>> = [];
   const secrets: string[] = [];
   let redis: RedisClient | undefined;
+  let maintenanceQueue:
+    | SimpleQueue<{
+        retireManualWaitpointCatalog: typeof workerCatalog.retireManualWaitpointCatalog.schema;
+      }>
+    | undefined;
   let stage = "preflight";
   let report: unknown;
   try {
@@ -159,7 +167,60 @@ async function main() {
         .update(JSON.stringify(secrets))
         .digest("hex");
       const store = new WaitpointStoreCoordinator({ client: redis });
+      if (config.workerQueue) {
+        const endpoint = new URL(url(config.workerQueue.redisUrlEnv));
+        if (
+          !["redis:", "rediss:"].includes(endpoint.protocol) ||
+          endpoint.search ||
+          endpoint.hash ||
+          !/^\/(?:[0-9]+)?$/.test(endpoint.pathname || "/")
+        )
+          throw new Error("Invalid worker queue endpoint");
+        maintenanceQueue = new SimpleQueue({
+          name: "run-engine-worker",
+          schema: {
+            retireManualWaitpointCatalog: workerCatalog.retireManualWaitpointCatalog.schema,
+          },
+          redisOptions: {
+            host: endpoint.hostname,
+            port: Number(endpoint.port || 6379),
+            username: endpoint.username ? decodeURIComponent(endpoint.username) : undefined,
+            password: endpoint.password ? decodeURIComponent(endpoint.password) : undefined,
+            db: Number(endpoint.pathname.slice(1) || 0),
+            tls: endpoint.protocol === "rediss:" ? { servername: endpoint.hostname } : undefined,
+            keyPrefix: config.workerQueue.keyPrefix,
+          },
+        });
+      }
+      const queue = maintenanceQueue;
       const recovery = new ManualWaitpointRollbackRecovery({
+        ...(queue
+          ? {
+              catalogMaintenance: {
+                schedule: async (payload, availableAt) =>
+                  queue.enqueue({
+                    id: `retireManualWaitpointCatalog:${payload.waitpointId}`,
+                    job: "retireManualWaitpointCatalog",
+                    item: payload,
+                    availableAt,
+                    visibilityTimeoutMs:
+                      workerCatalog.retireManualWaitpointCatalog.visibilityTimeoutMs,
+                  }),
+                scheduledAt: async (payload) => {
+                  const job = await queue.getJob(
+                    `retireManualWaitpointCatalog:${payload.waitpointId}`
+                  );
+                  return job?.job === "retireManualWaitpointCatalog" &&
+                    job.item.waitpointId === payload.waitpointId &&
+                    job.item.organizationId === payload.organizationId &&
+                    job.attempt === 0 &&
+                    job.timestamp.getTime() > Date.now()
+                    ? job.timestamp
+                    : undefined;
+                },
+              },
+            }
+          : {}),
         target,
         controlPlane,
         runStore,
@@ -227,6 +288,7 @@ async function main() {
   } finally {
     await output.close();
     redis?.disconnect();
+    await maintenanceQueue?.close();
     await Promise.all(clients.map((client) => client.$disconnect()));
   }
 }

@@ -508,8 +508,9 @@ export class IdempotencyKeyConcern {
           environmentId: request.environment.id,
           blockingParentRunId: parentRunInternalId,
           organizationId: request.environment.organizationId,
-          // A batch item's waitpoint must stay legacy to match its lockless-blocked siblings.
+          // The batch header fixes new child storage; existing associations retain their owner.
           blockingViaBatch: !!request.options?.batchId,
+          blockingBatchId: request.options?.batchId,
         });
       }
 
