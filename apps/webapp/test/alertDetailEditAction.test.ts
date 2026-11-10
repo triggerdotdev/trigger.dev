@@ -142,20 +142,17 @@ describe("alert detail edit action", () => {
     loader = mod.loader as never;
   }, 180_000);
 
-  it("checks write and delete for the environment type", async () => {
+  it("checks write for the environment type", async () => {
     canCalls.length = 0;
     await action({
       request: post({ intent: "delete", respond: "json" }),
       params: {},
       context: {},
     } as any);
-    expect(canCalls).toEqual([
-      ["write", { type: "alerts", envType: "PRODUCTION" }],
-      ["delete", { type: "alerts", envType: "PRODUCTION" }],
-    ]);
+    expect(canCalls).toEqual([["write", { type: "alerts", envType: "PRODUCTION" }]]);
   });
 
-  it("loader checks read, write and delete for the environment type", async () => {
+  it("loader checks read and write for the environment type", async () => {
     presented.alert = { id: "alert_1", kind: "threshold" };
     canCalls.length = 0;
     await loader({
@@ -167,7 +164,6 @@ describe("alert detail edit action", () => {
     expect(canCalls).toEqual([
       ["read", { type: "alerts", envType: "PRODUCTION" }],
       ["write", { type: "alerts", envType: "PRODUCTION" }],
-      ["delete", { type: "alerts", envType: "PRODUCTION" }],
     ]);
   });
 

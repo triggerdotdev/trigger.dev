@@ -438,7 +438,6 @@ function RowConfirmDialog({
 export function AlertActionsPopoverContent({
   alert,
   canWrite,
-  canDelete,
   onClose,
   onResolve,
   onStop,
@@ -449,7 +448,6 @@ export function AlertActionsPopoverContent({
 }: {
   alert: AlertListRow;
   canWrite: boolean;
-  canDelete: boolean;
   onClose: () => void;
   onResolve: () => void;
   onStop: () => void;
@@ -508,7 +506,7 @@ export function AlertActionsPopoverContent({
         )}
         {alert.capabilityKey === GROUP_CAPABILITY_KEY && onUngroup && (
           <GatedMenuItem
-            allowed={canWrite && canDelete}
+            allowed={canWrite}
             icon={XMarkIcon}
             title="Ungroup"
             onClick={then(onUngroup)}
@@ -516,7 +514,7 @@ export function AlertActionsPopoverContent({
         )}
         {alert.status === "inactive" && (
           <GatedMenuItem
-            allowed={canWrite && canDelete}
+            allowed={canWrite}
             icon={TrashIcon}
             title="Delete"
             onClick={then(onDelete)}
@@ -550,12 +548,10 @@ export function AlertActionsCell({
   alert,
   alertPath,
   canWrite,
-  canDelete,
 }: {
   alert: AlertListRow;
   alertPath: string;
   canWrite: boolean;
-  canDelete: boolean;
 }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [ungroupOpen, setUngroupOpen] = useState(false);
@@ -591,7 +587,6 @@ export function AlertActionsCell({
           <AlertActionsPopoverContent
             alert={alert}
             canWrite={canWrite}
-            canDelete={canDelete}
             onClose={close}
             onResolve={() => submitAction("resolve")}
             onStop={() => submitAction("stop")}
@@ -718,7 +713,6 @@ function AlertGroupRow({
   alert,
   alertPath,
   canWrite,
-  canDelete,
   selectable,
   selected,
   onToggle,
@@ -726,7 +720,6 @@ function AlertGroupRow({
   alert: AlertListRow;
   alertPath: string;
   canWrite: boolean;
-  canDelete: boolean;
   selectable: boolean;
   selected: boolean;
   onToggle: () => void;
@@ -782,12 +775,7 @@ function AlertGroupRow({
       <TableCell to={alertPath} actionClassName="py-1.5">
         <AlertActivityCell stateBuckets={alert.stateBuckets} />
       </TableCell>
-      <AlertActionsCell
-        alert={alert}
-        alertPath={alertPath}
-        canWrite={canWrite}
-        canDelete={canDelete}
-      />
+      <AlertActionsCell alert={alert} alertPath={alertPath} canWrite={canWrite} />
     </TableRow>
   );
 }
@@ -871,7 +859,6 @@ export function AlertsList({
   newAlertPrompt,
   alertPath,
   canWrite,
-  canDelete,
   hasLegacyAlerts,
   channelsTo,
   legacyTo,
@@ -890,7 +877,6 @@ export function AlertsList({
   newAlertPrompt: string;
   alertPath: (alertId: string) => string;
   canWrite: boolean;
-  canDelete: boolean;
 }) {
   const filters = useAlertsFilters();
   const agent = useDashboardAgent();
@@ -1027,7 +1013,6 @@ export function AlertsList({
                 alert={alert}
                 alertPath={alertPath(alert.id)}
                 canWrite={canWrite}
-                canDelete={canDelete}
                 selectable={selectable}
                 selected={selected.has(alert.id)}
                 onToggle={() => toggleSelected(alert.id)}

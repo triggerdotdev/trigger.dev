@@ -38,7 +38,7 @@ async function markAs(isGroup: boolean, action = vi.fn(async () => null)) {
                 } as unknown as AlertDetail
               }
               investigatePrompt="p"
-              permissions={{ canWrite: true, canDelete: true }}
+              permissions={{ canWrite: true }}
               onEdit={() => {}}
               onActivate={() => {}}
             />

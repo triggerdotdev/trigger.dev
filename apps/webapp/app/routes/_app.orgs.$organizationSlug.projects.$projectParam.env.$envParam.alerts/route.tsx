@@ -185,7 +185,6 @@ export const loader = dashboardLoader(
       totalPages,
       truncated,
       canWrite: ability.can("write", { type: "alerts", envType: environment.type }),
-      canDelete: ability.can("delete", { type: "alerts", envType: environment.type }),
       agentAvailable,
       queryAlert: searchParams.get("source") === "query" ? queryAlertPrefill(searchParams) : null,
     }) as unknown as Response;
@@ -239,12 +238,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   });
   const envType = environment.type;
   if (!auth.ok || !auth.ability.can("write", { type: "alerts", envType })) {
-    throwPermissionDenied();
-  }
-  if (
-    (submission.value.action === "delete" || submission.value.action === "ungroup") &&
-    !auth.ability.can("delete", { type: "alerts", envType })
-  ) {
     throwPermissionDenied();
   }
 
@@ -399,7 +392,6 @@ type NewLoaderData = {
   hasLegacyAlerts: boolean;
   hasMigratableLegacyAlerts: boolean;
   canWrite: boolean;
-  canDelete: boolean;
   agentAvailable: boolean;
   queryAlert: QueryAlertPrefill | null;
 };
@@ -434,7 +426,6 @@ export default function Page() {
         truncated={data.truncated}
         hasLegacyAlerts={data.hasLegacyAlerts}
         canWrite={data.canWrite}
-        canDelete={data.canDelete}
         agentAvailable={data.agentAvailable}
         queryAlert={data.queryAlert}
       />
@@ -452,7 +443,6 @@ function NewAlertsPage({
   truncated,
   hasLegacyAlerts,
   canWrite,
-  canDelete,
   agentAvailable,
   queryAlert,
 }: {
@@ -463,7 +453,6 @@ function NewAlertsPage({
   truncated: boolean;
   hasLegacyAlerts: boolean;
   canWrite: boolean;
-  canDelete: boolean;
   agentAvailable: boolean;
   queryAlert: QueryAlertPrefill | null;
 }) {
@@ -555,7 +544,6 @@ function NewAlertsPage({
               newAlertPrompt={createAlertPrompt(environmentFullTitle(environment))}
               alertPath={alertPath}
               canWrite={canWrite}
-              canDelete={canDelete}
               hasLegacyAlerts={hasLegacyAlerts}
               channelsTo={`${v3ProjectAlertChannelsPath(organization, project, environment)}${
                 listQuery ? `?${listQuery}` : ""

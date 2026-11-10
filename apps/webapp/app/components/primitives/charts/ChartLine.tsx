@@ -3,6 +3,7 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
+  Dot,
   Line,
   LineChart,
   ReferenceArea,
@@ -684,7 +685,27 @@ export function ChartLineRenderer({
                   : config[key]?.color
             }
             strokeWidth={1}
-            dot={showDots ? { r: 1.5, fill: config[key]?.color, strokeWidth: 0 } : false}
+            dot={
+              showDots
+                ? { r: 1.5, fill: config[key]?.color, strokeWidth: 0 }
+                : // oxlint-disable-next-line react/no-unstable-nested-components -- Recharts invokes this renderer per point with coordinates.
+                  ({ key: dotKey, index, ...props }: DotRenderProps) =>
+                    isIsolatedPoint(chartData, index, key) ? (
+                      <Dot
+                        key={dotKey}
+                        {...props}
+                        r={1.5}
+                        fill={
+                          overlayKeys.includes(key) && isOver(chartData[index], key)
+                            ? (warningOverlay!.color ?? "var(--color-warning)")
+                            : config[key]?.color
+                        }
+                        strokeWidth={0}
+                      />
+                    ) : (
+                      <g key={dotKey} />
+                    )
+            }
             // The hover dot matches the line colour under it: for a gradient (threshold) line it
             // flips at the split; otherwise it's the series colour. The warning overlay draws its
             // own dot on top where it's active.
@@ -766,6 +787,12 @@ export function overlayDotVisible(
   overKey = WARNING_OVERLAY_KEY
 ) {
   return payload?.[overKey] != null && payload[overKey] === payload?.[key];
+}
+
+type DotRenderProps = { key: string; index: number; cx: number; cy: number };
+
+function isIsolatedPoint(rows: Record<string, unknown>[], index: number, key: string) {
+  return rows[index - 1]?.[key] == null && rows[index + 1]?.[key] == null;
 }
 
 type StepPoint = { row: Record<string, unknown>; level: unknown; over: boolean | null };

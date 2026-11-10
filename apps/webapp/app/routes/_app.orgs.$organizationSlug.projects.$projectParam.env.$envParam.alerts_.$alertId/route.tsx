@@ -258,7 +258,6 @@ export const loader = dashboardLoader(
       createdAt: rawAlert.createdAt,
       permissions: {
         canWrite: ability.can("write", { type: "alerts", envType: environment.type }),
-        canDelete: ability.can("delete", { type: "alerts", envType: environment.type }),
       },
     });
   }
@@ -369,13 +368,6 @@ export const action = dashboardAction(
     const submission = AlertActionFormSchema.safeParse(Object.fromEntries(formData));
     if (!submission.success) {
       return json({ error: "Invalid action" }, { status: 400 });
-    }
-
-    if (
-      (submission.data.intent === "delete" || submission.data.intent === "ungroup") &&
-      !ability.can("delete", { type: "alerts", envType: environment.type })
-    ) {
-      throwPermissionDenied();
     }
 
     const ctx = {
@@ -522,7 +514,7 @@ function ActionError() {
   );
 }
 
-type AlertPermissions = { canWrite: boolean; canDelete: boolean };
+type AlertPermissions = { canWrite: boolean };
 
 export function DetailActionsMenu({
   alert,
@@ -577,7 +569,7 @@ export function DetailActionsMenu({
           )}
           {alert.status.status === "inactive" && (
             <GatedMenuItem
-              allowed={permissions.canWrite && permissions.canDelete}
+              allowed={permissions.canWrite}
               icon={TrashIcon}
               title="Delete"
               onClick={() => {
@@ -588,7 +580,7 @@ export function DetailActionsMenu({
           )}
           {alert.capabilityKey === GROUP_CAPABILITY_KEY && (
             <GatedMenuItem
-              allowed={permissions.canWrite && permissions.canDelete}
+              allowed={permissions.canWrite}
               icon={TrashIcon}
               title="Ungroup"
               onClick={() => {

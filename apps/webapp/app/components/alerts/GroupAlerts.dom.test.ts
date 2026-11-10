@@ -99,7 +99,6 @@ function renderList() {
                 newAlertPrompt: "",
                 alertPath: (id: string) => `/alerts/${id}`,
                 canWrite: true,
-                canDelete: true,
               })
             )
           )

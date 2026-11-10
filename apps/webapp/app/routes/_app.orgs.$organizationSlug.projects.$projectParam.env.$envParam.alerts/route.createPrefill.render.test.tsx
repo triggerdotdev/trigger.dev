@@ -20,7 +20,6 @@ vi.mock("@remix-run/react", () => ({
     hasLegacyAlerts: false,
     hasMigratableLegacyAlerts: false,
     canWrite: true,
-    canDelete: true,
     agentAvailable,
   }),
   useSearchParams: () => [currentParams, vi.fn()],

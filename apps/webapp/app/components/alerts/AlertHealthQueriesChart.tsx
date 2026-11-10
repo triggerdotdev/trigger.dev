@@ -92,7 +92,8 @@ export function AlertHealthQueriesChart({
         fillContainer
       >
         <Chart.Line
-          lineType="monotone"
+          lineType="linear"
+          showDots={false}
           warningOverlay={HEALTH_QUERIES_WARNING_OVERLAY}
           verticalMarker={axis?.marker}
           referenceLines={[

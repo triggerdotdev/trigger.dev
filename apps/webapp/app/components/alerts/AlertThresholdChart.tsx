@@ -232,7 +232,7 @@ export function AlertThresholdChart({
     >
       <Chart.Root config={config} data={data} dataKey="bucket" series={["value"]} fillContainer>
         <Chart.Line
-          lineType="monotone"
+          lineType="linear"
           showDots={false}
           referenceLines={
             threshold === null ? undefined : [thresholdReferenceLine(threshold, format(threshold))]
@@ -352,7 +352,7 @@ export function AlertMultiSeriesChart({
         legendShowTotal={false}
       >
         <Chart.Line
-          lineType="monotone"
+          lineType="linear"
           showDots={false}
           referenceLines={
             threshold === null ? undefined : [thresholdReferenceLine(threshold, format(threshold))]

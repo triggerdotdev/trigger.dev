@@ -284,12 +284,12 @@ describe("alerts list write and delete gate", () => {
       params,
       context: {},
     } as never)) as { data?: unknown };
-    return (res.data ?? res) as { canWrite: boolean; canDelete: boolean };
+    return (res.data ?? res) as { canWrite: boolean };
   };
 
-  it("checks write and delete for the environment type", async () => {
-    expect(await listData("PRODUCTION")).toMatchObject({ canWrite: false, canDelete: false });
-    expect(await listData("DEVELOPMENT")).toMatchObject({ canWrite: true, canDelete: true });
+  it("checks write for the environment type", async () => {
+    expect(await listData("PRODUCTION")).toMatchObject({ canWrite: false });
+    expect(await listData("DEVELOPMENT")).toMatchObject({ canWrite: true });
   });
 });
 
