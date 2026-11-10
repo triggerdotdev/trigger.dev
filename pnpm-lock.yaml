@@ -922,6 +922,9 @@ importers:
       jsdom:
         specifier: ^30.0.1
         version: 30.0.1
+      portless:
+        specifier: 0.16.0
+        version: 0.16.0
       react-router-dom:
         specifier: 6.30.4
         version: 6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -13617,6 +13620,12 @@ packages:
   polite-json@5.0.0:
     resolution: {integrity: sha512-OLS/0XeUAcE8a2fdwemNja+udKgXNnY6yKVIXqAD2zVRx1KvY6Ato/rZ2vdzbxqYwPW0u6SCNC/bAMPNzpzxbw==}
     engines: {node: ^14.17.0 || ^16.13.0 || >=18.0.0}
+
+  portless@0.16.0:
+    resolution: {integrity: sha512-qklO8w/OhLGLKYoeAi8HOFFnd2JQYenWzbev0rvDcyAZ3xDpMg9tqb/aKlz8qrd6NIEJB5bSiDxGURaq0+YLkA==}
+    engines: {node: '>=24'}
+    os: [darwin, linux, win32]
+    hasBin: true
 
   possible-typed-array-names@1.0.0:
     resolution: {integrity: sha512-d7Uw+eZoloe0EHDIYoe+bQ5WXnGMOpmiZFTuMWCwpjzzkL2nTjcKiAk4hh8TjnGye2TwWOk3UXucZ+3rbmBa8Q==}
@@ -29238,6 +29247,8 @@ snapshots:
       points-on-curve: 0.2.0
 
   polite-json@5.0.0: {}
+
+  portless@0.16.0: {}
 
   possible-typed-array-names@1.0.0: {}
 
