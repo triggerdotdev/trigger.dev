@@ -333,6 +333,26 @@ function PresetOptions({
   );
 }
 
+/**
+ * What the key can access. On wide screens it's a panel beside the fields that stays in view as
+ * they scroll. On narrower screens it's a plain list under them.
+ */
+function SummaryPane({ children }: { children: ReactNode }) {
+  return (
+    <aside className="lg:border-l lg:border-grid-bright lg:bg-background-deep">
+      <div className="px-5 pb-5 pt-2 lg:sticky lg:top-0 lg:pb-6 lg:pt-4">{children}</div>
+    </aside>
+  );
+}
+
+/**
+ * Names the summary when it sits under the fields. Beside them, its place already says what it is.
+ * Styled like the section labels above it, such as Access.
+ */
+function SummaryHeading() {
+  return <Header3 className="mb-2 font-normal leading-tight lg:hidden">Summary</Header3>;
+}
+
 function ApiKeyScopePanel({
   preset,
   catalogue,
@@ -348,26 +368,31 @@ function ApiKeyScopePanel({
   const capabilities = preset?.capabilities;
 
   return (
-    <aside className="border-t border-grid-bright bg-background-deep lg:border-l lg:border-t-0">
-      <div className="px-5 pb-6 pt-4 lg:sticky lg:top-0">
-        {showUpgradeCta ? (
-          <ApiKeyScopeUpgradeCta show />
-        ) : !preset ? (
-          <p className="text-xs text-text-dimmed">Pick a preset to see what this key can access.</p>
-        ) : catalogue && (fullAccess || capabilities) ? (
-          <CapabilityList
-            catalogue={catalogue}
-            capabilities={capabilities ?? {}}
-            fullAccess={fullAccess}
-            taskIdentifiers={taskIdentifiers}
-          />
-        ) : (
-          <p className="text-xs text-text-dimmed">
-            Scope details are unavailable for this access preset.
-          </p>
-        )}
-      </div>
-    </aside>
+    <SummaryPane>
+      {showUpgradeCta ? (
+        <ApiKeyScopeUpgradeCta show />
+      ) : (
+        <>
+          <SummaryHeading />
+          {!preset ? (
+            <p className="text-xs text-text-dimmed">
+              Pick a preset to see what this key can access.
+            </p>
+          ) : catalogue && (fullAccess || capabilities) ? (
+            <CapabilityList
+              catalogue={catalogue}
+              capabilities={capabilities ?? {}}
+              fullAccess={fullAccess}
+              taskIdentifiers={taskIdentifiers}
+            />
+          ) : (
+            <p className="text-xs text-text-dimmed">
+              Scope details are unavailable for this access preset.
+            </p>
+          )}
+        </>
+      )}
+    </SummaryPane>
   );
 }
 
@@ -386,17 +411,16 @@ function CustomScopePanel({
 
   if (!catalogue.available) {
     return (
-      <aside className="border-t border-grid-bright bg-background-deep lg:border-l lg:border-t-0">
-        <div className="px-5 pb-6 pt-4">
-          <ApiKeyScopeUpgradeCta show />
-        </div>
-      </aside>
+      <SummaryPane>
+        <ApiKeyScopeUpgradeCta show />
+      </SummaryPane>
     );
   }
 
   return (
-    <aside className="border-t border-grid-bright bg-background-deep lg:border-l lg:border-t-0">
-      <div className="space-y-3 px-5 pb-6 pt-4 lg:sticky lg:top-0">
+    <SummaryPane>
+      <SummaryHeading />
+      <div className="space-y-3">
         {/* Without a match the list below already says what the key gets. */}
         {summary.match ? (
           <p className="text-xs text-text-dimmed">
@@ -410,7 +434,7 @@ function CustomScopePanel({
           showScopes
         />
       </div>
-    </aside>
+    </SummaryPane>
   );
 }
 

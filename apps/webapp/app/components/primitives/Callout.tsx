@@ -155,7 +155,9 @@ export function Callout({
         className
       )}
     >
-      <div className={cn(`flex w-full items-start gap-2.5`)}>
+      {/* A CTA is a small button, 4px taller than the icon and a line of text, so they drop 2px to
+          sit centred on it. Text that wraps still starts level with the CTA. */}
+      <div className={cn("flex w-full items-start gap-2.5", cta && "pt-0.5")}>
         {icon ? icon : variantDefinition.icon}
 
         {typeof children === "string" ? (

@@ -250,7 +250,12 @@ export function CustomCapabilityEditor({
       .find((l) => l.id === id);
     return level ? [{ id, label: level.label }] : [];
   });
-  const tableGrid = { gridTemplateColumns: `minmax(0, 1fr) repeat(${columns.length}, 5.5rem)` };
+  // The Area column fills up to 9.5rem, enough for the longest area name. The level columns share
+  // what's left, and each is never narrower than its header, so no header wraps. The header and
+  // rows are subgrids of these tracks, so every row lines up with the header.
+  const tableGrid = {
+    gridTemplateColumns: `minmax(5.5rem, 9.5rem) repeat(${columns.length}, minmax(max-content, 1fr))`,
+  };
 
   const allowedLevels = requiredLevels(catalogue.capabilities, capabilities);
   const details = (capability: ApiKeyCapability) => {
@@ -348,21 +353,15 @@ export function CustomCapabilityEditor({
           );
           return (
             <div key={capability.id} className="border-b border-grid-dimmed px-3 py-2.5">
-              {/* Like the Access header: the control sits beside the description. */}
-              {capability.hint ? (
-                <>
+              {/* The control sits beside the name and hint, and wraps below them when the dialog is
+                  too narrow for both. */}
+              <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2.5">
+                <div className="min-w-48 flex-1">
                   {label}
-                  <div className="flex items-center justify-between gap-6">
-                    <Hint>{capability.hint}</Hint>
-                    {control}
-                  </div>
-                </>
-              ) : (
-                <div className="flex items-center justify-between gap-6">
-                  {label}
-                  {control}
+                  {capability.hint ? <Hint>{capability.hint}</Hint> : null}
                 </div>
-              )}
+                {control}
+              </div>
               <CapabilityNotes notes={notes} className="pt-2" />
               <Reveal show={selection?.kind === "scoped" && granted}>
                 <TaskScopeControl
@@ -382,10 +381,19 @@ export function CustomCapabilityEditor({
           );
         })}
         {tableCapabilities.length > 0 ? (
-          <div role="group" aria-label="Access by area">
+          // The bottom padding stops the sticky header short of the rounded corners when the end of
+          // the table pushes it out. Don't clip instead: on a phone the table can be wider than the
+          // dialog, and clipping would hide columns the dialog otherwise scrolls sideways to reach.
+          <div
+            role="group"
+            aria-label="Access by area"
+            className="grid gap-x-3 pb-1.5"
+            style={tableGrid}
+          >
+            {/* Sticks to the top of the dialog's scroll area while the table is in view. Rows scroll
+                under it, so it takes the dialog's background. */}
             <div
-              className="grid items-center border-b border-grid-dimmed px-3 py-1.5 text-xs text-text-dimmed"
-              style={tableGrid}
+              className="sticky top-0 z-10 col-span-full grid grid-cols-subgrid items-center whitespace-nowrap border-b border-grid-dimmed bg-background-dimmed px-3 py-1.5 text-xs text-text-dimmed"
               aria-hidden
             >
               <span>Area</span>
@@ -399,6 +407,8 @@ export function CustomCapabilityEditor({
               const { unavailable, notes, lockReason, canPick } = details(capability);
               const value = capabilities[capability.id] ?? NO_ACCESS_LEVEL_ID;
               const labelId = `api-key-capability-${capability.id}`;
+              // The buttons' scroll margin is taller than the sticky header, so keyboard focus
+              // scrolls them clear of it instead of leaving them underneath.
               return (
                 <RadioGroupPrimitive.Root
                   key={capability.id}
@@ -407,8 +417,7 @@ export function CustomCapabilityEditor({
                   orientation="horizontal"
                   aria-labelledby={labelId}
                   disabled={unavailable}
-                  className="grid items-center border-b border-grid-dimmed px-3 last:border-b-0"
-                  style={tableGrid}
+                  className="col-span-full grid grid-cols-subgrid items-center border-b border-grid-dimmed px-3 last:border-b-0 [&_button]:scroll-mt-8"
                 >
                   <div className="min-w-0 py-2">
                     <div className="flex items-center gap-1">
