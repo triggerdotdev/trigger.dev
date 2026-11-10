@@ -5,6 +5,10 @@ description: "Deploy from GitHub Actions without storing a Trigger.dev API key."
 
 Trusted publishing uses GitHub Actions OIDC tokens to authorize deployments. No Personal Access Token or environment API key is needed in GitHub secrets. Builds run entirely on Trigger.dev's build server.
 
+## Prerequisites
+
+- Use the Trigger.dev CLI (`trigger.dev`) **4.8.4 or later**, including the CLI used in CI.
+
 ## Configure trust
 
 1. Select **Staging**, **Preview**, or **Production**, then open [**Trusted publishing**](https://cloud.trigger.dev/_/trusted-publishing) under **Security**.

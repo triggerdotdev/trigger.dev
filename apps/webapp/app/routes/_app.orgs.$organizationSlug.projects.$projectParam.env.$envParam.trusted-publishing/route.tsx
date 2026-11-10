@@ -181,6 +181,9 @@ export default function TrustedPublishingPage() {
           {settings ? (
             <>
               <SettingsSection>
+                <Callout variant="info" className="mb-6">
+                  Use Trigger CLI version 4.8.4 or later.
+                </Callout>
                 {!canManage && (
                   <Callout variant="info" className="mb-6">
                     You can view these settings, but need project manage permission to edit them.
