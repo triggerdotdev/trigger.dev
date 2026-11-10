@@ -78,6 +78,11 @@ export const Env = z
     // the pod's terminationGracePeriodSeconds, so the exit is this process's and not a SIGKILL.
     SUPERVISOR_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(8_000),
 
+    // How long an idle connection to the platform stays open when the response carries no
+    // Keep-Alive hint (undici's own default is 4 s). Keep it below the idle timeout of any load
+    // balancer between here and the webapp (60 s by default on an AWS ALB).
+    SUPERVISOR_HTTP_KEEPALIVE_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+
     // Required settings
     TRIGGER_API_URL: z.string().url(),
     TRIGGER_WORKER_TOKEN: z.string().min(1), // accepts file:// path to read from a file

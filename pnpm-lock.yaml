@@ -227,6 +227,9 @@ importers:
       std-env:
         specifier: ^3.8.0
         version: 3.8.1
+      undici:
+        specifier: ^7.30.1
+        version: 7.30.1
       zod:
         specifier: 4.5.4
         version: 4.5.4

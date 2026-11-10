@@ -2,6 +2,7 @@ import { SupervisorSession } from "@trigger.dev/core/v3/workers";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import { formatLogLine, startTelnetLogServer } from "@trigger.dev/core/v3/telnetLogServer";
 import { env } from "./env.js";
+import { Agent, EnvHttpProxyAgent, getGlobalDispatcher, setGlobalDispatcher } from "undici";
 import { WorkloadServer } from "./workloadServer/index.js";
 import type {
   WorkloadManagerCreateOptions,
@@ -72,6 +73,18 @@ import {
   setMeta,
   type WideEventOptions,
 } from "./wideEvents/index.js";
+
+// fetch keeps an idle connection for only 4 s by default, so a quiet supervisor that calls the
+// platform every few seconds opens a new TCP and TLS connection for most calls. A Keep-Alive
+// header on the response still wins: undici then uses its timeout instead of this one.
+// Node installs an EnvHttpProxyAgent for fetch under NODE_USE_ENV_PROXY or --use-env-proxy, so
+// keep routing through the proxy in that case.
+const keepAliveTimeout = env.SUPERVISOR_HTTP_KEEPALIVE_TIMEOUT_MS;
+setGlobalDispatcher(
+  getGlobalDispatcher().constructor.name === "EnvHttpProxyAgent"
+    ? new EnvHttpProxyAgent({ keepAliveTimeout })
+    : new Agent({ keepAliveTimeout })
+);
 
 if (env.METRICS_COLLECT_DEFAULTS) {
   collectDefaultMetrics({ register });
