@@ -6,7 +6,7 @@ description: "Build an API key's access from presets and per-area levels, limit 
 
 **Custom access lets you build a key's access area by area, such as Runs or Deployments, when no single [access preset](/apikeys#access-presets) fits.** A common case is a CI key that operates on runs and also deploys: the **Operator** preset plus the **Deploy only** preset in one key.
 
-Custom access needs the same plan as the restricted access presets. A custom key works everywhere a preset key does: the SDK, the CLI and the API.
+Custom access is available on every plan. A custom key works everywhere a preset key does: the SDK, the CLI and the API.
 
 ## Create a key with custom access
 
@@ -166,7 +166,7 @@ Saved presets belong to your organization. They appear under **Your presets** in
 - An organization can save up to 50 presets. A saved preset can't reuse the name of another preset.
 - Deleting a saved preset doesn't change the keys created from it. They keep their access and show as **Custom** on the API keys page.
 
-Saving and deleting presets needs the Owner or Admin role in the organization, since presets are shared by every project. A project role doesn't count. Anyone who can create API keys in an environment can create keys from saved presets. Saving also needs the plan that restricted presets need; deleting doesn't, so you can clean up after a plan change.
+Saving and deleting presets needs the Owner or Admin role in the organization, since presets are shared by every project. A project role doesn't count. Anyone who can create API keys in an environment can create keys from saved presets.
 
 ## See a key's access
 
@@ -194,7 +194,6 @@ Narrowing isn't offered when:
 - the key has less than 7 days of recorded usage
 - the key used access the grid doesn't cover
 - a key with **No restrictions** called endpoints that only unrestricted keys can use, such as `whoami` and pausing or resuming an environment, in the last 30 days. A narrower key would break those calls.
-- your plan doesn't include restricted keys
 
 Access that a key uses rarely, such as a monthly report, can look unused after 30 days. Check the last-used note on each area before you save.
 
