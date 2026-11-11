@@ -45,6 +45,9 @@ const Env = z.object({
   // Timeline metrics
   TRIGGER_POD_SCHEDULED_AT_MS: DateEnv,
   TRIGGER_DEQUEUED_AT_MS: DateEnv,
+  // Set when the runner was held until its supervisor was reachable
+  TRIGGER_SUPERVISOR_WAIT_STARTED_AT_MS: DateEnv.optional(),
+  TRIGGER_SUPERVISOR_WAIT_MS: z.coerce.number().optional(),
 
   // May be overridden
   TRIGGER_RUN_ID: z.string().optional(), // This is set for cold starts and restores
@@ -139,6 +142,12 @@ export class RunnerEnv {
   }
   get TRIGGER_DEQUEUED_AT_MS() {
     return this.env.TRIGGER_DEQUEUED_AT_MS;
+  }
+  get TRIGGER_SUPERVISOR_WAIT_STARTED_AT_MS() {
+    return this.env.TRIGGER_SUPERVISOR_WAIT_STARTED_AT_MS;
+  }
+  get TRIGGER_SUPERVISOR_WAIT_MS() {
+    return this.env.TRIGGER_SUPERVISOR_WAIT_MS;
   }
 
   // Overridable values

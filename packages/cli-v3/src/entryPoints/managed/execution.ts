@@ -55,6 +55,7 @@ type RunExecutionRunOptions = {
   snapshotFriendlyId: string;
   dequeuedAt?: Date;
   podScheduledAt?: Date;
+  supervisorWait?: { startedAt: Date; durationMs: number };
   isWarmStart?: boolean;
 };
 
@@ -69,6 +70,7 @@ export class RunExecution {
 
   private dequeuedAt?: Date;
   private podScheduledAt?: Date;
+  private supervisorWait?: { startedAt: Date; durationMs: number };
   private readonly workerManifest: WorkerManifest;
   private readonly env: RunnerEnv;
   private readonly httpClient: WorkloadHttpClient;
@@ -457,6 +459,10 @@ export class RunExecution {
       attemptCreatedAt: attemptStartedAt,
       dequeuedAt: this.dequeuedAt?.getTime(),
       podScheduledAt: this.podScheduledAt?.getTime(),
+      supervisorWait: this.supervisorWait && {
+        startedAt: this.supervisorWait.startedAt.getTime(),
+        durationMs: this.supervisorWait.durationMs,
+      },
     });
 
     this.sendDebugLog("started attempt", {
@@ -493,6 +499,7 @@ export class RunExecution {
 
     this.dequeuedAt = runOpts.dequeuedAt;
     this.podScheduledAt = runOpts.podScheduledAt;
+    this.supervisorWait = runOpts.supervisorWait;
 
     // Create and start services
     this.snapshotPoller = new RunExecutionSnapshotPoller({

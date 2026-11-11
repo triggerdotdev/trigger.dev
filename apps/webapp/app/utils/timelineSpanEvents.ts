@@ -147,6 +147,9 @@ function getFriendlyNameForEvent(event: string, properties?: Record<string, any>
     case "pod_scheduled": {
       return "Pod scheduled";
     }
+    case "supervisor_wait": {
+      return "Waited for supervisor";
+    }
     default: {
       return event;
     }
@@ -219,6 +222,9 @@ export function getAdminOnlyForEvent(event: string): boolean {
     case "pod_scheduled": {
       return true;
     }
+    case "supervisor_wait": {
+      return true;
+    }
     default: {
       return true;
     }
@@ -244,6 +250,9 @@ export function getHelpTextForEvent(event: string): string | undefined {
     }
     case "pod_scheduled": {
       return "The Kubernetes pod was scheduled to run";
+    }
+    case "supervisor_wait": {
+      return "The runner waited until it could reach its supervisor";
     }
     case "Triggered": {
       return "The run was triggered";

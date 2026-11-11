@@ -180,6 +180,12 @@ export class ManagedRunController {
     return this.currentExecution?.runFriendlyId;
   }
 
+  private coldStartSupervisorWait() {
+    const startedAt = this.env.TRIGGER_SUPERVISOR_WAIT_STARTED_AT_MS;
+    const durationMs = this.env.TRIGGER_SUPERVISOR_WAIT_MS;
+    return startedAt && durationMs !== undefined ? { startedAt, durationMs } : undefined;
+  }
+
   private get snapshotFriendlyId() {
     return this.currentExecution?.currentSnapshotFriendlyId;
   }
@@ -191,6 +197,7 @@ export class ManagedRunController {
     snapshotFriendlyId,
     dequeuedAt,
     podScheduledAt,
+    supervisorWait,
     isWarmStart,
     previousRunId,
   }: {
@@ -198,6 +205,7 @@ export class ManagedRunController {
     snapshotFriendlyId: string;
     dequeuedAt?: Date;
     podScheduledAt?: Date;
+    supervisorWait?: { startedAt: Date; durationMs: number };
     isWarmStart?: boolean;
     previousRunId?: string;
   }) {
@@ -257,6 +265,7 @@ export class ManagedRunController {
         snapshotFriendlyId,
         dequeuedAt,
         podScheduledAt,
+        supervisorWait,
         isWarmStart,
       });
     };
@@ -586,6 +595,7 @@ export class ManagedRunController {
         snapshotFriendlyId: this.env.TRIGGER_SNAPSHOT_ID,
         dequeuedAt: this.env.TRIGGER_DEQUEUED_AT_MS,
         podScheduledAt: this.env.TRIGGER_POD_SCHEDULED_AT_MS,
+        supervisorWait: this.coldStartSupervisorWait(),
       }).finally(() => {});
       return;
     }
