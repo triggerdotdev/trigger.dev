@@ -1,11 +1,20 @@
 import { getMeter } from "@internal/tracing";
 import { singleton } from "~/utils/singleton";
 
-export type ApiKeyOperation = "create" | "prepare_policy" | "revoke";
+export type ApiKeyOperation =
+  | "create"
+  | "prepare_policy"
+  | "revoke"
+  | "update_access"
+  | "update_description"
+  | "update_ip_ranges";
 export type ApiKeyOperationResult = "success" | "rejected" | "error";
 export type ApiKeyOperationReason =
   | "none"
   | "database_error"
+  | "expired"
+  | "invalid_description"
+  | "invalid_ip_ranges"
   | "membership_removed"
   | "not_found_or_revoked"
   | "policy_rejected"

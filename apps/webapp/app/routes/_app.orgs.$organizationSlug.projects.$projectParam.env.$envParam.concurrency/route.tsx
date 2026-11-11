@@ -69,8 +69,7 @@ import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { parseFiniteInt } from "~/utils/searchParams";
 import { MiniLineChart } from "~/components/metrics/MiniLineChart";
-import { buildActivityTimeAxis } from "~/components/primitives/charts/activityTimeAxis";
-import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
+import { MetricTileChart } from "~/components/queues/MetricTileChart";
 import { ChartCard } from "~/components/primitives/charts/ChartCard";
 import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncContext";
 import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
@@ -85,6 +84,7 @@ import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
+import { ChartTileTitle } from "~/components/queues/ChartTileTitle";
 import { ENVIRONMENT_PAUSE_SOURCE_BILLING_LIMIT } from "~/utils/environmentPauseSource";
 import {
   concurrencyLimitsPath,
@@ -1764,12 +1764,10 @@ function QueueEnvMetricChart({
   const wholeLineWarning = solidWarning && total > 0;
   const lineColor = wholeLineWarning ? "var(--color-warning)" : tile.color;
 
-  const chartConfig = useMemo<ChartConfig>(
-    () => ({ [tile.id]: { label: tile.label, color: lineColor } }),
+  const chartSeries = useMemo(
+    () => [{ key: tile.id, label: tile.label, color: lineColor }],
     [tile.id, tile.label, lineColor]
   );
-
-  const { tickFormatter, tooltipLabelFormatter } = buildActivityTimeAxis(data);
   const hasData = data.length > 0 && data.some((p) => Number(p[tile.id] ?? 0) > 0);
 
   // Peak readout lives in the card title (ChartCard has no dedicated value slot). A zero/empty
@@ -1788,62 +1786,14 @@ function QueueEnvMetricChart({
   return (
     <ChartCard
       title={
-        <span className="flex flex-col gap-1">
-          <span className="flex items-baseline gap-2">
-            <span className="flex items-center gap-1">
-              {tile.label}
-              <InfoIconTooltip
-                content={tile.description}
-                contentClassName="max-w-[230px]"
-                disableHoverableContent
-              />
-            </span>
-            {peak != null ? (
-              tile.totalTooltip && !readoutLoading ? (
-                <SimpleTooltip
-                  button={
-                    <span
-                      className={cn(
-                        "text-xs font-normal tabular-nums text-text-dimmed",
-                        totalClassName
-                      )}
-                    >
-                      {peak}
-                    </span>
-                  }
-                  content={tile.totalTooltip}
-                  className="max-w-[230px]"
-                  disableHoverableContent
-                />
-              ) : (
-                <span
-                  className={cn(
-                    "text-xs font-normal tabular-nums text-text-dimmed",
-                    totalClassName
-                  )}
-                >
-                  {peak}
-                </span>
-              )
-            ) : null}
-          </span>
-          {tile.legend && (showLoading || hasData) ? (
-            <span className="flex items-center gap-2">
-              {tile.legend.map((item) => (
-                <span
-                  key={item.label}
-                  className="flex items-center gap-1 text-xs font-normal text-text-dimmed"
-                >
-                  <span
-                    className="size-2.5 rounded-[2px]"
-                    style={{ backgroundColor: item.color }}
-                  />
-                  {item.label}
-                </span>
-              ))}
-            </span>
-          ) : null}
-        </span>
+        <ChartTileTitle
+          label={tile.label}
+          description={tile.description}
+          peak={peak}
+          peakClassName={totalClassName}
+          peakTooltip={readoutLoading ? undefined : tile.totalTooltip}
+          legend={showLoading || hasData ? tile.legend : undefined}
+        />
       }
     >
       {showLoading ? (
@@ -1853,24 +1803,15 @@ function QueueEnvMetricChart({
           Unable to load metrics
         </div>
       ) : hasData ? (
-        <Chart.Root
-          config={chartConfig}
+        <MetricTileChart
           data={data}
-          dataKey="bucket"
-          series={[tile.id]}
-          fillContainer
-        >
-          <Chart.Line
-            showDots={false}
-            referenceLines={referenceLines}
-            thresholdStroke={thresholdStroke}
-            warningOverlay={warningOverlay}
-            xAxisProps={{ tickFormatter }}
-            yAxisProps={tile.formatAxis ? { tickFormatter: tile.formatAxis } : undefined}
-            tooltipLabelFormatter={tooltipLabelFormatter}
-            tooltipValueFormatter={tile.formatValue}
-          />
-        </Chart.Root>
+          series={chartSeries}
+          referenceLines={referenceLines}
+          thresholdStroke={thresholdStroke}
+          warningOverlay={warningOverlay}
+          formatAxis={tile.formatAxis}
+          formatValue={tile.formatValue}
+        />
       ) : (
         <div className="flex h-full items-center justify-center text-xs text-text-dimmed">
           No activity

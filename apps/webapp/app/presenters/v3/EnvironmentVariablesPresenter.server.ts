@@ -3,6 +3,10 @@ import type { PrismaClient, PrismaReplicaClient } from "~/db.server";
 import { $replica, prisma } from "~/db.server";
 import type { Project } from "~/models/project.server";
 import type { User } from "~/models/user.server";
+import {
+  selectEnvironmentVariablesFilter,
+  type EnvironmentVariablesFilter,
+} from "~/v3/environmentVariables/environmentFilter";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import type { EnvironmentVariableUpdater } from "~/v3/environmentVariables/repository";
 import type { SyncEnvVarsMapping, EnvSlug } from "~/v3/vercel/vercelProjectIntegrationSchema";
@@ -26,16 +30,25 @@ export class EnvironmentVariablesPresenter {
 
   public async call({
     userId,
-    projectSlug,
+    projectId,
     page = 1,
     pageSize = DEFAULT_ENV_VARS_PAGE_SIZE,
     search,
+    environmentFilter,
+    branches,
+    currentEnvironmentSlug,
   }: {
     userId: User["id"];
-    projectSlug: Project["slug"];
+    projectId: Project["id"];
     page?: number;
     pageSize?: number;
     search?: string;
+    /** The requested filter. Without one, the current environment's type is used. */
+    environmentFilter?: EnvironmentVariablesFilter;
+    /** Preview branch names, or `ALL_BRANCHES`. Only used by the Preview filter. */
+    branches?: string[];
+    /** The environment the page is opened in. Without one, every environment is listed. */
+    currentEnvironmentSlug?: string;
   }) {
     const project = await this.#replicaClient.project.findFirst({
       select: {
@@ -43,7 +56,7 @@ export class EnvironmentVariablesPresenter {
         organization: { select: { featureFlags: true } },
       },
       where: {
-        slug: projectSlug,
+        id: projectId,
         organization: {
           members: {
             some: {
@@ -65,9 +78,31 @@ export class EnvironmentVariablesPresenter {
         { skipProjectAccessCheck: true }
       );
 
-    // Only load values for the environments we display. Projects can accumulate
-    // values in archived branch environments, which would otherwise all be loaded here.
-    const environmentIds = sortedEnvironments.map((env) => env.id);
+    // Narrow to the filtered environments before counting and paging, so the totals and the
+    // pages follow the filter. Archived branch environments are never in this list, so the
+    // values projects accumulate in them are never loaded.
+    const currentEnvironment = currentEnvironmentSlug
+      ? sortedEnvironments.find((env) => env.slug === currentEnvironmentSlug)
+      : undefined;
+    // An archived branch isn't in the list, but its URL still opens the page: default to its type.
+    const missingCurrentEnvironment =
+      currentEnvironmentSlug && !currentEnvironment
+        ? await this.#replicaClient.runtimeEnvironment.findFirst({
+            select: { type: true },
+            where: { projectId: project.id, slug: currentEnvironmentSlug },
+          })
+        : null;
+    const { filter, environmentIds, branchEnvironmentIds } = selectEnvironmentVariablesFilter({
+      environments: sortedEnvironments,
+      requested: environmentFilter,
+      requestedBranches: branches,
+      currentEnvironmentId: currentEnvironment?.id,
+      currentEnvironmentType: missingCurrentEnvironment?.type,
+    });
+    const filteredEnvironmentIds = new Set(environmentIds);
+    const listedEnvironments = sortedEnvironments.filter((env) =>
+      filteredEnvironmentIds.has(env.id)
+    );
 
     const variableWhere: Prisma.EnvironmentVariableWhereInput = {
       projectId: project.id,
@@ -78,6 +113,21 @@ export class EnvironmentVariablesPresenter {
     const totalCount = await this.#replicaClient.environmentVariable.count({
       where: variableWhere,
     });
+    // A project with no variables in any listed environment gets the first-run empty state
+    // whatever the filter is. Only an unsearched view with nothing in it has to look further.
+    const projectHasNoVariables =
+      totalCount === 0 &&
+      !search &&
+      (filter === "all" ||
+        (await this.#replicaClient.environmentVariable.findFirst({
+          select: { id: true },
+          where: {
+            projectId: project.id,
+            values: {
+              some: { environmentId: { in: boundedIn(sortedEnvironments.map((env) => env.id)) } },
+            },
+          },
+        })) === null);
     const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
     const currentPage = Math.min(Math.max(1, page), totalPages);
 
@@ -151,7 +201,7 @@ export class EnvironmentVariablesPresenter {
 
     const nonSecretItems: Array<{ environmentId: string; key: string }> = [];
     for (const environmentVariable of environmentVariables) {
-      for (const env of sortedEnvironments) {
+      for (const env of listedEnvironments) {
         const valueRecord = environmentVariable.values.find((v) => v.environmentId === env.id);
         if (valueRecord && !valueRecord.isSecret) {
           nonSecretItems.push({ environmentId: env.id, key: environmentVariable.key });
@@ -183,7 +233,7 @@ export class EnvironmentVariablesPresenter {
         this.#prismaClient
       ),
       environmentVariables: environmentVariables.flatMap((environmentVariable) => {
-        return sortedEnvironments.flatMap((env) => {
+        return listedEnvironments.flatMap((env) => {
           const valueRecord = environmentVariable.values.find((v) => v.environmentId === env.id);
           const isSecret = valueRecord?.isSecret ?? false;
 
@@ -230,7 +280,13 @@ export class EnvironmentVariablesPresenter {
           ];
         });
       }),
+      // Every environment, not only the listed ones: the page needs them all for its filter
+      // options, its permission lists and the create dialog.
       environments: sortedEnvironments,
+      filter,
+      filterEnvironmentIds: environmentIds,
+      filterBranchEnvironmentIds: branchEnvironmentIds ?? [],
+      projectHasNoVariables,
       hasStaging,
       pagination: {
         currentPage,

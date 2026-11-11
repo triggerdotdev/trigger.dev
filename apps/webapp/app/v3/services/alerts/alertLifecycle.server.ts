@@ -87,6 +87,10 @@ export async function activateAlertAndSchedule(
   deps?: AlertLifecycleDeps
 ) {
   const result = await activateAlert(db, params);
-  if (result) await schedule(params.id, deps ?? (await defaultDeps()));
+  if (result) await scheduleAlert(params.id, deps);
   return result;
+}
+
+export async function scheduleAlert(alertId: string, deps?: AlertLifecycleDeps) {
+  await schedule(alertId, deps ?? (await defaultDeps()));
 }

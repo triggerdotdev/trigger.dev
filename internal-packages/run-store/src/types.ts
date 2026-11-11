@@ -491,6 +491,17 @@ export type LatestExecutionSnapshotRead = Prisma.TaskRunExecutionSnapshotGetPayl
 }> & { completedWaitpoints: SnapshotReadWaitpoint[] };
 
 export interface RunStore {
+  /** Canonical configured owning database, including declared shard aliases. No I/O. */
+  getWaitpointKeyScope(ownerId?: string): string;
+
+  /** Isolated writer lane for enabled keyed creation; never borrows the ordinary pool. */
+  runInWaitpointKeyTransaction<R>(
+    ownerId: string | undefined,
+    organizationId: string,
+    acceptUntil: number,
+    fn: (store: RunStore, tx: PrismaClientOrTransaction) => Promise<R>
+  ): Promise<R>;
+
   /**
    * Run a co-resident multi-write unit atomically on the store that OWNS `runId`. The callback gets
    * the owning `RunStore` plus a `tx` opened on THAT store's OWN client; passing `tx` to the inner
@@ -1024,6 +1035,8 @@ export interface RunStore {
   // --- BatchTaskRun (run-ops) ---
   // Batch row is born on the run-ops store at create. `findBatchTaskRunById`
   // reads the primary by default (worker reads the just-written row; replica lag).
+  markBatchWaitpointOnStore(batchId: string, waitpointId: string): Promise<void>;
+
   createBatchTaskRun(
     data: CreateBatchTaskRunData,
     tx?: PrismaClientOrTransaction

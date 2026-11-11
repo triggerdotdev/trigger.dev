@@ -18,6 +18,8 @@ import { MfaDisableDialog } from "./MfaDisableDialog";
 const formSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("enable-mfa"),
+    totpCode: z.string().optional(),
+    recoveryCode: z.string().optional(),
   }),
   z.object({
     action: z.literal("disable-mfa"),
@@ -73,7 +75,10 @@ export async function action({ request }: ActionFunctionArgs) {
 
     switch (submission.data.action) {
       case "enable-mfa": {
-        const result = await mfaSetupService.enableTotp(userId);
+        const result = await mfaSetupService.enableTotp(userId, {
+          totpCode: submission.data.totpCode,
+          recoveryCode: submission.data.recoveryCode,
+        });
 
         return typedjson({
           action: "enable-mfa" as const,
@@ -118,8 +123,6 @@ export async function action({ request }: ActionFunctionArgs) {
             action: "validate-totp" as const,
             success: false as const,
             error: "Invalid code provided. Please try again.",
-            otpAuthUrl: result.otpAuthUrl,
-            secret: result.secret,
           });
         }
       }

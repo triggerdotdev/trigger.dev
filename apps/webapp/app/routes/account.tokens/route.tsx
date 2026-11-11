@@ -1,6 +1,11 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod/v4";
-import { BookOpenIcon, ShieldCheckIcon, TrashIcon } from "@heroicons/react/20/solid";
+import {
+  BookOpenIcon,
+  ExclamationTriangleIcon,
+  ShieldCheckIcon,
+  TrashIcon,
+} from "@heroicons/react/20/solid";
 import { ShieldExclamationIcon } from "@heroicons/react/24/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useActionData, useFetcher } from "@remix-run/react";
@@ -37,12 +42,16 @@ import {
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { prisma } from "~/db.server";
+import { extractClientIp } from "~/utils/extractClientIp.server";
 import { rbac } from "~/services/rbac.server";
 import {
   type CreatedPersonalAccessToken,
   type ObfuscatedPersonalAccessToken,
   createPersonalAccessToken,
   getValidPersonalAccessTokens,
+  isAllowedPersonalAccessTokenExpiry,
+  type PersonalAccessTokenExpiryOption,
+  personalAccessTokenExpiryOptions,
   revokePersonalAccessToken,
 } from "~/services/personalAccessToken.server";
 import { requireUserId } from "~/services/session.server";
@@ -147,6 +156,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       roles,
       defaultRoleId,
       showMaxRole,
+      expiryOptions: personalAccessTokenExpiryOptions(),
     });
   } catch (error) {
     if (error instanceof Response) {
@@ -172,6 +182,8 @@ const CreateTokenSchema = z.discriminatedUnion("action", [
     // dropdown and submits no roleId; the action passes that through
     // and createPersonalAccessToken just doesn't write a TokenRole.
     roleId: z.string().optional(),
+    // Checked against the configured lifetimes in the action.
+    expiresInDays: z.coerce.number({ error: "Choose when the token expires" }).int().positive(),
   }),
   z.object({
     action: z.literal("revoke"),
@@ -208,10 +220,25 @@ export const action: ActionFunction = async ({ request }) => {
           }
         }
 
+        const { expiresInDays } = submission.value;
+        if (!isAllowedPersonalAccessTokenExpiry(expiresInDays)) {
+          return json(
+            submission.reply({
+              fieldErrors: { expiresInDays: ["Choose one of the listed expiration options"] },
+            }),
+            { status: 400 }
+          );
+        }
+
         const tokenResult = await createPersonalAccessToken({
           name: submission.value.tokenName,
           userId,
           roleId: submittedRoleId,
+          expiresInDays,
+          auditSource: {
+            ip: extractClientIp(request.headers.get("x-forwarded-for")),
+            userAgent: request.headers.get("user-agent"),
+          },
         });
 
         return json({ ...submission.reply(), payload: { token: tokenResult } });
@@ -240,7 +267,7 @@ export const action: ActionFunction = async ({ request }) => {
 };
 
 export default function Page() {
-  const { personalAccessTokens, roles, defaultRoleId, showMaxRole } =
+  const { personalAccessTokens, roles, defaultRoleId, showMaxRole, expiryOptions } =
     useTypedLoaderData<typeof loader>();
 
   return (
@@ -263,7 +290,11 @@ export default function Page() {
             </DialogTrigger>
             <DialogContent className="max-w-md">
               <DialogHeader>Create a Personal Access Token</DialogHeader>
-              <CreatePersonalAccessToken roles={roles} defaultRoleId={defaultRoleId} />
+              <CreatePersonalAccessToken
+                roles={roles}
+                defaultRoleId={defaultRoleId}
+                expiryOptions={expiryOptions}
+              />
             </DialogContent>
           </Dialog>
         </PageAccessories>
@@ -281,6 +312,7 @@ export default function Page() {
                 )}
                 <TableHeaderCell>Created</TableHeaderCell>
                 <TableHeaderCell>Last accessed</TableHeaderCell>
+                <TableHeaderCell>Expires</TableHeaderCell>
                 <TableHeaderCell hiddenLabel>Delete</TableHeaderCell>
               </TableRow>
             </TableHeader>
@@ -302,6 +334,35 @@ export default function Page() {
                           "Never"
                         )}
                       </TableCell>
+                      <TableCell>
+                        {personalAccessToken.expiresAt && personalAccessToken.isExpiringSoon ? (
+                          <SimpleTooltip
+                            button={
+                              <span className="inline-flex items-center gap-1 text-warning">
+                                <ExclamationTriangleIcon className="size-4 shrink-0" />
+                                <span>
+                                  Expires <DateTime date={personalAccessToken.expiresAt} />
+                                </span>
+                              </span>
+                            }
+                            content="To get a token with a later expiry, create a new one."
+                          />
+                        ) : personalAccessToken.expiresAt && personalAccessToken.isExpired ? (
+                          <ExpiredLabel>
+                            Expired <DateTime date={personalAccessToken.expiresAt} />
+                          </ExpiredLabel>
+                        ) : personalAccessToken.expiresAt ? (
+                          <DateTime date={personalAccessToken.expiresAt} />
+                        ) : personalAccessToken.idleTimeoutLabel !== null ? (
+                          personalAccessToken.isExpired ? (
+                            <ExpiredLabel>Expired (unused)</ExpiredLabel>
+                          ) : (
+                            `After ${personalAccessToken.idleTimeoutLabel} unused`
+                          )
+                        ) : (
+                          "Never"
+                        )}
+                      </TableCell>
                       <TableCellMenu
                         isSticky
                         visibleButtons={<RevokePersonalAccessToken token={personalAccessToken} />}
@@ -310,7 +371,7 @@ export default function Page() {
                   );
                 })
               ) : (
-                <TableBlankRow colSpan={showMaxRole ? 6 : 5}>
+                <TableBlankRow colSpan={showMaxRole ? 7 : 6}>
                   <Paragraph
                     variant="base/bright"
                     className="flex items-center justify-center py-8"
@@ -329,17 +390,29 @@ export default function Page() {
 
 type SystemRole = { id: string; name: string; description: string };
 
+/** An expired token, styled like an expired API key: dimmed, with a warning icon. */
+function ExpiredLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1 text-text-dimmed">
+      <ExclamationTriangleIcon className="size-4 shrink-0" />
+      <span>{children}</span>
+    </span>
+  );
+}
+
 function CreatePersonalAccessToken({
   roles,
   defaultRoleId,
+  expiryOptions,
 }: {
   roles: SystemRole[];
   defaultRoleId: string;
+  expiryOptions: { options: PersonalAccessTokenExpiryOption[]; defaultDays: number };
 }) {
   const fetcher = useFetcher<typeof action>();
   const lastSubmission = fetcher.data as any;
 
-  const [form, { tokenName }] = useForm({
+  const [form, { tokenName, expiresInDays }] = useForm({
     id: "create-personal-access-token",
     // TODO: type this
     lastResult: lastSubmission as any,
@@ -379,6 +452,11 @@ function CreatePersonalAccessToken({
             icon={<ShieldExclamationIcon className="size-5 text-success" />}
             className="mt-3"
           />
+          {token.expiresAt ? (
+            <Paragraph variant="small">
+              Expires <DateTime date={token.expiresAt} />
+            </Paragraph>
+          ) : null}
         </div>
       ) : (
         <fetcher.Form method="post" {...getFormProps(form)}>
@@ -428,6 +506,29 @@ function CreatePersonalAccessToken({
                 <Hint>{MAX_ROLE_EXPLANATION}</Hint>
               </InputGroup>
             )}
+
+            <InputGroup>
+              <Label htmlFor={expiresInDays.id}>Expiration</Label>
+              <Select
+                name={expiresInDays.name}
+                id={expiresInDays.id}
+                variant="tertiary/small"
+                defaultValue={String(expiryOptions.defaultDays)}
+                text={(value: string) =>
+                  expiryOptions.options.find((o) => String(o.value) === value)?.label ??
+                  "Select an expiration"
+                }
+                dropdownIcon
+              >
+                {expiryOptions.options.map((option) => (
+                  <SelectItem key={option.value} value={String(option.value)}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </Select>
+              <Hint>The token stops working after this. Create a new one to replace it.</Hint>
+              <FormError id={expiresInDays.errorId}>{expiresInDays.errors}</FormError>
+            </InputGroup>
 
             <FormButtons
               confirmButton={

@@ -1,3 +1,4 @@
+import { withAdminAudit } from "~/services/adminAudit/adminAudit.server";
 import {
   redirect,
   type ActionFunctionArgs,
@@ -69,7 +70,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return redirect(`/admin?${new URLSearchParams({ search: target.email }).toString()}`);
 };
 
-export async function action({ request }: ActionFunctionArgs) {
+async function handleAction({ request }: ActionFunctionArgs) {
   requireAdminDashboardEnabled();
 
   if (request.method.toLowerCase() !== "post") {
@@ -81,3 +82,5 @@ export async function action({ request }: ActionFunctionArgs) {
 
   return handleImpersonationRequest(request, id, organizationSlug);
 }
+
+export const action = withAdminAudit(handleAction);

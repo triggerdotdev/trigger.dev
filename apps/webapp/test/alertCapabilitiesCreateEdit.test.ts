@@ -132,7 +132,9 @@ function draftFor(capability: AlertCapability, channelId: string) {
   });
 }
 
-const CAPABILITIES = V1_CAPABILITIES.filter((c) => c.key !== "custom.query");
+const CAPABILITIES = V1_CAPABILITIES.filter(
+  (c) => c.key !== "custom.query" && c.key !== "alerts.group"
+);
 
 describe("alert capabilities create and edit", () => {
   postgresTest("covers every registry capability", async ({ prisma }) => {

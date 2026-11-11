@@ -1,9 +1,11 @@
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { json } from "@remix-run/server-runtime";
 import { Registry } from "prom-client";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
+import {
+  authenticateApiRequestWithPersonalAccessToken,
+  personalAccessTokenUnauthorizedResponse,
+} from "~/services/personalAccessToken.server";
 import { registerProjectMetrics } from "./registerProjectMetrics.server";
 
 const ParamsSchema = z.object({
@@ -14,7 +16,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
 
   if (!authenticationResult) {
-    return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
+    return personalAccessTokenUnauthorizedResponse(request);
   }
 
   const validatedParams = ParamsSchema.parse(params);

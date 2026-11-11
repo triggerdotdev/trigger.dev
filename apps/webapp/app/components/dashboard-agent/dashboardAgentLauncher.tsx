@@ -33,6 +33,8 @@ type DashboardAgentContextValue = {
   openCreateAlert: (prefill: DraftPrefillParams) => void;
   /** Opens the panel with a wizard card for the alert's editable fields. */
   openEditAlert: (prefill: EditAlertPrefill) => void;
+  /** Opens the panel with the group-alerts wizard for these alerts. */
+  openGroupAlerts: (members: { id: string; name: string }[]) => void;
   /** Polled only while the panel is closed; 0 while it is open. */
   unreadWakes: number;
   /** Chats that answered, settled or woke while the panel was closed. */

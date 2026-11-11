@@ -14,6 +14,10 @@ import { getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
 import { determineRealtimeStreamsVersion } from "~/services/realtime/v1StreamsGlobal.server";
+import {
+  STORED_PAYLOAD_FORBIDDEN_ERROR,
+  storedPayloadPointerPolicy,
+} from "~/services/packetApi.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import {
@@ -26,6 +30,7 @@ import { sanitizeTriggerSource } from "~/utils/triggerSource";
 import { runStore } from "~/v3/runStore.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "~/v3/services/triggerTask.server";
+import { publicTokenSubject } from "~/services/publicTokenSubject.server";
 
 const ParamsSchema = z.object({
   taskId: z.string(),
@@ -62,15 +67,10 @@ const { action, loader } = createActionApiRoute(
     },
     corsStrategy: "all",
   },
-  async ({ body, headers, params, authentication, restrictedApiKey, ability }) => {
-    if (
-      (authentication.type !== "PRIVATE" || restrictedApiKey) &&
-      body.options?.payloadType === "application/store"
-    ) {
-      return json(
-        { error: "Stored payloads require an unrestricted private API key" },
-        { status: 403 }
-      );
+  async ({ body, headers, params, authentication, subject, ability }) => {
+    const allowStoredPayload = storedPayloadPointerPolicy(subject);
+    if (body.options?.payloadType === "application/store" && !allowStoredPayload(body.payload)) {
+      return json({ error: STORED_PAYLOAD_FORBIDDEN_ERROR }, { status: 403 });
     }
 
     const {
@@ -221,7 +221,7 @@ async function responseHeaders(
   const { environment, realtime } = authentication;
 
   const claims = {
-    sub: environment.id,
+    sub: publicTokenSubject(environment.id),
     pub: true,
     scopes: [`read:runs:${run.friendlyId}`, `write:inputStreams:${run.friendlyId}`],
     realtime,

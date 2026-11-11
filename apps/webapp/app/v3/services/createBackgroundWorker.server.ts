@@ -94,7 +94,8 @@ export class CreateBackgroundWorkerService extends BaseService {
   public async call(
     projectRef: string,
     environment: AuthenticatedEnvironment,
-    body: CreateBackgroundWorkerRequestBody
+    body: CreateBackgroundWorkerRequestBody,
+    { restricted = false }: { restricted?: boolean } = {}
   ): Promise<BackgroundWorkerWithWarnings> {
     return this.traceWithEnv("call", environment, async (span) => {
       span.setAttribute("projectRef", projectRef);
@@ -126,11 +127,9 @@ export class CreateBackgroundWorkerService extends BaseService {
       const latestBackgroundWorker = project.backgroundWorkers[0];
 
       // Validate before persisting a worker or accepting a matching hash from an earlier attempt.
-      const preparedSchedules = await prepareDeclarativeSchedules(
-        body.metadata.tasks,
-        environment,
-        this._prisma
-      );
+      const preparedSchedules = restricted
+        ? undefined
+        : await prepareDeclarativeSchedules(body.metadata.tasks, environment, this._prisma);
 
       if (latestBackgroundWorker?.contentHash === body.metadata.contentHash) {
         return { ...latestBackgroundWorker, warnings: [] };
@@ -220,14 +219,16 @@ export class CreateBackgroundWorkerService extends BaseService {
       }
 
       const [schedulesError, scheduleWarnings] = await tryCatch(
-        syncDeclarativeSchedules(
-          body.metadata.tasks,
-          backgroundWorker,
-          environment,
-          this._prisma,
-          scheduleEngine,
-          preparedSchedules
-        )
+        restricted
+          ? Promise.resolve([])
+          : syncDeclarativeSchedules(
+              body.metadata.tasks,
+              backgroundWorker,
+              environment,
+              this._prisma,
+              scheduleEngine,
+              preparedSchedules
+            )
       );
 
       if (schedulesError) {
@@ -256,16 +257,18 @@ export class CreateBackgroundWorkerService extends BaseService {
       }
 
       const [webhooksError] = await tryCatch(
-        syncDeclarativeWebhooks(
-          {
-            endpoints: body.metadata.webhookEndpoints,
-            subscribers: body.metadata.webhookSubscribers,
-          },
-          backgroundWorker,
-          environment,
-          this._prisma,
-          webhookPrisma
-        )
+        restricted
+          ? Promise.resolve()
+          : syncDeclarativeWebhooks(
+              {
+                endpoints: body.metadata.webhookEndpoints,
+                subscribers: body.metadata.webhookSubscribers,
+              },
+              backgroundWorker,
+              environment,
+              this._prisma,
+              webhookPrisma
+            )
       );
       if (webhooksError) {
         if (webhooksError instanceof ServiceValidationError) {

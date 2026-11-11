@@ -10,9 +10,22 @@ import { startTestServer, type TestServer } from "@internal/testcontainers/webap
 
 let server: TestServer | undefined;
 
+const E2E_BILLING_SERVICE_SECRET = "test-billing-service-secret-for-e2e-tests";
+
 export default async function setup(project: TestProject) {
-  server = await startTestServer();
+  // A billing service secret so tests can prove that credential is refused where it should be.
+  // Dummy GitHub OAuth credentials register the strategy so its callback route can be tested.
+  server = await startTestServer({
+    extraEnv: {
+      BILLING_SERVICE_SECRET: E2E_BILLING_SERVICE_SECRET,
+      AUTH_GITHUB_CLIENT_ID: "e2e-github-client-id",
+      AUTH_GITHUB_CLIENT_SECRET: "e2e-github-client-secret",
+      AUTH_GOOGLE_CLIENT_ID: "e2e-google-client-id",
+      AUTH_GOOGLE_CLIENT_SECRET: "e2e-google-client-secret",
+    },
+  });
   project.provide("baseUrl", server.webapp.baseUrl);
+  project.provide("billingServiceSecret", E2E_BILLING_SERVICE_SECRET);
   project.provide("databaseUrl", server.databaseUrl);
 
   return async () => {
@@ -24,5 +37,6 @@ declare module "vitest" {
   export interface ProvidedContext {
     baseUrl: string;
     databaseUrl: string;
+    billingServiceSecret: string;
   }
 }

@@ -255,6 +255,10 @@ export const myChat = chat.agent({
 </Warning>
 
 <Note>
+  The agent only takes two kinds of message from a client: user messages, and resolutions of tool calls the agent itself made (an approval response for a call awaiting approval, or the output of a client-side tool). Tool parts on a user message, any client-supplied tool `input`, other roles, and resolutions that don't answer a pending call are dropped before your hooks run. Tool `input` always comes from the agent's own history.
+</Note>
+
+<Note>
   `onValidateMessages` fires **before** `onTurnStart` and message accumulation. If you need to validate messages loaded from a database, do the loading in `onChatStart` or `onPreload` and let `onValidateMessages` validate the full incoming set each turn.
 </Note>
 

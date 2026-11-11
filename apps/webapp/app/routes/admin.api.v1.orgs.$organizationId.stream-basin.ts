@@ -1,7 +1,8 @@
+import { withAdminApi } from "~/services/adminApi.server";
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { requireBillingServiceOrAdminApiRequest } from "~/services/billingServiceAuth.server";
+import { requireBillingServiceRequest } from "~/services/billingServiceAuth.server";
 import { isValidDuration } from "~/services/realtime/duration.server";
 import {
   deprovisionBasinForOrg,
@@ -20,8 +21,8 @@ const BodySchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("deprovision") }),
 ]);
 
-export async function action({ request, params }: ActionFunctionArgs) {
-  await requireBillingServiceOrAdminApiRequest(request);
+async function handleAction({ request, params }: ActionFunctionArgs) {
+  await requireBillingServiceRequest(request);
 
   const { organizationId } = ParamsSchema.parse(params);
 
@@ -46,3 +47,5 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const result = await deprovisionBasinForOrg(organizationId);
   return json({ ok: true, ...result });
 }
+
+export const action = withAdminApi(handleAction);

@@ -6,7 +6,7 @@ import { RadioGroup } from "@radix-ui/react-radio-group";
 import { json, type ActionFunction } from "@remix-run/node";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { motion } from "framer-motion";
-import { forwardRef, useEffect, useState } from "react";
+import { forwardRef, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { UserGroupIcon } from "~/assets/icons/UserGroupIcon";
 import { BackgroundWrapper } from "~/components/BackgroundWrapper";
@@ -23,13 +23,18 @@ import { RadioGroupItem } from "~/components/primitives/RadioButton";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { prisma } from "~/db.server";
 import { useFeatures } from "~/hooks/useFeatures";
+import { readPostHogFirstTouch } from "~/hooks/usePostHog";
+import { featuresForRequest } from "~/features.server";
 import { useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { updateUser } from "~/models/user.server";
 import { normalizeEmail, requestEmailChange } from "~/services/emailChange.server";
+import { enqueueAttioUserSync } from "~/services/attio.server";
+import { signupAttributionFromUser } from "~/services/attioClient.server";
 import { requireUser } from "~/services/session.server";
 import { telemetry } from "~/services/telemetry.server";
 import { emailSchema, MAX_EMAIL_LENGTH } from "~/utils/emailValidation";
+import { parseFirstTouch, type FirstTouch } from "~/utils/firstTouch";
 import { rootPath } from "~/utils/pathBuilder";
 import { getVercelInstallParams } from "~/v3/vercel";
 import { pageMeta } from "~/utils/pageTitle";
@@ -104,6 +109,7 @@ function createSchema(
       referralSourceOther: z.string().optional(),
       role: z.string().optional(),
       roleOther: z.string().optional(),
+      firstTouch: z.string().optional(),
       referralSourcePosition: z.coerce.number().optional(),
       rolePosition: z.coerce.number().optional(),
     })
@@ -145,7 +151,7 @@ export const action: ActionFunction = async ({ request }) => {
   }
 
   try {
-    const onboardingData: Record<string, string | undefined> = {};
+    const onboardingData: Record<string, string | FirstTouch | undefined> = {};
 
     if (submission.value.referralSource) {
       onboardingData.referralSource = submission.value.referralSource;
@@ -167,6 +173,14 @@ export const action: ActionFunction = async ({ request }) => {
       }
     }
 
+    // Managed cloud only, so self-hosted installs never store PostHog data.
+    const firstTouch = featuresForRequest(request).isManagedCloud
+      ? parseFirstTouch(submission.value.firstTouch)
+      : undefined;
+    if (firstTouch) {
+      onboardingData.firstTouch = firstTouch;
+    }
+
     const referralSourceForLegacy =
       submission.value.referralSource === "Other" && submission.value.referralSourceOther
         ? `Other: ${submission.value.referralSourceOther}`
@@ -184,11 +198,20 @@ export const action: ActionFunction = async ({ request }) => {
       }
     }
 
-    await updateUser({
+    const updatedUser = await updateUser({
       id: userId,
       name: submission.value.name,
       referralSource: referralSourceForLegacy,
       onboardingData: Object.keys(onboardingData).length > 0 ? onboardingData : undefined,
+    });
+
+    // Same job id as the signup sync, so a still-pending one is replaced by this fuller write.
+    await enqueueAttioUserSync({
+      userId,
+      email: updatedUser.email,
+      ...signupAttributionFromUser(updatedUser),
+      marketingEmails: updatedUser.marketingEmails,
+      createdAt: updatedUser.createdAt,
     });
 
     telemetry.user.onboardingDetailsSubmitted({
@@ -272,6 +295,7 @@ export default function Page() {
   });
 
   const shouldShowConfirm = user.email !== enteredEmail || user.email === "";
+  const firstTouchInput = useRef<HTMLInputElement>(null);
 
   return (
     <AppContainer className="bg-background-deep">
@@ -280,7 +304,17 @@ export default function Page() {
           variant="onboarding"
           className="max-w-116 rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
         >
-          <Form method="post" {...getFormProps(form)}>
+          <Form
+            method="post"
+            {...getFormProps(form)}
+            onSubmitCapture={() => {
+              // Read at submit time: PostHog may not have loaded when the page rendered.
+              if (firstTouchInput.current) {
+                firstTouchInput.current.value = JSON.stringify(readPostHogFirstTouch());
+              }
+            }}
+          >
+            {isManagedCloud && <input ref={firstTouchInput} type="hidden" name="firstTouch" />}
             <FormTitle
               title="Welcome to Trigger.dev"
               LeadingIcon={

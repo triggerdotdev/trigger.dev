@@ -9,13 +9,12 @@ const activated = vi.hoisted(() => ({
 }));
 const DEFAULT_NOTIFIERS = vi.hoisted(() => [
   { type: "chat", chatId: "chat_9", userId: "user_2" },
-  { type: "chat" },
   { type: "channel", channelId: "ch_1" },
 ]);
-const current = vi.hoisted(() => ({ notifiers: [] as unknown[] }));
+const current = vi.hoisted(() => ({ notifiers: [] as unknown[], extra: {} as object }));
 const canCalls = vi.hoisted(() => [] as unknown[][]);
 const presented = vi.hoisted(() => ({ calls: [] as any[], alert: null as unknown }));
-const chats = vi.hoisted(() => ({ exists: true }));
+const groupCalls = vi.hoisted(() => ({ edited: [] as any[] }));
 const CHANNELS = vi.hoisted(() => [
   { id: "ch_1", projectId: "p1" },
   { id: "ch_foreign", projectId: "p2" },
@@ -105,11 +104,13 @@ vi.mock("~/v3/services/alerts/alertActions.server", async (importOriginal) => {
   };
 });
 
-vi.mock("@internal/dashboard-agent-db", async (importOriginal) => {
+vi.mock("~/v3/services/alerts/alertGroups.server", async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
   return {
     ...original,
-    chatExists: async () => chats.exists,
+    editAlertGroup: async (_db: unknown, input: unknown) => {
+      groupCalls.edited.push(input);
+    },
   };
 });
 
@@ -120,6 +121,7 @@ vi.mock("~/v3/services/alerts/storage/alertStore.server", async (importOriginal)
     getAlert: async () => ({
       id: "alert_1",
       notifiers: current.notifiers.length > 0 ? current.notifiers : DEFAULT_NOTIFIERS,
+      ...current.extra,
     }),
   };
 });
@@ -140,20 +142,17 @@ describe("alert detail edit action", () => {
     loader = mod.loader as never;
   }, 180_000);
 
-  it("checks write and delete for the environment type", async () => {
+  it("checks write for the environment type", async () => {
     canCalls.length = 0;
     await action({
       request: post({ intent: "delete", respond: "json" }),
       params: {},
       context: {},
     } as any);
-    expect(canCalls).toEqual([
-      ["write", { type: "alerts", envType: "PRODUCTION" }],
-      ["delete", { type: "alerts", envType: "PRODUCTION" }],
-    ]);
+    expect(canCalls).toEqual([["write", { type: "alerts", envType: "PRODUCTION" }]]);
   });
 
-  it("loader checks read, write and delete for the environment type", async () => {
+  it("loader checks read and write for the environment type", async () => {
     presented.alert = { id: "alert_1", kind: "threshold" };
     canCalls.length = 0;
     await loader({
@@ -165,7 +164,6 @@ describe("alert detail edit action", () => {
     expect(canCalls).toEqual([
       ["read", { type: "alerts", envType: "PRODUCTION" }],
       ["write", { type: "alerts", envType: "PRODUCTION" }],
-      ["delete", { type: "alerts", envType: "PRODUCTION" }],
     ]);
   });
 
@@ -181,29 +179,15 @@ describe("alert detail edit action", () => {
     expect(edited.calls).toHaveLength(0);
   });
 
-  it("edit rejects a forged teammate chat ref", async () => {
+  it("edit rejects a chat ref", async () => {
     edited.calls = [];
     const response = (await action({
-      request: post({ intent: "edit", notifierIds: "chat:x:user_2", respond: "json" }),
+      request: post({ intent: "edit", notifierIds: "chat:chat_1:user_1", respond: "json" }),
       params: {},
       context: {},
     } as any)) as Response;
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "Unauthorized chat notifier" });
-    expect(edited.calls).toHaveLength(0);
-  });
-
-  it("edit rejects a chat the editor does not own", async () => {
-    edited.calls = [];
-    chats.exists = false;
-    const response = (await action({
-      request: post({ intent: "edit", notifierIds: "chat:chat_other:user_1", respond: "json" }),
-      params: {},
-      context: {},
-    } as any)) as Response;
-    chats.exists = true;
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "Unauthorized chat notifier" });
+    expect(await response.json()).toEqual({ error: "Chat notifiers are not supported" });
     expect(edited.calls).toHaveLength(0);
   });
 
@@ -219,7 +203,7 @@ describe("alert detail edit action", () => {
     expect(edited.calls).toHaveLength(0);
   });
 
-  it("edit keeps one copy of a repeated notifier", async () => {
+  it("edit keeps one copy of a repeated notifier and drops stored chat refs", async () => {
     edited.calls = [];
     const response = (await action({
       request: post({ intent: "edit", notifierIds: "channel:ch_1,channel:ch_1", respond: "json" }),
@@ -227,10 +211,7 @@ describe("alert detail edit action", () => {
       context: {},
     } as any)) as Response;
     expect(response.status).toBe(200);
-    expect(edited.calls[0].notifiers).toEqual([
-      { type: "channel", channelId: "ch_1" },
-      { type: "chat", chatId: "chat_9", userId: "user_2" },
-    ]);
+    expect(edited.calls[0].notifiers).toEqual([{ type: "channel", channelId: "ch_1" }]);
   });
 
   it("loader ignores unusable from and to", async () => {
@@ -255,64 +236,6 @@ describe("alert detail edit action", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true });
     expect(edited.calls).toEqual([expect.objectContaining({ alertId: "alert_1" })]);
-  });
-
-  it("keeps a teammate's chat ref the editor can't own", async () => {
-    edited.calls = [];
-    const response = (await action({
-      request: post({ intent: "edit", notifierIds: "chat:chat_9:user_2", respond: "json" }),
-      params: {},
-      context: {},
-    } as any)) as Response;
-    expect(response.status).toBe(200);
-    expect(edited.calls[0].notifiers).toEqual([
-      { type: "chat", chatId: "chat_9", userId: "user_2" },
-    ]);
-  });
-
-  it("re-adds a teammate's chat ref the request left out", async () => {
-    edited.calls = [];
-    const response = (await action({
-      request: post({ intent: "edit", notifierIds: "chat:chat_own:user_1", respond: "json" }),
-      params: {},
-      context: {},
-    } as any)) as Response;
-    expect(response.status).toBe(200);
-    expect(edited.calls[0].notifiers).toEqual([
-      expect.objectContaining({ type: "chat", chatId: "chat_own", userId: "user_1" }),
-      { type: "chat", chatId: "chat_9", userId: "user_2" },
-    ]);
-  });
-
-  it("removing a project chat ref removes it, a teammate's ref stays", async () => {
-    edited.calls = [];
-    const response = (await action({
-      request: post({ intent: "edit", notifierIds: "chat:chat_9:user_2", respond: "json" }),
-      params: {},
-      context: {},
-    } as any)) as Response;
-    expect(response.status).toBe(200);
-    expect(edited.calls[0].notifiers).toEqual([
-      { type: "chat", chatId: "chat_9", userId: "user_2" },
-    ]);
-  });
-
-  it("keeping a project chat ref keeps it", async () => {
-    edited.calls = [];
-    const response = (await action({
-      request: post({
-        intent: "edit",
-        notifierIds: "chat:project:-,chat:chat_9:user_2",
-        respond: "json",
-      }),
-      params: {},
-      context: {},
-    } as any)) as Response;
-    expect(response.status).toBe(200);
-    expect(edited.calls[0].notifiers).toEqual([
-      { type: "chat" },
-      { type: "chat", chatId: "chat_9", userId: "user_2" },
-    ]);
   });
 
   it("an edit without notifierIds leaves notifiers untouched", async () => {
@@ -389,7 +312,7 @@ describe("alert detail edit action", () => {
       context: {},
     } as any)) as Response;
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "At least one notifier is required" });
+    expect(await response.json()).toEqual({ error: "At least one channel is required" });
     expect(edited.calls).toHaveLength(0);
     current.notifiers = [];
   });
@@ -400,7 +323,7 @@ describe("alert detail edit action", () => {
       request: post({
         intent: "activate",
         expiresAt: "none",
-        notifierIds: "chat:project:-,chat:chat_9:user_2",
+        notifierIds: "channel:ch_1",
         respond: "json",
       }),
       params: {},
@@ -410,7 +333,7 @@ describe("alert detail edit action", () => {
     expect(activated.calls[0]).toMatchObject({
       alertId: "alert_1",
       expiresAt: null,
-      notifiers: [{ type: "chat" }, { type: "chat", chatId: "chat_9", userId: "user_2" }],
+      notifiers: [{ type: "channel", channelId: "ch_1" }],
     });
   });
 
@@ -431,7 +354,7 @@ describe("alert detail edit action", () => {
     const response = (await action({
       request: post({
         intent: "activate",
-        notifierIds: "chat:project:-",
+        notifierIds: "channel:ch_1",
         expiresAt: new Date(Date.now() - 1000).toISOString(),
         respond: "json",
       }),
@@ -452,5 +375,23 @@ describe("alert detail edit action", () => {
     } as any)) as Response;
     expect(response.status).toBe(302);
     expect(edited.calls).toHaveLength(1);
+  });
+
+  it.each([
+    ["activate saves the group mode", undefined, 1],
+    ["a rejected activate leaves the group mode alone", "Already active", 0],
+  ])("%s", async (_name, reject, saved) => {
+    groupCalls.edited = [];
+    activated.reject = reject;
+    try {
+      await action({
+        request: post({ intent: "activate", compositeMode: "all", expiresAt: "none" }),
+        params: {},
+        context: {},
+      } as any);
+      expect(groupCalls.edited).toHaveLength(saved);
+    } finally {
+      activated.reject = undefined;
+    }
   });
 });

@@ -9,6 +9,7 @@ import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import { DashboardAgent } from "~/components/dashboard-agent/DashboardAgent";
 import { prisma } from "~/db.server";
 import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
+import { getSecurityNoticeBanner } from "~/services/securityNotices.server";
 import { updateCurrentProjectEnvironmentId } from "~/services/dashboardPreferences.server";
 import { logger } from "~/services/logger.server";
 import {
@@ -86,6 +87,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   await updateCurrentProjectEnvironmentId({ user: user, projectId: project.id, environmentId });
 
+  const securityNoticeBannerPromise = getSecurityNoticeBanner({
+    organizationId: project.organization.id,
+    projectId: project.id,
+    userId: user.id,
+  });
+
   // Resolve dashboard-agent access here (single source of truth: global env,
   // admins/impersonators, then the global/per-org feature flag, default off) so
   // the launcher button is hidden when it's not enabled. The org's featureFlags
@@ -148,6 +155,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   return {
     ...project,
+    securityNoticeBanner: await securityNoticeBannerPromise,
     hasDashboardAgentAccess,
     dashboardAgentWatchEnabled,
     promotedDashboardAgentPrompt,

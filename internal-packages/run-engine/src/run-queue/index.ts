@@ -91,6 +91,13 @@ const GATE_QUEUED_COUNTER_TTL_SECONDS = 86400;
 /** Concurrency sets the sweeper processes at once from one SCAN page (the old COUNT 10 page width). */
 export const SWEEPER_SET_CONCURRENCY = 10;
 
+// Used when the master-queue options are unset. Changing these changes every deployment that does not set them.
+export const MASTER_QUEUE_DEFAULTS = {
+  cooloffPeriodMs: 10_000,
+  cooloffCountThreshold: 10,
+  consumerDequeueCount: 10,
+} as const;
+
 /** Counters a dequeue script tallies for its reconcile work; positional on the reply's third slot. */
 type ReconcileCounters = {
   passesGroup: number;
@@ -3075,7 +3082,12 @@ export class RunQueue {
           this.#processMasterQueueShard(
             shard,
             consumerId,
-            this.options.masterQueueConsumerDequeueCount ?? 10
+            // A count below 1 would dequeue nothing and strand runs only the sweep can move.
+            Math.max(
+              1,
+              this.options.masterQueueConsumerDequeueCount ??
+                MASTER_QUEUE_DEFAULTS.consumerDequeueCount
+            )
           )
         );
 
@@ -3466,7 +3478,8 @@ export class RunQueue {
               if (cooloffState._tag === "normal") {
                 const cooloffCountThreshold = Math.max(
                   1,
-                  this.options.masterQueueCooloffCountThreshold ?? 10
+                  this.options.masterQueueCooloffCountThreshold ??
+                    MASTER_QUEUE_DEFAULTS.cooloffCountThreshold
                 ); // Don't let the cooloff count be less than 1
 
                 this.logger.debug("Evaluating cooloff state", {
@@ -3483,14 +3496,18 @@ export class RunQueue {
                     cooloffCountThreshold,
                     consecutiveFailures: cooloffState.consecutiveFailures,
                     cooloffExpiresAt: new Date(
-                      Date.now() + (this.options.masterQueueCooloffPeriodMs ?? 10_000)
+                      Date.now() +
+                        (this.options.masterQueueCooloffPeriodMs ??
+                          MASTER_QUEUE_DEFAULTS.cooloffPeriodMs)
                     ),
                   });
 
                   this._queueCooloffStates.set(queue, {
                     _tag: "cooloff",
                     cooloffExpiresAt:
-                      Date.now() + (this.options.masterQueueCooloffPeriodMs ?? 10_000),
+                      Date.now() +
+                      (this.options.masterQueueCooloffPeriodMs ??
+                        MASTER_QUEUE_DEFAULTS.cooloffPeriodMs),
                   });
                 } else {
                   this._queueCooloffStates.set(queue, {
@@ -4944,9 +4961,8 @@ export class RunQueue {
   }
 
   #createBlockingDequeueClient() {
-    const blockingClient = this.redis.duplicate();
-
-    return blockingClient;
+    // One connection per blocking pop, so skip the INFO that ioredis sends on connect.
+    return this.redis.duplicate({ enableReadyCheck: false });
   }
 
   // Call this every 10 minutes

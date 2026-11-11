@@ -33,10 +33,14 @@ containerTest(
     expect(revoked).toHaveLength(1);
     expect(revoked[0].apiKey).toBe(oldRootApiKey);
     expect(revoked[0].expiresAt.getTime()).toBeGreaterThan(Date.now());
-    await expect(findEnvironmentByApiKey(oldRootApiKey, undefined, prisma)).resolves.toMatchObject({
+    await expect(
+      findEnvironmentByApiKey(oldRootApiKey, { branchName: undefined, clientIp: null }, prisma)
+    ).resolves.toMatchObject({
       id: environment.id,
     });
-    await expect(findEnvironmentByApiKey(result.apiKey, undefined, prisma)).resolves.toMatchObject({
+    await expect(
+      findEnvironmentByApiKey(result.apiKey, { branchName: undefined, clientIp: null }, prisma)
+    ).resolves.toMatchObject({
       id: environment.id,
     });
   }
@@ -63,8 +67,12 @@ containerTest(
       where: { runtimeEnvironmentId: environment.id },
     });
     expect(revoked).toHaveLength(0);
-    await expect(findEnvironmentByApiKey(oldRootApiKey, undefined, prisma)).resolves.toBeNull();
-    await expect(findEnvironmentByApiKey(result.apiKey, undefined, prisma)).resolves.toMatchObject({
+    await expect(
+      findEnvironmentByApiKey(oldRootApiKey, { branchName: undefined, clientIp: null }, prisma)
+    ).resolves.toBeNull();
+    await expect(
+      findEnvironmentByApiKey(result.apiKey, { branchName: undefined, clientIp: null }, prisma)
+    ).resolves.toMatchObject({
       id: environment.id,
     });
   }
@@ -101,10 +109,14 @@ containerTest(
     });
     expect(revoked).toHaveLength(1);
     expect(revoked[0].apiKey).toBe(oldRootApiKey);
-    await expect(findEnvironmentByApiKey(oldRootApiKey, undefined, prisma)).resolves.toMatchObject({
+    await expect(
+      findEnvironmentByApiKey(oldRootApiKey, { branchName: undefined, clientIp: null }, prisma)
+    ).resolves.toMatchObject({
       id: environment.id,
     });
-    await expect(findEnvironmentByApiKey(stored.apiKey, undefined, prisma)).resolves.toMatchObject({
+    await expect(
+      findEnvironmentByApiKey(stored.apiKey, { branchName: undefined, clientIp: null }, prisma)
+    ).resolves.toMatchObject({
       id: environment.id,
     });
   }
@@ -141,8 +153,12 @@ containerTest(
     await expect(
       prisma.revokedApiKey.count({ where: { runtimeEnvironmentId: environment.id } })
     ).resolves.toBe(0);
-    await expect(findEnvironmentByApiKey(oldRootApiKey, undefined, prisma)).resolves.toBeNull();
-    await expect(findEnvironmentByApiKey(stored.apiKey, undefined, prisma)).resolves.toMatchObject({
+    await expect(
+      findEnvironmentByApiKey(oldRootApiKey, { branchName: undefined, clientIp: null }, prisma)
+    ).resolves.toBeNull();
+    await expect(
+      findEnvironmentByApiKey(stored.apiKey, { branchName: undefined, clientIp: null }, prisma)
+    ).resolves.toMatchObject({
       id: environment.id,
     });
   }
@@ -221,18 +237,36 @@ containerTest(
       { prismaClient: prisma }
     );
 
-    await expect(findEnvironmentByApiKey(oldestRootApiKey, undefined, prisma)).resolves.toBeNull();
     await expect(
-      findEnvironmentByApiKey(graceRotation.apiKey, undefined, prisma)
+      findEnvironmentByApiKey(oldestRootApiKey, { branchName: undefined, clientIp: null }, prisma)
     ).resolves.toBeNull();
     await expect(
-      findEnvironmentByApiKey(revokeRotation.apiKey, undefined, prisma)
+      findEnvironmentByApiKey(
+        graceRotation.apiKey,
+        { branchName: undefined, clientIp: null },
+        prisma
+      )
+    ).resolves.toBeNull();
+    await expect(
+      findEnvironmentByApiKey(
+        revokeRotation.apiKey,
+        { branchName: undefined, clientIp: null },
+        prisma
+      )
     ).resolves.toMatchObject({ id: environment.id });
     await expect(
-      findEnvironmentByApiKey(otherEnvironment.apiKey, undefined, prisma)
+      findEnvironmentByApiKey(
+        otherEnvironment.apiKey,
+        { branchName: undefined, clientIp: null },
+        prisma
+      )
     ).resolves.toMatchObject({ id: otherEnvironment.id });
     await expect(
-      findEnvironmentByApiKey(otherRotation.apiKey, undefined, prisma)
+      findEnvironmentByApiKey(
+        otherRotation.apiKey,
+        { branchName: undefined, clientIp: null },
+        prisma
+      )
     ).resolves.toMatchObject({ id: otherEnvironment.id });
   }
 );
@@ -253,7 +287,11 @@ containerTest(
       { prismaClient: prisma }
     );
     await expect(
-      findEnvironmentByApiKey(previouslyVisibleApiKey, undefined, prisma)
+      findEnvironmentByApiKey(
+        previouslyVisibleApiKey,
+        { branchName: undefined, clientIp: null },
+        prisma
+      )
     ).resolves.toMatchObject({ id: environment.id });
 
     const result = await regenerateApiKey(
@@ -267,10 +305,18 @@ containerTest(
     );
 
     await expect(
-      findEnvironmentByApiKey(previouslyVisibleApiKey, undefined, prisma)
+      findEnvironmentByApiKey(
+        previouslyVisibleApiKey,
+        { branchName: undefined, clientIp: null },
+        prisma
+      )
     ).resolves.toBeNull();
-    await expect(findEnvironmentByApiKey(disabled.apiKey, undefined, prisma)).resolves.toBeNull();
-    await expect(findEnvironmentByApiKey(result.apiKey, undefined, prisma)).resolves.toMatchObject({
+    await expect(
+      findEnvironmentByApiKey(disabled.apiKey, { branchName: undefined, clientIp: null }, prisma)
+    ).resolves.toBeNull();
+    await expect(
+      findEnvironmentByApiKey(result.apiKey, { branchName: undefined, clientIp: null }, prisma)
+    ).resolves.toMatchObject({
       id: environment.id,
     });
     expect(result.rootApiKeyHiddenAt).toEqual(disabled.rootApiKeyHiddenAt);

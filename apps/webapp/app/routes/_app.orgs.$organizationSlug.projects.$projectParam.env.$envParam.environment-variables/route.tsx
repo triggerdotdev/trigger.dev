@@ -1,3 +1,4 @@
+import * as Ariakit from "@ariakit/react";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { parseEnvironmentVariableForm } from "~/v3/environmentVariables/forms";
@@ -5,6 +6,7 @@ import {
   BookOpenIcon,
   InformationCircleIcon,
   LockClosedIcon,
+  MinusCircleIcon,
   NoSymbolIcon,
   PencilSquareIcon,
   PlusIcon,
@@ -15,24 +17,38 @@ import {
   Outlet,
   useActionData,
   useFetcher,
+  useLocation,
+  useNavigate,
   useNavigation,
   useRevalidator,
 } from "@remix-run/react";
 import { json } from "@remix-run/server-runtime";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { matchSorter } from "match-sorter";
 import { fromPromise } from "neverthrow";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { UserAvatar } from "~/components/UserProfilePhoto";
-import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
+import {
+  EnvironmentCombo,
+  EnvironmentIcon,
+  environmentTextClassName,
+} from "~/components/environments/EnvironmentLabel";
 import { VercelLogo } from "~/components/integrations/VercelLogo";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
+import { DialogClose } from "@radix-ui/react-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTrigger,
+} from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
@@ -44,6 +60,8 @@ import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/Page
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { SearchInput } from "~/components/primitives/SearchInput";
+import SegmentedControl from "~/components/primitives/SegmentedControl";
+import { Select, SelectItem } from "~/components/primitives/Select";
 import { Switch } from "~/components/primitives/Switch";
 import {
   Table,
@@ -59,14 +77,15 @@ import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { useSearchParams } from "~/hooks/useSearchParam";
 import { redirectWithSuccessMessage } from "~/models/message.server";
-import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import {
   EnvironmentVariablesPresenter,
   type EnvironmentVariableWithSetValues,
 } from "~/presenters/v3/EnvironmentVariablesPresenter.server";
 import { type EnvironmentVariablesEnvironment } from "~/presenters/v3/environmentVariablesEnvironments.server";
 import { logger } from "~/services/logger.server";
+import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { VercelIntegrationService } from "~/services/vercelIntegration.server";
 import { cn } from "~/utils/cn";
@@ -76,6 +95,14 @@ import {
   v3EnvironmentVariablesPath,
   v3NewEnvironmentVariablesPath,
 } from "~/utils/pathBuilder";
+import {
+  ALL_BRANCHES,
+  availableEnvironmentVariablesFilters,
+  environmentTypeForFilter,
+  listViewSearch,
+  parseEnvironmentVariablesFilter,
+  type EnvironmentVariablesFilter,
+} from "~/v3/environmentVariables/environmentFilter";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { findUnauthorizedEnvironmentId } from "~/v3/writableEnvironments";
 import {
@@ -112,6 +139,13 @@ export type EnvironmentVariablesPageLoaderData = {
   allowEmptyEnvironmentVariableValues: boolean;
   environmentVariables: MaskedEnvironmentVariable[];
   environments: EnvironmentVariablesEnvironment[];
+  // The environment filter in effect, and the environments it lists.
+  filter: EnvironmentVariablesFilter;
+  filterEnvironmentIds: string[];
+  // The preview branches the list is narrowed to. Empty when it lists every branch.
+  filterBranchEnvironmentIds: string[];
+  // True when no listed environment has a variable, whatever the filter is.
+  projectHasNoVariables: boolean;
   hasStaging: boolean;
   vercelIntegration: PageVercelIntegration | null;
   // Environment ids whose env vars the current role can read.
@@ -131,31 +165,43 @@ export const loader = dashboardLoader(
     searchParams: z.object({
       page: z.coerce.number().int().min(1).catch(1),
       search: z.string().trim().min(1).optional().catch(undefined),
+      // dev | stg | prod | preview | all. Anything else is treated as absent, which means the
+      // type of the environment in the URL.
+      env: z.string().optional().catch(undefined),
     }),
-    context: async (params) => {
-      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
-      return organizationId ? { organizationId } : {};
-    },
-    // No hard authorization: the page lists every environment. Values in
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
+    // No hard authorization: the page can list every environment. Values in
     // environments the role can't read are masked per-tier below.
   },
-  async ({ params, searchParams, user, ability }) => {
-    const { projectParam } = params;
+  async ({ params, searchParams, user, ability, context, request }) => {
+    const { projectId } = context;
+    if (!projectId) {
+      throw new Response("Not Found", { status: 404 });
+    }
 
     try {
       const presenter = new EnvironmentVariablesPresenter();
       const {
         environmentVariables,
         environments,
+        filter,
+        filterEnvironmentIds,
+        filterBranchEnvironmentIds,
+        projectHasNoVariables,
         hasStaging,
         vercelIntegration,
         pagination,
         allowEmptyEnvironmentVariableValues,
       } = await presenter.call({
         userId: user.id,
-        projectSlug: projectParam,
+        projectId,
         page: searchParams.page,
         search: searchParams.search,
+        environmentFilter: parseEnvironmentVariablesFilter(searchParams.env),
+        // One `branch` per preview branch name, or "all" for every branch. Only used with the
+        // Preview filter; unknown names are ignored.
+        branches: new URL(request.url).searchParams.getAll("branch"),
+        currentEnvironmentSlug: params.envParam,
       });
 
       const accessibleEnvironmentIds = environments
@@ -188,6 +234,10 @@ export const loader = dashboardLoader(
         environmentVariables: masked,
         allowEmptyEnvironmentVariableValues,
         environments,
+        filter,
+        filterEnvironmentIds,
+        filterBranchEnvironmentIds,
+        projectHasNoVariables,
         hasStaging,
         vercelIntegration,
         accessibleEnvironmentIds,
@@ -225,16 +275,26 @@ const schema = z.discriminatedUnion("action", [
 export const action = dashboardAction(
   {
     params: EnvironmentParamSchema,
-    context: async (params) => {
-      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
-      return organizationId ? { organizationId } : {};
-    },
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
     // Per-environment write:envvars is enforced in the handler — the target
     // environment tier comes from the submission, not the route params.
   },
-  async ({ request, params, user, ability }) => {
+  async ({ request, params, user, ability, context }) => {
     const userId = user.id;
     const { organizationSlug, projectParam, envParam } = params;
+
+    const { projectId } = context;
+    if (!projectId) {
+      throw new Response("Not Found", { status: 404 });
+    }
+
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, organization: { members: { some: { userId } } } },
+      select: { id: true },
+    });
+    if (!project) {
+      throw new Response("Not Found", { status: 404 });
+    }
 
     if (request.method.toUpperCase() !== "POST") {
       throw new Response("Method Not Allowed", { status: 405 });
@@ -254,11 +314,14 @@ export const action = dashboardAction(
         ? submission.value.environmentType
         : (
             await prisma.runtimeEnvironment.findFirst({
-              where: { id: submission.value.environmentId },
+              where: { id: submission.value.environmentId, projectId },
               select: { type: true },
             })
           )?.type;
-    if (targetEnvType && !ability.can("write", { type: "envvars", envType: targetEnvType })) {
+    if (!targetEnvType) {
+      return json(submission.reply({ formErrors: ["Environment not found"] }));
+    }
+    if (!ability.can("write", { type: "envvars", envType: targetEnvType })) {
       return json(
         submission.reply({
           formErrors: [
@@ -268,31 +331,12 @@ export const action = dashboardAction(
       );
     }
 
-    const project = await prisma.project.findUnique({
-      where: {
-        slug: params.projectParam,
-        organization: {
-          members: {
-            some: {
-              userId,
-            },
-          },
-        },
-      },
-      select: {
-        id: true,
-      },
-    });
-    if (!project) {
-      return json(submission.reply({ formErrors: ["Project not found"] }));
-    }
-
     // Per-env write gate for the mutating value actions: `environmentId` is a
     // user-supplied hidden field and the repository only checks project
     // membership. Mirrors the create route's check.
     if (submission.value.action === "edit" || submission.value.action === "delete") {
       const submittedEnvs = await prisma.runtimeEnvironment.findMany({
-        where: { projectId: project.id, id: submission.value.environmentId },
+        where: { projectId, id: submission.value.environmentId },
         select: { id: true, type: true, orgMember: { select: { userId: true } } },
       });
       const unauthorizedEnvironmentId = findUnauthorizedEnvironmentId(
@@ -308,7 +352,7 @@ export const action = dashboardAction(
     switch (submission.value.action) {
       case "edit": {
         const repository = new EnvironmentVariablesRepository(prisma);
-        const result = await repository.editValue(project.id, {
+        const result = await repository.editValue(projectId, {
           ...submission.value,
           lastUpdatedBy: {
             type: "user",
@@ -324,7 +368,7 @@ export const action = dashboardAction(
       }
       case "delete": {
         const repository = new EnvironmentVariablesRepository(prisma);
-        const result = await repository.deleteValue(project.id, submission.value);
+        const result = await repository.deleteValue(projectId, submission.value);
 
         if (!result.success) {
           return json(submission.reply({ formErrors: [result.error] }));
@@ -335,7 +379,7 @@ export const action = dashboardAction(
         const vercelService = new VercelIntegrationService();
         await fromPromise(
           (async () => {
-            const integration = await vercelService.getVercelProjectIntegration(project.id);
+            const integration = await vercelService.getVercelProjectIntegration(projectId);
             if (integration) {
               const runtimeEnv = await prisma.runtimeEnvironment.findUnique({
                 where: { id: environmentId },
@@ -343,7 +387,7 @@ export const action = dashboardAction(
               });
               if (runtimeEnv) {
                 await vercelService.removeSyncEnvVarForEnvironment(
-                  project.id,
+                  projectId,
                   key,
                   runtimeEnv.type as TriggerEnvironmentType
                 );
@@ -356,19 +400,20 @@ export const action = dashboardAction(
           return error;
         });
 
+        // Stay on the view the delete was made from.
         return redirectWithSuccessMessage(
-          v3EnvironmentVariablesPath(
+          `${v3EnvironmentVariablesPath(
             { slug: organizationSlug },
             { slug: projectParam },
             { slug: envParam }
-          ),
+          )}${listViewSearch(request.url)}`,
           request,
           `Deleted ${submission.value.key} environment variable`
         );
       }
       case "update-vercel-sync": {
         const vercelService = new VercelIntegrationService();
-        const integration = await vercelService.getVercelProjectIntegration(project.id);
+        const integration = await vercelService.getVercelProjectIntegration(projectId);
 
         if (!integration) {
           return json(submission.reply({ formErrors: ["Vercel integration not found"] }));
@@ -376,7 +421,7 @@ export const action = dashboardAction(
 
         // Update the sync mapping for the specific env var and environment
         await vercelService.updateSyncEnvVarForEnvironment(
-          project.id,
+          projectId,
           submission.value.key,
           submission.value.environmentType,
           submission.value.syncEnabled
@@ -410,12 +455,111 @@ function EnvironmentVariablesListPage({
   loaderData: EnvironmentVariablesPageLoaderData;
 }) {
   const [revealAll, setRevealAll] = useState(false);
-  const { environmentVariables, vercelIntegration, pagination, search } = loaderData;
+  const {
+    environmentVariables,
+    environments,
+    filter,
+    filterBranchEnvironmentIds,
+    projectHasNoVariables,
+    vercelIntegration,
+    pagination,
+    search,
+  } = loaderData;
   const hasSearch = Boolean(search);
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { value: searchParamValue, values: searchParamValues } = useSearchParams();
   const filteredItems = environmentVariables;
+
+  const filterOptions = useMemo(
+    () => availableEnvironmentVariablesFilters(environments),
+    [environments]
+  );
+  // Follow the URL while the next page loads, so the control moves on click.
+  const urlFilter = parseEnvironmentVariablesFilter(searchParamValue("env"));
+  const selectedFilter = urlFilter && filterOptions.includes(urlFilter) ? urlFilter : filter;
+
+  const previewBranches = useMemo(
+    () => environments.filter((env) => env.type === "PREVIEW" && env.parentEnvironmentId !== null),
+    [environments]
+  );
+  // The ticked branch environment ids; none means every branch. Follows the URL like the filter
+  // does, and falls back to the loader's (the current branch on a branch URL).
+  // Memoized on the URL so the picker gets the same array until the selection changes.
+  const urlBranchesKey = searchParamValues("branch").join("\n");
+  const selectedBranchIds = useMemo(() => {
+    const urlBranches = urlBranchesKey ? urlBranchesKey.split("\n") : [];
+    if (urlBranches.includes(ALL_BRANCHES)) {
+      return [];
+    }
+    const urlBranchIds = previewBranches
+      .filter((env) => env.branchName !== null && urlBranches.includes(env.branchName))
+      .map((env) => env.id);
+    return urlBranchIds.length > 0 ? urlBranchIds : filterBranchEnvironmentIds;
+  }, [urlBranchesKey, previewBranches, filterBranchEnvironmentIds]);
+
+  // Picking a view adds a history entry, so Back returns to the previous one. Search replaces.
+  const navigateToView = (
+    values: Record<string, string | string[] | undefined>,
+    { replace = false }: { replace?: boolean } = {}
+  ) => {
+    const params = new URLSearchParams(location.search);
+    for (const [name, value] of Object.entries(values)) {
+      params.delete(name);
+      for (const v of value === undefined ? [] : Array.isArray(value) ? value : [value]) {
+        params.append(name, v);
+      }
+    }
+    navigate(`${location.pathname}?${params.toString()}`, { replace });
+  };
+
+  // The first tick after the branch picker opens adds a history entry and the rest replace it,
+  // so Back undoes one round of picking.
+  const branchPickPushedRef = useRef(false);
+  const selectBranches = (picked: string[]) => {
+    // The reset row is never in the selection, so it's only in `picked` when it was just clicked.
+    const reset = picked.includes(RESET_BRANCHES_VALUE);
+    if (reset && selectedBranchIds.length === 0) {
+      return;
+    }
+    const branchIds = reset ? [] : picked;
+    const names = previewBranches
+      .filter((env) => branchIds.includes(env.id) && env.branchName !== null)
+      .map((env) => env.branchName!);
+    navigateToView(
+      {
+        env: "preview",
+        // On a branch URL no branch means that branch, so "All branches" has to be explicit.
+        branch:
+          names.length > 0
+            ? names
+            : environment.type === "PREVIEW" && environment.branchName
+              ? ALL_BRANCHES
+              : undefined,
+        page: undefined,
+      },
+      { replace: branchPickPushedRef.current }
+    );
+    branchPickPushedRef.current = true;
+  };
+
+  // The unsearched view's key count. With a search active the page only has the searched count.
+  const searchPlaceholder = hasSearch
+    ? "Search variables…"
+    : `Search ${pagination.totalCount} ${pagination.totalCount === 1 ? "key" : "keys"}…`;
+
+  // The create dialog reads the filter from this route's loader data, so its URL keeps the
+  // search params. That also brings the user back to the same view when it closes.
+  const newVariablePath = `${v3NewEnvironmentVariablesPath(organization, project, environment)}${location.search}`;
+
+  // The same list for every environment. Keeps the search, starts at the first page.
+  const allEnvironmentsSearchParams = new URLSearchParams(location.search);
+  allEnvironmentsSearchParams.set("env", "all");
+  allEnvironmentsSearchParams.delete("page");
+  const allEnvironmentsPath = `${location.pathname}?${allEnvironmentsSearchParams.toString()}`;
 
   const tableScrollRef = useRef<HTMLDivElement>(null);
 
@@ -491,27 +635,101 @@ function EnvironmentVariablesListPage({
       </NavBar>
       <PageBody scrollable={false}>
         <div className={cn("flex h-full min-h-0 flex-col")}>
-          {(environmentVariables.length > 0 || hasSearch) && (
-            <div className="flex items-center justify-between gap-2 px-2 py-2">
-              <SearchInput placeholder="Search variables…" resetParams={["page"]} autoFocus />
-              <div className="flex items-center justify-end gap-1.5">
-                <Switch
+          <div className="flex items-center justify-between gap-2 px-2 py-2">
+            <div className="flex items-center gap-1.5">
+              <SearchInput
+                placeholder={searchPlaceholder}
+                resetParams={["page"]}
+                shortcut={{ key: "/" }}
+                autoFocus
+              />
+              <SegmentedControl
+                name="env"
+                variant="secondary/small"
+                value={selectedFilter}
+                options={filterOptions.map((option) => ({
+                  value: option,
+                  label: <EnvironmentFilterLabel filter={option} />,
+                }))}
+                onChange={(value) =>
+                  navigateToView({ env: value, branch: undefined, page: undefined })
+                }
+              />
+              {selectedFilter === "preview" && previewBranches.length > 0 && (
+                <Select<string[], EnvironmentVariablesEnvironment>
                   variant="secondary/small"
-                  label="Reveal values"
-                  checked={revealAll}
-                  onCheckedChange={(e) => setRevealAll(e.valueOf())}
-                />
-                <LinkButton
-                  to={v3NewEnvironmentVariablesPath(organization, project, environment)}
-                  variant="primary/small"
-                  LeadingIcon={PlusIcon}
-                  shortcut={{ key: "n" }}
+                  value={selectedBranchIds}
+                  setValue={selectBranches}
+                  setOpen={(open) => {
+                    if (open) {
+                      branchPickPushedRef.current = false;
+                    }
+                  }}
+                  placeholder="All branches"
+                  items={previewBranches}
+                  className="w-fit min-w-40"
+                  filter={{
+                    // Only names that contain what was typed: no acronym or fuzzy matches.
+                    threshold: matchSorter.rankings.CONTAINS,
+                    // The raw name so a typed "/" matches, and a spaced one so "audit log" does too.
+                    keys: [
+                      (item) => item.branchName ?? "",
+                      (item) => item.branchName?.replace(/[/_-]/g, " ") ?? "",
+                    ],
+                  }}
+                  empty={<div className="p-3 text-xs text-text-dimmed">No branches found.</div>}
+                  text={(value) =>
+                    value.length === 0
+                      ? "All branches"
+                      : value.length === 1
+                        ? (previewBranches.find((env) => env.id === value[0])?.branchName ??
+                          "1 branch")
+                        : `${value.length} branches`
+                  }
+                  dropdownIcon
                 >
-                  Add new
-                </LinkButton>
-              </div>
+                  {(matches) => (
+                    <>
+                      <SelectItem
+                        value={RESET_BRANCHES_VALUE}
+                        hideOnClick
+                        checkIcon={
+                          <Ariakit.SelectItemCheck
+                            checked={selectedBranchIds.length === 0}
+                            className="size-8 flex-none text-text-bright"
+                          />
+                        }
+                        className="border-b border-grid-dimmed"
+                      >
+                        All branches
+                      </SelectItem>
+                      {matches?.map((env) => (
+                        <SelectItem key={env.id} value={env.id}>
+                          {env.branchName}
+                        </SelectItem>
+                      ))}
+                    </>
+                  )}
+                </Select>
+              )}
             </div>
-          )}
+            <div className="flex items-center justify-end gap-1.5">
+              <Switch
+                variant="secondary/small"
+                label="Reveal values"
+                checked={revealAll}
+                onCheckedChange={(e) => setRevealAll(e.valueOf())}
+              />
+              <LinkButton
+                to={newVariablePath}
+                variant="primary/small"
+                LeadingIcon={PlusIcon}
+                shortcut={{ key: "n" }}
+              >
+                Add new
+              </LinkButton>
+            </div>
+          </div>
           <div
             ref={tableScrollRef}
             className="min-h-0 flex-1 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
@@ -590,19 +808,39 @@ function EnvironmentVariablesListPage({
                     <TableCell colSpan={vercelColumnCount}>
                       {!hasSearch ? (
                         <div className="flex flex-col items-center justify-center gap-y-4 py-8">
-                          <Header2>You haven't set any environment variables yet.</Header2>
-                          <LinkButton
-                            to={v3NewEnvironmentVariablesPath(organization, project, environment)}
-                            variant="primary/medium"
-                            LeadingIcon={PlusIcon}
-                            shortcut={{ key: "n" }}
-                          >
-                            Add new
-                          </LinkButton>
+                          <Header2>
+                            {projectHasNoVariables
+                              ? "You haven't set any environment variables yet."
+                              : `No variables in ${environmentFilterLabels[filter]} yet`}
+                          </Header2>
+                          <div className="flex items-center gap-2">
+                            <LinkButton
+                              to={newVariablePath}
+                              variant="primary/medium"
+                              LeadingIcon={PlusIcon}
+                              shortcut={{ key: "n" }}
+                            >
+                              Add new
+                            </LinkButton>
+                            {!projectHasNoVariables && (
+                              <LinkButton to={allEnvironmentsPath} variant="secondary/medium">
+                                View all environments
+                              </LinkButton>
+                            )}
+                          </div>
                         </div>
                       ) : (
                         <div className="flex flex-col items-center justify-center gap-y-4 py-8">
-                          <Paragraph>No variables match your search.</Paragraph>
+                          <Paragraph>
+                            {filter === "all"
+                              ? "No variables match your search."
+                              : `No variables in ${environmentFilterLabels[filter]} match your search.`}
+                          </Paragraph>
+                          {filter !== "all" && (
+                            <LinkButton to={allEnvironmentsPath} variant="secondary/small">
+                              Search all environments
+                            </LinkButton>
+                          )}
                         </div>
                       )}
                     </TableCell>
@@ -623,6 +861,34 @@ function EnvironmentVariablesListPage({
       </PageBody>
       <Outlet />
     </PageContainer>
+  );
+}
+
+// The picker's "All branches" row. Not a branch environment id, so it never matches one.
+const RESET_BRANCHES_VALUE = "__all_branches__";
+
+const environmentFilterLabels: Record<EnvironmentVariablesFilter, string> = {
+  dev: "Dev",
+  stg: "Staging",
+  prod: "Prod",
+  preview: "Preview",
+  all: "All",
+};
+
+function EnvironmentFilterLabel({ filter }: { filter: EnvironmentVariablesFilter }) {
+  if (filter === "all") {
+    return <span>{environmentFilterLabels.all}</span>;
+  }
+
+  const environment = { type: environmentTypeForFilter(filter) };
+
+  return (
+    <span className="flex items-center gap-1">
+      <EnvironmentIcon environment={environment} className="size-3.5 shrink-0" />
+      <span className={environmentTextClassName(environment)}>
+        {environmentFilterLabels[filter]}
+      </span>
+    </span>
   );
 }
 
@@ -675,6 +941,16 @@ function EnvironmentVariableTableRow({
               </div>
             }
             content="This variable is secret and cannot be revealed."
+          />
+        ) : variable.value === "" ? (
+          <SimpleTooltip
+            button={
+              <div className="flex items-center gap-x-1">
+                <MinusCircleIcon className="size-3 text-text-dimmed" />
+                <span className="text-xs text-text-dimmed">Empty</span>
+              </div>
+            }
+            content="This variable is set to an empty string."
           />
         ) : (
           <ClipboardField
@@ -931,16 +1207,20 @@ function DeleteEnvironmentVariableButton({
 }: {
   variable: EnvironmentVariableWithSetValues;
 }) {
+  const [isOpen, setIsOpen] = useState(false);
   const lastSubmission = useActionData();
   const navigation = useNavigation();
+  const deleteButtonRef = useRef<HTMLButtonElement>(null);
 
   const isLoading =
     navigation.state !== "idle" &&
     navigation.formMethod === "post" &&
-    navigation.formData?.get("action") === "delete";
+    navigation.formData?.get("action") === "delete" &&
+    navigation.formData?.get("id") === variable.id &&
+    navigation.formData?.get("environmentId") === variable.environment.id;
 
   const [form] = useForm({
-    id: "delete-environment-variable",
+    id: `delete-environment-variable-${variable.id}-${variable.environment.id}`,
     // TODO: type this
     lastResult: lastSubmission as any,
     onValidate({ formData }) {
@@ -949,25 +1229,67 @@ function DeleteEnvironmentVariableButton({
     shouldRevalidate: "onSubmit",
   });
 
+  // The action data is shared by every row, so only show errors from a
+  // submission for this variable and environment.
+  const submittedValues = (lastSubmission as any)?.initialValue;
+  const isLastSubmissionForThisRow =
+    submittedValues?.id === variable.id &&
+    submittedValues?.environmentId === variable.environment.id;
+
   return (
-    <Form method="post" {...getFormProps(form)}>
-      <input type="hidden" name="id" value={variable.id} />
-      <input type="hidden" name="key" value={variable.key} />
-      <input type="hidden" name="environmentId" value={variable.environment.id} />
-      <Button
-        name="action"
-        value="delete"
-        type="submit"
-        variant="small-menu-item"
-        fullWidth
-        textAlignLeft
-        LeadingIcon={TrashIcon}
-        leadingIconClassName="text-rose-500 group-hover/button:text-white dark:group-hover/button:text-text-bright transition-colors"
-        className="ml-0.5 transition-colors group-hover/button:bg-error"
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>
+        <Button
+          variant="small-menu-item"
+          fullWidth
+          textAlignLeft
+          LeadingIcon={TrashIcon}
+          leadingIconClassName="text-rose-500 group-hover/button:text-white dark:group-hover/button:text-text-bright transition-colors"
+          className="ml-0.5 transition-colors group-hover/button:bg-error"
+        />
+      </DialogTrigger>
+      <DialogContent
+        className="sm:max-w-md"
+        // Start on Delete, so Enter confirms. Enter on Cancel or the close button does what that
+        // button says, because the shortcut below only labels the key and never fires by itself.
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          deleteButtonRef.current?.focus();
+        }}
       >
-        {isLoading ? "Deleting" : ""}
-      </Button>
-    </Form>
+        <DialogHeader>Delete environment variable</DialogHeader>
+        <div className="mb-2 mt-4 flex flex-col gap-3">
+          <Paragraph>
+            Are you sure you want to delete <strong className="font-mono">{variable.key}</strong>{" "}
+            from this environment? This can't be undone.
+          </Paragraph>
+          <EnvironmentCombo environment={variable.environment} className="text-sm" />
+          {isLastSubmissionForThisRow && <FormError>{form.errors}</FormError>}
+        </div>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="secondary/medium">Cancel</Button>
+          </DialogClose>
+          <Form method="post" {...getFormProps(form)}>
+            <input type="hidden" name="id" value={variable.id} />
+            <input type="hidden" name="key" value={variable.key} />
+            <input type="hidden" name="environmentId" value={variable.environment.id} />
+            <Button
+              ref={deleteButtonRef}
+              name="action"
+              value="delete"
+              type="submit"
+              variant="danger/medium"
+              LeadingIcon={TrashIcon}
+              disabled={isLoading}
+              shortcut={{ key: "enter", enabled: false }}
+            >
+              {isLoading ? "Deleting…" : "Delete"}
+            </Button>
+          </Form>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

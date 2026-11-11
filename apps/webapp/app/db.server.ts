@@ -12,7 +12,13 @@ import {
   type WebhookReplicaDatabase,
 } from "@trigger.dev/database";
 import { RunOpsPrismaClient } from "@internal/run-ops-database";
-import { markReadReplicaClient, withReplicaRecoveryConflictRetry } from "@internal/run-store";
+import {
+  markReadReplicaClient,
+  wrapRunOpsClientForErrorNormalization,
+  WAITPOINT_KEY_TRANSACTION_POOL_SIZE,
+  withReplicaRecoveryConflictRetry,
+} from "@internal/run-store";
+import { registerWaitpointKeyWriter } from "./v3/waitpointKeyTransactionLane.server";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import invariant from "tiny-invariant";
@@ -662,6 +668,66 @@ export const runOpsShardHandles: Array<{
   aliasOf: runOpsShardAliasByKey.get(key),
 }));
 
+// Isolated keyed-creation lanes are lazy; registering every owning writer opens no connections.
+registerWaitpointKeyWriter(prisma, env.CONTROL_PLANE_DATABASE_URL ?? env.DATABASE_URL, (url) =>
+  buildWriterClient({
+    url,
+    clientType: "waitpoint-key-writer",
+    connectionLimit: WAITPOINT_KEY_TRANSACTION_POOL_SIZE,
+    poolTimeout: 4,
+    connectTimeout: 4,
+    eagerConnect: false,
+    useDriverAdapter: env.CONTROL_PLANE_DATABASE_WRITER_DRIVER_ADAPTER === "1",
+  })
+);
+if (runOpsLegacyPrisma !== prisma) {
+  registerWaitpointKeyWriter(runOpsLegacyPrisma, env.RUN_OPS_LEGACY_DATABASE_URL!, (url) =>
+    buildWriterClient({
+      url,
+      clientType: "legacy-waitpoint-key-writer",
+      connectionLimit: WAITPOINT_KEY_TRANSACTION_POOL_SIZE,
+      poolTimeout: 4,
+      connectTimeout: 4,
+      eagerConnect: false,
+      useDriverAdapter: env.RUN_OPS_LEGACY_DATABASE_WRITER_DRIVER_ADAPTER === "1",
+    })
+  );
+}
+if ((runOpsNewPrismaClient as unknown) !== prisma) {
+  registerWaitpointKeyWriter(runOpsNewPrismaClient, env.RUN_OPS_DATABASE_URL!, (url) =>
+    wrapRunOpsClientForErrorNormalization(
+      buildRunOpsClient({
+        url,
+        clientType: "run-ops-waitpoint-key-writer",
+        role: "writer",
+        connectionLimit: WAITPOINT_KEY_TRANSACTION_POOL_SIZE,
+        poolTimeout: 4,
+        connectTimeout: 4,
+        eagerConnect: false,
+        useDriverAdapter: resolveRunOpsPoolKnobs("new").writerDriverAdapter,
+      })
+    )
+  );
+}
+for (const handle of runOpsShardHandles) {
+  if (handle.aliasOf) continue; // The canonical target writer is already registered.
+  const descriptor = env.RUN_OPS_SHARDS.find((shard) => shard.key === handle.key)!;
+  registerWaitpointKeyWriter(handle.writer, descriptor.url ?? env.RUN_OPS_DATABASE_URL!, (url) =>
+    wrapRunOpsClientForErrorNormalization(
+      buildRunOpsClient({
+        url,
+        clientType: `shard-${handle.key}-waitpoint-key-writer`,
+        role: "writer",
+        connectionLimit: WAITPOINT_KEY_TRANSACTION_POOL_SIZE,
+        poolTimeout: 4,
+        connectTimeout: 4,
+        eagerConnect: false,
+        useDriverAdapter: resolveRunOpsPoolKnobs("new", descriptor.knobs).writerDriverAdapter,
+      })
+    )
+  );
+}
+
 export const runOpsSplitReadEnabled: boolean = computeRunOpsSplitReadEnabled({
   newReplica: runOpsNewReplicaClient,
   controlPlaneWriter: prisma,
@@ -871,7 +937,7 @@ export function buildWriterClient({
         url,
         clientType,
         poolTimeout ?? env.DATABASE_POOL_TIMEOUT,
-        env.DATABASE_CONNECTION_LIMIT
+        connectionLimit
       )
     : undefined;
 
@@ -1182,6 +1248,7 @@ function buildRunOpsClient({
   poolTimeout,
   connectTimeout,
   useDriverAdapter = false,
+  eagerConnect = true,
 }: {
   url: string;
   clientType: string;
@@ -1190,6 +1257,7 @@ function buildRunOpsClient({
   poolTimeout: number;
   connectTimeout: number;
   useDriverAdapter?: boolean;
+  eagerConnect?: boolean;
 }): RunOpsPrismaClient {
   const isWriter = role === "writer";
   const setupLabel = isWriter ? "run-ops prisma client" : "run-ops read replica connection";
@@ -1258,6 +1326,8 @@ function buildRunOpsClient({
   }
 
   client.$on("query", (log) => queryPerformanceMonitor.onQuery(role, log));
+
+  if (!eagerConnect) return client;
 
   // Eager connect is a warm-up only — Prisma reconnects lazily on first query. ALWAYS catch the
   // rejection (not just under NODE_ENV=test), so a shard/run-ops DB that is unreachable at boot

@@ -120,41 +120,48 @@ describe("createDeploymentWithNextVersion", () => {
     async ({ prisma }) => {
       const { project, environment } = await seedEnvironment(prisma);
 
-      const concurrency = 4;
-      // maxRetries: 0 → no retry path. Concurrent racers all attempt the same
-      // version; one wins, the rest must surface the wrapped collision error
-      // (not a raw P2002) so Sentry can distinguish exhaustion from any other
-      // unique-constraint violation.
-      const settled = await Promise.allSettled(
-        Array.from({ length: concurrency }, (_, i) =>
-          createDeploymentWithNextVersion(
-            prisma,
-            environment.id,
-            (nextVersion) => ({
+      let collisionVersion = "";
+      // Insert the winner after the version is read, before the candidate is
+      // inserted, so exhaustion does not depend on concurrent query scheduling.
+      const deployment = createDeploymentWithNextVersion(
+        prisma,
+        environment.id,
+        async (nextVersion) => {
+          collisionVersion = nextVersion;
+          await prisma.workerDeployment.create({
+            data: {
+              environmentId: environment.id,
               projectId: project.id,
-              friendlyId: `deployment_${i}_${nextVersion}`,
-              shortCode: `short_${i}_${nextVersion}`,
-              contentHash: `hash_${i}`,
-            }),
-            { maxRetries: 0 }
-          )
-        )
+              version: nextVersion,
+              friendlyId: `winner_${environment.id}`,
+              shortCode: "winner",
+              contentHash: "winner",
+            },
+          });
+
+          return {
+            projectId: project.id,
+            friendlyId: `candidate_${environment.id}`,
+            shortCode: "candidate",
+            contentHash: "candidate",
+          };
+        },
+        { maxRetries: 0 }
       );
 
-      const fulfilled = settled.filter((s) => s.status === "fulfilled");
-      const rejected = settled.filter((s): s is PromiseRejectedResult => s.status === "rejected");
-
-      expect(fulfilled.length).toBeGreaterThanOrEqual(1);
-      expect(rejected.length).toBeGreaterThanOrEqual(1);
-
-      for (const r of rejected) {
-        expect(r.reason).toBeInstanceOf(DeploymentVersionCollisionError);
-        const err = r.reason as DeploymentVersionCollisionError;
-        expect(err.environmentId).toBe(environment.id);
-        expect(err.attempts).toBe(1);
-        expect(err.lastAttemptedVersion).toMatch(/^\d{8}\.\d+$/);
-        expect((err.cause as { code?: string }).code).toBe("P2002");
-      }
+      await expect(deployment).rejects.toBeInstanceOf(DeploymentVersionCollisionError);
+      await expect(deployment).rejects.toMatchObject({
+        environmentId: environment.id,
+        attempts: 1,
+        lastAttemptedVersion: expect.stringMatching(/^\d{8}\.\d+$/),
+        cause: { code: "P2002" },
+      });
+      expect(
+        await prisma.workerDeployment.findMany({
+          where: { environmentId: environment.id },
+          select: { friendlyId: true, version: true },
+        })
+      ).toEqual([{ friendlyId: `winner_${environment.id}`, version: collisionVersion }]);
     }
   );
 });

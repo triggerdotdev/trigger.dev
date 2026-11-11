@@ -7,6 +7,8 @@ import type {
   LimitSignal,
 } from "./schemas.js";
 
+export const GROUP_CAPABILITY_KEY = "alerts.group";
+
 export const CURRENTLY_QUEUED_PREDICATE_PENDING =
   "status = 'PENDING' AND queued_at IS NOT NULL AND dequeued_at IS NULL";
 
@@ -565,14 +567,22 @@ export const V1_CAPABILITIES: AlertCapability[] = [
       params: [
         {
           key: "schedulingDelayMs",
+          component: "health.flow",
           label: "Scheduling delay p95",
           unit: "ms",
           default: 30000,
           min: 1000,
         },
-        { key: "backlogCount", label: "Queued runs", default: 1000, min: 1 },
+        {
+          key: "backlogCount",
+          component: "health.flow",
+          label: "Queued runs",
+          default: 1000,
+          min: 1,
+        },
         {
           key: "failureRatePct",
+          component: "health.execution",
           label: "Failure rate",
           unit: "percent",
           default: 10,
@@ -581,12 +591,20 @@ export const V1_CAPABILITIES: AlertCapability[] = [
         },
         {
           key: "durationP95Ms",
+          component: "health.execution",
           label: "Duration p95",
           unit: "ms",
           default: 300000,
           min: 1000,
         },
-        { key: "silenceSec", label: "Silence", unit: "seconds", default: 300, min: 60 },
+        {
+          key: "silenceSec",
+          component: "health.liveness",
+          label: "Silence",
+          unit: "seconds",
+          default: 300,
+          min: 60,
+        },
       ],
     },
     minCadenceSec: 300,
@@ -683,6 +701,20 @@ export const V1_CAPABILITIES: AlertCapability[] = [
     title: "Query",
     description: "A user-authored TRQL query alert. The query is built per alert at evaluation.",
     unit: "count",
+    surfaces: [],
+    curated: false,
+    freshness: "snapshot",
+    allowedScopes: ["all"],
+  },
+  {
+    key: GROUP_CAPABILITY_KEY,
+    area: "grouped",
+    signal: "state",
+    allowedKinds: ["state"],
+    binding: { type: "query", template: "", minCadenceSec: 60 },
+    minCadenceSec: 60,
+    title: "Alert group",
+    description: "Combines existing alerts into one alert that reads their latest states.",
     surfaces: [],
     curated: false,
     freshness: "snapshot",

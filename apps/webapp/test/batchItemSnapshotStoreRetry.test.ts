@@ -162,20 +162,68 @@ describe("batch item trigger: transient snapshot store errors", () => {
   );
 
   redisTest(
-    "any other trigger error still pre-fails the item on the regular final attempt",
+    "a block registration error retries the item and then creates a distinct pre-failed replacement",
     async ({ redisOptions }) => {
-      mocks.triggerTaskServiceCall.mockRejectedValue(new Error("trigger boom"));
+      mocks.triggerTaskServiceCall.mockRejectedValue(new Error("NOPERM native block absorption"));
 
       const completion = await runOneItem(redisOptions);
 
       expect(mocks.triggerTaskServiceCall).toHaveBeenCalledTimes(MAX_ATTEMPTS);
       expect(mocks.triggerFailedTaskCall).toHaveBeenCalledTimes(1);
       const [request] = mocks.triggerFailedTaskCall.mock.calls[0] as [
-        { errorMessage: string; errorCode: string },
+        {
+          errorMessage: string;
+          errorCode: string;
+          runFriendlyId: string;
+          batch: { id: string; index: number };
+        },
       ];
-      expect(request.errorMessage).toBe("trigger boom");
+      expect(request.errorMessage).toBe("NOPERM native block absorption");
+      const attempts = mocks.triggerTaskServiceCall.mock.calls.map(
+        (call) =>
+          call[3] as {
+            batchId: string;
+            batchIndex: number;
+            runFriendlyId: string;
+          }
+      );
+      expect(attempts.map(({ batchId, batchIndex }) => [batchId, batchIndex])).toEqual([
+        ["batch_internal_1", 0],
+        ["batch_internal_1", 0],
+      ]);
+      expect(new Set(attempts.map(({ runFriendlyId }) => runFriendlyId)).size).toBe(MAX_ATTEMPTS);
+      expect(request.batch).toEqual({ id: "batch_internal_1", index: 0 });
+      expect(attempts.map(({ runFriendlyId }) => runFriendlyId)).not.toContain(
+        request.runFriendlyId
+      );
       expect(request.errorCode).toBe(TaskRunErrorCodes.BATCH_ITEM_COULD_NOT_TRIGGER);
       expect(completion.runIds).toEqual(["run_prefailed"]);
+    }
+  );
+
+  redisTest(
+    "a block registration error retries before accepting the cached child result",
+    async ({ redisOptions }) => {
+      mocks.triggerTaskServiceCall
+        .mockRejectedValueOnce(new Error("NOPERM native block absorption"))
+        .mockResolvedValueOnce({ run: { friendlyId: "run_cached_child" }, isCached: true });
+      const completion = await runOneItem(redisOptions);
+      expect(mocks.triggerTaskServiceCall).toHaveBeenCalledTimes(2);
+      expect(mocks.triggerFailedTaskCall).not.toHaveBeenCalled();
+      expect(completion.successfulRunCount).toBe(1);
+      expect(completion.failedRunCount).toBe(0);
+      expect(completion.runIds).toEqual(["run_cached_child"]);
+      const attempts = mocks.triggerTaskServiceCall.mock.calls.map(
+        (call) =>
+          call[3] as {
+            batchId: string;
+            batchIndex: number;
+          }
+      );
+      expect(attempts.map(({ batchId, batchIndex }) => [batchId, batchIndex])).toEqual([
+        ["batch_internal_1", 0],
+        ["batch_internal_1", 0],
+      ]);
     }
   );
 

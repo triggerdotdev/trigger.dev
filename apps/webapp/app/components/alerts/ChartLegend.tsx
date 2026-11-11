@@ -32,7 +32,7 @@ function Swatch({ swatch, color }: Pick<ChartLegendItem, "swatch" | "color">) {
   return <span className="size-2.5 rounded-[2px]" style={{ backgroundColor: color }} />;
 }
 
-const COMPACT_AFTER = 3;
+const DEFAULT_INLINE = 3;
 
 function LegendEntry({ item }: { item: ChartLegendItem }) {
   return (
@@ -46,16 +46,18 @@ function LegendEntry({ item }: { item: ChartLegendItem }) {
 function CompactLegend({
   warning,
   series,
+  maxInline,
 }: {
   warning: ChartLegendItem[];
   series: ChartLegendItem[];
+  maxInline: number;
 }) {
   return (
     <>
       {warning.map((item) => (
         <LegendEntry key={`${item.swatch}-${item.label}`} item={item} />
       ))}
-      {series.slice(0, COMPACT_AFTER).map((item) => (
+      {series.slice(0, maxInline).map((item) => (
         <LegendEntry key={`${item.swatch}-${item.label}`} item={item} />
       ))}
       <Popover>
@@ -80,17 +82,19 @@ function CompactLegend({
 export function ChartLegend({
   items,
   className,
+  maxInline = DEFAULT_INLINE,
 }: {
   items: ChartLegendItem[];
   className?: string;
+  maxInline?: number;
 }) {
   if (items.length === 0) return null;
   const warning = items.filter((item) => item.color === WARNING_COLOR);
   const series = items.filter((item) => item.color !== WARNING_COLOR);
   return (
     <span className={cn("flex flex-wrap items-center gap-x-2 gap-y-1", className)}>
-      {series.length > COMPACT_AFTER ? (
-        <CompactLegend warning={warning} series={series} />
+      {series.length > maxInline ? (
+        <CompactLegend warning={warning} series={series} maxInline={maxInline} />
       ) : (
         items.map((item) => <LegendEntry key={`${item.swatch}-${item.label}`} item={item} />)
       )}

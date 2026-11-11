@@ -3,6 +3,7 @@ import {
   emptyEnvironmentVariableValuesEnabled,
   EMPTY_ENV_VALUES_DISABLED,
 } from "~/v3/environmentVariables/emptyValuesFlag.server";
+import { listViewSearch } from "~/v3/environmentVariables/environmentFilter";
 import { parseEnvironmentVariableForm } from "~/v3/environmentVariables/forms";
 import {
   LockClosedIcon,
@@ -11,7 +12,7 @@ import {
   PlusIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
-import { Form, useActionData, useNavigate, useNavigation } from "@remix-run/react";
+import { Form, useActionData, useLocation, useNavigate, useNavigation } from "@remix-run/react";
 import { json } from "@remix-run/server-runtime";
 import dotenv from "dotenv";
 import { useState } from "react";
@@ -45,7 +46,7 @@ import { useList } from "~/hooks/useList";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
-import { resolveOrgIdFromSlug } from "~/models/organization.server";
+import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import {
   environmentVariablesRouteId,
   type loader as environmentVariablesLoader,
@@ -112,16 +113,18 @@ const schema = z.object({
 export const action = dashboardAction(
   {
     params: EnvironmentParamSchema,
-    context: async (params) => {
-      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
-      return organizationId ? { organizationId } : {};
-    },
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
     // Per-environment write:envvars is enforced in the handler — the target
     // environments come from the submission, not the route params.
   },
-  async ({ request, params, user, ability }) => {
+  async ({ request, params, user, ability, context }) => {
     const userId = user.id;
     const { organizationSlug, projectParam, envParam } = params;
+
+    const { projectId } = context;
+    if (!projectId) {
+      throw new Response("Not Found", { status: 404 });
+    }
 
     if (request.method.toUpperCase() !== "POST") {
       throw new Response("Method Not Allowed", { status: 405 });
@@ -138,7 +141,7 @@ export const action = dashboardAction(
     // that can't write a deployed tier can't create vars there via a direct
     // POST (the disabled checkboxes are not the boundary).
     const targetEnvironments = await prisma.runtimeEnvironment.findMany({
-      where: { id: { in: boundedIn(submission.value.environmentIds) } },
+      where: { projectId, id: { in: boundedIn(submission.value.environmentIds) } },
       select: { type: true },
     });
     const hasDeniedEnvironment = targetEnvironments.some(
@@ -156,17 +159,8 @@ export const action = dashboardAction(
       );
     }
 
-    const project = await prisma.project.findUnique({
-      where: {
-        slug: params.projectParam,
-        organization: {
-          members: {
-            some: {
-              userId,
-            },
-          },
-        },
-      },
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, organization: { members: { some: { userId } } } },
       select: {
         id: true,
         organization: { select: { featureFlags: true } },
@@ -234,12 +228,13 @@ export const action = dashboardAction(
       return json(submission.reply({ fieldErrors }));
     }
 
+    // Back to the list view the dialog was opened from.
     return redirect(
-      v3EnvironmentVariablesPath(
+      `${v3EnvironmentVariablesPath(
         { slug: organizationSlug },
         { slug: projectParam },
         { slug: envParam }
-      )
+      )}${listViewSearch(request.url)}`
     );
   }
 );
@@ -253,8 +248,15 @@ export default function Page() {
     parentData,
     "Environment variables page loader data must be defined when rendering the create dialog"
   );
-  const { environments, hasStaging, writableEnvironmentIds, allowEmptyEnvironmentVariableValues } =
-    parentData;
+  const {
+    environments,
+    filter,
+    filterEnvironmentIds,
+    filterBranchEnvironmentIds,
+    hasStaging,
+    writableEnvironmentIds,
+    allowEmptyEnvironmentVariableValues,
+  } = parentData;
   // Creating a variable is a write, so gate the targets on write access.
   const writableEnvironmentIdSet = new Set(writableEnvironmentIds);
   const lastSubmission = useActionData();
@@ -263,8 +265,32 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const [selectedEnvironmentIds, setSelectedEnvironmentIds] = useState<Set<string>>(new Set());
-  const [selectedBranchId, setSelectedBranchId] = useState<string | undefined>(undefined);
+  const location = useLocation();
+  // The list this dialog sits on, with its filter, search and page.
+  const listPath = `${v3EnvironmentVariablesPath(organization, project, environment)}${location.search}`;
+  // Start with the environment the list is filtered to (never a branch).
+  const [selectedEnvironmentIds, setSelectedEnvironmentIds] = useState<Set<string>>(
+    () =>
+      new Set(
+        filter === "all"
+          ? []
+          : environments
+              .filter(
+                (env) =>
+                  env.parentEnvironmentId === null &&
+                  filterEnvironmentIds.includes(env.id) &&
+                  writableEnvironmentIdSet.has(env.id)
+              )
+              .map((env) => env.id)
+      )
+  );
+  // And with the preview branch it is narrowed to, when it is narrowed to exactly one.
+  const [selectedBranchId, setSelectedBranchId] = useState<string | undefined>(() => {
+    const [onlyBranchId, ...others] = filterBranchEnvironmentIds;
+    return onlyBranchId && others.length === 0 && writableEnvironmentIdSet.has(onlyBranchId)
+      ? onlyBranchId
+      : undefined;
+  });
 
   // TODO: we only support branch-specific env vars for Preview environments.
   // This keeps setting consistent env vars across Dev/Staging/Prod easier.
@@ -296,6 +322,10 @@ export default function Page() {
     isChecked: boolean,
     environmentType?: string
   ) => {
+    // A branch only applies while Preview is ticked.
+    if (!isChecked && environmentType === "PREVIEW") {
+      setSelectedBranchId(undefined);
+    }
     setSelectedEnvironmentIds((prev) => {
       const newSet = new Set(prev);
 
@@ -337,7 +367,7 @@ export default function Page() {
       open={isOpen}
       onOpenChange={(o) => {
         if (!o) {
-          navigate(v3EnvironmentVariablesPath(organization, project, environment));
+          navigate(listPath);
         }
       }}
     >
@@ -347,7 +377,7 @@ export default function Page() {
           <Fieldset className="max-h-[70vh] overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
             <InputGroup fullWidth>
               <Label>Environments</Label>
-              {selectedBranchId ? (
+              {previewIsSelected && selectedBranchId ? (
                 <input type="hidden" name="environmentIds" value={selectedBranchId} />
               ) : (
                 Array.from(selectedEnvironmentIds).map((id) => (
@@ -549,10 +579,7 @@ export default function Page() {
               </div>
             }
             cancelButton={
-              <LinkButton
-                to={v3EnvironmentVariablesPath(organization, project, environment)}
-                variant="tertiary/medium"
-              >
+              <LinkButton to={listPath} variant="tertiary/medium">
                 Cancel
               </LinkButton>
             }

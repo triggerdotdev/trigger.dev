@@ -130,7 +130,7 @@ export function dashboardAction<
   options: DashboardActionOptions<TParams, TSearchParams, TContext>,
   handler: (args: DashboardActionHandlerArgs<TParams, TSearchParams, TContext>) => Promise<TReturn>
 ) {
-  return async function action({ request, params }: ActionFunctionArgs): Promise<TReturn> {
+  const run = async ({ request, params }: ActionFunctionArgs): Promise<TReturn> => {
     const { authenticateAndAuthorize } = await import("./dashboardBuilder.server");
     const result = await authenticateAndAuthorize(request, params, options);
     if (!result.ok) throw result.response;
@@ -143,5 +143,11 @@ export function dashboardAction<
       context: result.context as TContext,
       request,
     });
+  };
+
+  return async function action(args: ActionFunctionArgs): Promise<TReturn> {
+    if (!(options.authorization && "requireSuper" in options.authorization)) return run(args);
+    const { withAdminAudit } = await import("../adminAudit/adminAudit.server");
+    return withAdminAudit(run)(args);
   };
 }

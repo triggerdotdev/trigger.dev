@@ -13,7 +13,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@triggerdotdev/plugins/rbac", () => ({
   default: {
     create: () => ({
-      // Deliberately omits apiKeyPresets / prepareApiKeyPolicy /
+      // Deliberately omits apiKeyAccessOptions / prepareApiKeyPolicy /
       // describeApiKeyPolicy — this is a pre-contract plugin.
       isUsingPlugin: async () => true,
     }),
@@ -33,7 +33,7 @@ describe("LazyController API-key policy defaults (plugin predates the contract)"
   }
 
   it("reports no preset catalogue rather than throwing", async () => {
-    await expect((await controller()).apiKeyPresets("org_123")).resolves.toBeNull();
+    await expect((await controller()).apiKeyAccessOptions("org_123")).resolves.toBeNull();
   });
 
   it("refuses to prepare a policy — including FULL_ACCESS", async () => {

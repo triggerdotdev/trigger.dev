@@ -128,8 +128,6 @@ describe("ChatRequestSchema name field", () => {
     organizationId: "org_1",
     projectId: "proj_1",
     environmentId: "env_1",
-    chatNotifier: "on" as const,
-    chatId: "chat_1",
     form: {
       capabilityKey: "queue.depth",
       scopeType: "all" as const,
@@ -137,7 +135,7 @@ describe("ChatRequestSchema name field", () => {
       operator: ">" as const,
       value: 100,
       windowMinutes: 5,
-      notifierChannelIds: [],
+      notifierChannelIds: ["ch_1"],
     },
   };
 

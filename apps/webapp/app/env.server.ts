@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { resolveEncryptionKeyring, parseEncryptionKeyring } from "./utils/encryptionKeyring.server";
 import { MachinePresetName } from "@trigger.dev/core/v3";
 import {
   parseNaturalLanguageDurationInMs,
@@ -30,6 +31,23 @@ const parseDeployBaseImagesEnv = (
     ctx.addIssue({ code: z.ZodIssueCode.custom, message });
   }
   return errors.length > 0 ? z.NEVER : images;
+};
+
+// Parses a CSV of day counts from 1 to 3650 (e.g. "30,90,365") into a non-empty, ascending, de-duplicated array.
+const parseExpiryDaysCsv = (raw: string, ctx: z.RefinementCtx): number[] => {
+  const values = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const numbers = values.map(Number);
+  if (numbers.length === 0 || numbers.some((n) => !Number.isInteger(n) || n <= 0 || n > 3650)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "must be a comma-separated list of whole numbers from 1 to 3650",
+    });
+    return z.NEVER;
+  }
+  return [...new Set(numbers)].sort((a, b) => a - b);
 };
 
 // Parses a CSV of machine preset names (e.g. "small-1x,small-2x") into a
@@ -416,8 +434,15 @@ const EnvironmentSchema = z
         "ENCRYPTION_KEY must be exactly 32 bytes"
       )
       .refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
+    ENCRYPTION_KEYRING: z.string().transform(parseEncryptionKeyring).optional(),
+    PUBLIC_TOKEN_SEALED_SUBJECT_ENABLED: BoolEnv.default(false),
+    PUBLIC_TOKEN_SUBJECT_SECRET: z
+      .string()
+      .min(32)
+      .refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE)
+      .optional(),
     // Enables the AWS_KMS secret store provider. Callers opt in per secret; everything else
-    // stays encrypted with ENCRYPTION_KEY.
+    // stays encrypted with the platform keyring.
     SECRET_STORE_AWS_KMS_KEY_ID: z.string().optional(),
     WHITELISTED_EMAILS: z
       .string()
@@ -429,6 +454,9 @@ const EnvironmentSchema = z
     ADMIN_EMAILS: z.string().refine(isValidRegex, "ADMIN_EMAILS must be a valid regex.").optional(),
     // Instance-level kill switch for the admin dashboard and user impersonation.
     ADMIN_DASHBOARD_ENABLED: BoolEnv.default(true),
+    // Instance-level switch for the /admin/api routes. When off they answer 404 for every
+    // credential, so an instance that serves public traffic can refuse the admin API outright.
+    ADMIN_API_ENABLED: BoolEnv.default(true),
     BILLING_SERVICE_SECRET: z.string().min(32).optional(),
     REMIX_APP_PORT: z.string().optional(),
     // Opt-in, dev-only: stream this process's logs over a local telnet/TCP socket on this port.
@@ -670,6 +698,7 @@ const EnvironmentSchema = z
       .default(process.env.REDIS_TLS_DISABLED ?? "false"),
     REALTIME_STREAMS_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
     REALTIME_STREAMS_INACTIVITY_TIMEOUT_MS: z.coerce.number().int().default(60000), // 1 minute
+    REALTIME_SESSION_IN_HANDOVER_GUARD: z.enum(["enforce", "log"]).default("enforce"),
 
     REALTIME_MAXIMUM_CREATED_AT_FILTER_AGE_IN_MS: z.coerce
       .number()
@@ -854,6 +883,10 @@ const EnvironmentSchema = z
     WEBHOOK_METRICS_MAX_ENTRIES: z.coerce.number().int().positive().default(10_000),
     WEBHOOK_METRICS_MAX_ENDPOINTS: z.coerce.number().int().positive().default(500),
 
+    // Lets API key IP allowlists include private and reserved ranges. Only for installs whose
+    // clients reach the API over a private network; where requests from inside the platform
+    // arrive from private addresses, such a range would admit them.
+    API_KEY_ALLOW_PRIVATE_IP_RANGES: BoolEnvWithDefault(false),
     API_RATE_LIMIT_JWT_WINDOW: z.string().default("1m"),
     API_RATE_LIMIT_JWT_TOKENS: z.coerce.number().int().default(60),
 
@@ -937,6 +970,8 @@ const EnvironmentSchema = z
     TEMPLATE_BUILDER_TOKEN: z.string().optional(),
     // How long wait mode holds finalisation for the builder before carrying on.
     TEMPLATE_BUILDER_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
+    // How long the admin template-builds route waits on each build when `wait` is set.
+    TEMPLATE_BUILDER_ADMIN_TIMEOUT_MS: z.coerce.number().int().positive().default(900_000),
     // Machine presets whose shapes are sent with the template request.
     TEMPLATE_BUILDER_MACHINE_PRESETS: z
       .string()
@@ -1034,6 +1069,10 @@ const EnvironmentSchema = z
     EVENTS_LOAD_SHEDDING_ENABLED: z.string().default("1"),
 
     MANAGED_WORKER_SECRET: z.string().min(1).refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
+    MANAGED_WORKER_SECRET_PREVIOUS: z.preprocess(
+      (v) => (v === "" ? undefined : v),
+      z.string().min(1).refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE).optional()
+    ),
 
     // Allow booting with a known-insecure published default secret. Temporary
     // bridge for deployments that can't rotate yet; rotate as soon as possible.
@@ -1045,7 +1084,30 @@ const EnvironmentSchema = z
     // cutoff pass (grandfathered). Default off = no run-row read, byte-for-byte today's behavior.
     WORKLOAD_CREATED_AT_GATE_ENABLED: z.string().default("0"),
     WORKLOAD_TOKEN_CUTOFF: z.string().datetime().optional(),
+    // Free orgs without a verified card can't deploy to cloud. Off by default. With no cutoff, every
+    // Free org is gated; with one, only orgs created at or after it.
+    CARD_VERIFICATION_GATE_ENABLED: BoolEnv.default(false),
+    CARD_VERIFICATION_REQUIRED_FROM: z.string().datetime().optional(),
+    // Whether an attempt start for a run that already has an attempt executing is logged or refused.
+    RUN_ENGINE_DUPLICATE_ATTEMPT_START_CHECK: z.enum(["off", "log", "enforce"]).default("log"),
 
+    // Lifetimes, in days, offered when creating a personal access token on the dashboard, and the
+    // preselected one. A default that isn't in the list falls back to the first option.
+    PERSONAL_ACCESS_TOKEN_EXPIRY_DAYS: z
+      .string()
+      .default("30,90,365")
+      .transform(parseExpiryDaysCsv),
+    PERSONAL_ACCESS_TOKEN_DEFAULT_EXPIRY_DAYS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .max(3650)
+      .default(90),
+
+    // A personal access token minted by a CLI or MCP login stops working after this many days
+    // without use. 0 turns it off. Applies to logins from now on: each token keeps the setting it
+    // was minted with, so tokens minted while it is 0 never expire from disuse.
+    CLI_LOGIN_IDLE_TIMEOUT_DAYS: z.coerce.number().int().min(0).max(3650).default(7),
     CLI_LOGIN_NETWORK_CHECK: z.enum(["off", "log", "confirm"]).default("log"),
     CLI_LOGIN_LEGACY_UNTIL: z.string().datetime().default("2027-01-01T00:00:00.000Z"),
 
@@ -1138,6 +1200,7 @@ const EnvironmentSchema = z
     ALERT_FAILURE_RATE_MIN_VOLUME: z.coerce.number().int().default(10),
     ALERT_CHECKPOINT_LOOKBACK_SEC: z.coerce.number().int().min(0).default(3600),
     ALERT_SEEN_RETENTION_SEC: z.coerce.number().int().min(7200).default(604800),
+    ALERT_DETAIL_MAX_WINDOW_DAYS: z.coerce.number().int().min(1).default(90),
     ALERT_DELIVERY_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(8),
     ALERT_DELIVERY_MAX_AGE_HOURS: z.coerce.number().positive().default(24),
     ALERT_SNAPSHOT_RANGE_SEC: z.coerce
@@ -1501,6 +1564,8 @@ const EnvironmentSchema = z
 
     // Infrastructure endpoint only. Modes and organization overrides are polled feature flags.
     RUN_ENGINE_SNAPSHOT_STORE_REDIS_URL: z.string().optional(),
+    // Infrastructure only; the global/org waitpointStoreEnabled flag owns activation.
+    RUN_ENGINE_WAITPOINT_STORE_REDIS_URL: z.string().optional(),
     // How long a fetched org snapshotStoreMode override is reused per process. 0 disables caching.
     RUN_ENGINE_SNAPSHOT_STORE_DIAL_CACHE_MS: z.coerce.number().int().min(0).default(5000),
     // How long a finished run's snapshot state stays in the store. Redis-primary runs fail closed
@@ -1633,6 +1698,9 @@ const EnvironmentSchema = z
     RUN_ENGINE_QUEUE_RECONCILE_LOCK_TTL_SECONDS: z.coerce.number().int().positive().default(10),
     RUN_ENGINE_QUEUE_RECONCILE_MAX_PASSES_PER_DEQUEUE: z.coerce.number().int().min(0).default(2),
     RUN_ENGINE_TREAT_PRODUCTION_EXECUTION_STALLS_AS_OOM: z.string().default("0"),
+    // Fallback for the deploymentStatusMode global flag: how dequeue treats a run whose
+    // deployment hasn't finished deploying (off, shadow = log and count only, enforce).
+    RUN_ENGINE_DEPLOYMENT_STATUS_MODE: z.enum(["off", "shadow", "enforce"]).default("shadow"),
     // When on, the worker continue route answers temporary database errors with 503 and a busy run
     // lock with 409, which the supervisor keeps retrying, instead of a 422 that aborts the run.
     RUN_ENGINE_CONTINUE_RETRYABLE_ERRORS_ENABLED: BoolEnv.default(false),
@@ -2095,6 +2163,8 @@ const EnvironmentSchema = z
       .string()
       .default(process.env.REDIS_TLS_DISABLED ?? "false"),
 
+    // Stable, non-secret input shared by every schedule calculator. Stored phases take precedence.
+    SCHEDULE_PHASE_SEED: z.string().min(1).default("trigger.dev-schedule-phase-v1"),
     SCHEDULE_ENGINE_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
     SCHEDULE_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
     SCHEDULE_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
@@ -2104,11 +2174,6 @@ const EnvironmentSchema = z
     SCHEDULE_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
     SCHEDULE_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(30_000),
     SCHEDULE_WORKER_DISTRIBUTION_WINDOW_SECONDS: z.coerce.number().int().default(30),
-    SCHEDULE_WORKER_CRON_SPREAD_FRACTION: z.coerce
-      .number()
-      .catch(0)
-      .default(1)
-      .transform((value) => (Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0)),
 
     SCHEDULE_WORKER_REDIS_HOST: z
       .string()
@@ -2185,6 +2250,7 @@ const EnvironmentSchema = z
     // API origin; set to a dedicated host (e.g. https://webhook.trigger.dev) when one is fronted.
     WEBHOOK_INGRESS_ORIGIN: z.string().optional(),
     WEBHOOK_INGRESS_BODY_SIZE_LIMIT_MB: z.coerce.number().int().default(1),
+    OTLP_INGRESS_BODY_SIZE_LIMIT_MB: z.coerce.number().int().positive().default(64),
     WEBHOOK_INGRESS_RATE_LIMIT_WINDOW: z.string().default("10s"),
     WEBHOOK_INGRESS_RATE_LIMIT_TOKENS: z.coerce.number().int().default(100),
     // Per-environment ingress limit across all of its endpoints. A request costs one token per 64 KiB
@@ -2224,6 +2290,8 @@ const EnvironmentSchema = z
       .nonnegative()
       .default(60_000),
     DEPLOYMENTS_BUILD_ENV_VARS_SWEEP_BATCH_SIZE: z.coerce.number().int().positive().default(500),
+    /** Emails owners before and when a dashboard-created personal access token expires. */
+    PERSONAL_ACCESS_TOKEN_EXPIRY_EMAILS_ENABLED: BoolEnv.default(true),
     BULK_ACTION_AUTORELOAD_POLL_INTERVAL_MS: z.coerce.number().int().default(1_000),
     QUEUES_AUTORELOAD_POLL_INTERVAL_MS: z.coerce.number().int().default(5_000),
 
@@ -2816,6 +2884,9 @@ const EnvironmentSchema = z
     // login path.
     SSO_DATABASE_WRITER_CONNECTION_LIMIT: z.coerce.number().int().default(2),
     SSO_DATABASE_READER_CONNECTION_LIMIT: z.coerce.number().int().default(5),
+
+    /** Records admin API calls, admin dashboard mutations and admin PAT minting through the admin audit plugin. */
+    ADMIN_AUDIT_ENABLED: BoolEnv.default(false),
     // Emit a console.log when the SSO fallback is selected because no
     // plugin is installed. Default off so OSS deployments stay quiet.
     SSO_LOG_FALLBACK: BoolEnv.default(false),
@@ -2864,8 +2935,15 @@ const EnvironmentSchema = z
     }
   });
 
-export type Environment = z.infer<typeof EnvironmentSchema>;
-export const env = EnvironmentSchema.parse(process.env);
+const environment = EnvironmentSchema.parse(process.env);
+export const env = {
+  ...environment,
+  ENCRYPTION_KEYRING: resolveEncryptionKeyring(
+    environment.ENCRYPTION_KEYRING,
+    environment.ENCRYPTION_KEY
+  ),
+};
+export type Environment = typeof env;
 
 if (env.ALLOW_INSECURE_DEFAULT_SECRETS) {
   const insecure = (
@@ -2874,9 +2952,10 @@ if (env.ALLOW_INSECURE_DEFAULT_SECRETS) {
       ["MAGIC_LINK_SECRET", env.MAGIC_LINK_SECRET],
       ["ENCRYPTION_KEY", env.ENCRYPTION_KEY],
       ["MANAGED_WORKER_SECRET", env.MANAGED_WORKER_SECRET],
+      ["PUBLIC_TOKEN_SUBJECT_SECRET", env.PUBLIC_TOKEN_SUBJECT_SECRET],
     ] as const
   )
-    .filter(([, value]) => INSECURE_SECRET_VALUES.includes(value))
+    .filter(([, value]) => value !== undefined && INSECURE_SECRET_VALUES.includes(value))
     .map(([name]) => name);
 
   if (insecure.length > 0) {

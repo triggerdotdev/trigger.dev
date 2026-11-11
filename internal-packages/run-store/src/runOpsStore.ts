@@ -99,6 +99,7 @@ export class RoutingRunStore implements RunStore {
   // duplicate id. Every merge in this class MUST use this order.
   readonly #precedence: readonly ShardKey[];
   // One entry per distinct database, in precedence order. A fan-out sum iterates this, never #shards.
+  readonly #waitpointKeyAliasShards: ReadonlyArray<{ key: ShardKey; aliasOf?: ShardKey }>;
   readonly #distinctStores: ReadonlyArray<{ key: ShardKey; store: RunStore }>;
   // The two id-less defaults. They differ by role on purpose: a route with no id lands on the
   // steady-state home, a waitpoint read with no id lands on the legacy store.
@@ -153,6 +154,8 @@ export class RoutingRunStore implements RunStore {
         );
       }
     }
+
+    this.#waitpointKeyAliasShards = shards;
 
     this.#shards = new Map<ShardKey, RunStore>([
       [NEW_SHARD, options.new],
@@ -525,6 +528,28 @@ export class RoutingRunStore implements RunStore {
   // failure between them rolls BOTH back. This is NOT a cross-DB transaction — the unit is co-resident
   // by construction (all writes target the one run on the one owning DB). Unclassifiable / absent id
   // falls back to NEW (the steady-state home), mirroring #routeOrNewForWrite.
+  getWaitpointKeyScope(ownerId?: string): string {
+    const key = this.#routeKeyOrDefault(ownerId);
+    this.#shardStore(key); // Reject an unconfigured owner before any key publication.
+    const canonical =
+      this.#waitpointKeyAliasShards.find((shard) => shard.key === key)?.aliasOf ?? key;
+    return canonical === NEW_SHARD || canonical === LEGACY_SHARD ? canonical : `shard:${canonical}`;
+  }
+
+  runInWaitpointKeyTransaction<R>(
+    ownerId: string | undefined,
+    organizationId: string,
+    acceptUntil: number,
+    fn: (store: RunStore, tx: PrismaClientOrTransaction) => Promise<R>
+  ): Promise<R> {
+    return this.#routeOrNew(ownerId).runInWaitpointKeyTransaction(
+      ownerId,
+      organizationId,
+      acceptUntil,
+      fn
+    );
+  }
+
   runInTransaction<R>(
     runId: string | undefined,
     fn: (store: RunStore, tx: PrismaClientOrTransaction) => Promise<R>
@@ -2185,6 +2210,10 @@ export class RoutingRunStore implements RunStore {
   // ---------------------------------------------------------------------------
   // BatchTaskRun (run-ops). Route by id-shape: run-ops id→NEW, cuid→LEGACY.
   // ---------------------------------------------------------------------------
+
+  async markBatchWaitpointOnStore(batchId: string, waitpointId: string): Promise<void> {
+    return (await this.#routeForWrite(batchId)).markBatchWaitpointOnStore(batchId, waitpointId);
+  }
 
   async createBatchTaskRun(
     data: CreateBatchTaskRunData,

@@ -1,3 +1,4 @@
+import { deriveRunWaitpointId } from "./runWaitpointId.js";
 import type { Logger } from "@trigger.dev/core/logger";
 import type { PrismaClientOrTransaction, Waitpoint } from "@trigger.dev/database";
 import {
@@ -20,7 +21,10 @@ import type {
   AbsorbedBlockersParams,
   AbsorbBlockersResult,
   AcknowledgeResumeParams,
+  PrepareWaitpointResumeParams,
+  WaitpointResumeIntent,
   AssociatedWaitpointData,
+  AssociatedWaitpointPlan,
   BlockerRegistration,
   ClearRunBlockStateParams,
   CurrentBlockContext,
@@ -29,6 +33,7 @@ import type {
   CompleteResult,
   CreateDateTimeWaitpointParams,
   CreateManualWaitpointParams,
+  CreateBatchWaitpointParams,
   CreateWaitpointResult,
   RegisterBlockersResult,
   RegisterBlocksLocklessParams,
@@ -265,9 +270,26 @@ export class RoutingWaitpointCoordinator implements WaitpointCoordinator {
     return this.#store!.resumeRetainedWithdrawal(params);
   }
 
+  async prepareResume(
+    params: PrepareWaitpointResumeParams
+  ): Promise<WaitpointResumeIntent | undefined> {
+    if (!(await this.#runMightHaveStoreBlockers(params))) return undefined;
+    return this.#store!.prepareResume(params);
+  }
+
+  async readResumeIntent(
+    runId: string,
+    context?: RunKeyedRoutingContext
+  ): Promise<WaitpointResumeIntent | undefined> {
+    if (
+      !(await this.#runMightHaveStoreBlockers({ runId, organizationId: context?.organizationId }))
+    )
+      return undefined;
+    return this.#store!.readResumeIntent(runId, context);
+  }
+
   async acknowledgeResume(params: AcknowledgeResumeParams): Promise<void> {
-    // Legacy deletes its edge rows; the store acknowledges the handoff and drains under the block-id
-    // fence. A unmarked run reaches only Postgres. Both touch different stores, so run concurrently.
+    // Unmarked runs use only Postgres. Marked runs retain proof until both stores acknowledge.
     if (
       !(await this.#runMightHaveStoreBlockers({
         runId: params.runId,
@@ -277,10 +299,9 @@ export class RoutingWaitpointCoordinator implements WaitpointCoordinator {
       await this.#legacy.acknowledgeResume(params);
       return;
     }
-    await Promise.all([
-      this.#legacy.acknowledgeResume(params),
-      this.#store!.acknowledgeResume(params),
-    ]);
+    // Keep MemoryDB's resume proof until the Postgres delete has committed.
+    await this.#legacy.acknowledgeResume(params);
+    await this.#store!.acknowledgeResume(params);
   }
 
   async releaseRunBlockers(params: ReleaseRunBlockersParams): Promise<{ count: number }> {
@@ -463,7 +484,16 @@ export class RoutingWaitpointCoordinator implements WaitpointCoordinator {
     const legacyIds = partition.legacy.map((e) => e.item);
     const storeIds = partition.store.map((e) => e.item);
 
-    this.#assertStoreBlockersEligible(params.runId, storeIds, params.blockId);
+    const hasStoreAdmission = storeIds.length > 0 || !!params.requirePendingWaitpointId;
+    this.#assertStoreBlockersEligible(
+      params.runId,
+      storeIds.length
+        ? storeIds
+        : params.requirePendingWaitpointId
+          ? [params.requirePendingWaitpointId]
+          : [],
+      params.blockId
+    );
 
     // Native/mixed absorption checks the fence atomically in its store CAS. Legacy-only writes
     // need the same admission barrier before Postgres can accept a later attempt's edges.
@@ -473,20 +503,21 @@ export class RoutingWaitpointCoordinator implements WaitpointCoordinator {
 
     // Commit the discovery marker first. A crash after it leaves only a harmless extra lookup;
     // a crash after absorption can never leave Redis edges hidden from a restarted/rolled-back process.
-    if (storeIds.length > 0) await this.#markStoreWaitpoints?.(params.runId, params.organizationId);
+    if (hasStoreAdmission) await this.#markStoreWaitpoints?.(params.runId, params.organizationId);
 
     // Store CAS FIRST, then legacy — the two mutating absorptions never run concurrently. A stale/refused
     // store operation throws here BEFORE any legacy edge is written. It cannot change the active store
     // block or register watchers, but may finish an already-retained predecessor withdrawal. Legacy
     // edges are written only after the store half is durably accepted.
-    const storeResult =
-      storeIds.length > 0
-        ? await this.#store!.absorbBlockers({
-            ...params,
-            waitpointIds: storeIds,
-            registrationWaitpointIds: params.waitpointIds,
-          })
-        : undefined;
+    // A native batch also guards a reused PG child before its legacy edge is written.
+    // Even zero-native-edge admissions retain exact request proof until tail work finishes.
+    const storeResult = hasStoreAdmission
+      ? await this.#store!.absorbBlockers({
+          ...params,
+          waitpointIds: storeIds,
+          registrationWaitpointIds: params.waitpointIds,
+        })
+      : undefined;
 
     let legacyResult: AbsorbBlockersResult | undefined;
     try {
@@ -499,7 +530,7 @@ export class RoutingWaitpointCoordinator implements WaitpointCoordinator {
       // the block id and the exact edges just contributed, so an earlier additive call's blockers on the
       // same block and any early-delivery receipts survive. If compensation itself fails, surface the
       // exact fenced targets so the caller arms a durable retry — never report clean while leaving residue.
-      if (storeResult && storeIds.length > 0) {
+      if (storeResult) {
         try {
           await this.#store!.compensateAbsorption({
             runId: params.runId,
@@ -575,6 +606,13 @@ export class RoutingWaitpointCoordinator implements WaitpointCoordinator {
     return this.#coordinatorForId(params.waitpointId).complete(params);
   }
 
+  /** Resolve operation routing before a caller acquires a bounded PG connection. */
+  async dateTimeCreationCoordinator(mintContext: WaitpointMintContext | undefined) {
+    return (await this.#decideMintResidency("DATETIME", mintContext)) === "store"
+      ? this.#store!
+      : this.#legacy;
+  }
+
   async createDateTimeWaitpoint(
     params: CreateDateTimeWaitpointParams
   ): Promise<CreateWaitpointResult> {
@@ -584,6 +622,30 @@ export class RoutingWaitpointCoordinator implements WaitpointCoordinator {
       : this.#legacy.createDateTimeWaitpoint(params);
   }
 
+  async manualCreationCoordinator(
+    mintContext?: WaitpointMintContext
+  ): Promise<WaitpointCoordinator> {
+    return (await this.#decideMintResidency("MANUAL", mintContext)) === "store"
+      ? this.#store!
+      : this.#legacy;
+  }
+  async canCreateNativeBatch(organizationId: string): Promise<boolean> {
+    return (
+      (await this.#decideMintResidency("BATCH", {
+        organizationId,
+        eligibleTypes: new Set(["BATCH"]),
+      })) === "store"
+    );
+  }
+  async createBatchWaitpoint(params: CreateBatchWaitpointParams): Promise<CreateWaitpointResult> {
+    const owner =
+      (await this.#decideMintResidency("BATCH", params.mintContext)) === "store"
+        ? this.#store!
+        : this.#legacy;
+    if (params.requireStore && owner === this.#legacy)
+      throw new Error("Native BATCH waitpoint creation is disabled");
+    return owner.createBatchWaitpoint(params);
+  }
   async createManualWaitpoint(params: CreateManualWaitpointParams): Promise<CreateWaitpointResult> {
     const residency = await this.#decideMintResidency("MANUAL", params.mintContext);
     return residency === "store"
@@ -596,16 +658,76 @@ export class RoutingWaitpointCoordinator implements WaitpointCoordinator {
     environmentId: string;
     anchorRunId: string;
   }): AssociatedWaitpointData {
-    // The synchronous RUN-waitpoint data builder stays legacy in this layer; a store RUN mint has its
-    // own asynchronous path owned by a later ticket. Dark by construction.
+    // The synchronous builder is legacy-only: a store RUN mint has no Postgres row to inline and must
+    // create after the child commits, so it goes through the async `planAssociatedWaitpoint` instead.
     return this.#legacy.mintAssociatedWaitpointData(params);
+  }
+
+  async planAssociatedWaitpoint(params: {
+    projectId: string;
+    environmentId: string;
+    anchorRunId: string;
+    mintContext?: WaitpointMintContext;
+  }): Promise<AssociatedWaitpointPlan> {
+    // Check the rollout before deriving an identity, so disabled creation does no native work.
+    // Both run-ops and CUID children retain their existing TaskRun placement.
+    const selected = await this.#decideMintResidency("RUN", params.mintContext);
+    const residency =
+      selected === "store" && deriveRunWaitpointId(params.anchorRunId) ? "store" : "legacy";
+    const coordinator = residency === "store" ? this.#store! : this.#legacy;
+    return {
+      residency,
+      data: coordinator.mintAssociatedWaitpointData({
+        projectId: params.projectId,
+        environmentId: params.environmentId,
+        anchorRunId: params.anchorRunId,
+      }),
+    };
   }
 
   async createAssociatedWaitpoint(params: {
     runId: string;
     data: AssociatedWaitpointData;
+    organizationId?: string;
+    requireStore?: boolean;
   }): Promise<Waitpoint> {
-    // RUN minting in this foundation is always legacy and carries no trusted organization context.
-    return this.#legacy.createAssociatedWaitpoint(params);
+    if (!(await this.isStoreRoutingEnabled(params.organizationId))) {
+      if (params.requireStore) {
+        throw new Error("Existing store waitpoint association is disabled for this organization");
+      }
+      return this.#legacy.createAssociatedWaitpoint(params);
+    }
+    // Check ownership before writing the marker; a missing store must fail without a mutation.
+    const coordinator = this.#coordinatorForId(params.data.id);
+    if (classifyWaitpointCoordinator(params.data.id) === "store") {
+      await this.#markStoreWaitpoints?.(params.runId, params.organizationId);
+    }
+    return coordinator.createAssociatedWaitpoint(params);
+  }
+
+  // Association discovery uses the child's durable storage marker, regardless of the current org
+  // flag. A Redis error throws rather than pretending the association is absent.
+  async findAssociatedRunWaitpointId(
+    runId: string,
+    context?: RunKeyedRoutingContext
+  ): Promise<string | undefined> {
+    if (
+      !(await this.#runMightHaveStoreBlockers({ runId, organizationId: context?.organizationId }))
+    ) {
+      return undefined;
+    }
+    return this.#store!.findAssociatedRunWaitpointId(runId, context);
+  }
+
+  async readAssociatedRunWaitpoint(
+    runId: string,
+    context?: RunKeyedRoutingContext
+  ): Promise<Waitpoint | undefined> {
+    if (
+      !(await this.#runMightHaveStoreBlockers({ runId, organizationId: context?.organizationId }))
+    ) {
+      return undefined;
+    }
+    return this.#store!.readAssociatedRunWaitpoint(runId, context);
   }
 }

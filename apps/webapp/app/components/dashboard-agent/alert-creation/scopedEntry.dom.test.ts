@@ -22,7 +22,7 @@ describe("entry from a queue page", () => {
     const root = createRoot(container);
     act(() => root.render(createElement(Harness)));
     expect(latest!.currentStep).toBe("what");
-    const steps = allSteps(latest!, [], undefined);
+    const steps = allSteps(latest!, []);
     expect(steps.findIndex((step) => step.id === cardPosition(latest!))).toBe(1);
     expect(steps.find((step) => step.id === "what")!.selected).toEqual([]);
     act(() => latest!.selectChip("what", "queue.depth"));

@@ -3,7 +3,6 @@ import { getBranch } from "@trigger.dev/core/v3";
 import type { Command } from "commander";
 import { resolve } from "node:path";
 import { z } from "zod";
-import { CliApiClient } from "../apiClient.js";
 import {
   CommonCommandOptions,
   commonOptions,
@@ -11,15 +10,22 @@ import {
   wrapCommandAction,
 } from "../cli/common.js";
 import { loadConfig } from "../config.js";
+import { authenticateForDeploy } from "../deploy/auth.js";
+import {
+  archivePreviewBranch,
+  shouldUseGithubOidc,
+  trustedDeployApiUrl,
+  type PreviewArchiveAuth,
+} from "../deploy/trustedDeploy.js";
 import { createGitMeta } from "../utilities/gitMeta.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
-import { spinner } from "../utilities/windows.js";
 import { verifyDirectory } from "./deploy.js";
 import { login } from "./login.js";
 import { updateTriggerPackages } from "./update.js";
 
 const PreviewCommandOptions = CommonCommandOptions.extend({
+  authMethod: z.enum(["auto", "oidc"]).default("auto"),
   branch: z.string().optional(),
   config: z.string().optional(),
   projectRef: z.string().optional(),
@@ -35,6 +41,7 @@ export function configurePreviewCommand(program: Command) {
     preview
       .command("archive")
       .description("Archive a preview branch")
+      .option("--auth-method <method>", "Authentication method: auto or oidc", "auto")
       .argument("[path]", "The path to the project", ".")
       .option(
         "-b, --branch <branch>",
@@ -52,7 +59,7 @@ export function configurePreviewCommand(program: Command) {
       )
   ).action(async (path, options) => {
     await handleTelemetry(async () => {
-      await printStandloneInitialBanner(true, options.profile);
+      await printStandloneInitialBanner(!options.skipUpdateCheck, options.profile);
       await previewArchiveCommand(path, options);
     });
   });
@@ -81,24 +88,6 @@ async function _previewArchiveCommand(dir: string, options: PreviewCommandOption
 
   verifyDirectory(dir, projectPath);
 
-  const authorization = await login({
-    embedded: true,
-    defaultApiUrl: options.apiUrl,
-    profile: options.profile,
-  });
-
-  if (!authorization.ok) {
-    if (authorization.error === "fetch failed") {
-      throw new Error(
-        `Failed to connect to ${authorization.auth?.apiUrl}. Are you sure it's the correct URL?`
-      );
-    } else {
-      throw new Error(
-        `You must login first. Use the \`login\` CLI command.\n\n${authorization.error}`
-      );
-    }
-  }
-
   const resolvedConfig = await loadConfig({
     cwd: projectPath,
     overrides: { project: options.projectRef },
@@ -118,28 +107,29 @@ async function _previewArchiveCommand(dir: string, options: PreviewCommandOption
     );
   }
 
-  const $buildSpinner = spinner();
-  $buildSpinner.start(`Archiving "${branch}"`);
-  const result = await archivePreviewBranch(authorization, branch, resolvedConfig.project);
-  $buildSpinner.stop(
-    result ? `Successfully archived "${branch}"` : `Failed to archive "${branch}".`
-  );
-  return result;
-}
-
-export async function archivePreviewBranch(
-  authorization: { auth: { apiUrl: string; accessToken: string } },
-  branch: string,
-  project: string
-) {
-  const apiClient = new CliApiClient(authorization.auth.apiUrl, authorization.auth.accessToken);
-
-  const result = await apiClient.archiveBranch(project, "preview", branch);
-
-  if (result.success) {
-    return true;
+  const useOidc = shouldUseGithubOidc(options.authMethod, process.env.TRIGGER_ACCESS_TOKEN);
+  let archiveAuth: PreviewArchiveAuth;
+  if (useOidc) {
+    archiveAuth = { type: "oidc", apiUrl: trustedDeployApiUrl(options) };
   } else {
-    logger.error(result.error);
-    return false;
+    const authorization = await authenticateForDeploy({
+      accessToken: process.env.TRIGGER_ACCESS_TOKEN,
+      apiUrl: process.env.TRIGGER_API_URL ?? options.apiUrl,
+      profile: options.profile,
+      silent: false,
+      login,
+    });
+    if (!authorization.ok) {
+      if (authorization.error === "fetch failed") {
+        throw new Error(
+          `Failed to connect to ${authorization.auth?.apiUrl}. Are you sure it's the correct URL?`
+        );
+      }
+      throw new Error(
+        `You must login first. Use the \`login\` CLI command.\n\n${authorization.error}`
+      );
+    }
+    archiveAuth = { type: "token", ...authorization.auth };
   }
+  await archivePreviewBranch(archiveAuth, branch, resolvedConfig.project);
 }

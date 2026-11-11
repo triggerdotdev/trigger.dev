@@ -37,9 +37,9 @@ export async function authorizedBatchItemStream(
   items: AsyncIterable<unknown>,
   ability: RbacAbility,
   batchId: string,
-  allowStoredPayloads = true
+  allowStoredPayload: (pointer: unknown) => boolean = () => true
 ): Promise<AsyncIterable<unknown>> {
-  const authorized = authorizeBatchItems(items, ability, batchId, allowStoredPayloads);
+  const authorized = authorizeBatchItems(items, ability, batchId, allowStoredPayload);
 
   // A batch-level write grant is authorization in its own right, so an empty
   // stream stays legal for credentials that own the batch: root keys (via the
@@ -79,7 +79,7 @@ export async function* authorizeBatchItems(
   items: AsyncIterable<unknown>,
   ability: RbacAbility,
   batchId: string,
-  allowStoredPayloads = true
+  allowStoredPayload: (pointer: unknown) => boolean = () => true
 ): AsyncIterable<unknown> {
   const canWriteBatch = ability.can("write", { type: "batch", id: batchId });
 
@@ -94,7 +94,10 @@ export async function* authorizeBatchItems(
         ? item.options.payloadType
         : undefined;
 
-    if (!allowStoredPayloads && payloadType === "application/store") {
+    const payload =
+      typeof item === "object" && item !== null && "payload" in item ? item.payload : undefined;
+
+    if (payloadType === "application/store" && !allowStoredPayload(payload)) {
       throw new BatchItemAuthorizationError();
     }
 

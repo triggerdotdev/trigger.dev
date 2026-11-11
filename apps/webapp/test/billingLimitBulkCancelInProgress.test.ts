@@ -3,6 +3,7 @@ import { setTimeout } from "node:timers/promises";
 import { postgresTest, replicationContainerTest } from "@internal/testcontainers";
 import { BulkActionStatus, BulkActionType } from "@trigger.dev/database";
 import {
+  ADMIN_CANCEL_SOURCE,
   BILLING_LIMIT_IN_PROGRESS_CANCEL_SOURCE,
   BILLING_LIMIT_RESOLVE_CANCEL_SOURCE,
   BillingLimitBulkCancelIncompleteError,
@@ -454,6 +455,67 @@ describe("BillingLimitBulkCancelService.cancelInProgressRuns", () => {
         dedupeKey: hitAt,
         finalizeRun: true,
       });
+    }
+  );
+});
+
+describe("BillingLimitBulkCancelService.cancelAllRunsForOrganization", () => {
+  // Catches: the admin cancellation skipping dev environments or non-final statuses.
+  postgresTest(
+    "cancels every non-final run in every environment, dev included, deduped by key",
+    async ({ prisma }) => {
+      const { organization, project } = await createTestOrgProjectWithMember(prisma);
+      const devEnv = await createRuntimeEnvironment(prisma, {
+        projectId: project.id,
+        organizationId: organization.id,
+        type: "DEVELOPMENT",
+        slug: uniqueId("dev"),
+      });
+      const productionEnv = await createRuntimeEnvironment(prisma, {
+        projectId: project.id,
+        organizationId: organization.id,
+        type: "PRODUCTION",
+        slug: uniqueId("prod"),
+      });
+
+      const enqueued: string[] = [];
+      const deps = {
+        prismaClient: prisma,
+        createRunsRepository: async () => ({ countRuns: async () => 3 }) as never,
+        enqueueProcessBulkAction: async (bulkActionId: string) => {
+          enqueued.push(bulkActionId);
+        },
+      };
+
+      await BillingLimitBulkCancelService.cancelAllRunsForOrganization(
+        organization.id,
+        { dedupeKey: "admin-cancel:test:1" },
+        deps
+      );
+
+      const groups = await prisma.bulkActionGroup.findMany({
+        where: {
+          environmentId: { in: [devEnv.id, productionEnv.id] },
+          type: BulkActionType.CANCEL,
+        },
+      });
+      expect(groups.map((g) => g.environmentId).sort()).toEqual(
+        [devEnv.id, productionEnv.id].sort()
+      );
+      const params = groups[0].params as { statuses: string[]; source: string };
+      expect(params.source).toBe(ADMIN_CANCEL_SOURCE);
+      expect(params.statuses).toEqual(expect.arrayContaining(["DELAYED", "PAUSED", "EXECUTING"]));
+
+      await BillingLimitBulkCancelService.cancelAllRunsForOrganization(
+        organization.id,
+        { dedupeKey: "admin-cancel:test:1" },
+        deps
+      );
+      expect(
+        await prisma.bulkActionGroup.count({
+          where: { environmentId: { in: [devEnv.id, productionEnv.id] } },
+        })
+      ).toBe(2);
     }
   );
 });

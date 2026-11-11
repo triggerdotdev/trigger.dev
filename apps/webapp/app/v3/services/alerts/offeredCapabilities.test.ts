@@ -34,7 +34,7 @@ describe("offered capabilities", () => {
 
   it("keeps empty areas listed but disabled with a hint", () => {
     const hint = "No tasks in this environment yet";
-    const area = allSteps({ answers: {} } as any, [], undefined, undefined, undefined, undefined, [
+    const area = allSteps({ answers: {} } as any, [], undefined, undefined, undefined, [
       "runs",
     ]).find((s) => s.id === "area")!;
     const runs = area.options.find((o) => o.id === "runs")!;
@@ -50,7 +50,6 @@ describe("offered capabilities", () => {
     const steps = allSteps(
       { answers: { area: "queues" } } as any,
       [],
-      undefined,
       undefined,
       undefined,
       undefined,

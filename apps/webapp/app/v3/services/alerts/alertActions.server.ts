@@ -1,6 +1,12 @@
-import { displayStatus, type Condition, type NotifierRef } from "@internal/alert-contracts";
-import type { PrismaClientOrTransaction } from "~/db.server";
 import {
+  displayStatus,
+  GROUP_CAPABILITY_KEY,
+  type Condition,
+  type NotifierRef,
+} from "@internal/alert-contracts";
+import { $transaction, type PrismaClientOrTransaction } from "~/db.server";
+import {
+  activateAlert as activateStoredAlert,
   getAlert,
   resolveAlert,
   updateAlertExpiry,
@@ -10,12 +16,14 @@ import {
   activateAlertAndSchedule,
   type AlertLifecycleDeps,
   deleteAlertAndUnschedule,
+  scheduleAlert,
   stopAlertAndUnschedule,
 } from "./alertLifecycle.server";
 import { type AlertDraftScope } from "./alertDraft";
-import { assertAlertDraftValid } from "./createAlertFromDraft.server";
+import { assertAlertDraftValid, NoNotifiersError } from "./createAlertFromDraft.server";
+import { reclaimGroupMembers, removeGroupMember, ungroupAlert } from "./alertGroups.server";
 
-export type AlertActionIntent = "resolve" | "stop" | "delete" | "activate";
+export type AlertActionIntent = "resolve" | "stop" | "delete" | "activate" | "ungroup";
 
 export class AlertNotFoundError extends Error {
   constructor() {
@@ -30,7 +38,7 @@ export class AlertActionNotAllowedError extends Error {
 }
 
 export type PerformAlertActionParams = {
-  intent: "resolve" | "stop" | "delete";
+  intent: "resolve" | "stop" | "delete" | "ungroup";
   alertId: string;
   projectId: string;
   environmentId: string;
@@ -50,6 +58,7 @@ export async function performAlertAction(
   if (!alert) throw new AlertNotFoundError();
 
   const status = displayStatus(alert.lifecycle, alert.attention);
+  const ref = { projectId: params.projectId, environmentId: params.environmentId };
 
   switch (params.intent) {
     case "resolve": {
@@ -73,8 +82,22 @@ export async function performAlertAction(
       if (!result) throw new AlertActionNotAllowedError("stop");
       return;
     }
+    case "ungroup": {
+      if (alert.capabilityKey !== GROUP_CAPABILITY_KEY) {
+        throw new AlertActionNotAllowedError("ungroup");
+      }
+      await ungroupAlert(db, { ...ref, groupId: alert.id }, deps);
+      return;
+    }
     case "delete": {
       if (status.status !== "inactive") throw new AlertActionNotAllowedError("delete");
+      if (alert.capabilityKey === GROUP_CAPABILITY_KEY) {
+        await ungroupAlert(db, { ...ref, groupId: alert.id }, deps);
+        return;
+      }
+      if (alert.groupId) {
+        await removeGroupMember(db, { ...ref, groupId: alert.groupId, alertId: alert.id }, deps);
+      }
       const deleted = await deleteAlertAndUnschedule(
         db,
         {
@@ -127,10 +150,9 @@ export async function activateAlert(
     throw new AlertActivationInvalidError("Pick an expiry in the future");
   }
 
-  const notifiers = params.notifiers ?? (alert.notifiers as NotifierRef[]);
-  if (notifiers.length === 0) {
-    throw new AlertActivationInvalidError("Add at least one notifier");
-  }
+  const notifiers = (params.notifiers ?? (alert.notifiers as NotifierRef[])).filter(
+    (notifier) => notifier.type !== "chat"
+  );
   const scope = (alert.params as { scope?: { type?: AlertDraftScope["type"] } }).scope;
   try {
     assertAlertDraftValid({
@@ -143,19 +165,32 @@ export async function activateAlert(
     throw new AlertActivationInvalidError(error instanceof Error ? error.message : String(error));
   }
 
-  const result = await activateAlertAndSchedule(
-    db,
-    {
-      id: params.alertId,
-      projectId: params.projectId,
-      environmentId: params.environmentId,
-      now,
-      expiresAt: params.expiresAt,
-      notifiers: params.notifiers,
-    },
-    deps
-  );
-  if (!result) throw new AlertActionNotAllowedError("activate");
+  const activation = {
+    id: params.alertId,
+    projectId: params.projectId,
+    environmentId: params.environmentId,
+    now,
+    expiresAt: params.expiresAt,
+    notifiers: params.notifiers ?? notifiers,
+  };
+  if (alert.capabilityKey !== GROUP_CAPABILITY_KEY) {
+    const result = await activateAlertAndSchedule(db, activation, deps);
+    if (!result) throw new AlertActionNotAllowedError("activate");
+    return;
+  }
+
+  await $transaction(db, async (tx) => {
+    const { reclaimed, total } = await reclaimGroupMembers(tx, alert);
+    if (reclaimed < 2) {
+      throw new AlertActivationInvalidError(
+        `Only ${reclaimed} of ${total} alerts can be regrouped; ungroup and create the group again`
+      );
+    }
+    if (!(await activateStoredAlert(tx, activation))) {
+      throw new AlertActionNotAllowedError("activate");
+    }
+  });
+  await scheduleAlert(params.alertId, deps);
 }
 
 export async function editAlert(
@@ -166,6 +201,7 @@ export async function editAlert(
     environmentId: string;
     notifiers?: NotifierRef[];
     expiresAt?: Date | null;
+    name?: string;
   }
 ): Promise<void> {
   const alert = await getAlert(db, {
@@ -174,6 +210,20 @@ export async function editAlert(
     environmentId: params.environmentId,
   });
   if (!alert) throw new AlertNotFoundError();
+
+  const stored = alert.notifiers as NotifierRef[];
+  const notifiers = (params.notifiers ?? stored).filter((notifier) => notifier.type !== "chat");
+  const writeNotifiers = params.notifiers !== undefined || notifiers.length !== stored.length;
+  if (writeNotifiers && notifiers.length === 0) {
+    throw new AlertActivationInvalidError(new NoNotifiersError().message);
+  }
+
+  if (params.name !== undefined && params.name !== alert.name) {
+    await db.alert.update({
+      where: { id: alert.id },
+      data: { name: params.name, updatedAt: new Date() },
+    });
+  }
 
   if (params.expiresAt !== undefined) {
     await updateAlertExpiry(db, {
@@ -184,12 +234,12 @@ export async function editAlert(
     });
   }
 
-  if (params.notifiers !== undefined) {
+  if (writeNotifiers) {
     await updateAlertNotifiers(db, {
       id: params.alertId,
       projectId: params.projectId,
       environmentId: params.environmentId,
-      notifiers: params.notifiers,
+      notifiers,
     });
   }
 }

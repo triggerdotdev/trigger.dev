@@ -8,6 +8,7 @@ import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { requestUrl } from "~/utils/requestUrl.server";
 import { v3ProjectSettingsIntegrationsPath } from "~/utils/pathBuilder";
+import { canConnectIntegration } from "~/v3/deploymentAccess.server";
 import { validateVercelOAuthState } from "~/v3/vercel/vercelOAuthState.server";
 
 const VercelConnectSchema = z.object({
@@ -114,6 +115,19 @@ export async function loader({ request }: LoaderFunctionArgs) {
       userId,
     });
     throw new Response("Project not found", { status: 404 });
+  }
+
+  if (!(await canConnectIntegration(project.organizationId, "vercel"))) {
+    logger.info("Vercel connection refused: Vercel isn't available for this organization", {
+      organizationId: project.organizationId,
+    });
+    throw redirect(
+      v3ProjectSettingsIntegrationsPath(
+        { slug: stateData.organizationSlug },
+        { slug: stateData.projectSlug },
+        { slug: stateData.environmentSlug }
+      )
+    );
   }
 
   const tokenResult = await VercelIntegrationRepository.exchangeCodeForToken(code);

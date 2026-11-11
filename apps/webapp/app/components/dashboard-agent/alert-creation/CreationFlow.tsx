@@ -5,6 +5,7 @@ import {
   capabilityParams,
   conditionKindFor,
   isLimitCondition,
+  isPickComposite,
   defaultWindowMinutes,
   compositeComponents,
   draftMissing,
@@ -390,9 +391,7 @@ export type AlertChannel = { id: string; name: string; type: string };
 export function notifyLabel(answers: FlowAnswers, channels: AlertChannel[]): string {
   const selected = answers.notifiers ?? [];
   const parts: string[] = [];
-  if (selected.includes("chat")) parts.push("this chat");
   for (const id of selected) {
-    if (id === "chat") continue;
     const ch = channels.find((c) => c.id === id);
     parts.push(ch ? ch.name : id);
   }
@@ -403,8 +402,8 @@ export function useDefaultComponents(flow: CreationFlowState, hiddenAreas: strin
   const { answers, updateAnswers } = flow;
   const hidden = hiddenAreas.join(",");
   useEffect(() => {
-    if (answers.what !== "limits.all") return;
-    const offered = compositeComponents("limits.all", hidden ? hidden.split(",") : []);
+    if (!isPickComposite(answers.what)) return;
+    const offered = compositeComponents(answers.what, hidden ? hidden.split(",") : []);
     const next = (answers.components ?? offered).filter((key) => offered.includes(key));
     if (next.length !== answers.components?.length) updateAnswers({ components: next });
   }, [answers.what, answers.components, hidden, updateAnswers]);

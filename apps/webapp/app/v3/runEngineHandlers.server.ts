@@ -1115,7 +1115,8 @@ export function setupBatchQueueCallbacks() {
       newWriter: runOpsNewPrismaClient,
       legacyWriter: runOpsLegacyPrismaClient,
       shards: runOpsShardHandles,
-      tryCompleteBatch: (batchId) => engine.tryCompleteBatch({ batchId }),
+      tryCompleteBatch: (batchId, organizationId) =>
+        engine.tryCompleteBatch({ batchId, organizationId }),
     });
   });
 

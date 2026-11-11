@@ -2,6 +2,7 @@ import { Link, useNavigation } from "@remix-run/react";
 import { type ReactNode } from "react";
 import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
 import { OrgBanner } from "../billing/OrgBanner";
+import { SecurityNoticeBanner } from "../securityNotices/SecurityNoticeBanner";
 import { BreadcrumbIcon } from "./BreadcrumbIcon";
 import { Header2 } from "./Headers";
 import { LoadingBarDivider } from "./LoadingBarDivider";
@@ -27,6 +28,7 @@ export function NavBar({ children }: WithChildren) {
         </div>
         <LoadingBarDivider isLoading={isLoading} />
       </div>
+      <SecurityNoticeBanner />
       <OrgBanner />
     </div>
   );

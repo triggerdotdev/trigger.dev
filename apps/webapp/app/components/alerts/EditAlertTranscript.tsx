@@ -24,12 +24,14 @@ export type EditAlertPrefill = {
   scopeSummary?: string;
   notifiers: { key: string; label?: string }[];
   expiresAt?: string | null;
+  /** Group alert: also choose when the group fires. */
+  compositeMode?: "any" | "all";
   /** Inactive alert: review expiry and notifiers, then save activates it. */
   activate?: boolean;
 };
 
 const ADD_CHANNEL_OPTION = "__add_channel__";
-const NO_NOTIFIER = "Pick at least one destination.";
+const NO_NOTIFIER = "Pick at least one channel";
 const NO_EXPIRY = "Pick how long it should stay active.";
 
 /** A past expiry stays unanswered so it has to be picked again. */
@@ -44,26 +46,10 @@ function channelKey(id: string) {
 
 type NotifierOption = { id: string; label: string; disabledReason?: string; locked?: boolean };
 
-function notifierOptions(
-  prefill: EditAlertPrefill,
-  channels: AlertChannel[],
-  userId: string
-): NotifierOption[] {
-  const chats = prefill.notifiers
-    .filter((n) => n.key.startsWith("chat:"))
-    .map((n): NotifierOption => {
-      const owner = n.key.split(":")[2];
-      if (owner === userId) return { id: n.key, label: n.label ?? "This chat" };
-      if (owner === "-") return { id: n.key, label: "Project chat" };
-      return {
-        id: n.key,
-        label: "Another member's chat",
-        disabledReason: "Kept as is; only its owner can change it",
-        locked: true,
-      };
-    });
-  const live = channels.map((ch) => ({ id: channelKey(ch.id), label: ch.name || ch.type }));
-  return [...chats, ...live];
+const isChatKey = (key: string) => key.startsWith("chat:");
+
+function notifierOptions(channels: AlertChannel[]): NotifierOption[] {
+  return channels.map((ch) => ({ id: channelKey(ch.id), label: ch.name || ch.type }));
 }
 
 export function EditAlertTranscript({
@@ -71,35 +57,37 @@ export function EditAlertTranscript({
   channels,
   alertPath,
   addChannel,
-  userId,
   onNewChat,
 }: {
   prefill: EditAlertPrefill;
   channels: AlertChannel[];
   alertPath: string;
   addChannel?: AddChannelAccess;
-  userId: string;
   onNewChat?: () => void;
 }) {
   const fetcher = useFetcher<{ ok?: boolean; error?: string }>();
-  const [selected, setSelected] = useState(() => prefill.notifiers.map((n) => n.key));
+  const [selected, setSelected] = useState(() =>
+    prefill.notifiers.map((n) => n.key).filter((key) => !isChatKey(key))
+  );
   const [closed, setClosed] = useState(false);
   const [addingChannel, setAddingChannel] = useState(false);
   const activate = prefill.activate === true;
   const [expiry, setExpiry] = useState(() => initialExpiry(prefill.expiresAt));
   const [stepIndex, setStepIndex] = useState(0);
+  const [mode, setMode] = useState(prefill.compositeMode);
+  const [name, setName] = useState(prefill.name);
+  const offset = prefill.compositeMode ? 1 : 0;
 
   const allChannels = channels;
-  const options = notifierOptions(prefill, allChannels, userId);
-  const locked = options.filter((o) => o.locked).map((o) => o.id);
-  const chosen = selected.filter((key) => options.some((o) => o.id === key && !o.disabledReason));
-  const picked = [...locked, ...chosen];
+  const options = notifierOptions(allChannels);
+  const picked = selected.filter((key) => options.some((o) => o.id === key));
   const initial = prefill.notifiers
     .map((n) => n.key)
-    .filter((key) => !locked.includes(key))
+    .filter((key) => !isChatKey(key))
     .sort()
     .join(",");
-  const changed = [...chosen].sort().join(",") !== initial;
+  const hadChat = prefill.notifiers.some((n) => isChatKey(n.key));
+  const changed = hadChat || [...picked].sort().join(",") !== initial;
   const updated = fetcher.data?.ok === true;
   const submitting = fetcher.state !== "idle";
 
@@ -120,12 +108,23 @@ export function EditAlertTranscript({
       parse: (text) => expiryFromDate(new Date(text)),
       onSubmit: (value) => {
         setExpiry(value);
-        setStepIndex(1);
+        setStepIndex(offset + 1);
       },
     },
   };
+  const modeStep: ChatWizardStep = {
+    id: "mode",
+    question: "When should the group fire?",
+    options: [
+      { id: "any", label: "Any alert fires" },
+      { id: "all", label: "All alerts fire" },
+    ],
+    selected: mode ? [mode] : [],
+    allowSkip: false,
+  };
 
   const steps: ChatWizardStep[] = [
+    ...(prefill.compositeMode ? [modeStep] : []),
     expiryStep,
     {
       id: "notifiers",
@@ -151,12 +150,31 @@ export function EditAlertTranscript({
       error: !picked.length ? NO_NOTIFIER : !expiry ? NO_EXPIRY : undefined,
       allowSkip: false,
       confirmDisabled: !expiry,
-      ...(activate
-        ? {
-            confirmLabel: "Activate",
-            hint: "Watching resumes from now",
-          }
-        : {}),
+    },
+    {
+      id: "name",
+      question: promptForStep("name", {}),
+      options: [],
+      multiSelect: true,
+      selected: name.trim() ? ["name"] : [],
+      fields: [
+        {
+          id: "name",
+          ariaLabel: "Name",
+          live: true,
+          current: name,
+          parse: (text) => {
+            const trimmed = text.trim();
+            return trimmed.length >= 1 && trimmed.length <= 120 ? trimmed : undefined;
+          },
+          onSubmit: setName,
+          onClear: () => setName(""),
+        },
+      ],
+      allowSkip: false,
+      confirmDisabled: !name.trim(),
+      confirmLabel: activate ? "Activate" : "Save",
+      ...(activate ? { hint: "Watching resumes from now" } : {}),
     },
   ];
 
@@ -165,10 +183,13 @@ export function EditAlertTranscript({
   }
 
   function select(stepId: string, value: string) {
-    if (stepId === "expiry") {
+    if (stepId === "mode") {
+      setMode(value as "any" | "all");
+      setStepIndex(1);
+    } else if (stepId === "expiry") {
       if (value === CUSTOM_EXPIRY) return;
       setExpiry(value);
-      setStepIndex(1);
+      setStepIndex(offset + 1);
     } else if (value === ADD_CHANNEL_OPTION) {
       setAddingChannel(true);
     } else {
@@ -177,15 +198,24 @@ export function EditAlertTranscript({
   }
 
   function save() {
-    if (submitting || !picked.length || !expiry) return;
+    if (submitting || !picked.length || !expiry || !name.trim()) return;
     const expiresAt = expiry === "none" ? "none" : (expiryDate(expiry)?.toISOString() ?? "");
     fetcher.submit(
       activate
-        ? { intent: "activate", respond: "json", notifierIds: picked.join(","), expiresAt }
+        ? {
+            intent: "activate",
+            respond: "json",
+            notifierIds: picked.join(","),
+            ...(mode ? { compositeMode: mode } : {}),
+            ...(name.trim() !== prefill.name ? { name: name.trim() } : {}),
+            expiresAt,
+          }
         : {
             intent: "edit",
             respond: "json",
             ...(changed ? { notifierIds: picked.join(",") } : {}),
+            ...(mode ? { compositeMode: mode } : {}),
+            ...(name.trim() !== prefill.name ? { name: name.trim() } : {}),
             expiresAt,
           },
       { method: "post", action: alertPath }
@@ -253,7 +283,9 @@ export function EditAlertTranscript({
               onSelect={select}
               onSkip={() => {}}
               onClose={() => setClosed(true)}
-              onConfirm={save}
+              onConfirm={(id) =>
+                id === "name" ? save() : setStepIndex(Math.min(stepIndex + 1, steps.length - 1))
+              }
             />
           </div>
         )}

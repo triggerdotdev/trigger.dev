@@ -12,9 +12,10 @@ const DANGEROUS_METADATA_KEY_SEGMENTS = new Set(["__proto__", "constructor", "pr
  * JSONHeroPath, so dangerous path segments must be rejected. JSONHeroPath unescapes `\.` when it
  * parses a path and re-splits on it when it writes, so backslashes are segment boundaries too.
  * Literal keys are assigned directly, where only __proto__ can change the target object's prototype.
+ * Literal keys with several segments get the same segment check as JSON paths.
  */
 export function isSafeMetadataKey(key: string): boolean {
-  return namesBelowRoot(key) && hasNoDangerousSegment(key);
+  return namesBelowRoot(key) && hasNoDangerousSegment(key) && hasNoSliceComponent(key);
 }
 
 // JSONHeroPath's own component pattern; parsing with JSONHeroPath here would shift its shared regex state.
@@ -25,12 +26,25 @@ function namesBelowRoot(key: string): boolean {
   return !key.startsWith("$.") || (key.match(JSON_PATH_COMPONENTS)?.length ?? 0) > 1;
 }
 
+// JSONHeroPath's slice pattern, without its global flag. JSONHeroPath keeps that regex's state between
+// parses, so the same slice component can parse differently on consecutive reads of one key.
+const JSON_PATH_SLICE = /^\[[0-9]*:-?[0-9]*\]$/;
+
+function hasNoSliceComponent(key: string): boolean {
+  return (
+    !key.startsWith("$.") ||
+    !(key.match(JSON_PATH_COMPONENTS) ?? []).some((component) => JSON_PATH_SLICE.test(component))
+  );
+}
+
 function hasNoDangerousSegment(key: string): boolean {
-  if (!key.startsWith("$.")) {
+  const segments = key.split(/[.[\]'"\\]+/);
+
+  if (!key.startsWith("$.") && segments.length === 1) {
     return key !== "__proto__";
   }
 
-  return !key.split(/[.[\]'"\\]+/).some((segment) => DANGEROUS_METADATA_KEY_SEGMENTS.has(segment));
+  return !segments.some((segment) => DANGEROUS_METADATA_KEY_SEGMENTS.has(segment));
 }
 
 const MetadataOperationKey = z
@@ -38,7 +52,8 @@ const MetadataOperationKey = z
   .refine(namesBelowRoot, { message: "A JSON path key must name a segment below $" })
   .refine(hasNoDangerousSegment, {
     message: "Metadata key may not reference __proto__, constructor, or prototype",
-  });
+  })
+  .refine(hasNoSliceComponent, { message: "A JSON path key may not use slice components" });
 
 export const RunMetadataUpdateOperation = z.object({
   type: z.literal("update"),

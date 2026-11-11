@@ -346,28 +346,9 @@ describe("QueryAlertTranscript", () => {
     expect(input("Window").value).toBe("11");
   });
 
-  it("offers This chat in the agent, preselected, and sends the chat ids", async () => {
-    const release = vi.fn();
-    await mount({}, { chatId: "chat_on_use", ensure: async () => ({ chatId: "chat_1", release }) });
-    reachReview();
-    expect(rows()).toContain("This chat");
-    act(() => button("Continue").click());
-    choose("Continue");
-    await act(async () => button("Create alert").click());
-    const call = fetchMock.mock.calls.find(([url]) => url === "/resources/alerts/create")!;
-    expect(JSON.parse(call[1]!.body as string)).toMatchObject({
-      chatNotifier: "on",
-      chatId: "chat_1",
-      transcriptChatId: "chat_1",
-      form: { notifierChannelIds: [] },
-    });
-    expect(release).not.toHaveBeenCalled();
-  });
-
   it("keeps transcriptChatId when only a channel is chosen", async () => {
-    await mount({}, { chatId: "chat_on_use", ensure: async () => ({ chatId: "chat_1" }) });
+    await mount({}, { ensure: async () => ({ chatId: "chat_1" }) });
     reachReview();
-    choose("This chat");
     choose("Ops webhook");
     act(() => button("Continue").click());
     choose("Continue");
@@ -379,12 +360,5 @@ describe("QueryAlertTranscript", () => {
       form: { notifierChannelIds: ["ch1"] },
     });
     expect(body.chatNotifier).toBeUndefined();
-    expect(body.chatId).toBeUndefined();
-  });
-
-  it("offers no This chat in the manual dock", async () => {
-    await mount();
-    reachReview();
-    expect(rows()).not.toContain("This chat");
   });
 });

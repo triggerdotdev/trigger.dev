@@ -142,8 +142,6 @@ export const ChatRequestSchema = z
       (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
       z.string().trim().max(120).optional()
     ),
-    chatNotifier: z.enum(["on"]).optional(),
-    chatId: z.string().optional(),
     transcriptChatId: z.string().optional(),
     expiry: z
       .string()
@@ -151,12 +149,8 @@ export const ChatRequestSchema = z
       .optional(),
     form: ChatFormSchema,
   })
-  .refine((v) => v.chatNotifier !== "on" || Boolean(v.chatId), {
-    message: "chatNotifier requires a chatId",
-    path: ["chatId"],
-  })
-  .refine((v) => v.chatNotifier === "on" || v.form.notifierChannelIds.length > 0, {
-    message: "At least one notifier is required",
+  .refine((v) => v.form.notifierChannelIds.length > 0, {
+    message: "At least one channel is required",
     path: ["form", "notifierChannelIds"],
   });
 

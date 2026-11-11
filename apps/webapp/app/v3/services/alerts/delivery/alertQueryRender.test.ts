@@ -4,10 +4,7 @@ import { Writable } from "node:stream";
 import Email from "emails/emails/alert-raised";
 import { alertQueryDetail, boundDetail, linkFingerprint } from "emails/src/alertRaisedContent";
 import { describe, expect, it } from "vitest";
-import { alertEventChatText } from "./alertEventChatText";
 import { buildAlertSlackMessage } from "./alertSlackMessage";
-
-const alert = { name: "Slow queues", capabilityKey: "custom.query" };
 
 const thresholdFacts = {
   measure: "depth",
@@ -83,19 +80,6 @@ describe("alertQueryDetail", () => {
 });
 
 describe("custom.query renderers", () => {
-  it("chat text carries threshold detail", () => {
-    expect(alertEventChatText({ type: "raised", facts: thresholdFacts }, alert)).toBe(
-      `Alert raised: Slow queues\n${thresholdText}`
-    );
-  });
-
-  it("chat text carries 10 rows and the overflow line", () => {
-    const text = alertEventChatText({ type: "raised", facts: matchFacts }, alert);
-    expect(text).toContain("run_9 ·");
-    expect(text).not.toContain("run_10");
-    expect(text.endsWith("and 5 more")).toBe(true);
-  });
-
   it("slack message includes the detail section and the dashboard link", () => {
     const link = "https://cloud.trigger.dev/alerts/alert_1";
     const { blocks } = buildAlertSlackMessage({
@@ -110,25 +94,6 @@ describe("custom.query renderers", () => {
     const texts = blocks.map((b) => (b as any).text?.text ?? "");
     expect(texts.some((t: string) => t.includes("and 5 more"))).toBe(true);
     expect((blocks.at(-1) as any).elements[0].url).toBe(link);
-  });
-
-  it("leaves errors.new chat text untouched", () => {
-    const text = alertEventChatText(
-      {
-        type: "raised",
-        facts: {
-          task_identifier: "lightpanda-cdp",
-          error_fingerprint: "a0b0310f7c3f238c",
-          measure: "x",
-          batch: matchFacts.batch,
-        },
-      },
-      { name: "New errors", capabilityKey: "errors.new" },
-      "Error: connection refused"
-    );
-    expect(text).toBe(
-      "Alert raised: New errors. lightpanda-cdp: Error: connection refused — New error group."
-    );
   });
 });
 

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { customAlphabet } from "nanoid";
+import { apiKeyPrefix } from "./apiKeyPrefix";
 
 const apiKeyId = customAlphabet(
   "1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
@@ -26,19 +27,6 @@ export function generateRootApiKey(environmentType: RuntimeEnvironmentType) {
 
 export function generateAdditionalApiKey(environmentType: RuntimeEnvironmentType) {
   return generatedApiKey(`${apiKeyPrefix(environmentType)}sk_${apiKeyId()}`);
-}
-
-export function apiKeyPrefix(environmentType: RuntimeEnvironmentType): string {
-  switch (environmentType) {
-    case "DEVELOPMENT":
-      return "tr_dev_";
-    case "STAGING":
-      return "tr_stg_";
-    case "PRODUCTION":
-      return "tr_prod_";
-    case "PREVIEW":
-      return "tr_preview_";
-  }
 }
 
 export function obfuscateApiKey(

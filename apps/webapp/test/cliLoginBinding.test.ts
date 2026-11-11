@@ -13,6 +13,7 @@ const mockEnv = vi.hoisted(() => ({
   SESSION_SECRET: "test-session-secret-for-cli-login-binding",
   ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef",
   CLI_LOGIN_LEGACY_UNTIL: "2000-01-01T00:00:00.000Z",
+  CLI_LOGIN_IDLE_TIMEOUT_DAYS: 7,
 }));
 
 vi.mock("~/db.server", () => ({
@@ -23,7 +24,10 @@ vi.mock("~/db.server", () => ({
     return db.client;
   },
 }));
-vi.mock("~/env.server", () => ({ env: mockEnv }));
+vi.mock("~/env.server", async () => {
+  const { withLegacyEncryptionKeyring } = await import("./helpers/encryptionEnv");
+  return { env: withLegacyEncryptionKeyring(mockEnv) };
+});
 vi.mock("~/services/logger.server", () => ({
   logger: { debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));

@@ -9,6 +9,8 @@ const DEFAULT_MAX_DEPTH = 128;
 // reconstruction and pollute the shared process.
 const PROTOTYPE_POLLUTION_KEY = "__proto__";
 
+const MAX_ARRAY_HOLES = 1024;
+
 export function flattenAttributes(
   obj: unknown,
   prefix?: string,
@@ -271,39 +273,50 @@ export function unflattenAttributes(
   }
 
   const result: Record<string, unknown> = {};
+  let everyTopLevelKeyIsArrayIndex = true;
+  const entries: { segments: string[]; parsed: ParsedSegment[]; value: unknown }[] = [];
 
   for (const [key, value] of Object.entries(obj)) {
     if (filteredKeys?.includes(key)) {
       continue;
     }
 
-    const parts = key.split(".").reduce(
-      (acc, part) => {
-        if (part.startsWith("[") && part.endsWith("]")) {
-          // Handle array indices more precisely
-          const match = part.match(/^\[(\d+)\]$/);
-          if (match && match[1]) {
-            acc.push(parseInt(match[1]));
-          } else {
-            // Remove brackets for non-numeric array keys
-            acc.push(part.slice(1, -1));
-          }
-        } else {
-          acc.push(part);
-        }
-        return acc;
-      },
-      [] as (string | number)[]
-    );
+    const segments = key.split(".");
+    const parsed = segments.map(parseSegment);
 
     // Skip keys that exceed max depth to prevent memory exhaustion
-    if (parts.length > maxDepth) {
+    if (parsed.length > maxDepth) {
       continue;
     }
 
     // Skip any key whose path could walk into Object.prototype.
-    if (parts.includes(PROTOTYPE_POLLUTION_KEY)) {
+    if (parsed.some((segment) => segment.key === PROTOTYPE_POLLUTION_KEY)) {
       continue;
+    }
+
+    entries.push({ segments, parsed, value });
+  }
+
+  const maxArrayIndex = Object.keys(obj).length + MAX_ARRAY_HOLES;
+  const oversizedArrayPaths = new Set<string>();
+  for (const { segments, parsed } of entries) {
+    parsed.forEach((segment, i) => {
+      if (segment.index !== undefined && segment.index > maxArrayIndex) {
+        oversizedArrayPaths.add(segments.slice(0, i).join("."));
+      }
+    });
+  }
+
+  for (const { segments, parsed, value } of entries) {
+    const parts = parsed.map((segment, i) =>
+      segment.index !== undefined &&
+      !(oversizedArrayPaths.size > 0 && oversizedArrayPaths.has(segments.slice(0, i).join(".")))
+        ? segment.index
+        : segment.key
+    );
+
+    if (typeof parts[0] !== "number") {
+      everyTopLevelKeyIsArrayIndex = false;
     }
 
     let current: any = result;
@@ -342,7 +355,11 @@ export function unflattenAttributes(
   // Convert the result to an array if all top-level keys are numeric indices.
   // Guard against an empty result (e.g. every key was skipped as unsafe), which
   // would otherwise produce Array(-Infinity) and throw.
-  if (Object.keys(result).length > 0 && Object.keys(result).every((k) => /^\d+$/.test(k))) {
+  if (
+    everyTopLevelKeyIsArrayIndex &&
+    Object.keys(result).length > 0 &&
+    Object.keys(result).every((k) => /^\d+$/.test(k))
+  ) {
     const maxIndex = Math.max(...Object.keys(result).map((k) => parseInt(k)));
     const arrayResult = Array(maxIndex + 1);
     for (const key in result) {
@@ -353,6 +370,19 @@ export function unflattenAttributes(
   }
 
   return result;
+}
+
+type ParsedSegment = { key: string; index?: number };
+
+function parseSegment(segment: string): ParsedSegment {
+  const match = segment.match(/^\[(\d+)\]$/);
+  if (match && match[1]) {
+    return { key: match[1], index: parseInt(match[1]) };
+  }
+  if (segment.startsWith("[") && segment.endsWith("]")) {
+    return { key: segment.slice(1, -1) };
+  }
+  return { key: segment };
 }
 
 function rehydrateCircular(value: any): any {

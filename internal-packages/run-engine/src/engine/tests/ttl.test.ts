@@ -1637,6 +1637,7 @@ describe("RunEngine ttl", () => {
         async resolveEnvDeletionState() {
           return null;
         },
+        resolveDeploymentStatus: passthrough.resolveDeploymentStatus.bind(passthrough),
         resolveWorkerVersion: passthrough.resolveWorkerVersion.bind(passthrough),
         assertEnvExists: passthrough.assertEnvExists.bind(passthrough),
         async resolveEnv() {

@@ -1,16 +1,22 @@
-import { parseWaitpointId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import { deriveRunWaitpointId, deriveBatchWaitpointId } from "./runWaitpointId.js";
+import {
+  generateWaitpointId,
+  parseWaitpointId,
+  WaitpointId,
+} from "@trigger.dev/core/v3/isomorphic";
 import type { Waitpoint } from "@trigger.dev/database";
 import pMap from "p-map";
 import {
   StoreWaitpointBlockOperationIdentityRequired,
   StoreWaitpointRegistrationUnsupported,
 } from "../errors.js";
-import { parseEdgeField, registrationEvidence } from "./keys.js";
+import { parseEdgeField, idempotencyReceiptKey, registrationEvidence } from "./keys.js";
 import {
   WaitpointNotFoundError,
   type AbsorbResult,
   type BlockEdge,
   type WaitpointCompletion,
+  type WaitpointRecordInput,
   type WaitpointStoredRecord,
   type WaitpointStoreCoordinator,
 } from "./storeCoordinator.js";
@@ -20,7 +26,10 @@ import type {
   AbsorbedBlockersParams,
   AbsorbBlockersResult,
   AcknowledgeResumeParams,
+  PrepareWaitpointResumeParams,
+  WaitpointResumeIntent,
   AssociatedWaitpointData,
+  AssociatedWaitpointPlan,
   BlockerRegistration,
   ClearRunBlockStateParams,
   ReleaseRunBlockersParams,
@@ -28,6 +37,7 @@ import type {
   CompleteResult,
   CreateDateTimeWaitpointParams,
   CreateManualWaitpointParams,
+  CreateBatchWaitpointParams,
   CreateWaitpointResult,
   RegisterBlockersResult,
   RegisterBlocksLocklessParams,
@@ -47,11 +57,11 @@ const ABANDON_UNREGISTER_CONCURRENCY = 10;
  */
 export class StoreWaitpointBlockRefusedError extends Error {
   readonly runId: string;
-  readonly outcome: "stale" | "terminal" | "cleanupOwed";
+  readonly outcome: "stale" | "terminal" | "cleanupOwed" | "ownerGone";
   readonly currentBlockId?: string;
   constructor(params: {
     runId: string;
-    outcome: "stale" | "terminal" | "cleanupOwed";
+    outcome: "stale" | "terminal" | "cleanupOwed" | "ownerGone";
     currentBlockId?: string;
   }) {
     super(
@@ -73,7 +83,7 @@ export type StoreWaitpointCoordinatorOptions = {
 
 /**
  * Adapt MemoryDB waitpoints to the {@link WaitpointCoordinator} interface.
- * This adapter handles registration, completion, reads and cleanup. Creation methods are not wired here.
+ * Creation follows the routing coordinator's residency decision.
  * Never route a MemoryDB ID to Postgres.
  *
  * Register waits in three phases:
@@ -121,6 +131,9 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
     // Read completed results before creating the block. On retry, use retained results first.
     // Save the results with the block in one atomic operation.
     // Source expiry must not leave an active block without its result.
+    if (!params.organizationId)
+      throw new Error("Native absorption requires trusted organization ownership");
+    await this.#store.publishRunOwnership(params.runId, params.organizationId);
     try {
       await this.#store.prepareRegistrationSources({
         runId: params.runId,
@@ -153,6 +166,7 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
         batchIndex: params.batchIndex,
         expectedPreviousBlockId: params.expectedPreviousBlockId,
         absorptionId,
+        requirePendingWaitpointId: params.requirePendingWaitpointId,
       });
 
       if (absorbed.outcome !== "absorbed") {
@@ -249,21 +263,29 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
     return this.#store.currentBlockId(runId);
   }
 
+  async prepareResume(params: PrepareWaitpointResumeParams): Promise<WaitpointResumeIntent> {
+    // Publish discovery before writing run state, including a legacy-only resume on a marked run.
+    await this.#store.publishRunOwnership(params.runId, params.organizationId);
+    return this.#store.prepareResume(params.runId, params.intent);
+  }
+
+  async readResumeIntent(runId: string): Promise<WaitpointResumeIntent | undefined> {
+    return this.#store.readResumeIntent(runId);
+  }
+
   async acknowledgeResume(params: AcknowledgeResumeParams): Promise<void> {
-    // Acknowledge the block that the caller resumed, then clear that same block.
-    // Keep receipts until acknowledgement succeeds so a failed snapshot write can retry.
-    // If a newer block has replaced it, leave the newer block unchanged.
-    if (!params.blockId) {
+    if (params.blockId) {
+      const ack = await this.#store.acknowledgeResumeHandoff({
+        runId: params.runId,
+        blockId: params.blockId,
+      });
+      if (ack.outcome !== "acknowledged") return;
+      await this.#store.clearBlockState({ runId: params.runId, blockId: params.blockId });
       return;
     }
-    const ack = await this.#store.acknowledgeResumeHandoff({
-      runId: params.runId,
-      blockId: params.blockId,
-    });
-    if (ack.outcome !== "acknowledged") {
-      return;
+    if (params.resumeSnapshotId) {
+      await this.#store.clearResumeIntent(params.runId, params.resumeSnapshotId);
     }
-    await this.#store.clearBlockState({ runId: params.runId, blockId: params.blockId });
   }
 
   async abandonRunBlockers(params: AbandonRunBlockersParams): Promise<{ count: number }> {
@@ -334,7 +356,17 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
       reason: params.reason,
       blockId: params.blockId,
     });
-    return { count: result.unregistered };
+    // A stale exact-block obligation is a benign no-op; the current block's owner still owes cleanup.
+    if (result.stale) return { count: result.unregistered };
+    const detached = await this.#store.finishTerminalRunCleanup(params.runId);
+    if (
+      params.organizationId &&
+      !(await this.#store.retireRunOwnership(params.runId, params.organizationId))
+    ) {
+      // Preserve the caller's durable terminal cleanup retry instead of acknowledging residue.
+      throw new Error(`Terminal waitpoint ownership cleanup is incomplete for ${params.runId}`);
+    }
+    return { count: result.unregistered + detached };
   }
 
   // This adapter has no Postgres edges to clear.
@@ -377,7 +409,12 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
 
   // ---- Completion, read, clear (routed here by id shape) --------------------
 
-  async complete({ waitpointId, output }: CompleteParams): Promise<CompleteResult> {
+  async complete({
+    waitpointId,
+    output,
+    onlyIfPending,
+    organizationId,
+  }: CompleteParams): Promise<CompleteResult> {
     const completion: WaitpointCompletion = {
       completedAt: new Date(this.#clock()).toISOString(),
       outputType: output?.type ?? "application/json",
@@ -388,8 +425,31 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
     // Complete the waitpoint and queue fanout. Repeating the same result is safe.
     // A different result throws WaitpointCompletionConflictError.
     // The fanout worker delivers results in bounded pages.
-    await this.#store.complete({ waitpointId, completion });
-
+    const parsed = parseWaitpointId(waitpointId);
+    const nativeManual = parsed.format === "b32hexW" && parsed.type === "MANUAL";
+    const manualRecord = nativeManual
+      ? (await this.#store.readCompletedRecords([waitpointId])).get(waitpointId)?.record
+      : undefined;
+    if (manualRecord)
+      await this.#store.manualCatalog.publishCompletedCandidate(
+        manualRecord,
+        completion.outputIsError
+      );
+    try {
+      await this.#store.complete({
+        waitpointId,
+        completion,
+        organizationId,
+        completionId:
+          onlyIfPending &&
+          parsed.format === "b32hexW" &&
+          (parsed.type === "DATETIME" || parsed.type === "MANUAL")
+            ? ""
+            : undefined,
+      });
+    } finally {
+      if (manualRecord) await this.#store.manualCatalog.reconcileStatus(manualRecord);
+    }
     const waitpoint = await this.#waitpointFromStore(waitpointId);
     return { waitpoint, blockedRuns: [] };
   }
@@ -457,31 +517,250 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
     );
   }
 
-  createDateTimeWaitpoint(_params: CreateDateTimeWaitpointParams): Promise<CreateWaitpointResult> {
-    return Promise.reject(this.#mintNotWired("DATETIME"));
+  // DATETIME and run-bound MANUAL tokens allocate fresh store identities. Key reservations reuse
+  // a live winner; unkeyed publication respects the caller's fixed candidate fence.
+  async createDateTimeWaitpoint(
+    params: CreateDateTimeWaitpointParams
+  ): Promise<CreateWaitpointResult> {
+    return this.#createTimedToken(params, "DATETIME");
   }
 
-  createManualWaitpoint(_params: CreateManualWaitpointParams): Promise<CreateWaitpointResult> {
-    return Promise.reject(this.#mintNotWired("MANUAL"));
+  async #createTimedToken(
+    params: Omit<CreateDateTimeWaitpointParams, "completedAfter"> & {
+      completedAfter?: Date;
+      tags?: string[];
+    },
+    type: "DATETIME" | "MANUAL"
+  ): Promise<CreateWaitpointResult> {
+    const id = params.storeId ?? generateWaitpointId(type);
+    await params.beforeStoreCreate?.(id);
+    const organizationId = params.mintContext?.organizationId;
+    const acceptUntil =
+      params.keyedCreation?.acceptUntil ?? params.creationAcceptUntil ?? Date.now() + 300_000;
+    if (organizationId)
+      await this.#store.publishPendingSource(
+        id,
+        organizationId,
+        params.idempotencyKey
+          ? {
+              key: idempotencyReceiptKey(
+                params.keyedCreation?.scope ?? params.environmentId,
+                params.idempotencyKey,
+                id
+              ),
+              acceptUntil,
+            }
+          : undefined
+      );
+    const record = this.#newRecord({
+      id,
+      type,
+      tags: params.tags ?? [],
+      projectId: params.projectId,
+      environmentId: params.environmentId,
+      organizationId,
+      completedAfter: params.completedAfter?.toISOString(),
+      idempotencyKey: params.idempotencyKey,
+      idempotencyKeyExpiresAt: params.idempotencyKeyExpiresAt?.toISOString(),
+      userProvidedIdempotencyKey: !!params.idempotencyKey,
+    });
+
+    if (type === "MANUAL") await this.#store.manualCatalog.publish(record, acceptUntil);
+
+    if (params.idempotencyKey) {
+      const reserved = await this.#store.createWithIdempotencyKey({
+        record,
+        environmentId: params.keyedCreation?.scope ?? params.environmentId,
+        idempotencyKey: params.idempotencyKey,
+        acceptUntil,
+        claimToken: params.keyedCreation?.claimToken,
+      });
+      if (reserved.created) {
+        return { kind: "created", waitpoint: this.#pendingWaitpoint(record) };
+      }
+      if (organizationId && reserved.waitpointId !== id)
+        await this.#store.retirePendingSource(id, organizationId);
+      return { kind: "cached", waitpoint: await this.#waitpointFromStore(reserved.waitpointId) };
+    }
+
+    if (params.creationAcceptUntil !== undefined) {
+      await this.#store.createDateTimeCandidate(record, params.creationAcceptUntil);
+    } else {
+      await this.#store.createIfAbsent({ record, status: "PENDING" });
+    }
+    return { kind: "created", waitpoint: this.#pendingWaitpoint(record) };
   }
 
-  mintAssociatedWaitpointData(): AssociatedWaitpointData {
-    throw this.#mintNotWired("RUN");
+  createManualWaitpoint(params: CreateManualWaitpointParams): Promise<CreateWaitpointResult> {
+    return this.#createTimedToken({ ...params, completedAfter: params.timeout }, "MANUAL");
   }
 
-  createAssociatedWaitpoint(): Promise<Waitpoint> {
-    return Promise.reject(this.#mintNotWired("RUN"));
+  async createBatchWaitpoint(params: CreateBatchWaitpointParams): Promise<CreateWaitpointResult> {
+    const id = deriveBatchWaitpointId(params.batchId);
+    if (!id) throw new Error("Native BATCH requires a derivable batch identity");
+    const record = this.#newRecord({
+      id,
+      type: "BATCH",
+      environmentId: params.environmentId,
+      projectId: params.projectId,
+      organizationId: params.mintContext?.organizationId,
+      completedByBatchId: params.batchId,
+      idempotencyKey: params.batchId,
+      userProvidedIdempotencyKey: false,
+    });
+    if (params.mintContext?.organizationId)
+      await this.#store.publishPendingSource(id, params.mintContext.organizationId);
+    const result = await this.#store.createIfAbsent({ record, status: "PENDING" });
+    return result.outcome === "created"
+      ? { kind: "created", waitpoint: this.#pendingWaitpoint(record) }
+      : { kind: "cached", waitpoint: await this.#waitpointFromStore(id) };
   }
 
-  #mintNotWired(type: string): Error {
-    return new Error(
-      `Store-format ${type} minting is not wired in the shared block-protocol commit; the per-type ` +
-        `migration ticket owns it`
-    );
+  // The RUN mint id is a pure function of the child anchor, so create-if-absent is idempotent
+  // without a lock and a replay cannot mint a competing waitpoint. Unsupported anchors stay legacy.
+  mintAssociatedWaitpointData(params: {
+    projectId: string;
+    environmentId: string;
+    anchorRunId: string;
+  }): AssociatedWaitpointData {
+    const id = deriveRunWaitpointId(params.anchorRunId);
+    if (!id) {
+      throw new Error(
+        `Store RUN waitpoint requires a supported anchor id, got ${params.anchorRunId}`
+      );
+    }
+    return {
+      id,
+      friendlyId: WaitpointId.toFriendlyId(id),
+      type: "RUN",
+      status: "PENDING",
+      // No user idempotency key on a RUN waitpoint; the deterministic id is its dedup key. Kept
+      // deterministic (the id) so a replay builds identical data, and inert — the resolver omits a
+      // non-user key and create-if-absent dedups on the id, never this field.
+      idempotencyKey: id,
+      userProvidedIdempotencyKey: false,
+      projectId: params.projectId,
+      environmentId: params.environmentId,
+    };
   }
 
-  // Convert the stored record to the Waitpoint return type.
-  // Reject missing records or envelopes instead of returning incomplete data.
+  async createAssociatedWaitpoint({
+    runId,
+    data,
+    organizationId,
+  }: {
+    runId: string;
+    data: AssociatedWaitpointData;
+    organizationId?: string;
+  }): Promise<Waitpoint> {
+    const record = this.#newRecord({
+      id: data.id,
+      friendlyId: data.friendlyId,
+      type: "RUN",
+      projectId: data.projectId,
+      environmentId: data.environmentId,
+      idempotencyKey: data.idempotencyKey,
+      userProvidedIdempotencyKey: data.userProvidedIdempotencyKey,
+      // The reverse back-pointer a delayed sweep re-derives the completion from (child run → its RUN
+      // waitpoint), and the cachedRunId a completion carries. Matches the legacy row's column.
+      completedByTaskRunId: runId,
+      organizationId,
+    });
+    if (organizationId) await this.#store.publishPendingSource(data.id, organizationId);
+    const created = await this.#store.createIfAbsent({ record, status: "PENDING" });
+    if (created.outcome === "exists") {
+      if (
+        created.record.type !== "RUN" ||
+        created.record.completedByTaskRunId !== runId ||
+        created.record.projectId !== data.projectId ||
+        created.record.environmentId !== data.environmentId
+      ) {
+        throw new Error(`RUN waitpoint ownership conflict: ${data.id}`);
+      }
+      if (organizationId && created.status === "COMPLETED")
+        await this.#store.retirePendingSource(data.id, organizationId);
+      return waitpointFromStoredRecord(data.id, {
+        status: created.status,
+        record: created.record,
+        completion: created.completion,
+      });
+    }
+    return this.#pendingWaitpoint(record);
+  }
+
+  // The store adapter always mints store; the router only routes here when the decision is store.
+  async planAssociatedWaitpoint(params: {
+    projectId: string;
+    environmentId: string;
+    anchorRunId: string;
+  }): Promise<AssociatedWaitpointPlan> {
+    return { residency: "store", data: this.mintAssociatedWaitpointData(params) };
+  }
+
+  // Association discovery for a deterministically-known store RUN id: derive it from the anchor and probe
+  // its presence with one bounded read (no output, no watchers). Undefined for an unsupported anchor (no
+  // store id can exist) or a confirmed-absent record; a Redis error throws, so an availability failure is
+  // never reported as absence. Not a store-first residency probe — the id is fixed by the anchor and the
+  // answer never re-routes an already-classified id.
+  async findAssociatedRunWaitpointId(runId: string): Promise<string | undefined> {
+    const id = deriveRunWaitpointId(runId);
+    if (!id) {
+      return undefined;
+    }
+    return (await this.#store.probeWaitpointPresence(id)) === "present" ? id : undefined;
+  }
+
+  // Read the run's existing store RUN waitpoint as a Waitpoint (for lazy reuse). A Redis error throws, so
+  // an availability failure is never seen as "no association" and never triggers a second mint.
+  async readAssociatedRunWaitpoint(runId: string): Promise<Waitpoint | undefined> {
+    const id = deriveRunWaitpointId(runId);
+    if (!id) {
+      return undefined;
+    }
+    const stored = (await this.#store.readCompletedRecords([id])).get(id);
+    return stored ? waitpointFromStoredRecord(id, stored) : undefined;
+  }
+
+  #newRecord(fields: {
+    id: string;
+    friendlyId?: string;
+    type: WaitpointRecordInput["type"];
+    projectId: string;
+    environmentId: string;
+    organizationId?: string;
+    completedAfter?: string;
+    idempotencyKey?: string;
+    idempotencyKeyExpiresAt?: string;
+    userProvidedIdempotencyKey: boolean;
+    completedByTaskRunId?: string;
+    completedByBatchId?: string;
+    tags?: string[];
+  }): WaitpointRecordInput {
+    const nowIso = new Date(this.#clock()).toISOString();
+    return {
+      id: fields.id,
+      friendlyId: fields.friendlyId ?? WaitpointId.toFriendlyId(fields.id),
+      type: fields.type,
+      environmentId: fields.environmentId,
+      organizationId: fields.organizationId,
+      projectId: fields.projectId,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      userProvidedIdempotencyKey: fields.userProvidedIdempotencyKey,
+      tags: fields.tags ?? [],
+      idempotencyKey: fields.idempotencyKey,
+      idempotencyKeyExpiresAt: fields.idempotencyKeyExpiresAt,
+      completedAfter: fields.completedAfter,
+      completedByTaskRunId: fields.completedByTaskRunId,
+      completedByBatchId: fields.completedByBatchId,
+    };
+  }
+
+  #pendingWaitpoint(record: WaitpointRecordInput): Waitpoint {
+    return waitpointFromStoredRecord(record.id, { status: "PENDING", record });
+  }
+
+  // Convert the stored record to the Waitpoint return type. Reject missing records.
   async #waitpointFromStore(waitpointId: string): Promise<Waitpoint> {
     const records = await this.#store.readCompletedRecords([waitpointId]);
     const stored = records.get(waitpointId);
@@ -496,7 +775,10 @@ export class StoreWaitpointCoordinator implements WaitpointCoordinator {
  * Convert a store record to the existing Waitpoint return type.
  * Fill the fields callers read. Set the remaining fields to null.
  */
-function waitpointFromStoredRecord(waitpointId: string, stored: WaitpointStoredRecord): Waitpoint {
+export function waitpointFromStoredRecord(
+  waitpointId: string,
+  stored: WaitpointStoredRecord
+): Waitpoint {
   const record = stored.record;
   const completion = stored.completion;
   return {

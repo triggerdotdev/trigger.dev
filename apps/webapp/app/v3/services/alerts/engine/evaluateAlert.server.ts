@@ -13,6 +13,7 @@ import {
   transition,
   type AlertState,
   type Behavior,
+  GROUP_CAPABILITY_KEY,
 } from "@internal/alert-contracts";
 import { env } from "~/env.server";
 import {
@@ -127,6 +128,8 @@ export async function evaluateAlert(
     return { applied: released, events: [], deliveryCount: 0 };
   }
   const { capability } = resolved;
+  const usesHysteresis =
+    !!capability.binding.compositeOf || capability.key === GROUP_CAPABILITY_KEY;
 
   let result: EvaluationResult;
   let evaluatorStatePatch: Record<string, unknown> | undefined;
@@ -181,7 +184,7 @@ export async function evaluateAlert(
         nextEvaluationAt: scheduleNext(alert, capability.minCadenceSec, now, windowSec),
         evaluatorState: {
           ...(alert.evaluatorState as Record<string, unknown> | null),
-          ...(capability.binding.compositeOf
+          ...(usesHysteresis
             ? { compositeHysteresis: { consecutiveMet: 0, consecutiveNotMet: 0 } }
             : {}),
           lastError: { reason: `template_error: ${message}`.slice(0, 120), at: now.toISOString() },
@@ -209,7 +212,7 @@ export async function evaluateAlert(
     unavailableCode = typeof facts.unavailableCode === "string" ? facts.unavailableCode : undefined;
   }
 
-  if (capability.binding.compositeOf && result.kind === "stateful") {
+  if (usesHysteresis && result.kind === "stateful") {
     const prevHyst =
       (alert.evaluatorState as Record<string, unknown> | null)?.compositeHysteresis != null
         ? ((alert.evaluatorState as Record<string, unknown>)
@@ -288,14 +291,16 @@ export async function evaluateAlert(
       occurrences: Array.from(byKey.values()).filter((o) => !seen.has(o.sourceEventId)),
     };
   }
-  const { next, events, notify, latestOccurrenceAt } = transition(prevState, {
-    result,
-    now,
-    holdSec,
-    behavior,
-  });
+  const transitioned = transition(prevState, { result, now, holdSec, behavior });
+  const { next, events, latestOccurrenceAt } = transitioned;
+  const notify =
+    transitioned.notify && !(alert.groupId && (await groupSuppresses(deps.db, alert.groupId, now)));
 
   const conditionChanged = next.observedCondition !== prevState.observedCondition;
+  const occurrenceSeenAt =
+    result.kind === "occurrence" && result.occurrences.length > 0
+      ? now.toISOString()
+      : (alert.evaluatorState as { occurrenceSeenAt?: string } | null)?.occurrenceSeenAt;
   const patch: Parameters<typeof applyEvaluationOutcome>[1]["patch"] = {
     attention: next.attention,
     observedCondition: next.observedCondition,
@@ -305,6 +310,7 @@ export async function evaluateAlert(
     ...(conditionChanged ? { observedConditionChangedAt: now } : {}),
     evaluatorState: {
       ...(evaluatorStatePatch ?? {}),
+      ...(occurrenceSeenAt ? { occurrenceSeenAt } : {}),
       lastError: unavailableReason
         ? { reason: unavailableReason, code: unavailableCode, at: now.toISOString() }
         : null,
@@ -368,6 +374,20 @@ export async function evaluateAlert(
     events,
     deliveryCount: outcome.deliveries.length,
   };
+}
+
+async function groupSuppresses(
+  db: PrismaClientOrTransaction,
+  groupId: string,
+  now: Date
+): Promise<boolean> {
+  const group = await db.alert.findFirst({
+    where: { id: groupId },
+    select: { lifecycle: true, expiresAt: true },
+  });
+  return (
+    group?.lifecycle === "active" && (!group.expiresAt || group.expiresAt.getTime() > now.getTime())
+  );
 }
 
 export function releaseLeaseToNextCadence(

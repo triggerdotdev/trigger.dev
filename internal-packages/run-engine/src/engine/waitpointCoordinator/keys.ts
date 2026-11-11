@@ -63,6 +63,11 @@ export function waitpointKeys(waitpointId: string): WaitpointKeys {
   return { record: base, watchers: `${base}:w`, queue: `${base}:q`, fanout: `${base}:f` };
 }
 
+/** Successful token subscriptions, independent of destructive watcher/fanout state. */
+export function waitpointRelatedRunsKey(waitpointId: string): string {
+  return `${waitpointKeys(waitpointId).record}:related`;
+}
+
 export function runBlockKeys(runId: string): RunBlockKeys {
   const base = `${NAMESPACE}:run:{${runId}}`;
   return {
@@ -115,6 +120,29 @@ export function runContributionIndexKey(runId: string): string {
   return `${NAMESPACE}:run:{${runId}}:contributions`;
 }
 
+/** Organization-owned admission evidence. Published before any native run mutation, no TTL. */
+export function organizationRunIndexKey(organizationId: string, partition: number): string {
+  return `${NAMESPACE}:org:{${organizationId}:p${partition}}:runs`;
+}
+
+/** Pending source publication evidence, before the first source write; no TTL. */
+export function organizationPendingSourceIndexKey(
+  organizationId: string,
+  partition: number
+): string {
+  return `${NAMESPACE}:f{p${partition}}:org:${organizationId}:sources`;
+}
+
+/** Exact scoped receipt identities for keyed source attempts, beside organization source discovery. */
+export function organizationSourceReceiptKey(organizationId: string, partition: number): string {
+  return `${organizationPendingSourceIndexKey(organizationId, partition)}:receipts`;
+}
+
+/** Detached withdrawal identities outlive ordinary block state and terminal tombstones. */
+export function runWithdrawalIndexKey(runId: string): string {
+  return `${NAMESPACE}:run:{${runId}}:withdrawals`;
+}
+
 export function contributionMember(blockId: string, absorptionId: string): string {
   return JSON.stringify([blockId, absorptionId]);
 }
@@ -159,6 +187,23 @@ export function fanoutIndexKeys(partition: number): FanoutIndexKeys {
 
 export function idempotencyKey(environmentId: string, key: string): string {
   return `${NAMESPACE}:idem:{${environmentId}}:${key}`;
+}
+
+/** Outcome evidence shares the reservation slot, but never its expiry. */
+export function idempotencyReceiptKey(
+  environmentId: string,
+  key: string,
+  candidateId: string
+): string {
+  return `${NAMESPACE}:idem-receipt:{${environmentId}}:${key.length}:${key}:${candidateId}`;
+}
+
+export function idempotencyClaimKey(environmentId: string, key: string): string {
+  return `${NAMESPACE}:idem-claim:{${environmentId}}:${key.length}:${key}`;
+}
+
+export function candidateMintFenceKey(candidateId: string): string {
+  return `${waitpointKeys(candidateId).record}:mint-fence`;
 }
 
 // "#" separates the id from the index. An absent index collapses onto the empty suffix,

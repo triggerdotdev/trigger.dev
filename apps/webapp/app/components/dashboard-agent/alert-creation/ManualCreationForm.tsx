@@ -496,7 +496,6 @@ function ErrorGroupsLoader({
 export function ManualCreationForm({
   flow,
   channels,
-  chatId,
   addChannel,
   emptyAreas,
   hiddenAreas,
@@ -506,7 +505,6 @@ export function ManualCreationForm({
 }: {
   flow: CreationFlowState;
   channels: AlertChannel[];
-  chatId?: string;
   addChannel?: AddChannelAccess;
   emptyAreas?: string[];
   hiddenAreas?: string[];
@@ -533,7 +531,6 @@ export function ManualCreationForm({
   const steps = allSteps(
     flow,
     allChannels,
-    chatId,
     addChannel,
     { groups: errorGroups, lookup, lookupError },
     entities?.kind === entityKind ? entities?.names : undefined,

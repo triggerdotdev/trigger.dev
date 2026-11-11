@@ -1,4 +1,5 @@
 import { env } from "~/env.server";
+import { bearerTokenFromAuthorizationHeader } from "~/utils/bearerToken";
 import { resolvePrivateApiKeyRateLimitScope } from "~/models/runtimeEnvironment.server";
 import { authorizationRateLimitMiddleware } from "./authorizationRateLimitMiddleware.server";
 import { deploymentApiPaths } from "./deploymentApiPaths.server";
@@ -26,7 +27,7 @@ export const deploymentRateLimiter = authorizationRateLimitMiddleware({
     maxItems: 1000,
   },
   limiterConfigOverride: async (authorizationValue) => {
-    const rawApiKey = authorizationValue.replace(/^Bearer /, "");
+    const rawApiKey = bearerTokenFromAuthorizationHeader(authorizationValue);
 
     if (!rawApiKey.startsWith("tr_")) {
       return;
@@ -42,6 +43,7 @@ export const deploymentRateLimiter = authorizationRateLimitMiddleware({
     // limiter, not the deploy budget.
     return {
       identifier: scope.environmentId,
+      allowedIpRanges: scope.allowedIpRanges,
     };
   },
   pathMatchers: deploymentApiPaths,

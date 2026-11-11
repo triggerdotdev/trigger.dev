@@ -155,16 +155,21 @@ describe("public token API key routing", () => {
     ["no options at all", undefined],
     ["an empty scopes object", {}],
     ["a scope group with nothing selected", { read: {} }],
-  ])("rejects %s clearly for additional keys", async (_label, scopes) => {
+  ])("server-mints zero-permission tokens for additional keys with %s", async (_label, scopes) => {
     const key = "tr_prod_sk_0123456789abcdefghijklmn";
-    const promise = apiClientManager.runWithConfig({ baseURL: baseUrl, accessToken: key }, () =>
+    const token = await apiClientManager.runWithConfig({ baseURL: baseUrl, accessToken: key }, () =>
       auth.createPublicToken(scopes === undefined ? undefined : { scopes })
     );
 
-    await expect(promise).rejects.toThrow(
-      "requires at least one scope when using an additional API key"
-    );
-    expect(requests).toEqual([]);
+    expect(token).toBe("server-minted-token");
+    expect(requests).toEqual([
+      {
+        method: "POST",
+        url: "/api/v1/auth/public-tokens",
+        authorization: `Bearer ${key}`,
+        body: { scopes: [] },
+      },
+    ]);
   });
 
   it("explains how to recover when the server lacks the mint endpoint", async () => {

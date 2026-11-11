@@ -142,18 +142,17 @@ describe("Limits wizard", () => {
     expect(card().textContent).toContain("Watch all limits");
   });
 
-  it("leaves the health what step as it was", () => {
+  it("offers the health checks as a multi-select", () => {
     mount({ area: "health" });
     const rows = Array.from(card().querySelectorAll("li > button")).map((b) => b.textContent);
     expect(rows).toEqual([
       "Flow health degrading",
       "Execution health degrading",
       "Tasks going silent",
-      "Overall health check",
       "Show me what I can watch",
+      "Continue",
     ]);
     expect(card().querySelector("[data-group-header]")).toBeNull();
-    expect(card().textContent).not.toContain("Pick any number");
   });
 
   // Mutation: not hiding the queue-metric caps leaves them listed.
@@ -223,13 +222,13 @@ describe("Limits wizard", () => {
     pick("API rate limit running out");
     pick("Continue");
     expect(card().getAttribute("aria-label")).toBe("When should this alert fire?");
-    expect(card().textContent).toContain("Fires when the limit is hit");
+    expect(card().textContent).toContain("100 fires only when it is hit");
     expect(buttons().some((b) => b.textContent?.trim() === "Limit reached")).toBe(false);
     const input = () =>
       card().querySelector<HTMLInputElement>('input[aria-label="Utilisation threshold"]')!;
     expect(input().value).toBe("");
     expect(input().placeholder).toBe("80");
-    expect(buttons().find((b) => b.textContent?.trim() === "Continue")!.disabled).toBe(false);
+    expect(buttons().find((b) => b.textContent?.trim() === "Continue")!.disabled).toBe(true);
     expect(inputChecked()).toBe(false);
     expect(labelChecked()).toBe(false);
     let form = body();
@@ -274,6 +273,31 @@ describe("Limits wizard", () => {
     expect(inputChecked()).toBe(true);
     expect(labelChecked()).toBe(false);
     expect(body().signals).toEqual(["approaching"]);
+  });
+
+  // Catches: an empty percentage passing the limit step, or a typed one not advancing on Continue or Enter.
+  it("requires the percentage, then advances on Continue and on Enter", () => {
+    const enterOn = (input: HTMLInputElement) =>
+      act(() => {
+        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      });
+    const continueButton = () => buttons().find((b) => b.textContent?.trim() === "Continue")!;
+    for (const submit of [() => pick("Continue"), () => enterOn(percentInput())]) {
+      mount({ area: "limits" });
+      pick("API rate limit running out");
+      pick("Continue");
+      const question = card().getAttribute("aria-label");
+      expect(continueButton().disabled).toBe(true);
+      enterOn(percentInput());
+      expect(card().getAttribute("aria-label")).toBe(question);
+      type(percentInput(), "90");
+      expect(continueButton().disabled).toBe(false);
+      submit();
+      expect(card().getAttribute("aria-label")).not.toBe(question);
+      expect(body().conditionParams).toEqual({ utilisationPct: 90 });
+      act(() => root.unmount());
+      root = createRoot(container);
+    }
   });
 
   it("shows the percentage input directly under Approaching the limit", () => {

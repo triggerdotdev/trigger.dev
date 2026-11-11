@@ -750,6 +750,19 @@ export const BuildServerMetadata = z.object({
   fromBundle: z.boolean().optional(),
   // Short code of the deployment this one was redeployed from.
   redeployOf: z.string().optional(),
+  trustedDeploy: z
+    .object({
+      grantId: z.string(),
+      issuer: z.string(),
+      subject: z.string(),
+      repository: z.string(),
+      repositoryId: z.string(),
+      repositoryOwnerId: z.string(),
+      runId: z.string(),
+      runAttempt: z.string(),
+      workflowRef: z.string(),
+    })
+    .optional(),
 });
 
 export type BuildServerMetadata = z.infer<typeof BuildServerMetadata>;

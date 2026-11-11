@@ -131,7 +131,7 @@ describe("AlertDetailPresenter", () => {
     expect(result?.events[0]?.factsSummary).toBe("50 vs 100");
   });
 
-  it("renders a channel notifier's name from ProjectAlertChannel and a chat notifier as 'This chat'", async () => {
+  it("renders a channel notifier's name from ProjectAlertChannel and omits a legacy chat notifier", async () => {
     const alert = await createAlert(db, {
       ...BASE,
       capabilityKey: "queue.depth",
@@ -162,10 +162,7 @@ describe("AlertDetailPresenter", () => {
       }),
     }).call({ id: alert.id, projectId: BASE.projectId, environmentId: BASE.environmentId });
 
-    expect(result?.notifiers).toEqual([
-      { key: "channel:chan_1", label: "Slack #alerts" },
-      { key: "chat:project:user_1", label: "This chat" },
-    ]);
+    expect(result?.notifiers).toEqual([{ key: "channel:chan_1", label: "Slack #alerts" }]);
   });
 
   it("computes displayStatus from lifecycle and attention", async () => {

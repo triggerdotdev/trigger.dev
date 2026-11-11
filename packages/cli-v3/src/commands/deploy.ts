@@ -50,6 +50,13 @@ import {
 } from "../cli/common.js";
 import { loadConfig } from "../config.js";
 import { authenticateForDeploy, userIdForDeploy } from "../deploy/auth.js";
+import {
+  archivePreviewBranch,
+  runTrustedDeploy,
+  shouldUseGithubOidc,
+  validateTrustedDeployOptions,
+  type NativeBuildClient,
+} from "../deploy/trustedDeploy.js";
 import { buildImage } from "../deploy/buildImage.js";
 import { type DeployEnvironment, resolveDeployEnvironment } from "../deploy/environment.js";
 import {
@@ -78,10 +85,10 @@ import { getProjectClient, upsertBranch } from "../utilities/session.js";
 import { getTmpDir } from "../utilities/tempDirectories.js";
 import { spinner } from "../utilities/windows.js";
 import { login } from "./login.js";
-import { archivePreviewBranch } from "./preview.js";
 import { updateTriggerPackages } from "./update.js";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
+  authMethod: z.enum(["auto", "oidc"]).default("auto"),
   dryRun: z.boolean().default(false),
   skipSyncEnvVars: z.boolean().default(false),
   env: z.enum(["prod", "staging", "preview", "production"]).optional(),
@@ -119,7 +126,7 @@ const DeployCommandOptions = CommonCommandOptions.extend({
 });
 
 // `env` is resolved from --env, --prod and TRIGGER_ACCESS_TOKEN before the command runs
-type DeployCommandOptions = Omit<z.infer<typeof DeployCommandOptions>, "env"> & {
+export type DeployCommandOptions = Omit<z.infer<typeof DeployCommandOptions>, "env"> & {
   env: DeployEnvironment;
 };
 
@@ -130,6 +137,14 @@ export function configureDeployCommand(program: Command) {
     commonOptions(
       program
         .command("deploy")
+        .addOption(
+          new CommandOption(
+            "--auth-method <method>",
+            "Authentication method. OIDC ignores stored credentials and requires GitHub Actions."
+          )
+            .choices(["auto", "oidc"])
+            .default("auto")
+        )
         .description("Deploy your Trigger.dev project to the cloud.")
         .argument("[path]", "The path to the project", ".")
         .option(
@@ -335,7 +350,9 @@ async function deployCommand(dir: string, options: unknown) {
     const environment = resolveDeployEnvironment({
       env: opts.env,
       prod: opts.prod,
-      accessToken: process.env.TRIGGER_ACCESS_TOKEN,
+      accessToken: shouldUseGithubOidc(opts.authMethod, process.env.TRIGGER_ACCESS_TOKEN)
+        ? undefined
+        : process.env.TRIGGER_ACCESS_TOKEN,
     });
 
     logger.debug("Resolved deploy environment", environment);
@@ -345,7 +362,12 @@ async function deployCommand(dir: string, options: unknown) {
 }
 
 async function _deployCommand(dir: string, options: DeployCommandOptions) {
-  const nativeOnlyError = nativeOnlyFlagError(options);
+  const useOidc = shouldUseGithubOidc(options.authMethod, process.env.TRIGGER_ACCESS_TOKEN);
+  if (useOidc) validateTrustedDeployOptions(options);
+  const nativeOnlyError = nativeOnlyFlagError({
+    ...options,
+    nativeBuildServer: options.nativeBuildServer || useOidc,
+  });
   if (nativeOnlyError) {
     throw new Error(nativeOnlyError);
   }
@@ -382,6 +404,11 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const projectPath = resolve(cwd, dir);
 
   verifyDirectory(dir, projectPath);
+
+  if (useOidc) {
+    await runTrustedDeploy(projectPath, options, handleNativeBuildServerDeploy);
+    return;
+  }
 
   const authorization = await authenticateForDeploy({
     accessToken: process.env.TRIGGER_ACCESS_TOKEN,
@@ -455,11 +482,10 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     //auto-archive a branch if the PR is merged or closed
     if (gitMeta?.pullRequestState === "merged" || gitMeta?.pullRequestState === "closed") {
       log.message(`Pull request ${gitMeta?.pullRequestNumber} is ${gitMeta?.pullRequestState}.`);
-      const $buildSpinner = spinner();
-      $buildSpinner.start(`Archiving preview branch: "${branch}"`);
-      const result = await archivePreviewBranch(authorization, branch, resolvedConfig.project);
-      $buildSpinner.stop(
-        result ? `Successfully archived "${branch}"` : `Failed to archive "${branch}".`
+      await archivePreviewBranch(
+        { type: "token", ...authorization.auth },
+        branch,
+        resolvedConfig.project
       );
       return;
     }
@@ -1404,7 +1430,7 @@ async function handleNativeBuildServerDeploy({
   gitMeta,
   branch,
 }: {
-  apiClient: CliApiClient;
+  apiClient: NativeBuildClient;
   config: Awaited<ReturnType<typeof loadConfig>>;
   dashboardUrl: string;
   options: DeployCommandOptions;

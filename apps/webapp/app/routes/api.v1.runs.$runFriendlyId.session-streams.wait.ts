@@ -3,9 +3,10 @@ import {
   CreateSessionStreamWaitpointRequestBody,
   type CreateSessionStreamWaitpointResponseBody,
 } from "@trigger.dev/core/v3";
-import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import { parseWaitpointId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { z } from "zod";
 import { $replica } from "~/db.server";
+import { processStreamWaitpointCompletionPacket } from "~/runEngine/concerns/waitpointCompletionPacket.server";
 import { runStore } from "~/v3/runStore.server";
 import { createWaitpointTag, MAX_TAGS_PER_WAITPOINT } from "~/models/waitpointTag.server";
 import {
@@ -128,6 +129,7 @@ const { action, loader } = createActionApiRoute(
         runId: run.id,
         environmentId: authentication.environment.id,
         projectId: authentication.environment.projectId,
+        organizationId: authentication.environment.organization.id,
         idempotencyKey: body.idempotencyKey,
         idempotencyKeyExpiresAt,
         timeout,
@@ -172,16 +174,31 @@ const { action, loader } = createActionApiRoute(
 
             if (records.length > 0) {
               const record = records[0]!;
+              const storeDateTime =
+                (await engine.waitpointSystem.isWaitpointStoreEnabled(
+                  authentication.environment.organization.id
+                )) &&
+                (result.waitpoint.type === "DATETIME" || result.waitpoint.type === "MANUAL") &&
+                parseWaitpointId(result.waitpoint.id).format !== "legacy";
+              const packet = storeDateTime
+                ? await processStreamWaitpointCompletionPacket(
+                    result.waitpoint.id,
+                    record.data,
+                    authentication.environment
+                  )
+                : undefined;
 
-              await engine.completeWaitpoint({
+              const completionInput: Parameters<typeof engine.completeWaitpoint>[0] = {
                 id: result.waitpoint.id,
                 output: {
-                  value: record.data,
-                  type: "application/json",
+                  value: packet ? packet.data! : record.data,
+                  type: packet ? packet.dataType : "application/json",
                   isError: false,
                 },
                 organizationId: authentication.environment.organization.id,
-              });
+              };
+              if (storeDateTime) completionInput.onlyIfPending = true;
+              await engine.completeWaitpoint(completionInput);
 
               await removeSessionStreamWaitpoint(
                 authentication.environment.id,

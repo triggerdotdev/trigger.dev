@@ -1,9 +1,10 @@
+import { MAX_INLINE_COMPLETION_OUTPUT_BYTES } from "@internal/run-engine";
 import { parseWithZod } from "@conform-to/zod/v4";
 import { Form, useLocation, useNavigation, useSubmit } from "@remix-run/react";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import type { WaitpointTokenStatus } from "@trigger.dev/core/v3";
 import { stringifyIO, timeoutError } from "@trigger.dev/core/v3";
-import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import { parseWaitpointId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import type { Waitpoint } from "@trigger.dev/database";
 import { useRef } from "react";
 import { z } from "zod";
@@ -27,6 +28,11 @@ import { processWaitpointCompletionPacket } from "~/runEngine/concerns/waitpoint
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema, v3RunsPath } from "~/utils/pathBuilder";
+import {
+  isStoreDateTimeWaitpoint,
+  resolveDashboardDateTimeWaitpoint,
+  skipDashboardDateTimeWaitpoint,
+} from "~/services/dashboardDateTimeWaitpoint.server";
 import { engine } from "~/v3/runEngine.server";
 
 const CompleteWaitpointFormData = z.discriminatedUnion("type", [
@@ -90,17 +96,30 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
     const waitpointId = WaitpointId.toId(waitpointFriendlyId);
 
-    let waitpoint = await runStore.findWaitpoint({
-      select: {
-        id: true,
-      },
-      where: {
-        id: waitpointId,
-        projectId: project.id,
-        environmentId: environment.id,
-      },
-    });
-    if (!waitpoint) {
+    const storeDateTime =
+      (await engine.waitpointSystem.isWaitpointStoreEnabled(environment.organization.id)) &&
+      isStoreDateTimeWaitpoint(waitpointId);
+    let waitpoint = storeDateTime
+      ? await resolveDashboardDateTimeWaitpoint(
+          {
+            friendlyId: waitpointFriendlyId,
+            projectId: project.id,
+            environmentId: environment.id,
+            organizationId: environment.organization.id,
+          },
+          engine
+        )
+      : await runStore.findWaitpoint({
+          select: {
+            id: true,
+          },
+          where: {
+            id: waitpointId,
+            projectId: project.id,
+            environmentId: environment.id,
+          },
+        });
+    if (!waitpoint && !storeDateTime) {
       // Read-your-writes: a just-minted token may not have replicated. Re-read the owning primary
       // before the auth guard / "No waitpoint found" (mirrors the token complete/callback routes).
       waitpoint = await runStore.findWaitpointOnPrimary({
@@ -113,7 +132,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       });
     }
 
-    if (!waitpoint) {
+    const nativeIdentity = storeDateTime ? parseWaitpointId(waitpointId) : undefined;
+    if (
+      !waitpoint ||
+      (nativeIdentity?.format === "b32hexW" && submission.value.type !== nativeIdentity.type)
+    ) {
       return redirectWithErrorMessage(
         submission.value.failureRedirect,
         request,
@@ -123,10 +146,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
     switch (submission.value.type) {
       case "DATETIME": {
-        const _result = await engine.completeWaitpoint({
-          id: waitpointId,
-          organizationId: environment.organization.id,
-        });
+        if (storeDateTime) {
+          await skipDashboardDateTimeWaitpoint(waitpointId, environment.organization.id, engine);
+        } else {
+          await engine.completeWaitpoint({
+            id: waitpointId,
+            organizationId: environment.organization.id,
+          });
+        }
 
         return redirectWithSuccessMessage(
           submission.value.successRedirect,
@@ -139,6 +166,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           try {
             const _result = await engine.completeWaitpoint({
               id: waitpointId,
+              ...(storeDateTime ? { onlyIfPending: true } : {}),
               output: {
                 type: "application/json",
                 value: JSON.stringify(timeoutError(new Date())),
@@ -178,11 +206,15 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           const finalData = await processWaitpointCompletionPacket(
             stringifiedData,
             environment,
-            `${WaitpointId.toFriendlyId(waitpointId)}/token`
+            storeDateTime
+              ? `${WaitpointId.toFriendlyId(waitpointId)}/token/${crypto.randomUUID()}`
+              : `${WaitpointId.toFriendlyId(waitpointId)}/token`,
+            storeDateTime ? MAX_INLINE_COMPLETION_OUTPUT_BYTES : undefined
           );
 
           const _result = await engine.completeWaitpoint({
             id: waitpointId,
+            ...(storeDateTime ? { onlyIfPending: true } : {}),
             output: finalData.data
               ? { type: finalData.dataType, value: finalData.data, isError: false }
               : undefined,

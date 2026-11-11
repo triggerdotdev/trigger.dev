@@ -1,8 +1,9 @@
+import { withAdminApi } from "~/services/adminApi.server";
 import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
 import { getMissingLlmModels } from "~/services/admin/missingLlmModels.server";
 
-export async function loader({ request }: LoaderFunctionArgs) {
+async function handleLoader({ request }: LoaderFunctionArgs) {
   await requireAdminApiRequest(request);
 
   const url = new URL(request.url);
@@ -16,3 +17,5 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   return json({ models, lookbackHours });
 }
+
+export const loader = withAdminApi(handleLoader);

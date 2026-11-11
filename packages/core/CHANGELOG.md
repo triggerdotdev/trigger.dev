@@ -1,5 +1,20 @@
 # internal-platform
 
+## 4.8.4
+
+### Patch Changes
+
+- Self-hosted supervisors that run tasks in microVMs can now have a finished run's suspend snapshots deleted from shared storage, instead of leaving them behind. The server-only checkpoint client gains a `deleteSnapshots` call for this. ([`95f4cbbad`](https://github.com/triggerdotdev/trigger.dev/commit/95f4cbbad711ea245778d05a2e9951331a325f82))
+- Browser realtime subscriptions now resume reliably after the tab is hidden and shown again. This comes from upgrading `@electric-sql/client` to 1.3.0, which also lets apps that depend on 1.3.0 share a single copy with the SDK. ([`3900d8906`](https://github.com/triggerdotdev/trigger.dev/commit/3900d8906e3a307acf4879a70ab0cbac5d1f8cb8))
+- Add opt-in AWS session tags with `awsCredentialProvider({ sessionTags: true })` for task-level IAM restrictions and attribute-based permissions. Tags come from the verified run identity. Update the role trust policy to allow `sts:TagSession` before enabling them; existing integrations remain untagged. ([`c8ae1ffb5`](https://github.com/triggerdotdev/trigger.dev/commit/c8ae1ffb588895a0ffb8c0dbdcaa1d6e19671edc))
+- Use run credentials for run results, rescheduling, schedules, and environment-variable operations inside tasks. Run credentials remain limited to the current environment: shared schedules cannot be changed, and parent environment variables cannot be written. ([`cd58c750b`](https://github.com/triggerdotdev/trigger.dev/commit/cd58c750b878d39e16acde163b751de2e7491ac0))
+- Deploy from GitHub Actions using Trusted publishing and GitHub OIDC without storing a Trigger.dev API key. These deployments run entirely on the build server and do not grant the CLI access to environment variables. ([`9aafe6989`](https://github.com/triggerdotdev/trigger.dev/commit/9aafe6989af028bc7c9dc96f9d2f1c027ec3323c))
+- Use GitHub Actions trusted publishing with `preview archive` and `promote`, without storing API keys. Preview deploys for closed or merged pull requests now archive their branch. `preview archive` also supports Preview environment API keys through `TRIGGER_ACCESS_TOKEN`. ([`d9172638a`](https://github.com/triggerdotdev/trigger.dev/commit/d9172638a9679c1f698a1b04b35d2cc7abae5fa3))
+
+  Failed Preview archive operations now exit with an error for API-key and personal-token authentication too, including automatic cleanup during deploys. CI cleanup jobs that previously passed despite an archive failure will now fail. Concurrent cleanup jobs succeed when another job has already archived the same branch generation.
+
+- Fix logs and spans with large numeric object keys failing to ingest and dropping the rest of their batch. ([`99a626aa3`](https://github.com/triggerdotdev/trigger.dev/commit/99a626aa3b215b55f5fbfa1dddcfe34ae231e932))
+
 ## 4.8.3
 
 ### Patch Changes

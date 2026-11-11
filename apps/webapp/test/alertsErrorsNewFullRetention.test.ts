@@ -190,13 +190,12 @@ describe("errors.new reads full retention", () => {
   });
 
   clickhouseTest(
-    "errors.new series stays inside the plan window",
+    "errors.new series is not clipped by the plan period",
     async ({ clickhouseContainer, clickhouseClient }) => {
       const ch = new ClickHouse({ url: clickhouseContainer.getConnectionUrl(), name: "fr-t3" });
       holder.ch = ch;
       const raw = clickhouseClient as unknown as RawCommandClient;
       const now = Date.now();
-      const planFloor = now - PLAN_DAYS * DAY_MS;
       try {
         await seedParts(ch, raw, [
           failedRun("task-1", "fp_recurring", now - 60 * DAY_MS),
@@ -226,12 +225,9 @@ describe("errors.new reads full retention", () => {
           runner
         );
 
-        const bucketMs = (r: Record<string, unknown>) => new Date(r.bucket as string).getTime();
         expect(rawRows.length).toBeGreaterThan(0);
-        expect(rawRows.filter((r) => bucketMs(r) < planFloor - DAY_MS)).toEqual([]);
         const points = series.get("__agg__") ?? [];
-        expect(points.filter((p) => p.bucket < planFloor - DAY_MS && p.value)).toEqual([]);
-        expect(points.reduce((sum, p) => sum + (p.value ?? 0), 0)).toBe(1);
+        expect(points.reduce((sum, p) => sum + (p.value ?? 0), 0)).toBe(2);
       } finally {
         await raw.command({ query: "SYSTEM START MERGES trigger_dev.errors_v1" });
       }
@@ -281,7 +277,7 @@ describe("errors.new reads full retention", () => {
     }
   );
 
-  it("clamps the errors.new lower bound to the plan floor", async () => {
+  it("does not clamp the errors.new lower bound to the plan period", async () => {
     const queries: string[] = [];
     const binding = createProductionEvaluateBinding({
       queryRowRunner: async (query) => {
@@ -308,8 +304,6 @@ describe("errors.new reads full retention", () => {
       return Date.parse(`${literal.replace(" ", "T")}Z`);
     });
     expect(bounds.length).toBeGreaterThan(0);
-    expect(Math.min(...bounds)).toBeGreaterThanOrEqual(
-      Math.floor((before - PLAN_DAYS * DAY_MS) / 1000) * 1000
-    );
+    expect(Math.min(...bounds)).toBeLessThan(before - PLAN_DAYS * DAY_MS);
   });
 });

@@ -2,6 +2,12 @@ import type * as SafeWebhookUrlModule from "~/v3/services/alerts/safeWebhookUrl.
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { describe, expect, it, vi } from "vitest";
 import { UpdateAlertChannelService } from "~/v3/services/alerts/updateAlertChannel.server";
+import {
+  decryptValue,
+  encryptValue,
+  parseEncryptionKeyring,
+  resolveEncryptionKeyring,
+} from "~/utils/encryptionKeyring.server";
 
 vi.mock("~/v3/services/alerts/safeWebhookUrl.server", async (importOriginal) => {
   const actual = await importOriginal<typeof SafeWebhookUrlModule>();
@@ -11,7 +17,16 @@ vi.mock("~/v3/services/alerts/safeWebhookUrl.server", async (importOriginal) => 
   };
 });
 
-const storedSecret = { nonce: "n1", ciphertext: "c1", tag: "t1" };
+const legacyKey = "0123456789abcdef0123456789abcdef";
+const activeKey = "abcdef0123456789abcdef0123456789";
+const keyring = parseEncryptionKeyring(
+  JSON.stringify({
+    activeKeyId: "v2",
+    keys: { legacy: legacyKey, v2: activeKey },
+  })
+);
+const plaintextSecret = "unchanged-webhook-signing-secret";
+const storedSecret = encryptValue(plaintextSecret, resolveEncryptionKeyring(undefined, legacyKey));
 
 const integrations = [
   { id: "int_1", service: "SLACK", organizationId: "o1", deletedAt: null },
@@ -52,7 +67,8 @@ function fakePrisma(row: Record<string, unknown>) {
 }
 
 describe("UpdateAlertChannelService", () => {
-  it("fails when the webhook secret is regenerated on edit", async () => {
+  // Catches: an edit restoring old-key ciphertext after the sweep, or changing the signing secret.
+  it("preserves the webhook signing secret while re-encrypting it with the active key", async () => {
     const { prisma, update } = fakePrisma({
       id: "c1",
       projectId: "p1",
@@ -62,7 +78,7 @@ describe("UpdateAlertChannelService", () => {
       properties: { url: "https://old.example.com/hook", secret: storedSecret, version: "v2" },
     });
 
-    await new UpdateAlertChannelService(prisma).call(
+    await new UpdateAlertChannelService(prisma, keyring).call(
       "p1",
       "c1",
       {
@@ -76,9 +92,19 @@ describe("UpdateAlertChannelService", () => {
       where: { id: "c1", projectId: "p1", environmentTypes: { equals: authorized } },
       data: {
         name: "Webhook to new.example.com",
-        properties: { url: "https://new.example.com/hook", secret: storedSecret, version: "v2" },
+        properties: {
+          url: "https://new.example.com/hook",
+          secret: expect.objectContaining({ keyId: "v2" }),
+          version: "v2",
+        },
       },
     });
+    expect(
+      decryptValue(update.mock.calls[0][0].data.properties.secret, {
+        activeKeyId: "v2",
+        keys: new Map([["v2", activeKey]]),
+      })
+    ).toBe(plaintextSecret);
   });
 
   it("fails when a channel from another project can be edited", async () => {

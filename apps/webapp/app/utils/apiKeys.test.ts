@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
+import { apiKeyPrefix } from "./apiKeyPrefix";
 import {
-  apiKeyPrefix,
   generateAdditionalApiKey,
   generateRootApiKey,
   hashApiKey,

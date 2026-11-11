@@ -1,5 +1,6 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { tryCatch } from "@trigger.dev/core";
+import { tryCatch } from "@trigger.dev/core/v3";
+import { sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { authenticateRequestWithScopedApiKey } from "~/services/apiAuth.server";
@@ -7,6 +8,7 @@ import { ArchiveBranchService } from "~/services/archiveBranch.server";
 import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
 import { logger } from "~/services/logger.server";
 import { toBranchableEnvironmentType } from "~/utils/branchableEnvironment";
+import { personalAccessTokenUnauthorizedResponse } from "~/services/personalAccessToken.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -36,7 +38,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
   });
 
   if (!authentication.ok) {
-    return json({ error: authentication.error }, { status: authentication.status });
+    return authentication.status === 401
+      ? personalAccessTokenUnauthorizedResponse(request, authentication.error)
+      : json({ error: authentication.error }, { status: authentication.status });
   }
   const authenticationResult = authentication.authentication;
 
@@ -63,7 +67,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: parsed.error.message }, { status: 400 });
   }
 
-  const { env, branch } = parsed.data;
+  const { env } = parsed.data;
+  const branch = sanitizeBranchName(parsed.data.branch);
+  if (!branch) return json({ error: "Invalid branch name" }, { status: 400 });
 
   // API keys can only archive Preview branches
   if (

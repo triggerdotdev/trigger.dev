@@ -1,0 +1,144 @@
+---
+title: "Trusted publishing"
+description: "Deploy from GitHub Actions without storing a Trigger.dev API key."
+---
+
+Trusted publishing uses GitHub Actions OIDC tokens to authorize deployments. No Personal Access Token or environment API key is needed in GitHub secrets. Builds run entirely on Trigger.dev's build server.
+
+## Prerequisites
+
+- Use the Trigger.dev CLI (`trigger.dev`) **4.8.4 or later**, including the CLI used in CI.
+
+## Configure trust
+
+1. Select **Staging**, **Preview**, or **Production**, then open [**Trusted publishing**](https://cloud.trigger.dev/_/trusted-publishing) under **Security**.
+2. Enter the **Organization or user** and **Repository**, then click **Save**. This repository configuration applies to the whole project.
+3. Click **Enable** for the selected environment. Choose a **Scope by** option (see [Scope and additional claims](#scope-and-additional-claims)), then click **Save** to allow publishing.
+4. Configure each environment separately. Preview settings apply to **all Preview branches**.
+
+Saved settings appear as a read-only row. Click **Edit** to change them. Deleting environment settings returns to the **Enable** button. Unsaved setup is discarded when you leave the page.
+
+Development does not use trusted publishing. Changing the repository or its pinned IDs disables publishing for every environment. Re-save each environment to allow publishing again. Deleting the repository removes its grants.
+
+### Pin GitHub identities
+
+Both fields accept a name alone or a name followed by `@ID`:
+
+| Field | Name | Pinned identity |
+| --- | --- | --- |
+| Organization or user | `triggerdotdev` | `triggerdotdev@12345` |
+| Repository | `my-project` | `my-project@67890` |
+
+Pinning IDs is recommended: names can be reused after renames, transfers, or deletions. Without an ID, the corresponding name is checked instead.
+
+Look up both IDs with the GitHub CLI, using an account with access to the repository:
+
+```bash
+gh api repos/OWNER/REPO \
+  --jq '{repository_id: .id, repository_owner_id: .owner.id}'
+```
+
+The organization or user uses `repository_owner_id`; the repository uses `repository_id`. These IDs are not secrets. GitHub Actions also exposes them as `GITHUB_REPOSITORY_OWNER_ID` and `GITHUB_REPOSITORY_ID`.
+
+## Scope and additional claims
+
+Choose one scope:
+
+- **Any branch or tag:** no ref restriction.
+- **Branch:** a branch name such as `main` or `release/*`.
+- **Tag:** a tag name such as `v1.0.0` or `v*`.
+- **Environment:** an exact GitHub Environment name such as `production`. Set `environment: production` on the workflow job and use GitHub's required reviewers or other protections.
+
+Branch and tag names support `*` wildcards. Do not include the `refs/heads/` or `refs/tags/` prefix.
+
+Additional claims restrict the scope further. Enter a GitHub OIDC token claim name and its accepted values, separated by commas. Every claim must match; any listed value for that claim is accepted. Values match exactly, without wildcards.
+
+For example, add `event_name` with `push, workflow_dispatch` to restrict triggers, or `job_workflow_ref` with a reusable workflow's exact ref. You can require a GitHub Environment alongside a branch by adding an `environment` claim.
+
+## Preview environments
+
+Preview accepts `pull_request` and non-PR workflows, subject to the saved scope and additional claims.
+
+Use **Any branch or tag** or a matching **Environment** scope for PR workflows. GitHub's PR ref is typically `refs/pull/NUMBER/merge`, so it does not match a Branch scope such as `main`.
+
+From a `pull_request` workflow, deploy to a Preview branch using:
+
+```bash
+npx trigger.dev@latest deploy \
+  --auth-method oidc \
+  --native-build \
+  --env preview \
+  --branch "$GITHUB_HEAD_REF"
+```
+
+A Preview deploy for a closed or merged PR archives its branch instead of creating a deployment. You can also archive explicitly from a cleanup job with `id-token: write`:
+
+```bash
+npx trigger.dev@latest preview archive \
+  --auth-method oidc \
+  --branch "$GITHUB_HEAD_REF"
+```
+
+The workflow must match the project's **Preview** trusted-publishing settings. It can archive any Preview branch in that project, regardless of the workflow's current branch. Archiving preserves branch history; an already archived or missing branch is a successful no-op.
+
+`pull_request_target` and other PR event types such as `pull_request_review` are not supported for Preview. Staging and Production reject `pull_request*` events.
+
+## GitHub Actions workflow
+
+This example assumes a pnpm project with a lockfile and a `packageManager` field in `package.json`. Set `project` in `trigger.config.ts` (or `TRIGGER_PROJECT_REF`) to the project where you configured trust.
+
+```yaml .github/workflows/trigger-deploy.yml
+name: Deploy to Trigger.dev
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Add environment: production if your publishing scope requires it.
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - uses: pnpm/action-setup@v6
+      - run: pnpm install --frozen-lockfile
+      - run: |
+          npx trigger.dev@latest deploy \
+            --auth-method oidc \
+            --native-build \
+            --env prod
+```
+
+For Staging, use `--env staging`. For Preview, use `--env preview --branch YOUR_PREVIEW_BRANCH`.
+
+Open **Deployments > Deploys** in the target environment and confirm the new deployment succeeded.
+
+`--auth-method oidc` ignores stored credentials and `TRIGGER_ACCESS_TOKEN`. Without that flag, an explicit `TRIGGER_ACCESS_TOKEN` takes precedence over GitHub OIDC, which takes precedence over a saved login.
+
+## Promote a deployment
+
+To promote a version deployed with `--skip-promotion`, run:
+
+```bash
+npx trigger.dev@latest promote VERSION --auth-method oidc --env prod
+```
+
+Use `--env staging` or `--env preview --branch BRANCH` for other environments. Promotion requires the target environment's trusted-publishing settings, including any GitHub Environment or additional-claim restrictions. It cannot promote a version from a different environment or roll back to an older version.
+
+`preview archive` and `promote` use the same automatic OIDC selection and `--auth-method oidc` override as `deploy`. `preview archive` also accepts a parent Preview environment API key through `TRIGGER_ACCESS_TOKEN`.
+
+## Limits and troubleshooting
+
+- Only full build-server builds are supported. Local builds, Depot builds, `--local-bundle`, `--from-bundle`, and `--dry-run` are not supported.
+- The CLI receives no Trigger.dev API key or permission to read or sync environment variables. That work happens inside the build server. Authorized build and task code can still access the target environment's secrets.
+- Submissions are not automatically retried. If a response is lost, check the dashboard before deploying again.
+- If authorization fails, check the project ref, pinned IDs, saved environment settings, scope, additional claims, and `id-token: write` permission.
+
+This is separate from [task OIDC](/oidc), which lets running tasks access external services. For API-key authentication, see [CI / GitHub Actions](/github-actions).

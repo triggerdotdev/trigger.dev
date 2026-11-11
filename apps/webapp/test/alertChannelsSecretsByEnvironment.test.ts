@@ -1,4 +1,5 @@
 import { postgresTest } from "@internal/testcontainers";
+import { resolveEncryptionKeyring } from "~/utils/encryptionKeyring.server";
 import { afterAll, expect, vi } from "vitest";
 
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
@@ -16,7 +17,14 @@ afterAll(() => {
 
 vi.mock("~/env.server", async (importOriginal) => {
   const original = (await importOriginal()) as any;
-  return { ...original, env: { ...original.env, ENCRYPTION_KEY } };
+  return {
+    ...original,
+    env: {
+      ...original.env,
+      ENCRYPTION_KEY,
+      ENCRYPTION_KEYRING: resolveEncryptionKeyring(undefined, ENCRYPTION_KEY),
+    },
+  };
 });
 
 vi.mock("~/services/routeBuilders/dashboardBuilder", () => ({
@@ -71,7 +79,10 @@ postgresTest(
           properties: {
             type: "WEBHOOK",
             url: "https://example.com/hook",
-            secret: await encryptSecret(ENCRYPTION_KEY, `${name}-secret`),
+            secret: await encryptSecret(
+              resolveEncryptionKeyring(undefined, ENCRYPTION_KEY),
+              `${name}-secret`
+            ),
           },
           alertTypes: ["ERROR_GROUP"],
           environmentTypes: [...environmentTypes],

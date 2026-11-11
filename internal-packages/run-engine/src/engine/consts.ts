@@ -9,3 +9,10 @@ export const MAX_TASK_RUN_ATTEMPTS = 250;
  */
 export const QUEUED_SNAPSHOT_STATUS = "QUEUED" as const;
 export const QUEUED_SNAPSHOT_DESCRIPTION = "Run was QUEUED";
+
+/**
+ * Written by `attemptFailed` when a failed attempt is retried in the same process. It is the only
+ * EXECUTING snapshot a runner starts a new attempt from, so `startRunAttempt` matches on it.
+ */
+export const RETRY_IMMEDIATELY_SNAPSHOT_DESCRIPTION =
+  "Attempt failed with a short delay, starting a new attempt";

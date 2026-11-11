@@ -14,11 +14,14 @@ import {
   useOptionalOrganization,
   useOrganization,
   useBillingLimit,
+  useCanManageBilling,
   useCanManageBillingLimits,
+  useDeploysAwaitCardVerification,
 } from "~/hooks/useOrganizations";
 import { useOptionalProject, useProject } from "~/hooks/useProject";
 import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
+import { freeCardStepPath } from "~/components/billing/freeCardStepPath";
 import { concurrencyPath, v3BillingLimitsPath, v3BillingPath } from "~/utils/pathBuilder";
 import { ENVIRONMENT_PAUSE_SOURCE_BILLING_LIMIT } from "~/utils/environmentPauseSource";
 
@@ -41,6 +44,7 @@ export function OrgBanner() {
   const billingLimit = useBillingLimit();
   const currentPlan = useCurrentPlan();
   const showSelfServe = useShowSelfServe();
+  const deploysAwaitCardVerification = useDeploysAwaitCardVerification();
   const location = useLocation();
 
   // Billing-limit pauses are surfaced by the dedicated limit banners (grace/rejected).
@@ -60,6 +64,7 @@ export function OrgBanner() {
     billingLimit,
     hasExceededFreeTier: currentPlan?.v3Usage.hasExceededFreeTier === true,
     showEnvironmentWarning: isPaused || isArchived,
+    deploysAwaitCardVerification,
     showSelfServe,
   });
 
@@ -81,9 +86,34 @@ export function OrgBanner() {
       ) : (
         <PausedEnvironmentBanner hideButton={hideConcurrencyButton} />
       );
+    case OrgBannerKind.CardVerification:
+      return organization ? <CardVerificationBanner /> : null;
     default:
       return null;
   }
+}
+
+function CardVerificationBanner() {
+  const organization = useOrganization();
+  const canManageBilling = useCanManageBilling();
+
+  return (
+    <AnimatedOrgBannerBar
+      show
+      variant="warning"
+      action={
+        canManageBilling ? (
+          <LinkButton variant="warning/small" to={freeCardStepPath(organization, "billing")}>
+            Verify card
+          </LinkButton>
+        ) : undefined
+      }
+    >
+      Add a card to unlock your Free tier credits. It’s a verification check only, so you won’t be
+      charged.
+      {!canManageBilling ? " Ask an organization admin to add one." : null}
+    </AnimatedOrgBannerBar>
+  );
 }
 
 function LimitRejectedBanner() {

@@ -10,7 +10,7 @@ import {
 } from "./validateMinimumCronInterval";
 
 /** Unknown billing state allows neither enrollment nor clearing an existing restriction. */
-type FreeSchedulePlanState = "paying" | "non_paying" | "unknown" | "not_configured";
+export type FreeSchedulePlanState = "paying" | "non_paying" | "unknown" | "not_configured";
 
 export type FreeSchedulePolicyContext = {
   /** Gates new-schedule enrollment only. */
@@ -60,7 +60,7 @@ export async function resolveFreeSchedulePolicyContext(
   };
 }
 
-async function resolvePlanState(organizationId: string): Promise<FreeSchedulePlanState> {
+export async function resolvePlanState(organizationId: string): Promise<FreeSchedulePlanState> {
   if (!isBillingConfigured()) {
     return "not_configured";
   }

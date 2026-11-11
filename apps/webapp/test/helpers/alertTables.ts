@@ -3,15 +3,21 @@ import path from "node:path";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import { PrismaClient } from "@trigger.dev/database";
 
-const MIGRATION_SQL = readFileSync(
-  path.resolve(
-    __dirname,
-    "../../../../internal-packages/database/prisma/migrations/20261019120000_alerts_v1/migration.sql"
-  ),
-  "utf8"
-);
+const MIGRATIONS = [
+  "20261019120000_alerts_v1",
+  "20261028120000_alert_group_id",
+  "20261028120001_alert_group_id_index",
+];
 
-const STATEMENTS = MIGRATION_SQL.split(/\n(?=-- )/)
+const STATEMENTS = MIGRATIONS.flatMap((name) =>
+  readFileSync(
+    path.resolve(
+      __dirname,
+      `../../../../internal-packages/database/prisma/migrations/${name}/migration.sql`
+    ),
+    "utf8"
+  ).split(/\n(?=-- )/)
+)
   .map((statement) => statement.trim())
   .filter((statement) => statement.length > 0);
 

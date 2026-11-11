@@ -423,7 +423,12 @@ export const myChat = chat.customAgent({
       const incoming = currentPayload.message ? [currentPayload.message] : [];
       const turnInput =
         turn === 0 && continuationSeed.length > 0
-          ? [...continuationSeed.filter((s) => !incoming.some((m) => m.id === s.id)), ...incoming]
+          ? [
+              ...continuationSeed.filter(
+                (s) => !incoming.some((m) => m.role === "user" && m.id === s.id)
+              ),
+              ...incoming,
+            ]
           : incoming;
       const messages = await conversation.addIncoming(turnInput, currentPayload.trigger, turn);
 
@@ -487,6 +492,8 @@ export const myChat = chat.customAgent({
 
 - **Turn 0 or `trigger === "regenerate-message"`: replaces** the accumulator with exactly what you pass. This is why continuation seeding goes through `addIncoming` (above), and why a regenerate needs you to slice your own history — the wire omits the message on regenerate, so pass the stored history minus the last assistant message.
 - **Every other turn: appends** what you pass (the wire carries at most the one new user message).
+
+In both modes, a tool approval or tool output from the client is merged onto the stored tool call it answers, found in the accumulator or earlier in what you pass, rather than appended as a new message. One that answers no pending call is dropped.
 
 ```ts
 const conversation = new chat.MessageAccumulator();

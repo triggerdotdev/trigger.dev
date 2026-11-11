@@ -5,6 +5,7 @@ import { Input } from "~/components/primitives/Input";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 
 export type SearchInputProps = {
@@ -30,6 +31,8 @@ export type SearchInputProps = {
    * mode; `paramName`/`resetParams` are ignored when it's set.
    */
   onValueChange?: (value: string) => void;
+  /** A key that focuses the input. Ignored while a dialog is open. */
+  shortcut?: ShortcutDefinition;
 };
 
 export function SearchInput({
@@ -41,8 +44,22 @@ export function SearchInput({
   normalizeForValidation,
   value: controlledValue,
   onValueChange,
+  shortcut,
 }: SearchInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useShortcutKeys({
+    shortcut,
+    disabled: shortcut === undefined,
+    action: (event) => {
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) {
+        return;
+      }
+      // Keep the key itself out of the input it focuses.
+      event.preventDefault();
+      inputRef.current?.focus();
+    },
+  });
 
   const { value, replace, del } = useSearchParams();
   const isControlled = onValueChange !== undefined;
@@ -191,6 +208,8 @@ export function SearchInput({
                   disableHoverableContent
                 />
               </div>
+            ) : shortcut && !isFocused ? (
+              <ShortcutKey shortcut={shortcut} variant="small" />
             ) : undefined
           }
         />

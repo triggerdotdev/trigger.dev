@@ -103,7 +103,7 @@ export class ViewSchedulePresenter {
           deduplicationKey: schedule.deduplicationKey,
           environmentId,
           schedulePhase: instance?.schedulePhase ?? null,
-          phaseSecret: env.ENCRYPTION_KEY,
+          phaseSecret: env.SCHEDULE_PHASE_SEED,
           windowDurationSeconds: schedule.windowDurationSeconds,
           windowPercentage: schedule.windowPercentage,
           defaultWindowDurationSeconds: schedule.defaultWindowDurationSeconds,

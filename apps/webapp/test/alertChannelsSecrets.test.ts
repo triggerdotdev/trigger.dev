@@ -49,7 +49,7 @@ postgresTest(
         properties: {
           type: "WEBHOOK",
           url: "https://example.com/hook",
-          secret: await encryptSecret(env.ENCRYPTION_KEY, "top-secret"),
+          secret: await encryptSecret(env.ENCRYPTION_KEYRING, "top-secret"),
         },
         alertTypes: ["ERROR_GROUP"],
         environmentTypes: ["PRODUCTION"],

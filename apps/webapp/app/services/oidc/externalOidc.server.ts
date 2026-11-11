@@ -1,4 +1,3 @@
-import { getMeter } from "@internal/tracing";
 import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import type {
   ExternalOidcController,
@@ -65,7 +64,7 @@ async function findEnvironment(
       organizationId: true,
       projectId: true,
       project: { select: { externalRef: true } },
-      organization: { select: { featureFlags: true } },
+      organization: { select: { slug: true, featureFlags: true } },
     },
   });
   if (!environment) return null;
@@ -74,6 +73,7 @@ async function findEnvironment(
     slug: environment.slug,
     type: environment.type,
     organizationId: environment.organizationId,
+    organizationSlug: environment.organization.slug,
     projectId: environment.projectId,
     projectRef: environment.project.externalRef,
     orgFeatureFlags: resolveExternalOidcFlags(
@@ -125,9 +125,3 @@ export function getExternalOidcRateLimits(): ExternalOidcRateLimits {
       )
   );
 }
-
-export const externalOidcOutcomes = singleton("externalOidcOutcomes", () =>
-  getMeter("external-oidc").createCounter("external_oidc.token.requests", {
-    description: "External OIDC token requests by outcome",
-  })
-);

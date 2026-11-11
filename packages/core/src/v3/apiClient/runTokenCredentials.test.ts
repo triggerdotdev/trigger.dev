@@ -86,7 +86,7 @@ describe("in-run client credentials", () => {
         expect(server.requests.at(-1)?.authorization).toBe(
           `Bearer ${process.env.TRIGGER_RUN_TOKEN}`
         );
-        expect(client.getHeaders("listSchedules").Authorization).toBe(`Bearer ${key}`);
+        expect(client.getHeaders("listDashboards").Authorization).toBe(`Bearer ${key}`);
         process.env.TRIGGER_RUN_TOKEN = token(1);
         await client.createPublicToken({ scopes: ["read:runs"] });
         expect(server.requests.at(-1)?.authorization).toBe(`Bearer ${key}`);
@@ -139,7 +139,9 @@ describe("in-run client credentials", () => {
         const client = apiClientManager.clientOrThrow();
         await client.createPublicToken({ scopes: ["read:runs"] });
         expect(server.requests[0]?.authorization).toBe(`Bearer ${process.env.TRIGGER_RUN_TOKEN}`);
-        expect(() => client.getAccessToken("listSchedules")).toThrow("No API credential available");
+        expect(() => client.getAccessToken("listDashboards")).toThrow(
+          "No API credential available"
+        );
       });
     } finally {
       await server.close();

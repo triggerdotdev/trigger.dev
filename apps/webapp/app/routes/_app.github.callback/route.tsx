@@ -11,6 +11,7 @@ import { tryCatch } from "@trigger.dev/core";
 import { $replica } from "~/db.server";
 import { requireUser } from "~/services/session.server";
 import { sanitizeRedirectPath } from "~/utils";
+import { canConnectIntegration } from "~/v3/deploymentAccess.server";
 
 const QuerySchema = z.discriminatedUnion("setup_action", [
   z.object({
@@ -105,6 +106,18 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   switch (callbackData.setup_action) {
     case "install": {
+      if (!(await canConnectIntegration(organizationId, "github"))) {
+        logger.info(
+          "GitHub App installation refused: GitHub isn't available for this organization",
+          {
+            organizationId,
+          }
+        );
+        return consumingSession(
+          await redirectWithErrorMessage(redirectTo, request, "Failed to install GitHub app")
+        );
+      }
+
       const [error] = await tryCatch(
         linkGitHubAppInstallation({
           installationId: callbackData.installation_id,

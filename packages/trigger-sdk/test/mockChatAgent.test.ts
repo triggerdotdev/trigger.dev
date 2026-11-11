@@ -2180,10 +2180,14 @@ describe("mockChatAgent tools / toModelOutput (TRI-10149)", () => {
       },
     });
 
-    const harness = mockChatAgent(agent, { chatId: "test-tmo-static" });
+    const harness = mockChatAgent(agent, {
+      chatId: "test-tmo-static",
+      continuation: true,
+      previousRunId: "run_prior",
+      snapshot: { version: 1, messages: [seedAssistantWithToolResult] } as never,
+    });
     try {
-      // Turn 1 seeds the tool result; turn 2 forces a re-conversion of history.
-      await harness.sendMessage(seedAssistantWithToolResult as any);
+      await harness.sendMessage(userMessage("hello"));
       await harness.sendMessage(userMessage("recall"));
       await new Promise((r) => setTimeout(r, 20));
 
@@ -2218,9 +2222,14 @@ describe("mockChatAgent tools / toModelOutput (TRI-10149)", () => {
       },
     });
 
-    const harness = mockChatAgent(agent, { chatId: "test-tmo-fn" });
+    const harness = mockChatAgent(agent, {
+      chatId: "test-tmo-fn",
+      continuation: true,
+      previousRunId: "run_prior",
+      snapshot: { version: 1, messages: [seedAssistantWithToolResult] } as never,
+    });
     try {
-      await harness.sendMessage(seedAssistantWithToolResult as any);
+      await harness.sendMessage(userMessage("hello"));
       await harness.sendMessage(userMessage("recall"));
       await new Promise((r) => setTimeout(r, 20));
 
@@ -2250,9 +2259,14 @@ describe("mockChatAgent tools / toModelOutput (TRI-10149)", () => {
       },
     });
 
-    const harness = mockChatAgent(agent, { chatId: "test-tmo-none" });
+    const harness = mockChatAgent(agent, {
+      chatId: "test-tmo-none",
+      continuation: true,
+      previousRunId: "run_prior",
+      snapshot: { version: 1, messages: [seedAssistantWithToolResult] } as never,
+    });
     try {
-      await harness.sendMessage(seedAssistantWithToolResult as any);
+      await harness.sendMessage(userMessage("hello"));
       await harness.sendMessage(userMessage("recall"));
       await new Promise((r) => setTimeout(r, 20));
 

@@ -15,8 +15,9 @@ const quotes: QuoteType[] = [
     person: "Paul Copplestone, Supabase",
   },
   {
-    quote: "We love Trigger.dev and it’s had a big impact in dev iteration velocity already.",
-    person: "André Neves, ZBD",
+    quote:
+      "Trigger.dev's TypeScript support, simplicity and visual feedback let us focus on making AI excellent at UI creation instead of managing infrastructure.",
+    person: "Junior Garcia, HeroUI",
   },
   {
     quote: "We run millions of workflows a month on Trigger.dev.",
@@ -24,23 +25,17 @@ const quotes: QuoteType[] = [
   },
   {
     quote:
+      "Trigger.dev lets us focus on AI logic, not infrastructure. We can now ship workflow orchestration the same way we ship backend features.",
+    person: "Karl Kaiser, Pallet",
+  },
+  {
+    quote:
       "With Trigger.dev, we’ve summarized over a million student interactions in just a couple of weeks.",
     person: "Ben Duggan, MagicSchool AI",
   },
   {
-    quote:
-      "Trigger.dev's TypeScript support, simplicity and visual feedback let us focus on making AI excellent at UI creation instead of managing infrastructure.",
-    person: "Junior Garcia, HeroUI",
-  },
-  {
-    quote:
-      "The default tracing and observability make viewing and debugging agentic sessions incredibly easy.",
-    person: "Graham Tremper, Arena",
-  },
-  {
-    quote:
-      "Trigger.dev lets us focus on AI logic, not infrastructure. We can now ship workflow orchestration the same way we ship backend features.",
-    person: "Karl Kaiser, Pallet",
+    quote: "We love Trigger.dev and it’s had a big impact in dev iteration velocity already.",
+    person: "André Neves, ZBD",
   },
   {
     quote:

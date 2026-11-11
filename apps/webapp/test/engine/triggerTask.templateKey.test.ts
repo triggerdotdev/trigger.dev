@@ -288,6 +288,7 @@ describe("template key in the task metadata cache", () => {
         const service = new TemplatePrebuildService(prisma, builderConfig(url), cache);
         expect(await service.build(IMAGE, "shadow", older.deployment)).toEqual({
           outcome: "built",
+          templateKey: KEY,
         });
       });
 
@@ -330,7 +331,10 @@ describe("template key in the task metadata cache", () => {
         cache
       );
       const startedAt = performance.now();
-      expect(await service.build(IMAGE, "shadow", deployment)).toEqual({ outcome: "built" });
+      expect(await service.build(IMAGE, "shadow", deployment)).toEqual({
+        outcome: "built",
+        templateKey: KEY,
+      });
       expect(performance.now() - startedAt).toBeLessThan(5_000);
     });
 
@@ -381,7 +385,10 @@ describe("template key in the task metadata cache", () => {
 
       await withBuilder(KEY, async (url) => {
         const service = new TemplatePrebuildService(prisma, builderConfig(url), cache);
-        expect(await service.build(IMAGE, "shadow", deployment)).toEqual({ outcome: "built" });
+        expect(await service.build(IMAGE, "shadow", deployment)).toEqual({
+          outcome: "built",
+          templateKey: KEY,
+        });
       });
 
       expect((await cache.getCurrent(environment.id, SLUG))?.templateKey).toBe(KEY);

@@ -1,3 +1,4 @@
+import { withAdminApi } from "~/services/adminApi.server";
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
@@ -11,7 +12,7 @@ import {
 } from "~/v3/featureFlags.server";
 import { validatePartialFeatureFlags } from "~/v3/featureFlags";
 
-export async function action({ request }: ActionFunctionArgs) {
+async function handleAction({ request }: ActionFunctionArgs) {
   await requireAdminApiRequest(request);
 
   try {
@@ -55,3 +56,5 @@ export async function action({ request }: ActionFunctionArgs) {
     );
   }
 }
+
+export const action = withAdminApi(handleAction);

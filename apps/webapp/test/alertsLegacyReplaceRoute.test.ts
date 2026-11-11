@@ -79,9 +79,6 @@ vi.mock("~/components/alerts/hasLegacyAlerts.server", () => ({
   }),
 }));
 
-vi.mock("~/services/dashboardAgentDb.server", () => ({ dashboardAgentDb: {} }));
-vi.mock("@internal/dashboard-agent-db", () => ({ chatExists: async () => true }));
-
 vi.mock("~/db.server", () => ({
   prisma: {
     user: { findFirst: async () => ({ admin: false }) },
@@ -242,7 +239,6 @@ describe("legacy alerts replace action", () => {
         notifiers: [
           { type: "channel", channelId: "ch_1" },
           { type: "channel", channelId: "ch_2" },
-          { type: "chat", chatId: "chat_1", userId: "user_1" },
         ],
         authorize: expect.any(Function),
       },
@@ -301,6 +297,23 @@ describe("legacy alerts replace action", () => {
       context: {},
     });
     expect(response.status).toBe(400);
+    expect(calls.service).toEqual([]);
+  });
+
+  it("rejects a replace without a notifier channel", async () => {
+    const response = await action({
+      request: post({
+        intent: "replace",
+        channelId: "ch_1",
+        alertType: "TASK_RUN",
+        environmentIds: "env_1",
+        chatId: "chat_1",
+      }),
+      params,
+      context: {},
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "At least one channel is required" });
     expect(calls.service).toEqual([]);
   });
 

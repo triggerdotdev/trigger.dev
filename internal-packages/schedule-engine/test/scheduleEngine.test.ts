@@ -25,7 +25,6 @@ describe("ScheduleEngine Integration", () => {
         redis: redisOptions,
         distributionWindow: { seconds: 10 },
         schedulePhaseSecret: "test-schedule-phase-secret",
-        cronSpreadFraction: 1,
         worker: {
           concurrency: 1,
           disabled: false, // Enable worker for full integration test

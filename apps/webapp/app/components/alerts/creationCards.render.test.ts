@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { OperatingSystemContextProvider } from "~/components/primitives/OperatingSystemProvider";
 import { ShortcutsProvider } from "~/components/primitives/ShortcutsProvider";
 import { AlertCreatedCard } from "./creationCards";
-import { alertCreatedBlock, type CreatedCardFields } from "./alertCreatedCard";
+import { alertCreatedBlock, groupCreatedBlock, type CreatedCardFields } from "./alertCreatedCard";
 
 function wrap(el: React.ReactElement): string {
   return renderToStaticMarkup(
@@ -54,5 +54,24 @@ describe("AlertCreatedCard", () => {
     const html = wrap(createElement(AlertCreatedCard, { block }));
     expect(html).toContain(`It expires ${new Date(expiresAt).toLocaleString()}.`);
     expect(html).not.toContain(expiresAt);
+  });
+
+  // Catches: a created group card missing its members or link.
+  it("renders a group with its members and a View alert link", () => {
+    const html = wrap(
+      createElement(AlertCreatedCard, {
+        block: groupCreatedBlock("g_1", {
+          name: "Prod group",
+          compositeMode: "all",
+          memberNames: ["A1", "A2", "A3", "A4", "A5", "A6", "A7"],
+          channelNames: ["Ops"],
+        }),
+        alertDetailPath: "/alerts/g_1",
+      })
+    );
+    expect(html).toContain("Prod group is active.");
+    expect(html).toContain("Raises when: all of 7 alerts (A1, A2, A3, A4, A5, +2 more).");
+    expect(html).not.toContain("A6");
+    expect(html).toContain('href="/alerts/g_1"');
   });
 });

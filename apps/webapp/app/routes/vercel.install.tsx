@@ -7,6 +7,8 @@ import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
 import { generateVercelOAuthState } from "~/v3/vercel/vercelOAuthState.server";
 import { findProjectBySlug } from "~/models/project.server";
+import { v3ProjectSettingsIntegrationsPath } from "~/utils/pathBuilder";
+import { canConnectIntegration } from "~/v3/deploymentAccess.server";
 
 const QuerySchema = z.object({
   org_slug: z.string(),
@@ -68,6 +70,16 @@ export const loader = dashboardLoader(
     // Use "prod" as the default environment slug for the redirect
     // The callback will redirect to the settings page for this environment
     const environmentSlug = "prod";
+
+    if (!(await canConnectIntegration(org.id, "vercel"))) {
+      throw redirect(
+        v3ProjectSettingsIntegrationsPath(
+          { slug: org_slug },
+          { slug: project_slug },
+          { slug: environmentSlug }
+        )
+      );
+    }
 
     // Generate JWT state token
     const stateToken = await generateVercelOAuthState({

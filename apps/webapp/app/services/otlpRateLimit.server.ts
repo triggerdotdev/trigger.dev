@@ -3,6 +3,7 @@ import type { NextFunction, Request, Response } from "express";
 import { env } from "~/env.server";
 import { createRedisRateLimitClient, RateLimiter } from "~/services/rateLimiter.server";
 import { extractClientIp } from "~/utils/extractClientIp.server";
+import { getRouterPath } from "~/utils/sanitizeHttpUrl";
 import { singleton } from "~/utils/singleton";
 import { logger } from "./logger.server";
 
@@ -61,7 +62,7 @@ export async function otlpRateLimiter(req: Request, res: Response, next: NextFun
     return next();
   }
 
-  if (req.method.toUpperCase() === "OPTIONS" || !OTLP_PATH.test(req.path)) {
+  if (req.method.toUpperCase() === "OPTIONS" || !OTLP_PATH.test(getRouterPath(req) ?? "")) {
     return next();
   }
 

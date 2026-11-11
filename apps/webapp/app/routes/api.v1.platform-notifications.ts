@@ -1,13 +1,16 @@
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
+import {
+  authenticateApiRequestWithPersonalAccessToken,
+  personalAccessTokenUnauthorizedResponse,
+} from "~/services/personalAccessToken.server";
 import { getNextCliNotification } from "~/services/platformNotifications.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
 
   if (!authenticationResult) {
-    return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
+    return personalAccessTokenUnauthorizedResponse(request);
   }
 
   const url = new URL(request.url);

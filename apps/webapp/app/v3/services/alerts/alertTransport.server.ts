@@ -16,6 +16,7 @@ import {
 import type { ProjectAlertWebhookProperties } from "~/models/projectAlert.server";
 import { logger } from "~/services/logger.server";
 import { decryptSecret } from "~/services/secrets/secretStore.server";
+import type { EncryptionKeyring } from "~/utils/encryptionKeyring.server";
 import { safeWebhookFetch, UnsafeWebhookUrlError } from "./safeWebhookFetch.server";
 
 export class SkipRetryError extends Error {}
@@ -106,7 +107,7 @@ export async function postSlackMessage(
 export async function deliverWebhookPayload(params: {
   url: string;
   secret: ProjectAlertWebhookProperties["secret"];
-  encryptionKey: string;
+  encryptionKey: EncryptionKeyring;
   rawPayload: string;
   context?: { webhookId?: string; runId?: string };
   buildErrorMessage?: (host: string) => string;

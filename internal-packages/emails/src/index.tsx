@@ -32,6 +32,12 @@ import CliLoginAuthorizedEmail, {
 import BulkActionCompletedEmail, {
   BulkActionCompletedEmailSchema,
 } from "../emails/bulk-action-complete";
+import PersonalAccessTokenExpiredEmail, {
+  PersonalAccessTokenExpiredEmailSchema,
+} from "../emails/personal-access-token-expired";
+import PersonalAccessTokenExpiringEmail, {
+  PersonalAccessTokenExpiringEmailSchema,
+} from "../emails/personal-access-token-expiring";
 
 export { type MailTransportOptions };
 
@@ -55,6 +61,8 @@ export const DeliverEmailSchema = z
     MfaDisabledEmailSchema,
     CliLoginAuthorizedEmailSchema,
     BulkActionCompletedEmailSchema,
+    PersonalAccessTokenExpiringEmailSchema,
+    PersonalAccessTokenExpiredEmailSchema,
   ])
   .and(z.object({ to: z.string() }));
 
@@ -202,6 +210,18 @@ export class EmailClient {
         return {
           subject: `Bulk action finished`,
           component: <BulkActionCompletedEmail {...data} />,
+        };
+      }
+      case "personal-access-token-expiring": {
+        return {
+          subject: `Your Trigger.dev personal access token is about to expire`,
+          component: <PersonalAccessTokenExpiringEmail {...data} />,
+        };
+      }
+      case "personal-access-token-expired": {
+        return {
+          subject: `Your Trigger.dev personal access token has expired`,
+          component: <PersonalAccessTokenExpiredEmail {...data} />,
         };
       }
     }

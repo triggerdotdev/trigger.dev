@@ -15,9 +15,10 @@ vi.mock("~/db.server", () => ({
   $replica: {},
 }));
 
-vi.mock("~/env.server", () => ({
-  env: { ENCRYPTION_KEY: "0".repeat(64) },
-}));
+vi.mock("~/env.server", async () => {
+  const { withLegacyEncryptionKeyring } = await import("../helpers/encryptionEnv");
+  return { env: withLegacyEncryptionKeyring({ ENCRYPTION_KEY: "0".repeat(64) }) };
+});
 
 vi.mock("~/utils/tokens.server", () => ({
   hashToken: (t: string) => `hashed:${t}`,
@@ -57,7 +58,7 @@ describe("authenticatePersonalAccessToken — lastAccessedAt throttle", () => {
 
     const result = await authenticatePersonalAccessToken("tr_pat_validtoken");
 
-    expect(result).toEqual({ userId: "user_1" });
+    expect(result).toEqual({ userId: "user_1", tokenId: "pat_123" });
     expect(updateManyMock).toHaveBeenCalledTimes(1);
 
     const call = updateManyMock.mock.calls[0][0];

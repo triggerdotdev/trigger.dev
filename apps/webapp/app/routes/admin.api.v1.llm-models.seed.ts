@@ -1,10 +1,11 @@
+import { withAdminApi } from "~/services/adminApi.server";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { seedLlmPricing, syncLlmCatalog } from "@internal/llm-model-catalog";
 import { prisma } from "~/db.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
 import { llmPricingRegistry } from "~/v3/llmPricingRegistry.server";
 
-export async function action({ request }: ActionFunctionArgs) {
+async function handleAction({ request }: ActionFunctionArgs) {
   await requireAdminApiRequest(request);
 
   const url = new URL(request.url);
@@ -37,3 +38,5 @@ export async function action({ request }: ActionFunctionArgs) {
     message: `Seeded ${result.modelsCreated} created, ${result.modelsSkipped} skipped, ${result.modelsUpdated} updated`,
   });
 }
+
+export const action = withAdminApi(handleAction);

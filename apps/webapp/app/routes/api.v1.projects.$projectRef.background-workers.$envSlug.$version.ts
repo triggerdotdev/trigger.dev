@@ -10,6 +10,7 @@ import {
 import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
 import { logger } from "~/services/logger.server";
 import zlib from "node:zlib";
+import { personalAccessTokenUnauthorizedResponse } from "~/services/personalAccessToken.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -32,7 +33,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     });
 
     if (!authenticationResult) {
-      return json({ error: "Invalid or Missing API key" }, { status: 401 });
+      return personalAccessTokenUnauthorizedResponse(request, "Invalid or Missing API key");
     }
 
     const environment = await authenticatedEnvironmentForAuthentication(

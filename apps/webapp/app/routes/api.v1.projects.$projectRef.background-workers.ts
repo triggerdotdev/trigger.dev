@@ -2,7 +2,8 @@ import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { CreateBackgroundWorkerRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
-import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { authenticateApiKeyWithScope } from "~/services/apiAuth.server";
+import { DEV_WORKER_ACTION, DEV_WORKER_RESOURCE } from "~/services/devWorkerAuthorization.server";
 import { logger } from "~/services/logger.server";
 import { SchedulePlanLimitError } from "~/v3/freeSchedulePolicy.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
@@ -14,6 +15,14 @@ import {
 const ParamsSchema = z.object({
   projectRef: z.string(),
 });
+
+function declaresSchedulesOrWebhooks({ metadata }: CreateBackgroundWorkerRequestBody) {
+  return (
+    metadata.tasks.some((task) => task.schedule !== undefined) ||
+    (metadata.webhookEndpoints?.length ?? 0) > 0 ||
+    (metadata.webhookSubscribers?.length ?? 0) > 0
+  );
+}
 
 export async function action({ request, params }: ActionFunctionArgs) {
   // Ensure this is a POST request
@@ -28,15 +37,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   try {
-    // Next authenticate the request
-    const authenticationResult = await authenticateApiRequest(request);
+    const authResult = await authenticateApiKeyWithScope(request, {
+      action: DEV_WORKER_ACTION,
+      resource: DEV_WORKER_RESOURCE,
+    });
 
-    if (!authenticationResult) {
-      logger.info("Invalid or missing api key", { url: request.url });
-      return json({ error: "Invalid or Missing API key" }, { status: 401 });
+    if (!authResult.ok) {
+      logger.info("Background worker registration not authorized", { url: request.url });
+      return json({ error: authResult.error }, { status: authResult.status });
     }
 
-    const authenticatedEnv = authenticationResult.environment;
+    const authenticatedEnv = authResult.authentication.environment;
 
     const { projectRef } = parsedParams.data;
 
@@ -47,10 +58,21 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ error: "Invalid body", issues: body.error.issues }, { status: 400 });
     }
 
+    // Schedules and webhooks act without a running dev session, so only full-access keys may
+    // declare them.
+    if (authResult.authentication.environmentScoped && declaresSchedulesOrWebhooks(body.data)) {
+      return json(
+        { error: "Declaring schedules or webhooks requires an API key with full access" },
+        { status: 403 }
+      );
+    }
+
     const service = new CreateBackgroundWorkerService();
 
     try {
-      const backgroundWorker = await service.call(projectRef, authenticatedEnv, body.data);
+      const backgroundWorker = await service.call(projectRef, authenticatedEnv, body.data, {
+        restricted: authResult.authentication.environmentScoped,
+      });
 
       return json(
         {

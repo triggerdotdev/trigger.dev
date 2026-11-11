@@ -1,8 +1,9 @@
+import { withAdminApi } from "~/services/adminApi.server";
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { requireBillingServiceOrAdminApiRequest } from "~/services/billingServiceAuth.server";
+import { requireBillingServiceRequest } from "~/services/billingServiceAuth.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { setOrgConcurrencyLimits } from "~/v3/services/orgPlanProvisioning.server";
 import { enqueueOrgProvisioningJob } from "~/v3/services/orgProvisioningJobs.server";
@@ -18,8 +19,8 @@ const RequestBodySchema = z.object({
   production: z.number().optional(),
 });
 
-export async function action({ request, params }: ActionFunctionArgs) {
-  await requireBillingServiceOrAdminApiRequest(request);
+async function handleAction({ request, params }: ActionFunctionArgs) {
+  await requireBillingServiceRequest(request);
 
   const { organizationId } = ParamsSchema.parse(params);
 
@@ -38,3 +39,5 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   return json({ success: true, queued: true }, { status: 202 });
 }
+
+export const action = withAdminApi(handleAction);

@@ -12,3 +12,28 @@ export function sanitizeHttpUrl(url: string | undefined | null): string | undefi
     return undefined;
   }
 }
+
+const URL_SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
+
+export function sanitizeLinkTarget(to: string): string | undefined {
+  const target = to.replace(/[\t\n\r]/g, "").replace(/^[\u0000- ]+|[\u0000- ]+$/g, "");
+
+  if (URL_SCHEME.test(target)) {
+    return sanitizeHttpUrl(target)
+      ? target.replace(URL_SCHEME, (scheme) => scheme.toLowerCase())
+      : undefined;
+  }
+
+  const path = target.split(/[?#]/, 1)[0];
+  const hasDotSegments = path.split("/").some((segment) => segment === "." || segment === "..");
+
+  if (
+    path.includes("\\") ||
+    path.startsWith("//") ||
+    (hasDotSegments && (path.includes(":") || path.includes("//")))
+  ) {
+    return undefined;
+  }
+
+  return target;
+}

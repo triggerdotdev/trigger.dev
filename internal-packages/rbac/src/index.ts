@@ -1,6 +1,11 @@
 import type {
+  ApiKeyAccessOptions,
   ApiKeyPolicyDescription,
-  ApiKeyPreset,
+  ApiKeyScopeUseEvent,
+  ApiKeyScopeUsage,
+  ApiKeyScopeUsageParams,
+  ApiKeyPresetDeleteResult,
+  ApiKeyPresetMutationResult,
   BearerAuthOptions,
   BearerAuthResult,
   Permission,
@@ -19,10 +24,13 @@ import { isAdditionalApiKey } from "@trigger.dev/core/v3/apiKeys";
 import { isPublicJWT } from "@trigger.dev/core/v3/jwt";
 
 import { RoleBaseAccessFallback } from "./fallback.js";
+import { rejectExpiredPersonalAccessToken } from "./personalAccessTokenExpiry.js";
 // Single source of truth for the capless-token scope ceiling; the env-JWT
 // exchange route imports it to project requested scopes against it.
 export { CAPLESS_USER_ACTOR_SCOPES } from "./fallback.js";
 import { BearerCredentialResolver, type BearerResolution } from "./bearerCredentials.js";
+import type { PublicTokenSubjectCodec } from "./publicTokenSubject.js";
+import type { ApiKeyScopeRecorder } from "./scopeUsage.js";
 export type {
   BearerAuthOptions,
   RoleBaseAccessController,
@@ -52,8 +60,27 @@ export type HostRbacController = Omit<Required<RoleBaseAccessController>, "authe
 };
 export type { UserActorAuthResult, UserActorClaims } from "@trigger.dev/plugins";
 export { buildJwtAbility, scopesWithinAbility } from "./ability.js";
-export { FULL_ACCESS_PRESET_ID, scopesGrantFullAccess } from "@trigger.dev/plugins";
+export {
+  FULL_ACCESS_PRESET_ID,
+  scopesGrantFullAccess,
+  UNRESTRICTED_API_KEY_SCOPE_USE,
+} from "@trigger.dev/plugins";
+export type { ApiKeyCapabilityUsage, ApiKeyScopeUsage } from "@trigger.dev/plugins";
 export { resolveJwtSigningKey } from "./bearerCredentials.js";
+export {
+  clientIpFromHeaders,
+  isIpAllowed,
+  MAX_API_KEY_IP_RANGES,
+  parseIpRanges,
+  type ParseIpRangesResult,
+} from "./ipAllowlist.js";
+export {
+  createPublicTokenSubjectCodec,
+  isSealedPublicTokenSubject,
+  resolvePublicTokenSubject,
+  type PublicTokenSubjectCodec,
+  type ResolvedPublicTokenSubject,
+} from "./publicTokenSubject.js";
 // Re-export the user-actor token grammar so the webapp mints/checks tokens
 // through @trigger.dev/rbac (it doesn't import @trigger.dev/plugins directly).
 export {
@@ -61,6 +88,15 @@ export {
   signUserActorToken,
   verifyUserActorToken,
   USER_ACTOR_TOKEN_PREFIX,
+} from "@trigger.dev/plugins";
+// The PAT expiry rule, shared with the RBAC plugins so host and plugin agree.
+export {
+  CLI_LOGIN_EXPIRED,
+  PERSONAL_ACCESS_TOKEN_EXPIRED,
+  personalAccessTokenExpiry,
+  personalAccessTokenExpiryMessage,
+  personalAccessTokenValidUntil,
+  type PersonalAccessTokenExpiry,
 } from "@trigger.dev/plugins";
 
 // Either a single PrismaClient (used for both writes and reads — fine
@@ -75,6 +111,7 @@ export type RbacCreateOptions = {
   // Platform secret used to verify delegated user-actor tokens (tr_uat_).
   // Threaded through to the plugin / fallback's authenticateUserActor.
   userActorSecret?: string;
+  publicTokenSubjects?: PublicTokenSubjectCodec;
   // Writer/reader connection URLs + pool sizes for a plugin that owns its
   // own database client, resolved by the host from its env so the plugin
   // follows the host's writer/replica topology. The fallback ignores this —
@@ -105,6 +142,10 @@ export function withActionAliases(underlying: RbacAbility): RbacAbility {
   };
 }
 
+function ownFlag(options: BearerAuthOptions | undefined, key: keyof BearerAuthOptions): boolean {
+  return options !== undefined && Object.getOwnPropertyDescriptor(options, key)?.value === true;
+}
+
 function resolveBearerResolution(
   result: BearerAuthResult,
   context: {
@@ -132,6 +173,15 @@ function resolveBearerResolution(
   };
 }
 
+function scopeRecorderFor(controller: RoleBaseAccessController): ApiKeyScopeRecorder | undefined {
+  if (!controller.recordApiKeyScopeUse) return undefined;
+  return (event) => {
+    try {
+      controller.recordApiKeyScopeUse?.(event);
+    } catch {}
+  };
+}
+
 // Loads the plugin lazily; falls back to the fallback implementation if not installed.
 // Synchronous create() avoids top-level await (not supported in the webapp's CJS build).
 class LazyController implements RoleBaseAccessController {
@@ -140,12 +190,22 @@ class LazyController implements RoleBaseAccessController {
   // optional plugin. The host resolves them with its always-on credential
   // resolver — not a full RBAC fallback controller.
   private readonly _hostCredentialResolver: BearerCredentialResolver;
+  private readonly _replica: PrismaClient;
+  private _recordScopeUse: ApiKeyScopeRecorder | undefined;
 
   constructor(prisma: RbacPrismaInput, options?: RbacCreateOptions) {
+    this._replica = "replica" in prisma ? prisma.replica : prisma;
     this._hostCredentialResolver = new BearerCredentialResolver(
-      "primary" in prisma ? prisma : { primary: prisma, replica: prisma }
+      "primary" in prisma ? prisma : { primary: prisma, replica: prisma },
+      { publicTokenSubjects: options?.publicTokenSubjects }
     );
     this._init = this.load(prisma, options);
+    this._init.then(
+      (controller) => {
+        this._recordScopeUse = scopeRecorderFor(controller);
+      },
+      () => {}
+    );
     // load() runs eagerly but the result is awaited lazily on first method
     // call. If load() rejects (e.g. REQUIRE_PLUGINS=1 + plugin missing) and
     // nothing awaits _init before Node ticks past, the rejection surfaces
@@ -162,6 +222,7 @@ class LazyController implements RoleBaseAccessController {
     if (options?.forceFallback) {
       return new RoleBaseAccessFallback(prisma, {
         userActorSecret: options?.userActorSecret,
+        publicTokenSubjects: options?.publicTokenSubjects,
       }).create();
     }
     const moduleName = "@triggerdotdev/plugins/rbac";
@@ -221,6 +282,7 @@ class LazyController implements RoleBaseAccessController {
 
       return new RoleBaseAccessFallback(prisma, {
         userActorSecret: options?.userActorSecret,
+        publicTokenSubjects: options?.publicTokenSubjects,
       }).create();
     }
   }
@@ -236,7 +298,12 @@ class LazyController implements RoleBaseAccessController {
   async authenticateBearer(...args: Parameters<RoleBaseAccessController["authenticateBearer"]>) {
     const controller = await this.c();
     const usingPlugin = await controller.isUsingPlugin();
-    const [request, options] = args;
+    const [request, callerOptions] = args;
+    // Pass on only the flags the caller set itself.
+    const options: BearerAuthOptions = {
+      allowJWT: ownFlag(callerOptions, "allowJWT"),
+      allowPreviewParent: ownFlag(callerOptions, "allowPreviewParent"),
+    };
     const rawToken = request.headers
       .get("Authorization")
       ?.replace(/^Bearer /, "")
@@ -251,8 +318,12 @@ class LazyController implements RoleBaseAccessController {
     // remain authoritative in the installed controller.
     const result =
       useHostForPublicJWT || useHostForAdditionalKey
-        ? await this._hostCredentialResolver.authenticate(...args)
-        : await controller.authenticateBearer(...args);
+        ? await this._hostCredentialResolver.authenticate(
+            request,
+            options,
+            useHostForAdditionalKey ? this._recordScopeUse : undefined
+          )
+        : await controller.authenticateBearer(request, options);
 
     const resolution = resolveBearerResolution(result, {
       useHostForAdditionalKey,
@@ -315,7 +386,10 @@ class LazyController implements RoleBaseAccessController {
   }
 
   async authenticatePat(...args: Parameters<RoleBaseAccessController["authenticatePat"]>) {
-    const result = await (await this.c()).authenticatePat(...args);
+    const result = await rejectExpiredPersonalAccessToken(
+      await (await this.c()).authenticatePat(...args),
+      this._replica
+    );
     return result.ok ? { ...result, ability: withActionAliases(result.ability) } : result;
   }
 
@@ -335,12 +409,12 @@ class LazyController implements RoleBaseAccessController {
   // commit still satisfies it. LazyController is where that optional surface is
   // normalized into a total one: every host caller goes through `rbac`, so the
   // absent-plugin default lives here once instead of at each call site.
-  async apiKeyPresets(
-    ...args: Parameters<NonNullable<RoleBaseAccessController["apiKeyPresets"]>>
-  ): Promise<ApiKeyPreset[] | null> {
+  async apiKeyAccessOptions(
+    ...args: Parameters<NonNullable<RoleBaseAccessController["apiKeyAccessOptions"]>>
+  ): Promise<ApiKeyAccessOptions | null> {
     const controller = await this.c();
     // Same meaning as the no-plugin fallback: no catalogue to offer.
-    return controller.apiKeyPresets ? controller.apiKeyPresets(...args) : null;
+    return controller.apiKeyAccessOptions ? controller.apiKeyAccessOptions(...args) : null;
   }
 
   async prepareApiKeyPolicy(
@@ -363,6 +437,40 @@ class LazyController implements RoleBaseAccessController {
     const controller = await this.c();
     // Presentation only — an undescribed policy renders from its stored scopes.
     return controller.describeApiKeyPolicy ? controller.describeApiKeyPolicy(...args) : {};
+  }
+
+  async createApiKeyPreset(
+    ...args: Parameters<NonNullable<RoleBaseAccessController["createApiKeyPreset"]>>
+  ): Promise<ApiKeyPresetMutationResult> {
+    const controller = await this.c();
+    if (!controller.createApiKeyPreset) {
+      return { ok: false, error: "API key presets are not available" };
+    }
+    return controller.createApiKeyPreset(...args);
+  }
+
+  async deleteApiKeyPreset(
+    ...args: Parameters<NonNullable<RoleBaseAccessController["deleteApiKeyPreset"]>>
+  ): Promise<ApiKeyPresetDeleteResult> {
+    const controller = await this.c();
+    if (!controller.deleteApiKeyPreset) {
+      return { ok: false, error: "API key presets are not available" };
+    }
+    return controller.deleteApiKeyPreset(...args);
+  }
+
+  recordApiKeyScopeUse(event: ApiKeyScopeUseEvent): void {
+    this._recordScopeUse?.(event);
+  }
+
+  async apiKeyScopeUsage(params: ApiKeyScopeUsageParams): Promise<ApiKeyScopeUsage[] | null> {
+    const controller = await this.c();
+    if (!controller.apiKeyScopeUsage) return null;
+    try {
+      return await controller.apiKeyScopeUsage(params);
+    } catch {
+      return null;
+    }
   }
 
   async allPermissions(

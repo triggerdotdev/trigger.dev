@@ -37,7 +37,6 @@ import { MAX_URIS_PER_RESOLVE_REQUEST } from "~/components/dashboard-agent/resol
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
-import { listAlertRoutedChatIds } from "~/v3/services/alerts/storage/listAlertRoutedChatIds.server";
 import { findProjectWithOrgFlagsBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
@@ -244,13 +243,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     return json({ messages, session: browserSession });
   }
 
-  const alertRoutedChatIds = await listAlertRoutedChatIds($replica, project.organizationId);
   const chats = await listChats(dashboardAgentDb, {
     organizationId: project.organizationId,
     userId,
     actingUserId,
     withMessagesOnly: true,
-    alertRoutedChatIds,
   });
 
   const watchEnabled =

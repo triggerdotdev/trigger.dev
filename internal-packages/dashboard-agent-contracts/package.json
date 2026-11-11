@@ -9,6 +9,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@internal/alert-contracts": "workspace:*",
     "zod": "3.25.76"
   },
   "devDependencies": {

@@ -194,12 +194,21 @@ describe("ensureAlertHistoryPartitions", () => {
           expect(result.connectionStuck).toBe(true);
           stuck = result.deferred[result.deferred.length - 1]?.name;
           expect(stuck).toMatch(/^AlertDelivery_p/);
-          const { rows } = await client.query(
-            `SELECT count(*)::int AS n FROM pg_stat_activity
+          const readActive = async () => {
+            const { rows } = await client.query(
+              `SELECT count(*)::int AS n FROM pg_stat_activity
            WHERE query LIKE '%alerts-partitions:%' AND state = 'active'
              AND pid <> pg_backend_pid()`
-          );
-          expect(rows[0]?.n).toBe(0);
+            );
+            return rows[0]?.n as number | undefined;
+          };
+          const settleBy = Date.now() + 2_000;
+          let active = await readActive();
+          while (active !== 0 && Date.now() < settleBy) {
+            await new Promise((r) => setTimeout(r, 50));
+            active = await readActive();
+          }
+          expect(active).toBe(0);
         } finally {
           release();
           await holder;

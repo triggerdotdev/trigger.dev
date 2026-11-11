@@ -1,3 +1,4 @@
+import { withAdminApi } from "~/services/adminApi.server";
 import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import Redis from "ioredis";
 import { env } from "~/env.server";
@@ -40,7 +41,7 @@ async function probeLeadership(
   return leaders;
 }
 
-export async function loader({ request }: LoaderFunctionArgs) {
+async function handleLoader({ request }: LoaderFunctionArgs) {
   await requireAdminApiRequest(request);
 
   const sources = getRunsReplicationConfiguredSources();
@@ -61,3 +62,5 @@ export async function loader({ request }: LoaderFunctionArgs) {
     })),
   });
 }
+
+export const loader = withAdminApi(handleLoader);

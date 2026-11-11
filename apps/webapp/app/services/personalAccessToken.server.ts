@@ -9,12 +9,25 @@ import { customAlphabet, nanoid } from "nanoid";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
 import { z } from "zod";
-import { prisma } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
+import { noteAdminRequest, recordAdminPatCreated } from "./adminAudit/adminAuditContext.server";
 import { logger } from "./logger.server";
 import { rbac } from "./rbac.server";
 import { decryptToken, encryptToken, hashToken } from "~/utils/tokens.server";
+import { EncryptedValueSchema as EncryptedSecretValueSchema } from "~/utils/encryptionKeyring.server";
 import { env } from "~/env.server";
-import { isUserActorToken, verifyUserActorToken, type UserActorClaims } from "@trigger.dev/rbac";
+import {
+  isUserActorToken,
+  personalAccessTokenExpiry,
+  personalAccessTokenExpiryMessage,
+  personalAccessTokenValidUntil,
+  type PersonalAccessTokenExpiry,
+  verifyUserActorToken,
+  type UserActorClaims,
+} from "@trigger.dev/rbac";
+import { personalAccessTokensPath } from "~/utils/pathBuilder";
+import { PERSONAL_ACCESS_TOKEN_EXPIRING_SOON_DAYS } from "./personalAccessTokenExpiryEmails.server";
+import type { AdminAuditSourceEndpoint } from "@trigger.dev/plugins";
 
 const tokenValueLength = 40;
 //lowercase only, removed 0 and l to avoid confusion
@@ -30,6 +43,8 @@ export const PAT_LAST_ACCESSED_THROTTLE_MS = 5 * 60 * 1000;
 // the mint and read paths can't drift.
 export const AUTHORIZATION_CODE_TTL_MS = 10 * 60 * 1000;
 
+const SECONDS_PER_DAY = 24 * 60 * 60;
+
 type CreatePersonalAccessTokenOptions = {
   name: string;
   userId: string;
@@ -39,9 +54,81 @@ type CreatePersonalAccessTokenOptions = {
   // the CLI auth-code path doesn't pass one (legacy behaviour
   // preserved — those PATs run with no explicit role).
   roleId?: string;
+  /** Where the mint came from, for the admin audit trail when the user is an admin. */
+  auditSource?: AdminAuditSourceEndpoint;
+  /** Days until the token stops working. Omitted for tokens that don't expire. */
+  expiresInDays?: number;
+  /** Seconds without use after which the token stops working. Omitted for no idle limit. */
+  idleTimeoutSeconds?: number;
 };
 
-/** Returns obfuscated access tokens that aren't revoked */
+/** The columns `personalAccessTokenExpiry` reads, for every lookup that checks expiry. */
+const expiryColumns = {
+  expiresAt: true,
+  idleTimeoutSeconds: true,
+  lastAccessedAt: true,
+  createdAt: true,
+} as const;
+
+export type PersonalAccessTokenExpiryOption = {
+  /** Lifetime in days. */
+  value: number;
+  label: string;
+};
+
+/** The lifetimes a dashboard-created token can have, and the preselected one. */
+export function personalAccessTokenExpiryOptions(): {
+  options: PersonalAccessTokenExpiryOption[];
+  defaultDays: number;
+} {
+  const days = env.PERSONAL_ACCESS_TOKEN_EXPIRY_DAYS;
+  const defaultDays = days.includes(env.PERSONAL_ACCESS_TOKEN_DEFAULT_EXPIRY_DAYS)
+    ? env.PERSONAL_ACCESS_TOKEN_DEFAULT_EXPIRY_DAYS
+    : days[0];
+  return {
+    options: days.map((value) => ({ value, label: expiryLabel(value) })),
+    defaultDays,
+  };
+}
+
+export function isAllowedPersonalAccessTokenExpiry(days: number): boolean {
+  return env.PERSONAL_ACCESS_TOKEN_EXPIRY_DAYS.includes(days);
+}
+
+function expiryLabel(days: number) {
+  if (days % 365 === 0) {
+    const years = days / 365;
+    return years === 1 ? "1 year" : `${years} years`;
+  }
+  return days === 1 ? "1 day" : `${days} days`;
+}
+
+/** The JSON body for a failed `rbac.authenticatePat`, explaining an expired token. */
+export function personalAccessTokenAuthFailureBody(failure: {
+  error: string;
+  code?: PersonalAccessTokenExpiry["code"];
+  expiredAt?: Date;
+}) {
+  if (failure.code && failure.expiredAt) {
+    return personalAccessTokenExpiryBody({ code: failure.code, expiredAt: failure.expiredAt });
+  }
+  return { error: failure.error };
+}
+
+/** The tokens page. The public origin, when set, is the one users can open from a CLI, CI log or email. */
+export function personalAccessTokensUrl() {
+  return `${env.PUBLIC_APP_ORIGIN ?? env.APP_ORIGIN}${personalAccessTokensPath()}`;
+}
+
+/** The 401 body for an expired token: a CLI login says to log in again, others where to make a new one. */
+export function personalAccessTokenExpiryBody(expiry: PersonalAccessTokenExpiry) {
+  return {
+    error: personalAccessTokenExpiryMessage(expiry, personalAccessTokensUrl()),
+    code: expiry.code,
+  };
+}
+
+/** Returns obfuscated access tokens that aren't revoked, including expired ones */
 export async function getValidPersonalAccessTokens(userId: string) {
   const personalAccessTokens = await prisma.personalAccessToken.findMany({
     select: {
@@ -50,6 +137,8 @@ export async function getValidPersonalAccessTokens(userId: string) {
       obfuscatedToken: true,
       createdAt: true,
       lastAccessedAt: true,
+      expiresAt: true,
+      idleTimeoutSeconds: true,
     },
     where: {
       userId,
@@ -63,6 +152,17 @@ export async function getValidPersonalAccessTokens(userId: string) {
     obfuscatedToken: pat.obfuscatedToken,
     createdAt: pat.createdAt,
     lastAccessedAt: pat.lastAccessedAt,
+    expiresAt: pat.expiresAt,
+    idleTimeoutLabel:
+      pat.idleTimeoutSeconds === null
+        ? null
+        : expiryLabel(Math.round(pat.idleTimeoutSeconds / SECONDS_PER_DAY)),
+    isExpired: personalAccessTokenExpiry(pat) !== undefined,
+    isExpiringSoon:
+      pat.expiresAt !== null &&
+      personalAccessTokenExpiry(pat) === undefined &&
+      pat.expiresAt.getTime() - Date.now() <=
+        PERSONAL_ACCESS_TOKEN_EXPIRING_SOON_DAYS * SECONDS_PER_DAY * 1000,
   }));
 }
 
@@ -158,11 +258,15 @@ export async function revokePersonalAccessToken(tokenId: string, userId: string)
 
 export type PersonalAccessTokenAuthenticationResult = {
   userId: string;
+  /** The PAT row id. Absent for delegated user-actor tokens. */
+  tokenId?: string;
   /**
    * Verified claims when the caller presented a delegated user-actor token. They ride on the
    * result so no caller can hold the actor without its environment scope.
    */
   userActor?: UserActorClaims;
+  /** When the PAT stops working, if it expires. Anything minted from it shouldn't outlive it. */
+  validUntil?: Date;
 };
 
 /**
@@ -178,32 +282,32 @@ export type PersonalAccessTokenAuthenticationResult = {
  * and the apiBuilder's RBAC-routed PAT flow (which gets `lastAccessedAt`
  * from `rbac.authenticatePat`'s result). Keeps the throttle policy in one
  * place rather than expecting every plugin implementer to re-implement it.
+ *
+ * Returns the last-used time now in effect: the cached value when it was fresh, otherwise now.
  */
 export async function updateLastAccessedAtIfStale(
   tokenId: string,
   lastAccessedAt: Date | null
-): Promise<void> {
+): Promise<Date> {
   if (lastAccessedAt && Date.now() - lastAccessedAt.getTime() <= PAT_LAST_ACCESSED_THROTTLE_MS) {
-    return; // fresh — no roundtrip
+    return lastAccessedAt; // fresh — no roundtrip
   }
+  const now = new Date();
+  // If a concurrent request wins the conditional write, it stored a time within the throttle
+  // window of `now`, so `now` is still the last-used time to within that window.
   await prisma.personalAccessToken.updateMany({
     where: {
       id: tokenId,
       revokedAt: null,
       OR: [
         { lastAccessedAt: null },
-        { lastAccessedAt: { lt: new Date(Date.now() - PAT_LAST_ACCESSED_THROTTLE_MS) } },
+        { lastAccessedAt: { lt: new Date(now.getTime() - PAT_LAST_ACCESSED_THROTTLE_MS) } },
       ],
     },
-    data: { lastAccessedAt: new Date() },
+    data: { lastAccessedAt: now },
   });
+  return now;
 }
-
-const EncryptedSecretValueSchema = z.object({
-  nonce: z.string(),
-  ciphertext: z.string(),
-  tag: z.string(),
-});
 
 const AuthorizationHeaderSchema = z.string().regex(/^Bearer .+$/);
 
@@ -228,7 +332,7 @@ export async function authenticateApiRequestWithPersonalAccessToken(
 
 export type AdminAuthenticationResult =
   | { ok: true; user: User }
-  | { ok: false; status: 401 | 403; message: string };
+  | { ok: false; status: 401 | 403; message: string; code?: string };
 
 /**
  * Authenticates a request via personal access token and checks the user is
@@ -242,6 +346,12 @@ export async function authenticateAdminRequest(
   const authResult = await authenticateApiRequestWithPersonalAccessToken(request);
 
   if (!authResult) {
+    noteAdminRequest(request, { actor: { kind: "unauthenticated" }, captureBody: false });
+    const expiry = await getPersonalAccessTokenExpiry(request);
+    if (expiry) {
+      const { error, code } = personalAccessTokenExpiryBody(expiry);
+      return { ok: false, status: 401, message: error, code };
+    }
     return { ok: false, status: 401, message: "Invalid or Missing API key" };
   }
 
@@ -250,8 +360,20 @@ export async function authenticateAdminRequest(
   });
 
   if (!user) {
+    noteAdminRequest(request, { actor: { kind: "unauthenticated" }, captureBody: false });
     return { ok: false, status: 401, message: "Invalid or Missing API key" };
   }
+
+  noteAdminRequest(request, {
+    actor: {
+      kind: "user_pat",
+      userId: user.id,
+      email: user.email,
+      isAdmin: user.admin,
+      tokenId: authResult.tokenId,
+    },
+    captureBody: user.admin,
+  });
 
   if (!user.admin) {
     return { ok: false, status: 403, message: "You must be an admin to perform this action" };
@@ -270,7 +392,7 @@ export async function requireAdminApiRequest(request: Request): Promise<User> {
   const result = await authenticateAdminRequest(request);
 
   if (!result.ok) {
-    throw new Response(JSON.stringify({ error: result.message }), {
+    throw new Response(JSON.stringify({ error: result.message, code: result.code }), {
       status: result.status,
       headers: { "Content-Type": "application/json" },
     });
@@ -313,7 +435,15 @@ export async function authenticatePersonalAccessToken(
     return;
   }
 
-  await updateLastAccessedAtIfStale(personalAccessToken.id, personalAccessToken.lastAccessedAt);
+  // Checked before the lastAccessedAt write, so a request can't revive an idle-expired token.
+  if (personalAccessTokenExpiry(personalAccessToken)) {
+    return;
+  }
+
+  const lastUsedAt = await updateLastAccessedAtIfStale(
+    personalAccessToken.id,
+    personalAccessToken.lastAccessedAt
+  );
 
   const decryptedToken = decryptPersonalAccessToken(personalAccessToken);
 
@@ -326,11 +456,51 @@ export async function authenticatePersonalAccessToken(
 
   return {
     userId: personalAccessToken.userId,
+    tokenId: personalAccessToken.id,
+    validUntil: personalAccessTokenValidUntil({
+      ...personalAccessToken,
+      lastAccessedAt: lastUsedAt,
+    }),
   };
 }
 
 export function isPersonalAccessToken(token: string) {
   return token.startsWith(tokenPrefix);
+}
+
+/**
+ * When the request's bearer is an unrevoked personal access token that has expired,
+ * returns why and when. Lets a route that already rejected the request explain why.
+ */
+export async function getPersonalAccessTokenExpiry(
+  request: Request
+): Promise<PersonalAccessTokenExpiry | undefined> {
+  const token = getPersonalAccessTokenFromRequest(request);
+  if (!token || !isPersonalAccessToken(token)) {
+    return;
+  }
+
+  const personalAccessToken = await $replica.personalAccessToken.findFirst({
+    where: { hashedToken: hashToken(token), revokedAt: null },
+    select: expiryColumns,
+  });
+  return personalAccessToken ? personalAccessTokenExpiry(personalAccessToken) : undefined;
+}
+
+/**
+ * The 401 for a request whose personal access token didn't authenticate. If the token expired,
+ * the body says when and where to make a new one; otherwise it carries `error`.
+ */
+export async function personalAccessTokenUnauthorizedResponse(
+  request: Request,
+  error = "Invalid or Missing Access Token"
+): Promise<Response> {
+  const expiry = await getPersonalAccessTokenExpiry(request);
+  const body = expiry ? personalAccessTokenExpiryBody(expiry) : { error };
+  return new Response(JSON.stringify(body), {
+    status: 401,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 /**
@@ -344,9 +514,9 @@ export async function assertSourcePatActive(claims: UserActorClaims): Promise<bo
 
   const found = await prisma.personalAccessToken.findFirst({
     where: { id: claims.pat, revokedAt: null },
-    select: { id: true },
+    select: expiryColumns,
   });
-  return Boolean(found);
+  return found !== null && !personalAccessTokenExpiry(found);
 }
 
 /**
@@ -521,6 +691,11 @@ export async function createPersonalAccessTokenFromAuthorizationCode(
   const token = await createPersonalAccessToken({
     name: "cli",
     userId,
+    auditSource: { ip: approval.approverIp ?? null, userAgent: null },
+    idleTimeoutSeconds:
+      env.CLI_LOGIN_IDLE_TIMEOUT_DAYS > 0
+        ? env.CLI_LOGIN_IDLE_TIMEOUT_DAYS * SECONDS_PER_DAY
+        : undefined,
   });
 
   const bound = await prisma.authorizationCode.updateMany({
@@ -600,9 +775,12 @@ export async function createPersonalAccessToken({
   name,
   userId,
   roleId,
+  auditSource,
+  expiresInDays,
+  idleTimeoutSeconds,
 }: CreatePersonalAccessTokenOptions) {
   const token = createToken();
-  const encryptedToken = encryptToken(token, env.ENCRYPTION_KEY);
+  const encryptedToken = encryptToken(token, env.ENCRYPTION_KEYRING);
 
   const personalAccessToken = await prisma.personalAccessToken.create({
     data: {
@@ -611,6 +789,11 @@ export async function createPersonalAccessToken({
       encryptedToken,
       obfuscatedToken: obfuscateToken(token),
       hashedToken: hashToken(token),
+      expiresAt:
+        expiresInDays === undefined
+          ? undefined
+          : new Date(Date.now() + expiresInDays * SECONDS_PER_DAY * 1000),
+      idleTimeoutSeconds,
     },
   });
 
@@ -653,12 +836,20 @@ export async function createPersonalAccessToken({
     });
   }
 
+  void recordAdminPatCreated({
+    userId,
+    tokenId: personalAccessToken.id,
+    name,
+    source: auditSource,
+  });
+
   return {
     id: personalAccessToken.id,
     name,
     userId,
     token,
     obfuscatedToken: personalAccessToken.obfuscatedToken,
+    expiresAt: personalAccessToken.expiresAt,
   };
 }
 
@@ -686,11 +877,6 @@ function decryptPersonalAccessToken(personalAccessToken: PersonalAccessToken) {
     );
   }
 
-  const decryptedToken = decryptToken(
-    encryptedData.data.nonce,
-    encryptedData.data.ciphertext,
-    encryptedData.data.tag,
-    env.ENCRYPTION_KEY
-  );
+  const decryptedToken = decryptToken(encryptedData.data, env.ENCRYPTION_KEYRING);
   return decryptedToken;
 }

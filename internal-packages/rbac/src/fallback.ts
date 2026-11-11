@@ -16,12 +16,15 @@ import type {
 import {
   FULL_ACCESS_PRESET_ID,
   isUserActorToken,
+  personalAccessTokenExpiry,
+  personalAccessTokenExpiryMessage,
   verifyUserActorToken,
 } from "@trigger.dev/plugins";
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "@trigger.dev/database";
 import { buildFallbackAbility, buildJwtAbility, permissiveAbility } from "./ability.js";
 import { BearerCredentialResolver } from "./bearerCredentials.js";
+import type { PublicTokenSubjectCodec } from "./publicTokenSubject.js";
 
 // Reads only: a capless token still has to reach its own JWT exchange (gated on `read:apiKeys`).
 export const CAPLESS_USER_ACTOR_SCOPES = ["read:all"];
@@ -50,6 +53,7 @@ function resolvePrismaClients(input: PrismaInput): FallbackPrismaClients {
 export type FallbackOptions = {
   // Platform secret for verifying delegated user-actor tokens (tr_uat_).
   userActorSecret?: string;
+  publicTokenSubjects?: PublicTokenSubjectCodec;
 };
 
 export class RoleBaseAccessFallback {
@@ -78,7 +82,9 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     this.prisma = clients.primary;
     this.replica = clients.replica;
     this.userActorSecret = options?.userActorSecret;
-    this.bearer = new BearerCredentialResolver(clients);
+    this.bearer = new BearerCredentialResolver(clients, {
+      publicTokenSubjects: options?.publicTokenSubjects,
+    });
   }
 
   async isUsingPlugin(): Promise<boolean> {
@@ -216,10 +222,27 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
       // (see `PatAuthResult.lastAccessedAt` jsdoc). Without this the host
       // would need a second findFirst just to decide whether to fire the
       // updateMany, turning 1 DB roundtrip into 2.
-      select: { id: true, userId: true, lastAccessedAt: true },
+      select: {
+        id: true,
+        userId: true,
+        lastAccessedAt: true,
+        expiresAt: true,
+        idleTimeoutSeconds: true,
+        createdAt: true,
+      },
     });
     if (!pat) {
       return { ok: false, status: 401, error: "Invalid PAT" };
+    }
+
+    const expiry = personalAccessTokenExpiry(pat);
+    if (expiry) {
+      return {
+        ok: false,
+        status: 401,
+        error: personalAccessTokenExpiryMessage(expiry),
+        ...expiry,
+      };
     }
 
     return {
@@ -227,6 +250,9 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
       tokenId: pat.id,
       userId: pat.userId,
       lastAccessedAt: pat.lastAccessedAt,
+      expiresAt: pat.expiresAt,
+      idleTimeoutSeconds: pat.idleTimeoutSeconds,
+      createdAt: pat.createdAt,
       subject: {
         type: "personalAccessToken",
         tokenId: pat.id,
@@ -305,19 +331,38 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     return null;
   }
 
-  async apiKeyPresets(_organizationId: string) {
+  async apiKeyAccessOptions(_organizationId: string) {
     return null;
+  }
+
+  async createApiKeyPreset(_params: {
+    organizationId: string;
+    name: string;
+    description?: string;
+    capabilities: Record<string, string>;
+    createdById?: string;
+  }) {
+    return { ok: false as const, error: "API key presets are not available" };
+  }
+
+  async deleteApiKeyPreset(_params: { organizationId: string; presetId: string }) {
+    return { ok: false as const, error: "API key presets are not available" };
   }
 
   async prepareApiKeyPolicy(params: {
     organizationId: string;
     presetId: string;
     taskIdentifiers?: string[];
+    capabilities?: Record<string, string>;
   }) {
     // Without a plugin there is no preset catalogue, so full access is the only
     // policy on offer — but the caller still has to ask for it by name. Any
     // other preset, or any task selection, is a restricted key and unavailable.
-    if (params.presetId !== FULL_ACCESS_PRESET_ID || (params.taskIdentifiers?.length ?? 0) > 0) {
+    if (
+      params.presetId !== FULL_ACCESS_PRESET_ID ||
+      (params.taskIdentifiers?.length ?? 0) > 0 ||
+      params.capabilities !== undefined
+    ) {
       return { ok: false as const, error: "API key access presets are not available" };
     }
 

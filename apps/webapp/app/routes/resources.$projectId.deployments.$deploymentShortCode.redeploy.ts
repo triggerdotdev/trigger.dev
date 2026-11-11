@@ -96,6 +96,7 @@ export const action = dashboardAction(
             "This deployment is too old to be redeployed"
           );
         case "failed_to_enqueue_build":
+        case "deployment_access_denied":
           return redirectWithErrorMessage(redirectUrl, request, result.error.message);
         case "other":
         default:

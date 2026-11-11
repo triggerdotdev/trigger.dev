@@ -65,7 +65,7 @@ export async function findOrCreateUser(input: FindOrCreateUser): Promise<LoggedI
 }
 
 async function findOrCreateMagicLinkUser({ email }: FindOrCreateMagicLink): Promise<LoggedInUser> {
-  assertEmailAllowed(email);
+  await assertEmailAllowed(email);
 
   const existingUser = await prisma.user.findFirst({
     where: {
@@ -100,7 +100,7 @@ async function findOrCreateGithubUser({
   authenticationProfile,
   authenticationExtraParams,
 }: FindOrCreateGithub): Promise<LoggedInUser> {
-  assertEmailAllowed(email);
+  await assertEmailAllowed(email);
 
   const name = authenticationProfile._json.name;
   let avatarUrl: string | undefined = undefined;
@@ -190,7 +190,7 @@ async function findOrCreateGoogleUser({
   authenticationProfile,
   authenticationExtraParams,
 }: FindOrCreateGoogle): Promise<LoggedInUser> {
-  assertEmailAllowed(email);
+  await assertEmailAllowed(email);
 
   const name = authenticationProfile._json.name;
   let avatarUrl: string | undefined = undefined;
@@ -322,7 +322,7 @@ export async function findOrCreateSsoUser({
   // validating raw `email` would let case/whitespace variants slip past
   // (or misapply) the allow-list policy.
   const normalised = email.toLowerCase().trim();
-  assertEmailAllowed(normalised);
+  await assertEmailAllowed(normalised);
 
   const existingUser = await prisma.user.findFirst({ where: { email: normalised } });
 

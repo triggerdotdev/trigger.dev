@@ -27,7 +27,7 @@ import {
   redirectBackWithSuccessMessage,
 } from "~/models/message.server";
 import { prisma } from "~/db.server";
-import { resolveOrgIdFromSlug } from "~/models/organization.server";
+import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
 import { logger } from "~/services/logger.server";
 import { ProjectSettingsService } from "~/services/projectSettings.server";
@@ -36,6 +36,8 @@ import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashb
 import { EnvironmentParamSchema, v3BillingPath, vercelResourcePath } from "~/utils/pathBuilder";
 import { throwPermissionDenied } from "~/utils/permissionDenied";
 import { BuildSettingsSchema, type BuildSettings } from "~/v3/buildSettings";
+import { resolveIntegrationAccess } from "~/v3/deploymentAccess.server";
+import { findProjectBySlug } from "~/models/project.server";
 import { GitHubSettingsPanel } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github";
 import type { loader as vercelLoader } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
 import {
@@ -51,14 +53,11 @@ export const handle = { pageTitle: "Integrations" };
 export const loader = dashboardLoader(
   {
     params: EnvironmentParamSchema,
-    context: async (params) => {
-      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
-      return organizationId ? { organizationId } : {};
-    },
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
     // No hard authorization: the page renders a PermissionDenied panel for
     // roles that can't manage any integration (see canManageIntegrations).
   },
-  async ({ params, user, ability }) => {
+  async ({ params, user, ability, context }) => {
     const { projectParam, organizationSlug } = params;
 
     const canManageBuildSettings = ability.can("write", { type: "github" });
@@ -100,11 +99,20 @@ export const loader = dashboardLoader(
     }
 
     const { gitHubApp, buildSettings } = resultOrFail.value;
+    const project =
+      (gitHubApp.enabled || OrgIntegrationRepository.isVercelSupported) && context.organizationId
+        ? await findProjectBySlug(organizationSlug, projectParam, user.id)
+        : null;
+    const access =
+      project && context.organizationId
+        ? await resolveIntegrationAccess(context.organizationId, project.id)
+        : { github: true, vercel: true };
 
     return typedjson({
-      githubAppEnabled: gitHubApp.enabled,
+      githubAppConfigured: gitHubApp.enabled,
+      githubAppEnabled: gitHubApp.enabled && access.github,
       buildSettings,
-      vercelIntegrationEnabled: OrgIntegrationRepository.isVercelSupported,
+      vercelIntegrationEnabled: OrgIntegrationRepository.isVercelSupported && access.vercel,
       canManageBuildSettings,
     });
   }
@@ -151,10 +159,7 @@ const UpdateBuildSettingsFormSchema = z.object({
 export const action = dashboardAction(
   {
     params: EnvironmentParamSchema,
-    context: async (params) => {
-      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
-      return organizationId ? { organizationId } : {};
-    },
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
     // Build settings configure the Git-based deploy, so gate on write:github
     // (a restricted role can view neither this page nor mutate via a POST).
     authorization: { action: "write", resource: { type: "github" } },
@@ -224,8 +229,13 @@ export const action = dashboardAction(
 );
 
 export default function IntegrationsSettingsPage() {
-  const { githubAppEnabled, buildSettings, vercelIntegrationEnabled, canManageBuildSettings } =
-    useTypedLoaderData<typeof loader>();
+  const {
+    githubAppConfigured,
+    githubAppEnabled,
+    buildSettings,
+    vercelIntegrationEnabled,
+    canManageBuildSettings,
+  } = useTypedLoaderData<typeof loader>();
   const project = useProject();
   const organization = useOrganization();
   const environment = useEnvironment();
@@ -367,33 +377,31 @@ export default function IntegrationsSettingsPage() {
     <>
       <SettingsContainer className="md:mt-6">
         {githubAppEnabled && (
-          <>
-            <SettingsSection>
-              <SettingsHeader title="Git settings" />
-              <GitHubSettingsPanel
-                organizationSlug={organization.slug}
-                projectSlug={project.slug}
-                environmentSlug={environment.slug}
-                billingPath={v3BillingPath({ slug: organization.slug })}
-                layout="settings"
-              />
-            </SettingsSection>
+          <SettingsSection>
+            <SettingsHeader title="Git settings" />
+            <GitHubSettingsPanel
+              organizationSlug={organization.slug}
+              projectSlug={project.slug}
+              environmentSlug={environment.slug}
+              billingPath={v3BillingPath({ slug: organization.slug })}
+              layout="settings"
+            />
+          </SettingsSection>
+        )}
 
-            {vercelIntegrationEnabled && (
-              <SettingsSection>
-                <SettingsHeader title="Vercel integration" />
-                <VercelSettingsPanel
-                  organizationSlug={organization.slug}
-                  projectSlug={project.slug}
-                  environmentSlug={environment.slug}
-                  onOpenVercelModal={handleOpenVercelModal}
-                  isLoadingVercelData={
-                    vercelFetcher.state === "loading" || vercelFetcher.state === "submitting"
-                  }
-                />
-              </SettingsSection>
-            )}
-          </>
+        {githubAppConfigured && vercelIntegrationEnabled && (
+          <SettingsSection>
+            <SettingsHeader title="Vercel integration" />
+            <VercelSettingsPanel
+              organizationSlug={organization.slug}
+              projectSlug={project.slug}
+              environmentSlug={environment.slug}
+              onOpenVercelModal={handleOpenVercelModal}
+              isLoadingVercelData={
+                vercelFetcher.state === "loading" || vercelFetcher.state === "submitting"
+              }
+            />
+          </SettingsSection>
         )}
 
         <SettingsSection>

@@ -16,6 +16,7 @@
 import { describe, expect, it } from "vitest";
 import { getTestServer } from "./helpers/sharedTestServer";
 import { seedTestEnvironment } from "./helpers/seedTestEnvironment";
+import { seedTestUserProject } from "./helpers/seedTestUserProject";
 
 const ROUTE = "/api/v1/auth/jwt";
 
@@ -36,6 +37,39 @@ function decodePayload(token: string): Record<string, unknown> {
   const base64 = part.replace(/-/g, "+").replace(/_/g, "/");
   return JSON.parse(Buffer.from(base64, "base64").toString("utf8"));
 }
+
+describe("POST /api/v1/projects/:projectRef/:env/jwt", () => {
+  // Catches: PAT exchange bypassing the TTL cap or signing a different exp than it validated.
+  it("bounds PAT-minted JWTs to 24 hours", async () => {
+    const server = getTestServer();
+    const { project, pat } = await seedTestUserProject(server.prisma);
+    const exchange = (expirationTime?: string | number) =>
+      server.webapp.fetch(`/api/v1/projects/${project.externalRef}/dev/jwt`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${pat.token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ expirationTime }),
+      });
+
+    for (const expirationTime of [undefined, "24h", 86400]) {
+      const before = Math.floor(Date.now() / 1000);
+      const response = await exchange(expirationTime);
+      expect(response.status).toBe(200);
+      const { token } = (await response.json()) as { token: string };
+      const exp = decodePayload(token).exp as number;
+      const expectedTtl = expirationTime === undefined ? 3600 : 86400;
+      expect(exp).toBeGreaterThanOrEqual(before + expectedTtl);
+      expect(exp).toBeLessThanOrEqual(Math.floor(Date.now() / 1000) + expectedTtl);
+    }
+
+    for (const expirationTime of ["100y", 86401, Math.floor(Date.now() / 1000) + 172800]) {
+      const response = await exchange(expirationTime);
+      expect(response.status).toBe(400);
+    }
+  });
+});
 
 describe("POST /api/v1/auth/jwt", () => {
   it("mints a token for a valid root key, echoing the requested scopes", async () => {

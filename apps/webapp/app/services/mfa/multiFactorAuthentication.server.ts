@@ -1,5 +1,5 @@
 import { type SecretReference, type User, type PrismaClient } from "@trigger.dev/database";
-import { prisma } from "~/db.server";
+import { $transaction, prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { createRandomStringGenerator } from "@better-auth/utils/random";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
@@ -9,6 +9,7 @@ import { base32 } from "@better-auth/utils/base32";
 import { z } from "zod";
 import { scheduleEmail } from "../scheduleEmail.server";
 import { checkMfaRateLimit } from "./mfaRateLimiterGlobal.server";
+import type { MfaRateLimiters } from "./mfaRateLimiter.server";
 
 const generateRandomString = createRandomStringGenerator("A-Z", "0-9");
 
@@ -19,7 +20,10 @@ const SecretSchema = z.object({
 export class MultiFactorAuthenticationService {
   #prismaClient: PrismaClient;
 
-  constructor(prismaClient: PrismaClient = prisma) {
+  constructor(
+    prismaClient: PrismaClient = prisma,
+    private readonly rateLimiters?: MfaRateLimiters
+  ) {
     this.#prismaClient = prismaClient;
   }
 
@@ -52,10 +56,12 @@ export class MultiFactorAuthenticationService {
     // Rate limit before checking the code: disabling MFA asks for the second
     // factor, so unlimited attempts here would let a hijacked session
     // brute-force it. Same limiter as the login verify path.
-    await checkMfaRateLimit(userId);
+    await checkMfaRateLimit(userId, this.rateLimiters);
 
     // validate the TOTP code
-    const secretStore = getSecretStore(user.mfaSecretReference.provider);
+    const secretStore = getSecretStore(user.mfaSecretReference.provider, {
+      prismaClient: this.#prismaClient,
+    });
     const secretResult = await secretStore.getSecret(SecretSchema, user.mfaSecretReference.key);
 
     if (!secretResult) {
@@ -108,50 +114,81 @@ export class MultiFactorAuthenticationService {
     };
   }
 
-  public async enableTotp(userId: string) {
-    const user = await this.#prismaClient.user.findFirst({
-      where: { id: userId },
-    });
+  public async enableTotp(
+    userId: string,
+    params: { totpCode?: string; recoveryCode?: string } = {}
+  ) {
+    const result = await $transaction(
+      this.#prismaClient,
+      "enableTotp",
+      async (tx) => {
+        const user = await tx.user.findFirst({
+          where: { id: userId },
+          include: { mfaSecretReference: true },
+        });
 
-    if (!user) {
-      throw new ServiceValidationError("User not found");
+        if (!user) {
+          throw new ServiceValidationError("User not found");
+        }
+
+        if (user.mfaEnabledAt) {
+          await checkMfaRateLimit(userId, this.rateLimiters);
+
+          if (
+            !user.mfaSecretReference ||
+            !(await this.#verifyTotpCodeOrRecoveryCode(
+              user,
+              user.mfaSecretReference,
+              params.totpCode,
+              params.recoveryCode,
+              tx
+            ))
+          ) {
+            throw new ServiceValidationError("Invalid code provided. Please try again.");
+          }
+        }
+
+        const secretStore = getSecretStore("DATABASE", { prismaClient: tx });
+        const secret = generateRandomString(24);
+        const secretKey = `mfa:${userId}:${generateRandomString(8)}`;
+
+        await secretStore.setSecret(secretKey, { secret });
+
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            mfaLastUsedCode: null,
+            mfaSecretReference: {
+              create: { provider: "DATABASE", key: secretKey },
+            },
+          },
+        });
+
+        // Retire the previous factor and all its recovery codes atomically.
+        if (user.mfaSecretReference) {
+          await getSecretStore(user.mfaSecretReference.provider, {
+            prismaClient: tx,
+          }).deleteSecret(user.mfaSecretReference.key);
+          await tx.secretReference.delete({ where: { id: user.mfaSecretReference.id } });
+        }
+
+        if (user.mfaEnabledAt) {
+          await tx.mfaBackupCode.deleteMany({ where: { userId } });
+        }
+
+        return {
+          secret: base32.encode(secret, { padding: false }),
+          otpAuthUrl: createOTP(secret).url("trigger.dev", user.email),
+        };
+      },
+      { isolationLevel: "Serializable" }
+    );
+
+    if (!result) {
+      throw new ServiceValidationError("Unable to set up MFA");
     }
 
-    const secretStore = getSecretStore("DATABASE");
-
-    // Generate a new secret
-    const secret = generateRandomString(24);
-    const secretKey = `mfa:${userId}:${generateRandomString(8)}`;
-
-    // Store the secret in the SecretStore
-    await secretStore.setSecret(secretKey, {
-      secret,
-    });
-
-    // Update the user's secret reference to the secret store
-    await this.#prismaClient.user.update({
-      where: { id: userId },
-      data: {
-        mfaSecretReference: {
-          create: {
-            provider: "DATABASE",
-            key: secretKey,
-          },
-        },
-      },
-    });
-
-    // Return the secret and the recovery codes
-    const otpAuthUrl = createOTP(secret).url("trigger.dev", user.email);
-
-    const displaySecret = base32.encode(secret, {
-      padding: false,
-    });
-
-    return {
-      secret: displaySecret,
-      otpAuthUrl,
-    };
+    return result;
   }
 
   public async validateTotpSetup(userId: string, totpCode: string) {
@@ -170,7 +207,9 @@ export class MultiFactorAuthenticationService {
       throw new ServiceValidationError("User has not enabled MFA");
     }
 
-    const secretStore = getSecretStore(user.mfaSecretReference.provider);
+    const secretStore = getSecretStore(user.mfaSecretReference.provider, {
+      prismaClient: this.#prismaClient,
+    });
     const secretResult = await secretStore.getSecret(SecretSchema, user.mfaSecretReference.key);
 
     if (!secretResult) {
@@ -180,7 +219,7 @@ export class MultiFactorAuthenticationService {
     // Rate limit enrollment confirmation too: it verifies a TOTP code against
     // a real secret, so it needs the same brute-force protection as the
     // disable and login verify paths.
-    await checkMfaRateLimit(userId);
+    await checkMfaRateLimit(userId, this.rateLimiters);
 
     const secret = secretResult.secret;
 
@@ -192,48 +231,27 @@ export class MultiFactorAuthenticationService {
     const isValid = await otp.verify(totpCode);
 
     if (!isValid) {
-      // Return the secret and the recovery codes
-      const otpAuthUrl = createOTP(secret).url("trigger.dev", user.email);
-
-      const displaySecret = base32.encode(secret, {
-        padding: false,
-      });
-
-      return {
-        success: false,
-        otpAuthUrl,
-        secret: displaySecret,
-      };
+      return { success: false };
     }
 
-    // Now that we've validated the TOTP code, we can enable MFA for the user
-    await this.#prismaClient.user.update({
-      where: { id: userId },
-      data: {
-        mfaEnabledAt: new Date(),
-      },
-    });
-
-    // Generate a new set of recovery codes
     const recoveryCodes = Array.from({ length: 9 }, () => generateRandomString(16, "a-z", "0-9"));
 
-    // Delete any existing recovery codes
-    await this.#prismaClient.mfaBackupCode.deleteMany({
-      where: {
-        userId,
-      },
-    });
-
-    // Hash and store the recovery codes
-    for (const code of recoveryCodes) {
-      const hashedCode = await createHash("SHA-512", "hex").digest(code);
-      await this.#prismaClient.mfaBackupCode.create({
-        data: {
-          userId,
-          code: hashedCode,
-        },
+    await $transaction(this.#prismaClient, "validateTotpSetup", async (tx) => {
+      // Only activate the secret we verified, not a concurrent replacement.
+      await tx.user.update({
+        where: { id: userId, mfaSecretReferenceId: user.mfaSecretReferenceId },
+        data: { mfaEnabledAt: new Date() },
       });
-    }
+
+      await tx.mfaBackupCode.deleteMany({ where: { userId } });
+
+      for (const code of recoveryCodes) {
+        const hashedCode = await createHash("SHA-512", "hex").digest(code);
+        await tx.mfaBackupCode.create({
+          data: { userId, code: hashedCode },
+        });
+      }
+    });
 
     await scheduleEmail({
       email: "mfa-enabled",
@@ -251,25 +269,31 @@ export class MultiFactorAuthenticationService {
     user: User,
     secretReference: SecretReference,
     totpCode?: string,
-    recoveryCode?: string
+    recoveryCode?: string,
+    prismaClient: PrismaClientOrTransaction = this.#prismaClient
   ) {
     if (!totpCode && !recoveryCode) {
       return false;
     }
 
     if (typeof totpCode === "string" && totpCode.length === 6) {
-      return this.#verifyTotpCode(user, secretReference, totpCode);
+      return this.#verifyTotpCode(user, secretReference, totpCode, prismaClient);
     }
 
     if (typeof recoveryCode === "string") {
-      return this.#verifyRecoveryCode(user, recoveryCode);
+      return this.#verifyRecoveryCode(user, recoveryCode, prismaClient);
     }
 
     return false;
   }
 
-  async #verifyTotpCode(user: User, secretReference: SecretReference, totpCode: string) {
-    const secretStore = getSecretStore(secretReference.provider);
+  async #verifyTotpCode(
+    user: User,
+    secretReference: SecretReference,
+    totpCode: string,
+    prismaClient: PrismaClientOrTransaction = this.#prismaClient
+  ) {
+    const secretStore = getSecretStore(secretReference.provider, { prismaClient });
     const secretResult = await secretStore.getSecret(SecretSchema, secretReference.key);
 
     if (!secretResult) {
@@ -286,10 +310,14 @@ export class MultiFactorAuthenticationService {
     return isValid;
   }
 
-  async #verifyRecoveryCode(user: User, recoveryCode: string) {
+  async #verifyRecoveryCode(
+    user: User,
+    recoveryCode: string,
+    prismaClient: PrismaClientOrTransaction = this.#prismaClient
+  ) {
     const hashedCode = await createHash("SHA-512", "hex").digest(recoveryCode);
 
-    const backupCode = await this.#prismaClient.mfaBackupCode.findFirst({
+    const backupCode = await prismaClient.mfaBackupCode.findFirst({
       where: { userId: user.id, code: hashedCode, usedAt: null },
     });
 

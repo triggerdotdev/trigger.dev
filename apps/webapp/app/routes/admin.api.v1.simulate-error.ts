@@ -1,7 +1,8 @@
+import { withAdminApi } from "~/services/adminApi.server";
 import { type DataFunctionArgs } from "@remix-run/node";
 import { requireUser } from "~/services/session.server";
 
-export async function loader({ request }: DataFunctionArgs) {
+async function handleLoader({ request }: DataFunctionArgs) {
   const user = await requireUser(request);
 
   if (!user.admin) {
@@ -10,3 +11,5 @@ export async function loader({ request }: DataFunctionArgs) {
 
   throw new Error("Test error");
 }
+
+export const loader = withAdminApi(handleLoader);

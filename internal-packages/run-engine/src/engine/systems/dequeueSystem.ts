@@ -1,4 +1,4 @@
-import { startSpan } from "@internal/tracing";
+import { type Counter, startSpan } from "@internal/tracing";
 import { assertExhaustive, tryCatch } from "@trigger.dev/core";
 import type { DequeuedMessage, TaskRunInternalError } from "@trigger.dev/core/v3";
 import { RetryOptions, RunAnnotations } from "@trigger.dev/core/v3";
@@ -9,6 +9,7 @@ import type {
   Prisma,
   PrismaClientOrTransaction,
   RuntimeEnvironmentType,
+  WorkerDeploymentStatus,
 } from "@trigger.dev/database";
 import { z } from "zod";
 import type { BillingCache } from "../billingCache.js";
@@ -23,7 +24,11 @@ import { sendNotificationToWorker } from "../eventBus.js";
 import { getMachinePreset } from "../machinePresets.js";
 import { isDequeueableExecutionStatus, isExecuting } from "../statuses.js";
 import type { WorkerQueueSelection } from "../../run-queue/types.js";
-import type { RunEngineOptions, WorkerQueueDequeueOptions } from "../types.js";
+import type {
+  DeploymentStatusMode,
+  RunEngineOptions,
+  WorkerQueueDequeueOptions,
+} from "../types.js";
 import {
   getLatestExecutionSnapshotOrFinishedRun,
   type ExecutionSnapshotSystem,
@@ -37,11 +42,14 @@ import {
   type SnapshotReadContext,
   type SnapshotRouteWire,
 } from "@internal/run-store";
+import { dequeueCheckpointFromRow } from "../checkpointMetadata.js";
 
 const NullableRetryOptions = z.compile(RetryOptions.nullable());
 
 /** How long a run with no template and no fallback worker queue waits before the next try. */
 const TEMPLATE_WAIT_RETRY_MS = 30_000;
+const DEPLOYMENT_WAIT_RETRY_MS = 30_000;
+const DEPLOYMENT_WAIT_MAX_MS = 16 * 60_000;
 
 export type DequeueSystemOptions = {
   resources: SystemResources;
@@ -49,6 +57,9 @@ export type DequeueSystemOptions = {
   executionSnapshotSystem: ExecutionSnapshotSystem;
   runAttemptSystem: RunAttemptSystem;
   billingCache: BillingCache;
+  deploymentWaitRetryMs?: number;
+  deploymentWaitMaxMs?: number;
+  deploymentStatusMode?: () => DeploymentStatusMode;
 };
 
 // Run-ops scalars the dequeue path reads off the run row. The environment half (type,
@@ -113,6 +124,12 @@ type RunWithBackgroundWorkerTasksResult =
       deployment: ResolvedWorkerDeployment | null;
     };
 
+const UNDEPLOYABLE_DEPLOYMENT_STATUSES: ReadonlySet<WorkerDeploymentStatus> = new Set([
+  "FAILED",
+  "TIMED_OUT",
+  "CANCELED",
+]);
+
 type WorkerDeploymentWithWorkerTasks = {
   worker: BackgroundWorker;
   tasks: ResolvedWorkerTask[];
@@ -124,11 +141,26 @@ export class DequeueSystem {
   private readonly $: SystemResources;
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
   private readonly runAttemptSystem: RunAttemptSystem;
+  private readonly deploymentWaitRetryMs: number;
+  private readonly deploymentWaitMaxMs: number;
+  private readonly deploymentStatusMode: () => DeploymentStatusMode;
+  private readonly deploymentNotDeployedCounter: Counter;
 
   constructor(private readonly options: DequeueSystemOptions) {
     this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.runAttemptSystem = options.runAttemptSystem;
+    this.deploymentWaitRetryMs = options.deploymentWaitRetryMs ?? DEPLOYMENT_WAIT_RETRY_MS;
+    this.deploymentWaitMaxMs = options.deploymentWaitMaxMs ?? DEPLOYMENT_WAIT_MAX_MS;
+    this.deploymentStatusMode = options.deploymentStatusMode ?? (() => "shadow");
+    this.deploymentNotDeployedCounter = this.$.meter.createCounter(
+      "run_engine.dequeue.deployment_not_deployed",
+      {
+        description:
+          "Dequeues of a run whose deployment hasn't finished deploying, by what enforce mode does (or would do in shadow mode): fail, fail_stalled or wait",
+        unit: "runs",
+      }
+    );
   }
 
   /**
@@ -482,6 +514,115 @@ export class DequeueSystem {
 
               //check for a valid deployment if it's not a development environment
               if (result.environmentType !== "DEVELOPMENT") {
+                // Only a deployment that finished deploying may start runs. A worker registers
+                // before finalize, so a run locked to its version can reach here while the
+                // deployment is still deploying, or after it failed (including when a deploy gate
+                // refused it at finalize). The mode is read per dequeue so it can move between
+                // off, shadow and enforce without a restart; off skips every extra read.
+                const statusMode = this.deploymentStatusMode();
+                let deploymentStatus = result.deployment?.status;
+                let deployingSince: Date | undefined;
+
+                // The resolved status can lag a just-finished deploy: it comes from the
+                // control-plane replica in split mode, and from a 30s cache if fresh reads are
+                // off. DEPLOYED is terminal, so only a not-DEPLOYED read can be stale. Confirm
+                // it on the primary before deciding anything. Runs on DEPLOYED deployments,
+                // which is nearly all of them, never pay for this read.
+                if (statusMode !== "off" && result.deployment && deploymentStatus !== "DEPLOYED") {
+                  const confirmed = await this.$.controlPlaneResolver.resolveDeploymentStatus(
+                    result.deployment.id
+                  );
+                  if (confirmed) {
+                    deploymentStatus = confirmed.status;
+                    deployingSince = confirmed.deployingSince;
+                  }
+                }
+
+                // A deployment still in progress long after its deploy timeout should have
+                // fired will never finish: its timeout job was lost, or it predates timeouts
+                // (prod has DEPLOYING rows from 2024). Without this, a run locked to it would
+                // retry forever.
+                const stalled =
+                  deploymentStatus !== undefined &&
+                  deploymentStatus !== "DEPLOYED" &&
+                  !UNDEPLOYABLE_DEPLOYMENT_STATUSES.has(deploymentStatus) &&
+                  deployingSince !== undefined &&
+                  Date.now() - deployingSince.getTime() > this.deploymentWaitMaxMs;
+
+                const blockAction =
+                  statusMode === "off" ||
+                  !result.deployment ||
+                  !deploymentStatus ||
+                  deploymentStatus === "DEPLOYED"
+                    ? undefined
+                    : UNDEPLOYABLE_DEPLOYMENT_STATUSES.has(deploymentStatus)
+                      ? "fail"
+                      : stalled
+                        ? "fail_stalled"
+                        : "wait";
+
+                if (result.deployment && deploymentStatus && blockAction) {
+                  this.deploymentNotDeployedCounter.add(1, {
+                    mode: statusMode,
+                    action: blockAction,
+                    deployment_status: deploymentStatus,
+                  });
+
+                  // Shadow mode records what enforce would do and then carries on exactly as
+                  // before the check existed, including the missing-image handling below.
+                  if (statusMode === "shadow") {
+                    this.$.logger.warn(
+                      "RunEngine.dequeueFromWorkerQueue(): Deployment has not finished deploying, starting the run anyway (shadow mode)",
+                      {
+                        runId,
+                        latestSnapshot: snapshot.id,
+                        deploymentId: result.deployment.id,
+                        deploymentStatus,
+                        deployingSince,
+                        wouldAction: blockAction,
+                      }
+                    );
+                    span.setAttribute("deployment_status_shadow", blockAction);
+                  }
+                }
+
+                // Checked before the missing-image case below, so a failed deployment with no
+                // image fails its runs instead of parking them.
+                if (
+                  statusMode === "enforce" &&
+                  result.deployment &&
+                  (blockAction === "fail" || blockAction === "fail_stalled")
+                ) {
+                  this.$.logger.warn(
+                    "RunEngine.dequeueFromWorkerQueue(): Deployment did not finish deploying",
+                    {
+                      runId,
+                      latestSnapshot: snapshot.id,
+                      deploymentId: result.deployment.id,
+                      deploymentStatus,
+                      deployingSince,
+                      action: blockAction,
+                    }
+                  );
+                  span.setAttribute("result", "DEPLOYMENT_NOT_DEPLOYED");
+
+                  await this.runAttemptSystem.systemFailure({
+                    runId,
+                    organizationId: orgId,
+                    error: {
+                      type: "INTERNAL_ERROR",
+                      code: "CONFIGURED_INCORRECTLY",
+                      message:
+                        blockAction === "fail_stalled"
+                          ? `Version ${result.worker.version} started deploying at ${deployingSince?.toISOString()} and never finished, so this run can't start. Only versions that finished deploying can run.`
+                          : `Version ${result.worker.version} did not finish deploying (${deploymentStatus}), so this run can't start. Only versions that finished deploying can run.`,
+                    },
+                    tx: prisma,
+                  });
+
+                  return;
+                }
+
                 if (!result.deployment || !result.deployment.imageReference) {
                   this.$.logger.warn("RunEngine.dequeueFromWorkerQueue(): No deployment found", {
                     runId,
@@ -497,6 +638,32 @@ export class DequeueSystem {
                     reason: "No deployment or deployment image reference found for deployed run",
                     statusReason: "NO_DEPLOYMENT",
                     tx: prisma,
+                  });
+
+                  return;
+                }
+
+                if (statusMode === "enforce" && blockAction === "wait") {
+                  this.$.logger.warn(
+                    "RunEngine.dequeueFromWorkerQueue(): Deployment is still deploying, retrying later",
+                    {
+                      runId,
+                      latestSnapshot: snapshot.id,
+                      deploymentId: result.deployment.id,
+                      deploymentStatus,
+                    }
+                  );
+                  span.setAttribute("result", "DEPLOYMENT_WAIT");
+
+                  // Keep the run queued and re-check later, without parking it as
+                  // pending-version: nothing wakes parked runs when a deployment fails or times
+                  // out. The retry doesn't spend the redelivery budget; the wait ends when the
+                  // deployment finishes, fails or times out, or passes deploymentWaitMaxMs.
+                  await this.$.runQueue.nackMessage({
+                    orgId,
+                    messageId: runId,
+                    retryAt: Date.now() + this.deploymentWaitRetryMs,
+                    incrementAttemptCount: false,
                   });
 
                   return;
@@ -729,7 +896,7 @@ export class DequeueSystem {
                 },
                 image: result.deployment?.imageReference ?? undefined,
                 templateKey: result.deployment?.templateKey ?? undefined,
-                checkpoint: snapshot.checkpoint ?? undefined,
+                checkpoint: dequeueCheckpointFromRow(snapshot.checkpoint),
                 completedWaitpoints: snapshot.completedWaitpoints,
                 backgroundWorker: {
                   id: result.worker.id,

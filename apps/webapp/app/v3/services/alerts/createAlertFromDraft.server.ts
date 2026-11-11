@@ -22,7 +22,9 @@ import {
 import { createAlertAndSchedule, type AlertLifecycleDeps } from "./alertLifecycle.server";
 import { type AlertDraftScope } from "./alertDraft";
 import { absenceWindowFloor, absenceWindowMessage } from "./validateAlertDraft.server";
-import type { Alert } from "./storage/alertStore.server";
+import type { Alert, createAlert } from "./storage/alertStore.server";
+
+export type NewAlertInput = Parameters<typeof createAlert>[1];
 
 export type { AlertDraftScope };
 
@@ -70,7 +72,7 @@ export class InvalidScopeForCapabilityError extends Error {
 
 export class NoNotifiersError extends Error {
   constructor() {
-    super("At least one notifier is required");
+    super("At least one channel is required");
   }
 }
 
@@ -80,9 +82,9 @@ export class InvalidNotifierError extends Error {
   }
 }
 
-export class IncompleteChatNotifierError extends Error {
+export class ChatNotifiersNotSupportedError extends Error {
   constructor() {
-    super("A chat notifier needs a conversation to deliver to");
+    super("Chat notifiers are not supported");
   }
 }
 
@@ -105,7 +107,7 @@ export const QUERY_DOMAIN_ERRORS = [
   InvalidConditionParamsError,
   InvalidScopeForCapabilityError,
   NoNotifiersError,
-  IncompleteChatNotifierError,
+  ChatNotifiersNotSupportedError,
   InvalidNotifierError,
 ];
 
@@ -139,8 +141,8 @@ export function assertAlertDraftValid(
     throw new NoNotifiersError();
   }
   for (const notifier of params.notifiers) {
-    if (notifier.type === "chat" && !notifier.chatId?.trim()) {
-      throw new IncompleteChatNotifierError();
+    if (notifier.type === "chat") {
+      throw new ChatNotifiersNotSupportedError();
     }
     if (!notifierRefSchema.safeParse(notifier).success) {
       throw new InvalidNotifierError();
@@ -223,31 +225,31 @@ export async function createAlertFromDraft(
   params: CreateAlertFromDraftParams,
   deps?: AlertLifecycleDeps
 ): Promise<Alert> {
+  return createAlertAndSchedule(db, buildAlertFromDraft(params), deps);
+}
+
+export function buildAlertFromDraft(params: CreateAlertFromDraftParams): NewAlertInput {
   const condition = assertAlertDraftValid(params);
   const derived =
     params.capabilityKey === QUERY_CAPABILITY_KEY ? deriveQueryAlert(params, condition) : undefined;
 
-  return createAlertAndSchedule(
-    db,
-    {
-      organizationId: params.organizationId,
-      projectId: params.projectId,
+  return {
+    organizationId: params.organizationId,
+    projectId: params.projectId,
+    environmentId: params.environmentId,
+    capabilityKey: params.capabilityKey,
+    params: {
       environmentId: params.environmentId,
-      capabilityKey: params.capabilityKey,
-      params: {
-        environmentId: params.environmentId,
-        scope: params.scope,
-        ...(derived && { querySignal: derived.querySignal }),
-      },
-      condition,
-      expiresAt: params.expiresAt,
-      notifiers: uniqueNotifiers(params.notifiers),
-      createdBy: params.createdBy,
-      name: derived?.name ?? params.name,
-      ...(derived && { query: derived.query }),
+      scope: params.scope,
+      ...(derived && { querySignal: derived.querySignal }),
     },
-    deps
-  );
+    condition,
+    expiresAt: params.expiresAt,
+    notifiers: uniqueNotifiers(params.notifiers),
+    createdBy: params.createdBy,
+    name: derived?.name ?? params.name,
+    ...(derived && { query: derived.query }),
+  };
 }
 
 export type AlertDraftPrefill = {

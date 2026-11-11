@@ -1,0 +1,187 @@
+---
+title: "Connect to Anthropic"
+sidebarTitle: "Anthropic"
+description: "Call Claude from your tasks and chat agents without storing an Anthropic API key."
+---
+
+Use Anthropic's [workload identity federation](https://platform.claude.com/docs/en/manage-claude/workload-identity-federation) to exchange a Trigger.dev OIDC token for a short-lived Claude API token. Your tasks and [chat agents](/ai-chat/overview) call Claude with no `ANTHROPIC_API_KEY` stored anywhere.
+
+You configure Anthropic to trust your Trigger.dev environment, store three IDs as environment variables, and give the AI SDK's Anthropic provider a token function.
+
+Follow the [OIDC prerequisites](/oidc#prerequisites). You also need the admin or owner role in your Anthropic organization.
+
+## Configure Anthropic
+
+Go to the [OIDC](https://cloud.trigger.dev/_/oidc) page for your Trigger.dev environment and copy the issuer URL and subject. Then open [Workload identity](https://platform.claude.com/settings/workload-identity-federation) in the Claude Console, select **Connect workload**, and choose **Custom OIDC**.
+
+<Steps>
+  <Step title="Issuer">
+    | Field | Value |
+    | --- | --- |
+    | **Issuer URL** | Your issuer URL, `https://oidc.trigger.dev/YOUR_ORG_SLUG`, with no trailing slash. |
+    | **Discovery URL override** | Leave blank. |
+    | **CA certificate** | Leave blank. |
+    | **Enforce single-use tokens** | Leave enabled. Trigger.dev tokens carry a unique `jti`. |
+    | **Maximum token lifetime** | Leave at 1 hour. Trigger.dev tokens expire after five minutes. |
+
+    Confirm that the discovery document and JWKS are reachable from the public internet, then continue. The Console fetches your signing keys at this step.
+  </Step>
+  <Step title="Federation rule">
+    Name the rule, then paste the **complete subject copied from the dashboard** into **Subject (sub) claim**. Leave **Additional claim condition** blank.
+
+    Under **Enable in workspaces**, select a single workspace. Tokens minted by the rule are billed to it and follow its rate limits.
+
+    The default scope, `workspace:developer`, matches a workspace API key. If your tasks only call the Messages API, open **Advanced rule options** and set it to `workspace:inference`.
+  </Step>
+  <Step title="Target">
+    Choose **Create a new one** and name the service account, for example `trigger-production`. It joins the rule's workspace automatically.
+  </Step>
+  <Step title="Test">
+    The Console shows a token exchange snippet. Copy the `federation_rule_id` (`fdrl_...`), `organization_id`, and `service_account_id` (`svac_...`) from it. The Console listens for a first exchange for 15 minutes; if that window passes, run the test again from the rule's page.
+  </Step>
+</Steps>
+
+Anthropic requires the audience `https://api.anthropic.com`, so request that audience when minting tokens for this rule.
+
+## Store the IDs
+
+Add the three IDs as environment variables on the Trigger.dev environment. None of them is a secret.
+
+```bash .env
+ANTHROPIC_FEDERATION_RULE_ID=fdrl_...
+ANTHROPIC_ORGANIZATION_ID=00000000-0000-0000-0000-000000000000
+ANTHROPIC_SERVICE_ACCOUNT_ID=svac_...
+```
+
+The provider below always authenticates with the federated token, even if `ANTHROPIC_API_KEY` is set. Once federation works, delete the old API key in the Claude Console and remove it from the environment.
+
+## Install the packages
+
+<CodeGroup>
+
+```bash npm
+npm i @trigger.dev/sdk@latest @anthropic-ai/sdk@latest @ai-sdk/anthropic@latest ai@latest
+```
+
+```bash pnpm
+pnpm add @trigger.dev/sdk@latest @anthropic-ai/sdk@latest @ai-sdk/anthropic@latest ai@latest
+```
+
+```bash bun
+bun add @trigger.dev/sdk@latest @anthropic-ai/sdk@latest @ai-sdk/anthropic@latest ai@latest
+```
+
+</CodeGroup>
+
+## Create the Claude provider
+
+`oidcFederationProvider` from the Anthropic SDK performs the exchange, and `TokenCache` reuses the resulting token until shortly before it expires. The AI SDK's Anthropic provider calls `authToken` before each request.
+
+```ts /trigger/claude.ts
+import { auth } from "@trigger.dev/sdk";
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { oidcFederationProvider } from "@anthropic-ai/sdk/lib/credentials/oidc-federation";
+import { TokenCache } from "@anthropic-ai/sdk/lib/credentials/token-cache";
+
+export function claude() {
+  const anthropicToken = new TokenCache(
+    oidcFederationProvider({
+      // Anthropic accepts each token's jti once, so mint a fresh one per exchange.
+      identityTokenProvider: async () => {
+        const { token } = await auth.getOIDCToken({ audience: "https://api.anthropic.com" });
+        return token;
+      },
+      federationRuleId: process.env.ANTHROPIC_FEDERATION_RULE_ID!,
+      organizationId: process.env.ANTHROPIC_ORGANIZATION_ID!,
+      serviceAccountId: process.env.ANTHROPIC_SERVICE_ACCOUNT_ID!,
+      baseURL: "https://api.anthropic.com",
+      fetch,
+    })
+  );
+
+  return createAnthropic({ authToken: () => anthropicToken.getToken() });
+}
+```
+
+If your rule is enabled in more than one workspace, also pass `workspaceId` (`wrkspc_...`) to `oidcFederationProvider`.
+
+## Use it in a chat agent
+
+Create the provider inside `run`, so a cached Anthropic token never outlives the run.
+
+```ts /trigger/chat.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { stepCountIs } from "ai";
+import { claude } from "./claude";
+
+export const supportChat = chat.agent({
+  id: "support-chat",
+  run: async ({ messages, signal, streamText }) => {
+    const anthropic = claude();
+
+    return streamText({
+      model: anthropic("claude-sonnet-5-5"),
+      messages,
+      abortSignal: signal,
+      stopWhen: stepCountIs(10),
+    });
+  },
+});
+```
+
+<Warning>
+  Don't create the provider at module scope or store it in [`chat.local`](/ai-chat/chat-local). A module-scope cache can serve one run's token to the next run in the same process, and `chat.local` values are copied into subtask metadata.
+</Warning>
+
+Each turn performs one exchange, and every model call in the turn, including tool-call steps, reuses that token.
+
+## Use it in a task
+
+The same provider works with any AI SDK function:
+
+```ts /trigger/summarize.ts
+import { task } from "@trigger.dev/sdk";
+import { generateText } from "ai";
+import { claude } from "./claude";
+
+export const summarize = task({
+  id: "summarize",
+  run: async (payload: { text: string }) => {
+    const anthropic = claude();
+
+    const { text } = await generateText({
+      model: anthropic("claude-sonnet-5-5"),
+      prompt: `Summarize in two sentences:\n\n${payload.text}`,
+    });
+
+    return { summary: text };
+  },
+});
+```
+
+## How tokens are refreshed
+
+- **The exchange.** `oidcFederationProvider` posts the Trigger.dev token to `https://api.anthropic.com/v1/oauth/token` using the RFC 7523 `jwt-bearer` grant. Anthropic verifies it against your issuer's JWKS and the rule, then returns an access token prefixed `sk-ant-oat01-`.
+- **Lifetime.** The Anthropic token lasts the shorter of the rule's token lifetime and twice the remaining lifetime of the Trigger.dev token, so expect about 10 minutes.
+- **Refresh.** `TokenCache` returns the cached token until two minutes before expiry, then exchanges again in the background. Each exchange calls `identityTokenProvider`, which requests a new Trigger.dev token.
+
+## Verify the connection
+
+Redeploy, then run `summarize` or send a message to `support-chat`. A successful exchange appears in the [authentication history](https://platform.claude.com/settings/workload-identity-federation?tab=history) in the Claude Console, attributed to the service account.
+
+For local Development runs, which cannot mint OIDC tokens, use your own API key: when `ctx.environment.type === "DEVELOPMENT"`, return `createAnthropic()` instead, which reads `ANTHROPIC_API_KEY`.
+
+## Troubleshooting
+
+### Authentication failed
+
+Anthropic returns the same `Authentication failed` error for every rejected exchange. Open the [authentication history](https://platform.claude.com/settings/workload-identity-federation?tab=history) to see the reason, then fix the mismatch:
+
+- **Issuer mismatch:** the rule's issuer URL must equal the token's `iss` exactly, including the absence of a trailing slash.
+- **Subject mismatch:** paste the complete subject from the dashboard. Preview branches use the individual branch's subject.
+- **`jti_reused`:** a token was exchanged twice. Keep `identityTokenProvider` requesting a new token on every call instead of caching one.
+- **`workspace_id_required`:** the rule is enabled in more than one workspace. Pass `workspaceId` to `oidcFederationProvider`.
+
+### Credit balance is too low
+
+The exchange succeeded and the API accepted the token; the workspace has no credits. Add credits under **Plans & Billing** in the Claude Console.

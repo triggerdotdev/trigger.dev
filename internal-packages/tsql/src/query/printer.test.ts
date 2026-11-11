@@ -4348,3 +4348,72 @@ describe("compound mergeGroupKey validation", () => {
     expect(bothGrouped.sql).toContain("GROUP BY queue_name, concurrency_key");
   });
 });
+
+describe("Generated column names", () => {
+  const runsWithDerivedColumns: TableSchema = {
+    ...taskRunsSchema,
+    columns: {
+      ...taskRunsSchema.columns,
+      task: { name: "task", clickhouseName: "task_identifier", ...column("String") },
+      execution_duration: {
+        name: "execution_duration",
+        ...column("Nullable(Int64)"),
+        expression: "dateDiff('millisecond', started_at, completed_at)",
+      },
+      output: { name: "output", ...column("JSON"), textColumn: "output_text" },
+    },
+  };
+
+  function printWithDerivedColumns(query: string) {
+    return printQuery(
+      query,
+      createTestContext({
+        schema: createSchemaRegistry([runsWithDerivedColumns, taskEventsSchema]),
+      })
+    );
+  }
+
+  it.each([
+    ["a function call", "SELECT id, lower(status) FROM task_runs AS lower"],
+    ["a function call in another case", "SELECT id, LOWER(status) FROM task_runs AS Lower"],
+    ["a nested function call", "SELECT id, coalesce(lower(status)) FROM task_runs AS coalesce"],
+    ["an arithmetic expression", "SELECT id, duration_ms + 1 FROM task_runs AS plus"],
+    ["a virtual column", "SELECT id, execution_duration FROM task_runs AS execution_duration"],
+    ["a renamed column", "SELECT id, task FROM task_runs AS task"],
+    ["a text column", "SELECT id, output FROM task_runs AS output"],
+    ["SELECT *", "SELECT * FROM task_runs AS execution_duration"],
+    [
+      "a joined table",
+      "SELECT r.id, lower(e.event_type) FROM task_runs AS r JOIN task_events AS lower ON r.id = lower.run_id",
+    ],
+    [
+      "an IN subquery",
+      "SELECT id FROM task_runs WHERE id IN (SELECT lower(id) FROM task_runs AS lower)",
+    ],
+  ])("should reject a generated name from %s that matches a table alias", (_, query) => {
+    expect(() => printWithDerivedColumns(query)).toThrow(QueryError);
+    expect(() => printWithDerivedColumns(query)).toThrow(/conflicts with the table alias/);
+  });
+
+  it("should keep generated names that differ from every table alias", () => {
+    const { sql } = printWithDerivedColumns(
+      "SELECT id, lower(status), duration_ms + 1, execution_duration, task, output FROM task_runs AS r"
+    );
+    expect(sql).toContain("lower(status) AS lower");
+    expect(sql).toContain("AS plus");
+    expect(sql).toContain("AS execution_duration");
+    expect(sql).toContain("task_identifier AS task");
+    expect(sql).toContain("output_text AS output");
+  });
+
+  it("should allow an aggregate whose generated name matches the table alias", () => {
+    const { sql } = printQuery("SELECT count() FROM task_runs AS count");
+    expect(sql).toContain("count() AS count");
+  });
+
+  it("should allow a generated name that matches a table alias in another scope", () => {
+    expect(() =>
+      printQuery("SELECT lower FROM (SELECT lower(status) FROM task_runs) AS lower")
+    ).not.toThrow();
+  });
+});

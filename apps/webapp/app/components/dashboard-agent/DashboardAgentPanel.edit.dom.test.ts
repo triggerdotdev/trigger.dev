@@ -72,7 +72,7 @@ describe("DashboardAgentPanel edit mode", () => {
     vi.unstubAllGlobals();
   });
 
-  it("opens the 2-step edit card, and New chat leaves edit mode", async () => {
+  it("opens the 3-step edit card, and New chat leaves edit mode", async () => {
     const router = createMemoryRouter([
       {
         path: "/",
@@ -91,7 +91,7 @@ describe("DashboardAgentPanel edit mode", () => {
       `Edit ${PREFILL.name}`
     );
     expect(card()?.textContent).toContain("How long should it stay active?");
-    expect(card()?.textContent).toContain("1 of 2");
+    expect(card()?.textContent).toContain("1 of 3");
     await act(async () =>
       card()!.querySelector<HTMLButtonElement>('button[aria-label="Next question"]')!.click()
     );

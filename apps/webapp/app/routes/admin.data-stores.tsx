@@ -1,9 +1,11 @@
+import { withAdminAudit } from "~/services/adminAudit/adminAudit.server";
 import { useId, useState } from "react";
 import { useFetcher } from "@remix-run/react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { noteAdminRequest } from "~/services/adminAudit/adminAuditContext.server";
 import { Button } from "~/components/primitives/Buttons";
 import {
   Dialog,
@@ -50,18 +52,31 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 // Action
 // ---------------------------------------------------------------------------
 
+const OptionalUrl = z
+  .string()
+  .trim()
+  .optional()
+  .transform((value) => value || undefined)
+  .pipe(z.string().url().optional());
+
+function sameHost(connectionUrl: string, mirrorUrl: string | undefined): boolean {
+  return mirrorUrl !== undefined && new URL(connectionUrl).host === new URL(mirrorUrl).host;
+}
+
 const AddSchema = z.object({
   _action: z.literal("add"),
   key: z.string().min(1),
   organizationIds: z.string().min(1),
   connectionUrl: z.string().url(),
+  mirrorUrl: OptionalUrl,
 });
 
 const UpdateSchema = z.object({
   _action: z.literal("update"),
   key: z.string().min(1),
   organizationIds: z.string().min(1),
-  connectionUrl: z.string().url().optional(),
+  connectionUrl: OptionalUrl,
+  mirrorUrl: OptionalUrl,
 });
 
 const DeleteSchema = z.object({
@@ -71,9 +86,11 @@ const DeleteSchema = z.object({
 
 const FormSchema = z.discriminatedUnion("_action", [AddSchema, UpdateSchema, DeleteSchema]);
 
-export async function action({ request }: ActionFunctionArgs) {
+async function handleAction({ request }: ActionFunctionArgs) {
   const user = await requireUser(request);
   if (!user.admin || !env.ADMIN_DASHBOARD_ENABLED) throw redirect("/");
+
+  noteAdminRequest(request, { captureBody: true });
 
   const formData = await request.formData();
 
@@ -88,13 +105,20 @@ export async function action({ request }: ActionFunctionArgs) {
 
   switch (result.data._action) {
     case "add": {
-      const { key, organizationIds: rawOrgIds, connectionUrl } = result.data;
+      const { key, organizationIds: rawOrgIds, connectionUrl, mirrorUrl } = result.data;
       const organizationIds = rawOrgIds
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
 
-      const parsedConfig = ClickhouseConnectionSchema.safeParse({ url: connectionUrl });
+      if (sameHost(connectionUrl, mirrorUrl)) {
+        return typedjson(
+          { error: "Mirror connection URL must point at a different host" },
+          { status: 400 }
+        );
+      }
+
+      const parsedConfig = ClickhouseConnectionSchema.safeParse({ url: connectionUrl, mirrorUrl });
       if (!parsedConfig.success) {
         return typedjson(
           { error: parsedConfig.error.issues.map((i) => i.message).join(", ") },
@@ -118,15 +142,32 @@ export async function action({ request }: ActionFunctionArgs) {
       return typedjson({ success: true });
     }
     case "update": {
-      const { key, organizationIds: rawOrgIds, connectionUrl } = result.data;
+      const { key, organizationIds: rawOrgIds, connectionUrl, mirrorUrl } = result.data;
       const organizationIds = rawOrgIds
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
 
+      if (mirrorUrl && !connectionUrl) {
+        return typedjson(
+          { error: "Enter the ClickHouse connection URL as well to set a mirror" },
+          { status: 400 }
+        );
+      }
+
+      if (connectionUrl && sameHost(connectionUrl, mirrorUrl)) {
+        return typedjson(
+          { error: "Mirror connection URL must point at a different host" },
+          { status: 400 }
+        );
+      }
+
       let config: ReturnType<typeof ClickhouseConnectionSchema.parse> | undefined;
       if (connectionUrl) {
-        const parsedConfig = ClickhouseConnectionSchema.safeParse({ url: connectionUrl });
+        const parsedConfig = ClickhouseConnectionSchema.safeParse({
+          url: connectionUrl,
+          mirrorUrl,
+        });
         if (!parsedConfig.success) {
           return typedjson(
             { error: parsedConfig.error.issues.map((i) => i.message).join(", ") },
@@ -369,6 +410,49 @@ function EditButton({ name, organizationIds }: { name: string; organizationIds: 
               <p className="text-[11px] text-text-dimmed">Comma-separated organization IDs.</p>
             </div>
 
+            <div className="space-y-1.5">
+              <label
+                htmlFor={`${fieldId}-connectionUrl`}
+                className="text-xs font-medium text-text-dimmed"
+              >
+                ClickHouse connection URL
+              </label>
+              <Input
+                id={`${fieldId}-connectionUrl`}
+                name="connectionUrl"
+                type="password"
+                placeholder="https://user:password@host:8443"
+                variant="medium"
+                className="font-mono"
+              />
+              <p className="text-[11px] text-text-dimmed">
+                Leave blank to keep the stored connection. Entering it replaces the stored
+                connection and mirror.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label
+                htmlFor={`${fieldId}-mirrorUrl`}
+                className="text-xs font-medium text-text-dimmed"
+              >
+                Mirror connection URL
+              </label>
+              <Input
+                id={`${fieldId}-mirrorUrl`}
+                name="mirrorUrl"
+                type="password"
+                placeholder="https://user:password@new-host:8443"
+                variant="medium"
+                className="font-mono"
+              />
+              <p className="text-[11px] text-text-dimmed">
+                Writes also go to this ClickHouse service; reads stay on the connection URL.
+                Requires the connection URL above. To clear the mirror, re-enter the connection URL
+                and leave this blank.
+              </p>
+            </div>
+
             {fetcher.data?.error && <p className="text-xs text-rose-400">{fetcher.data.error}</p>}
 
             <DialogFooter>
@@ -490,6 +574,27 @@ function AddDataStoreDialog({
             </p>
           </div>
 
+          <div className="space-y-1.5">
+            <label
+              htmlFor={`${fieldId}-mirrorUrl`}
+              className="text-xs font-medium text-text-dimmed"
+            >
+              Mirror connection URL
+            </label>
+            <Input
+              id={`${fieldId}-mirrorUrl`}
+              name="mirrorUrl"
+              type="password"
+              placeholder="https://user:password@new-host:8443"
+              variant="medium"
+              className="font-mono"
+            />
+            <p className="text-[11px] text-text-dimmed">
+              Optional. Writes also go to this ClickHouse service so the store can be moved there
+              without a gap; reads stay on the connection URL.
+            </p>
+          </div>
+
           {fetcher.data?.error && <p className="text-xs text-rose-400">{fetcher.data.error}</p>}
 
           <DialogFooter>
@@ -510,3 +615,5 @@ function AddDataStoreDialog({
     </Dialog>
   );
 }
+
+export const action = withAdminAudit(handleAction);

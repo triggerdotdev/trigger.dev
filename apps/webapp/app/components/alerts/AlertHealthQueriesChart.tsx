@@ -1,6 +1,7 @@
 import { getChartColorByName } from "~/components/code/chartColors";
 import { buildActivityTimeAxis } from "~/components/primitives/charts/activityTimeAxis";
 import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
+import type { VerticalMarker } from "~/components/primitives/charts/VerticalMarker";
 import { evenTimeTicks, niceYAxis, stepDecimals } from "./alertAxis";
 import type { HealthQuerySeries } from "./alertSeriesTypes";
 import {
@@ -47,7 +48,12 @@ export function AlertHealthQueriesChart({
   series: HealthQuerySeries[];
   timeZone?: string;
   domain?: [number, number];
-  axis?: { ticks?: number[]; tickFormatter: (value: number) => string };
+  axis?: {
+    ticks?: number[];
+    tickFormatter: (value: number) => string;
+    marker?: VerticalMarker;
+    tick?: (props: any) => React.ReactElement;
+  };
 }) {
   const config: ChartConfig = {};
   series.forEach((s, i) => {
@@ -86,8 +92,10 @@ export function AlertHealthQueriesChart({
         fillContainer
       >
         <Chart.Line
-          lineType="monotone"
+          lineType="linear"
+          showDots={false}
           warningOverlay={HEALTH_QUERIES_WARNING_OVERLAY}
+          verticalMarker={axis?.marker}
           referenceLines={[
             {
               y: 100,
@@ -98,6 +106,7 @@ export function AlertHealthQueriesChart({
           ]}
           xAxisProps={{
             tickFormatter: axis?.tickFormatter ?? tickFormatter,
+            ...(axis?.tick ? { tick: axis.tick } : {}),
             interval: 0,
             ...(domain
               ? {

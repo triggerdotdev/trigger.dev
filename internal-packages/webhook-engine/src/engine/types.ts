@@ -194,6 +194,7 @@ export type WebhookWaitpointPorts = {
   }): Promise<Array<{ id: string; ok: boolean; error?: string; infrastructure?: boolean }>>;
   fail(params: {
     environmentId: string;
+    organizationId?: string;
     waitpointId: string;
     error: { name: string; message: string; reason?: string };
   }): Promise<void>;

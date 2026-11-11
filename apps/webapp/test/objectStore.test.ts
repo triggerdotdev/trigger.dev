@@ -1,9 +1,35 @@
-import { postgresAndMinioTest } from "@internal/testcontainers";
+import {
+  network,
+  postgresAndMinioTest,
+  redisContainer,
+  redisOptions,
+  type PostgresAndRedisContext,
+} from "@internal/testcontainers";
+import {
+  MAX_INLINE_COMPLETION_OUTPUT_BYTES,
+  RunEngine,
+  StoreWaitpointCoordinator,
+  WaitpointStoreCoordinator,
+} from "@internal/run-engine";
+import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "@internal/run-engine/tests";
+import {
+  PostgresRunStore,
+  WaitpointKeyTransactionLane,
+  registerWaitpointKeyTransactionLane,
+  RedisSnapshotStore,
+  SnapshotResidencyResolver,
+  TaskRunExecutionSnapshotStore,
+} from "@internal/run-store";
+import { trace } from "@internal/tracing";
 import { generateFriendlyId, type IOPacket } from "@trigger.dev/core/v3";
-import { type PrismaClient } from "@trigger.dev/database";
+import { generateRunOpsId, parseWaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import { PrismaClient } from "@trigger.dev/database";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { env } from "~/env.server";
-import { processWaitpointCompletionPacket } from "~/runEngine/concerns/waitpointCompletionPacket.server";
+import {
+  processStreamWaitpointCompletionPacket,
+  processWaitpointCompletionPacket,
+} from "~/runEngine/concerns/waitpointCompletionPacket.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { normalizeObjectStoreLogicalKeyPathname } from "~/v3/objectStoreClient.server";
 import {
@@ -15,6 +41,7 @@ import {
   generatePresignedUrl,
   hasObjectStoreClient,
   INVALID_PACKET_STORAGE_PATH,
+  isPacketPathUnder,
   jsonPacketPresignFailure,
   normalizePacketRelativePath,
   parseStorageUri,
@@ -548,6 +575,195 @@ describe("Object Storage", () => {
     }
   );
 
+  postgresAndMinioTest.extend<
+    Pick<PostgresAndRedisContext, "network" | "redisContainer" | "redisOptions">
+  >({ network, redisContainer, redisOptions })(
+    "stream completions offload native DATETIME and MANUAL output and preserve legacy inline output",
+    async ({ prisma, redisOptions, minioConfig, postgresContainer }) => {
+      const savedEnv = {
+        OBJECT_STORE_BASE_URL: env.OBJECT_STORE_BASE_URL,
+        OBJECT_STORE_ACCESS_KEY_ID: env.OBJECT_STORE_ACCESS_KEY_ID,
+        OBJECT_STORE_SECRET_ACCESS_KEY: env.OBJECT_STORE_SECRET_ACCESS_KEY,
+        OBJECT_STORE_REGION: env.OBJECT_STORE_REGION,
+        OBJECT_STORE_DEFAULT_PROTOCOL: env.OBJECT_STORE_DEFAULT_PROTOCOL,
+        TASK_PAYLOAD_OFFLOAD_THRESHOLD: env.TASK_PAYLOAD_OFFLOAD_THRESHOLD,
+      };
+      Object.assign(env, {
+        OBJECT_STORE_BASE_URL: minioConfig.baseUrl,
+        OBJECT_STORE_ACCESS_KEY_ID: minioConfig.accessKeyId,
+        OBJECT_STORE_SECRET_ACCESS_KEY: minioConfig.secretAccessKey,
+        OBJECT_STORE_REGION: minioConfig.region,
+        OBJECT_STORE_DEFAULT_PROTOCOL: undefined,
+        // A configured threshold above the native ceiling must not reject accepted stream records.
+        TASK_PAYLOAD_OFFLOAD_THRESHOLD: 1024 * 1024,
+      });
+      const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+      const waitpointStore = new WaitpointStoreCoordinator({ redisOptions });
+      const keyUrl = new URL(postgresContainer.getConnectionUri());
+      keyUrl.searchParams.set("connection_limit", "1");
+      const keyLane = new WaitpointKeyTransactionLane(
+        () => new PrismaClient({ datasources: { db: { url: keyUrl.toString() } } })
+      );
+      registerWaitpointKeyTransactionLane(prisma, keyLane);
+      const delegate = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const engine = new RunEngine({
+        prisma,
+        store: new TaskRunExecutionSnapshotStore(delegate, {
+          store: snapshotStore,
+          mode: "redis-only",
+          resolveDial: () => "redis-only",
+          residencyResolver: new SnapshotResidencyResolver({ store: snapshotStore }),
+          logicalRunStoreRoute: "stream-packet-test",
+        }),
+        worker: { redis: redisOptions, workers: 1 },
+        queue: { redis: redisOptions, masterQueueConsumersDisabled: true },
+        runLock: { redis: redisOptions },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": { name: "small-1x", cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("stream-packet-test"),
+        waitpointStoreEnabled: async () => true,
+        waitpointRouting: {
+          store: new StoreWaitpointCoordinator({ store: waitpointStore }),
+          mintPolicy: { resolveMintMode: () => "redis", isCapabilityReady: () => true },
+        },
+        waitpointStore,
+        waitpointFanoutStore: waitpointStore,
+      });
+      try {
+        const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        await setupBackgroundWorker(engine, environment, "stream-packet-test");
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: `run_${generateRunOpsId()}`,
+            environment,
+            taskIdentifier: "stream-packet-test",
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "stream-packet-trace",
+            spanId: "stream-packet-span",
+            workerQueue: "main",
+            queue: "task/stream-packet-test",
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+        const scope = {
+          runId: run.id,
+          environmentId: environment.id,
+          projectId: environment.project.id,
+          organizationId: environment.organization.id,
+        };
+        const datetime = await engine.createDateTimeWaitpoint({
+          ...scope,
+          completedAfter: new Date(Date.now() + 600_000),
+          idempotencyKey: "shared-stream-key",
+        });
+        const token = await engine.createManualWaitpoint({
+          ...scope,
+          idempotencyKey: "shared-stream-key",
+        });
+        expect(parseWaitpointId(token.waitpoint.id).format).toBe("b32hexW");
+        expect(token.isCached).toBe(true);
+        expect(token.waitpoint.id).toBe(datetime.waitpoint.id);
+        const manual = await engine.createManualWaitpoint({ ...scope });
+        expect(parseWaitpointId(manual.waitpoint.id)).toMatchObject({ type: "MANUAL" });
+        const data = JSON.stringify("x".repeat(600 * 1024));
+        expect(Buffer.byteLength(data)).toBeGreaterThan(524_288);
+        expect(Buffer.byteLength(data)).toBeLessThan(1024 * 1024);
+        // Without the native ceiling, the existing legacy threshold still keeps this packet inline.
+        const legacyPacket = { data, dataType: "application/json" };
+        expect(
+          await processWaitpointCompletionPacket(legacyPacket, environment, "legacy/token")
+        ).toBe(legacyPacket);
+        for (const native of [token, manual]) {
+          const packet = await processStreamWaitpointCompletionPacket(
+            native.waitpoint.id,
+            data,
+            environment
+          );
+          expect(packet.dataType).toBe("application/store");
+          await engine.completeWaitpoint({
+            id: native.waitpoint.id,
+            organizationId: environment.organization.id,
+            onlyIfPending: true,
+            output: { value: packet.data!, type: packet.dataType, isError: false },
+          });
+          const completed = await engine.getStoreDateTimeWaitpoint({
+            waitpointId: native.waitpoint.id,
+            ...scope,
+          });
+          expect(completed?.status).toBe("COMPLETED");
+          expect(completed?.outputType).toBe("application/store");
+          expect(completed?.output).toBe(packet.data);
+          const decoded = await downloadPacketFromObjectStore(
+            { data: completed!.output!, dataType: completed!.outputType! },
+            environment
+          );
+          expect(decoded.data).toBe(data);
+          expect(JSON.parse(decoded.data!)).toBe(JSON.parse(data));
+          await expect(
+            downloadPacketFromObjectStore(packet, { ...environment, slug: "another-environment" })
+          ).rejects.toThrow();
+
+          // A competing send can upload and lose completion without overwriting the accepted value.
+          const competing = await processStreamWaitpointCompletionPacket(
+            native.waitpoint.id,
+            JSON.stringify("y".repeat(600 * 1024)),
+            environment
+          );
+          expect(competing.data).not.toBe(packet.data);
+          await engine.completeWaitpoint({
+            id: native.waitpoint.id,
+            organizationId: environment.organization.id,
+            onlyIfPending: true,
+            output: { value: competing.data!, type: competing.dataType, isError: false },
+          });
+          expect((await downloadPacketFromObjectStore(packet, environment)).data).toBe(data);
+          expect(
+            (await engine.getStoreDateTimeWaitpoint({ waitpointId: native.waitpoint.id, ...scope }))
+              ?.output
+          ).toBe(packet.data);
+        }
+
+        // PG MANUAL completion keeps the accepted raw record even with no usable object store.
+        env.OBJECT_STORE_BASE_URL = undefined;
+        env.TASK_PAYLOAD_OFFLOAD_THRESHOLD = 1;
+        const legacy = await engine.createManualWaitpoint({ ...scope, runId: undefined });
+        expect(parseWaitpointId(legacy.waitpoint.id).format).toBe("legacy");
+        const inline = await processStreamWaitpointCompletionPacket(
+          legacy.waitpoint.id,
+          data,
+          environment
+        );
+        expect(inline).toEqual({ data, dataType: "application/json" });
+        await engine.completeWaitpoint({
+          id: legacy.waitpoint.id,
+          organizationId: environment.organization.id,
+          output: { value: inline.data!, type: inline.dataType, isError: false },
+        });
+        const pg = await prisma.waitpoint.findFirstOrThrow({ where: { id: legacy.waitpoint.id } });
+        expect(pg.status).toBe("COMPLETED");
+        expect(pg.outputType).toBe("application/json");
+        expect(pg.output).toBe(data);
+      } finally {
+        await engine.quit();
+        await waitpointStore.quit();
+        await snapshotStore.quit();
+        await keyLane.close();
+        Object.assign(env, savedEnv);
+      }
+    }
+  );
+
   postgresAndMinioTest(
     "processWaitpointCompletionPacket offloads above threshold and round-trips download",
     async ({ minioConfig, prisma }) => {
@@ -598,6 +814,31 @@ describe("Object Storage", () => {
         );
 
         expect(downloadedPacket.data).toBe(largeBody);
+
+        // Native DATETIME callers supply their fixed ceiling even if the configured threshold is
+        // higher. PG callers retain that configured threshold for the same accepted payload.
+        env.TASK_PAYLOAD_OFFLOAD_THRESHOLD = 1024 * 1024;
+        const raisedThresholdPacket: IOPacket = {
+          data: "x".repeat(600 * 1024),
+          dataType: "text/plain",
+        };
+        const native = await processWaitpointCompletionPacket(
+          raisedThresholdPacket,
+          environment as any,
+          `${pathPrefix}/native`,
+          MAX_INLINE_COMPLETION_OUTPUT_BYTES
+        );
+        expect(native.dataType).toBe("application/store");
+        expect((await downloadPacketFromObjectStore(native, environment as any)).data).toBe(
+          raisedThresholdPacket.data
+        );
+        expect(
+          await processWaitpointCompletionPacket(
+            raisedThresholdPacket,
+            environment as any,
+            `${pathPrefix}/postgres`
+          )
+        ).toEqual(raisedThresholdPacket);
       } finally {
         env.TASK_PAYLOAD_OFFLOAD_THRESHOLD = savedThreshold;
 
@@ -852,5 +1093,31 @@ describe("Object Storage", () => {
     env.OBJECT_STORE_REGION = originalEnvObj.OBJECT_STORE_REGION;
     env.OBJECT_STORE_DEFAULT_PROTOCOL = originalEnvObj.OBJECT_STORE_DEFAULT_PROTOCOL;
     env.TASK_PAYLOAD_OFFLOAD_THRESHOLD = originalEnvObj.TASK_PAYLOAD_OFFLOAD_THRESHOLD;
+  });
+});
+
+describe("isPacketPathUnder", () => {
+  const ns = "uploads/run/run_a";
+
+  it.each([
+    "uploads/run/run_a/trigger/packet_abc/payload.json",
+    "s3://uploads/run/run_a/trigger/packet_abc/payload.json",
+  ])("accepts the credential's own upload %s", (pointer) => {
+    expect(isPacketPathUnder(pointer, ns)).toBe(true);
+  });
+
+  it.each([
+    "uploads/run/run_ab/trigger/packet_abc/payload.json",
+    "uploads/run/run_a",
+    "uploads/run/run_a/../run_b/payload.json",
+    "/uploads/run/run_a/payload.json",
+    "trigger/packet_abc/payload.json",
+    "run_a/payload.json",
+    "run_b-1/output.json",
+    "",
+    undefined,
+    42,
+  ])("rejects %s", (pointer) => {
+    expect(isPacketPathUnder(pointer, ns)).toBe(false);
   });
 });

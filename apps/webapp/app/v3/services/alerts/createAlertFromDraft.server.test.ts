@@ -11,7 +11,7 @@ import {
   AbsenceWindowTooShortError,
   createAlertFromDraft,
   IncompatibleAlertKindError,
-  IncompleteChatNotifierError,
+  ChatNotifiersNotSupportedError,
   InvalidConditionParamsError,
   InvalidScopeForCapabilityError,
   InvalidNotifierError,
@@ -170,19 +170,11 @@ describe("createAlertFromDraft", () => {
     ).rejects.toThrow();
   });
 
-  it("rejects a chat notifier with no conversation (mutation: IncompleteChatNotifierError guard removed)", async () => {
-    await expect(
-      createAlertFromDraft(db, {
-        ...BASE,
-        capabilityKey: "queue.depth",
-        scope: { type: "all" },
-        condition: { kind: "threshold", operator: ">", value: 5, windowSec: 300 },
-        notifiers: [{ type: "chat" }],
-      })
-    ).rejects.toThrow(IncompleteChatNotifierError);
-  });
-
-  it("rejects a chat notifier with only a user and creates no alert (mutation: chatId requirement removed)", async () => {
+  it.each([
+    [{ type: "chat" }],
+    [{ type: "chat", chatId: "chat_1" }],
+    [{ type: "chat", userId: "user_1" }],
+  ] as const)("rejects a chat notifier %j (mutation: chat guard removed)", async (chat) => {
     await expect(
       createAlertFromDraft(
         db,
@@ -191,23 +183,11 @@ describe("createAlertFromDraft", () => {
           capabilityKey: "queue.depth",
           scope: { type: "all" },
           condition: { kind: "threshold", operator: ">", value: 5, windowSec: 300 },
-          notifiers: [{ type: "chat", userId: "user_1" }],
+          notifiers: [{ type: "channel", channelId: "chan_1" }, chat as any],
         },
         noopDeps
       )
-    ).rejects.toThrow(IncompleteChatNotifierError);
-  });
-
-  it("rejects a chat notifier with whitespace-only conversation/user ids (mutation: trim removed)", async () => {
-    await expect(
-      createAlertFromDraft(db, {
-        ...BASE,
-        capabilityKey: "queue.depth",
-        scope: { type: "all" },
-        condition: { kind: "threshold", operator: ">", value: 5, windowSec: 300 },
-        notifiers: [{ type: "chat", chatId: "   ", userId: "  " }],
-      })
-    ).rejects.toThrow(IncompleteChatNotifierError);
+    ).rejects.toThrow(ChatNotifiersNotSupportedError);
   });
 
   const SCOPE_VARIANTS: AlertDraftScope[] = [

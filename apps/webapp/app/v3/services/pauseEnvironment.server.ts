@@ -83,7 +83,11 @@ export class PauseEnvironmentService extends WithRunEngine {
             // user-paused envs (pauseSource null) unresumable.
             OR: [
               { pauseSource: null },
-              { NOT: { pauseSource: EnvironmentPauseSource.BILLING_LIMIT } },
+              {
+                pauseSource: {
+                  notIn: [EnvironmentPauseSource.BILLING_LIMIT, EnvironmentPauseSource.ADMIN_BAN],
+                },
+              },
             ],
           },
           data: {

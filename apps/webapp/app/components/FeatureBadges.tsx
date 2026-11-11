@@ -2,33 +2,6 @@ import { cn } from "~/utils/cn";
 import { Badge } from "./primitives/Badge";
 import { SimpleTooltip } from "./primitives/Tooltip";
 
-export function AlphaBadge({
-  inline = false,
-  className,
-}: {
-  inline?: boolean;
-  className?: string;
-}) {
-  return (
-    <SimpleTooltip
-      button={
-        <Badge
-          variant="extra-small"
-          className={cn(
-            "system:border-transparent system:bg-blue-500 system:text-white",
-            inline ? "inline-grid" : "",
-            className
-          )}
-        >
-          Alpha
-        </Badge>
-      }
-      content="This feature is in Alpha"
-      disableHoverableContent
-    />
-  );
-}
-
 export function BetaBadge({ inline = false, className }: { inline?: boolean; className?: string }) {
   return (
     <SimpleTooltip
@@ -62,5 +35,67 @@ export function NewBadge({ inline = false, className }: { inline?: boolean; clas
     >
       New
     </Badge>
+  );
+}
+
+/** For something being phased out. Name its replacement in `tooltip`. */
+export function DeprecatedBadge({
+  tooltip,
+  inline = false,
+  className,
+}: {
+  tooltip: string;
+  inline?: boolean;
+  className?: string;
+}) {
+  return (
+    <SimpleTooltip
+      asChild
+      button={
+        <Badge
+          variant="extra-small"
+          className={cn(
+            "text-warning system:border-transparent system:bg-warning system:text-white",
+            inline ? "inline-grid" : "",
+            className
+          )}
+        >
+          Deprecated
+        </Badge>
+      }
+      content={tooltip}
+      disableHoverableContent
+    />
+  );
+}
+
+/** For an older way that still works. Name the newer option in `tooltip`. */
+export function LegacyBadge({
+  tooltip,
+  inline = false,
+  className,
+}: {
+  tooltip: string;
+  inline?: boolean;
+  className?: string;
+}) {
+  return (
+    <SimpleTooltip
+      asChild
+      button={
+        <Badge
+          variant="extra-small"
+          className={cn(
+            "text-text-dimmed system:border-transparent system:bg-charcoal-500 system:text-white",
+            inline ? "inline-grid" : "",
+            className
+          )}
+        >
+          Legacy
+        </Badge>
+      }
+      content={tooltip}
+      disableHoverableContent
+    />
   );
 }

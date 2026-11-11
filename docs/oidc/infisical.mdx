@@ -1,0 +1,59 @@
+---
+title: "Connect to Infisical"
+sidebarTitle: "Infisical"
+description: "Read secrets from Infisical using your task's workload identity."
+---
+
+Infisical support was added in **4.8.4**. Use `@trigger.dev/sdk` and the Trigger.dev CLI (`trigger.dev`) **4.8.4 or later**, then follow the [OIDC prerequisites](/oidc#prerequisites).
+
+## Configure Infisical
+
+1. In Infisical, create a **Machine Identity** and enable [OIDC Auth](https://infisical.com/docs/documentation/platform/identities/oidc-auth/general).
+2. Go to the [OIDC](https://cloud.trigger.dev/_/oidc) page for your Trigger.dev environment and configure the identity with:
+
+   | Infisical field        | Value                                                                                                                     |
+   | ---------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+   | **OIDC Discovery URL** | Your issuer URL, `https://oidc.trigger.dev/YOUR_ORG_SLUG`. Use the base URL, without `/.well-known/openid-configuration`. |
+   | **Issuer**             | The same issuer URL.                                                                                                      |
+   | **Subject**            | The exact subject copied from the dashboard. No wildcard is needed.                                                       |
+   | **Audiences**          | Your Infisical site URL, for example `https://us.infisical.com`.                                                          |
+
+   Leave **CA Certificate** blank. Set **Access Token TTL** and **Access Token Max TTL** to **900 seconds (15 minutes)** rather than relying on the defaults.
+
+3. Add the identity to your Infisical project with read access only to the environments and secrets your task needs.
+
+## Read a secret in your task
+
+```bash
+npm install @trigger.dev/sdk@latest @infisical/sdk
+```
+
+```typescript
+import { task } from "@trigger.dev/sdk";
+import { infisicalAccessToken } from "@trigger.dev/sdk/oidc/infisical";
+import { InfisicalSDK } from "@infisical/sdk";
+
+export const useSecret = task({
+  id: "use-secret",
+  run: async () => {
+    const siteUrl = "https://us.infisical.com";
+    const { accessToken } = await infisicalAccessToken({
+      identityId: "YOUR_INFISICAL_MACHINE_IDENTITY_ID",
+      siteUrl,
+    });
+    const client = new InfisicalSDK({ siteUrl });
+    client.auth().accessToken(accessToken);
+
+    const secret = await client.secrets().getSecret({
+      projectId: "YOUR_INFISICAL_PROJECT_ID",
+      environment: "prod",
+      secretName: "API_KEY",
+    });
+    // Use secret.secretValue here. Never log or return it.
+  },
+});
+```
+
+`siteUrl` defaults to `https://us.infisical.com`. Set it to `https://eu.infisical.com` for EU, or your self-hosted instance's URL. The audience defaults to `siteUrl` without a trailing slash; pass `audience` if your identity expects a different value. Optional `organizationSlug` scopes the session to an **Infisical** organization the identity can access.
+
+The helper returns `{ accessToken, tokenType, expiresAt }` and does not cache tokens. Authenticate inside `run`, and call it again before `expiresAt` if your task needs access for longer than the configured token lifetime.

@@ -231,7 +231,7 @@ export class CreateAlertChannelService extends BaseService {
       );
       if (
         secret.success &&
-        (await decryptSecret(env.ENCRYPTION_KEY, secret.data)) === channel.secret
+        (await decryptSecret(env.ENCRYPTION_KEYRING, secret.data)) === channel.secret
       ) {
         return candidate;
       }
@@ -258,7 +258,7 @@ export class CreateAlertChannelService extends BaseService {
       case "WEBHOOK":
         return {
           url: channel.url,
-          secret: await encryptSecret(env.ENCRYPTION_KEY, channel.secret ?? nanoid()),
+          secret: await encryptSecret(env.ENCRYPTION_KEYRING, channel.secret ?? nanoid()),
           version: "v2",
         };
       case "SLACK":

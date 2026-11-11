@@ -99,6 +99,13 @@ describe("resolveRunTokenCredential", () => {
         "listDeployments",
         "executeQuery",
         "createPromptOverride",
+        "getRunResult",
+        "getBatchResults",
+        "rescheduleRun",
+        "listSchedules",
+        "createSchedule",
+        "listEnvVars",
+        "importEnvVars",
       ]) {
         expect(resolveRunTokenCredential(operation, FALLBACK), operation).toBe(token);
         expect(resolveRunTokenCredential(operation, undefined), operation).toBe(token);
@@ -110,13 +117,6 @@ describe("resolveRunTokenCredential", () => {
     process.env.TRIGGER_RUN_TOKEN = runToken();
     await runInMockTaskContext(() => {
       for (const operation of [
-        "getRunResult",
-        "getBatchResults",
-        "rescheduleRun",
-        "listSchedules",
-        "createSchedule",
-        "listEnvVars",
-        "importEnvVars",
         "generateJWTClaims",
         "listProjectRuns",
         "executeQueryProjectOrOrganization",

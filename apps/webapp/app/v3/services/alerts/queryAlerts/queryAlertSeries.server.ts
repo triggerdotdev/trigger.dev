@@ -28,8 +28,6 @@ const BUCKET_COLUMN = "__bucket";
 const COUNT_COLUMN = "__count";
 const MINUTE_MS = 60_000;
 
-export type QuerySeriesMode = QuerySignal["mode"];
-
 const CONCURRENCY_RETRIES = 2;
 
 async function retryConcurrencyRejection<T>(fn: () => Promise<T>): Promise<T> {

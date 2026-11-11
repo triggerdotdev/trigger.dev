@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/slack",
-  "version": "4.8.3",
+  "version": "4.8.4",
   "description": "Slack chat frontend (channel) for trigger.dev agents",
   "license": "MIT",
   "publishConfig": {
@@ -41,14 +41,14 @@
     "check-exports": "attw --pack ."
   },
   "dependencies": {
-    "@trigger.dev/core": "workspace:4.8.3"
+    "@trigger.dev/core": "workspace:4.8.4"
   },
   "peerDependencies": {
-    "@trigger.dev/sdk": "workspace:^4.8.3"
+    "@trigger.dev/sdk": "workspace:^4.8.4"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
-    "@trigger.dev/sdk": "workspace:4.8.3",
+    "@trigger.dev/sdk": "workspace:4.8.4",
     "@types/node": "^24.13.3",
     "rimraf": "6.0.1",
     "tshy": "^3.0.2",

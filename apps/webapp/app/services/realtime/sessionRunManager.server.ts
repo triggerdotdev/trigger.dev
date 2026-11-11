@@ -1,14 +1,30 @@
 import type { Prisma, Session, TaskRunStatus } from "@trigger.dev/database";
 import { SessionTriggerConfig as SessionTriggerConfigZod, tryCatch } from "@trigger.dev/core/v3";
+import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
 import type { z } from "zod";
 import { prisma, $replica, $transaction } from "~/db.server";
 import { runStore } from "~/v3/runStore.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { CancelTaskRunService } from "~/v3/services/cancelTaskRun.server";
+import { CancelTaskRunService, type CancelableTaskRun } from "~/v3/services/cancelTaskRun.server";
 import { TriggerTaskService } from "~/v3/services/triggerTask.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
-import { determineRealtimeStreamsVersion } from "./v1StreamsGlobal.server";
+import { externalDeploymentCacheInstance } from "~/services/externalDeploymentCacheInstance.server";
+import { resolveExternalDeployment } from "~/v3/services/resolveExternalDeployment.server";
+import { S2RealtimeStreams } from "./s2realtimeStreams.server";
+import {
+  determineRealtimeStreamsVersion,
+  getRealtimeStreamInstance,
+} from "./v1StreamsGlobal.server";
+import {
+  basePayloadHasMessage,
+  isVersionBelowSessionVersionFloor,
+  sessionVersionFloorFor,
+  shouldSupersedeLiveRun,
+  type LiveRunFloorChecks,
+  type SessionVersionFloor,
+} from "./sessionVersionFloor.server";
+import { listSessionStreamWaitpoints } from "~/services/sessionStreamWaitpointCache.server";
 
 /**
  * Schema for `Session.triggerConfig` (stored as JSONB). The wire-format
@@ -52,7 +68,14 @@ type EnsureRunForSessionParams = {
    */
   session: Pick<
     Session,
-    "id" | "friendlyId" | "taskIdentifier" | "triggerConfig" | "currentRunId" | "currentRunVersion"
+    | "id"
+    | "friendlyId"
+    | "externalId"
+    | "taskIdentifier"
+    | "triggerConfig"
+    | "currentRunId"
+    | "currentRunVersion"
+    | "streamBasinName"
   >;
   environment: AuthenticatedEnvironment;
   reason: EnsureRunReason;
@@ -84,10 +107,17 @@ export type EnsureRunResult = {
  * Idempotently make sure the session has a live run.
  *
  * Algorithm:
- *   1. If `currentRunId` is set, probe its status. Alive → return as-is.
+ *   1. If `currentRunId` is set, probe its status. Alive → return as-is,
+ *      unless the environment has a version floor, the run is below it, the
+ *      current deployment is at or above it and the run is idle: then it is
+ *      superseded by the new run.
  *   2. Trigger a new run upfront (cheap to cancel if we lose the race).
+ *      A superseded run is cancelled now, before the new run becomes visible
+ *      through the claim. If that cancel fails, cancel the new run and keep
+ *      the superseded one.
  *   3. Atomic claim via `updateMany` keyed on `currentRunVersion`.
- *      - Won (the SessionRun row is written in the same transaction): return new runId.
+ *      - Won (the SessionRun row is written in the same transaction): return
+ *        new runId.
  *      - Lost: cancel our triggered run, re-read session, reuse winner's
  *        run if alive. If pathological (winner's run already terminal),
  *        recurse.
@@ -107,10 +137,13 @@ export async function ensureRunForSession(
     );
   }
 
+  const floor = sessionVersionFloorFor(environment);
+
   // 1. Probe currentRunId.
-  let priorDeadRunFriendlyId: string | undefined;
+  let priorRunFriendlyId: string | undefined;
+  let superseded: { runId: string; taskVersion: string | null; status: TaskRunStatus } | undefined;
   if (session.currentRunId) {
-    let probe = await getRunStatusAndFriendlyId(session.currentRunId);
+    let probe = await getCurrentRunProbe(session.currentRunId);
     if (!probe) {
       // Replica miss on a row we just observed via `currentRunId` — the
       // run was likely triggered moments ago and hasn't replicated yet.
@@ -120,27 +153,42 @@ export async function ensureRunForSession(
       // and spawns a second live run consuming the same `.in`).
       probe = await runStore.findRun(
         { id: session.currentRunId },
-        { select: { status: true, friendlyId: true } },
+        { select: CURRENT_RUN_PROBE_SELECT },
         prisma
       );
     }
     if (probe && !isFinalRunStatus(probe.status)) {
-      return {
+      if (
+        !floor ||
+        !(await supersedesLiveRun(session, environment, floor, {
+          id: session.currentRunId,
+          taskVersion: probe.taskVersion,
+          createdAt: probe.createdAt,
+          startedWithMessage: basePayloadHasMessage(session.triggerConfig),
+        }))
+      ) {
+        return {
+          runId: session.currentRunId,
+          triggered: false,
+          pendingVersion: isPendingVersionStatus(probe.status),
+        };
+      }
+      superseded = {
         runId: session.currentRunId,
-        triggered: false,
-        pendingVersion: isPendingVersionStatus(probe.status),
+        taskVersion: probe.taskVersion,
+        status: probe.status,
       };
     }
-    // Either the row vanished on the writer too (probe null) or its status
-    // is final. Either way the prior run isn't going to consume new
-    // appends — but the session may still hold conversation state on
+    // The prior run is gone (probe null on the writer too), final, or below
+    // the version floor and about to be cancelled. In each case it won't
+    // consume new appends — but the session may still hold conversation state on
     // `session.out` and an S3 snapshot keyed on `session.friendlyId`.
     // Forward the prior run's public-form id (friendlyId — same shape as
     // `ctx.run.id`) to the agent as `previousRunId` so its boot gate flips
     // `couldHavePriorState` and replays the persisted state instead of
     // treating this as a fresh chat. See `chat.agent`'s boot orchestration
     // in `packages/trigger-sdk/src/v3/ai.ts`.
-    priorDeadRunFriendlyId = probe?.friendlyId ?? session.currentRunId;
+    priorRunFriendlyId = probe?.friendlyId ?? session.currentRunId;
   }
 
   // 2. Validate config + trigger upfront. Continuation overrides
@@ -162,10 +210,10 @@ export async function ensureRunForSession(
   // session.in record before running a turn.
   const continuationOverrides: Record<string, unknown> = {
     sessionId: session.friendlyId,
-    ...(priorDeadRunFriendlyId !== undefined
+    ...(priorRunFriendlyId !== undefined
       ? {
           continuation: true,
-          previousRunId: priorDeadRunFriendlyId,
+          previousRunId: priorRunFriendlyId,
           // Clear sticky boot-payload fields so the new run waits for the
           // next session.in record instead of re-processing whatever was
           // in the original `createStartSessionAction({ basePayload })`.
@@ -188,6 +236,28 @@ export async function ensureRunForSession(
     payloadOverrides: mergedPayloadOverrides,
   });
 
+  if (superseded) {
+    const [cancelError] = await tryCatch(cancelSupersededRun(superseded.runId));
+    if (cancelError && !(await isRunFinalOnWriter(superseded.runId))) {
+      logger.warn("Failed to cancel a session run below the session version floor; keeping it", {
+        sessionId: session.id,
+        runId: superseded.runId,
+        error: cancelError,
+      });
+      cancelUnclaimedRun({
+        runId: triggered.id,
+        sessionId: session.id,
+        reason: "Superseded run could not be cancelled",
+        failureMessage: "Failed to cancel an unused session run",
+      });
+      return {
+        runId: superseded.runId,
+        triggered: false,
+        pendingVersion: isPendingVersionStatus(superseded.status),
+      };
+    }
+  }
+
   // 3. Try to claim the slot atomically, recording the SessionRun row with it.
   const won = await claimSessionRun({
     where: {
@@ -206,10 +276,18 @@ export async function ensureRunForSession(
     sessionId: session.id,
     triggered,
     reason,
-    environment,
   });
 
   if (won) {
+    if (superseded) {
+      logger.info("Superseded a live run below the session version floor", {
+        sessionId: session.id,
+        runId: superseded.runId,
+        taskVersion: superseded.taskVersion,
+        minVersion: floor?.minVersion,
+        newRunId: triggered.id,
+      });
+    }
     return {
       runId: triggered.id,
       triggered: true,
@@ -221,7 +299,6 @@ export async function ensureRunForSession(
   cancelUnclaimedRun({
     runId: triggered.id,
     sessionId: session.id,
-    environment,
     failureMessage: "Failed to cancel lost-race session run",
   });
 
@@ -234,10 +311,12 @@ export async function ensureRunForSession(
     select: {
       id: true,
       friendlyId: true,
+      externalId: true,
       taskIdentifier: true,
       triggerConfig: true,
       currentRunId: true,
       currentRunVersion: true,
+      streamBasinName: true,
       closedAt: true,
     },
   });
@@ -325,7 +404,11 @@ async function triggerSessionRun(params: {
   environment: AuthenticatedEnvironment;
   payloadOverrides?: Record<string, unknown>;
 }): Promise<{ id: string; friendlyId: string; status: TaskRunStatus; createdAt?: Date }> {
-  const { session, config, environment, payloadOverrides } = params;
+  const { session, environment, payloadOverrides } = params;
+  const floor = sessionVersionFloorFor(environment);
+  const config = floor
+    ? await dropPinsBelowFloor(params.config, environment, floor)
+    : params.config;
 
   const payload = {
     ...config.basePayload,
@@ -485,7 +568,6 @@ export async function swapSessionRun(params: SwapSessionRunParams): Promise<Swap
     sessionId: session.id,
     triggered,
     reason,
-    environment,
   });
 
   if (won) {
@@ -501,7 +583,6 @@ export async function swapSessionRun(params: SwapSessionRunParams): Promise<Swap
   cancelUnclaimedRun({
     runId: triggered.id,
     sessionId: session.id,
-    environment,
     failureMessage: "Failed to cancel preempted swap run",
   });
 
@@ -560,9 +641,8 @@ async function claimSessionRun(params: {
   sessionId: string;
   triggered: TriggeredSessionRun;
   reason: EnsureRunReason;
-  environment: AuthenticatedEnvironment;
 }): Promise<boolean> {
-  const { where, data, sessionId, triggered, reason, environment } = params;
+  const { where, data, sessionId, triggered, reason } = params;
 
   const [error, won] = await tryCatch(
     $transaction(prisma, "sessionRunManager.claimSessionRun", async (tx) => {
@@ -603,15 +683,34 @@ async function claimSessionRun(params: {
   cancelUnclaimedRun({
     runId: triggered.id,
     sessionId,
-    environment,
     failureMessage: "Failed to cancel unclaimed session run",
   });
   throw error;
 }
 
-async function getRunStatusAndFriendlyId(
-  runId: string
-): Promise<{ status: TaskRunStatus; friendlyId: string } | null> {
+const CANCELABLE_RUN_SELECT = {
+  id: true,
+  engine: true,
+  status: true,
+  friendlyId: true,
+  taskEventStore: true,
+  createdAt: true,
+  completedAt: true,
+} as const satisfies Record<keyof CancelableTaskRun, true>;
+
+const CURRENT_RUN_PROBE_SELECT = {
+  status: true,
+  friendlyId: true,
+  taskVersion: true,
+  createdAt: true,
+} as const;
+
+async function getCurrentRunProbe(runId: string): Promise<{
+  status: TaskRunStatus;
+  friendlyId: string;
+  taskVersion: string | null;
+  createdAt: Date;
+} | null> {
   // Use the read replica — hot-path probe, stale-by-ms is fine. The dangerous
   // stale shape (looks-vanished → double-trigger) is closed by the writer re-probe
   // in ensureRunForSession; a stale-non-final reuse self-heals via the durable S2
@@ -620,13 +719,119 @@ async function getRunStatusAndFriendlyId(
   // branch in `ensureRunForSession` can forward the public-form id as
   // `payload.previousRunId` without a second read. `Session.currentRunId`
   // stores the internal cuid; the agent's wire / customer hooks expose
-  // the friendlyId via `ctx.run.id`, so consistency matters.
-  const row = await runStore.findRun(
-    { id: runId },
-    { select: { status: true, friendlyId: true } },
-    $replica
-  );
+  // the friendlyId via `ctx.run.id`, so consistency matters. `taskVersion`
+  // and `createdAt` let the version floor decide whether a live run is
+  // superseded (below the floor, and idle long enough) without another read.
+  const row = await runStore.findRun({ id: runId }, { select: CURRENT_RUN_PROBE_SELECT }, $replica);
   return row ?? null;
+}
+
+async function supersedesLiveRun(
+  session: Pick<Session, "id" | "friendlyId" | "externalId" | "streamBasinName">,
+  environment: AuthenticatedEnvironment,
+  floor: SessionVersionFloor,
+  run: { id: string; taskVersion: string | null; createdAt: Date; startedWithMessage: boolean }
+): Promise<boolean> {
+  const decision = await shouldSupersedeLiveRun(
+    floor,
+    run,
+    session.externalId ?? session.friendlyId,
+    liveRunFloorChecks(session, environment)
+  );
+  if (decision.supersede) return true;
+
+  if (decision.reason === "current-below-floor") {
+    logger.warn(
+      "Current deployment is below the session version floor; reusing the live run. Promote a deployment at or above minVersion, or lower the floor",
+      {
+        sessionId: session.id,
+        runId: run.id,
+        environmentId: environment.id,
+        currentVersion: decision.currentVersion,
+        minVersion: floor.minVersion,
+      }
+    );
+  } else if (decision.reason === "check-failed") {
+    logger.warn("Idle check failed; reusing the run below the version floor", {
+      sessionId: session.id,
+      runId: run.id,
+      environmentId: environment.id,
+      error: decision.error.message,
+    });
+  }
+  return false;
+}
+
+function liveRunFloorChecks(
+  session: Pick<Session, "streamBasinName">,
+  environment: AuthenticatedEnvironment
+): LiveRunFloorChecks {
+  return {
+    async currentDeploymentVersion() {
+      const promotion = await $replica.workerDeploymentPromotion.findFirst({
+        where: { environmentId: environment.id, label: CURRENT_DEPLOYMENT_LABEL },
+        select: { deployment: { select: { version: true } } },
+      });
+      return promotion?.deployment.version;
+    },
+    streams() {
+      const realtimeStream = getRealtimeStreamInstance(environment, "v2", { session });
+      return realtimeStream instanceof S2RealtimeStreams ? realtimeStream : undefined;
+    },
+    waiters: {
+      listSessionInWaitpoints: (addressingKey) =>
+        listSessionStreamWaitpoints(environment.id, addressingKey, "in"),
+      async isWaitpointBlockingRun(waitpointId, runId) {
+        const waitpoint = await runStore.findWaitpoint({
+          where: { id: waitpointId, environmentId: environment.id },
+          select: { status: true },
+        });
+        if (waitpoint?.status !== "PENDING") return false;
+        const runIds = await runStore.findWaitpointConnectedRunIds(waitpointId);
+        return runIds.includes(runId);
+      },
+    },
+  };
+}
+
+async function dropPinsBelowFloor(
+  config: SessionTriggerConfig,
+  environment: AuthenticatedEnvironment,
+  floor: SessionVersionFloor
+): Promise<SessionTriggerConfig> {
+  let result = config;
+  if (result.lockToVersion) {
+    if (!isVersionBelowSessionVersionFloor(result.lockToVersion, floor)) return result;
+    result = { ...result, lockToVersion: undefined };
+  }
+
+  if (result.externalDeploymentId) {
+    const resolution = await resolveExternalDeployment({
+      prisma: $replica,
+      environmentId: environment.id,
+      externalDeploymentId: result.externalDeploymentId,
+      cache: externalDeploymentCacheInstance,
+    });
+    if (
+      resolution.outcome === "park" ||
+      isVersionBelowSessionVersionFloor(resolution.worker.version, floor)
+    ) {
+      result = { ...result, externalDeploymentId: undefined };
+    }
+  }
+
+  return result;
+}
+
+async function isRunFinalOnWriter(runId: string): Promise<boolean> {
+  const [error, run] = await tryCatch(
+    runStore.findRun({ id: runId }, { select: { status: true } }, prisma)
+  );
+  return !error && run !== null && isFinalRunStatus(run.status);
+}
+
+async function cancelSupersededRun(runId: string): Promise<void> {
+  await cancelSessionRun(runId, "Superseded by session version floor");
 }
 
 /**
@@ -647,26 +852,22 @@ async function resolveRunFriendlyId(runId: string): Promise<string> {
 function cancelUnclaimedRun(params: {
   runId: string;
   sessionId: string;
-  environment: AuthenticatedEnvironment;
   failureMessage: string;
+  reason?: string;
 }): void {
-  const { runId, sessionId, environment, failureMessage } = params;
-  cancelLostRaceRun(runId, environment).catch((error) => {
+  const { runId, sessionId, failureMessage, reason = "Lost session-run claim race" } = params;
+  cancelSessionRun(runId, reason).catch((error) => {
     logger.warn(failureMessage, { sessionId, runId, error });
   });
 }
 
-async function cancelLostRaceRun(
-  runId: string,
-  environment: AuthenticatedEnvironment
-): Promise<void> {
-  const service = new CancelTaskRunService();
-  // Read-after-write: the run was just triggered on the writer, so go
-  // through `prisma`. A `$replica` miss here would silently no-op the
-  // cancel and leak an orphan run that no session is going to claim.
-  const run = await runStore.findRun({ id: runId }, prisma);
+async function cancelSessionRun(runId: string, reason: string): Promise<void> {
+  // Read on the writer: a lost-race run was just triggered there, and a
+  // `$replica` miss would silently no-op the cancel and leak an orphan run
+  // that no session is going to claim.
+  const run = await runStore.findRun({ id: runId }, { select: CANCELABLE_RUN_SELECT }, prisma);
   if (!run) return;
-  await service.call(run, { reason: "Lost session-run claim race" });
+  await new CancelTaskRunService().call(run, { reason });
 }
 
 class SessionRunManagerError extends Error {

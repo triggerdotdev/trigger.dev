@@ -804,7 +804,7 @@ export class RunEngineTriggerTaskService {
                     // bypasses ensure neither reaches the mollify branch.
                     onDebounced:
                       body.options?.debounce && body.options?.resumeParentOnCompletion
-                        ? async ({ existingRun, waitpoint, debounceKey }) => {
+                        ? async ({ existingRun, waitpoint, debounceKey, blockRun }) => {
                             return await this.traceEventConcern.traceDebouncedRun(
                               triggerRequest,
                               parentRun?.taskEventStore,
@@ -821,6 +821,7 @@ export class RunEngineTriggerTaskService {
                                     : spanEvent.traceparent?.spanId
                                       ? `${spanEvent.traceparent.spanId}:${spanEvent.spanId}`
                                       : spanEvent.spanId;
+                                if (blockRun) await blockRun(spanId);
                                 return spanId;
                               }
                             );

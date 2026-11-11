@@ -9,6 +9,7 @@ import { env } from "~/env.server";
 import { clampToEmergencySpanCap } from "~/v3/eventRepository/emergencySpanCap.server";
 import { singleton } from "~/utils/singleton";
 import type { OrganizationDataStoresRegistry } from "~/services/dataStores/organizationDataStoresRegistry.server";
+import type { ParsedDataStore } from "~/services/dataStores/organizationDataStoreConfigSchemas.server";
 import { type IEventRepository } from "~/v3/eventRepository/eventRepository.types";
 import { effectiveEventStore } from "~/v3/eventRepository/effectiveEventStore";
 import { requestFeatureQueryObserver } from "~/services/requestFeature.server";
@@ -527,9 +528,9 @@ function initializeLogsSearchClickhouseClient(): ClickHouse | undefined {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function hashHostname(url: string): string {
-  const parsed = new URL(url);
-  return createHash("sha256").update(parsed.hostname).digest("hex");
+/** Cache keys hash the whole URL so a credential, port or database change yields a new client. */
+function hashUrl(url: string): string {
+  return createHash("sha256").update(url).digest("hex");
 }
 
 export type ClientType =
@@ -556,16 +557,29 @@ export type ClientType =
  */
 const SHARED_WAREHOUSE_CLIENT_TYPES = new Set<ClientType>(["queueMetrics"]);
 
-function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHouse {
-  const parsed = new URL(url);
+/** Cache key for everything built from a data store; changes when its primary or mirror URL does. */
+function dataStoreCacheKey(dataStore: ParsedDataStore): string {
+  const mirrorHash = dataStore.mirrorUrl ? hashUrl(dataStore.mirrorUrl) : "-";
+  return `${hashUrl(dataStore.url)}:${mirrorHash}`;
+}
+
+function buildOrgClickhouseClient(dataStore: ParsedDataStore, clientType: ClientType): ClickHouse {
+  const parsed = new URL(dataStore.url);
   parsed.searchParams.delete("secure");
   const name = `org-clickhouse-${clientType}`;
+  let mirrorUrl: string | undefined;
+  if (dataStore.mirrorUrl) {
+    const mirror = new URL(dataStore.mirrorUrl);
+    mirror.searchParams.delete("secure");
+    mirrorUrl = mirror.toString();
+  }
 
   switch (clientType) {
     case "events":
       return new ClickHouse({
         url: parsed.toString(),
         name,
+        mirrorUrl,
         keepAlive: {
           enabled: env.EVENTS_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
           idleSocketTtl: env.EVENTS_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
@@ -580,6 +594,7 @@ function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHou
       return new ClickHouse({
         url: parsed.toString(),
         name,
+        mirrorUrl,
         keepAlive: {
           enabled: env.RUN_REPLICATION_KEEP_ALIVE_ENABLED === "1",
           idleSocketTtl: env.RUN_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
@@ -595,6 +610,7 @@ function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHou
       return new ClickHouse({
         url: parsed.toString(),
         name,
+        mirrorUrl,
         keepAlive: {
           enabled: env.SESSION_REPLICATION_KEEP_ALIVE_ENABLED === "1",
           idleSocketTtl: env.SESSION_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
@@ -607,6 +623,7 @@ function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHou
       return new ClickHouse({
         url: parsed.toString(),
         name,
+        mirrorUrl,
         keepAlive: {
           enabled: env.CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
           idleSocketTtl: env.CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
@@ -621,6 +638,7 @@ function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHou
       return new ClickHouse({
         url: parsed.toString(),
         name,
+        mirrorUrl,
         keepAlive: {
           enabled: env.RUN_ENGINE_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
           idleSocketTtl: env.RUN_ENGINE_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
@@ -635,6 +653,7 @@ function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHou
       return new ClickHouse({
         url: parsed.toString(),
         name,
+        mirrorUrl,
         keepAlive: {
           enabled: env.QUEUE_METRICS_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
           idleSocketTtl: env.QUEUE_METRICS_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
@@ -649,6 +668,7 @@ function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHou
       return new ClickHouse({
         url: parsed.toString(),
         name,
+        mirrorUrl,
         keepAlive: {
           enabled: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
           idleSocketTtl: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
@@ -663,6 +683,7 @@ function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHou
       return new ClickHouse({
         url: parsed.toString(),
         name,
+        mirrorUrl,
         keepAlive: {
           enabled: env.RUNS_LIST_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
           idleSocketTtl: env.RUNS_LIST_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
@@ -681,6 +702,7 @@ function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHou
       return new ClickHouse({
         url: parsed.toString(),
         name,
+        mirrorUrl,
         keepAlive: {
           enabled: env.CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
           idleSocketTtl: env.CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
@@ -697,9 +719,9 @@ function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHou
 // ---------------------------------------------------------------------------
 
 export class ClickhouseFactory {
-  /** ClickHouse clients keyed by hostname hash + clientType. */
+  /** ClickHouse clients keyed by data store (primary + mirror URL) + clientType. */
   private readonly _clientCache = new Map<string, ClickHouse>();
-  /** Event repositories keyed by hostname hash (stateful, must be reused). */
+  /** Event repositories keyed by data store (stateful, must be reused). */
   private readonly _eventRepositoryCache = new Map<string, ClickhouseEventRepository>();
 
   constructor(
@@ -759,12 +781,11 @@ export class ClickhouseFactory {
       }
     }
 
-    const hostnameHash = hashHostname(dataStore.url);
-    const cacheKey = `${hostnameHash}:${clientType}`;
+    const cacheKey = `${dataStoreCacheKey(dataStore)}:${clientType}`;
     let client = this._clientCache.get(cacheKey);
 
     if (!client) {
-      client = buildOrgClickhouseClient(dataStore.url, clientType);
+      client = buildOrgClickhouseClient(dataStore, clientType);
       this._clientCache.set(cacheKey, client);
     }
 
@@ -805,8 +826,7 @@ export class ClickhouseFactory {
       return { key: defaultKey, repository: defaultRepo };
     }
 
-    const hostnameHash = hashHostname(dataStore.url);
-    const cacheKey = `${hostnameHash}:events:${store}`;
+    const cacheKey = `${dataStoreCacheKey(dataStore)}:events:${store}`;
     let repository = this._eventRepositoryCache.get(cacheKey);
 
     if (!repository) {

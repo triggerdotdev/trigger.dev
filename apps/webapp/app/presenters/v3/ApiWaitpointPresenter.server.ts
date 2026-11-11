@@ -1,3 +1,5 @@
+import { parseWaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import { engine } from "~/v3/runEngine.server";
 import { logger, type RuntimeEnvironmentType } from "@trigger.dev/core/v3";
 import { type RunEngineVersion } from "@trigger.dev/database";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
@@ -22,7 +24,10 @@ export class ApiWaitpointPresenter extends BasePresenter {
     prismaClient?: PrismaClientOrTransaction,
     replicaClient?: PrismaClientOrTransaction,
     private readonly readThroughDeps?: ApiWaitpointPresenterReadThroughDeps,
-    private readonly runStore = defaultRunStore
+    private readonly runStore = defaultRunStore,
+    private readonly getStoreWaitpoint = (
+      scope: Parameters<typeof engine.getStoreDateTimeWaitpoint>[0]
+    ) => engine.getStoreDateTimeWaitpoint(scope)
   ) {
     super(prismaClient, replicaClient);
   }
@@ -36,6 +41,7 @@ export class ApiWaitpointPresenter extends BasePresenter {
         engine: RunEngineVersion;
       };
       apiKey: string;
+      organizationId?: string;
     },
     waitpointId: string
   ) {
@@ -64,13 +70,32 @@ export class ApiWaitpointPresenter extends BasePresenter {
         tags: true,
       } as const;
 
-      let waitpoint = await this.runStore.findWaitpoint({ where, select });
+      const parsed = (await engine.waitpointSystem.isWaitpointStoreEnabled(
+        environment.organizationId
+      ))
+        ? parseWaitpointId(waitpointId)
+        : undefined;
+      let waitpoint;
+      if (
+        parsed &&
+        parsed.format !== "legacy" &&
+        (parsed.type === "DATETIME" || parsed.type === "MANUAL")
+      ) {
+        waitpoint = await this.getStoreWaitpoint({
+          waitpointId,
+          environmentId: environment.id,
+          projectId: environment.project.id,
+          organizationId: environment.organizationId,
+        });
+      } else {
+        waitpoint = await this.runStore.findWaitpoint({ where, select });
 
-      // Read-your-writes on a public GET: a just-minted token may not be on the owning store's
-      // replica yet, so a replica miss would 404 a live token. Re-read the owning primary before
-      // concluding it doesn't exist (mirrors the metadata GET loader + the complete/callback paths).
-      if (!waitpoint) {
-        waitpoint = await this.runStore.findWaitpointOnPrimary({ where, select });
+        // Read-your-writes on a public GET: a just-minted token may not be on the owning store's
+        // replica yet, so a replica miss would 404 a live token. Re-read the owning primary before
+        // concluding it doesn't exist (mirrors the metadata GET loader + the complete/callback paths).
+        if (!waitpoint) {
+          waitpoint = await this.runStore.findWaitpointOnPrimary({ where, select });
+        }
       }
 
       if (!waitpoint) {
@@ -88,7 +113,15 @@ export class ApiWaitpointPresenter extends BasePresenter {
       return {
         id: waitpoint.friendlyId,
         type: waitpoint.type,
-        url: generateHttpCallbackUrl(waitpoint.id, environment.apiKey),
+        url: generateHttpCallbackUrl(
+          waitpoint.id,
+          environment.apiKey,
+          parsed &&
+            parsed.format !== "legacy" &&
+            (parsed.type === "DATETIME" || parsed.type === "MANUAL")
+            ? { environmentId: environment.id }
+            : undefined
+        ),
         status: waitpointStatusToApiStatus(waitpoint.status, waitpoint.outputIsError),
         idempotencyKey: waitpoint.idempotencyKey,
         userProvidedIdempotencyKey: waitpoint.userProvidedIdempotencyKey,

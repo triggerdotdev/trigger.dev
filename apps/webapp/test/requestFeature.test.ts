@@ -76,7 +76,7 @@ describe("withRequestFeature", () => {
     }
   );
 
-  // Catches: feature labels missing from the duration or ClickHouse metrics the monitors read.
+  // Catches: feature labels missing from the duration or ClickHouse metrics.
   clickhouseTest(
     "labels the request duration and the ClickHouse metrics",
     async ({ clickhouseContainer }) => {
@@ -115,7 +115,7 @@ describe("withRequestFeature", () => {
     }
   );
 
-  // Catches: thrown 404s recorded as 5xx, which would trip the 5xx monitor.
+  // Catches: thrown 404s recorded as 5xx, inflating the server error rate.
   it("records a thrown Response's status", async () => {
     const { withRequestFeature, requestFeature } = requestFeatureModule;
 

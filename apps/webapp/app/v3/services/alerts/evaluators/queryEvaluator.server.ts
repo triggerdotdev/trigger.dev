@@ -445,7 +445,7 @@ export function checkpointSince(
   checkpoint: Date | undefined,
   createdAt: Date,
   lookbackSec: number,
-  retention?: { now: Date; seenRetentionSec: number; floor?: Date }
+  retention?: { now: Date; seenRetentionSec: number }
 ): Date {
   const floored = checkpoint ? Math.floor(checkpoint.getTime() / 60_000) * 60_000 : undefined;
   const base =
@@ -454,7 +454,7 @@ export function checkpointSince(
       : Math.max(createdAt.getTime(), floored - lookbackSec * 1000);
   if (!retention) return new Date(base);
   const minSince = retention.now.getTime() - (retention.seenRetentionSec - lookbackSec) * 1000;
-  return new Date(Math.max(base, minSince, retention.floor?.getTime() ?? 0));
+  return new Date(Math.max(base, minSince));
 }
 
 export function forwardUntil(now: Date): Date {

@@ -51,7 +51,6 @@ function renderMenu(alert: AlertListRow, openWith = vi.fn(), onClose = vi.fn()) 
             createElement(AlertActionsPopoverContent, {
               alert,
               canWrite: true,
-              canDelete: true,
               onClose,
               onResolve: noop,
               onStop: noop,
@@ -109,7 +108,6 @@ describe("row menu Activate placement", () => {
             createElement(AlertActionsPopoverContent, {
               alert,
               canWrite: true,
-              canDelete: true,
               onClose: noop,
               onResolve: noop,
               onStop: noop,
@@ -190,7 +188,6 @@ describe("row Activate", () => {
                         alert: EXPIRED,
                         alertPath: "/alerts/alert_1",
                         canWrite: true,
-                        canDelete: true,
                       })
                     )
                   )
@@ -262,7 +259,6 @@ describe("row status actions for rows with a channel issue", () => {
               createElement(AlertActionsPopoverContent, {
                 alert,
                 canWrite: true,
-                canDelete: true,
                 onClose: noop,
                 onResolve: noop,
                 onStop: noop,
@@ -297,7 +293,6 @@ describe("AlertActionsPopoverContent permissions", () => {
   function buttons(
     status: AlertListRow["status"],
     canWrite = true,
-    canDelete = true,
     expiresAt: string | null = null
   ) {
     const noop = () => {};
@@ -323,7 +318,6 @@ describe("AlertActionsPopoverContent permissions", () => {
                 expiresAt,
               } as AlertListRow,
               canWrite,
-              canDelete,
               onClose: noop,
               onResolve: noop,
               onStop: noop,
@@ -352,10 +346,5 @@ describe("AlertActionsPopoverContent permissions", () => {
       }
     }
     expect(buttons("inactive").every((item) => !item.disabled)).toBe(true);
-  });
-
-  it("disables Delete without delete:alerts", () => {
-    const disabled = buttons("inactive", true, false).filter((item) => item.disabled);
-    expect(disabled.map((item) => item.title)).toEqual(["Delete"]);
   });
 });

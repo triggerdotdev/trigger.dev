@@ -11,3 +11,10 @@ export function hasStoreWaitpoints(annotations: unknown): boolean {
     (annotations as Record<string, unknown>).waitpointsOnStore === true
   );
 }
+
+/** Internal batch identity, never part of the API options contract. */
+export function batchStoreWaitpointId(options: unknown): string | undefined {
+  if (typeof options !== "object" || options === null || Array.isArray(options)) return undefined;
+  const id = (options as Record<string, unknown>).waitpointStoreId;
+  return typeof id === "string" ? id : undefined;
+}

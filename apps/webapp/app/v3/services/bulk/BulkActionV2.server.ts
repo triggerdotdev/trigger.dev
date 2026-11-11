@@ -16,6 +16,7 @@ import { BaseService } from "../baseService.server";
 import { ServiceValidationError } from "../common.server";
 import { commonWorker } from "~/v3/commonWorker.server";
 import { env } from "~/env.server";
+import { publicAppOrigin } from "~/services/adminOrigin.server";
 import { logger } from "@trigger.dev/sdk";
 import { CancelTaskRunService } from "../cancelTaskRun.server";
 import { tryCatch } from "@trigger.dev/core";
@@ -457,7 +458,7 @@ export class BulkActionService extends BaseService {
               to: group.user.email,
               email: "bulk-action-completed",
               bulkActionId: group.friendlyId,
-              url: `${env.LOGIN_ORIGIN}${v3BulkActionPath(
+              url: `${publicAppOrigin()}${v3BulkActionPath(
                 {
                   slug: group.project.organization.slug,
                 },

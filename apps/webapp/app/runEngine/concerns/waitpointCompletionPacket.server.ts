@@ -1,4 +1,6 @@
 import { type IOPacket, packetRequiresOffloading, tryCatch } from "@trigger.dev/core/v3";
+import { parseWaitpointId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import { MAX_INLINE_COMPLETION_OUTPUT_BYTES } from "@internal/run-engine";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { env } from "~/env.server";
 import { uploadPacketToObjectStore } from "~/v3/objectStore.server";
@@ -26,7 +28,8 @@ function packetExtensionForDataType(dataType: string): string {
 export async function processWaitpointCompletionPacket(
   packet: IOPacket,
   environment: AuthenticatedEnvironment,
-  pathPrefix: string
+  pathPrefix: string,
+  maximumInlineSize?: number
 ): Promise<IOPacket> {
   if (!packet.data) {
     return packet;
@@ -34,7 +37,9 @@ export async function processWaitpointCompletionPacket(
 
   const { needsOffloading, size: _size } = packetRequiresOffloading(
     packet,
-    env.TASK_PAYLOAD_OFFLOAD_THRESHOLD
+    maximumInlineSize === undefined
+      ? env.TASK_PAYLOAD_OFFLOAD_THRESHOLD
+      : Math.min(env.TASK_PAYLOAD_OFFLOAD_THRESHOLD, maximumInlineSize)
   );
 
   if (!needsOffloading) {
@@ -66,4 +71,25 @@ export async function processWaitpointCompletionPacket(
     data: uploadedFilename!,
     dataType: "application/store",
   };
+}
+
+/** Native stream tokens need bounded output; legacy tokens retain their inline packet. */
+export async function processStreamWaitpointCompletionPacket(
+  waitpointId: string,
+  data: string,
+  environment: AuthenticatedEnvironment
+): Promise<IOPacket> {
+  const packet = { data, dataType: "application/json" };
+  const parsed = parseWaitpointId(waitpointId);
+  if (parsed.format === "legacy" || (parsed.type !== "DATETIME" && parsed.type !== "MANUAL")) {
+    return packet;
+  }
+
+  // A later/competing send must never overwrite the object referenced by the winning completion.
+  return processWaitpointCompletionPacket(
+    packet,
+    environment,
+    `${WaitpointId.toFriendlyId(waitpointId)}/stream/${crypto.randomUUID()}`,
+    MAX_INLINE_COMPLETION_OUTPUT_BYTES
+  );
 }

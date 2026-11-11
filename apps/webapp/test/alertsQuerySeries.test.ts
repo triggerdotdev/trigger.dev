@@ -19,6 +19,7 @@ vi.mock("~/db.server", async (importOriginal) => {
 vi.mock("~/services/clickhouse/clickhouseFactoryInstance.server", () => ({
   clickhouseFactory: { getClickhouseForOrganization: async () => holder.ch },
 }));
+vi.mock("~/services/platform.v3.server", () => ({ getLimit: async () => 1 }));
 vi.mock("~/services/queryConcurrencyLimiter.server", () => ({
   queryConcurrencyLimiter: {
     acquire: async () => ({ success: true }),
@@ -43,7 +44,8 @@ import {
   evaluateQueryCapability,
   type QueryRowRunner,
 } from "~/v3/services/alerts/evaluators/queryEvaluator.server";
-import type { AlertParams, Condition } from "@internal/alert-contracts";
+import { getCapability, type AlertParams, type Condition } from "@internal/alert-contracts";
+import { getMetricSeries } from "~/v3/services/alerts/alertSeries.server";
 
 const TENANT = { org: "org_qs", project: "proj_qs", env: "env_qs" };
 const MIN = 60_000;
@@ -301,6 +303,14 @@ describe("query alert series", () => {
         { since: new Date(now - 3 * HOUR), until: new Date(now) }
       );
       expect(named.get("__agg__")).toEqual(points);
+
+      const threeDaysAgo = now - 72 * HOUR;
+      await insertRuns(ch, at(72 * 60 + 30, 2, "old"));
+      const past = await seriesFor(alert, {
+        since: new Date(threeDaysAgo - HOUR),
+        until: new Date(threeDaysAgo),
+      });
+      expect(past.get("__agg__")?.at(-1)).toEqual({ bucket: threeDaysAgo, value: 2 });
     }
   );
 
@@ -406,6 +416,47 @@ describe("query alert series", () => {
       expect(series.get("__agg__")).toEqual(
         [0, 0, 3, 0, 1].map((value, i) => ({ bucket: now - (5 - i) * HOUR, value }))
       );
+    }
+  );
+
+  containerTestWithClickhouse(
+    "a grouped chart picks its top keys from the chart window",
+    async ({ clickhouseContainer, prisma }) => {
+      const ch = useClickhouse(clickhouseContainer.getConnectionUrl(), prisma);
+      const now = Date.now();
+      const gauge = (queue: string, at: number, queued: number) => ({
+        organization_id: TENANT.org,
+        project_id: TENANT.project,
+        environment_id: TENANT.env,
+        queue_name: queue,
+        event_time: new Date(at).toISOString().slice(0, 19).replace("T", " "),
+        op: "gauge" as const,
+        running: 0,
+        queued,
+        queue_limit: 10,
+      });
+      await ch.queueMetrics.insertRaw(
+        [
+          ...[1, 2, 3, 4, 5, 6].map((n) => gauge(`q${n}`, now - 10 * MIN, n)),
+          gauge("stale", now - 10 * 24 * HOUR, 999),
+        ],
+        { params: { clickhouse_settings: { async_insert: 0 } } }
+      );
+
+      const series = await getMetricSeries(
+        {
+          alertId: "alert_top_keys",
+          capability: getCapability("queue.depth")!,
+          params: { environmentId: TENANT.env, scope: { type: "all" } },
+          organizationId: TENANT.org,
+          projectId: TENANT.project,
+          windowHours: 1,
+        },
+        createQueryRowRunner(10)
+      );
+
+      const keys = [...series.keys()].filter((k) => !k.startsWith("__")).sort();
+      expect(keys).toEqual(["q2", "q3", "q4", "q5", "q6"]);
     }
   );
 });

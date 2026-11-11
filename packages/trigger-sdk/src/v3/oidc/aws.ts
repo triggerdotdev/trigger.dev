@@ -12,6 +12,8 @@ export type AWSCredentialProviderOptions = {
   roleSessionName?: string;
   /** STS session duration, in seconds. Defaults to one hour. */
   durationSeconds?: number;
+  /** Include verified identity as AWS session tags. Requires sts:TagSession in the role trust policy. Defaults to false. */
+  sessionTags?: boolean;
 };
 
 export type AWSCredentials = {
@@ -34,7 +36,10 @@ export function awsCredentialProvider(
   const client = new STSClient({ region: options.region });
 
   return async () => {
-    const { token } = await auth.getOIDCToken({ audience: "sts.amazonaws.com" });
+    const { token } = await auth.getOIDCToken({
+      audience: "sts.amazonaws.com",
+      awsSessionTags: options.sessionTags,
+    });
     const roleSessionName =
       options.roleSessionName ??
       taskContext.ctx!.run.id.replace(/[^\w+=,.@-]/g, "_").slice(0, MAX_ROLE_SESSION_NAME_LENGTH);

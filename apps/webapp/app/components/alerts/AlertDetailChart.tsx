@@ -1,3 +1,5 @@
+import { GROUP_CAPABILITY_KEY } from "@internal/alert-contracts";
+import { MetricTileChart } from "~/components/queues/MetricTileChart";
 import { useState } from "react";
 import { useUserTimeZone } from "~/components/primitives/DateTime";
 import { DetailChartBlock } from "~/components/primitives/DetailChartBlock";
@@ -7,7 +9,7 @@ import { HealthViewToggle, type HealthView } from "./HealthViewToggle";
 import { GroupsDropdown } from "./GroupsDropdown";
 import { PreviewChartCard } from "./PreviewChartCard";
 import { alertChartInfo } from "./alertSummaries";
-import { ActivityBars, EVENT_CHART_COLOR } from "./ActivityBars";
+import { ActivityBars, EVENT_CHART_COLOR, raisedMarker } from "./ActivityBars";
 import {
   AbsenceActivityChart,
   absenceLegend,
@@ -40,7 +42,11 @@ import {
   AlertMultiSeriesChart,
   AlertThresholdChart,
   assignGroupColors,
+  formatAlertTick,
+  multiSeriesConfig,
   thresholdChartLegend,
+  thresholdReferenceLine,
+  thresholdWarningOverlay,
 } from "./AlertThresholdChart";
 import {
   hasTileData,
@@ -79,14 +85,19 @@ export function AlertDetailFilterBar({ lifetime }: { lifetime?: DetailWindow }) 
     <TimeFilter
       defaultPeriod={DETAIL_DEFAULT_PERIOD}
       labelName="Occurred"
+      period={lifetime ? "" : undefined}
       from={lifetime ? String(lifetime.since.getTime()) : undefined}
       to={lifetime ? String(lifetime.until.getTime()) : undefined}
     />
   );
 }
 
-function alertChartTitle(alert: Pick<AlertDetail, "kind" | "capabilityTitle">): string {
-  if (alert.kind === "state") return "Environment status";
+function alertChartTitle(
+  alert: Pick<AlertDetail, "kind" | "capabilityTitle" | "capabilityKey">
+): string {
+  if (alert.kind === "state") {
+    return alert.capabilityKey === GROUP_CAPABILITY_KEY ? "Group status" : "Environment status";
+  }
   if (alert.kind === "absence") return "Time since last run";
   return alert.capabilityTitle;
 }
@@ -97,11 +108,14 @@ type AlertDetailChartProps = {
   healthBands: HealthBandRow[];
   componentSeries?: HealthQuerySeries[];
   limitTiles?: LimitTileSeries[];
-  window: DetailWindow & { isLifetime?: boolean; explicitTo?: boolean };
+  window: DetailWindow & { isLifetime?: boolean; explicitTo?: boolean; clamped?: boolean };
   now: Date;
   createdAt?: Date;
   queryGroups?: string[];
   querySeriesMode?: "threshold" | "absence" | "match";
+  compact?: boolean;
+  tileTitle?: string;
+  tileEmpty?: boolean;
 };
 
 function limitsAsQueryProps(
@@ -144,7 +158,9 @@ export function AlertDetailChart(rawProps: AlertDetailChartProps) {
       )
     : rawProps;
   const { alert, window, metricSeriesMap, queryGroups = [] } = props;
-  const showToggle = alert.kind === "state" && (props.componentSeries?.length ?? 0) > 1;
+  const compact = props.compact === true;
+  const hasToggle = alert.kind === "state" && (props.componentSeries?.length ?? 0) > 1;
+  const showToggle = !compact && hasToggle;
   const groups = queryGroups;
   const groupSeries = metricSeriesMap;
   const grouped =
@@ -157,7 +173,7 @@ export function AlertDetailChart(rawProps: AlertDetailChartProps) {
         range: { since: window.since.getTime(), until: window.until.getTime() },
       })
     : [];
-  const showPicker = grouped && groups.length > 1;
+  const showPicker = !compact && grouped && groups.length > 1;
   const selected = showPicker ? (picked ?? defaults) : defaults;
   // Colours carry over from the previous selection, so a toggle doesn't repaint other groups.
   const [colorState, setColorState] = useState({ key: "", colors: new Map<string, string>() });
@@ -182,9 +198,61 @@ export function AlertDetailChart(rawProps: AlertDetailChartProps) {
     metricSeriesMap.size === 0 &&
     (loadedTiles.length === 0 || loadedTiles.some((t) => t.failed));
 
+  const body = (
+    <AlertDetailChartBody
+      {...props}
+      healthView={compact ? "together" : healthView}
+      dialogView={healthView}
+      dialogAccessory={
+        compact && hasToggle ? (
+          <HealthViewToggle value={healthView} onChange={setHealthView} />
+        ) : undefined
+      }
+      selectedGroups={grouped ? selected : undefined}
+      groupColors={groupColors}
+      title={props.tileTitle}
+      tile={compact ? { peak: null } : undefined}
+      accessory={
+        compact ? undefined : showToggle ? (
+          <HealthViewToggle value={healthView} onChange={setHealthView} />
+        ) : showPicker ? (
+          <GroupsDropdown
+            groups={groups}
+            selected={selected}
+            onToggle={toggleGroup}
+            colors={groupColors}
+            noun={isLimits ? "limits" : undefined}
+          />
+        ) : undefined
+      }
+    />
+  );
+
+  if (compact && (props.tileEmpty || (isLimits && metricSeriesMap.size === 0))) {
+    return (
+      <div className="h-56 min-h-0">
+        <PreviewChartCard
+          className={FLUSH_CARD}
+          title={props.tileTitle ?? ""}
+          info={alertChartInfo(alert)}
+          alwaysShowControls
+          tile={{ peak: null }}
+        >
+          <div className="flex h-full items-center justify-center text-xs text-text-dimmed">
+            No activity
+          </div>
+        </PreviewChartCard>
+      </div>
+    );
+  }
+
+  if (compact) return <div className="h-56 min-h-0">{body}</div>;
+
   return (
     <DetailChartBlock
-      toolbar={<AlertDetailFilterBar lifetime={window.isLifetime ? window : undefined} />}
+      toolbar={
+        <AlertDetailFilterBar lifetime={window.isLifetime || window.clamped ? window : undefined} />
+      }
     >
       <div className="min-h-[210px] flex-1">
         {limitsUnloaded ? (
@@ -192,25 +260,7 @@ export function AlertDetailChart(rawProps: AlertDetailChartProps) {
             Couldn't load this data. Try again in a moment.
           </div>
         ) : (
-          <AlertDetailChartBody
-            {...props}
-            healthView={healthView}
-            selectedGroups={grouped ? selected : undefined}
-            groupColors={groupColors}
-            accessory={
-              showToggle ? (
-                <HealthViewToggle value={healthView} onChange={setHealthView} />
-              ) : showPicker ? (
-                <GroupsDropdown
-                  groups={groups}
-                  selected={selected}
-                  onToggle={toggleGroup}
-                  colors={groupColors}
-                  noun={isLimits ? "limits" : undefined}
-                />
-              ) : undefined
-            }
-          />
+          body
         )}
       </div>
     </DetailChartBlock>
@@ -231,13 +281,22 @@ function AlertDetailChartBody({
   groupColors,
   querySeriesMode,
   accessory,
+  compact,
+  title: titleOverride,
+  tile,
+  dialogView,
+  dialogAccessory,
 }: AlertDetailChartProps & {
+  dialogView?: HealthView;
+  dialogAccessory?: React.ReactNode;
+  title?: string;
+  tile?: { peak: string | null };
   healthView: HealthView;
   selectedGroups?: string[];
   groupColors?: Map<string, string>;
   accessory?: React.ReactNode;
 }) {
-  const title = alertChartTitle(alert);
+  const title = titleOverride ?? alertChartTitle(alert);
   const info = alertChartInfo(alert);
   const raisedAt = alert.episode.raisedAt;
   const timeZone = useUserTimeZone();
@@ -255,6 +314,8 @@ function AlertDetailChartBody({
         createdAt={createdAt}
         timeZone={timeZone}
         accessory={accessory}
+        title={title}
+        tile={tile}
       />
     );
   }
@@ -292,7 +353,39 @@ function AlertDetailChartBody({
     const soleGroup =
       pick.multi && pick.seriesMap.size === 1 ? [...pick.seriesMap.keys()][0] : undefined;
     const label = soleGroup ?? METRIC_LABEL[alert.capabilityKey] ?? alert.capabilityTitle;
-    const chart = pick.multi ? (
+    const tileKeys = pick.multi ? [...pick.seriesMap.keys()] : ["value"];
+    const tileConfig = pick.multi
+      ? multiSeriesConfig(tileKeys, groupColors)
+      : { value: { label, color: EVENT_CHART_COLOR } };
+    const tileSeries = pick.multi ? [...pick.seriesMap.values()] : [pick.series];
+    const tileData = (tileSeries[0] ?? []).map((p, i) => ({
+      bucket: p.bucket,
+      ...Object.fromEntries(tileKeys.map((key, k) => [key, tileSeries[k]?.[i]?.value ?? null])),
+    }));
+    const tileChart = tile ? (
+      <MetricTileChart
+        data={tileData}
+        verticalMarker={raisedMarker(tileData, raisedAt, timeZone)}
+        series={tileKeys.map((key) => ({ key, ...tileConfig[key]! }))}
+        referenceLines={
+          threshold === null
+            ? undefined
+            : [
+                thresholdReferenceLine(
+                  threshold,
+                  formatAlertTick(threshold, alert.unitSuffix),
+                  true
+                ),
+              ]
+        }
+        yDomain={[0, (max) => Math.max(max, threshold ?? 0) * 1.15 || 1]}
+        dateOnlyAxis
+        warningOverlay={thresholdWarningOverlay(threshold, alert.operator)}
+        formatAxis={(v) => formatAlertTick(v, alert.unitSuffix)}
+        formatValue={(v) => formatAlertTick(v, alert.unitSuffix)}
+      />
+    ) : undefined;
+    const fullChart = pick.multi ? (
       <AlertMultiSeriesChart
         seriesMap={pick.seriesMap}
         threshold={threshold}
@@ -316,6 +409,7 @@ function AlertDetailChartBody({
         fill
       />
     );
+    const chart = tileChart ?? fullChart;
     return (
       <PreviewChartCard
         className={FLUSH_CARD}
@@ -330,6 +424,7 @@ function AlertDetailChartBody({
         })}
         alwaysShowControls
         accessory={accessory}
+        tile={tile}
         fullscreenChildren={
           pick.multi ? (
             <AlertMultiSeriesChart
@@ -342,10 +437,9 @@ function AlertDetailChartBody({
               timeZone={timeZone}
               colors={groupColors}
               fill
-              showLegend
             />
           ) : (
-            chart
+            fullChart
           )
         }
       >
@@ -370,38 +464,59 @@ function AlertDetailChartBody({
       window,
       createdAt
     );
-    const drawn = drawnHealthSeries(lines);
+    const sinceMs = window.since.getTime();
+    const evaluatedFrom = bands[0]?.bucket;
+    const preCreation = createdAt !== undefined && createdAt.getTime() > sinceMs;
+    const edge = {
+      until: window.until.getTime(),
+      ...(preCreation && evaluatedFrom !== undefined && evaluatedFrom > sinceMs
+        ? { from: sinceMs }
+        : {}),
+    };
+    const drawn = drawnHealthSeries(preCreation ? componentSeries : lines);
     const current = degradedNow ? 0 : live && !inactive && alert.evaluated ? 1 : undefined;
-    const separate =
-      componentSeries.length === 1 || (healthView === "separate" && componentSeries.length > 1);
-    const together = healthAxis(bands, raisedAt, current, timeZone);
-    const ends = together.data;
-    const chart = separate ? (
-      <AlertHealthQueriesChart
-        series={drawn}
-        domain={ends.length > 0 ? [ends[0]!.bucket, ends[ends.length - 1]!.bucket] : undefined}
-        axis={together}
-        timeZone={timeZone}
-      />
-    ) : (
-      <HealthActivityChart
-        bands={bands}
-        raisedAt={raisedAt}
-        current={current}
-        timeZone={timeZone}
-      />
-    );
+    const healthChart = (isCompact: boolean, view: HealthView) => {
+      const separate =
+        componentSeries.length === 1 || (view === "separate" && componentSeries.length > 1);
+      const together = healthAxis(bands, raisedAt, current, timeZone, isCompact, edge);
+      const ends = together.data;
+      return {
+        legend: healthLegend(separate, drawn),
+        element: separate ? (
+          <AlertHealthQueriesChart
+            series={drawn}
+            domain={ends.length > 0 ? [ends[0]!.bucket, ends[ends.length - 1]!.bucket] : undefined}
+            axis={together}
+            timeZone={timeZone}
+          />
+        ) : (
+          <HealthActivityChart
+            bands={bands}
+            edge={edge}
+            raisedAt={raisedAt}
+            current={current}
+            timeZone={timeZone}
+            compact={isCompact}
+          />
+        ),
+      };
+    };
+    const shown = healthChart(compact === true, healthView);
+    const expanded = compact ? healthChart(false, dialogView ?? "together") : shown;
     return (
       <PreviewChartCard
         className={FLUSH_CARD}
         title={title}
         info={info}
-        legend={healthLegend(separate, drawn)}
+        legend={shown.legend}
         alwaysShowControls
         accessory={accessory}
-        fullscreenChildren={chart}
+        tile={tile}
+        fullscreenLegend={expanded.legend}
+        fullscreenAccessory={dialogAccessory}
+        fullscreenChildren={expanded.element}
       >
-        {chart}
+        {shown.element}
       </PreviewChartCard>
     );
   }
@@ -414,15 +529,17 @@ function AlertDetailChartBody({
     );
     const silentSince = absenceSilenceStart(alert);
     const trailing = silentSince && !window.explicitTo ? { since: silentSince, now } : undefined;
-    const chart = (
+    const absenceChart = (isCompact: boolean) => (
       <AbsenceActivityChart
         series={metricAgg}
         quietWindowSec={alert.windowSec}
         trailing={trailing}
         raisedAt={raisedAt}
         timeZone={timeZone}
+        compact={isCompact}
       />
     );
+    const chart = absenceChart(compact === true);
     return (
       <PreviewChartCard
         className={FLUSH_CARD}
@@ -431,7 +548,8 @@ function AlertDetailChartBody({
         legend={absenceLegend(metricAgg, alert.windowSec, trailing)}
         alwaysShowControls
         accessory={accessory}
-        fullscreenChildren={chart}
+        tile={tile}
+        fullscreenChildren={absenceChart(false)}
       >
         {chart}
       </PreviewChartCard>
@@ -449,6 +567,8 @@ function AlertDetailChartBody({
       createdAt={createdAt}
       timeZone={timeZone}
       accessory={accessory}
+      title={title}
+      tile={tile}
     />
   );
 }
@@ -460,7 +580,11 @@ function OccurrenceBarsCard({
   createdAt,
   timeZone,
   accessory,
+  title,
+  tile,
 }: {
+  tile?: { peak: string | null };
+  title: string;
   alert: AlertDetail;
   occurrences: { bucket: number; count: number }[];
   window: DetailWindow;
@@ -469,21 +593,22 @@ function OccurrenceBarsCard({
   accessory?: React.ReactNode;
 }) {
   const raisedAt = alert.episode.raisedAt;
-  const title = alertChartTitle(alert);
   const info = alertChartInfo(alert);
   const start = firstDataAt(window, createdAt, {
     series: [occurrences.map((p) => ({ bucket: p.bucket, value: p.count }))],
     events: alert.events,
   });
-  const chart = (
+  const bars = (compact: boolean) => (
     <ActivityBars
       data={sliceFrom(occurrences, start)}
       series={OCCURRENCE_SERIES}
       yAxis="count"
       raisedAt={raisedAt}
       timeZone={timeZone}
+      compact={compact}
     />
   );
+  const chart = bars(tile !== undefined);
   return (
     <PreviewChartCard
       className={FLUSH_CARD}
@@ -492,7 +617,8 @@ function OccurrenceBarsCard({
       legend={[{ swatch: "area", color: EVENT_CHART_COLOR, label: "Occurrences" }]}
       alwaysShowControls
       accessory={accessory}
-      fullscreenChildren={chart}
+      tile={tile}
+      fullscreenChildren={bars(false)}
     >
       {chart}
     </PreviewChartCard>

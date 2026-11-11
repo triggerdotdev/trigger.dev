@@ -1,19 +1,16 @@
-import { chatExists } from "@internal/dashboard-agent-db";
 import type { NotifierRef } from "@internal/alert-contracts";
 import { boundedIn, type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { $replica } from "~/db.server";
-import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
 import { availableAlertChannelWhere } from "./validateNotifierChannels.server";
 
 export interface NotifierOwnershipError {
-  reason: "channel" | "chat";
+  reason: "channel" | "chat" | "none";
   message: string;
 }
 
 /**
- * Every notifier a caller names has to already belong to them: a channel to
- * this project, a chat to this org and this acting user. Callers map the
- * returned `reason` to their own HTTP status.
+ * Every notifier a caller names must be a channel already on this project.
+ * Callers map the returned `reason` to their own HTTP status.
  */
 export async function validateAlertNotifiers(params: {
   notifiers: NotifierRef[];
@@ -22,6 +19,13 @@ export async function validateAlertNotifiers(params: {
   userId: string;
   environmentType: RuntimeEnvironmentType;
 }): Promise<NotifierOwnershipError | null> {
+  if (params.notifiers.length === 0) {
+    return { reason: "none", message: "At least one channel is required" };
+  }
+  if (params.notifiers.some((notifier) => notifier.type === "chat")) {
+    return { reason: "chat", message: "Chat notifiers are not supported" };
+  }
+
   const channelIds = params.notifiers
     .filter(
       (notifier): notifier is Extract<NotifierRef, { type: "channel" }> =>
@@ -47,24 +51,6 @@ export async function validateAlertNotifiers(params: {
         reason: "channel",
         message: `notifier channel(s) not found on this project: ${missing.join(", ")}`,
       };
-    }
-  }
-
-  const chatIds = params.notifiers
-    .filter(
-      (notifier): notifier is Extract<NotifierRef, { type: "chat" }> => notifier.type === "chat"
-    )
-    .map((notifier) => notifier.chatId)
-    .filter((chatId): chatId is string => Boolean(chatId));
-
-  for (const chatId of chatIds) {
-    const exists = await chatExists(dashboardAgentDb, {
-      chatId,
-      userId: params.userId,
-      organizationId: params.organizationId,
-    });
-    if (!exists) {
-      return { reason: "chat", message: `notifier chat not found: ${chatId}` };
     }
   }
 

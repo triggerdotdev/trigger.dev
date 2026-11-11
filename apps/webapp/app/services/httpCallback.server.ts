@@ -1,9 +1,21 @@
-import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import { parseWaitpointId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import nodeCrypto from "node:crypto";
 import { env } from "~/env.server";
+import { generateScopedHttpCallbackHash } from "./httpCallbackHash.server";
 
-export function generateHttpCallbackUrl(waitpointId: string, apiKey: string) {
-  const hash = generateHttpCallbackHash(waitpointId, apiKey);
+export function generateHttpCallbackUrl(
+  waitpointId: string,
+  apiKey: string,
+  scope?: { environmentId: string }
+) {
+  const parsed = scope ? parseWaitpointId(waitpointId) : undefined;
+  const hash =
+    scope &&
+    parsed &&
+    parsed.format !== "legacy" &&
+    (parsed.type === "DATETIME" || parsed.type === "MANUAL")
+      ? generateScopedHttpCallbackHash({ waitpointId, environmentId: scope.environmentId }, apiKey)
+      : generateHttpCallbackHash(waitpointId, apiKey);
 
   return `${env.API_ORIGIN ?? env.APP_ORIGIN}/api/v1/waitpoints/tokens/${WaitpointId.toFriendlyId(
     waitpointId

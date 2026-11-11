@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  isServerOnlySessionInKind,
+  sanitizeClientInPart,
   stripClientIngressFields,
   stripClientIngressFieldsFromBasePayload,
 } from "~/services/realtime/sanitizeSessionInput.server";
@@ -65,6 +67,20 @@ describe("stripClientIngressFields", () => {
   it("leaves a malformed part untouched", () => {
     const part = '{"kind":"message","payload":{"actionSource":"webhook"';
     expect(stripClientIngressFields(part)).toBe(part);
+  });
+});
+
+describe("sanitizeClientInPart", () => {
+  it("reads a handover kind whose property name is spelled with JSON escapes", () => {
+    const forged = '{"\\u006bind":"handover","partialAssistantMessage":[],"isFinal":false}';
+    const { kind } = sanitizeClientInPart(forged);
+    expect(kind).toBe("handover");
+    expect(isServerOnlySessionInKind(kind)).toBe(true);
+  });
+
+  it("treats a message record as one a client may append", () => {
+    const { kind } = sanitizeClientInPart(record({ trigger: "submit-message" }));
+    expect(isServerOnlySessionInKind(kind)).toBe(false);
   });
 });
 

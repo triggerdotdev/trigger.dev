@@ -4,7 +4,7 @@ import { RescheduleRunRequestBody } from "@trigger.dev/core/v3/schemas";
 import { z } from "zod";
 import { getApiVersion } from "~/api/versions";
 import { ApiRetrieveRunPresenter } from "~/presenters/v3/ApiRetrieveRunPresenter.server";
-import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { authenticateApiKeyWithScope } from "~/services/apiAuth.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { logger } from "~/services/logger.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
@@ -23,10 +23,15 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return { status: 405, body: "Method Not Allowed" };
   }
 
-  const authenticationResult = await authenticateApiRequest(request);
-  if (!authenticationResult) {
-    return json({ error: "Invalid or missing API Key" }, { status: 401 });
+  const authResult = await authenticateApiKeyWithScope(request, {
+    action: "write",
+    resource: { type: "runs", id: params.runParam },
+    allowRunToken: true,
+  });
+  if (!authResult.ok) {
+    return json({ error: authResult.error }, { status: authResult.status });
   }
+  const authenticationResult = authResult.authentication;
 
   const parsed = ParamsSchema.safeParse(params);
   if (!parsed.success) {

@@ -1,4 +1,8 @@
-import type { RunStore } from "@internal/run-store";
+import {
+  DelegatingRunStore,
+  type RunStore,
+  type WaitpointColocationOptions,
+} from "@internal/run-store";
 import { tryCatch } from "@trigger.dev/core/v3";
 import {
   mintWaitpointIdFor,
@@ -16,9 +20,13 @@ import type {
   AbsorbedBlockersParams,
   AbsorbBlockersResult,
   AcknowledgeResumeParams,
+  PrepareWaitpointResumeParams,
+  WaitpointResumeIntent,
   AssociatedWaitpointData,
+  AssociatedWaitpointPlan,
   BlockerRegistration,
   ClearRunBlockStateParams,
+  CreateBatchWaitpointParams,
   ReleaseRunBlockersParams,
   CompleteParams,
   CompleteResult,
@@ -60,6 +68,16 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     this.#getRunStore = options.runStore;
     this.prisma = options.prisma;
     this.logger = options.logger;
+  }
+
+  /** Enabled key arbitration only: reuse the original legacy creators on the owning transaction. */
+  withKeyClaim(claim: NonNullable<CreateDateTimeWaitpointParams["keyClaim"]>) {
+    const store = new KeyClaimRunStore(claim.store, claim.tx);
+    return new LegacyPostgresWaitpointCoordinator({
+      runStore: () => store,
+      prisma: this.prisma,
+      logger: this.logger,
+    });
   }
 
   async clearRunBlockState({
@@ -165,6 +183,16 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
 
   // Postgres has no watcher registration or resume handoff to acknowledge — completion already fanned
   // out at complete() time — so the resume cleanup is just deleting the run's consumed edge rows.
+  async prepareResume(
+    _params: PrepareWaitpointResumeParams
+  ): Promise<WaitpointResumeIntent | undefined> {
+    return undefined;
+  }
+
+  async readResumeIntent(): Promise<WaitpointResumeIntent | undefined> {
+    return undefined;
+  }
+
   async acknowledgeResume(params: AcknowledgeResumeParams): Promise<void> {
     await this.clearRunBlockState({ runId: params.runId, edgeIds: params.edgeIds });
   }
@@ -472,6 +500,8 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
         return { kind: "created", waitpoint };
       } catch (error) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+          // A failed statement aborts the claim transaction; only a fresh transaction can retry it.
+          if (this.runStore instanceof KeyClaimRunStore) throw error;
           // Handle unique constraint violation (conflict)
           attempts++;
           if (attempts >= maxRetries) {
@@ -486,6 +516,32 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     }
 
     throw new Error(`Failed to create waitpoint after ${maxRetries} attempts due to conflicts.`);
+  }
+
+  async createBatchWaitpoint({
+    batchId,
+    environmentId,
+    projectId,
+    tx,
+  }: CreateBatchWaitpointParams): Promise<CreateWaitpointResult> {
+    // From the batch, not the blocked run: the create passes only completedByBatchId, which is the owner
+    // the router validates against. The id anchors to the batch id. A duplicate batch idempotency key
+    // raises P2002, which the caller maps to its own "already created" contract.
+    const waitpoint = await this.runStore.createWaitpoint(
+      {
+        data: {
+          ...mintWaitpointIdFor(batchId),
+          type: "BATCH",
+          idempotencyKey: batchId,
+          userProvidedIdempotencyKey: false,
+          completedByBatchId: batchId,
+          environmentId,
+          projectId,
+        },
+      },
+      tx
+    );
+    return { kind: "created", waitpoint };
   }
 
   mintAssociatedWaitpointData({
@@ -524,6 +580,26 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     });
   }
 
+  // Legacy only ever mints legacy; the router selects store when eligible and never reaches here for one.
+  async planAssociatedWaitpoint(params: {
+    projectId: string;
+    environmentId: string;
+    anchorRunId: string;
+  }): Promise<AssociatedWaitpointPlan> {
+    return { residency: "legacy", data: this.mintAssociatedWaitpointData(params) };
+  }
+
+  // A legacy run's RUN waitpoint is a Postgres row reached through `run.associatedWaitpoint`, never a
+  // derived store id, so there is nothing to discover here.
+  async findAssociatedRunWaitpointId(): Promise<string | undefined> {
+    return undefined;
+  }
+
+  // A legacy run's association is a Postgres row read directly by the caller, never a store record.
+  async readAssociatedRunWaitpoint(): Promise<Waitpoint | undefined> {
+    return undefined;
+  }
+
   /**
    * The edge write, shared by both register paths so they cannot drift.
    *
@@ -547,5 +623,39 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
       batchId,
       batchIndex,
     });
+  }
+}
+
+/** Used only after the enabled caller has acquired the physical key owner's transaction. */
+class KeyClaimRunStore extends DelegatingRunStore {
+  constructor(
+    delegate: RunStore,
+    private readonly claimTx: PrismaClientOrTransaction
+  ) {
+    super(delegate);
+  }
+
+  override findWaitpoint<T extends Prisma.WaitpointFindFirstArgs>(
+    args: Prisma.SelectSubset<T, Prisma.WaitpointFindFirstArgs>,
+    _client?: Parameters<RunStore["findWaitpoint"]>[1],
+    opts?: WaitpointColocationOptions
+  ): Promise<Prisma.WaitpointGetPayload<T> | null> {
+    return this.delegate.findWaitpoint(args, this.claimTx, opts);
+  }
+
+  override updateWaitpoint<T extends Prisma.WaitpointUpdateArgs>(
+    args: Prisma.SelectSubset<T, Prisma.WaitpointUpdateArgs>,
+    _tx?: PrismaClientOrTransaction,
+    opts?: WaitpointColocationOptions
+  ): Promise<Prisma.WaitpointGetPayload<T>> {
+    return this.delegate.updateWaitpoint(args, this.claimTx, opts);
+  }
+
+  override upsertWaitpoint<T extends Prisma.WaitpointUpsertArgs>(
+    args: Prisma.SelectSubset<T, Prisma.WaitpointUpsertArgs>,
+    _tx?: PrismaClientOrTransaction,
+    opts?: WaitpointColocationOptions
+  ): Promise<Prisma.WaitpointGetPayload<T>> {
+    return this.delegate.upsertWaitpoint(args, this.claimTx, opts);
   }
 }

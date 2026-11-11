@@ -80,9 +80,10 @@ import type { AlertChannel, CreationResult } from "./alert-creation/CreationFlow
 import { CreationChatShell } from "~/components/alerts/CreationChatShell";
 import { alertChannelsResourcePath } from "~/components/alerts/alertChannelsResourcePath";
 import type { AlertCreatedMessage } from "~/components/alerts/alertCreatedCard";
-import { createAlertRequestBody } from "~/components/alerts/createAlertRequest";
+import { createAlertRequestBody, withKnownNotifiers } from "~/components/alerts/createAlertRequest";
 import { CreationTranscript } from "~/components/alerts/CreationTranscript";
 import { QueryAlertTranscript, queryWatchPrefill } from "~/components/alerts/QueryAlertTranscript";
+import { GroupAlertsTranscript } from "~/components/alerts/GroupAlertsTranscript";
 import {
   EditAlertTranscript,
   type EditAlertPrefill,
@@ -100,9 +101,6 @@ import {
   clearSlackConnectResume,
   readSlackConnectResume,
 } from "~/components/alerts/slackConnectResume";
-// "This chat" stays pickable before the chat exists; it is created when the alert is.
-const CHAT_CREATED_ON_USE = "chat_on_use";
-
 function createSearchKey(search: string): string {
   const p = new URLSearchParams(search);
   return [
@@ -114,7 +112,7 @@ function createSearchKey(search: string): string {
   ].join("|");
 }
 
-function draftFromSearch(search: string, hasChatId: boolean): FlowAnswers {
+function draftFromSearch(search: string): FlowAnswers {
   const params = new URLSearchParams(search);
   const area = params.get("area") ?? undefined;
   const capability = params.get("capability") ?? undefined;
@@ -124,7 +122,7 @@ function draftFromSearch(search: string, hasChatId: boolean): FlowAnswers {
     area || capability || scope
       ? searchParamsToAnswers({ area: asArea(area), capability, scope, scopeValue })
       : {};
-  return { ...base, notifiers: hasChatId ? ["chat"] : [] };
+  return { ...base, notifiers: [] };
 }
 
 function serializePageContext(pageContext: AgentPageContext): string | undefined {
@@ -161,6 +159,7 @@ export function DashboardAgentPanel({
   requestedMessage,
   createAlertPrefill,
   editAlertRequest,
+  groupAlertsRequest,
   openChatRequest,
   newChatSeq,
   promotedPrompt,
@@ -188,6 +187,7 @@ export function DashboardAgentPanel({
   /** Prefill for in-place alert creation (from contextual pages). */
   createAlertPrefill?: DraftPrefillParams;
   editAlertRequest?: { prefill: EditAlertPrefill; seq: number };
+  groupAlertsRequest?: { members: { id: string; name: string }[]; seq: number };
   // Every `seq` below distinguishes repeat requests with identical contents.
   requestedMessage?: { text: string; seq: number };
   openChatRequest?: { chatId: string; seq: number };
@@ -536,9 +536,17 @@ export function DashboardAgentPanel({
   const [dismissedEditSeq, setDismissedEditSeq] = useState<number>();
   const activeEdit =
     editAlertRequest && editAlertRequest.seq !== dismissedEditSeq ? editAlertRequest : undefined;
+  const [dismissedGroupSeq, setDismissedGroupSeq] = useState<number>();
+  const activeGroup =
+    groupAlertsRequest && groupAlertsRequest.seq !== dismissedGroupSeq
+      ? groupAlertsRequest
+      : undefined;
+  const activeGroupRef = useRef(activeGroup);
+  activeGroupRef.current = activeGroup;
+  const [groupManual, setGroupManual] = useState(false);
   const activeEditRef = useRef(activeEdit);
   activeEditRef.current = activeEdit;
-  const inEditMode = Boolean(activeEdit);
+  const inEditMode = Boolean(activeEdit) || Boolean(activeGroup);
   const inCreationMode = creationMode && !inEditMode;
   const creationModeRef = useRef(creationMode);
   creationModeRef.current = creationMode;
@@ -550,11 +558,15 @@ export function DashboardAgentPanel({
   );
   const [creationDraft, setCreationDraft] = useState(() =>
     slackResume
-      ? (({ manual: _manual, ...answers }) => ({ ...answers, expiry: undefined }))(slackResume)
+      ? (({ manual: _manual, ...answers }) => ({
+          ...answers,
+          notifiers: answers.notifiers?.filter((id) => id !== "chat"),
+          expiry: undefined,
+        }))(slackResume)
       : openSource === "alerts"
         ? createAlertPrefill
           ? prefillToAnswers(createAlertPrefill)
-          : draftFromSearch(location.search, true)
+          : draftFromSearch(location.search)
         : undefined
   );
   const [queryWatch, setQueryWatch] = useState(() =>
@@ -593,7 +605,7 @@ export function DashboardAgentPanel({
       setManualMode(false);
       const draft = createAlertPrefill
         ? prefillToAnswers(createAlertPrefill)
-        : draftFromSearch(location.search, true);
+        : draftFromSearch(location.search);
       setCreationDraft(draft);
       setQueryWatch(queryWatchPrefill(createAlertPrefill));
       prevCreateParamKeyRef.current = createSearchKey(location.search);
@@ -614,7 +626,7 @@ export function DashboardAgentPanel({
   ) {
     prevCreateParamKeyRef.current = createParamKey;
     setManualMode(false);
-    setCreationDraft(draftFromSearch(location.search, true));
+    setCreationDraft(draftFromSearch(location.search));
     setQueryWatch(undefined);
     setCreationEntrySeq((s) => s + 1);
     setCreationGeneration((g) => g + 1);
@@ -642,12 +654,11 @@ export function DashboardAgentPanel({
     [actionPath]
   );
   const creationSession = useCreationSession({
-    enabled: inCreationMode,
+    enabled: inCreationMode || Boolean(activeGroup),
     createSession: doCreateSession,
     discardSession: doDiscardSession,
     generation: creationGeneration,
   });
-  const creationChatId = creationSession.chatId;
   const creationEntrySeqRef = useRef(creationEntrySeq);
   creationEntrySeqRef.current = creationEntrySeq;
 
@@ -782,6 +793,7 @@ export function DashboardAgentPanel({
 
   const newChat = useCallback(() => {
     setDismissedEditSeq(activeEditRef.current?.seq);
+    setDismissedGroupSeq(activeGroupRef.current?.seq);
     setCreationMode(false);
     claimChatSlot();
     setLoading(false);
@@ -792,7 +804,7 @@ export function DashboardAgentPanel({
   const restartCreation = useCallback(() => {
     newChat();
     setCreationMode(true);
-    setCreationDraft(draftFromSearch(location.search, true));
+    setCreationDraft(draftFromSearch(location.search));
     setQueryWatch(undefined);
     setCreationEntrySeq((s) => s + 1);
     setCreationGeneration((g) => g + 1);
@@ -892,8 +904,27 @@ export function DashboardAgentPanel({
   // Not filtered to active: the wake banner needs watches that already fired.
   const chatWatches = activeChat?.watches ?? [];
 
+  const channelsFetcher = useFetcher<{
+    channels: AlertChannel[];
+    canWrite?: boolean;
+    limits?: { used: number; limit: number };
+  }>();
+  const channelsFetchedRef = useRef(false);
+  useEffect(() => {
+    if ((inCreationMode || inEditMode) && !channelsFetchedRef.current) {
+      channelsFetchedRef.current = true;
+      channelsFetcher.load(alertChannelsResourcePath(project.id, false, environment.id));
+    }
+    if (!inCreationMode && !inEditMode) {
+      channelsFetchedRef.current = false;
+    }
+  }, [inCreationMode, inEditMode, project.id, environment.id]); // eslint-disable-line -- fetcher is stable
+  const knownChannels = channelsFetcher.data?.channels;
+  const alertChannels: AlertChannel[] = knownChannels ?? [];
+  const channelLimits = channelsFetcher.data?.limits;
+
   const submitReplace = useCallback(
-    async (answers: FlowAnswers, chatId: string | undefined, expiresAt: string | undefined) => {
+    async (answers: FlowAnswers, expiresAt: string | undefined) => {
       const target = answers.replace!;
       const body = new FormData();
       body.set("intent", "replace");
@@ -905,11 +936,7 @@ export function DashboardAgentPanel({
       if (expiresAt) body.set("expiresAt", expiresAt);
       if (answers.scope) body.set("scopeType", answers.scope);
       if (answers.scopeValue) body.set("scopeValue", answers.scopeValue);
-      body.set(
-        "notifierChannelIds",
-        (answers.notifiers ?? []).filter((n) => n !== "chat").join(",")
-      );
-      if (chatId) body.set("chatId", chatId);
+      body.set("notifierChannelIds", (answers.notifiers ?? []).join(","));
       try {
         const res = await fetch(
           `${v3ProjectLegacyAlertsPath(organization, project, environment)}?_data=${encodeURIComponent(LEGACY_ALERTS_ROUTE_ID)}`,
@@ -939,33 +966,28 @@ export function DashboardAgentPanel({
   );
   const handleAlertCreated = useCallback(
     async (
-      answers: FlowAnswers
+      draft: FlowAnswers
     ): Promise<{ ok: CreationResult; chatId?: string; release?: () => void }> => {
+      const answers = withKnownNotifiers(draft, knownChannels ?? []);
       const seq = creationEntrySeqRef.current;
       let release: (() => void) | undefined;
       try {
-        const wantsChat = (answers.notifiers ?? []).includes("chat");
         const reused = creationChatToReuse(
           creationAgentChat.current,
           creationEntrySeq,
           active?.chatId
         );
-        const transcriptChatId =
-          wantsChat || !answers.replace ? (reused ?? (await creationSession.ensure())) : undefined;
-        const effectiveChatId = wantsChat ? transcriptChatId : undefined;
+        const transcriptChatId = !answers.replace
+          ? (reused ?? (await creationSession.ensure()))
+          : undefined;
         if (!reused && transcriptChatId && seq === creationEntrySeqRef.current) {
           release = creationSession.keep();
         }
-        if (wantsChat && !effectiveChatId) {
-          toast.error("We couldn't set up this chat to receive the alert. Try again.");
-          return { ok: false };
-        }
-        const wantChat = wantsChat;
 
         const expiresAt = expiryToIso(answers.expiry);
         if (answers.replace) {
           return {
-            ok: await submitReplace(answers, effectiveChatId, expiresAt),
+            ok: await submitReplace(answers, expiresAt),
             chatId: transcriptChatId,
             release,
           };
@@ -983,8 +1005,6 @@ export function DashboardAgentPanel({
               },
               answers
             ),
-            chatNotifier: wantChat ? "on" : undefined,
-            chatId: wantChat ? effectiveChatId : undefined,
             transcriptChatId,
           }),
         });
@@ -1017,7 +1037,7 @@ export function DashboardAgentPanel({
       creationSession,
       revalidator,
       submitReplace,
-      toast,
+      knownChannels,
     ]
   );
 
@@ -1065,13 +1085,15 @@ export function DashboardAgentPanel({
   const queryCreated = queryCreatedKey === queryWatchKey;
   const curatedTitle = creationFlow.created ? "Alert created" : "New alert";
   const creationTitle = queryWatch ? (queryCreated ? "Alert created" : "New alert") : curatedTitle;
-  const headerTitle = inEditMode
-    ? "Edit alert"
-    : inCreationMode
-      ? creationTitle
-      : active
-        ? (activeChat?.title ?? "Chat")
-        : "New chat";
+  const headerTitle = activeGroup
+    ? "Group alerts"
+    : inEditMode
+      ? "Edit alert"
+      : inCreationMode
+        ? creationTitle
+        : active
+          ? (activeChat?.title ?? "Chat")
+          : "New chat";
 
   const errorGroupSource = useErrorGroupSource(
     `/resources${v3EnvironmentPath(organization, project, environment)}/alerts/error-groups`,
@@ -1146,23 +1168,26 @@ export function DashboardAgentPanel({
     })();
   };
 
-  const channelsFetcher = useFetcher<{
-    channels: AlertChannel[];
-    canWrite?: boolean;
-    limits?: { used: number; limit: number };
-  }>();
-  const channelsFetchedRef = useRef(false);
-  useEffect(() => {
-    if ((inCreationMode || inEditMode) && !channelsFetchedRef.current) {
-      channelsFetchedRef.current = true;
-      channelsFetcher.load(alertChannelsResourcePath(project.id, false, environment.id));
-    }
-    if (!inCreationMode && !inEditMode) {
-      channelsFetchedRef.current = false;
-    }
-  }, [inCreationMode, inEditMode, project.id, environment.id]); // eslint-disable-line -- fetcher is stable
-  const alertChannels: AlertChannel[] = channelsFetcher.data?.channels ?? [];
-  const channelLimits = channelsFetcher.data?.limits;
+  const resolveGroupChatId = async () => {
+    if (active?.chatId) return { chatId: active.chatId };
+    const chatId = await creationSession.ensure();
+    return chatId ? { chatId, release: creationSession.keep() } : {};
+  };
+  const handleGroupCreated = async (
+    seq: number,
+    { chatId, message }: { chatId?: string; message?: unknown }
+  ) => {
+    setDismissedGroupSeq((dismissed) => Math.max(dismissed ?? seq, seq));
+    revalidator.revalidate();
+    if (!chatId || !message) return;
+    if (activeGroupRef.current?.seq === seq && chatId !== active?.chatId) await openChat(chatId);
+    setAppendedMessages((current) => ({
+      chatId,
+      messages: [message as UIMessage],
+      seq: (current?.seq ?? 0) + 1,
+    }));
+  };
+
   const addChannelAccess = {
     projectId: project.id,
     environmentId: environment.id,
@@ -1216,7 +1241,6 @@ export function DashboardAgentPanel({
             <EditAlertTranscript
               key={activeEdit.seq}
               prefill={activeEdit.prefill}
-              userId={user.id}
               onNewChat={newChat}
               channels={alertChannels}
               alertPath={v3AlertPath(
@@ -1229,16 +1253,28 @@ export function DashboardAgentPanel({
             />
           </CreationChatShell>
         ) : null}
+        {activeGroup && !loading ? (
+          <CreationChatShell placement="docked" title="Group alerts">
+            <GroupAlertsTranscript
+              key={activeGroup.seq}
+              members={activeGroup.members}
+              channels={alertChannels}
+              addChannel={addChannelAccess}
+              manual={groupManual}
+              onManualChange={setGroupManual}
+              onNewChat={newChat}
+              onCreated={(created) => handleGroupCreated(activeGroup.seq, created)}
+              resolveChatId={resolveGroupChatId}
+            />
+          </CreationChatShell>
+        ) : null}
         {inCreationMode ? (
           <CreationChatShell placement="docked" title={creationTitle}>
             {queryWatch ? (
               <QueryAlertTranscript
                 key={queryWatchKey}
                 prefill={queryWatch}
-                chat={{
-                  chatId: creationChatId ?? active?.chatId ?? CHAT_CREATED_ON_USE,
-                  ensure: ensureQueryChat,
-                }}
+                chat={{ ensure: ensureQueryChat }}
                 onCreated={({ chatId, name }) => {
                   setQueryCreatedKey(queryWatchKey);
                   setQueryCreatedSig(JSON.stringify(queryWatch));
@@ -1261,7 +1297,6 @@ export function DashboardAgentPanel({
                 queueMetricsEnabled={queueMetricsEnabled}
                 flow={creationFlow}
                 channels={alertChannels}
-                chatId={creationChatId ?? active?.chatId ?? CHAT_CREATED_ON_USE}
                 alertDetailPath={(id) => v3AlertPath(organization, project, environment, id)}
                 onFreeText={sendCreationText}
                 systemLines={creationAgentSend.systemLines}

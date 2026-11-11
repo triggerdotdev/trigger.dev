@@ -54,6 +54,9 @@ export class McpContext {
   public readonly options: McpContextOptions;
   private _profileLoaded: Promise<void> | undefined;
   private _resolveProfileLoaded: (() => void) | undefined;
+  // Concurrent tool calls share one authentication, so a lapsed login starts a single login
+  // flow rather than one per call. Switching profile drops it, so the new profile gets its own.
+  private _authInFlight: ReturnType<typeof mcpAuth> | undefined;
 
   constructor(server: McpServer, options: McpContextOptions) {
     this.server = server;
@@ -70,12 +73,21 @@ export class McpContext {
   public async getAuth() {
     // Wait for project profile to be loaded before authenticating
     await this._profileLoaded;
-    const auth = await mcpAuth({
-      server: this.server,
-      defaultApiUrl: this.options.apiUrl,
-      profile: this.options.profile,
-      context: this,
-    });
+    if (!this._authInFlight) {
+      const promise: ReturnType<typeof mcpAuth> = mcpAuth({
+        server: this.server,
+        defaultApiUrl: this.options.apiUrl,
+        profile: this.options.profile,
+        context: this,
+      }).finally(() => {
+        // A login that finishes after a profile switch mustn't clear the new profile's one.
+        if (this._authInFlight === promise) {
+          this._authInFlight = undefined;
+        }
+      });
+      this._authInFlight = promise;
+    }
+    const auth = await this._authInFlight;
 
     if (!auth.ok) {
       throw new Error(auth.error);
@@ -207,6 +219,7 @@ export class McpContext {
 
   public switchProfile(profile: string, projectDir?: string) {
     this.options.profile = profile;
+    this._authInFlight = undefined;
 
     // Persist to project-scoped config if we can resolve the project dir
     if (projectDir) {

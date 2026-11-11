@@ -3,10 +3,12 @@ import { createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
 import { createLRUMemoryStore } from "@internal/cache";
 import { Ratelimit } from "@upstash/ratelimit";
 import type { Request as ExpressRequest, Response as ExpressResponse, NextFunction } from "express";
+import { clientIpFromHeaders, isIpAllowed } from "@trigger.dev/rbac";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { RedisWithClusterOptions } from "~/redis.server";
 import { getRouterPath } from "~/utils/sanitizeHttpUrl";
+import { bearerTokenFromAuthorizationHeader } from "~/utils/bearerToken";
 import { logger } from "./logger.server";
 import type { Duration, Limiter } from "./rateLimiter.server";
 import { createRedisRateLimitClient, RateLimiter } from "./rateLimiter.server";
@@ -77,6 +79,9 @@ type RateLimitOverride = {
   config?: unknown;
   identifier?: string;
   tenant?: RateLimitTenant;
+  // The API key's allowed IP ranges. A request from outside them is not charged to
+  // `identifier`, so a blocked key can't use up its environment's limit.
+  allowedIpRanges?: string[];
 };
 
 type LimitConfigOverrideFunction = (
@@ -119,6 +124,7 @@ type ResolvedRateLimit = {
   // Bucket key to use, or undefined to fall back to the hashed Authorization header.
   identifier?: string;
   tenant?: RateLimitTenant;
+  allowedIpRanges?: string[];
 };
 
 async function resolveRateLimit(
@@ -156,9 +162,15 @@ async function resolveRateLimit(
 
     const identifier = override.identifier;
     const tenant = override.tenant;
+    const allowedIpRanges = override.allowedIpRanges;
 
     if (!override.config) {
-      return { config: defaultLimiter, identifier, tenant } satisfies ResolvedRateLimit;
+      return {
+        config: defaultLimiter,
+        identifier,
+        tenant,
+        allowedIpRanges,
+      } satisfies ResolvedRateLimit;
     }
 
     const parsedOverride = RateLimiterConfig.safeParse(override.config);
@@ -169,7 +181,12 @@ async function resolveRateLimit(
         errors: parsedOverride.error.issues,
       });
 
-      return { config: defaultLimiter, identifier, tenant } satisfies ResolvedRateLimit;
+      return {
+        config: defaultLimiter,
+        identifier,
+        tenant,
+        allowedIpRanges,
+      } satisfies ResolvedRateLimit;
     }
 
     if (logsEnabled && parsedOverride.data) {
@@ -180,7 +197,12 @@ async function resolveRateLimit(
       });
     }
 
-    return { config: parsedOverride.data, identifier, tenant } satisfies ResolvedRateLimit;
+    return {
+      config: parsedOverride.data,
+      identifier,
+      tenant,
+      allowedIpRanges,
+    } satisfies ResolvedRateLimit;
   });
 
   // Defensive read: the cache is keyed on a shared Redis namespace, so during a
@@ -197,6 +219,11 @@ async function resolveRateLimit(
     config: parsedConfig.success ? parsedConfig.data : defaultLimiter,
     identifier: typeof cached?.identifier === "string" ? cached.identifier : undefined,
     tenant: parsedTenant.success ? parsedTenant.data : undefined,
+    allowedIpRanges:
+      Array.isArray(cached?.allowedIpRanges) &&
+      cached.allowedIpRanges.every((range) => typeof range === "string")
+        ? cached.allowedIpRanges
+        : undefined,
   };
 }
 
@@ -235,7 +262,7 @@ export function authorizationRateLimitMiddleware({
       // Versioned namespace: the cached value shape is part of this key. Bump
       // the version whenever ResolvedRateLimit changes so a rolling deploy never
       // reads entries written in a previous shape (and vice versa).
-      keyPrefix: `cache:${keyPrefix}:rate-limit-cache:v3:`,
+      keyPrefix: `cache:${keyPrefix}:rate-limit-cache:v4:`,
       ...redis,
     },
   });
@@ -332,22 +359,34 @@ export function authorizationRateLimitMiddleware({
       }
     }
 
+    const token = bearerTokenFromAuthorizationHeader(authorizationValue);
+    // Keep existing bucket hashes for well-formed Bearer headers.
+    const normalizedAuthorizationValue = `Bearer ${token}`;
     const hash = createHash("sha256");
-    hash.update(authorizationValue);
+    hash.update(normalizedAuthorizationValue);
     const hashedAuthorizationValue = hash.digest("hex");
 
-    const {
-      config: limiterConfig,
-      identifier,
-      tenant,
-    } = await resolveRateLimit(
-      authorizationValue,
+    const resolved = await resolveRateLimit(
+      normalizedAuthorizationValue,
       hashedAuthorizationValue,
       defaultLimiter,
       cache,
       typeof log.limiter === "boolean" ? log.limiter : false,
       limiterConfigOverride
     );
+
+    // Checked per request, after the cache: the cached result is shared by every caller using
+    // this key. A request from outside the key's ranges will fail authentication anyway, so
+    // charge it to the key's own default bucket rather than its environment's.
+    const ipDenied =
+      resolved.allowedIpRanges !== undefined &&
+      !isIpAllowed(
+        resolved.allowedIpRanges,
+        clientIpFromHeaders({ get: (name) => req.get(name) ?? null })
+      );
+    const limiterConfig = ipDenied ? defaultLimiter : resolved.config;
+    const identifier = ipDenied ? undefined : resolved.identifier;
+    const tenant = ipDenied ? undefined : resolved.tenant;
 
     const rateLimitIdentifier = identifier ?? hashedAuthorizationValue;
 

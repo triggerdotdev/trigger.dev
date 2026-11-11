@@ -280,6 +280,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
     const result = await webhookEngine.cancelWaiter({
       environmentId: environment.id,
+      organizationId: environment.organizationId,
       waiterId,
       endpointId: endpoint.id,
     });

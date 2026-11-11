@@ -8,6 +8,14 @@ type Options = {
   redisClient?: RateLimiterRedisClient;
   keyPrefix: string;
   limiter: Limiter;
+  /** Past this the library answers "allowed" (default 5 s). Zero disables this fail-open timeout. */
+  timeoutMs?: number;
+  /**
+   * The library's process-local cache of rejections, on by default. It remembers a rejection
+   * until the end of the current fixed bucket, which for a sliding window can be long after
+   * the window itself has capacity again. Pass false when every decision must consult Redis.
+   */
+  ephemeralCache?: boolean;
   logSuccess?: boolean;
   logFailure?: boolean;
 };
@@ -21,7 +29,7 @@ export class RateLimiter {
   #ratelimit: Ratelimit;
 
   constructor(private readonly options: Options) {
-    const { redis, redisClient, keyPrefix, limiter } = options;
+    const { redis, redisClient, keyPrefix, limiter, timeoutMs, ephemeralCache } = options;
     const prefix = `ratelimit:${keyPrefix}`;
     const resolvedRedisClient =
       redisClient ?? (redis ? createRedisRateLimitClient(redis) : undefined);
@@ -33,9 +41,10 @@ export class RateLimiter {
     this.#ratelimit = new Ratelimit({
       redis: resolvedRedisClient,
       limiter,
-      ephemeralCache: new Map(),
+      ephemeralCache: ephemeralCache === false ? false : new Map(),
       analytics: false,
       prefix,
+      ...(timeoutMs !== undefined ? { timeout: timeoutMs } : {}),
     });
   }
 

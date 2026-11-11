@@ -1,3 +1,4 @@
+import { withAdminApi } from "~/services/adminApi.server";
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
@@ -9,7 +10,7 @@ const ParamsSchema = z.object({
   environmentId: z.string(),
 });
 
-export async function action({ request, params }: ActionFunctionArgs) {
+async function handleAction({ request, params }: ActionFunctionArgs) {
   await requireAdminApiRequest(request);
 
   const parsedParams = ParamsSchema.parse(params);
@@ -38,3 +39,5 @@ export async function action({ request, params }: ActionFunctionArgs) {
     results,
   });
 }
+
+export const action = withAdminApi(handleAction);

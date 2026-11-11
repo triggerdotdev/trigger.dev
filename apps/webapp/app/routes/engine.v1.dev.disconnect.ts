@@ -8,6 +8,7 @@ import { prisma } from "~/db.server";
 import { runStore } from "~/v3/runStore.server";
 import { logger } from "~/services/logger.server";
 import { RateLimiter } from "~/services/rateLimiter.server";
+import { devWorkerAuthorization } from "~/services/devWorkerAuthorization.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { CancelTaskRunService } from "~/v3/services/cancelTaskRun.server";
 import { commonWorker } from "~/v3/commonWorker.server";
@@ -31,6 +32,7 @@ const disconnectRateLimiter = new RateLimiter({
 
 const { action } = createActionApiRoute(
   {
+    authorization: devWorkerAuthorization,
     body: DevDisconnectRequestBody,
     maxContentLength: 1024 * 256, // 256KB
     method: "POST",

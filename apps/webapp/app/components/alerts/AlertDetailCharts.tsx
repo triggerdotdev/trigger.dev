@@ -1,7 +1,19 @@
 import type { ChartBarReferenceArea } from "~/components/primitives/charts/ChartBar";
 import { buildActivityTimeAxis } from "~/components/primitives/charts/activityTimeAxis";
 import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
-import { ActivityBars, EVENT_CHART_COLOR, raiseBucket, type ActivitySeries } from "./ActivityBars";
+import {
+  compactRaiseTicks,
+  dropTicksNearRaise,
+  raisedAwareTick,
+} from "~/components/primitives/charts/VerticalMarker";
+import {
+  ActivityBars,
+  EVENT_CHART_COLOR,
+  raiseBucket,
+  raisedLabel,
+  raisedMarker,
+  type ActivitySeries,
+} from "./ActivityBars";
 import { warningLegendItem, WARNING_COLOR, type ChartLegendItem } from "./ChartLegend";
 import { observedSilence, type SilenceWindow, type TrailingSilence } from "./alertSilence";
 import {
@@ -28,7 +40,9 @@ const HEALTH_CONFIG: ChartConfig = {
 
 const HEALTH_LABELS: Record<number, string> = { 0: "Degraded", 1: "Healthy" };
 
-export function healthPoints(bands: HealthBandRow[], current?: 1 | 0 | null) {
+export type HealthEdge = { from?: number; until?: number };
+
+export function healthPoints(bands: HealthBandRow[], current?: 1 | 0 | null, edge?: HealthEdge) {
   const points = bands.map((b) => ({
     bucket: b.bucket,
     health: b.healthy ? 1 : b.degraded ? 0 : null,
@@ -38,9 +52,12 @@ export function healthPoints(bands: HealthBandRow[], current?: 1 | 0 | null) {
     const width =
       points.length >= 2 ? last.bucket - points[points.length - 2]!.bucket : HEALTH_BUCKET_MS;
     points.push({
-      bucket: last.bucket + width,
+      bucket: edge?.until ?? last.bucket + width,
       health: current === undefined ? last.health : current,
     });
+  }
+  if (edge?.from !== undefined && points.length >= 1) {
+    points.unshift({ bucket: edge.from, health: null });
   }
   return points;
 }
@@ -56,60 +73,80 @@ export function healthTooltipLabel(
   };
 }
 
-const RAISE_TICK_MIN_GAP = 0.12;
-
-export function dropTicksNearRaise(ticks: number[], raise: number): number[] {
-  const range = Math.max(...ticks) - Math.min(...ticks);
-  return ticks.filter((t) => t === raise || Math.abs(t - raise) >= range * RAISE_TICK_MIN_GAP);
-}
+export { dropTicksNearRaise };
 
 export function healthAxis(
   bands: HealthBandRow[],
   raisedAt?: Date | null,
   current?: 1 | 0 | null,
-  timeZone?: string
+  timeZone?: string,
+  compact = false,
+  edge?: HealthEdge
 ) {
-  const data = healthPoints(bands, current);
+  const data = healthPoints(bands, current, edge);
   const { tickFormatter, tooltipLabelFormatter } = buildActivityTimeAxis(
     data,
     undefined,
     undefined,
-    timeZone
+    timeZone,
+    compact
   );
-  const raiseTick = raisedAt ? raiseBucket(bands, raisedAt) : undefined;
-  const ticks =
-    raiseTick === undefined
+  const raiseTick = !compact && raisedAt ? raiseBucket(bands, raisedAt) : undefined;
+  const marker = compact ? raisedMarker(bands, raisedAt, timeZone) : undefined;
+  const ticks = marker
+    ? compactRaiseTicks(
+        [...(edge?.from !== undefined ? [edge.from] : []), ...bands.map((band) => band.bucket)],
+        undefined,
+        marker
+      )
+    : raiseTick === undefined
       ? undefined
       : dropTicksNearRaise(
-          [...new Set([bands[0]!.bucket, raiseTick, bands[bands.length - 1]!.bucket])],
+          [
+            ...new Set([
+              edge?.from ?? bands[0]!.bucket,
+              raiseTick,
+              bands[bands.length - 1]!.bucket,
+            ]),
+          ],
           raiseTick
         );
   return {
     data,
+    marker,
     ticks,
+    tick: marker ? raisedAwareTick(marker, tickFormatter) : undefined,
     tooltipLabelFormatter,
     tickFormatter: (value: number) =>
-      value === raiseTick ? `▲ raised ${tickFormatter(value)}` : tickFormatter(value),
+      value === raiseTick && raisedAt
+        ? `▲ raised ${raisedLabel(raisedAt, timeZone)}`
+        : tickFormatter(value),
   };
 }
 
 export function HealthActivityChart({
   bands,
+  edge,
   raisedAt,
   current,
   timeZone,
+  compact = false,
 }: {
   bands: HealthBandRow[];
+  edge?: HealthEdge;
   raisedAt?: Date | null;
   current?: 1 | 0 | null;
   timeZone?: string;
+  compact?: boolean;
 }) {
   const {
     data,
+    marker,
+    tick,
     ticks,
     tickFormatter,
     tooltipLabelFormatter: timeLabel,
-  } = healthAxis(bands, raisedAt, current, timeZone);
+  } = healthAxis(bands, raisedAt, current, timeZone, compact, edge);
   const lastBucket = bands[bands.length - 1]?.bucket ?? 0;
   const tooltipLabelFormatter = healthTooltipLabel(timeLabel, lastBucket, current);
   const label = (value: number) => HEALTH_LABELS[value] ?? "";
@@ -126,10 +163,12 @@ export function HealthActivityChart({
         <Chart.Line
           lineType="stepAfter"
           showDots={false}
+          verticalMarker={marker}
           xAxisProps={{
             type: "number",
             domain: ["dataMin", "dataMax"],
             ...(ticks !== undefined ? { ticks } : {}),
+            ...(tick ? { tick } : {}),
             tickFormatter,
           }}
           yAxisProps={{ domain: [0, 2], ticks: [1], tickFormatter: label }}
@@ -237,7 +276,9 @@ export function AbsenceActivityChart({
   trailing,
   raisedAt,
   timeZone,
+  compact,
 }: {
+  compact?: boolean;
   series: MetricSeriesPoint[];
   quietWindow?: QuietWindowBounds;
   quietWindowSec?: number;
@@ -255,6 +296,7 @@ export function AbsenceActivityChart({
       referenceArea={quietReferenceAreas(series, windowSec, trailing)}
       raisedAt={raisedAt}
       timeZone={timeZone}
+      compact={compact}
     />
   );
 }

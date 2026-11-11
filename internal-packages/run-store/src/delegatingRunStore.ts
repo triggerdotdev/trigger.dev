@@ -53,6 +53,19 @@ import type {
 export class DelegatingRunStore implements RunStore {
   constructor(protected readonly delegate: RunStore) {}
 
+  getWaitpointKeyScope(ownerId?: string): string {
+    return this.delegate.getWaitpointKeyScope(ownerId);
+  }
+
+  runInWaitpointKeyTransaction<R>(
+    ownerId: string | undefined,
+    organizationId: string,
+    acceptUntil: number,
+    fn: (store: RunStore, tx: PrismaClientOrTransaction) => Promise<R>
+  ): Promise<R> {
+    return this.delegate.runInWaitpointKeyTransaction(ownerId, organizationId, acceptUntil, fn);
+  }
+
   runInTransaction<R>(
     runId: string | undefined,
     fn: (store: RunStore, tx: PrismaClientOrTransaction) => Promise<R>
@@ -671,6 +684,10 @@ export class DelegatingRunStore implements RunStore {
     client?: ReadClient
   ): Promise<Prisma.TaskRunCheckpointGetPayload<{}> | null> {
     return this.delegate.findTaskRunCheckpointById(checkpointId, ownerRunId, client);
+  }
+
+  markBatchWaitpointOnStore(batchId: string, waitpointId: string): Promise<void> {
+    return this.delegate.markBatchWaitpointOnStore(batchId, waitpointId);
   }
 
   createBatchTaskRun(

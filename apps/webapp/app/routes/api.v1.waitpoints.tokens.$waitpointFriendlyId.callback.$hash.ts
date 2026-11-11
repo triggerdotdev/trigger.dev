@@ -1,9 +1,12 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { MAX_INLINE_COMPLETION_OUTPUT_BYTES } from "@internal/run-engine";
 import { type CompleteWaitpointTokenResponseBody, stringifyIO } from "@trigger.dev/core/v3";
 import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { processWaitpointCompletionPacket } from "~/runEngine/concerns/waitpointCompletionPacket.server";
+import type { Waitpoint } from "@trigger.dev/database";
+import { resolveScopedWaitpointCallback } from "~/services/scopedWaitpointCallback.server";
 import { verifyHttpCallbackHash } from "~/services/httpCallback.server";
 import { logger } from "~/services/logger.server";
 import { unroutableIdResponse } from "~/services/routeBuilders/unroutableId.server";
@@ -34,43 +37,59 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const waitpointId = WaitpointId.toId(waitpointFriendlyId);
 
   try {
-    // Resolve wherever the waitpoint resides. The store routes by the waitpoint id's residency
-    // (id-shape) and probes both run-ops DBs, so a token on either store resolves; the env is
-    // resolved below from the row via the control-plane resolver.
-    let waitpoint = await runStore.findWaitpoint({
-      where: {
-        id: waitpointId,
-      },
-      select: { id: true, status: true, environmentId: true },
-    });
-
-    if (!waitpoint) {
-      // Read-your-writes: a token whose callback fires right after mint may not have replicated
-      // yet. Re-read the owning primary before 404ing (mirrors complete.ts's primary fallback).
-      waitpoint = await runStore.findWaitpointOnPrimary({
-        where: { id: waitpointId },
+    let waitpoint: Pick<Waitpoint, "id" | "status" | "environmentId"> | null;
+    let environment: Awaited<ReturnType<typeof controlPlaneResolver.resolveAuthenticatedEnv>>;
+    // Anonymous callbacks must identify the signed scope before a trusted organization exists.
+    // Ordinary legacy hashes retain their original lookup/authentication path without ID parsing.
+    const storeDateTime = hash.startsWith("wp1.");
+    if (storeDateTime) {
+      const resolved = await resolveScopedWaitpointCallback(waitpointId, hash, {
+        isWaitpointStoreEnabled: (organizationId) =>
+          engine.waitpointSystem.isWaitpointStoreEnabled(organizationId),
+        resolveEnvironment: (id) => controlPlaneResolver.resolveAuthenticatedEnv(id),
+        getWaitpoint: (scope) => engine.getStoreDateTimeWaitpoint(scope),
+      });
+      if ("error" in resolved) return json({ error: resolved.error }, { status: resolved.status });
+      ({ waitpoint, environment } = resolved);
+    } else {
+      // Resolve wherever the waitpoint resides. The store routes by the waitpoint id's residency
+      // (id-shape) and probes both run-ops DBs, so a token on either store resolves; the env is
+      // resolved below from the row via the control-plane resolver.
+      waitpoint = await runStore.findWaitpoint({
+        where: {
+          id: waitpointId,
+        },
         select: { id: true, status: true, environmentId: true },
       });
-    }
 
-    if (!waitpoint) {
-      return json({ error: "Waitpoint not found" }, { status: 404 });
-    }
+      if (!waitpoint) {
+        // Read-your-writes: a token whose callback fires right after mint may not have replicated
+        // yet. Re-read the owning primary before 404ing (mirrors complete.ts's primary fallback).
+        waitpoint = await runStore.findWaitpointOnPrimary({
+          where: { id: waitpointId },
+          select: { id: true, status: true, environmentId: true },
+        });
+      }
 
-    const environment = await controlPlaneResolver.resolveAuthenticatedEnv(waitpoint.environmentId);
+      if (!waitpoint) {
+        return json({ error: "Waitpoint not found" }, { status: 404 });
+      }
 
-    if (!environment) {
-      return json({ error: "Waitpoint not found" }, { status: 404 });
-    }
+      environment = await controlPlaneResolver.resolveAuthenticatedEnv(waitpoint.environmentId);
 
-    if (
-      !verifyHttpCallbackHash(
-        waitpoint.id,
-        hash,
-        environment.parentEnvironment?.apiKey ?? environment.apiKey
-      )
-    ) {
-      return json({ error: "Invalid URL, hash doesn't match" }, { status: 401 });
+      if (!environment) {
+        return json({ error: "Waitpoint not found" }, { status: 404 });
+      }
+
+      if (
+        !verifyHttpCallbackHash(
+          waitpoint.id,
+          hash,
+          environment.parentEnvironment?.apiKey ?? environment.apiKey
+        )
+      ) {
+        return json({ error: "Invalid URL, hash doesn't match" }, { status: 401 });
+      }
     }
 
     if (waitpoint.status === "COMPLETED") {
@@ -83,19 +102,24 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const body = await request.json().catch(() => ({}));
 
     const stringifiedData = await stringifyIO(body);
+    const pathPrefix = `${WaitpointId.toFriendlyId(waitpointId)}/http-callback`;
     const finalData = await processWaitpointCompletionPacket(
       stringifiedData,
       environment,
-      `${WaitpointId.toFriendlyId(waitpointId)}/http-callback`
+      // A losing native completion must not replace the object referenced by the winner.
+      storeDateTime ? `${pathPrefix}/${crypto.randomUUID()}` : pathPrefix,
+      storeDateTime ? MAX_INLINE_COMPLETION_OUTPUT_BYTES : undefined
     );
 
-    const _result = await engine.completeWaitpoint({
+    const completionInput: Parameters<typeof engine.completeWaitpoint>[0] = {
       id: waitpointId,
       output: finalData.data
         ? { type: finalData.dataType, value: finalData.data, isError: false }
         : undefined,
       organizationId: environment.organization.id,
-    });
+    };
+    if (storeDateTime) completionInput.onlyIfPending = true;
+    const _result = await engine.completeWaitpoint(completionInput);
 
     return json<CompleteWaitpointTokenResponseBody>(
       {

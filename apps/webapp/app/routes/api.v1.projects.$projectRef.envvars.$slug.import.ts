@@ -55,6 +55,15 @@ export async function action({ params, request }: ActionFunctionArgs) {
   const repository = new EnvironmentVariablesRepository();
 
   const body = await parseImportBody(request);
+  if (
+    authenticationResult.type === "apiKey" &&
+    authenticationResult.result.ok &&
+    authenticationResult.result.credentialKind === "run_token" &&
+    body.parentVariables &&
+    Object.keys(body.parentVariables).length > 0
+  ) {
+    return json({ error: "Run tokens cannot write parent environment variables" }, { status: 403 });
+  }
 
   const result = await repository.create(environment.project.id, {
     override: typeof body.override === "boolean" ? body.override : false,

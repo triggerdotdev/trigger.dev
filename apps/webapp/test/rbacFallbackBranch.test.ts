@@ -1,5 +1,5 @@
 import { postgresTest } from "@internal/testcontainers";
-import plugin, { signUserActorToken } from "@trigger.dev/rbac";
+import plugin, { createPublicTokenSubjectCodec, signUserActorToken } from "@trigger.dev/rbac";
 import { createHash } from "node:crypto";
 import { generateJWT } from "@trigger.dev/core/v3/jwt";
 import { type PrismaClient } from "@trigger.dev/database";
@@ -370,6 +370,61 @@ describe("RBAC fallback — additional keys", () => {
     expect(result.subject).toMatchObject({ type: "apiKey", restricted: true });
     expect(result.ability.can("read", { type: "runs" })).toBe(false);
     expect(result.ability.can("trigger", { type: "tasks", id: "send-email" })).toBe(false);
+  });
+});
+
+describe("RBAC fallback — sealed public token subjects", () => {
+  const codec = createPublicTokenSubjectCodec("0123456789abcdef0123456789abcdef");
+
+  function makeSealingController(prisma: PrismaClient) {
+    return plugin.create(
+      { primary: prisma, replica: prisma },
+      { forceFallback: true, publicTokenSubjects: codec }
+    );
+  }
+
+  // Catches: the resolver looking up the environment by the sealed claim, so every new token 401s.
+  postgresTest("authenticates a token whose subject is sealed", async ({ prisma }) => {
+    const { organization, project, orgMember } = await createTestOrgProjectWithMember(prisma);
+    const environment = await createEnv(prisma, project.id, organization.id, {
+      type: "PRODUCTION",
+      orgMemberId: orgMember.id,
+    });
+    const sub = codec.encode(environment.id);
+    expect(sub).not.toContain(environment.id);
+
+    const token = await generateJWT({
+      secretKey: environment.apiKey,
+      payload: { pub: true, sub, scopes: ["read:runs"] },
+      expirationTime: "1h",
+    });
+
+    const result = await makeSealingController(prisma).authenticateBearer(bearerRequest(token), {
+      allowJWT: true,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.environment.id).toBe(environment.id);
+  });
+
+  // Catches: accepting a subject this server didn't seal.
+  postgresTest("rejects a subject sealed under another key", async ({ prisma }) => {
+    const { organization, project, orgMember } = await createTestOrgProjectWithMember(prisma);
+    const environment = await createEnv(prisma, project.id, organization.id, {
+      type: "PRODUCTION",
+      orgMemberId: orgMember.id,
+    });
+    const otherCodec = createPublicTokenSubjectCodec("fedcba9876543210fedcba9876543210");
+    const token = await generateJWT({
+      secretKey: environment.apiKey,
+      payload: { pub: true, sub: otherCodec.encode(environment.id), scopes: ["read:runs"] },
+      expirationTime: "1h",
+    });
+
+    const result = await makeSealingController(prisma).authenticateBearer(bearerRequest(token), {
+      allowJWT: true,
+    });
+    expect(result.ok).toBe(false);
   });
 });
 

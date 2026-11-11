@@ -6,7 +6,7 @@ import {
   SDK_CREDENTIAL_OPERATION_HEADER,
   SDK_CREDENTIAL_REASON_HEADER,
 } from "@trigger.dev/core/v3";
-import { isPublicJWT } from "@trigger.dev/core/v3/jwt";
+import { extractJWTSub, isPublicJWT } from "@trigger.dev/core/v3/jwt";
 import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 import type { BearerAuthOptions, BearerAuthResult } from "@trigger.dev/plugins";
 import type {
@@ -17,8 +17,10 @@ import type {
   RbacResource,
   RoleBaseAccessController,
 } from "@trigger.dev/rbac";
+import { clientIpFromHeaders, isSealedPublicTokenSubject } from "@trigger.dev/rbac";
 import { authenticateRunToken } from "~/services/oidc/runTokenAuth.server";
 import { isRunTokenFormat } from "~/services/oidc/runTokenVerify";
+import { logger } from "~/services/logger.server";
 import { rbac } from "~/services/rbac.server";
 import { singleton } from "~/utils/singleton";
 
@@ -64,6 +66,12 @@ export async function authenticateBearerWithTelemetry(
       result: result.ok ? "success" : result.status === 403 ? "forbidden" : "invalid",
     };
     recordAuthAttempt("rbac", final.credentialKind, final.lookupPath, final.result);
+    if (final.lookupPath === "ip_not_allowed") {
+      // The caller only sees "Invalid API key"; keep the real reason in our logs.
+      logger.info("API key used from a disallowed IP", {
+        clientIp: clientIpFromHeaders(request.headers),
+      });
+    }
     return { ...result, resolution };
   } catch (error) {
     recordAuthAttempt("rbac", final.credentialKind, final.lookupPath, final.result);
@@ -220,7 +228,11 @@ function classifyCredential(
     return { credentialKind: "legacy_public_key", lookupPath: "legacy_public" };
   }
   if (allowJWT && isPublicJWT(token)) {
-    return { credentialKind: "public_jwt", lookupPath: "jwt_current" };
+    const sub = extractJWTSub(token);
+    return {
+      credentialKind: "public_jwt",
+      lookupPath: sub && !isSealedPublicTokenSubject(sub) ? "jwt_legacy_subject" : "jwt_current",
+    };
   }
   if (isAdditionalApiKey(token)) {
     return { credentialKind: "additional_api_key", lookupPath: "additional" };

@@ -1,5 +1,6 @@
 import { Link } from "@remix-run/react";
 import { cn } from "~/utils/cn";
+import { sanitizeLinkTarget } from "~/utils/sanitizeUrl";
 import { Icon, type RenderIcon } from "./Icon";
 import { useRef } from "react";
 import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
@@ -81,23 +82,29 @@ export function TextLink({
     </>
   );
 
-  const linkElement = to ? (
-    <Link
-      ref={innerRef}
-      to={to}
-      reloadDocument={reloadDocument}
-      className={cn(classes, className)}
-      {...props}
-    >
-      {linkContent}
-    </Link>
-  ) : href ? (
-    <a ref={innerRef} href={href} className={cn(classes, className)} {...props}>
-      {linkContent}
-    </a>
-  ) : (
-    <span>Need to define a path or href</span>
-  );
+  const linkTo = to ? sanitizeLinkTarget(to) : undefined;
+  const linkHref = href ? sanitizeLinkTarget(href) : undefined;
+
+  const linkElement =
+    linkTo !== undefined ? (
+      <Link
+        ref={innerRef}
+        to={linkTo}
+        reloadDocument={reloadDocument}
+        className={cn(classes, className)}
+        {...props}
+      >
+        {linkContent}
+      </Link>
+    ) : linkHref !== undefined ? (
+      <a ref={innerRef} href={linkHref} className={cn(classes, className)} {...props}>
+        {linkContent}
+      </a>
+    ) : to || href ? (
+      <span className={cn(classes, className)}>{linkContent}</span>
+    ) : (
+      <span>Need to define a path or href</span>
+    );
 
   if (tooltip) {
     return (

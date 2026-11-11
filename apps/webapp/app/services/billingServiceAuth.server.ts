@@ -1,17 +1,21 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { env } from "~/env.server";
-import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
+import { noteAdminRequest } from "~/services/adminAudit/adminAuditContext.server";
 
 /**
- * Guards the admin API routes the billing service calls. Accepts the billing service secret
- * (`BILLING_SERVICE_SECRET`) or, as on every other admin route, an admin's personal access token.
+ * Guards the admin API routes the billing service calls. Only the billing service secret
+ * (`BILLING_SERVICE_SECRET`) is accepted: personal access tokens, including admins', are refused,
+ * and the routes refuse everything when no secret is configured.
  */
-export async function requireBillingServiceOrAdminApiRequest(request: Request): Promise<void> {
-  if (isBillingServiceRequest(request, env.BILLING_SERVICE_SECRET)) {
-    return;
+export async function requireBillingServiceRequest(request: Request): Promise<void> {
+  if (!isBillingServiceRequest(request, env.BILLING_SERVICE_SECRET)) {
+    throw new Response(JSON.stringify({ error: "Invalid or missing billing service credential" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
-  await requireAdminApiRequest(request);
+  noteAdminRequest(request, { actor: { kind: "billing_service" }, captureBody: true });
 }
 
 function isBillingServiceRequest(request: Request, secret: string | undefined): boolean {

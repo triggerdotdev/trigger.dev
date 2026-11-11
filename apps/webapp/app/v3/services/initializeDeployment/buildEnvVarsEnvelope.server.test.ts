@@ -1,9 +1,11 @@
 import { InitializeDeploymentRequestBody } from "@trigger.dev/core/v3";
 import { describe, expect, it } from "vitest";
-import { decryptSecret } from "~/services/secrets/secretStore.server";
+import { decryptSecret, encryptSecret } from "~/services/secrets/secretStore.server";
+import { parseEncryptionKeyring, resolveEncryptionKeyring } from "~/utils/encryptionKeyring.server";
 import { buildEnvVarsEnvelope } from "./buildEnvVarsEnvelope.server";
 
-const encryptionKey = "0123456789abcdef0123456789abcdef";
+const legacyKey = "0123456789abcdef0123456789abcdef";
+const encryptionKey = resolveEncryptionKeyring(undefined, legacyKey);
 const limits = { encryptionKey, maxKeys: 3, maxBytes: 128 };
 
 function payload(overrides: Record<string, unknown> = {}) {
@@ -34,14 +36,23 @@ describe("buildEnvVarsEnvelope", () => {
     expect(await decrypted(await buildEnvVarsEnvelope(payload(), limits))).toEqual({});
   });
 
-  it("stores a redeploy source's envelope verbatim", async () => {
-    const copyFrom = { nonce: "n", ciphertext: "c", tag: "t" };
-    expect(
-      await buildEnvVarsEnvelope(payload({ buildEnvVars: { IGNORED: "x" } }), {
-        ...limits,
-        copyFrom,
+  // Catches: redeploy copying old-key ciphertext back after rotation.
+  it("re-encrypts a redeploy source with the active key, preserving its variables", async () => {
+    const variables = { ORIGINAL: "value" };
+    const copyFrom = await encryptSecret(encryptionKey, JSON.stringify(variables));
+    const keyring = parseEncryptionKeyring(
+      JSON.stringify({
+        activeKeyId: "v2",
+        keys: { legacy: legacyKey, v2: "abcdef0123456789abcdef0123456789" },
       })
-    ).toBe(copyFrom);
+    );
+    const result = await buildEnvVarsEnvelope(payload({ buildEnvVars: { IGNORED: "x" } }), {
+      ...limits,
+      encryptionKey: keyring,
+      copyFrom,
+    });
+    expect(result?.keyId).toBe("v2");
+    expect(JSON.parse(await decryptSecret(keyring, result!))).toEqual(variables);
   });
 
   it("stores nothing for a source upload", async () => {

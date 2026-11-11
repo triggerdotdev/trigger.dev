@@ -61,7 +61,8 @@ describe("authenticateApiKeyWithScope", () => {
     const result = await authenticateApiKeyWithScope(
       request,
       { action: "read", resource: { type: "envvars" }, allowJWT: true },
-      authorizeBearer
+      authorizeBearer,
+      vi.fn().mockResolvedValue(false)
     );
 
     expect(authorizeBearer).toHaveBeenCalledWith(

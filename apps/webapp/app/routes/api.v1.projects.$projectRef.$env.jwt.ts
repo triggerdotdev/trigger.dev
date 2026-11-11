@@ -8,7 +8,6 @@ import {
   verifyUserActorToken,
   type UserActorClaims,
 } from "@trigger.dev/rbac";
-import parseDuration from "parse-duration";
 import { z } from "zod";
 import {
   authenticatedEnvironmentForAuthentication,
@@ -17,9 +16,14 @@ import {
   type AuthenticationResult,
 } from "~/services/apiAuth.server";
 import { env as appEnv } from "~/env.server";
-import { assertSourcePatActive } from "~/services/personalAccessToken.server";
+import {
+  assertSourcePatActive,
+  personalAccessTokenUnauthorizedResponse,
+} from "~/services/personalAccessToken.server";
+import { validateJwtExpiration } from "~/services/jwtExpiration.server";
 import { logger } from "~/services/logger.server";
 import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
+import { publicTokenSubject } from "~/services/publicTokenSubject.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -34,27 +38,6 @@ const RequestBodySchema = z.object({
     .optional(),
   expirationTime: z.union([z.number(), z.string()]).optional(),
 });
-
-// A requested `expirationTime` above this (epoch seconds, ~2001) is an absolute
-// timestamp; a smaller number is a relative offset in seconds.
-const EXPIRY_EPOCH_THRESHOLD_SECONDS = 1_000_000_000;
-const DEFAULT_EXPIRY = "1h";
-
-// Resolve the requested expiry to an absolute epoch-second timestamp so it can be
-// clamped against a delegated token's own expiry.
-function resolveRequestedExpirySeconds(
-  expirationTime: number | string | undefined,
-  nowSec: number
-): number {
-  if (typeof expirationTime === "number") {
-    return expirationTime > EXPIRY_EPOCH_THRESHOLD_SECONDS
-      ? expirationTime
-      : nowSec + expirationTime;
-  }
-  const durationMs = parseDuration(expirationTime ?? DEFAULT_EXPIRY);
-  const seconds = durationMs != null ? Math.floor(durationMs / 1000) : 60 * 60;
-  return nowSec + seconds;
-}
 
 export async function action({ request, params }: ActionFunctionArgs) {
   try {
@@ -100,7 +83,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
 
     if (!authenticationResult) {
-      return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
+      return personalAccessTokenUnauthorizedResponse(request);
     }
 
     const parsedParams = ParamsSchema.safeParse(params);
@@ -185,7 +168,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         : undefined);
 
     const claims = {
-      sub: runtimeEnv.id,
+      sub: publicTokenSubject(runtimeEnv.id),
       pub: true,
       ...(scopes ? { scopes } : {}),
       ...(actorUserId
@@ -193,14 +176,23 @@ export async function action({ request, params }: ActionFunctionArgs) {
         : {}),
     };
 
-    // A delegated token can't mint a longer-lived JWT than itself: clamp the
-    // requested expiry to the token's own `exp`. Non-UAT callers are unchanged.
     const nowSec = Math.floor(Date.now() / 1000);
-    const requestedAbsSec = resolveRequestedExpirySeconds(parsedBody.data.expirationTime, nowSec);
+    const expiry = validateJwtExpiration(parsedBody.data.expirationTime, nowSec);
+    if (expiry.error !== undefined) {
+      return json({ error: expiry.error }, { status: 400 });
+    }
+
+    // A JWT can't outlive the token it was exchanged from, whether a delegated token or a PAT.
+    const sourceExpiresAt = isUat
+      ? userActor?.expiresAt
+      : authenticationResult.type === "personalAccessToken" &&
+          authenticationResult.result.validUntil
+        ? Math.floor(authenticationResult.result.validUntil.getTime() / 1000)
+        : undefined;
     const expirationTime =
-      isUat && userActor?.expiresAt !== undefined
-        ? Math.min(requestedAbsSec, userActor.expiresAt)
-        : (parsedBody.data.expirationTime ?? DEFAULT_EXPIRY);
+      sourceExpiresAt !== undefined
+        ? Math.min(expiry.expirationTime, sourceExpiresAt)
+        : expiry.expirationTime;
 
     const jwt = await internal_generateJWT({
       secretKey: runtimeEnv.apiKey,

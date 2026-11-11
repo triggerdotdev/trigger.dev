@@ -30,8 +30,24 @@ export type ApiKeyPreset = {
    */
   scopes: string[];
   usesTaskSelection: boolean;
+  limitsTasks?: boolean;
   available: boolean;
+  source?: ApiKeyPresetSource;
+  capabilities?: ApiKeyCapabilityMap;
 };
+
+type ApiKeyPresetSource = "organization";
+
+export type ApiKeyAccessOptions = {
+  presets: ApiKeyPreset[];
+  catalogue: ApiKeyCapabilityCatalogue;
+};
+
+export type ApiKeyPresetMutationResult =
+  | { ok: true; preset: ApiKeyPreset }
+  | { ok: false; error: string };
+
+export type ApiKeyPresetDeleteResult = { ok: true } | { ok: false; error: string };
 
 export type ApiKeyPolicy = {
   presetId: string | null;
@@ -44,6 +60,8 @@ export type PrepareApiKeyPolicyResult =
 
 export type ApiKeyPolicyDescription = {
   taskIdentifiers?: string[];
+  capabilities?: ApiKeyCapabilityMap;
+  unmatchedScopes?: string[];
 };
 
 export type Permission = {
@@ -124,6 +142,7 @@ export type RbacResource = {
 export type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
 import type { AuthenticatedEnvironment as RbacEnv } from "@trigger.dev/core/v3/auth/environment";
 import { generateJWT, validateJWT } from "@trigger.dev/core/v3/jwt";
+import type { PersonalAccessTokenExpiry } from "./personalAccessTokenExpiry.js";
 
 /** @deprecated Renamed to `AuthenticatedEnvironment`. Kept as alias for transitional code. */
 export type RbacEnvironment = RbacEnv;
@@ -199,7 +218,12 @@ export const FULL_ACCESS_PRESET_ID = "FULL_ACCESS";
 // declarations and in `buildJwtAbility`'s grammar. A plugin that gates
 // resources beyond this set can widen the union locally — do not add
 // non-public terms here.
-export type RbacScopeAction = "read" | "write" | "trigger" | "batchTrigger";
+//
+// `admin` here is the resource-level action (e.g. `admin:sessions`, which
+// closes sessions and updates their metadata). It is not the bare `admin`
+// scope that grants full access: `buildScope` always appends a type, so it
+// can't produce that.
+export type RbacScopeAction = "read" | "write" | "trigger" | "batchTrigger" | "admin";
 
 export type RbacScopeResourceType =
   | "runs"
@@ -213,10 +237,13 @@ export type RbacScopeResourceType =
   | "sessions"
   | "waitpoints"
   | "packets"
+  | "inputStreams"
+  | "prompts"
   | "tags"
   | "query"
   | "errors"
-  | "webhooks";
+  | "webhooks"
+  | "devWorkers";
 
 /**
  * Builds a single `action:type[:id]` scope string from typed parts. Scope
@@ -240,7 +267,13 @@ export function buildScope(
 
 type ScopeTarget = true | Set<string>;
 
-export function buildJwtAbility(scopes: string[]): RbacAbility {
+type CompiledScopes = {
+  grantsFullAccess: boolean;
+  allResourceActions: Set<string>;
+  targetsByAction: Map<string, Map<string, ScopeTarget>>;
+};
+
+function compileScopes(scopes: readonly string[]): CompiledScopes {
   const allResourceActions = new Set<string>();
   const targetsByAction = new Map<string, Map<string, ScopeTarget>>();
   let grantsFullAccess = false;
@@ -275,16 +308,38 @@ export function buildJwtAbility(scopes: string[]): RbacAbility {
     }
   }
 
-  const matchesAction = (action: string, resource: RbacResource): boolean => {
-    if (allResourceActions.has(action)) return true;
+  return { grantsFullAccess, allResourceActions, targetsByAction };
+}
 
-    const target = targetsByAction.get(action)?.get(resource.type);
-    if (target === true) return true;
-    return resource.id !== undefined && target?.has(resource.id) === true;
-  };
+function matchingActionScope(
+  compiled: CompiledScopes,
+  action: string,
+  resource: RbacResource
+): string | undefined {
+  if (compiled.allResourceActions.has(action)) return `${action}:all`;
+
+  const target = compiled.targetsByAction.get(action)?.get(resource.type);
+  if (target === true) return `${action}:${resource.type}`;
+  return resource.id !== undefined && target?.has(resource.id) === true
+    ? `${action}:${resource.type}`
+    : undefined;
+}
+
+function matchingScope(
+  compiled: CompiledScopes,
+  action: string,
+  resource: RbacResource
+): string | undefined {
+  return (
+    matchingActionScope(compiled, action, resource) ?? matchingActionScope(compiled, "*", resource)
+  );
+}
+
+export function buildJwtAbility(scopes: string[]): RbacAbility {
+  const compiled = compileScopes(scopes);
 
   const matches = (action: string, resource: RbacResource): boolean =>
-    grantsFullAccess || matchesAction(action, resource) || matchesAction("*", resource);
+    compiled.grantsFullAccess || matchingScope(compiled, action, resource) !== undefined;
 
   return {
     can(action: string, resource: RbacResource | RbacResource[]): boolean {
@@ -296,6 +351,34 @@ export function buildJwtAbility(scopes: string[]): RbacAbility {
       return false;
     },
   };
+}
+
+export const UNRESTRICTED_API_KEY_SCOPE_USE = "unrestricted";
+
+export type ApiKeyScopeMatcher = (
+  action: string,
+  resource: RbacResource | RbacResource[]
+) => string | undefined;
+
+export function buildScopeMatcher(scopes: readonly string[]): ApiKeyScopeMatcher {
+  const compiled = compileScopes(scopes);
+
+  return (action, resource) => {
+    const candidates = Array.isArray(resource) ? resource : [resource];
+    if (compiled.grantsFullAccess) {
+      const first = candidates[0];
+      return first ? scopeForRequest(action, first) : undefined;
+    }
+    for (const candidate of candidates) {
+      const scope = matchingScope(compiled, action, candidate);
+      if (scope) return scope;
+    }
+    return undefined;
+  };
+}
+
+function scopeForRequest(action: string, resource: RbacResource): string {
+  return `${action === "update" ? "write" : action}:${resource.type}`;
 }
 
 /**
@@ -489,11 +572,27 @@ export type SessionAuthResult =
 // from the user's role in the target org (passed via `context`),
 // intersected with the PAT's optional max-role cap.
 export type PatAuthResult =
-  | { ok: false; status: 401 | 403; error: string }
+  | { ok: false; status: 401 | 403; error: string; code?: undefined; expiredAt?: undefined }
+  | {
+      // The token exists but has expired. Both fields are set, so the host can tell the
+      // caller why (and where to make a new one) instead of a bare 401.
+      ok: false;
+      status: 401;
+      error: string;
+      code: PersonalAccessTokenExpiry["code"];
+      expiredAt: Date;
+    }
   | {
       ok: true;
       tokenId: string;
       userId: string;
+      // The token's stored expiry columns. Plugins reject expired tokens themselves; the host
+      // rechecks these so a plugin and host on different versions can't let one through.
+      // Optional only for plugins built against an older contract: when any is absent the host
+      // looks the token up itself.
+      expiresAt?: Date | null;
+      idleTimeoutSeconds?: number | null;
+      createdAt?: Date;
       // The token's stored `lastAccessedAt`, returned alongside the
       // identity so the host can throttle the per-request update in JS
       // (skip the DB roundtrip when the value is fresh). Plugins must
@@ -631,14 +730,14 @@ export interface RoleBaseAccessController {
   // degradation.
   //
   // Absence must fail CLOSED, and each default is chosen so it does:
-  //   - apiKeyPresets       -> null (identical to "no plugin installed")
+  //   - apiKeyAccessOptions -> null (identical to "no plugin installed")
   //   - prepareApiKeyPolicy -> { ok: false } — NEVER a full-access default;
   //                            key creation stops, while already-issued keys
   //                            keep authorizing from their persisted scopes
   //   - describeApiKeyPolicy -> {} (presentation only)
   // LazyController applies these defaults, so host callers going through
   // `rbac` see a total surface and cannot forget the guard.
-  apiKeyPresets?(organizationId: string): Promise<ApiKeyPreset[] | null>;
+  apiKeyAccessOptions?(organizationId: string): Promise<ApiKeyAccessOptions | null>;
   // `presetId` is deliberately required: an authorization function must not
   // have an implicit default, least of all a full-access one. A caller that
   // omits the field should fail to compile rather than silently mint an admin
@@ -647,8 +746,23 @@ export interface RoleBaseAccessController {
     organizationId: string;
     presetId: string;
     taskIdentifiers?: string[];
+    capabilities?: ApiKeyCapabilityMap;
   }): Promise<PrepareApiKeyPolicyResult>;
   describeApiKeyPolicy?(policy: ApiKeyPolicy): Promise<ApiKeyPolicyDescription>;
+  createApiKeyPreset?(params: {
+    organizationId: string;
+    name: string;
+    description?: string;
+    capabilities: ApiKeyCapabilityMap;
+    limitsTasks?: boolean;
+    createdById?: string;
+  }): Promise<ApiKeyPresetMutationResult>;
+  deleteApiKeyPreset?(params: {
+    organizationId: string;
+    presetId: string;
+  }): Promise<ApiKeyPresetDeleteResult>;
+  recordApiKeyScopeUse?(event: ApiKeyScopeUseEvent): void;
+  apiKeyScopeUsage?(params: ApiKeyScopeUsageParams): Promise<ApiKeyScopeUsage[] | null>;
 
   // Role introspection. The fallback returns []; a plugin may return
   // its own role catalogue.
@@ -719,6 +833,39 @@ export interface RoleBaseAccessController {
   removeTokenRole(tokenId: string): Promise<RoleAssignmentResult>;
 }
 
+export type ApiKeyScopeUseEvent = {
+  organizationId: string;
+  environmentId: string;
+  apiKeyId: string;
+  used: string[];
+};
+
+export type ApiKeyScopeUsageParams = {
+  organizationId: string;
+  windowDays: number;
+  apiKeys: { id: string; createdAt: Date; scopes: string[] }[];
+};
+
+export type ApiKeyCapabilityUsage = {
+  lastUsedAt: Date | null;
+  usedLevelId: string | null;
+};
+
+export type ApiKeyNarrowBlocker =
+  | { kind: "tooLittleHistory"; trackedDays: number; minimumDays: number }
+  | { kind: "usedOutsideCatalogue"; scopes: string[] }
+  | { kind: "usedUnrestrictedRoutes" };
+
+export type ApiKeyScopeUsage = {
+  apiKeyId: string;
+  trackedSince: Date;
+  capabilities: Record<string, ApiKeyCapabilityUsage>;
+  usedOutsideCatalogue: string[];
+  usedUnrestrictedRoutes: boolean;
+  narrowTo: ApiKeyCapabilityMap | null;
+  narrowBlocker?: ApiKeyNarrowBlocker;
+};
+
 // Mutation result for role create/update — success carries the new
 // `role`, failure carries a user-facing `error` string.
 export type RoleMutationResult = { ok: true; role: Role } | { ok: false; error: string };
@@ -733,6 +880,7 @@ export type RoleAssignmentResult =
   | { ok: false; error: string; code?: RoleAssignmentErrorCode };
 
 import type { PluginDatabaseConfig } from "./databaseConfig.js";
+import type { ApiKeyCapabilityCatalogue, ApiKeyCapabilityMap } from "./apiKeyCapabilities.js";
 
 // Host-injected configuration the plugin can't read from the environment
 // itself (the plugin runs in the host's process but owns no env contract).

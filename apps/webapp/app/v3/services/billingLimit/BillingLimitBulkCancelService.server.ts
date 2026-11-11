@@ -10,9 +10,11 @@ import {
 import { QUEUED_STATUSES, RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { prisma } from "~/db.server";
 import type { RunsRepository } from "~/services/runsRepository/runsRepository.server";
+import { CANCELLABLE_RUN_STATUSES } from "~/v3/taskStatus";
 import {
   countInProgressRunsForBillableEnvironment,
   countQueuedRunsForBillableEnvironment,
+  countRunsForBillableEnvironment,
   createBillingLimitRunsRepository,
   getBillableEnvironmentsForBillingLimit,
 } from "./billingLimitQueuedRuns.server";
@@ -20,6 +22,7 @@ import { BILLING_LIMIT_RESOLVE_BULK_CANCEL_BUDGET_MS } from "./billingLimitConst
 
 export const BILLING_LIMIT_RESOLVE_CANCEL_SOURCE = "billing_limit_resolve_new_only";
 export const BILLING_LIMIT_IN_PROGRESS_CANCEL_SOURCE = "billing_limit_in_progress";
+export const ADMIN_CANCEL_SOURCE = "admin";
 
 export class BillingLimitBulkCancelIncompleteError extends Error {
   constructor(readonly bulkActionId: string) {
@@ -30,7 +33,8 @@ export class BillingLimitBulkCancelIncompleteError extends Error {
 
 type BulkCancelSource =
   | typeof BILLING_LIMIT_RESOLVE_CANCEL_SOURCE
-  | typeof BILLING_LIMIT_IN_PROGRESS_CANCEL_SOURCE;
+  | typeof BILLING_LIMIT_IN_PROGRESS_CANCEL_SOURCE
+  | typeof ADMIN_CANCEL_SOURCE;
 
 export type BillingLimitBulkCancelDeps = {
   prismaClient?: PrismaClient;
@@ -117,6 +121,28 @@ export class BillingLimitBulkCancelService {
     );
   }
 
+  /** Cancels every non-final run in every environment of the org, dev included. */
+  static async cancelAllRunsForOrganization(
+    organizationId: string,
+    options: { dedupeKey: string },
+    deps?: BillingLimitBulkCancelDeps
+  ): Promise<{ bulkActionIds: string[] }> {
+    const statuses = [...CANCELLABLE_RUN_STATUSES];
+    return this.cancelRunsForBillableEnvironments(
+      organizationId,
+      {
+        source: ADMIN_CANCEL_SOURCE,
+        statuses,
+        name: "Cancelled by an administrator",
+        countRuns: (runsRepository, orgId, environment) =>
+          countRunsForBillableEnvironment(runsRepository, orgId, environment, statuses),
+        dedupeKey: options.dedupeKey,
+        environments: "all",
+      },
+      deps
+    );
+  }
+
   private static async cancelRunsForBillableEnvironments(
     organizationId: string,
     options: {
@@ -127,6 +153,7 @@ export class BillingLimitBulkCancelService {
       dedupeKey?: string;
       waitForCompletion?: boolean;
       bulkCancelDeadline?: number;
+      environments?: "billable" | "all";
     },
     deps?: BillingLimitBulkCancelDeps
   ): Promise<{ bulkActionIds: string[] }> {
@@ -137,7 +164,13 @@ export class BillingLimitBulkCancelService {
       processBulkActionToCompletion,
     } = resolveBulkCancelDeps(deps);
 
-    const environments = await getBillableEnvironmentsForBillingLimit(organizationId, prismaClient);
+    const environments =
+      options.environments === "all"
+        ? await prismaClient.runtimeEnvironment.findMany({
+            where: { organizationId },
+            select: { id: true, projectId: true },
+          })
+        : await getBillableEnvironmentsForBillingLimit(organizationId, prismaClient);
 
     if (environments.length === 0) {
       return { bulkActionIds: [] };

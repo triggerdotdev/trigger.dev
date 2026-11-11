@@ -1,9 +1,11 @@
+import { withAdminApi } from "~/services/adminApi.server";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { requireAdminDashboardEnabled } from "~/models/admin.server";
+import { noteAdminRequest } from "~/services/adminAudit/adminAuditContext.server";
 import { requireUser } from "~/services/session.server";
 import { SupportAccessService } from "~/services/supportAccess.server";
 import { organizationSupportAccessPath } from "~/utils/pathBuilder";
@@ -26,10 +28,11 @@ async function requireAdmin(request: Request) {
   if (!user.admin) {
     throw new Response("Unauthorized", { status: 403 });
   }
+  noteAdminRequest(request, { captureBody: true });
   return user;
 }
 
-export async function loader({ request, params }: LoaderFunctionArgs) {
+async function handleLoader({ request, params }: LoaderFunctionArgs) {
   await requireAdmin(request);
   const { organizationId } = ParamsSchema.parse(params);
 
@@ -62,7 +65,7 @@ const ERROR_MESSAGES = {
   other: "Something went wrong creating the request.",
 } as const;
 
-export async function action({ request, params }: ActionFunctionArgs) {
+async function handleAction({ request, params }: ActionFunctionArgs) {
   const user = await requireAdmin(request);
   const { organizationId } = ParamsSchema.parse(params);
   const form = FormSchema.safeParse(Object.fromEntries(await request.formData()));
@@ -89,3 +92,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   return json<SupportAccessDialogActionData>({ success: true, link: result.value });
 }
+
+export const loader = withAdminApi(handleLoader);
+export const action = withAdminApi(handleAction);

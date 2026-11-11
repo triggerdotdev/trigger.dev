@@ -599,13 +599,13 @@ onAction: async ({ action }) => {
 },
 
 // Side-effect once per net-new tool result when wire messages come in
-hydrateMessages: async ({ incomingMessages }) => {
+hydrateMessages: async ({ incomingMessages, previousMessages }) => {
   for (const msg of incomingMessages) {
     for (const r of chat.history.extractNewToolResults(msg)) {
       await onToolResolved({ id: r.toolCallId, output: r.output, errorText: r.errorText });
     }
   }
-  return incomingMessages;
+  return [...previousMessages, ...incomingMessages.filter((m) => m.role === "user")];
 },
 ```
 

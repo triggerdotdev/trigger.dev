@@ -103,8 +103,9 @@ export type InferChatUIMessageFromTools<TTools extends ToolSet> = UIMessage<
  *    onto the existing entry; pushing again would duplicate the row
  *    in the chain you return, and the duplicate slim copy would hit
  *    `toModelMessages` with no `input`. Returns `false`.
- *  - **Incoming id not in `stored`** (typically a fresh user message
- *    on a new turn): push. Returns `true`.
+ *  - **Incoming user message whose id is not in `stored`** (a fresh user
+ *    message on a new turn): push. Returns `true`. Any other new message is
+ *    not something a client can add to the chain, so it is never pushed.
  *
  * Mutates `stored` in place. The caller persists `stored`, not the
  * return value.
@@ -136,6 +137,7 @@ export function upsertIncomingMessage<TMsg extends UIMessage = UIMessage>(
   if (event.incomingMessages.length === 0) return false;
   const newMsg = event.incomingMessages[event.incomingMessages.length - 1];
   if (!newMsg) return false;
+  if (newMsg.role !== "user") return false;
   if (newMsg.id) {
     const existingIdx = stored.findIndex((m) => m.id === newMsg.id);
     if (existingIdx !== -1) return false;
@@ -203,31 +205,225 @@ export function slimSubmitMessageForWire<TMsg extends UIMessage | undefined>(mes
       p && typeof p === "object" && isToolPartType(p.type) && isWireAdvanceableToolState(p.state)
   );
   if (advancedToolParts.length === 0) return message;
-  const slimParts = advancedToolParts.map((p: any) => {
-    const base: Record<string, unknown> = {
-      type: p.type,
-      toolCallId: p.toolCallId,
-      state: p.state,
-    };
-    if (p.type === "dynamic-tool" && typeof p.toolName === "string") {
-      base.toolName = p.toolName;
-    }
-    if (p.state === "output-available") {
-      base.output = p.output;
-      if (p.approval !== undefined) base.approval = p.approval;
-    } else if (p.state === "output-error") {
-      if (p.errorText !== undefined) base.errorText = p.errorText;
-      if (p.approval !== undefined) base.approval = p.approval;
-    } else if (p.state === "approval-responded" || p.state === "output-denied") {
-      if (p.approval !== undefined) base.approval = p.approval;
-    }
-    return base;
-  });
   return {
     id: message.id,
     role: message.role,
-    parts: slimParts,
+    parts: advancedToolParts.map(slimAdvancedToolPart),
   } as unknown as TMsg;
+}
+
+function slimAdvancedToolPart(p: any): Record<string, unknown> {
+  const base: Record<string, unknown> = {
+    type: p.type,
+    toolCallId: p.toolCallId,
+    state: p.state,
+  };
+  if (p.type === "dynamic-tool" && typeof p.toolName === "string") {
+    base.toolName = p.toolName;
+  }
+  if (p.state === "output-available") {
+    base.output = p.output;
+    if (p.approval !== undefined) base.approval = p.approval;
+  } else if (p.state === "output-error") {
+    if (p.errorText !== undefined) base.errorText = p.errorText;
+    if (p.approval !== undefined) base.approval = p.approval;
+  } else if (p.state === "approval-responded" || p.state === "output-denied") {
+    if (p.approval !== undefined) base.approval = p.approval;
+  }
+  return base;
+}
+
+/**
+ * Reduce a message that arrived from a chat client to what a client can legitimately send.
+ *
+ * A client sends user messages, and assistant messages only to resolve a tool call the agent made
+ * (`addToolApprovalResponse` / `addToolOutput`), in the slim shape `slimSubmitMessageForWire` produces.
+ * So a user message loses any tool parts, an assistant message keeps only its resolved tool parts and
+ * only the fields the agent overlays (never `input`), and any other message is dropped. A tool part with
+ * no `input` is only ever applied as a resolution of a call already in the agent's history; see
+ * {@link resolveClientToolResolution}.
+ *
+ * Returns `undefined` when nothing a client may send is left.
+ *
+ * @internal
+ */
+export function sanitizeClientMessage<TMsg extends UIMessage>(message: TMsg): TMsg | undefined {
+  if (!message || typeof message !== "object") return undefined;
+  const parts = Array.isArray(message.parts) ? (message.parts as any[]) : [];
+  if (message.role === "user") {
+    const kept = parts.filter((p) => !(p && typeof p === "object" && isToolPartType(p.type)));
+    return kept.length === parts.length ? message : ({ ...message, parts: kept } as TMsg);
+  }
+  if (message.role !== "assistant") return undefined;
+  const advanced = parts.filter(
+    (p) =>
+      p &&
+      typeof p === "object" &&
+      isToolPartType(p.type) &&
+      typeof p.toolCallId === "string" &&
+      isWireAdvanceableToolState(p.state)
+  );
+  if (advanced.length === 0) return undefined;
+  return {
+    id: message.id,
+    role: message.role,
+    parts: advanced.map(slimAdvancedToolPart),
+  } as unknown as TMsg;
+}
+
+/**
+ * Reduce first-turn history a chat client sent to `chat.headStart`. A new chat can open with an
+ * assistant greeting, so assistant messages keep their text; nothing else from the client can carry a
+ * tool call, reasoning or a system prompt into the conversation.
+ *
+ * @internal
+ */
+export function sanitizeClientHistory<TMsg extends UIMessage>(messages: readonly TMsg[]): TMsg[] {
+  const out: TMsg[] = [];
+  for (const message of messages) {
+    if (!message || typeof message !== "object") continue;
+    if (message.role === "user") {
+      const sanitized = sanitizeClientMessage(message);
+      if (sanitized) out.push(sanitized);
+      continue;
+    }
+    if (message.role !== "assistant") continue;
+    const parts = Array.isArray(message.parts) ? (message.parts as any[]) : [];
+    const text = parts.filter((p) => p && typeof p === "object" && p.type === "text");
+    if (text.length > 0) {
+      out.push({ ...message, parts: text } as TMsg);
+    }
+  }
+  return out;
+}
+
+/**
+ * Sanitize every client-supplied message on a wire payload. See {@link sanitizeClientMessage}.
+ *
+ * @internal
+ */
+export function sanitizeClientWirePayload<TPayload extends ChatTaskWirePayload<any, any>>(
+  payload: TPayload
+): TPayload {
+  if (!payload || typeof payload !== "object") return payload;
+  let next = payload;
+  if (payload.message !== undefined) {
+    const message = sanitizeClientMessage(payload.message as UIMessage);
+    if (message !== payload.message) {
+      next = { ...next, message };
+      if (message === undefined) delete (next as { message?: unknown }).message;
+    }
+  }
+  if (Array.isArray(payload.headStartMessages)) {
+    next = {
+      ...next,
+      headStartMessages: sanitizeClientHistory(payload.headStartMessages as UIMessage[]),
+    };
+  }
+  return next;
+}
+
+/**
+ * Match a client's tool resolution against the history the agent holds.
+ *
+ * Each resolved tool part has to answer a call already in `history`: an approval response needs the
+ * stored call to be awaiting approval with the same approval id, and a tool output needs the stored call
+ * to be awaiting its result. The returned message carries the id of the stored message holding those
+ * calls, so it merges onto it whatever id the client gave it. Parts that answer nothing are dropped, and
+ * so is the message when none are left.
+ *
+ * A message with no input-less resolved tool parts is returned unchanged.
+ *
+ * @internal
+ */
+export function resolveClientToolResolution<TMsg extends UIMessage>(
+  message: TMsg,
+  history: readonly UIMessage[]
+): TMsg | undefined {
+  if (message.role !== "assistant") return message;
+  const parts = Array.isArray(message.parts) ? (message.parts as any[]) : [];
+  const resolutions = parts.filter(isClientToolResolution);
+  if (resolutions.length === 0) return message;
+
+  let targetId: string | undefined;
+  const kept: any[] = [];
+  for (const part of resolutions) {
+    const found = findStoredToolPart(history, part.toolCallId);
+    if (!found) continue;
+    if (targetId !== undefined && found.messageId !== targetId) continue;
+    if (!isAllowedResolution(found.part, part)) continue;
+    targetId = found.messageId;
+    kept.push(part);
+  }
+  if (targetId === undefined || kept.length === 0) return undefined;
+  return { id: targetId, role: message.role, parts: kept } as unknown as TMsg;
+}
+
+function isClientToolResolution(p: any): boolean {
+  return (
+    !!p &&
+    typeof p === "object" &&
+    isToolPartType(p.type) &&
+    typeof p.toolCallId === "string" &&
+    isWireAdvanceableToolState(p.state) &&
+    p.input === undefined
+  );
+}
+
+function findStoredToolPart(
+  history: readonly UIMessage[],
+  toolCallId: string
+): { messageId: string; part: any } | undefined {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const stored = history[i];
+    if (!stored || stored.role !== "assistant") continue;
+    for (const part of (stored.parts ?? []) as any[]) {
+      if (part && isToolPartType(part.type) && part.toolCallId === toolCallId) {
+        return { messageId: stored.id, part };
+      }
+    }
+  }
+  return undefined;
+}
+
+function isAllowedResolution(stored: any, incoming: any): boolean {
+  if (incoming.state === "approval-responded" || incoming.state === "output-denied") {
+    return (
+      stored.state === "approval-requested" &&
+      typeof stored.approval?.id === "string" &&
+      stored.approval.id === incoming.approval?.id
+    );
+  }
+  return stored.state === "input-available" || stored.state === "approval-responded";
+}
+
+/**
+ * Remove answered tool parts that carry neither `input` nor `rawInput` from a history the agent did
+ * not build itself, such as the chain a `hydrateMessages` or `loadContext` hook returns. Every call the
+ * agent made carries one of the two, so such a part is a client's resolution that was copied into the
+ * chain without answering a stored call, and an approved one would otherwise run its tool. Assistant
+ * messages left with no parts are dropped.
+ *
+ * @internal
+ */
+export function dropUnbackedToolResolutions<TMsg extends UIMessage>(
+  messages: readonly TMsg[]
+): TMsg[] {
+  const out: TMsg[] = [];
+  for (const message of messages) {
+    if (!message || message.role !== "assistant" || !Array.isArray(message.parts)) {
+      out.push(message);
+      continue;
+    }
+    const parts = message.parts as any[];
+    const kept = parts.filter((p) => !(isClientToolResolution(p) && p.rawInput === undefined));
+    if (kept.length === parts.length) {
+      out.push(message);
+    } else if (kept.length > 0) {
+      out.push({ ...message, parts: kept } as TMsg);
+    }
+  }
+  return out;
 }
 
 /** Run tags accept at most 10 entries of at most 128 characters each. */

@@ -1,18 +1,19 @@
-import { ArrowPathIcon } from "@heroicons/react/20/solid";
+import { ArrowPathIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { useFetcher } from "@remix-run/react";
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
+import { InlineCode } from "~/components/code/InlineCode";
 import { generateTwoRandomWords } from "~/utils/randomWords";
 import { Button } from "../primitives/Buttons";
 import { Callout } from "../primitives/Callout";
 import { Fieldset } from "../primitives/Fieldset";
 import { FormButtons } from "../primitives/FormButtons";
+import { Hint } from "../primitives/Hint";
 import { Input } from "../primitives/Input";
 import { InputGroup } from "../primitives/InputGroup";
 import { Paragraph } from "../primitives/Paragraph";
 import { CheckboxWithLabel } from "../primitives/Checkbox";
 import { RadioGroup, RadioGroupItem } from "../primitives/RadioButton";
-import { Spinner } from "../primitives/Spinner";
 
 type ModalProps = {
   id: string;
@@ -21,6 +22,9 @@ type ModalProps = {
   isDevelopment: boolean;
   isRootApiKeyHidden?: boolean;
   onSwitchToApiKeys: () => void;
+  canLimitAccess?: boolean;
+  /** "menu" for a row's ⋮ menu, "button" for a footer. */
+  appearance?: "menu" | "button";
 };
 
 type ModalContentProps = ModalProps & {
@@ -35,6 +39,8 @@ export function RegenerateApiKeyModal({
   isDevelopment,
   isRootApiKeyHidden = false,
   onSwitchToApiKeys,
+  canLimitAccess = false,
+  appearance = "button",
 }: ModalProps) {
   const randomWord = generateTwoRandomWords();
   const [open, setOpen] = useState(false);
@@ -42,7 +48,17 @@ export function RegenerateApiKeyModal({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="minimal/small" textAlignLeft LeadingIcon={ArrowPathIcon}>
+        <Button
+          {...(appearance === "menu"
+            ? {
+                variant: "small-menu-item" as const,
+                fullWidth: true,
+                textAlignLeft: true,
+                className: "w-full px-1.5 py-[0.9rem]",
+              }
+            : { variant: "secondary/medium" as const })}
+          LeadingIcon={ArrowPathIcon}
+        >
           Regenerate…
         </Button>
       </DialogTrigger>
@@ -55,6 +71,7 @@ export function RegenerateApiKeyModal({
           isDevelopment={isDevelopment}
           isRootApiKeyHidden={isRootApiKeyHidden}
           onSwitchToApiKeys={onSwitchToApiKeys}
+          canLimitAccess={canLimitAccess}
           randomWord={randomWord}
           closeModal={() => setOpen(false)}
         />
@@ -71,6 +88,7 @@ const RegenerateApiKeyModalContent = ({
   isDevelopment,
   isRootApiKeyHidden,
   onSwitchToApiKeys,
+  canLimitAccess,
   closeModal,
 }: ModalContentProps) => {
   const [confirmationText, setConfirmationText] = useState("");
@@ -85,26 +103,26 @@ const RegenerateApiKeyModalContent = ({
   return (
     <div className="flex flex-col items-center gap-y-4 pt-4">
       {!isRootApiKeyHidden ? (
-        <Callout variant="info">
-          <div className="flex flex-col items-start gap-2">
-            <Paragraph variant="small">
-              For routine key management, use individually managed API keys instead.
-            </Paragraph>
+        <Callout
+          variant="warning"
+          cta={
             <Button
-              variant="secondary/small"
+              variant="warning/small"
               onClick={() => {
                 closeModal();
                 onSwitchToApiKeys();
               }}
             >
-              Switch to API keys…
+              Replace root key…
             </Button>
-          </div>
+          }
+        >
+          {`Root keys are being phased out. Replace yours with API keys you can ${canLimitAccess ? "limit and " : ""}revoke one at a time, instead of regenerating this one.`}
         </Callout>
       ) : null}
-      <Callout variant="warning">
+      <Paragraph variant="small" className="w-full">
         {`A new API key will be issued for the ${title} environment. Choose what happens to the previous key.`}
-      </Callout>
+      </Paragraph>
       <fetcher.Form
         method="post"
         action={`/resources/environments/${id}/regenerate-api-key`}
@@ -139,20 +157,21 @@ const RegenerateApiKeyModalContent = ({
             </RadioGroup>
           </InputGroup>
           <InputGroup className="max-w-full">
-            <Paragraph variant="small/bright">Enter this text below to confirm:</Paragraph>
-            <Paragraph
-              variant="small"
-              className="select-all rounded-md border border-grid-bright bg-background-deep px-2 py-1 font-mono"
-            >
-              {randomWord}
-            </Paragraph>
             <Input
               type="text"
               placeholder="Confirmation text"
+              icon={ExclamationTriangleIcon}
               fullWidth
               value={confirmationText}
               onChange={(e) => setConfirmationText(e.target.value)}
             />
+            <Hint>
+              Type{" "}
+              <InlineCode variant="extra-small" className="select-all">
+                {randomWord}
+              </InlineCode>{" "}
+              to confirm.
+            </Hint>
           </InputGroup>
           {hasVercelIntegration && !isDevelopment && (
             <CheckboxWithLabel
@@ -167,15 +186,15 @@ const RegenerateApiKeyModalContent = ({
             confirmButton={
               <Button
                 type="submit"
-                variant={"primary/medium"}
-                LeadingIcon={isSubmitting ? Spinner : undefined}
-                disabled={confirmationText !== randomWord}
+                variant="primary/medium"
+                isLoading={isSubmitting}
+                disabled={confirmationText !== randomWord || isSubmitting}
               >
-                Regenerate
+                {isSubmitting ? "Regenerating…" : "Regenerate key"}
               </Button>
             }
             cancelButton={
-              <Button variant={"tertiary/medium"} type="button" onClick={closeModal}>
+              <Button variant="secondary/medium" type="button" onClick={closeModal}>
                 Cancel
               </Button>
             }

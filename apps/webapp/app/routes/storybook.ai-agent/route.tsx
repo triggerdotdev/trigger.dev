@@ -42,6 +42,7 @@ const storybookAgent = {
   openWithWatch: () => {},
   openCreateAlert: () => {},
   openEditAlert: () => {},
+  openGroupAlerts: () => {},
   unreadWakes: 0,
   unreadWork: 0,
   watchEnabled: false,

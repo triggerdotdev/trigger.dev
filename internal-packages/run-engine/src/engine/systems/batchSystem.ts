@@ -1,3 +1,4 @@
+import { batchStoreWaitpointId } from "@internal/run-store";
 import { startSpan, type Counter } from "@internal/tracing";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import { isFinalRunStatus } from "../statuses.js";
@@ -23,31 +24,49 @@ export class BatchSystem {
     });
   }
 
-  public async scheduleCompleteBatch({ batchId }: { batchId: string }): Promise<void> {
+  public async scheduleCompleteBatch({
+    batchId,
+    organizationId,
+  }: {
+    batchId: string;
+    organizationId?: string;
+  }): Promise<void> {
     await this.$.worker.enqueue({
       //this will debounce the call
       id: `tryCompleteBatch:${batchId}`,
       job: "tryCompleteBatch",
-      payload: { batchId: batchId },
+      payload: (await this.waitpointSystem.isWaitpointStoreEnabled(organizationId))
+        ? { batchId, organizationId }
+        : { batchId },
       availableAt: new Date(Date.now() + 200),
     });
   }
 
-  public async performCompleteBatch({ batchId }: { batchId: string }): Promise<void> {
-    await this.#tryCompleteBatch({ batchId });
+  public async performCompleteBatch({
+    batchId,
+    organizationId,
+  }: {
+    batchId: string;
+    organizationId?: string;
+  }): Promise<void> {
+    await this.#tryCompleteBatch({ batchId, organizationId });
   }
 
   public async scheduleExpireBatch({
     batchId,
     availableAt,
+    organizationId,
   }: {
+    organizationId?: string;
     batchId: string;
     availableAt: Date;
   }): Promise<void> {
     await this.$.worker.enqueue({
       id: `expireBatch:${batchId}`,
       job: "expireBatch",
-      payload: { batchId },
+      payload: (await this.waitpointSystem.isWaitpointStoreEnabled(organizationId))
+        ? { batchId, organizationId }
+        : { batchId },
       availableAt,
     });
   }
@@ -68,7 +87,13 @@ export class BatchSystem {
    * non-PENDING batch and bail. An already-ABORTED batch therefore falls through to complete
    * its waitpoint again, which {@link WaitpointSystem.completeWaitpoint} treats as a no-op.
    */
-  public async expireBatch({ batchId }: { batchId: string }): Promise<void> {
+  public async expireBatch({
+    batchId,
+    organizationId,
+  }: {
+    batchId: string;
+    organizationId?: string;
+  }): Promise<void> {
     return startSpan(this.$.tracer, "expireBatch", async (span) => {
       span.setAttribute("batchId", batchId);
 
@@ -118,39 +143,41 @@ export class BatchSystem {
         }
       }
 
-      const waitpoint = await this.$.runStore.findWaitpoint(
-        {
-          where: { completedByBatchId: batchId },
-        },
-        this.$.prisma
-      );
-
-      if (!waitpoint) {
-        this.$.logger.debug("expireBatch: no waitpoint, nothing was blocked on this batch", {
-          batchId,
-        });
+      const native =
+        this.waitpointSystem.isStoreRoutingWired &&
+        (await this.waitpointSystem.isStoreRoutingEnabled(organizationId)) &&
+        batchStoreWaitpointId(batch.options);
+      const waitpoint = native
+        ? undefined
+        : await this.$.runStore.findWaitpoint(
+            { where: { completedByBatchId: batchId } },
+            this.$.prisma
+          );
+      if (!native && !waitpoint) {
         this.expirationsCounter.add(1, { outcome: "aborted_no_parent" });
         return;
       }
 
-      const error: TaskRunError = {
-        type: "STRING_ERROR",
-        raw:
-          `Batch ${batch.friendlyId} was never fully created: its ${batch.expectedCount} ` +
-          `items could not be streamed before it timed out, so the batch can never complete. ` +
-          `batchTriggerAndWait failed rather than waiting forever.`,
-      };
+      const error = batchTimeoutError(batch);
 
-      await this.waitpointSystem.completeWaitpoint({
-        id: waitpoint.id,
-        output: { value: JSON.stringify(error), isError: true },
-      });
+      if (native)
+        await this.waitpointSystem.completeBatchWaitpoint({
+          batchId,
+          options: batch.options,
+          organizationId,
+          output: { value: JSON.stringify(error), isError: true },
+        });
+      else
+        await this.waitpointSystem.completeWaitpoint({
+          id: waitpoint!.id,
+          organizationId,
+          output: { value: JSON.stringify(error), isError: true },
+        });
 
       this.expirationsCounter.add(1, { outcome: "aborted_parent_resumed" });
 
       this.$.logger.warn("expireBatch: aborted an unsealed batch and resumed its parent", {
         batchId,
-        waitpointId: waitpoint.id,
         expectedCount: batch.expectedCount,
       });
     });
@@ -160,7 +187,13 @@ export class BatchSystem {
    * Checks to see if all runs for a BatchTaskRun are completed, if they are then update the status.
    * This isn't used operationally, but it's used for the Batches dashboard page.
    */
-  async #tryCompleteBatch({ batchId }: { batchId: string }) {
+  async #tryCompleteBatch({
+    batchId,
+    organizationId,
+  }: {
+    batchId: string;
+    organizationId?: string;
+  }) {
     return startSpan(this.$.tracer, "#tryCompleteBatch", async (span) => {
       const batch = await this.$.runStore.findBatchTaskRunById(batchId, undefined, this.$.prisma);
 
@@ -180,7 +213,7 @@ export class BatchSystem {
         this.$.logger.debug("#tryCompleteBatch: Batch completed before its parent resumed", {
           batchId,
         });
-        await this.#resumeBatchParent(batchId);
+        await this.#resumeBatchParent(batchId, organizationId, batch.options);
         return;
       }
 
@@ -240,33 +273,44 @@ export class BatchSystem {
           return;
         }
 
-        await this.#resumeBatchParent(batchId);
+        await this.#resumeBatchParent(batchId, organizationId, batch.options);
       } else {
         this.$.logger.debug("#tryCompleteBatch: Not all runs are completed", { batchId });
       }
     });
   }
 
-  async #resumeBatchParent(batchId: string): Promise<void> {
-    const waitpoint = await this.$.runStore.findWaitpoint(
-      {
-        where: { completedByBatchId: batchId },
-      },
-      this.$.prisma
-    );
-
-    if (!waitpoint) {
-      this.$.logger.debug(
-        "RunEngine.unblockRunForBatch(): Waitpoint not found. This is ok, because only batchTriggerAndWait has waitpoints",
-        { batchId }
+  async #resumeBatchParent(
+    batchId: string,
+    organizationId?: string,
+    options?: unknown
+  ): Promise<void> {
+    const native =
+      this.waitpointSystem.isStoreRoutingWired &&
+      (await this.waitpointSystem.isStoreRoutingEnabled(organizationId)) &&
+      batchStoreWaitpointId(options);
+    if (native) {
+      if (
+        !(await this.waitpointSystem.completeBatchWaitpoint({
+          batchId,
+          organizationId,
+          options,
+          output: { value: "Batch waitpoint completed", isError: false },
+        }))
+      )
+        return;
+    } else {
+      const waitpoint = await this.$.runStore.findWaitpoint(
+        { where: { completedByBatchId: batchId } },
+        this.$.prisma
       );
-      return;
+      if (!waitpoint) return;
+      await this.waitpointSystem.completeWaitpoint({
+        id: waitpoint.id,
+        organizationId,
+        output: { value: "Batch waitpoint completed", isError: false },
+      });
     }
-
-    await this.waitpointSystem.completeWaitpoint({
-      id: waitpoint.id,
-      output: { value: "Batch waitpoint completed", isError: false },
-    });
 
     await this.$.runStore.updateManyBatchTaskRun(
       {
@@ -276,4 +320,17 @@ export class BatchSystem {
       this.$.prisma
     );
   }
+}
+
+export function batchTimeoutError(batch: {
+  friendlyId: string;
+  expectedCount: number | null;
+}): TaskRunError {
+  return {
+    type: "STRING_ERROR",
+    raw:
+      `Batch ${batch.friendlyId} was never fully created: its ${batch.expectedCount} ` +
+      `items could not be streamed before it timed out, so the batch can never complete. ` +
+      `batchTriggerAndWait failed rather than waiting forever.`,
+  };
 }

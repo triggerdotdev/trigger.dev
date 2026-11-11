@@ -503,13 +503,13 @@ export const searchCodeSchema = tool({
 });
 
 export const describeAlertCapabilitiesInputSchema = z.object({
-  area: alertAreaSchema.exclude(["query"]).optional().describe("Filter by area."),
+  area: alertAreaSchema.exclude(["query", "grouped"]).optional().describe("Filter by area."),
   curatedOnly: z.boolean().optional().describe("Recommended only."),
 });
 
 export const describeAlertCapabilitiesSchema = tool({
   description:
-    "List what this environment can alert on: queues, runs, health, limits (groups: platform, webhooks), errors. Health capabilities expose tunable params (e.g. thresholds) with defaults; limit capabilities list supportedSignals; limits.all lists its components.",
+    "List what this environment can alert on: queues, runs, health, limits (groups: platform, webhooks), errors. Health capabilities expose tunable params (e.g. thresholds) with defaults; limit capabilities list supportedSignals; composites list their components.",
   inputSchema: describeAlertCapabilitiesInputSchema,
 });
 
@@ -546,15 +546,12 @@ export const createMonitoringAlertInputSchema = z.object({
         .record(z.string(), z.number())
         .optional()
         .describe("Param overrides, e.g. thresholds."),
-      compositeMode: z
-        .enum(["any", "all"])
-        .optional()
-        .describe("limits.all: any (default) or all."),
+      compositeMode: z.enum(["any", "all"]).optional().describe("Composite: any (default) or all."),
       signals: z
         .array(z.enum(["approaching", "limited"]))
         .optional()
         .describe("From supportedSignals."),
-      components: z.array(z.string()).optional().describe("limits.all subset; default all."),
+      components: z.array(z.string()).optional().describe("Composite subset; default all."),
     }),
     z.object({ kind: z.literal("occurrence") }),
     z.object({ kind: z.literal("absence"), quietWindowSec: z.number() }),
@@ -564,15 +561,9 @@ export const createMonitoringAlertInputSchema = z.object({
     .optional()
     .describe("Optional expiry; otherwise fires until stopped."),
   notifiers: z
-    .array(
-      z.object({
-        type: z.enum(["channel", "chat"]),
-        channelId: z.string().optional(),
-        chatId: z.string().optional(),
-      })
-    )
-    .optional()
-    .describe("Omit to notify this chat."),
+    .array(z.object({ type: z.literal("channel"), channelId: z.string() }))
+    .min(1)
+    .describe("User-picked email, Slack or webhook channels."),
   query: z.string().max(8192).optional().describe("custom.query: TRQL."),
   signal: z
     .object({ mode: z.enum(["threshold", "absence", "match"]), measure: z.string().optional() })
@@ -581,7 +572,7 @@ export const createMonitoringAlertInputSchema = z.object({
 });
 
 export const createMonitoringAlertSchema = tool({
-  description: "Create a monitoring alert. Omit notifiers to default to this chat.",
+  description: "Create a monitoring alert. Ask the user to pick a channel first.",
   inputSchema: createMonitoringAlertInputSchema,
 });
 
@@ -917,7 +908,7 @@ Building an alert from free text:
 - In alert_creation scope the user's message ends with the current draft; patch only values the user settles. Expiry is none, <n>h, <n>d or an ISO time with no maximum.
 - In alert_creation scope never say a value is set or updated unless you called update_alert_draft for it in this turn.
 - In alert_creation scope, once a specific error is identified, patch area "errors", what "errors.occurred_again", scope {type:"errorGroup", errorId, taskIdentifier, fingerprint} from list_errors/get_error. Never offer check cadence or defaults.
-- Limits covers limits that can interrupt or degrade runtime flow; for limits.all pick components and any/all, for a limit pick signals.
+- Limits covers limits that can interrupt or degrade runtime flow; for a composite pick components and any/all, for a limit pick signals.
 - In alert_creation scope, asked for recommended values, answer briefly and in the same turn patch what and condition.params with describe_alert_capabilities defaults; never ask whether to apply them.
 - For a query alert, call analyze_query_alert first; never silently rewrite the user's query.
 - Take mode and measure from its modes; quote its errors and unsupported reasons verbatim.

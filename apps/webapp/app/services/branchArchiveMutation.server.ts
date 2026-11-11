@@ -1,4 +1,4 @@
-import { type PrismaClientOrTransaction } from "@trigger.dev/database";
+import { Prisma, type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 
 function archivedSlug(slug: string) {
@@ -6,16 +6,27 @@ function archivedSlug(slug: string) {
 }
 
 /** Preserve history and release the original name for a new environment generation. */
-export function archiveBranchMutation(
+export async function archiveBranchMutation(
   prisma: PrismaClientOrTransaction,
   environment: { id: string; slug: string },
   archivedAt = new Date()
 ) {
   const slug = archivedSlug(environment.slug);
-  return prisma.runtimeEnvironment.update({
-    where: { id: environment.id, archivedAt: null },
-    data: { archivedAt, slug, shortcode: slug },
-  });
+  try {
+    return await prisma.runtimeEnvironment.update({
+      where: { id: environment.id, archivedAt: null },
+      data: { archivedAt, slug, shortcode: slug },
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+      // A concurrent cleanup may have archived this generation. Never retry by branch name.
+      const archived = await prisma.runtimeEnvironment.findFirst({
+        where: { id: environment.id, archivedAt: { not: null } },
+      });
+      if (archived) return archived;
+    }
+    throw error;
+  }
 }
 
 /** The caller has locked and rechecked these exact environment generations. */
