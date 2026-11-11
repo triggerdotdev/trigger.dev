@@ -169,3 +169,25 @@ export function listedPreviewBase(
     ? "set"
     : "unset";
 }
+
+/**
+ * A value edited in place in the key panel, held with its key. "set" adds the first value for an
+ * environment that has none; "edit" changes a value that exists.
+ */
+export type InlineValueEdit = { key: string; environmentId: string; kind: "set" | "edit" };
+
+/**
+ * The in-place edit the key panel shows, if any. An edit started on another key's panel doesn't
+ * carry over. A set lasts only while its environment has no value: when its save goes through,
+ * the panel reloads with the new value, and that value shows as saved rather than opening in an
+ * edit.
+ */
+export function activeInlineValueEdit(
+  edit: InlineValueEdit | null,
+  key: string,
+  hasValue: (environmentId: string) => boolean
+): InlineValueEdit | null {
+  if (!edit || edit.key !== key) return null;
+  if (edit.kind === "set" && hasValue(edit.environmentId)) return null;
+  return edit;
+}

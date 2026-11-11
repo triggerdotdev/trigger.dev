@@ -60,6 +60,8 @@ import {
 import { listViewSearch } from "~/v3/environmentVariables/environmentFilter";
 import { EnvironmentVariableKey } from "~/v3/environmentVariables/repository";
 import {
+  activeInlineValueEdit,
+  type InlineValueEdit,
   KEY_PANEL_BRANCH_PAGE_PARAM,
   KEY_PANEL_BRANCH_SEARCH_PARAM,
   NEW_VARIABLE_ENVIRONMENT_PARAM,
@@ -219,14 +221,23 @@ export default function Page() {
   // The environment whose value is being edited in place. One row at a time.
   // Held with its key: this component stays mounted when another key's panel opens, and that
   // panel must not pick up an edit (or its draft) started on this one.
-  const [editingValue, setEditingValue] = useState<{ key: string; environmentId: string } | null>(
-    null
+  const [editingValue, setEditingValue] = useState<InlineValueEdit | null>(null);
+  const activeEdit = activeInlineValueEdit(editingValue, detail.key, (environmentId) =>
+    detail.environments.some((row) => row.environment.id === environmentId && row.variable)
   );
-  const editingEnvironmentId = editingValue?.key === detail.key ? editingValue.environmentId : null;
-  const setEditingEnvironmentId = (environmentId: string) =>
-    setEditingValue({ key: detail.key, environmentId });
+  const settingEnvironmentId = activeEdit?.kind === "set" ? activeEdit.environmentId : null;
+  const editingEnvironmentId = activeEdit?.kind === "edit" ? activeEdit.environmentId : null;
+  const startEditing = (environmentId: string, kind: InlineValueEdit["kind"]) =>
+    setEditingValue({ key: detail.key, environmentId, kind });
+  const setEditingEnvironmentId = (environmentId: string) => startEditing(environmentId, "edit");
   const stopEditing = useCallback(() => setEditingValue(null), []);
   const editing = { editingEnvironmentId, setEditingEnvironmentId, stopEditing };
+  // A set whose save went through ends here: the reloaded row has its value, and the set
+  // editor unmounted before it could report done. Cleared while rendering so a later delete of
+  // that value doesn't open the editor again.
+  if (editingValue?.key === detail.key && activeEdit === null) {
+    setEditingValue(null);
+  }
 
   // The branches an override can be added for: no value of their own, and writable.
   const overridableBranches = detail.unsetBranches.filter((branch) =>
@@ -262,7 +273,7 @@ export default function Page() {
     shortcut: { key: "esc" },
     action: () => {
       if (document.activeElement?.closest("[role='dialog'], [role='alertdialog']")) return;
-      if (editingEnvironmentId !== null) {
+      if (activeEdit !== null) {
         stopEditing();
         return;
       }
@@ -363,7 +374,7 @@ export default function Page() {
                             <EnvironmentVariableUpdated variable={variable} />
                           )}
                         </>
-                      ) : editingEnvironmentId === rowEnvironment.id ? (
+                      ) : settingEnvironmentId === rowEnvironment.id ? (
                         <InlineValueEditor
                           key={`${detail.key}:${rowEnvironment.id}`}
                           target={{
@@ -382,7 +393,7 @@ export default function Page() {
                               type="button"
                               variant="tertiary/small"
                               LeadingIcon={PlusIcon}
-                              onClick={() => setEditingEnvironmentId(rowEnvironment.id)}
+                              onClick={() => startEditing(rowEnvironment.id, "set")}
                             >
                               Set
                             </Button>

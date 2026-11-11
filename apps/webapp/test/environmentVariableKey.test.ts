@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  activeInlineValueEdit,
   deleteValueDialog,
   keyPanelEnvironments,
   listedPreviewBase,
@@ -179,5 +180,31 @@ describe("listedPreviewBase", () => {
   it("reads the key's Preview row when the Preview environment is listed", () => {
     expect(listedPreviewBase("A", rows, "preview", ["preview", "branch"])).toBe("set");
     expect(listedPreviewBase("B", rows, "preview", ["preview", "branch"])).toBe("unset");
+  });
+});
+
+describe("activeInlineValueEdit", () => {
+  const noValue = () => false;
+  const hasValue = (id: string) => id === "env_staging";
+
+  // Catches: Set on an environment with no value leaving an editor open after the save, because
+  // the reloaded row's new value opened as an edit of it.
+  it("ends a set once its environment has a value", () => {
+    const set = { key: "API_URL", environmentId: "env_staging", kind: "set" as const };
+    expect(activeInlineValueEdit(set, "API_URL", noValue)).toEqual(set);
+    expect(activeInlineValueEdit(set, "API_URL", hasValue)).toBeNull();
+  });
+
+  // Catches: an edit of an existing value closing as soon as it opens.
+  it("keeps an edit of a value that exists", () => {
+    const edit = { key: "API_URL", environmentId: "env_staging", kind: "edit" as const };
+    expect(activeInlineValueEdit(edit, "API_URL", hasValue)).toEqual(edit);
+  });
+
+  // Catches: an edit started on one key's panel showing on the next key's panel.
+  it("drops an edit held for another key", () => {
+    const edit = { key: "API_URL", environmentId: "env_staging", kind: "edit" as const };
+    expect(activeInlineValueEdit(edit, "DATABASE_URL", hasValue)).toBeNull();
+    expect(activeInlineValueEdit(null, "API_URL", hasValue)).toBeNull();
   });
 });
