@@ -17,23 +17,20 @@ export function defaultGroupName(count: number): string {
 export function groupAlertsBody(
   ids: { organizationId: string; projectId: string; environmentId: string },
   draft: {
-    memberAlertIds: string[];
     compositeMode: GroupMode;
     name: string;
     notifiers: string[];
     expiry?: string;
-  },
-  chatId?: string,
+  } & ({ memberAlertIds: string[] } | { members: object[] }),
   transcriptChatId?: string
 ) {
   const expiresAt = expiryToIso(draft.expiry);
   return {
     ...ids,
-    memberAlertIds: draft.memberAlertIds,
+    ...("members" in draft ? { members: draft.members } : { memberAlertIds: draft.memberAlertIds }),
     compositeMode: draft.compositeMode,
     name: draft.name,
-    notifierChannelIds: draft.notifiers.filter((n) => n !== "chat"),
-    ...(chatId && draft.notifiers.includes("chat") ? { chatNotifier: "on", chatId } : {}),
+    notifierChannelIds: draft.notifiers,
     ...(expiresAt ? { expiresAt } : {}),
     ...(transcriptChatId ? { transcriptChatId } : {}),
   };

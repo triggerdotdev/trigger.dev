@@ -43,7 +43,6 @@ import {
   applyStepSelection,
   buildCreatedFields,
   buildReviewFields,
-  CARD_GAP,
   cardPosition,
   confirmStep,
   CONTINUE_OPTION,
@@ -52,6 +51,7 @@ import {
   SHOW_ALL_CHIP,
   type AddChannelAccess,
 } from "~/components/alerts/wizardSteps";
+import { useWizardMaxHeight } from "~/components/dashboard-agent/useWizardMaxHeight";
 
 export type { CreationFlowState, AlertChannel };
 export type { AddChannelAccess };
@@ -116,8 +116,8 @@ export function CreationTranscript({
   const [customizing, setCustomizing] = useState(false);
   const [customIndex, setCustomIndex] = useState(0);
   const cardRef = useRef<HTMLDivElement>(null);
-  const transcriptRef = useRef<HTMLDivElement>(null);
-  const [roomHeight, setRoomHeight] = useState(0);
+  const [transcript, setTranscript] = useState<HTMLDivElement | null>(null);
+  const wizardMaxHeight = useWizardMaxHeight(transcript?.parentElement);
   const [addingChannel, setAddingChannel] = useState(false);
   const resumed = addChannel?.resumed ?? false;
   const allChannels = channels;
@@ -221,14 +221,6 @@ export function CreationTranscript({
     return () => observer.disconnect();
   }, [cardOpen]);
 
-  useEffect(() => {
-    const viewport = transcriptRef.current?.parentElement;
-    if (!viewport || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(([entry]) => setRoomHeight(entry?.contentRect.height ?? 0));
-    observer.observe(viewport);
-    return () => observer.disconnect();
-  }, []);
-
   function selectCardOption(stepId: string, value: string) {
     if (stepId === "scenarios") setScenarios(false);
     const step = cardSteps.find((s) => s.id === stepId);
@@ -307,7 +299,7 @@ export function CreationTranscript({
 
   return (
     <>
-      <ChatTranscript contentRef={transcriptRef}>
+      <ChatTranscript contentRef={setTranscript}>
         <div data-testid="creation-flow" data-density={density} className="flex flex-col gap-3">
           <ChatTurn speaker="user">
             <ChatText speaker="user" text={ALERT_CREATION_OPENING_TEXT} />
@@ -448,7 +440,7 @@ export function CreationTranscript({
                 confirmStep(flow, stepId, hiddenAreas);
                 setCustomizing(false);
               }}
-              maxHeight={roomHeight > CARD_GAP ? roomHeight - CARD_GAP : undefined}
+              maxHeight={wizardMaxHeight}
             />
           </div>
         )}

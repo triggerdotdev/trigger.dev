@@ -1385,6 +1385,29 @@ describe("runWatchBatchTick", () => {
     expect(appends.map((append) => append.chatId)).toEqual(["chat_2"]);
   });
 
+  // Catches: a chain ticking forever once the webapp no longer serves the batch check.
+  it.each([404, 410])("a batch check answering %i ends the chain", async (status) => {
+    const rows = group(2, { tickCount: 6, lastCheckedAt: NOW, lastResult: { runs: 1 } });
+    const { store } = fakeStore(rows[0]!, rows[1]!);
+    const { deliver } = fakeDeliver();
+    const triggers: unknown[] = [];
+
+    const result = await runWatchBatchTick(
+      batchPayload(7),
+      batchDeps({
+        store,
+        response: async () => {
+          throw Object.assign(new Error(`the batch check returned ${status}`), { status });
+        },
+        deliver,
+        reschedule: async (payload) => void triggers.push(payload),
+      })
+    );
+
+    expect(result).toEqual({ outcome: "gone", results: [], rescheduled: false });
+    expect(triggers).toHaveLength(0);
+  });
+
   it("a batch check that can't be read keeps the chain alive, and records nothing", async () => {
     const rows = group(2, { tickCount: 6, lastCheckedAt: NOW, lastResult: { runs: 1 } });
     const { store, calls } = fakeStore(rows[0]!, rows[1]!);

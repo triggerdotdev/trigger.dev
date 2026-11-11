@@ -292,9 +292,6 @@ const EnvironmentSchema = z
     // Free for now (TRI-12863): "0" (default) leaves the message quota unenforced,
     // unrecorded and hidden. The quota code stays in place behind this switch.
     DASHBOARD_AGENT_QUOTA_ENABLED: z.string().default("0"),
-    // Global default for the `dashboardAgentWatchEnabled` flag: "0" (default) ships
-    // watches dark. Per-org overrides win regardless.
-    DASHBOARD_AGENT_WATCH_ENABLED: z.string().default("0"),
     // Anthropic key for the dashboard agent's Head Start route only (the warm
     // first-turn step-1 LLM call runs in this process). The agent run itself
     // uses its own key on the Trigger side. When unset, Head Start is disabled

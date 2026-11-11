@@ -9,8 +9,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock("~/services/uatRoutePreamble.server", () => ({
   authenticateUatOrApiRequest: mocks.authenticate,
 }));
-vi.mock("~/services/dashboardAgentWatches.server", () => ({
-  authorizeWatchEnvironmentById: mocks.authorizeEnvironment,
+vi.mock("~/services/dashboardAgentChatContext.server", () => ({
+  authorizeAgentEnvironmentById: mocks.authorizeEnvironment,
 }));
 vi.mock("~/services/telemetry.server", () => ({
   telemetry: { dashboardAgent: { feedback: mocks.feedback } },

@@ -113,7 +113,9 @@ export async function postBatchCheck(
   if (!response.ok) {
     // A throw, not an empty batch: rescheduling as if nothing was due would skip the
     // whole group.
-    throw new Error(body?.error ?? `the batch check returned ${response.status}`);
+    throw Object.assign(new Error(body?.error ?? `the batch check returned ${response.status}`), {
+      status: response.status,
+    });
   }
 
   return body ?? {};

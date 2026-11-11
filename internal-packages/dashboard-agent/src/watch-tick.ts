@@ -89,6 +89,10 @@ async function postCheck(
 
   if (!response.ok) {
     if (body?.code && REVOKED_CODES.has(body.code)) return { kind: "revoked", code: body.code };
+    // The webapp no longer serves the check, so the watch can't be checked again.
+    if (response.status === 404 || response.status === 410) {
+      return { kind: "revoked", code: "endpoint_gone" };
+    }
     return {
       kind: "unavailable",
       detail: body?.error ?? `status ${response.status}${body?.code ? ` (${body.code})` : ""}`,

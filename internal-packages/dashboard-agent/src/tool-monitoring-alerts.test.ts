@@ -2,15 +2,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildAnalyzeQueryAlertTool,
   buildMonitoringAlertTools,
+  buildPlanMonitoringTool,
   _validateDraftPatch,
 } from "./tool-monitoring-alerts";
 import { createApiClient } from "./tool-api-client";
 import {
-  createMonitoringAlertInputSchema,
   DASHBOARD_AGENT_MONITORING_ALERT_TOOL_NAMES,
   DASHBOARD_AGENT_SYSTEM_PROMPT,
   DASHBOARD_AGENT_WATCH_PROMPT,
   dashboardAgentToolSchemas,
+  planMonitoringSchema,
   describeAlertCapabilitiesInputSchema,
   updateAlertDraftSchema,
 } from "./tool-schemas";
@@ -21,26 +22,23 @@ import {
 import { alertDraftContextText, toolSchemasFor, withAlertDraftContext } from "./prompt-assembly";
 import { clientDataSchema, scopeTurnTools } from "./agent-runtime";
 import { buildDashboardAgentTools } from "./tools";
-import { alertAreaSchema, behaviorSchema, getCapability } from "@internal/alert-contracts";
+import { alertAreaSchema, getCapability } from "@internal/alert-contracts";
 
 describe("creation turn tools on the agent run", () => {
   const base = { userActorToken: "uat", apiOrigin: "https://api.example.com", chatId: "chat_1" };
 
-  // Mutation: gating buildMonitoringAlertTools on watchEnabled alone drops the draft tool.
-  it.each([false, true])("offers update_alert_draft and not create (watches %s)", (watch) => {
-    const clientData = { ...base, watchEnabled: watch, toolScope: "alert_creation" };
+  it.each([false, true])("offers update_alert_draft (alerts %s)", (alerts) => {
+    const clientData = { ...base, watchEnabled: alerts, toolScope: "alert_creation" };
     const tools = scopeTurnTools(buildDashboardAgentTools(clientData), clientData);
     expect(tools).toHaveProperty("update_alert_draft");
     expect(tools).toHaveProperty("describe_alert_capabilities");
-    expect(tools).not.toHaveProperty("create_monitoring_alert");
-    expect(tools).not.toHaveProperty("schedule_watch");
     expect(Object.keys(tools)).toEqual(
-      Object.keys(toolSchemasFor("assistant", { watchEnabled: watch, scope: "alert_creation" }))
+      Object.keys(toolSchemasFor("assistant", { watchEnabled: alerts, scope: "alert_creation" }))
     );
   });
 
   it("leaves a normal turn's tools alone", () => {
-    const clientData = { ...base, watchEnabled: true };
+    const clientData = { ...base, toolScope: undefined };
     const tools = buildDashboardAgentTools(clientData);
     expect(scopeTurnTools(tools, clientData)).toBe(tools);
   });
@@ -106,7 +104,8 @@ const CTX = {
 };
 
 function tools() {
-  return buildMonitoringAlertTools({ ctx: CTX as any, client: createApiClient(CTX as any) });
+  const ctx = { ...CTX, toolScope: "alert_creation" };
+  return buildMonitoringAlertTools({ ctx: ctx as any, client: createApiClient(ctx as any) });
 }
 
 const run = (name: string, input: any = {}) =>
@@ -141,127 +140,6 @@ describe("describe_alert_capabilities area enum", () => {
       alertAreaSchema.options.filter((a) => a !== "query" && a !== "grouped")
     );
     expect(areaField.options).toEqual(["queues", "runs", "health", "limits", "errors"]);
-  });
-});
-
-describe("create_monitoring_alert scope type enum", () => {
-  it("accepts the errorGroup scope and keeps its fingerprint", () => {
-    const scopeType = createMonitoringAlertInputSchema.shape.scope.unwrap().shape.type;
-    expect(scopeType.options).toEqual(["queue", "queuePattern", "task", "all", "errorGroup"]);
-    const parsed = createMonitoringAlertInputSchema.parse({
-      capabilityKey: "errors.occurred_again",
-      scope: { type: "errorGroup", taskIdentifier: "t", fingerprint: "f" },
-      condition: { kind: "occurrence" },
-      notifiers: [{ type: "channel", channelId: "chan_1" }],
-    });
-    expect(parsed.scope).toEqual({ type: "errorGroup", taskIdentifier: "t", fingerprint: "f" });
-  });
-});
-
-describe("create_monitoring_alert notifiers", () => {
-  const base = { capabilityKey: "queue.depth", condition: { kind: "occurrence" } };
-
-  it.each([
-    ["omitted", undefined],
-    ["empty", []],
-    ["a chat notifier", [{ type: "chat", chatId: "chat_1" }]],
-  ])("rejects %s", (_label, notifiers) => {
-    expect(createMonitoringAlertInputSchema.safeParse({ ...base, notifiers }).success).toBe(false);
-  });
-});
-
-describe("create_monitoring_alert validation feedback", () => {
-  it("returns the failing field path for a timezone-less expiresAt", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (_url: string, init?: { body?: string }) => {
-        const body = JSON.parse(init?.body ?? "{}");
-        const parsed = behaviorSchema.safeParse(body.behavior);
-        if (parsed.success) {
-          return new Response(JSON.stringify({ alert: { id: "alert_1" } }), { status: 200 });
-        }
-        const issues = parsed.error.issues.map((i) => ({ ...i, path: ["behavior", ...i.path] }));
-        return new Response(JSON.stringify({ error: "Invalid request", issues }), { status: 400 });
-      })
-    );
-
-    const result = await run("create_monitoring_alert", {
-      capabilityKey: "queue.depth",
-      condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
-      behavior: { expiresAt: "2099-12-01T10:00:00" },
-    });
-
-    expect(result.error).toContain("behavior.expiresAt");
-  });
-});
-
-describe("create_monitoring_alert errorGroup scope", () => {
-  const errorGroupInput = (fingerprint: string, taskIdentifier?: string) => ({
-    capabilityKey: "errors.occurred_again",
-    scope: { type: "errorGroup", fingerprint, ...(taskIdentifier ? { taskIdentifier } : {}) },
-    condition: { kind: "occurrence" },
-  });
-
-  it("rejects a fingerprint-only scope without calling the API", async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-
-    const result = await run("create_monitoring_alert", errorGroupInput("f"));
-
-    expect(result.error).toContain("taskIdentifier and fingerprint");
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("posts the bare fingerprint for an error_ id", async () => {
-    let body: any;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (_url: string, init?: { body?: string }) => {
-        body = init?.body ? JSON.parse(init.body) : undefined;
-        return new Response(JSON.stringify({ alert: { id: "alert_1" } }), { status: 200 });
-      })
-    );
-
-    await run("create_monitoring_alert", errorGroupInput("error_abc", "t"));
-
-    expect(body.scope).toEqual({ type: "errorGroup", taskIdentifier: "t", fingerprint: "abc" });
-  });
-});
-
-describe("create_monitoring_alert params pass-through", () => {
-  it("fails when params are dropped before the server call", async () => {
-    let body: any;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (_url: string, init?: { body?: string }) => {
-        body = init?.body ? JSON.parse(init.body) : undefined;
-        return new Response(JSON.stringify({ alert: { id: "alert_1" } }), { status: 200 });
-      })
-    );
-
-    await run("create_monitoring_alert", {
-      capabilityKey: "health.all",
-      condition: { kind: "state", stateKey: "flow", params: { schedulingDelayMs: 5000 } },
-    });
-
-    expect(body.condition.params).toEqual({ schedulingDelayMs: 5000 });
-  });
-
-  it("only carries params on a state condition", () => {
-    const result = createMonitoringAlertInputSchema.safeParse({
-      capabilityKey: "queue.depth",
-      condition: {
-        kind: "threshold",
-        operator: ">",
-        value: 10,
-        windowSec: 300,
-        params: { foo: 1 },
-      },
-      notifiers: [{ type: "channel", channelId: "chan_1" }],
-    });
-
-    expect(result.success).toBe(true);
-    expect((result as any).data.condition.params).toBeUndefined();
   });
 });
 
@@ -311,12 +189,8 @@ describe("update_alert_draft", () => {
     expect(toolSet).toHaveProperty("update_alert_draft");
   });
 
-  it("fails when alert_creation scope includes create_monitoring_alert", () => {
-    const scopeTools = toolSchemasFor("assistant", {
-      watchEnabled: true,
-      scope: "alert_creation",
-    });
-    expect(scopeTools).not.toHaveProperty("create_monitoring_alert");
+  it("fails when alert_creation scope includes resolve_monitoring_alert", () => {
+    const scopeTools = toolSchemasFor("assistant", { scope: "alert_creation" });
     expect(scopeTools).not.toHaveProperty("resolve_monitoring_alert");
     expect(scopeTools).toHaveProperty("update_alert_draft");
     expect(scopeTools).toHaveProperty("describe_alert_capabilities");
@@ -580,32 +454,11 @@ describe("query alerts", () => {
 
   it("is registered for alert turns, after submit_feedback", () => {
     const keys = Object.keys(dashboardAgentToolSchemas);
-    expect(keys.at(-1)).toBe("analyze_query_alert");
+    expect(keys.indexOf("analyze_query_alert")).toBe(keys.indexOf("submit_feedback") + 1);
     expect(DASHBOARD_AGENT_MONITORING_ALERT_TOOL_NAMES).toContain("analyze_query_alert");
     expect(toolSchemasFor("assistant", { scope: "alert_creation" })).toHaveProperty(
       "analyze_query_alert"
     );
-  });
-
-  it("create_monitoring_alert forwards query and signal", async () => {
-    let body: any;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (_url: string, init?: { body?: string }) => {
-        body = JSON.parse(init?.body ?? "{}");
-        return new Response(JSON.stringify({ alert: { id: "alert_1" } }), { status: 200 });
-      })
-    );
-
-    await run("create_monitoring_alert", {
-      capabilityKey: "custom.query",
-      condition: { kind: "threshold", operator: ">", value: 5, windowSec: 3600 },
-      query,
-      signal: { mode: "threshold", measure: "failures" },
-    });
-
-    expect(body.query).toBe(query);
-    expect(body.signal).toEqual({ mode: "threshold", measure: "failures" });
   });
 
   // Mutation: dropping "query" from the patch area enum fails the first call.
@@ -633,25 +486,6 @@ describe("Limits condition fields", () => {
     components: ["limits.api", "limits.webhooks.waiters"],
     signals: ["approaching"],
   };
-
-  // Mutation: dropping the fields from the schema strips them from the call.
-  it("create_monitoring_alert carries the fields to the server", async () => {
-    let body: any;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (_url: string, init?: { body?: string }) => {
-        body = init?.body ? JSON.parse(init.body) : undefined;
-        return new Response(JSON.stringify({ alert: { id: "alert_1" } }), { status: 200 });
-      })
-    );
-    const input = createMonitoringAlertInputSchema.parse({
-      capabilityKey: "limits.all",
-      condition: { kind: "state", stateKey: "limits.all", ...fields },
-      notifiers: [{ type: "channel", channelId: "chan_1" }],
-    });
-    await run("create_monitoring_alert", input);
-    expect(body.condition).toMatchObject(fields);
-  });
 
   it("update_alert_draft keeps the fields in the patch", async () => {
     const patch = { what: "limits.all", condition: { kind: "state", ...fields } };
@@ -703,5 +537,338 @@ describe("draft name", () => {
     const result = await run("update_alert_draft", parsed);
     expect(result.ok).toBe(true);
     expect(result.patch.name).toBe("Payments depth");
+  });
+});
+
+describe("plan_monitoring", () => {
+  const LIMIT_MESSAGE =
+    "Remove LIMIT, OFFSET and LIMIT BY: an alert looks at every matching row, and a top-N cut makes it fire on ranking changes.";
+
+  const failureRate = {
+    id: "p1",
+    title: "Failure rate",
+    description: "Catches a deploy that makes runs fail.",
+    draft: {
+      area: "runs",
+      what: "runs.failure_rate",
+      condition: { kind: "threshold", operator: ">", value: 5, windowSec: 600 },
+    },
+  };
+
+  const plan = (items: unknown[]) =>
+    (
+      buildPlanMonitoringTool({
+        ctx: { ...CTX, environmentId: "env_1" } as any,
+        client: createApiClient(CTX as any),
+      }).plan_monitoring as any
+    ).execute({ goal: "Keep an eye on prod after this deploy", items }, {} as any) as Promise<
+      Record<string, any>
+    >;
+
+  it("returns the plan with a summary per item", async () => {
+    const result = await plan([failureRate]);
+    expect(result.ok).toBe(true);
+    expect(result.plan.items[0].summary).toBe("runs.failure_rate · threshold > 5 · all");
+    expect(result.plan.environmentId).toBe("env_1");
+  });
+
+  const planSignals = (what: string, condition: object) =>
+    plan([{ ...failureRate, draft: { area: "limits", what, condition } }]);
+
+  // Catches: unsupported signals reaching validation and failing the plan.
+  it("drops signals the capability doesn't support instead of failing", async () => {
+    const result = await planSignals("limits.queue", {
+      kind: "state",
+      signals: ["limited", "approaching"],
+    });
+    expect(result.ok).toBe(true);
+    expect(result.plan.items[0].draft.condition.signals).toEqual(["approaching"]);
+  });
+
+  // Catches: an item without a condition reaching the UI, or the retry text losing its silence.
+  it("rejects a threshold item with no condition and tells the model to retry silently", async () => {
+    const result = await plan([
+      { ...failureRate, draft: { area: "runs", what: "runs.failure_rate" } },
+    ]);
+    expect(result.ok).toBe(false);
+    expect(result.errors[0].id).toBe("p1");
+    expect(result.retry).toBe(
+      "Fix and call plan_monitoring again; do not tell the user about this."
+    );
+  });
+
+  // Catches: health.all with no condition rejected instead of taking its defaults.
+  it("gives a state capability its default condition", async () => {
+    const result = await plan([{ ...failureRate, draft: { area: "health", what: "health.all" } }]);
+    expect(result.ok).toBe(true);
+    expect(result.plan.items[0].draft.condition).toEqual({ kind: "state", compositeMode: "any" });
+  });
+
+  // Catches: health.all components dropped or rejected, so the baseline duplicates a task item.
+  it("keeps health.all components in a plan", async () => {
+    const components = ["health.flow", "health.liveness"];
+    const result = await plan([
+      {
+        ...failureRate,
+        draft: { area: "health", what: "health.all", condition: { kind: "state", components } },
+      },
+    ]);
+    expect(result.ok).toBe(true);
+    expect(result.plan.items[0].draft.condition.components).toEqual(components);
+  });
+
+  // Catches: the agent's summary being replaced by the generated one.
+  it("keeps a supplied summary", async () => {
+    const result = await plan([{ ...failureRate, summary: "Failures after deploy" }]);
+    expect(result.plan.items[0].summary).toBe("Failures after deploy");
+  });
+
+  // Catches: a spike query item shipping with an absence condition.
+  it("rejects a spike-titled query item whose condition is absence", async () => {
+    stubAnalyze(ABSENCE_RESPONSE);
+    const item = {
+      ...queryItem("p5", "SELECT count() AS runs FROM runs", { mode: "absence" }),
+      title: "Triggered runs spike",
+    };
+    const result = await plan([item]);
+    expect(result.ok).toBe(false);
+    expect(result.errors[0].message).toContain("spike");
+
+    const calm = { ...item, title: "No more than 5 runs" };
+    expect((await plan([calm])).ok).toBe(true);
+
+    const quiet = { ...item, title: "No runs for more than 5 minutes" };
+    expect((await plan([quiet])).ok).toBe(true);
+
+    const threshold = {
+      ...item,
+      draft: { ...item.draft, condition: { operator: ">", value: 100, windowSec: 300 } },
+    };
+    const fixed = await plan([threshold]);
+    expect(fixed.plan.items[0].draft.querySignalChoice.mode).toBe("threshold");
+    expect(fixed.plan.items[0].draft.condition.kind).toBe("threshold");
+  });
+
+  // Catches: a plan item summary or detail carrying concrete numbers into the plan card.
+  it.each([
+    ["summary", "More than 300 runs per hour", "handle-webhook p95 duration"],
+    ["summary", "> 50 runs", "batch-1 failure rate"],
+    ["summary", "> 50 runs", "gpt-4.1 latency"],
+    [
+      "detail",
+      "Fires when more than 5% of runs fail.",
+      "Fires when p95 duration rises above normal.",
+    ],
+  ])("rejects a %s containing a number", async (field, bad, good) => {
+    const result = await plan([{ ...failureRate, [field]: bad }]);
+    expect(result.ok).toBe(false);
+    expect(result.errors[0].message).toContain(`${field} must not contain numbers`);
+    expect(result.retry).toContain("call plan_monitoring again");
+    const ok = await plan([{ ...failureRate, [field]: good }]);
+    expect(ok.ok).toBe(true);
+  });
+
+  // Catches: summary and detail optional or unbounded in the tool input.
+  it("requires a short summary and a detail in the input", () => {
+    const { inputSchema } = planMonitoringSchema as any;
+    const input = (item: object) => ({
+      goal: "g",
+      intro: "Watch it?",
+      items: [{ ...failureRate, summary: "s", detail: "d", ...item }],
+    });
+    expect(inputSchema.safeParse(input({})).success).toBe(true);
+    expect(inputSchema.safeParse(input({ summary: undefined })).success).toBe(false);
+    expect(inputSchema.safeParse(input({ detail: undefined })).success).toBe(false);
+    expect(inputSchema.safeParse(input({ summary: "x".repeat(61) })).success).toBe(false);
+  });
+
+  // Catches: empty signals failing the plan instead of taking the capability default.
+  it("defaults empty signals to the capability's", async () => {
+    const result = await planSignals("limits.api", { kind: "state", signals: [] });
+    expect(result.ok).toBe(true);
+    expect(result.plan.items[0].draft.condition.signals).toEqual(["limited"]);
+  });
+
+  // Mutation: skipping validateDraftPatch in plan_monitoring lets the bad key through.
+  it("names the item whose curated draft is invalid", async () => {
+    const bad = { ...failureRate, id: "p2", draft: { ...failureRate.draft, what: "runs.nope" } };
+    const result = await plan([failureRate, bad]);
+    expect(result.ok).toBe(false);
+    expect(result.errors).toEqual([{ id: "p2", message: expect.stringContaining("runs.nope") }]);
+  });
+
+  // Fixtures in the analyze-query route's response shape. The route and its signal verdict
+  // are tested against the real analyzer in webapp test/dashboardAgentMonitoringAlerts.test.ts.
+  const LIMIT_RESPONSE = {
+    analysis: {
+      ok: false,
+      modes: [],
+      errors: [{ code: "limit", message: LIMIT_MESSAGE }],
+      unsupported: [],
+    },
+    signal: { ok: false, message: LIMIT_MESSAGE },
+  };
+  const ABSENCE_RESPONSE = {
+    analysis: {
+      ok: true,
+      modes: [
+        {
+          mode: "threshold",
+          measures: [{ column: "runs", countLike: true }],
+          absenceAllowed: true,
+        },
+      ],
+      errors: [],
+      unsupported: [],
+    },
+    signal: { ok: true },
+  };
+
+  function stubAnalyze(response: unknown) {
+    const calls: { url: string; body: any }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: { body?: string }) => {
+        calls.push({ url, body: JSON.parse(init?.body ?? "{}") });
+        return new Response(JSON.stringify(response), { status: 200 });
+      })
+    );
+    return calls;
+  }
+
+  const queryItem = (id: string, query: string, querySignalChoice: object) => ({
+    id,
+    title: "Query alert",
+    description: "Backs the goal with a query.",
+    draft: {
+      area: "query",
+      query,
+      querySignalChoice,
+      condition: (querySignalChoice as { mode: string }).mode === "absence" ? {} : { value: 5 },
+    },
+  });
+
+  // Mutation: not calling the analyze-query route lets the LIMIT query through.
+  it("rejects a query item the server can't back, with its message", async () => {
+    const calls = stubAnalyze(LIMIT_RESPONSE);
+    const query = "SELECT task_identifier, count() AS n FROM runs GROUP BY task_identifier LIMIT 5";
+    const result = await plan([
+      failureRate,
+      queryItem("p3", query, { mode: "threshold", measure: "n" }),
+    ]);
+    expect(calls[0]?.url).toBe(`${ORIGIN}/api/v1/dashboard-agent/monitoring-alerts/analyze-query`);
+    expect(calls[0]?.body).toEqual({ query, signal: { mode: "threshold", measure: "n" } });
+    expect(result).toMatchObject({ ok: false, errors: [{ id: "p3", message: LIMIT_MESSAGE }] });
+  });
+
+  it("accepts an absence item the server accepts", async () => {
+    const calls = stubAnalyze(ABSENCE_RESPONSE);
+    const query = "SELECT count() AS runs FROM runs WHERE task_identifier = 'checkout'";
+    const result = await plan([queryItem("p4", query, { mode: "absence" })]);
+    expect(calls[0]?.body.signal).toEqual({ mode: "absence" });
+    expect(result.ok).toBe(true);
+  });
+
+  // Mutation: dropping planConditionGaps from plan_monitoring lets the incomplete items through.
+  it("requires the condition fields each capability kind needs", async () => {
+    const missing = async (what: string, condition: object) => {
+      const result = await plan([
+        { ...failureRate, draft: { ...failureRate.draft, what, condition } },
+      ]);
+      return result.ok ? "" : result.errors[0].message;
+    };
+    expect(await missing("runs.failure_rate", { kind: "threshold" })).toBe(
+      "missing condition.operator; missing condition.value"
+    );
+    expect(await missing("runs.failure_rate", { operator: ">", value: 5 })).toBe("");
+    expect(await missing("runs.created", { kind: "absence" })).toBe("missing condition.windowSec");
+    expect(await missing("runs.created", { kind: "absence", windowSec: 3600 })).toBe("");
+    expect(await missing("errors.new", { kind: "occurrence" })).toBe("");
+    expect(await missing("queue.stalled", { kind: "state" })).toBe("");
+    const query = await plan([
+      {
+        ...failureRate,
+        draft: {
+          area: "query",
+          query: "SELECT count() AS n FROM runs",
+          querySignalChoice: { mode: "threshold", measure: "n" },
+          condition: { windowSec: 600 },
+        },
+      },
+    ]);
+    expect(query.errors?.[0]?.message).toBe("missing condition.value");
+  });
+
+  // Mutation: dropping the duplicate-id check lets both items through.
+  it("rejects a repeated item id", async () => {
+    const result = await plan([failureRate, failureRate]);
+    expect(result).toMatchObject({ ok: false, errors: [{ id: "p1", message: "duplicate id" }] });
+  });
+
+  // Mutation: dropping planScopeGaps ships a card the user can't create.
+  it("names the item whose task scope has no task", async () => {
+    const noTask = { ...failureRate, draft: { ...failureRate.draft, scope: { type: "task" } } };
+    const result = await plan([noTask]);
+    expect(result).toMatchObject({
+      ok: false,
+      errors: [{ id: "p1", message: "pick a task (scope)" }],
+    });
+  });
+
+  it("names the item whose capability has no all scope and no scope was given", async () => {
+    const again = {
+      ...failureRate,
+      draft: {
+        ...failureRate.draft,
+        what: "errors.occurred_again",
+        condition: { kind: "occurrence" },
+      },
+    };
+    const result = await plan([again]);
+    expect(result.errors).toEqual([
+      { id: "p1", message: expect.stringContaining("pick an error (scope)") },
+    ]);
+  });
+
+  // Mutation: dropping the errorGroup completeness check lets a card through that can't be created.
+  it("names the item whose error scope has no task", async () => {
+    const again = {
+      ...failureRate,
+      draft: {
+        ...failureRate.draft,
+        area: "errors",
+        what: "errors.occurred_again",
+        condition: { kind: "occurrence" },
+        scope: { type: "errorGroup", fingerprint: "744b4159" },
+      },
+    };
+    const result = await plan([again]);
+    expect(result).toMatchObject({
+      ok: false,
+      errors: [{ id: "p1", message: "pick an error (scope)" }],
+    });
+  });
+
+  it("accepts a task scope with its task", async () => {
+    const scoped = {
+      ...failureRate,
+      draft: { ...failureRate.draft, scope: { type: "task", value: "attempt-failures" } },
+    };
+    expect((await plan([scoped])).ok).toBe(true);
+  });
+
+  // Mutation: requiring notifiers again fails the pass with "missing notifiers".
+  it("accepts items without notifiers and adds none", async () => {
+    const result = await plan([failureRate]);
+    expect(result.ok).toBe(true);
+    expect(result.plan.items[0].draft.notifiers).toBeUndefined();
+  });
+
+  it("is the last tool and an alert tool", () => {
+    expect(Object.keys(dashboardAgentToolSchemas).slice(-2)).toEqual([
+      "plan_monitoring",
+      "plan_decision",
+    ]);
+    expect(DASHBOARD_AGENT_MONITORING_ALERT_TOOL_NAMES).toContain("plan_monitoring");
   });
 });

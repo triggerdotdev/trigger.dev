@@ -143,6 +143,7 @@ export const ChatRequestSchema = z
       z.string().trim().max(120).optional()
     ),
     transcriptChatId: z.string().optional(),
+    planItemKey: z.string().max(256).optional(),
     expiry: z
       .string()
       .regex(/^(none|deploy|incident|\d+h)$/)

@@ -356,7 +356,7 @@ describe("transcriptLooksUnfinished behind a trailing record", () => {
       { type: "text", text: "Nothing is failing." },
     ],
   };
-  // The wire shape the panel really stores: see `wakeRefFromMessageId` in WakeBanner.
+  // The wire shape older transcripts still hold.
   const wake = {
     id: "wake:watch:watch_1:fired",
     role: "assistant",

@@ -25,8 +25,14 @@ import {
   type InvestigationState,
 } from "@internal/dashboard-agent-contracts";
 import { withCacheBreakpoint } from "./model-provider";
-import { composeSystemPrompt, toolsForTurn, type DashboardAgentMode } from "./prompt-assembly";
-import { codeSystemPrompt, systemPrompt, watchSystemPrompt } from "./prompts";
+import {
+  composeSystemPrompt,
+  plannerEnabled,
+  toolsForTurn,
+  type DashboardAgentMode,
+  type DashboardAgentPromptOptions,
+} from "./prompt-assembly";
+import { codeSystemPrompt, plannerSystemPrompt, systemPrompt, watchSystemPrompt } from "./prompts";
 import { buildDashboardAgentTools } from "./tools";
 import {
   dashboardAgentTranscriptStorage,
@@ -308,9 +314,10 @@ export function modeFor(clientData: { repoSnapshot?: unknown } | undefined): Das
 let cachedSystemPrompt: Awaited<ReturnType<typeof systemPrompt.resolve>> | undefined;
 let cachedCodePrompt: Awaited<ReturnType<typeof codeSystemPrompt.resolve>> | undefined;
 let cachedWatchPrompt: Awaited<ReturnType<typeof watchSystemPrompt.resolve>> | undefined;
+let cachedPlannerPrompt: Awaited<ReturnType<typeof plannerSystemPrompt.resolve>> | undefined;
 export async function getSystemPrompt(
   mode: DashboardAgentMode = "assistant",
-  options: { watchEnabled?: boolean } = {}
+  options: DashboardAgentPromptOptions = {}
 ) {
   const base = await (async () => {
     if (mode === "code") {
@@ -321,15 +328,48 @@ export async function getSystemPrompt(
     return cachedSystemPrompt;
   })();
 
-  // The watch guidance is only shown when the turn actually has the watch tool,
-  // so a turn without it never offers to tell the user later.
-  if (!options.watchEnabled) return base;
-  cachedWatchPrompt ??= await watchSystemPrompt.resolve({});
+  // Each section is only shown when the turn actually has its tools, so a turn without
+  // them never offers a plan or to tell the user later.
+  let resolved = base;
+  if (plannerEnabled(options)) {
+    cachedPlannerPrompt ??= await plannerSystemPrompt.resolve({});
+    resolved = appendPrompt(resolved, cachedPlannerPrompt);
+  }
+  if (options.legacyWatchEnabled) {
+    cachedWatchPrompt ??= await watchSystemPrompt.resolve({});
+    resolved = appendPrompt(resolved, cachedWatchPrompt);
+  }
+  return resolved;
+}
+
+function appendPrompt<T extends { promptId: string; text: string }>(
+  base: T,
+  extra: { promptId: string; text: string }
+): T {
+  // Both ids, so telemetry names the prompt the turn actually ran.
   return {
     ...base,
-    // Both ids, so telemetry names the prompt the turn actually ran.
-    promptId: `${base.promptId}+${cachedWatchPrompt.promptId}`,
-    text: composeSystemPrompt(base.text, cachedWatchPrompt.text),
+    promptId: `${base.promptId}+${extra.promptId}`,
+    text: composeSystemPrompt(base.text, extra.text),
+  };
+}
+
+/** The prompt options a turn's client data asks for. */
+export function promptOptionsFor(
+  clientData:
+    | {
+        toolScope?: string;
+        watchEnabled?: boolean;
+        alertsEnabled?: boolean;
+        legacyWatchEnabled?: boolean;
+      }
+    | undefined
+): DashboardAgentPromptOptions {
+  return {
+    watchEnabled: clientData?.watchEnabled,
+    alertsEnabled: clientData?.alertsEnabled,
+    legacyWatchEnabled: clientData?.legacyWatchEnabled,
+    scope: clientData?.toolScope === "alert_creation" ? "alert_creation" : undefined,
   };
 }
 
@@ -348,6 +388,10 @@ export const clientDataSchema = z.object({
   // Whether this turn may offer watches, resolved server-side. Defaults to off, so a
   // host that doesn't send it gets no watch tools and no watch guidance.
   watchEnabled: z.boolean().default(false),
+  // Server-resolved from the org's alerts gate: the monitoring alert and plan tools.
+  alertsEnabled: z.boolean().default(false),
+  // The legacy watch tools and guidance. Off unless the host sends it.
+  legacyWatchEnabled: z.boolean().default(false),
   toolScope: z.string().optional(),
   alertDraft: alertCreationDraftSchema.optional(),
   // Injected server-side by the `in` proxy each turn, never sent from the
@@ -494,11 +538,21 @@ export function buildTurnTools(
 /** On a creation turn: the draft tools on, create and the watch tools off, as head-start has it. */
 export function scopeTurnTools(
   tools: ToolSet,
-  clientData: { toolScope?: string; watchEnabled?: boolean; repoSnapshot?: unknown } | undefined
+  clientData:
+    | {
+        toolScope?: string;
+        watchEnabled?: boolean;
+        alertsEnabled?: boolean;
+        legacyWatchEnabled?: boolean;
+        repoSnapshot?: unknown;
+      }
+    | undefined
 ): ToolSet {
   if (clientData?.toolScope !== "alert_creation") return tools;
   return toolsForTurn(tools, modeFor(clientData), {
     watchEnabled: clientData.watchEnabled,
+    alertsEnabled: clientData.alertsEnabled,
+    legacyWatchEnabled: clientData.legacyWatchEnabled,
     scope: "alert_creation",
   });
 }

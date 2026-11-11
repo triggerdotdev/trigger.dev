@@ -151,7 +151,6 @@ const sections: StorySection[] = [
       { name: "View blocks", slug: "agent-view-blocks" },
       { name: "Report view", slug: "agent-report" },
       { name: "Investigation card", slug: "agent-investigation" },
-      { name: "Watch card", slug: "agent-watch" },
       { name: "Wizard card", slug: "agent-wizard" },
       { name: "Icons & Buttons", slug: "ai-agent" },
     ],

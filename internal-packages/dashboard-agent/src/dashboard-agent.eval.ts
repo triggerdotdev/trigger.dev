@@ -933,6 +933,46 @@ const TRUNCATED_FIXTURES: Record<string, unknown> = {
   },
 };
 
+const PLAN_FIXTURES: Record<string, unknown> = {
+  describe_alert_capabilities: {
+    capabilities: [
+      { key: "runs.failure_rate", area: "runs", allowedKinds: ["threshold"] },
+      { key: "runs.failed", area: "runs", allowedKinds: ["threshold", "occurrence"] },
+      { key: "runs.created", area: "runs", allowedKinds: ["absence"] },
+      { key: "runs.duration_p95", area: "runs", allowedKinds: ["threshold"] },
+      { key: "queue.depth", area: "queues", allowedKinds: ["threshold"] },
+      { key: "errors.new", area: "errors", allowedKinds: ["occurrence"] },
+    ],
+  },
+};
+
+describe.skipIf(!HAS_KEY)("dashboardAgent monitoring plan evals (real model)", () => {
+  it(
+    "a monitoring goal becomes a plan with a failure alert and a no-runs alert",
+    () =>
+      goldenCase(async () => {
+        const question = "Watch production after this deploy for 2 hours";
+        const { calls, answer } = await runCase(question, { fixtures: PLAN_FIXTURES });
+        report("monitoring plan", calls, answer);
+
+        const plan = calls.find((c) => c.tool === "plan_monitoring")?.input as
+          | { items?: Array<{ draft?: { what?: string; condition?: { kind?: string } } }> }
+          | undefined;
+        const items = plan?.items ?? [];
+        expect(items.length).toBeGreaterThanOrEqual(3);
+        expect(
+          items.some((i) => /^runs\.failed|^runs\.failure_rate/.test(i.draft?.what ?? ""))
+        ).toBe(true);
+        expect(
+          items.some(
+            (i) => i.draft?.what === "runs.created" || i.draft?.condition?.kind === "absence"
+          )
+        ).toBe(true);
+      }),
+    420_000
+  );
+});
+
 // One unresolved, recurring error, and nothing else wrong: the headline the watch
 // offer is written for.
 const RECURRING_ERROR_FIXTURES: Record<string, unknown> = {

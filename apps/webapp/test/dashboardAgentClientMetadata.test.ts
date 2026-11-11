@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
-  watchEnabled: false,
+  alertsEnabled: false,
   findEnvironmentBySlug: vi.fn<(...args: any[]) => Promise<any>>(),
   startSession: vi.fn<(...args: any[]) => Promise<any>>(),
   chatExists: vi.fn<(...args: any[]) => Promise<any>>(),
@@ -16,8 +16,8 @@ vi.mock("~/services/session.server", () => ({
 vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
   canAccessDashboardAgent: async () => true,
 }));
-vi.mock("~/v3/canUseDashboardAgentWatches.server", () => ({
-  canUseDashboardAgentWatches: async () => mocks.watchEnabled,
+vi.mock("~/v3/canUseAlertsList.server", () => ({
+  canUseAlertsList: async () => mocks.alertsEnabled,
 }));
 vi.mock("~/models/project.server", () => ({
   findProjectWithOrgFlagsBySlug: async () => ({
@@ -46,8 +46,7 @@ vi.mock("~/services/dashboardAgentDb.server", () => ({ dashboardAgentDb: {} }));
 vi.mock("~/services/resolveTriggerUriInOrganization.server", () => ({
   resolveTriggerUrisInOrganization: async () => new Map(),
 }));
-// The chat route reaches the ClickHouse factory through the watch services, and the factory
-// builds its client at import time from an env var no test sets.
+// The ClickHouse factory builds its client at import time from an env var no test sets.
 vi.mock("~/services/clickhouse/clickhouseFactoryInstance.server", () => ({
   clickhouseFactory: { getClickhouseForOrganization: async () => ({}) },
 }));
@@ -173,24 +172,24 @@ describe.each([
     expect(data).toMatchObject({ currentPage: "/runs", pageContext: { kind: "runs" } });
   });
 
-  // The watch flag is resolved server-side per turn, so a client can neither ask for the
-  // watch tools nor keep them once the org loses the flag.
-  it("says watches are off however the client asks", async () => {
-    mocks.watchEnabled = false;
+  // Resolved server-side per turn from the alerts gate, so a client can neither ask for the
+  // monitoring tools nor keep them once the org loses the flag.
+  it("says alerts are off however the client asks", async () => {
+    mocks.alertsEnabled = false;
 
-    expect(await call({ currentPage: "/runs", watchEnabled: true })).toMatchObject({
-      watchEnabled: false,
+    expect(await call({ currentPage: "/runs", alertsEnabled: true })).toMatchObject({
+      alertsEnabled: false,
     });
   });
 
-  it("says watches are on for an org that has them", async () => {
-    mocks.watchEnabled = true;
+  it("says alerts are on for an org that has them", async () => {
+    mocks.alertsEnabled = true;
 
-    expect(await call({ currentPage: "/runs", watchEnabled: false })).toMatchObject({
-      watchEnabled: true,
+    expect(await call({ currentPage: "/runs", alertsEnabled: false })).toMatchObject({
+      alertsEnabled: true,
     });
 
-    mocks.watchEnabled = false;
+    mocks.alertsEnabled = false;
   });
 });
 

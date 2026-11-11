@@ -648,6 +648,7 @@ const alertCreatedBlockBodySchema = z.object({
   alertId: z.string(),
   name: z.string(),
   rows: z.array(alertCreatedRowSchema).default([]),
+  planItemKey: z.string().optional(),
 });
 
 export const alertCreatedBlockSchema = alertCreatedBlockBodySchema.merge(blockEnvelopeSchema);

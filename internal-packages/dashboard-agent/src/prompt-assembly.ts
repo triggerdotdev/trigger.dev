@@ -2,8 +2,10 @@ import type { AlertCreationDraft } from "@internal/dashboard-agent-contracts";
 import type { ModelMessage } from "ai";
 import {
   DASHBOARD_AGENT_ALERT_CREATION_EXCLUDED_TOOLS,
+  DASHBOARD_AGENT_ALERT_CREATION_ONLY_TOOLS,
   DASHBOARD_AGENT_CODE_SYSTEM_PROMPT,
   DASHBOARD_AGENT_MONITORING_ALERT_TOOL_NAMES,
+  DASHBOARD_AGENT_PLANNER_PROMPT,
   DASHBOARD_AGENT_SYSTEM_PROMPT,
   DASHBOARD_AGENT_WATCH_PROMPT,
   DASHBOARD_AGENT_WATCH_TOOL_NAMES,
@@ -24,6 +26,9 @@ export type DashboardAgentMode = "assistant" | "code";
 export type DashboardAgentScope = "default" | "alert_creation";
 export type DashboardAgentPromptOptions = {
   watchEnabled?: boolean;
+  alertsEnabled?: boolean;
+  // The legacy watch tools and prompt section. Off unless the host asks for them.
+  legacyWatchEnabled?: boolean;
   scope?: DashboardAgentScope;
 };
 
@@ -40,8 +45,18 @@ export function systemPromptFor(
   mode: DashboardAgentMode,
   options: DashboardAgentPromptOptions = {}
 ): string {
-  const base = mode === "code" ? DASHBOARD_AGENT_CODE_SYSTEM_PROMPT : DASHBOARD_AGENT_SYSTEM_PROMPT;
-  return options.watchEnabled ? composeSystemPrompt(base, DASHBOARD_AGENT_WATCH_PROMPT) : base;
+  let text = mode === "code" ? DASHBOARD_AGENT_CODE_SYSTEM_PROMPT : DASHBOARD_AGENT_SYSTEM_PROMPT;
+  if (plannerEnabled(options)) text = composeSystemPrompt(text, DASHBOARD_AGENT_PLANNER_PROMPT);
+  if (options.legacyWatchEnabled) text = composeSystemPrompt(text, DASHBOARD_AGENT_WATCH_PROMPT);
+  return text;
+}
+
+/** The planner section rides with the plan tools: alerts on, outside alert_creation. */
+export function plannerEnabled(options: DashboardAgentPromptOptions): boolean {
+  return (
+    (options.watchEnabled === true || options.alertsEnabled === true) &&
+    options.scope !== "alert_creation"
+  );
 }
 
 /** The exact schemas, in the exact key order, the turn registers executes for. */
@@ -52,21 +67,22 @@ export function toolSchemasFor(
   const schemas = mode === "code" ? dashboardAgentCodeToolSchemas : dashboardAgentToolSchemas;
   const excluded = new Set<string>();
   const creating = options.scope === "alert_creation";
-  if (!options.watchEnabled) {
+  if (!options.legacyWatchEnabled) {
     for (const name of DASHBOARD_AGENT_WATCH_TOOL_NAMES) excluded.add(name);
-    if (!creating) {
-      for (const name of DASHBOARD_AGENT_MONITORING_ALERT_TOOL_NAMES) excluded.add(name);
-    }
   }
-  if (creating) {
-    for (const name of DASHBOARD_AGENT_ALERT_CREATION_EXCLUDED_TOOLS) excluded.add(name);
+  if (!options.watchEnabled && !options.alertsEnabled && !creating) {
+    for (const name of DASHBOARD_AGENT_MONITORING_ALERT_TOOL_NAMES) excluded.add(name);
   }
+  const scoped = creating
+    ? DASHBOARD_AGENT_ALERT_CREATION_EXCLUDED_TOOLS
+    : DASHBOARD_AGENT_ALERT_CREATION_ONLY_TOOLS;
+  for (const name of scoped) excluded.add(name);
   if (excluded.size === 0) return schemas;
   return Object.fromEntries(
     Object.entries(schemas)
       .filter(([name]) => !excluded.has(name))
       .map(([name, schema]) =>
-        name === "render_view" && !options.watchEnabled
+        name === "render_view" && !options.legacyWatchEnabled
           ? [name, renderViewSchemaWithoutWatch]
           : [name, schema]
       )

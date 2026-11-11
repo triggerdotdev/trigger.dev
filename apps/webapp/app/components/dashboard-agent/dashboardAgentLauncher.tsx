@@ -1,4 +1,3 @@
-import type { WatchSpec } from "@internal/dashboard-agent-contracts";
 import { createContext, useContext } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
@@ -27,20 +26,14 @@ type DashboardAgentContextValue = {
    * `source` names a contextual entry point (e.g. the alerts page), read by the header's
    * "Manual setup" action so it never shows for a chat opened any other way. */
   openWith: (text: string, options?: { source?: AgentOpenSource }) => void;
-  /** Nothing is posted or persisted until the card is submitted. */
-  openWithWatch: (spec: WatchSpec) => void;
   /** Opens the panel in alert-creation mode with a prefill, without navigating. */
   openCreateAlert: (prefill: DraftPrefillParams) => void;
   /** Opens the panel with a wizard card for the alert's editable fields. */
   openEditAlert: (prefill: EditAlertPrefill) => void;
   /** Opens the panel with the group-alerts wizard for these alerts. */
   openGroupAlerts: (members: { id: string; name: string }[]) => void;
-  /** Polled only while the panel is closed; 0 while it is open. */
-  unreadWakes: number;
-  /** Chats that answered, settled or woke while the panel was closed. */
+  /** Chats that answered or settled while the panel was closed. */
   unreadWork: number;
-  /** Watch functionality is behind this flag; `WatchButton` renders nothing without it. */
-  watchEnabled: boolean;
 };
 
 const DashboardAgentContext = createContext<DashboardAgentContextValue | null>(null);
@@ -58,8 +51,8 @@ export function DashboardAgentLauncher() {
     return null;
   }
 
-  const { open, setOpen, unreadWakes, unreadWork } = agent;
-  const hasUnread = unreadWakes > 0 || unreadWork > 0;
+  const { open, setOpen, unreadWork } = agent;
+  const hasUnread = unreadWork > 0;
 
   const launcher = (
     <span className="relative inline-flex shrink-0">

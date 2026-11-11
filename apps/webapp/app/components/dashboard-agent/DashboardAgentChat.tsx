@@ -7,7 +7,6 @@ import {
   type AgentIntent,
   type AlertCreationDraft,
   type SuggestedPrompt,
-  type WatchSpec,
 } from "@internal/dashboard-agent-contracts";
 import { useLocation, useNavigate } from "@remix-run/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
@@ -15,6 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObjec
 import { useToast } from "~/components/primitives/Toast";
 import { AgentQuotaNotice, AgentUpgradeBlock } from "./AgentUpgradeGate";
 import { DashboardAgentComposer, NewChatButton } from "./DashboardAgentComposer";
+import { PlanWizardSlot } from "./MonitoringPlanBlock";
 import { DashboardAgentContextBanner } from "./DashboardAgentContextBanner";
 import { DashboardAgentHero } from "./DashboardAgentHero";
 import { DashboardAgentMessages, type TurnActivity } from "./DashboardAgentMessages";
@@ -28,7 +28,7 @@ import {
 } from "./message-quota";
 import { createTranscriptOrder, orderTranscript } from "./message-order";
 import { navigateDestination } from "./navigate-target";
-import { pendingNavigateIntents, pendingWatchIntents } from "./pending-intents";
+import { pendingNavigateIntents } from "./pending-intents";
 import { pendingDraftPatches, type ToolResultPayload } from "./alert-creation/draftPatch";
 import type { AgentPageContext } from "./page-context-types";
 import { earliestInFlightToolCall } from "./progress-line";
@@ -53,7 +53,6 @@ import { teardownCancelsTurn, unmountTeardown } from "./turn-teardown";
 import { useAgentMessageQuota } from "./useAgentMessageQuota";
 import { useRetryController } from "./use-retry-controller";
 import { useTriggerUriResolver } from "./useTriggerUriResolver";
-import { WatchChips, type WatchChip } from "./WatchChips";
 
 // Resuming with `lastEventId` stops the `.out` stream replaying the previous turn.
 export type DashboardAgentSession = {
@@ -107,12 +106,8 @@ export function DashboardAgentChat({
   streaming,
   sendRequest,
   promotedPrompt,
-  watches,
   pagePaths,
-  watchCard,
   appendedMessages,
-  onWatchIntent,
-  onCancelWatch,
   onTurnSettled,
   onAlertDraftPatch,
   onCreationTextReply,
@@ -122,7 +117,6 @@ export function DashboardAgentChat({
   refusalGenRef,
   onNewChat,
   showNewChat,
-  watchEnabled = false,
   headless = false,
 }: {
   chatId: string;
@@ -142,13 +136,8 @@ export function DashboardAgentChat({
   // text can be sent twice.
   sendRequest?: { text: string; seq: number };
   promotedPrompt?: SuggestedPrompt;
-  watches: WatchChip[];
   pagePaths?: Record<string, string>;
-  watchCard?: React.ReactNode;
   appendedMessages?: { messages: UIMessage[]; seq: number };
-  /** Nothing is persisted until the user submits the card. */
-  onWatchIntent?: (spec: WatchSpec) => void;
-  onCancelWatch: (watchId: string) => void;
   onTurnSettled: () => void;
   onAlertDraftPatch?: (results: ToolResultPayload[]) => void;
   onCreationTextReply?: (text: string) => void;
@@ -163,8 +152,6 @@ export function DashboardAgentChat({
   refusalGenRef: MutableRefObject<number>;
   onNewChat: () => void;
   showNewChat: boolean;
-  /** Withholds watch chips, the watch result card and the wake banner while the flag is off. */
-  watchEnabled?: boolean;
   headless?: boolean;
 }) {
   const [input, setInput] = useState("");
@@ -420,10 +407,11 @@ export function DashboardAgentChat({
     (text: string) => {
       const trimmed = text.trim();
       // Suggested prompts and card actions bypass the composer, so the cap is enforced here too.
-      if (!trimmed || isStreaming || atMessageCap) return;
+      if (!trimmed || isStreaming || atMessageCap) return false;
       setInput("");
       turnStartedPathRef.current = renderedPathRef.current;
       void sendMessage({ text: trimmed });
+      return true;
     },
     [isStreaming, atMessageCap, sendMessage]
   );
@@ -494,11 +482,7 @@ export function DashboardAgentChat({
     (intent: AgentIntent) => {
       switch (intent.kind) {
         case "ask":
-          submit(intent.prompt);
-          return;
-        case "watch":
-          onWatchIntent?.(intent.spec);
-          return;
+          return submit(intent.prompt);
         case "navigate":
           void goTo(intent);
           return;
@@ -506,7 +490,7 @@ export function DashboardAgentChat({
           console.warn(`Dashboard agent: unhandled intent "${intent.kind}"`);
       }
     },
-    [submit, goTo, onWatchIntent]
+    [submit, goTo]
   );
 
   // Seeded from the loaded transcript before first render, so history never re-navigates.
@@ -525,18 +509,6 @@ export function DashboardAgentChat({
     });
     if (target) void goTo(target);
   }, [messages, goTo]);
-
-  const watchProposedRef = useRef<Set<string> | null>(null);
-  if (watchProposedRef.current === null) {
-    watchProposedRef.current = new Set();
-
-    pendingWatchIntents(initialMessages, watchProposedRef.current);
-  }
-  useEffect(() => {
-    const pending = pendingWatchIntents(messages, watchProposedRef.current!);
-    const proposed = pending.at(-1);
-    if (proposed) onWatchIntent?.(proposed.spec);
-  }, [messages, onWatchIntent]);
 
   const draftPatchAccRef = useRef<ToolResultPayload[]>([]);
   const draftPatchSeenRef = useRef<Set<string> | null>(null);
@@ -641,12 +613,6 @@ export function DashboardAgentChat({
 
   return (
     <>
-      {watchEnabled ? (
-        <WatchChips
-          watches={watches.filter((watch) => watch.status === "active")}
-          onCancel={onCancelWatch}
-        />
-      ) : null}
       {isDraftState ? (
         <DashboardAgentHero
           onSelect={submit}
@@ -673,7 +639,6 @@ export function DashboardAgentChat({
               />
             )
           }
-          watchEnabled={watchEnabled}
         />
       ) : (
         <DashboardAgentMessages
@@ -688,12 +653,10 @@ export function DashboardAgentChat({
           onDismissError={dismissError}
           onIntent={handleIntent}
           pagePaths={pagePaths}
-          watches={watches}
           resolveUri={resolveUri}
-          watchEnabled={watchEnabled}
         />
       )}
-      {watchCard ? <div className="px-3 pb-2">{watchCard}</div> : null}
+      {isDraftState ? null : <PlanWizardSlot />}
       {isDraftState ? null : atMessageCap ? (
         <AgentUpgradeBlock
           limit={messageCapLimit}

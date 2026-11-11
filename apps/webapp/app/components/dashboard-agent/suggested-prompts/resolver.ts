@@ -29,8 +29,6 @@ export type ResolveSuggestedPromptsOptions = {
   promoted?: SuggestedPrompt;
   dismissedIds?: string[];
   now?: number;
-  /** The `watch` slot is withheld unless explicitly enabled: omitting this must not reintroduce watch prompts. */
-  watchEnabled?: boolean;
 };
 
 export function resolveSuggestedPrompts(
@@ -66,9 +64,8 @@ export function resolveSuggestedPromptsBySlot(
     take("promoted", [{ ...opts.promoted, source: "promoted" }]);
   }
 
-  const watchEnabled = opts.watchEnabled ?? false;
   for (const slot of PROMPT_SLOTS) {
-    if (slot === "watch" && !watchEnabled) continue;
+    if (slot === "watch") continue;
     take(slot, [...contextual[slot], pageSlots[slot]]);
   }
 

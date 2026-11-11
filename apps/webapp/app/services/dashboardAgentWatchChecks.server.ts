@@ -31,7 +31,7 @@ const WATCH_RUN_SELECT = {
 } as const;
 
 /** The single Postgres point-read: one run, scoped to the watch's environment. */
-export async function readWatchRun(
+async function readWatchRun(
   runFriendlyId: string,
   environmentId: string
 ): Promise<WatchRunRow | null> {
@@ -44,7 +44,7 @@ export async function readWatchRun(
 }
 
 /** One Postgres point-read: does this queue exist in the environment? */
-export async function watchQueueExists(environmentId: string, queueName: string): Promise<boolean> {
+async function watchQueueExists(environmentId: string, queueName: string): Promise<boolean> {
   const queue = await $replica.taskQueue.findFirst({
     where: { runtimeEnvironmentId: environmentId, name: queueName },
     select: { id: true },
@@ -53,7 +53,7 @@ export async function watchQueueExists(environmentId: string, queueName: string)
 }
 
 /** The same run read on the primary, for a target that may have been created a moment ago. */
-export async function readWatchRunOnPrimary(
+async function readWatchRunOnPrimary(
   runFriendlyId: string,
   environmentId: string
 ): Promise<WatchRunRow | null> {
@@ -65,7 +65,7 @@ export async function readWatchRunOnPrimary(
 }
 
 /** The same queue read on the primary. */
-export async function watchQueueExistsOnPrimary(
+async function watchQueueExistsOnPrimary(
   environmentId: string,
   queueName: string
 ): Promise<boolean> {
@@ -98,7 +98,7 @@ function parseClickhouseDateTime(value: string): Date {
  * Current pending count for one queue. The live counter is the truth; the ClickHouse fallback
  * reports the newest bucket's peak depth and is `current` only if it reaches the present.
  */
-export async function readWatchQueueDepth(
+async function readWatchQueueDepth(
   environment: AuthenticatedEnvironment,
   queueName: string,
   now: Date = new Date()
@@ -217,7 +217,7 @@ async function readErrorLastSeen(
  * What we know about a fingerprint relative to `since`. `errors_v1` decides whether it
  * recurred; the rollup's count is a lower bound when the creation-minute bucket has hits.
  */
-export async function readWatchErrorRecurrence(
+async function readWatchErrorRecurrence(
   environment: AuthenticatedEnvironment,
   fingerprint: string,
   since: Date
@@ -293,7 +293,7 @@ const HEALTH_SEVERITIES = new Set<string>(["ok", "warn", "crit"]);
  * The health report's current verdict, from the existing interpreter. No health reasoning
  * is re-implemented here.
  */
-export async function readWatchHealth(
+async function readWatchHealth(
   environment: AuthenticatedEnvironment
 ): Promise<WatchHealthSnapshot | null> {
   const report = await new ReportPresenter().call({ environment, key: "health" });
@@ -310,7 +310,7 @@ export async function readWatchHealth(
   };
 }
 
-export function watchCheckDeps(
+function watchCheckDeps(
   environment: AuthenticatedEnvironment,
   now: Date = new Date()
 ): WatchCheckDeps {
@@ -328,6 +328,7 @@ export function watchCheckDeps(
 /**
  * Creation-time deps. The target reads go to the primary, so a run or queue created moments
  * ago is visible instead of failing as a non-existent target inside the replication window.
+ * @knipignore Legacy; removed with the rest of the legacy watch code.
  */
 export function watchCreationCheckDeps(
   environment: AuthenticatedEnvironment,

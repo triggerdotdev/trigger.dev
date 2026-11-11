@@ -1,5 +1,11 @@
-import { chats, createDashboardAgentDb, getChatMessages } from "@internal/dashboard-agent-db";
+import {
+  chats,
+  createChat,
+  createDashboardAgentDb,
+  getChatMessages,
+} from "@internal/dashboard-agent-db";
 import { applyDashboardAgentMigrations } from "@internal/dashboard-agent-db/testing";
+import { joinPlanItemKeys } from "~/components/alerts/alertCreatedCard";
 import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect, vi } from "vitest";
 import { applyAlertsMigration } from "./helpers/alertTables";
@@ -212,5 +218,104 @@ describe("resources.alerts.group action", () => {
     });
     expect(resp.status).toBe(400);
     expect(await prisma.alert.count({ where: { capabilityKey: "alerts.group" } })).toBe(0);
+  });
+});
+
+function memberBody(seeded: Seeded, name: string, channelId = seeded.channel.id) {
+  return {
+    organizationId: seeded.organization.id,
+    projectId: seeded.project.id,
+    environmentId: seeded.environment.id,
+    name,
+    form: {
+      capabilityKey: "runs.failure_rate",
+      scopeType: "all",
+      conditionKind: "threshold",
+      operator: ">",
+      value: 10,
+      windowMinutes: 10,
+      notifierChannelIds: [channelId],
+    },
+  };
+}
+
+function membersBody(seeded: Seeded, members: unknown[]) {
+  const { memberAlertIds: _, ...group } = body(seeded);
+  return { ...group, members };
+}
+
+describe("resources.alerts.group action with new members", () => {
+  // Catches: a member with another project's channel or only a chat notifier slipping through.
+  test("rejects a member without a valid channel and creates nothing", async ({ prisma }) => {
+    const seeded = await seed(prisma);
+    const other = await seed(prisma);
+    const chatOnly = {
+      ...memberBody(seeded, "second"),
+      chatNotifier: "on",
+      chatId: "chat_1",
+      form: { ...memberBody(seeded, "second").form, notifierChannelIds: [] },
+    };
+    const before = await prisma.alert.count();
+    for (const second of [memberBody(seeded, "second", other.channel.id), chatOnly]) {
+      const resp = await callAction(
+        seeded.user.id,
+        membersBody(seeded, [memberBody(seeded, "first"), second])
+      );
+      expect(resp.status).toBe(400);
+    }
+    expect(await prisma.alert.count()).toBe(before);
+  });
+
+  // Catches: members persisted outside the group's transaction when a later write fails, or a
+  // card per member in the chat instead of one group card that marks every member created.
+  test("creates the members with the group, or nothing when a member fails", async ({
+    prisma,
+    postgresContainer,
+  }) => {
+    const seeded = await seed(prisma);
+    const chatId = `chat_${seeded.project.slug}`;
+    const viewer = { userId: seeded.user.id, organizationId: seeded.organization.id };
+    const agentDb = createDashboardAgentDb(postgresContainer.getConnectionUri(), { max: 2 });
+    await createChat(agentDb.db, { id: chatId, ...viewer });
+    const inChat = (name: string, transcriptChatId = chatId) => ({
+      ...memberBody(seeded, name),
+      transcriptChatId,
+      planItemKey: `key_${name}`,
+    });
+    const before = await prisma.alert.count();
+    const unowned = await callAction(
+      seeded.user.id,
+      membersBody(seeded, [inChat("first"), inChat("second", "chat_other")])
+    );
+    expect(unowned.status).toBe(400);
+    const failed = await callAction(
+      seeded.user.id,
+      membersBody(seeded, [memberBody(seeded, "first"), memberBody(seeded, "bad\u0000name")])
+    );
+    expect(failed.status).not.toBe(200);
+    expect(await prisma.alert.count()).toBe(before);
+
+    const resp = await callAction(
+      seeded.user.id,
+      membersBody(seeded, [inChat("first"), inChat("second")])
+    );
+    expect(resp.status).toBe(200);
+    const data = await resp.json();
+    const created = await prisma.alert.findMany({
+      where: { groupId: data.alertId },
+      select: { id: true, name: true },
+    });
+    expect(Object.fromEntries(created.map((a) => [a.id, a.name]))).toEqual({
+      [data.memberAlertIds[0]]: "first",
+      [data.memberAlertIds[1]]: "second",
+    });
+    const messages = ((await getChatMessages(agentDb.db, { chatId, ...viewer })) ?? []) as Array<{
+      parts: Array<{ data?: { blocks: Array<{ alertId: string; planItemKey?: string }> } }>;
+    }>;
+    await agentDb.close();
+    const blocks = messages.map((m) => m.parts[1]!.data!.blocks[0]!);
+    expect(blocks.map((b) => [b.alertId, b.planItemKey])).toEqual([
+      [data.alertId, joinPlanItemKeys(["key_first", "key_second"])],
+    ]);
   });
 });

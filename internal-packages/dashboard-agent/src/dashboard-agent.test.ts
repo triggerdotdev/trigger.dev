@@ -1116,11 +1116,11 @@ describe("the system prompt", () => {
 
       expect(off.text).toBe(systemPromptFor(mode));
 
-      const on = await getSystemPrompt(mode, { watchEnabled: true });
+      const on = await getSystemPrompt(mode, { legacyWatchEnabled: true });
       expect(on.text).toContain("Watches - telling the user later");
       expect(on.text).toContain("schedule_watch");
       // The turn's prompt is exactly what the head-start helper composes.
-      expect(on.text).toBe(systemPromptFor(mode, { watchEnabled: true }));
+      expect(on.text).toBe(systemPromptFor(mode, { legacyWatchEnabled: true }));
     }
   });
 });
@@ -1222,11 +1222,15 @@ describe("clientDataSchema", () => {
 
 describe("buildDashboardAgentTools", () => {
   it("exposes the read tools plus render_view, and the data tools fail closed with no token", async () => {
-    const tools = buildDashboardAgentTools({});
+    const tools = buildDashboardAgentTools({ watchEnabled: true, legacyWatchEnabled: true });
     expect(Object.keys(tools).sort()).toEqual(
       [
+        "analyze_query_alert",
         "ask_support",
         "correlate_version",
+        "create_watch_subscription",
+        "delete_watch_subscription",
+        "describe_alert_capabilities",
         "get_current_page",
         "get_deploy",
         "get_error",
@@ -1238,13 +1242,19 @@ describe("buildDashboardAgentTools", () => {
         "list_deploys",
         "list_environments",
         "list_errors",
+        "list_monitoring_alerts",
         "list_projects",
         "list_runs",
         "list_tasks",
+        "list_watch_subscriptions",
         "locate",
         "navigate_to",
+        "plan_decision",
+        "plan_monitoring",
+        "resolve_monitoring_alert",
         "run_query",
         "render_view",
+        "schedule_watch",
         "search_docs",
         "submit_feedback",
       ].sort()
@@ -1253,8 +1263,16 @@ describe("buildDashboardAgentTools", () => {
     // With no token every data tool returns an error, never throws and never hits the
     // network. The exempt ones read no user data: render_view and navigate_to validate
     // a spec, get_current_page reads the turn's own context, and ask_support and
-    // search_docs are public knowledge lanes gated on their own config.
-    const EXEMPT = ["render_view", "ask_support", "search_docs", "get_current_page"];
+    // search_docs are public knowledge lanes gated on their own config. The draft and plan
+    // tools only validate their input.
+    const EXEMPT = [
+      "render_view",
+      "ask_support",
+      "search_docs",
+      "get_current_page",
+      "plan_monitoring",
+      "plan_decision",
+    ];
     for (const name of Object.keys(tools)) {
       if (EXEMPT.includes(name)) continue;
       const tool = tools[name] as { execute?: (input: unknown, opts: unknown) => Promise<unknown> };
@@ -1266,29 +1284,55 @@ describe("buildDashboardAgentTools", () => {
 
   // The alert tools report a watch firing, so they are watch tools too.
   it("only registers the watch tools when the client enables them", () => {
-    for (const ctx of [{}, { watchEnabled: false }]) {
+    for (const ctx of [{}, { legacyWatchEnabled: false }]) {
       const names = Object.keys(buildDashboardAgentTools(ctx));
       for (const name of DASHBOARD_AGENT_WATCH_TOOL_NAMES) expect(names).not.toContain(name);
     }
 
-    const enabled = Object.keys(buildDashboardAgentTools({ watchEnabled: true }));
+    const enabled = Object.keys(buildDashboardAgentTools({ legacyWatchEnabled: true }));
     for (const name of DASHBOARD_AGENT_WATCH_TOOL_NAMES) expect(enabled).toContain(name);
+  });
+
+  // Catches: the alerts gate turning the legacy watch back on, or leaving the planner off.
+  it("gives an alerts-enabled turn the planner and no legacy watch", () => {
+    const names = Object.keys(buildDashboardAgentTools({ alertsEnabled: true }));
+    const schemas = Object.keys(toolSchemasFor("assistant", { alertsEnabled: true }));
+    for (const list of [names, schemas]) {
+      expect(list).toEqual(expect.arrayContaining(["plan_monitoring", "plan_decision"]));
+      for (const name of DASHBOARD_AGENT_WATCH_TOOL_NAMES) expect(list).not.toContain(name);
+    }
+    expect(systemPromptFor("assistant", { alertsEnabled: true })).not.toContain("schedule_watch");
   });
 
   it("only registers the monitoring alert tools when alerts are enabled", () => {
     for (const ctx of [{}, { watchEnabled: false }]) {
       const names = Object.keys(buildDashboardAgentTools(ctx));
-      for (const name of DASHBOARD_AGENT_MONITORING_ALERT_TOOL_NAMES) {
-        expect(names).not.toContain(name);
-      }
       const schemas = Object.keys(toolSchemasFor("assistant", ctx));
       for (const name of DASHBOARD_AGENT_MONITORING_ALERT_TOOL_NAMES) {
+        expect(names).not.toContain(name);
         expect(schemas).not.toContain(name);
       }
     }
 
-    const enabled = Object.keys(buildDashboardAgentTools({ watchEnabled: true }));
-    for (const name of DASHBOARD_AGENT_MONITORING_ALERT_TOOL_NAMES) expect(enabled).toContain(name);
+    const names = Object.keys(buildDashboardAgentTools({ watchEnabled: true }));
+    const schemas = Object.keys(toolSchemasFor("assistant", { watchEnabled: true }));
+    const chatTools = DASHBOARD_AGENT_MONITORING_ALERT_TOOL_NAMES.filter(
+      (name) => name !== "update_alert_draft"
+    );
+    expect(names.filter((n) => chatTools.includes(n as never))).toEqual(chatTools);
+    expect(schemas.filter((n) => chatTools.includes(n as never))).toEqual(chatTools);
+  });
+
+  // Catches: a chat turn patching a draft that only the creation wizard has.
+  it("offers update_alert_draft only in the alert_creation scope", () => {
+    const chat = { watchEnabled: true };
+    const creating = { watchEnabled: true, toolScope: "alert_creation" } as const;
+    expect(Object.keys(buildDashboardAgentTools(chat))).not.toContain("update_alert_draft");
+    expect(Object.keys(toolSchemasFor("assistant", chat))).not.toContain("update_alert_draft");
+    expect(Object.keys(buildDashboardAgentTools(creating))).toContain("update_alert_draft");
+    expect(
+      Object.keys(toolSchemasFor("assistant", { ...chat, scope: "alert_creation" }))
+    ).toContain("update_alert_draft");
   });
 
   it("render_view echoes a validated view spec back as its output", async () => {
@@ -1653,7 +1697,7 @@ describe("buildDashboardAgentTools", () => {
       ...SCOPE,
       investigations: capability,
       repoSnapshot: codeSnapshot,
-      watchEnabled: true,
+      legacyWatchEnabled: true,
     });
 
     // Cited but never read: the render fails on the citation, so there is no card to
@@ -1727,7 +1771,7 @@ describe("buildDashboardAgentTools", () => {
       const tools = buildDashboardAgentTools({
         ...SCOPE,
         investigations: capability,
-        watchEnabled,
+        legacyWatchEnabled: watchEnabled,
       });
       const output = await renderInvestigation(tools, citesError);
       return (output.blocks[0].capabilities?.actions ?? []).map((a: { kind: string }) => a.kind);
@@ -1966,7 +2010,7 @@ describe("buildDashboardAgentTools", () => {
     userActorToken: "uat_token",
     apiOrigin: "http://localhost:3030",
     chatId: "chat_1",
-    watchEnabled: true,
+    legacyWatchEnabled: true,
   };
 
   const RUN_WATCH = {
@@ -2332,7 +2376,7 @@ describe("watch alert tools", () => {
     projectRef: "proj_abc",
     environmentName: "prod",
     chatId: "chat_alerts",
-    watchEnabled: true,
+    legacyWatchEnabled: true,
   };
 
   // Hands back the tool's result and the request the webapp would have received.
@@ -2478,7 +2522,7 @@ describe("watch alert tools", () => {
         name,
         input,
         { body: {} },
-        { watchEnabled: true }
+        { legacyWatchEnabled: true }
       );
       expect(typeof result.error).toBe("string");
       expect(requests).toHaveLength(0);

@@ -15,7 +15,6 @@ import { DateField } from "~/components/primitives/DateField";
 import { FormError } from "~/components/primitives/FormError";
 import { Icon, type RenderIcon } from "~/components/primitives/Icon";
 import { Input } from "~/components/primitives/Input";
-import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { cn } from "~/utils/cn";
@@ -29,6 +28,9 @@ export type ChatWizardOption = {
   expanded?: boolean;
   disabledReason?: string;
   description?: string;
+  detail?: string;
+  codeBlock?: ReactNode;
+  truncate?: boolean;
   group?: string;
   below?: ChatWizardInput;
 };
@@ -75,6 +77,7 @@ export type ChatWizardInput = {
 export type ChatWizardStep = {
   id: string;
   question: string;
+  context?: string;
   description?: string;
   descriptionAction?: { label: string };
   content?: ReactNode;
@@ -662,6 +665,11 @@ export function ChatWizardCard({
   maxHeight,
 }: ChatWizardCardProps) {
   const step = withoutEntityOption(steps[stepIndex]);
+  const title = step?.context
+    ? step.context.endsWith(step.question)
+      ? step.context
+      : `${step.context} · ${step.question}`
+    : step?.question;
   const customId = step?.custom ? (step.customOption ?? CUSTOM_ROW) : undefined;
   const rows: ChatWizardOption[] =
     step?.custom && !step.customOption
@@ -835,9 +843,23 @@ export function ChatWizardCard({
         className
       )}
     >
-      <div className="flex shrink-0 flex-wrap items-start gap-x-3 px-3 pb-2 pt-3">
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5 pl-0.5 pt-0.5">
-          <Paragraph variant="small/bright">{step.question}</Paragraph>
+      <div className="flex shrink-0 flex-wrap items-start gap-x-0.5 px-3 pb-2 pt-3">
+        <div className="min-w-0 flex-1 pl-0.5 pt-0.5">
+          <SimpleTooltip
+            asChild
+            disableHoverableContent
+            delayDuration={TOOLTIP_DELAY_MS}
+            className={TOOLTIP_WIDTH}
+            button={
+              <span
+                data-testid="wizard-title"
+                className="block truncate font-sans text-sm font-medium text-text-bright"
+              >
+                {title}
+              </span>
+            }
+            content={title}
+          />
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
           {steps.length > 1 ? (
@@ -886,7 +908,7 @@ export function ChatWizardCard({
         >
           {step.fields?.map((field, index) => (
             <CardInput
-              key={`${step.id}:${field.id}:${resets}`}
+              key={`${step.id}:${step.context ?? ""}:${field.id}:${resets}`}
               input={field}
               autoFocus={index === 0}
               label={field.label}
@@ -925,7 +947,28 @@ export function ChatWizardCard({
                 {option.icon ? (
                   <Icon icon={option.icon} className="size-4 shrink-0 text-text-dimmed" />
                 ) : null}
-                <span className="min-w-0 flex-1">{option.cardLabel ?? option.label}</span>
+                <span className="min-w-0 flex-1">
+                  <span className={cn(option.truncate && "block truncate")}>
+                    {option.cardLabel ?? option.label}
+                  </span>
+                  {option.detail && option.truncate ? (
+                    <SimpleTooltip
+                      asChild
+                      disableHoverableContent
+                      delayDuration={TOOLTIP_DELAY_MS}
+                      className={TOOLTIP_WIDTH}
+                      button={
+                        <span className="block truncate text-xs text-text-dimmed">
+                          {option.detail}
+                        </span>
+                      }
+                      content={option.detail}
+                    />
+                  ) : option.detail ? (
+                    <span className="block truncate text-xs text-text-dimmed">{option.detail}</span>
+                  ) : null}
+                  {option.codeBlock}
+                </span>
                 {info ? <span aria-hidden className="size-4 shrink-0" /> : null}
                 {picked ? (
                   <CheckMarkIcon aria-label="Selected" className="size-4 shrink-0 text-success" />

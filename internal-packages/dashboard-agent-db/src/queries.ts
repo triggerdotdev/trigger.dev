@@ -7,7 +7,21 @@ import {
   WAKE_REQUEST_MESSAGE_ID_PREFIX,
   WATCH_REQUEST_MESSAGE_ID_PREFIX,
 } from "@internal/dashboard-agent-contracts";
-import { and, desc, eq, gt, inArray, ne, notLike, or, sql, isNull, type SQL } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  exists,
+  gt,
+  inArray,
+  like,
+  ne,
+  notLike,
+  or,
+  sql,
+  isNull,
+  type SQL,
+} from "drizzle-orm";
 import type { DashboardAgentDb } from "./client.js";
 import { generateInvestigationId } from "./ids.js";
 import { lockChatForWatches, type DashboardAgentDbOrTx } from "./internal.js";
@@ -306,13 +320,43 @@ export async function chatExists(
   return rows.length > 0;
 }
 
+/** The chat's org, the tenancy floor its agent requests can't leave. Owner-scoped. */
+export async function getChatOrganizationId(
+  db: DashboardAgentDb,
+  params: { chatId: string; userId: string }
+): Promise<string | null> {
+  const rows = await db
+    .select({ organizationId: chats.organizationId })
+    .from(chats)
+    .where(
+      and(eq(chats.id, params.chatId), eq(chats.userId, params.userId), isNull(chats.deletedAt))
+    )
+    .limit(1);
+  return rows[0]?.organizationId ?? null;
+}
+
 /** `chatExists` plus what a turn needs to keep the chat's scope; null when not visible. */
 export async function getChatScope(
   db: DashboardAgentDb,
   params: ChatViewer & { chatId: string }
-): Promise<{ kind: ChatKind | null; metadata: Record<string, unknown> } | null> {
+): Promise<{
+  kind: ChatKind | null;
+  metadata: Record<string, unknown>;
+  alertCreated: boolean;
+} | null> {
   const rows = await db
-    .select({ kind: chats.kind, metadata: chats.metadata })
+    .select({
+      kind: chats.kind,
+      metadata: chats.metadata,
+      alertCreated: exists(
+        db
+          .select({ one: sql`1` })
+          .from(chatMessages)
+          .where(
+            and(eq(chatMessages.chatId, chats.id), like(chatMessages.messageId, "alert_created:%"))
+          )
+      ),
+    })
     .from(chats)
     .where(
       and(
@@ -326,7 +370,11 @@ export async function getChatScope(
     .limit(1);
   const row = rows[0];
   if (!row) return null;
-  return { kind: row.kind ?? null, metadata: (row.metadata as Record<string, unknown>) ?? {} };
+  return {
+    kind: row.kind ?? null,
+    metadata: (row.metadata as Record<string, unknown>) ?? {},
+    alertCreated: Boolean(row.alertCreated),
+  };
 }
 
 /** Idempotent: the webapp's insert and the agent's ensure-exists race. */

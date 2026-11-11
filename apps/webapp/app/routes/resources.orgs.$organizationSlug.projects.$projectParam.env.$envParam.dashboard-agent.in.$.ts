@@ -32,7 +32,7 @@ import { getImpersonatorUserId, requireUser } from "~/services/session.server";
 import { readBoundedBodyText } from "~/utils/boundedRequestBody.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
-import { canUseDashboardAgentWatches } from "~/v3/canUseDashboardAgentWatches.server";
+import { canUseAlertsList } from "~/v3/canUseAlertsList.server";
 
 // Same-origin proxy for the chat append request. It mints a read-only delegated token scoped
 // to the environment in this URL, so the token never reaches the browser.
@@ -74,9 +74,10 @@ export function pickAgentClientMetadata(
 
 export function withChatScope(
   picked: Record<string, unknown>,
-  chat: { kind: string | null; metadata: Record<string, unknown> }
+  chat: { kind: string | null; metadata: Record<string, unknown>; alertCreated?: boolean }
 ): Record<string, unknown> {
-  if (chat.kind !== "alert_creation") return picked;
+  // A created card ends the wizard: later turns get the normal tool set.
+  if (chat.kind !== "alert_creation" || chat.alertCreated) return picked;
   const stored = pickAgentClientMetadata(
     (chat.metadata.context as Record<string, unknown> | undefined) ?? {}
   );
@@ -202,11 +203,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
         }
       }
 
-      const watchEnabled =
+      const alertsEnabled =
         !actingUserId &&
-        (await canUseDashboardAgentWatches({
+        (await canUseAlertsList({
           userId: user.id,
-          organizationSlug,
           orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
         }));
 
@@ -214,7 +214,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       try {
         userActorToken = await mintDashboardAgentUserActorToken(user.id, {
           environmentId: runtimeEnv.id,
-          ...(watchEnabled ? { alertWrites: { request } } : {}),
+          ...(alertsEnabled ? { alertWrites: { request } } : {}),
         });
       } catch (error) {
         if (error instanceof Response) throw error;
@@ -228,8 +228,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
       parsed.payload.metadata = {
         ...withChatScope(pickAgentClientMetadata(parsed.payload.metadata), chat),
-        // Resolved per turn, server-side: off means no watch tools and no watch guidance.
-        watchEnabled,
+        alertsEnabled,
         userActorToken,
         apiOrigin: userApiOrigin,
         projectRef: project.externalRef,

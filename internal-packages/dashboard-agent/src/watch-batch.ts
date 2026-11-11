@@ -60,7 +60,8 @@ export type WatchBatchTickDeps = {
 
 export type WatchBatchTickResult = {
   // `unavailable`: the check phase itself couldn't run, so the group learned nothing.
-  outcome: "ticked" | "stale" | "unavailable";
+  // `gone`: the webapp no longer serves the batch check, so the chain ends.
+  outcome: "ticked" | "stale" | "unavailable" | "gone";
   results: Array<{ watchId: string; outcome?: WatchTickOutcome; error?: string }>;
   rescheduled: boolean;
 };
@@ -97,6 +98,15 @@ export async function runWatchBatchTick(
   try {
     response = await deps.checkBatch(payload);
   } catch (error) {
+    if (isEndpointGone(error)) {
+      logger.warn("dashboard-agent watch batch check is gone; ending the chain", {
+        environmentId: payload.environmentId,
+        cadenceMinutes: payload.cadenceMinutes,
+        epoch: payload.epoch,
+        tick: payload.tick,
+      });
+      return { outcome: "gone", results: [], rescheduled: false };
+    }
     // A check failure is never a verdict: the group learned nothing, so nothing is
     // recorded — no watch was looked at — and the chain ticks on to try again.
     logger.error("dashboard-agent watch batch check is unavailable; ticking on", {
@@ -146,6 +156,11 @@ export async function runWatchBatchTick(
   }
 
   return { outcome: "ticked", results, rescheduled };
+}
+
+function isEndpointGone(error: unknown): boolean {
+  const status = (error as { status?: unknown } | undefined)?.status;
+  return status === 404 || status === 410;
 }
 
 // The successor's generation comes from this run's own, and rides in the idempotency

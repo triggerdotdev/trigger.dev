@@ -12,7 +12,7 @@ import { presentResolvedWatch, watchNoteLine, type WatchResolvedInput } from "./
 export type TextFact = { label: string; value: string };
 
 /** Facts as one `Label: value` line each. */
-export function renderFactLines(facts: readonly TextFact[]): string[] {
+function renderFactLines(facts: readonly TextFact[]): string[] {
   return facts.map((fact) => `${fact.label}: ${fact.value}`);
 }
 

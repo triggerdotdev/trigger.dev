@@ -6,6 +6,7 @@ import {
 import { prompts } from "@trigger.dev/sdk";
 import {
   DASHBOARD_AGENT_CODE_SYSTEM_PROMPT,
+  DASHBOARD_AGENT_PLANNER_PROMPT,
   DASHBOARD_AGENT_SYSTEM_PROMPT,
   DASHBOARD_AGENT_WATCH_PROMPT,
 } from "./tool-schemas";
@@ -37,6 +38,14 @@ export const codeSystemPrompt = prompts.define({
     "System prompt for the in-dashboard agent when the project's GitHub repo is connected.",
   model: `anthropic:${dashboardAgentModel()}`,
   content: DASHBOARD_AGENT_CODE_SYSTEM_PROMPT,
+});
+
+// Appended to either system prompt for a turn that has the plan tools.
+export const plannerSystemPrompt = prompts.define({
+  id: "dashboard-agent-system-planner",
+  description: "Monitoring plan guidance, appended for turns where the agent can plan alerts.",
+  model: `anthropic:${dashboardAgentModel()}`,
+  content: DASHBOARD_AGENT_PLANNER_PROMPT,
 });
 
 // Appended to either system prompt for a turn whose client enables watches.

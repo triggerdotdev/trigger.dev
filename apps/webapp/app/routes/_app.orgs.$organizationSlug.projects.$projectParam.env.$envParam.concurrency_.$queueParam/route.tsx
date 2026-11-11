@@ -9,8 +9,6 @@ import { MetricsLayout } from "~/components/layout/MetricsLayout";
 import { AnimatedOrgBannerBar } from "~/components/billing/AnimatedOrgBannerBar";
 import { BigNumber } from "~/components/metrics/BigNumber";
 import { Header3 } from "~/components/primitives/Headers";
-import { WatchButton } from "~/components/dashboard-agent/WatchButton";
-import { queueWatchRecommendation } from "~/components/dashboard-agent/watch-recommendations";
 import { storedQueueName } from "~/components/queues/queue-name";
 import { isQueueDegraded, OLDEST_WAIT_WARNING_MS } from "~/components/queues/queue-thresholds";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
@@ -398,14 +396,6 @@ export default function Page() {
                 tooltip="Ask why this queue is backed up"
               />
             ) : null}
-            {/* A paused queue can't drain or grow, so every watch it could offer is a
-                promise nothing will keep until someone resumes it. */}
-            {queue.paused ? null : (
-              <WatchButton
-                spec={queueWatchRecommendation(fullName, { oldestWaitMs })}
-                alertsEnabled={alertsEnabled}
-              />
-            )}
             {alertsEnabled ? (
               agent ? (
                 <Button

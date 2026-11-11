@@ -9,6 +9,7 @@ export * from "./evidence.js";
 export * from "./feedback.js";
 export * from "./intent.js";
 export * from "./locate.js";
+export * from "./monitoring-plan.js";
 export * from "./page-context.js";
 export * from "./queue-grounding.js";
 export * from "./run-filters.js";

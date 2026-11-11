@@ -6,8 +6,6 @@ import {
   safeParseTriggerUri,
   suggestedPromptSchema,
   viewBlockSchema,
-  watchIdentity,
-  watchSpecSchema,
   SUGGESTED_PROMPT_CAP,
   type Evidence,
 } from "@internal/dashboard-agent-contracts";
@@ -40,15 +38,12 @@ function importSpecifiers(source: string): string[] {
 }
 
 describe("demo ids", () => {
-  it("namespaces investigation, hypothesis, watch and prompt ids", () => {
+  it("namespaces investigation, hypothesis and prompt ids", () => {
     for (const investigation of Object.values(fixtures.demoInvestigations)) {
       expect(investigation.investigationId.startsWith(DEMO_ID_PREFIX)).toBe(true);
       for (const hypothesis of investigation.hypotheses) {
         expect(hypothesis.id.startsWith(DEMO_ID_PREFIX)).toBe(true);
       }
-    }
-    for (const watch of fixtures.demoWatches.row) {
-      expect(watch.id.startsWith(DEMO_ID_PREFIX)).toBe(true);
     }
     for (const prompts of Object.values(fixtures.demoPromptSets)) {
       for (const prompt of prompts) {
@@ -182,33 +177,6 @@ describe("investigation fixtures", () => {
   it("cites file:line@sha in the show-code turn", () => {
     expect(fixtures.demoShowCodeMarkdown).toMatch(/\.ts:\d+(-\d+)?@[0-9a-z]{7}/);
     expect(fixtures.demoShowCodeMarkdown).toContain("```diff");
-  });
-});
-
-describe("watch fixtures", () => {
-  it("validates every spec against the contracts schema", () => {
-    for (const watch of fixtures.demoWatches.row) {
-      const result = watchSpecSchema.safeParse(watch.spec);
-      expect(result.success, JSON.stringify(result.error?.issues)).toBe(true);
-    }
-  });
-
-  it("derives the chip identity from the spec", () => {
-    for (const watch of fixtures.demoWatches.row) {
-      expect(watch.identity).toBe(watchIdentity(watch.spec));
-    }
-  });
-
-  it("covers every watch status and offers cancel only while active", () => {
-    const statuses = new Set(fixtures.demoWatches.row.map((watch) => watch.status));
-    expect(statuses).toEqual(new Set(["active", "fired", "expired", "cancelled"]));
-    for (const watch of fixtures.demoWatches.row) {
-      expect(watch.cancellable).toBe(watch.status === "active");
-    }
-  });
-
-  it("has an expiry narration that admits it could not verify", () => {
-    expect(fixtures.demoWatchNarration.expiryUnverified).toContain("couldn't verify");
   });
 });
 

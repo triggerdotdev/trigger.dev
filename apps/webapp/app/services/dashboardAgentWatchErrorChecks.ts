@@ -12,7 +12,7 @@ import type {
  * The model cites the API error id (`error_<fingerprint>`) but ClickHouse stores the raw
  * fingerprint. Same normalization the errors API route uses.
  */
-export function normalizeErrorFingerprint(fingerprint: string): string {
+function normalizeErrorFingerprint(fingerprint: string): string {
   return ErrorId.toId(fingerprint);
 }
 

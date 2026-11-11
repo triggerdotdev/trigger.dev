@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   mintUserActorToken: vi.fn(),
   mintPublicToken: vi.fn(),
   headStart: vi.fn(),
-  watchEnabled: false,
+  alertsEnabled: false,
   startSession: vi.fn(),
   softDeleteChat: vi.fn(),
   resolveQuota: vi.fn(),
@@ -33,8 +33,8 @@ vi.mock("~/services/dashboardAgentQuota.server", async (importOriginal) => ({
 vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
   canAccessDashboardAgent: async () => true,
 }));
-vi.mock("~/v3/canUseDashboardAgentWatches.server", () => ({
-  canUseDashboardAgentWatches: async () => mocks.watchEnabled,
+vi.mock("~/v3/canUseAlertsList.server", () => ({
+  canUseAlertsList: async () => mocks.alertsEnabled,
 }));
 vi.mock("~/models/project.server", () => ({
   findProjectWithOrgFlagsBySlug: async () => ({
@@ -60,8 +60,7 @@ vi.mock("~/services/dashboardAgent.server", () => ({
 vi.mock("~/services/dashboardAgentHeadStart.server", () => ({
   startDashboardAgentHeadStart: mocks.headStart,
 }));
-// The chat route reaches the ClickHouse factory through the watch services, and the factory
-// builds its client at import time from an env var no test sets.
+// The ClickHouse factory builds its client at import time from an env var no test sets.
 vi.mock("~/services/clickhouse/clickhouseFactoryInstance.server", () => ({
   clickhouseFactory: { getClickhouseForOrganization: async () => ({}) },
 }));
@@ -110,7 +109,7 @@ describe("dashboard agent chat creation — nothing fallible after the row exist
     mocks.mintUserActorToken.mockReset().mockResolvedValue("tr_uat_real");
     mocks.mintPublicToken.mockReset().mockResolvedValue("pat_public");
     mocks.startSession.mockReset().mockResolvedValue(undefined);
-    mocks.softDeleteChat.mockReset().mockResolvedValue({ deleted: true, cancelledWatches: [] });
+    mocks.softDeleteChat.mockReset().mockResolvedValue({ deleted: true });
     mocks.env.ANTHROPIC_API_KEY = "sk-test";
   });
 
@@ -199,7 +198,7 @@ describe("dashboard agent chat creation — a start that fails part way", () => 
     mocks.mintUserActorToken.mockReset().mockResolvedValue("tr_uat_real");
     mocks.mintPublicToken.mockReset().mockResolvedValue("pat_public");
     mocks.startSession.mockReset().mockResolvedValue(undefined);
-    mocks.softDeleteChat.mockReset().mockResolvedValue({ deleted: true, cancelledWatches: [] });
+    mocks.softDeleteChat.mockReset().mockResolvedValue({ deleted: true });
     mocks.env.ANTHROPIC_API_KEY = "sk-test";
     mocks.logger.error.mockReset();
   });
@@ -263,9 +262,9 @@ describe("dashboard agent chat creation — a start that fails part way", () => 
   });
 });
 
-// The warm first turn's tools and prompt are built from this flag, so it travels with the
-// head start rather than being read again downstream.
-describe("dashboard agent chat creation — the watch flag", () => {
+// The warm first turn's tools are built from this flag, so it travels with the head start
+// rather than being read again downstream.
+describe("dashboard agent chat creation — the alerts flag", () => {
   beforeEach(() => {
     mocks.createChat.mockReset().mockResolvedValue(undefined);
     mocks.headStart.mockReset().mockResolvedValue(undefined);
@@ -275,29 +274,29 @@ describe("dashboard agent chat creation — the watch flag", () => {
     mocks.mintUserActorToken.mockReset().mockResolvedValue("tr_uat_real");
     mocks.mintPublicToken.mockReset().mockResolvedValue("pat_public");
     mocks.env.ANTHROPIC_API_KEY = "sk-test";
-    mocks.watchEnabled = false;
+    mocks.alertsEnabled = false;
   });
 
-  it("hands the head start watches off by default", async () => {
+  it("hands the head start no alert tools by default", async () => {
     expect((await createChatRequest()).status).toBe(200);
 
     expect(mocks.headStart).toHaveBeenCalledWith(
       expect.objectContaining({
-        watchEnabled: false,
-        metadata: expect.objectContaining({ watchEnabled: false }),
+        alertsEnabled: false,
+        metadata: expect.objectContaining({ alertsEnabled: false }),
       })
     );
   });
 
-  it("hands the head start watches on for an org that has them", async () => {
-    mocks.watchEnabled = true;
+  it("hands the head start the alert tools for an org that has them", async () => {
+    mocks.alertsEnabled = true;
 
     expect((await createChatRequest()).status).toBe(200);
 
     expect(mocks.headStart).toHaveBeenCalledWith(
       expect.objectContaining({
-        watchEnabled: true,
-        metadata: expect.objectContaining({ watchEnabled: true }),
+        alertsEnabled: true,
+        metadata: expect.objectContaining({ alertsEnabled: true }),
       })
     );
   });
@@ -313,15 +312,15 @@ describe("dashboard agent chat creation — started by someone acting for the us
       .mockResolvedValue({ id: "env_real", type: "DEVELOPMENT" });
     mocks.mintUserActorToken.mockReset().mockResolvedValue("tr_uat_real");
     mocks.mintPublicToken.mockReset().mockResolvedValue("pat_public");
-    mocks.softDeleteChat.mockReset().mockResolvedValue({ deleted: true, cancelledWatches: [] });
+    mocks.softDeleteChat.mockReset().mockResolvedValue({ deleted: true });
     mocks.resolveQuota.mockReset().mockResolvedValue({ reached: true, used: 20, limit: 20 });
     mocks.env.ANTHROPIC_API_KEY = "sk-test";
-    mocks.watchEnabled = true;
+    mocks.alertsEnabled = true;
   });
   afterEach(() => {
     mocks.user = { id: "usr_real", admin: false, isImpersonating: false };
     mocks.resolveQuota.mockReset().mockResolvedValue({ reached: false, used: 0, limit: 20 });
-    mocks.watchEnabled = false;
+    mocks.alertsEnabled = false;
   });
 
   it("starts the chat even when the owner's org has used its messages", async () => {
@@ -330,17 +329,6 @@ describe("dashboard agent chat creation — started by someone acting for the us
     expect(response.status).toBe(200);
     expect(mocks.resolveQuota).not.toHaveBeenCalled();
     expect(mocks.createChat.mock.calls[0][1]).toMatchObject({ createdByUserId: "usr_admin" });
-  });
-
-  it("hands the head start no watches, whatever the org's flag", async () => {
-    expect((await createChatRequest()).status).toBe(200);
-
-    expect(mocks.headStart).toHaveBeenCalledWith(
-      expect.objectContaining({
-        watchEnabled: false,
-        metadata: expect.objectContaining({ watchEnabled: false }),
-      })
-    );
   });
 
   it("takes the chat back as the one who started it when the head start fails", async () => {

@@ -32,6 +32,10 @@ export type DashboardAgentToolContext = {
   // Set by the host when watches are enabled for this turn. Off by default: without it
   // the watch tools are never registered.
   watchEnabled?: boolean;
+  // Set by the host from the org's alerts gate: the monitoring alert and plan tools.
+  alertsEnabled?: boolean;
+  // The legacy watch tools. Off by default.
+  legacyWatchEnabled?: boolean;
   // "alert_creation" while the user builds an alert: the draft tools are on regardless of watches.
   toolScope?: string;
   alertDraft?: AlertCreationDraft;

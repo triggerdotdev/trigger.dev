@@ -1,5 +1,6 @@
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import {
+  appendChatMessageOnceByChatId,
   createChat,
   createDashboardAgentDb,
   type DashboardAgentDbClient,
@@ -22,8 +23,8 @@ vi.mock("~/services/session.server", () => ({
 vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
   canAccessDashboardAgent: async () => true,
 }));
-vi.mock("~/v3/canUseDashboardAgentWatches.server", () => ({
-  canUseDashboardAgentWatches: async () => false,
+vi.mock("~/v3/canUseAlertsList.server", () => ({
+  canUseAlertsList: async () => false,
 }));
 vi.mock("~/models/project.server", () => ({
   findProjectWithOrgFlagsBySlug: async () => ({
@@ -77,6 +78,16 @@ beforeAll(async () => {
     organizationId: "org_real",
     userId: "usr_real",
     kind: "alert_creation",
+  });
+  await createChat(client.db, {
+    id: "chat_created",
+    organizationId: "org_real",
+    userId: "usr_real",
+    kind: "alert_creation",
+  });
+  await appendChatMessageOnceByChatId(client.db, {
+    chatId: "chat_created",
+    message: { id: "alert_created:alert_1", role: "assistant", parts: [] },
   });
   await createChat(client.db, { id: "chat_plain", organizationId: "org_real", userId: "usr_real" });
   await createChat(client.db, {
@@ -148,6 +159,13 @@ describe("dashboard agent `in` proxy — chat scope", () => {
       toolScope: "alert_creation",
       alertDraft: CLIENT_DRAFT,
     });
+  });
+
+  // Catches: an alert chat keeping its creation scope after the alert was created.
+  it("runs an alert chat with the normal tool set once its created card is in", async () => {
+    expect(
+      await appendTurn("chat_created", { toolScope: "alert_creation", alertDraft: CLIENT_DRAFT })
+    ).not.toHaveProperty("toolScope");
   });
 
   it("ignores a scope the client sent for a plain chat", async () => {

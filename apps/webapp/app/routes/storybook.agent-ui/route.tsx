@@ -10,13 +10,11 @@ import { DashboardAgentMessages } from "~/components/dashboard-agent/DashboardAg
 import { DashboardAgentSuggestedPrompts } from "~/components/dashboard-agent/DashboardAgentSuggestedPrompts";
 import { AgentPanelColumn } from "~/components/dashboard-agent/panel-layout";
 import { liveProgress } from "~/components/dashboard-agent/progress-line";
-import type { WakeWatch } from "~/components/dashboard-agent/WakeBanner";
-import { WatchChips, type WatchChip } from "~/components/dashboard-agent/WatchChips";
 import { cn } from "~/utils/cn";
 import { demoTranscripts, investigationBlock, type DemoTranscript } from "./fixtures";
 import { fixtureResolveUri, GalleryPage, noop, PANEL_FRAME } from "./gallery";
 
-const { demoIntents, demoWatches, demoPageContexts, demoInvestigations } = demoFixtures;
+const { demoIntents, demoPageContexts, demoInvestigations } = demoFixtures;
 
 function MessageHarness({
   transcript,
@@ -33,7 +31,6 @@ function MessageHarness({
         error={withError && transcript.error ? new Error(transcript.error) : undefined}
         onRetry={withError ? noop : undefined}
         onDismissError={withError ? noop : undefined}
-        watchEnabled
       />
     </div>
   );
@@ -163,7 +160,6 @@ function LiveInvestigationHarness() {
         messages={messages}
         activity="working"
         resolveUri={fixtureResolveUri}
-        watchEnabled
       />
     </div>
   );
@@ -179,69 +175,6 @@ const promotedPrompt: SuggestedPrompt = {
 // Resolver-minted ids: the panel resolves its own chips, so a demo-namespaced id would
 // match nothing and the state would render undismissed.
 const dismissedPromptIds = demoFixtures.demoResolvedDismissedPromptIds;
-
-function toWatchChip(watch: (typeof demoWatches.row)[number]): WatchChip {
-  return {
-    id: watch.id,
-    identity: watch.identity,
-    status: watch.status,
-    kind: watch.spec.kind,
-    note: watch.spec.note,
-    checkEveryMinutes: watch.spec.checkEveryMinutes,
-    expiresAt: watch.expiresAt,
-  };
-}
-
-function wakeMessage(watchId: string, outcome: "fired" | "expired", text: string): UIMessage {
-  return {
-    id: `wake:watch:${watchId}:${outcome}`,
-    role: "assistant",
-    parts: [{ type: "text", text }],
-  };
-}
-
-const wakeWatches: WakeWatch[] = [
-  {
-    id: "watch_health",
-    kind: "health_recovery",
-    note: "prod health back to normal",
-    identity: "health_recovery:health",
-    resolution: "condition_met",
-    observedOutcome: { kind: "health_recovery", verified: true, severity: "ok" },
-  },
-  {
-    id: "watch_error",
-    kind: "error_recurrence",
-    note: "tell me if that TypeError comes back",
-    identity: "error_recurrence:a1b2c3d4e5f6",
-    resolution: "condition_met",
-    observedOutcome: { kind: "error_recurrence", verified: true, countSince: 6 },
-  },
-  {
-    id: "watch_queue_gone",
-    kind: "backlog_drain",
-    note: "tell me when the email-sends backlog clears",
-    identity: "backlog_drain:email-sends",
-    resolution: "condition_impossible",
-    observedOutcome: { kind: "backlog_drain", verified: true, depth: null },
-  },
-  {
-    id: "watch_unverified",
-    kind: "backlog_drain",
-    note: "tell me when the email-sends backlog clears",
-    identity: "backlog_drain:email-sends",
-    resolution: "window_completed",
-    observedOutcome: { kind: "backlog_drain", verified: false, depth: null },
-  },
-];
-
-function WakeHarness({ message, watches }: { message: UIMessage; watches?: WakeWatch[] }) {
-  return (
-    <div className={PANEL_FRAME}>
-      <DashboardAgentMessages messages={[message]} activity={null} watches={watches} watchEnabled />
-    </div>
-  );
-}
 
 const STATES: Record<string, React.ReactNode> = {
   "hero-panel": <HeroHarness context={demoPageContexts.other} />,
@@ -270,53 +203,9 @@ const STATES: Record<string, React.ReactNode> = {
   "intent-navigate-filtered-runs": (
     <DemoIntentBubble intent={demoIntents.navigateToFailedRuns} onIntercept={noop} />
   ),
-  "intent-watch": <DemoIntentBubble intent={demoIntents.watch} onIntercept={noop} />,
   "intent-rejected-propose-fix": (
     <DemoIntentBubble intent={demoIntents.proposeFix} onIntercept={noop} />
   ),
-
-  "wake-positive": (
-    <WakeHarness
-      watches={wakeWatches}
-      message={wakeMessage(
-        "watch_health",
-        "fired",
-        "Production is back to normal: the failure rate has been under 1% for the last 15 minutes and the queue has drained. Nothing left for me to watch here."
-      )}
-    />
-  ),
-  "wake-attention": (
-    <WakeHarness
-      watches={wakeWatches}
-      message={wakeMessage(
-        "watch_error",
-        "fired",
-        "That TypeError is back — 6 runs of process-order failed with it in the last 10 minutes, all on version 20260620.2. Same empty-items payload as before."
-      )}
-    />
-  ),
-  "wake-neutral-impossible": (
-    <WakeHarness
-      watches={wakeWatches}
-      message={wakeMessage(
-        "watch_queue_gone",
-        "expired",
-        "The email-sends queue was deleted, so there is nothing left to drain. I've stopped watching."
-      )}
-    />
-  ),
-  "wake-unverified": (
-    <WakeHarness
-      watches={wakeWatches}
-      message={wakeMessage(
-        "watch_unverified",
-        "expired",
-        "The window ran out while I couldn't read the queue depth, so I can't tell you whether it drained. The last reading I do have was 42 pending, an hour ago."
-      )}
-    />
-  ),
-
-  "watches-live": <WatchChips watches={demoWatches.row.map(toWatchChip)} onCancel={noop} />,
 
   "banner-prod": (
     <DashboardAgentContextBanner
