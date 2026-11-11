@@ -13,9 +13,9 @@ import { type EnqueueBuildError } from "~/services/enqueueGithubBuild.server";
 import { logger } from "~/services/logger.server";
 import { enqueueBuild, enqueueGithubBuild } from "~/services/platform.v3.server";
 import {
-  type EncryptedSecretValue,
-  EncryptedSecretValueSchema,
-} from "~/services/secrets/secretStore.server";
+  type StoredEnvironmentValue,
+  StoredEnvironmentValueSchema,
+} from "~/services/environmentEncryption/crypto.server";
 import { BuildSettingsSchema } from "../buildSettings";
 import { DeploymentAccessError } from "../deploymentAccess.server";
 import { type RedeploySource, resolveRedeploySource } from "../redeploy";
@@ -70,7 +70,11 @@ type RedeployDeploymentDeps = {
   initialize: (
     environment: AuthenticatedEnvironment,
     payload: InitializeDeploymentRequestBody,
-    options: { redeployOf: string; buildEnvVars?: EncryptedSecretValue }
+    options: {
+      redeployOf: string;
+      buildEnvVars?: StoredEnvironmentValue;
+      buildEnvVarsSourceId?: string;
+    }
   ) => Promise<InitializeDeploymentResult>;
   enqueueGithub: typeof enqueueGithubBuild;
   enqueueArtifact: (
@@ -181,7 +185,7 @@ export class RedeployDeploymentService {
         if (source.createdAt.getTime() < now().getTime() - windowDays * 24 * 60 * 60 * 1000) {
           return errAsync({ type: "deployment_expired" as const });
         }
-        const buildEnvVars = EncryptedSecretValueSchema.safeParse(source.buildEnvVars);
+        const buildEnvVars = StoredEnvironmentValueSchema.safeParse(source.buildEnvVars);
         const redeploySource = resolveRedeploySource({
           ...source,
           hasBuildEnvVars: buildEnvVars.success,
@@ -237,7 +241,7 @@ export class RedeployDeploymentService {
       T extends {
         source: SourceDeployment;
         redeploySource: RedeploySource;
-        buildEnvVars?: EncryptedSecretValue;
+        buildEnvVars?: StoredEnvironmentValue;
         environment: AuthenticatedEnvironment;
       },
     >(
@@ -285,7 +289,7 @@ export class RedeployDeploymentService {
         fromPromise(
           initialize(environment, payload(force), {
             redeployOf: opts.deploymentShortCode,
-            ...(buildEnvVars ? { buildEnvVars } : {}),
+            ...(buildEnvVars ? { buildEnvVars, buildEnvVarsSourceId: source.id } : {}),
           }),
           (error) => {
             if (error instanceof DeploymentAccessError) {

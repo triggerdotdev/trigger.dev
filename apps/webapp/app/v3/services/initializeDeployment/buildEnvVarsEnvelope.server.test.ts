@@ -1,12 +1,21 @@
 import { InitializeDeploymentRequestBody } from "@trigger.dev/core/v3";
 import { describe, expect, it } from "vitest";
 import { decryptSecret, encryptSecret } from "~/services/secrets/secretStore.server";
-import { parseEncryptionKeyring, resolveEncryptionKeyring } from "~/utils/encryptionKeyring.server";
+import {
+  EncryptedValueSchema,
+  encryptValue,
+  parseEncryptionKeyring,
+  resolveEncryptionKeyring,
+} from "~/utils/encryptionKeyring.server";
 import { buildEnvVarsEnvelope } from "./buildEnvVarsEnvelope.server";
 
 const legacyKey = "0123456789abcdef0123456789abcdef";
 const encryptionKey = resolveEncryptionKeyring(undefined, legacyKey);
-const limits = { encryptionKey, maxKeys: 3, maxBytes: 128 };
+const limits = {
+  encrypt: (plaintext: string) => encryptValue(plaintext, encryptionKey),
+  maxKeys: 3,
+  maxBytes: 128,
+};
 
 function payload(overrides: Record<string, unknown> = {}) {
   return InitializeDeploymentRequestBody.parse({
@@ -21,7 +30,7 @@ function payload(overrides: Record<string, unknown> = {}) {
 
 async function decrypted(envelope: Awaited<ReturnType<typeof buildEnvVarsEnvelope>>) {
   expect(envelope).toBeDefined();
-  return JSON.parse(await decryptSecret(encryptionKey, envelope!));
+  return JSON.parse(await decryptSecret(encryptionKey, EncryptedValueSchema.parse(envelope)));
 }
 
 describe("buildEnvVarsEnvelope", () => {
@@ -48,11 +57,14 @@ describe("buildEnvVarsEnvelope", () => {
     );
     const result = await buildEnvVarsEnvelope(payload({ buildEnvVars: { IGNORED: "x" } }), {
       ...limits,
-      encryptionKey: keyring,
+      encrypt: (plaintext) => encryptValue(plaintext, keyring),
+      decryptSource: (value) => decryptSecret(keyring, EncryptedValueSchema.parse(value)),
       copyFrom,
     });
     expect(result?.keyId).toBe("v2");
-    expect(JSON.parse(await decryptSecret(keyring, result!))).toEqual(variables);
+    expect(JSON.parse(await decryptSecret(keyring, EncryptedValueSchema.parse(result)))).toEqual(
+      variables
+    );
   });
 
   it("stores nothing for a source upload", async () => {

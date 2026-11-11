@@ -12,6 +12,7 @@ import type { EnvironmentVariableUpdater } from "~/v3/environmentVariables/repos
 import type { SyncEnvVarsMapping, EnvSlug } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { VercelIntegrationService } from "~/services/vercelIntegration.server";
 import { loadEnvironmentVariablesEnvironments } from "./environmentVariablesEnvironments.server";
+import { EnvironmentKeyUnavailableError } from "~/services/environmentEncryption/wrapping.server";
 
 import { boundedIn, type Prisma } from "@trigger.dev/database";
 type Result = Awaited<ReturnType<EnvironmentVariablesPresenter["call"]>>;
@@ -209,10 +210,33 @@ export class EnvironmentVariablesPresenter {
       }
     }
 
-    const variableValuesByEnvAndKey = await repository.getVariableValuesForKeys(
-      project.id,
-      nonSecretItems
-    );
+    let variableValuesByEnvAndKey: Map<string, string>;
+    const unavailableEnvironments = new Set<string>();
+    try {
+      variableValuesByEnvAndKey = await repository.getVariableValuesForKeys(
+        project.id,
+        nonSecretItems
+      );
+    } catch (error) {
+      if (!(error instanceof EnvironmentKeyUnavailableError)) throw error;
+      variableValuesByEnvAndKey = new Map();
+      const environmentIds = [...new Set(nonSecretItems.map((item) => item.environmentId))];
+      const results = await Promise.allSettled(
+        environmentIds.map((environmentId) =>
+          repository.getVariableValuesForKeys(
+            project.id,
+            nonSecretItems.filter((item) => item.environmentId === environmentId)
+          )
+        )
+      );
+      for (const [i, result] of results.entries()) {
+        if (result.status === "fulfilled") {
+          for (const [key, value] of result.value) variableValuesByEnvAndKey.set(key, value);
+        } else if (result.reason instanceof EnvironmentKeyUnavailableError) {
+          unavailableEnvironments.add(environmentIds[i]!);
+        } else throw result.reason;
+      }
+    }
 
     // Get Vercel integration data if it exists
     const vercelService = new VercelIntegrationService(this.#prismaClient);
@@ -245,7 +269,8 @@ export class EnvironmentVariablesPresenter {
             ? undefined
             : variableValuesByEnvAndKey.get(`${env.id}:${environmentVariable.key}`);
 
-          if (!isSecret && val === undefined) {
+          const valueUnavailable = unavailableEnvironments.has(env.id);
+          if (!isSecret && !valueUnavailable && val === undefined) {
             return [];
           }
 
@@ -270,7 +295,8 @@ export class EnvironmentVariablesPresenter {
               id: environmentVariable.id,
               key: environmentVariable.key,
               environment: { type: env.type, id: env.id, branchName: env.branchName },
-              value: isSecret ? "" : val!,
+              value: isSecret || valueUnavailable ? "" : val!,
+              ...(valueUnavailable ? { valueUnavailable: true } : {}),
               isSecret,
               version: valueRecord.version,
               lastUpdatedBy,

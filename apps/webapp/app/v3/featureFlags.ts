@@ -6,6 +6,7 @@ export const FEATURE_FLAG = {
   waitpointStoreEnabled: "waitpointStoreEnabled",
   snapshotStoreMode: "snapshotStoreMode",
   allowEmptyEnvironmentVariableValues: "allowEmptyEnvironmentVariableValues",
+  environmentEncryptionEnabled: "environmentEncryptionEnabled",
   defaultWorkerInstanceGroupId: "defaultWorkerInstanceGroupId",
   taskEventRepository: "taskEventRepository",
   hasQueryAccess: "hasQueryAccess",
@@ -108,6 +109,7 @@ export const FeatureFlagCatalog = {
   // Organization override, then global default, then off.
   [FEATURE_FLAG.snapshotStoreMode]: z.enum(["off", "dual-write", "redis-read", "redis-only"]),
   [FEATURE_FLAG.allowEmptyEnvironmentVariableValues]: z.boolean(),
+  [FEATURE_FLAG.environmentEncryptionEnabled]: z.boolean(),
   [FEATURE_FLAG.defaultWorkerInstanceGroupId]: z.string(),
   [FEATURE_FLAG.taskEventRepository]: z.enum(["clickhouse", "clickhouse_v2", "postgres"]),
   [FEATURE_FLAG.hasQueryAccess]: z.coerce.boolean(),

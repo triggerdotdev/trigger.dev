@@ -312,7 +312,11 @@ describe("RedeployDeploymentService", () => {
       triggeredVia: "dashboard",
     });
     expect(payload.buildEnvVars).toBeUndefined();
-    expect(options).toEqual({ redeployOf: "abcd", buildEnvVars: envelope });
+    expect(options).toEqual({
+      redeployOf: "abcd",
+      buildEnvVars: envelope,
+      buildEnvVarsSourceId: "dep_failed",
+    });
 
     expect(deps.enqueueArtifact).toHaveBeenCalledWith(
       "proj_1",

@@ -932,6 +932,8 @@ function EnvironmentVariableTableRow({
             }
             content="With your current role, you can't view this environment's variables."
           />
+        ) : variable.valueUnavailable ? (
+          <span className="text-xs text-text-dimmed">Encryption key unavailable</span>
         ) : variable.isSecret ? (
           <SimpleTooltip
             button={

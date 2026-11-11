@@ -435,6 +435,14 @@ const EnvironmentSchema = z
       )
       .refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
     ENCRYPTION_KEYRING: z.string().transform(parseEncryptionKeyring).optional(),
+    ENVIRONMENT_ENCRYPTION_ENABLED: BoolEnv.default(false),
+    ENVIRONMENT_ENCRYPTION_KMS_KEY_ARN: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z
+        .string()
+        .regex(/^arn:(aws|aws-us-gov|aws-cn):kms:[a-z0-9-]+:[0-9]{12}:key\/[a-zA-Z0-9-]+$/)
+        .optional()
+    ),
     PUBLIC_TOKEN_SEALED_SUBJECT_ENABLED: BoolEnv.default(false),
     PUBLIC_TOKEN_SUBJECT_SECRET: z
       .string()
