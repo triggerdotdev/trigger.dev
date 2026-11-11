@@ -19,6 +19,7 @@ import {
   loadDeploymentChecksController,
   runDeploymentCheck,
 } from "~/v3/deploymentChecks.server";
+import { latestMetrics } from "./otlpMetrics.helpers";
 import { createInMemoryMetrics } from "./utils/tracing";
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -174,8 +175,9 @@ describe("deployment checks", () => {
       ]);
     }
 
-    const points = (await metrics.getMetrics())
-      .flatMap((resource) => resource.scopeMetrics)
+    // The reader also exports every 100 ms, and an earlier export holds partial totals. With
+    // cumulative temporality the latest export holds every point.
+    const points = ((await latestMetrics(metrics))?.scopeMetrics ?? [])
       .flatMap((scope) => scope.metrics)
       .find((metric) => metric.descriptor.name === "deployment_checks.decisions_total")?.dataPoints;
     expect(points?.map((point) => point.attributes)).toEqual(
@@ -308,8 +310,7 @@ describe("deployment checks", () => {
       loadDeploymentChecksController({ requirePlugins: true, cloud: false, moduleName })
     ).rejects.toThrow("REQUIRE_PLUGINS=1");
 
-    const missing = (await metrics.getMetrics())
-      .flatMap((resource) => resource.scopeMetrics)
+    const missing = ((await latestMetrics(metrics))?.scopeMetrics ?? [])
       .flatMap((scope) => scope.metrics)
       .find((metric) => metric.descriptor.name === "deployment_checks.plugin_missing_total");
     expect(missing?.dataPoints.map((point) => point.value)).toEqual([1]);
