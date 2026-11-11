@@ -5,7 +5,6 @@ vi.mock("~/db.server", () => ({}));
 vi.mock("~/v3/runStore.server", () => ({ runStore: {} }));
 vi.mock("~/env.server", () => ({ env: {} }));
 
-import parseDuration from "parse-duration";
 import { convertRunListInputOptionsToFilterRunsOptions } from "~/services/runsRepository/runsRepository.server";
 
 describe("convertRunListInputOptionsToFilterRunsOptions with explicit runIds vs filters (#5110)", () => {
@@ -24,7 +23,7 @@ describe("convertRunListInputOptionsToFilterRunsOptions with explicit runIds vs 
       mockStore
     );
 
-    // Period must remain undefined so runs older than 7 days are not silently excluded
+    // Period must remain undefined so runs older than 7 days are not silently excluded (#5110)
     expect(result.period).toBeUndefined();
     expect(result.runId).toEqual(["run_recent", "run_older_than_7_days"]);
   });
@@ -41,7 +40,7 @@ describe("convertRunListInputOptionsToFilterRunsOptions with explicit runIds vs 
       mockStore
     );
 
-    expect(result.period).toBe(parseDuration("7d"));
+    expect(result.period).toBe(7 * 24 * 60 * 60 * 1000); // 604800000 ms
   });
 
   it("applies the default 7d period when runId is an empty array", async () => {
@@ -56,7 +55,7 @@ describe("convertRunListInputOptionsToFilterRunsOptions with explicit runIds vs 
       mockStore
     );
 
-    expect(result.period).toBe(parseDuration("7d"));
+    expect(result.period).toBe(7 * 24 * 60 * 60 * 1000);
   });
 
   it("honors explicit period when supplied alongside runIds", async () => {
@@ -72,7 +71,7 @@ describe("convertRunListInputOptionsToFilterRunsOptions with explicit runIds vs 
       mockStore
     );
 
-    expect(result.period).toBe(parseDuration("30d"));
+    expect(result.period).toBe(30 * 24 * 60 * 60 * 1000);
     expect(result.runId).toEqual(["run_1"]);
   });
 
@@ -110,6 +109,6 @@ describe("convertRunListInputOptionsToFilterRunsOptions with explicit runIds vs 
       mockStore
     );
 
-    expect(result.period).toBe(parseDuration("14d"));
+    expect(result.period).toBe(14 * 24 * 60 * 60 * 1000);
   });
 });
