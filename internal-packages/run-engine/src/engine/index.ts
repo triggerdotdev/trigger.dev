@@ -250,6 +250,7 @@ export class RunEngine {
       gatesEnabled: options.queue?.gatesEnabled,
       concurrencyKeyLimitsEnabled: options.queue?.concurrencyKeyLimitsEnabled,
       reconcile: options.queue?.reconcile,
+      gateSkipAhead: options.queue?.gateSkipAhead,
       logger: new Logger("RunQueue", options.queue?.logLevel ?? "info"),
       redis: { ...options.queue.redis, keyPrefix: `${options.queue.redis.keyPrefix}runqueue:` },
       retryOptions: options.queue?.retryOptions,

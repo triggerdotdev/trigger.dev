@@ -1702,6 +1702,14 @@ const EnvironmentSchema = z
     RUN_ENGINE_QUEUE_RECONCILE_SCAN_COUNT: z.coerce.number().int().positive().default(100),
     RUN_ENGINE_QUEUE_RECONCILE_LOCK_TTL_SECONDS: z.coerce.number().int().positive().default(10),
     RUN_ENGINE_QUEUE_RECONCILE_MAX_PASSES_PER_DEQUEUE: z.coerce.number().int().min(0).default(2),
+    /** Read past gate-blocked sub-queues at dequeue. Applies to the default (age-order) concurrency-key dequeue only, not the virtual-time one. */
+    RUN_ENGINE_QUEUE_GATE_SKIP_AHEAD_ENABLED: z.string().default("0"),
+    RUN_ENGINE_QUEUE_GATE_SKIP_AHEAD_READ_MULTIPLIER: z.coerce
+      .number()
+      .int()
+      .min(2)
+      .max(20)
+      .default(10),
     RUN_ENGINE_TREAT_PRODUCTION_EXECUTION_STALLS_AS_OOM: z.string().default("0"),
     // Fallback for the deploymentStatusMode global flag: how dequeue treats a run whose
     // deployment hasn't finished deploying (off, shadow = log and count only, enforce).

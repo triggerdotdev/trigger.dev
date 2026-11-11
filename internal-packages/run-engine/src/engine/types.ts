@@ -155,6 +155,11 @@ export type RunEngineOptions = {
       lockTtlSeconds?: number;
       maxPassesPerDequeue?: number;
     };
+    /** Read past gate-blocked sub-queues at dequeue. See RunQueueOptions.gateSkipAhead. */
+    gateSkipAhead?: {
+      enabled?: boolean;
+      readMultiplier?: number;
+    };
     /** Optional queue-metrics emitter; enables gauge + counter emission from the RunQueue. */
     queueMetrics?: RunQueueMetricsEmitter;
     queueSelectionStrategyOptions?: Pick<

@@ -142,12 +142,18 @@ end
 -- enqueue fast paths pass nil and never reconcile. Every pass and prune is tallied
 -- here and rides back on the reply's third slot, so the caller can meter reconcile
 -- work without a single extra Redis command.
-local function __reconcileNew(enabled, scanCount, lockTtl, maxPasses)
+-- scanBudget, when given, also bounds the call by members scanned: passes over small sets
+-- are cheap and passes over large ones are not, so the two are counted separately. The
+-- first freePasses passes are not subject to it, because a scan page is not capped at
+-- scanCount: a set of up to 128 members comes back whole, and larger ones a little over.
+local function __reconcileNew(enabled, scanCount, lockTtl, maxPasses, scanBudget, freePasses)
   return {
     enabled = enabled,
     scanCount = scanCount,
     lockTtl = lockTtl,
     remaining = maxPasses,
+    scanLeft = scanBudget,
+    freePasses = freePasses or 0,
     passesGroup = 0,
     passesGate = 0,
     cooldown = 0,
@@ -180,7 +186,7 @@ local function __gateReconcile(setKey, msgKeyPrefix, reconcileKeyPrefix, rc, kin
     rc.disabled = rc.disabled + 1
     return
   end
-  if rc.remaining <= 0 then
+  if rc.remaining <= 0 or (rc.scanLeft and rc.scanLeft <= 0 and rc.passesGroup + rc.passesGate >= rc.freePasses) then
     rc.budgetExhausted = rc.budgetExhausted + 1
     return
   end
@@ -200,6 +206,7 @@ local function __gateReconcile(setKey, msgKeyPrefix, reconcileKeyPrefix, rc, kin
   local cursor = redis.call('GET', cursorKey) or '0'
   local scanResult = redis.call('SSCAN', setKey, cursor, 'COUNT', tostring(rc.scanCount))
   redis.call('SET', cursorKey, scanResult[1], 'EX', '3600')
+  if rc.scanLeft then rc.scanLeft = rc.scanLeft - math.max(#scanResult[2], 1) end
   local pruned = 0
   for _, memberId in ipairs(scanResult[2]) do
     rc.scanned = rc.scanned + 1
@@ -259,7 +266,7 @@ local function __gatesHaveCapacity(gatesKeyPrefix, msg, messageId, envLimit, msg
     local perKeyLimit = math.min(tonumber(perKeyRaw), envLimit)
     if occupancy >= perKeyLimit and redis.call('SISMEMBER', variant .. ':currentConcurrency', messageId) == 0 then
       __gateReconcile(variant .. ':currentConcurrency', msgKeyPrefix, gatesKeyPrefix, rc, 'gate', perKeyLimit)
-      return false
+      return false, 'k', base, gateKey or ''
     end
     local rawTotal = redis.call('GET', base .. ':totalConcurrency')
     if rawTotal then
@@ -267,11 +274,93 @@ local function __gatesHaveCapacity(gatesKeyPrefix, msg, messageId, envLimit, msg
       local groupKey = base .. ':groupConcurrency'
       if tonumber(redis.call('SCARD', groupKey) or '0') >= totalLimit and redis.call('SISMEMBER', groupKey, messageId) == 0 then
         __gateReconcile(groupKey, msgKeyPrefix, gatesKeyPrefix, rc, 'group', totalLimit)
-        return false
+        return false, 't', base, ''
       end
     end
   end
   return true
+end
+
+-- Skip-ahead hints. When a sub-queue's head run is blocked at a full gate pool, the pool and
+-- the head are remembered under <base>:ckHint:<key> (a name no queue-derived key can take,
+-- like ckLimit). The next dequeue that reads the sub-queue checks that pool first: same
+-- head and still full means still blocked, without fetching or decoding the payload. A
+-- hint only ever saves work. Anything else (new head, room in the pool, a missing or
+-- malformed hint) drops it and takes the normal path, which decides admission as before.
+local function __ckHintKey(variant)
+  local p = string.find(variant, ':ck:', 1, true)
+  if not p then return nil end
+  return string.sub(variant, 1, p - 1) .. ':ckHint:' .. string.sub(variant, p + 4)
+end
+
+-- A hint lives ten minutes and is not refreshed: long enough that a sub-queue deep in a
+-- large backlog is still hinted when it is next read, short enough that hints for finished
+-- runs do not linger, and no extra command per skip.
+local function __hintWrite(variant, messageId, kind, base, gateKey, ttlExpiresAt)
+  local hintKey = __ckHintKey(variant)
+  if hintKey and kind then
+    redis.call('SET', hintKey, cjson.encode({ messageId, kind, base, gateKey, ttlExpiresAt or 0 }), 'EX', '600')
+  end
+end
+
+local function __hintSetKey(kind, base, gateKey)
+  if kind == 't' then return base .. ':groupConcurrency' end
+  if gateKey ~= '' then return base .. ':ck:' .. gateKey .. ':currentConcurrency' end
+  return base .. ':currentConcurrency'
+end
+
+-- Records a block the normal path found: the hint, and the pool as full for the rest of the
+-- call, so later sub-queues waiting on it are passed over without their payloads being
+-- read. A pool this check's reconcile just pruned is left to be looked at again.
+local function __hintBlock(memo, pruned, variant, messageId, kind, base, gateKey, ttlExpiresAt)
+  __hintWrite(variant, messageId, kind, base, gateKey, ttlExpiresAt)
+  if kind and not pruned then memo[__hintSetKey(kind, base, gateKey)] = true end
+end
+
+-- Whether the pool a hint names is full for this message, by the rule __gatesHaveCapacity
+-- applies to it. memo holds each pool's answer for the rest of the call; a pool first seen
+-- full gets the bounded reconcile a blocked sub-queue triggers on the normal path.
+local function __hintPoolFull(memo, kind, base, gateKey, messageId, envLimit, keyLimitsEnabled, msgKeyPrefix, gatesKeyPrefix, rc)
+  local setKey = __hintSetKey(kind, base, gateKey)
+  -- A run already counted in the pool is the normal path's to admit, as it always has.
+  if redis.call('SISMEMBER', setKey, messageId) == 1 then return false end
+  if memo[setKey] == nil then
+    local limit = nil
+    if kind == 't' then
+      local rawTotal = redis.call('GET', base .. ':totalConcurrency')
+      if rawTotal then limit = math.min(tonumber(rawTotal), envLimit) end
+    else
+      local ckLimitKey = nil
+      if gateKey ~= '' then ckLimitKey = base .. ':ckLimit:' .. gateKey end
+      limit = math.min(tonumber(__perKeyLimitRaw(keyLimitsEnabled, redis.call('GET', base .. ':concurrency'), ckLimitKey)), envLimit)
+    end
+    local full = false
+    if limit and tonumber(redis.call('SCARD', setKey) or '0') >= limit then
+      __gateReconcile(setKey, msgKeyPrefix, gatesKeyPrefix, rc, kind == 't' and 'group' or 'gate', limit)
+      full = tonumber(redis.call('SCARD', setKey) or '0') >= limit
+    end
+    memo[setKey] = full
+  end
+  return memo[setKey]
+end
+
+-- A head whose run has expired, or whose message is gone, is never passed over: the normal
+-- path is what expires or removes it, so the runs behind it are not held up.
+local function __hintBlocked(memo, variant, messageId, now, envLimit, keyLimitsEnabled, msgKeyPrefix, gatesKeyPrefix, rc)
+  local hintKey = __ckHintKey(variant)
+  if not hintKey then return false end
+  local raw = redis.call('GET', hintKey)
+  if not raw then return false end
+  local ok, d = pcall(cjson.decode, raw)
+  if ok and type(d) == 'table' and d[1] == messageId and (d[2] == 'k' or d[2] == 't')
+    and type(d[3]) == 'string' and type(d[4]) == 'string'
+    and type(d[5]) == 'number' and (d[5] == 0 or d[5] > now)
+    and redis.call('EXISTS', msgKeyPrefix .. messageId) == 1
+    and __hintPoolFull(memo, d[2], d[3], d[4], messageId, envLimit, keyLimitsEnabled, msgKeyPrefix, gatesKeyPrefix, rc) then
+    return true
+  end
+  redis.call('DEL', hintKey)
+  return false
 end
 
 local function __gatesAcquire(gatesKeyPrefix, msg, messageId)
@@ -1318,6 +1407,24 @@ export type RunQueueOptions = {
     lockTtlSeconds?: number;
     maxPassesPerDequeue?: number;
   };
+  /**
+   * When enabled, a concurrency-key sub-queue whose head run is blocked at a full gate does
+   * not use up a slot of the dequeue's candidate window: the dequeue reads up to
+   * `readMultiplier` windows of candidates (default 10, 2-20) to make up for them, and a
+   * sub-queue blocked on the same head and pool as last time is passed over without its
+   * payload being read. Blocked sub-queues keep their 1s retry. A dequeue that reads
+   * further backs off more saturated pools at once, so with this on it always gets 6
+   * reconcile passes and may go on, over at most 30 sets, until it has scanned 6 passes'
+   * worth of `scanCount` members, whatever `readMultiplier` is: a larger
+   * `maxPassesPerDequeue` is kept and zero stays zero. Applies to the default (age-order)
+   * concurrency-key dequeue only:
+   * the virtual-time dequeue is unchanged.
+   * Default disabled, and nothing is read or written for it while it is.
+   */
+  gateSkipAhead?: {
+    enabled?: boolean;
+    readMultiplier?: number;
+  };
   workerOptions?: {
     pollIntervalMs?: number;
     immediatePollIntervalMs?: number;
@@ -1485,6 +1592,9 @@ export class RunQueue {
   readonly #ckVtimeArrivalCap: number;
   /** ARGV tail shared by both dequeue scripts: enabled, scanCount, lockTtl, maxPasses. */
   private reconcileArgs: [string, string, string, string];
+  /** Dequeue script ARGV: the skip-ahead read multiplier, "0" when skip-ahead is disabled. */
+  private gateSkipAheadArg: string;
+  private _gateSkipAheadExhausted: Counter;
   private _dequeueScriptDuration: Histogram;
   private _reconcilePasses: Counter;
   private _reconcileSkipped: Counter;
@@ -1526,6 +1636,9 @@ export class RunQueue {
       String(boundedInt(options.reconcile?.lockTtlSeconds, 10, 1, 86_400)),
       String(boundedInt(options.reconcile?.maxPassesPerDequeue, 2, 0, 10_000)),
     ];
+    this.gateSkipAheadArg = options.gateSkipAhead?.enabled
+      ? String(boundedInt(options.gateSkipAhead.readMultiplier, 10, 2, 20))
+      : "0";
     this.retryOptions = options.retryOptions ?? defaultRetrySettings;
     this.redis = createRedisClient(options.redis, {
       onError: (error) => {
@@ -1566,6 +1679,12 @@ export class RunQueue {
         "Wall-clock latency of one dequeue Lua script execution, split by whether a reconcile pass ran",
       unit: "ms",
       valueType: ValueType.DOUBLE,
+    });
+    this._gateSkipAheadExhausted = this._meter.createCounter("runqueue.gate.skip_ahead_exhausted", {
+      description:
+        "Dequeue calls that used up their whole read stepping over gate-blocked sub-queues, with more sub-queues still due",
+      unit: "calls",
+      valueType: ValueType.INT,
     });
     this._reconcilePasses = this._meter.createCounter("runqueue.reconcile.passes", {
       description: "Reconcile passes over saturated concurrency sets, by set kind",
@@ -4370,11 +4489,16 @@ export class RunQueue {
             this.options.gatesEnabled ? "1" : "0",
             this.options.concurrencyKeyLimitsEnabled ? "1" : "0",
             ...this.reconcileArgs,
+            this.gateSkipAheadArg,
             metricsGaugeArg
           );
 
-      /** Reply is [flatMessages|null, gauge|null, reconcile|null]; the CK aggregate gauge rides here. */
+      /** Reply is [flatMessages|null, gauge|null, reconcile|null, skipAheadExhausted?]; the CK aggregate gauge rides here. Only the age-order script sets the fourth slot. */
       this.#recordDequeueScript(span, "ck", ckWildcardQueue, scriptStartedAt, reply?.[2]);
+      if (Number(reply?.[3]) === 1) {
+        span.setAttribute("gate_skip_ahead_exhausted", true);
+        this._gateSkipAheadExhausted.add(1);
+      }
       const gauge = reply?.[1] ?? null;
       if (gauge) this.#emitGauge(ckWildcardQueue, gauge);
       const result = reply?.[0] ?? null;
@@ -6628,9 +6752,34 @@ local reconcileEnabled = ARGV[10] == '1'
 local reconcileScanCount = tonumber(ARGV[11]) or 100
 local reconcileLockTtl = tonumber(ARGV[12]) or 10
 local reconcileMaxPasses = tonumber(ARGV[13]) or 2
+-- Skip-ahead: how many candidate windows a call may read when gate-blocked sub-queues do
+-- not count against the window. 0 leaves the read and the window as they were.
+local skipAheadMult = tonumber(ARGV[14]) or 0
+local __hints = nil
+if skipAheadMult > 0 and gatesEnabled then __hints = {} end
+local RECONCILE_SCAN_PASSES = 6
+local RECONCILE_PASS_CEILING = 30
+-- Set when the call used up its whole read stepping over gate-blocked sub-queues and more
+-- sub-queues were still due behind it. Rides the reply's fourth slot.
+local __skipExhausted = false
+local gateSkipped = 0
 ${QUEUE_METRICS_GAUGE_PRELUDE}
 ${QUEUE_GATES_LUA_HELPERS}
-local __reconcile = __reconcileNew(reconcileEnabled, reconcileScanCount, reconcileLockTtl, reconcileMaxPasses)
+-- A call that reads further backs off more saturated pools at once, so its reconcile work
+-- is bounded by members scanned rather than by passes alone. It always gets
+-- RECONCILE_SCAN_PASSES passes; beyond those it may go on, over at most
+-- RECONCILE_PASS_CEILING sets, until it has scanned that many passes' worth of members.
+-- Many small leaked pools then heal no slower than they did a window at a time, and a
+-- call that meets large saturated sets scans little more than those passes would. A
+-- larger configured budget is kept, and a budget of zero stays zero.
+local reconcileScanBudget = nil
+local reconcileFreePasses = nil
+if __hints and reconcileMaxPasses > 0 then
+  reconcileFreePasses = math.max(reconcileMaxPasses, RECONCILE_SCAN_PASSES)
+  reconcileScanBudget = reconcileFreePasses * reconcileScanCount
+  reconcileMaxPasses = math.max(reconcileMaxPasses, RECONCILE_PASS_CEILING)
+end
+local __reconcile = __reconcileNew(reconcileEnabled, reconcileScanCount, reconcileLockTtl, reconcileMaxPasses, reconcileScanBudget, reconcileFreePasses)
 -- Sample-at-return: the gauge is computed once, by the return wrapper, so every
 -- exit emits the state as of that exit (post-admission on the success path) and
 -- no path pays for a sample that a later one would overwrite. The reconcile
@@ -6644,6 +6793,7 @@ do
     __qmsample()
     local reply = __qmret_inner(r)
     reply[3] = __reconcileReply(__reconcile)
+    if __skipExhausted then reply[4] = 1 end
     return reply
   end
 end
@@ -6700,7 +6850,19 @@ if actualMaxCount <= 0 then
   return __qmret(nil)
 end
 
-local ckQueues = redis.call('ZRANGEBYSCORE', ckIndexKey, '-inf', tostring(currentTime), 'LIMIT', 0, actualMaxCount * 3)
+-- shortcut: other keys stay at their usual wait up to a few hundred gate-blocked
+-- sub-queues on a queue. Past that the blocked backlog is swept at about one read budget a
+-- call (__skipExhausted counts those calls); a queue that lives there needs blocked
+-- sub-queues taken out of the index rather than stepped over.
+local windowLeft = actualMaxCount * 3
+local readCount = windowLeft
+local fetchCount = readCount
+if __hints then
+  readCount = windowLeft * skipAheadMult
+  -- One past the read, never processed: its presence is what says more was still due.
+  fetchCount = readCount + 1
+end
+local ckQueues = redis.call('ZRANGEBYSCORE', ckIndexKey, '-inf', tostring(currentTime), 'LIMIT', 0, fetchCount)
 
 if #ckQueues == 0 then
   local anyIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
@@ -6715,8 +6877,8 @@ end
 local results = {}
 local dequeuedCount = 0
 
-for _, ckQueueName in ipairs(ckQueues) do
-  if dequeuedCount >= actualMaxCount then
+for candidate, ckQueueName in ipairs(ckQueues) do
+  if dequeuedCount >= actualMaxCount or windowLeft <= 0 or candidate > readCount then
     break
   end
 
@@ -6748,6 +6910,9 @@ for _, ckQueueName in ipairs(ckQueues) do
       local messageId = messages[1]
       local messageScore = messages[2]
 
+      if __hints and __hintBlocked(__hints, fullQueueKey, messageId, currentTime, envConcurrencyLimit, concurrencyKeyLimitsEnabled, messageKeyPrefix, keyPrefix, __reconcile) then
+        blockedByGates = true
+      else
       local messageKey = messageKeyPrefix .. messageId
       local messagePayload = redis.call('GET', messageKey)
 
@@ -6767,12 +6932,16 @@ for _, ckQueueName in ipairs(ckQueues) do
             redis.call('ZADD', ttlQueueKey, ttlExpiresAt, ttlMember)
           end
         else
-          local gatesAllow = true
+          local gatesAllow, blockedKind, blockedBase, blockedKey = true, nil, nil, nil
+          local prunedBefore = __reconcile.prunedGone + __reconcile.prunedOrphan
           if gatesEnabled then
-            gatesAllow = __gatesHaveCapacity(keyPrefix, messageData, messageId, envConcurrencyLimit, messageKeyPrefix, __reconcile, concurrencyKeyLimitsEnabled)
+            gatesAllow, blockedKind, blockedBase, blockedKey = __gatesHaveCapacity(keyPrefix, messageData, messageId, envConcurrencyLimit, messageKeyPrefix, __reconcile, concurrencyKeyLimitsEnabled)
           end
           if not gatesAllow then
             blockedByGates = true
+            if __hints then
+              __hintBlock(__hints, __reconcile.prunedGone + __reconcile.prunedOrphan > prunedBefore, fullQueueKey, messageId, blockedKind, blockedBase, blockedKey, ttlExpiresAt)
+            end
           end
 
           local alreadyInGroup = false
@@ -6818,6 +6987,7 @@ for _, ckQueueName in ipairs(ckQueues) do
         redis.call('ZREM', envQueueKey, messageId)
         decrLengthCounter()
       end
+      end
 
       if blockedByGates then
         redis.call('ZADD', ckIndexKey, currentTime + 1000, ckQueueName)
@@ -6838,6 +7008,10 @@ for _, ckQueueName in ipairs(ckQueues) do
       end
     end
   end
+  if __hints and blockedByGates then gateSkipped = gateSkipped + 1 else windowLeft = windowLeft - 1 end
+end
+if gateSkipped > 0 and #ckQueues > readCount and dequeuedCount < actualMaxCount and windowLeft > 0 then
+  __skipExhausted = true
 end
 
 local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
@@ -8763,9 +8937,10 @@ declare module "@internal/redis" {
       reconcileScanCount: string,
       reconcileLockTtlSeconds: string,
       reconcileMaxPasses: string,
+      gateSkipAheadMultiplier: string,
       metricsEnabled: string,
-      callback?: Callback<[string[] | null, number[] | null, number[] | null]>
-    ): Result<[string[] | null, number[] | null, number[] | null], Context>;
+      callback?: Callback<[string[] | null, number[] | null, number[] | null, number?]>
+    ): Result<[string[] | null, number[] | null, number[] | null, number?], Context>;
 
     dequeueMessagesFromCkQueueVtimeTracked(
       ckIndexKey: string,
