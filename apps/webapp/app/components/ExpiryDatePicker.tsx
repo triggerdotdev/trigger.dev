@@ -7,17 +7,25 @@ import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives
 import { apiKeyExpiryDay, isApiKeyExpiryDayExpired } from "~/utils/apiKeyExpiry";
 import { cn } from "~/utils/cn";
 
-const EXPIRATION_PRESETS = [
-  { value: "30-days", label: "In 30 days", days: 30 },
-  { value: "90-days", label: "In 90 days", days: 90 },
-  { value: "1-year", label: "In 1 year", days: 365 },
-];
+export type ExpiryPreset = { value: string; label: string; days: number };
 
-export function ApiKeyExpiryPicker({
+/**
+ * Picks the UTC day a credential expires at the end of: a preset, a calendar day, or (with
+ * `allowNever`) no expiry. With `maxDays`, days further than that from today can't be picked.
+ */
+export function ExpiryDatePicker({
+  id,
+  presets,
+  allowNever = false,
+  maxDays,
   expiration,
   date,
   onChange,
 }: {
+  id: string;
+  presets: ExpiryPreset[];
+  allowNever?: boolean;
+  maxDays?: number;
   expiration: string;
   date: Date | undefined;
   onChange: (expiration: string, date: Date | undefined) => void;
@@ -25,10 +33,13 @@ export function ApiKeyExpiryPicker({
   const [open, setOpen] = useState(false);
   const [today, setToday] = useState(() => apiKeyExpiryDay());
   const [month, setMonth] = useState(date ?? today);
+  const lastDay = maxDays === undefined ? undefined : addDays(today, maxDays);
+  const isUnavailable = (day: Date) =>
+    isApiKeyExpiryDayExpired(day) || (lastDay !== undefined && day > lastDay);
   const label =
     expiration === "never"
       ? "Never"
-      : (EXPIRATION_PRESETS.find((preset) => preset.value === expiration)?.label ?? "Custom date");
+      : (presets.find((preset) => preset.value === expiration)?.label ?? "Custom date");
 
   return (
     <Popover
@@ -44,7 +55,7 @@ export function ApiKeyExpiryPicker({
     >
       <PopoverTrigger asChild>
         <button
-          id="api-key-expiry"
+          id={id}
           type="button"
           className="group/button w-full cursor-pointer outline-hidden focus-custom"
         >
@@ -66,7 +77,7 @@ export function ApiKeyExpiryPicker({
       <PopoverContent className="w-auto min-w-0 overflow-y-auto p-0" align="end">
         <div className="flex flex-col sm:flex-row">
           <div className="space-y-1 border-b border-grid-bright p-2 sm:min-w-56 sm:border-b-0 sm:border-r">
-            {EXPIRATION_PRESETS.map((preset) => {
+            {presets.map((preset) => {
               const presetDate = addDays(today, preset.days);
               return (
                 <button
@@ -92,22 +103,24 @@ export function ApiKeyExpiryPicker({
                 </button>
               );
             })}
-            <div className="mt-2 border-t border-grid-bright pt-2">
-              <button
-                type="button"
-                aria-pressed={expiration === "never"}
-                className={cn(
-                  "w-full cursor-pointer rounded-sm px-3 py-2 text-left text-sm text-text-bright hover:bg-tertiary focus-custom",
-                  expiration === "never" && "bg-tertiary"
-                )}
-                onClick={() => {
-                  onChange("never", undefined);
-                  setOpen(false);
-                }}
-              >
-                Never
-              </button>
-            </div>
+            {allowNever ? (
+              <div className="mt-2 border-t border-grid-bright pt-2">
+                <button
+                  type="button"
+                  aria-pressed={expiration === "never"}
+                  className={cn(
+                    "w-full cursor-pointer rounded-sm px-3 py-2 text-left text-sm text-text-bright hover:bg-tertiary focus-custom",
+                    expiration === "never" && "bg-tertiary"
+                  )}
+                  onClick={() => {
+                    onChange("never", undefined);
+                    setOpen(false);
+                  }}
+                >
+                  Never
+                </button>
+              </div>
+            ) : null}
           </div>
           <Calendar
             mode="single"
@@ -115,10 +128,11 @@ export function ApiKeyExpiryPicker({
             selected={date}
             today={today}
             month={month}
+            endMonth={lastDay}
             onMonthChange={setMonth}
-            disabled={(day) => isApiKeyExpiryDayExpired(day)}
+            disabled={isUnavailable}
             onSelect={(selectedDate) => {
-              if (isApiKeyExpiryDayExpired(selectedDate)) {
+              if (isUnavailable(selectedDate)) {
                 setToday(apiKeyExpiryDay());
                 return;
               }

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useTypedFetcher } from "remix-typedjson";
 import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
+import { ExpiryDatePicker, type ExpiryPreset } from "~/components/ExpiryDatePicker";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
@@ -22,12 +23,17 @@ import {
 } from "~/utils/apiKeyExpiry";
 import { cn } from "~/utils/cn";
 import { ApiKeyAccessFields, ApiKeyAccessInputs, ApiKeyAccessPane } from "./ApiKeyAccessPicker";
-import { ApiKeyExpiryPicker } from "./ApiKeyExpiryPicker";
 import { ApiKeyIpRangesField } from "./ApiKeyIpRanges";
 import { ApiKeyNoteInput } from "./ApiKeyNote";
 import { isApiKeyNoteTooLong } from "~/utils/apiKeyNote";
 import type { action, ApiKeyActionData } from "./route";
 import { useApiKeyAccess } from "./useApiKeyAccess";
+
+const API_KEY_EXPIRY_PRESETS: ExpiryPreset[] = [
+  { value: "30-days", label: "In 30 days", days: 30 },
+  { value: "90-days", label: "In 90 days", days: 90 },
+  { value: "1-year", label: "In 1 year", days: 365 },
+];
 
 type NewApiKeyDialogProps = {
   availableTasks: string[];
@@ -198,7 +204,10 @@ export function NewApiKeyDialog({
 
                   <InputGroup fullWidth>
                     <Label htmlFor="api-key-expiry">Expires</Label>
-                    <ApiKeyExpiryPicker
+                    <ExpiryDatePicker
+                      id="api-key-expiry"
+                      presets={API_KEY_EXPIRY_PRESETS}
+                      allowNever
                       expiration={expiration}
                       date={expiryDate}
                       onChange={(nextExpiration, date) => {
