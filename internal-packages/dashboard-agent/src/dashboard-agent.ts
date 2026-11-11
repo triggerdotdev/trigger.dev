@@ -1,8 +1,4 @@
-import {
-  isAgentRequestMessageId,
-  isTurnRequestMessageId,
-  sliceWellFormed,
-} from "@internal/dashboard-agent-contracts";
+import { isAgentRequestMessageId, sliceWellFormed } from "@internal/dashboard-agent-contracts";
 import { chat } from "@trigger.dev/sdk/ai";
 import { locals, logger, tasks } from "@trigger.dev/sdk";
 import {
@@ -27,7 +23,6 @@ import {
   dashboardAgentModelKey,
   dashboardAgentStorage,
   getStore,
-  pendingActionTurnKey,
   turnModelKey,
   getSystemPrompt,
   modeFor,
@@ -48,14 +43,13 @@ import {
   promptModel,
   turnProviderOptions,
   withCacheBreakpoint,
-  withoutThinking,
 } from "./model-provider";
 import { recordPromptCacheUsage, stepCachePrepareStep } from "./step-cache";
-import { dashboardAgentActionSchema, handleWatchAction } from "./watch-actions";
+import { dashboardAgentActionSchema, handleAction } from "./alert-actions";
 import { dashboardAgentCompaction, withDurableState } from "./compaction";
 import { withAlertDraftContext } from "./prompt-assembly";
 
-// The runtime and the watch lanes live in their own modules; re-exported here so
+// The runtime lives in its own module; re-exported here so
 // every existing import path still resolves.
 export {
   clientDataSchema,
@@ -78,7 +72,7 @@ export {
   shouldEvalTurn,
   turnReadSource,
 } from "./eval-policy";
-// The rolling step cache lives in `step-cache.ts`, shared with the watch lane;
+// The rolling step cache lives in `step-cache.ts`, shared with the eval;
 // re-exported so every existing import path still resolves.
 export {
   markStepCacheBreakpoint,
@@ -90,14 +84,9 @@ export {
 export {
   alertInvestigateActionSchema,
   dashboardAgentActionSchema,
-  wakeStartsInvestigation,
-  watchInvestigateActionSchema,
-  watchWakeActionSchema,
   type AlertInvestigateAction,
   type DashboardAgentAction,
-  type WatchInvestigateAction,
-  type WatchWakeAction,
-} from "./watch-actions";
+} from "./alert-actions";
 
 /**
  * The in-dashboard agent, built on chat.agent and deployed as an internal task
@@ -373,16 +362,15 @@ const pendingTitles = new Map<string, Promise<void>>();
  * Whether this turn is the one that names the chat. Counted in user messages, not in
  * transcript length: a head-started turn arrives with the warm first step already in
  * `uiMessages`, so a length gate would see two messages on the very first exchange and
- * never name the chat at all. A watch's consent record, and the request a wake or
- * investigation turn answers, are user messages the user did not type, so they don't
- * count as an exchange either.
+ * never name the chat at all. The request a wake or investigation turn answers is
+ * a user message the user did not type, so it doesn't count as an exchange either.
  */
 export function isFirstUserExchange(uiMessages: { role: string; id?: string }[]): boolean {
   const typed = uiMessages.filter(
     (message) => message.role === "user" && !isAgentRequestMessageId(message.id)
   );
-  // Exactly one: a chat a watch created, whose only user-role messages are requests
-  // the agent filed for itself, has had no exchange yet and keeps its name.
+  // Exactly one: a chat whose only user-role messages are requests the agent filed
+  // for itself has had no exchange yet and keeps its name.
   return typed.length === 1;
 }
 
@@ -431,7 +419,7 @@ export type {
  * message so the growing conversation prefix is read back cheaply.
  *
  * The between-steps compaction path rebuilds history as the summary alone and never
- * reaches `compactModelMessages`, so the live investigation and watch state is pinned
+ * reaches `compactModelMessages`, so the live investigation state is pinned
  * back here instead.
  */
 export function prepareTurnMessages(args: {
@@ -448,9 +436,6 @@ export function prepareTurnMessages(args: {
   );
 }
 
-/** The output budget of an attention wake: the headline and a sentence around it. */
-const WAKE_MAX_OUTPUT_TOKENS = 300;
-
 export const dashboardAgent = chat.agent({
   id: "dashboard-agent",
   clientDataSchema,
@@ -459,7 +444,6 @@ export const dashboardAgent = chat.agent({
   // when the turn completes, every `chat.history` edit an action makes, and the
   // cursors a refreshed panel resumes from. The panel reads the same rows.
   storage: dashboardAgentStorage,
-  // A watch action files a request and answers it with a turn; see `watch-actions.ts`.
   actionSchema: dashboardAgentActionSchema,
   idleTimeoutInSeconds: 300,
   turnTimeout: "7d",
@@ -522,25 +506,12 @@ export const dashboardAgent = chat.agent({
     });
   },
 
-  // Every action is a watch action, handled in `watch-actions.ts`. The lane files
-  // the wake or the investigation brief as a request under a stable id and returns
-  // `chat.turn()`, so a full turn answers it; a fixed-wording wake is an edit only.
-  onAction: async ({ action, chatId, clientData, uiMessages }) =>
-    handleWatchAction({ action, chatId, clientData, uiMessages }),
+  onAction: async ({ action, uiMessages }) => handleAction({ action, uiMessages }),
 
   onTurnStart: async ({ chatId, uiMessages, clientData }) => {
     locals.set(turnErroredKey, false);
     locals.set(turnErrorTextKey, TURN_FAILED_MESSAGE);
     locals.set(toolInputErrorsKey, new Set());
-
-    // An action turn answers the request `onAction` just filed, so that request is the
-    // last message. Any other turn is the user's: a marker still set here belongs to an
-    // action turn whose `onTurnComplete` failed on both attempts, and it must not strip
-    // this turn's tools or skip its eval.
-    const last = uiMessages.at(-1);
-    if (!(last?.role === "user" && isTurnRequestMessageId(last.id))) {
-      locals.set(pendingActionTurnKey, undefined);
-    }
 
     // Name the chat on the first exchange, started here so it runs while the model
     // answers. Awaited in `onBeforeTurnComplete`, not here; a failure only costs the
@@ -585,10 +556,6 @@ export const dashboardAgent = chat.agent({
     error,
   }) => {
     const store = getStore();
-    // Read now, cleared at the end: the runtime retries this hook after a failure,
-    // and the retry must still know it is finishing an action turn.
-    const actionTurn = locals.get(pendingActionTurnKey);
-
     // The run is over, so a card left `in_progress` never settles on its own. The
     // entry survives until the write commits, so a retried `onTurnComplete` settles it.
     const settlements = pendingInvestigationSettlements(chatId);
@@ -622,15 +589,7 @@ export const dashboardAgent = chat.agent({
 
     // Score this turn in a separate, idempotency-keyed task so it never blocks or
     // bills the agent run. Best-effort: an enqueue failure must not break the turn.
-    // A wake or investigation turn is the agent talking to itself; nobody asked, so
-    // there is no answer to judge.
-    if (
-      !actionTurn &&
-      clientData?.organizationId &&
-      clientData?.userId &&
-      responseMessage &&
-      shouldEvalTurn()
-    ) {
+    if (clientData?.organizationId && clientData?.userId && responseMessage && shouldEvalTurn()) {
       try {
         const toolActivity = extractToolActivity(newMessages);
         // A turn that read source is never judged at all: judging it either hands the
@@ -677,9 +636,6 @@ export const dashboardAgent = chat.agent({
         logger.error("Failed to enqueue dashboard-agent turn eval", { error });
       }
     }
-
-    // Consumed: the next turn is whatever the user sends.
-    locals.set(pendingActionTurnKey, undefined);
   },
 
   // Summarise the older conversation once it outgrows the budget. UI messages are
@@ -698,20 +654,7 @@ export const dashboardAgent = chat.agent({
   // string is resolved through the registry here so streamText keeps a typed model.
   run: async ({ messages, signal, tools: turnTools, clientData }) => {
     const resolved = chat.prompt();
-    // A wake turn calls no tools: it reports what the check already established and
-    // carries no delegated token to read with. The tools stay declared and
-    // `toolChoice: "none"` keeps them uncalled, because a model with preserved thinking
-    // binds each thinking block to the tool list it was produced with, and a wake that
-    // dropped the list would invalidate the conversation's earlier reasoning. Decided
-    // here rather than in the `tools` hook, which the runtime resolves before
-    // `onAction` files the wake.
-    const actionTurn = locals.get(pendingActionTurnKey);
-    const wake = actionTurn?.kind === "wake";
     const tools = turnTools;
-    // A wake the plan gave a headline is a sentence or two, bounded so a chatty turn
-    // cannot run up the bill on something nobody asked. Thinking is switched off for
-    // it, so the cap is all answer.
-    const boundedWake = wake && actionTurn.bounded === true;
     const options = chat.toStreamTextOptions({ tools });
     const modelId = promptModel(resolved, {
       env: "DASHBOARD_AGENT_MODEL",
@@ -727,9 +670,7 @@ export const dashboardAgent = chat.agent({
       ...(maxOutputTokensFor(modelId) !== undefined
         ? { maxOutputTokens: maxOutputTokensFor(modelId) }
         : {}),
-      ...(boundedWake
-        ? { maxOutputTokens: WAKE_MAX_OUTPUT_TOKENS, providerOptions: withoutThinking(modelId) }
-        : { providerOptions: turnProviderOptions(modelId) }),
+      providerOptions: turnProviderOptions(modelId),
       messages: withAlertDraftContext(
         messages,
         clientData?.toolScope === "alert_creation" ? clientData.alertDraft : undefined
@@ -747,10 +688,8 @@ export const dashboardAgent = chat.agent({
           providerMetadata: finished.providerMetadata,
         }),
       // toStreamTextOptions() defaults to a single step; override so the model can
-      // call a tool and then answer from its result in the same turn. A wake calls no
-      // tools, so it has nothing to do with a second step.
-      ...(wake ? { toolChoice: "none" as const } : {}),
-      stopWhen: stepCountIs(wake ? 1 : 10),
+      // call a tool and then answer from its result in the same turn.
+      stopWhen: stepCountIs(10),
     });
   },
 });

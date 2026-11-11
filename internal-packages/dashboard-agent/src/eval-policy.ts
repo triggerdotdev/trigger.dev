@@ -92,7 +92,6 @@ const STRUCTURAL_KEYS = new Set([
   "runs",
   "schedules",
   "tasks",
-  "watches",
   // Identity.
   "batchId",
   "deployId",
@@ -109,7 +108,6 @@ const STRUCTURAL_KEYS = new Set([
   "taskId",
   "taskIdentifier",
   "traceId",
-  "watchId",
   "friendlyId",
   // Names and kinds — a task, queue, error class or environment name is a fact.
   "environment",
@@ -174,7 +172,6 @@ const TOOL_STRUCTURAL_KEYS: Record<string, readonly string[]> = {
   run_query: ["columns"],
   get_query_schema: ["columns", "tables", "table", "column"],
   get_report: ["sections", "section", "title", "metric", "metrics"],
-  list_watch_subscriptions: ["channel", "enabled"],
   get_queue: ["concurrencyLimit", "paused"],
   correlate_version: ["versions", "before", "after"],
 };

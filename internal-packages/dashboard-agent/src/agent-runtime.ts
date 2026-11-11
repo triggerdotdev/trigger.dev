@@ -32,7 +32,7 @@ import {
   type DashboardAgentMode,
   type DashboardAgentPromptOptions,
 } from "./prompt-assembly";
-import { codeSystemPrompt, plannerSystemPrompt, systemPrompt, watchSystemPrompt } from "./prompts";
+import { codeSystemPrompt, plannerSystemPrompt, systemPrompt } from "./prompts";
 import { buildDashboardAgentTools } from "./tools";
 import {
   dashboardAgentTranscriptStorage,
@@ -160,37 +160,11 @@ function trackInvestigationOutcome(
 }
 
 /**
- * Register an investigation an action seeded, so the turn that follows settles it if
- * the model leaves it running. The tool lane tracks what the model renders; a seeded
- * row the model never revises would otherwise be a spinner nothing closes.
- */
-export function trackSeededInvestigation(
-  chatId: string,
-  id: string,
-  params: { projectRef: string; environmentRef: string; state: unknown }
-): void {
-  trackInvestigationOutcome(chatId, id, params);
-}
-
-/**
- * The action turn in flight, set by `onAction` when it returns `chat.turn()` and read
- * by the turn's hooks: a wake turn runs without tools (it reports what the check
- * established and carries no delegated token), a wake the narration plan marks
- * `bounded` runs with an output cap, and neither kind is judged
- * by the eval. `onTurnStart` drops a marker the previous turn left behind, so a
- * settlement that failed on both attempts never taints the next typed turn.
- */
-/**
  * The canonical `"anthropic:<id>"` the current turn's model call resolved to, set in
  * `run()` and read by `onTurnComplete`, so the eval row records the model that
  * answered rather than the one the deployed prompt version names.
  */
 export const turnModelKey = locals.create<string>("dashboard-agent.turnModel");
-
-export const pendingActionTurnKey = locals.create<{
-  kind: "wake" | "investigate";
-  bounded?: true;
-}>("dashboard-agent.pendingActionTurn");
 
 /**
  * Whatever this turn left `in_progress`, as the terminal states to close them with.
@@ -313,7 +287,6 @@ export function modeFor(clientData: { repoSnapshot?: unknown } | undefined): Das
 
 let cachedSystemPrompt: Awaited<ReturnType<typeof systemPrompt.resolve>> | undefined;
 let cachedCodePrompt: Awaited<ReturnType<typeof codeSystemPrompt.resolve>> | undefined;
-let cachedWatchPrompt: Awaited<ReturnType<typeof watchSystemPrompt.resolve>> | undefined;
 let cachedPlannerPrompt: Awaited<ReturnType<typeof plannerSystemPrompt.resolve>> | undefined;
 export async function getSystemPrompt(
   mode: DashboardAgentMode = "assistant",
@@ -328,47 +301,23 @@ export async function getSystemPrompt(
     return cachedSystemPrompt;
   })();
 
-  // Each section is only shown when the turn actually has its tools, so a turn without
-  // them never offers a plan or to tell the user later.
-  let resolved = base;
-  if (plannerEnabled(options)) {
-    cachedPlannerPrompt ??= await plannerSystemPrompt.resolve({});
-    resolved = appendPrompt(resolved, cachedPlannerPrompt);
-  }
-  if (options.legacyWatchEnabled) {
-    cachedWatchPrompt ??= await watchSystemPrompt.resolve({});
-    resolved = appendPrompt(resolved, cachedWatchPrompt);
-  }
-  return resolved;
-}
-
-function appendPrompt<T extends { promptId: string; text: string }>(
-  base: T,
-  extra: { promptId: string; text: string }
-): T {
-  // Both ids, so telemetry names the prompt the turn actually ran.
+  // The planner section is only shown when the turn has the plan tools.
+  if (!plannerEnabled(options)) return base;
+  cachedPlannerPrompt ??= await plannerSystemPrompt.resolve({});
   return {
     ...base,
-    promptId: `${base.promptId}+${extra.promptId}`,
-    text: composeSystemPrompt(base.text, extra.text),
+    // Both ids, so telemetry names the prompt the turn actually ran.
+    promptId: `${base.promptId}+${cachedPlannerPrompt.promptId}`,
+    text: composeSystemPrompt(base.text, cachedPlannerPrompt.text),
   };
 }
 
 /** The prompt options a turn's client data asks for. */
 export function promptOptionsFor(
-  clientData:
-    | {
-        toolScope?: string;
-        watchEnabled?: boolean;
-        alertsEnabled?: boolean;
-        legacyWatchEnabled?: boolean;
-      }
-    | undefined
+  clientData: { toolScope?: string; alertsEnabled?: boolean } | undefined
 ): DashboardAgentPromptOptions {
   return {
-    watchEnabled: clientData?.watchEnabled,
     alertsEnabled: clientData?.alertsEnabled,
-    legacyWatchEnabled: clientData?.legacyWatchEnabled,
     scope: clientData?.toolScope === "alert_creation" ? "alert_creation" : undefined,
   };
 }
@@ -385,13 +334,8 @@ export const clientDataSchema = z.object({
   currentPage: z.string().optional(),
   // Structured version of `currentPage`, injected by the `in` proxy.
   pageContext: agentPageContextSchema.optional(),
-  // Whether this turn may offer watches, resolved server-side. Defaults to off, so a
-  // host that doesn't send it gets no watch tools and no watch guidance.
-  watchEnabled: z.boolean().default(false),
-  // Server-resolved from the org's alerts gate: the monitoring alert and plan tools.
+  // Server-resolved from the org's alerts gate: the monitoring alert tools are attached only when true.
   alertsEnabled: z.boolean().default(false),
-  // The legacy watch tools and guidance. Off unless the host sends it.
-  legacyWatchEnabled: z.boolean().default(false),
   toolScope: z.string().optional(),
   alertDraft: alertCreationDraftSchema.optional(),
   // Injected server-side by the `in` proxy each turn, never sent from the
@@ -535,24 +479,14 @@ export function buildTurnTools(
   return scopeTurnTools(tools, clientData);
 }
 
-/** On a creation turn: the draft tools on, create and the watch tools off, as head-start has it. */
+/** On a creation turn: the draft tools on, create off, as head-start has it. */
 export function scopeTurnTools(
   tools: ToolSet,
-  clientData:
-    | {
-        toolScope?: string;
-        watchEnabled?: boolean;
-        alertsEnabled?: boolean;
-        legacyWatchEnabled?: boolean;
-        repoSnapshot?: unknown;
-      }
-    | undefined
+  clientData: { toolScope?: string; alertsEnabled?: boolean; repoSnapshot?: unknown } | undefined
 ): ToolSet {
   if (clientData?.toolScope !== "alert_creation") return tools;
   return toolsForTurn(tools, modeFor(clientData), {
-    watchEnabled: clientData.watchEnabled,
     alertsEnabled: clientData.alertsEnabled,
-    legacyWatchEnabled: clientData.legacyWatchEnabled,
     scope: "alert_creation",
   });
 }

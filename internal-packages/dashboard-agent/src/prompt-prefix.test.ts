@@ -33,25 +33,25 @@ describe("the system prompt style", () => {
  */
 describe("the head-start and agent prefixes are the same prefix", () => {
   // The head-start step composes its prefix from the shared helpers; the agent run
-  // builds the real tool set. Both flag values, both modes, or the cache splits.
+  // builds the real tool set. Both modes, or the cache splits.
   for (const mode of ["assistant", "code"] as const) {
-    for (const watchEnabled of [false, true]) {
-      it(`matches in ${mode} mode with watches ${watchEnabled ? "on" : "off"}`, () => {
+    for (const alertsEnabled of [false, true]) {
+      it(`matches in ${mode} mode with alerts ${alertsEnabled ? "on" : "off"}`, () => {
         const ctx = {
           ...SCOPE,
-          watchEnabled,
+          alertsEnabled,
           ...(mode === "code" ? { repoSnapshot: snapshot } : {}),
         };
         const headStart = describePromptPrefix({
-          system: systemPromptFor(mode, { watchEnabled }),
-          tools: toolSchemasFor(mode, { watchEnabled }),
+          system: systemPromptFor(mode, { alertsEnabled }),
+          tools: toolSchemasFor(mode, { alertsEnabled }),
         });
         const agent = describePromptPrefix({
-          system: systemPromptFor(mode, { watchEnabled }),
+          system: systemPromptFor(mode, { alertsEnabled }),
           tools: buildDashboardAgentTools(ctx),
         });
 
-        expect(Object.keys(toolSchemasFor(mode, { watchEnabled }))).toEqual(
+        expect(Object.keys(toolSchemasFor(mode, { alertsEnabled }))).toEqual(
           Object.keys(buildDashboardAgentTools(ctx))
         );
         expect(agent.fingerprint).toBe(headStart.fingerprint);
@@ -155,15 +155,15 @@ const PREFIX_BUDGET = {
   code: { chars: 88_210, estimatedTokens: 22_060, tools: 32, promptChars: 37_480 },
 } as const;
 
-// Measured with watches on: the biggest prefix a turn can hand the provider.
+// Measured with alerts on: the biggest prefix a turn can hand the provider.
 describe("the prefix stays inside its budget", () => {
   const assistant = describePromptPrefixParts({
-    system: systemPromptFor("assistant", { watchEnabled: true }),
-    tools: toolSchemasFor("assistant", { watchEnabled: true }),
+    system: systemPromptFor("assistant", { alertsEnabled: true }),
+    tools: toolSchemasFor("assistant", { alertsEnabled: true }),
   });
   const code = describePromptPrefixParts({
-    system: systemPromptFor("code", { watchEnabled: true }),
-    tools: toolSchemasFor("code", { watchEnabled: true }),
+    system: systemPromptFor("code", { alertsEnabled: true }),
+    tools: toolSchemasFor("code", { alertsEnabled: true }),
   });
 
   it("holds the assistant-mode ceilings", () => {

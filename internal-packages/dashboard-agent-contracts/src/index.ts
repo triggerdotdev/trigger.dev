@@ -15,6 +15,4 @@ export * from "./queue-grounding.js";
 export * from "./run-filters.js";
 export * from "./suggested-prompts.js";
 export * from "./trigger-uri.js";
-export * from "./watch.js";
-export * from "./watch-wording.js";
 export * from "./well-formed.js";

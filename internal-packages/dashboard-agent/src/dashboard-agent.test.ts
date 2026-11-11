@@ -59,12 +59,8 @@ import {
   type StoreCalls,
   userMessage,
 } from "./test-support";
-import { getSystemPrompt } from "./agent-runtime";
-import { systemPromptFor, toolSchemasFor } from "./prompt-assembly";
-import {
-  DASHBOARD_AGENT_MONITORING_ALERT_TOOL_NAMES,
-  DASHBOARD_AGENT_WATCH_TOOL_NAMES,
-} from "./tool-schemas";
+import { toolSchemasFor } from "./prompt-assembly";
+import { DASHBOARD_AGENT_MONITORING_ALERT_TOOL_NAMES } from "./tool-schemas";
 import { buildDashboardAgentTools } from "./tools";
 
 describe("dashboardAgent (mock harness)", () => {
@@ -127,8 +123,8 @@ describe("dashboardAgent (mock harness)", () => {
 
     it("names it on the first exchange", () => {
       expect(isFirstUserExchange([user("u1")])).toBe(true);
-      // No human message at all is not an exchange: a chat a watch created, whose
-      // only user-role messages are requests the agent filed for itself, keeps its name.
+      // No human message at all is not an exchange: a chat whose only user-role
+      // messages are requests the agent filed for itself keeps its name.
       expect(isFirstUserExchange([])).toBe(false);
       expect(isFirstUserExchange([user("wake-request:watch:w1:fired"), assistant("a1")])).toBe(
         false
@@ -146,10 +142,6 @@ describe("dashboardAgent (mock harness)", () => {
 
     it("does not rename on a later exchange", () => {
       expect(isFirstUserExchange([user("u1"), assistant("a1"), user("u2")])).toBe(false);
-    });
-
-    it("ignores a watch consent record, which the user never typed", () => {
-      expect(isFirstUserExchange([user("watch-request:watch_1"), user("u1")])).toBe(true);
     });
   });
 
@@ -1107,24 +1099,6 @@ describe("a turn that ends in an error", () => {
   });
 });
 
-describe("the system prompt", () => {
-  it("only carries the watch guidance when watches are enabled", async () => {
-    for (const mode of ["assistant", "code"] as const) {
-      const off = await getSystemPrompt(mode);
-      expect(off.text).not.toContain("Watches - telling the user later");
-      expect(off.text).not.toContain("schedule_watch");
-
-      expect(off.text).toBe(systemPromptFor(mode));
-
-      const on = await getSystemPrompt(mode, { legacyWatchEnabled: true });
-      expect(on.text).toContain("Watches - telling the user later");
-      expect(on.text).toContain("schedule_watch");
-      // The turn's prompt is exactly what the head-start helper composes.
-      expect(on.text).toBe(systemPromptFor(mode, { legacyWatchEnabled: true }));
-    }
-  });
-});
-
 // Back-compat: resumed chats replay their original metadata shape.
 describe("clientDataSchema", () => {
   it("accepts the old shape a chat created before pageContext replays", () => {
@@ -1138,16 +1112,16 @@ describe("clientDataSchema", () => {
     expect(parsed.success).toBe(true);
   });
 
-  it("defaults watchEnabled to false, and takes it when the host sends it", () => {
+  it("defaults alertsEnabled to false, and takes it when the host sends it", () => {
     const absent = clientDataSchema.safeParse({ userId: "user_1", organizationId: "org_1" });
-    expect(absent.data?.watchEnabled).toBe(false);
+    expect(absent.data?.alertsEnabled).toBe(false);
 
     const enabled = clientDataSchema.safeParse({
       userId: "user_1",
       organizationId: "org_1",
-      watchEnabled: true,
+      alertsEnabled: true,
     });
-    expect(enabled.data?.watchEnabled).toBe(true);
+    expect(enabled.data?.alertsEnabled).toBe(true);
   });
 
   it("accepts only the org + user pair", () => {
@@ -1222,14 +1196,12 @@ describe("clientDataSchema", () => {
 
 describe("buildDashboardAgentTools", () => {
   it("exposes the read tools plus render_view, and the data tools fail closed with no token", async () => {
-    const tools = buildDashboardAgentTools({ watchEnabled: true, legacyWatchEnabled: true });
+    const tools = buildDashboardAgentTools({ alertsEnabled: true });
     expect(Object.keys(tools).sort()).toEqual(
       [
         "analyze_query_alert",
         "ask_support",
         "correlate_version",
-        "create_watch_subscription",
-        "delete_watch_subscription",
         "describe_alert_capabilities",
         "get_current_page",
         "get_deploy",
@@ -1246,7 +1218,6 @@ describe("buildDashboardAgentTools", () => {
         "list_projects",
         "list_runs",
         "list_tasks",
-        "list_watch_subscriptions",
         "locate",
         "navigate_to",
         "plan_decision",
@@ -1254,7 +1225,6 @@ describe("buildDashboardAgentTools", () => {
         "resolve_monitoring_alert",
         "run_query",
         "render_view",
-        "schedule_watch",
         "search_docs",
         "submit_feedback",
       ].sort()
@@ -1282,30 +1252,8 @@ describe("buildDashboardAgentTools", () => {
     }
   });
 
-  // The alert tools report a watch firing, so they are watch tools too.
-  it("only registers the watch tools when the client enables them", () => {
-    for (const ctx of [{}, { legacyWatchEnabled: false }]) {
-      const names = Object.keys(buildDashboardAgentTools(ctx));
-      for (const name of DASHBOARD_AGENT_WATCH_TOOL_NAMES) expect(names).not.toContain(name);
-    }
-
-    const enabled = Object.keys(buildDashboardAgentTools({ legacyWatchEnabled: true }));
-    for (const name of DASHBOARD_AGENT_WATCH_TOOL_NAMES) expect(enabled).toContain(name);
-  });
-
-  // Catches: the alerts gate turning the legacy watch back on, or leaving the planner off.
-  it("gives an alerts-enabled turn the planner and no legacy watch", () => {
-    const names = Object.keys(buildDashboardAgentTools({ alertsEnabled: true }));
-    const schemas = Object.keys(toolSchemasFor("assistant", { alertsEnabled: true }));
-    for (const list of [names, schemas]) {
-      expect(list).toEqual(expect.arrayContaining(["plan_monitoring", "plan_decision"]));
-      for (const name of DASHBOARD_AGENT_WATCH_TOOL_NAMES) expect(list).not.toContain(name);
-    }
-    expect(systemPromptFor("assistant", { alertsEnabled: true })).not.toContain("schedule_watch");
-  });
-
   it("only registers the monitoring alert tools when alerts are enabled", () => {
-    for (const ctx of [{}, { watchEnabled: false }]) {
+    for (const ctx of [{}, { alertsEnabled: false }]) {
       const names = Object.keys(buildDashboardAgentTools(ctx));
       const schemas = Object.keys(toolSchemasFor("assistant", ctx));
       for (const name of DASHBOARD_AGENT_MONITORING_ALERT_TOOL_NAMES) {
@@ -1314,8 +1262,8 @@ describe("buildDashboardAgentTools", () => {
       }
     }
 
-    const names = Object.keys(buildDashboardAgentTools({ watchEnabled: true }));
-    const schemas = Object.keys(toolSchemasFor("assistant", { watchEnabled: true }));
+    const names = Object.keys(buildDashboardAgentTools({ alertsEnabled: true }));
+    const schemas = Object.keys(toolSchemasFor("assistant", { alertsEnabled: true }));
     const chatTools = DASHBOARD_AGENT_MONITORING_ALERT_TOOL_NAMES.filter(
       (name) => name !== "update_alert_draft"
     );
@@ -1325,8 +1273,8 @@ describe("buildDashboardAgentTools", () => {
 
   // Catches: a chat turn patching a draft that only the creation wizard has.
   it("offers update_alert_draft only in the alert_creation scope", () => {
-    const chat = { watchEnabled: true };
-    const creating = { watchEnabled: true, toolScope: "alert_creation" } as const;
+    const chat = { alertsEnabled: true };
+    const creating = { alertsEnabled: true, toolScope: "alert_creation" } as const;
     expect(Object.keys(buildDashboardAgentTools(chat))).not.toContain("update_alert_draft");
     expect(Object.keys(toolSchemasFor("assistant", chat))).not.toContain("update_alert_draft");
     expect(Object.keys(buildDashboardAgentTools(creating))).toContain("update_alert_draft");
@@ -1697,7 +1645,6 @@ describe("buildDashboardAgentTools", () => {
       ...SCOPE,
       investigations: capability,
       repoSnapshot: codeSnapshot,
-      legacyWatchEnabled: true,
     });
 
     // Cited but never read: the render fails on the citation, so there is no card to
@@ -1714,11 +1661,7 @@ describe("buildDashboardAgentTools", () => {
 
     const grounded = await renderInvestigation(tools, concludedWithSource);
     const actions = grounded.blocks[0].capabilities.actions;
-    expect(actions.map((a: { kind: string }) => a.kind)).toEqual([
-      "show_code",
-      "watch_recurrence",
-      "view_similar",
-    ]);
+    expect(actions.map((a: { kind: string }) => a.kind)).toEqual(["show_code", "view_similar"]);
     expect(actions[0].intent.kind).toBe("ask");
     // The ask proposes a change rather than another explanation.
     const prompt: string = actions[0].intent.prompt;
@@ -1728,57 +1671,10 @@ describe("buildDashboardAgentTools", () => {
     expect(prompt).toMatch(/dirty tree|branch head/i);
     expect(prompt).toMatch(/don't restate the investigation/i);
 
-    // "Watch for a repeat" carries the kind and the subject, so the Watch card is
-    // pre-filled without another model turn.
     expect(actions[1].intent).toEqual({
-      kind: "watch",
-      spec: {
-        kind: "error_recurrence",
-        fingerprint: "c4b4a797397a9c43",
-        checkEveryMinutes: 15,
-        maxHours: 24,
-        note: `A repeat of: ${concludedWithSource.title}`,
-      },
-    });
-
-    expect(actions[2].intent).toEqual({
       kind: "navigate",
       target: "trigger://proj_abc/env_abc/error/c4b4a797397a9c43",
     });
-  });
-
-  // A concluded card citing no error group has no subject to pre-fill from, so the
-  // button is left off rather than offered empty.
-  it("offers no repeat watch when the card cites no error group", async () => {
-    const { capability } = fakeInvestigations();
-    const tools = buildDashboardAgentTools({ ...SCOPE, investigations: capability });
-
-    const output = await renderInvestigation(tools, concludedState);
-    const kinds = (output.blocks[0].capabilities?.actions ?? []).map(
-      (a: { kind: string }) => a.kind
-    );
-    expect(kinds).not.toContain("watch_recurrence");
-  });
-
-  // The button opens the watch card, so it is only offered when the turn can watch.
-  it("offers the repeat watch only when the client enables watches", async () => {
-    const citesError = {
-      ...concludedState,
-      evidence: [{ kind: "error", uri: "error_c4b4a797397a9c43", label: "the error group" }],
-    };
-    const kindsFor = async (watchEnabled: boolean) => {
-      const { capability } = fakeInvestigations();
-      const tools = buildDashboardAgentTools({
-        ...SCOPE,
-        investigations: capability,
-        legacyWatchEnabled: watchEnabled,
-      });
-      const output = await renderInvestigation(tools, citesError);
-      return (output.blocks[0].capabilities?.actions ?? []).map((a: { kind: string }) => a.kind);
-    };
-
-    expect(await kindsFor(false)).not.toContain("watch_recurrence");
-    expect(await kindsFor(true)).toContain("watch_recurrence");
   });
 
   it("offers no actions while an investigation is still in progress", async () => {
@@ -1788,9 +1684,7 @@ describe("buildDashboardAgentTools", () => {
     expect(output.blocks[0].capabilities).toBeUndefined();
   });
 
-  // An inconclusive card has no cause to watch for a repeat of, so the handoff stays
-  // off it.
-  it("offers a keep-digging follow-up, and never Show code or a repeat watch, on an inconclusive card", async () => {
+  it("offers a keep-digging follow-up, and never Show code, on an inconclusive card", async () => {
     await seedWorkspace();
     const { capability } = fakeInvestigations();
     const tools = buildDashboardAgentTools({
@@ -2004,83 +1898,6 @@ describe("buildDashboardAgentTools", () => {
       yAxisColumns: ["runs"],
     };
     await expect(renderView.execute({ blocks: [chart] }, {})).resolves.toEqual({ blocks: [chart] });
-  });
-
-  const WATCH_CTX = {
-    userActorToken: "uat_token",
-    apiOrigin: "http://localhost:3030",
-    chatId: "chat_1",
-    legacyWatchEnabled: true,
-  };
-
-  const RUN_WATCH = {
-    kind: "run_finished" as const,
-    runId: "run_a1",
-    checkEveryMinutes: 1 as const,
-    maxHours: 2,
-    note: "tell me when the receipt run finishes",
-  };
-
-  // Records any request schedule_watch would have made. It must make none: the card
-  // the intent opens is the only thing that creates a watch.
-  async function scheduleWatch(
-    input: unknown = { watch: RUN_WATCH },
-    ctx: Record<string, unknown> = WATCH_CTX
-  ) {
-    const requests: string[] = [];
-    const original = globalThis.fetch;
-    globalThis.fetch = (async (url: Parameters<typeof fetch>[0]) => {
-      requests.push(String(url));
-      return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
-    }) as typeof fetch;
-    try {
-      const tools = buildDashboardAgentTools(ctx);
-      const scheduleTool = tools.schedule_watch as {
-        inputSchema: { parse: (input: unknown) => unknown };
-        execute: (input: unknown, opts: unknown) => Promise<any>;
-      };
-      const result = await scheduleTool.execute(input, {});
-      return { result, requests };
-    } finally {
-      globalThis.fetch = original;
-    }
-  }
-
-  it("schedule_watch returns a watch intent and creates nothing", async () => {
-    const { result, requests } = await scheduleWatch();
-
-    expect(result).toEqual({ intent: { kind: "watch", spec: RUN_WATCH } });
-    expect(requests).toEqual([]);
-  });
-
-  it("schedule_watch has no consent parameter — the card owns the opt-ins", () => {
-    const tools = buildDashboardAgentTools(WATCH_CTX);
-    const scheduleTool = tools.schedule_watch as {
-      inputSchema: { parse: (input: unknown) => unknown };
-    };
-    const parsed = scheduleTool.inputSchema.parse({
-      watch: RUN_WATCH,
-      investigateOnAttention: true,
-    });
-    expect(parsed).toEqual({ watch: RUN_WATCH });
-  });
-
-  it("schedule_watch rejects a spec the contract won't accept", async () => {
-    // Aggregate conditions are floored at 5 minutes by the contract's schema.
-    const floored = await scheduleWatch({
-      watch: {
-        kind: "backlog_drain",
-        queue: "task/x",
-        checkEveryMinutes: 1,
-        maxHours: 1,
-        note: "n",
-      },
-    });
-    expect(typeof floored.result.error).toBe("string");
-    expect(floored.requests).toEqual([]);
-
-    const nonsense = await scheduleWatch({ watch: { kind: "run_finished" } });
-    expect(typeof nonsense.result.error).toBe("string");
   });
 
   // The env-JWT exchange is a webapp request plus DB work, so it is paid for once per
@@ -2366,167 +2183,6 @@ describe("buildDashboardAgentTools", () => {
 
     expect(first.page).toEqual({ kind: "queue", name: "email" });
     expect(second.page).toEqual({ kind: "run", runId: "run_2" });
-  });
-});
-
-describe("watch alert tools", () => {
-  const ALERT_CTX = {
-    userActorToken: "uat_token",
-    apiOrigin: "http://localhost:3030",
-    projectRef: "proj_abc",
-    environmentName: "prod",
-    chatId: "chat_alerts",
-    legacyWatchEnabled: true,
-  };
-
-  // Hands back the tool's result and the request the webapp would have received.
-  async function callAlertTool(
-    name: string,
-    input: unknown,
-    response: { status?: number; body: unknown },
-    ctx: Record<string, unknown> = ALERT_CTX
-  ) {
-    const requests: Array<{ url: string; init: RequestInit | undefined }> = [];
-    const original = globalThis.fetch;
-    globalThis.fetch = (async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
-      requests.push({ url: String(url), init });
-      return new Response(JSON.stringify(response.body), {
-        status: response.status ?? 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    }) as typeof fetch;
-    try {
-      const tools = buildDashboardAgentTools(ctx);
-      const tool = tools[name] as {
-        inputSchema: { parse: (input: unknown) => unknown };
-        execute: (input: unknown, opts: unknown) => Promise<any>;
-      };
-      const result = await tool.execute(tool.inputSchema.parse(input), {});
-      return { result, requests };
-    } finally {
-      globalThis.fetch = original;
-    }
-  }
-
-  it("list_watch_subscriptions reads the project's subscriptions as the user", async () => {
-    const alerts = [{ id: "alert_1", type: "EMAIL", label: "k***@trigger.dev", enabled: true }];
-    const { result, requests } = await callAlertTool(
-      "list_watch_subscriptions",
-      {},
-      { body: { alerts } }
-    );
-
-    expect(requests).toHaveLength(1);
-    expect(requests[0]?.url).toBe(
-      "http://localhost:3030/api/v1/dashboard-agent/alerts?chatId=chat_alerts"
-    );
-    expect(requests[0]?.init?.method).toBe("GET");
-    expect((requests[0]?.init?.headers as Record<string, string> | undefined)?.Authorization).toBe(
-      "Bearer uat_token"
-    );
-    expect(result).toEqual({ alerts });
-  });
-
-  // The body below is exactly what `api.v1.dashboard-agent.alerts.ts` returns on success:
-  // the channel flat, with no envelope around it.
-  const CREATED_CHANNEL = {
-    id: "alert_2",
-    type: "EMAIL",
-    target: "so…@example.com",
-    enabled: true,
-  };
-
-  it("create_watch_subscription posts the email channel and reports the created alert", async () => {
-    const { result, requests } = await callAlertTool(
-      "create_watch_subscription",
-      { email: "someone@example.com" },
-      { body: CREATED_CHANNEL }
-    );
-
-    expect(requests[0]?.url).toBe("http://localhost:3030/api/v1/dashboard-agent/alerts");
-    expect(requests[0]?.init?.method).toBe("POST");
-    expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({
-      chatId: "chat_alerts",
-      channel: "email",
-      email: "someone@example.com",
-    });
-    expect(result).toEqual({ created: true, alert: CREATED_CHANNEL });
-
-    // With no email the host defaults to the user's account email, so the body carries
-    // only the chat scope and the channel.
-    const noEmail = await callAlertTool("create_watch_subscription", {}, { body: CREATED_CHANNEL });
-    expect(JSON.parse(String(noEmail.requests[0]?.init?.body))).toEqual({
-      chatId: "chat_alerts",
-      channel: "email",
-    });
-  });
-
-  // `code` is the key both alert routes send a 403 refusal under.
-  it("create_watch_subscription relays a 403 with the reason the host gave", async () => {
-    const noEmailSetup = await callAlertTool(
-      "create_watch_subscription",
-      {},
-      { status: 403, body: { error: "denied", code: "email_alerts_not_configured" } }
-    );
-    expect(noEmailSetup.result.error).toContain("isn't set up on this instance");
-    expect(noEmailSetup.result.error).toContain("dashboard");
-
-    const flag = await callAlertTool(
-      "create_watch_subscription",
-      {},
-      { status: 403, body: { error: "denied", code: "dashboard_agent_disabled" } }
-    );
-    expect(flag.result.error).toContain("aren't enabled here");
-  });
-
-  it("create_watch_subscription relays the address refusal verbatim", async () => {
-    const refused = await callAlertTool(
-      "create_watch_subscription",
-      { email: "someone@else.com" },
-      {
-        status: 400,
-        body: {
-          code: "email_not_allowed",
-          error: "Alerts can only be sent to your own account email.",
-        },
-      }
-    );
-    expect(refused.result.error).toBe("Alerts can only be sent to your own account email.");
-  });
-
-  it("delete_watch_subscription deletes by id and surfaces a failure as text", async () => {
-    const { result, requests } = await callAlertTool(
-      "delete_watch_subscription",
-      { alertId: "alert_1" },
-      { body: { ok: true } }
-    );
-    expect(requests[0]?.url).toBe("http://localhost:3030/api/v1/dashboard-agent/alerts/alert_1");
-    expect(requests[0]?.init?.method).toBe("DELETE");
-    expect(result).toEqual({ deleted: true, alertId: "alert_1" });
-
-    const missing = await callAlertTool(
-      "delete_watch_subscription",
-      { alertId: "alert_gone" },
-      { status: 404, body: { error: "No such alert." } }
-    );
-    expect(missing.result.error).toBe("No such alert.");
-  });
-
-  it("the alert tools fail closed with no delegated token, without hitting the network", async () => {
-    for (const [name, input] of [
-      ["list_watch_subscriptions", {}],
-      ["create_watch_subscription", {}],
-      ["delete_watch_subscription", { alertId: "alert_1" }],
-    ] as const) {
-      const { result, requests } = await callAlertTool(
-        name,
-        input,
-        { body: {} },
-        { legacyWatchEnabled: true }
-      );
-      expect(typeof result.error).toBe("string");
-      expect(requests).toHaveLength(0);
-    }
   });
 });
 

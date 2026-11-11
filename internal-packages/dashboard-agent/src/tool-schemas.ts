@@ -10,8 +10,7 @@ import {
   parseJsonText,
   planDecisionInputSchema,
   runFiltersSchema,
-  viewBlockInputSchemaFor,
-  watchSpecSchema,
+  viewBlockInputSchema,
 } from "@internal/dashboard-agent-contracts";
 import { tool } from "ai";
 import { z } from "zod";
@@ -347,68 +346,16 @@ export const navigateToSchema = tool({
 // A new block needs a schema in dashboard-agent-contracts (src/blocks.ts) and a
 // renderer entry in components/dashboard-agent/view-catalog.tsx.
 
-const RENDER_VIEW_ACTIONS_WATCH_DOC =
-  "a `watch` intent opens the watch configuration card pre-filled with the spec you composed, ";
-
-function renderViewSchemaFor(options: { watchEnabled: boolean }) {
-  const watchDoc = options.watchEnabled ? RENDER_VIEW_ACTIONS_WATCH_DOC : "";
-  return tool({
-    description: `Render a structured view in the dashboard panel: a stack of catalog blocks, instead of plain prose. The catalog has four blocks: \`diagnosis\` (the 'why did this run fail?' failure card, after gathering evidence with the read/source tools), \`chart\` (a line/bar chart of run_query results), \`actions\` (a row of 1-3 buttons offering next steps - ${watchDoc}an \`ask\` intent sends the labelled question as the user's next message), and \`investigation\` (a live card for a hypothesis-driven investigation: report the state and the tool assigns and keeps its identity, so re-rendering it updates the same card). The result carries the \`investigationId\` it assigned - pass that back as \`investigationId\` when you render the same investigation again, including on a later turn. An investigation is rendered at least TWICE: once as \`in_progress\` when you open it, then again with the same \`investigationId\` carrying the final outcome (\`concluded\` or \`inconclusive\`), as the last tool call of the turn. A card left at \`in_progress\` is an unfinished answer whatever your prose says: the user is left staring at a spinner. Keep any accompanying message to a one-line lead-in.`,
-    inputSchema: z.object({
-      blocks: z
-        .array(viewBlockInputSchemaFor(options))
-        .min(1)
-        .describe("The blocks to render, top to bottom."),
-      investigationId: z
-        .string()
-        .optional()
-        .describe(
-          "The investigationId a previous render_view returned, to revise that same investigation instead of opening a new one. Use it on follow-up turns about the same investigation. Omit to start a new one."
-        ),
-    }),
-  });
-}
-
-export const renderViewSchema = renderViewSchemaFor({ watchEnabled: true });
-export const renderViewSchemaWithoutWatch = renderViewSchemaFor({ watchEnabled: false });
-
-// `watchSpecSchema` enforces the cadence floors and 24h ceiling. `since` for error
-// recurrence is server-set on persist, so it is absent here.
-
-export const scheduleWatchSchema = tool({
-  description:
-    "Fill in a watch for the user to confirm. Use this whenever they want to be told about a future event: a run starting or finishing, a queue draining, growing past a threshold or coming back below one, a queue that stops moving at all, runs waiting in a queue longer than a limit, an error recurring, the health report recovering. This is the ONLY way to answer that - never poll by calling read tools over and over. It does NOT start the watch: it opens a configuration card pre-filled with what you composed, and the user confirming that card is what starts it. So never say a watch is running, scheduled, or that you'll tell them later - say you've filled one in for them to review. A watch checks on its own cadence and reports ONCE; it stops within 24 hours either way. `note` is why the watch exists in the user's own words - it is shown with the result. Watches are limited to the current project/environment: naming a run, queue, error or report you read from another one is refused.",
+export const renderViewSchema = tool({
+  description: `Render a structured view in the dashboard panel: a stack of catalog blocks, instead of plain prose. The catalog has four blocks: \`diagnosis\` (the 'why did this run fail?' failure card, after gathering evidence with the read/source tools), \`chart\` (a line/bar chart of run_query results), \`actions\` (a row of 1-3 buttons offering next steps - an \`ask\` intent sends the labelled question as the user's next message), and \`investigation\` (a live card for a hypothesis-driven investigation: report the state and the tool assigns and keeps its identity, so re-rendering it updates the same card). The result carries the \`investigationId\` it assigned - pass that back as \`investigationId\` when you render the same investigation again, including on a later turn. An investigation is rendered at least TWICE: once as \`in_progress\` when you open it, then again with the same \`investigationId\` carrying the final outcome (\`concluded\` or \`inconclusive\`), as the last tool call of the turn. A card left at \`in_progress\` is an unfinished answer whatever your prose says: the user is left staring at a spinner. Keep any accompanying message to a one-line lead-in.`,
   inputSchema: z.object({
-    watch: watchSpecSchema.describe(
-      "What to watch, how often to check, and how long to keep watching. `note` is why the watch exists in the user's own words - it is shown when it fires."
-    ),
-  }),
-});
-
-export const listWatchSubscriptionsSchema = tool({
-  description:
-    'List this project\'s alert subscriptions - who is notified when a watch resolves, and whether each is enabled. Use this to answer "what alerts do I have?".',
-  inputSchema: z.object({}),
-});
-
-export const createWatchSubscriptionSchema = tool({
-  description:
-    "Subscribe to an email alert for every watch that resolves in this project, to the user's own account email. ONLY call this when the user explicitly asked for an alert - never as a helpful extra. If denied, relay that honestly and offer the dashboard notification, which is always on, instead.",
-  inputSchema: z.object({
-    email: z
+    blocks: z.array(viewBlockInputSchema).min(1).describe("The blocks to render, top to bottom."),
+    investigationId: z
       .string()
       .optional()
       .describe(
-        "Omit this - alerts only go to the user's own account email; any other address is rejected."
+        "The investigationId a previous render_view returned, to revise that same investigation instead of opening a new one. Use it on follow-up turns about the same investigation. Omit to start a new one."
       ),
-  }),
-});
-
-export const deleteWatchSubscriptionSchema = tool({
-  description:
-    "Turn one alert subscription off, by its id. Watch results still show in the dashboard.",
-  inputSchema: z.object({
-    alertId: z.string().describe("The alert id from list_watch_subscriptions."),
   }),
 });
 
@@ -594,17 +541,6 @@ export const DASHBOARD_AGENT_ALERT_CREATION_EXCLUDED_TOOLS = [
   "list_monitoring_alerts",
   "plan_monitoring",
   "plan_decision",
-  "schedule_watch",
-  "list_watch_subscriptions",
-  "create_watch_subscription",
-  "delete_watch_subscription",
-] as const;
-
-export const DASHBOARD_AGENT_WATCH_TOOL_NAMES = [
-  "schedule_watch",
-  "list_watch_subscriptions",
-  "create_watch_subscription",
-  "delete_watch_subscription",
 ] as const;
 
 /** The schema-only tool set, in the same key order `tools.ts` attaches executes in. */
@@ -630,10 +566,6 @@ export const dashboardAgentToolSchemas = {
   search_docs: searchDocsSchema,
   get_current_page: getCurrentPageSchema,
   navigate_to: navigateToSchema,
-  schedule_watch: scheduleWatchSchema,
-  list_watch_subscriptions: listWatchSubscriptionsSchema,
-  create_watch_subscription: createWatchSubscriptionSchema,
-  delete_watch_subscription: deleteWatchSubscriptionSchema,
   locate: locateSchema,
   describe_alert_capabilities: describeAlertCapabilitiesSchema,
   update_alert_draft: updateAlertDraftSchema,
@@ -888,32 +820,6 @@ export const DASHBOARD_AGENT_PLANNER_PROMPT = `Planning alerts for a monitoring 
 - Once a plan's alerts are created, answer questions about them in plain text. Call plan_monitoring again only when the user explicitly asks to watch something new, with only NEW items (never created ones; name the created alert in intro if relevant).
 - On follow-ups, call plan_monitoring again with the revised plan: same ids for unchanged items, new ids for new ones, same lineage; a new goal gets a new lineage.
 - Outside alert_creation scope, propose a query alert via plan_monitoring.`;
-
-// Appended to the system prompt only for turns where watches are enabled: without the
-// watch tool the agent must not offer to tell the user later.
-export const DASHBOARD_AGENT_WATCH_PROMPT = `You have the watch tools too:
-- Precedence: monitoring goals, exploratory requests and the "Set up a watch" message follow "Planning alerts for a monitoring goal" (plan_monitoring). schedule_watch and the \`watch\` intent are only for a one-off "tell me when this specific run, queue, error or report changes".
-- schedule_watch: fill in a watch - for something to happen (a run finishing, a queue draining, crossing a depth threshold either way, stalling, or its runs waiting past an SLA, an error recurring, health recovering) - and show it to the user to confirm.
-- list_watch_subscriptions: the project's alert subscriptions.
-- create_watch_subscription: subscribe to an email alert for watch fires.
-- delete_watch_subscription: turn one off.
-- render_view "actions" takes a watch intent too. Watch limits don't apply to alerts.
-
-Watches - telling the user later:
-- When the user wants to be told when something happens ("tell me when this run finishes", "let me know when the backlog drains", "tell me when it's back under 100", "tell me if that queue stops moving", "ping me if runs start waiting more than 5 minutes", "ping me if that error comes back", "tell me when prod is healthy again"), call schedule_watch. Never poll: repeating a read tool until the thing happens is not a watch, and you cannot wait inside a turn.
-- Offer a watch whenever your answer points at something worth monitoring that you can't resolve now: a recurring or unresolved error, a queue trending toward trouble, a condition the user would want to hear about the moment it changes. The offer is two things in this order: one short line ("Want me to set up a watch so you're told if it hits again?") as the LAST sentence of your answer, and THEN the render_view "actions" block with one button, emitted after that line as the final part of the turn with nothing after it - label it like "Watch for a repeat", intent {"kind":"watch","spec":{…}} carrying the same spec schedule_watch would compose. Clicking it opens the configuration card pre-filled, so the user answers with a click instead of typing "yeah". One offer per answer at most; skip it when the news is good, when the user is clearly just browsing, or when a card you just rendered already carries a watch button - an investigation card, or a health report card whose next steps offer "Watch recovery". That card is the offer, and repeating it puts two watch buttons on one answer. schedule_watch is still how you answer a user who asks, in their own words, to be told when one specific thing changes.
-- An answer whose headline is an UNRESOLVED, recurring error ENDS with the watch offer - one line, "Want me to set up a watch so you're told if it hits again?", then the render_view "actions" block that makes it a button - not with generic advice alone. This is the offer rule above applied to its most common case; it is not optional there unless the planner section applies, and neither is the button.
-- schedule_watch does not start anything. It opens a configuration card pre-filled with what you composed, and the user confirming that card is what starts the watch. So say what you filled in - what is being watched, how often it checks, and when it gives up (the maxHours you set) - and that confirming starts it. Never say it's running, scheduled, or that you'll tell them later: "I've filled in a watch for you to review - confirm to start it", never "I'll let you know when it finishes". Pick the longest cadence that still answers in time - 1 minute only for a run's state, 5 minutes or more for backlog, error recurrence, and health.
-- The card settles everything after the user confirms: whether this chat can hold another watch, whether the same thing is already watched, and whether the condition is already true (in which case they get the answer instead of a watch). Never promise, predict, or pre-explain any of those.
-- A watch wake is a message you send unprompted, and it is narrated ONCE, briefly: what the outcome was, the numbers from the facts you were given, and one suggested next step. Nothing else - no new investigation, no fresh reads, no recap of the conversation.
-- The ONE exception to "no new investigation": the user consented on the card ("investigate attention outcomes"). That opt-in is the card's, it starts off, and you cannot set it - if they asked for it ("watch it and dig in if it goes wrong"), say it's there to tick before they confirm.
-- A consented investigation applies only to outcomes that need attention: a run that failed, a queue that stayed backed up, an error that came back. Good news and neutral news end the watch and nothing else happens. When the wake tells you the investigation has already started, say so in one short clause and stop: you conduct it yourself straight after, and the findings land in your next message with the card. The user never has to ask for them.
-- On an expiry, say which of the two happened: it didn't happen in the window, or the condition couldn't be verified at expiry (then give the last observation and don't claim either way).
-- Only call a wait "queue wait" when the facts measured it from when the run was queued. If the facts only have time from creation to start, call it that.
-- Being notified outside the chat is the card's other opt-in, also off by default. Don't offer an email after filling in a card - the card is where that's chosen.
-- After a wake that fired, and only if no alert is subscribed yet, your ONE suggested next step may be that same offer - one short line. Never create an alert unprompted.
-- Call create_watch_subscription only after the user confirms. If it comes back denied (plan or feature flag), say so plainly and add that the dashboard still shows the notification badge for every fire.
-- "What alerts do I have?" is list_watch_subscriptions. Turning one off is delete_watch_subscription - if which one is ambiguous, list them and ask which.`;
 
 // Used when the current project has a connected GitHub repo: the base prompt
 // plus the source-reading tools and how to use them.

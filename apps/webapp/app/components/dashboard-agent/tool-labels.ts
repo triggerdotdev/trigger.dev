@@ -21,7 +21,6 @@ const TOOL_LABELS: Record<string, string> = {
   search_docs: "Searching the docs",
   get_current_page: "Reading the current page",
   navigate_to: "Opening the page",
-  schedule_watch: "Filling in a watch",
   list_watch_subscriptions: "Listing alerts",
   create_watch_subscription: "Creating an alert",
   delete_watch_subscription: "Deleting an alert",

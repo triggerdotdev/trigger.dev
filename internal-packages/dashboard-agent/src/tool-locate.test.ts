@@ -1,8 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApiClient } from "./tool-api-client";
 import { buildLocateTool } from "./tool-locate";
-import { createSourceReadLedger, type SourceReadLedger } from "./tool-source-ledger";
-import { buildWatchTools } from "./watch-tools";
+import { type SourceReadLedger } from "./tool-source-ledger";
 
 const ORIGIN = "https://api.example.com";
 const requested: string[] = [];
@@ -232,66 +231,6 @@ describe("locate", () => {
 
     expect(result).toEqual(UNAVAILABLE);
     expect(result).not.toHaveProperty("found");
-  });
-
-  it("records the found scope so schedule_watch refuses a run or error group silently landing elsewhere", async () => {
-    const reads = createSourceReadLedger({ origin: ORIGIN, hasAuth: true, userActorToken: "uat" });
-    const ctx = { projectRef: "P1", environmentName: "dev", environmentId: "env_p1_dev" };
-    const watch = buildWatchTools({ ctx, reads }).schedule_watch as {
-      execute: (input: unknown, opts: unknown) => Promise<any>;
-    };
-
-    await locate(
-      RUN,
-      {
-        found: true,
-        kind: "run",
-        id: "run_abc",
-        scopes: [{ projectRef: "P2", environmentName: "prod", environmentId: "env_p2_prod" }],
-      },
-      200,
-      reads
-    );
-    const runResult = await watch.execute(
-      {
-        watch: {
-          kind: "run_finished",
-          runId: "run_abc",
-          checkEveryMinutes: 1,
-          maxHours: 2,
-          note: "tell me when it finishes",
-        },
-      },
-      {}
-    );
-    expect(runResult.error).toContain("Watches are limited to the current project/environment");
-    expect(runResult.error).toContain("P2/prod");
-
-    await locate(
-      ERROR,
-      {
-        found: true,
-        kind: "error",
-        id: "error_abc",
-        scopes: [{ projectRef: "P2", environmentName: "prod", environmentId: "env_p2_prod" }],
-      },
-      200,
-      reads
-    );
-    const errorResult = await watch.execute(
-      {
-        watch: {
-          kind: "error_recurrence",
-          fingerprint: "error_abc",
-          checkEveryMinutes: 5,
-          maxHours: 1,
-          note: "tell me if it recurs",
-        },
-      },
-      {}
-    );
-    expect(errorResult.error).toContain("Watches are limited to the current project/environment");
-    expect(errorResult.error).toContain("P2/prod");
   });
 
   it("passes through additive server fields it doesn't know about", async () => {

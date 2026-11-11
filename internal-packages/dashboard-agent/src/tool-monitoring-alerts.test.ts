@@ -9,7 +9,6 @@ import { createApiClient } from "./tool-api-client";
 import {
   DASHBOARD_AGENT_MONITORING_ALERT_TOOL_NAMES,
   DASHBOARD_AGENT_SYSTEM_PROMPT,
-  DASHBOARD_AGENT_WATCH_PROMPT,
   dashboardAgentToolSchemas,
   planMonitoringSchema,
   describeAlertCapabilitiesInputSchema,
@@ -19,7 +18,12 @@ import {
   alertDraftPatchSchema,
   type AlertCreationDraft,
 } from "@internal/dashboard-agent-contracts";
-import { alertDraftContextText, toolSchemasFor, withAlertDraftContext } from "./prompt-assembly";
+import {
+  alertDraftContextText,
+  systemPromptFor,
+  toolSchemasFor,
+  withAlertDraftContext,
+} from "./prompt-assembly";
 import { clientDataSchema, scopeTurnTools } from "./agent-runtime";
 import { buildDashboardAgentTools } from "./tools";
 import { alertAreaSchema, getCapability } from "@internal/alert-contracts";
@@ -28,12 +32,12 @@ describe("creation turn tools on the agent run", () => {
   const base = { userActorToken: "uat", apiOrigin: "https://api.example.com", chatId: "chat_1" };
 
   it.each([false, true])("offers update_alert_draft (alerts %s)", (alerts) => {
-    const clientData = { ...base, watchEnabled: alerts, toolScope: "alert_creation" };
+    const clientData = { ...base, alertsEnabled: alerts, toolScope: "alert_creation" };
     const tools = scopeTurnTools(buildDashboardAgentTools(clientData), clientData);
     expect(tools).toHaveProperty("update_alert_draft");
     expect(tools).toHaveProperty("describe_alert_capabilities");
     expect(Object.keys(tools)).toEqual(
-      Object.keys(toolSchemasFor("assistant", { watchEnabled: alerts, scope: "alert_creation" }))
+      Object.keys(toolSchemasFor("assistant", { alertsEnabled: alerts, scope: "alert_creation" }))
     );
   });
 
@@ -278,7 +282,6 @@ describe("alert_creation draft context", () => {
     expect(DASHBOARD_AGENT_SYSTEM_PROMPT).toContain(
       "in alert_creation scope it always ends, even after a clarifying question, by asking whether to continue the setup"
     );
-    expect(DASHBOARD_AGENT_WATCH_PROMPT).toContain("Watch limits don't apply to alerts");
   });
 
   // Mutation: capping expiry at 24h or restoring an enum fails this.
@@ -871,4 +874,18 @@ describe("plan_monitoring", () => {
     ]);
     expect(DASHBOARD_AGENT_MONITORING_ALERT_TOOL_NAMES).toContain("plan_monitoring");
   });
+});
+
+// Catches: the planner section left in the base prompt, offering a plan with no tool behind it.
+describe("what the model is told about planning alerts", () => {
+  const PLANNER = /plan_monitoring|plan_decision|Set up a watch/;
+  for (const mode of ["assistant", "code"] as const) {
+    it.each([
+      [{}, false],
+      [{ alertsEnabled: true }, true],
+      [{ alertsEnabled: true, scope: "alert_creation" as const }, false],
+    ])(`in ${mode} mode with %o, mentions the planner: %s`, (options, expected) => {
+      expect(PLANNER.test(systemPromptFor(mode, options))).toBe(expected);
+    });
+  }
 });

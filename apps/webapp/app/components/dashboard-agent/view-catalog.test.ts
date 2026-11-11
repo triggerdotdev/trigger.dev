@@ -55,16 +55,6 @@ const FIXTURES: Record<EnvelopedViewBlock["type"], EnvelopedViewBlock> = {
       footer: [],
     },
   },
-  watch_result: {
-    ...envelope("watch:watch_1"),
-    type: "watch_result",
-    outcome: "watching",
-    headline: "Watching send-order-receipt for failures.",
-    lifetime: "24h",
-    detail: null,
-    followUp: [],
-    watchId: "watch_1",
-  },
   alert_created: {
     ...envelope("alert:alert_1"),
     type: "alert_created",

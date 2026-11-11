@@ -7,15 +7,12 @@ import {
   DASHBOARD_AGENT_MONITORING_ALERT_TOOL_NAMES,
   DASHBOARD_AGENT_PLANNER_PROMPT,
   DASHBOARD_AGENT_SYSTEM_PROMPT,
-  DASHBOARD_AGENT_WATCH_PROMPT,
-  DASHBOARD_AGENT_WATCH_TOOL_NAMES,
   dashboardAgentCodeToolSchemas,
   dashboardAgentToolSchemas,
-  renderViewSchemaWithoutWatch,
 } from "./tool-schemas";
 
 /**
- * What a turn's prompt and tool set are, from its mode and the watch flag — pure, so
+ * What a turn's prompt and tool set are, from its mode — pure, so
  * the webapp's head-start step composes the same prefix the agent run does.
  *
  * Kept free of the SDK runtime (only `tool-schemas`) for the same bundle reason
@@ -25,38 +22,30 @@ import {
 export type DashboardAgentMode = "assistant" | "code";
 export type DashboardAgentScope = "default" | "alert_creation";
 export type DashboardAgentPromptOptions = {
-  watchEnabled?: boolean;
   alertsEnabled?: boolean;
-  // The legacy watch tools and prompt section. Off unless the host asks for them.
-  legacyWatchEnabled?: boolean;
   scope?: DashboardAgentScope;
 };
 
 /** The one joiner both sides use, so a resolved prompt composes like the defaults do. */
-export function composeSystemPrompt(baseText: string, watchText: string): string {
-  return `${baseText}\n\n${watchText}`;
+export function composeSystemPrompt(baseText: string, extraText: string): string {
+  return `${baseText}\n\n${extraText}`;
 }
 
 /**
  * The default system prompt text for a turn. The agent run resolves the managed
- * versions of the same two pieces and composes them the same way.
+ * versions of the same pieces and composes them the same way.
  */
 export function systemPromptFor(
   mode: DashboardAgentMode,
   options: DashboardAgentPromptOptions = {}
 ): string {
-  let text = mode === "code" ? DASHBOARD_AGENT_CODE_SYSTEM_PROMPT : DASHBOARD_AGENT_SYSTEM_PROMPT;
-  if (plannerEnabled(options)) text = composeSystemPrompt(text, DASHBOARD_AGENT_PLANNER_PROMPT);
-  if (options.legacyWatchEnabled) text = composeSystemPrompt(text, DASHBOARD_AGENT_WATCH_PROMPT);
-  return text;
+  const base = mode === "code" ? DASHBOARD_AGENT_CODE_SYSTEM_PROMPT : DASHBOARD_AGENT_SYSTEM_PROMPT;
+  return plannerEnabled(options) ? composeSystemPrompt(base, DASHBOARD_AGENT_PLANNER_PROMPT) : base;
 }
 
 /** The planner section rides with the plan tools: alerts on, outside alert_creation. */
 export function plannerEnabled(options: DashboardAgentPromptOptions): boolean {
-  return (
-    (options.watchEnabled === true || options.alertsEnabled === true) &&
-    options.scope !== "alert_creation"
-  );
+  return options.alertsEnabled === true && options.scope !== "alert_creation";
 }
 
 /** The exact schemas, in the exact key order, the turn registers executes for. */
@@ -67,10 +56,7 @@ export function toolSchemasFor(
   const schemas = mode === "code" ? dashboardAgentCodeToolSchemas : dashboardAgentToolSchemas;
   const excluded = new Set<string>();
   const creating = options.scope === "alert_creation";
-  if (!options.legacyWatchEnabled) {
-    for (const name of DASHBOARD_AGENT_WATCH_TOOL_NAMES) excluded.add(name);
-  }
-  if (!options.watchEnabled && !options.alertsEnabled && !creating) {
+  if (!options.alertsEnabled && !creating) {
     for (const name of DASHBOARD_AGENT_MONITORING_ALERT_TOOL_NAMES) excluded.add(name);
   }
   const scoped = creating
@@ -79,13 +65,7 @@ export function toolSchemasFor(
   for (const name of scoped) excluded.add(name);
   if (excluded.size === 0) return schemas;
   return Object.fromEntries(
-    Object.entries(schemas)
-      .filter(([name]) => !excluded.has(name))
-      .map(([name, schema]) =>
-        name === "render_view" && !options.legacyWatchEnabled
-          ? [name, renderViewSchemaWithoutWatch]
-          : [name, schema]
-      )
+    Object.entries(schemas).filter(([name]) => !excluded.has(name))
   ) as typeof schemas;
 }
 

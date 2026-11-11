@@ -23,7 +23,7 @@ const TONE_BADGE: Record<AgentTone, string> = {
   error: "border-error/40 text-error system:border-transparent system:bg-error system:text-white",
 };
 
-export const TONE_ICON_COLOR: Record<AgentTone, string> = {
+const TONE_ICON_COLOR: Record<AgentTone, string> = {
   neutral: "text-text-dimmed",
   success: "text-success",
   warning: "text-warning",
