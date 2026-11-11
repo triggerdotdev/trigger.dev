@@ -221,7 +221,7 @@ If your secrets live in [Infisical](https://infisical.com), sync them natively, 
 
 Set it up in Infisical in two steps:
 
-1. Add a **Trigger.dev App Connection** using a Trigger.dev Personal Access Token from your account settings. Self-hosted instances are supported.
+1. Add a **Trigger.dev App Connection** using a Trigger.dev Personal Access Token from your account settings. Self-hosted instances are supported. The token [expires](/management/authentication#pat-expiry) after the lifetime you choose, so replace it in the App Connection before then to keep the sync running.
 2. Create a **Secret Sync**: choose the connection, pick the target organization, project and environment (Production, Staging, Development, or Preview), and set the secret path to sync.
 
 Follow the [Trigger.dev Secret Sync guide](https://infisical.com/docs/integrations/secret-syncs/trigger-dev) in the Infisical docs for the full walkthrough.
