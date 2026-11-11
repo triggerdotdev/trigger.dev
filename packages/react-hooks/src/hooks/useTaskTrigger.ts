@@ -11,6 +11,7 @@ import {
   type TriggerOptions,
   type RealtimeRunSkipColumns,
 } from "@trigger.dev/core/v3";
+import { triggerConcurrencyKeyBody } from "@trigger.dev/core/v3/isomorphic";
 import useSWRMutation from "swr/mutation";
 import { type UseApiClientOptions, useApiClient } from "./useApiClient.js";
 import {
@@ -89,7 +90,7 @@ export function useTaskTrigger<TTask extends AnyTask>(
       options: {
         queue: queueName ? { name: queueName } : undefined,
         concurrency,
-        concurrencyKey: options?.concurrencyKey,
+        ...triggerConcurrencyKeyBody(options?.concurrencyKey),
         payloadType: payloadPacket.dataType,
         idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),
         delay: options?.delay,

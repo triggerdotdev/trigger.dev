@@ -416,6 +416,12 @@ type CommonTaskOptions<
  * literal `concurrencyKey` instead of inheriting the run's own key.
  */
 
+/**
+ * A run's concurrency key: one string for every `perKey` limit the run holds, or an
+ * object whose `default` is that key and whose other entries give a named limit its own.
+ */
+export type ConcurrencyKey = string | ({ default: string } & Record<string, string>);
+
 type TaskQueueIn = {
   name?: string;
   /**
@@ -853,8 +859,19 @@ export type TriggerOptions = {
    * The `concurrencyKey` creates a copy of the queue for every unique value of the key.
    * For example, if the queue (set when triggering or on the task) has a concurrency limit of 10,
    * and you set the concurrency key to `userId`, then each user will have their own queue with a concurrency limit of 10.
+   *
+   * Pass an object to give a named limit a different key: `default` is the run's own key,
+   * and every other entry is a limit's name and the key to use for that limit.
+   *
+   * @example
+   *
+   * ```ts
+   * await subagent.trigger(payload, {
+   *   concurrencyKey: { default: sessionId, [orgLimit.name]: orgId },
+   * });
+   * ```
    */
-  concurrencyKey?: string;
+  concurrencyKey?: ConcurrencyKey;
 
   /**
    * The delay before the task is executed. This can be a string like "1h" or a Date object.

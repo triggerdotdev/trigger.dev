@@ -180,6 +180,48 @@ describe("RunQueue gates", () => {
     }
   );
 
+  // Catches: a gate with no declared limit blocking or leaking slots, or a later limit not capping runs that carry it.
+  redisTest(
+    "a gate with no declared limit admits, then caps once the limit is declared",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer, true);
+      try {
+        await queue.updateQueueConcurrencyLimits(authenticatedEnvDev, "task/my-task", 5);
+        const held = () => queue.currentConcurrencyOfQueue(authenticatedEnvDev, "later", "acme");
+        const enqueue = (runId: string) =>
+          queue.enqueueMessage({
+            env: authenticatedEnvDev,
+            message: makeMessage({
+              runId,
+              timestamp: Date.now() - 1000,
+              gates: [{ queue: "later", concurrencyKey: "acme" }],
+            }),
+            workerQueue: "main",
+          });
+
+        await enqueue("r0");
+        await enqueue("r1");
+        expect(await waitFor(async () => (await held()) === 2)).toBe(true);
+
+        await queue.updateQueueConcurrencyLimits(authenticatedEnvDev, "later", 1);
+        await enqueue("r2");
+        await setTimeout(2000);
+        expect(await held()).toBe(2);
+        expect(await queue.lengthOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
+
+        await queue.acknowledgeMessage(authenticatedEnvDev.organization.id, "r0");
+        await queue.acknowledgeMessage(authenticatedEnvDev.organization.id, "r1");
+        expect(await waitFor(async () => (await held()) === 1)).toBe(true);
+        expect(await queue.lengthOfQueue(authenticatedEnvDev, "task/my-task")).toBe(0);
+
+        await queue.acknowledgeMessage(authenticatedEnvDev.organization.id, "r2");
+        expect(await held()).toBe(0);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
   redisTest(
     "a gate's total limit caps keyed and keyless holders together",
     async ({ redisContainer }) => {

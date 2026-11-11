@@ -239,7 +239,6 @@ export type ReplayRunOptions = Pick<
   | "metadata"
   | "tags"
   | "queue"
-  | "concurrencyKey"
   | "machine"
   | "version"
   | "region"
@@ -250,6 +249,10 @@ export type ReplayRunOptions = Pick<
   | "maxDuration"
   | "priority"
 > & {
+  /**
+   * The new run's own concurrency key. Keys the original run gave to named limits are kept.
+   */
+  concurrencyKey?: string;
   /**
    * The payload for the new run. Omit it to reuse the original run's payload.
    */
