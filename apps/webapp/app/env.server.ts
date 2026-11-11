@@ -1441,16 +1441,6 @@ const EnvironmentSchema = z
     RUN_ENGINE_TTL_CONSUMERS_DISABLED: BoolEnv.default(false),
     RUN_ENGINE_TTL_WORKER_BATCH_MAX_WAIT_MS: z.coerce.number().int().default(5_000),
 
-    // Fair (virtual-time) ordering across concurrency-key variants of a base queue.
-    // Off by default; when off the run queue behaves exactly as before.
-    RUN_ENGINE_CK_VTIME_SCHEDULING_ENABLED: BoolEnv.default(false),
-    // Fractional allowed: the vtime Lua serves weighted fair-queue tags, so a sub-1 quantum
-    // is a valid finer serve granularity. The weight hook is fixed at 1 today, so 1 stays the
-    // default, but the schema no longer blocks the capability the engine already has.
-    RUN_ENGINE_CK_VTIME_QUANTUM: z.coerce.number().finite().positive().default(1),
-    RUN_ENGINE_CK_VTIME_WINDOW_MULTIPLIER: z.coerce.number().int().positive().default(3),
-    RUN_ENGINE_CK_VTIME_STATE_TTL_SECONDS: z.coerce.number().int().positive().default(86400),
-
     /** Optional maximum TTL for all runs (e.g. "14d"). If set, runs without an explicit TTL
      *  will use this as their TTL, and runs with a TTL larger than this will be clamped. */
     RUN_ENGINE_DEFAULT_MAX_TTL: z.string().optional(),
@@ -1702,7 +1692,7 @@ const EnvironmentSchema = z
     RUN_ENGINE_QUEUE_RECONCILE_SCAN_COUNT: z.coerce.number().int().positive().default(100),
     RUN_ENGINE_QUEUE_RECONCILE_LOCK_TTL_SECONDS: z.coerce.number().int().positive().default(10),
     RUN_ENGINE_QUEUE_RECONCILE_MAX_PASSES_PER_DEQUEUE: z.coerce.number().int().min(0).default(2),
-    /** Read past gate-blocked sub-queues at dequeue. Applies to the default (age-order) concurrency-key dequeue only, not the virtual-time one. */
+    /** Read past gate-blocked sub-queues at dequeue. Applies to the concurrency-key dequeue. */
     RUN_ENGINE_QUEUE_GATE_SKIP_AHEAD_ENABLED: z.string().default("0"),
     RUN_ENGINE_QUEUE_GATE_SKIP_AHEAD_READ_MULTIPLIER: z.coerce
       .number()

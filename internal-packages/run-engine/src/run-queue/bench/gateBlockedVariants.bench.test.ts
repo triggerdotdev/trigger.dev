@@ -10,14 +10,13 @@
  * tenants always have capacity and any slowdown is the scan's doing.
  *
  * Worst-case ordering on purpose: the blocked sessions are the oldest and the first to
- * register, so they lead both the virtual-time scan and the age-ordered scan.
- * The heavy session registers last but holds the oldest runs outside tenant A, so the
- * two scans treat it differently and its share shows which one is doing the serving.
+ * register, so they lead the dequeue's age-ordered scan.
+ * The heavy session registers last but holds the oldest runs outside tenant A.
  *
- * Reports, per blocked-session count and per dequeue script (virtual-time and age-order):
+ * Reports, per blocked-session count:
  * calls and seconds to drain the light sessions and everything, calls that served nothing
- * and the longest such streak, the heavy session's share of the first 20 calls' serves (a
- * fair scan gives it about one in fifty; age order gives it one per call), client wall
+ * and the longest such streak, the heavy session's share of the first 20 calls' serves
+ * (age order gives it one per call), client wall
  * time, and Redis-side script time and command count from `INFO commandstats`.
  *
  * A second benchmark keeps the light sessions enqueuing fresh runs at a steady rate for the
@@ -83,8 +82,6 @@ const WAKE_SECONDS = Number(process.env.BENCH_WAKE_SECONDS ?? 60);
 const WAKE_RUN_MS = Number(process.env.BENCH_WAKE_RUN_MS ?? 500);
 const SKIP_AHEAD = process.env.BENCH_GATE_SKIP_AHEAD === "1";
 const POOLS_HOLDERS_SAME = process.env.BENCH_POOLS_HOLDERS === "same";
-/** Skip-ahead applies to the age-order dequeue only, so its runs leave virtual time out. */
-const SCRIPTS = SKIP_AHEAD ? [false] : [false, true];
 const POOLS = Number(process.env.BENCH_POOLS ?? 500);
 const STEADY_PARKED = Number(process.env.BENCH_STEADY_PARKED ?? 10_000);
 const OUT_DIR = process.env.BENCH_OUT_DIR ?? join(process.cwd(), "..", "..", ".bench");
@@ -138,7 +135,7 @@ const env = {
  * master-queue consumer per shard, and the dequeue job that every enqueue and
  * acknowledgement schedules, debounced and picked up by the queue's own worker.
  */
-function createQueue(redisContainer: any, vtime: boolean, live = false, meter?: any) {
+function createQueue(redisContainer: any, live = false, meter?: any) {
   const redis = {
     keyPrefix: KEY_PREFIX,
     host: redisContainer.getHost(),
@@ -173,7 +170,6 @@ function createQueue(redisContainer: any, vtime: boolean, live = false, meter?: 
           concurrency: LIVE.workerConcurrency,
         }
       : { disabled: true },
-    ckVirtualTimeScheduling: { enabled: vtime },
     totalConcurrencyEnabled: true,
     gatesEnabled: true,
     gateSkipAhead: { enabled: SKIP_AHEAD },
@@ -238,8 +234,8 @@ async function redisSide(queue: any) {
   return { scriptUsec, commands };
 }
 
-async function runScenario(redisContainer: any, vtime: boolean, blocked: number, interval: number) {
-  const queue = createQueue(redisContainer, vtime);
+async function runScenario(redisContainer: any, blocked: number, interval: number) {
+  const queue = createQueue(redisContainer);
   try {
     await queue.redis.flushdb();
     await queue.updateQueueConcurrencyLimits(env, QUEUE, 50);
@@ -330,7 +326,6 @@ async function runScenario(redisContainer: any, vtime: boolean, blocked: number,
     }
 
     return {
-      script: vtime ? "vtime" : "age-order",
       skipAhead: SKIP_AHEAD,
       intervalMs: interval,
       blocked,
@@ -355,8 +350,8 @@ async function runScenario(redisContainer: any, vtime: boolean, blocked: number,
 }
 
 /** Tenant A at its gate cap with `blocked` old queued sessions, seeded with nothing polling. */
-async function seedBlockedTenant(redisContainer: any, vtime: boolean, blocked: number) {
-  const queue = createQueue(redisContainer, vtime);
+async function seedBlockedTenant(redisContainer: any, blocked: number) {
+  const queue = createQueue(redisContainer);
   try {
     await queue.redis.flushdb();
     await queue.updateQueueConcurrencyLimits(env, QUEUE, 50);
@@ -378,15 +373,10 @@ async function seedBlockedTenant(redisContainer: any, vtime: boolean, blocked: n
   }
 }
 
-async function runArrivalScenario(
-  redisContainer: any,
-  vtime: boolean,
-  blocked: number,
-  live: boolean
-) {
-  await seedBlockedTenant(redisContainer, vtime, blocked);
+async function runArrivalScenario(redisContainer: any, blocked: number, live: boolean) {
+  await seedBlockedTenant(redisContainer, blocked);
   const dequeues = dequeueCallCounter();
-  const queue = createQueue(redisContainer, vtime, live, dequeues.meter);
+  const queue = createQueue(redisContainer, live, dequeues.meter);
   try {
     const shard = keys.masterQueueShardForEnvironment(env.id, SHARD_COUNT);
 
@@ -454,7 +444,6 @@ async function runArrivalScenario(
     const all = waits.map((w) => w.wait);
     const scriptCalls = await dequeues.calls();
     return {
-      script: vtime ? "vtime" : "age-order",
       skipAhead: SKIP_AHEAD,
       pacing: live ? "live" : `every ${ARRIVAL_POLL_MS}ms`,
       blocked,
@@ -517,9 +506,9 @@ function dequeueCallCounter() {
  * ARRIVAL_RATE and are acknowledged at once. Everything runs on the queue's own machinery
  * at LIVE settings.
  */
-async function runWakeScenario(redisContainer: any, vtime: boolean, blocked: number) {
+async function runWakeScenario(redisContainer: any, blocked: number) {
   const dequeues = dequeueCallCounter();
-  const queue = createQueue(redisContainer, vtime, true, dequeues.meter);
+  const queue = createQueue(redisContainer, true, dequeues.meter);
   try {
     await queue.redis.flushdb();
     await queue.updateQueueConcurrencyLimits(env, QUEUE, 50);
@@ -635,7 +624,6 @@ async function runWakeScenario(redisContainer: any, vtime: boolean, blocked: num
     }
     const perSession = [...servedPerSession.values()];
     return {
-      script: vtime ? "vtime" : "age-order",
       skipAhead: SKIP_AHEAD,
       blocked,
       cappedServedPerSec: round(cappedServed / WAKE_SECONDS),
@@ -671,8 +659,8 @@ async function runWakeScenario(redisContainer: any, vtime: boolean, blocked: num
  * a worker is recorded. Admitted waiters are never acknowledged, so every sample is a slot
  * freed from the other queue.
  */
-async function runCrossQueueScenario(redisContainer: any, vtime: boolean) {
-  const queue = createQueue(redisContainer, vtime, true);
+async function runCrossQueueScenario(redisContainer: any) {
+  const queue = createQueue(redisContainer, true);
   try {
     await queue.redis.flushdb();
     await queue.updateQueueConcurrencyLimits(env, QUEUE, 50);
@@ -708,7 +696,6 @@ async function runCrossQueueScenario(redisContainer: any, vtime: boolean) {
       await sleep(Math.max(0, 7_000 - (Date.now() - releasedAt)));
     }
     return {
-      script: vtime ? "vtime" : "age-order",
       skipAhead: SKIP_AHEAD,
       samples: waits.join(","),
       waitMinMs: Math.min(...waits),
@@ -726,10 +713,10 @@ async function runCrossQueueScenario(redisContainer: any, vtime: boolean) {
  * arrive at ARRIVAL_RATE and are acknowledged at once. Script calls and Redis commands
  * are sampled over a 60s window after a 30s warm-up.
  */
-async function runSteadyScenario(redisContainer: any, vtime: boolean) {
-  await seedBlockedTenant(redisContainer, vtime, STEADY_PARKED);
+async function runSteadyScenario(redisContainer: any) {
+  await seedBlockedTenant(redisContainer, STEADY_PARKED);
   const dequeues = dequeueCallCounter();
-  const queue = createQueue(redisContainer, vtime, true, dequeues.meter);
+  const queue = createQueue(redisContainer, true, dequeues.meter);
   try {
     const enqueuedAt = new Map<string, number>();
     let waits: number[] = [];
@@ -779,7 +766,6 @@ async function runSteadyScenario(redisContainer: any, vtime: boolean) {
       const side = await redisSide(queue);
       const parked = (await queue.redis.keys(`${KEY_PREFIX}*ckHint:*`)).length;
       results.push({
-        script: vtime ? "vtime" : "age-order",
         skipAhead: SKIP_AHEAD,
         window: window.name,
         blocked: STEADY_PARKED,
@@ -805,9 +791,9 @@ async function runSteadyScenario(redisContainer: any, vtime: boolean) {
  * QUEUE. A holder is acknowledged every 100ms, in a scattered order, and the time until
  * the waiter behind it is handed to a worker is recorded.
  */
-async function runManyPoolsScenario(redisContainer: any, vtime: boolean) {
+async function runManyPoolsScenario(redisContainer: any) {
   const dequeues = dequeueCallCounter();
-  const queue = createQueue(redisContainer, vtime, true, dequeues.meter);
+  const queue = createQueue(redisContainer, true, dequeues.meter);
   const sessionGate = "limit/session";
   try {
     await queue.redis.flushdb();
@@ -885,7 +871,6 @@ async function runManyPoolsScenario(redisContainer: any, vtime: boolean) {
     const seconds = (Date.now() - startedAt) / 1000;
     const side = await redisSide(queue);
     return {
-      script: vtime ? "vtime" : "age-order",
       skipAhead: SKIP_AHEAD,
       pools: POOLS,
       holders: POOLS_HOLDERS_SAME ? "same queue" : "other queue",
@@ -907,10 +892,8 @@ describe("run-queue gate-blocked variants benchmark", () => {
   redisTest("a keyed gate at its cap blocking many variants", async ({ redisContainer }) => {
     const results: Array<Record<string, number | string | boolean>> = [];
     for (const interval of INTERVALS) {
-      for (const vtime of SCRIPTS) {
-        for (const blocked of BLOCKED) {
-          results.push(await runScenario(redisContainer, vtime, blocked, interval));
-        }
+      for (const blocked of BLOCKED) {
+        results.push(await runScenario(redisContainer, blocked, interval));
       }
     }
 
@@ -938,36 +921,33 @@ describe("run-queue gate-blocked variants benchmark", () => {
     "commands per acknowledgement, by waiters on the released gate",
     async ({ redisContainer }) => {
       const results: Array<Record<string, number | string | boolean>> = [];
-      for (const vtime of SCRIPTS) {
-        for (const waiters of [0, 1, 10]) {
-          const queue = createQueue(redisContainer, vtime);
-          try {
-            await queue.redis.flushdb();
-            await queue.updateQueueConcurrencyLimits(env, QUEUE, 50);
-            await queue.updateQueueConcurrencyLimits(env, GATE, 1);
-            const shard = keys.masterQueueShardForEnvironment(env.id, SHARD_COUNT);
-            const t0 = Date.now() - 600_000;
-            await enqueue(queue, "holder", "tA-hold", "tA", t0);
-            await queue.testDequeueFromMasterQueue(shard, env.id, MAX_COUNT);
-            for (let i = 0; i < waiters; i++) {
-              await enqueue(queue, `a-blocked-${i}`, `tA-s${i}`, "tA", t0 + 1 + i);
-            }
-            await queue.testDequeueFromMasterQueue(shard, env.id, MAX_COUNT);
-            await queue.redis.call("CONFIG", "RESETSTAT");
-            await queue.acknowledgeMessage(env.organization.id, "holder", {
-              skipDequeueProcessing: true,
-            });
-            const side = await redisSide(queue);
-            results.push({
-              script: vtime ? "vtime" : "age-order",
-              skipAhead: SKIP_AHEAD,
-              waiters,
-              ackCommands: side.commands,
-              ackScriptUs: side.scriptUsec,
-            });
-          } finally {
-            await queue.quit();
+      for (const waiters of [0, 1, 10]) {
+        const queue = createQueue(redisContainer);
+        try {
+          await queue.redis.flushdb();
+          await queue.updateQueueConcurrencyLimits(env, QUEUE, 50);
+          await queue.updateQueueConcurrencyLimits(env, GATE, 1);
+          const shard = keys.masterQueueShardForEnvironment(env.id, SHARD_COUNT);
+          const t0 = Date.now() - 600_000;
+          await enqueue(queue, "holder", "tA-hold", "tA", t0);
+          await queue.testDequeueFromMasterQueue(shard, env.id, MAX_COUNT);
+          for (let i = 0; i < waiters; i++) {
+            await enqueue(queue, `a-blocked-${i}`, `tA-s${i}`, "tA", t0 + 1 + i);
           }
+          await queue.testDequeueFromMasterQueue(shard, env.id, MAX_COUNT);
+          await queue.redis.call("CONFIG", "RESETSTAT");
+          await queue.acknowledgeMessage(env.organization.id, "holder", {
+            skipDequeueProcessing: true,
+          });
+          const side = await redisSide(queue);
+          results.push({
+            skipAhead: SKIP_AHEAD,
+            waiters,
+            ackCommands: side.commands,
+            ackScriptUs: side.scriptUsec,
+          });
+        } finally {
+          await queue.quit();
         }
       }
       await mkdir(OUT_DIR, { recursive: true });
@@ -981,10 +961,8 @@ describe("run-queue gate-blocked variants benchmark", () => {
   redisTest("fresh arrivals behind a keyed gate at its cap", async ({ redisContainer }) => {
     const results: Array<Record<string, number | string | boolean>> = [];
     for (const live of process.env.BENCH_ARRIVAL_PACING === "live" ? [true] : [false, true]) {
-      for (const vtime of SCRIPTS) {
-        for (const blocked of ARRIVAL_BLOCKED) {
-          results.push(await runArrivalScenario(redisContainer, vtime, blocked, live));
-        }
+      for (const blocked of ARRIVAL_BLOCKED) {
+        results.push(await runArrivalScenario(redisContainer, blocked, live));
       }
     }
 
@@ -1008,10 +986,8 @@ describe("run-queue gate-blocked variants benchmark", () => {
   });
   redisTest("a capped tenant whose runs complete", async ({ redisContainer }) => {
     const results: Array<Record<string, number | string | boolean>> = [];
-    for (const vtime of SCRIPTS) {
-      for (const blocked of WAKE_BLOCKED) {
-        results.push(await runWakeScenario(redisContainer, vtime, blocked));
-      }
+    for (const blocked of WAKE_BLOCKED) {
+      results.push(await runWakeScenario(redisContainer, blocked));
     }
     await mkdir(OUT_DIR, { recursive: true });
     const outPath = join(OUT_DIR, "run-queue-gate-wake.json");
@@ -1038,9 +1014,7 @@ describe("run-queue gate-blocked variants benchmark", () => {
 
   redisTest("a freed slot reaching a waiter on another queue", async ({ redisContainer }) => {
     const results: Array<Record<string, number | string | boolean>> = [];
-    for (const vtime of SCRIPTS) {
-      results.push(await runCrossQueueScenario(redisContainer, vtime));
-    }
+    results.push(await runCrossQueueScenario(redisContainer));
     await mkdir(OUT_DIR, { recursive: true });
     const outPath = join(OUT_DIR, "run-queue-gate-cross-queue.json");
     await writeFile(outPath, JSON.stringify({ results }, null, 2));
@@ -1049,9 +1023,7 @@ describe("run-queue gate-blocked variants benchmark", () => {
   });
   redisTest("a settled backlog of blocked sub-queues", async ({ redisContainer }) => {
     const results: Array<Record<string, number | string | boolean>> = [];
-    for (const vtime of SCRIPTS) {
-      results.push(...(await runSteadyScenario(redisContainer, vtime)));
-    }
+    results.push(...(await runSteadyScenario(redisContainer)));
     await mkdir(OUT_DIR, { recursive: true });
     const outPath = join(OUT_DIR, "run-queue-gate-steady.json");
     await writeFile(outPath, JSON.stringify({ results }, null, 2));
@@ -1060,9 +1032,7 @@ describe("run-queue gate-blocked variants benchmark", () => {
   });
   redisTest("many gate pools with capacity freed on another queue", async ({ redisContainer }) => {
     const results: Array<Record<string, number | string | boolean>> = [];
-    for (const vtime of SCRIPTS) {
-      results.push(await runManyPoolsScenario(redisContainer, vtime));
-    }
+    results.push(await runManyPoolsScenario(redisContainer));
     await mkdir(OUT_DIR, { recursive: true });
     const outPath = join(OUT_DIR, "run-queue-gate-pools.json");
     await writeFile(outPath, JSON.stringify({ results }, null, 2));

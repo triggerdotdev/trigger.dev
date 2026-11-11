@@ -433,27 +433,6 @@ describe("KeyProducer", () => {
     );
   });
 
-  it("produces ckVtime keys from a CK variant queue name", () => {
-    const keyProducer = new RunQueueFullKeyProducer();
-    const q = "{org:o1}:proj:p1:env:e1:queue:task/my-task:ck:tenant-a";
-    expect(keyProducer.ckVtimeKeyFromQueue(q)).toBe(
-      "{org:o1}:proj:p1:env:e1:queue:task/my-task:ckVtime"
-    );
-    expect(keyProducer.ckVtimeFloorKeyFromQueue(q)).toBe(
-      "{org:o1}:proj:p1:env:e1:queue:task/my-task:ckVtimeFloor"
-    );
-    expect(keyProducer.ckVtimeIdleKeyFromQueue(q)).toBe(
-      "{org:o1}:proj:p1:env:e1:queue:task/my-task:ckVtimeIdle"
-    );
-    // ck wildcard and base-queue inputs normalise the same way
-    expect(keyProducer.ckVtimeKeyFromQueue(q.replace(":ck:tenant-a", ":ck:*"))).toBe(
-      keyProducer.ckVtimeKeyFromQueue(q)
-    );
-    expect(keyProducer.ckVtimeIdleKeyFromQueue(q.replace(":ck:tenant-a", ":ck:*"))).toBe(
-      keyProducer.ckVtimeIdleKeyFromQueue(q)
-    );
-  });
-
   it("queueConcurrencyKeyLimitKey puts the key after its own part, so no key value can collide", () => {
     const keyProducer = new RunQueueFullKeyProducer();
     const env = {

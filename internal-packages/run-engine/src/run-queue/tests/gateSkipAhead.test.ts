@@ -36,7 +36,6 @@ const A = [{ queue: GATE, concurrencyKey: "A" }];
 
 type Gates = Array<{ queue: string; concurrencyKey?: string }>;
 type Setup = {
-  vtime: boolean;
   skipAhead: boolean;
   gates?: boolean;
   keyLimits?: boolean;
@@ -72,7 +71,6 @@ function createQueue(redisContainer: any, setup: Setup) {
       maxPassesPerDequeue: setup.reconcileMaxPasses,
     },
     workerOptions: { disabled: true },
-    ckVirtualTimeScheduling: { enabled: setup.vtime },
     totalConcurrencyEnabled: true,
     gatesEnabled: setup.gates ?? true,
     concurrencyKeyLimitsEnabled: setup.keyLimits,
@@ -238,16 +236,13 @@ async function blockTenantA(queue: any, redisContainer: any, blocked: number) {
   }
 }
 
-/** Skip-ahead applies to the default (age-order) concurrency-key dequeue only. */
-const vtime = false;
-
 describe("gate skip-ahead", () => {
   for (const skipAhead of [true, false]) {
     // Catches: gate-blocked sub-queues filling the dequeue window and starving other keys, or hints written when off.
     redisTest(
       `other keys are served past a blocked backlog wider than the window (skip-ahead: ${skipAhead})`,
       async ({ redisContainer }) => {
-        const queue = createQueue(redisContainer, { vtime, skipAhead });
+        const queue = createQueue(redisContainer, { skipAhead });
         try {
           await blockTenantA(queue, redisContainer, 100);
           for (let pass = 0; pass < 4; pass++) {
@@ -275,7 +270,7 @@ describe("gate skip-ahead", () => {
 
   // Catches: skip-ahead only working when a test rewinds retry times, not at the natural 1s retry.
   redisTest("other keys are served at the natural 1s retry cadence", async ({ redisContainer }) => {
-    const queue = createQueue(redisContainer, { vtime, skipAhead: true });
+    const queue = createQueue(redisContainer, { skipAhead: true });
     try {
       await blockTenantA(queue, redisContainer, 100);
       expect(await dequeue(queue, redisContainer)).toEqual([]);
@@ -295,7 +290,7 @@ describe("gate skip-ahead", () => {
   redisTest(
     "freed capacity is used on the next dequeue, and no more than the limit",
     async ({ redisContainer }) => {
-      const queue = createQueue(redisContainer, { vtime, skipAhead: true });
+      const queue = createQueue(redisContainer, { skipAhead: true });
       try {
         await blockTenantA(queue, redisContainer, 5);
         expect(await dequeueDue(queue, redisContainer)).toEqual([]);
@@ -326,7 +321,7 @@ describe("gate skip-ahead", () => {
 
   // Catches: a hint applied to a new head after the hinted head is removed or a run is enqueued ahead of it.
   redisTest("a new head is not held back by the old head's hint", async ({ redisContainer }) => {
-    const queue = createQueue(redisContainer, { vtime, skipAhead: true });
+    const queue = createQueue(redisContainer, { skipAhead: true });
     try {
       await blockTenantA(queue, redisContainer, 2);
       expect(await dequeueDue(queue, redisContainer)).toEqual([]);
@@ -344,7 +339,7 @@ describe("gate skip-ahead", () => {
 
   // Catches: a run nacked to the front of a sub-queue being passed over on the hint of the head it displaced.
   redisTest("a run nacked ahead of a hinted head is served", async ({ redisContainer }) => {
-    const queue = createQueue(redisContainer, { vtime, skipAhead: true });
+    const queue = createQueue(redisContainer, { skipAhead: true });
     try {
       await queue.updateQueueConcurrencyLimits(env, QUEUE, 50);
       await queue.updateQueueConcurrencyLimits(env, GATE, 1);
@@ -374,7 +369,7 @@ describe("gate skip-ahead", () => {
   redisTest(
     "a malformed or stale hint cannot hold back a servable run",
     async ({ redisContainer }) => {
-      const queue = createQueue(redisContainer, { vtime, skipAhead: true });
+      const queue = createQueue(redisContainer, { skipAhead: true });
       try {
         await queue.updateQueueConcurrencyLimits(env, QUEUE, 50);
         await queue.updateQueueConcurrencyLimits(env, GATE, 5);
@@ -404,7 +399,6 @@ describe("gate skip-ahead", () => {
   // Catches: a run already counted in its hinted pool being passed over, or pruned from it by the hint's reconcile.
   redisTest("a run already in the hinted pool is admitted", async ({ redisContainer }) => {
     const queue = createQueue(redisContainer, {
-      vtime,
       skipAhead: true,
       reconcileLockTtlSeconds: 1,
     });
@@ -424,7 +418,7 @@ describe("gate skip-ahead", () => {
   redisTest(
     "a run already in a pool found full earlier in the call is admitted",
     async ({ redisContainer }) => {
-      const queue = createQueue(redisContainer, { vtime, skipAhead: true });
+      const queue = createQueue(redisContainer, { skipAhead: true });
       try {
         await queue.updateQueueConcurrencyLimits(env, GATE, 1);
         await hold(queue, redisContainer);
@@ -444,7 +438,7 @@ describe("gate skip-ahead", () => {
   redisTest(
     "one free slot costs one payload read, not one per waiter",
     async ({ redisContainer }) => {
-      const queue = createQueue(redisContainer, { vtime, skipAhead: true });
+      const queue = createQueue(redisContainer, { skipAhead: true });
       try {
         const waiters = 40;
         await blockTenantA(queue, redisContainer, waiters);
@@ -467,7 +461,7 @@ describe("gate skip-ahead", () => {
       `a dequeue that runs out of read on blocked sub-queues is counted (skip-ahead: ${skipAhead})`,
       async ({ redisContainer }) => {
         const exhausted = exhaustedCounter();
-        const queue = createQueue(redisContainer, { vtime, skipAhead, meter: exhausted.meter });
+        const queue = createQueue(redisContainer, { skipAhead, meter: exhausted.meter });
         try {
           await queue.updateQueueConcurrencyLimits(env, GATE, 1);
           await hold(queue, redisContainer);
@@ -500,7 +494,7 @@ describe("gate skip-ahead", () => {
     "a dequeue that stops for its batch or its window is not counted",
     async ({ redisContainer }) => {
       const exhausted = exhaustedCounter();
-      const queue = createQueue(redisContainer, { vtime, skipAhead: true, meter: exhausted.meter });
+      const queue = createQueue(redisContainer, { skipAhead: true, meter: exhausted.meter });
       try {
         await blockTenantA(queue, redisContainer, 5);
         await enqueueMany(
@@ -528,7 +522,7 @@ describe("gate skip-ahead", () => {
       const commands: number[] = [];
       for (const skipAhead of [false, true]) {
         await raw(redisContainer, (redis) => redis.flushall());
-        const queue = createQueue(redisContainer, { vtime, skipAhead });
+        const queue = createQueue(redisContainer, { skipAhead });
         try {
           await queue.updateQueueConcurrencyLimits(env, QUEUE, 50);
           await enqueueMany(
@@ -564,7 +558,7 @@ describe("gate skip-ahead", () => {
 
   // Catches: a read multiplier above the bound being honoured.
   redisTest("the read multiplier is bounded at 20", async ({ redisContainer }) => {
-    const queue = createQueue(redisContainer, { vtime, skipAhead: true, readMultiplier: 100 });
+    const queue = createQueue(redisContainer, { skipAhead: true, readMultiplier: 100 });
     try {
       await queue.updateQueueConcurrencyLimits(env, GATE, 1);
       await hold(queue, redisContainer);
@@ -586,7 +580,7 @@ describe("gate skip-ahead", () => {
 
   // Catches: a total-limit hint checking the wrong set or limit, so a counted run or a raised total is not admitted.
   redisTest("a hint for a full total pool follows the total limit", async ({ redisContainer }) => {
-    const queue = createQueue(redisContainer, { vtime, skipAhead: true });
+    const queue = createQueue(redisContainer, { skipAhead: true });
     try {
       await queue.updateQueueConcurrencyLimits(env, QUEUE, 50);
       await queue.updateQueueConcurrencyLimits(env, GATE, 1);
@@ -618,7 +612,7 @@ describe("gate skip-ahead", () => {
 
   // Catches: a hint judging the pool by the gate's declared per-key limit when a per-key override applies.
   redisTest("a hint honours a per-key override on the pool", async ({ redisContainer }) => {
-    const queue = createQueue(redisContainer, { vtime, skipAhead: true, keyLimits: true });
+    const queue = createQueue(redisContainer, { skipAhead: true, keyLimits: true });
     try {
       await blockTenantA(queue, redisContainer, 3);
       expect(await dequeueDue(queue, redisContainer)).toEqual([]);
@@ -633,7 +627,7 @@ describe("gate skip-ahead", () => {
 
   // Catches: a two-gate run held by a hint for a gate that freed, or let through while its other gate is full.
   redisTest("a run with two gates follows whichever one is full", async ({ redisContainer }) => {
-    const queue = createQueue(redisContainer, { vtime, skipAhead: true });
+    const queue = createQueue(redisContainer, { skipAhead: true });
     try {
       await queue.updateQueueConcurrencyLimits(env, GATE, 1);
       await queue.updateQueueConcurrencyLimits(env, GATE_B, 1);
@@ -657,14 +651,14 @@ describe("gate skip-ahead", () => {
 
   // Catches: hints written while gates were enforced still holding runs back once gates are switched off.
   redisTest("switching gates off releases hinted runs", async ({ redisContainer }) => {
-    const enforcing = createQueue(redisContainer, { vtime, skipAhead: true });
+    const enforcing = createQueue(redisContainer, { skipAhead: true });
     await blockTenantA(enforcing, redisContainer, 3);
     expect(await dequeueDue(enforcing, redisContainer)).toEqual([]);
     expect(await dequeueDue(enforcing, redisContainer)).toEqual([]);
     expect((await hintKeys(redisContainer)).length).toBe(3);
     await enforcing.quit();
 
-    const queue = createQueue(redisContainer, { vtime, skipAhead: true, gates: false });
+    const queue = createQueue(redisContainer, { skipAhead: true, gates: false });
     try {
       expect((await dequeueDue(queue, redisContainer)).sort()).toEqual(["a0", "a1", "a2"]);
     } finally {
@@ -677,7 +671,7 @@ describe("gate skip-ahead", () => {
     redisTest(
       `an ${mode} hinted head does not hold up the run behind it`,
       async ({ redisContainer }) => {
-        const queue = createQueue(redisContainer, { vtime, skipAhead: true });
+        const queue = createQueue(redisContainer, { skipAhead: true });
         try {
           await queue.updateQueueConcurrencyLimits(env, GATE, 1);
           await hold(queue, redisContainer);
@@ -711,7 +705,6 @@ describe("gate skip-ahead", () => {
     "a leaked slot in a hinted pool is pruned and used in the same dequeue",
     async ({ redisContainer }) => {
       const queue = createQueue(redisContainer, {
-        vtime,
         skipAhead: true,
         reconcileLockTtlSeconds: 1,
       });
@@ -732,7 +725,6 @@ describe("gate skip-ahead", () => {
   // Catches: skip-ahead raising a reconcile pass budget that was set to zero to switch passes off.
   redisTest("a reconcile pass budget of zero stays zero", async ({ redisContainer }) => {
     const queue = createQueue(redisContainer, {
-      vtime,
       skipAhead: true,
       reconcileLockTtlSeconds: 1,
       reconcileMaxPasses: 0,
@@ -755,7 +747,6 @@ describe("gate skip-ahead", () => {
     "a pool pruned while blocking one run is open to the next in the same dequeue",
     async ({ redisContainer }) => {
       const queue = createQueue(redisContainer, {
-        vtime,
         skipAhead: true,
         reconcileLockTtlSeconds: 1,
       });
@@ -797,7 +788,7 @@ describe("gate skip-ahead", () => {
         "]",
         "[1,2]",
       ];
-      const queue = createQueue(redisContainer, { vtime, skipAhead: true });
+      const queue = createQueue(redisContainer, { skipAhead: true });
       try {
         await queue.updateQueueConcurrencyLimits(env, GATE, 1);
         await hold(queue, redisContainer);
@@ -833,7 +824,7 @@ describe("gate skip-ahead, self-heal", () => {
         const served: number[] = [];
         for (const skipAhead of [false, true]) {
           await raw(redisContainer, (redis) => redis.flushall());
-          const queue = createQueue(redisContainer, { vtime: false, skipAhead });
+          const queue = createQueue(redisContainer, { skipAhead });
           try {
             await queue.updateQueueConcurrencyLimits(env, QUEUE, 50);
             await queue.updateQueueConcurrencyLimits(env, GATE, 1);
@@ -871,7 +862,7 @@ describe("gate skip-ahead, self-heal", () => {
     redisTest(
       `reconcile scanning is bounded by members, not only by passes (skip-ahead: ${skipAhead})`,
       async ({ redisContainer }) => {
-        const queue = createQueue(redisContainer, { vtime: false, skipAhead });
+        const queue = createQueue(redisContainer, { skipAhead });
         try {
           const pools = 20;
           const members = 60;
@@ -917,7 +908,7 @@ describe("gate skip-ahead, self-heal", () => {
   redisTest(
     "six saturated pools larger than the scan count are all healed by one dequeue",
     async ({ redisContainer }) => {
-      const queue = createQueue(redisContainer, { vtime: false, skipAhead: true });
+      const queue = createQueue(redisContainer, { skipAhead: true });
       try {
         const pools = 6;
         const members = 128;
