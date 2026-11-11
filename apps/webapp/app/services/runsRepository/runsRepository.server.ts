@@ -361,13 +361,22 @@ export async function convertRunListInputOptionsToFilterRunsOptions(
     period: undefined,
   };
 
-  // Convert time period to ms
-  const time = timeFilters({
-    period: options.period,
-    from: options.from,
-    to: options.to,
-  });
-  convertedOptions.period = time.period ? (parseDuration(time.period) ?? undefined) : undefined;
+  // Convert time period to ms.
+  // Explicit run-id selections target specific, already-existing runs, so we
+  // don't apply a default time bound (which could otherwise exclude a selected run).
+  const hasExplicitRunIds = Boolean(options.runId && options.runId.length > 0);
+  const hasExplicitTimeFilter = Boolean(
+    options.period !== undefined || options.from !== undefined || options.to !== undefined
+  );
+
+  if (!hasExplicitRunIds || hasExplicitTimeFilter) {
+    const time = timeFilters({
+      period: options.period,
+      from: options.from,
+      to: options.to,
+    });
+    convertedOptions.period = time.period ? (parseDuration(time.period) ?? undefined) : undefined;
+  }
 
   // Cross-DB resolution: BatchTaskRun is a RUN-OPS table. A run-ops batch resident on the
   // dedicated run-ops DB must resolve via the store's NEW->LEGACY probe — a single control-plane
