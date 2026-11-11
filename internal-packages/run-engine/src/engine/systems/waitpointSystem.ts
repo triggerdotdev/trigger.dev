@@ -76,6 +76,7 @@ import {
   hasStoreWaitpoints,
   batchStoreWaitpointId,
   snapshotRouteFromSnapshot,
+  WaitpointKeyTransactionBudgetExhaustedError,
   type CompletedWaitpointRecord,
 } from "@internal/run-store";
 
@@ -1004,7 +1005,7 @@ export class WaitpointSystem {
     };
     await prepare?.(keyedCreation);
     if (Date.now() >= keyedCreation.acceptUntil) {
-      throw new Error("Keyed waitpoint creation transaction budget exhausted");
+      throw new WaitpointKeyTransactionBudgetExhaustedError();
     }
     return this.$.runStore.runInWaitpointKeyTransaction(
       owner,

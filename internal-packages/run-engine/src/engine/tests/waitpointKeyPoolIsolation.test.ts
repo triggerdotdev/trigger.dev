@@ -429,7 +429,11 @@ postgresTest(
         expired.map((result) =>
           result.status === "rejected" ? String(result.reason) : "unexpected admission"
         )
-      ).toEqual(Array(80).fill("Error: Keyed waitpoint creation transaction budget exhausted"));
+      ).toEqual(
+        Array(80).fill(
+          "WaitpointKeyTransactionBudgetExhaustedError: Keyed waitpoint creation transaction budget exhausted"
+        )
+      );
       expect(expiredCallbacks).toBe(0);
       // The active org's second request must join BEHIND already-ready other orgs.
       active.push(run(0), run(4), run(5));

@@ -3,7 +3,8 @@ import { createRedisClient } from "@internal/redis";
 import { isolatedRedisTest as redisTest } from "@internal/testcontainers";
 import { generateWaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { describe, expect } from "vitest";
-import { withCreationBudget } from "./creationBudget.js";
+import { WaitpointKeyTransactionBudgetExhaustedError } from "@internal/run-store";
+import { assertCreationBudget, withCreationBudget } from "./creationBudget.js";
 import { WaitpointStoreCoordinator } from "./storeCoordinator.js";
 import { idempotencyClaimKey, idempotencyKey, waitpointKeys } from "./keys.js";
 
@@ -189,7 +190,11 @@ describe("creationBudget", () => {
             acceptUntil,
           })
         );
-        await expect(expired).rejects.toThrow("budget exhausted");
+        // Catches: the engine's creation budget checks throwing a plain Error, which answers 500.
+        await expect(expired).rejects.toBeInstanceOf(WaitpointKeyTransactionBudgetExhaustedError);
+        await expect(
+          withCreationBudget(Date.now() - 1, async () => assertCreationBudget())
+        ).rejects.toBeInstanceOf(WaitpointKeyTransactionBudgetExhaustedError);
         // Same client, outside the explicit scope: another caller retains its own timeout.
         await expect(
           store.beginIdempotencyKeyClaim({
