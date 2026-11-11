@@ -23,7 +23,12 @@ import {
 import { TextEditor } from "~/components/code/TextEditor";
 import { Button } from "~/components/primitives/Buttons";
 import { cn } from "~/utils/cn";
-import { ignorePathError, type IgnorePathLimits } from "~/v3/github";
+import {
+  ignorePatternError,
+  tooManyIgnorePatterns,
+  type IgnoreKind,
+  type IgnorePatternLimits,
+} from "~/v3/github";
 
 const FOLDED_LINES = 3;
 const MAX_VISIBLE_LINES = 15;
@@ -38,9 +43,31 @@ class MatchedLineMarker extends GutterMarker {
 const matchedLineMarker = new MatchedLineMarker();
 const matchedLine = Decoration.line({ class: MATCH_CLASS });
 
+const copy = {
+  paths: {
+    label: "Ignored paths",
+    placeholder: "docs/**",
+    empty: "No paths yet, so every push to a tracked branch deploys.",
+    testLabel: "Path to test",
+    testPlaceholder: "apps/web/src/index.ts",
+    test: "Test a path",
+    closeTester: "Close the path tester",
+    noMatch: "no path matches",
+  },
+  branches: {
+    label: "Ignored branches",
+    placeholder: "dependabot/**",
+    empty: "No branches yet, so every pull request gets a preview.",
+    testLabel: "Branch to test",
+    testPlaceholder: "dependabot/npm_and_yarn/react-19.0.0",
+    test: "Test a branch",
+    closeTester: "Close the branch tester",
+    noMatch: "no branch matches",
+  },
+} satisfies Record<IgnoreKind, unknown>;
+
 const editorExtensions = [
   lintGutter(),
-  placeholder("docs/**"),
   EditorView.theme({
     "&.cm-focused": { outline: "none" },
     ".cm-line": { transition: "background-color 150ms ease-out" },
@@ -54,11 +81,11 @@ const editorExtensions = [
 type Line = { pattern: string; start: number; error?: string; valid: boolean };
 type Heights = { content: number; folded: number; max: number };
 
-function analyze(text: string, { maxPaths, maxLength }: IgnorePathLimits) {
+function analyze(kind: IgnoreKind, text: string, { maxPatterns, maxLength }: IgnorePatternLimits) {
   let start = 0;
   const lines: Line[] = text.split("\n").map((line) => {
     const pattern = line.trim();
-    const error = pattern ? ignorePathError(pattern, maxLength) : undefined;
+    const error = pattern ? ignorePatternError(kind, pattern, maxLength) : undefined;
     const parsed = { pattern, start, error, valid: pattern !== "" && !error };
     start += line.length + 1;
     return parsed;
@@ -66,14 +93,14 @@ function analyze(text: string, { maxPaths, maxLength }: IgnorePathLimits) {
   const patterns = lines.flatMap(({ pattern }) => (pattern ? [pattern] : []));
   const errors = [
     ...lines.flatMap(({ error }, index) => (error ? [`Line ${index + 1}: ${error}`] : [])),
-    ...(patterns.length > maxPaths ? [`Add at most ${maxPaths} paths.`] : []),
+    ...(patterns.length > maxPatterns ? [tooManyIgnorePatterns(kind, maxPatterns)] : []),
   ];
   return { lines, patterns, errors };
 }
 
-function lintPaths(limits: IgnorePathLimits) {
+function lintPatterns(kind: IgnoreKind, limits: IgnorePatternLimits) {
   return (view: EditorView): Diagnostic[] =>
-    analyze(view.state.doc.toString(), limits).lines.flatMap(({ error }, index) => {
+    analyze(kind, view.state.doc.toString(), limits).lines.flatMap(({ error }, index) => {
       if (!error) return [];
       const line = view.state.doc.line(index + 1);
       return [{ from: line.from, to: line.to, severity: "error", message: error }];
@@ -112,15 +139,17 @@ function plural(count: number, word: string) {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
 }
 
-export function IgnoredPathsEditor({
+export function IgnoredPatternsEditor({
+  kind,
   name,
   defaultPatterns,
   limits,
   onChange,
 }: {
+  kind: IgnoreKind;
   name: string;
   defaultPatterns: string[];
-  limits: IgnorePathLimits;
+  limits: IgnorePatternLimits;
   onChange?: (patterns: string[], valid: boolean) => void;
 }) {
   // TextEditor replaces the document whenever defaultValue changes.
@@ -130,21 +159,22 @@ export function IgnoredPathsEditor({
   const [heights, setHeights] = useState<Heights>();
   const [animating, setAnimating] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [testPath, setTestPath] = useState("");
+  const [testInput, setTestInput] = useState("");
   const viewRef = useRef<EditorView>();
   const scrollRef = useRef<HTMLDivElement>(null);
   const testButtonRef = useRef<HTMLButtonElement>(null);
   const errorsId = useId();
 
-  const { maxPaths, maxLength } = limits;
+  const { maxPatterns, maxLength } = limits;
+  const labels = copy[kind];
   const { lines, patterns, errors } = useMemo(
-    () => analyze(text, { maxPaths, maxLength }),
-    [text, maxPaths, maxLength]
+    () => analyze(kind, text, { maxPatterns, maxLength }),
+    [kind, text, maxPatterns, maxLength]
   );
-  const path = testPath.trim();
+  const tested = testInput.trim();
   const matchedIndex =
-    testing && path
-      ? lines.findIndex(({ pattern, valid }) => valid && picomatch(pattern, { dot: true })(path))
+    testing && tested
+      ? lines.findIndex(({ pattern, valid }) => valid && picomatch(pattern, { dot: true })(tested))
       : -1;
   const canTest = lines.some(({ valid }) => valid);
   const canFold = lines.length > FOLDED_LINES;
@@ -169,9 +199,10 @@ export function IgnoredPathsEditor({
   const extensions = useMemo(
     () => [
       ...editorExtensions,
-      linter(lintPaths({ maxPaths, maxLength }), { delay: 100 }),
+      placeholder(labels.placeholder),
+      linter(lintPatterns(kind, { maxPatterns, maxLength }), { delay: 100 }),
       EditorView.contentAttributes.of({
-        "aria-label": "Ignored paths",
+        "aria-label": labels.label,
         "aria-invalid": String(invalid),
         ...(invalid ? { "aria-describedby": errorsId } : {}),
       }),
@@ -182,16 +213,16 @@ export function IgnoredPathsEditor({
           ]
         : []),
     ],
-    [maxPaths, maxLength, invalid, errorsId, matchedStart]
+    [kind, labels, maxPatterns, maxLength, invalid, errorsId, matchedStart]
   );
 
   const edit = useCallback(
     (next: string) => {
       setText(next);
-      const { patterns, errors } = analyze(next, limits);
+      const { patterns, errors } = analyze(kind, next, limits);
       onChange?.(patterns, errors.length === 0);
     },
-    [limits, onChange]
+    [kind, limits, onChange]
   );
 
   const onUpdate = useCallback((update: ViewUpdate) => {
@@ -222,7 +253,7 @@ export function IgnoredPathsEditor({
 
   const closeTester = () => {
     setTesting(false);
-    setTestPath("");
+    setTestInput("");
     testButtonRef.current?.focus();
   };
 
@@ -284,18 +315,18 @@ export function IgnoredPathsEditor({
               <div className="flex min-w-0 flex-1 items-center gap-2 duration-200 animate-in fade-in slide-in-from-right-2">
                 <input
                   autoFocus
-                  aria-label="Path to test"
-                  value={testPath}
-                  onChange={(event) => setTestPath(event.target.value)}
+                  aria-label={labels.testLabel}
+                  value={testInput}
+                  onChange={(event) => setTestInput(event.target.value)}
                   onKeyDown={onTesterKeyDown}
-                  placeholder="apps/web/src/index.ts"
+                  placeholder={labels.testPlaceholder}
                   className="h-6 min-w-0 flex-1 border-none bg-transparent p-0 font-mono text-xs text-text-bright outline-none placeholder:text-text-dimmed focus:ring-0"
                 />
                 <span
                   role="status"
                   className="flex min-w-0 max-w-[60%] items-center gap-1.5 text-text-dimmed"
                 >
-                  {path && (
+                  {tested && (
                     <>
                       <VerdictBadge key={verdict} verdict={verdict} />
                       <span className="min-w-0 truncate">
@@ -307,7 +338,7 @@ export function IgnoredPathsEditor({
                             </span>
                           </>
                         ) : (
-                          "no path matches"
+                          labels.noMatch
                         )}
                       </span>
                     </>
@@ -317,9 +348,7 @@ export function IgnoredPathsEditor({
             ) : errors.length > 0 ? (
               <span className="truncate text-error">{plural(errors.length, "error")}</span>
             ) : patterns.length === 0 ? (
-              <span className="truncate text-text-dimmed">
-                No paths yet, so every push to a tracked branch deploys.
-              </span>
+              <span className="truncate text-text-dimmed">{labels.empty}</span>
             ) : null}
           </div>
           {(testing || canTest) && (
@@ -330,8 +359,8 @@ export function IgnoredPathsEditor({
               LeadingIcon={FlaskConicalIcon}
               leadingIconClassName="text-indigo-400 transition-transform duration-200 group-hover/button:-rotate-12 light:text-indigo-600"
               className={cn(testing && "bg-indigo-500/15")}
-              tooltip={testing ? "Close the path tester" : "Test a path"}
-              aria-label={testing ? "Close the path tester" : "Test a path"}
+              tooltip={testing ? labels.closeTester : labels.test}
+              aria-label={testing ? labels.closeTester : labels.test}
               onClick={() => (testing ? closeTester() : setTesting(true))}
             />
           )}

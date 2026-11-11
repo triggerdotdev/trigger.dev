@@ -3,6 +3,7 @@ import { prisma } from "~/db.server";
 import { DeleteProjectService } from "~/services/deleteProject.server";
 import {
   BranchTrackingConfigSchema,
+  BuildFiltersSchema,
   type BranchTrackingConfig,
   type BuildFilters,
 } from "~/v3/github";
@@ -131,7 +132,7 @@ export class ProjectSettingsService {
     productionBranch?: string,
     stagingBranch?: string,
     previewDeploymentsEnabled?: boolean,
-    buildFilters?: BuildFilters
+    buildFilters?: Partial<BuildFilters>
   ) {
     const getExistingConnectedRepo = () =>
       fromPromise(
@@ -219,6 +220,7 @@ export class ProjectSettingsService {
       productionBranch: string | undefined;
       stagingBranch: string | undefined;
       previewDeploymentsEnabled: boolean | undefined;
+      buildFilters: Partial<BuildFilters> | undefined;
     }) =>
       fromPromise(
         this.#prismaClient.connectedGithubRepository.update({
@@ -231,7 +233,7 @@ export class ProjectSettingsService {
               staging: data.stagingBranch ? { branch: data.stagingBranch } : {},
             } satisfies BranchTrackingConfig,
             previewDeploymentsEnabled: data.previewDeploymentsEnabled,
-            buildFilters,
+            buildFilters: data.buildFilters,
           },
         }),
         (error) => ({ type: "other" as const, cause: error })
@@ -257,14 +259,17 @@ export class ProjectSettingsService {
                 })
               : okAsync(oldStagingBranch),
             this.isPreviewEnvironmentEnabled(projectId),
-          ])
+          ]).map(([productionBranch, stagingBranch, previewEnvironmentEnabled]) => ({
+            productionBranch,
+            stagingBranch,
+            previewDeploymentsEnabled: previewDeploymentsEnabled && previewEnvironmentEnabled,
+            buildFilters: buildFilters && {
+              ...BuildFiltersSchema.safeParse(connectedRepo.buildFilters ?? {}).data,
+              ...buildFilters,
+            },
+          }))
         );
       })
-      .map(([productionBranch, stagingBranch, previewEnvironmentEnabled]) => ({
-        productionBranch,
-        stagingBranch,
-        previewDeploymentsEnabled: previewDeploymentsEnabled && previewEnvironmentEnabled,
-      }))
       .andThen(updateConnectedRepo);
   }
 

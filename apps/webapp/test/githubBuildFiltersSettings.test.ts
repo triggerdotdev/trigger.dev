@@ -34,7 +34,10 @@ function suffix() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-async function seed(prisma: PrismaClient, buildFilters?: { ignorePaths: string[] }) {
+async function seed(
+  prisma: PrismaClient,
+  buildFilters?: { ignorePaths?: string[]; ignoreBranches?: string[] }
+) {
   holder.prisma = prisma;
   const slug = `ignored_${suffix()}`;
   const user = await prisma.user.create({
@@ -116,12 +119,12 @@ function runAction(seeded: Seeded, request: Request) {
   }) as Promise<Response>;
 }
 
-function submitSettings(seeded: Seeded, ignorePaths: string) {
+function submitSettings(seeded: Seeded, fields: { ignorePaths?: string; ignoreBranches?: string }) {
   const body = new FormData();
   body.set("action", "update-git-settings");
   body.set("productionBranch", "main");
   body.set("previewDeploymentsEnabled", "on");
-  body.set("ignorePaths", ignorePaths);
+  for (const [name, value] of Object.entries(fields)) body.set(name, value);
   return runAction(seeded, new Request(`http://localhost${seeded.path}`, { method: "POST", body }));
 }
 
@@ -146,15 +149,17 @@ describe("ignored paths in the Git settings action", () => {
     async ({ prisma }) => {
       const seeded = await seed(prisma);
 
-      const response = await submitSettings(
-        seeded,
-        "  docs/**  \n\n.github/**\r\n\t*.md\napp/\\(marketing\\)/**\n"
-      );
+      const response = await submitSettings(seeded, {
+        ignorePaths: "  docs/**  \n\n.github/**\r\n\t*.md\napp/\\(marketing\\)/**\n",
+      });
 
       expect(response.status).toBe(302);
-      const ignorePaths = ["docs/**", ".github/**", "*.md", "app/\\(marketing\\)/**"];
-      expect((await storedRepo(prisma, seeded.project.id)).buildFilters).toEqual({ ignorePaths });
-      expect((await presented(seeded)).connectedRepository?.buildFilters).toEqual({ ignorePaths });
+      const buildFilters = {
+        ignorePaths: ["docs/**", ".github/**", "*.md", "app/\\(marketing\\)/**"],
+        ignoreBranches: [],
+      };
+      expect((await storedRepo(prisma, seeded.project.id)).buildFilters).toEqual(buildFilters);
+      expect((await presented(seeded)).connectedRepository?.buildFilters).toEqual(buildFilters);
     }
   );
 
@@ -163,10 +168,11 @@ describe("ignored paths in the Git settings action", () => {
     async ({ prisma }) => {
       const seeded = await seed(prisma, { ignorePaths: ["docs/**"] });
 
-      await submitSettings(seeded, "\n  \n");
+      await submitSettings(seeded, { ignorePaths: "\n  \n" });
 
       expect((await storedRepo(prisma, seeded.project.id)).buildFilters).toEqual({
         ignorePaths: [],
+        ignoreBranches: [],
       });
     }
   );
@@ -200,12 +206,12 @@ describe("ignored paths in the Git settings action", () => {
         ["a\\/**\\/a/**/b/**", "a\\/**\\/a/**/b/**: Use ** at most twice."],
         ["src/[!_]*.ts", "src/[!_]*.ts: Use [^...] to exclude characters, like [^_]."],
       ]) {
-        const response = await submitSettings(seeded, `*.md\n${pattern}`);
+        const response = await submitSettings(seeded, { ignorePaths: `*.md\n${pattern}` });
 
         expect(await response.json()).toMatchObject({ error: { ignorePaths: [message] } });
       }
       const tooMany = Array.from({ length: 5 }, (_, index) => `docs/${index}/**`).join("\n");
-      expect(await (await submitSettings(seeded, tooMany)).json()).toMatchObject({
+      expect(await (await submitSettings(seeded, { ignorePaths: tooMany })).json()).toMatchObject({
         error: { ignorePaths: ["Add at most 4 paths."] },
       });
 
@@ -214,11 +220,107 @@ describe("ignored paths in the Git settings action", () => {
       });
     }
   );
+});
+
+describe("ignored branches in the Git settings action", () => {
+  postgresTest(
+    "stores one trimmed branch pattern per line next to the stored paths",
+    async ({ prisma }) => {
+      // Catches: saving branches dropping the stored paths.
+      const seeded = await seed(prisma, { ignorePaths: ["docs/**"] });
+
+      const response = await submitSettings(seeded, {
+        ignoreBranches: "  noPreview*  \n\nnoPreview/**\r\ndependabot/**\n",
+      });
+
+      expect(response.status).toBe(302);
+      const buildFilters = {
+        ignorePaths: ["docs/**"],
+        ignoreBranches: ["noPreview*", "noPreview/**", "dependabot/**"],
+      };
+      expect((await storedRepo(prisma, seeded.project.id)).buildFilters).toEqual(buildFilters);
+      expect((await presented(seeded)).connectedRepository?.buildFilters).toEqual(buildFilters);
+    }
+  );
 
   postgresTest(
-    "keeps the stored patterns when an onboarding autosave omits the field",
+    "rejects a bad branch pattern with a field error and keeps the stored patterns",
     async ({ prisma }) => {
-      const seeded = await seed(prisma, { ignorePaths: ["docs/**"] });
+      // Catches: a branch pattern skipping server-side validation on save.
+      const seeded = await seed(prisma, { ignoreBranches: ["dependabot/**"] });
+
+      for (const [pattern, message] of [
+        ["!main", "!main: Negated patterns aren't supported. List only the branches to ignore."],
+        ["/release", "/release: Branch names never start with a slash."],
+        ["feature/", "feature/: Branch names never end with a slash. Use feature/** instead."],
+        ["refs/heads/main", "refs/heads/main: Use the branch name without refs/heads/."],
+        [
+          "@(fix|feat)/**",
+          "@(fix|feat)/**: Groups aren't supported. Put each alternative on its own line, or escape ( ) and | with a backslash to match them.",
+        ],
+      ]) {
+        const response = await submitSettings(seeded, { ignoreBranches: `main\n${pattern}` });
+
+        expect(await response.json()).toMatchObject({ error: { ignoreBranches: [message] } });
+      }
+      const tooMany = Array.from({ length: 5 }, (_, index) => `release-${index}`).join("\n");
+      expect(
+        await (await submitSettings(seeded, { ignoreBranches: tooMany })).json()
+      ).toMatchObject({ error: { ignoreBranches: ["Add at most 4 branches."] } });
+
+      expect((await storedRepo(prisma, seeded.project.id)).buildFilters).toEqual({
+        ignoreBranches: ["dependabot/**"],
+      });
+    }
+  );
+});
+
+describe("both lists in the Git settings action", () => {
+  postgresTest(
+    "saves both lists from one submission and clears one of them",
+    async ({ prisma }) => {
+      // Catches: an empty field not clearing its list when the other list changes.
+      const seeded = await seed(prisma, { ignorePaths: ["docs/**"], ignoreBranches: ["main"] });
+
+      await submitSettings(seeded, { ignorePaths: "*.md", ignoreBranches: "" });
+
+      expect((await storedRepo(prisma, seeded.project.id)).buildFilters).toEqual({
+        ignorePaths: ["*.md"],
+        ignoreBranches: [],
+      });
+    }
+  );
+
+  postgresTest(
+    "keeps the stored paths when the stored branches are malformed",
+    async ({ prisma }) => {
+      // Catches: one malformed stored list hiding or erasing the other.
+      const seeded = await seed(prisma, {
+        ignorePaths: ["docs/**"],
+        ignoreBranches: "main" as unknown as string[],
+      });
+
+      expect((await presented(seeded)).connectedRepository?.buildFilters).toEqual({
+        ignorePaths: ["docs/**"],
+        ignoreBranches: [],
+      });
+
+      await submitSettings(seeded, { ignoreBranches: "dependabot/**" });
+
+      expect((await storedRepo(prisma, seeded.project.id)).buildFilters).toEqual({
+        ignorePaths: ["docs/**"],
+        ignoreBranches: ["dependabot/**"],
+      });
+    }
+  );
+
+  postgresTest(
+    "keeps the stored patterns when an onboarding autosave omits the fields",
+    async ({ prisma }) => {
+      const seeded = await seed(prisma, {
+        ignorePaths: ["docs/**"],
+        ignoreBranches: ["dependabot/**"],
+      });
       vi.stubGlobal("fetch", (url: string, init: RequestInit) =>
         runAction(seeded, new Request(url, init))
       );
@@ -235,7 +337,7 @@ describe("ignored paths in the Git settings action", () => {
 
       expect(await storedRepo(prisma, seeded.project.id)).toEqual({
         previewDeploymentsEnabled: false,
-        buildFilters: { ignorePaths: ["docs/**"] },
+        buildFilters: { ignorePaths: ["docs/**"], ignoreBranches: ["dependabot/**"] },
       });
     }
   );
@@ -247,7 +349,7 @@ describe("GitHub settings presenter", () => {
     expect(await presented(seeded)).toMatchObject({
       isVercelIntegrationConnected: false,
       connectedRepository: { buildFilters: undefined },
-      ignorePathLimits: { maxPaths: 4, maxLength: 40 },
+      ignorePatternLimits: { maxPatterns: 4, maxLength: 40 },
     });
 
     const secret = await prisma.secretReference.create({ data: { key: `vercel_${suffix()}` } });

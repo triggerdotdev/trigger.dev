@@ -7,7 +7,8 @@ import { act } from "react-dom/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OperatingSystemContextProvider } from "../primitives/OperatingSystemProvider";
 import { ShortcutsProvider } from "../primitives/ShortcutsProvider";
-import { IgnoredPathsEditor } from "./IgnoredPathsEditor";
+import type { IgnoreKind, IgnorePatternLimits } from "~/v3/github";
+import { IgnoredPatternsEditor } from "./IgnoredPatternsEditor";
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -18,7 +19,13 @@ globalThis.ResizeObserver ??= class {
 let container: HTMLDivElement;
 let root: Root;
 
-function mount(defaultPatterns: string[] = [], limits = { maxPaths: 100, maxLength: 256 }) {
+function mount(
+  defaultPatterns: string[] = [],
+  {
+    kind = "paths",
+    limits = { maxPatterns: 100, maxLength: 256 },
+  }: { kind?: IgnoreKind; limits?: IgnorePatternLimits } = {}
+) {
   const onChange = vi.fn();
   container = document.createElement("div");
   document.body.append(container);
@@ -31,8 +38,9 @@ function mount(defaultPatterns: string[] = [], limits = { maxPaths: 100, maxLeng
         createElement(
           ShortcutsProvider,
           null,
-          createElement(IgnoredPathsEditor, {
-            name: "ignorePaths",
+          createElement(IgnoredPatternsEditor, {
+            kind,
+            name: "patterns",
             defaultPatterns,
             limits,
             onChange,
@@ -61,7 +69,7 @@ function edit(text: string) {
 }
 
 function submitted() {
-  return container.querySelector<HTMLInputElement>('input[name="ignorePaths"]')!.value;
+  return container.querySelector<HTMLInputElement>('input[name="patterns"]')!.value;
 }
 
 function button(label: string) {
@@ -69,7 +77,7 @@ function button(label: string) {
 }
 
 function tester() {
-  return container.querySelector<HTMLInputElement>('input[aria-label="Path to test"]');
+  return container.querySelector<HTMLInputElement>('input[aria-label$=" to test"]');
 }
 
 function type(value: string) {
@@ -98,7 +106,7 @@ function errors() {
   return [...container.querySelectorAll("li")].map((item) => item.textContent);
 }
 
-describe("IgnoredPathsEditor", () => {
+describe("IgnoredPatternsEditor", () => {
   it("folds more than three saved paths and expands into the editor", () => {
     const paths = "docs/**\napps/website/**\n**/*.md\n.github/**\nexamples/**";
     mount(paths.split("\n"));
@@ -146,7 +154,7 @@ describe("IgnoredPathsEditor", () => {
   });
 
   it("applies the configured path count and length limits", () => {
-    const onChange = mount(["docs/**", "*.md"], { maxPaths: 2, maxLength: 10 });
+    const onChange = mount(["docs/**", "*.md"], { limits: { maxPatterns: 2, maxLength: 10 } });
 
     edit("docs/**\n*.md\nexamples/**/*.ts");
 
@@ -158,6 +166,7 @@ describe("IgnoredPathsEditor", () => {
     mount(["docs/**", "apps/website/**", "**/*.md", ".github/**"]);
     act(() => button("Test a path")!.click());
     expect(document.activeElement).toBe(tester());
+    expect(tester()!.getAttribute("aria-label")).toBe("Path to test");
     expect(button("Expand")).not.toBeNull();
 
     type("apps/website/src/index.tsx");
@@ -201,5 +210,26 @@ describe("IgnoredPathsEditor", () => {
     act(() => button("Test a path")!.click());
     edit("!src/**");
     expect(button("Close the path tester")).not.toBeNull();
+  });
+
+  describe("for branches", () => {
+    it("matches the whole branch name against each pattern", () => {
+      // Catches: the tester matching part of a branch name, so it disagrees with the skip on GitHub.
+      mount(["noPreview*", "noPreview/**", "dependabot/**"], { kind: "branches" });
+      act(() => button("Test a branch")!.click());
+      expect(tester()!.getAttribute("aria-label")).toBe("Branch to test");
+
+      type("noPreview-login");
+      expect(verdict()).toEqual(["Ignored", "by noPreview*"]);
+
+      type("noPreview/login/form");
+      expect(verdict()).toEqual(["Ignored", "by noPreview/**"]);
+
+      type("feature/noPreview-login");
+      expect(verdict()).toEqual(["Deploys", "no branch matches"]);
+
+      press("Escape");
+      expect(document.activeElement).toBe(button("Test a branch"));
+    });
   });
 });
