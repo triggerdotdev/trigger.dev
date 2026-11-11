@@ -41,6 +41,7 @@ type NewApiKeyDialogProps = {
   capabilityCatalogue: ApiKeyCapabilityCatalogue | null;
   isRbacPluginAvailable: boolean;
   canManagePresets: boolean;
+  allowPrivateIpRanges: boolean;
   environment: React.ComponentProps<typeof EnvironmentCombo>["environment"];
   children?: (openDialog: () => void) => React.ReactNode;
   open: boolean;
@@ -56,6 +57,7 @@ export function NewApiKeyDialog({
   capabilityCatalogue,
   isRbacPluginAvailable,
   canManagePresets,
+  allowPrivateIpRanges,
   environment,
 }: NewApiKeyDialogProps) {
   const fetcher = useTypedFetcher<typeof action>();
@@ -75,7 +77,8 @@ export function NewApiKeyDialog({
     isRbacPluginAvailable,
     canManagePresets,
   });
-  const [ipRanges, setIpRanges] = useState("");
+  const [ipRanges, setIpRanges] = useState<string[]>([]);
+  const [ipRangesDraftInvalid, setIpRangesDraftInvalid] = useState(false);
   const [createdApiKey, setCreatedApiKey] = useState<string>();
 
   useEffect(() => {
@@ -100,7 +103,7 @@ export function NewApiKeyDialog({
       setExpiryDate(apiKeyExpiryDay(new Date(), DEFAULT_API_KEY_EXPIRY_DAYS));
       setExpiryError(false);
       access.reset();
-      setIpRanges("");
+      setIpRanges([]);
       setCreatedApiKey(undefined);
       setShowError(false);
     }
@@ -228,7 +231,12 @@ export function NewApiKeyDialog({
                   </div>
 
                   <div className="sm:col-span-2">
-                    <ApiKeyIpRangesField value={ipRanges} onChange={setIpRanges} />
+                    <ApiKeyIpRangesField
+                      entries={ipRanges}
+                      onChange={setIpRanges}
+                      allowPrivateIpRanges={allowPrivateIpRanges}
+                      onDraftInvalidChange={setIpRangesDraftInvalid}
+                    />
                   </div>
                 </div>
 
@@ -272,6 +280,7 @@ export function NewApiKeyDialog({
                   disabled={
                     !name.trim() ||
                     isApiKeyNoteTooLong(note) ||
+                    ipRangesDraftInvalid ||
                     !canSubmitAccess ||
                     fetcher.state !== "idle"
                   }

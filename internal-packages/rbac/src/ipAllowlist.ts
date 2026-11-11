@@ -1,6 +1,7 @@
 import { BlockList, isIP } from "node:net";
 
-export const MAX_API_KEY_IP_RANGES = 50;
+// Request matching only. Validating ranges on save lives in ipRanges.ts, which has no Node
+// imports so the dashboard can use it too.
 
 type IpFamily = "ipv4" | "ipv6";
 
@@ -9,27 +10,6 @@ type IpRange = {
   prefix: number;
   family: IpFamily;
 };
-
-// Ranges a public client never calls from. Requests that reach the API over a
-// private network (for example from inside the platform) carry one of these
-// as their source, so an allowlist containing them would admit that traffic.
-const NON_PUBLIC_RANGES: IpRange[] = [
-  { address: "0.0.0.0", prefix: 8, family: "ipv4" },
-  { address: "10.0.0.0", prefix: 8, family: "ipv4" },
-  { address: "100.64.0.0", prefix: 10, family: "ipv4" },
-  { address: "127.0.0.0", prefix: 8, family: "ipv4" },
-  { address: "169.254.0.0", prefix: 16, family: "ipv4" },
-  { address: "172.16.0.0", prefix: 12, family: "ipv4" },
-  { address: "192.168.0.0", prefix: 16, family: "ipv4" },
-  { address: "::", prefix: 128, family: "ipv6" },
-  { address: "::1", prefix: 128, family: "ipv6" },
-  { address: "fc00::", prefix: 7, family: "ipv6" },
-  { address: "fe80::", prefix: 10, family: "ipv6" },
-];
-
-// Node's BlockList matches IPv4 callers against IPv4-mapped IPv6 subnets, so a range in this
-// block would sidestep the IPv4 checks above. Such ranges must be entered in IPv4 form.
-const IPV4_MAPPED_RANGE: IpRange = { address: "::ffff:0:0", prefix: 96, family: "ipv6" };
 
 /**
  * The client IP of an API request: the last X-Forwarded-For entry. The load
@@ -45,59 +25,6 @@ export function clientIpFromHeaders(headers: Pick<Headers, "get">): string | nul
   if (!last) return null;
 
   return normalizeIp(last);
-}
-
-export type ParseIpRangesResult = { ok: true; ranges: string[] } | { ok: false; error: string };
-
-/**
- * Validate user input into stored CIDR ranges. A bare address becomes a
- * single-address range. Ranges overlapping private or reserved space are
- * refused unless `allowNonPublicRanges` is set (self-hosted installs whose
- * clients reach the API over a private network).
- */
-export function parseIpRanges(
-  input: readonly string[],
-  { allowNonPublicRanges = false }: { allowNonPublicRanges?: boolean } = {}
-): ParseIpRangesResult {
-  const ranges: string[] = [];
-
-  for (const raw of input) {
-    const value = raw.trim();
-    if (!value) continue;
-
-    const range = parseIpRange(value);
-    if (!range) {
-      return { ok: false, error: `"${value}" is not a valid IP address or CIDR range.` };
-    }
-
-    if (overlapsRanges(range, [IPV4_MAPPED_RANGE])) {
-      return {
-        ok: false,
-        error: `"${value}" covers IPv4-mapped IPv6 addresses. Enter IPv4 addresses in IPv4 form.`,
-      };
-    }
-
-    if (!allowNonPublicRanges && overlapsRanges(range, NON_PUBLIC_RANGES)) {
-      return {
-        ok: false,
-        error: `"${value}" includes private or reserved addresses. Use your public IP addresses.`,
-      };
-    }
-
-    const canonical = `${range.address}/${range.prefix}`;
-    if (!ranges.includes(canonical)) {
-      ranges.push(canonical);
-    }
-  }
-
-  if (ranges.length > MAX_API_KEY_IP_RANGES) {
-    return {
-      ok: false,
-      error: `An API key can have at most ${MAX_API_KEY_IP_RANGES} IP ranges.`,
-    };
-  }
-
-  return { ok: true, ranges };
 }
 
 /**
@@ -142,18 +69,6 @@ function parseIpRange(value: string): IpRange | null {
 
   // BlockList ignores host bits, so "203.0.113.9/24" matches the same as "203.0.113.0/24".
   return { address, prefix, family };
-}
-
-function overlapsRanges(range: IpRange, others: readonly IpRange[]): boolean {
-  // Compare within one family only: BlockList matches IPv4 addresses against IPv4-mapped IPv6
-  // subnets, which would make every IPv4 range overlap ::ffff:0:0/96.
-  const sameFamily = others.filter((other) => other.family === range.family);
-  if (sameFamily.length === 0) return false;
-
-  // Two ranges overlap exactly when one contains the other's first address.
-  if (buildBlockList(sameFamily).check(range.address, range.family)) return true;
-  const candidate = buildBlockList([range]);
-  return sameFamily.some((other) => candidate.check(other.address, other.family));
 }
 
 function buildBlockList(ranges: readonly IpRange[]): BlockList {
