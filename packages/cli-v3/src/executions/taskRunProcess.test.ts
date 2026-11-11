@@ -1,5 +1,10 @@
 import { TaskRunProcess, trustStoreEnv, type TaskRunProcessOptions } from "./taskRunProcess.js";
 import { describe, it, expect, vi } from "vitest";
+import { execFileSync } from "node:child_process";
+import { closeSync, constants, openSync } from "node:fs";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { UncaughtExceptionError, UnexpectedExitError } from "@trigger.dev/core/v3/errors";
 import type {
   TaskRunExecution,
@@ -193,6 +198,173 @@ describe("TaskRunProcess", () => {
       expect(result.type).toBe("INTERNAL_ERROR");
       expect(result.code).toBe("TASK_RUN_UNCAUGHT_EXCEPTION");
       expect(result.message).toBe("boom");
+    });
+  });
+
+  describe("a child killed with SIGKILL", () => {
+    type Cgroup = { dir: string; events: string; writeEvents: (kills: number) => Promise<void> };
+
+    // A fake cgroup whose out-of-memory counter the test writes.
+    async function withCgroup<T>(run: (cgroup: Cgroup) => Promise<T>): Promise<T> {
+      const dir = await mkdtemp(join(tmpdir(), "task-run-process-oom-"));
+      try {
+        await writeFile(join(dir, "cgroup"), "0::/run\n");
+        await mkdir(join(dir, "sys", "run"), { recursive: true });
+        const events = join(dir, "sys", "run", "memory.events");
+        return await run({
+          dir,
+          events,
+          writeEvents: (kills) => writeFile(events, eventsWith(kills)),
+        });
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    }
+
+    function eventsWith(kills: number) {
+      return `low 0\nhigh 0\nmax 3\noom 4\noom_kill ${kills}\noom_group_kill 0\n`;
+    }
+
+    // Starts an attempt on a child running `childSource`, and returns what it fails with.
+    async function attemptOn(
+      cgroup: Cgroup,
+      childSource: string,
+      options: Partial<TaskRunProcessOptions> = {}
+    ) {
+      const entryPoint = join(cgroup.dir, "child.mjs");
+      await writeFile(entryPoint, childSource);
+      const proc = new TaskRunProcess(
+        createTaskRunProcessOptions({
+          workerManifest: {
+            runtime: "node",
+            workerEntryPoint: entryPoint,
+            configEntryPoint: entryPoint,
+            otelImportHook: {},
+          } as unknown as WorkerManifest,
+          serverWorker: { id: "worker-1", version: "1", contentHash: "hash" },
+          env: { OOM_EVENTS: cgroup.events, OOM_EVENTS_AFTER: eventsWith(1) },
+          oomKillCounter: {
+            procSelfCgroup: join(cgroup.dir, "cgroup"),
+            cgroupRoot: join(cgroup.dir, "sys"),
+          },
+          ...options,
+        })
+      ).initialize();
+
+      const failure = proc
+        .execute(
+          {
+            payload: { execution: createExecution("run-1", 1), traceContext: {}, metrics: [] },
+            messageId: "run_run-1",
+            env: {},
+          },
+          false
+        )
+        .then(
+          () => {
+            throw new Error("the attempt resolved");
+          },
+          (error: unknown) => TaskRunProcess.parseExecuteError(error)
+        );
+      return { proc, failure };
+    }
+
+    // Opens the FIFO for writing once its reader is waiting, so the blocked read sees end of file
+    // and does not outlive the test.
+    async function releaseReader(fifo: string) {
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline) {
+        try {
+          closeSync(openSync(fifo, constants.O_WRONLY | constants.O_NONBLOCK));
+          return;
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+      }
+    }
+
+    const IDLE_CHILD = "setInterval(() => {}, 1000);\n";
+
+    // Counts an out-of-memory kill and dies by SIGKILL as soon as the attempt reaches it.
+    const OOM_ON_EXECUTE_CHILD = [
+      'import { writeFileSync } from "node:fs";',
+      'process.on("message", () => {',
+      "  writeFileSync(process.env.OOM_EVENTS, process.env.OOM_EVENTS_AFTER);",
+      '  process.kill(process.pid, "SIGKILL");',
+      "});",
+      "",
+    ].join("\n");
+
+    async function killedAfterBaseline(oomKillsBefore: number, oomKillsAtKill: number) {
+      return withCgroup(async (cgroup) => {
+        await cgroup.writeEvents(oomKillsBefore);
+        const { proc, failure } = await attemptOn(cgroup, IDLE_CHILD);
+        // Let the attempt read its baseline before the kill is counted.
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        await cgroup.writeEvents(oomKillsAtKill);
+        process.kill(proc.pid!, "SIGKILL");
+        return failure;
+      });
+    }
+
+    // Catches: an out-of-memory kill of the child failing the attempt as a generic non-zero
+    // exit, so the run gets the wrong error and is retried as an ordinary crash.
+    it("reports TASK_PROCESS_OOM_KILLED when the cgroup counted an out-of-memory kill", async () => {
+      const error = await killedAfterBaseline(0, 1);
+
+      expect(error.code).toBe("TASK_PROCESS_OOM_KILLED");
+      expect(error.message).toBe("Process exited with code -1 after signal SIGKILL.");
+    });
+
+    // Catches: the counter read as a total rather than a change, so one earlier out-of-memory
+    // kill in the cgroup makes every later SIGKILL read as out of memory.
+    it("reports a non-zero exit when no out-of-memory kill was counted during the attempt", async () => {
+      const error = await killedAfterBaseline(1, 1);
+
+      expect(error.code).toBe("TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE");
+    });
+
+    // Catches: the baseline read racing the attempt's dispatch, so a kill right after the
+    // attempt starts lands in the baseline and is reported as a non-zero exit.
+    it("counts an out-of-memory kill that happens as soon as the attempt starts", async () => {
+      const error = await withCgroup(async (cgroup) => {
+        await cgroup.writeEvents(0);
+        return (await attemptOn(cgroup, OOM_ON_EXECUTE_CHILD)).failure;
+      });
+
+      expect(error.code).toBe("TASK_PROCESS_OOM_KILLED");
+    });
+
+    // Catches: a child that exits while the attempt waits on the counter rejecting the attempt
+    // before anything handles it, an unhandled rejection that can take the controller down, and
+    // the exit then being reported as a child that was never connected.
+    it("reports a child that exits during a slow counter read as the attempt's error", async () => {
+      const unhandled: unknown[] = [];
+      const onUnhandled = (reason: unknown) => unhandled.push(reason);
+      process.on("unhandledRejection", onUnhandled);
+      try {
+        const error = await withCgroup(async (cgroup) => {
+          // Nothing writes to it, so the read blocks until the test releases it.
+          execFileSync("mkfifo", [cgroup.events]);
+          try {
+            const { proc, failure } = await attemptOn(cgroup, IDLE_CHILD);
+            const exited = new Promise((resolve) => proc.onExit.attachOnce(resolve));
+            process.kill(proc.pid!, "SIGKILL");
+            await exited;
+            // Gives Node a turn to report an unhandled rejection while the read is still blocked.
+            await new Promise((resolve) => setImmediate(resolve));
+            return await failure;
+          } finally {
+            await releaseReader(cgroup.events);
+          }
+        });
+
+        expect(error.code).toBe("TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE");
+        expect(error.message).toBe("Process exited with code -1 after signal SIGKILL.");
+        expect(unhandled).toEqual([]);
+      } finally {
+        process.off("unhandledRejection", onUnhandled);
+      }
     });
   });
 });
