@@ -205,6 +205,73 @@ describe("RunEngine reportRestoreOutcome", () => {
   );
 
   containerTest(
+    "requeue keeps the run ahead of runs triggered after it once, then backs off",
+    async ({ prisma, redisOptions }) => {
+      // Catches: a resume whose restore fails waiting behind every run triggered after it, and a
+      // restore that keeps failing being redelivered with no backoff.
+      const engine = createEngine(prisma, redisOptions);
+
+      try {
+        const { authenticatedEnvironment, run, restore } = await dequeueForRestore(engine, prisma);
+
+        // The restore holds the queue's only slot, so a run triggered now waits in the queue.
+        await engine.runQueue.updateQueueConcurrencyLimits(
+          authenticatedEnvironment,
+          "task/test-task",
+          1
+        );
+        const newerRun = await engine.trigger(
+          {
+            number: 2,
+            friendlyId: "run_5678",
+            environment: authenticatedEnvironment,
+            taskIdentifier: "test-task",
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t5678",
+            spanId: "s5678",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+
+        const result = await engine.reportRestoreOutcome({
+          runId: run.id,
+          snapshotId: restore.snapshot.id,
+          outcome: "requeue",
+          reason: "OOMKilled",
+        });
+        expect(result).toEqual({ ok: true, outcome: "requeue" });
+
+        const redelivered = await dequeue(engine, authenticatedEnvironment.id);
+        expect(redelivered.length).toBe(1);
+        assertNonNullable(redelivered[0]);
+        expect(redelivered[0].run.id).toBe(run.id);
+
+        const secondResult = await engine.reportRestoreOutcome({
+          runId: run.id,
+          snapshotId: redelivered[0].snapshot.id,
+          outcome: "requeue",
+          reason: "OOMKilled",
+        });
+        expect(secondResult).toEqual({ ok: true, outcome: "requeue" });
+
+        const afterSecondRequeue = await dequeue(engine, authenticatedEnvironment.id);
+        expect(afterSecondRequeue.length).toBe(1);
+        assertNonNullable(afterSecondRequeue[0]);
+        expect(afterSecondRequeue[0].run.id).toBe(newerRun.id);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
     "fail fails the attempt as a crash and retries from scratch after the task's retry delay",
     async ({ prisma, redisOptions }) => {
       const { meter, getCounterValue } = createTestMetricsMeter();

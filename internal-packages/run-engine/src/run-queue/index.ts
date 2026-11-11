@@ -2646,6 +2646,7 @@ export class RunQueue {
     resetAttemptCount = false,
     skipDequeueProcessing = false,
     workerQueue,
+    keepQueuePosition = false,
   }: {
     orgId: string;
     messageId: string;
@@ -2660,6 +2661,11 @@ export class RunQueue {
     skipDequeueProcessing?: boolean;
     /** Fresh attempts override the destination; omit for checkpoint redelivery. */
     workerQueue?: string;
+    /**
+     * Without `retryAt`, redeliver the first reattempt at the message's original score instead of
+     * after a backoff.
+     */
+    keepQueuePosition?: boolean;
   }) {
     return this.#trace(
       "nackMessage",
@@ -2722,7 +2728,11 @@ export class RunQueue {
           });
         }
 
-        await this.#callNackMessage({ message, retryAt });
+        await this.#callNackMessage({
+          message,
+          retryAt:
+            retryAt ?? (keepQueuePosition && message.attempt <= 1 ? message.timestamp : undefined),
+        });
 
         this.#emitQueueMetric(message.queue, { op: "nack", q: message.queue });
 
