@@ -1080,6 +1080,11 @@ export class WaitpointSystem {
     return id ? this.readExistingStoreDateTimeWaitpoint({ ...params, waitpointId: id }) : null;
   }
 
+  /** The run's current block edges from both stores, as continuation reads them. */
+  public readRunBlockState(runId: string, organizationId: string): Promise<RunBlockEdge[]> {
+    return this.coordinator.readRunBlockState(runId, { organizationId });
+  }
+
   /** Internal, tenant-scoped history page; does not read or consume live fanout state. */
   public async readStoreWaitpointRelatedRunIds(params: {
     waitpointId: string;

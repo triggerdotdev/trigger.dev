@@ -4,6 +4,7 @@ import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
 import type { z } from "zod";
 import { prisma, $replica, $transaction } from "~/db.server";
 import { runStore } from "~/v3/runStore.server";
+import { engine } from "~/v3/runEngine.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { CancelTaskRunService, type CancelableTaskRun } from "~/v3/services/cancelTaskRun.server";
@@ -21,6 +22,7 @@ import {
   isVersionBelowSessionVersionFloor,
   sessionVersionFloorFor,
   shouldSupersedeLiveRun,
+  waitpointBlockingRunCheck,
   type LiveRunFloorChecks,
   type SessionVersionFloor,
 } from "./sessionVersionFloor.server";
@@ -781,15 +783,7 @@ function liveRunFloorChecks(
     waiters: {
       listSessionInWaitpoints: (addressingKey) =>
         listSessionStreamWaitpoints(environment.id, addressingKey, "in"),
-      async isWaitpointBlockingRun(waitpointId, runId) {
-        const waitpoint = await runStore.findWaitpoint({
-          where: { id: waitpointId, environmentId: environment.id },
-          select: { status: true },
-        });
-        if (waitpoint?.status !== "PENDING") return false;
-        const runIds = await runStore.findWaitpointConnectedRunIds(waitpointId);
-        return runIds.includes(runId);
-      },
+      isWaitpointBlockingRun: waitpointBlockingRunCheck(environment, { engine, runStore }),
     },
   };
 }

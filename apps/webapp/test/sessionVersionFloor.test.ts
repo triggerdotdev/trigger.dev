@@ -1,4 +1,17 @@
+import { containerTestWithIsolatedRedis as containerTest } from "@internal/testcontainers";
+import { PostgresRunStore, RedisSnapshotStore } from "@internal/run-store";
+import { parseWaitpointId, RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { describe, expect, it, vi } from "vitest";
+import { WaitpointStoreCoordinator } from "../../../internal-packages/run-engine/src/engine/waitpointCoordinator/storeCoordinator.js";
+import {
+  setupAuthenticatedEnvironment,
+  setupBackgroundWorker,
+} from "../../../internal-packages/run-engine/src/engine/tests/setup.js";
+import {
+  dequeueAndStart,
+  makeEngine,
+  triggerRun,
+} from "../../../internal-packages/run-engine/src/engine/tests/utils/storeRunWaitpointLifecycleFixtures.js";
 import type { SessionOutTail } from "~/services/realtime/s2realtimeStreams.server";
 import {
   areSessionStreamsIdle,
@@ -11,6 +24,7 @@ import {
   sessionVersionFloorFor,
   shouldSupersedeLiveRun,
   TURN_COMPLETE_GRACE_MS,
+  waitpointBlockingRunCheck,
 } from "~/services/realtime/sessionVersionFloor.server";
 
 const ENV_ID = "cmenv00000000000000000001";
@@ -429,4 +443,234 @@ describe("areSessionStreamsIdle", () => {
       ).resolves.toBe(false);
     }
   });
+});
+
+describe("waitpointBlockingRunCheck", () => {
+  // Catches: a session .in wait minted as a store-format MANUAL waitpoint read only from Postgres, so a run below the version floor parked on .in is judged busy instead of superseded.
+  containerTest(
+    "answers for store-format and legacy MANUAL waitpoints",
+    async ({ prisma, redisOptions }) => {
+      const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+      const store = new WaitpointStoreCoordinator({ redisOptions });
+      let enabled = true;
+      const engine = makeEngine(prisma, redisOptions, {
+        store,
+        snapshotStore,
+        resolveDial: () => "off",
+        isWaitpointStoreEnabled: () => enabled,
+      });
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        await setupBackgroundWorker(engine, env, ["store-agent", "legacy-agent"]);
+        const scope = {
+          environmentId: env.id,
+          projectId: env.project.id,
+          organizationId: env.organization.id,
+        };
+        const startRun = async (taskIdentifier: string) => {
+          const run = await triggerRun(engine, env, prisma, {
+            friendlyId: RunId.generate().friendlyId,
+            taskIdentifier,
+          });
+          await dequeueAndStart(engine, taskIdentifier);
+          return run;
+        };
+        const parkOnManual = async (runId: string) => {
+          const { waitpoint } = await engine.createManualWaitpoint({ ...scope, runId });
+          await engine.blockRunWithWaitpoint({
+            runId,
+            waitpoints: waitpoint.id,
+            projectId: env.project.id,
+            organizationId: env.organization.id,
+          });
+          return waitpoint.id;
+        };
+
+        const storeRun = await startRun("store-agent");
+        const storeWaitpointId = await parkOnManual(storeRun.id);
+        expect(parseWaitpointId(storeWaitpointId).format).toBe("b32hexW");
+
+        enabled = false;
+        const legacyRun = await startRun("legacy-agent");
+        const legacyWaitpointId = await parkOnManual(legacyRun.id);
+        expect(parseWaitpointId(legacyWaitpointId).format).toBe("legacy");
+        enabled = true;
+
+        const environment = {
+          id: env.id,
+          projectId: env.project.id,
+          organizationId: env.organization.id,
+        };
+        const deps = { engine, runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }) };
+        const check = (waitpointId: string, runId: string) =>
+          waitpointBlockingRunCheck(environment, deps)(waitpointId, runId);
+
+        expect(await check(storeWaitpointId, storeRun.id)).toBe(true);
+        expect(await check(legacyWaitpointId, legacyRun.id)).toBe(true);
+        expect(await check(storeWaitpointId, legacyRun.id)).toBe(false);
+
+        await engine.completeWaitpoint({
+          id: storeWaitpointId,
+          organizationId: env.organization.id,
+          onlyIfPending: true,
+          output: { value: "{}", type: "application/json", isError: false },
+        });
+        expect(await check(storeWaitpointId, storeRun.id)).toBe(false);
+      } finally {
+        await engine.quit();
+        await store.quit();
+        await snapshotStore.quit();
+      }
+    },
+    30_000
+  );
+
+  // Catches: the token-wait route's block (caller-built block operation, env-scoped) not recording the run where the floor check reads it, so a session .in waiter is judged busy.
+  containerTest(
+    "sees a run blocked the way the session .in wait routes block it",
+    async ({ prisma, redisOptions }) => {
+      const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+      const store = new WaitpointStoreCoordinator({ redisOptions });
+      const engine = makeEngine(prisma, redisOptions, {
+        store,
+        snapshotStore,
+        resolveDial: () => "off",
+        isWaitpointStoreEnabled: () => true,
+      });
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        await setupBackgroundWorker(engine, env, ["store-agent"]);
+        const run = await triggerRun(engine, env, prisma, {
+          friendlyId: RunId.generate().friendlyId,
+          taskIdentifier: "store-agent",
+        });
+        await dequeueAndStart(engine, "store-agent");
+        const environment = {
+          id: env.id,
+          projectId: env.project.id,
+          organizationId: env.organization.id,
+        };
+        const check = (waitpointId: string) =>
+          waitpointBlockingRunCheck(environment, {
+            engine,
+            runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
+          })(waitpointId, run.id);
+
+        // Session-streams wait route: create only, and the raw id goes into the session cache.
+        const { waitpoint } = await engine.createManualWaitpoint({
+          runId: run.id,
+          environmentId: env.id,
+          projectId: env.project.id,
+          organizationId: env.organization.id,
+        });
+        expect(await check(waitpoint.id)).toBe(false);
+
+        // Token wait route: the SDK sends back the friendly id, then the route blocks.
+        const waitpointId = WaitpointId.toId(WaitpointId.toFriendlyId(waitpoint.id));
+        const blockOperation = await engine.waitpointSystem.buildStoreBlockOperation({
+          runId: run.id,
+          waitpointId,
+          organizationId: env.organization.id,
+        });
+        expect(blockOperation).toBeDefined();
+        await engine.blockRunWithWaitpoint({
+          runId: run.id,
+          waitpoints: [waitpointId],
+          projectId: env.project.id,
+          organizationId: env.organization.id,
+          blockOperation,
+          expectedEnvironmentId: env.id,
+        });
+
+        expect(await check(waitpoint.id)).toBe(true);
+      } finally {
+        await engine.quit();
+        await store.quit();
+        await snapshotStore.quit();
+      }
+    },
+    30_000
+  );
+
+  // Catches: a run whose attempt failed while parked on .in and then retried still judged waiting on that pending waitpoint, so a busy run is superseded.
+  containerTest(
+    "is false for a retried run whose old .in waitpoint is still pending",
+    async ({ prisma, redisOptions }) => {
+      const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+      const store = new WaitpointStoreCoordinator({ redisOptions });
+      const engine = makeEngine(prisma, redisOptions, {
+        store,
+        snapshotStore,
+        resolveDial: () => "off",
+        isWaitpointStoreEnabled: () => true,
+      });
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        await setupBackgroundWorker(engine, env, ["store-agent"]);
+        const scope = {
+          environmentId: env.id,
+          projectId: env.project.id,
+          organizationId: env.organization.id,
+        };
+        const runStore = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+        const run = await triggerRun(engine, env, prisma, {
+          friendlyId: RunId.generate().friendlyId,
+          taskIdentifier: "store-agent",
+        });
+        await dequeueAndStart(engine, "store-agent");
+        const check = (waitpointId: string) =>
+          waitpointBlockingRunCheck(
+            { id: env.id, projectId: env.project.id, organizationId: env.organization.id },
+            { engine, runStore }
+          )(waitpointId, run.id);
+        const parkOnManual = async () => {
+          const { waitpoint } = await engine.createManualWaitpoint({ ...scope, runId: run.id });
+          const blocked = await engine.blockRunWithWaitpoint({
+            runId: run.id,
+            waitpoints: waitpoint.id,
+            projectId: env.project.id,
+            organizationId: env.organization.id,
+          });
+          return { waitpointId: waitpoint.id, snapshotId: blocked.id };
+        };
+
+        const first = await parkOnManual();
+        expect(parseWaitpointId(first.waitpointId).format).toBe("b32hexW");
+        expect(await check(first.waitpointId)).toBe(true);
+
+        const failed = await engine.completeRunAttempt({
+          runId: run.id,
+          snapshotId: first.snapshotId,
+          completion: {
+            ok: false,
+            id: run.id,
+            error: { type: "BUILT_IN_ERROR", name: "Error", message: "retry", stackTrace: "" },
+            retry: { timestamp: Date.now(), delay: 0 },
+          },
+        });
+        expect(failed.attemptStatus).toBe("RETRY_IMMEDIATELY");
+        const retrying = await engine.getRunExecutionData({ runId: run.id });
+        await engine.startRunAttempt({ runId: run.id, snapshotId: retrying!.snapshot.id });
+        expect(
+          (await engine.getRunExecutionData({ runId: run.id }))?.snapshot.executionStatus
+        ).toBe("EXECUTING");
+        const old = await engine.getStoreDateTimeWaitpoint({
+          ...scope,
+          waitpointId: first.waitpointId,
+        });
+        expect(old?.status).toBe("PENDING");
+        expect(await check(first.waitpointId)).toBe(false);
+
+        // The new attempt parks on a fresh .in waitpoint while the old id is still listed.
+        const second = await parkOnManual();
+        expect(await check(first.waitpointId)).toBe(false);
+        expect(await check(second.waitpointId)).toBe(true);
+      } finally {
+        await engine.quit();
+        await store.quit();
+        await snapshotStore.quit();
+      }
+    },
+    30_000
+  );
 });

@@ -2828,6 +2828,24 @@ export class RunEngine {
     return this.waitpointSystem.readStoreWaitpointRelatedRunIds(params);
   }
 
+  /**
+   * Ids of the waitpoints the run is blocked on now (not yet completed), from both stores.
+   * An organization without the waitpoint store gets [] after the flag check and nothing else.
+   */
+  async getStoreRunBlockingWaitpointIds({
+    runId,
+    organizationId,
+  }: {
+    runId: string;
+    organizationId: string;
+  }): Promise<string[]> {
+    if (!(await this.waitpointSystem.isStoreRoutingEnabled(organizationId))) return [];
+    const edges = await this.waitpointSystem.readRunBlockState(runId, organizationId);
+    return edges.flatMap((edge) =>
+      edge.waitpoint.status === "PENDING" ? [edge.waitpoint.id] : []
+    );
+  }
+
   async getWaitpoint({
     waitpointId,
     environmentId,
