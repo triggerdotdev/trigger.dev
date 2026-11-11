@@ -80,11 +80,14 @@ jobs:
           # Future snapshots resolve to "latest" and break mtime normalization
           [ "$EPOCH" -le "$(date -u +%s)" ] || { echo "debian_snapshot is in the future: $SNAPSHOT"; exit 1; }
 
-          # Pull requests and branch dispatches build without pushing
-          if [ "$EVENT_NAME" = "pull_request" ] || [ "$REF" != "refs/heads/main" ]; then
+          # Pull requests and branch dispatches build without pushing. Release branches push,
+          # dated tags only: main stays the only ref that moves the unversioned tags
+          if [ "$EVENT_NAME" = "pull_request" ]; then
             PUSH=false
-          else
+          elif [ "$REF" = "refs/heads/main" ] || [[ "$REF" == refs/heads/release/* ]]; then
             PUSH=true
+          else
+            PUSH=false
           fi
 
           {
@@ -174,7 +177,6 @@ jobs:
           # The dated tag is immutable and keeps every published digest
           # tag-referenced forever; shipped CLI releases pin these digests
           tags: |
-            triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}
             triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}-${{ needs.setup.outputs.publish_id }}
           build-args: |
             BASE_IMAGE=${{ matrix.image.base }}
@@ -201,7 +203,6 @@ jobs:
           provenance: false
           outputs: type=image,push=true,rewrite-timestamp=true
           tags: |
-            triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}-build
             triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}-build-${{ needs.setup.outputs.publish_id }}
           build-args: |
             BASE_IMAGE=${{ matrix.image.base }}
