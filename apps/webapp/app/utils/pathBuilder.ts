@@ -333,6 +333,15 @@ export function v3NewEnvironmentVariablesPath(
   return `${v3EnvironmentVariablesPath(organization, project, environment)}/new`;
 }
 
+export function v3EnvironmentVariableKeyPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  key: string
+) {
+  return `${v3EnvironmentVariablesPath(organization, project, environment)}/key/${encodeURIComponent(key)}`;
+}
+
 export function v3ProjectAlertsPath(
   organization: OrgForPath,
   project: ProjectForPath,

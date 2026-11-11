@@ -1,64 +1,42 @@
 import * as Ariakit from "@ariakit/react";
-import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
-import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { parseEnvironmentVariableForm } from "~/v3/environmentVariables/forms";
+import { BookOpenIcon, InformationCircleIcon, PlusIcon } from "@heroicons/react/20/solid";
 import {
-  BookOpenIcon,
-  InformationCircleIcon,
-  LockClosedIcon,
-  MinusCircleIcon,
-  NoSymbolIcon,
-  PencilSquareIcon,
-  PlusIcon,
-  TrashIcon,
-} from "@heroicons/react/20/solid";
-import {
-  Form,
+  Link,
   Outlet,
-  useActionData,
   useFetcher,
   useLocation,
   useNavigate,
-  useNavigation,
+  useParams,
   useRevalidator,
+  type ShouldRevalidateFunction,
 } from "@remix-run/react";
 import { json } from "@remix-run/server-runtime";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
 import { matchSorter } from "match-sorter";
 import { fromPromise } from "neverthrow";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
-import { UserAvatar } from "~/components/UserProfilePhoto";
 import {
   EnvironmentCombo,
   EnvironmentIcon,
   environmentTextClassName,
 } from "~/components/environments/EnvironmentLabel";
-import { VercelLogo } from "~/components/integrations/VercelLogo";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { ClipboardField } from "~/components/primitives/ClipboardField";
-import { CopyableText } from "~/components/primitives/CopyableText";
-import { DateTime } from "~/components/primitives/DateTime";
-import { DialogClose } from "@radix-ui/react-dialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTrigger,
-} from "~/components/primitives/Dialog";
-import { Fieldset } from "~/components/primitives/Fieldset";
-import { FormButtons } from "~/components/primitives/FormButtons";
-import { FormError } from "~/components/primitives/FormError";
+import { LinkButton } from "~/components/primitives/Buttons";
 import { Header2 } from "~/components/primitives/Headers";
-import { Input } from "~/components/primitives/Input";
-import { InputGroup } from "~/components/primitives/InputGroup";
-import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import {
+  RESIZABLE_PANEL_ANIMATION,
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+  collapsibleHandleClassName,
+} from "~/components/primitives/Resizable";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import SegmentedControl from "~/components/primitives/SegmentedControl";
 import { Select, SelectItem } from "~/components/primitives/Select";
@@ -76,13 +54,12 @@ import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
+import { useCopy } from "~/hooks/useCopy";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { redirectWithSuccessMessage } from "~/models/message.server";
-import {
-  EnvironmentVariablesPresenter,
-  type EnvironmentVariableWithSetValues,
-} from "~/presenters/v3/EnvironmentVariablesPresenter.server";
+import { EnvironmentVariableKeyPresenter } from "~/presenters/v3/EnvironmentVariableKeyPresenter.server";
+import { EnvironmentVariablesPresenter } from "~/presenters/v3/EnvironmentVariablesPresenter.server";
 import { type EnvironmentVariablesEnvironment } from "~/presenters/v3/environmentVariablesEnvironments.server";
 import { logger } from "~/services/logger.server";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
@@ -92,23 +69,31 @@ import { cn } from "~/utils/cn";
 import {
   EnvironmentParamSchema,
   docsPath,
+  v3EnvironmentVariableKeyPath,
   v3EnvironmentVariablesPath,
   v3NewEnvironmentVariablesPath,
 } from "~/utils/pathBuilder";
 import {
   ALL_BRANCHES,
   availableEnvironmentVariablesFilters,
+  canSortEnvironmentVariablesView,
   environmentTypeForFilter,
   listViewSearch,
+  nextEnvironmentVariablesSort,
   parseEnvironmentVariablesFilter,
+  parseEnvironmentVariablesSort,
+  selectEnvironmentVariablesFilter,
   type EnvironmentVariablesFilter,
 } from "~/v3/environmentVariables/environmentFilter";
-import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
-import { findUnauthorizedEnvironmentId } from "~/v3/writableEnvironments";
 import {
-  DeleteEnvironmentVariableValue,
-  EditEnvironmentVariableValue,
-} from "~/v3/environmentVariables/repository";
+  keyPanelViewSearch,
+  listedPreviewBase,
+  navigationKeepsList,
+  type PreviewBaseState,
+} from "~/v3/environmentVariables/environmentVariableKey";
+import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
+import { findTargetEnvironments } from "~/v3/environmentVariables/targetEnvironments.server";
+import { findUnauthorizedEnvironmentId } from "~/v3/writableEnvironments";
 import {
   isPullEnvVarsEnabledForEnvironment,
   shouldSyncEnvVar,
@@ -117,6 +102,17 @@ import {
 import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
 import type { Handle } from "~/utils/handle";
+import {
+  DeleteEnvironmentVariableButton,
+  EditEnvironmentVariablePanel,
+  EnvironmentVariableUpdated,
+  EnvironmentVariableValue,
+  maskEnvironmentVariable,
+  schema,
+  type EnvironmentVariablesPageLoaderData,
+  type MaskedEnvironmentVariable,
+  type PageVercelIntegration,
+} from "./EnvironmentVariableControls";
 
 export const handle: Handle = {
   agentPageContext: () => sectionAgentPageContext("envvars"),
@@ -125,39 +121,31 @@ import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Environment variables");
 
-type PageVercelIntegration = NonNullable<
-  Awaited<ReturnType<EnvironmentVariablesPresenter["call"]>>["vercelIntegration"]
->;
-
-// A value the current role can't read for its environment tier is masked
-// server-side: the value is withheld and the cell renders "Permission denied".
-export type MaskedEnvironmentVariable = EnvironmentVariableWithSetValues & {
-  permissionDenied?: boolean;
+/** What the list hands the route under it: the key panel or the create dialog. */
+export type EnvironmentVariablesOutletContext = {
+  revealAll: boolean;
 };
 
-export type EnvironmentVariablesPageLoaderData = {
-  allowEmptyEnvironmentVariableValues: boolean;
-  environmentVariables: MaskedEnvironmentVariable[];
-  environments: EnvironmentVariablesEnvironment[];
-  // The environment filter in effect, and the environments it lists.
-  filter: EnvironmentVariablesFilter;
-  filterEnvironmentIds: string[];
-  // The preview branches the list is narrowed to. Empty when it lists every branch.
-  filterBranchEnvironmentIds: string[];
-  // True when no listed environment has a variable, whatever the filter is.
-  projectHasNoVariables: boolean;
-  hasStaging: boolean;
-  vercelIntegration: PageVercelIntegration | null;
-  // Environment ids whose env vars the current role can read.
-  accessibleEnvironmentIds: string[];
-  // Environment ids whose env vars the current role can write (create/edit/delete).
-  writableEnvironmentIds: string[];
-  pagination: { currentPage: number; totalPages: number; totalCount: number };
-  search?: string;
-};
+// The key panel keeps its own search params (its branches search and page) next to the
+// list's. A navigation that changes only those, on the same project and environment, leaves
+// the list as it is, so don't reload it. Anything after a form submission still revalidates.
+export const shouldRevalidate: ShouldRevalidateFunction = ({
+  currentUrl,
+  nextUrl,
+  currentParams,
+  nextParams,
+  formMethod,
+  defaultShouldRevalidate,
+}) => {
+  if (
+    (formMethod === undefined || formMethod.toUpperCase() === "GET") &&
+    navigationKeepsList({ currentUrl, nextUrl, currentParams, nextParams })
+  ) {
+    return false;
+  }
 
-export const environmentVariablesRouteId =
-  "routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables";
+  return defaultShouldRevalidate;
+};
 
 export const loader = dashboardLoader(
   {
@@ -168,6 +156,8 @@ export const loader = dashboardLoader(
       // dev | stg | prod | preview | all. Anything else is treated as absent, which means the
       // type of the environment in the URL.
       env: z.string().optional().catch(undefined),
+      // updated | updated-asc. Anything else is alphabetical by key.
+      sort: z.string().optional().catch(undefined),
     }),
     context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
     // No hard authorization: the page can list every environment. Values in
@@ -202,6 +192,7 @@ export const loader = dashboardLoader(
         // Preview filter; unknown names are ignored.
         branches: new URL(request.url).searchParams.getAll("branch"),
         currentEnvironmentSlug: params.envParam,
+        sort: parseEnvironmentVariablesSort(searchParams.sort),
       });
 
       const accessibleEnvironmentIds = environments
@@ -218,16 +209,7 @@ export const loader = dashboardLoader(
       // Withhold values (and the "who/when" metadata) for environments the
       // role can't read — never serialize them to the client.
       const masked: MaskedEnvironmentVariable[] = environmentVariables.map((variable) =>
-        accessible.has(variable.environment.id)
-          ? variable
-          : {
-              ...variable,
-              value: "",
-              isSecret: false,
-              permissionDenied: true,
-              lastUpdatedBy: null,
-              updatedByUser: null,
-            }
+        accessible.has(variable.environment.id) ? variable : maskEnvironmentVariable(variable)
       );
 
       return typedjson({
@@ -254,23 +236,6 @@ export const loader = dashboardLoader(
     }
   }
 );
-
-const schema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("edit"), ...EditEnvironmentVariableValue.shape }),
-  z.object({
-    action: z.literal("delete"),
-    key: z.string(),
-    ...DeleteEnvironmentVariableValue.shape,
-  }),
-  z.object({
-    action: z.literal("update-vercel-sync"),
-    key: z.string(),
-    environmentType: z.enum(["PRODUCTION", "STAGING", "PREVIEW", "DEVELOPMENT"]),
-    syncEnabled: z
-      .union([z.literal("true"), z.literal("false")])
-      .transform((val) => val === "true"),
-  }),
-]);
 
 export const action = dashboardAction(
   {
@@ -309,15 +274,15 @@ export const action = dashboardAction(
 
     // Enforce env-tier write:envvars on the targeted environment, so a role
     // that can't write a deployed tier can't mutate it via a direct POST.
+    // Archived environments are left out, so an archived id answers "Environment not found".
+    const submittedEnvs =
+      submission.value.action === "update-vercel-sync"
+        ? []
+        : await findTargetEnvironments(prisma, projectId, [submission.value.environmentId]);
     const targetEnvType =
       submission.value.action === "update-vercel-sync"
         ? submission.value.environmentType
-        : (
-            await prisma.runtimeEnvironment.findFirst({
-              where: { id: submission.value.environmentId, projectId },
-              select: { type: true },
-            })
-          )?.type;
+        : submittedEnvs[0]?.type;
     if (!targetEnvType) {
       return json(submission.reply({ formErrors: ["Environment not found"] }));
     }
@@ -334,11 +299,10 @@ export const action = dashboardAction(
     // Per-env write gate for the mutating value actions: `environmentId` is a
     // user-supplied hidden field and the repository only checks project
     // membership. Mirrors the create route's check.
+    // The submitted environment's branch name, for the delete toast.
+    let submittedBranchName: string | null = null;
     if (submission.value.action === "edit" || submission.value.action === "delete") {
-      const submittedEnvs = await prisma.runtimeEnvironment.findMany({
-        where: { projectId, id: submission.value.environmentId },
-        select: { id: true, type: true, orgMember: { select: { userId: true } } },
-      });
+      submittedBranchName = submittedEnvs[0]?.branchName ?? null;
       const unauthorizedEnvironmentId = findUnauthorizedEnvironmentId(
         submittedEnvs,
         [submission.value.environmentId],
@@ -400,15 +364,26 @@ export const action = dashboardAction(
           return error;
         });
 
-        // Stay on the view the delete was made from.
+        // Stay on the view the delete was made from, with the key panel still open when it
+        // was open and its key has a value left.
+        const { panelKey } = submission.value;
+        const slugs = [
+          { slug: organizationSlug },
+          { slug: projectParam },
+          { slug: envParam },
+        ] as const;
+        const keepPanelOpen =
+          panelKey !== undefined &&
+          (await new EnvironmentVariableKeyPresenter().isSet({ userId, projectId, key: panelKey }));
+
         return redirectWithSuccessMessage(
-          `${v3EnvironmentVariablesPath(
-            { slug: organizationSlug },
-            { slug: projectParam },
-            { slug: envParam }
-          )}${listViewSearch(request.url)}`,
+          keepPanelOpen
+            ? `${v3EnvironmentVariableKeyPath(...slugs, panelKey)}${keyPanelViewSearch(request.url)}`
+            : `${v3EnvironmentVariablesPath(...slugs)}${listViewSearch(request.url)}`,
           request,
-          `Deleted ${submission.value.key} environment variable`
+          submittedBranchName
+            ? `Removed the ${submission.value.key} override on ${submittedBranchName}`
+            : `Deleted ${submission.value.key} environment variable`
         );
       }
       case "update-vercel-sync": {
@@ -441,6 +416,8 @@ type GroupedEnvironmentVariable = MaskedEnvironmentVariable & {
   isFirstTime: boolean;
   isLastTime: boolean;
   occurences: number;
+  /** For a Preview branch's row: whether the key has a Preview value the branch falls back to. */
+  previewBase: PreviewBaseState;
 };
 
 export default function Page() {
@@ -460,19 +437,43 @@ function EnvironmentVariablesListPage({
     environments,
     filter,
     filterBranchEnvironmentIds,
+    filterEnvironmentIds,
     projectHasNoVariables,
     vercelIntegration,
     pagination,
     search,
   } = loaderData;
+  const location = useLocation();
   const hasSearch = Boolean(search);
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const location = useLocation();
+  // Whether the view a URL's search params ask for can be sorted by last update: the rule the
+  // loader applies, worked out here so a click can tell before the next page loads.
+  const canSortView = (params: URLSearchParams) =>
+    canSortEnvironmentVariablesView(
+      selectEnvironmentVariablesFilter({
+        environments,
+        requested: parseEnvironmentVariablesFilter(params.get("env")),
+        requestedBranches: params.getAll("branch"),
+        currentEnvironmentId: environment.id,
+        currentEnvironmentType: environment.type,
+      })
+    );
+  // Read from the URL, so the header arrow moves on click while the next page loads. A view that
+  // can't be sorted ignores the param.
+  const currentSearchParams = new URLSearchParams(location.search);
+  const isSortableView = canSortView(currentSearchParams);
+  const selectedSort = isSortableView
+    ? parseEnvironmentVariablesSort(currentSearchParams.get("sort"))
+    : undefined;
   const navigate = useNavigate();
   const { value: searchParamValue, values: searchParamValues } = useSearchParams();
   const filteredItems = environmentVariables;
+  // The key open in the side panel, carried by the nested key route.
+  const { keyParam } = useParams();
+  const isShowingKeyPanel = keyParam !== undefined;
+  const outletContext: EnvironmentVariablesOutletContext = { revealAll };
 
   const filterOptions = useMemo(
     () => availableEnvironmentVariablesFilters(environments),
@@ -512,6 +513,10 @@ function EnvironmentVariablesListPage({
       for (const v of value === undefined ? [] : Array.isArray(value) ? value : [value]) {
         params.append(name, v);
       }
+    }
+    // The sort doesn't follow into a view that can't be sorted.
+    if (!canSortView(params)) {
+      params.delete("sort");
     }
     navigate(`${location.pathname}?${params.toString()}`, { replace });
   };
@@ -553,12 +558,18 @@ function EnvironmentVariablesListPage({
 
   // The create dialog reads the filter from this route's loader data, so its URL keeps the
   // search params. That also brings the user back to the same view when it closes.
-  const newVariablePath = `${v3NewEnvironmentVariablesPath(organization, project, environment)}${location.search}`;
+  // With the key panel open the dialog opens over it, from the panel's own create route.
+  const newVariablePath = `${
+    keyParam !== undefined
+      ? `${v3EnvironmentVariableKeyPath(organization, project, environment, keyParam)}/new`
+      : v3NewEnvironmentVariablesPath(organization, project, environment)
+  }${location.search}`;
 
   // The same list for every environment. Keeps the search, starts at the first page.
   const allEnvironmentsSearchParams = new URLSearchParams(location.search);
   allEnvironmentsSearchParams.set("env", "all");
   allEnvironmentsSearchParams.delete("page");
+  allEnvironmentsSearchParams.delete("sort");
   const allEnvironmentsPath = `${location.pathname}?${allEnvironmentsSearchParams.toString()}`;
 
   const tableScrollRef = useRef<HTMLDivElement>(null);
@@ -577,6 +588,9 @@ function EnvironmentVariablesListPage({
     // Second pass: add isFirstTime, isLastTime, and occurrences flags
     const seenKeys = new Set<string>();
     const currentOccurrences = new Map<string, number>();
+    const previewEnvironmentId = environments.find(
+      (env) => env.type === "PREVIEW" && env.parentEnvironmentId === null
+    )?.id;
 
     return filteredItems.map((variable) => {
       // Track current occurrence number for this key
@@ -596,9 +610,15 @@ function EnvironmentVariablesListPage({
         isFirstTime,
         isLastTime,
         occurences: totalOccurrences,
+        previewBase: listedPreviewBase(
+          variable.key,
+          filteredItems,
+          previewEnvironmentId,
+          filterEnvironmentIds
+        ),
       };
     });
-  }, [filteredItems]);
+  }, [filteredItems, environments, filterEnvironmentIds]);
 
   const shouldVirtualize = groupedEnvironmentVariables.length > SSR_ROW_WINDOW;
   const [isVirtualized, setIsVirtualized] = useState(false);
@@ -634,232 +654,291 @@ function EnvironmentVariablesListPage({
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <div className={cn("flex h-full min-h-0 flex-col")}>
-          <div className="flex items-center justify-between gap-2 px-2 py-2">
-            <div className="flex items-center gap-1.5">
-              <SearchInput
-                placeholder={searchPlaceholder}
-                resetParams={["page"]}
-                shortcut={{ key: "/" }}
-                autoFocus
-              />
-              <SegmentedControl
-                name="env"
-                variant="secondary/small"
-                value={selectedFilter}
-                options={filterOptions.map((option) => ({
-                  value: option,
-                  label: <EnvironmentFilterLabel filter={option} />,
-                }))}
-                onChange={(value) =>
-                  navigateToView({ env: value, branch: undefined, page: undefined })
-                }
-              />
-              {selectedFilter === "preview" && previewBranches.length > 0 && (
-                <Select<string[], EnvironmentVariablesEnvironment>
-                  variant="secondary/small"
-                  value={selectedBranchIds}
-                  setValue={selectBranches}
-                  setOpen={(open) => {
-                    if (open) {
-                      branchPickPushedRef.current = false;
-                    }
-                  }}
-                  placeholder="All branches"
-                  items={previewBranches}
-                  className="w-fit min-w-40"
-                  filter={{
-                    // Only names that contain what was typed: no acronym or fuzzy matches.
-                    threshold: matchSorter.rankings.CONTAINS,
-                    // The raw name so a typed "/" matches, and a spaced one so "audit log" does too.
-                    keys: [
-                      (item) => item.branchName ?? "",
-                      (item) => item.branchName?.replace(/[/_-]/g, " ") ?? "",
-                    ],
-                  }}
-                  empty={<div className="p-3 text-xs text-text-dimmed">No branches found.</div>}
-                  text={(value) =>
-                    value.length === 0
-                      ? "All branches"
-                      : value.length === 1
-                        ? (previewBranches.find((env) => env.id === value[0])?.branchName ??
-                          "1 branch")
-                        : `${value.length} branches`
-                  }
-                  dropdownIcon
-                >
-                  {(matches) => (
-                    <>
-                      <SelectItem
-                        value={RESET_BRANCHES_VALUE}
-                        hideOnClick
-                        checkIcon={
-                          <Ariakit.SelectItemCheck
-                            checked={selectedBranchIds.length === 0}
-                            className="size-8 flex-none text-text-bright"
-                          />
-                        }
-                        className="border-b border-grid-dimmed"
-                      >
-                        All branches
-                      </SelectItem>
-                      {matches?.map((env) => (
-                        <SelectItem key={env.id} value={env.id}>
-                          {env.branchName}
-                        </SelectItem>
-                      ))}
-                    </>
-                  )}
-                </Select>
-              )}
-            </div>
-            <div className="flex items-center justify-end gap-1.5">
-              <Switch
-                variant="secondary/small"
-                label="Reveal values"
-                checked={revealAll}
-                onCheckedChange={(e) => setRevealAll(e.valueOf())}
-              />
-              <LinkButton
-                to={newVariablePath}
-                variant="primary/small"
-                LeadingIcon={PlusIcon}
-                shortcut={{ key: "n" }}
-              >
-                Add new
-              </LinkButton>
-            </div>
-          </div>
-          <div
-            ref={tableScrollRef}
-            className="min-h-0 flex-1 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
-          >
-            <Table
-              containerClassName={cn(
-                filteredItems.length === 0 && "border-t-0",
-                "overflow-visible"
-              )}
-            >
-              <TableHeader>
-                <TableRow>
-                  <TableHeaderCell className={vercelIntegration?.enabled ? "w-[22%]" : "w-[25%]"}>
-                    Key
-                  </TableHeaderCell>
-                  <TableHeaderCell className={vercelIntegration?.enabled ? "w-[32%]" : "w-[37%]"}>
-                    Value
-                  </TableHeaderCell>
-                  <TableHeaderCell className={vercelIntegration?.enabled ? "w-[13%]" : "w-[15%]"}>
-                    <SimpleTooltip
-                      button={
-                        <span className="flex items-center gap-1">
-                          Environment
-                          <InformationCircleIcon className="size-4 text-text-dimmed" />
-                        </span>
-                      }
-                      content="Dev environment variables specified here will be overridden by ones in your .env file when running locally."
-                      className="max-w-60"
-                    />
-                  </TableHeaderCell>
-                  {vercelIntegration?.enabled && (
-                    <TableHeaderCell className="w-[8%]">
-                      <SimpleTooltip
-                        button={
-                          <span className="flex items-center gap-1">
-                            Sync
-                            <InformationCircleIcon className="size-4 text-text-dimmed" />
-                          </span>
-                        }
-                        content="When enabled, this variable will be pulled from Vercel during builds. Requires 'Pull env vars before build' to be enabled in settings."
-                      />
-                    </TableHeaderCell>
-                  )}
-                  <TableHeaderCell className={vercelIntegration?.enabled ? "w-[24%]" : "w-[22%]"}>
-                    Updated
-                  </TableHeaderCell>
-                  <TableHeaderCell hiddenLabel className="w-0">
-                    Actions
-                  </TableHeaderCell>
-                </TableRow>
-              </TableHeader>
-              {groupedEnvironmentVariables.length > 0 ? (
-                isVirtualized && shouldVirtualize ? (
-                  <EnvironmentVariablesVirtualTableBody
-                    groupedEnvironmentVariables={groupedEnvironmentVariables}
-                    scrollRef={tableScrollRef}
-                    revealAll={revealAll}
-                    vercelIntegration={vercelIntegration}
-                    columnCount={vercelColumnCount}
+        <ResizablePanelGroup orientation="horizontal" className="max-h-full">
+          <ResizablePanel id="environment-variables-main" min={"100px"}>
+            <div className={cn("flex h-full min-h-0 flex-col")}>
+              {/* One row that wraps when the key panel leaves it too little room. The search,
+                  filter and branch picker are items of the row itself (`contents`), so they wrap
+                  one by one and stay next to each other; Reveal values and Add new stay together
+                  at the right end of their line. */}
+              <div className="flex flex-wrap items-center gap-1.5 px-2 py-2">
+                <div className="contents">
+                  <SearchInput
+                    placeholder={searchPlaceholder}
+                    resetParams={["page"]}
+                    shortcut={{ key: "/" }}
+                    autoFocus
                   />
-                ) : (
-                  <TableBody>
-                    {staticRows.map((variable) => (
-                      <EnvironmentVariableTableRow
-                        key={`${variable.id}-${variable.environment.id}`}
-                        variable={variable}
+                  <SegmentedControl
+                    name="env"
+                    variant="secondary/small"
+                    value={selectedFilter}
+                    options={filterOptions.map((option) => ({
+                      value: option,
+                      label: <EnvironmentFilterLabel filter={option} />,
+                    }))}
+                    onChange={(value) =>
+                      navigateToView({ env: value, branch: undefined, page: undefined })
+                    }
+                  />
+                  {selectedFilter === "preview" && previewBranches.length > 0 && (
+                    <Select<string[], EnvironmentVariablesEnvironment>
+                      variant="secondary/small"
+                      value={selectedBranchIds}
+                      setValue={selectBranches}
+                      setOpen={(open) => {
+                        if (open) {
+                          branchPickPushedRef.current = false;
+                        }
+                      }}
+                      placeholder="All branches"
+                      items={previewBranches}
+                      className="w-fit min-w-40"
+                      filter={{
+                        // Only names that contain what was typed: no acronym or fuzzy matches.
+                        threshold: matchSorter.rankings.CONTAINS,
+                        // The raw name so a typed "/" matches, and a spaced one so "audit log" does too.
+                        keys: [
+                          (item) => item.branchName ?? "",
+                          (item) => item.branchName?.replace(/[/_-]/g, " ") ?? "",
+                        ],
+                      }}
+                      empty={<div className="p-3 text-xs text-text-dimmed">No branches found.</div>}
+                      text={(value) =>
+                        value.length === 0
+                          ? "All branches"
+                          : value.length === 1
+                            ? (previewBranches.find((env) => env.id === value[0])?.branchName ??
+                              "1 branch")
+                            : `${value.length} branches`
+                      }
+                      dropdownIcon
+                    >
+                      {(matches) => (
+                        <>
+                          <SelectItem
+                            value={RESET_BRANCHES_VALUE}
+                            hideOnClick
+                            checkIcon={
+                              <Ariakit.SelectItemCheck
+                                checked={selectedBranchIds.length === 0}
+                                className="size-8 flex-none text-text-bright"
+                              />
+                            }
+                            className="border-b border-grid-dimmed"
+                          >
+                            All branches
+                          </SelectItem>
+                          {matches?.map((env) => (
+                            <SelectItem key={env.id} value={env.id}>
+                              {env.branchName}
+                            </SelectItem>
+                          ))}
+                        </>
+                      )}
+                    </Select>
+                  )}
+                </div>
+                <div className="ml-auto flex items-center justify-end gap-1.5 pl-0.5">
+                  <Switch
+                    variant="secondary/small"
+                    label="Reveal values"
+                    checked={revealAll}
+                    onCheckedChange={(e) => setRevealAll(e.valueOf())}
+                  />
+                  <LinkButton
+                    to={newVariablePath}
+                    variant="primary/small"
+                    LeadingIcon={PlusIcon}
+                    shortcut={{ key: "n", ignoreWhileDialogOpen: true }}
+                  >
+                    Add new
+                  </LinkButton>
+                </div>
+              </div>
+              <div
+                ref={tableScrollRef}
+                className="min-h-0 flex-1 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
+              >
+                <Table
+                  containerClassName={cn(
+                    filteredItems.length === 0 && "border-t-0",
+                    "overflow-visible"
+                  )}
+                >
+                  <TableHeader>
+                    <TableRow>
+                      <TableHeaderCell
+                        className={vercelIntegration?.enabled ? "w-[22%]" : "w-[25%]"}
+                      >
+                        Key
+                      </TableHeaderCell>
+                      <TableHeaderCell
+                        className={vercelIntegration?.enabled ? "w-[32%]" : "w-[37%]"}
+                      >
+                        Value
+                      </TableHeaderCell>
+                      <TableHeaderCell
+                        className={vercelIntegration?.enabled ? "w-[13%]" : "w-[15%]"}
+                      >
+                        <SimpleTooltip
+                          button={
+                            <span className="flex items-center gap-1">
+                              Environment
+                              <InformationCircleIcon className="size-4 text-text-dimmed" />
+                            </span>
+                          }
+                          content="Dev environment variables specified here will be overridden by ones in your .env file when running locally."
+                          className="max-w-60"
+                        />
+                      </TableHeaderCell>
+                      {vercelIntegration?.enabled && (
+                        <TableHeaderCell className="w-[8%]">
+                          <SimpleTooltip
+                            button={
+                              <span className="flex items-center gap-1">
+                                Sync
+                                <InformationCircleIcon className="size-4 text-text-dimmed" />
+                              </span>
+                            }
+                            content="When enabled, this variable will be pulled from Vercel during builds. Requires 'Pull env vars before build' to be enabled in settings."
+                          />
+                        </TableHeaderCell>
+                      )}
+                      <TableHeaderCell
+                        className={vercelIntegration?.enabled ? "w-[24%]" : "w-[22%]"}
+                        sortDirection={
+                          selectedSort === "updated"
+                            ? "desc"
+                            : selectedSort === "updated-asc"
+                              ? "asc"
+                              : null
+                        }
+                        onSort={
+                          isSortableView
+                            ? () =>
+                                navigateToView({
+                                  sort: nextEnvironmentVariablesSort(selectedSort),
+                                  page: undefined,
+                                })
+                            : undefined
+                        }
+                        tooltip={
+                          isSortableView
+                            ? undefined
+                            : "Pick one environment to sort by last updated."
+                        }
+                      >
+                        Updated
+                      </TableHeaderCell>
+                      <TableHeaderCell hiddenLabel className="w-0">
+                        Actions
+                      </TableHeaderCell>
+                    </TableRow>
+                  </TableHeader>
+                  {groupedEnvironmentVariables.length > 0 ? (
+                    isVirtualized && shouldVirtualize ? (
+                      <EnvironmentVariablesVirtualTableBody
+                        groupedEnvironmentVariables={groupedEnvironmentVariables}
+                        scrollRef={tableScrollRef}
                         revealAll={revealAll}
                         vercelIntegration={vercelIntegration}
+                        columnCount={vercelColumnCount}
                       />
-                    ))}
-                  </TableBody>
-                )
-              ) : (
-                <TableBody>
-                  <TableRow>
-                    <TableCell colSpan={vercelColumnCount}>
-                      {!hasSearch ? (
-                        <div className="flex flex-col items-center justify-center gap-y-4 py-8">
-                          <Header2>
-                            {projectHasNoVariables
-                              ? "You haven't set any environment variables yet."
-                              : `No variables in ${environmentFilterLabels[filter]} yet`}
-                          </Header2>
-                          <div className="flex items-center gap-2">
-                            <LinkButton
-                              to={newVariablePath}
-                              variant="primary/medium"
-                              LeadingIcon={PlusIcon}
-                              shortcut={{ key: "n" }}
-                            >
-                              Add new
-                            </LinkButton>
-                            {!projectHasNoVariables && (
-                              <LinkButton to={allEnvironmentsPath} variant="secondary/medium">
-                                View all environments
-                              </LinkButton>
-                            )}
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center gap-y-4 py-8">
-                          <Paragraph>
-                            {filter === "all"
-                              ? "No variables match your search."
-                              : `No variables in ${environmentFilterLabels[filter]} match your search.`}
-                          </Paragraph>
-                          {filter !== "all" && (
-                            <LinkButton to={allEnvironmentsPath} variant="secondary/small">
-                              Search all environments
-                            </LinkButton>
+                    ) : (
+                      <TableBody>
+                        {staticRows.map((variable) => (
+                          <EnvironmentVariableTableRow
+                            key={`${variable.id}-${variable.environment.id}`}
+                            variable={variable}
+                            revealAll={revealAll}
+                            vercelIntegration={vercelIntegration}
+                          />
+                        ))}
+                      </TableBody>
+                    )
+                  ) : (
+                    <TableBody>
+                      <TableRow>
+                        <TableCell colSpan={vercelColumnCount}>
+                          {!hasSearch ? (
+                            <div className="flex flex-col items-center justify-center gap-y-4 py-8">
+                              <Header2>
+                                {projectHasNoVariables
+                                  ? "You haven't set any environment variables yet."
+                                  : `No variables in ${environmentFilterLabels[filter]} yet`}
+                              </Header2>
+                              <div className="flex items-center gap-2">
+                                <LinkButton
+                                  to={newVariablePath}
+                                  variant="primary/medium"
+                                  LeadingIcon={PlusIcon}
+                                  shortcut={{ key: "n", ignoreWhileDialogOpen: true }}
+                                >
+                                  Add new
+                                </LinkButton>
+                                {!projectHasNoVariables && (
+                                  <LinkButton to={allEnvironmentsPath} variant="secondary/medium">
+                                    View all environments
+                                  </LinkButton>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center justify-center gap-y-4 py-8">
+                              <Paragraph>
+                                {filter === "all"
+                                  ? "No variables match your search."
+                                  : `No variables in ${environmentFilterLabels[filter]} match your search.`}
+                              </Paragraph>
+                              {filter !== "all" && (
+                                <LinkButton to={allEnvironmentsPath} variant="secondary/small">
+                                  Search all environments
+                                </LinkButton>
+                              )}
+                            </div>
                           )}
-                        </div>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  )}
+                </Table>
+              </div>
+              {pagination.totalPages > 1 && (
+                <div className="flex items-center justify-end border-t border-grid-dimmed px-2 py-2">
+                  <PaginationControls
+                    currentPage={pagination.currentPage}
+                    totalPages={pagination.totalPages}
+                  />
+                </div>
               )}
-            </Table>
-          </div>
-          {pagination.totalPages > 1 && (
-            <div className="flex items-center justify-end border-t border-grid-dimmed px-2 py-2">
-              <PaginationControls
-                currentPage={pagination.currentPage}
-                totalPages={pagination.totalPages}
-              />
             </div>
-          )}
-        </div>
+          </ResizablePanel>
+          <ResizableHandle
+            id="environment-variables-handle"
+            className={collapsibleHandleClassName(isShowingKeyPanel)}
+          />
+          <ResizablePanel
+            id="environment-variables-key"
+            min="420px"
+            // Narrow enough that, in a 1280px window, the search and the filter still share the
+            // toolbar's first line next to the panel.
+            default="480px"
+            className="overflow-hidden"
+            collapsible
+            collapsed={!isShowingKeyPanel}
+            onCollapseChange={() => {}}
+            collapsedSize="0px"
+            collapseAnimation={RESIZABLE_PANEL_ANIMATION}
+          >
+            <div className="h-full" style={{ minWidth: 420 }}>
+              {isShowingKeyPanel && <Outlet context={outletContext} />}
+            </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </PageBody>
-      <Outlet />
+      {/* Without a key panel the only route under the list is the create dialog. */}
+      {!isShowingKeyPanel && <Outlet context={outletContext} />}
     </PageContainer>
   );
 }
@@ -915,106 +994,77 @@ function EnvironmentVariableTableRow({
 }) {
   const cellClassName = "py-2";
   const borderedCellClassName = getBorderedCellClassName(variable);
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+  const location = useLocation();
+  // Any row of a key opens that key's panel, keeping the list's view.
+  const path = `${v3EnvironmentVariableKeyPath(organization, project, environment, variable.key)}${listViewSearch(new URLSearchParams(location.search))}`;
+  // Every row of the key open in the side panel is marked, as the selected row is on other lists.
+  const { keyParam } = useParams();
+  const isSelected = keyParam === variable.key;
 
   return (
-    <TableRow className={variable.isLastTime ? "after:bg-surface-control" : "after:bg-transparent"}>
-      <TableCell className={cellClassName}>
-        {variable.isFirstTime ? <CopyableText value={variable.key} className="font-mono" /> : null}
+    <TableRow
+      className={variable.isLastTime ? "after:bg-surface-control" : "after:bg-transparent"}
+      isSelected={isSelected}
+    >
+      <TableCell
+        to={path}
+        isTabbableCell
+        isSelected={isSelected}
+        actionClassName="font-mono"
+        trailingContent={variable.isFirstTime ? <CopyKeyButton value={variable.key} /> : undefined}
+      >
+        {variable.isFirstTime ? variable.key : null}
       </TableCell>
-      <TableCell className={cn(cellClassName, borderedCellClassName, "after:left-3")}>
-        {variable.permissionDenied ? (
-          <SimpleTooltip
-            button={
-              <div className="flex items-center gap-x-1">
-                <NoSymbolIcon className="size-3 text-text-dimmed" />
-                <span className="text-xs text-text-dimmed">Permission denied</span>
-              </div>
-            }
-            content="With your current role, you can't view this environment's variables."
-          />
-        ) : variable.valueUnavailable ? (
-          <span className="text-xs text-text-dimmed">Encryption key unavailable</span>
-        ) : variable.isSecret ? (
-          <SimpleTooltip
-            button={
-              <div className="flex items-center gap-x-1">
-                <LockClosedIcon className="size-3 text-text-dimmed" />
-                <span className="text-xs text-text-dimmed">Secret</span>
-              </div>
-            }
-            content="This variable is secret and cannot be revealed."
-          />
-        ) : variable.value === "" ? (
-          <SimpleTooltip
-            button={
-              <div className="flex items-center gap-x-1">
-                <MinusCircleIcon className="size-3 text-text-dimmed" />
-                <span className="text-xs text-text-dimmed">Empty</span>
-              </div>
-            }
-            content="This variable is set to an empty string."
-          />
-        ) : (
-          <ClipboardField
-            secure={!revealAll}
-            value={variable.value}
-            variant={"secondary/small"}
-            fullWidth={true}
-          />
-        )}
+      <TableCell
+        className={cn(cellClassName, borderedCellClassName, "relative after:left-3")}
+        isSelected={isSelected}
+        hasAction
+      >
+        <RowLink to={path} />
+        {/* Above the row's link, and only the value's own controls take clicks. */}
+        <div className="pointer-events-none relative w-full [&_button]:pointer-events-auto [&_input]:pointer-events-auto">
+          <EnvironmentVariableValue variable={variable} revealAll={revealAll} />
+        </div>
       </TableCell>
 
-      <TableCell className={cn(cellClassName, borderedCellClassName)}>
+      <TableCell to={path} className={borderedCellClassName} isSelected={isSelected}>
         <EnvironmentCombo environment={variable.environment} className="text-sm" />
       </TableCell>
       {vercelIntegration?.enabled && (
-        <TableCell className={cn(cellClassName, borderedCellClassName)}>
+        <TableCell
+          className={cn(cellClassName, borderedCellClassName, "relative")}
+          isSelected={isSelected}
+          hasAction
+        >
+          <RowLink to={path} />
           {variable.environment.type !== "DEVELOPMENT" && (
-            <VercelSyncCheckbox
-              envVarKey={variable.key}
-              environmentType={variable.environment.type as TriggerEnvironmentType}
-              syncEnabled={shouldSyncEnvVar(
-                vercelIntegration.syncEnvVarsMapping,
-                variable.key,
-                variable.environment.type as TriggerEnvironmentType
-              )}
-              pullEnvVarsEnabledForEnv={isPullEnvVarsEnabledForEnvironment(
-                vercelIntegration.pullEnvVarsBeforeBuild,
-                variable.environment.type as TriggerEnvironmentType
-              )}
-            />
+            <div className="relative w-fit">
+              <VercelSyncCheckbox
+                envVarKey={variable.key}
+                environmentType={variable.environment.type as TriggerEnvironmentType}
+                syncEnabled={shouldSyncEnvVar(
+                  vercelIntegration.syncEnvVarsMapping,
+                  variable.key,
+                  variable.environment.type as TriggerEnvironmentType
+                )}
+                pullEnvVarsEnabledForEnv={isPullEnvVarsEnabledForEnvironment(
+                  vercelIntegration.pullEnvVarsBeforeBuild,
+                  variable.environment.type as TriggerEnvironmentType
+                )}
+              />
+            </div>
           )}
         </TableCell>
       )}
-      <TableCell className={cn(cellClassName, borderedCellClassName)}>
-        <div className="flex items-center gap-3">
-          {variable.updatedAt ? (
-            <span className="shrink-0 text-sm tabular-nums text-text-dimmed">
-              <DateTime date={variable.updatedAt} includeSeconds={false} />
-            </span>
-          ) : null}
-          {variable.updatedByUser ? (
-            <div className="flex min-w-0 items-center gap-2">
-              <UserAvatar
-                avatarUrl={variable.updatedByUser.avatarUrl}
-                name={variable.updatedByUser.name}
-                className="size-5 shrink-0"
-              />
-              <span className="truncate text-sm">{variable.updatedByUser.name}</span>
-            </div>
-          ) : variable.lastUpdatedBy?.type === "integration" &&
-            variable.lastUpdatedBy?.integration === "vercel" ? (
-            <div className="flex min-w-0 items-center gap-2">
-              <VercelLogo className="size-4 shrink-0 text-text-dimmed transition-colors group-hover/table-row:text-text-bright" />
-              <span className="truncate text-sm capitalize text-text-dimmed transition-colors group-hover/table-row:text-text-bright">
-                {variable.lastUpdatedBy.integration}
-              </span>
-            </div>
-          ) : null}
-        </div>
+      <TableCell to={path} className={borderedCellClassName} isSelected={isSelected}>
+        <EnvironmentVariableUpdated variable={variable} />
       </TableCell>
       <TableCellMenu
         isSticky
+        isSelected={isSelected}
         className="[&:has([data-hidden-buttons])]:w-auto w-0"
         hiddenButtons={
           // No edit/delete for environments the role can't manage — the value
@@ -1022,12 +1072,54 @@ function EnvironmentVariableTableRow({
           variable.permissionDenied ? undefined : (
             <>
               <EditEnvironmentVariablePanel variable={variable} revealAll={revealAll} />
-              <DeleteEnvironmentVariableButton variable={variable} />
+              <DeleteEnvironmentVariableButton
+                variable={variable}
+                previewBase={variable.previewBase}
+              />
             </>
           )
         }
       />
     </TableRow>
+  );
+}
+
+/**
+ * The row's link under a cell that holds its own controls: it fills the cell, so a click
+ * anywhere else in the cell opens the panel. Not a tab stop: the key cell's link is the row's.
+ */
+function RowLink({ to }: { to: string }) {
+  return <Link to={to} tabIndex={-1} aria-hidden className="absolute inset-0" />;
+}
+
+/** Copies the key. Shown while the row is hovered or the button has focus. */
+function CopyKeyButton({ value }: { value: string }) {
+  const { copy, copied } = useCopy(value);
+  return (
+    <SimpleTooltip
+      asChild
+      disableHoverableContent
+      button={
+        <button
+          type="button"
+          aria-label={copied ? "Copied" : "Copy"}
+          onClick={copy}
+          className={cn(
+            "flex size-6 items-center justify-center rounded border border-border-bright bg-background-hover opacity-0 transition-opacity focus-visible:opacity-100 group-hover/table-row:opacity-100",
+            copied
+              ? "text-green-500 opacity-100"
+              : "text-text-dimmed hover:bg-background-raised hover:text-text-bright"
+          )}
+        >
+          {copied ? (
+            <ClipboardCheckIcon className="size-3.5" />
+          ) : (
+            <ClipboardIcon className="size-3.5" />
+          )}
+        </button>
+      }
+      content={copied ? "Copied" : "Copy"}
+    />
   );
 }
 
@@ -1084,214 +1176,6 @@ function EnvironmentVariablesVirtualTableBody({
         </tr>
       )}
     </TableBody>
-  );
-}
-
-function EditEnvironmentVariablePanel({
-  variable,
-  revealAll,
-}: {
-  variable: EnvironmentVariableWithSetValues;
-  revealAll: boolean;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const { allowEmptyEnvironmentVariableValues } =
-    useTypedLoaderData<EnvironmentVariablesPageLoaderData>();
-  const [emptyValueSelected, setEmptyValueSelected] = useState(false);
-  const [draftValue, setDraftValue] = useState(variable.value);
-  const fetcher = useFetcher<typeof action>();
-  const lastSubmission = fetcher.data as any;
-
-  const isLoading = fetcher.state !== "idle";
-
-  // Close dialog on successful submission
-  useEffect(() => {
-    if (lastSubmission?.success && fetcher.state === "idle") {
-      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
-      setIsOpen(false);
-    }
-  }, [lastSubmission?.success, fetcher.state]);
-
-  const [form, { id, environmentId, value }] = useForm({
-    id: `edit-environment-variable-${variable.id}-${variable.environment.id}`,
-    // TODO: type this
-    lastResult: lastSubmission as any,
-    onValidate({ formData }) {
-      return parseEnvironmentVariableForm(formData, schema, allowEmptyEnvironmentVariableValues);
-    },
-    shouldRevalidate: "onSubmit",
-  });
-
-  return (
-    <Dialog
-      open={isOpen}
-      onOpenChange={(open) => {
-        setIsOpen(open);
-        if (open) {
-          setEmptyValueSelected(false);
-          setDraftValue(variable.value);
-        }
-      }}
-    >
-      <DialogTrigger asChild>
-        <Button variant="small-menu-item" LeadingIcon={PencilSquareIcon} fullWidth textAlignLeft />
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>Edit environment variable</DialogHeader>
-        <fetcher.Form method="post" {...getFormProps(form)}>
-          <input type="hidden" name="action" value="edit" />
-          <input {...getInputProps(id, { type: "hidden" })} value={variable.id} />
-          <input
-            {...getInputProps(environmentId, { type: "hidden" })}
-            value={variable.environment.id}
-          />
-          <FormError id={id.errorId}>{id.errors}</FormError>
-          <FormError id={environmentId.errorId}>{environmentId.errors}</FormError>
-          <Fieldset>
-            <InputGroup fullWidth className="mt-2 gap-0">
-              <Label>Key</Label>
-              <CopyableText value={variable.key} className="w-fit font-mono text-sm" />
-            </InputGroup>
-
-            <InputGroup fullWidth>
-              <Label>Environment</Label>
-              <EnvironmentCombo environment={variable.environment} className="text-sm" />
-            </InputGroup>
-
-            <InputGroup fullWidth>
-              <Label>Value</Label>
-              <Input
-                {...getInputProps(value, { type: "text", value: false })}
-                placeholder={variable.isSecret ? "Set new secret value" : "Not set"}
-                value={emptyValueSelected ? "" : draftValue}
-                onChange={(event) => setDraftValue(event.currentTarget.value)}
-                disabled={emptyValueSelected}
-                type={"text"}
-                autoComplete="off"
-              />
-              {emptyValueSelected && <input type="hidden" name={value.name} value="" />}
-              <FormError id={value.errorId}>{value.errors}</FormError>
-              {variable.isSecret && allowEmptyEnvironmentVariableValues && (
-                <CheckboxWithLabel
-                  name="setEmptyValue"
-                  value="true"
-                  variant="description"
-                  label="Set to an empty string"
-                  description="Replaces the secret with an empty string and keeps the variable."
-                  onChange={setEmptyValueSelected}
-                />
-              )}
-            </InputGroup>
-
-            <FormError>{form.errors}</FormError>
-
-            <FormButtons
-              confirmButton={
-                <Button type="submit" variant="primary/medium" disabled={isLoading}>
-                  {isLoading ? "Saving…" : "Save"}
-                </Button>
-              }
-              cancelButton={
-                <Button onClick={() => setIsOpen(false)} variant="tertiary/medium" type="button">
-                  Cancel
-                </Button>
-              }
-            />
-          </Fieldset>
-        </fetcher.Form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function DeleteEnvironmentVariableButton({
-  variable,
-}: {
-  variable: EnvironmentVariableWithSetValues;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const lastSubmission = useActionData();
-  const navigation = useNavigation();
-  const deleteButtonRef = useRef<HTMLButtonElement>(null);
-
-  const isLoading =
-    navigation.state !== "idle" &&
-    navigation.formMethod === "post" &&
-    navigation.formData?.get("action") === "delete" &&
-    navigation.formData?.get("id") === variable.id &&
-    navigation.formData?.get("environmentId") === variable.environment.id;
-
-  const [form] = useForm({
-    id: `delete-environment-variable-${variable.id}-${variable.environment.id}`,
-    // TODO: type this
-    lastResult: lastSubmission as any,
-    onValidate({ formData }) {
-      return parseEnvironmentVariableForm(formData, schema);
-    },
-    shouldRevalidate: "onSubmit",
-  });
-
-  // The action data is shared by every row, so only show errors from a
-  // submission for this variable and environment.
-  const submittedValues = (lastSubmission as any)?.initialValue;
-  const isLastSubmissionForThisRow =
-    submittedValues?.id === variable.id &&
-    submittedValues?.environmentId === variable.environment.id;
-
-  return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        <Button
-          variant="small-menu-item"
-          fullWidth
-          textAlignLeft
-          LeadingIcon={TrashIcon}
-          leadingIconClassName="text-rose-500 group-hover/button:text-white dark:group-hover/button:text-text-bright transition-colors"
-          className="ml-0.5 transition-colors group-hover/button:bg-error"
-        />
-      </DialogTrigger>
-      <DialogContent
-        className="sm:max-w-md"
-        // Start on Delete, so Enter confirms. Enter on Cancel or the close button does what that
-        // button says, because the shortcut below only labels the key and never fires by itself.
-        onOpenAutoFocus={(event) => {
-          event.preventDefault();
-          deleteButtonRef.current?.focus();
-        }}
-      >
-        <DialogHeader>Delete environment variable</DialogHeader>
-        <div className="mb-2 mt-4 flex flex-col gap-3">
-          <Paragraph>
-            Are you sure you want to delete <strong className="font-mono">{variable.key}</strong>{" "}
-            from this environment? This can't be undone.
-          </Paragraph>
-          <EnvironmentCombo environment={variable.environment} className="text-sm" />
-          {isLastSubmissionForThisRow && <FormError>{form.errors}</FormError>}
-        </div>
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="secondary/medium">Cancel</Button>
-          </DialogClose>
-          <Form method="post" {...getFormProps(form)}>
-            <input type="hidden" name="id" value={variable.id} />
-            <input type="hidden" name="key" value={variable.key} />
-            <input type="hidden" name="environmentId" value={variable.environment.id} />
-            <Button
-              ref={deleteButtonRef}
-              name="action"
-              value="delete"
-              type="submit"
-              variant="danger/medium"
-              LeadingIcon={TrashIcon}
-              disabled={isLoading}
-              shortcut={{ key: "enter", enabled: false }}
-            >
-              {isLoading ? "Deleting…" : "Delete"}
-            </Button>
-          </Form>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 

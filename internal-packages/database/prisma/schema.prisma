@@ -2434,6 +2434,8 @@ model EnvironmentVariableValue {
   @@unique([variableId, environmentId])
   @@index([environmentId])
   @@index([valueReferenceId])
+  // One environment's values by last update: the environment variables page's sort by updated
+  @@index([environmentId, updatedAt(sort: Desc), variableId])
 }
 
 model Checkpoint {

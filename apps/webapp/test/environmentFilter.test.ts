@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ALL_BRANCHES,
   availableEnvironmentVariablesFilters,
+  canSortEnvironmentVariablesView,
   listViewSearch,
   parseEnvironmentVariablesFilter,
   selectEnvironmentVariablesFilter,
@@ -282,6 +283,55 @@ describe("selectEnvironmentVariablesFilter", () => {
     expect(
       selectEnvironmentVariablesFilter({ environments: [dev, prod], currentEnvironmentId: "gone" })
     ).toEqual({ filter: "all", environmentIds: ["dev", "prod"] });
+  });
+});
+
+describe("canSortEnvironmentVariablesView", () => {
+  const canSort = (
+    args: Omit<Parameters<typeof selectEnvironmentVariablesFilter>[0], "environments">
+  ) => canSortEnvironmentVariablesView(selectEnvironmentVariablesFilter({ environments, ...args }));
+
+  // Catches: the sort offered where it would read every environment's or every branch's values.
+  it("allows one environment, or the Preview base with exactly one branch", () => {
+    expect(canSort({ currentEnvironmentId: "prod" })).toBe(true);
+    expect(canSort({ requested: "stg", currentEnvironmentId: "prod" })).toBe(true);
+    expect(
+      canSort({
+        requested: "preview",
+        requestedBranches: ["feature/a"],
+        currentEnvironmentId: "prod",
+      })
+    ).toBe(true);
+    // A branch URL lists the base and that branch.
+    expect(canSort({ currentEnvironmentId: "branch-a" })).toBe(true);
+
+    expect(canSort({ requested: "all", currentEnvironmentId: "prod" })).toBe(false);
+    expect(canSort({ requested: "preview", currentEnvironmentId: "prod" })).toBe(false);
+    expect(
+      canSort({
+        requested: "preview",
+        requestedBranches: ["feature/a", "feature/b"],
+        currentEnvironmentId: "prod",
+      })
+    ).toBe(false);
+    expect(
+      canSort({
+        requested: "preview",
+        requestedBranches: [ALL_BRANCHES],
+        currentEnvironmentId: "branch-a",
+      })
+    ).toBe(false);
+    // Dev opened on a dev branch lists two environments.
+    expect(canSort({ currentEnvironmentId: "dev-branch" })).toBe(false);
+  });
+
+  it("treats all as unsortable even with one environment, and Preview without branches as one", () => {
+    const view = (environments: (typeof prod)[], requested: "all" | "preview") =>
+      canSortEnvironmentVariablesView(
+        selectEnvironmentVariablesFilter({ environments, requested })
+      );
+    expect(view([prod], "all")).toBe(false);
+    expect(view([preview, prod], "preview")).toBe(true);
   });
 });
 
