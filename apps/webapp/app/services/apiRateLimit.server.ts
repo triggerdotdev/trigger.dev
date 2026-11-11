@@ -153,9 +153,7 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
   limiterConfigOverride: resolveApiRateLimitOverride,
   onResult: recordApiRateLimitObservation,
   pathMatchers: [/^\/api/],
-  // Allow /api/v1/tasks/:id/callback/:secret
   pathWhiteList: [
-    "/api/internal/stripe_webhooks",
     // Keep allowlisted: these CLI endpoints are intentionally unauthenticated,
     // so this Authorization-header-keyed limiter would 401 them. They are
     // throttled separately by authCodeRateLimiter.server.ts.
@@ -163,28 +161,19 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     "/api/v1/token",
     "/api/v1/usage/ingest",
     "/api/v1/plain/customer-cards",
-    /^\/api\/v1\/tasks\/[^/]+\/callback\/[^/]+$/, // /api/v1/tasks/$id/callback/$secret
-    /^\/api\/v1\/runs\/[^/]+\/tasks\/[^/]+\/callback\/[^/]+$/, // /api/v1/runs/$runId/tasks/$id/callback/$secret
-    /^\/api\/v1\/http-endpoints\/[^/]+\/env\/[^/]+\/[^/]+$/, // /api/v1/http-endpoints/$httpEndpointId/env/$envType/$shortcode
-    /^\/api\/v1\/sources\/http\/[^/]+$/, // /api/v1/sources/http/$id
-    /^\/api\/v1\/endpoints\/[^/]+\/[^/]+\/index\/[^/]+$/, // /api/v1/endpoints/$environmentId/$endpointSlug/index/$indexHookIdentifier
     "/api/v1/timezones",
-    "/api/v1/usage/ingest",
     "/api/v1/auth/jwt/claims",
     // Dedicated per-run/environment limits prevent a throttled run from draining the API budget.
     "/api/v1/auth/oidc/token",
     // GitHub JWTs are verified and rate limited by the dedicated submission API.
     "/api/v1/trusted-deploys/prepare",
     "/api/v1/trusted-deploys/submit",
-    /^\/api\/v1\/runs\/[^/]+\/attempts$/, // /api/v1/runs/$runFriendlyId/attempts
     /^\/api\/v1\/waitpoints\/tokens\/[^/]+\/callback\/[^/]+$/, // /api/v1/waitpoints/tokens/$waitpointFriendlyId/callback/$hash
     ...deploymentApiPaths, // rate limited separately by deploymentRateLimiter
     /^\/api\/v\d+\/deployments\/current$/, // runtime SDK surface, exempt as before the deploy budget split
     // Internal SDK plumbing — packets are presigned-URL handshakes for
     // payload uploads (v2 PUT) and downloads (v1 GET), authenticated via
     // run-scoped JWT, called once per task/turn boundary by the runtime.
-    // Same shape as `/api/v1/runs/$runFriendlyId/attempts` above; not a
-    // customer-facing surface so customer rate limits shouldn't apply.
     /^\/api\/v1\/packets\//,
     /^\/api\/v2\/packets\//,
     /^\/api\/v1\/sessions\/[^/]+\/snapshot-url$/,
