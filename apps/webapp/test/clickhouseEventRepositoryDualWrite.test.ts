@@ -5,7 +5,7 @@ import {
   type TaskEventSearchV2Input,
   type TaskEventV2Input,
 } from "@internal/clickhouse";
-import { clickhouseTest } from "@internal/testcontainers";
+import { ClickHouseContainer, clickhouseTest } from "@internal/testcontainers";
 import { describe, expect, vi } from "vitest";
 import { z } from "zod";
 import {
@@ -66,9 +66,9 @@ describe("logs search rollout selection", () => {
 });
 
 describe("ClickhouseEventRepository logs search dual writer", () => {
-  clickhouseTest(
-    "writes eligible rows for configured organizations",
-    async ({ clickhouseContainer }) => {
+  clickhouseTest.for([false, true])(
+    "writes eligible rows for configured organizations (async insert: %s)",
+    async (logsSearchInsertAsync, { clickhouseContainer }) => {
       const clickhouse = new ClickHouse({
         url: clickhouseContainer.getConnectionUrl(),
         logLevel: "error",
@@ -83,6 +83,7 @@ describe("ClickhouseEventRepository logs search dual writer", () => {
         flushInterval: 50,
         logsSearchDualWriteActive: "by-id",
         logsSearchDualWriteOrganizationIds: new Set(["org_dual_write_test"]),
+        logsSearchInsertAsync,
       });
       const sourceAndSearchCounts = clickhouse.reader.query({
         name: "count-dual-write-rows",
@@ -141,9 +142,9 @@ describe("ClickhouseEventRepository logs search dual writer", () => {
     60_000
   );
 
-  clickhouseTest(
-    "recovers a strict search insert without losing neighboring rows",
-    async ({ clickhouseContainer }) => {
+  clickhouseTest.for([false, true])(
+    "recovers a strict search insert without losing neighboring rows (async insert: %s)",
+    async (asyncInsert, { clickhouseContainer }) => {
       const clickhouse = new ClickHouse({
         url: clickhouseContainer.getConnectionUrl(),
         logLevel: "error",
@@ -182,7 +183,13 @@ describe("ClickhouseEventRepository logs search dual writer", () => {
             insertAllowingBadRows: insert,
           })
         ).rejects.toMatchObject({ clickhouseErrorType: "CANNOT_PARSE_ESCAPE_SEQUENCE" });
-        const outcome = await insertLogsSearchRows(strictInsert, "strict-recovery", rows, console);
+        const outcome = await insertLogsSearchRows(
+          strictInsert,
+          "strict-recovery",
+          rows,
+          console,
+          asyncInsert
+        );
         expect(outcome.kind).toBe("sanitized");
         const [queryError, messages] = await readMessages({ environmentId: "env_dual_write_test" });
         expect(queryError).toBeNull();
@@ -193,6 +200,140 @@ describe("ClickhouseEventRepository logs search dual writer", () => {
         ]);
       } finally {
         await clickhouse.close();
+      }
+    },
+    60_000
+  );
+
+  // Catches: distinct retry tokens preventing coalescing, or legacy compatibility disabling retry deduplication.
+  clickhouseTest(
+    "coalesces distinct-token async inserts, deduplicates retries, and surfaces flush errors",
+    async ({ clickhouseClient: schemaClient }) => {
+      const ddlResult = await schemaClient.query({
+        query: "SHOW CREATE TABLE trigger_dev.task_events_search_v2",
+        format: "JSONEachRow",
+      });
+      const [{ statement }] = await ddlResult.json<{ statement: string }>();
+      const container = await new ClickHouseContainer(
+        "clickhouse/clickhouse-server:26.6@sha256:2c870d77ea76e955fb1c8dad536ad40a1236b6093db0c4966e22d21d4428982b"
+      )
+        .withCopyContentToContainer([
+          {
+            target: "/etc/clickhouse-server/config.d/keeper.xml",
+            content: `<clickhouse>
+              <keeper_server>
+                <tcp_port>9181</tcp_port><server_id>1</server_id>
+                <log_storage_path>/var/lib/clickhouse/coordination/log</log_storage_path>
+                <snapshot_storage_path>/var/lib/clickhouse/coordination/snapshots</snapshot_storage_path>
+                <raft_configuration><server>
+                  <id>1</id><hostname>localhost</hostname><port>9234</port>
+                </server></raft_configuration>
+              </keeper_server>
+              <zookeeper><node><host>localhost</host><port>9181</port></node></zookeeper>
+            </clickhouse>`,
+          },
+          {
+            target: "/etc/clickhouse-server/users.d/compatibility.xml",
+            content: `<clickhouse><profiles><default>
+              <compatibility>24.12</compatibility>
+              <async_insert_deduplicate>0</async_insert_deduplicate>
+            </default></profiles></clickhouse>`,
+          },
+        ])
+        .start();
+      const clickhouse = new ClickHouse({
+        url: container.getConnectionUrl(),
+        logLevel: "error",
+      });
+      const clickhouseClient = clickhouse.writer.client;
+      const row = toTaskEventSearchV2Row(event(), new Date());
+
+      try {
+        const settingsResult = await clickhouseClient.query({
+          query: `SELECT getSetting('compatibility') AS compatibility,
+            getSetting('deduplicate_insert') AS deduplication,
+            getSetting('async_insert_deduplicate') AS async_deduplication`,
+          format: "JSONEachRow",
+        });
+        expect(await settingsResult.json()).toEqual([
+          {
+            compatibility: "24.12",
+            deduplication: "backward_compatible_choice",
+            async_deduplication: false,
+          },
+        ]);
+        await clickhouseClient.command({ query: "CREATE DATABASE trigger_dev" });
+        await clickhouseClient.command({
+          query: statement.replace(
+            "ENGINE = ReplacingMergeTree",
+            "ENGINE = ReplicatedReplacingMergeTree('/clickhouse/test/logs_search_async', 'replica1')"
+          ),
+        });
+        await clickhouseClient.command({
+          query: "SYSTEM STOP MERGES trigger_dev.task_events_search_v2",
+        });
+
+        const batchCount = 8;
+        const tokens = Array.from(
+          { length: batchCount },
+          (_, index) => `async-search-batch-${index}`
+        );
+        await Promise.all(
+          tokens.map((token, index) =>
+            insertLogsSearchRows(
+              clickhouse.taskEventsSearch.insert,
+              token,
+              [{ ...row, span_id: `span_async_${index}` }],
+              console,
+              true
+            )
+          )
+        );
+        await insertLogsSearchRows(
+          clickhouse.taskEventsSearch.insert,
+          tokens[0],
+          [{ ...row, span_id: "span_async_0" }],
+          console,
+          true
+        );
+
+        const result = await clickhouseClient.query({
+          query: `SELECT count() AS count, uniqExact(_part) AS parts
+            FROM trigger_dev.task_events_search_v2
+            WHERE environment_id = 'env_dual_write_test'`,
+          format: "JSONEachRow",
+        });
+        const [counts] = await result.json<{ count: string; parts: string }>();
+        expect(Number(counts.count)).toBe(batchCount);
+        expect(Number(counts.parts)).toBeLessThan(batchCount);
+
+        await clickhouseClient.command({ query: "SYSTEM FLUSH LOGS" });
+        const asyncLogResult = await clickhouseClient.query({
+          query: `SELECT count() AS count, uniqExact(flush_query_id) AS flushes
+            FROM system.asynchronous_insert_log
+            WHERE database = 'trigger_dev' AND table = 'task_events_search_v2' AND status = 'Ok'`,
+          format: "JSONEachRow",
+        });
+        const [asyncLogs] = await asyncLogResult.json<{ count: string; flushes: string }>();
+        expect(Number(asyncLogs.count)).toBe(batchCount + 1);
+        expect(Number(asyncLogs.flushes)).toBeLessThan(batchCount);
+
+        await clickhouseClient.command({
+          query: `ALTER TABLE trigger_dev.task_events_search_v2
+            ADD CONSTRAINT reject_search_message CHECK message != 'reject this search event'`,
+        });
+        await expect(
+          insertLogsSearchRows(
+            clickhouse.taskEventsSearch.insert,
+            "rejected-search-batch",
+            [{ ...row, message: "reject this search event" }],
+            console,
+            true
+          )
+        ).rejects.toMatchObject({ clickhouseErrorType: "VIOLATED_CONSTRAINT" });
+      } finally {
+        await clickhouse.close();
+        await container.stop({ timeout: 0 });
       }
     },
     60_000

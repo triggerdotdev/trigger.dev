@@ -2574,6 +2574,8 @@ const EnvironmentSchema = z
     LOGS_SEARCH_DUAL_WRITE_ORGANIZATION_IDS: z.string().default(""),
     LOGS_SEARCH_DUAL_WRITE_MAX_CONCURRENCY: z.coerce.number().int().min(1).max(10).default(2),
     LOGS_SEARCH_DUAL_WRITE_MAX_PENDING: z.coerce.number().int().min(1).max(100).default(4),
+    // Requires ClickHouse 26.2+ when enabled; leave disabled on 25.8.
+    LOGS_SEARCH_INSERT_ASYNC: BoolEnvWithDefault(false),
     // Logs-search write side (dual writer). Must share storage with
     // EVENTS_CLICKHOUSE_URL and allow writes. Unset: the dual writer uses the events client.
     LOGS_SEARCH_WRITER_CLICKHOUSE_URL: z.string().optional(),

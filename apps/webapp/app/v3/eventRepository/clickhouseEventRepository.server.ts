@@ -180,6 +180,7 @@ export type ClickhouseEventRepositoryConfig = {
   logsSearchDualWriteOrganizationIds?: ReadonlySet<string>;
   logsSearchDualWriteMaxConcurrency?: number;
   logsSearchDualWriteMaxPending?: number;
+  logsSearchInsertAsync?: boolean;
 };
 
 /**
@@ -653,7 +654,8 @@ export class ClickhouseEventRepository implements IEventRepository {
           this._logsSearchClickhouse.taskEventsSearch.insert,
           flushId,
           rows,
-          logger
+          logger,
+          this._config.logsSearchInsertAsync
         );
         const dropped = outcome.kind === "recovered" ? outcome.rowsDropped : 0;
         if (dropped > 0) {
