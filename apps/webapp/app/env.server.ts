@@ -2084,6 +2084,16 @@ const EnvironmentSchema = z
     ALERTS_WORKER_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
     ALERTS_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
+    // Uses the common worker's Redis under its own key prefix.
+    DEPLOYMENT_CHECKS_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
+    DEPLOYMENT_CHECKS_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(1),
+    DEPLOYMENT_CHECKS_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(5),
+    DEPLOYMENT_CHECKS_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(5),
+    DEPLOYMENT_CHECKS_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(300_000),
+    DEPLOYMENT_CHECKS_WORKER_LOG_LEVEL: z
+      .enum(["log", "error", "warn", "info", "debug"])
+      .default("info"),
+
     ALERT_ENGINE_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
     ALERT_ENGINE_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(1),
     ALERT_ENGINE_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(10),

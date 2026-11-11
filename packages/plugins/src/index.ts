@@ -214,3 +214,15 @@ export type {
   SignInCheck,
   SignInDecision,
 } from "./accessPolicy.js";
+
+export type {
+  DeploymentCheckDecision,
+  DeploymentCheckDecisionInput,
+  DeploymentCheckInput,
+  DeploymentCheckOutcome,
+  DeploymentCheckPlan,
+  DeploymentCheckResult,
+  DeploymentChecksController,
+  DeploymentChecksPlugin,
+  DeploymentChecksPluginConfig,
+} from "./deploymentChecks.js";
