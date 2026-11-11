@@ -14,6 +14,7 @@ import { ShortcutKey } from "./ShortcutKey";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./Tooltip";
 import { Icon, type RenderIcon } from "./Icon";
 import { Spinner } from "./Spinner";
+import { sanitizeLinkTarget } from "~/utils/sanitizeUrl";
 
 const sizes = {
   small: {
@@ -512,7 +513,9 @@ export const LinkButton = ({
     disabled: disabled || !props.shortcut,
   });
 
-  if (disabled) {
+  const linkTarget = typeof to === "string" ? sanitizeLinkTarget(to) : to;
+
+  if (disabled || linkTarget === undefined) {
     return (
       <div
         className={cn(
@@ -525,13 +528,13 @@ export const LinkButton = ({
     );
   }
 
-  if (to.toString().startsWith("/resources")) {
+  if (linkTarget.toString().startsWith("/resources")) {
     return (
       <a
-        href={to.toString()}
+        href={linkTarget.toString()}
         ref={innerRef}
         target="_blank"
-        rel={newTabRel(to.toString())}
+        rel={newTabRel(linkTarget.toString())}
         className={cn("group/button block focus-custom", props.fullWidth ? "w-full" : "")}
         onClick={onClick}
         onMouseDown={onMouseDown}
@@ -545,10 +548,10 @@ export const LinkButton = ({
     );
   }
 
-  if (to.toString().startsWith("http")) {
+  if (linkTarget.toString().startsWith("http")) {
     return (
       <ExtLink
-        href={to.toString()}
+        href={linkTarget.toString()}
         ref={innerRef}
         className={cn("group/button block focus-custom", props.fullWidth ? "w-full" : "")}
         onClick={onClick}
@@ -564,7 +567,7 @@ export const LinkButton = ({
   } else {
     return (
       <Link
-        to={to}
+        to={linkTarget}
         ref={innerRef}
         replace={replace}
         className={cn("group/button block focus-custom", props.fullWidth ? "w-full" : "w-fit")}

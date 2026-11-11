@@ -115,6 +115,7 @@ const { action } = createActionApiRoute(
       const result = await engine.createManualWaitpoint({
         environmentId: authentication.environment.id,
         projectId: authentication.environment.projectId,
+        organizationId: authentication.environment.organization.id,
         idempotencyKey: body.idempotencyKey,
         idempotencyKeyExpiresAt,
         timeout,
@@ -134,7 +135,15 @@ const { action } = createActionApiRoute(
         {
           id: waitpointId,
           isCached: result.isCached,
-          url: generateHttpCallbackUrl(result.waitpoint.id, authentication.environment.apiKey),
+          url: generateHttpCallbackUrl(
+            result.waitpoint.id,
+            authentication.environment.apiKey,
+            (await engine.waitpointSystem.isWaitpointStoreEnabled(
+              authentication.environment.organization.id
+            ))
+              ? { environmentId: authentication.environment.id }
+              : undefined
+          ),
         },
         { status: 200, headers: $responseHeaders }
       );

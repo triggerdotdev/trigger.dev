@@ -2,7 +2,10 @@ import { expect, vi } from "vitest";
 
 vi.setConfig({ testTimeout: 60_000 });
 
-vi.mock("~/env.server", () => ({ env: { ENCRYPTION_KEY: "test-key" } }));
+vi.mock("~/env.server", async () => {
+  const { withLegacyEncryptionKeyring } = await import("../../../../test/helpers/encryptionEnv");
+  return { env: withLegacyEncryptionKeyring({ ENCRYPTION_KEY: "test-key" }) };
+});
 vi.mock("~/db.server", () => ({
   prisma: {},
   $replica: {},

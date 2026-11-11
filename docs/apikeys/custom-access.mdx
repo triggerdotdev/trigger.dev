@@ -1,0 +1,209 @@
+---
+title: "Custom API key access"
+sidebarTitle: "Custom access"
+description: "Build an API key's access from presets and per-area levels, limit it to selected tasks, and save the result as a preset your organization can reuse."
+---
+
+**Custom access lets you build a key's access area by area, such as Runs or Deployments, when no single [access preset](/apikeys#access-presets) fits.** A common case is a CI key that operates on runs and also deploys: the **Operator** preset plus the **Deploy only** preset in one key.
+
+Custom access is available on every plan. A custom key works everywhere a preset key does: the SDK, the CLI and the API.
+
+## Create a key with custom access
+
+<Steps titleSize="h3">
+  <Step title="Switch to Custom">
+    On the **API keys** page, click **Create API key**. Under **Access**, switch from **Preset**
+    to **Custom**. The grid starts from the preset that was selected, or empty when **No
+    restrictions** is selected.
+  </Step>
+  <Step title="Combine presets">
+    Use **Start from** to replace the grid with a preset, and **Add preset** to add a preset's
+    access to what's already there. For the CI key, pick **Operator** in **Start from**, then
+    **Deploy only** in **Add preset**. Adding a preset never removes access.
+  </Step>
+  <Step title="Adjust each area">
+    Each row is one area of the environment. Set it to **None**, **Read**, **Write**, **Read and
+    write**, or **Manage**, where the area has that level. **Tasks** has its own levels, listed
+    below. **Clear all** sets every row to **None**.
+  </Step>
+  <Step title="Check the summary and create the key">
+    The panel beside the grid names the key's access, for example "Operator + Deploy only", and
+    lists each area with the scopes it grants. Click **Create API key** and copy the secret.
+  </Step>
+</Steps>
+
+## Areas and levels
+
+| Area | Levels |
+| --- | --- |
+| **Tasks** | None, Read, Trigger, Read and trigger, Operate runs |
+| **Runs** | None, Read, Read and write |
+| **Batches** | None, Read |
+| **Large payloads** | None, Write |
+| **Queues** | None, Read, Read and write |
+| **Sessions** | None, Read, Read and write, Manage |
+| **Input streams** | None, Write, Read and write |
+| **Tagged runs** | None, Read |
+| **Errors** | None, Read, Read and write |
+| **Webhooks** | None, Read, Read and write |
+| **Waitpoints** | None, Read and write |
+| **Prompts** | None, Read, Read and write |
+| **Deployments** | None, Read, Read and write |
+| **Preview branches** | None, Manage |
+| **Env vars** | None, Read, Read and write |
+
+Some levels need another area, and the grid sets it for you:
+
+- **Deployments: Read and write** needs **Env vars: Read**, because deploys read the environment's variables while building.
+- **Sessions: Read and write** and **Sessions: Manage** need task trigger access (**Trigger**, **Read and trigger**, or **Operate runs** on all tasks), because sessions continue runs of any task. **Sessions: Read** doesn't.
+- **Input streams: Read and write** needs **Runs: Read and write** and **Waitpoints: Read and write**, because waiting on an input stream pauses the run on a waitpoint. **Write**, which only sends, needs neither.
+
+Some levels grant more than their name suggests:
+
+- **Large payloads: Write** lets the SDK upload a payload that's too large to send with the trigger request. Keys that trigger tasks with large payloads need it. A key can only read back payloads through the runs it can read. In the Development environment, large payload uploads still need a key with **No restrictions**.
+- **Sessions: Manage** also closes sessions and updates their metadata and tags.
+- **Prompts: Read and write** also changes prompt overrides and promotes versions.
+
+**Waitpoints** has no read-only level. Reading a waitpoint token returns its callback URL, which can complete the token, so reading waitpoints always comes with writing them.
+
+A deploy only writes environment variables when your build uses [`syncEnvVars`](/config/extensions/syncEnvVars) or another extension that syncs them. Only then does the key need **Env vars: Read and write**. Without it, the deploy fails when it syncs.
+
+A backend or CI key that creates or completes [waitpoint tokens](/wait-for-token) with `wait.createToken()` or `wait.completeToken()` needs **Waitpoints: Read and write**. The **Operator** preset includes it. The public access token returned with each waitpoint token can complete that token without an API key.
+
+## Use the key from CI
+
+One key triggers a smoke test, waits for it, and deploys. Start from **Operator** and set **Deployments** to **Read and write** (the grid adds **Env vars: Read**), or limit it to the smoke test task as shown in the next section. Raise **Env vars** to **Read and write** only if the build syncs environment variables.
+
+```typescript ci/smoke-test.ts
+import { configure, runs, tasks } from "@trigger.dev/sdk";
+import type { report } from "../src/trigger/report";
+
+configure({ accessToken: process.env.TRIGGER_SECRET_KEY });
+
+const handle = await tasks.trigger<typeof report>("report", { day: "2026-11-07" });
+const run = await runs.poll(handle, { pollIntervalMs: 1000 });
+
+if (run.status !== "COMPLETED") {
+  throw new Error(`Smoke test ${run.id} ended as ${run.status}`);
+}
+```
+
+The CLI reads the same key from `TRIGGER_ACCESS_TOKEN`:
+
+```bash
+TRIGGER_ACCESS_TOKEN="$TRIGGER_SECRET_KEY" npx trigger.dev@latest deploy --env prod
+```
+
+## Limit a custom key to selected tasks
+
+The **Tasks** row applies to **All tasks** or to **Selected tasks**, up to 10 task identifiers per key. For a CI key that deploys and runs one smoke test and nothing else: **Start from** Trigger only, set **Tasks** to **Read and trigger**, choose **Selected tasks** and pick `report`, then set **Deployments** to **Read and write**. The task picker lists the tasks deployed to this environment.
+
+With selected tasks:
+
+- The **Tasks** levels apply only to the selected tasks. Triggering any other task returns a 403.
+- At **Trigger**, the key can't read back the runs it triggers. **Read and trigger** lets it retrieve and poll runs of its selected tasks, and nothing else. **Operate runs** also lets it cancel and replay those runs.
+- **Sessions** and **Input streams** are unavailable, because they reach runs of any task.
+- Every other row applies to the whole environment, and the grid marks it **Applies to the whole environment**. Leave a row at **None** if the key should only reach its selected tasks.
+- **Deployments** applies to the whole environment too. A key that can deploy ships new code for every task, so selected tasks don't limit what a deploy can change.
+- Bulk replay needs trigger access to all tasks. A key limited to selected tasks replays runs one at a time.
+
+### List runs with a task-limited key
+
+A run list without a task filter covers every task, so a task-limited key needs the filter:
+
+```typescript Your backend code
+import { runs } from "@trigger.dev/sdk";
+
+for await (const run of runs.list({ taskIdentifier: "report", tag: "nightly" })) {
+  console.log(run.id, run.status);
+}
+```
+
+`runs.list()` without `taskIdentifier` returns a 403. The filter also combines with `batch`. Retrieving a batch with `batch.retrieve()` needs **Runs: Read** or **Batches: Read**, so to wait on a batch with a task-limited key, list its runs with the task filter instead.
+
+## Public access tokens from a custom key
+
+A [Public Access Token](/realtime/auth) can't grant more than the key that creates it. A request for more returns a 403 with `Requested scopes exceed the API key's access`.
+
+- A key without **Runs: Read** can't create a token that reads a run by its ID, even a run it triggered.
+- A key limited to selected tasks asks for those tasks instead:
+
+```typescript Your backend code
+import { auth } from "@trigger.dev/sdk";
+
+const publicToken = await auth.createPublicToken({
+  scopes: { read: { tasks: ["report"] } },
+});
+```
+
+- A key at **Tasks: Trigger** can't create read tokens. The trigger response still includes a token for the run it created (`handle.publicAccessToken`), so a frontend can follow that run.
+
+Your backend sends the browser the run ID and `handle.publicAccessToken`, never the API key. Without React, the browser follows the run with the SDK:
+
+```typescript Your frontend code
+import { configure, runs } from "@trigger.dev/sdk";
+
+configure({ accessToken: publicAccessToken, baseURL: "https://api.trigger.dev" });
+
+for await (const run of runs.subscribeToRun(runId)) {
+  console.log(run.status, run.metadata);
+  if (run.isCompleted) break;
+}
+```
+
+The token reads only that run. Triggering, listing runs or reading another run with it returns a 403.
+
+Use `@trigger.dev/sdk` 4.5.8 or later to create public tokens with an environment API key.
+
+## Save access as a preset
+
+When your team creates the same kind of key again and again, save its access once. In **Custom**, build the access, click **Save as preset**, and give it a name (up to 64 characters) and an optional description.
+
+Saved presets belong to your organization. They appear under **Your presets** in the preset list of every project and environment, and in the **Start from** and **Add preset** menus.
+
+- A saved preset holds access, not tasks, since task identifiers differ between projects. If you save it while the grid is limited to **Selected tasks**, the preset remembers that: a key made from it starts at **Selected tasks** with nothing picked, and asks for tasks in each project. Switch to **All tasks** only on purpose.
+- Saved presets can't be edited. To change one, delete it and save a new one.
+- An organization can save up to 50 presets. A saved preset can't reuse the name of another preset.
+- Deleting a saved preset doesn't change the keys created from it. They keep their access and show as **Custom** on the API keys page.
+
+Saving and deleting presets needs the Owner or Admin role in the organization, since presets are shared by every project. A project role doesn't count. Anyone who can create API keys in an environment can create keys from saved presets.
+
+## See a key's access
+
+The **Access** column on the API keys page shows a key's preset. For a custom key it shows **Custom**, followed by the presets the access matches, such as "Operator + Deploy only", or the number of selected tasks. Click a key to open its details: each area and level, read from the key itself, and its selected tasks. **Show scopes** lists the scopes behind each level.
+
+To change a custom key later, use [**Edit access**](/apikeys#change-a-keys-access).
+
+## See what a key uses
+
+Trigger.dev Cloud records which access each API key uses, so you can find access a key never needs and remove it. Click a key to open its details. Under **Access**, each area the key has shows:
+
+- **Last used** with the date and time the key last used it, or **Never**
+- the level it used when that's less than it has, such as **Read last used** on an area with read and write access
+
+For a key with **No restrictions**, every area is listed. Below the areas, **Usage tracked since** shows when tracking started.
+
+Usage is recorded per area and level, not per request: there are no counts, paths or IP addresses. The last-used time can lag by up to an hour.
+
+### Narrow a key to what it used
+
+In the key's details, click **Narrow to what it used** below its access. [**Edit access**](/apikeys#change-a-keys-access) opens with the smallest level per area that covers the key's requests in the last 30 days, keeping its selected tasks, and asks you to confirm: it lists each area the key loses with when it was last used. Click **Back** to adjust the grid, or **Save access** to apply it. The secret doesn't change, so nothing needs redeploying.
+
+Narrowing isn't offered when:
+
+- the key has less than 7 days of recorded usage
+- the key used access the grid doesn't cover
+- a key with **No restrictions** called endpoints that only unrestricted keys can use, such as `whoami` and pausing or resuming an environment, in the last 30 days. A narrower key would break those calls.
+
+Access that a key uses rarely, such as a monthly report, can look unused after 30 days. Check the last-used note on each area before you save.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="API keys" icon="key" href="/apikeys">
+    Create keys, restrict them to IP addresses, and rotate them.
+  </Card>
+  <Card title="Realtime authentication" icon="tower-broadcast" href="/realtime/auth">
+    Create scoped public tokens for frontend and realtime access.
+  </Card>
+</CardGroup>

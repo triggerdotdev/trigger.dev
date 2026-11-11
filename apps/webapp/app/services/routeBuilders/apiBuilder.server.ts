@@ -11,8 +11,10 @@ import { logger } from "../logger.server";
 import { rbac } from "../rbac.server";
 import { authenticateBearerWithTelemetry } from "~/services/authTelemetry.server";
 import type { RbacAbility, RbacResource } from "@trigger.dev/rbac";
+import type { RbacSubject } from "@trigger.dev/plugins";
 import { isUserActorToken } from "@trigger.dev/rbac";
 import {
+  personalAccessTokenAuthFailureBody,
   resolveAndRecheckUserActorClaims,
   updateLastAccessedAtIfStale,
 } from "../personalAccessToken.server";
@@ -114,6 +116,7 @@ async function authenticateRequestForApiBuilder(
       authentication: ApiAuthenticationResultSuccess;
       ability: RbacAbility;
       restrictedApiKey: boolean;
+      subject: RbacSubject;
     }
 > {
   const result = await authenticateBearerWithTelemetry(request, { allowJWT });
@@ -151,6 +154,7 @@ async function authenticateRequestForApiBuilder(
     authentication,
     ability: result.ability,
     restrictedApiKey,
+    subject: result.subject,
   };
 }
 
@@ -359,18 +363,20 @@ export function createLoaderApiRoute<
   options: ApiKeyRouteBuilderOptions<TParamsSchema, TSearchParamsSchema, THeadersSchema, TResource>,
   handler: ApiKeyHandlerFunction<TParamsSchema, TSearchParamsSchema, THeadersSchema, TResource>
 ) {
-  const loader = async function ({ request, params }: LoaderFunctionArgs) {
-    const {
-      params: paramsSchema,
-      searchParams: searchParamsSchema,
-      headers: headersSchema,
-      allowJWT = false,
-      corsStrategy = "none",
-      authorization,
-      findResource,
-      shouldRetryNotFound,
-    } = options;
+  // Read the options once, when the route is created.
+  const {
+    params: paramsSchema,
+    searchParams: searchParamsSchema,
+    headers: headersSchema,
+    allowJWT = false,
+    corsStrategy = "none",
+    authorization,
+    findResource,
+    shouldRetryNotFound,
+    feature,
+  } = options;
 
+  const loader = async function ({ request, params }: LoaderFunctionArgs) {
     if (corsStrategy !== "none" && request.method.toUpperCase() === "OPTIONS") {
       return apiCors(request, json({}));
     }
@@ -533,7 +539,7 @@ export function createLoaderApiRoute<
     }
   };
 
-  return (args: LoaderFunctionArgs) => withRequestFeature(options.feature, () => loader(args));
+  return (args: LoaderFunctionArgs) => withRequestFeature(feature, () => loader(args));
 }
 
 // `environmentId` is checked against a user-actor token's environment claim, so an env-scoped
@@ -629,18 +635,19 @@ export function createLoaderPATApiRoute<
   options: PATLoaderRouteBuilderOptions<TParamsSchema, TSearchParamsSchema, THeadersSchema>,
   handler: PATHandlerFunction<TParamsSchema, TSearchParamsSchema, THeadersSchema>
 ) {
-  return async function loader({ request, params }: LoaderFunctionArgs) {
-    const {
-      params: paramsSchema,
-      searchParams: searchParamsSchema,
-      headers: headersSchema,
-      corsStrategy = "none",
-      context: contextFn,
-      identityOnly,
-      organizationScoped,
-      authorization,
-    } = options;
+  // Read the options once, when the route is created.
+  const {
+    params: paramsSchema,
+    searchParams: searchParamsSchema,
+    headers: headersSchema,
+    corsStrategy = "none",
+    context: contextFn,
+    identityOnly,
+    organizationScoped,
+    authorization,
+  } = options;
 
+  return async function loader({ request, params }: LoaderFunctionArgs) {
     if (corsStrategy !== "none" && request.method.toUpperCase() === "OPTIONS") {
       return apiCors(request, json({}));
     }
@@ -750,7 +757,7 @@ export function createLoaderPATApiRoute<
         if (!patAuth.ok) {
           return await wrapResponse(
             request,
-            json({ error: patAuth.error }, { status: patAuth.status }),
+            json(personalAccessTokenAuthFailureBody(patAuth), { status: patAuth.status }),
             corsStrategy !== "none"
           );
         }
@@ -905,18 +912,19 @@ export function createActionPATApiRoute<
   >,
   handler: PATActionHandlerFunction<TParamsSchema, TSearchParamsSchema, THeadersSchema, TBodySchema>
 ) {
-  return async function action({ request, params }: ActionFunctionArgs) {
-    const {
-      params: paramsSchema,
-      searchParams: searchParamsSchema,
-      headers: headersSchema,
-      body: bodySchema,
-      corsStrategy = "none",
-      context: contextFn,
-      authorization,
-      method,
-    } = options;
+  // Read the options once, when the route is created.
+  const {
+    params: paramsSchema,
+    searchParams: searchParamsSchema,
+    headers: headersSchema,
+    body: bodySchema,
+    corsStrategy = "none",
+    context: contextFn,
+    authorization,
+    method,
+  } = options;
 
+  return async function action({ request, params }: ActionFunctionArgs) {
     if (corsStrategy !== "none" && request.method.toUpperCase() === "OPTIONS") {
       return apiCors(request, json({}));
     }
@@ -1053,7 +1061,7 @@ export function createActionPATApiRoute<
         if (!patAuth.ok) {
           return await wrapResponse(
             request,
-            json({ error: patAuth.error }, { status: patAuth.status }),
+            json(personalAccessTokenAuthFailureBody(patAuth), { status: patAuth.status }),
             corsStrategy !== "none"
           );
         }
@@ -1213,6 +1221,7 @@ type ApiKeyActionHandlerFunction<
     : undefined;
   authentication: ApiAuthenticationResultSuccess;
   restrictedApiKey: boolean;
+  subject: RbacSubject;
   ability: RbacAbility;
   request: Request;
   resource?: TResource;
@@ -1249,6 +1258,8 @@ export function createActionApiRoute<
     corsStrategy = "none",
     authorization,
     maxContentLength,
+    method,
+    findResource,
   } = options;
 
   async function loader({ request, params }: LoaderFunctionArgs) {
@@ -1260,14 +1271,11 @@ export function createActionApiRoute<
   }
 
   async function action({ request, params }: ActionFunctionArgs) {
-    if (options.method) {
-      if (request.method.toUpperCase() !== options.method) {
+    if (method) {
+      if (request.method.toUpperCase() !== method) {
         return await wrapResponse(
           request,
-          json(
-            { error: "Method not allowed" },
-            { status: 405, headers: { Allow: options.method } }
-          ),
+          json({ error: "Method not allowed" }, { status: 405, headers: { Allow: method } }),
           corsStrategy !== "none"
         );
       }
@@ -1390,8 +1398,8 @@ export function createActionApiRoute<
       // is addressable by both `friendlyId` and `externalId` and a JWT minted
       // for either form should authorize both URL forms). Mirrors the
       // ordering in `createLoaderApiRoute`.
-      const resource = options.findResource
-        ? await options.findResource(parsedParams, authenticationResult, parsedSearchParams)
+      const resource = findResource
+        ? await findResource(parsedParams, authenticationResult, parsedSearchParams)
         : undefined;
 
       // Run authorization first — but with the resolved resource available
@@ -1430,7 +1438,7 @@ export function createActionApiRoute<
         }
       }
 
-      if (options.findResource && !resource) {
+      if (findResource && !resource) {
         return await wrapResponse(
           request,
           json({ error: "Resource not found" }, { status: 404 }),
@@ -1451,6 +1459,7 @@ export function createActionApiRoute<
             body: parsedBody,
             authentication: authenticationResult,
             restrictedApiKey: authResult.restrictedApiKey,
+            subject: authResult.subject,
             ability,
             request,
             resource,
@@ -1816,13 +1825,14 @@ export function createLoaderWorkerApiRoute<
   options: WorkerLoaderRouteBuilderOptions<TParamsSchema, TSearchParamsSchema, THeadersSchema>,
   handler: WorkerLoaderHandlerFunction<TParamsSchema, TSearchParamsSchema, THeadersSchema>
 ) {
-  return async function loader({ request, params }: LoaderFunctionArgs) {
-    const {
-      params: paramsSchema,
-      searchParams: searchParamsSchema,
-      headers: headersSchema,
-    } = options;
+  // Read the options once, when the route is created.
+  const {
+    params: paramsSchema,
+    searchParams: searchParamsSchema,
+    headers: headersSchema,
+  } = options;
 
+  return async function loader({ request, params }: LoaderFunctionArgs) {
     try {
       const service = new WorkerGroupTokenService();
       const authenticationResult = await service.authenticate(request);
@@ -1961,22 +1971,22 @@ export function createActionWorkerApiRoute<
     TBodySchema
   >
 ) {
+  // Read the options once, when the route is created.
+  const {
+    params: paramsSchema,
+    searchParams: searchParamsSchema,
+    body: bodySchema,
+    headers: headersSchema,
+    method,
+    bodyValidationErrorStatus,
+  } = options;
+
   return async function action({ request, params }: ActionFunctionArgs) {
-    if (options.method) {
-      if (request.method.toUpperCase() !== options.method) {
-        return json(
-          { error: "Method not allowed" },
-          { status: 405, headers: { Allow: options.method } }
-        );
+    if (method) {
+      if (request.method.toUpperCase() !== method) {
+        return json({ error: "Method not allowed" }, { status: 405, headers: { Allow: method } });
       }
     }
-
-    const {
-      params: paramsSchema,
-      searchParams: searchParamsSchema,
-      body: bodySchema,
-      headers: headersSchema,
-    } = options;
 
     try {
       const service = new WorkerGroupTokenService();
@@ -2033,9 +2043,9 @@ export function createActionWorkerApiRoute<
             { error: "Body Error", details: fromZodError(parsed.error).details },
             {
               status:
-                typeof options.bodyValidationErrorStatus === "function"
-                  ? options.bodyValidationErrorStatus(parsed.error)
-                  : (options.bodyValidationErrorStatus ?? 400),
+                typeof bodyValidationErrorStatus === "function"
+                  ? bodyValidationErrorStatus(parsed.error)
+                  : (bodyValidationErrorStatus ?? 400),
             }
           );
         }

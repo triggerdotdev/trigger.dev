@@ -164,6 +164,17 @@ model PersonalAccessToken {
   revokedAt      DateTime?
   lastAccessedAt DateTime?
 
+  /// After this the token no longer authenticates. Null means it never expires.
+  expiresAt DateTime?
+
+  /// Set on CLI login tokens: they stop authenticating this many seconds after their last use
+  /// (or creation, if never used). Null means no idle limit.
+  idleTimeoutSeconds   Int?
+  /// When the "about to expire" email was sent. Set before sending, so it's sent at most once.
+  expiryReminderSentAt DateTime?
+  /// When the "has expired" email was sent. Set before sending, so it's sent at most once.
+  expiredNoticeSentAt  DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -429,6 +440,7 @@ model RuntimeEnvironment {
   taskIdentifiers         TaskIdentifier[]
   apiKeys                 ApiKey[]
   revokedApiKeys          RevokedApiKey[]
+  trustedDeployGrant      TrustedDeployEnvironment?
 
   // A partial unique index also enforces one STAGING/PREVIEW root per project and type.
   // It is defined in SQL because Prisma does not support partial indexes in the schema.
@@ -445,6 +457,9 @@ model ApiKey {
   keyHash  String @unique @map("key_hash")
   lastFour String @map("last_four")
 
+  /// Optional one-line note the creator adds to say what the key is for.
+  description String?
+
   runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   runtimeEnvironmentId String             @map("runtime_environment_id")
 
@@ -454,7 +469,11 @@ model ApiKey {
   presetId String?  @map("preset_id")
   scopes   String[]
 
+  /// CIDR ranges this key may be used from. Empty means any IP.
+  allowedIpRanges String[] @default([]) @map("allowed_ip_ranges")
+
   lastUsedAt DateTime? @map("last_used_at")
+  lastUsedIp String?   @map("last_used_ip")
   revokedAt  DateTime? @map("revoked_at")
   expiresAt  DateTime? @map("expires_at")
   updatedAt  DateTime  @updatedAt @map("updated_at")
@@ -487,6 +506,7 @@ enum RuntimeEnvironmentType {
 
 enum EnvironmentPauseSource {
   BILLING_LIMIT
+  ADMIN_BAN
 }
 
 model Project {
@@ -544,6 +564,7 @@ model Project {
   taskRunCheckpoints             TaskRunCheckpoint[]
   waitpointTags                  WaitpointTag[]
   connectedGithubRepository      ConnectedGithubRepository?
+  trustedDeployRepository        TrustedDeployRepository?
   organizationProjectIntegration OrganizationProjectIntegration[]
   customerQueries                CustomerQuery[]
   playgroundConversations        PlaygroundConversation[]
@@ -968,12 +989,14 @@ model Alert {
   lastOccurrenceAt           DateTime? @db.Timestamptz(6)
   occurrencesSinceRaise      Int       @default(0)
   occurrencesTotal           BigInt    @default(0)
+  groupId                    String?
 
   // SQL-only (migration): ("lifecycle", "nextEvaluationAt" NULLS FIRST) and partial active "expiresAt"
   @@index([environmentId, lifecycle])
   @@index([lifecycle, evaluationLeaseUntil])
   @@index([projectId])
   @@index([organizationId])
+  @@index([groupId])
 }
 
 /// RANGE-partitioned by month on `at` (see migration).
@@ -1863,6 +1886,9 @@ model WorkerGroupToken {
   id String @id @default(cuid())
 
   tokenHash String @unique
+
+  previousTokenHash       String?   @unique
+  previousTokenValidUntil DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3114,6 +3140,51 @@ model GithubRepository {
 
   @@unique([installationId, githubId])
   @@index([installationId])
+}
+
+model TrustedDeployRepository {
+  id String @id @default(cuid())
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String  @unique
+
+  issuer            String  @default("https://token.actions.githubusercontent.com")
+  repositoryOwner   String
+  repositoryName    String
+  repositoryId      String?
+  repositoryOwnerId String?
+
+  environments TrustedDeployEnvironment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum TrustedDeployScope {
+  ANY
+  BRANCH
+  TAG
+  ENVIRONMENT
+}
+
+model TrustedDeployEnvironment {
+  id String @id @default(cuid())
+
+  trustedDeployRepository   TrustedDeployRepository @relation(fields: [trustedDeployRepositoryId], references: [id], onDelete: Cascade)
+  trustedDeployRepositoryId String
+
+  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade)
+  runtimeEnvironmentId String             @unique
+
+  enabled          Boolean            @default(false)
+  scope            TrustedDeployScope
+  scopeValue       String?
+  additionalClaims Json               @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([trustedDeployRepositoryId])
 }
 
 model ConnectedGithubRepository {

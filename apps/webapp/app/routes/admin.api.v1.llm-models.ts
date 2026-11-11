@@ -1,10 +1,11 @@
+import { withAdminApi } from "~/services/adminApi.server";
 import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 
-export async function loader({ request }: LoaderFunctionArgs) {
+async function handleLoader({ request }: LoaderFunctionArgs) {
   await requireAdminApiRequest(request);
 
   const url = new URL(request.url);
@@ -64,7 +65,7 @@ const CreateModelSchema = z.object({
   ),
 });
 
-export async function action({ request }: ActionFunctionArgs) {
+async function handleAction({ request }: ActionFunctionArgs) {
   await requireAdminApiRequest(request);
 
   if (request.method !== "POST") {
@@ -155,3 +156,6 @@ export async function action({ request }: ActionFunctionArgs) {
 
   return json({ model: created }, { status: 201 });
 }
+
+export const loader = withAdminApi(handleLoader);
+export const action = withAdminApi(handleAction);

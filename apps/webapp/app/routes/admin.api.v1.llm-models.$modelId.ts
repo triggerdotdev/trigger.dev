@@ -1,9 +1,10 @@
+import { withAdminApi } from "~/services/adminApi.server";
 import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
 
-export async function loader({ request, params }: LoaderFunctionArgs) {
+async function handleLoader({ request, params }: LoaderFunctionArgs) {
   await requireAdminApiRequest(request);
 
   const model = await prisma.llmModel.findUnique({
@@ -55,7 +56,7 @@ const UpdateModelSchema = z.object({
     .optional(),
 });
 
-export async function action({ request, params }: ActionFunctionArgs) {
+async function handleAction({ request, params }: ActionFunctionArgs) {
   await requireAdminApiRequest(request);
 
   const modelId = params.modelId!;
@@ -162,3 +163,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   return json({ model: updated });
 }
+
+export const loader = withAdminApi(handleLoader);
+export const action = withAdminApi(handleAction);

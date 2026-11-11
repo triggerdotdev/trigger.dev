@@ -74,10 +74,8 @@ export async function listChats(
   params: ChatViewer & {
     limit?: number;
     withMessagesOnly?: boolean;
-    alertRoutedChatIds?: string[];
   }
 ): Promise<ChatListItem[]> {
-  const alertRoutedChatIds = params.alertRoutedChatIds ?? [];
   return db
     .select({
       id: chats.id,
@@ -98,11 +96,7 @@ export async function listChats(
         visibleTo(params.actingUserId),
         isNull(chats.deletedAt),
         params.withMessagesOnly
-          ? or(
-              gt(chats.nextMessagePosition, 1),
-              eq(chats.kind, "alert_creation"),
-              alertRoutedChatIds.length > 0 ? inArray(chats.id, alertRoutedChatIds) : undefined
-            )
+          ? or(gt(chats.nextMessagePosition, 1), eq(chats.kind, "alert_creation"))
           : undefined
       )
     )

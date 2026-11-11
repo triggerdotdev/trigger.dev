@@ -1,10 +1,14 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { prisma } from "~/db.server";
-import { getScheduleEnvVisibility, scheduleUniqWhereClause } from "~/models/schedules.server";
+import { $transaction, prisma, type PrismaTransactionClient } from "~/db.server";
+import {
+  getScheduleEnvVisibility,
+  lockScheduleForRunTokenMutation,
+  scheduleUniqWhereClause,
+} from "~/models/schedules.server";
 import { ViewSchedulePresenter } from "~/presenters/v3/ViewSchedulePresenter.server";
-import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { authenticateApiKeyWithScope } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 
 const ParamsSchema = z.object({
@@ -18,11 +22,16 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   // Authenticate the request
-  const authenticationResult = await authenticateApiRequest(request);
+  const authResult = await authenticateApiKeyWithScope(request, {
+    action: "write",
+    resource: { type: "schedules", id: params.scheduleId },
+    allowRunToken: true,
+  });
 
-  if (!authenticationResult) {
-    return json({ error: "Invalid or Missing API Key" }, { status: 401 });
+  if (!authResult.ok) {
+    return json({ error: authResult.error }, { status: authResult.status });
   }
+  const authenticationResult = authResult.authentication;
 
   const parsedParams = ParamsSchema.safeParse(params);
 
@@ -48,15 +57,33 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ error: "Schedule not found" }, { status: 404 });
     }
 
-    await prisma.taskSchedule.update({
-      where: scheduleUniqWhereClause(
-        authenticationResult.environment.projectId,
-        parsedParams.data.scheduleId
-      ),
-      data: {
-        active: true,
-      },
-    });
+    const toggle = async (tx: PrismaTransactionClient) => {
+      if (
+        authenticationResult.credentialKind === "run_token" &&
+        !(await lockScheduleForRunTokenMutation(
+          tx,
+          authenticationResult.environment.projectId,
+          parsedParams.data.scheduleId,
+          authenticationResult.environment.id
+        ))
+      )
+        return null;
+
+      return tx.taskSchedule.update({
+        where: scheduleUniqWhereClause(
+          authenticationResult.environment.projectId,
+          parsedParams.data.scheduleId
+        ),
+        data: { active: true },
+      });
+    };
+    const updatedSchedule =
+      authenticationResult.credentialKind === "run_token"
+        ? await $transaction(prisma, toggle, { isolationLevel: "ReadCommitted" })
+        : await toggle(prisma);
+    if (!updatedSchedule) {
+      return json({ error: "Schedule not found" }, { status: 404 });
+    }
 
     const presenter = new ViewSchedulePresenter();
 
@@ -71,7 +98,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ error: "Schedule not found" }, { status: 404 });
     }
 
-    return json(presenter.toJSONResponse(result), { status: 200 });
+    const response = presenter.toJSONResponse(result);
+    if (authenticationResult.credentialKind === "run_token") {
+      response.environments = response.environments.filter(
+        (environment) => environment.id === authenticationResult.environment.id
+      );
+    }
+    return json(response, { status: 200 });
   } catch (error) {
     logger.error("Failed to activate schedule", {
       error,

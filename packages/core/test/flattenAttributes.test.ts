@@ -707,4 +707,33 @@ describe("unflattenAttributes", () => {
       a: { b: ["indexed"] },
     });
   });
+
+  it("keeps top-level numeric object keys as an object instead of an array", () => {
+    expect(unflattenAttributes({ "0": "a", "2": "b" })).toEqual({ "0": "a", "2": "b" });
+  });
+
+  it("does not throw RangeError on a large numeric map key", () => {
+    expect(() => unflattenAttributes({ "4294967296": "id" })).not.toThrow();
+    expect(unflattenAttributes({ "4294967296": "id" })).toEqual({ "4294967296": "id" });
+  });
+
+  it("keeps array indices far beyond the input size as object keys", () => {
+    expect(unflattenAttributes({ "[4294967295]": "x" })).toEqual({ "4294967295": "x" });
+    expect(unflattenAttributes({ "a.[4294967294]": "x" })).toEqual({ a: { "4294967294": "x" } });
+  });
+
+  it("keeps every entry of an array that mixes nearby and oversized indices", () => {
+    const expected = { a: { "0": "first", "2000": "far" } };
+    expect(unflattenAttributes({ "a.[0]": "first", "a.[2000]": "far" })).toEqual(expected);
+    expect(unflattenAttributes({ "a.[2000]": "far", "a.[0]": "first" })).toEqual(expected);
+  });
+
+  it("ignores skipped keys when deciding whether an array is oversized", () => {
+    expect(unflattenAttributes({ "a.[0]": "ok", "a.[2000].__proto__.x": "ignored" })).toEqual({
+      a: ["ok"],
+    });
+    expect(unflattenAttributes({ "a.[0]": "first", "a.[2000]": "far" }, ["a.[2000]"])).toEqual({
+      a: ["first"],
+    });
+  });
 });

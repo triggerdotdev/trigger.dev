@@ -1,3 +1,4 @@
+import { withAdminApi } from "~/services/adminApi.server";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
@@ -17,7 +18,7 @@ const Params = z.object({
 const DEFAULT_BATCH_SIZE = 500;
 const DEFAULT_DELAY_INTERVAL_MS = 1000;
 
-export async function action({ request, params }: ActionFunctionArgs) {
+async function handleAction({ request, params }: ActionFunctionArgs) {
   await requireAdminApiRequest(request);
 
   const { batchId } = Params.parse(params);
@@ -46,3 +47,5 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: error instanceof Error ? error.message : error }, { status: 400 });
   }
 }
+
+export const action = withAdminApi(handleAction);

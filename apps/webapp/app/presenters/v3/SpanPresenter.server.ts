@@ -243,6 +243,7 @@ export class SpanPresenter extends BasePresenter {
       endCreatedAt: getTraceStartTimeEnd(parentRun),
       insertedAtEnd: getTraceInsertedAtEnd(parentRun),
       eventRepository: repository,
+      organizationId: project.organizationId,
       showDebug,
       rootRunId: traceRootRunId(parentRun),
       userId,
@@ -710,11 +711,13 @@ export class SpanPresenter extends BasePresenter {
     projectId,
     createdAt,
     endCreatedAt,
+    organizationId,
     insertedAtEnd,
     showDebug,
     rootRunId,
     userId,
   }: {
+    organizationId: string;
     eventRepository: IEventRepository;
     traceId: string;
     spanId: string;
@@ -823,6 +826,7 @@ export class SpanPresenter extends BasePresenter {
           friendlyId: span.entity.id,
           environmentId,
           projectId,
+          organizationId,
         });
 
         if (!waitpoint) {

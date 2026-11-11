@@ -21,6 +21,11 @@ import {
   resolveEffectiveBatchRateLimit,
 } from "~/components/admin/backOffice/BatchRateLimitSection.server";
 import {
+  PLUGIN_INTENT_PREFIX,
+  PLUGIN_PANEL_SAVED_VALUE,
+  PluginPanelSection,
+} from "~/components/admin/backOffice/PluginPanelSection";
+import {
   MAX_PROJECTS_INTENT,
   MAX_PROJECTS_SAVED_VALUE,
   MaxProjectsSection,
@@ -38,6 +43,10 @@ import { CopyableText } from "~/components/primitives/CopyableText";
 import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { prisma } from "~/db.server";
+import {
+  getOrganizationAdminPanel,
+  performOrganizationAdminAction,
+} from "~/services/accessPolicy.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 
 const SAVED_QUERY_KEY = "saved";
@@ -73,8 +82,9 @@ export const loader = dashboardLoader(
     const batchEffective = resolveEffectiveBatchRateLimit(org.batchRateLimitConfig);
 
     const webhookLimits = webhookLimitsFromConfig(org.webhookLimitsConfig);
+    const pluginPanel = await getOrganizationAdminPanel(org.id);
 
-    return typedjson({ org, apiEffective, batchEffective, webhookLimits });
+    return typedjson({ org, apiEffective, batchEffective, webhookLimits, pluginPanel });
   }
 );
 
@@ -85,6 +95,28 @@ export const action = dashboardAction(
 
     const formData = await request.formData();
     const intent = formData.get("intent");
+
+    if (typeof intent === "string" && intent.startsWith(PLUGIN_INTENT_PREFIX)) {
+      const fields: Record<string, string> = {};
+      for (const [name, value] of formData) {
+        if (name !== "intent" && typeof value === "string") fields[name] = value;
+      }
+      const result = await performOrganizationAdminAction({
+        organizationId: orgId,
+        adminUserId: user.id,
+        intent: intent.slice(PLUGIN_INTENT_PREFIX.length),
+        fields,
+      });
+      if (!result.ok) {
+        return typedjson(
+          { section: PLUGIN_PANEL_SAVED_VALUE, errors: result.errors },
+          { status: 400 }
+        );
+      }
+      return redirect(
+        `/admin/back-office/orgs/${orgId}?${SAVED_QUERY_KEY}=${PLUGIN_PANEL_SAVED_VALUE}`
+      );
+    }
 
     if (intent === MAX_PROJECTS_INTENT) {
       const result = await handleMaxProjectsAction(formData, orgId, user.id);
@@ -143,11 +175,16 @@ export const action = dashboardAction(
 );
 
 export default function BackOfficeOrgPage() {
-  const { org, apiEffective, batchEffective, webhookLimits } = useTypedLoaderData<typeof loader>();
+  const { org, apiEffective, batchEffective, webhookLimits, pluginPanel } =
+    useTypedLoaderData<typeof loader>();
   const actionData = useTypedActionData<typeof action>();
   const navigation = useNavigation();
   const submittingIntent = navigation.formData?.get("intent");
   const isSubmittingApi = navigation.state !== "idle" && submittingIntent === API_RATE_LIMIT_INTENT;
+  const isSubmittingPlugin =
+    navigation.state !== "idle" &&
+    typeof submittingIntent === "string" &&
+    submittingIntent.startsWith(PLUGIN_INTENT_PREFIX);
   const isSubmittingBatch =
     navigation.state !== "idle" && submittingIntent === BATCH_RATE_LIMIT_INTENT;
   const isSubmittingMaxProjects =
@@ -196,6 +233,15 @@ export default function BackOfficeOrgPage() {
           Back to organizations
         </LinkButton>
       </div>
+
+      {pluginPanel && (
+        <PluginPanelSection
+          panel={pluginPanel}
+          errors={errorSection === PLUGIN_PANEL_SAVED_VALUE ? errors : null}
+          savedJustNow={savedSection === PLUGIN_PANEL_SAVED_VALUE}
+          isSubmitting={isSubmittingPlugin}
+        />
+      )}
 
       <ApiRateLimitSection
         effective={apiEffective}

@@ -47,6 +47,15 @@ describe("conditionSummary for limits", () => {
     expect(conditionSummary(state("limits.all"))).toBe("Any of 7 limits");
   });
 
+  // Catches: a health.all subset shown as a raw state key.
+  it("labels a health.all subset by its checks", () => {
+    const subset = ["health.flow", "health.liveness"];
+    expect(conditionSummary(state("health.all", { components: subset }))).toBe("2 of 3 checks");
+    expect(conditionSummary(state("health.all"))).toBe("All 3 checks");
+    expect(limitScopeLabel("health.all", subset)).toBe("Flow + Liveness");
+    expect(limitScopeLabel("health.all")).toBeUndefined();
+  });
+
   it("summarises a limit by its signals", () => {
     expect(conditionSummary(state("limits.api", { params: { utilisationPct: 80 } }))).toBe(
       "API rate limit utilisation ≥ 80% or requests denied"
@@ -57,10 +66,6 @@ describe("conditionSummary for limits", () => {
     expect(conditionSummary(state("limits.api", { signals: ["limited"] }))).toBe(
       "API rate limit utilisation: requests denied"
     );
-  });
-
-  it("keeps the plain state summary for health.all", () => {
-    expect(conditionSummary(state("health.all"))).toBe("State: health.all");
   });
 
   it("keeps the plain state summary for other state alerts", () => {

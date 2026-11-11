@@ -373,13 +373,22 @@ type CardInputProps = {
   onValidity: (valid: boolean) => void;
   onRestore: () => void;
   onAdvance?: () => void;
+  onEnter?: () => void;
 };
 
 function CardInput(props: CardInputProps) {
   return props.input.type === "date" ? <CardDate {...props} /> : <CardText {...props} />;
 }
 
-function CardText({ input, label, autoFocus, onValidity, onRestore, onAdvance }: CardInputProps) {
+function CardText({
+  input,
+  label,
+  autoFocus,
+  onValidity,
+  onRestore,
+  onAdvance,
+  onEnter,
+}: CardInputProps) {
   const [text, setText] = useState(input.current ?? "");
   const [touched, setTouched] = useState(false);
   const value = parseInput(input, text);
@@ -443,6 +452,10 @@ function CardText({ input, label, autoFocus, onValidity, onRestore, onAdvance }:
           if (e.key !== "Enter") return;
           e.preventDefault();
           setTouched(true);
+          if (input.live && !e.shiftKey && !e.nativeEvent.isComposing) {
+            e.stopPropagation();
+            onEnter?.();
+          }
         }}
       />
     </WizardInputRow>
@@ -726,6 +739,10 @@ export function ChatWizardCard({
       ?.querySelectorAll(":scope > li:not([data-group-header])")
       [index + fieldCount]?.scrollIntoView?.({ block: "nearest" });
   };
+  const confirmFromInput = () => {
+    if (step?.multiSelect && step.selected?.length && !blocked && !step.confirmDisabled)
+      onConfirm?.(step.id);
+  };
   const advance = hasNext ? () => onStepChange(stepIndex + 1) : undefined;
   const restore = () => {
     setRevealed(undefined);
@@ -875,6 +892,7 @@ export function ChatWizardCard({
               label={field.label}
               onValidity={reportValidity(`${step.id}:${field.id}`)}
               onRestore={restore}
+              onEnter={confirmFromInput}
             />
           ))}
           {rows.map((option, index) => {
@@ -961,6 +979,7 @@ export function ChatWizardCard({
                     input={option.below}
                     onValidity={reportValidity(`${step.id}:${option.below.id}`)}
                     onRestore={restore}
+                    onEnter={confirmFromInput}
                   />
                 ) : null}
               </Fragment>

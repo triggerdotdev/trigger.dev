@@ -7,6 +7,7 @@ import {
   branchNameFromRequest,
 } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { personalAccessTokenUnauthorizedResponse } from "~/services/personalAccessToken.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -21,7 +22,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     });
 
     if (!authenticationResult) {
-      return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
+      return personalAccessTokenUnauthorizedResponse(request);
     }
 
     const parsedParams = ParamsSchema.safeParse(params);

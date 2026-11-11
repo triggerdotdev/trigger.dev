@@ -1,4 +1,8 @@
-import { assertNonNullable, containerTest } from "@internal/testcontainers";
+import {
+  assertNonNullable,
+  containerTest,
+  containerTestWithIsolatedRedis,
+} from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import type { DequeuedMessage } from "@trigger.dev/core/v3";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
@@ -6,6 +10,7 @@ import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { expect } from "vitest";
 import { setTimeout } from "node:timers/promises";
 import type { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
+import { MASTER_QUEUE_DEFAULTS } from "../../run-queue/index.js";
 import { RunEngine } from "../index.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
@@ -204,6 +209,78 @@ describe("RunEngine dequeuing", () => {
         expect(dequeuedAgain.length).toBe(1);
         assertNonNullable(dequeuedAgain[0]);
         expect(dequeuedAgain[0].run.id).toBe(run.id);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTestWithIsolatedRedis(
+    "passes the master-queue cooloff and dequeue-count options to the run queue",
+    async ({ prisma, redisOptions }) => {
+      const engine = new RunEngine({
+        prisma,
+        worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
+        queue: {
+          redis: redisOptions,
+          masterQueueConsumersDisabled: true,
+          masterQueueCooloffPeriodMs: 12_345,
+          masterQueueCooloffCountThreshold: 3,
+          masterQueueConsumerDequeueCount: 7,
+        },
+        runLock: { redis: redisOptions },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": { name: "small-1x" as const, cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        expect(engine.runQueue.options).toMatchObject({
+          masterQueueCooloffPeriodMs: 12_345,
+          masterQueueCooloffCountThreshold: 3,
+          masterQueueConsumerDequeueCount: 7,
+        });
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTestWithIsolatedRedis(
+    "uses the run queue's master-queue defaults when the options are unset",
+    async ({ prisma, redisOptions }) => {
+      const engine = new RunEngine({
+        prisma,
+        worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
+        queue: { redis: redisOptions, masterQueueConsumersDisabled: true },
+        runLock: { redis: redisOptions },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": { name: "small-1x" as const, cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        // Unset options must reach the run queue as undefined, so it falls back to its defaults.
+        expect(engine.runQueue.options.masterQueueCooloffPeriodMs).toBeUndefined();
+        expect(engine.runQueue.options.masterQueueCooloffCountThreshold).toBeUndefined();
+        expect(engine.runQueue.options.masterQueueConsumerDequeueCount).toBeUndefined();
+        // The defaults the webapp env schema also uses. Changing them changes every deployment
+        // that does not set the env vars.
+        expect(MASTER_QUEUE_DEFAULTS).toEqual({
+          cooloffPeriodMs: 10_000,
+          cooloffCountThreshold: 10,
+          consumerDequeueCount: 10,
+        });
       } finally {
         await engine.quit();
       }

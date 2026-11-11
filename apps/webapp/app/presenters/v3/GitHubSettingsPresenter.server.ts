@@ -8,11 +8,13 @@ import { BasePresenter } from "./basePresenter.server";
 type GitHubSettingsOptions = {
   projectId: string;
   organizationId: string;
+  /** False hides the integration exactly as when the GitHub app isn't configured. */
+  githubAvailable?: boolean;
 };
 
 export class GitHubSettingsPresenter extends BasePresenter {
-  public call({ projectId, organizationId }: GitHubSettingsOptions) {
-    const githubAppEnabled = env.GITHUB_APP_ENABLED === "1";
+  public call({ projectId, organizationId, githubAvailable = true }: GitHubSettingsOptions) {
+    const githubAppEnabled = env.GITHUB_APP_ENABLED === "1" && githubAvailable;
 
     if (!githubAppEnabled) {
       return ok({

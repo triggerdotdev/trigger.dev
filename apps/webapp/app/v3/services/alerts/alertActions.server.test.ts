@@ -346,18 +346,48 @@ describe("activateAlert", () => {
     expect((await getAlert(db, { id: alert.id }))?.lifecycle).toBe("expired");
   });
 
-  it("rejects activating without notifiers", async () => {
-    const alert = await makeAlert({ lifecycle: "stopped", notifiers: [] });
+  it.each([[[]], [[{ type: "chat", chatId: "chat_1" }]]])(
+    "rejects activating without a channel notifier %j",
+    async (notifiers) => {
+      const alert = await makeAlert({ lifecycle: "stopped", notifiers: notifiers as any });
 
-    await expect(
-      activateAlert(db, {
+      await expect(
+        activateAlert(db, {
+          alertId: alert.id,
+          projectId: alert.projectId,
+          environmentId: alert.environmentId,
+          actorId: "user_2",
+        })
+      ).rejects.toThrow("At least one channel is required");
+      expect((await getAlert(db, { id: alert.id }))?.lifecycle).toBe("stopped");
+    }
+  );
+
+  redisTest("activating drops a stored chat notifier", async ({ redisOptions }) => {
+    const worker = createWorker(redisOptions);
+    const alert = await makeAlert({
+      lifecycle: "stopped",
+      notifiers: [
+        { type: "channel", channelId: "chan_1" },
+        { type: "chat", chatId: "chat_1" },
+      ] as any,
+    });
+
+    await activateAlert(
+      db,
+      {
         alertId: alert.id,
         projectId: alert.projectId,
         environmentId: alert.environmentId,
         actorId: "user_2",
-      })
-    ).rejects.toThrow("Add at least one notifier");
-    expect((await getAlert(db, { id: alert.id }))?.lifecycle).toBe("stopped");
+      },
+      depsFor(worker)
+    );
+
+    const updated = await getAlert(db, { id: alert.id });
+    expect(updated?.lifecycle).toBe("active");
+    expect(updated?.notifiers).toEqual([{ type: "channel", channelId: "chan_1" }]);
+    await worker.stop();
   });
 
   redisTest("accepts an expiry two years ahead", async ({ redisOptions }) => {
@@ -446,6 +476,44 @@ describe("editAlert", () => {
     expect(updated?.condition).toEqual(BASE.condition);
   });
 
+  it("strips a stored chat notifier even when notifiers are not edited", async () => {
+    const alert = await makeAlert({
+      lifecycle: "active",
+      notifiers: [
+        { type: "channel", channelId: "chan_1" },
+        { type: "chat", chatId: "chat_1" },
+      ] as any,
+    });
+
+    await editAlert(db, {
+      alertId: alert.id,
+      projectId: alert.projectId,
+      environmentId: alert.environmentId,
+    });
+
+    expect((await getAlert(db, { id: alert.id }))?.notifiers).toEqual([
+      { type: "channel", channelId: "chan_1" },
+    ]);
+  });
+
+  it("rejects a chat-only edit without writing the new expiry", async () => {
+    const alert = await makeAlert({
+      lifecycle: "active",
+      notifiers: [{ type: "chat", chatId: "chat_1" }] as any,
+    });
+
+    await expect(
+      editAlert(db, {
+        alertId: alert.id,
+        projectId: alert.projectId,
+        environmentId: alert.environmentId,
+        expiresAt: new Date(Date.now() + 3_600_000),
+      })
+    ).rejects.toThrow("At least one channel is required");
+
+    expect((await getAlert(db, { id: alert.id }))?.expiresAt).toBeNull();
+  });
+
   it("persists a new expiry and keeps notifiers", async () => {
     const alert = await makeAlert({ lifecycle: "active" });
     const expiresAt = new Date(Date.now() + 3_600_000);
@@ -495,27 +563,5 @@ describe("editAlert", () => {
         notifiers: [{ type: "channel", channelId: "chan_2" }],
       })
     ).rejects.toThrow(AlertNotFoundError);
-  });
-
-  it("fails when editing an alert with a chat notifier rewrites it as a channel", async () => {
-    const alert = await makeAlert({ lifecycle: "active" });
-
-    const chatRef = { type: "chat" as const, conversationId: "project", userId: "user_1" };
-    const channelRef = { type: "channel" as const, channelId: "chan_1" };
-
-    await editAlert(db, {
-      alertId: alert.id,
-      projectId: alert.projectId,
-      environmentId: alert.environmentId,
-      notifiers: [chatRef, channelRef],
-    });
-
-    const updated = await getAlert(db, { id: alert.id });
-    const notifiers = updated?.notifiers as Array<{ type: string }>;
-    const chat = notifiers.find((n) => n.type === "chat");
-    expect(chat).toBeDefined();
-    expect(chat).toEqual(chatRef);
-    const channel = notifiers.find((n) => n.type === "channel");
-    expect(channel).toEqual(channelRef);
   });
 });

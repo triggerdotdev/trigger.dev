@@ -19,6 +19,7 @@ vi.mock("./failDeployment.server", () => ({
   FINAL_DEPLOYMENT_STATUSES: ["CANCELED", "DEPLOYED", "FAILED", "TIMED_OUT"],
 }));
 
+import { DeploymentAccessError } from "../deploymentAccess.server";
 import { ServiceValidationError } from "./baseService.server";
 import { RedeployDeploymentService } from "./redeployDeployment.server";
 
@@ -348,6 +349,17 @@ describe("RedeployDeploymentService", () => {
   it("reports in flight when the platform rejects a duplicate external id", async () => {
     deps.initialize.mockRejectedValue(new ServiceValidationError("in progress", 409));
     expect(await callErr()).toEqual({ type: "deployment_in_flight" });
+    expect(deps.enqueueGithub).not.toHaveBeenCalled();
+    expect(deps.cancel).not.toHaveBeenCalled();
+  });
+
+  // Catches: a deploy refusal (card gate or access plugin) reaching the user as "Failed to redeploy".
+  it("reports an access refusal with its message, without enqueueing", async () => {
+    deps.initialize.mockRejectedValue(new DeploymentAccessError("Add a card to deploy"));
+    expect(await callErr()).toEqual({
+      type: "deployment_access_denied",
+      message: "Add a card to deploy",
+    });
     expect(deps.enqueueGithub).not.toHaveBeenCalled();
     expect(deps.cancel).not.toHaveBeenCalled();
   });

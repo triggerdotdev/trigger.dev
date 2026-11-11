@@ -21,7 +21,7 @@ globalThis.ResizeObserver ??= class {
 
 const agent = { open: false, openWith: () => {} } as unknown as AgentValue;
 
-const ALLOWED = { canWrite: true, canDelete: true };
+const ALLOWED = { canWrite: true };
 
 async function openMenu(status: string, permissions = ALLOWED) {
   const alert = { status: { status }, canActivate: true } as unknown as AlertDetail;
@@ -105,7 +105,7 @@ describe("DetailActionsMenu", () => {
   });
 
   it("disables write actions without write:alerts, leaving Investigate", async () => {
-    const denied = { canWrite: false, canDelete: false };
+    const denied = { canWrite: false };
     const raised = await openMenu("needs_attention", denied);
     expect(raised.disabled).toEqual(["Edit"]);
     raised.cleanup();
@@ -115,12 +115,6 @@ describe("DetailActionsMenu", () => {
     const inactive = await openMenu("inactive", denied);
     expect(inactive.disabled).toEqual(["Activate", "Delete"]);
     inactive.cleanup();
-  });
-
-  it("disables Delete without delete:alerts", async () => {
-    const menu = await openMenu("inactive", { canWrite: true, canDelete: false });
-    expect(menu.disabled).toEqual(["Delete"]);
-    menu.cleanup();
   });
 
   async function clickEdit(agent: AgentValue | null, onEdit: () => void) {
@@ -204,7 +198,7 @@ describe("HeaderActions", () => {
             <ShortcutsProvider>
               <HeaderActions
                 status={{ status } as AlertDetail["status"]}
-                permissions={{ canWrite, canDelete: true }}
+                permissions={{ canWrite }}
                 onActivate={onActivate}
               />
             </ShortcutsProvider>
@@ -254,7 +248,7 @@ describe("HeaderActions", () => {
             <ShortcutsProvider>
               <HeaderActions
                 status={{ status: "needs_attention" } as AlertDetail["status"]}
-                permissions={{ canWrite: true, canDelete: true }}
+                permissions={{ canWrite: true }}
                 onActivate={() => {}}
               />
             </ShortcutsProvider>
@@ -292,7 +286,7 @@ describe("HeaderActions", () => {
             <ShortcutsProvider>
               <HeaderActions
                 status={{ status: "inactive" } as AlertDetail["status"]}
-                permissions={{ canWrite: true, canDelete: true }}
+                permissions={{ canWrite: true }}
                 onActivate={onActivate}
               />
             </ShortcutsProvider>

@@ -1,3 +1,4 @@
+import { withAdminApi } from "~/services/adminApi.server";
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
@@ -5,7 +6,7 @@ import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstan
 import { getRunsReplicationGlobal } from "~/services/runsReplicationGlobal.server";
 import { runsReplicationInstance } from "~/services/runsReplicationInstance.server";
 
-export async function action({ request }: ActionFunctionArgs) {
+async function handleAction({ request }: ActionFunctionArgs) {
   await requireAdminApiRequest(request);
 
   try {
@@ -26,3 +27,5 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: error instanceof Error ? error.message : error }, { status: 400 });
   }
 }
+
+export const action = withAdminApi(handleAction);

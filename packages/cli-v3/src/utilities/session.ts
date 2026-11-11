@@ -16,11 +16,19 @@ export type LoginResultOk = {
   };
 };
 
+/**
+ * The API's error code when a CLI login token stopped working after going unused; logging in
+ * again fixes it. Must match `CLI_LOGIN_EXPIRED` in @trigger.dev/plugins, which the CLI doesn't
+ * depend on.
+ */
+export const CLI_LOGIN_EXPIRED_CODE = "cli_login_expired";
+
 export type LoginResult =
   | LoginResultOk
   | {
       ok: false;
       error: string;
+      errorCode?: string | null;
       auth?: {
         apiUrl: string;
         accessToken: string;
@@ -43,6 +51,7 @@ export async function isLoggedIn(profile: string = "default"): Promise<LoginResu
       return {
         ok: false as const,
         error: userData.error,
+        errorCode: userData.errorCode,
         auth: {
           apiUrl: config.apiUrl,
           accessToken: config.accessToken,

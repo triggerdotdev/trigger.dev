@@ -11,7 +11,7 @@ import { ShortcutsProvider } from "~/components/primitives/ShortcutsProvider";
 import type { AlertDetail, AlertDetailEvent } from "~/presenters/v3/AlertDetailPresenter.server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { episodeNote, eventEpisodes } from "./eventEpisodes";
-import { buildNotifierOptions, parseNotifierKey, validateChatRef } from "./editNotifierOptions";
+import { buildNotifierOptions, parseNotifierKey } from "./editNotifierOptions";
 
 function evt(type: AlertDetailEvent["type"], at: string): AlertDetailEvent {
   return { id: `${type}_${at}`, type, at: new Date(at), actorId: null, factsSummary: "" };
@@ -101,6 +101,12 @@ describe("buildNotifierOptions", () => {
     expect(disabled!.label).toContain("(disabled)");
     expect(disabled!.disabled).toBe(true);
   });
+
+  it("never offers a stored chat notifier", () => {
+    const current = [{ key: "chat:conv_1:user_1", label: "This chat" }];
+    const options = buildNotifierOptions(projectChannels, current);
+    expect(options.some((o) => o.key.startsWith("chat:"))).toBe(false);
+  });
 });
 
 describe("parseNotifierKey", () => {
@@ -111,66 +117,12 @@ describe("parseNotifierKey", () => {
     });
   });
 
-  it("round-trips chat with userId only (conversationId=project → undefined)", () => {
-    const ref = parseNotifierKey("chat:project:user_1");
-    expect(ref).toEqual({
-      type: "chat",
-      conversationId: undefined,
-      chatId: undefined,
-      userId: "user_1",
-    });
-  });
-
-  it("round-trips chat with conversationId/chatId only (userId=- → undefined)", () => {
-    const ref = parseNotifierKey("chat:conv_abc:-");
-    expect(ref).toEqual({
-      type: "chat",
-      conversationId: "conv_abc",
-      chatId: "conv_abc",
-      userId: undefined,
-    });
-  });
-
-  it("round-trips chat with both conversationId and userId", () => {
-    const ref = parseNotifierKey("chat:conv_abc:user_1");
-    expect(ref).toEqual({
-      type: "chat",
-      conversationId: "conv_abc",
-      chatId: "conv_abc",
-      userId: "user_1",
-    });
+  it("still parses a stored chat key so the save path can reject it", () => {
+    expect(parseNotifierKey("chat:conv_abc:user_1")).toMatchObject({ type: "chat" });
   });
 
   it("returns null for unrecognized format", () => {
     expect(parseNotifierKey("unknown:foo")).toBeNull();
-  });
-});
-
-describe("validateChatRef", () => {
-  it("rejects a bare chat ref with no userId (chat:project:-)", () => {
-    const ref = parseNotifierKey("chat:project:-");
-    expect(ref).not.toBeNull();
-    const error = validateChatRef(ref as any, "user_1");
-    expect(error).toBe("Chat notifier must specify a user");
-  });
-
-  it("rejects a foreign userId", () => {
-    const ref = parseNotifierKey("chat:project:user_other");
-    const error = validateChatRef(ref as any, "user_1");
-    expect(error).toBe("Unauthorized chat notifier");
-  });
-
-  it("accepts the current user's chat ref", () => {
-    const ref = parseNotifierKey("chat:project:user_1");
-    const error = validateChatRef(ref as any, "user_1");
-    expect(error).toBeNull();
-  });
-
-  it("accepts a chat ref with chatId belonging to the current user", () => {
-    const ref = parseNotifierKey("chat:chat_abc:user_1");
-    const error = validateChatRef(ref as any, "user_1");
-    expect(error).toBeNull();
-    expect(ref!).toHaveProperty("chatId", "chat_abc");
   });
 });
 
@@ -237,19 +189,22 @@ function makeAlert(overrides: Partial<AlertDetail> = {}): AlertDetail {
   };
 }
 
-function render(node: React.ReactNode) {
-  const router = createMemoryRouter([
-    {
-      path: "/",
-      element: (
-        <OperatingSystemContextProvider platform="mac">
-          <ShortcutsProvider>
-            <LocaleContextProvider locales={["en-US"]}>{node}</LocaleContextProvider>
-          </ShortcutsProvider>
-        </OperatingSystemContextProvider>
-      ),
-    },
-  ]);
+function render(node: React.ReactNode, url = "/") {
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/",
+        element: (
+          <OperatingSystemContextProvider platform="mac">
+            <ShortcutsProvider>
+              <LocaleContextProvider locales={["en-US"]}>{node}</LocaleContextProvider>
+            </ShortcutsProvider>
+          </OperatingSystemContextProvider>
+        ),
+      },
+    ],
+    { initialEntries: [url] }
+  );
   return renderToStaticMarkup(<RouterProvider router={router} />);
 }
 
@@ -262,6 +217,41 @@ function between(html: string, start: string, end: string) {
 }
 
 describe("AlertDetailSidebar", () => {
+  it("a grouped member shows no status or notifiers; a plain alert does", () => {
+    const member = render(
+      <AlertDetailSidebar alert={makeAlert({})} environmentTitle="Production" inGroup />
+    );
+    expect(member).not.toContain("Alert status");
+    expect(member).not.toContain("Active");
+    expect(member).not.toContain("Notify");
+    expect(member).not.toContain("Behavior");
+    expect(member).not.toContain("Raised");
+    expect(member).not.toContain("Not sent while grouped");
+    expect(sidebar(makeAlert({}))).toContain("Alert status");
+  });
+
+  it("lists a group's alerts between Condition and Scope", () => {
+    const html = render(
+      <AlertDetailSidebar
+        alert={makeAlert({})}
+        environmentTitle="Production"
+        alerts={[
+          { id: "a1", name: "Queue depth", path: "/alerts/a1" },
+          { id: "a2", name: "Failure rate", path: "/alerts/a2" },
+        ]}
+      />
+    );
+    const box = between(html, "Condition", "Behavior");
+    expect(box.indexOf("Alerts")).toBeGreaterThan(0);
+    expect(box).toContain("Queue depth");
+    expect(box).toContain("Failure rate");
+    expect(box).toContain('href="/alerts/a1"');
+    expect(box).toContain('href="/alerts/a2"');
+    expect(html).not.toContain("Remove");
+    expect(html).not.toContain("Scope");
+    expect(sidebar(makeAlert({}))).toContain("Scope");
+  });
+
   it("fails when status text returns under the badge", () => {
     const status = between(
       sidebar(
@@ -352,6 +342,15 @@ describe("AlertDetailFilterBar", () => {
     const html = render(<AlertDetailFilterBar lifetime={lifetime} />);
     expect(html).toContain("Jan 1");
     expect(html).not.toContain("7 days");
+  });
+
+  // Catches: a clamped window labelled with the URL period instead of its dates.
+  it("fails when a clamped window shows the requested period", () => {
+    const until = new Date("2026-04-01T00:00:00Z");
+    const clamped = { since: new Date(until.getTime() - 90 * 86_400_000), until };
+    const html = render(<AlertDetailFilterBar lifetime={clamped} />, "/?period=3650d");
+    expect(html).toContain("Jan 1");
+    expect(html).not.toContain("3650");
   });
 });
 

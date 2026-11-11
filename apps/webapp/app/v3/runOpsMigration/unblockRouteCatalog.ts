@@ -20,7 +20,6 @@ const INDEX = "internal-packages/run-engine/src/engine/index.ts";
 const WAITPOINT_SYSTEM = "internal-packages/run-engine/src/engine/systems/waitpointSystem.ts";
 const TTL_SYSTEM = "internal-packages/run-engine/src/engine/systems/ttlSystem.ts";
 const RUN_ATTEMPT_SYSTEM = "internal-packages/run-engine/src/engine/systems/runAttemptSystem.ts";
-const BATCH_SYSTEM = "internal-packages/run-engine/src/engine/systems/batchSystem.ts";
 
 export const UNBLOCK_ROUTES: readonly UnblockRoute[] = [
   {
@@ -39,7 +38,13 @@ export const UNBLOCK_ROUTES: readonly UnblockRoute[] = [
     id: "index.finishWaitpoint",
     kind: "DATETIME",
     site: INDEX,
-    symbol: "finishWaitpoint redis job",
+    symbol: "finishWaitpoint redis job (store routing enabled)",
+  },
+  {
+    id: "index.finishWaitpoint.legacy",
+    kind: "DATETIME",
+    site: INDEX,
+    symbol: "finishWaitpoint redis job (store routing disabled)",
   },
   {
     id: "wp.sink",
@@ -48,10 +53,28 @@ export const UNBLOCK_ROUTES: readonly UnblockRoute[] = [
     symbol: "completeWaitpoint (sink declaration)",
   },
   {
+    id: "wp.completeLockedDateTime",
+    kind: "DATETIME",
+    site: WAITPOINT_SYSTEM,
+    symbol: "completeWaitpoint (locked DATETIME re-entry)",
+  },
+  {
     id: "wp.ensureCompleted",
     kind: "RUN",
     site: WAITPOINT_SYSTEM,
     symbol: "ensureWaitpointCompleted (completion-guard redelivery)",
+  },
+  {
+    id: "wp.recoverDateTime",
+    kind: "DATETIME",
+    site: WAITPOINT_SYSTEM,
+    symbol: "recoverDateTimeWaitpoint (durable deadline completion)",
+  },
+  {
+    id: "wp.recoverKeyedDateTime",
+    kind: "DATETIME",
+    site: WAITPOINT_SYSTEM,
+    symbol: "recoverDateTimeWaitpoint (published keyed winner deadline completion)",
   },
   {
     id: "wp.blockAndComplete",
@@ -66,16 +89,34 @@ export const UNBLOCK_ROUTES: readonly UnblockRoute[] = [
     symbol: "getOrCreateRunWaitpoint",
   },
   {
+    id: "wp.createAssociated",
+    kind: "RUN",
+    site: WAITPOINT_SYSTEM,
+    symbol: "createAssociatedWaitpointRecord (native publication terminal reconciliation)",
+  },
+  {
+    id: "wp.publishTerminalBatch",
+    kind: "RUN",
+    site: WAITPOINT_SYSTEM,
+    symbol: "#publishNativeBatch (terminal publication reconciliation)",
+  },
+  {
+    id: "wp.completeNativeBatch",
+    kind: "RUN",
+    site: WAITPOINT_SYSTEM,
+    symbol: "completeBatchWaitpoint (native identity)",
+  },
+  {
     id: "batch.tryCompleteBatch",
     kind: "RUN",
-    site: BATCH_SYSTEM,
-    symbol: "#tryCompleteBatch",
+    site: "internal-packages/run-engine/src/engine/systems/batchSystem.ts",
+    symbol: "#resumeBatchParent (legacy identity)",
   },
   {
     id: "batch.expireBatch",
     kind: "RUN",
-    site: BATCH_SYSTEM,
-    symbol: "expireBatch",
+    site: "internal-packages/run-engine/src/engine/systems/batchSystem.ts",
+    symbol: "expireBatch (legacy identity)",
   },
   {
     id: "ttl.expireRun",

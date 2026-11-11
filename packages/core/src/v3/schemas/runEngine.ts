@@ -206,11 +206,16 @@ export type CheckpointTypeEnum = (typeof CheckpointTypeEnum)[keyof typeof Checkp
 export const CheckpointType = z.enum(Object.values(CheckpointTypeEnum) as [CheckpointTypeEnum]);
 export type CheckpointType = z.infer<typeof CheckpointType>;
 
+/** The sha256 digest of a checkpoint's image manifest, recorded when it is taken. */
+export const CheckpointDigest = z.string().regex(/^sha256:[a-f0-9]{64}$/);
+export type CheckpointDigest = z.infer<typeof CheckpointDigest>;
+
 export const CheckpointInput = z.object({
   type: CheckpointType,
   location: z.string(),
   imageRef: z.string().nullish(),
   reason: z.string().nullish(),
+  digest: CheckpointDigest.nullish(),
 });
 
 export type CheckpointInput = z.infer<typeof CheckpointInput>;
@@ -267,6 +272,8 @@ export const DequeueMessageCheckpoint = z.object({
   location: z.string(),
   imageRef: z.string().nullish(),
   reason: z.string().nullish(),
+  /** Absent for a checkpoint taken without one; the restore can then only trust its location. */
+  digest: CheckpointDigest.nullish(),
 });
 export type DequeueMessageCheckpoint = z.infer<typeof DequeueMessageCheckpoint>;
 

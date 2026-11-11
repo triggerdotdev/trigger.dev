@@ -56,7 +56,7 @@ describe("single-option steps", () => {
     mount();
     act(() => latest!.selectChip("area", "health"));
     act(() => latest!.selectChip("what", "health.liveness"));
-    const ids = allSteps(latest!, [], undefined).map((step) => step.id);
+    const ids = allSteps(latest!, []).map((step) => step.id);
     expect(ids).not.toContain("scope");
   });
 });

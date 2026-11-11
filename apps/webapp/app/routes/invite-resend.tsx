@@ -4,6 +4,7 @@ import { z } from "zod";
 import { $replica } from "~/db.server";
 import { resendInvite } from "~/models/member.server";
 import { env } from "~/env.server";
+import { publicAppOrigin } from "~/services/adminOrigin.server";
 import { checkInviteRateLimit, InviteRateLimitError } from "~/services/inviteRateLimiter.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { scheduleEmail } from "~/services/scheduleEmail.server";
@@ -81,7 +82,7 @@ export const action = dashboardAction(
           orgName: invite.organization.title,
           inviterName: invite.inviter.name ?? undefined,
           inviterEmail: invite.inviter.email,
-          inviteLink: `${env.LOGIN_ORIGIN}${acceptInvitePath(invite.token)}`,
+          inviteLink: `${publicAppOrigin()}${acceptInvitePath(invite.token)}`,
         });
       } catch (error) {
         console.error("Failed to send invite email");

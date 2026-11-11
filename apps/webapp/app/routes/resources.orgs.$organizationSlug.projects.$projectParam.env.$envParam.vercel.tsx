@@ -38,7 +38,7 @@ import {
   redirectWithErrorMessage,
   redirectWithSuccessMessage,
 } from "~/models/message.server";
-import { resolveOrgIdFromSlug } from "~/models/organization.server";
+import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { VercelIntegrationRepository } from "~/models/vercelIntegration.server";
@@ -46,6 +46,7 @@ import {
   type VercelOnboardingData,
   VercelSettingsPresenter,
 } from "~/presenters/v3/VercelSettingsPresenter.server";
+import { canConnectIntegration, resolveIntegrationAccess } from "~/v3/deploymentAccess.server";
 import { logger } from "~/services/logger.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
@@ -183,6 +184,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const resultOrFail = await presenter.call({
     projectId: project.id,
     organizationId: project.organizationId,
+    vercelAvailable: (await resolveIntegrationAccess(project.organizationId, project.id)).vercel,
   });
 
   if (resultOrFail.isErr()) {
@@ -240,10 +242,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 export const action = dashboardAction(
   {
     params: EnvironmentParamSchema,
-    context: async (params) => {
-      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
-      return organizationId ? { organizationId } : {};
-    },
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
     authorization: { action: "write", resource: { type: "vercel" } },
   },
   async ({ request, params, user }) => {
@@ -474,6 +473,10 @@ export const action = dashboardAction(
 
       case "select-vercel-project": {
         const { vercelProjectId, vercelProjectName } = submission.value;
+
+        if (!(await canConnectIntegration(project.organizationId, "vercel"))) {
+          return json({ error: "Failed to connect Vercel project. Please try again." });
+        }
 
         const selectResult = await fromPromise(
           vercelService.selectVercelProject({

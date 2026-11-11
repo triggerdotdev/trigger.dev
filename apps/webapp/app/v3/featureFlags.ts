@@ -26,6 +26,7 @@ export const FEATURE_FLAG = {
   workerQueueCompatibility: "workerQueueCompatibility",
   workerQueueChannel: "workerQueueChannel",
   workerQueueEnvironmentOverrides: "workerQueueEnvironmentOverrides",
+  sessionVersionFloor: "sessionVersionFloor",
   internalApiOriginEnabled: "internalApiOriginEnabled",
   realtimeBackend: "realtimeBackend",
   computeMigrationEnabled: "computeMigrationEnabled",
@@ -50,6 +51,9 @@ export const FEATURE_FLAG = {
   queueMetricsUiEnabled: "queueMetricsUiEnabled",
   // Build path for CLI deploys, resolved by DeploymentService.getDeploySettings.
   deployBuildPath: "deployBuildPath",
+  // Global only, read per dequeue from the in-memory flag snapshot; RUN_ENGINE_DEPLOYMENT_STATUS_MODE
+  // applies when unset.
+  deploymentStatusMode: "deploymentStatusMode",
   deployBuildPathPreview: "deployBuildPathPreview",
   deployBuildPathStaging: "deployBuildPathStaging",
   deployBuildPathProduction: "deployBuildPathProduction",
@@ -60,6 +64,7 @@ export const FEATURE_FLAG = {
   supportAccessSettingsEnabled: "supportAccessSettingsEnabled",
   runTokenInjection: "runTokenInjection",
   externalOidc: "externalOidc",
+  trustedDeploysEnabled: "trustedDeploysEnabled",
   sessionTraceEnabled: "sessionTraceEnabled",
 } as const;
 
@@ -92,6 +97,11 @@ const WorkerQueueEnvironmentOverrideKey = z
       /^[a-z0-9]{20,}$/.test(key),
     "must be PRODUCTION, STAGING, PREVIEW or an environment id"
   );
+
+export const SessionVersionFloor = z.object({
+  minVersion: z.string().min(1),
+});
+export type SessionVersionFloor = z.infer<typeof SessionVersionFloor>;
 
 export const FeatureFlagCatalog = {
   [FEATURE_FLAG.waitpointStoreEnabled]: z.boolean(),
@@ -143,6 +153,7 @@ export const FeatureFlagCatalog = {
     WorkerQueueEnvironmentOverrideKey,
     WorkerQueueEnvironmentOverride
   ),
+  [FEATURE_FLAG.sessionVersionFloor]: z.record(z.string(), SessionVersionFloor),
   // Routes deployed runs' TRIGGER_API_URL to INTERNAL_API_ORIGIN. Per-org, with
   // INTERNAL_API_ORIGIN_ENABLED as the global default (org wins). No-op unless
   // INTERNAL_API_ORIGIN is set.
@@ -222,6 +233,7 @@ export const FeatureFlagCatalog = {
   // separate). Off unless enabled for the org.
   [FEATURE_FLAG.queueMetricsUiEnabled]: z.coerce.boolean(),
   [FEATURE_FLAG.deployBuildPath]: DeployBuildPath,
+  [FEATURE_FLAG.deploymentStatusMode]: z.enum(["off", "shadow", "enforce"]),
   [FEATURE_FLAG.deployBuildPathPreview]: DeployBuildPath,
   [FEATURE_FLAG.deployBuildPathStaging]: DeployBuildPath,
   [FEATURE_FLAG.deployBuildPathProduction]: DeployBuildPath,
@@ -238,6 +250,7 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.runTokenInjection]: z.boolean(),
   // Org override wins over the global value; off by default.
   [FEATURE_FLAG.externalOidc]: z.boolean(),
+  [FEATURE_FLAG.trustedDeploysEnabled]: z.boolean(),
   // Shows the session page's Trace tab and serves its routes. Org override wins over the global
   // value; off by default. Admins always have it.
   [FEATURE_FLAG.sessionTraceEnabled]: z.boolean(),
@@ -258,6 +271,7 @@ export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.workerQueueCompatibility,
   FEATURE_FLAG.workerQueueChannel,
   FEATURE_FLAG.workerQueueEnvironmentOverrides,
+  FEATURE_FLAG.sessionVersionFloor,
   // Grace stamps are computed server-side. An editable control here would discard what it saves.
   FEATURE_FLAG.runOpsMintKindPrev,
   FEATURE_FLAG.runOpsMintKindFlippedAt,
@@ -277,6 +291,8 @@ export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runOpsMintShardSetPrev,
   FEATURE_FLAG.runOpsMintShardSetFlippedAt,
   FEATURE_FLAG.runOpsMintShardOverride,
+  // Read per dequeue from the global flag snapshot only; the org's flags aren't loaded there.
+  FEATURE_FLAG.deploymentStatusMode,
 ];
 
 export type OrgLockedFlagEffect = "live" | "ignored" | "derived";
@@ -294,6 +310,7 @@ export const ORG_LOCKED_FLAG_EFFECT: Partial<Record<FeatureFlagKey, OrgLockedFla
   [FEATURE_FLAG.runOpsMintShardSetPrev]: "ignored",
   [FEATURE_FLAG.runOpsMintShardSetFlippedAt]: "ignored",
   [FEATURE_FLAG.runOpsMintShardOverride]: "ignored",
+  [FEATURE_FLAG.deploymentStatusMode]: "ignored",
   [FEATURE_FLAG.runOpsMintKindPrev]: "derived",
   [FEATURE_FLAG.runOpsMintKindFlippedAt]: "derived",
 };

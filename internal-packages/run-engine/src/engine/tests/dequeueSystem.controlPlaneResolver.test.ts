@@ -572,6 +572,7 @@ describe("DequeueSystem controlPlaneResolver (worker-task read shape)", () => {
         "id",
         "imagePlatform",
         "imageReference",
+        "status",
         "templateKey",
       ]);
 

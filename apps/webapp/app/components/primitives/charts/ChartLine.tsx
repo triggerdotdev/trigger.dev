@@ -3,6 +3,7 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
+  Dot,
   Line,
   LineChart,
   ReferenceArea,
@@ -15,6 +16,7 @@ import {
 import { ChartTooltip, ChartTooltipContent } from "~/components/primitives/charts/Chart";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
 import { CHART_MARGIN } from "./ChartBar";
+import { verticalMarkerLine, type VerticalMarker } from "./VerticalMarker";
 import { useChartContext } from "./ChartContext";
 import { ChartLineInvalid, ChartLineLoading, ChartLineNoData } from "./ChartLoading";
 import { useHasNoData } from "./ChartRoot";
@@ -135,6 +137,7 @@ export type ChartLineRendererProps = {
   tooltipValueFormatter?: (value: number) => string;
   /** Draw a dot at each data point. Defaults to true; turn off for dense/compact charts. */
   showDots?: boolean;
+  verticalMarker?: VerticalMarker;
   /**
    * Horizontal reference lines (e.g. limits); the y-domain extends to include them.
    *
@@ -273,6 +276,7 @@ export function ChartLineRenderer({
   tooltipValueFormatter,
   showDots = true,
   referenceLines,
+  verticalMarker,
   thresholdStroke,
   warningOverlay,
   referenceAreas,
@@ -556,6 +560,7 @@ export function ChartLineRenderer({
           className="pointer-events-none"
         />
       )}
+      {verticalMarker && verticalMarkerLine(verticalMarker)}
       {referenceLines?.map((line) => (
         <ReferenceLine
           key={`ref-${line.y}-${line.label ?? ""}`}
@@ -680,7 +685,27 @@ export function ChartLineRenderer({
                   : config[key]?.color
             }
             strokeWidth={1}
-            dot={showDots ? { r: 1.5, fill: config[key]?.color, strokeWidth: 0 } : false}
+            dot={
+              showDots
+                ? { r: 1.5, fill: config[key]?.color, strokeWidth: 0 }
+                : // oxlint-disable-next-line react/no-unstable-nested-components -- Recharts invokes this renderer per point with coordinates.
+                  ({ key: dotKey, index, ...props }: DotRenderProps) =>
+                    isIsolatedPoint(chartData, index, key) ? (
+                      <Dot
+                        key={dotKey}
+                        {...props}
+                        r={1.5}
+                        fill={
+                          overlayKeys.includes(key) && isOver(chartData[index], key)
+                            ? (warningOverlay!.color ?? "var(--color-warning)")
+                            : config[key]?.color
+                        }
+                        strokeWidth={0}
+                      />
+                    ) : (
+                      <g key={dotKey} />
+                    )
+            }
             // The hover dot matches the line colour under it: for a gradient (threshold) line it
             // flips at the split; otherwise it's the series colour. The warning overlay draws its
             // own dot on top where it's active.
@@ -762,6 +787,12 @@ export function overlayDotVisible(
   overKey = WARNING_OVERLAY_KEY
 ) {
   return payload?.[overKey] != null && payload[overKey] === payload?.[key];
+}
+
+type DotRenderProps = { key: string; index: number; cx: number; cy: number };
+
+function isIsolatedPoint(rows: Record<string, unknown>[], index: number, key: string) {
+  return rows[index - 1]?.[key] == null && rows[index + 1]?.[key] == null;
 }
 
 type StepPoint = { row: Record<string, unknown>; level: unknown; over: boolean | null };

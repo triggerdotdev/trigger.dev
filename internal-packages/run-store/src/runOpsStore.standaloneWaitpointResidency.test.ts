@@ -8,6 +8,7 @@ import { heteroRunOpsPostgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import { expect } from "vitest";
+import { generateRunOpsId, generateRunOpsIdV2 } from "@trigger.dev/core/v3/isomorphic";
 import { PostgresRunStore } from "./PostgresRunStore.js";
 import { RoutingRunStore } from "./runOpsStore.js";
 
@@ -146,3 +147,29 @@ describe("run-ops split — a standalone token pins to NEW via the residency hin
     }
   );
 });
+
+heteroRunOpsPostgresTest(
+  "key claims share the canonical database scope across aliases and standalone callers",
+  async ({ prisma14, prisma17 }) => {
+    const legacyStore = new PostgresRunStore({ prisma: prisma14, readOnlyPrisma: prisma14 });
+    const newStore = new PostgresRunStore({
+      prisma: prisma17 as never,
+      readOnlyPrisma: prisma17 as never,
+      schemaVariant: "dedicated",
+    });
+    const router = new RoutingRunStore({
+      new: newStore,
+      legacy: legacyStore,
+      shards: [
+        { key: "a", store: newStore, aliasOf: "new" },
+        { key: "b", store: legacyStore, aliasOf: "legacy" },
+      ],
+    });
+    expect(router.getWaitpointKeyScope()).toBe("new");
+    expect(router.getWaitpointKeyScope(generateRunOpsId())).toBe("new");
+    expect(router.getWaitpointKeyScope(generateRunOpsIdV2("a"))).toBe("new");
+    expect(router.getWaitpointKeyScope(`run_${"c".repeat(25)}`)).toBe("legacy");
+    expect(router.getWaitpointKeyScope(generateRunOpsIdV2("b"))).toBe("legacy");
+    expect(() => router.getWaitpointKeyScope(generateRunOpsIdV2("z"))).toThrow();
+  }
+);

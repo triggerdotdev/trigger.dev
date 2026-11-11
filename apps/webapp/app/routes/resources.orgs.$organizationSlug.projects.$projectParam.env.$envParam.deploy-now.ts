@@ -9,6 +9,8 @@ import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { deploymentOnboardingEnabled } from "~/v3/services/deploymentOnboardingEnabled.server";
 import { BranchTrackingConfigSchema, getTrackedBranchForEnvironment } from "~/v3/github";
 import { TriggerDeployNowService } from "~/v3/services/triggerDeployNow.server";
+import { checkDeployAccess } from "~/v3/deploymentAccess.server";
+import { cardVerificationDeployRefusal } from "~/v3/cardVerificationDeployGate.server";
 
 export function deployNowPath(
   organizationSlug: string,
@@ -40,8 +42,27 @@ export const action = dashboardAction(
 
     // Feature-flag gate: the button is hidden when off, but the action is the
     // real security boundary.
-    if (!(await deploymentOnboardingEnabled(project.organizationId))) {
+    if (
+      !(await deploymentOnboardingEnabled(project.organizationId)) ||
+      !(await checkDeployAccess({ stage: "preflight", organizationId: project.organizationId }))
+        .allowed
+    ) {
       return json({ ok: false, error: "Not available" }, { status: 403 });
+    }
+
+    const organization = await prisma.organization.findFirst({
+      where: { id: project.organizationId },
+      select: { id: true, slug: true, title: true },
+    });
+    if (!organization) {
+      return json({ ok: false, error: "Not found" }, { status: 404 });
+    }
+    const cardRefusal = await cardVerificationDeployRefusal(organization);
+    if (cardRefusal) {
+      return json(
+        { ok: false, code: "CARD_VERIFICATION_REQUIRED", error: cardRefusal },
+        { status: 403 }
+      );
     }
 
     // Resolve the tracked branch for this environment.

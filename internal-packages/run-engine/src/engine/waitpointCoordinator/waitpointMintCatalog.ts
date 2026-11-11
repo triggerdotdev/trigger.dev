@@ -46,6 +46,13 @@ export const WAITPOINT_MINT_SITES: readonly WaitpointMintSite[] = [
     symbol: "createAssociatedWaitpoint",
   },
   {
+    id: "coordinator.batch",
+    mints: ["mintWaitpointIdFor(batchId)"],
+    type: "BATCH",
+    site: COORDINATOR,
+    symbol: "createBatchWaitpoint",
+  },
+  {
     id: "engine.batch",
     mints: ["mintWaitpointIdFor(batchId)"],
     type: "BATCH",

@@ -5,6 +5,8 @@ import {
   resolveAlert,
 } from "~/v3/services/alerts/storage/alertStore.server";
 import { stopAlertAndUnschedule } from "~/v3/services/alerts/alertLifecycle.server";
+import { ungroupAlert } from "~/v3/services/alerts/alertGroups.server";
+import { GROUP_CAPABILITY_KEY } from "@internal/alert-contracts";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
@@ -29,7 +31,7 @@ const ParamsSchema = z.object({
 });
 
 const ActionBodySchema = z.object({
-  action: z.enum(["resolve", "stop"]),
+  action: z.enum(["resolve", "stop", "ungroup"]),
 });
 
 export const loader = createLoaderPATApiRoute(
@@ -123,6 +125,21 @@ export const action = createActionPATApiRoute(
       assertUserActorEnvironment(authentication.userActor, alert.environmentId);
       if (!(await canAccessAlertsIn(ability, "write", alert.environmentId))) {
         return alertsEnvironmentForbidden("write");
+      }
+
+      if (body.data.action === "ungroup") {
+        if (!(await canAccessAlertsIn(ability, "delete", alert.environmentId))) {
+          return alertsEnvironmentForbidden("delete");
+        }
+        if (alert.capabilityKey !== GROUP_CAPABILITY_KEY) {
+          return json({ error: "Alert is not a group" }, { status: 409 });
+        }
+        await ungroupAlert(prisma, {
+          groupId: alert.id,
+          projectId: alert.projectId,
+          environmentId: alert.environmentId,
+        });
+        return json({ alert });
       }
 
       const outcome =

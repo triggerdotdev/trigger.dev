@@ -5,12 +5,14 @@ import {
   type Repository,
   type Tag,
   RepositoryNotFoundException,
+  RepositoryAlreadyExistsException,
   GetAuthorizationTokenCommand,
   PutLifecyclePolicyCommand,
   PutImageTagMutabilityCommand,
   SetRepositoryPolicyCommand,
 } from "@aws-sdk/client-ecr";
 import { STSClient, AssumeRoleCommand } from "@aws-sdk/client-sts";
+import { setTimeout as sleep } from "node:timers/promises";
 import { tryCatch } from "@trigger.dev/core";
 import { logger } from "~/services/logger.server";
 import { type RegistryConfig } from "./registryConfig.server";
@@ -426,6 +428,18 @@ export function parseEcrRegistryDomain(registryHost: string): EcrRegistryCompone
   };
 }
 
+export function isRepositoryAlreadyExistsError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  // Recent @aws-sdk/client-ecr versions deserialise ECR errors to a plain Error whose name is
+  // "Error"; the service's error code is only on `__type`, as the message.includes("does not
+  // exist") fallback in getEcrRepository already works around for RepositoryNotFoundException.
+  return (
+    error instanceof RepositoryAlreadyExistsException ||
+    error.name === "RepositoryAlreadyExistsException" ||
+    (error as { __type?: unknown }).__type === "RepositoryAlreadyExistsException"
+  );
+}
+
 async function ensureEcrRepositoryExists({
   repositoryName,
   registryHost,
@@ -453,45 +467,14 @@ async function ensureEcrRepositoryExists({
   if (existingRepo) {
     logger.debug("ECR repository already exists", { repositoryName, region, existingRepo });
 
-    // check if the repository is missing the cache settings
-    if (existingRepo.imageTagMutability === "IMMUTABLE") {
-      const [updateError] = await tryCatch(
-        updateEcrRepositoryCacheSettings({ repositoryName, region, accountId, assumeRole })
-      );
-
-      if (updateError) {
-        logger.error("Failed to update ECR repository cache settings", {
-          repositoryName,
-          region,
-          updateError,
-        });
-      }
-    }
-
-    // Reconcile the default repository policy on every call. Idempotent, and
-    // covers two recovery cases: (1) a previous create succeeded but the
-    // SetRepositoryPolicy call failed mid-flight, leaving the repo without a
-    // policy; (2) the operator updated DEPLOY_REGISTRY_ECR_DEFAULT_REPOSITORY_POLICY
-    // and existing repos need to pick up the new value.
-    if (defaultRepositoryPolicy) {
-      const [policyError] = await tryCatch(
-        applyEcrRepositoryPolicy({
-          repositoryName,
-          region,
-          accountId,
-          assumeRole,
-          defaultRepositoryPolicy,
-        })
-      );
-
-      if (policyError) {
-        logger.error("Failed to reconcile ECR repository policy on existing repo", {
-          repositoryName,
-          region,
-          policyError,
-        });
-      }
-    }
+    await reconcileExistingEcrRepository({
+      repo: existingRepo,
+      repositoryName,
+      region,
+      accountId,
+      assumeRole,
+      defaultRepositoryPolicy,
+    });
 
     return {
       repo: existingRepo,
@@ -511,6 +494,37 @@ async function ensureEcrRepositoryExists({
   );
 
   if (createRepoError) {
+    const racedRepo = await adoptRepositoryAfterCreateRace(
+      createRepoError,
+      () => getEcrRepository({ repositoryName, region, accountId, assumeRole }),
+      { repositoryName, region, accountId }
+    );
+
+    if (racedRepo) {
+      // Whoever created it may still be setting it up, or may have failed part way, so apply the
+      // repository policy and the cache expiry policy it would have. Both are idempotent.
+      await reconcileExistingEcrRepository({
+        repo: racedRepo,
+        repositoryName,
+        region,
+        accountId,
+        assumeRole,
+        defaultRepositoryPolicy,
+      });
+      const [lifecycleError] = await tryCatch(
+        applyCacheExpirationPolicy({ repositoryName, region, accountId, assumeRole })
+      );
+      if (lifecycleError) {
+        logger.error("Failed to apply ECR lifecycle policy after a create race", {
+          repositoryName,
+          region,
+          lifecycleError,
+        });
+      }
+
+      return { repo: racedRepo, repoCreated: false };
+    }
+
     logger.error("Failed to create ECR repository", { repositoryName, region, createRepoError });
     throw createRepoError;
   }
@@ -526,6 +540,128 @@ async function ensureEcrRepositoryExists({
     repo: newRepo,
     repoCreated: true,
   };
+}
+
+/**
+ * Brings a repository that already exists up to date: the cache tag settings, and the
+ * operator's default repository policy when one is set. Idempotent; failures are logged and the
+ * deploy carries on.
+ */
+async function reconcileExistingEcrRepository({
+  repo: existingRepo,
+  repositoryName,
+  region,
+  accountId,
+  assumeRole,
+  defaultRepositoryPolicy,
+}: {
+  repo: Repository;
+  repositoryName: string;
+  region: string;
+  accountId?: string;
+  assumeRole?: AssumeRoleConfig;
+  defaultRepositoryPolicy?: string;
+}): Promise<void> {
+  // check if the repository is missing the cache settings
+  if (existingRepo.imageTagMutability === "IMMUTABLE") {
+    const [updateError] = await tryCatch(
+      updateEcrRepositoryCacheSettings({ repositoryName, region, accountId, assumeRole })
+    );
+
+    if (updateError) {
+      logger.error("Failed to update ECR repository cache settings", {
+        repositoryName,
+        region,
+        updateError,
+      });
+    }
+  }
+
+  // Reconcile the default repository policy on every call. Idempotent, and
+  // covers two recovery cases: (1) a previous create succeeded but the
+  // SetRepositoryPolicy call failed mid-flight, leaving the repo without a
+  // policy; (2) the operator updated DEPLOY_REGISTRY_ECR_DEFAULT_REPOSITORY_POLICY
+  // and existing repos need to pick up the new value.
+  if (defaultRepositoryPolicy) {
+    const [policyError] = await tryCatch(
+      applyEcrRepositoryPolicy({
+        repositoryName,
+        region,
+        accountId,
+        assumeRole,
+        defaultRepositoryPolicy,
+      })
+    );
+
+    if (policyError) {
+      logger.error("Failed to reconcile ECR repository policy on existing repo", {
+        repositoryName,
+        region,
+        policyError,
+      });
+    }
+  }
+}
+
+/** Expires the untagged images left behind when the mutable `cache` tag moves. */
+async function applyCacheExpirationPolicy({
+  repositoryName,
+  region,
+  accountId,
+  assumeRole,
+}: {
+  repositoryName: string;
+  region: string;
+  accountId?: string;
+  assumeRole?: AssumeRoleConfig;
+}): Promise<void> {
+  const ecr = await createEcrClient({ region, assumeRole });
+  await ecr.send(
+    new PutLifecyclePolicyCommand({
+      repositoryName,
+      registryId: accountId,
+      lifecyclePolicyText: untaggedImageExpirationPolicy,
+    })
+  );
+}
+
+/**
+ * Two first deploys of a new project can race to create its repository, and an SDK retry of a
+ * create that succeeded can hit the same error. When a create failed only because the repository
+ * already exists, returns that repository so this deploy carries on with it, and undefined for
+ * any other error, which the caller rethrows. A read right after the create can miss it, so the
+ * read is retried briefly, and if it still misses the repository is known by its name, which is
+ * all a deploy needs.
+ */
+export async function adoptRepositoryAfterCreateRace(
+  createError: unknown,
+  findRepository: () => Promise<Repository | undefined>,
+  context: { repositoryName: string; region: string; accountId?: string },
+  { attempts = 3, delayMs = 200 }: { attempts?: number; delayMs?: number } = {}
+): Promise<Repository | undefined> {
+  if (!isRepositoryAlreadyExistsError(createError)) return undefined;
+
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const [findError, repo] = await tryCatch(findRepository());
+    if (repo) {
+      logger.info("ECR repository already existed when this deploy tried to create it", {
+        repositoryName: context.repositoryName,
+        region: context.region,
+      });
+      return repo;
+    }
+    lastError = findError;
+    if (attempt < attempts) await sleep(delayMs);
+  }
+
+  logger.warn("ECR repository already exists but could not be read back; using its name", {
+    repositoryName: context.repositoryName,
+    region: context.region,
+    error:
+      lastError instanceof Error ? lastError.message : lastError ? String(lastError) : undefined,
+  });
+  return { repositoryName: context.repositoryName, registryId: context.accountId };
 }
 
 export async function getEcrAuthToken({

@@ -16,7 +16,6 @@ import {
   type QueryRowRunner,
 } from "./evaluators/queryEvaluator.server";
 import type { MetricSeriesPoint } from "~/components/alerts/alertSeriesTypes";
-import { getLimit } from "~/services/platform.v3.server";
 
 export type AlertSeriesBucket = { date: Date; count: number };
 
@@ -137,6 +136,7 @@ export function buildBucketedQuery(params: {
   evalWindow?: EvaluationWindow;
   partitionBy?: string;
   minVolume?: number;
+  range?: { from: Date; to: Date };
 }): string {
   const timeCol = TABLE_TIME_COLUMN[params.table] ?? "created_at";
   const compiled = compileTemplate(params.template, {
@@ -198,9 +198,12 @@ export function buildBucketedQuery(params: {
   if (!groupCol) return bucketed(whereClause, null, params.maxBuckets);
 
   const keyCol = groupCol[1]!;
+  const inRange = params.range
+    ? ` AND ${timeCol} >= ${clickhouseDateTimeLiteral(params.range.from)} AND ${timeCol} <= ${clickhouseDateTimeLiteral(params.range.to)}`
+    : "";
   const topKeys = [
     `SELECT ${keyCol} AS _k FROM ${tableName}`,
-    `WHERE ${whereClause}`,
+    `WHERE ${whereClause}${inRange}`,
     `GROUP BY _k ORDER BY ${aggregate} DESC`,
     `LIMIT ${MAX_KEYED_SERIES}`,
   ].join(" ");
@@ -414,13 +417,7 @@ export async function getMetricSeries(
   );
   const now = input.window ? input.window.until.getTime() : Date.now();
   const spanMs = Math.min(windowHours * 3600 * 1000, maxBuckets * bucketSeconds * 1000);
-  const requestedSinceMs = input.window ? input.window.since.getTime() : now - spanMs;
-  const sinceMs = input.capability.binding.fullRetention
-    ? Math.max(
-        requestedSinceMs,
-        Date.now() - (await getLimit(input.organizationId, "queryPeriodDays", 30)) * 86_400_000
-      )
-    : requestedSinceMs;
+  const sinceMs = input.window ? input.window.since.getTime() : now - spanMs;
   const template = input.capability.binding.template;
   const table = input.capability.binding.table;
   if (!template || !table) return new Map();
@@ -457,6 +454,7 @@ export async function getMetricSeries(
         grouped,
         evalWindow,
         minVolume,
+        range: { from: new Date(sinceMs), to: new Date(now) },
       });
 
   const fillEmpty =

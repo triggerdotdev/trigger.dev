@@ -12,6 +12,8 @@ mode: "wide"
 | `MAGIC_LINK_SECRET`                              | Yes      | —                     | Magic link encryption secret. Run: `openssl rand -hex 16`                                                          |
 | `ENCRYPTION_KEY`                                 | Yes      | —                     | Secret store encryption key. Run: `openssl rand -hex 16`                                                           |
 | `MANAGED_WORKER_SECRET`                          | Yes      | —                     | Managed worker secret. Must be set and match supervisor. Run: `openssl rand -hex 32`                               |
+| `PUBLIC_TOKEN_SUBJECT_SECRET`                    | No       | `ENCRYPTION_KEY`      | Key that encrypts the environment id inside public access tokens. Set it to keep this separate from the secret store key. Run: `openssl rand -hex 32` |
+| `PUBLIC_TOKEN_SEALED_SUBJECT_ENABLED`            | No       | false                 | Encrypt the environment id inside newly minted public access tokens. Turn on only once every webapp instance runs a version that can read them. |
 | `ALLOW_INSECURE_DEFAULT_SECRETS`                 | No       | false                 | Boot even if a secret is still a known-insecure published default. Temporary escape hatch for values you can't safely rotate yet (see [Secrets](/self-hosting/kubernetes#secrets)). |
 | **Domains & ports**                              |          |                       |                                                                                                                    |
 | `REMIX_APP_PORT`                                 | No       | 3030                  | Remix app port.                                                                                                    |
@@ -45,6 +47,10 @@ mode: "wide"
 | `BLOCKED_EMAIL_DOMAINS`                          | No       | —                     | Comma-separated email domains that can't sign in or sign up, including their subdomains.                           |
 | `LOGIN_RATE_LIMITS_ENABLED`                      | No       | true                  | Enable rate limiting on magic-link login.                                                                          |
 | `MAGIC_LINK_SAME_BROWSER_REQUIRED`               | No       | true                  | Only accept a magic link opened in the browser that requested it. Set to false to allow opening it on another device.|
+| `PERSONAL_ACCESS_TOKEN_EXPIRY_DAYS`              | No       | 30,90,365             | Lifetimes, in days (1 to 3650), offered when creating a personal access token on the dashboard. Comma-separated.   |
+| `PERSONAL_ACCESS_TOKEN_DEFAULT_EXPIRY_DAYS`      | No       | 90                    | The lifetime preselected when creating a personal access token. If it isn't one of the offered lifetimes, the shortest is preselected. |
+| `CLI_LOGIN_IDLE_TIMEOUT_DAYS`                    | No       | 7                     | A token minted by a CLI or MCP login stops working after this many days without use. Set to 0 to turn this off. Each token keeps the value it was minted with. |
+| `PERSONAL_ACCESS_TOKEN_EXPIRY_EMAILS_ENABLED`    | No       | true                  | Email the owner 7 days before a dashboard-created personal access token expires, and again when it has. Only runs when `EMAIL_TRANSPORT` is set. |
 | `TURNSTILE_SITE_KEY`                             | No       | —                     | Cloudflare Turnstile site key. With `TURNSTILE_SECRET_KEY`, adds a bot check to the magic-link sign-in form.       |
 | `TURNSTILE_SECRET_KEY`                           | No       | —                     | Cloudflare Turnstile secret key, used to verify the check on the server. Turnstile is off unless both keys are set.|
 | `AUTH_GITHUB_CLIENT_ID`                          | No       | —                     | GitHub client ID.                                                                                                  |
@@ -88,6 +94,7 @@ mode: "wide"
 | `API_RATE_LIMIT_METRICS_MAX_ENTRIES`             | No       | 10000                 | Cap on distinct (environment, bucket) entries held between flushes.                                                |
 | `API_RATE_LIMIT_METRICS_WAIT_FOR_ASYNC_INSERT`   | No       | 0                     | Wait for ClickHouse to write each async insert of API rate limit metrics, surfacing write failures.                |
 | `API_RATE_LIMIT_METRICS_INSERT_BUSY_TIMEOUT_MS`  | No       | 10000                 | How long ClickHouse buffers API rate limit metric inserts before writing a part.                                   |
+| `API_KEY_ALLOW_PRIVATE_IP_RANGES`                | No       | 0                     | Allow private and reserved ranges in API key IP allowlists.                                                        |
 | `WEBHOOK_METRICS_FLUSH_INTERVAL_MS`              | No       | 10000                 | How often aggregated webhook limit metrics are flushed to ClickHouse.                                              |
 | `WEBHOOK_METRICS_MAX_ENTRIES`                    | No       | 10000                 | Cap on distinct (environment, bucket) entries held between flushes.                                                |
 | `WEBHOOK_METRICS_MAX_ENDPOINTS`                  | No       | 500                   | Cap on endpoints with their own webhook metric rows per environment and bucket; environment totals still count all. |

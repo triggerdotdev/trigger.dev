@@ -82,6 +82,7 @@ export class ApiWaitpointListPresenter extends BasePresenter {
         engine: RunEngineVersion;
       };
       apiKey: string;
+      organizationId?: string;
     },
     searchParams: ApiWaitpointListSearchParams
   ) {

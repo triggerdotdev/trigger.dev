@@ -18,6 +18,8 @@ import { BasePresenter } from "./basePresenter.server";
 type VercelSettingsOptions = {
   projectId: string;
   organizationId: string;
+  /** False hides the integration exactly as when Vercel isn't configured. */
+  vercelAvailable?: boolean;
 };
 
 export type VercelSettingsResult = {
@@ -77,8 +79,9 @@ export class VercelSettingsPresenter extends BasePresenter {
   public async call({
     projectId,
     organizationId,
+    vercelAvailable = true,
   }: VercelSettingsOptions): Promise<Result<VercelSettingsResult, unknown>> {
-    const vercelIntegrationEnabled = OrgIntegrationRepository.isVercelSupported;
+    const vercelIntegrationEnabled = OrgIntegrationRepository.isVercelSupported && vercelAvailable;
 
     if (!vercelIntegrationEnabled) {
       return ok({

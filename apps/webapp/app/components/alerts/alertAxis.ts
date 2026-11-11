@@ -80,7 +80,7 @@ export function evenTimeTicks(buckets: number[]): number[] {
 
 export function withRaiseTick(ticks: number[], raise: number | undefined): number[] {
   if (raise === undefined) return ticks;
-  const half = ticks.length > 1 ? (ticks[1]! - ticks[0]!) / 2 : 0;
-  const kept = ticks.filter((t) => Math.abs(t - raise) >= half);
+  const reach = ticks.length > 1 ? (ticks[1]! - ticks[0]!) * 1.5 : 0;
+  const kept = ticks.filter((t) => Math.abs(t - raise) >= reach);
   return [...new Set([...kept, raise])].sort((a, b) => a - b);
 }

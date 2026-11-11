@@ -250,23 +250,20 @@ describe("public token minting with run credentials", () => {
     ["missing scopes", undefined],
     ["empty scopes", {}],
     ["an empty scope group", { read: {} }],
-  ])(
-    "preserves root signing and no permissions for %s despite a default run token",
-    async (_label, scopes) =>
-      runInMockTaskContext(async () => {
-        const token = await auth.createPublicToken(scopes === undefined ? undefined : { scopes });
-        expect(requests).toEqual([
-          {
-            url: "/api/v1/auth/jwt/claims",
-            authorization: `Bearer ${ROOT_KEY}`,
-            body: undefined,
-          },
-        ]);
-        const validation = await validateJWT(token, ROOT_KEY);
-        expect(validation.ok).toBe(true);
-        if (!validation.ok) return;
-        expect(validation.payload.scopes).toEqual(scopes === undefined ? undefined : []);
-      })
+  ])("server-mints a zero-permission token without a root key for %s", async (_label, scopes) =>
+    runInMockTaskContext(async () => {
+      // Catches: scope-less token creation falling back to an injected root key.
+      delete process.env.TRIGGER_SECRET_KEY;
+      const token = await auth.createPublicToken(scopes === undefined ? undefined : { scopes });
+      expect(requests).toEqual([
+        {
+          url: "/api/v1/auth/public-tokens",
+          authorization: `Bearer ${RUN_TOKEN}`,
+          body: { scopes: [] },
+        },
+      ]);
+      expect(token).toBe("server-minted-token");
+    })
   );
 
   it("lets an explicit root key sign public tokens longer than 30 days locally", async () =>
@@ -279,12 +276,20 @@ describe("public token minting with run credentials", () => {
       expect(requests.map((request) => request.url)).toEqual(["/api/v1/auth/jwt/claims"]);
     }));
 
-  it("requires scopes with an explicit run token rather than signing with it", async () =>
+  it("server-mints scope-less tokens with explicit run and additional credentials", async () =>
     runInMockTaskContext(async () => {
-      await expect(
-        auth.withAuth({ accessToken: RUN_TOKEN }, () => auth.createPublicToken())
-      ).rejects.toThrow("requires at least one scope when using a run token");
-      expect(requests).toEqual([]);
+      for (const accessToken of [RUN_TOKEN, ADDITIONAL_KEY]) {
+        expect(await auth.withAuth({ accessToken }, () => auth.createPublicToken())).toBe(
+          "server-minted-token"
+        );
+      }
+      expect(requests).toEqual(
+        [RUN_TOKEN, ADDITIONAL_KEY].map((accessToken) => ({
+          url: "/api/v1/auth/public-tokens",
+          authorization: `Bearer ${accessToken}`,
+          body: { scopes: [] },
+        }))
+      );
     }));
 
   it("does not fall back to local signing when server minting is unavailable", async () =>

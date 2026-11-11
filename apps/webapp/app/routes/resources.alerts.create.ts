@@ -2,7 +2,6 @@ import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { boundedIn } from "@trigger.dev/database";
 import { getCapability, type NotifierRef } from "@internal/alert-contracts";
-import { appendChatMessageOnce, chatExists } from "@internal/dashboard-agent-db";
 import {
   alertCreatedMessage,
   answersFromCreateRequest,
@@ -11,7 +10,7 @@ import {
 } from "~/components/alerts/alertCreatedCard";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { $replica, prisma } from "~/db.server";
-import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
+import { appendCreatedMessage, ownsChat } from "~/v3/services/alerts/createdCardChat.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { hasAccessToEnvironment } from "~/models/runtimeEnvironment.server";
 import {
@@ -22,7 +21,7 @@ import {
   InvalidConditionParamsError,
   InvalidScopeForCapabilityError,
   NoNotifiersError,
-  IncompleteChatNotifierError,
+  ChatNotifiersNotSupportedError,
   InvalidNotifierError,
   InvalidQueryAlertError,
 } from "~/v3/services/alerts/createAlertFromDraft.server";
@@ -45,7 +44,7 @@ const DOMAIN_ERRORS = [
   InvalidConditionParamsError,
   InvalidScopeForCapabilityError,
   NoNotifiersError,
-  IncompleteChatNotifierError,
+  ChatNotifiersNotSupportedError,
   InvalidNotifierError,
 ];
 
@@ -118,7 +117,7 @@ export const action = dashboardAction(
     }
 
     if (body.transcriptChatId) {
-      const owned = await chatExists(dashboardAgentDb, {
+      const owned = await ownsChat({
         chatId: body.transcriptChatId,
         organizationId: body.organizationId,
         userId,
@@ -132,20 +131,6 @@ export const action = dashboardAction(
       type: "channel",
       channelId,
     }));
-
-    if (body.chatNotifier === "on") {
-      if (body.chatId) {
-        const owned = await chatExists(dashboardAgentDb, {
-          chatId: body.chatId,
-          organizationId: body.organizationId,
-          userId,
-        });
-        if (!owned) {
-          return json({ error: "Invalid chat reference" }, { status: 400 });
-        }
-      }
-      notifiers.push({ type: "chat", chatId: body.chatId, userId });
-    }
 
     const draftError = validateAlertDraft({
       capability: getCapability(body.form.capabilityKey),
@@ -241,12 +226,11 @@ async function appendCreatedCard({
     );
     message = fields ? alertCreatedMessage(alertId, fields) : undefined;
     if (message && body.transcriptChatId) {
-      await appendChatMessageOnce(dashboardAgentDb, {
-        chatId: body.transcriptChatId,
-        userId,
-        organizationId: body.organizationId,
-        message,
-      });
+      await appendCreatedMessage(
+        { chatId: body.transcriptChatId, userId, organizationId: body.organizationId },
+        alertId,
+        message
+      );
     }
   } catch (error) {
     logger.error("Failed to append the alert created card", {

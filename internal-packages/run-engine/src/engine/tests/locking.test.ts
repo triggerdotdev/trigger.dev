@@ -6,6 +6,62 @@ import { trace } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 
 describe("RunLocker", () => {
+  redisTest(
+    "queued admissions preserve the distributed lock, nesting and progress after failure",
+    async ({ redisOptions }) => {
+      const options = {
+        logger: new Logger("QueuedRunLockTest", "error"),
+        tracer: trace.getTracer("QueuedRunLockTest"),
+        retryConfig: { maxAttempts: 1 },
+      };
+      const locker = new RunLocker({ ...options, redis: createRedisClient(redisOptions) });
+      const otherWorker = new RunLocker({ ...options, redis: createRedisClient(redisOptions) });
+      let release!: () => void;
+      let entered!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const ready = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const seen: number[] = [];
+      const first = locker.lockQueued("admission", "parent", async () => {
+        entered();
+        await gate;
+        await locker.lockQueued("nested-admission", "parent", async () => {
+          seen.push(0);
+        });
+        throw new Error("admission failed");
+      });
+      const admitted = Array.from({ length: 64 }, (_, i) =>
+        locker.lockQueued("admission", "parent", async () => {
+          seen.push(i + 1);
+        })
+      );
+      const settled = Promise.allSettled([first, ...admitted]);
+      try {
+        await ready;
+        await locker.lockQueued("other-parent", "different-parent", async () => {});
+        await expect(
+          otherWorker.lock("cleanup", ["parent"], async () => {})
+        ).rejects.toBeInstanceOf(LockAcquisitionTimeoutError);
+        release();
+        const results = await settled;
+        expect(results[0]).toMatchObject({
+          status: "rejected",
+          reason: new Error("admission failed"),
+        });
+        expect(results.slice(1).every((result) => result.status === "fulfilled")).toBe(true);
+        expect(seen).toEqual(Array.from({ length: 65 }, (_, i) => i));
+        await otherWorker.lock("cleanup", ["parent"], async () => {});
+      } finally {
+        release();
+        await settled;
+        await Promise.all([locker.quit(), otherWorker.quit()]);
+      }
+    }
+  );
+
   redisTest("Test acquiring a lock works", { timeout: 60_000 }, async ({ redisOptions }) => {
     const redis = createRedisClient(redisOptions);
     const logger = new Logger("RunLockTest", "debug");

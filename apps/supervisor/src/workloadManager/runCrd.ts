@@ -8,8 +8,17 @@ import {
   type ObjectCache,
 } from "@kubernetes/client-node";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
-import type { CheckpointType, EnvironmentType, MachinePreset } from "@trigger.dev/core/v3";
-import { type K8sApi, createK8sApi } from "../clients/kubernetes.js";
+import type {
+  CheckpointType,
+  ComputeCheckpointLocation,
+  EnvironmentType,
+  MachinePreset,
+} from "@trigger.dev/core/v3";
+import {
+  formatComputeCheckpointLocation,
+  parseComputeCheckpointLocation,
+} from "@trigger.dev/core/v3";
+import { type K8sApi, createK8sApi, withTimeout } from "../clients/kubernetes.js";
 import { ReconnectingInformer } from "../clients/reconnectingInformer.js";
 import { getRestoreRunnerId, getRunnerId } from "../util.js";
 import type {
@@ -67,6 +76,8 @@ export type RunCrdWorkloadManagerOptions = WorkloadManagerOptions & {
    * Runner on a cell with no RuntimeClass rather than serve it with weaker isolation.
    */
   runtime: RunnerRuntime;
+  /** The node this process runs on. Suspend recovery only touches Runners placed on it. */
+  nodeName: string;
   /** Suspends go to the operator only under microvm, where there is a guest to snapshot. */
   snapshots?: { enabled: boolean; delayMs: number; dispatchLimit: number };
   /** How often a suspend's or a polled resume's outcome is read back off the Runner. */
@@ -116,6 +127,7 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
   private readonly k8s: K8sApi;
   private readonly namespace: string;
   private readonly runtime: RunnerRuntime;
+  private readonly nodeName: string;
   private readonly snapshots?: RunCrdWorkloadManagerOptions["snapshots"];
   private readonly suspendPollMs: number;
   private readonly suspendTimeoutMs: number;
@@ -128,6 +140,7 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
     this.k8s = createK8sApi();
     this.namespace = opts.namespace;
     this.runtime = opts.runtime;
+    this.nodeName = opts.nodeName;
     this.releaseUnstartedRuns = opts.releaseUnstartedRuns ?? false;
     this.snapshots = opts.snapshots;
     this.suspendPollMs = opts.suspendPollMs ?? 5_000;
@@ -149,23 +162,33 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
     return this.snapshots?.dispatchLimit ?? 1;
   }
 
-  /**
-   * Asks the operator to snapshot the runner's guest by annotating its Runner.
-   * The runner id is the Runner's name. It comes from a workload header and the
-   * snapshot is submitted as the caller's checkpoint, so with an owner a Runner
-   * from another environment or deployment is refused.
-   */
+  async validateSuspend(opts: RunnerSuspendRequest): Promise<RunnerSuspendRequested> {
+    try {
+      const runner = (await this.getRunner(opts.runnerId)) as RunnerOwnerSpec | null;
+      if (!runner) return { ok: false, error: "the Runner was not found" };
+      const spec = runner.spec;
+      if (
+        !opts.owner ||
+        spec?.owner?.envID !== opts.owner.envId ||
+        (opts.owner.deploymentFriendlyId &&
+          spec?.deployment?.friendlyID !== opts.owner.deploymentFriendlyId)
+      )
+        return { ok: false, error: "the Runner belongs to another deployment" };
+      return { ok: true };
+    } catch (err: unknown) {
+      return {
+        ok: false,
+        error:
+          statusCodeOf(err) === 404
+            ? "the Runner was not found"
+            : `suspend owner check failed: ${messageOf(err)}`,
+      };
+    }
+  }
+
+  // The caller validates ownership before delivering earlier outcomes or making this patch.
   async requestSuspend(opts: RunnerSuspendRequest): Promise<RunnerSuspendRequested> {
     try {
-      if (opts.owner) {
-        const spec = ((await this.getRunner(opts.runnerId)) as RunnerOwnerSpec | null)?.spec;
-        if (
-          spec?.owner?.envID !== opts.owner.envId ||
-          spec?.deployment?.friendlyID !== opts.owner.deploymentFriendlyId
-        ) {
-          return { ok: false, error: "the Runner belongs to another deployment" };
-        }
-      }
       await this.k8s.objects.patch(
         {
           apiVersion: `${GROUP}/${VERSION}`,
@@ -195,7 +218,7 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
     return publishedSuspend(await this.getRunner(runnerId));
   }
 
-  /** Every Runner whose latest suspend has an outcome not yet marked submitted. */
+  /** Every Runner on this node whose latest suspend has an outcome not yet marked submitted. */
   async publishedSuspends(): Promise<PublishedSuspend[]> {
     const list = (await this.k8s.custom.listNamespacedCustomObject({
       group: GROUP,
@@ -204,6 +227,9 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
       plural: PLURAL,
     })) as { items?: unknown[] } | null;
     return (list?.items ?? []).flatMap((runner) => {
+      if ((runner as RunnerPlacementStatus | null)?.status?.placement?.node !== this.nodeName) {
+        return [];
+      }
       const published = publishedSuspend(runner);
       return published ? [published] : [];
     });
@@ -345,6 +371,38 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
     return outcome ? { ...outcome, createdAt: createdAtOf(runner), uid: uidOf(runner) } : timedOut;
   }
 
+  /** Reads a cold start's Runner for the heartbeat that covers it. A missing one is gone. */
+  async coldStartState(runnerId: string, snapshotFriendlyId: string): Promise<ColdStartState> {
+    try {
+      return coldStartState(await this.getRunner(runnerId), snapshotFriendlyId);
+    } catch (err: unknown) {
+      if (statusCodeOf(err) === 404) {
+        return "gone";
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * The cold starts still waiting to start, for a new process to take over their
+   * heartbeats. One list, bounded at both ends, as nothing retries it.
+   */
+  async startingColdStarts(timeoutMs: number): Promise<StartingColdStart[]> {
+    const list = (await withTimeout(
+      this.k8s.custom.listNamespacedCustomObject({
+        group: GROUP,
+        version: VERSION,
+        namespace: this.namespace,
+        plural: PLURAL,
+        labelSelector: `${RESTORE_LABEL}!=true`,
+        timeoutSeconds: Math.ceil(timeoutMs / 1000),
+      }),
+      timeoutMs,
+      "Cold start Runner list"
+    )) as KubernetesListObject<KubernetesObject>;
+    return (list.items ?? []).flatMap((runner) => startingColdStart(runner) ?? []);
+  }
+
   /** Deletes a failed resume so its redelivery can create it again. */
   async deleteRestoreRunner(runnerId: string, uid: string): Promise<void> {
     await this.deleteRunner(runnerId, uid);
@@ -446,7 +504,8 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
 
   /**
    * Creates a resume: a Runner the operator restores from the checkpoint's
-   * snapshot, on the node holding it, instead of cold-starting. Named from the
+   * snapshot instead of cold-starting, on the node that took it unless the
+   * snapshot is in the regional store. Named from the
    * checkpoint, so a redelivered restore finds the first Runner and leaves it
    * rather than restoring twice. Returns the Runner, also for a resume found in
    * the way, which a restarted supervisor has no other watch on.
@@ -486,7 +545,8 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
 
   /**
    * A resume already in the way counts as this restore only while it restores
-   * the same snapshot. `ended` is the phase of one held terminal for the
+   * the same snapshot. The node is only where the operator starts looking, so
+   * a resume naming or placed on another node still counts. `ended` is the phase of one held terminal for the
    * operator's TTL, which will never resume the guest.
    */
   private async readExistingRestore(
@@ -496,7 +556,7 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
     const existing = (await this.getRunner(runnerId)) as ExistingRestore | null;
     const phase = existing?.status?.phase;
     const spec = existing?.spec?.restore;
-    if (spec?.snapshotID !== restore.snapshotID || spec?.node !== restore.node) {
+    if (spec?.snapshotID !== restore.snapshotID) {
       throw new Error(
         `restore Runner ${runnerId} restores ${JSON.stringify(spec ?? null)}, not ${checkpointLocation(restore)}`
       );
@@ -800,6 +860,8 @@ type ExistingRestore = {
   spec?: { restore?: Partial<RunnerRestore> };
   status?: { phase?: string };
 };
+
+type RunnerPlacementStatus = { status?: { placement?: { node?: string } } };
 
 type RunnerSuspendStatus = {
   status?: {
@@ -1388,6 +1450,49 @@ export function restoreOutcome(runner: unknown): RunnerRestoreResult | undefined
   }
 }
 
+/** Where a cold start's Runner stands. `superseded` is a Runner a later delivery created. */
+export type ColdStartState = "starting" | "started" | "failed" | "gone" | "superseded";
+
+/** A Runner that started, failed or belongs to another delivery has no more use for the heartbeat. */
+export function coldStartState(runner: unknown, snapshotFriendlyId: string): ColdStartState {
+  const bootstrap = (runner as RunnerBootstrapSpec | null)?.spec?.bootstrap;
+  if (bootstrap?.snapshotFriendlyID && bootstrap.snapshotFriendlyID !== snapshotFriendlyId) {
+    return "superseded";
+  }
+  const outcome = restoreOutcome(runner);
+  if (!outcome) {
+    return "starting";
+  }
+  return outcome.ok ? "started" : "failed";
+}
+
+export type StartingColdStart = {
+  runFriendlyId: string;
+  snapshotFriendlyId: string;
+  runnerId: string;
+  createdAt: Date;
+};
+
+/** A cold-start Runner not yet running or failed, with what its heartbeat needs. */
+export function startingColdStart(runner: unknown): StartingColdStart | undefined {
+  const meta = (runner as { metadata?: { name?: string; labels?: Record<string, string> } } | null)
+    ?.metadata;
+  const bootstrap = (runner as RunnerBootstrapSpec | null)?.spec?.bootstrap;
+  const createdAt = createdAtOf(runner);
+  if (!meta?.name || meta.labels?.[RESTORE_LABEL] === "true" || restoreOutcome(runner)) {
+    return undefined;
+  }
+  if (!bootstrap?.runFriendlyID || !bootstrap.snapshotFriendlyID || !createdAt) {
+    return undefined;
+  }
+  return {
+    runFriendlyId: bootstrap.runFriendlyID,
+    snapshotFriendlyId: bootstrap.snapshotFriendlyID,
+    runnerId: meta.name,
+    createdAt,
+  };
+}
+
 /** Reasons a cold start fails for that another lane may not, so it is moved there. */
 const FALLBACK_START_REASONS = new Set(["TemplateNotFound"]);
 
@@ -1486,26 +1591,36 @@ export function publishedSuspend(runner: unknown): PublishedSuspend | undefined 
     return undefined;
   }
   const outcome = suspendOutcome(runner, request);
-  return outcome && { runnerId: meta.name, runFriendlyId, snapshotFriendlyId: request, outcome };
+  return (
+    outcome && {
+      runnerId: meta.name,
+      runFriendlyId,
+      snapshotFriendlyId: request,
+      outcome,
+      // Recovery has no HTTP caller; the persisted Runner owner supplies its environment.
+      environmentId: (runner as RunnerOwnerSpec | null)?.spec?.owner?.envID,
+    }
+  );
 }
 
-type RunnerRestore = { snapshotID: string; node: string };
+type RunnerRestore = ComputeCheckpointLocation;
 
 /**
- * A checkpoint's location names the node as well as the snapshot, because the
- * node runtime's snapshots are node-local and a resume has to land there.
- * Neither a node name nor a snapshot id can contain a slash.
+ * A checkpoint's location names the node that took the snapshot as well as the
+ * snapshot: a resume has to land there while the snapshot is only on that node,
+ * and prefers it after. The platform validates the same format when it stores
+ * the checkpoint.
  */
 export function checkpointLocation(restore: RunnerRestore): string {
-  return `${restore.node}/${restore.snapshotID}`;
+  return formatComputeCheckpointLocation(restore);
 }
 
 export function parseCheckpointLocation(location: string): RunnerRestore {
-  const [node, snapshotID, ...rest] = location.split("/");
-  if (!node || !snapshotID || rest.length > 0) {
-    throw new Error(`checkpoint location ${JSON.stringify(location)} is not <node>/<snapshot>`);
+  const parsed = parseComputeCheckpointLocation(location);
+  if (!parsed.ok) {
+    throw new Error(`checkpoint location ${JSON.stringify(location)}: ${parsed.error}`);
   }
-  return { node, snapshotID };
+  return parsed.value;
 }
 
 function messageOf(err: unknown): string {

@@ -1,3 +1,4 @@
+import { paramsForComponents } from "@internal/alert-contracts";
 import { EXPIRY_TOKEN_PATTERN } from "~/components/alerts/alertCreatedCard";
 import {
   alertName,
@@ -12,13 +13,19 @@ import {
 
 export const CREATE_ALERT_PATH = "/resources/alerts/create";
 
-function expiryToIso(exp: string | undefined): string | undefined {
+export function expiryToIso(exp: string | undefined): string | undefined {
   if (!exp || exp === "none") return undefined;
   const EVENT_HOURS: Record<string, number> = { deploy: 168, incident: 720 };
   const hoursMatch = exp.match(/^(\d+)h$/);
   const hours = hoursMatch ? Number(hoursMatch[1]) : EVENT_HOURS[exp];
   if (hours) return new Date(Date.now() + hours * 3600_000).toISOString();
   return Number.isNaN(Date.parse(exp)) ? undefined : new Date(exp).toISOString();
+}
+
+export function withKnownNotifiers(answers: FlowAnswers, channels: { id: string }[]): FlowAnswers {
+  return answers.notifiers
+    ? { ...answers, notifiers: answers.notifiers.filter((id) => channels.some((c) => c.id === id)) }
+    : answers;
 }
 
 export function replaceRequestBody(answers: FlowAnswers): FormData {
@@ -34,13 +41,25 @@ export function replaceRequestBody(answers: FlowAnswers): FormData {
   if (expiresAt) body.set("expiresAt", expiresAt);
   if (answers.scope) body.set("scopeType", answers.scope);
   if (answers.scopeValue) body.set("scopeValue", answers.scopeValue);
-  body.set("notifierChannelIds", (answers.notifiers ?? []).filter((n) => n !== "chat").join(","));
+  body.set("notifierChannelIds", (answers.notifiers ?? []).join(","));
   return body;
 }
 
 function limitFields(answers: FlowAnswers) {
   const cap = resolveCapability(answers.what);
   const params = answers.conditionParams;
+  if (cap?.area === "health" && isComposite(answers.what)) {
+    const keys = paramsForComponents(cap, answers.components ?? cap.binding.compositeOf ?? []).map(
+      (p) => p.key
+    );
+    return {
+      conditionParams:
+        params && Object.fromEntries(Object.entries(params).filter(([k]) => keys.includes(k))),
+      signals: undefined,
+      compositeMode: answers.compositeMode,
+      components: answers.components,
+    };
+  }
   if (!cap || !isLimitCondition(answers.what)) return { conditionParams: params };
   const composite = isComposite(answers.what);
   const hasSignals = supportedSignalsFor(answers.what, answers.components).length > 0;
@@ -89,7 +108,7 @@ export function createAlertRequestBody(
         kind === "absence" && answers.condition ? Number(answers.condition) : undefined,
       ...(kind === "state" ? limitFields(answers) : {}),
       expiresAt: expiryToIso(answers.expiry),
-      notifierChannelIds: (answers.notifiers ?? []).filter((n) => n !== "chat"),
+      notifierChannelIds: answers.notifiers ?? [],
     },
   };
 }
@@ -106,14 +125,13 @@ export type QueryAlertDraft = {
   notifiers: string[];
 };
 
-export type QueryAlertChatRequest = { chatId: string; transcriptChatId: string };
+export type QueryAlertChatRequest = { transcriptChatId: string };
 
 export function queryAlertRequestBody(
   ids: { organizationId: string; projectId: string; environmentId: string },
   draft: QueryAlertDraft,
   chat?: QueryAlertChatRequest
 ) {
-  const wantsChat = Boolean(chat) && draft.notifiers.includes("chat");
   const conditionKind =
     draft.mode === "match" ? "occurrence" : draft.mode === "absence" ? "absence" : "threshold";
   return {
@@ -121,8 +139,6 @@ export function queryAlertRequestBody(
     projectId: ids.projectId,
     environmentId: ids.environmentId,
     name: draft.name,
-    chatNotifier: wantsChat ? ("on" as const) : undefined,
-    chatId: wantsChat ? chat!.chatId : undefined,
     transcriptChatId: chat?.transcriptChatId,
     expiry: draft.expiry && EXPIRY_TOKEN_PATTERN.test(draft.expiry) ? draft.expiry : undefined,
     form: {
@@ -139,7 +155,7 @@ export function queryAlertRequestBody(
         measure: draft.mode === "match" ? undefined : draft.measure,
       },
       expiresAt: expiryToIso(draft.expiry),
-      notifierChannelIds: draft.notifiers.filter((n) => n !== "chat"),
+      notifierChannelIds: draft.notifiers,
     },
   };
 }

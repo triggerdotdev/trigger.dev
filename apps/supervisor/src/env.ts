@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { createPrivateKey, createPublicKey, randomUUID } from "crypto";
 import { env as stdEnv } from "std-env";
 import { z } from "zod";
 import { WeightedWorkerQueueSubscriptions } from "@trigger.dev/core/v3/runEngineWorker";
@@ -10,6 +10,52 @@ import {
   ReservedPorts,
   Tolerations,
 } from "./envUtil.js";
+import { parseWorkloadTokenPublicKeys, parseWorkloadTokenSecrets } from "./workloadTokenEd25519.js";
+
+function isEd25519PrivateKeyPem(pem: string): boolean {
+  try {
+    return createPrivateKey(pem).asymmetricKeyType === "ed25519";
+  } catch {
+    return false;
+  }
+}
+
+function areEd25519PublicKeys(raw: string | undefined): boolean {
+  try {
+    const entries = parseWorkloadTokenPublicKeys(raw);
+    return (
+      entries.length > 0 &&
+      entries.every((entry) => createPublicKey(entry.publicKey).asymmetricKeyType === "ed25519")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function safePublicKeyEntries(raw: string | undefined) {
+  try {
+    return parseWorkloadTokenPublicKeys(raw);
+  } catch {
+    return [];
+  }
+}
+
+function safeSecretEntries(raw: string | undefined) {
+  try {
+    return parseWorkloadTokenSecrets(raw);
+  } catch {
+    return [];
+  }
+}
+
+function workloadTokenSecretsError(raw: string | undefined): string | undefined {
+  try {
+    parseWorkloadTokenSecrets(raw);
+    return undefined;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
 
 export const Env = z
   .object({
@@ -32,6 +78,11 @@ export const Env = z
     // the pod's terminationGracePeriodSeconds, so the exit is this process's and not a SIGKILL.
     SUPERVISOR_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(8_000),
 
+    // How long an idle connection to the platform stays open when the response carries no
+    // Keep-Alive hint (undici's own default is 4 s). Keep it below the idle timeout of any load
+    // balancer between here and the webapp (60 s by default on an AWS ALB).
+    SUPERVISOR_HTTP_KEEPALIVE_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+
     // Required settings
     TRIGGER_API_URL: z.string().url(),
     TRIGGER_WORKER_TOKEN: z.string().min(1), // accepts file:// path to read from a file
@@ -41,8 +92,16 @@ export const Env = z
     // inbound workload calls. "disabled" = off; "log" = mint + verify + metrics only; "enforce" =
     // also reject invalid tokens.
     WORKLOAD_TOKEN_SECRET: z.string().optional(),
+    WORKLOAD_TOKEN_SIGNING_KEY: z.string().optional(),
+    WORKLOAD_TOKEN_PUBLIC_KEYS: z.string().optional(),
+    WORKLOAD_TOKEN_SECRETS: z.string().optional(),
     WORKLOAD_TOKEN_ENFORCEMENT: z.enum(["disabled", "log", "enforce"]).default("disabled"),
+    WORKLOAD_TOKEN_SECRET_PREVIOUS: z.string().optional(),
+    WORKLOAD_TOKEN_PREVIOUS_RUN_CUTOFF: z.string().datetime().optional(),
+    WORKLOAD_TOKEN_PREVIOUS_CUTOFF_MODE: z.enum(["log", "enforce"]).default("log"),
     DELETE_CHECKPOINTS_ON_COMPLETION: BoolEnv.default(false), // irreversible; enable per cluster
+    // The microVM lane's equivalent: reclaim a finished run's suspend snapshots from the shared store.
+    DELETE_SNAPSHOTS_ON_COMPLETION: BoolEnv.default(false), // irreversible; enable per cluster
     // Absolute expiry for minted deployment tokens. Deterministic (no wall-clock issued-at) so every
     // pod of a deployment carries an identical token; bump before this date. Must outlive any run.
     WORKLOAD_TOKEN_EXP: z.string().datetime().default("2032-01-01T00:00:00.000Z"),
@@ -159,6 +218,9 @@ export const Env = z
     TRIGGER_WARM_START_URL: z.string().optional(),
     TRIGGER_WARM_START_DISPATCH_URL: z.string().optional(),
     TRIGGER_CHECKPOINT_URL: z.string().optional(),
+    // Where the microVM lane sends snapshot deletes. Separate from TRIGGER_CHECKPOINT_URL, which
+    // would also route restores there.
+    TRIGGER_SNAPSHOT_DELETE_URL: z.string().optional(),
     TRIGGER_METADATA_URL: z.string().optional(),
 
     // Warm-start delivery verification: after a warm-start hit, probe the
@@ -201,6 +263,12 @@ export const Env = z
     COMPUTE_SNAPSHOTS_ENABLED: BoolEnv.default(false),
     COMPUTE_SNAPSHOT_DELAY_MS: z.coerce.number().int().min(0).max(60_000).default(5_000),
     COMPUTE_SNAPSHOT_DISPATCH_LIMIT: z.coerce.number().int().min(1).max(100).default(10),
+    // Deletes this node's suspend snapshots that no run can restore from any more.
+    GUEST_SNAPSHOT_CLEANER_ENABLED: BoolEnv.default(false),
+    GUEST_SNAPSHOT_CLEANER_INTERVAL_MS: z.coerce.number().int().positive().default(300_000),
+    GUEST_SNAPSHOT_CLEANER_MIN_AGE_MS: z.coerce.number().int().min(0).default(1_800_000),
+    GUEST_SNAPSHOT_CLEANER_NODE_PROXY_URL: z.string().url().optional(), // http://<host ip>:8083
+    GUEST_SNAPSHOT_CLEANER_TOKEN_PATH: z.string().optional(), // projected service account token
 
     // Kubernetes settings
     KUBERNETES_FORCE_ENABLED: BoolEnv.default(false),
@@ -237,6 +305,16 @@ export const Env = z
       .int()
       .positive()
       .default(20_000),
+    // Heartbeat a cold start's dequeued snapshot, at the restore heartbeat interval, until
+    // its Runner runs or fails, so a Runner waiting for a node is not requeued as stalled.
+    KUBERNETES_RUNNER_START_HEARTBEAT_ENABLED: BoolEnv.default(true),
+    // The most a cold start is heartbeated for. Past the operator's pod start deadline, as
+    // for restores, so its failure arrives first; and still bounded if it never comes.
+    KUBERNETES_RUNNER_START_HEARTBEAT_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(21 * 60_000),
     // At least the API server's default request timeout, within which a lost create can still commit.
     KUBERNETES_RUNNER_TOKEN_SECRET_SETTLE_MS: z.coerce.number().int().min(60_000).default(120_000),
     KUBERNETES_NAMESPACE: z.string().default("default"),
@@ -458,12 +536,75 @@ export const Env = z
         }
       }
     }
-    if (data.WORKLOAD_TOKEN_ENFORCEMENT !== "disabled" && !data.WORKLOAD_TOKEN_SECRET) {
+    const publicKeyEntries = safePublicKeyEntries(data.WORKLOAD_TOKEN_PUBLIC_KEYS);
+    const hasCurrentPublicKey = publicKeyEntries.some((entry) => !entry.runCutoff);
+    const hasCurrentSecretEntry = safeSecretEntries(data.WORKLOAD_TOKEN_SECRETS).some(
+      (entry) => !entry.runCutoff
+    );
+    if (
+      data.WORKLOAD_TOKEN_ENFORCEMENT !== "disabled" &&
+      data.TRIGGER_WORKLOAD_API_ENABLED &&
+      !data.WORKLOAD_TOKEN_SECRET &&
+      !hasCurrentPublicKey &&
+      !hasCurrentSecretEntry
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message:
-          "WORKLOAD_TOKEN_SECRET is required when WORKLOAD_TOKEN_ENFORCEMENT is not disabled",
+          "WORKLOAD_TOKEN_SECRET, a WORKLOAD_TOKEN_SECRETS entry without a cutoff, or a WORKLOAD_TOKEN_PUBLIC_KEYS entry without runCutoff is required to verify tokens when TRIGGER_WORKLOAD_API_ENABLED is true and WORKLOAD_TOKEN_ENFORCEMENT is not disabled",
         path: ["WORKLOAD_TOKEN_SECRET"],
+      });
+    }
+    if (
+      data.WORKLOAD_TOKEN_ENFORCEMENT !== "disabled" &&
+      data.TRIGGER_DEQUEUE_ENABLED &&
+      !data.WORKLOAD_TOKEN_SIGNING_KEY &&
+      !data.WORKLOAD_TOKEN_SECRET
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "WORKLOAD_TOKEN_SIGNING_KEY or WORKLOAD_TOKEN_SECRET is required to mint tokens when TRIGGER_DEQUEUE_ENABLED is true and WORKLOAD_TOKEN_ENFORCEMENT is not disabled",
+        path: ["WORKLOAD_TOKEN_SIGNING_KEY"],
+      });
+    }
+    if (data.WORKLOAD_TOKEN_PREVIOUS_RUN_CUTOFF && !data.WORKLOAD_TOKEN_SECRET_PREVIOUS) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "WORKLOAD_TOKEN_PREVIOUS_RUN_CUTOFF is set but WORKLOAD_TOKEN_SECRET_PREVIOUS is not, so the cutoff would never apply",
+        path: ["WORKLOAD_TOKEN_PREVIOUS_RUN_CUTOFF"],
+      });
+    }
+    if (
+      data.WORKLOAD_TOKEN_SIGNING_KEY &&
+      !isEd25519PrivateKeyPem(data.WORKLOAD_TOKEN_SIGNING_KEY)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "WORKLOAD_TOKEN_SIGNING_KEY must be an Ed25519 private key in PKCS8 PEM format",
+        path: ["WORKLOAD_TOKEN_SIGNING_KEY"],
+      });
+    }
+    if (
+      data.WORKLOAD_TOKEN_PUBLIC_KEYS?.trim() &&
+      !areEd25519PublicKeys(data.WORKLOAD_TOKEN_PUBLIC_KEYS)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "WORKLOAD_TOKEN_PUBLIC_KEYS must be a JSON array of { publicKey: Ed25519 SPKI PEM, runCutoff?: ISO datetime } entries",
+        path: ["WORKLOAD_TOKEN_PUBLIC_KEYS"],
+      });
+    }
+    const secretsError = data.WORKLOAD_TOKEN_SECRETS?.trim()
+      ? workloadTokenSecretsError(data.WORKLOAD_TOKEN_SECRETS)
+      : undefined;
+    if (secretsError) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: secretsError,
+        path: ["WORKLOAD_TOKEN_SECRETS"],
       });
     }
     if (data.DELETE_CHECKPOINTS_ON_COMPLETION && data.WORKLOAD_TOKEN_ENFORCEMENT === "disabled") {
@@ -473,6 +614,35 @@ export const Env = z
           "DELETE_CHECKPOINTS_ON_COMPLETION needs WORKLOAD_TOKEN_ENFORCEMENT set to log or enforce: the tenancy it deletes by comes from the deployment token, so with tokens disabled it would silently reclaim nothing",
         path: ["DELETE_CHECKPOINTS_ON_COMPLETION"],
       });
+    }
+    if (data.DELETE_SNAPSHOTS_ON_COMPLETION && data.WORKLOAD_TOKEN_ENFORCEMENT === "disabled") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "DELETE_SNAPSHOTS_ON_COMPLETION needs WORKLOAD_TOKEN_ENFORCEMENT set to log or enforce: the tenancy it deletes by comes from the deployment token",
+        path: ["DELETE_SNAPSHOTS_ON_COMPLETION"],
+      });
+    }
+    if (data.DELETE_SNAPSHOTS_ON_COMPLETION && !data.TRIGGER_SNAPSHOT_DELETE_URL) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "DELETE_SNAPSHOTS_ON_COMPLETION needs TRIGGER_SNAPSHOT_DELETE_URL",
+        path: ["DELETE_SNAPSHOTS_ON_COMPLETION"],
+      });
+    }
+    if (data.GUEST_SNAPSHOT_CLEANER_ENABLED) {
+      for (const key of [
+        "GUEST_SNAPSHOT_CLEANER_NODE_PROXY_URL",
+        "GUEST_SNAPSHOT_CLEANER_TOKEN_PATH",
+      ] as const) {
+        if (!data[key]) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `${key} is required when GUEST_SNAPSHOT_CLEANER_ENABLED is true`,
+            path: [key],
+          });
+        }
+      }
     }
     if (
       data.TRIGGER_DEQUEUE_BACKPRESSURE_ENABLED &&

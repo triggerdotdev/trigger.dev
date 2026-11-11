@@ -5,7 +5,10 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { apiCors } from "~/utils/apiCors";
 import { logger } from "~/services/logger.server";
-import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
+import {
+  authenticateApiRequestWithPersonalAccessToken,
+  personalAccessTokenUnauthorizedResponse,
+} from "~/services/personalAccessToken.server";
 import { VercelIntegrationService } from "~/services/vercelIntegration.server";
 
 const ParamsSchema = z.object({
@@ -33,7 +36,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
 
     if (!authenticationResult) {
-      return apiCors(request, json({ error: "Invalid or Missing Access Token" }, { status: 401 }));
+      return apiCors(request, await personalAccessTokenUnauthorizedResponse(request));
     }
 
     const parsedParams = ParamsSchema.safeParse(params);

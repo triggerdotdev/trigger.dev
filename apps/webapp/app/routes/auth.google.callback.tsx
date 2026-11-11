@@ -22,6 +22,12 @@ export let loader: LoaderFunction = async ({ request }) => {
   // throws out here instead of linking the Google identity. remix-auth
   // surfaces its own OAuth redirects by throwing Responses — pass those
   // through; an SsoRequiredError becomes the SSO redirect.
+  // remix-auth-oauth2 returns a cookie's existing user without an OAuth exchange, and
+  // re-stamping that cookie below would revive a session the server has ended.
+  if ((await getUserSession(request)).has(authenticator.sessionKey)) {
+    return redirect(redirectTo);
+  }
+
   let auth: AuthUser;
   try {
     // throwOnError so a verify-callback throw surfaces as an

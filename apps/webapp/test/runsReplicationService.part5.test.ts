@@ -2,6 +2,10 @@ import { ClickHouse } from "@internal/clickhouse";
 import { replicationContainerTest } from "@internal/testcontainers";
 import { z } from "zod";
 import { RunsReplicationService } from "~/services/runsReplicationService.server";
+import {
+  expectFlushLsnHoldsPastIdleWal,
+  withShortWalSenderTimeout,
+} from "./utils/replicationUtils";
 import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickhouseFactory";
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -142,6 +146,81 @@ describe("RunsReplicationService (part 5/7)", () => {
       expect(run2Result).toEqual(expect.objectContaining({ run_id: run2.id }));
 
       await runsReplicationService.stop();
+    }
+  );
+  // Catches: the 1s ack loop re-acking an older commit LSN after a keepalive ack, which moves
+  // pg_stat_replication flush_lsn backwards and inflates reported lag on an idle database.
+  replicationContainerTest(
+    "never acknowledges an older commit LSN after a keepalive acknowledgement",
+    async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        name: "runs-replication-keepalive-ack",
+        logLevel: "warn",
+      });
+
+      const slotName = "task_runs_keepalive_ack_v1";
+      const runsReplicationService = new RunsReplicationService({
+        clickhouseFactory: new TestReplicationClickhouseFactory(clickhouse),
+        pgConnectionUrl: withShortWalSenderTimeout(postgresContainer.getConnectionUri()),
+        serviceName: "runs-replication-keepalive-ack",
+        slotName,
+        publicationName: "task_runs_keepalive_ack_v1_publication",
+        redisOptions,
+        maxFlushConcurrency: 1,
+        flushIntervalMs: 100,
+        flushBatchSize: 1,
+        leaderLockTimeoutMs: 5000,
+        leaderLockExtendIntervalMs: 1000,
+        logLevel: "warn",
+      });
+
+      await runsReplicationService.start();
+      try {
+        const organization = await prisma.organization.create({
+          data: { title: "keepalive-ack", slug: "keepalive-ack" },
+        });
+        const project = await prisma.project.create({
+          data: {
+            name: "keepalive-ack",
+            slug: "keepalive-ack",
+            organizationId: organization.id,
+            externalRef: "keepalive-ack",
+          },
+        });
+        const runtimeEnvironment = await prisma.runtimeEnvironment.create({
+          data: {
+            slug: "keepalive-ack",
+            type: "DEVELOPMENT",
+            projectId: project.id,
+            organizationId: organization.id,
+            apiKey: "keepalive-ack",
+            pkApiKey: "keepalive-ack",
+            shortcode: "keepalive-ack",
+          },
+        });
+        await prisma.taskRun.create({
+          data: {
+            friendlyId: "run_keepalive_ack",
+            taskIdentifier: "my-task",
+            payload: "{}",
+            payloadType: "application/json",
+            traceId: "keepalive-ack",
+            spanId: "keepalive-ack",
+            queue: "keepalive-ack",
+            runtimeEnvironmentId: runtimeEnvironment.id,
+            projectId: project.id,
+            organizationId: organization.id,
+            environmentType: "DEVELOPMENT",
+            engine: "V2",
+            status: "PENDING",
+          },
+        });
+
+        await expectFlushLsnHoldsPastIdleWal(prisma, slotName);
+      } finally {
+        await runsReplicationService.stop();
+      }
     }
   );
 });

@@ -19,7 +19,8 @@ export function buildActivityTimeAxis(
   data: ActivityPoint[],
   rangeMs?: number,
   xKey = "bucket",
-  timeZone = "UTC"
+  timeZone = "UTC",
+  dateOnly = false
 ) {
   const at = (index: number) => data[index]?.[xKey] as number;
   const range = rangeMs ?? (data.length >= 2 ? at(data.length - 1) - at(0) : 0);
@@ -32,7 +33,7 @@ export function buildActivityTimeAxis(
   const isSubDayBucket = bucketMs > 0 && bucketMs < ONE_DAY;
   const zone = isSubDayBucket ? timeZone : "UTC";
 
-  const showDateTime = !showTime && range <= THREE_DAYS && isSubDayBucket;
+  const showDateTime = !dateOnly && !showTime && range <= THREE_DAYS && isSubDayBucket;
 
   const tickFormatter = (value: number) => {
     const date = new Date(value);
@@ -42,7 +43,7 @@ export function buildActivityTimeAxis(
         day: "numeric",
         hour: "2-digit",
         minute: "2-digit",
-        hour12: false,
+        hourCycle: "h23",
         timeZone: zone,
       });
     }
@@ -51,7 +52,7 @@ export function buildActivityTimeAxis(
         hour: "2-digit",
         minute: "2-digit",
         ...(showSeconds ? { second: "2-digit" } : {}),
-        hour12: false,
+        hourCycle: "h23",
         timeZone: zone,
       });
     }
@@ -73,7 +74,7 @@ export function buildActivityTimeAxis(
           hour: "2-digit",
           minute: "2-digit",
           ...(showSeconds ? { second: "2-digit" } : {}),
-          hour12: false,
+          hourCycle: "h23",
           timeZone: zone,
         })
       : date.toLocaleDateString("en-US", {
@@ -85,4 +86,32 @@ export function buildActivityTimeAxis(
   };
 
   return { tickFormatter, tooltipLabelFormatter };
+}
+
+const MAX_DAY_TICKS = 5;
+
+export function dayTicks(
+  data: ActivityPoint[],
+  timeZone = "UTC",
+  xKey = "bucket"
+): number[] | undefined {
+  const first = data[0]?.[xKey] as number | undefined;
+  const last = data[data.length - 1]?.[xKey] as number | undefined;
+  if (first === undefined || last === undefined || last - first <= ONE_DAY) return undefined;
+  const label = (ms: number) =>
+    new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone });
+  const seen = new Set<string>();
+  const days = data
+    .map((row) => row[xKey] as number)
+    .filter((ms) => {
+      const key = label(ms);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  if (days.length <= MAX_DAY_TICKS) return days;
+  return Array.from(
+    { length: MAX_DAY_TICKS },
+    (_, i) => days[Math.round((i * (days.length - 1)) / (MAX_DAY_TICKS - 1))]!
+  );
 }

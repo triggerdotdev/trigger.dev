@@ -31,6 +31,7 @@ const { action, loader } = createActionApiRoute(
 
     const result = await webhookEngine.cancelWaiter({
       environmentId: authentication.environment.id,
+      organizationId: authentication.environment.organization.id,
       waiterId: params.waiterId,
     });
 

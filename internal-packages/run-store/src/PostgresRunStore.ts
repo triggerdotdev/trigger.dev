@@ -1,4 +1,8 @@
 import {
+  waitpointKeyTransactionLaneForClient,
+  type WaitpointKeyTransactionLane,
+} from "./waitpointKeyTransactionLane.js";
+import {
   Prisma,
   boundedIn,
   withInfraRetry,
@@ -666,7 +670,10 @@ export class PostgresRunStore implements RunStore {
   private readonly infraRetry?: InfraRetryConfig;
   private readonly readInfraRetry?: InfraRetryConfig;
 
+  private readonly waitpointKeyTransactionLane?: WaitpointKeyTransactionLane;
+
   constructor(options: PostgresRunStoreOptions) {
+    this.waitpointKeyTransactionLane = waitpointKeyTransactionLaneForClient(options.prisma);
     // Normalize foreign (run-ops-generation) Prisma known-request-errors to the control-plane
     // class at the write boundary so callers' `instanceof Prisma.PrismaClientKnownRequestError`
     // (P2002→422) works regardless of which generated client backs the store.
@@ -713,6 +720,23 @@ export class PostgresRunStore implements RunStore {
   // DBs. Cast mirrors runInTransaction: the generated clients differ only in delegates reads use.
   get primaryReadClient(): ReadClient {
     return this.prisma as unknown as ReadClient;
+  }
+
+  getWaitpointKeyScope(_ownerId?: string): string {
+    return "legacy";
+  }
+
+  /** Enabled keyed creation uses its isolated writer, retaining this leaf’s schema semantics. */
+  runInWaitpointKeyTransaction<R>(
+    _ownerId: string | undefined,
+    organizationId: string,
+    acceptUntil: number,
+    fn: (store: RunStore, tx: PrismaClientOrTransaction) => Promise<R>
+  ): Promise<R> {
+    if (!this.waitpointKeyTransactionLane) {
+      throw new Error("Keyed waitpoint creation requires an isolated transaction lane");
+    }
+    return this.waitpointKeyTransactionLane.run(organizationId, acceptUntil, (tx) => fn(this, tx));
   }
 
   // Open ONE interactive transaction on this store's OWN writer client and run `fn` against THIS store
@@ -2801,6 +2825,24 @@ export class PostgresRunStore implements RunStore {
   }
 
   // --- BatchTaskRun (run-ops) ---
+
+  async markBatchWaitpointOnStore(batchId: string, waitpointId: string): Promise<void> {
+    const count = await this.prisma.$executeRaw`
+      UPDATE "BatchTaskRun" SET "options" = (CASE WHEN jsonb_typeof("options") = 'object' THEN "options" ELSE '{}'::jsonb END) || jsonb_build_object('waitpointStoreId',${waitpointId}::text), "updatedAt" = CURRENT_TIMESTAMP
+      WHERE "id" = ${batchId} AND ("options" ->> 'waitpointStoreId') IS NULL
+    `;
+    if (count === 0) {
+      const batch = await this.prisma.batchTaskRun.findFirst({
+        where: { id: batchId },
+        select: { options: true },
+      });
+      if (
+        !batch ||
+        (batch.options as Record<string, unknown> | null)?.waitpointStoreId !== waitpointId
+      )
+        throw new Error("Batch waitpoint storage identity changed or batch is missing");
+    }
+  }
 
   async createBatchTaskRun(
     data: CreateBatchTaskRunData,

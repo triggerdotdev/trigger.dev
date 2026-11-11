@@ -13,6 +13,7 @@ export const CheckpointServiceSuspendRequestBody = z.object({
   runnerId: z.string(),
   projectRef: z.string(),
   deploymentVersion: z.string(),
+  environmentId: z.string().optional(),
   reason: z.string().optional(),
 });
 

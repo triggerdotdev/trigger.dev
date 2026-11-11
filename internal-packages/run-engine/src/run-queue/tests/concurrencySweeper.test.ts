@@ -180,7 +180,7 @@ describe("RunQueue Concurrency Sweeper", () => {
   redisTest(
     "scans the keyspace in large SCAN batches, bounds callback fan-out, and finds the same members",
     async ({ redisContainer }) => {
-      // Catches: the sweeper falling back to tiny SCAN pages (~1.7M SCANs per prod sweep) or bursting one callback per set in a page.
+      // Catches: the sweeper falling back to tiny SCAN pages or bursting one callback per set in a page.
       const createQueue = (
         scanCount: number | undefined,
         seen: Set<string>,

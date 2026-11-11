@@ -9,7 +9,12 @@ import { hashApiKey } from "~/utils/apiKeys";
 import { BuildRuntime } from "@trigger.dev/core/v3";
 import { isAdditionalApiKey } from "@trigger.dev/core/v3/apiKeys";
 import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
-import { scopesGrantFullAccess } from "@trigger.dev/rbac";
+import {
+  isIpAllowed,
+  scopesGrantFullAccess,
+  UNRESTRICTED_API_KEY_SCOPE_USE,
+} from "@trigger.dev/rbac";
+import { rbac } from "~/services/rbac.server";
 
 export type { RuntimeEnvironment };
 
@@ -100,7 +105,14 @@ export function toAuthenticated(
 
 export type ApiKeyEnvironmentResolution =
   | { ok: true; environment: AuthenticatedEnvironment }
-  | { ok: false; reason: "not-found" | "restricted" };
+  | { ok: false; reason: "not-found" | "restricted" | "ip-not-allowed" };
+
+export type ApiKeyLookupOptions = {
+  branchName: string | undefined;
+  // The caller's IP, checked against an additional key's allowed IP ranges. Required so
+  // every caller decides where the IP comes from; null denies any IP-restricted key.
+  clientIp: string | null;
+};
 
 /**
  * Resolve an environment from a raw API key for legacy routes that do not
@@ -110,7 +122,7 @@ export type ApiKeyEnvironmentResolution =
  */
 async function resolveEnvironmentByApiKey(
   apiKey: string,
-  branchName: string | undefined,
+  { branchName, clientIp }: ApiKeyLookupOptions,
   tx: PrismaClientOrTransaction
 ): Promise<ApiKeyEnvironmentResolution> {
   const branch = sanitizeBranchName(branchName) ?? undefined;
@@ -167,10 +179,18 @@ async function resolveEnvironmentByApiKey(
           id: true,
           lastUsedAt: true,
           scopes: true,
+          allowedIpRanges: true,
           runtimeEnvironment: { include },
         },
       })
     : null;
+
+  // Checked before scopes: a restricted-key error would confirm the key is valid to a caller
+  // outside its allowed ranges.
+  if (match && !isIpAllowed(match.allowedIpRanges, clientIp)) {
+    logger.info("API key used from a disallowed IP", { apiKeyId: match.id, clientIp });
+    return { ok: false, reason: "ip-not-allowed" };
+  }
 
   if (match && !scopesGrantFullAccess(match.scopes)) {
     return { ok: false, reason: "restricted" };
@@ -199,7 +219,7 @@ async function resolveEnvironmentByApiKey(
           revokedAt: null,
           OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
         },
-        data: { lastUsedAt: now },
+        data: { lastUsedAt: now, lastUsedIp: clientIp },
       });
     } catch (error) {
       logger.warn("Failed to update API key last-used timestamp", {
@@ -212,6 +232,15 @@ async function resolveEnvironmentByApiKey(
   //don't return deleted projects
   if (environment.project.deletedAt !== null) {
     return { ok: false, reason: "not-found" };
+  }
+
+  if (additionalApiKey) {
+    rbac.recordApiKeyScopeUse({
+      organizationId: environment.organizationId,
+      environmentId: environment.id,
+      apiKeyId: additionalApiKey.id,
+      used: [UNRESTRICTED_API_KEY_SCOPE_USE],
+    });
   }
 
   if (environment.type === "PREVIEW") {
@@ -271,10 +300,10 @@ async function resolveEnvironmentByApiKey(
  */
 export async function findEnvironmentByApiKey(
   apiKey: string,
-  branchName: string | undefined,
+  options: ApiKeyLookupOptions,
   tx: PrismaClientOrTransaction = $replica
 ): Promise<AuthenticatedEnvironment | null> {
-  const resolution = await resolveEnvironmentByApiKey(apiKey, branchName, tx);
+  const resolution = await resolveEnvironmentByApiKey(apiKey, options, tx);
   return resolution.ok ? resolution.environment : null;
 }
 
@@ -285,10 +314,10 @@ export async function findEnvironmentByApiKey(
  */
 export async function findEnvironmentByApiKeyWithResolution(
   apiKey: string,
-  branchName: string | undefined,
+  options: ApiKeyLookupOptions,
   tx: PrismaClientOrTransaction = $replica
 ): Promise<ApiKeyEnvironmentResolution> {
-  return resolveEnvironmentByApiKey(apiKey, branchName, tx);
+  return resolveEnvironmentByApiKey(apiKey, options, tx);
 }
 
 export type PrivateApiKeyRateLimitScope = {
@@ -297,6 +326,8 @@ export type PrivateApiKeyRateLimitScope = {
   projectId: string;
   apiRateLimiterConfig: unknown;
   featureFlags: unknown;
+  // Only set for additional keys; root keys have no IP allowlist.
+  allowedIpRanges?: string[];
 };
 
 export async function resolvePrivateApiKeyRateLimitScope(
@@ -313,6 +344,7 @@ export async function resolvePrivateApiKeyRateLimitScope(
         OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       },
       select: {
+        allowedIpRanges: true,
         runtimeEnvironment: {
           select: {
             id: true,
@@ -335,6 +367,7 @@ export async function resolvePrivateApiKeyRateLimitScope(
       projectId: match.runtimeEnvironment.projectId,
       apiRateLimiterConfig: match.runtimeEnvironment.organization.apiRateLimiterConfig,
       featureFlags: match.runtimeEnvironment.organization.featureFlags,
+      allowedIpRanges: match.allowedIpRanges,
     };
   }
 

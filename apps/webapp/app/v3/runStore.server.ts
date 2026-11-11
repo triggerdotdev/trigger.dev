@@ -30,6 +30,9 @@ import { createSnapshotConnection } from "./utils/snapshotStoreConnection.server
 import { createSnapshotStoreRuntime } from "./utils/snapshotStoreRuntime.server";
 import { createSnapshotStoreMetrics } from "./utils/snapshotStoreMetrics.server";
 import { logger } from "~/services/logger.server";
+import { createWaitpointResultRunStore } from "@internal/run-engine";
+import { createWaitpointStoreEnabledResolver } from "./utils/waitpointStoreEnabled.server";
+import { waitpointStoreConnection } from "./waitpointStore.server";
 
 type BuildRunStoreDeps = {
   /** Wraps each leaf store, for example in the snapshot-store decorator. */
@@ -208,37 +211,56 @@ export const snapshotStoreRuntime = singleton("SnapshotStoreRuntime", () => {
       dialCacheMs: env.RUN_ENGINE_SNAPSHOT_STORE_DIAL_CACHE_MS,
     }),
     getRunStore: () => runStore,
+    waitpointStoreEnabled: createWaitpointStoreEnabledResolver(
+      () => globalFlagsRegistry.current(),
+      prisma
+    ),
     metrics: metrics.decorator,
   });
 });
 
 export const runStore: RunStore = singleton("RunStore", () => {
+  const decorateResults = (store: RunStore) =>
+    waitpointStoreConnection
+      ? createWaitpointResultRunStore(store, {
+          store: waitpointStoreConnection.store,
+          primaryReadClient: prisma,
+          isEnabled: createWaitpointStoreEnabledResolver(
+            () => globalFlagsRegistry.current(),
+            prisma
+          ),
+        })
+      : store;
   const handles = ROUTING_ENABLED ? tryResolveRunOpsHandles() : null;
   if (!handles) {
-    return buildRunStore({
+    return decorateResults(
+      buildRunStore({
+        decorateLeaf: snapshotStoreRuntime?.decorate,
+        splitEnabled: false,
+        singleWriter: prisma,
+        singleReplica: $replica,
+        singleResilience: resilienceForClient(prisma),
+      })
+    );
+  }
+  const { shardHandles, ...storeHandles } = handles;
+  return decorateResults(
+    buildRunStore({
       decorateLeaf: snapshotStoreRuntime?.decorate,
-      splitEnabled: false,
+      splitEnabled: true,
+      ...storeHandles,
+      shards: shardHandles.map((shard) => ({
+        key: shard.key,
+        writer: shard.writer,
+        replica: shard.replica,
+        aliasOf: shard.aliasOf,
+        resilience: resilienceForClient(shard.writer),
+      })),
       singleWriter: prisma,
       singleReplica: $replica,
       singleResilience: resilienceForClient(prisma),
-    });
-  }
-  const { shardHandles, ...storeHandles } = handles;
-  return buildRunStore({
-    decorateLeaf: snapshotStoreRuntime?.decorate,
-    splitEnabled: true,
-    ...storeHandles,
-    shards: shardHandles.map((shard) => ({
-      key: shard.key,
-      writer: shard.writer,
-      replica: shard.replica,
-      aliasOf: shard.aliasOf,
-      resilience: resilienceForClient(shard.writer),
-    })),
-    singleWriter: prisma,
-    singleReplica: $replica,
-    singleResilience: resilienceForClient(prisma),
-    newResilience: resilienceForClient(handles.newWriter),
-    legacyResilience: resilienceForClient(handles.legacyWriter),
-  });
+      newResilience: resilienceForClient(handles.newWriter),
+      legacyResilience: resilienceForClient(handles.legacyWriter),
+    })
+  );
 });

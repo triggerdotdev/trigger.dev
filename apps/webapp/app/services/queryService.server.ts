@@ -112,6 +112,7 @@ export type ExecuteQueryOptions<TOut extends z.ZodSchema> = Omit<
   userAuthoredQuery?: boolean;
   /** Internal only: drop the plan time bound on the table's time column. Never set from input. */
   skipTimeConstraint?: boolean;
+  skipQueryPeriodLimit?: boolean;
 };
 
 export type QueryConcurrencyLane = "user" | "alerts";
@@ -222,6 +223,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     customOrgConcurrencyLimit,
     concurrency,
     skipTimeConstraint,
+    skipQueryPeriodLimit,
     windowConditions,
     ...baseOptions
   } = options;
@@ -311,7 +313,9 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     timeFallback = { op: "gte", value: requestedFromDate! };
   }
 
-  let maxQueryPeriodDate = new Date(Date.now() - maxQueryPeriod * 24 * 60 * 60 * 1000);
+  let maxQueryPeriodDate = new Date(
+    skipQueryPeriodLimit ? 0 : Date.now() - maxQueryPeriod * 24 * 60 * 60 * 1000
+  );
   if (alignSeconds) {
     maxQueryPeriodDate = floorToSeconds(maxQueryPeriodDate, alignSeconds);
   }

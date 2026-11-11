@@ -65,3 +65,9 @@ describe("query alert drafts", () => {
     expect(parseAlertCreationDraft({ answers: { query: "x".repeat(8193) } })).toBeUndefined();
   });
 });
+
+describe("alertDraftPatchSchema area", () => {
+  it("does not offer the display-only grouped area", () => {
+    expect(alertDraftPatchSchema.shape.area.unwrap().options).not.toContain("grouped");
+  });
+});

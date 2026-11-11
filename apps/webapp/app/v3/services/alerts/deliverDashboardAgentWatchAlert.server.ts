@@ -350,7 +350,7 @@ export class DeliverDashboardAgentWatchChannelAlertService {
     await deliverWebhookPayload({
       url: webhookProperties.data.url,
       secret: webhookProperties.data.secret,
-      encryptionKey: env.ENCRYPTION_KEY,
+      encryptionKey: env.ENCRYPTION_KEYRING,
       rawPayload,
       buildErrorMessage: () =>
         `Failed to send watch alert webhook to ${webhookProperties.data.url}`,

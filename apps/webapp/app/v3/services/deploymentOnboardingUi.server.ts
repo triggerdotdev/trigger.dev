@@ -9,6 +9,7 @@ import { shouldSelectDeploymentOnboarding } from "~/utils/deploymentOnboarding";
 import { atomicProductionDeploymentUrl } from "./atomicProductionDeployment.server";
 import { findOnboardingDeployment } from "./deploymentOnboarding.server";
 import { deploymentOnboardingEnabled } from "./deploymentOnboardingEnabled.server";
+import { canConnectIntegration } from "../deploymentAccess.server";
 
 /**
  * Shared resolution of the GitHub first-deployment onboarding, so the deployments list and the
@@ -44,15 +45,20 @@ export async function resolveDeploymentOnboardingUi({
 }) {
   // Resolve activation before project auth, first-build reads or platform setup.
   const deployNowEnabled = await deploymentOnboardingEnabled(organizationId, client);
+  const githubConnectAvailable =
+    environmentType === "DEVELOPMENT" || (await canConnectIntegration(organizationId, "github"));
   const inactive = {
     canDeployNow: false,
     deployNowEnabled,
+    githubConnectAvailable,
     isPlatformConfigured: false,
     showGitHubOnboarding: false,
     onboardingDetails: undefined,
     atomicVercelUrl: undefined,
   };
-  if (!deployNowEnabled || environmentType === "DEVELOPMENT") return inactive;
+  if (!deployNowEnabled || !githubConnectAvailable || environmentType === "DEVELOPMENT") {
+    return inactive;
+  }
 
   const deploymentAuth = await rbac.authenticateSession(request, {
     userId,
@@ -96,6 +102,7 @@ export async function resolveDeploymentOnboardingUi({
   return {
     canDeployNow,
     deployNowEnabled,
+    githubConnectAvailable,
     isPlatformConfigured,
     showGitHubOnboarding,
     onboardingDetails: showGitHubOnboarding ? onboardingDetails : undefined,

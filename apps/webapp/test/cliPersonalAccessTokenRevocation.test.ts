@@ -16,13 +16,17 @@ vi.mock("~/db.server", () => ({
     return db.client;
   },
 }));
-vi.mock("~/env.server", () => ({
-  env: {
-    SESSION_SECRET: "test-session-secret-for-cli-pat-revocation",
-    ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef",
-    CLI_LOGIN_LEGACY_UNTIL: "2999-01-01T00:00:00.000Z",
-  },
-}));
+vi.mock("~/env.server", async () => {
+  const { withLegacyEncryptionKeyring } = await import("./helpers/encryptionEnv");
+  return {
+    env: withLegacyEncryptionKeyring({
+      SESSION_SECRET: "test-session-secret-for-cli-pat-revocation",
+      ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef",
+      CLI_LOGIN_LEGACY_UNTIL: "2999-01-01T00:00:00.000Z",
+      CLI_LOGIN_IDLE_TIMEOUT_DAYS: 7,
+    }),
+  };
+});
 vi.mock("~/services/logger.server", () => ({
   logger: { debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));

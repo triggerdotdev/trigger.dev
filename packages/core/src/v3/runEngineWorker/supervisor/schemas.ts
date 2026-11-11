@@ -43,8 +43,14 @@ export const WorkerApiSuspendRunRequestBody = discriminatedUnion("success", [
 ]);
 export type WorkerApiSuspendRunRequestBody = z.infer<typeof WorkerApiSuspendRunRequestBody>;
 
+/**
+ * `discarded` is the platform's final answer that it did not store the checkpoint. It rides on
+ * `ok: true` so that a caller unaware of it still treats the suspend as delivered.
+ */
 export const WorkerApiSuspendRunResponseBody = z.object({
   ok: z.literal(true),
+  environmentId: z.string().optional(),
+  discarded: z.object({ error: z.string() }).optional(),
 });
 export type WorkerApiSuspendRunResponseBody = z.infer<typeof WorkerApiSuspendRunResponseBody>;
 

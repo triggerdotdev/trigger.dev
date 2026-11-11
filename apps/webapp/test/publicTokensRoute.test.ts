@@ -234,13 +234,22 @@ describe("POST /api/v1/auth/public-tokens", () => {
     });
   });
 
-  it("rejects empty scopes", async () => {
+  // Catches: empty scopes becoming an admin grant during server minting.
+  it("mints empty scopes without granting permissions", async () => {
     const response = await handlePublicTokenRequest(
       request({ scopes: [] }),
-      controllerWithAbility(permissiveAbility)
+      controllerWithAbility(buildJwtAbility(runTokenScopes()), "run")
     );
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(200);
+    const { token } = await responseJson(response);
+    const validation = await validateJWT(token, environment.apiKey);
+    expect(validation.ok).toBe(true);
+    if (!validation.ok) return;
+    expect(validation.payload.scopes).toEqual([]);
+    const ability = buildJwtAbility(validation.payload.scopes as string[]);
+    expect(ability.can("read", { type: "runs", id: "run_test" })).toBe(false);
+    expect(ability.can("trigger", { type: "tasks", id: "task_test" })).toBe(false);
   });
 
   it("rejects expirations longer than 30 days", async () => {

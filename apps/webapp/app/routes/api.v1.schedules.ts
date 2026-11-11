@@ -4,7 +4,7 @@ import type { ScheduleObject } from "@trigger.dev/core/v3";
 import { CreateScheduleOptions } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { ScheduleListPresenter } from "~/presenters/v3/ScheduleListPresenter.server";
-import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { authenticateApiKeyWithScope } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import type { UpsertSchedule } from "~/v3/schedules";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
@@ -27,11 +27,16 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   // Authenticate the request
-  const authenticationResult = await authenticateApiRequest(request);
+  const authResult = await authenticateApiKeyWithScope(request, {
+    action: "write",
+    resource: { type: "schedules" },
+    allowRunToken: true,
+  });
 
-  if (!authenticationResult) {
-    return json({ error: "Invalid or Missing API Key" }, { status: 401 });
+  if (!authResult.ok) {
+    return json({ error: authResult.error }, { status: authResult.status });
   }
+  const authenticationResult = authResult.authentication;
 
   const rawBody = await request.json();
 
@@ -54,7 +59,13 @@ export async function action({ request }: ActionFunctionArgs) {
       window: body.data.window,
     };
 
-    const schedule = await service.call(authenticationResult.environment.projectId, options);
+    const schedule = await service.call(
+      authenticationResult.environment.projectId,
+      options,
+      authenticationResult.credentialKind === "run_token"
+        ? { runTokenEnvironmentId: authenticationResult.environment.id }
+        : undefined
+    );
 
     const responseObject: ScheduleObject = {
       id: schedule.id,
@@ -92,11 +103,16 @@ export async function action({ request }: ActionFunctionArgs) {
 
 export async function loader({ request }: LoaderFunctionArgs) {
   // Authenticate the request
-  const authenticationResult = await authenticateApiRequest(request);
+  const authResult = await authenticateApiKeyWithScope(request, {
+    action: "read",
+    resource: { type: "schedules" },
+    allowRunToken: true,
+  });
 
-  if (!authenticationResult) {
-    return json({ error: "Invalid or Missing API Key" }, { status: 401 });
+  if (!authResult.ok) {
+    return json({ error: authResult.error }, { status: authResult.status });
   }
+  const authenticationResult = authResult.authentication;
 
   const rawSearchParams = new URL(request.url).searchParams;
   const params = SearchParamsSchema.safeParse(Object.fromEntries(rawSearchParams.entries()));
@@ -144,7 +160,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
               reason: "free_schedule" as const,
             }
           : undefined,
-      environments: schedule.environments,
+      environments:
+        authenticationResult.credentialKind === "run_token"
+          ? schedule.environments.filter(
+              (environment) => environment.id === authenticationResult.environment.id
+            )
+          : schedule.environments,
     })),
     pagination: {
       currentPage: result.currentPage,

@@ -11,6 +11,8 @@ import {
   awaitRestoreOf,
   checkpointLocation,
   classifyRestoreFailure,
+  coldStartState,
+  startingColdStart,
   parseCheckpointLocation,
   pollDelayMs,
   publishedSuspend,
@@ -582,6 +584,7 @@ describe("RunCrdWorkloadManager.create", () => {
       workloadApiProtocol: "http",
       workloadApiPort: 8020,
       namespace: "v4-runs",
+      nodeName: "node-a",
       runtime: "microvm",
       releaseUnstartedRuns,
       tokenSecretSettleMs: SETTLE_MS,
@@ -692,6 +695,7 @@ describe("RunCrdWorkloadManager.create", () => {
         workloadApiProtocol: "http",
         workloadApiPort: 8020,
         namespace: "v4-runs",
+        nodeName: "node-a",
         runtime: "microvm",
         tokenSecretSettleMs: 5 * SETTLE_MS,
       });
@@ -1044,6 +1048,7 @@ describe("RunCrdWorkloadManager.restore", () => {
       workloadApiProtocol: "http",
       workloadApiPort: 8020,
       namespace: "v4-runs",
+      nodeName: "node-a",
       runtime,
       releaseUnstartedRuns,
     });
@@ -1105,7 +1110,7 @@ describe("RunCrdWorkloadManager.restore", () => {
     expect(body.spec.restore).toEqual({ snapshotID: "6f1c2a9e-snap", node: "node-a" });
   });
 
-  // Restored anywhere else, the snapshot is not there to load.
+  // The operator pins the resume to that node while the snapshot is only there.
   it("refuses a location that names no node, before creating anything", async () => {
     await expect(
       manager().restore(keyedOptions(), { ...checkpoint, location: "6f1c2a9e-snap" })
@@ -1221,6 +1226,21 @@ describe("RunCrdWorkloadManager.restore", () => {
     );
   });
 
+  // The operator may have placed it on another node, from the regional store.
+  it("leaves a resume of the same snapshot whatever node it names or landed on", async () => {
+    createRunner.mockRejectedValue({ code: 409 });
+    getRunner.mockResolvedValue({
+      ...existing("Restoring", { snapshotID: "6f1c2a9e-snap", node: "node-b" }),
+      status: { phase: "Restoring", placement: { node: "node-c" } },
+    });
+
+    await expect(manager().restore(keyedOptions(), checkpoint)).resolves.toEqual({
+      runnerId: getRestoreRunnerId("run_abc123", "checkpoint_abc"),
+      uid: "uid-existing",
+    });
+    expect(deleteRunner).not.toHaveBeenCalled();
+  });
+
   it("fails when the Runner in the way cannot be read", async () => {
     createRunner.mockRejectedValue({ code: 409 });
     getRunner.mockRejectedValue({ code: 500 });
@@ -1311,6 +1331,7 @@ describe("RunCrdWorkloadManager.awaitRestore after the watch times out", () => {
       workloadApiProtocol: "http",
       workloadApiPort: 8020,
       namespace: "v4-runs",
+      nodeName: "node-a",
       runtime: "microvm",
       restoreInformer: { awaitRestore } as unknown as RunnerRestoreInformer,
     });
@@ -2056,6 +2077,63 @@ describe("RunnerRestoreInformer", () => {
   });
 });
 
+describe("coldStartState", () => {
+  function coldStart(phase?: string, snapshotFriendlyID = "snapshot_1") {
+    return { spec: { bootstrap: { snapshotFriendlyID } }, status: phase ? { phase } : {} };
+  }
+
+  it.each([
+    [undefined, "starting"],
+    ["Pending", "starting"],
+    ["Scheduling", "starting"],
+    ["Running", "started"],
+    ["Suspending", "started"],
+    ["Succeeded", "started"],
+    ["Failed", "failed"],
+  ])("a Runner in phase %s is %s", (phase, expected) => {
+    // Catches: a started or failed Runner read as still starting, so its run stays heartbeated.
+    expect(coldStartState(coldStart(phase), "snapshot_1")).toBe(expected);
+  });
+
+  it("is superseded once a later delivery's Runner took the name", () => {
+    // Catches: a later delivery's Runner heartbeated under an earlier delivery's snapshot.
+    expect(coldStartState(coldStart("Pending", "snapshot_2"), "snapshot_1")).toBe("superseded");
+  });
+});
+
+describe("startingColdStart", () => {
+  function runner(opts: { phase?: string; restore?: boolean } = {}) {
+    return {
+      metadata: {
+        name: "runner-a",
+        creationTimestamp: "2026-11-09T10:00:00Z",
+        ...(opts.restore ? { labels: { [RESTORE_LABEL]: "true" } } : {}),
+      },
+      spec: { bootstrap: { runFriendlyID: "run_a", snapshotFriendlyID: "snapshot_1" } },
+      status: opts.phase ? { phase: opts.phase } : {},
+    };
+  }
+
+  it("takes the heartbeat's run, snapshot, runner and creation time from a starting Runner", () => {
+    // Catches: an adopted cold start heartbeated under the wrong ids or limit.
+    expect(startingColdStart(runner({ phase: "Pending" }))).toEqual({
+      runFriendlyId: "run_a",
+      snapshotFriendlyId: "snapshot_1",
+      runnerId: "runner-a",
+      createdAt: new Date("2026-11-09T10:00:00Z"),
+    });
+  });
+
+  it.each([
+    ["a resume", { restore: true }],
+    ["a running Runner", { phase: "Running" }],
+    ["a failed Runner", { phase: "Failed" }],
+  ])("leaves out %s", (_name, opts) => {
+    // Catches: adoption heartbeating a resume the restore watch owns, or a Runner past its start.
+    expect(startingColdStart(runner(opts))).toBeUndefined();
+  });
+});
+
 describe("classifyRestoreFailure", () => {
   it.each([
     ["SnapshotNodeGone", { outcome: "fail" }],
@@ -2388,6 +2466,7 @@ describe("RunCrdWorkloadManager.suspend", () => {
       workloadApiProtocol: "http",
       workloadApiPort: 8020,
       namespace: "v4-runs",
+      nodeName: "node-a",
       runtime: "microvm",
       snapshots,
       suspendPollMs: 1,
@@ -2407,6 +2486,7 @@ describe("RunCrdWorkloadManager.suspend", () => {
 
   beforeEach(() => {
     getRunner.mockReset();
+    getRunner.mockResolvedValue(owned);
     patchObject.mockReset();
     patchObject.mockResolvedValue({});
   });
@@ -2415,6 +2495,7 @@ describe("RunCrdWorkloadManager.suspend", () => {
     runnerId: "runner-abc123",
     runFriendlyId: "run_abc",
     snapshotFriendlyId: "snapshot_abc",
+    owner: { envId: "env_1" },
   };
   const owner = { envId: "env_1", deploymentFriendlyId: "deployment_1" };
   const owned = {
@@ -2436,7 +2517,6 @@ describe("RunCrdWorkloadManager.suspend", () => {
       },
     });
     expect(strategy).toBe("application/merge-patch+json");
-    expect(getRunner).not.toHaveBeenCalled();
   });
 
   it("marks a request submitted on the Runner's annotation", async () => {
@@ -2464,15 +2544,21 @@ describe("RunCrdWorkloadManager.suspend", () => {
     });
   });
 
-  it("lists the answered suspends not yet submitted", async () => {
+  it("lists the answered suspends not yet submitted on this node", async () => {
     const annotations = {
       [SUSPEND_ANNOTATION]: "snapshot_abc",
       [SUSPEND_RUN_ANNOTATION]: "run_abc",
     };
+    const placedOn = (node: string) => ({ ...taken.status, placement: { node } });
     listRunners.mockResolvedValue({
       items: [
-        { ...taken, metadata: { name: "runner-abc123", annotations } },
-        { metadata: { name: "runner-idle" }, status: { phase: "Running" } },
+        { metadata: { name: "runner-abc123", annotations }, status: placedOn("node-a") },
+        { metadata: { name: "runner-elsewhere", annotations }, status: placedOn("node-b") },
+        { metadata: { name: "runner-unplaced", annotations }, status: taken.status },
+        {
+          metadata: { name: "runner-idle" },
+          status: { phase: "Running", placement: { node: "node-a" } },
+        },
       ],
     });
 
@@ -2492,8 +2578,7 @@ describe("RunCrdWorkloadManager.suspend", () => {
   it("annotates a Runner the caller's deployment owns", async () => {
     getRunner.mockResolvedValue(owned);
 
-    await expect(manager().requestSuspend({ ...target, owner })).resolves.toEqual({ ok: true });
-    expect(patchObject).toHaveBeenCalledTimes(1);
+    await expect(manager().validateSuspend({ ...target, owner })).resolves.toEqual({ ok: true });
   });
 
   it.each([
@@ -2502,12 +2587,25 @@ describe("RunCrdWorkloadManager.suspend", () => {
   ])("refuses a Runner from another %s", async (_what, caller) => {
     getRunner.mockResolvedValue(owned);
 
-    await expect(manager().requestSuspend({ ...target, owner: caller })).resolves.toEqual({
+    await expect(manager().validateSuspend({ ...target, owner: caller })).resolves.toEqual({
       ok: false,
       error: "the Runner belongs to another deployment",
     });
     expect(patchObject).not.toHaveBeenCalled();
   });
+
+  it.each([null, { code: 404 }])(
+    "distinguishes a missing Runner from an ownership refusal",
+    async (missing) => {
+      if (missing) getRunner.mockRejectedValue(missing);
+      else getRunner.mockResolvedValue(null);
+      await expect(manager().validateSuspend(target)).resolves.toEqual({
+        ok: false,
+        error: "the Runner was not found",
+      });
+      expect(patchObject).not.toHaveBeenCalled();
+    }
+  );
 
   it("fails when the request cannot be made", async () => {
     patchObject.mockRejectedValue(new Error("forbidden"));
@@ -2620,6 +2718,7 @@ describe("RunCrdWorkloadManager.suspend", () => {
       workloadApiProtocol: "http",
       workloadApiPort: 8020,
       namespace: "v4-runs",
+      nodeName: "node-a",
       runtime: "container",
       snapshots: { enabled: true, delayMs: 0, dispatchLimit: 1 },
     });
@@ -2699,11 +2798,17 @@ describe("publishedSuspend", () => {
   const requested = { [SUSPEND_ANNOTATION]: "snapshot_abc", [SUSPEND_RUN_ANNOTATION]: "run_abc" };
 
   it("returns an answered request the platform has not accepted", () => {
-    expect(publishedSuspend(runner(requested))).toEqual({
+    expect(
+      publishedSuspend({
+        ...runner(requested),
+        spec: { owner: { envID: "env_1" } },
+      })
+    ).toEqual({
       runnerId: "runner-abc123",
       runFriendlyId: "run_abc",
       snapshotFriendlyId: "snapshot_abc",
       outcome: { ok: true, location: "node-a/snap-1" },
+      environmentId: "env_1",
     });
   });
 
@@ -2749,9 +2854,12 @@ describe("checkpoint locations", () => {
     expect(parseCheckpointLocation(checkpointLocation(restore))).toEqual(restore);
   });
 
-  it.each(["", "snap", "/snap", "node/", "a/b/c"])("refuse %j", (location) => {
-    expect(() => parseCheckpointLocation(location)).toThrow();
-  });
+  it.each(["", "snap", "/snap", "node/", "a/b/c", "foo://bar-123", "Node/snap", "node/-snap"])(
+    "refuse %j",
+    (location) => {
+      expect(() => parseCheckpointLocation(location)).toThrow();
+    }
+  );
 });
 
 describe("reportTemplateKeyRefusal", () => {

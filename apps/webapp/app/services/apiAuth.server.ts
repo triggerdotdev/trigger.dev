@@ -36,6 +36,9 @@ import {
   isOrganizationAccessToken,
 } from "./organizationAccessToken.server";
 import { isPublicJWT, validatePublicJwtKey } from "./realtime/jwtAuth.server";
+import { clientIpFromHeaders } from "@trigger.dev/rbac";
+import { isApiKeyInGraceWindow } from "./apiKeyGraceWindow.server";
+import { isAdditionalApiKey } from "@trigger.dev/core/v3/apiKeys";
 import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 import {
   authenticateAuthorizeBearerWithTelemetry,
@@ -101,6 +104,19 @@ type ApiAuthenticationResultFailure = {
   error: string;
 };
 
+type LegacyApiKeyOptions = {
+  allowPublicKey?: boolean;
+  allowJWT?: boolean;
+  branchName?: string;
+  // Checked against an additional key's allowed IP ranges; see ApiKeyLookupOptions.
+  clientIp: string | null;
+};
+
+/** Reads an auth flag from the caller's own properties only. */
+function ownFlag<T extends object>(options: T, key: keyof T & string): boolean {
+  return Object.hasOwn(options, key) && options[key] === true;
+}
+
 /**
  * @deprecated Use `authenticateApiRequestWithFailure` instead.
  */
@@ -115,7 +131,11 @@ export async function authenticateApiRequest(
   }
 
   return observeLegacyBearerAuthentication(request, () =>
-    authenticateApiKey(apiKey, { ...options, branchName })
+    authenticateApiKey(apiKey, {
+      ...options,
+      branchName,
+      clientIp: clientIpFromHeaders(request.headers),
+    })
   );
 }
 
@@ -137,7 +157,11 @@ export async function authenticateApiRequestWithFailure(
   }
 
   return observeLegacyBearerAuthentication(request, () =>
-    authenticateApiKeyWithFailure(apiKey, { ...options, branchName })
+    authenticateApiKeyWithFailure(apiKey, {
+      ...options,
+      branchName,
+      clientIp: clientIpFromHeaders(request.headers),
+    })
   );
 }
 
@@ -146,11 +170,7 @@ export async function authenticateApiRequestWithFailure(
  */
 export async function authenticateApiKey(
   apiKey: string,
-  options: {
-    allowPublicKey?: boolean;
-    allowJWT?: boolean;
-    branchName?: string;
-  } = {}
+  options: LegacyApiKeyOptions
 ): Promise<ApiAuthenticationResultSuccess | undefined> {
   const result = getApiKeyResult(apiKey);
 
@@ -158,11 +178,11 @@ export async function authenticateApiKey(
     return;
   }
 
-  if (!options.allowPublicKey && result.type === "PUBLIC") {
+  if (!ownFlag(options, "allowPublicKey") && result.type === "PUBLIC") {
     return;
   }
 
-  if (!options.allowJWT && result.type === "PUBLIC_JWT") {
+  if (!ownFlag(options, "allowJWT") && result.type === "PUBLIC_JWT") {
     return;
   }
 
@@ -180,7 +200,10 @@ export async function authenticateApiKey(
       };
     }
     case "PRIVATE": {
-      const environment = await findEnvironmentByApiKey(result.apiKey, options.branchName);
+      const environment = await findEnvironmentByApiKey(result.apiKey, {
+        branchName: options.branchName,
+        clientIp: options.clientIp,
+      });
       if (!environment) {
         return;
       }
@@ -218,11 +241,7 @@ export async function authenticateApiKey(
  */
 async function authenticateApiKeyWithFailure(
   apiKey: string,
-  options: {
-    allowPublicKey?: boolean;
-    allowJWT?: boolean;
-    branchName?: string;
-  } = {}
+  options: LegacyApiKeyOptions
 ): Promise<ApiAuthenticationResult> {
   const result = getApiKeyResult(apiKey);
 
@@ -233,14 +252,14 @@ async function authenticateApiKeyWithFailure(
     };
   }
 
-  if (!options.allowPublicKey && result.type === "PUBLIC") {
+  if (!ownFlag(options, "allowPublicKey") && result.type === "PUBLIC") {
     return {
       ok: false,
       error: "Public API keys are not allowed for this request",
     };
   }
 
-  if (!options.allowJWT && result.type === "PUBLIC_JWT") {
+  if (!ownFlag(options, "allowJWT") && result.type === "PUBLIC_JWT") {
     return {
       ok: false,
       error: "Public JWT API keys are not allowed for this request",
@@ -264,18 +283,23 @@ async function authenticateApiKeyWithFailure(
       };
     }
     case "PRIVATE": {
-      const resolution = await findEnvironmentByApiKeyWithResolution(
-        result.apiKey,
-        options.branchName
-      );
+      const resolution = await findEnvironmentByApiKeyWithResolution(result.apiKey, {
+        branchName: options.branchName,
+        clientIp: options.clientIp,
+      });
       if (!resolution.ok) {
-        return {
-          ok: false,
-          error:
-            resolution.reason === "restricted"
-              ? "This endpoint does not support restricted API keys. Use an API key with full environment access."
-              : "Invalid API Key",
-        };
+        switch (resolution.reason) {
+          case "restricted":
+            return {
+              ok: false,
+              error:
+                "This endpoint does not support restricted API keys. Use an API key with full environment access.",
+            };
+          // A disallowed IP gets the same answer as an unknown key, so the key's validity stays hidden.
+          case "ip-not-allowed":
+          case "not-found":
+            return { ok: false, error: "Invalid API Key" };
+        }
       }
 
       return {
@@ -345,24 +369,41 @@ export async function authenticateApiKeyRequest(
  * authorizes `action` on `resource`. Root keys (and grace-window root keys)
  * carry the unrestricted `admin` ability, preserving pre-granular behavior.
  *
- * Only apiKey credentials are accepted (no PAT / org token / public key). Use
- * this for routes previously guarded by a bare `authenticateApiRequest` call.
+ * Run tokens require an explicit opt-in after auditing the route's environment boundary.
+ * No PAT / org token / public key. Use this for legacy routes with resource authorization.
  */
 export type ApiKeyScopeAuthorization = {
   action: string;
   resource: RbacResource;
   allowJWT?: boolean;
   allowPreviewParent?: boolean;
+  allowRunToken?: boolean;
 };
+
+// A rotated root key keeps working during its grace window so callers can
+// switch over without downtime. It must not be able to ship code or change the
+// environment's variables: deployed runs receive the current root key, so
+// either would let the old key recover its replacement. It also can't read
+// variables, which may hold secrets updated after the rotation.
+function isDeniedDuringGraceWindow(action: string, resource: RbacResource): boolean {
+  if (resource.type === "envvars") return true;
+  return resource.type === "deployments" && action !== "read";
+}
 
 export async function authenticateApiKeyWithScope(
   request: Request,
-  { action, resource, allowJWT = false, allowPreviewParent = false }: ApiKeyScopeAuthorization,
-  authorizeBearer: typeof authenticateAuthorizeBearerWithTelemetry = authenticateAuthorizeBearerWithTelemetry
+  scope: ApiKeyScopeAuthorization,
+  authorizeBearer: typeof authenticateAuthorizeBearerWithTelemetry = authenticateAuthorizeBearerWithTelemetry,
+  isInGraceWindow: typeof isApiKeyInGraceWindow = isApiKeyInGraceWindow
 ): Promise<
   | { ok: true; authentication: ApiAuthenticationResultSuccess }
   | { ok: false; status: 401 | 403; error: string }
 > {
+  const { action, resource } = scope;
+  const allowJWT = ownFlag(scope, "allowJWT");
+  const allowPreviewParent = ownFlag(scope, "allowPreviewParent");
+  const allowRunToken = ownFlag(scope, "allowRunToken");
+
   const apiKey = getApiKeyFromHeader(request.headers.get("Authorization"));
   if (!apiKey) {
     return { ok: false, status: 401, error: "Invalid or Missing API key" };
@@ -376,8 +417,22 @@ export async function authenticateApiKeyWithScope(
   if (!result.ok) {
     return result;
   }
-  if (result.subject.type === "runToken") {
+  if (result.subject.type === "runToken" && !allowRunToken) {
     return { ok: false, status: 401, error: "Run tokens are not accepted for this endpoint" };
+  }
+
+  if (
+    result.subject.type !== "runToken" &&
+    isDeniedDuringGraceWindow(action, resource) &&
+    !isAdditionalApiKey(apiKey.trim()) &&
+    // The bearer resolvers trim the token, so the lookup must match on the same value.
+    (await isInGraceWindow(apiKey.trim()))
+  ) {
+    return {
+      ok: false,
+      status: 401,
+      error: "This API key has been rotated. Use the environment's current secret key.",
+    };
   }
 
   return {
@@ -386,6 +441,10 @@ export async function authenticateApiKeyWithScope(
       ok: true,
       apiKey,
       type: "PRIVATE",
+      environmentScoped:
+        result.subject.type === "runToken" ||
+        (result.subject.type === "apiKey" && result.subject.restricted),
+      credentialKind: result.subject.type === "runToken" ? "run_token" : undefined,
       environment: result.environment,
       ability: result.ability,
     },
@@ -438,10 +497,7 @@ export async function authenticateRequestWithScopedApiKey(
 
 export async function authenticateAuthorizationHeader(
   authorization: string,
-  {
-    allowPublicKey = false,
-    allowJWT = false,
-  }: { allowPublicKey?: boolean; allowJWT?: boolean } = {}
+  options: { allowPublicKey?: boolean; allowJWT?: boolean; clientIp: string | null }
 ): Promise<ApiAuthenticationResult | undefined> {
   const apiKey = getApiKeyFromHeader(authorization);
 
@@ -449,7 +505,11 @@ export async function authenticateAuthorizationHeader(
     return;
   }
 
-  return authenticateApiKey(apiKey, { allowPublicKey, allowJWT });
+  return authenticateApiKey(apiKey, {
+    allowPublicKey: ownFlag(options, "allowPublicKey"),
+    allowJWT: ownFlag(options, "allowJWT"),
+    clientIp: options.clientIp,
+  });
 }
 
 function isPublicApiKey(key: string) {
@@ -626,6 +686,7 @@ export async function authenticateRequest<
       authenticateApiKey(apiKey, {
         allowPublicKey: false,
         branchName,
+        clientIp: clientIpFromHeaders(request.headers),
       })
     );
 
@@ -706,6 +767,21 @@ async function resolveEnvironmentForAuthentication(
               "Invalid project ref for this API key. Make sure you are using an API key associated with that project.",
           },
           { status: 400 }
+        );
+      }
+
+      const targetsBranch =
+        auth.result.environment.parentEnvironmentId &&
+        resolvedBranch === auth.result.environment.branchName &&
+        slug === (auth.result.environment.type === "PREVIEW" ? "preview" : "dev");
+      if (
+        auth.result.credentialKind === "run_token" &&
+        ((auth.result.environment.slug !== slug && !targetsBranch) ||
+          (resolvedBranch && auth.result.environment.branchName !== resolvedBranch))
+      ) {
+        throw json(
+          { error: "Run tokens cannot target another environment or branch" },
+          { status: 403 }
         );
       }
 

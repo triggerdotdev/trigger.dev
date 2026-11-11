@@ -310,7 +310,7 @@ export class ScheduleListPresenter extends BasePresenter {
         active: schedule.active,
         updatedAt: schedule.updatedAt,
       })),
-      { phaseSecret: env.ENCRYPTION_KEY, includeLastRun }
+      { phaseSecret: env.SCHEDULE_PHASE_SEED, includeLastRun }
     );
 
     const schedules: ScheduleListItem[] = rawSchedules.map((schedule, index) => {

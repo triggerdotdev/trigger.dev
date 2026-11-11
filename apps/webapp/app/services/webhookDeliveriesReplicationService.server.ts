@@ -527,7 +527,11 @@ export class WebhookDeliveriesReplicationService {
       return;
     }
 
-    if (this._lastAcknowledgedLsn === this._latestCommitEndLsn) {
+    // Keepalive acks can be ahead of the last commit; re-acking the commit would move flush back.
+    if (
+      this._lastAcknowledgedLsn &&
+      lsnToUInt64(this._lastAcknowledgedLsn) >= lsnToUInt64(this._latestCommitEndLsn)
+    ) {
       return;
     }
 

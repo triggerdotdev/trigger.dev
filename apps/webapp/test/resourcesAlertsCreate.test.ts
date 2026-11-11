@@ -1,5 +1,4 @@
 import {
-  chats,
   countChatsWithUnreadWork,
   countUserMessages,
   createDashboardAgentDb,
@@ -114,7 +113,18 @@ async function seed(prisma: PrismaClient) {
       organizationId: organization.id,
     },
   });
-  return { user, organization, project, environment };
+  const channel = await prisma.projectAlertChannel.create({
+    data: {
+      friendlyId: `ch_${slug}`,
+      name: "seeded",
+      type: "EMAIL",
+      properties: { type: "EMAIL", email: "seed@example.com" },
+      alertTypes: ["ERROR_GROUP"],
+      deduplicationKey: `dk_${slug}`,
+      projectId: project.id,
+    },
+  });
+  return { user, organization, project, environment, channel };
 }
 
 type Seeded = Awaited<ReturnType<typeof seed>>;
@@ -124,7 +134,6 @@ function validBody(seeded: Seeded) {
     organizationId: seeded.organization.id,
     projectId: seeded.project.id,
     environmentId: seeded.environment.id,
-    chatNotifier: "on" as const,
     form: {
       capabilityKey: "queue.depth",
       scopeType: "all" as const,
@@ -132,7 +141,7 @@ function validBody(seeded: Seeded) {
       operator: ">" as const,
       value: 100,
       windowMinutes: 5,
-      notifierChannelIds: [] as string[],
+      notifierChannelIds: [seeded.channel.id],
     },
   };
 }
@@ -307,15 +316,20 @@ describe("resources.alerts.create action", () => {
     expect(mocks.canCalls).toEqual([["write", { type: "alerts", envType: "PRODUCTION" }]]);
   });
 
-  test("rejects foreign chatId", async ({ prisma }) => {
+  async function expectRejected(
+    prisma: PrismaClient,
+    mutate: (b: ReturnType<typeof validBody>) => unknown
+  ) {
     const seeded = await seed(prisma);
-    const resp = await callAction(seeded.user.id, {
-      ...validBody(seeded),
-      chatId: "chat_not_mine",
-    });
+    const resp = await callAction(seeded.user.id, mutate(validBody(seeded)));
     expect(resp.status).toBe(400);
-    const data = await resp.json();
-    expect(data.error).toContain("chat");
+    const rows =
+      await prisma.$queryRaw`SELECT id FROM "Alert" WHERE "organizationId" = ${seeded.organization.id}`;
+    expect(rows).toHaveLength(0);
+  }
+
+  test("rejects no channel and creates no alert", async ({ prisma }) => {
+    await expectRejected(prisma, (b) => ({ ...b, form: { ...b.form, notifierChannelIds: [] } }));
   });
 
   test("rejects an environment outside the organization and creates no alert", async ({
@@ -344,25 +358,13 @@ describe("resources.alerts.create action", () => {
     expect(rows).toHaveLength(0);
   });
 
-  test("creates an alert with chat notifier and enqueues its evaluation", async ({
+  test("creates an alert with a channel notifier and enqueues its evaluation", async ({
     prisma,
-    postgresContainer,
     engine,
   }) => {
     const seeded = await seed(prisma);
-    const agentDb = createDashboardAgentDb(postgresContainer.getConnectionUri(), { max: 2 });
-    try {
-      await agentDb.db.insert(chats).values({
-        id: "chat_mine",
-        organizationId: seeded.organization.id,
-        userId: seeded.user.id,
-        title: "Test chat",
-      });
-    } finally {
-      await agentDb.close();
-    }
 
-    const resp = await callAction(seeded.user.id, { ...validBody(seeded), chatId: "chat_mine" });
+    const resp = await callAction(seeded.user.id, validBody(seeded));
     expect(resp.status).toBe(200);
     const data = await resp.json();
     expect(data.ok).toBe(true);
@@ -491,9 +493,7 @@ describe("resources.alerts.create transcript", () => {
       revision: 0,
       alertId: data.alertId,
     });
-    expect(block.rows.map((row: { value: string }) => row.value)).toContain(
-      "Notifying: this chat."
-    );
+    expect(block.rows.map((row: { value: string }) => row.value)).toContain("Notifying: seeded.");
     const watching = block.rows.find((row: { label: string }) => row.label === "Watching");
     expect(watching.value).toContain("Production");
   });

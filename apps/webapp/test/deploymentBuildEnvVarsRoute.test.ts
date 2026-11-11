@@ -43,7 +43,7 @@ describe("deployment build env vars route", () => {
     return {
       id: "dep_1",
       status,
-      buildEnvVars: await encryptSecret(env.ENCRYPTION_KEY, JSON.stringify(variables)),
+      buildEnvVars: await encryptSecret(env.ENCRYPTION_KEYRING, JSON.stringify(variables)),
     };
   }
 

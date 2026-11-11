@@ -18,7 +18,6 @@ import type {
 import {
   calculateSchedulePhase,
   resolveScheduleWindow,
-  SCHEDULE_PHASE_DENOMINATOR,
   type NormalizedScheduleWindow,
 } from "./scheduleTiming.js";
 import { scheduleWorkerCatalog } from "./workerCatalog.js";
@@ -196,10 +195,7 @@ export class ScheduleEngine {
             deduplicationKey: instance.taskSchedule.deduplicationKey,
           });
 
-        const cronSpreadActive = this.#isCronSpreadActive(schedulePhase);
-
-        let persisted = false;
-        if (cronSpreadActive && instance.schedulePhase === null) {
+        if (instance.schedulePhase === null) {
           await this.prisma.taskScheduleInstance.updateMany({
             where: {
               id: instance.id,
@@ -209,7 +205,6 @@ export class ScheduleEngine {
               schedulePhase,
             },
           });
-          persisted = true;
           this.schedulePhasePersistedCounter.add(1, {
             environment_type: instance.environment.type,
             schedule_type: instance.taskSchedule.type,
@@ -218,7 +213,7 @@ export class ScheduleEngine {
 
         span.setAttribute(
           "schedule_phase_source",
-          instance.schedulePhase !== null ? "db" : persisted ? "persisted" : "ephemeral"
+          instance.schedulePhase !== null ? "db" : "persisted"
         );
         span.setAttribute("schedule_phase", schedulePhase);
 
@@ -244,12 +239,9 @@ export class ScheduleEngine {
           schedulePhase,
           window: scheduleWindow,
           minimumWindowDurationSeconds: instance.taskSchedule.minimumWindowDurationSeconds,
-          cronSpreadEnabled: cronSpreadActive,
         });
         const appliedDelayMs = effectiveAt.getTime() - nominalAt.getTime();
 
-        span.setAttribute("cron_spread_fraction", this.options.cronSpreadFraction);
-        span.setAttribute("cron_spread_active", cronSpreadActive);
         span.setAttribute("schedule_window_type", scheduleWindow?.type ?? "none");
         span.setAttribute("next_scheduled_timestamp", nominalAt.toISOString());
         span.setAttribute("candidate_effective_schedule_time", candidateEffectiveAt.toISOString());
@@ -288,7 +280,6 @@ export class ScheduleEngine {
           nominalAt: nominalAt.toISOString(),
           candidateEffectiveAt: candidateEffectiveAt.toISOString(),
           effectiveAt: effectiveAt.toISOString(),
-          cronSpreadActive,
           scheduleWindowType: scheduleWindow?.type ?? "none",
           candidateDelayMs,
           appliedDelayMs,
@@ -548,8 +539,6 @@ export class ScheduleEngine {
               environmentId: instance.environmentId,
               deduplicationKey: instance.taskSchedule.deduplicationKey,
             });
-          const cronSpreadActive = this.#isCronSpreadActive(schedulePhase);
-          span.setAttribute("cron_spread_active", cronSpreadActive);
           const nextOccurrence = calculateNextSchedulableOccurrence({
             schedule: instance.taskSchedule.generatorExpression,
             timezone: instance.taskSchedule.timezone,
@@ -558,7 +547,6 @@ export class ScheduleEngine {
             schedulePhase,
             window: scheduleWindow,
             minimumWindowDurationSeconds: instance.taskSchedule.minimumWindowDurationSeconds,
-            cronSpreadEnabled: cronSpreadActive,
           });
           const upcoming = [
             nextOccurrence.nominalAt,
@@ -778,16 +766,6 @@ export class ScheduleEngine {
         throw error;
       }
     });
-  }
-
-  /**
-   * Per-schedule rollout gate for cron spread. The schedule's deterministic
-   * phase doubles as a stable sampling key: raising the fraction is strictly
-   * additive (a schedule never leaves the rollout once included), and 0/1 map
-   * to fully off/on.
-   */
-  #isCronSpreadActive(schedulePhase: number): boolean {
-    return schedulePhase < this.options.cronSpreadFraction * SCHEDULE_PHASE_DENOMINATOR;
   }
 
   /**

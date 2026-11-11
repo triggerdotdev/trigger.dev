@@ -49,7 +49,6 @@ export const alertDraftPatchSchema = z
         z.object({
           type: z.string(),
           channelId: z.string().optional(),
-          chatId: z.string().optional(),
         })
       )
       .optional(),
@@ -155,8 +154,12 @@ export function applyDraftPatch(answers: FlowAnswers, patch: AlertDraftPatch): F
     }
   }
 
-  if (patch.what !== undefined && next.what === "limits.all" && next.components === undefined) {
-    next.components = compositeComponents("limits.all");
+  if (
+    patch.what !== undefined &&
+    (next.what === "limits.all" || next.what === "health.all") &&
+    next.components === undefined
+  ) {
+    next.components = compositeComponents(next.what);
   }
 
   if (patch.name !== undefined) next.name = patch.name;
@@ -170,11 +173,9 @@ export function applyDraftPatch(answers: FlowAnswers, patch: AlertDraftPatch): F
   }
 
   if (patch.notifiers !== undefined) {
-    next.notifiers = patch.notifiers.map((n) => {
-      if (n.type === "chat" && n.chatId) return n.chatId;
-      if (n.type === "channel" && n.channelId) return n.channelId;
-      return n.type;
-    });
+    next.notifiers = patch.notifiers.flatMap((n) =>
+      n.type === "channel" && n.channelId ? [n.channelId] : []
+    );
   }
 
   return next;

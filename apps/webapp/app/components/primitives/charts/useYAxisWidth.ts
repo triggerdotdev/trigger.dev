@@ -36,8 +36,11 @@ export function useYAxisWidth(
       tickFormatter ?? ((v: any) => (typeof v === "number" ? v.toLocaleString() : String(v)));
     const label = fmt(max, 0);
     // Add one char of slack because recharts "nices" the domain up beyond data max.
-    const charCount = label.length + 1;
-    const width = Math.ceil(charCount * PX_PER_CH) + PADDING_PX;
-    return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, width));
+    return yAxisWidthForLabel(label);
   }, [data, visibleSeries, tickFormatter]);
+}
+
+export function yAxisWidthForLabel(label: string): number {
+  const width = Math.ceil((label.length + 1) * PX_PER_CH) + PADDING_PX;
+  return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, width));
 }

@@ -56,6 +56,8 @@ vi.mock("~/models/runtimeEnvironment.server", () => ({
 
 vi.mock("~/v3/runEngine.server", () => ({
   engine: {
+    // Existing legacy-route fixture remains on its disabled waitpoint path.
+    waitpointSystem: { isWaitpointStoreEnabled: async () => false },
     completeWaitpoint: async (args: Record<string, unknown>) => {
       engineHolder.calls.push(args);
       return { id: args.id };

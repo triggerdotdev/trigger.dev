@@ -76,6 +76,7 @@ import {
 } from "~/services/emailChange.server";
 import { logger } from "~/services/logger.server";
 import { isExternalOidcEnabled } from "~/services/oidc/externalOidc.server";
+import { isTrustedDeploysEnabled } from "~/services/trustedDeploys/featureFlag.server";
 import { type EmailOwnership } from "~/services/ssoManagedIdentity.server";
 import {
   updateContrastPreference,
@@ -267,6 +268,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       featureFlags: {
         ...(await resolveOrganizationFeatureFlags(organization.featureFlags)),
         oidcEnabled: await isExternalOidcEnabled(organization.featureFlags),
+        trustedDeploysEnabled: await isTrustedDeploysEnabled(organization.featureFlags),
       },
     };
   } catch (error) {

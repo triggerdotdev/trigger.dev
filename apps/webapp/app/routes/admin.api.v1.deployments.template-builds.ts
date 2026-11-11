@@ -1,18 +1,14 @@
+import { withAdminApi } from "~/services/adminApi.server";
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/v3";
-import { z } from "zod";
-import { logger } from "~/services/logger.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
-import { TemplatePrebuildService } from "~/v3/services/templatePrebuild.server";
+import {
+  adminTemplateBuilds,
+  TemplateBuildsBodySchema,
+} from "~/v3/services/adminTemplateBuilds.server";
 
-const BodySchema = z.object({
-  // Deployment ids or friendly ids.
-  deploymentIds: z.array(z.string().min(1)).min(1).max(50),
-  force: z.boolean().default(false),
-});
-
-export async function action({ request }: ActionFunctionArgs) {
+async function handleAction({ request }: ActionFunctionArgs) {
   await requireAdminApiRequest(request);
 
   if (request.method.toUpperCase() !== "POST") {
@@ -24,22 +20,12 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: bodyError.message }, { status: 400 });
   }
 
-  const parsedBody = BodySchema.safeParse(body);
+  const parsedBody = TemplateBuildsBodySchema.safeParse(body);
   if (!parsedBody.success) {
     return json({ error: parsedBody.error.message }, { status: 400 });
   }
 
-  const deploymentIds = [...new Set(parsedBody.data.deploymentIds)];
-  const results = await new TemplatePrebuildService().requestBuilds({
-    deploymentIds,
-    force: parsedBody.data.force,
-  });
-
-  logger.info("Admin template builds requested", {
-    count: deploymentIds.length,
-    force: parsedBody.data.force,
-    results,
-  });
-
-  return json({ results });
+  return adminTemplateBuilds(parsedBody.data);
 }
+
+export const action = withAdminApi(handleAction);

@@ -70,7 +70,7 @@ describe("waitpoint-token routes with an id naming an unconfigured shard", () =>
     const handler = await completeHandler();
 
     const thrown = await handler({
-      authentication: { environment: { id: "env_1" } },
+      authentication: { environment: { id: "env_1", organization: { id: "org_1" } } },
       body: { data: { ok: true } },
       params: { waitpointFriendlyId: WaitpointId.toFriendlyId(UNCONFIGURED_SHARD_WAITPOINT_ID) },
     }).then(

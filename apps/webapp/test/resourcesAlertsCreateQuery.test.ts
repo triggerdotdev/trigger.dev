@@ -400,7 +400,7 @@ describe("resources.alerts.create action: query alerts", () => {
             operator: ">",
             value: 5,
             windowMinutes: 10,
-            notifiers: ["chat", channelId],
+            notifiers: [channelId],
           },
           { chatId: "chat_mine", transcriptChatId: "chat_mine" }
         )

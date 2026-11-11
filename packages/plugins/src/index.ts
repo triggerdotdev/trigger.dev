@@ -18,7 +18,10 @@ export type {
   RbacPluginConfig,
   RbacDatabaseConfig,
   SystemRole,
+  ApiKeyAccessOptions,
   ApiKeyPreset,
+  ApiKeyPresetDeleteResult,
+  ApiKeyPresetMutationResult,
   ApiKeyPolicy,
   PrepareApiKeyPolicyResult,
   ApiKeyPolicyDescription,
@@ -26,11 +29,19 @@ export type {
   RbacScopeAction,
   RbacScopeResourceType,
   BearerAuthOptions,
+  ApiKeyScopeUseEvent,
+  ApiKeyScopeUsage,
+  ApiKeyScopeUsageParams,
+  ApiKeyCapabilityUsage,
+  ApiKeyNarrowBlocker,
+  ApiKeyScopeMatcher,
 } from "./rbac.js";
 
 export {
   buildJwtAbility,
   buildScope,
+  buildScopeMatcher,
+  UNRESTRICTED_API_KEY_SCOPE_USE,
   FULL_ACCESS_PRESET_ID,
   scopesGrantFullAccess,
   scopesWithinAbility,
@@ -42,7 +53,55 @@ export {
   USER_ACTOR_TOKEN_PREFIX,
 } from "./rbac.js";
 
+export {
+  CLI_LOGIN_EXPIRED,
+  PERSONAL_ACCESS_TOKEN_EXPIRED,
+  personalAccessTokenExpiry,
+  personalAccessTokenExpiryMessage,
+  personalAccessTokenValidUntil,
+} from "./personalAccessTokenExpiry.js";
+export type {
+  PersonalAccessTokenExpiry,
+  PersonalAccessTokenExpiryFields,
+} from "./personalAccessTokenExpiry.js";
+export type {
+  ApiKeyCapability,
+  ApiKeyCapabilityCatalogue,
+  ApiKeyCapabilityDifference,
+  ApiKeyCapabilityLevel,
+  ApiKeyCapabilityMap,
+  ApiKeyCapabilityRequirement,
+} from "./apiKeyCapabilities.js";
+export {
+  apiKeyCapabilitiesEqual,
+  apiKeyCapabilitiesForKey,
+  apiKeyCapabilityDifferences,
+  applyApiKeyCapabilityRequirements,
+  CUSTOM_API_KEY_PRESET_ID,
+  DELETED_API_KEY_PRESET_MESSAGE,
+  isSavedApiKeyPresetId,
+  mergeApiKeyCapabilities,
+  NO_ACCESS_LEVEL_ID,
+  RESTRICTED_API_KEYS_PLAN_MESSAGE,
+  restrictScopeToTasks,
+  withoutTaskSelectionUnavailable,
+} from "./apiKeyCapabilities.js";
+
 export type { PluginDatabaseConfig } from "./databaseConfig.js";
+export { organizationOidcIssuer } from "./oidc.js";
+export type {
+  AdminAuditActivity,
+  AdminAuditActor,
+  AdminAuditActorKind,
+  AdminAuditController,
+  AdminAuditEvent,
+  AdminAuditHttp,
+  AdminAuditIpLocation,
+  AdminAuditPat,
+  AdminAuditPlugin,
+  AdminAuditPluginConfig,
+  AdminAuditSourceEndpoint,
+} from "./adminAudit.js";
 export type {
   ExternalOidcController,
   ExternalOidcEnvironment,
@@ -113,3 +172,45 @@ export type {
   BillingProjectUsageLine,
   BillingProjectUsage,
 } from "./billing.js";
+
+export type {
+  DeploymentAccessBillingStatus,
+  DeploymentAccessCheck,
+  DeploymentAccessController,
+  DeploymentAccessDecision,
+  DeploymentAccessPlugin,
+  DeploymentAccessPluginConfig,
+  DeploymentAccessStage,
+  DeploymentIntegrationAccess,
+  SlidingWindowHitResult,
+} from "./deploymentAccess.js";
+
+export type {
+  AcknowledgeSecurityNoticeResult,
+  SecurityNotice,
+  SecurityNoticeApiKeyStatus,
+  SecurityNoticeBanner,
+  SecurityNoticeEnvironment,
+  SecurityNoticeScope,
+  SecurityNoticesController,
+  SecurityNoticesPlugin,
+  SecurityNoticesPluginConfig,
+} from "./securityNotices.js";
+
+export type {
+  AccessPolicyController,
+  AccessPolicyPlugin,
+  AccessPolicyPluginConfig,
+  AdminAction,
+  AdminActionField,
+  AdminActionInput,
+  AdminActionResult,
+  AdminPanel,
+  EnvironmentPauseState,
+  OrganizationJoinCheck,
+  OrganizationJoinDecision,
+  SessionCheck,
+  SessionDecision,
+  SignInCheck,
+  SignInDecision,
+} from "./accessPolicy.js";

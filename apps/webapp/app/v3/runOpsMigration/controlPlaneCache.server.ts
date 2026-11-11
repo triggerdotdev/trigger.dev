@@ -1,4 +1,9 @@
-import type { BackgroundWorker, Prisma, RuntimeEnvironmentType } from "@trigger.dev/database";
+import type {
+  BackgroundWorker,
+  Prisma,
+  RuntimeEnvironmentType,
+  WorkerDeploymentStatus,
+} from "@trigger.dev/database";
 import { BoundedTtlCache } from "~/services/realtime/boundedTtlCache";
 import type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
 
@@ -97,6 +102,7 @@ export const resolvedTaskQueueSelect = {
 type ResolvedWorkerDeployment = {
   id: string;
   friendlyId: string;
+  status: WorkerDeploymentStatus;
   imageReference: string | null;
   imagePlatform: string;
   templateKey: string | null;
@@ -106,6 +112,7 @@ type ResolvedWorkerDeployment = {
 export const resolvedWorkerDeploymentSelect = {
   id: true,
   friendlyId: true,
+  status: true,
   imageReference: true,
   imagePlatform: true,
   templateKey: true,

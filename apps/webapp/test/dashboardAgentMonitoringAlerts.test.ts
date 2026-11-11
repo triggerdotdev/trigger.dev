@@ -1,8 +1,4 @@
-import {
-  createChat,
-  createDashboardAgentDb,
-  type DashboardAgentDb,
-} from "@internal/dashboard-agent-db";
+import { createDashboardAgentDb, type DashboardAgentDb } from "@internal/dashboard-agent-db";
 import { alertParamsSchema } from "@internal/alert-contracts";
 import { applyDashboardAgentMigrations } from "@internal/dashboard-agent-db/testing";
 import { getAlert, listAlerts } from "~/v3/services/alerts/storage/alertStore.server";
@@ -165,7 +161,35 @@ async function boot(prisma: PrismaClient, connectionUri: string) {
   await applyAlertsMigration(prisma);
   agentDbClient = createDashboardAgentDb(connectionUri, { max: 4 });
   ctx.agentDb = agentDbClient.db;
+  await prisma.organization.create({ data: { id: "org_1", title: "org_1", slug: "org_1" } });
+  await prisma.project.create({
+    data: {
+      id: "proj_1",
+      name: "proj_1",
+      slug: "proj_1",
+      organizationId: "org_1",
+      externalRef: "proj_1",
+    },
+  });
+  await seedChannel(prisma, "proj_1", "chan_1");
 }
+
+function seedChannel(prisma: PrismaClient, projectId: string, id: string) {
+  return prisma.projectAlertChannel.create({
+    data: {
+      id,
+      friendlyId: `f_${id}`,
+      name: id,
+      type: "EMAIL",
+      properties: { type: "EMAIL", email: "a@example.com" },
+      alertTypes: ["TASK_RUN"],
+      environmentTypes: ["DEVELOPMENT", "STAGING", "PREVIEW", "PRODUCTION"],
+      projectId,
+    },
+  });
+}
+
+const CHANNEL = [{ type: "channel", channelId: "chan_1" }];
 
 function makeEnv(
   orgId: string,
@@ -229,6 +253,7 @@ async function seedProjectWithEnvironments(
       },
     });
   }
+  await seedChannel(prisma, project.id, "chan_seeded");
   return { user, organization, project, environments };
 }
 
@@ -410,6 +435,7 @@ describe("dashboard-agent monitoring alerts route", () => {
           condition: { kind: "threshold", operator: ">", value: 5, windowSec: 3600 },
           query: COUNT_QUERY,
           signal: { mode: "threshold" },
+          notifiers: CHANNEL,
         });
 
         expect(response.status).toBe(200);
@@ -574,39 +600,50 @@ describe("dashboard-agent monitoring alerts route", () => {
     }
   );
 
-  postgresTest(
-    "create rejects a chat notifier from another org",
-    async ({ prisma, postgresContainer }) => {
-      await boot(prisma, postgresContainer.getConnectionUri());
+  async function expectCreateRejected(
+    prisma: PrismaClient,
+    connectionUri: string,
+    notifiers: unknown,
+    message: string
+  ) {
+    await boot(prisma, connectionUri);
+    const env = makeEnv("org_1", "proj_1", "env_prod", "slug9", "proj_ref9");
+    ctx.uatClaims = { userId: "user_1", environmentId: "env_prod", client: "dashboard-agent" };
+    ctx.alertContext = { ok: true, environment: env };
 
-      const env = makeEnv("org_1", "proj_1", "env_prod", "slug9", "proj_ref9");
-      ctx.uatClaims = { userId: "user_1", environmentId: "env_prod", client: "dashboard-agent" };
-      ctx.alertContext = { ok: true, environment: env };
+    const response = await action({
+      request: jsonRequest("https://test/api/v1/dashboard-agent/monitoring-alerts", {
+        chatId: "chat_1",
+        capabilityKey: "queue.depth",
+        condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
+        ...(notifiers ? { notifiers } : {}),
+      }),
+      params: {},
+      context: {},
+    } as any);
 
-      const foreignChatId = `chat_${Math.random().toString(36).slice(2, 10)}`;
-      await createChat(ctx.agentDb, {
-        id: foreignChatId,
-        organizationId: "org_2",
-        userId: "user_2",
-      });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toBe(message);
+    expect(await listAlerts(ctx.prisma, { projectId: "proj_1" })).toHaveLength(0);
+  }
 
-      const response = await action({
-        request: jsonRequest("https://test/api/v1/dashboard-agent/monitoring-alerts", {
-          chatId: "chat_1",
-          capabilityKey: "queue.depth",
-          condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
-          notifiers: [{ type: "chat", chatId: foreignChatId }],
-        }),
-        params: {},
-        context: {},
-      } as any);
+  postgresTest("create rejects a chat notifier", async ({ prisma, postgresContainer }) => {
+    await expectCreateRejected(
+      prisma,
+      postgresContainer.getConnectionUri(),
+      [...CHANNEL, { type: "chat", chatId: "chat_1" }],
+      "Chat notifiers are not supported"
+    );
+  });
 
-      expect(response.status).toBe(400);
-
-      const alerts = await listAlerts(ctx.prisma, { projectId: "proj_1" });
-      expect(alerts).toHaveLength(0);
-    }
-  );
+  postgresTest("create rejects omitted notifiers", async ({ prisma, postgresContainer }) => {
+    await expectCreateRejected(
+      prisma,
+      postgresContainer.getConnectionUri(),
+      undefined,
+      "At least one channel is required"
+    );
+  });
 
   postgresTest(
     "create stores params that satisfy alertParamsSchema",
@@ -622,6 +659,7 @@ describe("dashboard-agent monitoring alerts route", () => {
           chatId: "chat_1",
           capabilityKey: "queue.depth",
           condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
+          notifiers: CHANNEL,
         }),
         params: {},
         context: {},
@@ -652,6 +690,7 @@ describe("dashboard-agent monitoring alerts route", () => {
           scope: { type: "queue", queue: "worker-1" },
           windowSec: 60,
           condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
+          notifiers: CHANNEL,
         }),
         params: {},
         context: {},
@@ -827,40 +866,6 @@ describe("dashboard-agent monitoring alerts route", () => {
   );
 
   postgresTest(
-    "create fills chatId for an explicit chat notifier with none",
-    async ({ prisma, postgresContainer }) => {
-      await boot(prisma, postgresContainer.getConnectionUri());
-
-      const env = makeEnv("org_1", "proj_1", "env_prod", "slug13", "proj_ref13");
-      ctx.uatClaims = { userId: "user_1", environmentId: "env_prod", client: "dashboard-agent" };
-      ctx.alertContext = { ok: true, environment: env };
-
-      await createChat(ctx.agentDb, {
-        id: "chat_1",
-        organizationId: "org_1",
-        userId: "user_1",
-      });
-
-      const response = await action({
-        request: jsonRequest("https://test/api/v1/dashboard-agent/monitoring-alerts", {
-          chatId: "chat_1",
-          capabilityKey: "queue.depth",
-          condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
-          notifiers: [{ type: "chat" }],
-        }),
-        params: {},
-        context: {},
-      } as any);
-
-      expect(response.status).toBe(200);
-      const created = await response.json();
-
-      const row = await getAlert(ctx.prisma, { id: created.alert.id, projectId: "proj_1" });
-      expect(row!.notifiers).toEqual([{ type: "chat", chatId: "chat_1" }]);
-    }
-  );
-
-  postgresTest(
     "capabilities listing includes allowedScopes",
     async ({ prisma, postgresContainer }) => {
       await boot(prisma, postgresContainer.getConnectionUri());
@@ -896,6 +901,7 @@ describe("dashboard-agent monitoring alerts authorization", () => {
     chatId: "chat_1",
     capabilityKey: "queue.depth",
     condition: { kind: "threshold", operator: ">", value: 100, windowSec: 300 },
+    notifiers: [{ type: "channel", channelId: "chan_seeded" }],
   };
 
   async function seedAuthorized(prisma: PrismaClient, slugBase: string) {

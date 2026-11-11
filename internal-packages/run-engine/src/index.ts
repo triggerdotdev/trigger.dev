@@ -1,4 +1,5 @@
 export { RunEngine } from "./engine/index.js";
+export type { DeploymentStatusMode } from "./engine/types.js";
 // The engine's shutdown executor and its strict/best-effort gate. Exported so a caller that owns a
 // resource the engine writes to can compose the same drain semantics instead of restating them.
 export {
@@ -36,6 +37,7 @@ export { PassthroughControlPlaneResolver } from "./engine/controlPlaneResolver.j
 export type {
   ControlPlaneResolver,
   EnvDeletionState,
+  ResolvedDeploymentStatus,
   ResolvedEngineEnv,
   ResolvedAuthenticatedEnv,
   ResolvedWorkerVersion,
@@ -63,6 +65,7 @@ export type {
 // stays disabled by default until then.
 export {
   DEFAULT_TERMINAL_RETENTION_MS,
+  MAX_INLINE_COMPLETION_OUTPUT_BYTES,
   WaitpointCompletionConflictError,
   WaitpointNotFoundError,
   WaitpointStoreCoordinator,
@@ -94,6 +97,7 @@ export type {
   WaitpointStoreCoordinatorOptions,
   WatcherEntry,
 } from "./engine/waitpointCoordinator/storeCoordinator.js";
+export { StoreWaitpointCoordinator } from "./engine/waitpointCoordinator/storeWaitpointCoordinator.js";
 export { WaitpointFanoutWorker } from "./engine/waitpointCoordinator/fanoutWorker.js";
 export type {
   FanoutTickSummary,

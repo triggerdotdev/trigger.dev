@@ -4,7 +4,9 @@ import { logger } from "~/services/logger.server";
 import { rbac } from "~/services/rbac.server";
 import {
   ensureOrgMember,
+  type EnsureOrgMemberResult,
   ensureUserForDirectory,
+  OrganizationNotAcceptingMembersError,
   removeOrgMemberForDirectory,
 } from "~/models/orgMember.server";
 import { createPlatformNotification } from "~/services/platformNotifications.server";
@@ -81,12 +83,24 @@ async function applyEffect(effect: DirectorySyncEffect): Promise<string | null> 
           })
         ).userId;
 
-      const membership = await ensureOrgMember({
-        userId,
-        organizationId: effect.organizationId,
-        roleId: effect.roleId,
-        source: "directory_sync",
-      });
+      let membership: EnsureOrgMemberResult;
+      try {
+        membership = await ensureOrgMember({
+          userId,
+          organizationId: effect.organizationId,
+          roleId: effect.roleId,
+          source: "directory_sync",
+        });
+      } catch (error) {
+        // Existing members are untouched by this; only a new membership is refused.
+        if (error instanceof OrganizationNotAcceptingMembersError) {
+          logger.warn("Directory Sync: skipping provision for org not accepting members", {
+            organizationId: effect.organizationId,
+          });
+          return null;
+        }
+        throw error;
+      }
 
       if (effect.roleId && effect.roleAuthoritative) {
         const result = await rbac.setUserRole({

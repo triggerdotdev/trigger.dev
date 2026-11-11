@@ -3,7 +3,7 @@ import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { runOpsLegacyReplica, runOpsNewReplica, runOpsSplitReadEnabled } from "~/db.server";
 import { ApiBatchResultsPresenter } from "~/presenters/v3/ApiBatchResultsPresenter.server";
-import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { authenticateApiKeyWithScope } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { unroutableIdResponse } from "~/services/routeBuilders/unroutableId.server";
 
@@ -15,11 +15,15 @@ const ParamsSchema = z.object({
 export async function loader({ request, params }: LoaderFunctionArgs) {
   try {
     // Authenticate the request
-    const authenticationResult = await authenticateApiRequest(request);
-
-    if (!authenticationResult) {
-      return json({ error: "Invalid or Missing API Key" }, { status: 401 });
+    const authResult = await authenticateApiKeyWithScope(request, {
+      action: "read",
+      resource: { type: "batch", id: params.batchParam },
+      allowRunToken: true,
+    });
+    if (!authResult.ok) {
+      return json({ error: authResult.error }, { status: authResult.status });
     }
+    const authenticationResult = authResult.authentication;
 
     const parsed = ParamsSchema.safeParse(params);
 

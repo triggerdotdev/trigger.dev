@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { useOptionalOrganization, useOrganizationChanged } from "./useOrganizations";
 import { useOptionalUser, useUserChanged } from "./useUser";
 import { useOptionalProject, useProjectChanged } from "./useProject";
+import { firstTouchFromPostHogProps, type FirstTouch } from "~/utils/firstTouch";
 import { PostHogCaptureQueue } from "~/utils/postHogCaptureQueue";
 
 const captureQueue = new PostHogCaptureQueue((event, properties) =>
@@ -109,4 +110,14 @@ export function usePostHogTracking() {
   }, []);
 
   return { capture, startSessionRecording };
+}
+
+// The first touch PostHog stored for this browser; empty when PostHog isn't running or the user opted out.
+export function readPostHogFirstTouch(): FirstTouch {
+  try {
+    if (!posthog.__loaded || posthog.has_opted_out_capturing()) return {};
+    return firstTouchFromPostHogProps(posthog.persistence?.get_initial_props());
+  } catch {
+    return {};
+  }
 }

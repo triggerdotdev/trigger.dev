@@ -81,12 +81,12 @@ class CountingRunStore extends PostgresRunStore {
   // The residency store-selection guard. It is the FIRST statement of completeWaitpoint,
   // so counting it directly observes "the guard fired" before any completion DB step.
   // The single-store super returns `this`, so the SAME store keeps recording downstream.
-  override forWaitpointCompletion(
+  override async forWaitpointCompletion(
     waitpointId: string,
     context: Parameters<PostgresRunStore["forWaitpointCompletion"]>[1]
-  ): PostgresRunStore {
+  ): ReturnType<PostgresRunStore["forWaitpointCompletion"]> {
     this.calls.push("forWaitpointCompletion");
-    return super.forWaitpointCompletion(waitpointId, context) as PostgresRunStore;
+    return super.forWaitpointCompletion(waitpointId, context);
   }
   override async updateManyWaitpoints(
     args: Prisma.WaitpointUpdateManyArgs,
@@ -413,9 +413,8 @@ describe("WaitpointSystem create/block write routing", () => {
             legacyStore.calls.length = 0;
             beforeFlagChecks = checkedOrganizations.length;
             const result = await system.completeWaitpoint({ id, organizationId });
-            expect(checkedOrganizations.slice(beforeFlagChecks)).toEqual(
-              !wired ? [] : mode === "enabled" ? [organizationId, organizationId] : [organizationId]
-            );
+            // Native DATETIME rechecks after lock admission, before the router's mutation gate.
+            expectFlagChecks(beforeFlagChecks, native ? 3 : 2);
             expect(result.status).toBe("COMPLETED");
             const nativeDispatch = mode === "enabled" && native;
             expect(nativeDispatch ? legacyStore.calls : destinationStore.calls).toEqual([]);
@@ -472,9 +471,8 @@ describe("WaitpointSystem create/block write routing", () => {
             await expect(system.completeWaitpoint({ id: missing, organizationId })).rejects.toThrow(
               "Waitpoint not found"
             );
-            expect(checkedOrganizations.slice(beforeFlagChecks)).toEqual(
-              !wired ? [] : mode === "enabled" ? [organizationId, organizationId] : [organizationId]
-            );
+            // Missing native DATETIME identities follow the same admission and mutation gates.
+            expectFlagChecks(beforeFlagChecks, 3);
             expect(mode === "enabled" ? legacyStore.calls : destinationStore.calls).toEqual([]);
             // Unknown org and old payloads restore the original Postgres route without discovery.
             await router.clearRunBlockState({ runId: run.id, organizationId });
@@ -623,45 +621,6 @@ describe("WaitpointSystem create/block write routing", () => {
     }
   );
 
-  // clearBlockingWaitpoints routes the delete through the store.
-  containerTest("clearBlockingWaitpoints routes the delete", async ({ prisma, redisOptions }) => {
-    const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-    const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
-    const engine = buildEngine(prisma, redisOptions, store);
-
-    try {
-      const run = await triggerExecutingRun(
-        engine,
-        prisma,
-        env,
-        "test-task-d",
-        "run_d1234",
-        "sd1234"
-      );
-
-      const { waitpoint } = await engine.createManualWaitpoint({
-        environmentId: env.id,
-        projectId: env.projectId,
-      });
-      await engine.blockRunWithWaitpoint({
-        runId: run.id,
-        waitpoints: waitpoint.id,
-        projectId: env.projectId,
-        organizationId: env.organizationId,
-      });
-
-      store.calls.length = 0;
-      const count = await engine.waitpointSystem.clearBlockingWaitpoints({ runId: run.id });
-
-      expect(store.calls).toContain("deleteManyTaskRunWaitpoints");
-      expect(count).toBe(1);
-      const remaining = await prisma.taskRunWaitpoint.findMany({ where: { taskRunId: run.id } });
-      expect(remaining).toHaveLength(0);
-    } finally {
-      await engine.quit();
-    }
-  });
-
   // Single-DB binds one client (passthrough), proven by BEHAVIOR — a create + block
   // + clear round-trip resolves on the one configured client. The default-store engine has no
   // accessible store.prisma member, so we never assert store.prisma === prisma.
@@ -696,7 +655,10 @@ describe("WaitpointSystem create/block write routing", () => {
         const blocked = await prisma.taskRunWaitpoint.findMany({ where: { taskRunId: run.id } });
         expect(blocked).toHaveLength(1);
 
-        const cleared = await engine.waitpointSystem.clearBlockingWaitpoints({ runId: run.id });
+        const cleared = await engine.waitpointSystem.cleanupBlockersAfterAttemptFailure({
+          runId: run.id,
+          outcome: "terminal",
+        });
         expect(cleared).toBe(1);
         const after = await prisma.taskRunWaitpoint.findMany({ where: { taskRunId: run.id } });
         expect(after).toHaveLength(0);
@@ -1365,6 +1327,7 @@ describe("WaitpointSystem completion fan-out + residency store-selection guard",
         completedAt: new Date(),
         reason: "Cancelled by the user",
       });
+      assertNonNullable(result.snapshot);
       expect(result.snapshot.executionStatus).toBe("FINISHED");
 
       expect(store.calls).toContain("forWaitpointCompletion");

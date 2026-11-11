@@ -22,12 +22,10 @@ import { v3EnvironmentPath } from "~/utils/pathBuilder";
 import type { PreviewQueryResponse } from "~/v3/services/alerts/previewQuery.server";
 
 export type QueryAlertChat = {
-  chatId: string;
   ensure: () => Promise<{ chatId: string; release?: () => void } | undefined>;
 };
 
 const PREVIEW_FAILED = "Preview failed. Try again.";
-const CHAT_FAILED = "We couldn't set up this chat to receive the alert. Try again.";
 const CREATE_FAILED = "Failed to create the alert. Try again.";
 
 export function useQueryAlertDraft(
@@ -78,7 +76,7 @@ export function useQueryAlertDraft(
   const [editedName, setEditedName] = useState<string>();
   const name = editedName ?? suggestedName;
 
-  const flow = useCreationFlowState(undefined, { notifiers: chat ? ["chat"] : [] });
+  const flow = useCreationFlowState(undefined, { notifiers: [] });
   const [addingChannel, setAddingChannel] = useState(false);
   const channelsFetcher = useFetcher<{
     channels: AlertChannel[];
@@ -98,7 +96,7 @@ export function useQueryAlertDraft(
     onCreated: () => channelsFetcher.load(channelsPath),
   };
   const channels = channelsFetcher.data?.channels ?? [];
-  const steps = allSteps(flow, channels, chat?.chatId, addChannel);
+  const steps = allSteps(flow, channels, addChannel);
   const expiryStep = steps.find((step) => step.id === "expiry")!;
   const notifiersStep = steps.find((step) => step.id === "notifiers")!;
   const hasNotifier = notifiersStep.options.some(
@@ -159,11 +157,6 @@ export function useQueryAlertDraft(
     let session: Awaited<ReturnType<QueryAlertChat["ensure"]>>;
     try {
       session = await chat?.ensure();
-      if (chat && !session && flow.answers.notifiers?.includes("chat")) {
-        setCreateError(CHAT_FAILED);
-        setSubmitting(false);
-        return;
-      }
       const resp = await fetch(CREATE_ALERT_PATH, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -185,7 +178,7 @@ export function useQueryAlertDraft(
               expiry: flow.answers.expiry,
               notifiers: flow.answers.notifiers ?? [],
             },
-            session && { chatId: session.chatId, transcriptChatId: session.chatId }
+            session && { transcriptChatId: session.chatId }
           )
         ),
       });

@@ -115,10 +115,10 @@ describe("authenticateEnvVarApiRequest", () => {
     await expect(
       authenticateEnvVarApiRequest(new Request("https://example.com"), "write", dependencies)
     ).resolves.toEqual({ ok: true, authentication: { type: "apiKey", result: authentication } });
-    expect(authenticateApiKeyWithScope).toHaveBeenCalledWith(expect.any(Request), {
-      action: "write",
-      resource: { type: "envvars" },
-    });
+    expect(authenticateApiKeyWithScope).toHaveBeenCalledWith(
+      expect.any(Request),
+      expect.objectContaining({ action: "write", resource: { type: "envvars" } })
+    );
   });
 
   it("preserves scoped API-key failures", async () => {

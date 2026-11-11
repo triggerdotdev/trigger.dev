@@ -1,3 +1,4 @@
+import { withAdminApi } from "~/services/adminApi.server";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { type TaskRun, boundedIn } from "@trigger.dev/database";
 import { z } from "zod";
@@ -15,7 +16,7 @@ const Body = z.object({
 
 const MAX_BATCH_SIZE = 50;
 
-export async function action({ request }: ActionFunctionArgs) {
+async function handleAction({ request }: ActionFunctionArgs) {
   await requireAdminApiRequest(request);
 
   try {
@@ -70,3 +71,5 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: error instanceof Error ? error.message : error }, { status: 400 });
   }
 }
+
+export const action = withAdminApi(handleAction);

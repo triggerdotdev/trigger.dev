@@ -28,6 +28,7 @@ import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { engine } from "~/v3/runEngine.server";
 import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
+import { publicTokenSubject } from "~/services/publicTokenSubject.server";
 
 /**
  * Phase 1 of 2-phase batch API: Create a batch.
@@ -261,7 +262,7 @@ async function responseHeaders(
   const jwt = await generateJWT({
     secretKey: extractJwtSigningSecretKey(environment),
     payload: {
-      sub: environment.id,
+      sub: publicTokenSubject(environment.id),
       pub: true,
       scopes,
     },
@@ -269,7 +270,7 @@ async function responseHeaders(
   });
 
   return {
-    "x-trigger-jwt-claims": JSON.stringify({ sub: environment.id, pub: true }),
+    "x-trigger-jwt-claims": JSON.stringify({ sub: publicTokenSubject(environment.id), pub: true }),
     "x-trigger-jwt": jwt,
   };
 }

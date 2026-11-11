@@ -1,3 +1,4 @@
+import { withAdminApi } from "~/services/adminApi.server";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
@@ -6,7 +7,7 @@ import {
   type BillingLimitHitWebhookBody,
 } from "~/services/billingLimit.schemas";
 import { logger } from "~/services/logger.server";
-import { requireBillingServiceOrAdminApiRequest } from "~/services/billingServiceAuth.server";
+import { requireBillingServiceRequest } from "~/services/billingServiceAuth.server";
 import { bustBillingLimitCaches } from "~/services/platform.v3.server";
 import {
   enqueueBillingLimitCancelInProgressRuns,
@@ -20,8 +21,8 @@ const ParamsSchema = z.object({
 });
 
 /** Billing platform webhook: org entered billing limit grace. Idempotent — returns 202. */
-export async function action({ request, params }: ActionFunctionArgs) {
-  await requireBillingServiceOrAdminApiRequest(request);
+async function handleAction({ request, params }: ActionFunctionArgs) {
+  await requireBillingServiceRequest(request);
 
   if (request.method.toLowerCase() !== "post") {
     return json({ error: "Method not allowed" }, { status: 405 });
@@ -65,3 +66,5 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   return json({ success: true, accepted: true }, { status: 202 });
 }
+
+export const action = withAdminApi(handleAction);

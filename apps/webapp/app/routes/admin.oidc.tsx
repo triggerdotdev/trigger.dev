@@ -191,7 +191,7 @@ function KeySet({
           <Paragraph variant="small">{copy.description}</Paragraph>
           <Paragraph variant="small">
             {issuer
-              ? `Issuer: ${issuer}`
+              ? `Issuer: ${issuer}${purpose === "EXTERNAL_OIDC" ? "/<organization-slug>" : ""}`
               : `Disabled. Configure ${ISSUER_SETTING[purpose]} to enable it.`}
           </Paragraph>
         </div>
@@ -219,14 +219,10 @@ function KeySet({
             : "No active signing key. Token signing is disabled. Retained public keys can still verify existing tokens."}
       </Callout>
       {issuer && purpose === "EXTERNAL_OIDC" && (
-        <div className="flex gap-4 text-sm text-text-link">
-          <a href={`${issuer}/.well-known/openid-configuration`} target="_blank" rel="noreferrer">
-            Discovery document
-          </a>
-          <a href={`${issuer}/.well-known/jwks.json`} target="_blank" rel="noreferrer">
-            Public JWKS
-          </a>
-        </div>
+        <Paragraph variant="small">
+          Each organization issuer serves discovery at /.well-known/openid-configuration and public
+          keys at /.well-known/jwks.json. All organizations share this key set.
+        </Paragraph>
       )}
       <Table>
         <TableHeader>

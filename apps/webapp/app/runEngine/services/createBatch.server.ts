@@ -112,39 +112,89 @@ export class CreateBatchService extends WithRunEngine {
           // validate env existence app-side (passthrough when split is off).
           await controlPlaneResolver.assertEnvExists(environment.id);
 
-          // Created PENDING; sealed (status -> PROCESSING) once items are streamed.
-          const batch = await this._engine.runStore.createBatchTaskRun({
-            id,
-            friendlyId,
-            runtimeEnvironmentId: environment.id,
-            status: "PENDING",
-            runCount: body.runCount,
-            expectedCount: body.runCount,
-            runIds: [],
-            batchVersion: "runengine:v2", // 2-phase streaming batch API
-            oneTimeUseToken: options.oneTimeUseToken,
-            idempotencyKey: body.idempotencyKey,
-            sealed: false,
-          });
+          // Reject owed parent cleanup before creating the batch consumes its keys or token.
+          if (
+            parentRunInternalId &&
+            (await this._engine.waitpointSystem.isWaitpointStoreEnabled(environment.organizationId))
+          ) {
+            const admitBatch = async () => {
+              // Created PENDING; sealed (status -> PROCESSING) once items are streamed.
+              const batch = await this._engine.runStore.createBatchTaskRun({
+                id,
+                friendlyId,
+                runtimeEnvironmentId: environment.id,
+                status: "PENDING",
+                runCount: body.runCount,
+                expectedCount: body.runCount,
+                runIds: [],
+                batchVersion: "runengine:v2", // 2-phase streaming batch API
+                oneTimeUseToken: options.oneTimeUseToken,
+                idempotencyKey: body.idempotencyKey,
+                sealed: false,
+              });
 
-          this.onBatchTaskRunCreated.post(batch);
+              this.onBatchTaskRunCreated.post(batch);
 
-          await batchStreamGrants.mint(environment.id, friendlyId);
+              await batchStreamGrants.mint(environment.id, friendlyId);
 
-          // Block parent run if this is a batchTriggerAndWait
-          if (parentRunInternalId) {
-            await this._engine.scheduleExpireBatch({
-              batchId: batch.id,
-              availableAt: new Date(Date.now() + env.BATCH_SEAL_TIMEOUT_MS),
+              // Block parent run if this is a batchTriggerAndWait
+              if (parentRunInternalId) {
+                await this._engine.scheduleExpireBatch({
+                  batchId: batch.id,
+                  organizationId: environment.organizationId,
+                  availableAt: new Date(Date.now() + env.BATCH_SEAL_TIMEOUT_MS),
+                });
+
+                await this._engine.blockRunWithCreatedBatch({
+                  runId: parentRunInternalId,
+                  batchId: batch.id,
+                  environmentId: environment.id,
+                  projectId: environment.projectId,
+                  organizationId: environment.organizationId,
+                });
+              }
+            };
+            await this._engine.waitpointSystem.withLegacyRegistrationLock(
+              parentRunInternalId,
+              environment.organizationId,
+              admitBatch
+            );
+          } else {
+            // Created PENDING; sealed (status -> PROCESSING) once items are streamed.
+            const batch = await this._engine.runStore.createBatchTaskRun({
+              id,
+              friendlyId,
+              runtimeEnvironmentId: environment.id,
+              status: "PENDING",
+              runCount: body.runCount,
+              expectedCount: body.runCount,
+              runIds: [],
+              batchVersion: "runengine:v2", // 2-phase streaming batch API
+              oneTimeUseToken: options.oneTimeUseToken,
+              idempotencyKey: body.idempotencyKey,
+              sealed: false,
             });
 
-            await this._engine.blockRunWithCreatedBatch({
-              runId: parentRunInternalId,
-              batchId: batch.id,
-              environmentId: environment.id,
-              projectId: environment.projectId,
-              organizationId: environment.organizationId,
-            });
+            this.onBatchTaskRunCreated.post(batch);
+
+            await batchStreamGrants.mint(environment.id, friendlyId);
+
+            // Block parent run if this is a batchTriggerAndWait
+            if (parentRunInternalId) {
+              await this._engine.scheduleExpireBatch({
+                batchId: batch.id,
+                organizationId: environment.organizationId,
+                availableAt: new Date(Date.now() + env.BATCH_SEAL_TIMEOUT_MS),
+              });
+
+              await this._engine.blockRunWithCreatedBatch({
+                runId: parentRunInternalId,
+                batchId: batch.id,
+                environmentId: environment.id,
+                projectId: environment.projectId,
+                organizationId: environment.organizationId,
+              });
+            }
           }
 
           // Initialize batch metadata in Redis (without items)

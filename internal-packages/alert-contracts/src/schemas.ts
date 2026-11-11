@@ -1,9 +1,18 @@
 import { z } from "zod";
 
-export const alertAreaSchema = z.enum(["queues", "runs", "health", "limits", "errors", "query"]);
+export const alertAreaSchema = z.enum([
+  "queues",
+  "runs",
+  "health",
+  "limits",
+  "errors",
+  "query",
+  "grouped",
+]);
 export type AlertArea = z.infer<typeof alertAreaSchema>;
 
 export const AREA_DESCRIPTION: Partial<Record<AlertArea, string>> = {
+  grouped: "several alerts combined into one",
   limits:
     "Watch the limits that can interrupt or degrade runtime flow: when hit, they block, drop or slow runs and webhooks.",
 };
@@ -46,6 +55,7 @@ export const capabilityParamSchema = z.object({
   default: z.number().finite(),
   min: z.number().optional(),
   max: z.number().optional(),
+  component: z.string().optional(),
 });
 export type CapabilityParam = z.infer<typeof capabilityParamSchema>;
 
@@ -131,6 +141,7 @@ export const conditionSchema = z.discriminatedUnion("kind", [
     compositeMode: z.enum(["any", "all"]).optional(),
     signals: z.array(limitSignalSchema).optional(),
     components: z.array(z.string()).min(1).optional(),
+    memberAlertIds: z.array(z.string()).min(2).optional(),
   }),
   z.object({
     kind: z.literal("occurrence"),

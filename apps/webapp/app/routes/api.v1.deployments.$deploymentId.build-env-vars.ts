@@ -86,7 +86,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       );
     }
 
-    const decrypted = await decryptSecret(env.ENCRYPTION_KEY, envelope.data);
+    const decrypted = await decryptSecret(env.ENCRYPTION_KEYRING, envelope.data);
     const variables = z.record(z.string(), z.string()).parse(JSON.parse(decrypted));
 
     return json({ variables } satisfies GetDeploymentBuildEnvVarsResponseBody, { status: 200 });

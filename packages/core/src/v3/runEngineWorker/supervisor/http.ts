@@ -410,16 +410,39 @@ export class SupervisorHttpClient {
     );
   }
 
+  async preflightSuspend(
+    runId: string,
+    snapshotId: string,
+    runnerId?: string,
+    environmentId?: string
+  ) {
+    return this.request(
+      "preflight_suspend",
+      WorkerApiSuspendRunResponseBody,
+      `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/suspend/preflight`,
+      {
+        method: "POST",
+        headers: {
+          ...this.defaultHeaders,
+          ...this.runnerIdHeader(runnerId),
+          ...this.environmentIdHeader(environmentId),
+        },
+      }
+    );
+  }
+
   async submitSuspendCompletion({
     runId,
     snapshotId,
     runnerId,
+    environmentId,
     body,
   }: {
     runId: string;
     snapshotId: string;
     runnerId?: string;
     body: WorkerApiSuspendRunRequestBody;
+    environmentId?: string;
   }) {
     return this.request(
       "submit_suspend_completion",
@@ -430,6 +453,7 @@ export class SupervisorHttpClient {
         headers: {
           ...this.defaultHeaders,
           ...this.runnerIdHeader(runnerId),
+          ...this.environmentIdHeader(environmentId),
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),

@@ -178,6 +178,7 @@ export type InitializeBatchOptions = {
  * Result of completing a batch
  */
 export type CompleteBatchResult = {
+  organizationId?: string;
   /** The batch ID */
   batchId: string;
   /** Friendly IDs of successfully created runs */

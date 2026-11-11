@@ -388,6 +388,29 @@ describe("AlertsListPresenter", () => {
     expect(rows[0]!.lastEventAt).toEqual(occurredAt);
   });
 
+  it("lists a group but not its members", async () => {
+    const env = { ...BASE, environmentId: "env_grouped" };
+    const group = await createAlert(db, {
+      ...env,
+      capabilityKey: "alerts.group",
+      params: { scope: { type: "all" } },
+      condition: { kind: "state", stateKey: "group", compositeMode: "any", memberAlertIds: [] },
+      name: "the-group",
+      notifiers: [],
+    });
+    await createAlert(db, {
+      ...env,
+      capabilityKey: "queue.depth",
+      params: { queue: "q" },
+      condition: { kind: "threshold", operator: ">", value: 1, windowSec: 60 },
+      name: "a-member",
+      notifiers: [],
+      groupId: group.id,
+    });
+    const { rows } = await new AlertsListPresenter(db).call({ environmentId: "env_grouped" });
+    expect(rows.map((r) => r.name)).toEqual(["the-group"]);
+  });
+
   it("only returns alerts for the requested environment", async () => {
     await createAlert(db, {
       organizationId: "org_1",

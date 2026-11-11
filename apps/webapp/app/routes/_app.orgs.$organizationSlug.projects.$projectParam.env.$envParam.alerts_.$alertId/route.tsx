@@ -50,46 +50,22 @@ import { logger } from "~/services/logger.server";
 import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { canUseAlertsList } from "~/v3/canUseAlertsList.server";
-import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
+import { pickThresholdSeries } from "~/components/alerts/alertSeriesTypes";
+import { GROUP_CAPABILITY_KEY, type NotifierRef } from "@internal/alert-contracts";
+import { getAlert } from "~/v3/services/alerts/storage/alertStore.server";
+import { alertDisplayName } from "~/v3/services/alerts/alertDisplayName";
+import { editAlertGroup } from "~/v3/services/alerts/alertGroups.server";
 import {
-  buildHealthBands,
-  pickThresholdSeries,
-  type HealthBandRow,
-  type HealthQuerySeries,
-  type MetricSeriesPoint,
-} from "~/components/alerts/alertSeriesTypes";
+  groupScopeSummary,
+  type AlertSeriesBundle,
+  type GroupMemberTile,
+} from "~/components/alerts/groupMembers";
 import {
-  getHealthQuerySeries,
-  getLimitTileSeries,
-} from "~/v3/services/alerts/healthQuerySeries.server";
-import {
-  alertLifetimeWindow,
-  getMetricSeries,
-  planHealthChartEvents,
-} from "~/v3/services/alerts/alertSeries.server";
-import {
-  getCapability,
-  alertParamsSchema,
-  conditionSchema,
-  notifierRefKey,
-  type NotifierRef,
-} from "@internal/alert-contracts";
-import { chatExists } from "@internal/dashboard-agent-db";
-import {
-  getAlert,
-  latestAlertEventBefore,
-  ALERT_EVENT_WINDOW_CAP,
-  listAlertEventsInWindow,
-} from "~/v3/services/alerts/storage/alertStore.server";
-import { createQueryRowRunner } from "~/v3/services/alerts/engine/productionEvaluateBinding.server";
-import {
-  getQueryAlertSeries,
-  type QuerySeriesMode,
-} from "~/v3/services/alerts/queryAlerts/queryAlertSeries.server";
-import {
-  CUSTOM_QUERY_CAPABILITY,
-  resolveAlertCapability,
-} from "~/v3/services/alerts/queryAlerts/resolveAlertCapability.server";
+  EMPTY_SERIES,
+  loadAlertSeries,
+  loadGroupMemberTiles,
+  resolveAlertDetailWindow,
+} from "./alertDetailSeries.server";
 import {
   AlertNotFoundError,
   AlertActionNotAllowedError,
@@ -101,15 +77,14 @@ import {
 } from "~/v3/services/alerts/alertActions.server";
 import {
   NoNotifiersError,
+  ChatNotifiersNotSupportedError,
   uniqueNotifiers,
 } from "~/v3/services/alerts/createAlertFromDraft.server";
 import {
   buildNotifierOptions,
   parseNotifierKey,
-  validateChatRef,
   type EditableChannel,
 } from "./editNotifierOptions";
-import { healthBucketMs } from "./healthBucketMs.server";
 import { boundedIn, type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
@@ -130,10 +105,9 @@ import type { EditAlertPrefill } from "~/components/alerts/EditAlertTranscript";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { AlertActivityTable } from "~/components/alerts/AlertActivityTable";
 import { activityRowLink } from "./activityRowLink";
-import type { LimitTileSeries } from "~/components/alerts/limitTiles";
-import { AlertDetailChart } from "~/components/alerts/AlertDetailChart";
+import { AlertDetailChart, AlertDetailFilterBar } from "~/components/alerts/AlertDetailChart";
 import { AlertDetailSidebar } from "~/components/alerts/AlertDetailSidebar";
-import { alertDetailWindow, healthEventsForBands } from "~/components/alerts/alertDetailWindow";
+import { GroupMemberTiles, GroupMembershipBanner } from "~/components/alerts/GroupMemberTiles";
 import { availableAlertChannelWhere } from "~/v3/services/alerts/validateNotifierChannels.server";
 import { EXPIRY_CHIPS } from "~/components/dashboard-agent/alert-creation/flow-state";
 export const meta = pageMeta("Alert");
@@ -186,15 +160,11 @@ export const loader = dashboardLoader(
       projectId: project.id,
       environmentId: environment.id,
     });
-    const detailWindow = alertDetailWindow(
-      {
-        period,
-        from: parseTimestamp(fromStr),
-        to: parseTimestamp(toStr),
-      },
-      rawAlert ? alertLifetimeWindow(rawAlert) : undefined,
-      rawAlert?.createdAt
-    );
+    const detailWindow = resolveAlertDetailWindow({
+      rawAlert,
+      params: { period, from: parseTimestamp(fromStr), to: parseTimestamp(toStr) },
+      maxWindowDays: env.ALERT_DETAIL_MAX_WINDOW_DAYS,
+    });
 
     const presenter = new AlertDetailPresenter();
     const alert = await presenter.call({
@@ -208,108 +178,42 @@ export const loader = dashboardLoader(
     }
 
     const now = new Date();
-    let metricSeriesEntries: [string, MetricSeriesPoint[]][] = [];
-    let healthBands: HealthBandRow[] = [];
-    let componentSeries: HealthQuerySeries[] = [];
-    let limitTiles: LimitTileSeries[] = [];
-    let queryGroups: string[] = [];
-    let querySeriesMode: QuerySeriesMode | undefined;
+    const isGroup = rawAlert.capabilityKey === GROUP_CAPABILITY_KEY;
+    const memberIds = isGroup
+      ? ((rawAlert.condition as { memberAlertIds?: string[] }).memberAlertIds ?? [])
+      : [];
+    let series: AlertSeriesBundle = EMPTY_SERIES;
+    let memberTiles: GroupMemberTile[] = [];
     try {
-      const capability = getCapability(rawAlert.capabilityKey);
-
-      if (alert.kind === "state") {
-        const [events, seedEvent, queryLines, tiles] = await Promise.all([
-          listAlertEventsInWindow(prisma, alertId, {
-            since: detailWindow.since,
-            until: detailWindow.until,
-            limit: ALERT_EVENT_WINDOW_CAP + 1,
-          }),
-          latestAlertEventBefore(prisma, alertId, detailWindow.since),
-          capability?.binding.type === "query"
-            ? getHealthQuerySeries(
-                {
-                  alertId,
-                  capability,
-                  params: rawAlert.params,
-                  condition: rawAlert.condition,
-                  organizationId: project.organizationId,
-                  projectId: project.id,
-                  window: detailWindow,
-                },
-                createQueryRowRunner(undefined, { lane: "alerts" })
-              ).catch(() => undefined)
-            : undefined,
-          capability?.binding.type === "query"
-            ? getLimitTileSeries(
-                {
-                  alertId,
-                  capability,
-                  params: rawAlert.params,
-                  condition: rawAlert.condition,
-                  organizationId: project.organizationId,
-                  projectId: project.id,
-                  window: detailWindow,
-                },
-                createQueryRowRunner(undefined, { lane: "alerts" })
-              ).catch(() => [])
-            : [],
-        ]);
-        componentSeries = queryLines?.series ?? [];
-        limitTiles = tiles;
-        const chart = planHealthChartEvents({
-          seed: seedEvent,
-          events,
-          healthySince:
-            rawAlert.lifecycle === "active" && rawAlert.lastEvaluatedAt != null
-              ? rawAlert.createdAt.getTime()
-              : undefined,
-          cap: ALERT_EVENT_WINDOW_CAP,
+      if (!isGroup) {
+        series = await loadAlertSeries(prisma, {
+          alertId,
+          kind: alert.kind,
+          rawAlert,
+          window: detailWindow,
+          project,
         });
-        healthBands = buildHealthBands(
-          healthEventsForBands(chart.events),
-          detailWindow.until.getTime(),
-          detailWindow.since.getTime(),
-          healthBucketMs(detailWindow, capability?.minCadenceSec ?? 300),
-          chart.healthySince
-        );
-      } else if (rawAlert.capabilityKey === CUSTOM_QUERY_CAPABILITY) {
-        const params = alertParamsSchema.parse(rawAlert.params);
-        const seriesMap = await getQueryAlertSeries(
+      }
+      if (isGroup) {
+        memberTiles = await loadGroupMemberTiles(
+          prisma,
           {
-            alert: {
-              id: rawAlert.id,
-              organizationId: project.organizationId,
-              projectId: project.id,
-              params,
-            },
-            capability: resolveAlertCapability(rawAlert),
-            condition: conditionSchema.parse(rawAlert.condition),
+            memberIds,
+            concurrency: Math.max(1, Math.floor(env.ALERTS_QUERY_CONCURRENCY_LIMIT / 2)),
             window: detailWindow,
+            project,
+            environmentId: environment.id,
           },
-          createQueryRowRunner(undefined, { userAuthoredQuery: true })
-        );
-        metricSeriesEntries = Array.from(seriesMap.entries());
-        queryGroups = params.querySignal?.groupColumns?.length
-          ? metricSeriesEntries.map(([key]) => key)
-          : [];
-        querySeriesMode = params.querySignal?.mode;
-      } else if (capability?.binding.type === "query") {
-        const params = alertParamsSchema.parse(rawAlert.params);
-        const runner = createQueryRowRunner();
-        const metricMap = await getMetricSeries(
           {
-            alertId,
-            capability,
-            params,
-            condition: conditionSchema.parse(rawAlert.condition),
-            organizationId: project.organizationId,
-            projectId: project.id,
-            window: detailWindow,
-            failureRateMinVolume: env.ALERT_FAILURE_RATE_MIN_VOLUME,
-          },
-          runner
+            getDetail: (id) =>
+              presenter.call({
+                id,
+                projectId: project.id,
+                environmentId: environment.id,
+                eventsWindow: detailWindow,
+              }),
+          }
         );
-        metricSeriesEntries = Array.from(metricMap.entries());
       }
     } catch (error) {
       if (error instanceof Response) throw error;
@@ -323,6 +227,14 @@ export const loader = dashboardLoader(
       });
     }
 
+    const parentGroup = rawAlert.groupId
+      ? await getAlert(prisma, {
+          id: rawAlert.groupId,
+          projectId: project.id,
+          environmentId: environment.id,
+        })
+      : null;
+
     const channels: EditableChannel[] = await prisma.projectAlertChannel.findMany({
       where: availableAlertChannelWhere({
         projectId: project.id,
@@ -334,29 +246,29 @@ export const loader = dashboardLoader(
 
     return typedjson({
       ...(await hasLegacyAlerts(project.id)),
-      alert,
-      metricSeriesEntries,
-      healthBands,
-      componentSeries,
-      limitTiles,
-      queryGroups,
-      querySeriesMode,
+      alert: isGroup
+        ? { ...alert, scopeSummary: groupScopeSummary(memberTiles.map((t) => t.name)) }
+        : alert,
+      ...series,
+      memberTiles,
+      memberOf: parentGroup ? { id: parentGroup.id, name: alertDisplayName(parentGroup) } : null,
       channels,
       now,
       window: detailWindow,
       createdAt: rawAlert.createdAt,
       permissions: {
         canWrite: ability.can("write", { type: "alerts", envType: environment.type }),
-        canDelete: ability.can("delete", { type: "alerts", envType: environment.type }),
       },
     });
   }
 );
 
 const AlertActionFormSchema = z.object({
-  intent: z.enum(["resolve", "stop", "delete", "activate", "edit"]),
+  intent: z.enum(["resolve", "stop", "delete", "activate", "edit", "ungroup"]),
+  compositeMode: z.enum(["any", "all"]).optional(),
   notifierIds: z.string().optional(),
   expiresAt: z.string().optional(),
+  name: z.string().trim().min(1).max(120).optional(),
   respond: z.literal("json").optional(),
 });
 
@@ -406,50 +318,16 @@ async function resolveEditedNotifiers(
   if (parsed.length !== rawKeys.length) {
     return { error: "Invalid notifier" };
   }
+  if (parsed.some((n) => n.type === "chat")) {
+    return { error: new ChatNotifiersNotSupportedError().message };
+  }
   const channelError = await checkChannels(
     parsed as NotifierRef[],
     ctx.projectId,
     ctx.environmentType
   );
   if (channelError) return { error: channelError };
-  const current = await getAlert(prisma, {
-    id: ctx.alertId,
-    projectId: ctx.projectId,
-    environmentId: ctx.environmentId,
-  });
-  const currentRefs = (current?.notifiers ?? []) as NotifierRef[];
-  const currentByKey = new Map(currentRefs.map((ref) => [notifierRefKey(ref), ref]));
-  const chatRefs = parsed.filter(
-    (n): n is Extract<typeof n, { type: "chat" }> =>
-      n.type === "chat" && !currentByKey.has(notifierRefKey(n as NotifierRef))
-  );
-  for (const chat of chatRefs) {
-    const chatError = validateChatRef(chat, ctx.userId);
-    if (chatError) {
-      return { error: chatError };
-    }
-    const chatIdToCheck = chat.chatId ?? chat.conversationId;
-    if (chatIdToCheck) {
-      const exists = await chatExists(dashboardAgentDb, {
-        chatId: chatIdToCheck,
-        userId: ctx.userId,
-        organizationId: ctx.organizationId,
-      });
-      if (!exists) {
-        return { error: "Unauthorized chat notifier" };
-      }
-    }
-  }
-  const kept = parsed.map((n) => currentByKey.get(notifierRefKey(n as NotifierRef)) ?? n);
-  const keptKeys = new Set(kept.map((n) => notifierRefKey(n as NotifierRef)));
-  const foreign = currentRefs.filter(
-    (ref) =>
-      ref.type === "chat" &&
-      Boolean(ref.userId) &&
-      ref.userId !== ctx.userId &&
-      !keptKeys.has(notifierRefKey(ref))
-  );
-  const notifiers = uniqueNotifiers([...kept, ...foreign] as NotifierRef[]);
+  const notifiers = uniqueNotifiers(parsed as NotifierRef[]);
   if (notifiers.length === 0) {
     return { error: new NoNotifiersError().message };
   }
@@ -490,13 +368,6 @@ export const action = dashboardAction(
     const submission = AlertActionFormSchema.safeParse(Object.fromEntries(formData));
     if (!submission.success) {
       return json({ error: "Invalid action" }, { status: 400 });
-    }
-
-    if (
-      submission.data.intent === "delete" &&
-      !ability.can("delete", { type: "alerts", envType: environment.type })
-    ) {
-      throwPermissionDenied();
     }
 
     const ctx = {
@@ -540,6 +411,22 @@ export const action = dashboardAction(
           expiresAt,
           notifiers,
         });
+        if (submission.data.name !== undefined) {
+          await editAlert(prisma, {
+            alertId,
+            projectId: project.id,
+            environmentId: environment.id,
+            name: submission.data.name,
+          });
+        }
+        if (submission.data.compositeMode) {
+          await editAlertGroup(prisma, {
+            groupId: alertId,
+            projectId: project.id,
+            environmentId: environment.id,
+            compositeMode: submission.data.compositeMode,
+          });
+        }
       } else if (submission.data.intent === "edit") {
         const expiresAt = parseExpiryField(submission.data.expiresAt);
         if (expiresAt === "invalid" || (expiresAt && expiresAt.getTime() <= Date.now())) {
@@ -551,12 +438,21 @@ export const action = dashboardAction(
           if ("error" in resolved) return json({ error: resolved.error }, { status: 400 });
           notifiers = resolved.notifiers;
         }
+        if (submission.data.compositeMode) {
+          await editAlertGroup(prisma, {
+            groupId: alertId,
+            projectId: project.id,
+            environmentId: environment.id,
+            compositeMode: submission.data.compositeMode,
+          });
+        }
         await editAlert(prisma, {
           alertId,
           projectId: project.id,
           environmentId: environment.id,
           notifiers,
           expiresAt,
+          name: submission.data.name,
         });
       } else {
         await performAlertAction(prisma, {
@@ -591,7 +487,7 @@ export const action = dashboardAction(
     if (submission.data.respond === "json") {
       return json({ ok: true });
     }
-    if (submission.data.intent === "delete") {
+    if (submission.data.intent === "delete" || submission.data.intent === "ungroup") {
       return redirect(
         v3ProjectAlertsPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam })
       );
@@ -618,7 +514,7 @@ function ActionError() {
   );
 }
 
-type AlertPermissions = { canWrite: boolean; canDelete: boolean };
+type AlertPermissions = { canWrite: boolean };
 
 export function DetailActionsMenu({
   alert,
@@ -635,6 +531,7 @@ export function DetailActionsMenu({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [ungroupOpen, setUngroupOpen] = useState(false);
   const close = () => setMenuOpen(false);
   const agent = useDashboardAgent();
   const submittingIntent = useSubmittingIntent();
@@ -672,12 +569,23 @@ export function DetailActionsMenu({
           )}
           {alert.status.status === "inactive" && (
             <GatedMenuItem
-              allowed={permissions.canWrite && permissions.canDelete}
+              allowed={permissions.canWrite}
               icon={TrashIcon}
               title="Delete"
               onClick={() => {
                 close();
                 setDeleteOpen(true);
+              }}
+            />
+          )}
+          {alert.capabilityKey === GROUP_CAPABILITY_KEY && (
+            <GatedMenuItem
+              allowed={permissions.canWrite}
+              icon={TrashIcon}
+              title="Ungroup"
+              onClick={() => {
+                close();
+                setUngroupOpen(true);
               }}
             />
           )}
@@ -693,6 +601,7 @@ export function DetailActionsMenu({
           )}
         </PopoverContent>
       </Popover>
+      <UngroupDialog open={ungroupOpen} onOpenChange={setUngroupOpen} />
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent>
           <DialogHeader>Delete alert</DialogHeader>
@@ -727,6 +636,42 @@ function useSubmittingIntent(): AlertActionIntent | null {
   return navigation.state !== "idle" && navigation.formMethod === "post"
     ? (navigation.formData?.get("intent") as AlertActionIntent | null)
     : null;
+}
+
+function UngroupDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const submittingIntent = useSubmittingIntent();
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>Ungroup alerts</DialogHeader>
+        <DialogDescription className="mt-2">
+          This deletes the group. Its alerts keep running and notify on their own again.
+        </DialogDescription>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="secondary/medium">Cancel</Button>
+          </DialogClose>
+          <Form method="post">
+            <Button
+              type="submit"
+              name="intent"
+              value="ungroup"
+              variant="danger/medium"
+              disabled={submittingIntent === "ungroup"}
+            >
+              {submittingIntent === "ungroup" ? "Ungrouping…" : "Ungroup"}
+            </Button>
+          </Form>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 export function HeaderActions({
@@ -802,14 +747,19 @@ export function HeaderActions({
 function DetailSidebar({
   alert,
   permissions,
+  members,
+  inGroup,
   onEdit,
   onActivate,
 }: {
   alert: AlertDetail;
   permissions: AlertPermissions;
+  members: { id: string; name: string }[];
+  inGroup: boolean;
   onEdit: () => void;
   onActivate: () => void;
 }) {
+  const isGroup = alert.capabilityKey === GROUP_CAPABILITY_KEY;
   const agent = useDashboardAgent();
   const organization = useOrganization();
   const project = useProject();
@@ -837,6 +787,16 @@ function DetailSidebar({
       alert={alert}
       environmentTitle={environmentFullTitle(environment)}
       objectLinkPath={objectLinkPath}
+      inGroup={inGroup}
+      alerts={
+        isGroup
+          ? members.map((m) => ({
+              id: m.id,
+              name: m.name,
+              path: v3AlertPath(organization, project, environment, m.id),
+            }))
+          : undefined
+      }
       actions={
         <DetailActionsMenu
           alert={alert}
@@ -893,6 +853,7 @@ export function editPrefill(alert: AlertDetail): EditAlertPrefill {
     scopeSummary: alert.scopeSummary,
     notifiers: alert.notifiers.map((n) => ({ key: n.key, label: n.label })),
     expiresAt: alert.expiresAt ? new Date(alert.expiresAt).toISOString() : null,
+    compositeMode: alert.capabilityKey === GROUP_CAPABILITY_KEY ? alert.compositeMode : undefined,
   };
 }
 
@@ -939,6 +900,8 @@ export function EditAlertPanel({
     expiryChoice === "custom" && alert.expiresAt ? toLocalInput(new Date(alert.expiresAt)) : ""
   );
   const expiresAt = expiryField(expiryChoice, customExpiry);
+  const [name, setName] = useState(alert.name);
+  const nameValid = name.trim().length >= 1 && name.trim().length <= 120;
 
   const options = buildNotifierOptions(channels, alert.notifiers);
   const currentKeys = new Set(alert.notifiers.map((n) => n.key));
@@ -987,6 +950,24 @@ export function EditAlertPanel({
               wrap
             />
           </div>
+          {alert.capabilityKey === GROUP_CAPABILITY_KEY && (
+            <fieldset className="flex flex-col gap-1.5">
+              <legend className="pb-1.5 text-xs font-medium text-text-dimmed">Fires when</legend>
+              {(["any", "all"] as const).map((value) => (
+                <label key={value} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="compositeMode"
+                    value={value}
+                    defaultChecked={alert.compositeMode === value}
+                  />
+                  <span className="text-text-bright">
+                    {value === "any" ? "Any alert fires" : "All alerts fire"}
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+          )}
           <div className="flex flex-col gap-1">
             <span className="text-xs font-medium text-text-dimmed">Scope</span>
             <span className="text-sm text-text-bright">{alert.scopeSummary}</span>
@@ -1040,6 +1021,18 @@ export function EditAlertPanel({
               )}
             </div>
           </div>
+          <fieldset className="flex flex-col gap-1.5">
+            <legend className="pb-1.5 text-xs font-medium text-text-dimmed">Name</legend>
+            <input
+              type="text"
+              name="name"
+              aria-label="Name"
+              value={name}
+              maxLength={120}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full rounded border border-grid-bright bg-transparent px-2 py-1 text-sm text-text-bright"
+            />
+          </fieldset>
           {activate && <span className="text-xs text-text-dimmed">Watching resumes from now</span>}
           <ActionError />
           <div className="flex items-center gap-2 pt-2">
@@ -1049,7 +1042,7 @@ export function EditAlertPanel({
             <Button
               type="submit"
               variant="primary/small"
-              disabled={submitting || (activate && (!expiresAt || !notifierIds))}
+              disabled={submitting || !nameValid || (activate && (!expiresAt || !notifierIds))}
             >
               {activate
                 ? submitting
@@ -1083,7 +1076,10 @@ export default function Page() {
     permissions,
     queryGroups,
     querySeriesMode,
+    memberTiles,
+    memberOf,
   } = useTypedLoaderData<typeof loader>();
+  const isGroup = alert.capabilityKey === GROUP_CAPABILITY_KEY;
   const [searchParams, setSearchParams] = useSearchParams();
   const editMode = searchParams.get("edit") === "1";
   const openEdit = (activate: boolean) =>
@@ -1147,24 +1143,55 @@ export default function Page() {
         />
       </NavBar>
       <div className="grid grid-rows-[auto_1fr] overflow-hidden">
-        <LegacyAlertsBanner show={showLegacyBanner} />
+        <div>
+          <LegacyAlertsBanner show={showLegacyBanner} />
+          {memberOf && (
+            <GroupMembershipBanner
+              name={memberOf.name}
+              to={v3AlertPath(organization, project, environment, memberOf.id)}
+            />
+          )}
+        </div>
         <PageBody scrollable={false} className="row-start-2">
           <ResizablePanelGroup orientation="horizontal" className="max-h-full">
             <ResizablePanel id="alert-main" min="300px">
-              <div className="grid h-full grid-rows-[minmax(16rem,auto)_1fr] overflow-hidden">
-                <AlertDetailChart
-                  alert={alert}
-                  metricSeriesMap={metricSeriesMap}
-                  healthBands={healthBands}
-                  componentSeries={componentSeries}
-                  limitTiles={limitTiles}
-                  window={detailWindow}
-                  now={now}
-                  createdAt={createdAt}
-                  queryGroups={queryGroups}
-                  querySeriesMode={querySeriesMode}
-                />
-                <ActivityPanel alert={alert} now={now} />
+              <div
+                className={
+                  isGroup
+                    ? "flex h-full flex-col overflow-y-auto"
+                    : "grid h-full grid-rows-[minmax(16rem,auto)_1fr] overflow-hidden"
+                }
+              >
+                {isGroup ? (
+                  <div className="flex items-center gap-2 border-b border-grid-bright px-3 py-2">
+                    <AlertDetailFilterBar
+                      lifetime={detailWindow.isLifetime ? detailWindow : undefined}
+                    />
+                  </div>
+                ) : (
+                  <AlertDetailChart
+                    alert={alert}
+                    metricSeriesMap={metricSeriesMap}
+                    healthBands={healthBands}
+                    componentSeries={componentSeries}
+                    limitTiles={limitTiles}
+                    window={detailWindow}
+                    now={now}
+                    createdAt={createdAt}
+                    queryGroups={queryGroups}
+                    querySeriesMode={querySeriesMode}
+                  />
+                )}
+                {isGroup && (
+                  <GroupMemberTiles tiles={memberTiles} window={detailWindow} now={now} />
+                )}
+                {isGroup ? (
+                  <div className="h-96 shrink-0">
+                    <ActivityPanel alert={alert} now={now} />
+                  </div>
+                ) : (
+                  <ActivityPanel alert={alert} now={now} />
+                )}
               </div>
             </ResizablePanel>
             <ResizableHandle id="alert-detail-handle" />
@@ -1178,6 +1205,8 @@ export default function Page() {
               <DetailSidebar
                 alert={displayAlert}
                 permissions={permissions}
+                members={memberTiles}
+                inGroup={memberOf !== null}
                 onEdit={() => openEdit(false)}
                 onActivate={() => openEdit(true)}
               />

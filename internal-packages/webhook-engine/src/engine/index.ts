@@ -1112,6 +1112,7 @@ export class WebhookEngine {
         const message = waiterLimitMessage(registered.reason, limits);
         await ports.fail({
           environmentId: input.environmentId,
+          organizationId: endpoint.organizationId,
           waitpointId: waiterId,
           error: { name: "WebhookWaiterLimitError", message, reason: registered.reason },
         });
@@ -1147,6 +1148,7 @@ export class WebhookEngine {
    */
   async cancelWaiter(input: {
     environmentId: string;
+    organizationId?: string;
     waiterId: string;
     /** Only cancel the waiter if it waits on this endpoint. */
     endpointId?: string;
@@ -1177,6 +1179,7 @@ export class WebhookEngine {
         this.#waitersReleased({ environmentId: input.environmentId });
         await ports.fail({
           environmentId: input.environmentId,
+          organizationId: input.organizationId,
           waitpointId: input.waiterId,
           error: {
             name: "WebhookWaiterCancelledError",

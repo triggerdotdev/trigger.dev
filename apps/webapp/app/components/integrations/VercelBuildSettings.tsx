@@ -1,6 +1,6 @@
 import { Switch } from "~/components/primitives/Switch";
 import { LinkButton } from "~/components/primitives/Buttons";
-import { Badge } from "~/components/primitives/Badge";
+import { DeprecatedBadge } from "~/components/FeatureBadges";
 import { Label } from "~/components/primitives/Label";
 import {
   SettingsRow,
@@ -154,7 +154,7 @@ export function BuildSettingsFields({
           <div className="flex-1 space-y-1">
             <SettingsRowTitle>
               <span className="flex items-center gap-2">
-                Atomic deployments <DeprecatedBadge />
+                Atomic deployments <DeprecatedBadge tooltip="Use version skew protection instead" />
               </span>
             </SettingsRowTitle>
             <SettingsRowDescription>
@@ -364,7 +364,7 @@ export function BuildSettingsFields({
           <div className="flex items-center justify-between">
             <Label>
               <span className="flex items-center gap-2">
-                Atomic deployments <DeprecatedBadge />
+                Atomic deployments <DeprecatedBadge tooltip="Use version skew protection instead" />
               </span>
             </Label>
             <Switch
@@ -434,24 +434,6 @@ export function BuildSettingsFields({
           </div>
         )}
     </>
-  );
-}
-
-function DeprecatedBadge() {
-  return (
-    <SimpleTooltip
-      asChild
-      button={
-        <Badge
-          variant="extra-small"
-          className="text-warning system:border-transparent system:bg-warning system:text-white"
-        >
-          Deprecated
-        </Badge>
-      }
-      content="Use version skew protection instead"
-      disableHoverableContent
-    />
   );
 }
 

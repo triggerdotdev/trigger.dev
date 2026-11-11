@@ -47,15 +47,14 @@ describe("calculateNextSchedulableOccurrence", () => {
   const hourlySchedule = "0 * * * *";
   const window = { type: "percentage", percentage: 100 } as const;
 
-  it("restores wall-clock catch-up behavior when spreading is disabled", () => {
+  it("preserves nominal eligibility for a zero phase", () => {
     const occurrence = calculateNextSchedulableOccurrence({
       schedule: hourlySchedule,
       timezone: "UTC",
       afterNominal: new Date("2026-08-11T09:00:00.000Z"),
       now: new Date("2026-08-11T12:30:00.000Z"),
-      schedulePhase: (SCHEDULE_PHASE_DENOMINATOR * 3) / 4,
+      schedulePhase: 0,
       window,
-      cronSpreadEnabled: false,
     });
 
     expect(occurrence.nominalAt).toEqual(new Date("2026-08-11T13:00:00.000Z"));
@@ -71,7 +70,6 @@ describe("calculateNextSchedulableOccurrence", () => {
       now: new Date("2026-08-11T10:00:01.000Z"),
       schedulePhase: (SCHEDULE_PHASE_DENOMINATOR * 3) / 4,
       window,
-      cronSpreadEnabled: true,
     });
 
     expect(occurrence.nominalAt).toEqual(new Date("2026-08-11T10:00:00.000Z"));
@@ -87,7 +85,6 @@ describe("calculateNextSchedulableOccurrence", () => {
       now: new Date("2026-08-11T12:30:00.000Z"),
       schedulePhase: (SCHEDULE_PHASE_DENOMINATOR * 3) / 4,
       window,
-      cronSpreadEnabled: true,
     });
 
     expect(occurrence.nominalAt).toEqual(new Date("2026-08-11T12:00:00.000Z"));
@@ -103,7 +100,6 @@ describe("calculateNextSchedulableOccurrence", () => {
       now: new Date("2026-08-11T12:30:00.000Z"),
       schedulePhase: SCHEDULE_PHASE_DENOMINATOR / 4,
       window,
-      cronSpreadEnabled: true,
     });
 
     expect(occurrence.nominalAt).toEqual(new Date("2026-08-11T13:00:00.000Z"));
@@ -119,7 +115,6 @@ describe("calculateNextSchedulableOccurrence", () => {
       now: new Date("2026-08-11T12:00:00.000Z"),
       schedulePhase: 0,
       window,
-      cronSpreadEnabled: true,
     });
 
     expect(occurrence.nominalAt).toEqual(new Date("2026-08-11T12:00:00.000Z"));

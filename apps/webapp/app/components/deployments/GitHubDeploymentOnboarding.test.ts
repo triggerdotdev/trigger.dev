@@ -312,3 +312,9 @@ it("tells the user a missing branch has to be pushed instead of asking them to r
     "Couldn't start the deployment. Try again."
   );
 });
+
+// Catches: the onboarding panel telling a gated org to retry instead of showing how to add a card.
+it("shows the card step instead of a retry when deploy now needs a verified card", () => {
+  const card = "Unlock your Free tier credits to deploy.";
+  expect(deployNowRequestError({ code: "CARD_VERIFICATION_REQUIRED", error: card })).toBe(card);
+});

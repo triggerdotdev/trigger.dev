@@ -1,3 +1,4 @@
+import { withAdminApi } from "~/services/adminApi.server";
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
@@ -28,7 +29,7 @@ const CreateRunReplicationServiceParams = z.object({
 
 type CreateRunReplicationServiceParams = z.infer<typeof CreateRunReplicationServiceParams>;
 
-export async function action({ request }: ActionFunctionArgs) {
+async function handleAction({ request }: ActionFunctionArgs) {
   await requireAdminApiRequest(request);
 
   try {
@@ -103,3 +104,5 @@ function createRunReplicationService(params: CreateRunReplicationServiceParams) 
 
   return service;
 }
+
+export const action = withAdminApi(handleAction);

@@ -1,3 +1,4 @@
+import { withAdminApi } from "~/services/adminApi.server";
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
@@ -21,7 +22,7 @@ const SearchParamsSchema = z.object({
     .optional(),
 });
 
-export async function loader({ request, params }: LoaderFunctionArgs) {
+async function handleLoader({ request, params }: LoaderFunctionArgs) {
   await requireAdminApiRequest(request);
 
   const parsedParams = ParamsSchema.parse(params);
@@ -80,3 +81,5 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   return json(report);
 }
+
+export const loader = withAdminApi(handleLoader);

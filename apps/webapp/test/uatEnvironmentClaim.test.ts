@@ -695,7 +695,7 @@ describe("env JWT exchange — capless ceiling and TTL clamp", () => {
     const tokenExp = nowSec + 600;
     const token = await mintUat({ expirationTime: tokenExp });
 
-    const payload = await exchange(token, { expirationTime: "365d" });
+    const payload = await exchange(token, { expirationTime: "24h" });
 
     expect(payload.exp).toBeLessThanOrEqual(tokenExp + 1);
     expect(payload.exp).toBeGreaterThan(nowSec + 500);

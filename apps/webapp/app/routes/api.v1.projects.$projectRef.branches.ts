@@ -6,7 +6,10 @@ import { prisma } from "~/db.server";
 import { authenticateRequestWithScopedApiKey } from "~/services/apiAuth.server";
 import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
 import { logger } from "~/services/logger.server";
-import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
+import {
+  authenticateApiRequestWithPersonalAccessToken,
+  personalAccessTokenUnauthorizedResponse,
+} from "~/services/personalAccessToken.server";
 import { UpsertBranchService } from "~/services/upsertBranch.server";
 import { toBranchableEnvironmentType } from "~/utils/branchableEnvironment";
 
@@ -33,7 +36,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
     },
   });
   if (!authentication.ok) {
-    return json({ error: authentication.error }, { status: authentication.status });
+    return authentication.status === 401
+      ? personalAccessTokenUnauthorizedResponse(request, authentication.error)
+      : json({ error: authentication.error }, { status: authentication.status });
   }
   const authenticationResult = authentication.authentication;
 
@@ -172,7 +177,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
   if (!authenticationResult) {
-    return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
+    return personalAccessTokenUnauthorizedResponse(request);
   }
 
   const parsedParams = ParamsSchema.safeParse(params);

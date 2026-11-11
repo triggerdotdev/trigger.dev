@@ -53,7 +53,7 @@ function Harness({ initial }: { initial?: FlowAnswers }) {
   });
   return createElement(CreationTranscript, {
     flow: state,
-    chatId: "chat_1",
+    channels: [{ id: "ch_1", name: "Ops webhook", type: "WEBHOOK" }],
     systemLines: send.systemLines,
     agentStreaming: streaming,
     onFreeText: (text: string) => {
@@ -201,7 +201,13 @@ describe("creation card hands off to the chat and back", () => {
   // Mutation: dropping the Nh branch from expiryDate empties the date field.
   it("a patched 37h expiry shows the Until date row selected", () => {
     vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-07T10:00:00Z") });
-    mount({ area: "queues", what: "queue.depth", scope: "all", condition: "100" });
+    mount({
+      area: "queues",
+      what: "queue.depth",
+      scope: "all",
+      condition: "100",
+      notifiers: ["ch_1"],
+    });
     act(() => agent!.handleDraftPatches([{ ok: true, patch: { behavior: { expiry: "37h" } } }]));
     expect(flow!.answers.expiry).toBe("37h");
     act(() => button("Customize")!.click());

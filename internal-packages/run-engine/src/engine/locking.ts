@@ -73,6 +73,7 @@ export class RunLocker {
   private activeManualContexts: Map<string, ManualLockContext> = new Map();
   private lockDurationHistogram: Histogram;
   private retryConfig: Required<LockRetryConfig>;
+  private queuedLocks?: Map<string, Promise<void>>;
   private duration: number;
   private automaticExtensionThreshold: number;
 
@@ -137,6 +138,31 @@ export class RunLocker {
       observableResult.observe(count, {
         [SemanticAttributes.LOCK_TYPE]: lockType,
       });
+    }
+  }
+
+  /** Queue same-process admissions before competing for the distributed lock.
+   * Each admission still reacquires the lock, so lifecycle cleanup can run between items.
+   * Only enabled waitpoint legacy admission opts in; ordinary locking is unchanged.
+   */
+  async lockQueued<T>(name: string, resource: string, routine: () => Promise<T>): Promise<T> {
+    if (this.asyncLocalStorage.getStore()?.resources === resource) {
+      return this.lock(name, [resource], routine);
+    }
+    this.queuedLocks ??= new Map();
+    const queue = this.queuedLocks;
+    const previous = queue.get(resource);
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    queue.set(resource, current);
+    try {
+      await previous;
+      return await this.lock(name, [resource], routine);
+    } finally {
+      release();
+      if (queue.get(resource) === current) queue.delete(resource);
     }
   }
 

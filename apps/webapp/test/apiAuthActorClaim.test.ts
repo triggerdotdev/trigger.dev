@@ -54,7 +54,7 @@ async function authenticate(jwtClaims: Record<string, unknown>) {
     environment,
     claims: jwtClaims,
   });
-  const result = await authenticateApiKey("jwt_token", { allowJWT: true });
+  const result = await authenticateApiKey("jwt_token", { allowJWT: true, clientIp: null });
   if (!result) throw new Error("expected authentication to succeed");
   return result;
 }

@@ -74,6 +74,7 @@ export type {
 export {
   V1_CAPABILITIES,
   CURRENTLY_QUEUED_PREDICATE_PENDING,
+  GROUP_CAPABILITY_KEY,
   getCapability,
   listCapabilities,
 } from "./registry.js";
@@ -90,6 +91,7 @@ export type { QueryMode, QuerySource } from "./querySources.js";
 export {
   LEGACY_HEALTH_COMPONENTS,
   selectedComponents,
+  paramsForComponents,
   componentFactsKey,
   compositeComponentSchema,
   compositeFactsSchema,

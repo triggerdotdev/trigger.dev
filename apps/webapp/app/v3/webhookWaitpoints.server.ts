@@ -1,7 +1,8 @@
 import { isInfrastructureError, type WebhookWaitpointPorts } from "@internal/webhook-engine";
+import { MAX_INLINE_COMPLETION_OUTPUT_BYTES } from "@internal/run-engine";
 import { webhookPortErrorMessage } from "./webhookPortErrors.server";
 import { stringifyIO } from "@trigger.dev/core/v3";
-import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import { parseWaitpointId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { tryCatch } from "@trigger.dev/core/utils";
 import pLimit from "p-limit";
 import { env } from "~/env.server";
@@ -53,16 +54,28 @@ async function standalonePlacement(environment: AuthenticatedEnvironment) {
 export const webhookWaitpoints: WebhookWaitpointPorts = {
   async find({ environmentId, idempotencyKey }) {
     const environment = await environmentOrThrow(environmentId);
-    const { colocate } = await standalonePlacement(environment);
-    const waitpoint = await runStore.findWaitpoint(
+    const { colocate, residency, shardKey } = await standalonePlacement(environment);
+    let waitpoint = await runStore.findWaitpoint(
       { where: { environmentId, idempotencyKey } },
       undefined,
       colocate
     );
-    if (!waitpoint) return undefined;
-    if (waitpoint.idempotencyKeyExpiresAt && waitpoint.idempotencyKeyExpiresAt < new Date()) {
-      return undefined;
+    if (
+      !waitpoint ||
+      (waitpoint.idempotencyKeyExpiresAt && waitpoint.idempotencyKeyExpiresAt < new Date())
+    ) {
+      if (!(await engine.waitpointSystem.isWaitpointStoreEnabled(environment.organizationId)))
+        return undefined;
+      waitpoint = await engine.readExistingStoreDateTimeWaitpointByKey({
+        environmentId,
+        projectId: environment.projectId,
+        organizationId: environment.organizationId,
+        idempotencyKey,
+        standaloneResidency: residency,
+        standaloneShardKey: shardKey,
+      });
     }
+    if (!waitpoint) return undefined;
     return {
       id: WaitpointId.toFriendlyId(waitpoint.id),
       status: waitpoint.status === "COMPLETED" ? "COMPLETED" : "PENDING",
@@ -89,6 +102,7 @@ export const webhookWaitpoints: WebhookWaitpointPorts = {
     const result = await engine.createManualWaitpoint({
       environmentId,
       projectId,
+      organizationId: environment.organizationId,
       idempotencyKey,
       idempotencyKeyExpiresAt,
       timeout: timeoutAt,
@@ -101,23 +115,45 @@ export const webhookWaitpoints: WebhookWaitpointPorts = {
 
   async complete({ environmentId, waitpointIds, output, deliveryFriendlyId }) {
     const environment = await environmentOrThrow(environmentId);
+    const storeEnabled = await engine.waitpointSystem.isWaitpointStoreEnabled(
+      environment.organizationId
+    );
+    const hasNativeDateTime =
+      storeEnabled &&
+      waitpointIds.some((id) => {
+        const parsed = parseWaitpointId(WaitpointId.toId(id));
+        return (
+          parsed.format !== "legacy" && (parsed.type === "DATETIME" || parsed.type === "MANUAL")
+        );
+      });
+    const pathPrefix = `${deliveryFriendlyId}/webhook-waiters`;
     const packet = await processWaitpointCompletionPacket(
       await stringifyIO(output),
       environment,
-      `${deliveryFriendlyId}/webhook-waiters`
+      // One object per call, so competing deliveries cannot replace accepted native output.
+      hasNativeDateTime ? `${pathPrefix}/${crypto.randomUUID()}` : pathPrefix,
+      hasNativeDateTime ? MAX_INLINE_COMPLETION_OUTPUT_BYTES : undefined
     );
 
     return Promise.all(
       waitpointIds.map((id) =>
         completionLimit(async () => {
-          const [error] = await tryCatch(
-            engine.completeWaitpoint({
-              id: WaitpointId.toId(id),
-              output: packet.data
-                ? { type: packet.dataType, value: packet.data, isError: false }
-                : undefined,
-            })
-          );
+          const waitpointId = WaitpointId.toId(id);
+          const parsed = storeEnabled ? parseWaitpointId(waitpointId) : undefined;
+          const completionInput: Parameters<typeof engine.completeWaitpoint>[0] = {
+            id: waitpointId,
+            ...(storeEnabled ? { organizationId: environment.organizationId } : {}),
+            output: packet.data
+              ? { type: packet.dataType, value: packet.data, isError: false }
+              : undefined,
+          };
+          if (
+            parsed &&
+            parsed.format !== "legacy" &&
+            (parsed.type === "DATETIME" || parsed.type === "MANUAL")
+          )
+            completionInput.onlyIfPending = true;
+          const [error] = await tryCatch(engine.completeWaitpoint(completionInput));
           return error
             ? {
                 id,
@@ -131,9 +167,34 @@ export const webhookWaitpoints: WebhookWaitpointPorts = {
     );
   },
 
-  async fail({ waitpointId, error }) {
+  async fail({ environmentId, organizationId, waitpointId, error }) {
+    const id = WaitpointId.toId(waitpointId);
+    const storeEnabled = await engine.waitpointSystem.isWaitpointStoreEnabled(organizationId);
+    const parsed = storeEnabled ? parseWaitpointId(id) : undefined;
+    if (
+      parsed &&
+      parsed.format !== "legacy" &&
+      (parsed.type === "DATETIME" || parsed.type === "MANUAL")
+    ) {
+      const environment = await environmentOrThrow(environmentId);
+      const waitpoint = await engine.getStoreDateTimeWaitpoint({
+        waitpointId: id,
+        environmentId,
+        projectId: environment.projectId,
+        organizationId: environment.organizationId,
+      });
+      if (!waitpoint) throw new Error("Waitpoint not found");
+      await engine.completeWaitpoint({
+        id,
+        organizationId: environment.organizationId,
+        onlyIfPending: true,
+        output: { value: JSON.stringify(error), isError: true },
+      });
+      return;
+    }
     await engine.completeWaitpoint({
-      id: WaitpointId.toId(waitpointId),
+      id,
+      ...(storeEnabled ? { organizationId } : {}),
       output: { value: JSON.stringify(error), isError: true },
     });
   },

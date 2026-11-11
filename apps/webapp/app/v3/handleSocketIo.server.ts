@@ -8,6 +8,7 @@ import { defaultReconnectOnError } from "@internal/redis";
 import { Redis } from "ioredis";
 import type { Namespace, Socket } from "socket.io";
 import { Server } from "socket.io";
+import { boundedIn } from "~/db.server";
 import { env } from "~/env.server";
 import { authenticateApiRequestWithFailure } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -19,6 +20,8 @@ import {
 } from "./lazySocketIoAdapter.server";
 import { recordRunDebugLog } from "./eventRepository/index.server";
 import { engine } from "./runEngine.server";
+import { runStore } from "./runStore.server";
+import { WorkerRunSubscriptions } from "./workerRunSubscriptions.server";
 import { WorkerGroupTokenService } from "./services/worker/workerGroupTokenService.server";
 
 export const socketIo = singleton("socketIo", initalizeIoServer);
@@ -44,7 +47,7 @@ function initalizeIoServer() {
       if (!authenticatedInstance) {
         return false;
       }
-      return true;
+      return {};
     },
   });
   const devWorkerNamespace = createWorkerNamespace({
@@ -59,7 +62,7 @@ function initalizeIoServer() {
       if (authentication.environment.type !== "DEVELOPMENT") {
         return false;
       }
-      return true;
+      return { environmentId: authentication.environment.id };
     },
   });
 
@@ -152,7 +155,8 @@ function createWorkerNamespace({
   io: Server;
   lazyAdapter: LazySocketIoAdapter | undefined;
   namespace: string;
-  authenticate: (request: Request) => Promise<boolean>;
+  // A returned environmentId limits run subscriptions to that environment's runs.
+  authenticate: (request: Request) => Promise<{ environmentId?: string } | false>;
 }) {
   const worker: Namespace<WorkerClientToServerEvents, WorkerServerToClientEvents> =
     io.of(namespace);
@@ -170,11 +174,13 @@ function createWorkerNamespace({
         headers,
       });
 
-      const success = await authenticate(request);
+      const authentication = await authenticate(request);
 
-      if (!success) {
+      if (!authentication) {
         throw new Error("unauthorized");
       }
+
+      socket.data.environmentId = authentication.environmentId;
 
       next();
     } catch (error) {
@@ -198,6 +204,9 @@ function createWorkerNamespace({
     logger.debug("worker connected", { namespace, socketId: socket.id });
 
     const rooms = new Set<string>();
+    const subscriptions = new WorkerRunSubscriptions((ids) =>
+      runsInSocketEnvironment(socket.data.environmentId, ids)
+    );
 
     async function onNotification({
       time,
@@ -251,6 +260,7 @@ function createWorkerNamespace({
     });
 
     socket.on("disconnecting", (reason, description) => {
+      subscriptions.clear();
       logger.debug("worker disconnecting", {
         namespace,
         socketId: socket.id,
@@ -269,94 +279,107 @@ function createWorkerNamespace({
       clearInterval(interval);
     });
 
-    socket.on("run:subscribe", async ({ version, runFriendlyIds }) => {
-      logger.debug("run:subscribe", { namespace, version, runFriendlyIds });
-
-      const settledResult = await Promise.allSettled(
-        runFriendlyIds.map(async (friendlyId) => {
+    socket.on("run:subscribe", async (payload) => {
+      try {
+        const allowedRunFriendlyIds = await subscriptions.subscribe(payload, (friendlyId) => {
+          if (!socket.connected) return;
           const room = roomFromFriendlyRunId(friendlyId);
-
-          logger.debug("Joining room", { namespace, room });
-
           socket.join(room);
           rooms.add(room);
+        });
+        const runFriendlyIds = allowedRunFriendlyIds;
 
-          await recordRunDebugLog(
-            RunId.fromFriendlyId(friendlyId),
-            "run:subscribe received by platform",
-            {
-              attributes: {
-                properties: {
-                  friendlyId,
-                  runFriendlyIds,
-                  room,
+        const settledResult = await Promise.allSettled(
+          allowedRunFriendlyIds.map(async (friendlyId) => {
+            const room = roomFromFriendlyRunId(friendlyId);
+
+            logger.debug("Joining room", { namespace, room });
+
+            await recordRunDebugLog(
+              RunId.fromFriendlyId(friendlyId),
+              "run:subscribe received by platform",
+              {
+                attributes: {
+                  properties: {
+                    friendlyId,
+                    runFriendlyIds,
+                    room,
+                  },
                 },
-              },
-            }
-          );
-        })
-      );
+              }
+            );
+          })
+        );
 
-      for (const result of settledResult) {
-        if (result.status === "rejected") {
-          logger.error("Error joining room", {
-            namespace,
-            runFriendlyIds,
-            error: result.reason instanceof Error ? result.reason.message : result.reason,
-          });
+        for (const result of settledResult) {
+          if (result.status === "rejected") {
+            logger.error("Error joining room", {
+              namespace,
+              runFriendlyIds,
+              error: result.reason instanceof Error ? result.reason.message : result.reason,
+            });
+          }
         }
-      }
 
-      logger.debug("Rooms for socket after subscribe", {
-        namespace,
-        socketId: socket.id,
-        rooms: Array.from(rooms),
-      });
+        logger.debug("Rooms for socket after subscribe", {
+          namespace,
+          socketId: socket.id,
+          rooms: Array.from(rooms),
+        });
+      } catch (error) {
+        logger.error("Error subscribing to runs", { namespace, socketId: socket.id, error });
+      }
     });
 
-    socket.on("run:unsubscribe", async ({ version, runFriendlyIds }) => {
-      logger.debug("run:unsubscribe", { namespace, version, runFriendlyIds });
+    socket.on("run:unsubscribe", async (payload) => {
+      try {
+        const runFriendlyIds = subscriptions
+          .unsubscribe(payload)
+          .filter((friendlyId) => rooms.has(roomFromFriendlyRunId(friendlyId)));
 
-      const settledResult = await Promise.allSettled(
-        runFriendlyIds.map(async (friendlyId) => {
-          const room = roomFromFriendlyRunId(friendlyId);
+        const settledResult = await Promise.allSettled(
+          runFriendlyIds.map(async (friendlyId) => {
+            const room = roomFromFriendlyRunId(friendlyId);
 
-          logger.debug("Leaving room", { namespace, room });
+            logger.debug("Leaving room", { namespace, room });
 
-          socket.leave(room);
-          rooms.delete(room);
+            socket.leave(room);
+            rooms.delete(room);
 
-          await recordRunDebugLog(
-            RunId.fromFriendlyId(friendlyId),
-            "run:unsubscribe received by platform",
-            {
-              attributes: {
-                properties: {
-                  friendlyId,
-                  runFriendlyIds,
-                  room,
+            await recordRunDebugLog(
+              RunId.fromFriendlyId(friendlyId),
+              "run:unsubscribe received by platform",
+              {
+                attributes: {
+                  properties: {
+                    friendlyId,
+                    runFriendlyIds,
+                    room,
+                  },
                 },
-              },
-            }
-          );
-        })
-      );
+              }
+            );
+          })
+        );
 
-      for (const result of settledResult) {
-        if (result.status === "rejected") {
-          logger.error("Error leaving room", {
-            namespace,
-            runFriendlyIds,
-            error: result.reason instanceof Error ? result.reason.message : result.reason,
-          });
+        for (const result of settledResult) {
+          if (result.status === "rejected") {
+            logger.error("Error leaving room", {
+              namespace,
+              runFriendlyIds,
+              error: result.reason instanceof Error ? result.reason.message : result.reason,
+            });
+          }
         }
-      }
 
-      logger.debug("Rooms for socket after unsubscribe", {
-        namespace,
-        socketId: socket.id,
-        rooms: Array.from(rooms),
-      });
+        logger.debug("Rooms for socket after unsubscribe", {
+          namespace,
+          socketId: socket.id,
+          rooms: Array.from(rooms),
+        });
+      } catch (error) {
+        logger.error("Error unsubscribing from runs", { namespace, socketId: socket.id, error });
+      }
     });
   });
 
@@ -365,4 +388,29 @@ function createWorkerNamespace({
 
 export function roomFromFriendlyRunId(id: string) {
   return `room:${id}`;
+}
+
+async function runsInSocketEnvironment(
+  environmentId: string | undefined,
+  runFriendlyIds: string[]
+): Promise<string[]> {
+  if (!environmentId || runFriendlyIds.length === 0) return runFriendlyIds;
+
+  const runs = await runStore.findRuns({
+    where: {
+      friendlyId: { in: boundedIn(runFriendlyIds) },
+      runtimeEnvironmentId: environmentId,
+    },
+    select: { friendlyId: true },
+  });
+  const allowed = new Set(runs.map((run) => run.friendlyId));
+
+  if (allowed.size !== runFriendlyIds.length) {
+    logger.warn("Ignoring run:subscribe for runs outside the socket's environment", {
+      environmentId,
+      rejected: runFriendlyIds.filter((id) => !allowed.has(id)),
+    });
+  }
+
+  return runFriendlyIds.filter((id) => allowed.has(id));
 }

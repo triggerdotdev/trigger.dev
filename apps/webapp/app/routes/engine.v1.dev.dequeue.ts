@@ -1,10 +1,12 @@
 import { json } from "@remix-run/server-runtime";
 import { DevDequeueRequestBody } from "@trigger.dev/core/v3";
+import { devWorkerAuthorization } from "~/services/devWorkerAuthorization.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { engine } from "~/v3/runEngine.server";
 
 const { action } = createActionApiRoute(
   {
+    authorization: devWorkerAuthorization,
     body: DevDequeueRequestBody, // Even though we don't use it, we need to keep it for backwards compatibility
     maxContentLength: 1024 * 10, // 10KB
     method: "POST",

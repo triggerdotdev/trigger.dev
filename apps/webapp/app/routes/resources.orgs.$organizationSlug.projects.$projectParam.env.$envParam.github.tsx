@@ -68,11 +68,12 @@ import {
   redirectWithErrorMessage,
   redirectWithSuccessMessage,
 } from "~/models/message.server";
-import { resolveOrgIdFromSlug } from "~/models/organization.server";
+import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { env } from "~/env.server";
 import { GitHubSettingsPresenter } from "~/presenters/v3/GitHubSettingsPresenter.server";
+import { canConnectIntegration, resolveIntegrationAccess } from "~/v3/deploymentAccess.server";
 import { ignorePathLimits } from "~/v3/github/ignorePathLimits.server";
 import { logger } from "~/services/logger.server";
 import { triggerInitialDeployment } from "~/services/platform.v3.server";
@@ -192,6 +193,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const resultOrFail = await presenter.call({
     projectId: project.id,
     organizationId: project.organizationId,
+    githubAvailable: (await resolveIntegrationAccess(project.organizationId, project.id)).github,
   });
 
   if (resultOrFail.isErr()) {
@@ -237,10 +239,7 @@ function redirectWithMessage(
 export const action = dashboardAction(
   {
     params: EnvironmentParamSchema,
-    context: async (params) => {
-      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
-      return organizationId ? { organizationId } : {};
-    },
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
     authorization: { action: "write", resource: { type: "github" } },
   },
   async ({ request, params, user }) => {
@@ -298,6 +297,15 @@ export const action = dashboardAction(
     // Handle connect-repo action
     if (actionType === "connect-repo") {
       const { repositoryId, installationId } = submission.value;
+
+      if (!(await canConnectIntegration(organizationId, "github"))) {
+        return redirectWithMessage(
+          request,
+          redirectUrl,
+          "Failed to connect GitHub repository",
+          "error"
+        );
+      }
 
       const resultOrFail = await projectSettingsService.connectGitHubRepo(
         projectId,

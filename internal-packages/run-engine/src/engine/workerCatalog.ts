@@ -1,6 +1,37 @@
 import { z } from "zod";
 
 export const workerCatalog = {
+  recoverBatchWaitpoint: {
+    schema: z.object({
+      runId: z.string(),
+      batchId: z.string(),
+      organizationId: z.string(),
+      projectId: z.string(),
+      environmentId: z.string(),
+      cycleAnchor: z.string(),
+    }),
+    visibilityTimeoutMs: 30000,
+    retry: { maxAttempts: 10000, minTimeoutInMs: 1000, maxTimeoutInMs: 300000 },
+  },
+  // Each item is a bounded, durable discovery target. Exhausted failures remain in the DLQ.
+  recoverRunWaitpoint: {
+    schema: z.object({
+      parkedOnExternalDeploymentId: z.string().optional(),
+      runId: z.string(),
+      parentRunId: z.string(),
+      batch: z.object({ id: z.string(), index: z.number().optional() }).optional(),
+      organizationId: z.string(),
+      waitpointId: z.string(),
+      blockOperation: z.object({
+        id: z.string(),
+        absorptionId: z.string(),
+        cycleAnchor: z.string(),
+      }),
+      armedAt: z.coerce.date().optional(),
+    }),
+    visibilityTimeoutMs: 30_000,
+    retry: { maxAttempts: 10_000, minTimeoutInMs: 1_000, maxTimeoutInMs: 300_000 },
+  },
   recoverWaitpointBlock: {
     schema: z.object({
       runId: z.string(),
@@ -23,6 +54,37 @@ export const workerCatalog = {
     visibilityTimeoutMs: 30_000,
     retry: { maxAttempts: 10_000, minTimeoutInMs: 1_000, maxTimeoutInMs: 300_000 },
   },
+  recoverDateTimeWaitpoint: {
+    schema: z.object({
+      manual: z.boolean().optional(),
+      waitpointId: z.string(),
+      organizationId: z.string(),
+      projectId: z.string(),
+      environmentId: z.string(),
+      completedAfter: z.coerce.date(),
+      creationAcceptUntil: z.number().optional(),
+      keyedCreation: z
+        .object({
+          scope: z.string(),
+          idempotencyKey: z.string(),
+          acceptUntil: z.number(),
+        })
+        .optional(),
+    }),
+    visibilityTimeoutMs: 30_000,
+    retry: { maxAttempts: 10_000, minTimeoutInMs: 1_000, maxTimeoutInMs: 300_000 },
+  },
+  retireManualWaitpointCatalog: {
+    schema: z.object({ waitpointId: z.string(), organizationId: z.string() }),
+    visibilityTimeoutMs: 30_000,
+    retry: { maxAttempts: 10_000, minTimeoutInMs: 1_000, maxTimeoutInMs: 300_000 },
+  },
+  deliverWaitpointFanout: {
+    schema: z.object({ waitpointId: z.string(), organizationId: z.string() }),
+    visibilityTimeoutMs: 30_000,
+    retry: { maxAttempts: 10_000, minTimeoutInMs: 1_000, maxTimeoutInMs: 300_000 },
+  },
+  /** Complete a scheduled waitpoint, optionally with an error output. */
   finishWaitpoint: {
     schema: z.object({
       waitpointId: z.string(),
@@ -85,12 +147,14 @@ export const workerCatalog = {
   tryCompleteBatch: {
     schema: z.object({
       batchId: z.string(),
+      organizationId: z.string().optional(),
     }),
     visibilityTimeoutMs: 30_000,
   },
   expireBatch: {
     schema: z.object({
       batchId: z.string(),
+      organizationId: z.string().optional(),
     }),
     visibilityTimeoutMs: 30_000,
   },
@@ -98,8 +162,8 @@ export const workerCatalog = {
     schema: z.object({
       runId: z.string(),
       // The blocked run's org, so the continuation can skip MemoryDB for a never-enabled org
-      // when handling a delayed continuation. Optional: an old queued payload lacks it and routes
-      // through the legacy coordinator until a caller supplies trusted organisation context.
+      // when handling a delayed continuation. For an old payload without it, the continuation recovers
+      // trusted org context from the environment it already loads before rediscovering blockers.
       organizationId: z.string().optional(),
     }),
     visibilityTimeoutMs: 30_000,
@@ -160,8 +224,33 @@ export const workerCatalog = {
     visibilityTimeoutMs: 30_000,
   },
   /**
+   * Write-ahead guard for the failed-attempt MemoryDB blocker cleanup. Armed (only when the run holds an
+   * observed store block) before the failure/retry transition and acked once the inline cleanup succeeds;
+   * it fires only if that path died after the transition committed. On replay it re-drives the SAME
+   * block's cleanup under the run lock, fenced so it never touches a newer cycle: it releases once the run
+   * is durably terminal, abandons once the specific retry/requeue transition (proven by the minted
+   * `transitionId` existing as a snapshot — a checkpoint or other advancement is not proof) has
+   * committed, and otherwise defers. Its retry budget matches the other finalization guards.
+   */
+  ensureBlockersCleanedUp: {
+    schema: z.object({
+      runId: z.string(),
+      organizationId: z.string().optional(),
+      /** The exact store block this cleans; replay is fenced to it so it never touches a newer cycle. */
+      blockId: z.string(),
+      /** Minted for this attempt's retry/requeue transition and stamped on its snapshot; replay abandons only once that snapshot exists (terminal cleanup uses durable status instead). */
+      transitionId: z.string(),
+    }),
+    visibilityTimeoutMs: 30_000,
+    retry: {
+      maxAttempts: 10_000,
+      minTimeoutInMs: 1_000,
+      maxTimeoutInMs: 300_000,
+    },
+  },
+  /**
    * Retry cleanup when Postgres registration and immediate MemoryDB cleanup both fail.
-   * Hold the parent run lock. Remove only this operation's added edges.
+   * Hold the parent run lock. Release only this operation's edge claims.
    * Preserve successful registrations and newer blocks.
    */
   ensureAbsorptionCompensated: {

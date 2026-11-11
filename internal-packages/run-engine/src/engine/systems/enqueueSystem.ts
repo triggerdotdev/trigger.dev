@@ -42,6 +42,7 @@ export class EnqueueSystem {
     tx,
     snapshot,
     previousSnapshotId,
+    snapshotId,
     previousSnapshot,
     snapshotRoute,
     batchId,
@@ -65,6 +66,8 @@ export class EnqueueSystem {
       metadata?: Prisma.JsonValue;
     };
     previousSnapshotId?: string;
+    /** Exact transition identity for replay-safe native waitpoint resume. */
+    snapshotId?: string;
     previousSnapshot?: PreviousSnapshot;
     /** Server-side only: never published to workers or exposed through an API. */
     snapshotRoute?: SnapshotRouteWire;
@@ -106,6 +109,7 @@ export class EnqueueSystem {
         prisma,
         {
           run: run,
+          snapshotId,
           snapshot: {
             executionStatus: snapshot?.status ?? QUEUED_SNAPSHOT_STATUS,
             description: snapshot?.description ?? QUEUED_SNAPSHOT_DESCRIPTION,

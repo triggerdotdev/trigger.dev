@@ -832,7 +832,11 @@ export class RunsReplicationService {
       return;
     }
 
-    if (runtime.lastAcknowledgedLsn === runtime.latestCommitEndLsn) {
+    // Keepalive acks can be ahead of the last commit; re-acking the commit would move flush back.
+    if (
+      runtime.lastAcknowledgedLsn &&
+      lsnToUInt64(runtime.lastAcknowledgedLsn) >= lsnToUInt64(runtime.latestCommitEndLsn)
+    ) {
       return;
     }
 

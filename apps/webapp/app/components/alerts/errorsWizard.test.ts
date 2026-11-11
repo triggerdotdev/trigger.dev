@@ -28,7 +28,7 @@ function flowFor(answers: FlowAnswers) {
 }
 
 function stepIds(answers: FlowAnswers) {
-  return allSteps(flowFor(answers), [], "chat_1").map((s) => s.id);
+  return allSteps(flowFor(answers), []).map((s) => s.id);
 }
 
 describe("errors wizard", () => {
@@ -43,13 +43,13 @@ describe("errors wizard", () => {
   it("errors.occurred_again with a prefilled group shows the error answered, no condition", () => {
     const answers = withAutoAnswers({
       ...prefillToAnswers({ capability: "errors.occurred_again", scope: GROUP }),
-      notifiers: ["chat"],
+      notifiers: ["ch_1"],
     });
     expect(answers.scope).toBe("errorGroup");
     expect(skipsScope(answers)).toBe(true);
     const ids = stepIds(answers);
     expect(ids).toEqual(["area", "what", "scope", "expiry", "notifiers", "name"]);
-    const scope = allSteps(flowFor(answers), [], "chat_1").find((s) => s.id === "scope")!;
+    const scope = allSteps(flowFor(answers), []).find((s) => s.id === "scope")!;
     expect(scope.selected).toEqual([encodeErrorGroupScope(GROUP)]);
     expect(scope.question).toBe("Which error should this alert watch?");
     expect(isComplete(answers)).toBe(true);
@@ -66,7 +66,7 @@ describe("errors wizard", () => {
   it("errors.occurred_again without a group asks which error with an id input", () => {
     const answers = withAutoAnswers({ area: "errors", what: "errors.occurred_again" });
     const lookup = vi.fn();
-    const scope = allSteps(flowFor(answers), [], undefined, undefined, {
+    const scope = allSteps(flowFor(answers), [], undefined, {
       groups: [],
       lookup,
     }).find((s) => s.id === "scope")!;

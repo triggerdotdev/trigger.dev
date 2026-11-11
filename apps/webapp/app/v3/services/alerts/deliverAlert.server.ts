@@ -1020,7 +1020,7 @@ export class DeliverAlertService extends BaseService {
     await deliverWebhookPayload({
       url: webhook.url,
       secret: webhook.secret,
-      encryptionKey: env.ENCRYPTION_KEY,
+      encryptionKey: env.ENCRYPTION_KEYRING,
       rawPayload: JSON.stringify(payload),
       context,
       buildErrorMessage: (host) => `Failed to send alert webhook to ${host}`,

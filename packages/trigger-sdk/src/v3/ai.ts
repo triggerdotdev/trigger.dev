@@ -140,6 +140,10 @@ import {
   PENDING_MESSAGE_INJECTED_TYPE,
   upsertIncomingMessage,
   chatRunTags,
+  dropUnbackedToolResolutions,
+  resolveClientToolResolution,
+  sanitizeClientMessage,
+  sanitizeClientWirePayload,
 } from "./ai-shared.js";
 import { auth } from "./auth.js";
 import { locals } from "./locals.js";
@@ -711,8 +715,11 @@ async function replaySessionInTailWithChannels<TUIMessage extends UIMessage>(
       }
     ).payload;
     if (!payload || payload.trigger !== "submit-message") continue;
-    const message = payload.message;
-    if (!message || typeof message !== "object") {
+    const message =
+      payload.message && typeof payload.message === "object"
+        ? sanitizeClientMessage(payload.message as UIMessage)
+        : undefined;
+    if (!message) {
       if (payload.channelEvent && typeof payload.channelEvent === "object") {
         channelEvents.push({
           channelEvent: payload.channelEvent,
@@ -2687,7 +2694,7 @@ async function installChatInputRouter(
     // The floor is the tail's `Last-Event-ID`, but a reconnect can still
     // re-deliver below it and a replayable route would re-queue it.
     if (floor !== undefined && record.seqNum <= floor) return true;
-    router.ingest(record);
+    router.ingest(sanitizeChatInputRecord(record));
     return true;
   });
 
@@ -2722,6 +2729,20 @@ function chatInputRouterEntry(chatId: string): {
     attached: false,
   };
   return currentChatInputRouter;
+}
+
+/**
+ * Reduce the client-supplied message on a `kind: "message"` record to what a client may send, before
+ * any consumer sees it. See `sanitizeClientMessage`.
+ * @internal
+ */
+function sanitizeChatInputRecord(record: SessionStreamRecord): SessionStreamRecord {
+  const chunk = record.data as ChatInputChunk | undefined;
+  if (!chunk || typeof chunk !== "object" || chunk.kind !== "message") return record;
+  const payload = chunk.payload;
+  if (!payload || typeof payload !== "object") return record;
+  const sanitized = sanitizeClientWirePayload(payload);
+  return sanitized === payload ? record : { ...record, data: { ...chunk, payload: sanitized } };
 }
 
 /** Drop the router so the next boot attaches a fresh one. @internal */
@@ -2966,56 +2987,6 @@ const chatUIStreamStaticKey = locals.create<ChatUIMessageStreamOptions<UIMessage
 const chatUIStreamPerTurnKey = locals.create<ChatUIMessageStreamOptions<UIMessage>>(
   "chat.uiMessageStreamOptions.perTurn"
 );
-
-/**
- * Run-scoped `toolCallId → assistant messageId` map. Records the head
- * assistant id whenever the accumulator absorbs an assistant message
- * containing tool parts. Used as a fallback in the id-merge for
- * incoming tool-answer messages — if the AI SDK regenerates the
- * assistant id on a HITL `addToolOutput` resume, we look up the
- * original head id by `toolCallId` and rewrite it before the merge.
- *
- * Customer-side workaround for the same case is documented in Arena
- * AI's chat-agent task; lifting it into the SDK so customers don't
- * have to. See TRI-9137.
- * @internal
- */
-const chatToolCallToMessageIdKey = locals.create<Map<string, string>>("chat.toolCallToMessageId");
-
-function recordToolCallIdsFromMessage(
-  message: { id?: string; role?: string; parts?: unknown[] } | undefined
-) {
-  if (!message || message.role !== "assistant" || !message.id) return;
-  let map = locals.get(chatToolCallToMessageIdKey);
-  if (!map) {
-    map = new Map();
-    locals.set(chatToolCallToMessageIdKey, map);
-  }
-  for (const part of message.parts ?? []) {
-    if (typeof part !== "object" || part == null) continue;
-    const toolCallId = (part as { toolCallId?: unknown }).toolCallId;
-    if (typeof toolCallId === "string" && toolCallId.length > 0) {
-      map.set(toolCallId, message.id);
-    }
-  }
-}
-
-function rewriteIncomingIdViaToolCallMap<T extends { id?: string; parts?: unknown[] }>(
-  incoming: T
-): T {
-  const map = locals.get(chatToolCallToMessageIdKey);
-  if (!map || map.size === 0) return incoming;
-  for (const part of incoming.parts ?? []) {
-    if (typeof part !== "object" || part == null) continue;
-    const toolCallId = (part as { toolCallId?: unknown }).toolCallId;
-    if (typeof toolCallId !== "string" || toolCallId.length === 0) continue;
-    const headId = map.get(toolCallId);
-    if (headId && headId !== incoming.id) {
-      return { ...incoming, id: headId };
-    }
-  }
-  return incoming;
-}
 
 // ---------------------------------------------------------------------------
 // Token usage helpers (internal)
@@ -3355,6 +3326,36 @@ function mergeIncomingIntoHydrated<TMsg extends UIMessage>(
 
   if (!mutated) return hydrated;
   return { ...hydrated, parts: mergedParts };
+}
+
+/**
+ * Keep the incoming messages a client may add this turn: user messages, and tool resolutions that
+ * answer a call in `history`, re-addressed to the stored message holding it. Anything else is dropped.
+ *
+ * @internal
+ */
+function resolveIncomingAgainstHistory<TMsg extends UIMessage>(
+  incoming: readonly TMsg[],
+  history: readonly UIMessage[]
+): TMsg[] {
+  const out: TMsg[] = [];
+  for (const message of incoming) {
+    const resolved =
+      message.role === "user"
+        ? message
+        : message.role === "assistant"
+          ? resolveClientToolResolution(message, history)
+          : undefined;
+    if (resolved) {
+      out.push(resolved);
+      continue;
+    }
+    logger.warn("chat.agent: dropped an incoming message that answers no pending tool call", {
+      messageId: message.id,
+      role: message.role,
+    });
+  }
+  return out;
 }
 
 /**
@@ -8841,6 +8842,7 @@ function chatCustomAgent<
       payload: ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>,
       runOptions
     ) => {
+      payload = sanitizeClientWirePayload(payload);
       // Bind the run to its backing Session so module-level helpers
       // (chat.messages, chat.stream, chat.createStopSignal, chat.createSession)
       // resolve to this chat's `.in` / `.out` channels. Address
@@ -9084,6 +9086,7 @@ function chatAgent<
       payload: ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>,
       { signal: runSignal, ctx }
     ) => {
+      payload = sanitizeClientWirePayload(payload);
       locals.set(chatAgentRunContextKey, ctx);
       locals.set(chatCustomAgentRunKey, false);
 
@@ -9829,6 +9832,7 @@ function chatAgent<
         const partialFollowsBrowserMessage =
           partialAssistant !== undefined &&
           inFlightUsers.length > 1 &&
+          inFlightUsers[0]!.role === "user" &&
           (replayedChannelInTail.length === 0 || replayedInTail[0]?.seqNum === oldestTailSeq);
         if (hookChain !== undefined) {
           seedChain = hookChain;
@@ -10560,7 +10564,10 @@ function chatAgent<
             } = currentWirePayload;
             void _hsm;
             channelWireEvent = wireChannelEvent;
-            let effectiveIncomingMessage = incomingMessage;
+            let effectiveIncomingMessage =
+              incomingMessage === undefined
+                ? undefined
+                : (sanitizeClientMessage(incomingMessage) as typeof incomingMessage);
             const clientData = (
               parseClientData ? await parseClientData(wireMetadata) : wireMetadata
             ) as inferSchemaOut<TClientDataSchema>;
@@ -11106,7 +11113,7 @@ function chatAgent<
                       const lastUIMessage = (steeredChannel?.message ?? msg.message) as
                         | TUIMessage
                         | undefined;
-                      if (lastUIMessage) {
+                      if (lastUIMessage && lastUIMessage.role === "user") {
                         if (pmConfig.onReceived) {
                           try {
                             await pmConfig.onReceived({
@@ -11342,6 +11349,13 @@ function chatAgent<
                     cleanedUIMessages = payload.headStartMessages as TUIMessage[];
                   }
 
+                  if (!loadContextHook) {
+                    cleanedUIMessages = resolveIncomingAgainstHistory(
+                      cleanedUIMessages,
+                      accumulatedUIMessages
+                    );
+                  }
+
                   // Validate/transform UIMessages before conversion — catches malformed
                   // messages from storage or untrusted input before they reach the model.
                   // Slim wire: triggers like `regenerate-message` carry no incoming
@@ -11426,8 +11440,13 @@ function chatAgent<
                     // copy to fit the .in/append cap (or drop fields they
                     // re-source from their own DB) get the hydrated copy
                     // through unchanged.
-                    const merged = [...hydrated] as TUIMessage[];
-                    for (const incoming of cleanedUIMessages) {
+                    const hydratedChain = dropUnbackedToolResolutions(hydrated as TUIMessage[]);
+                    const resolvedIncoming = resolveIncomingAgainstHistory(
+                      cleanedUIMessages,
+                      hydratedChain
+                    );
+                    const merged = [...hydratedChain];
+                    for (const incoming of resolvedIncoming) {
                       if (!incoming.id) continue;
                       const idx = merged.findIndex((m) => m.id === incoming.id);
                       if (idx !== -1) {
@@ -11459,9 +11478,9 @@ function chatAgent<
                     // own append-vs-replace path.
                     if (
                       currentWirePayload.trigger === "submit-message" &&
-                      cleanedUIMessages.length > 0
+                      resolvedIncoming.length > 0
                     ) {
-                      const lastUI = cleanedUIMessages[cleanedUIMessages.length - 1]!;
+                      const lastUI = resolvedIncoming[resolvedIncoming.length - 1]!;
                       const matchedExisting =
                         lastUI.id !== undefined && previouslyKnownMessageIds.has(lastUI.id);
                       if (!matchedExisting) {
@@ -11507,21 +11526,10 @@ function chatAgent<
                       // in the accumulator — we merge the resolved tool-part
                       // resolutions onto the existing entry, keeping text,
                       // reasoning, and tool `input` from the prior snapshot.
-                      // The fallback for HITL `addToolOutput` continuations
-                      // where AI SDK regenerates the id (TRI-9137) still
-                      // applies via `rewriteIncomingIdViaToolCallMap`.
                       let replaced = false;
                       const replacedPairs: { previous: TUIMessage; merged: TUIMessage }[] = [];
-                      for (const raw of cleanedUIMessages) {
-                        let incoming = raw;
-                        let idx = accumulatedUIMessages.findIndex((m) => m.id === incoming.id);
-                        if (idx === -1) {
-                          const rewritten = rewriteIncomingIdViaToolCallMap(incoming);
-                          if (rewritten.id !== incoming.id) {
-                            incoming = rewritten as typeof raw;
-                            idx = accumulatedUIMessages.findIndex((m) => m.id === incoming.id);
-                          }
-                        }
+                      for (const incoming of cleanedUIMessages) {
+                        const idx = accumulatedUIMessages.findIndex((m) => m.id === incoming.id);
                         if (idx !== -1) {
                           const previous = accumulatedUIMessages[idx]!;
                           accumulatedUIMessages[idx] = mergeIncomingIntoHydrated(
@@ -11534,7 +11542,6 @@ function chatAgent<
                           accumulatedUIMessages.push(incoming as TUIMessage);
                           turnNewUIMessages.push(incoming as TUIMessage);
                         }
-                        recordToolCallIdsFromMessage(incoming);
                       }
                       if (replaced) {
                         let inPlace = true;
@@ -12353,12 +12360,6 @@ function chatAgent<
                       }
                       turnNewUIMessages.push(capturedResponseMessage);
                       locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
-                      // Record toolCallId → head messageId so a HITL
-                      // continuation next turn can recover the head id
-                      // even if the AI SDK regenerates it. See
-                      // `chatToolCallToMessageIdKey` for the full
-                      // rationale (TRI-9137).
-                      recordToolCallIdsFromMessage(capturedResponseMessage);
                       try {
                         const responseForModel = responseAfterCompaction(
                           capturedResponseMessage,
@@ -15078,18 +15079,46 @@ class ChatMessageAccumulator {
   /**
    * Add incoming messages from the transport payload.
    * Returns the full accumulated model messages for `streamText`.
+   *
+   * A tool approval or tool output from the client (a tool part with no `input`) is merged onto the
+   * stored call it answers, found in the accumulator or earlier in `messages`. One that answers no
+   * pending call is dropped.
    */
   async addIncoming(messages: UIMessage[], trigger: string, turn: number): Promise<ModelMessage[]> {
-    const cleaned = messages.map((m) => (m.role === "assistant" ? cleanupAbortedParts(m) : m));
-    const model = await toModelMessages(cleaned);
-
-    if (turn === 0 || trigger === "regenerate-message") {
-      this.modelMessages = model;
-      this.uiMessages = [...cleaned];
-    } else {
-      this.modelMessages.push(...model);
-      this.uiMessages.push(...cleaned);
+    const replace = turn === 0 || trigger === "regenerate-message";
+    const ui = replace ? [] : [...this.uiMessages];
+    const lane = replace ? [] : [...this.modelMessages];
+    let appendedModelCount = 0;
+    let rebuild = replace;
+    for (const raw of messages) {
+      const message = raw.role === "assistant" ? cleanupAbortedParts(raw) : raw;
+      const resolved = resolveClientToolResolution(message, ui);
+      if (!resolved) {
+        logger.warn(
+          "chat.MessageAccumulator: dropped an incoming message that answers no pending tool call",
+          { messageId: message.id }
+        );
+        continue;
+      }
+      if (resolved !== message) {
+        const idx = ui.findIndex((m) => m.id === resolved.id);
+        const previous = ui[idx]!;
+        ui[idx] = mergeIncomingIntoHydrated(previous, resolved);
+        if (!rebuild && !(await replaceModelRun(lane, previous, ui[idx]!, appendedModelCount))) {
+          rebuild = true;
+        }
+        continue;
+      }
+      ui.push(message);
+      if (!rebuild) {
+        const converted = await toModelMessages([message]);
+        lane.push(...converted);
+        appendedModelCount += converted.length;
+      }
     }
+
+    this.uiMessages = ui;
+    this.modelMessages = rebuild ? await toModelMessages(ui) : lane;
     return this.modelMessages;
   }
 
@@ -15788,7 +15817,7 @@ function createChatSession<TClientData = unknown>(
             isActive: () => boolean = () => true
           ) => {
             const lastUIMessage = msg.message;
-            if (lastUIMessage) {
+            if (lastUIMessage && lastUIMessage.role === "user") {
               if (sessionPendingMessages?.onReceived) {
                 try {
                   await sessionPendingMessages.onReceived({

@@ -227,7 +227,7 @@ async function priorRunSeconds(
   const sinceMs = input.window.since.getTime();
   const col = term.template.match(/max\((\w+)\)/i)?.[1] ?? "triggered_at";
   const query = compileTemplate(term.template, {
-    scope: `${scopeWhere(params)} AND ${col} < ${clickhouseDateTimeLiteral(input.window.since)}`,
+    scope: `${scopeWhere(params)} AND ${col} >= ${clickhouseDateTimeLiteral(new Date(sinceMs - PRE_WINDOW_LOOKBACK_MS))} AND ${col} < ${clickhouseDateTimeLiteral(input.window.since)}`,
     params: templateParams,
   });
   const rows = await runner(

@@ -1,3 +1,4 @@
+import { raisedAwareTick } from "~/components/primitives/charts/VerticalMarker";
 import type * as RechartsModule from "recharts";
 import { cloneElement, createElement, isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -59,6 +60,15 @@ describe("HealthActivityChart", () => {
 
   it("maps healthy to 1, degraded to 0 and unknown to a gap", () => {
     expect(healthPoints(bands).map((p) => p.health)).toEqual([1, 0, null, null]);
+  });
+
+  // Catches: a lone band in a long window ending short of the window end.
+  it("fails when a lone band does not extend to the window end", () => {
+    const since = Date.UTC(2026, 9, 1);
+    const until = since + 30 * 24 * HOUR;
+    const lone = { bucket: until - 13 * HOUR, healthy: 1, degraded: null, unknown: null } as const;
+    const points = healthPoints([lone], 1, { from: since, until });
+    expect(points.map((p) => p.bucket)).toEqual([since, lone.bucket, until]);
   });
 
   it("fails when the trailing point repeats a degraded bucket after recovery", () => {
@@ -231,7 +241,7 @@ describe("threshold chart raise tick", () => {
     const html = renderToStaticMarkup(
       createElement(AlertThresholdChart, { series: readings, threshold: 4, raisedAt })
     );
-    expect(html).toContain("▲ raised 09:00");
+    expect(html).toMatch(/▲ raised [A-Z][a-z]{2} \d+, 09:20/);
   });
 
   it("fails when the multi-series chart drops the raise tick", () => {
@@ -245,6 +255,23 @@ describe("threshold chart raise tick", () => {
         raisedAt,
       })
     );
-    expect(html).toContain("▲ raised 09:00");
+    expect(html).toMatch(/▲ raised [A-Z][a-z]{2} \d+, 09:20/);
+  });
+});
+
+describe("raisedAwareTick", () => {
+  it("paints the raised tick in the marker colour and the others dimmed", () => {
+    const marker = {
+      x: 5,
+      label: "▲ raised 14:25",
+      color: "var(--color-warning)",
+      anchor: "middle" as const,
+    };
+    const tick = raisedAwareTick(marker, (v) => `t${v}`);
+    const html = (value: number) =>
+      renderToStaticMarkup(createElement(tick, { x: 0, y: 0, payload: { value } }));
+    expect(html(5)).toContain("fill:var(--color-warning)");
+    expect(html(5)).toContain("▲ raised 14:25");
+    expect(html(6)).toContain("fill:var(--color-text-dimmed)");
   });
 });

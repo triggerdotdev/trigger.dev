@@ -15,6 +15,7 @@ import { createRedisContainer } from "../../../internal-packages/testcontainers/
 import { seedTestEnvironment } from "./helpers/seedTestEnvironment";
 import { seedTestRun } from "./helpers/seedTestRun";
 import { seedTestPAT, seedTestUser } from "./helpers/seedTestPAT";
+import { assertRunTokenSchedules } from "./helpers/assertRunTokenSchedules";
 
 import type * as Database from "~/db.server";
 import type * as V1 from "~/routes/api.v1.packets.$";
@@ -52,6 +53,11 @@ beforeAll(async () => {
   });
   await new Promise<void>((resolve) => s2AccountServer.listen(0, "127.0.0.1", resolve));
   const s2Port = (s2AccountServer.address() as AddressInfo).port;
+  vi.stubEnv("SCHEDULE_WORKER_REDIS_HOST", redis.container.getHost());
+  vi.stubEnv("SCHEDULE_WORKER_REDIS_PORT", String(redis.container.getPort()));
+  vi.stubEnv("SCHEDULE_WORKER_REDIS_PASSWORD", redis.container.getPassword());
+  vi.stubEnv("SCHEDULE_WORKER_REDIS_TLS_DISABLED", "true");
+  vi.stubEnv("SCHEDULE_WORKER_ENABLED", "0");
   vi.stubEnv("REALTIME_STREAMS_REDIS_HOST", redis.container.getHost());
   vi.stubEnv("REALTIME_STREAMS_REDIS_PORT", String(redis.container.getPort()));
   vi.stubEnv("REALTIME_STREAMS_REDIS_PASSWORD", redis.container.getPassword());
@@ -413,12 +419,28 @@ describe("run-token API authorization", () => {
     });
     const preview = await database.prisma.runtimeEnvironment.update({
       where: { id: devChild.id },
-      data: { type: "PREVIEW", slug: "preview", branchName: "default" },
+      data: { type: "PREVIEW", slug: "preview-default", branchName: "default" },
     });
     expect((await call(parent)).status).toBe(200);
     expect((await call(parent, "default")).status).toBe(401);
     expect((await call(preview)).status).toBe(200);
     expect((await call(preview, "default")).status).toBe(200);
+    // Catches: explicit preview-tier envvar calls rejecting their own branch token.
+    const envvars = await import("~/routes/api.v1.projects.$projectRef.envvars.$slug");
+    expect(
+      (
+        await envvars.loader({
+          request: new Request("https://api.example.com/envvars", {
+            headers: {
+              Authorization: `Bearer ${await tokenFor(preview)}`,
+              "x-trigger-branch": "default",
+            },
+          }),
+          params: { projectRef: seed.project.externalRef, slug: "preview" },
+          context: {},
+        })
+      ).status
+    ).toBe(200);
     expect((await call(preview, "feature")).status).toBe(401);
     expect((await call(preview, "refs/invalid")).status).toBe(401);
     const { environment: production } = await seedDeployedEnvironment();
@@ -459,6 +481,203 @@ describe("run-token API authorization", () => {
     expect((await validateJWT(child, rotatedKey)).ok).toBe(true);
     expect(decodeJwt(child).exp).toBeGreaterThan(decodeJwt(token).exp!);
     expect((await mint("31d")).status).toBe(400);
+  });
+
+  // Catches: opt-in legacy routes rejecting run tokens or bypassing their resource scopes.
+  it("authorizes run results and rescheduling within the token environment", async () => {
+    const seed = await seedDeployedEnvironment();
+    const other = await seedDeployedEnvironment();
+    const seeded = await seedTestRun(database.prisma, {
+      environmentId: seed.environment.id,
+      projectId: seed.project.id,
+      withBatch: true,
+    });
+    await database.prisma.taskRun.update({
+      where: { id: seeded.run.id },
+      data: {
+        engine: "V2",
+        status: "COMPLETED_SUCCESSFULLY",
+        output: '{"ok":true}',
+        outputType: "application/json",
+      },
+    });
+    const results = await import("~/routes/api.v1.runs.$runParam.result");
+    const batches = await import("~/routes/api.v1.batches.$batchParam.results");
+    const reschedule = await import("~/routes/api.v1.runs.$runParam.reschedule");
+    const request = (bearer: string, body?: object) =>
+      new Request("https://api.example.com/test", {
+        method: body ? "POST" : "GET",
+        headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json" },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+    const admin = await tokenFor(seed.environment);
+    const readOnly = await tokenFor(seed.environment, [`read:runs:${seeded.runFriendlyId}`]);
+    const otherToken = await tokenFor(other.environment);
+    for (const [bearer, expected] of [
+      [admin, 200],
+      [readOnly, 200],
+      [otherToken, 404],
+    ] as const) {
+      expect(
+        (
+          await results.loader({
+            request: request(bearer),
+            params: { runParam: seeded.runFriendlyId },
+            context: {},
+          })
+        ).status
+      ).toBe(expected);
+    }
+    expect(
+      (
+        await batches.loader({
+          request: request(admin),
+          params: { batchParam: seeded.batchFriendlyId },
+          context: {},
+        })
+      ).status
+    ).toBe(200);
+    expect(
+      (
+        await batches.loader({
+          request: request(otherToken),
+          params: { batchParam: seeded.batchFriendlyId },
+          context: {},
+        })
+      ).status
+    ).toBe(404);
+    expect(
+      (
+        await reschedule.action({
+          request: request(readOnly, { delay: "1h" }),
+          params: { runParam: seeded.runFriendlyId },
+          context: {},
+        })
+      ).status
+    ).toBe(403);
+    const notDelayed = await reschedule.action({
+      request: request(admin, { delay: "1h" }),
+      params: { runParam: seeded.runFriendlyId },
+      context: {},
+    });
+    expect(notDelayed.status).toBe(400);
+    expect(await notDelayed.json()).toMatchObject({
+      error: "Cannot reschedule a run that is not delayed",
+    });
+    expect(
+      (
+        await reschedule.action({
+          request: request(otherToken, { delay: "1h" }),
+          params: { runParam: seeded.runFriendlyId },
+          context: {},
+        })
+      ).status
+    ).toBe(404);
+  });
+
+  // Catches: signed run tokens reading sibling environments or mutating shared schedules.
+  it("confines schedule reads and mutations to the token environment", async () => {
+    const { scheduleEngine } = await import("~/v3/scheduleEngine.server");
+    try {
+      await assertRunTokenSchedules(database, tokenFor);
+    } finally {
+      await scheduleEngine.quit();
+    }
+  });
+
+  // Catches: run-token env-var writes escaping into another environment or branch parent.
+  it("allows same-environment env vars but denies parent writes before any changes", async () => {
+    const seed = await seedDeployedEnvironment();
+    const create = await import("~/routes/api.v1.projects.$projectRef.envvars.$slug");
+    const item = await import("~/routes/api.v1.projects.$projectRef.envvars.$slug.$name");
+    const upload = await import("~/routes/api.v1.projects.$projectRef.envvars.$slug.import");
+    const bearer = await tokenFor(seed.environment);
+    const request = (token: string, method: string, body?: object) =>
+      new Request("https://api.example.com/envvars", {
+        method,
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+    const params = { projectRef: seed.project.externalRef, slug: "prod" };
+    expect(
+      (
+        await create.action({
+          request: request(bearer, "POST", { name: "RUN_TOKEN_TEST", value: "value" }),
+          params,
+          context: {},
+        })
+      ).status
+    ).toBe(200);
+    const read = await item.loader({
+      request: request(bearer, "GET"),
+      params: { ...params, name: "RUN_TOKEN_TEST" },
+      context: {},
+    });
+    expect(read.status).toBe(200);
+    expect(await read.json()).toMatchObject({ name: "RUN_TOKEN_TEST", value: "value" });
+    expect(
+      (
+        await create.action({
+          request: request(await tokenFor(seed.environment, ["read:envvars"]), "POST", {
+            name: "DENIED",
+            value: "value",
+          }),
+          params,
+          context: {},
+        })
+      ).status
+    ).toBe(403);
+    await expect(
+      create.loader({
+        request: request(bearer, "GET"),
+        params: { ...params, slug: "stg" },
+        context: {},
+      })
+    ).rejects.toMatchObject({ status: 403 });
+    const rejected = await upload.action({
+      request: request(bearer, "POST", {
+        variables: { MUST_NOT_WRITE: "value" },
+        parentVariables: { ALSO_DENIED: "value" },
+      }),
+      params,
+      context: {},
+    });
+    expect(rejected.status).toBe(403);
+    expect(
+      await database.prisma.environmentVariable.count({
+        where: {
+          projectId: seed.project.id,
+          key: { in: ["MUST_NOT_WRITE", "ALSO_DENIED", "DENIED"] },
+        },
+      })
+    ).toBe(0);
+    expect(
+      (
+        await upload.action({
+          request: request(bearer, "POST", { variables: { IMPORTED: "value" } }),
+          params,
+          context: {},
+        })
+      ).status
+    ).toBe(200);
+    expect(
+      (
+        await item.action({
+          request: request(bearer, "PUT", { value: "updated" }),
+          params: { ...params, name: "RUN_TOKEN_TEST" },
+          context: {},
+        })
+      ).status
+    ).toBe(200);
+    expect(
+      (
+        await item.action({
+          request: request(bearer, "DELETE"),
+          params: { ...params, name: "RUN_TOKEN_TEST" },
+          context: {},
+        })
+      ).status
+    ).toBe(200);
   });
 
   it("records only bounded SDK labels using actual auth classification and deduplicates wrappers", async () => {
@@ -551,7 +770,8 @@ describe("run-token API authorization", () => {
     const uploaded = await v2.action(args("PUT", "run_packet_test/output.json", token));
     expect(uploaded.status).toBe(200);
     const upload = await uploaded.json();
-    expect(upload.storagePath).toBe("s3://run_packet_test/output.json");
+    // A run token's upload lands in its own namespace, which is the only place its triggers may point.
+    expect(upload.storagePath).toBe("s3://uploads/run/run_packet_test/run_packet_test/output.json");
     expect((await fetch(upload.presignedUrl, { method: "PUT", body: '{"ok":true}' })).status).toBe(
       200
     );

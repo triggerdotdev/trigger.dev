@@ -6,7 +6,6 @@ import {
   calculateEffectiveScheduleTime,
   calculateNextNominalTimestamp,
   calculateSchedulePhase,
-  SCHEDULE_PHASE_DENOMINATOR,
   ScheduleEngine,
 } from "../src/index.js";
 import { calculateDistributedExecutionTime } from "../src/engine/distributedScheduling.js";
@@ -28,7 +27,6 @@ describe("ScheduleEngine Integration (part 2)", () => {
         redis: redisOptions,
         distributionWindow: { seconds: 10 },
         schedulePhaseSecret: "test-schedule-phase-secret",
-        cronSpreadFraction: 0,
         worker: {
           concurrency: 1,
           disabled: true, // Don't actually run the worker — calling triggerScheduledTask directly
@@ -95,6 +93,7 @@ describe("ScheduleEngine Integration (part 2)", () => {
             projectId: project.id,
             active: true,
             lastScheduledTimestamp: preDeployLastFire,
+            schedulePhase: 0,
           },
         });
 
@@ -131,7 +130,7 @@ describe("ScheduleEngine Integration (part 2)", () => {
         const nextNominalAt = new Date(nextJobPayload.exactScheduleTime);
 
         // The legacy occurrence fires once, then expired intermediate ticks are
-        // skipped instead of being replayed. With spread disabled, eligibility
+        // skipped instead of being replayed. With a zero phase, eligibility
         // remains nominal and the next job is in the future.
         expect(nextNominalAt.getTime()).toBeGreaterThan(beforeTrigger.getTime());
         expect(new Date(nextJobPayload.effectiveScheduleTime)).toEqual(nextNominalAt);
@@ -146,7 +145,7 @@ describe("ScheduleEngine Integration (part 2)", () => {
           where: { id: scheduleInstance.id },
           select: { schedulePhase: true },
         });
-        expect(updatedInstance.schedulePhase).toBeNull();
+        expect(updatedInstance.schedulePhase).not.toBeNull();
       } finally {
         await engine.quit();
       }
@@ -164,7 +163,6 @@ describe("ScheduleEngine Integration (part 2)", () => {
         redis: redisOptions,
         distributionWindow: { seconds: 10 },
         schedulePhaseSecret,
-        cronSpreadFraction: 1,
         worker: {
           concurrency: 1,
           disabled: true,
@@ -369,7 +367,7 @@ describe("ScheduleEngine Integration (part 2)", () => {
   );
 
   containerTest(
-    "gates cron spread per schedule via the rollout fraction",
+    "spreads schedules and persists their deterministic phase",
     { timeout: 30_000 },
     async ({ prisma, redisOptions }) => {
       const schedulePhaseSecret = "test-schedule-phase-secret";
@@ -422,51 +420,26 @@ describe("ScheduleEngine Integration (part 2)", () => {
         deduplicationKey: taskSchedule.deduplicationKey,
       });
 
-      // The gate is `phase < fraction * DENOMINATOR`. Dividing and multiplying
-      // by 2^31 is exact in floating point, so `phase / DENOMINATOR` excludes
-      // this schedule and `(phase + 1) / DENOMINATOR` includes it.
-      const excludingFraction = phase / SCHEDULE_PHASE_DENOMINATOR;
-      const includingFraction = (phase + 1) / SCHEDULE_PHASE_DENOMINATOR;
-
-      const createEngine = (cronSpreadFraction: number) =>
-        new ScheduleEngine({
-          prisma,
-          redis: redisOptions,
-          distributionWindow: { seconds: 10 },
-          schedulePhaseSecret,
-          cronSpreadFraction,
-          worker: {
-            concurrency: 1,
-            disabled: true,
-            pollIntervalMs: 1000,
-          },
-          tracer: trace.getTracer("test", "0.0.0"),
-          onTriggerScheduledTask: async () => ({ success: true }),
-          isDevEnvironmentConnectedHandler: vi.fn().mockResolvedValue(true),
-        });
+      const engine = new ScheduleEngine({
+        prisma,
+        redis: redisOptions,
+        distributionWindow: { seconds: 10 },
+        schedulePhaseSecret,
+        worker: {
+          concurrency: 1,
+          disabled: true,
+          pollIntervalMs: 1000,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+        onTriggerScheduledTask: async () => ({ success: true }),
+        isDevEnvironmentConnectedHandler: vi.fn().mockResolvedValue(true),
+      });
 
       const jobId = `scheduled-task-instance:${scheduleInstance.id}`;
 
-      const excludedEngine = createEngine(excludingFraction);
       try {
-        await excludedEngine.registerNextTaskScheduleInstance({ instanceId: scheduleInstance.id });
-        const job = await excludedEngine.getJob(jobId);
-        const payload = job!.item as unknown as {
-          exactScheduleTime: string;
-          effectiveScheduleTime: string;
-        };
-        // Spread inactive: the effective time is the nominal tick.
-        expect(new Date(payload.effectiveScheduleTime)).toEqual(
-          new Date(payload.exactScheduleTime)
-        );
-      } finally {
-        await excludedEngine.quit();
-      }
-
-      const includedEngine = createEngine(includingFraction);
-      try {
-        await includedEngine.registerNextTaskScheduleInstance({ instanceId: scheduleInstance.id });
-        const job = await includedEngine.getJob(jobId);
+        await engine.registerNextTaskScheduleInstance({ instanceId: scheduleInstance.id });
+        const job = await engine.getJob(jobId);
         const payload = job!.item as unknown as {
           exactScheduleTime: string;
           effectiveScheduleTime: string;
@@ -484,8 +457,13 @@ describe("ScheduleEngine Integration (part 2)", () => {
           schedulePhase: phase,
         });
         expect(new Date(payload.effectiveScheduleTime)).toEqual(effectiveAt);
+        const updatedInstance = await prisma.taskScheduleInstance.findFirstOrThrow({
+          where: { id: scheduleInstance.id },
+          select: { schedulePhase: true },
+        });
+        expect(updatedInstance.schedulePhase).toBe(phase);
       } finally {
-        await includedEngine.quit();
+        await engine.quit();
       }
     }
   );

@@ -64,6 +64,7 @@ export type Alert = {
   lastOccurrenceAt: Date | null;
   occurrencesSinceRaise: number;
   occurrencesTotal: number;
+  groupId: string | null;
 };
 
 type AlertRequiredKeys =
@@ -168,6 +169,14 @@ async function inTransaction<R>(
   return (await $transaction(db, fn, { timeout })) as R;
 }
 
+async function releaseGroupMembers(tx: PrismaTransactionClient, groupIds: string[]) {
+  if (groupIds.length === 0) return;
+  await tx.alert.updateMany({
+    where: { groupId: { in: boundedIn(groupIds) } },
+    data: { groupId: null, updatedAt: new Date() },
+  });
+}
+
 export async function createAlert(
   db: PrismaClientOrTransaction,
   params: Omit<NewAlert, "id" | "createdAt" | "updatedAt"> & { id?: string; createdAt?: Date }
@@ -231,6 +240,7 @@ export async function listAlerts(
     lifecycle?: AlertLifecycle;
     attention?: AlertAttention;
     statuses?: Array<"needs_attention" | "active" | "inactive">;
+    ungroupedOnly?: boolean;
     limit?: number;
   }
 ): Promise<Alert[]> {
@@ -239,6 +249,7 @@ export async function listAlerts(
   if (params.projectId) where.projectId = params.projectId;
   if (params.lifecycle) where.lifecycle = params.lifecycle;
   if (params.attention) where.attention = params.attention;
+  if (params.ungroupedOnly) where.groupId = null;
   if (params.statuses && params.statuses.length > 0) {
     const byStatus: Record<string, Prisma.AlertWhereInput> = {
       needs_attention: { attention: "needs_attention" },
@@ -555,6 +566,9 @@ export async function applyEvaluationOutcome(
     if (updated.length === 0) {
       return { applied: false, events: [], deliveries: [], alert: null };
     }
+    if (params.patch.lifecycle && params.patch.lifecycle !== "active") {
+      await releaseGroupMembers(tx, [params.alertId]);
+    }
 
     const occurrences = new Map<string, { rowTime: Date; expiresAt: Date }>();
     for (const occ of params.occurrences ?? []) {
@@ -675,6 +689,7 @@ export async function stopAlert(
       },
     });
     if (updated.length === 0) return null;
+    await releaseGroupMembers(tx, [params.id]);
 
     const event = await tx.alertEvent.create({
       data: {
@@ -702,6 +717,7 @@ export async function deleteAlert(
         AND "environmentId" = ${params.environmentId}
       RETURNING *`;
     if (deleted.length === 0) return null;
+    await releaseGroupMembers(tx, [params.id]);
 
     await tx.$executeRaw`
       DELETE FROM "AlertDelivery"
@@ -764,6 +780,10 @@ export async function expireAlerts(
       WHERE "lifecycle" = 'active' AND "id" IN (${Prisma.join(due.map((d) => d.id))})
       RETURNING *`;
     const updated = rows.map(toAlert);
+    await releaseGroupMembers(
+      tx,
+      updated.map((a) => a.id)
+    );
 
     updated.sort((a, b) => (a.expiresAt?.getTime() ?? 0) - (b.expiresAt?.getTime() ?? 0));
 

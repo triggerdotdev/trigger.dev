@@ -65,6 +65,7 @@ export const handle: Handle = {
   agentPageContext: (data) => playgroundAgentPageContext(data),
 };
 import { pageMeta } from "~/utils/pageTitle";
+import { publicTokenSubject } from "~/services/publicTokenSubject.server";
 
 export const meta = pageMeta(({ params }) => [params.agentParam ?? "Agent", "Playground"]);
 
@@ -127,7 +128,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         jwt = await internal_generateJWT({
           secretKey: extractJwtSigningSecretKey(environment),
           payload: {
-            sub: environment.id,
+            sub: publicTokenSubject(environment.id),
             pub: true,
             scopes: [`read:runs:${conv.runFriendlyId}`, `write:inputStreams:${conv.runFriendlyId}`],
           },

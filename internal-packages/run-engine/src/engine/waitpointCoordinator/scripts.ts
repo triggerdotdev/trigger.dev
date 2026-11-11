@@ -109,16 +109,27 @@ const PERSIST_RUN_KEYS = `
       for i = 1, 4 do redis.call('PERSIST', KEYS[i]) end
 `;
 
-// An accepted registration retains its source until a watcher or parent result owns completion.
+// A keyed token remains reusable for the reservation's full lifetime. The immutable
+// deadline is copied at creation, so every terminal site can retain it within this same slot.
+// Every command using this fragment declares the related-runs key as its final key.
 export const RETAIN_WAITPOINT_RECORD = `
-      if (tonumber(redis.call('HGET', record, 'rh')) or 0) == 0 then
-        redis.call('PEXPIRE', record, ttl)
+      local keyUntil = tonumber(redis.call('HGET', record, 'ku') or '0')
+      if keyUntil == -1 or redis.call('HEXISTS', record, 'ka') == 1 or
+        (tonumber(redis.call('HGET', record, 'rh')) or 0) > 0 then
+        redis.call('PERSIST', record)
+        redis.call('PERSIST', KEYS[#KEYS])
+      else
+        local time = redis.call('TIME')
+        local nowMs = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
+        local expiresAt = math.max(nowMs + ttl, keyUntil)
+        redis.call('PEXPIREAT', record, expiresAt)
+        redis.call('PEXPIREAT', KEYS[#KEYS], expiresAt)
       end
 `;
 
 export function registerWaitpointCommands(redis: RedisClient): void {
   /**
-   * KEYS: record. ARGV: recordJson, status ('PENDING'|'COMPLETED'), completionJson (''),
+   * KEYS: record, related runs. ARGV: recordJson, status ('PENDING'|'COMPLETED'), completionJson (''),
    * terminalTtlMs.
    *
    * A record created PENDING gets no TTL — it is active state. A record created already
@@ -130,7 +141,7 @@ export function registerWaitpointCommands(redis: RedisClient): void {
    * that has already been armed.
    */
   redis.defineCommand("wpCreateIfAbsent", {
-    numberOfKeys: 1,
+    numberOfKeys: 2,
     lua: `
       local record = KEYS[1]
 
@@ -146,7 +157,7 @@ export function registerWaitpointCommands(redis: RedisClient): void {
         return { '${EXISTS}', vals[1] or '', vals[2] or '', vals[3] or '' }
       end
 
-      redis.call('HSET', record, 'r', ARGV[1], 'status', ARGV[2])
+      redis.call('HSET', record, 'r', ARGV[1], 'status', ARGV[2], 'ku', ARGV[6] or '0')
       if ARGV[3] ~= '' then
         redis.call('HSET', record, 'c', ARGV[3])
       end
@@ -156,16 +167,16 @@ export function registerWaitpointCommands(redis: RedisClient): void {
         redis.call('HSET', record, 'cbt', ARGV[5])
       end
       if ARGV[2] == '${STORED_COMPLETED}' then
-        redis.call('PEXPIRE', record, ttl)
+        ${RETAIN_WAITPOINT_RECORD}
       end
 
       return { '${CREATED}' }
     `,
   });
 
-  // KEYS: record, watchers, queue. ARGV: watcherField, watcherJson.
+  // KEYS: record, watchers, queue, related runs. ARGV: watcherField, watcherJson.
   redis.defineCommand("wpRegisterOrReport", {
-    numberOfKeys: 3,
+    numberOfKeys: 4,
     lua: `
       local record, watchers, queue = KEYS[1], KEYS[2], KEYS[3]
 
@@ -175,7 +186,22 @@ export function registerWaitpointCommands(redis: RedisClient): void {
         return { '${MISSING}' }
       end
 
+      local source = cjson.decode(redis.call('HGET', record, 'r'))
+      local incoming = cjson.decode(ARGV[2])
+      if type(incoming.runId) ~= 'string' or incoming.runId == '' then
+        return redis.error_reply('wpRegisterOrReport: invalid run identity')
+      end
+      local function rememberRelatedRun()
+        if source.type == 'DATETIME' or source.type == 'MANUAL' then
+          redis.call('ZADD', KEYS[4], 0, incoming.runId)
+          local ttl = redis.call('PTTL', record)
+          if ttl >= 0 then redis.call('PEXPIRE', KEYS[4], ttl)
+          else redis.call('PERSIST', KEYS[4]) end
+        end
+      end
+
       if redis.call('HGET', record, 'status') == '${STORED_COMPLETED}' then
+        rememberRelatedRun()
         -- Return the completed-run identity (cbt) in the SAME atomic reply as the completion envelope, so a
         -- delivered completion and its cachedRunId can never diverge at the record's expiry.
         return {
@@ -199,7 +225,6 @@ export function registerWaitpointCommands(redis: RedisClient): void {
       if redis.call('HSETNX', watchers, ARGV[1], ARGV[2]) == 1 then
         redis.call('RPUSH', queue, ARGV[1])
       else
-        local incoming = cjson.decode(ARGV[2])
         if incoming.spanIdToComplete and incoming.spanIdToComplete ~= cjson.null and incoming.spanIdToComplete ~= '' then
           local existing = cjson.decode(redis.call('HGET', watchers, ARGV[1]))
           if not existing.spanIdToComplete or existing.spanIdToComplete == cjson.null or existing.spanIdToComplete == '' then
@@ -209,12 +234,13 @@ export function registerWaitpointCommands(redis: RedisClient): void {
           end
         end
       end
+      rememberRelatedRun()
       return { '${REGISTERED}' }
     `,
   });
 
   /**
-   * KEYS: record, watchers, queue, fanout.
+   * KEYS: record, watchers, queue, fanout, related runs.
    * ARGV: completionJson, completionId, nowMs, terminalTtlMs.
    *
    * The atomic half of completion: freeze the envelope and record the fanout obligation,
@@ -228,7 +254,7 @@ export function registerWaitpointCommands(redis: RedisClient): void {
    * false conflict quarantines a healthy waitpoint, which is worse than missing a real one.
    */
   redis.defineCommand("wpComplete", {
-    numberOfKeys: 4,
+    numberOfKeys: 5,
     lua: `
       local record, watchers, queue, fanout = KEYS[1], KEYS[2], KEYS[3], KEYS[4]
 
@@ -289,7 +315,7 @@ export function registerWaitpointCommands(redis: RedisClient): void {
       -- watchers that were withdrawn while the waitpoint was pending, and those would
       -- otherwise sit on a key with no reader and no TTL.
       redis.call('DEL', queue, watchers)
-${RETAIN_WAITPOINT_RECORD}
+      ${RETAIN_WAITPOINT_RECORD}
       return { '${DID_COMPLETE}', ARGV[1], '${ABSENT}' }
     `,
   });
@@ -405,7 +431,7 @@ ${RETAIN_WAITPOINT_RECORD}
   });
 
   /**
-   * KEYS: record, watchers, queue, fanout.
+   * KEYS: record, watchers, queue, fanout, related runs.
    * ARGV: workerId, epoch, count, nowMs, terminalTtlMs.
    *
    * Acknowledge `count` watchers from the head of the queue, fenced by the claim's epoch.
@@ -428,7 +454,7 @@ ${RETAIN_WAITPOINT_RECORD}
    * it is also the only place the terminal TTL is armed for a waitpoint that had watchers.
    */
   redis.defineCommand("wpFanoutAck", {
-    numberOfKeys: 4,
+    numberOfKeys: 5,
     lua: `
       local record, watchers, queue, fanout = KEYS[1], KEYS[2], KEYS[3], KEYS[4]
 
@@ -490,7 +516,7 @@ ${RETAIN_WAITPOINT_RECORD}
       -- left.
       redis.call('DEL', queue, watchers)
       redis.call('PEXPIRE', fanout, ttl)
-${RETAIN_WAITPOINT_RECORD}
+      ${RETAIN_WAITPOINT_RECORD}
 
       return { '${DRAINED}', redis.call('HGET', fanout, 'del') or '0' }
     `,
@@ -661,6 +687,160 @@ ${RETAIN_WAITPOINT_RECORD}
     `,
   });
 
+  // Candidate-local fence: recovery cancels creation before deleting an unpublished loser.
+  // A caller carries a fixed acceptance deadline, so expiry of the fence cannot resurrect it.
+  redis.defineCommand("wpCreateKeyedCandidate", {
+    numberOfKeys: 2,
+    lua: `
+      local now = redis.call('TIME')
+      local nowMs = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000)
+      if redis.call('EXISTS', KEYS[2]) == 1 or nowMs > tonumber(ARGV[2]) then
+        return { 'closed' }
+      end
+      if redis.call('EXISTS', KEYS[1]) == 1 then return { '${EXISTS}' } end
+      redis.call('HSET', KEYS[1], 'r', ARGV[1], 'status', 'PENDING', 'ku', ARGV[3] or '-1')
+      if ARGV[4] == '1' then redis.call('HSET', KEYS[1], 'ka', '1') end
+      return { '${CREATED}' }
+    `,
+  });
+
+  // All enabled PG/store keyed creators share this generation fence. A delayed BEGIN
+  // compares its observed predecessor, so replay cannot resurrect an overtaken claimant.
+  redis.defineCommand("wpReadIdemClaim", {
+    numberOfKeys: 2,
+    lua: `return { redis.call('GET', KEYS[1]) or '', redis.call('GET', KEYS[2]) or '' }`,
+  });
+  redis.defineCommand("wpBeginIdemClaim", {
+    numberOfKeys: 2,
+    lua: `
+      local now = redis.call('TIME')
+      local nowMs = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000)
+      if nowMs > tonumber(ARGV[3]) then return { 'closed', '' } end
+      local winner = redis.call('GET', KEYS[1])
+      if winner then return { '${EXISTS}', winner } end
+      local current = redis.call('GET', KEYS[2]) or ''
+      if current ~= ARGV[2] and current ~= ARGV[1] then return { '${STALE}', '' } end
+      if current ~= ARGV[1] then
+        local retainedUntil = nowMs + math.max(0, redis.call('PTTL', KEYS[2]))
+        redis.call('SET', KEYS[2], ARGV[1])
+        redis.call('PEXPIREAT', KEYS[2], math.max(retainedUntil, tonumber(ARGV[3])))
+      end
+      return { '${CLAIMED}', ARGV[1] }
+    `,
+  });
+
+  // Arm outcome evidence before candidate creation. Recovery can distinguish an unpublished
+  // attempt from acknowledged evidence that has aged out, even after a prolonged outage.
+  redis.defineCommand("wpPrepareIdemReceipt", {
+    numberOfKeys: 1,
+    lua: `
+      local previous = redis.call('GET', KEYS[1])
+      if previous then return { previous } end
+      local now = redis.call('TIME')
+      local nowMs = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000)
+      if nowMs > tonumber(ARGV[1]) then return { 'closed' } end
+      redis.call('SET', KEYS[1], 'pending')
+      return { 'pending' }
+    `,
+  });
+
+  // Reservation outcome is atomic with the publication, in the SAME hash slot. No TTL until
+  // recovery acknowledges completion/cleanup. Cancel never publishes a missing candidate.
+  redis.defineCommand("wpIdemReceipt", {
+    numberOfKeys: 3,
+    lua: `
+      local previous = redis.call('GET', KEYS[2])
+      if previous and previous ~= 'pending' then return { 'receipt', previous } end
+      local now = redis.call('TIME')
+      local nowMs = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000)
+      if ARGV[4] == 'cancel' or nowMs > tonumber(ARGV[3]) or
+          (ARGV[5] ~= '' and redis.call('GET', KEYS[3]) ~= ARGV[5]) then
+        redis.call('SET', KEYS[2], 'cancelled')
+        return { 'cancelled', 'cancelled' }
+      end
+      if ARGV[2] ~= '' and tonumber(ARGV[2]) == nil then
+        return redis.error_reply('wpIdemReceipt: invalid expiry')
+      end
+      local winner = redis.call('GET', KEYS[1])
+      local outcome = '${EXISTS}'
+      if not winner then
+        winner = ARGV[1]
+        redis.call('SET', KEYS[1], winner)
+        if ARGV[2] ~= '' then redis.call('PEXPIREAT', KEYS[1], tonumber(ARGV[2])) end
+        outcome = '${RESERVED}'
+      end
+      redis.call('SET', KEYS[2], winner)
+      return { outcome, winner }
+    `,
+  });
+
+  redis.defineCommand("wpCloseKeyedCandidate", {
+    numberOfKeys: 6,
+    lua: `
+      redis.call('SET', KEYS[5], 'closed', 'PX', ARGV[1])
+      redis.call('DEL', KEYS[1], KEYS[2], KEYS[3], KEYS[4], KEYS[6])
+      return { '${DISCARDED}' }
+    `,
+  });
+
+  redis.defineCommand("wpReadIdemReceipt", {
+    numberOfKeys: 1,
+    lua: `return { redis.call('GET', KEYS[1]) or '' }`,
+  });
+
+  // Terminal evidence is durable before the source pin is released. A replay can finish
+  // retirement even if the now-ordinary terminal source expires before receipt ACK.
+  redis.defineCommand("wpCompleteIdemReceipt", {
+    numberOfKeys: 1,
+    lua: `
+      local previous = redis.call('GET', KEYS[1])
+      if previous == ARGV[1] then
+        previous = 'completed:' .. ARGV[1]
+        -- Manual rollback may already have acknowledged retention. A later normal ACK
+        -- must not recreate an unbounded receipt before its following release/ack writes.
+        local ttl = redis.call('PTTL', KEYS[1])
+        redis.call('SET', KEYS[1], previous)
+        if ttl >= 0 then redis.call('PEXPIRE', KEYS[1], ttl) end
+      end
+      if previous ~= 'completed:' .. ARGV[1] then
+        return redis.error_reply('wpCompleteIdemReceipt: winner changed')
+      end
+      return { previous }
+    `,
+  });
+
+  redis.defineCommand("wpReleaseKeyedCandidate", {
+    numberOfKeys: 3,
+    lua: `
+      local record = KEYS[1]
+      if redis.call('EXISTS', record) == 0 then return { 'released' } end
+      if redis.call('HGET', record, 'status') ~= '${STORED_COMPLETED}' then
+        local token = cjson.decode(redis.call('HGET', record, 'r'))
+        if ARGV[2] ~= 'pending-manual' or token.type ~= 'MANUAL' or
+            (token.completedAfter ~= nil and token.completedAfter ~= cjson.null) then
+          return redis.error_reply('wpReleaseKeyedCandidate: winner is not completed')
+        end
+        redis.call('HDEL', record, 'ka')
+        return { 'released' }
+      end
+      redis.call('HDEL', record, 'ka')
+      local state = redis.call('HGET', KEYS[2], 'state')
+      if not state or state == 'done' then
+        local ttl = tonumber(ARGV[1])
+        ${RETAIN_WAITPOINT_RECORD}
+      end
+      return { 'released' }
+    `,
+  });
+
+  redis.defineCommand("wpAckIdemReceipt", {
+    numberOfKeys: 1,
+    lua: `
+      if redis.call('GET', KEYS[1]) == ARGV[1] then redis.call('PEXPIRE', KEYS[1], ARGV[2]) end
+      return { 'acked' }
+    `,
+  });
+
   // KEYS: idempotency key. ARGV: waitpointId, expiresAtMs ('' for no expiry).
   redis.defineCommand("wpIdemReserve", {
     numberOfKeys: 1,
@@ -687,12 +867,12 @@ ${RETAIN_WAITPOINT_RECORD}
     `,
   });
 
-  // KEYS: record, watchers, queue, fanout. No ARGV. Discards a losing reservation's
+  // KEYS: record, watchers, queue, fanout, related runs. No ARGV. Discards a losing reservation's
   // orphan record, including any watcher or fanout state it managed to acquire.
   redis.defineCommand("wpDiscard", {
-    numberOfKeys: 4,
+    numberOfKeys: 5,
     lua: `
-      redis.call('DEL', KEYS[1], KEYS[2], KEYS[3], KEYS[4])
+      redis.call('DEL', KEYS[1], KEYS[2], KEYS[3], KEYS[4], KEYS[5])
       return { '${DISCARDED}' }
     `,
   });
@@ -847,7 +1027,7 @@ ${RETAIN_WAITPOINT_RECORD}
    * The caller therefore owes a fresh id per block operation.
    */
   redis.defineCommand("runAbsorbBlockers", {
-    numberOfKeys: 14,
+    numberOfKeys: 15,
     lua: `
       local pend, done, edge, st, contrib, results = KEYS[1], KEYS[2], KEYS[3], KEYS[4], KEYS[5], KEYS[6]
       local n = tonumber(ARGV[4])
@@ -857,10 +1037,10 @@ ${RETAIN_WAITPOINT_RECORD}
       -- Guard before any write: a wrong n must not half-apply the script. HDEL/HSETNX below
       -- are irreversible mid-script, and Redis does not roll back a script that errors. The trailing
       -- ARGV carries the absorption id, index member and read revision after the edge groups.
-      if n == nil or (#ARGV ~= 8 + n * 5 and #ARGV ~= 7 + n * 5) then
+      if n == nil or (#ARGV ~= 9 + n * 5 and #ARGV ~= 8 + n * 5) then
         return redis.error_reply('runAbsorbBlockers: arity mismatch')
       end
-      local evidenceOffset = #ARGV == 8 + n * 5 and 3 or 2
+      local evidenceOffset = #ARGV == 9 + n * 5 and 3 or 2
       if ARGV[1] == '' then
         return redis.error_reply('runAbsorbBlockers: ARGV[1] must be a block id')
       end
@@ -898,6 +1078,16 @@ ${RETAIN_WAITPOINT_RECORD}
       if not (isRetry or isRollover or isFirst) then
         return { '${STALE}', previous }
       end
+      -- New batch admissions require their pending header. An exact contribution retained
+      -- after phase one must still finish registration after header delivery, in the same cycle.
+      local requirePending = ARGV[5 + n * 5]
+      if requirePending ~= '' and redis.call('SISMEMBER', pend, requirePending) == 0 and
+          not (isRetry and ARGV[#ARGV - evidenceOffset] ~= '' and
+            ((evidenceOffset == 3 and redis.call('SISMEMBER', contrib, '!accepted') == 1 and
+              redis.call('SISMEMBER', contrib, ARGV[#ARGV - 1]) == 1) or
+             (evidenceOffset == 2 and redis.call('EXISTS', contrib) == 1))) then
+        return { 'ownerGone', previous }
+      end
       -- Validate the declared predecessor's retained keys before any mutation. Rollover moves the
       -- hash instead of enumerating it; the manifest survives a lost reply and empty old blocks.
       if isRollover and (redis.call('EXISTS', wd, targets) > 0) then
@@ -908,6 +1098,7 @@ ${PERSIST_RUN_KEYS}
       redis.call('PERSIST', results)
       local supersededBlock = ''
       if isRollover then
+        redis.call('ZADD', KEYS[15], 0, previous)
         redis.call('SET', wd, previous)
         if redis.call('EXISTS', edge) == 1 then redis.call('RENAME', edge, targets) end
         redis.call('PERSIST', targets)
@@ -1156,6 +1347,14 @@ ${PERSIST_RUN_KEYS}
     lua: `
       local st = KEYS[4]
 
+      -- Optional manual rollback CAS, before every write. Existing lifecycle callers keep their arity.
+      if #ARGV == 5 then
+        local expected = cjson.decode(ARGV[4])
+        local actual = redis.call('HMGET', st, 'rev', 'seq', 'blk', 'co', 'term')
+        for i = 1, 5 do
+          if (actual[i] or '') ~= expected[i] then return { '${STALE}' } end
+        end
+      end
       local ttl = tonumber(ARGV[2])
       if ttl == nil or ttl <= 0 then
         return redis.error_reply('runTerminalCleanup: ARGV[2] must be a positive TTL in ms')
@@ -1174,7 +1373,7 @@ ${PERSIST_RUN_KEYS}
         return { '${RETAINED}', 'handoff-owed' }
       end
 
-      redis.call('HSET', st, 'term', '1', 'hs', '', 'termAt', ARGV[1], 'rev', ARGV[4])
+      redis.call('HSET', st, 'term', '1', 'hs', '', 'termAt', ARGV[1], 'rev', ARGV[#ARGV])
       for i = 1, 4 do redis.call('PEXPIRE', KEYS[i], ttl) end
       for i = 6, 10 do redis.call('PEXPIRE', KEYS[i], ttl) end
       -- Resume is not result consumption. Only the run's terminal lifecycle arms this TTL.
@@ -1289,7 +1488,7 @@ ${PERSIST_RUN_KEYS}
    * KEYS: pend, done, edge, st, wd, targets, refs. ARGV: blockId.
    */
   redis.defineCommand("runAbandonRetainAndClear", {
-    numberOfKeys: 11,
+    numberOfKeys: 12,
     lua: `
       local pend, done, edge, st, wd, targets, refs = unpack(KEYS)
       if ARGV[1] == '' then return redis.error_reply('runAbandonRetainAndClear: missing block id') end
@@ -1304,7 +1503,8 @@ ${PERSIST_RUN_KEYS}
       if hasEdge and redis.call('EXISTS', targets) == 1 then
         return redis.error_reply('runAbandonRetainAndClear: active and retained targets conflict')
       end
-      -- The manifest is the first durable write. If it cannot be recorded, nothing is detached.
+      -- Publish discovery before detaching targets, in the same run slot.
+      redis.call('ZADD', KEYS[12], 0, ARGV[1])
       redis.call('SET', wd, ARGV[1])
       if redis.call('EXISTS', edge) == 1 then redis.call('RENAME', edge, targets) end
       redis.call('PERSIST', targets)
@@ -1317,10 +1517,19 @@ ${PERSIST_RUN_KEYS}
 
   /** KEYS: pend, done, edge, st, wd, results, targets, refs. ARGV: blockId, nowMs, ttlMs. */
   redis.defineCommand("runTerminalRetainAndClear", {
-    numberOfKeys: 12,
+    numberOfKeys: 13,
     lua: `
       local pend, done, edge, st, wd, results, targets, refs = unpack(KEYS)
       if ARGV[1] == '' then return redis.error_reply('runTerminalRetainAndClear: missing block id') end
+
+      -- Optional manual rollback CAS, before every write. Existing lifecycle callers keep their arity.
+      if #ARGV == 5 then
+        local expected = cjson.decode(ARGV[4])
+        local actual = redis.call('HMGET', st, 'rev', 'seq', 'blk', 'co', 'term')
+        for i = 1, 5 do
+          if (actual[i] or '') ~= expected[i] then return { '${STALE}' } end
+        end
+      end
       local ttl = tonumber(ARGV[3])
       if ttl == nil or ttl <= 0 then return redis.error_reply('runTerminalRetainAndClear: invalid TTL') end
       local current = redis.call('HGET', st, 'blk') or ''
@@ -1340,12 +1549,13 @@ ${PERSIST_RUN_KEYS}
       end
       if current == ARGV[1] then
         -- Publish recovery evidence before detaching the active hash.
+        redis.call('ZADD', KEYS[13], 0, ARGV[1])
         redis.call('SET', wd, ARGV[1])
         if hasEdge then redis.call('RENAME', edge, targets) end
         redis.call('PERSIST', targets)
       end
       redis.call('UNLINK', pend, done, edge, refs, KEYS[9], KEYS[10], KEYS[11], KEYS[12])
-      redis.call('HSET', st, 'term', '1', 'hs', '', 'termAt', ARGV[2], 'rev', ARGV[4])
+      redis.call('HSET', st, 'term', '1', 'hs', '', 'termAt', ARGV[2], 'rev', ARGV[#ARGV])
       redis.call('HDEL', st, 'blk')
       redis.call('PEXPIRE', st, ttl)
       redis.call('PEXPIRE', results, ttl)
@@ -1432,7 +1642,7 @@ ${PERSIST_RUN_KEYS}
    * never touched. Refuses while any unacknowledged target remains.
    */
   redis.defineCommand("runFinalizeRetainedWithdrawal", {
-    numberOfKeys: 3,
+    numberOfKeys: 4,
     lua: `
       local wd, st = KEYS[1], KEYS[2]
       if ARGV[1] == '' then
@@ -1447,6 +1657,7 @@ ${PERSIST_RUN_KEYS}
       end
       local cleanupOwed = redis.call('HGET', st, 'co')
       redis.call('UNLINK', wd, KEYS[3])
+      redis.call('ZREM', KEYS[4], ARGV[1])
       if cleanupOwed == ARGV[1] then
         redis.call('HDEL', st, 'co')
         return { '${CLEARED}' }
@@ -1542,17 +1753,20 @@ declare module "@internal/redis" {
   interface RedisCommander<Context> {
     wpCreateIfAbsent(
       recordKey: string,
+      relatedRunsKey: string,
       recordJson: string,
       status: string,
       completionJson: string,
       terminalTtlMs: string,
       completedByTaskRunId: string,
+      keyRetainUntil: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
     wpRegisterOrReport(
       recordKey: string,
       watchersKey: string,
       queueKey: string,
+      relatedRunsKey: string,
       watcherField: string,
       watcherJson: string,
       callback?: Callback<string[]>
@@ -1562,6 +1776,7 @@ declare module "@internal/redis" {
       watchersKey: string,
       queueKey: string,
       fanoutKey: string,
+      relatedRunsKey: string,
       completionJson: string,
       completionId: string,
       nowMs: string,
@@ -1584,6 +1799,7 @@ declare module "@internal/redis" {
       watchersKey: string,
       queueKey: string,
       fanoutKey: string,
+      relatedRunsKey: string,
       workerId: string,
       epoch: string,
       count: string,
@@ -1615,6 +1831,56 @@ declare module "@internal/redis" {
       fanoutKey: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
+    wpPrepareIdemReceipt(receiptKey: string, acceptUntil: string): Result<string[], Context>;
+    wpCreateKeyedCandidate(
+      recordKey: string,
+      fenceKey: string,
+      recordJson: string,
+      acceptUntil: string,
+      keyRetainUntil: string,
+      pinForRecovery?: string
+    ): Result<string[], Context>;
+    wpReadIdemClaim(reservationKey: string, claimKey: string): Result<string[], Context>;
+    wpBeginIdemClaim(
+      reservationKey: string,
+      claimKey: string,
+      token: string,
+      expectedToken: string,
+      acceptUntil: string
+    ): Result<string[], Context>;
+    wpIdemReceipt(
+      reservationKey: string,
+      receiptKey: string,
+      claimKey: string,
+      candidateId: string,
+      expiresAt: string,
+      acceptUntil: string,
+      mode: string,
+      claimToken: string
+    ): Result<string[], Context>;
+    wpCloseKeyedCandidate(
+      recordKey: string,
+      watchersKey: string,
+      queueKey: string,
+      fanoutKey: string,
+      fenceKey: string,
+      relatedRunsKey: string,
+      retentionMs: string
+    ): Result<string[], Context>;
+    wpReadIdemReceipt(receiptKey: string): Result<string[], Context>;
+    wpCompleteIdemReceipt(receiptKey: string, winnerId: string): Result<string[], Context>;
+    wpReleaseKeyedCandidate(
+      recordKey: string,
+      fanoutKey: string,
+      relatedRunsKey: string,
+      retentionMs: string,
+      pendingManual?: string
+    ): Result<string[], Context>;
+    wpAckIdemReceipt(
+      receiptKey: string,
+      winnerId: string,
+      retentionMs: string
+    ): Result<string[], Context>;
     wpIdemReserve(
       key: string,
       waitpointId: string,
@@ -1626,6 +1892,7 @@ declare module "@internal/redis" {
       watchersKey: string,
       queueKey: string,
       fanoutKey: string,
+      relatedRunsKey: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
     wpFanoutIndex(
@@ -1652,6 +1919,7 @@ declare module "@internal/redis" {
       predecessorWithdrawalKey: string,
       predecessorTargetsKey: string,
       contributionIndexKey: string,
+      withdrawalIndexKey: string,
       ...args: Array<string | Callback<string[]>>
     ): Result<string[], Context>;
     runDeliverCompletion(
@@ -1730,6 +1998,7 @@ declare module "@internal/redis" {
       doneOrderKey: string,
       earlyKey: string,
       earlyOrderKey: string,
+      withdrawalIndexKey: string,
       expectedBlockId: string,
       revision: string,
       callback?: Callback<string[]>
@@ -1747,6 +2016,7 @@ declare module "@internal/redis" {
       doneOrderKey: string,
       earlyKey: string,
       earlyOrderKey: string,
+      withdrawalIndexKey: string,
       expectedBlockId: string,
       nowMs: string,
       terminalTtlMs: string,
@@ -1768,6 +2038,7 @@ declare module "@internal/redis" {
       withdrawalKey: string,
       stateKey: string,
       targetsKey: string,
+      withdrawalIndexKey: string,
       blockId: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;

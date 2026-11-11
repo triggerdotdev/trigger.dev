@@ -1,0 +1,1 @@
+ALTER TABLE "public"."Alert" ADD COLUMN IF NOT EXISTS "groupId" TEXT;

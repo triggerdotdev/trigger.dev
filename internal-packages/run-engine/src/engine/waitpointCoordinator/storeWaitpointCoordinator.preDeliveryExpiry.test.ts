@@ -343,6 +343,7 @@ describe("completed sources before delivery", () => {
         await expect(
           adapter.absorbBlockers({
             runId: "missing-parent",
+            organizationId: "org",
             client: prisma,
             blockId: "block",
             absorptionId: "absorption",

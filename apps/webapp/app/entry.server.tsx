@@ -21,6 +21,11 @@ import type { OperatingSystemPlatform } from "./components/primitives/OperatingS
 import { OperatingSystemContextProvider } from "./components/primitives/OperatingSystemProvider";
 import { assertRunOpsSplitSentinel, Prisma } from "./db.server";
 import { env } from "./env.server";
+import {
+  createIngressBodyCap,
+  DASHBOARD_AGENT_INGRESS_CAP,
+  otlpIngressCap,
+} from "./services/ingressBodyCap.server";
 import { eventLoopMonitor, eventLoopUtilizationMonitor } from "./eventLoopMonitor.server";
 import { logger } from "./services/logger.server";
 import { buildImgSrcDirective, parseCspImageOrigins, withImgSrc } from "./utils/cspImageOrigins";
@@ -377,7 +382,10 @@ singleton("SentryTenantContextProcessor", () => {
 });
 
 export { apiRateLimiter } from "./services/apiRateLimit.server";
-export { dashboardAgentBodyCap } from "./services/dashboardAgentBodyCap.server";
+export const ingressBodyCap = createIngressBodyCap([
+  DASHBOARD_AGENT_INGRESS_CAP,
+  otlpIngressCap(env.OTLP_INGRESS_BODY_SIZE_LIMIT_MB * 1024 * 1024),
+]);
 export { deploymentRateLimiter } from "./services/deploymentRateLimit.server";
 export { engineRateLimiter } from "./services/engineRateLimit.server";
 export { otlpRateLimiter } from "./services/otlpRateLimit.server";

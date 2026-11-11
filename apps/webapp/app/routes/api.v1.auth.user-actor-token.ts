@@ -1,8 +1,12 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { signUserActorToken } from "@trigger.dev/rbac";
+import { personalAccessTokenValidUntil, signUserActorToken } from "@trigger.dev/rbac";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
+import {
+  personalAccessTokenAuthFailureBody,
+  updateLastAccessedAtIfStale,
+} from "~/services/personalAccessToken.server";
 import { rbac } from "~/services/rbac.server";
 
 // Callers pick the TTL (default 1h) up to a hard ceiling; renewal = mint again
@@ -24,8 +28,9 @@ const RequestBodySchema = z
     // Attribution label recorded in the token's `act.client` (e.g. the agent
     // or tool that requested it).
     client: z.string().min(1).max(255).optional(),
-    // Lifetime in seconds. Omitted → 1h. Over the ceiling → 400 (we don't
-    // silently clamp, so a caller never thinks it got longer than it did).
+    // Lifetime in seconds. Omitted → 1h. Over the ceiling → 400. Within it, the
+    // token never outlives its source PAT (see below), and the response's
+    // `expiresInSeconds` is the lifetime actually granted.
     ttlSeconds: z.number().int().positive().max(MAX_UAT_TTL_SECONDS).optional(),
   })
   .optional();
@@ -37,7 +42,7 @@ export async function action({ request }: ActionFunctionArgs) {
     // env API key / OAT can't mint one either.
     const patAuth = await rbac.authenticatePat(request, {});
     if (!patAuth.ok) {
-      return json({ error: patAuth.error }, { status: patAuth.status });
+      return json(personalAccessTokenAuthFailureBody(patAuth), { status: patAuth.status });
     }
 
     // A role-restricted PAT (one with a TokenRole cap) can't mint a UAT: the
@@ -63,7 +68,29 @@ export async function action({ request }: ActionFunctionArgs) {
       );
     }
     const body = parsedBody.data ?? {};
-    const ttlSeconds = body.ttlSeconds ?? DEFAULT_UAT_TTL_SECONDS;
+
+    // A successful mint is a use of the PAT, so it keeps a CLI login token from going idle. A
+    // refused request doesn't count.
+    const lastUsedAt = await updateLastAccessedAtIfStale(patAuth.tokenId, patAuth.lastAccessedAt);
+
+    // Every use of the UAT rechecks its source PAT, so a UAT outliving the PAT's fixed or idle
+    // expiry would just stop working early. Grant only what the PAT has left instead.
+    const sourceValidUntil = personalAccessTokenValidUntil({
+      expiresAt: patAuth.expiresAt ?? null,
+      idleTimeoutSeconds: patAuth.idleTimeoutSeconds ?? null,
+      lastAccessedAt: lastUsedAt,
+      createdAt: patAuth.createdAt ?? lastUsedAt,
+    });
+    const requestedTtlSeconds = body.ttlSeconds ?? DEFAULT_UAT_TTL_SECONDS;
+    const ttlSeconds = sourceValidUntil
+      ? Math.max(
+          1,
+          Math.min(
+            requestedTtlSeconds,
+            Math.floor((sourceValidUntil.getTime() - Date.now()) / 1000)
+          )
+        )
+      : requestedTtlSeconds;
 
     const token = await signUserActorToken(env.SESSION_SECRET, {
       userId: patAuth.userId,

@@ -58,12 +58,11 @@ const ANSWERS: FlowAnswers = {
   scope: "all",
   condition: "100",
   windowMinutes: 5,
-  notifiers: ["chat", "ch_1"],
+  notifiers: ["ch_1"],
   expiry: "24h",
 };
 
 const REQUEST = {
-  chatNotifier: "on" as const,
   expiry: "24h",
   form: {
     capabilityKey: "queue.depth",
@@ -166,7 +165,7 @@ describe("alert creation transcript after reload", () => {
     expect(stored).toEqual(live);
     expect(stored).toContain("Watching queue depth.");
     expect(stored).toContain("It expires in 24h.");
-    expect(stored).toContain("Notifying: this chat, Ops webhook.");
+    expect(stored).toContain("Notifying: Ops webhook.");
   });
 
   it("shows the info and error lines a stored draft tool call produced", () => {

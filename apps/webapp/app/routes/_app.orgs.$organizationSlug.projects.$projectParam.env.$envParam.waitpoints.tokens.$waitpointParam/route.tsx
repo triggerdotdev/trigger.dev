@@ -66,6 +66,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     });
     const result = await presenter.call({
       friendlyId: waitpointParam,
+      organizationId: project.organizationId,
       environmentId: environment.id,
       projectId: project.id,
     });

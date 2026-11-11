@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { type AlertCapability, type Condition, evaluationOutcomeSchema } from "./schemas.js";
+import {
+  type AlertCapability,
+  type CapabilityParam,
+  type Condition,
+  evaluationOutcomeSchema,
+} from "./schemas.js";
 
 export const LEGACY_HEALTH_COMPONENTS = ["health.flow", "health.execution", "health.liveness"];
 
@@ -15,6 +20,15 @@ export function selectedComponents(
         ? compositeOf
         : LEGACY_HEALTH_COMPONENTS;
   return compositeOf.filter((key) => chosen.includes(key));
+}
+
+export function paramsForComponents(
+  capability: AlertCapability,
+  components: string[]
+): CapabilityParam[] {
+  return (capability.binding.params ?? []).filter(
+    (p) => !p.component || components.includes(p.component)
+  );
 }
 
 /** Legacy components keep their short keys: persisted evaluator state depends on them. */

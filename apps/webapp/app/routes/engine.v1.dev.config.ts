@@ -3,10 +3,12 @@ import { type DevConfigResponseBody } from "@trigger.dev/core/v3/schemas";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
+import { devWorkerAuthorization } from "~/services/devWorkerAuthorization.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 export const loader = createLoaderApiRoute(
   {
+    authorization: devWorkerAuthorization,
     findResource: async () => 1,
     headers: z.object({
       "x-forwarded-for": z.string().optional(),

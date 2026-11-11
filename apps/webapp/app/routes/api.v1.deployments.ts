@@ -12,6 +12,9 @@ import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { env } from "~/env.server";
 import { resolveDeployBaseImages } from "~/v3/deployBaseImages.server";
 import { InitializeDeploymentService } from "~/v3/services/initializeDeployment.server";
+import { DeploymentAccessError } from "~/v3/deploymentAccess.server";
+
+const DEPLOYMENT_ACCESS_DENIED_CODE = "DEPLOYMENT_ACCESS_DENIED";
 
 export async function action({ request, params }: ActionFunctionArgs) {
   // Ensure this is a POST request
@@ -74,6 +77,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
     return json(responseBody, { status: 200 });
   } catch (error) {
+    // The code tells a deploy refusal apart from an auth failure, so a caller can stop retrying.
+    if (error instanceof DeploymentAccessError) {
+      return json(
+        { error: error.message, code: DEPLOYMENT_ACCESS_DENIED_CODE },
+        { status: error.status ?? 403 }
+      );
+    }
     if (error instanceof ServiceValidationError) {
       return json({ error: error.message }, { status: error.status ?? 400 });
     }

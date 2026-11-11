@@ -5,7 +5,12 @@ vi.setConfig({ testTimeout: 120_000 });
 
 const holder = vi.hoisted(() => ({ prisma: undefined as any }));
 
-vi.mock("~/env.server", () => ({ env: { ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef" } }));
+vi.mock("~/env.server", async () => {
+  const { withLegacyEncryptionKeyring } = await import("./helpers/encryptionEnv");
+  return {
+    env: withLegacyEncryptionKeyring({ ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef" }),
+  };
+});
 vi.mock("~/db.server", () => {
   const proxy = new Proxy({}, { get: (_t, key) => holder.prisma[key] });
   return { prisma: proxy, $replica: proxy };

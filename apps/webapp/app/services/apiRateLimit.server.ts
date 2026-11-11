@@ -1,9 +1,11 @@
 import { tryCatch } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
+import { bearerTokenFromAuthorizationHeader } from "~/utils/bearerToken";
 import { resolvePrivateApiKeyRateLimitScope } from "~/models/runtimeEnvironment.server";
 import { resolveRunToken } from "~/services/oidc/runTokenAuth.server";
 import { isRunTokenFormat } from "~/services/oidc/runTokenVerify";
 import { batchStreamGrants } from "~/runEngine/concerns/batchStreamGrantsInstance.server";
+import { clientIpFromHeaders } from "@trigger.dev/rbac";
 import { authenticateAuthorizationHeader } from "./apiAuth.server";
 import { recordApiRateLimitObservation } from "./apiRateLimitMetrics.server";
 import {
@@ -40,8 +42,11 @@ export function readApiRateLimitMetricsFlag(featureFlags: unknown): boolean {
 // testable without standing up the middleware and its Redis.
 export async function resolveApiRateLimitOverride(
   authorizationValue: string
-): Promise<{ config?: unknown; identifier?: string; tenant?: RateLimitTenant } | undefined> {
-  const rawApiKey = authorizationValue.replace(/^Bearer /, "");
+): Promise<
+  | { config?: unknown; identifier?: string; tenant?: RateLimitTenant; allowedIpRanges?: string[] }
+  | undefined
+> {
+  const rawApiKey = bearerTokenFromAuthorizationHeader(authorizationValue);
 
   if (rawApiKey.startsWith("tr_")) {
     const scope = await resolvePrivateApiKeyRateLimitScope(rawApiKey);
@@ -59,13 +64,13 @@ export async function resolveApiRateLimitOverride(
         environmentId: scope.environmentId,
         metricsEnabled: readApiRateLimitMetricsFlag(scope.featureFlags),
       },
+      allowedIpRanges: scope.allowedIpRanges,
     };
   }
 
   // Run tokens share their environment's bucket, like private keys. Without this each run would
-  // get its own bucket keyed on the token hash. Trimmed the same way as route authentication, so
-  // extra whitespace can't produce a fresh bucket.
-  const runToken = rawApiKey.trim();
+  // get its own bucket keyed on the token hash.
+  const runToken = rawApiKey;
   if (isRunTokenFormat(runToken)) {
     const environment = (await resolveRunToken(runToken))?.environment;
     if (!environment) {
@@ -84,9 +89,11 @@ export async function resolveApiRateLimitOverride(
     };
   }
 
+  // Private keys (root and additional) returned above, so no IP-restricted key reaches here.
   const authenticatedEnv = await authenticateAuthorizationHeader(authorizationValue, {
     allowPublicKey: true,
     allowJWT: true,
+    clientIp: null,
   });
 
   if (!authenticatedEnv || !authenticatedEnv.ok) {
@@ -166,6 +173,9 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     "/api/v1/auth/jwt/claims",
     // Dedicated per-run/environment limits prevent a throttled run from draining the API budget.
     "/api/v1/auth/oidc/token",
+    // GitHub JWTs are verified and rate limited by the dedicated submission API.
+    "/api/v1/trusted-deploys/prepare",
+    "/api/v1/trusted-deploys/submit",
     /^\/api\/v1\/runs\/[^/]+\/attempts$/, // /api/v1/runs/$runFriendlyId/attempts
     /^\/api\/v1\/waitpoints\/tokens\/[^/]+\/callback\/[^/]+$/, // /api/v1/waitpoints/tokens/$waitpointFriendlyId/callback/$hash
     ...deploymentApiPaths, // rate limited separately by deploymentRateLimiter
@@ -194,7 +204,7 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     }
 
     // Run tokens can upload batch items too, so they must be able to spend the phase-one grant.
-    const runToken = authorizationValue.replace(/^Bearer /, "").trim();
+    const runToken = bearerTokenFromAuthorizationHeader(authorizationValue);
     if (isRunTokenFormat(runToken)) {
       const [runTokenError, resolved] = await tryCatch(resolveRunToken(runToken));
       if (runTokenError || !resolved) {
@@ -206,6 +216,7 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     const [authError, authenticated] = await tryCatch(
       authenticateAuthorizationHeader(authorizationValue, {
         allowPublicKey: true,
+        clientIp: clientIpFromHeaders({ get: (name) => req.get(name) ?? null }),
       })
     );
 

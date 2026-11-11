@@ -84,7 +84,7 @@ export class OrganizationDataStoresRegistry {
             continue;
           }
 
-          parsed = { kind: "CLICKHOUSE", url: connection.url };
+          parsed = { kind: "CLICKHOUSE", url: connection.url, mirrorUrl: connection.mirrorUrl };
           break;
         }
         default: {

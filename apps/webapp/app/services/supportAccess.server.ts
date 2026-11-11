@@ -1,6 +1,7 @@
 import { type SupportAccessMode, type SupportAccessRequest } from "@trigger.dev/database";
 import { errAsync, fromPromise, okAsync, type ResultAsync } from "neverthrow";
 import { $transaction, prisma, type PrismaClientOrTransaction } from "~/db.server";
+import { forcedSupportAccess } from "~/services/accessPolicy.server";
 import { SUPPORT_ACCESS_APPROVAL_DAYS, pendingRequestCutoff } from "~/utils/supportAccess";
 
 const APPROVAL_MS = SUPPORT_ACCESS_APPROVAL_DAYS * 24 * 60 * 60 * 1000;
@@ -50,16 +51,21 @@ export class SupportAccessService {
       if (org.supportAccessMode === "ALLOW") {
         return okAsync<SessionAccess>({ type: "allow", organizationId: org.id });
       }
-      return this.getActiveApproval(org.id, now).map((approval): SessionAccess => {
-        if (!approval?.expiresAt) {
-          return { type: "request_required", organizationId: org.id };
+      return fromPromise(forcedSupportAccess([org.id]), toDbError).andThen((forced) => {
+        if (forced.has(org.id)) {
+          return okAsync<SessionAccess>({ type: "allow", organizationId: org.id });
         }
-        return {
-          type: "scoped",
-          organizationId: org.id,
-          expiresAt: approval.expiresAt,
-          requestId: approval.id,
-        };
+        return this.getActiveApproval(org.id, now).map((approval): SessionAccess => {
+          if (!approval?.expiresAt) {
+            return { type: "request_required", organizationId: org.id };
+          }
+          return {
+            type: "scoped",
+            organizationId: org.id,
+            expiresAt: approval.expiresAt,
+            requestId: approval.id,
+          };
+        });
       });
     });
   }

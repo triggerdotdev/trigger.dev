@@ -1,5 +1,6 @@
 import type { IncomingMessage } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
+import { clientIpFromHeaders } from "@trigger.dev/rbac";
 import { authenticateApiKey } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "../utils/singleton";
@@ -34,7 +35,12 @@ async function handleWebSocketConnection(ws: WebSocket, req: IncomingMessage) {
     return;
   }
 
-  const authenticationResult = await authenticateApiKey(apiKey);
+  const forwardedFor = req.headers["x-forwarded-for"];
+  const authenticationResult = await authenticateApiKey(apiKey, {
+    clientIp: clientIpFromHeaders({
+      get: () => (Array.isArray(forwardedFor) ? forwardedFor.join(",") : forwardedFor) ?? null,
+    }),
+  });
 
   if (!authenticationResult || !authenticationResult.ok) {
     ws.close(1008, "Invalid API key");

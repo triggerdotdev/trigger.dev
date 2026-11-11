@@ -71,7 +71,7 @@ export async function findAlertEnvironmentType(environmentId: string) {
 
 export async function canAccessAlertsIn(
   ability: RbacAbility,
-  action: "read" | "write",
+  action: "read" | "write" | "delete",
   environmentId: string
 ): Promise<boolean> {
   const environment = await $replica.runtimeEnvironment.findFirst({
@@ -87,7 +87,7 @@ export function alertsInAnyEnvironment() {
   );
 }
 
-export function alertsEnvironmentForbidden(action: "read" | "write") {
+export function alertsEnvironmentForbidden(action: "read" | "write" | "delete") {
   return json(
     {
       error: `You don't have permission to ${action === "read" ? "view" : "manage"} alerts in this environment`,

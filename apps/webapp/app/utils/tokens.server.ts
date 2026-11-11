@@ -1,30 +1,17 @@
 import nodeCrypto from "node:crypto";
+import {
+  decryptValue,
+  encryptValue,
+  type EncryptedValue,
+  type EncryptionKeyring,
+} from "./encryptionKeyring.server";
 
-export function encryptToken(value: string, key: string) {
-  const nonce = nodeCrypto.randomBytes(12);
-  const cipher = nodeCrypto.createCipheriv("aes-256-gcm", key, nonce);
-
-  let encrypted = cipher.update(value, "utf8", "hex");
-  encrypted += cipher.final("hex");
-
-  const tag = cipher.getAuthTag().toString("hex");
-
-  return {
-    nonce: nonce.toString("hex"),
-    ciphertext: encrypted,
-    tag,
-  };
+export function encryptToken(value: string, keys: EncryptionKeyring): EncryptedValue {
+  return encryptValue(value, keys);
 }
 
-export function decryptToken(nonce: string, ciphertext: string, tag: string, key: string): string {
-  const decipher = nodeCrypto.createDecipheriv("aes-256-gcm", key, Buffer.from(nonce, "hex"));
-
-  decipher.setAuthTag(Buffer.from(tag, "hex"));
-
-  let decrypted = decipher.update(ciphertext, "hex", "utf8");
-  decrypted += decipher.final("utf8");
-
-  return decrypted;
+export function decryptToken(value: EncryptedValue, keys: EncryptionKeyring): string {
+  return decryptValue(value, keys);
 }
 
 export function hashToken(token: string): string {

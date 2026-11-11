@@ -209,7 +209,7 @@ export class DeliverErrorGroupAlertService {
 
     const rawPayload = JSON.stringify(webhookPayload);
     const hashPayload = Buffer.from(rawPayload, "utf-8");
-    const secret = await decryptSecret(env.ENCRYPTION_KEY, webhookProperties.data.secret);
+    const secret = await decryptSecret(env.ENCRYPTION_KEYRING, webhookProperties.data.secret);
     const hmacSecret = Buffer.from(secret, "utf-8");
     const key = await subtle.importKey(
       "raw",

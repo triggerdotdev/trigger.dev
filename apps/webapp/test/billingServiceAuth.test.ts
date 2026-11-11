@@ -17,7 +17,10 @@ vi.mock("~/db.server", () => ({
     return db.client;
   },
 }));
-vi.mock("~/env.server", () => ({ env }));
+vi.mock("~/env.server", async () => {
+  const { withLegacyEncryptionKeyring } = await import("./helpers/encryptionEnv");
+  return { env: withLegacyEncryptionKeyring(env) };
+});
 vi.mock("~/services/logger.server", () => ({
   logger: { debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));
@@ -26,7 +29,7 @@ vi.mock("~/services/rbac.server", () => ({
 }));
 
 import { postgresTest } from "@internal/testcontainers";
-import { requireBillingServiceOrAdminApiRequest } from "~/services/billingServiceAuth.server";
+import { requireBillingServiceRequest } from "~/services/billingServiceAuth.server";
 import {
   createPersonalAccessToken,
   requireAdminApiRequest,
@@ -74,30 +77,30 @@ describe("billing service admin API auth", () => {
   /** Catches: billing's calls failing once the secret is configured. */
   postgresTest("billing routes accept the billing service secret", async ({ prisma }) => {
     db.client = prisma;
-    expect(await statusOf(requireBillingServiceOrAdminApiRequest(bearer(SECRET)))).toBe(200);
+    expect(await statusOf(requireBillingServiceRequest(bearer(SECRET)))).toBe(200);
   });
 
-  /** Catches: admins losing access to the billing routes, or the fallback accepting any user's PAT. */
-  postgresTest("billing routes still take admin PATs and refuse others", async ({ prisma }) => {
+  /** Catches: an admin's PAT (or any user's) still unlocking the billing routes. */
+  postgresTest("billing routes refuse personal access tokens", async ({ prisma }) => {
     db.client = prisma;
     const adminPat = await patFor(prisma, true);
     const userPat = await patFor(prisma, false);
 
-    expect(await statusOf(requireBillingServiceOrAdminApiRequest(bearer(adminPat)))).toBe(200);
-    expect(await statusOf(requireBillingServiceOrAdminApiRequest(bearer(userPat)))).toBe(403);
+    expect(await statusOf(requireBillingServiceRequest(bearer(adminPat)))).toBe(401);
+    expect(await statusOf(requireBillingServiceRequest(bearer(userPat)))).toBe(401);
   });
 
   /** Catches: a near-match of the secret being accepted. */
   postgresTest("billing routes refuse a wrong secret", async ({ prisma }) => {
     db.client = prisma;
-    expect(await statusOf(requireBillingServiceOrAdminApiRequest(bearer(`${SECRET}x`)))).toBe(401);
+    expect(await statusOf(requireBillingServiceRequest(bearer(`${SECRET}x`)))).toBe(401);
   });
 
   /** Catches: installs without billing accepting a bearer value because no secret is configured. */
   postgresTest("the secret does nothing when it isn't configured", async ({ prisma }) => {
     db.client = prisma;
     env.BILLING_SERVICE_SECRET = undefined;
-    expect(await statusOf(requireBillingServiceOrAdminApiRequest(bearer(SECRET)))).toBe(401);
+    expect(await statusOf(requireBillingServiceRequest(bearer(SECRET)))).toBe(401);
   });
 
   /** Catches: the billing secret working as an admin credential on the other admin routes. */

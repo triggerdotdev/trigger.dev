@@ -1175,9 +1175,19 @@ export function taskRunErrorEnhancer(error: TaskRunError): EnhanceError<TaskRunE
   return error;
 }
 
+function exceptionEventFields(exception: ExceptionEventProperties): ExceptionEventProperties {
+  return {
+    type: typeof exception.type === "string" ? exception.type : undefined,
+    message: typeof exception.message === "string" ? exception.message : undefined,
+    stacktrace: typeof exception.stacktrace === "string" ? exception.stacktrace : undefined,
+  };
+}
+
 export function exceptionEventEnhancer(
-  exception: ExceptionEventProperties
+  input: ExceptionEventProperties
 ): EnhanceError<ExceptionEventProperties> {
+  const exception = exceptionEventFields(input);
+
   switch (exception.type) {
     case "UnexpectedExitError": {
       if (exception.message?.startsWith("Unexpected exit with code -1")) {

@@ -1,3 +1,4 @@
+import { forcedSupportAccess } from "~/services/accessPolicy.server";
 import { redirect } from "@remix-run/server-runtime";
 import { $replica, prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
@@ -13,6 +14,7 @@ import { requireUser } from "~/services/session.server";
 import { SupportAccessService } from "~/services/supportAccess.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { extractClientIp } from "~/utils/extractClientIp.server";
+import { recordAdminImpersonationStarted } from "~/services/adminAudit/adminAuditContext.server";
 import { impersonationDestinationPath, supportAccessRequestPath } from "~/utils/pathBuilder";
 import { env } from "~/env.server";
 
@@ -122,9 +124,17 @@ export async function adminGetUsers(userId: string, { page, search }: SearchPara
   });
 
   const totalUsers = await prisma.user.count();
+  const forced = await forcedSupportAccess(
+    users.flatMap((u) => u.orgMemberships.map(({ organization }) => organization.id))
+  );
 
   return {
-    users,
+    users: users.map((u) => ({
+      ...u,
+      orgMemberships: u.orgMemberships.map(({ organization }) => ({
+        organization: { ...organization, supportAccessForced: forced.has(organization.id) },
+      })),
+    })),
     page,
     pageCount: Math.ceil(totalUsers / pageSize),
     filters: {
@@ -223,9 +233,13 @@ export async function adminGetOrganizations(userId: string, { page, search }: Se
   });
 
   const totalOrgs = await prisma.organization.count();
+  const forced = await forcedSupportAccess(organizations.map((o) => o.id));
 
   return {
-    organizations,
+    organizations: organizations.map((o) => ({
+      ...o,
+      supportAccessForced: forced.has(o.id),
+    })),
     page,
     pageCount: Math.ceil(totalOrgs / pageSize),
     filters: {
@@ -299,6 +313,15 @@ export async function redirectWithImpersonation(
       targetId: userId,
     });
   }
+
+  void recordAdminImpersonationStarted({
+    request,
+    adminUserId: user.id,
+    targetUserId: userId,
+    organizationSlug,
+    access: access.value.type,
+    supportAccessRequestId: access.value.type === "scoped" ? access.value.requestId : undefined,
+  });
 
   const session = await setImpersonationId(userId, request, {
     organizationSlugs: [organizationSlug],

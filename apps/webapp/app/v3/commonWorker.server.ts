@@ -28,7 +28,14 @@ import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAle
 import { BatchTriggerV3Service } from "./services/batchTriggerV3.server";
 import { TimeoutDeploymentService } from "./services/timeoutDeployment.server";
 import { sweepExpiredBuildEnvVars } from "./services/sweepDeploymentBuildEnvVars.server";
-import { sweepExpiredAuthorizationCodes } from "~/services/personalAccessToken.server";
+import {
+  personalAccessTokensUrl,
+  sweepExpiredAuthorizationCodes,
+} from "~/services/personalAccessToken.server";
+import {
+  personalAccessTokenExpiryEmailsSchedule,
+  sendPersonalAccessTokenExpiryEmails,
+} from "~/services/personalAccessTokenExpiryEmails.server";
 import { BulkActionService } from "./services/bulk/BulkActionV2.server";
 import { prisma } from "~/db.server";
 import { sweepPreviewAutoArchives } from "~/services/previewAutoArchive.server";
@@ -70,6 +77,12 @@ function initializeWorker() {
     alertsEnabled: env.ALERTS_ENABLED,
   });
 
+  // Undefined when the token expiry emails are off or no email transport is set.
+  const personalAccessTokenExpiryEmailsCron = personalAccessTokenExpiryEmailsSchedule({
+    enabled: env.PERSONAL_ACCESS_TOKEN_EXPIRY_EMAILS_ENABLED,
+    emailTransport: env.EMAIL_TRANSPORT,
+  });
+
   const worker = new RedisWorker({
     name: "common-worker",
     redisOptions,
@@ -109,6 +122,13 @@ function initializeWorker() {
         jitterInMs: 60_000,
         visibilityTimeoutMs: 60_000 * 5,
         retry: { maxAttempts: 1 },
+      },
+      "personalAccessTokens.sendExpiryEmails": {
+        schema: CronSchema,
+        visibilityTimeoutMs: 60_000 * 5,
+        ...personalAccessTokenExpiryEmailsCron,
+        // Each email is claimed before it's sent, so a retry can't send it twice.
+        retry: { maxAttempts: 3 },
       },
       scheduleEmail: {
         schema: DeliverEmailSchema,
@@ -314,6 +334,14 @@ function initializeWorker() {
       },
       "authorizationCodes.sweepExpired": async () => {
         await sweepExpiredAuthorizationCodes(prisma);
+      },
+      "personalAccessTokens.sendExpiryEmails": async () => {
+        // A run queued before the job was turned off still arrives once. Skip it, or with no
+        // transport it would mark emails sent that only went to the log.
+        if (!personalAccessTokenExpiryEmailsCron) return;
+        await sendPersonalAccessTokenExpiryEmails(prisma, sendEmail, {
+          tokensUrl: personalAccessTokensUrl(),
+        });
       },
       scheduleEmail: async ({ payload }) => {
         await sendEmail(payload);

@@ -12,7 +12,8 @@ import {
   normalizeScheduleWindow,
 } from "../scheduleWindow.server";
 import { resolveNewScheduleDefaultWindowSeconds } from "../scheduleDefaultWindow.server";
-import { scheduleWhereClause } from "~/models/schedules.server";
+import { lockScheduleForRunTokenMutation, scheduleWhereClause } from "~/models/schedules.server";
+import { $transaction } from "~/db.server";
 import { env } from "~/env.server";
 import {
   assertCronMeetsFreeMinimum,
@@ -39,7 +40,19 @@ type InstanceWithEnvironment = Prisma.TaskScheduleInstanceGetPayload<{
 }>;
 
 export class UpsertTaskScheduleService extends BaseService {
-  public async call(projectId: string, schedule: UpsertTaskScheduleServiceOptions) {
+  public async call(
+    projectId: string,
+    schedule: UpsertTaskScheduleServiceOptions,
+    options?: { runTokenEnvironmentId: string }
+  ) {
+    if (
+      options &&
+      (schedule.environments.length !== 1 ||
+        schedule.environments[0] !== options.runTokenEnvironmentId)
+    ) {
+      throw new ServiceValidationError("Run tokens can only manage schedules in their environment");
+    }
+
     //this throws errors if the schedule is invalid
     const checkSchedule = new CheckScheduleService(this._prisma);
     await checkSchedule.call(projectId, schedule, schedule.environments);
@@ -61,12 +74,56 @@ export class UpsertTaskScheduleService extends BaseService {
       featureFlags: project.organization.featureFlags,
     });
 
+    const context = { organizationId: project.organizationId, policy };
+    if (!options) return this.#call(projectId, schedule, context);
+
+    const defaultWindowDurationSeconds = await resolveNewScheduleDefaultWindowSeconds(
+      this._prisma,
+      project.organizationId
+    );
+    const instanceIds: string[] = [];
+    const result = await $transaction(
+      this._prisma,
+      async (tx) =>
+        new UpsertTaskScheduleService(tx).#call(
+          projectId,
+          schedule,
+          { ...context, defaultWindowDurationSeconds },
+          options.runTokenEnvironmentId,
+          async (instanceId) => {
+            instanceIds.push(instanceId);
+          }
+        ),
+      { isolationLevel: "ReadCommitted" }
+    );
+    if (!result) throw new ServiceValidationError("Failed to create or update schedule");
+
+    // The engine reads through its own connection, so register only after commit.
+    for (const instanceId of instanceIds) {
+      await scheduleEngine.registerNextTaskScheduleInstance({ instanceId });
+    }
+    return result;
+  }
+
+  async #call(
+    projectId: string,
+    schedule: UpsertTaskScheduleServiceOptions,
+    context: {
+      organizationId: string;
+      policy: FreeSchedulePolicyContext;
+      defaultWindowDurationSeconds?: number | null;
+    },
+    runTokenEnvironmentId?: string,
+    registerInstance: (instanceId: string) => Promise<unknown> = (instanceId) =>
+      scheduleEngine.registerNextTaskScheduleInstance({ instanceId })
+  ) {
+    const { policy } = context;
     const deduplicationKey =
       typeof schedule.deduplicationKey === "string" && schedule.deduplicationKey !== ""
         ? schedule.deduplicationKey
         : nanoid(24);
 
-    const existingSchedule = schedule.friendlyId
+    let existingSchedule = schedule.friendlyId
       ? await this._prisma.taskSchedule.findFirst({
           where: scheduleWhereClause(projectId, schedule.friendlyId),
         })
@@ -77,23 +134,41 @@ export class UpsertTaskScheduleService extends BaseService {
           },
         });
 
+    if (existingSchedule && runTokenEnvironmentId) {
+      existingSchedule = await lockScheduleForRunTokenMutation(
+        this._prisma,
+        projectId,
+        existingSchedule.friendlyId,
+        runTokenEnvironmentId
+      );
+      if (!existingSchedule) {
+        throw new ServiceValidationError("Schedule not found or shared with another environment");
+      }
+    }
+
     let result;
     if (existingSchedule) {
       if (existingSchedule.type === "DECLARATIVE") {
         throw new ServiceValidationError("Cannot update a declarative schedule");
       }
-      result = await this.#updateExistingSchedule(existingSchedule, schedule, policy);
-    } else {
-      const defaultWindowDurationSeconds = await resolveNewScheduleDefaultWindowSeconds(
-        this._prisma,
-        project.organizationId
+      result = await this.#updateExistingSchedule(
+        existingSchedule,
+        schedule,
+        policy,
+        registerInstance
       );
+    } else {
+      const defaultWindowDurationSeconds =
+        context.defaultWindowDurationSeconds !== undefined
+          ? context.defaultWindowDurationSeconds
+          : await resolveNewScheduleDefaultWindowSeconds(this._prisma, context.organizationId);
       result = await this.#createNewSchedule(
         schedule,
         projectId,
         deduplicationKey,
         policy,
-        defaultWindowDurationSeconds
+        defaultWindowDurationSeconds,
+        registerInstance
       );
     }
 
@@ -106,6 +181,7 @@ export class UpsertTaskScheduleService extends BaseService {
     const instances = await this._prisma.taskScheduleInstance.findMany({
       where: {
         taskScheduleId: scheduleRecord.id,
+        environmentId: runTokenEnvironmentId,
       },
       include: {
         environment: {
@@ -128,7 +204,8 @@ export class UpsertTaskScheduleService extends BaseService {
     projectId: string,
     deduplicationKey: string,
     policy: FreeSchedulePolicyContext,
-    defaultWindowDurationSeconds: number | null
+    defaultWindowDurationSeconds: number | null,
+    registerInstance: (instanceId: string) => Promise<unknown>
   ) {
     const minimumWindowDurationSeconds = minimumWindowForNewSchedule(policy, "IMPERATIVE");
 
@@ -180,7 +257,7 @@ export class UpsertTaskScheduleService extends BaseService {
         },
       });
 
-      await scheduleEngine.registerNextTaskScheduleInstance({ instanceId: instance.id });
+      await registerInstance(instance.id);
     }
 
     return { scheduleRecord };
@@ -189,7 +266,8 @@ export class UpsertTaskScheduleService extends BaseService {
   async #updateExistingSchedule(
     existingSchedule: TaskSchedule,
     options: UpsertTaskScheduleServiceOptions,
-    policy: FreeSchedulePolicyContext
+    policy: FreeSchedulePolicyContext,
+    registerInstance: (instanceId: string) => Promise<unknown>
   ) {
     const minimumResolution = resolveMinimumWindowOnUpdate(
       policy,
@@ -297,13 +375,13 @@ export class UpsertTaskScheduleService extends BaseService {
 
     for (const instance of newInstances) {
       // Register the new task schedule instances
-      await scheduleEngine.registerNextTaskScheduleInstance({ instanceId: instance.id });
+      await registerInstance(instance.id);
     }
 
     if (scheduleHasChanged) {
       for (const instance of updatingInstances) {
         // Update the existing task schedule instances
-        await scheduleEngine.registerNextTaskScheduleInstance({ instanceId: instance.id });
+        await registerInstance(instance.id);
       }
     }
 
@@ -326,7 +404,7 @@ export class UpsertTaskScheduleService extends BaseService {
       deduplicationKey: taskSchedule.deduplicationKey,
       environmentId: instance.environmentId,
       schedulePhase: instance.schedulePhase,
-      phaseSecret: env.ENCRYPTION_KEY,
+      phaseSecret: env.SCHEDULE_PHASE_SEED,
       windowDurationSeconds: taskSchedule.windowDurationSeconds,
       windowPercentage: taskSchedule.windowPercentage,
       defaultWindowDurationSeconds: taskSchedule.defaultWindowDurationSeconds,

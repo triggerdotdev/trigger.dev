@@ -74,6 +74,7 @@ function toRow(
     scope: params.success ? params.data.scope : undefined,
     status: status.status,
     hasChannelIssue,
+    groupId: alert.groupId,
     inactiveReason,
     lastEventAt: laterOf(lastEventAt, alert.lastOccurrenceAt),
     notifierCount: alert.notifiers.length,
@@ -120,6 +121,7 @@ export class AlertsListPresenter extends BasePresenter {
       const fetched = await listAlerts(this._alertDb, {
         environmentId,
         statuses: filters?.statuses,
+        ungroupedOnly: true,
         limit: MAX_LIST_ALERTS + 1,
       });
       const truncated = fetched.length > MAX_LIST_ALERTS;

@@ -135,9 +135,11 @@ describe("monitoring alert tools time out instead of hanging", () => {
 });
 
 describe("describe_alert_capabilities area enum", () => {
-  it("lists queues/runs/health/limits/errors from the alert area schema", () => {
+  it("lists the alert areas except query and grouped", () => {
     const areaField = describeAlertCapabilitiesInputSchema.shape.area.unwrap();
-    expect(areaField.options).toEqual(alertAreaSchema.options.filter((a) => a !== "query"));
+    expect(areaField.options).toEqual(
+      alertAreaSchema.options.filter((a) => a !== "query" && a !== "grouped")
+    );
     expect(areaField.options).toEqual(["queues", "runs", "health", "limits", "errors"]);
   });
 });
@@ -150,8 +152,21 @@ describe("create_monitoring_alert scope type enum", () => {
       capabilityKey: "errors.occurred_again",
       scope: { type: "errorGroup", taskIdentifier: "t", fingerprint: "f" },
       condition: { kind: "occurrence" },
+      notifiers: [{ type: "channel", channelId: "chan_1" }],
     });
     expect(parsed.scope).toEqual({ type: "errorGroup", taskIdentifier: "t", fingerprint: "f" });
+  });
+});
+
+describe("create_monitoring_alert notifiers", () => {
+  const base = { capabilityKey: "queue.depth", condition: { kind: "occurrence" } };
+
+  it.each([
+    ["omitted", undefined],
+    ["empty", []],
+    ["a chat notifier", [{ type: "chat", chatId: "chat_1" }]],
+  ])("rejects %s", (_label, notifiers) => {
+    expect(createMonitoringAlertInputSchema.safeParse({ ...base, notifiers }).success).toBe(false);
   });
 });
 
@@ -242,6 +257,7 @@ describe("create_monitoring_alert params pass-through", () => {
         windowSec: 300,
         params: { foo: 1 },
       },
+      notifiers: [{ type: "channel", channelId: "chan_1" }],
     });
 
     expect(result.success).toBe(true);
@@ -631,6 +647,7 @@ describe("Limits condition fields", () => {
     const input = createMonitoringAlertInputSchema.parse({
       capabilityKey: "limits.all",
       condition: { kind: "state", stateKey: "limits.all", ...fields },
+      notifiers: [{ type: "channel", channelId: "chan_1" }],
     });
     await run("create_monitoring_alert", input);
     expect(body.condition).toMatchObject(fields);
@@ -655,9 +672,19 @@ describe("Limits condition fields", () => {
     expect((await bad({ components: ["limits.api"], signals: ["limited"] })).ok).toBe(true);
   });
 
+  // Catches: health.all components not validated by the agent tool.
+  it("accepts health.all components and rejects unknown ones", async () => {
+    const draft = (components: string[]) =>
+      run("update_alert_draft", {
+        patch: { what: "health.all", condition: { kind: "state", components } },
+      });
+    expect((await draft(["health.flow", "health.liveness"])).ok).toBe(true);
+    expect((await draft(["health.nope"])).ok).toBe(false);
+  });
+
   it("states the framing line in the prompt", () => {
     expect(DASHBOARD_AGENT_SYSTEM_PROMPT).toContain(
-      "Limits covers limits that can interrupt or degrade runtime flow; for limits.all pick components and any/all, for a limit pick signals."
+      "Limits covers limits that can interrupt or degrade runtime flow; for a composite pick components and any/all, for a limit pick signals."
     );
   });
 

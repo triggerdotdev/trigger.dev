@@ -6,12 +6,14 @@ import { WorkerApiRunAttemptCompleteRequestBody } from "@trigger.dev/core/v3/wor
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
+import { devWorkerAuthorization } from "~/services/devWorkerAuthorization.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { engine } from "~/v3/runEngine.server";
 import { runStore } from "~/v3/runStore.server";
 
 const { action } = createActionApiRoute(
   {
+    authorization: devWorkerAuthorization,
     params: z.object({
       runFriendlyId: z.string(),
       snapshotFriendlyId: z.string(),

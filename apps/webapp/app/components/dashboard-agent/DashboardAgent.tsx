@@ -212,6 +212,9 @@ export function DashboardAgent({
   const [createAlertPrefill, setCreateAlertPrefill] = useState<DraftPrefillParams | undefined>(
     undefined
   );
+  const [groupAlertsRequest, setGroupAlertsRequest] = useState<
+    { members: { id: string; name: string }[]; seq: number } | undefined
+  >();
   const [editAlertRequest, setEditAlertRequest] = useState<
     { prefill: EditAlertPrefill; seq: number } | undefined
   >(undefined);
@@ -243,6 +246,7 @@ export function DashboardAgent({
       setOpenSource(undefined);
       setCreateAlertPrefill(undefined);
       setEditAlertRequest(undefined);
+      setGroupAlertsRequest(undefined);
     },
     [openPanel, resetToPreference]
   );
@@ -251,6 +255,7 @@ export function DashboardAgent({
     (chatId: string) => {
       openPanel();
       setEditAlertRequest(undefined);
+      setGroupAlertsRequest(undefined);
       setOpenChatRequest((current) => ({ chatId, seq: (current?.seq ?? 0) + 1 }));
     },
     [openPanel]
@@ -262,6 +267,7 @@ export function DashboardAgent({
       if (!trimmed) return;
       openPanel();
       setEditAlertRequest(undefined);
+      setGroupAlertsRequest(undefined);
       setOpenSource(options?.source);
       setRequestedMessage((current) => ({ text: trimmed, seq: (current?.seq ?? 0) + 1 }));
     },
@@ -272,6 +278,7 @@ export function DashboardAgent({
     (spec: WatchSpec) => {
       openPanel();
       setEditAlertRequest(undefined);
+      setGroupAlertsRequest(undefined);
       setWatchRequest((current) => ({ spec, seq: (current?.seq ?? 0) + 1 }));
     },
     [openPanel]
@@ -281,8 +288,18 @@ export function DashboardAgent({
     (prefill: DraftPrefillParams) => {
       openPanel();
       setEditAlertRequest(undefined);
+      setGroupAlertsRequest(undefined);
       setOpenSource("alerts");
       setCreateAlertPrefill(prefill);
+    },
+    [openPanel]
+  );
+
+  const openGroupAlerts = useCallback(
+    (members: { id: string; name: string }[]) => {
+      openPanel();
+      setEditAlertRequest(undefined);
+      setGroupAlertsRequest((current) => ({ members, seq: (current?.seq ?? 0) + 1 }));
     },
     [openPanel]
   );
@@ -290,6 +307,7 @@ export function DashboardAgent({
   const openEditAlert = useCallback(
     (prefill: EditAlertPrefill) => {
       openPanel();
+      setGroupAlertsRequest(undefined);
       setEditAlertRequest((current) => ({ prefill, seq: (current?.seq ?? 0) + 1 }));
     },
     [openPanel]
@@ -410,6 +428,7 @@ export function DashboardAgent({
         setPanelOpen(true);
       } else {
         setEditAlertRequest(undefined);
+        setGroupAlertsRequest(undefined);
         setNewChatSeq((seq) => seq + 1);
       }
     },
@@ -432,6 +451,7 @@ export function DashboardAgent({
       openWithWatch,
       openCreateAlert,
       openEditAlert,
+      openGroupAlerts,
       unreadWakes,
       unreadWork,
       watchEnabled,
@@ -443,6 +463,7 @@ export function DashboardAgent({
       openWithWatch,
       openCreateAlert,
       openEditAlert,
+      openGroupAlerts,
       unreadWakes,
       unreadWork,
       watchEnabled,
@@ -501,6 +522,7 @@ export function DashboardAgent({
                     openSource={openSource}
                     createAlertPrefill={createAlertPrefill}
                     editAlertRequest={editAlertRequest}
+                    groupAlertsRequest={groupAlertsRequest}
                     openChatRequest={openChatRequest}
                     watchRequest={watchRequest}
                     newChatSeq={newChatSeq}

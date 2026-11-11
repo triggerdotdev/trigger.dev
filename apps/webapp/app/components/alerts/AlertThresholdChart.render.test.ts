@@ -7,6 +7,8 @@ import {
   AlertThresholdChart,
   formatAlertTick,
   thresholdWarningOverlay,
+  thresholdReferenceLine,
+  thresholdXAxis,
 } from "./AlertThresholdChart";
 import type { MetricSeriesPoint } from "./alertSeriesTypes";
 import { evenTimeTicks, niceYAxis, stepDecimals, withRaiseTick } from "./alertAxis";
@@ -243,5 +245,22 @@ describe("exact condition values", () => {
         "duration_ms"
       )
     ).toBe("> 1.25s over 5m");
+  });
+});
+
+describe("thresholdXAxis", () => {
+  it("keeps the ticks and the raise marker", () => {
+    const axis = thresholdXAxis({ tickFormatter: (v) => `t${v}`, raiseTick: 2, ticks: [1, 2] });
+    expect(axis.ticks).toEqual([1, 2]);
+    expect(axis.interval).toBe(0);
+    expect(axis.tickFormatter(2)).toBe("▲ raised t2");
+  });
+});
+
+describe("thresholdReferenceLine", () => {
+  it("full-size keeps 'Threshold N'; tiles label the bare number, both outside the plot", () => {
+    expect(thresholdReferenceLine(3, "3").label).toBe("Threshold 3");
+    expect(thresholdReferenceLine(3, "3", true).label).toBe("3");
+    expect(thresholdReferenceLine(3, "3", true).labelPlacement).toBe("outside");
   });
 });

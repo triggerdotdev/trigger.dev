@@ -1,11 +1,19 @@
 import { containerTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
+import { RESTRICTED_API_KEYS_PLAN_MESSAGE } from "@trigger.dev/plugins";
 import rbacPlugin, { type RoleBaseAccessController } from "@trigger.dev/rbac";
-import { expect, vi } from "vitest";
+import { expect, test, vi } from "vitest";
 import { MAX_API_KEY_TASK_IDENTIFIERS } from "~/consts";
-import { createEnvironmentApiKey, revokeEnvironmentApiKey } from "~/models/api-key.server";
+import {
+  createEnvironmentApiKey,
+  isApiKeyUserError,
+  RootApiKeyNotVisibleError,
+  revokeEnvironmentApiKey,
+  updateEnvironmentApiKeyAccess,
+} from "~/models/api-key.server";
 import { removeTeamMember } from "~/models/removeTeamMember.server";
 import type { ApiKeyTelemetry } from "~/services/apiKeyTelemetry.server";
+import { logger } from "~/services/logger.server";
 import {
   createRuntimeEnvironment,
   createTestOrgProjectWithMember,
@@ -210,7 +218,7 @@ containerTest("policy preparation failure inserts no credential", async ({ prism
   const { user, environment } = await setup(prisma);
   const controller = policyController(async () => ({
     ok: false,
-    error: "This API key access preset is not available on your plan",
+    error: RESTRICTED_API_KEYS_PLAN_MESSAGE,
   }));
   const telemetry = telemetryRecorder();
 
@@ -225,7 +233,7 @@ containerTest("policy preparation failure inserts no credential", async ({ prism
       },
       { prismaClient: prisma, rbacController: controller, telemetryRecorder: telemetry }
     )
-  ).rejects.toThrow("not available on your plan");
+  ).rejects.toThrow(RESTRICTED_API_KEYS_PLAN_MESSAGE);
 
   expect(telemetry.recordOperation).toHaveBeenCalledWith(
     "prepare_policy",
@@ -362,3 +370,126 @@ containerTest(
     expect(result.apiKey).toMatchObject({ presetId: "TRIGGER_ONLY", scopes: trustedScopes });
   }
 );
+
+containerTest("updates a key's access in place and keeps its secret", async ({ prisma }) => {
+  // Catches: editing access rotating the credential, leaving the old scopes in place, or leaving no record of who changed it.
+  const { organization, user, environment } = await setup(prisma);
+  const apiKey = await prisma.apiKey.create({
+    data: {
+      name: "Drifted",
+      keyHash: uniqueId("hash"),
+      lastFour: "drft",
+      runtimeEnvironmentId: environment.id,
+      createdByUserId: user.id,
+      presetId: "ENVIRONMENT_OPERATOR",
+      scopes: ["read:tasks"],
+    },
+  });
+  const controller = policyController(async () => ({
+    ok: true,
+    policy: { presetId: "CUSTOM", scopes: ["read:tasks", "trigger:tasks", "write:deployments"] },
+  }));
+  const telemetry = telemetryRecorder();
+  const info = vi.spyOn(logger, "info");
+
+  await updateEnvironmentApiKeyAccess(
+    {
+      environmentId: environment.id,
+      taskEnvironmentId: environment.id,
+      userId: user.id,
+      apiKeyId: apiKey.id,
+      presetId: "CUSTOM",
+      capabilities: { tasks: "readTrigger", deployments: "readWrite" },
+    },
+    { prismaClient: prisma, rbacController: controller, telemetryRecorder: telemetry }
+  );
+
+  expect(controller.prepareApiKeyPolicy).toHaveBeenCalledWith({
+    organizationId: organization.id,
+    presetId: "CUSTOM",
+    taskIdentifiers: undefined,
+    capabilities: { tasks: "readTrigger", deployments: "readWrite" },
+  });
+  expect(telemetry.recordOperation).toHaveBeenCalledWith("update_access", "success");
+  expect(info).toHaveBeenCalledWith("API key access updated", {
+    apiKeyId: apiKey.id,
+    environmentId: environment.id,
+    userId: user.id,
+    fromPresetId: "ENVIRONMENT_OPERATOR",
+    toPresetId: "CUSTOM",
+    added: ["trigger:tasks", "write:deployments"],
+    removed: [],
+  });
+  info.mockRestore();
+  await expect(prisma.apiKey.findFirst({ where: { id: apiKey.id } })).resolves.toMatchObject({
+    keyHash: apiKey.keyHash,
+    lastFour: "drft",
+    presetId: "CUSTOM",
+    scopes: ["read:tasks", "trigger:tasks", "write:deployments"],
+  });
+});
+
+containerTest("refuses to edit revoked or expired keys", async ({ prisma }) => {
+  // Catches: a revoked or expired credential regaining access through an edit.
+  const { user, environment } = await setup(prisma);
+  const create = (name: string, data: { revokedAt?: Date; expiresAt?: Date }) =>
+    prisma.apiKey.create({
+      data: {
+        name,
+        keyHash: uniqueId("hash"),
+        lastFour: "dead",
+        runtimeEnvironmentId: environment.id,
+        createdByUserId: user.id,
+        presetId: "TRIGGER_ONLY",
+        scopes: ["trigger:tasks"],
+        ...data,
+      },
+    });
+  const revoked = await create("Revoked", { revokedAt: new Date() });
+  const expired = await create("Expired", { expiresAt: new Date(Date.now() - 60_000) });
+  const controller = policyController(async () => ({
+    ok: true,
+    policy: { presetId: "FULL_ACCESS", scopes: ["admin"] },
+  }));
+  const telemetry = telemetryRecorder();
+  const update = (apiKeyId: string) =>
+    updateEnvironmentApiKeyAccess(
+      {
+        environmentId: environment.id,
+        taskEnvironmentId: environment.id,
+        userId: user.id,
+        apiKeyId,
+        presetId: "FULL_ACCESS",
+      },
+      { prismaClient: prisma, rbacController: controller, telemetryRecorder: telemetry }
+    );
+
+  await expect(update(revoked.id)).rejects.toThrow(
+    "This key was revoked, so its access can't be changed."
+  );
+  await expect(update(expired.id)).rejects.toThrow(
+    "This key has expired. Create a new key instead."
+  );
+  await expect(update("apikey_missing")).rejects.toThrow(
+    "This key no longer exists. Reload the page to see your current keys."
+  );
+  expect(controller.prepareApiKeyPolicy).not.toHaveBeenCalled();
+  expect(telemetry.recordOperation).toHaveBeenCalledWith("update_access", "rejected", "expired");
+  await expect(
+    prisma.apiKey.findMany({
+      where: { id: { in: [revoked.id, expired.id] } },
+      select: { scopes: true },
+    })
+  ).resolves.toEqual([{ scopes: ["trigger:tasks"] }, { scopes: ["trigger:tasks"] }]);
+});
+
+test("only unexpected API key action errors are reported", () => {
+  // Catches: database and plugin failures in the API keys action reaching the dialog but no logs, or validation messages flooding Sentry.
+  class DatabaseError extends Error {}
+
+  expect(isApiKeyUserError(new Error("Select at least one task"))).toBe(true);
+  expect(isApiKeyUserError(new RootApiKeyNotVisibleError())).toBe(true);
+  expect(isApiKeyUserError(new DatabaseError("connection terminated"))).toBe(false);
+  expect(isApiKeyUserError(new TypeError("undefined is not a function"))).toBe(false);
+  expect(isApiKeyUserError("boom")).toBe(false);
+});

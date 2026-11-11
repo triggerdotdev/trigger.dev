@@ -13,6 +13,7 @@ import {
   BatchItemAuthorizationError,
 } from "~/utils/batchItemAuthorization";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
+import { storedPayloadPointerPolicy } from "~/services/packetApi.server";
 
 const ParamsSchema = z.object({
   batchId: z.string(),
@@ -72,8 +73,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: authResult.error }, { status: authResult.status });
   }
 
-  const restrictedApiKey = authResult.subject.type === "apiKey" && authResult.subject.restricted;
-
   // Get the request body stream
   const body = request.body;
   if (!body) {
@@ -100,7 +99,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       streamToAsyncIterable(parsedStream),
       authResult.ability,
       batchId,
-      authResult.subject.type !== "publicJWT" && !restrictedApiKey
+      storedPayloadPointerPolicy(authResult.subject)
     );
 
     // Process the stream

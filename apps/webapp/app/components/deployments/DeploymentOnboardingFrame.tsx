@@ -12,6 +12,7 @@ export function DeploymentOnboardingFrame({
   children,
   enhanced = true,
   tabbed = true,
+  githubTab = true,
 }: {
   title: string;
   heading?: ReactNode;
@@ -20,6 +21,7 @@ export function DeploymentOnboardingFrame({
   children: ReactNode;
   enhanced?: boolean;
   tabbed?: boolean;
+  githubTab?: boolean;
 }) {
   return (
     <>
@@ -44,11 +46,13 @@ export function DeploymentOnboardingFrame({
         )}
       </div>
       {tabbed ? (
-        <ClientTabs defaultValue="github">
+        <ClientTabs defaultValue={githubTab ? "github" : "cli"}>
           <ClientTabsList variant="segmented" className="mb-6">
-            <ClientTabsTrigger value="github" variant="segmented" layoutId="deploy-tabs">
-              GitHub
-            </ClientTabsTrigger>
+            {githubTab && (
+              <ClientTabsTrigger value="github" variant="segmented" layoutId="deploy-tabs">
+                GitHub
+              </ClientTabsTrigger>
+            )}
             <ClientTabsTrigger value="cli" variant="segmented" layoutId="deploy-tabs">
               Manual
             </ClientTabsTrigger>

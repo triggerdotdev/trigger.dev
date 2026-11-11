@@ -155,6 +155,9 @@ export function getAllowedSessionOptions(
  * `User.nextSessionEnd`. If we let the cookie expire client-side, the user
  * is silently logged out.
  */
+/** Session key holding when the session was issued (ms since epoch), for session policy checks. */
+export const SESSION_ISSUED_AT_KEY = "issuedAt";
+
 export async function commitAuthenticatedSession(
   session: Session,
   userId: string,
@@ -166,5 +169,6 @@ export async function commitAuthenticatedSession(
     where: { id: userId },
     data: { nextSessionEnd: new Date(now + durationSeconds * 1000) },
   });
+  session.set(SESSION_ISSUED_AT_KEY, now);
   return commitSession(session, { maxAge: DEFAULT_SESSION_DURATION_SECONDS });
 }

@@ -9,6 +9,7 @@ import {
 import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
 import { logger } from "~/services/logger.server";
 import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
+import { personalAccessTokenUnauthorizedResponse } from "~/services/personalAccessToken.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -36,7 +37,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     });
 
     if (!authenticationResult) {
-      return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
+      return personalAccessTokenUnauthorizedResponse(request);
     }
 
     const environment = await authenticatedEnvironmentForAuthentication(

@@ -6,6 +6,7 @@
 import { json, redirect } from "@remix-run/server-runtime";
 import type { RbacAbility } from "@trigger.dev/rbac";
 import { env } from "~/env.server";
+import { noteAdminRequest } from "~/services/adminAudit/adminAuditContext.server";
 import { rbac } from "~/services/rbac.server";
 import { getUserId } from "~/services/session.server";
 import { permissionDeniedResponse } from "~/utils/permissionDenied";
@@ -30,6 +31,15 @@ function isAuthorized(ability: RbacAbility, authorization: AuthorizationOption):
 }
 
 type AuthScope = { organizationId?: string; projectId?: string };
+
+function isResolvedScope(rawParams: unknown, ctx: AuthScope): boolean {
+  const hasProjectParam =
+    typeof rawParams === "object" &&
+    rawParams !== null &&
+    typeof (rawParams as Record<string, unknown>).projectParam === "string";
+  if (hasProjectParam) return Boolean(ctx.organizationId && ctx.projectId);
+  return Boolean(ctx.organizationId || ctx.projectId);
+}
 
 export async function authenticateAndAuthorize<TParams, TSearchParams, TContext extends AuthScope>(
   request: Request,
@@ -96,6 +106,15 @@ export async function authenticateAndAuthorize<TParams, TSearchParams, TContext 
     return { ok: false, response: redirect(options.unauthorizedRedirect ?? "/") };
   }
 
+  if (options.context && !isResolvedScope(rawParams, ctx)) {
+    return {
+      ok: false,
+      response: options.unauthorizedRedirect
+        ? redirect(options.unauthorizedRedirect)
+        : new Response("Not Found", { status: 404 }),
+    };
+  }
+
   if (options.authorization) {
     const isSuperGate = "requireSuper" in options.authorization;
     // Every catalogue resource is org- or project-scoped; requireSuper is the
@@ -107,6 +126,10 @@ export async function authenticateAndAuthorize<TParams, TSearchParams, TContext 
     const denied = isSuperGate
       ? !isAuthorized(auth.ability, options.authorization)
       : !hasScope || !isAuthorized(auth.ability, options.authorization);
+
+    if (isSuperGate && request.method !== "GET" && request.method !== "HEAD") {
+      noteAdminRequest(request, { captureBody: !denied });
+    }
 
     if (denied) {
       // Super-admin gates must not reveal that the route exists, so they

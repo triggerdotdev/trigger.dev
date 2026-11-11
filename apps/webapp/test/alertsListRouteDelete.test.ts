@@ -86,8 +86,8 @@ describe("alerts list delete", () => {
     AUTH.canDelete = true;
   });
 
-  it("refuses a write-only role with 403", async () => {
-    AUTH.canDelete = false;
+  it("refuses a role without write with 403", async () => {
+    AUTH.canWrite = false;
     const error = await runDelete().then(
       () => undefined,
       (thrown: unknown) => thrown
@@ -97,16 +97,13 @@ describe("alerts list delete", () => {
     expect(performed.calls).toHaveLength(0);
   });
 
-  it("deletes with delete:alerts", async () => {
+  it("deletes with write:alerts", async () => {
     await runDelete();
     expect(performed.calls).toHaveLength(1);
   });
 
-  it("checks write and delete for the environment type", async () => {
+  it("checks write for the environment type", async () => {
     await runDelete();
-    expect(canCalls).toEqual([
-      ["write", { type: "alerts", envType: "DEVELOPMENT" }],
-      ["delete", { type: "alerts", envType: "DEVELOPMENT" }],
-    ]);
+    expect(canCalls).toEqual([["write", { type: "alerts", envType: "DEVELOPMENT" }]]);
   });
 });

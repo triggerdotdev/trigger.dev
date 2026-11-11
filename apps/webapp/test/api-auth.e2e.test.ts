@@ -199,6 +199,7 @@ describe("Packet download authorization", () => {
       });
 
       let token: string;
+      let apiKeyId: string | undefined;
       if (credential === "public JWT") {
         // Include a batch-wide grant to ensure it cannot bypass the payload gate.
         token = await generateTestJWT(environment, {
@@ -209,7 +210,7 @@ describe("Packet download authorization", () => {
       } else {
         const user = await seedTestUser(server.prisma);
         token = generateAdditionalApiKey("DEVELOPMENT").apiKey;
-        await server.prisma.apiKey.create({
+        const created = await server.prisma.apiKey.create({
           data: {
             name: "Task-scoped ingestion key",
             keyHash: createHash("sha256").update(token).digest("hex"),
@@ -223,6 +224,7 @@ describe("Packet download authorization", () => {
                 : ["admin"],
           },
         });
+        apiKeyId = created.id;
       }
 
       const item = {
@@ -230,6 +232,36 @@ describe("Packet download authorization", () => {
         index: 0,
         payload: "run_other/payload.json",
         options: { payloadType: "application/store", idempotencyKey },
+      };
+      const fetchItem = (payload: string) =>
+        server.webapp.fetch(path, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "idempotency-key": idempotencyKey,
+            "Content-Type": route === "v3 items" ? "application/x-ndjson" : "application/json",
+          },
+          body:
+            route === "v3 items"
+              ? `${JSON.stringify({ ...item, payload })}\n`
+              : JSON.stringify(
+                  route === "trigger" ? { ...item, payload } : { items: [{ ...item, payload }] }
+                ),
+        });
+      const expectAccepted = async (res: Response) => {
+        expect(res.status).toBe(route === "v1 batch" || route === "v2 batch" ? 202 : 200);
+        if (route === "trigger") {
+          expect(await res.json()).toMatchObject({ id: run.friendlyId, isCached: true });
+        } else if (route === "v3 items") {
+          expect(await res.json()).toMatchObject({ itemsAccepted: 1, sealed: true });
+        } else if (route === "task-scoped v1 batch") {
+          expect(await res.json()).toMatchObject({
+            batchId: expect.stringMatching(/^batch_/),
+            runs: [run.friendlyId],
+          });
+        } else {
+          expect(await res.json()).toMatchObject({ id: expect.stringMatching(/^batch_/) });
+        }
       };
       const path =
         route === "trigger"
@@ -239,18 +271,7 @@ describe("Packet download authorization", () => {
             : route === "task-scoped v1 batch"
               ? "/api/v1/tasks/test-task/batch"
               : `/api/${route === "v1 batch" ? "v1" : "v2"}/tasks/batch`;
-      const res = await server.webapp.fetch(path, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "idempotency-key": idempotencyKey,
-          "Content-Type": route === "v3 items" ? "application/x-ndjson" : "application/json",
-        },
-        body:
-          route === "v3 items"
-            ? `${JSON.stringify(item)}\n`
-            : JSON.stringify(route === "trigger" ? item : { items: [item] }),
-      });
+      const res = await fetchItem(item.payload);
 
       if (credential === "public JWT" || credential === "restricted API key") {
         expect(res.status).toBe(403);
@@ -258,7 +279,7 @@ describe("Packet download authorization", () => {
           error:
             route === "v3 items"
               ? "Unauthorized"
-              : "Stored payloads require an unrestricted private API key",
+              : "Stored payloads require an unrestricted private API key or a payload this credential uploaded",
         });
         expect(
           await server.prisma.taskRun.count({ where: { runtimeEnvironmentId: environment.id } })
@@ -271,6 +292,14 @@ describe("Packet download authorization", () => {
         expect(
           await server.prisma.batchTaskRun.findFirst({ where: { friendlyId: batchFriendlyId } })
         ).toMatchObject({ status: "PENDING", sealed: false });
+        if (credential === "restricted API key") {
+          // A scoped key may submit its own upload, but not one uploaded by someone else.
+          const foreign = await fetchItem("trigger/packet_test/payload.json");
+          expect(foreign.status).toBe(403);
+          await expectAccepted(
+            await fetchItem(`uploads/key/${apiKeyId}/trigger/packet_test/payload.json`)
+          );
+        }
         if (route === "task-scoped v1 batch" && credential === "restricted API key") {
           const inlineResponse = await server.webapp.fetch(path, {
             method: "POST",
@@ -286,20 +315,40 @@ describe("Packet download authorization", () => {
           });
         }
       } else {
-        expect(res.status).toBe(route === "v1 batch" || route === "v2 batch" ? 202 : 200);
-        if (route === "trigger") {
-          expect(await res.json()).toMatchObject({ id: run.friendlyId, isCached: true });
-        } else if (route === "v3 items") {
-          expect(await res.json()).toMatchObject({ itemsAccepted: 1, sealed: true });
-        } else if (route === "task-scoped v1 batch") {
-          expect(await res.json()).toMatchObject({
-            batchId: expect.stringMatching(/^batch_/),
-            runs: [run.friendlyId],
-          });
-        } else {
-          expect(await res.json()).toMatchObject({ id: expect.stringMatching(/^batch_/) });
-        }
+        await expectAccepted(res);
       }
+    });
+  });
+});
+
+describe("legacy packet upload with a scoped credential", () => {
+  it("is rejected with an upgrade hint instead of relocating the object", async () => {
+    const { environment } = await seedTestEnvironment(server.prisma);
+    // Scoped uploads are only considered outside the shared development packet namespace.
+    await server.prisma.runtimeEnvironment.update({
+      where: { id: environment.id },
+      data: { type: "PRODUCTION" },
+    });
+    const user = await seedTestUser(server.prisma);
+    const token = generateAdditionalApiKey("PRODUCTION").apiKey;
+    await server.prisma.apiKey.create({
+      data: {
+        name: "Uploader",
+        keyHash: createHash("sha256").update(token).digest("hex"),
+        lastFour: token.slice(-4),
+        runtimeEnvironmentId: environment.id,
+        createdByUserId: user.id,
+        presetId: "TRIGGER_ONLY",
+        scopes: ["write:packets", "trigger:tasks:test-task"],
+      },
+    });
+    const res = await server.webapp.fetch("/api/v1/packets/trigger/packet_abc/payload.json", {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: "Scoped credentials must upload packets via /api/v2/packets; upgrade the SDK",
     });
   });
 });

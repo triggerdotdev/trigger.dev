@@ -1,3 +1,4 @@
+import { withAdminApi } from "~/services/adminApi.server";
 import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { type Project, WorkerInstanceGroupType, WorkloadType } from "@trigger.dev/database";
@@ -21,7 +22,7 @@ const RequestBodySchema = z.object({
   enableFastPath: z.boolean().optional(),
 });
 
-export async function loader({ request }: LoaderFunctionArgs) {
+async function handleLoader({ request }: LoaderFunctionArgs) {
   await requireAdminApiRequest(request);
 
   const workerGroups = await prisma.workerInstanceGroup.findMany({
@@ -31,7 +32,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   return json({ workerGroups });
 }
 
-export async function action({ request }: ActionFunctionArgs) {
+async function handleAction({ request }: ActionFunctionArgs) {
   await requireAdminApiRequest(request);
 
   try {
@@ -262,3 +263,6 @@ async function setWorkerGroupAsDefaultForProject(
     project,
   };
 }
+
+export const loader = withAdminApi(handleLoader);
+export const action = withAdminApi(handleAction);
