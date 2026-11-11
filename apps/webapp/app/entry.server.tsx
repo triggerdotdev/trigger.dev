@@ -182,7 +182,7 @@ function handleBotRequest(
     const { pipe, abort } = renderToPipeableStream(
       <OperatingSystemContextProvider platform={platform}>
         <LocaleContextProvider locales={locales}>
-          <RemixServer context={remixContext} url={request.url} abortDelay={ABORT_DELAY} />,
+          <RemixServer context={remixContext} url={request.url} abortDelay={ABORT_DELAY} />
         </LocaleContextProvider>
       </OperatingSystemContextProvider>,
       {
