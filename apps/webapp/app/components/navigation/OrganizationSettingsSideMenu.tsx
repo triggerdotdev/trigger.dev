@@ -154,6 +154,7 @@ export function OrganizationSettingsSideMenu({
               activeIconColor="text-text-bright"
               inactiveIconColor="text-text-dimmed"
               to={v3PrivateConnectionsPath(organization)}
+              matchPrefix
               data-action="private-connections"
             />
           )}

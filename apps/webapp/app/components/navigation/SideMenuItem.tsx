@@ -61,6 +61,50 @@ export function SideMenuLabel({
   );
 }
 
+function matchesPathPrefix(pathName: string, prefix: string): boolean {
+  const normalized = prefix.replace(/\/+$/, "");
+  if (normalized.length === 0) {
+    return false;
+  }
+  return pathName === normalized || pathName.startsWith(`${normalized}/`);
+}
+
+/**
+ * Returns whether a side menu item should appear active for `pathName`.
+ * Matches `to` exactly, `to` on a `/` boundary when `matchPrefix` is true, or
+ * any prefix in `activePathPrefix` (for items whose `to` is a shared root such
+ * as the environment URL while its sub-pages live under dedicated segments).
+ */
+export function isSideMenuPathActive({
+  pathName,
+  to,
+  matchPrefix = false,
+  activePathPrefix,
+}: {
+  pathName: string;
+  to: string;
+  matchPrefix?: boolean;
+  activePathPrefix?: string | readonly string[];
+}): boolean {
+  if (pathName === to) {
+    return true;
+  }
+
+  const prefixes: string[] = [];
+  if (matchPrefix) {
+    prefixes.push(to);
+  }
+  if (activePathPrefix !== undefined) {
+    if (typeof activePathPrefix === "string") {
+      prefixes.push(activePathPrefix);
+    } else {
+      prefixes.push(...activePathPrefix);
+    }
+  }
+
+  return prefixes.some((prefix) => matchesPathPrefix(pathName, prefix));
+}
+
 export function SideMenuItem({
   icon,
   activeIconColor,
@@ -80,6 +124,7 @@ export function SideMenuItem({
   isActive: isActiveOverride,
   yieldActiveToFavorite = false,
   matchPrefix = false,
+  activePathPrefix,
   "data-action": dataAction,
 }: {
   icon?: RenderIcon;
@@ -101,6 +146,8 @@ export function SideMenuItem({
   /** Overrides the default pathname === to active check (e.g. favorites match on full URL). */
   isActive?: boolean;
   matchPrefix?: boolean;
+  /** Additional path prefixes (matched on a `/` boundary) that activate this item. */
+  activePathPrefix?: string | readonly string[];
   /**
    * In menus that render the Favorites section (the main project menu), an active favorite owns
    * the highlight, so the plain item yields its active state to it. Menus without a favorites
@@ -116,7 +163,7 @@ export function SideMenuItem({
   const activeFavoriteId = useActiveFavoriteId();
   const isActive =
     isActiveOverride ??
-    ((pathName === to || (matchPrefix && pathName.startsWith(`${to}/`))) &&
+    (isSideMenuPathActive({ pathName, to, matchPrefix, activePathPrefix }) &&
       (!yieldActiveToFavorite || activeFavoriteId === undefined));
 
   const isIndented = indented && !isCollapsed;

@@ -78,7 +78,20 @@ describe("buildSideMenuSections alerts placement", () => {
     expect(ids.indexOf("alerts")).toBe(ids.indexOf("bulk-actions") + 1);
     const alerts = manage.items.find((i) => i.id === "alerts")!;
     expect(alerts.badge).toBeUndefined();
-    expect(alerts.matchPrefix).toBeUndefined();
+    expect(alerts.matchPrefix).toBe(true);
+  });
+
+  // Catches: section items losing active highlight on detail pages or Dashboards overriding child dashboard links
+  it("defaults section items to matchPrefix: true while keeping Dashboards exact", () => {
+    const items = build(true).flatMap((s) => s.items);
+    const dashboards = items.find((i) => i.id === "dashboards")!;
+    expect(dashboards.matchPrefix).toBe(false);
+
+    const otherItems = items.filter((i) => i.id !== "dashboards");
+    expect(otherItems.length).toBeGreaterThan(0);
+    for (const item of otherItems) {
+      expect(item.matchPrefix, `expected ${item.id} to match prefix`).toBe(true);
+    }
   });
 
   it("moves Alerts into Observability when the alerts flag is on", () => {

@@ -743,6 +743,8 @@ export function SideMenu({
         ? "hidden"
         : "shown";
 
+  const environmentPath = v3EnvironmentPath(organization, project, environment);
+
   // The customizable sections (everything except Tasks/Runs/Sessions), in DEFAULT order. The
   // user's saved order/hidden preferences are applied at render below.
   const staticSections = buildSideMenuSections({
@@ -941,7 +943,12 @@ export function SideMenu({
                 icon={TasksIcon}
                 activeIconColor="text-tasks"
                 inactiveIconColor="text-text-dimmed"
-                to={v3EnvironmentPath(organization, project, environment)}
+                to={environmentPath}
+                activePathPrefix={[
+                  `${environmentPath}/tasks`,
+                  `${environmentPath}/agents`,
+                  `${environmentPath}/schedules`,
+                ]}
                 data-action="tasks"
                 isCollapsed={isCollapsed}
                 yieldActiveToFavorite
@@ -952,6 +959,7 @@ export function SideMenu({
                 activeIconColor="text-runs"
                 inactiveIconColor="text-text-dimmed"
                 to={v3RunsPath(organization, project, environment)}
+                matchPrefix
                 data-action="runs"
                 isCollapsed={isCollapsed}
                 yieldActiveToFavorite
@@ -962,6 +970,7 @@ export function SideMenu({
                 activeIconColor="text-sessions"
                 inactiveIconColor="text-text-dimmed"
                 to={v3SessionsPath(organization, project, environment)}
+                matchPrefix
                 data-action="sessions"
                 isCollapsed={isCollapsed}
                 yieldActiveToFavorite
@@ -976,6 +985,7 @@ export function SideMenu({
                   activeIconColor="text-webhooks"
                   inactiveIconColor="text-text-dimmed"
                   to={v3WebhooksPath(organization, project, environment)}
+                  matchPrefix
                   data-action="webhooks"
                   badge={<BetaBadge />}
                   isCollapsed={isCollapsed}
@@ -1141,7 +1151,7 @@ function CustomizableSideMenuSection({
             activeIconColor={item.activeIconColor}
             inactiveIconColor={item.inactiveIconColor ?? "text-text-dimmed"}
             to={item.to}
-            matchPrefix={item.matchPrefix}
+            matchPrefix={item.matchPrefix ?? true}
             data-action={item.dataAction}
             badge={item.badge}
             isCollapsed={isCollapsed}

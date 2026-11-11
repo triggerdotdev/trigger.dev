@@ -154,9 +154,7 @@ export function buildSideMenuSections({
       id: "metrics",
       title: "Observability",
       items: [
-        ...(alertsInObservability
-          ? [{ ...alertsItem, matchPrefix: true, badge: <NewBadge /> }]
-          : []),
+        ...(alertsInObservability ? [{ ...alertsItem, badge: <NewBadge /> }] : []),
         ...(isAdmin || featureFlags.hasLogsPageAccess
           ? [
               {
@@ -206,6 +204,7 @@ export function buildSideMenuSections({
                 icon: ChartBarIcon,
                 activeIconColor: "text-metrics",
                 to: v3DashboardsLandingPath(organization, project, environment),
+                matchPrefix: false,
                 dataAction: "dashboards-landing",
                 action: dashboards?.action,
                 after: dashboards?.after,
@@ -355,5 +354,13 @@ export function buildSideMenuSections({
     ],
   });
 
-  return staticSections;
+  // Stay highlighted on detail/sub-pages unless an item explicitly opts out (e.g. Dashboards,
+  // whose child routes are rendered as their own menu items).
+  return staticSections.map((section) => ({
+    ...section,
+    items: section.items.map((item) => ({
+      ...item,
+      matchPrefix: item.matchPrefix ?? true,
+    })),
+  }));
 }
