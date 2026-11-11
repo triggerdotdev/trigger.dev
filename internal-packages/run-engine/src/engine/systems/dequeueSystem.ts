@@ -1029,16 +1029,24 @@ export class DequeueSystem {
               )
             );
 
-            const env = run
-              ? await this.$.controlPlaneResolver.resolveEnv(run.runtimeEnvironmentId)
-              : null;
+            const [resolveEnvError, env] = run
+              ? await tryCatch(this.$.controlPlaneResolver.resolveEnv(run.runtimeEnvironmentId))
+              : [undefined, null];
 
-            if (findError || !run || !env) {
+            if (findError || resolveEnvError || !run || !env) {
               this.$.logger.error(
                 "RunEngine.dequeueFromWorkerQueue(): Failed to find run, nacking directly via Redis",
-                { runId, orgId, findError }
+                { runId, orgId, findError, resolveEnvError }
               );
-              await this.$.runQueue.nackMessage({ orgId, messageId: runId });
+              const requeued = await this.$.runQueue.nackMessage({ orgId, messageId: runId });
+              if (requeued === false) {
+                await this.runAttemptSystem.systemFailure({
+                  runId,
+                  organizationId: orgId,
+                  error: dequeueMaxRetriesError,
+                  tx: prisma,
+                });
+              }
               return;
             }
 
