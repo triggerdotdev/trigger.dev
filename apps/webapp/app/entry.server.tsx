@@ -382,6 +382,7 @@ singleton("SentryTenantContextProcessor", () => {
 });
 
 export { apiRateLimiter } from "./services/apiRateLimit.server";
+export { flushAuditLogs } from "./services/auditLogs/auditLogs.server";
 export const ingressBodyCap = createIngressBodyCap([
   DASHBOARD_AGENT_INGRESS_CAP,
   otlpIngressCap(env.OTLP_INGRESS_BODY_SIZE_LIMIT_MB * 1024 * 1024),

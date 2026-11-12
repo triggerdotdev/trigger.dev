@@ -221,6 +221,7 @@ async function startServer() {
     const runWithHttpContext: RunWithHttpContextFunction = build.entry.module.runWithHttpContext;
     const tenantContextMiddleware: RequestHandler = build.entry.module.tenantContextMiddleware;
     const ingressBodyCap: RequestHandler = build.entry.module.ingressBodyCap;
+    const flushAuditLogs: () => Promise<void> = build.entry.module.flushAuditLogs;
 
     app.use((req, res, next) => {
       // helpful headers:
@@ -337,6 +338,8 @@ async function startServer() {
         } else {
           console.log("Express server closed gracefully.");
         }
+        // The requests still running at the signal have finished: hand their audit events over.
+        void flushAuditLogs();
       });
       // Dev-only: release Vite's file watchers and HMR websocket
       viteDevServer?.close();

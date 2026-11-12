@@ -2902,6 +2902,8 @@ const EnvironmentSchema = z
 
     /** Records admin API calls, admin dashboard mutations and admin PAT minting through the admin audit plugin. */
     ADMIN_AUDIT_ENABLED: BoolEnv.default(false),
+    /** Records customer audit log events through the audit log plugin, when it is installed. */
+    AUDIT_LOGS_RECORDING_ENABLED: BoolEnv.default(false),
     // Emit a console.log when the SSO fallback is selected because no
     // plugin is installed. Default off so OSS deployments stay quiet.
     SSO_LOG_FALLBACK: BoolEnv.default(false),
