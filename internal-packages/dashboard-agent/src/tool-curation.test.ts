@@ -5,6 +5,7 @@ import {
   curateErrors,
   curateProjects,
   curateRun,
+  curateRuns,
   curateTrace,
   derivePhases,
   fenceUntrusted,
@@ -63,6 +64,21 @@ describe("curation fences untrusted free-text", () => {
     expect(out.error?.name).toBe(`«untrusted:errorName» TypeError «/untrusted:errorName»`);
     // Status is ours, so it stays unfenced.
     expect(out.status).toBe("FAILED");
+  });
+
+  it("fences task identifiers and tags on runs and run lists", () => {
+    const run = curateRun({ id: "run_1", taskIdentifier: injection, tags: [injection] });
+    const [listed] = curateRuns({
+      data: [{ id: "run_1", taskIdentifier: injection, tags: [injection] }],
+    }).runs;
+
+    // Catches: handing the model a task id or tag unfenced.
+    for (const out of [run, listed]) {
+      expect(out.taskIdentifier).toBe(
+        `${OPEN("taskIdentifier")} ${injection} ${CLOSE("taskIdentifier")}`
+      );
+      expect(out.tags).toEqual([`${OPEN("tag")} ${injection} ${CLOSE("tag")}`]);
+    }
   });
 
   it("fences an error name and type carrying an injection or a delimiter collision", () => {

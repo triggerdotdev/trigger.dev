@@ -151,8 +151,8 @@ describe("the head-start and agent prefixes are the same prefix", () => {
 // Direct create tool dropped: -1 tool (~3k chars).
 // update_alert_draft only in creation scope: -1 chat tool (~2.3k chars), +~55 prompt chars.
 const PREFIX_BUDGET = {
-  assistant: { chars: 81_250, estimatedTokens: 20_320, tools: 28, promptChars: 34_720 },
-  code: { chars: 88_210, estimatedTokens: 22_060, tools: 32, promptChars: 37_480 },
+  assistant: { chars: 81_530, estimatedTokens: 20_390, tools: 28, promptChars: 34_920 },
+  code: { chars: 88_490, estimatedTokens: 22_130, tools: 32, promptChars: 37_680 },
 } as const;
 
 // Measured with alerts on: the biggest prefix a turn can hand the provider.

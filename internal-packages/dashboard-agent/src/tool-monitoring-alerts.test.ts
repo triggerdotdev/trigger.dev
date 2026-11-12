@@ -211,6 +211,55 @@ describe("update_alert_draft", () => {
   });
 });
 
+describe("resolve_monitoring_alert", () => {
+  const resolve = async (attention: string) => {
+    const calls: { url: string; method: string }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push({ url, method: init?.method ?? "GET" });
+        const alertId = new URL(url).searchParams.get("alertId");
+        const alert = {
+          id: "alert_1",
+          name: "Queue depth",
+          attention,
+          projectId: "proj_1",
+          environmentId: "env_1",
+        };
+        return new Response(JSON.stringify(alertId === "alert_1" ? { alert } : { alerts: [] }), {
+          status: 200,
+        });
+      })
+    );
+    const result = await (
+      buildMonitoringAlertTools({ ctx: CTX as any, client: createApiClient(CTX as any) })
+        .resolve_monitoring_alert as any
+    ).execute({ alertId: "alert_1" }, {} as any);
+    return { calls, result };
+  };
+
+  // Catches: writing the resolve itself, scanning the capped list, or dropping the environment.
+  it("proposes the resolve of the alert looked up by id and writes nothing", async () => {
+    const { calls, result } = await resolve("needs_attention");
+    expect(calls.filter((c) => c.method !== "GET")).toEqual([]);
+    expect(result).toEqual({
+      ok: true,
+      pending: true,
+      alertId: "alert_1",
+      name: "Queue depth",
+      projectId: "proj_1",
+      environmentId: "env_1",
+      action: "resolve",
+    });
+  });
+
+  // Catches: proposing a resolve for an alert that no longer needs attention.
+  it("refuses an alert that does not need attention", async () => {
+    const { result } = await resolve("clear");
+    expect(result).toEqual({ error: "No alert with that id needs attention." });
+  });
+});
+
 describe("update_alert_draft lenient input", () => {
   const parseInput = (raw: unknown) =>
     (tools().update_alert_draft as any).inputSchema.safeParse(raw) as {

@@ -18,9 +18,13 @@ export function sanitizeUntrusted(text: unknown, maxChars = MAX_UNTRUSTED_FIELD_
     : raw;
 }
 
-export function fenceUntrusted(label: string, text: unknown): string | undefined {
+export function fenceUntrusted(
+  label: string,
+  text: unknown,
+  maxChars?: number
+): string | undefined {
   if (text === undefined || text === null) return undefined;
-  return `«untrusted:${label}» ${sanitizeUntrusted(text)} «/untrusted:${label}»`;
+  return `«untrusted:${label}» ${sanitizeUntrusted(text, maxChars)} «/untrusted:${label}»`;
 }
 
 // Fail closed: with no organization to scope to, nothing is trustworthy to return.
@@ -74,11 +78,15 @@ function queueWait(run: any): { queueWaitMs: number | null; queueWaitReliable: b
   return { queueWaitMs, queueWaitReliable };
 }
 
+function fenceTags(tags: unknown) {
+  return Array.isArray(tags) ? tags.map((tag) => fenceUntrusted("tag", tag)) : tags;
+}
+
 export function curateRun(run: any) {
   return {
     id: run.id,
     status: run.status,
-    taskIdentifier: run.taskIdentifier,
+    taskIdentifier: fenceUntrusted("taskIdentifier", run.taskIdentifier),
     version: run.version,
     isQueued: run.isQueued,
     isExecuting: run.isExecuting,
@@ -91,7 +99,7 @@ export function curateRun(run: any) {
     durationMs: run.durationMs,
     costInCents: run.costInCents,
     attemptCount: run.attemptCount,
-    tags: run.tags,
+    tags: fenceTags(run.tags),
     ...queueWait(run),
     error: run.error
       ? {
@@ -119,14 +127,14 @@ export function curateRuns(data: unknown) {
     runs: (Array.isArray(runs) ? runs : []).map((r: any) => ({
       id: r.id,
       status: r.status,
-      taskIdentifier: r.taskIdentifier,
+      taskIdentifier: fenceUntrusted("taskIdentifier", r.taskIdentifier),
       version: r.version,
       isTest: r.isTest,
       createdAt: r.createdAt,
       startedAt: r.startedAt,
       finishedAt: r.finishedAt,
       durationMs: r.durationMs,
-      tags: r.tags,
+      tags: fenceTags(r.tags),
     })),
     nextCursor: (data as any)?.pagination?.next,
   };
@@ -379,7 +387,7 @@ export function curateErrors(data: unknown) {
   return {
     errors: (Array.isArray(groups) ? groups : []).map((g: any) => ({
       id: g.id,
-      taskIdentifier: g.taskIdentifier,
+      taskIdentifier: fenceUntrusted("taskIdentifier", g.taskIdentifier),
       errorType: fenceUntrusted("errorType", g.errorType),
       errorMessage: fenceUntrusted("errorMessage", g.errorMessage),
       status: g.status,
@@ -394,7 +402,7 @@ export function curateErrors(data: unknown) {
 export function curateError(group: any) {
   return {
     id: group.id,
-    taskIdentifier: group.taskIdentifier,
+    taskIdentifier: fenceUntrusted("taskIdentifier", group.taskIdentifier),
     errorType: fenceUntrusted("errorType", group.errorType),
     errorMessage: fenceUntrusted("errorMessage", group.errorMessage),
     status: group.status,

@@ -29,6 +29,8 @@ import {
 } from "@internal/dashboard-agent-contracts";
 import type { DashboardAgentToolContext } from "./tool-context";
 
+type AlertLookup = { name: string; attention: string; projectId: string; environmentId: string };
+
 function toResult(result: FetchResult): { data: unknown } | { error: string } {
   if (result.ok) return { data: result.data };
   if ("status" in result) {
@@ -307,14 +309,28 @@ export function buildMonitoringAlertTools(args: {
       execute: async ({ alertId }) => {
         if (!hasAuth) return NO_AUTH;
         if (!ctx.chatId) return { error: "No chat is available to resolve an alert from." };
+        const params = new URLSearchParams({ chatId: ctx.chatId, alertId });
         const result = toResult(
-          await apiPost(origin, "/api/v1/dashboard-agent/monitoring-alerts", userActorToken!, {
-            chatId: ctx.chatId,
-            alertId,
-          })
+          await apiGet(
+            origin,
+            `/api/v1/dashboard-agent/monitoring-alerts?${params}`,
+            userActorToken!
+          )
         );
         if ("error" in result) return result;
-        return result.data;
+        const alert = (result.data as { alert?: AlertLookup } | undefined)?.alert;
+        if (alert?.attention !== "needs_attention") {
+          return { error: "No alert with that id needs attention." };
+        }
+        return {
+          ok: true,
+          pending: true,
+          alertId,
+          name: alert.name,
+          projectId: alert.projectId,
+          environmentId: alert.environmentId,
+          action: "resolve" as const,
+        };
       },
     }),
   };

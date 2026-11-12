@@ -1,7 +1,7 @@
 import { createDashboardAgentDb, type DashboardAgentDb } from "@internal/dashboard-agent-db";
 import { alertParamsSchema } from "@internal/alert-contracts";
 import { applyDashboardAgentMigrations } from "@internal/dashboard-agent-db/testing";
-import { getAlert, listAlerts } from "~/v3/services/alerts/storage/alertStore.server";
+import { createAlert, getAlert, listAlerts } from "~/v3/services/alerts/storage/alertStore.server";
 import { alertEvaluationJobId } from "~/v3/services/alerts/engine/evaluateAlertJob.server";
 import { alertEngineTest as postgresTest } from "./helpers/alertEngineRedis";
 import { applyAlertsMigration } from "./helpers/alertTables";
@@ -766,6 +766,45 @@ describe("dashboard-agent monitoring alerts route", () => {
     }
   );
 
+  // Catches: the by-id lookup not scoped to the chat's environment.
+  postgresTest(
+    "lookup by id returns 404 for another environment's alert",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seedProjectWithEnvironments(prisma, "agentbyid", ["prod", "staging"]);
+      const other = await createAlert(prisma, {
+        organizationId: seeded.organization.id,
+        projectId: seeded.project.id,
+        environmentId: seeded.environments.staging.id,
+        capabilityKey: "queue.depth",
+        params: { scope: { type: "all" } },
+        condition: { kind: "threshold", operator: ">", value: 1, windowSec: 300 },
+        createdBy: seeded.user.id,
+        attention: "needs_attention",
+      });
+
+      const env = makeEnv(
+        seeded.organization.id,
+        seeded.project.id,
+        seeded.environments.prod.id,
+        seeded.organization.slug,
+        seeded.project.externalRef
+      );
+      ctx.uatClaims = { userId: seeded.user.id, environmentId: env.id, client: "dashboard-agent" };
+      ctx.alertContext = { ok: true, environment: env };
+
+      const response = await loader({
+        request: jsonRequest(
+          `https://test/api/v1/dashboard-agent/monitoring-alerts?chatId=chat_1&alertId=${other.id}`
+        ),
+        params: {},
+        context: {},
+      } as any);
+
+      expect(response.status).toBe(404);
+    }
+  );
+
   postgresTest(
     "list allows a platform admin when alertsEnabled is off",
     async ({ prisma, postgresContainer }) => {
@@ -964,7 +1003,7 @@ describe("dashboard-agent monitoring alerts authorization", () => {
   }
 
   postgresTest(
-    "the base token reads alerts but cannot create or resolve them",
+    "the base token reads alerts but cannot create them",
     async ({ prisma, postgresContainer }) => {
       await boot(prisma, postgresContainer.getConnectionUri());
       const seeded = await seedAuthorized(prisma, "basecap");
@@ -977,13 +1016,6 @@ describe("dashboard-agent monitoring alerts authorization", () => {
       } as any);
       expect(created.status).toBe(403);
       expect(await listAlerts(ctx.prisma, { projectId: seeded.project.id })).toHaveLength(0);
-
-      const resolved = await action({
-        request: jsonRequest(ALERTS_URL, { chatId: "chat_1", alertId: "alert_1" }),
-        params: {},
-        context: {},
-      } as any);
-      expect(resolved.status).toBe(403);
 
       const listed = await loader({
         request: jsonRequest(`${ALERTS_URL}?chatId=chat_1`),
@@ -1083,13 +1115,6 @@ describe("dashboard-agent monitoring alerts authorization", () => {
         context: {},
       } as any);
       expect(prod.status).toBe(403);
-
-      const prodResolve = await action({
-        request: jsonRequest(ALERTS_URL, { chatId: "chat_1", alertId: "alert_1" }),
-        params: {},
-        context: {},
-      } as any);
-      expect(prodResolve.status).toBe(403);
 
       const prodEnv = ctx.alertContext as { ok: true; environment: AuthenticatedEnvironment };
       ctx.alertContext = {

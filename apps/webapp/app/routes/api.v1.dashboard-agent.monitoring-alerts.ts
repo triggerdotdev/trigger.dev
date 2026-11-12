@@ -1,6 +1,6 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { getAlert, listAlerts, resolveAlert } from "~/v3/services/alerts/storage/alertStore.server";
+import { getAlert, listAlerts, type Alert } from "~/v3/services/alerts/storage/alertStore.server";
 import {
   alertParamsSchema,
   behaviorSchema,
@@ -35,12 +35,27 @@ import { validateAlertNotifiers } from "~/v3/services/alerts/validateAlertNotifi
 import { alertDisplayName } from "~/v3/services/alerts/alertDisplayName";
 import { resolveMonitoringAlertsEnvironment } from "~/services/monitoringAlertsApi.server";
 
+function alertView(a: Alert) {
+  return {
+    id: a.id,
+    name: alertDisplayName(a),
+    capabilityKey: a.capabilityKey,
+    lifecycle: a.lifecycle,
+    attention: a.attention,
+    observedCondition: a.observedCondition,
+    projectId: a.projectId,
+    environmentId: a.environmentId,
+    createdAt: a.createdAt.toISOString(),
+  };
+}
+
 function contextStatus(code: AgentAlertContextError) {
   return code === "environment_mismatch" ? 400 : 404;
 }
 
 const ListQuerySchema = z.object({
   chatId: z.string().min(1),
+  alertId: z.string().min(1).optional(),
   attention: z.enum(["clear", "needs_attention"]).optional(),
   lifecycle: z.enum(["active", "completed", "expired", "stopped"]).optional(),
 });
@@ -78,11 +93,6 @@ const CreateBodySchema = z
     (v) => v.capabilityKey === "custom.query" || (v.query === undefined && v.signal === undefined),
     { message: "query and signal are only valid for the custom.query capability", path: ["query"] }
   );
-
-const ResolveBodySchema = z.object({
-  chatId: z.string().min(1),
-  alertId: z.string().min(1),
-});
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const auth = await authenticateDashboardAgent(request);
@@ -167,6 +177,16 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const denied = await authorizeAlerts(request, context.environment, "read");
   if (denied) return denied;
 
+  if (query.data.alertId) {
+    const alert = await getAlert(prisma, {
+      id: query.data.alertId,
+      projectId: context.environment.project.id,
+      environmentId: context.environment.id,
+    });
+    if (!alert) return json({ error: "Alert not found" }, { status: 404 });
+    return json({ alert: alertView(alert) });
+  }
+
   const alerts = await listAlerts(prisma, {
     projectId: context.environment.project.id,
     environmentId: context.environment.id,
@@ -174,18 +194,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     lifecycle: query.data.lifecycle,
   });
 
-  return json({
-    alerts: alerts.map((a) => ({
-      id: a.id,
-      name: alertDisplayName(a),
-      capabilityKey: a.capabilityKey,
-      lifecycle: a.lifecycle,
-      attention: a.attention,
-      observedCondition: a.observedCondition,
-      environmentId: a.environmentId,
-      createdAt: a.createdAt.toISOString(),
-    })),
-  });
+  return json({ alerts: alerts.map(alertView) });
 }
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -202,57 +211,6 @@ export async function action({ request }: ActionFunctionArgs) {
     rawBody = await request.json();
   } catch {
     return json({ error: "Invalid request" }, { status: 400 });
-  }
-
-  const actionType =
-    rawBody && typeof rawBody === "object" && "alertId" in rawBody ? "resolve" : "create";
-
-  if (actionType === "resolve") {
-    const parsed = ResolveBodySchema.safeParse(rawBody);
-    if (!parsed.success) {
-      return json({ error: "Invalid request" }, { status: 400 });
-    }
-
-    const context = await resolveAgentAlertContext({
-      userId: auth.userId,
-      environmentId: auth.environmentId,
-      chatId: parsed.data.chatId,
-    });
-    if (!context.ok) {
-      return json(
-        { error: context.error, code: context.code },
-        { status: contextStatus(context.code) }
-      );
-    }
-
-    if (!(await gateMonitoringAlerts(context.environment, auth.userId))) {
-      return json({ error: "Monitoring alerts are not enabled for this project" }, { status: 403 });
-    }
-
-    const denied = await authorizeAlerts(request, context.environment, "write");
-    if (denied) return denied;
-
-    const alert = await getAlert(prisma, {
-      id: parsed.data.alertId,
-      projectId: context.environment.project.id,
-      environmentId: context.environment.id,
-    });
-    if (!alert) {
-      return json({ error: "Alert not found" }, { status: 404 });
-    }
-
-    const result = await resolveAlert(prisma, {
-      id: parsed.data.alertId,
-      actorId: auth.userId,
-    });
-    if (!result) {
-      return json(
-        { error: "Alert does not need attention or is already resolved" },
-        { status: 409 }
-      );
-    }
-
-    return json({ resolved: true, alertId: parsed.data.alertId });
   }
 
   const parsed = CreateBodySchema.safeParse(rawBody);

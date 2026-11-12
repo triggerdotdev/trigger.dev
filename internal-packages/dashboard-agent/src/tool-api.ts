@@ -52,6 +52,7 @@ import {
   curateTasks,
   curateTrace,
   derivePhases,
+  fenceUntrusted,
   getReportModelOutput,
   renderViewModelOutput,
   type TraceSource,
@@ -374,6 +375,61 @@ async function readQueueGrounding(
   return parsed.success
     ? curateQueueGrounding(result.data as QueueGrounding)
     : GROUNDING_UNAVAILABLE;
+}
+
+function isAllowedDestination(raw: string): boolean {
+  const dest = raw.trim();
+  if (!dest || dest.includes("\\") || dest.startsWith("//") || /&(#|[a-z]+;)/i.test(dest)) {
+    return false;
+  }
+  try {
+    const url = new URL(dest, "https://invalid.local");
+    if (url.protocol !== "https:" && url.protocol !== "http:") return false;
+    const host = url.hostname.toLowerCase();
+    if (host === "trigger.dev" || host.endsWith(".trigger.dev")) return true;
+    return host === "github.com" && url.pathname.toLowerCase().startsWith("/triggerdotdev/");
+  } catch {
+    return false;
+  }
+}
+
+function stripOffAllowlistLinks(text: string): string {
+  return text
+    .replace(/&(?=#|[a-z][a-z0-9]*;)/gi, "&amp;")
+    .replace(/^[ \t]{0,3}\[[^\]\n]*\]:[ \t]*<?([^\s>]*)>?.*\n?/gm, (line, dest) =>
+      isAllowedDestination(dest) ? line : ""
+    )
+    .replace(/\[([^\]]*)\]\(\s*<?((?:\\.|[^)\s>])*)>?[^)]*\)/g, (match, label, dest) =>
+      isAllowedDestination(dest) ? match : label
+    )
+    .replace(/\]\(\s*<?((?:\\.|[^)\s>])*)>?[^)]*\)/g, (match, dest) =>
+      isAllowedDestination(dest) ? match : "]"
+    )
+    .replace(/<((?:[a-z][a-z0-9+.-]*:|\/\/)[^\s<>]*)>/gi, (match, dest) =>
+      isAllowedDestination(dest) ? match : ""
+    )
+    .replace(
+      /(?<![\w/.:-])(?:(?:https?|javascript|data|vbscript|file|ftp):|\/\/|www\.)[^\s<>]*/gi,
+      (token) =>
+        isAllowedDestination(token.toLowerCase().startsWith("www.") ? `https://${token}` : token)
+          ? token
+          : ""
+    );
+}
+
+// The UI and charts read the structured rows; the model only gets each row fenced.
+function runQueryModelOutput(output: any) {
+  if (output?.error !== undefined) {
+    const { capNote, ...rest } = output;
+    const note = typeof capNote === "string" && output.error.endsWith(capNote) ? capNote : "";
+    const dbError = output.error.slice(0, output.error.length - note.length);
+    return { ...rest, error: `${fenceUntrusted("queryError", dbError)}${note}` };
+  }
+  if (!Array.isArray(output?.rows)) return output;
+  return {
+    ...output,
+    rows: output.rows.map((row: unknown) => fenceUntrusted("queryRow", JSON.stringify(row))),
+  };
 }
 
 /** Failed `run_query` calls in a row before the tool tells the model to stop and answer. */
@@ -719,9 +775,8 @@ export function buildApiTools(args: {
           if (result.kind === "query") {
             consecutiveQueryFailures++;
             if (consecutiveQueryFailures >= MAX_CONSECUTIVE_QUERY_FAILURES) {
-              return {
-                error: `${result.error} That is ${consecutiveQueryFailures} queries in a row that failed. Stop querying and answer the user with what you already have.`,
-              };
+              const capNote = ` That is ${consecutiveQueryFailures} queries in a row that failed. Stop querying and answer the user with what you already have.`;
+              return { error: `${result.error}${capNote}`, capNote };
             }
           }
           return { error: result.error };
@@ -731,6 +786,7 @@ export function buildApiTools(args: {
         const rows = result.rows;
         return { rows: rows.slice(0, cap), rowCount: rows.length, truncated: rows.length > cap };
       },
+      toModelOutput: ({ output }) => ({ type: "json", value: runQueryModelOutput(output) }),
     }),
 
     // No user data and no delegated token: this uses a server-side shared secret.
@@ -772,7 +828,9 @@ export function buildApiTools(args: {
             }
           }
           answer = answer.trim();
-          return answer ? { answer } : { error: "The support assistant returned no answer." };
+          return answer
+            ? { answer: fenceUntrusted("supportAnswer", stripOffAllowlistLinks(answer), 16_384) }
+            : { error: "The support assistant returned no answer." };
         } catch (error) {
           return { error: `Couldn't reach the support assistant: ${(error as Error).message}` };
         } finally {
