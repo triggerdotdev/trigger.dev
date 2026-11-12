@@ -103,7 +103,7 @@ After you run the dev server or deploy, connect GitHub to the endpoint, the way 
    ```
 
 2. Copy the endpoint's **Webhook URL** from the **Webhooks** page.
-3. In the GitHub repository's **Settings > Webhooks**, add a webhook with that URL as the **Payload URL**, **Content type** set to `application/json`, the generated value as the **Secret**, and **Just the push event** selected.
+3. In the GitHub repository's **Settings > Webhooks**, add a webhook with that URL as the **Payload URL**, **Content type** set to `application/json`, the `GITHUB_WEBHOOK_SECRET` value from `.env.local` as the **Secret**, and **Just the push event** selected.
 
 GitHub sends a `ping` event as soon as the webhook is created. The filter skips it, so it shows as **Filtered** on the endpoint's **Deliveries** tab. Each push then starts a `process-push` run. See [Connect a provider](/webhooks/connect) for other providers.
 
@@ -132,11 +132,15 @@ export async function POST(request: Request) {
   const handle = await tasks.trigger<typeof processWebhook>("process-webhook", body);
   const run = await runs.poll(handle, { pollIntervalMs: 1000 });
 
+  if (!run.isSuccess) {
+    return Response.json({ error: `Run ${run.id} ended with status ${run.status}` }, { status: 500 });
+  }
+
   return Response.json(run.output);
 }
 ```
 
-The task's return value becomes `run.output`. The route handler needs `TRIGGER_SECRET_KEY` in your app's environment; see [API keys](/apikeys).
+The task's return value becomes `run.output`. The request stays open until the run finishes, so keep the task short enough for your host's request time limit. The route handler needs `TRIGGER_SECRET_KEY` in your app's environment; see [API keys](/apikeys).
 
 ---
 

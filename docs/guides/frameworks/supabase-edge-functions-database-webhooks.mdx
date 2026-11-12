@@ -77,14 +77,6 @@ type DatabaseWebhookEvent =
   | { type: "UPDATE"; table: string; schema: string; record: VideoTranscription; old_record: VideoTranscription }
   | { type: "DELETE"; table: string; schema: string; record: null; old_record: VideoTranscription };
 
-// Server-side Supabase client, using your project's secret key
-const supabase = createClient<Database>(
-  process.env.SUPABASE_URL as string,
-  process.env.SUPABASE_SECRET_KEY as string
-);
-
-const deepgram = new DeepgramClient({ apiKey: process.env.DEEPGRAM_API_KEY });
-
 export const supabaseDatabase = webhooks.endpoint.define({
   id: "supabase-database",
   source: webhooks.supabase<DatabaseWebhookEvent>(),
@@ -102,12 +94,18 @@ export const transcribeVideo = webhook({
       return;
     }
 
+    // Create the clients here, not when the file loads, so a missing variable only fails this run
+    const deepgram = new DeepgramClient({ apiKey: process.env.DEEPGRAM_API_KEY });
+    const supabase = createClient<Database>(
+      process.env.SUPABASE_URL as string,
+      process.env.SUPABASE_SECRET_KEY as string // server-side secret key
+    );
+
     // Deepgram fetches the video and transcribes its audio track
     const response = await deepgram.listen.v1.media.transcribeUrl({
       url: videoUrl,
       model: "nova-3",
       smart_format: true,
-      diarize_model: "latest",
     });
 
     if (!("results" in response)) {
@@ -119,7 +117,6 @@ export const transcribeVideo = webhook({
 
     logger.log("Transcription", { id, transcription });
 
-    // Only `transcription` changes, and the webhook only fires on INSERT, so this can't loop
     const { error } = await supabase
       .from("video_transcriptions")
       .update({ transcription })
@@ -143,7 +140,7 @@ The secret key bypasses Row Level Security. Use it only in server-side code such
 
 ## Add the environment variables
 
-On the **Environment variables** page of your Trigger.dev project, add these to the Production environment. Add them before you deploy: the task file creates the Supabase client when it loads.
+On the **Environment variables** page of your Trigger.dev project, add these to the Production environment. To run the task with `trigger dev`, add them to the Development environment too.
 
 | Variable | Value |
 | --- | --- |
