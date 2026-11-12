@@ -1,3 +1,4 @@
+import { getMeter } from "@internal/tracing";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import {
   PrepareTrustedDeployRequest,
@@ -35,6 +36,10 @@ const PREPARED_ARTIFACT_TTL_SECONDS = 15 * 60;
 const IP_REQUESTS_PER_MINUTE = 60;
 const ENVIRONMENT_REQUESTS_PER_MINUTE = 60;
 const DISABLE_FAIL_OPEN_TIMEOUT = 0;
+
+const trustedDeployRequests = getMeter("trusted-deploy").createCounter("trusted_deploy.requests", {
+  description: "Trusted publishing requests by operation and HTTP status",
+});
 
 const redis = createRedisClient("trusted-deploys", {
   host: env.CACHE_REDIS_HOST,
@@ -83,12 +88,12 @@ type TrustedContext<T> = {
 };
 
 function trustedDeployRoute<T extends TrustedTarget>(
-  operation: string,
+  operation: "prepare" | "submit" | "promote" | "archive",
   schema: z.ZodType<T>,
   handler: (context: TrustedContext<T>) => Promise<Response>,
   { requiresBuildServer = false }: { requiresBuildServer?: boolean } = {}
 ) {
-  return async ({ request }: ActionFunctionArgs) => {
+  const action = async ({ request }: ActionFunctionArgs) => {
     if (request.method !== "POST") return failure("Method not allowed", 405);
     if (requiresBuildServer && !isBillingConfigured())
       return failure("Trusted deploys require the build server.", 503);
@@ -171,6 +176,17 @@ function trustedDeployRoute<T extends TrustedTarget>(
         error: error instanceof Error ? error.message : "Unknown error",
       });
       return failure("Trusted deployment failed. Retry shortly.", 500);
+    }
+  };
+
+  return async (args: ActionFunctionArgs) => {
+    let status = 500;
+    try {
+      const response = await action(args);
+      status = response.status;
+      return response;
+    } finally {
+      trustedDeployRequests.add(1, { operation, status });
     }
   };
 }
