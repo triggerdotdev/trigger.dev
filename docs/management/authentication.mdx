@@ -98,7 +98,7 @@ await envvars.upload("proj_1234", "dev", {
 
 #### PAT expiry
 
-A PAT you create on the [Personal Access Tokens](https://cloud.trigger.dev/account/tokens) page expires after the lifetime you choose when you create it: 30 days, 90 days, or 1 year. Every new dashboard token has an expiry. Tokens created before expiry was introduced (in 4.8.4 for self-hosted instances) don't expire.
+A PAT you create on the [Personal Access Tokens](https://cloud.trigger.dev/account/tokens) page expires on the date you choose when you create it: 30 days, 90 days or 1 year from today, or any other day up to a year away. It stops working at the end of that day (UTC). Every new dashboard token has an expiry. Tokens created before expiry was introduced (in 4.8.4 for self-hosted instances) don't expire.
 
 The tokens page shows when each token expires. A token that expires within 7 days is flagged, and an expired one is marked as expired. We also email you twice about each token that expires, naming it and linking to the tokens page: once 7 days before it expires, and again when it has. On a self-hosted instance, the emails are only sent when `EMAIL_TRANSPORT` is set.
 
@@ -117,7 +117,7 @@ To keep an integration running, create a new token before the old one expires an
 
 A user-actor token from `trigger.dev mint-token`, or an environment JWT exchanged from a PAT, expires no later than the PAT.
 
-If you self-host, you can change the PAT lifetimes and turn the expiry emails off. See the [webapp environment variables](/self-hosting/env/webapp).
+If you self-host, you can change the offered PAT lifetimes, the longest of which is also the latest date you can pick, and turn the expiry emails off. See the [webapp environment variables](/self-hosting/env/webapp).
 
 ### Preview branch targeting
 
