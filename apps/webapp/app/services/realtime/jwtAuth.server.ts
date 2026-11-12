@@ -11,6 +11,7 @@ import {
   sourcePersonalAccessTokenClaim,
 } from "@trigger.dev/rbac";
 import { $replica } from "~/db.server";
+import { hashApiKey } from "~/utils/apiKeys";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import {
   publicTokenSubjects,
@@ -22,6 +23,10 @@ type ValidatePublicJwtKeySuccess = {
   ok: true;
   environment: AuthenticatedEnvironment;
   claims: Record<string, unknown>;
+  /** Last 4 characters of the root key that verified the token, for attribution. */
+  signingKeyLast4: string;
+  /** SHA-256 hex of that key, computed on demand, for attribution. */
+  signingKeyHash: () => string;
 };
 
 type ValidatePublicJwtKeyError = {
@@ -57,18 +62,22 @@ export async function validatePublicJwtKey(token: string): Promise<ValidatePubli
   // A disabled root key does not invalidate public JWTs: disabling rotates
   // the stored apiKey (killing tokens signed with the old value), and the
   // rotated value keeps signing server-issued tokens so Realtime still works.
-  let result = await validateJWT(token, resolveJwtSigningKey(environment));
+  let signingKey = resolveJwtSigningKey(environment);
+  let result = await validateJWT(token, signingKey);
 
   // PATs are signed with the env's apiKey at mint time. If the env's apiKey
   // has since been rotated, signature verification fails against the current
   // key — fall back to any RevokedApiKey rows still in their grace window.
   // Only run this query on the failure path so the success path is unchanged.
   if (!result.ok) {
-    result = await validateAgainstRevokedApiKeys(
+    const fallback = await validateAgainstRevokedApiKeys(
       token,
-      environment.parentEnvironment?.id ?? environment.id,
-      result
+      environment.parentEnvironment?.id ?? environment.id
     );
+    if (fallback) {
+      result = fallback.result;
+      signingKey = fallback.signingKey;
+    }
   }
 
   if (!result.ok) {
@@ -113,14 +122,15 @@ export async function validatePublicJwtKey(token: string): Promise<ValidatePubli
     ok: true,
     environment,
     claims: result.payload,
+    signingKeyLast4: signingKey.slice(-4),
+    signingKeyHash: () => hashApiKey(signingKey),
   };
 }
 
 async function validateAgainstRevokedApiKeys(
   token: string,
-  signingEnvironmentId: string,
-  primaryResult: ValidationResult
-): Promise<ValidationResult> {
+  signingEnvironmentId: string
+): Promise<{ result: ValidationResult; signingKey: string } | undefined> {
   const revokedApiKeys = await $replica.revokedApiKey.findMany({
     where: {
       runtimeEnvironmentId: signingEnvironmentId,
@@ -132,11 +142,11 @@ async function validateAgainstRevokedApiKeys(
   for (const { apiKey } of revokedApiKeys) {
     const fallbackResult = await validateJWT(token, apiKey);
     if (fallbackResult.ok) {
-      return fallbackResult;
+      return { result: fallbackResult, signingKey: apiKey };
     }
   }
 
-  return primaryResult;
+  return undefined;
 }
 
 export { isPublicJWT };

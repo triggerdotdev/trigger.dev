@@ -49,10 +49,15 @@ export type BearerLookupPath =
   | "ip_not_allowed"
   | "not_found";
 
-// Telemetry-only
 export type BearerResolution = {
+  // Telemetry: bounded values only.
   credentialKind: BearerCredentialKind;
   lookupPath: BearerLookupPath;
+  // Attribution for a verified public JWT: the environment whose root key signed it (a branch's
+  // parent) and the last 4 characters of the key that verified it, which may be a rotated key
+  // still in its grace window. Never the key itself: `hash()` returns its SHA-256 hex on demand,
+  // so callers that don't need it pay nothing.
+  jwtSigningKey?: { environmentId: string; last4: string; hash(): string };
 };
 
 export type BearerCredentialResult = BearerAuthResult & {
@@ -161,7 +166,8 @@ export class BearerCredentialResolver {
       }
 
       let lookupPath: BearerLookupPath = subject.legacy ? "jwt_legacy_subject" : "jwt_current";
-      let result = await validateJWT(rawToken, resolveJwtSigningKey(env));
+      let signingKey = resolveJwtSigningKey(env);
+      let result = await validateJWT(rawToken, signingKey);
 
       // Root-key rotation grace window, mirroring the bearer path below: a
       // rotated key keeps authenticating until its `RevokedApiKey` row expires,
@@ -190,6 +196,7 @@ export class BearerCredentialResolver {
           const retried = await validateJWT(rawToken, candidate.apiKey);
           if (retried.ok) {
             result = retried;
+            signingKey = candidate.apiKey;
             break;
           }
         }
@@ -251,7 +258,15 @@ export class BearerCredentialResolver {
             ? { act: { sub: actSub, ...(sourcePat ? { pat: sourcePat.sealed } : {}) } }
             : {}),
         },
-        resolution: { credentialKind: "public_jwt", lookupPath },
+        resolution: {
+          credentialKind: "public_jwt",
+          lookupPath,
+          jwtSigningKey: {
+            environmentId: env.parentEnvironment?.id ?? env.id,
+            last4: signingKey.slice(-4),
+            hash: () => createHash("sha256").update(signingKey, "utf8").digest("hex"),
+          },
+        },
       };
     }
 

@@ -10,6 +10,7 @@ import { apiCors } from "~/utils/apiCors";
 import { logger } from "../logger.server";
 import { rbac } from "../rbac.server";
 import { authenticateBearerWithTelemetry } from "~/services/authTelemetry.server";
+import { notePersonalAccessTokenAuthentication } from "~/services/auditLogs/auditContext.server";
 import type { RbacAbility, RbacResource } from "@trigger.dev/rbac";
 import type { RbacSubject } from "@trigger.dev/plugins";
 import { isUserActorToken } from "@trigger.dev/rbac";
@@ -751,6 +752,7 @@ export function createLoaderPATApiRoute<
         }
         await assertUserActorScope(claims, ctx, { identityOnly, organizationScoped });
         authenticationResult = { userId: uatAuth.userId, userActor: claims };
+        notePersonalAccessTokenAuthentication(request, authenticationResult);
         ability = uatAuth.ability;
       } else {
         // PAT: validate + compute the cap-and-floor ability in one query.
@@ -763,6 +765,10 @@ export function createLoaderPATApiRoute<
           );
         }
         authenticationResult = { userId: patAuth.userId };
+        notePersonalAccessTokenAuthentication(request, {
+          userId: patAuth.userId,
+          tokenId: patAuth.tokenId,
+        });
         ability = patAuth.ability;
         // Throttled in the helper (no DB write when the cached value is fresh).
         await updateLastAccessedAtIfStale(patAuth.tokenId, patAuth.lastAccessedAt);
@@ -1027,6 +1033,7 @@ export function createActionPATApiRoute<
         }
         await assertUserActorScope(claims, ctx);
         authenticationResult = { userId: uatAuth.userId, userActor: claims };
+        notePersonalAccessTokenAuthentication(request, authenticationResult);
         ability = uatAuth.ability;
       } else {
         const patAuth = await rbac.authenticatePat(request, ctx);
@@ -1038,6 +1045,10 @@ export function createActionPATApiRoute<
           );
         }
         authenticationResult = { userId: patAuth.userId };
+        notePersonalAccessTokenAuthentication(request, {
+          userId: patAuth.userId,
+          tokenId: patAuth.tokenId,
+        });
         ability = patAuth.ability;
         await updateLastAccessedAtIfStale(patAuth.tokenId, patAuth.lastAccessedAt);
       }

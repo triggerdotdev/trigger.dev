@@ -18,6 +18,7 @@ import type {
   RoleBaseAccessController,
 } from "@trigger.dev/rbac";
 import { clientIpFromHeaders, isSealedPublicTokenSubject } from "@trigger.dev/rbac";
+import { noteBearerAuthentication } from "~/services/auditLogs/auditContext.server";
 import { authenticateRunToken } from "~/services/oidc/runTokenAuth.server";
 import { isRunTokenFormat } from "~/services/oidc/runTokenVerify";
 import { logger } from "~/services/logger.server";
@@ -72,7 +73,9 @@ export async function authenticateBearerWithTelemetry(
         clientIp: clientIpFromHeaders(request.headers),
       });
     }
-    return { ...result, resolution };
+    const authenticated: HostBearerAuthResult = { ...result, resolution };
+    noteBearerAuthentication(request, authenticated);
+    return authenticated;
   } catch (error) {
     recordAuthAttempt("rbac", final.credentialKind, final.lookupPath, final.result);
     throw error;

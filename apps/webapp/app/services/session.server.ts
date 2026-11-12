@@ -12,6 +12,7 @@ import {
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { type SupportAccessDecision } from "~/utils/impersonationState";
 import { checkSession } from "./accessPolicy.server";
+import { noteSessionAuthentication } from "./auditLogs/auditContext.server";
 import { logger } from "./logger.server";
 import { SESSION_ISSUED_AT_KEY } from "./sessionDuration.server";
 import { getUserSession } from "./sessionStorage.server";
@@ -124,13 +125,13 @@ export async function getUserId(request: Request): Promise<string | undefined> {
     // The real user's session is checked whether or not they are still an admin.
     await enforceSessionPolicy(request, authUser.userId);
     const realUser = await getUserById(authUser.userId);
-    if (!realUser) return authUser.userId;
+    if (!realUser) return sessionUserId(request, authUser.userId);
     if (realUser.admin) {
       await maybeAutoLogout(request, realUser, impersonatedUserId);
-      return impersonatedUserId;
+      return sessionUserId(request, impersonatedUserId, authUser.userId);
     }
     await maybeAutoLogout(request, realUser);
-    return authUser.userId;
+    return sessionUserId(request, authUser.userId);
   }
 
   const authUser = await authenticator.isAuthenticated(request);
@@ -147,8 +148,15 @@ export async function getUserId(request: Request): Promise<string | undefined> {
         ? { nextSessionEnd: decision.nextSessionEnd }
         : await getSessionAuthState(prisma, authUser.userId);
     if (user) await maybeAutoLogout(request, { id: authUser.userId, ...user });
+    return sessionUserId(request, authUser.userId);
   }
   return authUser?.userId;
+}
+
+/** Notes the session's user for audit logs, and the staff member behind an impersonation. */
+function sessionUserId(request: Request, userId: string, impersonatorUserId?: string): string {
+  noteSessionAuthentication(request, { userId, impersonatorUserId });
+  return userId;
 }
 
 export type SessionAuthState = { nextSessionEnd: Date | null };

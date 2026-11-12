@@ -45,6 +45,11 @@ import {
   authenticateBearerWithTelemetry,
   observeLegacyBearerAuthentication,
 } from "~/services/authTelemetry.server";
+import {
+  noteLegacyApiKeyAuthentication,
+  noteOrganizationAccessTokenAuthentication,
+  notePersonalAccessTokenAuthentication,
+} from "~/services/auditLogs/auditContext.server";
 
 const ClaimsSchema = z.object({
   scopes: z.array(z.string()).optional(),
@@ -100,6 +105,10 @@ export type ApiAuthenticationResultSuccess = {
     client?: string;
     pat?: string;
   };
+  // The root key that verified a public JWT, for audit attribution: its last 4 characters and its
+  // SHA-256 hex, computed on demand. Never the key itself.
+  jwtSigningKeyLast4?: string;
+  jwtSigningKeyHash?: () => string;
 };
 
 type ApiAuthenticationResultFailure = {
@@ -114,6 +123,16 @@ type LegacyApiKeyOptions = {
   // Checked against an additional key's allowed IP ranges; see ApiKeyLookupOptions.
   clientIp: string | null;
 };
+
+/** Legacy API-key authentication with telemetry, noting the caller for audit logs. */
+async function observeLegacyApiKeyAuthentication<T extends ApiAuthenticationResult | undefined>(
+  request: Request,
+  operation: () => Promise<T>
+): Promise<T> {
+  const result = await observeLegacyBearerAuthentication(request, operation);
+  noteLegacyApiKeyAuthentication(request, result);
+  return result;
+}
 
 /** Reads an auth flag from the caller's own properties only. */
 function ownFlag<T extends object>(options: T, key: keyof T & string): boolean {
@@ -133,7 +152,7 @@ export async function authenticateApiRequest(
     return;
   }
 
-  return observeLegacyBearerAuthentication(request, () =>
+  return observeLegacyApiKeyAuthentication(request, () =>
     authenticateApiKey(apiKey, {
       ...options,
       branchName,
@@ -159,7 +178,7 @@ export async function authenticateApiRequestWithFailure(
     };
   }
 
-  return observeLegacyBearerAuthentication(request, () =>
+  return observeLegacyApiKeyAuthentication(request, () =>
     authenticateApiKeyWithFailure(apiKey, {
       ...options,
       branchName,
@@ -233,6 +252,8 @@ export async function authenticateApiKey(
         oneTimeUse: parsedClaims.success ? parsedClaims.data.otu : false,
         realtime: parsedClaims.success ? parsedClaims.data.realtime : undefined,
         actor: parsedClaims.success ? parsedClaims.data.act : undefined,
+        jwtSigningKeyLast4: validationResults.signingKeyLast4,
+        jwtSigningKeyHash: validationResults.signingKeyHash,
       };
     }
   }
@@ -327,6 +348,8 @@ async function authenticateApiKeyWithFailure(
         oneTimeUse: parsedClaims.success ? parsedClaims.data.otu : false,
         realtime: parsedClaims.success ? parsedClaims.data.realtime : undefined,
         actor: parsedClaims.success ? parsedClaims.data.act : undefined,
+        jwtSigningKeyLast4: validationResults.signingKeyLast4,
+        jwtSigningKeyHash: validationResults.signingKeyHash,
       };
     }
   }
@@ -659,6 +682,8 @@ export async function authenticateRequest<
       return;
     }
 
+    notePersonalAccessTokenAuthentication(request, result);
+
     return {
       type: "personalAccessToken",
       result,
@@ -675,6 +700,8 @@ export async function authenticateRequest<
       return;
     }
 
+    noteOrganizationAccessTokenAuthentication(request, result);
+
     return {
       type: "organizationAccessToken",
       result,
@@ -685,7 +712,7 @@ export async function authenticateRequest<
   }
 
   if (allowedMethods.apiKey) {
-    const result = await observeLegacyBearerAuthentication(request, () =>
+    const result = await observeLegacyApiKeyAuthentication(request, () =>
       authenticateApiKey(apiKey, {
         allowPublicKey: false,
         branchName,

@@ -11,6 +11,8 @@ export const OAT_LAST_ACCESSED_THROTTLE_MS = 5 * 60 * 1000;
 
 export type OrganizationAccessTokenAuthenticationResult = {
   organizationId: string;
+  /** The token's row id. */
+  tokenId: string;
 };
 
 const AuthorizationHeaderSchema = z.string().regex(/^Bearer .+$/);
@@ -81,6 +83,7 @@ export async function authenticateOrganizationAccessToken(
 
   return {
     organizationId: organizationAccessToken.organizationId,
+    tokenId: organizationAccessToken.id,
   };
 }
 
