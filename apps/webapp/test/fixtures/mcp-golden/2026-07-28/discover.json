@@ -1,0 +1,44 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "server/discover",
+    "params": {
+      "_meta": {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {},
+        "io.modelcontextprotocol/clientInfo": {
+          "name": "golden",
+          "version": "1.0.0"
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "result": {
+        "supportedVersions": ["2026-07-28"],
+        "capabilities": {
+          "tools": {
+            "listChanged": true
+          }
+        },
+        "resultType": "complete",
+        "ttlMs": 0,
+        "cacheScope": "private",
+        "_meta": {
+          "io.modelcontextprotocol/serverInfo": {
+            "name": "trigger.dev",
+            "version": "1.0.0"
+          }
+        }
+      },
+      "jsonrpc": "2.0",
+      "id": 1
+    }
+  }
+}

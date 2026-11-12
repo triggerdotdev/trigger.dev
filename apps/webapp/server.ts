@@ -222,6 +222,9 @@ async function startServer() {
     const tenantContextMiddleware: RequestHandler = build.entry.module.tenantContextMiddleware;
     const ingressBodyCap: RequestHandler = build.entry.module.ingressBodyCap;
     const flushAuditLogs: () => Promise<void> = build.entry.module.flushAuditLogs;
+    const mcpRouter: RequestHandler | undefined = build.entry.module.mcpRouter;
+    const mcpProtectedResource: RequestHandler | undefined =
+      build.entry.module.mcpProtectedResource;
 
     app.use((req, res, next) => {
       // helpful headers:
@@ -276,6 +279,15 @@ async function startServer() {
 
       if (otlpIngestRoutesDisabled(process.env)) {
         app.use(blockOtlpIngestRoutes);
+      }
+
+      // MCP authenticates before its own rate limit so a bare 401 keeps WWW-Authenticate.
+      if (mcpRouter && mcpProtectedResource) {
+        app.get(
+          ["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"],
+          mcpProtectedResource
+        );
+        app.use("/mcp", mcpRouter);
       }
 
       app.use(apiRateLimiter);

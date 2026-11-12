@@ -462,6 +462,7 @@ const EnvironmentSchema = z
     // Instance-level switch for the /admin/api routes. When off they answer 404 for every
     // credential, so an instance that serves public traffic can refuse the admin API outright.
     ADMIN_API_ENABLED: BoolEnv.default(true),
+    MCP_SERVER_ENABLED: BoolEnv.default(false),
     BILLING_SERVICE_SECRET: z.string().min(32).optional(),
     REMIX_APP_PORT: z.string().optional(),
     // Opt-in, dev-only: stream this process's logs over a local telnet/TCP socket on this port.

@@ -28,6 +28,17 @@ import {
 } from "./services/ingressBodyCap.server";
 import { eventLoopMonitor, eventLoopUtilizationMonitor } from "./eventLoopMonitor.server";
 import { logger } from "./services/logger.server";
+import { createMcpBearerAuthenticator } from "./mcp/auth/bearer.server";
+import { createMcpProtectedResourceHandler } from "./mcp/protectedResource.server";
+import { createMcpRouter } from "./mcp/server.server";
+import {
+  personalAccessTokenAuthFailureBody,
+  resolveAndRecheckUserActorClaims,
+  updateLastAccessedAtIfStale,
+} from "./services/personalAccessToken.server";
+import { createMcpPreAuthRateLimit } from "./mcp/preAuthRateLimit.server";
+import { createMcpRateLimiter } from "./services/apiRateLimit.server";
+import { rbac } from "./services/rbac.server";
 import { buildImgSrcDirective, parseCspImageOrigins, withImgSrc } from "./utils/cspImageOrigins";
 import { singleton } from "./utils/singleton";
 import { remoteBuildsEnabled } from "./v3/remoteImageBuilder.server";
@@ -394,6 +405,34 @@ export { runWithHttpContext } from "./services/httpAsyncStorage.server";
 export { tenantContextMiddleware } from "./services/tenantContextResolver.server";
 export { socketIo } from "./v3/handleSocketIo.server";
 export { wss } from "./v3/handleWebsockets.server";
+export const mcpRouter = env.MCP_SERVER_ENABLED
+  ? createMcpRouter({
+      authenticate: createMcpBearerAuthenticator({
+        rbac,
+        failureBody: personalAccessTokenAuthFailureBody,
+        recheckUserActorClaims: resolveAndRecheckUserActorClaims,
+        touchPat: updateLastAccessedAtIfStale,
+        resourceMetadataUrl: `${env.APP_ORIGIN}/.well-known/oauth-protected-resource`,
+      }),
+      rateLimit: createMcpRateLimiter(),
+      preAuth: createMcpPreAuthRateLimit({
+        redis: {
+          port: env.RATE_LIMIT_REDIS_PORT,
+          host: env.RATE_LIMIT_REDIS_HOST,
+          username: env.RATE_LIMIT_REDIS_USERNAME,
+          password: env.RATE_LIMIT_REDIS_PASSWORD,
+          tlsDisabled: env.RATE_LIMIT_REDIS_TLS_DISABLED === "true",
+          clusterMode: env.RATE_LIMIT_REDIS_CLUSTER_MODE_ENABLED === "1",
+        },
+      }),
+    })
+  : undefined;
+export const mcpProtectedResource = env.MCP_SERVER_ENABLED
+  ? createMcpProtectedResourceHandler({
+      origin: env.APP_ORIGIN,
+      authorizationServers: [],
+    })
+  : undefined;
 
 if (env.EVENT_LOOP_MONITOR_ENABLED === "1") {
   eventLoopMonitor.enable();
