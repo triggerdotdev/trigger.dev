@@ -155,6 +155,7 @@ function expiryToIso(exp: string | undefined): string | undefined {
 export function DashboardAgentPanel({
   onClose,
   requestedMessage,
+  prefillRequest,
   createAlertPrefill,
   editAlertRequest,
   groupAlertsRequest,
@@ -184,6 +185,8 @@ export function DashboardAgentPanel({
   groupAlertsRequest?: { members: { id: string; name: string }[]; seq: number };
   // Every `seq` below distinguishes repeat requests with identical contents.
   requestedMessage?: { text: string; seq: number };
+  /** Fills the new-chat composer; never sends. */
+  prefillRequest?: { text: string; seq: number };
   openChatRequest?: { chatId: string; seq: number };
   newChatSeq?: number;
   promotedPrompt?: SuggestedPrompt;
@@ -368,6 +371,10 @@ export function DashboardAgentPanel({
     [actionPath, claimChatSlot, organization.id, storageKey, toast]
   );
 
+  const [draftPrefill, setDraftPrefill] = useState<{ text: string; seq: number } | undefined>(
+    undefined
+  );
+
   const createChat = useCallback(
     async (
       text: string,
@@ -380,6 +387,7 @@ export function DashboardAgentPanel({
         return;
       }
       setPendingCreate(null);
+      setDraftPrefill(undefined);
       const seq = claimChatSlot();
       setLoading(true);
       try {
@@ -678,11 +686,25 @@ export function DashboardAgentPanel({
     setDismissedEditSeq(activeEditRef.current?.seq);
     setDismissedGroupSeq(activeGroupRef.current?.seq);
     setCreationMode(false);
+    setDraftPrefill(undefined);
     claimChatSlot();
     setLoading(false);
     setActive(null);
     forgetLastChat(storageKey);
   }, [claimChatSlot, storageKey]);
+
+  const handledPrefillSeq = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!prefillRequest || handledPrefillSeq.current === prefillRequest.seq) return;
+    if (creationModeRef.current) {
+      handledPrefillSeq.current = prefillRequest.seq;
+      return;
+    }
+    if (loading) return;
+    handledPrefillSeq.current = prefillRequest.seq;
+    if (active) newChat();
+    setDraftPrefill(prefillRequest);
+  }, [prefillRequest, loading, active, newChat]);
 
   const restartCreation = useCallback(() => {
     newChat();
@@ -1238,6 +1260,7 @@ export function DashboardAgentPanel({
             ) : null}
             <DashboardAgentDraft
               onSubmit={createChat}
+              prefill={draftPrefill}
               projectName={project.name}
               environmentSlug={environment.slug}
               entityId={entityId}

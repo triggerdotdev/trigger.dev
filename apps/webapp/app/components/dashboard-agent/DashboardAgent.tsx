@@ -150,6 +150,9 @@ export function DashboardAgent({
   const [requestedMessage, setRequestedMessage] = useState<
     { text: string; seq: number } | undefined
   >(undefined);
+  const [prefillRequest, setPrefillRequest] = useState<{ text: string; seq: number } | undefined>(
+    undefined
+  );
   // `seq` so the same chat can be asked for twice.
   const [openChatRequest, setOpenChatRequest] = useState<
     { chatId: string; seq: number } | undefined
@@ -185,6 +188,7 @@ export function DashboardAgent({
       // starts from the account preference again.
       resetToPreference();
       setRequestedMessage(undefined);
+      setPrefillRequest(undefined);
       setOpenChatRequest(undefined);
       setOpenSource(undefined);
       setCreateAlertPrefill(undefined);
@@ -203,6 +207,19 @@ export function DashboardAgent({
       setGroupAlertsRequest(undefined);
       setOpenSource(options?.source);
       setRequestedMessage((current) => ({ text: trimmed, seq: (current?.seq ?? 0) + 1 }));
+    },
+    [openPanel]
+  );
+
+  const prefillWith = useCallback(
+    (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      openPanel();
+      setEditAlertRequest(undefined);
+      setGroupAlertsRequest(undefined);
+      setOpenSource(undefined);
+      setPrefillRequest((current) => ({ text: trimmed, seq: (current?.seq ?? 0) + 1 }));
     },
     [openPanel]
   );
@@ -321,6 +338,7 @@ export function DashboardAgent({
   useDashboardAgentOpenRequests({
     enabled: hasAccess,
     openWith,
+    prefillWith,
     setOpen: setPanelOpen,
     deepLinkParams: agentDeepLinkParams(),
   });
@@ -387,6 +405,7 @@ export function DashboardAgent({
                   <DashboardAgentPanel
                     onClose={() => setPanelOpen(false)}
                     requestedMessage={requestedMessage}
+                    prefillRequest={prefillRequest}
                     openSource={openSource}
                     createAlertPrefill={createAlertPrefill}
                     editAlertRequest={editAlertRequest}

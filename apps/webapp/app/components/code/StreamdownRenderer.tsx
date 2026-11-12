@@ -16,7 +16,8 @@ const SAFE_LINK_SCHEMES = new Set(["http:", "https:", "mailto:"]);
  */
 export const restrictModelUrls: UrlTransform = (url, key, node) => {
   const value = url.trim();
-  const isImage = node.tagName === "img" || key === "src" || key === "srcset";
+  const attr = key.toLowerCase();
+  const isImage = node.tagName === "img" || attr === "src" || attr === "srcset";
   // What the browser will actually resolve, which is not what `trim()` leaves: the URL parser
   // drops C0 controls (`trim()` keeps them) and reads `\` as `/` for special schemes, so
   // a leading-control `//evil.tld` and `\\evil.tld` both name a remote host. Classify on this; return the
@@ -26,11 +27,9 @@ export const restrictModelUrls: UrlTransform = (url, key, node) => {
     .replace(/^[/\\]+/, (run) => "/".repeat(run.length));
 
   if (isImage) {
-    // Inline images carry their own bytes; a relative path resolves to our own origin.
+    // Inline images carry their own bytes; anything else (remote or relative) would be fetched.
     if (/^data:/i.test(normalized) || /^blob:/i.test(normalized)) return url;
-    // Absolute or protocol-relative means a remote host — strip it so nothing is fetched.
-    if (/^[a-z][a-z0-9+.-]*:/i.test(normalized) || normalized.startsWith("//")) return undefined;
-    return url;
+    return undefined;
   }
 
   // Links: relative and protocol-relative are fine; otherwise require a safe scheme.
@@ -144,12 +143,21 @@ export function loadStreamdownRenderer(
           if (key !== "sanitize") return entry;
           const [sanitizePlugin, sanitizeSchema] = entry as unknown as [
             unknown,
-            { protocols?: Record<string, string[]> },
+            {
+              protocols?: Record<string, string[]>;
+              tagNames?: string[];
+              attributes?: Record<string, unknown>;
+            },
           ];
+          const { source: _source, ...attributes } = sanitizeSchema.attributes ?? {};
           return [
             sanitizePlugin,
             {
               ...sanitizeSchema,
+              tagNames: sanitizeSchema.tagNames?.filter(
+                (tag) => tag !== "picture" && tag !== "source"
+              ),
+              attributes,
               protocols: {
                 ...sanitizeSchema.protocols,
                 href: [...(sanitizeSchema.protocols?.href ?? []), "trigger"],
