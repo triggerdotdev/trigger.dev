@@ -1521,8 +1521,8 @@ importers:
         specifier: ^11.14.0
         version: 11.14.0
       tinyexec:
-        specifier: ^0.3.0
-        version: 0.3.0
+        specifier: ^1.2.4
+        version: 1.2.4
 
   internal-packages/tracing:
     dependencies:
@@ -1793,7 +1793,7 @@ importers:
         version: 7.5.21
       tinyexec:
         specifier: ^0.3.1
-        version: 0.3.1
+        version: 0.3.2
       tinyglobby:
         specifier: ^0.2.10
         version: 0.2.10
@@ -15127,12 +15127,6 @@ packages:
 
   tinybench@2.9.0:
     resolution: {integrity: sha512-0+DUvqWMValLmha6lr4kD8iAMK1HzV0/aKnCtWb9v9641TnP/MFb7Pc2bxoxQjTXAErryXVgUOfv2YqNllqGeg==}
-
-  tinyexec@0.3.0:
-    resolution: {integrity: sha512-tVGE0mVJPGb0chKhqmsoosjsS+qUnJVGJpZgsHYQcGoPlG3B51R3PouqTgEGH2Dc9jjFyOqOpix6ZHNMXp1FZg==}
-
-  tinyexec@0.3.1:
-    resolution: {integrity: sha512-WiCJLEECkO18gwqIp6+hJg0//p23HXp4S+gGtAKu3mI2F2/sXC4FvHvXvB0zJVVaTPhx1/tOwdbRsa1sOBIKqQ==}
 
   tinyexec@0.3.2:
     resolution: {integrity: sha512-KQQR9yN7R5+OSwaK0XQoj22pwHoTlgYqmUscPYoknOoWCWfj/5/ABTMRi69FrKU5ffPVh5QcFikpWJI/P1ocHA==}
@@ -31078,10 +31072,6 @@ snapshots:
   tiny-invariant@1.3.1: {}
 
   tinybench@2.9.0: {}
-
-  tinyexec@0.3.0: {}
-
-  tinyexec@0.3.1: {}
 
   tinyexec@0.3.2: {}
 
