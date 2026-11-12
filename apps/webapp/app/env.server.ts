@@ -2266,6 +2266,10 @@ const EnvironmentSchema = z
     WEBHOOK_INGRESS_ORIGIN: z.string().optional(),
     WEBHOOK_INGRESS_BODY_SIZE_LIMIT_MB: z.coerce.number().int().default(1),
     OTLP_INGRESS_BODY_SIZE_LIMIT_MB: z.coerce.number().int().positive().default(64),
+    // Body limit for every route without one of its own, and whether going over it is refused
+    // (`enforce`) or only logged (`shadow`).
+    INGRESS_BODY_SIZE_LIMIT_MB: z.coerce.number().int().positive().default(1),
+    INGRESS_BODY_SIZE_LIMIT_MODE: z.enum(["shadow", "enforce"]).default("shadow"),
     WEBHOOK_INGRESS_RATE_LIMIT_WINDOW: z.string().default("10s"),
     WEBHOOK_INGRESS_RATE_LIMIT_TOKENS: z.coerce.number().int().default(100),
     // Per-environment ingress limit across all of its endpoints. A request costs one token per 64 KiB

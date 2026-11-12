@@ -1317,6 +1317,13 @@ export function createActionApiRoute<
         );
       }
       const { authentication: authenticationResult, ability } = authResult;
+      // The request's own context too, for what runs outside the handler.
+      tenantContext.enrich(
+        tenantContextFromAuthEnvironment(
+          authenticationResult.environment,
+          authenticationResult.actor
+        )
+      );
       const restrictedKeyRejection = await rejectRestrictedKeyWithoutAuthorization({
         request,
         restrictedApiKey: authResult.restrictedApiKey,
@@ -1627,6 +1634,13 @@ export function createMultiMethodApiRoute<
         );
       }
       const { authentication: authenticationResult, ability } = authResult;
+      // The request's own context too, for what runs outside the handler.
+      tenantContext.enrich(
+        tenantContextFromAuthEnvironment(
+          authenticationResult.environment,
+          authenticationResult.actor
+        )
+      );
       const restrictedKeyRejection = await rejectRestrictedKeyWithoutAuthorization({
         request,
         restrictedApiKey: authResult.restrictedApiKey,
