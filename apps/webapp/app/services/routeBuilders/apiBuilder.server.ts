@@ -868,6 +868,7 @@ type PATActionRouteBuilderOptions<
   // A single verb, or a list for multi-method routes (e.g. ["PATCH", "DELETE"]).
   method?: PATActionMethod | PATActionMethod[];
   body?: TBodySchema;
+  maxContentLength?: number;
   // `identityOnly` waives the contextless refusal for reads that mutate nothing. An action
   // never qualifies, so it cannot be declared here.
   identityOnly?: never;
@@ -923,6 +924,7 @@ export function createActionPATApiRoute<
     context: contextFn,
     authorization,
     method,
+    maxContentLength,
   } = options;
 
   return async function action({ request, params }: ActionFunctionArgs) {
@@ -993,37 +995,6 @@ export function createActionPATApiRoute<
         parsedHeaders = headers.data;
       }
 
-      let parsedBody: any = undefined;
-      if (bodySchema) {
-        const rawBody = await request.text();
-        if (rawBody.length === 0) {
-          return await wrapResponse(
-            request,
-            json({ error: "Request body is empty" }, { status: 400 }),
-            corsStrategy !== "none"
-          );
-        }
-
-        const rawParsedJson = safeJsonParse(rawBody);
-        if (!rawParsedJson) {
-          return await wrapResponse(
-            request,
-            json({ error: "Invalid JSON" }, { status: 400 }),
-            corsStrategy !== "none"
-          );
-        }
-
-        const body = bodySchema.safeParse(rawParsedJson);
-        if (!body.success) {
-          return await wrapResponse(
-            request,
-            json({ error: fromZodError(body.error).toString() }, { status: 400 }),
-            corsStrategy !== "none"
-          );
-        }
-        parsedBody = body.data;
-      }
-
       const apiVersion = getApiVersion(request);
 
       // `context` resolves the target org/project so the plugin can compute the
@@ -1088,6 +1059,49 @@ export function createActionPATApiRoute<
             corsStrategy !== "none"
           );
         }
+      }
+
+      if (maxContentLength) {
+        const contentLength = request.headers.get("content-length");
+
+        if (!contentLength || parseInt(contentLength) > maxContentLength) {
+          return await wrapResponse(
+            request,
+            json({ error: "Request body too large" }, { status: 413 }),
+            corsStrategy !== "none"
+          );
+        }
+      }
+
+      let parsedBody: any = undefined;
+      if (bodySchema) {
+        const rawBody = await request.text();
+        if (rawBody.length === 0) {
+          return await wrapResponse(
+            request,
+            json({ error: "Request body is empty" }, { status: 400 }),
+            corsStrategy !== "none"
+          );
+        }
+
+        const rawParsedJson = safeJsonParse(rawBody);
+        if (!rawParsedJson) {
+          return await wrapResponse(
+            request,
+            json({ error: "Invalid JSON" }, { status: 400 }),
+            corsStrategy !== "none"
+          );
+        }
+
+        const body = bodySchema.safeParse(rawParsedJson);
+        if (!body.success) {
+          return await wrapResponse(
+            request,
+            json({ error: fromZodError(body.error).toString() }, { status: 400 }),
+            corsStrategy !== "none"
+          );
+        }
+        parsedBody = body.data;
       }
 
       // PAT auth carries `userId` but no environment — enrich the scope the
