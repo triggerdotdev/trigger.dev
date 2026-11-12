@@ -17,6 +17,8 @@ vi.mock("~/services/rbac.server", () => ({
   rbac: {
     getUserRole: async () => rbacHolder.currentRole,
     setUserRole: async () => rbacHolder.setUserRoleResult,
+    getUserRoles: async () => new Map(),
+    removeUserRole: async () => ({ ok: true }),
   },
 }));
 
@@ -58,6 +60,13 @@ vi.mock("~/db.server", async () => {
 });
 
 import { postgresTest } from "@internal/testcontainers";
+import { generateAdditionalApiKey, hashApiKey } from "~/utils/apiKeys";
+import {
+  createRuntimeEnvironment,
+  createTestOrgProjectWithMember,
+  createTestUser,
+} from "./fixtures/environmentVariablesFixtures";
+import { installAuditLogPlugin, uninstallAuditLogPlugin } from "./helpers/auditLogPlugin";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -184,4 +193,71 @@ describe("ensureOrgMember development environment provisioning", () => {
     });
     expect(member).not.toBeNull();
   });
+});
+
+describe("directory removal fingerprints", () => {
+  // Catches: a member removed by directory sync getting new development keys with no fingerprint,
+  // or their old keys never being marked revoked.
+  postgresTest(
+    "saves the new development keys first and marks the old ones revoked by the system",
+    async ({ prisma }) => {
+      prismaHolder.client = prisma;
+      const { removeOrgMemberForDirectory } = await import("../app/models/orgMember.server");
+      const { auditLogs } = await import("../app/services/auditLogs/auditLogs.server");
+      const { organization, project } = await createTestOrgProjectWithMember(prisma);
+      const removed = await createTestUser(prisma);
+      const member = await prisma.orgMember.create({
+        data: { organizationId: organization.id, userId: removed.id, role: "MEMBER" },
+      });
+      const environment = await createRuntimeEnvironment(prisma, {
+        projectId: project.id,
+        organizationId: organization.id,
+        orgMemberId: member.id,
+        type: "DEVELOPMENT",
+      });
+      const additionalKey = generateAdditionalApiKey("DEVELOPMENT");
+      await prisma.apiKey.create({
+        data: {
+          name: "Development key",
+          runtimeEnvironmentId: environment.id,
+          keyHash: additionalKey.keyHash,
+          lastFour: additionalKey.lastFour,
+          scopes: ["admin"],
+        },
+      });
+      const { saved, revoked } = installAuditLogPlugin();
+
+      try {
+        const result = await removeOrgMemberForDirectory({
+          userId: removed.id,
+          organizationId: organization.id,
+        });
+        await auditLogs.flush();
+
+        expect(result).toMatchObject({ removed: true });
+        const rotated = await prisma.runtimeEnvironment.findUniqueOrThrow({
+          where: { id: environment.id },
+        });
+        const system = { type: "system", id: null };
+        expect(saved).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ hash: hashApiKey(rotated.apiKey), createdBy: system }),
+          ])
+        );
+        expect(revoked).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              hash: hashApiKey(environment.apiKey),
+              reason: "member_removed",
+              revokedBy: system,
+              replacedByHash: hashApiKey(rotated.apiKey),
+            }),
+            expect.objectContaining({ hash: additionalKey.keyHash, reason: "member_removed" }),
+          ])
+        );
+      } finally {
+        uninstallAuditLogPlugin();
+      }
+    }
+  );
 });

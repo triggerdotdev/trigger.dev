@@ -1,4 +1,5 @@
 import type { Organization, Project } from "@trigger.dev/database";
+import type { AuditLogActor } from "@trigger.dev/plugins";
 import { createEnvironment } from "~/models/organization.server";
 import { getCurrentPlan, isCloud } from "~/services/platform.v3.server";
 
@@ -10,25 +11,29 @@ import { getCurrentPlan, isCloud } from "~/services/platform.v3.server";
 // `allMachines()` traced to TRI-8731.
 export async function projectCreated(
   organization: Pick<Organization, "id" | "maximumConcurrencyLimit">,
-  project: Project
+  project: Project,
+  /** Who created the project, for the new environments' root key fingerprints. */
+  createdBy: AuditLogActor | null = null
 ) {
   if (!isCloud()) {
-    await createEnvironment({ organization, project, type: "STAGING" });
+    await createEnvironment({ organization, project, type: "STAGING", createdBy });
     await createEnvironment({
       organization,
       project,
       type: "PREVIEW",
       isBranchableEnvironment: true,
+      createdBy,
     });
   } else {
     const plan = await getCurrentPlan(organization.id);
     if (plan?.v3Subscription?.plan?.limits?.hasStagingEnvironment) {
-      await createEnvironment({ organization, project, type: "STAGING" });
+      await createEnvironment({ organization, project, type: "STAGING", createdBy });
       await createEnvironment({
         organization,
         project,
         type: "PREVIEW",
         isBranchableEnvironment: true,
+        createdBy,
       });
     }
   }

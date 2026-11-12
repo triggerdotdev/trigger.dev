@@ -12,6 +12,7 @@ import {
 } from "./organization.server";
 import { customAlphabet } from "nanoid";
 import { isOrganizationJoinAllowed } from "~/services/accessPolicy.server";
+import { userActor } from "~/services/credentialFingerprints.server";
 import { logger } from "~/services/logger.server";
 import { getDefaultEnvironmentConcurrencyLimit } from "~/services/platform.v3.server";
 import { rbac } from "~/services/rbac.server";
@@ -337,6 +338,7 @@ export async function provisionMemberDevelopmentEnvironments({
         project,
         member,
         maximumConcurrencyLimit,
+        createdBy: userActor(member.userId),
       });
 
       if (created) {

@@ -1,8 +1,12 @@
 import type { PrismaClient } from "@trigger.dev/database";
 import { $transaction } from "~/db.server";
 import { rbac } from "~/services/rbac.server";
+import {
+  recordMemberRemovalCredentials,
+  userActor,
+} from "~/services/credentialFingerprints.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
-import { deleteOrgMember } from "./deleteOrgMember.server";
+import { deleteOrgMember, prepareMemberRemovalKeys } from "./deleteOrgMember.server";
 import { isOwnerRole } from "./orgMember.server";
 export async function removeTeamMember(
   {
@@ -23,6 +27,27 @@ export async function removeTeamMember(
   if (!org) {
     throw new ServiceValidationError("User does not have access to this organization", 403);
   }
+
+  // Checked again inside the transaction, which is what makes them race-free. Checking here first
+  // keeps a removal that would be rejected from saving fingerprints for keys it never issues.
+  const [targetCount, memberCount] = await Promise.all([
+    prismaClient.orgMember.count({ where: { id: memberId, organizationId: org.id } }),
+    prismaClient.orgMember.count({ where: { organizationId: org.id } }),
+  ]);
+  if (targetCount === 0) {
+    throw new ServiceValidationError("Member not found in this organization", 404);
+  }
+  if (memberCount <= 1) {
+    throw new ServiceValidationError("Cannot remove the last member of an organization", 400);
+  }
+
+  // The new development keys' fingerprints are saved first: a failed save fails the removal.
+  const actor = userActor(userId);
+  const newKeys = await prepareMemberRemovalKeys(
+    prismaClient,
+    { id: memberId, organizationId: org.id },
+    actor
+  );
 
   // Serializable so the "keep at least one member" check and the delete are
   // atomic: at ReadCommitted two concurrent removals could each see >1 member
@@ -68,13 +93,18 @@ export async function removeTeamMember(
         );
       }
 
-      await deleteOrgMember(tx, { id: target.id, organizationId: org.id });
-      return target;
+      const { credentials } = await deleteOrgMember(
+        tx,
+        { id: target.id, organizationId: org.id },
+        newKeys
+      );
+      return { target, credentials };
     },
     { isolationLevel: "Serializable" }
   );
   if (!result) {
     throw new Error("Failed to remove organization member");
   }
-  return result;
+  recordMemberRemovalCredentials(result.credentials, actor);
+  return result.target;
 }

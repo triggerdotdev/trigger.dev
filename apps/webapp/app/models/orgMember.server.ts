@@ -1,8 +1,12 @@
 import { $transaction, Prisma, prisma } from "~/db.server";
-import { deleteOrgMember } from "./deleteOrgMember.server";
+import { deleteOrgMember, prepareMemberRemovalKeys } from "./deleteOrgMember.server";
 import { findOrCreateDirectoryUser } from "./directoryUser.server";
 import type { MembershipSource } from "~/models/member.server";
 import { isOrganizationJoinAllowed } from "~/services/accessPolicy.server";
+import {
+  recordMemberRemovalCredentials,
+  SYSTEM_ACTOR,
+} from "~/services/credentialFingerprints.server";
 import { logger } from "~/services/logger.server";
 import { enqueueMemberDevelopmentEnvironments } from "~/services/memberDevEnvironments.server";
 import { rbac } from "~/services/rbac.server";
@@ -12,12 +16,16 @@ import {
 } from "~/services/personalAccessToken.server";
 
 async function deleteMembership(memberId: string, organizationId: string) {
+  const member = { id: memberId, organizationId };
+  // The new development keys' fingerprints are saved first: a failed save fails the removal.
+  const newKeys = await prepareMemberRemovalKeys(prisma, member, SYSTEM_ACTOR);
   const result = await $transaction(prisma, "delete org member", (tx) =>
-    deleteOrgMember(tx, { id: memberId, organizationId })
+    deleteOrgMember(tx, member, newKeys)
   );
   if (!result) {
     throw new Error("Failed to delete organization member");
   }
+  recordMemberRemovalCredentials(result.credentials, SYSTEM_ACTOR);
 }
 
 export type EnsureOrgMemberParams = {
@@ -286,7 +294,10 @@ export async function removeOrgMemberForDirectory(params: {
       const tokens = await getValidPersonalAccessTokens(userId);
       for (const token of tokens) {
         try {
-          await revokePersonalAccessToken(token.id, userId);
+          await revokePersonalAccessToken(token.id, userId, {
+            reason: "member_removed",
+            revokedBy: SYSTEM_ACTOR,
+          });
         } catch (error) {
           logger.warn("removeOrgMemberForDirectory: failed to revoke PAT", {
             userId,

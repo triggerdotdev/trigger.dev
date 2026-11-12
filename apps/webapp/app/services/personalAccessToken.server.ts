@@ -5,12 +5,20 @@ import {
 } from "@trigger.dev/database";
 import { compareCliLoginNetworks, needsNetworkConfirmation } from "./cliLoginNetwork.server";
 import type { CreateAuthorizationCodeRequest } from "@trigger.dev/core/v3";
+import cuid from "cuid";
 import { customAlphabet, nanoid } from "nanoid";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
 import { noteAdminRequest, recordAdminPatCreated } from "./adminAudit/adminAuditContext.server";
+import {
+  type CredentialRevocation,
+  markCredentialHashRevoked,
+  saveCredentialFingerprint,
+  SYSTEM_ACTOR,
+  userActor,
+} from "./credentialFingerprints.server";
 import { logger } from "./logger.server";
 import { rbac } from "./rbac.server";
 import { decryptToken, encryptToken, hashToken } from "~/utils/tokens.server";
@@ -261,8 +269,15 @@ export async function getPersonalAccessTokenFromAuthorizationCode(
   };
 }
 
-export async function revokePersonalAccessToken(tokenId: string, userId: string) {
-  const result = await prisma.personalAccessToken.updateMany({
+export async function revokePersonalAccessToken(
+  tokenId: string,
+  userId: string,
+  revocation: Pick<CredentialRevocation, "reason" | "revokedBy"> = {
+    reason: "revoked",
+    revokedBy: userActor(userId),
+  }
+) {
+  const revoked = await prisma.personalAccessToken.updateManyAndReturn({
     where: {
       id: tokenId,
       userId,
@@ -270,11 +285,17 @@ export async function revokePersonalAccessToken(tokenId: string, userId: string)
     data: {
       revokedAt: new Date(),
     },
+    select: { hashedToken: true, revokedAt: true },
   });
 
-  if (result.count === 0) {
+  if (revoked.length === 0) {
     throw new Error("PAT not found or already revoked");
   }
+
+  markCredentialHashRevoked(revoked[0].hashedToken, {
+    ...revocation,
+    revokedAt: revoked[0].revokedAt ?? undefined,
+  });
 }
 
 export type PersonalAccessTokenAuthenticationResult = {
@@ -805,9 +826,23 @@ export async function createPersonalAccessToken(
 ) {
   const token = createToken();
   const encryptedToken = encryptToken(token, env.ENCRYPTION_KEYRING);
+  // The id is chosen here so the token's fingerprint can name it.
+  const tokenId = cuid();
+  await saveCredentialFingerprint({
+    kind: "pat",
+    value: token,
+    organizationId: null,
+    projectId: null,
+    environmentId: null,
+    credentialId: tokenId,
+    name,
+    createdBy: userActor(userId),
+    expiresAt,
+  });
 
   const personalAccessToken = await prismaClient.personalAccessToken.create({
     data: {
+      id: tokenId,
       name,
       userId,
       encryptedToken,
@@ -849,6 +884,10 @@ export async function createPersonalAccessToken(
             deleteError: err instanceof Error ? err.message : String(err),
           });
         });
+      markCredentialHashRevoked(personalAccessToken.hashedToken, {
+        revokedBy: SYSTEM_ACTOR,
+        reason: "revoked",
+      });
       throw new Error(`Failed to assign role to access token: ${roleResult.error}`);
     }
   } else if (roleId) {
