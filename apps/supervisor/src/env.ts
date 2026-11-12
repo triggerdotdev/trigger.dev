@@ -117,6 +117,14 @@ export const Env = z
     TRIGGER_WORKLOAD_API_HOST_INTERNAL: z.string().default("0.0.0.0"),
     TRIGGER_WORKLOAD_API_PORT_INTERNAL: z.coerce.number().default(8020), // This is the port the workload API listens on
     TRIGGER_WORKLOAD_API_PORT_EXTERNAL: z.coerce.number().default(8020), // This is the exposed port passed to the run controller
+    // Largest attempt completion body the workload API accepts (at most 32 MiB). Other workload routes use the 1 MiB default.
+    TRIGGER_WORKLOAD_API_COMPLETE_MAX_BODY_SIZE: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(10 * 1024 * 1024),
+    // `shadow` serves over-limit bodies (up to a fixed ceiling) and logs them; `enforce` answers 413.
+    TRIGGER_WORKLOAD_API_BODY_SIZE_LIMIT_MODE: z.enum(["shadow", "enforce"]).default("shadow"),
     // How long to keep retrying temporary failures of `continue` for a run restored from a
     // checkpoint; unset keeps the default retries.
     TRIGGER_CONTINUE_RETRY_BUDGET_MS: z.coerce

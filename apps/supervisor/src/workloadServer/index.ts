@@ -542,6 +542,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     const httpServer = new HttpServer({
       port,
       host,
+      bodySizeLimitMode: env.TRIGGER_WORKLOAD_API_BODY_SIZE_LIMIT_MODE,
       metrics: {
         register,
         expose: false,
@@ -604,6 +605,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         {
           paramsSchema: WorkloadActionParams,
           bodySchema: WorkloadRunAttemptCompleteRequestBody,
+          maxBodySize: env.TRIGGER_WORKLOAD_API_COMPLETE_MAX_BODY_SIZE,
           handler: async (ctx) =>
             this.wideRoute(
               ctx,
