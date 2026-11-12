@@ -147,6 +147,8 @@ Three ways out, in order of preference:
 - **Pass `--force`**, if you drive deploys yourself.
 - **Use an id that captures more than the commit** — `${GITHUB_SHA}-${GITHUB_RUN_ID}`, say — if your builds legitimately depend on inputs outside the tree. You lose idempotency in exchange.
 
+For a deployment from the GitHub integration in the last 7 days, you can also [redeploy it from the dashboard](/deployment/overview#redeploying-from-the-dashboard). This builds the same commit again even though a deployment with that id already exists.
+
 See the [deploy command reference](/cli-deploy-commands) for all deploy flags.
 
 ## Automatic discovery
