@@ -138,8 +138,19 @@ model AuthorizationCode {
   /// sha256 of the approval code, which only the approving browser ever sees.
   approvalCodeHash String?
 
+  oauthClient       OAuthClient? @relation(fields: [oauthClientId], references: [id], onDelete: Cascade)
+  oauthClientId     String?
+  redirectUri       String?
+  scope             String[]     @default([])
+  resource          String?
+  approvedByUserId  String?
+  /// The user who started the OAuth authorization. Only they can approve it.
+  requestedByUserId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([oauthClientId])
 }
 
 // Used by User's to perform API actions
@@ -180,7 +191,68 @@ model PersonalAccessToken {
 
   authorizationCodes AuthorizationCode[]
 
+  oauthClient        OAuthClient?        @relation(fields: [oauthClientId], references: [id], onDelete: Restrict)
+  oauthClientId      String?
+  oauthRefreshTokens OAuthRefreshToken[]
+
   @@index([userId])
+  @@index([oauthClientId, userId])
+}
+
+enum OAuthClientKind {
+  PREREGISTERED
+  CIMD
+  DCR
+}
+
+model OAuthClient {
+  id String @id @default(cuid())
+
+  kind     OAuthClientKind
+  clientId String          @unique
+
+  metadataUrl      String?
+  displayName      String?
+  selfReportedName String?
+  redirectUris     String[]
+  dedupeKey        String?  @unique
+
+  metadataExpiresAt DateTime?
+  lastUsedAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  authorizationCodes   AuthorizationCode[]
+  personalAccessTokens PersonalAccessToken[]
+  refreshTokens        OAuthRefreshToken[]
+
+  @@index([kind, lastUsedAt])
+}
+
+model OAuthRefreshToken {
+  id String @id @default(cuid())
+
+  hashedToken String @unique
+
+  personalAccessToken   PersonalAccessToken @relation(fields: [personalAccessTokenId], references: [id], onDelete: Cascade)
+  personalAccessTokenId String
+
+  oauthClient   OAuthClient @relation(fields: [oauthClientId], references: [id], onDelete: Cascade)
+  oauthClientId String
+
+  scope    String[]
+  resource String
+
+  usedAt       DateTime?
+  replacedById String?
+
+  idleExpiresAt DateTime
+  createdAt     DateTime @default(now())
+
+  @@index([personalAccessTokenId])
+  @@index([oauthClientId])
+  @@index([idleExpiresAt])
 }
 
 enum OrganizationAccessTokenType {

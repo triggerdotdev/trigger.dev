@@ -114,6 +114,14 @@ export const SIGN_IN_FORM_INGRESS_CAP: IngressBodyCap = {
   alwaysEnforced: true,
 };
 
+export const OAUTH_INGRESS_CAP: IngressBodyCap = {
+  name: "oauth",
+  path: /^\/oauth\/(token|register|revoke)$/,
+  limitBytes: 64 * 1024,
+  refuse: refuseTooLarge,
+  alwaysEnforced: true,
+};
+
 export function otlpIngressCap(limitBytes: number): IngressBodyCap {
   return {
     name: "otlp",

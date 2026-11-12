@@ -9,6 +9,7 @@ import {
   DASHBOARD_AGENT_INGRESS_CAP,
   otlpIngressCap,
   routeIngressCaps,
+  OAUTH_INGRESS_CAP,
   SIGN_IN_FORM_INGRESS_CAP,
 } from "./ingressBodyCap.server";
 import { logger } from "./logger.server";
@@ -62,6 +63,7 @@ export function createIngressBodyCapMiddleware(routes: ServerBuild["routes"]) {
     caps: [
       DASHBOARD_AGENT_INGRESS_CAP,
       SIGN_IN_FORM_INGRESS_CAP,
+      OAUTH_INGRESS_CAP,
       otlpIngressCap(env.OTLP_INGRESS_BODY_SIZE_LIMIT_MB * MB),
       ...routeIngressCaps({
         taskPayloadBytes: env.TASK_PAYLOAD_MAXIMUM_SIZE,

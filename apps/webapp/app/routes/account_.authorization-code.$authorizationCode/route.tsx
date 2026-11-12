@@ -1,11 +1,15 @@
 import { CheckCircleIcon } from "@heroicons/react/24/solid";
 import { Form } from "@remix-run/react";
 import { useState } from "react";
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
+import type {
+  ActionFunctionArgs,
+  HeadersFunction,
+  LoaderFunctionArgs,
+} from "@remix-run/server-runtime";
 import { redirect } from "@remix-run/server-runtime";
 import { typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
-import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
+import { LoginPageLayout } from "~/components/LoginPageLayout";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
@@ -23,11 +27,17 @@ import {
 } from "~/services/cliLoginNetwork.server";
 import { logger } from "~/services/logger.server";
 import {
+  consentDocumentHeaders,
+  decideOAuthConsent,
+  loadOAuthConsent,
+} from "~/services/oauth/consent.server";
+import {
   createPersonalAccessTokenFromAuthorizationCode,
   getMintableAuthorizationCode,
 } from "~/services/personalAccessToken.server";
 import { getIpLocation } from "~/services/platform.v3.server";
 import { scheduleEmail } from "~/services/scheduleEmail.server";
+import { cn } from "~/utils/cn";
 import { requireUser } from "~/services/session.server";
 import { extractClientIp } from "~/utils/extractClientIp.server";
 import { pageMeta } from "~/utils/pageTitle";
@@ -63,6 +73,9 @@ function parseSearch(request: Request) {
   return { source, clientName };
 }
 
+export const headers: HeadersFunction = ({ loaderHeaders }) =>
+  consentDocumentHeaders(loaderHeaders);
+
 // The loader only renders a consent screen; minting/binding a PAT happens in
 // the `action`, behind an explicit "Authorize" POST.
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -70,6 +83,27 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const { authorizationCode } = parseParams(params);
   const { source, clientName } = parseSearch(request);
+
+  const oauth = await loadOAuthConsent(request, authorizationCode, user.id, user.isImpersonating);
+  if (oauth.status === "invalid") {
+    return typedjson({ status: "oauth-invalid" as const, impersonating: false });
+  }
+  if (oauth.status === "impersonating") {
+    return typedjson({ status: "oauth-invalid" as const, impersonating: true });
+  }
+  if (oauth.status === "consent") {
+    return typedjson(
+      {
+        status: "oauth-consent" as const,
+        client: oauth.client,
+        scopes: oauth.scopes,
+        csrfToken: oauth.csrfToken,
+        account: { email: user.email, name: user.displayName ?? user.name },
+        switchAccountUrl: `/logout?redirectTo=${encodeURIComponent(oauth.reauthorizePath)}`,
+      },
+      oauth.setCookie ? { headers: { "Set-Cookie": oauth.setCookie } } : undefined
+    );
+  }
 
   const mintable = await getMintableAuthorizationCode(authorizationCode);
 
@@ -125,6 +159,33 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const { source, clientName } = parseSearch(request);
   const formData = await request.formData();
 
+  const decision = await decideOAuthConsent(request, {
+    code: authorizationCode,
+    userId,
+    formData,
+    isImpersonating: user.isImpersonating,
+    state: new URL(request.url).searchParams.get("state"),
+  });
+  if (decision.status === "csrf") {
+    throw new Response(undefined, { status: 403, statusText: "Invalid CSRF token" });
+  }
+  if (decision.status === "bad_request") {
+    throw new Response(undefined, { status: 400, statusText: "Invalid decision" });
+  }
+  if (decision.status === "redirect") {
+    throw redirect(decision.url);
+  }
+  if (decision.status === "invalid" || decision.status === "impersonating") {
+    return typedjson({
+      success: false as const,
+      oauth: true as const,
+      impersonating: decision.status === "impersonating",
+      error: "This authorization request is invalid or has expired.",
+      source,
+      clientName,
+    });
+  }
+
   try {
     const token = await createPersonalAccessTokenFromAuthorizationCode(authorizationCode, userId, {
       approverIp: extractClientIp(request.headers.get("x-forwarded-for")),
@@ -156,7 +217,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
 
     if (error instanceof Error) {
-      return typedjson({ success: false as const, error: error.message, source, clientName });
+      return typedjson({
+        success: false as const,
+        oauth: false as const,
+        error: error.message,
+        source,
+        clientName,
+      });
     }
 
     logger.error(JSON.stringify(error), { userId });
@@ -194,9 +261,13 @@ export default function Page() {
               {getInstructionsForSource(actionData.source, actionData.clientName)}
             </Paragraph>
           </div>
+        ) : actionData.oauth ? (
+          <OAuthInvalid impersonating={actionData.impersonating} />
         ) : (
           <div>
-            <Header1 className="mb-2">Authentication failed</Header1>
+            <Header1 className="pb-4 font-semibold leading-tight whitespace-nowrap text-2xl">
+              Authentication failed
+            </Header1>
             <Callout variant="error" className="my-2">
               {actionData.error}
             </Callout>
@@ -209,12 +280,22 @@ export default function Page() {
     );
   }
 
+  if (loaderData.status === "oauth-invalid") {
+    return (
+      <AuthShell>
+        <OAuthInvalid impersonating={loaderData.impersonating} />
+      </AuthShell>
+    );
+  }
+
   // Initial GET: invalid/expired code, or the consent prompt.
   if (loaderData.status === "invalid") {
     return (
       <AuthShell>
         <div>
-          <Header1 className="mb-2">Authentication failed</Header1>
+          <Header1 className="pb-4 font-semibold leading-tight whitespace-nowrap text-2xl">
+            Authentication failed
+          </Header1>
           <Callout variant="error" className="my-2">
             This login link is invalid or has expired.
           </Callout>
@@ -226,10 +307,20 @@ export default function Page() {
     );
   }
 
+  if (loaderData.status === "oauth-consent") {
+    return (
+      <AuthShell>
+        <OAuthConsent {...loaderData} />
+      </AuthShell>
+    );
+  }
+
   return (
     <AuthShell>
       <div className="flex flex-col gap-4">
-        <Header1>Authorize login</Header1>
+        <Header1 className="pb-4 font-semibold leading-tight whitespace-nowrap text-2xl">
+          Authorize login
+        </Header1>
         <Paragraph>{getConsentPrompt(loaderData.source, loaderData.clientName)}</Paragraph>
         <Paragraph variant="small">
           {describeLoginStart(
@@ -288,6 +379,95 @@ export default function Page() {
   );
 }
 
+function OAuthInvalid({ impersonating }: { impersonating: boolean }) {
+  return (
+    <div>
+      <Header1 className="pb-4 font-semibold leading-tight whitespace-nowrap text-2xl">
+        Authorization failed
+      </Header1>
+      <Callout variant="error" className="my-2">
+        {impersonating
+          ? "Authorizing an application is not available while impersonating a user."
+          : "This authorization request is invalid, has expired, or was started by a different account."}
+      </Callout>
+      <Paragraph spacing>Please go back to the application and try connecting again.</Paragraph>
+    </div>
+  );
+}
+
+function OAuthConsent({
+  client,
+  scopes,
+  csrfToken,
+  account,
+  switchAccountUrl,
+}: {
+  client: { primary: string; unverified: boolean; selfReported?: string };
+  scopes: string[];
+  csrfToken: string;
+  account: { email: string; name?: string | null };
+  switchAccountUrl: string;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <Header1 className="pb-4 font-semibold leading-tight whitespace-nowrap text-2xl">
+        Authorize application
+      </Header1>
+      <Paragraph>
+        <span className="font-medium text-text-bright">{client.primary}</span> wants to access your
+        Trigger.dev account.
+      </Paragraph>
+      {client.selfReported && (
+        <Paragraph variant="small">Self-reported name: "{client.selfReported}"</Paragraph>
+      )}
+      {client.unverified && (
+        <Callout variant="warning">
+          This application is not verified. Only continue if you started this yourself.
+        </Callout>
+      )}
+      <div className="flex flex-col gap-3 rounded-md border border-grid-bright p-3">
+        <div>
+          <Paragraph variant="small">Signed in as</Paragraph>
+          <Paragraph variant="base/bright" className="font-medium">
+            {account.email}
+          </Paragraph>
+          {account.name && <Paragraph variant="small">{account.name}</Paragraph>}
+          <Paragraph variant="extra-small">
+            Not you? <TextLink href={switchAccountUrl}>Switch account</TextLink>
+          </Paragraph>
+        </div>
+        <div>
+          <Paragraph variant="small">This will allow it to:</Paragraph>
+          <ul
+            className={cn(
+              "mt-1 list-inside list-disc text-sm text-text-bright",
+              scopes.length > 8 && "sm:columns-2"
+            )}
+          >
+            {scopes.map((scope) => (
+              <li key={scope} className="break-inside-avoid">
+                {scope}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      <Paragraph variant="extra-small">
+        Approving creates an access token that you can review and revoke in your account settings.
+      </Paragraph>
+      <Form method="post" className="flex flex-col gap-3">
+        <input type="hidden" name="csrfToken" value={csrfToken} />
+        <Button type="submit" name="decision" value="approve" variant="primary/large" fullWidth>
+          Authorize
+        </Button>
+        <Button type="submit" name="decision" value="deny" variant="secondary/large" fullWidth>
+          Deny
+        </Button>
+      </Form>
+    </div>
+  );
+}
+
 function ConsentForm({ requiresNetworkConfirmation }: { requiresNetworkConfirmation: boolean }) {
   const [confirmed, setConfirmed] = useState(false);
 
@@ -310,7 +490,7 @@ function ConsentForm({ requiresNetworkConfirmation }: { requiresNetworkConfirmat
       )}
       <Button
         type="submit"
-        variant="primary/medium"
+        variant="primary/large"
         fullWidth
         disabled={requiresNetworkConfirmation && !confirmed}
       >
@@ -372,11 +552,9 @@ async function notifyLoginAuthorized(details: {
 
 function AuthShell({ children }: { children: React.ReactNode }) {
   return (
-    <AppContainer>
-      <MainCenteredContainer className="max-w-88">
-        <div className="flex flex-col items-center space-y-4">{children}</div>
-      </MainCenteredContainer>
-    </AppContainer>
+    <LoginPageLayout scrollable singleColumn>
+      <div className="flex w-full flex-col items-center py-8">{children}</div>
+    </LoginPageLayout>
   );
 }
 

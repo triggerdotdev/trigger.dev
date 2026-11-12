@@ -33,6 +33,7 @@ import {
   sendPersonalAccessTokenExpiryEmails,
 } from "~/services/personalAccessTokenExpiryEmails.server";
 import { BulkActionService } from "./services/bulk/BulkActionV2.server";
+import { sweepOAuthRefreshTokens } from "~/services/oauth/refreshTokenSweep.server";
 import { prisma } from "~/db.server";
 import { sweepPreviewAutoArchives } from "~/services/previewAutoArchive.server";
 import { controlPlaneResolver } from "./runOpsMigration/controlPlaneResolver.server";
@@ -108,6 +109,13 @@ function initializeWorker() {
         retry: { maxAttempts: 3 },
       },
       "authorizationCodes.sweepExpired": {
+        schema: CronSchema,
+        cron: "*/30 * * * *",
+        jitterInMs: 60_000,
+        visibilityTimeoutMs: 60_000 * 5,
+        retry: { maxAttempts: 1 },
+      },
+      "oauthRefreshTokens.sweep": {
         schema: CronSchema,
         cron: "*/30 * * * *",
         jitterInMs: 60_000,
@@ -324,6 +332,10 @@ function initializeWorker() {
       },
       "authorizationCodes.sweepExpired": async () => {
         await sweepExpiredAuthorizationCodes(prisma);
+      },
+      "oauthRefreshTokens.sweep": async () => {
+        const deleted = await sweepOAuthRefreshTokens(prisma);
+        logger.info("Swept OAuth refresh tokens", { deleted });
       },
       "personalAccessTokens.sendExpiryEmails": async () => {
         // A run queued before the job was turned off still arrives once. Skip it, or with no

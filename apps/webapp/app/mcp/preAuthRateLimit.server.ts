@@ -2,10 +2,11 @@ import { Ratelimit } from "@upstash/ratelimit";
 import type { Request as ExpressRequest, RequestHandler } from "express";
 import type { RedisWithClusterOptions } from "~/redis.server";
 import { logger } from "~/services/logger.server";
+import { OAUTH_IP_LIMITS } from "~/services/oauth/rateLimit.server";
 import { RateLimiter } from "~/services/rateLimiterCore.server";
 import { extractClientIp } from "~/utils/extractClientIp.server";
 
-const MCP_PREAUTH_IP_LIMIT = 120;
+const MCP_PREAUTH_IP_LIMIT = OAUTH_IP_LIMITS.mcp;
 const REDIS_TIMEOUT_MS = 500;
 
 type PreAuthOptions = {

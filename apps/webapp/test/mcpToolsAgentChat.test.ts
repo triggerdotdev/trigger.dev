@@ -60,6 +60,7 @@ import { createAgentChatTools, type ChatStreamIO } from "~/mcp/tools/agentChat.s
 import { createSessionsWriteTools } from "~/mcp/tools/sessionsWrite.server";
 import { confirmationClient } from "~/mcp/confirm/confirmation.server";
 import type { McpIdentity } from "~/mcp/types";
+import { mcpResource } from "~/services/oauth/metadata.server";
 import type { StreamRecord } from "~/services/realtime/types";
 import { expectPending, getMcpConfirmationStore, resetConfirmations } from "./helpers/mcpConfirm";
 
@@ -178,7 +179,13 @@ async function withStore(
 }
 
 async function uat(userId: string, cap: string[]) {
-  const token = await signUserActorToken(SECRET, { userId, client: "mcp", pat: "pat_src", cap });
+  const token = await signUserActorToken(SECRET, {
+    userId,
+    client: "mcp",
+    pat: "pat_src",
+    audience: mcpResource(),
+    cap,
+  });
   const identity: McpIdentity = { kind: "uat", userId, sourceTokenId: "pat_src", cap };
   const request = new Request("https://api.trigger.dev/mcp", {
     headers: { Authorization: `Bearer ${token}` },
@@ -823,6 +830,7 @@ describe("start_agent_chat", () => {
             client: "mcp",
             pat: "pat_src",
             cap,
+            audience: mcpResource(),
           });
           const identity: McpIdentity = {
             kind: "uat",

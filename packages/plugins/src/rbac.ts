@@ -488,6 +488,7 @@ export async function signUserActorToken(
     pat?: string;
     cap?: string[];
     expirationTime?: string | number | Date;
+    audience?: string;
   }
 ): Promise<string> {
   const jwt = await generateJWT({
@@ -505,6 +506,7 @@ export async function signUserActorToken(
       ...(opts.cap ? { cap: opts.cap } : {}),
     },
     expirationTime: opts.expirationTime ?? "1h",
+    audience: opts.audience,
   });
   return `${USER_ACTOR_TOKEN_PREFIX}${jwt}`;
 }
@@ -512,11 +514,16 @@ export async function signUserActorToken(
 // undefined for anything that isn't a valid, unexpired, correctly-signed UAT.
 export async function verifyUserActorToken(
   secret: string,
-  token: string
+  token: string,
+  opts?: { audience?: string }
 ): Promise<UserActorClaims | undefined> {
   if (!isUserActorToken(token)) return;
 
-  const result = await validateJWT(token.slice(USER_ACTOR_TOKEN_PREFIX.length), secret);
+  const result = await validateJWT(
+    token.slice(USER_ACTOR_TOKEN_PREFIX.length),
+    secret,
+    opts?.audience
+  );
   if (!result.ok) return;
 
   const payload = result.payload;
@@ -688,9 +695,11 @@ export interface RoleBaseAccessController {
    * caller skip that re-check, and MUST return the token's own claims so the host re-checks the
    * right source token.
    */
+  // `audience` overrides the expected token audience, for tokens minted for another resource.
   authenticateUserActor(
     request: Request,
-    context: { organizationId?: string; projectId?: string }
+    context: { organizationId?: string; projectId?: string },
+    options?: { audience?: string }
   ): Promise<UserActorAuthResult>;
 
   // Convenience: authenticate + ability.can() check in one call; returns ok:false if check fails.

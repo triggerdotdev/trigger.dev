@@ -464,6 +464,14 @@ const EnvironmentSchema = z
     ADMIN_API_ENABLED: BoolEnv.default(true),
     MCP_SERVER_ENABLED: BoolEnv.default(false),
     MCP_CONFIRMATION_ERROR_MODE: z.enum(["rpc-error", "tool-error"]).default("rpc-error"),
+    // Origin the MCP server is reached on. Defaults to APP_ORIGIN.
+    MCP_ORIGIN: z
+      .string()
+      .url()
+      .transform((url) => url.replace(/\/+$/, ""))
+      .optional(),
+    OAUTH_GRANT_IDLE_DAYS: z.coerce.number().int().positive().default(30),
+    OAUTH_GRANT_ABSOLUTE_DAYS: z.coerce.number().int().positive().default(90),
     BILLING_SERVICE_SECRET: z.string().min(32).optional(),
     REMIX_APP_PORT: z.string().optional(),
     // Opt-in, dev-only: stream this process's logs over a local telnet/TCP socket on this port.
@@ -2961,6 +2969,7 @@ const EnvironmentSchema = z
 const environment = EnvironmentSchema.parse(process.env);
 export const env = {
   ...environment,
+  MCP_ORIGIN: environment.MCP_ORIGIN ?? environment.APP_ORIGIN,
   ENCRYPTION_KEYRING: resolveEncryptionKeyring(
     environment.ENCRYPTION_KEYRING,
     environment.ENCRYPTION_KEY

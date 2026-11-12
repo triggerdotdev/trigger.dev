@@ -15,10 +15,13 @@ export type McpBearerAuthDeps = {
   failureBody: (failure: PatAuthFailure) => unknown;
   recheckUserActorClaims: (
     claims: UserActorClaims | undefined,
-    bearer: string
+    bearer: string,
+    audience: string
   ) => Promise<UserActorClaims | undefined>;
   touchPat: (tokenId: string, lastAccessedAt: Date | null) => Promise<unknown>;
   resourceMetadataUrl: string;
+  /** User-actor tokens must be minted for this audience, the MCP resource. */
+  audience: string;
 };
 
 export function createMcpBearerAuthenticator(deps: McpBearerAuthDeps) {
@@ -42,11 +45,12 @@ export function createMcpBearerAuthenticator(deps: McpBearerAuthDeps) {
     }
 
     if (isUserActorToken(bearer)) {
-      const uatAuth = await deps.rbac.authenticateUserActor(request, {});
+      const { audience } = deps;
+      const uatAuth = await deps.rbac.authenticateUserActor(request, {}, { audience });
       if (!uatAuth.ok) {
         return unauthorized({ error: uatAuth.error }, uatAuth.status);
       }
-      const claims = await deps.recheckUserActorClaims(uatAuth.claims, bearer);
+      const claims = await deps.recheckUserActorClaims(uatAuth.claims, bearer, audience);
       if (!claims?.pat) {
         return unauthorized({ error: "Invalid user-actor token" });
       }

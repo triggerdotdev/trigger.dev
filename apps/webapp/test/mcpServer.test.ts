@@ -15,6 +15,7 @@ vi.setConfig({ testTimeout: 60_000 });
 const ORIGIN = "https://mcp.test";
 const PRM_PATH = "/.well-known/oauth-protected-resource";
 const SECRET = "test-secret";
+const AUDIENCE = `${ORIGIN}/mcp`;
 
 type TestServer = { baseUrl: string; limited: string[]; touched: string[] };
 
@@ -28,7 +29,11 @@ async function withServer(
   const app = express();
   app.get(
     PRM_PATH,
-    createMcpProtectedResourceHandler({ origin: ORIGIN, authorizationServers: [] })
+    createMcpProtectedResourceHandler({
+      origin: ORIGIN,
+      authorizationServers: [],
+      scopes: ["read:runs"],
+    })
   );
   app.use(
     "/mcp",
@@ -37,8 +42,8 @@ async function withServer(
         rbac: plugin.create(prisma, { forceFallback: true, userActorSecret: SECRET }),
         failureBody: (failure) => ({ error: failure.error, code: failure.code }),
         // The source-PAT liveness check of resolveAndRecheckUserActorClaims, minus env.
-        recheckUserActorClaims: async (claims, bearer) => {
-          const resolved = (await verifyUserActorToken(SECRET, bearer)) ?? claims;
+        recheckUserActorClaims: async (claims, bearer, audience) => {
+          const resolved = (await verifyUserActorToken(SECRET, bearer, { audience })) ?? claims;
           if (!resolved?.pat) return resolved;
           const live = await prisma.personalAccessToken.findFirst({
             where: { id: resolved.pat, revokedAt: null },
@@ -49,6 +54,7 @@ async function withServer(
           touched.push(tokenId);
         },
         resourceMetadataUrl: `${ORIGIN}${PRM_PATH}`,
+        audience: AUDIENCE,
       }),
       tools,
       rateLimit: (req, _res, next) => {
@@ -157,7 +163,7 @@ describe("MCP server", () => {
   postgresTest("UAT without a source PAT gets 401", async ({ prisma }) => {
     await withServer(prisma, async ({ baseUrl }) => {
       const { userId } = await seedPat(prisma, null);
-      const uat = await signUserActorToken(SECRET, { userId, client: "test" });
+      const uat = await signUserActorToken(SECRET, { userId, client: "test", audience: AUDIENCE });
       expect((await postMcp(baseUrl, toolsList, uat)).status).toBe(401);
     });
   });
@@ -166,8 +172,22 @@ describe("MCP server", () => {
   postgresTest("UAT minted from a PAT lists the registered tools", async ({ prisma }) => {
     await withServer(prisma, async ({ baseUrl }) => {
       const { userId, tokenId } = await seedPat(prisma, null);
-      const uat = await signUserActorToken(SECRET, { userId, client: "test", pat: tokenId });
+      const uat = await signUserActorToken(SECRET, {
+        userId,
+        client: "test",
+        pat: tokenId,
+        audience: AUDIENCE,
+      });
       await expectRegisteredTools(await postMcp(baseUrl, toolsList, uat));
+    });
+  });
+
+  // Mutation: verify user-actor tokens against the default API audience.
+  postgresTest("UAT minted for the API gets 401", async ({ prisma }) => {
+    await withServer(prisma, async ({ baseUrl }) => {
+      const { userId, tokenId } = await seedPat(prisma, null);
+      const uat = await signUserActorToken(SECRET, { userId, client: "test", pat: tokenId });
+      expect((await postMcp(baseUrl, toolsList, uat)).status).toBe(401);
     });
   });
 

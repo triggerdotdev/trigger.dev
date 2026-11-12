@@ -25,7 +25,9 @@ vi.mock("~/db.server", () => ({
   $replica: new Proxy({}, { get: (_, prop) => mocks.db[prop] }),
   prisma: new Proxy({}, { get: (_, prop) => mocks.db[prop] }),
 }));
-vi.mock("~/env.server", () => ({ env: { SESSION_SECRET: SECRET } }));
+vi.mock("~/env.server", () => ({
+  env: { SESSION_SECRET: SECRET, MCP_ORIGIN: "https://mcp.test" },
+}));
 vi.mock("~/services/rbac.server", () => ({
   rbac: new Proxy(
     {},
@@ -48,6 +50,7 @@ import { resolveMcpSubject } from "~/mcp/gate/resolveSubject.server";
 import type { McpConfirmationStore } from "~/mcp/confirm/store.server";
 import type { McpIdentity, McpToolAuth } from "~/mcp/gate/types";
 import { withMcpToolAuth, type McpToolResult } from "~/mcp/gate/withMcpToolAuth.server";
+import { mcpResource } from "~/services/oauth/metadata.server";
 
 const ok: McpToolResult = { content: [{ type: "text", text: "ok" }] };
 
@@ -74,7 +77,13 @@ async function uatCall(
 ) {
   const source = await patCall(prisma, userId);
   const pat = source.identity.kind === "pat" ? source.identity.tokenId : "";
-  const token = await signUserActorToken(SECRET, { userId, client: "mcp", pat, ...scope });
+  const token = await signUserActorToken(SECRET, {
+    userId,
+    client: "mcp",
+    pat,
+    audience: mcpResource(),
+    ...scope,
+  });
   const identity: McpIdentity = { kind: "uat", userId, sourceTokenId: pat, ...scope };
   return { identity, request: bearer(token) };
 }
@@ -312,6 +321,7 @@ describe("withMcpToolAuth", () => {
       },
       get: async () => null,
       approve: async () => false,
+      deny: async () => false,
       consumeApproved: async () => null,
     };
     const capped = await uatCall(prisma, a.user.id, { cap: ["read:runs"] });

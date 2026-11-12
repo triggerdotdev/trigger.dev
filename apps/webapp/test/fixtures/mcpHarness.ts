@@ -191,7 +191,11 @@ export async function withServer(
   const app = express();
   app.get(
     PRM_PATH,
-    createMcpProtectedResourceHandler({ origin: ORIGIN, authorizationServers: [] })
+    createMcpProtectedResourceHandler({
+      origin: ORIGIN,
+      authorizationServers: [],
+      scopes: ["read:runs"],
+    })
   );
   app.use(
     "/mcp",
@@ -202,6 +206,7 @@ export async function withServer(
         recheckUserActorClaims: async (claims) => claims,
         touchPat: async () => {},
         resourceMetadataUrl: `${ORIGIN}${PRM_PATH}`,
+        audience: `${ORIGIN}/mcp`,
       }),
       tools,
       rateLimit,

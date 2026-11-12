@@ -61,6 +61,10 @@ type CreatePersonalAccessTokenOptions = {
   expiresAt?: Date;
   /** Seconds without use after which the token stops working. Omitted for no idle limit. */
   idleTimeoutSeconds?: number;
+  /** The OAuth client this token is the grant for. */
+  oauthClientId?: string;
+  /** For callers inside a transaction, which record the audit entry once it commits. */
+  skipAudit?: boolean;
 };
 
 /** The columns `personalAccessTokenExpiry` reads, for every lookup that checks expiry. */
@@ -542,9 +546,10 @@ export async function assertSourcePatActive(claims: UserActorClaims): Promise<bo
  */
 export async function resolveAndRecheckUserActorClaims(
   claims: UserActorClaims | undefined,
-  bearer: string
+  bearer: string,
+  audience?: string
 ): Promise<UserActorClaims | undefined> {
-  const verified = await verifyUserActorToken(env.SESSION_SECRET, bearer);
+  const verified = await verifyUserActorToken(env.SESSION_SECRET, bearer, { audience });
   const resolved = verified ?? claims;
   if (!resolved) return undefined;
   return (await assertSourcePatActive(resolved)) ? resolved : undefined;
@@ -571,11 +576,11 @@ function normalizeApprovalCode(approvalCode: string) {
   return approvalCode.toUpperCase().replace(/[^0-9A-Z]/g, "");
 }
 
-function codeChallengeFor(codeVerifier: string) {
+export function codeChallengeFor(codeVerifier: string) {
   return createHash("sha256").update(codeVerifier).digest("base64url");
 }
 
-function safeEqual(a: string, b: string) {
+export function safeEqual(a: string, b: string) {
   const left = Buffer.from(a);
   const right = Buffer.from(b);
   return left.length === right.length && timingSafeEqual(left, right);
@@ -596,6 +601,7 @@ export async function getMintableAuthorizationCode(
     where: {
       code: authorizationCode,
       personalAccessTokenId: null,
+      oauthClientId: null,
       createdAt: { gte: validAfter },
     },
     select: { codeChallenge: true, createdAt: true, requesterIp: true },
@@ -666,6 +672,7 @@ export async function createPersonalAccessTokenFromAuthorizationCode(
     where: {
       code: authorizationCode,
       personalAccessTokenId: null,
+      oauthClientId: null,
       createdAt: {
         gte: validAfter,
       },
@@ -783,24 +790,30 @@ export async function sweepExpiredAuthorizationCodes(
 }
 
 /** Created a new PersonalAccessToken, and return the token. We only ever return the unencrypted token once. */
-export async function createPersonalAccessToken({
-  name,
-  userId,
-  roleId,
-  auditSource,
-  expiresAt,
-  idleTimeoutSeconds,
-}: CreatePersonalAccessTokenOptions) {
+export async function createPersonalAccessToken(
+  {
+    name,
+    userId,
+    roleId,
+    auditSource,
+    expiresAt,
+    idleTimeoutSeconds,
+    oauthClientId,
+    skipAudit,
+  }: CreatePersonalAccessTokenOptions,
+  prismaClient: PrismaClientOrTransaction = prisma
+) {
   const token = createToken();
   const encryptedToken = encryptToken(token, env.ENCRYPTION_KEYRING);
 
-  const personalAccessToken = await prisma.personalAccessToken.create({
+  const personalAccessToken = await prismaClient.personalAccessToken.create({
     data: {
       name,
       userId,
       encryptedToken,
       obfuscatedToken: obfuscateToken(token),
       hashedToken: hashToken(token),
+      oauthClientId,
       expiresAt,
       idleTimeoutSeconds,
     },
@@ -845,12 +858,14 @@ export async function createPersonalAccessToken({
     });
   }
 
-  void recordAdminPatCreated({
-    userId,
-    tokenId: personalAccessToken.id,
-    name,
-    source: auditSource,
-  });
+  if (!skipAudit) {
+    void recordAdminPatCreated({
+      userId,
+      tokenId: personalAccessToken.id,
+      name,
+      source: auditSource,
+    });
+  }
 
   return {
     id: personalAccessToken.id,

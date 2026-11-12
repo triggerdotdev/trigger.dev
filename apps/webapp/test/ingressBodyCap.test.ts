@@ -11,6 +11,7 @@ import {
   createRouteIdMatcher,
   DASHBOARD_AGENT_INGRESS_CAP,
   ignoreRefusedBodyErrors,
+  OAUTH_INGRESS_CAP,
   otlpIngressCap,
   routeIngressCaps,
   SIGN_IN_FORM_INGRESS_CAP,
@@ -38,6 +39,7 @@ const ROUTE_LIMITS: RouteBodyLimits = {
 const CAPS = [
   DASHBOARD_AGENT_INGRESS_CAP,
   SIGN_IN_FORM_INGRESS_CAP,
+  OAUTH_INGRESS_CAP,
   otlpIngressCap(OTLP_MAX_INGRESS_BYTES),
   ...routeIngressCaps(ROUTE_LIMITS),
 ];
@@ -1058,5 +1060,33 @@ describe("limiting how often a key is let through", () => {
     expect(allowance("a").allowed).toBe(true);
     expect(allowance("a").allowed).toBe(false);
     expect(allowance("b").allowed).toBe(true);
+  });
+});
+
+describe("the OAuth endpoints' ingress cap", () => {
+  // Catches: dropping OAUTH_INGRESS_CAP from the list, leaving unauthenticated bodies unbounded.
+  it.for(["token", "register", "revoke", "token/", "token//"])(
+    "refuses an oversized /oauth/%s body",
+    async (name) => {
+      const { url, buffered } = await listen();
+
+      const response = await fetch(`${url}/oauth/${name}`, {
+        method: "POST",
+        body: "x".repeat(DEFAULT_LIMIT_BYTES / 2),
+      });
+
+      expect(response.status).toBe(413);
+      expect(buffered()).toBe(0);
+    }
+  );
+
+  it("passes a normal /oauth/token body through", async () => {
+    const { url } = await listen();
+    const body = "grant_type=refresh_token&refresh_token=abc";
+
+    const response = await fetch(`${url}/oauth/token`, { method: "POST", body });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ bytes: body.length });
   });
 });

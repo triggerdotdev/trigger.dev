@@ -1,0 +1,810 @@
+import { createHash, randomBytes } from "node:crypto";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const db = vi.hoisted(() => ({ client: null as any, rbac: null as any }));
+const mockEnv = vi.hoisted(() => ({
+  SESSION_SECRET: "test-session-secret-for-oauth-server",
+  ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef",
+  APP_ORIGIN: "https://app.example.com",
+  MCP_ORIGIN: "https://mcp.example.com",
+  OAUTH_GRANT_IDLE_DAYS: 30,
+  OAUTH_GRANT_ABSOLUTE_DAYS: 90,
+  MCP_SERVER_ENABLED: true,
+  RATE_LIMIT_REDIS_HOST: "127.0.0.1",
+  RATE_LIMIT_REDIS_PORT: 1,
+  RATE_LIMIT_REDIS_PASSWORD: undefined as string | undefined,
+  RATE_LIMIT_REDIS_TLS_DISABLED: "true",
+}));
+const session = vi.hoisted(() => ({ user: null as any }));
+
+vi.mock("~/db.server", () => ({
+  get prisma() {
+    return db.client;
+  },
+  get $replica() {
+    return db.client;
+  },
+  $transaction: (client: any, name: string, fn: (tx: any) => Promise<unknown>) =>
+    client.$transaction(fn),
+}));
+vi.mock("~/env.server", async () => {
+  const { withLegacyEncryptionKeyring } = await import("./helpers/encryptionEnv");
+  return { env: withLegacyEncryptionKeyring(mockEnv) };
+});
+vi.mock("~/services/session.server", () => ({
+  requireUser: async () => session.user,
+}));
+vi.mock("~/services/rbac.server", () => ({
+  get rbac() {
+    return db.rbac;
+  },
+}));
+
+import { postgresTest, redisTest } from "@internal/testcontainers";
+import plugin, { signUserActorToken, verifyUserActorToken } from "@trigger.dev/rbac";
+import { createMcpBearerAuthenticator } from "~/mcp/auth/bearer.server";
+import { withMcpToolAuth } from "~/mcp/gate/withMcpToolAuth.server";
+import { createMcpProtectedResourceHandler } from "~/mcp/protectedResource.server";
+import { MCP_SCOPES, mcpResource } from "~/services/oauth/metadata.server";
+import {
+  createPersonalAccessToken,
+  resolveAndRecheckUserActorClaims,
+} from "~/services/personalAccessToken.server";
+import { loader as authorizeLoader } from "~/routes/oauth.authorize";
+import {
+  buildOAuthRedirect,
+  oauthCodeKey,
+  createOAuthAuthorizationCode,
+  validateAuthorizationRequest,
+} from "~/services/oauth/authorize.server";
+import {
+  isPublicAddress,
+  publicOnlyLookup,
+  type MetadataTransport,
+} from "~/services/oauth/cimdFetch.server";
+import { registerClient, resolveClient } from "~/services/oauth/clients.server";
+import { action as tokenAction } from "~/routes/oauth.token";
+import { action as revokeAction } from "~/routes/oauth.revoke";
+import { OAUTH_IP_LIMITS, checkOAuthIpRateLimit } from "~/services/oauth/rateLimit.server";
+import {
+  exchangeAuthorizationCode,
+  exchangeRefreshToken,
+  revokeToken,
+} from "~/services/oauth/token.server";
+
+vi.setConfig({ testTimeout: 60_000 });
+
+const REDIRECT_URI = "https://claude.ai/api/mcp/auth_callback";
+const RESOURCE = "https://mcp.example.com/mcp";
+const audit = { ip: null, userAgent: null };
+
+let userCounter = 0;
+
+function createUser(prisma: any) {
+  userCounter += 1;
+  return prisma.user.create({
+    data: {
+      email: `oauth-server-${userCounter}-${Date.now()}@example.com`,
+      authenticationMethod: "MAGIC_LINK",
+    },
+  });
+}
+
+function pkce() {
+  const verifier = randomBytes(32).toString("base64url");
+  return { verifier, challenge: createHash("sha256").update(verifier).digest("base64url") };
+}
+
+async function register() {
+  const result = await registerClient({ redirect_uris: [REDIRECT_URI], client_name: "Claude" });
+  if (!result.ok) throw new Error(result.body.error_description);
+  return result.body.client_id as string;
+}
+
+function authorizeParams(clientId: string, challenge: string, extra: Record<string, string> = {}) {
+  return new URLSearchParams({
+    response_type: "code",
+    client_id: clientId,
+    redirect_uri: REDIRECT_URI,
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+    scope: "read:runs read:query",
+    resource: RESOURCE,
+    state: "xyz",
+    ...extra,
+  });
+}
+
+/** Starts an authorization as `requesterId`; `approverId` approves it on the consent page. */
+async function authorize(
+  clientId: string,
+  challenge: string,
+  requesterId: string,
+  approverId: string | null = requesterId
+) {
+  const result = await validateAuthorizationRequest(authorizeParams(clientId, challenge));
+  if (!result.ok) throw new Error(result.error.error_description);
+  const code = await createOAuthAuthorizationCode(result.request, requesterId);
+  if (approverId) {
+    await db.client.authorizationCode.update({
+      where: { id: code.id },
+      data: { approvedByUserId: approverId },
+    });
+  }
+  return code.code;
+}
+
+function tokenParams(clientId: string, code: string, verifier: string, extra = {}) {
+  return new URLSearchParams({
+    grant_type: "authorization_code",
+    code,
+    client_id: clientId,
+    redirect_uri: REDIRECT_URI,
+    code_verifier: verifier,
+    resource: RESOURCE,
+    ...extra,
+  });
+}
+
+function refreshParams(clientId: string, refreshToken: string) {
+  return new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+    client_id: clientId,
+  });
+}
+
+async function grant(clientId: string, userId: string) {
+  const { verifier, challenge } = pkce();
+  const code = await authorize(clientId, challenge, userId);
+  const result = await exchangeAuthorizationCode(tokenParams(clientId, code, verifier), audit);
+  if (!result.ok) throw new Error(result.body.error_description);
+  return result.body;
+}
+
+function livePats(userId: string) {
+  return db.client.personalAccessToken.count({ where: { userId, revokedAt: null } });
+}
+
+function documentTransport(status: number, body: string): MetadataTransport {
+  return async () => ({ status, body: [new TextEncoder().encode(body)] });
+}
+
+describe("OAuth authorization server", () => {
+  beforeEach(() => {
+    db.client = null;
+    db.rbac = null;
+    (globalThis as any).__trigger_singletons = {};
+    mockEnv.RATE_LIMIT_REDIS_HOST = "127.0.0.1";
+    mockEnv.RATE_LIMIT_REDIS_PORT = 1;
+    mockEnv.RATE_LIMIT_REDIS_PASSWORD = undefined;
+  });
+
+  postgresTest(
+    "issues a capped UAT bound to the grant PAT, rotates refresh, and revokes on replay",
+    async ({ prisma }) => {
+      db.client = prisma;
+      const user = await createUser(prisma);
+      const clientId = await register();
+      expect(await register()).toBe(clientId);
+
+      const { verifier, challenge } = pkce();
+      const code = await authorize(clientId, challenge, user.id);
+
+      const issued = await exchangeAuthorizationCode(tokenParams(clientId, code, verifier), audit);
+      if (!issued.ok) throw new Error(issued.body.error_description);
+      expect(issued.body.scope).toBe("read:runs read:query");
+
+      const pat = await prisma.personalAccessToken.findFirstOrThrow({
+        where: { userId: user.id, oauthClient: { clientId } },
+      });
+      expect(pat.name).toBe("Claude (MCP)");
+      const claims = await verifyUserActorToken(mockEnv.SESSION_SECRET, issued.body.access_token, {
+        audience: RESOURCE,
+      });
+      expect(claims).toMatchObject({
+        userId: user.id,
+        pat: pat.id,
+        cap: ["read:runs", "read:query"],
+      });
+
+      const reused = await exchangeAuthorizationCode(tokenParams(clientId, code, verifier), audit);
+      expect(reused).toMatchObject({ ok: false, body: { error: "invalid_grant" } });
+
+      const rotated = await exchangeRefreshToken(
+        refreshParams(clientId, issued.body.refresh_token)
+      );
+      if (!rotated.ok) throw new Error(rotated.body.error_description);
+      expect(rotated.body.refresh_token).not.toBe(issued.body.refresh_token);
+      const rotatedClaims = await verifyUserActorToken(
+        mockEnv.SESSION_SECRET,
+        rotated.body.access_token,
+        { audience: RESOURCE }
+      );
+      expect(rotatedClaims?.pat).toBe(pat.id);
+
+      const replay = await exchangeRefreshToken(refreshParams(clientId, issued.body.refresh_token));
+      expect(replay).toMatchObject({ ok: false, body: { error: "invalid_grant" } });
+      expect(await livePats(user.id)).toBe(0);
+      const afterReplay = await exchangeRefreshToken(
+        refreshParams(clientId, rotated.body.refresh_token)
+      );
+      expect(afterReplay.ok).toBe(false);
+    }
+  );
+
+  postgresTest("a granted write scope caps the access token", async ({ prisma }) => {
+    db.client = prisma;
+    const user = await createUser(prisma);
+    const clientId = await register();
+    const { verifier, challenge } = pkce();
+    const authorized = await validateAuthorizationRequest(
+      authorizeParams(clientId, challenge, { scope: "read:runs write:runs" })
+    );
+    if (!authorized.ok) throw new Error(authorized.error.error_description);
+    const code = await createOAuthAuthorizationCode(authorized.request, user.id);
+    await prisma.authorizationCode.update({
+      where: { id: code.id },
+      data: { approvedByUserId: user.id },
+    });
+
+    const issued = await exchangeAuthorizationCode(
+      tokenParams(clientId, code.code, verifier),
+      audit
+    );
+    if (!issued.ok) throw new Error(issued.body.error_description);
+    const claims = await verifyUserActorToken(mockEnv.SESSION_SECRET, issued.body.access_token, {
+      audience: RESOURCE,
+    });
+    expect(claims?.cap).toEqual(["read:runs", "write:runs"]);
+  });
+
+  // Catches: protected resource metadata dropping scopes_supported or the MCP resource origin.
+  it("protected resource metadata advertises every MCP scope", () => {
+    let body: { scopes_supported?: string[]; resource?: string } = {};
+    createMcpProtectedResourceHandler({
+      origin: "https://mcp.test",
+      authorizationServers: [],
+      scopes: MCP_SCOPES,
+    })({} as never, { json: (b: typeof body) => (body = b) } as never, () => {});
+    expect(body.scopes_supported).toEqual([...MCP_SCOPES]);
+    expect(body.scopes_supported).toContain("write:runs");
+    expect(body.resource).toBe("https://mcp.test/mcp");
+  });
+
+  postgresTest("the requested scopes are granted exactly", async ({ prisma }) => {
+    db.client = prisma;
+    const result = await validateAuthorizationRequest(
+      authorizeParams(await register(), pkce().challenge, { scope: "read:runs write:projects" })
+    );
+    if (!result.ok) throw new Error(result.error.error_description);
+    expect(result.request.scope).toEqual(["read:runs", "write:projects"]);
+  });
+
+  postgresTest("an absent scope grants only read scopes", async ({ prisma }) => {
+    db.client = prisma;
+    const result = await validateAuthorizationRequest(
+      authorizeParams(await register(), pkce().challenge, { scope: "" })
+    );
+    if (!result.ok) throw new Error(result.error.error_description);
+    expect(result.request.scope.length).toBeGreaterThan(0);
+    expect(result.request.scope.every((s) => s.startsWith("read:"))).toBe(true);
+  });
+
+  postgresTest("the access token is only valid for the MCP audience", async ({ prisma }) => {
+    db.client = prisma;
+    const user = await createUser(prisma);
+    const token = (await grant(await register(), user.id)).access_token;
+
+    expect(await verifyUserActorToken(mockEnv.SESSION_SECRET, token)).toBeUndefined();
+    expect(
+      await verifyUserActorToken(mockEnv.SESSION_SECRET, token, { audience: RESOURCE })
+    ).toBeDefined();
+  });
+
+  postgresTest(
+    "the MCP endpoint and tool gate accept an issued token and refuse an API-audience one",
+    async ({ prisma }) => {
+      db.client = prisma;
+      db.rbac = plugin.create(
+        { primary: prisma, replica: prisma },
+        { forceFallback: true, userActorSecret: mockEnv.SESSION_SECRET }
+      );
+      const user = await createUser(prisma);
+      const issued = await grant(await register(), user.id);
+      const pat = await prisma.personalAccessToken.findFirstOrThrow({ where: { userId: user.id } });
+      const apiToken = await signUserActorToken(mockEnv.SESSION_SECRET, {
+        userId: user.id,
+        client: "test",
+        pat: pat.id,
+        cap: ["read:runs"],
+      });
+
+      const authenticate = createMcpBearerAuthenticator({
+        rbac: db.rbac,
+        failureBody: (failure) => failure,
+        recheckUserActorClaims: resolveAndRecheckUserActorClaims,
+        touchPat: async () => {},
+        resourceMetadataUrl: `${RESOURCE}/prm`,
+        audience: mcpResource(),
+      });
+      const tool = withMcpToolAuth(
+        { user: true, action: "read", subject: "runs" },
+        async () => ({ content: [{ type: "text", text: "ok" }] }),
+        "test_tool"
+      );
+      const call = async (token: string) => {
+        const request = new Request(RESOURCE, { headers: { Authorization: `Bearer ${token}` } });
+        const auth = await authenticate(request);
+        const identity = {
+          kind: "uat" as const,
+          userId: user.id,
+          sourceTokenId: pat.id,
+          clientId: "test",
+          cap: ["read:runs"],
+        };
+        const result = await tool({}, auth.ok ? auth.identity : identity, request);
+        return { authenticated: auth.ok, allowed: !result.isError };
+      };
+
+      expect(await call(issued.access_token)).toEqual({ authenticated: true, allowed: true });
+      expect(await call(apiToken)).toEqual({ authenticated: false, allowed: false });
+    }
+  );
+
+  postgresTest.for([
+    { name: "a wrong PKCE verifier", wrongVerifier: true },
+    { name: "a wrong redirect_uri", extra: { redirect_uri: "https://claude.ai/other" } },
+    { name: "an expired code", ageMs: 11 * 60 * 1000 },
+    { name: "an unapproved code", approver: "none" },
+    { name: "a code approved by another user", approver: "other" },
+  ] as Array<{
+    name: string;
+    wrongVerifier?: boolean;
+    extra?: Record<string, string>;
+    ageMs?: number;
+    approver?: "none" | "other";
+  }>)("token refuses $name and mints no PAT", async (row, { prisma }) => {
+    db.client = prisma;
+    const user = await createUser(prisma);
+    const other = await createUser(prisma);
+    const clientId = await register();
+    const { verifier, challenge } = pkce();
+    const approverId =
+      row.approver === "none" ? null : row.approver === "other" ? other.id : user.id;
+    const code = await authorize(clientId, challenge, user.id, approverId);
+    if (row.ageMs) {
+      await prisma.authorizationCode.update({
+        where: { code: oauthCodeKey(code) },
+        data: { createdAt: new Date(Date.now() - row.ageMs) },
+      });
+    }
+
+    const result = await exchangeAuthorizationCode(
+      tokenParams(clientId, code, row.wrongVerifier ? pkce().verifier : verifier, row.extra),
+      audit
+    );
+    expect(result).toMatchObject({ ok: false, body: { error: "invalid_grant" } });
+    expect(await prisma.personalAccessToken.count()).toBe(0);
+  });
+
+  postgresTest("re-consent keeps at most 10 live grants per client", async ({ prisma }) => {
+    db.client = prisma;
+    const user = await createUser(prisma);
+    const clientId = await register();
+
+    const first = await grant(clientId, user.id);
+    for (let i = 0; i < 10; i++) await grant(clientId, user.id);
+
+    expect(await livePats(user.id)).toBe(10);
+    const oldest = await exchangeRefreshToken(refreshParams(clientId, first.refresh_token));
+    expect(oldest.ok).toBe(false);
+  });
+
+  postgresTest("re-consent replaces the grant of a pre-registered client", async ({ prisma }) => {
+    db.client = prisma;
+    const user = await createUser(prisma);
+    const client = await prisma.oAuthClient.create({
+      data: { kind: "PREREGISTERED", clientId: "trigger-test", redirectUris: [REDIRECT_URI] },
+    });
+
+    await grant(client.clientId, user.id);
+    await grant(client.clientId, user.id);
+    expect(await livePats(user.id)).toBe(1);
+  });
+
+  postgresTest.for([
+    { kind: "DYNAMIC" as const, existing: 10, expected: 10 },
+    { kind: "PREREGISTERED" as const, existing: 0, expected: 1 },
+  ])(
+    "concurrent $kind exchanges keep the grant cap",
+    async ({ kind, existing, expected }, { prisma }) => {
+      db.client = prisma;
+      const user = await createUser(prisma);
+      const clientId =
+        kind === "DYNAMIC"
+          ? await register()
+          : (
+              await prisma.oAuthClient.create({
+                data: { kind, clientId: "trigger-test", redirectUris: [REDIRECT_URI] },
+              })
+            ).clientId;
+      for (let i = 0; i < existing; i++) await grant(clientId, user.id);
+
+      const pending = [];
+      for (let i = 0; i < 2; i++) {
+        const { verifier, challenge } = pkce();
+        pending.push({ verifier, code: await authorize(clientId, challenge, user.id) });
+      }
+
+      let first = true;
+      let secondSigned = false;
+      const blocked = async () => {
+        const [{ waiting }] = await prisma.$queryRaw<{ waiting: number }[]>`
+          SELECT count(*)::int AS waiting FROM pg_locks WHERE NOT granted`;
+        return waiting > 0;
+      };
+      const sign = async () => {
+        if (!first) {
+          secondSigned = true;
+          return "access-token";
+        }
+        first = false;
+        const deadline = Date.now() + 10_000;
+        while (!secondSigned && !(await blocked())) {
+          if (Date.now() > deadline) throw new Error("second exchange never overlapped");
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        return "access-token";
+      };
+      const results = await Promise.all(
+        pending.map(({ verifier, code }) =>
+          exchangeAuthorizationCode(tokenParams(clientId, code, verifier), audit, sign)
+        )
+      );
+
+      expect(results.every((r) => r.ok)).toBe(true);
+      expect(await livePats(user.id)).toBe(expected);
+    }
+  );
+
+  postgresTest(
+    "concurrent refreshes with one handle: one wins, the loser is a replay and revokes the grant (RFC 6819)",
+    async ({ prisma }) => {
+      db.client = prisma;
+      const user = await createUser(prisma);
+      const clientId = await register();
+      const issued = await grant(clientId, user.id);
+
+      const results = await Promise.all([
+        exchangeRefreshToken(refreshParams(clientId, issued.refresh_token)),
+        exchangeRefreshToken(refreshParams(clientId, issued.refresh_token)),
+      ]);
+      expect(results.filter((r) => r.ok)).toHaveLength(1);
+      expect(await livePats(user.id)).toBe(0);
+    }
+  );
+
+  const failingSign = async (): Promise<string> => {
+    throw new Error("signing failed");
+  };
+
+  postgresTest("a failed code exchange consumes nothing and mints no PAT", async ({ prisma }) => {
+    db.client = prisma;
+    const user = await createUser(prisma);
+    const clientId = await register();
+    const { verifier, challenge } = pkce();
+    const code = await authorize(clientId, challenge, user.id);
+
+    await expect(
+      exchangeAuthorizationCode(tokenParams(clientId, code, verifier), audit, failingSign)
+    ).rejects.toThrow("signing failed");
+    expect(await prisma.personalAccessToken.count()).toBe(0);
+
+    const retried = await exchangeAuthorizationCode(tokenParams(clientId, code, verifier), audit);
+    expect(retried.ok).toBe(true);
+  });
+
+  postgresTest("a failed rotation leaves the old refresh handle usable", async ({ prisma }) => {
+    db.client = prisma;
+    const user = await createUser(prisma);
+    const clientId = await register();
+    const issued = await grant(clientId, user.id);
+
+    await expect(
+      exchangeRefreshToken(refreshParams(clientId, issued.refresh_token), failingSign)
+    ).rejects.toThrow("signing failed");
+
+    const retried = await exchangeRefreshToken(refreshParams(clientId, issued.refresh_token));
+    expect(retried.ok).toBe(true);
+    expect(await livePats(user.id)).toBe(1);
+  });
+
+  it("rate-limits a request without X-Forwarded-For", async () => {
+    const limit = vi.fn(async () => ({ success: false, reset: Date.now() + 30_000 }));
+    const retryAfter = await checkOAuthIpRateLimit(
+      "register",
+      new Request("https://app.example.com/oauth/register", { method: "POST" }),
+      limit
+    );
+    expect(limit).toHaveBeenCalledWith("unknown");
+    expect(retryAfter).toBeGreaterThan(0);
+  });
+
+  it("allows the request when the rate limiter is unavailable", async () => {
+    const retryAfter = await checkOAuthIpRateLimit(
+      "token",
+      new Request("https://app.example.com/oauth/token", { method: "POST" }),
+      async () => {
+        throw new Error("redis unavailable");
+      }
+    );
+    expect(retryAfter).toBeNull();
+  });
+
+  redisTest.for([
+    ["token", "/oauth/token", tokenAction],
+    ["revoke", "/oauth/revoke", revokeAction],
+  ] as const)(
+    "%s returns 429 once an IP exceeds its limit",
+    async ([name, path, action], { redisOptions }) => {
+      mockEnv.RATE_LIMIT_REDIS_HOST = redisOptions.host!;
+      mockEnv.RATE_LIMIT_REDIS_PORT = redisOptions.port!;
+      mockEnv.RATE_LIMIT_REDIS_PASSWORD = redisOptions.password;
+      const send = () =>
+        action({
+          request: new Request(`https://app.example.com${path}`, {
+            method: "POST",
+            headers: { "x-forwarded-for": "203.0.113.7" },
+          }),
+          params: {},
+          context: {},
+        });
+      for (let i = 0; i < OAUTH_IP_LIMITS[name]; i++) {
+        expect((await send()).status).not.toBe(429);
+      }
+      const limited = await send();
+      expect(limited.status).toBe(429);
+      expect(limited.headers.get("Retry-After")).not.toBeNull();
+    }
+  );
+
+  postgresTest("an idle refresh handle is refused", async ({ prisma }) => {
+    db.client = prisma;
+    const user = await createUser(prisma);
+    const clientId = await register();
+    const issued = await grant(clientId, user.id);
+    await prisma.oAuthRefreshToken.updateMany({
+      data: { idleExpiresAt: new Date(Date.now() - 1) },
+    });
+
+    const result = await exchangeRefreshToken(refreshParams(clientId, issued.refresh_token));
+    expect(result).toMatchObject({ ok: false, body: { error: "invalid_grant" } });
+  });
+
+  postgresTest("revoking an access token revokes its grant", async ({ prisma }) => {
+    db.client = prisma;
+    const user = await createUser(prisma);
+    const clientId = await register();
+    const issued = await grant(clientId, user.id);
+
+    await revokeToken(new URLSearchParams({ token: issued.access_token }));
+    expect(await livePats(user.id)).toBe(0);
+    const refreshed = await exchangeRefreshToken(refreshParams(clientId, issued.refresh_token));
+    expect(refreshed.ok).toBe(false);
+  });
+
+  postgresTest.for([
+    { name: "an API-audience token", audience: undefined, cliPat: false },
+    { name: "a token minted from a CLI PAT", audience: RESOURCE, cliPat: true },
+  ] as Array<{ name: string; audience?: string; cliPat: boolean }>)(
+    "revoking $name leaves its PAT live",
+    async (row, { prisma }) => {
+      db.client = prisma;
+      const user = await createUser(prisma);
+      if (!row.cliPat) await grant(await register(), user.id);
+      const pat = row.cliPat
+        ? await createPersonalAccessToken({ name: "cli", userId: user.id })
+        : await prisma.personalAccessToken.findFirstOrThrow({ where: { userId: user.id } });
+      const token = await signUserActorToken(mockEnv.SESSION_SECRET, {
+        userId: user.id,
+        client: "test",
+        pat: pat.id,
+        audience: row.audience,
+      });
+
+      await revokeToken(new URLSearchParams({ token }));
+      expect(await livePats(user.id)).toBe(1);
+    }
+  );
+
+  postgresTest("concurrent identical registrations share one client", async ({ prisma }) => {
+    db.client = prisma;
+    const body = { redirect_uris: [REDIRECT_URI], client_name: "Racer" };
+    const results = await Promise.all([registerClient(body), registerClient(body)]);
+
+    const ids = results.map((r) => (r.ok ? r.body.client_id : null));
+    expect(ids[0]).toBeTruthy();
+    expect(ids[1]).toBe(ids[0]);
+  });
+
+  postgresTest("authorize refuses an impersonating session", async ({ prisma }) => {
+    db.client = prisma;
+    const user = await createUser(prisma);
+    session.user = { id: user.id, isImpersonating: true };
+    const url = `https://app.example.com/oauth/authorize?${authorizeParams(await register(), pkce().challenge)}`;
+
+    const response = await authorizeLoader({
+      request: new Request(url),
+      params: {},
+      context: {},
+    } as any).catch((thrown: unknown) => thrown);
+    expect((response as Response).status).toBe(403);
+    expect(await prisma.authorizationCode.count()).toBe(0);
+  });
+
+  postgresTest("revoking a refresh handle revokes the grant PAT", async ({ prisma }) => {
+    db.client = prisma;
+    const user = await createUser(prisma);
+    const issued = await grant(await register(), user.id);
+
+    await revokeToken(new URLSearchParams({ token: issued.refresh_token }));
+    expect(await livePats(user.id)).toBe(0);
+  });
+
+  postgresTest("the consent redirect carries code, state and iss", async ({ prisma }) => {
+    db.client = prisma;
+    const user = await createUser(prisma);
+    const code = await authorize(await register(), pkce().challenge, user.id);
+
+    const url = new URL((await buildOAuthRedirect(code, "xyz"))!);
+    expect(url.origin + url.pathname).toBe(REDIRECT_URI);
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      code,
+      state: "xyz",
+      iss: mockEnv.APP_ORIGIN,
+    });
+  });
+
+  postgresTest.for([
+    { name: "admin scope", extra: { scope: "admin" }, error: "invalid_scope" },
+    {
+      name: "unknown resource",
+      extra: { resource: "https://evil.example.com/mcp" },
+      error: "invalid_target",
+    },
+    { name: "missing resource", extra: { resource: "" }, error: "invalid_target" },
+    { name: "plain PKCE", extra: { code_challenge_method: "plain" }, error: "invalid_request" },
+  ] as Array<{ name: string; extra: Record<string, string>; error: string }>)(
+    "authorize rejects $name",
+    async ({ extra, error }, { prisma }) => {
+      db.client = prisma;
+      const clientId = await register();
+      const result = await validateAuthorizationRequest(
+        authorizeParams(clientId, pkce().challenge, extra)
+      );
+      expect(result).toMatchObject({ ok: false, redirect: true, error: { error } });
+    }
+  );
+
+  postgresTest.for([
+    ["http://localhost:51234/callback", true],
+    ["http://localhost:51234/other", false],
+    ["http://127.0.0.1:51234/callback", false],
+    ["http://localhost:5/callback?x=1", false],
+    ["http://localhost.evil.com:5/callback", false],
+    ["http://localhost:5/callback#", false],
+    ["https://claude.ai/other", false],
+    ["https://claude.ai:8443/api/mcp/auth_callback", false],
+  ] as Array<[string, boolean]>)(
+    "authorize matches redirect_uri %s: %s",
+    async ([redirectUri, accepted], { prisma }) => {
+      db.client = prisma;
+      const result = await registerClient({
+        redirect_uris: ["http://localhost:3000/callback", REDIRECT_URI],
+      });
+      if (!result.ok) throw new Error(result.body.error_description);
+      const outcome = await validateAuthorizationRequest(
+        authorizeParams(result.body.client_id as string, pkce().challenge, {
+          redirect_uri: redirectUri,
+        })
+      );
+      expect(outcome).toMatchObject(
+        accepted ? { ok: true, request: { redirectUri } } : { ok: false, redirect: false }
+      );
+    }
+  );
+
+  postgresTest(
+    "authorize accepts Claude Code's metadata document client on an ephemeral port",
+    async ({ prisma }) => {
+      db.client = prisma;
+      const clientId = "https://claude.ai/oauth/claude-code-client-metadata";
+      const transport = documentTransport(
+        200,
+        JSON.stringify({
+          client_id: clientId,
+          client_name: "Claude Code",
+          redirect_uris: ["http://localhost/callback", "http://127.0.0.1/callback"],
+        })
+      );
+      const redirectUri = "http://localhost:57688/callback";
+      const outcome = await validateAuthorizationRequest(
+        authorizeParams(clientId, pkce().challenge, { redirect_uri: redirectUri }),
+        transport
+      );
+      expect(outcome).toMatchObject({ ok: true, request: { redirectUri } });
+    }
+  );
+
+  postgresTest.for([
+    "https://claude.ai.evil.com/callback",
+    "https://evil.com/callback",
+    "http://claude.ai/callback",
+    "https://claude.ai:8443/callback",
+    "http://localhost.evil.com:3000/callback",
+  ])("register rejects redirect URI %s", async (uri, { prisma }) => {
+    db.client = prisma;
+    const result = await registerClient({ redirect_uris: [uri] });
+    expect(result).toMatchObject({ ok: false, body: { error: "invalid_redirect_uri" } });
+    expect(await prisma.oAuthClient.count()).toBe(0);
+  });
+
+  postgresTest("a metadata document client is fetched once and cached", async ({ prisma }) => {
+    db.client = prisma;
+    const clientId = "https://claude.ai/oauth/mcp-client.json";
+    const transport = vi.fn(
+      documentTransport(
+        200,
+        JSON.stringify({
+          client_id: clientId,
+          redirect_uris: [REDIRECT_URI],
+          client_name: "Claude",
+        })
+      )
+    );
+
+    const client = await resolveClient(clientId, transport);
+    expect(client).toMatchObject({ kind: "CIMD", redirectUris: [REDIRECT_URI] });
+    await resolveClient(clientId, transport);
+    expect(transport).toHaveBeenCalledTimes(1);
+  });
+
+  postgresTest.for([
+    { name: "an IPv6 loopback literal", clientId: "https://[::1]/client.json" },
+    { name: "a trailing-dot localhost", clientId: "https://localhost./client.json" },
+    { name: "a redirect", status: 302 },
+    { name: "an oversized body", size: 64 * 1024 + 1 },
+  ] as Array<{ name: string; clientId?: string; status?: number; size?: number }>)(
+    "a metadata document client is refused for $name",
+    async (row, { prisma }) => {
+      db.client = prisma;
+      const clientId = row.clientId ?? "https://claude.ai/oauth/mcp-client.json";
+      const document = JSON.stringify({
+        client_id: clientId,
+        redirect_uris: [REDIRECT_URI],
+        padding: "x".repeat(row.size ?? 0),
+      });
+      const transport = vi.fn(documentTransport(row.status ?? 200, document));
+
+      expect(await resolveClient(clientId, transport)).toBeNull();
+      expect(await prisma.oAuthClient.count()).toBe(0);
+    }
+  );
+
+  it.for([
+    ["8.8.8.8", true],
+    ["2606:4700:4700::1111", true],
+    ["::ffff:127.0.0.1", false],
+    ["169.254.169.254", false],
+    ["fd00::1", false],
+    ["fe80::1", false],
+  ] as const)("isPublicAddress(%s) is %s", ([address, expected]) => {
+    expect(isPublicAddress(address)).toBe(expected);
+  });
+
+  it("the metadata fetch refuses to connect to a loopback address", async () => {
+    const error = await new Promise((resolve) => publicOnlyLookup("localhost", {}, resolve));
+    expect(error).toBeInstanceOf(Error);
+  });
+});

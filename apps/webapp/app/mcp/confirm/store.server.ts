@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { RedisClient } from "~/redis.server";
 
 const TTL_SECONDS = 10 * 60;
+const DENIED_TTL_MS = 60 * 1000;
 const ID_PATTERN = /^mcpc_[A-Za-z0-9_-]{32}$/;
 
 const RecordSchema = z.object({
@@ -25,13 +26,14 @@ const RecordSchema = z.object({
   expiresAt: z.number(),
   approvedAt: z.number().optional(),
   consumedAt: z.number().optional(),
+  deniedAt: z.number().optional(),
 });
 
 export type McpConfirmationRecord = z.infer<typeof RecordSchema>;
 
 type McpPendingConfirmation = Omit<
   McpConfirmationRecord,
-  "id" | "expiresAt" | "approvedAt" | "consumedAt"
+  "id" | "expiresAt" | "approvedAt" | "consumedAt" | "deniedAt"
 >;
 
 export type McpApprovalLookup = Pick<
@@ -40,9 +42,12 @@ export type McpApprovalLookup = Pick<
 >;
 
 export type McpConfirmationStore = {
-  createPending: (record: McpPendingConfirmation) => Promise<{ id: string; url: string }>;
+  createPending: (
+    record: McpPendingConfirmation
+  ) => Promise<{ id: string; url: string } | { denied: true; id: string }>;
   get: (id: string, userId: string) => Promise<McpConfirmationRecord | null>;
   approve: (id: string, userId: string) => Promise<boolean>;
+  deny: (id: string, userId: string) => Promise<boolean>;
   consumeApproved: (lookup: McpApprovalLookup) => Promise<{ id: string } | null>;
 };
 
@@ -51,12 +56,28 @@ local raw = redis.call("GET", KEYS[1])
 if not raw then return 0 end
 local r = cjson.decode(raw)
 if r.userId ~= ARGV[1] or r.truncated or r.expiresAt <= tonumber(ARGV[2]) then return 0 end
+if r.deniedAt then return 0 end
 if r.approvedAt or r.consumedAt then return 1 end
 local ttl = redis.call("PTTL", KEYS[1])
 if ttl <= 0 then return 0 end
 r.approvedAt = tonumber(ARGV[2])
 redis.call("SET", KEYS[1], cjson.encode(r), "PX", ttl)
 redis.call("SET", KEYS[2], r.id, "PX", ttl)
+return 1
+`;
+
+const denyScript = `
+local raw = redis.call("GET", KEYS[1])
+if not raw then return 0 end
+local r = cjson.decode(raw)
+if r.userId ~= ARGV[1] or r.expiresAt <= tonumber(ARGV[2]) then return 0 end
+if r.approvedAt or r.consumedAt or r.deniedAt then return 0 end
+r.deniedAt = tonumber(ARGV[2])
+r.expiresAt = tonumber(ARGV[2]) + tonumber(ARGV[3])
+redis.call("SET", KEYS[1], cjson.encode(r), "PX", tonumber(ARGV[3]))
+if redis.call("GET", KEYS[2]) == r.id then
+  redis.call("SET", KEYS[2], r.id, "PX", tonumber(ARGV[3]))
+end
 return 1
 `;
 
@@ -69,7 +90,7 @@ if r.userId ~= ARGV[2] or r.tokenId ~= ARGV[3] or r.client ~= ARGV[4] or r.tool 
   or r.argsDigest ~= ARGV[6] then
   return nil
 end
-if not r.approvedAt or r.consumedAt or r.expiresAt <= tonumber(ARGV[7]) then return nil end
+if not r.approvedAt or r.consumedAt or r.deniedAt or r.expiresAt <= tonumber(ARGV[7]) then return nil end
 local ttl = redis.call("PTTL", KEYS[2])
 if ttl <= 0 then return nil end
 r.consumedAt = tonumber(ARGV[7])
@@ -116,7 +137,8 @@ export function createMcpConfirmationStore(
   return {
     async createPending(pending) {
       const existing = await get((await redis.get(pendingKey(pending))) ?? "", pending.userId);
-      if (existing && !existing.approvedAt && !existing.consumedAt) {
+      if (existing?.deniedAt) return { denied: true, id: existing.id };
+      if (existing && !existing.approvedAt && !existing.consumedAt && !existing.deniedAt) {
         return { id: existing.id, url: confirmationUrl(existing.id) };
       }
 
@@ -150,6 +172,21 @@ export function createMcpConfirmationStore(
         approvalKey(record),
         userId,
         String(now())
+      );
+      return result === 1;
+    },
+
+    async deny(id, userId) {
+      const record = await get(id, userId);
+      if (!record) return false;
+      const result = await redis.eval(
+        denyScript,
+        2,
+        recordKey(userId, id),
+        pendingKey(record),
+        userId,
+        String(now()),
+        String(DENIED_TTL_MS)
       );
       return result === 1;
     },

@@ -24,6 +24,7 @@ import { env } from "./env.server";
 import { eventLoopMonitor, eventLoopUtilizationMonitor } from "./eventLoopMonitor.server";
 import { logger } from "./services/logger.server";
 import { createMcpBearerAuthenticator } from "./mcp/auth/bearer.server";
+import { MCP_SCOPES, mcpResource } from "./services/oauth/metadata.server";
 import { createMcpProtectedResourceHandler } from "./mcp/protectedResource.server";
 import { createMcpRouter } from "./mcp/server.server";
 import {
@@ -133,6 +134,11 @@ export default function handleRequest(
   }
 
   if (url.pathname.startsWith("/mcp/confirm")) {
+    responseHeaders.set("Content-Security-Policy", "frame-ancestors 'none'");
+  }
+
+  if (url.pathname.startsWith("/account/authorization-code/")) {
+    responseHeaders.set("X-Frame-Options", "DENY");
     responseHeaders.set("Content-Security-Policy", "frame-ancestors 'none'");
   }
 
@@ -410,6 +416,7 @@ export const mcpRouter = env.MCP_SERVER_ENABLED
         recheckUserActorClaims: resolveAndRecheckUserActorClaims,
         touchPat: updateLastAccessedAtIfStale,
         resourceMetadataUrl: `${env.APP_ORIGIN}/.well-known/oauth-protected-resource`,
+        audience: mcpResource(),
       }),
       rateLimit: createMcpRateLimiter(),
       preAuth: createMcpPreAuthRateLimit({
@@ -426,8 +433,9 @@ export const mcpRouter = env.MCP_SERVER_ENABLED
   : undefined;
 export const mcpProtectedResource = env.MCP_SERVER_ENABLED
   ? createMcpProtectedResourceHandler({
-      origin: env.APP_ORIGIN,
-      authorizationServers: [],
+      origin: env.MCP_ORIGIN,
+      authorizationServers: [env.APP_ORIGIN],
+      scopes: MCP_SCOPES,
     })
   : undefined;
 

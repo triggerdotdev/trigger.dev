@@ -1,18 +1,26 @@
-import { ShieldCheckIcon } from "@heroicons/react/24/solid";
 import {
   json,
   type ActionFunctionArgs,
   type HeadersFunction,
   type LoaderFunctionArgs,
 } from "@remix-run/node";
-import { Form, useActionData, useLoaderData, useNavigation } from "@remix-run/react";
+import {
+  Form,
+  isRouteErrorResponse,
+  useActionData,
+  useLoaderData,
+  useNavigation,
+  useRouteError,
+} from "@remix-run/react";
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
+import { CodeBlock } from "~/components/code/CodeBlock";
+import { LoginPageLayout } from "~/components/LoginPageLayout";
 import { Button } from "~/components/primitives/Buttons";
-import { FormTitle } from "~/components/primitives/FormTitle";
+import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { describeMcpSubject } from "~/mcp/confirm/confirmation.server";
 import { getMcpConfirmationStore } from "~/mcp/confirm/storeInstance.server";
+import { describeOAuthClientName } from "~/services/oauth/consent.server";
 import { requireUser } from "~/services/session.server";
 import { commitSession, getUserSession } from "~/services/sessionStorage.server";
 
@@ -49,9 +57,12 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     {
       tool: record.tool,
       target: await describeMcpSubject(record.subject),
-      client: record.clientId ?? "Personal access token",
+      client: record.clientId
+        ? await describeOAuthClientName(record.clientId)
+        : "Personal access token",
       preview: record.preview,
       approved: record.approvedAt !== undefined,
+      denied: record.deniedAt !== undefined,
       truncated: record.truncated === true,
       csrf,
     },
@@ -66,7 +77,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const user = await requireUser(request);
   const session = await getUserSession(request);
   const expected = session.get(CSRF_KEY);
-  const submitted = (await request.formData()).get("csrf");
+  const formData = await request.formData();
+  const submitted = formData.get("csrf");
   if (
     typeof expected !== "string" ||
     typeof submitted !== "string" ||
@@ -78,17 +90,28 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const store = getMcpConfirmationStore();
   const id = params.confirmationId ?? "";
+  const decision = formData.get("decision") ?? "approve";
+  if (decision !== "approve" && decision !== "deny") {
+    throw new Response("Bad Request", { status: 400, headers: noStore });
+  }
+  if (decision === "deny") {
+    if (!(await store.deny(id, user.id))) notFound();
+    return json({ approved: false, denied: true, error: undefined }, { headers: noStore });
+  }
   const record = await store.get(id, user.id);
   if (!record) notFound();
   if (record.truncated) {
-    return json({ approved: false, error: TOO_LARGE }, { status: 422, headers: noStore });
+    return json(
+      { approved: false, denied: false, error: TOO_LARGE },
+      { status: 422, headers: noStore }
+    );
   }
   if (!(await store.approve(id, user.id))) notFound();
-  return json({ approved: true, error: undefined }, { headers: noStore });
+  return json({ approved: true, denied: false, error: undefined }, { headers: noStore });
 }
 
 export default function Page() {
-  const { tool, target, client, preview, approved, truncated, csrf } =
+  const { tool, target, client, preview, approved, denied, truncated, csrf } =
     useLoaderData<typeof loader>();
   const result = useActionData<typeof action>();
   const navigation = useNavigation();
@@ -96,25 +119,60 @@ export default function Page() {
   if (approved || result?.approved) {
     return (
       <Shell title="Approved">
-        <Paragraph spacing>Approved — return to your client and run the tool again.</Paragraph>
+        <Paragraph spacing className="text-center">
+          Approved — return to your client and run the tool again.
+        </Paragraph>
+      </Shell>
+    );
+  }
+
+  if (denied || result?.denied) {
+    return (
+      <Shell title="Denied">
+        <Paragraph spacing className="text-center">
+          Denied — nothing was run. If you change your mind, ask your assistant again in a minute.
+        </Paragraph>
       </Shell>
     );
   }
 
   return (
     <Shell title={`Approve "${tool}"?`}>
-      <Paragraph spacing>
+      <Paragraph spacing className="text-center">
         {client} wants to run <strong>{tool}</strong> on {target}.
       </Paragraph>
-      <pre className="mb-4 max-h-80 overflow-auto whitespace-pre-wrap break-all rounded bg-charcoal-800 p-3 font-mono text-xs text-text-dimmed">
-        {preview}
-      </pre>
+      <CodeBlock
+        code={preview}
+        language="json"
+        showLineNumbers={false}
+        showOpenInModal={false}
+        wrap
+        maxLines={12}
+        className="mb-4 w-full"
+      />
       {truncated ? (
-        <Paragraph>{TOO_LARGE}</Paragraph>
+        <Paragraph className="text-center">{TOO_LARGE}</Paragraph>
       ) : (
-        <Form method="post">
+        <Form method="post" className="flex w-full gap-6">
           <input type="hidden" name="csrf" value={csrf} />
-          <Button variant="primary/medium" disabled={navigation.state !== "idle"}>
+          <Button
+            type="submit"
+            name="decision"
+            value="deny"
+            variant="secondary/large"
+            fullWidth
+            disabled={navigation.state !== "idle"}
+          >
+            Deny
+          </Button>
+          <Button
+            type="submit"
+            name="decision"
+            value="approve"
+            variant="primary/large"
+            fullWidth
+            disabled={navigation.state !== "idle"}
+          >
             Approve
           </Button>
         </Form>
@@ -123,18 +181,26 @@ export default function Page() {
   );
 }
 
+export function ErrorBoundary() {
+  const error = useRouteError();
+  if (!isRouteErrorResponse(error) || error.status !== 404) throw error;
+  return (
+    <Shell title="Confirmation link is no longer valid">
+      <Paragraph className="text-center">
+        This link was already used or has expired. Ask your assistant to run the action again to get
+        a new link.
+      </Paragraph>
+    </Shell>
+  );
+}
+
 function Shell({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <AppContainer>
-      <MainCenteredContainer className="max-w-120">
-        <div>
-          <FormTitle
-            LeadingIcon={<ShieldCheckIcon className="size-6 text-cyan-500" />}
-            title={title}
-          />
-          {children}
-        </div>
-      </MainCenteredContainer>
-    </AppContainer>
+    <LoginPageLayout scrollable singleColumn>
+      <div className="flex w-full flex-col items-center py-8">
+        <Header1 className="pb-4 text-center font-semibold leading-tight text-2xl">{title}</Header1>
+        {children}
+      </div>
+    </LoginPageLayout>
   );
 }

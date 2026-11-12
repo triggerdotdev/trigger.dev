@@ -4,6 +4,7 @@ import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import type { StartedRedisContainer } from "@testcontainers/redis";
 import { RedisContainer } from "@testcontainers/redis";
 import Redis from "ioredis";
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -18,7 +19,6 @@ import { Client } from "pg";
 import { isDebug } from "std-env";
 import type { StartedNetwork, StartedTestContainer } from "testcontainers";
 import { GenericContainer, Wait } from "testcontainers";
-import { x } from "tinyexec";
 import type { TestContext } from "vitest";
 import { ClickHouseContainer, runClickhouseMigrations } from "./clickhouse";
 import { getContainerMetadata, getTaskMetadata, logCleanup, logSetup } from "./logs";
@@ -117,17 +117,40 @@ async function readOrGenerateSchemaSql(key: string, prismaBin: string, schemaPat
     return readFileSync(cachePath, "utf8");
   }
 
-  const result = await x(
-    prismaBin,
-    ["migrate", "diff", "--from-empty", "--to-schema-datamodel", schemaPath, "--script"],
-    { throwOnError: true, timeout: SCHEMA_SQL_GENERATION_TIMEOUT_MS }
-  );
+  const sql = await generateSchemaSql(prismaBin, schemaPath);
 
   mkdirSync(cacheDir, { recursive: true });
   const tmpPath = `${cachePath}.${process.pid}.tmp`;
-  writeFileSync(tmpPath, result.stdout);
+  writeFileSync(tmpPath, sql);
   renameSync(tmpPath, cachePath);
-  return result.stdout;
+  return sql;
+}
+
+export function generateSchemaSql(prismaBin: string, schemaPath: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      prismaBin,
+      ["migrate", "diff", "--from-empty", "--to-schema-datamodel", schemaPath, "--script"],
+      { stdio: ["ignore", "pipe", "pipe"], timeout: SCHEMA_SQL_GENERATION_TIMEOUT_MS }
+    );
+    const out: Buffer[] = [];
+    const err: Buffer[] = [];
+    child.stdout.on("data", (chunk: Buffer) => out.push(chunk));
+    child.stderr.on("data", (chunk: Buffer) => err.push(chunk));
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`prisma migrate diff exited with ${code}: ${Buffer.concat(err)}`));
+        return;
+      }
+      const sql = Buffer.concat(out).toString("utf8");
+      if (!sql.endsWith(";\n") && !sql.endsWith(";\n\n")) {
+        reject(new Error(`prisma migrate diff output is truncated (${sql.length} chars)`));
+        return;
+      }
+      resolve(sql);
+    });
+  });
 }
 
 /**

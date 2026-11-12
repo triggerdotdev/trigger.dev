@@ -2,6 +2,7 @@ import { UrlElicitationRequiredError } from "@modelcontextprotocol/server";
 import { buildJwtAbility, CAPLESS_USER_ACTOR_SCOPES, type RbacAbility } from "@trigger.dev/rbac";
 import { logger } from "~/services/logger.server";
 import { resolveAndRecheckUserActorClaims } from "~/services/personalAccessToken.server";
+import { mcpResource } from "~/services/oauth/metadata.server";
 import { rbac } from "~/services/rbac.server";
 import {
   confirmationClient,
@@ -47,7 +48,7 @@ async function confirmationDefaults(options: McpGateOptions) {
   };
 }
 
-type Outcome = "ok" | "denied" | "error" | "pending" | "confirmed";
+type Outcome = "ok" | "denied" | "user_denied" | "error" | "pending" | "confirmed";
 
 const NO_EXTRA: McpRequestExtra = { signal: new AbortController().signal, requestId: "" };
 
@@ -73,13 +74,15 @@ async function authenticate(
     return same ? result.ability : null;
   }
 
-  const result = await rbac.authenticateUserActor(request, context);
+  const audience = mcpResource();
+  const result = await rbac.authenticateUserActor(request, context, { audience });
   if (!result.ok) return null;
   const bearer = request.headers
     .get("Authorization")
     ?.replace(/^Bearer /, "")
     .trim();
-  const claims = bearer && (await resolveAndRecheckUserActorClaims(result.claims, bearer));
+  const claims =
+    bearer && (await resolveAndRecheckUserActorClaims(result.claims, bearer, audience));
   if (!claims) return null;
   const same =
     result.userId === identity.userId &&
@@ -146,7 +149,9 @@ async function confirm(
   identity: McpIdentity,
   subject: McpSubject | null
 ): Promise<
-  { approved: true; id: string } | { approved: false; id: string; url: string; message: string }
+  | { approved: true; id: string }
+  | { approved: false; id: string; url: string; message: string }
+  | { approved: false; denied: true; id: string }
 > {
   const lookup = {
     userId: identity.userId,
@@ -158,12 +163,14 @@ async function confirm(
   const consumed = await store.consumeApproved(lookup);
   if (consumed) return { approved: true, id: consumed.id };
 
-  const { id, url } = await store.createPending({
+  const created = await store.createPending({
     ...lookup,
     clientId: identity.kind === "uat" ? (identity.clientId ?? "Unknown client") : undefined,
     subject: confirmationSubject(subject),
     ...(await confirmationPreview(tool, spec, args, subject)),
   });
+  if ("denied" in created) return { approved: false, denied: true, id: created.id };
+  const { id, url } = created;
   const target = await describeMcpSubject(subject);
   return {
     approved: false,
@@ -204,6 +211,18 @@ export function withMcpToolAuth<TArgs>(
         const { store, mode } = await confirmationDefaults(options);
         const check = await confirm(store, tool, approval, args, identity, subject);
         confirmationId = check.id;
+        if ("denied" in check) {
+          outcome = "user_denied";
+          return {
+            content: [
+              {
+                type: "text",
+                text: `The user denied "${tool}". Do not retry unless the user asks again.`,
+              },
+            ],
+            isError: true,
+          };
+        }
         if (!check.approved) {
           outcome = "pending";
           if (mode === "tool-error" && extra.era !== "modern") {

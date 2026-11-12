@@ -124,12 +124,12 @@ async function openPage(userId: string, id: string) {
   const page: Response = await (loader as any)({ request: new Request(url), params, context: {} });
   const body = await page.clone().json();
   const cookie = page.headers.get("Set-Cookie")!.split(";")[0]!;
-  const post = (postUserId: string, token: string) => {
+  const post = (postUserId: string, token: string, decision?: string) => {
     mocks.userId = postUserId;
     const request = new Request(url, {
       method: "POST",
       headers: { Cookie: cookie, "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ csrf: token }),
+      body: new URLSearchParams(decision ? { csrf: token, decision } : { csrf: token }),
     });
     return (action as any)({ request, params, context: {} }).then(
       (r: Response) => r.status,
@@ -176,6 +176,59 @@ describe("MCP write confirmation", () => {
         const { id } = await t.store.createPending({ ...record, ...other });
         expect(id).not.toBe(first.elicitationId);
       }
+    }
+  );
+
+  // Catches: deny deleting the record, so the page after the POST turns into a 404.
+  containerTest(
+    "a denied confirmation is a tombstone and a retry starts fresh",
+    async ({ prisma, redisOptions }) => {
+      const t = await setup(prisma, redisOptions);
+      const { elicitationId } = await t.pending(t.call(t.argsA));
+      const record = (await t.store.get(elicitationId, t.identity.userId))!;
+
+      expect(await t.store.deny(elicitationId, t.identity.userId)).toBe(true);
+      expect((await t.store.get(elicitationId, t.identity.userId))?.deniedAt).toBeDefined();
+      expect(await t.store.approve(elicitationId, t.identity.userId)).toBe(false);
+      expect(await t.store.consumeApproved(record)).toBeNull();
+      expect(await t.store.deny(elicitationId, t.identity.userId)).toBe(false);
+      const { id: _id, expiresAt: _expiresAt, ...lookup } = record;
+      expect(await t.store.createPending(lookup)).toEqual({ denied: true, id: record.id });
+    }
+  );
+
+  // Catches: a denied call being retried into a fresh prompt, or never being retryable again.
+  containerTest(
+    "a denied call is terminal until the tombstone expires",
+    async ({ prisma, redisOptions }) => {
+      const t = await setup(prisma, redisOptions);
+      const first = await t.pending(t.call(t.argsA));
+      await t.store.deny(first.elicitationId, t.identity.userId);
+
+      const retry = await t.call(t.argsA).then(
+        (r) => r,
+        (e: unknown) => e
+      );
+      expect(retry).toMatchObject({ isError: true });
+      expect(JSON.stringify(retry)).toContain('The user denied \\"trigger_task\\"');
+      expect(t.calls).toHaveLength(0);
+
+      t.clock.now += 61 * 1000;
+      expect((await t.pending(t.call(t.argsA))).elicitationId).not.toBe(first.elicitationId);
+    }
+  );
+
+  // Catches: deny discarding an approval the user already gave.
+  containerTest(
+    "deny after approve fails and keeps the approval",
+    async ({ prisma, redisOptions }) => {
+      const t = await setup(prisma, redisOptions);
+      const { elicitationId } = await t.pending(t.call(t.argsA));
+      await t.store.approve(elicitationId, t.identity.userId);
+      const record = (await t.store.get(elicitationId, t.identity.userId))!;
+
+      expect(await t.store.deny(elicitationId, t.identity.userId)).toBe(false);
+      expect(await t.store.consumeApproved(record)).toEqual({ id: elicitationId });
     }
   );
 
@@ -385,6 +438,47 @@ describe("MCP confirm route", () => {
       expect((await t.store.get(elicitationId, t.identity.userId))?.approvedAt).toBeDefined();
     }
   );
+
+  // Catches: a consumed link answering with a bare 404 instead of the friendly page.
+  containerTest("a consumed link is a 404 with no-store", async ({ prisma, redisOptions }) => {
+    const t = await setup(prisma, redisOptions);
+    const { elicitationId } = await t.pending(t.call(t.argsA));
+    await t.store.approve(elicitationId, t.identity.userId);
+    await t.store.consumeApproved((await t.store.get(elicitationId, t.identity.userId))!);
+
+    const thrown = await openPage(t.identity.userId, elicitationId).catch((r: Response) => r);
+    expect((thrown as Response).status).toBe(404);
+    expect((thrown as Response).headers.get("Cache-Control")).toBe("no-store");
+  });
+
+  // Catches: the deny route rejecting wrongly, or the page after a deny reading as not found.
+  containerTest("deny through the route", async ({ prisma, redisOptions }) => {
+    const t = await setup(prisma, redisOptions);
+    const { elicitationId } = await t.pending(t.call(t.argsA));
+    const { body, post } = await openPage(t.identity.userId, elicitationId);
+
+    expect(await post(t.identity.userId, "wrong", "deny")).toBe(403);
+    expect(await post(t.other.user.id, body.csrf, "deny")).toBe(404);
+    expect(await post(t.identity.userId, body.csrf, "bogus")).toBe(400);
+    expect(await post(t.identity.userId, body.csrf, "deny")).toBe(200);
+
+    const after = await openPage(t.identity.userId, elicitationId);
+    expect(after.page.status).toBe(200);
+    expect(after.body.denied).toBe(true);
+    expect(await post(t.identity.userId, body.csrf, "deny")).toBe(404);
+    expect(await post(t.identity.userId, body.csrf, "approve")).toBe(404);
+  });
+
+  // Catches: a deny after approval blocking the approved call.
+  containerTest("deny after approve is rejected by the route", async ({ prisma, redisOptions }) => {
+    const t = await setup(prisma, redisOptions);
+    const { elicitationId } = await t.pending(t.call(t.argsA));
+    const { body, post } = await openPage(t.identity.userId, elicitationId);
+
+    expect(await post(t.identity.userId, body.csrf, "approve")).toBe(200);
+    expect(await post(t.identity.userId, body.csrf, "deny")).toBe(404);
+    expect(await t.call(t.argsA)).toEqual(ok);
+  });
 
   // Catches: the HTML page (CSRF token, preview) being cacheable or frameable.
   containerTest("the page is not cached or framed", async ({ prisma, redisOptions }) => {

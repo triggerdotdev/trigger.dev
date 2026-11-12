@@ -55,6 +55,7 @@ import {
   resetConfirmations,
 } from "./helpers/mcpConfirm";
 import type { McpIdentity } from "~/mcp/types";
+import { mcpResource } from "~/services/oauth/metadata.server";
 import { orgsWriteTools } from "~/mcp/tools/orgsWrite.server";
 import { createRunsWriteTools } from "~/mcp/tools/runsWrite.server";
 import { createTasksWriteTools } from "~/mcp/tools/tasksWrite.server";
@@ -186,6 +187,7 @@ describe("mcp write tools", () => {
         client: "mcp",
         pat: "pat_src",
         cap,
+        audience: mcpResource(),
       });
       const identity: McpIdentity = {
         kind: "uat",
@@ -267,21 +269,25 @@ describe("mcp write tools", () => {
     async ({ prisma }) => {
       const { a, identity, request } = await seed(prisma);
       const create = tool(orgsWriteTools, "create_project_in_org");
-      const token = await signUserActorToken(SECRET, {
-        userId: a.user.id,
-        client: "mcp",
-        pat: "pat_src",
-        cap: ["read:all"],
-      });
-      const uat: McpIdentity = {
-        kind: "uat",
-        userId: a.user.id,
-        sourceTokenId: "pat_src",
-        cap: ["read:all"],
+      const asUat = async (cap: string[], name: string) => {
+        const token = await signUserActorToken(SECRET, {
+          userId: a.user.id,
+          client: "mcp",
+          pat: "pat_src",
+          cap,
+          audience: mcpResource(),
+        });
+        const uat: McpIdentity = {
+          kind: "uat",
+          userId: a.user.id,
+          sourceTokenId: "pat_src",
+          cap,
+        };
+        const request = new Request("https://api.trigger.dev/mcp", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        return create({ orgParam: a.organization.slug, name }, uat, request);
       };
-      const uatRequest = new Request("https://api.trigger.dev/mcp", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
       await prisma.organization.update({
         where: { id: a.organization.id },
         data: { isActivated: true },
@@ -289,13 +295,13 @@ describe("mcp write tools", () => {
       const projects = () => prisma.project.count({ where: { organizationId: a.organization.id } });
       const before = await projects();
 
-      const denied = await create(
-        { orgParam: a.organization.slug, name: "capped" },
-        uat,
-        uatRequest
-      );
+      const denied = await asUat(["read:all"], "capped");
       expect(textOf(denied)).toBe("Not authorized");
       expect(await projects()).toBe(before);
+
+      const allowed = await asUat(["write:projects"], "capped-ok");
+      expect(textOf(allowed)).toContain("Project created successfully: capped-ok");
+      expect(await projects()).toBe(before + 1);
 
       const created = await create(
         { orgParam: a.organization.slug, name: "member" },
@@ -303,7 +309,7 @@ describe("mcp write tools", () => {
         request
       );
       expect(textOf(created)).toContain("Project created successfully: member");
-      expect(await projects()).toBe(before + 1);
+      expect(await projects()).toBe(before + 2);
     }
   );
 
@@ -342,6 +348,7 @@ describe("mcp write tools", () => {
         client: "mcp",
         pat: "pat_src",
         cap,
+        audience: mcpResource(),
       });
       const identity: McpIdentity = {
         kind: "uat",
@@ -375,6 +382,7 @@ describe("mcp write tools", () => {
         userId: a.user.id,
         client: "mcp",
         pat: "pat_src",
+        audience: mcpResource(),
         cap,
       });
       const identity: McpIdentity = {
