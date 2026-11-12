@@ -84,7 +84,10 @@ export class ApiKeysPresenter {
           rootApiKeyHiddenAt: true,
           type: true,
           apiKeys: {
-            where: showRevoked ? undefined : { revokedAt: null },
+            where: {
+              revokedAt: showRevoked ? undefined : null,
+              issuedBy: "USER",
+            },
             orderBy: { createdAt: "desc" },
             select: {
               id: true,

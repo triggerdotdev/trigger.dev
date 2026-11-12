@@ -51,6 +51,7 @@ export class ApiKeyUsagePresenter {
       where: {
         id: apiKeyId,
         runtimeEnvironmentId: environment.parentEnvironmentId ?? environment.id,
+        issuedBy: "USER",
       },
       select: { id: true, name: true, createdAt: true, scopes: true, revokedAt: true },
     });

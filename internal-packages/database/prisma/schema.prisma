@@ -454,6 +454,11 @@ model RuntimeEnvironment {
   @@index([organizationId])
 }
 
+enum ApiKeyIssuer {
+  USER
+  SYSTEM
+}
+
 model ApiKey {
   id       String @id @default(cuid())
   name     String
@@ -469,6 +474,8 @@ model ApiKey {
   createdBy       User?   @relation(fields: [createdByUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   createdByUserId String? @map("created_by_user_id")
 
+  issuedBy ApiKeyIssuer @default(USER) @map("issued_by")
+
   presetId String?  @map("preset_id")
   scopes   String[]
 
@@ -483,6 +490,7 @@ model ApiKey {
   createdAt  DateTime  @default(now()) @map("created_at")
 
   @@index([runtimeEnvironmentId, revokedAt, createdAt(sort: Desc)])
+  @@index([runtimeEnvironmentId, issuedBy, revokedAt, createdAt(sort: Desc)], map: "api_keys_env_issued_by_revoked_at_created_at_idx")
   @@map("api_keys")
 }
 
