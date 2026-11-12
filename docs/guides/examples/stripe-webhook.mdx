@@ -62,7 +62,7 @@ export const fulfillOrder = webhook({
 
 <Steps>
   <Step title="Sync the endpoint">
-    Run `trigger dev`, or deploy. Open the **Webhooks** page in your Development environment and select the `stripe` endpoint. Each environment has its own endpoint URL, and each team member has their own development environment. Register your development URL in a Stripe sandbox (or test mode) and the production URL in live mode.
+    Run `trigger dev`, then open the **Webhooks** page in your Development environment and select the `stripe` endpoint. When you deploy, the endpoint also appears in the Production environment. Each environment has its own endpoint URL, and each team member has their own development environment. Register your development URL in a Stripe sandbox (or test mode) and the production URL in live mode.
   </Step>
   <Step title="Add the URL in Stripe">
     Copy the endpoint's **Webhook URL**. In the Stripe Dashboard, open the **Webhooks** tab in Workbench and choose **Create an event destination**:

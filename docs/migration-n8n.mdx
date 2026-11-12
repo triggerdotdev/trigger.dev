@@ -102,6 +102,8 @@ After you run the dev server or deploy, connect GitHub to the endpoint, the way 
    npx trigger.dev@latest webhooks generate-secret github --env dev --to-env GITHUB_WEBHOOK_SECRET
    ```
 
+   If you deployed, use `--env prod` instead, and copy the URL from the Production environment in the next step.
+
 2. Copy the endpoint's **Webhook URL** from the **Webhooks** page.
 3. In the GitHub repository's **Settings > Webhooks**, add a webhook with that URL as the **Payload URL**, **Content type** set to `application/json`, the `GITHUB_WEBHOOK_SECRET` value from `.env.local` as the **Secret**, and **Just the push event** selected.
 
