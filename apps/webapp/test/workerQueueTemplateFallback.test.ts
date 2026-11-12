@@ -39,6 +39,7 @@ const lane = (
 
 const worker = (workloadType: "CONTAINER" | "MICROVM") => ({
   workerGroupId: "wg_test",
+  type: "MANAGED" as const,
   workloadType,
 });
 

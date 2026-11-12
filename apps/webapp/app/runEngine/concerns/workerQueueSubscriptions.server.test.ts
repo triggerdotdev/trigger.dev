@@ -22,6 +22,7 @@ const restore: WorkerQueueSubscription = { ...stable, phase: "restore" };
 const worker: WorkerQueueConsumerOptions = {
   workerGroupId: "group-container",
   workerInstanceId: "instance-container",
+  type: "MANAGED",
   masterQueue: "legacy-container-group",
   region: "us-east-1",
   workloadType: "CONTAINER",
@@ -211,5 +212,26 @@ describe("workerServesQueue", () => {
     expect(
       workerServesQueue(regionless, "legacy-container-group:v2:ondemand:fresh:container:stable")
     ).toBe(true);
+  });
+});
+
+describe("an UNMANAGED worker group", () => {
+  const unmanaged = () =>
+    createWorkerQueueConsumer({ ...worker, type: "UNMANAGED", allowedSubscriptions: [stable] });
+
+  // Catches: an allowlist entry letting a project-scoped group consume a shared v2 lane.
+  it("is refused v2 subscriptions even when its allowlist covers them", () => {
+    expect(() => resolveWorkerQueueSubscriptions(unmanaged(), [stable])).toThrow(
+      expect.objectContaining({ status: 403 })
+    );
+  });
+
+  // Catches: a restore or release from a project-scoped group being accepted on a shared v2 lane.
+  it("serves only its own legacy queues", () => {
+    expect(workerServesQueue(unmanaged(), "legacy-container-group")).toBe(true);
+    expect(workerServesQueue(unmanaged(), "legacy-container-group:scheduled")).toBe(true);
+    expect(workerServesQueue(unmanaged(), "us-east-1:v2:ondemand:fresh:container:stable")).toBe(
+      false
+    );
   });
 });
