@@ -35,6 +35,7 @@ vi.mock("~/services/dashboardAgent.server", () => ({
   dashboardAgentUserApiOrigin: () => "https://api.trigger.dev",
   isDashboardAgentConfigured: () => true,
   mintDashboardAgentToken: async () => "pat_minted",
+  mintDashboardAgentAppendToken: async () => "pat_append",
   mintDashboardAgentUserActorToken: async () => "tr_uat_real",
   resolveDashboardAgentRepoSnapshot: async () => null,
   startDashboardAgentSession: mocks.startSession,

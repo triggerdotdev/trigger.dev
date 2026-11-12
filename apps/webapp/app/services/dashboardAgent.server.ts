@@ -156,15 +156,23 @@ export async function startDashboardAgentSession(params: {
 
 // Read is narrowed to the `.out` stream (`read:sessions:{chatId}:out`): `.in` records carry
 // the delegated user token the `in` proxy injects, and the session row carries the trigger
-// config, so the browser gets neither.
+// config, so the browser gets neither. No write: every `.in` append goes through the proxy.
 export async function mintDashboardAgentToken(chatId: string): Promise<string> {
+  return mintSessionToken({ read: { sessions: `${chatId}:out` } }, "1h");
+}
+
+export async function mintDashboardAgentAppendToken(chatId: string): Promise<string> {
+  return mintSessionToken({ write: { sessions: chatId } }, "5m");
+}
+
+async function mintSessionToken(
+  scopes: { read?: { sessions: string }; write?: { sessions: string } },
+  expirationTime: string
+): Promise<string> {
   const config = dashboardAgentConfig();
   if (!config) throw new Error("DASHBOARD_AGENT_SECRET_KEY is not set");
   const client = new TriggerClient(config);
-  return client.auth.createPublicToken({
-    scopes: { read: { sessions: `${chatId}:out` }, write: { sessions: chatId } },
-    expirationTime: "1h",
-  });
+  return client.auth.createPublicToken({ scopes, expirationTime });
 }
 
 // A signed, short-lived pointer to the project's connected repo at a commit. Only

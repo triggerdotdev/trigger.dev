@@ -14,7 +14,7 @@ import { MockLanguageModelV3 } from "ai/test";
 import { z } from "zod";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { disposeRepoWorkspaces, workdirFor, type RepoSnapshot } from "./repo-tools";
 import {
@@ -62,6 +62,7 @@ import {
 import { toolSchemasFor } from "./prompt-assembly";
 import { DASHBOARD_AGENT_MONITORING_ALERT_TOOL_NAMES } from "./tool-schemas";
 import { buildDashboardAgentTools } from "./tools";
+import { buildTurnTools } from "./agent-runtime";
 
 describe("dashboardAgent (mock harness)", () => {
   let harness: MockChatAgentHarness | undefined;
@@ -899,14 +900,15 @@ describe("the per-org opt-out", () => {
   /** One turn at full sample rate, with the given opt-out check. */
   async function turnWithPolicy(
     policy: DashboardAgentEvalPolicyCheck,
-    chatId: string
+    chatId: string,
+    clientData: Record<string, unknown> = CLIENT_DATA
   ): Promise<unknown[]> {
     process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE = "1";
     const { store } = fakeStore();
     const { trigger, calls } = fakeEvalTrigger();
     harness = mockChatAgent(dashboardAgent, {
       chatId,
-      clientData: CLIENT_DATA,
+      clientData,
       setupLocals: ({ set }) => {
         set(dashboardAgentStoreKey, store);
         set(dashboardAgentModelKey, mockModel([textStep("answered")]));
@@ -933,6 +935,25 @@ describe("the per-org opt-out", () => {
 
   it("judges the turn when the org allows it", async () => {
     expect(await turnWithPolicy(fakeEvalPolicy(true), "chat_opted_in")).toHaveLength(1);
+  });
+
+  // Catches: the eval opt-out check asking a turn's client-supplied apiOrigin over the worker's own.
+  it("asks the worker's API origin, not the one in the turn's client data", async () => {
+    vi.stubEnv("DASHBOARD_AGENT_API_ORIGIN", "https://api.worker.test");
+    const origins: Array<string | undefined> = [];
+    const recorder: DashboardAgentEvalPolicyCheck = async ({ apiOrigin }) => {
+      origins.push(apiOrigin);
+      return true;
+    };
+    try {
+      await turnWithPolicy(recorder, "chat_policy_origin", {
+        ...CLIENT_DATA,
+        apiOrigin: "http://10.0.0.5:8080",
+      });
+      expect(origins).toEqual(["https://api.worker.test"]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 
@@ -1096,6 +1117,28 @@ describe("a turn that ends in an error", () => {
     expect(JSON.stringify(stored)).not.toContain("upstream_connect_error");
     // The user's question stays in the transcript next to it.
     expect(stored.some((message) => message.role === "user")).toBe(true);
+  });
+
+  // Catches: a worker without its own API origin answering turns from a client-supplied one.
+  it("fails the turn when the worker has no API origin", async () => {
+    vi.stubEnv("DASHBOARD_AGENT_API_ORIGIN", "");
+    try {
+      const { store } = fakeStore();
+      harness = mockChatAgent(dashboardAgent, {
+        chatId: "chat_no_origin",
+        clientData: { ...CLIENT_DATA, apiOrigin: "http://10.0.0.5:8080" },
+        setupLocals: ({ set }) => {
+          set(dashboardAgentStoreKey, store);
+          set(dashboardAgentModelKey, mockModel([textStep("answered")]));
+        },
+      });
+      const turn = await harness.sendMessage(userMessage("hi"));
+      expect(turn.chunks).toEqual([
+        { type: "error", errorText: "DASHBOARD_AGENT_API_ORIGIN is not set" },
+      ]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 
@@ -1975,6 +2018,30 @@ describe("buildDashboardAgentTools", () => {
       expect(fetchStub.exchanges()).toBe(before + 1);
     } finally {
       fetchStub.restore();
+    }
+  });
+
+  // Catches: a turn's client-supplied apiOrigin steering tool requests when the worker has its own.
+  it("calls the worker's API origin, not the one in the turn's client data", async () => {
+    vi.stubEnv("DASHBOARD_AGENT_API_ORIGIN", "https://api.worker.test");
+    const fetchStub = stubFetch(() => ({ body: { data: [] } }));
+    try {
+      const tools = buildTurnTools("chat_1", {
+        ...CLIENT_DATA,
+        ...ENV_CTX,
+        alertsEnabled: false,
+        apiOrigin: "http://10.0.0.5:8080",
+      });
+      await (tools.list_projects as { execute: (i: unknown, o: unknown) => Promise<any> }).execute(
+        {},
+        {}
+      );
+      expect(fetchStub.requests.map((r) => new URL(r.url).origin)).toEqual([
+        "https://api.worker.test",
+      ]);
+    } finally {
+      fetchStub.restore();
+      vi.unstubAllEnvs();
     }
   });
 

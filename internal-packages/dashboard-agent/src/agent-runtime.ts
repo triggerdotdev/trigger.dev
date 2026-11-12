@@ -322,6 +322,12 @@ export function promptOptionsFor(
   };
 }
 
+export function agentApiOrigin(env: NodeJS.ProcessEnv = process.env): string {
+  const origin = env.DASHBOARD_AGENT_API_ORIGIN;
+  if (!origin) throw new Error("DASHBOARD_AGENT_API_ORIGIN is not set");
+  return origin;
+}
+
 // A chat belongs to an org + user; project/env/page are per-turn context, since
 // one conversation can span several projects. Everything past the org + user pair
 // is optional because resumed chats replay older-shaped clientData and must keep
@@ -465,6 +471,7 @@ export function buildTurnTools(
     locals.get(dashboardAgentToolsKey) ??
     buildDashboardAgentTools({
       ...(clientData ?? {}),
+      apiOrigin: agentApiOrigin(),
       chatId,
       investigations: {
         // Every committed revision is tracked, so the settle guard knows whether
