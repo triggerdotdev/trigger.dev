@@ -568,7 +568,6 @@
               "guides/frameworks/drizzle",
               "guides/frameworks/prisma",
               "guides/frameworks/nango",
-              "guides/frameworks/sequin",
               {
                 "group": "Supabase",
                 "icon": {
@@ -590,10 +589,10 @@
                 },
                 "pages": [
                   "guides/frameworks/webhooks-guides-overview",
-                  "guides/frameworks/nextjs-webhooks",
-                  "guides/frameworks/remix-webhooks",
                   "guides/examples/stripe-webhook",
-                  "guides/examples/hookdeck-webhook"
+                  "guides/examples/hookdeck-webhook",
+                  "guides/frameworks/nextjs-webhooks",
+                  "guides/frameworks/remix-webhooks"
                 ]
               }
             ]
@@ -812,6 +811,11 @@
     ]
   },
   "redirects": [
+    {
+      "source": "/guides/frameworks/sequin",
+      "destination": "/guides/frameworks/webhooks-guides-overview",
+      "permanent": true
+    },
     {
       "source": "/webhooks/private-beta",
       "destination": "/webhooks/public-beta",

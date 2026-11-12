@@ -6,21 +6,16 @@ description: "Learn how to trigger a task from a webhook in a Next.js app."
 
 import VercelDocsCards from "/snippets/vercel-docs-cards.mdx";
 
+<Tip>
+  To receive webhooks without adding a route to your app, use a [hosted webhook
+  endpoint](/webhooks/overview). Trigger.dev hosts the URL, verifies each request, and runs your
+  tasks. Use this guide when your Next.js app has to receive the request itself.
+</Tip>
+
 ## Prerequisites
 
-- [A Next.js project, set up with Trigger.dev](/guides/frameworks/nextjs)
+- [A Next.js project, set up with Trigger.dev](/guides/frameworks/nextjs), with `TRIGGER_SECRET_KEY` set in `.env.local` (see [Create an API key for local development](/guides/frameworks/nextjs#create-an-api-key-for-local-development))
 - [cURL](https://curl.se/) installed on your local machine. This will be used to send a POST request to your webhook handler.
-
-## GitHub repo
-
-<Card
-  title="View the project on GitHub"
-  icon="GitHub"
-  href="https://github.com/triggerdotdev/examples/tree/main/nextjs-webhooks/my-app"
->
-  Click here to view the full code for this project in our examples repository on GitHub. You can
-  fork it and use it as a starting point for your own project.
-</Card>
 
 ## Adding the webhook handler
 
@@ -30,12 +25,12 @@ This will be different depending on whether you are using the Next.js pages rout
 
 ### Pages router: creating the webhook handler
 
-Create a new file `pages/api/webhook-handler.ts` or `pages/api/webhook-hander.js`.
+Create a new file `pages/api/webhook-handler.ts`.
 
 In your new file, add the following code:
 
 ```ts /pages/api/webhook-handler.ts
-import { helloWorldTask } from "@/trigger/example";
+import type { helloWorldTask } from "@/trigger/example";
 import { tasks } from "@trigger.dev/sdk";
 import type { NextApiRequest, NextApiResponse } from "next";
 
@@ -54,7 +49,7 @@ This code will handle the webhook payload and trigger the 'Hello World' task.
 
 ### App router: creating the webhook handler
 
-Create a new file in the `app/api/webhook-handler/route.ts` or `app/api/webhook-handler/route.js`.
+Create a new file `app/api/webhook-handler/route.ts`.
 
 In your new file, add the following code:
 
@@ -70,11 +65,13 @@ export async function POST(req: Request) {
   // Trigger the helloWorldTask with the webhook data as the payload
   await tasks.trigger<typeof helloWorldTask>("hello-world", payload);
 
-  return NextResponse.json("OK", { status: 200 });
+  return NextResponse.json({ message: "OK" }, { status: 200 });
 }
 ```
 
 This code will handle the webhook payload and trigger the 'Hello World' task.
+
+The `@/trigger/example` import must point to where `init` created your example task. If `init` created `src/trigger` in a project without a `src` folder, import from `@/src/trigger/example` instead.
 
 ## Triggering the task locally
 
@@ -96,13 +93,13 @@ First, run your Next.js app.
     pnpm run dev
     ```
 
-    ```bash yarn
-    yarn dev
+    ```bash bun
+    bun run dev
     ```
 
 </CodeGroup>
 
-Then, open up a second terminal window and start the Trigger.dev dev server:
+Then, open up a second terminal window and start the Trigger.dev dev server from your project root:
 
 <CodeGroup>
 
@@ -114,11 +111,11 @@ Then, open up a second terminal window and start the Trigger.dev dev server:
     pnpm dlx trigger.dev@latest dev
     ```
 
-    ```bash yarn
-    yarn dlx trigger.dev@latest dev
+    ```bash bun
+    bunx trigger.dev@latest dev
     ```
 
-    </CodeGroup>
+</CodeGroup>
 
 </Step>
 
@@ -141,9 +138,11 @@ This will send a POST request to your webhook handler, with a JSON payload.
 
 <Step title="Check the task ran successfully">
 
-After running the command, you should see a successful dev run and a 200 response in your terminals.
+curl prints `{"message":"OK"}`, the Next.js terminal logs `POST /api/webhook-handler 200`, and the `trigger dev` terminal logs a successful `hello-world` run.
 
-If you now go to your [Trigger.dev dashboard](https://cloud.trigger.dev), you should also see a successful run for the 'Hello World' task, with the payload you sent, in this case; `{"name": "John Doe", "age": "87"}`.
+If curl gets a `500` and the Next.js terminal shows `ApiClientMissingError`, `TRIGGER_SECRET_KEY` isn't set.
+
+Open the run link that `trigger dev` prints, or the **Runs** page of your Development environment, and you should see a successful run for the 'Hello World' task, with the payload you sent, in this case; `{"Name": "John Doe", "Age": "87"}`.
 
 </Step>
 

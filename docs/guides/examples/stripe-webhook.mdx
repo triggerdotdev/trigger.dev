@@ -1,151 +1,129 @@
 ---
 title: "Trigger a task from Stripe webhook events"
 sidebarTitle: "Stripe webhooks"
-description: "This example demonstrates how to handle Stripe webhook events using Trigger.dev."
+description: "Receive Stripe events on a hosted webhook endpoint, verified with your Stripe signing secret, and run a task when a checkout session completes."
 ---
 
-## Overview
+Learn how to run a task for every completed Stripe checkout without writing a webhook handler. You'll declare a Stripe endpoint, subscribe a task to `checkout.session.completed`, register the endpoint's URL with Stripe, and send a test event.
 
-This example shows how to set up a webhook handler in your existing app for incoming Stripe events. The handler triggers a task when a `checkout.session.completed` event is received. This is easily customisable to handle other Stripe events.
+Trigger.dev hosts the endpoint, verifies each request with your Stripe signing secret, deduplicates Stripe's retries on the event id, and runs the task with the verified event.
 
-## Key features
+## Prerequisites
 
-- Shows how to create a Stripe webhook handler in your app
-- Triggers a task from your backend when a `checkout.session.completed` event is received
-
-## Environment variables
-
-You'll need to configure the following environment variables for this example to work:
-
-- `STRIPE_WEBHOOK_SECRET` The secret key used to verify the Stripe webhook signature.
-- `TRIGGER_API_URL` Your Trigger.dev API url: `https://api.trigger.dev`
-- `TRIGGER_SECRET_KEY` A named **Trigger only** API key from the Trigger.dev environment your app uses
-
-## Setting up the Stripe webhook handler
-
-First you'll need to create a [Stripe webhook](https://stripe.com/docs/webhooks) handler route that listens for POST requests and verifies the Stripe signature.
-
-Here are examples of how you can set up a handler using different frameworks:
+- A project set up with Trigger.dev and `@trigger.dev/sdk` 4.8.1 or later. See [Webhooks public beta](/webhooks/public-beta#install-the-packages).
+- A [Stripe](https://stripe.com) account.
+- The [Stripe CLI](https://docs.stripe.com/stripe-cli), for sending a test event. On some accounts an administrator has to turn on CLI access before `stripe login` works.
+- The `stripe` package, for the event types:
 
 <CodeGroup>
 
-```ts Next.js
-// app/api/stripe-webhook/route.ts
-import { NextResponse } from "next/server";
-import { tasks } from "@trigger.dev/sdk";
-import Stripe from "stripe";
-import type { stripeCheckoutCompleted } from "@/trigger/stripe-checkout-completed";
-//     👆 **type-only** import
-
-export async function POST(request: Request) {
-  const signature = request.headers.get("stripe-signature");
-  const payload = await request.text();
-
-  if (!signature || !payload) {
-    return NextResponse.json(
-      { error: "Invalid Stripe payload/signature" },
-      {
-        status: 400,
-      }
-    );
-  }
-
-  const event = Stripe.webhooks.constructEvent(
-    payload,
-    signature,
-    process.env.STRIPE_WEBHOOK_SECRET as string
-  );
-
-  // Perform the check based on the event type
-  switch (event.type) {
-    case "checkout.session.completed": {
-      // Trigger the task only if the event type is "checkout.session.completed"
-      const { id } = await tasks.trigger<typeof stripeCheckoutCompleted>(
-        "stripe-checkout-completed",
-        event.data.object
-      );
-      return NextResponse.json({ runId: id });
-    }
-    default: {
-      // Return a response indicating that the event is not handled
-      return NextResponse.json(
-        { message: "Event not handled" },
-        {
-          status: 200,
-        }
-      );
-    }
-  }
-}
+```bash npm
+npm i stripe
 ```
 
-```ts Remix
-// app/webhooks.stripe.ts
-import { type ActionFunctionArgs, json } from "@remix-run/node";
-import type { stripeCheckoutCompleted } from "src/trigger/stripe-webhook";
-//     👆 **type-only** import
-import { tasks } from "@trigger.dev/sdk";
-import Stripe from "stripe";
+```bash pnpm
+pnpm add stripe
+```
 
-export async function action({ request }: ActionFunctionArgs) {
-  // Validate the Stripe webhook payload
-  const signature = request.headers.get("stripe-signature");
-  const payload = await request.text();
-
-  if (!signature || !payload) {
-    return json({ error: "Invalid Stripe payload/signature" }, { status: 400 });
-  }
-
-  const event = Stripe.webhooks.constructEvent(
-    payload,
-    signature,
-    process.env.STRIPE_WEBHOOK_SECRET as string
-  );
-
-  // Perform the check based on the event type
-  switch (event.type) {
-    case "checkout.session.completed": {
-      // Trigger the task only if the event type is "checkout.session.completed"
-      const { id } = await tasks.trigger<typeof stripeCheckoutCompleted>(
-        "stripe-checkout-completed",
-        event.data.object
-      );
-      return json({ runId: id });
-    }
-    default: {
-      // Return a response indicating that the event is not handled
-      return json({ message: "Event not handled" }, { status: 200 });
-    }
-  }
-}
+```bash bun
+bun add stripe
 ```
 
 </CodeGroup>
 
-## Task code
+## Declare the endpoint and subscribe a task
 
-This task is triggered when a `checkout.session.completed` event is received from Stripe.
+Declare the endpoint with `webhooks.stripe()` and subscribe a task to it. The filter means only `checkout.session.completed` events start a run:
 
-```ts trigger/stripe-checkout-completed.ts
-import { task } from "@trigger.dev/sdk";
-import type stripe from "stripe";
+```ts /trigger/stripe.ts
+import type Stripe from "stripe";
+import { webhook, webhooks } from "@trigger.dev/sdk";
 
-export const stripeCheckoutCompleted = task({
-  id: "stripe-checkout-completed",
-  run: async (payload: stripe.Checkout.Session) => {
-    // Add your custom logic for handling the checkout.session.completed event here
+export const stripe = webhooks.endpoint.define({
+  id: "stripe",
+  source: webhooks.stripe<Stripe.Event>(),
+});
+
+export const fulfillOrder = webhook({
+  id: "fulfill-order",
+  endpoint: stripe,
+  filter: "event.type == 'checkout.session.completed'",
+  onEvent: async ({ event }) => {
+    const session = event.data.object; // typed as Stripe.Checkout.Session by the filter
+    console.log("Checkout completed", session.id, session.amount_total);
+    // Fulfill the order here
   },
 });
 ```
 
-## Testing your task locally
+`webhook()` takes the same options as a [task](/tasks/overview), such as `retry`, `queue` and `machine`. To handle another Stripe event, subscribe another `webhook()` task to the same endpoint with its own [filter](/webhooks/filters).
 
-To test everything is working you can use the Stripe CLI to send test events to your endpoint:
+## Register the endpoint with Stripe
 
-1. Install the [Stripe CLI](https://stripe.com/docs/stripe-cli#install), and login
-2. Follow the instructions to [test your handler](https://docs.stripe.com/webhooks#test-webhook). This will include a temporary `STRIPE_WEBHOOK_SECRET` that you can use for testing.
-3. When triggering the event, use the `checkout.session.completed` event type. With the Stripe CLI: `stripe trigger checkout.session.completed`
-4. If your endpoint is set up correctly, you should see the Stripe events logged in your console with a status of `200`.
-5. Then, check the [Trigger.dev](https://cloud.trigger.dev) dashboard and you should see the successful run of the `stripe-webhook` task.
+<Steps>
+  <Step title="Sync the endpoint">
+    Run `trigger dev`, or deploy. Open the **Webhooks** page in your Development environment and select the `stripe` endpoint. Each environment has its own endpoint URL, and each team member has their own development environment. Register your development URL in a Stripe sandbox (or test mode) and the production URL in live mode.
+  </Step>
+  <Step title="Add the URL in Stripe">
+    Copy the endpoint's **Webhook URL**. In the Stripe Dashboard, open the **Webhooks** tab in Workbench and choose **Create an event destination**:
 
-For more information on setting up and testing Stripe webhooks, refer to the [Stripe Webhook Documentation](https://stripe.com/docs/webhooks).
+    1. Select **Your account**.
+    2. Choose the **Snapshot** payload, and the API version that matches your `stripe` package.
+    3. Select the `checkout.session.completed` event.
+    4. Choose **Webhook endpoint** as the destination type.
+    5. Paste the URL as the **Endpoint URL**.
+
+    <Warning>
+      Stripe marks **Thin** as recommended, but thin payloads don't include `data.object`. Choose
+      **Snapshot** so the task receives the full checkout session.
+    </Warning>
+  </Step>
+  <Step title="Store the signing secret">
+    On the destination's page in Stripe, choose **Reveal secret** and copy the signing secret (it starts with `whsec_`). Then choose **Set signing secret** on the Trigger.dev endpoint and paste it. Every delivery is rejected until the secret is set.
+
+    To store it from the command line without printing it, put the secret in `STRIPE_WEBHOOK_SECRET` in your shell or `.env` file, then run:
+
+    <CodeGroup>
+
+    ```bash npm
+    npx trigger.dev@latest webhooks set-secret stripe --env dev --from-env STRIPE_WEBHOOK_SECRET
+    ```
+
+    ```bash pnpm
+    pnpm dlx trigger.dev@latest webhooks set-secret stripe --env dev --from-env STRIPE_WEBHOOK_SECRET
+    ```
+
+    ```bash bun
+    bunx trigger.dev@latest webhooks set-secret stripe --env dev --from-env STRIPE_WEBHOOK_SECRET
+    ```
+
+    </CodeGroup>
+
+    For production, repeat this step with the live-mode secret and `--env prod`.
+  </Step>
+</Steps>
+
+To have an AI coding agent register the URL and secret instead, copy the endpoint's setup prompt. The agent creates its own Stripe endpoint with the Stripe CLI or API, so use either the prompt or the steps above, not both. See [Connect a provider](/webhooks/connect#set-it-up-with-an-ai-agent).
+
+## Test it
+
+With `trigger dev` running, send a test event with the [Stripe CLI](https://docs.stripe.com/stripe-cli). Run `stripe login` first, and make sure the CLI is on the same account and sandbox where you created the destination (`stripe login list` shows them):
+
+```bash
+stripe trigger checkout.session.completed
+```
+
+The event appears on the endpoint's **Deliveries** tab as **Succeeded**. Open the delivery to see the `fulfill-order` run it started. The Stripe CLI also creates events such as `payment_intent.created`, but Stripe only sends the events your destination subscribes to. If you subscribed to more events than the task's filter takes, those deliveries show as **Filtered** and start no run.
+
+If no delivery appears, open the destination's **Event deliveries** tab in Stripe Workbench to see the HTTP status Trigger.dev returned, and check that Stripe uses the copied URL and that the signing secret matches. See [Deliveries and endpoints](/webhooks/deliveries) for every status and how to replay a delivery.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Filters" icon="filter" href="/webhooks/filters">
+    Choose which events each subscribed task takes.
+  </Card>
+  <Card title="Waiters" icon="hourglass" href="/webhooks/waiters">
+    Pause a run until a matching webhook arrives.
+  </Card>
+</CardGroup>

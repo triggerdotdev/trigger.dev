@@ -36,7 +36,7 @@ Other common use cases include:
 - **Preventing duplicate emails** - Trigger the email task once, even if the parent task retries
 - **Avoiding double-charging customers** - Trigger the payment task once, even if the parent task retries. The payment API call itself still needs the provider's own idempotency key, see [Side effects inside `run()`](#side-effects-inside-run)
 - **One-time setup tasks** - Trigger initialization or migration tasks once
-- **Deduplicating webhook processing** - Trigger the handler task once per webhook event, even if the event is delivered multiple times
+- **Deduplicating webhook processing** - Trigger the handler task once per webhook event, even if the event is delivered multiple times. [Hosted webhook endpoints](/webhooks/deliveries#deduplication) deduplicate provider retries within a time window when the source maps an event ID
 
 ## Side effects inside `run()`
 

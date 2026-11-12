@@ -1,16 +1,70 @@
 ---
 title: "Using webhooks with Trigger.dev"
 sidebarTitle: "Overview"
-description: "Guides for using webhooks with Trigger.dev."
+description: "Receive provider webhooks on hosted, verified Trigger.dev endpoints, or trigger tasks from a webhook handler in your own app."
 ---
 
-## Overview
+**Trigger.dev hosts webhook endpoints for you: register one URL with a provider, and each verified event runs the subscribed tasks whose filters match it.** You don't write a route handler, verify signatures, or call `tasks.trigger()` yourself.
 
-Webhooks are a way to send and receive events from external services. Triggering tasks using webhooks allow you to add real-time, event driven functionality to your app.
+There are two ways to run tasks from webhooks:
 
-A webhook handler is code that executes in response to an event. They can be endpoints in your framework's routing which can be triggered by an external service.
+- **Hosted webhook endpoints (recommended):** Trigger.dev receives the request, verifies it, records it as a delivery you can inspect and replay, and runs your subscribed tasks.
+- **Your own handler:** a route in your app receives the request, verifies it, and triggers a task with `tasks.trigger()`. Use this when the HTTP response has to come from your app, for example to return a result to the caller, or when no [source](/webhooks/sources) can verify the provider's requests.
 
-## Webhook guides
+## Receive webhooks on a hosted endpoint
+
+Declare an endpoint with a [source](/webhooks/sources), then subscribe tasks to it with `webhook()`:
+
+```ts /trigger/stripe.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
+
+export const stripe = webhooks.endpoint.define({
+  id: "stripe",
+  source: webhooks.stripe(),
+});
+
+export const fulfillOrder = webhook({
+  id: "fulfill-order",
+  endpoint: stripe,
+  filter: "event.type == 'checkout.session.completed'",
+  onEvent: async ({ event }) => {
+    console.log("Fulfilling", event.data.object.id);
+  },
+});
+```
+
+When you deploy or run `trigger dev`, the endpoint appears on the environment's **Webhooks** page with its URL. Register that URL with Stripe and store the signing secret, and each `checkout.session.completed` event runs `fulfill-order`.
+
+Hosted endpoints give you:
+
+- **Verification for 40+ providers**, including Stripe, GitHub, Clerk, Resend, Shopify, Linear, Supabase and Hookdeck, plus `webhooks.custom()` for other HMAC, public-key or shared-secret schemes.
+- **Filters per subscriber**, so one endpoint can route checkout events to one task and refunds to another.
+- **Deliveries you can inspect and replay**, with the payload, headers and the runs each event started.
+- **Waiters**, which pause a run until a matching event arrives, without using compute while it waits.
+- **[Agent routing](/webhooks/session-routing)**, which sends events into a `chat.agent` session, including agents that live in Slack and Linear.
+
+Webhooks are in [public beta](/webhooks/public-beta) and need `@trigger.dev/sdk` 4.8.1 or later.
+
+| Page | What it covers |
+| --- | --- |
+| [Webhooks overview](/webhooks/overview) | Endpoints, subscribers, and the `onEvent` handler. |
+| [Sources](/webhooks/sources) | Every supported provider and custom verification. |
+| [Connect a provider](/webhooks/connect) | Register the URL and signing secret, by hand or with an AI coding agent. |
+| [Deliveries](/webhooks/deliveries) | Inspect payloads, replay deliveries, and see the runs each one started. |
+| [Filters](/webhooks/filters) | Choose which events each subscriber takes. |
+| [Waiters](/webhooks/waiters) | Pause a run until a matching webhook arrives. |
+| [Session routing](/webhooks/session-routing) | Route each event to a durable agent session by key. |
+| [Channels](/webhooks/channels) | Turn a webhook into a chat frontend for an agent. |
+| [Human-in-the-loop](/webhooks/human-in-the-loop) | Approvals and interactive controls over a channel. |
+| [Slack agents](/webhooks/slack) and [Linear agents](/webhooks/linear) | Turn a `chat.agent` into an agent that lives in Slack or Linear. |
+| [Stripe webhooks](/guides/examples/stripe-webhook) | Run a task when a Stripe checkout completes. |
+| [Supabase database webhooks](/guides/frameworks/supabase-edge-functions-database-webhooks) | Run a task when a row is inserted into a Supabase table. |
+| [Hookdeck webhooks](/guides/examples/hookdeck-webhook) | Forward events from a Hookdeck connection to a hosted endpoint. |
+| [Resend email agent](/guides/example-projects/resend-email-agent) | An agent that drafts replies to a Resend inbox and waits for approval in Slack. |
+
+## Trigger tasks from your own webhook handler
+
+These guides receive the webhook in your app and trigger a task from the handler:
 
 <CardGroup cols={2}>
   <Card
@@ -18,28 +72,13 @@ A webhook handler is code that executes in response to an event. They can be end
     icon="N"
     href="/guides/frameworks/nextjs-webhooks"
   >
-    How to create a webhook handler in a Next.js app, and trigger a task from it.
+    Create a webhook handler in a Next.js app and trigger a task from it.
   </Card>
   <Card
     title="Remix - triggering tasks using webhooks"
     icon="R"
     href="/guides/frameworks/remix-webhooks"
   >
-    How to create a webhook handler in a Remix app, and trigger a task from it.
-  </Card>
-  <Card title="Stripe webhooks" icon="webhook" href="/guides/examples/stripe-webhook">
-    How to create a Stripe webhook handler and trigger a task when a 'checkout session completed'
-    event is received.
-  </Card>
-  <Card title="Hookdeck webhooks" icon="webhook" href="/guides/examples/hookdeck-webhook">
-    Use Hookdeck to receive webhooks and forward them to Trigger.dev tasks with logging and replay
-    capabilities.
-  </Card>
-  <Card
-    title="Supabase database webhooks guide"
-    icon="webhook"
-    href="/guides/frameworks/supabase-edge-functions-database-webhooks"
-  >
-    Learn how to trigger a task from a Supabase edge function when an event occurs in your database.
+    Create a webhook handler in a Remix app and trigger a task from it.
   </Card>
 </CardGroup>

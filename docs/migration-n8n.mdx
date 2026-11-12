@@ -14,7 +14,7 @@ Your task code runs on Trigger.dev's managed infrastructure, so there are no ser
 | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | Workflow                                          | [task](/tasks/overview) plus its config (queue, retry, onFailure)                                                  |
 | Schedule Trigger                                  | [schedules.task](/tasks/scheduled)                                                                                 |
-| Webhook node                                      | Route handler + [task.trigger()](/triggering)                                                                      |
+| Webhook node                                      | [Webhook endpoint](/webhooks/overview) + a [webhook()](/webhooks/overview#the-handler) task                         |
 | Node                                              | A step or library call inside `run()`                                                                              |
 | Execute Sub-workflow node (wait for completion)   | [tasks.triggerAndWait()](/triggering#yourtask-triggerandwait)                                                      |
 | Execute Sub-workflow node (execute in background) | [tasks.trigger()](/triggering)                                                                                     |
@@ -30,7 +30,7 @@ Your task code runs on Trigger.dev's managed infrastructure, so there are no ser
 | Execution                                         | Run (visible in the dashboard with full logs)                                                                      |
 | Retry on Fail (per-node setting)                  | [retry.maxAttempts](/tasks/overview#retry-options) (retries the whole `run()`, not a single step)                          |
 | AI Agent node                                     | Any AI SDK called inside `run()` (Vercel AI SDK, Claude SDK, OpenAI SDK, etc.)                                     |
-| Respond to Webhook node                           | Route handler + [task.triggerAndWait()](/triggering#yourtask-triggerandwait) returning the result as HTTP response |
+| Respond to Webhook node                           | Route handler + [tasks.trigger()](/triggering#tasks-trigger) and `runs.poll()`, returning the result as the HTTP response |
 
 ---
 
@@ -50,7 +50,7 @@ Go to [Trigger.dev Cloud](https://cloud.trigger.dev), create an account, and cre
 npx trigger.dev@latest init
 ```
 
-This adds Trigger.dev to your project and creates a `trigger/` directory for your tasks.
+This adds Trigger.dev to your project and creates a directory for your tasks (`src/trigger/` if your project uses `src`), set by `dirs` in `trigger.config.ts`. The examples below use `trigger/`.
 
 </Step>
 
@@ -74,38 +74,69 @@ You'll get a local server that behaves like production. Your runs appear in the 
 
 In n8n you use a **Webhook** trigger node, which registers a URL that starts the workflow.
 
-In Trigger.dev, your existing route handler receives the webhook and triggers the task:
+In Trigger.dev, declare a [hosted webhook endpoint](/webhooks/overview). Trigger.dev hosts its URL, verifies each request, and runs the tasks subscribed to it. This endpoint receives GitHub events and runs a task for each push:
 
-<CodeGroup>
+```ts trigger/github.ts
+import { webhook, webhooks } from "@trigger.dev/sdk";
 
-```ts app/api/webhook/route.ts
-import { processWebhook } from "@/trigger/process-webhook";
+export const github = webhooks.endpoint.define({
+  id: "github",
+  source: webhooks.github(),
+});
 
-export async function POST(request: Request) {
-  const body = await request.json();
-
-  await processWebhook.trigger({
-    event: body.event,
-    data: body.data,
-  });
-
-  return Response.json({ received: true });
-}
+export const processPush = webhook({
+  id: "process-push",
+  endpoint: github,
+  filter: "header.x-github-event == 'push'",
+  onEvent: async ({ event }) => {
+    console.log("Push to", event.ref);
+  },
+});
 ```
+
+After you run the dev server or deploy, connect GitHub to the endpoint, the way you'd paste an n8n webhook URL:
+
+1. Generate the endpoint's signing secret. Every delivery is rejected until it has one. This command saves it to `.env.local` without printing it (keep that file out of git):
+
+   ```bash
+   npx trigger.dev@latest webhooks generate-secret github --env dev --to-env GITHUB_WEBHOOK_SECRET
+   ```
+
+2. Copy the endpoint's **Webhook URL** from the **Webhooks** page.
+3. In the GitHub repository's **Settings > Webhooks**, add a webhook with that URL as the **Payload URL**, **Content type** set to `application/json`, the generated value as the **Secret**, and **Just the push event** selected.
+
+GitHub sends a `ping` event as soon as the webhook is created. The filter skips it, so it shows as **Filtered** on the endpoint's **Deliveries** tab. Each push then starts a `process-push` run. See [Connect a provider](/webhooks/connect) for other providers.
+
+The endpoint also verifies the provider's signature, which an n8n Webhook node doesn't do on its own. [Sources](/webhooks/sources) cover 40+ providers, and `webhooks.custom()` handles most other signature and shared-secret schemes.
+
+A hosted endpoint responds as soon as it accepts the delivery. To return a task's result in the HTTP response, as n8n's **Respond to Webhook** node does, use a route handler in your own app that triggers the task with [tasks.trigger()](/triggering#tasks-trigger) and waits for the result with `runs.poll()`:
 
 ```ts trigger/process-webhook.ts
 import { task } from "@trigger.dev/sdk";
 
 export const processWebhook = task({
   id: "process-webhook",
-  run: async (payload: { event: string; data: Record<string, unknown> }) => {
-    // handle the webhook payload
-    await handleEvent(payload.event, payload.data);
+  run: async (payload: { event: string }) => {
+    return { received: payload.event };
   },
 });
 ```
 
-</CodeGroup>
+```ts app/api/webhook/route.ts
+import { runs, tasks } from "@trigger.dev/sdk";
+import type { processWebhook } from "@/trigger/process-webhook";
+
+export async function POST(request: Request) {
+  const body = await request.json();
+
+  const handle = await tasks.trigger<typeof processWebhook>("process-webhook", body);
+  const run = await runs.poll(handle, { pollIntervalMs: 1000 });
+
+  return Response.json(run.output);
+}
+```
+
+The task's return value becomes `run.output`. The route handler needs `TRIGGER_SECRET_KEY` in your app's environment; see [API keys](/apikeys).
 
 ---
 
