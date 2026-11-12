@@ -5,6 +5,7 @@ import pLimit from "p-limit";
 import { z } from "zod";
 import type { EncryptionKeyring } from "~/utils/encryptionKeyring.server";
 import { wrappingContext } from "./crypto.server";
+import { environmentEncryptionTelemetry } from "./telemetry.server";
 
 const REQUEST_TIMEOUT_MS = 5_000;
 const MAX_CONCURRENT_REQUESTS = 16;
@@ -38,13 +39,18 @@ export class EnvironmentKeyWrapper {
   constructor(private readonly keyring: EncryptionKeyring) {}
 
   #run<T>(fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
-    if (kmsRequests.pendingCount >= MAX_QUEUED_REQUESTS)
+    if (kmsRequests.pendingCount >= MAX_QUEUED_REQUESTS) {
+      environmentEncryptionTelemetry().failures.add(1, { reason: "kms_queue_full" });
       return Promise.reject(
         new EnvironmentKeyUnavailableError({ cause: new Error("KMS request queue is full") })
       );
+    }
     const signal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
     return new Promise<T>((resolve, reject) => {
-      const aborted = () => reject(new EnvironmentKeyUnavailableError({ cause: signal.reason }));
+      const aborted = () => {
+        environmentEncryptionTelemetry().failures.add(1, { reason: "kms_deadline" });
+        reject(new EnvironmentKeyUnavailableError({ cause: signal.reason }));
+      };
       signal.addEventListener("abort", aborted, { once: true });
       const pending = kmsRequests(() => {
         signal.throwIfAborted();
@@ -79,6 +85,8 @@ export class EnvironmentKeyWrapper {
   }
 
   async wrap(policy: WrappingPolicy, environmentId: string, keyId: string, key: Buffer) {
+    const startedAt = performance.now();
+    let outcome = "error";
     const context = wrappingContext(environmentId, keyId);
     try {
       if (policy.wrappingProvider === "PLATFORM_KEYRING") {
@@ -87,6 +95,7 @@ export class EnvironmentKeyWrapper {
         const nonce = randomBytes(12);
         const cipher = createCipheriv("aes-256-gcm", wrappingKey, nonce);
         cipher.setAAD(Buffer.from(JSON.stringify(context)));
+        outcome = "success";
         return {
           wrappedKey: {
             nonce: nonce.toString("hex"),
@@ -108,16 +117,26 @@ export class EnvironmentKeyWrapper {
         )
       );
       if (!result.CiphertextBlob || !result.KeyId) throw new Error("KMS returned no wrapped key");
+      outcome = "success";
       return {
         wrappedKey: { ciphertext: Buffer.from(result.CiphertextBlob).toString("base64") },
         wrappingKeyReference: result.KeyId,
       };
     } catch (cause) {
+      outcome = "error";
       throw new EnvironmentKeyUnavailableError({ cause });
+    } finally {
+      environmentEncryptionTelemetry().keyOperationDuration.record(performance.now() - startedAt, {
+        provider: policy.wrappingProvider,
+        operation: "wrap",
+        outcome,
+      });
     }
   }
 
   async unwrap(policy: WrappingPolicy, environmentId: string, keyId: string, wrappedKey: unknown) {
+    const startedAt = performance.now();
+    let outcome = "error";
     const context = wrappingContext(environmentId, keyId);
     try {
       if (policy.wrappingProvider === "PLATFORM_KEYRING") {
@@ -131,6 +150,7 @@ export class EnvironmentKeyWrapper {
         );
         decipher.setAAD(Buffer.from(JSON.stringify(context)));
         decipher.setAuthTag(Buffer.from(value.tag, "hex"));
+        outcome = "success";
         return Buffer.concat([
           decipher.update(Buffer.from(value.ciphertext, "hex")),
           decipher.final(),
@@ -150,9 +170,17 @@ export class EnvironmentKeyWrapper {
       );
       if (!result.Plaintext || result.Plaintext.length !== 32)
         throw new Error("KMS returned an invalid key");
+      outcome = "success";
       return Buffer.from(result.Plaintext);
     } catch (cause) {
+      outcome = "error";
       throw new EnvironmentKeyUnavailableError({ cause });
+    } finally {
+      environmentEncryptionTelemetry().keyOperationDuration.record(performance.now() - startedAt, {
+        provider: policy.wrappingProvider,
+        operation: "unwrap",
+        outcome,
+      });
     }
   }
 }

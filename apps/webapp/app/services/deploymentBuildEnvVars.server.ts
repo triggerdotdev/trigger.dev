@@ -5,6 +5,7 @@ import { z } from "zod";
 import { logger } from "~/services/logger.server";
 import { StoredEnvironmentValueSchema } from "~/services/environmentEncryption/crypto.server";
 import type { EnvironmentEncryptionService } from "~/services/environmentEncryption/service.server";
+import { environmentEncryptionTelemetry } from "~/services/environmentEncryption/telemetry.server";
 import { EnvironmentKeyUnavailableError } from "~/services/environmentEncryption/wrapping.server";
 import { FINAL_DEPLOYMENT_STATUSES } from "~/v3/services/failDeployment.server";
 
@@ -63,6 +64,7 @@ export async function deploymentBuildEnvVarsResponse(options: {
   } catch (error) {
     if (error instanceof Response) throw error;
     if (error instanceof EnvironmentKeyUnavailableError) {
+      environmentEncryptionTelemetry().failures.add(1, { reason: "build_envelope_unavailable" });
       return json({ error: "Environment encryption key unavailable" }, { status: 503 });
     }
     logger.error("Failed to load deployment build env vars", { error });

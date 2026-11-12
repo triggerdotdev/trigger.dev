@@ -8,6 +8,7 @@ import {
   type PrismaTransactionClient,
 } from "@trigger.dev/database";
 import { LRUCache } from "lru-cache";
+import { environmentEncryptionTelemetry } from "./telemetry.server";
 import { FEATURE_FLAG, isPlainFlagObject } from "~/v3/featureFlags";
 import { makeFlag } from "~/v3/featureFlags.server";
 import {
@@ -67,7 +68,7 @@ export class EnvironmentEncryptionService {
       keyring: EncryptionKeyring;
       writesEnabled: boolean;
       defaultWrappingPolicy: WrappingPolicy;
-      onUnwrap?: (provider: string, outcome: "success" | "error", durationMs: number) => void;
+      onUnwrap?: () => void;
     }
   ) {
     this.#wrapper = new EnvironmentKeyWrapper(options.keyring);
@@ -131,6 +132,11 @@ export class EnvironmentEncryptionService {
         missing.set(id, scope);
       }
     }
+    if (scopes.length) {
+      const { cacheLookups } = environmentEncryptionTelemetry();
+      cacheLookups.add(result.size, { outcome: "hit" });
+      cacheLookups.add(missing.size, { outcome: "miss" });
+    }
     if (missing.size) {
       const unloaded = [...new Set([...missing.values()].map((scope) => scope.keyId))].filter(
         (id) => !this.#registryLoads.has(id)
@@ -174,24 +180,15 @@ export class EnvironmentEncryptionService {
           }
           let pending = this.#unwrapping.get(id);
           if (!pending) {
-            const startedAt = performance.now();
             pending = this.#wrapper
               .unwrap(record, record.environmentId, record.id, record.wrappedKey)
               .then((key) => {
                 this.#keys.set(id, key);
-                this.options.onUnwrap?.(
-                  record.wrappingProvider,
-                  "success",
-                  performance.now() - startedAt
-                );
+                this.options.onUnwrap?.();
                 return key;
               })
               .catch((error) => {
-                this.options.onUnwrap?.(
-                  record.wrappingProvider,
-                  "error",
-                  performance.now() - startedAt
-                );
+                this.options.onUnwrap?.();
                 if (error instanceof Error) this.#failures.set(id, error);
                 throw error;
               })
